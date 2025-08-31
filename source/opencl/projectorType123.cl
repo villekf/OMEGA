@@ -92,26 +92,31 @@ void projectorType123(
 	CONSTANT float* V [[buffer(4)]],
 #endif ///////////////////////// END ORTHOGONAL-BASED RAY TRACER /////////////////////////
 
-	// Attenuation here
+#if !defined(CT) && (defined(ATN) || defined(ATNM)) ///////////////////////// PET ATTENUATION CORRECTION /////////////////////////
+	const CLGLOBAL float* d_atten [[buffer(5)]],
+#endif
 
-	// MaskFP here
+#ifdef MASKFP
+    MASKFPTYPE maskFP [[buffer(6)]],
+#endif
+#if defined(MASKBP) && defined(BP) && !defined(FP)
+    MASKBPTYPE maskBP [[buffer(7)]],
+#endif
 
-	// MaskBP here
-
-	CONSTANT float* d_xy [[buffer(5)]], // Adjust buffer index
-	CONSTANT float* d_z [[buffer(6)]], // Adjust buffer index
+	CONSTANT float* d_xy [[buffer(8)]], // Adjust buffer index
+	CONSTANT float* d_z [[buffer(9)]], // Adjust buffer index
 
 	// PET normalization
 	// PET scatter
 
-	CLGLOBAL CAST* d_Summ [[buffer(7)]], // Adjust buffer index
+	CLGLOBAL CAST* d_Summ [[buffer(10)]], // Adjust buffer index
 
 	// d_xyindex, d_zindex
 	// trIndex, axIndex
 	// Raw PET data
 
-	const CLGLOBAL float* d_OSEM [[buffer(8)]], // Adjust buffer index
-	CLGLOBAL float* d_output [[buffer(9)]], // Adjust buffer index
+	const CLGLOBAL float* d_OSEM [[buffer(11)]], // Adjust buffer index
+	CLGLOBAL float* d_output [[buffer(12)]], // Adjust buffer index
 
 	uint3 i [[thread_position_in_grid]]   // global id
 

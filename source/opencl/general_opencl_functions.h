@@ -1169,7 +1169,7 @@ DEVICE void getDetectorCoordinatesFullSinogram(const uint d_size_x, const int3 i
 #endif
 
 #if defined(ATN) && !defined(CT)
-DEVICE void compute_attenuation(const float val, const typeT ind, IMTYPE d_atten, float* jelppi, const int ii) {
+DEVICE void compute_attenuation(const float val, const typeT ind, IMTYPE d_atten, PTR_THR float *jelppi, const int ii) {
 	if (ii == 0) {
         *jelppi += val * -
 #if defined(PTYPE4)

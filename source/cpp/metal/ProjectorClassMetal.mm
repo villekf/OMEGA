@@ -83,6 +83,7 @@ typedef struct {
     std::vector<__strong id<MTLBuffer>> _d_xyindex;
     std::vector<__strong id<MTLBuffer>> _d_zindex;
     std::vector<__strong id<MTLBuffer>> _d_L;
+    std::vector<__strong id<MTLBuffer>> _d_maskFP; // FP mask
 }
 @end
 
@@ -171,12 +172,28 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     } mutableCopy];
 
     // TODO refactor to a function
-    const bool siddonVal = (inputScalars.FPType == 1 || inputScalars.BPType == 1 || inputScalars.FPType == 4 || inputScalars.BPType == 4) ? true : false;
+    if (inputScalars.maskFP) {
+			macros[@"MASKFP"] = @"";
+			if (inputScalars.maskFPZ > 1)
+				macros[@"MASKFP3D"] = @"";
+		}
+		if (inputScalars.maskBP) {
+			macros[@"MASKBP"] = @"";
+			if (inputScalars.maskBPZ > 1)
+				macros[@"MASKBP3D"] = @"";
+		}
+
+    if (inputScalars.attenuation_correction == 1u && inputScalars.CTAttenuation)
+        macros[@"ATN"] = @"";
+    else if (inputScalars.attenuation_correction == 1u && !inputScalars.CTAttenuation)
+        macros[@"ATNM"] = @"";
 
     if (inputScalars.SPECT) {
         macros[@"SPECT"] = @"";
     }
-    macros[@"NBINS"] = @(inputScalars.nBins); 
+    macros[@"NBINS"] = @(inputScalars.nBins);
+
+    const bool siddonVal = (inputScalars.FPType == 1 || inputScalars.BPType == 1 || inputScalars.FPType == 4 || inputScalars.BPType == 4) ? true : false;
     if ((siddonVal && ((inputScalars.n_rays * inputScalars.n_rays3D) > 1)) || inputScalars.SPECT) {;
         macros[@"N_RAYS"] = @(inputScalars.n_rays * inputScalars.n_rays3D); 
         macros[@"N_RAYS2D"] = @(inputScalars.n_rays); 
@@ -338,7 +355,13 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     auto &inputScalars = *static_cast<scalarStruct *>(inputScalarsBox.ptr);
     auto &w_vec = *static_cast<Weighting *>(wVec.ptr);
 
+    size_t vecSize = 1;
+    if ((inputScalars.PET || inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0)
+        vecSize = static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD);
+
     // Resize necessary buffer vectors
+    if (inputScalars.maskFP)
+        _d_maskFP.resize(inputScalars.subsetsUsed);
     if (inputScalars.raw)
         _d_L.resize(inputScalars.subsetsUsed);
     if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1) {
@@ -351,25 +374,48 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     }
 
     // --- Buffers (from createAndWriteBuffers) --- TODO
+    NSUInteger bytes;
     if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-        NSUInteger bytesV = sizeof(float) * inputScalars.size_V;
-        _d_V = [_device newBufferWithBytes:inputScalars.V length:bytesV options:MTLResourceStorageModeShared];
+        bytes = sizeof(float) * inputScalars.size_V;
+        _d_V = [_device newBufferWithBytes:inputScalars.V length:bytes options:MTLResourceStorageModeShared];
+    }
+    if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+        bytes = sizeof(float) * inputScalars.im_dim[0];
+        _d_attenB = [_device newBufferWithBytes:atten length:bytes options:MTLResourceStorageModeShared];
+    }
+    
+    if (inputScalars.maskFP || inputScalars.maskBP) {
+        if (inputScalars.maskFP) {
+            if (inputScalars.maskFPZ > 1) {
+                for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+                    bytes = sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD * length[kk];
+                    _d_maskFP[kk] = [_device newBufferWithBytes:&w_vec.maskFP[pituus[kk] * vecSize] length:bytes options:MTLResourceStorageModeShared];
+                }
+            } else {
+                bytes = sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD;
+                _d_maskFP[0] = [_device newBufferWithBytes:w_vec.maskFP length:bytes options:MTLResourceStorageModeShared];
+            }
+        }
+        if (inputScalars.maskBP) {
+            bytes = sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ;
+            _d_maskBP = [_device newBufferWithBytes:w_vec.maskBP length:bytes options:MTLResourceStorageModeShared];
+        }
     }
     if (inputScalars.SPECT) {
-        NSUInteger bytesRayShifts = sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections;
-        _d_rayShiftsDetector = [_device newBufferWithBytes:w_vec.rayShiftsDetector length:bytesRayShifts options:MTLResourceStorageModeShared];
-        _d_rayShiftsSource = [_device newBufferWithBytes:w_vec.rayShiftsSource length:bytesRayShifts options:MTLResourceStorageModeShared];
+        bytes = sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections;
+        _d_rayShiftsDetector = [_device newBufferWithBytes:w_vec.rayShiftsDetector length:bytes options:MTLResourceStorageModeShared];
+        _d_rayShiftsSource = [_device newBufferWithBytes:w_vec.rayShiftsSource length:bytes options:MTLResourceStorageModeShared];
     }
     for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-        NSUInteger bytesZ = sizeof(float) * length[kk] * 2;
-        NSUInteger bytesX = sizeof(float) * length[kk] * 6;
-        _d_z[kk] = [_device newBufferWithBytes:&z_det[pituus[kk] * 2] length:bytesZ options:MTLResourceStorageModeShared];
-        _d_x[kk] = [_device newBufferWithBytes:&x[pituus[kk] * 6] length:bytesX options:MTLResourceStorageModeShared];
+        bytes = sizeof(float) * length[kk] * 2;
+        _d_z[kk] = [_device newBufferWithBytes:&z_det[pituus[kk] * 2] length:bytes options:MTLResourceStorageModeShared];
+        bytes = sizeof(float) * length[kk] * 6;
+        _d_x[kk] = [_device newBufferWithBytes:&x[pituus[kk] * 6] length:bytes options:MTLResourceStorageModeShared];
 
         // Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
         if (inputScalars.raw && inputScalars.listmode != 1) {
-            NSUInteger bytesL = sizeof(uint16_t) * length[kk] * 2;
-            _d_L[kk] = [_device newBufferWithBytes:&L[pituus[kk] * 2] length:bytesL options:MTLResourceStorageModeShared];
+            bytes = sizeof(uint16_t) * length[kk] * 2;
+            _d_L[kk] = [_device newBufferWithBytes:&L[pituus[kk] * 2] length:bytes options:MTLResourceStorageModeShared];
         }
     }
 
@@ -384,7 +430,8 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
                               ii:(int32_t)ii
                               uu:(int)uu
 {
-    mexPrintf("init forwardProjection\n");
+    if (DEBUG)
+        mexPrintf("init forwardProjection\n");
     // Unbox to C++ refs (no copies).
     auto &inputScalars = *static_cast<scalarStruct *>(inputScalarsBox.ptr);
     auto &w_vec = *static_cast<Weighting *>(wVec.ptr);
@@ -446,9 +493,23 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
             [_encFP setBuffer:_d_V offset:0 atIndex:4];
         }
     }
-    [_encFP setBuffer:_d_x[osa_iter] offset:0 atIndex:5];
-    [_encFP setBuffer:_d_z[osa_iter] offset:0 atIndex:6];
-    [_encFP setBuffer:_d_Summ[uu] offset:0 atIndex:7];
+    if (inputScalars.attenuation_correction && !inputScalars.CT && inputScalars.CTAttenuation) {
+        [_encFP setBuffer:_d_attenB offset:0 atIndex:5];
+    }
+    if (inputScalars.maskFP) {
+        int subset = 0;
+        if (inputScalars.maskFPZ > 1)
+            subset = osa_iter;
+        [_encFP setBuffer:_d_maskFP[subset] offset:0 atIndex:6];
+    }
+    if (inputScalars.maskBP) {
+        [_encFP setBuffer:_d_maskBP offset:0 atIndex:7];
+        //status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBPB);
+    }
+
+    [_encFP setBuffer:_d_x[osa_iter] offset:0 atIndex:8];
+    [_encFP setBuffer:_d_z[osa_iter] offset:0 atIndex:9];
+    [_encFP setBuffer:_d_Summ[uu] offset:0 atIndex:10];
 
     if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
         //[_enc setBuffer:_d_xyindex[osa_iter] offset:0 atIndex:_kernelIndFP++];
@@ -457,8 +518,8 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
 
     //if (inputScalars.raw)
         //kernelFP.setArg(kernelIndFPSubIter++, d_L[osa_iter]);
-    [_encFP setBuffer:_d_im offset:0 atIndex:8];    
-    [_encFP setBuffer:_d_output offset:0 atIndex:9];
+    [_encFP setBuffer:_d_im offset:0 atIndex:11];    
+    [_encFP setBuffer:_d_output offset:0 atIndex:12];
 
     // --- Build Metal sizes that exactly match CL's parameters ---
     MTLSize threadsPerThreadgroup = MTLSizeMake(_localX, _localY, _localZ);
@@ -469,11 +530,6 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
             @"Local work-group size (%lu) exceeds Metal's maxTotalThreadsPerThreadgroup (%lu). "
             @"Choose a smaller local size to match CL.",
             (unsigned long)(_localX*_localY*_localZ), (unsigned long)maxTG);*/
-
-    // In OpenCL, global must be a multiple of local (with zero offset).
-    // Mirror that here and compute the number of threadgroups per grid.
-    /*NSAssert(_globalX % _localX == 0 && _globalY % _localY == 0 && _globalZ % _localZ == 0,
-            @"global must be an exact multiple of local in each dimension (as in OpenCL).");*/
 
     MTLSize threadgroupsPerGrid = MTLSizeMake(_globalX / _localX, _globalY / _localY, _globalZ / _localZ);
     
@@ -495,7 +551,8 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
                               ii:(int32_t)ii
                               uu:(int)uu
 {
-    mexPrintf("init backwardProjection\n");
+    if (DEBUG)
+        mexPrintf("init backwardProjection\n");
     // Unbox to C++ refs (no copies).
     auto &inputScalars = *static_cast<scalarStruct *>(inputScalarsBox.ptr);
     auto &w_vec = *static_cast<Weighting *>(wVec.ptr);
@@ -557,9 +614,22 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
             [_encBP setBuffer:_d_V offset:0 atIndex:4];
         }
     }
-    [_encBP setBuffer:_d_x[osa_iter] offset:0 atIndex:5];
-    [_encBP setBuffer:_d_z[osa_iter] offset:0 atIndex:6];
-    [_encBP setBuffer:_d_Summ[uu] offset:0 atIndex:7];
+    if (inputScalars.attenuation_correction && !inputScalars.CT && inputScalars.CTAttenuation) {
+        [_encBP setBuffer:_d_attenB offset:0 atIndex:5];
+    }
+    if (inputScalars.maskFP) {
+        int subset = 0;
+        if (inputScalars.maskFPZ > 1)
+            subset = osa_iter;
+        [_encBP setBuffer:_d_maskFP[subset] offset:0 atIndex:6];
+    }
+    if (inputScalars.maskBP) {
+        [_encBP setBuffer:_d_maskBP offset:0 atIndex:7];
+    }
+
+    [_encBP setBuffer:_d_x[osa_iter] offset:0 atIndex:8];
+    [_encBP setBuffer:_d_z[osa_iter] offset:0 atIndex:9];
+    [_encBP setBuffer:_d_Summ[uu] offset:0 atIndex:10];
 
     if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
         //[_enc setBuffer:_d_xyindex[osa_iter] offset:0 atIndex:_kernelIndFP++];
@@ -568,16 +638,17 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
 
     //if (inputScalars.raw)
         //kernelFP.setArg(kernelIndFPSubIter++, d_L[osa_iter]); 
-    [_encBP setBuffer:_d_output offset:0 atIndex:8];
-    [_encBP setBuffer:_d_rhs_os[uu] offset:0 atIndex:9];   
+    [_encBP setBuffer:_d_output offset:0 atIndex:11];
+    [_encBP setBuffer:_d_rhs_os[uu] offset:0 atIndex:12];   
 
     // --- Build Metal sizes that exactly match CL's parameters ---
     MTLSize threads = MTLSizeMake(_globalX, _globalY, _globalZ);
     MTLSize threadsPerThreadgroup = MTLSizeMake(_localX, _localY, _localZ);
 
-    mexPrintf("grid = %zu x %zu x %zu, tptg = %zu x %zu x %zu\n",
-          (size_t)_globalX, (size_t)_globalY, (size_t)_globalZ,
-          (size_t)_localX, (size_t)_localY, (size_t)_localZ);
+    if (DEBUG)
+        mexPrintf("grid = %zu x %zu x %zu, tptg = %zu x %zu x %zu\n",
+            (size_t)_globalX, (size_t)_globalY, (size_t)_globalZ,
+            (size_t)_localX, (size_t)_localY, (size_t)_localZ);
 
     [_encBP dispatchThreads:threads threadsPerThreadgroup:threadsPerThreadgroup];
     [_encBP endEncoding];
