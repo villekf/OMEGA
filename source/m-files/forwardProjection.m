@@ -52,53 +52,51 @@ end
 
 outputFP = [];
 A = [];
+
+function outputFP = forwardProjectionType6(options, recApu, loopVar, koko)
+    outputFP = zeros(options.nRowsD, options.nColsD, koko, options.cType);
+    for ii = loopVar
+        voxelSize = options.FOVa_x / single(options.Nx(ii));
+        u1 = options.uu;
+        apuArr = reshape(recApu, options.Nx(ii), options.Ny(ii), options.Nz(ii));
+
+        for kk = 1:koko % todo add support for non-square fov
+            kuvaRot = apuArr;
+            panelTilt = options.swivelAngles(u1) - options.angles(u1) + 180;
+            panelShift = options.radiusPerProj(u1) * sind(panelTilt) / voxelSize;
+            PSFshift = (options.FOVa_y/2 - (options.radiusPerProj(u1) * cosd(panelTilt) - options.CORtoDetectorSurface)) / voxelSize;
+
+            % 1. Rotate the image
+            kuvaRot = imrotate(kuvaRot, -options.swivelAngles(u1), 'bilinear','crop');
+            %volume3Dviewer(kuvaRot)
+            
+            % 2. Translate the image
+            kuvaRot = imtranslate(kuvaRot, [-panelShift, 0, 0]);
+            %volume3Dviewer(kuvaRot)
+
+            % 3. Attenuation correction
+
+
+            % 4. Convolve with detector PSF
+            PSF = imtranslate(options.gFilter, [0, 0, options.blurPlanes(u1)], FillValues=0);
+            PSF = PSF(:, :, 1:options.Nx(1));
+            PSF = permute(PSF, [3 2 1]);
+            for jj = 1 : options.Ny(1)
+                kuvaRot(jj, :, :) = conv2(squeeze(kuvaRot(jj, :, :)), squeeze(PSF(jj,:,:)), 'same');
+            end
+            
+            % 5. Sum
+            kuvaRot = sum(kuvaRot, 1);
+            kuvaRot = squeeze(kuvaRot);
+            outputFP(:, :, kk) = outputFP(:, :, kk) + kuvaRot;
+            u1 = u1 + 1;
+        end
+    end
+end
+
 if options.implementation == 4 || options.implementation == 1
     if options.projector_type == 6
-        outputFP = zeros(options.nRowsD, options.nColsD, koko, options.cType);
-        for ii = loopVar
-            u1 = options.uu;
-            if useCell
-                if options.use_psf && ~isempty(recApu{ii})
-                    recApu{ii} = computeConvolution(recApu{ii}, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
-                end
-                apuArr = reshape(recApu{ii}, options.Nx(ii), options.Ny(ii), options.Nz(ii));
-            else
-                if options.use_psf && ~isempty(recApu)
-                    recApu = computeConvolution(recApu, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
-                end
-                apuArr = reshape(recApu, options.Nx(ii), options.Ny(ii), options.Nz(ii));
-            end
-            for kk = 1 : koko
-                kuvaRot = apuArr;
-                kuvaRot = imrotate(kuvaRot, 180-options.angles(u1), 'bilinear','crop');
-                kuvaRot = permute(kuvaRot, [3, 2, 1]);
-                if options.attenuation_correction
-                    attenuationImage = options.vaimennus;
-                    attenuationImage = imrotate(attenuationImage, 180-options.angles(u1), 'bilinear','crop');
-                    attenuationImage = cumsum(attenuationImage, 1);
-                    attenuationImage = exp(-options.crXY * attenuationImage);
-                    attenuationImage = permute(attenuationImage, [3, 2, 1]);
-                end
-                for ll = 1 : size(kuvaRot,3)
-                    apu = conv2(kuvaRot(:,:,ll), options.gFilter(:, :, ll, u1), 'same');
-                    kuvaRot(:,:,ll) = apu;
-                    if options.attenuation_correction
-                        apuAtt = conv2(attenuationImage(:,:,ll), options.gFilter(:, :, ll, u1), 'same');
-                        attenuationImage(:, :, ll) = apuAtt;
-                    end
-                end
-                kuvaRot = permute(kuvaRot, [3, 2, 1]);
-                if options.attenuation_correction
-                    attenuationImage = permute(attenuationImage, [3, 2, 1]);
-                    kuvaRot = kuvaRot .* attenuationImage;
-                end
-                kuvaRot = kuvaRot(options.blurPlanes(u1):end, :, :);
-                kuvaRot = sum(kuvaRot, 1);
-                kuvaRot = permute(kuvaRot, [2, 3, 1]);
-                outputFP(:, :, kk) = outputFP(:, :, kk) + kuvaRot;
-                u1 = u1 + 1;
-            end
-        end
+        outputFP = forwardProjectionType6(options, recApu, loopVar, koko);
         A = [];
         outputFP = outputFP(:);
         outputFP(outputFP < options.epps) = options.epps;
@@ -317,4 +315,5 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
         options.z_index, crystal_size_z, ... % 34
         options.x_center, options.y_center, options.z_center, single(0), 0, options.projector_type, n_rays, n_rays3D, ... % 42
         options, single(0), options.partitions, options.use_64bit_atomics, options.bmin, options.bmax, options.Vmax, options.V, options.gaussK, 1, 1); % 51
+end
 end

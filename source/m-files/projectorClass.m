@@ -345,20 +345,18 @@ classdef projectorClass
                     obj.param.x = cast(obj.param.x, obj.param.cType);
                 end
 			elseif obj.param.SPECT
+                %% Sinogram resizing and resampling for rotation-based projector
                 if obj.param.projector_type == 6
-                    %% Sinogram resizing
                     % Sinogram size is (options.nRowsD, options.nColsD)
                     % FOV size is (options.Nx, options.Ny, options.Nz)
-                    % nRowsD corresponds to Nx, nColsD corresponds to Nz.
+                    % nRowsD corresponds to Nz, nColsD corresponds to Nx.
 
                     % Idea:
                     % % Resample and resize sinogram to match FOV size and resolution
                     % % For example if FOV size is 256x256x256 (2mm) and sinogram is 128x128 (2mm), pad sinogram to 256x256
-                    sinogramSizeX = obj.param.crXY * obj.param.nRowsD; % Sinogram size in X
-                    sinogramSizeZ = obj.param.crXY * obj.param.nColsD; % Sinogram size in Z
-                    
-                    endSinogramRows = obj.param.FOVa_x / obj.param.crXY; % Desired amount of sinogram rows
-                    endSinogramCols = obj.param.axial_fov / obj.param.crXY; % Desired amount of sinogram columns
+
+                    endSinogramRows = obj.param.FOVa_x / obj.param.dPitchX; % Desired amount of sinogram rows
+                    endSinogramCols = obj.param.axial_fov / obj.param.dPitchY; % Desired amount of sinogram columns
                     obj.param.SinM = resize(obj.param.SinM, endSinogramRows, Dimension=1, FillValue=0, Side="both"); % Pad or trim sinogram rows
                     obj.param.SinM = resize(obj.param.SinM, endSinogramCols, Dimension=2, FillValue=0, Side="both"); % Pad or trim sinogram columns
                     obj.param.nRowsD = obj.param.Nx; % Set new sinogram size
@@ -367,6 +365,7 @@ classdef projectorClass
                     % Now the sinogram and FOV XZ-plane match in physical dimensions but not in resolution.
                     obj.param.SinM = imresize(obj.param.SinM, [obj.param.Nx, obj.param.Nz]); % Resample the sinogram
                 end
+                %% Other SPECT preprocessing
                 if numel(obj.param.swivelAngles) == 0
                     obj.param.swivelAngles = obj.param.angles + 180;
                 end
@@ -397,11 +396,11 @@ classdef projectorClass
                 obj.param.tot_time = 0;
                 obj.param.diameter = 0;
                 obj.param.ndist_side = 0;
-                obj.param.corrections_during_reconstruction = false;
+                %obj.param.corrections_during_reconstruction = false;
                 obj.param.NSinos = obj.param.nProjections;
                 obj.param.TotSinos = obj.param.nProjections;
                 obj.param.dPitch = obj.param.cr_p;
-                obj.param.cr_pz = obj.param.crXY;
+                obj.param.cr_pz = obj.param.dPitchY;
                 obj.param.linear_multip = 0;
                 obj.param.cryst_per_block = obj.param.nColsD * obj.param.nRowsD;
             end
@@ -469,7 +468,7 @@ classdef projectorClass
                     obj.param.useMaskBP = true;
                     obj.param.maskBPZ = size(obj.param.maskBP,3);
                 end
-            else
+            elseif ~(obj.param.attenuation_correction && obj.param.SPECT)
                 obj.param.useMaskBP = false;
             end
             rings = obj.param.rings;
@@ -640,6 +639,7 @@ classdef projectorClass
                 if obj.param.listmode
                     size_x = uint32(numel(obj.param.x) / 6);
                 end
+            elseif obj.param.SPECT
             else
                 obj.param.angles = 0;
                 obj.param.dPitch = obj.param.cr_p;
@@ -809,7 +809,7 @@ classdef projectorClass
                     obj.param.swivelAngles = obj.param.swivelAngles(obj.index);
                     obj.param.radiusPerProj = obj.param.radiusPerProj(obj.index);
                     obj.param.blurPlanes = obj.param.blurPlanes(obj.index);
-                    obj.param.gFilter = obj.param.gFilter(:,:,:,obj.index);
+                    obj.param.blurPlanes2 = obj.param.blurPlanes2(obj.index);
                 end
             end
             %% This part is used when the observation matrix is calculated on-the-fly
@@ -953,7 +953,7 @@ classdef projectorClass
                     obj.param.subsets = apu;
                 end
             end
-            if obj.param.verbose > 0
+            if obj.param.verbose > 1
                 disp('Forward projection computed')
             end
         end
@@ -1057,7 +1057,7 @@ classdef projectorClass
                     obj.param.subsets = apu;
                 end
             end
-            if obj.param.verbose > 0
+            if obj.param.verbose > 1
                 disp('Backprojection computed')
             end
         end

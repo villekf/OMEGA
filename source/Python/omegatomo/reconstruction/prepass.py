@@ -7,68 +7,6 @@ Created on Thu Mar  7 13:57:46 2024
 
 import numpy as np
 
-def sinogramToX(angles, radii, nx, ny, crxy, flipImage, offAngle):
-    """
-    A function for converting sinogram pixel position and orientation information to a list of coordinates. 
-    Each row of the output has 6 elements: two pairs of xyz points. 
-    The line spanned by the points corresponds to the detector pixel normal vector.
-
-    Args:
-        angles: List or numpy array of angles.
-        radii: List or numpy array of radii.
-        nx: Number of detector points in x-direction.
-        ny: Number of detector points in y-direction.
-        crxy: Distance between adjacent detector points.
-        flip_image: Boolean flag to flip the image or not.
-        off_angle: Offset to subtract from angles.
-    
-    Returns:
-        return_list: A numpy array where each row has 6 elements corresponding to the xyz points.
-    """
-
-    if len(angles) != len(radii):
-        raise ValueError('Different amount of angles and radii')
-    
-    angles = np.array(angles) - offAngle
-    nIter = len(angles)
-    returnList = np.zeros((6, nIter * ny * nx), order='F')
-
-    panelXmin = -crxy * (ny - 1) / 2
-    panelXmax = -panelXmin
-    panelYmin = -crxy * (nx - 1) / 2
-    panelYmax = -panelYmin
-
-    # Detector x points
-    x = np.zeros((nx, ny))
-
-    # Detector y points
-    y = np.tile(np.linspace(panelYmin, panelYmax, nx)[:, None], (1, ny))
-
-    # Detector z points
-    z = np.tile(np.linspace(panelXmin, panelXmax, ny), (nx, 1))
-
-    # Rotate and move
-    idxCounter = 0
-    for nn in range(nIter):
-        ang = angles[nn]
-        rr = radii[nn]
-
-        nVec = rr * np.array([np.cos(np.deg2rad(ang)), np.sin(np.deg2rad(ang))]) # Panel normal vector
-        R = np.array([[np.cos(np.deg2rad(ang)), -np.sin(np.deg2rad(ang))], [np.sin(np.deg2rad(ang)), np.cos(np.deg2rad(ang))]]) # Rotation matrix
-        
-        for ii in range(ny):
-            for jj in range(nx):
-                detXY = np.dot(R, np.array([x[jj, ii], y[jj, ii]])) + nVec
-                detZ = z[jj, ii]
-
-                returnList[:, idxCounter] = np.concatenate([detXY + nVec, [detZ], detXY, [detZ]])
-                idxCounter += 1
-
-    if flipImage:
-        returnList *= -1
-
-    return returnList
-
 def linearizeData(options):
     options.SinM = np.log(options.flat / options.SinM.astype(dtype=np.float32))
 
