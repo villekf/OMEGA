@@ -375,6 +375,7 @@ struct inputStruct {
     uint64_t zCenterSize;
     uint64_t sizeV;
     uint64_t measElem;
+    int64_t seed;
     // Detector coordinates (CT) or transaxial detector coordinates (PET) or all detector coordinates (custom scanner/listmode data)
     float* x;
     // 
@@ -752,6 +753,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     else if (inputScalars.projector_type == 6)
         inputScalars.BPType = 6;
 
+	inputScalars.seed = options.seed;
     inputScalars.det_per_ring = options.det_per_ring;
     inputScalars.rings = options.rings;
     inputScalars.global_factor = options.global_factor;
@@ -1055,7 +1057,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
 #ifdef AF
         if (w_vec.data.TV_use_anatomical) {
             if (w_vec.data.TVtype == 1) {
-                w_vec.data.refIm = af::array(inputScalars.im_dim[0], options.s, afHost);
+                w_vec.data.refIm = af::array(inputScalars.im_dim[0] * 9, options.s, afHost);
             }
             else {
                 w_vec.data.refIm = af::array(inputScalars.im_dim[0], options.TV_ref, afHost);

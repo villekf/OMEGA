@@ -82,6 +82,8 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 	}
 	std::random_device rd;
 	std::mt19937 rng(rd());
+	if (inputScalars.seed >= 0)
+		std::mt19937 rng(inputScalars.seed);
 	std::uniform_int_distribution<int> distribution(0, inputScalars.subsets - 1);
 
 	af::dtype dType = af::dtype::f32;

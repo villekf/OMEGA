@@ -58,7 +58,10 @@ def indexMaker(options):
             # Pick the measurements randomly
         elif options.subsetType == 3:
             port = totalLength // subsets
-            generator = np.random.default_rng()
+            if options.seed < 0:
+                generator = np.random.default_rng()
+            else:
+                generator = np.random.default_rng(options.seed)
             apu = generator.permutation(totalLength).astype(tyyppi)
             for i in range(subsets):
                 if i == subsets - 1:
@@ -103,7 +106,10 @@ def indexMaker(options):
                 options.index = np.append(options.index, index1)
                 options.nMeas[kk] = np.size(index1)
         elif options.subsetType == 9 and subsets > 1:
-            generator = np.random.default_rng()
+            if options.seed < 0:
+                generator = np.random.default_rng()
+            else:
+                generator = np.random.default_rng(options.seed)
             apu = generator.permutation(options.nProjections).astype(tyyppi)
             for kk in range(subsets):
                 index1 = apu[ind1 : ind2]

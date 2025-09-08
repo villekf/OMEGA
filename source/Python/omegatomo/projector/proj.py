@@ -489,6 +489,7 @@ class projectorClass:
     useParallelBeam = False
     builtin = True
     precorrect = False
+    seed = -1
 
     def __init__(self):
         # C-struct
@@ -2047,6 +2048,7 @@ class projectorClass:
             ('zCenterSize', ctypes.c_uint64),
             ('sizeV', ctypes.c_uint64),
             ('measElem', ctypes.c_uint64),
+            ('seed', ctypes.c_int64),
             ('x', ctypes.POINTER(ctypes.c_float)),
             ('z', ctypes.POINTER(ctypes.c_float)),
             ('uV', ctypes.POINTER(ctypes.c_float)),

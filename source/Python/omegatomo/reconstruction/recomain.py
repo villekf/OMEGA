@@ -235,6 +235,7 @@ def transferData(options):
     options.param.zCenterSize = ctypes.c_uint64(options.z_center.size)
     options.param.sizeV = ctypes.c_uint64(options.V.size)
     options.param.measElem = ctypes.c_uint64(options.SinM.size)
+    options.param.seed = ctypes.c_int64(options.seed)
     options.param.x = options.x.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.z = options.z.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.uV = options.uV.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
