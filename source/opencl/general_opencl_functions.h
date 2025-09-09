@@ -78,6 +78,7 @@
 	float Vmax = params.Vmax; \
 	uint d_sizey = params.d_sizey; \
 	long d_nProjections = params.d_nProjections; \
+	uint rings = params.rings; \
 	uint d_Nx = params.d_Nx; \
 	uint d_Ny = params.d_Ny; \
 	uint d_Nz = params.d_Nz; \
@@ -112,6 +113,7 @@ struct ScalarParams { // These scalars are constant for each subiteration. For O
 	float Vmax;
 	uint d_sizey;
 	long d_nProjections;
+	uint rings;
 	uint d_Nx;
 	uint d_Ny;
 	uint d_Nz;

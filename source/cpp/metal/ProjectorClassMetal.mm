@@ -31,6 +31,7 @@ typedef struct {
 	float Vmax;
 	uint d_sizey;
     long d_nProjections;
+    uint rings;
     uint d_Nx;
 	uint d_Ny;
 	uint d_Nz;
@@ -140,7 +141,7 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     }
     
     // ---- Read kernel/header files from headerDirectory ----
-    // TODO: projector types, different FP/BP programs
+    // TODO: projector types 4 and 5
     NSString *base = [headerDirectory stringByStandardizingPath];
     NSString *headerPath = [base stringByAppendingPathComponent:@"general_opencl_functions.h"];
     NSString *orth3DHeaderPath= [base stringByAppendingPathComponent:@"opencl_functions_orth3D.h"];
@@ -172,26 +173,59 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     } mutableCopy];
 
     // TODO refactor to a function
+    if (inputScalars.useParallelBeam)
+        macros[@"PARALLEL"] = @"";
+    if (inputScalars.raw == 1)
+        macros[@"RAW"] = @"";
+    if (inputScalars.useTotLength && !inputScalars.SPECT)
+        macros[@"TOTLENGTH"] = @"";
     if (inputScalars.maskFP) {
-			macros[@"MASKFP"] = @"";
-			if (inputScalars.maskFPZ > 1)
-				macros[@"MASKFP3D"] = @"";
-		}
-		if (inputScalars.maskBP) {
-			macros[@"MASKBP"] = @"";
-			if (inputScalars.maskBPZ > 1)
-				macros[@"MASKBP3D"] = @"";
-		}
-
+        macros[@"MASKFP"] = @"";
+        if (inputScalars.maskFPZ > 1)
+            macros[@"MASKFP3D"] = @"";
+    }
+    if (inputScalars.maskBP) {
+        macros[@"MASKBP"] = @"";
+        if (inputScalars.maskBPZ > 1)
+            macros[@"MASKBP3D"] = @"";
+    }
+    /*if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) // TODO MethodList
+        macros[@"FDK"] = @"";*/
+    if (inputScalars.offset)
+        macros[@"OFFSET"] = @"";
     if (inputScalars.attenuation_correction == 1u && inputScalars.CTAttenuation)
         macros[@"ATN"] = @"";
     else if (inputScalars.attenuation_correction == 1u && !inputScalars.CTAttenuation)
         macros[@"ATNM"] = @"";
-
-    if (inputScalars.SPECT) {
-        macros[@"SPECT"] = @"";
+    if (inputScalars.normalization_correction == 1u)
+        macros[@"NORM"] = @"";
+    if (inputScalars.scatter == 1u)
+        macros[@"SCATTER"] = @"";
+    if (inputScalars.randoms_correction == 1u)
+        macros[@"RANDOMS"] = @"";
+    if (inputScalars.nLayers > 1U) {
+        if (inputScalars.listmode > 0 && inputScalars.indexBased)
+            macros[@"NLAYERS"] = @(inputScalars.nLayers);
+        else
+            macros[@"NLAYERS"] = @(inputScalars.nProjections / (inputScalars.nLayers * inputScalars.nLayers));
     }
+    if (inputScalars.TOF)
+        macros[@"TOF"] = @"";
+    if (inputScalars.CT)
+        macros[@"CT"] = @"";
+    else if (inputScalars.PET)
+        macros[@"PET"] = @"";
+    else if (inputScalars.SPECT)
+        macros[@"SPECT"] = @"";
+
     macros[@"NBINS"] = @(inputScalars.nBins);
+
+    if (inputScalars.listmode == 1)
+        macros[@"LISTMODE"] = @"";
+    else if (inputScalars.listmode == 2)
+        macros[@"LISTMODE2"] = @"";
+    if (inputScalars.listmode > 0 && inputScalars.indexBased)
+        macros[@"INDEXBASED"] = @"";
 
     const bool siddonVal = (inputScalars.FPType == 1 || inputScalars.BPType == 1 || inputScalars.FPType == 4 || inputScalars.BPType == 4) ? true : false;
     if ((siddonVal && ((inputScalars.n_rays * inputScalars.n_rays3D) > 1)) || inputScalars.SPECT) {;
@@ -240,6 +274,114 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
             macrosBP[@"ORTH"] = @"";
     }
 
+    /*if (inputScalars.FPType == 4 || inputScalars.BPType == 4) {
+        std::vector<const char*> os_options = options;
+        if (inputScalars.FPType == 4)
+            os_options.push_back("-DFP");
+        if (inputScalars.BPType == 4 && inputScalars.CT)
+            os_options.push_back("-DBP");
+        os_options.push_back("-DPTYPE4");
+        if (!inputScalars.largeDim) {
+            std::snprintf(buffer9, 30, "-DNVOXELS=%d", static_cast<int32_t>(NVOXELS));
+            os_options.push_back(buffer9);
+        }
+        if (inputScalars.FPType == 4) {
+            status = buildProgram(inputScalars.verbose, contentFP, programFP, os_options);
+            if (status == NVRTC_SUCCESS && DEBUG) {
+                mexPrint("FP 4 program built\n");
+            }
+            else if (status != NVRTC_SUCCESS)
+                return status;
+            if (status == NVRTC_SUCCESS)
+                memAlloc.FPMod = true;
+        }
+        if (!inputScalars.CT && inputScalars.BPType == 4) {
+            os_options = options;
+            os_options.push_back("-DPTYPE4");
+            os_options.push_back("-DBP");
+            os_options.push_back("-DATOMICF");
+            status = buildProgram(inputScalars.verbose, contentBP, programBP,os_options);
+            if (status == NVRTC_SUCCESS && DEBUG) {
+                mexPrint("BP 4 program built\n");
+            }
+            else if (status != NVRTC_SUCCESS)
+                return status;
+            if (status == NVRTC_SUCCESS)
+                memAlloc.BPMod = true;
+        }
+        else if (inputScalars.CT && inputScalars.BPType == 4 && inputScalars.FPType != 4) {
+            status = buildProgram(inputScalars.verbose, contentBP, programBP, os_options);
+            if (status == NVRTC_SUCCESS && DEBUG) {
+                mexPrint("BP 4 program built\n");
+            }
+            else if (status != NVRTC_SUCCESS)
+                return status;
+            if (status == NVRTC_SUCCESS)
+                memAlloc.BPMod = true;
+        }
+    }
+    if (inputScalars.FPType == 5 || inputScalars.BPType == 5) {
+        std::vector<const char*> os_options = options;
+        os_options.push_back("-DPROJ5");
+        if (inputScalars.meanFP)
+            os_options.push_back("-DMEANDISTANCEFP");
+        else if (inputScalars.meanBP)
+            os_options.push_back("-DMEANDISTANCEBP");
+        if (inputScalars.FPType == 5)
+            os_options.push_back("-DFP");
+        if (inputScalars.BPType == 5)
+            os_options.push_back("-DBP");
+        if (inputScalars.pitch) {
+            std::snprintf(buffer9, 30, "-DNVOXELS5=%d", static_cast<int32_t>(1));
+            os_options.push_back(buffer9);
+        }
+        else {
+            std::snprintf(buffer9, 30, "-DNVOXELS5=%d", static_cast<int32_t>(NVOXELS5));
+            os_options.push_back(buffer9);
+        }
+        std::snprintf(buffer10, 30, "-DNVOXELSFP=%d", static_cast<int32_t>(NVOXELSFP));
+        os_options.push_back(buffer10);
+        if (inputScalars.FPType == 5) {
+            status = buildProgram(inputScalars.verbose, contentFP, programFP, os_options);
+            if (status == NVRTC_SUCCESS && DEBUG) {
+                mexPrint("FP 5 program built\n");
+            }
+            else if (status != NVRTC_SUCCESS)
+                return status;
+            if (status == NVRTC_SUCCESS)
+                memAlloc.FPMod = true;
+        }
+        else {
+            status = buildProgram(inputScalars.verbose, contentBP, programBP, os_options);
+            if (status == NVRTC_SUCCESS && DEBUG) {
+                mexPrint("BP 5 program built\n");
+            }
+            else if (status != NVRTC_SUCCESS)
+                return status;
+            if (status == NVRTC_SUCCESS)
+                memAlloc.BPMod = true;
+        }
+    }
+    if (inputScalars.computeSensImag) {
+        std::vector<const char*> os_options = options;
+        os_options.push_back("-DBP");
+        os_options.push_back("-DATOMICF");
+        os_options.push_back("-DSENS");
+        if (inputScalars.BPType == 3)
+            os_options.push_back("-DVOL");
+        if (inputScalars.BPType == 2 || inputScalars.BPType == 3)
+            os_options.push_back("-DORTH");
+        if (inputScalars.BPType == 4) {
+            os_options.push_back("-DPTYPE4");
+            os_options.push_back(buffer9);
+        }
+        else
+            os_options.push_back("-DSIDDON");
+        status = buildProgram(inputScalars.verbose, contentBP, programSens, os_options);
+        if (status == NVRTC_SUCCESS)
+            memAlloc.SensMod = true;
+    }*/
+
     optsFP.preprocessorMacros = macrosFP;
     optsBP.preprocessorMacros = macrosBP;
 
@@ -255,7 +397,7 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     _libBP = [_device newLibraryWithSource:src options:optsBP error:&err];
     if (!_libBP) {
         NSString *errStr = err.localizedDescription;
-        //mexPrintf(errStr.UTF8String);
+        mexPrintf(errStr.UTF8String);
         NSLog(@"Metal shader compile failed: %@", err.localizedDescription);
         return -2;
     }
@@ -283,9 +425,9 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
 
     if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
         _erotus[0] = inputScalars.nRowsD % _localX;
-        //if (inputScalars.FPType == 5)
-        //    erotus[1] = ((inputScalars.nColsD + NVOXELSFP - 1) / NVOXELSFP) % local_size[1];
-        //else
+        if (inputScalars.FPType == 5)
+            _erotus[1] = ((inputScalars.nColsD + 8 - 1) / 8) % _localY;
+        else
             _erotus[1] = inputScalars.nColsD % _localY;
         if (_erotus[1] > 0)
             _erotus[1] = (_localY - _erotus[1]);
@@ -332,8 +474,7 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
         bmaxy[ii] = static_cast<float>(inputScalars.Ny[ii]) * inputScalars.dy[ii] + inputScalars.by[ii];
         bmaxz[ii] = static_cast<float>(inputScalars.Nz[ii]) * inputScalars.dz[ii] + inputScalars.bz[ii];
     }
-    //region = { inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0] * inputScalars.nRekos };
-    
+
     return 0; 
 }
 
@@ -432,13 +573,33 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
 {
     if (DEBUG)
         mexPrintf("init forwardProjection\n");
+    
     // Unbox to C++ refs (no copies).
     auto &inputScalars = *static_cast<scalarStruct *>(inputScalarsBox.ptr);
     auto &w_vec = *static_cast<Weighting *>(wVec.ptr);
 
-    _globalX = inputScalars.nRowsD + _erotus[0];
-    _globalY = inputScalars.nColsD + _erotus[1];
-    _globalZ = static_cast<size_t>(length[osa_iter]);
+    if (inputScalars.FPType == 5) { // TODO
+        /*global[0] = (inputScalars.nRowsD + erotus[0]) / local[0];
+        global[1] = ((inputScalars.nColsD + NVOXELSFP - 1) / NVOXELSFP + erotus[1]) / local[1];
+        global[2] = length[osa_iter];*/
+    }
+    else if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
+        _globalX = (inputScalars.nRowsD + _erotus[0]);// / _localX;
+        _globalY = (inputScalars.nColsD  + _erotus[1]);// / _localY;
+        _globalZ = length[osa_iter];
+        //_globalX = inputScalars.nRowsD + _erotus[0];
+        //_globalY = inputScalars.nColsD + _erotus[1];
+        //_globalZ = static_cast<size_t>(length[osa_iter]);
+    }
+    else { // TODO
+        /*erotus[0] = length[osa_iter] % local_size[0];
+
+        if (erotus[0] > 0)
+            erotus[0] = (local_size[0] - erotus[0]);
+        global[0] = (length[osa_iter] + erotus[0]) / local[0];
+        global[1] = 1;
+        global[2] = 1;*/
+    }
 
     _commandBufferFP = [_queueFP commandBuffer];
     _encFP = [_commandBufferFP computeCommandEncoder];
@@ -466,6 +627,7 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     }
 	params.d_sizey = inputScalars.nColsD;
     params.d_nProjections = length[osa_iter];
+    params.rings = 0; // TODO
     params.d_Nx = d_Nx[ii];
     params.d_Ny = d_Ny[ii];
     params.d_Nz = d_Nz[ii];
@@ -504,22 +666,21 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     }
     if (inputScalars.maskBP) {
         [_encFP setBuffer:_d_maskBP offset:0 atIndex:7];
-        //status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBPB);
     }
 
     [_encFP setBuffer:_d_x[osa_iter] offset:0 atIndex:8];
     [_encFP setBuffer:_d_z[osa_iter] offset:0 atIndex:9];
-    [_encFP setBuffer:_d_Summ[uu] offset:0 atIndex:10];
+    [_encFP setBuffer:_d_Summ[uu] offset:0 atIndex:12];
 
     if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
-        //[_enc setBuffer:_d_xyindex[osa_iter] offset:0 atIndex:_kernelIndFP++];
-        //[_enc setBuffer:_d_zindex[osa_iter] offset:0 atIndex:_kernelIndFP++];
+        [_encFP setBuffer:_d_xyindex[osa_iter] offset:0 atIndex:13];
+        [_encFP setBuffer:_d_zindex[osa_iter] offset:0 atIndex:14];
     }
 
     //if (inputScalars.raw)
-        //kernelFP.setArg(kernelIndFPSubIter++, d_L[osa_iter]);
-    [_encFP setBuffer:_d_im offset:0 atIndex:11];    
-    [_encFP setBuffer:_d_output offset:0 atIndex:12];
+        //[_encFP setBuffer:_d_L[osa_iter] offset:0 atIndex:18];
+    [_encFP setBuffer:_d_im offset:0 atIndex:19];    
+    [_encFP setBuffer:_d_output offset:0 atIndex:20];
 
     // --- Build Metal sizes that exactly match CL's parameters ---
     MTLSize threadsPerThreadgroup = MTLSizeMake(_localX, _localY, _localZ);
@@ -553,6 +714,7 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
 {
     if (DEBUG)
         mexPrintf("init backwardProjection\n");
+    
     // Unbox to C++ refs (no copies).
     auto &inputScalars = *static_cast<scalarStruct *>(inputScalarsBox.ptr);
     auto &w_vec = *static_cast<Weighting *>(wVec.ptr);
@@ -587,6 +749,7 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     }
 	params.d_sizey = inputScalars.nColsD;
     params.d_nProjections = length[osa_iter];
+    params.rings = 0; // TODO
     params.d_Nx = d_Nx[ii];
     params.d_Ny = d_Ny[ii];
     params.d_Nz = d_Nz[ii];
@@ -629,17 +792,17 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
 
     [_encBP setBuffer:_d_x[osa_iter] offset:0 atIndex:8];
     [_encBP setBuffer:_d_z[osa_iter] offset:0 atIndex:9];
-    [_encBP setBuffer:_d_Summ[uu] offset:0 atIndex:10];
+    [_encBP setBuffer:_d_Summ[uu] offset:0 atIndex:12];
 
     if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
-        //[_enc setBuffer:_d_xyindex[osa_iter] offset:0 atIndex:_kernelIndFP++];
-        //[_enc setBuffer:_d_zindex[osa_iter] offset:0 atIndex:_kernelIndFP++];
+        [_encBP setBuffer:_d_xyindex[osa_iter] offset:0 atIndex:13];
+        [_encBP setBuffer:_d_zindex[osa_iter] offset:0 atIndex:14];
     }
 
     //if (inputScalars.raw)
         //kernelFP.setArg(kernelIndFPSubIter++, d_L[osa_iter]); 
-    [_encBP setBuffer:_d_output offset:0 atIndex:11];
-    [_encBP setBuffer:_d_rhs_os[uu] offset:0 atIndex:12];   
+    [_encBP setBuffer:_d_output offset:0 atIndex:19];
+    [_encBP setBuffer:_d_rhs_os[uu] offset:0 atIndex:20];   
 
     // --- Build Metal sizes that exactly match CL's parameters ---
     MTLSize threads = MTLSizeMake(_globalX, _globalY, _globalZ);

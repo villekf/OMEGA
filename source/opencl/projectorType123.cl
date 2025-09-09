@@ -91,33 +91,40 @@ void projectorType123(
 #ifdef ORTH ///////////////////////// ORTHOGONAL-BASED RAY TRACER /////////////////////////
 	CONSTANT float* V [[buffer(4)]],
 #endif ///////////////////////// END ORTHOGONAL-BASED RAY TRACER /////////////////////////
-
 #if !defined(CT) && (defined(ATN) || defined(ATNM)) ///////////////////////// PET ATTENUATION CORRECTION /////////////////////////
 	const CLGLOBAL float* d_atten [[buffer(5)]],
 #endif
-
 #ifdef MASKFP
     MASKFPTYPE maskFP [[buffer(6)]],
 #endif
 #if defined(MASKBP) && defined(BP) && !defined(FP)
     MASKBPTYPE maskBP [[buffer(7)]],
 #endif
-
-	CONSTANT float* d_xy [[buffer(8)]], // Adjust buffer index
-	CONSTANT float* d_z [[buffer(9)]], // Adjust buffer index
-
-	// PET normalization
-	// PET scatter
-
-	CLGLOBAL CAST* d_Summ [[buffer(10)]], // Adjust buffer index
-
-	// d_xyindex, d_zindex
-	// trIndex, axIndex
-	// Raw PET data
-
-	const CLGLOBAL float* d_OSEM [[buffer(11)]], // Adjust buffer index
-	CLGLOBAL float* d_output [[buffer(12)]], // Adjust buffer index
-
+	CONSTANT float* d_xy [[buffer(8)]],
+	CONSTANT float* d_z [[buffer(9)]],
+#ifdef NORM ///////////////////////// PET NORMALIZATION DATA /////////////////////////
+	CONSTANT float* d_norm [[buffer(10)]],
+#endif
+#ifdef SCATTER ///////////////////////// EXTRA CORRECTION DATA /////////////////////////
+	CONSTANT float* d_scat [[buffer(11)]], 
+#endif
+	CLGLOBAL CAST* d_Summ [[buffer(12)]], // Adjust buffer index in host code
+#if defined(SUBSETS) && !defined(LISTMODE)
+	CONSTANT uint* d_xyindex [[buffer(13)]],
+	CONSTANT ushort* d_zindex [[buffer(14)]], 
+#endif
+#if defined(INDEXBASED) && defined(LISTMODE) && !defined(SENS)
+	CONSTANT ushort* trIndex [[buffer(15)]],
+	CONSTANT ushort* axIndex [[buffer(16)]],
+#endif
+#if defined(LISTMODE) && defined(TOF)
+	CONSTANT uchar* TOFIndex [[buffer(17)]], 
+#endif
+#ifdef RAW	///////////////////////// RAW PET DATA /////////////////////////
+	CONSTANT ushort* d_L [[buffer(18)]], 
+#endif
+	const CLGLOBAL float* d_OSEM [[buffer(19)]], // Adjust buffer index
+	CLGLOBAL float* d_output [[buffer(20)]], // Adjust buffer index
 	uint3 i [[thread_position_in_grid]]   // global id
 
 #else /////////////////////// OPENCL/CUDA ///////////////////////
@@ -251,11 +258,6 @@ void projectorType123(
 #else
 	int3 i = MINT3(GID0, GID1, GID2);
 #endif
-/*#if defined(BP)
-	if (!(i.x == 0 && i.y == 0 && i.z == 0)) return;
-	d_output[0] = 333.333f;
-    d_output[1] = 444.444f;
-#endif*/
 #if STYPE == 1 || STYPE == 2 || STYPE == 4 || STYPE == 5
 	getIndex(&i, d_size_x, d_sizey, currentSubset);
 #endif
