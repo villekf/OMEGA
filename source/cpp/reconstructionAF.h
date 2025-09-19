@@ -470,6 +470,11 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 	}
 #endif
 
+	if (inputScalars.verbose >= 2 || DEBUG) {
+		af::sync();
+		proj.tStartAll = std::chrono::steady_clock::now();
+	}
+
 	initializeProxPriors(MethodList, inputScalars, vec);
 
 	if (inputScalars.verbose >= 3 || DEBUG)
@@ -1572,7 +1577,9 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 	af::deviceGC();
 
 	if (inputScalars.verbose >= 2 || DEBUG) {
-		mexPrintBase("Reconstruction complete in %f seconds\n", totTime);
+		proj.tEndAll = std::chrono::steady_clock::now();
+		const std::chrono::duration<double> tDiff = proj.tEndAll - proj.tStartAll;
+		mexPrintBase("Reconstruction complete in %f seconds\n", tDiff.count());
 	}
 
 	return 0;

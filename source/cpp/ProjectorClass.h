@@ -911,8 +911,8 @@ public:
 	cl::Buffer d_outputCT, d_maskBPB, d_attenB;
 	cl::Buffer d_rayShiftsDetector, d_rayShiftsSource; // SPECT
 	size_t memSize = 0ULL;
-	std::chrono::steady_clock::time_point tStartLocal, tStartGlobal;
-	std::chrono::steady_clock::time_point tEndLocal, tEndGlobal;
+	std::chrono::steady_clock::time_point tStartLocal, tStartGlobal, tStartAll;
+	std::chrono::steady_clock::time_point tEndLocal, tEndGlobal, tEndAll;
 	// Distance from the origin to the corner of the image, voxel size and distance from the origin to the opposite corner of the image
 	std::vector<cl_float3> b, d, bmax;
 	std::vector<cl_int3> d_N;

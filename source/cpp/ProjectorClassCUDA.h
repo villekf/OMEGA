@@ -958,8 +958,8 @@ public:
 	CUdeviceptr d_rayShiftsDetector, d_rayShiftsSource; // SPECT
 	std::vector<void*> FPArgs, BPArgs, SensArgs;
 	CUDA_im_vectors vec_opencl;
-	std::chrono::steady_clock::time_point tStartLocal, tStartGlobal;
-	std::chrono::steady_clock::time_point tEndLocal, tEndGlobal;
+	std::chrono::steady_clock::time_point tStartLocal, tStartGlobal, tStartAll;
+	std::chrono::steady_clock::time_point tEndLocal, tEndGlobal, tEndAll;
 	// Distance from the origin to the corner of the image, voxel size and distance from the origin to the opposite corner of the image
 	std::vector<float3> b, d, bmax;
 	// Image dimensions
@@ -1352,7 +1352,7 @@ public:
 			std::memset(&resDesc, 0, sizeof(resDesc));
 			std::memset(&viewDesc, 0, sizeof(viewDesc));
 			if (inputScalars.maskBPZ > 1) {
-				std::memset(&arr2DDesc, 0, sizeof(arr3DDesc));
+				std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
 				arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_UNSIGNED_INT8;
 				arr3DDesc.NumChannels = 1;
 				arr3DDesc.Height = inputScalars.Nx[0];

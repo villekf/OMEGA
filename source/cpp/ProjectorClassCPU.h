@@ -36,8 +36,8 @@ public:
 	float* d_output, * d_W, * d_gaussianNLM, * d_inputB, * d_refIm, * weights;
 	size_t memSize = 0ULL;
 	int32_t Ndx, Ndy, Ndz;
-	std::chrono::steady_clock::time_point tStartLocal, tStartGlobal;
-	std::chrono::steady_clock::time_point tEndLocal, tEndGlobal;
+	std::chrono::steady_clock::time_point tStartLocal, tStartGlobal, tStartAll;
+	std::chrono::steady_clock::time_point tEndLocal, tEndGlobal, tEndAll;
 
 	~ProjectorClass() {	}
 
