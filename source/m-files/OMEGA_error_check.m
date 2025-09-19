@@ -450,7 +450,7 @@ if options.verbose > 0
     elseif options.use_machine == 3
         dispi = 'Using 32-bit list-mode data';
     else
-        dispi = [];
+        dispi = 'Using input data';
     end
     if options.TOF_bins_used > 1 && options.TOF_FWHM > 0
         dispi = [dispi ' with TOF (' num2str(options.TOF_bins_used) ' bins).'];
