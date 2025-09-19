@@ -802,7 +802,7 @@ def prepassPhase(options):
                 options.U = 10000.
     
         # Lambda values (relaxation parameters)
-        if (options.BSREM or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM_MAP or options.ROSEM or options.PKMA or options.SPS or options.SART or options.ASD_POCS or options.SAGA) and np.size(options.lambdaN) == 0:
+        if (options.BSREM or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM_MAP or options.ROSEM or options.PKMA or options.SPS or options.SART or options.ASD_POCS or options.SAGA) and (np.size(options.lambdaN) == 0 or np.sum(options.lambdaN) == 0.):
             lambda_vals = np.zeros(options.Niter, dtype=np.float32)
             if options.stochasticSubsetSelection:
                 for i in range(options.Niter):
@@ -838,7 +838,7 @@ def prepassPhase(options):
                     options.lam_drama[i, j] = options.beta_drama / (options.alpha_drama * options.beta0_drama + r)
                     r += 1
             
-        if options.PKMA and np.size(options.alpha_PKMA) < options.Niter * options.subsets:
+        if options.PKMA and (np.size(options.alpha_PKMA) < options.Niter * options.subsets or np.sum(options.alpha_PKMA) == 0.):
             if np.size(options.alpha_PKMA) < options.Niter * options.subsets:
                 print('Warning: The number of PKMA alpha (momentum) values must be at least the number of iterations times the number of subsets! Computing custom alpha values.')
                 options.alpha_PKMA = np.zeros(options.Niter * options.subsets, dtype=np.float32)
