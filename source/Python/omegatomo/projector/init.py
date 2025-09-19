@@ -32,6 +32,7 @@ def initProjector(self):
         import cupy as cp
     if not self.useCUDA:
         import pyopencl as cl
+        from pyopencl.version import VERSION
         
         if self.useAF:
             ctx = af.opencl.get_context(retain=True)
@@ -669,7 +670,10 @@ def initProjector(self):
             elif (self.attenuation_correction and self.CTAttenuation):
                 if self.useImages:
                     imformat = cl.ImageFormat(cl.channel_order.A, cl.channel_type.FLOAT)
-                    self.d_atten = cl.Image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.vaimennus, shape=(self.Nx[0].item(), self.Ny[0].item(), self.Nz[0].item()))
+                    if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
+                        self.d_atten = cl.create_image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.vaimennus, shape=(self.Nx[0].item(), self.Ny[0].item(), self.Nz[0].item()))
+                    else:
+                        self.d_atten = cl.Image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.vaimennus, shape=(self.Nx[0].item(), self.Ny[0].item(), self.Nz[0].item()))
                 else:
                     self.d_atten = cl.array.to_device(self.queue, self.vaimennus)
                 # self.d_atten = cl.image_from_array(self.clctx, np.reshape(self.vaimennus, (self.Nx[0].item(), self.Ny[0].item(), self.Nz[0].item()), order='F'))
@@ -681,16 +685,28 @@ def initProjector(self):
                 if self.maskFPZ > 1:
                     self.d_maskFP = [] * self.subsets
                     for i in range(self.subsets):
-                        self.d_maskFP[i] = cl.Image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskFP, shape=(self.nRowsD, self.nColsD, self.nMeas[i]))
+                        if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
+                            self.d_maskFP[i] = cl.create_image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskFP, shape=(self.nRowsD, self.nColsD, self.nMeas[i]))
+                        else:
+                            self.d_maskFP[i] = cl.Image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskFP, shape=(self.nRowsD, self.nColsD, self.nMeas[i]))
                 else:
-                    self.d_maskFP = cl.Image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskFP, shape=(self.nRowsD, self.nColsD))
+                    if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
+                        self.d_maskFP = cl.create_image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskFP, shape=(self.nRowsD, self.nColsD))
+                    else:
+                        self.d_maskFP = cl.Image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskFP, shape=(self.nRowsD, self.nColsD))
                 # self.d_maskFP = cl.image_from_array(self.clctx, np.ascontiguousarray(self.maskFP))
             if self.useMaskBP:
                 imformat = cl.ImageFormat(cl.channel_order.A, cl.channel_type.UNSIGNED_INT8)
                 if self.maskBPZ > 1:
-                    self.d_maskBP = cl.Image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskBP, shape=(self.Nx[0].item(), self.Ny[0].item(), self.maskBPZ))
+                    if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
+                        self.d_maskBP = cl.create_image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskBP, shape=(self.Nx[0].item(), self.Ny[0].item(), self.maskBPZ))
+                    else:
+                        self.d_maskBP = cl.Image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskBP, shape=(self.Nx[0].item(), self.Ny[0].item(), self.maskBPZ))
                 else:
-                    self.d_maskBP = cl.Image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskBP, shape=(self.Nx[0].item(), self.Ny[0].item()))
+                    if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
+                        self.d_maskBP = cl.create_image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskBP, shape=(self.Nx[0].item(), self.Ny[0].item()))
+                    else:
+                        self.d_maskBP = cl.Image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskBP, shape=(self.Nx[0].item(), self.Ny[0].item()))
                 # self.d_maskBP = cl.image_from_array(self.clctx, np.ascontiguousarray(self.maskBP))
             if self.TOF:
                 self.d_TOFCenter = cl.array.to_device(self.queue, self.TOFCenter)
