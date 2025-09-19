@@ -195,7 +195,7 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
             options.lam_drama = lam_drama;
         end
     end
-    if (options.PKMA) && (~isfield(options,'alpha_PKMA') || numel(options.alpha_PKMA) < options.Niter * options.subsets)
+    if (options.PKMA) && (~isfield(options,'alpha_PKMA') || numel(options.alpha_PKMA) < options.Niter * options.subsets || sum(options.alpha_PKMA) == 0)
         if isfield(options,'alpha_PKMA') && numel(options.alpha_PKMA) < options.Niter * options.subsets
             warning('The number of PKMA alpha (momentum) values must be at least the number of iterations times the number of subsets! Computing custom alpha values.')
         end

@@ -93,10 +93,10 @@ if options.attenuation_correction && ~options.SPECT % PET attenuation
     if ~isfield(options,'vaimennus') || isempty(options.vaimennus)
         if ~isempty(options.attenuation_datafile) && strcmp(options.attenuation_datafile(end-2:end), 'mhd')
             [options.vaimennus, apuStruct] = loadMetaImage(options.attenuation_datafile);
-            options.vaimennus = options.vaimennus(:);
+            options.vaimennus = options.vaimennus;
             if options.CT_attenuation
                 if round(apuStruct.EleSpacing(1)*100)/100 > round(options.FOVa_x(1) / double(options.Nx(1))*100)/100 ||  round(apuStruct.EleSpacing(1)*100)/100 < round(options.FOVa_x(1) / double(options.Nx(1))*100)/100
-                    options.vaimennus = options.vaimennus * (apuStruct.EleSpacing(1) / (options.FOVa_x(1) / double(options.Nx(1))));
+                    options.vaimennus = options.vaimennus .* (apuStruct.EleSpacing(1) / (options.FOVa_x(1) / double(options.Nx(1))));
                 end
             end
         elseif ~isempty(options.attenuation_datafile)
@@ -104,7 +104,7 @@ if options.attenuation_correction && ~options.SPECT % PET attenuation
             variables = fieldnames(data);
             options.vaimennus = double(data.(variables{1}));
             if options.CT_attenuation
-                options.vaimennus = options.vaimennus(:) / 10;
+                options.vaimennus = options.vaimennus ./ 10;
             end
             clear data
         else
@@ -122,7 +122,7 @@ if options.attenuation_correction && ~options.SPECT % PET attenuation
                 variables = fieldnames(data);
                 options.vaimennus = double(data.(variables{1}));
                 if options.CT_attenuation
-                    options.vaimennus = options.vaimennus(:) / 10;
+                    options.vaimennus = options.vaimennus ./ 10;
                 end
                 clear data
             end
@@ -131,9 +131,15 @@ if options.attenuation_correction && ~options.SPECT % PET attenuation
     if options.CT_attenuation
         if size(options.vaimennus,1) ~= options.Nx(1) || size(options.vaimennus,2) ~= options.Ny(1) || size(options.vaimennus,3) ~= options.Nz(1)
             if size(options.vaimennus,1) ~= options.N(1)
-                error('Error: Attenuation data is of different size than the reconstructed image')
+                warning('Error: Attenuation data is of different size than the reconstructed image. Attempting resize.')
+                try
+                    options.vaimennus = imresize3(options.vaimennus, [options.Nx(1), options.Ny(1), options.Nz(1)]);
+                catch ME
+                    error('Resize failed!')
+                end
             end
         end
+        options.vaimennus = options.vaimennus(:);
         if isfield(options,'rotateAttImage') && options.rotateAttImage ~= 0
             atn = reshape(options.vaimennus, options.Nx(1), options.Ny(1), options.Nz(1));
             atn = rot90(atn,options.rotateAttImage);
@@ -741,6 +747,9 @@ if ~options.SPECT
             options.SinDelayed = {0};
         end
     end
+    if options.arc_correction && ~options.precompute_lor
+        [x, y, options] = arcCorrection(options, true);
+    end
 end
 
 % Load (or compute) normalization correction coefficients
@@ -920,9 +929,6 @@ else
         options.normalization = single(0);
     else
         options.normalization = 0;
-    end
-    if options.arc_correction && ~options.precompute_lor
-        [x, y, options] = arcCorrection(options, true);
     end
 end
 if options.sampling > 1 && ~options.precompute_lor
