@@ -1160,6 +1160,8 @@ class projectorClass:
             raise ValueError('Reference image weighting for NLM is not supported with CPU!')
         if self.useIndexBasedReconstruction and self.useCPU:
             raise ValueError('Index-based reconstruction is not supported on CPU!')
+        if self.useCPU:
+            print('CPU functionality is limited and might not work correctly in all cases! Use at your own risk!')
             
         varNeg = ['LSQR','CGLS','FDK','SART']
         neg = [name for name in varNeg if getattr(self, name, False)]
