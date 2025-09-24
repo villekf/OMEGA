@@ -89,6 +89,8 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 	af::dtype dType = af::dtype::f32;
 	if (sizeof(F) == sizeof(uint16_t))
 		dType = af::dtype::u16;
+	else if (sizeof(F) == sizeof(uint8_t))
+		dType = af::dtype::u8;
 
 	int status = 0;
 
@@ -128,6 +130,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		mexPrintBase("subsetType = %u\n", inputScalars.subsetType);
 		mexPrintBase("useImages = %u\n", inputScalars.useImages);
 		mexPrintBase("useMAD = %u\n", inputScalars.useMAD);
+		mexPrintBase("seed = %ll\n", inputScalars.seed);
 		mexPrintBase("flat = %f\n", inputScalars.flat);
 		mexPrintBase("dL = %f\n", inputScalars.dL);
 		mexPrintBase("epps = %f\n", inputScalars.epps);

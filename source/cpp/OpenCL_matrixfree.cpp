@@ -456,12 +456,14 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	form_data_variables(w_vec, options, inputScalars, MethodList);
 
 	const float* randoms = getSingles(sc_ra, "solu");
-#if !defined MTYPE 
+#if !defined MTYPE && !defined(MTYPE2)
 	const float* Sino = getSingles(Sin, "solu");
 	//const float* randoms = getSingles(sc_ra, "solu");
-#else
+#elif defined(MTYPE) && !defined(MTYPE2)
 	const uint16_t* Sino = getUint16s(Sin, "solu");
 	//const uint16_t* randoms = getUint16s(sc_ra, "solu");
+#else
+	const uint8_t* Sino = getUint8s(Sin, "solu");
 #endif
 	const float* extraCorr = getSingles(options, "ScatterC", 0);
 	const float* x0 = getSingles(options, "x0");

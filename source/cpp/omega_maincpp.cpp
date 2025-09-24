@@ -3,8 +3,10 @@
 #endif
 #include "libHeader.h"
 
-#ifdef MTYPE
+#if defined(MTYPE) && !defined(MTYPE2)
 int omegaMain(inputStruct options, const char* header_directory, const uint16_t* Sino, float* outputPtr, float* FPptr, float* residual) {
+#elif !defined(MTYPE) && defined(MTYPE2)
+int omegaMain(inputStruct options, const char* header_directory, const uint8_t * Sino, float* outputPtr, float* FPptr, float* residual) {
 #else
 int omegaMain(inputStruct options, const char* header_directory, const float* Sino, float* outputPtr, float* FPptr, float* residual) {
 #endif
@@ -18,6 +20,11 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 
 	// Struct containing the necessary variables for the priors
 	Weighting w_vec;
+
+
+	if (DEBUG) {
+		mexPrint("Copying data\n");
+	}
 
 	copyStruct(options, inputScalars, w_vec, MethodList);
 

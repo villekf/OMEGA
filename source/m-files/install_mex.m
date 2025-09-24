@@ -729,6 +729,9 @@ if exist('OCTAVE_VERSION','builtin') == 0
                             mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint16', compflags, cxxflags, '-DMATLAB', '-DCUDA', '-DAF', '-DMTYPE', ['-I ' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', ...
                                 '-lnvrtc', ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib/x64"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
 
+                            mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint8', compflags, cxxflags, '-DMATLAB', '-DCUDA', '-DAF', '-DMTYPE2', ['-I ' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', ...
+                                '-lnvrtc', ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib/x64"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
+
                             disp('CUDA support enabled')
                         catch
                             if strcmp(cc.Manufacturer, 'GNU')
@@ -760,6 +763,9 @@ if exist('OCTAVE_VERSION','builtin') == 0
                             ['-L"' opencl_lib_path '"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
 
                         mex(compiler, complexFlag, '-outdir', folder, '-output', 'OpenCL_matrixfree_uint16', ['-I ' folder], ['-I"' opencl_include_path '"'], compflags, cxxflags, '-DMATLAB', '-DAF', '-DMTYPE', '-lafopencl', '-lOpenCL', ['-L"' af_path '/lib"'],...
+                            ['-L"' opencl_lib_path '"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
+
+                        mex(compiler, complexFlag, '-outdir', folder, '-output', 'OpenCL_matrixfree_uint8', ['-I ' folder], ['-I"' opencl_include_path '"'], compflags, cxxflags, '-DMATLAB', '-DAF', '-DMTYPE2', '-lafopencl', '-lOpenCL', ['-L"' af_path '/lib"'],...
                             ['-L"' opencl_lib_path '"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
 
                         mex(compiler, '-largeArrayDims', '-outdir', folder, '-lafopencl', '-lOpenCL', ['-L"' af_path '/lib"'],['-L"' opencl_lib_path '"'], ...
@@ -874,6 +880,9 @@ if exist('OCTAVE_VERSION','builtin') == 0
                     mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint16', ldflags, compflags, cxxflags, '-DMATLAB', '-DCUDA', '-DAF', '-DMTYPE', ['-I' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', '-lnvrtc', ...
                         ['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib64"'], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp']);
 
+                    mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint8', ldflags, compflags, cxxflags, '-DMATLAB', '-DCUDA', '-DAF', '-DMTYPE2', ['-I' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', '-lnvrtc', ...
+                        ['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib64"'], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp']);
+
                     disp('CUDA support enabled')
                 catch ME
                     warning('CUDA support not enabled')
@@ -914,6 +923,11 @@ if exist('OCTAVE_VERSION','builtin') == 0
                     [folder '/OpenCL_matrixfree.cpp'])
 
                 mex(compiler, complexFlag, '-outdir', folder, '-output', 'OpenCL_matrixfree_uint16', ldflags, compflags, cxxflags, '-DMATLAB', '-DOPENCL', '-DAF', '-DMTYPE', '-lafopencl', cxxlib, ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ...
+                    ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64', ['-I ' folder], ...
+                    ['-I' af_path_include], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', ...
+                    [folder '/OpenCL_matrixfree.cpp'])
+
+                mex(compiler, complexFlag, '-outdir', folder, '-output', 'OpenCL_matrixfree_uint8', ldflags, compflags, cxxflags, '-DMATLAB', '-DOPENCL', '-DAF', '-DMTYPE', '-lafopencl', cxxlib, ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ...
                     ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64', ['-I ' folder], ...
                     ['-I' af_path_include], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', ...
                     [folder '/OpenCL_matrixfree.cpp'])
@@ -1205,13 +1219,24 @@ else
                         [folder '/OpenCL_matrixfree.cpp']);
                     syst = 0;
                     if sys ~= 0
-                        charArray = mkoctfile('--mex', '-v', '-DMATLAB', '-DAF', '-DOPENCL', '-Wno-ignored-attributes', '-lafopencl', '-lOpenCL', ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-L' opencl_lib_path], ...
+                        charArray = mkoctfile('--mex', '-v', '-DMATLAB', '-DAF', '-DOPENCL', '-DMTYPE', '-Wno-ignored-attributes', '-lafopencl', '-lOpenCL', ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-L' opencl_lib_path], ...
                             ['-I' folder], ['-I' opencl_include_path], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp']);
                         sys = makeOCT(charArray);
                     end
+                    movefile('OpenCL_matrixfree.mex', [folder '/OpenCL_matrixfree_uint16.mex'],'f');
+                    syst = syst + sys;
+
+                    [~, sys] = mkoctfile('--mex', '-DMATLAB', '-DAF', '-DOPENCL', '-DMTYPE2', '-Wno-ignored-attributes', '-lafopencl', '-lOpenCL', ...
+                        ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-L' opencl_lib_path ''], ['-I' folder ''], ['-I' opencl_include_path ''], ['-I' af_path_include], ...
+                        [folder '/OpenCL_matrixfree.cpp']);
+                    if sys ~= 0
+                        charArray = mkoctfile('--mex', '-v', '-DMATLAB', '-DAF', '-DOPENCL', '-DMTYPE2', '-Wno-ignored-attributes', '-lafopencl', '-lOpenCL', ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-L' opencl_lib_path], ...
+                            ['-I' folder], ['-I' opencl_include_path], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp']);
+                        sys = makeOCT(charArray);
+                    end
+                    movefile('OpenCL_matrixfree.mex', [folder '/OpenCL_matrixfree_uint8.mex'],'f');
                     syst = syst + sys;
                     if syst == 0
-                        movefile('OpenCL_matrixfree.mex', [folder '/OpenCL_matrixfree_uint16.mex'],'f');
                         disp('Implementation 2 built')
                     else
                         disp('Implementation 2 built without high-resolution support!')
@@ -1287,6 +1312,9 @@ else
                 mkoctfile('--mex', '-DMATLAB', '-DCUDA', '-DAF', '-DMTYPE', '-lafcuda', '-lnvrtc', ['-L' af_path '/lib64'], ['-L' af_path '/lib'],...
                     ['-L' cuda_path '/lib64'], ['-I ' folder], ['-I' cuda_path '/include'], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp'])
                 movefile('OpenCL_matrixfree.mex', [folder '/CUDA_matrixfree_uint16.mex'],'f');
+                mkoctfile('--mex', '-DMATLAB', '-DCUDA', '-DAF', '-DMTYPE2', '-lafcuda', '-lnvrtc', ['-L' af_path '/lib64'], ['-L' af_path '/lib'],...
+                    ['-L' cuda_path '/lib64'], ['-I ' folder], ['-I' cuda_path '/include'], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp'])
+                movefile('OpenCL_matrixfree.mex', [folder '/CUDA_matrixfree_uint8.mex'],'f');
                 disp('CUDA support enabled.')
             catch
                 warning('CUDA support not enabled')

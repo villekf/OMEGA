@@ -152,6 +152,7 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	const uint32_t* devPointer = getUint32s(options, "use_device");
 	size_t devLength = mxGetNumberOfElements(mxGetField(options, 0, "use_device"));
 	inputScalars.usedDevices = std::vector<uint32_t>(devPointer, devPointer + devLength);
+	inputScalars.seed = getScalarInt64(options, 0, "seed");
 	if (inputScalars.CT) {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "nColsD"), -10);
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "nRowsD"), -10);
@@ -384,7 +385,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		if (w_vec.data.TV_use_anatomical) {
 			mxArray* TVdata_init = getField(options, 0, "TVdata");
 			if (w_vec.data.TVtype == 1) {
-				w_vec.data.refIm = af::array(inputScalars.im_dim[0], getSingles(TVdata_init, "s", 0), afHost);
+				w_vec.data.refIm = af::array(inputScalars.im_dim[0] * 9, getSingles(TVdata_init, "s", 0), afHost);
 			}
 			else {
 				w_vec.data.refIm = af::array(inputScalars.im_dim[0], getSingles(TVdata_init, "reference_image", 0), afHost);

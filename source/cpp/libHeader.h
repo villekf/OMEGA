@@ -1382,8 +1382,10 @@ void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, int64_t& o
 }
 
 extern "C" DLL_FUNCTION
-#ifdef MTYPE
+#if defined(MTYPE) && !defined(MTYPE2)
 int omegaMain(inputStruct options, const char* header_directory, const uint16_t * Sino, float* outputPtr, float* FPptr = nullptr, float* residual = nullptr);
+#elif !defined(MTYPE) && defined(MTYPE2)
+int omegaMain(inputStruct options, const char* header_directory, const uint8_t* Sino, float* outputPtr, float* FPptr = nullptr, float* residual = nullptr);
 #else
 int omegaMain(inputStruct options, const char* header_directory, const float* Sino, float* outputPtr, float* FPptr = nullptr, float* residual = nullptr);
 #endif
