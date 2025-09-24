@@ -130,11 +130,11 @@ inline af::array DRAMA(const af::array& im, const af::array& Summ, const af::arr
 
 // MAP-phase for BSREM and ROSEM-MAP
 // Iteration update
-inline af::array MAP(const af::array& im, const float lam, const af::array& dU, const float epps)
+inline void MAP(af::array& im, const float lam, const af::array& dU, const float epps)
 {
-	af::array output = im - lam * im * dU;
-	output(output < epps) = epps;
-	return output;
+	im -= lam * im * dU;
+	im(im < epps) = epps;
+	im.eval();
 }
 
 inline af::array COSEM(const af::array& im, const af::array& C_co, const af::array& D, const float h, const uint32_t COSEM_TYPE)
