@@ -109,20 +109,6 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     return 0;
 }
 
-- (NSInteger)setOutput:(NSInteger)nBytes // Allocate and fill with input data
-                    data:(const float*)d_output
-{
-    _d_output = [_device newBufferWithBytes:d_output length:nBytes options:MTLResourceStorageModeShared];
-    return 0;
-}
-
-- (NSInteger)setImage:(NSInteger)nBytes
-                    data:(const float*)d_im
-{
-    _d_im = [_device newBufferWithBytes:d_im length:nBytes options:MTLResourceStorageModeShared];
-    return 0;
-}
-
 - (NSInteger)addProjector:(ScalarStructBox *)inputScalarsBox
                            weighting:(WeightingBox *)wVec
                               //method:(RecMethodsBox *)methodList
@@ -173,6 +159,8 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     } mutableCopy];
 
     // TODO refactor to a function
+    if (inputScalars.useHalf) // FP16 instead of FP32
+        macros[@"HALF"] = @"";
     if (inputScalars.useParallelBeam)
         macros[@"PARALLEL"] = @"";
     if (inputScalars.raw == 1)
@@ -189,8 +177,7 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
         if (inputScalars.maskBPZ > 1)
             macros[@"MASKBP3D"] = @"";
     }
-    /*if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) // TODO MethodList
-        macros[@"FDK"] = @"";*/
+
     if (inputScalars.offset)
         macros[@"OFFSET"] = @"";
     if (inputScalars.attenuation_correction == 1u && inputScalars.CTAttenuation)
@@ -274,113 +261,6 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
             macrosBP[@"ORTH"] = @"";
     }
 
-    /*if (inputScalars.FPType == 4 || inputScalars.BPType == 4) {
-        std::vector<const char*> os_options = options;
-        if (inputScalars.FPType == 4)
-            os_options.push_back("-DFP");
-        if (inputScalars.BPType == 4 && inputScalars.CT)
-            os_options.push_back("-DBP");
-        os_options.push_back("-DPTYPE4");
-        if (!inputScalars.largeDim) {
-            std::snprintf(buffer9, 30, "-DNVOXELS=%d", static_cast<int32_t>(NVOXELS));
-            os_options.push_back(buffer9);
-        }
-        if (inputScalars.FPType == 4) {
-            status = buildProgram(inputScalars.verbose, contentFP, programFP, os_options);
-            if (status == NVRTC_SUCCESS && DEBUG) {
-                mexPrint("FP 4 program built\n");
-            }
-            else if (status != NVRTC_SUCCESS)
-                return status;
-            if (status == NVRTC_SUCCESS)
-                memAlloc.FPMod = true;
-        }
-        if (!inputScalars.CT && inputScalars.BPType == 4) {
-            os_options = options;
-            os_options.push_back("-DPTYPE4");
-            os_options.push_back("-DBP");
-            os_options.push_back("-DATOMICF");
-            status = buildProgram(inputScalars.verbose, contentBP, programBP,os_options);
-            if (status == NVRTC_SUCCESS && DEBUG) {
-                mexPrint("BP 4 program built\n");
-            }
-            else if (status != NVRTC_SUCCESS)
-                return status;
-            if (status == NVRTC_SUCCESS)
-                memAlloc.BPMod = true;
-        }
-        else if (inputScalars.CT && inputScalars.BPType == 4 && inputScalars.FPType != 4) {
-            status = buildProgram(inputScalars.verbose, contentBP, programBP, os_options);
-            if (status == NVRTC_SUCCESS && DEBUG) {
-                mexPrint("BP 4 program built\n");
-            }
-            else if (status != NVRTC_SUCCESS)
-                return status;
-            if (status == NVRTC_SUCCESS)
-                memAlloc.BPMod = true;
-        }
-    }
-    if (inputScalars.FPType == 5 || inputScalars.BPType == 5) {
-        std::vector<const char*> os_options = options;
-        os_options.push_back("-DPROJ5");
-        if (inputScalars.meanFP)
-            os_options.push_back("-DMEANDISTANCEFP");
-        else if (inputScalars.meanBP)
-            os_options.push_back("-DMEANDISTANCEBP");
-        if (inputScalars.FPType == 5)
-            os_options.push_back("-DFP");
-        if (inputScalars.BPType == 5)
-            os_options.push_back("-DBP");
-        if (inputScalars.pitch) {
-            std::snprintf(buffer9, 30, "-DNVOXELS5=%d", static_cast<int32_t>(1));
-            os_options.push_back(buffer9);
-        }
-        else {
-            std::snprintf(buffer9, 30, "-DNVOXELS5=%d", static_cast<int32_t>(NVOXELS5));
-            os_options.push_back(buffer9);
-        }
-        std::snprintf(buffer10, 30, "-DNVOXELSFP=%d", static_cast<int32_t>(NVOXELSFP));
-        os_options.push_back(buffer10);
-        if (inputScalars.FPType == 5) {
-            status = buildProgram(inputScalars.verbose, contentFP, programFP, os_options);
-            if (status == NVRTC_SUCCESS && DEBUG) {
-                mexPrint("FP 5 program built\n");
-            }
-            else if (status != NVRTC_SUCCESS)
-                return status;
-            if (status == NVRTC_SUCCESS)
-                memAlloc.FPMod = true;
-        }
-        else {
-            status = buildProgram(inputScalars.verbose, contentBP, programBP, os_options);
-            if (status == NVRTC_SUCCESS && DEBUG) {
-                mexPrint("BP 5 program built\n");
-            }
-            else if (status != NVRTC_SUCCESS)
-                return status;
-            if (status == NVRTC_SUCCESS)
-                memAlloc.BPMod = true;
-        }
-    }
-    if (inputScalars.computeSensImag) {
-        std::vector<const char*> os_options = options;
-        os_options.push_back("-DBP");
-        os_options.push_back("-DATOMICF");
-        os_options.push_back("-DSENS");
-        if (inputScalars.BPType == 3)
-            os_options.push_back("-DVOL");
-        if (inputScalars.BPType == 2 || inputScalars.BPType == 3)
-            os_options.push_back("-DORTH");
-        if (inputScalars.BPType == 4) {
-            os_options.push_back("-DPTYPE4");
-            os_options.push_back(buffer9);
-        }
-        else
-            os_options.push_back("-DSIDDON");
-        status = buildProgram(inputScalars.verbose, contentBP, programSens, os_options);
-        if (status == NVRTC_SUCCESS)
-            memAlloc.SensMod = true;
-    }*/
 
     optsFP.preprocessorMacros = macrosFP;
     optsBP.preprocessorMacros = macrosBP;
@@ -514,7 +394,7 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
         _d_z.resize(inputScalars.subsetsUsed);
     }
 
-    // --- Buffers (from createAndWriteBuffers) --- TODO
+    // --- Buffers (from createAndWriteBuffers)
     NSUInteger bytes;
     if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
         bytes = sizeof(float) * inputScalars.size_V;
@@ -578,27 +458,18 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     auto &inputScalars = *static_cast<scalarStruct *>(inputScalarsBox.ptr);
     auto &w_vec = *static_cast<Weighting *>(wVec.ptr);
 
-    if (inputScalars.FPType == 5) { // TODO
-        /*global[0] = (inputScalars.nRowsD + erotus[0]) / local[0];
-        global[1] = ((inputScalars.nColsD + NVOXELSFP - 1) / NVOXELSFP + erotus[1]) / local[1];
-        global[2] = length[osa_iter];*/
-    }
-    else if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
-        _globalX = (inputScalars.nRowsD + _erotus[0]);// / _localX;
-        _globalY = (inputScalars.nColsD  + _erotus[1]);// / _localY;
+    if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
+        _globalX = (inputScalars.nRowsD + _erotus[0]);
+        _globalY = (inputScalars.nColsD  + _erotus[1]);
         _globalZ = length[osa_iter];
-        //_globalX = inputScalars.nRowsD + _erotus[0];
-        //_globalY = inputScalars.nColsD + _erotus[1];
-        //_globalZ = static_cast<size_t>(length[osa_iter]);
-    }
-    else { // TODO
-        /*erotus[0] = length[osa_iter] % local_size[0];
+    } else {
+        _erotus[0] = length[osa_iter] % _localX;
 
-        if (erotus[0] > 0)
-            erotus[0] = (local_size[0] - erotus[0]);
-        global[0] = (length[osa_iter] + erotus[0]) / local[0];
-        global[1] = 1;
-        global[2] = 1;*/
+        if (_erotus[0] > 0)
+            _erotus[0] = (_localX - _erotus[0]);
+        _globalX = static_cast<size_t>(length[osa_iter] + _erotus[0]);
+        _globalY = 1;
+        _globalZ = 1;
     }
 
     _commandBufferFP = [_queueFP commandBuffer];
@@ -682,20 +553,10 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     [_encFP setBuffer:_d_im offset:0 atIndex:19];    
     [_encFP setBuffer:_d_output offset:0 atIndex:20];
 
-    // --- Build Metal sizes that exactly match CL's parameters ---
     MTLSize threadsPerThreadgroup = MTLSizeMake(_localX, _localY, _localZ);
-
-    // Validate the local size against the pipeline’s limit
-    //NSUInteger maxTG = _pso.maxTotalThreadsPerThreadgroup;
-    /*NSAssert(_localX * _localY * _localZ <= maxTG,
-            @"Local work-group size (%lu) exceeds Metal's maxTotalThreadsPerThreadgroup (%lu). "
-            @"Choose a smaller local size to match CL.",
-            (unsigned long)(_localX*_localY*_localZ), (unsigned long)maxTG);*/
-
     MTLSize threadgroupsPerGrid = MTLSizeMake(_globalX / _localX, _globalY / _localY, _globalZ / _localZ);
     
     [_encFP dispatchThreadgroups:threadgroupsPerGrid threadsPerThreadgroup:threadsPerThreadgroup];
-    
     [_encFP endEncoding];
     [_commandBufferFP commit];
     [_commandBufferFP waitUntilCompleted];
@@ -719,9 +580,28 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     auto &inputScalars = *static_cast<scalarStruct *>(inputScalarsBox.ptr);
     auto &w_vec = *static_cast<Weighting *>(wVec.ptr);
 
-    _globalX = inputScalars.nRowsD + _erotus[0];
-    _globalY = inputScalars.nColsD + _erotus[1];
-    _globalZ = static_cast<size_t>(length[osa_iter]);
+    if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
+        if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
+            _globalX = inputScalars.nRowsD + _erotus[0];
+            _globalY = inputScalars.nColsD + _erotus[1];
+            _globalZ = static_cast<size_t>(length[osa_iter]);
+        } else if (inputScalars.listmode > 0 && computeSens) { // TODO: sensitivity image
+            if (inputScalars.nLayers > 1) {
+                //global = { static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0], static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.nLayers) };
+            } else {
+                //global = { static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0], static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) };
+            }
+        } else {
+            _erotus[0] = length[osa_iter] % _localX;
+
+            if (_erotus[0] > 0)
+                _erotus[0] = (_localX - _erotus[0]);
+            _globalX = static_cast<cl::size_type>(length[osa_iter] + _erotus[0]);
+            _globalY = 1;
+            _globalZ = 1;
+        }
+    }
+
 
     _commandBufferBP = [_queueBP commandBuffer];
     _encBP = [_commandBufferBP computeCommandEncoder];
@@ -738,10 +618,10 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     params.coneOfResponseStdCoeffC = inputScalars.coneOfResponseStdCoeffC;
 	params.crystalSizeX = w_vec.dPitchX;
 	params.crystalSizeY = w_vec.dPitchY;
-    if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-        if (inputScalars.FPType == 2)
+    if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
+        if (inputScalars.BPType == 2)
             params.orthWidth = inputScalars.tube_width;
-        if (inputScalars.FPType == 3)
+        if (inputScalars.BPType == 3)
             params.orthWidth = inputScalars.cylRadiusProj3;
         params.bmin = inputScalars.bmin;
         params.bmax = inputScalars.bmax;

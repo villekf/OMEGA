@@ -82,17 +82,17 @@ void projectorType123(
 #if defined(METAL) ///////////////////// METAL /////////////////////
 	CONSTANT ScalarParams& P1 [[buffer(0)]],
 #if defined(SPECT)
-	const CLGLOBAL float* d_rayShiftsDetector [[buffer(1)]],
-	const CLGLOBAL float* d_rayShiftsSource [[buffer(2)]],
+	const CLGLOBAL FLOAT* d_rayShiftsDetector [[buffer(1)]],
+	const CLGLOBAL FLOAT* d_rayShiftsSource [[buffer(2)]],
 #endif
 #ifdef TOF ///////////////////////// TOF BINS /////////////////////////
-	CONSTANT float* TOFCenter [[buffer(3)]],
+	CONSTANT FLOAT* TOFCenter [[buffer(3)]],
 #endif ///////////////////////// END TOF BINS /////////////////////////
 #ifdef ORTH ///////////////////////// ORTHOGONAL-BASED RAY TRACER /////////////////////////
-	CONSTANT float* V [[buffer(4)]],
+	CONSTANT FLOAT* V [[buffer(4)]],
 #endif ///////////////////////// END ORTHOGONAL-BASED RAY TRACER /////////////////////////
 #if !defined(CT) && (defined(ATN) || defined(ATNM)) ///////////////////////// PET ATTENUATION CORRECTION /////////////////////////
-	const CLGLOBAL float* d_atten [[buffer(5)]],
+	const CLGLOBAL FLOAT* d_atten [[buffer(5)]],
 #endif
 #ifdef MASKFP
     MASKFPTYPE maskFP [[buffer(6)]],
@@ -100,13 +100,13 @@ void projectorType123(
 #if defined(MASKBP) && defined(BP) && !defined(FP)
     MASKBPTYPE maskBP [[buffer(7)]],
 #endif
-	CONSTANT float* d_xy [[buffer(8)]],
-	CONSTANT float* d_z [[buffer(9)]],
+	CONSTANT FLOAT* d_xy [[buffer(8)]],
+	CONSTANT FLOAT* d_z [[buffer(9)]],
 #ifdef NORM ///////////////////////// PET NORMALIZATION DATA /////////////////////////
-	CONSTANT float* d_norm [[buffer(10)]],
+	CONSTANT FLOAT* d_norm [[buffer(10)]],
 #endif
 #ifdef SCATTER ///////////////////////// EXTRA CORRECTION DATA /////////////////////////
-	CONSTANT float* d_scat [[buffer(11)]], 
+	CONSTANT FLOAT* d_scat [[buffer(11)]], 
 #endif
 	CLGLOBAL CAST* d_Summ [[buffer(12)]], // Adjust buffer index in host code
 #if defined(SUBSETS) && !defined(LISTMODE)
@@ -123,8 +123,8 @@ void projectorType123(
 #ifdef RAW	///////////////////////// RAW PET DATA /////////////////////////
 	CONSTANT ushort* d_L [[buffer(18)]], 
 #endif
-	const CLGLOBAL float* d_OSEM [[buffer(19)]], // Adjust buffer index
-	CLGLOBAL float* d_output [[buffer(20)]], // Adjust buffer index
+	const CLGLOBAL FLOAT* d_OSEM [[buffer(19)]],
+	CLGLOBAL FLOAT* d_output [[buffer(20)]], 
 	uint3 i [[thread_position_in_grid]]   // global id
 
 #else /////////////////////// OPENCL/CUDA ///////////////////////

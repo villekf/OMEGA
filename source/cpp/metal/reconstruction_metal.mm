@@ -12,8 +12,7 @@ inline void reconstruction_metal(const float* z_det, const float* x,
     const uint16_t* z_index = nullptr, const uint16_t* L = nullptr
 ) {
     const C tyyppi = (C)0;
-	// Number of measurements in each subset
-	std::vector<int64_t> length(inputScalars.subsetsUsed);
+	std::vector<int64_t> length(inputScalars.subsetsUsed); // Number of measurements in each subset
 
     for (uint32_t kk = 0; kk < inputScalars.subsetsUsed; kk++)
 		length[kk] = pituus[kk + 1u] - pituus[kk];
@@ -49,11 +48,11 @@ inline void reconstruction_metal(const float* z_det, const float* x,
     if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 		m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[inputScalars.osa_iter0];
     
-    NSInteger bytesOutput = sizeof(float) * m_size * inputScalars.nBins;
-    if (type == 1) {
+    NSUInteger bytesOutput = sizeof(float) * m_size * inputScalars.nBins;
+    if (type == 1) { // Forward projection A*x
         status = [proj allocateOutput:bytesOutput]; // TODO replace with proj.d_output = ...
 	}
-	if (type == 2) {
+	if (type == 2) { // Backward projection A'*y
         id<MTLBuffer> buf = [proj.device newBufferWithBytes:meas length:bytesOutput options:MTLResourceStorageModeShared];
         proj.d_output = buf;
 
@@ -124,12 +123,12 @@ inline void reconstruction_metal(const float* z_det, const float* x,
     }
     
     if (type == 0) {}
-    if (type == 1) { // todo
+    if (type == 1) { // Forward projection A*x
         size_t byteCount = sizeof(float) * m_size * inputScalars.nBins;
         void *src = proj.d_output.contents;            // id<MTLBuffer>
         memcpy(output, src, byteCount);                // copy into your CPU array
     }
-    if (type == 2) {
+    if (type == 2) { // Backward projection A'*y
         size_t uuElems = 0;
         for (int ii = 0; ii <= inputScalars.nMultiVolumes; ++ii) {
             const size_t elemCount = inputScalars.im_dim[ii];

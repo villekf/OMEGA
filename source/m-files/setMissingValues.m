@@ -1039,3 +1039,6 @@ end
 if ~isfield(options, 'swivelAngles')
     options.swivelAngles = [];
 end
+if ~isfield(options, 'useHalf') % When true, computations are performed with FP16 precision instead of FP32
+    options.useHalf = 0;
+end

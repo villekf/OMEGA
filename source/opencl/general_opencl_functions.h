@@ -61,6 +61,83 @@
 #endif
 
 #ifdef METAL
+#ifdef HALF // 16-bit floating point
+#define CAST half
+#define FLOAT half
+// TODO cfloat, mfloat etc...
+
+#else // 32-bit floating point
+#define CAST float
+#define CFLOAT(a) static_cast<float>(a)
+#define CFLOAT3(a) float3(a)
+#define CMFLOAT3(x,y,z) float3((x), (y), (z))
+#define FLOAT float
+#define make_float2(a,b)   float2((a),(b))
+#define make_float3(a,b,c) float3((a),(b),(c))
+#define MFLOAT2(a,b) float2((a), (b))
+#endif
+
+#define DEVICE inline
+#define CLGLOBAL device
+#define CLRESTRICT 
+#define CONSTANT   constant
+#define LOCAL      threadgroup
+#define PTR_DEV  device
+#define PTR_THR  thread
+#define PTR_CONST constant
+#define PTR_TG   threadgroup
+#define KERNEL kernel
+#define FABS metal::fabs
+#define MIN metal::min
+#define LENGTH metal::length
+#define CLONG_rtz(a) static_cast<long>(a)
+#define CINT(a)   static_cast<int>(a)
+#define LONG long
+#define FMIN metal::fmin
+#define FMAX metal::fmax
+#define MIN metal::min
+#define MAX metal::max
+#define ALL metal::all
+#define ANY metal::any
+#define ISNAN metal::isnan
+#define ISINF metal::isinf
+#define CUINT_sat_rtz(a) static_cast<uint>(metal::clamp(metal::trunc((a)), 0.0f, 4294967295.0f))
+#define CUINT_rtp(a)     static_cast<uint>(metal::ceil((a)))
+#define CLAMP3(a,b,c) metal::clamp((a),(b),(c))
+#define DIVIDE3(a,b) ((a) / (b))
+#define FMAD3(a,b,c) metal::fma((a),(b),(c))
+#define CINT3_rtz(a) static_cast<int3>(a)
+#define CINT_rtz(a) static_cast<int>(metal::trunc((a)))
+#define MINT3(a,b,c) int3((a),(b),(c))
+#define CMINT3(a,b,c) int3((a),(b),(c))
+#define SQRT metal::sqrt
+#define ACOS metal::acos
+#define EXP(a) metal::exp(a)
+#define LOG(a) metal::log(a)
+#define CUINT(a) (uint)(a)
+#define MUINT3(a, b, c) uint3(a, b, c)
+#define make_uint2(a,b)    uint2((a),(b))
+#define make_uint3(a,b,c)  uint3((a),(b),(c))
+#define make_int2(a,b)     int2((a),(b))
+#define make_int3(a,b,c)   int3((a),(b),(c))
+#define FMAD(a,b,c) metal::fma(a,b,c)
+#define POWR pow
+#define DIVIDE(a,b) ((a) / (b))
+
+//#define dot metal::dot // TODO define function
+//#define pow metal::pow // TODO define function
+
+// Metal function definitions
+inline FLOAT dot(float3 a, float3 b) {
+    return metal::dot(a, b);
+}
+
+inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
+{
+    atomic_fetch_add_explicit(addr, val, metal::memory_order_relaxed);
+}
+
+// Metal scalar params unpacking
 #define UNPACK_METAL_PARAMS(params) \
     float global_factor = params.global_factor; \
     float d_epps = params.d_epps; \
@@ -96,7 +173,7 @@
 	uint currentSubset = params.currentSubset; \
 	int aa = params.aa; 
 
-struct ScalarParams { // These scalars are constant for each subiteration. For OpenCL, these are set in initializeKernel.
+struct ScalarParams { // For OpenCL, these are set in initializeKernel.
     float global_factor;
 	float d_epps;
 	uint d_size_x;
@@ -131,72 +208,6 @@ struct ScalarParams { // These scalars are constant for each subiteration. For O
 	uint currentSubset;
 	int aa;
 };
-
-#define DEVICE inline
-#define CLGLOBAL device
-#define CLRESTRICT 
-#define CONSTANT   constant
-#define LOCAL      threadgroup
-#define PTR_DEV  device
-#define PTR_THR  thread
-#define PTR_CONST constant
-#define PTR_TG   threadgroup
-#define KERNEL kernel
-#define CAST float
-#define FABS metal::fabs
-#define MIN metal::min
-#define LENGTH metal::length
-#define CLONG_rtz(a) static_cast<long>(a)
-#define CFLOAT(a) static_cast<float>(a)
-#define CINT(a)   static_cast<int>(a)
-#define LONG long
-#define FMIN metal::fmin
-#define FMAX metal::fmax
-#define MIN metal::min
-#define MAX metal::max
-#define ALL metal::all
-#define ANY metal::any
-#define ISNAN metal::isnan
-#define ISINF metal::isinf
-#define MFLOAT2(a,b) float2((a), (b))
-#define CMFLOAT3(x,y,z) float3((x), (y), (z))
-#define CUINT_sat_rtz(a) static_cast<uint>(metal::clamp(metal::trunc((a)), 0.0f, 4294967295.0f))
-#define CUINT_rtp(a)     static_cast<uint>(metal::ceil((a)))
-#define CLAMP3(a,b,c) metal::clamp((a),(b),(c))
-#define DIVIDE3(a,b) ((a) / (b))
-#define CFLOAT3(a) float3(a)
-#define FMAD3(a,b,c) metal::fma((a),(b),(c))
-#define CINT3_rtz(a) static_cast<int3>(a)
-#define CINT_rtz(a) static_cast<int>(metal::trunc((a)))
-#define MINT3(a,b,c) int3((a),(b),(c))
-#define CMINT3(a,b,c) int3((a),(b),(c))
-#define dot metal::dot
-#define pow metal::pow
-#define SQRT metal::sqrt
-//#define sqrt metal::sqrt
-#define ACOS metal::acos
-#define EXP(a) metal::exp(a)
-#define LOG(a) metal::log(a)
-#define CUINT(a) (uint)(a)
-#define MUINT3(a, b, c) uint3(a, b, c)
-#define make_float2(a,b)   float2((a),(b))
-#define make_float3(a,b,c) float3((a),(b),(c))
-#define make_uint2(a,b)    uint2((a),(b))
-#define make_uint3(a,b,c)  uint3((a),(b),(c))
-#define make_int2(a,b)     int2((a),(b))
-#define make_int3(a,b,c)   int3((a),(b),(c))
-#define FMAD(a,b,c) metal::fma(a,b,c)
-#define POWR pow
-#define DIVIDE(a,b) ((a) / (b))
-//#include <metal_stdlib>
-//#include <metal_atomic>
-
-
-inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
-{
-    atomic_fetch_add_explicit(addr, val, metal::memory_order_relaxed);
-}
-
 
 #endif
 #ifdef OPENCL
@@ -295,7 +306,8 @@ __constant sampler_t sampler_MASK4 = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_NEA
 #else
 __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif
-#elif defined(CUDA)
+#endif
+#if defined(CUDA)
 #define PTR_DEV  device // Metal requires address space qualifier for pointers
 #define PTR_THR  thread
 #define PTR_CONST constant
