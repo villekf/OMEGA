@@ -84,6 +84,8 @@ typedef struct {
     std::vector<__strong id<MTLBuffer>> _d_xyindex;
     std::vector<__strong id<MTLBuffer>> _d_zindex;
     std::vector<__strong id<MTLBuffer>> _d_L;
+    std::vector<__strong id<MTLBuffer>> _d_scat;
+    std::vector<__strong id<MTLBuffer>> _d_norm;
     std::vector<__strong id<MTLBuffer>> _d_maskFP; // FP mask
 }
 @end
@@ -385,6 +387,10 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
         _d_maskFP.resize(inputScalars.subsetsUsed);
     if (inputScalars.raw)
         _d_L.resize(inputScalars.subsetsUsed);
+    if (inputScalars.normalization_correction) 
+        _d_norm.resize(inputScalars.subsetsUsed);
+    if (inputScalars.scatter)
+        _d_scat.resize(inputScalars.subsetsUsed);
     if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1) {
         _d_xyindex.resize(inputScalars.subsetsUsed);
         _d_zindex.resize(inputScalars.subsetsUsed);
@@ -437,6 +443,14 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
         if (inputScalars.raw && inputScalars.listmode != 1) {
             bytes = sizeof(uint16_t) * length[kk] * 2;
             _d_L[kk] = [_device newBufferWithBytes:&L[pituus[kk] * 2] length:bytes options:MTLResourceStorageModeShared];
+        }
+        if (inputScalars.normalization_correction) {
+            bytes = sizeof(float) * length[kk] * vecSize;
+            _d_norm[kk] = [_device newBufferWithBytes:&norm[pituus[kk] * vecSize] length:bytes options:MTLResourceStorageModeShared];
+        }
+        if (inputScalars.scatter) {
+            bytes = sizeof(float) * length[kk] * vecSize;
+            _d_scat[kk] = [_device newBufferWithBytes:&extraCorr[pituus[kk] * vecSize] length:bytes options:MTLResourceStorageModeShared];
         }
     }
 
@@ -541,6 +555,11 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
 
     [_encFP setBuffer:_d_x[osa_iter] offset:0 atIndex:8];
     [_encFP setBuffer:_d_z[osa_iter] offset:0 atIndex:9];
+    if (inputScalars.normalization_correction)
+        [_encFP setBuffer:_d_norm[osa_iter] offset:0 atIndex:10];
+    if (inputScalars.scatter)
+        [_encFP setBuffer:_d_scat[osa_iter] offset:0 atIndex:11];
+
     [_encFP setBuffer:_d_Summ[uu] offset:0 atIndex:12];
 
     if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
@@ -672,6 +691,10 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
 
     [_encBP setBuffer:_d_x[osa_iter] offset:0 atIndex:8];
     [_encBP setBuffer:_d_z[osa_iter] offset:0 atIndex:9];
+    if (inputScalars.normalization_correction)
+        [_encBP setBuffer:_d_norm[osa_iter] offset:0 atIndex:10];
+    if (inputScalars.scatter)
+        [_encBP setBuffer:_d_scat[osa_iter] offset:0 atIndex:11];
     [_encBP setBuffer:_d_Summ[uu] offset:0 atIndex:12];
 
     if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {

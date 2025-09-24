@@ -19,6 +19,8 @@
    @property (atomic, strong) id<MTLBuffer> d_output; // 2D/3D output
    @property (nonatomic, strong) id<MTLBuffer> d_im; // 3D volume
    @property (nonatomic, strong) NSMutableArray<id<MTLBuffer>> *d_rhs_os;
+   //@property (nonatomic, strong) NSMutableArray<id<MTLBuffer>> *d_norm; // Normalization data
+   //@property (nonatomic, strong) NSMutableArray<id<MTLBuffer>> *d_scat; // Scatter data
    @property (nonatomic, strong) id<MTLBuffer> d_attenB; // Attenuation image
    @property (nonatomic, strong) id<MTLBuffer> d_maskBP; // 2D/3D BP mask
 
