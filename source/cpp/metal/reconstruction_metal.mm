@@ -48,7 +48,11 @@ inline void reconstruction_metal(const float* z_det, const float* x,
     if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 		m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[inputScalars.osa_iter0];
     
-    NSUInteger bytesOutput = sizeof(float) * m_size * inputScalars.nBins;
+    NSUInteger fpSize = sizeof(float); // Floating point size
+    //if (inputScalars.useHalf) // TODO pass half-type buffers to save bandwidth
+    //    fpSize /= 2;
+
+    NSUInteger bytesOutput = fpSize * m_size * inputScalars.nBins;
     if (type == 1) { // Forward projection A*x
         status = [proj allocateOutput:bytesOutput]; // TODO replace with proj.d_output = ...
 	}
@@ -61,7 +65,7 @@ inline void reconstruction_metal(const float* z_det, const float* x,
         }
 
 		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-            NSUInteger len = sizeof(float) * inputScalars.im_dim[ii];
+            NSUInteger len = fpSize * inputScalars.im_dim[ii];
             id<MTLBuffer> buf = [proj.device newBufferWithLength:len options:MTLResourceStorageModeShared];
             [proj.d_rhs_os addObject:buf];
             memset(buf.contents, 0, len);
@@ -71,7 +75,7 @@ inline void reconstruction_metal(const float* z_det, const float* x,
 
 			if (proj.no_norm == 0) {} // Sensitivity image stuff (TODO)
 			else {
-                id<MTLBuffer> buf = [proj.device newBufferWithLength:sizeof(float) options:MTLResourceStorageModeShared]; // or Private
+                id<MTLBuffer> buf = [proj.device newBufferWithLength:fpSize options:MTLResourceStorageModeShared]; // or Private
                 [proj.d_Summ addObject:buf];
             }
 		}
@@ -87,7 +91,7 @@ inline void reconstruction_metal(const float* z_det, const float* x,
             else if (type == 1) {
                 size_t uu = 0;
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-                    NSInteger bytesIm = inputScalars.im_dim[ii] * sizeof(float);
+                    NSInteger bytesIm = inputScalars.im_dim[ii] * fpSize;
                     const float *src = im + uu;
                     proj.d_im = [proj.device newBufferWithBytes:src length:bytesIm options:MTLResourceStorageModeShared];
 
@@ -124,7 +128,7 @@ inline void reconstruction_metal(const float* z_det, const float* x,
     
     if (type == 0) {}
     if (type == 1) { // Forward projection A*x
-        size_t byteCount = sizeof(float) * m_size * inputScalars.nBins;
+        size_t byteCount = fpSize * m_size * inputScalars.nBins;
         void *src = proj.d_output.contents;            // id<MTLBuffer>
         memcpy(output, src, byteCount);                // copy into your CPU array
     }
@@ -132,7 +136,7 @@ inline void reconstruction_metal(const float* z_det, const float* x,
         size_t uuElems = 0;
         for (int ii = 0; ii <= inputScalars.nMultiVolumes; ++ii) {
             const size_t elemCount = inputScalars.im_dim[ii];
-            const size_t byteCount = elemCount * sizeof(float);
+            const size_t byteCount = elemCount * fpSize;
 
             const void *src = proj.d_rhs_os[ii].contents; // Shared buffer
             memcpy(output + uuElems, src, byteCount);

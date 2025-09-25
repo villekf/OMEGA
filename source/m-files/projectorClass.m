@@ -901,7 +901,7 @@ classdef projectorClass
             else
                 loopVar = 1 : obj.param.nMultiVolumes + 1;
             end
-            if obj.param.implementation == 3 || obj.param.implementation == 2 || obj.param.implementation == 5
+            if obj.param.implementation == 3 || obj.param.implementation == 2 || obj.param.implementation == 5 || ismac
                 if isa(input,'double')
                     input = single(input);
                 end
@@ -912,6 +912,11 @@ classdef projectorClass
                     input = double(input);
                 end
             end
+
+            %if obj.param.useHalf && ~isa(input, 'half') % TODO pass half-type buffers to save bandwidth
+            %    input = half(input);
+            %end
+
             if obj.param.verbose > 1
                 disp('Computing forward projection')
             end
@@ -1007,7 +1012,7 @@ classdef projectorClass
             if obj.param.projector_type == 6
                 obj.param.ub = obj.param.ub + obj.nMeas(obj.subset);
             end
-            if obj.param.implementation == 3 || obj.param.implementation == 2 || obj.param.implementation == 5
+            if obj.param.implementation == 3 || obj.param.implementation == 2 || obj.param.implementation == 5 || ismac
                 if ~isa(input,'single')
                     input = single(input);
                 end

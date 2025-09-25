@@ -402,12 +402,16 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
 
     // --- Buffers (from createAndWriteBuffers)
     NSUInteger bytes;
+    NSUInteger fpSize = sizeof(float); // Floating point size
+    //if (inputScalars.useHalf) // TODO pass half-type buffers to save bandwidth
+    //    fpSize /= 2;
+
     if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-        bytes = sizeof(float) * inputScalars.size_V;
+        bytes = fpSize * inputScalars.size_V;
         _d_V = [_device newBufferWithBytes:inputScalars.V length:bytes options:MTLResourceStorageModeShared];
     }
     if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
-        bytes = sizeof(float) * inputScalars.im_dim[0];
+        bytes = fpSize * inputScalars.im_dim[0];
         _d_attenB = [_device newBufferWithBytes:atten length:bytes options:MTLResourceStorageModeShared];
     }
     
@@ -429,14 +433,14 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
         }
     }
     if (inputScalars.SPECT) {
-        bytes = sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections;
+        bytes = fpSize * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections;
         _d_rayShiftsDetector = [_device newBufferWithBytes:w_vec.rayShiftsDetector length:bytes options:MTLResourceStorageModeShared];
         _d_rayShiftsSource = [_device newBufferWithBytes:w_vec.rayShiftsSource length:bytes options:MTLResourceStorageModeShared];
     }
     for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-        bytes = sizeof(float) * length[kk] * 2;
+        bytes = fpSize * length[kk] * 2;
         _d_z[kk] = [_device newBufferWithBytes:&z_det[pituus[kk] * 2] length:bytes options:MTLResourceStorageModeShared];
-        bytes = sizeof(float) * length[kk] * 6;
+        bytes = fpSize * length[kk] * 6;
         _d_x[kk] = [_device newBufferWithBytes:&x[pituus[kk] * 6] length:bytes options:MTLResourceStorageModeShared];
 
         // Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
@@ -445,11 +449,11 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
             _d_L[kk] = [_device newBufferWithBytes:&L[pituus[kk] * 2] length:bytes options:MTLResourceStorageModeShared];
         }
         if (inputScalars.normalization_correction) {
-            bytes = sizeof(float) * length[kk] * vecSize;
+            bytes = fpSize * length[kk] * vecSize;
             _d_norm[kk] = [_device newBufferWithBytes:&norm[pituus[kk] * vecSize] length:bytes options:MTLResourceStorageModeShared];
         }
         if (inputScalars.scatter) {
-            bytes = sizeof(float) * length[kk] * vecSize;
+            bytes = fpSize * length[kk] * vecSize;
             _d_scat[kk] = [_device newBufferWithBytes:&extraCorr[pituus[kk] * vecSize] length:bytes options:MTLResourceStorageModeShared];
         }
     }
