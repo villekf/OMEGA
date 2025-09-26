@@ -116,7 +116,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #ifdef SENS
 	const int rings, const uint d_det_per_ring,
 #endif
-#ifdef MASKFP
+#ifdef MASKFP // TODO replace with MASKFPTYPE
 #ifdef MASKFP3D
     IMAGE3D maskFP,
 #else
@@ -124,7 +124,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #endif
 #endif
 #if defined(MASKBP) && (defined(BP) || defined(SENS)) && !defined(CT)
-#ifdef MASKBP3D
+#ifdef MASKBP3D // TODO replace with MASKBPTYPE
     IMAGE3D maskBP,
 #else
     IMAGE2D maskBP,
@@ -185,7 +185,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #endif
 #endif
         return; 
-#ifdef MASKFP
+#ifdef MASKFP // TODO use readMaskFP
 #ifdef CUDA
 #ifdef MASKFP3D
 	const int maskVal = tex3D<unsigned char>(maskFP, i.x, i.y, i.z);
@@ -438,7 +438,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #if defined(MASKBP)
             int maskVal = 1;
             if (aa == 0) {
-#ifdef CUDA
+#ifdef CUDA // TODO replace with readMaskBP
 #ifdef MASKBP3D
 		        maskVal = tex3D<unsigned char>(maskBP, p.x, p.y, p.z);
 #else
@@ -633,7 +633,7 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
     CONSTANT float* d_uv, CLGLOBAL float* CLRESTRICT d_Summ, 
     const uchar no_norm, 
 #ifdef USEIMAGES
-#ifdef MASKBP
+#ifdef MASKBP // TODO replace with MASKBPTYPE
 #ifdef MASKBP3D
     IMAGE3D maskBP,
 #else
@@ -657,7 +657,7 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
     size_t idx = GID0 + GID1 * d_N.x + GID2 * NVOXELS * d_N.y * d_N.x;
 #ifdef MASKBP
     if (ii == 0) {
-#ifdef USEIMAGES
+#ifdef USEIMAGES // TODO replace with readMaskBP
 #ifdef CUDA
 #ifdef MASKBP3D
         const int maskVal = tex3D<unsigned char>(maskBP, i.x, i.y, i.z);

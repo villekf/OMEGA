@@ -26,6 +26,7 @@ Created on Wed Mar  6 17:40:13 2024
 
 # from SimpleITK import GetSpacing
 import numpy as np
+import numpy.typing as npt
 import ctypes
 import math
 import os
@@ -63,9 +64,10 @@ class projectorClass:
     dScaleY = np.empty(0, dtype = np.float32)
     dScaleZ = np.empty(0, dtype = np.float32)
     kerroin = np.empty(0, dtype = np.float32)
-    angles = np.empty(0, dtype = np.float32)
-    blurPlanes = np.empty(0, dtype = np.float32)
-    radiusPerProj = np.empty(0, dtype = np.float32)
+    angles: npt.NDArray[np.float32] = np.empty(0, dtype = np.float32)
+    blurPlanes: npt.NDArray[np.int32] = np.empty(0, dtype = np.int32)
+    blurPlanes2: npt.NDArray[np.int32] = np.empty(0, dtype = np.int32)
+    radiusPerProj: npt.NDArray[np.float32] = np.empty(0, dtype = np.float32)
     gFilter = np.empty(0, dtype = np.float32)
     filterIm = np.empty(0, dtype = np.float32)
     filter0 = np.empty(0, dtype = np.float32)
@@ -204,10 +206,12 @@ class projectorClass:
     precompute_lor = False
     sigmaZ = -1.
     sigmaXY = -1.
-    colL = 0.
-    colR = 0.
-    colD = 0.
-    iR = 0.
+    colL: float = 0. # Collimator hole length
+    colR: float = 0. # Collimator hole radius
+    colD: float = 0. # Distance from collimator hole centre to detector surface
+    colFxy: float = np.inf # Collimator focal distance, XY plane
+    colFz: float = np.inf # Collimator focal distance, Z direction
+    iR: float = 0. # Detector intrinsic resolution
     implementation = 2
     rotateAttImage = 0.
     flipAttImageXY = False
@@ -472,11 +476,10 @@ class projectorClass:
     flipImageX = False
     flipImageY = False
     flipImageZ = False
-    crXY = 1
-    rayShiftsDetector = np.empty(0, dtype=np.float32)
-    rayShiftsSource = np.empty(0, dtype=np.float32)
-    CORtoDetectorSurface = 0
-    swivelAngles = np.empty(0, dtype = np.float32)
+    rayShiftsDetector: npt.NDArray[np.float32] = np.empty(0, dtype=np.float32)
+    rayShiftsSource: npt.NDArray[np.float32] = np.empty(0, dtype=np.float32)
+    CORtoDetectorSurface: float = 0 # Detector swivel radius
+    swivelAngles: npt.NDArray[np.float32] = np.empty(0, dtype = np.float32)
     coneOfResponseStdCoeffA = 0
     coneOfResponseStdCoeffB = 0
     coneOfResponseStdCoeffC = 0
@@ -548,8 +551,8 @@ class projectorClass:
             setCTCoordinates(self)
         if self.SPECT:
             if self.projector_type == 6 and len(self.SinM > 0):
-                endSinogramRows = self.FOVa_x / self.crXY; # Desired amount of sinogram rows
-                endSinogramCols = self.axial_fov / self.crXY; # Desired amount of sinogram columns
+                endSinogramRows = self.FOVa_x / self.dPitchX; # Desired amount of sinogram rows
+                endSinogramCols = self.axial_fov / self.dPitchY; # Desired amount of sinogram columns
                 padRows = int((endSinogramRows-self.nRowsD)/2) # Pad this amount on both sides
                 padCols = int((endSinogramCols-self.nColsD)/2) # Pad this amount on both sides
                 if padRows < 0:
@@ -589,8 +592,6 @@ class projectorClass:
             self.n_rays_transaxial = self.nRays
             self.NSinos = self.nProjections
             self.TotSinos = self.nProjections
-            self.dPitchX = self.cr_p
-            self.dPitchY = self.cr_pz
             self.det_per_ring = self.nRowsD * self.nProjections
             self.arc_correction = False
             self.det_w_pseudo = self.det_per_ring
@@ -828,10 +829,10 @@ class projectorClass:
                 size_x = self.x.size // 6
         else:
             if self.SPECT == True:
-                self.dPitch = self.crXY
-                self.dPitchY = self.crXY
-                self.dPitchX = self.crXY
-                self.cr_p = self.crXY
+                self.dPitch = self.dPitchX
+                self.dPitchY = self.dPitchY
+                self.dPitchX = self.dPitchX
+                self.cr_p = self.dPitchX
             else:
                 self.dPitch = self.cr_p
                 self.dPitchY = self.cr_p
@@ -901,8 +902,8 @@ class projectorClass:
                 self.swivelAngles = self.swivelAngles[self.index]
                 self.radiusPerProj = self.radiusPerProj[self.index]
                 self.blurPlanes = self.blurPlanes[self.index]
-                self.gFilter = self.gFilter[:,:,:,self.index]
-            # self.gFilter = self.gFilter.ravel('F').astype(dtype=np.float32)
+                self.blurPlanes2 = self.blurPlanes2[self.index]
+            #self.gFilter = self.gFilter.ravel('F').astype(dtype=np.float32)
         ## This part is used when the observation matrix is calculated on-the-fly
 
         if self.nMeas.size == 1:
@@ -2095,7 +2096,9 @@ class projectorClass:
             ('maskPrior', ctypes.POINTER(ctypes.c_uint8)),
             ('TOFIndices', ctypes.POINTER(ctypes.c_uint8)),
             ('angles', ctypes.POINTER(ctypes.c_float)),
-            ('blurPlanes', ctypes.POINTER(ctypes.c_uint32)),
+            ('swivelAngles', ctypes.POINTER(ctypes.c_float)),
+            ('blurPlanes', ctypes.POINTER(ctypes.c_int32)),
+            ('blurPlanes2', ctypes.POINTER(ctypes.c_int32)),
             ('gFilter', ctypes.POINTER(ctypes.c_float)),
             ('gFSize', ctypes.POINTER(ctypes.c_uint64)),
             ('precondTypeImage', ctypes.POINTER(ctypes.c_bool)),
@@ -2123,7 +2126,6 @@ class projectorClass:
             ('TV_ref', ctypes.POINTER(ctypes.c_float)),
             ('trIndices', ctypes.POINTER(ctypes.c_uint16)),
             ('axIndices', ctypes.POINTER(ctypes.c_uint16)),
-            ('crXY',ctypes.c_float),
             ('rayShiftsDetector',ctypes.POINTER(ctypes.c_float)),
             ('rayShiftsSource',ctypes.POINTER(ctypes.c_float)),
             ('coneOfResponseStdCoeffA',ctypes.c_float),

@@ -24,7 +24,8 @@ options.fpath = ''
 options.cr_p = 9.525
 
 ### Crystal width (mm)
-options.crXY = 4.7952
+options.dPitchX = 4.7952
+options.dPitchY = 4.7952
 
 ### Scanner name
 # Used for naming purposes (measurement data)
@@ -46,9 +47,9 @@ options.Nz = 128; # Z-direction (number of axial slices)
 
 ### FOV size [mm]
 # NOTE: Non-cubical voxels may not work
-options.FOVa_x = options.crXY*128; # [mm], x-axis of FOV (transaxial)
-options.FOVa_y = options.crXY*128; # [mm], y-axis of FOV (transaxial)
-options.axial_fov = options.crXY*128; # [mm], z-axis of FOV (axial)
+options.FOVa_x = options.dPitchX*128; # [mm], x-axis of FOV (transaxial)
+options.FOVa_y = options.dPitchX*128; # [mm], y-axis of FOV (transaxial)
+options.axial_fov = options.dPitchY*128; # [mm], z-axis of FOV (axial)
 
 ### Flip the image?
 options.flipImageX = False

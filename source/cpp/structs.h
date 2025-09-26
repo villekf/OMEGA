@@ -78,7 +78,8 @@ typedef struct Weighting_ {
 	float* lambda = nullptr, * alphaM = nullptr, * sigma_PKMA = nullptr, * uv = nullptr, * angles = nullptr, * NLM_ref = nullptr, * refImage = nullptr,
 		* alphaPrecond = nullptr, * thetaCP = nullptr, * tauCP2 = nullptr, * tauCP = nullptr, * sigmaCP = nullptr, * sigma2CP = nullptr, * kerroin4 = nullptr, * lambdaFiltered = nullptr, 
 		* weights = nullptr, *listCoord = nullptr, * RDP_ref = nullptr;
-	uint32_t* rekot = nullptr, * distInt = nullptr;
+	uint32_t* rekot = nullptr;
+    int32_t *distInt = nullptr, *distInt2 = nullptr;
 	uint8_t* maskFP = nullptr, * maskBP = nullptr, * eFOVIndices = nullptr, *maskPrior = nullptr, *maskOffset = nullptr, *TOFIndices = nullptr;
 	uint16_t* axIndex = nullptr, * trIndex = nullptr;
 	float epsilon_mramla = 0.f, U = 1000000.f, h_ACOSEM = 1.f, TimeStepAD, KAD, w_sum = 0.f, h2 = 1.f, huber_delta = 0.f, ACOSEM_rhs = 0.f, h_ACOSEM_2 = 1.f, RDP_gamma = 1.f,
@@ -95,9 +96,8 @@ typedef struct Weighting_ {
 	uint32_t nPriors = 0U, nMAP = 0U, nMAPML = 0U, nMLEM = 0U, nOS = 0U, nTot = 0U, nMAPOS = 0U, nPriorsTot = 0U, ng = 20U;
 	std::vector<int32_t> mIt;
 	std::vector<float> alphaCP, LCP, LCP2;
-	float *rayShiftsDetector = nullptr, *rayShiftsSource = nullptr;
+	float *rayShiftsDetector = nullptr, *rayShiftsSource = nullptr, *swivelAngles = nullptr;
 	std::vector<float> alphaBB;
-
 } Weighting;
 
 // Struct for boolean operators indicating whether a certain method is selected

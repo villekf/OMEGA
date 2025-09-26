@@ -21,20 +21,51 @@ function options = SPECTParameters(options)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Ray tracing projectors
+if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelling, ray tracing projectors
     if numel(options.rayShiftsDetector) == 0
-        options.rayShiftsDetector = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY); % Collimator modeling
-        if options.iR > 0 % Detector intrinsic resolution
-            options.rayShiftsDetector = options.rayShiftsDetector + options.iR / (2*options.crXY*2*sqrt(2*log(2)))*randn(2*options.nRays, 1);
+        options.rayShiftsDetector = [0; 0];
+        options.rayShiftsDetector = repmat(options.rayShiftsDetector, [options.nRays, options.nRowsD, options.nColsD, options.nProjections]);
+
+        if options.colFxy == 0 && options.colFz == 0 % Pinhole collimator
+            dx = linspace(-(options.nRowsD/2-0.5)*options.dPitchX, (options.nRowsD/2-0.5)*options.dPitchX, options.nRowsD);
+            dy = linspace(-(options.nColsD/2-0.5)*options.dPitchY, (options.nColsD/2-0.5)*options.dPitchY, options.nColsD);
+            
+            for ii = 1:options.nRowsD
+                for jj = 1:options.nColsD
+                    for kk = 1:options.nRays
+                        options.rayShiftsDetector(2*(kk-1)+1, ii, jj, :) = -dx(ii);
+                        options.rayShiftsDetector(2*(kk-1)+2, ii, jj, :) = -dy(jj);
+                    end
+                end
+            end
         end
-        options.rayShiftsDetector(1:2) = 0;
     end
     if numel(options.rayShiftsSource) == 0
-        options.rayShiftsSource = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY); % Collimator modeling
-        if options.iR > 0 % Detector intrinsic resolution
-            options.rayShiftsSource = options.rayShiftsSource + (options.iR / (2*options.crXY*2*sqrt(2*log(2)))) * randn(2*options.nRays, 1);
+        options.rayShiftsSource = [0; 0];
+        options.rayShiftsSource = repmat(options.rayShiftsSource, [options.nRays, options.nRowsD, options.nColsD, options.nProjections]);
+
+        if options.nRays > 1 % Multiray shifts
+            nRays = sqrt(options.nRays);
+            [tmp_x, tmp_y] = meshgrid(linspace(-0.5, 0.5, nRays));
+            if options.colFxy == 0 && options.colFz == 0 % Pinhole collimator
+                tmp_x = options.dPitchX * tmp_x;
+                tmp_y = options.dPitchY * tmp_y;
+            elseif ismember(options.colFxy, [-Inf, Inf]) && ismember(options.colFz, [-Inf, Inf]) % Parallel-hole collimator
+                tmp_x = options.colR * tmp_x;
+                tmp_y = options.colR * tmp_y;
+            end
+
+            tmp_shift = reshape([tmp_x(:), tmp_y(:)].', 1, [])';
+
+            for kk = 1:options.nRays
+                options.rayShiftsSource(2*(kk-1)+1) = tmp_shift(2*(kk-1)+1);
+                options.rayShiftsSource(2*(kk-1)+2) = tmp_shift(2*(kk-1)+2);
+            end
         end
-        options.rayShiftsSource(1:2) = 0;
+    end
+    if options.implementation == 2
+        options.rayShiftsDetector = single(options.rayShiftsDetector(:));
+        options.rayShiftsSource = single(options.rayShiftsSource(:));
     end
 end
 if ismember(options.projector_type, [12, 2, 21, 22]) % Orthogonal distance ray tracer
@@ -45,8 +76,8 @@ if ismember(options.projector_type, [12, 2, 21, 22]) % Orthogonal distance ray t
     % Now the collimator response FWHM is sqrt((az+b)^2+c^2) where z is distance along detector element normal vector
 end
 if options.projector_type == 6
-    DistanceToFirstRow = options.radiusPerProj-(double(options.Nx)/2-0.5)*double(options.dx);
-    Distances = repmat(DistanceToFirstRow,1,options.Nx)+repmat((0:double(options.Nx)-1)*double(options.dx),length(DistanceToFirstRow),1);
+    DistanceToFirstRow = 0.5*options.dx;
+    Distances = repmat(DistanceToFirstRow,1,options.Nx*4)+repmat((0:double(options.Nx*4)-1)*double(options.dx),length(DistanceToFirstRow),1);
     Distances = Distances-options.colL-options.colD; %these are distances to the actual detector surface
 
     if (~isfield(options,'gFilter'))
@@ -79,9 +110,8 @@ if options.projector_type == 6
             s2 = double(repmat(permute(options.sigmaXY,[4 3 2 1]), size(xx,1), size(yy,2), 1));
             options.gFilter = exp(-(xx.^2./(2*s1.^2) + yy.^2./(2*s2.^2)));
         end
-        [~,ind] = max(options.radiusPerProj);
-        [rowE,colE] = find(options.gFilter(:,:,end,ind) > 1e-6);
-        [rowS,colS] = find(options.gFilter(:,:,end,ind) > 1e-6);
+        [rowE,colE] = find(options.gFilter(:,:,end/4) > 1e-6);
+        [rowS,colS] = find(options.gFilter(:,:,end/4) > 1e-6);
         rowS = min(rowS);
         colS = min(colS);
         rowE = max(rowE);
@@ -89,9 +119,14 @@ if options.projector_type == 6
         options.gFilter = options.gFilter(rowS:rowE,colS:colE,:,:);
         options.gFilter = options.gFilter ./ sum(sum(options.gFilter));
     end
-    [~, options.blurPlanes] = max(Distances>0,[],2);
+
+    panelTilt = options.swivelAngles - options.angles + 180;
+    options.blurPlanes = (options.FOVa_x/2 - (options.radiusPerProj .* cosd(panelTilt) - options.CORtoDetectorSurface)) / options.dx; % PSF shift
+    options.blurPlanes2 = options.radiusPerProj .* sind(panelTilt) / options.dx; % Panel shift
+
     if options.implementation == 2
-        options.blurPlanes = uint32(options.blurPlanes - 1);
+        options.blurPlanes = int32(options.blurPlanes);
+        options.blurPlanes2 = int32(options.blurPlanes2);
     end
     if ~isfield(options,'angles') || numel(options.angles) == 0
         options.angles = (repelem(options.startAngle, options.nProjections / options.nHeads, 1) + repmat((0:options.angleIncrement:options.angleIncrement * (options.nProjections / options.nHeads - 1))', options.nHeads, 1) + options.offangle);

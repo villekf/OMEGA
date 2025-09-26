@@ -118,7 +118,8 @@ options.iR = 3.4;
 options.dSeptal = 0.12;
 % Crystal size (mm);
 % projector_type = 1 only!
-options.crXY = 4.664;
+options.dPitchX = 4.664;
+options.dPitchY = 4.664;
 
 % If you have the standard deviations for transaxial (XY) and axial (Z)
 % directions, you can input them here instead of the above values (the

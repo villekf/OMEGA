@@ -231,9 +231,6 @@ class ProjectorClass {
 			options += " -DPET";
 		else if (inputScalars.SPECT) {
 			options += " -DSPECT";
-			//options += (" -DN_RAYS=" + std::to_string(inputScalars.n_rays * inputScalars.n_rays3D));
-			//options += (" -DN_RAYS2D=" + std::to_string(inputScalars.n_rays));
-			//options += (" -DN_RAYS3D=" + std::to_string(inputScalars.n_rays3D));
 		}
 
 		options += (" -DNBINS=" + std::to_string(inputScalars.nBins));
@@ -243,7 +240,7 @@ class ProjectorClass {
 			options += " -DLISTMODE2";
 		if (inputScalars.listmode > 0 && inputScalars.indexBased)
 			options += " -DINDEXBASED";
-		if (siddonVal && ((inputScalars.n_rays * inputScalars.n_rays3D) > 1)) {
+		if ((siddonVal && ((inputScalars.n_rays * inputScalars.n_rays3D) > 1)) || inputScalars.SPECT) {
 			options += (" -DN_RAYS=" + std::to_string(inputScalars.n_rays * inputScalars.n_rays3D));
 			options += (" -DN_RAYS2D=" + std::to_string(inputScalars.n_rays));
 			options += (" -DN_RAYS3D=" + std::to_string(inputScalars.n_rays3D));
@@ -1269,9 +1266,9 @@ public:
 				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.SPECT) {
-				d_rayShiftsDetector = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * 2 * inputScalars.n_rays, NULL, &status);
+				d_rayShiftsDetector = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections, NULL, &status);
 				OCL_CHECK(status, "\n", -1);
-				d_rayShiftsSource = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * 2 * inputScalars.n_rays, NULL, &status);
+				d_rayShiftsSource = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections, NULL, &status);
 				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.eFOV) {
@@ -1515,11 +1512,11 @@ public:
 				memSize += (sizeof(uint8_t) * inputScalars.Nz[0]) / 1048576ULL;
 			}
 			if (inputScalars.SPECT) {
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_rayShiftsDetector, CL_FALSE, 0, sizeof(float) * 2 * inputScalars.n_rays, w_vec.rayShiftsDetector);
+				status = CLCommandQueue[0].enqueueWriteBuffer(d_rayShiftsDetector, CL_FALSE, 0, sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections, w_vec.rayShiftsDetector);
 				OCL_CHECK(status, "\n", -1);
 				memSize += (sizeof(float) * 2 * inputScalars.n_rays) / 1048576ULL;
 
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_rayShiftsSource, CL_FALSE, 0, sizeof(float) * 2 * inputScalars.n_rays, w_vec.rayShiftsSource);
+				status = CLCommandQueue[0].enqueueWriteBuffer(d_rayShiftsSource, CL_FALSE, 0, sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections, w_vec.rayShiftsSource);
 				OCL_CHECK(status, "\n", -1);
 				memSize += (sizeof(float) * 2 * inputScalars.n_rays) / 1048576ULL;
 			}
