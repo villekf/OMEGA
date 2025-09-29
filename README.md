@@ -83,40 +83,25 @@ The algorithms implemented so far include:
 
 ## Getting Started
 
-For detailed installation instructions, see https://omega-doc.readthedocs.io/en/latest/installation.html
+For detailed installation instructions, see https://omega-doc.readthedocs.io/en/latest/installation.html. For basic usage, see https://omega-doc.readthedocs.io/en/latest/usage.html
 
-Precompiled libraries are included in [releases](https://github.com/villekf/OMEGA/releases). However, in case those do not work you can also manually compile all the necessary files. When using MATLAB or GNU Octave, run `install_mex` first. For Python, you need run `compile.py` located in /path/to/OMEGA/source/Python.
+Precompiled libraries are included in [releases](https://github.com/villekf/OMEGA/releases). However, in case those do not work you can also manually compile all the necessary files. When using MATLAB or GNU Octave, run `install_mex` first. For Python, you need run `compile.py` located in `/path/to/OMEGA/source/Python`.
 
-For basic usage, see https://omega-doc.readthedocs.io/en/latest/usage.html
-
-Examples for MATLAB/GNU Octave are in main-files folder, while for Python in the aforementioned Python-folder.
+Examples for MATLAB/GNU Octave are located in `/path/to/OMEGA/main` and for Python in `/path/to/OMEGA/source/Python`.
 
 ## System Requirements
+OMEGA can be run from either MATLAB, GNU Octave or Python.
 
-MATLAB R2009a or later is mandatory. Following versions are guaranteed to work: 2022a and 2023b.
+The software has been tested with MATLAB versions 2022a, 2023b, 2024a and 2024b. For Octave, any version above 5.0 should be fine. io, statistics and image packages are required for some features. For Python 3.8 and above should work, though most likely earlier versions will work too.
 
-For Octave, any version above 5.0 should be fine. io, statistics and image packages are required for some features.
+A C++11 compiler is required when manually compiling. On Windows, [Visual Studio](https://visualstudio.microsoft.com/) 2019 or 2022 is recommended with "Desktop development with C++", no other options are required. On Linux, use the g++ compiler that comes with your distribution whenever possible. Note that MATLAB only supports certain compiler versions, so please check the [supported compilers table](https://www.mathworks.com/support/requirements/supported-compilers-linux.html). On MacOS, [Xcode](https://apps.apple.com/us/app/xcode/id497799835?mt=12) should be used.
 
-For Python 3.8 and above should work, though most likely earlier versions will work too.
+OpenCL functionality requires OpenCL libraries and an OpenCL 1.2 (or higher) compatible device. CUDA functionality requires CUDA libraries and a device with compute capability of 2.0 (or higher). ArrayFire libraries are recommended for MATLAB, and required for Python.
 
-C++11 compiler is required when manually compiling.
-
-For Windows Visual Studio 2022 or 2019 is recommended with "Desktop development with C++", no other options are required. https://visualstudio.microsoft.com/
-
-For Linux it is recommended to use g++ which usually comes bundled with the system. The version can matter only with MATLAB and it is recommended to use the one supported by your MATLAB version: https://www.mathworks.com/support/requirements/supported-compilers-linux.html
-
-On MacOS Xcode should be used https://apps.apple.com/us/app/xcode/id497799835?mt=12.
-
-OpenCL library is required for OpenCL functionality.
-
-ArrayFire is required for implementation 2 (required for Python!).
-
-For OpenCL, an OpenCL 1.2 compatible device is required. For CUDA, compute capability of 2.0 or higher is required.
-
-The following third-party MATLAB codes are NOT required, but can be useful in certain specialized cases as they can be optionally used:  
-https://www.mathworks.com/matlabcentral/fileexchange/27076-shuffle (Shuffle, used by random subset sampling)
-https://www.mathworks.com/matlabcentral/fileexchange/22940-vol3d-v2 (vol3d v2, used for 3D visualization)  
-https://www.mathworks.com/matlabcentral/fileexchange/8797-tools-for-nifti-and-analyze-image (Tools for NIfTI and ANALYZE image, to load/save Analyze files and also NIfTI files in absence of image processing toolbox).
+The following third-party MATLAB codes are NOT required, but can be useful in certain specialized cases as they can be optionally used:
+- [Shuffle](https://www.mathworks.com/matlabcentral/fileexchange/27076-shuffle), used for random subset sampling
+- [vol3d v2](https://www.mathworks.com/matlabcentral/fileexchange/22940-vol3d-v2), used for 3D visualization
+- [Tools for NIfTI and ANALYZE image](https://www.mathworks.com/matlabcentral/fileexchange/8797-tools-for-nifti-and-analyze-image) to load/save Analyze files and also NIfTI files in absence of image processing toolbox.
 
 ## Installation
 
@@ -229,7 +214,10 @@ The following features can be used as independent functions without any input ne
 
 Here is a list of features that should appear in future releases:
 
+- Test suite
 - Additional SPECT features
+    - Dynamic SPECT reconstruction
+    - Built-in support for more collimator geometries
 - Additional CT features
 - PET scatter correction based on SSS
 - Improved dual-layer PET support

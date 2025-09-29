@@ -282,7 +282,9 @@ def transferData(options):
     options.param.maskPrior = options.maskPrior.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
     options.param.TOFIndices = options.TOFIndices.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
     options.param.angles = options.angles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.blurPlanes = options.blurPlanes.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))
+    options.param.swivelAngles = options.swivelAngles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    options.param.blurPlanes = options.blurPlanes.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
+    options.param.blurPlanes2 = options.blurPlanes2.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
     options.param.gFilter = options.gFilter.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.gFSize = np.array(options.gFilter.shape, dtype=np.uint64)
     options.param.gFSize = options.gFSize.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
@@ -312,7 +314,6 @@ def transferData(options):
     options.param.trIndices = options.trIndex.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
     options.param.axIndices = options.axIndex.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
     #For SPECT...
-    options.param.crXY = ctypes.c_float(options.crXY)
     options.param.rayShiftsDetector = options.rayShiftsDetector.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.rayShiftsSource = options.rayShiftsSource.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.coneOfResponseStdCoeffA = ctypes.c_float(options.coneOfResponseStdCoeffA)
@@ -346,7 +347,6 @@ def reconstructions_main(options):
     from .prepass import prepassPhase
     from .prepass import parseInputs
     from .prepass import loadCorrections
-    # from .prepass import sinogramToX
     tic = time.perf_counter()
     options.addProjector()
     print('Preparing for reconstruction...')

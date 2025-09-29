@@ -332,6 +332,10 @@ inline __device__ float3 operator*(float3 a, float b) {
 	return make_float3(a.x * b, a.y * b, a.z * b);
 }
 
+inline __device__ float3 operator*(float b, float3 a) {
+	return make_float3(a.x * b, a.y * b, a.z * b);
+}
+
 inline __device__ void operator*=(float3& a, float3 b) {
 	a.x *= b.x;
 	a.y *= b.y;
@@ -454,15 +458,68 @@ DEVICE void getIndex(int3* i, const uint d_size_x, const uint d_sizey, const uin
 }
 #endif
 #ifdef USEIMAGES
-#define IMTYPE IMAGE3D
+    #define IMTYPE IMAGE3D
+    #ifdef MASKBP3D
+        #define MASKBPTYPE IMAGE3D
+    #else
+        #define MASKBPTYPE IMAGE2D
+    #endif
+    #ifdef MASKFP3D
+        #define MASKFPTYPE IMAGE3D
+    #else
+        #define MASKFPTYPE IMAGE2D
+    #endif
 #else
-#ifdef OPENCL
-#define IMTYPE const __global float* restrict
-#elif defined(CUDA)
-#define IMTYPE const float*
-#endif
+    #define IMTYPE const CLGLOBAL float* CLRESTRICT 
+    #define MASKBPTYPE const CLGLOBAL uchar* CLRESTRICT 
+    #define MASKFPTYPE const CLGLOBAL uchar* CLRESTRICT 
 #endif
 
+#if (defined(MASKBP) && !defined(PTYPE4)) // This is due to projector type 4 using sampler_MASK4 in BP mask (but only in forward projection)
+DEVICE int readMaskBP(MASKBPTYPE maskBP, typeT ind) {
+    return 
+    #ifdef USEIMAGES
+    #ifdef CUDA
+    #ifdef MASKBP3D
+        tex3D<unsigned char>(maskBP, ind.x, ind.y, ind.z);
+    #else
+        tex2D<unsigned char>(maskBP, ind.x, ind.y);
+    #endif
+    #else
+    #ifdef MASKBP3D
+        read_imageui(maskBP, sampler_MASK, (int4)(ind.x, ind.y, ind.z, 0)).w;
+    #else
+        read_imageui(maskBP, sampler_MASK, (int2)(ind.x, ind.y)).w;
+    #endif
+    #endif
+    #else
+        maskBP[ind];
+    #endif
+}
+#endif
+
+#if defined(MASKFP)
+DEVICE int readMaskFP(MASKFPTYPE maskFP, typeT ind) {
+    return
+#ifdef USEIMAGES
+#ifdef CUDA
+#ifdef MASKFP3D
+        tex3D<unsigned char>(maskFP, ind.x, ind.y, ind.z);
+#else
+        tex2D<unsigned char>(maskFP, ind.x, ind.y);
+#endif
+#else
+#ifdef MASKFP3D
+        read_imageui(maskFP, sampler_MASK, (int4)(ind.x, ind.y, ind.z, 0)).w;
+#else
+        read_imageui(maskFP, sampler_MASK, (int2)(ind.x, ind.y)).w;
+#endif
+#endif
+#else
+        maskFP[ind];
+#endif
+}
+#endif
 
 // This function was taken from: https://streamhpc.com/blog/2016-02-09/atomic-operations-for-floats-in-opencl-improved/
 // Computes the atomic_add for floats
@@ -801,35 +858,29 @@ DEVICE void getDetectorCoordinatesSPECT(
 #else
 	CONSTANT float* d_xyz, 
 #endif
-    CONSTANT float* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch, const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource, int lorXY) {
-	int id = i.z * 6;
+    CONSTANT float* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch, const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource, int lorXY, size_t idx) {
+	uint id = i.z * 6;
 	*s = CMFLOAT3(d_xyz[id], d_xyz[id + 1], d_xyz[id + 2]);
 	*d = CMFLOAT3(d_xyz[id + 3], d_xyz[id + 4], d_xyz[id + 5]);
-	const float2 indeksi = MFLOAT2(CFLOAT(i.x) - CFLOAT(d_size_x) / 2.f + .5f, CFLOAT(i.y) - CFLOAT(d_sizey) / 2.f + .5f);
-	id = i.z * NA;
+	const float2 shift_det_elem = MFLOAT2(
+        d_dPitch.x * (CFLOAT(i.x) + (1.f - CFLOAT(d_size_x)) * .5f),
+        d_dPitch.y * (CFLOAT(i.y) + (1.f - CFLOAT(d_sizey)) * .5f)
+    ); // Amount of shift from sinogram center to current detector element
+	
+    id = i.z * NA; // Index of d_uv (detector panel normal vector)
+    uint idShift = 2*lorXY + (2*N_RAYS) * idx; // Index of rayShiftsDetector
 
-	const float apuX = d_uv[id];
-	const float apuY = d_uv[id + 1];
-	(*d).x += indeksi.x * apuX;
-	(*d).y += indeksi.x * apuY;
-	(*d).z += indeksi.y * d_dPitch.y;
-	(*s).x += indeksi.x * apuX;
-	(*s).y += indeksi.x * apuY;
-	(*s).z += indeksi.y * d_dPitch.y;
-#if defined(N_RAYS)
-	if (N_RAYS2D > 1) {
-		int idr = lorXY * 2;
-		(*d).x += apuX * d_rayShiftsDetector[idr] / 2.f;
-		(*d).y += apuY * d_rayShiftsDetector[idr] / 2.f;
-		(*d).z += d_dPitch.y * d_rayShiftsDetector[idr+1] / 2.f;
-		(*s).x += apuX * d_rayShiftsSource[idr] / 2.f;
-		(*s).y += apuY * d_rayShiftsSource[idr] / 2.f;
-		(*s).z += d_dPitch.y * d_rayShiftsSource[idr+1] / 2.f;
-	}
-#endif
-	(*s).x += 100.f * ((*s).x - (*d).x);
-	(*s).y += 100.f * ((*s).y - (*d).y);
-	(*s).z += 100.f * ((*s).z - (*d).z);
+	const float apuX = d_uv[id]; // X component of detector panel normal vector
+	const float apuY = d_uv[id + 1]; // Y component of detector panel normal vector
+    
+	(*d).x += apuX * (shift_det_elem.x + d_rayShiftsDetector[idShift]); // Shift to current element + shift to rayShiftsDetector
+	(*d).y += apuY * (shift_det_elem.x + d_rayShiftsDetector[idShift]);
+	(*d).z += shift_det_elem.y + d_rayShiftsDetector[idShift+1];
+	(*s).x += apuX * (shift_det_elem.x + d_rayShiftsSource[idShift]);
+	(*s).y += apuY * (shift_det_elem.x + d_rayShiftsSource[idShift]);
+	(*s).z += shift_det_elem.y + d_rayShiftsSource[idShift+1];
+
+    *d += 100.f * (*d - *s); // Extend rays across FOV
 }
 #else
 #if defined(RAW) || defined(SENS)
@@ -944,20 +995,21 @@ DEVICE void getDetectorCoordinatesFullSinogram(const uint d_size_x, const int3 i
 #if defined(ATN) && !defined(CT)
 DEVICE void compute_attenuation(const float val, const typeT ind, IMTYPE d_atten, float* jelppi, const int ii) {
 	if (ii == 0) {
+        *jelppi += val * -
 #ifdef CUDA
 #ifdef USEIMAGES
-		*jelppi += (val * -tex3D<float>(d_atten, ind.x, ind.y, ind.z));
+		tex3D<float>(d_atten, ind.x, ind.y, ind.z);
 #else
-		*jelppi += (val * -d_atten[ind]);
+		d_atten[ind];
 #endif
 #else
 #if defined(PTYPE4)
-		*jelppi += (val * -read_imagef(d_atten, samplerForw, (float4)(ind.x, ind.y, ind.z, 0.f)).w);
+		read_imagef(d_atten, samplerForw, (float4)(ind.x, ind.y, ind.z, 0.f)).w;
 #else
 #ifdef USEIMAGES
-		*jelppi += (val * -read_imagef(d_atten, samplerSiddon, (int4)(ind.x, ind.y, ind.z, 0)).w);
+		read_imagef(d_atten, samplerSiddon, (int4)(ind.x, ind.y, ind.z, 0)).w;
 #else
-		*jelppi += (val * -d_atten[ind]);
+		d_atten[ind];
 #endif
 #endif
 #endif
@@ -1273,11 +1325,10 @@ DEVICE bool siddon_pre_loop_3D(const float3 b, const float3 diff, const float3 m
 
 #if defined(FP) && !defined(PROJ5)
 DEVICE void forwardProjectAF(CLGLOBAL float* output, float* ax, size_t idx, const float temp, const int kk) {
-
+    output[idx] += ax[kk]
 #ifndef CT
-	output[idx] += ax[kk] * temp;
-#else
-	output[idx] += ax[kk];
+	* temp
 #endif
+    ;
 }
 #endif

@@ -251,7 +251,7 @@ class ProjectorClass {
 			options.push_back("-DLISTMODE2");
 		if (inputScalars.listmode > 0 && inputScalars.indexBased)
 			options.push_back("-DINDEXBASED");
-		if (siddonVal && (inputScalars.n_rays * inputScalars.n_rays3D) > 1) {
+		if ((siddonVal && ((inputScalars.n_rays * inputScalars.n_rays3D) > 1)) || (inputScalars.SPECT)) {
 			std::snprintf(buffer2, 30, "-DN_RAYS=%d", static_cast<int32_t>(inputScalars.n_rays * inputScalars.n_rays3D));
 			options.push_back(buffer2);
 			std::snprintf(buffer3, 30, "-DN_RAYS2D=%d", static_cast<int32_t>(inputScalars.n_rays));
@@ -1359,6 +1359,7 @@ public:
 				arr3DDesc.Width = inputScalars.Ny[0];
 				arr3DDesc.Depth = inputScalars.Nz[0];
 				status = cuArray3DCreate(&maskArrayPrior, &arr3DDesc);
+                CUDA_CHECK(status, "\n", -1);
 				CUDA_MEMCPY3D cpy3d;
 				std::memset(&cpy3d, 0, sizeof(cpy3d));
 				cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
@@ -1371,8 +1372,8 @@ public:
 				cpy3d.Height = inputScalars.Nx[0];
 				cpy3d.Depth = inputScalars.maskBPZ;
 				status = cuMemcpy3D(&cpy3d);
-			}
-			else {
+                CUDA_CHECK(status, "\n", -1);
+			} else {
 				std::memset(&arr2DDesc, 0, sizeof(arr2DDesc));
 				arr2DDesc.Format = CUarray_format::CU_AD_FORMAT_UNSIGNED_INT8;
 				arr2DDesc.NumChannels = 1;
@@ -1649,8 +1650,8 @@ public:
 				memAlloc.zFull = true;
 			}
 			if (inputScalars.SPECT) {
-				status = cuMemAlloc(&d_rayShiftsDetector, sizeof(float) * 2 * inputScalars.n_rays);
-				status = cuMemAlloc(&d_rayShiftsSource, sizeof(float) * 2 * inputScalars.n_rays);
+				status = cuMemAlloc(&d_rayShiftsDetector, sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections);
+				status = cuMemAlloc(&d_rayShiftsSource, sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections);
 				CUDA_CHECK(status, "\n", -1);
 				memAlloc.rayShifts = true;
 			}
@@ -1814,9 +1815,9 @@ public:
 				CUDA_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.SPECT) {
-				status = cuMemcpyHtoD(d_rayShiftsDetector, w_vec.rayShiftsDetector, sizeof(float) * 2 * inputScalars.n_rays);
+				status = cuMemcpyHtoD(d_rayShiftsDetector, w_vec.rayShiftsDetector, sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections);
 				CUDA_CHECK(status, "\n", -1);
-				status = cuMemcpyHtoD(d_rayShiftsSource, w_vec.rayShiftsSource, sizeof(float) * 2 * inputScalars.n_rays);
+				status = cuMemcpyHtoD(d_rayShiftsSource, w_vec.rayShiftsSource, sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections);
 				CUDA_CHECK(status, "\n", -1);
 			}
 			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {

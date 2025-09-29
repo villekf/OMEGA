@@ -2,7 +2,7 @@
 /*******************************************************************************************************************************************
 * Special functions for the 3D orthogonal distance-based ray tracer and volume of intersection ray tracer.
 *
-* Copyright (C) 2020-2024 Ville-Veikko Wettenhovi
+* Copyright (C) 2020-2024 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
 * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by
 * the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
@@ -16,49 +16,46 @@
 #ifndef PTYPE4
 // Compute the orthogonal distance from the ray to the current voxel (center)
 // For orthogonal distance-based ray tracer, the distance is normalized
-DEVICE float compute_element_orth_3D(const float xs, const float ys, const float zs, const float xl, const float yl, const float zl, const float crystal_size_z, const float xp) {
-	const float x0 = xp - xs;
+// See for example https://math.stackexchange.com/questions/2353288/point-to-line-distance-in-3d-using-cross-product/2355960#2355960
+DEVICE float compute_element_orth_3D(
+    const float3 s, // Source position
+    const float3 l, // Precomputed cross product elements
+    const float3 diff, // Spans the ray
+    const float3 center, // Center of the voxel
+    const float orth_ray_length // Precomputed length |diff|, in PET scaled with tube width
+) {
+    // In this function the ray is defined as v0+t*v1, where v0 is the source end of the ray and v0+v1 is the detector end of the ray. Thus 0<=t<=1. The orthogonal distance d from the voxel center p to the ray is equal to d = |v1 x (v0-p)| / |v1|. The term |v1| is precomputed, and in PET reconstruction includes the crystal size.
 
-	// Cross product
+    // Precomputed:
+    //l.x = diff.x * (center.z - s.z) - diff.z  * (center.x - s.x);
+    //l.y = diff.y * (center.z - s.z);
+    //l.z = diff.y * (center.x - s.x);
+
 #ifdef USEMAD
-	const float y1 = FMAD(zl, x0, - xl);
-	const float z1 = FMAD(-yl, x0, ys);
+    const float x0 = FMAD(-1.f, s.y, center.y);
+	const float y1 = FMAD(diff.z, x0, - l.y);
+	const float z1 = FMAD(-diff.x, x0, l.z);
 #else
-	const float y1 = zl * x0 - xl;
-	const float z1 = -yl * x0 + ys;
+    const float x0 = center.y - s.y;
+	const float y1 = diff.z * x0 - l.y;
+	const float z1 = -diff.x * x0 + l.z;
 #endif
-	const float norm1 = length(CMFLOAT3(zs, y1, z1));
-#ifdef SPECT
-    const float norm2 = length(CMFLOAT3(x0, yl, zl));
-    const float d = norm1 / norm2;
-    return d;
-#else
-#ifdef VOL
-	return (norm1 / crystal_size_z);
-#else
-	return (1.f - (norm1 / crystal_size_z));
+	const float norm1 = length(CMFLOAT3(l.x, y1, z1));
+    return 
+#if !defined(VOL) && !defined(SPECT)
+    1.f - 
 #endif
-#endif
+    norm1 / orth_ray_length;
 }
 
 #ifdef SPECT
-DEVICE float compute_element_parallel_3D(const float v0x, const float v0y, const float v0z, const float v1x, const float v1y, const float v1z, const float px, const float py, const float pz) {
-    // In this function the ray is defined as v0+t*v1, where v0 is the source end of the ray and v1x for example is detectors.xd-detectors.xs
-#ifdef USEMAD
-    const float dot1 = FMAD(v1x, (px-v0x), FMAD(v1y, (py-v0y), FMAD(v1z, (pz-v0z), 0.f)));
-    const float dot2 = FMAD(v1x, v1x, FMAD(v1y, v1y, FMAD(v1z, v1z, 0.f)));
-    const float t = FMAD(-1.f, DIVIDE(dot1, dot2), 1.f);
-    const float rayLength = FMAD(t, length(CMFLOAT3(v1x, v1y, v1z)), 0.f);
-#else
-    const float dot1 = v1x*(px-v0x)+v1y*(py-v0y)+v1z*(pz-v0z); // v1 * (p-v0)
-    const float dot2 = v1x*v1x+v1y*v1y+v1z*v1z; // v1 * v1
-    const float t = 1.f - dot1 / dot2; // 1-t as SPECT collimator response is measured from the collimator-detector interface
-    const float rayLength = t * length(CMFLOAT3(v1x, v1y, v1z));
-#endif
-    return (rayLength);
+DEVICE float compute_element_parallel_3D(const float3 v0, const float3 v1, const float3 p, const float orth_ray_length_inv_signed) {
+    // In this function the ray is defined as v0+t*v1, where v0 is the source end of the ray and v0+v1 is the detector end of the ray. Thus 0<=t<=1. The parallel distance d is computed as the distance from the source to the projection of point p onto the ray. That is, d = v1*(p-v0) / (v1*v1) * |v1|
+    //return dot(v1, p - v0) * length(v1) / dot(v1, v1);
+    return dot(v1, p - v0) * orth_ray_length_inv_signed;
 }
 
-#define _2PI 0.3989423f
+#define _2PI 0.3989423f // 1/sqrt(2*pi)
 DEVICE float normPDF2(const float x, const float mu, const float sigma) {
 #ifdef USEMAD
     const float a = FMAD(-1.f, DIVIDE(mu, sigma), DIVIDE(x, sigma));
@@ -78,9 +75,11 @@ DEVICE LONG compute_ind_orth_3D(const uint tempi, const uint tempijk, const int 
 
 // This function computes either the forward or backward projection for the current voxel
 // The normalized orthogonal distance or the volume of the (spherical) voxel is computed before the forward or backward projections
-DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, const uint d_N3, const uint d_Nxy, const int zz, const float s2, const float l3, const float l1, const float l2,
-	const float diff1, const float diffZ, const float kerroin, const float center2, const float bmin, const float bmax, const float Vmax,
-	CONSTANT float* V, const bool XY, float* ax, const float temp, 
+DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, const uint d_N3, const uint d_Nxy, const int zz, 
+    const float3 s,
+    const float3 l,
+	const float3 diff, 
+    const float orth_ray_length, const float3 center, const float bmin, const float bmax, const float Vmax, CONSTANT float* V, const bool XY, float* ax, const float temp, 
 #if defined(FP)
 	IMTYPE d_OSEM
 #else
@@ -96,42 +95,51 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	, float jelppi
 #endif
 #if defined(MASKBP) && defined(BP)
-#ifdef USEIMAGES
-#ifdef MASKBP3D
-	, const int ii, IMAGE3D maskBP
-#else
-	, const int ii, IMAGE2D maskBP
-#endif
-#else
-, const int ii, const CLGLOBAL uchar* CLRESTRICT maskBP
-#endif
+    , const int ii, MASKBPTYPE maskBP
 #endif
 #ifdef SPECT
-    , const float coneOfResponseStdCoeffA, const float coneOfResponseStdCoeffB, const float coneOfResponseStdCoeffC, const float2 crXY, const float s1, const float sZ, const float diff2, const float center1, const float centerZ
+    , const float coneOfResponseStdCoeffA, const float coneOfResponseStdCoeffB, const float coneOfResponseStdCoeffC, const float orth_ray_length_inv_signed
+#endif
+#ifdef N_RAYS
+    , int lor
 #endif
 ) {
-#if (defined(FP) || (defined(MASKBP) && defined(BP))) && defined(USEIMAGES)
+#if (defined(FP) || (defined(MASKBP) && defined(BP))) && defined(USEIMAGES) ///////////////////// 2D/3D indices /////////////////////
 	int3 ind;
-		if (XY)
-			ind = CMINT3(tempi, uu, zz);
-		else
-			ind = CMINT3(uu, tempi, zz);
+    if (XY)
+        ind = CMINT3(tempi, uu, zz);
+    else
+        ind = CMINT3(uu, tempi, zz);
 #endif
-#ifdef SPECT
-    float d_parallel = compute_element_parallel_3D(s1, s2, sZ, diff1, diff2, diffZ, center1, center2, centerZ);
+#if defined(BP) || (defined(FP) && !defined(USEIMAGES))
+	LONG local_ind = 0;
+	local_ind = compute_ind_orth_3D(CUINT(tempi), uu * d_N3, (zz), d_N2, d_Nxy);
+#endif
+#if (defined(FP) && !defined(USEIMAGES))
+	const LONG ind = CLONG_rtz(local_ind);
+#endif
+#if (defined(BP) && defined(MASKBP)) && !defined(USEIMAGES)
+    const LONG ind = CLONG_rtz(local_ind
+#if !defined(MASKBP3D)
+    - zz * d_Nxy
+#endif
+    );
+#endif ///////////////////// END 2D/3D indices /////////////////////
+#ifdef SPECT ////////////////////////// SPECT ////////////////////
+    float d_parallel = compute_element_parallel_3D(s, diff, center, orth_ray_length_inv_signed);
     if (d_parallel < 0) { // Voxel behind detector
-        return true;
+        return false;
     }
-    float d_orth = compute_element_orth_3D(s2, l3, l1, l2, diff1, diffZ, kerroin, center2);
+    float d_orth = compute_element_orth_3D(s, l, diff, center, orth_ray_length);
 #ifdef USEMAD
     float CORstd = DIVIDE(SQRT(FMAD(1.f, POWR(FMAD(coneOfResponseStdCoeffA, d_parallel, coneOfResponseStdCoeffB), 2.f), POWR(coneOfResponseStdCoeffC, 2.f))), (2.f*SQRT(2.f*LOG(2.f))));
 #else
     float CORstd = sqrt(pow(coneOfResponseStdCoeffA*d_parallel+coneOfResponseStdCoeffB, 2.f)+pow(coneOfResponseStdCoeffC, 2.f)) / (2.f*sqrt(2.f*log(2.f)));
 #endif
     float local_ele = normPDF2(d_orth, 0.f, CORstd);
-#else
-	float local_ele = compute_element_orth_3D(s2, l3, l1, l2, diff1, diffZ, kerroin, center2);
-#endif
+#else ////////////////////// NOT SPECT ////////////////////
+	float local_ele = compute_element_orth_3D(s, l, diff, center, orth_ray_length);
+#endif //////////// END SPECT / NOT SPECT /////////////
 #ifdef VOL
 	if (local_ele > bmax) {
 		return true;
@@ -149,65 +157,37 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 		return true;
 	}
 #endif
+#if defined(BP) && defined(MASKBP) ///////////////////// APPLY BP MASK /////////////////////////
+    if ((ii == 0) && (readMaskBP(maskBP, ind) == 0)) {
+        return false;
+    }
+#endif ///////////////////// END BP MASK /////////////////////////
 #if defined(SPECT) && defined(ATN)
 	local_ele *= jelppi;
-#endif
-#ifdef BP
-#if defined(MASKBP)
-	if (ii == 0) {
-#ifdef USEIMAGES
-#ifdef CUDA
-#ifdef MASKBP3D
-		const int maskVal = tex3D<unsigned char>(maskBP, ind.x, ind.y, ind.z);
-#else
-		const int maskVal = tex2D<unsigned char>(maskBP, ind.x, ind.y);
-#endif
-#else
-#ifdef MASKBP3D
-		const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(ind.x, ind.y, ind.z, 0)).w;
-#else
-		const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(ind.x, ind.y)).w;
-#endif
-#endif
-#else
-#ifdef MASKBP3D
-		const int maskVal = maskBP[tempi * d_N2 + uu * d_N3 + zz * d_Nxy];
-#else
-		const int maskVal = maskBP[tempi * d_N2 + uu * d_N3];
-#endif
-#endif
-		if (maskVal == 0)
-			return false;
-	}
-#endif
-#endif
-#if defined(BP) || (defined(FP) && !defined(USEIMAGES))
-	LONG local_ind = 0;
-	local_ind = compute_ind_orth_3D(CUINT(tempi), uu * d_N3, (zz), d_N2, d_Nxy);
-#if defined(FP) && !defined(USEIMAGES)
-	const LONG ind = CLONG_rtz(local_ind);
-#endif
 #endif
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
 	denominator(ax, ind, local_ele, d_OSEM
 #ifdef TOF //////////////// TOF ////////////////
 				, element, TOFSum, DD, sigma_x, D, TOFWeights
 #ifdef LISTMODE
-				, TOFid
+        , TOFid
 #endif
 #endif //////////////// END TOF ////////////////
+#ifdef N_RAYS //////////////// MULTIRAY
+        , lor
+#endif //////////////// END MULTIRAY
 	);
-#endif
+#endif //////////////// END FORWARD PROJECTION ////////////////
 #if defined(BP) //////////////// BACKWARD PROJECTION ////////////////
 	rhs(local_ele * temp, ax, local_ind, d_output, no_norm, d_Summ
 #ifdef TOF
 				, element, sigma_x, D, DD, TOFSum, TOFWeights
 #ifdef LISTMODE
-				, TOFid
+        , TOFid
 #endif
 #endif
-				);
-#endif
+    );
+#endif //////////////// END BACKWARD PROJECTION ////////////////
 	return false;
 }
  
@@ -215,9 +195,12 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 // Both also proceed through each X or Y slice, depending on the incident direction
 // This function simply loops through each X or Y voxel and Z voxels in the current slice
 // Forward or backward projection is computed in the helper function
-DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2, const float diffZ, 
-	const float center1, const float b2, const float d2, const float bz, const float dz, const float temp, int temp2, const int tempk, 
-	const float s1, const float s2, const float sZ, const uint d_Nxy, const float kerroin,
+DEVICE int orthDistance3D(const int tempi, 
+    const float3 diff, // detectors.[x/y/z]d - detectors.[x/y/z]s
+    float3 center, // center of the current voxel
+    const float3 s, // detectors.[x/y/z]s
+    const float b2, const float d2, const float bz, const float dz, const float temp, int temp2, const int tempk, 
+	const uint d_Nxy, const float orth_ray_length,
 	const uint d_N1, const uint d_N2, const uint d_N3, const uint d_Nz, const float bmin, 
 	const float bmax, const float Vmax, CONSTANT float* V, const bool XY, float* ax, const bool preStep, int* k, const int ku, 
 #if defined(FP)
@@ -235,28 +218,24 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 	, float jelppi
 #endif
 #if defined(MASKBP) && defined(BP)
-#ifdef USEIMAGES
-#ifdef MASKBP3D
-	, const int ii, IMAGE3D maskBP
-#else
-	, const int ii, IMAGE2D maskBP
-#endif
-#else
-	, const int ii, const CLGLOBAL uchar* CLRESTRICT maskBP
-#endif
+	, const int ii, MASKBPTYPE maskBP
 #endif
 #ifdef SPECT
-    , const float coneOfResponseStdCoeffA, const float coneOfResponseStdCoeffB, const float coneOfResponseStdCoeffC, const float2 crXY
+    , const float coneOfResponseStdCoeffA, const float coneOfResponseStdCoeffB, const float coneOfResponseStdCoeffC, const float orth_ray_length_inv_signed
+#endif
+#ifdef N_RAYS
+    , int lor
 #endif
 ) {
 	int uu = 0;
 	bool breikki = false;
+    float3 l; // Precomputed cross product elements
 	// y0
-	const float v0 = center1 - s1;
+	const float v0 = center.x - s.x;
 	// xl * y0
-	const float l3 = diff1 * v0;
+    l.z = diff.y * v0;
 	// zl * y0
-	const float apu1 = diffZ * v0;
+	const float apu1 = diff.z * v0;
 	const int maksimiZ = CINT(d_Nz);
 	const int minimiZ = 0;
 	const int maksimiXY = CINT(d_N1);
@@ -269,20 +248,19 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 	int zz = tempk;
 #endif
 		// z0
-		const float centerZ = bz + CFLOAT(zz) * dz + dz / 2.f;
-		const float z0 = centerZ - sZ;
+		center.z = bz + CFLOAT(zz) * dz + dz / 2.f;
+		const float z0 = center.z - s.z;
 		// x1 = yl * z0 - zl * y0
-		const float l1 = diff2 * z0 - apu1;
+		l.x = diff.x * z0 - apu1;
 		// xl * z0
-		const float l2 = diff1 * z0;
+		l.y = diff.y * z0;
 #ifdef CRYSTXY
 		for (uu1 = temp2; uu1 < maksimiXY; uu1++) {
 #else
 		uu1 = temp2;
 #endif
-			const float center2 = b2 + CFLOAT(uu1) * d2 + d2 / 2.f;
-			breikki = orthogonalHelper3D(tempi, uu1, d_N2, d_N3, d_Nxy, zz, s2, l3, l1, l2, diff2, diffZ, kerroin, center2, bmin, bmax, Vmax, V, 
-				XY, ax, temp, 
+			center.y = b2 + CFLOAT(uu1) * d2 + d2 / 2.f;
+			breikki = orthogonalHelper3D(tempi, uu1, d_N2, d_N3, d_Nxy, zz, s, l, diff, orth_ray_length, center, bmin, bmax, Vmax, V, XY, ax, temp, 
 #if defined(FP)
 				d_OSEM
 #else
@@ -301,7 +279,10 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 				, ii, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY, s1, sZ, diff1, center1, centerZ
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
+#endif
+#ifdef N_RAYS
+                    , lor
 #endif
 			);
 #ifdef CRYSTXY
@@ -313,9 +294,8 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 #endif
 #ifdef CRYSTXY
 		for (uu2 = temp2 - 1; uu2 >= minimiXY; uu2--) {
-			const float center2 = b2 + CFLOAT(uu2) * d2 + d2 / 2.f;
-			breikki = orthogonalHelper3D(tempi, uu2, d_N2, d_N3, d_Nxy, zz, s2, l3, l1, l2, diff2, diffZ, kerroin, center2, bmin, bmax, Vmax, V, 
-				XY, ax, temp, 
+			center.y = b2 + CFLOAT(uu2) * d2 + d2 / 2.f;
+			breikki = orthogonalHelper3D(tempi, uu2, d_N2, d_N3, d_Nxy, zz, s, l, diff, orth_ray_length, center, bmin, bmax, Vmax, V, XY, ax, temp, 
 #if defined(FP)
 				d_OSEM
 #else
@@ -334,7 +314,10 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 				, ii, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY, s1, sZ, diff1, center1, centerZ
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
+#endif
+#ifdef N_RAYS
+                    , lor
 #endif
 			);
 			if (breikki) {
@@ -351,18 +334,17 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 	}
 	*k = zz - 1;
 	for (zz = tempk - 1; zz >= minimiZ; zz--) {
-		const float centerZ = bz + CFLOAT(zz) * dz + dz / 2.f;
-		const float z0 = centerZ - sZ;
-		const float l1 = diff2 * z0 - apu1;
-		const float l2 = diff1 * z0;
+		center.z = bz + CFLOAT(zz) * dz + dz / 2.f;
+		const float z0 = center.z - s.z;
+		l.x = diff.x * z0 - apu1;
+		l.y = diff.y * z0;
 #ifdef CRYSTXY
 		for (uu1 = temp2; uu1 < maksimiXY; uu1++) {
 #else
 		uu1 = temp2;
 #endif
-			const float center2 = b2 + CFLOAT(uu1) * d2 + d2 / 2.f;
-			breikki = orthogonalHelper3D(tempi, uu1, d_N2, d_N3, d_Nxy, zz, s2, l3, l1, l2, diff2, diffZ, kerroin, center2, bmin, bmax, Vmax, V, 
-				XY, ax, temp, 
+			center.y = b2 + CFLOAT(uu1) * d2 + d2 / 2.f;
+			breikki = orthogonalHelper3D(tempi, uu1, d_N2, d_N3, d_Nxy, zz, s, l, diff, orth_ray_length, center, bmin, bmax, Vmax, V, XY, ax, temp, 
 #if defined(FP)
 				d_OSEM
 #else
@@ -381,7 +363,10 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 				, ii, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY, s1, sZ, diff1, center1, centerZ
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
+#endif
+#ifdef N_RAYS
+                    , lor
 #endif
 			);
 #ifdef CRYSTXY
@@ -393,9 +378,8 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 #endif
 #ifdef CRYSTXY
 		for (uu2 = temp2 - 1; uu2 >= minimiXY; uu2--) {
-			const float center2 = b2 + CFLOAT(uu2) * d2 + d2 / 2.f;
-			breikki = orthogonalHelper3D(tempi, uu2, d_N2, d_N3, d_Nxy, zz, s2, l3, l1, l2, diff2, diffZ, kerroin, center2, bmin, bmax, Vmax, V, 
-				XY, ax, temp, 
+			center.y = b2 + CFLOAT(uu2) * d2 + d2 / 2.f;
+			breikki = orthogonalHelper3D(tempi, uu2, d_N2, d_N3, d_Nxy, zz, s, l, diff, orth_ray_length, center, bmin, bmax, Vmax, V, XY, ax, temp, 
 #if defined(FP)
 				d_OSEM
 #else
@@ -414,7 +398,10 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 				, ii, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY, s1, sZ, diff1, center1, centerZ
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
+#endif
+#ifdef N_RAYS
+                    , lor
 #endif
 			);
 			if (breikki) {

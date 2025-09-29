@@ -47,62 +47,68 @@ if options.compute_sensitivity_image
     [x, ~, z, ~] = get_coordinates(options);
     options.use_raw_data = false;
 end
+
+function output = backwardProjectionType6(options, input, koko)
+    fProj = reshape(input, options.nRowsD, options.nColsD, koko);
+    output = zeros(options.Nx(1) * options.Ny(1) * options.Nz(1), 1, options.cType);
+    voxelSize = options.FOVa_x / single(options.Nx(1));
+    u1 = options.ub;
+    for kk = 1 : koko
+        panelTilt = options.swivelAngles(u1) - options.angles(u1) + 180;
+        panelShift = options.radiusPerProj(u1) * sind(panelTilt) / voxelSize;
+        PSFshift = (options.FOVa_y/2 - (options.radiusPerProj(u1) * cosd(panelTilt) - options.CORtoDetectorSurface)) / voxelSize;
+
+        % Steps
+        % 1. smear FP into BP
+        % TODO: attenuation correction (rotate + translate + accumulate)
+        % 2. convolve with PSF
+        % 3. translate 
+        % 4. rotate
+
+        % 1. Smear the input FP across the image volume
+        kuvaRot = fProj(:, :, kk);
+        kuvaRot = permute(kuvaRot, [2 1 3]);
+        kuvaRot = repmat(kuvaRot, 1, 1, options.Nx(1));
+        kuvaRot = permute(kuvaRot, [3, 2, 1]);
+
+%        % 2. Attenuation correction
+%        if options.attenuation_correction
+%            attenuationImage = options.vaimennus;
+%            %volume3Dviewer(attenuationImage)
+%    
+%            attenuationImage = imrotate(attenuationImage, -options.swivelAngles(u1), 'bilinear','crop');
+%            attenuationImage = imtranslate(attenuationImage, [-panelShift, 0,0], FillValues=0);
+%            attenuationImage = cumsum(attenuationImage, 1);
+%            attenuationImage = exp(-options.dx * attenuationImage);
+%            %volume3Dviewer(kuvaRot)
+%            kuvaRot = kuvaRot .* attenuationImage;
+%        end
+
+        % 3. Convolve with detector PSF
+        PSF = imtranslate(options.gFilter, [0, 0, options.blurPlanes(u1)], FillValues=0);
+        PSF = PSF(:, :, 1:options.Nx(1));
+        PSF = permute(PSF, [3 2 1]);
+        for ii = 1 : options.Nx(1)
+            kuvaRot(ii, :, :) = conv2(squeeze(kuvaRot(ii, :, :)), squeeze(PSF(ii,:,:)), 'same');
+        end
+        
+        % 4. Translate the image
+        kuvaRot = imtranslate(kuvaRot, [0, -panelShift, 0]);
+        
+        % 5. Rotate the image
+        kuvaRot = imrotate(kuvaRot, options.swivelAngles(u1), 'bilinear','crop');
+
+        output = output + kuvaRot(:);
+        u1 = u1 + 1;
+    end
+end
+
 if options.implementation == 4
     if options.projector_type == 6
-        fProj = reshape(input, options.nRowsD, options.nColsD, koko);
-        apuBP2 = zeros(options.Nx(1) * options.Ny(1) * options.Nz(1), koko, options.cType);
-        u1 = options.ub;
-        for kk = 1 : koko
-            apuBP = zeros(options.Nx(1), options.Ny(1), options.Nz(1), options.cType);
-            kuvaRot = fProj(:, :, kk);
-            kuvaRot = permute(kuvaRot, [2, 1, 3]);
-            apu = kuvaRot;
-            uu = 1;
-            for ll = 1 : options.Ny
-                kuvaRot(:,:,uu) = conv2(apu, options.gFilter(:, :, ll, u1),'same');
-                uu = uu + 1;
-            end
-            kuvaRot = kuvaRot(:, :, options.blurPlanes(u1):end);
-            kuvaRot = permute(kuvaRot, [3, 2, 1]);
-            apuBP(options.blurPlanes(u1):end, :, :) = kuvaRot;
-            apuBP = imrotate(apuBP, 180+options.angles(u1), 'bilinear','crop');
-            if options.attenuation_correction
-                attenuationImage = options.vaimennus;
-                attenuationImage = imrotate(attenuationImage, 180+options.angles(u1), 'bilinear','crop');
-                attenuationImage = cumsum(attenuationImage, 1);
-                attenuationImage = exp(-options.crXY * attenuationImage);
-                apuBP = apuBP .* attenuationImage;
-            end
-            apuBP2(:, kk) = apuBP(:);
-            u1 = u1 + 1;
-        end
-        output = sum(apuBP2, 2);
+        output = backwardProjectionType6(options, input, koko);
         output(output < options.epps & output >= 0) = options.epps;
         if noSensIm == 0
-            apuBP2 = zeros(options.Nx(1) * options.Ny(1) * options.Nz(1), koko, options.cType);
-            u1 = options.ub;
-            for kk = 1 : koko
-                apuSumm = zeros(options.Nx(1), options.Ny(1), options.Nz(1), options.cType);
-                kuvaRot = ones(options.nColsD, options.nRowsD, options.Ny, options.cType);
-                apu = kuvaRot(:,:,1);
-                for ll = 1 : options.Ny
-                    kuvaRot(:,:,ll) = conv2(apu, options.gFilter(:, :, ll, u1),'same');
-                end
-                kuvaRot = kuvaRot(:, :, options.blurPlanes(u1):end);
-                kuvaRot = permute(kuvaRot, [3, 2, 1]);
-                apuSumm(options.blurPlanes(u1):end, :, :) = kuvaRot;
-                apuSumm = imrotate(apuSumm, 180+options.angles(u1), 'bilinear', 'crop');
-                if options.attenuation_correction
-                    attenuationImage = options.vaimennus;
-                    attenuationImage = imrotate(attenuationImage, 180+options.angles(u1), 'bilinear','crop');
-                    attenuationImage = cumsum(attenuationImage, 1);
-                    attenuationImage = exp(-options.crXY * attenuationImage);
-                    apuSumm = apuSumm .* attenuationImage;
-                end
-                apuBP2(:, kk) = apuSumm(:);
-                u1 = u1 + 1;
-            end
-            sensIm = sum(apuBP2, 2);
+            sensIm = backwardProjectionType6(options, ones(size(input)), koko);
             sensIm(sensIm < options.epps) = 1;
         else
             sensIm = 0;
@@ -296,4 +302,5 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
     end
 else
     error('Unsupported implementation! This is unintended behavior!')
+end
 end

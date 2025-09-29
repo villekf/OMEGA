@@ -1,92 +1,59 @@
 function options = loadProSpectaData(options)
-% LOADPROSPECTADATA Loads Siemens Pro.Specta data. CT support requires MATLAB Medical Imaging toolbox.
-    options = loadProjectionData(options);
-    if options.attenuation_correction
-        options = loadCTData(options);
-    end
+% LOADPROSPECTADATA Loads Siemens Pro.Specta data.
+    fprintf("Loading Pro.Specta projection data... ")
+    info = dicominfo(options.fpath);
 
-    function options = loadProjectionData(options)
-        fprintf("Loading Pro.Specta projection data... ")
-        % Header file location
-        info = dicominfo(options.fpath);
-        
-        % Load projection images
-        options.SinM = squeeze(dicomread(options.fpath));
+    %% FOV alignment
+    dz = info.PixelSpacing(1);
+    Nz = double(info.Rows);
+    sZ = info.DetectorInformationSequence.Item_1.ImagePositionPatient(3); % Z coordinate of the first sinogram pixel
+    cZ = sZ - 0.5*dz*(Nz-1); % Center of sinogram Z in world coordinates
 
-        options.SinM = permute(options.SinM, [2 1 3]);
+    tableHeight = info.RotationInformationSequence.Item_1.TableHeight;
+    %tableTraverse = info.RotationInformationSequence.Item_1.TableTraverse;
 
-        % options.SinM = options.SinM(:,64/4+1:128-64/4,:);
+    % SPECT world-limits along each axis
+    xLimits = options.FOVa_x * [-0.5, 0.5];
+    yLimits = options.FOVa_y * [-0.5, 0.5] - tableHeight;
+    zLimits = options.axial_fov * [-0.5, 0.5] + cZ;
 
-        % Number of rows in a projection image
-        options.nRowsD = size(options.SinM, 1);
+    % build the SPECT imref3d
+    options.refSPECT = imref3d([options.Nx, options.Ny, options.Nz], xLimits, yLimits, zLimits);
 
-        % Number of columns in a projection image
-        options.nColsD = size(options.SinM, 2);
+    %% Projection images
+    options.SinM = squeeze(dicomread(options.fpath));
+    options.SinM = rot90(options.SinM, 3);
 
-        % Total number of projections
-        options.nProjections = size(options.SinM,3);
+    % Number of rows in a projection image
+    options.nRowsD = size(options.SinM, 1);
 
-        % Number of detector heads
-        options.nHeads = 2;
+    % Number of columns in a projection image
+    options.nColsD = size(options.SinM, 2);
 
-        % Starting angles for both heads
-        startAngle1 = info.DetectorInformationSequence.Item_1.StartAngle;
-        startAngle2 = info.DetectorInformationSequence.Item_2.StartAngle;
+    % Total number of projections
+    options.nProjections = size(options.SinM,3);
 
-        % Increment value for the projection angles
-        angleIncrement = info.RotationInformationSequence.Item_1.AngularStep;
+    % Number of detector heads
+    options.nHeads = 2;
 
-        % Projection angles
-        options.angles = [(startAngle2 : angleIncrement : startAngle2 + angleIncrement * (options.nProjections / options.nHeads - 1))';(startAngle1 : angleIncrement : startAngle1 + angleIncrement * (options.nProjections / options.nHeads - 1))'];
+    %% Projection angles
+    % Starting angles for both heads
+    startAngle1 = info.DetectorInformationSequence.Item_1.StartAngle;
+    startAngle2 = info.DetectorInformationSequence.Item_2.StartAngle;
 
-        % Distances from the panel to the center of rotation
-        options.radiusPerProj = [info.DetectorInformationSequence.Item_1.RadialPosition;info.DetectorInformationSequence.Item_2.RadialPosition];
-        fprintf("Ready\n")
-    end
+    % Increment value for the projection angles
+    angleIncrement = info.RotationInformationSequence.Item_1.AngularStep;
 
-    function options = loadCTData(options)
-        fprintf("Loading Pro.Specta CT images... ")
+    % Additional offangle for CT
+    additionalOffAngleCT = -5;
 
-        m = dicominfo(options.fpath); % Load DICOM metadata
-        sinogramZmax = m.DetectorInformationSequence.Item_1.ImagePositionPatient(3); % Maximum Z value (mm) of detector panel (pixel centre)
+    % Actual angles
+    options.angles = -[(startAngle1 : angleIncrement : startAngle1 + angleIncrement * (options.nProjections / options.nHeads - 1))';(startAngle2 : angleIncrement : startAngle2 + angleIncrement * (options.nProjections / options.nHeads - 1))'] + additionalOffAngleCT;
 
-        % Load CT volume
-        CTvol = medicalVolume(options.fpathCT); 
+    %% Projection distances
+    % Distances from the panel to the center of rotation
+    options.radiusPerProj = [info.DetectorInformationSequence.Item_1.RadialPosition;info.DetectorInformationSequence.Item_2.RadialPosition];
 
-        % Calculate voxel sizes
-        voxelSizeX = options.FOVa_x / options.Nx;
-        voxelSizeY = options.FOVa_y / options.Ny;
-        voxelSizeZ = options.axial_fov / options.Nz;
-        
-        refpos =  [ % CT volume correct positioning
-            CTvol.VolumeGeometry.Position(1, 1),...
-            CTvol.VolumeGeometry.Position(1, 2),...
-            sinogramZmax
-        ];
-        refpos = repmat(refpos, options.Nz, 1);
-        refpos(:,3) = refpos(:,3) - (0:options.Nz-1)' * options.crXY;
-        %refpos = flipud(refpos);
-        %disp(refpos)
-        pixelSpacing = repmat([voxelSizeX, voxelSizeY], options.Nz, 1);
-        cosines = repmat([1 0 0; 0 1 0], 1, 1, options.Nz);
 
-        % Create ref object
-        R = medicalref3d([options.Nx, options.Ny, options.Nz], refpos, pixelSpacing, cosines);
-        R.PatientCoordinateSystem = "LPS+";
-
-        % Resample (fill with HU=-1000)
-        CTvol = resample(CTvol, R, Method='linear', FillValue=-1000);
-        CTvol = CTvol.Voxels;
-
-        % Assign to attenuation map variable
-        options.vaimennus = single(CTvol);
-
-        % Map to linear attenuation coefficients
-        options.vaimennus = options.vaimennus * options.HU.slope + options.HU.intercept;
-        
-        % Convert to single
-        options.vaimennus = single(options.vaimennus);
-        options.vaimennus(options.vaimennus < 0) = 0;
-        fprintf("Ready\n")
-    end
+    fprintf("Ready\n")
 end

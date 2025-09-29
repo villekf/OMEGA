@@ -4,12 +4,19 @@
 
 ### Breaking changes
 
-- SPECT behavior changed with projector type 1
+- SPECT data-handling behavior changed with ray-tracing projectors
   - This is now closer to CT-functionality, meaning that subsets are projection-based
   - Subset types 0, 8-11 are now supported instead of 0, 1, and 3
   - You'll need to switch the subset type to a supported one after updating
   - Should be more memory efficient than the previous version
-  
+
+- Changed size of `options.rayShiftsSource` and `options.rayShiftsDetector` 
+  - Should be of the size `(2*options.nRays, options.nRowsD, options.nColsD, options.nProjections)`
+  - Allows for individual ray shifts for each measurement
+
+- Modified SPECT variable names to agree with CT variable names
+  - Detector pixel size: `options.crXY` -> `options.dPitchX` and `options.dPitchY`
+
 - Most new features will be restricted to implementation 2 now and in the future (for Python this is the only one available)
   - All other implementations will only be partially supported from now on
   - This means that testing will be limited, but potential issues will be fixed
@@ -18,7 +25,14 @@
 
 - OMEGA can now be installed in Python through pip using `pip install omegatomo`
 
-- Added support for projector type 2 for SPECT
+- Added support for orthogonal distance ray-tracing projector with SPECT
+  - Voxels are weighed by a Gaussian distribution sampled at the orthogonal distance, the variance of which is determined by the parallel distance between detector and voxel centre
+
+- Projector type 1 now has built-in support for SPECT parallel-hole and pinhole collimators
+  - Variables for focal length: `options.colFxy` and `options.colFz`
+  - Both take the value Inf for parallel-hole collimators
+  - Both take the value 0 for pinhole collimators
+  - Tested with SIMIND v8.0 built-in examples
 
 - Added support for 3D masks
   - Forward and backward projection masks can now be either 2D or 3D
@@ -55,6 +69,7 @@
 - Added support for attenuation correction when using projector type 6 (rotation-based SPECT projector)
 
 - Projector type 6 now supports different FOV sizes
+  - Sinograms are resampled to match voxel size
 
 - Custom reconstructions are now supported with projector type 1 and 2 with SPECT data in Python
   - Functionality is the same as with PET, CT, or the SPECT rotation-based projector

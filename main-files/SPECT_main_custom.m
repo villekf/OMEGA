@@ -18,7 +18,8 @@ options.SPECT = true;
 options.cr_p = 9.525;
 
 %%% Crystal width (mm)
-options.crXY = 4.7952;
+options.dPitchX = 4.7952;
+options.dPitchY = 4.7952;
 
 %%% Scanner name
 % Used for naming purposes (measurement data)
@@ -40,9 +41,9 @@ options.Nz = 128; % Z-direction (number of axial slices)
 
 %%% FOV size [mm]
 % NOTE: Non-cubical voxels may not work
-options.FOVa_x = options.crXY*64; % [mm], x-axis of FOV (transaxial)
-options.FOVa_y = options.crXY*64; % [mm], y-axis of FOV (transaxial)
-options.axial_fov = options.crXY*64; % [mm], z-axis of FOV (axial)
+options.FOVa_x = options.dPitchX*64; % [mm], x-axis of FOV (transaxial)
+options.FOVa_y = options.dPitchX*64; % [mm], y-axis of FOV (transaxial)
+options.axial_fov = options.dPitchY*64; % [mm], z-axis of FOV (axial)
 
 %%% Flip the image?
 options.flipImageX = false;
@@ -78,7 +79,7 @@ options.angles = linspace(0, 90, 12)';
 options.swivelAngles = options.angles+180;
 
 % Distance between detector surface and FOV centre (origin)
-options.radiusPerProj = 48*options.crXY*ones(size(options.angles)); 
+options.radiusPerProj = 48*options.dPitchX*ones(size(options.angles)); 
 
 % Initial value for the forward projection example
 x0 = zeros(options.Nx, options.Ny, options.Nz);
@@ -150,8 +151,8 @@ options.iR = 3.8;
 % of each detector element. For 1 ray, the ray perpendicular to the
 % detector element.
 options.nRays = 1; % Number of rays traced per detector element
-% options.rayShiftsDetector = options.colR*(2*rand(2*options.nRays, 1, 'single')-1)/options.crXY; % The relative shifts (dx1, dy1, dx2, dy2, ...) at the collimator-detector interface
-% options.rayShiftsSource = options.colR*(2*rand(2*options.nRays, 1, 'single')-1)/options.crXY; % The relative shifts (dx1, dy1, dx2, dy2, ...) at the other end of the collimator
+% options.rayShiftsDetector = options.colR*(2*rand(2*options.nRays, 1, 'single')-1)/options.dPitchX; % The relative shifts (dx1, dy1, dx2, dy2, ...) at the collimator-detector interface
+% options.rayShiftsSource = options.colR*(2*rand(2*options.nRays, 1, 'single')-1)/options.dPitchY; % The relative shifts (dx1, dy1, dx2, dy2, ...) at the other end of the collimator
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

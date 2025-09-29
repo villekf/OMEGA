@@ -452,8 +452,10 @@ struct inputStruct {
     uint8_t* TOFIndices;
     // Angles for SPECT or CT
     float* angles;
-    // Blur planes for rotation-based projector in SPECT
-    uint32_t* blurPlanes;
+    float* swivelAngles; // Only for SPECT rotation-based projector
+    // PSF shifts and lateral FOV shifts for SPECT projector
+    int32_t* blurPlanes;
+    int32_t* blurPlanes2;
     // Blurring kernel for the rotation-based projector
     float* gFilter;
     uint64_t* gFSize;
@@ -496,7 +498,6 @@ struct inputStruct {
     uint16_t* trIndices;
     uint16_t* axIndices;
     // SPECT values
-    float crXY;
     float* rayShiftsDetector;
     float* rayShiftsSource;
     float coneOfResponseStdCoeffA;
@@ -912,8 +913,8 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.dPitchY = options.dPitchY;
     } else if (inputScalars.SPECT) {
         w_vec.nProjections = options.nProjections;
-		w_vec.dPitchX = options.crXY;
-		w_vec.dPitchY = options.crXY;
+		w_vec.dPitchX = options.dPitchX;
+		w_vec.dPitchY = options.dPitchY;
 		if (inputScalars.projector_type == 1 || inputScalars.projector_type == 2 || inputScalars.projector_type == 22 || inputScalars.projector_type == 11) {
 			w_vec.rayShiftsDetector = options.rayShiftsDetector;
 			w_vec.rayShiftsSource = options.rayShiftsSource;
@@ -936,13 +937,14 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
             mexEval();
         }
         w_vec.angles = options.angles;
-        w_vec.gFilter = af::array(ind[0], ind[1], ind[2], ind[3], options.gFilter);
+        w_vec.swivelAngles = options.swivelAngles;
+        w_vec.gFilter = af::array(ind[0], ind[1], ind[2], options.gFilter);
         w_vec.distInt = options.blurPlanes;
+        w_vec.distInt2 = options.blurPlanes2;
         if (DEBUG) {
             mexPrintBase("w_vec.gFilter.dims(0) = %d\n", w_vec.gFilter.dims(0));
             mexPrintBase("w_vec.gFilter.dims(1) = %d\n", w_vec.gFilter.dims(1));
             mexPrintBase("w_vec.gFilter.dims(2) = %d\n", w_vec.gFilter.dims(2));
-            mexPrintBase("w_vec.gFilter.dims(3) = %d\n", w_vec.gFilter.dims(3));
             mexPrintBase("w_vec.distInt[0] = %d\n", w_vec.distInt[0]);
             mexEval();
         }

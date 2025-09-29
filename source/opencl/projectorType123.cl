@@ -119,31 +119,14 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	const CLGLOBAL float* CLRESTRICT d_atten,
 #endif
 	///////////////////////// END PET ATTENUATION CORRECTION /////////////////////////
-	///////////////////////// FORWARD PROJECTION MASK /////////////////////////
-#ifdef USEIMAGES
+	///////////////////////// FORWARD/BACKWARD PROJECTION MASK /////////////////////////
 #ifdef MASKFP
-#ifdef MASKFP3D
-    IMAGE3D maskFP,
-#else
-    IMAGE2D maskFP,
+    MASKFPTYPE maskFP,
 #endif
+#if defined(MASKBP) && defined(BP) && !defined(FP)
+    MASKBPTYPE maskBP,
 #endif
-#if defined(MASKBP) && ((defined(BP) && !defined(FP)) || defined(SENS))
-#ifdef MASKBP3D
-    IMAGE3D maskBP,
-#else
-    IMAGE2D maskBP,
-#endif
-#endif
-#else
-#ifdef MASKFP
-	const CLGLOBAL uchar* CLRESTRICT maskFP,
-#endif
-#if defined(MASKBP) && ((defined(BP) && !defined(FP)) || defined(SENS))
-    const CLGLOBAL uchar* CLRESTRICT maskBP,
-#endif
-#endif
-	///////////////////////// END FORWARD PROJECTION MASK /////////////////////////
+	///////////////////////// END FORWARD/BACKWARD PROJECTION MASK /////////////////////////
 	///////////////////////// FULL PROJECTIONS/SINOGRAMS /////////////////////////
 #if (defined(CT) || defined(SPECT) || defined(PET)) && !defined(LISTMODE)
 	const LONG d_nProjections,
@@ -198,12 +181,8 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 	///////////////////////// END RAW PET DATA /////////////////////////
 	///////////////////////// FORWARD OR BACKWARD PROJECTIONS /////////////////////////
-#if defined(FP) //&& defined(USEIMAGES)
-#ifdef USEIMAGES
-	IMAGE3D d_OSEM, 
-#else
-	const CLGLOBAL float* CLRESTRICT d_OSEM, 
-#endif
+#if defined(FP)
+    IMTYPE d_OSEM,
 #else
 	const CLGLOBAL float* CLRESTRICT d_OSEM, 
 #endif
@@ -260,31 +239,18 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	const float3 b = make_float3(bx, by, bz);
 	const float3 d_bmax = make_float3(d_bmaxx, d_bmaxy, d_bmaxz);
 #endif
-#ifdef MASKFP // Mask image
-#ifdef USEIMAGES
-#ifdef CUDA
+#ifdef MASKFP // FP mask
+    const typeT maskInd = i
+#ifndef USEIMAGES
+    .x + i.y * d_size_x
 #ifdef MASKFP3D
-	const int maskVal = tex3D<unsigned char>(maskFP, i.x, i.y, i.z);
-#else
-	const int maskVal = tex2D<unsigned char>(maskFP, i.x, i.y);
-#endif
-#else
-#ifdef MASKFP3D
-	const int maskVal = read_imageui(maskFP, sampler_MASK, (int4)(i.x, i.y, i.z, 0)).w;
-#else
-	const int maskVal = read_imageui(maskFP, sampler_MASK, (int2)(i.x, i.y)).w;
+     + i.z * d_size_x * d_sizey
 #endif
 #endif
-#else
-#ifdef MASKFP3D
-	const int maskVal = maskFP[i.x + i.y * d_size_x + i.z * d_size_x * d_sizey];
-#else
-	const int maskVal = maskFP[i.x + i.y * d_size_x];
-#endif
-#endif
-	if (maskVal == 0)
+    ;
+	if (readMaskFP(maskFP, maskInd) == 0)
 		return;
-#endif
+#endif // End FP mask
 #if defined(LISTMODE) && defined(TOF)
 	const int TOFid = TOFIndex[idx];
 #endif
@@ -337,6 +303,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #ifdef ORTH // Orthogonal or volume-based
 	float b1, b2, d1, d2;
 	float _bz = b.z, dz = d_d.z;
+    float3 center; // Center of current voxel
 #endif
 
 #if defined(N_RAYS) //////////////// MULTIRAY ////////////////
@@ -360,7 +327,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(CT) && !defined(LISTMODE) && !defined(PET) // CT data
 	getDetectorCoordinatesCT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize);
 #elif defined(SPECT) && !defined(LISTMODE) && !defined(PET) // SPECT data
-	getDetectorCoordinatesSPECT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize, d_rayShiftsDetector, d_rayShiftsSource, lorXY);
+	getDetectorCoordinatesSPECT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize, d_rayShiftsDetector, d_rayShiftsSource, lorXY, idx);
 #elif defined(LISTMODE) && !defined(SENS) // Listmode data
 #if defined(INDEXBASED)
 	getDetectorCoordinatesListmode(d_xy, d_z, trIndex, axIndex, &s, &d, idx
@@ -438,15 +405,20 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #ifdef ORTH //////////////// ORTHOGONAL OR VOLUME-BASED RAY TRACER ////////////////
 	int tempk_b = 0;
 	bool XY = false;
-	float kerroin = 0.f;
+	float orth_ray_length = 0.f;
+#if defined(SPECT)
+    orth_ray_length = L;
+    float orth_ray_length_inv_signed = L / dot(diff, diff);
+#else
 #if !defined(VOL) // Orthogonal
-	kerroin = L * orthWidth;
+	orth_ray_length = L * orthWidth;
 #elif defined(VOL) // Volume-based
-	kerroin = L;
+	orth_ray_length = L;
 #if defined(TOTLENGTH)
 	float TotV = L * M_1_PI_F * orthWidth * orthWidth;
 #else
 	float TotV = M_1_PI_F * orthWidth * orthWidth;
+#endif
 #endif
 #endif
 #endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
@@ -639,8 +611,13 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				const float TOFSum = TOFLoop(DD, d_in, TOFCenter, sigma_x, &D, d_epps, TOFWeights);
 #endif //////////////// END TOF ////////////////
 #ifdef ORTH //////////////// ORTH/VOL ////////////////
-				const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
-				orthDistance3D(ii, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, indO, localInd.z, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N3, d_N2, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
+				//const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
+                center.x = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
+				orthDistance3D(ii, 
+                    diff, //diff.y, diff.x, diff.z, 
+                    center, //xcenter, 
+                    s, // s.x, s.y, s.z, 
+                    b2, d2, _bz, dz, temp, indO, localInd.z, d_Nxy, orth_ray_length, d_N1, d_N3, d_N2, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
 #if defined(FP)
 					d_OSEM
 #else
@@ -659,7 +636,10 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				, aa, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
+#endif
+#ifdef N_RAYS
+                    , lor
 #endif
 				);
 #else //////////////// SIDDON ////////////////
@@ -684,27 +664,15 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(MASKBP) //////////////// MASKBP ////////////////
 				int maskVal = 1;
 				if (aa == 0) {
-#ifdef USEIMAGES
-#ifdef CUDA
+                    const typeT maskInd = localInd
+#ifndef USEIMAGES
+                        .x + localInd.y * d_Nxyz.x
 #ifdef MASKBP3D
-					maskVal = tex3D<unsigned char>(maskBP, localInd.x, localInd.y, localInd.z);
-#else
-					maskVal = tex2D<unsigned char>(maskBP, localInd.x, localInd.y);
-#endif
-#else
-#ifdef MASKBP3D
-					maskVal = read_imageui(maskBP, sampler_MASK, (int4)(localInd.x, localInd.y,  localInd.z, 0)).w;
-#else
-					maskVal = read_imageui(maskBP, sampler_MASK, (int2)(localInd.x, localInd.y)).w;
+                        + localInd.z * d_Nxyz.x * d_Nxyz.y
 #endif
 #endif
-#else
-#ifdef MASKBP3D
-					maskVal = maskBP[localInd.x + localInd.y * d_Nxyz.x + localInd.z * d_Nxyz.x * d_Nxyz.y];
-#else
-					maskVal = maskBP[localInd.x + localInd.y * d_Nxyz.x];
-#endif
-#endif
+                    ;
+                    maskVal = readMaskBP(maskBP, maskInd);
 				}
 				if (maskVal > 0)
 #endif //////////////// END MASKBP ////////////////
@@ -1169,8 +1137,13 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				tempk_b = tempk_a;
                 if (ux >= 0) {
                     for (int kk = tempi_a - 1; kk >= 0; kk--) {
-						const float xcenter = b1 + d1 * CFLOAT(kk) + d1 / 2.f;
-                        int uu = orthDistance3D(kk, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, tempj_a, tempk_b, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, true, &tempk_b, uz, 
+						//const float xcenter = b1 + d1 * CFLOAT(kk) + d1 / 2.f;
+                        center.x = b1 + d1 * CFLOAT(kk) + d1 / 2.f;
+                        int uu = orthDistance3D(kk, 
+                            diff, //diff.y, diff.x, diff.z, 
+                            center, //xcenter, 
+                            s, // s.x, s.y, s.z,
+                            b2, d2, _bz, dz, temp, tempj_a, tempk_b, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, true, &tempk_b, uz, 
 #if defined(FP) //////////////// FP ////////////////
                             d_OSEM
 #else //////////////// BP ////////////////
@@ -1189,7 +1162,10 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 						, aa, maskBP
 #endif //////////////// END MASKBP ////////////////
 #ifdef SPECT
-                        , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
+                        , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
+#endif
+#ifdef N_RAYS
+                        , lor
 #endif
                         );
                         if (uu == 0)
@@ -1198,8 +1174,13 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
                 }
                 else {
                     for (int kk = tempi_a + 1; kk < d_NN.x; kk++) {
-						const float xcenter = b1 + d1 * CFLOAT(kk) + d1 / 2.f;
-                        int uu = orthDistance3D(kk, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, tempj_a, tempk_b, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, true, &tempk_b, uz, 
+						//const float xcenter = b1 + d1 * CFLOAT(kk) + d1 / 2.f;
+                        center.x = b1 + d1 * CFLOAT(kk) + d1 / 2.f;
+                        int uu = orthDistance3D(kk, 
+                            diff, //diff.y, diff.x, diff.z, 
+                            center, //xcenter, 
+                            s, // s.x, s.y, s.z,
+                            b2, d2, _bz, dz, temp, tempj_a, tempk_b, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, true, &tempk_b, uz, 
 #if defined(FP) //////////////// FP ////////////////
                             d_OSEM
 #else //////////////// BP ////////////////
@@ -1218,7 +1199,10 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 						, aa, maskBP
 #endif //////////////// END MASKBP ////////////////
 #ifdef SPECT
-                        , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
+                        , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
+#endif
+#ifdef N_RAYS
+                    , lor
 #endif
                         );
                         if (uu == 0)
@@ -1227,8 +1211,13 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
                 }
             }
 			if (tz0_a >= tx0_a && ty0_a >= tx0_a) {
-				const float xcenter = b1 + d1 * CFLOAT(localInd.x) + d1 / 2.f;
-				orthDistance3D(localInd.x, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, localInd.y, localInd.z, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
+				//const float xcenter = b1 + d1 * CFLOAT(localInd.x) + d1 / 2.f;
+                center.x = b1 + d1 * CFLOAT(localInd.x) + d1 / 2.f;
+				orthDistance3D(localInd.x, 
+                    diff, //diff.y, diff.x, diff.z, 
+                    center, //xcenter, 
+                    s, // s.x, s.y, s.z,
+                    b2, d2, _bz, dz, temp, localInd.y, localInd.z, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
 #if defined(FP) //////////////// FP ////////////////
 					d_OSEM
 #else //////////////// BP ////////////////
@@ -1247,7 +1236,10 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				, aa, maskBP
 #endif //////////////// END MASKBP ////////////////
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
+#endif
+#ifdef N_RAYS
+                    , lor
 #endif
 				);
 #ifdef ORTH
@@ -1276,27 +1268,15 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(MASKBP) //////////////// MASKBP ////////////////
 			int maskVal = 1;
 			if (aa == 0) {
-#ifdef USEIMAGES
-#ifdef CUDA
+                const typeT maskInd = localInd
+#ifndef USEIMAGES
+                    .x * d_N2 + localInd.y * d_N3
 #ifdef MASKBP3D
-				maskVal = tex3D<unsigned char>(maskBP, localInd.x, localInd.y, localInd.z);
-#else
-				maskVal = tex2D<unsigned char>(maskBP, localInd.x, localInd.y);
-#endif
-#else
-#ifdef MASKBP3D
-				maskVal = read_imageui(maskBP, sampler_MASK, (int4)(localInd.x, localInd.y,  localInd.z, 0)).w;
-#else
-				maskVal = read_imageui(maskBP, sampler_MASK, (int2)(localInd.x, localInd.y)).w;
+                    + localInd.z * d_Nxyz.x * d_Nxyz.y
 #endif
 #endif
-#else
-#ifdef MASKBP3D
-				maskVal = maskBP[localInd.x * d_N2 + localInd.y * d_N3 + localInd.z * d_Nxyz.x * d_Nxyz.y];
-#else
-				maskVal = maskBP[localInd.x * d_N2 + localInd.y * d_N3];
-#endif
-#endif
+                ;
+                maskVal = readMaskBP(maskBP, maskInd);
 			}
 			if (maskVal > 0)
 #endif //////////////// END MASKBP ////////////////
@@ -1355,8 +1335,13 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			if (tempiOld != tempi_a)
 				tempi_a++;
 			for (int ii = tempi_a - 1; ii >= 0; ii--) {
-				const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
-				int uu = orthDistance3D(ii, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, tempj_a, tempk_a, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
+				//const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
+                center.x = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
+				int uu = orthDistance3D(ii, 
+                    diff, //diff.y, diff.x, diff.z, 
+                    center, //xcenter, 
+                    s, // s.x, s.y, s.z,
+                    b2, d2, _bz, dz, temp, tempj_a, tempk_a, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
 #if defined(FP)
 					d_OSEM
 #else
@@ -1375,7 +1360,10 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				, aa, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
+#endif
+#ifdef N_RAYS
+                    , lor
 #endif
 				);
 				if (uu == 0)
@@ -1386,8 +1374,13 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			if (tempiOld != tempi_a)
 				tempi_a--;
 			for (int ii = tempi_a + 1; ii < d_NN.x; ii++) {
-				const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
-				int uu = orthDistance3D(ii, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, tempj_a, tempk_a, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
+				//const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
+                center.x = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
+				int uu = orthDistance3D(ii, 
+                    diff, //diff.y, diff.x, diff.z, 
+                    center, //xcenter, 
+                    s, // s.x, s.y, s.z,
+                    b2, d2, _bz, dz, temp, tempj_a, tempk_a, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
 #if defined(FP)
 					d_OSEM
 #else
@@ -1406,7 +1399,10 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				, aa, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
+#endif
+#ifdef N_RAYS
+                    , lor
 #endif
 				);
 				if (uu == 0)
