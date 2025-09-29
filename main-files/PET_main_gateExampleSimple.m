@@ -2,7 +2,7 @@
 % Note that this file does not contain all adjustable parameters. These
 % omitted parameters will thus use default values. For the list of all
 % adjustable parameters see main_PET_full.m file.
-% You can use https://doi.org/10.5281/zenodo.12743218 as example data
+% You can use https://doi.org/10.5281/zenodo.12743217 as example data
 
 clear
 
@@ -59,6 +59,13 @@ options.axial_fov = floor(76.8 - options.cr_pz/10);
 
 %%% Number of pseudo rings between physical rings (use 0 or [] if none)
 options.pseudot = [];
+
+%%% Ring gaps (mm)
+% Each ring is assumed to contain options.cryst_per_block_axial crystals
+% Input the gap between each of these rings here, for every gap
+% If there are no gaps, leave this empty or zero
+% If the gap values are the same, you need to repeat the value for each gap
+options.ringGaps = [];
 
 %%% Number of detectors per crystal ring (without pseudo detectors)
 options.det_per_ring = options.blocks_per_ring * options.cryst_per_block * options.transaxial_multip;
@@ -184,11 +191,12 @@ options.Nz = options.rings*2-1;
 options.flip_image = false;
 
 %%% How much is the image rotated?
-% You need to run the precompute phase again if you modify this
 % NOTE: The rotation is done in the detector space (before reconstruction).
 % This current setting is for systems whose detector blocks start from the
 % right hand side when viewing the device from front.
 % Positive values perform the rotation in clockwise direction
+% The units are crystals, i.e. if the value is 1, the rotation is done by
+% rotating the coordinates equaling to one crystal pitch
 options.offangle = options.det_w_pseudo * (3/4);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -217,11 +225,13 @@ options.ring_difference = options.rings - 1;
 % You should primarily use the same number as the device uses.
 % However, if that information is not available you can use ndist_max
 % function to determine potential values (see help ndist_max for usage).
+% This is the ROW dimension, i.e. the number of rows in the sinogram
 options.Ndist = 200;
 
 %%% Number of angles (tangential positions) in sinogram
 % This is the final amount after possible mashing, maximum allowed is the
 % number of detectors per ring/2.
+% This is the COLUMN dimension, i.e. the number of columns in the sinogram
 options.Nang = options.det_per_ring/2;
 
 %%% Specify the amount of sinograms contained on each segment
@@ -266,17 +276,22 @@ options.ndist_side = 1;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%% Randoms correction %%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% If set to true, stores the delayed coincidences during data load and
-% later corrects for randoms during the data formation/load or during
-% reconstruction. Delayes need to be stored in GATE data for this to work.
+% If set to true, performs randoms correction during reconstruction or 
+% performs precorrection, depending on the selections below
+% If you are loading GATE data or Inveon/Biograph data, the delayed 
+% coincidences will also be stored during the data load (if this is false,
+% they will NOT be stored). If you are using your own data, the randoms
+% data can be input either manually into options.SinDelayed or input when
+% prompted (has to be stored in a mat-file beforehand!)
 options.randoms_correction = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% Attenuation correction %%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Image-based attenuation correction
 % Include attenuation correction from images (e.g. CT-images) (for this you
 % need attenuation images of each slice correctly rotated and scaled for
 % 511 keV) or from attenuation sinograms. Note that all the attenuation
 % data has to be correctly scaled before reconstruction.
+% You can either use the path below to input the data or manually input
+% the attenuation data into options.vaimennus
 options.attenuation_correction = true;
 
 %%% Rotate the attenuation image before correction
@@ -290,12 +305,18 @@ options.rotateAttImage = 1;
 % NOTE: the attenuation data must be the only variable in the file and
 % have the dimensions of the final reconstructed image.
 % If no file is specified here, the user will be prompted to select one
+% if options.vaimennus is empty (or does not exist)
+% Alternatively, input the attenuation data into options.vaimennus
+% NOTE: For GATE data, the MuMap actor output can be used here
 options.attenuation_datafile = '/path/to/cylpet_example_atn1-MuMap.mhd';
 
 %%%%%%%%%%%%%%%%%%%%%%%% Normalization correction %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Compute the normalization coefficients
 % If set to true, then the normalization coefficients are computed after
 % the measurement data has been loaded.
+% You can use this to compute normalization coefficients for the selected
+% scanner, assuming that the input data is measurement data fit for
+% normalization correction.
 options.compute_normalization = false;
 
 % This applies only if the above compute_normalization is set to true.
@@ -342,8 +363,8 @@ options.normalization_correction = true;
 
 %%% Use user-made normalization
 % Use either a .mat or .nrm file containing the normalization coefficients
-% for normalization correction if normalization_correction is also set to
-% true.
+% for normalization correction, or input the normalization data into 
+% options.normalization if normalization_correction is also set to true
 % User will be prompted for the location of the file either during sinogram
 % formation or before image reconstruction (see below).
 % NOTE: If you have previously computed normalization coefficients with
@@ -361,6 +382,9 @@ options.use_user_normalization = false;
 % normalization correction is applied.
 % NOTE: Attenuation correction is always performed during reconstruction
 % regardless of the choice here.
+% If you have manually precorrected the data, do not put those corrections
+% to true that have already been applied! Otherwise, the data will be 
+% precorrected twice. This obviously only applies when this is set to false
 options.corrections_during_reconstruction = true;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -385,6 +409,7 @@ options.corrections_during_reconstruction = true;
 options.name = 'cylpet_example_new';
 
 %%% Folder for the data (.dat ASCII, .root ROOT, listmode data) files
+% This applies to GATE/Inveon data only!
 % If no files are located in the path provided below, then the current
 % folder is also checked. Alternatively the user can input a single file
 % here, e.g. a single listmode file. If omitted, the user will be prompted
@@ -417,13 +442,12 @@ end
 %%% Reconstruction implementation used
 % 1 = Reconstructions in MATLAB (projector in a MEX-file), uses matrices.
 % (Slow and memory intensive)
-% 2 = Matrix-free reconstruction with OpenCL/ArrayFire (Recommended)
-% (Requires ArrayFire. Compiles with MinGW ONLY when ArrayFire was compiled
-% with MinGW as well (cannot use the prebuilt binaries)).
+% 2 = Matrix-free reconstruction with OpenCL/CUDA (Recommended)
+% (Requires ArrayFire).
 % 3 = Multi-GPU/device matrix-free OpenCL (OSEM & MLEM only).
-% 4 = Matrix-free reconstruction with OpenMP (parallel), standard C++
+% 4 = Matrix-free reconstruction with OpenMP (CPU, parallel), standard C++
 % 5 = Matrix-free reconstruction with OpenCL (parallel)
-% See the docs for more information:
+% See the docs for more information: 
 % https://omega-doc.readthedocs.io/en/latest/implementation.html
 options.implementation = 4;
 
@@ -461,14 +485,14 @@ options.projector_type = 1;
 % same as multiplying the geometric matrix with an image blurring matrix.
 options.use_psf = false;
 
-% FWHM of the Gaussian used in PSF blurring in all three dimensions
+% FWHM (mm) of the Gaussian used in PSF blurring in all three dimensions
 options.FWHM = [options.cr_p options.cr_p options.cr_pz];
 
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
 options.Niter = 1;
 
-%%% Number of subsets (all excluding MLEM and subset_type = 6)
+%%% Number of subsets (excluding subset_type = 6)
 options.subsets = 8;
 
 %%% Subset type (n = subsets)
@@ -518,7 +542,7 @@ options.OSEM = true;
 % You can also use most of these algorithms without priors (such as PKMA or
 % PDHG).
 
-%%% Preconditioner Krasnoselskii-Mann algorithm (PKMA)
+%%% Preconditioned Krasnoselskii-Mann algorithm (PKMA)
 % Supported by implementations 1, 2, 4, and 5
 options.PKMA = false;
 

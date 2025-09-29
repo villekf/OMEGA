@@ -221,6 +221,8 @@
 
 - Improved error checking
 
+- Updated all the examples
+
 ## OMEGA v2.0.0
 
 ### Breaking changes

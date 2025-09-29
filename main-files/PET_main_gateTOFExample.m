@@ -2,7 +2,7 @@
 % Note that this file does not contain all adjustable parameters. These
 % omitted parameters will thus use default values. For the list of all
 % adjustable parameters see main_PET_full.m file.
-% You can use https://doi.org/10.5281/zenodo.12743218 as example data
+% You can use https://doi.org/10.5281/zenodo.12743217 as example data
 % Only reconstructions are performed. If you want to load ROOT/ASCII data
 % set options.only_reconstructions = false below.
  
@@ -61,6 +61,13 @@ options.axial_fov = floor(76.8 - options.cr_pz/10);
 
 %%% Number of pseudo rings between physical rings (use 0 or [] if none)
 options.pseudot = [];
+
+%%% Ring gaps (mm)
+% Each ring is assumed to contain options.cryst_per_block_axial crystals
+% Input the gap between each of these rings here, for every gap
+% If there are no gaps, leave this empty or zero
+% If the gap values are the same, you need to repeat the value for each gap
+options.ringGaps = [];
 
 %%% Number of detectors per crystal ring (without pseudo detectors)
 options.det_per_ring = options.blocks_per_ring * options.cryst_per_block * options.transaxial_multip;
@@ -232,11 +239,12 @@ options.Nz = options.rings*2-1;
 options.flip_image = false;
 
 %%% How much is the image rotated?
-% You need to run the precompute phase again if you modify this
 % NOTE: The rotation is done in the detector space (before reconstruction).
 % This current setting is for systems whose detector blocks start from the
 % right hand side when viewing the device from front.
 % Positive values perform the rotation in clockwise direction
+% The units are crystals, i.e. if the value is 1, the rotation is done by
+% rotating the coordinates equaling to one crystal pitch
 options.offangle = options.det_w_pseudo * (3/4);
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -262,14 +270,16 @@ options.span = 3;
 options.ring_difference = options.rings - 1;
 
 %%% Number of radial positions (views) in sinogram
-% You should primarily use the same number as the device uses.
+% You should primarily use the same number as the scanner uses.
 % However, if that information is not available you can use ndist_max
 % function to determine potential values (see help ndist_max for usage).
+% This is the ROW dimension, i.e. the number of rows in the sinogram
 options.Ndist = 200;
 
 %%% Number of angles (tangential positions) in sinogram 
 % This is the final amount after possible mashing, maximum allowed is the
 % number of detectors per ring/2.
+% This is the COLUMN dimension, i.e. the number of columns in the sinogram
 options.Nang = options.det_per_ring/2;
 
 %%% Specify the amount of sinograms contained on each segment
@@ -314,9 +324,13 @@ options.ndist_side = 1;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%% Randoms correction %%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% If set to true, stores the delayed coincidences during data load and
-% later corrects for randoms during the data formation/load or during
-% reconstruction. Delayes need to be stored in GATE data for this to work.
+% If set to true, performs randoms correction during reconstruction or 
+% performs precorrection, depending on the selections below
+% If you are loading GATE data or Inveon/Biograph data, the delayed 
+% coincidences will also be stored during the data load (if this is false,
+% they will NOT be stored). If you are using your own data, the randoms
+% data can be input either manually into options.SinDelayed or input when
+% prompted (has to be stored in a mat-file beforehand!)
 options.randoms_correction = true;
 
 %%% Variance reduction
@@ -325,9 +339,9 @@ options.randoms_correction = true;
 options.variance_reduction = false;
 
 %%% Randoms smoothing
-% If set to true, applies a 8x8 moving mean smoothing to the delayed
+% If set to true, applies a 7x7 moving mean smoothing to the delayed
 % coincidence data. This is applied on all cases (i.e. randoms correction
-% data is smoothed before subtraction of before reconstruction).
+% data is smoothed before subtraction or before reconstruction).
 % NOTE: Mean window size can be adjusted by modifying the randoms_smoothing
 % function.
 options.randoms_smoothing = false;
@@ -335,10 +349,11 @@ options.randoms_smoothing = false;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%% Scatter correction %%%%%%%%%%%%%%%%%%%%%%%%%%%
 % If set to true, will prompt the user to load the scatter sinogram/raw
 % data. Corrects for scatter during data formation/load or during
-% reconstruction.
+% reconstruction. Alternatively, input the scatter data into
+% options.ScatterC beforehand.
 % NOTE: Scatter data is not created by this software and as such must be
 % provided by the user. Previously created scatter sinogram/raw data matrix
-% can be used though.
+% obtained from GATE data can be used though.
 options.scatter_correction = false;
 
 %%% Variance reduction
@@ -348,25 +363,26 @@ options.scatter_variance_reduction = false;
 
 %%% Scatter normalization
 % If set to true, normalizes the scatter coincidences data during data
-% formation or before reconstruction. If set to false, the scatter data is
+% precorrection or before reconstruction. If set to false, the scatter data is
 % subtracted from the sinogram before normalization (and when
-% options.corrections_during_reconstruction = false).
+% options.corrections_during_reconstruction = false, i.e. precorrection).
 options.normalize_scatter = false;
 
 %%% Scatter smoothing
-% If set to true, applies a 8x8 moving mean smoothing to the scattered
+% If set to true, applies a 7x7 moving mean smoothing to the scattered
 % coincidences data. This is applied on all cases (i.e. scatter correction
-% data is smoothed before subtraction of before reconstruction).
+% data is smoothed before subtraction or before reconstruction).
 % NOTE: Mean window size can be adjusted by modifying the randoms_smoothing
 % function.
 options.scatter_smoothing = false;
  
 %%%%%%%%%%%%%%%%%%%%%%%%% Attenuation correction %%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Image-based attenuation correction
 % Include attenuation correction from images (e.g. CT-images) (for this you
 % need attenuation images of each slice correctly rotated and scaled for
 % 511 keV) or from attenuation sinograms. Note that all the attenuation
 % data has to be correctly scaled before reconstruction.
+% You can either use the path below to input the data or manually input
+% the attenuation data into options.vaimennus
 options.attenuation_correction = true;
 
 %%% Rotate the attenuation image before correction
@@ -375,17 +391,29 @@ options.attenuation_correction = true;
 % counter-clockwise.
 options.rotateAttImage = 1;
 
+%%% Flip the attenuation image in the transaxial direction before reconstruction
+options.flipAttImageXY = false;
+
+%%% Flip the attenuation image in the axial direction before reconstruction
+optionas.flipAttImageZ = false;
+
 %%% Attenuation image data file
 % Specify the path (if not in MATLAB path) and filename.
 % NOTE: the attenuation data must be the only variable in the file and
 % have the dimensions of the final reconstructed image.
 % If no file is specified here, the user will be prompted to select one
+% if options.vaimennus is empty (or does not exist)
+% Alternatively, input the attenuation data into options.vaimennus
+% NOTE: For GATE data, the MuMap actor output can be used here
 options.attenuation_datafile = '/path/to/cylpet_example_atn1-MuMap.mhd';
  
 %%%%%%%%%%%%%%%%%%%%%%%% Normalization correction %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Compute the normalization coefficients
 % If set to true, then the normalization coefficients are computed after
 % the measurement data has been loaded.
+% You can use this to compute normalization coefficients for the selected
+% scanner, assuming that the input data is measurement data fit for
+% normalization correction.
 options.compute_normalization = false;
 
 % This applies only if the above compute_normalization is set to true.
@@ -432,8 +460,8 @@ options.normalization_correction = true;
 
 %%% Use user-made normalization
 % Use either a .mat or .nrm file containing the normalization coefficients
-% for normalization correction if normalization_correction is also set to
-% true. 
+% for normalization correction, or input the normalization data into 
+% options.normalization if normalization_correction is also set to true
 % User will be prompted for the location of the file either during sinogram
 % formation or before image reconstruction (see below).
 % NOTE: If you have previously computed normalization coefficients with
@@ -457,6 +485,9 @@ options.global_correction_factor = [];
 % normalization correction is applied.
 % NOTE: Attenuation correction is always performed during reconstruction
 % regardless of the choice here.
+% If you have manually precorrected the data, do not put those corrections
+% to true that have already been applied! Otherwise, the data will be 
+% precorrected twice. This obviously only applies when this is set to false
 options.corrections_during_reconstruction = true;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -477,17 +508,32 @@ options.corrections_during_reconstruction = true;
  
 %%% Total time of the measurement (s)
 % Use inf if you want the whole examination (static measurement only)
+% Note that this value is only used when LOADING data from GATE or Inveon
+% files
 options.tot_time = inf;
 
 %%% Number of time points/dynamic frames (if a static measurement, use 1)
+%%% or alternatively the size of the time window for each dynamic step (in
+%%% seconds). If you use a scalar value that is bigger than 1, then the
+%%% dynamic time windows will use a constant width. If you want to use
+%%% custom time windows you can use them e.g. with options.partitions =
+%%% [30;30;60;120]; where each element is the width of the time window (in
+%%% seconds). Note that the sum should in this case equal the end time
+%%% minus the start time.
+% NOTE: The above applies ONLY when using OMEGA to load the data. If you
+% use your own data, this should be number of time steps!
 options.partitions = 1;
 
 %%% Start time (s) (all measurements BEFORE this will be ignored)
+% Note that this value is only used when LOADING data from GATE or Inveon
+% files
 options.start = 0;
 
 %%% End time (s) (all measurements AFTER this will be ignored)
 % Use inf if you want to the end of the examination (static measurement
 % only)
+% Note that this value is only used when LOADING data from GATE or Inveon
+% files
 options.end = options.tot_time;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -513,8 +559,11 @@ options.TOF_bins = 15;
 % The time length of each TOF bin in seconds
 % This multiplied with the number of bins total the entire time frame that
 % the TOF data contains. For example with 10 bins of size 400 ps all time
-% differencies of at most 4 ns will be included in the TOF data. The
+% differences of at most 4 ns is/will be included in the TOF data. The
 % multiplied value should be, at most, the size of the coincidence window.
+% The "will be included" refers to when loading GATE data
+% if you are using your own data, make sure that these correspond to that
+% data
 options.TOF_width = 40e-12;
 
 %%% TOF offset (s)
@@ -530,7 +579,7 @@ options.TOF_offset = 0;
 % loading purposes. This value is included in the filename when data is
 % imported/saved and also used when that same data is later loaded. 
 % Secondly, this is the FWHM of the ADDED temporal noise to the time
-% differencies. If you are using GATE data and have set a custom temporal
+% differences. If you are using GATE data and have set a custom temporal
 % blurring in GATE then you should set to this zero if you wish to use the
 % same temporal resolution. If no custom temporal blurring was applied then
 % use this value to control the accuracy of the TOF data. For example if
@@ -574,6 +623,7 @@ options.TOF_bins_used = options.TOF_bins;
 options.name = 'cylpet_example_new';
 
 %%% Folder for the data (.dat ASCII, .root ROOT, listmode data) files
+% This applies to GATE/Inveon data only!
 % If no files are located in the path provided below, then the current
 % folder is also checked. Alternatively the user can input a single file
 % here, e.g. a single listmode file. If omitted, the user will be prompted
@@ -590,18 +640,19 @@ end
 % If this is set to true, running this file will only produce the
 % measurement data matrices (sinograms and raw data). Also computes the
 % normalization coefficients if they have been selected.
+% Applies only when creating sinograms with OMEGA
 options.only_sinos = false;
 
 %%% Compute only the reconstructions
 % If this file is run with this set to true, then the data load and
-% sinogram formation steps are always skipped. Precomputation step is
-% only performed if precompute_lor = true and precompute_all = true
-% (below). Normalization coefficients are not computed even if selected.
+% sinogram formation steps are always skipped. Normalization coefficients 
+% are not computed even if selected.
 options.only_reconstructions = true;
 
 %%% Show status messages
 % These are e.g. time elapsed on various functions and what steps have been
-% completed. It is recommended to keep this true.
+% completed. It is recommended to keep this at 1 or 2. With value of 2, 
+% you get more detailed timing information. Maximum is 3.
 options.verbose = 1;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -624,11 +675,10 @@ options.verbose = 1;
 %%% Reconstruction implementation used
 % 1 = Reconstructions in MATLAB (projector in a MEX-file), uses matrices.
 % (Slow and memory intensive)
-% 2 = Matrix-free reconstruction with OpenCL/ArrayFire (Recommended)
-% (Requires ArrayFire. Compiles with MinGW ONLY when ArrayFire was compiled
-% with MinGW as well (cannot use the prebuilt binaries)).
+% 2 = Matrix-free reconstruction with OpenCL/CUDA (Recommended)
+% (Requires ArrayFire).
 % 3 = Multi-GPU/device matrix-free OpenCL (OSEM & MLEM only).
-% 4 = Matrix-free reconstruction with OpenMP (parallel), standard C++
+% 4 = Matrix-free reconstruction with OpenMP (CPU, parallel), standard C++
 % 5 = Matrix-free reconstruction with OpenCL (parallel)
 % See the docs for more information: 
 % https://omega-doc.readthedocs.io/en/latest/implementation.html
@@ -648,7 +698,7 @@ options.platform = 0;
 % their respective devices with implementations 3 or 5.
 % NOTE: The device numbers might be different between implementation 2 and
 % implementations 3 and 5
-% NOTE: if you switch devices then you need to run the below line
+% NOTE: if you switch devices then you might need to run the below line
 % (uncommented) as well:
 % clear mex
 options.use_device = 0;
@@ -659,19 +709,33 @@ options.use_device = 0;
 % if they are supported by the selected device.
 % Setting this to true will make computations faster on GPUs that support
 % the functions, but might make results slightly less reliable due to
-% floating point rounding. Recommended for GPUs.
+% floating point rounding. Recommended for OpenCL GPUs.
 options.use_64bit_atomics = true;
+
+% Applies to implementations 2, 3 and 5 ONLY
+%%% Use 32-bit integer atomic functions
+% If true, then 32-bit integer atomic functions (atomic add) will be used.
+% This is even faster than the above 64-bit atomics version, but will also
+% have significantly higher reduction in numerical/floating point accuracy.
+% This should be about 20-30% faster than the above 64-bit version, but
+% might lead to integer overflow if you have a high count measurement
+% (thousands of coincidences per sinogram bin). Use this only if speed is
+% of utmost importance. 32-bit atomics take precedence over 64-bit ones,
+% i.e. if options.use_32bit_atomics = true then the 64-bit version will be 
+% always set as false.
+options.use_32bit_atomics = false;
 
 % Implementation 2 ONLY
 %%% Use CUDA
 % Selecting this to true will use CUDA kernels/code instead of OpenCL. This
-% only works if the CUDA code was successfully built. Recommended only for
-% Siddon as the orthogonal/volume-based ray tracer are slower in CUDA.
+% only works if the CUDA code was successfully built. This is recommended
+% if you have CUDA-capable device.
 options.use_CUDA = false;
 
 % Implementation 2 ONLY
 %%% Use CPU
 % Selecting this to true will use CPU-based code instead of OpenCL or CUDA.
+% Not recommended, even OpenCL with CPU should be used before this.
 options.use_CPU = false;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -693,8 +757,8 @@ options.projector_type = 1;
 % used for both forward and backward projection and either one or both can
 % be utilized at the same time. E.g. if only backprojection mask is input,
 % then only the voxels which have 1 in the mask are reconstructed.
-% Currently the masks need to be a 2D image that is applied identically at
-% each slice.
+% The mask can be either a 2D image that is applied identically to each slice
+% or a 3D mask that is applied as-is
 % Forward projection mask
 % If nonempty, the mask will be applied. If empty, or completely omitted, no
 % mask will be considered.
@@ -712,8 +776,8 @@ options.projector_type = 1;
 
 %%% Interpolation length (projector type = 4 only)
 % This specifies the length after which the interpolation takes place. This
-% value will be multiplied by the voxel size which means that 1 means that
-% the interpolation length corresponds to a single voxel (transaxial)
+% value will be multiplied by the voxel size which means that 1 is
+% the interpolation length corresponding to a single voxel (transaxial)
 % length. Larger values lead to faster computation but at the cost of
 % accuracy. Recommended values are between [0.5 1].
 options.dL = 0.5;
@@ -723,30 +787,33 @@ options.dL = 0.5;
 % same as multiplying the geometric matrix with an image blurring matrix.
 options.use_psf = false;
 
-% FWHM of the Gaussian used in PSF blurring in all three dimensions
+% FWHM (mm) of the Gaussian used in PSF blurring in all three dimensions
 options.FWHM = [options.cr_p options.cr_p options.cr_pz];
 
 % Orthogonal ray tracer (projector_type = 2 only)
-%%% The 2D (XY) width of the "strip/tube" where the orthogonal distances are
+%%% The 2D (XY) width (mm) of the "strip/tube" where the orthogonal distances are
 % included. If tube_width_z below is non-zero, then this value is ignored.
 options.tube_width_xy = options.cr_p;
 
 % Orthogonal ray tracer (projector_type = 2 only)
-%%% The 3D (Z) width of the "tube" where the orthogonal distances are
+%%% The 3D (Z) width (mm) of the "tube" where the orthogonal distances are
 % included. If set to 0, then the 2D orthogonal ray tracer is used. If this
 % value is non-zero then the above value is IGNORED.
+% If you want the projector to be a tube, use this, if you want it to be 
+% strip, use the above
+% This slows down the reconstruction, but makes it more accurate
 options.tube_width_z = options.cr_pz;
 
 % Volume ray tracer (projector_type = 3 only)
 %%% Radius of the tube-of-response (cylinder)
-% The radius of the cylinder that approximates the tube-of-response.
+% The radius (mm) of the cylinder that approximates the tube-of-response.
 options.tube_radius = sqrt(2) * (options.cr_pz / 2);
 
 % Volume ray tracer (projector_type = 3 only)
 %%% Relative size of the voxel (sphere)
 % In volume ray tracer, the voxels are modeled as spheres. This value
 % specifies the relative radius of the sphere such that with 1 the sphere
-% is just large enoough to encompass an entire cubic voxel, i.e. the
+% is just large enough to encompass an entire cubic voxel, i.e. the
 % corners of the cubic voxel intersect with the sphere shell. Larger values
 % create larger spheres, while smaller values create smaller spheres.
 options.voxel_radius = 1;
@@ -754,8 +821,9 @@ options.voxel_radius = 1;
 % Siddon (projector_type = 1 only)
 %%% Number of rays
 % Number of rays used per detector if projector_type = 1 (i.e. Improved
-% Siddon is used) and precompute_lor = false. I.e. when using precomputed
-% LOR data, only 1 rays is always used.
+% Siddon is used).
+% The total number of rays per detector is the multiplication of the two
+% below values!
 % Number of rays in transaxial direction
 options.n_rays_transaxial = 1;
 % Number of rays in axial direction
@@ -774,7 +842,7 @@ options.saveNIter = [];
 % below to true and uncommenting it
 % options.save_iter = false;
 
-%%% Number of subsets (all excluding MLEM and subset_type = 6)
+%%% Number of subsets (excluding subset_type = 6)
 options.subsets = 8;
 
 %%% Subset type (n = subsets)
@@ -876,11 +944,7 @@ options.CGLS = false;
 % this. Note that only one algorithm and prior combination is allowed! You
 % can also use most of these algorithms without priors (such as PKMA or
 % PDHG).
-%%% One-Step Late MLEM (OSL-MLEM)
-% Supported by implementations 1, 2, 4, and 5
-options.OSL_MLEM = false;
-
-%%% One-Step Late OSEM (OSL-OSEM)
+%%% One-Step Late OSEM (OSL-OSEM) or MLEM (if subsets = 1)
 % Supported by implementations 1, 2, 4, and 5
 options.OSL_OSEM = false;
 
@@ -924,6 +988,14 @@ options.PDHGKL = false;
 %%% Primal-dual Davis-Yin (PDDY)
 % Supported by implementation 2
 options.PDDY = false;
+
+%%% Simultaneous ART
+% Supported by implementation 2
+options.SART = false;
+
+%%% SAGA
+% Supported by implementation 2
+options.SAGA = false;
 
 
  
@@ -1032,15 +1104,27 @@ options.alpha_drama = 0.1;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% PDHG PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Primal value
 % If left zero, or empty, it will be automatically computed
+% Note that if you change any of the model parameters, i.e. image volume
+% size, number of projections or use binning, this needs to be recomputed
+% or scaled accordingly!
+% The computed largest eigenvalue is printed if verbose > 0. This can be 
+% used as the below value as long as one is divided by it. For example, 
+% if "Largest eigenvalue for volume 0 is 100" then options.tauCP should be 
+% 1/100 (if you use filtering-based preconditioner this is the "without 
+% filtering" value)
 options.tauCP = 0;
 % Primal value for filtered iterations, applicable only if
 % options.precondTypeMeas[2] = true. As with above, automatically computed
-% if left zero or empty.
+% if left zero or empty. Same restrictions apply here as above.
+% Use the "Largest eigenvalue for volume 0 with filtering" value here!
 options.tauCPFilt = 0;
 % Dual value. Recommended to set at 1.
 options.sigmaCP = 1;
 % Next estimate update variable
 options.thetaCP = 1;
+% Dual value for TV and/or TGV. For faster convergence, set this to higher
+% than 1.
+options.sigma2CP = 1;
 
 % Use adaptive update of the primal and dual variables
 % Currently only one method available
@@ -1113,8 +1197,8 @@ options.beta = 1;
 % area).
 % NOTE: Currently Ndx and Ndy must be identical.
 % For NLM this is often called the "search window".
-options.Ndx = 1;
-options.Ndy = 1;
+options.Ndx = 2;
+options.Ndy = 2;
 options.Ndz = 1;
  
  
@@ -1202,7 +1286,7 @@ options.TV_use_anatomical = false;
 
 %%% If the TV_use_anatomical value is set to true, specify filename for the
 % reference image here (same rules apply as with attenuation correction
-% above). Alternatively you can specifiy the variable that holds the
+% above). Alternatively you can specify the variable that holds the
 % reference image.
 options.TV_reference_image = 'reference_image.mat';
 
@@ -1234,6 +1318,7 @@ options.tau = 1e-8;
 %%% Tuning parameter for Lange function in SATV (type 4) or weight factor
 %%% for weighted TV (type 6)
 % Setting this to 0 gives regular anisotropic TV with type 4
+% This affects also non-local Lange
 options.SATVPhi = 0.2;
  
  
@@ -1273,7 +1358,7 @@ options.APLSsmoothing = 1e-5;
 %%% Specify filename for the reference image here (same rules apply as with
 % attenuation correction above). As before, this can also be a variable
 % instead.
-% NOTE: For APSL, the reference image is required.
+% NOTE: For APSL, the reference image is required!
 options.APLS_reference_image = 'reference_image.mat';
 
 
@@ -1292,6 +1377,7 @@ options.alpha1TGV = 2;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% NLM PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Filter parameter
+% Higher values smooth the image, smaller values make it sharper
 options.sigma = 10;
 
 %%% Patch radius
@@ -1307,14 +1393,18 @@ options.NLM_gauss = 1;
 options.NLM_use_anatomical = false;
 
 %%% Specify filename for the reference image here (same rules apply as with
-% attenuation correction above)
+% attenuation correction above) or the variable containing the reference image
 options.NLM_reference_image = 'reference_image.mat';
 
 % Note that only one of the below options for NLM can be selected!
+% If all the below ones are false, regular NLM is used!
 %%% Use Non-local total variation (NLTV)
 % If selected, will overwrite regular NLM regularization as well as the
 % below MRP version.
 options.NLTV = false;
+
+%%% Use Non-local Lange prior (NLLange)
+options.NLLange = false;
 
 %%% Use MRP algorithm (without normalization)
 % I.e. gradient = im - NLM_filtered(im)
@@ -1329,12 +1419,32 @@ options.NLGGMRF = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% RDP PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Edge weighting factor
+% Higher values sharpen the image, smaller values make it smoother
+% Note that this affects NLRD as well
 options.RDP_gamma = 10;
+
+% If true, includes also the "diagonal" corners in the neighborhood in RDP
+% By default, only the sides which the current voxel shares a side are
+% included
+% See https://omega-doc.readthedocs.io/en/latest/algorithms.html#rdp for
+% details
+% Default is false
+options.RDPIncludeCorners = false;
+
+% Applies only if the above RDPIncludeCorners is true
+% Use anatomical reference image weighting for RDP
+options.RDP_use_anatomical = false;
+
+% Set the file containing the reference image or the variable of the reference
+% image here
+options.RDP_reference_image = '';
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% GGMRF PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% GGMRF parameters
+% These affect the NLGGMRF as well
 % See the original article for details
+% https://omega-doc.readthedocs.io/en/latest/algorithms.html#ggmrf
 options.GGMRF_p = 1.5;
 options.GGMRF_q = 1;
 options.GGMRF_c = 5;

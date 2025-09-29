@@ -8,6 +8,8 @@
 % simply run this file and select the desired measurement data and use the
 % default parameters or modify the parameters accordingly and then run
 % this.
+% The example data can be obtained from:
+% https://zenodo.org/records/14506284
 
 clear
 clear mex
@@ -32,17 +34,10 @@ options.binning = 1;
 % This is used for (potential) naming purposes only
 options.name = 'MCGPU_CT_data';
 
-%%% Compute only the reconstructions
-% If this file is run with this set to true, then the data load and
-% sinogram formation steps are always skipped. Precomputation step is
-% only performed if precompute_lor = true and precompute_all = true
-% (below). Normalization coefficients are not computed even if selected.
-options.only_reconstructions = false;
-
 %%% Show status messages
 % These are e.g. time elapsed on various functions and what steps have been
-% completed. It is recommended to keep this 1.  Maximum value of 3 is
-% supported.
+% completed. It is recommended to keep this at 1 or 2. With value of 2, 
+% you get more detailed timing information. Maximum is 3.
 options.verbose = 1;
 
 %%% Number of detector pixels (vertical/row direction)
@@ -147,8 +142,8 @@ options.nProjections = numel(options.angles);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% The image size is taken from the conf file, but you can manually adjust
-% these if desired
+% The image size
+% you can manually adjust these if desired
 %%% Reconstructed image pixel count (X/row-direction)
 options.Nx = 523;
 
@@ -166,7 +161,6 @@ options.flip_image = false;
 % The angle (in radians) on how much the image is rotated BEFORE
 % reconstruction, i.e. the rotation is performed in the detector space.
 % Positive values perform the rotation in counter-clockwise direction
-% options.offangle = (2.89*pi)/2;
 options.offangle = (0*pi)/2;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -203,8 +197,6 @@ options.useMultiResolutionVolumes = true;
 % the multi-resolution volumes. Default is 1/4 of the original voxel size.
 options.multiResolutionScale = 1/4;
 
-% options.eFOVLength = 0.2;
-
 % Performs the extrapolation and adjusts the image size accordingly
 options = CTEFOVCorrection(options);
 
@@ -224,13 +216,12 @@ options.offsetCorrection = false;
 %%% Reconstruction implementation used
 % 1 = Reconstructions in MATLAB (projector in a MEX-file), uses matrices.
 % (Slow and memory intensive)
-% 2 = Matrix-free reconstruction with OpenCL/ArrayFire (Recommended)
-% (Requires ArrayFire. Compiles with MinGW ONLY when ArrayFire was compiled
-% with MinGW as well (cannot use the prebuilt binaries)).
+% 2 = Matrix-free reconstruction with OpenCL/CUDA (Recommended)
+% (Requires ArrayFire).
 % 3 = Multi-GPU/device matrix-free OpenCL (OSEM & MLEM only).
-% 4 = Matrix-free reconstruction with OpenMP (parallel), standard C++
+% 4 = Matrix-free reconstruction with OpenMP (CPU, parallel), standard C++
 % 5 = Matrix-free reconstruction with OpenCL (parallel)
-% See the doc for more information:
+% See the docs for more information: 
 % https://omega-doc.readthedocs.io/en/latest/implementation.html
 options.implementation = 2;
 
@@ -248,7 +239,7 @@ options.platform = 0;
 % their respective devices with implementations 3 or 5.
 % NOTE: The device numbers might be different between implementation 2 and
 % implementations 3 and 5
-% NOTE: if you switch devices then you need to run the below line
+% NOTE: if you switch devices then you might need to run the below line
 % (uncommented) as well:
 % clear mex
 options.use_device = 0;
@@ -256,26 +247,29 @@ options.use_device = 0;
 % Implementation 2 ONLY
 %%% Use CUDA
 % Selecting this to true will use CUDA kernels/code instead of OpenCL. This
-% only works if the CUDA code was successfully built.
+% only works if the CUDA code was successfully built. This is recommended
+% if you have CUDA-capable device.
 options.use_CUDA = false;
 
 % Implementation 2 ONLY
 %%% Use CPU
 % Selecting this to true will use CPU-based code instead of OpenCL or CUDA.
+% Not recommended, even OpenCL with CPU should be used before this.
 options.use_CPU = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Type of projector to use for the geometric matrix
 % 1 = Improved/accelerated Siddon's algorithm
-% 2 = Orthogonal distance based ray tracer
-% 3 = Volume of intersection based ray tracer
+% 2 = Orthogonal distance based ray tracer (not recommended in CT)
+% 3 = Volume of intersection based ray tracer (not recommended in CT)
 % 4 = Interpolation-based projector (ray- and voxel-based)
 % 5 = Branchless distance-driven projector
-% NOTE: You can mix and match most of the projectors. I.e. 41 will use
-% interpolation-based projector for forward projection while improved
-% Siddon is used for backprojection.
-% See the doc for more information:
+% NOTE: You can mix and match most of the projectors. I.e. 45 will use
+% interpolation-based projector for forward projection while branchless
+% distance-driven is used for backprojection
+% See the documentation for more information:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
+% NOTE: Projector types 1-3 should not be used as backprojectors for CT!
 options.projector_type = 4;
 
 %%% Use mask
@@ -284,8 +278,8 @@ options.projector_type = 4;
 % used for both forward and backward projection and either one or both can
 % be utilized at the same time. E.g. if only backprojection mask is input,
 % then only the voxels which have 1 in the mask are reconstructed.
-% Currently the masks need to be a 2D image that is applied identically at
-% each slice.
+% The mask can be either a 2D image that is applied identically to each slice
+% or a 3D mask that is applied as-is
 % Forward projection mask
 % If nonempty, the mask will be applied. If empty, or completely omitted, no
 % mask will be considered.
@@ -324,7 +318,7 @@ options.saveNIter = [];
 % (epochs) are saved.
 % options.save_iter = false;
 
-%%% Number of subsets (all excluding MLEM and subset_type = 5)
+%%% Number of subsets (excluding subset_type = 6)
 options.subsets = 20;
 
 %%% Subset type (n = subsets)
@@ -348,8 +342,6 @@ options.subsets = 20;
 options.subset_type = 8;
 
 %%% Initial value for the reconstruction
-% load sedentexJaw100mAs_refRDP.mat
-% options.x0 = pz;
 options.x0 = ones(options.Nx, options.Ny, options.Nz) * 1e-4;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -383,7 +375,7 @@ options.FDK = false;
 % These algorithms can utilize any of the selected priors, though only one
 % prior can be used at a time
 
-%%% Preconditioner Krasnoselskii-Mann algorithm (PKMA)
+%%% Preconditioned Krasnoselskii-Mann algorithm (PKMA)
 % Supported by implementations 1, 2, 4, and 5
 options.PKMA = false;
 
@@ -426,16 +418,26 @@ options.enforcePositivity = true;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% PDHG PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Primal value
 % If left zero, or empty, it will be automatically computed
+% Note that if you change any of the model parameters, i.e. image volume
+% size, number of projections or use binning, this needs to be recomputed
+% or scaled accordingly!
+% The computed largest eigenvalue is printed if verbose > 0. This can be 
+% used as the below value as long as one is divided by it. For example, 
+% if "Largest eigenvalue for volume 0 is 100" then options.tauCP should be 
+% 1/100 (if you use filtering-based preconditioner this is the "without 
+% filtering" value)
 options.tauCP = 0;
 % Primal value for filtered iterations, applicable only if
 % options.precondTypeMeas[2] = true. As with above, automatically computed
-% if left zero or empty.
+% if left zero or empty. Same restrictions apply here as above.
+% Use the "Largest eigenvalue for volume 0 with filtering" value here!
 options.tauCPFilt = 0;
 % Dual value. Recommended to set at 1.
 options.sigmaCP = 1;
 % Next estimate update variable
 options.thetaCP = 1;
-
+% Dual value for TV and/or TGV. For faster convergence, set this to higher
+% than 1.
 options.sigma2CP = 5;
 
 % Use adaptive update of the primal and dual variables
@@ -507,8 +509,8 @@ options.beta = 3000;
 % area).
 % NOTE: Currently Ndx and Ndy must be identical.
 % For NLM this is often called the "search window".
-options.Ndx = 1;
-options.Ndy = 1;
+options.Ndx = 2;
+options.Ndy = 2;
 options.Ndz = 1;
 
 
@@ -569,10 +571,20 @@ options.NLM_MRP = false;
 % Higher values sharpen the image, lower values smooth it
 options.RDP_gamma = 15;
 
+% If true, includes also the "diagonal" corners in the neighborhood in RDP
+% By default, only the sides which the current voxel shares a side are
+% included
+% See https://omega-doc.readthedocs.io/en/latest/algorithms.html#rdp for
+% details
+% Default is false
 options.RDPIncludeCorners = false;
 
+% Applies only if the above RDPIncludeCorners is true
+% Use anatomical reference image weighting for RDP
 options.RDP_use_anatomical = false;
 
+% Set the file containing the reference image or the variable of the reference
+% image here
 options.RDP_reference_image = '';
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% GGMRF PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%

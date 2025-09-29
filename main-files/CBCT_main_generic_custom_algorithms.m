@@ -5,6 +5,7 @@
 % CGLS without multi-resolution reconstruction, but PDHG with
 % multi-resolution is included below CGLS, but has been commented. PDHG
 % should also work without multi-resolution reconstruction.
+% Example data available from: https://doi.org/10.5281/zenodo.12722386
 
 clear
 clear mex
@@ -36,7 +37,8 @@ options.only_reconstructions = false;
 
 %%% Show status messages
 % These are e.g. time elapsed on various functions and what steps have been
-% completed. It is recommended to keep this true.
+% completed. It is recommended to keep this at 1 or 2. With value of 2, 
+% you get more detailed timing information. Maximum is 3.
 options.verbose = 1;
 
 
@@ -104,17 +106,6 @@ options.z = zCoord;
 % options.z = options.z(1:lasku:options.nProjections,:);
 % options.nProjections = numel(options.angles);
 
-% NOTE: If you want to reduce the number of projections, you need to do
-% this manually as outlined below:
-lasku = 1;
-options.SinM = options.SinM(:,:,1:lasku:options.nProjections);
-options.angles = options.angles(1:lasku:options.nProjections);
-options.pitchRoll = options.pitchRoll(1:lasku:options.nProjections,:);
-options.x = options.x(1:lasku:options.nProjections,:);
-options.y = options.y(1:lasku:options.nProjections,:);
-options.z = options.z(1:lasku:options.nProjections,:);
-options.nProjections = numel(options.angles);
-
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -143,6 +134,7 @@ options.flip_image = true;
 %%% How much is the image rotated (radians)?
 % The angle (in radians) on how much the image is rotated BEFORE
 % reconstruction, i.e. the rotation is performed in the detector space.
+% Positive values perform the rotation in counter-clockwise direction
 options.offangle = (3*pi)/2;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -160,8 +152,16 @@ options.offangle = (3*pi)/2;
 %%% Use projection extrapolation
 options.useExtrapolation = false;
 
+% The extrapolation length per side, i.e. the total size is this multiplied
+% by two!
+options.extrapLength = 0.2;
+
 %%% Use extended FOV
 options.useEFOV = false;
+
+% The extended FOV length per side, i.e. the total size is this multiplied
+% by two!
+options.eFOVLength = 0.4;
 
 % Use transaxial extended FOV (this is off by default)
 options.transaxialEFOV = false;
@@ -205,13 +205,12 @@ options.offsetCorrection = false;
 %%% Reconstruction implementation used
 % 1 = Reconstructions in MATLAB (projector in a MEX-file), uses matrices.
 % (Slow and memory intensive)
-% 2 = Matrix-free reconstruction with OpenCL/ArrayFire (Recommended)
-% (Requires ArrayFire. Compiles with MinGW ONLY when ArrayFire was compiled
-% with MinGW as well (cannot use the prebuilt binaries)).
+% 2 = Matrix-free reconstruction with OpenCL/CUDA (Recommended)
+% (Requires ArrayFire).
 % 3 = Multi-GPU/device matrix-free OpenCL (OSEM & MLEM only).
-% 4 = Matrix-free reconstruction with OpenMP (parallel), standard C++
+% 4 = Matrix-free reconstruction with OpenMP (CPU, parallel), standard C++
 % 5 = Matrix-free reconstruction with OpenCL (parallel)
-% See the doc for more information:
+% See the docs for more information: 
 % https://omega-doc.readthedocs.io/en/latest/implementation.html
 options.implementation = 5;
 
@@ -254,8 +253,8 @@ options.projector_type = 4;
 % used for both forward and backward projection and either one or both can
 % be utilized at the same time. E.g. if only backprojection mask is input,
 % then only the voxels which have 1 in the mask are reconstructed.
-% Currently the masks need to be a 2D image that is applied identically at
-% each slice.
+% The mask can be either a 2D image that is applied identically to each slice
+% or a 3D mask that is applied as-is
 % Forward projection mask
 % If nonempty, the mask will be applied. If empty, or completely omitted, no
 % mask will be considered.
@@ -284,21 +283,10 @@ options.dL = 0.5;
 %%% Number of iterations (all reconstruction methods)
 options.Niter = 10;
 
-%%% Number of subsets (all excluding MLEM and subset_type = 5)
+%%% Number of subsets
 options.subsets = 1;
 
 %%% Subset type (n = subsets)
-% 1 = Every nth (column) measurement is taken
-% 2 = Every nth (row) measurement is taken (e.g. if subsets = 3, then
-% first subset has measurements 1, 4, 7, etc., second 2, 5, 8, etc.)
-% 3 = Measurements are selected randomly
-% 4 = (Sinogram only) Take every nth column in the sinogram
-% 5 = (Sinogram only) Take every nth row in the sinogram
-% 6 = Sort the LORs according to their angle with positive X-axis, combine
-% n_angles together and have 180/n_angles subsets for 2D slices and
-% 360/n_angles for 3D, see docs for more information:
-% https://omega-doc.readthedocs.io/en/latest/algorithms.html#type-6
-% 7 = Form the subsets by using golden angle sampling
 % 8 = Use every nth sinogram
 % 9 = Randomly select the full sinograms
 % 10 = Use golden angle sampling to select the subsets (not recommended for

@@ -20,13 +20,6 @@ clear mex
 % This is used for (potential) naming purposes only
 options.name = 'Planmeca_CT_data';
 
-%%% Compute only the reconstructions
-% If this file is run with this set to true, then the data load and
-% sinogram formation steps are always skipped. Precomputation step is
-% only performed if precompute_lor = true and precompute_all = true
-% (below). Normalization coefficients are not computed even if selected.
-options.only_reconstructions = false;
-
 %%% Show status messages
 % These are e.g. time elapsed on various functions and what steps have been
 % completed. It is recommended to keep this 1.  Maximum value of 3 is
@@ -106,7 +99,7 @@ options.z = zCoord;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% The image size is taken from the conf file, but you can manually adjust
+% The image size is taken from a conf file, but you can manually adjust
 % these if desired
 %%% Reconstructed image pixel count (X/row-direction)
 options.Nx = 801;
@@ -125,7 +118,6 @@ options.flip_image = true;
 % The angle (in radians) on how much the image is rotated BEFORE
 % reconstruction, i.e. the rotation is performed in the detector space.
 % Positive values perform the rotation in counter-clockwise direction
-% options.offangle = (2.9*pi)/2;
 options.offangle = (3*pi)/2;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -335,7 +327,7 @@ options.FDK = false;
 % These algorithms can utilize any of the selected priors, though only one
 % prior can be used at a time
 
-%%% Preconditioner Krasnoselskii-Mann algorithm (PKMA)
+%%% Preconditioned Krasnoselskii-Mann algorithm (PKMA)
 % Supported by implementations 1, 2, 4, and 5
 options.PKMA = false;
 
@@ -378,10 +370,19 @@ options.enforcePositivity = true;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% PDHG PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Primal value
 % If left zero, or empty, it will be automatically computed
+% Note that if you change any of the model parameters, i.e. image volume
+% size, number of projections or use binning, this needs to be recomputed
+% or scaled accordingly!
+% The computed largest eigenvalue is printed if verbose > 0. This can be 
+% used as the below value as long as one is divided by it. For example, 
+% if "Largest eigenvalue for volume 0 is 100" then options.tauCP should be 
+% 1/100 (if you use filtering-based preconditioner this is the "without 
+% filtering" value)
 options.tauCP = 0;
 % Primal value for filtered iterations, applicable only if
 % options.precondTypeMeas[2] = true. As with above, automatically computed
-% if left zero or empty.
+% if left zero or empty. Same restrictions apply here as above.
+% Use the "Largest eigenvalue for volume 0 with filtering" value here!
 options.tauCPFilt = 0;
 % Dual value. Recommended to set at 1.
 options.sigmaCP = 1;
@@ -557,13 +558,13 @@ options.storeFP = false;
 
 t = tic;
 % pz is the reconstructed image volume
-% recPar is a short list of various reconstruction parameters used,
+% recPar is a short struct of various reconstruction parameters used,
 % useful when saving the reconstructed data with metadata
 % classObject is the used class object in the reconstructions,
 % essentially modified version of the input options-struct
 % fp are the forward projections, if stored
 % the primal-dual gap can be also be stored and is the variable after
-% fp
+% fp (pdgap)
 [pz, recPar, ~, fp, pdgap] = reconstructions_mainCT(options);
 t = toc(t)
 
