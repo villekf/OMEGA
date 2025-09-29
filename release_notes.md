@@ -4,7 +4,7 @@
 
 ### Breaking changes
 
-- SPECT data-handling behavior changed with ray-tracing projectors
+- SPECT data-handling behavior changed with ray-tracing projectors (projector type 1)
   - This is now closer to CT-functionality, meaning that subsets are projection-based
   - Subset types 0, 8-11 are now supported instead of 0, 1, and 3
   - You'll need to switch the subset type to a supported one after updating
@@ -26,7 +26,7 @@
 - OMEGA can now be installed in Python through pip using `pip install omegatomo`
 
 - Added support for orthogonal distance ray-tracing projector with SPECT
-  - Voxels are weighed by a Gaussian distribution sampled at the orthogonal distance, the variance of which is determined by the parallel distance between detector and voxel centre
+  - Voxels are weighed by a Gaussian distribution sampled at the orthogonal distance, the variance of which is determined by the parallel distance between detector and voxel center
 
 - Projector type 1 now has built-in support for SPECT parallel-hole and pinhole collimators
   - Variables for focal length: `options.colFxy` and `options.colFz`
@@ -110,9 +110,10 @@
 
 - Multi-resolution reconstruction now keeps the voxel size fixed in the multi-resolution volumes and adjusts the FOV accordingly, previously it was the other way around
 
-- Measurement data can now be used in unsigned 16-bit integer format without needing to convert it first to single precision
+- Measurement data can now be used in unsigned 16-bit or 8-bit integer format without needing to convert it first to single precision
   - Implementation 2 only!
-  - Decreases memory usage when uint16 data is used
+  - Decreases memory usage when uint16 or uint8 data is used
+  - Can be especially useful with TOF data
   
 - SART supports regularization now
 
@@ -134,6 +135,28 @@
 - Added an example Python script for GATE 10 PET simulation reconstruction
   
 ### Bug fixes and enhancements
+
+- OpenCL devices that don't support images should now work better
+
+- BSREM has been fixed
+
+- Lambda and alpha values are now correctly computed if left zero when only one iteration is used
+
+- Attenuation correction now attempts to scale the data if it's of different resolution than the reconstructed image
+
+- "Reconstruction complete in..." now correctly includes precalculation time such as sensitivity image
+
+- Functions using random variables now support fixed seeds with `options.seed`
+
+- TV type 1 now works correctly with anatomic weighting
+
+- Reference images are resized to the reconstructed image if different
+
+- APLS has been fixed
+
+- Projector type 4 now supports backprojection mask with PET data as well
+
+- Fixed subset types 3, 6 and 7 with projector type 4 when using PET data
 
 - Hybrid projector 45 wasn't using the correct interpolation length before, this has been fixed
 
@@ -193,6 +216,10 @@
 
 - Fixed arc correction and increasing the sampling rate of sinograms
   - Arc correction is not particularly recommended though
+  
+- All algorithms, except BB, now work with Python
+
+- Improved error checking
 
 ## OMEGA v2.0.0
 
