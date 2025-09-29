@@ -619,7 +619,7 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
 
             if (_erotus[0] > 0)
                 _erotus[0] = (_localX - _erotus[0]);
-            _globalX = static_cast<cl::size_type>(length[osa_iter] + _erotus[0]);
+            _globalX = static_cast<size_t>(length[osa_iter] + _erotus[0]);
             _globalY = 1;
             _globalZ = 1;
         }

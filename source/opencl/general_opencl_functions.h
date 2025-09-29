@@ -60,19 +60,40 @@
 #define typeTT int
 #endif
 
+#ifdef HALF
+#define FLOAT_ZERO 0.h
+#define FLOAT_HALF .5h
+#define FLOAT_ONE 1.h
+#define FLOAT_TWO 2.h
+#else
+#define FLOAT_ZERO 0.f
+#define FLOAT_HALF .5f
+#define FLOAT_ONE 1.f
+#define FLOAT_TWO 2.f
+#endif
+
 #ifdef METAL
 #ifdef HALF // 16-bit floating point
-#define CAST half
+#define CAST float
+#define CFLOAT(a) static_cast<half>(a)
+#define CFLOAT3(a) half3(a)
+#define CMFLOAT3(x,y,z) half3((x), (y), (z))
 #define FLOAT half
-// TODO cfloat, mfloat etc...
-
+#define FLOAT2 half2
+#define FLOAT3 half3
+#define make_float2(a,b) half2((a),(b))
+#define make_float3(a,b,c) half3((a),(b),(c)) // TODO: replace with half
+#define MFLOAT2(a,b) half2((a), (b)) // TODO: replace with half
 #else // 32-bit floating point
 #define CAST float
+#define FLOAT float
+#define FLOAT2 float2
+#define FLOAT3 float3
 #define CFLOAT(a) static_cast<float>(a)
 #define CFLOAT3(a) float3(a)
 #define CMFLOAT3(x,y,z) float3((x), (y), (z))
 #define FLOAT float
-#define make_float2(a,b)   float2((a),(b))
+#define make_float2(a,b) float2((a),(b))
 #define make_float3(a,b,c) float3((a),(b),(c))
 #define MFLOAT2(a,b) float2((a), (b))
 #endif
@@ -101,7 +122,7 @@
 #define ANY metal::any
 #define ISNAN metal::isnan
 #define ISINF metal::isinf
-#define CUINT_sat_rtz(a) static_cast<uint>(metal::clamp(metal::trunc((a)), 0.0f, 4294967295.0f))
+#define CUINT_sat_rtz(a) static_cast<uint>(metal::clamp(metal::trunc(((float)a)), 0.0f, 4294967295.0f)) // TODO replace float with FLOAT
 #define CUINT_rtp(a)     static_cast<uint>(metal::ceil((a)))
 #define CLAMP3(a,b,c) metal::clamp((a),(b),(c))
 #define DIVIDE3(a,b) ((a) / (b))
@@ -121,13 +142,16 @@
 #define make_int2(a,b)     int2((a),(b))
 #define make_int3(a,b,c)   int3((a),(b),(c))
 #define FMAD(a,b,c) metal::fma(a,b,c)
-#define POWR pow
+#define POWR metal::pow
 #define DIVIDE(a,b) ((a) / (b))
 
 //#define dot metal::dot // TODO define function
 //#define pow metal::pow // TODO define function
 
 // Metal function definitions
+inline FLOAT dot(half3 a, half3 b) {
+    return metal::dot(a, b);
+}
 inline FLOAT dot(float3 a, float3 b) {
     return metal::dot(a, b);
 }
@@ -139,35 +163,35 @@ inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
 
 // Metal scalar params unpacking
 #define UNPACK_METAL_PARAMS(params) \
-    float global_factor = params.global_factor; \
-    float d_epps = params.d_epps; \
+    FLOAT global_factor = params.global_factor; \
+    FLOAT d_epps = params.d_epps; \
 	uint d_size_x = params.d_size_x; \
 	uint d_det_per_ring = params.d_det_per_ring; \
-	float sigma_x = params.sigma_x; \
-	float coneOfResponseStdCoeffA = params.coneOfResponseStdCoeffA; \
-    float coneOfResponseStdCoeffB = params.coneOfResponseStdCoeffB; \
-    float coneOfResponseStdCoeffC = params.coneOfResponseStdCoeffC; \
-	float crystalSizeX = params.crystalSizeX; \
-	float crystalSizeY = params.crystalSizeY; \
-	float orthWidth = params.orthWidth; \
-	float bmin = params.bmin; \
-	float bmax = params.bmax; \
-	float Vmax = params.Vmax; \
+	FLOAT sigma_x = params.sigma_x; \
+	FLOAT coneOfResponseStdCoeffA = params.coneOfResponseStdCoeffA; \
+    FLOAT coneOfResponseStdCoeffB = params.coneOfResponseStdCoeffB; \
+    FLOAT coneOfResponseStdCoeffC = params.coneOfResponseStdCoeffC; \
+	FLOAT crystalSizeX = params.crystalSizeX; \
+	FLOAT crystalSizeY = params.crystalSizeY; \
+	FLOAT orthWidth = params.orthWidth; \
+	FLOAT bmin = params.bmin; \
+	FLOAT bmax = params.bmax; \
+	FLOAT Vmax = params.Vmax; \
 	uint d_sizey = params.d_sizey; \
 	long d_nProjections = params.d_nProjections; \
 	uint rings = params.rings; \
 	uint d_Nx = params.d_Nx; \
 	uint d_Ny = params.d_Ny; \
 	uint d_Nz = params.d_Nz; \
-	float d_dx = params.d_dx; \
-	float d_dy = params.d_dy; \
-	float d_dz = params.d_dz; \
-	float bx = params.bx; \
-	float by = params.by; \
-	float bz = params.bz; \
-	float d_bmaxx = params.d_bmaxx; \
-	float d_bmaxy = params.d_bmaxy; \
-	float d_bmaxz = params.d_bmaxz; \
+	FLOAT d_dx = params.d_dx; \
+	FLOAT d_dy = params.d_dy; \
+	FLOAT d_dz = params.d_dz; \
+	FLOAT bx = params.bx; \
+	FLOAT by = params.by; \
+	FLOAT bz = params.bz; \
+	FLOAT d_bmaxx = params.d_bmaxx; \
+	FLOAT d_bmaxy = params.d_bmaxy; \
+	FLOAT d_bmaxz = params.d_bmaxz; \
 	unsigned char no_norm = params.no_norm; \
 	unsigned long m_size = params.m_size; \
 	uint currentSubset = params.currentSubset; \
@@ -771,7 +795,7 @@ DEVICE float TOFLoop(const float DD, const float element, CONSTANT float* TOFCen
 #endif //////////////// END TOF ////////////////
 
 #if defined(N_RAYS)
-DEVICE void multirayCoordinateShiftXY(PTR_THR float3 *s, PTR_THR float3 *d, const int lor, const float cr) {
+DEVICE void multirayCoordinateShiftXY(PTR_THR FLOAT3 *s, PTR_THR FLOAT3 *d, const int lor, const float cr) {
 	float interval = cr / (CFLOAT(N_RAYS2D * 2));
 	(*s).x += (interval - cr / 2.f);
 	(*d).x += (interval - cr / 2.f);
@@ -784,7 +808,7 @@ DEVICE void multirayCoordinateShiftXY(PTR_THR float3 *s, PTR_THR float3 *d, cons
 	(*d).y += interval * lor;
 }
 
-DEVICE void multirayCoordinateShiftZ(PTR_THR float3 *s, PTR_THR float3 *d, const int lor, const float cr) {
+DEVICE void multirayCoordinateShiftZ(PTR_THR FLOAT3 *s, PTR_THR FLOAT3 *d, const int lor, const float cr) {
 	float interval = cr / (CFLOAT(N_RAYS3D * 2));
 	(*s).z += (interval - cr / 2.f);
 	(*d).z += (interval - cr / 2.f);
@@ -797,7 +821,7 @@ DEVICE void multirayCoordinateShiftZ(PTR_THR float3 *s, PTR_THR float3 *d, const
 #if defined(FP) && !defined(PROJ5)
 // Computes the forward projection
 // Separate cases for the Siddon and interpolated projectors
-DEVICE void forwardProject(const float local_ele, PTR_THR float *ax, const typeT local_ind, IMTYPE d_OSEM) {
+DEVICE void forwardProject(const FLOAT local_ele, PTR_THR float *ax, const typeT local_ind, IMTYPE d_OSEM) {
 #ifdef CUDA
 #ifdef USEIMAGES
     // if (local_ind.x <= 1.f && local_ind.y <= 1.f && local_ind.z <= 1.f && local_ind.x >= 0.f && local_ind.y >= 0.f && local_ind.z >= 0.f)
@@ -867,16 +891,16 @@ DEVICE void denominator(PTR_THR float *ax, const typeT localInd, float local_ele
 // Compute the backprojection
 DEVICE void rhs(const float local_ele, PTR_THR const float *ax, const LONG local_ind, CLGLOBAL CAST* d_rhs_OSEM, const uchar no_norm, CLGLOBAL CAST* d_Summ
 #ifdef TOF
-	, const float element, const float sigma_x, float* D, const float DD, const float TOFSum, float* TOFWeights
+	, const FLOAT element, const FLOAT sigma_x, float* D, const FLOAT DD, const FLOAT TOFSum, float* TOFWeights
 #ifdef LISTMODE
 	, const int TOFIndex
 #endif
 #endif
 ) {
 #ifdef TOF
-	float val = 0.f;
-	const float dX = local_ele / TOFSum;
-	float yaxTOF = 0.f;
+	FLOAT val = FLOAT_ZERO;
+	const FLOAT dX = local_ele / TOFSum;
+	FLOAT yaxTOF = FLOAT_ZERO;
 #if defined(LISTMODE) && !defined(SENS)
 	int to = TOFIndex;
 #else
@@ -892,8 +916,14 @@ DEVICE void rhs(const float local_ele, PTR_THR const float *ax, const LONG local
 	}
 #endif
 #else
-	const float yaxTOF = ax[0] * local_ele;
+	float yaxTOF = ax[0] * local_ele;
 	const float val = local_ele;
+	// test
+	if (ISNAN(local_ele))
+		yaxTOF = 0.f;
+	//else
+	//	yaxTOF = 1.f;
+
 #endif
 #ifdef ATOMIC
 	atom_add(&d_rhs_OSEM[local_ind], convert_long(yaxTOF * TH));
@@ -1048,20 +1078,20 @@ DEVICE void getDetectorCoordinatesSPECT(
 #else
 	CONSTANT float *d_xyz, 
 #endif
-    CONSTANT float *d_uv, PTR_THR float3 *s, PTR_THR float3 *d, const uint3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch, const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource, int lorXY, size_t idx) {
+    CONSTANT float *d_uv, PTR_THR FLOAT3 *s, PTR_THR FLOAT3 *d, const uint3 i, const uint d_size_x, const uint d_sizey, const FLOAT2 d_dPitch, const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource, int lorXY, size_t idx) {
 	uint id = i.z * 6;
-	*s = CMFLOAT3(d_xyz[id], d_xyz[id + 1], d_xyz[id + 2]);
-	*d = CMFLOAT3(d_xyz[id + 3], d_xyz[id + 4], d_xyz[id + 5]);
-	const float2 shift_det_elem = MFLOAT2(
-        d_dPitch.x * (CFLOAT(i.x) + (1.f - CFLOAT(d_size_x)) * .5f),
-        d_dPitch.y * (CFLOAT(i.y) + (1.f - CFLOAT(d_sizey)) * .5f)
+	*s = CMFLOAT3((FLOAT)d_xyz[id], (FLOAT)d_xyz[id + 1], (FLOAT)d_xyz[id + 2]); // TODO remove cast
+	*d = CMFLOAT3((FLOAT)d_xyz[id + 3], (FLOAT)d_xyz[id + 4], (FLOAT)d_xyz[id + 5]); // TODO remove cast
+	const FLOAT2 shift_det_elem = MFLOAT2(
+        d_dPitch.x * (CFLOAT(i.x) + (FLOAT_ONE - CFLOAT(d_size_x)) * FLOAT_HALF),
+        d_dPitch.y * (CFLOAT(i.y) + (FLOAT_ONE - CFLOAT(d_sizey)) * FLOAT_HALF)
     ); // Amount of shift from sinogram center to current detector element
 	
     id = i.z * NA; // Index of d_uv (detector panel normal vector)
     uint idShift = 2*lorXY + (2*N_RAYS) * idx; // Index of rayShiftsDetector
 
-	const float apuX = d_uv[id]; // X component of detector panel normal vector
-	const float apuY = d_uv[id + 1]; // Y component of detector panel normal vector
+	const FLOAT apuX = d_uv[id]; // X component of detector panel normal vector
+	const FLOAT apuY = d_uv[id + 1]; // Y component of detector panel normal vector
     
 	(*d).x += apuX * (shift_det_elem.x + d_rayShiftsDetector[idShift]); // Shift to current element + shift to rayShiftsDetector
 	(*d).y += apuY * (shift_det_elem.x + d_rayShiftsDetector[idShift]);
@@ -1070,7 +1100,7 @@ DEVICE void getDetectorCoordinatesSPECT(
 	(*s).y += apuY * (shift_det_elem.x + d_rayShiftsSource[idShift]);
 	(*s).z += shift_det_elem.y + d_rayShiftsSource[idShift+1];
 
-    *d += 100.f * (*d - *s); // Extend rays across FOV
+    *d += 100.f * (*d - *s); // Extend rays across FOV (100 too large for fp16 type)
 }
 #else
 #if defined(RAW) || defined(SENS)
@@ -1150,7 +1180,7 @@ DEVICE void getDetectorCoordinates(const CLGLOBAL uint *d_xyindex, const CLGLOBA
 
 #if !defined(SUBSETS) && !defined(CT)
 // Get the detector coordinates for the current measurement (no subsets or using full sinogram subsets)
-DEVICE void getDetectorCoordinatesFullSinogram(const uint d_size_x, const int3 i, PTR_THR float3* s, PTR_THR float3* d, 
+DEVICE void getDetectorCoordinatesFullSinogram(const uint d_size_x, const int3 i, PTR_THR FLOAT3* s, PTR_THR FLOAT3* d, 
 #if defined(USEGLOBAL)
 	const CLGLOBAL float* d_xy,
 #else
@@ -1221,13 +1251,13 @@ DEVICE int perpendicular_start(const float d_b, const float d, const float d_d, 
 // Compute the probability for the perpendicular elements
 DEVICE void perpendicular_elements(const float d_b, const float d_d1, const uint d_N1, const float d, const float d_d2, const uint d_N2, 
 	PTR_THR float* templ_ijk, PTR_THR int3* tempi, PTR_THR LONG *z_loop, const uint d_N, const uint d_NN, 
-	const size_t idx, const float global_factor, const float local_scat, 
+	const size_t idx, const FLOAT global_factor, const FLOAT local_scat, 
 #if !defined(CT) && defined(ATN) && !defined(ATNM)
 	IMTYPE d_atten, const int ii, 
 #elif !defined(CT) && !defined(ATN) && defined(ATNM)
 	const CLGLOBAL float* CLRESTRICT d_atten,
 #endif
-	const float local_norm, const float L) {
+	const FLOAT local_norm, const FLOAT L) {
 	int apu = perpendicular_start(d_b, d, d_d1, d_N1);
 	*z_loop = CLONG_rtz(apu) * CLONG_rtz(d_N) + *z_loop * CLONG_rtz(d_N1) * CLONG_rtz(d_N2);
 	if (d_N == 1)
@@ -1244,21 +1274,21 @@ DEVICE void perpendicular_elements(const float d_b, const float d_d1, const uint
 	// Probability
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
 #ifdef TOTLENGTH
-	float temp = 1.f / (L * CFLOAT(N_RAYS));
+	FLOAT temp = FLOAT_ONE / (L * CFLOAT(N_RAYS));
 #else
-	float temp = 1.f / (CFLOAT(d_N2) * d_d2 * CFLOAT(N_RAYS));
+	FLOAT temp = FLOAT_ONE / (CFLOAT(d_N2) * d_d2 * CFLOAT(N_RAYS));
 #endif
 #elif defined(ORTH)
-	float temp = 1.f;
+	FLOAT temp = FLOAT_ONE;
 #else
 #ifdef TOTLENGTH
-	float temp = 1.f / L;
+	FLOAT temp = FLOAT_ONE / L;
 #else
-	float temp = 1.f / (CFLOAT(d_N2) * d_d2);
+	FLOAT temp = FLOAT_ONE / (CFLOAT(d_N2) * d_d2);
 #endif
 #endif //////////////// END MULTIRAY ////////////////
 #if defined(ATN) && !defined(SPECT) //////////////// ATTENUATION ////////////////
-		float jelppi = 0.f;
+		FLOAT jelppi = FLOAT_ZERO;
 #ifdef USEIMAGES
 		int3 atnind = *tempi;
 #else
@@ -1444,16 +1474,16 @@ DEVICE bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1
 	return false;
 }
 
-DEVICE bool siddon_pre_loop_3D(const float3 b, const float3 diff, const float3 max, const float3 dd, const uint3 N, PTR_THR int *tempi, PTR_THR int *tempj, PTR_THR int *tempk, 
-    PTR_THR float *txu, PTR_THR float *tyu, PTR_THR float *tzu, PTR_THR uint *Np, const int TYYPPI, const float3 s, const float3 d, PTR_THR float *tc, PTR_THR int *i, PTR_THR int *j, PTR_THR int *k, PTR_THR float *tx0, 
+DEVICE bool siddon_pre_loop_3D(const FLOAT3 b, const FLOAT3 diff, const FLOAT3 max, const FLOAT3 dd, const uint3 N, PTR_THR int *tempi, PTR_THR int *tempj, PTR_THR int *tempk, 
+    PTR_THR float *txu, PTR_THR float *tyu, PTR_THR float *tzu, PTR_THR uint *Np, const int TYYPPI, const FLOAT3 s, const FLOAT3 d, PTR_THR float *tc, PTR_THR int *i, PTR_THR int *j, PTR_THR int *k, PTR_THR float *tx0, 
 	PTR_THR float *ty0, PTR_THR float *tz0, PTR_THR bool *xy, const uint3 ii) {
 
-	const float3 apuT = b - s;
-	const float3 t0 = apuT / diff;
-	const float3 tBack = DIVIDE3(max - s, diff);
+	const FLOAT3 apuT = b - s;
+	const FLOAT3 t0 = apuT / diff;
+	const FLOAT3 tBack = DIVIDE3(max - s, diff);
 
-	const float3 tMin = FMIN(t0, tBack);
-	const float3 tMax = FMAX(t0, tBack);
+	const FLOAT3 tMin = FMIN(t0, tBack);
+	const FLOAT3 tMax = FMAX(t0, tBack);
 
 	*tc = FMAX(FMAX(tMin.x, tMin.z), tMin.y);
 	const float tmax = FMIN(FMIN(tMax.x, tMax.z), tMax.y);
@@ -1461,10 +1491,10 @@ DEVICE bool siddon_pre_loop_3D(const float3 b, const float3 diff, const float3 m
 	*ty0 = t0.y;
 	*tz0 = t0.z;
 #ifdef ORTH
-	const float pituus = d.x - s.x;
-	const float pituusY = d.y - s.y;
+	const FLOAT pituus = d.x - s.x;
+	const FLOAT pituusY = d.y - s.y;
 	const float angle = FABS(ACOS((pituus) / SQRT(pituus * pituus + pituusY * pituusY)));
-	if ((angle < 0.785398f && angle > 0.f) || (angle > 2.35619f && angle < 3.92699f) || (angle > 5.497787f))
+	if ((angle < 0.785398f && angle > FLOAT_ZERO) || (angle > 2.35619f && angle < 3.92699f) || (angle > 5.497787f))
 		*xy = true;
 	else
 		*xy = false;
@@ -1493,9 +1523,9 @@ DEVICE bool siddon_pre_loop_3D(const float3 b, const float3 diff, const float3 m
 
 		*Np = (kmax - kmin + 1) + (jmax - jmin + 1) + (imax - imin + 1);
 
-	const float pt = ((FMIN(FMIN(*tz0, *ty0), *tx0) + *tc) / 2.f);
+	const FLOAT pt = ((FMIN(FMIN(*tz0, *ty0), *tx0) + *tc) / FLOAT_TWO);
 
-	const float3 tempijkF = CLAMP3(FMAD3(pt, diff, -apuT) / dd, 0.f, CFLOAT3(N - 1));
+	const FLOAT3 tempijkF = CLAMP3(FMAD3(pt, diff, -apuT) / dd, FLOAT_ZERO, CFLOAT3(N - 1));
 	const int3 tempijk = CINT3_rtz(tempijkF);
 	*tempi = tempijk.x;
 	*tempj = tempijk.y;
