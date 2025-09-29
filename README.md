@@ -20,7 +20,7 @@ Open-source multi-dimensional tomographic reconstruction software for MATLAB, GN
     - [Intel](#intel)
 - [Reporting bugs and feature requests](#reporting-bugs-and-feature-requests)
 - [How to cite OMEGA](#citations)
-- [Acknowledgements](#acknowledgments)
+- [Acknowledgments](#acknowledgments)
 - [References](#references)
 
 ## Introduction
@@ -87,16 +87,16 @@ For detailed installation instructions, see https://omega-doc.readthedocs.io/en/
 
 Precompiled libraries are included in [releases](https://github.com/villekf/OMEGA/releases). However, in case those do not work you can also manually compile all the necessary files. When using MATLAB or GNU Octave, run `install_mex` first. For Python, you need run `compile.py` located in `/path/to/OMEGA/source/Python`.
 
-Examples for MATLAB/GNU Octave are located in `/path/to/OMEGA/main` and for Python in `/path/to/OMEGA/source/Python`.
+Examples for MATLAB/GNU Octave are located in `/path/to/OMEGA/main-files` and for Python in `/path/to/OMEGA/source/Python`. If you use the pip version, you'll need to manually obtain the example files.
 
 ## System Requirements
 OMEGA can be run from either MATLAB, GNU Octave or Python.
 
-The software has been tested with MATLAB versions 2022a, 2023b, 2024a and 2024b. For Octave, any version above 5.0 should be fine. io, statistics and image packages are required for some features. For Python 3.8 and above should work, though most likely earlier versions will work too.
+The software has been tested with MATLAB versions 2022a, 2023b, 2024a, 2024b and 2025a. For Octave, any version above 5.0 should be fine though io, statistics and image packages are required for some features. For Python 3.8 and above should work, though most likely earlier versions will work too. NumPy version 1.20 is required for the Python version, but newer versions of NumPy work fine too.
 
 A C++11 compiler is required when manually compiling. On Windows, [Visual Studio](https://visualstudio.microsoft.com/) 2019 or 2022 is recommended with "Desktop development with C++", no other options are required. On Linux, use the g++ compiler that comes with your distribution whenever possible. Note that MATLAB only supports certain compiler versions, so please check the [supported compilers table](https://www.mathworks.com/support/requirements/supported-compilers-linux.html). On MacOS, [Xcode](https://apps.apple.com/us/app/xcode/id497799835?mt=12) should be used.
 
-OpenCL functionality requires OpenCL libraries and an OpenCL 1.2 (or higher) compatible device. CUDA functionality requires CUDA libraries and a device with compute capability of 2.0 (or higher). ArrayFire libraries are recommended for MATLAB, and required for Python.
+OpenCL functionality requires OpenCL libraries and an OpenCL 1.2 (or higher) compatible device. CUDA functionality requires CUDA libraries and a device with compute capability of 2.0 (or higher). [ArrayFire](https://arrayfire.com/binaries/) libraries are recommended for MATLAB, and required for Python.
 
 The following third-party MATLAB codes are NOT required, but can be useful in certain specialized cases as they can be optionally used:
 - [Shuffle](https://www.mathworks.com/matlabcentral/fileexchange/27076-shuffle), used for random subset sampling
@@ -106,6 +106,8 @@ The following third-party MATLAB codes are NOT required, but can be useful in ce
 ## Installation
 
 For additional install help, see [installation help](https://omega-doc.readthedocs.io/en/latest/installation.html).
+
+As a first step you should install either OpenCL (install either https://github.com/GPUOpen-LibrariesAndSDKs/OCL-SDK/releases/tag/1.0 for Windows or in Linux use `sudo apt install ocl-icd-opencl-dev`) or [CUDA](https://developer.nvidia.com/cuda-downloads), and then [ArrayFire](https://arrayfire.com/binaries/). See more details in the above link or below.
 
 Pre-built libraries are supplied in the [releases](https://github.com/villekf/OMEGA/releases), however, you can also manually compile everything. 
 
@@ -117,9 +119,9 @@ Visual Studio can be downloaded from [here](https://visualstudio.microsoft.com/)
 
 On Ubuntu you can install g++ with `sudo apt install build-essential`.
 
-To install the OMEGA software, either simply extract the release/master package, download the MATLAB toolbox file from [releases](https://github.com/villekf/OMEGA/releases) (`OMEGA.-.Open-source.MATLAB.emission.tomography.software.mltbx`) or obtain the source code through git:  
+To install the OMEGA software, either simply extract the release/master package, download the MATLAB toolbox file from [releases](https://github.com/villekf/OMEGA/releases) (`OMEGA.-.Open-source.MATLAB.emission.tomography.software.mltbx`, MATLAB only), install for Python through pip (`pip install omegatomo`), or obtain the source code through git:  
 `git clone https://github.com/villekf/OMEGA`
-and then add the OMEGA folder and subfolders to MATLAB/Octave path (this is done automatically if you install with the mltbx-file) or /path/to/OMEGA/source/Python to PYTHONPATH. 
+and then add the OMEGA folder and subfolders to MATLAB/Octave path (this is done automatically if you install with the mltbx-file) or /path/to/OMEGA/source/Python to PYTHONPATH (this step is not required when installing through pip). 
 Finally, run `install_mex` in the source folder to build the necessary MEX-files or compile.py with Python. ROOT, OpenCL and CUDA support will be installed, if the corresponding files are found. 
 Possible compilation errors can be seen with `install_mex(1)`. OpenCL include and library paths, ArrayFire path and ROOT path can also be set manually with 
 `install_mex(0, OpenCL_include_path, OpenCL_lib_path, AF_PATH, ROOT_PATH)`. `OpenCL_include_path` should be the folder where `cl.h` is located, `OpenCL_lib_path` the folder where `OpenCL.lib/libOpenCL.so` (Windows/Linux) is located, 
@@ -135,7 +137,7 @@ and then you need to load the statistics package:
 
 `pkg load statistics`
 
-Python only requires NumPy, though to load mat-files you need `pymatreader` and for multi-resolution reconstruction `scikit-image`.
+Python only requires NumPy (1.20 or newer), though to load mat-files you need `pymatreader` and for multi-resolution reconstruction `scikit-image`.
 
 In order to enable OpenCL support (implementations 2 and 3), you're going to need an OpenCL SDK/library and (for implementation 2) ArrayFire (see below). 
 in Linux you can alternatively just install the OpenCL headers and library. Below examples are for Ubuntu, but the packages should exist for other distros as well.
@@ -151,7 +153,7 @@ Alternative libraries in case the above one fails:
 or
 `sudo apt-get install intel-opencl-icd`
 
-In case the above doesn't work or you use Windows then you need to obtain an OpenCL SDK. The SDK can be any (or all) of the following: CUDA Toolkit, Intel OpenCL SDK, OCL-SDK, AMD APP SDK. 
+In case the above doesn't work or you use Windows then you need to obtain an OpenCL SDK. The SDK can be any (or all) of the following: CUDA Toolkit, Intel OpenCL SDK, OCL-SDK, AMD APP SDK (see below for links). 
 On all cases, the OpenCL library and header files (only when manually building) need to be on your system's PATH. By default, the install_mex-file assumes that you have installed CUDA toolkit (Linux and Windows), 
 AMD APP SDK v3.0 (Linux and Windows), OCL-SDK (Windows), AMD GPU Pro drivers (Linux) or Intel SDK (Linux and Windows). If you get an error message like "CL/cl.h: No such file or directory", the headers could not be found. 
 You can manually add custom OpenCL paths with `install_mex(0, '/path/to/cl.h', '/path/to/libOpenCL.so')`. On Ubuntu you can use command `find / -iname cl.h 2>/dev/null` to find the required cl.h file and 
@@ -159,18 +161,17 @@ You can manually add custom OpenCL paths with `install_mex(0, '/path/to/cl.h', '
 
 CUDA functionality requires CUDA toolkit.
 
-**All library paths needs to be on system path when running the mex-files or otherwise the required libraries will not be found.**
+**All library paths needs to be on system path when running the mex-files or Python scripts or otherwise the required libraries will not be found.**
 
 Links:  
-https://software.intel.com/en-us/intel-opencl  
 https://developer.nvidia.com/cuda-toolkit  
 https://github.com/GPUOpen-LibrariesAndSDKs/OCL-SDK/releases  
+https://github.com/KhronosGroup/OpenCL-SDK (for this, you'll need to extract the contents and make sure they can be found by either MATLAB/Octave or Python)
 
 Once you have the header and library files, you need drivers/OpenCL runtimes for your device(s). If you have GPUs/APUs then simply having the vendor drivers should be enough. 
 For Intel CPUs without an integrated GPU you need CPU runtimes (see the link below). 
 
-For AMD CPUs it seems that the AMD drivers released around the summer 2018 and after no longer support CPUs so you need an older driver in order to get CPU support or use an alternative runtime. 
-One possibility is to use PoCL http://portablecl.org/ and another is to try the Intel runtimes (link below).
+For AMD CPUs you need to use PoCL http://portablecl.org/ or try the Intel runtimes (link below). Note that PoCL can be used for Intel CPUs as well.
 
 Intel runtimes can be found here:
 https://software.intel.com/en-us/articles/opencl-drivers
@@ -209,6 +210,7 @@ The following features can be used as independent functions without any input ne
 - (Experimental) Convert CT-attenuation coefficients directly from CT DICOM images into 511 keV attenuation coefficients ([create_atten_matrix_CT.m](https://github.com/villekf/OMEGA/blob/master/source/m-files/m-files/create_atten_matrix_CT.m))
 - Convert COO (Coordinate list) sparse matrix row indices into CSR (Compressed sparse row) indices ([coo_to_csr.m](https://github.com/villekf/OMEGA/blob/master/source/m-files/coo_to_csr.m))
 - Convert voxelized phantoms/sources into GATE compatible files ([Voxelized_phantom_handle.m](https://github.com/villekf/OMEGA/blob/master/source/m-files/Voxelized_phantom_handle.m), [Voxelized_source_handle.m](https://github.com/villekf/OMEGA/blob/master/source/m-files/Voxelized_source_handle.m))
+- Python allows the use of various regularizers independently of any OMEGA code or files. See the code at: https://github.com/villekf/OMEGA/blob/master/source/Python/omegatomo/util/priors.py
 
 ### Upcoming Features
 
@@ -218,9 +220,9 @@ Here is a list of features that should appear in future releases:
 - Additional SPECT features
     - Dynamic SPECT reconstruction
     - Built-in support for more collimator geometries
-- Additional CT features
 - PET scatter correction based on SSS
 - Improved dual-layer PET support
+- Deep learning based features
 
 ## Known Issues and Limitations
 
@@ -228,9 +230,9 @@ Here is a list of features that should appear in future releases:
 
 Moving bed is not supported at the moment (needs to be step-and-shoot and the different bed positions need to be handled as separate cases). Though it should be possible to manually achieve a moving bed examination.
 
-Only cylindrical symmetric scanners are supported inherently for PET, for other types of scanners the user has to input the detector coordinates or use index-based reconstruction.
+Only cylindrical symmetric scanners are supported inherently for PET, for other types of scanners the user has to input the detector coordinates or use [index-based reconstruction](https://omega-doc.readthedocs.io/en/latest/customcoordinates.html#index-based-reconstruction).
 
-For CT, only cone beam flat panel scanners are supported. For other types of scanners, the user has to input the detector coordinates or modify the data such that it is approximately flat panel.
+For CT, only cone/fan beam flat panel scanners are supported. For other types of scanners, the user has to input the detector coordinates or modify the data such that it is approximately flat panel. There is some support for parallel beam cases, but the current implementation is slow.
 
 ### MATLAB & Octave
 
