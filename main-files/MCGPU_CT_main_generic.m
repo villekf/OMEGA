@@ -68,11 +68,11 @@ options.dPitchY = 0.298;
 
 % Note that non-square transaxial FOV sizes should work, but might not work
 % always. Square transaxial FOV is thus recommended.
-%%% Transaxial FOV size (mm), this is the length of the vertical side
+%%% Transaxial FOV size (mm), this is the length of the x (vertical/row) side
 % of the FOV
 options.FOVa_x = 225;
 
-%%% Transaxial FOV size (mm), this is the length of the horizontal side
+%%% Transaxial FOV size (mm), this is the length of the y (horizontal/column) side
 % of the FOV
 options.FOVa_y = 225;
 
@@ -142,19 +142,20 @@ options.nProjections = numel(options.angles);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% The image size
-% you can manually adjust these if desired
+% Note that non-square transaxial image sizes can be unreliable just as the
+% non-square transaxial FOV, but they should, generally, work
 %%% Reconstructed image pixel count (X/row-direction)
 options.Nx = 523;
 
 %%% Y/column-direction
 options.Ny = 523;
 
+% The above, again, doesn't apply to axial direction
+% i.e. the number of slices can differ from Nx or Ny													
 %%% Z-direction (number of slices) (axial)
 options.Nz = 523;
 
-% Use these two to rotate/flip the final image
-%%% Flip the image (in horizontal direction)?
+%%% Flip the image (in column direction)?
 options.flip_image = false;
 
 %%% How much is the image rotated (radians)?
@@ -195,12 +196,17 @@ options.useMultiResolutionVolumes = true;
 % This is the scale value for the multi-resolution volumes. The original
 % voxel size is divided by this value and then used as the voxel size for
 % the multi-resolution volumes. Default is 1/4 of the original voxel size.
+% This means that the multi-resolution regions have smaller voxel sizes if
+% this is < 1.
 options.multiResolutionScale = 1/4;
 
 % Performs the extrapolation and adjusts the image size accordingly
 options = CTEFOVCorrection(options);
 
 % Use offset-correction
+% If you use offset imaging, i.e. the center of rotation is not in the
+% origin but rather a circle around the origin, you can enable automatic
+% offset weighting by setting this to true.
 options.offsetCorrection = false;
 
 
@@ -267,6 +273,8 @@ options.use_CPU = false;
 % NOTE: You can mix and match most of the projectors. I.e. 45 will use
 % interpolation-based projector for forward projection while branchless
 % distance-driven is used for backprojection
+% NOTE 2: The below additional options apply also in hybrid cases as long
+% as the other projector is the corresponding projector.
 % See the documentation for more information:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
 % NOTE: Projector types 1-3 should not be used as backprojectors for CT!
@@ -297,8 +305,8 @@ options.projector_type = 4;
 
 %%% Interpolation length (projector type = 4 only)
 % This specifies the length after which the interpolation takes place. This
-% value will be multiplied by the voxel size which means that 1 means that
-% the interpolation length corresponds to a single voxel (transaxial)
+% value will be multiplied by the voxel size which means that 1 is
+% the interpolation length corresponding to a single voxel (transaxial)
 % length. Larger values lead to faster computation but at the cost of
 % accuracy. Recommended values are between [0.5 1].
 options.dL = 1;
@@ -372,8 +380,10 @@ options.FDK = false;
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MAP-METHODS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% These algorithms can utilize any of the selected priors, though only one
-% prior can be used at a time
+% Any algorithm selected here will utilize any of the priors selected below
+% this. Note that only one algorithm and prior combination is allowed! You
+% can also use most of these algorithms without priors (such as PKMA or
+% PDHG).
 
 %%% Preconditioned Krasnoselskii-Mann algorithm (PKMA)
 % Supported by implementations 1, 2, 4, and 5
@@ -426,11 +436,15 @@ options.enforcePositivity = true;
 % if "Largest eigenvalue for volume 0 is 100" then options.tauCP should be 
 % 1/100 (if you use filtering-based preconditioner this is the "without 
 % filtering" value)
+% if you have a multi-resolution situation, you should input the values
+% for each volume or use zero/empty
 options.tauCP = 0;
 % Primal value for filtered iterations, applicable only if
 % options.precondTypeMeas[2] = true. As with above, automatically computed
 % if left zero or empty. Same restrictions apply here as above.
 % Use the "Largest eigenvalue for volume 0 with filtering" value here!
+% if you have a multi-resolution situation, you should input the values
+% for each volume or use zero/empty
 options.tauCPFilt = 0;
 % Dual value. Recommended to set at 1.
 options.sigmaCP = 1;
@@ -441,17 +455,17 @@ options.thetaCP = 1;
 options.sigma2CP = 5;
 
 % Use adaptive update of the primal and dual variables
-% Currently only one method available
-% Setting this to 1 uses an adaptive update for both the primal and dual
-% variables.
-% Can lead to unstable behavior when using with multi-resolution!
-% Minimal to none benefit with filtering-based preconditioner
+% Currently two methods available
+% Setting this to 1 or 2 uses an adaptive update for both the primal and 
+% dual variables.
+% Can lead to unstable behavior when using with multi-resolution
+% Minimal to none use with filtering-based preconditioner
 options.PDAdaptiveType = 0;
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% PRECONDITIONERS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Applies to PDHG, PDHGL1, PDHGKL, PKMA, MBSREM, MRAMLA, PDDY, FISTA and
-%%% FISTAL1
+%%% Applies to PDHG, PDHGL1, PDHGKL, PKMA, MBSREM, MRAMLA, PDDY, FISTA, 
+%%% FISTAL1, and SAGA
 % Measurement-based preconditioners
 % precondTypeMeas(1) = Diagonal normalization preconditioner (1 / (A1))
 % precondTypeMeas(2) = Filtering-based preconditioner
@@ -503,7 +517,7 @@ options.beta = 3000;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% NEIGHBORHOOD PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% How many neighboring pixels are considered
-% With MRP, QP, L, FMH, NLM and weighted mean
+% With MRP, QP, L, FMH, NLM, (RDP), GGMRF and weighted mean
 % E.g. if Ndx = 1, Ndy = 1, Ndz = 0, then you have 3x3 square area where
 % the pixels are taken into account (I.e. (Ndx*2+1)x(Ndy*2+1)x(Ndz*2+1)
 % area).
@@ -528,24 +542,23 @@ options.alpha1TGV = 5;
 options.sigma = 6.0e-3;
 
 %%% Patch radius
+% Works exactly the same as the neighborhood size
 options.Nlx = 1;
 options.Nly = 1;
-options.Nlz = 0;
+options.Nlz = 1;
 
-%%% Standard deviation of the Gaussian filter
-options.NLM_gauss = 5;
+%%% Standard deviation of the Gaussian-weighted Euclidean norm
+options.NLM_gauss = 2;
 
-%%% Adaptive NL methods
+%%% Adaptive NL method
 options.NLAdaptive = false;
 
 %%% Summed constant for adaptive NL
 options.NLAdaptiveConstant = 2.0e-7;
 
-% By default, the original NLM is used. You can, however, use another
-% potential function by selecting ONE of the options below.
+% Note that only one of the below options for NLM can be selected!
+% If all the below ones are false, regular NLM is used!
 %%% Use Non-local total variation (NLTV)
-% If selected, will overwrite regular NLM regularization as well as the
-% below MRP version.
 options.NLTV = false;
 
 %%% Use Non-local relative difference (NLRD)
@@ -568,7 +581,7 @@ options.NLM_MRP = false;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% RDP PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Edge weighting factor
 % Note that this affects NLRD as well
-% Higher values sharpen the image, lower values smooth it
+% Higher values sharpen the image, smaller values make it smoother
 options.RDP_gamma = 15;
 
 % If true, includes also the "diagonal" corners in the neighborhood in RDP
@@ -590,6 +603,7 @@ options.RDP_reference_image = '';
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% GGMRF PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% GGMRF parameters
 % See the original article for details
+% https://omega-doc.readthedocs.io/en/latest/algorithms.html#ggmrf
 % These affect the NLGGMRF as well
 options.GGMRF_p = 2;
 options.GGMRF_q = 1.15;

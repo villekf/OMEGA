@@ -46,11 +46,11 @@ options.cr_pz = 2.4;
 %%% Ring diameter (distance between perpendicular detectors) (mm)
 options.diameter = 130*2;
 
-%%% Transaxial FOV size (mm), this is the length of the x (horizontal) side
+%%% Transaxial FOV size (mm), this is the length of the x (vertical/row) side
 % of the FOV
 options.FOVa_x = 151;
 
-%%% Transaxial FOV size (mm), this is the length of the y (vertical) side
+%%% Transaxial FOV size (mm), this is the length of the y (horizontal/column) side
 % of the FOV
 options.FOVa_y = options.FOVa_x;
 
@@ -89,6 +89,7 @@ options.machine_name = 'Cylindrical_PET_example';
 
 % Note: Origin is assumed to be at the center. If this is not the case, you
 % can shift it with options.oOffsetX, options.oOffsetY and options.oOffsetZ
+% That is row, column and slice directions
 % options.oOffsetX = 0;
 % options.oOffsetY = 0;
 % options.oOffsetZ = 0;
@@ -152,13 +153,12 @@ options.coincidence_mask = [0 1 0 1 1 1 1 0 0 0 0 1 1 1 1 1 0 0 0 1 0 1 1 1 1 0 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+ 
 %%% Is ROOT data used (Only one data type can be used at a time)
-% NOTE: On Windows ROOT works only with 32-bit MATLAB/Octave, but has not
-% been tested with it.
-% NOTE 2: If you are using MATLAB R2018b or earlier, ROOT will eventually
+% NOTE: If you are using MATLAB R2018b or earlier, ROOT will eventually
 % cause MATLAB to crash. This can be circumvent by running MATLAB with
 % matlab -nojvm. 2019a and up are unaffected, GNU Octave is unaffected.
+% The crashes only occur in Linux, not in Windows
 options.use_root = true;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -177,23 +177,24 @@ options.use_root = true;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%%% Reconstructed image pixel count (X-direction)
-% NOTE: Non-square image sizes (X- and Y-direction) may not work
+% Note that non-square transaxial image sizes can be unreliable just as the
+% non-square transaxial FOV, but they should, generally, work
+%%% Reconstructed image pixel count (X/row-direction)
 options.Nx = 128;
 
-%%% Y-direction
+%%% Y/column-direction
 options.Ny = 128;
 
 %%% Z-direction (number of slices) (axial)
 options.Nz = options.rings*2-1;
 
-%%% Flip the image (in vertical direction)?
+%%% Flip the image (in column direction)?
 options.flip_image = false;
 
 %%% How much is the image rotated?
 % NOTE: The rotation is done in the detector space (before reconstruction).
 % This current setting is for systems whose detector blocks start from the
-% right hand side when viewing the device from front.
+% right hand side when viewing the scanner from front.
 % Positive values perform the rotation in clockwise direction
 % The units are crystals, i.e. if the value is 1, the rotation is done by
 % rotating the coordinates equaling to one crystal pitch
@@ -239,7 +240,7 @@ options.Nang = options.det_per_ring/2;
 % Currently this is computed automatically, but you can also manually
 % specify the segment sizes.
 options.segment_table = [options.rings*2-1, options.rings*2-1 - (options.span + 1):-options.span*2:max(options.Nz - options.ring_difference*2, options.rings - options.ring_difference)];
-if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
+if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
     options.segment_table = [options.segment_table(1), repeat_elem(options.segment_table(2:end),2,1)];
 else
     options.segment_table = [options.segment_table(1), repelem(options.segment_table(2:end),2)];
@@ -296,7 +297,7 @@ options.attenuation_correction = true;
 
 %%% Rotate the attenuation image before correction
 % Rotates the attenuation image N * 90 degrees where N is the number
-% specified below. Positive values are clocwise, negative
+% specified below. Positive values are clockwise, negative
 % counter-clockwise.
 options.rotateAttImage = 1;
 
@@ -354,11 +355,11 @@ options.normalization_attenuation = [];
 options.normalization_scatter_correction = false;
 
 %%% Apply normalization correction
-% If set to true, normalization correction is applied to either data
-% formation or in the image reconstruction by using precomputed
+% If set to true, normalization correction is applied in either data
+% formation or in the image reconstruction by using precomputed 
 % normalization coefficients. I.e. once you have computed the normalization
 % coefficients, turn above compute_normalization to false and set this to
-% true.
+% true. Alternatively, input your own normalization data (see below)
 options.normalization_correction = true;
 
 %%% Use user-made normalization
@@ -406,6 +407,7 @@ options.corrections_during_reconstruction = true;
 %%% Name of current datafile/examination
 % This is used to name the saved measurement data and also load it in
 % future sessions.
+% Applies only if using OMEGA's built-in functions
 options.name = 'cylpet_example_new';
 
 %%% Folder for the data (.dat ASCII, .root ROOT, listmode data) files
@@ -537,16 +539,16 @@ options.OSEM = true;
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MAP-METHODS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Any algorithm selected here will utilize any of potential priors
-% selected. Note that only one algorithm and prior combination is allowed!
-% You can also use most of these algorithms without priors (such as PKMA or
+% Any algorithm selected here will utilize any of the priors selected below
+% this. Note that only one algorithm and prior combination is allowed! You
+% can also use most of these algorithms without priors (such as PKMA or
 % PDHG).
 
 %%% Preconditioned Krasnoselskii-Mann algorithm (PKMA)
 % Supported by implementations 1, 2, 4, and 5
 options.PKMA = false;
 
-%%% Primal-dual hybrid gradient (PDHG) with KUllback-Leibler minimization
+%%% Primal-dual hybrid gradient (PDHG) with Kullback-Leibler minimization
 % Supported by implementations 1, 2, 4, and 5
 options.PDHGKL = false;
 
@@ -572,7 +574,8 @@ options = OMEGA_error_check(options);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
-%% Load the ASCII/LMF/ROOT coincidence data
+%% Load the ASCII/ROOT coincidence data
+% Or load the measurement data manually into options.SinM
 
 options.SinM = load_data(options);
 

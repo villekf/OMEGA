@@ -49,11 +49,11 @@ options.name = 'Jyvat_Skyscan';
 % you get more detailed timing information. Maximum is 3.
 options.verbose = 1;
 
-%%% Transaxial FOV size (mm), this is the length of the x (horizontal) side
+%%% Transaxial FOV size (mm), this is the length of the x (vertical/row) side
 % of the FOV
 options.FOVa_x = 13;
 
-%%% Transaxial FOV size (mm), this is the length of the y (vertical) side
+%%% Transaxial FOV size (mm), this is the length of the y (horizontal/column) side
 % of the FOV
 options.FOVa_y = options.FOVa_x;
 
@@ -91,16 +91,16 @@ options.angles = -(0:0.2:0.2*options.nProjections - 0.2)';
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%%% Reconstructed image pixel count (X-direction)
+%%% Reconstructed image pixel count (X/row-direction)
 options.Nx = 1000 * 2;
 
-%%% Y-direction
+%%% Y/column-direction
 options.Ny = 1000 * 2;
 
 %%% Z-direction (number of slices) (axial)
 options.Nz = 481 * 2;
 
-%%% Flip the image (in vertical direction)?
+%%% Flip the image (in column direction)?
 options.flip_image = false;
 
 %%% How much is the image rotated (radians)?
@@ -209,7 +209,8 @@ end
 %%% Feldkamp-Davis-Kress (FDK)
 options.FDK = true;
 
-%%% PKMA
+
+%%% Preconditioned Krasnoselskii-Mann algorithm (PKMA)
 options.PKMA = false;
 
 %%% Primal-dual hybrid gradient (PDHG)
@@ -331,18 +332,19 @@ options.delta_PKMA = 100;
 options.sigma = 6.00e-3;
 
 %%% Patch radius
+% Works exactly the same as the neighborhood size
 options.Nlx = 1;
 options.Nly = 1;
 options.Nlz = 1;
 
-%%% Standard deviation of the Gaussian filter
-options.NLM_gauss = 0.75;
+%%% Standard deviation of the Gaussian-weighted Euclidean norm
+options.NLM_gauss = 2;
 
 % By default, the original NLM is used. You can, however, use another
 % potential function by selecting ONE of the options below.
+% Note that only one of the below options for NLM can be selected!
+% If all the below ones are false, regular NLM is used!
 %%% Use Non-local total variation (NLTV)
-% If selected, will overwrite regular NLM regularization as well as the
-% below MRP version.
 options.NLTV = false;
 
 %%% Use Non-local relative difference (NLRD)

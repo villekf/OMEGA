@@ -1,4 +1,4 @@
-%% MATLAB codes for PET reconstruction using Inveon PET LST or GATE output
+%% MATLAB/Octave codes for PET reconstruction using Inveon PET LST or GATE output
 % This main-file provides an example on how to obtain & perform list-mode
 % (event-by-event) reconstruction. 
 % For the input measurement data, you can use the open preclinical PET data
@@ -19,8 +19,8 @@ options.blocks_per_ring = (16);
 
 %%% R-sectors/modules/blocks/buckets in axial direction (i.e. number of physical
 %%% scanner/crystal rings) 
-% Multiplying this with the below cryst_per_block should equal the total
-% number of crystal rings. 
+% Multiplying this with the below cryst_per_block_axial should equal the
+% total number of crystal rings.
 options.linear_multip = (4);
 
 %%% Number of detectors on the side of R-sector/block/module (transaxial
@@ -42,18 +42,14 @@ options.cr_pz = 1.59;
 %%% Ring diameter (distance between perpendicular detectors) (mm)
 options.diameter = 161;
 
-% Note that non-square transaxial FOV sizes should work, but might not work
-% always. Square transaxial FOV is thus recommended.
-%%% Transaxial FOV size (mm), this is the length of the x (vertical) side
+%%% Transaxial FOV size (mm), this is the length of the x (vertical/row) side
 % of the FOV
 options.FOVa_x = 100;
 
-%%% Transaxial FOV size (mm), this is the length of the y (horizontal) side
+%%% Transaxial FOV size (mm), this is the length of the y (horizontal/column) side
 % of the FOV
 options.FOVa_y = options.FOVa_x;
 
-% The above recommendation doesn't apply to axial FOV, i.e. this can be
-% different from the transaxial FOV size(s). 
 %%% Axial FOV (mm)
 options.axial_fov = 127;
 
@@ -68,18 +64,10 @@ options.pseudot = [];
 % If the gap values are the same, you need to repeat the value for each gap
 options.ringGaps = [];
 
-%%% Number of gaps between rings
-% These should be the rings after which there is a gap
-% For example, if there are a total of 6 rings with two gaps and the gaps
-% are after ring number 2 and 4. Then options.ringGaps = [2,4];
-% Note that the below options.rings should not include the gaps, though by
-% default it should be correctly computed.
-options.ringGaps = [];
-
-%%% Number of detectors per ring (without pseudo detectors)
+%%% Number of detectors per crystal ring (without pseudo detectors)
 options.det_per_ring = options.blocks_per_ring*options.cryst_per_block;
 
-%%% Number of detectors per ring (with pseudo detectors)
+%%% Number of detectors per crystal ring (with pseudo detectors)
 % NOTE: Inveon has no pseudo detectors/rings
 % If you have a single pseudo detector per block, use the commented line
 options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block);
@@ -88,7 +76,7 @@ options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block);
 %%% Number of crystal rings
 options.rings = options.linear_multip * options.cryst_per_block;
 
-%%% Number of detectors
+%%% Total number of detectors
 options.detectors = options.det_per_ring*options.rings;
 
 %%% Scanner name
@@ -137,13 +125,13 @@ options.Ny = 128;
 %%% Z-direction (number of slices) (axial)
 options.Nz = options.rings*2 - 1;
 
-%%% Flip the image (in horizontal direction)?
+%%% Flip the image (in column direction)?
 options.flip_image = false;
 
 %%% How much is the image rotated?
 % NOTE: The rotation is done in the detector space (before reconstruction).
 % This current setting is for systems whose detector blocks start from the
-% right hand side when viewing the device from front.
+% right hand side when viewing the scanner from front.
 % Positive values perform the rotation in clockwise direction
 % The units are crystals, i.e. if the value is 1, the rotation is done by
 % rotating the coordinates equaling to one crystal pitch
@@ -212,9 +200,9 @@ options.global_correction_factor = [];
 %%%%%%%%%%%%%%%%%%%% Corrections during reconstruction %%%%%%%%%%%%%%%%%%%%
 % If set to true, all the corrections are performed during the
 % reconstruction step, otherwise the corrections are performed to the
-% sinogram/raw data before reconstruction. I.e. this can be considered as
-% e.g. normalization weighted reconstruction if normalization correction is
-% applied.
+% sinogram/raw data before reconstruction (i.e. precorrected). I.e. this
+% can be considered as e.g. normalization weighted reconstruction if
+% normalization correction is applied.
 % NOTE: Attenuation correction is always performed during reconstruction
 % regardless of the choice here.
 options.corrections_during_reconstruction = true;
@@ -238,24 +226,31 @@ options.corrections_during_reconstruction = true;
 %%% Total time of the measurement (s)
 % Use inf if you want the whole examination (static measurement only)
 % Note that this value is only used when LOADING data from GATE or Inveon
-% files
+% files using OMEGA's built-in functions
 options.tot_time = inf;
 
 %%% Number of time points/dynamic frames (if a static measurement, use 1)
-% This should equal to the number of time steps and applies whether you are
-% using your own data or data created by OMEGA
+%%% or alternatively the size of the time window for each dynamic step (in
+%%% seconds). If you use a scalar value that is bigger than 1, then the
+%%% dynamic time windows will use a constant width. If you want to use
+%%% custom time windows you can use them e.g. with options.partitions =
+%%% [30;30;60;120]; where each element is the width of the time window (in
+%%% seconds). Note that the sum should in this case equal the end time
+%%% minus the start time.
+% NOTE: The above applies ONLY when using OMEGA to load the data. If you
+% use your own data, this should be the number of time steps!
 options.partitions = 1;
 
 %%% Start time (s) (all measurements BEFORE this will be ignored)
 % Note that this value is only used when LOADING data from GATE or Inveon
-% files
+% files using OMEGA's built-in functions
 options.start = 0;
 
 %%% End time (s) (all measurements AFTER this will be ignored)
 % Use inf if you want to the end of the examination (static measurement
 % only)
 % Note that this value is only used when LOADING data from GATE or Inveon
-% files
+% files using OMEGA's built-in functions
 options.end = options.tot_time;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -279,7 +274,7 @@ options.end = options.tot_time;
 % future sessions.
 options.name = 'open_PET_data_list';
 
-%%% Folder for the data (.dat ASCII, .ccs LMF, .root ROOT) files
+%%% Folder for the data (.dat ASCII, .root ROOT) files
 % If no files are located in the path provided below, then the current
 % folder is also checked. If no files are detected there either, an error
 % is thrown.
@@ -300,7 +295,7 @@ options.only_reconstructions = false;
 %%% Show status messages
 % These are e.g. time elapsed on various functions and what steps have been
 % completed. It is recommended to keep this at 1 or 2. With value of 2, 
-% you get more detailed timing information. Maximum is 3.
+% you get more detailed timing information. Maximum is 3, minimum 0.
 options.verbose = 1;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -395,6 +390,8 @@ options.use_CPU = false;
 % NOTE: You can mix and match most of the projectors. I.e. 41 will use
 % interpolation-based projector for forward projection while improved
 % Siddon is used for backprojection.
+% NOTE 2: The below additional options apply also in hybrid cases as long
+% as the other projector is the corresponding projector.
 % See the documentation for more information:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
 options.projector_type = 1;
@@ -466,15 +463,15 @@ options.tube_radius = sqrt(2) * (options.cr_pz / 2);
 % create larger spheres, while smaller values create smaller spheres.
 options.voxel_radius = 1;
 
-% Siddon (projector_type = 1 only)
+% projector_type = 1 and 4 only
 %%% Number of rays
 % Number of rays used per detector if projector_type = 1 (i.e. Improved
-% Siddon is used).
+% Siddon is used) or projector_type = 4 (interpolation).
 % The total number of rays per detector is the multiplication of the two
 % below values!
-% Number of rays in transaxial direction
+% Number of rays in transaxial (row) direction
 options.n_rays_transaxial = 1;
-% Number of rays in axial direction
+% Number of rays in axial (column) direction
 options.n_rays_axial = 1;
  
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
@@ -514,6 +511,7 @@ options.x0 = ones(options.Nx, options.Ny, options.Nz);
 % optionally one prior)
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% ML-METHODS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% These are non-regularized versions
 %%% Ordered Subsets Expectation Maximization (OSEM) OR Maximum-Likelihood
 %%% Expectation Maximization (MLEM) (if subsets = 1)
 % Supported by all implementations
@@ -690,7 +688,7 @@ options.h = 2;
 % lambda / ((current_iteration - 1)/20 + 1). Use vector (length = Niter) if
 % you want your own relaxation parameters. Use empty array or zero if you
 % want to OMEGA to compute the relaxation parameter using the above formula
-% with lamda = 1. Note that current_iteration is one-based, i.e. it starts
+% with lambda = 1. Note that current_iteration is one-based, i.e. it starts
 % at 1.
 options.lambda = 1;
  
@@ -741,11 +739,15 @@ options.alpha_drama = 0.1;
 % if "Largest eigenvalue for volume 0 is 100" then options.tauCP should be 
 % 1/100 (if you use filtering-based preconditioner this is the "without 
 % filtering" value)
+% if you have a multi-resolution situation, you should input the values
+% for each volume or use zero/empty
 options.tauCP = 0;
 % Primal value for filtered iterations, applicable only if
 % options.precondTypeMeas[2] = true. As with above, automatically computed
 % if left zero or empty. Same restrictions apply here as above.
 % Use the "Largest eigenvalue for volume 0 with filtering" value here!
+% if you have a multi-resolution situation, you should input the values
+% for each volume or use zero/empty
 options.tauCPFilt = 0;
 % Dual value. Recommended to set at 1.
 options.sigmaCP = 1;
@@ -756,16 +758,16 @@ options.thetaCP = 1;
 options.sigma2CP = 1;
 
 % Use adaptive update of the primal and dual variables
-% Currently only one method available
-% Setting this to 1 uses an adaptive update for both the primal and dual
-% variables.
-% Can lead to unstable behavior with using multi-resolution
+% Currently two methods available
+% Setting this to 1 or 2 uses an adaptive update for both the primal and 
+% dual variables.
+% Can lead to unstable behavior when using with multi-resolution
 % Minimal to none use with filtering-based preconditioner
 options.PDAdaptiveType = 0;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% PRECONDITIONERS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Applies to PDHG, PDHGL1, PDHGKL, PKMA, MBSREM, MRAMLA, PDDY, FISTA and
-%%% FISTAL1
+%%% Applies to PDHG, PDHGL1, PDHGKL, PKMA, MBSREM, MRAMLA, PDDY, FISTA, 
+%%% FISTAL1, and SAGA
 % Measurement-based preconditioners
 % precondTypeMeas(1) = Diagonal normalization preconditioner (1 / (A1))
 % precondTypeMeas(2) = Filtering-based preconditioner
@@ -801,15 +803,20 @@ options.rhoPrecond = options.rho_PKMA;
 options.delta1Precond = options.delta_PKMA;
 
 % Parameters for precondTypeImage(5)
-% See the article for details
+% See the article for details:
+% https://omega-doc.readthedocs.io/en/latest/algorithms.html#gradient-based-preconditioner
 options.gradV1 = 1.5;
 options.gradV2 = 2;
 % Note that these include subiterations (options.Niter * options.subsets)
+% The first iteration where to start the gradient computation
 options.gradInitIter = 1;
+% Last iteration of the gradient computation
 options.gradLastIter = 100;
 
 % Number of filtering iterations
 % Applies to both precondTypeMeas(2) and precondTypeImage(6)
+% The filtering is applies to this many (sub)iterations
+% Note that this include subiterations (options.Niter * options.subsets)
 options.filteringIterations = 100;
 
 
@@ -820,7 +827,7 @@ options.beta = 1;
  
 %%%%%%%%%%%%%%%%%%%%%%%%% NEIGHBORHOOD PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% How many neighboring pixels are considered 
-% With MRP, QP, L, FMH, NLM, GGMRF and weighted mean
+% With MRP, QP, L, FMH, NLM, (RDP), GGMRF and weighted mean
 % E.g. if Ndx = 1, Ndy = 1, Ndz = 0, then you have 3x3 square area where
 % the pixels are taken into account (I.e. (Ndx*2+1)x(Ndy*2+1)x(Ndz*2+1)
 % area).
@@ -888,7 +895,15 @@ options.fmh_center_weight = 4;
  
 %%%%%%%%%%%%%%%%%%%%%%%%% WEIGHTED MEAN PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%
 %%% Mean type
-% 1 = Arithmetic mean, 2 = Harmonic mean, 3 = Geometric mean
+% Types 1-3 compute the weighted mean just as MRP is computed, but the
+% median is replaced with the weighted mean.
+% 1 = Arithmetic mean (MRP), 2 = Harmonic mean (MRP), 3 = Geometric mean
+% (MRP)
+% Types 4-6 compute the weighted mean around the neighborhood of the voxel
+% and use joint estimation to compute the gradient where the other variable
+% corresponds to the chosen mean value and the other is based on the chosen
+% mean value. See the docs for more information.
+% 4 = Arithmetic mean, 5 = Harmonic mean, 6 = Geometric mean
 options.mean_type = 1;
 
 %%% Pixel weights for weighted mean
@@ -919,7 +934,7 @@ options.TV_use_anatomical = false;
 % reference image.
 options.TV_reference_image = 'reference_image.mat';
 
-%%% Three different TV methods are available.
+%%% Five different TV methods are available.
 % Value can be 1, 2, 3, 4 or 6.
 % Type 3 is not recommended!
 % Types 1 and 2 are the same if anatomical prior is not included
@@ -932,7 +947,7 @@ options.TVtype = 1;
 
 %%% Weighting parameters for the TV prior. 
 % Applicable only if use_anatomical = true. T-value is specific to the used
-% TVtype, e.g. for type 1 it is the edge threshold parameter. See the wiki
+% TVtype, e.g. for type 1 it is the edge threshold parameter. See the docs
 % for more details:
 % https://omega-doc.readthedocs.io/en/latest/algorithms.html#tv
 options.T = 0.5;
@@ -1010,12 +1025,13 @@ options.alpha1TGV = 2;
 options.sigma = 10;
 
 %%% Patch radius
+% Works exactly the same as the neighborhood size
 options.Nlx = 1;
 options.Nly = 1;
 options.Nlz = 1;
 
-%%% Standard deviation of the Gaussian filter
-options.NLM_gauss = 1;
+%%% Standard deviation of the Gaussian-weighted Euclidean norm
+options.NLM_gauss = 2;
 
 % Search window radius is controlled by Ndx, Ndy and Ndz parameters
 % Use anatomical reference image for the patches
@@ -1028,8 +1044,6 @@ options.NLM_reference_image = 'reference_image.mat';
 % Note that only one of the below options for NLM can be selected!
 % If all the below ones are false, regular NLM is used!
 %%% Use Non-local total variation (NLTV)
-% If selected, will overwrite regular NLM regularization as well as the
-% below MRP version.
 options.NLTV = false;
 
 %%% Use Non-local Lange prior (NLLange)

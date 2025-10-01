@@ -9,7 +9,7 @@ clear
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%% SCAnMeasER PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%% SCANNER PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -18,9 +18,9 @@ clear
 options.blocks_per_ring = (16);
 
 %%% R-sectors/modules/blocks/buckets in axial direction (i.e. number of physical
-%%% scanMeaser/crystal rings)
-% Multiplying this with the below cryst_per_block should equal the total
-% number of crystal rings.
+%%% scanner/crystal rings) 
+% Multiplying this with the below cryst_per_block_axial should equal the
+% total number of crystal rings.
 options.linear_multip = (4);
 
 %%% Number of detectors on the side of R-sector/block/module (transaxial
@@ -42,18 +42,14 @@ options.cr_pz = 1.592;
 %%% Ring diameter (distance between perpendicular detectors) (mm)
 options.diameter = 161.08;
 
-% Note that non-square transaxial FOV sizes should work, but might not work
-% always. Square transaxial FOV is thus recommended.
-%%% Transaxial FOV size (mm), this is the length of the x (vertical) side
+%%% Transaxial FOV size (mm), this is the length of the x (vertical/row) side
 % of the FOV
 options.FOVa_x = 100;
 
-%%% Transaxial FOV size (mm), this is the length of the y (horizontal) side
+%%% Transaxial FOV size (mm), this is the length of the y (horizontal/column) side
 % of the FOV
 options.FOVa_y = options.FOVa_x;
 
-% The above recommendation doesn't apply to axial FOV, i.e. this can be
-% different from the transaxial FOV size(s).
 %%% Axial FOV (mm)
 options.axial_fov = 127;
 
@@ -71,7 +67,7 @@ options.ringGaps = [];
 %%% Number of detectors per ring (without pseudo detectors)
 options.det_per_ring = options.blocks_per_ring*options.cryst_per_block;
 
-%%% Number of detectors per ring (with pseudo detectors)
+%%% Number of detectors per crystal ring (without pseudo detectors)
 % NOTE: Inveon has no pseudo detectors/rings
 % If you have a single pseudo detector per block, use the commented line
 options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block);
@@ -80,16 +76,17 @@ options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block);
 %%% Number of crystal rings
 options.rings = options.linear_multip * options.cryst_per_block;
 
-%%% Number of detectors
+%%% Total number of detectors
 options.detectors = options.det_per_ring*options.rings;
 
-%%% ScanMeaser name
+%%% Scanner name
 % Used for naming purposes (measurement data)
 options.machine_name = 'Inveon';
 
 
 % Note: Origin is assumed to be at the center. If this is not the case, you
 % can shift it with options.oOffsetX, options.oOffsetY and options.oOffsetZ
+% That is row, column and slice directions
 % options.oOffsetX = 0;
 % options.oOffsetY = 0;
 % options.oOffsetZ = 0;
@@ -137,17 +134,16 @@ options.Nx = 256;
 %%% Y/column-direction
 options.Ny = 256;
 
-% The above, again, doesn't apply to axial direction
 %%% Z-direction (number of slices) (axial)
 options.Nz = options.rings*2 - 1;
 
-%%% Flip the image (in horizontal direction)?
+%%% Flip the image (in column direction)?
 options.flip_image = false;
 
 %%% How much is the image rotated?
 % NOTE: The rotation is done in the detector space (before reconstruction).
 % This current setting is for systems whose detector blocks start from the
-% right hand side when viewing the device from front.
+% right hand side when viewing the scanner from front.
 % Positive values perform the rotation in clockwise direction
 % The units are crystals, i.e. if the value is 1, the rotation is done by
 % rotating the coordinates equaling to one crystal pitch
@@ -193,7 +189,7 @@ options.Nang = 160;
 % Currently this is computed automatically, but you can also manually
 % specify the segment sizes.
 options.segment_table = [options.rings*2-1, options.rings*2-1 - (options.span + 1):-options.span*2:max(options.Nz - options.ring_difference*2, options.rings - options.ring_difference)];
-if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
+if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
     options.segment_table = [options.segment_table(1), repeat_elem(options.segment_table(2:end),2,1)];
 else
     options.segment_table = [options.segment_table(1), repelem(options.segment_table(2:end),2)];
@@ -209,9 +205,9 @@ options.NSinos = options.TotSinos;
 
 %%% If Ndist value is even, take one extra out of the negative side (+1) or
 % from the positive side (-1). E.g. if Ndist = 200, then with +1 the
-% interval is [-99,100] and with -1 [-100,99]. This varies from device to
-% device. If you see a slight shift in the sinograms when comparing with
-% the scanMeaser sinograms then use the other option here. For Inveon, this
+% interval is [-99,100] and with -1 [-100,99]. This varies from scanner to
+% scanner. If you see a slight shift in the sinograms when comparing with
+% the scanner sinograms then use the other option here. For Inveon, this
 % should be -1.
 options.ndist_side = -1;
 
@@ -265,11 +261,11 @@ options.attenuation_datafile = '';
 
 %%% Rotate the attenuation image before correction
 % Rotates the attenuation image N * 90 degrees where N is the number
-% specified below. Positive values are clocwise, negative
+% specified below. Positive values are clockwise, negative
 % counter-clockwise.
 options.rotateAttImage = -1;
 
-%%% Flip the attenuation image in the transaxial direction before reconstruction
+%%% Flip the attenuation image in the transaxial (column) direction before reconstruction
 options.flipAttImageXY = false;
 
 %%% Flip the attenuation image in the axial direction before reconstruction
@@ -278,11 +274,11 @@ optionas.flipAttImageZ = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%% Normalization correction %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Apply normalization correction
-% If set to true, normalization correction is applied either as a 
-% precorrection or in the image reconstruction by using precomputed 
+% If set to true, normalization correction is applied in either data
+% formation or in the image reconstruction by using precomputed 
 % normalization coefficients. I.e. once you have computed the normalization
 % coefficients, turn above compute_normalization to false and set this to
-% true. Alternatively, input your own coefficients into options.normalization
+% true. Alternatively, input your own normalization data (see below)
 options.normalization_correction = true;
 
 %%% Use user-made normalization
@@ -330,9 +326,9 @@ options.global_correction_factor = [];
 %%%%%%%%%%%%%%%%%%%% Corrections during reconstruction %%%%%%%%%%%%%%%%%%%%
 % If set to true, all the corrections are performed during the
 % reconstruction step, otherwise the corrections are performed to the
-% sinogram/raw data before reconstruction. I.e. this can be considered as
-% e.g. normalization weighted reconstruction if normalization correction is
-% applied or ordinary Poisson reconstruction.
+% sinogram/raw data before reconstruction (i.e. precorrected). I.e. this
+% can be considered as e.g. normalization weighted reconstruction if
+% normalization correction is applied.
 % NOTE: Attenuation correction is always performed during reconstruction
 % regardless of the choice here.
 % If you have manually precorrected the data, do not put those corrections
@@ -359,7 +355,7 @@ options.corrections_during_reconstruction = true;
 %%% Total time of the measurement (s)
 % Use inf if you want the whole examination (static measurement only)
 % Note that this value is only used when LOADING data from GATE or Inveon
-% files
+% files using OMEGA's built-in functions
 options.tot_time = inf;
 
 %%% Number of time points/dynamic frames (if a static measurement, use 1)
@@ -371,19 +367,19 @@ options.tot_time = inf;
 %%% seconds). Note that the sum should in this case equal the end time
 %%% minus the start time.
 % NOTE: The above applies ONLY when using OMEGA to load the data. If you
-% use your own data, this should be number of time steps!
+% use your own data, this should be the number of time steps!
 options.partitions = 1;
 
 %%% Start time (s) (all measurements BEFORE this will be ignored)
 % Note that this value is only used when LOADING data from GATE or Inveon
-% files
+% files using OMEGA's built-in functions
 options.start = 0;
 
 %%% End time (s) (all measurements AFTER this will be ignored)
 % Use inf if you want to the end of the examination (static measurement
 % only)
 % Note that this value is only used when LOADING data from GATE or Inveon
-% files
+% files using OMEGA's built-in functions
 options.end = options.tot_time;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -484,10 +480,10 @@ else % Unix/Mac
     options.fpath = '/path/to/GATE/output/';
 end
 
-%%% Form only sinograms (no reconstructions)
+%%% Form only sinograms and/or listmode data (no reconstructions)
 % If this is set to true, running this file will only produce the
-% measurement data matrices (sinograms and raw data). Also computes the
-% normalization coefficients if they have been selected.
+% measurement data matrices (sinograms and/or listmode data). Also computes
+% the normalization coefficients if they have been selected.
 % Applies only when creating sinograms with OMEGA
 options.only_sinos = false;
 
@@ -500,15 +496,14 @@ options.no_data_load = false;
 
 %%% Compute only the reconstructions
 % If this file is run with this set to true, then the data load and
-% sinogram formation steps are always skipped. Precomputation step is
-% only performed if precompute_lor = true and precompute_all = true
-% (below). Normalization coefficients are not computed even if selected.
-options.only_reconstructions = false;
+% sinogram formation steps are always skipped. Normalization coefficients
+% are not computed even if selected.
+options.only_reconstructions = true;
 
 %%% Show status messages
 % These are e.g. time elapsed on various functions and what steps have been
 % completed. It is recommended to keep this at 1 or 2. With value of 2, 
-% you get more detailed timing information. Maximum is 3.
+% you get more detailed timing information. Maximum is 3, minimum 0.
 options.verbose = 1;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -586,6 +581,8 @@ options.use_32bit_atomics = false;
 % NOTE: You can mix and match most of the projectors. I.e. 41 will use
 % interpolation-based projector for forward projection while improved
 % Siddon is used for backprojection.
+% NOTE 2: The below additional options apply also in hybrid cases as long
+% as the other projector is the corresponding projector.
 % See the documentation for more information:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
 options.projector_type = 1;
@@ -626,7 +623,7 @@ options.dL = 0.5;
 % same as multiplying the geometric matrix with an image blurring matrix.
 options.use_psf = true;
 
-% FWHM (mm) of the Gaussian used in PSF blurring in all three dimensions
+% FWHM (mm) of the Gaussian used in PSF blurring in all three dimensions (X/Y/Z)
 options.FWHM = [options.cr_p options.cr_p options.cr_pz];
 
 % Orthogonal ray tracer (projector_type = 2 only)
@@ -657,15 +654,15 @@ options.tube_radius = sqrt(2) * (options.cr_pz / 2);
 % create larger spheres, while smaller values create smaller spheres.
 options.voxel_radius = 1;
 
-% Siddon (projector_type = 1 only)
+% projector_type = 1 and 4 only
 %%% Number of rays
 % Number of rays used per detector if projector_type = 1 (i.e. Improved
-% Siddon is used).
+% Siddon is used) or projector_type = 4 (interpolation).
 % The total number of rays per detector is the multiplication of the two
 % below values!
-% Number of rays in transaxial direction
+% Number of rays in transaxial (row) direction
 options.n_rays_transaxial = 1;
-% Number of rays in axial direction
+% Number of rays in axial (column) direction
 options.n_rays_axial = 1;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
@@ -701,7 +698,7 @@ options.subsets = 8;
 % 10 = Use golden angle sampling to select the subsets (not recommended for
 % PET)
 % 11 = Use prime factor sampling to select the full sinograms
-% Most of the time subset_type 1 is sufficient.
+% Most of the time subset_type 1 or 4 is sufficient.
 options.subset_type = 1;
 
 %%% How many angles are combined in subset_type = 6

@@ -10,11 +10,11 @@
 clear
 
 
-%%% Transaxial FOV size (mm), this is the length of the x (vertical) side
+%%% Transaxial FOV size (mm), this is the length of the x (vertical/row) side
 % of the FOV
 options.FOVa_x = 300;
 
-%%% Transaxial FOV size (mm), this is the length of the y (horizontal) side
+%%% Transaxial FOV size (mm), this is the length of the y (horizontal/column) side
 % of the FOV
 options.FOVa_y = options.FOVa_x;
 
@@ -23,6 +23,7 @@ options.axial_fov = floor(76.8 - 2.4/10);
 
 % Note: Origin is assumed to be at the center. If this is not the case, you
 % can shift it with options.oOffsetX, options.oOffsetY and options.oOffsetZ
+% That is row, column and slice directions
 % options.oOffsetX = 0;
 % options.oOffsetY = 0;
 % options.oOffsetZ = 0;
@@ -63,7 +64,7 @@ options.Nz = 63;
 %%% Show status messages
 % These are e.g. time elapsed on various functions and what steps have been
 % completed. It is recommended to keep this at 1 or 2. With value of 2, 
-% you get more detailed timing information. Maximum is 3.
+% you get more detailed timing information. Maximum is 3. Minimum is 0.
 options.verbose = 1;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -114,6 +115,8 @@ options.use_device = 0;
 % NOTE: You can mix and match most of the projectors. I.e. 41 will use
 % interpolation-based projector for forward projection while improved
 % Siddon is used for backprojection.
+% NOTE 2: The below additional options apply also in hybrid cases as long
+% as the other projector is the corresponding projector.
 % See the documentation for more information:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
 options.projector_type = 1;
@@ -177,7 +180,6 @@ options.PDHG = true;
 
 % Input the measurement data
 load Cylindrical_PET_example_cylpet_example_new_sinograms_combined_static_200x168x703_span3.mat
-
 options.SinM = raw_SinM;
 
 % Set the coordinates for EACH measurement

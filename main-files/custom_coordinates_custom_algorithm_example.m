@@ -13,11 +13,11 @@
 clear
 
 
-%%% Transaxial FOV size (mm), this is the length of the x (vertical) side
+%%% Transaxial FOV size (mm), this is the length of the x (vertical/row) side
 % of the FOV
 options.FOVa_x = 300;
 
-%%% Transaxial FOV size (mm), this is the length of the y (horizontal) side
+%%% Transaxial FOV size (mm), this is the length of the y (horizontal/column) side
 % of the FOV
 options.FOVa_y = options.FOVa_x;
 
@@ -26,6 +26,7 @@ options.axial_fov = floor(76.8 - 2.4/10);
 
 % Note: Origin is assumed to be at the center. If this is not the case, you
 % can shift it with options.oOffsetX, options.oOffsetY and options.oOffsetZ
+% That is row, column and slice directions
 % options.oOffsetX = 0;
 % options.oOffsetY = 0;
 % options.oOffsetZ = 0;
@@ -66,7 +67,7 @@ options.Nz = 63;
 %%% Show status messages
 % These are e.g. time elapsed on various functions and what steps have been
 % completed. It is recommended to keep this at 1 or 2. With value of 2, 
-% you get more detailed timing information. Maximum is 3.
+% you get more detailed timing information. Maximum is 3. Minimum is 0.
 options.verbose = 1;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -158,6 +159,8 @@ options.use_CPU = false;
 % NOTE: You can mix and match most of the projectors. I.e. 41 will use
 % interpolation-based projector for forward projection while improved
 % Siddon is used for backprojection.
+% NOTE 2: The below additional options apply also in hybrid cases as long
+% as the other projector is the corresponding projector.
 % See the documentation for more information:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
 options.projector_type = 1;
@@ -204,7 +207,7 @@ options.FWHM = [2.4 2.4 2.4];
 % Orthogonal ray tracer (projector_type = 2 only)
 %%% The 2D (XY) width (mm) of the "strip/tube" where the orthogonal distances are
 % included. If tube_width_z below is non-zero, then this value is ignored.
-options.tube_width_xy = options.cr_p;
+options.tube_width_xy = 2.4;
 
 % Orthogonal ray tracer (projector_type = 2 only)
 %%% The 3D (Z) width (mm) of the "tube" where the orthogonal distances are
@@ -213,12 +216,12 @@ options.tube_width_xy = options.cr_p;
 % If you want the projector to be a tube, use this, if you want it to be 
 % strip, use the above
 % This slows down the reconstruction, but makes it more accurate
-options.tube_width_z = options.cr_pz;
+options.tube_width_z = 2.4;
 
 % Volume ray tracer (projector_type = 3 only)
 %%% Radius of the tube-of-response (cylinder)
 % The radius (mm) of the cylinder that approximates the tube-of-response.
-options.tube_radius = sqrt(2) * (options.cr_pz / 2);
+options.tube_radius = sqrt(2) * (2.4 / 2);
 
 % Volume ray tracer (projector_type = 3 only)
 %%% Relative size of the voxel (sphere)
@@ -229,15 +232,15 @@ options.tube_radius = sqrt(2) * (options.cr_pz / 2);
 % create larger spheres, while smaller values create smaller spheres.
 options.voxel_radius = 1;
 
-% Siddon (projector_type = 1 only)
+% projector_type = 1 and 4 only
 %%% Number of rays
 % Number of rays used per detector if projector_type = 1 (i.e. Improved
-% Siddon is used).
+% Siddon is used) or projector_type = 4 (interpolation).
 % The total number of rays per detector is the multiplication of the two
 % below values!
-% Number of rays in transaxial direction
+% Number of rays in transaxial (row) direction
 options.n_rays_transaxial = 1;
-% Number of rays in axial direction
+% Number of rays in axial (column) direction
 options.n_rays_axial = 1;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%

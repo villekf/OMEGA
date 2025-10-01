@@ -17,12 +17,16 @@ import numpy as np
 from omegatomo.projector import proj
 import matplotlib as plt
 
+# Note that the name can be anything
 options = proj.projectorClass()
 
+# Load input data
 fpath = 'Cylindrical_PET_example_cylpet_example_new_sinograms_combined_static_200x168x703_span3.mat'
 from pymatreader import read_mat
 var = read_mat(fpath)
 
+# Measurement data needs to be in options.SinM (or rather in the SinM of 
+# whatever you name the proj.projectorClass())
 options.SinM = var['raw_SinM']
 
 ###########################################################################
@@ -38,8 +42,8 @@ options.blocks_per_ring = (42)
 
 ### R-sectors/modules/blocks/buckets in axial direction (i.e. number of physical
 ### scanner/crystal rings) 
-# Multiplying this with the below cryst_per_block should equal the total
-# number of crystal rings. options.
+# Multiplying this with the below cryst_per_block_axial should equal the total
+# number of crystal rings. 
 options.linear_multip = (4)
 
 ### R-sectors/modules/blocks/buckets in transaxial direction
@@ -65,19 +69,30 @@ options.cr_pz = 2.4
 ### Ring diameter (distance between perpendicular detectors) (mm)
 options.diameter = 130*2
 
-### Transaxial FOV size (mm), this is the length of the x (horizontal) side
+# Note that non-square transaxial FOV sizes should work, but might not work
+# always. Square transaxial FOV is thus recommended.
+### Transaxial FOV size (mm), this is the length of the x (vertical/row) side
 # of the FOV
 options.FOVa_x = 151
 
-### Transaxial FOV size (mm), this is the length of the y (vertical) side
+### Transaxial FOV size (mm), this is the length of the y (horizontal/column) side
 # of the FOV
 options.FOVa_y = options.FOVa_x
 
+# The above recommendation doesn't apply to axial FOV, i.e. this can be
+# different from the transaxial FOV size(s).
 ### Axial FOV (mm)
 options.axial_fov = np.floor(76.8 - options.cr_pz/10)
 
-### Number of pseudo rings between physical rings (use 0 or [] if none)
+### Number of pseudo rings between physical rings (use 0 or np.empty(0, dtype=np.float32) if none)
 options.pseudot = 0
+
+### Ring gaps (mm)
+# Each ring is assumed to contain options.cryst_per_block_axial crystals
+# Input the gap between each of these rings here, for every gap
+# If there are no gaps, leave this empty or zero
+# If the gap values are the same, you need to repeat the value for each gap
+options.ringGaps = np.empty(0, dtype=np.float32)
 
 ### Number of detectors per crystal ring (without pseudo detectors)
 options.det_per_ring = options.blocks_per_ring * options.cryst_per_block * options.transaxial_multip
@@ -98,6 +113,13 @@ options.detectors = options.det_per_ring*options.rings
 ### Scanner name
 # Used for naming purposes (measurement data)
 options.machine_name = 'Cylindrical_PET_example'
+
+# Note: Origin is assumed to be at the center. If this is not the case, you
+# can shift it with options.oOffsetX, options.oOffsetY and options.oOffsetZ
+# That is row, column and slice directions
+# options.oOffsetX = 0;
+# options.oOffsetY = 0;
+# options.oOffsetZ = 0;
  
 ###########################################################################
 ###########################################################################
@@ -113,25 +135,27 @@ options.machine_name = 'Cylindrical_PET_example'
 ###########################################################################
 ###########################################################################
  
-### Reconstructed image pixel count (X-direction)
-# NOTE: Non-square image sizes (X- and Y-direction) may not work
+# Note that non-square transaxial image sizes can be unreliable just as the
+# non-square transaxial FOV, but they should, generally, work
+### Reconstructed image pixel count (X/row-direction)
 options.Nx = 128
 
-### Y-direction
+### Y/column-direction
 options.Ny = 128
 
 ### Z-direction (number of slices) (axial)
 options.Nz = options.rings*2-1
 
-### Flip the image (in vertical direction)?
+### Flip the image (in column direction)?
 options.flip_image = False
 
 ### How much is the image rotated?
-# You need to run the precompute phase again if you modify this
 # NOTE: The rotation is done in the detector space (before reconstruction).
 # This current setting is for systems whose detector blocks start from the
-# right hand side when viewing the device from front.
+# right hand side when viewing the scanner from front.
 # Positive values perform the rotation in clockwise direction
+# The units are crystals, i.e. if the value is 1, the rotation is done by
+# rotating the coordinates equaling to one crystal pitch		
 options.offangle = options.det_w_pseudo * (3/4)
  
 ###########################################################################
@@ -157,14 +181,16 @@ options.span = 3
 options.ring_difference = options.rings - 1
 
 ### Number of radial positions (views) in sinogram
-# You should primarily use the same number as the device uses.
+# You should primarily use the same number as the scanner uses.
 # However, if that information is not available you can use ndist_max
 # function to determine potential values (see help ndist_max for usage).
+# This is the ROW dimension, i.e. the number of rows in the sinogram
 options.Ndist = 200
 
 ### Number of angles (tangential positions) in sinogram 
 # This is the final amount after possible mashing, maximum allowed is the
 # number of detectors per ring/2.
+# This is the COLUMN dimension, i.e. the number of columns in the sinogram
 options.Nang = options.det_per_ring//2
 
 ### Specify the amount of sinograms contained on each segment
@@ -191,9 +217,9 @@ options.NSinos = options.TotSinos
 ### Apply normalization correction
 # If set to True, normalization correction is applied to either data
 # formation or in the image reconstruction by using precomputed 
-# normalization coefficients. I.e. once you have computed the normalization
-# coefficients, turn above compute_normalization to False and set this to
-# True.
+# normalization coefficients.
+# Insert the normalization data into options.normalization or insert it
+# when you are prompted for it
 options.normalization_correction = True
 
 
@@ -201,17 +227,18 @@ options.normalization_correction = True
 ### Image-based attenuation correction
 # Include attenuation correction from images (e.g. CT-images) (for this you
 # need attenuation images of each slice correctly rotated and scaled for
-# 511 keV). For CT-images you can use attenuationCT_to_511 or
-# create_atten_matrix_CT functions.
+# 511 keV). 
 options.attenuation_correction = True
 
 options.rotateAttImage = 1
 
 ### Attenuation image data file
-# Specify the path (if not in MATLAB path) and filename.
+# Specify the path and filename.
 # NOTE: the attenuation data must be the only variable in the file and
 # have the dimensions of the final reconstructed image.
 # If no file is specified here, the user will be prompted to select one
+# Alternatively, input the attenuation data into options.vaimennus
+# NOTE: For GATE data, the MuMap actor output can be used here
 options.attenuation_datafile = '/path/to/cylpet_example_atn1-MuMap.mhd'
 
 
@@ -226,11 +253,15 @@ options.attenuation_datafile = '/path/to/cylpet_example_atn1-MuMap.mhd'
  
 ############################### PROJECTOR #################################
 ### Type of projector to use for the geometric matrix
-# 0 = Regular Siddon's algorithm (only available with implementation 1 and
-# when precomputed_lor = False) NOT RECOMMENDED.
 # 1 = Improved/accelerated Siddon's algorithm
 # 2 = Orthogonal distance based ray tracer
 # 3 = Volume of intersection based ray tracer
+# 4 = Interpolation-based projector
+# NOTE: You can mix and match most of the projectors. I.e. 41 will use
+# interpolation-based projector for forward projection while improved
+# Siddon is used for backprojection.
+# NOTE 2: The below additional options apply also in hybrid cases as long
+# as the other projector is the corresponding projector.
 # See the doc for more information:
 # https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
 options.projector_type = 1
@@ -240,27 +271,29 @@ options.projector_type = 1
 # same as multiplying the geometric matrix with an image blurring matrix.
 options.use_psf = True
 
-# FWHM of the Gaussian used in PSF blurring in all three dimensions
-# options.FWHM = [options.cr_p options.cr_p options.cr_pz]
+# FWHM (mm) of the Gaussian used in PSF blurring in all three dimensions
 options.FWHM = np.array([options.cr_p, options.cr_p, options.cr_pz])
 
 # Orthogonal ray tracer (projector_type = 2) only
-### The 2D (XY) width of the "strip/tube" where the orthogonal distances are
+### The 2D (XY) width (mm) of the "strip/tube" where the orthogonal distances are
 # included. If tube_width_z below is non-zero, then this value is ignored.
 options.tube_width_xy = options.cr_p
 
 # Orthogonal ray tracer (projector_type = 2) only
-### The 3D (Z) width of the "tube" where the orthogonal distances are
+### The 3D (Z) width (mm) of the "tube" where the orthogonal distances are
 # included. If set to 0, then the 2D orthogonal ray tracer is used. If this
 # value is non-zero then the above value is IGNORED.
+# If you want the projector to be a tube, use this, if you want it to be 
+# strip, use the above
+# This slows down the reconstruction, but makes it more accurate
 options.tube_width_z = options.cr_pz
 
 # Volume ray tracer (projector_type = 3) only
-### Radius of the tube-of-response (cylinder)
+### Radius (mm) of the tube-of-response (cylinder)
 # The radius of the cylinder that approximates the tube-of-response.
 options.tube_radius = np.sqrt(2) * (options.cr_pz / 2)
 
-# Volume ray tracer (projector_type = 3) only
+# Volume ray tracer (projector_type = 3 only)
 ### Relative size of the voxel (sphere)
 # In volume ray tracer, the voxels are modeled as spheres. This value
 # specifies the relative radius of the sphere such that with 1 the sphere
@@ -269,24 +302,30 @@ options.tube_radius = np.sqrt(2) * (options.cr_pz / 2)
 # create larger spheres, while smaller values create smaller spheres.
 options.voxel_radius = 1
 
-# Siddon (projector_type = 1) only
+# projector_type = 1 and 4 only
 ### Number of rays
 # Number of rays used per detector if projector_type = 1 (i.e. Improved
-# Siddon is used) and precompute_lor = False. I.e. when using precomputed
-# LOR data, only 1 rays is always used.
-# Number of rays in transaxial direction
-options.n_rays_transaxial = 1
-# Number of rays in axial direction
-options.n_rays_axial = 1
+# Siddon is used) or projector_type = 4 (interpolation).
+# The total number of rays per detector is the multiplication of the two
+# below values!
+# Number of rays in transaxial (row) direction
+options.n_rays_transaxial = 1;
+# Number of rays in axial (column) direction
+options.n_rays_axial = 1;
 
-# Interpolation length for projector_type 4
+### Interpolation length (projector type = 4 only)
+# This specifies the length after which the interpolation takes place. This
+# value will be multiplied by the voxel size which means that 1 means that
+# the interpolation length corresponds to a single voxel (transaxial)
+# length. Larger values lead to faster computation but at the cost of
+# accuracy. Recommended values are between [0.5 1].
 options.dL = 0.5
  
 ######################### RECONSTRUCTION SETTINGS #########################
 ### Number of iterations (all reconstruction methods)
 options.Niter = 10
 
-### Number of subsets (all excluding MLEM and subset_type = 6)
+### Number of subsets
 options.subsets = 8
 
 ### Subset type (n = subsets)
