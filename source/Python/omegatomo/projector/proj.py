@@ -971,9 +971,9 @@ class projectorClass:
         if self.FOVa_x > 0 and self.FOVa_y == 0:
             self.FOVa_y = self.FOVa_x
         if not self.CT and not self.SPECT and (self.FOVa_x >= self.diameter or self.FOVa_y >= self.diameter) and self.diameter > 0:
-            raise ValueError(f"Transaxial FOV is larger than the scanner diameter ({self.diameter})!")
+            print(f"Transaxial FOV is larger than the scanner diameter ({self.diameter})!")
         if not self.CT and not self.SPECT and self.axial_fov < (self.rings * self.cr_pz - self.cr_pz) and self.rings > 0:
-            raise ValueError("Axial FOV is too small, crystal ring(s) on the boundary have no slices!")
+            print("Axial FOV is too small, crystal ring(s) on the boundary have no slices!")
         
         if not(self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.PKMA or self.FISTA or self.FISTAL1 or self.MBSREM or self.SPS or self.MRAMLA) and any(self.precondTypeImage):
             print("Image-based preconditioning selected, but the selected algorithm(s) do not support preconditioning. No preconditioning will be performed.")
@@ -1037,15 +1037,14 @@ class projectorClass:
             print("Number of subsets is less than one! Using one subset.")
             self.subsets = 1
         
-        # if self.implementation == 1 and self.useMultiResolutionVolumes:
-        #     raise ValueError("Multi-resolution reconstruction is not supported with implementation 1!")
-        
         if self.useMultiResolutionVolumes and not self.useEFOV:
             print("Multi-resolution reconstruction selected, but extended FOV is not selected! Disabling multi-resolution volumes.")
             self.useMultiResolutionVolumes = False
         
         if (self.LSQR or self.CGLS) and self.useMultiResolutionVolumes:
             raise ValueError("Multi-resolution reconstruction is not supported with LSQR or CGLS!")
+        if self.FDK and self.storeFP:
+            print('Forward projections cannot be stored with FDK/FBP!')
             
         # if not self.CT and not self.SPECT and self.det_per_ring == self.det_w_pseudo and self.fill_sinogram_gaps:
         #     raise ValueError('Gap filling is only supported with pseudo detectors!')
@@ -1078,7 +1077,8 @@ class projectorClass:
         if self.implementation == 2 and self.useCPU and self.RDP and self.RDPIncludeCorners:
             raise ValueError('RDP with include corners is supported only on OpenCL and CUDA!')
         if self.TV and self.TVtype == 2 and not self.TV_use_anatomical:
-            raise ValueError('Using TV type = 2, but no anatomical reference set. Use options.TVtype = 1 if anatomical weighting is not used!')
+            print('Using TV type = 2, but no anatomical reference set. Using TV type = 1 instead!')
+            self.TVtype == 1
         if self.projector_type not in [1, 2, 3, 4, 5, 6, 11, 14, 12, 13, 21, 22, 23, 24, 31, 32, 33, 34, 41, 42, 43, 44, 45, 51, 15, 54, 55]:
             raise ValueError('The selected projector type is not supported!')
         if self.APLS and not os.path.exists(self.APLS_ref_image) and self.MAP and not type(self.APLS_ref_image) == np.ndarray:
@@ -1086,8 +1086,8 @@ class projectorClass:
         if self.epps <= 0:
             print('Epsilon value is zero or less than zero; must be a positive value. Using the default value (1e-6).')
             self.epps = 1e-6
-        if self.projector_type in [5, 4, 34, 24, 44, 14, 41, 42, 43, 15, 45, 54, 51, 55] and self.useCPU:
-            raise ValueError('The selected projector type is not supported with CPU implementation!')
+        # if self.projector_type in [5, 4, 34, 24, 44, 14, 41, 42, 43, 15, 45, 54, 51, 55] and self.useCPU:
+        #     raise ValueError('The selected projector type is not supported with CPU implementation!')
         if np.sum(self.precondTypeImage) == 0 and (self.PKMA or self.MRAMLA or self.MBSREM):
             print('No image-based preconditioner selected with PKMA/MRAMLA/MBSREM. EM preconditioner is highly recommended!')
         if not self.CT and not self.SPECT and self.reconstruct_trues and self.reconstruct_scatter:
@@ -1103,8 +1103,6 @@ class projectorClass:
             print('Summing TOF bins.')
             # self.TOF_bins = self.TOF_bins_used
         
-        if np.sum(self.precondTypeImage) == 0 and (self.PKMA or self.MRAMLA or self.MBSREM):
-            print('No image-based preconditioner selected with PKMA/MRAMLA/MBSREM. EM preconditioner is highly recommended!')
         if self.useCPU and self.projector_type in [2, 3, 4, 5, 15, 25, 35, 45, 21, 22, 23, 24, 31, 32, 33, 34, 35, 41, 42, 43, 44, 45, 51, 52, 53, 54, 55, 14, 12, 13]:
             raise ValueError('Selected projector type is not supported with CPU implementation!')
         if self.projector_type == 2 and self.CT:
@@ -1138,7 +1136,7 @@ class projectorClass:
         if self.useCUDA and self.useCPU:
             raise ValueError('Both CUDA and CPU selected! Select only one!')
         
-        if self.TOF_bins_used > 1 and (self.projector_type not in [1, 11, 3, 33, 31, 13, 4, 41, 14]) and not self.CT and not self.SPECT:
+        if self.TOF_bins_used > 1 and (self.projector_type not in [1, 11, 3, 33, 31, 13, 4, 41, 14, 43, 34]) and not self.CT and not self.SPECT:
             raise ValueError('TOF is currently only supported with improved Siddon (projector_type = 1), interpolation-based projector (projector_type = 4) and volume of intersection (projector_type = 3)')
         
         if self.TOF_bins_used > 1 and self.TOF_width <= 0 and not self.CT and not self.SPECT:
@@ -1187,7 +1185,7 @@ class projectorClass:
             elif self.use_machine == 3:
                 dispi = 'Using 32-bit list-mode data'
             else:
-                dispi = None
+                dispi = 'Using user-input data'
             
             if self.TOF_bins_used > 1 and self.TOF_FWHM > 0:
                 dispi = f"{dispi} with TOF ({self.TOF_bins_used} bins)." if dispi else f"With TOF ({self.TOF_bins_used} bins)."
