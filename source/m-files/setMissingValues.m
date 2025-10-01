@@ -325,7 +325,7 @@ if ~isfield(options,'useFDKWeights')
     options.useFDKWeights = true;
 end
 if ~isfield(options, 'Niter')
-    options.Niter = 1;
+    options.Niter = 4;
 end
 if ~isfield(options, 'filteringIterations') || isempty(options.filteringIterations)
     options.filteringIterations = 0;
