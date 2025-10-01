@@ -268,7 +268,7 @@ class projectorClass:
     RDPIncludeCorners = False
     meanFP = False
     meanBP = False
-    Niter = 1
+    Niter = 4
     filteringIterations = 0
     nLayers = 1
     powerIterations = 20
@@ -687,6 +687,8 @@ class projectorClass:
             self.maskFP = np.asfortranarray(self.maskFP)
         else:
             self.useMaskFP = False
+        if self.maskFP.dtype != np.uint8:
+            self.maskFP = self.maskFP.astype(np.uint8)
         
         if self.maskBP.size > 1 and not(self.maskBP.size == self.Nx * self.Ny) and not(self.maskBP.size == self.Nx * self.Ny * self.Nz):
             raise ValueError('Incorrect size for the backward projection mask! Must be the size of a single image [' + str(self.Nx) + ' ' + str(self.Ny) + '] or 3D stack [' + str(self.Nx) + ' ' + str(self.Ny) + ' ' + str(self.Nz) + ']')
@@ -697,6 +699,8 @@ class projectorClass:
             self.maskBP = np.asfortranarray(self.maskBP)
         else:
             self.useMaskBP = False
+        if self.maskBP.dtype != np.uint8:
+            self.maskBP = self.maskBP.astype(np.uint8)
         list_mode_format = False
         
         if self.use_raw_data:

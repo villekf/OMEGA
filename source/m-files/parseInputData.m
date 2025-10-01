@@ -220,7 +220,7 @@ if options.subsets > 1 && options.subset_type > 0
         end
     end
     if options.useMaskFP && options.maskFPZ > 1 && options.subset_type >= 8
-        options.maskFP = options.maskFP(:,:,index);
+        options.maskFP = uint8(options.maskFP(:,:,index));
     elseif options.useMaskFP && options.subset_type == 3
         error('Forward projection mask is not supported with subset type 3!')
     end
