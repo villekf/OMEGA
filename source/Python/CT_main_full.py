@@ -272,9 +272,9 @@ options.useMultiResolutionVolumes = True
 
 # This is the scale value for the multi-resolution volumes. The original
 # voxel size is divided by this value and then used as the voxel size for
-# the multi-resolution volumes. Default is 1/4 of the original voxel size.
-# This means that the multi-resolution regions have smaller voxel sizes if
-# this is < 1.
+# the multi-resolution volumes. Default is 4 times the original voxel size.
+# This means that the multi-resolution regions have larger voxel sizes if
+# this is < 1, i.e. 1/4 = 4 times the original voxel size.
 options.multiResolutionScale = 1/4
 
 # Performs the extrapolation and adjusts the image size accordingly
