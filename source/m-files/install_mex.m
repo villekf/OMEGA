@@ -364,32 +364,9 @@ elseif ~ismac % Linux
     elseif exist('/usr/local/cuda/targets/x86_64-linux/include/','dir') == 7 && isempty(opencl_lib_path)
         opencl_include_path = '/usr/local/cuda/targets/x86_64-linux/include/';
         opencl_lib_path = '/usr/local/cuda/lib64/';
-    else
-        if ismac && isempty(opencl_lib_path)
-            if exist('/System/Library/Frameworks/OpenCL.framework/','dir') == 7
-                if exist('/System/Library/Frameworks/OpenCL.framework/Headers','dir') == 7
-                    opencl_include_path = '/Library/Frameworks/OpenCL.framework/Headers/';
-                    opencl_lib_path = '/System/Library/Frameworks/OpenCL.framework';
-                else
-                    opencl_include_path = '/Library/Frameworks/OpenCL.framework/Versions/A/Headers/';
-                    opencl_lib_path = '/System/Library/Frameworks/OpenCL.framework';
-                end
-            elseif exist('/Library/Frameworks/OpenCL.framework/','dir') == 7
-                if exist('/Library/Frameworks/OpenCL.framework/Headers/','dir') == 7
-                    opencl_include_path = '/Library/Frameworks/OpenCL.framework/Headers/';
-                    opencl_lib_path = '/Library/Frameworks/OpenCL.framework';
-                else
-                    opencl_include_path = '/Library/Frameworks/OpenCL.framework/Versions/A/Headers/';
-                    opencl_lib_path = '/Library/Frameworks/OpenCL.framework';
-                end
-            else
-                warning(['OpenCL not found! If you want to use implementations 2 or 3, insert the paths manually by using '...
-                    'install_mex(0, ''/PATH/TO/OPENCL/INCLUDE'', ''/PATH/TO/OPENCL/LIBRARY'')']);
-            end
-        elseif isempty(opencl_lib_path)
-            opencl_include_path = '/usr/local/include/';
-            opencl_lib_path = '/usr/lib/x86_64-linux-gnu/';
-        end
+    elseif isempty(opencl_lib_path)
+        opencl_include_path = '/usr/local/include/';
+        opencl_lib_path = '/usr/lib/x86_64-linux-gnu/';
     end
 else % Apple silicon
 
@@ -441,12 +418,6 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
         end
         LPLib = '';
         ldflags = 'LDFLAGS="$LDFLAGS -fopenmp"';
-        compiler = '';
-    elseif ismac
-        OMPPath = [matlabroot '/sys/os/maci64'];
-        OMPLib = '-liomp5';
-        LPLib = '-lpthread';
-        ldflags = '';
         compiler = '';
     elseif isunix
         OMPPath = [matlabroot '/sys/os/glnxa64'];
@@ -548,12 +519,7 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
         cxxflags = 'CXXFLAGS="$CXXFLAGS"';
     else
         compflags = 'COMPFLAGS="$COMPFLAGS -std=c++11"';
-        if ismac
-            cxxflags = 'CXXFLAGS="$CXXFLAGS -Xpreprocessor -fopenmp"';
-            OMPh = '-I/usr/local/opt/libomp/include';
-        else
-            cxxflags = 'CXXFLAGS="$CXXFLAGS -fopenmp"';
-        end
+        cxxflags = 'CXXFLAGS="$CXXFLAGS -fopenmp"';
     end
     if implementation == 0 || implementation == 1 || implementation == 4
         try
@@ -800,12 +766,7 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
                         cxxflags = 'CXXFLAGS="$CXXFLAGS"';
                     else
                         compflags = 'COMPFLAGS="$COMPFLAGS -std=c++11"';
-                        if ismac
-                            cxxflags = 'CXXFLAGS="$CXXFLAGS -Xpreprocessor -DCPU -fopenmp"';
-                            OMPh = '-I/usr/local/opt/libomp/include';
-                        else
-                            cxxflags = 'CXXFLAGS="$CXXFLAGS -fopenmp -DCPU -Wno-ignored-attributes"';
-                        end
+                        cxxflags = 'CXXFLAGS="$CXXFLAGS -fopenmp -DCPU -Wno-ignored-attributes"';
                     end
                     try
                         %%%%%%%%%%%%%%%%%%%%%% Implementation 2 %%%%%%%%%%%%%%%%%%%%%%%
@@ -899,11 +860,7 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
             compflags = 'COMPFLAGS="$COMPFLAGS -std=c++11"';
             cxxflags = 'CXXFLAGS="$CXXFLAGS -Wno-ignored-attributes -Wno-narrowing"';
         end
-        if ismac
-            cxxlib = 'CXXLIBS="$CXXLIBS -framework OpenCL"';
-        else
-            cxxlib = '-lOpenCL';
-        end
+        cxxlib = '-lOpenCL';
         if implementation == 0 || implementation == 2
             try
                 mex(compiler, '-largeArrayDims', '-outdir', folder, ldflags, '-lafopencl', cxxlib, ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib64"'], ...
@@ -944,12 +901,7 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
                 cxxflags = 'CXXFLAGS="$CXXFLAGS"';
             else
                 compflags = 'COMPFLAGS="$COMPFLAGS -std=c++11"';
-                if ismac
-                    cxxflags = 'CXXFLAGS="$CXXFLAGS -Xpreprocessor -DCPU -fopenmp"';
-                    OMPh = '-I/usr/local/opt/libomp/include';
-                else
-                    cxxflags = 'CXXFLAGS="$CXXFLAGS -fopenmp -DCPU -Wno-ignored-attributes"';
-                end
+                cxxflags = 'CXXFLAGS="$CXXFLAGS -fopenmp -DCPU -Wno-ignored-attributes"';
             end
             try
                 mex(compiler, complexFlag, '-outdir', folder, '-output', 'CPU_matrixfree', ['-L' OMPPath], OMPh, OMPLib, LPLib, ['-I ' folder], ldflags, compflags, cxxflags, '-DMATLAB', '-DCPU', '-DAF', '-lafcpu', ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ...
@@ -999,13 +951,8 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% OCTAVE %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 elseif ~ismac
     joku = getenv('CXXFLAGS');
-    if ismac
-        cxxflags = '-std=c++11 -Xpreprocessor -fopenmp -fPIC';
-        OMPlib = '-lomp';
-    else
-        cxxflags = '-std=c++11 -fopenmp -fPIC';
-        OMPlib = '-lgomp';
-    end
+    cxxflags = '-std=c++11 -fopenmp -fPIC';
+    OMPlib = '-lgomp';
     if ~any(strfind(joku,'-fopenmp'))
         cxxflags = [cxxflags ' ', joku];
         setenv('CXXFLAGS',cxxflags);
@@ -1371,4 +1318,5 @@ else % Apple silicon MATLAB/Octave
     ldflags = 'LDFLAGS="\$LDFLAGS -framework Metal -framework Foundation"';
     cxxflags = 'CXXFLAGS="\$CXXFLAGS -std=c++17 -fobjc-arc"';
     mex(compiler, complexFlag, '-outdir', folderMetal, ldflags, cxxflags, '-DMATLAB', ['-I' folder], ['-I' folderMetal], [folderMetal '/Metal_matrixfree.mm'])
+    disp('Implementation 2 built')
 end
