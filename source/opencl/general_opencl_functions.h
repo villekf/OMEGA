@@ -821,7 +821,7 @@ DEVICE void multirayCoordinateShiftZ(PTR_THR FLOAT3 *s, PTR_THR FLOAT3 *d, const
 #if defined(FP) && !defined(PROJ5)
 // Computes the forward projection
 // Separate cases for the Siddon and interpolated projectors
-DEVICE void forwardProject(const FLOAT local_ele, PTR_THR float *ax, const typeT local_ind, IMTYPE d_OSEM) {
+DEVICE void forwardProject(const float local_ele, PTR_THR float *ax, const typeT local_ind, IMTYPE d_OSEM) {
 #ifdef CUDA
 #ifdef USEIMAGES
     // if (local_ind.x <= 1.f && local_ind.y <= 1.f && local_ind.z <= 1.f && local_ind.x >= 0.f && local_ind.y >= 0.f && local_ind.z >= 0.f)
@@ -1257,7 +1257,7 @@ DEVICE void perpendicular_elements(const float d_b, const float d_d1, const uint
 #elif !defined(CT) && !defined(ATN) && defined(ATNM)
 	const CLGLOBAL float* CLRESTRICT d_atten,
 #endif
-	const FLOAT local_norm, const FLOAT L) {
+	const float local_norm, const float L) {
 	int apu = perpendicular_start(d_b, d, d_d1, d_N1);
 	*z_loop = CLONG_rtz(apu) * CLONG_rtz(d_N) + *z_loop * CLONG_rtz(d_N1) * CLONG_rtz(d_N2);
 	if (d_N == 1)
@@ -1274,21 +1274,21 @@ DEVICE void perpendicular_elements(const float d_b, const float d_d1, const uint
 	// Probability
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
 #ifdef TOTLENGTH
-	FLOAT temp = FLOAT_ONE / (L * CFLOAT(N_RAYS));
+	float temp = FLOAT_ONE / (L * CFLOAT(N_RAYS));
 #else
-	FLOAT temp = FLOAT_ONE / (CFLOAT(d_N2) * d_d2 * CFLOAT(N_RAYS));
+	float temp = FLOAT_ONE / (CFLOAT(d_N2) * d_d2 * CFLOAT(N_RAYS));
 #endif
 #elif defined(ORTH)
-	FLOAT temp = FLOAT_ONE;
+	float temp = FLOAT_ONE;
 #else
 #ifdef TOTLENGTH
-	FLOAT temp = FLOAT_ONE / L;
+	float temp = FLOAT_ONE / L;
 #else
-	FLOAT temp = FLOAT_ONE / (CFLOAT(d_N2) * d_d2);
+	float temp = FLOAT_ONE / (CFLOAT(d_N2) * d_d2);
 #endif
 #endif //////////////// END MULTIRAY ////////////////
 #if defined(ATN) && !defined(SPECT) //////////////// ATTENUATION ////////////////
-		FLOAT jelppi = FLOAT_ZERO;
+		float jelppi = FLOAT_ZERO;
 #ifdef USEIMAGES
 		int3 atnind = *tempi;
 #else
@@ -1478,12 +1478,12 @@ DEVICE bool siddon_pre_loop_3D(const FLOAT3 b, const FLOAT3 diff, const FLOAT3 m
     PTR_THR float *txu, PTR_THR float *tyu, PTR_THR float *tzu, PTR_THR uint *Np, const int TYYPPI, const FLOAT3 s, const FLOAT3 d, PTR_THR float *tc, PTR_THR int *i, PTR_THR int *j, PTR_THR int *k, PTR_THR float *tx0, 
 	PTR_THR float *ty0, PTR_THR float *tz0, PTR_THR bool *xy, const uint3 ii) {
 
-	const FLOAT3 apuT = b - s;
-	const FLOAT3 t0 = apuT / diff;
-	const FLOAT3 tBack = DIVIDE3(max - s, diff);
+	const float3 apuT = (float3)b - (float3)s;
+	const float3 t0 = apuT / (float3)diff;
+	const float3 tBack = DIVIDE3((float3)max - (float3)s, (float3)diff);
 
-	const FLOAT3 tMin = FMIN(t0, tBack);
-	const FLOAT3 tMax = FMAX(t0, tBack);
+	const float3 tMin = FMIN(t0, tBack);
+	const float3 tMax = FMAX(t0, tBack);
 
 	*tc = FMAX(FMAX(tMin.x, tMin.z), tMin.y);
 	const float tmax = FMIN(FMIN(tMax.x, tMax.z), tMax.y);
@@ -1523,17 +1523,17 @@ DEVICE bool siddon_pre_loop_3D(const FLOAT3 b, const FLOAT3 diff, const FLOAT3 m
 
 		*Np = (kmax - kmin + 1) + (jmax - jmin + 1) + (imax - imin + 1);
 
-	const FLOAT pt = ((FMIN(FMIN(*tz0, *ty0), *tx0) + *tc) / FLOAT_TWO);
+	const float pt = ((FMIN(FMIN(*tz0, *ty0), *tx0) + *tc) / 2.f);
 
-	const FLOAT3 tempijkF = CLAMP3(FMAD3(pt, diff, -apuT) / dd, FLOAT_ZERO, CFLOAT3(N - 1));
+	const float3 tempijkF = CLAMP3((float3)FMAD3((float3)pt, (float3)diff, -apuT) / (float3)dd, 0.f, (float3)CFLOAT3(N - 1));
 	const int3 tempijk = CINT3_rtz(tempijkF);
 	*tempi = tempijk.x;
 	*tempj = tempijk.y;
 	*tempk = tempijk.z;
 
-	*txu = dd.x / FABS(diff.x);
-	*tyu = dd.y / FABS(diff.y);
-	*tzu = dd.z / FABS(diff.z);
+	*txu = dd.x / (float)FABS(diff.x);
+	*tyu = dd.y / (float)FABS(diff.y);
+	*tzu = dd.z / (float)FABS(diff.z);
 
 	return false;
 }

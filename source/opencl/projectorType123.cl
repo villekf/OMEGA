@@ -446,7 +446,7 @@ void projectorType123(
 
 	float L = LENGTH(diff);
 #ifndef TOTLENGTH
-	FLOAT LL = FLOAT_ZERO;
+	float LL = FLOAT_ZERO;
 #endif
 	LONG local_ind = 0u;
 	int3 localInd = MINT3(0, 0, 0);
@@ -460,10 +460,10 @@ void projectorType123(
 #ifdef ORTH //////////////// ORTHOGONAL OR VOLUME-BASED RAY TRACER ////////////////
 	int tempk_b = 0;
 	bool XY = false;
-	FLOAT orth_ray_length = FLOAT_ZERO;
+	float orth_ray_length = FLOAT_ZERO;
 #if defined(SPECT)
     orth_ray_length = L;
-    FLOAT orth_ray_length_inv_signed = L / dot(diff, diff);
+    float orth_ray_length_inv_signed = L / dot(diff, diff);
 #else
 #if !defined(VOL) // Orthogonal
 	orth_ray_length = L * orthWidth;
