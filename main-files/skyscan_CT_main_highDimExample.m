@@ -43,23 +43,17 @@ options.binning = 1;
 % This is used for naming purposes only
 options.name = 'Jyvat_Skyscan';
 
-%%% Compute only the reconstructions
-% If this file is run with this set to true, then the data load and
-% sinogram formation steps are always skipped. Precomputation step is
-% only performed if precompute_lor = true and precompute_all = true
-% (below). Normalization coefficients are not computed even if selected.
-options.only_reconstructions = false;
-
 %%% Show status messages
 % These are e.g. time elapsed on various functions and what steps have been
-% completed. It is recommended to keep this 1.
+% completed. It is recommended to keep this at 1 or 2. With value of 2, 
+% you get more detailed timing information. Maximum is 3.
 options.verbose = 1;
 
-%%% Transaxial FOV size (mm), this is the length of the x (horizontal) side
+%%% Transaxial FOV size (mm), this is the length of the x (vertical/row) side
 % of the FOV
 options.FOVa_x = 13;
 
-%%% Transaxial FOV size (mm), this is the length of the y (vertical) side
+%%% Transaxial FOV size (mm), this is the length of the y (horizontal/column) side
 % of the FOV
 options.FOVa_y = options.FOVa_x;
 
@@ -72,7 +66,8 @@ options.axial_fov = 7.5;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-
+% if left blank, you will be prompted for the log-file. Alternatively,
+% input the full path to the desired log file here
 options.fpath = '/path/to/jyvat.log';
 
 
@@ -96,21 +91,22 @@ options.angles = -(0:0.2:0.2*options.nProjections - 0.2)';
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%%% Reconstructed image pixel size (X-direction)
+%%% Reconstructed image pixel count (X/row-direction)
 options.Nx = 1000 * 2;
 
-%%% Y-direction
+%%% Y/column-direction
 options.Ny = 1000 * 2;
 
 %%% Z-direction (number of slices) (axial)
 options.Nz = 481 * 2;
 
-%%% Flip the image (in vertical direction)?
+%%% Flip the image (in column direction)?
 options.flip_image = false;
 
 %%% How much is the image rotated (radians)?
 % The angle (in radians) on how much the image is rotated BEFORE
 % reconstruction, i.e. the rotation is performed in the detector space.
+% Positive values perform the rotation in counter-clockwise direction
 options.offangle = (3*pi)/2;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -131,40 +127,25 @@ options.offangle = (3*pi)/2;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% IMPLEMENTATIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Reconstruction implementation used
-% 1 = Reconstructions in MATLAB (projector in a MEX-file), uses matrices.
-% (Slow and memory intensive)
-% 2 = Matrix-free reconstruction with OpenCL/ArrayFire (Recommended)
-% (Requires ArrayFire. Compiles with MinGW ONLY when ArrayFire was compiled
-% with MinGW as well (cannot use the prebuilt binaries)).
-% 3 = Multi-GPU/device matrix-free OpenCL (OSEM & MLEM only).
-% 4 = Matrix-free reconstruction with OpenMP (parallel), standard C++
-% (Supports only one algorithm at a time)
+% 2 = Matrix-free reconstruction with OpenCL/CUDA (Recommended)
+% (Requires ArrayFire)
 % See the doc for more information:
 % https://omega-doc.readthedocs.io/en/latest/implementation.html
+% No other implementation is supported when using largeDim!
 options.implementation = 2;
 
-% Applies to implementations 2 and 3 ONLY
-%%% Device used (this is applicable to implementation 2), or platform used
-% (implementation 3)
-% In implementation 2 this determines the device used for both system
-% matrix formation and image reconstruction.
+%%% Device (GPU) used
+% In implementation 2 this determines the device used image reconstruction.
 % NOTE: Use ArrayFire_OpenCL_device_info() to determine the device numbers.
-% In implementation 3, this determines the platform from where the
-% device(s) are taken.
-% NOTE: Use OpenCL_device_info() to determine the platform numbers and
-% their respective devices.
-% NOTE: if you switch devices then you need to run the below line
+% NOTE: if you switch devices then you might need to run the below line
 % (uncommented) as well:
 % clear mex
-% NOTE: Using implementation 3 after using 2 might fail until MATLAB is
-% restarted.
 options.use_device = 0;
 
-% Implementation 2 ONLY
 %%% Use CUDA
 % Selecting this to true will use CUDA kernels/code instead of OpenCL. This
-% only works if the CUDA code was successfully built. Recommended only for
-% Siddon as the orthogonal/volume-based ray tracer are slower in CUDA.
+% only works if the CUDA code was successfully built. This is recommended
+% if you have CUDA-capable device.
 options.use_CUDA = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -181,8 +162,8 @@ options.projector_type = 4;
 % used for both forward and backward projection and either one or both can
 % be utilized at the same time. E.g. if only backprojection mask is input,
 % then only the voxels which have 1 in the mask are reconstructed.
-% Currently the masks need to be a 2D image that is applied identically at
-% each slice.
+% The mask can be either a 2D image that is applied identically to each slice
+% or a 3D mask that is applied as-is
 % Forward projection mask
 % If nonempty, the mask will be applied. If empty, or completely omitted, no
 % mask will be considered.
@@ -228,7 +209,8 @@ end
 %%% Feldkamp-Davis-Kress (FDK)
 options.FDK = true;
 
-%%% PKMA
+
+%%% Preconditioned Krasnoselskii-Mann algorithm (PKMA)
 options.PKMA = false;
 
 %%% Primal-dual hybrid gradient (PDHG)
@@ -240,9 +222,6 @@ options.PDHGL1 = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PRIORS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % These priors do not work with FDK!
-% Note that currently regularization will not work optimally with
-% high-dimensional data. What this means is that you'll get a "flashing
-% effect" in certain slices.
 %%% Proximal TV
 options.ProxTV = false;
 
@@ -353,18 +332,19 @@ options.delta_PKMA = 100;
 options.sigma = 6.00e-3;
 
 %%% Patch radius
+% Works exactly the same as the neighborhood size
 options.Nlx = 1;
 options.Nly = 1;
 options.Nlz = 1;
 
-%%% Standard deviation of the Gaussian filter
-options.NLM_gauss = 0.75;
+%%% Standard deviation of the Gaussian-weighted Euclidean norm
+options.NLM_gauss = 2;
 
 % By default, the original NLM is used. You can, however, use another
 % potential function by selecting ONE of the options below.
+% Note that only one of the below options for NLM can be selected!
+% If all the below ones are false, regular NLM is used!
 %%% Use Non-local total variation (NLTV)
-% If selected, will overwrite regular NLM regularization as well as the
-% below MRP version.
 options.NLTV = false;
 
 %%% Use Non-local relative difference (NLRD)
@@ -386,6 +366,7 @@ options.NLM_MRP = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% RDP PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Edge weighting factor
+% Higher values sharpen the image, smaller values make it smoother
 % Note that this affects NLRD as well
 options.RDP_gamma = 10;
 
@@ -394,6 +375,7 @@ options.RDP_gamma = 10;
 %%% GGMRF parameters
 % See the original article for details
 % These affect the NLGGMRF as well
+% https://omega-doc.readthedocs.io/en/latest/algorithms.html#ggmrf
 options.GGMRF_p = 1.5;
 options.GGMRF_q = 1;
 options.GGMRF_c = 5;

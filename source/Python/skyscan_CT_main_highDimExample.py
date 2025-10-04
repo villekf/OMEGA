@@ -54,23 +54,17 @@ options.binning = 1
 # This is used for naming purposes only
 options.name = 'Skyscan_jyva_data'
 
-### Compute only the reconstructions
-# If this file is run with this set to True, then the data load and
-# sinogram formation steps are always skipped. Precomputation step is
-# only performed if precompute_lor = True and precompute_all = True
-# (below). Normalization coefficients are not computed even if selected.
-options.only_reconstructions = False
-
 ### Show status messages
 # These are e.g. time elapsed on various functions and what steps have been
-# completed. It is recommended to keep this 1. Maximum value of 3 is supported.
+# completed. It is recommended to keep this at 1 or 2. With value of 2, 
+# you get more detailed timing information. Maximum is 3. Minimum is 0.
 options.verbose = 1
 
-### Transaxial FOV size (mm), this is the length of the x (horizontal) side
+### Transaxial FOV size (mm), this is the length of the x (vertical/row) side
 # of the FOV
 options.FOVa_x = 13
 
-### Transaxial FOV size (mm), this is the length of the y (vertical) side
+### Transaxial FOV size (mm), this is the length of the y (horizontal/column) side
 # of the FOV
 options.FOVa_y = options.FOVa_x
 
@@ -94,9 +88,9 @@ loadSkyscanData(options)
 options.angles = -np.arange(0, 0.2*options.nProjections, 0.2, dtype=np.float32)
 # NOTE: If you want to reduce the number of projections, you need to do
 # this manually as outlined below:
-# options.SinM = options.SinM(:,:,1:4:options.nProjections)
-# options.angles = options.angles(1:4:numel(options.angles))
-# options.nProjections = numel(options.angles)
+# options.SinM = options.SinM[:,:,::lasku]
+# options.angles = options.angles[::lasku]
+# options.nProjections = options.angles.size
 
 
 
@@ -109,21 +103,22 @@ options.angles = -np.arange(0, 0.2*options.nProjections, 0.2, dtype=np.float32)
 ###########################################################################
 ###########################################################################
 
-### Reconstructed image pixel size (X-direction)
+### Reconstructed image pixel count (X/row-direction)
 options.Nx = 1000 * 2
 
-### Y-direction
+### Y/column-direction
 options.Ny = 1000 * 2
 
 ### Z-direction (number of slices) (axial)
 options.Nz = 481 * 2
 
-### Flip the image (in vertical direction)?
+### Flip the image (in column direction)?
 options.flip_image = False
 
 ### How much is the image rotated (radians)?
 # The angle (in radians) on how much the image is rotated BEFORE
 # reconstruction, i.e. the rotation is performed in the detector space.
+# Positive values perform the rotation in counter-clockwise direction
 options.offangle = (0*np.pi)/2
 
 ###########################################################################
@@ -144,16 +139,16 @@ options.offangle = (0*np.pi)/2
 
 ############################# IMPLEMENTATIONS #############################
 ### Device (GPU) used
-# In implementation 2 this determines the device used image reconstruction.
-# NOTE: Use the following lines to determine the numbers:
+# NOTE: Use 
 # from omegatomo.util.devinfo import deviceInfo
 # deviceInfo(True)
 options.use_device = 0
 
 ### Use CUDA
 # Selecting this to True will use CUDA kernels/code instead of OpenCL. This
-# only works if the CUDA code was successfully built.
-options.use_CUDA = False
+# only works if the CUDA code was successfully built. This is recommended
+# if you have CUDA-capable device.
+options.useCUDA = False
 
 
 ############################### PROJECTOR #################################
@@ -167,22 +162,21 @@ options.projector_type = 4
 # used for both forward and backward projection and either one or both can
 # be utilized at the same time. E.g. if only backprojection mask is input,
 # then only the voxels which have 1 in the mask are reconstructed.
-# Currently the masks need to be a 2D image that is applied identically at
-# each slice.
+# The mask can be either a 2D image that is applied identically to each slice
+# or a 3D mask that is applied as-is
 # Forward projection mask
 # If nonempty, the mask will be applied. If empty, or completely omitted, no
 # mask will be considered.
-# options.maskFP = True(options.nRowsD,options.nColsD)
+# options.maskFP = np.ones((options.nRowsD,options.nColsD),dtype=np.uint8)
 # Backprojection mask
 # If nonempty, the mask will be applied. If empty, or completely omitted, no
 # mask will be considered.
-# The default mask covers a circle that fills the squre FOV
-columns_in_image, rows_in_image = np.meshgrid(np.arange(1, options.Nx + 1), np.arange(1, options.Ny + 1))
-centerX = options.Nx / 2
-centerY = options.Ny / 2
-radius = options.Nx/2
-options.maskBP = ((rows_in_image - centerY)**2 + (columns_in_image - centerX)**2 <= radius**2).astype(np.uint8)
-
+# Create a circle that fills the FOV:
+# columns_in_image, rows_in_image = np.meshgrid(np.arange(1, options.Nx + 1), np.arange(1, options.Ny + 1))
+# centerX = options.Nx / 2
+# centerY = options.Ny / 2
+# radius = options.Nx / 2
+# options.maskBP = ((rows_in_image - centerY)**2 + (columns_in_image - centerX)**2 <= radius**2).astype(np.uint8)
 ######################### RECONSTRUCTION SETTINGS #########################
 ### Number of iterations (all reconstruction methods except FDK)
 # Note that using FDK automatically sets this to 1
@@ -290,7 +284,7 @@ options.filteringIterations = 200
 # filtering" value)
 options.tauCP = 0
 # Primal value for filtered iterations, applicable only if
-# options.precondTypeMeas[2] = True. As with above, automatically computed
+# options.precondTypeMeas[1] = True. As with above, automatically computed
 # if left zero or empty. Same restrictions apply here as above.
 # Use the "Largest eigenvalue for volume 0 with filtering" value here!
 options.tauCPFilt = 0
@@ -349,8 +343,8 @@ options.Nlx = 1
 options.Nly = 1
 options.Nlz = 1
 
-### Standard deviation of the Gaussian filter
-options.NLM_gauss = 0.75
+### Standard deviation of the Gaussian-weighted Euclidean norm
+options.NLM_gauss = 2.
 
 # By default, the original NLM is used. You can, however, use another
 # potential function by selecting ONE of the options below.
@@ -378,6 +372,7 @@ options.NLM_MRP = False
 
 ############################## RDP PROPERTIES #############################
 ### Edge weighting factor
+# Higher values sharpen the image, smaller values make it smoother
 # Note that this affects NLRD as well
 options.RDP_gamma = 10
 
@@ -385,6 +380,7 @@ options.RDP_gamma = 10
 ############################# GGMRF PROPERTIES ############################
 ### GGMRF parameters
 # See the original article for details
+# https://omega-doc.readthedocs.io/en/latest/algorithms.html#ggmrf
 # These affect the NLGGMRF as well
 options.GGMRF_p = 1.5
 options.GGMRF_q = 1

@@ -20,6 +20,7 @@ from omegatomo.util.priors import NLReg
 from omegatomo.util.priors import TV
 import matplotlib as plt
 
+# Note that the name can be anything
 options = proj.projectorClass()
 
 
@@ -75,10 +76,10 @@ options.z = var['zCoord']
 del var
 
 
-### Reconstructed image pixel size (X-direction)
+### Reconstructed image pixel count (X/row-direction)
 options.Nx = 801
 
-### Y-direction
+### Y/column-direction
 options.Ny = 801
 
 ### Z-direction (number of slices) (axial)
@@ -88,19 +89,55 @@ options.Nz = 668
 # Extrapolation and extended FOV
 # You will have to make sure that extended FOV is on when using multi-resolution reconstruction below
 # Furthermore, make sure multi-resolution is off otherwise (except when extended FOV is off as there is no multi-resolution reconstruction then)
+
+### Use projection extrapolation
+# If True, extrapolates the projection data. You can select below whether
+# this extrapolation is done only in the axial or transaxial directions, or
+# both. Default extrapolation length is 20% of the original length, for
+# both sides. For example if axial extrapolation is enabled, then the left
+# and right regions of the projection get 20% increase in size. This value
+# can be adjusted in CTEFOVCorrection. The values are scaled to air with
+# the use of logarithmic scaling.
 options.useExtrapolation = False
+
+### Use extended FOV
+# Similar to above, but expands the FOV. The benefit of expanding the FOV
+# this way is to enable to the use of multi-resolution reconstruction or
+# computation of the priors/regularization only in the original FOV. The
+# default extension is 40% per side (see below)
 options.useEFOV = False
-options.transaxialEFOV = False
+
+# Use transaxial extended FOV
+options.transaxialEFOV = True
+
+# Use axial extended FOV (this is on by default. If both this and
+# transaxialEFOV are False but useEFOV is True, the axial EFOV will be
+# turned on)
 options.axialEFOV = True
+
 options.transaxialExtrapolation = False
 options.axialExtrapolation = True
 
-options.useMultiResolutionVolumes = True
+# Setting this to True uses multi-resolution reconstruction when using
+# extended FOV. Only applies to extended FOV!
+options.useMultiResolutionVolumes = False
+
+# This is the scale value for the multi-resolution volumes. The original
+# voxel size is divided by this value and then used as the voxel size for
+# the multi-resolution volumes. Default is 4 times the original voxel size.
+# This means that the multi-resolution regions have larger voxel sizes if
+# this is < 1, i.e. 1/4 = 4 times the original voxel size.
+options.multiResolutionScale = 1/4
 
 CTEFOVCorrection(options)
 
-# Rotate/flip the image, i.e. the detector coordinates
+### Flip the image (in column direction)?
 options.flip_image = True
+
+### How much is the image rotated (radians)?
+# The angle (in radians) on how much the image is rotated BEFORE
+# reconstruction, i.e. the rotation is performed in the detector space.
+# Positive values perform the rotation in counter-clockwise direction
 options.offangle = (3.*np.pi)/2.
 # Computation device (this has no effect on CUDA)
 options.deviceNum = 0
@@ -114,9 +151,11 @@ options.Niter = 1
 options.subsets = 20
 options.subsetType = 8
 
+# Use offset-correction
+# If you use offset imaging, i.e. the center of rotation is not in the
+# origin but rather a circle around the origin, you can enable automatic
+# offset weighting by setting this to True.
 options.offsetCorrection = False
-# Should have no effect at the moment
-options.enforcePositivity = True
 
 # Regularization parameter
 options.beta = .1
@@ -125,6 +164,10 @@ options.NLMsigma = 4.00e-3
 # Edge preservation parameter for RDP and NLRDP
 options.RDP_gamma = 10.
 
+### Show status messages
+# These are e.g. time elapsed on various functions and what steps have been
+# completed. It is recommended to keep this at 1 or 2. With value of 2, 
+# you get more detailed timing information. Maximum is 3. Minimum is 0.
 options.verbose = 1
 
 # Number of power method iterations

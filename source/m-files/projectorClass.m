@@ -471,6 +471,9 @@ classdef projectorClass
             elseif ~(obj.param.attenuation_correction && obj.param.SPECT)
                 obj.param.useMaskBP = false;
             end
+            if isfield(obj.param, 'maskBP') && ~isa(obj.param.maskBP, 'uint8')
+                obj.param.maskBP = uint8(obj.param.maskBP);
+            end
             rings = obj.param.rings;
             if obj.param.use_raw_data && isfield(obj.param,'x')
                 det_per_ring = numel(obj.param.x);

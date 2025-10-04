@@ -23,6 +23,7 @@ from omegatomo.util.powermethod import powerMethod
 from omegatomo.util.measprecond import applyMeasPreconditioning, circulantInverse
 import matplotlib as plt
 
+# Note that the name can be anything
 options = proj.projectorClass()
 
 ###########################################################################
@@ -39,14 +40,14 @@ options = proj.projectorClass()
 # 2048x3072 becomes 1024x1536).
 options.binning = 4
 
-### Number of detector pixels (horizontal)
+### Number of detector pixels (horizontal/column)
 # The number of detector pixels in the detector panel (horizontal
 # direction)
 # NOTE: if you use binning, this value has to use the final binned
 # dimensions
 options.nColsD = 2368//options.binning
 
-### Number of detector pixels (vertical)
+### Number of detector pixels (vertical/row)
 # The number of detector pixels in the detector panel (vertical
 # direction)
 # NOTE: if you use binning, this value has to use the final binned
@@ -86,14 +87,15 @@ options.only_reconstructions = False
 
 ### Show status messages
 # These are e.g. time elapsed on various functions and what steps have been
-# completed. It is recommended to keep this 1. Maximum value of 3 is supported.
+# completed. It is recommended to keep this at 1 or 2. With value of 2, 
+# you get more detailed timing information. Maximum is 3. Minimum is 0.
 options.verbose = 1
 
-### Transaxial FOV size (mm), this is the length of the x (horizontal) side
+### Transaxial FOV size (mm), this is the length of the x (vertical/row) side
 # of the FOV
 options.FOVa_x = 40.1
 
-### Transaxial FOV size (mm), this is the length of the y (vertical) side
+### Transaxial FOV size (mm), this is the length of the y (horizontal/column) side
 # of the FOV
 options.FOVa_y = options.FOVa_x
 
@@ -102,8 +104,8 @@ options.axial_fov = 40
 
 ### Source row offset (mm)
 # The center of rotation is not exactly in the origin. With this parameter
-# the source location can be offset by the specifed amount (row direction).
-# This has a similar effect as circulary shifting the projection images.
+# the source location can be offset by the specified amount (row direction).
+# This has a similar effect as circularly shifting the projection images.
 # Use vector values if these vary with each projection (this is untested at
 # the moment).
 # NOTE: The default value has been obtained experimentally and is not based
@@ -155,6 +157,13 @@ options.pitchRoll = np.empty(0, dtype=np.float32)
 # of angles, then this is also generally not required.
 options.uV = np.empty(0, dtype=np.float32)
 
+# Note: Origin is assumed to be at the center. If this is not the case, you
+# can shift it with options.oOffsetX, options.oOffsetY and options.oOffsetZ
+# That is row, column and slice directions
+# options.oOffsetX = 0;
+# options.oOffsetY = 0;
+# options.oOffsetZ = 0;
+
 
 ###########################################################################
 ###########################################################################
@@ -170,9 +179,9 @@ if ~options.only_reconstructions or not hasattr(options,'SinM'):
     options.SinM = np.transpose(options.SinM, (1, 0, 2))
 # NOTE: If you want to reduce the number of projections, you need to do
 # this manually as outlined below:
-# options.SinM = options.SinM(:,:,1:4:options.nProjections)
-# options.angles = options.angles(1:4:numel(options.angles))
-# options.nProjections = numel(options.angles)
+# options.SinM = options.SinM[:,:,::lasku]
+# options.angles = options.angles[::lasku]
+# options.nProjections = options.angles.size
 
 # Flat value
 # Needed for both linearized and Poisson-based data
@@ -189,22 +198,23 @@ options.flat = np.max(options.SinM)
 
 # Note that non-square transaxial image sizes can be unreliable just as the
 # non-square transaxial FOV, but they should, generally, work
-### Reconstructed image pixel size (X-direction)
+### Reconstructed image pixel count (X/row-direction)
 options.Nx = 280*2
 
-### Y-direction
+### Y/column-direction
 options.Ny = 280*2
 
 # The above, again, doesn't apply to axial direction
 ### Z-direction (number of slices) (axial)
 options.Nz = 280*2
 
-### Flip the image (in vertical direction)?
+### Flip the image (in column direction)?
 options.flip_image = False
 
 ### How much is the image rotated (radians)?
 # The angle (in radians) on how much the image is rotated BEFORE
 # reconstruction, i.e. the rotation is performed in the detector space.
+# Positive values perform the rotation in counter-clockwise direction
 options.offangle = (2*np.pi)/2
 
 ###########################################################################
@@ -216,9 +226,9 @@ options.offangle = (2*np.pi)/2
 ### Use projection extrapolation
 # If True, extrapolates the projection data. You can select below whether
 # this extrapolation is done only in the axial or transaxial directions, or
-# both. Default extrapolation length is 20# of the original length, for
+# both. Default extrapolation length is 20% of the original length, for
 # both sides. For example if axial extrapolation is enabled, then the left
-# and right regions of the projection get 20# increase in size. This value
+# and right regions of the projection get 20% increase in size. This value
 # can be adjusted in CTEFOVCorrection. The values are scaled to air with
 # the use of logarithmic scaling.
 options.useExtrapolation = False
@@ -227,7 +237,7 @@ options.useExtrapolation = False
 # Similar to above, but expands the FOV. The benefit of expanding the FOV
 # this way is to enable to the use of multi-resolution reconstruction or
 # computation of the priors/regularization only in the original FOV. The
-# default extension is 40# per side.
+# default extension is 40% per side.
 options.useEFOV = False
 
 # Use transaxial extended FOV (this is off by default)
@@ -250,9 +260,9 @@ options.useMultiResolutionVolumes = True
 
 # This is the scale value for the multi-resolution volumes. The original
 # voxel size is divided by this value and then used as the voxel size for
-# the multi-resolution volumes. Default is 1/4 of the original voxel size.
-# This means that the multi-resolution regions have smaller voxel sizes if
-# this is < 1.
+# the multi-resolution volumes. Default is 4 times the original voxel size.
+# This means that the multi-resolution regions have larger voxel sizes if
+# this is < 1, i.e. 1/4 = 4 times the original voxel size.
 options.multiResolutionScale = 1/4
 
 # Performs the extrapolation and adjusts the image size accordingly
@@ -298,12 +308,12 @@ options.projector_type = 4
 # used for both forward and backward projection and either one or both can
 # be utilized at the same time. E.g. if only backprojection mask is input,
 # then only the voxels which have 1 in the mask are reconstructed.
-# Currently the masks need to be a 2D image that is applied identically at
-# each slice.
+# The mask can be either a 2D image that is applied identically to each slice
+# or a 3D mask that is applied as-is
 # Forward projection mask
 # If nonempty, the mask will be applied. If empty, or completely omitted, no
 # mask will be considered.
-# options.maskFP = True(options.nRowsD,options.nColsD)
+# options.maskFP = np.ones((options.nRowsD,options.nColsD),dtype=np.uint8)
 # Backprojection mask
 # If nonempty, the mask will be applied. If empty, or completely omitted, no
 # mask will be considered.
@@ -344,7 +354,7 @@ options.subsets = 10
 # 8 = Use every nth projection image
 # 9 = Randomly select the full projection images
 # 11 = Use prime factor sampling to select the full projection images
-# Most of the time subset_type 8 is sufficient.
+# Most of the time subsetType 8 is sufficient.
 options.subsetType = 8
 
 ###########################################################################

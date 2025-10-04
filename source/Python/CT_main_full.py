@@ -26,20 +26,25 @@ options = proj.projectorClass()
 ###########################################################################
 ###########################################################################
 
+# This setting determines whether the high-dimensional scalable
+# reconstruction is used (if set as True). Otherwise, the regular
+# reconstruction is performed.
+options.largeDim = False
+
 ### Binning
 # The level of binning used for the raw data. For example binning of 2
 # reduces the size of the projections by two from both dimensions (e.g.
 # 2048x3072 becomes 1024x1536).
 options.binning = 4
 
-### Number of detector pixels (horizontal)
+### Number of detector pixels (horizontal/column)
 # The number of detector pixels in the detector panel (horizontal
 # direction)
 # NOTE: if you use binning, this value has to use the final binned
 # dimensions
 options.nColsD = 2368//options.binning
 
-### Number of detector pixels (vertical)
+### Number of detector pixels (vertical/row)
 # The number of detector pixels in the detector panel (vertical
 # direction)
 # NOTE: if you use binning, this value has to use the final binned
@@ -86,21 +91,17 @@ options.sourceToCRot = 210.66
 # This is used for naming purposes only
 options.name = 'Walnut3DCT_data'
 
-### Compute only the reconstructions
-# If this file is run with this set to True, then the data load will be
-# skipped if the options.SinM variable exists
-options.only_reconstructions = False
-
 ### Show status messages
 # These are e.g. time elapsed on various functions and what steps have been
-# completed. It is recommended to keep this 1. Maximum value of 3 is supported.
+# completed. It is recommended to keep this at 1 or 2. With value of 2, 
+# you get more detailed timing information. Maximum is 3. Minimum is 0.
 options.verbose = 1
 
-### Transaxial FOV size (mm), this is the length of the x (horizontal) side
+### Transaxial FOV size (mm), this is the length of the x (vertical/row) side
 # of the FOV
 options.FOVa_x = 40.1
 
-### Transaxial FOV size (mm), this is the length of the y (vertical) side
+### Transaxial FOV size (mm), this is the length of the y (horizontal/column) side
 # of the FOV
 options.FOVa_y = options.FOVa_x
 
@@ -109,8 +110,8 @@ options.axial_fov = 40
 
 ### Source row offset (mm)
 # The center of rotation is not exactly in the origin. With this parameter
-# the source location can be offset by the specifed amount (row direction).
-# This has a similar effect as circulary shifting the projection images.
+# the source location can be offset by the specified amount (row direction).
+# This has a similar effect as circularly shifting the projection images.
 # Use vector values if these vary with each projection (this is untested at
 # the moment).
 # NOTE: The default value has been obtained experimentally and is not based
@@ -162,6 +163,13 @@ options.pitchRoll = np.empty(0, dtype=np.float32)
 # of angles, then this is also generally not required.
 options.uV = np.empty(0, dtype=np.float32)
 
+# Note: Origin is assumed to be at the center. If this is not the case, you
+# can shift it with options.oOffsetX, options.oOffsetY and options.oOffsetZ
+# That is row, column and slice directions
+# options.oOffsetX = 0;
+# options.oOffsetY = 0;
+# options.oOffsetZ = 0;
+
 
 ###########################################################################
 ###########################################################################
@@ -177,9 +185,9 @@ if ~options.only_reconstructions or not hasattr(options,'SinM'):
     options.SinM = np.transpose(options.SinM, (1, 0, 2))
 # NOTE: If you want to reduce the number of projections, you need to do
 # this manually as outlined below:
-# options.SinM = options.SinM(:,:,1:4:options.nProjections)
-# options.angles = options.angles(1:4:numel(options.angles))
-# options.nProjections = numel(options.angles)
+# options.SinM = options.SinM[:,:,::lasku]
+# options.angles = options.angles[::lasku]
+# options.nProjections = options.angles.size
 
 
 
@@ -194,22 +202,23 @@ if ~options.only_reconstructions or not hasattr(options,'SinM'):
 
 # Note that non-square transaxial image sizes can be unreliable just as the
 # non-square transaxial FOV, but they should, generally, work
-### Reconstructed image pixel size (X-direction)
+### Reconstructed image pixel count (X/row-direction)
 options.Nx = 280*2
 
-### Y-direction
+### Y/column-direction
 options.Ny = 280*2
 
 # The above, again, doesn't apply to axial direction
 ### Z-direction (number of slices) (axial)
 options.Nz = 280*2
 
-### Flip the image (in vertical direction)?
+### Flip the image (in column direction)?
 options.flip_image = False
 
 ### How much is the image rotated (radians)?
 # The angle (in radians) on how much the image is rotated BEFORE
 # reconstruction, i.e. the rotation is performed in the detector space.
+# Positive values perform the rotation in counter-clockwise direction
 options.offangle = (2*np.pi)/2
 
 ###########################################################################
@@ -228,12 +237,20 @@ options.offangle = (2*np.pi)/2
 # the use of logarithmic scaling.
 options.useExtrapolation = False
 
+# The extrapolation length per side, i.e. the total size is this multiplied
+# by two!
+options.extrapLength = 0.2
+
 ### Use extended FOV
 # Similar to above, but expands the FOV. The benefit of expanding the FOV
 # this way is to enable to the use of multi-resolution reconstruction or
 # computation of the priors/regularization only in the original FOV. The
-# default extension is 40% per side.
+# default extension is 40% per side (see below)
 options.useEFOV = False
+
+# The extended FOV length per side, i.e. the total size is this multiplied
+# by two!
+options.eFOVLength = 0.4
 
 # Use transaxial extended FOV (this is off by default)
 options.transaxialEFOV = False
@@ -255,9 +272,9 @@ options.useMultiResolutionVolumes = True
 
 # This is the scale value for the multi-resolution volumes. The original
 # voxel size is divided by this value and then used as the voxel size for
-# the multi-resolution volumes. Default is 1/4 of the original voxel size.
-# This means that the multi-resolution regions have smaller voxel sizes if
-# this is < 1.
+# the multi-resolution volumes. Default is 4 times the original voxel size.
+# This means that the multi-resolution regions have larger voxel sizes if
+# this is < 1, i.e. 1/4 = 4 times the original voxel size.
 options.multiResolutionScale = 1/4
 
 # Performs the extrapolation and adjusts the image size accordingly
@@ -281,6 +298,10 @@ options.offsetCorrection = False
 
 ############################# IMPLEMENTATIONS #############################
 ### OpenCL/CUDA device used
+# NOTE: Use 
+# from omegatomo.util.devinfo import deviceInfo
+# deviceInfo(True)
+# to determine the device nubmers
 options.deviceNum = 0
 
 ### Use 64-bit integer atomic functions
@@ -290,6 +311,7 @@ options.deviceNum = 0
 # Setting this to True will make computations faster on GPUs that support
 # the functions, but might make results slightly less reliable due to
 # floating point rounding. Recommended for GPUs.
+# Note: This should be used only with OpenCL
 options.use_64bit_atomics = False
 
 ### Use 32-bit integer atomic functions
@@ -300,19 +322,20 @@ options.use_64bit_atomics = False
 # This should be about 20-30# faster than the above 64-bit version, but
 # might lead to integer overflow if you have a high count measurement
 # (thousands of coincidences per sinogram bin). Use this only if speed is
-# of utmost importance. 64-bit atomics take precedence over 32-bit ones,
-# i.e. if options.use_64bit_atomics = True then this will be always set as
-# False.
+# of utmost importance. 32-bit atomics take precedence over 64-bit ones,
+# i.e. if options.use_32bit_atomics = true then the 64-bit version will be 
+# always set as false.
 options.use_32bit_atomics = False
 
 ### Use CUDA
 # Selecting this to True will use CUDA kernels/code instead of OpenCL. This
-# only works if the CUDA code was successfully built. Recommended only for
-# Siddon as the orthogonal/volume-based ray tracer are slower in CUDA.
+# only works if the CUDA code was successfully built. This is recommended
+# if you have CUDA-capable device.
 options.useCUDA = False
 
 ### Use CPU
 # Selecting this to True will use CPU-based code instead of OpenCL or CUDA.
+# Not recommended, even OpenCL with CPU should be used before this.
 options.useCPU = False
 
 
@@ -323,6 +346,11 @@ options.useCPU = False
 # 3 = Volume of intersection based ray tracer (not recommended in CT)
 # 4 = Interpolation-based projector (ray- and voxel-based)
 # 5 = Branchless distance-driven projector
+# NOTE: You can mix and match most of the projectors. I.e. 45 will use
+# interpolation-based projector for forward projection while branchless
+# distance-driven is used for backprojection
+# NOTE 2: The below additional options apply also in hybrid cases as long
+# as the other projector is the corresponding projector.
 # See the doc for more information:
 # https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
 options.projector_type = 4
@@ -333,8 +361,8 @@ options.projector_type = 4
 # used for both forward and backward projection and either one or both can
 # be utilized at the same time. E.g. if only backprojection mask is input,
 # then only the voxels which have 1 in the mask are reconstructed.
-# Currently the masks need to be a 2D image that is applied identically at
-# each slice.
+# The mask can be either a 2D image that is applied identically to each slice
+# or a 3D mask that is applied as-is
 # Forward projection mask
 # If nonempty, the mask will be applied. If empty, or completely omitted, no
 # mask will be considered.
@@ -362,8 +390,7 @@ options.dL = 0.5
 # same as multiplying the geometric matrix with an image blurring matrix.
 options.use_psf = False
 
-# FWHM of the Gaussian used in PSF blurring in all three dimensions
-# options.FWHM = [options.cr_p options.cr_p options.cr_pz]
+# FWHM (mm) of the Gaussian used in PSF blurring in all three dimensions
 options.FWHM = np.array([options.cr_p, options.cr_p, options.cr_pz])
 
 # Use deblurring phase
@@ -377,18 +404,21 @@ options.deblurring = False
 options.deblur_iterations = 10
 
 # Orthogonal ray tracer (projector_type = 2) only
-### The 2D (XY) width of the "strip/tube" where the orthogonal distances are
+### The 2D (XY) width (mm) of the "strip/tube" where the orthogonal distances are
 # included. If tube_width_z below is non-zero, then this value is ignored.
 options.tube_width_xy = options.cr_p
 
 # Orthogonal ray tracer (projector_type = 2) only
-### The 3D (Z) width of the "tube" where the orthogonal distances are
+### The 3D (Z) width (mm) of the "tube" where the orthogonal distances are
 # included. If set to 0, then the 2D orthogonal ray tracer is used. If this
 # value is non-zero then the above value is IGNORED.
+# If you want the projector to be a tube, use this, if you want it to be 
+# strip, use the above
+# This slows down the reconstruction, but makes it more accurate
 options.tube_width_z = options.cr_pz
 
 # Volume ray tracer (projector_type = 3) only
-### Radius of the tube-of-response (cylinder)
+### Radius (mm) of the tube-of-response (cylinder)
 # The radius of the cylinder that approximates the tube-of-response.
 options.tube_radius = np.sqrt(2) * (options.cr_pz / 2)
 
@@ -396,20 +426,21 @@ options.tube_radius = np.sqrt(2) * (options.cr_pz / 2)
 ### Relative size of the voxel (sphere)
 # In volume ray tracer, the voxels are modeled as spheres. This value
 # specifies the relative radius of the sphere such that with 1 the sphere
-# is just large enoough to encompass an entire cubic voxel, i.e. the
+# is just large enough to encompass an entire cubic voxel, i.e. the
 # corners of the cubic voxel intersect with the sphere shell. Larger values
 # create larger spheres, while smaller values create smaller spheres.
 options.voxel_radius = 1
 
-# Siddon (projector_type = 1 only)
+# projector_type = 1 and 4 only
 ### Number of rays
 # Number of rays used per detector if projector_type = 1 (i.e. Improved
-# Siddon is used) and precompute_lor = False. I.e. when using precomputed
-# LOR data, only 1 rays is always used.
-# Number of rays in transaxial direction
-options.n_rays_transaxial = 1
-# Number of rays in axial direction
-options.n_rays_axial = 1
+# Siddon is used) or projector_type = 4 (interpolation).
+# The total number of rays per detector is the multiplication of the two
+# below values!
+# Number of rays in transaxial (row) direction
+options.n_rays_transaxial = 1;
+# Number of rays in axial (column) direction
+options.n_rays_axial = 1;
 
 
 ######################### RECONSTRUCTION SETTINGS #########################
@@ -419,13 +450,15 @@ options.Niter = 2
 ### Save specific intermediate iterations
 # You can specify the intermediate iterations you wish to save here. Note
 # that this uses zero-based indexing, i.e. 0 is the first iteration (not
-# the initial value). By default only the last iteration is saved.
+# the initial value). By default only the last iteration is saved. Only
+# full iterations (epochs) can be saved.
 options.saveNIter = np.empty(0)
 # Alternatively you can save ALL intermediate iterations by setting the
-# below to True and uncommenting it
+# below to True and uncommenting it. As above, only full iterations
+# (epochs) are saved.
 # options.save_iter = False
 
-### Number of subsets (all excluding MLEM and subset_type = 5)
+### Number of subsets
 # Note that with high-dimensional data this is required for FDK as well.
 # For high-dimensional data this controls the amount of memory required by 
 # the GPU. More subsets, less memory, but using too many subsets can lead 
@@ -442,13 +475,13 @@ options.subsets = 10
 # 8 = Use every nth projection image
 # 9 = Randomly select the full projection images
 # 11 = Use prime factor sampling to select the full projection images
-# Most of the time subset_type 8 is sufficient.
+# Most of the time subsetType 8 is sufficient.
 options.subsetType = 8
 
 ### Stochastic subset selection
 # If true, the subsets are selected stochastically
 # This means that the subset numbers are selected randomly
-# For example, if using subset_type = 8, the subsets are still grouped into
+# For example, if using subsetType = 8, the subsets are still grouped into
 # groups with every nth projection but the group is selected randomly
 # For example, if we have three subsets with 9 projections, the first group
 # will have projection images 1, 4, and 7, second 2, 5, and 8, and the third
@@ -463,7 +496,7 @@ options.x0 = np.ones((options.Nx, options.Ny, options.Nz), dtype=np.float32) * 1
 
 ### Epsilon value 
 # A small value to prevent division by zero and square root of zero. Should
-# not be smaller than eps.
+# not be smaller than machine epsilon (eps).
 options.epps = 1e-5
  
 ############################## MISC SETTINGS ##############################
@@ -535,7 +568,7 @@ options.BSREM = False
 ### ROSEM-MAP
 options.ROSEM_MAP = False
 
-### Preconditioner Krasnoselskii-Mann algorithm (PKMA)
+### Preconditioned Krasnoselskii-Mann algorithm (PKMA)
 options.PKMA = False
 
 ### Primal-dual hybrid gradient (PDHG)
@@ -549,6 +582,15 @@ options.PDDY = False
 
 ### SAGA
 options.SAGA = False
+
+### Simultaneous ART
+options.SART = False
+
+### SAGA
+options.SAGA = False
+
+### ASD-POCS
+options.ASD_POCS = False
 
 
 ################################# PRIORS ##################################
@@ -582,6 +624,9 @@ options.APLS = False
 ### Hyperbolic prior
 options.hyperbolic = False
 
+### Proximal TV
+options.ProxTV = False
+
 ### Total Generalized Variation (TGV) prior
 options.TGV = False
 
@@ -608,12 +653,12 @@ options.h = 2
 
 ########################## RELAXATION PARAMETER ###########################
 ### Relaxation parameter for MRAMLA, RAMLA, ROSEM, BSREM, MBSREM and PKMA
-# Use scalar if you want it to decrease as
-# lambda / ((current_iteration - 1)/20 + 1). Use vector (length = Niter) if
-# you want your own relaxation parameters. Use empty array or zero if you
-# want to OMEGA to compute the relaxation parameter using the above formula
-# with lamda = 1. Note that current_iteration is one-based, i.e. it starts
-# at 1.
+# If a scalar (or an empty) value is used, then the relaxation parameter is
+# computed automatically as lambda(i) = (1 / ((i - 1)/20 + 1)) / 10000,
+# where i is the iteration number. The input number thus has no effect.
+# If, on the other hand, a vector is input then the input lambda values are
+# used as is without any modifications (the length has to be at least the
+# number of iterations).
 options.lambdaN = np.zeros(1, dtype=np.float32)
  
 
@@ -622,8 +667,8 @@ options.lambdaN = np.zeros(1, dtype=np.float32)
 options.U = 0
 
 ############################# PRECONDITIONERS #############################
-### Applies to PDHG, PDHGL1, PDHGKL, PKMA, MBSREM, MRAMLA, PDDY, FISTA and
-### FISTAL1
+### Applies to PDHG, PDHGL1, PDHGKL, PKMA, MBSREM, MRAMLA, PDDY, FISTA,
+### FISTAL1 and SAGA
 # Measurement-based preconditioners
 # precondTypeMeas(0) = Diagonal normalization preconditioner (1 / (A1))
 # precondTypeMeas(1) = Filtering-based preconditioner
@@ -674,11 +719,20 @@ options.gradInitIter = 1
 options.gradLastIter = 100
 
 # Number of filtering iterations
-# Applies to both precondTypeMeas(2) and precondTypeImage(6)
+# Applies to both precondTypeMeas(1) and precondTypeImage(5)
 options.filteringIterations = 100
  
 
 ############################# PKMA PROPERTIES #############################
+### Relaxation parameter for PKMA
+# If a scalar (or an empty) value is used, then the relaxation parameter is
+# computed automatically as lambda(i) = (1 / ((i - 1)/20 + 1)) / 10000,
+# where i is the iteration number. The input number thus has no effect.
+# If, on the other hand, a vector is input then the input lambda values are
+# used as is without any modifications (the length has to be at least the
+# number of iterations).
+options.lambdaN = np.zeros(1, dtype=np.float32)
+
 ### Step size (alpha) parameter for PKMA
 # If a scalar (or an empty) value is used, then the alpha parameter is
 # computed automatically as alpha_PKMA(oo) = 1 + (options.rho_PKMA *((i -
@@ -710,22 +764,29 @@ options.delta_PKMA = 1
 # if "Largest eigenvalue for volume 0 is 100" then options.tauCP should be 
 # 1/100 (if you use filtering-based preconditioner this is the "without 
 # filtering" value)
+# if you have a multi-resolution situation, you should input the values
+# for each volume or use zero/empty
 options.tauCP = 0
 # Primal value for filtered iterations, applicable only if
 # options.precondTypeMeas[1] = True. As with above, automatically computed
 # if left zero or empty. Same restrictions apply here as above.
 # Use the "Largest eigenvalue for volume 0 with filtering" value here!
+# if you have a multi-resolution situation, you should input the values
+# for each volume or use zero/empty
 options.tauCPFilt = 0
 # Dual value. Recommended to set at 1.
 options.sigmaCP = 1
 # Next estimate update variable, recommended to keep at 1.
 options.thetaCP = 1
+# Dual value for TV and/or TGV. For faster convergence, set this to higher
+# than 1.
+options.sigma2CP = 1
 
 # Use adaptive update of the primal and dual variables
-# Currently only one method available
-# Setting this to 1 uses an adaptive update for both the primal and dual
-# variables.
-# Can lead to unstable behavior with multi-resolution
+# Currently two methods available
+# Setting this to 1 or 2 uses an adaptive update for both the primal and 
+# dual variables.
+# Can lead to unstable behavior when using with multi-resolution
 # Minimal to none use with filtering-based preconditioner
 options.PDAdaptiveType = 0
 
@@ -737,14 +798,14 @@ options.beta = 1
  
 ######################### NEIGHBORHOOD PROPERTIES #########################
 ### How many neighboring pixels are considered 
-# With MRP, QP, L, FMH, NLM, GGMRF and weighted mean
+# With MRP, QP, L, FMH, NLM, (RDP), GGMRF and weighted mean
 # E.g. if Ndx = 1, Ndy = 1, Ndz = 0, then you have 3x3 square area where
 # the pixels are taken into account (I.e. (Ndx*2+1)x(Ndy*2+1)x(Ndz*2+1)
 # area).
 # NOTE: Currently Ndx and Ndy must be identical.
 # For NLM this is often called the "search window".
-options.Ndx = 1
-options.Ndy = 1
+options.Ndx = 2
+options.Ndy = 2
 options.Ndz = 1
  
  
@@ -805,7 +866,15 @@ options.fmh_center_weight = 4
  
 ######################### WEIGHTED MEAN PROPERTIES ########################
 ### Mean type
-# 1 = Arithmetic mean, 2 = Harmonic mean, 3 = Geometric mean
+# Types 1-3 compute the weighted mean just as MRP is computed, but the
+# median is replaced with the weighted mean.
+# 1 = Arithmetic mean (MRP), 2 = Harmonic mean (MRP), 3 = Geometric mean
+# (MRP)
+# Types 4-6 compute the weighted mean around the neighborhood of the voxel
+# and use joint estimation to compute the gradient where the other variable
+# corresponds to the chosen mean value and the other is based on the chosen
+# mean value. See the docs for more information.
+# 4 = Arithmetic mean, 5 = Harmonic mean, 6 = Geometric mean
 options.mean_type = 1
 
 ### Pixel weights for weighted mean
@@ -832,11 +901,11 @@ options.TV_use_anatomical = False
 
 ### If the TV_use_anatomical value is set to True, specify filename for the
 # reference image here (same rules apply as with attenuation correction
-# above). Alternatively you can specifiy the variable that holds the
+# above). Alternatively you can specify the variable that holds the
 # reference image, e.g. options.TV_reference_image = refVar
 options.TV_reference_image = 'reference_image.mat'
 
-### Three different TV methods are available.
+### Five different TV methods are available.
 # Value can be 1, 2, 3, 4 or 6.
 # Type 3 is not recommended!
 # Types 1 and 2 are the same if anatomical prior is not included
@@ -864,6 +933,7 @@ options.tau = 1e-8
 ### Tuning parameter for Lange function in SATV (type 4) or weight factor
 ### for weighted TV (type 6)
 # Setting this to 0 gives regular anisotropic TV with type 4
+# This affects also non-local Lange
 options.SATVPhi = 0.2
  
  
@@ -922,6 +992,7 @@ options.alpha1TGV = 2
  
 ############################## NLM PROPERTIES #############################
 ### Filter parameter
+# Higher values smooth the image, smaller values make it sharper
 options.sigma = 6e-3
 
 ### Patch radius
@@ -929,23 +1000,31 @@ options.Nlx = 1
 options.Nly = 1
 options.Nlz = 1
 
-### Standard deviation of the Gaussian filter
-options.NLM_gauss = 0.75
+### Standard deviation of the Gaussian-weighted Euclidean norm
+options.NLM_gauss = 2.
+
+### Adaptive NL method
+options.NLAdaptive = False
+
+### Summed constant for adaptive NL
+options.NLAdaptiveConstant = 2.0e-7
 
 # Search window radius is controlled by Ndx, Ndy and Ndz parameters
 # Use anatomical reference image for the patches
 options.NLM_use_anatomical = False
 
 ### Specify filename for the reference image here (same rules apply as with
-# attenuation correction above). Alternatively you can specifiy the variable 
-# that holds the reference image, e.g. options.TV_reference_image = refVar
+# attenuation correction above). Alternatively you can specify the variable 
+# that holds the reference image, e.g. options.NLM_reference_image = refVar
 options.NLM_reference_image = 'reference_image.mat'
 
 # Note that only one of the below options for NLM can be selected!
+# If all the below ones are false, regular NLM is used!
 ### Use Non-local total variation (NLTV)
-# If selected, will overwrite regular NLM regularization as well as the
-# below MRP version.
 options.NLTV = False
+
+### Use Non-local Lange prior (NLLange)
+options.NLLange = False
 
 ### Use MRP algorithm (without normalization)
 # I.e. gradient = im - NLM_filtered(im)
@@ -960,12 +1039,16 @@ options.NLGGMRF = False
 
 ############################## RDP PROPERTIES #############################
 ### Edge weighting factor
+# Higher values sharpen the image, smaller values make it smoother
+# Note that this affects NLRD as well
 options.RDP_gamma = 10
 
 
 ############################# GGMRF PROPERTIES ############################
 ### GGMRF parameters
+# These affect the NLGGMRF as well
 # See the original article for details
+# https://omega-doc.readthedocs.io/en/latest/algorithms.html#ggmrf
 options.GGMRF_p = 1.5
 options.GGMRF_q = 1
 options.GGMRF_c = 5
@@ -985,8 +1068,8 @@ options.storeFP = False
 # If False, loads only the current subset of measurements to the selected
 # device when using implementation 2
 # Can be useful when dealing with large datasets, such as TOF data
-# Unlike the below one, this one has no restrictions on algorithms or other
-# features
+# Unlike the below one (largeDim), this one has no restrictions on algorithms 
+# or other features
 # If you use listmode data or custom detector coordinates, this also
 # affects the amount of coordinates transfered
 # If False, will slow down computations but consume less memory, depending
@@ -998,6 +1081,11 @@ options.loadTOF = True
 # This setting determines whether the high-dimensional scalable
 # reconstruction is used (if set as True). Otherwise, the regular
 # reconstruction is performed.
+# While above affects only measurements this one also affects the final
+# reconstructed image. This means that both the measurements and the image
+# are divided into NumberOfSubsets parts.
+# The more subsets you have, the less data is transfered to the device
+# (GPU).
 # NOTE: Currently the high-dimensional reconstructions are scaled
 # differently than the regular ones
 # Supports only some algorithms, such as FDK/FBP, PDHG and PKMA
@@ -1013,8 +1101,18 @@ options.powerIterations = 20
 # If True, includes also the "diagonal" corners in the neighborhood in RDP
 # By default, only the sides which the current voxel shares a side are
 # included
+# See https://omega-doc.readthedocs.io/en/latest/algorithms.html#rdp for
+# details
 # Default is False
 options.RDPIncludeCorners = False
+
+# Applies only if the above RDPIncludeCorners is true
+# Use anatomical reference image weighting for RDP
+options.RDP_use_anatomical = False
+
+# Set the file containing the reference image or the variable of the reference
+# image here
+options.RDP_reference_image = ''
 
 # Whether to use L2 or L1 balls with proximal TV and TGV regularization
 # Default is True
@@ -1023,11 +1121,13 @@ options.useL2Ball = True
 # If True, scales the relaxation parameters such that they are not too
 # large
 # Will slow down convergence
+# Not recommended!
 # Default is False
 options.relaxationScaling = False
 
 # If True, will try to compute the relaxation parameters on-the-fly
 # Not particularly reliable
+# Not recommended!
 # Default is False
 options.computeRelaxationParameters = False
 
@@ -1044,6 +1144,8 @@ options.computeRelaxationParameters = False
 # very smooth image
 # Shepp-Logan smooths only very little, less than cosine, but slightly more
 # than none
+# The above are for FDK reconstructions, filtering behaves differently
+# For filtering, there is much less differences
 options.filterWindow = 'hamming'
 
 # Related to above, when using Gaussian window this is the sigma value used
@@ -1055,6 +1157,8 @@ options.normalFilterSigma = 0.5
 # If False, uses regular vectors/buffers
 # On GPUs, it is recommended to keep this True (which is default value)
 # On CPUs, you might get performance boost the other way around
+# Some OpenCL devices might not support images, in which case setting this
+# to false should help
 # Default is True
 options.useImages = True
 

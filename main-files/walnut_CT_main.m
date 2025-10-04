@@ -1,4 +1,4 @@
-%% MATLAB codes for CT reconstruction using FIPS walnut projection images
+%% MATLAB/Octave code for CT reconstruction using FIPS walnut projection images
 % This example script uses the FIPS walnut projection images
 % (https://zenodo.org/record/1254206). This is very similar to
 % walnut2D_CT_main.m, but instead of being 2D this is a full 3D example.
@@ -74,25 +74,33 @@ options.only_reconstructions = false;
 
 %%% Show status messages
 % These are e.g. time elapsed on various functions and what steps have been
-% completed. It is recommended to keep this 1.  Maximum value of 3 is
-% supported.
+% completed. It is recommended to keep this at 1 or 2. With value of 2, 
+% you get more detailed timing information. Maximum is 3. Minimum is 0.
 options.verbose = 1;
 
-%%% Transaxial FOV size (mm), this is the length of the x (horizontal) side
+% Note that non-square transaxial FOV sizes should work, but might not work
+% always. Square transaxial FOV is thus recommended.
+%%% Transaxial FOV size (mm), this is the length of the x (vertical/row) side
 % of the FOV
 options.FOVa_x = 40.1;
 
-%%% Transaxial FOV size (mm), this is the length of the y (vertical) side
+%%% Transaxial FOV size (mm), this is the length of the y (horizontal/column) side
 % of the FOV
 options.FOVa_y = options.FOVa_x/2;
 
+
+% The above recommendation doesn't apply to axial FOV, i.e. this can be
+% different from the transaxial FOV size(s).
 %%% Axial FOV (mm)
 options.axial_fov = 40;
 
 %%% Source row offset (mm)
 % The center of rotation is not exactly in the origin. With this parameter
-% the source location can be offset by the specifed amount (row direction).
-% This has a similar effect as circulary shifting the projection images.
+% the source location can be offset by the specified amount (row direction).
+% This has a similar effect as circularly shifting the projection images.
+% Use vector values if these vary with each projection (this is untested at
+% the moment).
+% If inputing a vector, use a different value for each projection
 % NOTE: The default value has been obtained experimentally and is not based 
 % on any known value.
 options.sourceOffsetRow = -0.16;
@@ -103,6 +111,8 @@ options.sourceOffsetRow = -0.16;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+% Path to the first image, alternatively, you can leave this as is and 
+% simply input the data when prompted
 options.fpath = '/path/to/20201111_walnut_0001.tif';
 
 if ~options.only_reconstructions || ~isfield(options,'SinM')
@@ -137,7 +147,7 @@ options.Ny = 280;
 %%% Z-direction (number of slices) (axial)
 options.Nz = 280*2;
 
-%%% Flip the image (in horizontal direction)?
+%%% Flip the image (in column direction)?
 options.flip_image = false;
 
 %%% How much is the image rotated (radians)?
@@ -166,13 +176,12 @@ options.offangle = (2*pi)/2;
 %%% Reconstruction implementation used
 % 1 = Reconstructions in MATLAB (projector in a MEX-file), uses matrices.
 % (Slow and memory intensive)
-% 2 = Matrix-free reconstruction with OpenCL/ArrayFire (Recommended)
-% (Requires ArrayFire. Compiles with MinGW ONLY when ArrayFire was compiled
-% with MinGW as well (cannot use the prebuilt binaries)).
+% 2 = Matrix-free reconstruction with OpenCL/CUDA (Recommended)
+% (Requires ArrayFire).
 % 3 = Multi-GPU/device matrix-free OpenCL (OSEM & MLEM only).
-% 4 = Matrix-free reconstruction with OpenMP (parallel), standard C++
+% 4 = Matrix-free reconstruction with OpenMP (CPU, parallel), standard C++
 % 5 = Matrix-free reconstruction with OpenCL (parallel)
-% See the docs for more information:
+% See the docs for more information: 
 % https://omega-doc.readthedocs.io/en/latest/implementation.html
 options.implementation = 2;
 
@@ -190,7 +199,7 @@ options.platform = 0;
 % their respective devices with implementations 3 or 5.
 % NOTE: The device numbers might be different between implementation 2 and
 % implementations 3 and 5
-% NOTE: if you switch devices then you need to run the below line
+% NOTE: if you switch devices then you might need to run the below line
 % (uncommented) as well:
 % clear mex
 options.use_device = 0;
@@ -198,23 +207,28 @@ options.use_device = 0;
 % Implementation 2 ONLY
 %%% Use CUDA
 % Selecting this to true will use CUDA kernels/code instead of OpenCL. This
-% only works if the CUDA code was successfully built.
+% only works if the CUDA code was successfully built. This is recommended
+% if you have CUDA-capable device.
 options.use_CUDA = false;
 
 % Implementation 2 ONLY
 %%% Use CPU
 % Selecting this to true will use CPU-based code instead of OpenCL or CUDA.
+% Not recommended, even OpenCL with CPU should be used before this.
 options.use_CPU = false;
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Type of projector to use for the geometric matrix
 % 1 = Improved/accelerated Siddon's algorithm
-% 2 = Orthogonal distance based ray tracer (not recommended in CT)
-% 3 = Volume of intersection based ray tracer (not recommended in CT)
 % 4 = Interpolation-based projector (ray- and voxel-based)
 % 5 = Branchless distance-driven projector
-% See the docs for more information:
+% NOTE: You can mix and match most of the projectors. I.e. 45 will use
+% interpolation-based projector for forward projection while branchless
+% distance-driven is used for backprojection
+% NOTE 2: The below additional options apply also in hybrid cases as long
+% as the other projector is the corresponding projector.
+% See the documentation for more information:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
 options.projector_type = 4;
 
@@ -224,8 +238,8 @@ options.projector_type = 4;
 % used for both forward and backward projection and either one or both can
 % be utilized at the same time. E.g. if only backprojection mask is input,
 % then only the voxels which have 1 in the mask are reconstructed.
-% Currently the masks need to be a 2D image that is applied identically at
-% each slice.
+% The mask can be either a 2D image that is applied identically to each slice
+% or a 3D mask that is applied as-is
 % Forward projection mask
 % If nonempty, the mask will be applied. If empty, or completely omitted, no
 % mask will be considered.
@@ -243,8 +257,8 @@ options.maskBP = uint8((rowsInImage - centerY).^2 ...
 
 %%% Interpolation length (projector type = 4 only)
 % This specifies the length after which the interpolation takes place. This
-% value will be multiplied by the voxel size which means that 1 means that
-% the interpolation length corresponds to a single voxel (transaxial)
+% value will be multiplied by the voxel size which means that 1 is
+% the interpolation length corresponding to a single voxel (transaxial)
 % length. Larger values lead to faster computation but at the cost of
 % accuracy. Recommended values are between [0.5 1].
 options.dL = 0.5;
@@ -257,27 +271,18 @@ options.Niter = 2;
 %%% Save specific intermediate iterations
 % You can specify the intermediate iterations you wish to save here. Note
 % that this uses zero-based indexing, i.e. 0 is the first iteration (not
-% the initial value). By default only the last iteration is saved.
+% the initial value). By default only the last iteration is saved. Only
+% full iterations (epochs) can be saved.
 options.saveNIter = [];
 % Alternatively you can save ALL intermediate iterations by setting the
-% below to true and uncommenting it
+% below to true and uncommenting it. As above, only full iterations
+% (epochs) are saved.
 % options.save_iter = false;
 
-%%% Number of subsets (all excluding MLEM and subset_type = 5)
+%%% Number of subsets
 options.subsets = 10;
 
 %%% Subset type (n = subsets)
-% 1 = Every nth (column) measurement is taken
-% 2 = Every nth (row) measurement is taken (e.g. if subsets = 3, then
-% first subset has measurements 1, 4, 7, etc., second 2, 5, 8, etc.) 
-% 3 = Measurements are selected randomly
-% 4 = (Sinogram only) Take every nth column in the sinogram
-% 5 = (Sinogram only) Take every nth row in the sinogram
-% 6 = Sort the LORs according to their angle with positive X-axis, combine
-% n_angles together and have 180/n_angles subsets for 2D slices and
-% 360/n_angles for 3D, see docs for more information:
-% https://omega-doc.readthedocs.io/en/latest/algorithms.html#type-6
-% 7 = Form the subsets by using golden angle sampling
 % 8 = Use every nth sinogram
 % 9 = Randomly select the full sinograms
 % 10 = Use golden angle sampling to select the subsets (not recommended for
@@ -340,7 +345,7 @@ options.FDK = false;
 % this. Note that only one algorithm and prior combination is allowed! You
 % can also use most of these algorithms without priors (such as PKMA or
 % PDHG).
-%%% One-Step Late OSEM (OSL-OSEM)
+%%% One-Step Late OSEM (OSL-OSEM) or MLEM (if subsets = 1)
 % Supported by implementations 1, 2, 4, and 5
 options.OSL_OSEM = false;
 
@@ -356,7 +361,7 @@ options.BSREM = false;
 % Supported by implementations 1, 2, 4, and 5
 options.ROSEM_MAP = false;
 
-%%% Preconditioner Krasnoselskii-Mann algorithm (PKMA)
+%%% Preconditioned Krasnoselskii-Mann algorithm (PKMA)
 % Supported by implementations 1, 2, 4, and 5
 options.PKMA = false;
 
@@ -371,6 +376,22 @@ options.PDHGL1 = false;
 %%% Primal-dual Davis-Yin (PDDY)
 % Supported by implementation 2
 options.PDDY = false;
+
+%%% Simultaneous ART
+% Supported by implementation 2
+options.SART = false;
+
+%%% SAGA
+% Supported by implementation 2
+options.SAGA = false;
+
+%%% Barzilai-Borwein
+% Supported by implementation 2
+options.BB = false;
+
+%%% ASD-POCS
+% Supported by implementation 2
+options.ASD_POCS = false;
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PRIORS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -404,6 +425,9 @@ options.APLS = false;
 %%% Hyperbolic prior
 options.hyperbolic = false;
 
+%%% Proximal TV
+options.ProxTV = false;
+
 %%% Total Generalized Variation (TGV) prior
 options.TGV = false;
 
@@ -430,13 +454,13 @@ options.h = 2;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%% RELAXATION PARAMETER %%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Relaxation parameter for MRAMLA, RAMLA, ROSEM, BSREM, MBSREM and PKMA
-% Use scalar if you want it to decrease as
-% lambda / ((current_iteration - 1)/20 + 1). Use vector (length = Niter) if
-% you want your own relaxation parameters. Use empty array or zero if you
-% want to OMEGA to compute the relaxation parameter using the above formula
-% with lamda = 1. Note that current_iteration is one-based, i.e. it starts
-% at 1.
-options.lambda = 1;
+% If a scalar (or an empty) value is used, then the relaxation parameter is
+% computed automatically as lambda(i) = (1 / ((i - 1)/20 + 1)) / 10000,
+% where i is the iteration number. The input number thus has no effect.
+% If, on the other hand, a vector is input then the input lambda values are
+% used as is without any modifications (the length has to be at least the
+% number of iterations).
+options.lambda = 0;
  
 
 %%%%%%%%%%%%%%%%%%%%%%%% MRAMLA & MBSREM PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%
@@ -468,27 +492,43 @@ options.delta_PKMA = 1;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% PDHG PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Primal value
 % If left zero, or empty, it will be automatically computed
+% Note that if you change any of the model parameters, i.e. image volume
+% size, number of projections or use binning, this needs to be recomputed
+% or scaled accordingly!
+% The computed largest eigenvalue is printed if verbose > 0. This can be 
+% used as the below value as long as one is divided by it. For example, 
+% if "Largest eigenvalue for volume 0 is 100" then options.tauCP should be 
+% 1/100 (if you use filtering-based preconditioner this is the "without 
+% filtering" value)
+% if you have a multi-resolution situation, you should input the values
+% for each volume or use zero/empty
 options.tauCP = 0;
 % Primal value for filtered iterations, applicable only if
 % options.precondTypeMeas[2] = true. As with above, automatically computed
-% if left zero or empty.
+% if left zero or empty. Same restrictions apply here as above.
+% Use the "Largest eigenvalue for volume 0 with filtering" value here!
+% if you have a multi-resolution situation, you should input the values
+% for each volume or use zero/empty
 options.tauCPFilt = 0;
 % Dual value. Recommended to set at 1.
 options.sigmaCP = 1;
 % Next estimate update variable
 options.thetaCP = 1;
+% Dual value for TV and/or TGV. For faster convergence, set this to higher
+% than 1.
+options.sigma2CP = 1;
 
 % Use adaptive update of the primal and dual variables
-% Currently only one method available
-% Setting this to 1 uses an adaptive update for both the primal and dual
-% variables.
-% Can lead to unstable behavior with multi-resolution
+% Currently two methods available
+% Setting this to 1 or 2 uses an adaptive update for both the primal and 
+% dual variables.
+% Can lead to unstable behavior when using with multi-resolution
 % Minimal to none use with filtering-based preconditioner
 options.PDAdaptiveType = 0;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% PRECONDITIONERS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Applies to PDHG, PDHGL1, PDHGKL, PKMA, MBSREM, MRAMLA, PDDY, FISTA and
-%%% FISTAL1
+%%% Applies to PDHG, PDHGL1, PDHGKL, PKMA, MBSREM, MRAMLA, PDDY, FISTA, 
+%%% FISTAL1, and SAGA
 % Measurement-based preconditioners
 % precondTypeMeas(1) = Diagonal normalization preconditioner (1 / (A1))
 % precondTypeMeas(2) = Filtering-based preconditioner
@@ -524,15 +564,20 @@ options.rhoPrecond = options.rho_PKMA;
 options.delta1Precond = options.delta_PKMA;
 
 % Parameters for precondTypeImage(5)
-% See the article for details
+% See the article for details:
+% https://omega-doc.readthedocs.io/en/latest/algorithms.html#gradient-based-preconditioner
 options.gradV1 = 1.5;
 options.gradV2 = 2;
 % Note that these include subiterations (options.Niter * options.subsets)
+% The first iteration where to start the gradient computation
 options.gradInitIter = 1;
+% Last iteration of the gradient computation
 options.gradLastIter = 100;
 
 % Number of filtering iterations
 % Applies to both precondTypeMeas(2) and precondTypeImage(6)
+% The filtering is applies to this many (sub)iterations
+% Note that this include subiterations (options.Niter * options.subsets)
 options.filteringIterations = 100;
 
 
@@ -543,14 +588,14 @@ options.beta = 1;
  
 %%%%%%%%%%%%%%%%%%%%%%%%% NEIGHBORHOOD PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% How many neighboring pixels are considered 
-% With MRP, QP, L, FMH, NLM, GGMRF and weighted mean
+% With MRP, QP, L, FMH, NLM, (RDP), GGMRF and weighted mean
 % E.g. if Ndx = 1, Ndy = 1, Ndz = 0, then you have 3x3 square area where
 % the pixels are taken into account (I.e. (Ndx*2+1)x(Ndy*2+1)x(Ndz*2+1)
 % area).
 % NOTE: Currently Ndx and Ndy must be identical.
 % For NLM this is often called the "search window".
-options.Ndx = 1;
-options.Ndy = 1;
+options.Ndx = 2;
+options.Ndy = 2;
 options.Ndz = 1;
  
  
@@ -611,7 +656,15 @@ options.fmh_center_weight = 4;
  
 %%%%%%%%%%%%%%%%%%%%%%%%% WEIGHTED MEAN PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%
 %%% Mean type
-% 1 = Arithmetic mean, 2 = Harmonic mean, 3 = Geometric mean
+% Types 1-3 compute the weighted mean just as MRP is computed, but the
+% median is replaced with the weighted mean.
+% 1 = Arithmetic mean (MRP), 2 = Harmonic mean (MRP), 3 = Geometric mean
+% (MRP)
+% Types 4-6 compute the weighted mean around the neighborhood of the voxel
+% and use joint estimation to compute the gradient where the other variable
+% corresponds to the chosen mean value and the other is based on the chosen
+% mean value. See the docs for more information.
+% 4 = Arithmetic mean, 5 = Harmonic mean, 6 = Geometric mean
 options.mean_type = 1;
 
 %%% Pixel weights for weighted mean
@@ -638,11 +691,11 @@ options.TV_use_anatomical = false;
 
 %%% If the TV_use_anatomical value is set to true, specify filename for the
 % reference image here (same rules apply as with attenuation correction
-% above). Alternatively you can specifiy the variable that holds the
+% above). Alternatively you can specify the variable that holds the
 % reference image.
 options.TV_reference_image = 'reference_image.mat';
 
-%%% Three different TV methods are available.
+%%% Five different TV methods are available.
 % Value can be 1, 2, 3, 4 or 6.
 % Type 3 is not recommended!
 % Types 1 and 2 are the same if anatomical prior is not included
@@ -655,7 +708,7 @@ options.TVtype = 1;
 
 %%% Weighting parameters for the TV prior. 
 % Applicable only if use_anatomical = true. T-value is specific to the used
-% TVtype, e.g. for type 1 it is the edge threshold parameter. See the wiki
+% TVtype, e.g. for type 1 it is the edge threshold parameter. See the docs
 % for more details:
 % https://omega-doc.readthedocs.io/en/latest/algorithms.html#tv
 options.T = 0.5;
@@ -670,6 +723,7 @@ options.tau = 1e-8;
 %%% Tuning parameter for Lange function in SATV (type 4) or weight factor
 %%% for weighted TV (type 6)
 % Setting this to 0 gives regular anisotropic TV with type 4
+% This affects also non-local Lange
 options.SATVPhi = 0.2;
  
  
@@ -698,7 +752,7 @@ options.DiffusionType = 1;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% APLS PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Scaling parameter (eta)
-% See the wiki for details:
+% See the docs for details:
 % https://omega-doc.readthedocs.io/en/latest/algorithms.html#tv
 options.eta = 1e-5;
 
@@ -709,8 +763,13 @@ options.APLSsmoothing = 1e-5;
 %%% Specify filename for the reference image here (same rules apply as with
 % attenuation correction above). As before, this can also be a variable
 % instead.
-% NOTE: For APSL, the reference image is required.
+% NOTE: For APSL, the reference image is required!
 options.APLS_reference_image = 'reference_image.mat';
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% HYPERBOLIC PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Edge weighting factor
+options.hyperbolicDelta = 800;
  
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TGV PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -723,29 +782,33 @@ options.alpha1TGV = 2;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% NLM PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Filter parameter
+% Higher values smooth the image, smaller values make it sharper
 options.sigma = 6e-3;
 
 %%% Patch radius
+% Works exactly the same as the neighborhood size
 options.Nlx = 1;
 options.Nly = 1;
 options.Nlz = 1;
 
-%%% Standard deviation of the Gaussian filter
-options.NLM_gauss = 0.75;
+%%% Standard deviation of the Gaussian-weighted Euclidean norm
+options.NLM_gauss = 2;
 
 % Search window radius is controlled by Ndx, Ndy and Ndz parameters
 % Use anatomical reference image for the patches
 options.NLM_use_anatomical = false;
 
-%%% Specify filename for the reference image here (same rules apply as with
-% attenuation correction above)
+%%% Specify filename for the reference image here or the variable containing 
+% the reference image or the variable holding the reference image
 options.NLM_reference_image = 'reference_image.mat';
 
 % Note that only one of the below options for NLM can be selected!
+% If all the below ones are false, regular NLM is used!
 %%% Use Non-local total variation (NLTV)
-% If selected, will overwrite regular NLM regularization as well as the
-% below MRP version.
 options.NLTV = false;
+
+%%% Use Non-local Lange prior (NLLange)
+options.NLLange = false;
 
 %%% Use MRP algorithm (without normalization)
 % I.e. gradient = im - NLM_filtered(im)
@@ -760,12 +823,16 @@ options.NLGGMRF = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% RDP PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Edge weighting factor
+% Higher values sharpen the image, smaller values make it smoother
+% Note that this affects NLRD as well
 options.RDP_gamma = 10;
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% GGMRF PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% GGMRF parameters
+% These affect the NLGGMRF as well
 % See the original article for details
+% https://omega-doc.readthedocs.io/en/latest/algorithms.html#ggmrf
 options.GGMRF_p = 1.5;
 options.GGMRF_q = 1;
 options.GGMRF_c = 5;
