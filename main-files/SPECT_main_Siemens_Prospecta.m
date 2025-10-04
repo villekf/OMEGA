@@ -65,33 +65,33 @@ options.flipImageZ = false;
 %%% Use back projection mask?
 options.useMaskBP = false;
 
-%%% Attenuation correction
-options.attenuation_correction = false;
-
-%%% HU scaling (affine map y=ax+b)
-options.HU.slope = 0.000109;
-options.HU.intercept = 0.0151;
-
 %%% How much is the image rotated in degrees?
 % NOTE: The rotation is done in the detector space (before reconstruction).
 % Positive values perform the rotation in counterclockwise direction
 options.offangle = 0;
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-options = loadProSpectaData(options);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%% COLLIMATOR PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% CORRECTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+%%%%%%%%%%%%%%%%%%%%%%%%% Attenuation correction %%%%%%%%%%%%%%%%%%%%%%%%%%
+% Currently only a set of DICOM files is supported for the attenuation map.
+options.attenuation_correction = false;
+options.keV = 140; % NM photon energy [keV], used for scaling HU values
+
+%%%%%%%%%%%%%%%%%%%%%%%% Normalization correction %%%%%%%%%%%%%%%%%%%%%%%%%
+% If set to true, normalization correction is applied to either the
+% projection data or in the image reconstruction by using predefined
+% normalization coefficients.
+options.normalization_correction = false;
+options.normalization = [];
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%% Resolution recovery %%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Collimator-detector response function (CDRF)
 % For projector types 2 and 6 you can either input either:
 % 1. the collimator parameters (default) for an analytic solution for round (and hexagonal) holes (this may be unoptimal),
@@ -118,6 +118,10 @@ options.colR = 1.11/2;
 options.colD = 0;
 % Intrinsic resolution (mm)
 options.iR = 3.8;
+% Focal distance (XY)
+options.colFxy = Inf;
+% Focal distance (Z)
+options.colFz = Inf;
 
 % 2. If you have the standard deviations for transaxial (XY) and axial (Z)
 % directions, you can input them here instead of the above values The
@@ -127,25 +131,29 @@ options.iR = 3.8;
 % options.sigmaXY = repmat(1, options.nProjections, options.Nx);
 
 % 3. You can input the filter for the CDRF directly. This should be of the
-% size filterSizeXY x filterSizeZ x options.nProjections. Only for
+% size filterSizeXY x filterSizeZ. Only for
 % projector type 6.
-% options.gFilter = ones(1, 1, options.Nx, options.nProjections);
+% options.gFilter = ones(1, 1, options.Nx);
 
 % 4. For the Siddon ray tracer, the CDRF is defined by shifting the rays to
 % the shape of the collimator hole. The values of rayShiftsDetector and
-% rayShiftsSource should be in the range of [-1, 1]. For example,
-% dx1=dy1=-1 below would have the end of the ray shifted to the corner of a
-% detector element.
+% rayShiftsSource represent [shift1XY, shift1Z, shift2XY, ...] in mm. Size
+% should be 2*nRays x nColsD x nRowsD x nProjections. If not input, values
+% are calculated automatically.
 options.nRays = 1; % Number of rays traced per detector element
-% options.rayShiftsDetector = zeros(2*options.nRays, 1); % The relative shifts (dx1, dy1, dx2, dy2, ...) at the collimator-detector interface
-% options.rayShiftsSource = zeros(2*options.nRays, 1); % The relative shifts (dx1, dy1, dx2, dy2, ...) at the other end of the collimator
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% options.rayShiftsDetector = [];
+% options.rayShiftsSource = [];
 
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LOAD DATA %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+options = loadProSpectaData(options);
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -166,13 +174,6 @@ options.name = 'spect_example';
 % completed. It is recommended to keep this 1.  Maximum value of 3 is
 % supported.
 options.verbose = 1;
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -246,10 +247,6 @@ options.subset_type = 8;
 
 %%% Initial value for the reconstruction
 options.x0 = ones(options.Nx, options.Ny, options.Nz);
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -773,11 +770,6 @@ options.GGMRF_p = 1.5;
 options.GGMRF_q = 1;
 options.GGMRF_c = 5;
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -791,14 +783,9 @@ options.GGMRF_c = 5;
 % Uncomment the below line and run it to determine the available device
 % numbers
 % ArrayFire_OpenCL_device_info();
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 
 %% Reconstructions
-
-
 tStart = tic;
 % pz contains the 3D or 4D image
 % recPar contains certain reconstruction parameters in a struct that can be
@@ -812,4 +799,6 @@ disp(['Reconstruction process took ' num2str(tElapsed) ' seconds'])
 
 % save([options.name '_reconstruction_' num2str(options.subsets) 'subsets_' num2str(options.Niter) 'iterations_' ...
 %     num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '.mat'], 'pz');
-volume3Dviewer(pz, [min(pz, [], "all"), max(pz, [], "all")], [0 0 1])
+
+%% Plot
+volume3Dviewer(pz)

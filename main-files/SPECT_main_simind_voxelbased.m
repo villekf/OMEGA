@@ -4,9 +4,13 @@
 
 % Pinhole data can be generated with
 % mpirun -np 30 simind_mpi nema nema_pinhole/fz:phantom/45:3/tr:11/tr:15/cc:ge-ph02/76:128/77:128/28:0.33/mp/55:1/53:1/42:-5/29:180
+% Listmode with
+% mpirun -np 30 simind_mpi nema nema_pinhole/fz:phantom/45:3/tr:11/tr:15/cc:ge-ph02/76:128/77:128/28:0.33/mp/55:1/53:1/42:-5/29:180/84:2/ou:11
 
 % Parallel-hole data can be generated with
 % mpirun -np 30 simind_mpi nema nema_parallel/fz:phantom/45:3/tr:11/tr:15/cc:g8-luhr/76:128/77:128/28:0.33/mp/55:0/53:1/42:-5/29:180
+% Listmode with 
+% mpirun -np 30 simind_mpi nema nema_parallel/fz:phantom/45:3/tr:11/tr:15/cc:g8-luhr/76:128/77:128/28:0.33/mp/55:0/53:1/42:-5/29:180/84:2/ou:11
 
 clear
 options.fpath = '/path/to/data/nema_pinhole';
@@ -37,13 +41,13 @@ options.machine_name = 'SIMIND';
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %%% Reconstructed image pixel count
-% NOTE: Non-square image sizes (X- and Y-direction) may not work
-options.Nx = 1*128; % X-direction
-options.Ny = 1*128; % Y-direction
-options.Nz = 1*128; % Z-direction (number of axial slices)
+% NOTE: Square image sizes (X- and Y-direction) are recommended
+options.Nx = 128; % X-direction
+options.Ny = 128; % Y-direction
+options.Nz = 128; % Z-direction (number of axial slices)
 
 %%% FOV size [mm]
-% NOTE: Non-cubical voxels may not work
+% NOTE: Cubical voxels are recommended
 options.FOVa_x = options.dPitchX*128; % [mm], x-axis of FOV (transaxial)
 options.FOVa_y = options.dPitchX*128; % [mm], y-axis of FOV (transaxial)
 options.axial_fov = options.dPitchY*128; % [mm], z-axis of FOV (axial)
@@ -99,13 +103,13 @@ options.normalization = [];
 % collimator hole is assumed to be a circle. Thus only 1. below is
 % supported with projector_type == 2
 
-% 1. The collimator parameters (projector types 1, 2 and 6)
-% Pinhole collimator
+% 1. The collimator parameters (projector types 1, 2 and 6).
+% % 1.1 Pinhole collimator
 options.colD = 167.5; % Separation of collimator and detector
 options.colFxy = 0; % Focal distance XY, 0 for pinhole
 options.colFz = 0; % Focal distance Z, 0 for pinhole
 
-% % Parallel-hole collimator
+% % 1.2 Parallel-hole collimator
 % options.colD = 0;
 % options.colFxy = Inf;
 % options.colFz = Inf;
@@ -171,6 +175,7 @@ options.name = 'spect_example';
 % completed. It is recommended to keep this 1.  Maximum value of 3 is
 % supported.
 options.verbose = 1;
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

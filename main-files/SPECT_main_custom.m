@@ -1,7 +1,17 @@
-%% MATLAB codes for SPECT reconstruction from custom sinogram data
-% This example outlines the reconstruction of SPECT data.
+%% MATLAB codes for SPECT reconstruction from SIMIND output
+% This example has been tested using SIMIND v8.0 and the respective
+% tutorial sections 8(NEMA image quality phantom) and 9 (Brain CBF).
+% Rather than built-in algorithms, this example highlights the projection 
+% operators A*x and A'*y.
+
+% Pinhole data can be generated with
+% mpirun -np 30 simind_mpi nema nema_pinhole/fz:phantom/45:3/tr:11/tr:15/cc:ge-ph02/76:128/77:128/28:0.33/mp/55:1/53:1/42:-5/29:180
+
+% Parallel-hole data can be generated with
+% mpirun -np 30 simind_mpi nema nema_parallel/fz:phantom/45:3/tr:11/tr:15/cc:g8-luhr/76:128/77:128/28:0.33/mp/55:0/53:1/42:-5/29:180
 
 clear
+options.fpath = '/path/to/data/nema_pinhole';
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -11,19 +21,14 @@ clear
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% Required for SPECT data
-options.SPECT = true;
-
-%%% Crystal thickness (mm)
-options.cr_p = 9.525;
-
-%%% Crystal width (mm)
-options.dPitchX = 4.7952;
-options.dPitchY = 4.7952;
+%%% Crystal size (mm)
+options.dPitchX = 3.3;
+options.dPitchY = 3.3;
 
 %%% Scanner name
 % Used for naming purposes (measurement data)
-options.machine_name = 'Example';
+options.machine_name = 'SIMIND';
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -34,16 +39,16 @@ options.machine_name = 'Example';
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %%% Reconstructed image pixel count
-% NOTE: Non-square image sizes (X- and Y-direction) may not work
+% NOTE: Square image sizes (X- and Y-direction) are recommended
 options.Nx = 128; % X-direction
 options.Ny = 128; % Y-direction
 options.Nz = 128; % Z-direction (number of axial slices)
 
 %%% FOV size [mm]
-% NOTE: Non-cubical voxels may not work
-options.FOVa_x = options.dPitchX*64; % [mm], x-axis of FOV (transaxial)
-options.FOVa_y = options.dPitchX*64; % [mm], y-axis of FOV (transaxial)
-options.axial_fov = options.dPitchY*64; % [mm], z-axis of FOV (axial)
+% NOTE: Cubical voxels are recommended
+options.FOVa_x = options.dPitchX*128; % [mm], x-axis of FOV (transaxial)
+options.FOVa_y = options.dPitchX*128; % [mm], y-axis of FOV (transaxial)
+options.axial_fov = options.dPitchY*128; % [mm], z-axis of FOV (axial)
 
 %%% Flip the image?
 options.flipImageX = false;
@@ -53,12 +58,6 @@ options.flipImageZ = false;
 %%% Use back projection mask?
 options.useMaskBP = false;
 
-%%% Attenuation correction
-options.attenuation_correction = false;
-
-% Linear attenuation coefficients, size and dimensions should match FOV
-options.vaimennus = []; 
-
 %%% How much is the image rotated in degrees?
 % NOTE: The rotation is done in the detector space (before reconstruction).
 % Positive values perform the rotation in counterclockwise direction
@@ -67,47 +66,26 @@ options.offangle = 0;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTION DATA &&%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% CORRECTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% Gantry angles
-options.angles = linspace(0, 90, 12)';
+%%%%%%%%%%%%%%%%%%%%%%%%% Attenuation correction %%%%%%%%%%%%%%%%%%%%%%%%%%
+% Currently only a set of DICOM files is supported for the attenuation map.
+options.attenuation_correction = false;
+options.keV = 140; % NM photon energy [keV], used for scaling HU values
 
-% Detector swivel angles
-options.swivelAngles = options.angles+180;
+%%%%%%%%%%%%%%%%%%%%%%%% Normalization correction %%%%%%%%%%%%%%%%%%%%%%%%%
+% If set to true, normalization correction is applied to either the
+% projection data or in the image reconstruction by using predefined
+% normalization coefficients.
+options.normalization_correction = false;
+options.normalization = [];
 
-% Distance between detector surface and FOV centre (origin)
-options.radiusPerProj = 48*options.dPitchX*ones(size(options.angles)); 
-
-% Initial value for the forward projection example
-x0 = zeros(options.Nx, options.Ny, options.Nz);
-x0(64, 64, 64) = 1;
-
-% Projection images for backward projection example
-y0 = zeros(128, 128, numel(options.angles), 'single'); 
-y0(64, 64, :) = 1;
-
-% Number of rows in a projection image
-options.nRowsD = size(y0, 1);
-
-% Number of columns in a projection image
-options.nColsD = size(y0, 2);
-
-% Number of projections
-options.nProjections = size(y0, 3);
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%% COLLIMATOR PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+%%%%%%%%%%%%%%%%%%%%%%%%%%% Resolution recovery %%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Collimator-detector response function (CDRF)
-% For projector types 1, 2 and 6 you can either input either:
+% For projector types 2 and 6 you can either input either:
 % 1. the collimator parameters (default) for an analytic solution for round (and hexagonal) holes (this may be unoptimal),
 % 2. the standard deviations for both transaxial and axial directions or
 % 3. the (Gaussian) PSF filter
@@ -123,41 +101,59 @@ options.nProjections = size(y0, 3);
 % collimator hole is assumed to be a circle. Thus only 1. below is
 % supported with projector_type == 2
 
-% 1. The collimator parameters (projector types 1, 2 and 6)
-% Collimator hole length (mm)
-options.colL = 24.05;
-% Collimator hole radius (mm)
-options.colR = 1.11/2;
-% Distance from collimator to the detector (mm)
-options.colD = 0;
-% Intrinsic resolution (mm)
-options.iR = 3.8;
+% 1. The collimator parameters (projector types 1, 2 and 6).
+% % 1.1 Pinhole collimator
+options.colD = 167.5; % Separation of collimator and detector
+options.colFxy = 0; % Focal distance XY, 0 for pinhole
+options.colFz = 0; % Focal distance Z, 0 for pinhole
+
+% % 1.2 Parallel-hole collimator
+% options.colD = 0;
+% options.colFxy = Inf;
+% options.colFz = Inf;
 
 % 2. If you have the standard deviations for transaxial (XY) and axial (Z)
 % directions, you can input them here instead of the above values The
 % dimensions need to be options.nProjections x options.Nx. Only for
 % projector type 6.
 % options.sigmaZ = repmat(1, options.nProjections, options.Nx); 
-% options.sigmaXY = repmat(1, options.nProjections, options.Nx); % Transaxial standard deviation, (projector type 6)
+% options.sigmaXY = repmat(1, options.nProjections, options.Nx);
 
 % 3. You can input the filter for the CDRF directly. This should be of the
-% size filterSizeXY x filterSizeZ x options.nProjections. Only for
+% size filterSizeXY x filterSizeZ. Only for
 % projector type 6.
-% options.gFilter = ones(1, 1, options.Nx, options.nProjections);
+% options.gFilter = ones(1, 1, options.Nx);
 
 % 4. For the Siddon ray tracer, the CDRF is defined by shifting the rays to
-% the shape of the collimator hole. The below example is for random
-% (uniform distribution) rays with one square collimator hole at the centre
-% of each detector element. For 1 ray, the ray perpendicular to the
-% detector element.
+% the shape of the collimator hole. The values of rayShiftsDetector and
+% rayShiftsSource represent [shift1XY, shift1Z, shift2XY, ...] in mm. Size
+% should be 2*nRays x nColsD x nRowsD x nProjections. If not input, values
+% are calculated automatically.
 options.nRays = 1; % Number of rays traced per detector element
-% options.rayShiftsDetector = options.colR*(2*rand(2*options.nRays, 1, 'single')-1)/options.dPitchX; % The relative shifts (dx1, dy1, dx2, dy2, ...) at the collimator-detector interface
-% options.rayShiftsSource = options.colR*(2*rand(2*options.nRays, 1, 'single')-1)/options.dPitchY; % The relative shifts (dx1, dy1, dx2, dy2, ...) at the other end of the collimator
+% options.rayShiftsDetector = [];
+% options.rayShiftsSource = [];
+
+
+%%%%%%%%%%%%%%%%%%%% Corrections during reconstruction %%%%%%%%%%%%%%%%%%%%
+% If set to true, all the corrections are performed during the
+% reconstruction step, otherwise the corrections are performed to the
+% sinogram/raw data before reconstruction (i.e. precorrected). I.e. this
+% can be considered as e.g. normalization weighted reconstruction if
+% normalization correction is applied.
+% NOTE: Attenuation correction and resolution recovery are always performed
+% during reconstruction regardless of the choice here.
+options.corrections_during_reconstruction = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LOAD DATA %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+options = loadSIMINDSPECTData(options);
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -177,13 +173,6 @@ options.name = 'spect_example';
 % completed. It is recommended to keep this 1.  Maximum value of 3 is
 % supported.
 options.verbose = 1;
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -243,10 +232,6 @@ options.projector_type = 2;
 % numbers
 % ArrayFire_OpenCL_device_info();
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% Projections
 A = projectorClass(options);
@@ -259,5 +244,5 @@ y = reshape(y, options.nRowsD, options.nColsD, options.nProjections);
 
 
 %% Plots
-imshow(x(:, :, 64), []) % Backprojection
+volume3Dviewer(x) % Backprojection
 volume3Dviewer(y) % Forward projection
