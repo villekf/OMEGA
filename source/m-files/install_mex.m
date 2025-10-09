@@ -1345,6 +1345,8 @@ else % Apple silicon MATLAB/Octave
     complexFlag = '';
     ldflags = 'LDFLAGS="\$LDFLAGS -framework Metal -framework Foundation"';
     cxxflags = 'CXXFLAGS="\$CXXFLAGS -std=c++17 -fobjc-arc"';
-    mex(compiler, complexFlag, '-outdir', folderMetal, ldflags, cxxflags, '-DMATLAB', ['-I' folder], ['-I' folderMetal], [folderMetal '/Metal_matrixfree.mm'])
+    mex(compiler, complexFlag, '-outdir', folderMetal, ...
+        '-output', 'OpenCL_matrixfree_multi_gpu', ldflags, cxxflags, ...
+        '-DMATLAB', ['-I' folder], ['-I' folderMetal], [folderMetal '/Metal_matrixfree.mm'])
     disp('Implementation 2 built')
 end
