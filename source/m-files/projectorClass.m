@@ -928,7 +928,7 @@ classdef projectorClass
                 obj.param.uu = obj.param.uu + obj.nMeas(obj.subset);
             end
             if obj.param.useSubsets
-                if obj.param.implementation == 1 || obj.param.implementation == 4
+                if obj.param.implementation == 1 || obj.param.implementation == 4 || (obj.param.projector_type == 6 && ismac)
                     [m_size, xy_index_input, z_index_input, L_input, lor_input, lor2, norm_input, corr_input] = splitInput(obj.param, obj.nMeas, obj.subset, obj.param.xy_index, obj.param.z_index, obj.param.LL, ...
                         obj.param.lor_a, corrVec);
                     [y, ~] = forwardProjection(obj.param, input, obj.x, obj.z, m_size, obj.nMeas(obj.subset), xy_index_input, z_index_input, norm_input, corr_input, L_input, obj.param.TOF, lor2, lor_input, obj.param.summa(obj.subset), loopVar, obj.subset - 1);
@@ -1030,7 +1030,7 @@ classdef projectorClass
                 disp('Computing backprojection')
             end
             if obj.param.useSubsets
-                if obj.param.implementation == 1 || obj.param.implementation == 4
+                if obj.param.implementation == 1 || obj.param.implementation == 4 || (obj.param.projector_type == 6 && ismac)
                     [m_size, xy_index_input, z_index_input, L_input, ~, ~, norm_input, corr_input] = splitInput(obj.param, obj.nMeas, obj.subset, obj.param.xy_index, obj.param.z_index, obj.param.LL, ...
                         obj.param.lor_a, corrVec);
                     if nargout == 2
