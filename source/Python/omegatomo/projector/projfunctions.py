@@ -437,6 +437,7 @@ def forwardProjection(self, f, subset = -1):
             #     af.device.unlock_array(y)
         else:
             import pyopencl as cl
+            from pyopencl.version import VERSION
             if not self.loadTOF:
                 if self.useIndexBasedReconstruction and self.listmode > 0:
                     self.d_trIndex[0] = cl.array.to_device(self.queue, self.trIndex[self.nMeas[subset] * 2 : self.nMeas[subset + 1] * 2])
@@ -462,10 +463,17 @@ def forwardProjection(self, f, subset = -1):
             for k in range(self.nMultiVolumes + 1):
                 if self.useImages:
                     if self.FPType < 5:
-                        d_im = cl.Image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Nx[k].item(), self.Ny[k].item(), self.Nz[k].item()))
+                        if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
+                            d_im = cl.create_image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Nx[k].item(), self.Ny[k].item(), self.Nz[k].item()))
+                        else:
+                            d_im = cl.Image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Nx[k].item(), self.Ny[k].item(), self.Nz[k].item()))
                     else:
-                        d_imInt = cl.Image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Ny[k].item() + 1, self.Nz[k].item() + 1, self.Nx[k].item()))
-                        d_im = cl.Image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Nx[k].item() + 1, self.Nz[k].item() + 1, self.Ny[k].item()))
+                        if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
+                            d_imInt = cl.create_image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Ny[k].item() + 1, self.Nz[k].item() + 1, self.Nx[k].item()))
+                            d_im = cl.create_image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Nx[k].item() + 1, self.Nz[k].item() + 1, self.Ny[k].item()))
+                        else:
+                            d_imInt = cl.Image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Ny[k].item() + 1, self.Nz[k].item() + 1, self.Nx[k].item()))
+                            d_im = cl.Image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Nx[k].item() + 1, self.Nz[k].item() + 1, self.Ny[k].item()))
                     if isinstance(f,list):
                         if self.use_psf:
                             f[k] = self.computeConvolution(f[k])
@@ -1070,6 +1078,7 @@ def backwardProjection(self, y, subset = -1):
                 torch.cuda.synchronize()
         else:
             import pyopencl as cl
+            from pyopencl.version import VERSION
             if self.useAF:
                 import arrayfire as af
                 cltype = af.Dtype.f32
@@ -1088,13 +1097,19 @@ def backwardProjection(self, y, subset = -1):
             if self.CT and self.BPType in [4,5]:
                 imformat = cl.ImageFormat(cl.channel_order.A, cl.channel_type.FLOAT)
                 if self.BPType < 5:
-                    d_im = cl.Image(self.clctx, cl.mem_flags.READ_ONLY, imformat, shape=(self.nRowsD, self.nColsD, self.nProjSubset[subset].item()))
+                    if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
+                        d_im = cl.create_image(self.clctx, cl.mem_flags.READ_ONLY, imformat, shape=(self.nRowsD, self.nColsD, self.nProjSubset[subset].item()))
+                    else:
+                        d_im = cl.Image(self.clctx, cl.mem_flags.READ_ONLY, imformat, shape=(self.nRowsD, self.nColsD, self.nProjSubset[subset].item()))
                     if self.useAF:
                         cl.enqueue_copy(self.queue, d_im, yD, offset=(0), origin=(0,0,0), region=(self.nRowsD, self.nColsD, self.nProjSubset[subset].item()));
                     else:
                         cl.enqueue_copy(self.queue, d_im, y.data, offset=(0), origin=(0,0,0), region=(self.nRowsD, self.nColsD, self.nProjSubset[subset].item()));
                 else:
-                    d_im = cl.Image(self.clctx, cl.mem_flags.READ_ONLY, imformat, shape=(self.nRowsD + 1, self.nColsD + 1, self.nProjSubset[subset].item()))
+                    if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
+                        d_im = cl.create_image(self.clctx, cl.mem_flags.READ_ONLY, imformat, shape=(self.nRowsD + 1, self.nColsD + 1, self.nProjSubset[subset].item()))
+                    else:
+                        d_im = cl.Image(self.clctx, cl.mem_flags.READ_ONLY, imformat, shape=(self.nRowsD + 1, self.nColsD + 1, self.nProjSubset[subset].item()))
                     y = af.moddims(y, self.nRowsD, d1=self.nColsD, d2=self.nProjSubset[subset].item())
                     if self.meanBP:
                         d_meanBP = af.mean(af.mean(y, dim=0), dim=1)

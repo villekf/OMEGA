@@ -13,11 +13,11 @@
 clear
 
 
-%%% Transaxial FOV size (mm), this is the length of the x (vertical) side
+%%% Transaxial FOV size (mm), this is the length of the x (vertical/row) side
 % of the FOV
 options.FOVa_x = 300;
 
-%%% Transaxial FOV size (mm), this is the length of the y (horizontal) side
+%%% Transaxial FOV size (mm), this is the length of the y (horizontal/column) side
 % of the FOV
 options.FOVa_y = options.FOVa_x;
 
@@ -26,6 +26,7 @@ options.axial_fov = floor(76.8 - 2.4/10);
 
 % Note: Origin is assumed to be at the center. If this is not the case, you
 % can shift it with options.oOffsetX, options.oOffsetY and options.oOffsetZ
+% That is row, column and slice directions
 % options.oOffsetX = 0;
 % options.oOffsetY = 0;
 % options.oOffsetZ = 0;
@@ -65,7 +66,8 @@ options.Nz = 63;
 
 %%% Show status messages
 % These are e.g. time elapsed on various functions and what steps have been
-% completed. It is recommended to keep this 1. This can be at most 3.
+% completed. It is recommended to keep this at 1 or 2. With value of 2, 
+% you get more detailed timing information. Maximum is 3. Minimum is 0.
 options.verbose = 1;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -88,13 +90,12 @@ options.verbose = 1;
 %%% Reconstruction implementation used
 % 1 = Reconstructions in MATLAB (projector in a MEX-file), uses matrices.
 % (Slow and memory intensive)
-% 2 = Matrix-free reconstruction with OpenCL/CUDA ArrayFire (Recommended)
-% (Requires ArrayFire. Compiles with MinGW ONLY when ArrayFire was compiled
-% with MinGW as well (cannot use the prebuilt binaries)).
+% 2 = Matrix-free reconstruction with OpenCL/CUDA (Recommended)
+% (Requires ArrayFire).
 % 3 = Multi-GPU/device matrix-free OpenCL (OSEM & MLEM only).
-% 4 = Matrix-free reconstruction with OpenMP (parallel), standard C++
+% 4 = Matrix-free reconstruction with OpenMP (CPU, parallel), standard C++
 % 5 = Matrix-free reconstruction with OpenCL (parallel)
-% See the documentation for more information:
+% See the docs for more information: 
 % https://omega-doc.readthedocs.io/en/latest/implementation.html
 options.implementation = 5;
 
@@ -120,20 +121,33 @@ options.use_device = 0;
 % if they are supported by the selected device.
 % Setting this to true will make computations faster on GPUs that support
 % the functions, but might make results slightly less reliable due to
-% floating point rounding. Recommended for OpenCL GPUs. Not recommended for
-% CUDA. Doesn't apply for CPU.
+% floating point rounding. Recommended for OpenCL GPUs.
 options.use_64bit_atomics = true;
+
+% Applies to implementations 2, 3 and 5 ONLY
+%%% Use 32-bit integer atomic functions
+% If true, then 32-bit integer atomic functions (atomic add) will be used.
+% This is even faster than the above 64-bit atomics version, but will also
+% have significantly higher reduction in numerical/floating point accuracy.
+% This should be about 20-30% faster than the above 64-bit version, but
+% might lead to integer overflow if you have a high count measurement
+% (thousands of coincidences per sinogram bin). Use this only if speed is
+% of utmost importance. 32-bit atomics take precedence over 64-bit ones,
+% i.e. if options.use_32bit_atomics = true then the 64-bit version will be 
+% always set as false.
+options.use_32bit_atomics = false;
 
 % Implementation 2 ONLY
 %%% Use CUDA
 % Selecting this to true will use CUDA kernels/code instead of OpenCL. This
-% only works if the CUDA code was successfully built.
+% only works if the CUDA code was successfully built. This is recommended
+% if you have CUDA-capable device.
 options.use_CUDA = false;
 
 % Implementation 2 ONLY
 %%% Use CPU
 % Selecting this to true will use CPU-based code instead of OpenCL or CUDA.
-% Some features are not supported by CPU such as projector_type 4 and 5.
+% Not recommended, even OpenCL with CPU should be used before this.
 options.use_CPU = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -145,6 +159,8 @@ options.use_CPU = false;
 % NOTE: You can mix and match most of the projectors. I.e. 41 will use
 % interpolation-based projector for forward projection while improved
 % Siddon is used for backprojection.
+% NOTE 2: The below additional options apply also in hybrid cases as long
+% as the other projector is the corresponding projector.
 % See the documentation for more information:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
 options.projector_type = 1;
@@ -155,8 +171,8 @@ options.projector_type = 1;
 % used for both forward and backward projection and either one or both can
 % be utilized at the same time. E.g. if only backprojection mask is input,
 % then only the voxels which have 1 in the mask are reconstructed.
-% Currently the masks need to be a 2D image that is applied identically at
-% each slice/sinogram/projection.
+% The mask can be either a 2D image that is applied identically to each slice
+% or a 3D mask that is applied as-is
 % Forward projection mask
 % If nonempty, the mask will be applied. If empty, or completely omitted, no
 % mask will be considered.
@@ -174,11 +190,10 @@ options.projector_type = 1;
 
 %%% Interpolation length (projector type = 4 only)
 % This specifies the length after which the interpolation takes place. This
-% value will be multiplied by the voxel size which means that the
-% interpolation length of 1 corresponds to a single voxel (transaxial) 
+% value will be multiplied by the voxel size which means that 1 is
+% the interpolation length corresponding to a single voxel (transaxial)
 % length. Larger values lead to faster computation but at the cost of
-% accuracy. Recommended values are between [0.5 1], though values up to 2
-% should be fine.
+% accuracy. Recommended values are between [0.5 1].
 options.dL = 0.5;
 
 %%% Use point spread function (PSF) blurring
@@ -186,43 +201,46 @@ options.dL = 0.5;
 % same as multiplying the geometric matrix with an image blurring matrix.
 options.use_psf = false;
 
-% FWHM of the Gaussian used in PSF blurring in all three dimensions (X/Y/Z)
+% FWHM (mm) of the Gaussian used in PSF blurring in all three dimensions (X/Y/Z)
 options.FWHM = [2.4 2.4 2.4];
 
 % Orthogonal ray tracer (projector_type = 2 only)
-%%% The 2D (XY) width of the "strip/tube" where the orthogonal distances are
+%%% The 2D (XY) width (mm) of the "strip/tube" where the orthogonal distances are
 % included. If tube_width_z below is non-zero, then this value is ignored.
 options.tube_width_xy = 2.4;
 
 % Orthogonal ray tracer (projector_type = 2 only)
-%%% The 3D (Z) width of the "tube" where the orthogonal distances are
+%%% The 3D (Z) width (mm) of the "tube" where the orthogonal distances are
 % included. If set to 0, then the 2D orthogonal ray tracer is used. If this
 % value is non-zero then the above value is IGNORED.
+% If you want the projector to be a tube, use this, if you want it to be 
+% strip, use the above
+% This slows down the reconstruction, but makes it more accurate
 options.tube_width_z = 2.4;
 
 % Volume ray tracer (projector_type = 3 only)
 %%% Radius of the tube-of-response (cylinder)
-% The radius of the cylinder that approximates the tube-of-response.
-% Default uses circle size that is just large enough to fit one detector
-% crystal
+% The radius (mm) of the cylinder that approximates the tube-of-response.
 options.tube_radius = sqrt(2) * (2.4 / 2);
 
 % Volume ray tracer (projector_type = 3 only)
 %%% Relative size of the voxel (sphere)
 % In volume ray tracer, the voxels are modeled as spheres. This value
 % specifies the relative radius of the sphere such that with 1 the sphere
-% is just large enoough to encompass an entire cubic voxel, i.e. the
+% is just large enough to encompass an entire cubic voxel, i.e. the
 % corners of the cubic voxel intersect with the sphere shell. Larger values
 % create larger spheres, while smaller values create smaller spheres.
 options.voxel_radius = 1;
 
-% Siddon (projector_type = 1 only)
+% projector_type = 1 and 4 only
 %%% Number of rays
 % Number of rays used per detector if projector_type = 1 (i.e. Improved
-% Siddon is used).
-% Number of rays in transaxial direction
+% Siddon is used) or projector_type = 4 (interpolation).
+% The total number of rays per detector is the multiplication of the two
+% below values!
+% Number of rays in transaxial (row) direction
 options.n_rays_transaxial = 1;
-% Number of rays in axial direction
+% Number of rays in axial (column) direction
 options.n_rays_axial = 1;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
@@ -240,8 +258,7 @@ options.saveNIter = [];
 % Note: Only affects full iterations (epochs)
 % options.save_iter = false;
 
-%%% Number of subsets (excluding subset_type = 6 and algorithms that do not
-%%% support subsets)
+%%% Number of subsets (excluding subset_type = 6)
 options.subsets = 8;
 
 %%% Subset type (n = subsets)

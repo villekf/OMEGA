@@ -681,7 +681,7 @@ DEVICE void getIndex(int3* i, const uint d_size_x, const uint d_sizey, const uin
 
 #endif
 
-#ifdef MASKBP
+#if (defined(MASKBP) && !defined(PTYPE4)) // This is due to projector type 4 using sampler_MASK4 in BP mask (but only in forward projection)
 DEVICE int readMaskBP(MASKBPTYPE maskBP, typeT ind) {
     return 
     #ifdef USEIMAGES
@@ -704,7 +704,7 @@ DEVICE int readMaskBP(MASKBPTYPE maskBP, typeT ind) {
 }
 #endif
 
-#ifdef MASKFP
+#if defined(MASKFP)
 DEVICE int readMaskFP(MASKFPTYPE maskFP, typeT ind) {
     return
 #ifdef USEIMAGES
@@ -1216,17 +1216,21 @@ DEVICE void getDetectorCoordinatesFullSinogram(const uint d_size_x, const int3 i
 DEVICE void compute_attenuation(const float val, const typeT ind, IMTYPE d_atten, PTR_THR float *jelppi, const int ii) {
 	if (ii == 0) {
         *jelppi += val * -
+#ifdef CUDA
+#ifdef USEIMAGES
+		tex3D<float>(d_atten, ind.x, ind.y, ind.z);
+#else
+		d_atten[ind];
+#endif
+#else
 #if defined(PTYPE4)
 		read_imagef(d_atten, samplerForw, (float4)(ind.x, ind.y, ind.z, 0.f)).w;
 #else
 #ifdef USEIMAGES
-#ifdef CUDA
-		tex3D<float>(d_atten, ind.x, ind.y, ind.z);
-#else
 		read_imagef(d_atten, samplerSiddon, (int4)(ind.x, ind.y, ind.z, 0)).w;
-#endif
 #else
 		d_atten[ind];
+#endif
 #endif
 #endif
 	}

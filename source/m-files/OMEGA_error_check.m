@@ -433,6 +433,9 @@ end
 if options.implementation == 2 && options.use_CPU && options.ECOSEM
     error('ECOSEM is not supported with implementation 2 when using CPU!')
 end
+if options.implementation == 2 && options.use_CPU
+    warning('CPU functionality is limited and might not work correctly in all cases! Use at your own risk!')
+end
 % Print various options that were selected if verbosity has been enabled
 if options.verbose > 0
     if options.use_ASCII && options.use_machine == 0
@@ -450,7 +453,7 @@ if options.verbose > 0
     elseif options.use_machine == 3
         dispi = 'Using 32-bit list-mode data';
     else
-        dispi = [];
+        dispi = 'Using input data';
     end
     if options.TOF_bins_used > 1 && options.TOF_FWHM > 0
         dispi = [dispi ' with TOF (' num2str(options.TOF_bins_used) ' bins).'];

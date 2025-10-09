@@ -82,11 +82,15 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 	}
 	std::random_device rd;
 	std::mt19937 rng(rd());
+	if (inputScalars.seed >= 0)
+		std::mt19937 rng(inputScalars.seed);
 	std::uniform_int_distribution<int> distribution(0, inputScalars.subsets - 1);
 
 	af::dtype dType = af::dtype::f32;
 	if (sizeof(F) == sizeof(uint16_t))
 		dType = af::dtype::u16;
+	else if (sizeof(F) == sizeof(uint8_t))
+		dType = af::dtype::u8;
 
 	int status = 0;
 
@@ -126,6 +130,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		mexPrintBase("subsetType = %u\n", inputScalars.subsetType);
 		mexPrintBase("useImages = %u\n", inputScalars.useImages);
 		mexPrintBase("useMAD = %u\n", inputScalars.useMAD);
+		mexPrintBase("seed = %ll\n", inputScalars.seed);
 		mexPrintBase("flat = %f\n", inputScalars.flat);
 		mexPrintBase("dL = %f\n", inputScalars.dL);
 		mexPrintBase("epps = %f\n", inputScalars.epps);
@@ -467,6 +472,11 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 			return -1;
 	}
 #endif
+
+	if (inputScalars.verbose >= 2 || DEBUG) {
+		af::sync();
+		proj.tStartAll = std::chrono::steady_clock::now();
+	}
 
 	initializeProxPriors(MethodList, inputScalars, vec);
 
@@ -1570,7 +1580,9 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 	af::deviceGC();
 
 	if (inputScalars.verbose >= 2 || DEBUG) {
-		mexPrintBase("Reconstruction complete in %f seconds\n", totTime);
+		proj.tEndAll = std::chrono::steady_clock::now();
+		const std::chrono::duration<double> tDiff = proj.tEndAll - proj.tStartAll;
+		mexPrintBase("Reconstruction complete in %f seconds\n", tDiff.count());
 	}
 
 	return 0;

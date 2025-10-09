@@ -93,7 +93,7 @@ if options.listmode > 0 && options.compute_sensitivity_image && ~options.useInde
     [x, ~, z_det, ~] = get_coordinates(options);
     options.use_raw_data = false;
 end
-if (~options.largeDim && ~(~options.loadTOF && ~isa(options.SinM,'single'))) || (options.largeDim && isa(options.SinM,'uint32'))
+if (~options.largeDim && ~(~options.loadTOF && ~isa(options.SinM,'single'))) || (options.largeDim && isa(options.SinM,'uint32')) || options.use_CPU
     options.SinM = single(options.SinM);
 end
 if options.implementation == 2
@@ -103,6 +103,14 @@ if options.implementation == 2
     if options.use_CUDA
         if isa(options.SinM,'uint16')
             [pz,fp, res] = CUDA_matrixfree_uint16( options.Nx, options.Ny, options.Nz, options.dx, options.dy, options.dz, options.bx, options.by, options.bz, ...
+                z_det, x, options.nRowsD, options.verbose, options.LL, options.TOF, ... % 15
+                TOFSize, options.sigma_x, options.TOFCenter, options.TOF_bins, options.use_device, options.use_raw_data, options.use_psf, header_directory, options.vaimennus, ... % 24
+                options.normalization, pituus, options.attenuation_correction, options.normalization_correction, options.Niter, options.subsets, options.epps, options.xy_index, ...
+                options.z_index, crystal_size_z, ... % 34
+                options.x_center, options.y_center, options.z_center, options.SinDelayed, randoms, options.projector_type, n_rays, n_rays3D, ... % 42
+                options, options.SinM, partitions, options.use_64bit_atomics, options.bmin, options.bmax, options.Vmax, options.V, options.gaussK); % 21
+        elseif isa(options.SinM,'uint8')
+            [pz,fp, res] = CUDA_matrixfree_uint8( options.Nx, options.Ny, options.Nz, options.dx, options.dy, options.dz, options.bx, options.by, options.bz, ...
                 z_det, x, options.nRowsD, options.verbose, options.LL, options.TOF, ... % 15
                 TOFSize, options.sigma_x, options.TOFCenter, options.TOF_bins, options.use_device, options.use_raw_data, options.use_psf, header_directory, options.vaimennus, ... % 24
                 options.normalization, pituus, options.attenuation_correction, options.normalization_correction, options.Niter, options.subsets, options.epps, options.xy_index, ...
@@ -129,6 +137,14 @@ if options.implementation == 2
     else
         if isa(options.SinM,'uint16')
             [pz,fp, res] = OpenCL_matrixfree_uint16( options.Nx, options.Ny, options.Nz, options.dx, options.dy, options.dz, options.bx, options.by, options.bz, ...
+                z_det, x, options.nRowsD, options.verbose, options.LL, options.TOF, ... % 15
+                TOFSize, options.sigma_x, options.TOFCenter, options.TOF_bins, options.use_device, options.use_raw_data, options.use_psf, header_directory, options.vaimennus, ... % 24
+                options.normalization, pituus, options.attenuation_correction, options.normalization_correction, options.Niter, options.subsets, options.epps, options.xy_index, ...
+                options.z_index, crystal_size_z, ... % 34
+                options.x_center, options.y_center, options.z_center, options.SinDelayed, randoms, options.projector_type, n_rays, n_rays3D, ... % 42
+                options, options.SinM, partitions, options.use_64bit_atomics, options.bmin, options.bmax, options.Vmax, options.V, options.gaussK); % 21
+        elseif isa(options.SinM,'uint8')
+            [pz,fp, res] = OpenCL_matrixfree_uint8( options.Nx, options.Ny, options.Nz, options.dx, options.dy, options.dz, options.bx, options.by, options.bz, ...
                 z_det, x, options.nRowsD, options.verbose, options.LL, options.TOF, ... % 15
                 TOFSize, options.sigma_x, options.TOFCenter, options.TOF_bins, options.use_device, options.use_raw_data, options.use_psf, header_directory, options.vaimennus, ... % 24
                 options.normalization, pituus, options.attenuation_correction, options.normalization_correction, options.Niter, options.subsets, options.epps, options.xy_index, ...

@@ -325,7 +325,7 @@ if ~isfield(options,'useFDKWeights')
     options.useFDKWeights = true;
 end
 if ~isfield(options, 'Niter')
-    options.Niter = 1;
+    options.Niter = 4;
 end
 if ~isfield(options, 'filteringIterations') || isempty(options.filteringIterations)
     options.filteringIterations = 0;
@@ -990,6 +990,9 @@ if ~isfield(options,'maskBPZ')
 end
 if ~isfield(options, 'stochasticSubsetSelection')
     options.stochasticSubsetSelection = false;
+end
+if ~isfield(options, 'seed')
+    options.seed = -1;
 end
 if ~isfield(options, 'useParallelBeam')
     options.useParallelBeam = false;

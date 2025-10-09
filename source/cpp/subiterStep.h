@@ -127,7 +127,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 		}
 
 		// Row-action Maximum Likelihood (RAMLA)
-		if (MethodList.RAMLA || MethodList.BSREM) {
+		if (MethodList.RAMLA) {
 			if (inputScalars.verbose >= 3)
 				mexPrint("Computing RAMLA");
 			status = BSREM(vec.im_os[ii], vec.rhs_os[ii], w_vec.lambda, iter, inputScalars, proj, ii);

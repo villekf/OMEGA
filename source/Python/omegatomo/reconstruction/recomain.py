@@ -235,6 +235,7 @@ def transferData(options):
     options.param.zCenterSize = ctypes.c_uint64(options.z_center.size)
     options.param.sizeV = ctypes.c_uint64(options.V.size)
     options.param.measElem = ctypes.c_uint64(options.SinM.size)
+    options.param.seed = ctypes.c_int64(options.seed)
     options.param.x = options.x.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.z = options.z.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.uV = options.uV.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
@@ -534,13 +535,15 @@ def reconstructions_main(options):
     # point_ptr = ctypes.pointer(options.param)
     if not options.SinM.dtype == 'float32' and not options.largeDim and options.loadTOF:
         options.SinM = options.SinM.astype(np.float32)
-    elif not options.SinM.dtype == 'uint16':
+    elif not options.SinM.dtype == 'uint16' or not options.SinM.dtype == 'uint8':
         options.SinM = options.SinM.astype(np.float32)
     if options.SinM.ndim > 1:
         options.SinM = options.SinM.ravel('F')
     if options.useCUDA:
         if options.SinM.dtype == 'uint16':
             libN = 'CUDA_matrixfree_uint16_lib'
+        elif options.SinM.dtype == 'uint8':
+            libN = 'CUDA_matrixfree_uint8_lib'
         else:
             libN = 'CUDA_matrixfree_lib'
         if os.name == 'posix':
@@ -550,6 +553,8 @@ def reconstructions_main(options):
         else:
             libname = str(os.path.join(libdir,libN + ".so"))
     elif options.useCPU:
+        if not options.SinM.dtype == 'float32':
+            options.SinM = options.SinM.astype(np.float32)
         if os.name == 'posix':
             libname = str(os.path.join(libdir,"CPU_matrixfree_lib.so"))
         elif os.name == 'nt':
@@ -559,6 +564,8 @@ def reconstructions_main(options):
     else:
         if options.SinM.dtype == 'uint16':
             libN = 'OpenCL_matrixfree_uint16_lib'
+        elif options.SinM.dtype == 'uint8':
+            libN = 'OpenCL_matrixfree_uint8_lib'
         else:
             libN = 'OpenCL_matrixfree_lib'
         if os.name == 'posix':
@@ -570,6 +577,8 @@ def reconstructions_main(options):
     residualP = residual.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     if options.SinM.dtype == 'uint16':
         SinoP = options.SinM.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
+    elif options.SinM.dtype == 'uint8':
+        SinoP = options.SinM.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
     else:
         SinoP = options.SinM.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     outputP = output.ctypes.data_as(ctypes.POINTER(ctypes.c_float))

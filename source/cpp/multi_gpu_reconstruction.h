@@ -345,15 +345,29 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 						mexPrintBase("uu = %u\n", uu);
 						mexEval();
 					}
-					proj.vec_opencl.d_image_os = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return;
+					if (inputScalars.useBuffers) {
+						proj.vec_opencl.d_im = cl::Buffer(proj.CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.Nx[ii] * inputScalars.Ny[ii] * inputScalars.Nz[ii], NULL, &status);
+						if (status != CL_SUCCESS) {
+							getErrorString(status);
+							return;
+						}
+						status = proj.CLCommandQueue[0].enqueueWriteBuffer(proj.vec_opencl.d_im, CL_FALSE, 0, sizeof(float) * inputScalars.Nx[ii] * inputScalars.Ny[ii] * inputScalars.Nz[ii], &im[uu]);
+						if (status != CL_SUCCESS) {
+							getErrorString(status);
+							return;
+						}
 					}
-					status = proj.CLCommandQueue[0].enqueueWriteImage(proj.vec_opencl.d_image_os, CL_FALSE, proj.origin, region, 0, 0, &im[uu]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return;
+					else {
+						proj.vec_opencl.d_image_os = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
+						if (status != CL_SUCCESS) {
+							getErrorString(status);
+							return;
+						}
+						status = proj.CLCommandQueue[0].enqueueWriteImage(proj.vec_opencl.d_image_os, CL_FALSE, proj.origin, region, 0, 0, &im[uu]);
+						if (status != CL_SUCCESS) {
+							getErrorString(status);
+							return;
+						}
 					}
 					status = proj.forwardProjection(inputScalars, w_vec, osa_iter, length, m_size, ii);
 					if (status != CL_SUCCESS) {

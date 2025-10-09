@@ -1,4 +1,4 @@
-%% MATLAB codes for CBCT custom algorithm reconstruction
+%% MATLAB/Octave code for CBCT custom algorithm reconstruction
 % This example contains a simplified example for custom algorithm
 % reconstruction using TIFF projection CBCT data. Currently the support for
 % some of the additional features is limited. The default configuration
@@ -84,15 +84,15 @@ options.only_reconstructions = false;
 
 %%% Show status messages
 % These are e.g. time elapsed on various functions and what steps have been
-% completed. It is recommended to keep this 1.  Maximum value of 3 is
-% supported.
+% completed. It is recommended to keep this at 1 or 2. With value of 2, 
+% you get more detailed timing information. Maximum is 3. Minimum is 0.
 options.verbose = 1;
 
-%%% Transaxial FOV size (mm), this is the length of the x (horizontal) side
+%%% Transaxial FOV size (mm), this is the length of the x (vertical/row) side
 % of the FOV
 options.FOVa_x = 40.1;
 
-%%% Transaxial FOV size (mm), this is the length of the y (vertical) side
+%%% Transaxial FOV size (mm), this is the length of the y (horizontal/column) side
 % of the FOV
 options.FOVa_y = options.FOVa_x;
 
@@ -101,9 +101,12 @@ options.axial_fov = 40;
 
 %%% Source row offset (mm)
 % The center of rotation is not exactly in the origin. With this parameter
-% the source location can be offset by the specifed amount (row direction).
-% This has a similar effect as circulary shifting the projection images.
-% NOTE: The default value has been obtained experimentally and is not based 
+% the source location can be offset by the specified amount (row direction).
+% This has a similar effect as circularly shifting the projection images.
+% Use vector values if these vary with each projection (this is untested at
+% the moment).
+% If inputing a vector, use a different value for each projection
+% NOTE: The default value has been obtained experimentally and is not based
 % on any known value.
 options.sourceOffsetRow = -0.16;
 
@@ -154,6 +157,7 @@ options.uV = [];
 
 % Note: Origin is assumed to be at the center. If this is not the case, you
 % can shift it with options.oOffsetX, options.oOffsetY and options.oOffsetZ
+% That is row, column and slice directions
 % options.oOffsetX = 0;
 % options.oOffsetY = 0;
 % options.oOffsetZ = 0;
@@ -164,6 +168,8 @@ options.uV = [];
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+% Path to the first image, alternatively, you can leave this as is and 
+% simply input the data when prompted
 options.fpath = '/path/to/20201111_walnut_0001.tif';
 
 if ~options.only_reconstructions || ~isfield(options,'SinM')
@@ -180,6 +186,7 @@ end
 
 % Flat value
 % Needed for both linearized and Poisson-based data
+% If omitted, the maximum value will be used automatically
 options.flat = max(options.SinM(:));
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -199,7 +206,7 @@ options.Ny = 280*2;
 %%% Z-direction (number of slices) (axial)
 options.Nz = 280*2;
 
-%%% Flip the image (in horizontal direction)?
+%%% Flip the image (in column direction)?
 options.flip_image = false;
 
 %%% How much is the image rotated (radians)?
@@ -247,12 +254,17 @@ options.useMultiResolutionVolumes = true;
 % This is the scale value for the multi-resolution volumes. The original
 % voxel size is divided by this value and then used as the voxel size for
 % the multi-resolution volumes. Default is 1/4 of the original voxel size.
+% This means that the multi-resolution regions have smaller voxel sizes if
+% this is < 1.
 options.multiResolutionScale = 1/4;
 
 % Performs the extrapolation and adjusts the image size accordingly
 options = CTEFOVCorrection(options);
 
 % Use offset-correction
+% If you use offset imaging, i.e. the center of rotation is not in the
+% origin but rather a circle around the origin, you can enable automatic
+% offset weighting by setting this to true.
 options.offsetCorrection = false;
 
 
@@ -268,13 +280,12 @@ options.offsetCorrection = false;
 %%% Reconstruction implementation used
 % 1 = Reconstructions in MATLAB (projector in a MEX-file), uses matrices.
 % (Slow and memory intensive)
-% 2 = Matrix-free reconstruction with OpenCL/ArrayFire (Recommended)
-% (Requires ArrayFire. Compiles with MinGW ONLY when ArrayFire was compiled
-% with MinGW as well (cannot use the prebuilt binaries)).
+% 2 = Matrix-free reconstruction with OpenCL/CUDA (Recommended)
+% (Requires ArrayFire).
 % 3 = Multi-GPU/device matrix-free OpenCL (OSEM & MLEM only).
-% 4 = Matrix-free reconstruction with OpenMP (parallel), standard C++
+% 4 = Matrix-free reconstruction with OpenMP (CPU, parallel), standard C++
 % 5 = Matrix-free reconstruction with OpenCL (parallel)
-% See the doc for more information: 
+% See the docs for more information: 
 % https://omega-doc.readthedocs.io/en/latest/implementation.html
 options.implementation = 5;
 
@@ -296,13 +307,13 @@ options.use_device = 0;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Type of projector to use for the geometric matrix
 % 1 = Improved/accelerated Siddon's algorithm
-% 2 = Orthogonal distance based ray tracer
-% 3 = Volume of intersection based ray tracer
 % 4 = Interpolation-based projector
 % 5 = Branchless distance-driven projector
 % NOTE: You can mix and match most of the projectors. I.e. 41 will use
 % interpolation-based projector for forward projection while improved
 % Siddon is used for backprojection.
+% NOTE 2: The below additional options apply also in hybrid cases as long
+% as the other projector is the corresponding projector.
 % See the docs for more information:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
 options.projector_type = 4;
@@ -313,8 +324,8 @@ options.projector_type = 4;
 % used for both forward and backward projection and either one or both can
 % be utilized at the same time. E.g. if only backprojection mask is input,
 % then only the voxels which have 1 in the mask are reconstructed.
-% Currently the masks need to be a 2D image that is applied identically at
-% each slice.
+% The mask can be either a 2D image that is applied identically to each slice
+% or a 3D mask that is applied as-is
 % Forward projection mask
 % If nonempty, the mask will be applied. If empty, or completely omitted, no
 % mask will be considered.
@@ -332,8 +343,8 @@ options.projector_type = 4;
 
 %%% Interpolation length (projector type = 4 only)
 % This specifies the length after which the interpolation takes place. This
-% value will be multiplied by the voxel size which means that 1 means that
-% the interpolation length corresponds to a single voxel (transaxial)
+% value will be multiplied by the voxel size which means that 1 is
+% the interpolation length corresponding to a single voxel (transaxial)
 % length. Larger values lead to faster computation but at the cost of
 % accuracy. Recommended values are between [0.5 1].
 options.dL = 0.5;
@@ -343,21 +354,10 @@ options.dL = 0.5;
 %%% Number of iterations (all reconstruction methods)
 options.Niter = 2;
 
-%%% Number of subsets (all excluding MLEM and subset_type = 5)
+%%% Number of subsets
 options.subsets = 20;
 
 %%% Subset type (n = subsets)
-% 1 = Every nth (column) measurement is taken
-% 2 = Every nth (row) measurement is taken (e.g. if subsets = 3, then
-% first subset has measurements 1, 4, 7, etc., second 2, 5, 8, etc.)
-% 3 = Measurements are selected randomly
-% 4 = (Sinogram only) Take every nth column in the sinogram
-% 5 = (Sinogram only) Take every nth row in the sinogram
-% 6 = Sort the LORs according to their angle with positive X-axis, combine
-% n_angles together and have 180/n_angles subsets for 2D slices and
-% 360/n_angles for 3D, see docs for more information:
-% https://omega-doc.readthedocs.io/en/latest/algorithms.html#type-6
-% 7 = Form the subsets by using golden angle sampling
 % 8 = Use every nth sinogram
 % 9 = Randomly select the full sinograms
 % 10 = Use golden angle sampling to select the subsets (not recommended for

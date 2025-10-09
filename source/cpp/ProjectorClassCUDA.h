@@ -958,8 +958,8 @@ public:
 	CUdeviceptr d_rayShiftsDetector, d_rayShiftsSource; // SPECT
 	std::vector<void*> FPArgs, BPArgs, SensArgs;
 	CUDA_im_vectors vec_opencl;
-	std::chrono::steady_clock::time_point tStartLocal, tStartGlobal;
-	std::chrono::steady_clock::time_point tEndLocal, tEndGlobal;
+	std::chrono::steady_clock::time_point tStartLocal, tStartGlobal, tStartAll;
+	std::chrono::steady_clock::time_point tEndLocal, tEndGlobal, tEndAll;
 	// Distance from the origin to the corner of the image, voxel size and distance from the origin to the opposite corner of the image
 	std::vector<float3> b, d, bmax;
 	// Image dimensions
