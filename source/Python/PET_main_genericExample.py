@@ -88,7 +88,7 @@ options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block)
 # options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block + 1)
 
 ### Number of crystal rings
-options.rings = options.linear_multip * options.cryst_per_block
+options.rings = options.linear_multip * options.cryst_per_block_axial
 
 ### Total number of detectors
 options.detectors = options.det_per_ring*options.rings

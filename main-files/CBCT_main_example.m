@@ -21,7 +21,6 @@ clear mex
 options.name = 'Planmeca_CT_data';
 
 %%% Show status messages
-% These are e.g. time elapsed on various functions and what steps have been
 % completed. It is recommended to keep this at 1 or 2. With value of 2, 
 % you get more detailed timing information. Maximum is 3. Minimum is 0.
 options.verbose = 1;
@@ -171,9 +170,9 @@ options.useMultiResolutionVolumes = true;
 
 % This is the scale value for the multi-resolution volumes. The original
 % voxel size is divided by this value and then used as the voxel size for
-% the multi-resolution volumes. Default is 1/4 of the original voxel size.
-% This means that the multi-resolution regions have smaller voxel sizes if
-% this is < 1.
+% the multi-resolution volumes. Default is 4 times the original voxel size.
+% This means that the multi-resolution regions have larger voxel sizes if
+% this is < 1, i.e. 1/4 = 4 times the original voxel size.
 options.multiResolutionScale = 1/4;
 
 % Performs the extrapolation and adjusts the image size accordingly

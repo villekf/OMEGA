@@ -986,7 +986,7 @@ if options.SPECT
             if numel(options.normalization) <= 1
                 error('Normalization correction selected, but no normalization data input!')
             end
-            options.normalization = reshape(options.normalization, size(options.SinM))
+            options.normalization = reshape(options.normalization, size(options.SinM));
             options.SinM = options.SinM ./ options.normalization;
         end
         % normalization_correction = false;
@@ -1018,7 +1018,7 @@ if options.corrections_during_reconstruction
     if numel(options.normalization) > 1
         options.normalization_correction = true;
     end
-    if (iscell(options.SinDelayed) && numel(options.SinDelayed{1}) > 1) || (~iscell(options.SinDelayed) && numel(options.SinDelayed) > 1) && options.ordinaryPoisson
+    if isfield(options,'SinDelayed') && ((iscell(options.SinDelayed) && numel(options.SinDelayed{1}) > 1) || (~iscell(options.SinDelayed) && numel(options.SinDelayed) > 1)) && options.ordinaryPoisson
         options.randoms_correction = true;
     end
 else
