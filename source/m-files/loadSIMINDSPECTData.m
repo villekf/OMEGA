@@ -9,6 +9,11 @@ function options = loadSIMINDSPECTData(options)
     hdr = hdr{1};
     fclose(fid);
 
+    % Energy window
+    ind1 = find(contains(hdr, ';energy window lower level')) + 1;
+    ind2 = find(contains(hdr, ';energy window upper level')) + 1;
+    options.eWin = [str2double(hdr{ind1}) str2double(hdr{ind2})];
+
     % Number of projections
     ind = find(contains(hdr, '!number of projections')) + 1;
     options.nProjections = str2double(hdr{ind});
@@ -65,7 +70,7 @@ function options = loadSIMINDSPECTData(options)
     options.iR = str2double(hdr{ind});
 
     % Load detector radius per projection
-    options.radiusPerProj = readmatrix(strcat(options.fpath, '.cor'), FileType="text");
+    options.radiusPerProj = readmatrix(strcat(options.fpathCor, '.cor'), FileType="text");
     options.radiusPerProj = 10 * options.radiusPerProj(:, 1);
 
     % Load data
@@ -80,8 +85,8 @@ function options = loadSIMINDSPECTData(options)
     % Number of columns in a projection image
     options.nColsD = size(options.SinM, 2);
 
-    if isfile(strcat(options.fpath, '.hct')) && isfile(strcat(options.fpath, '.ict')) % Attenuation map
-        fid = fopen(strcat(options.fpath, '.hct'));
+    if isfile(strcat(options.fpathCT, '.hct')) && isfile(strcat(options.fpathCT, '.ict')) % Attenuation map
+        fid = fopen(strcat(options.fpathCT, '.hct'));
         hdrCT = textscan(fid,'%s','Delimiter','=');
         hdrCT = hdrCT{1};
         fclose(fid);
@@ -95,14 +100,50 @@ function options = loadSIMINDSPECTData(options)
         ind = find(contains(hdrCT, '!matrix size [3]')) + 1;
         Nz = str2double(hdrCT{ind});
 
-        fid = fopen(strcat(options.fpath, '.ict'));
-        I = fread(fid, 'uint16');
+        fid = fopen(strcat(options.fpathCT, '.ict'));
+        I = fread(fid, 'float32');
         fclose(fid);
         I = reshape(I, [Nx, Ny, Nz]);
         I = rot90(I, 3);
         I = flip(I, 1);
-        options.vaimennus = single(I);
+        options.vaimennus = .1 * single(I);
     end
+
+    if isfile(strcat(options.fpathScatterLower, '.h00')) % Lower energy window
+        dataFilePath = strcat(options.fpathScatterLower, '.a00');
+        fid = fopen(dataFilePath);
+        data = fread(fid, inf, "float32");
+        fclose(fid);
+        options.ScatterC{1} = reshape(data, matrixSizeX, matrixSizeY, options.nProjections);
+
+        fid = fopen(strcat(options.fpathScatterLower, '.h00'));
+        hdrScatterL = textscan(fid,'%s','Delimiter','=');
+        hdrScatterL = hdrScatterL{1};
+        fclose(fid);
+
+        % Energy window
+        ind1 = find(contains(hdrScatterL, ';energy window lower level')) + 1;
+        ind2 = find(contains(hdrScatterL, ';energy window upper level')) + 1;
+        options.eWinL = [str2double(hdrScatterL{ind1}) str2double(hdrScatterL{ind2})];
+    end
+    if isfile(strcat(options.fpathScatterUpper, '.h00')) % Upper energy window
+        dataFilePath = strcat(options.fpathScatterUpper, '.a00');
+        fid = fopen(dataFilePath);
+        data = fread(fid, inf, "float32");
+        fclose(fid);
+        options.ScatterC{2} = reshape(data, matrixSizeX, matrixSizeY, options.nProjections);
+        
+        fid = fopen(strcat(options.fpathScatterUpper, '.h00'));
+        hdrScatterU = textscan(fid,'%s','Delimiter','=');
+        hdrScatterU = hdrScatterU{1};
+        fclose(fid);
+
+        % Energy window
+        ind1 = find(contains(hdrScatterU, ';energy window lower level')) + 1;
+        ind2 = find(contains(hdrScatterU, ';energy window upper level')) + 1;
+        options.eWinU = [str2double(hdrScatterU{ind1}) str2double(hdrScatterU{ind2})];
+    end
+
 
     % SIMIND cannot simulate swiveling detector heads:
     options.swivelAngles = options.angles + 180;

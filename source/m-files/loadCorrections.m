@@ -937,29 +937,27 @@ end
 
 % Other SPECT corrections
 if options.SPECT
-    if options.scatter_correction && numel(options.ScatterC) <= 1 && numel(options.SinDelayed) <= 1 && options.subtract_scatter% From 10.1371/journal.pone.0269542
-        primaryWindowWidth = diff(options.scatterStruct.primaryWindow);
-        scatterWindowWidths = diff(options.scatterStruct.scatterWindows, 1, 2);
-        if size(options.scatterStruct.scatterWindows, 1) == 1 % DEW
+    if options.scatter_correction && numel(options.SinDelayed) <= 1 && options.subtract_scatter% From 10.1371/journal.pone.0269542
+        if numel(options.ScatterC) == 1 % DEW
             k = 1;
             if ~options.corrections_during_reconstruction
-                options.SinM = options.SinM - k * squeeze(options.scatterStruct.scatterData(:,:,:,1));
+                options.SinM = options.SinM - k * squeeze(options.ScatterC{1});
                 options.scatter_correction = false;
             else
-                options.SinDelayed = k * squeeze(options.scatterStruct.scatterData(:,:,:,1));
+                options.SinDelayed = k * squeeze(options.ScatterC{1});
                 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
                     options.SinDelayed = single(options.SinDelayed);
                 end
                 % randoms_correction = true;
             end
-        elseif size(options.scatterStruct.scatterWindows, 1) == 2 % TEW
-            kLower = primaryWindowWidth / scatterWindowWidths(1);
-            kUpper = primaryWindowWidth / scatterWindowWidths(2);
+        elseif numel(options.ScatterC) == 2 % TEW
+            kLower = diff(options.eWin) / diff(options.eWinL);
+            kUpper = diff(options.eWin) / diff(options.eWinU);
             if  ~options.corrections_during_reconstruction
-                options.SinM = options.SinM - 0.5 * (kLower * squeeze(options.scatterStruct.scatterData(:,:,:,1)) - kUpper * squeeze(options.scatterStruct.scatterData(:,:,:,2)));
+                options.SinM = options.SinM - 0.5 * (kLower * squeeze(options.ScatterC{1}) - kUpper * squeeze(options.ScatterC{2}));
                 options.scatter_correction = false;
             else
-                options.SinDelayed = 0.5 * (kLower * squeeze(options.scatterStruct.scatterData(:,:,:,1)) + kUpper * squeeze(options.scatterStruct.scatterData(:,:,:,2)));
+                options.SinDelayed = 0.5 * (kLower * squeeze(options.ScatterC{1}) + kUpper * squeeze(options.ScatterC{2}));
                 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
                     options.SinDelayed = single(options.SinDelayed);
                 end

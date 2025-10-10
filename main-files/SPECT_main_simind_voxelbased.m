@@ -3,17 +3,20 @@
 % tutorial sections 8(NEMA image quality phantom) and 9 (Brain CBF).
 
 % Pinhole data can be generated with
-% mpirun -np 30 simind_mpi nema nema_pinhole/fz:phantom/45:3/tr:11/tr:15/cc:ge-ph02/76:128/77:128/28:0.33/mp/55:1/53:1/42:-5/29:180
-% Listmode with
-% mpirun -np 30 simind_mpi nema nema_pinhole/fz:phantom/45:3/tr:11/tr:15/cc:ge-ph02/76:128/77:128/28:0.33/mp/55:1/53:1/42:-5/29:180/84:2/ou:11
+% mpirun -np 5 simind_mpi nema nema_pinhole/fz:phantom/45:3/tr:11/tr:15/cc:ge-ph02/76:128/77:128/28:0.33/mp/55:1/53:1/42:-5/29:60/in:x22,5x/84:1
 
 % Parallel-hole data can be generated with
-% mpirun -np 30 simind_mpi nema nema_parallel/fz:phantom/45:3/tr:11/tr:15/cc:g8-luhr/76:128/77:128/28:0.33/mp/55:0/53:1/42:-5/29:180
-% Listmode with 
-% mpirun -np 30 simind_mpi nema nema_parallel/fz:phantom/45:3/tr:11/tr:15/cc:g8-luhr/76:128/77:128/28:0.33/mp/55:0/53:1/42:-5/29:180/84:2/ou:11
+% mpirun -np 5 simind_mpi nema nema_parallel/fz:phantom/45:3/tr:11/tr:15/cc:g8-luhr/76:128/77:128/28:0.33/mp/55:0/53:1/42:-5/29:60/in:x22,5x/84:1
 
 clear
-options.fpath = '/path/to/data/nema_pinhole';
+
+% All paths are input without file ending
+options.fpath = '/path/to/data/nema_parallel_tot_w2'; % Main data (.a00 + .h00 files)
+options.fpathCor = '/path/to/data/corfile'; % .cor file
+options.fpathCT = '/path/to/data/nema_parallel'; % CT data (.hct + .ict files)
+options.fpathScatterLower = '/path/to/data/nema_parallel_tot_w1'; % Lower scatter window data (.a00 + .h00 files)
+options.fpathScatterUpper = '/path/to/data/nema_parallel_tot_w3'; % Upper scatter window data (.a00 + .h00 files)
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -76,7 +79,11 @@ options.offangle = 0;
 %%%%%%%%%%%%%%%%%%%%%%%%% Attenuation correction %%%%%%%%%%%%%%%%%%%%%%%%%%
 % Currently only a set of DICOM files is supported for the attenuation map.
 options.attenuation_correction = false;
-options.keV = 140; % NM photon energy [keV], used for scaling HU values
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%% Scatter correction %%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Uses linear interpolation between scatter windows. 
+% See for example: 10.1371/journal.pone.0269542
+options.scatter_correction = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%% Normalization correction %%%%%%%%%%%%%%%%%%%%%%%%%
 % If set to true, normalization correction is applied to either the
@@ -105,14 +112,14 @@ options.normalization = [];
 
 % 1. The collimator parameters (projector types 1, 2 and 6).
 % % 1.1 Pinhole collimator
-options.colD = 167.5; % Separation of collimator and detector
-options.colFxy = 0; % Focal distance XY, 0 for pinhole
-options.colFz = 0; % Focal distance Z, 0 for pinhole
+%options.colD = 167.5; % Separation of collimator and detector
+%options.colFxy = 0; % Focal distance XY, 0 for pinhole
+%options.colFz = 0; % Focal distance Z, 0 for pinhole
 
 % % 1.2 Parallel-hole collimator
-% options.colD = 0;
-% options.colFxy = Inf;
-% options.colFz = Inf;
+options.colD = 0;
+options.colFxy = Inf;
+options.colFz = Inf;
 
 % 2. If you have the standard deviations for transaxial (XY) and axial (Z)
 % directions, you can input them here instead of the above values The
