@@ -2,12 +2,12 @@
 % Used data available from: https://doi.org/10.5281/zenodo.17185907
 % The data has to be in MATLAB/Octave path!
 
+clear
+
 % The binary file containing the sinogram either has to be in the current
 % directory or alternatively specify the folder in which the bin-file is
 % located below:
 path = '';
-
-clear
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
