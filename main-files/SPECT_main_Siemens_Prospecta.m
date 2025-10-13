@@ -1,16 +1,26 @@
 %% MATLAB codes for SPECT reconstruction from DICOM data
 % This example outlines the reconstruction of SPECT data. In this case the
-% data is Siemens Pro.specta DICOM projection data file. In general SPECT
-% data, when using projector type 6, require the rotation angles, the
-% distance of the detector head(s) from the center of rotation and the
-% collimator specifics. The collimator information is required for built-in
-% detector response function. You can, however, input your own one as well.
-% Note that at the moment no example data is provided
+% data is Siemens Pro.specta projection data available at DOI
+% 10.5281/zenodo.17315440
 
 clear
 
-options.fpath = '';
-options.fpathCT = '';
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LOAD DATA %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+load('jaszczak_spectct_projection_data.mat')
+options.SinM = projection_data;
+options.angles = angular_position;
+options.radiusPerProj = radial_position;
+options.nRowsD = size(options.SinM, 1);
+options.nColsD = size(options.SinM, 2);
+options.nProjections = size(options.SinM, 3);
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -21,21 +31,15 @@ options.fpathCT = '';
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %%% Crystal thickness (mm)
-options.cr_p = 9.525;
+options.cr_p = detector_thickness;
 
 %%% Crystal width (mm)
-options.dPitchX = 4.7952;
-options.dPitchY = 4.7952;
+options.dPitchX = pixel_spacing(1);
+options.dPitchY = pixel_spacing(2);
 
 %%% Scanner name
 % Used for naming purposes (measurement data)
 options.machine_name = 'Prospecta';
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -70,7 +74,6 @@ options.useMaskBP = false;
 % Positive values perform the rotation in counterclockwise direction
 options.offangle = 0;
 
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -81,8 +84,22 @@ options.offangle = 0;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% Attenuation correction %%%%%%%%%%%%%%%%%%%%%%%%%%
 % Currently only a set of DICOM files is supported for the attenuation map.
-options.attenuation_correction = false;
-options.keV = 140; % NM photon energy [keV], used for scaling HU values
+options.attenuation_correction = true;
+
+if options.attenuation_correction % Convert to LAC
+    xLimits = options.FOVa_x * [-0.5, 0.5]; % SPECT spatial referencing
+    yLimits = options.FOVa_y * [-0.5, 0.5];
+    zLimits = options.axial_fov * [-0.5, 0.5];
+    refSPECT = imref3d([options.Nx, options.Ny, options.Nz], xLimits, yLimits, zLimits);
+
+    attenuation_map(attenuation_map < -1000) = -1000;
+    MUvol = HU_to_mu(attenuation_map, 141);
+    muAir = HU_to_mu(-1000, 141);
+    tform = affinetform3d(eye(4)); % No scaling or rotation
+
+    [MUvol, ~] = imwarp(MUvol, spatial_referencing_CT, tform, OutputView=refSPECT, FillValue=muAir, InterpolationMethod='linear');
+    options.vaimennus = MUvol;
+end
 
 %%%%%%%%%%%%%%%%%%%%%%%% Normalization correction %%%%%%%%%%%%%%%%%%%%%%%%%
 % If set to true, normalization correction is applied to either the
@@ -90,6 +107,17 @@ options.keV = 140; % NM photon energy [keV], used for scaling HU values
 % normalization coefficients.
 options.normalization_correction = false;
 options.normalization = [];
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%% Scatter correction %%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Uses linear interpolation between scatter windows. options.ScatterC{1} 
+% contains the lower scatter window and options.ScatterC{2} contains the 
+% upper scatter window (sizes equal options.SinM).
+% See for example: 10.1371/journal.pone.0269542
+options.scatter_correction = false;
+options.ScatterC = {};
+options.eWin = energy_window; % Main energy window: [lowerLimit upperLimit]
+options.eWinL = []; % Lower energy window: [lowerLimit upperLimit]
+options.eWinU = []; % Upper energy window: [lowerLimit upperLimit]
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%% Resolution recovery %%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Collimator-detector response function (CDRF)
@@ -111,13 +139,13 @@ options.normalization = [];
 
 % 1. The collimator parameters (projector types 1, 2 and 6)
 % Collimator hole length (mm)
-options.colL = 24.05;
+options.colL = collimator_thickness;
 % Collimator hole radius (mm)
-options.colR = 1.11/2;
+options.colR = collimator_hole_radius;
 % Distance from collimator to the detector (mm)
 options.colD = 0;
 % Intrinsic resolution (mm)
-options.iR = 3.8;
+options.iR = detector_intrinsic_resolution;
 % Focal distance (XY)
 options.colFxy = Inf;
 % Focal distance (Z)
@@ -143,17 +171,6 @@ options.colFz = Inf;
 options.nRays = 1; % Number of rays traced per detector element
 % options.rayShiftsDetector = [];
 % options.rayShiftsSource = [];
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LOAD DATA %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-options = loadProSpectaData(options);
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -218,11 +235,11 @@ options.use_CPU = false;
 % 6 = Rotation-based projector
 % See the documentation on some details on the projectors:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
-options.projector_type = 6;
+options.projector_type = 1;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
-options.Niter = 2;
+options.Niter = 5;
 %%% Save specific intermediate iterations
 % You can specify the intermediate iterations you wish to save here. Note
 % that this uses zero-based indexing, i.e. 0 is the first iteration (not
