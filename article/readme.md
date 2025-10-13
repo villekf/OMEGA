@@ -10,5 +10,7 @@ left image, 2 the middle and 3 the right image. For example, `PET_example2.m/py`
 Note that `PET_TOF_example` is the function called by `OMEGAv2_PET` and the unnumbered `CBCT_example` is called by `OMEGAv2_CBCT`.
 
 PET example data is available from: https://doi.org/10.5281/zenodo.17185907
+
 SPECT example data is available from: 
+
 CBCT example data is available from: https://doi.org/10.5281/zenodo.12722386
