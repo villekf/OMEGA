@@ -1,13 +1,14 @@
 %% MATLAB/Octave codes for CBCT reconstruction
-% This example file computes the example 1 (left in the article). The input
-% data Planmeca_VisoG7_100kV_80mAs_500proj_kneePhantom.mat has to be in
-% MATLAB/Octave path!
+% This example file computes the Figure 4 (c) of the OMEGA V2 article. 
+% DOI will be added later.
+% The input data Planmeca_VisoG7_100kV_80mAs_500proj_kneePhantom.mat 
+% has to be in MATLAB/Octave path!
 % Used data available from: https://doi.org/10.5281/zenodo.12722386
 % Implementation 2 is used by default, but the device number can be set
 % below (options.use_device)
 clear mex
 
-% Set this to true, if your GPU has less than 12 GB of memory
+% Set this to true, if your GPU has less than 16 GB of memory
 largeDim = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -227,7 +228,7 @@ options.dL = 1;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
-options.Niter = 8;
+options.Niter = 50;
 %%% Save specific intermediate iterations
 % You can specify the intermediate iterations you wish to save here. Note
 % that this uses zero-based indexing, i.e. 0 is the first iteration (not
@@ -280,9 +281,15 @@ options.x0 = ones(options.Nx, options.Ny, options.Nz) * 1e-5;
 % Reconstruction algorithms to use (choose only one algorithm and
 % optionally one prior)
 
-%%% Primal-dual hybrid gradient (PDHG)
+%%% Preconditioned Krasnoselskii-Mann algorithm (PKMA)
 % Supported by implementations 1, 2, 4, and 5
-options.PDHG = true;
+options.PKMA = true;
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PRIORS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Relative difference prior
+options.RDP = true;
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%% ENFORCE POSITIVITY %%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Applies to PDHG, PDHGL1, PDDY, FISTA, FISTAL1, MBSREM, MRAMLA, PKMA
@@ -328,16 +335,117 @@ options.PDAdaptiveType = 0;
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% PRECONDITIONERS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Applies to PDHG, PDHGL1, PDHGKL, PKMA, MBSREM, MRAMLA, PDDY, FISTA and
-%%% FISTAL1
-% Measurement-based preconditioners
-% precondTypeMeas(1) = Diagonal normalization preconditioner (1 / (A1))
-% precondTypeMeas(2) = Filtering-based preconditioner
-options.precondTypeMeas = [false;true];
+% Image-based preconditioners
+% Setting options.precondTypeImage(2) = true when using PKMA, MRAMLA or
+% MBSREM is recommended
+% precondTypeImage(1) = Diagonal normalization preconditioner (division with
+% the sensitivity image 1 / (A^T1), A is the system matrix) 
+% precondTypeImage(2) = EM preconditioner (f / (A^T1), where f is the current
+% estimate) 
+% precondTypeImage(3) = IEM preconditioner (max(n, fhat, f)/ (A^T1), where
+% fhat is an estimate of the final image and n is a small positive number) 
+% precondTypeImage(4) = Momentum-like preconditioner (basically a step size
+% inclusion) 
+% precondTypeImage(5) = Gradient-based preconditioner (Uses the normalized
+% divergence (sum of the gradient) of the current estimate) 
+% precondTypeImage(6) = Filtering-based preconditioner
+% precondTypeImage(7) = Curvature-based preconditioner
+options.precondTypeImage = [false;true;false;false;false;false;false];
 
-% Number of filtering iterations
-% Applies to both precondTypeMeas(2) and precondTypeImage(6)
-options.filteringIterations = 80;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PKMA PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Relaxation parameter for PKMA
+% If a scalar (or an empty) value is used, then the relaxation parameter is
+% computed automatically as lambda(i) = (1 / ((i - 1)/20 + 1)) / 10000,
+% where i is the iteration number. The input number thus has no effect.
+% If, on the other hand, a vector is input then the input lambda values are
+% used as is without any modifications (the length has to be at least the
+% number of iterations).
+options.lambda = zeros(options.Niter,1);
+for i = 0 : options.Niter - 1
+    options.lambda(i + 1) = 1 / ((1/300) * i + 1) / 1 * 1.0e-4;
+end
+
+%%% Step size (alpha) parameter for PKMA
+% If a scalar (or an empty) value is used, then the alpha parameter is
+% computed automatically as alpha_PKMA(oo) = 1 + (options.rho_PKMA *((i -
+% 1) * options.subsets + ll)) / ((i - 1) * options.subsets + ll +
+% options.delta_PKMA), where i is the iteration number and l the subset
+% number. The input number thus has no effect. options.rho_PKMA and
+% options.delta_PKMA are defined below.
+% If, on the other hand, a vector is input then the input alpha values are
+% used as is without any modifications (the length has to be at least the
+% number of iterations * number of subsets).
+options.alpha_PKMA = 0;
+
+%%% rho_PKMA
+% This value is ignored if a vector input is used with alpha_PKMA
+options.rho_PKMA = 0.95;
+
+%%% delta_PKMA
+% This value is ignored if a vector input is used with alpha_PKMA
+options.delta_PKMA = 100;
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%% REGULARIZATION PARAMETER %%%%%%%%%%%%%%%%%%%%%%%%
+%%% The regularization parameter for ALL regularization methods (priors)
+options.beta = 600; % RDP
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%% NEIGHBORHOOD PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%
+%%% How many neighboring pixels are considered
+% With MRP, QP, L, FMH, NLM and weighted mean
+% E.g. if Ndx = 1, Ndy = 1, Ndz = 0, then you have 3x3 square area where
+% the pixels are taken into account (I.e. (Ndx*2+1)x(Ndy*2+1)x(Ndz*2+1)
+% area).
+% NOTE: Currently Ndx and Ndy must be identical.
+% For NLM this is often called the "search window".
+options.Ndx = 2;
+options.Ndy = 2;
+options.Ndz = 1;
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% NLM PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Filter parameter
+% Higher values smooth the image, smaller values make it sharper
+options.sigma = 1.5e-3;
+
+%%% Patch radius
+options.Nlx = 1;
+options.Nly = 1;
+options.Nlz = 1;
+
+%%% Standard deviation of the Gaussian filter
+options.NLM_gauss = 2;
+
+% By default, the original NLM is used. You can, however, use another
+% potential function by selecting ONE of the options below.
+%%% Use Non-local total variation (NLTV)
+% If selected, will overwrite regular NLM regularization as well as the
+% below MRP version.
+options.NLTV = false;
+
+%%% Use Non-local relative difference (NLRD)
+options.NLRD = true;
+
+%%% Use Non-local Lange prior (NLLange)
+options.NLLange = false;
+
+% Tuning parameter for Lange
+options.SATVPhi = 5;
+
+%%% Use Non-local GGMRF (NLGGMRF)
+options.NLGGMRF = false;
+
+%%% Use MRP algorithm (without normalization)
+% I.e. gradient = im - NLM_filtered(im)
+options.NLM_MRP = false;
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% RDP PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Edge weighting factor
+% Note that this affects NLRD as well
+options.RDP_gamma = 200; % RDP/PKMA
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

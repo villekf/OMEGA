@@ -1,4 +1,6 @@
-%% MATLAB/Octave code for the PET example 2 (center figure in the article)
+%% MATLAB/Octave codes for PET reconstruction
+% This example file computes the Figure 2 (a) of the OMEGA V2 article. 
+% DOI will be added later.
 % Used data available from: https://doi.org/10.5281/zenodo.17185907
 % The data has to be in MATLAB/Octave path!
 
@@ -8,6 +10,7 @@ clear
 % directory or alternatively specify the folder in which the bin-file is
 % located below:
 path = '';
+% Note that the mat-files also need to be in MATLAB/Octave path!
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -387,21 +390,23 @@ end
 % as the other projector is the corresponding projector.
 % See the doc for more information:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
-options.projector_type = 3;
+options.projector_type = 1;
 
-% Volume ray tracer (projector_type = 3 only)
-%%% Radius of the tube-of-response (cylinder)
-% The radius (mm) of the cylinder that approximates the tube-of-response.
-options.tube_radius = sqrt(2) * (options.cr_pz / 2);
+%%% Interpolation length (projector type = 4 only)
+% This specifies the length after which the interpolation takes place. This
+% value will be multiplied by the voxel size which means that 1 is
+% the interpolation length corresponding to a single voxel (transaxial)
+% length. Larger values lead to faster computation but at the cost of
+% accuracy. Recommended values are between [0.5 1].
+options.dL = 1;
 
-% Volume ray tracer (projector_type = 3 only)
-%%% Relative size of the voxel (sphere)
-% In volume ray tracer, the voxels are modeled as spheres. This value
-% specifies the relative radius of the sphere such that with 1 the sphere
-% is just large enough to encompass an entire cubic voxel, i.e. the
-% corners of the cubic voxel intersect with the sphere shell. Larger values
-% create larger spheres, while smaller values create smaller spheres.
-options.voxel_radius = 1;
+%%% Use point spread function (PSF) blurring
+% Applies PSF blurring through convolution to the image space. This is the
+% same as multiplying the geometric matrix with an image blurring matrix.
+options.use_psf = true;
+
+% FWHM (mm) of the Gaussian used in PSF blurring in all three dimensions
+options.FWHM = [options.cr_p*1. options.cr_p*1. options.cr_pz]*1.;
  
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)

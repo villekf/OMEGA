@@ -1,8 +1,7 @@
 """
-Python script used to call each PET example individually
-This script computes the left figure of the PET example in the article
-If you want other standalone scripts for the examples, see the PET_exampleX.py
-files, where X=1 corresponds to the left figure, X=2 the center, etc.
+Python codes for PET reconstruction
+This example file computes the Figure 2 (b) of the OMEGA V2 article. 
+DOI will be added later.
 Used data available from: https://doi.org/10.5281/zenodo.17185907
 """
 import numpy as np
@@ -10,7 +9,7 @@ from omegatomo.projector import proj
 from omegatomo.reconstruction import reconstructions_main
 from omegatomo.util.checkCUDA import checkCUDA
 
-# Set the path of the above mat-file to here:
+# Set the folder containing the above input data here:
 path = ''
 
 options = proj.projectorClass()
@@ -385,23 +384,21 @@ if not options.useCUDA:
 # as the other projector is the corresponding projector.
 # See the documentation for more information:
 # https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
-options.projector_type = 1
+options.projector_type = 3
 
-### Interpolation length (projector type = 4 only)
-# This specifies the length after which the interpolation takes place. This
-# value will be multiplied by the voxel size which means that 1 means that
-# the interpolation length corresponds to a single voxel (transaxial)
-# length. Larger values lead to faster computation but at the cost of
-# accuracy. Recommended values are between [0.5 1].
-options.dL = 1
+# Volume ray tracer (projector_type = 3) only
+### Radius of the tube-of-response (cylinder)
+# The radius (mm) of the cylinder that approximates the tube-of-response.
+options.tube_radius = np.sqrt(2) * (options.cr_pz / 2)
 
-### Use point spread function (PSF) blurring
-# Applies PSF blurring through convolution to the image space. This is the
-# same as multiplying the geometric matrix with an image blurring matrix.
-options.use_psf = True
-
-# FWHM (mm) of the Gaussian used in PSF blurring in all three dimensions
-options.FWHM = np.array([options.cr_p, options.cr_p, options.cr_pz])
+# Volume ray tracer (projector_type = 3 only)
+### Relative size of the voxel (sphere)
+# In volume ray tracer, the voxels are modeled as spheres. This value
+# specifies the relative radius of the sphere such that with 1 the sphere
+# is just large enough to encompass an entire cubic voxel, i.e. the
+# corners of the cubic voxel intersect with the sphere shell. Larger values
+# create larger spheres, while smaller values create smaller spheres.
+options.voxel_radius = 1
  
 ######################### RECONSTRUCTION SETTINGS #########################
 ### Number of iterations (all reconstruction methods)
@@ -452,7 +449,7 @@ options.x0 = np.ones((options.Nx, options.Ny, options.Nz), dtype=np.float32)
 ### Ordered Subsets Expectation Maximization (OSEM) OR Maximum-Likelihood
 ### Expectation Maximization (MLEM) (if subsets = 1)
 options.OSEM = True
-
+ 
 ###########################################################################
 ###########################################################################
 ###########################################################################

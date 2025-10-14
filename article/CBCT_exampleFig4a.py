@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Python script used to call each CBCT example individually
-This example file computes the example 1 (left in the article). 
-If you want a standalone script for the examples, see CBCT_exampleX.py
-files, where X=1 corresponds to the left figure, X=2 the center, etc.
+Python codes for CBCT reconstruction
+This example file computes the Figure 4 (a) of the OMEGA V2 article. 
+DOI will be added later.
 You need to provide the folder path to the input data
 Planmeca_VisoG7_100kV_80mAs_500proj_kneePhantom.mat!
 Used data available from: https://doi.org/10.5281/zenodo.12722386

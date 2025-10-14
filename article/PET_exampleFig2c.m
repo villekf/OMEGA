@@ -1,4 +1,6 @@
-%% MATLAB/Octave code for the PET example 3 (right figure in the article)
+%% MATLAB/Octave codes for PET reconstruction
+% This example file computes the Figure 2 (c) of the OMEGA V2 article. 
+% DOI will be added later.
 % Used data available from: https://doi.org/10.5281/zenodo.17185907
 % The data has to be in MATLAB/Octave path!
 
@@ -8,6 +10,7 @@ clear
 % directory or alternatively specify the folder in which the bin-file is
 % located below:
 path = '';
+% Note that the mat-files also need to be in MATLAB/Octave path!
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

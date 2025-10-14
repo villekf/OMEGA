@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Python script used to call each CBCT example individually
-This example file computes the example 2 (middle in the article). 
-If you want a standalone script for the examples, see CBCT_exampleX.py
-files, where X=1 corresponds to the left figure, X=2 the center, etc.
+Python codes for CBCT reconstruction
+This example file computes the Figure 4 (c) of the OMEGA V2 article. 
+DOI will be added later.
 You need to provide the folder path to the input data
 Planmeca_VisoG7_100kV_80mAs_500proj_kneePhantom.mat!
 Used data available from: https://doi.org/10.5281/zenodo.12722386
@@ -229,7 +228,7 @@ options.dL = 1
 
 ######################### RECONSTRUCTION SETTINGS #########################
 ### Number of iterations (all reconstruction methods)
-options.Niter = 8
+options.Niter = 50
 ### Save specific intermediate iterations
 # You can specify the intermediate iterations you wish to save here. Note
 # that this uses zero-based indexing, i.e. 0 is the first iteration (not
@@ -285,13 +284,16 @@ options.x0 = np.ones((options.Nx, options.Ny, options.Nz), dtype=np.float32) * 1
 ############################### MAP-METHODS ###############################
 # These algorithms can utilize any of the selected priors, though only one
 # prior can be used at a time
-### Primal-dual hybrid gradient (PDHG)
-options.PDHG = True;
+
+### PKMA
+options.PKMA = True;
 
 ################################# PRIORS ##################################
+### Relative difference prior
+options.RDP = True;
 
-### Non-local Means (NLM) prior
-options.NLM = True;
+### Generalized Gaussian Markov random field (GGMRF) prior
+options.GGMRF = False
 
 
 ############################ ENFORCE POSITIVITY ###########################
@@ -300,115 +302,54 @@ options.NLM = True;
 options.enforcePositivity = True
 
 
-############################# PDHG PROPERTIES #############################
-# Primal value
-# If left zero, or empty, it will be automatically computed
-# Note that if you change any of the model parameters, i.e. image volume
-# size, number of projections or use binning, this needs to be recomputed
-# or scaled accordingly!
-# The computed largest eigenvalue is printed if verbose > 0. This can be 
-# used as the below value as long as one is divided by it. For example, 
-# if "Largest eigenvalue for volume 0 is 100" then options.tauCP should be 
-# 1/100 (if you use filtering-based preconditioner this is the "without 
-# filtering" value)
-# if you have a multi-resolution situation, you should input the values
-# for each volume or use zero/empty
-options.tauCP = np.array([1/7540.685059,1/117180.726562,1/92894.101562],dtype=np.float32)
-# Primal value for filtered iterations, applicable only if
-# options.precondTypeMeas[1] = True. As with above, automatically computed
-# if left zero or empty. Same restrictions apply here as above.
-# Use the "Largest eigenvalue for volume 0 with filtering" value here!
-# if you have a multi-resolution situation, you should input the values
-# for each volume or use zero/empty
-options.tauCPFilt = np.array([1/127.564476,1/1606.458252,1/1479.921875],dtype=np.float32)
-# Dual value. Recommended to set at 1.
-options.sigmaCP = 1
-# Next estimate update variable, recommended to keep at 1.
-options.thetaCP = 1
-
-# Use adaptive update of the primal and dual variables
-# Currently two methods available
-# Setting this to 1 or 2 uses an adaptive update for both the primal and 
-# dual variables.
-# Can lead to unstable behavior when using with multi-resolution
-# Minimal to none use with filtering-based preconditioner
-options.PDAdaptiveType = 0
-
-
 ############################# PRECONDITIONERS #############################
-### Applies to PDHG, PDHGL1, PDHGKL, PKMA, MBSREM, MRAMLA, PDDY, FISTA and
-### FISTAL1
-# Measurement-based preconditioners
-# Default values are False
-# precondTypeMeas(0) = Diagonal normalization preconditioner (1 / (A1))
-# precondTypeMeas(1) = Filtering-based preconditioner
-options.precondTypeMeas[1] = True
+options.precondTypeImage[1] = True
+ 
 
-# Number of filtering iterations
-# Applies to both precondTypeMeas(1) and precondTypeImage(5)
-options.filteringIterations = 80
+############################# PKMA PROPERTIES #############################
+### Relaxation parameter for PKMA
+# If a scalar (or an empty) value is used, then the relaxation parameter is
+# computed automatically as lambda(i) = (1 / ((i - 1)/20 + 1)) / 10000,
+# where i is the iteration number. The input number thus has no effect.
+# If, on the other hand, a vector is input then the input lambda values are
+# used as is without any modifications (the length has to be at least the
+# number of iterations).
+options.lambdaN = np.zeros(options.Niter, dtype=np.float32)
+for i in range(options.Niter):
+    options.lambdaN[i] = 1 / ((1/300) * i + 1) / 1 * 1.0e-4;
+
+### Step size (alpha) parameter for PKMA
+# If a scalar (or an empty) value is used, then the alpha parameter is
+# computed automatically as alpha_PKMA(oo) = 1 + (options.rho_PKMA *((i -
+# 1) * options.subsets + ll)) / ((i - 1) * options.subsets + ll +
+# options.delta_PKMA), where i is the iteration number and l the subset
+# number. The input number thus has no effect. options.rho_PKMA and
+# options.delta_PKMA are defined below.
+# If, on the other hand, a vector is input then the input alpha values are
+# used as is without any modifications (the length has to be at least the
+# number of iterations * number of subsets).
+options.alpha_PKMA = np.zeros(1, dtype=np.float32)
+
+### rho_PKMA
+# This value is ignored if a vector input is used with alpha_PKMA
+options.rho_PKMA = 0.95
+
+### delta_PKMA
+# This value is ignored if a vector input is used with alpha_PKMA
+options.delta_PKMA = 100.
 
 
 ######################### REGULARIZATION PARAMETER ########################
 ### The regularization parameter for ALL regularization methods (priors)
 # 50-100 is good starting point for NLM
 # !1 is good starting region for RDP and NLRD
-options.beta = 4
-
-######################### NEIGHBORHOOD PROPERTIES #########################
-### How many neighboring pixels are considered
-# With MRP, QP, L, FMH, NLM and weighted mean
-# E.g. if Ndx = 1, Ndy = 1, Ndz = 0, then you have 3x3 square area where
-# the pixels are taken into account (I.e. (Ndx*2+1)x(Ndy*2+1)x(Ndz*2+1)
-# area).
-# NOTE: Currently Ndx and Ndy must be identical.
-# For NLM this is often called the "search window".
-options.Ndx = 2
-options.Ndy = 2
-options.Ndz = 1
-
-
-############################## NLM PROPERTIES #############################
-### Filter parameter
-# Higher values smooth the image, smaller values make it sharper
-options.NLMsigma = 1.5e-3
-
-### Patch radius
-options.Nlx = 1
-options.Nly = 1
-options.Nlz = 1
-
-### Standard deviation of the Gaussian filter
-options.NLM_gauss = 2.
-
-# By default, the original NLM is used. You can, however, use another
-# potential function by selecting ONE of the options below.
-### Use Non-local total variation (NLTV)
-# If selected, will overwrite regular NLM regularization as well as the
-# below MRP version.
-options.NLTV = False
-
-### Use Non-local relative difference (NLRD)
-options.NLRD = True
-
-### Use Non-local Lange prior (NLLange)
-options.NLLange = False
-
-# Tuning parameter for Lange
-options.SATVPhi = 5
-
-### Use Non-local GGMRF (NLGGMRF)
-options.NLGGMRF = False
-
-### Use MRP algorithm (without normalization)
-# I.e. gradient = im - NLM_filtered(im)
-options.NLM_MRP = False
+options.beta = 600
 
 
 ############################## RDP PROPERTIES #############################
 ### Edge weighting factor
 # Note that this affects NLRD as well
-options.RDP_gamma = 20
+options.RDP_gamma = 200
 
 ###########################################################################
 ###########################################################################

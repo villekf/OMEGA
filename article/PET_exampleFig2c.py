@@ -1,8 +1,7 @@
 """
-Python script used to call each PET example individually
-This script computes the middle figure of the PET example in the article
-If you want other standalone scripts for the examples, see the PET_exampleX.py
-files, where X=1 corresponds to the left figure, X=2 the center, etc.
+Python codes for PET reconstruction
+This example file computes the Figure 2 (c) of the OMEGA V2 article. 
+DOI will be added later.
 Used data available from: https://doi.org/10.5281/zenodo.17185907
 """
 import numpy as np
@@ -10,7 +9,8 @@ from omegatomo.projector import proj
 from omegatomo.reconstruction import reconstructions_main
 from omegatomo.util.checkCUDA import checkCUDA
 
-# Set the path of the above mat-file to here:
+
+# Set the folder containing the above input data here:
 path = ''
 
 options = proj.projectorClass()
@@ -197,14 +197,6 @@ options.ndist_side = 1
 ###########################################################################
 ###########################################################################
 ###########################################################################
-
-########################### Randoms correction ############################
-# If set to true, performs randoms correction during reconstruction or 
-# performs precorrection, depending on the selections below
-# If you are using your own data, the randoms
-# data can be input either manually into options.SinDelayed or input when
-# prompted (has to be stored in a mat-file beforehand!)
-options.randoms_correction = True
  
 ######################### Attenuation correction ##########################
 ### Image-based attenuation correction
@@ -385,21 +377,24 @@ if not options.useCUDA:
 # as the other projector is the corresponding projector.
 # See the documentation for more information:
 # https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
-options.projector_type = 3
+options.projector_type = 1
 
-# Volume ray tracer (projector_type = 3) only
-### Radius of the tube-of-response (cylinder)
-# The radius (mm) of the cylinder that approximates the tube-of-response.
-options.tube_radius = np.sqrt(2) * (options.cr_pz / 2)
+### Interpolation length (projector type = 4 only)
+# This specifies the length after which the interpolation takes place. This
+# value will be multiplied by the voxel size which means that 1 means that
+# the interpolation length corresponds to a single voxel (transaxial)
+# length. Larger values lead to faster computation but at the cost of
+# accuracy. Recommended values are between [0.5 1].
+options.dL = 1
 
-# Volume ray tracer (projector_type = 3 only)
-### Relative size of the voxel (sphere)
-# In volume ray tracer, the voxels are modeled as spheres. This value
-# specifies the relative radius of the sphere such that with 1 the sphere
-# is just large enough to encompass an entire cubic voxel, i.e. the
-# corners of the cubic voxel intersect with the sphere shell. Larger values
-# create larger spheres, while smaller values create smaller spheres.
-options.voxel_radius = 1
+### Use point spread function (PSF) blurring
+# Applies PSF blurring through convolution to the image space. This is the
+# same as multiplying the geometric matrix with an image blurring matrix.
+options.use_psf = True
+
+# FWHM (mm) of the Gaussian used in PSF blurring in all three dimensions
+# options.FWHM = [options.cr_p options.cr_p options.cr_pz]
+options.FWHM = np.array([options.cr_p, options.cr_p, options.cr_pz])
  
 ######################### RECONSTRUCTION SETTINGS #########################
 ### Number of iterations (all reconstruction methods)
@@ -430,7 +425,7 @@ options.subsets = 30
 # 9 = Randomly select the full sinograms
 # 11 = Use prime factor sampling to select the full sinograms
 # Most of the time subsetType 1 or 4 is sufficient.
-options.subsetType = 1
+options.subsetType = 0;
 
 ### Initial value for the reconstruction
 options.x0 = np.ones((options.Nx, options.Ny, options.Nz), dtype=np.float32)
@@ -445,11 +440,92 @@ options.x0 = np.ones((options.Nx, options.Ny, options.Nz), dtype=np.float32)
 ###########################################################################
 # Reconstruction algorithms to use (choose only one algorithm and
 # optionally one prior)
+
+############################### MAP-METHODS ###############################
+# Any algorithm selected here will utilize any of the priors selected below
+# this. Note that only one algorithm and prior combination is allowed! You
+# can also use most of these algorithms without priors (such as PKMA or
+# PDHG).
+options.PKMA = True
+
  
-############################### ML-METHODS ################################
-### Ordered Subsets Expectation Maximization (OSEM) OR Maximum-Likelihood
-### Expectation Maximization (MLEM) (if subsets = 1)
-options.OSEM = True
+ 
+################################# PRIORS ##################################
+### Relative difference prior
+options.RDP = True
+
+
+############################ ENFORCE POSITIVITY ###########################
+### Applies to PDHG, PDHGL1, PDDY, FISTA, FISTAL1, MBSREM, MRAMLA, PKMA
+# Enforces positivity in the estimate after each iteration
+options.enforcePositivity = True
+
+
+########################## RELAXATION PARAMETER ###########################
+### Relaxation parameter for MRAMLA, RAMLA, ROSEM, BSREM, MBSREM and PKMA
+# Use scalar if you want it to decrease as
+# lambda / ((current_iteration - 1)/20 + 1). Use vector (length = Niter) if
+# you want your own relaxation parameters. Use empty array or zero if you
+# want to OMEGA to compute the relaxation parameter using the above formula
+# with lamda = 1. Note that current_iteration is one-based, i.e. it starts
+# at 1.
+options.lambdaN = np.zeros(0, dtype=np.float32)
+ 
+
+############################# PKMA PROPERTIES #############################
+### Step size (alpha) parameter for PKMA
+# If a scalar (or an empty) value is used, then the alpha parameter is
+# computed automatically as alpha_PKMA(oo) = 1 + (options.rho_PKMA *((i -
+# 1) * options.subsets + ll)) / ((i - 1) * options.subsets + ll +
+# options.delta_PKMA), where i is the iteration number and l the subset
+# number. The input number thus has no effect. options.rho_PKMA and
+# options.delta_PKMA are defined below.
+# If, on the other hand, a vector is input then the input alpha values are
+# used as is without any modifications (the length has to be at least the
+# number of iterations * number of subsets).
+options.alpha_PKMA = 0
+
+### rho_PKMA
+# This value is ignored if a vector input is used with alpha_PKMA
+options.rho_PKMA = 0.95
+
+### delta_PKMA
+# This value is ignored if a vector input is used with alpha_PKMA
+options.delta_PKMA = 1
+
+############################# PRECONDITIONERS #############################
+# Image-based preconditioners
+# Setting options.precondTypeImage(1) = true when using PKMA, MRAMLA or
+# MBSREM is recommended
+# precondTypeImage(0) = Diagonal normalization preconditioner (division with
+# the sensitivity image 1 / (A^T1), A is the system matrix) 
+# precondTypeImage(1) = EM preconditioner (f / (A^T1), where f is the current
+# estimate) 
+# precondTypeImage(2) = IEM preconditioner (max(n, fhat, f)/ (A^T1), where
+# fhat is an estimate of the final image and n is a small positive number) 
+# precondTypeImage(3) = Momentum-like preconditioner (basically a step size
+# inclusion) 
+# precondTypeImage(4) = Gradient-based preconditioner (Uses the normalized
+# divergence (sum of the gradient) of the current estimate) 
+# precondTypeImage(5) = Filtering-based preconditioner
+# precondTypeImage(6) = Curvature-based preconditioner
+options.precondTypeImage[0] = False
+options.precondTypeImage[1] = True
+options.precondTypeImage[2] = False
+options.precondTypeImage[3] = False
+options.precondTypeImage[4] = False
+options.precondTypeImage[5] = False
+options.precondTypeImage[6] = False
+
+
+######################### REGULARIZATION PARAMETER ########################
+### The regularization parameter for ALL regularization methods (priors)
+options.beta = 0.1
+
+
+############################## RDP PROPERTIES #############################
+### Edge weighting factor
+options.RDP_gamma = 1
  
 ###########################################################################
 ###########################################################################
@@ -459,16 +535,26 @@ options.OSEM = True
 options.epps = 1e-3
 
 # Loads the measurement data
-sinogram = np.fromfile(path + '/SiemensVision_DerenzoPhantom_TOF214psFWHM_33bins_sinogram_520x95x6400_span1.bin', dtype=np.uint8)
-options.SinM = sinogram.reshape((options.Ndist, options.Nang, options.rings**2, options.TOF_bins), order='F')
-del sinogram
-# Load randoms correction data
 fpath = path + '/SiemensVision_DerenzoPhantom_TOF214psFWHM_33bins_listmode.mat'
 from pymatreader import read_mat
-var = read_mat(fpath, ['SinDelayed'])
-options.SinDelayed = var['SinDelayed']
+var = read_mat(fpath, ['trIndex','axIndex','TOFIndices', 'xy', 'z'])
+# Transaxial and axial indices
+options.trIndex = var['trIndex']
+options.axIndex = var['axIndex']
+# TOF indices
+options.TOFIndices = var['TOFIndices']
+# Detector coordinates
+options.x = var['xy']
+options.z = var['z']
 
 del var
+    
+# Use index-based reconstruction for list-mode reconstruction
+options.useIndexBasedReconstruction = True
+    
+if options.useIndexBasedReconstruction:
+    options.SinM = np.ones(options.trIndex.shape[1], dtype=np.uint8)
+    options.compute_sensitivity_image = True
     
 # Only load the current subset into the device (GPU) memory
 options.loadTOF = False

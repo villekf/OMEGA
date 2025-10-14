@@ -1,14 +1,14 @@
 %% MATLAB/Octave codes for CBCT reconstruction
-% This example file computes the example 2 (middle in the article). The input
-If you want a standalone script for the examples, see CBCT_exampleX.py files
-% data Planmeca_VisoG7_100kV_80mAs_500proj_kneePhantom.mat has to be in
-% MATLAB/Octave path!
+% This example file computes the Figure 4 (a) of the OMEGA V2 article. 
+% DOI will be added later.
+% The input data Planmeca_VisoG7_100kV_80mAs_500proj_kneePhantom.mat 
+% has to be in MATLAB/Octave path!
 % Used data available from: https://doi.org/10.5281/zenodo.12722386
 % Implementation 2 is used by default, but the device number can be set
 % below (options.use_device)
 clear mex
 
-% Set this to true, if your GPU has less than 16 GB of memory
+% Set this to true, if your GPU has less than 12 GB of memory
 largeDim = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -285,11 +285,6 @@ options.x0 = ones(options.Nx, options.Ny, options.Nz) * 1e-5;
 % Supported by implementations 1, 2, 4, and 5
 options.PDHG = true;
 
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PRIORS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Non-local Means (NLM) prior
-options.NLM = true;
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%% ENFORCE POSITIVITY %%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Applies to PDHG, PDHGL1, PDDY, FISTA, FISTAL1, MBSREM, MRAMLA, PKMA
 % Enforces positivity in the estimate after each iteration
@@ -344,67 +339,6 @@ options.precondTypeMeas = [false;true];
 % Number of filtering iterations
 % Applies to both precondTypeMeas(2) and precondTypeImage(6)
 options.filteringIterations = 80;
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%% REGULARIZATION PARAMETER %%%%%%%%%%%%%%%%%%%%%%%%
-%%% The regularization parameter for ALL regularization methods (priors)
-options.beta = 4; % NLRDP
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%% NEIGHBORHOOD PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%
-%%% How many neighboring pixels are considered
-% With MRP, QP, L, FMH, NLM and weighted mean
-% E.g. if Ndx = 1, Ndy = 1, Ndz = 0, then you have 3x3 square area where
-% the pixels are taken into account (I.e. (Ndx*2+1)x(Ndy*2+1)x(Ndz*2+1)
-% area).
-% NOTE: Currently Ndx and Ndy must be identical.
-% For NLM this is often called the "search window".
-options.Ndx = 2;
-options.Ndy = 2;
-options.Ndz = 1;
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% NLM PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Filter parameter
-% Higher values smooth the image, smaller values make it sharper
-options.sigma = 1.5e-3;
-
-%%% Patch radius
-options.Nlx = 1;
-options.Nly = 1;
-options.Nlz = 1;
-
-%%% Standard deviation of the Gaussian filter
-options.NLM_gauss = 2;
-
-% By default, the original NLM is used. You can, however, use another
-% potential function by selecting ONE of the options below.
-%%% Use Non-local total variation (NLTV)
-% If selected, will overwrite regular NLM regularization as well as the
-% below MRP version.
-options.NLTV = false;
-
-%%% Use Non-local relative difference (NLRD)
-options.NLRD = true;
-
-%%% Use Non-local Lange prior (NLLange)
-options.NLLange = false;
-
-% Tuning parameter for Lange
-options.SATVPhi = 5;
-
-%%% Use Non-local GGMRF (NLGGMRF)
-options.NLGGMRF = false;
-
-%%% Use MRP algorithm (without normalization)
-% I.e. gradient = im - NLM_filtered(im)
-options.NLM_MRP = false;
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% RDP PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Edge weighting factor
-% Note that this affects NLRD as well
-options.RDP_gamma = 20; % NLRDP/CV
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
