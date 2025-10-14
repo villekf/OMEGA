@@ -11,6 +11,6 @@ Note that `PET_TOF_example` is the function called by `OMEGAv2_PET` and the unnu
 
 PET example data is available from: https://doi.org/10.5281/zenodo.17185907
 
-SPECT example data is available from: 
+SPECT example data is available from: https://doi.org/10.5281/zenodo.17315440
 
 CBCT example data is available from: https://doi.org/10.5281/zenodo.12722386
