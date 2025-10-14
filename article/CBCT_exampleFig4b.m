@@ -8,6 +8,10 @@
 % below (options.use_device)
 clear mex
 
+% Set the path (to the folder) of the above mat-file to here (if NOT in
+% MATLAB/Octave path):
+path = ''
+
 % Set this to true, if your GPU has less than 16 GB of memory
 largeDim = false;
 
@@ -34,7 +38,7 @@ options.verbose = 2;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-load Planmeca_VisoG7_100kV_80mAs_500proj_kneePhantom.mat
+load(fullfile(path, 'Planmeca_VisoG7_100kV_80mAs_500proj_kneePhantom.mat'))
 
 % Flat field corrected projections
 options.SinM = proj;
