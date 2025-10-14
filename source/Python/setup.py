@@ -15,6 +15,7 @@ setup(
         'scikit-image',
         'arrayfire',
         'SimpleITK',
+        'h5py',
         # Add other dependencies here
     ],
     classifiers=[

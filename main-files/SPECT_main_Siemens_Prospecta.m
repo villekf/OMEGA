@@ -1,4 +1,4 @@
-%% MATLAB codes for SPECT reconstruction from DICOM data
+%% MATLAB codes for SPECT reconstruction from projection images
 % This example outlines the reconstruction of SPECT data. In this case the
 % data is Siemens Pro.specta projection data available at DOI
 % 10.5281/zenodo.17315440
