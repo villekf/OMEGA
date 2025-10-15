@@ -583,6 +583,9 @@ end
 if ~isfield(options, 'SinM')
     options.SinM = [];
 end
+if ~isfield(options, 'SinDelayed')
+    options.SinDelayed = [];
+end
 if ~isfield(options, 'compute_normalization')
     options.compute_normalization = false;
 end
