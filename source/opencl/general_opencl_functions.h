@@ -64,11 +64,17 @@
 #define FLOAT_HALF .5h
 #define FLOAT_ONE 1.h
 #define FLOAT_TWO 2.h
+#define FLOAT half
+#define FLOAT2 half2
+#define FLOAT3 half3
 #else
 #define FLOAT_ZERO 0.f
 #define FLOAT_HALF .5f
 #define FLOAT_ONE 1.f
 #define FLOAT_TWO 2.f
+#define FLOAT float
+#define FLOAT2 float2
+#define FLOAT3 float3
 #endif
 
 #ifdef METAL
@@ -77,17 +83,12 @@
 #define CFLOAT(a) static_cast<half>(a)
 #define CFLOAT3(a) half3(a)
 #define CMFLOAT3(x,y,z) half3((x), (y), (z))
-#define FLOAT half
-#define FLOAT2 half2
-#define FLOAT3 half3
+
 #define make_float2(a,b) half2((a),(b))
 #define make_float3(a,b,c) half3((a),(b),(c)) // TODO: replace with half
 #define MFLOAT2(a,b) half2((a), (b)) // TODO: replace with half
 #else // 32-bit floating point
 #define CAST float
-#define FLOAT float
-#define FLOAT2 float2
-#define FLOAT3 float3
 #define CFLOAT(a) static_cast<float>(a)
 #define CFLOAT3(a) float3(a)
 #define CMFLOAT3(x,y,z) float3((x), (y), (z))
@@ -234,10 +235,10 @@ struct ScalarParams { // For OpenCL, these are set in initializeKernel.
 
 #endif
 #ifdef OPENCL
-#define PTR_DEV  device // Metal requires address space qualifier for pointers
-#define PTR_THR  thread
-#define PTR_CONST constant
-#define PTR_TG   threadgroup
+#define PTR_DEV // Metal requires address space qualifier for pointers
+#define PTR_THR 
+#define PTR_CONST
+#define PTR_TG
 #define MIN min
 #define FABS fabs
 #define FMIN fmin
@@ -253,6 +254,7 @@ struct ScalarParams { // For OpenCL, these are set in initializeKernel.
 #define CLGLOBAL __global
 #define CLRESTRICT restrict
 #define CONSTANT __constant
+#define LENGTH length
 #define LOCAL __local
 #define IMAGE3D __read_only image3d_t
 #define IMAGE2D __read_only image2d_t
@@ -332,10 +334,10 @@ __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEA
 #endif
 #endif
 #if defined(CUDA)
-#define PTR_DEV  device // Metal requires address space qualifier for pointers
-#define PTR_THR  thread
-#define PTR_CONST constant
-#define PTR_TG   threadgroup
+#define PTR_DEV // Metal requires address space qualifier for pointers
+#define PTR_THR 
+#define PTR_CONST
+#define PTR_TG
 #define MIN min
 #define FABS fabs
 #define LENGTH length
@@ -1530,7 +1532,7 @@ DEVICE bool siddon_pre_loop_3D(const FLOAT3 b, const FLOAT3 diff, const FLOAT3 m
 
 	const float pt = ((FMIN(FMIN(*tz0, *ty0), *tx0) + *tc) / 2.f);
 
-	const float3 tempijkF = CLAMP3((float3)FMAD3((float3)pt, (float3)diff, -apuT) / (float3)dd, 0.f, (float3)CFLOAT3(N - 1));
+	const float3 tempijkF = CLAMP3(FMAD3(pt, diff, -apuT) / dd, 0.f, CFLOAT3(N - 1));
 	const int3 tempijk = CINT3_rtz(tempijkF);
 	*tempi = tempijk.x;
 	*tempj = tempijk.y;
