@@ -9,8 +9,7 @@ data is Siemens Pro.specta projection data available at DOI
 import numpy as np
 from omegatomo.projector import proj
 from omegatomo.reconstruction import reconstructions_mainSPECT
-import h5py
-import SimpleITK as sitk
+from pymatreader import read_mat
 
 # Initialize projector class for reconstruction
 options = proj.projectorClass()
@@ -25,45 +24,16 @@ options.fpath = '' # Path to .mat file
 ###########################################################################
 ###########################################################################
 
-# ---------------------------
-# Helpers for MATLAB v7.3 HDF5
-# ---------------------------
-def _read(obj):
-    if isinstance(obj, h5py.Dataset):
-        data = obj[()]
-        try:
-            return np.array(data)
-        except Exception:
-            return data
-    elif isinstance(obj, h5py.Group):
-        out = {}
-        for k, v in obj.items():
-            out[k] = _read(v)
-        return out
-    else:
-        return obj
-
-def load_mat73(path):
-    out = {}
-    with h5py.File(path, 'r') as f:
-        for k in f.keys():
-            try:
-                out[k] = _read(f[k])
-            except Exception:
-                pass
-    return out
-
-mat = load_mat73(options.fpath)
-options.SinM = np.array(mat['projection_data'])
-options.SinM = np.transpose(options.SinM, (2, 1, 0)) # Fortran vs C order
-options.angles = np.array(mat['angular_position']).squeeze()
-options.radiusPerProj = np.array(mat['radial_position']).squeeze()
+data = read_mat(options.fpath)
+options.SinM = np.array(data['projection_data'])
+options.angles = np.array(data['angular_position']).squeeze()
+options.radiusPerProj = np.array(data['radial_position']).squeeze()
 options.nRowsD = options.SinM.shape[0]
 options.nColsD = options.SinM.shape[1]
 options.nProjections = options.SinM.shape[2]
-energy_window = mat.get("energy_window", None)
-pixel_spacing = np.array(mat["pixel_spacing"]).squeeze()
-detector_thickness = float(np.squeeze(mat["detector_thickness"]))
+energy_window = data.get("energy_window", None)
+pixel_spacing = np.array(data["pixel_spacing"]).squeeze()
+detector_thickness = float(np.squeeze(data["detector_thickness"]))
 
 ###########################################################################
 ###########################################################################
@@ -168,13 +138,13 @@ options.eWinU = None  # Upper energy window: [lowerLimit upperLimit]
 #
 # 1. The collimator parameters (projector types 1, 2 and 6)
 # Collimator hole length (mm)
-options.colL = float(np.squeeze(mat["collimator_thickness"]))
+options.colL = float(np.squeeze(data["collimator_thickness"]))
 # Collimator hole radius (mm)
-options.colR = float(np.squeeze(mat["collimator_hole_radius"]))
+options.colR = float(np.squeeze(data["collimator_hole_radius"]))
 # Distance from collimator to the detector (mm)
 options.colD = 0.0
 # Intrinsic resolution (mm)
-options.iR = float(np.squeeze(mat["detector_intrinsic_resolution"]))
+options.iR = float(np.squeeze(data["detector_intrinsic_resolution"]))
 # Focal distance (XY)
 options.colFxy = np.inf
 # Focal distance (Z)
@@ -198,8 +168,8 @@ options.colFz = np.inf
 # should be 2*nRays x nColsD x nRowsD x nProjections. If not input, values
 # are calculated automatically.
 options.nRays = 1  # Number of rays traced per detector element
-# options.rayShiftsDetector = [];
-# options.rayShiftsSource = [];
+# options.rayShiftsDetector = np.zeros((2*options.nRays, options.nColsD, options.nRowsD, options.nProjections));
+# options.rayShiftsSource = np.zeros((2*options.nRays, options.nColsD, options.nRowsD, options.nProjections));
 
 ###########################################################################
 ###########################################################################
