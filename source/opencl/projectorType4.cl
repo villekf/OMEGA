@@ -143,11 +143,11 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #ifdef RAW
     const CLGLOBAL ushort* CLRESTRICT d_L, const uint d_det_per_ring,
 #endif
-	///////////////////////// PET NORMALIZATION DATA /////////////////////////
+	///////////////////////// NORMALIZATION DATA /////////////////////////
 #ifdef NORM
     const CLGLOBAL float* CLRESTRICT d_norm,
 #endif
-	///////////////////////// END PET NORMALIZATION DATA /////////////////////////
+	///////////////////////// END NORMALIZATION DATA /////////////////////////
 	///////////////////////// EXTRA CORRECTION DATA /////////////////////////
 #ifdef SCATTER
     const CLGLOBAL float* CLRESTRICT d_scat,
@@ -248,13 +248,12 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 		ax[to] = 0.f;
 #endif
 #endif
-
-#ifndef CT
-
 #ifdef NORM // Normalization included
 	float local_norm = 0.f;
 	local_norm = d_norm[idx];
 #endif
+#ifndef CT
+
 #ifdef SCATTER // Scatter data included
 	float local_scat = 0.f;
 	local_scat = d_scat[idx];
@@ -496,6 +495,9 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 		temp *= EXP(jelppi);
 #endif
 #if defined(FP) && !defined(N_RAYS) //////////////// FORWARD PROJECTION ////////////////
+#if defined(CT) && defined(NORM)
+        ax[0] *= local_norm;
+#endif
 #if defined(TOF) && defined(LISTMODE)
 		size_t to = TOFid;
 #else
@@ -630,7 +632,10 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
 #else
     CONSTANT float* d_xyz, 
 #endif
-    CONSTANT float* d_uv, CLGLOBAL float* CLRESTRICT d_Summ, 
+    CONSTANT float* d_uv, CLGLOBAL float* CLRESTRICT d_Summ,
+#ifdef NORM
+    const CLGLOBAL float* CLRESTRICT d_norm,
+#endif 
     const uchar no_norm, 
 #ifdef USEIMAGES
 #ifdef MASKBP // TODO replace with MASKBPTYPE
@@ -706,10 +711,14 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
 #endif
         float3 d1, d2, d3;
         float3 s;
+        d1 = CMFLOAT3(d_xyz[kk * 6 + 3], d_xyz[kk * 6 + 4], d_xyz[kk * 6 + 5]);
+#ifdef HELICAL
+        if (dV.z > d1.z + koko.y / 2.f || dV.z < d1.z - koko.y / 2.f)
+            continue;
+#endif
 #ifndef PARALLEL
         s = CMFLOAT3(d_xyz[kk * 6], d_xyz[kk * 6 + 1], d_xyz[kk * 6 + 2]);
 #endif
-        d1 = CMFLOAT3(d_xyz[kk * 6 + 3], d_xyz[kk * 6 + 4], d_xyz[kk * 6 + 5]);
 #if defined(PITCH)
         const float3 apuX = CMFLOAT3(d_uv[kk * NA], d_uv[kk * NA + 1], d_uv[kk * NA + 2]) * indeksi.x;
         const float3 apuY = CMFLOAT3(d_uv[kk * NA + 3], d_uv[kk * NA + 4], d_uv[kk * NA + 5]) * indeksi.y;
@@ -717,6 +726,9 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
         const float3 apuX = MFLOAT3(indeksi.x * d_uv[kk * NA], indeksi.x * d_uv[kk * NA + 1], 0.f);
         const float3 apuY = MFLOAT3(0.f, 0.f, indeksi.y * d_dPitch.y);
 #endif
+#ifdef HELICAL
+
+#else
         d2 = apuX - apuY;
         d3 = d1 - apuX - apuY;
         const float3 normX = normalize(apuX) / koko.x;
@@ -844,6 +856,12 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
                 yVar = d_forw[indX + indY + indZ];
             }
 #endif
+#ifdef NORM
+            const LONG indX = CLONG_rtz(px * CFLOAT(d_size_x));
+            const LONG indY = CLONG_rtz(py * CFLOAT(d_sizey)) * CLONG_rtz(d_size_x);
+            const LONG indZ = CLONG_rtz(pz * CFLOAT(d_nProjections)) * CLONG_rtz(d_sizey) * CLONG_rtz(d_size_x);
+            yVar *= d_norm[indX + indY + indZ];
+#endif
 #if STYPE == 12
             const float t_2 = DIVIDE(upperPart_2, lowerPart_2);
 #ifndef USEMAD
@@ -950,6 +968,7 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
 #ifdef PARALLEL
         }
     }
+#endif
 #endif
     }
     for (int zz = 0; zz < NVOXELS; zz++) {

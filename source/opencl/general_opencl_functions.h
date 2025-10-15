@@ -23,7 +23,6 @@
 #ifdef ATOMIC
 #pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
 #endif
-#define THR 0.01f
 #ifndef N_REKOS
 #define N_REKOS 1
 #endif
@@ -278,6 +277,7 @@ struct ScalarParams { // For OpenCL, these are set in initializeKernel.
 #define SQRT native_sqrt
 #define POWR native_powr
 #define POWN pown
+#define RCP(x) native_recip(x)
 #define FLOOR floor
 #define CEIL ceil
 #define ATAN2 atan2
@@ -417,6 +417,7 @@ __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEA
 #define BARRIER __syncthreads();
 #define POWR __powf
 #define POWN __powf
+#define RCP(x) __frcp_rn(x)
 #define FLOOR floorf
 #define CEIL ceilf
 #define ATAN2 atan2f

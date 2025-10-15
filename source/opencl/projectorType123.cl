@@ -1461,6 +1461,9 @@ void projectorType123(
 		temp *= EXP(jelppi);
 #endif
 #if defined(FP) && !defined(N_RAYS) //////////////// FORWARD PROJECTION ////////////////
+#if defined(CT) && defined(NORM)
+        ax[0] *= local_norm;
+#endif
 #if defined(TOF) && defined(LISTMODE)
 		size_t to = TOFid;
 #else
