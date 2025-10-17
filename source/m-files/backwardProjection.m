@@ -103,7 +103,7 @@ function output = backwardProjectionType6(options, input, koko)
     end
 end
 
-if options.implementation == 4
+if (options.implementation == 4 && ~ismac) || (ismac && options.projector_type == 6)
     if options.projector_type == 6
         output = backwardProjectionType6(options, input, koko);
         output(output < options.epps & output >= 0) = options.epps;
@@ -175,7 +175,7 @@ if options.implementation == 4
             end
         end
     end
-elseif options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+elseif options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || ismac
     if ~isfield(options,'orthTransaxial') && (options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 22 || options.projector_type == 33)
         if options.projector_type == 3 || options.projector_type == 33
             options.orthTransaxial = true;
@@ -256,12 +256,12 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
         options.z_index, crystal_size_z, ... % 34
         options.x_center, options.y_center, options.z_center, single(0), 0, options.projector_type, n_rays, n_rays3D, ... % 42
         options, input, options.partitions, options.use_64bit_atomics, options.bmin, options.bmax, options.Vmax, options.V, options.gaussK, 2, noSensIm); % 51
-    if options.use_64bit_atomics
+    if options.use_64bit_atomics && ~ismac % Metal supports float atomics
         output = single(output) / 99999997952;
         if ~isempty(sensIm) && numel(sensIm) > 1
             sensIm = single(sensIm) / 99999997952;
         end
-    elseif options.use_32bit_atomics
+    elseif options.use_32bit_atomics && ~ismac % Metal supports float atomics
         output = single(output) / 100000;
         if ~isempty(sensIm) && numel(sensIm) > 1
             sensIm = single(sensIm) / 100000;

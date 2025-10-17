@@ -75,10 +75,63 @@ __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_si
 #else
 __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, 1, 1)))
 #endif
-#else
-extern "C" __global__
+#elif (defined(CUDA) || defined(METAL))
+	KERNEL
 #endif
-void projectorType123(const float global_factor, const float d_epps, const uint d_size_x, const uint d_det_per_ring,
+void projectorType123(
+#if defined(METAL) ///////////////////// METAL /////////////////////
+	CONSTANT ScalarParams& P1 [[buffer(0)]],
+#if defined(SPECT)
+	const CLGLOBAL float* d_rayShiftsDetector [[buffer(1)]],
+	const CLGLOBAL float* d_rayShiftsSource [[buffer(2)]],
+#endif
+#ifdef TOF ///////////////////////// TOF BINS /////////////////////////
+	CONSTANT float* TOFCenter [[buffer(3)]],
+#endif ///////////////////////// END TOF BINS /////////////////////////
+#ifdef ORTH ///////////////////////// ORTHOGONAL-BASED RAY TRACER /////////////////////////
+	CONSTANT float* V [[buffer(4)]],
+#endif ///////////////////////// END ORTHOGONAL-BASED RAY TRACER /////////////////////////
+#if !defined(CT) && (defined(ATN) || defined(ATNM)) ///////////////////////// PET ATTENUATION CORRECTION /////////////////////////
+	const CLGLOBAL float* d_atten [[buffer(5)]],
+#endif
+#ifdef MASKFP
+    MASKFPTYPE maskFP [[buffer(6)]],
+#endif
+#if defined(MASKBP) && defined(BP) && !defined(FP)
+    MASKBPTYPE maskBP [[buffer(7)]],
+#endif
+	CONSTANT float* d_xy [[buffer(8)]],
+	CONSTANT float* d_z [[buffer(9)]],
+#ifdef NORM ///////////////////////// PET NORMALIZATION DATA /////////////////////////
+	CONSTANT float* d_norm [[buffer(10)]],
+#endif
+#ifdef SCATTER ///////////////////////// EXTRA CORRECTION DATA /////////////////////////
+	CONSTANT float* d_scat [[buffer(11)]], 
+#endif
+	CLGLOBAL CAST* d_Summ [[buffer(12)]], // Adjust buffer index in host code
+#if defined(SUBSETS) && !defined(LISTMODE)
+	CONSTANT uint* d_xyindex [[buffer(13)]],
+	CONSTANT ushort* d_zindex [[buffer(14)]], 
+#endif
+#if defined(INDEXBASED) && defined(LISTMODE) && !defined(SENS)
+	CONSTANT ushort* trIndex [[buffer(15)]],
+	CONSTANT ushort* axIndex [[buffer(16)]],
+#endif
+#if defined(LISTMODE) && defined(TOF)
+	CONSTANT uchar* TOFIndex [[buffer(17)]], 
+#endif
+#ifdef RAW	///////////////////////// RAW PET DATA /////////////////////////
+	CONSTANT ushort* d_L [[buffer(18)]], 
+#endif
+	const CLGLOBAL float* d_OSEM [[buffer(19)]],
+	CLGLOBAL float* d_output [[buffer(20)]], 
+	uint3 i [[thread_position_in_grid]]   // global id
+
+#else /////////////////////// OPENCL/CUDA ///////////////////////
+	const float global_factor, 
+	const float d_epps, 
+	const uint d_size_x, 
+	const uint d_det_per_ring,
 	const float sigma_x,
 #if defined(SPECT)
 	const CLGLOBAL float* CLRESTRICT d_rayShiftsDetector,
@@ -87,29 +140,26 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
     const float coneOfResponseStdCoeffB,
     const float coneOfResponseStdCoeffC,
 #endif
-#ifdef PYTHON
-	const float crystalSizeX, const float crystalSizeY, 
+#if defined(PYTHON)
+	const float crystalSizeX, 
+	const float crystalSizeY, 
 #else
 	const float2 crystalSize, 
 #endif
-	///////////////////////// ORTHOGONAL-BASED RAY TRACER /////////////////////////
-#ifdef ORTH
-	const float orthWidth, const float bmin, const float bmax, const float Vmax,	
-#endif
-	///////////////////////// END ORTHOGONAL-BASED RAY TRACER /////////////////////////
-	///////////////////////// TOF BINS /////////////////////////
-#ifdef TOF
+#ifdef ORTH ///////////////////////// ORTHOGONAL-BASED RAY TRACER /////////////////////////
+	const float orthWidth, 
+	const float bmin, 
+	const float bmax, 
+	const float Vmax,	
+#endif ///////////////////////// END ORTHOGONAL-BASED RAY TRACER /////////////////////////
+#ifdef TOF ///////////////////////// TOF BINS /////////////////////////
 	CONSTANT float* TOFCenter, 
-#endif
-	///////////////////////// END TOF BINS /////////////////////////
-	///////////////////////// ORTHOGONAL-BASED RAY TRACER /////////////////////////
-#ifdef ORTH
+#endif ///////////////////////// END TOF BINS /////////////////////////
+#ifdef ORTH ///////////////////////// ORTHOGONAL-BASED RAY TRACER /////////////////////////
 	CONSTANT float* V, 
-#endif
-	///////////////////////// END ORTHOGONAL-BASED RAY TRACER /////////////////////////
-	const uint d_sizey, 
-	///////////////////////// PET ATTENUATION CORRECTION /////////////////////////
-#if !defined(CT) && defined(ATN) && !defined(ATNM)
+#endif ///////////////////////// END ORTHOGONAL-BASED RAY TRACER /////////////////////////
+	const uint d_sizey,
+#if !defined(CT) && defined(ATN) && !defined(ATNM) ///////////////////////// PET ATTENUATION CORRECTION /////////////////////////
 #ifdef USEIMAGES
 	IMAGE3D d_atten,
 #else
@@ -158,7 +208,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 	///////////////////////// END EXTRA CORRECTION DATA /////////////////////////
 	CLGLOBAL CAST* CLRESTRICT d_Summ, 
-#ifdef PYTHON
+#if defined(PYTHON)
 	const uint d_Nx, const uint d_Ny, const uint d_Nz, const float d_dx, const float d_dy, const float d_dz,
 	const float bx, const float by, const float bz, const float d_bmaxx, const float d_bmaxy, const float d_bmaxz, 
 #else
@@ -199,10 +249,15 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	CLGLOBAL float* d_output,
 #endif
 	///////////////////////// END FORWARD OR BACKWARD PROJECTIONS /////////////////////////
-	const uchar no_norm, const ULONG m_size, const uint currentSubset, const int aa) {
-	///*
-	// Get the current global index
+	const uchar no_norm, const ULONG m_size, const uint currentSubset, const int aa
+#endif ///////////////////// END OPENCL/CUDA/METAL /////////////////////
+) {
+#if defined(METAL) // Unpack scalar parameters
+	UNPACK_METAL_PARAMS(P1)
+	uint GID0 = i.x;
+#else
 	int3 i = MINT3(GID0, GID1, GID2);
+#endif
 #if STYPE == 1 || STYPE == 2 || STYPE == 4 || STYPE == 5
 	getIndex(&i, d_size_x, d_sizey, currentSubset);
 #endif
@@ -232,12 +287,12 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	if (idx >= m_size)
 #endif
 		return;
-#ifdef PYTHON
-	const float2 crystalSize = make_float2(crystalSizeX, crystalSizeY);
+#if defined(PYTHON) || defined(METAL)
+	const FLOAT2 crystalSize = make_float2(crystalSizeX, crystalSizeY);
 	const uint3 d_Nxyz = make_uint3(d_Nx, d_Ny, d_Nz);
-	const float3 d_d = make_float3(d_dx, d_dy, d_dz);
-	const float3 b = make_float3(bx, by, bz);
-	const float3 d_bmax = make_float3(d_bmaxx, d_bmaxy, d_bmaxz);
+	const FLOAT3 d_d = make_float3(d_dx, d_dy, d_dz);
+	const FLOAT3 b = make_float3(bx, by, bz);
+	const FLOAT3 d_bmax = make_float3(d_bmaxx, d_bmaxy, d_bmaxz);
 #endif
 #ifdef MASKFP // FP mask
     const typeT maskInd = i
@@ -291,8 +346,8 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 #endif
 	const uint d_Nxy = d_Nxyz.x * d_Nxyz.y;
-	float local_norm = 0.f;
-	float local_scat = 0.f;
+	FLOAT local_norm = FLOAT_ZERO;
+	FLOAT local_scat = FLOAT_ZERO;
 
 #ifdef NORM // Normalization included
 	local_norm = d_norm[idx];
@@ -301,9 +356,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	local_scat = d_scat[idx];
 #endif
 #ifdef ORTH // Orthogonal or volume-based
-	float b1, b2, d1, d2;
-	float _bz = b.z, dz = d_d.z;
-    float3 center; // Center of current voxel
+	FLOAT b1, b2, d1, d2;
+	FLOAT _bz = b.z, dz = d_d.z;
+    FLOAT3 center; // Center of current voxel
 #endif
 
 #if defined(N_RAYS) //////////////// MULTIRAY ////////////////
@@ -316,7 +371,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #elif defined(SPECT)
 	const int lorXY = 0;
 #endif  //////////////// END MULTIRAY ////////////////
-	float3 s, d;
+	FLOAT3 s, d;
 #if defined(NLAYERS) && !defined(LISTMODE)
 	const uint layer = i.z / NLAYERS;
 	// if (layer != 0)
@@ -364,12 +419,12 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	);
 #endif
 	// Calculate the x, y and z distances of the detector pair
-	float3 diff = d - s;
+	FLOAT3 diff = d - s;
 
 #ifdef CUDA
-	if ((diff.x == 0.f && diff.y == 0.f && diff.z == 0.f) || (diff.x == 0.f && diff.y == 0.f) || isinf(diff.x) || isinf(diff.y) || isinf(diff.z) || isnan(diff.x) || isnan(diff.y) || isnan(diff.z))
+	if ((diff.x == 0.f && diff.y == 0.f && diff.z == 0.f) || (diff.x == 0.f && diff.y == 0.f) || ISINF(diff.x) || ISINF(diff.y) || ISINF(diff.z) || ISNAN(diff.x) || ISNAN(diff.y) || ISNAN(diff.z))
 #else
-	if (all(diff == 0.f) || (diff.x == 0.f && diff.y == 0.f) || any(isinf(diff)) || any(isnan(diff)))
+	if (ALL(diff == FLOAT_ZERO) || (diff.x == FLOAT_ZERO && diff.y == FLOAT_ZERO) || ANY(ISINF(diff)) || ANY(ISNAN(diff)))
 #endif
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
 		continue;
@@ -379,9 +434,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	uint Np = 0u;
 
 #ifdef ATN // Attenuation included
-	float jelppi = 0.f;
+	FLOAT jelppi = FLOAT_ZERO;
 #endif
-	float temp = 1.f;
+	float temp = FLOAT_ONE;
 	uint d_N0 = d_Nxyz.x;
 	uint d_N1 = d_Nxyz.y;
 	uint d_N2 = 1u;
@@ -389,23 +444,23 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 
 	int tempi = 0, tempj = 0, tempk = 0, ux = 0, uy = 0, uz = 0;
 
-	float L = length(diff);
+	float L = LENGTH(diff);
 #ifndef TOTLENGTH
-	float LL = 0.f;
+	float LL = FLOAT_ZERO;
 #endif
 	LONG local_ind = 0u;
 	int3 localInd = MINT3(0, 0, 0);
 #ifdef TOF //////////////// TOF ////////////////
-	float D = 0.f;
-	float DD = 0.f;
-	float TOFWeights[NBINS];
+	FLOAT D = FLOAT_ZERO;
+	FLOAT DD = FLOAT_ZERO;
+	FLOAT TOFWeights[NBINS];
 #endif //////////////// END TOF ////////////////
-	float local_ele = 0.f;
+	float local_ele = FLOAT_ZERO;
 
 #ifdef ORTH //////////////// ORTHOGONAL OR VOLUME-BASED RAY TRACER ////////////////
 	int tempk_b = 0;
 	bool XY = false;
-	float orth_ray_length = 0.f;
+	float orth_ray_length = FLOAT_ZERO;
 #if defined(SPECT)
     orth_ray_length = L;
     float orth_ray_length_inv_signed = L / dot(diff, diff);
@@ -424,10 +479,10 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	//If the LOR is perpendicular in the y-direction (Siddon cannot be used)
-	if (fabs(diff.z) < 1e-6f && (fabs(diff.y) < 1e-6f || fabs(diff.x) < 1e-6f)) {
+	if (FABS(diff.z) < 1e-6f && (FABS(diff.y) < 1e-6f || FABS(diff.x) < 1e-6f)) {
 
 		//return;
-		tempk = CINT(fabs(s.z - b.z) / d_d.z);
+		tempk = CINT(FABS(s.z - b.z) / d_d.z);
 		if (tempk < 0 || tempk >= d_Nxyz.z)
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
 			continue;
@@ -443,11 +498,11 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 // #if defined(LISTMODE)
 		float dT1, dT2;
 // #endif
-		if (fabs(diff.y) < 1e-6f && d.y <= d_bmax.y && d.y >= b.y && s.y <= d_bmax.y && s.y >= b.y) {
+		if (FABS(diff.y) < 1e-6f && d.y <= d_bmax.y && d.y >= b.y && s.y <= d_bmax.y && s.y >= b.y) {
 			apuX1 = 0;
 			apuX2 = d_Nxyz.x - 1;
 // #if defined(LISTMODE)
-			float dist1, dist2 = 0.f;
+			FLOAT dist1, dist2 = FLOAT_ZERO;
 			if (s.x > d.x) {
 				dist1 = (b.x - d.x);
 				dist2 = (b.x + CFLOAT(d_Nxyz.x) * d_d.x - s.x);
@@ -457,23 +512,23 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				dist2 = (b.x + CFLOAT(d_Nxyz.x) * d_d.x - d.x);
 			}
 			for (int kk = 0; kk < d_Nxyz.x; kk++) {
-				if (dist1 >= 0.f) {
+				if (dist1 >= FLOAT_ZERO) {
 					apuX1 = kk;
 					if (kk == 0)
 						dT1 = d_d.x;
 					else
-						dT1 = min(dist1, d_d.x);
+						dT1 = MIN(dist1, d_d.x);
 					break;
 				}
 				dist1 += d_d.x;
 			}
 			for (int kk = d_Nxyz.x - 1; kk >= apuX1; kk--) {
-				if (dist2 <= 0.f) {
+				if (dist2 <= FLOAT_ZERO) {
 					apuX2 = kk;
 					if (kk == d_Nxyz.x - 1)
 						dT2 = d_d.x;
 					else
-						dT2 = min(-dist2, d_d.x);
+						dT2 = MIN(-dist2, d_d.x);
 					break;
 				}
 				dist2 -= d_d.x;
@@ -495,11 +550,11 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			XY = true;
 #endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
 		}
-		else if (fabs(diff.x) < 1e-6f && d.x <= d_bmax.x && d.x >= b.x && s.x <= d_bmax.x && s.x >= b.x) {
+		else if (FABS(diff.x) < 1e-6f && d.x <= d_bmax.x && d.x >= b.x && s.x <= d_bmax.x && s.x >= b.x) {
 			apuX1 = 0;
 			apuX2 = d_Nxyz.y - 1;
 // #if defined(LISTMODE)
-			float dist1, dist2 = 0.f;
+			FLOAT dist1, dist2 = FLOAT_ZERO;
 			if (s.y > d.y) {
 				dist1 = (b.y - d.y);
 				dist2 = (b.y + CFLOAT(d_Nxyz.y) * d_d.y - s.y);
@@ -514,7 +569,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 					if (kk == 0)
 						dT1 = d_d.y;
 					else
-						dT1 = min(dist1, d_d.y);
+						dT1 = MIN(dist1, d_d.y);
 					break;
 				}
 				dist1 += d_d.y;
@@ -525,7 +580,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 					if (kk == d_Nxyz.y - 1)
 						dT2 = d_d.y;
 					else
-						dT2 = min(-dist2, d_d.y);
+						dT2 = MIN(-dist2, d_d.y);
 					break;
 				}
 				dist2 -= d_d.y;
@@ -540,10 +595,10 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			b2 = b.x;
 			d1 = d_d.y;
 			d2 = d_d.x;
-			float s_b = s.x;
+			FLOAT s_b = s.x;
 			s.x = s.y;
 			s.y = s_b;
-			float diff_b = diff.x;
+			FLOAT diff_b = diff.x;
 			diff.x = diff.y;
 			diff.y = diff_b;
 #endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
@@ -567,9 +622,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(ORTH)
 #if defined(VOL)
 #if defined(TOTLENGTH)
-		temp *= (1.f / TotV);
+		temp *= (FLOAT_ONE / TotV);
 #else
-		temp *= (1.f / (TotV * d_d2 * CFLOAT(apuX2 - apuX1)));
+		temp *= (FLOAT_ONE / (TotV * d_d2 * CFLOAT(apuX2 - apuX1)));
 #endif
 #endif
 		if (d_N2 == 1)
@@ -582,7 +637,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			D = dI;
 			DD = D;
 #endif //////////////// END TOF ////////////////
-			for (uint ii = apuX1; ii <= apuX2; ii++) {
+			for (int ii = apuX1; ii <= apuX2; ii++) {
 				float d_in = d_d2;
 // #if defined(LISTMODE)
 				if (ii == apuX1) {
@@ -612,7 +667,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif //////////////// END TOF ////////////////
 #ifdef ORTH //////////////// ORTH/VOL ////////////////
 				//const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
-                center.x = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
+                center.x = b1 + d1 * CFLOAT(ii) + d1 / FLOAT_TWO;
 				orthDistance3D(ii, 
                     diff, //diff.y, diff.x, diff.z, 
                     center, //xcenter, 
@@ -733,17 +788,18 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	// /*
 	else {
 		// return;
-		float txu = 0.f, tyu = 0.f, tzu = 0.f, tc = 0.f, tx0 = 1e8f, ty0 = 1e8f, tz0 = 1e8f;
+		float txu = 0.f, tyu = 0.f, tzu = 0.f, tc = 0.f;
+		float tx0 = 1e8f, ty0 = 1e8f, tz0 = 1e8f;
 		bool skip = false, XY = true;
 #ifdef TOF //////////////// TOF ////////////////
-        float TOFSum = 0.f;
+        FLOAT TOFSum = FLOAT_ZERO;
 #endif //////////////// END TOF ////////////////
 
 		// If the measurement is on a same ring
 			// Z-coordinate (ring)
-		if (fabs(diff.z) < 1e-6f) {
+		if (FABS(diff.z) < 1e-6f) {
 		    	// return;
-			tempk = CINT(fabs(s.z - b.z) / d_d.z);
+			tempk = CINT(FABS(s.z - b.z) / d_d.z);
 			if (tempk < 0 || tempk >= d_Nxyz.z)
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
 		    	continue;
@@ -753,7 +809,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			skip = siddon_pre_loop_2D(b.x, b.y, diff.x, diff.y, d_bmax.x, d_bmax.y, d_d.x, d_d.y, d_Nxyz.x, d_Nxyz.y, &tempi, &tempj, &txu, &tyu, &Np, TYPE,
 				s.y, s.x, d.y, d.x, &tc, &ux, &uy, &tx0, &ty0, &XY);
 		}
-		else if (fabs(diff.y) < 1e-6f) {
+		else if (FABS(diff.y) < 1e-6f) {
 			// return;
 			tempj = perpendicular_start(b.y, d.y, d_d.y, d_Nxyz.y);
 			skip = siddon_pre_loop_2D(b.x, b.z, diff.x, diff.z, d_bmax.x, d_bmax.z, d_d.x, d_d.z, d_Nxyz.x, d_Nxyz.z, &tempi, &tempk, &txu, &tzu, &Np, TYPE,
@@ -762,7 +818,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			if (d.y > d_bmax.y || d.y < b.y)
 				skip = true;
 		}
-		else if (fabs(diff.x) < 1e-6f) {
+		else if (FABS(diff.x) < 1e-6f) {
 			// return;
 			tempi = perpendicular_start(b.x, d.x, d_d.x, d_Nxyz.x);
 			skip = siddon_pre_loop_2D(b.y, b.z, diff.y, diff.z, d_bmax.y, d_bmax.z, d_d.y, d_d.z, d_Nxyz.y, d_Nxyz.z, &tempj, &tempk, &tyu, &tzu, &Np, TYPE,
@@ -780,7 +836,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #else
 		    return;
 #endif  //////////////// END MULTIRAY ////////////////
-		// L = length(s + (d - s) * tc);
+		// L = LENGTH(s + (d - s) * tc);
 #ifdef TOF
 		TOFDis(diff, tc, L, &D, &DD);
 #endif
@@ -988,18 +1044,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif //////////////// END ATTENUATIONLOR ////////////////
 #endif
 #endif //////////////// END PET/SPECT ////////////////
-// #if (defined(SPECT) && !defined(ORTH)) // Ray length inside BP mask
-// 		float L_SPECT = 0.f;
-// //#ifdef N_RAYS
-// 		temp = temp * (L * CFLOAT(N_RAYS));
-// //#else
-// //		temp = temp * L;
-// //#endif
-// #endif
-
 		for (uint ii = 0u; ii < Np; ii++) {
 // #if defined(LISTMODE)
-			local_ele = 0.f;
+			local_ele = FLOAT_ZERO;
 // #endif
 			local_ind = compute_ind(tempj, tempi * d_N2, tempk, d_N3, d_Nxy);
 			localInd = CMINT3(tempi, tempj, tempk);

@@ -48,6 +48,7 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	else if (type == 2)
 		inputScalars.FPType = 0;
 
+    inputScalars.useHalf = getScalarBool(options, 0, "useHalf");
 	inputScalars.det_per_ring = getScalarUInt32(options, 0, "det_per_ring");
 	inputScalars.rings = getScalarUInt32(options, 0, "rings");
 	inputScalars.global_factor = getScalarFloat(options, 0, "global_correction_factor");

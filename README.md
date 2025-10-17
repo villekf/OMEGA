@@ -18,6 +18,7 @@ Open-source multi-dimensional tomographic reconstruction software for MATLAB, GN
     - [MATLAB](#matlab)
     - [Python](#python)
     - [Intel](#intel)
+    - [Apple / Metal / MacOS](#apple--metal--macos)
 - [Reporting bugs and feature requests](#reporting-bugs-and-feature-requests)
 - [How to cite OMEGA](#citations)
 - [Acknowledgments](#acknowledgments)
@@ -279,6 +280,20 @@ Status messages, such as the current iteration number, might be displayed only a
 ### Intel
 
 Intel GPUs do not support forward and/or backward projection masks. 
+
+### Apple / Metal / MacOS
+
+- Currently supports only custom projection operations (`A * x`, `A^T * y`) due to no native ArrayFire binaries with Metal backend
+- No PET support
+- No CT support
+- Only SPECT support
+- No automatic sensitivity image computation
+- No support for projector types 4 and 5
+- No Python support
+- Normalization correction not tested
+- Scatter correction not tested
+- Incomplete half-precision (FP16) support
+
 
 ## Reporting Bugs and Feature Requests
 

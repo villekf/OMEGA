@@ -288,7 +288,7 @@ if ~isfield(options,'use_device')
     options.use_device = uint32(0);
 end
 if ~isfield(options,'implementation')
-    options.implementation = 2;
+    options.implementation = 2; % Keep this at 2 to ensure Metal compatibility
 end
 if ~isfield(options,'platform')
     options.platform = 0;
@@ -1044,4 +1044,7 @@ if ~isfield(options, 'CORtoDetectorSurface') % SPECT detector surface distance f
 end
 if ~isfield(options, 'swivelAngles')
     options.swivelAngles = [];
+end
+if ~isfield(options, 'useHalf') % When true, computations are performed with FP16 precision instead of FP32
+    options.useHalf = 0;
 end

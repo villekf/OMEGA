@@ -94,7 +94,7 @@ function outputFP = forwardProjectionType6(options, recApu, loopVar, koko)
     end
 end
 
-if options.implementation == 4 || options.implementation == 1
+if (~ismac && (options.implementation == 4 || options.implementation == 1)) || (ismac && options.projector_type == 6)
     if options.projector_type == 6
         outputFP = forwardProjectionType6(options, recApu, loopVar, koko);
         A = [];
@@ -204,7 +204,7 @@ if options.implementation == 4 || options.implementation == 1
             end
         end
     end
-elseif options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+elseif options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || ismac
     A = [];
     if ~isfield(options,'orthTransaxial') && (options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 22 || options.projector_type == 33)
         if options.projector_type == 3 || options.projector_type == 33
@@ -315,5 +315,5 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
         options.z_index, crystal_size_z, ... % 34
         options.x_center, options.y_center, options.z_center, single(0), 0, options.projector_type, n_rays, n_rays3D, ... % 42
         options, single(0), options.partitions, options.use_64bit_atomics, options.bmin, options.bmax, options.Vmax, options.V, options.gaussK, 1, 1); % 51
-end
+    end
 end
