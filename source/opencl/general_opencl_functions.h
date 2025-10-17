@@ -1081,7 +1081,7 @@ DEVICE void getDetectorCoordinatesSPECT(
 #else
 	CONSTANT float *d_xyz, 
 #endif
-    CONSTANT float *d_uv, PTR_THR FLOAT3 *s, PTR_THR FLOAT3 *d, const uint3 i, const uint d_size_x, const uint d_sizey, const FLOAT2 d_dPitch, const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource, int lorXY, size_t idx) {
+    CONSTANT float *d_uv, PTR_THR FLOAT3 *s, PTR_THR FLOAT3 *d, const int3 i, const uint d_size_x, const uint d_sizey, const FLOAT2 d_dPitch, const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource, int lorXY, size_t idx) {
 	uint id = i.z * 6;
 	*s = CMFLOAT3((FLOAT)d_xyz[id], (FLOAT)d_xyz[id + 1], (FLOAT)d_xyz[id + 2]); // TODO remove cast
 	*d = CMFLOAT3((FLOAT)d_xyz[id + 3], (FLOAT)d_xyz[id + 4], (FLOAT)d_xyz[id + 5]); // TODO remove cast
@@ -1483,7 +1483,7 @@ DEVICE bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1
 
 DEVICE bool siddon_pre_loop_3D(const FLOAT3 b, const FLOAT3 diff, const FLOAT3 max, const FLOAT3 dd, const uint3 N, PTR_THR int *tempi, PTR_THR int *tempj, PTR_THR int *tempk, 
     PTR_THR float *txu, PTR_THR float *tyu, PTR_THR float *tzu, PTR_THR uint *Np, const int TYYPPI, const FLOAT3 s, const FLOAT3 d, PTR_THR float *tc, PTR_THR int *i, PTR_THR int *j, PTR_THR int *k, PTR_THR float *tx0, 
-	PTR_THR float *ty0, PTR_THR float *tz0, PTR_THR bool *xy, const uint3 ii) {
+	PTR_THR float *ty0, PTR_THR float *tz0, PTR_THR bool *xy, const int3 ii) {
 
 	const float3 apuT = (float3)b - (float3)s;
 	const float3 t0 = apuT / (float3)diff;
