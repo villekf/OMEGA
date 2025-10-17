@@ -6,7 +6,7 @@
 % Used data available from: https://doi.org/10.5281/zenodo.12722386
 % Implementation 2 is used by default, but the device number can be set
 % below (options.use_device)
-clear mex
+clear
 
 % Set the path (to the folder) of the above mat-file to here (if NOT in
 % MATLAB/Octave path):
