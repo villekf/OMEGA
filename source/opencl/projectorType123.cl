@@ -256,7 +256,7 @@ void projectorType123(
 	UNPACK_METAL_PARAMS(P1)
 	uint GID0 = i.x;
 #else
-	uint3 i = MUINT3(GID0, GID1, GID2);
+	int3 i = MINT3(GID0, GID1, GID2);
 #endif
 #if STYPE == 1 || STYPE == 2 || STYPE == 4 || STYPE == 5
 	getIndex(&i, d_size_x, d_sizey, currentSubset);
