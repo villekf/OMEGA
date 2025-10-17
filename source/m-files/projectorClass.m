@@ -357,13 +357,22 @@ classdef projectorClass
 
                     endSinogramRows = obj.param.FOVa_x / obj.param.dPitchX; % Desired amount of sinogram rows
                     endSinogramCols = obj.param.axial_fov / obj.param.dPitchY; % Desired amount of sinogram columns
-                    obj.param.SinM = resize(obj.param.SinM, endSinogramRows, Dimension=1, FillValue=0, Side="both"); % Pad or trim sinogram rows
-                    obj.param.SinM = resize(obj.param.SinM, endSinogramCols, Dimension=2, FillValue=0, Side="both"); % Pad or trim sinogram columns
                     obj.param.nRowsD = obj.param.Nx; % Set new sinogram size
                     obj.param.nColsD = obj.param.Nz; % Set new sinogram size
                     
-                    % Now the sinogram and FOV XZ-plane match in physical dimensions but not in resolution.
-                    obj.param.SinM = imresize(obj.param.SinM, [obj.param.Nx, obj.param.Nz]); % Resample the sinogram
+                    if iscell(obj.param.SinM)
+                        for partition = 1:obj.param.partitions
+                            obj.param.SinM{partition} = resize(obj.param.SinM{partition}, endSinogramRows, Dimension=1, FillValue=0, Side="both"); % Pad or trim sinogram rows
+                            obj.param.SinM {partition}= resize(obj.param.SinM{partition}, endSinogramCols, Dimension=2, FillValue=0, Side="both"); % Pad or trim sinogram columns
+                            % Now the sinogram and FOV XZ-plane match in physical dimensions but not in resolution.
+                            obj.param.SinM{partition} = imresize(obj.param.SinM{partition}, [obj.param.Nx, obj.param.Nz]); % Resample the sinogram
+                        end
+                    else
+                        obj.param.SinM = resize(obj.param.SinM, endSinogramRows, Dimension=1, FillValue=0, Side="both"); % Pad or trim sinogram rows
+                        obj.param.SinM = resize(obj.param.SinM, endSinogramCols, Dimension=2, FillValue=0, Side="both"); % Pad or trim sinogram columns
+                        % Now the sinogram and FOV XZ-plane match in physical dimensions but not in resolution.
+                        obj.param.SinM = imresize(obj.param.SinM, [obj.param.Nx, obj.param.Nz]); % Resample the sinogram
+                    end
                 end
                 %% Other SPECT preprocessing
                 if numel(obj.param.swivelAngles) == 0
@@ -719,7 +728,7 @@ classdef projectorClass
             elseif obj.param.CT || obj.param.PET || (obj.param.SPECT && obj.param.projector_type ~= 6)
                 if obj.param.subset_type >= 8 && obj.param.subsets > 1 && ~obj.param.FDK
                     if obj.param.CT || obj.param.SPECT
-                        x_det = reshape(x_det, 6, obj.param.nProjections);
+                        x_det = reshape(x_det, 6, obj.param.partitions*obj.param.nProjections);
                         x_det = x_det(:,obj.index);
                         x_det = x_det(:);
                         if obj.param.pitch
@@ -727,7 +736,7 @@ classdef projectorClass
                             z_det = z_det(:,obj.index);
                             z_det = z_det(:);
                         else
-                            z_det = reshape(z_det, 2, obj.param.nProjections);
+                            z_det = reshape(z_det, 2, obj.param.partitions*obj.param.nProjections);
                             z_det = z_det(:,obj.index);
                             z_det = z_det(:);
                         end
