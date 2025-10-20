@@ -750,98 +750,55 @@ if ~options.SPECT
     if options.arc_correction && ~options.precompute_lor
         [x, y, options] = arcCorrection(options, true);
     end
-end
 
-% Load (or compute) normalization correction coefficients
-if (options.normalization_correction && options.corrections_during_reconstruction) && ~options.use_user_normalization
-    if ~isfield(options,'normalization') || isempty(options.normalization)
-        if options.use_raw_data
-            norm_file = [folder options.machine_name '_normalization_listmode.mat'];
-            if exist(norm_file, 'file') == 2
-                options.normalization = loadStructFromFile(norm_file,'normalization');
-            else
-                error('Normalization correction selected, but no normalization data found')
-            end
-        else
-            norm_file = [folder options.machine_name '_normalization_' num2str(options.Ndist) 'x' num2str(options.Nang) '_span' num2str(options.span) '.mat'];
-            if exist(norm_file, 'file') == 2
-                options.normalization = loadStructFromFile(norm_file,'normalization');
-            else
-                error('Normalization correction selected, but no normalization data found')
-            end
-        end
-        options.normalization(options.normalization <= 0) = 1;
-        options.normalization = 1./options.normalization(:);
-        if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-            options.normalization = single(options.normalization);
-        end
-        if ~options.use_raw_data && options.NSinos ~= options.TotSinos
-            options.normalization = options.normalization(1 : options.Ndist * options.Nang *options.NSinos);
-        end
-        if options.sampling > 1 && options.corrections_during_reconstruction
-            options.normalization = reshape(options.normalization, options.Ndist, options.Nang, options.NSinos);
-            options.normalization = interpolateSinog(options.normalization, options.sampling, options.Ndist, options.partitions, options.sampling_interpolation_method);
-            options.normalization = options.normalization(:);
-        end
-    end
-elseif options.normalization_correction && options.use_user_normalization && options.corrections_during_reconstruction
-    if ~isfield(options,'normalization') || isempty(options.normalization)
-        [file, fpath] = uigetfile({'*.nrm;*.mat'},'Select normalization datafile');
-        if isequal(file, 0)
-            error('No file was selected')
-        end
-        if any(strfind(file, '.nrm'))
+    % Load (or compute) normalization correction coefficients
+    if (options.normalization_correction && options.corrections_during_reconstruction) && ~options.use_user_normalization
+        if ~isfield(options,'normalization') || isempty(options.normalization)
             if options.use_raw_data
-                error('Inveon normalization data cannot be used with raw list-mode data')
-            end
-            fid = fopen(fullfile(fpath, file));
-            options.normalization = fread(fid, inf, 'single=>single',0,'l');
-            fclose(fid);
-            if numel(options.normalization) ~= options.Ndist * options.Nang * options.TotSinos && ~options.use_raw_data
-                error('Size mismatch between the current data and the normalization data file')
-            end
-            options.InveonNorm = true;
-        else
-            data = load(fullfile(fpath, file));
-            variables = fieldnames(data);
-            if any(strcmp(variables,'normalization'))
-                options.normalization = data.(variables{strcmp(variables,'normalization')});
+                norm_file = [folder options.machine_name '_normalization_listmode.mat'];
+                if exist(norm_file, 'file') == 2
+                    options.normalization = loadStructFromFile(norm_file,'normalization');
+                else
+                    error('Normalization correction selected, but no normalization data found')
+                end
             else
-                options.normalization = data.(variables{1});
+                norm_file = [folder options.machine_name '_normalization_' num2str(options.Ndist) 'x' num2str(options.Nang) '_span' num2str(options.span) '.mat'];
+                if exist(norm_file, 'file') == 2
+                    options.normalization = loadStructFromFile(norm_file,'normalization');
+                else
+                    error('Normalization correction selected, but no normalization data found')
+                end
             end
-            clear data
-            if numel(options.normalization) ~= options.Ndist * options.Nang * options.TotSinos && ~options.use_raw_data
-                error('Size mismatch between the current data and the normalization data file')
-            elseif numel(options.normalization) ~= sum(1:options.detectors) && options.use_raw_data
-                error('Size mismatch between the current data and the normalization data file')
+            options.normalization(options.normalization <= 0) = 1;
+            options.normalization = 1./options.normalization(:);
+            if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
+                options.normalization = single(options.normalization);
+            end
+            if ~options.use_raw_data && options.NSinos ~= options.TotSinos
+                options.normalization = options.normalization(1 : options.Ndist * options.Nang *options.NSinos);
+            end
+            if options.sampling > 1 && options.corrections_during_reconstruction
+                options.normalization = reshape(options.normalization, options.Ndist, options.Nang, options.NSinos);
+                options.normalization = interpolateSinog(options.normalization, options.sampling, options.Ndist, options.partitions, options.sampling_interpolation_method);
+                options.normalization = options.normalization(:);
             end
         end
-        if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-            options.normalization = single(options.normalization);
-        else
-            options.normalization = double(options.normalization);
-        end
-        options.normalization = 1./options.normalization(:);
-        if ~options.use_raw_data && options.NSinos ~= options.TotSinos
-            options.normalization = options.normalization(1 : options.Ndist * options.Nang *options.NSinos);
-        end
-        if options.sampling > 1 && options.corrections_during_reconstruction
-            options.normalization = reshape(options.normalization, options.Ndist, options.Nang, options.NSinos);
-            options.normalization = interpolateSinog(options.normalization, options.sampling, options.Ndist, options.partitions, options.sampling_interpolation_method);
-            options.normalization = options.normalization(:);
-        end
-    end
-elseif options.normalization_correction && ~options.corrections_during_reconstruction
-    if ~isfield(options,'normalization') || isempty(options.normalization)
-        if options.use_user_normalization
+    elseif options.normalization_correction && options.use_user_normalization && options.corrections_during_reconstruction
+        if ~isfield(options,'normalization') || isempty(options.normalization)
             [file, fpath] = uigetfile({'*.nrm;*.mat'},'Select normalization datafile');
             if isequal(file, 0)
                 error('No file was selected')
             end
             if any(strfind(file, '.nrm'))
+                if options.use_raw_data
+                    error('Inveon normalization data cannot be used with raw list-mode data')
+                end
                 fid = fopen(fullfile(fpath, file));
                 options.normalization = fread(fid, inf, 'single=>single',0,'l');
                 fclose(fid);
+                if numel(options.normalization) ~= options.Ndist * options.Nang * options.TotSinos && ~options.use_raw_data
+                    error('Size mismatch between the current data and the normalization data file')
+                end
                 options.InveonNorm = true;
             else
                 data = load(fullfile(fpath, file));
@@ -852,87 +809,130 @@ elseif options.normalization_correction && ~options.corrections_during_reconstru
                     options.normalization = data.(variables{1});
                 end
                 clear data
-                if iscell(options.SinM)
-                    if numel(options.normalization) ~= numel(options.SinM{1})
-                        error('Size mismatch between the current data and the normalization data file')
+                if numel(options.normalization) ~= options.Ndist * options.Nang * options.TotSinos && ~options.use_raw_data
+                    error('Size mismatch between the current data and the normalization data file')
+                elseif numel(options.normalization) ~= sum(1:options.detectors) && options.use_raw_data
+                    error('Size mismatch between the current data and the normalization data file')
+                end
+            end
+            if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
+                options.normalization = single(options.normalization);
+            else
+                options.normalization = double(options.normalization);
+            end
+            options.normalization = 1./options.normalization(:);
+            if ~options.use_raw_data && options.NSinos ~= options.TotSinos
+                options.normalization = options.normalization(1 : options.Ndist * options.Nang *options.NSinos);
+            end
+            if options.sampling > 1 && options.corrections_during_reconstruction
+                options.normalization = reshape(options.normalization, options.Ndist, options.Nang, options.NSinos);
+                options.normalization = interpolateSinog(options.normalization, options.sampling, options.Ndist, options.partitions, options.sampling_interpolation_method);
+                options.normalization = options.normalization(:);
+            end
+        end
+    elseif options.normalization_correction && ~options.corrections_during_reconstruction
+        if ~isfield(options,'normalization') || isempty(options.normalization)
+            if options.use_user_normalization
+                [file, fpath] = uigetfile({'*.nrm;*.mat'},'Select normalization datafile');
+                if isequal(file, 0)
+                    error('No file was selected')
+                end
+                if any(strfind(file, '.nrm'))
+                    fid = fopen(fullfile(fpath, file));
+                    options.normalization = fread(fid, inf, 'single=>single',0,'l');
+                    fclose(fid);
+                    options.InveonNorm = true;
+                else
+                    data = load(fullfile(fpath, file));
+                    variables = fieldnames(data);
+                    if any(strcmp(variables,'normalization'))
+                        options.normalization = data.(variables{strcmp(variables,'normalization')});
+                    else
+                        options.normalization = data.(variables{1});
+                    end
+                    clear data
+                    if iscell(options.SinM)
+                        if numel(options.normalization) ~= numel(options.SinM{1})
+                            error('Size mismatch between the current data and the normalization data file')
+                        end
+                    else
+                        if numel(options.normalization) ~= numel(options.SinM)
+                            error('Size mismatch between the current data and the normalization data file')
+                        end
+                    end
+                end
+                options.normalization = options.normalization(:);
+            else
+                if options.use_raw_data
+                    norm_file = [folder options.machine_name '_normalization_listmode.mat'];
+                else
+                    norm_file = [folder options.machine_name '_normalization_' num2str(options.Ndist) 'x' num2str(options.Nang) '_span' num2str(options.span) '.mat'];
+                end
+                if exist(norm_file, 'file') == 2
+                    options.normalization = loadStructFromFile(norm_file,'normalization');
+                else
+                    error('Normalization correction selected, but no normalization data found')
+                end
+                options.normalization = options.normalization(:);
+            end
+            if ~options.use_raw_data && options.NSinos ~= options.TotSinos
+                options.normalization = options.normalization(1 : options.Ndist * options.Nang *options.NSinos);
+            end
+        end
+        NN = options.Ndist * options.Nang * options.NSinos;
+        if iscell(options.SinM)
+            for kk = 1 : options.partitions
+                options.SinM{kk} = options.SinM{kk}(:);
+                if options.TOF_bins > 1
+                    for uu = 1 : options.TOF_bins
+                        if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
+                            options.SinM{kk}(NN * (uu - 1) + 1: NN * uu) = single(full(options.SinM{kk}(NN * (uu - 1) + 1: NN * uu))) .* single(options.normalization);
+                        else
+                            options.SinM{kk}(NN * (uu - 1) + 1: NN * uu) = full(options.SinM{kk}(NN * (uu - 1) + 1: NN * uu)) .* double(options.normalization);
+                        end
                     end
                 else
-                    if numel(options.normalization) ~= numel(options.SinM)
-                        error('Size mismatch between the current data and the normalization data file')
+                    if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
+                        options.SinM{kk} = single(full(options.SinM{kk})) .* single(options.normalization);
+                    else
+                        options.SinM{kk} = full(options.SinM{kk}) .* double(options.normalization);
                     end
                 end
             end
-            options.normalization = options.normalization(:);
         else
-            if options.use_raw_data
-                norm_file = [folder options.machine_name '_normalization_listmode.mat'];
-            else
-                norm_file = [folder options.machine_name '_normalization_' num2str(options.Ndist) 'x' num2str(options.Nang) '_span' num2str(options.span) '.mat'];
-            end
-            if exist(norm_file, 'file') == 2
-                options.normalization = loadStructFromFile(norm_file,'normalization');
-            else
-                error('Normalization correction selected, but no normalization data found')
-            end
-            options.normalization = options.normalization(:);
-        end
-        if ~options.use_raw_data && options.NSinos ~= options.TotSinos
-            options.normalization = options.normalization(1 : options.Ndist * options.Nang *options.NSinos);
-        end
-    end
-    NN = options.Ndist * options.Nang * options.NSinos;
-    if iscell(options.SinM)
-        for kk = 1 : options.partitions
-            options.SinM{kk} = options.SinM{kk}(:);
             if options.TOF_bins > 1
+                options.SinM = options.SinM(:);
                 for uu = 1 : options.TOF_bins
                     if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                        options.SinM{kk}(NN * (uu - 1) + 1: NN * uu) = single(full(options.SinM{kk}(NN * (uu - 1) + 1: NN * uu))) .* single(options.normalization);
+                        options.SinM(NN * (uu - 1) + 1: NN * uu) = single(full(options.SinM(NN * (uu - 1) + 1: NN * uu))) .* single(options.normalization);
                     else
-                        options.SinM{kk}(NN * (uu - 1) + 1: NN * uu) = full(options.SinM{kk}(NN * (uu - 1) + 1: NN * uu)) .* double(options.normalization);
+                        options.SinM(NN * (uu - 1) + 1: NN * uu) = full(options.SinM(NN * (uu - 1) + 1: NN * uu)) .* double(options.normalization);
                     end
                 end
             else
+                options.SinM = options.SinM(:);
                 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                    options.SinM{kk} = single(full(options.SinM{kk})) .* single(options.normalization);
+                    options.SinM = single(full(options.SinM)) .* single(options.normalization);
                 else
-                    options.SinM{kk} = full(options.SinM{kk}) .* double(options.normalization);
+                    options.SinM = full(options.SinM) .* double(options.normalization);
                 end
             end
         end
-    else
-        if options.TOF_bins > 1
-            options.SinM = options.SinM(:);
-            for uu = 1 : options.TOF_bins
-                if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                    options.SinM(NN * (uu - 1) + 1: NN * uu) = single(full(options.SinM(NN * (uu - 1) + 1: NN * uu))) .* single(options.normalization);
-                else
-                    options.SinM(NN * (uu - 1) + 1: NN * uu) = full(options.SinM(NN * (uu - 1) + 1: NN * uu)) .* double(options.normalization);
-                end
-            end
+        if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
+            options.normalization = single(0);
         else
-            options.SinM = options.SinM(:);
-            if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                options.SinM = single(full(options.SinM)) .* single(options.normalization);
-            else
-                options.SinM = full(options.SinM) .* double(options.normalization);
-            end
+            options.normalization = 0;
+        end
+    else
+        if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
+            options.normalization = single(0);
+        else
+            options.normalization = 0;
         end
     end
-    if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-        options.normalization = single(0);
-    else
-        options.normalization = 0;
+    if options.sampling > 1 && ~options.precompute_lor
+        [~, ~, options] = increaseSampling(options, x, y, true);
     end
-else
-    if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-        options.normalization = single(0);
-    else
-        options.normalization = 0;
-    end
-end
-if options.sampling > 1 && ~options.precompute_lor
-    [~, ~, options] = increaseSampling(options, x, y, true);
 end
 
 % Other SPECT corrections
