@@ -26,7 +26,7 @@
 #define NS_PRIVATE_IMPLEMENTATION
 #define CA_PRIVATE_IMPLEMENTATION
 #define MTL_PRIVATE_IMPLEMENTATION
-#include "metal/Metal.hpp"
+#include "Metal.hpp"
 #include "ProjectorClassMetal.hpp"
 #define CL_INT int
 #define CL_LONG long

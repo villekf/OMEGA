@@ -9,6 +9,7 @@ Open-source multi-dimensional tomographic reconstruction software for MATLAB, GN
 - [Getting started](#getting-started)
 - [System requirements](#system-requirements)
 - [Installation](#installation)
+    - [MacOS](#MacOS)
 - [Additional and upcoming features](#additional-and-upcoming-features)
     - [Independent functions](#independent-functions)
     - [Upcoming features](#upcoming-features)
@@ -112,7 +113,7 @@ As a first step you should install either OpenCL (install either https://github.
 
 Pre-built libraries are supplied in the [releases](https://github.com/villekf/OMEGA/releases), however, you can also manually compile everything. 
 
-For manual compilation you're going to need a C++ compiler in order to compile the MEX-files/libraries and use this software. Visual Studio and GCC have been tested to work and are recommended depending on your platform (Visual Studio in Windows, GCC in Linux, clang should work in MacOS). Specifically, Visual Studio 2019 and 2022 have been tested to work in Windows 10 and as well as g++ 9.3 and g++ 10.5 on Ubuntu 22.04. MinGW++ also works though it is unable to compile ArrayFire OpenCL reconstructions (implementation 2) in Windows by default. Octave supports only MinGW++ in Windows and as such implementation 2 in Windows is only supported if you manually compile ArrayFire from source with MinGW (for instructions, see [here](https://github.com/villekf/OMEGA/wiki/Building-ArrayFire-with-Mingw-on-Windows)). On MacOS you also need the single-header version of metal-cpp.
+For manual compilation you're going to need a C++ compiler in order to compile the MEX-files/libraries and use this software. Visual Studio and GCC have been tested to work and are recommended depending on your platform (Visual Studio in Windows, GCC in Linux, clang should work in MacOS). Specifically, Visual Studio 2019 and 2022 have been tested to work in Windows 10 and as well as g++ 9.3 and g++ 10.5 on Ubuntu 22.04. MinGW++ also works though it is unable to compile ArrayFire OpenCL reconstructions (implementation 2) in Windows by default. Octave supports only MinGW++ in Windows and as such implementation 2 in Windows is only supported if you manually compile ArrayFire from source with MinGW (for instructions, see [here](https://github.com/villekf/OMEGA/wiki/Building-ArrayFire-with-Mingw-on-Windows)).
 
 MinGW++ for MATLAB can be downloaded from [here](https://se.mathworks.com/matlabcentral/fileexchange/52848-matlab-support-for-mingw-w64-c-c-compiler).
 
@@ -196,6 +197,10 @@ For additional install help, see [installation help](https://omega-doc.readthedo
 
 Portions of version 2 were tested with the following GPUs: Nvidia Tesla A100, AMD Instinct MI100, Nvidia Tesla P100, Nvidia Tesla M40, Nvidia GeForce RTX 4060, Nvidia GeForce RTX 4090, AMD Radeon 7900 XT, Nvidia Titan RTX, Nvidia Quadro A6000 Ada, and Intel Arc A380.
 All the GPUs were tested on Linux except AMD Radeon 7900 XT which was tested on Windows.
+
+### MacOS
+
+For installation on MacOS you need Xcode. You also need the single-header version of metal-cpp. The `Metal.hpp` header file should be placed in the folder `source/cpp`. ArrayFire-based reconstructions are not supported due to no available ArrayFire binaries with Metal backend.
 
 ## Additional and upcoming features
 

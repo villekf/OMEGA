@@ -3,7 +3,7 @@
 #define NS_PRIVATE_IMPLEMENTATION
 #define CA_PRIVATE_IMPLEMENTATION
 #define MTL_PRIVATE_IMPLEMENTATION
-#include "metal/Metal.hpp"
+#include "Metal.hpp"
 #include <simd/simd.h>
 
 #define TH 100000000000.f
