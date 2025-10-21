@@ -9,6 +9,7 @@ Open-source multi-dimensional tomographic reconstruction software for MATLAB, GN
 - [Getting started](#getting-started)
 - [System requirements](#system-requirements)
 - [Installation](#installation)
+    - [Windows / Linux](#windows--linux)
     - [MacOS](#MacOS)
 - [Additional and upcoming features](#additional-and-upcoming-features)
     - [Independent functions](#independent-functions)
@@ -106,6 +107,8 @@ The following third-party MATLAB codes are NOT required, but can be useful in ce
 - [Tools for NIfTI and ANALYZE image](https://www.mathworks.com/matlabcentral/fileexchange/8797-tools-for-nifti-and-analyze-image) to load/save Analyze files and also NIfTI files in absence of image processing toolbox.
 
 ## Installation
+
+### Windows / Linux
 
 For additional install help, see [installation help](https://omega-doc.readthedocs.io/en/latest/installation.html).
 
