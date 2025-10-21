@@ -125,7 +125,7 @@ void projectorType123(
 #endif
 	const CLGLOBAL float* d_OSEM [[buffer(19)]],
 	CLGLOBAL float* d_output [[buffer(20)]], 
-	uint3 i [[thread_position_in_grid]]   // global id
+	uint3 temp_i [[thread_position_in_grid]]   // global id
 
 #else /////////////////////// OPENCL/CUDA ///////////////////////
 	const float global_factor, 
@@ -254,10 +254,11 @@ void projectorType123(
 ) {
 #if defined(METAL) // Unpack scalar parameters
 	UNPACK_METAL_PARAMS(P1)
-	uint GID0 = i.x;
-#else
-	int3 i = MINT3(GID0, GID1, GID2);
+	int GID0 = temp_i.x;
+	int GID1 = temp_i.y;
+	int GID2 = temp_i.z;
 #endif
+	int3 i = MINT3(GID0, GID1, GID2);
 #if STYPE == 1 || STYPE == 2 || STYPE == 4 || STYPE == 5
 	getIndex(&i, d_size_x, d_sizey, currentSubset);
 #endif

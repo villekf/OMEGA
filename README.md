@@ -9,6 +9,8 @@ Open-source multi-dimensional tomographic reconstruction software for MATLAB, GN
 - [Getting started](#getting-started)
 - [System requirements](#system-requirements)
 - [Installation](#installation)
+    - [Windows / Linux](#windows--linux)
+    - [MacOS](#MacOS)
 - [Additional and upcoming features](#additional-and-upcoming-features)
     - [Independent functions](#independent-functions)
     - [Upcoming features](#upcoming-features)
@@ -106,6 +108,8 @@ The following third-party MATLAB codes are NOT required, but can be useful in ce
 
 ## Installation
 
+### Windows / Linux
+
 For additional install help, see [installation help](https://omega-doc.readthedocs.io/en/latest/installation.html).
 
 As a first step you should install either OpenCL (install either https://github.com/GPUOpen-LibrariesAndSDKs/OCL-SDK/releases/tag/1.0 for Windows or in Linux use `sudo apt install ocl-icd-opencl-dev`) or [CUDA](https://developer.nvidia.com/cuda-downloads), and then [ArrayFire](https://arrayfire.com/binaries/). See more details in the above link or below.
@@ -196,6 +200,10 @@ For additional install help, see [installation help](https://omega-doc.readthedo
 
 Portions of version 2 were tested with the following GPUs: Nvidia Tesla A100, AMD Instinct MI100, Nvidia Tesla P100, Nvidia Tesla M40, Nvidia GeForce RTX 4060, Nvidia GeForce RTX 4090, AMD Radeon 7900 XT, Nvidia Titan RTX, Nvidia Quadro A6000 Ada, and Intel Arc A380.
 All the GPUs were tested on Linux except AMD Radeon 7900 XT which was tested on Windows.
+
+### MacOS
+
+For installation on MacOS you need Xcode. You also need the single-header version of metal-cpp. The `Metal.hpp` header file should be placed in the folder `source/cpp`. ArrayFire-based reconstructions are not supported due to no available ArrayFire binaries with Metal backend.
 
 ## Additional and upcoming features
 

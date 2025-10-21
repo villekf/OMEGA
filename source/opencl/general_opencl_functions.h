@@ -98,55 +98,52 @@
 #define MFLOAT2(a,b) float2((a), (b))
 #endif
 
-#define DEVICE inline
-#define CLGLOBAL device
-#define CLRESTRICT 
-#define CONSTANT   constant
-#define LOCAL      threadgroup
-#define PTR_DEV  device
-#define PTR_THR  thread
-#define PTR_CONST constant
-#define PTR_TG   threadgroup
-#define KERNEL kernel
-#define FABS metal::fabs
-#define MIN metal::min
-#define LENGTH metal::length
-#define CLONG_rtz(a) static_cast<long>(a)
-#define CINT(a)   static_cast<int>(a)
-#define LONG long
-#define FMIN metal::fmin
-#define FMAX metal::fmax
-#define MIN metal::min
-#define MAX metal::max
+#define ACOS metal::acos
 #define ALL metal::all
 #define ANY metal::any
-#define ISNAN metal::isnan
-#define ISINF metal::isinf
-#define CUINT_sat_rtz(a) static_cast<uint>(metal::clamp(metal::trunc(((float)a)), 0.0f, 4294967295.0f)) // TODO replace float with FLOAT
-#define CUINT_rtp(a)     static_cast<uint>(metal::ceil((a)))
-#define CLAMP3(a,b,c) metal::clamp((a),(b),(c))
-#define DIVIDE3(a,b) ((a) / (b))
-#define FMAD3(a,b,c) metal::fma((a),(b),(c))
-#define CINT3_rtz(a) static_cast<int3>(a)
+#define CINT(a)   static_cast<int>(a)
 #define CINT_rtz(a) static_cast<int>(metal::trunc((a)))
-#define MINT3(a,b,c) int3((a),(b),(c))
+#define CINT3_rtz(a) static_cast<int3>(a)
+#define CLAMP3(a,b,c) metal::clamp((a),(b),(c))
+#define CLGLOBAL device
+#define CLONG_rtz(a) static_cast<long>(a)
+#define CLRESTRICT
 #define CMINT3(a,b,c) int3((a),(b),(c))
-#define SQRT metal::sqrt
-#define ACOS metal::acos
-#define EXP(a) metal::exp(a)
-#define LOG(a) metal::log(a)
+#define CONSTANT constant
 #define CUINT(a) (uint)(a)
-#define MUINT3(a, b, c) uint3(a, b, c)
-#define make_uint2(a,b)    uint2((a),(b))
-#define make_uint3(a,b,c)  uint3((a),(b),(c))
-#define make_int2(a,b)     int2((a),(b))
-#define make_int3(a,b,c)   int3((a),(b),(c))
-#define FMAD(a,b,c) metal::fma(a,b,c)
-#define POWR metal::pow
+#define CUINT_rtp(a) static_cast<uint>(metal::ceil((a)))
+#define CUINT_sat_rtz(a) static_cast<uint>(metal::clamp(metal::trunc(((float)a)), 0.0f, 4294967295.0f)) // TODO replace float with FLOAT
+#define DEVICE inline
 #define DIVIDE(a,b) ((a) / (b))
-
-//#define dot metal::dot // TODO define function
-//#define pow metal::pow // TODO define function
+#define DIVIDE3(a,b) ((a) / (b))
+#define EXP(a) metal::exp(a)
+#define FABS metal::fabs
+#define FMAD(a,b,c) metal::fma(a,b,c)
+#define FMAD3(a,b,c) metal::fma((a),(b),(c))
+#define FMAX metal::fmax
+#define FMIN metal::fmin
+#define ISINF metal::isinf
+#define ISNAN metal::isnan
+#define KERNEL kernel
+#define LENGTH metal::length
+#define LOCAL threadgroup
+#define LOG(a) metal::log(a)
+#define LONG long
+#define make_int2(a,b) int2((a),(b))
+#define make_int3(a,b,c) int3((a),(b),(c))
+#define make_uint2(a,b) uint2((a),(b))
+#define make_uint3(a,b,c) uint3((a),(b),(c))
+#define MAX metal::max
+#define MIN metal::min
+#define MINT3(a,b,c) int3((a),(b),(c))
+#define MUINT3(a, b, c) uint3(a, b, c)
+#define POWR metal::pow
+#define PTR_DEV device
+#define PTR_THR thread
+#define PTR_CONST constant
+#define PTR_TG threadgroup
+#define RCP(x) (1.f / x)
+#define SQRT metal::sqrt
 
 // Metal function definitions
 inline FLOAT dot(half3 a, half3 b) {

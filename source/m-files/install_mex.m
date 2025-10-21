@@ -1344,9 +1344,28 @@ else % Apple silicon MATLAB/Octave
     compiler = '';
     complexFlag = '';
     ldflags = 'LDFLAGS="\$LDFLAGS -framework Metal -framework Foundation"';
-    cxxflags = 'CXXFLAGS="\$CXXFLAGS -std=c++17 -fobjc-arc"';
-    mex(compiler, complexFlag, '-outdir', folderMetal, ...
-        '-output', 'OpenCL_matrixfree_multi_gpu', ldflags, cxxflags, ...
-        '-DMATLAB', ['-I' folder], ['-I' folderMetal], [folderMetal '/Metal_matrixfree.mm'])
-    disp('Implementation 2 built')
+    cxxflags = 'CXXFLAGS="\$CXXFLAGS -std=c++17 "';
+    useLDclassic = 0; % There is a bug with Xcode 26.0 and C-style MEX API.
+    % See for example: https://se.mathworks.com/matlabcentral/answers/2180302-mex-failing-to-compile-function
+    try
+        mex(compiler, complexFlag, '-outdir', folder, ...
+            '-output', 'OpenCL_matrixfree_multi_gpu', ldflags, cxxflags, ...
+            '-DMATLAB', '-DMETAL', ['-I' folder], [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
+        disp('Implementation 5 built')
+    catch e
+        warning('Error:\n%s', e.message);
+        useLDclassic = 1;
+    end
+    if useLDclassic
+        try
+            disp('Trying to build with ld_classic flag')
+            ldflags = 'LDFLAGS="\$LDFLAGS -framework Metal -framework Foundation -ld_classic"';
+            mex(compiler, complexFlag, '-outdir', folder, ...
+            '-output', 'OpenCL_matrixfree_multi_gpu', ldflags, cxxflags, ...
+            '-DMATLAB', '-DMETAL', ['-I' folder], [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
+            disp('Implementation 5 built')
+        catch e
+            error('Could not build implementation 5');
+        end
+    end
 end

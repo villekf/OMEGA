@@ -288,16 +288,20 @@ if ~isfield(options,'use_device')
     options.use_device = uint32(0);
 end
 if ~isfield(options,'implementation')
-    options.implementation = 2; % Keep this at 2 to ensure Metal compatibility
+    options.implementation = 2;
 end
 if ~isfield(options,'platform')
     options.platform = 0;
 end
 if ~isfield(options, 'use_64bit_atomics')
-    options.use_64bit_atomics = true;
+    options.use_64bit_atomics = ~ismac;
 end
 if ~isfield(options, 'use_CUDA')
-    options.use_CUDA = checkCUDA(options.use_device);
+    if ismac
+        options.use_CUDA = false;
+    else
+        options.use_CUDA = checkCUDA(options.use_device);
+    end
 end
 if ~isfield(options, 'nRays')
     options.nRays = 1;

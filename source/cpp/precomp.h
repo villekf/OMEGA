@@ -25,6 +25,12 @@ struct float2a {
 #ifdef MATLAB
 #include "mexFunktio.h"
 #endif
+#ifdef METAL
+#define NS_PRIVATE_IMPLEMENTATION
+#define CA_PRIVATE_IMPLEMENTATION
+#define MTL_PRIVATE_IMPLEMENTATION
+#include "Metal.hpp"
+#endif
 
 struct largeDimStruct {
 	uint32_t NzOrig;
@@ -98,6 +104,11 @@ typedef struct _CUDA_im_vectors {
 	std::vector<CUdeviceptr*> d_rhs_os;
 	CUtexObject d_image_os, d_image_os_int;
 } CUDA_im_vectors;
+#elif defined(METAL)
+typedef struct _METAL_im_vectors {
+	std::vector<NS::SharedPtr<MTL::Buffer>> d_rhs_os;
+	NS::SharedPtr<MTL::Buffer> d_im;
+} METAL_im_vectors;
 #else
 struct CPUVectors {
 	float* d_meanFP, *d_meanBP, *d_im_os;
