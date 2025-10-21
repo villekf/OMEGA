@@ -1,24 +1,26 @@
-%% MATLAB codes for SPECT reconstruction from SIMIND output
-% This example has been tested using SIMIND v8.0 and the respective
-% tutorial sections 8(NEMA image quality phantom) and 9 (Brain CBF).
-% Rather than built-in algorithms, this example highlights the projection 
-% operators A*x and A'*y.
-
-% Pinhole data can be generated with
-% mpirun -np 5 simind_mpi nema nema_pinhole/fz:phantom/45:3/tr:11/tr:15/cc:ge-ph02/76:128/77:128/28:0.33/mp/55:1/53:1/42:-5/29:60/in:x22,5x/84:1
-
-% Parallel-hole data can be generated with
-% mpirun -np 5 simind_mpi nema nema_parallel/fz:phantom/45:3/tr:11/tr:15/cc:g8-luhr/76:128/77:128/28:0.33/mp/55:0/53:1/42:-5/29:60/in:x22,5x/84:1
+%% MATLAB codes for SPECT reconstruction from projection images
+% This example outlines the reconstruction of SPECT data. In this case the
+% data is Siemens Pro.specta projection data available at DOI
+% 10.5281/zenodo.17315440
 
 clear
 options.SPECT = true;
 
-% All paths are input without file ending
-options.fpath = '/path/to/data/nema_parallel_tot_w2'; % Main data (.a00 + .h00 files)
-options.fpathCor = '/path/to/data/corfile'; % .cor file
-options.fpathCT = '/path/to/data/nema_parallel'; % CT data (.hct + .ict files)
-options.fpathScatterLower = '/path/to/data/nema_parallel_tot_w1'; % Lower scatter window data (.a00 + .h00 files)
-options.fpathScatterUpper = '/path/to/data/nema_parallel_tot_w3'; % Upper scatter window data (.a00 + .h00 files)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LOAD DATA %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+load('jaszczak_spectct_projection_data.mat')
+options.SinM = projection_data;
+options.angles = angular_position;
+options.radiusPerProj = radial_position;
+options.nRowsD = size(options.SinM, 1);
+options.nColsD = size(options.SinM, 2);
+options.nProjections = size(options.SinM, 3);
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -29,14 +31,16 @@ options.fpathScatterUpper = '/path/to/data/nema_parallel_tot_w3'; % Upper scatte
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%%% Crystal size (mm)
-options.dPitchX = 3.3;
-options.dPitchY = 3.3;
+%%% Crystal thickness (mm)
+options.cr_p = detector_thickness;
+
+%%% Crystal width (mm)
+options.dPitchX = pixel_spacing(1);
+options.dPitchY = pixel_spacing(2);
 
 %%% Scanner name
 % Used for naming purposes (measurement data)
-options.machine_name = 'SIMIND';
-
+options.machine_name = 'Prospecta';
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -47,13 +51,13 @@ options.machine_name = 'SIMIND';
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %%% Reconstructed image pixel count
-% NOTE: Square image sizes (X- and Y-direction) are recommended
+% NOTE: Non-square image sizes (X- and Y-direction) may not work
 options.Nx = 128; % X-direction
 options.Ny = 128; % Y-direction
 options.Nz = 128; % Z-direction (number of axial slices)
 
 %%% FOV size [mm]
-% NOTE: Cubical voxels are recommended
+% NOTE: Non-cubical voxels may not work
 options.FOVa_x = options.dPitchX*128; % [mm], x-axis of FOV (transaxial)
 options.FOVa_y = options.dPitchX*128; % [mm], y-axis of FOV (transaxial)
 options.axial_fov = options.dPitchY*128; % [mm], z-axis of FOV (axial)
@@ -83,10 +87,20 @@ options.offangle = 0;
 % Currently only a set of DICOM files is supported for the attenuation map.
 options.attenuation_correction = false;
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%% Scatter correction %%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Uses linear interpolation between scatter windows. 
-% See for example: 10.1371/journal.pone.0269542
-options.scatter_correction = false;
+if options.attenuation_correction % Convert to LAC
+    xLimits = options.FOVa_x * [-0.5, 0.5]; % SPECT spatial referencing
+    yLimits = options.FOVa_y * [-0.5, 0.5];
+    zLimits = options.axial_fov * [-0.5, 0.5];
+    refSPECT = imref3d([options.Nx, options.Ny, options.Nz], xLimits, yLimits, zLimits);
+
+    attenuation_map(attenuation_map < -1000) = -1000;
+    MUvol = HU_to_mu(attenuation_map, 141);
+    muAir = HU_to_mu(-1000, 141);
+    tform = affinetform3d(eye(4)); % No scaling or rotation
+
+    [MUvol, ~] = imwarp(MUvol, spatial_referencing_CT, tform, OutputView=refSPECT, FillValue=muAir, InterpolationMethod='linear');
+    options.vaimennus = MUvol;
+end
 
 %%%%%%%%%%%%%%%%%%%%%%%% Normalization correction %%%%%%%%%%%%%%%%%%%%%%%%%
 % If set to true, normalization correction is applied to either the
@@ -94,6 +108,17 @@ options.scatter_correction = false;
 % normalization coefficients.
 options.normalization_correction = false;
 options.normalization = [];
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%% Scatter correction %%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Uses linear interpolation between scatter windows. options.ScatterC{1} 
+% contains the lower scatter window and options.ScatterC{2} contains the 
+% upper scatter window (sizes equal options.SinM).
+% See for example: 10.1371/journal.pone.0269542
+options.scatter_correction = false;
+options.ScatterC = {};
+options.eWin = energy_window; % Main energy window: [lowerLimit upperLimit]
+options.eWinL = []; % Lower energy window: [lowerLimit upperLimit]
+options.eWinU = []; % Upper energy window: [lowerLimit upperLimit]
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%% Resolution recovery %%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Collimator-detector response function (CDRF)
@@ -113,15 +138,18 @@ options.normalization = [];
 % collimator hole is assumed to be a circle. Thus only 1. below is
 % supported with projector_type == 2
 
-% 1. The collimator parameters (projector types 1, 2 and 6).
-% % 1.1 Pinhole collimator
-%options.colD = 167.5; % Separation of collimator and detector
-%options.colFxy = 0; % Focal distance XY, 0 for pinhole
-%options.colFz = 0; % Focal distance Z, 0 for pinhole
-
-% % 1.2 Parallel-hole collimator
+% 1. The collimator parameters (projector types 1, 2 and 6)
+% Collimator hole length (mm)
+options.colL = collimator_thickness;
+% Collimator hole radius (mm)
+options.colR = collimator_hole_radius;
+% Distance from collimator to the detector (mm)
 options.colD = 0;
+% Intrinsic resolution (mm)
+options.iR = detector_intrinsic_resolution;
+% Focal distance (XY)
 options.colFxy = Inf;
+% Focal distance (Z)
 options.colFz = Inf;
 
 % 2. If you have the standard deviations for transaxial (XY) and axial (Z)
@@ -144,27 +172,6 @@ options.colFz = Inf;
 options.nRays = 1; % Number of rays traced per detector element
 % options.rayShiftsDetector = [];
 % options.rayShiftsSource = [];
-
-
-%%%%%%%%%%%%%%%%%%%% Corrections during reconstruction %%%%%%%%%%%%%%%%%%%%
-% If set to true, all the corrections are performed during the
-% reconstruction step, otherwise the corrections are performed to the
-% sinogram/raw data before reconstruction (i.e. precorrected). I.e. this
-% can be considered as e.g. normalization weighted reconstruction if
-% normalization correction is applied.
-% NOTE: Attenuation correction and resolution recovery are always performed
-% during reconstruction regardless of the choice here.
-options.corrections_during_reconstruction = false;
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LOAD DATA %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-options = loadSIMINDSPECTData(options);
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -195,33 +202,6 @@ options.verbose = 1;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%% IMPLEMENTATIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Reconstruction implementation used
-% 2 = Matrix-free reconstruction with OpenCL/ArrayFire (Recommended)
-% (Requires ArrayFire. Compiles with MinGW ONLY when ArrayFire was compiled
-% with MinGW as well (cannot use the prebuilt binaries)).
-% 4 = Matrix-free reconstruction with OpenMP (parallel), standard C++
-% See the documentation for more information:
-% https://omega-doc.readthedocs.io/en/latest/implementation.html
-options.implementation = 2;
-
-% Applies to implementation 2 ONLY
-%%% OpenCL/CUDA device used
-% NOTE: Use ArrayFire_OpenCL_device_info() to determine the device numbers
-% with implementation 2.
-options.use_device = 0;
-
-% Implementation 2 ONLY
-%%% Use CUDA
-% Selecting this to true will use CUDA kernels/code instead of OpenCL. This
-% only works if the CUDA code was successfully built.
-options.use_CUDA = false;
-
-% Implementation 2 ONLY
-%%% Use CPU
-% Selecting this to true will use CPU-based code instead of OpenCL or CUDA.
-options.use_CPU = false;
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Type of projector to use for the geometric matrix
 % 1 = (Improved) Siddon ray-based projector
@@ -229,32 +209,59 @@ options.use_CPU = false;
 % 6 = Rotation-based projector
 % See the documentation on some details on the projectors:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
-options.projector_type = 2;
+options.projector_type = 1;
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%% OPENCL DEVICE INFO %%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Number of iterations (all reconstruction methods)
+options.Niter = 5;
 
-%%% Implementation 2
-% Uncomment the below line and run it to determine the available device
-% numbers
-% ArrayFire_OpenCL_device_info();
+%%% Number of subsets (all excluding MLEM and subset_type = 5)
+options.subsets = 8;
+
+%%% Subset type (n = subsets)
+% 8 = Use every nth projection image (recommended for projector_type = 6)
+% 9 = Randomly select the projection images
+% 10 = Use golden angle sampling to select the subsets (not recommended for
+% PET)
+% 11 = Use prime factor sampling to select the projection images
+options.subset_type = 8;
+
+%%% Initial value for the reconstruction
+options.x0 = ones(options.Nx, options.Ny, options.Nz);
 
 
-%% Projections
+%% Reconstruction
 A = projectorClass(options);
 
-x = A'*y0;
-x = reshape(x, options.Nx, options.Ny, options.Nz);
+m = cell(options.subsets, 1);
+for ii = 1:options.subsets
+    m{ii} = options.SinM(:,:,A.index((A.nMeas(ii)+1):A.nMeas(ii+1)));
+    m{ii} = m{ii}(:);
+end
 
-y = A*x0;
-y = reshape(y, options.nRowsD, options.nColsD, options.nProjections);
+Sens = cell(options.subsets, 1);
+tic;
+t0 = toc;
+f = options.x0(:);
+for it = 1:options.Niter
+    for sub_iter = 1:options.subsets
+        A.subset = sub_iter;
+        fp = A * f;
+        
+        if it == 1
+            Sens{sub_iter} = A' * ones(size(m{sub_iter}));
+        end
 
+        bp = A' * (m{sub_iter} ./ fp);
+        f = f ./ Sens{sub_iter} .* bp;
+        f(f < 1e-6) = 1e-6;
+        disp(['Sub-iteration ' num2str(sub_iter) ' complete'])
+    end
+    disp(['Iteration ' num2str(it) ' complete'])
+end
+t1 = toc;
+
+f = reshape(f, [options.Nx, options.Ny, options.Nz]);
 
 %% Plots
-volume3Dviewer(x) % Backprojection
-volume3Dviewer(y) % Forward projection
+volume3Dviewer(f);
