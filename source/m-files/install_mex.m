@@ -1353,22 +1353,19 @@ else % Apple silicon MATLAB/Octave
             '-DMATLAB', '-DMETAL', ['-I' folder], ['-I' folderMetal], [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
         disp('Implementation 5 built')
     catch e
-        fprintf(1,'Error:\n%s', e.message);
+        warning('Error:\n%s', e.message);
         useLDclassic = 1;
     end
     if useLDclassic
         try
             disp('Trying to build with ld_classic flag')
             ldflags = 'LDFLAGS="\$LDFLAGS -framework Metal -framework Foundation -ld_classic"';
-            %mex(compiler, complexFlag, '-outdir', folderMetal, ...
-            %    '-output', 'OpenCL_matrixfree_multi_gpu', ldflags, cxxflags, ...
-            %    '-DMATLAB', ['-I' folder], ['-I' folderMetal], [folderMetal '/Metal_matrixfree.mm'])
             mex(compiler, complexFlag, '-outdir', folderMetal, ...
             '-output', 'OpenCL_matrixfree_multi_gpu', ldflags, cxxflags, ...
             '-DMATLAB', '-DMETAL', ['-I' folder], ['-I' folderMetal], [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
             disp('Implementation 5 built')
         catch e
-            fprintf(1,'Error:\n%s', e.message);
+            error('Could not build implementation 5');
         end
     end
 end
