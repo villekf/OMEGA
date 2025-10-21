@@ -159,7 +159,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 			} else {
 				proj.d_Summ.emplace_back(BUFFER_W(sizeof(T)));
 			}
-			FILL_BUFFER(proj.vec_opencl.d_rhs_os[ii], (T)0, sizeof(T) * inputScalars.im_dim[ii])
+			FILL_BUFFER(proj.vec_opencl.d_rhs_os[ii], (T)0, sizeof(T) * inputScalars.im_dim[ii]);
 			CL_CHECK(status);
 
 		}
@@ -416,7 +416,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 			mexPrintBase("inputScalars.nBins = %u\n", inputScalars.nBins);
 			mexEval();
 		}
-		READ_BUFFER(proj.d_output, sizeof(float) * m_size * inputScalars.nBins, output)
+		READ_BUFFER(proj.d_output, sizeof(float) * m_size * inputScalars.nBins, output);
 		CL_CHECK(status);
 	}
 	else if (type == 2) {
