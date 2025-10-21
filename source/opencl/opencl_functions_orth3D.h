@@ -13,6 +13,12 @@
 * You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 *******************************************************************************************************************************************/
 
+#ifdef SPECT // Threshold for ODRT collimator response / tube width cutoff
+#define THR normPDF2(3.5*CORstd, 0.f, CORstd)
+#else
+#define THR 0.01f
+#endif
+
 #ifndef PTYPE4
 // Compute the orthogonal distance from the ray to the current voxel (center)
 // For orthogonal distance-based ray tracer, the distance is normalized
@@ -52,17 +58,16 @@ DEVICE FLOAT compute_element_parallel_3D(
     return dot(v1, p - v0) * orth_ray_length_inv_signed;
 }
 
-#ifndef _2PI // 1/sqrt(2*pi)
-#ifdef HALF
-#define _2PI 0.3989423h
-#else
-#define _2PI 0.3989423f 
-#endif
-#endif
-// Evaluate Gaussian distribution at x. Normalized by the 2D gaussian constant.
-DEVICE FLOAT normPDF2(const FLOAT x, const FLOAT mu, const FLOAT sigma) {
-    const FLOAT a = FMAD(-FLOAT_ONE, DIVIDE(mu, sigma), DIVIDE(x, sigma));
-    return POWR(DIVIDE(_2PI, sigma), FLOAT_TWO) * EXP(-FLOAT_HALF * a * a);
+#define INV_SQRT_2PI 0.3989422804014327f // 1/sqrt(2*pi)
+#define INV_2PI 0.15915494309189535f // 1/(2*pi) = (1/sqrt(2*pi))^2
+#define INV_2SQRT2LN2 0.42466090014400953f // 1/(2*sqrt(2*ln2))
+DEVICE float normPDF2(const float x, const float mu, const float sigma) {
+    const float inv_sigma = RCP(sigma);
+    const float inv_sigma2 = inv_sigma * inv_sigma;
+    const float a = (x - mu) * inv_sigma;
+    const float a2 = a * a;
+    const float e = EXP(-0.5f * a2);
+    return INV_2PI * inv_sigma2 * e;
 }
 #endif
 
@@ -103,6 +108,12 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
     , int lor
 #endif
 ) {
+#ifdef SPECT // Check for voxel behind detector
+    float d_parallel = compute_element_parallel_3D(s, diff, center, orth_ray_length_inv_signed);
+    if (d_parallel < 0) { 
+        return false;
+    }
+#endif
 #if (defined(FP) || (defined(MASKBP) && defined(BP))) && defined(USEIMAGES) ///////////////////// 2D/3D indices /////////////////////
 	int3 ind;
     if (XY)
@@ -124,15 +135,14 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 #endif
     );
 #endif ///////////////////// END 2D/3D indices /////////////////////
-	FLOAT local_ele = compute_element_orth_3D(s, l, diff, center, orth_ray_length);
+    float local_ele = compute_element_orth_3D(s, l, diff, center, orth_ray_length);
 #ifdef SPECT ////////////////////////// SPECT ////////////////////
-    FLOAT d_parallel = compute_element_parallel_3D(s, diff, center, orth_ray_length_inv_signed);
-    if (d_parallel < 0) { // Voxel behind detector
-        return false;
-    }
-    FLOAT CORstd = DIVIDE(SQRT(FMAD(FLOAT_ONE, POWR(FMAD(coneOfResponseStdCoeffA, d_parallel, coneOfResponseStdCoeffB), FLOAT_TWO), POWR(coneOfResponseStdCoeffC, FLOAT_TWO))), (FLOAT_TWO*SQRT(FLOAT_TWO*LOG(FLOAT_TWO))));
-    local_ele = normPDF2(local_ele, FLOAT_ZERO, CORstd);
-#endif //////////// END SPECT /////////////
+    float t = FMAD(coneOfResponseStdCoeffA, d_parallel, coneOfResponseStdCoeffB);   // A*d_parallel + B
+    float t2 = t * t;
+    float c2 = coneOfResponseStdCoeffC * coneOfResponseStdCoeffC;
+    float CORstd = SQRT(t2 + c2) * INV_2SQRT2LN2;
+    local_ele = normPDF2(local_ele, 0.f, CORstd);
+#endif //////////// END SPECT / NOT SPECT /////////////
 #ifdef VOL
 	if (local_ele > bmax) {
 		return true;
@@ -142,11 +152,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	else
 		local_ele = V[CUINT_rte((local_ele - bmin) * CC)];
 #else
-#ifdef SPECT
-    if (local_ele <= normPDF2((FLOAT_TWO+FLOAT_ONE+FLOAT_HALF)*CORstd, FLOAT_ZERO, CORstd)) {
-#else
 	if (local_ele <= THR) {
-#endif
 		return true;
 	}
 #endif

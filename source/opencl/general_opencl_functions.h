@@ -23,7 +23,6 @@
 #ifdef ATOMIC
 #pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
 #endif
-#define THR 0.01f
 #ifndef N_REKOS
 #define N_REKOS 1
 #endif
@@ -65,11 +64,17 @@
 #define FLOAT_HALF .5h
 #define FLOAT_ONE 1.h
 #define FLOAT_TWO 2.h
+#define FLOAT half
+#define FLOAT2 half2
+#define FLOAT3 half3
 #else
 #define FLOAT_ZERO 0.f
 #define FLOAT_HALF .5f
 #define FLOAT_ONE 1.f
 #define FLOAT_TWO 2.f
+#define FLOAT float
+#define FLOAT2 float2
+#define FLOAT3 float3
 #endif
 
 #ifdef METAL
@@ -78,17 +83,12 @@
 #define CFLOAT(a) static_cast<half>(a)
 #define CFLOAT3(a) half3(a)
 #define CMFLOAT3(x,y,z) half3((x), (y), (z))
-#define FLOAT half
-#define FLOAT2 half2
-#define FLOAT3 half3
+
 #define make_float2(a,b) half2((a),(b))
 #define make_float3(a,b,c) half3((a),(b),(c)) // TODO: replace with half
 #define MFLOAT2(a,b) half2((a), (b)) // TODO: replace with half
 #else // 32-bit floating point
 #define CAST float
-#define FLOAT float
-#define FLOAT2 float2
-#define FLOAT3 float3
 #define CFLOAT(a) static_cast<float>(a)
 #define CFLOAT3(a) float3(a)
 #define CMFLOAT3(x,y,z) float3((x), (y), (z))
@@ -235,10 +235,10 @@ struct ScalarParams { // For OpenCL, these are set in initializeKernel.
 
 #endif
 #ifdef OPENCL
-#define PTR_DEV  device // Metal requires address space qualifier for pointers
-#define PTR_THR  thread
-#define PTR_CONST constant
-#define PTR_TG   threadgroup
+#define PTR_DEV // Metal requires address space qualifier for pointers
+#define PTR_THR 
+#define PTR_CONST
+#define PTR_TG
 #define MIN min
 #define FABS fabs
 #define FMIN fmin
@@ -254,6 +254,7 @@ struct ScalarParams { // For OpenCL, these are set in initializeKernel.
 #define CLGLOBAL __global
 #define CLRESTRICT restrict
 #define CONSTANT __constant
+#define LENGTH length
 #define LOCAL __local
 #define IMAGE3D __read_only image3d_t
 #define IMAGE2D __read_only image2d_t
@@ -278,6 +279,7 @@ struct ScalarParams { // For OpenCL, these are set in initializeKernel.
 #define SQRT native_sqrt
 #define POWR native_powr
 #define POWN pown
+#define RCP(x) native_recip(x)
 #define FLOOR floor
 #define CEIL ceil
 #define ATAN2 atan2
@@ -332,10 +334,10 @@ __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEA
 #endif
 #endif
 #if defined(CUDA)
-#define PTR_DEV  device // Metal requires address space qualifier for pointers
-#define PTR_THR  thread
-#define PTR_CONST constant
-#define PTR_TG   threadgroup
+#define PTR_DEV // Metal requires address space qualifier for pointers
+#define PTR_THR 
+#define PTR_CONST
+#define PTR_TG
 #define MIN min
 #define FABS fabs
 #define LENGTH length
@@ -417,6 +419,7 @@ __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEA
 #define BARRIER __syncthreads();
 #define POWR __powf
 #define POWN __powf
+#define RCP(x) __frcp_rn(x)
 #define FLOOR floorf
 #define CEIL ceilf
 #define ATAN2 atan2f
@@ -1078,7 +1081,7 @@ DEVICE void getDetectorCoordinatesSPECT(
 #else
 	CONSTANT float *d_xyz, 
 #endif
-    CONSTANT float *d_uv, PTR_THR FLOAT3 *s, PTR_THR FLOAT3 *d, const uint3 i, const uint d_size_x, const uint d_sizey, const FLOAT2 d_dPitch, const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource, int lorXY, size_t idx) {
+    CONSTANT float *d_uv, PTR_THR FLOAT3 *s, PTR_THR FLOAT3 *d, const int3 i, const uint d_size_x, const uint d_sizey, const FLOAT2 d_dPitch, const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource, int lorXY, size_t idx) {
 	uint id = i.z * 6;
 	*s = CMFLOAT3((FLOAT)d_xyz[id], (FLOAT)d_xyz[id + 1], (FLOAT)d_xyz[id + 2]); // TODO remove cast
 	*d = CMFLOAT3((FLOAT)d_xyz[id + 3], (FLOAT)d_xyz[id + 4], (FLOAT)d_xyz[id + 5]); // TODO remove cast
@@ -1480,7 +1483,7 @@ DEVICE bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1
 
 DEVICE bool siddon_pre_loop_3D(const FLOAT3 b, const FLOAT3 diff, const FLOAT3 max, const FLOAT3 dd, const uint3 N, PTR_THR int *tempi, PTR_THR int *tempj, PTR_THR int *tempk, 
     PTR_THR float *txu, PTR_THR float *tyu, PTR_THR float *tzu, PTR_THR uint *Np, const int TYYPPI, const FLOAT3 s, const FLOAT3 d, PTR_THR float *tc, PTR_THR int *i, PTR_THR int *j, PTR_THR int *k, PTR_THR float *tx0, 
-	PTR_THR float *ty0, PTR_THR float *tz0, PTR_THR bool *xy, const uint3 ii) {
+	PTR_THR float *ty0, PTR_THR float *tz0, PTR_THR bool *xy, const int3 ii) {
 
 	const float3 apuT = (float3)b - (float3)s;
 	const float3 t0 = apuT / (float3)diff;
@@ -1529,7 +1532,7 @@ DEVICE bool siddon_pre_loop_3D(const FLOAT3 b, const FLOAT3 diff, const FLOAT3 m
 
 	const float pt = ((FMIN(FMIN(*tz0, *ty0), *tx0) + *tc) / 2.f);
 
-	const float3 tempijkF = CLAMP3((float3)FMAD3((float3)pt, (float3)diff, -apuT) / (float3)dd, 0.f, (float3)CFLOAT3(N - 1));
+	const float3 tempijkF = CLAMP3(FMAD3(pt, diff, -apuT) / dd, 0.f, CFLOAT3(N - 1));
 	const int3 tempijk = CINT3_rtz(tempijkF);
 	*tempi = tempijk.x;
 	*tempj = tempijk.y;

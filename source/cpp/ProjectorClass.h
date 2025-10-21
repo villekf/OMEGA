@@ -2283,6 +2283,8 @@ public:
 						status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFP);
 				OCL_CHECK(status, "\n", -1);
 			}
+			if (inputScalars.normalization_correction)
+				status = kernelFP.setArg(kernelIndFPSubIter++, d_norm[osa_iter]);
 			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, length[osa_iter]));
 		}
 		else if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3)) {
@@ -2697,9 +2699,11 @@ public:
 						OCL_CHECK(status, "\n", -1);
 					}
 				}
+				if (inputScalars.normalization_correction)
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[osa_iter]);
 			}
 			else {
-				if ((inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
+				if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 					global = { inputScalars.nRowsD + erotus[0], inputScalars.nColsD + erotus[1], static_cast<size_t>(length[osa_iter]) };
 				else if (inputScalars.listmode > 0 && compSens)
 					global = { static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0], static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) };

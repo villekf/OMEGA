@@ -2401,6 +2401,8 @@ public:
 							kTemp.emplace_back(&d_maskFP);
 				}
 			}
+			if (inputScalars.normalization_correction)
+				kTemp.emplace_back(&d_norm[osa_iter]);
 			kTemp.emplace_back((void*)&length[osa_iter]);
 		}
 		else if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3)) {
@@ -2860,6 +2862,8 @@ public:
 						kTemp.emplace_back(&d_meanBP);
 					}
 				}
+				if (inputScalars.normalization_correction)
+					kTemp.emplace_back(&d_norm[osa_iter]);
 			}
 			else {
 				if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
