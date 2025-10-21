@@ -1,7 +1,7 @@
 ﻿/**************************************************************************
 * Matrix free computations for OMEGA for implementations 3 and 5.
 * This code is very similar to the other matrix-free code, but this one
-* can also be run without installing ArrayFire, i.e. this uses pure OpenCL.
+* can also be run without installing ArrayFire.
 * Unlike the non-OpenCL versions, this one uses (32-bit) floats and thus
 * can be slightly more inaccurate.
 * 
@@ -23,10 +23,10 @@
 #ifdef MATLAB
 #include "mfunctions.h"
 #endif
+#ifndef METAL
 #include "ProjectorClass.h"
+#endif
 #include "multi_gpu_reconstruction.h"
-
-
 
 void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	// Check for the number of input and output arguments

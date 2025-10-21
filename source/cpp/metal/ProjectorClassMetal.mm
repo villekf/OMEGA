@@ -1,19 +1,5 @@
 #import "ProjectorClassMetal.h"
 
-// ---------- Box impls ----------
-@implementation ScalarStructBox { void *_p; }
-+ (instancetype)boxWithPointer:(void *)ptr { ScalarStructBox *b=[self new]; b->_p=ptr; return b; }
-- (void *)ptr { return _p; }
-@end
-@implementation WeightingBox { void *_p; }
-+ (instancetype)boxWithPointer:(void *)ptr { WeightingBox *b=[self new]; b->_p=ptr; return b; }
-- (void *)ptr { return _p; }
-@end
-/*@implementation RecMethodsBox { void *_p; }
-+ (instancetype)boxWithPointer:(void *)ptr { RecMethodsBox *b=[self new]; b->_p=ptr; return b; }
-- (void *)ptr { return _p; }
-@end*/
-
 typedef struct {
     float global_factor;
 	float d_epps;
@@ -111,16 +97,12 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     return 0;
 }
 
-- (NSInteger)addProjector:(ScalarStructBox *)inputScalarsBox
-                           weighting:(WeightingBox *)wVec
+- (NSInteger)addProjector:(scalarStruct)inputScalars
+                           weighting:(Weighting)w_vec
                               //method:(RecMethodsBox *)methodList
                     headerDirectory:(NSString *)headerDirectory
                                 type:(NSInteger)type
 { 
-    // Unbox to C++ refs (no copies).
-    auto &inputScalars = *static_cast<scalarStruct *>(inputScalarsBox.ptr);
-    auto &w_vec = *static_cast<Weighting *>(wVec.ptr);
-    //auto const &methods = *static_cast<RecMethods const *>(methodList.ptr);
     // ---- Metal setup ----
     _device = MTLCreateSystemDefaultDevice();
     if (!_device) {
@@ -360,8 +342,8 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     return 0; 
 }
 
-- (NSInteger)createBuffers:(ScalarStructBox *)inputScalarsBox
-                           weighting:(WeightingBox *)wVec
+- (NSInteger)createBuffers:(scalarStruct)inputScalars
+                           weighting:(Weighting)w_vec
                            x:(const float *)x
                        zDet:(const float *)z_det
                    xyIndex:(const uint32_t *)xy_index
@@ -374,10 +356,6 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
                     length:(const int64_t *)length
                     type:(NSUInteger)type
 {
-    // Unbox to C++ refs (no copies).
-    auto &inputScalars = *static_cast<scalarStruct *>(inputScalarsBox.ptr);
-    auto &w_vec = *static_cast<Weighting *>(wVec.ptr);
-
     size_t vecSize = 1;
     if ((inputScalars.PET || inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0)
         vecSize = static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD);
@@ -461,8 +439,8 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     return 0;
 }
 
-- (NSInteger)forwardProjection:(ScalarStructBox *)inputScalarsBox
-                           weighting:(WeightingBox *)wVec
+- (NSInteger)forwardProjection:(scalarStruct)inputScalars
+                           weighting:(Weighting)w_vec
                            osaIter:(uint32_t)osa_iter
                          length:(const int64_t *)length
                          m_size:(uint64_t)m_size
@@ -471,10 +449,6 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
 {
     if (DEBUG)
         mexPrintf("init forwardProjection\n");
-    
-    // Unbox to C++ refs (no copies).
-    auto &inputScalars = *static_cast<scalarStruct *>(inputScalarsBox.ptr);
-    auto &w_vec = *static_cast<Weighting *>(wVec.ptr);
 
     if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
         _globalX = (inputScalars.nRowsD + _erotus[0]);
@@ -587,8 +561,8 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     return 0;
 }
 
-- (NSInteger)backwardProjection:(ScalarStructBox *)inputScalarsBox
-                           weighting:(WeightingBox *)wVec
+- (NSInteger)backwardProjection:(scalarStruct)inputScalars
+                           weighting:(Weighting)w_vec
                            osaIter:(uint32_t)osa_iter
                          length:(const int64_t *)length
                          m_size:(uint64_t)m_size
@@ -598,10 +572,6 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
 {
     if (DEBUG)
         mexPrintf("init backwardProjection\n");
-    
-    // Unbox to C++ refs (no copies).
-    auto &inputScalars = *static_cast<scalarStruct *>(inputScalarsBox.ptr);
-    auto &w_vec = *static_cast<Weighting *>(wVec.ptr);
 
     if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
         if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {

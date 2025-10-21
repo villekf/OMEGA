@@ -1,17 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 
-/// Opaque boxes so the header stays Obj-C only.
-@interface ScalarStructBox : NSObject
-+ (instancetype)boxWithPointer:(void *)ptr;   // does NOT take ownership
-@property (nonatomic, readonly) void *ptr;
-@end
-
-@interface WeightingBox : NSObject
-+ (instancetype)boxWithPointer:(void *)ptr;   // does NOT take ownership
-@property (nonatomic, readonly) void *ptr;
-@end
-
 @interface ProjectorClass : NSObject
    @property (nonatomic, assign) NSInteger no_norm;
    @property (nonatomic, strong) id<MTLDevice> device;
@@ -24,14 +13,14 @@
    @property (nonatomic, strong) id<MTLBuffer> d_attenB; // Attenuation image
    @property (nonatomic, strong) id<MTLBuffer> d_maskBP; // 2D/3D BP mask
 
-- (NSInteger)addProjector:(ScalarStructBox *)inputScalars
-                           weighting:(WeightingBox *)wVec
+- (NSInteger)addProjector:(scalarStruct)inputScalars
+                           weighting:(Weighting)w_vec
                               //method:(RecMethodsBox *)methodList
                     headerDirectory:(NSString *)headerDirectory
                                 type:(NSInteger)type;
                               
-- (NSInteger)createBuffers:(ScalarStructBox *)inputScalars
-                           weighting:(WeightingBox *)wVec
+- (NSInteger)createBuffers:(scalarStruct)inputScalars
+                           weighting:(Weighting)w_vec
                            x:(const float *)x
                        zDet:(const float *)z_det
                    xyIndex:(const uint32_t *)xy_index

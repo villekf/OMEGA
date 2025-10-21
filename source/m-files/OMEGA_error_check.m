@@ -38,6 +38,11 @@ OS_I4_summa = checkAlgorithmsPriors(options, 2,0) + checkAlgorithmsPriors(option
 preCondImAlg = checkAlgorithmsPriors(options, 7);
 preCondMeasAlg = checkAlgorithmsPriors(options, 8);
 
+if ismac && (options.use_32bit_atomics || options.use_64bit_atomics)
+    warning('MacOS implementation does not support 32 or 64 bit atomics. Disabling them.')
+    options.use_32bit_atomics = false;
+    options.use_64bit_atomics = false;
+end
 if numel(options.partitions) > 1
     partitions = numel(options.partitions);
 else

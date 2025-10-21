@@ -1,9 +1,12 @@
 /**************************************************************************
-* These functions handle the device selection, queue creation, program
-* building and kernel creation, as well as the output data and kernel 
-* release. Used by implementations 3 and 5.
+* This is a hybrid Objective-C++ / C++ function for the device selection, 
+* queue creation, program building and kernel creation, as well as the 
+* output data and kernel release. 
+* The file is pure C++ for OpenCL (implementations 3 and 5). 
+* For Metal (METAL preprocessor directive declared) the file contains 
+* Objective-C syntax.
 *
-* Copyright(C) 2020-2024 Ville-Veikko Wettenhovi
+* Copyright(C) 2020-2025 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
 * This program is free software : you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -19,7 +22,14 @@
 * along with this program. If not, see <https://www.gnu.org/licenses/>.
 ***************************************************************************/
 #pragma once
+#ifdef METAL
+#include "metal/ProjectorClassMetal.mm"
+#define CL_INT NSInteger
+#define CL_SUCCESS 0
+#else
 #include "ProjectorClass.h"
+#define CL_INT cl_int
+#endif
 
 // Main reconstruction function for implementations 3 and 5
 template <typename T, typename C>
@@ -44,22 +54,47 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 		length[kk] = pituus[kk + 1u] - pituus[kk];
 	uint64_t m_size = length[inputScalars.osa_iter0];
 
-	cl_int status = CL_SUCCESS;
-
 	if (DEBUG) {
 		mexPrint("Adding projector");
 	}
+	CL_INT status = CL_SUCCESS;
+#ifdef METAL
+	ProjectorClass *proj = [[ProjectorClass alloc] init];
+    status = [proj addProjector:inputScalars
+                        weighting:w_vec
+                                          //method:[RecMethodsBox boxWithPointer:&methods]
+                                headerDirectory:[NSString stringWithUTF8String:header_directory]
+                                            type:-1];
+#else
 	ProjectorClass proj;
 	status = proj.addProjector(inputScalars, w_vec, MethodList, header_directory, type);
+#endif
 	if (status != 0)
 		return;
 	proj.no_norm = no_norm;
 
 	// Create OpenCL buffers, CUDA arrays or OneAPI buffers (in the future)
+#ifndef METAL
 	status = proj.createBuffers(inputScalars, w_vec, x, z_det, xy_index, z_index, L, pituus, atten, norm, extraCorr, length, MethodList, type);
+#else
+    status = [proj createBuffers:inputScalars
+                                weighting:w_vec
+                                x:x
+                            zDet:z_det
+                        xyIndex:xy_index
+                            zIndex:z_index
+                                L:L
+                            pituus:pituus
+                            atten:atten
+                            norm:norm
+                        extraCorr:extraCorr
+                            length:length.data()
+                            type:type];
+#endif	
 	if (status != 0)
 		return;
 
+#ifndef METAL
 	// Input constant data to the kernels
 	status = proj.initializeKernel(inputScalars, w_vec);
 	if (status != 0)
@@ -69,13 +104,23 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 		return;
 	cl::detail::size_t_array region = { { 0, 0, 0 } };
 	int64_t imTot = 0ULL;
+#endif
 
 	if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 		m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[inputScalars.osa_iter0];
+
+#ifdef METAL
+	NSUInteger fpSize = sizeof(float); // Floating point size
+	NSUInteger bytesOutput = fpSize * m_size * inputScalars.nBins;	
+#endif
+
 	// type 0 = Implementation 3
 	// type 1 = Implementation 5 forward projection
 	// type 2 = Implementation 5 backprojection
-	if (type == 1) {
+	if (type == 1) { // Forward projection A*x
+#ifdef METAL
+		status = [proj allocateOutput:bytesOutput]; // TODO replace with proj.d_output = ...
+#else
 		if (DEBUG) {
 			mexPrintBase("m_size = %u\n", m_size);
 			mexPrintBase("inputScalars.osa_iter0 = %u\n", inputScalars.osa_iter0);
@@ -94,14 +139,23 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 			getErrorString(status);
 			return;
 		}
+#endif
 	}
-	else if (type == 2) {
+	if (type == 2) { // Backward projection A'*y
 		if (DEBUG) {
 			mexPrintBase("m_size = %u\n", m_size);
 			mexPrintBase("proj.no_norm = %u\n", proj.no_norm);
 			mexPrintBase("inputScalars.nMultiVolumes = %u\n", inputScalars.nMultiVolumes);
 			mexEval();
 		}
+#ifdef METAL
+		id<MTLBuffer> buf = [proj.device newBufferWithBytes:meas length:bytesOutput options:MTLResourceStorageModeShared];
+        proj.d_output = buf;
+
+        if (!proj.d_rhs_os) {
+            proj.d_rhs_os = [NSMutableArray arrayWithCapacity:inputScalars.nMultiVolumes + 1];
+        }
+#else
 		if (inputScalars.BPType == 5)
 			proj.d_output = cl::Buffer(proj.CLContext, CL_MEM_READ_ONLY, sizeof(float) * static_cast<uint64_t>(inputScalars.nRowsD + 1) * static_cast<uint64_t>(inputScalars.nColsD + 1) * length[inputScalars.osa_iter0], NULL, &status);
 		else
@@ -110,7 +164,19 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 			getErrorString(status);
 			return;
 		}
+#endif
 		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+#ifdef METAL
+			NSUInteger len = fpSize * inputScalars.im_dim[ii];
+            id<MTLBuffer> buf = [proj.device newBufferWithLength:len options:MTLResourceStorageModeShared];
+            [proj.d_rhs_os addObject:buf];
+            memset(buf.contents, 0, len);
+			if (proj.no_norm == 0) {} // Sensitivity image stuff (TODO)
+			else {
+                id<MTLBuffer> buf = [proj.device newBufferWithLength:fpSize options:MTLResourceStorageModeShared]; // or Private
+                [proj.d_Summ addObject:buf];
+            }
+#else
 			if (DEBUG) {
 				mexPrintBase("inputScalars.im_dim[ii] = %u\n", inputScalars.im_dim[ii]);
 				mexPrintBase("sizeof(T) = %u\n", sizeof(T));
@@ -137,7 +203,9 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 				getErrorString(status);
 				return;
 			}
+#endif
 		}
+#ifndef METAL
 		if (inputScalars.BPType == 5)
 			status = proj.CLCommandQueue[0].enqueueWriteBuffer(proj.d_output, CL_FALSE, 0, sizeof(float) * static_cast<uint64_t>(inputScalars.nRowsD + 1) * static_cast<uint64_t>(inputScalars.nColsD + 1) * length[inputScalars.osa_iter0], meas);
 		else
@@ -146,7 +214,9 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 			getErrorString(status);
 			return;
 		}
+#endif
 	}
+#ifndef METAL // Metal has no support for implementation 3
 	else if (type == 0) {
 		size_t uu = 0;
 		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
@@ -243,13 +313,16 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 	for (cl_uint i = 0ULL; i < proj.CLCommandQueue.size(); i++) {
 		proj.CLCommandQueue[i].finish();
 	}
+#endif
 	for (uint32_t iter = 0; iter < inputScalars.Niter; iter++) {
 		for (uint32_t osa_iter = inputScalars.osa_iter0; osa_iter < inputScalars.subsetsUsed; osa_iter++) {
 			uint32_t subIter = osa_iter;
 			m_size = length[osa_iter];
 			if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 				m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[osa_iter];
-			if (type == 0) {
+
+				if (type == 0) {
+#ifndef METAL
 				proj.d_output = cl::Buffer(proj.CLContext, CL_MEM_READ_WRITE, sizeof(float) * m_size * inputScalars.nBins, NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -309,10 +382,11 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 				if (status != CL_SUCCESS) {
 					return;
 				}
-			}
-			else if (type == 1) {
+#endif
+			} else if (type == 1) {
 				size_t uu = 0;
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+#ifndef METAL
 					region[0] = inputScalars.Nx[ii];
 					region[1] = inputScalars.Ny[ii];
 					region[2] = inputScalars.Nz[ii];
@@ -375,13 +449,29 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 					}
 					if (inputScalars.FPType == 5)
 						uu -= imTot;
+#else
+					NSInteger bytesIm = inputScalars.im_dim[ii] * fpSize;
+                    const float *src = im + uu;
+                    proj.d_im = [proj.device newBufferWithBytes:src length:bytesIm options:MTLResourceStorageModeShared];
+
+                    status = [proj forwardProjection:inputScalars
+                                weighting:w_vec
+                                osaIter:osa_iter
+                                length:length.data()
+                                m_size:m_size
+                                ii:ii
+                                uu:0];
+                    
+#endif
 					uu += inputScalars.im_dim[ii];
 				}
 			}
 			if (type == 2 || type == 0) {
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 					int uu = ii;
+#ifndef METAL
 					if (type == 0) {
+
 						uu += osa_iter * (inputScalars.nMultiVolumes + 1);
 						status = proj.CLCommandQueue[0].enqueueFillBuffer(proj.vec_opencl.d_rhs_os[ii], (C)0, 0, sizeof(C) * inputScalars.im_dim[ii]);
 						if (status != CL_SUCCESS) {
@@ -389,6 +479,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 							return;
 						}
 						status = proj.backwardProjection(inputScalars, w_vec, osa_iter, length, m_size, false, ii, ii, uu);
+
 					}
 					else
 						status = proj.backwardProjection(inputScalars, w_vec, osa_iter, length, m_size, false, ii, uu);
@@ -413,28 +504,47 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 							return;
 						}
 					}
+#else
+					status = [proj backwardProjection:inputScalars
+                                weighting:w_vec
+                                osaIter:osa_iter
+                                length:length.data()
+                                m_size:m_size
+                                computeSens:false
+                                ii:ii
+                                uu:uu];
+#endif
 				}
 			}
 		}
 		if (type == 0)
 			proj.no_norm = 1;
 	}
+#ifndef METAL
 	for (cl_uint i = 0; i < proj.CLCommandQueue.size(); i++) {
 		proj.CLCommandQueue[i].finish();
 	}
+#endif
 	if (type == 1) {
 		if (DEBUG) {
 			mexPrintBase("m_size = %u\n", m_size);
 			mexPrintBase("inputScalars.nBins = %u\n", inputScalars.nBins);
 			mexEval();
 		}
+#ifndef METAL
 		status = proj.CLCommandQueue[0].enqueueReadBuffer(proj.d_output, CL_FALSE, 0, sizeof(float) * m_size * inputScalars.nBins, output);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
+#else
+		size_t byteCount = fpSize * m_size * inputScalars.nBins;
+        void *src = proj.d_output.contents;            // id<MTLBuffer>
+        memcpy(output, src, byteCount);                // copy into your CPU array
+#endif
 	}
 	else if (type == 2) {
+#ifndef METAL
 		size_t uu = 0;
 		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 			if (inputScalars.atomic_64bit)
@@ -461,7 +571,20 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 			}
 			uu += inputScalars.im_dim[ii];
 		}
+#else
+	size_t uuElems = 0;
+	for (int ii = 0; ii <= inputScalars.nMultiVolumes; ++ii) {
+		const size_t elemCount = inputScalars.im_dim[ii];
+		const size_t byteCount = elemCount * fpSize;
+
+		const void *src = proj.d_rhs_os[ii].contents; // Shared buffer
+		memcpy(output + uuElems, src, byteCount);
+
+		uuElems += elemCount;
 	}
+#endif
+	}
+#ifndef METAL
 	else if (type == 0) {
 		size_t uu = 0;
 		int ii = 0;
@@ -475,5 +598,6 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 	for (cl_uint i = 0ULL; i < proj.CLCommandQueue.size(); i++) {
 		proj.CLCommandQueue[i].finish();
 	}
+#endif
 	return;
 }
