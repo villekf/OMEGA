@@ -88,6 +88,7 @@ options.offangle = 0;
 options.attenuation_correction = false;
 
 if options.attenuation_correction % Convert to LAC
+    options.useImages = false;
     xLimits = options.FOVa_x * [-0.5, 0.5]; % SPECT spatial referencing
     yLimits = options.FOVa_y * [-0.5, 0.5];
     zLimits = options.axial_fov * [-0.5, 0.5];
@@ -228,7 +229,6 @@ options.subset_type = 8;
 
 %%% Initial value for the reconstruction
 options.x0 = ones(options.Nx, options.Ny, options.Nz);
-
 
 %% Reconstruction
 A = projectorClass(options);
