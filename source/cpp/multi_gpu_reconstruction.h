@@ -22,13 +22,35 @@
 * along with this program. If not, see <https://www.gnu.org/licenses/>.
 ***************************************************************************/
 #pragma once
-#ifdef METAL
-#include "metal/ProjectorClassMetal.mm"
-#define CL_INT NSInteger
+#ifdef METAL // Metal
+#define NS_PRIVATE_IMPLEMENTATION
+#define CA_PRIVATE_IMPLEMENTATION
+#define MTL_PRIVATE_IMPLEMENTATION
+#include "metal/Metal.hpp"
+#include "ProjectorClassMetal.hpp"
+#define CL_INT int
+#define CL_LONG long
 #define CL_SUCCESS 0
-#else
+#define BUFFER_W(size) NS::TransferPtr(proj.mtlDevice->newBuffer(size, (MTL::ResourceOptions)MTL::ResourceStorageModeShared))
+#define BUFFER_R(size) NS::TransferPtr(proj.mtlDevice->newBuffer(size, (MTL::ResourceOptions)MTL::ResourceStorageModeShared))
+#define FILL_BUFFER(buffer, value, size) std::memset(buffer->contents(), value, size) // Fill buffer with constant value
+#define READ_BUFFER(buffer, size, output) std::memcpy(output, buffer->contents(), size)
+#define WRITE_BUFFER(buffer, input, size) std::memcpy(buffer->contents(), input, size) // Write input array to buffer
+#define CL_CHECK(status)
+#else // OpenCL
 #include "ProjectorClass.h"
 #define CL_INT cl_int
+#define CL_LONG cl_long
+#define BUFFER_W(size) cl::Buffer(proj.CLContext, CL_MEM_WRITE_ONLY, size, NULL, &status)
+#define BUFFER_R(size) cl::Buffer(proj.CLContext, CL_MEM_READ_ONLY, size, NULL, &status)
+#define CL_CHECK(status) \
+	if (status != CL_SUCCESS) { \
+		getErrorString(status); \
+		return; \
+	}
+#define FILL_BUFFER(buffer, value, size) status = proj.CLCommandQueue[0].enqueueFillBuffer(buffer, value, 0, size) // Fill buffer with constant value
+#define READ_BUFFER(buffer, size, output) status = proj.CLCommandQueue[0].enqueueReadBuffer(buffer, CL_FALSE, 0, size, output)
+#define WRITE_BUFFER(buffer, input, size) status = proj.CLCommandQueue[0].enqueueWriteBuffer(buffer, CL_FALSE, 0, size, input) // Write input array to buffer
 #endif
 
 // Main reconstruction function for implementations 3 and 5
@@ -42,7 +64,6 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 	// Number of measurements in each subset
 	std::vector<int64_t> length(inputScalars.subsetsUsed);
 
-
 	if (DEBUG) {
 		mexPrintBase("inputScalars.subsets = %u\n", inputScalars.subsets);
 		mexPrintBase("inputScalars.subsetsUsed = %u\n", inputScalars.subsetsUsed);
@@ -54,92 +75,59 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 		length[kk] = pituus[kk + 1u] - pituus[kk];
 	uint64_t m_size = length[inputScalars.osa_iter0];
 
-	if (DEBUG) {
-		mexPrint("Adding projector");
-	}
+	if (DEBUG) mexPrint("Adding projector");
 	CL_INT status = CL_SUCCESS;
-#ifdef METAL
-	ProjectorClass *proj = [[ProjectorClass alloc] init];
-    status = [proj addProjector:inputScalars
-                        weighting:w_vec
-                                          //method:[RecMethodsBox boxWithPointer:&methods]
-                                headerDirectory:[NSString stringWithUTF8String:header_directory]
-                                            type:-1];
-#else
+
 	ProjectorClass proj;
 	status = proj.addProjector(inputScalars, w_vec, MethodList, header_directory, type);
-#endif
+
 	if (status != 0)
 		return;
 	proj.no_norm = no_norm;
 
 	// Create OpenCL buffers, CUDA arrays or OneAPI buffers (in the future)
-#ifndef METAL
-	status = proj.createBuffers(inputScalars, w_vec, x, z_det, xy_index, z_index, L, pituus, atten, norm, extraCorr, length, MethodList, type);
-#else
-    status = [proj createBuffers:inputScalars
-                                weighting:w_vec
-                                x:x
-                            zDet:z_det
-                        xyIndex:xy_index
-                            zIndex:z_index
-                                L:L
-                            pituus:pituus
-                            atten:atten
-                            norm:norm
-                        extraCorr:extraCorr
-                            length:length.data()
-                            type:type];
-#endif	
+	status = proj.createBuffers(inputScalars, w_vec, x, z_det, xy_index, z_index, L, pituus, atten, norm, extraCorr, length, MethodList, type);	
 	if (status != 0)
 		return;
 
-#ifndef METAL
 	// Input constant data to the kernels
 	status = proj.initializeKernel(inputScalars, w_vec);
 	if (status != 0)
 		return;
+
+	// Set dynamic kernel data
 	status = proj.setDynamicKernelData(inputScalars, w_vec);
 	if (status != 0)
 		return;
+
+#ifndef METAL // OMEGA does not have support for Metal textures
 	cl::detail::size_t_array region = { { 0, 0, 0 } };
-	int64_t imTot = 0ULL;
 #endif
+	int64_t imTot = 0ULL;
 
 	if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 		m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[inputScalars.osa_iter0];
-
-#ifdef METAL
-	NSUInteger fpSize = sizeof(float); // Floating point size
-	NSUInteger bytesOutput = fpSize * m_size * inputScalars.nBins;	
-#endif
 
 	// type 0 = Implementation 3
 	// type 1 = Implementation 5 forward projection
 	// type 2 = Implementation 5 backprojection
 	if (type == 1) { // Forward projection A*x
-#ifdef METAL
-		status = [proj allocateOutput:bytesOutput]; // TODO replace with proj.d_output = ...
-#else
 		if (DEBUG) {
 			mexPrintBase("m_size = %u\n", m_size);
 			mexPrintBase("inputScalars.osa_iter0 = %u\n", inputScalars.osa_iter0);
 			mexPrintBase("im[0] = %f\n", im[0]);
 			mexEval();
 		}
-		proj.d_output = cl::Buffer(proj.CLContext, CL_MEM_WRITE_ONLY, sizeof(float) * m_size * inputScalars.nBins, NULL, &status);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return;
-		}
+		proj.d_output = BUFFER_W(sizeof(float) * m_size * inputScalars.nBins);
+		CL_CHECK(status);
+		FILL_BUFFER(proj.d_output, 0.f, sizeof(float) * m_size * inputScalars.nBins);
+		CL_CHECK(status);
+#ifndef METAL // Metal implementation always uses buffers
 		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
 			imTot += (inputScalars.Ny[ii] + 1) * (inputScalars.Nz[ii] + 1) * inputScalars.Nx[ii];
-		status = proj.CLCommandQueue[0].enqueueFillBuffer(proj.d_output, 0.f, 0, sizeof(float) * m_size * inputScalars.nBins);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return;
-		}
 #endif
+		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
+			proj.d_Summ.emplace_back(BUFFER_W(sizeof(T)));
 	}
 	if (type == 2) { // Backward projection A'*y
 		if (DEBUG) {
@@ -148,73 +136,38 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 			mexPrintBase("inputScalars.nMultiVolumes = %u\n", inputScalars.nMultiVolumes);
 			mexEval();
 		}
-#ifdef METAL
-		id<MTLBuffer> buf = [proj.device newBufferWithBytes:meas length:bytesOutput options:MTLResourceStorageModeShared];
-        proj.d_output = buf;
-
-        if (!proj.d_rhs_os) {
-            proj.d_rhs_os = [NSMutableArray arrayWithCapacity:inputScalars.nMultiVolumes + 1];
-        }
-#else
 		if (inputScalars.BPType == 5)
-			proj.d_output = cl::Buffer(proj.CLContext, CL_MEM_READ_ONLY, sizeof(float) * static_cast<uint64_t>(inputScalars.nRowsD + 1) * static_cast<uint64_t>(inputScalars.nColsD + 1) * length[inputScalars.osa_iter0], NULL, &status);
+			proj.d_output = BUFFER_R(sizeof(float) * static_cast<uint64_t>(inputScalars.nRowsD + 1) * static_cast<uint64_t>(inputScalars.nColsD + 1) * length[inputScalars.osa_iter0]);
 		else
-			proj.d_output = cl::Buffer(proj.CLContext, CL_MEM_READ_ONLY, sizeof(float) * m_size * inputScalars.nBins, NULL, &status);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return;
-		}
-#endif
+			proj.d_output = BUFFER_R(sizeof(float) * m_size * inputScalars.nBins);
+		CL_CHECK(status);
+
 		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-#ifdef METAL
-			NSUInteger len = fpSize * inputScalars.im_dim[ii];
-            id<MTLBuffer> buf = [proj.device newBufferWithLength:len options:MTLResourceStorageModeShared];
-            [proj.d_rhs_os addObject:buf];
-            memset(buf.contents, 0, len);
-			if (proj.no_norm == 0) {} // Sensitivity image stuff (TODO)
-			else {
-                id<MTLBuffer> buf = [proj.device newBufferWithLength:fpSize options:MTLResourceStorageModeShared]; // or Private
-                [proj.d_Summ addObject:buf];
-            }
-#else
 			if (DEBUG) {
 				mexPrintBase("inputScalars.im_dim[ii] = %u\n", inputScalars.im_dim[ii]);
 				mexPrintBase("sizeof(T) = %u\n", sizeof(T));
 				mexPrintBase("sizeof(T) * inputScalars.im_dim[ii] = %u\n", sizeof(T) * inputScalars.im_dim[ii]);
 				mexEval();
 			}
-			proj.vec_opencl.d_rhs_os.emplace_back(cl::Buffer(proj.CLContext, CL_MEM_WRITE_ONLY, sizeof(T) * inputScalars.im_dim[ii], NULL, &status));
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return;
-			}
+
+			proj.vec_opencl.d_rhs_os.emplace_back(BUFFER_W(sizeof(T) * inputScalars.im_dim[ii]));
+			CL_CHECK(status);
 			if (proj.no_norm == 0) {
-				proj.d_Summ.emplace_back(cl::Buffer(proj.CLContext, CL_MEM_WRITE_ONLY, sizeof(T) * inputScalars.im_dim[ii], NULL, &status));
-				status = proj.CLCommandQueue[0].enqueueFillBuffer(proj.d_Summ[ii], (T)0, 0, sizeof(T) * inputScalars.im_dim[ii]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return;
-				}
+				proj.d_Summ.emplace_back(BUFFER_W(sizeof(T) * inputScalars.im_dim[ii]));
+				FILL_BUFFER(proj.d_Summ[ii], (T)0, sizeof(T) * inputScalars.im_dim[ii]);
+				CL_CHECK(status);
+			} else {
+				proj.d_Summ.emplace_back(BUFFER_W(sizeof(T)));
 			}
-			else
-				proj.d_Summ.emplace_back(cl::Buffer(proj.CLContext, CL_MEM_WRITE_ONLY, sizeof(T), NULL, &status));
-			status = proj.CLCommandQueue[0].enqueueFillBuffer(proj.vec_opencl.d_rhs_os[ii], (T)0, 0, sizeof(T) * inputScalars.im_dim[ii]);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return;
-			}
-#endif
+			FILL_BUFFER(proj.vec_opencl.d_rhs_os[ii], (T)0, sizeof(T) * inputScalars.im_dim[ii])
+			CL_CHECK(status);
+
 		}
-#ifndef METAL
 		if (inputScalars.BPType == 5)
-			status = proj.CLCommandQueue[0].enqueueWriteBuffer(proj.d_output, CL_FALSE, 0, sizeof(float) * static_cast<uint64_t>(inputScalars.nRowsD + 1) * static_cast<uint64_t>(inputScalars.nColsD + 1) * length[inputScalars.osa_iter0], meas);
+			WRITE_BUFFER(proj.d_output, meas, sizeof(float) * static_cast<uint64_t>(inputScalars.nRowsD + 1) * static_cast<uint64_t>(inputScalars.nColsD + 1) * length[inputScalars.osa_iter0]);
 		else
-			status = proj.CLCommandQueue[0].enqueueWriteBuffer(proj.d_output, CL_FALSE, 0, sizeof(float) * m_size * inputScalars.nBins, meas);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return;
-		}
-#endif
+			WRITE_BUFFER(proj.d_output, meas, sizeof(float) * m_size * inputScalars.nBins);
+		CL_CHECK(status);
 	}
 #ifndef METAL // Metal has no support for implementation 3
 	else if (type == 0) {
@@ -320,30 +273,17 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 			m_size = length[osa_iter];
 			if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 				m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[osa_iter];
-
-				if (type == 0) {
-#ifndef METAL
+#ifndef METAL // Metal has no support for implementation 3
+			if (type == 0) {
 				proj.d_output = cl::Buffer(proj.CLContext, CL_MEM_READ_WRITE, sizeof(float) * m_size * inputScalars.nBins, NULL, &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return;
-				}
+				CL_CHECK(status);
 				status = proj.CLCommandQueue[0].enqueueFillBuffer(proj.d_output, 0.f, 0, sizeof(float) * m_size * inputScalars.nBins);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return;
-				}
+				CL_CHECK(status);
 				if (inputScalars.CT) {
 					proj.d_outputCT = cl::Buffer(proj.CLContext, CL_MEM_READ_WRITE, sizeof(float) * m_size, NULL, &status);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return;
-					}
+					CL_CHECK(status);
 					status = proj.CLCommandQueue[0].enqueueFillBuffer(proj.d_outputCT, 0.f, 0, sizeof(float) * m_size);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return;
-					}
+					CL_CHECK(status);
 				}
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 					region[0] = inputScalars.Nx[ii];
@@ -352,41 +292,29 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 					proj.vec_opencl.d_image_os = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
 					if (inputScalars.use_psf) {
 						status = proj.computeConvolutionF(inputScalars, ii);
-						if (status != CL_SUCCESS) {
-							return;
-						}
+						CL_CHECK(status);
 						status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(proj.d_imTemp[ii], proj.vec_opencl.d_image_os, 0, proj.origin, region);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							mexPrint("Image copy failed\n");
-							return;
-						}
+						CL_CHECK(status);
 					}
 					else {
 						status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(proj.d_imFinal[ii], proj.vec_opencl.d_image_os, 0, proj.origin, region);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							mexPrint("Image copy failed\n");
-							return;
-						}
+						CL_CHECK(status);
 					}
 					for (cl_uint i = 0ULL; i < proj.CLCommandQueue.size(); i++) {
 						proj.CLCommandQueue[i].finish();
 					}
 					status = proj.forwardProjection(inputScalars, w_vec, osa_iter, length, m_size, ii);
-					if (status != CL_SUCCESS) {
-						return;
-					}
+					CL_CHECK(status);
 				}
 				status = proj.computeForward(inputScalars, length, osa_iter);
-				if (status != CL_SUCCESS) {
-					return;
-				}
+				CL_CHECK(status);
+
+			}
 #endif
-			} else if (type == 1) {
+			if (type == 1) {
 				size_t uu = 0;
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-#ifndef METAL
+#ifndef METAL // Metal does not support projector type 5
 					region[0] = inputScalars.Nx[ii];
 					region[1] = inputScalars.Ny[ii];
 					region[2] = inputScalars.Nz[ii];
@@ -401,91 +329,57 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 							mexEval();
 						}
 						proj.vec_opencl.d_image_os_int = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return;
-						}
+						CL_CHECK(status);
 						status = proj.CLCommandQueue[0].enqueueWriteImage(proj.vec_opencl.d_image_os_int, CL_FALSE, proj.origin, region, 0, 0, &im[uu]);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return;
-						}
+						CL_CHECK(status);
 						region[0] = inputScalars.Nx[ii] + 1;
 						region[1] = inputScalars.Nz[ii] + 1;
 						region[2] = inputScalars.Ny[ii];
 						uu += imTot;
 					}
+#endif
 					if (DEBUG) {
 						mexPrintBase("uu = %u\n", uu);
 						mexEval();
 					}
 					if (inputScalars.useBuffers) {
-						proj.vec_opencl.d_im = cl::Buffer(proj.CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.Nx[ii] * inputScalars.Ny[ii] * inputScalars.Nz[ii], NULL, &status);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return;
-						}
-						status = proj.CLCommandQueue[0].enqueueWriteBuffer(proj.vec_opencl.d_im, CL_FALSE, 0, sizeof(float) * inputScalars.Nx[ii] * inputScalars.Ny[ii] * inputScalars.Nz[ii], &im[uu]);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return;
-						}
+						proj.vec_opencl.d_im = BUFFER_R(sizeof(float) * inputScalars.Nx[ii] * inputScalars.Ny[ii] * inputScalars.Nz[ii]);
+						CL_CHECK(status);
+						WRITE_BUFFER(proj.vec_opencl.d_im, &im[uu], sizeof(float) * inputScalars.Nx[ii] * inputScalars.Ny[ii] * inputScalars.Nz[ii]);
+						//status = proj.CLCommandQueue[0].enqueueWriteBuffer(proj.vec_opencl.d_im, CL_FALSE, 0, sizeof(float) * inputScalars.Nx[ii] * inputScalars.Ny[ii] * inputScalars.Nz[ii], &im[uu]);
+						CL_CHECK(status);
 					}
+#ifndef METAL // OMEGA has no support for Metal textures
 					else {
 						proj.vec_opencl.d_image_os = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return;
-						}
+						CL_CHECK(status);
 						status = proj.CLCommandQueue[0].enqueueWriteImage(proj.vec_opencl.d_image_os, CL_FALSE, proj.origin, region, 0, 0, &im[uu]);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return;
-						}
+						CL_CHECK(status);
 					}
+#endif
 					status = proj.forwardProjection(inputScalars, w_vec, osa_iter, length, m_size, ii);
-					if (status != CL_SUCCESS) {
-						return;
-					}
+					CL_CHECK(status);
 					if (inputScalars.FPType == 5)
 						uu -= imTot;
-#else
-					NSInteger bytesIm = inputScalars.im_dim[ii] * fpSize;
-                    const float *src = im + uu;
-                    proj.d_im = [proj.device newBufferWithBytes:src length:bytesIm options:MTLResourceStorageModeShared];
-
-                    status = [proj forwardProjection:inputScalars
-                                weighting:w_vec
-                                osaIter:osa_iter
-                                length:length.data()
-                                m_size:m_size
-                                ii:ii
-                                uu:0];
                     
-#endif
 					uu += inputScalars.im_dim[ii];
 				}
 			}
 			if (type == 2 || type == 0) {
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 					int uu = ii;
-#ifndef METAL
 					if (type == 0) {
-
 						uu += osa_iter * (inputScalars.nMultiVolumes + 1);
-						status = proj.CLCommandQueue[0].enqueueFillBuffer(proj.vec_opencl.d_rhs_os[ii], (C)0, 0, sizeof(C) * inputScalars.im_dim[ii]);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return;
-						}
+						FILL_BUFFER(proj.vec_opencl.d_rhs_os[ii], (C)0, sizeof(C) * inputScalars.im_dim[ii]);
+						//status = proj.CLCommandQueue[0].enqueueFillBuffer(proj.vec_opencl.d_rhs_os[ii], (C)0, 0, sizeof(C) * inputScalars.im_dim[ii]);
+						CL_CHECK(status);
 						status = proj.backwardProjection(inputScalars, w_vec, osa_iter, length, m_size, false, ii, ii, uu);
 
-					}
-					else
+					} else {
 						status = proj.backwardProjection(inputScalars, w_vec, osa_iter, length, m_size, false, ii, uu);
-					if (status != CL_SUCCESS) {
-						return;
 					}
+					CL_CHECK(status);
+#ifndef METAL // Metal has no support for implementation 3
 					if (type == 0) {
 						if (inputScalars.use_psf) {
 							status = proj.computeConvolution(inputScalars, proj.vec_opencl.d_rhs_os[ii], ii, tyyppi);
@@ -504,15 +398,6 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 							return;
 						}
 					}
-#else
-					status = [proj backwardProjection:inputScalars
-                                weighting:w_vec
-                                osaIter:osa_iter
-                                length:length.data()
-                                m_size:m_size
-                                computeSens:false
-                                ii:ii
-                                uu:uu];
 #endif
 				}
 			}
@@ -531,68 +416,38 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 			mexPrintBase("inputScalars.nBins = %u\n", inputScalars.nBins);
 			mexEval();
 		}
-#ifndef METAL
-		status = proj.CLCommandQueue[0].enqueueReadBuffer(proj.d_output, CL_FALSE, 0, sizeof(float) * m_size * inputScalars.nBins, output);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return;
-		}
-#else
-		size_t byteCount = fpSize * m_size * inputScalars.nBins;
-        void *src = proj.d_output.contents;            // id<MTLBuffer>
-        memcpy(output, src, byteCount);                // copy into your CPU array
-#endif
+		READ_BUFFER(proj.d_output, sizeof(float) * m_size * inputScalars.nBins, output)
+		CL_CHECK(status);
 	}
 	else if (type == 2) {
-#ifndef METAL
+//#ifndef METAL
 		size_t uu = 0;
 		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 			if (inputScalars.atomic_64bit)
-				status = proj.CLCommandQueue[0].enqueueReadBuffer(proj.vec_opencl.d_rhs_os[ii], CL_FALSE, 0, sizeof(cl_long) * inputScalars.im_dim[ii], &output[uu]);
+				READ_BUFFER(proj.vec_opencl.d_rhs_os[ii], sizeof(CL_LONG) * inputScalars.im_dim[ii], &output[uu]);
 			else if (inputScalars.atomic_32bit)
-				status = proj.CLCommandQueue[0].enqueueReadBuffer(proj.vec_opencl.d_rhs_os[ii], CL_FALSE, 0, sizeof(cl_int) * inputScalars.im_dim[ii], &output[uu]);
+				READ_BUFFER(proj.vec_opencl.d_rhs_os[ii], sizeof(CL_INT) * inputScalars.im_dim[ii], &output[uu]);
 			else
-				status = proj.CLCommandQueue[0].enqueueReadBuffer(proj.vec_opencl.d_rhs_os[ii], CL_FALSE, 0, sizeof(float) * inputScalars.im_dim[ii], &output[uu]);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return;
-			}
+				READ_BUFFER(proj.vec_opencl.d_rhs_os[ii], sizeof(float) * inputScalars.im_dim[ii], &output[uu]);
+			CL_CHECK(status);
 			if (proj.no_norm == 0) {
 				if (inputScalars.atomic_64bit)
-					status = proj.CLCommandQueue[0].enqueueReadBuffer(proj.d_Summ[ii], CL_FALSE, 0, sizeof(cl_long) * inputScalars.im_dim[ii], &sensIm[uu]);
+					READ_BUFFER(proj.d_Summ[ii], sizeof(CL_LONG) * inputScalars.im_dim[ii], &sensIm[uu]);
 				else if (inputScalars.atomic_32bit)
-					status = proj.CLCommandQueue[0].enqueueReadBuffer(proj.d_Summ[ii], CL_FALSE, 0, sizeof(cl_int) * inputScalars.im_dim[ii], &sensIm[uu]);
+					READ_BUFFER(proj.d_Summ[ii], sizeof(CL_INT) * inputScalars.im_dim[ii], &sensIm[uu]);
 				else
-					status = proj.CLCommandQueue[0].enqueueReadBuffer(proj.d_Summ[ii], CL_FALSE, 0, sizeof(float) * inputScalars.im_dim[ii], &sensIm[uu]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return;
-				}
+					READ_BUFFER(proj.d_Summ[ii], sizeof(float) * inputScalars.im_dim[ii], &sensIm[uu]);
+				CL_CHECK(status);
 			}
 			uu += inputScalars.im_dim[ii];
 		}
-#else
-	size_t uuElems = 0;
-	for (int ii = 0; ii <= inputScalars.nMultiVolumes; ++ii) {
-		const size_t elemCount = inputScalars.im_dim[ii];
-		const size_t byteCount = elemCount * fpSize;
-
-		const void *src = proj.d_rhs_os[ii].contents; // Shared buffer
-		memcpy(output + uuElems, src, byteCount);
-
-		uuElems += elemCount;
 	}
-#endif
-	}
-#ifndef METAL
+#ifndef METAL // Metal has no support for implementation 3
 	else if (type == 0) {
 		size_t uu = 0;
 		int ii = 0;
 		status = proj.CLCommandQueue[0].enqueueReadBuffer(proj.d_imFinal[ii], CL_FALSE, 0, sizeof(float) * inputScalars.im_dim[ii], &output[uu]);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return;
-		}
+		CL_CHECK(status);
 	}
 
 	for (cl_uint i = 0ULL; i < proj.CLCommandQueue.size(); i++) {

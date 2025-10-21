@@ -1344,7 +1344,7 @@ else % Apple silicon MATLAB/Octave
     compiler = '';
     complexFlag = '';
     ldflags = 'LDFLAGS="\$LDFLAGS -framework Metal -framework Foundation"';
-    cxxflags = 'CXXFLAGS="\$CXXFLAGS -std=c++17 -x objective-c++ -fobjc-arc"';
+    cxxflags = 'CXXFLAGS="\$CXXFLAGS -std=c++17 "';
     useLDclassic = 0; % There is a bug with Xcode 26.0 and C-style MEX API.
     % See for example: https://se.mathworks.com/matlabcentral/answers/2180302-mex-failing-to-compile-function
     try
