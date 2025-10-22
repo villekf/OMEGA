@@ -2,7 +2,7 @@
 
 ## OMEGA v2.1.0
 
-### Breaking changes
+### Breaking (API) changes
 
 - SPECT data-handling behavior changed with ray-tracing projectors (projector type 1)
   - This is now closer to CT-functionality, meaning that subsets are projection-based
@@ -26,7 +26,7 @@
 - OMEGA can now be installed in Python through pip using `pip install omegatomo`
 
 - Added support for orthogonal distance ray-tracing projector with SPECT
-  - Voxels are weighed by a Gaussian distribution sampled at the orthogonal distance, the variance of which is determined by the parallel distance between detector and voxel center
+  - Voxels are weighted by a Gaussian distribution sampled at the orthogonal distance, the variance of which is determined by the parallel distance between detector and voxel center
 
 - Projector type 1 now has built-in support for SPECT parallel-hole and pinhole collimators
   - Variables for focal length: `options.colFxy` and `options.colFz`
@@ -39,8 +39,8 @@
   - In 2D case, the same mask is used at each slice/projection/sinogram
   - In 3D case, you can specify a unique mask for each
   - Needs to be the same size as the image/measurement data
-  - Probably won't work with multi-resolution reconstruction
-  - Idea is the same as before, pixels/voxels with 1 are included, pixels/voxels with 0 are omitted
+  - Probably won't work with multi-resolution reconstruction, but might work with projection extrapolation
+  - Idea is the same as before, pixels/voxels with value of 1 are included, pixels/voxels with 0 are omitted
   - Implementation 2 only!
   
 - Added subset support for FISTA
@@ -76,12 +76,17 @@
   - Easily create your own algorithms by using the built-in operators for forward and/or backward projections
   - Full GPU support
   
+- Limited Mac Metal support for SPECT
+  - Supports only the forward and backward projection operators
+  - MATLAB only!
+  - Can be run with integrated Mac GPUs
+  
 - Added support for TOF with list-mode data
   - A separate uint8 vector needs to be input (`options.TOFIndices`) that contains the indices to the TOF time windows specified by `options.TOFCenter`
   - Implementation 2 only!
   
 - Added support for standalone GPU-based regularizers in Python
-  - Can be used with any data, as long as the input image is a vector and in PyOpenCL, ArrayFire, CuPy or Pytorch format
+  - Can be used with any data, as long as the input image is a vector and in PyOpenCL, ArrayFire, CuPy or PyTorch format
   - Supports RDP, non-local regularizers and gradient-based TV
   
 - Added support for parallel beam reconstruction (`options.useParallelBeam`)
