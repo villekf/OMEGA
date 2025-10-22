@@ -553,12 +553,13 @@ public:
 			d_x.resize(inputScalars.subsetsUsed);
 			d_z.resize(inputScalars.subsetsUsed);
 		}
-		//d_Summ.resize(inputScalars.nMultiVolumes); // This may cause problems with emplace_back
-		if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5))
+
+        if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5))
 			d_T.resize(inputScalars.subsetsUsed);
 
 		size_t vecSize = 1;
-		if ((inputScalars.PET || inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0)
+		if ((inputScalars.PET 
+            || inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0)
 			vecSize = static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD);
 
 		size_t fpSize = sizeof(float); // Floating point size
@@ -567,74 +568,166 @@ public:
 		
 		const MTL::ResourceOptions sharedOpts = (MTL::ResourceOptions)MTL::ResourceStorageModeShared;
 
-
-		if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3)
-		{
+		if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 			NS::UInteger bytes = (NS::UInteger)(fpSize * (size_t)inputScalars.size_V);
         	d_V = NS::TransferPtr(mtlDevice->newBuffer((const void*)inputScalars.V, bytes, sharedOpts));
 		}
+
+        // Detector coordinates
+        if ((!(inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) || inputScalars.indexBased) {
+            //d_x[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x, NULL, &status);
+        }
+
+        // Attenuation data for image-based attenuation
 		if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
 			NS::UInteger bytes = (NS::UInteger)(fpSize * (size_t)inputScalars.im_dim[0]);
 			d_attenB = NS::TransferPtr(mtlDevice->newBuffer((const void*)atten, bytes, sharedOpts));
     	}
 		
+        // Forward projection mask
+        if (inputScalars.maskFP) {
+            if (inputScalars.maskFPZ > 1) {
+                for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+                    NS::UInteger bytes = (NS::UInteger)((size_t)sizeof(uint8_t) * (size_t)inputScalars.nRowsD * (size_t)inputScalars.nColsD * (size_t)length[kk]);
+                    const uint8_t* src = &w_vec.maskFP[(size_t)pituus[kk] * (size_t)vecSize];
+                    d_maskFP[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)src, bytes, sharedOpts));
+                }
+            } else {
+                NS::UInteger bytes = (NS::UInteger)((size_t)sizeof(uint8_t) * (size_t)inputScalars.nRowsD * (size_t)inputScalars.nColsD);
+                d_maskFP[0] = NS::TransferPtr(mtlDevice->newBuffer((const void*)w_vec.maskFP, bytes, sharedOpts));
+            }
+        }
 
-		if (inputScalars.maskFP || inputScalars.maskBP) {
-			if (inputScalars.maskFP) {
-				if (inputScalars.maskFPZ > 1) {
-					for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-						NS::UInteger bytes = (NS::UInteger)((size_t)sizeof(uint8_t) * (size_t)inputScalars.nRowsD * (size_t)inputScalars.nColsD * (size_t)length[kk]);
-						const uint8_t* src = &w_vec.maskFP[(size_t)pituus[kk] * (size_t)vecSize];
-						d_maskFP[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)src, bytes, sharedOpts));
-					}
-				} else {
-					NS::UInteger bytes = (NS::UInteger)((size_t)sizeof(uint8_t) * (size_t)inputScalars.nRowsD * (size_t)inputScalars.nColsD);
-                	d_maskFP[0] = NS::TransferPtr(mtlDevice->newBuffer((const void*)w_vec.maskFP, bytes, sharedOpts));
-				}
-			}
-			if (inputScalars.maskBP) {
-				NS::UInteger bytes = (NS::UInteger)((size_t)sizeof(uint8_t) * (size_t)inputScalars.Nx[0] * (size_t)inputScalars.Ny[0] * (size_t)inputScalars.maskBPZ);
-            	d_maskBP = NS::TransferPtr(mtlDevice->newBuffer((const void*)w_vec.maskBP, bytes, sharedOpts));
-			}
-		}
+        // Backprojection mask
+        if (inputScalars.maskBP) {
+            NS::UInteger bytes = (NS::UInteger)((size_t)sizeof(uint8_t) * (size_t)inputScalars.Nx[0] * (size_t)inputScalars.Ny[0] * (size_t)inputScalars.maskBPZ);
+            d_maskBP = NS::TransferPtr(mtlDevice->newBuffer((const void*)w_vec.maskBP, bytes, sharedOpts));
+        }
+
+        // SPECT ray shifts (required for only projector types 1,2 and 3)
 		if (inputScalars.SPECT) {
 			NS::UInteger bytes = (NS::UInteger)(fpSize * 2ull * (size_t)inputScalars.n_rays * (size_t)inputScalars.nRowsD * (size_t)inputScalars.nColsD * (size_t)inputScalars.nProjections);
 			d_rayShiftsDetector = NS::TransferPtr(mtlDevice->newBuffer((const void*)w_vec.rayShiftsDetector, bytes, sharedOpts));
 			d_rayShiftsSource = NS::TransferPtr(mtlDevice->newBuffer((const void*)w_vec.rayShiftsSource, bytes, sharedOpts));
 		}
 
+        if (inputScalars.eFOV) {
+            NS::UInteger bytes = (NS::UInteger)(sizeof(uint8_t) * inputScalars.Nz[0]);
+            d_eFOVIndices = NS::TransferPtr(mtlDevice->newBuffer((const void*)w_vec.eFOVIndices, bytes, sharedOpts));
+        }
+
+        if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) {
+            NS::UInteger bytes = (NS::UInteger)(sizeof(float) * inputScalars.nProjections);
+            d_angle = NS::TransferPtr(mtlDevice->newBuffer((const void*)w_vec.angles, bytes, sharedOpts));
+        }
+
+        // TOF bin centers
+        if (inputScalars.TOF) {
+            NS::UInteger bytes = (NS::UInteger)(sizeof(float) * inputScalars.nBins);
+            d_eFOVIndices = NS::TransferPtr(mtlDevice->newBuffer((const void*)inputScalars.TOFCenter, bytes, sharedOpts));
+        }
+
+        if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
+            NS::UInteger bytesX = (NS::UInteger)(sizeof(float) * inputScalars.size_of_x);
+            NS::UInteger bytesZ = (NS::UInteger)(sizeof(float) * inputScalars.size_z);
+            d_xFull.emplace_back(NS::TransferPtr(mtlDevice->newBuffer((const void*)x, bytesX, sharedOpts)));
+            d_zFull.emplace_back(NS::TransferPtr(mtlDevice->newBuffer((const void*)z_det, bytesZ, sharedOpts)));
+        }
+
 		// Per-subset buffers
 		for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-			// z_det (2 floats per element)
-			NS::UInteger bytesZ = (NS::UInteger)(fpSize * (size_t)length[kk] * 2u);
-			const float* srcZ = &z_det[(size_t)pituus[kk] * 2u];
-			d_z[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcZ, bytesZ, sharedOpts));
+            if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
+                if (inputScalars.pitch) {
+                    NS::UInteger bytesZ = (NS::UInteger)(fpSize * (size_t)length[kk] * 6u);
+			        const float* srcZ = &z_det[(size_t)pituus[kk] * 6u];
+			        d_z[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcZ, bytesZ, sharedOpts));
+                } else {
+                    NS::UInteger bytesZ = (NS::UInteger)(fpSize * (size_t)length[kk] * 2u);
+                    const float* srcZ = &z_det[(size_t)pituus[kk] * 2u];
+                    d_z[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcZ, bytesZ, sharedOpts));
+                }
+            } else {
+                if (inputScalars.PET && inputScalars.listmode == 0) {
+                    if (inputScalars.nLayers > 1) {
+                        NS::UInteger bytesZ = (NS::UInteger)(fpSize * (size_t)length[kk] * 3u);
+                        const float* srcZ = &z_det[(size_t)pituus[kk] * 3u];
+                        d_z[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcZ, bytesZ, sharedOpts));
+                    } else {
+                        NS::UInteger bytesZ = (NS::UInteger)(fpSize * (size_t)length[kk] * 2u);
+                        const float* srcZ = &z_det[(size_t)pituus[kk] * 2u];
+                        d_z[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcZ, bytesZ, sharedOpts));
+                    }
+                } else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased)) {
+                    NS::UInteger bytesZ = (NS::UInteger)(fpSize * (size_t)inputScalars.size_z);
+                    const float* srcZ = &z_det[(size_t)inputScalars.size_z];
+                    d_z[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcZ, bytesZ, sharedOpts));
+                }
+            }
+            
+            if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
+                //d_T[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk], NULL, &status);
+            }
 
-			// x (6 floats per element)
-			NS::UInteger bytesX = (NS::UInteger)(fpSize * (size_t)length[kk] * 6u);
-			const float* srcX = &x[(size_t)pituus[kk] * 6u];
-			d_x[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcX, bytesX, sharedOpts));
-
-			// Indices (raw data & not listmode==1)
-			if (inputScalars.raw && inputScalars.listmode != 1) {
-				NS::UInteger bytesL = (NS::UInteger)(sizeof(uint16_t) * (size_t)length[kk] * 2u);
-				const uint16_t* srcL = &L[(size_t)pituus[kk] * 2u];
-				d_L[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcL, bytesL, sharedOpts));
-			}
+			if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
+                NS::UInteger bytesX = (NS::UInteger)(fpSize * (size_t)length[kk] * 6u);
+                const float* srcX = &x[(size_t)pituus[kk] * 6u];
+                d_x[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcX, bytesX, sharedOpts));
+            } else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
+                if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF) {
+                    NS::UInteger bytesX = (NS::UInteger)(fpSize * (size_t)length[kk] * 6u);
+                    const float* srcX = &w_vec.listCoord[pituus[kk] * 6u];
+                    d_x[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcX, bytesX, sharedOpts));
+                }
+            }
 
 			// Normalization
-			if (inputScalars.normalization_correction) {
+			if (inputScalars.size_norm > 1 && inputScalars.normalization_correction) {
 				NS::UInteger bytesN = (NS::UInteger)(fpSize * (size_t)length[kk] * (size_t)vecSize);
 				const float* srcN = &norm[(size_t)pituus[kk] * (size_t)vecSize];
 				d_norm[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcN, bytesN, sharedOpts));
 			}
 
-			// Scatter
-			if (inputScalars.scatter) {
+            // Scatter
+			if (inputScalars.size_scat > 1 && inputScalars.scatter == 1U) {
 				NS::UInteger bytesS = (NS::UInteger)(fpSize * (size_t)length[kk] * (size_t)vecSize);
 				const float* srcS = &extraCorr[(size_t)pituus[kk] * (size_t)vecSize];
 				d_scat[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcS, bytesS, sharedOpts));
 			}
+
+            if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
+                NS::UInteger bytes = sizeof(float) * length[kk] * vecSize;
+                const float* src = &atten[pituus[kk] * vecSize]
+                d_atten[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)src, bytes, sharedOpts));
+            }
+
+			// Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
+			if (inputScalars.raw) {
+				NS::UInteger bytesL = (NS::UInteger)(sizeof(uint16_t) * (size_t)length[kk] * 2u);
+				const uint16_t* srcL = &L[(size_t)pituus[kk] * 2u];
+				d_L[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcL, bytesL, sharedOpts));
+			} else if (inputScalars.listmode != 1 && ((!inputScalars.CT && !inputScalars.SPECT && !inputScalars.PET) && (inputScalars.subsets > 1 && (inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7)))) {
+                NS::UInteger bytesXY = (NS::UInteger)(sizeof(uint32_t) * length[kk]);
+                NS::UInteger bytesZ = (NS::UInteger)(sizeof(uint16_t) * length[kk]);
+                const uint32_t* srcXY = &xy_index[pituus[kk]];
+                const uint16_t* srcZ = &z_index[pituus[kk]];
+                d_xyindex[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcXY, bytesXY, sharedOpts));
+                d_zindex[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcZ, bytesZ, sharedOpts));
+            }
+
+            if (inputScalars.listmode > 0 && (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF))) {
+                if (inputScalars.indexBased) {
+                    NS::UInteger bytes_tr_ax = (NS::UInteger)(sizeof(uint16_t) * length[kk] * 2);
+                    const uint32_t* srcTR = &w_vec.trIndex[pituus[kk] * 2];
+                    const uint16_t* srcAX = &w_vec.axIndex[pituus[kk] * 2];
+                    d_trIndex[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcTR, bytes_tr_ax, sharedOpts));
+                    d_axIndex[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcAX, bytes_tr_ax, sharedOpts));
+                }
+                if (inputScalars.TOF) {
+                    NS::UInteger bytesTOFIdx = (NS::UInteger)(sizeof(uint8_t) * length[kk]);
+				    const float* srcTOFIdx = &w_vec.TOFIndices[pituus[kk]];
+                    d_TOFIndex[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcTOFIdx, bytesTOFIdx, sharedOpts));
+                }
+            }
 		}
 		return 0;
     }
