@@ -441,13 +441,13 @@ class projectorClass:
     useMultiResolutionVolumes = False
     nMultiVolumes = 0
     storeMultiResolution = False
-    extrapLength = 0.2
+    extrapLength = None
     axialExtrapolation = False
     transaxialExtrapolation = False
     useExtrapolationWeighting = False
     transaxialEFOV = False
     axialEFOV = False
-    eFOVLength = 0.4
+    eFOVLength = None
     NLM_gauss = 2.
     TOF_noise_FWHM = 0.
     TOF_offset = 0.
