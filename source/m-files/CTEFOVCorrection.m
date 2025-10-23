@@ -13,20 +13,53 @@ end
 if ~isfield(options, 'useInpaint')
     options.useInpaint = false;
 end
+if ~isfield(options, 'extrapLengthAxial')
+    if ~isfield(options, 'extrapLength')
+        extrapLengthAxial = 0.25;
+    else
+        extrapLengthAxial = options.extrapLength;
+    end
+else
+    extrapLengthAxial = options.extrapLengthAxial;
+end
 if ~isfield(options, 'extrapLength')
-    extrapLength = .2;
+    extrapLength = .25;
 else
     extrapLength = options.extrapLength;
+end
+if ~isfield(options, 'extrapLengthTransaxial')
+    extrapLengthTransaxial = extrapLength;
+else
+    extrapLengthTransaxial = options.extrapLengthTransaxial;
+end
+if ~isfield(options, 'eFOVLengthAxial')
+    if ~isfield(options, 'eFOVLength')
+        eFOVLengthAxial = 0.3;
+    else
+        eFOVLengthAxial = options.eFOVLength;
+    end
+else
+    eFOVLengthAxial = options.eFOVLengthAxial;
 end
 if ~isfield(options, 'eFOVLength')
     eFOVLength = .4;
 else
     eFOVLength = options.eFOVLength;
 end
+if ~isfield(options, 'eFOVLengthTransaxial')
+    eFOVLengthTransaxial = eFOVLength;
+else
+    eFOVLengthTransaxial = options.eFOVLengthTransaxial;
+end
 if ~isfield(options, 'useExtrapolationWeighting')
     weighting = false;
 else
     weighting = options.useExtrapolationWeighting;
+end
+if ~isfield(options, 'offsetCorrection')
+    offset = false;
+else
+    offset = options.offsetCorrection;
 end
 if options.useEFOV
     if ~isfield(options, 'transaxialEFOV') || ~options.transaxialEFOV
@@ -56,12 +89,13 @@ if options.useExtrapolation
 end
 if options.useExtrapolation
     disp('Extrapolating the projections')
-    Pn = floor(size(options.SinM, 1) * extrapLength);
+    PnAx = floor(size(options.SinM, 1) * extrapLengthAxial);
+    PnTr = floor(size(options.SinM, 2) * extrapLengthTransaxial);
     if options.useInpaint
-        Vq = zeros(size(options.SinM,1) + Pn*2, size(options.SinM,2) + Pn*2, options.nProjections);
+        Vq = zeros(size(options.SinM,1) + PnTr*2, size(options.SinM,2) + PnAx*2, options.nProjections);
         for kk = 1 : options.nProjections
-            apu = zeros(size(options.SinM,1) + Pn*2, size(options.SinM,2) + Pn*2);
-            apu(Pn + 1 : size(options.SinM,1) + Pn, Pn + 1 : size(options.SinM,2) + Pn) = log(options.flat ./ options.SinM(:,:,kk));
+            apu = zeros(size(options.SinM,1) + PnTr*2, size(options.SinM,2) + PnAx*2);
+            apu(PnTr + 1 : size(options.SinM,1) + PnTr, PnAx + 1 : size(options.SinM,2) + PnAx) = log(options.flat ./ options.SinM(:,:,kk));
             testi = apu(21:end-20,21:end-20);
             testi(testi == 0) = NaN;
             apu(21:end-20,21:end-20) = testi;
@@ -70,7 +104,7 @@ if options.useExtrapolation
             testi2 = inpaint_nans(apu,1);
             %             toc
             testi2(testi2 < 0) = 0;
-            testi2(Pn + 1 : size(options.SinM,1) + Pn, Pn + 1 : size(options.SinM,2) + Pn) = log(options.flat ./ options.SinM(:,:,kk));
+            testi2(PnTr + 1 : size(options.SinM,1) + PnTr, PnAx + 1 : size(options.SinM,2) + PnAx) = log(options.flat ./ options.SinM(:,:,kk));
             Vq(:,:,kk) = testi2;
             kk
         end
@@ -80,21 +114,33 @@ if options.useExtrapolation
         % testi(1+Pn:end,:,:) = options.SinM;
     else
         if options.transaxialExtrapolation
-            size1 = size(options.SinM,1) + Pn * 2;
+            if offset
+                size1 = size(options.SinM,1) + PnTr;
+            else
+                size1 = size(options.SinM,1) + PnTr * 2;
+            end
         else
             size1 = size(options.SinM,1);
         end
         if options.axialExtrapolation
-            size2 = size(options.SinM,2) + Pn * 2;
+            size2 = size(options.SinM,2) + PnAx * 2;
         else
             size2 = size(options.SinM,2);
         end
         erotus1 = size1 - size(options.SinM,1);
         erotus2 = size2 - size(options.SinM,2);
         newProj = zeros(size1, size2, size(options.SinM,3), class(options.SinM));
-        newProj(1 + erotus1 / 2 : size(options.SinM,1) + erotus1 / 2, 1 + erotus2 / 2 : size(options.SinM,2) + erotus2 / 2,:) = options.SinM;
+        if offset
+            newProj(1 + erotus1 : size(options.SinM,1) + erotus1, 1 + erotus2 / 2 : size(options.SinM,2) + erotus2 / 2,:) = options.SinM;
+        else
+            newProj(1 + erotus1 / 2 : size(options.SinM,1) + erotus1 / 2, 1 + erotus2 / 2 : size(options.SinM,2) + erotus2 / 2,:) = options.SinM;
+        end
         if options.transaxialExtrapolation
-            apu = repmat(options.SinM(1,:,:), erotus1 / 2, 1, 1);
+            if offset
+                apu = repmat(options.SinM(1,:,:), erotus1, 1, 1);
+            else
+                apu = repmat(options.SinM(1,:,:), erotus1 / 2, 1, 1);
+            end
             if weighting
                 apu = log(single(options.flat) ./ apu);
                 pituus = round(size(apu,1) / (6/6));
@@ -104,16 +150,21 @@ if options.useExtrapolation
                 apu = single(options.flat) ./ exp(apu);
                 % apu = flipud(options.SinM(1:erotus1/2,:,:));
             end
-            newProj(1: erotus1 / 2, 1 + erotus2 / 2 : size(options.SinM,2) + erotus2 / 2, :) = apu;
-            apu = repmat(options.SinM(end,:,:), erotus1 / 2, 1, 1);
-            if weighting
-                apu = log(single(options.flat) ./ apu);
-                % apu = apu .* sin(linspace(pi/2, 0, size(apu,1)))';
-                apu = apu .* [log(linspace(exp(1), 1, pituus))';zeros(pituus2, 1, class(apu))];
-                apu = single(options.flat) ./ exp(apu);
-                % apu = flipud(options.SinM(size(options.SinM,1) - erotus1/2 + 1:end,:,:));
+
+            if ~offset
+                newProj(1: erotus1 / 2, 1 + erotus2 / 2 : size(options.SinM,2) + erotus2 / 2, :) = apu;
+                apu = repmat(options.SinM(end,:,:), erotus1 / 2, 1, 1);
+                if weighting
+                    apu = log(single(options.flat) ./ apu);
+                    % apu = apu .* sin(linspace(pi/2, 0, size(apu,1)))';
+                    apu = apu .* [log(linspace(exp(1), 1, pituus))';zeros(pituus2, 1, class(apu))];
+                    apu = single(options.flat) ./ exp(apu);
+                    % apu = flipud(options.SinM(size(options.SinM,1) - erotus1/2 + 1:end,:,:));
+                end
+                newProj(size(options.SinM,1) + erotus1 / 2 + 1 : end, 1 + erotus2 / 2 : size(options.SinM,2) + erotus2 / 2, :) = apu;
+            else
+                newProj(1: erotus1, 1 + erotus2 / 2 : size(options.SinM,2) + erotus2 / 2, :) = apu;
             end
-            newProj(size(options.SinM,1) + erotus1 / 2 + 1 : end, 1 + erotus2 / 2 : size(options.SinM,2) + erotus2 / 2, :) = apu;
         end
         if options.axialExtrapolation
             apu = repmat(newProj(:,erotus2 / 2 + 1,:), 1, erotus2 / 2, 1);
@@ -201,7 +252,7 @@ if options.useEFOV
         options.FOVyOrig = options.FOVa_y;
         options.NxOrig = options.Nx;
         options.NyOrig = options.Ny;
-        nTransaxial = floor(options.Nx * eFOVLength) * 2;
+        nTransaxial = floor(options.Nx * eFOVLengthTransaxial) * 2;
         options.Nx = options.Nx + nTransaxial;
         options.Ny = options.Ny + nTransaxial;
         options.FOVa_x = options.FOVa_x + options.FOVa_x/options.NxOrig * nTransaxial;
@@ -213,7 +264,7 @@ if options.useEFOV
         options.NyOrig = options.Ny;
     end
     if options.axialEFOV
-        nAxial = floor(options.Nz * eFOVLength) * 2;
+        nAxial = floor(options.Nz * eFOVLengthAxial) * 2;
         options.NzOrig = options.Nz;
         options.Nz = options.Nz + nAxial;
         options.axialFOVOrig = options.axial_fov;
