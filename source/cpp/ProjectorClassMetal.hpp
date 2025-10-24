@@ -235,8 +235,6 @@ public:
 		std::string kernelParamsFile = kernelFile.substr(0, kernelFile.size()-7) + "cpp/kernelParams.hpp";
 		std::ifstream sourceHeader(kernelParamsFile);
 		std::string contentHeader((std::istreambuf_iterator<char>(sourceHeader)), std::istreambuf_iterator<char>());
-		mexPrint(kernelParamsFile.c_str());
-		if (!sourceHeader) { return -1; }
 
 		// Load the header text file
 		std::ifstream sourceHeader2(kernelFile + "general_opencl_functions.h");

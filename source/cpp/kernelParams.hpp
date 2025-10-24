@@ -2,6 +2,7 @@
 #define FLOAT2_kernelParams float2
 #define FLOAT3_kernelParams float3
 #define PTR_DEV device
+#define PTR_CONST constant
 #define UINT3_kernelParams uint3
 #else // Compiling C++
 #pragma once
@@ -10,6 +11,7 @@
 #define FLOAT2_kernelParams simd::float2
 #define FLOAT3_kernelParams simd::float3
 #define PTR_DEV
+#define PTR_CONST
 #define UINT3_kernelParams simd::uint3
 #endif
 
@@ -34,8 +36,8 @@ struct StaticScalarKernelParams { // Kernel scalar values that do not change wit
     float bmin;
     float bmax;
     float Vmax;
-    PTR_DEV float* d_TOFCenter;
-    PTR_DEV float* d_V;
+    PTR_CONST float* d_TOFCenter;
+    PTR_CONST float* d_V;
 };
 
 struct DynamicScalarKernelParams { // Kernel scalar values that do change with time step or (sub)iteration
