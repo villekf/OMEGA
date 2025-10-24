@@ -1340,7 +1340,6 @@ elseif ~ismac
         end
     end
 else % Apple silicon MATLAB/Octave
-    folderMetal = strcat(folder, '/metal');
     compiler = '';
     complexFlag = '';
     ldflags = 'LDFLAGS="\$LDFLAGS -framework Metal -framework Foundation"';

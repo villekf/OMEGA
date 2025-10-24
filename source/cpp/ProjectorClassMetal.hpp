@@ -4,6 +4,7 @@
 #define CA_PRIVATE_IMPLEMENTATION
 #define MTL_PRIVATE_IMPLEMENTATION
 #include "Metal.hpp"
+#include "kernelParams.hpp"
 #include <simd/simd.h>
 
 #define TH 100000000000.f
@@ -11,45 +12,6 @@
 #define NVOXELS 8
 #define NVOXELS5 1
 #define NVOXELSFP 8
-
-typedef struct { // Kernel scalar values that do not change with time step or (sub)iteration. See initializeKernel in ProjectorClass.h
-    uint32_t nRowsD;
-    uint32_t nColsD;
-    float dPitchX;
-    float dPitchY;
-    float dL;
-    float global_factor;
-    float epps;
-    uint32_t det_per_ring;
-    float sigma_x;
-    float* d_rayShiftsDetector;
-    float* d_rayShiftsSource;
-    float coneOfResponseStdCoeffA;
-    float coneOfResponseStdCoeffB;
-    float coneOfResponseStdCoeffC;
-    float tube_width;
-    float cylRadiusProj3;
-    float bmin;
-    float bmax;
-    float Vmax;
-    float* d_TOFCenter;
-    float* d_V;
-} StaticScalarKernelParams;
-
-typedef struct { // Kernel scalar values that do change with time step or (sub)iteration
-    simd::uint3 d_N;
-    simd::float3 b;
-    simd::float2 dSize;
-    simd::float3 d;
-    simd::float3 d_Scale;
-    simd::float3 bmax;
-    float orthWidth;
-    long nProjections;
-    unsigned char no_norm;
-	unsigned long m_size;
-	uint currentSubset;
-	int aa;
-} DynamicScalarKernelParams;
 
 class ProjectorClass {
 	// Local size
@@ -86,14 +48,15 @@ public:
 	NS::SharedPtr<MTL::ComputeCommandEncoder> kernelMBSREM, kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelProxTVq, kernelProxTVDiv, kernelProxTVGrad, kernelElementMultiply, kernelElementDivision, 
 		kernelTV, kernelProxTGVSymmDeriv, kernelProxTGVDiv, kernelProxTGVq, kernelPoisson, kernelPDHG, kernelProxRDP, kernelProxq, kernelProxTrans, kernelProxNLM, kernelGGMRF,
 		kernelsumma, kernelEstimate, kernelPSF, kernelPSFf, kernelDiv, kernelMult, kernelForward, kernelSensList, kernelApu, kernelHyper, kernelRotate;
-	NS::SharedPtr<MTL::Buffer> d_V;
+	NS::SharedPtr<MTL::Buffer> d_xcenter, d_ycenter, d_zcenter, d_V, d_TOFCenter, d_output, d_meanBP, d_meanFP, d_eFOVIndices, d_weights, d_inputB, d_W, d_gaussianNLM;
+	NS::SharedPtr<MTL::Buffer> d_angle;
 	std::chrono::steady_clock::time_point tStartLocal, tStartGlobal, tStartAll;
 	std::chrono::steady_clock::time_point tEndLocal, tEndGlobal, tEndAll;
 	METAL_im_vectors vec_opencl;
 
 	// Distance from the origin to the corner of the image, voxel size and distance from the origin to the opposite corner of the image
 	std::vector<simd::float3> b, d, bmax;
-	std::vector<simd::int3> d_N;
+	std::vector<simd::uint3> d_N;
 
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_maskFP;
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_LFull, d_zindexFull, d_xyindexFull, d_normFull, d_scatFull, d_xFull, d_zFull;
@@ -114,8 +77,7 @@ public:
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_z;
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_atten;
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_T;
-	NS::SharedPtr<MTL::Buffer> d_output, d_rayShiftsSource, d_rayShiftsDetector, d_attenB, d_maskBP;
-	//NS::SharedPtr<MTL::Buffer>
+	NS::SharedPtr<MTL::Buffer> d_rayShiftsSource, d_rayShiftsDetector, d_attenB, d_maskBP;
 
 	// Image origin
 	MTL::Origin origin = MTL::Origin(0, 0, 0);
@@ -268,12 +230,19 @@ public:
 		std::string contentFP, contentBP;
 		std::string contentAux;
 		std::string options;
-
-		std::ifstream sourceHeader(kernelFile + "general_opencl_functions.h");
 		
-		// Load the header text file
+		// Load kernel parameter structs
+		std::string kernelParamsFile = kernelFile.substr(0, kernelFile.size()-7) + "cpp/kernelParams.hpp";
+		std::ifstream sourceHeader(kernelParamsFile);
 		std::string contentHeader((std::istreambuf_iterator<char>(sourceHeader)), std::istreambuf_iterator<char>());
-		
+		mexPrint(kernelParamsFile.c_str());
+		if (!sourceHeader) { return -1; }
+
+		// Load the header text file
+		std::ifstream sourceHeader2(kernelFile + "general_opencl_functions.h");
+		std::string contentHeader2((std::istreambuf_iterator<char>(sourceHeader2)), std::istreambuf_iterator<char>());
+		contentHeader += contentHeader2;
+
 		// Load orthogonal/volume of intersection headers if applicable
 		if (inputScalars.FPType == 2 || inputScalars.BPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 3) {
 			std::ifstream sourceHeader3(kernelFile + "opencl_functions_orth3D.h");
@@ -498,7 +467,7 @@ public:
 		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 			b[ii] = { inputScalars.bx[ii], inputScalars.by[ii], inputScalars.bz[ii] };
 			d[ii] = { inputScalars.dx[ii], inputScalars.dy[ii], inputScalars.dz[ii] };
-			d_N[ii] = { static_cast<int>(inputScalars.Nx[ii]), static_cast<int>(inputScalars.Ny[ii]), static_cast<int>(inputScalars.Nz[ii]) };
+			d_N[ii] = { static_cast<uint>(inputScalars.Nx[ii]), static_cast<uint>(inputScalars.Ny[ii]), static_cast<uint>(inputScalars.Nz[ii]) };
 			bmax[ii] = { static_cast<float>(inputScalars.Nx[ii]) * inputScalars.dx[ii] + inputScalars.bx[ii],
 				static_cast<float>(inputScalars.Ny[ii]) * inputScalars.dy[ii] + inputScalars.by[ii],
 				static_cast<float>(inputScalars.Nz[ii]) * inputScalars.dz[ii] + inputScalars.bz[ii] };
@@ -699,7 +668,7 @@ public:
 
             if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
                 NS::UInteger bytes = sizeof(float) * length[kk] * vecSize;
-                const float* src = &atten[pituus[kk] * vecSize]
+                const float* src = &atten[pituus[kk] * vecSize];
                 d_atten[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)src, bytes, sharedOpts));
             }
 
@@ -720,14 +689,14 @@ public:
             if (inputScalars.listmode > 0 && (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF))) {
                 if (inputScalars.indexBased) {
                     NS::UInteger bytes_tr_ax = (NS::UInteger)(sizeof(uint16_t) * length[kk] * 2);
-                    const uint32_t* srcTR = &w_vec.trIndex[pituus[kk] * 2];
+                    const uint16_t* srcTR = &w_vec.trIndex[pituus[kk] * 2];
                     const uint16_t* srcAX = &w_vec.axIndex[pituus[kk] * 2];
                     d_trIndex[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcTR, bytes_tr_ax, sharedOpts));
                     d_axIndex[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcAX, bytes_tr_ax, sharedOpts));
                 }
                 if (inputScalars.TOF) {
                     NS::UInteger bytesTOFIdx = (NS::UInteger)(sizeof(uint8_t) * length[kk]);
-				    const float* srcTOFIdx = &w_vec.TOFIndices[pituus[kk]];
+				    const uint8_t* srcTOFIdx = &w_vec.TOFIndices[pituus[kk]];
                     d_TOFIndex[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcTOFIdx, bytesTOFIdx, sharedOpts));
                 }
             }
@@ -749,8 +718,8 @@ public:
         params.epps = inputScalars.epps;
         params.det_per_ring = inputScalars.det_per_ring;
         params.sigma_x = inputScalars.sigma_x;
-        params.d_rayShiftsDetector = inputScalars.rayShiftsDetector;
-        params.d_rayShiftsSource = inputScalars.rayShiftsSource;
+        params.d_rayShiftsDetector = w_vec.rayShiftsDetector;
+        params.d_rayShiftsSource = w_vec.rayShiftsSource;
         params.coneOfResponseStdCoeffA = inputScalars.coneOfResponseStdCoeffA;
         params.coneOfResponseStdCoeffB = inputScalars.coneOfResponseStdCoeffB;
         params.coneOfResponseStdCoeffB = inputScalars.coneOfResponseStdCoeffB;
@@ -759,6 +728,7 @@ public:
         params.Vmax = inputScalars.Vmax;
         params.d_TOFCenter = inputScalars.TOFCenter;
         params.d_V = inputScalars.V;
+		params.rings = inputScalars.rings;
 
         // Set buffers to kernels
         kernelFP->setBytes((const void*)&params, (NS::UInteger)sizeof(params), 0);
