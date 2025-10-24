@@ -80,17 +80,18 @@ __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_si
 #endif
 void projectorType123(
 #if defined(METAL) ///////////////////// METAL /////////////////////
-	CONSTANT ScalarParams& P1 [[buffer(0)]],
-#if defined(SPECT)
-	const CLGLOBAL float* d_rayShiftsDetector [[buffer(1)]],
-	const CLGLOBAL float* d_rayShiftsSource [[buffer(2)]],
-#endif
-#ifdef TOF ///////////////////////// TOF BINS /////////////////////////
-	CONSTANT float* TOFCenter [[buffer(3)]],
-#endif ///////////////////////// END TOF BINS /////////////////////////
-#ifdef ORTH ///////////////////////// ORTHOGONAL-BASED RAY TRACER /////////////////////////
-	CONSTANT float* V [[buffer(4)]],
-#endif ///////////////////////// END ORTHOGONAL-BASED RAY TRACER /////////////////////////
+	CONSTANT StaticScalarKernelParams& staticParams [[buffer(0)]],
+    CONSTANT DynamicScalarKernelParams& dynamicParams [[buffer(1)]],
+//#if defined(SPECT)
+//	const CLGLOBAL float* d_rayShiftsDetector [[buffer(1)]],
+//	const CLGLOBAL float* d_rayShiftsSource [[buffer(2)]],
+//#endif
+//#ifdef TOF ///////////////////////// TOF BINS /////////////////////////
+//	CONSTANT float* TOFCenter [[buffer(3)]],
+//#endif ///////////////////////// END TOF BINS /////////////////////////
+//#ifdef ORTH ///////////////////////// ORTHOGONAL-BASED RAY TRACER /////////////////////////
+//	CONSTANT float* V [[buffer(4)]],
+//#endif ///////////////////////// END ORTHOGONAL-BASED RAY TRACER /////////////////////////
 #if !defined(CT) && (defined(ATN) || defined(ATNM)) ///////////////////////// PET ATTENUATION CORRECTION /////////////////////////
 	const CLGLOBAL float* d_atten [[buffer(5)]],
 #endif
@@ -253,7 +254,7 @@ void projectorType123(
 #endif ///////////////////// END OPENCL/CUDA/METAL /////////////////////
 ) {
 #if defined(METAL) // Unpack scalar parameters
-	UNPACK_METAL_PARAMS(P1)
+	UNPACK_METAL_PARAMS(staticParams, dynamicParams)
 	int GID0 = temp_i.x;
 	int GID1 = temp_i.y;
 	int GID2 = temp_i.z;

@@ -159,41 +159,86 @@ inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
 }
 
 // Metal scalar params unpacking
-#define UNPACK_METAL_PARAMS(params) \
-    FLOAT global_factor = params.global_factor; \
-    FLOAT d_epps = params.d_epps; \
-	uint d_size_x = params.d_size_x; \
-	uint d_det_per_ring = params.d_det_per_ring; \
-	FLOAT sigma_x = params.sigma_x; \
-	FLOAT coneOfResponseStdCoeffA = params.coneOfResponseStdCoeffA; \
-    FLOAT coneOfResponseStdCoeffB = params.coneOfResponseStdCoeffB; \
-    FLOAT coneOfResponseStdCoeffC = params.coneOfResponseStdCoeffC; \
-	FLOAT crystalSizeX = params.crystalSizeX; \
-	FLOAT crystalSizeY = params.crystalSizeY; \
-	FLOAT orthWidth = params.orthWidth; \
-	FLOAT bmin = params.bmin; \
-	FLOAT bmax = params.bmax; \
-	FLOAT Vmax = params.Vmax; \
-	uint d_sizey = params.d_sizey; \
-	long d_nProjections = params.d_nProjections; \
-	uint rings = params.rings; \
-	uint d_Nx = params.d_Nx; \
-	uint d_Ny = params.d_Ny; \
-	uint d_Nz = params.d_Nz; \
-	FLOAT d_dx = params.d_dx; \
-	FLOAT d_dy = params.d_dy; \
-	FLOAT d_dz = params.d_dz; \
-	FLOAT bx = params.bx; \
-	FLOAT by = params.by; \
-	FLOAT bz = params.bz; \
-	FLOAT d_bmaxx = params.d_bmaxx; \
-	FLOAT d_bmaxy = params.d_bmaxy; \
-	FLOAT d_bmaxz = params.d_bmaxz; \
-	unsigned char no_norm = params.no_norm; \
-	unsigned long m_size = params.m_size; \
-	uint currentSubset = params.currentSubset; \
-	int aa = params.aa; 
+#define UNPACK_METAL_PARAMS(staticParams, dynamicParams) \
+    FLOAT global_factor = staticParams.global_factor; \
+    FLOAT d_epps = staticParams.epps; \
+	uint d_size_x = staticParams.nRowsD; \
+	uint d_det_per_ring = staticParams.det_per_ring; \
+	FLOAT sigma_x = staticParams.sigma_x; \
+	FLOAT coneOfResponseStdCoeffA = staticParams.coneOfResponseStdCoeffA; \
+    FLOAT coneOfResponseStdCoeffB = staticParams.coneOfResponseStdCoeffB; \
+    FLOAT coneOfResponseStdCoeffC = staticParams.coneOfResponseStdCoeffC; \
+	FLOAT crystalSizeX = staticParams.dPitchX; \
+	FLOAT crystalSizeY = staticParams.dPitchY; \
+	FLOAT bmin = staticParams.bmin; \
+	FLOAT bmax = staticParams.bmax; \
+	FLOAT Vmax = staticParams.Vmax; \
+	uint d_sizey = staticParams.nColsD; \
+	long d_nProjections = dynamicParams.nProjections; \
+	uint rings = staticParams.rings; \
+	uint d_Nx = dynamicParams.d_N[0]; \
+	uint d_Ny = dynamicParams.d_N[1]; \
+	uint d_Nz = dynamicParams.d_N[2]; \
+	FLOAT d_dx = dynamicParams.d[0]; \
+	FLOAT d_dy = dynamicParams.d[1]; \
+	FLOAT d_dz = dynamicParams.d[2]; \
+	FLOAT bx = dynamicParams.b[0]; \
+	FLOAT by = dynamicParams.b[1]; \
+	FLOAT bz = dynamicParams.b[2]; \
+	FLOAT d_bmaxx = dynamicParams.bmax[0]; \
+	FLOAT d_bmaxy = dynamicParams.bmax[1]; \
+	FLOAT d_bmaxz = dynamicParams.bmax[2]; \
+	unsigned char no_norm = dynamicParams.no_norm; \
+	unsigned long m_size = dynamicParams.m_size; \
+	uint currentSubset = dynamicParams.currentSubset; \
+	int aa = dynamicParams.aa; \
+    float* d_rayShiftsDetector = staticParams.d_rayShiftsDetector; \
+    float* d_rayShiftsSource = staticParams.d_rayShiftsSource; \
+    float* TOFCenter = staticParams.d_TOFCenter; \
+    float* d_V = staticParams.d_V; \
+    float orthWidth = dynamicParams.orthWidth;
 
+
+struct StaticScalarKernelParams {
+    uint32_t nRowsD;
+    uint32_t nColsD;
+    float dPitchX;
+    float dPitchY;
+    float dL;
+    float global_factor;
+    float epps;
+    uint32_t det_per_ring;
+    float sigma_x;
+    float* d_rayShiftsDetector;
+    float* d_rayShiftsSource;
+    float coneOfResponseStdCoeffA;
+    float coneOfResponseStdCoeffB;
+    float coneOfResponseStdCoeffC;
+    float tube_width;
+    float cylRadiusProj3;
+    float bmin;
+    float bmax;
+    float Vmax;
+    float* d_TOFCenter;
+    float* d_V;
+};
+
+struct DynamicScalarKernelParams {
+    uint3 d_N;
+    float3 b;
+    float2 dSize;
+    float3 d;
+    float3 d_Scale;
+    float3 bmax;
+    float orthWidth;
+    long nProjections;
+    unsigned char no_norm;
+	unsigned long m_size;
+	uint currentSubset;
+	int aa;
+};
+
+/*
 struct ScalarParams { // For OpenCL, these are set in initializeKernel.
     float global_factor;
 	float d_epps;
@@ -229,6 +274,7 @@ struct ScalarParams { // For OpenCL, these are set in initializeKernel.
 	uint currentSubset;
 	int aa;
 };
+*/
 
 #endif
 #ifdef OPENCL

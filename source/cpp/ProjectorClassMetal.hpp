@@ -12,41 +12,44 @@
 #define NVOXELS5 1
 #define NVOXELSFP 8
 
-typedef struct {
+typedef struct { // Kernel scalar values that do not change with time step or (sub)iteration. See initializeKernel in ProjectorClass.h
+    uint32_t nRowsD;
+    uint32_t nColsD;
+    float dPitchX;
+    float dPitchY;
+    float dL;
     float global_factor;
-	float d_epps;
-	uint d_size_x;
-	uint d_det_per_ring;
-	float sigma_x;
-	float coneOfResponseStdCoeffA;
+    float epps;
+    uint32_t det_per_ring;
+    float sigma_x;
+    float* d_rayShiftsDetector;
+    float* d_rayShiftsSource;
+    float coneOfResponseStdCoeffA;
     float coneOfResponseStdCoeffB;
     float coneOfResponseStdCoeffC;
-	float crystalSizeX;
-	float crystalSizeY;
-	float orthWidth;
-	float bmin;
-	float bmax;
-	float Vmax;
-	uint d_sizey;
-    long d_nProjections;
-    uint rings;
-    uint d_Nx;
-	uint d_Ny;
-	uint d_Nz;
-	float d_dx;
-	float d_dy;
-	float d_dz;
-	float bx;
-	float by;
-	float bz;
-	float d_bmaxx;
-	float d_bmaxy;
-	float d_bmaxz;
+    float tube_width;
+    float cylRadiusProj3;
+    float bmin;
+    float bmax;
+    float Vmax;
+    float* d_TOFCenter;
+    float* d_V;
+} StaticScalarKernelParams;
+
+typedef struct { // Kernel scalar values that do change with time step or (sub)iteration
+    simd::uint3 d_N;
+    simd::float3 b;
+    simd::float2 dSize;
+    simd::float3 d;
+    simd::float3 d_Scale;
+    simd::float3 bmax;
+    float orthWidth;
+    long nProjections;
     unsigned char no_norm;
 	unsigned long m_size;
 	uint currentSubset;
 	int aa;
-} ParamsConst;
+} DynamicScalarKernelParams;
 
 class ProjectorClass {
 	// Local size
@@ -732,12 +735,37 @@ public:
 		return 0;
     }
 
-	// TODO: split ParamsConst struct to static (i.e. do not depend on subset or time step) 
-	// variables and dynamic variables. Then set static variables here
     inline int initializeKernel(
 		scalarStruct& inputScalars,
 		Weighting& w_vec
 	) {
+        StaticScalarKernelParams params = {};
+		params.nRowsD = inputScalars.nRowsD;
+        params.nColsD = inputScalars.nColsD;
+        params.dPitchX = w_vec.dPitchX;
+        params.dPitchY = w_vec.dPitchY;
+        params.dL = inputScalars.dL;
+        params.global_factor = inputScalars.global_factor;
+        params.epps = inputScalars.epps;
+        params.det_per_ring = inputScalars.det_per_ring;
+        params.sigma_x = inputScalars.sigma_x;
+        params.d_rayShiftsDetector = inputScalars.rayShiftsDetector;
+        params.d_rayShiftsSource = inputScalars.rayShiftsSource;
+        params.coneOfResponseStdCoeffA = inputScalars.coneOfResponseStdCoeffA;
+        params.coneOfResponseStdCoeffB = inputScalars.coneOfResponseStdCoeffB;
+        params.coneOfResponseStdCoeffB = inputScalars.coneOfResponseStdCoeffB;
+        params.bmin = inputScalars.bmin;
+        params.bmax = inputScalars.bmax;
+        params.Vmax = inputScalars.Vmax;
+        params.d_TOFCenter = inputScalars.TOFCenter;
+        params.d_V = inputScalars.V;
+
+        // Set buffers to kernels
+        kernelFP->setBytes((const void*)&params, (NS::UInteger)sizeof(params), 0);
+		if (DEBUG) mexPrint("initializeKernel: FP buffer 0 (static params) set");
+        kernelBP->setBytes((const void*)&params, (NS::UInteger)sizeof(params), 0);
+        if (DEBUG) mexPrint("initializeKernel: BP buffer 0 (static params) set");
+
 		return 0;
     }
 
@@ -771,62 +799,22 @@ public:
 			global[1] = 1;
 			global[2] = 1;
 		}
-		if (DEBUG) mexPrint("forwardProjection: create paramsconst");
-		ParamsConst params = {}; // Move params to struct
-		params.global_factor = inputScalars.global_factor;
-		params.d_epps = inputScalars.epps;
-		params.d_size_x = inputScalars.nRowsD;
-		params.d_det_per_ring = inputScalars.det_per_ring;
-		params.sigma_x = inputScalars.sigma_x;
-		params.coneOfResponseStdCoeffA = inputScalars.coneOfResponseStdCoeffA;
-		params.coneOfResponseStdCoeffB = inputScalars.coneOfResponseStdCoeffB;
-		params.coneOfResponseStdCoeffC = inputScalars.coneOfResponseStdCoeffC;
-		params.crystalSizeX = w_vec.dPitchX;
-		params.crystalSizeY = w_vec.dPitchY;
-		if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-			if (inputScalars.FPType == 2)
-				params.orthWidth = inputScalars.tube_width;
-			if (inputScalars.FPType == 3)
-				params.orthWidth = inputScalars.cylRadiusProj3;
-			params.bmin = inputScalars.bmin;
-			params.bmax = inputScalars.bmax;
-			params.Vmax = inputScalars.Vmax;
-		}
-		params.d_sizey = inputScalars.nColsD;
-		params.d_nProjections = length[osa_iter];
-		params.rings = 0; // TODO
-		params.d_Nx = d_N[ii][0];
-		params.d_Ny = d_N[ii][1];
-		params.d_Nz = d_N[ii][2];
-		params.d_dx = d[ii][0];
-		params.d_dy = d[ii][1];
-		params.d_dz = d[ii][2];
-		params.bx = b[ii][0];
-		params.by = b[ii][1];
-		params.bz = b[ii][2];
-		params.d_bmaxx = bmax[ii][0];
-		params.d_bmaxy = bmax[ii][1];
-		params.d_bmaxz = bmax[ii][2];
-		params.no_norm = no_norm;
-		params.m_size = m_size;
-		params.currentSubset = osa_iter;
-		params.aa = ii;
-		if (DEBUG) mexPrint("forwardProjection: paramsconst set");
 
-		kernelFP->setBytes((const void*)&params, (NS::UInteger)sizeof(params), /*index*/ 0);
-		if (DEBUG) mexPrint("forwardProjection: buffer 0 set");
-		if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-			if (inputScalars.SPECT) {
-				kernelFP->setBuffer(d_rayShiftsDetector.get(), (NS::UInteger)0, /*index*/ 1);
-				kernelFP->setBuffer(d_rayShiftsSource.get(), (NS::UInteger)0, /*index*/ 2);
-				if (DEBUG) mexPrint("forwardProjection: buffers 1 and 2 set");
-			}
-			
-			if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-				kernelFP->setBuffer(d_V.get(), (NS::UInteger)0, /*index*/ 4);
-				if (DEBUG) mexPrint("forwardProjection: buffer 4 set");
-			}
-		}
+        DynamicScalarKernelParams params = {};
+        params.d_N = d_N[ii];
+        params.d = d[ii];
+        params.b = b[ii];
+        params.bmax = bmax[ii];
+        params.nProjections = length[osa_iter];
+        params.no_norm = no_norm;
+        params.m_size = m_size;
+        params.currentSubset = osa_iter;
+        params.aa = ii;
+        if (inputScalars.FPType == 2) params.orthWidth = inputScalars.tube_width;
+        else if (inputScalars.FPType == 3) params.orthWidth = inputScalars.cylRadiusProj3;
+
+        kernelFP->setBytes((const void*)&params, (NS::UInteger)sizeof(params), 1);
+		if (DEBUG) mexPrint("forwardProjection: buffer 1 (dynamic params) set");
 
 		if (inputScalars.attenuation_correction && !inputScalars.CT && inputScalars.CTAttenuation) {
 			kernelFP->setBuffer(d_attenB.get(), (NS::UInteger)0, /*index*/ 5);
@@ -881,7 +869,6 @@ public:
 		// Dispatch
 		MTL::Size threadsPerThreadgroup = MTL::Size::Make(local[0], local[1], local[2]);
 		MTL::Size threadgroupsPerGrid = MTL::Size::Make(global[0] / local[0], global[1] / local[1], global[2] / local[2]);
-
 		
 		kernelFP->dispatchThreadgroups(threadgroupsPerGrid, threadsPerThreadgroup);
 		if (DEBUG) mexPrint("forwardProjection: dispatchThreadGroups ready");
@@ -921,64 +908,21 @@ public:
 			global[2] = 1;
 		}
 
-		if (DEBUG) mexPrint("backwardProjection: create paramsconst");
-		ParamsConst params = {}; // Move params to struct
-		params.global_factor = inputScalars.global_factor;
-		params.d_epps = inputScalars.epps;
-		params.d_size_x = inputScalars.nRowsD;
-		params.d_det_per_ring = inputScalars.det_per_ring;
-		params.sigma_x = inputScalars.sigma_x;
-		params.coneOfResponseStdCoeffA = inputScalars.coneOfResponseStdCoeffA;
-		params.coneOfResponseStdCoeffB = inputScalars.coneOfResponseStdCoeffB;
-		params.coneOfResponseStdCoeffC = inputScalars.coneOfResponseStdCoeffC;
-		params.crystalSizeX = w_vec.dPitchX;
-		params.crystalSizeY = w_vec.dPitchY;
-		if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-			if (inputScalars.FPType == 2)
-				params.orthWidth = inputScalars.tube_width;
-			if (inputScalars.FPType == 3)
-				params.orthWidth = inputScalars.cylRadiusProj3;
-			params.bmin = inputScalars.bmin;
-			params.bmax = inputScalars.bmax;
-			params.Vmax = inputScalars.Vmax;
-		}
-		params.d_sizey = inputScalars.nColsD;
-		params.d_nProjections = length[osa_iter];
-		params.rings = 0; // TODO
-		params.d_Nx = d_N[ii][0];
-		params.d_Ny = d_N[ii][1];
-		params.d_Nz = d_N[ii][2];
-		params.d_dx = d[ii][0];
-		params.d_dy = d[ii][1];
-		params.d_dz = d[ii][2];
-		params.bx = b[ii][0];
-		params.by = b[ii][1];
-		params.bz = b[ii][2];
-		params.d_bmaxx = bmax[ii][0];
-		params.d_bmaxy = bmax[ii][1];
-		params.d_bmaxz = bmax[ii][2];
-		params.no_norm = no_norm;
-		params.m_size = m_size;
-		params.currentSubset = osa_iter;
-		params.aa = ii;
-		if (DEBUG) mexPrint("backwardProjection: paramsconst set");
+        DynamicScalarKernelParams params = {};
+        params.d_N = d_N[ii];
+        params.d = d[ii];
+        params.b = b[ii];
+        params.bmax = bmax[ii];
+        params.nProjections = length[osa_iter];
+        params.no_norm = no_norm;
+        params.m_size = m_size;
+        params.currentSubset = osa_iter;
+        params.aa = ii;
+        if (inputScalars.BPType == 2) params.orthWidth = inputScalars.tube_width;
+        else if (inputScalars.BPType == 3) params.orthWidth = inputScalars.cylRadiusProj3;
 
-		kernelBP->setBytes((const void*)&params, (NS::UInteger)sizeof(params), /*index*/ 0);
-		if (DEBUG) mexPrint("backwardProjection: buffer 0 (params) set");
-
-		if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
-			if (inputScalars.SPECT) {
-				kernelBP->setBuffer(d_rayShiftsDetector.get(), (NS::UInteger)0, /*index*/ 1);
-				kernelBP->setBuffer(d_rayShiftsSource.get(),   (NS::UInteger)0, /*index*/ 2);
-				if (DEBUG) mexPrint("backwardProjection: buffers 1 and 2 set (SPECT shifts)");
-			}
-
-			// Note: original BP path also gated V by FPType==2/3; keep that logic verbatim.
-			if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-				kernelBP->setBuffer(d_V.get(), (NS::UInteger)0, /*index*/ 4);
-				if (DEBUG) mexPrint("backwardProjection: buffer 4 set (V)");
-			}
-		}
+        kernelBP->setBytes((const void*)&params, (NS::UInteger)sizeof(params), 1);
+		if (DEBUG) mexPrint("backwardProjection: buffer 1 (dynamic params) set");
 
 		if (inputScalars.attenuation_correction && !inputScalars.CT && inputScalars.CTAttenuation) {
 			kernelBP->setBuffer(d_attenB.get(), (NS::UInteger)0, /*index*/ 5);
@@ -1024,7 +968,6 @@ public:
 		// if (inputScalars.raw)
 		//     kernelBP->setBuffer(d_L[osa_iter].get(), (NS::UInteger)0, /*index*/ 18);
 
-		// Note: original BP uses output at 19 and rhs_os at 20 (order differs from FP)
 		kernelBP->setBuffer(d_output.get(),   (NS::UInteger)0, /*index*/ 19);
 		if (DEBUG) mexPrint("backwardProjection: buffer 19 set (output)");
 		kernelBP->setBuffer(vec_opencl.d_rhs_os[uu].get(), (NS::UInteger)0, /*index*/ 20);
@@ -1032,11 +975,8 @@ public:
 
 		if (DEBUG) mexPrint("backwardProjection: all buffers set");
 
-		// --- Dispatch (match FP style: threadgroups = global/local) ---
 		MTL::Size threadsPerThreadgroup = MTL::Size::Make(local[0], local[1], local[2]);
-		MTL::Size threadgroupsPerGrid   = MTL::Size::Make(global[0] / local[0],
-														global[1] / local[1],
-														global[2] / local[2]);
+		MTL::Size threadgroupsPerGrid = MTL::Size::Make(global[0] / local[0], global[1] / local[1], global[2] / local[2]);
 
 		kernelBP->dispatchThreadgroups(threadgroupsPerGrid, threadsPerThreadgroup);
 		if (DEBUG) mexPrint("backwardProjection: dispatchThreadgroups ready");
