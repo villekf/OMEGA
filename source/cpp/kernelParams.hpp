@@ -1,18 +1,22 @@
-#ifdef __METAL_VERSION__ // Compiling MSL
-#define FLOAT2_kernelParams float2
-#define FLOAT3_kernelParams float3
-#define PTR_DEV device
-#define PTR_CONST constant
-#define UINT3_kernelParams uint3
-#else // Compiling C++
+// Structs to save buffer slots with Metal kernels and scalar inputs. This is a hybrid C++/MSL file with preprocessor directives. Possibly used with OpenCL/CUDA in the future for simpler code.
+
+#if defined(__METAL_VERSION__) // MSL
+#define FLOAT2_T float2
+#define FLOAT3_T float3
+#define UINT3_T uint3
+#elif defined(__OPENCL_VERSION__) // OpenCL
+#elif defined(__CUDACC__) // CUDA
+#else // C++
+#if defined(METAL) // C++ on MacOS
 #pragma once
 #include <cstdint>
 #include <simd/simd.h>
-#define FLOAT2_kernelParams simd::float2
-#define FLOAT3_kernelParams simd::float3
-#define PTR_DEV
-#define PTR_CONST
-#define UINT3_kernelParams simd::uint3
+#define FLOAT2_T simd::float2
+#define FLOAT3_T simd::float3
+#define UINT3_T simd::uint3
+#elif defined(OPENCL) // C++ / OpenCL
+#elif defined(CUDA) // C++ / CUDA
+#endif
 #endif
 
 struct StaticScalarKernelParams { // Kernel scalar values that do not change with time step or (sub)iteration. See initializeKernel in ProjectorClass.h
@@ -26,8 +30,6 @@ struct StaticScalarKernelParams { // Kernel scalar values that do not change wit
     uint32_t det_per_ring;
     float sigma_x;
 	uint32_t rings;
-    PTR_DEV float* d_rayShiftsDetector;
-    PTR_DEV float* d_rayShiftsSource;
     float coneOfResponseStdCoeffA;
     float coneOfResponseStdCoeffB;
     float coneOfResponseStdCoeffC;
@@ -36,17 +38,15 @@ struct StaticScalarKernelParams { // Kernel scalar values that do not change wit
     float bmin;
     float bmax;
     float Vmax;
-    PTR_CONST float* d_TOFCenter;
-    PTR_CONST float* d_V;
 };
 
 struct DynamicScalarKernelParams { // Kernel scalar values that do change with time step or (sub)iteration
-    UINT3_kernelParams d_N;
-    FLOAT3_kernelParams b;
-    FLOAT2_kernelParams dSize;
-    FLOAT3_kernelParams d;
-    FLOAT3_kernelParams d_Scale;
-    FLOAT3_kernelParams bmax;
+    UINT3_T d_N;
+    FLOAT3_T b;
+    FLOAT2_T dSize;
+    FLOAT3_T d;
+    FLOAT3_T d_Scale;
+    FLOAT3_T bmax;
     float orthWidth;
     long nProjections;
     unsigned char no_norm;
@@ -54,3 +54,7 @@ struct DynamicScalarKernelParams { // Kernel scalar values that do change with t
 	unsigned int currentSubset;
 	int aa;
 };
+
+#undef FLOAT2_T
+#undef FLOAT3_T
+#undef UINT3_T

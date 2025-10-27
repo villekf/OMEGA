@@ -82,6 +82,10 @@ void projectorType123(
 #if defined(METAL) ///////////////////// METAL /////////////////////
 	CONSTANT StaticScalarKernelParams& staticParams [[buffer(0)]],
     CONSTANT DynamicScalarKernelParams& dynamicParams [[buffer(1)]],
+#if defined(SPECT)
+	const CLGLOBAL float* d_rayShiftsDetector [[buffer(2)]],
+	const CLGLOBAL float* d_rayShiftsSource [[buffer(3)]],
+#endif
 #if !defined(CT) && (defined(ATN) || defined(ATNM)) ///////////////////////// PET ATTENUATION CORRECTION /////////////////////////
 	const CLGLOBAL float* d_atten [[buffer(5)]],
 #endif
