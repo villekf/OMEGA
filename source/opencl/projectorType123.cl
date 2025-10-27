@@ -86,6 +86,9 @@ void projectorType123(
 	const CLGLOBAL float* d_rayShiftsDetector [[buffer(2)]],
 	const CLGLOBAL float* d_rayShiftsSource [[buffer(3)]],
 #endif
+#ifdef ORTH ///////////////////////// ORTHOGONAL-BASED RAY TRACER /////////////////////////
+	CONSTANT float* V [[buffer(4)]], 
+#endif ///////////////////////// END ORTHOGONAL-BASED RAY TRACER /////////////////////////
 #if !defined(CT) && (defined(ATN) || defined(ATNM)) ///////////////////////// PET ATTENUATION CORRECTION /////////////////////////
 	const CLGLOBAL float* d_atten [[buffer(5)]],
 #endif

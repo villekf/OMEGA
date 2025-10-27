@@ -192,10 +192,6 @@ inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
 	unsigned long m_size = dynamicParams.m_size; \
 	uint currentSubset = dynamicParams.currentSubset; \
 	int aa = dynamicParams.aa; \
-    PTR_DEV float* d_rayShiftsDetector = staticParams.d_rayShiftsDetector; \
-    PTR_DEV float* d_rayShiftsSource = staticParams.d_rayShiftsSource; \
-    PTR_CONST float* TOFCenter = staticParams.d_TOFCenter; \
-    PTR_CONST float* V = staticParams.d_V; \
     float orthWidth = dynamicParams.orthWidth;
 	
 #endif

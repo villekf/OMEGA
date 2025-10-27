@@ -120,8 +120,8 @@ public:
         }
         NS::Dictionary* build() const {
             return NS::Dictionary::dictionary(
-                const_cast<NS::Object* const*>(keys.data()),
                 const_cast<NS::Object* const*>(vals.data()),
+                const_cast<NS::Object* const*>(keys.data()),
                 (NS::UInteger)keys.size()
             )->autorelease();
         }
@@ -138,7 +138,8 @@ public:
 	static MacroSets BuildMacroDict(
 		const scalarStruct& inputScalars,
         const Weighting& w_vec,
-        const RecMethods MethodList
+        const RecMethods MethodList,
+		const int type
 	) {
         MacroSets out;
         
@@ -216,8 +217,8 @@ public:
         if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
             fp.addFlag("SIDDON");
             fp.addFlag("ATOMICF");
-            if (I.FPType == 2 || I.FPType == 3) fp.addFlag("ORTH");
-            if (I.FPType == 3) fp.addFlag("VOL");
+            if (inputScalars.FPType == 2 || inputScalars.FPType == 3) fp.addFlag("ORTH");
+            if (inputScalars.FPType == 3) fp.addFlag("VOL");
         } else if (inputScalars.FPType == 4) { 
             fp.addFlag("PTYPE4");
             if (!inputScalars.largeDim) fp.addInt("NVOXELS", NVOXELS);
@@ -273,7 +274,7 @@ public:
             if (inputScalars.use_psf) aux.addFlag("PSF");
         } else if (type == 0) {
             if (inputScalars.CT) aux.addFlag("CT");
-            if (inputScalars.randoms_correction) aux.add_flag("RANDOMS");
+            if (inputScalars.randoms_correction) aux.addFlag("RANDOMS");
             if (inputScalars.use_psf) aux.addFlag("PSF");
         } else {
             aux.addFlag("AF");
@@ -456,14 +457,13 @@ public:
 		}
 		
         // Macros TODO: sens, aux
-        auto sets = BuildMacroDict(inputScalars, w_vec, MethodList);
-
+        auto sets = BuildMacroDict(inputScalars, w_vec, MethodList, type);
+		
 		NS::Error* err;
 		NS::SharedPtr<MTL::CompileOptions> optsFP = NS::TransferPtr(MTL::CompileOptions::alloc()->init());
 		NS::SharedPtr<MTL::CompileOptions> optsBP = NS::TransferPtr(MTL::CompileOptions::alloc()->init());
 		optsFP->setPreprocessorMacros(sets.fp);
 		optsBP->setPreprocessorMacros(sets.bp);
-
 		libFP = NS::TransferPtr(mtlDevice->newLibrary(NS::String::string(contentFP.c_str(), NS::UTF8StringEncoding), optsFP.get(), &err));
 		if (!libFP) {
 			const char* msg = (err && err->localizedDescription())
@@ -472,7 +472,6 @@ public:
 			mexPrintf("newLibrary failed: %s", msg);
 			return -1;
 		}
-		
 		libBP = NS::TransferPtr(mtlDevice->newLibrary(NS::String::string(contentBP.c_str(), NS::UTF8StringEncoding), optsBP.get(), &err));
 		if (!libBP) {
 			const char* msg = (err && err->localizedDescription())
@@ -970,6 +969,9 @@ public:
             kernelBP->setBuffer(d_rayShiftsSource.get(),   (NS::UInteger)0, /*index*/ 3);
             if (DEBUG) mexPrint("forwardProjection: buffers 2 and 3 set (SPECT shifts)");
         }
+		if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
+			kernelFP->setBuffer(d_V.get(), (NS::UInteger)0, /*index*/ 4);
+		}
 
 		if (inputScalars.attenuation_correction && !inputScalars.CT && inputScalars.CTAttenuation) {
 			kernelFP->setBuffer(d_attenB.get(), (NS::UInteger)0, /*index*/ 5);
@@ -1084,6 +1086,9 @@ public:
             kernelBP->setBuffer(d_rayShiftsSource.get(),   (NS::UInteger)0, /*index*/ 3);
             if (DEBUG) mexPrint("backwardProjection: buffers 2 and 3 set (SPECT shifts)");
         }
+		if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
+			kernelBP->setBuffer(d_V.get(), (NS::UInteger)0, /*index*/ 4);
+		}
 
 		if (inputScalars.attenuation_correction && !inputScalars.CT && inputScalars.CTAttenuation) {
 			kernelBP->setBuffer(d_attenB.get(), (NS::UInteger)0, /*index*/ 5);
