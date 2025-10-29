@@ -7,15 +7,15 @@
 #elif defined(__OPENCL_VERSION__) // OpenCL
 #elif defined(__CUDACC__) // CUDA
 #else // C++
-#if defined(METAL) // C++ on MacOS
+#if (defined(METAL) && !defined(__METAL_VERSION__)) // C++ on MacOS
 #pragma once
 #include <cstdint>
 #include <simd/simd.h>
 #define FLOAT2_T simd::float2
 #define FLOAT3_T simd::float3
 #define UINT3_T simd::uint3
-#elif defined(OPENCL) // C++ / OpenCL
-#elif defined(CUDA) // C++ / CUDA
+#elif (defined(OPENCL) && !defined(__OPENCL_VERSION__)) // C++ / OpenCL
+#elif (defined(CUDA) && !defined(__CUDACC__)) // C++ / CUDA
 #endif
 #endif
 

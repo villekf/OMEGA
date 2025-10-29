@@ -70,7 +70,7 @@ int ProjectorClass::createProgram(
     }
     
     // Macros TODO: sens, aux
-    auto sets = BuildMacroDict(inputScalars, w_vec, MethodList, type);
+    auto sets = BuildMacroDict(inputScalars, w_vec, MethodList, type, local_size, local_sizePrior);
     
     NS::Error* err;
     NS::SharedPtr<MTL::CompileOptions> optsFP = NS::TransferPtr(MTL::CompileOptions::alloc()->init());

@@ -1,15 +1,12 @@
 // Utilities to build preprocessor macros for different Metal kernels.
 // TODO: use this code also for OpenCL/CUDA preprocessor directives through type definitions.
 
+#ifdef METAL
 #pragma once
 #include "Metal.hpp"
 #include "structs.h"
-
-#define TH 100000000000.f
-#define TH32 100000.f
-#define NVOXELS 8
-#define NVOXELS5 1
-#define NVOXELSFP 8
+#define MACROTYPE NS::Dictionary*
+#define MACROTYPE_NULL nullptr
 
 static NS::String* S(const std::string& s) {
     return NS::String::string(s.c_str(), NS::UTF8StringEncoding);
@@ -49,31 +46,86 @@ struct MacroBuilder {
     }
 };
 
+#elif defined(OPENCL)
+#define MACROTYPE std::string
+#define MACROTYPE_NULL ""
+
+struct MacroBuilder {
+    std::string opts = "";
+
+    void addFlag(const std::string& name) {
+        opts += (" -D" + name);
+    }
+
+    void addInt(const std::string& name, uint64_t value) {
+        opts += (" -D" + name + "=" + std::to_string(value));
+    }
+
+    void addRawStr(const std::string& name) {
+        opts += (" " + name);
+    }
+
+    MacroBuilder clone() const {
+        MacroBuilder mb;
+        mb.opts = opts;
+        return mb;
+    }
+
+    std::string build() const {
+        return opts;
+    }
+};
+
+#endif
+
+#define TH 100000000000.f
+#define TH32 100000.f
+#define NVOXELS 8
+#define NVOXELS5 1
+#define NVOXELSFP 8
+
 struct MacroSets {
-    NS::Dictionary* base = nullptr;
-    NS::Dictionary* fp = nullptr;
-    NS::Dictionary* bp = nullptr;
-    NS::Dictionary* sens = nullptr;
-    NS::Dictionary* aux = nullptr;
+    MACROTYPE base = MACROTYPE_NULL;
+    MACROTYPE fp = MACROTYPE_NULL;
+    MACROTYPE bp = MACROTYPE_NULL;
+    MACROTYPE sens = MACROTYPE_NULL;
+    MACROTYPE aux = MACROTYPE_NULL;
 };
 
 static MacroSets BuildMacroDict(
-    const scalarStruct& inputScalars,
+    scalarStruct& inputScalars,
     const Weighting& w_vec,
     const RecMethods MethodList,
-    const int type
+    const int type,
+    const size_t local_size[3],
+    size_t local_sizePrior[3],
+    const bool constantBuffer = false
 ) {
     MacroSets out;
     
     // Common preprocessor macros
     MacroBuilder base;
+#if defined(METAL)
     base.addFlag("METAL");
+#elif defined(OPENCL)
+    base.addFlag("OPENCL");
+    base.addRawStr("-cl-single-precision-constant");
+    if (inputScalars.useMAD) base.addRawStr("-cl-fast-relaxed-math");
+#endif
 
+    if (inputScalars.useImages || inputScalars.FPType == 4 || inputScalars.FPType == 5 || inputScalars.BPType == 5) {
+        base.addFlag("USEIMAGES");
+        inputScalars.useBuffers = false;
+    }
+
+    if (inputScalars.useMAD) base.addFlag("USEMAD");
+    if (constantBuffer || (inputScalars.listmode > 0 && !inputScalars.indexBased)) base.addFlag("USEGLOBAL");
     if (inputScalars.useHalf) base.addFlag("HALF");
     if (inputScalars.useParallelBeam) base.addFlag("PARALLEL");
     if (inputScalars.raw == 1) base.addFlag("RAW");
     if (inputScalars.useTotLength && !inputScalars.SPECT) base.addFlag("TOTLENGTH");
-
+    if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) base.addFlag("FDK");
+    
     if (inputScalars.maskFP) {
         base.addFlag("MASKFP");
         if (inputScalars.maskFPZ > 1) base.addFlag("MASKFP3D");
@@ -120,7 +172,13 @@ static MacroSets BuildMacroDict(
         (inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7))) &&
         !inputScalars.CT && !inputScalars.SPECT && !inputScalars.PET && inputScalars.listmode == 0)
         base.addFlag("SUBSETS");
-
+    if (local_size[1] > 0ULL) {
+        base.addInt("LOCAL_SIZE", local_size[0]);
+        base.addInt("LOCAL_SIZE2", local_size[1]);
+    } else {
+        base.addInt("LOCAL_SIZE", local_size[0]);
+    }
+    
     if (inputScalars.subsets > 1 && inputScalars.listmode == 0) {
         base.addInt("STYPE",    inputScalars.subsetType);
         base.addInt("NSUBSETS", inputScalars.subsets);
@@ -294,6 +352,13 @@ static MacroSets BuildMacroDict(
         aux.addInt("PWINDOWX", w_vec.Nlx);
         aux.addInt("PWINDOWY", w_vec.Nly);
         aux.addInt("PWINDOWZ", w_vec.Nlz);
+    }
+    if (local_sizePrior[1] > 0ULL) {
+        aux.addInt("LOCAL_SIZE", local_sizePrior[0]);
+        aux.addInt("LOCAL_SIZE2", local_sizePrior[1]);
+        aux.addInt("LOCAL_SIZE3", local_sizePrior[2]);
+    } else {
+        aux.addInt("LOCAL_SIZE", local_sizePrior[0]);
     }
     if (MethodList.PKMA) aux.addFlag("PKMA");
     else if (MethodList.MBSREM || MethodList.MRAMLA) aux.addFlag("MBSREM");
