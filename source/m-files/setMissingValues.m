@@ -1031,9 +1031,6 @@ end
 if ~isfield(options, 'colFz') % SPECT collimator focal distance
     options.colFz = Inf; % Parallel-hole
 end
-if ~isfield(options, 'crXY') % SPECT detector crystal size
-    options.crXY = 1;
-end
 if ~isfield(options, 'rayShiftsDetector')
     options.rayShiftsDetector = [];
 end

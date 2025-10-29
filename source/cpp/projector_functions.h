@@ -510,11 +510,11 @@ inline void get_detector_coordinates_SPECT(const T* x, const T* z, Det<T>& detec
 	const int idz = iz * 2; // Move ray to detector pixel
 	const T indeksi1 = static_cast<T>(ix) - static_cast<T>(size_x) / 2. + .5;
 	const T indeksi2 = static_cast<T>(iy) - static_cast<T>(size_y) / 2. + .5;
-	detectors.xs += z[idz] * indeksi1;
-	detectors.ys += z[idz + 1] * indeksi1;
+	detectors.xs += dPitchXY * z[idz] * indeksi1;
+	detectors.ys += dPitchXY * z[idz + 1] * indeksi1;
 	detectors.zs += dPitchXY * indeksi2;
-	detectors.xd += z[idz] * indeksi1;
-	detectors.yd += z[idz + 1] * indeksi1;
+	detectors.xd += dPitchXY * z[idz] * indeksi1;
+	detectors.yd += dPitchXY * z[idz + 1] * indeksi1;
 	detectors.zd += dPitchXY * indeksi2;
 	
 	if (nRays2D > 1) { // Add ray shift
@@ -528,9 +528,9 @@ inline void get_detector_coordinates_SPECT(const T* x, const T* z, Det<T>& detec
 		detectors.zs += dPitchXY * rayShiftsSource[idr + 1] / 2.;
 	}	
 	// Extend ray
-	detectors.xs += 100 * (detectors.xs - detectors.xd);
-	detectors.ys += 100 * (detectors.ys - detectors.yd);
-	detectors.zs += 100 * (detectors.zs - detectors.zd);
+	detectors.xs += 100.f * (detectors.xd - detectors.xs);
+	detectors.ys += 100.f * (detectors.yd - detectors.ys);
+	detectors.zs += 100.f * (detectors.zd - detectors.zs);
 }
 
 // Compute the distance that the ray traverses in the current voxel

@@ -200,7 +200,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		param.dPitchXY = getScalarFloat(getField(options, 0, "dPitchY"), ind);
 	} else if (SPECT) {
 		param.size_y = getScalarUInt32(getField(options, 0, "nColsD"), ind);
-		param.dPitchXY = getScalarFloat(getField(options, 0, "crXY"), ind);
+		param.dPitchXY = getScalarFloat(getField(options, 0, "dPitchX"), ind);
 		param.rayShiftsDetector = getSingles(options, "rayShiftsDetector");
 		param.rayShiftsSource = getSingles(options, "rayShiftsSource");
         param.coneOfResponseStdCoeffA = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffA"), ind);
