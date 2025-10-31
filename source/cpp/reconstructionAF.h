@@ -183,7 +183,9 @@ inline int computeMBSREMvalues(
 
 // Data load (for when largeDim is not selected). TODO: if largeDim is selected, load subset kk for all timesteps. Otherwise load all data
 template <typename F, typename R>
-inline void loadFrameData(
+inline int loadFrameData(
+    const float* z_det,
+    const float* x,
     scalarStruct &inputScalars,
     Weighting &w_vec,
     std::vector<af::array> &mData,
@@ -196,8 +198,9 @@ inline void loadFrameData(
     const float* extraCorr,
     uint32_t tt = 0 // Timestep
 ) {
+    int status = 0;
     if (inputScalars.verbose >= 3 || DEBUG)
-        mexPrint("Loading measurement/randoms/scatter data");
+        mexPrintf("Loading measurement/randoms/scatter data for timestep %u\n", tt);
     for (int kk = inputScalars.osa_iter0; kk < inputScalars.TOFsubsets; kk++) {
         if ((inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8 && inputScalars.subsetType > 0) || inputScalars.listmode > 0)
             if (inputScalars.TOF && inputScalars.listmode == 0) {
@@ -217,20 +220,26 @@ inline void loadFrameData(
                 mData[kk] = af::array(inputScalars.nRowsD * inputScalars.nColsD * length[kk], &Sin[pituus[kk] * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.kokoNonTOF * tt], AFTYPE);
                 proj.memSize += (sizeof(float) * inputScalars.nRowsD * inputScalars.nColsD * length[kk]) / 1048576ULL;
             }
-#ifndef CPU 
+#ifndef CPU     
         if (inputScalars.listmode > 0) {
             if (inputScalars.indexBased)
                 if (inputScalars.TOF)
-                    proj.loadCoord(inputScalars, length[kk], &w_vec.trIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * tt], &w_vec.axIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * tt],
+                    proj.loadCoord(kk, inputScalars, length[kk], &w_vec.trIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * tt], &w_vec.axIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * tt],
                         &w_vec.TOFIndices[pituus[kk] + inputScalars.kokoNonTOF * tt]);
                 else
-                    proj.loadCoord(inputScalars, length[kk], &w_vec.trIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * tt], &w_vec.axIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * tt]);
+                    proj.loadCoord(kk, inputScalars, length[kk], &w_vec.trIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * tt], &w_vec.axIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * tt]);
             else
                 if (inputScalars.TOF)
-                    proj.loadCoord(inputScalars, length[kk], &w_vec.listCoord[pituus[kk] * 6 + inputScalars.kokoNonTOF * 6 * tt], &w_vec.listCoord[pituus[kk] * 6 + inputScalars.kokoNonTOF * 6 * tt],
+                    proj.loadCoord(kk, inputScalars, length[kk], &w_vec.listCoord[pituus[kk] * 6 + inputScalars.kokoNonTOF * 6 * tt], &w_vec.listCoord[pituus[kk] * 6 + inputScalars.kokoNonTOF * 6 * tt],
                         &w_vec.TOFIndices[pituus[kk] + inputScalars.kokoNonTOF * tt]);
                 else
-                    proj.loadCoord(inputScalars, length[kk], &w_vec.listCoord[pituus[kk] * 6 + inputScalars.kokoNonTOF * 6 * tt]);
+                    proj.loadCoord(kk, inputScalars, length[kk], &w_vec.listCoord[pituus[kk] * 6 + inputScalars.kokoNonTOF * 6 * tt]);
+        } else { // Dynamic SPECT sinogram coordinates
+            proj.loadCoord(kk, inputScalars, length[kk], &z_det[pituus[kk] * 2 + pituus[inputScalars.subsets] * 2 * tt], &x[pituus[kk] * 6 + pituus[inputScalars.subsets] * 6 * tt]);
+            //mexPrintf("pituus[%u] = %u\n", kk, pituus[kk]);
+            //mexPrintf("pituus[inputScalars.subsets] = %u\n", pituus[inputScalars.subsets]);
+            //mexPrintf("length[%u] = %u\n", kk, length[kk]);
+            //mexPrintf("%u\n", pituus[kk] * 2 + pituus[inputScalars.subsets] * 2 * tt);
         }
 #endif
     }
@@ -249,15 +258,14 @@ inline void loadFrameData(
 #ifndef CPU
     //if (tt > 0) {
         if (inputScalars.scatter) {
-            // status =
-            proj.loadDynamicData(inputScalars, length, extraCorr, pituus, tt);
-            //if (status != 0)
-            //    return -1;
+            status = proj.loadDynamicData(inputScalars, length, extraCorr, pituus, tt);
+            if (status != 0) return -1;
         }
     //}
 #endif
     if (inputScalars.verbose >= 3 || DEBUG)
         mexPrint("Measurement/randoms/scatter data loaded");
+    return 0;
 }
 
 /// <summary>
@@ -402,7 +410,6 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 			lengthFull[kk] = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * lengthFull[kk];
 	}
 	totLength[0] = pituus[inputScalars.subsets];
-
 	af::array apu_sum, E, indices, rowInd, values, meanBP, meanFP, OSEMapu;
 
 	if ((MethodList.MRAMLA || MethodList.MBSREM) && inputScalars.Nt > 1U)
@@ -625,8 +632,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
 	// Create OpenCL buffers, CUDA arrays or OneAPI buffers (in the future)
 	status = proj.createBuffers(inputScalars, w_vec, x, z_det, xy_index, z_index, L, pituus, atten, norm, extraCorr, length, MethodList);
-	if (status != 0)
-		return -1;
+	if (status != 0) return -1;
 
 	// Special case for large dimensional reconstructions, i.e. cases where the image volume/measurements don't fit into the device memory
 	if (inputScalars.largeDim)
@@ -634,7 +640,8 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
 	// Load measurement data into device memory
 	if (!inputScalars.largeDim) {
-        loadFrameData(inputScalars, w_vec, mData, pituus, Sin, sc_ra, aRand, proj, length, extraCorr, 0);
+        status = loadFrameData(z_det, x, inputScalars, w_vec, mData, pituus, Sin, sc_ra, aRand, proj, length, extraCorr, 0);
+        if (status != 0) return -1;
 	}
 
 	// Gaussian kernel for PSF
@@ -709,11 +716,12 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
 		// Load the measurement and randoms data for the next time step in case of dynamic data
 		if (tt > 0u) {
-            loadFrameData(inputScalars, w_vec, mData, pituus, Sin, sc_ra, aRand, proj, length, extraCorr, tt);
+            status = loadFrameData(z_det, x, inputScalars, w_vec, mData, pituus, Sin, sc_ra, aRand, proj, length, extraCorr, tt);
+            if (status != 0) return -1;
 		}
 
 		if (DEBUG) {
-			mexPrintBase("w_vec.epsilon_mramla = %f\n", w_vec.epsilon_mramla);
+			mexPrintBase("w_vec.epsilon_mramla[tt] = %f\n", w_vec.epsilon_mramla[tt]);
 			mexPrintBase("inputScalars.nMultiVolumes = %d\n", inputScalars.nMultiVolumes);
 			mexEval();
 		}
@@ -1136,16 +1144,16 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 						mData[0] = af::array(length[osa_iter], &Sin[pituus[osa_iter] + inputScalars.kokoNonTOF * tt], AFTYPE);
 						if (inputScalars.indexBased)
 							if (inputScalars.TOF)
-								proj.loadCoord(inputScalars, length[osa_iter], &w_vec.trIndex[pituus[osa_iter] * 2 + inputScalars.kokoNonTOF * 2 * tt], &w_vec.axIndex[pituus[osa_iter] * 2 + inputScalars.kokoNonTOF * 2 * tt],
+								proj.loadCoord(osa_iter, inputScalars, length[osa_iter], &w_vec.trIndex[pituus[osa_iter] * 2 + inputScalars.kokoNonTOF * 2 * tt], &w_vec.axIndex[pituus[osa_iter] * 2 + inputScalars.kokoNonTOF * 2 * tt],
 									&w_vec.TOFIndices[pituus[osa_iter] + inputScalars.kokoNonTOF * tt]);
 							else
-								proj.loadCoord(inputScalars, length[osa_iter], &w_vec.trIndex[pituus[osa_iter] * 2 + inputScalars.kokoNonTOF * 2 * tt], &w_vec.axIndex[pituus[osa_iter] * 2 + inputScalars.kokoNonTOF * 2 * tt]);
+								proj.loadCoord(osa_iter, inputScalars, length[osa_iter], &w_vec.trIndex[pituus[osa_iter] * 2 + inputScalars.kokoNonTOF * 2 * tt], &w_vec.axIndex[pituus[osa_iter] * 2 + inputScalars.kokoNonTOF * 2 * tt]);
 						else
 							if (inputScalars.TOF)
-								proj.loadCoord(inputScalars, length[osa_iter], &w_vec.listCoord[pituus[osa_iter] * 6 + inputScalars.kokoNonTOF * 6 * tt], &w_vec.listCoord[pituus[osa_iter] * 6 + inputScalars.kokoNonTOF * 6 * tt],
+								proj.loadCoord(osa_iter, inputScalars, length[osa_iter], &w_vec.listCoord[pituus[osa_iter] * 6 + inputScalars.kokoNonTOF * 6 * tt], &w_vec.listCoord[pituus[osa_iter] * 6 + inputScalars.kokoNonTOF * 6 * tt],
 									&w_vec.TOFIndices[pituus[osa_iter] + inputScalars.kokoNonTOF * tt]);
 							else
-								proj.loadCoord(inputScalars, length[osa_iter], &w_vec.listCoord[pituus[osa_iter] * 6 + inputScalars.kokoNonTOF * 6 * tt]);
+								proj.loadCoord(osa_iter, inputScalars, length[osa_iter], &w_vec.listCoord[pituus[osa_iter] * 6 + inputScalars.kokoNonTOF * 6 * tt]);
 					}
 #endif
 					else {

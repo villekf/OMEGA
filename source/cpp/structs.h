@@ -69,7 +69,8 @@ typedef struct AF_im_vectors_ {
 typedef struct Weighting_ {
 #ifdef AF
 	af::array tr_offsets, weights_quad, weights_TV, weights_huber, fmh_weights, a_L, weighted_weights, UU, Amin, weights_RDP, RDPref;
-	std::vector<af::array> dU, M, preRef, dP, D, gradF;
+	std::vector<af::array> dU, M, preRef, D, gradF;
+    std::vector<std::vector<af::array>> dP;
 	af::array gaussianNLM, gFilter, filter, filterIm, Ffilter;
 	af_flux_function FluxType;
 	af_diffusion_eq DiffusionType;
@@ -82,7 +83,8 @@ typedef struct Weighting_ {
     int32_t *distInt = nullptr, *distInt2 = nullptr;
 	uint8_t* maskFP = nullptr, * maskBP = nullptr, * eFOVIndices = nullptr, *maskPrior = nullptr, *maskOffset = nullptr, *TOFIndices = nullptr;
 	uint16_t* axIndex = nullptr, * trIndex = nullptr;
-	float epsilon_mramla = 0.f, U = 1000000.f, h_ACOSEM = 1.f, TimeStepAD, KAD, w_sum = 0.f, h2 = 1.f, huber_delta = 0.f, ACOSEM_rhs = 0.f, h_ACOSEM_2 = 1.f, RDP_gamma = 1.f,
+	std::vector<float> epsilon_mramla;
+    float U = 1000000.f, h_ACOSEM = 1.f, TimeStepAD, KAD, w_sum = 0.f, h2 = 1.f, huber_delta = 0.f, ACOSEM_rhs = 0.f, h_ACOSEM_2 = 1.f, RDP_gamma = 1.f,
 		dPitchX, dPitchY, betaLSQR = 0.f, alphaLSQR = 0.f, thetaLSQR = 0.f, rhoLSQR = 0.f, phiLSQR = 0.f, gammaCGLS = 0.f, gammaTempCGLS = 0.f, alphaCGLS = 0.f, nuIEM = 0.f, alphaCPTV = 1.f,
 		gradV1 = 0.f, gradV2 = 0.f, betaReg = 0.f, alpha0CPTGV = 1.f, alpha1CPTGV = 1.f, betaFISTA = 1.f, tFISTA = 1.f, tNFista = 1.f, GGMRF_p = 0.f, GGMRF_q = 0.f, GGMRF_c = 0.f, GGMRF_pqc = 0.f,
 		beta = 0.f, dtvg = 0.f, alphaPOCS = 0.2f, rMaxPOCS = 0.95f, POCSepps = 1e-4f, POCSalphaRed = 0.95f, NLAdaptiveConstant = 1e-5f;

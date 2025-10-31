@@ -728,16 +728,16 @@ classdef projectorClass
             elseif obj.param.CT || obj.param.PET || (obj.param.SPECT && obj.param.projector_type ~= 6)
                 if obj.param.subset_type >= 8 && obj.param.subsets > 1 && ~obj.param.FDK
                     if obj.param.CT || obj.param.SPECT
-                        x_det = reshape(x_det, 6, obj.param.partitions*obj.param.nProjections);
-                        x_det = x_det(:,obj.index);
+                        x_det = reshape(x_det, 6, obj.param.nProjections, obj.param.partitions);
+                        x_det = x_det(:,obj.index, :);
                         x_det = x_det(:);
                         if obj.param.pitch
                             z_det = reshape(z_det, 6, obj.param.nProjections);
                             z_det = z_det(:,obj.index);
                             z_det = z_det(:);
                         else
-                            z_det = reshape(z_det, 2, obj.param.partitions*obj.param.nProjections);
-                            z_det = z_det(:,obj.index);
+                            z_det = reshape(z_det, 2, obj.param.nProjections, obj.param.partitions);
+                            z_det = z_det(:,obj.index, :);
                             z_det = z_det(:);
                         end
                     else
