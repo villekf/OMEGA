@@ -25,6 +25,85 @@
 #include "iterStep.h"
 #include <random>
 
+// Data load (for when largeDim is not selected). TODO: if largeDim is selected, load subset kk for all timesteps. Otherwise load all data
+template <typename F, typename R>
+inline void loadFrameData(
+    scalarStruct &inputScalars,
+    Weighting &w_vec,
+    std::vector<af::array> &mData,
+    const int64_t* pituus,
+    const F* Sin,
+    const R* sc_ra,
+    std::vector<af::array> &aRand,
+    ProjectorClass &proj,
+    std::vector<int64_t> length,
+    const float* extraCorr,
+    uint32_t tt = 0 // Timestep
+) {
+    if (inputScalars.verbose >= 3 || DEBUG)
+        mexPrint("Loading measurement/randoms/scatter data");
+    for (int kk = inputScalars.osa_iter0; kk < inputScalars.TOFsubsets; kk++) {
+        if ((inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8 && inputScalars.subsetType > 0) || inputScalars.listmode > 0)
+            if (inputScalars.TOF && inputScalars.listmode == 0) {
+                for (int64_t to = 0; to < inputScalars.nBins; to++) {
+                    mData[kk](af::seq(length[kk] * to, length[kk] * (to + 1) - 1)) = af::array(length[kk], &Sin[pituus[kk] + inputScalars.kokoNonTOF * to + inputScalars.kokoTOF * tt], AFTYPE);
+                }
+            } else {
+                mData[kk] = af::array(length[kk], &Sin[pituus[kk] + inputScalars.kokoNonTOF * tt], AFTYPE);
+                proj.memSize += (sizeof(float) * length[kk]) / 1048576ULL;
+            }
+        else
+            if (inputScalars.TOF && inputScalars.listmode == 0) {
+                for (int64_t to = 0; to < inputScalars.nBins; to++)
+                    mData[kk](af::seq(inputScalars.nRowsD* inputScalars.nColsD* length[kk] * to, inputScalars.nRowsD* inputScalars.nColsD* length[kk] * (to + 1) - 1)) =
+                    af::array(length[kk] * inputScalars.nRowsD * inputScalars.nColsD, &Sin[pituus[kk] * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.kokoNonTOF * to + inputScalars.kokoTOF * tt], AFTYPE);
+            } else {
+                mData[kk] = af::array(inputScalars.nRowsD * inputScalars.nColsD * length[kk], &Sin[pituus[kk] * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.kokoNonTOF * tt], AFTYPE);
+                proj.memSize += (sizeof(float) * inputScalars.nRowsD * inputScalars.nColsD * length[kk]) / 1048576ULL;
+            }
+#ifndef CPU 
+        if (inputScalars.listmode > 0) {
+            if (inputScalars.indexBased)
+                if (inputScalars.TOF)
+                    proj.loadCoord(inputScalars, length[kk], &w_vec.trIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * tt], &w_vec.axIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * tt],
+                        &w_vec.TOFIndices[pituus[kk] + inputScalars.kokoNonTOF * tt]);
+                else
+                    proj.loadCoord(inputScalars, length[kk], &w_vec.trIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * tt], &w_vec.axIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * tt]);
+            else
+                if (inputScalars.TOF)
+                    proj.loadCoord(inputScalars, length[kk], &w_vec.listCoord[pituus[kk] * 6 + inputScalars.kokoNonTOF * 6 * tt], &w_vec.listCoord[pituus[kk] * 6 + inputScalars.kokoNonTOF * 6 * tt],
+                        &w_vec.TOFIndices[pituus[kk] + inputScalars.kokoNonTOF * tt]);
+                else
+                    proj.loadCoord(inputScalars, length[kk], &w_vec.listCoord[pituus[kk] * 6 + inputScalars.kokoNonTOF * 6 * tt]);
+        }
+#endif
+    }
+
+    if (inputScalars.randoms_correction) {
+        for (int kk = inputScalars.osa_iter0; kk < inputScalars.TOFsubsets; kk++) {
+            if ((inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8 && inputScalars.subsetType > 0)) || inputScalars.listmode > 0) {
+                aRand[kk] = af::array(length[kk], &sc_ra[pituus[kk]+ inputScalars.kokoNonTOF * tt], AFTYPE);
+                proj.memSize += (sizeof(float) * length[kk]) / 1048576ULL;
+            } else {
+                aRand[kk] = af::array(inputScalars.nRowsD * inputScalars.nColsD * length[kk], &sc_ra[pituus[kk] * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.kokoNonTOF * tt], AFTYPE);
+                proj.memSize += (sizeof(float) * inputScalars.nRowsD * inputScalars.nColsD * length[kk]) / 1048576ULL;
+            }
+        }
+    }
+#ifndef CPU
+    //if (tt > 0) {
+        if (inputScalars.scatter) {
+            // status =
+            proj.loadDynamicData(inputScalars, length, extraCorr, pituus, tt);
+            //if (status != 0)
+            //    return -1;
+        }
+    //}
+#endif
+    if (inputScalars.verbose >= 3 || DEBUG)
+        mexPrint("Measurement/randoms/scatter data loaded");
+}
+
 /// <summary>
 /// The main reconstruction function. This function performs all the image reconstruction duties. First it transfers the
 /// necessary variables and builds the necessary kernels. After this, it performs any necessary precomputations and then
@@ -399,49 +478,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
 	// Load measurement data into device memory
 	if (!inputScalars.largeDim) {
-		for (int kk = inputScalars.osa_iter0; kk < inputScalars.TOFsubsets; kk++) {
-			if ((inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8 && inputScalars.subsetType > 0) || inputScalars.listmode > 0)
-				if (inputScalars.TOF && inputScalars.listmode == 0) {
-					for (int64_t to = 0; to < inputScalars.nBins; to++) {
-						mData[kk](af::seq(length[kk] * to, length[kk] * (to + 1) - 1)) = af::array(length[kk], &Sin[pituus[kk] + inputScalars.kokoNonTOF * to], AFTYPE);
-					}
-				}
-				else {
-					mData[kk] = af::array(length[kk], &Sin[pituus[kk]], AFTYPE);
-					proj.memSize += (sizeof(float) * length[kk]) / 1048576ULL;
-				}
-			else
-				if (inputScalars.TOF && inputScalars.listmode == 0) {
-					for (int64_t to = 0; to < inputScalars.nBins; to++)
-						mData[kk](af::seq(inputScalars.nRowsD* inputScalars.nColsD* length[kk] * to, inputScalars.nRowsD* inputScalars.nColsD* length[kk] * (to + 1) - 1)) =
-						af::array(length[kk] * inputScalars.nRowsD * inputScalars.nColsD, &Sin[pituus[kk] * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.kokoNonTOF * to], AFTYPE);
-				}
-				else {
-					mData[kk] = af::array(inputScalars.nRowsD * inputScalars.nColsD * length[kk], &Sin[pituus[kk] * inputScalars.nRowsD * inputScalars.nColsD], AFTYPE);
-					proj.memSize += (sizeof(float) * inputScalars.nRowsD * inputScalars.nColsD * length[kk]) / 1048576ULL;
-				}
-			if (DEBUG) {
-				mexPrintBase("pituus[kk] = %u\n", pituus[kk]);
-				mexPrintBase("mData[kk].elements() = %d\n", mData[kk].elements());
-				mexPrintBase("inputScalars.nRowsD = %d\n", inputScalars.nRowsD);
-				mexPrintBase("inputScalars.nColsD = %d\n", inputScalars.nColsD);
-				mexPrintBase("length[kk] = %d\n", length[kk]);
-				mexEval();
-			}
-		}
-		if (inputScalars.randoms_correction) {
-			for (int kk = inputScalars.osa_iter0; kk < inputScalars.TOFsubsets; kk++)
-				if ((inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8 && inputScalars.subsetType > 0)) || inputScalars.listmode > 0) {
-					aRand[kk] = af::array(length[kk], &sc_ra[pituus[kk]], AFTYPE);
-					proj.memSize += (sizeof(float) * length[kk]) / 1048576ULL;
-				}
-				else {
-					aRand[kk] = af::array(inputScalars.nRowsD * inputScalars.nColsD * length[kk], &sc_ra[pituus[kk] * inputScalars.nRowsD * inputScalars.nColsD], AFTYPE);
-					proj.memSize += (sizeof(float) * inputScalars.nRowsD * inputScalars.nColsD * length[kk]) / 1048576ULL;
-				}
-		}
-		if (inputScalars.verbose >= 3 || DEBUG)
-			mexPrint("Measurement/randoms/scatter data loaded");
+        loadFrameData(inputScalars, w_vec, mData, pituus, Sin, sc_ra, aRand, proj, length, extraCorr, 0);
 	}
 
 	// Gaussian kernel for PSF
@@ -641,64 +678,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
 		// Load the measurement and randoms data for the next time step in case of dynamic data
 		if (tt > 0u) {
-			if (inputScalars.verbose >= 3 || DEBUG)
-				mexPrint("Loading dynamic measurement/randoms/scatter data");
-			for (int kk = inputScalars.osa_iter0; kk < inputScalars.TOFsubsets; kk++) {
-				if ((inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8 && inputScalars.subsetType > 0) || inputScalars.listmode > 0) {
-					if (inputScalars.TOF && inputScalars.listmode == 0) {
-						for (int64_t to = 0; to < inputScalars.nBins; to++) {
-							mData[kk](af::seq(length[kk] * to, length[kk] * (to + 1) - 1)) = af::array(length[kk], &Sin[pituus[kk] + inputScalars.kokoNonTOF * to + inputScalars.kokoTOF * tt], AFTYPE);
-						}
-					}
-					else {
-						mData[kk] = af::array(length[kk], &Sin[pituus[kk] + inputScalars.kokoNonTOF * tt], AFTYPE);
-					}
-				}
-				else {
-					if (inputScalars.TOF && inputScalars.listmode == 0) {
-						for (int64_t to = 0; to < inputScalars.nBins; to++)
-							mData[kk](af::seq(inputScalars.nRowsD* inputScalars.nColsD* length[kk] * to, inputScalars.nRowsD* inputScalars.nColsD* length[kk] * (to + 1) - 1)) =
-							af::array(length[kk] * inputScalars.nRowsD * inputScalars.nColsD, &Sin[pituus[kk] * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.kokoNonTOF * to + inputScalars.kokoTOF * tt], AFTYPE);
-					}
-					else {
-						mData[kk] = af::array(inputScalars.nRowsD * inputScalars.nColsD * length[kk], &Sin[pituus[kk] * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.kokoNonTOF * tt], AFTYPE);
-					}
-				}
-#ifndef CPU
-				if (inputScalars.listmode > 0) {
-					if (inputScalars.indexBased)
-						if (inputScalars.TOF)
-							proj.loadCoord(inputScalars, length[kk], &w_vec.trIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * tt], &w_vec.axIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * tt],
-								&w_vec.TOFIndices[pituus[kk] + inputScalars.kokoNonTOF * tt]);
-						else
-							proj.loadCoord(inputScalars, length[kk], &w_vec.trIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * tt], &w_vec.axIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * tt]);
-					else
-						if (inputScalars.TOF)
-							proj.loadCoord(inputScalars, length[kk], &w_vec.listCoord[pituus[kk] * 6 + inputScalars.kokoNonTOF * 6 * tt], &w_vec.listCoord[pituus[kk] * 6 + inputScalars.kokoNonTOF * 6 * tt],
-								&w_vec.TOFIndices[pituus[kk] + inputScalars.kokoNonTOF * tt]);
-						else
-							proj.loadCoord(inputScalars, length[kk], &w_vec.listCoord[pituus[kk] * 6 + inputScalars.kokoNonTOF * 6 * tt]);
-				}
-#endif
-			}
-			if (inputScalars.randoms_correction) {
-				if ((inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8 && inputScalars.subsetType > 0) || inputScalars.listmode > 0)
-					for (int kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++)
-						aRand[kk] = af::array(length[kk], &sc_ra[pituus[kk] + inputScalars.kokoNonTOF * tt], AFTYPE);
-				else {
-					for (int kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++)
-						aRand[kk] = af::array(inputScalars.nRowsD * inputScalars.nColsD * length[kk], &sc_ra[pituus[kk] * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.kokoNonTOF * tt], AFTYPE).as(f32);
-				}
-			}
-#ifndef CPU
-			if (inputScalars.scatter) {
-				status = proj.loadDynamicData(inputScalars, length, extraCorr, pituus, tt);
-				if (status != 0)
-					return -1;
-			}
-			if (DEBUG || inputScalars.verbose >= 3)
-				mexPrint("Dynamic data loaded");
-#endif
+            loadFrameData(inputScalars, w_vec, mData, pituus, Sin, sc_ra, aRand, proj, length, extraCorr, tt);
 		}
 
 		if (DEBUG) {
