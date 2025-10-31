@@ -4,7 +4,7 @@
 // Computes all computations using the forward projection and outputting a measurement-domain vector
 inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::array& input, const int64_t length, const scalarStruct& inputScalars,
 	Weighting& w_vec, const af::array& randomsData, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter = 0, const uint32_t subIter = 0, const int ii = 0, 
-	float* residual = nullptr) {
+	float* residual = nullptr, uint32_t timestep = 0) {
 
 	if (DEBUG || inputScalars.verbose >= 3) {
 		proj.tStartLocal = std::chrono::steady_clock::now();
@@ -50,10 +50,10 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		if ((MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS) && !inputScalars.CT && !af::allTrue<bool>(randomsData > 0.f)) {
 			if (inputScalars.TOF) {
 				const af::array indR = af::tile(randomsData == 0.f, inputScalars.nBins);
-				indeksit = y > 0 && indR && input <= w_vec.epsilon_mramla;
+				indeksit = y > 0 && indR && input <= w_vec.epsilon_mramla[timestep];
 			}
 			else
-				indeksit = y > 0 && randomsData == 0.f && input <= w_vec.epsilon_mramla;
+				indeksit = y > 0 && randomsData == 0.f && input <= w_vec.epsilon_mramla[timestep];
 			indS = af::anyTrue<bool>(indeksit);
 		}
 		if (!inputScalars.CT) {
@@ -167,7 +167,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			if (inputScalars.verbose >= 3)
 				mexPrint("PET/SPECT mode");
 			if (inputScalars.randoms_correction && indS) {
-				input(indeksit) = y(indeksit).as(f32) / w_vec.epsilon_mramla - 1.f - (y(indeksit).as(f32) / (w_vec.epsilon_mramla * w_vec.epsilon_mramla)) * (input(indeksit) - w_vec.epsilon_mramla);
+				input(indeksit) = y(indeksit).as(f32) / w_vec.epsilon_mramla[timestep] - 1.f - (y(indeksit).as(f32) / (w_vec.epsilon_mramla[timestep] * w_vec.epsilon_mramla[timestep])) * (input(indeksit) - w_vec.epsilon_mramla[timestep]);
 				input(!indeksit) = y(!indeksit).as(f32) / (input(!indeksit) + inputScalars.epps) - 1.f;
 			}
 			else

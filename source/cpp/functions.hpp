@@ -1939,7 +1939,7 @@ inline void gradientPreconditioner(const scalarStruct& inputScalars, Weighting& 
 }
 
 // Compute the image-based preconditioning
-inline int applyImagePreconditioning(Weighting& w_vec, const scalarStruct& inputScalars, af::array& input, const af::array& im, ProjectorClass& proj, const int kk = 0, const int ii = 0) {
+inline int applyImagePreconditioning(Weighting& w_vec, const scalarStruct& inputScalars, af::array& input, const af::array& im, ProjectorClass& proj, const int kk = 0, const int ii = 0, const uint32_t timestep = 0) {
 	int status = 0;
 	if (w_vec.precondTypeIm[4] && kk >= w_vec.gradInitIter) {
 		if (inputScalars.verbose >= 3)
@@ -1973,7 +1973,7 @@ inline int applyImagePreconditioning(Weighting& w_vec, const scalarStruct& input
 	if (w_vec.precondTypeIm[6]) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Applying curvature preconditioner , type 6");
-		input *= w_vec.dP[ii];
+		input *= w_vec.dP[timestep][ii];
 	}
 	if (w_vec.precondTypeIm[5] && kk <= w_vec.filterIter) {
 		if (inputScalars.verbose >= 3)
