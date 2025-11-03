@@ -733,10 +733,10 @@ inline void get_rec_methods(const mxArray* options, RecMethods& MethodList) {
 // First transfer the ArrayFire arrays from the device to the host pointers pointing to the mxArrays
 // Transfer the mxArrays to the cell
 inline void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, int64_t& oo, mxArray* cell, mxArray* FPcell, Weighting& w_vec,
-	const uint32_t dim_n, const scalarStruct& inputScalars, std::vector<std::vector<std::vector<float>>>& FPEstimates) {
+	const uint32_t dim_n, const scalarStruct& inputScalars, std::vector<std::vector<std::vector<float>>>& FPEstimates, const int timestep) {
 	if (DEBUG) {
-		mexPrintBase("vec.im_os.dims(0) = %d\n", vec.im_os[0].dims(0));
-		mexPrintBase("vec.im_os.dims(1) = %d\n", vec.im_os[0].dims(1));
+		mexPrintBase("vec.im_os.dims(0) = %d\n", vec.im_os[timestep][0].dims(0));
+		mexPrintBase("vec.im_os.dims(1) = %d\n", vec.im_os[timestep][0].dims(1));
 		mexEval();
 	}
 	if (inputScalars.storeFP) {
@@ -776,7 +776,7 @@ inline void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, int
 				if (MethodList.FDK)
 					vec.rhs_os[ii].host(&apuF[oo]);
 				else
-					vec.im_os[ii].host(&apuF[oo]);
+					vec.im_os[timestep][ii].host(&apuF[oo]);
 				if (inputScalars.verbose >= 3)
 					mexPrint("Data transfered to host");
 			}
@@ -795,11 +795,12 @@ inline void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, int
 				vec.rhs_os[0].host(&apuF[oo]);
 			}
 			else
-				vec.im_os[0].host(&apuF[oo]);
+				vec.im_os[timestep][0].host(&apuF[oo]);
 			if (inputScalars.verbose >= 3)
 				mexPrint("Data transfered to host");
 		}
 	}
+    mexPrintf("timestep = %u\n", timestep);
 	af::sync();
 }
 #endif

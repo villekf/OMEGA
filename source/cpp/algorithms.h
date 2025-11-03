@@ -215,17 +215,17 @@ inline int PKMA(af::array& im, af::array& rhs, Weighting& w_vec, const scalarStr
 	return status;
 }
 
-inline void LSQR(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t iter, AF_im_vectors& vec, const int ii = 0) {
+inline void LSQR(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t iter, AF_im_vectors& vec, const int ii = 0, const int timestep = 0) {
 	if (iter == 0)
-		vec.wLSQR[ii] = vec.im_os[ii];
-	vec.im_os[ii] = vec.rhs_os[ii] - w_vec.betaLSQR * vec.im_os[ii];
+		vec.wLSQR[ii] = vec.im_os[timestep][ii];
+	vec.im_os[timestep][ii] = vec.rhs_os[ii] - w_vec.betaLSQR * vec.im_os[timestep][ii];
 	if (ii == inputScalars.nMultiVolumes) {
-		af::array temp = vec.im_os[0];
+		af::array temp = vec.im_os[timestep][0];
 		for (int ll = 1; ll <= inputScalars.nMultiVolumes; ll++)
-			temp = af::join(0, vec.im_os[ll], temp);
+			temp = af::join(0, vec.im_os[timestep][ll], temp);
 		w_vec.alphaLSQR = af::norm(temp);
 		for (int ll = 0; ll <= inputScalars.nMultiVolumes; ll++)
-			vec.im_os[ll] = vec.im_os[ll] / w_vec.alphaLSQR;
+			vec.im_os[timestep][ll] = vec.im_os[timestep][ll] / w_vec.alphaLSQR;
 		const float rho_ = sqrt(w_vec.rhoLSQR * w_vec.rhoLSQR + w_vec.betaLSQR * w_vec.betaLSQR);
 		const float c = w_vec.rhoLSQR / rho_;
 		const float s = w_vec.betaLSQR / rho_;
@@ -236,15 +236,15 @@ inline void LSQR(const scalarStruct& inputScalars, Weighting& w_vec, const uint3
 		for (int ll = 0; ll <= inputScalars.nMultiVolumes; ll++) {
 			vec.fLSQR[ll] = (phi_ / rho_) * vec.wLSQR[ll] + vec.fLSQR[ll];
 			vec.fLSQR[ll].eval();
-			vec.wLSQR[ll] = vec.im_os[ll] - (w_vec.thetaLSQR / rho_) * vec.wLSQR[ll];
+			vec.wLSQR[ll] = vec.im_os[timestep][ll] - (w_vec.thetaLSQR / rho_) * vec.wLSQR[ll];
 			vec.wLSQR[ll].eval();
 			if (iter == inputScalars.Niter - 1)
-				vec.im_os[ll] = vec.fLSQR[ll];
+				vec.im_os[timestep][ll] = vec.fLSQR[ll];
 		}
 	}
 }
 
-inline void CGLS(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t iter, AF_im_vectors& vec, const int ii = 0, const bool largeDim = false) {
+inline void CGLS(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t iter, AF_im_vectors& vec, const int ii = 0, const bool largeDim = false, const int timestep = 0) {
 	if (ii == inputScalars.nMultiVolumes) {
 		if (!largeDim) {
 			float gamma_ = 0.f;
@@ -253,45 +253,47 @@ inline void CGLS(const scalarStruct& inputScalars, Weighting& w_vec, const uint3
 			//gamma_ += af::sum<float>(vec.rhs_os[ll] * vec.rhs_os[ll]);
 			const float beta = gamma_ / w_vec.gammaCGLS;
 			for (int ll = ii; ll <= inputScalars.nMultiVolumes; ll++) {
-				vec.fCGLS[ll] = vec.fCGLS[ll] + w_vec.alphaCGLS * vec.im_os[ll];
+				vec.fCGLS[ll] = vec.fCGLS[ll] + w_vec.alphaCGLS * vec.im_os[timestep][ll];
 				vec.fCGLS[ll].eval();
 				if (iter == inputScalars.Niter - 1)
-					vec.im_os[ll] = vec.fCGLS[ll];
+					vec.im_os[timestep][ll] = vec.fCGLS[ll];
 				else
-					vec.im_os[ll] = vec.rhs_os[ll] + beta * vec.im_os[ll];
+					vec.im_os[timestep][ll] = vec.rhs_os[ll] + beta * vec.im_os[timestep][ll];
 			}
 			w_vec.gammaCGLS = gamma_;
 		}
 		else {
 			w_vec.gammaTempCGLS += af::dot<float>(vec.rhs_os[0], vec.rhs_os[0]);
-			vec.fCGLS[0] = vec.fCGLS[0] + w_vec.alphaCGLS * vec.im_os[0];
+			vec.fCGLS[0] = vec.fCGLS[0] + w_vec.alphaCGLS * vec.im_os[timestep][0];
 			vec.fCGLS[0].eval();
 			if (iter == inputScalars.Niter - 1)
-				vec.im_os[0] = vec.fCGLS[0];
+				vec.im_os[timestep][0] = vec.fCGLS[0];
 		}
 	}
 }
 
 inline int SART(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, AF_im_vectors& vec, ProjectorClass& proj, const af::array& mData, const af::array& g,
-	std::vector<int64_t>& length, const int64_t* pituus, const uint32_t osa_iter, const uint32_t iter, const af::array& Summ, const af::array& rhs, const float lam, const int ii = 0) {
+	std::vector<int64_t>& length, const int64_t* pituus, const uint32_t osa_iter, const uint32_t iter, const af::array& Summ, const af::array& rhs, const float lam, const int ii = 0,
+    const int timestep = 0
+) {
 	af::array imOld;
 	if (MethodList.prior && !MethodList.POCS)
-		imOld = vec.im_os[ii].copy();
-	vec.im_os[ii] += lam * (rhs / Summ);
+		imOld = vec.im_os[timestep][ii].copy();
+	vec.im_os[timestep][ii] += lam * (rhs / Summ);
 	if (MethodList.prior && !MethodList.POCS) {
-		vec.im_os[ii](vec.im_os[ii] < 0.f) = 0.f;
-		af::eval(vec.im_os[ii]);
+		vec.im_os[timestep][ii](vec.im_os[timestep][ii] < 0.f) = 0.f;
+		af::eval(vec.im_os[timestep][ii]);
 		if (ii == 0) {
 			int status = 0;
-			const float dp = static_cast<float>(af::norm(vec.im_os[ii] - imOld));
+			const float dp = static_cast<float>(af::norm(vec.im_os[timestep][ii] - imOld));
 			for (int kk = 0; kk < w_vec.ng; kk++) {
 				status = applyPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, osa_iter + inputScalars.subsetsUsed * iter);
 				if (status != 0)
 					return status;
 				vec.dU /= (af::norm(vec.dU) + inputScalars.epps);
 				af::eval(vec.dU);
-				vec.im_os[ii] -= dp * w_vec.beta * vec.dU;
-				af::eval(vec.im_os[ii]);
+				vec.im_os[timestep][ii] -= dp * w_vec.beta * vec.dU;
+				af::eval(vec.im_os[timestep][ii]);
 			}
 		}
 	}
@@ -384,9 +386,9 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 			}
 		}
 		else if (ii == 0 && inputScalars.adaptiveType == 2) {
-			const af::array apu = vec.im_os[ii].copy();
-			vec.im_os[ii] = (im_old - im);
-			const float q = af::sum<float>(af::abs((vec.im_os[ii]) / w_vec.tauCP[ii] + inputScalars.subsetsUsed * vec.rhsCP[ii]));
+			const af::array apu = vec.im_os[timestep][ii].copy();
+			vec.im_os[timestep][ii] = (im_old - im);
+			const float q = af::sum<float>(af::abs((vec.im_os[timestep][ii]) / w_vec.tauCP[ii] + inputScalars.subsetsUsed * vec.rhsCP[ii]));
 			af::array outputFP;
 			if (inputScalars.listmode == 0)
 				outputFP = af::constant(0.f, m_size * inputScalars.nBins);
@@ -408,7 +410,7 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 				w_vec.alphaCP[ii] *= 0.99f;
 			}
 			w_vec.sigma2CP[ii] = w_vec.sigmaCP[ii];
-			vec.im_os[ii] = apu.copy();
+			vec.im_os[timestep][ii] = apu.copy();
 		}
 	}
 	return status;
@@ -493,8 +495,8 @@ inline int FISTAL1(af::array& im, af::array& rhs, const scalarStruct& inputScala
 
 // ASD-POCS
 inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, AF_im_vectors& vec, ProjectorClass& proj, const af::array& mData, const af::array& g, 
-	std::vector<int64_t>& length, const int64_t* pituus, const uint32_t osa_iter, const uint32_t iter, const int ii = 0) {
-	vec.im_os[ii](vec.im_os[ii] < 0.f) = 0.f;
+	std::vector<int64_t>& length, const int64_t* pituus, const uint32_t osa_iter, const uint32_t iter, const int ii = 0, int timestep = 0) {
+	vec.im_os[timestep][ii](vec.im_os[timestep][ii] < 0.f) = 0.f;
 	if (DEBUG)
 		mexPrint("Computing ASD-POCS");
 	bool subsets = true;
@@ -517,14 +519,14 @@ inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 			return status;
 		}
 		const float dd = static_cast<float>(af::norm(outputFP - mData.as(f32)));
-		const float dp = static_cast<float>(af::norm(vec.im_os[ii] - vec.f0POCS[ii]));
+		const float dp = static_cast<float>(af::norm(vec.im_os[timestep][ii] - vec.f0POCS[ii]));
 		if (DEBUG) {
 			mexPrintBase("dd = %f\n", dd);
 			mexEval();
 		}
 		if (iter == 0 && osa_iter == 0)
 			w_vec.dtvg = w_vec.alphaPOCS * dp;
-		vec.f0POCS[ii] = vec.im_os[ii].copy();
+		vec.f0POCS[ii] = vec.im_os[timestep][ii].copy();
 		if (DEBUG) {
 			mexPrintBase("dp = %f\n", dp);
 			mexPrintBase("w_vec.dtvg = %f\n", w_vec.dtvg);
@@ -536,11 +538,11 @@ inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 				if (status != 0)
 					return status;
 				vec.dU /= (af::norm(vec.dU) + inputScalars.epps);
-				vec.im_os[ii] -= w_vec.dtvg * vec.dU;
-				af::eval(vec.im_os[ii]);
+				vec.im_os[timestep][ii] -= w_vec.dtvg * vec.dU;
+				af::eval(vec.im_os[timestep][ii]);
 				af::eval(vec.dU);
 			}
-			const float dg = static_cast<float>(af::norm(vec.im_os[ii] - vec.f0POCS[ii]));
+			const float dg = static_cast<float>(af::norm(vec.im_os[timestep][ii] - vec.f0POCS[ii]));
 			if (DEBUG) {
 				mexPrintBase("dg = %f\n", dg);
 				mexPrintBase("w_vec.rMaxPOCS * dp = %f\n", w_vec.rMaxPOCS * dp);
@@ -553,7 +555,7 @@ inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 	return 0;
 }
 
-inline int SAGA(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t osa_iter, const uint32_t iter, const int ii = 0, const uint32_t timestep = 0) {
+inline int SAGA(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t osa_iter, const uint32_t iter, const int ii = 0, uint32_t timestep = 0) {
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
 	af::array grad = af::constant(0.f, im.elements());
 	if (DEBUG) {
@@ -582,17 +584,17 @@ inline int SAGA(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, AF_
 	return status;
 }
 
-inline int BB(AF_im_vectors &vec, Weighting &w_vec, const int ii = 0)
+inline int BB(AF_im_vectors &vec, Weighting &w_vec, const int ii = 0, int timestep = 0)
 {
 
-	af::array s = vec.im_os[ii] - vec.imBB[ii];
+	af::array s = vec.im_os[timestep][ii] - vec.imBB[ii];
 	af::array y = vec.rhs_os[ii] - vec.gradBB[ii];
 	float denmo = af::dot<float>(s,y);
 	float num = af::dot<float>(s,s);
 
 	w_vec.alphaBB[ii] = (denmo != 0) ? num / denmo : 1e-4f; // Avoid division by zero
-	vec.imBB[ii] = vec.im_os[ii].copy();
-	vec.im_os[ii] = vec.imBB[ii] - w_vec.alphaBB[ii] * vec.gradBB[ii];
+	vec.imBB[ii] = vec.im_os[timestep][ii].copy();
+	vec.im_os[timestep][ii] = vec.imBB[ii] - w_vec.alphaBB[ii] * vec.gradBB[ii];
 	vec.gradBB[ii] = vec.rhs_os[ii];
 
 

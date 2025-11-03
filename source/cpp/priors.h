@@ -370,16 +370,16 @@ inline int NLM(ProjectorClass& proj, const af::array& im, Weighting& w_vec, cons
 
 
 inline int applyPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const scalarStruct& inputScalars, ProjectorClass& proj, const float beta, const uint32_t osa_iter = 0, const uint8_t compute_norm_matrix = 0, 
-	const bool iter = false, const int kk = 0) {
+	const bool iter = false, const int kk = 0, const int timestep = 0) {
 	af::array* dU = nullptr;
 	int status = 0;
 	if (iter) {
-		vec.dU = af::constant(0.f, vec.im_os[0].elements());
+		vec.dU = af::constant(0.f, vec.im_os[timestep][0].elements());
 		dU = &vec.dU;
-		//dU = &vec.im_os[0];
+		//dU = &vec.im_os[timestep][0];
 	}
 	else if (MethodList.RBIOSL || MethodList.OSLOSEM || MethodList.OSLCOSEM || MethodList.POCS || MethodList.SAGA || MethodList.SART) {
-		vec.dU = af::constant(0.f, vec.im_os[0].elements());
+		vec.dU = af::constant(0.f, vec.im_os[timestep][0].elements());
 		dU = &vec.dU;
 	}
 	else
@@ -387,45 +387,45 @@ inline int applyPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& Me
 	if (MethodList.MRP) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing MRP gradient");
-		status = MRP(vec.im_os[0], w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars, proj, *dU, beta, w_vec.med_no_norm);
+		status = MRP(vec.im_os[timestep][0], w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars, proj, *dU, beta, w_vec.med_no_norm);
 	}
 	else if (MethodList.Quad) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing quadratic prior gradient");
-		*dU += beta * Quadratic_prior(vec.im_os[0], w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars, w_vec.weights_quad);
+		*dU += beta * Quadratic_prior(vec.im_os[timestep][0], w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars, w_vec.weights_quad);
 	}
 	else if (MethodList.Huber) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing Huber prior gradient");
-		*dU += beta * Huber_prior(vec.im_os[0], w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars, w_vec.weights_huber, w_vec.huber_delta);
+		*dU += beta * Huber_prior(vec.im_os[timestep][0], w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars, w_vec.weights_huber, w_vec.huber_delta);
 	}
 	else if (MethodList.L) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing L-filter gradient");
-		*dU += beta * L_filter(vec.im_os[0], w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars, w_vec.tr_offsets,
+		*dU += beta * L_filter(vec.im_os[timestep][0], w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars, w_vec.tr_offsets,
 			w_vec.a_L, w_vec.med_no_norm);
 	}
 	else if (MethodList.FMH) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing FMH prior gradient");
-		*dU += beta * FMH(vec.im_os[0], w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars, w_vec.inffi, w_vec.tr_offsets,
+		*dU += beta * FMH(vec.im_os[timestep][0], w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars, w_vec.inffi, w_vec.tr_offsets,
 			w_vec.fmh_weights, w_vec.alku_fmh, w_vec.med_no_norm);
 	}
 	else if (MethodList.WeightedMean) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing weighted mean prior gradient");
-		*dU += beta * Weighted_mean(vec.im_os[0], w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars, w_vec.weighted_weights,
+		*dU += beta * Weighted_mean(vec.im_os[timestep][0], w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars, w_vec.weighted_weights,
 			w_vec.w_sum, w_vec.mean_type, w_vec.med_no_norm);
 	}
 	else if (MethodList.TV) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing TV prior gradient");
-		status = TVprior(inputScalars, w_vec.data, vec.im_os[0], w_vec, proj, *dU, beta, kk);
+		status = TVprior(inputScalars, w_vec.data, vec.im_os[timestep][0], w_vec, proj, *dU, beta, kk);
 	}
 	else if (MethodList.hyperbolic) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing hyperbolic prior gradient");
-		status = hyperbolic(inputScalars, vec.im_os[0], w_vec, proj, *dU, beta, kk);
+		status = hyperbolic(inputScalars, vec.im_os[timestep][0], w_vec, proj, *dU, beta, kk);
 	}
 	else if (MethodList.AD) {
 		if (inputScalars.verbose >= 3)
@@ -434,41 +434,41 @@ inline int applyPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& Me
 			*dU += af::constant(0.f, inputScalars.im_dim[0], 1);
 		}
 		else {
-			*dU += beta * AD(vec.im_os[0], inputScalars, w_vec.TimeStepAD, w_vec.KAD, w_vec.NiterAD, w_vec.FluxType,
+			*dU += beta * AD(vec.im_os[timestep][0], inputScalars, w_vec.TimeStepAD, w_vec.KAD, w_vec.NiterAD, w_vec.FluxType,
 				w_vec.DiffusionType, w_vec.med_no_norm);
 		}
 	}
 	else if (MethodList.APLS) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing APLS prior gradient");
-		status = TVprior(inputScalars, w_vec.data, vec.im_os[0], w_vec, proj, *dU, beta, kk);
+		status = TVprior(inputScalars, w_vec.data, vec.im_os[timestep][0], w_vec, proj, *dU, beta, kk);
 	}
 	else if (MethodList.ProxTGV || MethodList.TGV) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing TGV prior");
 		if (osa_iter >= 100)
 			w_vec.sigma2CP = w_vec.sigmaCP;
-		status = proxTGV(vec.im_os[0], inputScalars, vec, proj, w_vec, *dU, osa_iter);
+		status = proxTGV(vec.im_os[timestep][0], inputScalars, vec, proj, w_vec, *dU, osa_iter);
 	}
 	else if (MethodList.ProxTV) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing proximal TV prior");
-		status = proxTV(vec.im_os[0], inputScalars, vec, proj, w_vec, *dU, w_vec.betaReg);
+		status = proxTV(vec.im_os[timestep][0], inputScalars, vec, proj, w_vec, *dU, w_vec.betaReg);
 	}
 	else if (MethodList.NLM) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing NLM prior gradient");
-		status = NLM(proj, vec.im_os[0], w_vec, inputScalars, *dU, beta, kk);
+		status = NLM(proj, vec.im_os[timestep][0], w_vec, inputScalars, *dU, beta, kk);
 	}
 	else if (MethodList.RDP) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing RDP prior gradient");
-		status = RDP(vec.im_os[0], inputScalars, w_vec.RDP_gamma, proj, *dU, beta, w_vec.RDPref, w_vec, w_vec.RDPLargeNeighbor, w_vec.RDP_anatomical, kk);
+		status = RDP(vec.im_os[timestep][0], inputScalars, w_vec.RDP_gamma, proj, *dU, beta, w_vec.RDPref, w_vec, w_vec.RDPLargeNeighbor, w_vec.RDP_anatomical, kk);
 	}
 	else if (MethodList.GGMRF) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing GGMRF prior gradient");
-		status = GGMRF(vec.im_os[0], inputScalars, w_vec.GGMRF_p, w_vec.GGMRF_q, w_vec.GGMRF_c, w_vec.GGMRF_pqc, proj, *dU, w_vec, beta, kk);
+		status = GGMRF(vec.im_os[timestep][0], inputScalars, w_vec.GGMRF_p, w_vec.GGMRF_q, w_vec.GGMRF_c, w_vec.GGMRF_pqc, proj, *dU, w_vec, beta, kk);
 	}
 	af::deviceGC();
 	if (inputScalars.verbose >= 3 && (MethodList.MRP || MethodList.Quad || MethodList.Huber || MethodList.L || MethodList.FMH || MethodList.TV 

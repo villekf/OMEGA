@@ -1328,7 +1328,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
 // Transfers the device data to host
 // Transfer the ArrayFire arrays from the device to the host pointers
 void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, int64_t& oo, float* output, float* FPoutput, const scalarStruct& inputScalars,
-    std::vector<std::vector<std::vector<float>>>& FPEstimates) {
+    std::vector<std::vector<std::vector<float>>>& FPEstimates, const int timestep) {
     if (inputScalars.storeFP) {
         size_t dim = 0ULL;
         for (uint32_t ii = 0; ii < inputScalars.subsets * inputScalars.Niter; ii++) {
@@ -1357,7 +1357,7 @@ void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, int64_t& o
                 if (MethodList.FDK)
                     vec.rhs_os[ii].host(&output[oo]);
                 else
-                    vec.im_os[ii].host(&output[oo]);
+                    vec.im_os[timestep][ii].host(&output[oo]);
                 if (inputScalars.verbose >= 3)
                     mexPrint("Data transfered to host");
                 oo += inputScalars.im_dim[ii];
@@ -1374,7 +1374,7 @@ void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, int64_t& o
                 vec.rhs_os[0].host(&output[oo]);
             }
             else
-                vec.im_os[0].host(&output[oo]);
+                vec.im_os[timestep][0].host(&output[oo]);
             if (inputScalars.verbose >= 3)
                 mexPrint("Data transfered to host");
             oo += inputScalars.im_dim[0];
