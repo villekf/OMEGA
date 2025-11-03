@@ -33,6 +33,16 @@
   - Both take the value Inf for parallel-hole collimators
   - Both take the value 0 for pinhole collimators
   - Tested with SIMIND v8.0 built-in examples
+  
+- Added preliminary support for curved helical CT data
+  - Functionality is more limited when compared to flat panel (CB)CT
+  - Only projector type 4 is supported
+  - Rotation of the image in the detector space (`options.offangle`) is NOT supported
+  - Reconstruction speed is suboptimal as the code is not optimized
+  - In general requires the XYZ-coordinates of both the source and detector as well as the rotation angles and the radius of the circle formed by the detector (`options.helicalRadius`)
+  - Enable by setting `options.useHelical` to true
+  - Only built-in reconstruction at the moment (projector operators are NOT supported)
+  - See `helical_CT_mainExample` for an example
 
 - Added support for 3D masks
   - Forward and backward projection masks can now be either 2D or 3D
