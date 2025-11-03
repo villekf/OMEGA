@@ -350,7 +350,6 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		mem_portions = 0.2f;
 	float image_bytes = static_cast<float>(inputScalars.im_dim[0] * inputScalars.subsets);
 
-	int64_t oo = 0u;
 	size_t ll = 0ULL;
 
 	double totTime = 0., iterTime = 0., cumulativeTime = 0.;
@@ -1572,16 +1571,6 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 			if (break_iter)
 				break;
 		}
-		//vec.im_os[0] = vec.Summ[0][0];
-		if (!inputScalars.largeDim) {
-#ifdef MATLAB
-			// Transfer the device data to host MATLAB mxarray
-			device_to_host(MethodList, vec, oo, cell, FPcell, w_vec, 4, inputScalars, FPEstimates, tt);
-			oo += inputScalars.im_dim[0] * static_cast<int64_t>(nIter);
-#else
-			device_to_host(MethodList, vec, oo, cell, FPcell, inputScalars, FPEstimates, tt);
-#endif
-		}
 
 		if (w_vec.filteringOrig)
 			w_vec.precondTypeMeas[1] = w_vec.filteringOrig;
@@ -1590,15 +1579,25 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 			mexPrintBase("Time step %d complete\n", tt + 1u);
 			mexEval();
 		}
-		if (inputScalars.largeDim) {
-			if ((MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) && tt == inputScalars.Nt - 1) {
-				delete[] apuM;
-				delete[] apuU;
-			}
-			if (w_vec.computeD && tt == inputScalars.Nt - 1)
-				delete[] apuD;
-		}
 	}
+
+    if (!inputScalars.largeDim) {
+#ifdef MATLAB // Transfer the device data to host MATLAB mxarray
+        device_to_host(MethodList, vec, cell, FPcell, w_vec, 4, inputScalars, FPEstimates);
+#else // Python equivalent
+        device_to_host(MethodList, vec, cell, FPcell, inputScalars, FPEstimates);
+#endif
+    }
+    
+    if (inputScalars.largeDim) {
+        if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) {
+            delete[] apuM;
+            delete[] apuU;
+        }
+        if (w_vec.computeD)
+            delete[] apuD;
+    }
+
 	if (w_vec.computeD)
 		w_vec.D.clear();
 	if (w_vec.computeM)

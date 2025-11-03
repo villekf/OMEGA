@@ -732,75 +732,81 @@ inline void get_rec_methods(const mxArray* options, RecMethods& MethodList) {
 // Transfers the device data to host
 // First transfer the ArrayFire arrays from the device to the host pointers pointing to the mxArrays
 // Transfer the mxArrays to the cell
-inline void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, int64_t& oo, mxArray* cell, mxArray* FPcell, Weighting& w_vec,
-	const uint32_t dim_n, const scalarStruct& inputScalars, std::vector<std::vector<std::vector<float>>>& FPEstimates, const int timestep) {
-	if (DEBUG) {
-		mexPrintBase("vec.im_os.dims(0) = %d\n", vec.im_os[timestep][0].dims(0));
-		mexPrintBase("vec.im_os.dims(1) = %d\n", vec.im_os[timestep][0].dims(1));
-		mexEval();
-	}
-	if (inputScalars.storeFP) {
-		for (uint32_t ii = 0; ii < inputScalars.subsets * inputScalars.Niter; ii++) {
-			const uint32_t jj = ii % inputScalars.subsets;
-			const uint32_t kk = ii / inputScalars.subsets;
-			const mwSize dim[1] = { static_cast<mwSize>(FPEstimates[kk][jj].size()) };
-			mxArray* apu = mxCreateNumericArray(1, dim, mxSINGLE_CLASS, mxREAL);
+inline void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, mxArray* cell, mxArray* FPcell, Weighting& w_vec,
+	const uint32_t dim_n, const scalarStruct& inputScalars, std::vector<std::vector<std::vector<float>>>& FPEstimates
+) {
+    int64_t oo = 0;
+    for (int timestep = 0; timestep < inputScalars.Nt; timestep++) {
+        if (DEBUG) {
+            mexPrintBase("vec.im_os.dims(0) = %d\n", vec.im_os[timestep][0].dims(0));
+            mexPrintBase("vec.im_os.dims(1) = %d\n", vec.im_os[timestep][0].dims(1));
+            mexEval();
+        }
+        if (inputScalars.storeFP) {
+            for (uint32_t ii = 0; ii < inputScalars.subsets * inputScalars.Niter; ii++) {
+                const uint32_t jj = ii % inputScalars.subsets;
+                const uint32_t kk = ii / inputScalars.subsets;
+                const mwSize dim[1] = { static_cast<mwSize>(FPEstimates[kk][jj].size()) };
+                mxArray* apu = mxCreateNumericArray(1, dim, mxSINGLE_CLASS, mxREAL);
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-			float* apuF = (float*)mxGetSingles(apu);
+                float* apuF = (float*)mxGetSingles(apu);
 #else
-			float* apuF = (float*)mxGetData(apu);
+                float* apuF = (float*)mxGetData(apu);
 #endif
-			std::copy(FPEstimates[kk][jj].begin(), FPEstimates[kk][jj].end(), apuF);
-			mxSetCell(FPcell, static_cast<mwIndex>(ii), mxDuplicateArray(apu));
-		}
-	}
-	// Transfer data back to host
-	if (CELL && inputScalars.nMultiVolumes > 0) {
-		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-			const mwSize dim[3] = { static_cast<mwSize>(inputScalars.Nx[ii]), static_cast<mwSize>(inputScalars.Ny[ii]), static_cast<mwSize>(inputScalars.Nz[ii]) };
-			if (DEBUG) {
-				mexPrintBase("inputScalars.Nx[ii] = %d\n", inputScalars.Nx[ii]);
-				mexPrintBase("inputScalars.Ny[ii] = %d\n", inputScalars.Ny[ii]);
-				mexPrintBase("inputScalars.Nz[ii] = %d\n", inputScalars.Nz[ii]);
-				mexEval();
-			}
-			mxArray* apu = mxCreateNumericArray(3, dim, mxSINGLE_CLASS, mxREAL);
+                std::copy(FPEstimates[kk][jj].begin(), FPEstimates[kk][jj].end(), apuF);
+                mxSetCell(FPcell, static_cast<mwIndex>(ii), mxDuplicateArray(apu));
+            }
+        }
+        // Transfer data back to host
+        if (CELL && inputScalars.nMultiVolumes > 0) {
+            for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+                const mwSize dim[3] = { static_cast<mwSize>(inputScalars.Nx[ii]), static_cast<mwSize>(inputScalars.Ny[ii]), static_cast<mwSize>(inputScalars.Nz[ii]) };
+                if (DEBUG) {
+                    mexPrintBase("inputScalars.Nx[ii] = %d\n", inputScalars.Nx[ii]);
+                    mexPrintBase("inputScalars.Ny[ii] = %d\n", inputScalars.Ny[ii]);
+                    mexPrintBase("inputScalars.Nz[ii] = %d\n", inputScalars.Nz[ii]);
+                    mexEval();
+                }
+                mxArray* apu = mxCreateNumericArray(3, dim, mxSINGLE_CLASS, mxREAL);
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-			float* apuF = (float*)mxGetSingles(apu);
+                float* apuF = (float*)mxGetSingles(apu);
 #else
-			float* apuF = (float*)mxGetData(apu);
+                float* apuF = (float*)mxGetData(apu);
 #endif
-			if (inputScalars.saveIter || inputScalars.saveIterationsMiddle > 0) {
-			}
-			else {
-				if (MethodList.FDK)
-					vec.rhs_os[ii].host(&apuF[oo]);
-				else
-					vec.im_os[timestep][ii].host(&apuF[oo]);
-				if (inputScalars.verbose >= 3)
-					mexPrint("Data transfered to host");
-			}
-			mxSetCell(cell, static_cast<mwIndex>(ii), mxDuplicateArray(apu));
-		}
-	}
-	else {
-		float* apuF = getSingles(cell, "solu");
-		if (inputScalars.saveIter || inputScalars.saveIterationsMiddle > 0) {
-		}
-		else {
-			if (MethodList.FDK && inputScalars.largeDim) {
-				//vec.rhs_os[0].host(&output[oo]);
-			}
-			else if (MethodList.FDK && !inputScalars.largeDim) {
-				vec.rhs_os[0].host(&apuF[oo]);
-			}
-			else
-				vec.im_os[timestep][0].host(&apuF[oo]);
-			if (inputScalars.verbose >= 3)
-				mexPrint("Data transfered to host");
-		}
-	}
-    mexPrintf("timestep = %u\n", timestep);
-	af::sync();
+                if (inputScalars.saveIter || inputScalars.saveIterationsMiddle > 0) {
+                }
+                else {
+                    if (MethodList.FDK)
+                        vec.rhs_os[ii].host(&apuF[oo]);
+                    else
+                        vec.im_os[timestep][ii].host(&apuF[oo]);
+                    if (inputScalars.verbose >= 3)
+                        mexPrint("Data transfered to host");
+                }
+                mxSetCell(cell, static_cast<mwIndex>(ii), mxDuplicateArray(apu));
+            }
+        }
+        else {
+            float* apuF = getSingles(cell, "solu");
+            if (inputScalars.saveIter || inputScalars.saveIterationsMiddle > 0) {
+            }
+            else {
+                if (MethodList.FDK && inputScalars.largeDim) {
+                    //vec.rhs_os[0].host(&output[oo]);
+                }
+                else if (MethodList.FDK && !inputScalars.largeDim) {
+                    vec.rhs_os[0].host(&apuF[oo]);
+                }
+                else
+                    vec.im_os[timestep][0].host(&apuF[oo]);
+                if (inputScalars.verbose >= 3)
+                    mexPrint("Data transfered to host");
+            }
+        }
+        if (DEBUG || inputScalars.verbose >= 3)
+            mexPrintf("timestep = %u\n", timestep);
+        af::sync();
+        oo += inputScalars.im_dim[0];
+    }
 }
 #endif
