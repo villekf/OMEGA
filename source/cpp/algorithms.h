@@ -394,7 +394,7 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 				outputFP = af::constant(0.f, m_size * inputScalars.nBins);
 			else
 				outputFP = af::constant(0.f, m_size);
-			status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, subIter, length, g, m_size, proj, ii, pituus);
+			status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, subIter, timestep, length, g, m_size, proj, ii, pituus);
 			if (status != 0) {
 				return status;
 			}
@@ -514,7 +514,7 @@ inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 		else
 			outputFP = af::constant(0.f, m_size);
 		int status = 0;
-		status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, length, g, m_size, proj, ii, pituus);
+		status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, timestep, length, g, m_size, proj, ii, pituus);
 		if (status != 0) {
 			return status;
 		}

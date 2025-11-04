@@ -82,7 +82,7 @@ inline int computeMBSREMvalues(
                     }
                     else {
                         oneInput = af::constant(1.f, lengthFull[ll] * nBins, 1, af_dtype::f32);
-                        status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput, ll, length, g, lengthFull[ll], proj, ii, pituus, tt);
+                        status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput, ll, tt, length, g, lengthFull[ll], proj, ii, pituus);
                         if (status != 0) return -1;
                         af::sync();
                     }
@@ -139,7 +139,7 @@ inline int computeMBSREMvalues(
                         if (inputScalars.projector_type == 6)
                             backprojectionType6(inputM, w_vec, vec, inputScalars, length[subIter], uu, proj, subIter, 0, 0, 0, ii, atten);
                         else {
-                            status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, inputM, subIter, length, lengthFull[subIter], meanBP, g, proj, true, ii, pituus);
+                            status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, inputM, subIter, tt, length, lengthFull[subIter], meanBP, g, proj, true, ii, pituus);
                             if (status != 0) {
                                 return -1;
                             }
@@ -720,7 +720,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                         oneInput = af::constant(1.f, lengthFull[subIter] * nBins);
                         for (int kk = 0; kk < inputScalars.subsetsUsed; kk++) {
                             largeDimFirst(inputScalars, proj, kk);
-                            status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput, subIter, length, lengthFull[subIter], meanBP, g, proj, false, 0, pituus);
+                            status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput, subIter, 0, length, lengthFull[subIter], meanBP, g, proj, false, 0, pituus);
                             if (status != 0) {
                                 return -1;
                             }
@@ -745,7 +745,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     for (uint32_t subIter = 0; subIter < inputScalars.subsetsUsed; subIter++) {
                         af::array oneInput;
                         oneInput = af::constant(1.f, lengthFull[subIter] * nBins);
-                        status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput, subIter, length, lengthFull[subIter], meanBP, g, proj, false, ii, pituus);
+                        status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput, subIter, 0, length, lengthFull[subIter], meanBP, g, proj, false, ii, pituus);
                         if (status != 0) {
                             return -1;
                         }
@@ -779,7 +779,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                         mexEval();
                     }
                     af::array oneInput = af::constant(0.f, 1, 1);
-                    status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput, 0, length, m_size, meanBP, g, proj, true, ii, pituus);
+                    status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput, 0, 0, length, m_size, meanBP, g, proj, true, ii, pituus);
                     if (status != 0) {
                         return -1;
                     }
@@ -812,7 +812,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                         if (inputScalars.projector_type == 6)
                             backprojectionType6(oneInput, w_vec, vec, inputScalars, length[subIter], uu, proj, subIter, 0, 0, 0, ii, atten);
                         else {
-                            status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput, subIter, length, lengthFull[subIter], meanBP, g, proj, false, ii, pituus);
+                            status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput, subIter, 0, length, lengthFull[subIter], meanBP, g, proj, false, ii, pituus);
                             if (status != 0) {
                                 return -1;
                             }
@@ -868,7 +868,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                 }
                 else {
                     oneInput = af::constant(1.f, lengthFull[ll] * nBins, 1);
-                    status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput, ll, length, g, lengthFull[ll], proj, ii, pituus);
+                    status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput, ll, 0, length, g, lengthFull[ll], proj, ii, pituus);
                     if (status != 0) {
                         return - 1;
                     }
@@ -959,7 +959,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 				}
 				else {
 					oneInput1 = af::constant(1.f, lengthFull[ll] * nBins, 1);
-					status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput1, ll, length, g, lengthFull[ll], proj, 0, pituus);
+					status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput1, ll, tt, length, g, lengthFull[ll], proj, 0, pituus);
 					if (status != 0) {
 						return -1;
 					}
@@ -973,7 +973,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 				}
 				else {
 					oneInput2 = af::constant(1.f, lengthFull[ll] * nBins, 1);
-					status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput2, ll, length, g, lengthFull[ll], proj, 0, pituus);
+					status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput2, ll, tt, length, g, lengthFull[ll], proj, 0, pituus);
 					if (status != 0) {
 						return -1;
 					}
@@ -993,7 +993,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 				if (inputScalars.projector_type == 6)
 					backprojectionType6(oneInput1, w_vec, vec, inputScalars, length[ll], uu, proj, ll, 0, 0, 0, 0, atten);
 				else {
-					status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput1, ll, length, lengthFull[ll], meanBP, g, proj, false, 0, pituus);
+					status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput1, ll, tt, length, lengthFull[ll], meanBP, g, proj, false, 0, pituus);
 					if (status != 0) {
 						return -1;
 					}
@@ -1027,7 +1027,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 				if (status != 0)
 					return -1;
 				computeIntegralImage(inputScalars, w_vec, length[0], mData[0], meanBP);
-				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, mData[0], 0, length, fullMSize, meanBP, g, proj, false, 0, pituus);
+				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, mData[0], 0, tt, length, fullMSize, meanBP, g, proj, false, 0, pituus);
 				if (status != 0) {
 					return -1;
 				}
@@ -1061,7 +1061,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 						largeDimFirst(inputScalars, proj, ii);
 						if (FDK)
 							vec.rhs_os[0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuF[inputScalars.lDimStruct.cumDim[ii]], afHost);
-						status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, mData[0], kk, length, fullMSize, meanBP, g, proj, false, 0, pituus, FDK);
+						status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, mData[0], kk, tt, length, fullMSize, meanBP, g, proj, false, 0, pituus, FDK);
 						if (status != 0) {
 							return -1;
 						}
@@ -1216,7 +1216,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 						af::array outputFP;
 						outputFP = af::constant(0.f, m_size * nBins);
 						for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-							status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, length, g, m_size, proj, ii, pituus, tt);
+							status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, tt, length, g, m_size, proj, ii, pituus);
 							if (status != 0) {
 								return -1;
 							}
@@ -1276,7 +1276,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 								MethodList.ROSEM || MethodList.OSLOSEM || MethodList.ROSEMMAP)) {
 								if (inputScalars.randoms_correction || iter == 0 || (compute_norm_matrix == 1u && proj.no_norm == 0)) {
 
-									status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, OSEMapu, osa_iter, length, m_size, meanBP, g, proj, false, ii, pituus);
+									status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, OSEMapu, osa_iter,tt,  length, m_size, meanBP, g, proj, false, ii, pituus);
 									if (compute_norm_matrix == 1u) {
 										vec.Summ[ii][0] = vec.rhs_os[ii];
 										vec.Summ[ii][0](vec.Summ[ii][0] < inputScalars.epps) = inputScalars.epps;
@@ -1295,7 +1295,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 							else if (compute_norm_matrix == 2u)
 								transferSensitivityImage(vec.Summ[ii][osa_iter], proj);
 
-							status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, length, m_size, meanBP, g, proj, false, ii, pituus);
+							status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, tt, length, m_size, meanBP, g, proj, false, ii, pituus);
 							if (status != 0) {
 								if (compute_norm_matrix == 1u) {
 									vec.Summ[ii][0].unlock();
@@ -1319,7 +1319,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 							else
 								vec.im_os[tt][0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuF[inputScalars.lDimStruct.cumDim[ii]], afHost);
 							af::sync();
-							status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, length, g, m_size, proj, 0, pituus, tt);
+							status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, tt, length, g, m_size, proj, 0, pituus);
 							if (status != 0) {
 								return -1;
 							}
@@ -1327,7 +1327,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 						for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++) {
 							if (iter == 0 && osa_iter == 0)
 								vec.im_os[tt][ii] = af::constant(1e-4f, inputScalars.im_dim[ii]);
-							status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, length, g, m_size, proj, ii, pituus, tt);
+							status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, tt, length, g, m_size, proj, ii, pituus);
 							if (status != 0) {
 								return -1;
 							}
@@ -1384,7 +1384,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 							if (w_vec.computeD)
 								w_vec.D[0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuD[inputScalars.lDimStruct.cumDim[ii]], afHost);
 							af::sync();
-							status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, length, m_size, meanBP, g, proj, false, 0, pituus);
+							status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, tt, length, m_size, meanBP, g, proj, false, 0, pituus);
 							status = computeOSEstimates(vec, w_vec, MethodList, iter, osa_iter, inputScalars, length, break_iter,
 								pituus, g, proj, mData[0], m_size, uu, compute_norm_matrix, tt, 0, inputScalars.largeDim, ii);
 							if (status != 0)
@@ -1418,7 +1418,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 							for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++) {
 								if (iter == 0 && osa_iter == 0 && (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY))
 									vec.uCP.emplace_back(vec.im_os[tt][ii].copy());
-								status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, length, m_size, meanBP, g, proj, false, ii, pituus);
+								status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, tt, length, m_size, meanBP, g, proj, false, ii, pituus);
 								if (status != 0)
 									return -1;
 								if (DEBUG) {
