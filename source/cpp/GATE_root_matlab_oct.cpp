@@ -99,6 +99,7 @@ DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 	uint16NDArray axIndex;
 	uint16NDArray DtrIndex;
 	uint16NDArray DaxIndex;
+	uint8NDArray TOFIndex;
 	FloatNDArray coord;
 	FloatNDArray Dcoord;
 	if (store_coordinates) {
@@ -130,6 +131,10 @@ DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 		DtrIndex.resize(dim_vector(1, 1));
 		DaxIndex.resize(dim_vector(1, 1));
 	}
+	if ((store_coordinates || indexBased) && TOF)
+		TOFIndex.resize(dim_vector(1, Nentries));
+	else
+		TOFIndex.resize(dim_vector(1, 1));
 	uint16NDArray tIndex;
 	uint16NDArray S, RA, SC;
 
@@ -164,6 +169,7 @@ DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 	uint16_t* axIndexP = reinterpret_cast<uint16_t*>(axIndex.fortran_vec());
 	uint16_t* DtrIndexP = reinterpret_cast<uint16_t*>(DtrIndex.fortran_vec());
 	uint16_t* DaxIndexP = reinterpret_cast<uint16_t*>(DaxIndex.fortran_vec());
+	uint8_t* TOFIndexP = reinterpret_cast<uint8_t*>(TOFIndex.fortran_vec());
 	uint16_t* Sino = reinterpret_cast<uint16_t*>(SinoO.fortran_vec());
 	uint16_t* SinoT = reinterpret_cast<uint16_t*>(SinoOT.fortran_vec());
 	uint16_t* SinoR = reinterpret_cast<uint16_t*>(SinoOR.fortran_vec());
@@ -174,7 +180,8 @@ DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 
 	histogram(tmp.c_str(), tPoints_p, alku, loppu, source, linear_multp, cryst_per_block, blocks_per_ring, det_per_ring, S_p, SC_p, RA_p, trIndexP, axIndexP, DtrIndexP, DaxIndexP, obtain_trues, store_scatter, store_randoms,
 		scatter_components_p, randoms_correction, coordP, DcoordP, store_coordinates, dynamic, cryst_per_block_z, transaxial_multip, rings, sinoSize, Ndist, Nang, ringDifference, span,
-		seg_p, Nt, TOFSize, nDistSide, Sino, SinoT, SinoC, SinoR, SinoD, detWPseudo, nPseudos, binSize, FWHM, verbose, nLayers, dx, dy, dz, bx, by, bz, Nx, Ny, Nz, dualLayerSubmodule, imDim, indexBased, tIndex_p, matlabPtr);
+		seg_p, Nt, TOFSize, nDistSide, Sino, SinoT, SinoC, SinoR, SinoD, detWPseudo, nPseudos, binSize, FWHM, verbose, nLayers, dx, dy, dz, bx, by, bz, Nx, Ny, Nz, dualLayerSubmodule, imDim, indexBased, tIndex_p, 
+		TOFIndexP, matlabPtr);
 
 
 
@@ -195,6 +202,7 @@ DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 	retval(12) = octave_value(axIndex);
 	retval(13) = octave_value(DtrIndex);
 	retval(14) = octave_value(DaxIndex);
+	retval(15) = octave_value(TOFIndex);
 
 	gROOT->Reset();
 
