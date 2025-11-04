@@ -43,6 +43,13 @@ if ismac && (options.use_32bit_atomics || options.use_64bit_atomics)
     options.use_32bit_atomics = false;
     options.use_64bit_atomics = false;
 end
+if ismac && options.useImages
+    error('MacOS implementation does not support textures (yet).')
+end
+if options.SPECT && mod(sqrt(options.nRays), 1) ~= 0
+    error('With SPECT, options.nRays has to be a square')
+end
+
 if numel(options.partitions) > 1
     partitions = numel(options.partitions);
 else

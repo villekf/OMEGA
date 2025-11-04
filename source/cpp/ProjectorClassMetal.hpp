@@ -106,29 +106,31 @@ public:
 		const int type = -1
 	);
 
+	// Function for initializing projector object
     int addProjector(
-        scalarStruct& inputScalars,
-        Weighting& w_vec,
-        const RecMethods& MethodList,
-        const char* header_directory,
+        scalarStruct& inputScalars, // various scalar parameters defining the build parameters and what features to use
+		Weighting& w_vec, // specifies some of the special options/parameters used
+        const RecMethods& MethodList, // specifies the algorithms and priors used
+        const char* header_directory, // the location of the kernel and header files
         const int type = -1
     );
 
+	// Resizes required vectors and then calls the function to create and write buffers.
     int createBuffers(
-		scalarStruct& inputScalars,
-		Weighting& w_vec,
-		const float* x,
-		const float* z_det,
-		const uint32_t* xy_index,
-		const uint16_t* z_index,
-		const uint16_t* L,
-		const int64_t* pituus,
-		const float* atten,
-		const float* norm,
-		const float* extraCorr, 
-		const std::vector<int64_t>& length,
-		const RecMethods& MethodList,
-		const int type = 0
+		scalarStruct& inputScalars, // various scalar parameters defining the build parameters and what features to use
+		Weighting& w_vec, // specifies some of the special options/parameters used
+		const float* x, // x/y/z coordinates for the detectors (PET and SPECT) or source and detector (CT). z-coordinate applies only for CT
+		const float* z_det, // the z coordinates for the detectors (PET and SPECT) or the directional vectors for the detector panel pixels (CT)
+		const uint32_t* xy_index, // subset indices for subsets types &lt; 8, x/y dimensions
+		const uint16_t* z_index, // same as above but for z dimension
+		const uint16_t* L, // raw data detector indices
+		const int64_t* pituus, // cumulative sum of length
+		const float* atten, // attenuation image
+		const float* norm, // normalization matrix
+		const float* extraCorr, // scatter data (for multiplicative scatter correction)
+		const std::vector<int64_t>& length, // the number of measurements/projection/sinograms per subset
+		const RecMethods& MethodList, // specifies the algorithms and priors used
+		const int type = 0 // for reconstruction algorithms requiring unique operations in FP or BP
 	);
 
 	// Inputs constant values to the kernels, i.e. values that do not change in each time step or iteration

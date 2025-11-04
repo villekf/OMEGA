@@ -1347,6 +1347,7 @@ else % Apple silicon MATLAB/Octave
     useLDclassic = 0; % There is a bug with Xcode 26.0 and C-style MEX API.
     % See for example: https://se.mathworks.com/matlabcentral/answers/2180302-mex-failing-to-compile-function
     try
+        disp('Trying to build implementation 5')
         mex(compiler, complexFlag, '-outdir', folder, ...
             '-output', 'OpenCL_matrixfree_multi_gpu', ldflags, cxxflags, ...
             '-DMATLAB', '-DMETAL', ['-I' folder], [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
@@ -1357,7 +1358,7 @@ else % Apple silicon MATLAB/Octave
     end
     if useLDclassic
         try
-            disp('Trying to build with ld_classic flag')
+            disp('Trying to build implementation 5 with ld_classic flag')
             ldflags = 'LDFLAGS="\$LDFLAGS -framework Metal -framework Foundation -ld_classic"';
             mex(compiler, complexFlag, '-outdir', folder, ...
             '-output', 'OpenCL_matrixfree_multi_gpu', ldflags, cxxflags, ...

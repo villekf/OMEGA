@@ -878,7 +878,7 @@ if ~isfield(options, 'useMAD')
     options.useMAD = true;
 end
 if ~isfield(options, 'useImages')
-    if options.projector_type == 6
+    if options.projector_type == 6 || ismac
         options.useImages = false;
     else
         options.useImages = true;
