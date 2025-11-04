@@ -94,6 +94,15 @@ function outputFP = forwardProjectionType6(options, recApu, loopVar, koko)
     end
 end
 
+if iscell(recApu)
+    if numel(recApu{1}) ~= options.Nx(1) * options.Ny(1) * options.Nz(1)
+        error('Input image has incorrect dimensions! Must equal to Nx*Ny*Nz!')
+    end
+else
+    if numel(recApu) ~= options.Nx(1) * options.Ny(1) * options.Nz(1)
+        error('Input image has incorrect dimensions! Must equal to Nx*Ny*Nz!')
+    end
+end
 if (~ismac && (options.implementation == 4 || options.implementation == 1)) || (ismac && options.projector_type == 6)
     if options.projector_type == 6
         outputFP = forwardProjectionType6(options, recApu, loopVar, koko);
