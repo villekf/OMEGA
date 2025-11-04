@@ -190,18 +190,18 @@ inline void largeDimLast(scalarStruct& inputScalars, ProjectorClass& proj) {
 }
 
 // Fill the backprojection (aka right-hand side) with zeros
-inline void initializeRHS(AF_im_vectors& vec, const scalarStruct& inputScalars, const int ii = 0) {
+inline void initializeRHS(AF_im_vectors& vec, const scalarStruct& inputScalars, uint32_t timestep, const int ii = 0) {
 	if (inputScalars.verbose >= 3)
 		mexPrint("Initialize the backprojection output");
 #ifdef OPENCL
 	if (inputScalars.atomic_64bit)
-		vec.rhs_os[ii] = (af::constant(0LL, static_cast<size_t>(inputScalars.im_dim[ii]) * static_cast<size_t>(inputScalars.nRekos), 1, s64));
+		vec.rhs_os[timestep][ii] = (af::constant(0LL, static_cast<size_t>(inputScalars.im_dim[ii]) * static_cast<size_t>(inputScalars.nRekos), 1, s64));
 	else if (inputScalars.atomic_32bit)
-		vec.rhs_os[ii] = (af::constant(0, static_cast<size_t>(inputScalars.im_dim[ii]) * static_cast<size_t>(inputScalars.nRekos), 1, s32));
+		vec.rhs_os[timestep][ii] = (af::constant(0, static_cast<size_t>(inputScalars.im_dim[ii]) * static_cast<size_t>(inputScalars.nRekos), 1, s32));
 	else
 #endif
-		vec.rhs_os[ii] = (af::constant(0.f, static_cast<size_t>(inputScalars.im_dim[ii]) * static_cast<size_t>(inputScalars.nRekos), 1));
-	vec.rhs_os[ii].eval();
+		vec.rhs_os[timestep][ii] = (af::constant(0.f, static_cast<size_t>(inputScalars.im_dim[ii]) * static_cast<size_t>(inputScalars.nRekos), 1));
+	vec.rhs_os[timestep][ii].eval();
 }
 
 // Zero and symmetric padding of an array
@@ -720,11 +720,11 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 	int status = 0;
 	outputFP.eval();
 	if (!FDK)
-		initializeRHS(vec, inputScalars, ii);
+		initializeRHS(vec, inputScalars, timestep, ii);
 	proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]) / 1048576ULL;
 	if (DEBUG) {
 		mexPrintBase("ii = %u\n", ii);
-		mexPrintBase("vec.rhs_os[ii].dims(0) = %u\n", vec.rhs_os[ii].dims(0));
+		mexPrintBase("vec.rhs_os[timestep][ii].dims(0) = %u\n", vec.rhs_os[timestep][ii].dims(0));
 		mexPrintBase("inputScalars.nRekos2 = %u\n", inputScalars.nRekos2);
 		mexPrintBase("inputScalars.nRekos = %u\n", inputScalars.nRekos);
 		mexPrintBase("outputFP = %f\n", af::sum<float>(outputFP));
@@ -736,7 +736,7 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 	if (DEBUG) {
 		mexPrint("Transferring backprojection output\n");
 	}
-	status = transferRHS(vec.rhs_os[ii], proj);
+	status = transferRHS(vec.rhs_os[timestep][ii], proj);
 	if (status != 0) {
 		return -1;
 	}
@@ -749,7 +749,7 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 #else
 	 status = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, pituus, compSens, ii);
 #endif
-	vec.rhs_os[ii].unlock();
+	vec.rhs_os[timestep][ii].unlock();
 	outputFP.unlock();
 	if (inputScalars.meanBP && inputScalars.BPType == 5)
 		meanBP.unlock();
@@ -758,15 +758,15 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 	}
 #ifdef OPENCL
 	if (inputScalars.atomic_64bit)
-		vec.rhs_os[ii] = vec.rhs_os[ii].as(f32) / TH;
+		vec.rhs_os[timestep][ii] = vec.rhs_os[timestep][ii].as(f32) / TH;
 	else if (inputScalars.atomic_32bit)
-		vec.rhs_os[ii] = vec.rhs_os[ii].as(f32) / TH32;
+		vec.rhs_os[timestep][ii] = vec.rhs_os[timestep][ii].as(f32) / TH32;
 #endif
 	if (inputScalars.use_psf) {
-		const int nRekos = vec.rhs_os[ii].elements() / (inputScalars.im_dim[ii]);
-		vec.rhs_os[ii] = computeConvolution(vec.rhs_os[ii], g, inputScalars, w_vec, nRekos, ii);
+		const int nRekos = vec.rhs_os[timestep][ii].elements() / (inputScalars.im_dim[ii]);
+		vec.rhs_os[timestep][ii] = computeConvolution(vec.rhs_os[timestep][ii], g, inputScalars, w_vec, nRekos, ii);
 	}
-	vec.rhs_os[ii].eval();
+	vec.rhs_os[timestep][ii].eval();
 	outputFP.eval();
 	return status;
 }
@@ -1209,7 +1209,7 @@ inline int proxTGVQAF(std::vector<af::array>& r, const scalarStruct& inputScalar
 }
 
 // Proximal TV divergence
-inline int proxTVDivAF(const std::vector<af::array>& grad, af::array& input, const scalarStruct& inputScalars, ProjectorClass& proj) {
+inline int proxTVDivAF(const std::vector<af::array>& grad, af::array& input, const scalarStruct& inputScalars, ProjectorClass& proj, uint32_t timestep = 0) { // TODO remove default argument
 	int status = 0;
 	if (DEBUG) {
 		mexPrintBase("input.dims(0) = %u\n", input.dims(0));
@@ -1659,7 +1659,7 @@ inline void forwardProjectionType6(af::array& fProj, const Weighting& w_vec, AF_
 	}
 }
 
-inline af::array backProjectionType6Helper(af::array &fProj, const Weighting& w_vec, const scalarStruct &inputScalars, ProjectorClass& proj, const int64_t length, int64_t u1, const int ii, const float* atten = nullptr) {
+inline af::array backProjectionType6Helper(af::array &fProj, const Weighting& w_vec, const scalarStruct &inputScalars, ProjectorClass& proj, const int64_t length, uint32_t timestep, int64_t u1, const int ii, const float* atten = nullptr) {
     fProj = af::moddims(fProj, inputScalars.nRowsD, inputScalars.nColsD, length);
 	af::array output = af::constant(0.f, inputScalars.Nx[ii] * inputScalars.Ny[ii] * inputScalars.Nz[ii], 1);
 
@@ -1732,13 +1732,13 @@ inline af::array backProjectionType6Helper(af::array &fProj, const Weighting& w_
 
 // SPECT backprojection (projector type 6)
 inline void backprojectionType6(af::array& fProj, const Weighting& w_vec, AF_im_vectors& vec,
-	const scalarStruct& inputScalars, const int64_t length, const int64_t uu, ProjectorClass& proj, const uint32_t osa_iter = 0, const uint32_t iter = 0,
+	const scalarStruct& inputScalars, const int64_t length, const int64_t uu, ProjectorClass& proj, uint32_t timestep, const uint32_t osa_iter = 0, const uint32_t iter = 0,
 	const uint8_t compute_norm_matrix = 0, const uint32_t iter0 = 0, const int ii = 0, const float* atten = nullptr) {
 	if (DEBUG || inputScalars.verbose >= 3)
 		mexPrint("Starting SPECT backprojection");
     
-    vec.rhs_os[ii] = backProjectionType6Helper(fProj, w_vec, inputScalars, proj, length, uu, ii, atten);
-	vec.rhs_os[ii](vec.rhs_os[ii] < inputScalars.epps && vec.rhs_os[ii] >= 0.f) = inputScalars.epps;
+    vec.rhs_os[timestep][ii] = backProjectionType6Helper(fProj, w_vec, inputScalars, proj, length, timestep, uu, ii, atten);
+	vec.rhs_os[timestep][ii](vec.rhs_os[timestep][ii] < inputScalars.epps && vec.rhs_os[timestep][ii] >= 0.f) = inputScalars.epps;
     
 	if ((iter == iter0 && compute_norm_matrix == 2) || compute_norm_matrix == 1) {
 		if (DEBUG || inputScalars.verbose >= 3)
@@ -1746,10 +1746,10 @@ inline void backprojectionType6(af::array& fProj, const Weighting& w_vec, AF_im_
         
         af::array sensProj = af::constant(1.f, inputScalars.nColsD, inputScalars.nRowsD, length);
 		if (compute_norm_matrix == 2) {
-			vec.Summ[ii][osa_iter] = backProjectionType6Helper(sensProj, w_vec, inputScalars, proj, length, uu, ii, atten);
+			vec.Summ[ii][osa_iter] = backProjectionType6Helper(sensProj, w_vec, inputScalars, proj, length, timestep, uu, ii, atten);
 			vec.Summ[ii][osa_iter](vec.Summ[ii][osa_iter] < inputScalars.epps) = 1.f;
 		} else {
-			vec.Summ[ii][0] = backProjectionType6Helper(sensProj, w_vec, inputScalars, proj, length, uu, ii, atten);
+			vec.Summ[ii][0] = backProjectionType6Helper(sensProj, w_vec, inputScalars, proj, length, timestep, uu, ii, atten);
 			vec.Summ[ii][0](vec.Summ[ii][0] < inputScalars.epps) = 1.f;
 		}
 		if (DEBUG || inputScalars.verbose >= 3)
@@ -2129,7 +2129,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				mexEval();
 			}
 			if (inputScalars.projector_type == 6)
-				backprojectionType6(mData, w_vec, vec, inputScalars, length[0], 0, proj, 0, 0, 0, 0, ii);
+				backprojectionType6(mData, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, ii);
 			else {
 				if (inputScalars.BPType == 5) {
 					mDataApu = mData;
@@ -2145,17 +2145,17 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 			}
 			af::sync();
 			if (DEBUG) {
-				mexPrintBase("!!!!!!!!!!!!!!!!!!!!!!!vec.rhs_os = %f\n", af::sum<float>(vec.rhs_os[ii]));
+				mexPrintBase("!!!!!!!!!!!!!!!!!!!!!!!vec.rhs_os[timestep] = %f\n", af::sum<float>(vec.rhs_os[timestep][ii]));
 				mexEval();
 			}
 			if (ii == inputScalars.nMultiVolumes) {
 				af::array temp;
-				temp = vec.rhs_os[0];
+				temp = vec.rhs_os[timestep][0];
 				for (int ll = 1; ll <= inputScalars.nMultiVolumes; ll++)
-					temp = af::join(0, temp, vec.rhs_os[ii]);
+					temp = af::join(0, temp, vec.rhs_os[timestep][ii]);
 				w_vec.alphaLSQR = af::norm(temp);
 				for (int ll = 0; ll <= inputScalars.nMultiVolumes; ll++) {
-					vec.im_os[timestep][ll] = vec.rhs_os[ll] / w_vec.alphaLSQR;
+					vec.im_os[timestep][ll] = vec.rhs_os[timestep][ll] / w_vec.alphaLSQR;
 					vec.wLSQR.emplace_back(vec.im_os[timestep][ii].copy());
 				}
 				if (DEBUG) {
@@ -2175,7 +2175,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 			if (DEBUG || inputScalars.verbose >= 3)
 				mexPrint("Initializing BB");
 			if (inputScalars.projector_type == 6)
-				backprojectionType6(mData, w_vec, vec, inputScalars, length[0], 0, proj, 0, 0, 0, 0, ii);
+				backprojectionType6(mData, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, ii);
 			else {
 				if (inputScalars.BPType == 5) {
 					computeIntegralImage(inputScalars, w_vec, length[0], mData, meanBP);
@@ -2187,9 +2187,9 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 			}
 			af::sync();
 			if (vec.gradBB.size() < ii + 1)
-				vec.gradBB.emplace_back( -vec.rhs_os[ii].copy());
+				vec.gradBB.emplace_back( -vec.rhs_os[timestep][ii].copy());
 			else
-				vec.gradBB[ii] = -vec.rhs_os[ii].copy();
+				vec.gradBB[ii] = -vec.rhs_os[timestep][ii].copy();
 			if (vec.imBB.size() < ii + 1)
 				vec.imBB.emplace_back(vec.im_os[timestep][ii].copy());
 			else
@@ -2211,7 +2211,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 			mDataApu = mData.copy();
 			vec.fCGLS.emplace_back(vec.im_os[timestep][ii].copy());
 			if (inputScalars.projector_type == 6)
-				backprojectionType6(mDataApu, w_vec, vec, inputScalars, length[0], 0, proj, 0, 0, 0, 0, ii);
+				backprojectionType6(mDataApu, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, ii);
 			else {
 				if (inputScalars.BPType == 5) {
 					computeIntegralImage(inputScalars, w_vec, length[0], mDataApu, meanBP);
@@ -2223,10 +2223,10 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				af::sync();
 			}
 			af::sync();
-			vec.im_os[timestep][ii] = vec.rhs_os[ii].copy();
+			vec.im_os[timestep][ii] = vec.rhs_os[timestep][ii].copy();
 			if (ii == inputScalars.nMultiVolumes) {
 				for (int ll = 0; ll <= inputScalars.nMultiVolumes; ll++)
-					w_vec.gammaCGLS += af::dot<float>(vec.rhs_os[ll], vec.rhs_os[ll]);
+					w_vec.gammaCGLS += af::dot<float>(vec.rhs_os[timestep][ll], vec.rhs_os[timestep][ll]);
 					//w_vec.gammaCGLS += af::sum<float>(vec.rhs_os[ll] * vec.rhs_os[ll]);
 				if (DEBUG || inputScalars.verbose >= 3)
 					mexPrint("CGLS initialization complete");
@@ -2368,20 +2368,20 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				return -1;
 			computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
 			if (inputScalars.projector_type == 6)
-				backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, 0, 0, 0, 0, 0);
+				backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, 0);
 			else
 				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, timestep, length, m_size, meanBP, g, proj, false, 0, pituus);
 			af::sync();
 			if (status != 0)
 				return -1;
-			status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[0], vec.im_os[timestep][0], proj, kk, 0);
+			status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][0], vec.im_os[timestep][0], proj, kk, 0);
 			if (status != 0)
 				return -1;
-			tauCP[0] = (af::dot<float>(vec.im_os[timestep][0], vec.rhs_os[0]) * static_cast<float>(inputScalars.subsets)) / (af::dot<float>(vec.im_os[timestep][0], vec.im_os[timestep][0]));
-			vec.im_os[timestep][0] = vec.rhs_os[0];
+			tauCP[0] = (af::dot<float>(vec.im_os[timestep][0], vec.rhs_os[timestep][0]) * static_cast<float>(inputScalars.subsets)) / (af::dot<float>(vec.im_os[timestep][0], vec.im_os[timestep][0]));
+			vec.im_os[timestep][0] = vec.rhs_os[timestep][0];
 			vec.im_os[timestep][0] /= af::norm(vec.im_os[timestep][0]);
 			vec.im_os[timestep][0].eval();
-			vec.rhs_os[0].eval();
+			vec.rhs_os[timestep][0].eval();
 			if ((inputScalars.verbose >= 2 || DEBUG)) {
 				mexPrintBase("Largest eigenvalue for the main volume at iteration %d is %f\n", kk, tauCP[0]);
 				mexEval();
@@ -2424,23 +2424,23 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 					if (inputScalars.projector_type == 6)
-						backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, 0, 0, 0, 0, ii);
+						backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, ii);
 					else
 						status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, timestep, length, m_size, meanBP, g, proj, false, ii, pituus);
 					af::sync();
 					if (status != 0)
 						return -1;
 					if (ii == 0) {
-						status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[ii], vec.im_os[timestep][ii], proj, kk, ii);
+						status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][ii], vec.im_os[timestep][ii], proj, kk, ii);
 						if (status != 0)
 							return -1;
 					}
 					if (ii > 0)
-						tauCP[ii] = (af::dot<float>(vec.im_os[timestep][ii], vec.rhs_os[ii]) * static_cast<float>(inputScalars.subsets)) / (af::dot<float>(vec.im_os[timestep][ii], vec.im_os[timestep][ii]));
-					vec.im_os[timestep][ii] = vec.rhs_os[ii];
+						tauCP[ii] = (af::dot<float>(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii]) * static_cast<float>(inputScalars.subsets)) / (af::dot<float>(vec.im_os[timestep][ii], vec.im_os[timestep][ii]));
+					vec.im_os[timestep][ii] = vec.rhs_os[timestep][ii];
 					vec.im_os[timestep][ii] /= af::norm(vec.im_os[timestep][ii]);
 					vec.im_os[timestep][ii].eval();
-					vec.rhs_os[ii].eval();
+					vec.rhs_os[timestep][ii].eval();
 					if ((inputScalars.verbose >= 2 || DEBUG) && ii > 0) {
 						mexPrintBase("Largest eigenvalue for volume %d at iteration %d is %f\n", ii, kk, tauCP[ii]);
 						mexEval();
@@ -2489,16 +2489,16 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					return -1;
 				if (w_vec.computeD)
 					w_vec.D[0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuD[inputScalars.lDimStruct.cumDim[ii]], afHost);
-				status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[0], vec.im_os[timestep][0], proj, kk, 0);
+				status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][0], vec.im_os[timestep][0], proj, kk, 0);
 				if (status != 0)
 					return -1;
-				upper += af::dot<float>(vec.im_os[timestep][0], vec.rhs_os[0]);
+				upper += af::dot<float>(vec.im_os[timestep][0], vec.rhs_os[timestep][0]);
 				lower += af::dot<float>(vec.im_os[timestep][0], vec.im_os[timestep][0]);
-				vec.im_os[timestep][0] = vec.rhs_os[0];
+				vec.im_os[timestep][0] = vec.rhs_os[timestep][0];
 				vec.im_os[timestep][0] /= (af::norm(vec.im_os[timestep][0]) * static_cast<float>(inputScalars.subsets));
 				vec.im_os[timestep][0].host(&F[inputScalars.lDimStruct.cumDim[ii]]);
 				vec.im_os[timestep][0].eval();
-				vec.rhs_os[0].eval();
+				vec.rhs_os[timestep][0].eval();
 			}
 			tauCP[0] = upper * static_cast<float>(inputScalars.subsets) / lower;
 			if (inputScalars.verbose >= 2 || DEBUG) {
@@ -2563,16 +2563,16 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 						return -1;
 					if (w_vec.computeD)
 						w_vec.D[0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuD[inputScalars.lDimStruct.cumDim[ii]], afHost);
-					status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[0], vec.im_os[timestep][0], proj, kk, 0);
+					status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][0], vec.im_os[timestep][0], proj, kk, 0);
 					if (status != 0)
 						return -1;
-					upper += af::dot<float>(vec.im_os[timestep][0], vec.rhs_os[0]);
+					upper += af::dot<float>(vec.im_os[timestep][0], vec.rhs_os[timestep][0]);
 					lower += af::dot<float>(vec.im_os[timestep][0], vec.im_os[timestep][0]);
-					vec.im_os[timestep][0] = vec.rhs_os[0];
+					vec.im_os[timestep][0] = vec.rhs_os[timestep][0];
 					vec.im_os[timestep][0] /= (af::norm(vec.im_os[timestep][0]) * static_cast<float>(inputScalars.subsets));
 					vec.im_os[timestep][0].host(&F[inputScalars.lDimStruct.cumDim[ii]]);
 					vec.im_os[timestep][0].eval();
-					vec.rhs_os[0].eval();
+					vec.rhs_os[timestep][0].eval();
 				}
 				tauCP[0] = upper * static_cast<float>(inputScalars.subsets) / lower;
 				if (inputScalars.verbose >= 2 || DEBUG) {
@@ -2619,20 +2619,20 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					return -1;
 				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
 				if (inputScalars.projector_type == 6)
-					backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, 0, 0, 0, 0, 0);
+					backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, 0);
 				else
 					status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, timestep, length, m_size, meanBP, g, proj, false, 0, pituus);
 				af::sync();
 				if (status != 0)
 					return -1;
-				status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[0], vec.im_os[timestep][0], proj, kk, 0);
+				status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][0], vec.im_os[timestep][0], proj, kk, 0);
 				if (status != 0)
 					return -1;
-				tauCP[0] = (af::dot<float>(vec.im_os[timestep][0], vec.rhs_os[0]) * static_cast<float>(inputScalars.subsetsUsed)) / (af::dot<float>(vec.im_os[timestep][0], vec.im_os[timestep][0]));
-				vec.im_os[timestep][0] = vec.rhs_os[0];
+				tauCP[0] = (af::dot<float>(vec.im_os[timestep][0], vec.rhs_os[timestep][0]) * static_cast<float>(inputScalars.subsetsUsed)) / (af::dot<float>(vec.im_os[timestep][0], vec.im_os[timestep][0]));
+				vec.im_os[timestep][0] = vec.rhs_os[timestep][0];
 				vec.im_os[timestep][0] /= af::norm(vec.im_os[timestep][0]);
 				vec.im_os[timestep][0].eval();
-				vec.rhs_os[0].eval();
+				vec.rhs_os[timestep][0].eval();
 				if (inputScalars.verbose >= 2 || DEBUG) {
 					mexPrintBase("Largest eigenvalue for the main volume without filtering at iteration %d is %f\n", kk, tauCP[0]);
 					mexEval();
@@ -2674,23 +2674,23 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 					if (inputScalars.projector_type == 6)
-						backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, 0, 0, 0, 0, ii);
+						backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, ii);
 					else
 						status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, timestep, length, m_size, meanBP, g, proj, false, ii, pituus);
 					af::sync();
 					if (status != 0)
 						return -1;
 					if (ii == 0) {
-						status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[ii], vec.im_os[timestep][ii], proj, kk, ii);
+						status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][ii], vec.im_os[timestep][ii], proj, kk, ii);
 						if (status != 0)
 							return -1;
 					}
 					if (ii > 0)
-						tauCP[ii] = (af::dot<float>(vec.im_os[timestep][ii], vec.rhs_os[ii]) * static_cast<float>(inputScalars.subsets)) / (af::dot<float>(vec.im_os[timestep][ii], vec.im_os[timestep][ii]));
-					vec.im_os[timestep][ii] = vec.rhs_os[ii];
+						tauCP[ii] = (af::dot<float>(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii]) * static_cast<float>(inputScalars.subsets)) / (af::dot<float>(vec.im_os[timestep][ii], vec.im_os[timestep][ii]));
+					vec.im_os[timestep][ii] = vec.rhs_os[timestep][ii];
 					vec.im_os[timestep][ii] /= af::norm(vec.im_os[timestep][ii]);
 					vec.im_os[timestep][ii].eval();
-					vec.rhs_os[ii].eval();
+					vec.rhs_os[timestep][ii].eval();
 					if (inputScalars.verbose >= 2 || DEBUG) {
 						mexPrintBase("Largest eigenvalue for volume %d without filtering at iteration %d is %f\n", ii, kk, tauCP[ii]);
 						mexEval();
@@ -2779,7 +2779,7 @@ inline void initializeProxPriors(const RecMethods& MethodList, const scalarStruc
 
 // Transfer memory control back to ArrayFire
 inline void transferControl(AF_im_vectors& vec, const scalarStruct& inputScalars, const af::array& g, const Weighting& w_vec, const uint8_t compute_norm_matrix = 2, const uint8_t no_norm = 1,
-	const uint32_t osa_iter = 0, const int ii = 0) {
+	const uint32_t osa_iter = 0, const int ii = 0, uint32_t timestep = 0) { // TODO: remove default argument for timestep
 	if (compute_norm_matrix == 1u) {
 		vec.Summ[ii][0].unlock();
 		if (no_norm == 0u) {
@@ -2828,7 +2828,7 @@ inline void transferControl(AF_im_vectors& vec, const scalarStruct& inputScalars
 		}
 	}
 	if (DEBUG && inputScalars.atomic_64bit) {
-		mexPrintBase("min(rhs_os) = %d\n", af::min<int64_t>(vec.rhs_os[ii]));
+		mexPrintBase("min(rhs_os) = %d\n", af::min<int64_t>(vec.rhs_os[timestep][ii]));
 		mexPrintBase("inputScalars.atomic_64bit = %d\n", inputScalars.atomic_64bit);
 		mexEval();
 	}

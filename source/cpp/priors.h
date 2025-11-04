@@ -383,7 +383,7 @@ inline int applyPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& Me
 		dU = &vec.dU;
 	}
 	else
-		dU = &vec.rhs_os[0];
+		dU = &vec.rhs_os[timestep][0];
 	if (MethodList.MRP) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing MRP gradient");

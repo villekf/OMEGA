@@ -1937,21 +1937,12 @@ public:
                 status = CLCommandQueue[0].enqueueWriteBuffer(d_axIndex[0], CL_FALSE, 0, sizeof(uint16_t) * length * 2, listCoordAx);
                 OCL_CHECK(status, "\n", -1);
             }
-            else {
-                //d_x[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length * 6, NULL, &status);
-                OCL_CHECK(status, "\n", -1);
-                //status = CLCommandQueue[0].enqueueWriteBuffer(d_x[0], CL_FALSE, 0, sizeof(float) * length * 6, listCoord);
-                OCL_CHECK(status, "\n", -1);
-            }
             if (inputScalars.TOF) {
                 d_TOFIndex[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * length, NULL, &status);
                 OCL_CHECK(status, "\n", -1);
                 status = CLCommandQueue[0].enqueueWriteBuffer(d_TOFIndex[0], CL_FALSE, 0, sizeof(uint8_t) * length, TOFIndices);
                 OCL_CHECK(status, "\n", -1);
             }
-        } else { // Load x and z for dynamic sinogram data. listCoord corresponds to z_det and listCoordAx corresponds to x.
-            //status = CLCommandQueue[0].enqueueWriteBuffer(d_x[currentSubset], CL_FALSE, 0, sizeof(float) * length * 6, listCoordAx);
-            //status = CLCommandQueue[0].enqueueWriteBuffer(d_z[currentSubset], CL_FALSE, 0, sizeof(float) * length * 2, listCoord);
         }
 		return 0;
 	}
@@ -2060,7 +2051,7 @@ public:
 		return status;
 	}
 
-	int computeEstimate(const scalarStruct& inputScalars, const int ii = 0, const int uu = 0) {
+	int computeEstimate(const scalarStruct& inputScalars, const int ii = 0, const int uu = 0, const int timestep = 0) {
 		int status = CL_SUCCESS;
 		global = { inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], inputScalars.Nz[ii] };
 
@@ -3368,7 +3359,7 @@ public:
 	/// <param name="inputScalars various scalar parameters defining the build parameters and what features to use"></param>
 	/// <param name="alpha the regularization parameter"></param>
 	/// <returns></returns>
-	inline int ProxTVDiv(const scalarStruct& inputScalars) {
+	inline int ProxTVDiv(const scalarStruct& inputScalars, uint32_t timestep = 0) { // TODO: remove default argument
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting Proximal TV divergence");
 		cl_int status = CL_SUCCESS;

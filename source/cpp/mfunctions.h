@@ -777,7 +777,7 @@ inline void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, mxA
                 }
                 else {
                     if (MethodList.FDK)
-                        vec.rhs_os[ii].host(&apuF[oo]);
+                        vec.rhs_os[timestep][ii].host(&apuF[oo]);
                     else
                         vec.im_os[timestep][ii].host(&apuF[oo]);
                     if (inputScalars.verbose >= 3)
@@ -795,7 +795,7 @@ inline void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, mxA
                     //vec.rhs_os[0].host(&output[oo]);
                 }
                 else if (MethodList.FDK && !inputScalars.largeDim) {
-                    vec.rhs_os[0].host(&apuF[oo]);
+                    vec.rhs_os[timestep][0].host(&apuF[oo]);
                 }
                 else
                     vec.im_os[timestep][0].host(&apuF[oo]);

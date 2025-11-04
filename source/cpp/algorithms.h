@@ -218,7 +218,7 @@ inline int PKMA(af::array& im, af::array& rhs, Weighting& w_vec, const scalarStr
 inline void LSQR(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t iter, AF_im_vectors& vec, const int ii = 0, const int timestep = 0) {
 	if (iter == 0)
 		vec.wLSQR[ii] = vec.im_os[timestep][ii];
-	vec.im_os[timestep][ii] = vec.rhs_os[ii] - w_vec.betaLSQR * vec.im_os[timestep][ii];
+	vec.im_os[timestep][ii] = vec.rhs_os[timestep][ii] - w_vec.betaLSQR * vec.im_os[timestep][ii];
 	if (ii == inputScalars.nMultiVolumes) {
 		af::array temp = vec.im_os[timestep][0];
 		for (int ll = 1; ll <= inputScalars.nMultiVolumes; ll++)
@@ -249,7 +249,7 @@ inline void CGLS(const scalarStruct& inputScalars, Weighting& w_vec, const uint3
 		if (!largeDim) {
 			float gamma_ = 0.f;
 			for (int ll = ii; ll <= inputScalars.nMultiVolumes; ll++)
-				gamma_ += af::dot<float>(vec.rhs_os[ll], vec.rhs_os[ll]);
+				gamma_ += af::dot<float>(vec.rhs_os[timestep][ll], vec.rhs_os[timestep][ll]);
 			//gamma_ += af::sum<float>(vec.rhs_os[ll] * vec.rhs_os[ll]);
 			const float beta = gamma_ / w_vec.gammaCGLS;
 			for (int ll = ii; ll <= inputScalars.nMultiVolumes; ll++) {
@@ -258,12 +258,12 @@ inline void CGLS(const scalarStruct& inputScalars, Weighting& w_vec, const uint3
 				if (iter == inputScalars.Niter - 1)
 					vec.im_os[timestep][ll] = vec.fCGLS[ll];
 				else
-					vec.im_os[timestep][ll] = vec.rhs_os[ll] + beta * vec.im_os[timestep][ll];
+					vec.im_os[timestep][ll] = vec.rhs_os[timestep][ll] + beta * vec.im_os[timestep][ll];
 			}
 			w_vec.gammaCGLS = gamma_;
 		}
 		else {
-			w_vec.gammaTempCGLS += af::dot<float>(vec.rhs_os[0], vec.rhs_os[0]);
+			w_vec.gammaTempCGLS += af::dot<float>(vec.rhs_os[timestep][0], vec.rhs_os[timestep][0]);
 			vec.fCGLS[0] = vec.fCGLS[0] + w_vec.alphaCGLS * vec.im_os[timestep][0];
 			vec.fCGLS[0].eval();
 			if (iter == inputScalars.Niter - 1)
@@ -555,24 +555,24 @@ inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 	return 0;
 }
 
-inline int SAGA(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t osa_iter, const uint32_t iter, const int ii = 0, uint32_t timestep = 0) {
+inline int SAGA(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t osa_iter, const uint32_t iter, const int ii = 0, uint32_t timestep = 0) { // TODO: remove default argument for timestep
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
 	af::array grad = af::constant(0.f, im.elements());
 	if (DEBUG) {
 		mexPrintBase("du = %d\n", vec.dU.elements());
-		mexPrintBase("vec.rhs_os[ii].elements() = %d\n", vec.rhs_os[ii].elements());
+		mexPrintBase("vec.rhs_os[timestep][ii].elements() = %d\n", vec.rhs_os[timestep][ii].elements());
 		mexPrintBase("vec.stochasticHelper[ii](af::span, osa_iter).elements() = %d\n", vec.stochasticHelper[ii][osa_iter].elements());
 		mexEval();
 	}
 	if (ii == 0 && vec.dU.elements() > 1) {
-		vec.rhs_os[ii] -= vec.dU;
-		af::eval(vec.rhs_os[ii]);
+		vec.rhs_os[timestep][ii] -= vec.dU;
+		af::eval(vec.rhs_os[timestep][ii]);
 	}
-	grad = (vec.rhs_os[ii] - vec.stochasticHelper[ii][osa_iter]) + vec.SAGASum[ii] / static_cast<float>(inputScalars.subsetsUsed);
-	vec.SAGASum[ii] = vec.SAGASum[ii] - vec.stochasticHelper[ii][osa_iter] + vec.rhs_os[ii];
+	grad = (vec.rhs_os[timestep][ii] - vec.stochasticHelper[ii][osa_iter]) + vec.SAGASum[ii] / static_cast<float>(inputScalars.subsetsUsed);
+	vec.SAGASum[ii] = vec.SAGASum[ii] - vec.stochasticHelper[ii][osa_iter] + vec.rhs_os[timestep][ii];
 	af::eval(vec.SAGASum[ii]);
 	int status = 0;
-	vec.stochasticHelper[ii][osa_iter] = vec.rhs_os[ii].copy();
+	vec.stochasticHelper[ii][osa_iter] = vec.rhs_os[timestep][ii].copy();
 	status = applyImagePreconditioning(w_vec, inputScalars, grad, im, proj, kk, ii, timestep);
 	im += w_vec.lambda[iter] * grad;
 	af::eval(im);
@@ -584,18 +584,16 @@ inline int SAGA(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, AF_
 	return status;
 }
 
-inline int BB(AF_im_vectors &vec, Weighting &w_vec, const int ii = 0, int timestep = 0)
-{
-
+inline int BB(AF_im_vectors &vec, Weighting &w_vec, const int ii = 0, int timestep = 0) { // TODO: remove default argument for timestep
 	af::array s = vec.im_os[timestep][ii] - vec.imBB[ii];
-	af::array y = vec.rhs_os[ii] - vec.gradBB[ii];
+	af::array y = vec.rhs_os[timestep][ii] - vec.gradBB[ii];
 	float denmo = af::dot<float>(s,y);
 	float num = af::dot<float>(s,s);
 
 	w_vec.alphaBB[ii] = (denmo != 0) ? num / denmo : 1e-4f; // Avoid division by zero
 	vec.imBB[ii] = vec.im_os[timestep][ii].copy();
 	vec.im_os[timestep][ii] = vec.imBB[ii] - w_vec.alphaBB[ii] * vec.gradBB[ii];
-	vec.gradBB[ii] = vec.rhs_os[ii];
+	vec.gradBB[ii] = vec.rhs_os[timestep][ii];
 
 
 	return 0;
