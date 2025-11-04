@@ -340,6 +340,10 @@ class ProjectorClass {
 			if (!inputScalars.largeDim) {
 				std::snprintf(buffer9, 30, "-DNVOXELS=%d", static_cast<int32_t>(NVOXELS));
 				os_options.push_back(buffer9);
+				if (inputScalars.useHelical) {
+					std::snprintf(buffer10, 30, "-DNVOXELSHELICAL=%d", static_cast<int32_t>(NVOXELSHELICAL));
+					os_options.push_back(buffer10);
+				}
 			}
 			if (inputScalars.FPType == 4) {
 				status = buildProgram(inputScalars.verbose, contentFP, programFP, os_options);
@@ -1663,11 +1667,12 @@ public:
 					mexEval();
 				}
 				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode != 1) {
-					if (inputScalars.pitch) {
-						status = cuMemAlloc(&d_z[kk], sizeof(float) * length[kk] * 6);
-					}
-					else
-						status = cuMemAlloc(&d_z[kk], sizeof(float) * length[kk] * 2);
+					size_t coef = 2;
+					if (inputScalars.useHelical)
+						coef = 1;
+					else if (inputScalars.pitch)
+						coef = 6;
+					status = cuMemAlloc(&d_z[kk], sizeof(float) * length[kk] * coef);
 					CUDA_CHECK(status, "\n", -1);
 					memAlloc.zType = 1;
 					memAlloc.zSteps++;
@@ -1822,10 +1827,12 @@ public:
 			}
 			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
 				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
+					size_t kerroin = 2;
 					if (inputScalars.pitch)
-						status = cuMemcpyHtoD(d_z[kk], &z_det[pituus[kk] * 6], sizeof(float) * length[kk] * 6);
-					else
-						status = cuMemcpyHtoD(d_z[kk], &z_det[pituus[kk] * 2], sizeof(float) * length[kk] * 2);
+						kerroin = 6;
+					else if (inputScalars.useHelical)
+						kerroin = 1;
+					status = cuMemcpyHtoD(d_z[kk], &z_det[pituus[kk] * 2], sizeof(float) * length[kk] * kerroin);
 					CUDA_CHECK(status, "\n", -1);
 				}
 				else {
@@ -1985,13 +1992,17 @@ public:
 		if (inputScalars.FPType == 4 || inputScalars.FPType == 5) {
 			FPArgs.emplace_back(&inputScalars.nRowsD);
 			FPArgs.emplace_back(&inputScalars.nColsD);
-			FPArgs.emplace_back(&dPitch);
+			FPArgs.emplace_back(&dPitch); 
+			if (inputScalars.useHelical)
+				FPArgs.emplace_back(&inputScalars.helicalRadius);
 		}
 
 		if (inputScalars.BPType == 4 || inputScalars.BPType == 5) {
 			BPArgs.emplace_back(&inputScalars.nRowsD);
 			BPArgs.emplace_back(&inputScalars.nColsD);
 			BPArgs.emplace_back(&dPitch);
+			if (inputScalars.useHelical)
+				BPArgs.emplace_back(&inputScalars.helicalRadius);
 			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 				SensArgs.emplace_back(&inputScalars.nRowsD);
 				SensArgs.emplace_back(&inputScalars.nColsD);
@@ -2761,7 +2772,10 @@ public:
 					global[0] = (inputScalars.Nx[ii] + erotusBP[0][ii]) / local[0];
 					global[1] = (inputScalars.Ny[ii] + erotusBP[1][ii]) / local[1];
 					if (!inputScalars.largeDim)
-						global[2] = (inputScalars.Nz[ii] + NVOXELS - 1) / NVOXELS;
+						if (!inputScalars.useHelical)
+							global[2] = (inputScalars.Nz[ii] + NVOXELS - 1) / NVOXELS;
+						else
+							global[2] = (inputScalars.Nz[ii] + NVOXELSHELICAL - 1) / NVOXELSHELICAL;
 					else
 						global[2] = inputScalars.Nz[ii];
 				}

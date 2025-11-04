@@ -183,6 +183,8 @@ class ProjectorClass {
 		}
 		if (inputScalars.useParallelBeam)
 			options += " -DPARALLEL";
+		else if (inputScalars.useHelical)
+			options += " -DHELICAL";
 		
 		// Load the source text file
 		// Set all preprocessor definitions
@@ -313,8 +315,11 @@ class ProjectorClass {
 				inputScalars.atomic_32bit = false;
 			}
 			os_options += " -DPTYPE4";
-			if (!inputScalars.largeDim)
+			if (!inputScalars.largeDim) {
 				os_options += (" -DNVOXELS=" + std::to_string(NVOXELS));
+				if (inputScalars.useHelical)
+					os_options += (" -DNVOXELSHELICAL=" + std::to_string(NVOXELSHELICAL));
+			}
 			if (inputScalars.FPType == 4)
 				status = buildProgram(inputScalars.verbose, contentFP, CLContext, CLDeviceID, programFP, inputScalars.atomic_64bit, inputScalars.atomic_32bit, os_options);
 			if (!inputScalars.CT && inputScalars.BPType == 4) {
@@ -1299,10 +1304,12 @@ public:
 					mexEval();
 				}
 				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode != 1) {
-					if (inputScalars.pitch)
-						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6, NULL, &status);
-					else
-						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 2, NULL, &status);
+					size_t coef = 2;
+					if (inputScalars.useHelical)
+						coef = 1;
+					else if (inputScalars.pitch)
+						coef = 6;
+					d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * coef, NULL, &status);
 					OCL_CHECK(status, "\n", -1);
 				}
 				else {
@@ -1522,9 +1529,11 @@ public:
 			}
 			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
 				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
-					int64_t kerroin = 2;
+					size_t kerroin = 2;
 					if (inputScalars.pitch)
 						kerroin = 6;
+					else if (inputScalars.useHelical)
+						kerroin = 1;
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_z[kk], CL_FALSE, 0, sizeof(float) * length[kk] * kerroin, &z_det[pituus[kk] * kerroin]);
 					OCL_CHECK(status, "\n", -1);
 					memSize += (sizeof(float) * length[kk] * kerroin) / 1048576ULL;
@@ -1704,12 +1713,18 @@ public:
 			kernelFP.setArg(kernelIndFP++, inputScalars.nColsD);
 			status = kernelFP.setArg(kernelIndFP++, dPitch);
 			OCL_CHECK(status, "\n", -1);
+			if (inputScalars.useHelical) {
+				status = kernelFP.setArg(kernelIndFP++, inputScalars.helicalRadius);
+				OCL_CHECK(status, "\n", -1);
+			}
 		}
 
 		if (inputScalars.BPType == 4 || inputScalars.BPType == 5) {
 			kernelBP.setArg(kernelIndBP++, inputScalars.nRowsD);
 			kernelBP.setArg(kernelIndBP++, inputScalars.nColsD);
 			kernelBP.setArg(kernelIndBP++, dPitch);
+			if (inputScalars.useHelical)
+				kernelBP.setArg(kernelIndBP++, inputScalars.helicalRadius);
 			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 				kernelSensList.setArg(kernelIndSens++, inputScalars.nRowsD);
 				kernelSensList.setArg(kernelIndSens++, inputScalars.nColsD);
@@ -1808,6 +1823,7 @@ public:
 		}
 		if (DEBUG) {
 			mexPrintBase("inputScalars.nBins = %u\n", inputScalars.nBins);
+			mexPrintBase("inputScalars.helicalRadius = %f\n", inputScalars.helicalRadius);
 			mexEval();
 		}
 		if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
@@ -2589,7 +2605,10 @@ public:
 				}
 				if (inputScalars.BPType == 4)
 					if (!inputScalars.largeDim)
-						global = { inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], (inputScalars.Nz[ii] + NVOXELS - 1) / NVOXELS };
+						if (!inputScalars.useHelical)
+							global = { inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], (inputScalars.Nz[ii] + NVOXELS - 1) / NVOXELS };
+						else
+							global = { inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], (inputScalars.Nz[ii] + NVOXELSHELICAL - 1) / NVOXELSHELICAL };
 					else
 						global = { inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], inputScalars.Nz[ii] };
 				else if (inputScalars.BPType == 5) {

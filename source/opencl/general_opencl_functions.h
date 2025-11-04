@@ -9,7 +9,7 @@
 *
 * USEIMAGES specifies whether OpenCL images or CUDA textures are used. If it is not defined, regular buffers are used. Default is ON.
 *
-* Copyright (C) 2019-2024 Ville-Veikko Wettenhovi, Niilo Saarlemo
+* Copyright (C) 2019-2025 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
 * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by
 * the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
@@ -1006,7 +1006,15 @@ DEVICE void getDetectorCoordinatesCT(CONSTANT float* d_xyz,
 #else
 DEVICE void getDetectorCoordinatesCT(const CLGLOBAL float* CLRESTRICT d_xyz, 
 #endif
-	CONSTANT float* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch
+#ifdef HELICAL
+	const float r, 
+#endif
+#if !defined(USEGLOBAL)
+	CONSTANT float* d_uv, 
+#else
+	const CLGLOBAL float* CLRESTRICT d_uv, 
+#endif
+	float3* s, float3* d, const int3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch
 #ifdef PROJ5
 	, float3* dR, float3* dL, float3* dU, float3* dD
 #endif
@@ -1015,6 +1023,13 @@ DEVICE void getDetectorCoordinatesCT(const CLGLOBAL float* CLRESTRICT d_xyz,
 	*s = CMFLOAT3(d_xyz[id], d_xyz[id + 1], d_xyz[id + 2]);
 	*d = CMFLOAT3(d_xyz[id + 3], d_xyz[id + 4], d_xyz[id + 5]);
 	const float2 indeksi = MFLOAT2(CFLOAT(i.x) - CFLOAT(d_size_x) / 2.f + .5f, CFLOAT(i.y) - CFLOAT(d_sizey) / 2.f + .5f);
+#ifdef HELICAL
+	const float angle = d_uv[i.z];
+	const float dtheta = (d_dPitch.x / r) * indeksi.x;
+	(*d).x += r * (COSF(angle + dtheta) - COSF(angle));
+	(*d).y -= r * (SINF(angle + dtheta) - SINF(angle));
+	(*d).z += indeksi.y * d_dPitch.y;
+#else
 	id = i.z * NA;
 #if defined(PITCH)
 	const float3 apuX = MFLOAT3(d_uv[id], d_uv[id + 1], d_uv[id + 2]);
@@ -1066,6 +1081,7 @@ DEVICE void getDetectorCoordinatesCT(const CLGLOBAL float* CLRESTRICT d_xyz,
 	*dL = CMFLOAT3((*d).x + apuX * 0.5f, (*d).y + apuY * 0.5f, (*d).z);
 	*dU = CMFLOAT3((*d).x, (*d).y, (*d).z + d_dPitch.y * 0.5f);
 	*dD = CMFLOAT3((*d).x, (*d).y, (*d).z - d_dPitch.y * 0.5f);
+#endif
 #endif
 #endif
 #endif
@@ -1550,5 +1566,68 @@ DEVICE void forwardProjectAF(CLGLOBAL float* output, PTR_THR float *ax, size_t i
 	* temp
 #endif
     ;
+}
+#endif
+
+#ifdef HELICAL
+DEVICE int rayArcIntersection(
+    float3 s, 
+    float3 v,
+	float3 d, 
+    float xc, float yc, float r,
+    float zMin, float zMax,
+    float thetaSpan, float thetaCenter, 
+	float* theta, 
+    float3* intersection
+) {
+	float fx = s.x - xc;
+	float fy = s.y - yc;
+    float a = v.x * v.x + v.y * v.y;
+    float b = 2.f * (v.x * fx + v.y * fy);
+    float c = fx * fx + fy * fy - r * r;
+    float disc = b * b - 4.f * a * c;
+    if (disc < 0) 
+		return 0;
+
+    for (int signv = -1; signv <= 1; signv += 2) {
+        float t = (-b + (float)signv * SQRT(disc)) / (2.f*a);
+        if (t < 0.f) 
+			continue;
+		float3 xyz = s + v * t;
+
+		const float y = xyz.y - yc;
+		const float x = xyz.x - xc;
+		const float distX = xyz.x - d.x;
+		const float distY = xyz.y - d.y;
+		const float rr = 2.f * r * r;
+		*theta = ACOS((rr - (distX * distX + distY * distY)) / rr);
+        *theta *= -sign(ATAN2(y, x) - thetaCenter);
+		if (*theta > thetaSpan / 2.f || *theta < 0)
+			continue;
+		float dist1 = xyz.x - s.x;
+		float dist2 = xyz.y - s.y;
+		float dist = SQRT(dist1 * dist1 + dist2 * dist2);
+		float distV = SQRT(v.x * v.x + v.y * v.y);
+		float angle = v.z/distV;
+		xyz.z = angle * dist + d.z;
+        if (xyz.z < zMin || xyz.z > zMax) 
+			continue;
+
+        *intersection = xyz;
+		*theta += thetaSpan / 2.f;
+        return 1;
+    }
+    return 0;
+}
+
+DEVICE void normalizeCurvedCoordinates(float3 xyz, 
+	float zMin, float zMax,
+    float thetaSpan,
+	float theta, 
+	float* u, float* v) {
+
+    *u = theta / thetaSpan;
+
+    *v = (xyz.z - zMin) / (zMax - zMin);
 }
 #endif

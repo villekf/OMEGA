@@ -1004,6 +1004,12 @@ end
 if ~isfield(options, 'useParallelBeam')
     options.useParallelBeam = false;
 end
+if ~isfield(options, 'useHelical')
+    options.useHelical = false;
+end
+if ~isfield(options, 'helicalRadius')
+    options.helicalRadius = 0;
+end
 if ~isfield(options, 'useTotLength')
     options.useTotLength = true;
 end

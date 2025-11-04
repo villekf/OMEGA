@@ -11,7 +11,7 @@ function [pz,varargout] = reconstructions_main(inputStruct,varargin)
 %   options = The modified input options-struct (optional)
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2018-2024 Ville-Veikko Wettenhovi, Samuli Summala, Jonna Kangasniemi
+% Copyright (C) 2018-2025 Ville-Veikko Wettenhovi, Samuli Summala, Jonna Kangasniemi
 %
 % This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public
 % License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later

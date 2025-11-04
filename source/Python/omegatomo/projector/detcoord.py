@@ -106,7 +106,7 @@ def setCTCoordinates(options):
         dXY = np.dot(R, det).T
         options.x = np.column_stack((sXY[:, 0], dXY[:, 0]))
         options.y = np.column_stack((sXY[:, 1], dXY[:, 1]))
-    if options.x.size != options.nColsD * options.nRowsD * options.nProjections and options.uV.size <= 1:
+    if options.x.size != options.nColsD * options.nRowsD * options.nProjections and options.uV.size <= 1 and not options.useHelical:
         options.uV = CTDetectorCoordinates(options.angles,options.pitchRoll)
         if np.ndim(options.uV) == 3 and options.uV.shape[2] > 1:
             options.uV = np.reshape(options.uV, (-1, 2))
@@ -126,9 +126,12 @@ def setCTCoordinates(options):
         options.z[:,3] = options.z[:,3] * options.dPitchX
         options.z[:,4] = options.z[:,4] * options.dPitchX
         options.z[:,2] = options.z[:,2] * options.dPitchY
-    else:
+    elif options.uV.size > 0:
         options.z[:,0] = options.z[:,0] * options.dPitchX
         options.z[:,1] = options.z[:,1] * options.dPitchX
+    if options.useHelical:
+        options.x = np.column_stack((options.x[:,0], options.y[:,0], options.z[:,0], options.x[:,1], options.y[:,1], options.z[:,1]))
+        options.z = np.float32(options.angles)
         
 def CTDetectorCoordinates(angles, pitchRoll = np.empty(0, dtype=np.float32)):
     if pitchRoll.size == 0:

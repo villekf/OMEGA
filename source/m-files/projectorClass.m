@@ -1,5 +1,5 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2022-2024 Ville-Veikko Wettenhovi
+% Copyright (C) 2022-2025 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify it
 % under the terms of the GNU General Public License as published by the
@@ -735,6 +735,8 @@ classdef projectorClass
                             z_det = reshape(z_det, 6, obj.param.nProjections);
                             z_det = z_det(:,obj.index);
                             z_det = z_det(:);
+                        elseif obj.param.useHelical
+                            z_det = z_det(obj.index);
                         else
                             z_det = reshape(z_det, 2, obj.param.partitions*obj.param.nProjections);
                             z_det = z_det(:,obj.index);
@@ -746,7 +748,11 @@ classdef projectorClass
                         z_det = z_det(:);
                     end
                     if obj.param.CT
-                        obj.param.uV = obj.param.uV(:,obj.index);
+                        if ~obj.param.useHelical
+                        %     obj.param.uV = obj.param.uV(obj.index);
+                        % else
+                            obj.param.uV = obj.param.uV(:,obj.index);
+                        end
                     end
                 end
             end

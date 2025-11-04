@@ -33,6 +33,7 @@
 // For projector type 4 backprojection
 // How many voxels are computed per thread
 #define NVOXELS 8
+#define NVOXELSHELICAL 1
 // How many voxels are computed per thread for BDD backprojection
 #define NVOXELS5 1
 // How many slices are computed in the same thread for BDD forward projection

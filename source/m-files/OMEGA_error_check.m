@@ -224,7 +224,7 @@ if options.projector_type > 6 && options.projector_type ~= 11 && options.project
         && options.projector_type ~= 24 && options.projector_type ~= 34 && options.projector_type ~= 35 && options.projector_type ~= 25
     error('The selected projector type is not supported!')
 end
-if options.use_CPU && options.projector_type ~= 1
+if options.use_CPU && options.projector_type ~= 1 && options.implementation == 2
     error('Selected projector type is not supported with CPU implementation!')
 end
 if sum(options.precondTypeImage) == 0 && (options.PKMA || options.MRAMLA || options.MBSREM)
@@ -381,6 +381,12 @@ if (options.projector_type == 6) && ~options.SPECT
 end
 if (options.projector_type ~= 6 && options.projector_type ~= 1 && options.projector_type ~= 11 && options.projector_type ~= 2 && options.projector_type ~= 22) && options.SPECT
     error('SPECT only supports projector types 1, 2 and 6!')
+end
+if options.projector_type ~= 4 && options.useHelical
+    error('Helical CT only supports projector type 4 at the moment!')
+end
+if options.offangle > 0 && options.useHelical
+    warning('Rotation is not yet supported with helical CT data')
 end
 if (options.projector_type == 6)
     if options.subsets > 1 && options.subset_type < 8

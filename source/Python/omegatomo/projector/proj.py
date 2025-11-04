@@ -493,6 +493,8 @@ class projectorClass:
     builtin = True
     precorrect = False
     seed = -1
+    useHelical = False
+    helicalRadius = 1.
 
     def __init__(self):
         # C-struct
@@ -866,6 +868,8 @@ class projectorClass:
                         z_det = np.reshape(z_det, (self.nProjections, 6))
                         z_det = z_det[self.index,:]
                         z_det = z_det.ravel('C')
+                    elif self.useHelical:
+                        z_det = z_det[self.index]
                     else:
                         z_det = np.reshape(z_det, (self.nProjections, 2))
                         z_det = z_det[self.index,:]
@@ -879,7 +883,7 @@ class projectorClass:
                     z_det = np.reshape(z_det, (self.nProjections, -1))
                     z_det = z_det[self.index,:]
                     z_det = z_det.ravel('C')
-                if self.CT:
+                if self.CT and not self.useHelical:
                     self.uV = self.uV[self.index,:]
         if self.listmode == 0 and self.projector_type != 6:
             if self.SPECT:
@@ -1165,6 +1169,10 @@ class projectorClass:
             raise ValueError('Index-based reconstruction is not supported on CPU!')
         if self.useCPU:
             print('CPU functionality is limited and might not work correctly in all cases! Use at your own risk!')
+        if self.useHelical and not self.projector_type == 4:
+            raise ValueError('Only projector type 4 is supported with curved helical data!')
+        if self.offangle > 0 and self.useHelical:
+            print('Rotation is not yet supported with helical CT data')
             
         varNeg = ['LSQR','CGLS','FDK','SART']
         neg = [name for name in varNeg if getattr(self, name, False)]
@@ -1892,6 +1900,7 @@ class projectorClass:
             ('nProjections', ctypes.c_int64),
             ('TOF_bins', ctypes.c_int64),
             ('tau', ctypes.c_float),
+            ('helicalRadius', ctypes.c_float),
             ('tube_radius', ctypes.c_float),
             ('epps', ctypes.c_float),
             ('sigma_x', ctypes.c_float),
@@ -1988,6 +1997,7 @@ class projectorClass:
             ('stochasticSubsetSelection', ctypes.c_bool),
             ('useTotLength', ctypes.c_bool),
             ('useParallelBeam', ctypes.c_bool),
+            ('useHelical', ctypes.c_bool),
             ('OSEM', ctypes.c_bool),
             ('LSQR', ctypes.c_bool),
             ('CGLS', ctypes.c_bool),

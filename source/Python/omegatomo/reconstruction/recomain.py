@@ -71,6 +71,7 @@ def transferData(options):
     options.param.nProjections = ctypes.c_int64(options.nProjections)
     options.param.TOF_bins = ctypes.c_int64(options.TOF_bins)
     options.param.tau = ctypes.c_float(options.tau)
+    options.param.helicalRadius = ctypes.c_float(options.helicalRadius)
     options.param.tube_radius = ctypes.c_float(options.tube_radius)
     options.param.epps = ctypes.c_float(options.epps)
     options.param.sigma_x = ctypes.c_float(options.sigma_x)
@@ -167,6 +168,7 @@ def transferData(options):
     options.param.stochasticSubsetSelection = ctypes.c_bool(options.stochasticSubsetSelection)
     options.param.useTotLength = ctypes.c_bool(options.useTotLength)
     options.param.useParallelBeam = ctypes.c_bool(options.useParallelBeam)
+    options.param.useHelical = ctypes.c_bool(options.useHelical)
     options.param.OSEM = ctypes.c_bool(options.OSEM)
     options.param.LSQR = ctypes.c_bool(options.LSQR)
     options.param.CGLS = ctypes.c_bool(options.CGLS)
@@ -454,7 +456,7 @@ def reconstructions_main(options):
     #     normdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', '..', '..', 'mat-files')) + "/"
     #     if os.path.exists(normdir):
     #         var = read_mat(options.fpath)
-    if options.CT and options.flat <= 0:
+    if options.CT and options.flat <= 0 and not options.usingLinearizedData:
         print('No flat value input! Using the maximum value as the flat value. Alternatively, input the flat value into options.flat')
         options.flat = np.max(options.SinM).astype(dtype=np.float32)
     if not options.CT and not options.SPECT and not(options.SinM.size == options.Ndist * options.Nang * options.TotSinos) and options.listmode == 0:
@@ -535,7 +537,7 @@ def reconstructions_main(options):
     # point_ptr = ctypes.pointer(options.param)
     if not options.SinM.dtype == 'float32' and not options.largeDim and options.loadTOF:
         options.SinM = options.SinM.astype(np.float32)
-    elif not options.SinM.dtype == 'uint16' or not options.SinM.dtype == 'uint8':
+    elif not options.SinM.dtype == 'uint16' and not options.SinM.dtype == 'uint8':
         options.SinM = options.SinM.astype(np.float32)
     if options.SinM.ndim > 1:
         options.SinM = options.SinM.ravel('F')
