@@ -230,14 +230,6 @@ inline int loadFrameData(
             }
         }
     }
-#ifndef CPU
-    //if (tt > 0) {
-        if (inputScalars.scatter) {
-            status = proj.loadDynamicData(inputScalars, length, extraCorr, pituus, tt);
-            if (status != 0) return -1;
-        }
-    //}
-#endif
     if (inputScalars.verbose >= 3 || DEBUG)
         mexPrint("Measurement/randoms/scatter data loaded");
     return 0;
@@ -589,7 +581,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		mexEval();
 	}
 
-	// Measurement data. TODO: use type std::vector<std::vector<af::array>> and mData[timestep][sub_iter]
+	// Initialize measurement data arrays.
 	std::vector<std::vector<af::array>> mData(inputScalars.Nt);
     for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
         mData[timestep].resize(inputScalars.TOFsubsets);
@@ -650,7 +642,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                 }
             }
         }
-        status = loadFrameData(z_det, x, inputScalars, w_vec, pituus, Sin, sc_ra, aRand, proj, length, extraCorr, 0);
+        status = loadFrameData(z_det, x, inputScalars, w_vec, pituus, Sin, sc_ra, aRand, proj, length, extraCorr, 0); // TODO remove
         if (status != 0) return -1;
 	}
 

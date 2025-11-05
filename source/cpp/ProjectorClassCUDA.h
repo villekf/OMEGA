@@ -975,7 +975,7 @@ public:
 	std::vector<CUdeviceptr> d_zindex;
 	std::vector<CUdeviceptr> d_xyindex;
 	std::vector<CUdeviceptr> d_norm;
-	std::vector<CUdeviceptr> d_scat;
+	std::vector<std::vector<CUdeviceptr>> d_scat;
 	std::vector<std::vector<CUdeviceptr>> d_x;
 	std::vector<std::vector<CUdeviceptr>> d_z;
 	std::vector<CUdeviceptr> d_atten;
@@ -1023,6 +1023,11 @@ public:
                     getErrorString(cuMemFree(d_z[tt][kk]));
                 }
             }
+            if (memAlloc.extra) {
+                for (int kk = 0; kk < memAlloc.eSteps / memAlloc.tSteps; kk++) {
+                    getErrorString(cuMemFree(d_scat[tt][kk]));
+                }
+            }
         }
 		if (memAlloc.offsetT) {
 			for (int kk = 0; kk < memAlloc.oSteps; kk++) {
@@ -1045,11 +1050,6 @@ public:
 		if (memAlloc.norm) {
 			for (int kk = 0; kk < memAlloc.nSteps; kk++) {
 				getErrorString(cuMemFree(d_norm[kk]));
-			}
-		}
-		if (memAlloc.extra) {
-			for (int kk = 0; kk < memAlloc.eSteps; kk++) {
-				getErrorString(cuMemFree(d_scat[kk]));
 			}
 		}
 		if (memAlloc.indexBased) {
@@ -1700,6 +1700,12 @@ public:
                         }
                         CUDA_CHECK(status, "\n", -1);
                     }
+                    if (inputScalars.scatter == 1U) {
+                        status = cuMemAlloc(&d_scat[timestep][kk], sizeof(float) * length[kk] * vecSize);
+                        CUDA_CHECK(status, "\n", -1);
+                        memAlloc.extra = true;
+                        memAlloc.eSteps++;
+                    }
                 }
 				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
 					status = cuMemAlloc(&d_T[kk], sizeof(float) * length[kk]);
@@ -1713,12 +1719,6 @@ public:
 					CUDA_CHECK(status, "\n", -1);
 					memAlloc.norm = true;
 					memAlloc.nSteps++;
-				}
-				if (inputScalars.scatter == 1U) {
-					status = cuMemAlloc(&d_scat[kk], sizeof(float) * length[kk] * vecSize);
-					CUDA_CHECK(status, "\n", -1);
-					memAlloc.extra = true;
-					memAlloc.eSteps++;
 				}
 				if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
 					status = cuMemAlloc(&d_atten[kk], sizeof(float) * length[kk] * vecSize);
@@ -1857,6 +1857,10 @@ public:
                             CUDA_CHECK(status, "\n", -1);
                         }
                     }
+                    if (inputScalars.scatter == 1U) {
+                        status = cuMemcpyHtoD(d_scat[timestep][kk], &extraCorr[pituus[kk] * vecSize + inputScalars.kokoNonTOF * timestep], sizeof(float) * length[kk] * vecSize);
+                        CUDA_CHECK(status, "\n", -1);
+                    }
                 }
 				
 				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
@@ -1889,10 +1893,6 @@ public:
 				}
 				if (inputScalars.normalization_correction) {
 					status = cuMemcpyHtoD(d_norm[kk], &norm[pituus[kk] * vecSize], sizeof(float) * length[kk] * vecSize);
-					CUDA_CHECK(status, "\n", -1);
-				}
-				if (inputScalars.scatter == 1U) {
-					status = cuMemcpyHtoD(d_scat[kk], &extraCorr[pituus[kk] * vecSize], sizeof(float) * length[kk] * vecSize);
 					CUDA_CHECK(status, "\n", -1);
 				}
 				if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
@@ -1967,13 +1967,14 @@ public:
 		}
 		if (inputScalars.normalization_correction)
 			d_norm.resize(inputScalars.subsetsUsed);
-		if (inputScalars.scatter)
-			d_scat.resize(inputScalars.subsetsUsed);
 		if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation)
 			d_atten.resize(inputScalars.subsetsUsed);
-		d_x.resize(inputScalars.Nt);
+
+		d_scat.resize(inputScalars.Nt);
+        d_x.resize(inputScalars.Nt);
         d_z.resize(inputScalars.Nt);
         for (int tt = 0; tt < inputScalars.Nt; tt++) {
+            d_scat[tt].resize(inputScalars.subsetsUsed);
             d_x[tt].resize(inputScalars.subsetsUsed);
             d_z[tt].resize(inputScalars.subsetsUsed);
         }
@@ -2147,28 +2148,6 @@ public:
 			mexPrintBase("kernelIndFP = %u\n", FPArgs.size());
 			mexPrintBase("kernelIndBP = %u\n", BPArgs.size());
 			mexEval();
-		}
-		return 0;
-	}
-
-	/// <summary>
-	/// Loads "dynamic" data, i.e. if the reconstruction is dynamic (time-varying) then this loads the measurement data/randoms/scatter for the next time step
-	/// </summary>
-	/// <param name="inputScalars various scalar parameters defining the build parameters and what features to use"></param>
-	/// <param name="length the number of measurements/projection/sinograms per subset"></param>
-	/// <param name="Sino measurement data (sinograms or projections)"></param>
-	/// <param name="randomsData randoms and/or scatter data (for additive scatter correction or for randoms correction)"></param>
-	/// <param name="extraCorr scatter data (for multiplicative scatter correction)"></param>
-	/// <param name="pituus cumulative sum of length"></param>
-	/// <returns></returns>
-	inline int loadDynamicData(scalarStruct& inputScalars, const std::vector<int64_t>& length, const float* extraCorr, const int64_t* pituus, const uint32_t tt) {
-
-		CUresult status = CUDA_SUCCESS;
-		for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-			if (inputScalars.scatter == 1u) {
-				status = cuMemcpyHtoD(d_scat[kk], &extraCorr[pituus[kk] + inputScalars.kokoNonTOF * tt], sizeof(float) * length[kk]);
-				CUDA_CHECK(status, "\n", -1);
-			}
 		}
 		return 0;
 	}
@@ -2377,7 +2356,7 @@ public:
 			if (inputScalars.normalization_correction)
 				kTemp.emplace_back(&d_norm[osa_iter]);
 			if (inputScalars.scatter)
-				kTemp.emplace_back(&d_scat[osa_iter]);
+				kTemp.emplace_back(&d_scat[timestep][osa_iter]);
 			kTemp.emplace_back(&no_norm);
 			kTemp.emplace_back(&m_size);
 			kTemp.emplace_back(&osa_iter);
@@ -2446,7 +2425,7 @@ public:
 			if (inputScalars.normalization_correction)
 				kTemp.emplace_back(&d_norm[osa_iter]);
 			if (inputScalars.scatter)
-				kTemp.emplace_back(&d_scat[osa_iter]);
+				kTemp.emplace_back(&d_scat[timestep][osa_iter]);
 			kTemp.emplace_back(reinterpret_cast<void*>(&d_Summ[uu]));
 			kTemp.emplace_back(&d_N[ii]);
 			kTemp.emplace_back(&d[ii]);
@@ -2654,7 +2633,7 @@ public:
 				if (inputScalars.normalization_correction)
 					kTemp.emplace_back(&d_norm[osa_iter]);
 				if (inputScalars.scatter)
-					kTemp.emplace_back(&d_scat[osa_iter]);
+					kTemp.emplace_back(&d_scat[timestep][osa_iter]);
 			}
 			kTemp.emplace_back(reinterpret_cast<void*>(&d_Summ[uu]));
 			kTemp.emplace_back(&d_N[ii]);
@@ -2989,7 +2968,7 @@ public:
 				if (inputScalars.normalization_correction)
 					kTemp.emplace_back(&d_norm[osa_iter]);
 				if (inputScalars.scatter)
-					kTemp.emplace_back(&d_scat[osa_iter]);
+					kTemp.emplace_back(&d_scat[timestep][osa_iter]);
 				kTemp.emplace_back(reinterpret_cast<void*>(&d_Summ[uu]));
 			}
 			kTemp.emplace_back(&no_norm);

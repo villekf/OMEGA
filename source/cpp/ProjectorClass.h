@@ -929,7 +929,7 @@ public:
 	std::vector<cl::Buffer> d_axIndex;
 	std::vector<cl::Buffer> d_TOFIndex;
 	std::vector<cl::Buffer> d_norm;
-	std::vector<cl::Buffer> d_scat;
+	std::vector<std::vector<cl::Buffer>> d_scat;
 	std::vector<std::vector<cl::Buffer>> d_x;
 	std::vector<std::vector<cl::Buffer>> d_z;
 	std::vector<cl::Buffer> d_atten;
@@ -1323,6 +1323,10 @@ public:
                             d_z[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
                         OCL_CHECK(status, "\n", -1);
                     }
+                    if (inputScalars.size_scat > 1 && inputScalars.scatter == 1U) { // Scatter correction buffer
+                        d_scat[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
+                        OCL_CHECK(status, "\n", -1);
+                    }
                 }
 				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
 					d_T[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk], NULL, &status);
@@ -1330,10 +1334,6 @@ public:
 				}
 				if (inputScalars.size_norm > 1 && inputScalars.normalization_correction) {
 					d_norm[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
-					OCL_CHECK(status, "\n", -1);
-				}
-				if (inputScalars.size_scat > 1 && inputScalars.scatter == 1U) {
-					d_scat[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
 					OCL_CHECK(status, "\n", -1);
 				}
 				if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
@@ -1554,6 +1554,11 @@ public:
                         OCL_CHECK(status, "\n", -1);
                         memSize += (sizeof(float) * length[kk] * 6) / 1048576ULL;
                     }
+                    if (inputScalars.size_scat > 1ULL && inputScalars.scatter == 1U) { // Load scatter data
+                        status = CLCommandQueue[0].enqueueWriteBuffer(d_scat[timestep][kk], CL_FALSE, 0, sizeof(float) * length[kk] * vecSize, &extraCorr[pituus[kk] * vecSize + inputScalars.kokoNonTOF * timestep]);
+                        OCL_CHECK(status, "\n", -1);
+                        memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
+                    }
                 }
 				
 				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
@@ -1595,12 +1600,7 @@ public:
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_norm[kk], CL_FALSE, 0, sizeof(float) * length[kk] * vecSize, &norm[pituus[kk] * vecSize]);
 					OCL_CHECK(status, "\n", -1);
 					memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
-				}
-				if (inputScalars.size_scat > 1ULL && inputScalars.scatter == 1U) {
-					status = CLCommandQueue[0].enqueueWriteBuffer(d_scat[kk], CL_FALSE, 0, sizeof(float) * length[kk] * vecSize, &extraCorr[pituus[kk] * vecSize]);
-					OCL_CHECK(status, "\n", -1);
-					memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
-				}
+                }
 				if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_atten[kk], CL_FALSE, 0, sizeof(float) * length[kk] * vecSize, &atten[pituus[kk] * vecSize]);
 					OCL_CHECK(status, "\n", -1);
@@ -1674,14 +1674,14 @@ public:
 		}
 		if (inputScalars.normalization_correction)
 			d_norm.resize(inputScalars.subsetsUsed);
-		if (inputScalars.scatter)
-			d_scat.resize(inputScalars.subsetsUsed);
 		if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation)
 			d_atten.resize(inputScalars.subsetsUsed);
 		if (inputScalars.projector_type != 6) {
+            d_scat.resize(inputScalars.Nt);
             d_x.resize(inputScalars.Nt);
             d_z.resize(inputScalars.Nt);
             for (int tt = 0; tt < inputScalars.Nt; tt++) {
+                d_scat[tt].resize(inputScalars.subsetsUsed);
                 d_x[tt].resize(inputScalars.subsetsUsed);
                 d_z[tt].resize(inputScalars.subsetsUsed);
             }
@@ -1863,29 +1863,6 @@ public:
 			mexPrintBase("kernelIndFP = %u\n", kernelIndFP);
 			mexPrintBase("kernelIndBP = %u\n", kernelIndBP);
 			mexEval();
-		}
-		return 0;
-	}
-
-	/// <summary>
-	/// Loads "dynamic" data, i.e. if the reconstruction is dynamic (time-varying) then this loads the measurement data/randoms/scatter for the next time step
-	/// </summary>
-	/// <param name="inputScalars various scalar parameters defining the build parameters and what features to use"></param>
-	/// <param name="length the number of measurements/projection/sinograms per subset"></param>
-	/// <param name="Sino measurement data (sinograms or projections)"></param>
-	/// <param name="randomsData randoms and/or scatter data (for additive scatter correction or for randoms correction)"></param>
-	/// <param name="extraCorr scatter data (for multiplicative scatter correction)"></param>
-	/// <param name="pituus cumulative sum of length"></param>
-	/// <returns></returns>
-	inline int loadDynamicData(scalarStruct& inputScalars, const std::vector<int64_t>& length, const float* extraCorr, const int64_t* pituus, const uint32_t tt) {
-
-		cl_int status = CL_SUCCESS;
-		for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-			if (inputScalars.scatter == 1u) {
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_scat[kk], CL_TRUE, 0, sizeof(float) * length[kk], &extraCorr[pituus[kk] + inputScalars.kokoNonTOF * tt]);
-				OCL_CHECK(status, "\n", -1);
-				memSize += (sizeof(float) * length[kk]) / 1048576ULL;
-			}
 		}
 		return 0;
 	}
@@ -2243,7 +2220,7 @@ public:
 			if (inputScalars.normalization_correction)
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_norm[osa_iter]);
 			if (inputScalars.scatter)
-				status = kernelFP.setArg(kernelIndFPSubIter++, d_scat[osa_iter]);
+				status = kernelFP.setArg(kernelIndFPSubIter++, d_scat[timestep][osa_iter]);
 			OCL_CHECK(status, "\n", -1);
 			status = kernelFP.setArg(kernelIndFPSubIter++, no_norm);
 			OCL_CHECK(status, "\n", -1);
@@ -2325,7 +2302,7 @@ public:
 			if (inputScalars.normalization_correction)
 				kernelFP.setArg(kernelIndFPSubIter++, d_norm[osa_iter]);
 			if (inputScalars.scatter)
-				kernelFP.setArg(kernelIndFPSubIter++, d_scat[osa_iter]);
+				kernelFP.setArg(kernelIndFPSubIter++, d_scat[timestep][osa_iter]);
 			status = kernelFP.setArg(kernelIndFPSubIter++, d_Summ[uu]);
 			OCL_CHECK(status, "\n", -1);
 			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_N[ii]));
@@ -2529,7 +2506,7 @@ public:
 				if (inputScalars.normalization_correction)
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[osa_iter]);
 				if (inputScalars.scatter)
-					status = kernelBP.setArg(kernelIndBPSubIter++, d_scat[osa_iter]);
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_scat[timestep][osa_iter]);
 			}
 			OCL_CHECK(status, "\n", -1);
 			status = kernelBP.setArg(kernelIndBPSubIter++, d_Summ[ee]);
@@ -2830,7 +2807,7 @@ public:
 				if (inputScalars.normalization_correction)
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[osa_iter]);
 				if (inputScalars.scatter)
-					status = kernelBP.setArg(kernelIndBPSubIter++, d_scat[osa_iter]);
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_scat[timestep][osa_iter]);
 				OCL_CHECK(status, "\n", -1);
 				status = kernelBP.setArg(kernelIndBPSubIter++, d_Summ[ee]);
 				OCL_CHECK(status, "\n", -1);
