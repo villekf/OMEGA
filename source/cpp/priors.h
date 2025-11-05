@@ -463,7 +463,7 @@ inline int applyPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& Me
 	else if (MethodList.RDP) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing RDP prior gradient");
-		status = RDP(vec.im_os[timestep][0], inputScalars, w_vec.RDP_gamma, proj, *dU, beta, w_vec.RDPref, w_vec, w_vec.RDPLargeNeighbor, w_vec.RDP_anatomical, kk);
+		status = RDP(vec.im_os[timestep][0], inputScalars, w_vec.RDP_gamma, proj, *dU, beta, w_vec.RDPref[timestep], w_vec, w_vec.RDPLargeNeighbor, w_vec.RDP_anatomical, kk);
 	}
 	else if (MethodList.GGMRF) {
 		if (inputScalars.verbose >= 3)
