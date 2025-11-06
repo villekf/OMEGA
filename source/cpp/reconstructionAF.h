@@ -998,49 +998,50 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
 	fflush(stdout);
 
-	// Main loop through each time-step
-	for (uint32_t tt = t0; tt < inputScalars.Nt; tt++) {
-		uint32_t ee = 0;
-		
-		// Loop through each iteration
-		for (uint32_t iter = iter0; iter < inputScalars.Niter; iter++) {
-			if (inputScalars.verbose >= 3 || DEBUG)
-				mexPrintVar("Starting iteration ", iter + 1);
-			if (inputScalars.subsetsUsed == 1 && (inputScalars.verbose >= 2 || DEBUG)) {
-				af::sync();
-				proj.tStartGlobal = std::chrono::steady_clock::now();
-			}
+	
+    uint32_t ee = 0;
+    
+    // Loop through each iteration
+    for (uint32_t iter = iter0; iter < inputScalars.Niter; iter++) {
+        if (inputScalars.verbose >= 3 || DEBUG)
+            mexPrintVar("Starting iteration ", iter + 1);
+        if (inputScalars.subsetsUsed == 1 && (inputScalars.verbose >= 2 || DEBUG)) {
+            af::sync();
+            proj.tStartGlobal = std::chrono::steady_clock::now();
+        }
 
-			uint32_t curIter = 0;
-			// Save the current iteration number if the current iteration is saved
-			if (inputScalars.saveIter || inputScalars.saveIterationsMiddle > 0)
-				curIter = iter;
-			if (DEBUG) {
-				mexPrintBase("curIter = %d\n", curIter);
-				mexEval();
-			}
+        uint32_t curIter = 0;
+        // Save the current iteration number if the current iteration is saved
+        if (inputScalars.saveIter || inputScalars.saveIterationsMiddle > 0)
+            curIter = iter;
+        if (DEBUG) {
+            mexPrintBase("curIter = %d\n", curIter);
+            mexEval();
+        }
 
-			int64_t uu = 0;
+        int64_t uu = 0;
 
-			// Loop through the subsets
-			for (uint32_t osa_iter = inputScalars.osa_iter0; osa_iter < inputScalars.subsetsUsed; osa_iter++) {
-				inputScalars.currentSubset = osa_iter;
-				if (inputScalars.stochastic) {
-					osa_iter = distribution(rng);
-					inputScalars.currentSubset = 0;
-				}
-				if (DEBUG || inputScalars.verbose >= 2) {
-					af::sync();
-					proj.tStartGlobal = std::chrono::steady_clock::now();
-					if (DEBUG || inputScalars.verbose >= 3)
-						mexPrintVar("Starting sub-iteration ", osa_iter + 1);
-				}
+        // Loop through the subsets
+        for (uint32_t osa_iter = inputScalars.osa_iter0; osa_iter < inputScalars.subsetsUsed; osa_iter++) {
+            inputScalars.currentSubset = osa_iter;
+            if (inputScalars.stochastic) {
+                osa_iter = distribution(rng);
+                inputScalars.currentSubset = 0;
+            }
+            if (DEBUG || inputScalars.verbose >= 2) {
+                af::sync();
+                proj.tStartGlobal = std::chrono::steady_clock::now();
+                if (DEBUG || inputScalars.verbose >= 3)
+                    mexPrintVar("Starting sub-iteration ", osa_iter + 1);
+            }
 
-				uint64_t m_size = length[osa_iter];
-				uint32_t subIter = osa_iter;
-				if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
-					m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[osa_iter];
+            uint64_t m_size = length[osa_iter];
+            uint32_t subIter = osa_iter;
+            if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
+                m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[osa_iter];
 
+            // Loop through each time-step
+            for (uint32_t tt = t0; tt < inputScalars.Nt; tt++) {
 				// Load TOF/measurement data if it wasn't preloaded
 				if (((osa_iter > inputScalars.osa_iter0 || iter > iter0) && !inputScalars.loadTOF) || inputScalars.largeDim) {
 					if (inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8))
@@ -1427,16 +1428,15 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 				}
 
 				if (inputScalars.verbose > 0 && inputScalars.subsetsUsed > 1 && inputScalars.stochastic == false) {
-					
 					if (DEBUG || inputScalars.verbose >= 2) {
 						af::sync();
 						proj.tEndGlobal = std::chrono::steady_clock::now();
 						const std::chrono::duration<double> tDiff = proj.tEndGlobal - proj.tStartGlobal;
-						mexPrintBase("Sub-iteration %d complete in %f seconds\n", osa_iter + 1u, tDiff);
+						mexPrintBase("Sub-iteration %d for timestep %d complete in %f seconds\n", osa_iter + 1u, tt + 1u, tDiff);
 						totTime += tDiff.count();
 					}
 					else
-						mexPrintBase("Sub-iteration %d complete\n", osa_iter + 1u);
+						mexPrintBase("Sub-iteration %d for timestep %d complete\n", osa_iter + 1u, tt + 1u);
 					mexEval();
 				}
 
@@ -1450,51 +1450,48 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
 				af::deviceGC();
 			}
-			// Compute some subset-based algorithms that require special operations after each iteration such as BSREM or ROSEM
-			// Also copy the current iteration if needed
-			if (!inputScalars.largeDim) {
-				status = computeOSEstimatesIter(vec, w_vec, MethodList, inputScalars, iter, proj, g, cell, ee, eInd, x0, tt);
-				if (status != 0)
-					return -1;
-				if (inputScalars.enforcePositivity && inputScalars.subsetsUsed == 1 && !MethodList.CPType) {
-					for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
-						vec.im_os[tt][ii](vec.im_os[tt][ii] < inputScalars.epps) = inputScalars.epps;
-				}
-			}
+        }
+        // Compute some subset-based algorithms that require special operations after each iteration such as BSREM or ROSEM
+        // Also copy the current iteration if needed
+        if (!inputScalars.largeDim) {
+            for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {   
+                status = computeOSEstimatesIter(vec, w_vec, MethodList, inputScalars, iter, proj, g, cell, ee, eInd, x0, timestep);
+                if (status != 0)
+                    return -1;
+                if (inputScalars.enforcePositivity && inputScalars.subsetsUsed == 1 && !MethodList.CPType) {
+                    for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
+                        vec.im_os[timestep][ii](vec.im_os[timestep][ii] < inputScalars.epps) = inputScalars.epps;
+                }
+            }
+        }
 
-			if (compute_norm_matrix == 2u)
-				proj.no_norm = 1u;
+        if (compute_norm_matrix == 2u)
+            proj.no_norm = 1u;
 
-			if (inputScalars.verbose > 0) {
-				if (DEBUG || inputScalars.verbose >= 2) {
-					af::sync();
-					if (inputScalars.subsetsUsed == 1 && (inputScalars.verbose >= 2 || DEBUG)) {
-						proj.tEndGlobal = std::chrono::steady_clock::now();
-						const std::chrono::duration<double> tDiff = proj.tEndGlobal - proj.tStartGlobal;
-						totTime += tDiff.count();
-					}
-					iterTime = totTime - cumulativeTime;
-					cumulativeTime += iterTime;
-					mexPrintBase("Iteration %d complete in %f seconds\n", iter + 1u, iterTime);
-					mexPrintBase("Estimated time left: %f seconds\n", iterTime * (inputScalars.Niter - 1 - iter));
-				}
-				else
-					mexPrintBase("Iteration %d complete\n", iter + 1u);
-				mexEval();
-			}
-			af::deviceGC();
-			if (break_iter)
-				break;
-		}
+        if (inputScalars.verbose > 0) {
+            if (DEBUG || inputScalars.verbose >= 2) {
+                af::sync();
+                if (inputScalars.subsetsUsed == 1 && (inputScalars.verbose >= 2 || DEBUG)) {
+                    proj.tEndGlobal = std::chrono::steady_clock::now();
+                    const std::chrono::duration<double> tDiff = proj.tEndGlobal - proj.tStartGlobal;
+                    totTime += tDiff.count();
+                }
+                iterTime = totTime - cumulativeTime;
+                cumulativeTime += iterTime;
+                mexPrintBase("Iteration %d complete in %f seconds\n", iter + 1u, iterTime);
+                mexPrintBase("Estimated time left: %f seconds\n", iterTime * (inputScalars.Niter - 1 - iter));
+            }
+            else
+                mexPrintBase("Iteration %d complete\n", iter + 1u);
+            mexEval();
+        }
+        af::deviceGC();
+        if (break_iter)
+            break;
+    }
 
-		if (w_vec.filteringOrig)
-			w_vec.precondTypeMeas[1] = w_vec.filteringOrig;
-
-		if (inputScalars.verbose > 0 && inputScalars.listmode != 2 && inputScalars.Nt > 1) {
-			mexPrintBase("Time step %d complete\n", tt + 1u);
-			mexEval();
-		}
-	}
+    if (w_vec.filteringOrig)
+        w_vec.precondTypeMeas[1] = w_vec.filteringOrig;
 
     if (!inputScalars.largeDim) {
 #ifdef MATLAB // Transfer the device data to host MATLAB mxarray
