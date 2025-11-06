@@ -925,9 +925,9 @@ public:
 	std::vector<cl::Buffer> d_imFinal;
 	std::vector<cl::Buffer> d_zindex;
 	std::vector<cl::Buffer> d_xyindex;
-	std::vector<cl::Buffer> d_trIndex;
-	std::vector<cl::Buffer> d_axIndex;
-	std::vector<cl::Buffer> d_TOFIndex;
+	std::vector<std::vector<cl::Buffer>> d_trIndex;
+	std::vector<std::vector<cl::Buffer>> d_axIndex;
+	std::vector<std::vector<cl::Buffer>> d_TOFIndex;
 	std::vector<cl::Buffer> d_norm;
 	std::vector<std::vector<cl::Buffer>> d_scat;
 	std::vector<std::vector<cl::Buffer>> d_x;
@@ -1327,6 +1327,20 @@ public:
                         d_scat[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
                         OCL_CHECK(status, "\n", -1);
                     }
+                    if (inputScalars.listmode > 0 && inputScalars.indexBased) {
+                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) { // First condition: load all data at once. Second condition: load one subset at a time (only 1 buffer required for each timestep).
+                            d_trIndex[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk] * 2, NULL, &status);
+                            OCL_CHECK(status, "\n", -1);
+                            d_axIndex[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk] * 2, NULL, &status);
+                            OCL_CHECK(status, "\n", -1);
+                        }
+                    }
+                    if (inputScalars.listmode > 0 && inputScalars.TOF) {
+                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
+                            d_TOFIndex[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * length[kk], NULL, &status);
+                            OCL_CHECK(status, "\n", -1);
+                        }
+                    }
                 }
 				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
 					d_T[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk], NULL, &status);
@@ -1350,20 +1364,6 @@ public:
 					OCL_CHECK(status, "\n", -1);
 					d_zindex[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk], NULL, &status);
 					OCL_CHECK(status, "\n", -1);
-				}
-				if (inputScalars.listmode > 0 && inputScalars.indexBased) {
-					if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
-						d_trIndex[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk] * 2, NULL, &status);
-						OCL_CHECK(status, "\n", -1);
-						d_axIndex[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk] * 2, NULL, &status);
-						OCL_CHECK(status, "\n", -1);
-					}
-				}
-				if (inputScalars.listmode > 0 && inputScalars.TOF) {
-					if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
-						d_TOFIndex[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * length[kk], NULL, &status);
-						OCL_CHECK(status, "\n", -1);
-					}
 				}
 			}
 		}
@@ -1559,6 +1559,23 @@ public:
                         OCL_CHECK(status, "\n", -1);
                         memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
                     }
+                    if (inputScalars.listmode > 0 && inputScalars.indexBased) {
+                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) { // First condition: load all data at once. Second condition: load one subset at a time (only 1 buffer required for each timestep).
+                            status = CLCommandQueue[0].enqueueWriteBuffer(d_trIndex[timestep][kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk] * 2, &w_vec.trIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * timestep]);
+                            OCL_CHECK(status, "\n", -1);
+                            memSize += (sizeof(uint16_t) * length[kk] * 2) / 1048576ULL;
+                            status = CLCommandQueue[0].enqueueWriteBuffer(d_axIndex[timestep][kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk] * 2, &w_vec.axIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * timestep]);
+                            OCL_CHECK(status, "\n", -1);
+                            memSize += (sizeof(uint16_t) * length[kk] * 2) / 1048576ULL;
+                        }
+                    }
+                    if (inputScalars.listmode > 0 && inputScalars.TOF) {
+                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
+                            status = CLCommandQueue[0].enqueueWriteBuffer(d_TOFIndex[timestep][kk], CL_FALSE, 0, sizeof(uint8_t) * length[kk], &w_vec.TOFIndices[pituus[kk] + inputScalars.kokoNonTOF * timestep]);
+                            OCL_CHECK(status, "\n", -1);
+                            memSize += (sizeof(uint8_t) * length[kk]) / 1048576ULL;
+                        }
+                    }
                 }
 				
 				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
@@ -1576,23 +1593,6 @@ public:
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_xyindex[kk], CL_FALSE, 0, sizeof(uint32_t) * length[kk], &xy_index[pituus[kk]]);
 					OCL_CHECK(status, "\n", -1);
 					memSize += (sizeof(uint32_t) * length[kk] + sizeof(uint16_t) * length[kk]) / 1048576ULL;
-				}
-				if (inputScalars.listmode > 0 && inputScalars.indexBased) {
-					if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
-						status = CLCommandQueue[0].enqueueWriteBuffer(d_trIndex[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk] * 2, &w_vec.trIndex[pituus[kk] * 2]);
-						OCL_CHECK(status, "\n", -1);
-						memSize += (sizeof(uint16_t) * length[kk] * 2) / 1048576ULL;
-						status = CLCommandQueue[0].enqueueWriteBuffer(d_axIndex[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk] * 2, &w_vec.axIndex[pituus[kk] * 2]);
-						OCL_CHECK(status, "\n", -1);
-						memSize += (sizeof(uint16_t) * length[kk] * 2) / 1048576ULL;
-					}
-				}
-				if (inputScalars.listmode > 0 && inputScalars.TOF) {
-					if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
-						status = CLCommandQueue[0].enqueueWriteBuffer(d_TOFIndex[kk], CL_FALSE, 0, sizeof(uint8_t) * length[kk], &w_vec.TOFIndices[pituus[kk]]);
-						OCL_CHECK(status, "\n", -1);
-						memSize += (sizeof(uint8_t) * length[kk]) / 1048576ULL;
-					}
 				}
 				status = CLCommandQueue[0].finish();
 				OCL_CHECK(status, "\n", -1);
@@ -1665,13 +1665,6 @@ public:
 			d_xyindex.resize(inputScalars.subsetsUsed);
 			d_zindex.resize(inputScalars.subsetsUsed);
 		}
-		if (inputScalars.listmode > 0 && inputScalars.indexBased) {
-			d_trIndex.resize(inputScalars.subsetsUsed);
-			d_axIndex.resize(inputScalars.subsetsUsed);
-		}
-		if (inputScalars.listmode > 0 && inputScalars.TOF) {
-			d_TOFIndex.resize(inputScalars.subsetsUsed);
-		}
 		if (inputScalars.normalization_correction)
 			d_norm.resize(inputScalars.subsetsUsed);
 		if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation)
@@ -1680,10 +1673,16 @@ public:
             d_scat.resize(inputScalars.Nt);
             d_x.resize(inputScalars.Nt);
             d_z.resize(inputScalars.Nt);
+            d_trIndex.resize(inputScalars.Nt);
+            d_axIndex.resize(inputScalars.Nt);
+            d_TOFIndex.resize(inputScalars.Nt);
             for (int tt = 0; tt < inputScalars.Nt; tt++) {
                 d_scat[tt].resize(inputScalars.subsetsUsed);
                 d_x[tt].resize(inputScalars.subsetsUsed);
                 d_z[tt].resize(inputScalars.subsetsUsed);
+                d_trIndex[tt].resize(inputScalars.subsetsUsed);
+                d_axIndex[tt].resize(inputScalars.subsetsUsed);
+                d_TOFIndex[tt].resize(inputScalars.subsetsUsed);
             }
 		}
 		if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5))
@@ -1900,24 +1899,26 @@ public:
 		}
 		return status;
 	}
+
 	template <typename T>
 	inline int loadCoord(uint32_t currentSubset, scalarStruct& inputScalars, const int64_t length, const T* listCoord, const T* listCoordAx = nullptr, const uint8_t* TOFIndices = nullptr) {
 		cl_int status = CL_SUCCESS;
+        uint32_t timestep = 0; // TODO!!!!!!
         if (inputScalars.listmode > 0){
             if (inputScalars.indexBased) {
-                d_trIndex[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length * 2, NULL, &status);
+                d_trIndex[timestep][0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length * 2, NULL, &status);
                 OCL_CHECK(status, "\n", -1);
-                d_axIndex[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length * 2, NULL, &status);
+                d_axIndex[timestep][0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length * 2, NULL, &status);
                 OCL_CHECK(status, "\n", -1);
-                status = CLCommandQueue[0].enqueueWriteBuffer(d_trIndex[0], CL_FALSE, 0, sizeof(uint16_t) * length * 2, listCoord);
+                status = CLCommandQueue[0].enqueueWriteBuffer(d_trIndex[timestep][0], CL_FALSE, 0, sizeof(uint16_t) * length * 2, listCoord);
                 OCL_CHECK(status, "\n", -1);
-                status = CLCommandQueue[0].enqueueWriteBuffer(d_axIndex[0], CL_FALSE, 0, sizeof(uint16_t) * length * 2, listCoordAx);
+                status = CLCommandQueue[0].enqueueWriteBuffer(d_axIndex[timestep][0], CL_FALSE, 0, sizeof(uint16_t) * length * 2, listCoordAx);
                 OCL_CHECK(status, "\n", -1);
             }
             if (inputScalars.TOF) {
-                d_TOFIndex[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * length, NULL, &status);
+                d_TOFIndex[timestep][0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * length, NULL, &status);
                 OCL_CHECK(status, "\n", -1);
-                status = CLCommandQueue[0].enqueueWriteBuffer(d_TOFIndex[0], CL_FALSE, 0, sizeof(uint8_t) * length, TOFIndices);
+                status = CLCommandQueue[0].enqueueWriteBuffer(d_TOFIndex[timestep][0], CL_FALSE, 0, sizeof(uint8_t) * length, TOFIndices);
                 OCL_CHECK(status, "\n", -1);
             }
         }
@@ -2196,21 +2197,19 @@ public:
 				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.listmode > 0 && inputScalars.indexBased) {
-				if (!inputScalars.loadTOF) {
-					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_trIndex[0]));
-					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_axIndex[0]));
-				}
-				else {
-					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_trIndex[osa_iter]));
-					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_axIndex[osa_iter]));
+				if (!inputScalars.loadTOF) { // The data is loaded step by step to the first buffer
+					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_trIndex[timestep][0]));
+					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_axIndex[timestep][0]));
+				} else { // All buffers are populated with data
+					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_trIndex[timestep][osa_iter]));
+					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_axIndex[timestep][osa_iter]));
 				}
 			}
 			if (inputScalars.listmode > 0 && inputScalars.TOF) {
 				if (!inputScalars.loadTOF) {
-					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_TOFIndex[0]));
-				}
-				else {
-					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_TOFIndex[osa_iter]));
+					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_TOFIndex[timestep][0]));
+				} else {
+					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_TOFIndex[timestep][osa_iter]));
 				}
 			}
 			if (inputScalars.raw) {
@@ -2318,20 +2317,18 @@ public:
 			}
 			if (inputScalars.listmode > 0 && inputScalars.indexBased) {
 				if (!inputScalars.loadTOF) {
-					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_trIndex[0]));
-					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_axIndex[0]));
-				}
-				else {
-					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_trIndex[osa_iter]));
-					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_axIndex[osa_iter]));
+					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_trIndex[timestep][0]));
+					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_axIndex[timestep][0]));
+				} else {
+					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_trIndex[timestep][osa_iter]));
+					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_axIndex[timestep][osa_iter]));
 				}
 			}
 			if (inputScalars.listmode > 0 && inputScalars.TOF) {
 				if (!inputScalars.loadTOF) {
-					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_TOFIndex[0]));
-				}
-				else {
-					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_TOFIndex[osa_iter]));
+					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_TOFIndex[timestep][0]));
+				} else {
+					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_TOFIndex[timestep][osa_iter]));
 				}
 			}
 			if (inputScalars.raw)
@@ -2521,20 +2518,18 @@ public:
 			}
 			if (inputScalars.listmode > 0 && inputScalars.indexBased && !compSens) {
 				if (!inputScalars.loadTOF) {
-					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_trIndex[0]));
-					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_axIndex[0]));
-				}
-				else {
-					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_trIndex[osa_iter]));
-					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_axIndex[osa_iter]));
+					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_trIndex[timestep][0]));
+					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_axIndex[timestep][0]));
+				} else {
+					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_trIndex[timestep][osa_iter]));
+					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_axIndex[timestep][osa_iter]));
 				}
 			}
 			if (inputScalars.listmode > 0 && inputScalars.TOF) {
 				if (!inputScalars.loadTOF) {
-					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_TOFIndex[0]));
-				}
-				else {
-					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_TOFIndex[osa_iter]));
+					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_TOFIndex[timestep][0]));
+				} else {
+					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_TOFIndex[timestep][osa_iter]));
 				}
 			}
 			if (inputScalars.raw)
@@ -2785,20 +2780,18 @@ public:
 				}
 				if (inputScalars.listmode > 0 && inputScalars.indexBased && !compSens) {
 					if (!inputScalars.loadTOF) {
-						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_trIndex[0]));
-						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_axIndex[0]));
-					}
-					else {
-						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_trIndex[osa_iter]));
-						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_axIndex[osa_iter]));
+						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_trIndex[timestep][0]));
+						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_axIndex[timestep][0]));
+					} else {
+						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_trIndex[timestep][osa_iter]));
+						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_axIndex[timestep][osa_iter]));
 					}
 				}
 				if (inputScalars.listmode > 0 && inputScalars.TOF) {
 					if (!inputScalars.loadTOF) {
-						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_TOFIndex[0]));
-					}
-					else {
-						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_TOFIndex[osa_iter]));
+						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_TOFIndex[timestep][0]));
+					} else {
+						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_TOFIndex[timestep][osa_iter]));
 					}
 				}
 				if (inputScalars.raw) {

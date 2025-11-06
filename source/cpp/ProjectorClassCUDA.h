@@ -980,9 +980,9 @@ public:
 	std::vector<std::vector<CUdeviceptr>> d_z;
 	std::vector<CUdeviceptr> d_atten;
 	std::vector<CUdeviceptr> d_T;
-	std::vector<CUdeviceptr> d_trIndex;
-	std::vector<CUdeviceptr> d_axIndex;
-	std::vector<CUdeviceptr> d_TOFIndex;
+	std::vector<std::vector<CUdeviceptr>> d_trIndex;
+	std::vector<std::vector<CUdeviceptr>> d_axIndex;
+	std::vector<std::vector<CUdeviceptr>> d_TOFIndex;
 	CUDA_TEXTURE_DESC texDesc;
 	CUDA_ARRAY_DESCRIPTOR arr2DDesc;
 	CUDA_ARRAY3D_DESCRIPTOR_st arr3DDesc;
@@ -1028,6 +1028,17 @@ public:
                     getErrorString(cuMemFree(d_scat[tt][kk]));
                 }
             }
+            if (memAlloc.indexBased) {
+                for (int kk = 0; kk < memAlloc.iSteps / memAlloc.tSteps; kk++) {
+                    getErrorString(cuMemFree(d_trIndex[tt][kk]));
+                    getErrorString(cuMemFree(d_axIndex[tt][kk]));
+                }
+            }
+            if (memAlloc.TOFIndex) {
+                for (int kk = 0; kk < memAlloc.TOFSteps / memAlloc.tSteps; kk++) {
+                    getErrorString(cuMemFree(d_TOFIndex[tt][kk]));
+                }
+            }
         }
 		if (memAlloc.offsetT) {
 			for (int kk = 0; kk < memAlloc.oSteps; kk++) {
@@ -1050,17 +1061,6 @@ public:
 		if (memAlloc.norm) {
 			for (int kk = 0; kk < memAlloc.nSteps; kk++) {
 				getErrorString(cuMemFree(d_norm[kk]));
-			}
-		}
-		if (memAlloc.indexBased) {
-			for (int kk = 0; kk < memAlloc.iSteps; kk++) {
-				getErrorString(cuMemFree(d_trIndex[kk]));
-				getErrorString(cuMemFree(d_axIndex[kk]));
-			}
-		}
-		if (memAlloc.TOFIndex) {
-			for (int kk = 0; kk < memAlloc.TOFSteps; kk++) {
-				getErrorString(cuMemFree(d_TOFIndex[kk]));
 			}
 		}
 		if (memAlloc.angle)
@@ -1706,6 +1706,24 @@ public:
                         memAlloc.extra = true;
                         memAlloc.eSteps++;
                     }
+                    if (inputScalars.listmode > 0 && inputScalars.indexBased) {
+                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
+                            status = cuMemAlloc(&d_trIndex[timestep][kk], sizeof(uint16_t) * length[kk] * 2);
+                            CUDA_CHECK(status, "\n", -1);
+                            status = cuMemAlloc(&d_axIndex[timestep][kk], sizeof(uint16_t) * length[kk] * 2);
+                            CUDA_CHECK(status, "\n", -1);
+                            memAlloc.indexBased = true;
+                            memAlloc.iSteps++;
+                        }
+                    }
+                    if (inputScalars.listmode > 0 && inputScalars.TOF) {
+                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
+                            status = cuMemAlloc(&d_TOFIndex[timestep][kk], sizeof(uint8_t) * length[kk]);
+                            CUDA_CHECK(status, "\n", -1);
+                            memAlloc.TOFIndex = true;
+                            memAlloc.TOFSteps++;
+                        }
+                    }
                 }
 				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
 					status = cuMemAlloc(&d_T[kk], sizeof(float) * length[kk]);
@@ -1740,24 +1758,6 @@ public:
 					CUDA_CHECK(status, "\n", -1);
 					memAlloc.subInd = true;
 					memAlloc.iSteps++;
-				}
-				if (inputScalars.listmode > 0 && inputScalars.indexBased) {
-					if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
-						status = cuMemAlloc(&d_trIndex[kk], sizeof(uint16_t) * length[kk] * 2);
-						CUDA_CHECK(status, "\n", -1);
-						status = cuMemAlloc(&d_axIndex[kk], sizeof(uint16_t) * length[kk] * 2);
-						CUDA_CHECK(status, "\n", -1);
-						memAlloc.indexBased = true;
-						memAlloc.iSteps++;
-					}
-				}
-				if (inputScalars.listmode > 0 && inputScalars.TOF) {
-					if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
-						status = cuMemAlloc(&d_TOFIndex[kk], sizeof(uint8_t) * length[kk]);
-						CUDA_CHECK(status, "\n", -1);
-						memAlloc.TOFIndex = true;
-						memAlloc.TOFSteps++;
-					}
 				}
 			}
 		}
@@ -1861,6 +1861,20 @@ public:
                         status = cuMemcpyHtoD(d_scat[timestep][kk], &extraCorr[pituus[kk] * vecSize + inputScalars.kokoNonTOF * timestep], sizeof(float) * length[kk] * vecSize);
                         CUDA_CHECK(status, "\n", -1);
                     }
+                    if (inputScalars.listmode > 0 && inputScalars.indexBased) {
+                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
+                            status = cuMemcpyHtoD(d_trIndex[timestep][kk], &w_vec.trIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * timestep], sizeof(uint16_t) * length[kk] * 2);
+                            CUDA_CHECK(status, "\n", -1);
+                            status = cuMemcpyHtoD(d_axIndex[timestep][kk], &w_vec.axIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * timestep], sizeof(uint16_t) * length[kk] * 2);
+                            CUDA_CHECK(status, "\n", -1);
+                        }
+                    }
+                    if (inputScalars.listmode > 0 && inputScalars.TOF) {
+                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
+                            status = cuMemcpyHtoD(d_TOFIndex[timestep][kk], &w_vec.TOFIndices[pituus[kk] + inputScalars.kokoNonTOF * timestep], sizeof(uint8_t) * length[kk]);
+                            CUDA_CHECK(status, "\n", -1);
+                        }
+                    }
                 }
 				
 				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
@@ -1877,20 +1891,7 @@ public:
 					status = cuMemcpyHtoD(d_xyindex[kk], &xy_index[pituus[kk]], sizeof(uint32_t) * length[kk]);
 					CUDA_CHECK(status, "\n", -1);
 				}
-				if (inputScalars.listmode > 0 && inputScalars.indexBased) {
-					if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
-						status = cuMemcpyHtoD(d_trIndex[kk], &w_vec.trIndex[pituus[kk] * 2], sizeof(uint16_t) * length[kk] * 2);
-						CUDA_CHECK(status, "\n", -1);
-						status = cuMemcpyHtoD(d_axIndex[kk], &w_vec.axIndex[pituus[kk] * 2], sizeof(uint16_t) * length[kk] * 2);
-						CUDA_CHECK(status, "\n", -1);
-					}
-				}
-				if (inputScalars.listmode > 0 && inputScalars.TOF) {
-					if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
-						status = cuMemcpyHtoD(d_TOFIndex[kk], &w_vec.TOFIndices[pituus[kk]], sizeof(uint8_t) * length[kk]);
-						CUDA_CHECK(status, "\n", -1);
-					}
-				}
+				
 				if (inputScalars.normalization_correction) {
 					status = cuMemcpyHtoD(d_norm[kk], &norm[pituus[kk] * vecSize], sizeof(float) * length[kk] * vecSize);
 					CUDA_CHECK(status, "\n", -1);
@@ -1958,13 +1959,6 @@ public:
 			d_xyindex.resize(inputScalars.subsetsUsed);
 			d_zindex.resize(inputScalars.subsetsUsed);
 		}
-		if (inputScalars.listmode > 0 && inputScalars.indexBased) {
-			d_trIndex.resize(inputScalars.subsetsUsed);
-			d_axIndex.resize(inputScalars.subsetsUsed);
-		}
-		if (inputScalars.listmode > 0 && inputScalars.TOF) {
-			d_TOFIndex.resize(inputScalars.subsetsUsed);
-		}
 		if (inputScalars.normalization_correction)
 			d_norm.resize(inputScalars.subsetsUsed);
 		if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation)
@@ -1973,10 +1967,16 @@ public:
 		d_scat.resize(inputScalars.Nt);
         d_x.resize(inputScalars.Nt);
         d_z.resize(inputScalars.Nt);
+        d_trIndex.resize(inputScalars.Nt);
+        d_axIndex.resize(inputScalars.Nt);
+        d_TOFIndex.resize(inputScalars.Nt);
         for (int tt = 0; tt < inputScalars.Nt; tt++) {
             d_scat[tt].resize(inputScalars.subsetsUsed);
             d_x[tt].resize(inputScalars.subsetsUsed);
             d_z[tt].resize(inputScalars.subsetsUsed);
+            d_trIndex[tt].resize(inputScalars.subsetsUsed);
+            d_axIndex[tt].resize(inputScalars.subsetsUsed);
+            d_TOFIndex[tt].resize(inputScalars.subsetsUsed);
         }
 		if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5))
 			d_T.resize(inputScalars.subsetsUsed);
@@ -2185,24 +2185,25 @@ public:
 	template <typename T>
 	inline int loadCoord(uint32_t currentSubset, scalarStruct& inputScalars, const int64_t length, const T* listCoord, const T* listCoordAx = nullptr, const uint8_t* TOFIndices = nullptr) {
 		CUresult status = CUDA_SUCCESS;
+        uint32_t timestep = 0; // TODO!!!
         if (inputScalars.listmode > 0) {
             if (inputScalars.indexBased) {
-                getErrorString(cuMemFree(d_trIndex[0]));
-                getErrorString(cuMemFree(d_axIndex[0]));
-                status = cuMemAlloc(&d_trIndex[0], sizeof(uint16_t) * length * 2);
+                getErrorString(cuMemFree(d_trIndex[timestep][0]));
+                getErrorString(cuMemFree(d_axIndex[timestep][0]));
+                status = cuMemAlloc(&d_trIndex[timestep][0], sizeof(uint16_t) * length * 2);
                 CUDA_CHECK(status, "\n", -1);
-                status = cuMemAlloc(&d_axIndex[0], sizeof(uint16_t) * length * 2);
+                status = cuMemAlloc(&d_axIndex[timestep][0], sizeof(uint16_t) * length * 2);
                 CUDA_CHECK(status, "\n", -1);
-                status = cuMemcpyHtoD(d_trIndex[0], listCoord, sizeof(uint16_t) * length * 2);
+                status = cuMemcpyHtoD(d_trIndex[timestep][0], listCoord, sizeof(uint16_t) * length * 2);
                 CUDA_CHECK(status, "\n", -1);
-                status = cuMemcpyHtoD(d_axIndex[0], listCoordAx, sizeof(uint16_t) * length * 2);
+                status = cuMemcpyHtoD(d_axIndex[timestep][0], listCoordAx, sizeof(uint16_t) * length * 2);
                 CUDA_CHECK(status, "\n", -1);
             }
             if (inputScalars.TOF) {
-                getErrorString(cuMemFree(d_TOFIndex[0]));
-                status = cuMemAlloc(&d_TOFIndex[0], sizeof(uint8_t) * length);
+                getErrorString(cuMemFree(d_TOFIndex[timestep][0]));
+                status = cuMemAlloc(&d_TOFIndex[timestep][0], sizeof(uint8_t) * length);
                 CUDA_CHECK(status, "\n", -1);
-                status = cuMemcpyHtoD(d_TOFIndex[0], TOFIndices, sizeof(uint8_t) * length);
+                status = cuMemcpyHtoD(d_TOFIndex[timestep][0], TOFIndices, sizeof(uint8_t) * length);
                 CUDA_CHECK(status, "\n", -1);
             }
         }
@@ -2333,20 +2334,18 @@ public:
 			}
 			if (inputScalars.listmode > 0 && inputScalars.indexBased) {
 				if (!inputScalars.loadTOF) {
-					kTemp.emplace_back(&d_trIndex[0]);
-					kTemp.emplace_back(&d_axIndex[0]);
-				}
-				else {
-					kTemp.emplace_back(&d_trIndex[osa_iter]);
-					kTemp.emplace_back(&d_axIndex[osa_iter]);
+					kTemp.emplace_back(&d_trIndex[timestep][0]);
+					kTemp.emplace_back(&d_axIndex[timestep][0]);
+				} else {
+					kTemp.emplace_back(&d_trIndex[timestep][osa_iter]);
+					kTemp.emplace_back(&d_axIndex[timestep][osa_iter]);
 				}
 			}
 			if (inputScalars.listmode > 0 && inputScalars.TOF) {
 				if (!inputScalars.loadTOF) {
-					kTemp.emplace_back(&d_TOFIndex[0]);
-				}
-				else {
-					kTemp.emplace_back(&d_TOFIndex[osa_iter]);
+					kTemp.emplace_back(&d_TOFIndex[timestep][0]);
+				} else {
+					kTemp.emplace_back(&d_TOFIndex[timestep][osa_iter]);
 				}
 			}
 			if (inputScalars.raw) {
@@ -2437,20 +2436,18 @@ public:
 			}
 			if (inputScalars.listmode > 0 && inputScalars.indexBased) {
 				if (!inputScalars.loadTOF) {
-					kTemp.emplace_back(&d_trIndex[0]);
-					kTemp.emplace_back(&d_axIndex[0]);
-				}
-				else {
-					kTemp.emplace_back(&d_trIndex[osa_iter]);
-					kTemp.emplace_back(&d_axIndex[osa_iter]);
+					kTemp.emplace_back(&d_trIndex[timestep][0]);
+					kTemp.emplace_back(&d_axIndex[timestep][0]);
+				} else {
+					kTemp.emplace_back(&d_trIndex[timestep][osa_iter]);
+					kTemp.emplace_back(&d_axIndex[timestep][osa_iter]);
 				}
 			}
 			if (inputScalars.listmode > 0 && inputScalars.TOF) {
 				if (!inputScalars.loadTOF) {
-					kTemp.emplace_back(&d_TOFIndex[0]);
-				}
-				else {
-					kTemp.emplace_back(&d_TOFIndex[osa_iter]);
+					kTemp.emplace_back(&d_TOFIndex[timestep][0]);
+				} else {
+					kTemp.emplace_back(&d_TOFIndex[timestep][osa_iter]);
 				}
 			}
 			if (inputScalars.raw) {
@@ -2646,20 +2643,18 @@ public:
 			}
 			if (inputScalars.listmode > 0 && inputScalars.indexBased && !compSens) {
 				if (!inputScalars.loadTOF) {
-					kTemp.emplace_back(&d_trIndex[0]);
-					kTemp.emplace_back(&d_axIndex[0]);
-				}
-				else {
-					kTemp.emplace_back(&d_trIndex[osa_iter]);
-					kTemp.emplace_back(&d_axIndex[osa_iter]);
+					kTemp.emplace_back(&d_trIndex[timestep][0]);
+					kTemp.emplace_back(&d_axIndex[timestep][0]);
+				} else {
+					kTemp.emplace_back(&d_trIndex[timestep][osa_iter]);
+					kTemp.emplace_back(&d_axIndex[timestep][osa_iter]);
 				}
 			}
 			if (inputScalars.listmode > 0 && inputScalars.TOF) {
 				if (!inputScalars.loadTOF) {
-					kTemp.emplace_back(&d_TOFIndex[0]);
-				}
-				else {
-					kTemp.emplace_back(&d_TOFIndex[osa_iter]);
+					kTemp.emplace_back(&d_TOFIndex[timestep][0]);
+				} else {
+					kTemp.emplace_back(&d_TOFIndex[timestep][osa_iter]);
 				}
 			}
 			if (inputScalars.raw)
@@ -2945,20 +2940,18 @@ public:
 				}
 				if (inputScalars.listmode > 0 && inputScalars.indexBased && !compSens) {
 					if (!inputScalars.loadTOF) {
-						kTemp.emplace_back(&d_trIndex[0]);
-						kTemp.emplace_back(&d_axIndex[0]);
-					}
-					else {
-						kTemp.emplace_back(&d_trIndex[osa_iter]);
-						kTemp.emplace_back(&d_axIndex[osa_iter]);
+						kTemp.emplace_back(&d_trIndex[timestep][0]);
+						kTemp.emplace_back(&d_axIndex[timestep][0]);
+					} else {
+						kTemp.emplace_back(&d_trIndex[timestep][osa_iter]);
+						kTemp.emplace_back(&d_axIndex[timestep][osa_iter]);
 					}
 				}
 				if (inputScalars.listmode > 0 && inputScalars.TOF) {
 					if (!inputScalars.loadTOF) {
-						kTemp.emplace_back(&d_TOFIndex[0]);
-					}
-					else {
-						kTemp.emplace_back(&d_TOFIndex[osa_iter]);
+						kTemp.emplace_back(&d_TOFIndex[timestep][0]);
+					} else {
+						kTemp.emplace_back(&d_TOFIndex[timestep][osa_iter]);
 					}
 				}
 				if (inputScalars.raw) {
