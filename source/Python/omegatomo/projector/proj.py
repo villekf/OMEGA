@@ -480,9 +480,9 @@ class projectorClass:
     rayShiftsSource: npt.NDArray[np.float32] = np.empty(0, dtype=np.float32)
     CORtoDetectorSurface: float = 0 # Detector swivel radius
     swivelAngles: npt.NDArray[np.float32] = np.empty(0, dtype = np.float32)
-    coneOfResponseStdCoeffA = 0
-    coneOfResponseStdCoeffB = 0
-    coneOfResponseStdCoeffC = 0
+    coneOfResponseStdCoeffA = -1
+    coneOfResponseStdCoeffB = -1
+    coneOfResponseStdCoeffC = -1
     FISTAType = 0
     maskFPZ = 1
     maskBPZ = 1

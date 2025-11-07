@@ -70,13 +70,13 @@ if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelli
 end
 if ismember(options.projector_type, [12, 2, 21, 22]) % Orthogonal distance ray tracer
     % Frey, E. C., & Tsui, B. M. W. (n.d.). Collimator-Detector Response Compensation in SPECT. Quantitative Analysis in Nuclear Medicine Imaging, 141–166. doi:10.1007/0-387-25444-7_5 
-    if (~isfield(options,'coneOfResponseStdCoeffA'))
+    if (~isfield(options,'coneOfResponseStdCoeffA') || options.coneOfResponseStdCoeffA < 0)
         options.coneOfResponseStdCoeffA = 2*options.colR/options.colL; % See equation (6) of book chapter
     end
-    if (~isfield(options,'coneOfResponseStdCoeffB'))
+    if (~isfield(options,'coneOfResponseStdCoeffB') || options.coneOfResponseStdCoeffB < 0)
         options.coneOfResponseStdCoeffB = 2*options.colR/options.colL*(options.colL+options.colD+options.cr_p/2);
     end
-    if (~isfield(options,'coneOfResponseStdCoeffC'))
+    if (~isfield(options,'coneOfResponseStdCoeffC') || options.coneOfResponseStdCoeffC < 0)
         options.coneOfResponseStdCoeffC = options.iR;
     end
     % Now the collimator response FWHM is sqrt((az+b)^2+c^2) where z is distance along detector element normal vector

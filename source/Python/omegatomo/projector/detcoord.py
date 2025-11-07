@@ -736,9 +736,12 @@ def SPECTParameters(options: proj.projectorClass) -> None:
                     options.rayShiftsSource[2 * kk + 1] = tmp_shift[2 * kk + 1]
 
     if options.projector_type in [12, 21, 2, 22]: # Orthogonal distance ray tracer
-        options.coneOfResponseStdCoeffA = 2*options.colR/options.colL
-        options.coneOfResponseStdCoeffB = 2*options.colR/options.colL*(options.colL+options.colD+options.cr_p/2)
-        options.coneOfResponseStdCoeffC = options.iR
+        if options.coneOfResponseStdCoeffA < 0:
+            options.coneOfResponseStdCoeffA = 2*options.colR/options.colL
+        if options.coneOfResponseStdCoeffB < 0:
+            options.coneOfResponseStdCoeffB = 2*options.colR/options.colL*(options.colL+options.colD+options.cr_p/2)
+        if options.coneOfResponseStdCoeffC < 0:
+            options.coneOfResponseStdCoeffC = options.iR
 
     if options.projector_type == 6: # Rotation-based projector
         DistanceToFirstRow = 0.5 * options.dx

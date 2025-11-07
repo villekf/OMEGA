@@ -1008,13 +1008,13 @@ if ~isfield(options, 'useTotLength')
     options.useTotLength = true;
 end
 if ~isfield(options, 'coneOfResponseStdCoeffA')
-    options.coneOfResponseStdCoeffA = 0.1;
+    options.coneOfResponseStdCoeffA = -1;
 end
 if ~isfield(options, 'coneOfResponseStdCoeffB')
-    options.coneOfResponseStdCoeffB = 0.1;
+    options.coneOfResponseStdCoeffB = -1;
 end
 if ~isfield(options, 'coneOfResponseStdCoeffC')
-    options.coneOfResponseStdCoeffC = 0.1;
+    options.coneOfResponseStdCoeffC = -1;
 end
 if ~isfield(options, 'colL') % SPECT collimator hole length
     options.colL = 1;
