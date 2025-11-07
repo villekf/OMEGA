@@ -726,14 +726,16 @@ def SPECTParameters(options: proj.projectorClass) -> None:
                     tmp_x *= options.dPitchX
                     tmp_y *= options.dPitchY
                 elif np.isinf(options.colFxy) and np.isinf(options.colFz):  # Parallel-hole collimator
-                    tmp_x *= options.colR
-                    tmp_y *= options.colR
+                    tmp_x *= 2 * options.colR
+                    tmp_y *= 2 * options.colR
 
-                tmp_shift = np.vstack((tmp_x.ravel(), tmp_y.ravel())).reshape(-1, order='F')
+                tmp_shift = np.column_stack((tmp_x.ravel(), tmp_y.ravel())).T.reshape(-1, 1, order='F')
 
                 for kk in range(options.nRays):
-                    options.rayShiftsSource[2 * kk] = tmp_shift[2 * kk]
-                    options.rayShiftsSource[2 * kk + 1] = tmp_shift[2 * kk + 1]
+                    options.rayShiftsSource[2 * kk, :, :, :] = tmp_shift[2 * kk]
+                    options.rayShiftsSource[2 * kk + 1, :, :, :] = tmp_shift[2 * kk + 1]
+            
+        options.rayShiftsSource = options.rayShiftsSource.ravel('F')
 
     if options.projector_type in [12, 21, 2, 22]: # Orthogonal distance ray tracer
         if options.coneOfResponseStdCoeffA < 0:

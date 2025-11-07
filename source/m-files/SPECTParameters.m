@@ -51,15 +51,15 @@ if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelli
                 tmp_x = options.dPitchX * tmp_x;
                 tmp_y = options.dPitchY * tmp_y;
             elseif ismember(options.colFxy, [-Inf, Inf]) && ismember(options.colFz, [-Inf, Inf]) % Parallel-hole collimator
-                tmp_x = options.colR * tmp_x;
-                tmp_y = options.colR * tmp_y;
+                tmp_x = 2 * options.colR * tmp_x;
+                tmp_y = 2 * options.colR * tmp_y;
             end
 
             tmp_shift = reshape([tmp_x(:), tmp_y(:)].', 1, [])';
 
             for kk = 1:options.nRays
-                options.rayShiftsSource(2*(kk-1)+1) = tmp_shift(2*(kk-1)+1);
-                options.rayShiftsSource(2*(kk-1)+2) = tmp_shift(2*(kk-1)+2);
+                options.rayShiftsSource(2*(kk-1)+1,:,:,:) = tmp_shift(2*(kk-1)+1);
+                options.rayShiftsSource(2*(kk-1)+2,:,:,:) = tmp_shift(2*(kk-1)+2);
             end
         end
     end
