@@ -22,7 +22,8 @@ classdef projectorClass
         param
         nMeas
         nMeasSubset
-        subset
+        subset % Current subset
+        timestep % Current timestep
         index
         trans
         x
@@ -933,6 +934,7 @@ classdef projectorClass
                 disp('Computing forward projection')
             end
             obj.param.currentSubset = obj.subset - 1;
+            obj.param.currentTimestep = obj.timestep - 1;
             if obj.param.projector_type == 6
                 obj.param.uu = obj.param.uu + obj.nMeas(obj.subset);
             end
@@ -1021,6 +1023,7 @@ classdef projectorClass
                 noSensIm = false;
             end
             obj.param.currentSubset = obj.subset - 1;
+            obj.param.currentTimestep = obj.timestep - 1;
             if obj.param.projector_type == 6
                 obj.param.ub = obj.param.ub + obj.nMeas(obj.subset);
             end

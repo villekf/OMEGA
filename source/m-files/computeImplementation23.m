@@ -51,6 +51,7 @@ if options.randoms_correction
     end
 end
 options.currentSubset = 0;
+options.currentTimestep = 0;
 
 if options.orthAxial
     crystal_size_z = (options.tube_width_z);

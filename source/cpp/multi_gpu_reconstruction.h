@@ -74,7 +74,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 	for (uint32_t kk = 0; kk < inputScalars.subsetsUsed; kk++)
 		length[kk] = pituus[kk + 1u] - pituus[kk];
 	uint64_t m_size = length[inputScalars.osa_iter0];
-
+	uint32_t timestep = 0; // TODO
 	if (DEBUG) mexPrint("Adding projector");
 	CL_INT status = CL_SUCCESS;
 
@@ -303,7 +303,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 					for (cl_uint i = 0ULL; i < proj.CLCommandQueue.size(); i++) {
 						proj.CLCommandQueue[i].finish();
 					}
-					status = proj.forwardProjection(inputScalars, w_vec, osa_iter, length, m_size, ii);
+					status = proj.forwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, ii);
 					CL_CHECK(status);
 				}
 				status = proj.computeForward(inputScalars, length, osa_iter);
@@ -357,7 +357,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 						CL_CHECK(status);
 					}
 #endif
-					status = proj.forwardProjection(inputScalars, w_vec, osa_iter, length, m_size, ii);
+					status = proj.forwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, ii);
 					CL_CHECK(status);
 					if (inputScalars.FPType == 5)
 						uu -= imTot;
@@ -371,12 +371,11 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 					if (type == 0) {
 						uu += osa_iter * (inputScalars.nMultiVolumes + 1);
 						FILL_BUFFER(proj.vec_opencl.d_rhs_os[ii], (C)0, sizeof(C) * inputScalars.im_dim[ii]);
-						//status = proj.CLCommandQueue[0].enqueueFillBuffer(proj.vec_opencl.d_rhs_os[ii], (C)0, 0, sizeof(C) * inputScalars.im_dim[ii]);
 						CL_CHECK(status);
-						status = proj.backwardProjection(inputScalars, w_vec, osa_iter, length, m_size, false, ii, ii, uu);
+						status = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, false, ii, ii, uu);
 
 					} else {
-						status = proj.backwardProjection(inputScalars, w_vec, osa_iter, length, m_size, false, ii, uu);
+						status = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, false, ii, uu);
 					}
 					CL_CHECK(status);
 #ifndef METAL // Metal has no support for implementation 3
