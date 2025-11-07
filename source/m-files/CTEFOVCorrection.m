@@ -89,8 +89,8 @@ if options.useExtrapolation
 end
 if options.useExtrapolation
     disp('Extrapolating the projections')
-    PnAx = floor(size(options.SinM, 1) * extrapLengthAxial);
-    PnTr = floor(size(options.SinM, 2) * extrapLengthTransaxial);
+    PnTr = floor(size(options.SinM, 1) * extrapLengthTransaxial);
+    PnAx = floor(size(options.SinM, 2) * extrapLengthAxial);
     if options.useInpaint
         Vq = zeros(size(options.SinM,1) + PnTr*2, size(options.SinM,2) + PnAx*2, options.nProjections);
         for kk = 1 : options.nProjections
