@@ -123,7 +123,7 @@ if options.projector_type == 6
         rowE = max(rowE);
         colE = max(colE);
         options.gFilter = options.gFilter(rowS:rowE,colS:colE,:,:);
-        options.gFilter = options.gFilter ./ sum(sum(options.gFilter));
+        options.gFilter = options.gFilter ./ sum(options.gFilter(:));
     end
 
     panelTilt = options.swivelAngles - options.angles + 180;

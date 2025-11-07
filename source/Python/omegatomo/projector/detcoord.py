@@ -768,7 +768,7 @@ def SPECTParameters(options: proj.projectorClass) -> None:
             yy = np.tile(y, (xx.shape[1], 1))
 
             if np.any(options.sigmaXY < 0.):
-                s1 = np.tile(options.sigmaZ, (xx.shape[0], yy.shape[1], 1))
+                s1 = np.tile(options.sigmaZ**2, (xx.shape[0], yy.shape[1], 1))
                 options.gFilter = (1 / (2 * np.pi * s1)) * np.exp(-(xx[:, :, None]**2 + yy[:, :, None]**2) / (2 * s1))
             else:
                 s1 = np.tile(options.sigmaZ, (xx.shape[0], yy.shape[1], 1))
