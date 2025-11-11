@@ -1202,7 +1202,11 @@ DEVICE void getDetectorCoordinatesFullSinogram(const uint d_size_x, const int3 i
 #else
 	CONSTANT float* d_xy, 
 #endif
+#if defined(PTYPE4) && defined(USEGLOBAL)
+	const CLGLOBAL float* d_z
+#else
 	CONSTANT float* d_z
+#endif
 #if defined(N_RAYS)
 	, const int lorXY, const int lorZ, const float2 cr
 #endif
