@@ -793,7 +793,7 @@ def SPECTParameters(options: proj.projectorClass) -> None:
 
 
         panelTilt = options.swivelAngles - options.angles + 180
-        options.blurPlanes = (options.FOVa_x / 2 - (options.radiusPerProj * np.cos(np.deg2rad(panelTilt)) - options.CORtoDetectorSurface)) / options.dx
+        options.blurPlanes = np.round((options.FOVa_x / 2 - (options.radiusPerProj * np.cos(np.deg2rad(panelTilt)) - options.CORtoDetectorSurface)) / options.dx)
         options.blurPlanes2 = options.radiusPerProj * np.sin(np.deg2rad(panelTilt)) / options.dx
 
         if options.angles.size == 0:
