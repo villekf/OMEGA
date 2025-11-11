@@ -976,6 +976,8 @@ class projectorClass:
             print("Axial FOV is too small, crystal ring(s) on the boundary have no slices!")
         if self.SPECT and math.sqrt(self.nRays) % 1 != 0:
             raise ValueError("With SPECT, options.nRays has to be a square")
+        if self.SPECT and self.projector_type in [2, 12, 21, 22]:
+            print('Orthogonal distance ray tracer should be used with 1 ray.')
         if not(self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.PKMA or self.FISTA or self.FISTAL1 or self.MBSREM or self.SPS or self.MRAMLA) and any(self.precondTypeImage):
             print("Image-based preconditioning selected, but the selected algorithm(s) do not support preconditioning. No preconditioning will be performed.")
             print("Supported algorithms are: MBSREM, MRAMLA, PKMA, SPS, PDHG, PDHGL1, PDHGKL, FISTA, FISTAL1, PDDY")

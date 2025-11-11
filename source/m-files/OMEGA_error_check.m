@@ -49,7 +49,9 @@ end
 if options.SPECT && mod(sqrt(options.nRays), 1) ~= 0
     error('With SPECT, options.nRays has to be a square')
 end
-
+if options.SPECT && ismember(options.projector_type, [2, 12, 21, 22]) && options.nRays > 1
+    warning('Orthogonal distance ray tracer should be used with 1 ray.')
+end
 if numel(options.partitions) > 1
     partitions = numel(options.partitions);
 else
