@@ -55,7 +55,7 @@ def loadCorrections(options):
                         from SimpleITK import GetArrayFromImage
                         from SimpleITK import ReadImage as loadMetaImage
                         from SimpleITK import GetArrayFromImage
-                        metaImage = loadMetaImage(options.attenuation_datafile)
+                        metaImage = loadMetaImage(nimi)
                         options.vaimennus = GetArrayFromImage(metaImage)
                         apu = np.array(list(metaImage.GetSpacing()))
                         if options.CT_attenuation:
@@ -66,7 +66,7 @@ def loadCorrections(options):
                 elif nimi[len(nimi)-3:len(nimi)+1:1] == 'mat':
                     try:
                         from pymatreader import read_mat
-                        var = read_mat(options.attenuation_datafile)
+                        var = read_mat(nimi)
                         if list(var)[0] == '__header__':
                             options.vaimennus = np.array(var[list(var)[3]]).astype(np.float32)
                         else:
@@ -83,6 +83,8 @@ def loadCorrections(options):
             if not(options.vaimennus.shape[0] == options.Nx[0]) or not(options.vaimennus.shape[1] == options.Ny[0].item()) or not(options.vaimennus.shape[2] == options.Nz[0].item()):
                 if options.vaimennus.shape[0] != options.N[0]:
                     print('Error: Attenuation data is of different size than the reconstructed image. Attempting resize!')
+                    if options.vaimennus.ndim == 1:
+                        raise ValueError('The attenuation image should be a 3D volume in order for the resize to work properly!')
                     from scipy.ndimage import zoom
                     options.vaimennus = zoom(options.vaimennus, (options.Nx[0] / options.vaimennus.shape[0], options.Ny[0] / options.vaimennus.shape[1], options.Nz[0] / options.vaimennus.shape[2]))
                     if (not(options.vaimennus.shape[0] == options.Nx[0]) or not(options.vaimennus.shape[1] == options.Ny[0].item()) or not(options.vaimennus.shape[2] == options.Nz[0].item())) and not options.vaimennus.size == options.N[0]:
@@ -151,6 +153,8 @@ def loadCorrections(options):
             options.normalization_correction = False
         else:
             options.normalization = options.normalization.ravel('F').astype(dtype=np.float32)
+    if options.scatter_correction == True and options.normalization_correction and options.normalize_scatter and options.corrections_during_reconstruction:
+        options.ScatterC /= options.normalization
     if options.randoms_correction == True and options.ordinaryPoisson == True and options.variance_reduction == True:
         from omegatomo.util.Randoms_variance_reduction import Randoms_variance_reduction
         options.SinDelayed = Randoms_variance_reduction(options.SinDelayed, options)
