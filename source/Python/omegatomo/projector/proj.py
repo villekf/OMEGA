@@ -164,7 +164,7 @@ class projectorClass:
     weighted_center_weight = 2.
     offangle = 0.
     binning = 1
-    sourceToCRot = 0.
+    sourceToCRot = 1.
     sourceToDetector = 1.
     nBed = 1
     TOF_FWHM = 0.

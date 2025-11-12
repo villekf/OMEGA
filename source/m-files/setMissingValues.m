@@ -37,7 +37,7 @@ if ~isfield(options, 'storeResidual')
     options.storeResidual = false;
 end
 if ~isfield(options, 'sourceToCRot')
-    options.sourceToCRot = 0;
+    options.sourceToCRot = 1;
 end
 if ~isfield(options, 'sourceToDetector')
     options.sourceToDetector = 1;
