@@ -2,10 +2,6 @@
 """
 Created on Wed Mar  6 17:40:13 2024
 
-@author: Ville-Veikko Wettenhovi
-
-
-
 #########################################################################
 # Copyright (C) 2024-2025 Ville-Veikko Wettenhovi
 #
@@ -570,7 +566,7 @@ class projectorClass:
                 
                 # Now the sinogram and FOV XZ-plane match in physical dimensions but not in resolution.
                 from skimage.transform import resize
-                self.SinM = resize(self.SinM, (self.Nx, self.Nz), preserve_range=True)
+                self.SinM = resize(self.SinM, (self.Nx, self.Nz), order=0, mode = 'reflect', anti_aliasing = True, preserve_range=True)
                 
             if self.swivelAngles.size == 0:
                 self.swivelAngles = self.angles + 180

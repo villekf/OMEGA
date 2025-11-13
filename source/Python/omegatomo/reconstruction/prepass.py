@@ -21,7 +21,7 @@ import numpy as np
 
 def linearizeData(options):
     """
-    This function linearizes the input measurement data
+    This function linearizes the input measurement data.
 
     Parameters
     ----------
