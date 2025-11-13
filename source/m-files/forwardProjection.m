@@ -88,9 +88,9 @@ function outputFP = forwardProjectionType6(options, recApu, loopVar, koko)
                 attenuationImage = exp(-options.dx * attenuationImage);
 
                 % 3.5 normalize attenuation map
-                attenuationImageSum = sum(attenuationImage, 1) / double(options.Nx(1));
-                attenuationImageSum(attenuationImageSum == 0) = 1;
-                attenuationImage = attenuationImage ./ attenuationImageSum;
+                %attenuationImageSum = sum(attenuationImage, 1) / double(options.Nx(1));
+                %attenuationImageSum(attenuationImageSum == 0) = 1;
+                %attenuationImage = attenuationImage ./ attenuationImageSum;
 
                 % 3.6 pointwise multiply with image volume
                 kuvaRot = kuvaRot .* attenuationImage;

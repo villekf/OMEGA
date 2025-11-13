@@ -1626,13 +1626,13 @@ inline void forwardProjectionType6(af::array& fProj, const Weighting& w_vec, AF_
             attenuationImage = af::accum(attenuationImage, 0);
 
             // 3.4 multiply each accumulated element by voxel size and exponentiate attenuation
-			attenuationImage = af::exp(-w_vec.dPitchX * attenuationImage);
+			attenuationImage = af::exp(-inputScalars.dx[ii] * attenuationImage);
 
             // 3.5 normalize attenuation map
-            af::array attenuationImageSum = af::sum(attenuationImage, 0) / inputScalars.Nx[0];
-            af::array ones = af::constant(1.0, attenuationImageSum.dims(), attenuationImageSum.type());
-            attenuationImageSum = af::select(attenuationImageSum == 0, ones, attenuationImageSum);
-            attenuationImage /= attenuationImageSum;
+            //af::array attenuationImageSum = af::sum(attenuationImage, 0) / inputScalars.Nx[0];
+            //af::array ones = af::constant(1.0, attenuationImageSum.dims(), attenuationImageSum.type());
+            //attenuationImageSum = af::select(attenuationImageSum == 0, ones, attenuationImageSum);
+            //attenuationImage /= attenuationImageSum;
 
             // 3.6 pointwise multiply with image volume
             kuvaRot *= attenuationImage;
@@ -1702,13 +1702,13 @@ inline af::array backProjectionType6Helper(af::array &fProj, const Weighting& w_
             attenuationImage = af::accum(attenuationImage, 0);
 
             // 2.4 multiply each accumulated element by voxel size and exponentiate attenuation
-            attenuationImage = af::exp(-w_vec.dPitchX * attenuationImage);
+            attenuationImage = af::exp(-inputScalars.dx[ii] * attenuationImage);
 
             // 2.5 normalize attenuation map
-            af::array attenuationImageSum = af::sum(attenuationImage, 0) / inputScalars.Nx[0];
-            af::array ones = af::constant(1.0, attenuationImageSum.dims(), attenuationImageSum.type());
-            attenuationImageSum = af::select(attenuationImageSum == 0, ones, attenuationImageSum);
-            attenuationImage /= attenuationImageSum;
+            //af::array attenuationImageSum = af::sum(attenuationImage, 0) / inputScalars.Nx[0];
+            //af::array ones = af::constant(1.0, attenuationImageSum.dims(), attenuationImageSum.type());
+            //attenuationImageSum = af::select(attenuationImageSum == 0, ones, attenuationImageSum);
+            //attenuationImage /= attenuationImageSum;
 
             // 2.6 pointwise multiply with image volume
             kuvaRot = reorder(kuvaRot, 2, 1, 0);

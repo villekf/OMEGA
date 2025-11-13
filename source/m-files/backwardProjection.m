@@ -78,11 +78,11 @@ function output = backwardProjectionType6(options, input, koko)
 
             % 2.4 multiply each accumulated element by voxel size and exponentiate attenuation
             attenuationImage = exp(-options.dx * attenuationImage);
-
+            
             % 2.5 normalize attenuation map
-            attenuationImageSum = sum(attenuationImage, 1) / double(options.Nx(1));
-            attenuationImageSum(attenuationImageSum == 0) = 1;
-            attenuationImage = attenuationImage ./ attenuationImageSum;
+            %attenuationImageSum = sum(attenuationImage, 1) / double(options.Nx(1));
+            %attenuationImageSum(attenuationImageSum == 0) = 1;
+            %attenuationImage = attenuationImage ./ attenuationImageSum;
 
             % 2.6 pointwise multiply with image volume
             kuvaRot = kuvaRot .* attenuationImage;
