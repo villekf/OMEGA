@@ -208,7 +208,7 @@ def loadCorrections(options):
     if options.scatter_correction and options.ordinaryPoisson and options.scatter_smoothing:
         from omegatomo.util.smoothing import randoms_smoothing
         options.ScatterC = randoms_smoothing(options.ScatterC, options)
-    if (options.randoms_correction or options.scatter_correction) and not options.ordinaryPoisso:
+    if (options.randoms_correction or options.scatter_correction) and not options.ordinaryPoisson:
         if options.randoms_correction and options.SinDelayed.size > 0 and options.randoms_smoothing:
             from omegatomo.util.smoothing import randoms_smoothing
             options.SinDelayed = randoms_smoothing(options.SinDelayed, options)
