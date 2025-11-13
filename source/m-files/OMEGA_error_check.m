@@ -43,6 +43,15 @@ if ismac && (options.use_32bit_atomics || options.use_64bit_atomics)
     options.use_32bit_atomics = false;
     options.use_64bit_atomics = false;
 end
+if ismac && options.useImages
+    error('MacOS implementation does not support textures (yet).')
+end
+if options.SPECT && mod(sqrt(options.nRays), 1) ~= 0
+    error('With SPECT, options.nRays has to be a square')
+end
+if options.SPECT && ismember(options.projector_type, [2, 12, 21, 22]) && options.nRays > 1
+    warning('Orthogonal distance ray tracer should be used with 1 ray.')
+end
 if numel(options.partitions) > 1
     partitions = numel(options.partitions);
 else
@@ -445,7 +454,7 @@ if options.implementation == 2 && options.use_CPU && options.ECOSEM
     error('ECOSEM is not supported with implementation 2 when using CPU!')
 end
 if options.implementation == 2 && options.use_CPU
-    warning('CPU functionality is limited and might not work correctly in all cases! Use at your own risk!')
+    warning('CPU functionality is limited and might not work correctly in all cases, use at your own risk! It is recommended to install OpenCL libraries for CPU and disable options.use_CPU.')
 end
 % Print various options that were selected if verbosity has been enabled
 if options.verbose > 0

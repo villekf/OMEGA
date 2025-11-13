@@ -1,6 +1,6 @@
 Contributing code to OMEGA
 
-Contributions of external code to OMEGA are both desired and encouraged. Any and all functions/code enhancements are welcomed, whether they are e.g. new reconstruction algorithms, image analysis tools or new supported scanners (even simply main files).
+Contributions of external code to OMEGA are both desired and encouraged. Any and all functions/code enhancements are welcomed, whether they are e.g. new reconstruction algorithms, image analysis tools or new supported scanners (even simply main files). For great ideas on where to start contributing, search the codebase for "TODO" flags. 
 
 If you wish to add your own code to OMEGA, you should either open an issue, submit a pull request or simply send an e-mail to me. The function can be either m-file, py-script, C++-file or OpenCL (cl) function.
 

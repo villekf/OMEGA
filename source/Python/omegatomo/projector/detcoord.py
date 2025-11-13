@@ -729,19 +729,24 @@ def SPECTParameters(options: proj.projectorClass) -> None:
                     tmp_x *= options.dPitchX
                     tmp_y *= options.dPitchY
                 elif np.isinf(options.colFxy) and np.isinf(options.colFz):  # Parallel-hole collimator
-                    tmp_x *= options.colR
-                    tmp_y *= options.colR
+                    tmp_x *= 2 * options.colR
+                    tmp_y *= 2 * options.colR
 
-                tmp_shift = np.vstack((tmp_x.ravel(), tmp_y.ravel())).reshape(-1, order='F')
+                tmp_shift = np.column_stack((tmp_x.ravel(), tmp_y.ravel())).T.reshape(-1, 1, order='F')
 
                 for kk in range(options.nRays):
-                    options.rayShiftsSource[2 * kk] = tmp_shift[2 * kk]
-                    options.rayShiftsSource[2 * kk + 1] = tmp_shift[2 * kk + 1]
+                    options.rayShiftsSource[2 * kk, :, :, :] = tmp_shift[2 * kk]
+                    options.rayShiftsSource[2 * kk + 1, :, :, :] = tmp_shift[2 * kk + 1]
+            
+        options.rayShiftsSource = options.rayShiftsSource.ravel('F')
 
     if options.projector_type in [12, 21, 2, 22]: # Orthogonal distance ray tracer
-        options.coneOfResponseStdCoeffA = 2*options.colR/options.colL
-        options.coneOfResponseStdCoeffB = 2*options.colR/options.colL*(options.colL+options.colD+options.cr_p/2)
-        options.coneOfResponseStdCoeffC = options.iR
+        if options.coneOfResponseStdCoeffA < 0:
+            options.coneOfResponseStdCoeffA = 2*options.colR/options.colL
+        if options.coneOfResponseStdCoeffB < 0:
+            options.coneOfResponseStdCoeffB = 2*options.colR/options.colL*(options.colL+options.colD+options.cr_p/2)
+        if options.coneOfResponseStdCoeffC < 0:
+            options.coneOfResponseStdCoeffC = options.iR
 
     if options.projector_type == 6: # Rotation-based projector
         DistanceToFirstRow = 0.5 * options.dx
@@ -771,7 +776,7 @@ def SPECTParameters(options: proj.projectorClass) -> None:
             yy = np.tile(y, (xx.shape[1], 1))
 
             if np.any(options.sigmaXY < 0.):
-                s1 = np.tile(options.sigmaZ, (xx.shape[0], yy.shape[1], 1))
+                s1 = np.tile(options.sigmaZ**2, (xx.shape[0], yy.shape[1], 1))
                 options.gFilter = (1 / (2 * np.pi * s1)) * np.exp(-(xx[:, :, None]**2 + yy[:, :, None]**2) / (2 * s1))
             else:
                 s1 = np.tile(options.sigmaZ, (xx.shape[0], yy.shape[1], 1))
@@ -787,11 +792,11 @@ def SPECTParameters(options: proj.projectorClass) -> None:
             colE = colE.max()
 
             options.gFilter = options.gFilter[rowS:rowE+1, colS:colE+1, :]
-            options.gFilter /= np.sum(options.gFilter)
+            options.gFilter /= np.sum(options.gFilter, axis=(0, 1), keepdims=True)
 
 
         panelTilt = options.swivelAngles - options.angles + 180
-        options.blurPlanes = (options.FOVa_x / 2 - (options.radiusPerProj * np.cos(np.deg2rad(panelTilt)) - options.CORtoDetectorSurface)) / options.dx
+        options.blurPlanes = np.round((options.FOVa_x / 2 - (options.radiusPerProj * np.cos(np.deg2rad(panelTilt)) - options.CORtoDetectorSurface)) / options.dx)
         options.blurPlanes2 = options.radiusPerProj * np.sin(np.deg2rad(panelTilt)) / options.dx
 
         if options.angles.size == 0:

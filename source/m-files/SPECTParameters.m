@@ -51,15 +51,15 @@ if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelli
                 tmp_x = options.dPitchX * tmp_x;
                 tmp_y = options.dPitchY * tmp_y;
             elseif ismember(options.colFxy, [-Inf, Inf]) && ismember(options.colFz, [-Inf, Inf]) % Parallel-hole collimator
-                tmp_x = options.colR * tmp_x;
-                tmp_y = options.colR * tmp_y;
+                tmp_x = 2 * options.colR * tmp_x;
+                tmp_y = 2 * options.colR * tmp_y;
             end
 
             tmp_shift = reshape([tmp_x(:), tmp_y(:)].', 1, [])';
 
             for kk = 1:options.nRays
-                options.rayShiftsSource(2*(kk-1)+1) = tmp_shift(2*(kk-1)+1);
-                options.rayShiftsSource(2*(kk-1)+2) = tmp_shift(2*(kk-1)+2);
+                options.rayShiftsSource(2*(kk-1)+1,:,:,:) = tmp_shift(2*(kk-1)+1);
+                options.rayShiftsSource(2*(kk-1)+2,:,:,:) = tmp_shift(2*(kk-1)+2);
             end
         end
     end
@@ -70,13 +70,13 @@ if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelli
 end
 if ismember(options.projector_type, [12, 2, 21, 22]) % Orthogonal distance ray tracer
     % Frey, E. C., & Tsui, B. M. W. (n.d.). Collimator-Detector Response Compensation in SPECT. Quantitative Analysis in Nuclear Medicine Imaging, 141–166. doi:10.1007/0-387-25444-7_5 
-    if (~isfield(options,'coneOfResponseStdCoeffA'))
+    if (~isfield(options,'coneOfResponseStdCoeffA') || options.coneOfResponseStdCoeffA < 0)
         options.coneOfResponseStdCoeffA = 2*options.colR/options.colL; % See equation (6) of book chapter
     end
-    if (~isfield(options,'coneOfResponseStdCoeffB'))
+    if (~isfield(options,'coneOfResponseStdCoeffB') || options.coneOfResponseStdCoeffB < 0)
         options.coneOfResponseStdCoeffB = 2*options.colR/options.colL*(options.colL+options.colD+options.cr_p/2);
     end
-    if (~isfield(options,'coneOfResponseStdCoeffC'))
+    if (~isfield(options,'coneOfResponseStdCoeffC') || options.coneOfResponseStdCoeffC < 0)
         options.coneOfResponseStdCoeffC = options.iR;
     end
     % Now the collimator response FWHM is sqrt((az+b)^2+c^2) where z is distance along detector element normal vector
@@ -109,12 +109,12 @@ if options.projector_type == 6
         xx = repmat(x', 1,size(x,2));
         yy = repmat(y, size(xx,1),1);
         if ~isfield(options, 'sigmaXY')
-            s1 = double(repmat(permute(options.sigmaZ.^2,[4 3 2 1]), size(xx,1), size(yy,2), 1));
-            options.gFilter = (1 / (2*pi*s1).*exp(-(xx.^2 + yy.^2)./(2*s1)));
+            s1 = double(repmat(permute(options.sigmaZ,[4 3 2 1]), size(xx,1), size(yy,2), 1));
+            options.gFilter = exp(-(xx.^2 + yy.^2)./(2*s1.^2)); % .*  (1 / (2*pi*s1);
         else
             s1 = double(repmat(permute(options.sigmaZ,[4 3 2 1]), size(xx,1), size(yy,2), 1));
             s2 = double(repmat(permute(options.sigmaXY,[4 3 2 1]), size(xx,1), size(yy,2), 1));
-            options.gFilter = exp(-(xx.^2./(2*s1.^2) + yy.^2./(2*s2.^2)));
+            options.gFilter = exp(-(xx.^2./(2*s1.^2) + yy.^2./(2*s2.^2))); % .* (1 / (2*pi*s1.*s2)) ;
         end
         [rowE,colE] = find(options.gFilter(:,:,end/4) > 1e-6);
         [rowS,colS] = find(options.gFilter(:,:,end/4) > 1e-6);
@@ -122,8 +122,8 @@ if options.projector_type == 6
         colS = min(colS);
         rowE = max(rowE);
         colE = max(colE);
-        options.gFilter = options.gFilter(rowS:rowE,colS:colE,:,:);
-        options.gFilter = options.gFilter ./ sum(sum(options.gFilter));
+        options.gFilter = options.gFilter(rowS:rowE, colS:colE, :);
+        options.gFilter = options.gFilter ./ sum(options.gFilter, [1 2]); % Due to truncation the sum of every slice is not 1. Thus normalize by slice.
     end
 
     panelTilt = options.swivelAngles - options.angles + 180;

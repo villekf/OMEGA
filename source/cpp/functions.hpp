@@ -1616,9 +1616,25 @@ inline void forwardProjectionType6(af::array& fProj, const Weighting& w_vec, AF_
         // 3. Process and apply attenuation image
         if (inputScalars.attenuation_correction && (atten != nullptr)) {
             af::array attenuationImage = af::array(inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], atten);
+
+            // 3.1. rotate attenuation map
             attenuationImage = rotateHelperType6(attenuationImage, inputScalars, proj, -w_vec.swivelAngles[u1], ii);
+
+            // 3.2 translate attenuation map
+
+            // 3.3 accumulate attenuation
             attenuationImage = af::accum(attenuationImage, 0);
-			attenuationImage = af::exp(-w_vec.dPitchX * attenuationImage);
+
+            // 3.4 multiply each accumulated element by voxel size and exponentiate attenuation
+			attenuationImage = af::exp(-inputScalars.dx[ii] * attenuationImage);
+
+            // 3.5 normalize attenuation map
+            //af::array attenuationImageSum = af::sum(attenuationImage, 0) / inputScalars.Nx[0];
+            //af::array ones = af::constant(1.0, attenuationImageSum.dims(), attenuationImageSum.type());
+            //attenuationImageSum = af::select(attenuationImageSum == 0, ones, attenuationImageSum);
+            //attenuationImage /= attenuationImageSum;
+
+            // 3.6 pointwise multiply with image volume
             kuvaRot *= attenuationImage;
             af::eval(kuvaRot);
         }
@@ -1645,6 +1661,7 @@ inline void forwardProjectionType6(af::array& fProj, const Weighting& w_vec, AF_
 		//kuvaRot = af::reorder(kuvaRot, 2, 1, 0);
         kuvaRot = af::sum(kuvaRot, 0);
 		kuvaRot = af::reorder(kuvaRot, 1, 2, 0);
+        kuvaRot /= inputScalars.Nx[0];
         if (DEBUG || inputScalars.verbose > 2)
             mexPrint("Projector 6 FP step 5 complete");
 
@@ -1669,6 +1686,7 @@ inline af::array backProjectionType6Helper(af::array &fProj, const Weighting& w_
 
         // 1. Smear the input FP across the image volume
         kuvaRot = af::tile(kuvaRot, 1, 1, inputScalars.Nx[ii]); // Repeat through z-axis
+        kuvaRot /= inputScalars.Nx[0];
         
         // 2. Attenuation correction
         if (inputScalars.attenuation_correction && (atten != nullptr)) {
@@ -1684,9 +1702,15 @@ inline af::array backProjectionType6Helper(af::array &fProj, const Weighting& w_
             attenuationImage = af::accum(attenuationImage, 0);
 
             // 2.4 multiply each accumulated element by voxel size and exponentiate attenuation
-            attenuationImage = af::exp(-w_vec.dPitchX * attenuationImage);
+            attenuationImage = af::exp(-inputScalars.dx[ii] * attenuationImage);
 
-            // 2.6 pointwise multiply with kuvaRot
+            // 2.5 normalize attenuation map
+            //af::array attenuationImageSum = af::sum(attenuationImage, 0) / inputScalars.Nx[0];
+            //af::array ones = af::constant(1.0, attenuationImageSum.dims(), attenuationImageSum.type());
+            //attenuationImageSum = af::select(attenuationImageSum == 0, ones, attenuationImageSum);
+            //attenuationImage /= attenuationImageSum;
+
+            // 2.6 pointwise multiply with image volume
             kuvaRot = reorder(kuvaRot, 2, 1, 0);
             kuvaRot *= attenuationImage;
             kuvaRot = reorder(kuvaRot, 2, 1, 0);

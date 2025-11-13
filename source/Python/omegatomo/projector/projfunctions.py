@@ -113,6 +113,7 @@ def forwardProjection(self, f, subset = -1):
                 
                     # 5. Sum
                     kuvaRot = af.data.reorder(af.algorithm.sum(kuvaRot, 0), 1, 2, 0) # [1, 128, 96] -->  [128, 96]
+                    kuvaRot /= self.Nx[ii].item()
                     y[:, :, kk] += kuvaRot
                     u1 += 1
             y = af.flat(y)
@@ -156,6 +157,7 @@ def forwardProjection(self, f, subset = -1):
                         # 5. Sum
                         kuvaRot = torch.sum(kuvaRot, 0)
                         kuvaRot = torch.permute(kuvaRot, (1, 0))
+                        kuvaRot /= self.Nx[ii].item()
                         y[kk, :, :] += kuvaRot
                         u1 += 1
 
@@ -745,6 +747,7 @@ def backwardProjection(self, y, subset = -1):
                     
                     # 1. Smear the input FP across the image volume
                     kuvaRot = af.tile(kuvaRot, 1, 1, self.Nx[ii].item())
+                    kuvaRot /= self.Nx[ii].item()
                     
                     # 2. Attenuation correction
                     # 2.1. Rotate attenuation map
@@ -799,6 +802,7 @@ def backwardProjection(self, y, subset = -1):
                         kuvaRot = kuvaRot.unsqueeze(-1)
                         kuvaRot = kuvaRot.repeat((1, 1, self.Nx[ii].item()))
                         kuvaRot = torch.permute(kuvaRot, (1,0,2))
+                        kuvaRot /= self.Nx[ii].item()
 
                         # 2. Attenuation correction
                         # 2.1. Rotate attenuation map

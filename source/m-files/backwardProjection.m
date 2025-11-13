@@ -56,33 +56,37 @@ function output = backwardProjectionType6(options, input, koko)
     for kk = 1 : koko
         panelTilt = options.swivelAngles(u1) - options.angles(u1) + 180;
         panelShift = options.radiusPerProj(u1) * sind(panelTilt) / voxelSize;
-        PSFshift = (options.FOVa_y/2 - (options.radiusPerProj(u1) * cosd(panelTilt) - options.CORtoDetectorSurface)) / voxelSize;
-
-        % Steps
-        % 1. smear FP into BP
-        % TODO: attenuation correction (rotate + translate + accumulate)
-        % 2. convolve with PSF
-        % 3. translate 
-        % 4. rotate
 
         % 1. Smear the input FP across the image volume
         kuvaRot = fProj(:, :, kk);
         kuvaRot = permute(kuvaRot, [2 1 3]);
         kuvaRot = repmat(kuvaRot, 1, 1, options.Nx(1));
         kuvaRot = permute(kuvaRot, [3, 2, 1]);
+        kuvaRot = kuvaRot / double(options.Nx(1));
 
-%        % 2. Attenuation correction
-%        if options.attenuation_correction
-%            attenuationImage = options.vaimennus;
-%            %volume3Dviewer(attenuationImage)
-%    
-%            attenuationImage = imrotate(attenuationImage, -options.swivelAngles(u1), 'bilinear','crop');
-%            attenuationImage = imtranslate(attenuationImage, [-panelShift, 0,0], FillValues=0);
-%            attenuationImage = cumsum(attenuationImage, 1);
-%            attenuationImage = exp(-options.dx * attenuationImage);
-%            %volume3Dviewer(kuvaRot)
-%            kuvaRot = kuvaRot .* attenuationImage;
-%        end
+        % 2. Attenuation correction
+        if options.attenuation_correction
+            attenuationImage = options.vaimennus;
+            % 2.1. rotate attenuation map
+            attenuationImage = imrotate(attenuationImage, -options.swivelAngles(u1), 'bilinear','crop');
+
+            % 2.2 translate attenuation map
+            % attenuationImage = imtranslate(attenuationImage, [-panelShift, 0,0], FillValues=0);
+
+            % 2.3 accumulate attenuation
+            attenuationImage = cumsum(attenuationImage, 1);
+
+            % 2.4 multiply each accumulated element by voxel size and exponentiate attenuation
+            attenuationImage = exp(-options.dx * attenuationImage);
+            
+            % 2.5 normalize attenuation map
+            %attenuationImageSum = sum(attenuationImage, 1) / double(options.Nx(1));
+            %attenuationImageSum(attenuationImageSum == 0) = 1;
+            %attenuationImage = attenuationImage ./ attenuationImageSum;
+
+            % 2.6 pointwise multiply with image volume
+            kuvaRot = kuvaRot .* attenuationImage;
+        end
 
         % 3. Convolve with detector PSF
         PSF = imtranslate(options.gFilter, [0, 0, options.blurPlanes(u1)], FillValues=0);
