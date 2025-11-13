@@ -146,9 +146,9 @@ def CTEFOVCorrection(options, extrapLengthTransaxial = None, extrapLengthAxial =
                 if hasattr(options,'eFOVLength'):
                     if options.eFOVLength == None:
                         if options.sourceToDetector > options.sourceToCRot:
-                            pituus = options.sourceToDetector - options.sourceToCRot + options.FOVa_x / 2.
-                            angle = (options.sourceToDetector / (options.nColsD * options.dPitchY))
-                            eFOVLengthAxial = ((pituus / angle - options.axial_fov / 2.) / (options.axial_fov / 2.)) / 2.
+                            length = options.sourceToCRot + options.FOVa_x / 2.
+                            angle = (options.sourceToDetector / (options.nColsD * options.dPitchY / 2.))
+                            eFOVLengthAxial = ((length / angle - options.axial_fov / 2.) / options.axial_fov)
                             nAxial = int(np.floor(options.Nz * eFOVLengthAxial)) * 2
                         else:
                             nAxial = int(np.floor(options.Nz * 0.3)) * 2

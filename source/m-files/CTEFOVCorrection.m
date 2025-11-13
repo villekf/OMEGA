@@ -265,9 +265,9 @@ if options.useEFOV
     end
     if options.axialEFOV
         if ~isfield(options, 'eFOVLengthAxial') && isfield(options,'sourceToDetector') && isfield(options,'sourceToCRot') && options.sourceToDetector > options.sourceToCRot
-            pituus = options.sourceToDetector - options.sourceToCRot + options.FOVa_x / 2;
-            angle = (options.sourceToDetector / (options.nColsD * options.dPitchY));
-            eFOVLengthAxial = ((pituus / angle - options.axial_fov / 2) / (options.axial_fov / 2)) / 2;
+            length = options.sourceToCRot + options.FOVa_x / 2;
+            angle = (options.sourceToDetector / (options.nColsD * options.dPitchY / 2));
+            eFOVLengthAxial = ((length / angle - options.axial_fov / 2) / options.axial_fov);
         end
         nAxial = floor(options.Nz * eFOVLengthAxial) * 2;
         options.NzOrig = options.Nz;
