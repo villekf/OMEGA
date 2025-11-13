@@ -1,18 +1,53 @@
 # -*- coding: utf-8 -*-
+"""
+Copyright (C) 2024-2025 Ville-Veikko Wettenhovi
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+"""
 import numpy as np
    
 def indexMaker(options):
-    subsets = options.subsets;
+    """
+    This function is used to generate the subset indices for the selected 
+    subsetType. Subset types 6, 7, and 10 are not supported in Python.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Raises
+    ------
+    ValueError
+        Invalid subset type.
+
+    Returns
+    -------
+    None.
+
+    """
+    subsets = options.subsets
     if options.sampling > 1:
-        options.Ndist = options.Ndist * options.sampling;
-    Ndist = options.Ndist;
-    Nang = options.Nang;
-    NSinos = options.NSinos;
+        options.Ndist = options.Ndist * options.sampling
+    Ndist = options.Ndist
+    Nang = options.Nang
+    NSinos = options.NSinos
     options.nMeas = np.array(options.Ndist * options.Nang * options.NSinos, dtype=np.int64)
     if options.CT:
-        tyyppi = np.uint64;
+        tyyppi = np.uint64
     else:
-        tyyppi = np.uint32;
+        tyyppi = np.uint32
     if subsets > 1 and options.subsetType < 8:
         totalLength = Ndist*Nang*NSinos
         options.index = np.empty(0, dtype=tyyppi)
@@ -25,7 +60,7 @@ def indexMaker(options):
                 index1 = index1 + np.repeat(np.arange(0, (osa)*NSinos, 1) * Ndist*subsets,Ndist).astype(tyyppi)
                 if Nang % subsets > 0:
                     if osa < maksimi:
-                        erotus = osa - 1;
+                        erotus = osa - 1
                     else:
                         erotus = Nang % subsets - subsets
                     index1 = (np.int64(index1) + np.int64(np.repeat((np.arange(0, NSinos - 1, 1)) * Ndist * erotus, Ndist * osa))).astype(tyyppi)
@@ -92,7 +127,7 @@ def indexMaker(options):
             options.nMeas = np.full(subsets - 1, val, dtype=np.int64)
             options.nMeas = np.append(options.nMeas, valEnd)
             options.index = np.zeros(1,dtype=tyyppi)
-    elif (subsets > 1 and (options.subsetType == 8 or options.subsetType == 9 or options.subsetType == 10 or options.subsetType == 11)) or subsets == 1:
+    elif (subsets > 1 and options.subsetType in [8, 9, 10, 11]) or subsets == 1:
         sProjections = options.nProjections // subsets
         modi = np.mod(options.nProjections, subsets)
         uu = (modi > 0).astype(np.int64)
@@ -210,19 +245,74 @@ def indexMaker(options):
     options.subsets = subsets
     
 def ind2sub(index, dims):
+    """
+    Transforms linear indices to subscripts.
+
+    Parameters
+    ----------
+    index : NumPy array
+        Linear indices.
+    dims : Tuple
+        Size for x, y and z dimensions.
+
+    Returns
+    -------
+    I : NumPy array
+        First dimension subscripts.
+    J : NumPy array
+        Second dimension subscripts.
+    K : NumPy array
+        Third dimension subscripts.
+
+    """
     K = index // (dims[0] * dims[1])
     J = (index - K * (dims[0] * dims[1])) // dims[0]
     I = np.mod(index - K * (dims[0] * dims[1]), dims[0])
     return (I, J, K)
     
 def sub2ind(dims, I, J, K):
+    """
+    Same as above, but the other way around.
+
+    Parameters
+    ----------
+    dims : Tuple
+        Size for x, y and z dimensions.
+    I : NumPy array
+        First dimension subscripts.
+    J : NumPy array
+        Second dimension subscripts.
+    K : NumPy array
+        Third dimension subscripts.
+
+    Returns
+    -------
+    index : NumPy array
+        Linear indices.
+
+    """
     index = K * dims[0] * dims[1] + I + J * dims[0]
     return index
 
 
 def formSubsetIndices(options):
+    """
+    Handles some of the subset indexing. Mainly reorganizes the index-based
+    reconstruction indices to match the subsets but also the UV-direction 
+    vectors for CT. Also, computes the "special" indices for subset type 3.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Returns
+    -------
+    None.
+
+    """
     if options.sampling > 1:
-        options.Ndist = options.Ndist * options.sampling;
+        options.Ndist = options.Ndist * options.sampling
     if options.listmode > 0 and options.subsetType < 8 and options.subsets > 1:
         if options.subsetType > 0:
             if options.useIndexBasedReconstruction:
@@ -239,7 +329,7 @@ def formSubsetIndices(options):
                 else:
                     options.axIndex = options.axIndex[:,options.index]
             else:
-                if not (options.x.shape[0] == 6):
+                if not options.x.shape[0] == 6:
                     options.x = np.reshape(options.x, (6, options.x.size // 6))
                 if options.Nt > 1:
                     options.x = options.x[:,options.index,:]
@@ -253,7 +343,7 @@ def formSubsetIndices(options):
         options.x = options.x.ravel('F')
         options.xy_index = np.empty(0, dtype=np.uint32)
         options.z_index = np.empty(0, dtype=np.uint16)
-    elif options.listmode > 0 and (options.subsetType == 8 or options.subsetType == 9) and options.subsets > 1:
+    elif options.listmode > 0 and (options.subsetType in [8, 9]) and options.subsets > 1:
         if options.Nt > 1:
             options.z = options.z[options.index,:,:]
             if options.uV.shape[0] == options.nProjections:
@@ -264,7 +354,7 @@ def formSubsetIndices(options):
                 options.uV = options.uV[options.index,:]
         options.xy_index = np.empty(0, dtype=np.uint32)
         options.z_index = np.empty(0, dtype=np.uint16)
-    elif options.use_raw_data == 0 and ((options.subsets > 1 and (options.subsetType == 3 or options.subsetType == 6 or options.subsetType == 7))):
+    elif options.use_raw_data == 0 and (options.subsets > 1 and options.subsetType in [3, 6, 7]):
         options.xy_index = np.arange(0, options.Nang * options.Ndist, dtype=np.uint32)
         if options.span > 1:
             xy_index2 = np.tile(np.arange(0, options.Nang * options.Ndist, dtype=np.uint32), (options.NSinos - (options.rings * 2 - 1)))

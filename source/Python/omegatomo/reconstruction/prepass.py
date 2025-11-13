@@ -2,15 +2,59 @@
 """
 Created on Thu Mar  7 13:57:46 2024
 
-@author: Ville-Veikko Wettenhovi
-"""
+Copyright (C) 2024-2025 Ville-Veikko Wettenhovi
 
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+"""
 import numpy as np
 
 def linearizeData(options):
+    """
+    This function linearizes the input measurement data
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Returns
+    -------
+    None.
+
+    """
     options.SinM = np.log(options.flat / options.SinM.astype(dtype=np.float32))
 
 def loadCorrections(options):
+    """
+    This function loads all the corrections related data. It can also perform
+    some precorrection steps such as sinogram interpolation or arc correction.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Raises
+    ------
+    ValueError
+        If files are not found.
+
+    Returns
+    -------
+    None.
+
+    """
     import os
     if options.attenuation_correction == 1:
         if options.vaimennus.size == 0:
@@ -78,28 +122,28 @@ def loadCorrections(options):
                     variables = list(apu.keys())
                     options.vaimennus = apu[variables[3]]
                 else:
-                    ValueError('Unsupported datatype!')
+                    raise ValueError('Unsupported datatype!')
         if options.CT_attenuation:
-            if not(options.vaimennus.shape[0] == options.Nx[0]) or not(options.vaimennus.shape[1] == options.Ny[0].item()) or not(options.vaimennus.shape[2] == options.Nz[0].item()):
+            if not options.vaimennus.shape[0] == options.Nx[0] or not options.vaimennus.shape[1] == options.Ny[0].item() or not options.vaimennus.shape[2] == options.Nz[0].item():
                 if options.vaimennus.shape[0] != options.N[0]:
                     print('Error: Attenuation data is of different size than the reconstructed image. Attempting resize!')
                     if options.vaimennus.ndim == 1:
                         raise ValueError('The attenuation image should be a 3D volume in order for the resize to work properly!')
                     from scipy.ndimage import zoom
                     options.vaimennus = zoom(options.vaimennus, (options.Nx[0] / options.vaimennus.shape[0], options.Ny[0] / options.vaimennus.shape[1], options.Nz[0] / options.vaimennus.shape[2]))
-                    if (not(options.vaimennus.shape[0] == options.Nx[0]) or not(options.vaimennus.shape[1] == options.Ny[0].item()) or not(options.vaimennus.shape[2] == options.Nz[0].item())) and not options.vaimennus.size == options.N[0]:
+                    if (not options.vaimennus.shape[0] == options.Nx[0] or not options.vaimennus.shape[1] == options.Ny[0].item() or not options.vaimennus.shape[2] == options.Nz[0].item()) and not options.vaimennus.size == options.N[0]:
                         raise ValueError('Error: Attenuation data is of different size than the reconstructed image. Automatic resize failed.')
             if options.rotateAttImage != 0:
                 atn = np.reshape(options.vaimennus, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()))
-                atn = np.rot90(atn,options.rotateAttImage);
+                atn = np.rot90(atn,options.rotateAttImage)
                 options.vaimennus = atn
             if options.flipAttImageXY:
                 atn = np.reshape(options.vaimennus, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()))
-                atn = np.fliplr(atn);
+                atn = np.fliplr(atn)
                 options.vaimennus = atn
             if options.flipAttImageZ:
                 atn = np.reshape(options.vaimennus, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()))
-                atn = np.flip(atn,2);
+                atn = np.flip(atn,2)
                 options.vaimennus = atn
         options.vaimennus = np.asfortranarray(options.vaimennus)
         options.vaimennus = options.vaimennus.ravel('F').astype(dtype=np.float32)
@@ -133,7 +177,7 @@ def loadCorrections(options):
                     if nimi[len(nimi)-3:len(nimi)+1:1] == 'nrm':
                         options.normalization = np.fromfile(nimi, dtype=np.float32)
                         if options.normalization.size != options.Ndist * options.Nang * options.TotSinos and ~options.use_raw_data:
-                            ValueError('Size mismatch between the current data and the normalization data file')
+                            raise ValueError('Size mismatch between the current data and the normalization data file')
                     elif nimi[len(nimi)-3:len(nimi)+1:1] == 'mat':
                         from pymatreader import read_mat
                         var = read_mat(nimi)
@@ -143,7 +187,7 @@ def loadCorrections(options):
                         variables = list(apu.keys())
                         options.normalization = apu[variables[0]]
                     else:
-                        ValueError('Unsupported datatype!')
+                        raise ValueError('Unsupported datatype!')
             options.normalization = 1. / options.normalization.ravel('F').astype(dtype=np.float32)
             if ~options.use_raw_data and options.NSinos != options.TotSinos:
                 options.normalization = options.normalization[0 : options.Ndist * options.Nang * options.NSinos]
@@ -153,33 +197,33 @@ def loadCorrections(options):
             options.normalization_correction = False
         else:
             options.normalization = options.normalization.ravel('F').astype(dtype=np.float32)
-    if options.scatter_correction == True and options.normalization_correction and options.normalize_scatter and options.corrections_during_reconstruction:
+    if options.scatter_correction and options.normalization_correction and options.normalize_scatter and options.corrections_during_reconstruction:
         options.ScatterC /= options.normalization
-    if options.randoms_correction == True and options.ordinaryPoisson == True and options.variance_reduction == True:
+    if options.randoms_correction and options.ordinaryPoisson and options.variance_reduction:
         from omegatomo.util.Randoms_variance_reduction import Randoms_variance_reduction
         options.SinDelayed = Randoms_variance_reduction(options.SinDelayed, options)
-    if options.randoms_correction == True and options.ordinaryPoisson == True and options.randoms_smoothing == True:
+    if options.randoms_correction and options.ordinaryPoisson and options.randoms_smoothing:
         from omegatomo.util.smoothing import randoms_smoothing
         options.SinDelayed = randoms_smoothing(options.SinDelayed, options)
-    if options.scatter_correction == True and options.ordinaryPoisson == True and options.scatter_smoothing == True:
+    if options.scatter_correction and options.ordinaryPoisson and options.scatter_smoothing:
         from omegatomo.util.smoothing import randoms_smoothing
         options.ScatterC = randoms_smoothing(options.ScatterC, options)
-    if (options.randoms_correction == True or options.scatter_correction == True) and options.ordinaryPoisson == False:
-        if options.randoms_correction == True and options.SinDelayed.size > 0 and options.randoms_smoothing == True:
+    if (options.randoms_correction or options.scatter_correction) and not options.ordinaryPoisso:
+        if options.randoms_correction and options.SinDelayed.size > 0 and options.randoms_smoothing:
             from omegatomo.util.smoothing import randoms_smoothing
             options.SinDelayed = randoms_smoothing(options.SinDelayed, options)
-        if options.randoms_correction == True and options.SinDelayed.size > 0 and options.variance_reduction == True:
+        if options.randoms_correction and options.SinDelayed.size > 0 and options.variance_reduction:
             from omegatomo.util.Randoms_variance_reduction import Randoms_variance_reduction
             options.SinDelayed = Randoms_variance_reduction(options.SinDelayed, options)
-        if options.scatter_correction == True and options.ScatterC.size > 0 and options.scatter_smoothing == True:
+        if options.scatter_correction and options.ScatterC.size > 0 and options.scatter_smoothing:
             from omegatomo.util.smoothing import randoms_smoothing
             options.ScatterC = randoms_smoothing(options.ScatterC, options)
         if options.precorrect:
-            if options.scatter_correction and options.ScatterC.size > 0 and options.SinDelayed.size > 0 and options.randoms_correction == True and options.subtract_scatter:
+            if options.scatter_correction and options.ScatterC.size > 0 and options.SinDelayed.size > 0 and options.randoms_correction and options.subtract_scatter:
                 options.SinM = options.SinM.astype(np.float32) - options.SinDelayed.astype(np.float32) - options.ScatterC.astype(np.float32)
-            elif options.scatter_correction and options.ScatterC.size > 0 and options.randoms_correction == False and options.subtract_scatter:
+            elif options.scatter_correction and options.ScatterC.size > 0 and not options.randoms_correction and options.subtract_scatter:
                 options.SinM = options.SinM.astype(np.float32) - options.ScatterC.astype(np.float32) 
-            elif options.SinDelayed.size > 0 and options.randoms_correction == True:
+            elif options.SinDelayed.size > 0 and options.randoms_correction:
                 options.SinM = options.SinM.astype(np.float32) - options.SinDelayed.astype(np.float32) 
     if options.scatter_correction and options.ScatterC.size > 0 and not options.subtract_scatter:
         options.additionalCorrection = True
@@ -192,7 +236,7 @@ def loadCorrections(options):
         options.SinDelayed += np.asfortranarray(options.ScatterC.astype(np.float32))
     if options.arc_correction:
         from omegatomo.util.arcCorrection import arc_correction
-        x, y, options = arc_correction(options, True);
+        x, y, options = arc_correction(options, True)
     if options.sampling > 1:
         if options.corrections_during_reconstruction:
             from omegatomo.util.sampling import interpolateSinog
@@ -208,6 +252,25 @@ def loadCorrections(options):
         
         
 def parseInputs(options, mDataFound = False):
+    """
+    This function parses the input measurement data such that the elements
+    are correctly divided between the subsets. Also does the same for
+    corrections if they are applied during reconstruction.
+    
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+    mDataFound : bool, optional
+        If True, measurement data was found to be present already. The division
+        into subsets is thus skipped if no data has been input before this 
+        step. The default is False.
+
+    Returns
+    -------
+    None.
+
+    """
     if options.subsets > 1 and options.subsetType > 0:
         if mDataFound and not options.largeDim:
             if options.Nt > 1:
@@ -240,7 +303,7 @@ def parseInputs(options, mDataFound = False):
                             if temp.ndim == 3:
                                 koko = (temp.shape[0], temp.shape[1], temp.shape[2])
                             else:
-                                koko = (temp.shape[0])
+                                koko = temp.shape[0]
                             temp = temp.ravel(order='F')
                             temp = temp[options.index]
                             temp = np.reshape(temp, koko, order='F')
@@ -392,7 +455,7 @@ def parseInputs(options, mDataFound = False):
         if options.randoms_correction and not options.corrections_during_reconstruction:
             options.randoms_correction = False
         if options.useMaskFP and options.maskFPZ > 1 and options.subsetType >= 8:
-            options.maskFP = options.maskFP[:,:,options.index];
+            options.maskFP = options.maskFP[:,:,options.index]
             
     
     if mDataFound and not options.largeDim and options.loadTOF:
@@ -401,6 +464,26 @@ def parseInputs(options, mDataFound = False):
 
 
 def TVPrepass(options):
+    """
+    Performs some possible TV-related prepass computations. These include
+    loading of the anatomical weighting data and weighting values for TV type 1
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Raises
+    ------
+    ValueError
+        If files are not found or the size is different.
+
+    Returns
+    -------
+    S : NumPy array
+        Weighting coefficients for TV type 1 when using anatomical weighting.
+
+    """
     from skimage.transform import resize #scikit-image
     def assembleS(alkuarvo,T,Ny,Nx,Nz):
         S = np.zeros((Nx * Ny * Nz * 3, 3),order='F',dtype=np.float32)
@@ -448,12 +531,11 @@ def TVPrepass(options):
             koko_apu = np.sqrt(np.size(options.TV_referenceImage) / options.Nz[0].item())
             if np.floor(koko_apu) != koko_apu:
                 raise ValueError('Reference image has to be square')
-            else:
-                options.TV_referenceImage = options.TV_referenceImage.reshape((koko_apu, koko_apu, options.Nz[0].item()))
-                if koko_apu != options.Nx[0].item() or options.TV_referenceImage.shape[2] != options.Nz[0].item():
-                    if options.Nz[0].item() > 1:
-                        print('Resizing reference image')
-                        options.TV_referenceImage = resize(options.TV_referenceImage, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()))
+            options.TV_referenceImage = options.TV_referenceImage.reshape((koko_apu, koko_apu, options.Nz[0].item()))
+            if koko_apu != options.Nx[0].item() or options.TV_referenceImage.shape[2] != options.Nz[0].item():
+                if options.Nz[0].item() > 1:
+                    print('Resizing reference image')
+                    options.TV_referenceImage = resize(options.TV_referenceImage, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()))
         else:
             if options.TV_referenceImage.shape[1] != options.Ny[0].item() or options.TV_referenceImage.shape[2] != options.Nz[0].item():
                 if options.Nz[0].item() > 1:
@@ -480,7 +562,24 @@ def TVPrepass(options):
         options.TV_referenceImage = options.TV_referenceImage.ravel('F').astype(dtype=np.float32)
         
 def APLSPrepass(options):
-    import numpy as np
+    """
+    Loads the anatomical reference image for APLS.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Raises
+    ------
+    ValueError
+        If files are not found or the size is different.
+
+    Returns
+    -------
+    None.
+
+    """
     from skimage.transform import resize #scikit-image
     if isinstance(options.APLS_ref_image, str):
         if len(options.APLS_ref_image) == 0:
@@ -500,11 +599,10 @@ def APLSPrepass(options):
         koko_apu = np.sqrt(np.size(options.APLS_ref_image) / options.Nz[0])
         if koko_apu != np.floor(koko_apu):
             raise ValueError('Reference image has to be 2D/3D if different size than reconstruction size!')
-        else:
-            options.APLS_ref_image = options.APLS_ref_image.reshape((koko_apu, koko_apu, options.Nz[0]), order = 'F')
-            if koko_apu != options.Nx[0] or options.APLS_ref_image.shape[2] != options.Nz[0]:
-                print('Resizing reference image')
-                options.APLS_ref_image = resize(options.APLS_ref_image, (options.Nx[0], options.Ny[0], options.Nz[0]))
+        options.APLS_ref_image = options.APLS_ref_image.reshape((koko_apu, koko_apu, options.Nz[0]), order = 'F')
+        if koko_apu != options.Nx[0] or options.APLS_ref_image.shape[2] != options.Nz[0]:
+            print('Resizing reference image')
+            options.APLS_ref_image = resize(options.APLS_ref_image, (options.Nx[0], options.Ny[0], options.Nz[0]))
     else:
         if options.APLS_ref_image.shape[1] != options.Ny or options.APLS_ref_image.shape[2] != options.Nz:
             print('Resizing reference image')
@@ -514,7 +612,24 @@ def APLSPrepass(options):
     options.APLS_ref_image = options.APLS_ref_image.ravel('F')
 
 def computeWeights(options, GGMRF):
-    import numpy as np
+    """
+    Computes distance-based weights for various regularization methods. A 
+    special case for GGMRF is included. The weighting is based on the distance
+    of the "center" voxel to the other voxels. The number of weights depends on
+    the size of the neighborhood.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+    GGMRF : bool
+        If True, GGMRF is selected.
+
+    Returns
+    -------
+    None.
+
+    """
     distX = options.FOVa_x[0] / options.Nx[0]
     distY = options.FOVa_y[0] / options.Ny[0]
     distZ = options.axial_fov[0] / options.Nz[0]
@@ -523,7 +638,7 @@ def computeWeights(options, GGMRF):
         options.weights = np.zeros(((options.Ndx * 2 + 1) * (options.Ndy * 2 + 1) * (options.Ndz * 2 + 1)),order='F',dtype=np.float32)
         cc = np.zeros((options.Ndy * 2 + 1) * (options.Ndx * 2 + 1),order='F',dtype=np.float32)
         lt = 0
-        if GGMRF == True:
+        if GGMRF:
             for jj in range(options.Ndx, -options.Ndx-1, -1):
                 lt += 1
                 ll = 0
@@ -566,7 +681,22 @@ def computeWeights(options, GGMRF):
         options.weights = options.weights.astype(dtype=np.float32)
         
 def quadWeights(options, isEmpty):
-    import numpy as np
+    """
+    Normalizes the weights. If the weights are manually input, no normalization
+    is performed.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+    isEmpty : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    None.
+
+    """
     if isEmpty:
         non_inf_weights_sum = np.sum(options.weights[~np.isinf(options.weights)])
         options.weights_quad = options.weights / non_inf_weights_sum
@@ -580,7 +710,19 @@ def quadWeights(options, isEmpty):
     options.weights_quad = options.weights_quad.astype(dtype=np.float32)
         
 def huberWeights(options):
-    import numpy as np
+    """
+    Normalizes Huber prior weights.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Returns
+    -------
+    None.
+
+    """
     if np.size(options.weights_huber) == 0:
         non_inf_weights_sum = np.sum(options.weights[np.isfinite(options.weights)])
         options.weights_huber = options.weights / non_inf_weights_sum
@@ -590,6 +732,19 @@ def huberWeights(options):
     options.weights_huber = options.weights_huber.astype(dtype=np.float32)
     
 def weightedWeights(options):
+    """
+    Special weighting for weighted mean.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Returns
+    -------
+    None.
+
+    """
     if np.size(options.weighted_weights) == 0:
         distX = options.FOVa_x / float(options.Nx[0].item())
         kerroin = np.sqrt(2.) * distX
@@ -599,6 +754,26 @@ def weightedWeights(options):
     options.weighted_weights = np.reshape(options.weighted_weights, (options.Ndx * 2 + 1, options.Ndy * 2 + 1, options.Ndz * 2 + 1),order='F').astype(dtype=np.float32)
 
 def NLMPrepass(options):
+    """
+    Computes the Gaussian weights for NLM and loads the reference image if
+    selected.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Raises
+    ------
+    ValueError
+        If files are not found.
+
+    Returns
+    -------
+    gaussK : NumPy array
+        Gaussian weights.
+
+    """
     def gaussianKernel(x, y, z, sigma_x, sigma_y, sigma_z = 0):
         gaussK = np.exp(-(np.add.outer(np.add.outer(x**2 / (2*sigma_x**2), y**2 / (2*sigma_y**2)), z**2 / (2*sigma_z**2))))
         return gaussK
@@ -630,6 +805,26 @@ def NLMPrepass(options):
         options.NLM_referenceImage = options.NLM_referenceImage.ravel('F').astype(dtype=np.float32)
 
 def prepassPhase(options):
+    """
+    Computes various preprocessing phases, such as computing weights, loading 
+    reference images, computing relaxation parameters, and making sure that
+    many of the input variables are correctly formatted.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Raises
+    ------
+    ValueError
+        Incorrect input variables or files are not found.
+
+    Returns
+    -------
+    None.
+
+    """
     from .rampfilt import rampFilt
     options.Nf = options.nRowsD
     if not isinstance(options.tauCP, np.ndarray):
@@ -659,7 +854,7 @@ def prepassPhase(options):
                     variables = list(apu.keys())
                     options.referenceImage = apu[variables[0]]
                 else:
-                    options.referenceImage = apu;
+                    options.referenceImage = apu
         if options.referenceImage.ndim > 1 and options.referenceImage.shape[1] != options.Ny or options.referenceImage.shape[2] != options.Nz:
             from skimage.transform import resize #scikit-image
             print('Resizing reference image')
@@ -753,7 +948,7 @@ def prepassPhase(options):
                 for i in range(options.Niter):
                     lambda_vals[i] = 1. / (i / 20. + 1.)
             options.lambdaN = lambda_vals
-            if options.CT == True and not options.SART and not options.ASD_POCS:
+            if options.CT and not options.SART and not options.ASD_POCS:
                 options.lambdaN = options.lambdaN / 10000.
         elif (options.BSREM or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM_MAP or options.ROSEM or options.PKMA or options.SPS or options.SART or options.ASD_POCS or options.SAGA):
             if np.size(options.lambdaN) < options.Niter:
@@ -766,7 +961,7 @@ def prepassPhase(options):
                     for i in range(options.Niter):
                         lambda_vals[i] = 1. / (i / 20. + 1.)
                 options.lambdaN = lambda_vals
-                if options.CT == True and not options.SART and not options.ASD_POCS:
+                if options.CT and not options.SART and not options.ASD_POCS:
                     options.lambdaN = options.lambdaN / 10000.
             elif np.size(options.lambdaN) > options.Niter:
                 print('Warning: The number of relaxation values is more than the number of iterations. Later values are ignored!')
@@ -938,4 +1133,5 @@ def prepassPhase(options):
         options.TV_referenceImage = np.empty(0, dtype=np.float32)
     if (options.PKMA or options.MBSREM or options.SPS or options.RAMLA or options.BSREM or options.ROSEM or options.ROSEM_MAP or options.MRAMLA or options.SAGA) and (options.precondTypeMeas[1] or options.precondTypeImage[5]):
         if (options.lambdaFiltered.size != options.lambdaN.size and options.filteringIterations < options.subsets * options.Niter) or options.lambdaFiltered.size == 0:
-            options.lambdaFiltered = options.lambdaN;
+            options.lambdaFiltered = options.lambdaN
+            
