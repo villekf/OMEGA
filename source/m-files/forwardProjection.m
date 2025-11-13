@@ -88,6 +88,7 @@ function outputFP = forwardProjectionType6(options, recApu, loopVar, koko)
             % 5. Sum
             kuvaRot = sum(kuvaRot, 1);
             kuvaRot = squeeze(kuvaRot);
+            kuvaRot = kuvaRot / double(options.Nx(1));
             outputFP(:, :, kk) = outputFP(:, :, kk) + kuvaRot;
             u1 = u1 + 1;
         end

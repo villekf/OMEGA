@@ -70,6 +70,7 @@ function output = backwardProjectionType6(options, input, koko)
         kuvaRot = permute(kuvaRot, [2 1 3]);
         kuvaRot = repmat(kuvaRot, 1, 1, options.Nx(1));
         kuvaRot = permute(kuvaRot, [3, 2, 1]);
+        kuvaRot = kuvaRot / double(options.Nx(1));
 
 %        % 2. Attenuation correction
 %        if options.attenuation_correction

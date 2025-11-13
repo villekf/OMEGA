@@ -789,7 +789,7 @@ def SPECTParameters(options: proj.projectorClass) -> None:
             colE = colE.max()
 
             options.gFilter = options.gFilter[rowS:rowE+1, colS:colE+1, :]
-            options.gFilter /= np.sum(options.gFilter)
+            options.gFilter /= np.sum(options.gFilter, axis=(0, 1), keepdims=True)
 
 
         panelTilt = options.swivelAngles - options.angles + 180

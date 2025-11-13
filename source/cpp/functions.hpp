@@ -1645,6 +1645,7 @@ inline void forwardProjectionType6(af::array& fProj, const Weighting& w_vec, AF_
 		//kuvaRot = af::reorder(kuvaRot, 2, 1, 0);
         kuvaRot = af::sum(kuvaRot, 0);
 		kuvaRot = af::reorder(kuvaRot, 1, 2, 0);
+        kuvaRot /= inputScalars.Nx[0];
         if (DEBUG || inputScalars.verbose > 2)
             mexPrint("Projector 6 FP step 5 complete");
 
@@ -1669,6 +1670,7 @@ inline af::array backProjectionType6Helper(af::array &fProj, const Weighting& w_
 
         // 1. Smear the input FP across the image volume
         kuvaRot = af::tile(kuvaRot, 1, 1, inputScalars.Nx[ii]); // Repeat through z-axis
+        kuvaRot /= inputScalars.Nx[0];
         
         // 2. Attenuation correction
         if (inputScalars.attenuation_correction && (atten != nullptr)) {

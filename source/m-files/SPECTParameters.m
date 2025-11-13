@@ -109,12 +109,12 @@ if options.projector_type == 6
         xx = repmat(x', 1,size(x,2));
         yy = repmat(y, size(xx,1),1);
         if ~isfield(options, 'sigmaXY')
-            s1 = double(repmat(permute(options.sigmaZ.^2,[4 3 2 1]), size(xx,1), size(yy,2), 1));
-            options.gFilter = (1 / (2*pi*s1).*exp(-(xx.^2 + yy.^2)./(2*s1)));
+            s1 = double(repmat(permute(options.sigmaZ,[4 3 2 1]), size(xx,1), size(yy,2), 1));
+            options.gFilter = exp(-(xx.^2 + yy.^2)./(2*s1.^2)); % .*  (1 / (2*pi*s1);
         else
             s1 = double(repmat(permute(options.sigmaZ,[4 3 2 1]), size(xx,1), size(yy,2), 1));
             s2 = double(repmat(permute(options.sigmaXY,[4 3 2 1]), size(xx,1), size(yy,2), 1));
-            options.gFilter = exp(-(xx.^2./(2*s1.^2) + yy.^2./(2*s2.^2)));
+            options.gFilter = exp(-(xx.^2./(2*s1.^2) + yy.^2./(2*s2.^2))); % .* (1 / (2*pi*s1.*s2)) ;
         end
         [rowE,colE] = find(options.gFilter(:,:,end/4) > 1e-6);
         [rowS,colS] = find(options.gFilter(:,:,end/4) > 1e-6);
@@ -122,8 +122,8 @@ if options.projector_type == 6
         colS = min(colS);
         rowE = max(rowE);
         colE = max(colE);
-        options.gFilter = options.gFilter(rowS:rowE,colS:colE,:,:);
-        options.gFilter = options.gFilter ./ sum(options.gFilter(:));
+        options.gFilter = options.gFilter(rowS:rowE, colS:colE, :);
+        options.gFilter = options.gFilter ./ sum(options.gFilter, [1 2]); % Due to truncation the sum of every slice is not 1. Thus normalize by slice.
     end
 
     panelTilt = options.swivelAngles - options.angles + 180;
