@@ -335,12 +335,14 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		mexPrintBase("inputScalars.size_of_x = %u\n", inputScalars.size_of_x);
 		mexPrintBase("nProjections = %d\n", w_vec.nProjections);
 		mexPrintBase("inputScalars.pitch = %d\n", inputScalars.pitch);
+		mexPrintBase("inputScalars.useHelical = %d\n", inputScalars.useHelical);
 		mexPrintBase("inputScalars.randoms_correction = %d\n", inputScalars.randoms_correction);
 		mexPrintBase("inputScalars.scatter = %d\n", inputScalars.scatter);
 		mexPrintBase("nColsD = %d\n", inputScalars.nColsD);
 		mexPrintBase("nRowsD = %d\n", inputScalars.nRowsD);
 		mexPrintBase("dPitchX = %f\n", w_vec.dPitchX);
 		mexPrintBase("dPitchY = %f\n", w_vec.dPitchY);
+		mexPrintBase("helicalRadius = %f\n", inputScalars.helicalRadius);
 		mexEval();
 	}
 
@@ -644,6 +646,15 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 			if (inputScalars.verbose >= 3 || DEBUG)
 				mexPrint("Loading dynamic measurement/randoms/scatter data");
 			for (int kk = inputScalars.osa_iter0; kk < inputScalars.TOFsubsets; kk++) {
+				if (DEBUG) {
+					mexPrintBase("pituus[kk] = %u\n", pituus[kk]);
+					mexPrintBase("length[kk] = %d\n", length[kk]);
+					mexPrintBase("tt = %d\n", tt);
+					mexPrintBase("inputScalars.kokoNonTOF = %d\n", inputScalars.kokoNonTOF);
+					mexPrintBase("inputScalars.osa_iter0 = %d\n", inputScalars.osa_iter0);
+					mexPrintBase("inputScalars.TOFsubsets = %d\n", inputScalars.TOFsubsets);
+					mexEval();
+				}
 				if ((inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8 && inputScalars.subsetType > 0) || inputScalars.listmode > 0) {
 					if (inputScalars.TOF && inputScalars.listmode == 0) {
 						for (int64_t to = 0; to < inputScalars.nBins; to++) {
@@ -683,7 +694,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 			}
 			if (inputScalars.randoms_correction) {
 				if ((inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8 && inputScalars.subsetType > 0) || inputScalars.listmode > 0)
-					for (int kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++)
+					for (int kk = inputScalars.osa_iter0; kk < inputScalars.TOFsubsets; kk++)
 						aRand[kk] = af::array(length[kk], &sc_ra[pituus[kk] + inputScalars.kokoNonTOF * tt], AFTYPE);
 				else {
 					for (int kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++)
@@ -1074,6 +1085,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 				curIter = iter;
 			if (DEBUG) {
 				mexPrintBase("curIter = %d\n", curIter);
+				mexPrintBase("tt = %d\n", tt);
 				mexEval();
 			}
 
@@ -1535,7 +1547,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 					iterTime = totTime - cumulativeTime;
 					cumulativeTime += iterTime;
 					mexPrintBase("Iteration %d complete in %f seconds\n", iter + 1u, iterTime);
-					mexPrintBase("Estimated time left: %f seconds\n", iterTime * (inputScalars.Niter - 1 - iter));
+					mexPrintBase("Estimated time left: %f seconds\n", iterTime * (inputScalars.Niter - 1 - iter) + iterTime * (inputScalars.Nt - 1 - tt) * inputScalars.Niter);
 				}
 				else
 					mexPrintBase("Iteration %d complete\n", iter + 1u);

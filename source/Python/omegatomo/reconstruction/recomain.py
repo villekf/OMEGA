@@ -532,7 +532,7 @@ def reconstructions_main(options):
     if options.CT and options.flat <= 0 and not options.usingLinearizedData:
         print('No flat value input! Using the maximum value as the flat value. Alternatively, input the flat value into options.flat')
         options.flat = np.max(options.SinM).astype(dtype=np.float32)
-    if not options.CT and not options.SPECT and not(options.SinM.size == options.Ndist * options.Nang * options.TotSinos) and options.listmode == 0:
+    if not options.CT and not options.SPECT and not options.SinM.size == options.Ndist * options.Nang * options.TotSinos * options.Nt * options.TOF_bins_used and options.listmode == 0:
         raise ValueError('The number of elements in the input data does not match the input number of angles, radial distances and total number of sinograms multiplied together!')
     if not options.usingLinearizedData and (options.LSQR or options.CGLS or options.FISTA or options.FISTAL1 or options.PDHG or options.PDHGL1 or options.PDDY or options.FDK or options.SART or options.ASD_POCS) and not options.largeDim and options.CT:
         from .prepass import linearizeData

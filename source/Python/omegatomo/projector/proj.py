@@ -165,7 +165,7 @@ class projectorClass:
     nBed = 1
     TOF_FWHM = 0.
     TOF_width = 0.
-    TOF_bins_used = 0
+    TOF_bins_used = 1
     span = 3
     cutoffFrequency = 1.
     normalFilterSigma = 0.25

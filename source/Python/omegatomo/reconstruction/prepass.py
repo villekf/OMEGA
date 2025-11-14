@@ -280,7 +280,10 @@ def parseInputs(options, mDataFound = False):
                             if options.TOF:
                                 temp = options.SinM[:,:,:,:,ff - 1]
                             else:
-                                temp = options.SinM[:,:,:,ff - 1]
+                                if options.SinM.ndim == 4:
+                                    temp = options.SinM[:,:,:,ff - 1]
+                                else:
+                                    temp = np.squeeze(options.SinM[:,:,:,:,ff - 1])
                             if options.NSinos != options.TotSinos:
                                 temp = temp[:, :, :options.NSinos, :]
                         else:
@@ -310,7 +313,10 @@ def parseInputs(options, mDataFound = False):
                     if options.TOF and options.listmode == 0:
                         options.SinM[:,:,:,:,ff - 1] = temp
                     else:
-                        options.SinM[:,:,:,ff - 1] = temp
+                        if options.SinM.ndim == 4:
+                            options.SinM[:,:,:,ff - 1] = temp
+                        else:
+                            options.SinM[:,:,:,:,ff - 1] = temp
             else:
                 if not options.use_raw_data and options.listmode == 0:
                     if options.NSinos != options.TotSinos:

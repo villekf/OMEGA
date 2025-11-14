@@ -142,7 +142,7 @@ if options.param.weighted_mean && options.param.MAP
 end
 
 if partitions == 1 && options.param.nLayers == 1
-    if ~options.param.CT && ~options.param.SPECT && numel(options.param.SinM) ~= options.param.Ndist * options.param.Nang * options.param.TotSinos * options.param.TOF_bins_used && options.param.listmode == 0 && ~options.param.attenuation_phase
+    if ~options.param.CT && ~options.param.SPECT && numel(options.param.SinM) ~= options.param.Ndist * options.param.Nang * options.param.TotSinos * options.param.TOF_bins_used * partitions && options.param.listmode == 0 && ~options.param.attenuation_phase
         error('The number of elements in the input data does not match the input number of angles, radial distances and total number of sinograms multiplied together!')
     end
 end

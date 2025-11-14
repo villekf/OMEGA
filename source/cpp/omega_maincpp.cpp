@@ -112,6 +112,9 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 		mexPrintBase("inputScalars.Ny = %u\n", inputScalars.Ny[0]);
 		mexPrintBase("inputScalars.Nz = %u\n", inputScalars.Nz[0]);
 		mexPrintBase("inputScalars.Nf = %u\n", inputScalars.Nf);
+		mexPrintBase("inputScalars.Nt = %u\n", inputScalars.Nt);
+		mexPrintBase("options.measElem = %u\n", options.measElem);
+		mexPrintBase("mDim = %u\n", mDim);
 		mexPrintBase("inputScalars.nColsD = %u\n", inputScalars.nColsD);
 		mexPrintBase("inputScalars.nRowsD = %u\n", inputScalars.nRowsD);
 		mexPrintBase("inputScalars.bmin = %f\n", inputScalars.bmin);
