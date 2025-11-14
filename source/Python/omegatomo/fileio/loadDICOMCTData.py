@@ -1,7 +1,4 @@
-import os
-import numpy as np
-import pydicom
-import struct
+
 
 def loadDICOMCTPD(path):
     """
@@ -10,6 +7,10 @@ def loadDICOMCTPD(path):
     Input: path to folder containing DICOM images
     Output: proj (numpy array), vars (dict)
     """
+    import os
+    import numpy as np
+    import pydicom
+    import struct
     files = [f for f in os.listdir(path) if f.lower().endswith('.dcm')]
     nFiles = len(files)
     xs = np.zeros(nFiles, dtype=np.float32)
