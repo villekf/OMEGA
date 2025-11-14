@@ -1091,7 +1091,12 @@ DEVICE void getDetectorCoordinatesRaw(
 #else
 	CONSTANT float* d_xy, 
 #endif
-	CONSTANT float *d_z, const int3 i, float3* s, float3* d, const int2 indz
+#if defined(PTYPE4) && defined(USEGLOBAL)
+	const CLGLOBAL float* d_z,
+#else
+	CONSTANT float* d_z,
+#endif
+	const int3 i, float3* s, float3* d, const int2 indz
 #if defined(N_RAYS)
 	, const int lorXY, const int lorZ, const float2 cr
 #endif
