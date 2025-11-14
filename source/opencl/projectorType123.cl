@@ -186,7 +186,7 @@ void projectorType123(
 	const CLGLOBAL float* CLRESTRICT d_xy,
 #endif
 	///////////////////////// LISTMODE DATA /////////////////////////
-#if (defined(LISTMODE) && !defined(SENS) && !defined(INDEXBASED))
+#if (defined(LISTMODE) && !defined(SENS) && !defined(INDEXBASED)) || defined(USEGLOBAL)
 	const CLGLOBAL float* CLRESTRICT d_z,
 #else
 	CONSTANT float* d_z,
