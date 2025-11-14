@@ -15,7 +15,7 @@ int computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethod
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing regularization for BSREM/ROSEMMAP");
 		int status = 0;
-		status = applyPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, iter, 0, true);
+		status = applySpatialPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, iter, 0, true);
 		if (status != 0)
 			return -1;
 		// MAP/Prior-algorithms

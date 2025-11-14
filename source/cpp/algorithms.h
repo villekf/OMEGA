@@ -287,7 +287,7 @@ inline int SART(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 			int status = 0;
 			const float dp = static_cast<float>(af::norm(vec.im_os[timestep][ii] - imOld));
 			for (int kk = 0; kk < w_vec.ng; kk++) {
-				status = applyPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, osa_iter + inputScalars.subsetsUsed * iter);
+				status = applySpatialPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, osa_iter + inputScalars.subsetsUsed * iter);
 				if (status != 0)
 					return status;
 				vec.dU /= (af::norm(vec.dU) + inputScalars.epps);
@@ -534,7 +534,7 @@ inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 		}
 		if (ii == 0) {
 			for (int kk = 0; kk < w_vec.ng; kk++) {
-				status = applyPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, osa_iter + inputScalars.subsetsUsed * iter);
+				status = applySpatialPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, osa_iter + inputScalars.subsetsUsed * iter);
 				if (status != 0)
 					return status;
 				vec.dU /= (af::norm(vec.dU) + inputScalars.epps);

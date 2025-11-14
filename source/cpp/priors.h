@@ -369,7 +369,7 @@ inline int NLM(ProjectorClass& proj, const af::array& im, Weighting& w_vec, cons
 }
 
 
-inline int applyPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const scalarStruct& inputScalars, ProjectorClass& proj, const float beta, const uint32_t osa_iter = 0, const uint8_t compute_norm_matrix = 0, 
+inline int applySpatialPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const scalarStruct& inputScalars, ProjectorClass& proj, const float beta, const uint32_t osa_iter = 0, const uint8_t compute_norm_matrix = 0, 
 	const bool iter = false, const int kk = 0, const int timestep = 0) {
 	af::array* dU = nullptr;
 	int status = 0;

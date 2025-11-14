@@ -7,21 +7,20 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
     int status = 0;
     af::array OSEMApu, COSEMApu, PDDYApu;
     std::vector<af::array> FISTAApu;
+    if (DEBUG || inputScalars.verbose >= 3) {
+        proj.tStartLocal = std::chrono::steady_clock::now();
+    }
+
+    if (DEBUG) {
+        mexPrint("Algo start\n");
+        mexEval();
+    }
+
+    bool MAP = false;
+    if (MethodList.MRP || MethodList.Quad || MethodList.Huber || MethodList.L || MethodList.FMH || MethodList.TV || MethodList.WeightedMean || MethodList.AD || MethodList.APLS || MethodList.TGV || MethodList.NLM || MethodList.RDP || MethodList.ProxTGV || MethodList.ProxTV || MethodList.ProxRDP || MethodList.ProxNLM || MethodList.GGMRF)
+        MAP = true;
+
     for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
-        if (DEBUG || inputScalars.verbose >= 3) {
-            proj.tStartLocal = std::chrono::steady_clock::now();
-        }
-
-        if (DEBUG) {
-            mexPrint("Algo start\n");
-            mexEval();
-        }
-        bool MAP = false;
-        if (MethodList.MRP || MethodList.Quad || MethodList.Huber || MethodList.L || MethodList.FMH || MethodList.TV
-            || MethodList.WeightedMean || MethodList.AD || MethodList.APLS || MethodList.TGV || MethodList.NLM || MethodList.RDP || MethodList.ProxTGV
-            || MethodList.ProxTV || MethodList.ProxRDP || MethodList.ProxNLM || MethodList.GGMRF)
-            MAP = true;
-
         for (int ii = kk; ii <= inputScalars.nMultiVolumes; ii++) {
             if (inputScalars.FISTAAcceleration)
                 FISTAApu.emplace_back(vec.im_os[timestep][ii].copy());
@@ -69,7 +68,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             mexEval();
         }
         if (!MethodList.BSREM && !MethodList.ROSEMMAP && !MethodList.POCS && !MethodList.SART && kk == 0) {
-            status = applyPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, osa_iter + inputScalars.subsets * iter, compute_norm_matrix, false, vv);
+            status = applySpatialPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, osa_iter + inputScalars.subsets * iter, compute_norm_matrix, false, vv);
             if (status != 0) return -1;
         }
     }
