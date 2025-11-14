@@ -316,7 +316,7 @@ def parseInputs(options, mDataFound = False):
                         if options.SinM.ndim == 4:
                             options.SinM[:,:,:,ff - 1] = temp
                         else:
-                            options.SinM[:,:,:,:,ff - 1] = temp
+                            options.SinM[:,:,:,0,ff - 1] = temp
             else:
                 if not options.use_raw_data and options.listmode == 0:
                     if options.NSinos != options.TotSinos:
