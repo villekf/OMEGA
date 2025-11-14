@@ -413,7 +413,7 @@ options.GGMRF_c = 5
 
 import time
 tic = time.perf_counter()
-pz = reconstructions_mainCT(options)
+pz, fp = reconstructions_mainCT(options)
 toc = time.perf_counter()
 print(f"{toc - tic:0.4f} seconds")
 plt.pyplot.imshow(pz[:,:,500], vmin=0)
