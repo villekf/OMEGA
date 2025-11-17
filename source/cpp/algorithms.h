@@ -28,9 +28,7 @@ inline af::array OSL(const af::array& Summ, const af::array& dU, const float epp
 
 // Computes the final MBSREM update
 // Can use image-based preconditioners which are applied before the final update
-inline int MBSREM(af::array& im, af::array& rhs, const float U, const float* lam, const uint32_t iter, const uint32_t osa_iter,
-	const scalarStruct& inputScalars, Weighting& w_vec, ProjectorClass& proj, const int ii = 0, const uint32_t timestep = 0)
-{ // TODO remove default for timestep
+inline int MBSREM(af::array& im, af::array& rhs, const float U, const float* lam, const uint32_t timestep, const uint32_t iter, const uint32_t osa_iter, const scalarStruct& inputScalars, Weighting& w_vec, ProjectorClass& proj, const int ii = 0) {
 	int status = 0;
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
 	af::array output;
@@ -65,8 +63,7 @@ inline int BSREM(af::array& im, const af::array& rhs, const float* lam, const ui
 }
 
 // Subset-based separable paraboidal surrogates
-inline int SPS(af::array& im, af::array& rhs, const float U, const float* lam, const uint32_t iter, const uint32_t osa_iter,
-	const scalarStruct& inputScalars, Weighting& w_vec, ProjectorClass& proj, const int ii = 0, const uint32_t timestep = 0) { // TODO remove default for timestep
+inline int SPS(af::array& im, af::array& rhs, const float U, const float* lam, const uint32_t timestep, const uint32_t iter, const uint32_t osa_iter, const scalarStruct& inputScalars, Weighting& w_vec, ProjectorClass& proj, const int ii = 0) {
 	int status = 0;
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
 	if (DEBUG) {
@@ -151,8 +148,7 @@ inline af::array COSEM(const af::array& im, const af::array& C_co, const af::arr
 
 // PKMA
 // Can use image-based preconditioners which are applied before the final update
-inline int PKMA(af::array& im, af::array& rhs, Weighting& w_vec, const scalarStruct& inputScalars,
-	const uint32_t iter, const uint32_t osa_iter, ProjectorClass& proj, const int ii = 0, const uint32_t timestep = 0) { // TODO remove default for timestep
+inline int PKMA(af::array& im, af::array& rhs, Weighting& w_vec, const scalarStruct& inputScalars, const uint32_t timestep, const uint32_t iter, const uint32_t osa_iter, ProjectorClass& proj, const int ii = 0) {
 	int status = 0;
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
 	applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, kk, ii, timestep);
@@ -215,7 +211,7 @@ inline int PKMA(af::array& im, af::array& rhs, Weighting& w_vec, const scalarStr
 	return status;
 }
 
-inline void LSQR(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t iter, AF_im_vectors& vec, const int ii = 0, const int timestep = 0) { // TODO remove default for timestep
+inline void LSQR(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t timestep, const uint32_t iter, AF_im_vectors& vec, const int ii = 0) {
 	if (iter == 0)
 		vec.wLSQR[ii] = vec.im_os[timestep][ii];
 	vec.im_os[timestep][ii] = vec.rhs_os[timestep][ii] - w_vec.betaLSQR * vec.im_os[timestep][ii];
@@ -244,7 +240,7 @@ inline void LSQR(const scalarStruct& inputScalars, Weighting& w_vec, const uint3
 	}
 }
 
-inline void CGLS(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t iter, AF_im_vectors& vec, const int ii = 0, const bool largeDim = false, const int timestep = 0) { // TODO remove default argument for timestep
+inline void CGLS(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t timestep, const uint32_t iter, AF_im_vectors& vec, const int ii = 0, const bool largeDim = false) {
 	if (ii == inputScalars.nMultiVolumes) {
 		if (!largeDim) {
 			float gamma_ = 0.f;
@@ -272,10 +268,7 @@ inline void CGLS(const scalarStruct& inputScalars, Weighting& w_vec, const uint3
 	}
 }
 
-inline int SART(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, AF_im_vectors& vec, ProjectorClass& proj, const af::array& mData, const af::array& g,
-	std::vector<int64_t>& length, const int64_t* pituus, const uint32_t osa_iter, const uint32_t iter, const af::array& Summ, const af::array& rhs, const float lam, const int ii = 0,
-    const int timestep = 0
-) { // TODO remove default argument for timestep
+inline int SART(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, AF_im_vectors& vec, ProjectorClass& proj, const af::array& mData, const af::array& g, std::vector<int64_t>& length, const int64_t* pituus, const uint32_t timestep, const uint32_t osa_iter, const uint32_t iter, const af::array& Summ, const af::array& rhs, const float lam, const int ii = 0) {
 	af::array imOld;
 	if (MethodList.prior && !MethodList.POCS)
 		imOld = vec.im_os[timestep][ii].copy();
@@ -494,8 +487,7 @@ inline int FISTAL1(af::array& im, af::array& rhs, const scalarStruct& inputScala
 }
 
 // ASD-POCS
-inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, AF_im_vectors& vec, ProjectorClass& proj, const af::array& mData, const af::array& g, 
-	std::vector<int64_t>& length, const int64_t* pituus, const uint32_t osa_iter, const uint32_t iter, const int ii = 0, int timestep = 0) { // TODO remove timestep default argument
+inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, AF_im_vectors& vec, ProjectorClass& proj, const af::array& mData, const af::array& g, std::vector<int64_t>& length, const int64_t* pituus, const uint32_t timestep, const uint32_t osa_iter, const uint32_t iter, const int ii = 0) {
 	vec.im_os[timestep][ii](vec.im_os[timestep][ii] < 0.f) = 0.f;
 	if (DEBUG)
 		mexPrint("Computing ASD-POCS");
@@ -555,7 +547,7 @@ inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 	return 0;
 }
 
-inline int SAGA(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t osa_iter, const uint32_t iter, const int ii = 0, uint32_t timestep = 0) { // TODO: remove default argument for timestep
+inline int SAGA(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t timestep, const uint32_t osa_iter, const uint32_t iter, const int ii = 0) {
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
 	af::array grad = af::constant(0.f, im.elements());
 	if (DEBUG) {
@@ -584,7 +576,7 @@ inline int SAGA(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, AF_
 	return status;
 }
 
-inline int BB(AF_im_vectors &vec, Weighting &w_vec, const int ii = 0, int timestep = 0) { // TODO: remove default argument for timestep
+inline int BB(AF_im_vectors &vec, Weighting &w_vec, const uint32_t timestep, const int ii = 0) {
 	af::array s = vec.im_os[timestep][ii] - vec.imBB[ii];
 	af::array y = vec.rhs_os[timestep][ii] - vec.gradBB[ii];
 	float denmo = af::dot<float>(s,y);

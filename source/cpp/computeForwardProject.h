@@ -2,10 +2,7 @@
 #include "functions.hpp"
 
 // Computes all computations using the forward projection and outputting a measurement-domain vector
-inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::array& input, const int64_t length, const scalarStruct& inputScalars,
-	Weighting& w_vec, const af::array& randomsData, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter = 0, const uint32_t subIter = 0, const int ii = 0, 
-	float* residual = nullptr, uint32_t timestep = 0) { // TODO remove default for timestep
-
+inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::array& input, const int64_t length, const scalarStruct& inputScalars, Weighting& w_vec, const af::array& randomsData, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t timestep, const uint32_t iter = 0, const uint32_t subIter = 0, const int ii = 0, float* residual = nullptr) {
 	if (DEBUG || inputScalars.verbose >= 3) {
 		proj.tStartLocal = std::chrono::steady_clock::now();
 	}

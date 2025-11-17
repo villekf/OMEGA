@@ -613,29 +613,39 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 			mexPrint("NLM loaded");
 		}
 	}
+
+    w_vec.tauCP.resize(inputScalars.nMultiVolumes + 1);
+    w_vec.tauCP2.resize(inputScalars.nMultiVolumes + 1);
+
 	if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1) {
-		w_vec.tauCP = getSingles(options, "tauCPFilt");
+        const float *tauCP = getSingles(options, "tauCPFilt");
+        w_vec.tauCP.assign(tauCP, tauCP + w_vec.tauCP.size());
 		w_vec.sigmaCP = getSingles(options, "sigmaCP");
 		w_vec.powerIterations = getScalarUInt32(getField(options, 0, "powerIterations"), -63);
 		if (DEBUG) {
 			mexPrint("PIter loaded");
 		}
 	}
+
 	if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1 || MethodList.ProxTGV || MethodList.ProxTV) {
-		if (w_vec.precondTypeMeas[1])
-			w_vec.tauCP2 = getSingles(options, "tauCP");
-		else
-			w_vec.tauCP = getSingles(options, "tauCP");
+		if (w_vec.precondTypeMeas[1]) {
+            const float *tauCP2 = getSingles(options, "tauCP");
+            w_vec.tauCP2.assign(tauCP2, tauCP2 + w_vec.tauCP2.size());
+        } else {
+            const float *tauCP = getSingles(options, "tauCP");
+            w_vec.tauCP.assign(tauCP, tauCP + w_vec.tauCP.size());
+        }
 		w_vec.sigma2CP = getSingles(options, "sigma2CP");
 		w_vec.betaReg = getScalarFloat(getField(options, 0, "beta"), -63);
+
 		w_vec.thetaCP = getSingles(options, "thetaCP", 0);
+
 		w_vec.alpha0CPTGV = getScalarFloat(getField(options, 0, "alpha0TGV"), -63);
 		w_vec.alpha1CPTGV = getScalarFloat(getField(options, 0, "alpha1TGV"), -63);
 		w_vec.UseL2Ball = getScalarBool(getField(options, 0, "useL2Ball"), -63);
 		inputScalars.FISTAType = getScalarUInt32(getField(options, 0, "FISTAType"), -63);
 		if (inputScalars.adaptiveType == 1) {
 			for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
-				//w_vec.alphaCP.emplace_back(.3f);
 				w_vec.alphaCP.emplace_back(1.f);
 		}
 		else if (inputScalars.adaptiveType == 2)

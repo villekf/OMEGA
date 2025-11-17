@@ -305,8 +305,7 @@ inline int transferRHS(af::array& rhs_os, ProjectorClass& proj) {
 /// <param name="proj the projector class object"></param>
 /// <param name="ii optional multi-resolution volume number, default is 0 (main volume)"></param>
 /// <returns></returns>
-inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, ProjectorClass& proj, const int ii = 0, const int timestep = 0) { // TODO remove default for timestep
-
+inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, ProjectorClass& proj, const int ii, const int timestep) {
 #ifdef CUDA
 	CUresult status = CUDA_SUCCESS;
 #elif defined(OPENCL)
@@ -1209,7 +1208,7 @@ inline int proxTGVQAF(std::vector<af::array>& r, const scalarStruct& inputScalar
 }
 
 // Proximal TV divergence
-inline int proxTVDivAF(const std::vector<af::array>& grad, af::array& input, const scalarStruct& inputScalars, ProjectorClass& proj, uint32_t timestep = 0) { // TODO remove default argument
+inline int proxTVDivAF(const std::vector<af::array>& grad, af::array& input, const scalarStruct& inputScalars, ProjectorClass& proj, const uint32_t timestep) {
 	int status = 0;
 	if (DEBUG) {
 		mexPrintBase("input.dims(0) = %u\n", input.dims(0));
@@ -2274,8 +2273,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 }
 
 // Compute the specific weight needed by ACOSEM
-inline int computeACOSEMWeight(scalarStruct& inputScalars, std::vector<int64_t>& length, float& uu, uint32_t osa_iter, uint32_t timestep, const af::array& mData,
-	uint64_t m_size, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const int64_t subSum, const int64_t* pituus, const af::array& g = af::constant(0.f, 1, 1)) {
+inline int computeACOSEMWeight(scalarStruct& inputScalars, std::vector<int64_t>& length, float& uu, uint32_t osa_iter, uint32_t timestep, const af::array& mData, uint64_t m_size, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const int64_t subSum, const int64_t* pituus, const af::array& g = af::constant(0.f, 1, 1)) { // TODO vectorize ACOSEM_rhs
 	if (inputScalars.verbose >= 3)
 		mexPrint("Computing ACOSEM weight");
 	int status = 0;
@@ -2307,14 +2305,13 @@ inline int computeACOSEMWeight(scalarStruct& inputScalars, std::vector<int64_t>&
 
 // The power method
 inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector<int64_t>& length, ProjectorClass& proj,
-	AF_im_vectors& vec, const RecMethods& MethodList, const int64_t* pituus, const af::array& g = af::constant(0.f, 1, 1), 
-	float* F = nullptr, float* apuD = nullptr, const float* atten = nullptr, const int timestep = 0) {
+	AF_im_vectors& vec, const RecMethods& MethodList, const int64_t* pituus, const uint32_t timestep, const af::array& g = af::constant(0.f, 1, 1), float* F = nullptr, float* apuD = nullptr, const float* atten = nullptr) { // TODO: vectorize tauCP, tauCP2, LCP, LCP2
 	int status = 0;
 	std::vector<af::array> Summ;
 	af::array meanBP;
 	uint64_t m_size = length[0];
 	if (inputScalars.verbose > 0) {
-		mexPrint("Starting power method\n");
+		mexPrintf("Starting power method for timestep %u\n", timestep);
 	}
 	if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 		m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[0];
@@ -2447,8 +2444,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				proj.memSize -= (sizeof(float) * m_size) / 1048576ULL;
 			}
 		}
-	}
-	else {
+	} else {
 		for (int kk = 0; kk < w_vec.powerIterations; kk++) {
 			tauCP[0] = 0.f;
 			af::array outputFP = af::constant(0.f, m_size * inputScalars.nBins);
@@ -2508,7 +2504,8 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			af::sync();
 		}
 	}
-	std::copy(tauCP.begin(), tauCP.end(), w_vec.tauCP);
+	w_vec.tauCP = tauCP;
+    //std::copy(tauCP.begin(), tauCP.end(), w_vec.tauCP);
 	uint32_t subsets = 1;
 	if (!inputScalars.stochastic)
 		subsets = inputScalars.subsets;
@@ -2695,7 +2692,8 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				}
 			}
 		}
-		std::copy(tauCP.begin(), tauCP.end(), w_vec.tauCP2);
+        w_vec.tauCP2 = tauCP;
+		//std::copy(tauCP.begin(), tauCP.end(), w_vec.tauCP2);
 		if (apuM) {
 			w_vec.precondTypeMeas[1] = apuM;
 		}
@@ -2775,8 +2773,8 @@ inline void initializeProxPriors(const RecMethods& MethodList, const scalarStruc
 }
 
 // Transfer memory control back to ArrayFire
-inline void transferControl(AF_im_vectors& vec, const scalarStruct& inputScalars, const af::array& g, const Weighting& w_vec, const uint8_t compute_norm_matrix = 2, const uint8_t no_norm = 1,
-	const uint32_t osa_iter = 0, const int ii = 0, uint32_t timestep = 0) { // TODO: remove default argument for timestep
+inline void transferControl(AF_im_vectors& vec, const scalarStruct& inputScalars, const af::array& g, const Weighting& w_vec, const uint32_t timestep, const uint8_t compute_norm_matrix = 2, const uint8_t no_norm = 1,
+	const uint32_t osa_iter = 0, const int ii = 0) {
 	if (compute_norm_matrix == 1u) {
 		vec.Summ[ii][0].unlock();
 		if (no_norm == 0u) {

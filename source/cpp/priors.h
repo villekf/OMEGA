@@ -259,7 +259,7 @@ inline int hyperbolic(const scalarStruct& inputScalars, const af::array& ima, co
 	return status;
 }
 
-inline int proxTV(const af::array& im, const scalarStruct& inputScalars, AF_im_vectors& vec, ProjectorClass& proj, const Weighting& w_vec, af::array& dU, const float beta) {
+inline int proxTV(const af::array& im, const scalarStruct& inputScalars, AF_im_vectors& vec, ProjectorClass& proj, const Weighting& w_vec, af::array& dU, const float beta, const uint32_t timestep) {
 	int status = 0;
 #ifndef CPU
 	status = proxTVGradAF(im, vec.qProxTV, inputScalars, w_vec.sigma2CP[0], vec.vProxTGV, proj);
@@ -270,7 +270,7 @@ inline int proxTV(const af::array& im, const scalarStruct& inputScalars, AF_im_v
 	af::sync();
 	if (status != 0)
 		return -1;
-	status = proxTVDivAF(vec.qProxTV, dU, inputScalars, proj);
+	status = proxTVDivAF(vec.qProxTV, dU, inputScalars, proj, timestep);
 	if (DEBUG) {
 		mexPrintBase("beta = %f\n", beta);
 		mexPrintBase("w_vec.sigma2CP = %f\n", w_vec.sigma2CP[0]);
@@ -284,10 +284,10 @@ inline int proxTV(const af::array& im, const scalarStruct& inputScalars, AF_im_v
 	return status;
 }
 
-inline int proxTGV(const af::array& im, const scalarStruct& inputScalars, AF_im_vectors& vec, ProjectorClass& proj, const Weighting& w_vec, af::array& dU, const uint32_t osa_iter = 0) {
+inline int proxTGV(const af::array& im, const scalarStruct& inputScalars, AF_im_vectors& vec, ProjectorClass& proj, const Weighting& w_vec, af::array& dU, const uint32_t osa_iter, const uint32_t timestep) {
 	int status = 0;
 #ifndef CPU
-	status = proxTV(im, inputScalars, vec, proj, w_vec, dU, w_vec.alpha0CPTGV);
+	status = proxTV(im, inputScalars, vec, proj, w_vec, dU, w_vec.alpha0CPTGV, timestep);
 	if (DEBUG) {
 		mexPrintBase("vec.qProxTV = %f\n", af::sum<float>(vec.qProxTV[0]));
 		mexPrintBase("vec.qProxTGV = %f\n", af::sum<float>(vec.qProxTGV[0]));
@@ -321,9 +321,7 @@ inline int proxTGV(const af::array& im, const scalarStruct& inputScalars, AF_im_
 	return status;
 }
 
-inline int RDP(const af::array& im, const scalarStruct& inputScalars, const float gamma, ProjectorClass& proj, af::array& dU, const float beta, const af::array& RDPref, const Weighting& w_vec,
-	const bool RDPLargeNeighbor = false, const bool useRDPRef = false, const int kk = 0) {
-
+inline int RDP(const af::array& im, const scalarStruct& inputScalars, const float gamma, ProjectorClass& proj, af::array& dU, const float beta, const af::array& RDPref, const Weighting& w_vec, const bool RDPLargeNeighbor = false, const bool useRDPRef = false, const int kk = 0) {
 	int status = 0;
 	af::sync();
 	if (DEBUG) {
@@ -342,7 +340,6 @@ inline int RDP(const af::array& im, const scalarStruct& inputScalars, const floa
 }
 
 inline int GGMRF(const af::array& im, const scalarStruct& inputScalars, const float p, const float q, const float c, const float pqc, ProjectorClass& proj, af::array& dU, const Weighting& w_vec, const float beta, const int kk = 0) {
-
 	int status = 0;
 	af::sync();
 	if (DEBUG) {
@@ -446,12 +443,12 @@ inline int applySpatialPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMeth
 			mexPrint("Computing TGV prior");
 		if (osa_iter >= 100)
 			w_vec.sigma2CP = w_vec.sigmaCP;
-		status = proxTGV(vec.im_os[timestep][0], inputScalars, vec, proj, w_vec, *dU, osa_iter);
+		status = proxTGV(vec.im_os[timestep][0], inputScalars, vec, proj, w_vec, *dU, osa_iter, timestep);
 	}
 	else if (MethodList.ProxTV) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing proximal TV prior");
-		status = proxTV(vec.im_os[timestep][0], inputScalars, vec, proj, w_vec, *dU, w_vec.betaReg);
+		status = proxTV(vec.im_os[timestep][0], inputScalars, vec, proj, w_vec, *dU, w_vec.betaReg, timestep);
 	}
 	else if (MethodList.NLM) {
 		if (inputScalars.verbose >= 3)

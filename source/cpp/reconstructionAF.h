@@ -820,13 +820,16 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
             mexPrint("M computation finished");
     }
     
-    // TODO: vectorize
     // Use power method to compute the tau/primal value, if necessary
-    if ((MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1) && w_vec.tauCP[0] == 0.f)
-        status = powerMethod(inputScalars, w_vec, length, proj, vec, MethodList, pituus, g, apuF, apuD, atten);
-    if (status != 0) {
-        return -1;
+    if ((MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1) && w_vec.tauCP[0] == 0.f) {
+        for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
+            status = powerMethod(inputScalars, w_vec, length, proj, vec, MethodList, pituus, timestep, g, apuF, apuD, atten);
+            if (status != 0) {
+                return -1;
+            }
+        }
     }
+        
     if (inputScalars.verbose >= 3 && (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1)) {
         mexPrintVarf("Primal step size (tau) is ", w_vec.tauCP[0]);
         mexPrintVarf("Dual step size (sigma) is ", w_vec.sigmaCP[0]);
@@ -1164,7 +1167,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 						//	residual[iter * inputScalars.subsets + osa_iter] = af::norm(outputFP - mData[subIter]);
 						//	residual[iter * inputScalars.subsets + osa_iter] = residual[iter * inputScalars.subsets + osa_iter] * residual[iter * inputScalars.subsets + osa_iter] * .5f;
 						//}
-						status = computeForwardStep(MethodList, mData[subIter][tt], outputFP, m_size, inputScalars, w_vec, aRand[tt][subIter], vec, proj, iter, osa_iter, 0, residual, tt);
+						status = computeForwardStep(MethodList, mData[subIter][tt], outputFP, m_size, inputScalars, w_vec, aRand[tt][subIter], vec, proj, tt, iter, osa_iter, 0, residual);
 						if (status != 0)
 							return -1;
 						if (DEBUG) {
@@ -1221,7 +1224,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 								}
 								return -1;
 							}
-							transferControl(vec, inputScalars, g, w_vec, compute_norm_matrix, proj.no_norm, osa_iter, ii);
+							transferControl(vec, inputScalars, g, w_vec, tt, compute_norm_matrix, proj.no_norm, osa_iter, ii);
 						}
 					} else if (inputScalars.projector_type == 6) { // SPECT rotation-based projector
                         af::sync();
@@ -1249,7 +1252,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             fProj.host(FPapu);
                         }
                         af::sync();
-                        status = computeForwardStep(MethodList, mData[subIter][tt], fProj, m_size, inputScalars, w_vec, aRand[tt][subIter], vec, proj, iter, osa_iter, tt);
+                        status = computeForwardStep(MethodList, mData[subIter][tt], fProj, m_size, inputScalars, w_vec, aRand[tt][subIter], vec, proj, tt, iter, osa_iter);
                         if (status != 0)
                             return -1;
                         for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
@@ -1298,7 +1301,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                         proj.tStartLocal = std::chrono::steady_clock::now();
                     }
                     af::sync();
-                    status = computeForwardStep(MethodList, mData[0][tt], outputFP, m_size, inputScalars, w_vec, aRand[tt][0], vec, proj, iter, 0, tt);
+                    status = computeForwardStep(MethodList, mData[0][tt], outputFP, m_size, inputScalars, w_vec, aRand[tt][0], vec, proj, tt, iter, 0);
                     if (status != 0)
                         return -1;
                     if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) {
