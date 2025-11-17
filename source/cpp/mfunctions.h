@@ -618,6 +618,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
     w_vec.tauCP2.resize(inputScalars.Nt);
     w_vec.LCP.resize(inputScalars.Nt);
     w_vec.LCP2.resize(inputScalars.Nt);
+    w_vec.alphaCP.resize(inputScalars.Nt);
 
     if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1 || MethodList.ProxTGV || MethodList.ProxTV) {
         for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
@@ -635,6 +636,14 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
             } else {
                 const float *tauCP = getSingles(options, "tauCP");
                 w_vec.tauCP[timestep].assign(tauCP, tauCP + w_vec.tauCP[timestep].size());
+            }
+
+            if (inputScalars.adaptiveType == 1) {
+                for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
+                    w_vec.alphaCP[timestep].emplace_back(1.f);
+            } else if (inputScalars.adaptiveType == 2) {
+                 for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
+                    w_vec.alphaCP[timestep].emplace_back(.95f);
             }
         }
     }
@@ -657,13 +666,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		w_vec.alpha1CPTGV = getScalarFloat(getField(options, 0, "alpha1TGV"), -63);
 		w_vec.UseL2Ball = getScalarBool(getField(options, 0, "useL2Ball"), -63);
 		inputScalars.FISTAType = getScalarUInt32(getField(options, 0, "FISTAType"), -63);
-		if (inputScalars.adaptiveType == 1) {
-			for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
-				w_vec.alphaCP.emplace_back(1.f);
-		}
-		else if (inputScalars.adaptiveType == 2)
-			for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
-				w_vec.alphaCP.emplace_back(.95f);
+		
 		if (DEBUG) {
 			mexPrint("CPType loaded");
 		}

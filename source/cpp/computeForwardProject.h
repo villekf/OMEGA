@@ -33,9 +33,9 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				else
 					w_vec.sigmaCP[ii] = w_vec.tauCP2[timestep][ii];
 				if (inputScalars.adaptiveType == 1)
-					w_vec.alphaCP[ii] = 1.f;
+					w_vec.alphaCP[timestep][ii] = 1.f;
 				else if (inputScalars.adaptiveType == 2)
-					w_vec.alphaCP[ii] = .95f;
+					w_vec.alphaCP[timestep][ii] = .95f;
 			}
 			w_vec.LCP = w_vec.LCP2;
 		}

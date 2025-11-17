@@ -360,18 +360,18 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 			const af::array q = (im_old - im) / w_vec.tauCP[timestep][ii] + inputScalars.subsetsUsed * vec.rhsCP[ii];
 			const float w = af::dot<float>((im_old - im), q) / (static_cast<float>(af::norm((im_old - im)) * af::norm(q)));
 			if (w < 0.f) {
-				w_vec.tauCP[timestep][ii] = w_vec.tauCP[timestep][ii] / (1.f + w_vec.alphaCP[ii]);
-				w_vec.sigmaCP[ii] = w_vec.sigmaCP[ii] * (1.f + w_vec.alphaCP[ii]);
-				w_vec.alphaCP[ii] *= 0.99f;
+				w_vec.tauCP[timestep][ii] = w_vec.tauCP[timestep][ii] / (1.f + w_vec.alphaCP[timestep][ii]);
+				w_vec.sigmaCP[ii] = w_vec.sigmaCP[ii] * (1.f + w_vec.alphaCP[timestep][ii]);
+				w_vec.alphaCP[timestep][ii] *= 0.99f;
 			}
 			else if (w >= .999f) {
-				w_vec.sigmaCP[ii] = w_vec.sigmaCP[ii] / (1.f + w_vec.alphaCP[ii]);
-				w_vec.tauCP[timestep][ii] = w_vec.tauCP[timestep][ii] * (1.f + w_vec.alphaCP[ii]);
-				w_vec.alphaCP[ii] *= 0.99f;
+				w_vec.sigmaCP[ii] = w_vec.sigmaCP[ii] / (1.f + w_vec.alphaCP[timestep][ii]);
+				w_vec.tauCP[timestep][ii] = w_vec.tauCP[timestep][ii] * (1.f + w_vec.alphaCP[timestep][ii]);
+				w_vec.alphaCP[timestep][ii] *= 0.99f;
 			}
 			w_vec.sigma2CP[ii] = w_vec.sigmaCP[ii];
 			if (inputScalars.verbose >= 3) {
-				mexPrintBase("w_vec.alphaCP[ii] = %f\n", w_vec.alphaCP[ii]);
+				mexPrintBase("w_vec.alphaCP[timestep][ii] = %f\n", w_vec.alphaCP[timestep][ii]);
 				mexPrintBase("w_vec.tauCP[timestep] = %f\n", w_vec.tauCP[timestep][ii]);
 				mexPrintBase("w_vec.sigmaCP = %f\n", w_vec.sigmaCP[ii]);
 				mexPrintBase("w = %f\n", w);
@@ -393,14 +393,14 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 			}
 			const float w = inputScalars.subsetsUsed * af::sum<float>(af::abs(-vec.adapTypeA / w_vec.sigmaCP[ii] - outputFP));
 			if (q > w * 1.01f * std::sqrt(w_vec.LCP[timestep][ii])) {
-				w_vec.tauCP[timestep][ii] = w_vec.tauCP[timestep][ii] / (1.f - w_vec.alphaCP[ii]);
-				w_vec.sigmaCP[ii] = w_vec.sigmaCP[ii] * (1.f - w_vec.alphaCP[ii]);
-				w_vec.alphaCP[ii] *= 0.99f;
+				w_vec.tauCP[timestep][ii] = w_vec.tauCP[timestep][ii] / (1.f - w_vec.alphaCP[timestep][ii]);
+				w_vec.sigmaCP[ii] = w_vec.sigmaCP[ii] * (1.f - w_vec.alphaCP[timestep][ii]);
+				w_vec.alphaCP[timestep][ii] *= 0.99f;
 			}
 			else if (q < (w * std::sqrt(w_vec.LCP[timestep][ii])) / 1.01f) {
-				w_vec.sigmaCP[ii] = w_vec.sigmaCP[ii] / (1.f - w_vec.alphaCP[ii]);
-				w_vec.tauCP[timestep][ii] = w_vec.tauCP[timestep][ii] * (1.f - w_vec.alphaCP[ii]);
-				w_vec.alphaCP[ii] *= 0.99f;
+				w_vec.sigmaCP[ii] = w_vec.sigmaCP[ii] / (1.f - w_vec.alphaCP[timestep][ii]);
+				w_vec.tauCP[timestep][ii] = w_vec.tauCP[timestep][ii] * (1.f - w_vec.alphaCP[timestep][ii]);
+				w_vec.alphaCP[timestep][ii] *= 0.99f;
 			}
 			w_vec.sigma2CP[ii] = w_vec.sigmaCP[ii];
 			vec.im_os[timestep][ii] = apu.copy();
