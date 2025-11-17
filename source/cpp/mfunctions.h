@@ -614,12 +614,32 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		}
 	}
 
-    w_vec.tauCP.resize(inputScalars.nMultiVolumes + 1);
-    w_vec.tauCP2.resize(inputScalars.nMultiVolumes + 1);
+    w_vec.tauCP.resize(inputScalars.Nt);
+    w_vec.tauCP2.resize(inputScalars.Nt);
+    w_vec.LCP.resize(inputScalars.Nt);
+    w_vec.LCP2.resize(inputScalars.Nt);
+
+    if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1 || MethodList.ProxTGV || MethodList.ProxTV) {
+        for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
+            w_vec.tauCP[timestep].resize(inputScalars.nMultiVolumes + 1);
+            w_vec.tauCP2[timestep].resize(inputScalars.nMultiVolumes + 1);
+
+            if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1) { // Currently same values are used for each timestep
+                const float *tauCP = getSingles(options, "tauCPFilt");
+                w_vec.tauCP[timestep].assign(tauCP, tauCP + w_vec.tauCP[timestep].size());
+            }
+
+            if (w_vec.precondTypeMeas[1]) {
+                const float *tauCP2 = getSingles(options, "tauCP");
+                w_vec.tauCP2[timestep].assign(tauCP2, tauCP2 + w_vec.tauCP2[timestep].size());
+            } else {
+                const float *tauCP = getSingles(options, "tauCP");
+                w_vec.tauCP[timestep].assign(tauCP, tauCP + w_vec.tauCP[timestep].size());
+            }
+        }
+    }
 
 	if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1) {
-        const float *tauCP = getSingles(options, "tauCPFilt");
-        w_vec.tauCP.assign(tauCP, tauCP + w_vec.tauCP.size());
 		w_vec.sigmaCP = getSingles(options, "sigmaCP");
 		w_vec.powerIterations = getScalarUInt32(getField(options, 0, "powerIterations"), -63);
 		if (DEBUG) {
@@ -628,13 +648,6 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 	}
 
 	if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1 || MethodList.ProxTGV || MethodList.ProxTV) {
-		if (w_vec.precondTypeMeas[1]) {
-            const float *tauCP2 = getSingles(options, "tauCP");
-            w_vec.tauCP2.assign(tauCP2, tauCP2 + w_vec.tauCP2.size());
-        } else {
-            const float *tauCP = getSingles(options, "tauCP");
-            w_vec.tauCP.assign(tauCP, tauCP + w_vec.tauCP.size());
-        }
 		w_vec.sigma2CP = getSingles(options, "sigma2CP");
 		w_vec.betaReg = getScalarFloat(getField(options, 0, "beta"), -63);
 

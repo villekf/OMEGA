@@ -333,9 +333,9 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Using PDHG w/ subsets");
 #ifndef CPU
-		status = PDHGUpdateAF(im, rhs, inputScalars, vec, inputScalars.epps, 1.f, w_vec.tauCP[ii], proj, ii);
+		status = PDHGUpdateAF(im, rhs, inputScalars, vec, inputScalars.epps, 1.f, w_vec.tauCP[timestep][ii], proj, ii);
 #else
-		im -= w_vec.tauCP[ii] * rhs;
+		im -= w_vec.tauCP[timestep][ii] * rhs;
 		im.eval();
 		if (inputScalars.enforcePositivity)
 			im(im < inputScalars.epps) = inputScalars.epps;
@@ -345,10 +345,10 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Using PDHG W/O subsets");
 #ifndef CPU
-		status = PDHGUpdateAF(im, rhs, inputScalars, vec, inputScalars.epps, w_vec.thetaCP[kk], w_vec.tauCP[ii], proj, ii);
+		status = PDHGUpdateAF(im, rhs, inputScalars, vec, inputScalars.epps, w_vec.thetaCP[kk], w_vec.tauCP[timestep][ii], proj, ii);
 #else
 		const af::array uPrev = vec.uCP[timestep][ii].copy();
-		vec.uCP[timestep][ii] -= w_vec.tauCP[ii] * rhs;
+		vec.uCP[timestep][ii] -= w_vec.tauCP[timestep][ii] * rhs;
 		vec.uCP[timestep][ii].eval();
 		if (inputScalars.enforcePositivity)
 			vec.uCP[timestep][ii](vec.uCP[timestep][ii] < inputScalars.epps) = inputScalars.epps;
@@ -357,22 +357,22 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 	}
 	if ((w_vec.precondTypeMeas[1] && subIter + inputScalars.subsetsUsed * iter >= w_vec.filterIter) || !w_vec.precondTypeMeas[1]) {
 		if (ii == 0 && inputScalars.adaptiveType == 1) {
-			const af::array q = (im_old - im) / w_vec.tauCP[ii] + inputScalars.subsetsUsed * vec.rhsCP[ii];
+			const af::array q = (im_old - im) / w_vec.tauCP[timestep][ii] + inputScalars.subsetsUsed * vec.rhsCP[ii];
 			const float w = af::dot<float>((im_old - im), q) / (static_cast<float>(af::norm((im_old - im)) * af::norm(q)));
 			if (w < 0.f) {
-				w_vec.tauCP[ii] = w_vec.tauCP[ii] / (1.f + w_vec.alphaCP[ii]);
+				w_vec.tauCP[timestep][ii] = w_vec.tauCP[timestep][ii] / (1.f + w_vec.alphaCP[ii]);
 				w_vec.sigmaCP[ii] = w_vec.sigmaCP[ii] * (1.f + w_vec.alphaCP[ii]);
 				w_vec.alphaCP[ii] *= 0.99f;
 			}
 			else if (w >= .999f) {
 				w_vec.sigmaCP[ii] = w_vec.sigmaCP[ii] / (1.f + w_vec.alphaCP[ii]);
-				w_vec.tauCP[ii] = w_vec.tauCP[ii] * (1.f + w_vec.alphaCP[ii]);
+				w_vec.tauCP[timestep][ii] = w_vec.tauCP[timestep][ii] * (1.f + w_vec.alphaCP[ii]);
 				w_vec.alphaCP[ii] *= 0.99f;
 			}
 			w_vec.sigma2CP[ii] = w_vec.sigmaCP[ii];
 			if (inputScalars.verbose >= 3) {
 				mexPrintBase("w_vec.alphaCP[ii] = %f\n", w_vec.alphaCP[ii]);
-				mexPrintBase("w_vec.tauCP = %f\n", w_vec.tauCP[ii]);
+				mexPrintBase("w_vec.tauCP[timestep] = %f\n", w_vec.tauCP[timestep][ii]);
 				mexPrintBase("w_vec.sigmaCP = %f\n", w_vec.sigmaCP[ii]);
 				mexPrintBase("w = %f\n", w);
 				mexEval();
@@ -381,7 +381,7 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 		else if (ii == 0 && inputScalars.adaptiveType == 2) {
 			const af::array apu = vec.im_os[timestep][ii].copy();
 			vec.im_os[timestep][ii] = (im_old - im);
-			const float q = af::sum<float>(af::abs((vec.im_os[timestep][ii]) / w_vec.tauCP[ii] + inputScalars.subsetsUsed * vec.rhsCP[ii]));
+			const float q = af::sum<float>(af::abs((vec.im_os[timestep][ii]) / w_vec.tauCP[timestep][ii] + inputScalars.subsetsUsed * vec.rhsCP[ii]));
 			af::array outputFP;
 			if (inputScalars.listmode == 0)
 				outputFP = af::constant(0.f, m_size * inputScalars.nBins);
@@ -392,14 +392,14 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 				return status;
 			}
 			const float w = inputScalars.subsetsUsed * af::sum<float>(af::abs(-vec.adapTypeA / w_vec.sigmaCP[ii] - outputFP));
-			if (q > w * 1.01f * std::sqrt(w_vec.LCP[ii])) {
-				w_vec.tauCP[ii] = w_vec.tauCP[ii] / (1.f - w_vec.alphaCP[ii]);
+			if (q > w * 1.01f * std::sqrt(w_vec.LCP[timestep][ii])) {
+				w_vec.tauCP[timestep][ii] = w_vec.tauCP[timestep][ii] / (1.f - w_vec.alphaCP[ii]);
 				w_vec.sigmaCP[ii] = w_vec.sigmaCP[ii] * (1.f - w_vec.alphaCP[ii]);
 				w_vec.alphaCP[ii] *= 0.99f;
 			}
-			else if (q < (w * std::sqrt(w_vec.LCP[ii])) / 1.01f) {
+			else if (q < (w * std::sqrt(w_vec.LCP[timestep][ii])) / 1.01f) {
 				w_vec.sigmaCP[ii] = w_vec.sigmaCP[ii] / (1.f - w_vec.alphaCP[ii]);
-				w_vec.tauCP[ii] = w_vec.tauCP[ii] * (1.f - w_vec.alphaCP[ii]);
+				w_vec.tauCP[timestep][ii] = w_vec.tauCP[timestep][ii] * (1.f - w_vec.alphaCP[ii]);
 				w_vec.alphaCP[ii] *= 0.99f;
 			}
 			w_vec.sigma2CP[ii] = w_vec.sigmaCP[ii];
@@ -416,7 +416,7 @@ inline int FISTA(af::array& im, af::array& rhs, const scalarStruct& inputScalars
 	if (status != 0)
 		return -1;
 	if (inputScalars.subsetsUsed > 1 && osa_iter == inputScalars.subsets - 1) {
-		im -= w_vec.tauCP[ii] * rhs;
+		im -= w_vec.tauCP[timestep][ii] * rhs;
 		if (ii == 0) {
 			if (inputScalars.FISTAType == 1) {
 				w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista * w_vec.tNFista)) / 2.f;
@@ -439,7 +439,7 @@ inline int FISTA(af::array& im, af::array& rhs, const scalarStruct& inputScalars
 	}
 	else if (inputScalars.subsetsUsed == 1) {
 		af::array uPrev = im.copy();
-		im = vec.uFISTA[ii] - w_vec.tauCP[ii] * rhs;
+		im = vec.uFISTA[ii] - w_vec.tauCP[timestep][ii] * rhs; // TODO vectorize vec.uFISTA etc
 		if (ii == 0) {
 			if (inputScalars.FISTAType == 1) {
 				w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista * w_vec.tNFista)) / 2.f;
@@ -460,7 +460,7 @@ inline int FISTA(af::array& im, af::array& rhs, const scalarStruct& inputScalars
 		vec.uFISTA[ii].eval();
 	}
 	else {
-		im -= w_vec.tauCP[ii] * rhs;
+		im -= w_vec.tauCP[timestep][ii] * rhs;
 	}
 	im.eval();
 	rhs.eval();
@@ -474,7 +474,7 @@ inline int FISTAL1(af::array& im, af::array& rhs, const scalarStruct& inputScala
 	status = FISTA(im, rhs, inputScalars, w_vec, vec, proj, timestep, iter, osa_iter, ii);
 	if (status != 0)
 		return -1;
-	const float a = w_vec.tauCP[ii] * beta;
+	const float a = w_vec.tauCP[timestep][ii] * beta;
 	if (DEBUG) {
 		mexPrintBase("a = %f\n", a);
 		mexEval();

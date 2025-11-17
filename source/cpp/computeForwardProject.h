@@ -25,13 +25,13 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1 || MethodList.ProxTGV || MethodList.ProxTV) {
 			for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 				if (w_vec.sigmaCP[ii] == 1.f)
-					w_vec.tauCP[ii] = w_vec.tauCP2[ii];
-				else if (w_vec.sigmaCP[ii] == w_vec.tauCP[ii]) {
-					w_vec.tauCP[ii] = w_vec.tauCP2[ii];
-					w_vec.sigmaCP[ii] = w_vec.tauCP2[ii];
+					w_vec.tauCP[timestep][ii] = w_vec.tauCP2[timestep][ii];
+				else if (w_vec.sigmaCP[ii] == w_vec.tauCP[timestep][ii]) {
+					w_vec.tauCP[timestep][ii] = w_vec.tauCP2[timestep][ii];
+					w_vec.sigmaCP[ii] = w_vec.tauCP2[timestep][ii];
 				}
 				else
-					w_vec.sigmaCP[ii] = w_vec.tauCP2[ii];
+					w_vec.sigmaCP[ii] = w_vec.tauCP2[timestep][ii];
 				if (inputScalars.adaptiveType == 1)
 					w_vec.alphaCP[ii] = 1.f;
 				else if (inputScalars.adaptiveType == 2)

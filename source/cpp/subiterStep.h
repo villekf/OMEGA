@@ -30,13 +30,13 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                     mexPrint("Image-based filter iterations complete.");
                 if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1 || MethodList.ProxTGV || MethodList.ProxTV) {
                     if (w_vec.sigmaCP[ii] == 1.f)
-                        w_vec.tauCP[ii] = w_vec.tauCP2[ii];
-                    else if (w_vec.sigmaCP[ii] == w_vec.tauCP[ii]) {
-                        w_vec.tauCP[ii] = w_vec.tauCP2[ii];
-                        w_vec.sigmaCP[ii] = w_vec.tauCP2[ii];
+                        w_vec.tauCP[timestep][ii] = w_vec.tauCP2[timestep][ii];
+                    else if (w_vec.sigmaCP[ii] == w_vec.tauCP[timestep][ii]) {
+                        w_vec.tauCP[timestep][ii] = w_vec.tauCP2[timestep][ii];
+                        w_vec.sigmaCP[ii] = w_vec.tauCP2[timestep][ii];
                     }
                     else {
-                        w_vec.sigmaCP[ii] = w_vec.tauCP2[ii];
+                        w_vec.sigmaCP[ii] = w_vec.tauCP2[timestep][ii];
                     }
                 }
                 if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA)
@@ -51,7 +51,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                 PDHG1(vec.rhs_os[timestep][ii], inputScalars, w_vec, vec, timestep, osa_iter + inputScalars.subsets * iter, ii);
             if (MethodList.PDDY && ii == 0 && MAP) {
                 PDDYApu = vec.im_os[timestep][0].copy();
-                vec.im_os[timestep][0] -= w_vec.tauCP[0] * vec.uCP[timestep][0];
+                vec.im_os[timestep][0] -= w_vec.tauCP[timestep][0] * vec.uCP[timestep][0];
                 if (inputScalars.verbose == 3) {
                     mexPrint("Computing PDDY step\n");
                     mexEval();

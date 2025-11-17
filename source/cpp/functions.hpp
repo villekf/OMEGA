@@ -2305,7 +2305,7 @@ inline int computeACOSEMWeight(scalarStruct& inputScalars, std::vector<int64_t>&
 
 // The power method
 inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector<int64_t>& length, ProjectorClass& proj,
-	AF_im_vectors& vec, const RecMethods& MethodList, const int64_t* pituus, const uint32_t timestep, const af::array& g = af::constant(0.f, 1, 1), float* F = nullptr, float* apuD = nullptr, const float* atten = nullptr) { // TODO: vectorize tauCP, tauCP2, LCP, LCP2
+	AF_im_vectors& vec, const RecMethods& MethodList, const int64_t* pituus, const uint32_t timestep, const af::array& g = af::constant(0.f, 1, 1), float* F = nullptr, float* apuD = nullptr, const float* atten = nullptr) { // TODO: vectorize LCP, LCP2
 	int status = 0;
 	std::vector<af::array> Summ;
 	af::array meanBP;
@@ -2504,8 +2504,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			af::sync();
 		}
 	}
-	w_vec.tauCP = tauCP;
-    //std::copy(tauCP.begin(), tauCP.end(), w_vec.tauCP);
+	w_vec.tauCP[timestep] = tauCP;
 	uint32_t subsets = 1;
 	if (!inputScalars.stochastic)
 		subsets = inputScalars.subsets;
@@ -2692,8 +2691,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				}
 			}
 		}
-        w_vec.tauCP2 = tauCP;
-		//std::copy(tauCP.begin(), tauCP.end(), w_vec.tauCP2);
+        w_vec.tauCP2[timestep] = tauCP;
 		if (apuM) {
 			w_vec.precondTypeMeas[1] = apuM;
 		}
@@ -2708,27 +2706,27 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 		if (inputScalars.verbose > 0) {
 			if (ii == 0) {
 				if (w_vec.filterIter > 0 && (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]))
-					mexPrintBase("Largest eigenvalue for main volume with filtering is %f\n", w_vec.tauCP[ii]);
+					mexPrintBase("Largest eigenvalue for main volume with filtering is %f\n", w_vec.tauCP[timestep][ii]);
 				else
-					mexPrintBase("Largest eigenvalue for main volume is %f\n", w_vec.tauCP[ii]);
+					mexPrintBase("Largest eigenvalue for main volume is %f\n", w_vec.tauCP[timestep][ii]);
 				if (w_vec.filterIter > 0 && (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]) && w_vec.filterIter < inputScalars.subsets * inputScalars.Niter)
-					mexPrintBase("Largest eigenvalue for main volume without filtering is %f\n", w_vec.tauCP2[ii]);
+					mexPrintBase("Largest eigenvalue for main volume without filtering is %f\n", w_vec.tauCP2[timestep][ii]);
 			}
 			else {
 				if (w_vec.filterIter > 0 && (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]))
-					mexPrintBase("Largest eigenvalue for volume %d with filtering is %f\n", ii, w_vec.tauCP[ii]);
+					mexPrintBase("Largest eigenvalue for volume %d with filtering is %f\n", ii, w_vec.tauCP[timestep][ii]);
 				else
-					mexPrintBase("Largest eigenvalue for volume %d is %f\n", ii, w_vec.tauCP[ii]);
+					mexPrintBase("Largest eigenvalue for volume %d is %f\n", ii, w_vec.tauCP[timestep][ii]);
 				if (w_vec.filterIter > 0 && (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]) && w_vec.filterIter < inputScalars.subsets * inputScalars.Niter)
-					mexPrintBase("Largest eigenvalue for volume %d without filtering is %f\n", ii, w_vec.tauCP2[ii]);
+					mexPrintBase("Largest eigenvalue for volume %d without filtering is %f\n", ii, w_vec.tauCP2[timestep][ii]);
 			}
 			mexEval();
 		}
-		w_vec.LCP.emplace_back(w_vec.tauCP[ii]);
-		w_vec.tauCP[ii] = 1.f / w_vec.tauCP[ii];
+		w_vec.LCP[timestep].emplace_back(w_vec.tauCP[timestep][ii]);
+		w_vec.tauCP[timestep][ii] = 1.f / w_vec.tauCP[timestep][ii];
 		if (w_vec.filterIter > 0 && (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5])) {
-			w_vec.LCP2.emplace_back(w_vec.tauCP2[ii]);
-			w_vec.tauCP2[ii] = 1.f / w_vec.tauCP2[ii];
+			w_vec.LCP2[timestep].emplace_back(w_vec.tauCP2[timestep][ii]);
+			w_vec.tauCP2[timestep][ii] = 1.f / w_vec.tauCP2[timestep][ii];
 		}
 	}
 	return 0;

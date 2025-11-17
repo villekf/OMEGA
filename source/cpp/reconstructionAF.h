@@ -821,7 +821,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
     }
     
     // Use power method to compute the tau/primal value, if necessary
-    if ((MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1) && w_vec.tauCP[0] == 0.f) {
+    if ((MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1) && w_vec.tauCP[0][0] == 0.f) {
         for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
             status = powerMethod(inputScalars, w_vec, length, proj, vec, MethodList, pituus, timestep, g, apuF, apuD, atten);
             if (status != 0) {
@@ -831,7 +831,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
     }
         
     if (inputScalars.verbose >= 3 && (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1)) {
-        mexPrintVarf("Primal step size (tau) is ", w_vec.tauCP[0]);
+        mexPrintVarf("Primal step size (tau) is ", w_vec.tauCP[0][0]);
         mexPrintVarf("Dual step size (sigma) is ", w_vec.sigmaCP[0]);
     }
 
