@@ -17,7 +17,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
     }
 
     bool MAP = false;
-    if (MethodList.MRP || MethodList.Quad || MethodList.Huber || MethodList.L || MethodList.FMH || MethodList.TV || MethodList.WeightedMean || MethodList.AD || MethodList.APLS || MethodList.TGV || MethodList.NLM || MethodList.RDP || MethodList.ProxTGV || MethodList.ProxTV || MethodList.ProxRDP || MethodList.ProxNLM || MethodList.GGMRF)
+    if (MethodList.MRP || MethodList.Quad || MethodList.Huber || MethodList.L || MethodList.FMH || MethodList.TV || MethodList.WeightedMean || MethodList.AD || MethodList.APLS || MethodList.TGV || MethodList.NLM || MethodList.RDP || MethodList.ProxTGV || MethodList.ProxTV || MethodList.ProxRDP || MethodList.ProxNLM || MethodList.GGMRF || MethodList.QuadraticSmoothnessTemporal)
         MAP = true;
 
     for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
@@ -48,10 +48,10 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             if ((MethodList.RAMLA || MethodList.MRAMLA || MethodList.BSREM || MethodList.MBSREM) && inputScalars.listmode > 0 && (w_vec.precondTypeIm[0] || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2]))
                 vec.rhs_os[timestep][ii] -= w_vec.D[ii];
             if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY)
-                PDHG1(vec.rhs_os[timestep][ii], inputScalars, w_vec, vec, osa_iter + inputScalars.subsets * iter, ii);
+                PDHG1(vec.rhs_os[timestep][ii], inputScalars, w_vec, vec, timestep, osa_iter + inputScalars.subsets * iter, ii);
             if (MethodList.PDDY && ii == 0 && MAP) {
                 PDDYApu = vec.im_os[timestep][0].copy();
-                vec.im_os[timestep][0] -= w_vec.tauCP[0] * vec.uCP[0];
+                vec.im_os[timestep][0] -= w_vec.tauCP[0] * vec.uCP[timestep][0];
                 if (inputScalars.verbose == 3) {
                     mexPrint("Computing PDDY step\n");
                     mexEval();
@@ -72,9 +72,10 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             if (status != 0) return -1;
         }
     }
-
+    
     if (!MethodList.BSREM && !MethodList.ROSEMMAP && !MethodList.POCS && !MethodList.SART && kk == 0) {
-        // apply temporal prior here
+        status = applyTemporalPrior(vec, w_vec, MethodList, inputScalars, proj);
+        if (status != 0) return -1;
     }
     
     for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
@@ -312,17 +313,17 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             else if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) {
                 if (DEBUG || inputScalars.verbose >= 3)
                     mexPrint("Computing PDHG/PDHGKL/PDHGL1/PDDY");
-                status = PDHG2(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], inputScalars, w_vec, vec, proj, iter, osa_iter, ii, pituus, g, m_size, length);
+                status = PDHG2(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], inputScalars, w_vec, vec, proj, iter, timestep, osa_iter, ii, pituus, g, m_size, length);
             }
             else if (MethodList.FISTA) {
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing FISTA");
-                status = FISTA(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], inputScalars, w_vec, vec, proj, iter, osa_iter, ii);
+                status = FISTA(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], inputScalars, w_vec, vec, proj, timestep, iter, osa_iter, ii);
             }
             else if (MethodList.FISTAL1) {
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing FISTAL1");
-                status = FISTAL1(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], inputScalars, w_vec, vec, w_vec.beta, proj, iter, osa_iter, ii);
+                status = FISTAL1(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], inputScalars, w_vec, vec, w_vec.beta, proj, timestep, iter, osa_iter, ii);
             }
             else if (MethodList.SAGA) {
                 if (inputScalars.verbose >= 3)

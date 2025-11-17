@@ -218,6 +218,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
 	vec.rhs_os.resize(inputScalars.Nt);
     vec.im_os.resize(inputScalars.Nt);
+    vec.uCP.resize(inputScalars.Nt);
     for (int tt = 0; tt < inputScalars.Nt; tt++) {
 	    vec.im_os[tt].resize(inputScalars.nMultiVolumes + 1);
         vec.rhs_os[tt].resize(inputScalars.nMultiVolumes + 1);
@@ -819,6 +820,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
             mexPrint("M computation finished");
     }
     
+    // TODO: vectorize
     // Use power method to compute the tau/primal value, if necessary
     if ((MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1) && w_vec.tauCP[0] == 0.f)
         status = powerMethod(inputScalars, w_vec, length, proj, vec, MethodList, pituus, g, apuF, apuD, atten);
@@ -1118,7 +1120,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
 				// Initialize some algorithms, such as the initial steps of LSQR
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-					status = initializationStep(w_vec, mData[subIter][tt], vec, proj, inputScalars, length, m_size, MethodList, iter, meanBP, pituus, g, osa_iter, ii);
+					status = initializationStep(w_vec, mData[subIter][tt], vec, proj, inputScalars, length, m_size, MethodList, iter, meanBP, pituus, tt, g, osa_iter, ii);
 					if (status != 0)
 						return -1;
 				}
@@ -1327,9 +1329,9 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             else
                                 vec.im_os[tt][0] = af::array(inputScalars.lDimStruct.imDimPr[ii], &apuF[inputScalars.lDimStruct.cumDimPr[ii]], afHost);
                         if (iter == 0 && osa_iter == 0 && (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY))
-                            vec.uCP[0] = vec.im_os[tt][0](af::seq(0, inputScalars.lDimStruct.imDim[ii] - 1)).copy();
+                            vec.uCP[tt][0] = vec.im_os[tt][0](af::seq(0, inputScalars.lDimStruct.imDim[ii] - 1)).copy();
                         else if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY)
-                            vec.uCP[0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuU[inputScalars.lDimStruct.cumDim[ii]], afHost);
+                            vec.uCP[tt][0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuU[inputScalars.lDimStruct.cumDim[ii]], afHost);
                         if (w_vec.computeD)
                             w_vec.D[0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuD[inputScalars.lDimStruct.cumDim[ii]], afHost);
                         af::sync();
@@ -1352,7 +1354,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                         }
                         vec.im_os[tt][0].host(&apuF[inputScalars.lDimStruct.cumDim[ii]]);
                         if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY)
-                            vec.uCP[0].host(&apuU[inputScalars.lDimStruct.cumDim[ii]]);
+                            vec.uCP[tt][0].host(&apuU[inputScalars.lDimStruct.cumDim[ii]]);
                         if (DEBUG) {
                             mexPrintBase("subset = %d\n", ii);
                             mexEval();
@@ -1366,7 +1368,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     if (inputScalars.nMultiVolumes > 0) {
                         for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++) {
                             if (iter == 0 && osa_iter == 0 && (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY))
-                                vec.uCP.emplace_back(vec.im_os[tt][ii].copy());
+                                vec.uCP[tt].emplace_back(vec.im_os[tt][ii].copy());
                             status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, tt, length, m_size, meanBP, g, proj, false, ii, pituus);
                             if (status != 0)
                                 return -1;

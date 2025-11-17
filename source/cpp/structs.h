@@ -57,11 +57,12 @@ typedef struct TVdata_ {
 #ifdef AF
 // Struct for the various ArrayFire arrays
 typedef struct AF_im_vectors_ {
-	af::array C_co, dU;
+	af::array C_co, dU; // dU: gradient of spatial prior
+    std::vector<af::array>  dUt; // dUt: gradient of temporal prior
 	af::array rCGLS, meanFP, meanBP, apu, pPrevCP, p0CP2, fpCP2, p0CP, adapTypeA;
 	std::vector<af::array> im_os_blurred, pCP, qProxTGV, vProxTGV, qProxTV, qProx, SAGASum;
-    std::vector<std::vector<af::array>> im_os, rhs_os;
-	std::vector<af::array> wLSQR, fLSQR, uCP, uFISTA, fCGLS, rhsCP, fpCP, f0POCS, gradBB, imBB;
+    std::vector<std::vector<af::array>> im_os, rhs_os, uCP;
+	std::vector<af::array> wLSQR, fLSQR, uFISTA, fCGLS, rhsCP, fpCP, f0POCS, gradBB, imBB;
 	std::vector<std::vector<af::array>> Summ, stochasticHelper;
 } AF_im_vectors;
 #endif
@@ -88,7 +89,7 @@ typedef struct Weighting_ {
     float U = 1000000.f, h_ACOSEM = 1.f, TimeStepAD, KAD, w_sum = 0.f, h2 = 1.f, huber_delta = 0.f, ACOSEM_rhs = 0.f, h_ACOSEM_2 = 1.f, RDP_gamma = 1.f,
 		dPitchX, dPitchY, betaLSQR = 0.f, alphaLSQR = 0.f, thetaLSQR = 0.f, rhoLSQR = 0.f, phiLSQR = 0.f, gammaCGLS = 0.f, gammaTempCGLS = 0.f, alphaCGLS = 0.f, nuIEM = 0.f, alphaCPTV = 1.f,
 		gradV1 = 0.f, gradV2 = 0.f, betaReg = 0.f, alpha0CPTGV = 1.f, alpha1CPTGV = 1.f, betaFISTA = 1.f, tFISTA = 1.f, tNFista = 1.f, GGMRF_p = 0.f, GGMRF_q = 0.f, GGMRF_c = 0.f, GGMRF_pqc = 0.f,
-		beta = 0.f, dtvg = 0.f, alphaPOCS = 0.2f, rMaxPOCS = 0.95f, POCSepps = 1e-4f, POCSalphaRed = 0.95f, NLAdaptiveConstant = 1e-5f;
+		beta = 0.f, beta_temporal = 0.f, dtvg = 0.f, alphaPOCS = 0.2f, rMaxPOCS = 0.95f, POCSepps = 1e-4f, POCSalphaRed = 0.95f, NLAdaptiveConstant = 1e-5f;
 	uint32_t alku_fmh = 0u, mean_type = 0u, powerIterations = 0, derivType = 0, gradInitIter = 0, filterIter = 0, gradFinalIter = 0;
 	uint32_t Ndx = 1u, Ndy = 1u, Ndz = 0u, NiterAD = 1u, dimmu, inffi, Nlx = 1u, Nly = 1u, Nlz = 0u;
 	bool med_no_norm = false, MBSREM_prepass = false, NLM_MRP = false, NLTV = false, NLRD = false, NLLange = false, NLM_anatomical = false, computeD = false,
@@ -119,5 +120,6 @@ typedef struct RecMethods_ {
 	bool FDK = false;
 	bool BB = false;
 	bool prior = false;
+    bool QuadraticSmoothnessTemporal = false;
 	uint32_t OSLCOSEM = 0u, MAPCOSEM = 0u;
 } RecMethods;

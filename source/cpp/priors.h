@@ -376,14 +376,12 @@ inline int applySpatialPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMeth
 	if (iter) {
 		vec.dU = af::constant(0.f, vec.im_os[timestep][0].elements());
 		dU = &vec.dU;
-		//dU = &vec.im_os[timestep][0];
-	}
-	else if (MethodList.RBIOSL || MethodList.OSLOSEM || MethodList.OSLCOSEM || MethodList.POCS || MethodList.SAGA || MethodList.SART) {
+	} else if (MethodList.RBIOSL || MethodList.OSLOSEM || MethodList.OSLCOSEM || MethodList.POCS || MethodList.SAGA || MethodList.SART) {
 		vec.dU = af::constant(0.f, vec.im_os[timestep][0].elements());
 		dU = &vec.dU;
-	}
-	else
+	} else {
 		dU = &vec.rhs_os[timestep][0];
+    }
 	if (MethodList.MRP) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing MRP gradient");
@@ -474,7 +472,52 @@ inline int applySpatialPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMeth
 	if (inputScalars.verbose >= 3 && (MethodList.MRP || MethodList.Quad || MethodList.Huber || MethodList.L || MethodList.FMH || MethodList.TV 
 		|| MethodList.WeightedMean || MethodList.AD || MethodList.APLS || MethodList.TGV || MethodList.NLM || MethodList.RDP || MethodList.ProxTGV 
 		|| MethodList.ProxTV || MethodList.ProxRDP || MethodList.ProxNLM || MethodList.GGMRF))
-		mexPrint("Prior computed");
+		mexPrint("Spatial prior computed");
 	af::eval(*dU);
 	return status;
+}
+
+inline int applyTemporalPrior(
+    AF_im_vectors& vec,
+    Weighting& w_vec,
+    const RecMethods& MethodList,
+    const scalarStruct& inputScalars,
+    ProjectorClass& proj
+) {
+    af::array* dUt = nullptr;
+	int status = 0;
+    for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
+        /*
+        if (iter) {
+            vec.dUt = af::constant(0.f, vec.im_os[timestep][0].elements());
+            dUt = &vec.dUt;
+        } else if (MethodList.RBIOSL || MethodList.OSLOSEM || MethodList.OSLCOSEM || MethodList.POCS || MethodList.SAGA || MethodList.SART) {
+            vec.dUt = af::constant(0.f, vec.im_os[timestep][0].elements());
+            dUt = &vec.dUt;
+        } else */{
+            dUt = &vec.rhs_os[timestep][0];
+        }
+        
+        // Quadratic smoothness prior gradient
+        if (MethodList.QuadraticSmoothnessTemporal) {
+            if (inputScalars.verbose >= 3)
+			    mexPrint("Computing quadratic temporal smoothness prior gradient");
+            af::array grad = af::constant(0.f, vec.im_os[timestep][0].elements());
+            if (timestep > 0) {
+                grad += (vec.im_os[timestep][0] - vec.im_os[timestep-1][0]);
+            }
+            if (timestep < inputScalars.Nt - 1) {
+                grad += (vec.im_os[timestep][0] - vec.im_os[timestep+1][0]);
+            }
+            *dUt += w_vec.beta_temporal * grad;
+        }
+    }
+
+    af::deviceGC();
+    af::eval(*dUt);
+
+    if (inputScalars.verbose >= 3 && (MethodList.QuadraticSmoothnessTemporal))
+        mexPrint("Temporal prior computed");
+
+    return status;
 }

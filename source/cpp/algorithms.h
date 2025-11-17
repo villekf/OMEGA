@@ -30,7 +30,7 @@ inline af::array OSL(const af::array& Summ, const af::array& dU, const float epp
 // Can use image-based preconditioners which are applied before the final update
 inline int MBSREM(af::array& im, af::array& rhs, const float U, const float* lam, const uint32_t iter, const uint32_t osa_iter,
 	const scalarStruct& inputScalars, Weighting& w_vec, ProjectorClass& proj, const int ii = 0, const uint32_t timestep = 0)
-{
+{ // TODO remove default for timestep
 	int status = 0;
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
 	af::array output;
@@ -66,7 +66,7 @@ inline int BSREM(af::array& im, const af::array& rhs, const float* lam, const ui
 
 // Subset-based separable paraboidal surrogates
 inline int SPS(af::array& im, af::array& rhs, const float U, const float* lam, const uint32_t iter, const uint32_t osa_iter,
-	const scalarStruct& inputScalars, Weighting& w_vec, ProjectorClass& proj, const int ii = 0, const uint32_t timestep = 0) {
+	const scalarStruct& inputScalars, Weighting& w_vec, ProjectorClass& proj, const int ii = 0, const uint32_t timestep = 0) { // TODO remove default for timestep
 	int status = 0;
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
 	if (DEBUG) {
@@ -152,7 +152,7 @@ inline af::array COSEM(const af::array& im, const af::array& C_co, const af::arr
 // PKMA
 // Can use image-based preconditioners which are applied before the final update
 inline int PKMA(af::array& im, af::array& rhs, Weighting& w_vec, const scalarStruct& inputScalars,
-	const uint32_t iter, const uint32_t osa_iter, ProjectorClass& proj, const int ii = 0, const uint32_t timestep = 0) {
+	const uint32_t iter, const uint32_t osa_iter, ProjectorClass& proj, const int ii = 0, const uint32_t timestep = 0) { // TODO remove default for timestep
 	int status = 0;
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
 	applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, kk, ii, timestep);
@@ -215,7 +215,7 @@ inline int PKMA(af::array& im, af::array& rhs, Weighting& w_vec, const scalarStr
 	return status;
 }
 
-inline void LSQR(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t iter, AF_im_vectors& vec, const int ii = 0, const int timestep = 0) {
+inline void LSQR(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t iter, AF_im_vectors& vec, const int ii = 0, const int timestep = 0) { // TODO remove default for timestep
 	if (iter == 0)
 		vec.wLSQR[ii] = vec.im_os[timestep][ii];
 	vec.im_os[timestep][ii] = vec.rhs_os[timestep][ii] - w_vec.betaLSQR * vec.im_os[timestep][ii];
@@ -244,7 +244,7 @@ inline void LSQR(const scalarStruct& inputScalars, Weighting& w_vec, const uint3
 	}
 }
 
-inline void CGLS(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t iter, AF_im_vectors& vec, const int ii = 0, const bool largeDim = false, const int timestep = 0) {
+inline void CGLS(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t iter, AF_im_vectors& vec, const int ii = 0, const bool largeDim = false, const int timestep = 0) { // TODO remove default argument for timestep
 	if (ii == inputScalars.nMultiVolumes) {
 		if (!largeDim) {
 			float gamma_ = 0.f;
@@ -275,7 +275,7 @@ inline void CGLS(const scalarStruct& inputScalars, Weighting& w_vec, const uint3
 inline int SART(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, AF_im_vectors& vec, ProjectorClass& proj, const af::array& mData, const af::array& g,
 	std::vector<int64_t>& length, const int64_t* pituus, const uint32_t osa_iter, const uint32_t iter, const af::array& Summ, const af::array& rhs, const float lam, const int ii = 0,
     const int timestep = 0
-) {
+) { // TODO remove default argument for timestep
 	af::array imOld;
 	if (MethodList.prior && !MethodList.POCS)
 		imOld = vec.im_os[timestep][ii].copy();
@@ -301,20 +301,20 @@ inline int SART(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 }
 
 // Necessary PDHG step, when using subsets, before regularization is applied
-inline void PDHG1(af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, const uint32_t subIter = 0, const int ii = 0) {
+inline void PDHG1(af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, const uint32_t timestep, const uint32_t subIter = 0, const int ii = 0) {
 	if (inputScalars.adaptiveType >= 1)
 		vec.rhsCP[ii] = rhs.copy();
 	if (inputScalars.subsetsUsed > 1) {
 		if (DEBUG) {
-			mexPrintBase("vec.uCP[ii] = %f\n", af::sum<float>(vec.uCP[ii]));
+			mexPrintBase("vec.uCP[ii] = %f\n", af::sum<float>(vec.uCP[timestep][ii]));
 			mexPrintBase("w_vec.thetaCP[subIter] = %f\n", w_vec.thetaCP[subIter]);
 			mexEval();
 		}
 		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Using PDHG w/ subsets");
-		vec.uCP[ii] += rhs;
-		vec.uCP[ii].eval();
-		rhs = vec.uCP[ii] + (static_cast<float>(inputScalars.subsetsUsed) * w_vec.thetaCP[subIter]) * rhs;
+		vec.uCP[timestep][ii] += rhs;
+		vec.uCP[timestep][ii].eval();
+		rhs = vec.uCP[timestep][ii] + (static_cast<float>(inputScalars.subsetsUsed) * w_vec.thetaCP[subIter]) * rhs;
 		if (DEBUG) {
 			mexPrintBase("rhs = %f\n", af::sum<float>(rhs));
 			mexEval();
@@ -324,8 +324,8 @@ inline void PDHG1(af::array& rhs, const scalarStruct& inputScalars, Weighting& w
 
 // Final PDHG update step
 // Different methods for subset and non-subset cases
-inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter, const uint32_t subIter = 0, const int ii = 0, 
-	const int64_t* pituus = nullptr, const af::array& g = af::constant(0.f, 0), const uint64_t m_size = 1, const std::vector<int64_t>& length = std::vector<int64_t>(0), const uint32_t timestep = 0) {
+inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter, const uint32_t timestep, const uint32_t subIter = 0, const int ii = 0, 
+	const int64_t* pituus = nullptr, const af::array& g = af::constant(0.f, 0), const uint64_t m_size = 1, const std::vector<int64_t>& length = std::vector<int64_t>(0)) {
 	int status = 0;
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
 	af::array im_old;
@@ -354,12 +354,12 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 #ifndef CPU
 		status = PDHGUpdateAF(im, rhs, inputScalars, vec, inputScalars.epps, w_vec.thetaCP[kk], w_vec.tauCP[ii], proj, ii);
 #else
-		const af::array uPrev = vec.uCP[ii].copy();
-		vec.uCP[ii] -= w_vec.tauCP[ii] * rhs;
-		vec.uCP[ii].eval();
+		const af::array uPrev = vec.uCP[timestep][ii].copy();
+		vec.uCP[timestep][ii] -= w_vec.tauCP[ii] * rhs;
+		vec.uCP[timestep][ii].eval();
 		if (inputScalars.enforcePositivity)
-			vec.uCP[ii](vec.uCP[ii] < inputScalars.epps) = inputScalars.epps;
-		im = vec.uCP[ii] + w_vec.thetaCP[kk] * (vec.uCP[ii] - uPrev);
+			vec.uCP[timestep][ii](vec.uCP[timestep][ii] < inputScalars.epps) = inputScalars.epps;
+		im = vec.uCP[timestep][ii] + w_vec.thetaCP[kk] * (vec.uCP[timestep][ii] - uPrev);
 #endif
 	}
 	if ((w_vec.precondTypeMeas[1] && subIter + inputScalars.subsetsUsed * iter >= w_vec.filterIter) || !w_vec.precondTypeMeas[1]) {
@@ -416,7 +416,7 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 	return status;
 }
 
-inline int FISTA(af::array& im, af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter = 0, const uint32_t osa_iter = 0, const int ii = 0, const uint32_t timestep = 0) {
+inline int FISTA(af::array& im, af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t timestep, const uint32_t iter = 0, const uint32_t osa_iter = 0, const int ii = 0) {
 	int status = 0;
 	const uint32_t kk = iter * inputScalars.subsetsUsed + osa_iter;
 	status = applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, kk, ii, timestep);
@@ -476,9 +476,9 @@ inline int FISTA(af::array& im, af::array& rhs, const scalarStruct& inputScalars
 
 
 // FISTA with L1 regularization
-inline int FISTAL1(af::array& im, af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, const float beta, ProjectorClass& proj, const uint32_t iter = 0, const uint32_t osa_iter = 0, const int ii = 0) {
+inline int FISTAL1(af::array& im, af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, const float beta, ProjectorClass& proj, const uint32_t timestep, const uint32_t iter = 0, const uint32_t osa_iter = 0, const int ii = 0) {
 	int status = 0;
-	status = FISTA(im, rhs, inputScalars, w_vec, vec, proj, iter, osa_iter, ii);
+	status = FISTA(im, rhs, inputScalars, w_vec, vec, proj, timestep, iter, osa_iter, ii);
 	if (status != 0)
 		return -1;
 	const float a = w_vec.tauCP[ii] * beta;
@@ -495,7 +495,7 @@ inline int FISTAL1(af::array& im, af::array& rhs, const scalarStruct& inputScala
 
 // ASD-POCS
 inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, AF_im_vectors& vec, ProjectorClass& proj, const af::array& mData, const af::array& g, 
-	std::vector<int64_t>& length, const int64_t* pituus, const uint32_t osa_iter, const uint32_t iter, const int ii = 0, int timestep = 0) {
+	std::vector<int64_t>& length, const int64_t* pituus, const uint32_t osa_iter, const uint32_t iter, const int ii = 0, int timestep = 0) { // TODO remove timestep default argument
 	vec.im_os[timestep][ii](vec.im_os[timestep][ii] < 0.f) = 0.f;
 	if (DEBUG)
 		mexPrint("Computing ASD-POCS");

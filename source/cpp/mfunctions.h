@@ -208,9 +208,12 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		w_vec.lambda = getSingles(options, "lam_drama");
 	}
 
-	// Load regularization parameter
+	// Load spatial regularization parameter
 	w_vec.beta = getScalarFloat(getField(options, 0, "beta"), -9);
 	w_vec.betaReg = w_vec.beta;
+
+    // Load temporal regularization parameter
+    w_vec.beta_temporal = getScalarFloat(getField(options, 0, "beta_temporal"), -9);
 
 	// Masks
 	if (inputScalars.maskFP) {
@@ -677,7 +680,7 @@ inline void get_rec_methods(const mxArray* options, RecMethods& MethodList) {
 	if (MethodList.LSQR || MethodList.CGLS)
 		MethodList.initAlg = true;
 
-	// Priors
+	// Spatial priors
 	MethodList.MRP = getScalarBool(getField(options, 0, "MRP"), -61);
 	MethodList.Quad = getScalarBool(getField(options, 0, "quad"), -61);
 	MethodList.Huber = getScalarBool(getField(options, 0, "Huber"), -61);
@@ -696,6 +699,9 @@ inline void get_rec_methods(const mxArray* options, RecMethods& MethodList) {
 	MethodList.ProxTGV = getScalarBool(getField(options, 0, "TGV"), -61);
 	MethodList.ProxRDP = getScalarBool(getField(options, 0, "ProxRDP"), -61);
 	MethodList.ProxNLM = getScalarBool(getField(options, 0, "ProxNLM"), -61);
+
+    // Temporal priors
+    MethodList.QuadraticSmoothnessTemporal = getScalarBool(getField(options, 0, "quadratic_temporal"), -61);
 
 	// MAP/prior-based algorithms
 	MethodList.OSLOSEM = getScalarBool(getField(options, 0, "OSL_OSEM"), -61);

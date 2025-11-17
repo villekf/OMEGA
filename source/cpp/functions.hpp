@@ -305,7 +305,7 @@ inline int transferRHS(af::array& rhs_os, ProjectorClass& proj) {
 /// <param name="proj the projector class object"></param>
 /// <param name="ii optional multi-resolution volume number, default is 0 (main volume)"></param>
 /// <returns></returns>
-inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, ProjectorClass& proj, const int ii = 0, const int timestep = 0) {
+inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, ProjectorClass& proj, const int ii = 0, const int timestep = 0) { // TODO remove default for timestep
 
 #ifdef CUDA
 	CUresult status = CUDA_SUCCESS;
@@ -1422,15 +1422,15 @@ inline int poissonUpdateAF(af::array& im, const af::array& rhs, const scalarStru
 }
 
 // Same as above, but for PDHG
-inline int PDHGUpdateAF(af::array& im, const af::array& rhs, const scalarStruct& inputScalars, AF_im_vectors& vec, const float epps, const float theta, const float tau, ProjectorClass& proj, const int ii = 0) {
+inline int PDHGUpdateAF(af::array& im, const af::array& rhs, const scalarStruct& inputScalars, AF_im_vectors& vec, const float epps, const float theta, const float tau, ProjectorClass& proj, const uint32_t timestep, const int ii = 0) {
 	int status = 0;
 	proj.d_im = transferAF(im);
 	proj.d_rhs = transferAF(rhs);
-	proj.d_U = transferAF(vec.uCP[ii]);
+	proj.d_U = transferAF(vec.uCP[timestep][ii]);
 	status = proj.PDHGUpdate(inputScalars, epps, theta, tau, ii);
 	rhs.unlock();
 	im.unlock();
-	vec.uCP[ii].unlock();
+	vec.uCP[timestep][ii].unlock();
 	if (status != 0) {
 		return -1;
 	}
@@ -2094,10 +2094,7 @@ inline void deblur(af::array& vec, const af::array& g, const scalarStruct& input
 
 // The initialization steps for LSQR, CGLS, CP and FISTA algorithms
 // Apply PSF blurring if applicable
-inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors& vec, ProjectorClass& proj, scalarStruct& inputScalars,
-	std::vector<int64_t> length, uint64_t m_size, const RecMethods& MethodList, uint32_t curIter, af::array& meanBP, const int64_t* pituus, 
-	const af::array& g = af::constant(0.f, 1, 1), const uint32_t subIter = 0, const int ii = 0, const int timestep = 0) {
-
+inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors& vec, ProjectorClass& proj, scalarStruct& inputScalars, std::vector<int64_t> length, uint64_t m_size, const RecMethods& MethodList, uint32_t curIter, af::array& meanBP, const int64_t* pituus, const uint32_t timestep, const af::array& g = af::constant(0.f, 1, 1), const uint32_t subIter = 0, const int ii = 0) {
 	if (MethodList.FISTA || MethodList.FISTAL1) {
 		if (curIter == 0 && subIter == 0)
 			vec.uFISTA.emplace_back(vec.im_os[timestep][ii]);
@@ -2262,11 +2259,11 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				mexEval();
 			}
 			if (inputScalars.currentSubset == 0 && !inputScalars.largeDim) {
-				vec.uCP.emplace_back(vec.im_os[timestep][ii].copy());
+				vec.uCP[timestep].emplace_back(vec.im_os[timestep][ii].copy());
 				proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]) / 1048576ULL;
 			}
 			else if (inputScalars.currentSubset == 0 && inputScalars.largeDim)
-				vec.uCP.resize(1);
+				vec.uCP[timestep].resize(1);
 			if (inputScalars.verbose >= 3)
 				mexPrint("PDHG initialization complete");
 		}
