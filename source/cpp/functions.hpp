@@ -1956,17 +1956,17 @@ inline int applyImagePreconditioning(Weighting& w_vec, const scalarStruct& input
 		if (w_vec.precondTypeIm[0]) {
 			if (inputScalars.verbose >= 3)
 				mexPrint("Applying diagonal normalization preconditioner , type 0");
-			input /= w_vec.D[ii];
+			input /= w_vec.D[timestep][ii];
 		}
 		else if (w_vec.precondTypeIm[1]) {
 			if (inputScalars.verbose >= 3)
 				mexPrint("Applying EM preconditioner, type 1");
-			input *= precondIm2(im, w_vec.D[ii]);
+			input *= precondIm2(im, w_vec.D[timestep][ii]);
 		}
 		else if (w_vec.precondTypeIm[2]) {
 			if (inputScalars.verbose >= 3)
 				mexPrint("Applying IEM preconditioner, type 2");
-			input *= precondIm3(im, w_vec.D[ii], w_vec.preRef[ii]);
+			input *= precondIm3(im, w_vec.D[timestep][ii], w_vec.preRef[ii]);
 		}
 	}
 	if (w_vec.precondTypeIm[6]) {
@@ -2481,7 +2481,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				if (status != 0)
 					return -1;
 				if (w_vec.computeD)
-					w_vec.D[0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuD[inputScalars.lDimStruct.cumDim[ii]], afHost);
+					w_vec.D[timestep][0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuD[inputScalars.lDimStruct.cumDim[ii]], afHost);
 				status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][0], vec.im_os[timestep][0], proj, timestep, kk, 0);
 				if (status != 0)
 					return -1;
@@ -2555,7 +2555,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					if (status != 0)
 						return -1;
 					if (w_vec.computeD)
-						w_vec.D[0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuD[inputScalars.lDimStruct.cumDim[ii]], afHost);
+						w_vec.D[timestep][0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuD[inputScalars.lDimStruct.cumDim[ii]], afHost);
 					status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][0], vec.im_os[timestep][0], proj, timestep, kk, 0);
 					if (status != 0)
 						return -1;

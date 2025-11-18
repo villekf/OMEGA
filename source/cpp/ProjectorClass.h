@@ -2131,6 +2131,7 @@ public:
 			mexPrintBase("NVOXELS = %u\n", NVOXELS);
 			mexPrintBase("NVOXELS5 = %u\n", NVOXELS5);
 			mexPrintBase("osa_iter = %u\n", osa_iter);
+            mexPrintBase("timestep = %u\n", timestep);
 			mexPrintBase("memSize = %u\n", memSize);
 			mexPrintBase("subsetType = %u\n", inputScalars.subsetType);
 			mexEval();
@@ -2435,6 +2436,8 @@ public:
 				mexPrintBase("ii = %u\n", ii);
 				mexPrintBase("memSize = %u\n", memSize);
 				mexPrintBase("compSens = %u\n", compSens);
+                mexPrintBase("osa_iter = %u\n", osa_iter);
+                mexPrintBase("timestep = %u\n", timestep);
 				mexEval();
 			}
 
