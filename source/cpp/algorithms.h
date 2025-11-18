@@ -280,12 +280,12 @@ inline int SART(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 			int status = 0;
 			const float dp = static_cast<float>(af::norm(vec.im_os[timestep][ii] - imOld));
 			for (int kk = 0; kk < w_vec.ng; kk++) {
-				status = applySpatialPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, osa_iter + inputScalars.subsetsUsed * iter);
+				status = applySpatialPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, timestep, osa_iter + inputScalars.subsetsUsed * iter);
 				if (status != 0)
 					return status;
-				vec.dU /= (af::norm(vec.dU) + inputScalars.epps);
-				af::eval(vec.dU);
-				vec.im_os[timestep][ii] -= dp * w_vec.beta * vec.dU;
+				vec.dU[timestep] /= (af::norm(vec.dU[timestep]) + inputScalars.epps);
+				af::eval(vec.dU[timestep]);
+				vec.im_os[timestep][ii] -= dp * w_vec.beta * vec.dU[timestep];
 				af::eval(vec.im_os[timestep][ii]);
 			}
 		}
@@ -526,13 +526,13 @@ inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 		}
 		if (ii == 0) {
 			for (int kk = 0; kk < w_vec.ng; kk++) {
-				status = applySpatialPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, osa_iter + inputScalars.subsetsUsed * iter);
+				status = applySpatialPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, timestep, osa_iter + inputScalars.subsetsUsed * iter);
 				if (status != 0)
 					return status;
-				vec.dU /= (af::norm(vec.dU) + inputScalars.epps);
-				vec.im_os[timestep][ii] -= w_vec.dtvg * vec.dU;
+				vec.dU[timestep] /= (af::norm(vec.dU[timestep]) + inputScalars.epps);
+				vec.im_os[timestep][ii] -= w_vec.dtvg * vec.dU[timestep];
 				af::eval(vec.im_os[timestep][ii]);
-				af::eval(vec.dU);
+				af::eval(vec.dU[timestep]);
 			}
 			const float dg = static_cast<float>(af::norm(vec.im_os[timestep][ii] - vec.f0POCS[ii]));
 			if (DEBUG) {
@@ -551,13 +551,13 @@ inline int SAGA(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, AF_
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
 	af::array grad = af::constant(0.f, im.elements());
 	if (DEBUG) {
-		mexPrintBase("du = %d\n", vec.dU.elements());
+		mexPrintBase("du = %d\n", vec.dU[timestep].elements());
 		mexPrintBase("vec.rhs_os[timestep][ii].elements() = %d\n", vec.rhs_os[timestep][ii].elements());
 		mexPrintBase("vec.stochasticHelper[ii](af::span, osa_iter).elements() = %d\n", vec.stochasticHelper[ii][osa_iter].elements());
 		mexEval();
 	}
-	if (ii == 0 && vec.dU.elements() > 1) {
-		vec.rhs_os[timestep][ii] -= vec.dU;
+	if (ii == 0 && vec.dU[timestep].elements() > 1) {
+		vec.rhs_os[timestep][ii] -= vec.dU[timestep];
 		af::eval(vec.rhs_os[timestep][ii]);
 	}
 	grad = (vec.rhs_os[timestep][ii] - vec.stochasticHelper[ii][osa_iter]) + vec.SAGASum[ii] / static_cast<float>(inputScalars.subsetsUsed);

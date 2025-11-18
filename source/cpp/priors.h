@@ -366,16 +366,13 @@ inline int NLM(ProjectorClass& proj, const af::array& im, Weighting& w_vec, cons
 }
 
 
-inline int applySpatialPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const scalarStruct& inputScalars, ProjectorClass& proj, const float beta, const uint32_t osa_iter = 0, const uint8_t compute_norm_matrix = 0, 
-	const bool iter = false, const int kk = 0, const int timestep = 0) {
+inline int applySpatialPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const scalarStruct& inputScalars, ProjectorClass& proj, const float beta, const uint32_t timestep, const uint32_t osa_iter = 0, const uint8_t compute_norm_matrix = 0, 
+	const bool iter = false, const int kk = 0) {
 	af::array* dU = nullptr;
 	int status = 0;
-	if (iter) {
-		vec.dU = af::constant(0.f, vec.im_os[timestep][0].elements());
-		dU = &vec.dU;
-	} else if (MethodList.RBIOSL || MethodList.OSLOSEM || MethodList.OSLCOSEM || MethodList.POCS || MethodList.SAGA || MethodList.SART) {
-		vec.dU = af::constant(0.f, vec.im_os[timestep][0].elements());
-		dU = &vec.dU;
+	if (iter || (MethodList.RBIOSL || MethodList.OSLOSEM || MethodList.OSLCOSEM || MethodList.POCS || MethodList.SAGA || MethodList.SART)) {
+		vec.dU[timestep] = af::constant(0.f, vec.im_os[timestep][0].elements());
+		dU = &vec.dU[timestep];
 	} else {
 		dU = &vec.rhs_os[timestep][0];
     }

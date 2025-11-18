@@ -223,6 +223,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
     vec.uCP.resize(inputScalars.Nt);
     vec.pCP.resize(inputScalars.Nt);
     vec.p0CP.resize(inputScalars.Nt);
+    vec.dU.resize(inputScalars.Nt);
     for (int tt = 0; tt < inputScalars.Nt; tt++) {
 	    vec.im_os[tt].resize(inputScalars.nMultiVolumes + 1);
         vec.rhs_os[tt].resize(inputScalars.nMultiVolumes + 1);
@@ -642,7 +643,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
     }
     
     for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
-        // Compute sensitivity image for the whole measurement domain. TODO: compute separately for each timestep
+        // Compute sensitivity image for the whole measurement domain.
         if (w_vec.computeD || (inputScalars.listmode > 0 && inputScalars.computeSensImag)) {
             if (DEBUG || inputScalars.verbose >= 3)
                 mexPrint("Starting computation of sensitivity image (D)");
@@ -1439,7 +1440,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
         } // End main subset loop
 
-        if (!inputScalars.largeDim) { // TODO move timestep loop into computeOSEstimatesIter
+        if (!inputScalars.largeDim) {
             for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) { // TODO fix variable "ee" incrementation
                 // Compute some subset-based algorithms that require special operations after each iteration such as BSREM or ROSEM. Also copy the current iteration if needed.
                 status = computeOSEstimatesIter(vec, w_vec, MethodList, inputScalars, iter, proj, g, cell, ee, eInd, x0, timestep);

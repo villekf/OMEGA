@@ -68,7 +68,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             mexEval();
         }
         if (!MethodList.BSREM && !MethodList.ROSEMMAP && !MethodList.POCS && !MethodList.SART && kk == 0) {
-            status = applySpatialPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, osa_iter + inputScalars.subsets * iter, compute_norm_matrix, false, vv);
+            status = applySpatialPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, timestep, osa_iter + inputScalars.subsets * iter, compute_norm_matrix, false, vv);
             if (status != 0) return -1;
         }
     }
@@ -213,9 +213,9 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                     mexPrint("Computing OSL-OSEM");
                 if (ii == 0) {
                     if (inputScalars.CT)
-                        vec.im_os[timestep][ii] = EM(vec.im_os[timestep][ii], *Sens + vec.dU, inputScalars.flat * vec.rhs_os[timestep][ii]);
+                        vec.im_os[timestep][ii] = EM(vec.im_os[timestep][ii], *Sens + vec.dU[timestep], inputScalars.flat * vec.rhs_os[timestep][ii]);
                     else
-                        vec.im_os[timestep][ii] = EM(vec.im_os[timestep][ii], *Sens + vec.dU, vec.rhs_os[timestep][ii]);
+                        vec.im_os[timestep][ii] = EM(vec.im_os[timestep][ii], *Sens + vec.dU[timestep], vec.rhs_os[timestep][ii]);
                 }
                 else {
 
@@ -243,7 +243,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing RBIOSL");
                 if (ii == 0)
-                    vec.im_os[timestep][ii] = RBI(vec.im_os[timestep][ii], *Sens, vec.rhs_os[timestep][ii], w_vec.D[timestep][ii], w_vec.beta, vec.dU);
+                    vec.im_os[timestep][ii] = RBI(vec.im_os[timestep][ii], *Sens, vec.rhs_os[timestep][ii], w_vec.D[timestep][ii], w_vec.beta, vec.dU[timestep]);
                 else
                     vec.im_os[timestep][ii] = RBI(vec.im_os[timestep][ii], *Sens, vec.rhs_os[timestep][ii], w_vec.D[timestep][ii], 0.f);
             }
@@ -255,7 +255,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                 else
                     vec.C_co(af::span, osa_iter) = vec.rhs_os[timestep][ii] * vec.im_os[timestep][ii];
                 if (ii == 0)
-                    vec.im_os[timestep][ii] = COSEM(vec.im_os[timestep][ii], vec.C_co, w_vec.D[timestep][ii] + vec.dU, w_vec.h_ACOSEM, MethodList.OSLCOSEM);
+                    vec.im_os[timestep][ii] = COSEM(vec.im_os[timestep][ii], vec.C_co, w_vec.D[timestep][ii] + vec.dU[timestep], w_vec.h_ACOSEM, MethodList.OSLCOSEM);
                 else
                     vec.im_os[timestep][ii] = COSEM(vec.im_os[timestep][ii], vec.C_co, w_vec.D[timestep][ii], w_vec.h_ACOSEM, MethodList.OSLCOSEM);
                 if (MethodList.OSLCOSEM == 1u) {
