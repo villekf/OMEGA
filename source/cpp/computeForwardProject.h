@@ -142,7 +142,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				input = 1.f - y.as(f32) / (input);
 		}
 		input.eval();
-		status = applyMeasPreconditioning(w_vec, inputScalars, input, proj, subIter);
+		status = applyMeasPreconditioning(w_vec, inputScalars, input, proj, timestep, subIter);
 		if (status != 0)
 			return -1;
 	}
@@ -174,7 +174,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 					input = y.as(f32) / (input) - 1.f;
 		}
 		input.eval();
-		status = applyMeasPreconditioning(w_vec, inputScalars, input, proj, subIter);
+		status = applyMeasPreconditioning(w_vec, inputScalars, input, proj, timestep, subIter);
 		if (status != 0)
 			return -1;
 	}
@@ -215,7 +215,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			residual[kk] = af::norm(input);
 			residual[kk] = residual[kk] * residual[kk] * .5f;
 		}
-		input /= w_vec.M[subIter];
+		input /= w_vec.M[timestep][subIter];
 		input.eval();
 	}
 	else if (MethodList.PDHG || MethodList.PDDY) {
@@ -234,12 +234,12 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		}
 		if (inputScalars.storeResidual) {
 			//af::array ressa = res.copy();
-			//status = applyMeasPreconditioning(w_vec, inputScalars, ressa, proj, subIter);
+			//status = applyMeasPreconditioning(w_vec, inputScalars, ressa, proj, timestep, subIter);
 			//residual[kk] = af::sum<float>(af::matmulTN(res, ressa)) * .5;
 			residual[kk] = af::norm(res);
 			residual[kk] = residual[kk] * residual[kk] * .5f;
 		}
-		status = applyMeasPreconditioning(w_vec, inputScalars, res, proj, subIter);
+		status = applyMeasPreconditioning(w_vec, inputScalars, res, proj, timestep, subIter);
 		if (status != 0)
 			return -1;
 		if (DEBUG) {
@@ -314,10 +314,10 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		if (w_vec.precondTypeMeas[0] || w_vec.precondTypeMeas[1]) {
 			if (w_vec.precondTypeMeas[1]) {
 				af::array apu1 = y.copy();
-				status = applyMeasPreconditioning(w_vec, inputScalars, apu1, proj, subIter);
+				status = applyMeasPreconditioning(w_vec, inputScalars, apu1, proj, timestep, subIter);
 				if (status != 0)
 					return -1;
-				status = applyMeasPreconditioning(w_vec, inputScalars, input, proj, subIter);
+				status = applyMeasPreconditioning(w_vec, inputScalars, input, proj, timestep, subIter);
 				if (status != 0)
 					return -1;
 				apu1(apu1 < 0.f) = 0.f;
@@ -327,19 +327,19 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			else {
 				if (inputScalars.verbose >= 3)
 					mexPrint("Applying diagonal normalization preconditioner (1 / (A1)), type 0");
-				input = .5f * (1.f + vec.pCP[timestep][subIter] + w_vec.sigmaCP[ii] * input / w_vec.M[subIter] - af::sqrt(af::pow(vec.pCP[timestep][subIter] + w_vec.sigmaCP[ii] * input / w_vec.M[subIter] - 1.f, 2.) + 4.f * w_vec.sigmaCP[ii] * y.as(f32) / w_vec.M[subIter]));
+				input = .5f * (1.f + vec.pCP[timestep][subIter] + w_vec.sigmaCP[ii] * input / w_vec.M[timestep][subIter] - af::sqrt(af::pow(vec.pCP[timestep][subIter] + w_vec.sigmaCP[ii] * input / w_vec.M[timestep][subIter] - 1.f, 2.) + 4.f * w_vec.sigmaCP[ii] * y.as(f32) / w_vec.M[timestep][subIter]));
 			}
 		}
 		else
 			input = .5f * (1.f + vec.pCP[timestep][subIter] + w_vec.sigmaCP[ii] * input - af::sqrt(af::pow(vec.pCP[timestep][subIter] + w_vec.sigmaCP[ii] * input - 1.f, 2.) + 4.f * w_vec.sigmaCP[ii] * y.as(f32)));
-		input.eval(); // TODO vectorize w_vec.M
+		input.eval();
 		vec.pCP[timestep][subIter] = input.copy();
 	}
 	else if (MethodList.PDHGL1) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing CPL1/TVL1/TGVL1");
 		af::array res = input - y.as(f32);
-		status = applyMeasPreconditioning(w_vec, inputScalars, res, proj, subIter);
+		status = applyMeasPreconditioning(w_vec, inputScalars, res, proj, timestep, subIter);
 		if (status != 0)
 			return -1;
 		input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[ii] * res);
@@ -367,7 +367,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			input = y.as(f32) / (input) - 1.f;
 		}
 		input.eval();
-		status = applyMeasPreconditioning(w_vec, inputScalars, input, proj, subIter);
+		status = applyMeasPreconditioning(w_vec, inputScalars, input, proj, timestep, subIter);
 		if (status != 0)
 			return -1;
 }
@@ -381,7 +381,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing FISTA/L1");
 		input -= y.as(f32);
-		status = applyMeasPreconditioning(w_vec, inputScalars, input, proj, subIter);
+		status = applyMeasPreconditioning(w_vec, inputScalars, input, proj, timestep, subIter);
 		if (inputScalars.storeResidual) {
 			residual[kk] = af::norm(input);
 			residual[kk] = residual[kk] * residual[kk] * .5f;

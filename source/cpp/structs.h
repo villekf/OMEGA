@@ -71,8 +71,8 @@ typedef struct AF_im_vectors_ {
 typedef struct Weighting_ {
 #ifdef AF
 	af::array tr_offsets, weights_quad, weights_TV, weights_huber, fmh_weights, a_L, weighted_weights, UU, Amin, weights_RDP;
-	std::vector<af::array> dU, M, preRef, D, gradF, RDPref;
-    std::vector<std::vector<af::array>> dP;
+	std::vector<af::array> dU, preRef, D, gradF, RDPref;
+    std::vector<std::vector<af::array>> dP, M;
 	af::array gaussianNLM, gFilter, filter, filterIm, Ffilter;
 	af_flux_function FluxType;
 	af_diffusion_eq DiffusionType;

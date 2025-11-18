@@ -1938,7 +1938,7 @@ inline void gradientPreconditioner(const scalarStruct& inputScalars, Weighting& 
 }
 
 // Compute the image-based preconditioning
-inline int applyImagePreconditioning(Weighting& w_vec, const scalarStruct& inputScalars, af::array& input, const af::array& im, ProjectorClass& proj, const int kk = 0, const int ii = 0, const uint32_t timestep = 0) {
+inline int applyImagePreconditioning(Weighting& w_vec, const scalarStruct& inputScalars, af::array& input, const af::array& im, ProjectorClass& proj, uint32_t timestep, const int kk = 0, const int ii = 0) {
 	int status = 0;
 	if (w_vec.precondTypeIm[4] && kk >= w_vec.gradInitIter) {
 		if (inputScalars.verbose >= 3)
@@ -1992,7 +1992,7 @@ inline int applyImagePreconditioning(Weighting& w_vec, const scalarStruct& input
 }
 
 // Compute measurement-based preconditioning
-inline int applyMeasPreconditioning(const Weighting& w_vec, const scalarStruct& inputScalars, af::array& input, ProjectorClass& proj, const uint32_t subIter = 0) {
+inline int applyMeasPreconditioning(const Weighting& w_vec, const scalarStruct& inputScalars, af::array& input, ProjectorClass& proj, const uint32_t timestep, const uint32_t subIter = 0) {
 	int status = 0;
 	if (w_vec.precondTypeMeas[0] || w_vec.precondTypeMeas[1]) {
 		if (inputScalars.verbose >= 3)
@@ -2024,13 +2024,13 @@ inline int applyMeasPreconditioning(const Weighting& w_vec, const scalarStruct& 
 		}
 		if (w_vec.precondTypeMeas[0]) {
 			if (DEBUG) {
-				mexPrintBase("w_vec.M[subIter].dims(0) = %d\n", w_vec.M[subIter].dims(0));
+				mexPrintBase("w_vec.M[timestep][subIter].dims(0) = %d\n", w_vec.M[timestep][subIter].dims(0));
 				mexPrintBase("input.dims(0) = %d\n", input.dims(0));
 				mexEval();
 			}
 			if (inputScalars.verbose >= 3)
 				mexPrint("Applying diagonal normalization preconditioner (1 / (A1)), type 0");
-			input /= w_vec.M[subIter];
+			input /= w_vec.M[timestep][subIter];
 		}
 		input.eval();
 		af::deviceGC();
@@ -2357,7 +2357,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				mexPrintBase("m_size = %d\n", m_size);
 				mexEval();
 			}
-			status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj);
+			status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj, timestep);
 			if (status != 0)
 				return -1;
 			computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
@@ -2368,7 +2368,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			af::sync();
 			if (status != 0)
 				return -1;
-			status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][0], vec.im_os[timestep][0], proj, kk, 0);
+			status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][0], vec.im_os[timestep][0], proj, timestep, kk, 0);
 			if (status != 0)
 				return -1;
 			tauCP[0] = (af::dot<float>(vec.im_os[timestep][0], vec.rhs_os[timestep][0]) * static_cast<float>(inputScalars.subsets)) / (af::dot<float>(vec.im_os[timestep][0], vec.im_os[timestep][0]));
@@ -2412,7 +2412,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					mexPrintBase("m_size = %d\n", m_size);
 					mexEval();
 				}
-				status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj);
+				status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj, timestep);
 				if (status != 0)
 					return -1;
 				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
@@ -2425,7 +2425,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					if (status != 0)
 						return -1;
 					if (ii == 0) {
-						status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][ii], vec.im_os[timestep][ii], proj, kk, ii);
+						status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][ii], vec.im_os[timestep][ii], proj, timestep, kk, ii);
 						if (status != 0)
 							return -1;
 					}
@@ -2469,7 +2469,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				af::sync();
 			}
 			largeDimLast(inputScalars, proj);
-			status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj);
+			status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj, timestep);
 			if (status != 0)
 				return -1;
 			float upper = 0.f, lower = 0.f;
@@ -2482,7 +2482,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					return -1;
 				if (w_vec.computeD)
 					w_vec.D[0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuD[inputScalars.lDimStruct.cumDim[ii]], afHost);
-				status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][0], vec.im_os[timestep][0], proj, kk, 0);
+				status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][0], vec.im_os[timestep][0], proj, timestep, kk, 0);
 				if (status != 0)
 					return -1;
 				upper += af::dot<float>(vec.im_os[timestep][0], vec.rhs_os[timestep][0]);
@@ -2556,7 +2556,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 						return -1;
 					if (w_vec.computeD)
 						w_vec.D[0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuD[inputScalars.lDimStruct.cumDim[ii]], afHost);
-					status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][0], vec.im_os[timestep][0], proj, kk, 0);
+					status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][0], vec.im_os[timestep][0], proj, timestep, kk, 0);
 					if (status != 0)
 						return -1;
 					upper += af::dot<float>(vec.im_os[timestep][0], vec.rhs_os[timestep][0]);
@@ -2607,7 +2607,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					mexEval();
 				}
 				af::sync();
-				status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj);
+				status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj, timestep);
 				if (status != 0)
 					return -1;
 				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
@@ -2618,7 +2618,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				af::sync();
 				if (status != 0)
 					return -1;
-				status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][0], vec.im_os[timestep][0], proj, kk, 0);
+				status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][0], vec.im_os[timestep][0], proj, timestep, kk, 0);
 				if (status != 0)
 					return -1;
 				tauCP[0] = (af::dot<float>(vec.im_os[timestep][0], vec.rhs_os[timestep][0]) * static_cast<float>(inputScalars.subsetsUsed)) / (af::dot<float>(vec.im_os[timestep][0], vec.im_os[timestep][0]));
@@ -2661,7 +2661,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					}
 					af::sync();
 				}
-				status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj);
+				status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj, timestep);
 				if (status != 0)
 					return -1;
 				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
@@ -2674,7 +2674,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					if (status != 0)
 						return -1;
 					if (ii == 0) {
-						status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][ii], vec.im_os[timestep][ii], proj, kk, ii);
+						status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][ii], vec.im_os[timestep][ii], proj, timestep, kk, ii);
 						if (status != 0)
 							return -1;
 					}
