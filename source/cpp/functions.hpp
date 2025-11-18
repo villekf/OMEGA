@@ -2239,20 +2239,20 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 			if (DEBUG || inputScalars.verbose >= 3)
 				mexPrint("Initializing PDHG algorithm");
 			if (ii == 0 && !inputScalars.largeDim && inputScalars.currentSubset == 0) {
-				vec.pCP.resize(inputScalars.subsetsUsed);
+				vec.pCP[timestep].resize(inputScalars.subsetsUsed);
 				for (int uu = 0; uu < inputScalars.subsetsUsed; uu++) {
 					uint64_t mSize = length[uu];
 					if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 						mSize = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[uu];
 					if (inputScalars.listmode && inputScalars.TOF)
-						vec.pCP[uu] = af::constant(0.f, mSize);
+						vec.pCP[timestep][uu] = af::constant(0.f, mSize);
 					else
-						vec.pCP[uu] = af::constant(0.f, mSize * inputScalars.nBins);
+						vec.pCP[timestep][uu] = af::constant(0.f, mSize * inputScalars.nBins);
 					proj.memSize += (sizeof(float) * mSize * inputScalars.nBins) / 1048576ULL;
 				}
 			}
 			else if (ii == 0 && inputScalars.largeDim)
-				vec.pCP.resize(1);
+				vec.pCP[timestep].resize(1);
 			if (DEBUG) {
 				mexPrintBase("subIter = %d\n", subIter);
 				mexEval();

@@ -219,6 +219,8 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 	vec.rhs_os.resize(inputScalars.Nt);
     vec.im_os.resize(inputScalars.Nt);
     vec.uCP.resize(inputScalars.Nt);
+    vec.pCP.resize(inputScalars.Nt);
+    vec.p0CP.resize(inputScalars.Nt);
     for (int tt = 0; tt < inputScalars.Nt; tt++) {
 	    vec.im_os[tt].resize(inputScalars.nMultiVolumes + 1);
         vec.rhs_os[tt].resize(inputScalars.nMultiVolumes + 1);
@@ -1290,12 +1292,12 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) {
                         if (iter > 0) {
                             if (inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8))
-                                vec.pCP[0] = af::array(m_size * nBins, &apuM[pituus[osa_iter] * nBins], afHost);
+                                vec.pCP[tt][0] = af::array(m_size * nBins, &apuM[pituus[osa_iter] * nBins], afHost);
                             else
-                                vec.pCP[0] = af::array(m_size * nBins, &apuM[inputScalars.nRowsD * inputScalars.nColsD * pituus[osa_iter] * nBins], afHost);
+                                vec.pCP[tt][0] = af::array(m_size * nBins, &apuM[inputScalars.nRowsD * inputScalars.nColsD * pituus[osa_iter] * nBins], afHost);
                         }
                         else
-                            vec.pCP[0] = af::constant(0.f, m_size * nBins);
+                            vec.pCP[tt][0] = af::constant(0.f, m_size * nBins);
                     }
                     if (DEBUG || inputScalars.verbose >= 3) {
                         proj.tStartLocal = std::chrono::steady_clock::now();
@@ -1306,9 +1308,9 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                         return -1;
                     if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) {
                         if (inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8))
-                            vec.pCP[0].host(&apuM[pituus[osa_iter] * nBins]);
+                            vec.pCP[tt][0].host(&apuM[pituus[osa_iter] * nBins]);
                         else
-                            vec.pCP[0].host(&apuM[inputScalars.nRowsD * inputScalars.nColsD * pituus[osa_iter] * nBins]);
+                            vec.pCP[tt][0].host(&apuM[inputScalars.nRowsD * inputScalars.nColsD * pituus[osa_iter] * nBins]);
                     }
 
                     af::sync();

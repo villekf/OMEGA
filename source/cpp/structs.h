@@ -58,10 +58,10 @@ typedef struct TVdata_ {
 // Struct for the various ArrayFire arrays
 typedef struct AF_im_vectors_ {
 	af::array C_co, dU; // dU: gradient of spatial prior
-    std::vector<af::array>  dUt; // dUt: gradient of temporal prior
-	af::array rCGLS, meanFP, meanBP, apu, pPrevCP, p0CP2, fpCP2, p0CP, adapTypeA;
-	std::vector<af::array> im_os_blurred, pCP, qProxTGV, vProxTGV, qProxTV, qProx, SAGASum;
-    std::vector<std::vector<af::array>> im_os, rhs_os, uCP;
+    std::vector<af::array> dUt, p0CP; // dUt: gradient of temporal prior
+	af::array rCGLS, meanFP, meanBP, apu, pPrevCP, fpCP2, adapTypeA;
+	std::vector<af::array> im_os_blurred, qProxTGV, vProxTGV, qProxTV, qProx, SAGASum;
+    std::vector<std::vector<af::array>> im_os, rhs_os, uCP, pCP;
 	std::vector<af::array> wLSQR, fLSQR, uFISTA, fCGLS, rhsCP, fpCP, f0POCS, gradBB, imBB;
 	std::vector<std::vector<af::array>> Summ, stochasticHelper;
 } AF_im_vectors;
