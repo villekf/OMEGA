@@ -311,30 +311,32 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 	// Save the images if there was enough memory
 	// 64-bit atomic operations require signed 64-bit integers
 	// 32-bit atomic operations require signed 32-bit integers
-	if (compute_norm_matrix == 2u) {
-		vec.Summ.resize(inputScalars.nMultiVolumes + 1);
-		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-			vec.Summ[ii].resize(inputScalars.subsetsUsed);
-			if (inputScalars.atomic_64bit)
-				std::fill(vec.Summ[ii].begin(), vec.Summ[ii].end(), af::constant(0LL, inputScalars.im_dim[ii], 1, s64));
-			else if (inputScalars.atomic_32bit)
-				std::fill(vec.Summ[ii].begin(), vec.Summ[ii].end(), af::constant(0, inputScalars.im_dim[ii], 1, s32));
-			else
-				std::fill(vec.Summ[ii].begin(), vec.Summ[ii].end(), af::constant(0.f, inputScalars.im_dim[ii], 1));
-			proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]) / 1048576ULL;
-		}
-	}
-	else {
-		if (inputScalars.computeSensImag && inputScalars.listmode == 1) {
-			vec.Summ.resize(1);
-			vec.Summ[0].resize(inputScalars.subsetsUsed);
-		}
-		else if (compute_norm_matrix == 1u) {
-			vec.Summ.resize(inputScalars.nMultiVolumes + 1);
-			for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
-				vec.Summ[ii].resize(1);
-		}
-	}
+    vec.Summ.resize(inputScalars.Nt);
+    for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
+        if (compute_norm_matrix == 2u) {
+            vec.Summ[timestep].resize(inputScalars.nMultiVolumes + 1);
+            for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+                vec.Summ[timestep][ii].resize(inputScalars.subsetsUsed);
+                if (inputScalars.atomic_64bit)
+                    std::fill(vec.Summ[timestep][ii].begin(), vec.Summ[timestep][ii].end(), af::constant(0LL, inputScalars.im_dim[ii], 1, s64));
+                else if (inputScalars.atomic_32bit)
+                    std::fill(vec.Summ[timestep][ii].begin(), vec.Summ[timestep][ii].end(), af::constant(0, inputScalars.im_dim[ii], 1, s32));
+                else
+                    std::fill(vec.Summ[timestep][ii].begin(), vec.Summ[timestep][ii].end(), af::constant(0.f, inputScalars.im_dim[ii], 1));
+                proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]) / 1048576ULL;
+            }
+        } else {
+            if (inputScalars.computeSensImag && inputScalars.listmode == 1) {
+                vec.Summ[timestep].resize(1);
+                vec.Summ[timestep][0].resize(inputScalars.subsetsUsed);
+            }
+            else if (compute_norm_matrix == 1u) {
+                vec.Summ[timestep].resize(inputScalars.nMultiVolumes + 1);
+                for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
+                    vec.Summ[timestep][ii].resize(1);
+            }
+        }
+    }
 
 	if (DEBUG) {
 		mexPrintBase("w_vec.MBSREM_prepass = %u\n", w_vec.MBSREM_prepass);
@@ -661,15 +663,15 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                                 if (status != 0) {
                                     return -1;
                                 }
-                                vec.rhs_os[0][0] /= static_cast<float>(inputScalars.subsetsUsed);
-                                vec.rhs_os[0][0](vec.rhs_os[0][0] == 0.f) = 1.f;
-                                vec.rhs_os[0][0].eval();
+                                vec.rhs_os[timestep][0] /= static_cast<float>(inputScalars.subsetsUsed);
+                                vec.rhs_os[timestep][0](vec.rhs_os[timestep][0] == 0.f) = 1.f;
+                                vec.rhs_os[timestep][0].eval();
                                 af::sync();
                                 if (subIter == 0)
-                                    vec.rhs_os[0][0].host(&apuD[inputScalars.lDimStruct.cumDim[kk]]);
+                                    vec.rhs_os[timestep][0].host(&apuD[inputScalars.lDimStruct.cumDim[kk]]);
                                 else {
                                     af::array imApu = af::array(inputScalars.lDimStruct.imDim[kk], &apuD[inputScalars.lDimStruct.cumDim[kk]]);
-                                    imApu += vec.rhs_os[0][0];
+                                    imApu += vec.rhs_os[timestep][0];
                                     imApu.eval();
                                     af::sync();
                                     imApu.host(&apuD[inputScalars.lDimStruct.cumDim[kk]]);
@@ -687,9 +689,9 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             }
                             af::sync();
                             if (subIter == 0)
-                                w_vec.D[timestep][ii] = vec.rhs_os[0][ii].as(f32);
+                                w_vec.D[timestep][ii] = vec.rhs_os[timestep][ii].as(f32);
                             else {
-                                w_vec.D[timestep][ii] += vec.rhs_os[0][ii].as(f32);
+                                w_vec.D[timestep][ii] += vec.rhs_os[timestep][ii].as(f32);
                             }
                             w_vec.D[timestep][ii].eval();
                         }
@@ -726,11 +728,11 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             w_vec.D[timestep][ii].eval();
                         } else {
                             for (int kk = 0; kk < inputScalars.subsets; kk++) {
-                                vec.Summ[ii][kk] = vec.rhs_os[0][ii].as(f32) / static_cast<float>(inputScalars.subsets) + inputScalars.epps;
-                                vec.Summ[ii][kk](vec.Summ[ii][kk] == 0.f) = 1.f;
-                                vec.Summ[ii][kk].eval();
+                                vec.Summ[timestep][ii][kk] = vec.rhs_os[timestep][ii].as(f32) / static_cast<float>(inputScalars.subsets) + inputScalars.epps;
+                                vec.Summ[timestep][ii][kk](vec.Summ[timestep][ii][kk] == 0.f) = 1.f;
+                                vec.Summ[timestep][ii][kk].eval();
                                 if (DEBUG)
-                                    mexPrintBase("sum(vec.Summ[ii][kk]) = %f\n", af::sum<float>(vec.Summ[ii][kk]));
+                                    mexPrintBase("sum(vec.Summ[timestep][ii][kk]) = %f\n", af::sum<float>(vec.Summ[timestep][ii][kk]));
                             }
                         }
                     } else {
@@ -1114,13 +1116,13 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 				if (compute_norm_matrix == 1u && proj.no_norm == 0) {
 					for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 						if (inputScalars.atomic_64bit) {
-							vec.Summ[ii][0] = af::constant(0LL, inputScalars.im_dim[ii], 1, s64);
+							vec.Summ[tt][ii][0] = af::constant(0LL, inputScalars.im_dim[ii], 1, s64);
 						}
 						else if (inputScalars.atomic_32bit) {
-							vec.Summ[ii][0] = af::constant(0, inputScalars.im_dim[ii], 1, s32);
+							vec.Summ[tt][ii][0] = af::constant(0, inputScalars.im_dim[ii], 1, s32);
 						}
 						else
-							vec.Summ[ii][0] = af::constant(0.f, inputScalars.im_dim[ii], 1);
+							vec.Summ[tt][ii][0] = af::constant(0.f, inputScalars.im_dim[ii], 1);
 					}
 				}
 
@@ -1201,29 +1203,29 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 								if (inputScalars.randoms_correction || iter == 0 || (compute_norm_matrix == 1u && proj.no_norm == 0)) {
 									status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, OSEMapu, osa_iter,tt,  length, m_size, meanBP, g, proj, false, ii, pituus);
 									if (compute_norm_matrix == 1u) {
-										vec.Summ[ii][0] = vec.rhs_os[tt][ii];
-										vec.Summ[ii][0](vec.Summ[ii][0] < inputScalars.epps) = inputScalars.epps;
-										vec.Summ[ii][0].eval();
+										vec.Summ[tt][ii][0] = vec.rhs_os[tt][ii];
+										vec.Summ[tt][ii][0](vec.Summ[tt][ii][0] < inputScalars.epps) = inputScalars.epps;
+										vec.Summ[tt][ii][0].eval();
 									}
 									else if (compute_norm_matrix == 2u) {
-										vec.Summ[ii][osa_iter] = vec.rhs_os[tt][ii];
-										vec.Summ[ii][osa_iter](vec.Summ[ii][osa_iter] < inputScalars.epps) = inputScalars.epps;
-										vec.Summ[ii][osa_iter].eval();
+										vec.Summ[tt][ii][osa_iter] = vec.rhs_os[tt][ii];
+										vec.Summ[tt][ii][osa_iter](vec.Summ[tt][ii][osa_iter] < inputScalars.epps) = inputScalars.epps;
+										vec.Summ[tt][ii][osa_iter].eval();
 									}
 								}
 							}
 							af::sync();
 							if (compute_norm_matrix == 1u)
-								transferSensitivityImage(vec.Summ[ii][0], proj);
+								transferSensitivityImage(vec.Summ[tt][ii][0], proj);
 							else if (compute_norm_matrix == 2u)
-								transferSensitivityImage(vec.Summ[ii][osa_iter], proj);
+								transferSensitivityImage(vec.Summ[tt][ii][osa_iter], proj);
 							status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, tt, length, m_size, meanBP, g, proj, false, ii, pituus);
 							if (status != 0) {
 								if (compute_norm_matrix == 1u) {
-									vec.Summ[ii][0].unlock();
+									vec.Summ[tt][ii][0].unlock();
 								}
 								else if (compute_norm_matrix == 2) {
-									vec.Summ[ii][osa_iter].unlock();
+									vec.Summ[tt][ii][osa_iter].unlock();
 								}
 								return -1;
 							}
@@ -1397,7 +1399,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                 }
 			} // End main timestep loop
 
-            if (!inputScalars.largeDim) { // TODO computeForwardStep vectorization
+            if (!inputScalars.largeDim) {
                 // Update estimate for subset-based algorithms
                 status = computeOSEstimates(vec, w_vec, MethodList, iter, osa_iter, inputScalars, length, break_iter, pituus, g, proj, mData[subIter], m_size, uu, compute_norm_matrix);
                 if (status != 0) return -1;

@@ -1745,11 +1745,11 @@ inline void backprojectionType6(af::array& fProj, const Weighting& w_vec, AF_im_
         
         af::array sensProj = af::constant(1.f, inputScalars.nColsD, inputScalars.nRowsD, length);
 		if (compute_norm_matrix == 2) {
-			vec.Summ[ii][osa_iter] = backProjectionType6Helper(sensProj, w_vec, inputScalars, proj, length, timestep, uu, ii, atten);
-			vec.Summ[ii][osa_iter](vec.Summ[ii][osa_iter] < inputScalars.epps) = 1.f;
+			vec.Summ[timestep][ii][osa_iter] = backProjectionType6Helper(sensProj, w_vec, inputScalars, proj, length, timestep, uu, ii, atten);
+			vec.Summ[timestep][ii][osa_iter](vec.Summ[timestep][ii][osa_iter] < inputScalars.epps) = 1.f;
 		} else {
-			vec.Summ[ii][0] = backProjectionType6Helper(sensProj, w_vec, inputScalars, proj, length, timestep, uu, ii, atten);
-			vec.Summ[ii][0](vec.Summ[ii][0] < inputScalars.epps) = 1.f;
+			vec.Summ[timestep][ii][0] = backProjectionType6Helper(sensProj, w_vec, inputScalars, proj, length, timestep, uu, ii, atten);
+			vec.Summ[timestep][ii][0](vec.Summ[timestep][ii][0] < inputScalars.epps) = 1.f;
 		}
 		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Sensitivity image computed");
@@ -2774,48 +2774,48 @@ inline void initializeProxPriors(const RecMethods& MethodList, const scalarStruc
 inline void transferControl(AF_im_vectors& vec, const scalarStruct& inputScalars, const af::array& g, const Weighting& w_vec, const uint32_t timestep, const uint8_t compute_norm_matrix = 2, const uint8_t no_norm = 1,
 	const uint32_t osa_iter = 0, const int ii = 0) {
 	if (compute_norm_matrix == 1u) {
-		vec.Summ[ii][0].unlock();
+		vec.Summ[timestep][ii][0].unlock();
 		if (no_norm == 0u) {
 #ifdef OPENCL
 			if (inputScalars.atomic_64bit)
-				vec.Summ[ii][0] = vec.Summ[ii][0].as(f32) / TH;
+				vec.Summ[timestep][ii][0] = vec.Summ[timestep][ii][0].as(f32) / TH;
 			else if (inputScalars.atomic_32bit)
-				vec.Summ[ii][0] = vec.Summ[ii][0].as(f32) / TH32;
+				vec.Summ[timestep][ii][0] = vec.Summ[timestep][ii][0].as(f32) / TH32;
 #endif
 			if (inputScalars.use_psf) {
-				vec.Summ[ii][0] = computeConvolution(vec.Summ[ii][0], g, inputScalars, w_vec, 1, ii);
+				vec.Summ[timestep][ii][0] = computeConvolution(vec.Summ[timestep][ii][0], g, inputScalars, w_vec, 1, ii);
 			}
 			// Prevent division by zero
-			vec.Summ[ii][0](vec.Summ[ii][0] < inputScalars.epps) = inputScalars.epps;
-			vec.Summ[ii][0].eval();
+			vec.Summ[timestep][ii][0](vec.Summ[timestep][ii][0] < inputScalars.epps) = inputScalars.epps;
+			vec.Summ[timestep][ii][0].eval();
 			if (DEBUG) {
 				mexPrint("Sens image steps 1 done\n");
 			}
 		}
 	}
 	else if (compute_norm_matrix == 2) {
-		vec.Summ[ii][osa_iter].unlock();
+		vec.Summ[timestep][ii][osa_iter].unlock();
 		if (no_norm == 0u) {
 #ifdef OPENCL
 			if (inputScalars.atomic_64bit) {
-				vec.Summ[ii][osa_iter] = vec.Summ[ii][osa_iter].as(f32) / TH;
+				vec.Summ[timestep][ii][osa_iter] = vec.Summ[timestep][ii][osa_iter].as(f32) / TH;
 			}
 			else if (inputScalars.atomic_32bit) {
-				vec.Summ[ii][osa_iter] = vec.Summ[ii][osa_iter].as(f32) / TH32;
+				vec.Summ[timestep][ii][osa_iter] = vec.Summ[timestep][ii][osa_iter].as(f32) / TH32;
 			}
 #endif
 			if (inputScalars.use_psf) {
-				vec.Summ[ii][osa_iter] = computeConvolution(vec.Summ[ii][osa_iter], g, inputScalars, w_vec, 1, ii);
+				vec.Summ[timestep][ii][osa_iter] = computeConvolution(vec.Summ[timestep][ii][osa_iter], g, inputScalars, w_vec, 1, ii);
 				af::sync();
 			}
-			vec.Summ[ii][osa_iter](vec.Summ[ii][osa_iter] < inputScalars.epps) = inputScalars.epps;
-			vec.Summ[ii][osa_iter].eval();
+			vec.Summ[timestep][ii][osa_iter](vec.Summ[timestep][ii][osa_iter] < inputScalars.epps) = inputScalars.epps;
+			vec.Summ[timestep][ii][osa_iter].eval();
 			if (DEBUG) {
 				mexPrint("Sens image steps 2 done\n");
 			}
 			if (DEBUG) {
 				mexPrintBase("inputScalars.epps = %f\n", inputScalars.epps);
-				mexPrintBase("min(Summ) = %f\n", af::min<float>(vec.Summ[ii][osa_iter]));
+				mexPrintBase("min(Summ) = %f\n", af::min<float>(vec.Summ[timestep][ii][osa_iter]));
 				mexEval();
 			}
 		}

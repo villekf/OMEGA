@@ -63,7 +63,8 @@ typedef struct AF_im_vectors_ {
 	std::vector<af::array> im_os_blurred, qProxTGV, vProxTGV, qProxTV, qProx, SAGASum;
     std::vector<std::vector<af::array>> im_os, rhs_os, uCP, pCP;
 	std::vector<af::array> wLSQR, fLSQR, uFISTA, fCGLS, rhsCP, fpCP, f0POCS, gradBB, imBB;
-	std::vector<std::vector<af::array>> Summ, stochasticHelper;
+	std::vector<std::vector<af::array>> stochasticHelper;
+    std::vector<std::vector<std::vector<af::array>>> Summ;
 } AF_im_vectors;
 #endif
 

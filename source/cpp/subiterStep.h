@@ -93,10 +93,9 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
         for (int ii = kk; ii <= inputScalars.nMultiVolumes; ii++) {
             af::array* Sens = nullptr;
             if (compute_norm_matrix == 1u) {
-                Sens = &vec.Summ[ii][0];
-            }
-            else if (compute_norm_matrix == 2u) {
-                Sens = &vec.Summ[ii][osa_iter];
+                Sens = &vec.Summ[timestep][ii][0];
+            } else if (compute_norm_matrix == 2u) {
+                Sens = &vec.Summ[timestep][ii][osa_iter];
             }
 
             // Compute the (matrix free) algorithms
