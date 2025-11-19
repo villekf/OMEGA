@@ -2183,9 +2183,8 @@ public:
 	}
 
 	template <typename T>
-	inline int loadCoord(uint32_t currentSubset, scalarStruct& inputScalars, const int64_t length, const T* listCoord, const T* listCoordAx = nullptr, const uint8_t* TOFIndices = nullptr) {
+	inline int loadCoord(const uint32_t timestep, uint32_t currentSubset, scalarStruct& inputScalars, const int64_t length, const T* listCoord, const T* listCoordAx = nullptr, const uint8_t* TOFIndices = nullptr) {
 		CUresult status = CUDA_SUCCESS;
-        uint32_t timestep = 0; // TODO!!!
         if (inputScalars.listmode > 0) {
             if (inputScalars.indexBased) {
                 getErrorString(cuMemFree(d_trIndex[timestep][0]));

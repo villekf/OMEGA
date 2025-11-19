@@ -1901,9 +1901,8 @@ public:
 	}
 
 	template <typename T>
-	inline int loadCoord(uint32_t currentSubset, scalarStruct& inputScalars, const int64_t length, const T* listCoord, const T* listCoordAx = nullptr, const uint8_t* TOFIndices = nullptr) {
+	inline int loadCoord(const uint32_t timestep, uint32_t currentSubset, scalarStruct& inputScalars, const int64_t length, const T* listCoord, const T* listCoordAx = nullptr, const uint8_t* TOFIndices = nullptr) {
 		cl_int status = CL_SUCCESS;
-        uint32_t timestep = 0; // TODO!!!!!!
         if (inputScalars.listmode > 0){
             if (inputScalars.indexBased) {
                 d_trIndex[timestep][0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length * 2, NULL, &status);
