@@ -28,7 +28,7 @@ inline af::array OSL(const af::array& Summ, const af::array& dU, const float epp
 
 // Computes the final MBSREM update
 // Can use image-based preconditioners which are applied before the final update
-inline int MBSREM(af::array& im, af::array& rhs, const float U, const float* lam, const uint32_t timestep, const uint32_t iter, const uint32_t osa_iter, const scalarStruct& inputScalars, Weighting& w_vec, ProjectorClass& proj, const int ii = 0) {
+inline int MBSREM(af::array& im, af::array& rhs, const float U, const std::vector<float> lam, const uint32_t timestep, const uint32_t iter, const uint32_t osa_iter, const scalarStruct& inputScalars, Weighting& w_vec, ProjectorClass& proj, const int ii = 0) {
 	int status = 0;
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
 	af::array output;
@@ -51,7 +51,7 @@ inline int MBSREM(af::array& im, af::array& rhs, const float U, const float* lam
 }
 
 // BSREM subset update
-inline int BSREM(af::array& im, const af::array& rhs, const float* lam, const uint32_t iter, const scalarStruct& inputScalars, ProjectorClass& proj, const int ii = 0)
+inline int BSREM(af::array& im, const af::array& rhs, const std::vector<float> lam, const uint32_t iter, const scalarStruct& inputScalars, ProjectorClass& proj, const int ii = 0)
 {
 	int status = 0;
 #ifndef CPU
@@ -63,7 +63,7 @@ inline int BSREM(af::array& im, const af::array& rhs, const float* lam, const ui
 }
 
 // Subset-based separable paraboidal surrogates
-inline int SPS(af::array& im, af::array& rhs, const float U, const float* lam, const uint32_t timestep, const uint32_t iter, const uint32_t osa_iter, const scalarStruct& inputScalars, Weighting& w_vec, ProjectorClass& proj, const int ii = 0) {
+inline int SPS(af::array& im, af::array& rhs, const float U, const std::vector<float> lam, const uint32_t timestep, const uint32_t iter, const uint32_t osa_iter, const scalarStruct& inputScalars, Weighting& w_vec, ProjectorClass& proj, const int ii = 0) {
 	int status = 0;
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
 	if (DEBUG) {
@@ -99,7 +99,7 @@ inline af::array ECOSEM(const af::array& im, const af::array& D, const af::array
 }
 
 // ROSEM update
-inline af::array ROSEM(const af::array& im, const af::array& Summ, const af::array& rhs, const float* lam, const uint32_t iter)
+inline af::array ROSEM(const af::array& im, const af::array& Summ, const af::array& rhs, const std::vector<float> lam, const uint32_t iter)
 {
 	return (im + lam[iter] * im / Summ * (rhs - Summ));
 }
@@ -120,7 +120,7 @@ inline af::array RBI(const af::array& im, const af::array& Summ, const af::array
 }
 
 // DRAMA update
-inline af::array DRAMA(const af::array& im, const af::array& Summ, const af::array& rhs, const float* lam, const uint32_t iter, const uint32_t sub_iter, const uint32_t subsets)
+inline af::array DRAMA(const af::array& im, const af::array& Summ, const af::array& rhs, const std::vector<float> lam, const uint32_t iter, const uint32_t sub_iter, const uint32_t subsets)
 {
 	return (im + lam[iter * subsets + sub_iter] * im / Summ * rhs);
 }
@@ -154,8 +154,8 @@ inline int PKMA(af::array& im, af::array& rhs, Weighting& w_vec, const scalarStr
 	applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, timestep, kk, ii);
 	if (inputScalars.computeRelaxation) {
 		if (kk == 0 && ii == 0) {
-			w_vec.lambda[iter] = af::norm(im) / af::norm(rhs) * .25f;
-			const float kerroin = af::norm(im) / af::norm(rhs * w_vec.lambda[iter]);
+			w_vec.lambda[timestep][iter] = af::norm(im) / af::norm(rhs) * .25f;
+			const float kerroin = af::norm(im) / af::norm(rhs * w_vec.lambda[timestep][iter]);
 			const float kerroin2 = std::fabs(af::max<float>(im) / af::max<float>(rhs));
 			const float kerroin3 = af::median<float>(im) / af::median<float>(rhs);
 			if (DEBUG) {
@@ -166,8 +166,8 @@ inline int PKMA(af::array& im, af::array& rhs, Weighting& w_vec, const scalarStr
 			}
 		}
 		else if (iter > 0 && osa_iter == 0 && ii == 0)
-			w_vec.lambda[iter] = w_vec.lambda[iter - 1] * (1.f / (iter / 35.f + 1.f));
-		const float kerroin = af::norm(im) / af::norm(rhs * w_vec.lambda[iter]);
+			w_vec.lambda[timestep][iter] = w_vec.lambda[timestep][iter - 1] * (1.f / (iter / 35.f + 1.f));
+		const float kerroin = af::norm(im) / af::norm(rhs * w_vec.lambda[timestep][iter]);
 		const float kerroin2 = std::fabs(af::max<float>(im) / af::max<float>(rhs));
 		const float kerroin3 = af::median<float>(im) / af::median<float>(rhs);
 		const float kerroin4 = af::norm(im) / af::norm(rhs);
@@ -182,31 +182,31 @@ inline int PKMA(af::array& im, af::array& rhs, Weighting& w_vec, const scalarStr
 			mexPrintBase("kerroinJako = %f\n", kerroin5);
 			mexPrintBase("kerroinSumma = %f\n", kerroin6);
 			mexPrintBase("kerroinMean = %f\n", kerroin7);
-			mexPrintBase("w_vec.lambda[iter] = %f\n", w_vec.lambda[iter]);
+			mexPrintBase("w_vec.lambda[timestep][iter] = %f\n", w_vec.lambda[timestep][iter]);
 			mexEval();
 		}
 	}
 	if (inputScalars.relaxScaling) {
-		const float kerroin = af::norm(im) / af::norm(rhs * w_vec.lambda[iter]);
-		const float kerroin2 = std::fabs(af::max<float>(im) / af::max<float>(rhs * w_vec.lambda[iter]));
-		const float kerroin3 = af::median<float>(im) / af::median<float>(rhs * w_vec.lambda[iter]);
+		const float kerroin = af::norm(im) / af::norm(rhs * w_vec.lambda[timestep][iter]);
+		const float kerroin2 = std::fabs(af::max<float>(im) / af::max<float>(rhs * w_vec.lambda[timestep][iter]));
+		const float kerroin3 = af::median<float>(im) / af::median<float>(rhs * w_vec.lambda[timestep][iter]);
 			if (kerroin < 1.5f && kerroin > 0.f)
-				w_vec.lambda[iter] *= (kerroin / 1.5f);
+				w_vec.lambda[timestep][iter] *= (kerroin / 1.5f);
 		if (DEBUG) {
 			mexPrintBase("kerroin = %f\n", kerroin);
 			mexPrintBase("kerroinMax = %f\n", kerroin2);
 			mexPrintBase("kerroinMed = %f\n", kerroin3);
-			mexPrintBase("w_vec.lambda[iter] = %f\n", w_vec.lambda[iter]);
+			mexPrintBase("w_vec.lambda[timestep][iter] = %f\n", w_vec.lambda[timestep][iter]);
 			mexEval();
 		}
 	}
 #ifndef CPU
-	status = poissonUpdateAF(im, rhs, inputScalars, w_vec.lambda[iter], inputScalars.epps, w_vec.alphaM[kk], proj, ii);
+	status = poissonUpdateAF(im, rhs, inputScalars, w_vec.lambda[timestep][iter], inputScalars.epps, w_vec.alphaM[timestep][kk], proj, ii);
 #else
-	af::array im_apu = im - w_vec.lambda[iter] * rhs;
+	af::array im_apu = im - w_vec.lambda[timestep][iter] * rhs;
 	if (inputScalars.enforcePositivity)
 		im_apu(im_apu < inputScalars.epps) = inputScalars.epps;
-	im = (1.f - w_vec.alphaM[kk]) * im + w_vec.alphaM[kk] * im_apu;
+	im = (1.f - w_vec.alphaM[timestep][kk]) * im + w_vec.alphaM[timestep][kk] * im_apu;
 #endif
 	return status;
 }
@@ -566,7 +566,7 @@ inline int SAGA(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, AF_
 	int status = 0;
 	vec.stochasticHelper[ii][osa_iter] = vec.rhs_os[timestep][ii].copy();
 	status = applyImagePreconditioning(w_vec, inputScalars, grad, im, proj, timestep, kk, ii);
-	im += w_vec.lambda[iter] * grad;
+	im += w_vec.lambda[timestep][iter] * grad;
 	af::eval(im);
 	//af::sync();
 	if (DEBUG) {

@@ -40,7 +40,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                     }
                 }
                 if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA)
-                    w_vec.lambda = w_vec.lambdaFiltered;
+                    w_vec.lambda[timestep] = w_vec.lambdaFiltered[timestep];
                 w_vec.precondTypeIm[5] = false;
             }
             if (MethodList.PKMA && inputScalars.listmode > 0 && (w_vec.precondTypeIm[0] || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2]))
@@ -116,14 +116,14 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             if (MethodList.MRAMLA) {
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing MRAMLA");
-                status = MBSREM(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], w_vec.U, w_vec.lambda, timestep, iter, osa_iter, inputScalars, w_vec, proj, ii);
+                status = MBSREM(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], w_vec.U, w_vec.lambda[timestep], timestep, iter, osa_iter, inputScalars, w_vec, proj, ii);
             }
 
             // Row-action Maximum Likelihood (RAMLA)
             if (MethodList.RAMLA) {
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing RAMLA");
-                status = BSREM(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], w_vec.lambda, iter, inputScalars, proj, ii);
+                status = BSREM(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], w_vec.lambda[timestep], iter, inputScalars, proj, ii);
             }
 
             // Relaxed OSEM (ROSEM)
@@ -131,9 +131,9 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing ROSEM");
                 if (inputScalars.CT)
-                    vec.im_os[timestep][ii] = ROSEM(vec.im_os[timestep][ii], *Sens, inputScalars.flat * vec.rhs_os[timestep][ii], w_vec.lambda, iter);
+                    vec.im_os[timestep][ii] = ROSEM(vec.im_os[timestep][ii], *Sens, inputScalars.flat * vec.rhs_os[timestep][ii], w_vec.lambda[timestep], iter);
                 else
-                    vec.im_os[timestep][ii] = ROSEM(vec.im_os[timestep][ii], *Sens, vec.rhs_os[timestep][ii], w_vec.lambda, iter);
+                    vec.im_os[timestep][ii] = ROSEM(vec.im_os[timestep][ii], *Sens, vec.rhs_os[timestep][ii], w_vec.lambda[timestep], iter);
             }
 
             // Rescaled Block Iterative EM (RBI)
@@ -147,7 +147,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             if (MethodList.DRAMA) {
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing DRAMA");
-                vec.im_os[timestep][ii] = DRAMA(vec.im_os[timestep][ii], *Sens, vec.rhs_os[timestep][ii], w_vec.lambda, iter, osa_iter, inputScalars.subsets);
+                vec.im_os[timestep][ii] = DRAMA(vec.im_os[timestep][ii], *Sens, vec.rhs_os[timestep][ii], w_vec.lambda[timestep], iter, osa_iter, inputScalars.subsets);
             }
 
             // Complete data OSEM
@@ -224,20 +224,20 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             else if (MethodList.BSREM) {
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing BSREM");
-                status = BSREM(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], w_vec.lambda, iter, inputScalars, proj, ii);
+                status = BSREM(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], w_vec.lambda[timestep], iter, inputScalars, proj, ii);
             }
             else if (MethodList.MBSREM) {
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing MBSREM");
-                status = MBSREM(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], w_vec.U, w_vec.lambda, timestep, iter, osa_iter, inputScalars, w_vec, proj, ii);
+                status = MBSREM(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], w_vec.U, w_vec.lambda[timestep], timestep, iter, osa_iter, inputScalars, w_vec, proj, ii);
             }
             else if (MethodList.ROSEMMAP) {
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing ROSEMMAP");
                 if (inputScalars.CT)
-                    vec.im_os[timestep][ii] = ROSEM(vec.im_os[timestep][ii], *Sens, inputScalars.flat * vec.rhs_os[timestep][ii], w_vec.lambda, iter);
+                    vec.im_os[timestep][ii] = ROSEM(vec.im_os[timestep][ii], *Sens, inputScalars.flat * vec.rhs_os[timestep][ii], w_vec.lambda[timestep], iter);
                 else
-                    vec.im_os[timestep][ii] = ROSEM(vec.im_os[timestep][ii], *Sens, vec.rhs_os[timestep][ii], w_vec.lambda, iter);
+                    vec.im_os[timestep][ii] = ROSEM(vec.im_os[timestep][ii], *Sens, vec.rhs_os[timestep][ii], w_vec.lambda[timestep], iter);
             }
             else if (MethodList.RBIOSL) {
                 if (inputScalars.verbose >= 3)
@@ -286,7 +286,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             else if (MethodList.SPS) {
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing SPS");
-                status = SPS(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], w_vec.U, w_vec.lambda, timestep, iter, osa_iter, inputScalars, w_vec, proj, ii);
+                status = SPS(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], w_vec.U, w_vec.lambda[timestep], timestep, iter, osa_iter, inputScalars, w_vec, proj, ii);
             }
             else if (MethodList.LSQR) {
                 if (inputScalars.verbose >= 3)
@@ -302,10 +302,10 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing SART");
                 if (DEBUG) {
-                    mexPrintBase("w_vec.lambda[iter] = %f\n", w_vec.lambda[iter]);
+                    mexPrintBase("w_vec.lambda[timestep][iter] = %f\n", w_vec.lambda[timestep][iter]);
                     mexEval();
                 }
-                status = SART(inputScalars, w_vec, MethodList, vec, proj, mData[timestep], g, length, pituus, timestep, osa_iter, iter , *Sens, vec.rhs_os[timestep][ii], w_vec.lambda[iter], ii);
+                status = SART(inputScalars, w_vec, MethodList, vec, proj, mData[timestep], g, length, pituus, timestep, osa_iter, iter , *Sens, vec.rhs_os[timestep][ii], w_vec.lambda[timestep][iter], ii);
                 if (MethodList.POCS)
                     status = POCS(inputScalars, w_vec, MethodList, vec, proj, mData[timestep], g, length, pituus, timestep, osa_iter, iter, ii);
             }

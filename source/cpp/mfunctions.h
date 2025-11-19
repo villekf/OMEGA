@@ -203,11 +203,6 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 	// Load the necessary variables if the corresponding reconstruction method is used
 	int yy = 0;
 
-	if (MethodList.DRAMA) {
-		// Relaxation parameter
-		w_vec.lambda = getSingles(options, "lam_drama");
-	}
-
 	// Load spatial regularization parameter
 	w_vec.beta = getScalarFloat(getField(options, 0, "beta"), -9);
 	w_vec.betaReg = w_vec.beta;
@@ -552,26 +547,10 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 	}
 #endif
 	if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS) {
-		// Relaxation parameter
-		w_vec.lambda = getSingles(options, "lambda");
 		// Upper bound
 		w_vec.U = getScalarFloat(getField(options, 0, "U"), -42);
 	}
-	// Relaxation parameters
-	if (MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.SART || MethodList.POCS || MethodList.SAGA)
-		w_vec.lambda = getSingles(options, "lambda");
-	if (MethodList.PKMA) {
-		w_vec.alphaM = getSingles(options, "alpha_PKMA");
-		w_vec.lambda = getSingles(options, "lambda");
-	}
-	if ((w_vec.precondTypeIm[5] || w_vec.precondTypeMeas[1]) && (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA)) {
-		w_vec.lambdaFiltered = w_vec.lambda;
-		w_vec.lambda = getSingles(options, "lambdaFiltered");
-	}
-	if (DEBUG && (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA)) {
-		mexPrintBase("w_vec.lambda[0] = %f\n", w_vec.lambda[0]);
-		mexEval();
-	}
+
 	if (w_vec.precondTypeIm[3])
 		w_vec.alphaPrecond = getSingles(options, "alphaPrecond");
 	// Power factor for ACOSEM
@@ -622,14 +601,40 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
     w_vec.sigmaCP.resize(inputScalars.Nt);
     w_vec.sigma2CP.resize(inputScalars.Nt);
     w_vec.thetaCP.resize(inputScalars.Nt);
+    w_vec.lambda.resize(inputScalars.Nt);
+    w_vec.lambdaFiltered.resize(inputScalars.Nt);
+    w_vec.alphaM.resize(inputScalars.Nt);
 
-    if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1 || MethodList.ProxTGV || MethodList.ProxTV) {
-        for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
-            w_vec.tauCP[timestep].resize(inputScalars.nMultiVolumes + 1);
-            w_vec.tauCP2[timestep].resize(inputScalars.nMultiVolumes + 1);
-            w_vec.sigmaCP[timestep].resize(inputScalars.nMultiVolumes + 1);
-            w_vec.thetaCP[timestep].resize(inputScalars.subsets * inputScalars.Niter);
-            if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1) { // Currently same values are used for each timestep
+    for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) { // Currently same values are used for each timestep
+        w_vec.tauCP[timestep].resize(inputScalars.nMultiVolumes + 1);
+        w_vec.tauCP2[timestep].resize(inputScalars.nMultiVolumes + 1);
+        w_vec.sigmaCP[timestep].resize(inputScalars.nMultiVolumes + 1);
+        w_vec.thetaCP[timestep].resize(inputScalars.subsets * inputScalars.Niter);
+        w_vec.lambda[timestep].resize(inputScalars.Niter);
+        w_vec.lambdaFiltered[timestep].resize(inputScalars.Niter);
+        w_vec.alphaM[timestep].resize(inputScalars.subsets * inputScalars.Niter);
+
+        // Relaxation parameters
+        if (MethodList.DRAMA) {
+            const float *lambda = getSingles(options, "lam_drama");
+            w_vec.lambda[timestep].assign(lambda, lambda + w_vec.lambda[timestep].size());
+        }
+        if (MethodList.PKMA || MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.SART || MethodList.POCS || MethodList.SAGA) {
+            const float *lambda = getSingles(options, "lambda");
+            w_vec.lambda[timestep].assign(lambda, lambda + w_vec.lambda[timestep].size());
+        }
+        if ((w_vec.precondTypeIm[5] || w_vec.precondTypeMeas[1]) && (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA)) {
+            w_vec.lambdaFiltered[timestep] = w_vec.lambda[timestep];
+            const float *lambda = getSingles(options, "lambdaFiltered");
+            w_vec.lambda[timestep].assign(lambda, lambda + w_vec.lambda[timestep].size());
+        }
+        if (MethodList.PKMA) {
+            const float *alphaM = getSingles(options, "alpha_PKMA");
+            w_vec.alphaM[timestep].assign(alphaM, alphaM + w_vec.alphaM[timestep].size());
+        }
+
+        if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1 || MethodList.ProxTGV || MethodList.ProxTV) {
+            if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1) {
                 const float *tauCP = getSingles(options, "tauCPFilt");
                 w_vec.tauCP[timestep].assign(tauCP, tauCP + w_vec.tauCP[timestep].size());
             }

@@ -20,7 +20,7 @@ int computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethod
 			return -1;
 		// MAP/Prior-algorithms
 		// Special case for BSREM and ROSEM-MAP
-		MAP(vec.im_os[timestep][0], w_vec.lambda[iter], vec.dU[timestep], inputScalars.epps);
+		MAP(vec.im_os[timestep][0], w_vec.lambda[timestep][iter], vec.dU[timestep], inputScalars.epps);
 		if (inputScalars.verbose >= 3)
 			mexPrint("Regularization for BSREM/ROSEMMAP computed");
 	}

@@ -40,7 +40,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			w_vec.LCP = w_vec.LCP2;
 		}
 		if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA)
-			w_vec.lambda = w_vec.lambdaFiltered;
+			w_vec.lambda[timestep] = w_vec.lambdaFiltered[timestep];
 		w_vec.precondTypeMeas[1] = false;
 	}
 	if (inputScalars.randoms_correction) {
