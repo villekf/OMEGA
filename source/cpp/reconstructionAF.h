@@ -804,7 +804,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     if (inputScalars.use_psf) {
                         vec.im_os_blurred[ii] = af::constant(1.f, inputScalars.im_dim[ii]);
                     }
-                    vec.im_os[0][ii] = af::constant(1.f, inputScalars.im_dim[ii]);
+                    vec.im_os[timestep][ii] = af::constant(1.f, inputScalars.im_dim[ii]);
                     if (inputScalars.projector_type == 6) {
                         oneInput = af::constant(1.f, inputScalars.nRowsD, inputScalars.nColsD, length[ll]);
                         forwardProjectionType6(oneInput, w_vec, vec, inputScalars, length[ll], uu, proj, ii, atten);
