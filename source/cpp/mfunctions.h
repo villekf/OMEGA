@@ -619,12 +619,16 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
     w_vec.LCP.resize(inputScalars.Nt);
     w_vec.LCP2.resize(inputScalars.Nt);
     w_vec.alphaCP.resize(inputScalars.Nt);
+    w_vec.sigmaCP.resize(inputScalars.Nt);
+    w_vec.sigma2CP.resize(inputScalars.Nt);
+    w_vec.thetaCP.resize(inputScalars.Nt);
 
     if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1 || MethodList.ProxTGV || MethodList.ProxTV) {
         for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
             w_vec.tauCP[timestep].resize(inputScalars.nMultiVolumes + 1);
             w_vec.tauCP2[timestep].resize(inputScalars.nMultiVolumes + 1);
-
+            w_vec.sigmaCP[timestep].resize(inputScalars.nMultiVolumes + 1);
+            w_vec.thetaCP[timestep].resize(inputScalars.subsets * inputScalars.Niter);
             if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1) { // Currently same values are used for each timestep
                 const float *tauCP = getSingles(options, "tauCPFilt");
                 w_vec.tauCP[timestep].assign(tauCP, tauCP + w_vec.tauCP[timestep].size());
@@ -645,11 +649,16 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
                  for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
                     w_vec.alphaCP[timestep].emplace_back(.95f);
             }
+            const float *sigmaCP = getSingles(options, "sigmaCP");
+            w_vec.sigmaCP[timestep].assign(sigmaCP, sigmaCP + w_vec.sigmaCP[timestep].size());
+            const float *sigma2CP = getSingles(options, "sigma2CP");
+            w_vec.sigma2CP[timestep].assign(sigma2CP, sigma2CP + w_vec.sigma2CP[timestep].size());
+            const float *thetaCP = getSingles(options, "thetaCP");
+            w_vec.thetaCP[timestep].assign(thetaCP, thetaCP + w_vec.thetaCP[timestep].size());
         }
     }
 
 	if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1) {
-		w_vec.sigmaCP = getSingles(options, "sigmaCP");
 		w_vec.powerIterations = getScalarUInt32(getField(options, 0, "powerIterations"), -63);
 		if (DEBUG) {
 			mexPrint("PIter loaded");
@@ -657,11 +666,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 	}
 
 	if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1 || MethodList.ProxTGV || MethodList.ProxTV) {
-		w_vec.sigma2CP = getSingles(options, "sigma2CP");
 		w_vec.betaReg = getScalarFloat(getField(options, 0, "beta"), -63);
-
-		w_vec.thetaCP = getSingles(options, "thetaCP", 0);
-
 		w_vec.alpha0CPTGV = getScalarFloat(getField(options, 0, "alpha0TGV"), -63);
 		w_vec.alpha1CPTGV = getScalarFloat(getField(options, 0, "alpha1TGV"), -63);
 		w_vec.UseL2Ball = getScalarBool(getField(options, 0, "useL2Ball"), -63);

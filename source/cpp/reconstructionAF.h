@@ -218,12 +218,19 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
     w_vec.D.resize(inputScalars.Nt);
     w_vec.M.resize(inputScalars.Nt);
+    w_vec.betaLSQR.resize(inputScalars.Nt);
+    w_vec.alphaLSQR.resize(inputScalars.Nt);
+    w_vec.thetaLSQR.resize(inputScalars.Nt);
+    w_vec.rhoLSQR.resize(inputScalars.Nt);
+    w_vec.phiLSQR.resize(inputScalars.Nt);
 	vec.rhs_os.resize(inputScalars.Nt);
     vec.im_os.resize(inputScalars.Nt);
     vec.uCP.resize(inputScalars.Nt);
     vec.pCP.resize(inputScalars.Nt);
     vec.p0CP.resize(inputScalars.Nt);
     vec.dU.resize(inputScalars.Nt);
+    vec.wLSQR.resize(inputScalars.Nt);
+    vec.fLSQR.resize(inputScalars.Nt);
     for (int tt = 0; tt < inputScalars.Nt; tt++) {
 	    vec.im_os[tt].resize(inputScalars.nMultiVolumes + 1);
         vec.rhs_os[tt].resize(inputScalars.nMultiVolumes + 1);
@@ -838,7 +845,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
         
     if (inputScalars.verbose >= 3 && (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1)) {
         mexPrintVarf("Primal step size (tau) is ", w_vec.tauCP[0][0]);
-        mexPrintVarf("Dual step size (sigma) is ", w_vec.sigmaCP[0]);
+        mexPrintVarf("Dual step size (sigma) is ", w_vec.sigmaCP[0][0]);
     }
 
     // Initial values

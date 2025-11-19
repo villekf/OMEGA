@@ -24,14 +24,14 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			mexPrint("Filter iterations complete. Switching tau/sigma-values");
 		if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1 || MethodList.ProxTGV || MethodList.ProxTV) {
 			for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-				if (w_vec.sigmaCP[ii] == 1.f)
+				if (w_vec.sigmaCP[timestep][ii] == 1.f)
 					w_vec.tauCP[timestep][ii] = w_vec.tauCP2[timestep][ii];
-				else if (w_vec.sigmaCP[ii] == w_vec.tauCP[timestep][ii]) {
+				else if (w_vec.sigmaCP[timestep][ii] == w_vec.tauCP[timestep][ii]) {
 					w_vec.tauCP[timestep][ii] = w_vec.tauCP2[timestep][ii];
-					w_vec.sigmaCP[ii] = w_vec.tauCP2[timestep][ii];
+					w_vec.sigmaCP[timestep][ii] = w_vec.tauCP2[timestep][ii];
 				}
 				else
-					w_vec.sigmaCP[ii] = w_vec.tauCP2[timestep][ii];
+					w_vec.sigmaCP[timestep][ii] = w_vec.tauCP2[timestep][ii];
 				if (inputScalars.adaptiveType == 1)
 					w_vec.alphaCP[timestep][ii] = 1.f;
 				else if (inputScalars.adaptiveType == 2)
@@ -251,7 +251,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			if (FINVERSE) {
 				if (inputScalars.verbose >= 3)
 					mexPrint("Computing inverse with circulant matrix");
-				input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[ii] * res);
+				input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * res);
 				if (inputScalars.subsetType == 5 || inputScalars.subsetType == 4) {
 					if (inputScalars.subsetType == 4)
 						input = af::moddims(input, inputScalars.nRowsD, input.elements() / inputScalars.nRowsD);
@@ -261,7 +261,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				else
 					input = af::moddims(input, inputScalars.nRowsD, inputScalars.nColsD, input.elements() / (inputScalars.nRowsD * inputScalars.nColsD));
 				if (inputScalars.adaptiveType >= 1 && ii == 0) {
-					w_vec.Ffilter = af::ifft(w_vec.filter) * w_vec.sigmaCP[ii];
+					w_vec.Ffilter = af::ifft(w_vec.filter) * w_vec.sigmaCP[timestep][ii];
 					w_vec.Ffilter(0) = w_vec.Ffilter(0) + 1.f;
 					w_vec.Ffilter = af::real(af::fft(w_vec.Ffilter));
 				}
@@ -281,7 +281,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 					mexPrintBase("res.elements() / w_vec.filter.elements() = %d\n", res.elements() / apu.elements());
 					mexEval();
 				}
-				input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[ii] * res);
+				input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * res);
 			}
 			input.eval();
 		}
@@ -289,12 +289,12 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			if (MethodList.ProxTGV) {
 				if (inputScalars.verbose >= 3)
 					mexPrint("Computing Proximal TGV");
-				input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[ii] * res) / (1.f + w_vec.sigmaCP[ii] * w_vec.betaReg);
+				input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * res) / (1.f + w_vec.sigmaCP[timestep][ii] * w_vec.betaReg);
 			}
 			else {
 				if (inputScalars.verbose >= 3)
 					mexPrint("Computing PDHG");
-				input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[ii] * res) / (1.f + w_vec.sigmaCP[ii]);
+				input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * res) / (1.f + w_vec.sigmaCP[timestep][ii]);
 			}
 			input.eval();
 		}
@@ -304,7 +304,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		}
 		vec.pCP[timestep][subIter] = input.copy();
 		if (DEBUG) {
-			mexPrintBase("w_vec.sigmaCP = %f\n", w_vec.sigmaCP[ii]);
+			mexPrintBase("w_vec.sigmaCP[timestep] = %f\n", w_vec.sigmaCP[timestep][ii]);
 			mexEval();
 		}
 	}
@@ -322,16 +322,16 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 					return -1;
 				apu1(apu1 < 0.f) = 0.f;
 				input(input < 0.f) = 0.f;
-				input = .5f * (1.f + vec.pCP[timestep][subIter] + w_vec.sigmaCP[ii] * input - af::sqrt(af::pow(vec.pCP[timestep][subIter] + w_vec.sigmaCP[ii] * input - 1.f, 2.) + 4.f * w_vec.sigmaCP[ii] * apu1));
+				input = .5f * (1.f + vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * input - af::sqrt(af::pow(vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * input - 1.f, 2.) + 4.f * w_vec.sigmaCP[timestep][ii] * apu1));
 			}
 			else {
 				if (inputScalars.verbose >= 3)
 					mexPrint("Applying diagonal normalization preconditioner (1 / (A1)), type 0");
-				input = .5f * (1.f + vec.pCP[timestep][subIter] + w_vec.sigmaCP[ii] * input / w_vec.M[timestep][subIter] - af::sqrt(af::pow(vec.pCP[timestep][subIter] + w_vec.sigmaCP[ii] * input / w_vec.M[timestep][subIter] - 1.f, 2.) + 4.f * w_vec.sigmaCP[ii] * y.as(f32) / w_vec.M[timestep][subIter]));
+				input = .5f * (1.f + vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * input / w_vec.M[timestep][subIter] - af::sqrt(af::pow(vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * input / w_vec.M[timestep][subIter] - 1.f, 2.) + 4.f * w_vec.sigmaCP[timestep][ii] * y.as(f32) / w_vec.M[timestep][subIter]));
 			}
 		}
 		else
-			input = .5f * (1.f + vec.pCP[timestep][subIter] + w_vec.sigmaCP[ii] * input - af::sqrt(af::pow(vec.pCP[timestep][subIter] + w_vec.sigmaCP[ii] * input - 1.f, 2.) + 4.f * w_vec.sigmaCP[ii] * y.as(f32)));
+			input = .5f * (1.f + vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * input - af::sqrt(af::pow(vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * input - 1.f, 2.) + 4.f * w_vec.sigmaCP[timestep][ii] * y.as(f32)));
 		input.eval();
 		vec.pCP[timestep][subIter] = input.copy();
 	}
@@ -342,7 +342,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		status = applyMeasPreconditioning(w_vec, inputScalars, res, proj, timestep, subIter);
 		if (status != 0)
 			return -1;
-		input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[ii] * res);
+		input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * res);
 		input /= (af::max)(1.f, af::abs(input));
 		input.eval();
 		vec.pCP[timestep][subIter] = input.copy();

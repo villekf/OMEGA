@@ -29,14 +29,14 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                 if (inputScalars.verbose >= 3)
                     mexPrint("Image-based filter iterations complete.");
                 if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1 || MethodList.ProxTGV || MethodList.ProxTV) {
-                    if (w_vec.sigmaCP[ii] == 1.f)
+                    if (w_vec.sigmaCP[timestep][ii] == 1.f)
                         w_vec.tauCP[timestep][ii] = w_vec.tauCP2[timestep][ii];
-                    else if (w_vec.sigmaCP[ii] == w_vec.tauCP[timestep][ii]) {
+                    else if (w_vec.sigmaCP[timestep][ii] == w_vec.tauCP[timestep][ii]) {
                         w_vec.tauCP[timestep][ii] = w_vec.tauCP2[timestep][ii];
-                        w_vec.sigmaCP[ii] = w_vec.tauCP2[timestep][ii];
+                        w_vec.sigmaCP[timestep][ii] = w_vec.tauCP2[timestep][ii];
                     }
                     else {
-                        w_vec.sigmaCP[ii] = w_vec.tauCP2[timestep][ii];
+                        w_vec.sigmaCP[timestep][ii] = w_vec.tauCP2[timestep][ii];
                     }
                 }
                 if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA)

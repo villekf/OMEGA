@@ -2700,9 +2700,9 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 		}
 	}
 	for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-		w_vec.sigmaCP[ii] = 1.f;
+		w_vec.sigmaCP[timestep][ii] = 1.f;
 		if (ii > 0)
-			w_vec.sigma2CP[ii] = 1.f;
+			w_vec.sigma2CP[timestep][ii] = 1.f;
 		if (inputScalars.verbose > 0) {
 			if (ii == 0) {
 				if (w_vec.filterIter > 0 && (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]))

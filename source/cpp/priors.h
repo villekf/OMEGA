@@ -262,7 +262,7 @@ inline int hyperbolic(const scalarStruct& inputScalars, const af::array& ima, co
 inline int proxTV(const af::array& im, const scalarStruct& inputScalars, AF_im_vectors& vec, ProjectorClass& proj, const Weighting& w_vec, af::array& dU, const float beta, const uint32_t timestep) {
 	int status = 0;
 #ifndef CPU
-	status = proxTVGradAF(im, vec.qProxTV, inputScalars, w_vec.sigma2CP[0], vec.vProxTGV, proj);
+	status = proxTVGradAF(im, vec.qProxTV, inputScalars, w_vec.sigma2CP[timestep][0], vec.vProxTGV, proj);
 	af::sync();
 	if (status != 0)
 		return -1;
@@ -273,7 +273,7 @@ inline int proxTV(const af::array& im, const scalarStruct& inputScalars, AF_im_v
 	status = proxTVDivAF(vec.qProxTV, dU, inputScalars, proj, timestep);
 	if (DEBUG) {
 		mexPrintBase("beta = %f\n", beta);
-		mexPrintBase("w_vec.sigma2CP = %f\n", w_vec.sigma2CP[0]);
+		mexPrintBase("w_vec.sigma2CP[timestep] = %f\n", w_vec.sigma2CP[timestep][0]);
 		mexPrintBase("vec.qProxTV = %f\n", af::sum<float>(vec.qProxTV[0]));
 		mexEval();
 	}
@@ -293,7 +293,7 @@ inline int proxTGV(const af::array& im, const scalarStruct& inputScalars, AF_im_
 		mexPrintBase("vec.qProxTGV = %f\n", af::sum<float>(vec.qProxTGV[0]));
 		mexEval();
 	}
-	status = proxTGVSymmDerivAF(vec.vProxTGV, vec.qProxTGV, inputScalars, w_vec.sigma2CP[0], proj);
+	status = proxTGVSymmDerivAF(vec.vProxTGV, vec.qProxTGV, inputScalars, w_vec.sigma2CP[timestep][0], proj);
 	af::sync();
 	if (status != 0)
 		return -1;
@@ -308,12 +308,12 @@ inline int proxTGV(const af::array& im, const scalarStruct& inputScalars, AF_im_
 	if (DEBUG) {
 		mexPrintBase("w_vec.alpha0CPTGV = %f\n", w_vec.alpha0CPTGV);
 		mexPrintBase("w_vec.alpha1CPTGV = %f\n", w_vec.alpha1CPTGV);
-		mexPrintBase("w_vec.sigma2CP = %f\n", w_vec.sigma2CP[0]);
+		mexPrintBase("w_vec.sigma2CP[timestep] = %f\n", w_vec.sigma2CP[timestep][0]);
 		mexPrintBase("osa_iter = %d\n", osa_iter);
 		mexPrintBase("vec.qProxTGV0 = %f\n", af::sum<float>(vec.qProxTGV[0]));
 		mexEval();
 	}
-	status = proxTGVDivAF(vec.qProxTGV, vec.vProxTGV, vec.qProxTV, inputScalars, w_vec.thetaCP[osa_iter], w_vec.tauCP[timestep][0], proj);
+	status = proxTGVDivAF(vec.qProxTGV, vec.vProxTGV, vec.qProxTV, inputScalars, w_vec.thetaCP[timestep][osa_iter], w_vec.tauCP[timestep][0], proj);
 #else
 	mexPrint("Proximal TGV not supported with CPU implementation!");
 	status = -1;
@@ -439,7 +439,7 @@ inline int applySpatialPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMeth
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing TGV prior");
 		if (osa_iter >= 100)
-			w_vec.sigma2CP = w_vec.sigmaCP;
+			w_vec.sigma2CP[timestep] = w_vec.sigmaCP[timestep];
 		status = proxTGV(vec.im_os[timestep][0], inputScalars, vec, proj, w_vec, *dU, osa_iter, timestep);
 	}
 	else if (MethodList.ProxTV) {
