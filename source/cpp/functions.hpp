@@ -2114,14 +2114,14 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 			mData = mData.as(f32);
 			if (DEBUG || inputScalars.verbose >= 3)
 				mexPrint("Initializing LSQR");
-			vec.fLSQR.emplace_back(vec.im_os[timestep][ii].copy());
+			vec.fLSQR[timestep].emplace_back(vec.im_os[timestep][ii].copy());
 			if (ii == 0) {
-				w_vec.betaLSQR = af::norm(mData);
-				mData = mData / w_vec.betaLSQR;
+				w_vec.betaLSQR[timestep] = af::norm(mData);
+				mData = mData / w_vec.betaLSQR[timestep];
 			}
 			if (DEBUG) {
 				mexPrintBase("!!!!!!!!!!!!!!!mData = %f\n", af::sum<float>(mData));
-				mexPrintBase("w_vec.betaLSQR = %f\n", w_vec.betaLSQR);
+				mexPrintBase("w_vec.betaLSQR[timestep] = %f\n", w_vec.betaLSQR[timestep]);
 				mexEval();
 			}
 			if (inputScalars.projector_type == 6)
@@ -2149,18 +2149,18 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				temp = vec.rhs_os[timestep][0];
 				for (int ll = 1; ll <= inputScalars.nMultiVolumes; ll++)
 					temp = af::join(0, temp, vec.rhs_os[timestep][ii]);
-				w_vec.alphaLSQR = af::norm(temp);
+				w_vec.alphaLSQR[timestep] = af::norm(temp);
 				for (int ll = 0; ll <= inputScalars.nMultiVolumes; ll++) {
-					vec.im_os[timestep][ll] = vec.rhs_os[timestep][ll] / w_vec.alphaLSQR;
-					vec.wLSQR.emplace_back(vec.im_os[timestep][ii].copy());
+					vec.im_os[timestep][ll] = vec.rhs_os[timestep][ll] / w_vec.alphaLSQR[timestep];
+					vec.wLSQR[timestep].emplace_back(vec.im_os[timestep][ii].copy());
 				}
 				if (DEBUG) {
 					mexPrintBase("!!!!!!vec.im_os[timestep] = %f\n", af::sum<float>(vec.im_os[timestep][ii]));
-					mexPrintBase("w_vec.alphaLSQR = %f\n", w_vec.alphaLSQR);
+					mexPrintBase("w_vec.alphaLSQR[timestep] = %f\n", w_vec.alphaLSQR[timestep]);
 					mexEval();
 				}
-				w_vec.phiLSQR = w_vec.betaLSQR;
-				w_vec.rhoLSQR = w_vec.alphaLSQR;
+				w_vec.phiLSQR[timestep] = w_vec.betaLSQR[timestep];
+				w_vec.rhoLSQR[timestep] = w_vec.alphaLSQR[timestep];
 				af::sync();
 				if (DEBUG || inputScalars.verbose >= 3)
 					mexPrint("LSQR initialization complete");

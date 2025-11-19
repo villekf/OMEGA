@@ -181,9 +181,9 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 	else if (MethodList.LSQR) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing LSQR");
-		input -= w_vec.alphaLSQR * y.as(f32);
-		w_vec.betaLSQR = af::norm(input);
-		input = input / w_vec.betaLSQR;
+		input -= w_vec.alphaLSQR[timestep] * y.as(f32);
+		w_vec.betaLSQR[timestep] = af::norm(input);
+		input = input / w_vec.betaLSQR[timestep];
 		input.eval();
 		y = input;
 		y.eval();

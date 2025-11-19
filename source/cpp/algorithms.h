@@ -213,29 +213,29 @@ inline int PKMA(af::array& im, af::array& rhs, Weighting& w_vec, const scalarStr
 
 inline void LSQR(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t timestep, const uint32_t iter, AF_im_vectors& vec, const int ii = 0) {
 	if (iter == 0)
-		vec.wLSQR[ii] = vec.im_os[timestep][ii];
-	vec.im_os[timestep][ii] = vec.rhs_os[timestep][ii] - w_vec.betaLSQR * vec.im_os[timestep][ii];
+		vec.wLSQR[timestep][ii] = vec.im_os[timestep][ii];
+	vec.im_os[timestep][ii] = vec.rhs_os[timestep][ii] - w_vec.betaLSQR[timestep] * vec.im_os[timestep][ii];
 	if (ii == inputScalars.nMultiVolumes) {
 		af::array temp = vec.im_os[timestep][0];
 		for (int ll = 1; ll <= inputScalars.nMultiVolumes; ll++)
 			temp = af::join(0, vec.im_os[timestep][ll], temp);
-		w_vec.alphaLSQR = af::norm(temp);
+		w_vec.alphaLSQR[timestep] = af::norm(temp);
 		for (int ll = 0; ll <= inputScalars.nMultiVolumes; ll++)
-			vec.im_os[timestep][ll] = vec.im_os[timestep][ll] / w_vec.alphaLSQR;
-		const float rho_ = sqrt(w_vec.rhoLSQR * w_vec.rhoLSQR + w_vec.betaLSQR * w_vec.betaLSQR);
-		const float c = w_vec.rhoLSQR / rho_;
-		const float s = w_vec.betaLSQR / rho_;
-		w_vec.thetaLSQR = s * w_vec.alphaLSQR;
-		w_vec.rhoLSQR = -c * w_vec.alphaLSQR;
-		const float phi_ = c * w_vec.phiLSQR;
-		w_vec.phiLSQR = s * w_vec.phiLSQR;
+			vec.im_os[timestep][ll] = vec.im_os[timestep][ll] / w_vec.alphaLSQR[timestep];
+		const float rho_ = sqrt(w_vec.rhoLSQR[timestep] * w_vec.rhoLSQR[timestep] + w_vec.betaLSQR[timestep] * w_vec.betaLSQR[timestep]);
+		const float c = w_vec.rhoLSQR[timestep] / rho_;
+		const float s = w_vec.betaLSQR[timestep] / rho_;
+		w_vec.thetaLSQR[timestep] = s * w_vec.alphaLSQR[timestep];
+		w_vec.rhoLSQR[timestep] = -c * w_vec.alphaLSQR[timestep];
+		const float phi_ = c * w_vec.phiLSQR[timestep];
+		w_vec.phiLSQR[timestep] = s * w_vec.phiLSQR[timestep];
 		for (int ll = 0; ll <= inputScalars.nMultiVolumes; ll++) {
-			vec.fLSQR[ll] = (phi_ / rho_) * vec.wLSQR[ll] + vec.fLSQR[ll];
-			vec.fLSQR[ll].eval();
-			vec.wLSQR[ll] = vec.im_os[timestep][ll] - (w_vec.thetaLSQR / rho_) * vec.wLSQR[ll];
-			vec.wLSQR[ll].eval();
+			vec.fLSQR[timestep][ll] = (phi_ / rho_) * vec.wLSQR[timestep][ll] + vec.fLSQR[timestep][ll];
+			vec.fLSQR[timestep][ll].eval();
+			vec.wLSQR[timestep][ll] = vec.im_os[timestep][ll] - (w_vec.thetaLSQR[timestep] / rho_) * vec.wLSQR[timestep][ll];
+			vec.wLSQR[timestep][ll].eval();
 			if (iter == inputScalars.Niter - 1)
-				vec.im_os[timestep][ll] = vec.fLSQR[ll];
+				vec.im_os[timestep][ll] = vec.fLSQR[timestep][ll];
 		}
 	}
 }
