@@ -476,19 +476,16 @@ inline int applyTemporalPrior(
     Weighting& w_vec,
     const RecMethods& MethodList,
     const scalarStruct& inputScalars,
-    ProjectorClass& proj
+    ProjectorClass& proj,
+    const bool iter = false
 ) {
     af::array* dUt = nullptr;
 	int status = 0;
     for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
-        /*
-        if (iter) {
-            vec.dUt = af::constant(0.f, vec.im_os[timestep][0].elements());
-            dUt = &vec.dUt;
-        } else if (MethodList.RBIOSL || MethodList.OSLOSEM || MethodList.OSLCOSEM || MethodList.POCS || MethodList.SAGA || MethodList.SART) {
-            vec.dUt = af::constant(0.f, vec.im_os[timestep][0].elements());
-            dUt = &vec.dUt;
-        } else */{
+        if (iter || (MethodList.RBIOSL || MethodList.OSLOSEM || MethodList.OSLCOSEM || MethodList.POCS || MethodList.SAGA || MethodList.SART)) {
+            vec.dUt[timestep] = af::constant(0.f, vec.im_os[timestep][0].elements());
+            dUt = &vec.dUt[timestep];
+        } else {
             dUt = &vec.rhs_os[timestep][0];
         }
         

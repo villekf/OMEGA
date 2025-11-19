@@ -229,6 +229,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
     vec.pCP.resize(inputScalars.Nt);
     vec.p0CP.resize(inputScalars.Nt);
     vec.dU.resize(inputScalars.Nt);
+    vec.dUt.resize(inputScalars.Nt);
     vec.wLSQR.resize(inputScalars.Nt);
     vec.fLSQR.resize(inputScalars.Nt);
     for (int tt = 0; tt < inputScalars.Nt; tt++) {
@@ -294,7 +295,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 	}
 
 	if (MethodList.NLM || MethodList.MRP || MethodList.ProxTV || MethodList.RDP || MethodList.TV || MethodList.ProxTGV || MethodList.ProxRDP || MethodList.GGMRF || MethodList.Quad || MethodList.APLS ||
-		MethodList.FMH || MethodList.Huber || MethodList.hyperbolic || MethodList.L || MethodList.WeightedMean || MethodList.TGV)
+		MethodList.FMH || MethodList.Huber || MethodList.hyperbolic || MethodList.L || MethodList.WeightedMean || MethodList.TGV || MethodList.QuadraticSmoothnessTemporal)
 		MethodList.prior = true;
 
 	if (DEBUG) {

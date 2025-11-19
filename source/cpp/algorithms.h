@@ -280,12 +280,20 @@ inline int SART(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 			int status = 0;
 			const float dp = static_cast<float>(af::norm(vec.im_os[timestep][ii] - imOld));
 			for (int kk = 0; kk < w_vec.ng; kk++) {
+                // Spatial prior
 				status = applySpatialPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, timestep, osa_iter + inputScalars.subsetsUsed * iter);
-				if (status != 0)
-					return status;
+				if (status != 0) return status;
 				vec.dU[timestep] /= (af::norm(vec.dU[timestep]) + inputScalars.epps);
 				af::eval(vec.dU[timestep]);
 				vec.im_os[timestep][ii] -= dp * w_vec.beta * vec.dU[timestep];
+
+                // Temporal prior
+                status = applyTemporalPrior(vec, w_vec, MethodList, inputScalars, proj);
+				if (status != 0) return status;
+                vec.dUt[timestep] /= (af::norm(vec.dUt[timestep]) + inputScalars.epps);
+				af::eval(vec.dUt[timestep]);
+				vec.im_os[timestep][ii] -= dp * w_vec.beta_temporal * vec.dUt[timestep];
+
 				af::eval(vec.im_os[timestep][ii]);
 			}
 		}
