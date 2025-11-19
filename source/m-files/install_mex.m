@@ -690,13 +690,15 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
                             cxxflags = 'CXXFLAGS="$CXXFLAGS -Wp"';
                         end
                         try
-                            disp('Attemping to build CUDA code.')
+                            disp('Building CUDA code for float data type.')
                             mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree', compflags, cxxflags, '-DMATLAB', '-DCUDA', '-DAF', ['-I ' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', ...
                                 '-lnvrtc', ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib/x64"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
 
+                            disp('Building CUDA code for uint16 data type.')
                             mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint16', compflags, cxxflags, '-DMATLAB', '-DCUDA', '-DAF', '-DMTYPE', ['-I ' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', ...
                                 '-lnvrtc', ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib/x64"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
 
+                            disp('Building CUDA code for uint8 data type.')
                             mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint8', compflags, cxxflags, '-DMATLAB', '-DCUDA', '-DAF', '-DMTYPE2', ['-I ' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', ...
                                 '-lnvrtc', ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib/x64"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
 
@@ -727,19 +729,22 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
                 if implementation == 0 || implementation == 2
                     try
                         %%%%%%%%%%%%%%%%%%%%%% Implementation 2 %%%%%%%%%%%%%%%%%%%%%%%
+                        disp('Building OpenCL code for float data type.')
                         mex(compiler, complexFlag, '-outdir', folder, ['-I ' folder], ['-I"' opencl_include_path '"'], compflags, cxxflags, '-DMATLAB', '-DAF', '-lafopencl', '-lOpenCL', ['-L"' af_path '/lib"'],...
                             ['-L"' opencl_lib_path '"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
 
+                        disp('Building OpenCL code for uint16 data type.')
                         mex(compiler, complexFlag, '-outdir', folder, '-output', 'OpenCL_matrixfree_uint16', ['-I ' folder], ['-I"' opencl_include_path '"'], compflags, cxxflags, '-DMATLAB', '-DAF', '-DMTYPE', '-lafopencl', '-lOpenCL', ['-L"' af_path '/lib"'],...
                             ['-L"' opencl_lib_path '"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
 
+                        disp('Building OpenCL code for uint8 data type.')
                         mex(compiler, complexFlag, '-outdir', folder, '-output', 'OpenCL_matrixfree_uint8', ['-I ' folder], ['-I"' opencl_include_path '"'], compflags, cxxflags, '-DMATLAB', '-DAF', '-DMTYPE2', '-lafopencl', '-lOpenCL', ['-L"' af_path '/lib"'],...
                             ['-L"' opencl_lib_path '"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
 
                         mex(compiler, '-largeArrayDims', '-outdir', folder, '-lafopencl', '-lOpenCL', ['-L"' af_path '/lib"'],['-L"' opencl_lib_path '"'], ...
                             ['-I ' folder], ['-I"' opencl_include_path '"'], ['-I"' af_path '/include"'], [folder '/ArrayFire_OpenCL_device_info.cpp'])
 
-                        disp('Implementation 2 built')
+                        disp('OpenCL support enabled')
                     catch ME
                         if verbose
                             warning(['Unable to build OpenCL files for implementation 2! If you do not need implementation 2 (matrix free OpenCL with ArrayFire) ignore this warning. '...
@@ -836,13 +841,15 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
                 compflags = 'COMPFLAGS="$COMPFLAGS -std=c++17"';
                 cxxflags = 'CXXFLAGS="$CXXFLAGS -w"';
                 try
-                    disp('Attempting to build CUDA code.')
+                    disp('Building CUDA code for float data type.')
                     mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree', ldflags, compflags, cxxflags, '-DMATLAB', '-DCUDA', '-DAF', ['-I' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', '-lnvrtc', ...
                         ['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib64"'], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp']);
 
+                    disp('Building CUDA code for uint16 data type.')
                     mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint16', ldflags, compflags, cxxflags, '-DMATLAB', '-DCUDA', '-DAF', '-DMTYPE', ['-I' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', '-lnvrtc', ...
                         ['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib64"'], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp']);
 
+                    disp('Building CUDA code for uint8 data type.')
                     mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint8', ldflags, compflags, cxxflags, '-DMATLAB', '-DCUDA', '-DAF', '-DMTYPE2', ['-I' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', '-lnvrtc', ...
                         ['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib64"'], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp']);
 
@@ -872,25 +879,29 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
         cxxlib = '-lOpenCL';
         if implementation == 0 || implementation == 2
             try
+                
                 mex(compiler, '-largeArrayDims', '-outdir', folder, ldflags, '-lafopencl', cxxlib, ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib64"'], ...
                     ['-L"' opencl_lib_path '"'], '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64' ,['-I ' folder], ['-I' af_path_include], ...
                     ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', [folder '/ArrayFire_OpenCL_device_info.cpp'])
-
+                
+                disp('Building OpenCL code for float data type.')
                 mex(compiler, complexFlag, '-outdir', folder, ldflags, compflags, cxxflags, '-DMATLAB', '-DOPENCL', '-DAF', '-lafopencl', cxxlib, ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ...
                     ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64', ['-I ' folder], ...
                     ['-I' af_path_include], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', ...
                     [folder '/OpenCL_matrixfree.cpp'])
 
+                disp('Building OpenCL code for uint16 data type.')
                 mex(compiler, complexFlag, '-outdir', folder, '-output', 'OpenCL_matrixfree_uint16', ldflags, compflags, cxxflags, '-DMATLAB', '-DOPENCL', '-DAF', '-DMTYPE', '-lafopencl', cxxlib, ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ...
                     ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64', ['-I ' folder], ...
                     ['-I' af_path_include], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', ...
                     [folder '/OpenCL_matrixfree.cpp'])
 
-                mex(compiler, complexFlag, '-outdir', folder, '-output', 'OpenCL_matrixfree_uint8', ldflags, compflags, cxxflags, '-DMATLAB', '-DOPENCL', '-DAF', '-DMTYPE', '-lafopencl', cxxlib, ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ...
+                disp('Building OpenCL code for uint8 data type.')
+                mex(compiler, complexFlag, '-outdir', folder, '-output', 'OpenCL_matrixfree_uint8', ldflags, compflags, cxxflags, '-DMATLAB', '-DOPENCL', '-DAF', '-DMTYPE2', '-lafopencl', cxxlib, ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ...
                     ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64', ['-I ' folder], ...
                     ['-I' af_path_include], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', ...
                     [folder '/OpenCL_matrixfree.cpp'])
-                disp('Implementation 2 built')
+                disp('OpenCL support enabled')
             catch ME
                 if verbose
                     warning(['Unable to build OpenCL files for implementation 2! If you do not need implementation 2 (matrix free OpenCL with ArrayFire) ignore this warning. '...
@@ -923,7 +934,7 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
                 disp('Implementation 2 built with CPU support')
             catch ME
                 if verbose
-                    warning(['Unable to build CPU support for implementation 2! If rrayFire has been installed in a non-standard path, it can be added manually '...
+                    warning(['Unable to build CPU support for implementation 2! If ArrayFire has been installed in a non-standard path, it can be added manually '...
                         'by using install_mex(0, '''', '''', ''/PATH/TO/ARRAYFIRE''). Compiler error:']);
                     disp(ME.message)
                 else
