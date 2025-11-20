@@ -568,7 +568,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                 if (!inputScalars.CT && ((inputScalars.randoms_correction && !af::allTrue<bool>(rand > 0)) || inputScalars.randoms_correction == 0) && (MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS)) {
                     if (inputScalars.verbose >= 3)
                         mexPrint("Computing epsilon value for MBSREM/MRAMLA");
-                    w_vec.epsilon_mramla[tt] = MBSREM_epsilon(Sino, E, inputScalars.epps, inputScalars.randoms_correction, rand, inputScalars.TOF, nBins, inputScalars.CT); // this
+                    w_vec.epsilon_mramla[tt] = MBSREM_epsilon(Sino, E, inputScalars.epps, inputScalars.randoms_correction, rand, inputScalars.TOF, nBins, inputScalars.CT);
                     if (inputScalars.verbose >= 3)
                         mexPrint("Epsilon value for MBSREM/MRAMLA computed");
                 }
