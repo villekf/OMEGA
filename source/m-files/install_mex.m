@@ -741,6 +741,7 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
                         mex(compiler, complexFlag, '-outdir', folder, '-output', 'OpenCL_matrixfree_uint8', ['-I ' folder], ['-I"' opencl_include_path '"'], compflags, cxxflags, '-DMATLAB', '-DAF', '-DMTYPE2', '-lafopencl', '-lOpenCL', ['-L"' af_path '/lib"'],...
                             ['-L"' opencl_lib_path '"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
 
+                        disp('Building ArrayFire_OpenCL_device_info.cpp')
                         mex(compiler, '-largeArrayDims', '-outdir', folder, '-lafopencl', '-lOpenCL', ['-L"' af_path '/lib"'],['-L"' opencl_lib_path '"'], ...
                             ['-I ' folder], ['-I"' opencl_include_path '"'], ['-I"' af_path '/include"'], [folder '/ArrayFire_OpenCL_device_info.cpp'])
 
@@ -879,7 +880,7 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
         cxxlib = '-lOpenCL';
         if implementation == 0 || implementation == 2
             try
-                
+                disp('Building ArrayFire_OpenCL_device_info.cpp')
                 mex(compiler, '-largeArrayDims', '-outdir', folder, ldflags, '-lafopencl', cxxlib, ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib64"'], ...
                     ['-L"' opencl_lib_path '"'], '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64' ,['-I ' folder], ['-I' af_path_include], ...
                     ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', [folder '/ArrayFire_OpenCL_device_info.cpp'])

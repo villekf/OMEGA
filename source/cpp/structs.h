@@ -57,14 +57,25 @@ typedef struct TVdata_ {
 #ifdef AF
 // Struct for the various ArrayFire arrays
 typedef struct AF_im_vectors_ {
-	af::array C_co;
-    std::vector<af::array> dU, dUt, p0CP; //dU: gradient of spatial prior, dUt: gradient of temporal prior
-	af::array rCGLS, meanFP, meanBP, apu, pPrevCP, fpCP2, adapTypeA;
+    // Arrays of size N_timesteps
+    std::vector<af::array> dU; // gradient of spatial prior
+    std::vector<af::array> dUt; // gradient of temporal prior
+    std::vector<af::array> p0CP; 
+    // Arrays of size N_timesteps x N_multivolumes
+    std::vector<std::vector<af::array>> im_os; // estimate of image volume
+    std::vector<std::vector<af::array>> rhs_os; // backprojection
+    std::vector<std::vector<af::array>> uCP;
+    std::vector<std::vector<af::array>> pCP;
+    std::vector<std::vector<af::array>> wLSQR;
+    std::vector<std::vector<af::array>> fLSQR;
+    std::vector<std::vector<af::array>> rhsCP;
+    // Arrays of size N_timesteps x N_multivolumes x N_subsets
+	std::vector<std::vector<std::vector<af::array>>> Summ; // sensitivity image
+    // Other arrays
+    af::array C_co, rCGLS, meanFP, meanBP, apu, adapTypeA;
 	std::vector<af::array> im_os_blurred, qProxTGV, vProxTGV, qProxTV, qProx, SAGASum;
-    std::vector<std::vector<af::array>> im_os, rhs_os, uCP, pCP, wLSQR, fLSQR;
-	std::vector<af::array> uFISTA, fCGLS, rhsCP, fpCP, f0POCS, gradBB, imBB;
+	std::vector<af::array> uFISTA, fCGLS, f0POCS, gradBB, imBB;
 	std::vector<std::vector<af::array>> stochasticHelper;
-    std::vector<std::vector<std::vector<af::array>>> Summ;
 } AF_im_vectors;
 #endif
 
@@ -72,7 +83,7 @@ typedef struct AF_im_vectors_ {
 typedef struct Weighting_ {
 #ifdef AF
 	af::array tr_offsets, weights_quad, weights_TV, weights_huber, fmh_weights, a_L, weighted_weights, UU, Amin, weights_RDP;
-	std::vector<af::array> dU, dUt, preRef, gradF, RDPref;
+	std::vector<af::array> preRef, gradF, RDPref;
     std::vector<std::vector<af::array>> dP, M, D;
 	af::array gaussianNLM, gFilter, filter, filterIm, Ffilter;
 	af_flux_function FluxType;

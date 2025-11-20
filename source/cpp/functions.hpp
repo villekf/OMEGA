@@ -2733,7 +2733,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 }
 
 // Allocate vectors for proximal TV, TGV and PDHG
-inline void initializeProxPriors(const RecMethods& MethodList, const scalarStruct& inputScalars, AF_im_vectors& vec) {
+inline void initializeProxPriors(const RecMethods& MethodList, const scalarStruct& inputScalars, AF_im_vectors& vec, const uint32_t timestep) {
 	if (MethodList.ProxTV || MethodList.ProxTGV) {
 		vec.qProxTV.resize(3);
 		std::fill(vec.qProxTV.begin(), vec.qProxTV.end(), af::constant(0.f, static_cast<dim_t>(inputScalars.NxPrior) * static_cast<dim_t>(inputScalars.NyPrior) * static_cast<dim_t>(inputScalars.NzPrior)));
@@ -2767,7 +2767,7 @@ inline void initializeProxPriors(const RecMethods& MethodList, const scalarStruc
 		}
 	}
 	if (MethodList.CPType && inputScalars.adaptiveType >= 1)
-		vec.rhsCP.resize(inputScalars.nMultiVolumes + 1);
+		vec.rhsCP[timestep].resize(inputScalars.nMultiVolumes + 1);
 }
 
 // Transfer memory control back to ArrayFire

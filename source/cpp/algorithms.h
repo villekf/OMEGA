@@ -304,7 +304,7 @@ inline int SART(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 // Necessary PDHG step, when using subsets, before regularization is applied
 inline void PDHG1(af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, const uint32_t timestep, const uint32_t subIter = 0, const int ii = 0) {
 	if (inputScalars.adaptiveType >= 1)
-		vec.rhsCP[ii] = rhs.copy();
+		vec.rhsCP[timestep][ii] = rhs.copy();
 	if (inputScalars.subsetsUsed > 1) {
 		if (DEBUG) {
 			mexPrintBase("vec.uCP[ii] = %f\n", af::sum<float>(vec.uCP[timestep][ii]));
@@ -365,7 +365,7 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 	}
 	if ((w_vec.precondTypeMeas[1] && subIter + inputScalars.subsetsUsed * iter >= w_vec.filterIter) || !w_vec.precondTypeMeas[1]) {
 		if (ii == 0 && inputScalars.adaptiveType == 1) {
-			const af::array q = (im_old - im) / w_vec.tauCP[timestep][ii] + inputScalars.subsetsUsed * vec.rhsCP[ii];
+			const af::array q = (im_old - im) / w_vec.tauCP[timestep][ii] + inputScalars.subsetsUsed * vec.rhsCP[timestep][ii];
 			const float w = af::dot<float>((im_old - im), q) / (static_cast<float>(af::norm((im_old - im)) * af::norm(q)));
 			if (w < 0.f) {
 				w_vec.tauCP[timestep][ii] = w_vec.tauCP[timestep][ii] / (1.f + w_vec.alphaCP[timestep][ii]);
@@ -389,7 +389,7 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 		else if (ii == 0 && inputScalars.adaptiveType == 2) {
 			const af::array apu = vec.im_os[timestep][ii].copy();
 			vec.im_os[timestep][ii] = (im_old - im);
-			const float q = af::sum<float>(af::abs((vec.im_os[timestep][ii]) / w_vec.tauCP[timestep][ii] + inputScalars.subsetsUsed * vec.rhsCP[ii]));
+			const float q = af::sum<float>(af::abs((vec.im_os[timestep][ii]) / w_vec.tauCP[timestep][ii] + inputScalars.subsetsUsed * vec.rhsCP[timestep][ii]));
 			af::array outputFP;
 			if (inputScalars.listmode == 0)
 				outputFP = af::constant(0.f, m_size * inputScalars.nBins);

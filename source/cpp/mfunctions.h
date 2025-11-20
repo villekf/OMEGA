@@ -609,6 +609,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
         w_vec.tauCP[timestep].resize(inputScalars.nMultiVolumes + 1);
         w_vec.tauCP2[timestep].resize(inputScalars.nMultiVolumes + 1);
         w_vec.sigmaCP[timestep].resize(inputScalars.nMultiVolumes + 1);
+        w_vec.sigma2CP[timestep].resize(inputScalars.nMultiVolumes + 1);
         w_vec.thetaCP[timestep].resize(inputScalars.subsets * inputScalars.Niter);
         w_vec.lambda[timestep].resize(inputScalars.Niter);
         w_vec.lambdaFiltered[timestep].resize(inputScalars.Niter);

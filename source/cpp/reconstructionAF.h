@@ -228,6 +228,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
     vec.uCP.resize(inputScalars.Nt);
     vec.pCP.resize(inputScalars.Nt);
     vec.p0CP.resize(inputScalars.Nt);
+    vec.rhsCP.resize(inputScalars.Nt);
     vec.dU.resize(inputScalars.Nt);
     vec.dUt.resize(inputScalars.Nt);
     vec.wLSQR.resize(inputScalars.Nt);
@@ -494,7 +495,8 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		proj.tStartAll = std::chrono::steady_clock::now();
 	}
 
-	initializeProxPriors(MethodList, inputScalars, vec);
+    for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++)
+	    initializeProxPriors(MethodList, inputScalars, vec, timestep);
 
 	if (inputScalars.verbose >= 3 || DEBUG)
 		mexPrint("Constant kernel variables set");
