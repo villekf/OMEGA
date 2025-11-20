@@ -382,7 +382,11 @@ if ~isfield(options,'precondTypeImage')
     options.precondTypeImage = [false;false;false;false;false;false;false];
 end
 if numel(options.precondTypeImage) < 7
-    options.precondTypeImage = [options.precondTypeImage;false(7-numel(options.precondTypeImage),1)];
+    if size(options.precondTypeImage, 1) > 1
+        options.precondTypeImage = [options.precondTypeImage;false(7-numel(options.precondTypeImage),1)];
+    else
+        options.precondTypeImage = [options.precondTypeImage,false(7-numel(options.precondTypeImage),1)'];
+    end
 end
 if ~isfield(options,'precondTypeMeas')
     options.precondTypeMeas = [false;false];
