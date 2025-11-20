@@ -142,7 +142,7 @@ if options.param.weighted_mean && options.param.MAP
 end
 
 if partitions == 1 && options.param.nLayers == 1
-    if ~options.param.CT && ~options.param.SPECT && numel(options.param.SinM) ~= options.param.Ndist * options.param.Nang * options.param.TotSinos * options.param.TOF_bins_used * partitions && options.param.listmode == 0 && ~options.param.attenuation_phase
+    if ~options.param.CT && ~options.param.SPECT && numel(options.param.SinM) ~= options.param.Ndist * options.param.Nang * options.param.TotSinos * options.param.TOF_bins_used && options.param.listmode == 0 && ~options.param.attenuation_phase
         error('The number of elements in the input data does not match the input number of angles, radial distances and total number of sinograms multiplied together!')
     end
 end
@@ -697,11 +697,14 @@ elseif options.param.implementation == 2 || options.param.implementation == 3
                     options.param.SinDelayed{kk} = single(full(options.param.SinDelayed{kk}));
                 end
             end
-            if iscell(options.param.SinDelayed)
-                options.param.SinDelayed = single(full(options.param.SinDelayed));
-            end
-            if ~isa(options.param.SinDelayed, 'single')
-                options.param.SinDelayed = single(options.param.SinDelayed);
+            if iscell(options.param.SinDelayed) && ~isa(options.param.SinDelayed{1}, 'single')
+                for kk = 1 : length(options.param.SinDelayed)
+                    options.param.SinDelayed{kk} = single(options.param.SinDelayed{kk});
+                end
+            elseif ~iscell(options.param.SinDelayed)
+                if ~isa(options.param.SinDelayed, 'single')
+                    options.param.SinDelayed = single(options.param.SinDelayed);
+                end
             end
         else
             options.param.randSize = uint64(1);

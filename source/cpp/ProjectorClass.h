@@ -2517,7 +2517,7 @@ public:
 				OCL_CHECK(status, "\n", -1);
 				OCL_CHECK(kernelBP.setArg(kernelIndBPSubIter++, d_zFull[0]), "\n", -1);
 				//getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_zFull[0]));
-				getErrorString(kernelBP.setArg(kernelIndBPSubIter++, inputScalars.rings));
+				OCL_CHECK(kernelBP.setArg(kernelIndBPSubIter++, inputScalars.rings), "\n", -1);
 			}
 			else {
 				if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))

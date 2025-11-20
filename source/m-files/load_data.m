@@ -115,14 +115,14 @@ if options.useIndexBasedReconstruction && nargout < 7
     error('Too little of output arguments when extracting detector indices! There must be at least 7 outputs!')
 end
 
-if isscalar(partitions) && partitions > 1
+if isscalar(options.partitions) && partitions > 1
     if isinf(options.end)
         error('End time is infinity, but more than one time-step selected. Use either one time-step or input a finite end time.')
     end
-    options.partitions = repmat(vali, options.partitions, 1);
+    options.partitions = repmat(vali, partitions, 1);
 end
 
-Nt = numel(partitions);
+Nt = partitions;
 % partitions = options.partitions;
 
 if ispc && options.use_root
@@ -253,7 +253,7 @@ if options.use_machine == 1
     end
     % tic
     % Load the data from the binary file
-    [LL1, LL2, tpoints, DD1, DD2, raw_SinM, SinD] = inveon_list2matlab(nimi,(partitions),(alku),(loppu),pituus, uint32(detectors), options.randoms_correction, sinoSize, ...
+    [LL1, LL2, tpoints, DD1, DD2, raw_SinM, SinD] = inveon_list2matlab(nimi,(options.partitions),(alku),(loppu),pituus, uint32(detectors), options.randoms_correction, sinoSize, ...
         options.store_raw_data, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), uint32(cumsum(options.segment_table)), ...
         Nt, int32(options.ndist_side), storeL);
     % toc
@@ -1562,7 +1562,7 @@ elseif options.use_machine == 0
         %             outputUint32 = false;
         %         end
 
-        if options.useIndexBasedReconstruction && options.partitions > 1
+        if options.useIndexBasedReconstruction && partitions > 1
             error('Index-based reconstruction is not supported with dynamic data yet!')
         end
 

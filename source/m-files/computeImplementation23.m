@@ -59,7 +59,8 @@ else
 end
 if options.projector_type == 1 || options.projector_type == 11 ...
         || options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 22 || options.projector_type == 33 ...
-        || options.projector_type == 13 || options.projector_type == 23 || options.projector_type == 12 || options.projector_type == 32 || options.projector_type == 31
+        || options.projector_type == 13 || options.projector_type == 23 || options.projector_type == 12 || options.projector_type == 21 ...
+        || options.projector_type == 32 || options.projector_type == 31
     kernel_file = 'projectorType123.cl';
     kernel_path = which(kernel_file);
     kernel_path = strrep(kernel_path, '\', '/');

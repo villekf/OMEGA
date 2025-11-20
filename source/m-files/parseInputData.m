@@ -18,9 +18,17 @@ if options.subsets > 1 && options.subset_type > 0
                     else
                         if options.listmode == 0
                             if options.TOF
-                                temp = options.SinM(:,:,:,:,ff);
+                                if ndims(options.SinM) == 6
+                                    temp = options.SinM(:,:,:,:,:,ff);
+                                else
+                                    temp = options.SinM(:,:,:,:,ff);
+                                end
                             else
-                                temp = options.SinM(:,:,:,ff);
+                                if ndims(options.SinM) == 6
+                                    temp = options.SinM(:,:,:,:,:,ff);
+                                else
+                                    temp = options.SinM(:,:,:,ff);
+                                end
                             end
                         else
                             temp = options.SinM(:,ff);
@@ -32,6 +40,7 @@ if options.subsets > 1 && options.subset_type > 0
                 else
                     temp = single(full(options.SinM{ff}));
                 end
+                koko = size(temp);
                 if options.TOF && options.listmode == 0
                     if options.subset_type >= 8
                         temp = temp(:,:,index,:);
@@ -46,17 +55,26 @@ if options.subsets > 1 && options.subset_type > 0
                         temp = temp(index);
                     end
                 end
+                temp = reshape(temp, koko);
                 if iscell(options.SinM)
                     options.SinM{ff} = temp(:);
                 else
                     if options.listmode == 0
                         if options.TOF
-                            options.SinM(:,:,:,:,ff) = temp;
+                            if ndims(options.SinM) == 6
+                                options.SinM(:,:,:,:,:,ff) = temp;
+                            else
+                                options.SinM(:,:,:,:,ff) = temp;
+                            end
                         else
-                            options.SinM(:,:,:,ff) = temp;
+                            if ndims(options.SinM) == 6
+                                options.SinM(:,:,:,:,:,ff) = temp;
+                            else
+                                options.SinM(:,:,:,ff) = temp;
+                            end
                         end
                     else
-                        options.SinM(:,ff) = temp;
+                        options.SinM(:,ff) = temp(:);
                     end
                 end
             end

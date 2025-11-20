@@ -578,7 +578,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 							if (inputScalars.projector_type == 6)
 								backprojectionType6(inputM, w_vec, vec, inputScalars, length[subIter], uu, proj, subIter, 0, 0, 0, ii, atten);
 							else {
-								status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, inputM, subIter, length, lengthFull[subIter], meanBP, g, proj, true, ii, pituus);
+								status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, inputM, subIter, length, lengthFull[subIter], meanBP, g, proj, (inputScalars.listmode > 0 && inputScalars.computeSensImag), ii, pituus);
 								if (status != 0) {
 									return -1;
 								}
