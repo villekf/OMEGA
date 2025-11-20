@@ -69,12 +69,14 @@ typedef struct AF_im_vectors_ {
     std::vector<std::vector<af::array>> wLSQR;
     std::vector<std::vector<af::array>> fLSQR;
     std::vector<std::vector<af::array>> rhsCP;
+    std::vector<std::vector<af::array>> f0POCS;
+    std::vector<std::vector<af::array>> uFISTA;
     // Arrays of size N_timesteps x N_multivolumes x N_subsets
 	std::vector<std::vector<std::vector<af::array>>> Summ; // sensitivity image
     // Other arrays
     af::array C_co, rCGLS, meanFP, meanBP, apu, adapTypeA;
 	std::vector<af::array> im_os_blurred, qProxTGV, vProxTGV, qProxTV, qProx, SAGASum;
-	std::vector<af::array> uFISTA, fCGLS, f0POCS, gradBB, imBB;
+	std::vector<af::array> fCGLS, gradBB, imBB;
 	std::vector<std::vector<af::array>> stochasticHelper;
 } AF_im_vectors;
 #endif
@@ -95,11 +97,11 @@ typedef struct Weighting_ {
     int32_t *distInt = nullptr, *distInt2 = nullptr;
 	uint8_t* maskFP = nullptr, * maskBP = nullptr, * eFOVIndices = nullptr, *maskPrior = nullptr, *maskOffset = nullptr, *TOFIndices = nullptr;
 	uint16_t* axIndex = nullptr, * trIndex = nullptr;
-	std::vector<float> epsilon_mramla, betaLSQR, alphaLSQR, thetaLSQR, rhoLSQR, phiLSQR;
+	std::vector<float> epsilon_mramla, betaLSQR, alphaLSQR, thetaLSQR, rhoLSQR, phiLSQR, betaFISTA, tFISTA, tNFista;
     std::vector<std::vector<float>> tauCP, tauCP2, LCP, LCP2, alphaCP, sigmaCP, sigma2CP, thetaCP, lambda, lambdaFiltered, alphaM;
     float U = 1000000.f, h_ACOSEM = 1.f, TimeStepAD, KAD, w_sum = 0.f, h2 = 1.f, huber_delta = 0.f, ACOSEM_rhs = 0.f, h_ACOSEM_2 = 1.f, RDP_gamma = 1.f,
 		dPitchX, dPitchY, gammaCGLS = 0.f, gammaTempCGLS = 0.f, alphaCGLS = 0.f, nuIEM = 0.f, alphaCPTV = 1.f,
-		gradV1 = 0.f, gradV2 = 0.f, betaReg = 0.f, alpha0CPTGV = 1.f, alpha1CPTGV = 1.f, betaFISTA = 1.f, tFISTA = 1.f, tNFista = 1.f, GGMRF_p = 0.f, GGMRF_q = 0.f, GGMRF_c = 0.f, GGMRF_pqc = 0.f,
+		gradV1 = 0.f, gradV2 = 0.f, betaReg = 0.f, alpha0CPTGV = 1.f, alpha1CPTGV = 1.f, GGMRF_p = 0.f, GGMRF_q = 0.f, GGMRF_c = 0.f, GGMRF_pqc = 0.f,
 		beta = 0.f, beta_temporal = 0.f, dtvg = 0.f, alphaPOCS = 0.2f, rMaxPOCS = 0.95f, POCSepps = 1e-4f, POCSalphaRed = 0.95f, NLAdaptiveConstant = 1e-5f;
 	uint32_t alku_fmh = 0u, mean_type = 0u, powerIterations = 0, derivType = 0, gradInitIter = 0, filterIter = 0, gradFinalIter = 0;
 	uint32_t Ndx = 1u, Ndy = 1u, Ndz = 0u, NiterAD = 1u, dimmu, inffi, Nlx = 1u, Nly = 1u, Nlz = 0u;

@@ -2096,12 +2096,12 @@ inline void deblur(af::array& vec, const af::array& g, const scalarStruct& input
 inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors& vec, ProjectorClass& proj, scalarStruct& inputScalars, std::vector<int64_t> length, uint64_t m_size, const RecMethods& MethodList, uint32_t curIter, af::array& meanBP, const int64_t* pituus, const uint32_t timestep, const af::array& g = af::constant(0.f, 1, 1), const uint32_t subIter = 0, const int ii = 0) {
 	if (MethodList.FISTA || MethodList.FISTAL1) {
 		if (curIter == 0 && subIter == 0)
-			vec.uFISTA.emplace_back(vec.im_os[timestep][ii]);
+			vec.uFISTA[timestep].emplace_back(vec.im_os[timestep][ii]);
 		else {
 			if (inputScalars.subsetsUsed == 1 || (subIter == 0 && curIter > 0))
-				vec.im_os[timestep][ii] = vec.uFISTA[ii].copy();
+				vec.im_os[timestep][ii] = vec.uFISTA[timestep][ii].copy();
 		}
-		vec.uFISTA[ii].eval();
+		vec.uFISTA[timestep][ii].eval();
 	}
 	if (curIter == 0) {
 		if (DEBUG || inputScalars.verbose >= 3)

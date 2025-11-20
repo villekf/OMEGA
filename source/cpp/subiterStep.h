@@ -336,21 +336,21 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             if (inputScalars.FISTAAcceleration) {
                 //if ((w_vec.precondTypeIm[5] && w_vec.filterIter > 0 && osa_iter + inputScalars.subsets * iter >= w_vec.filterIter) || !w_vec.precondTypeIm[5]) {
                 //if (osa_iter == inputScalars.subsets - 1) {
-                    const float t = w_vec.tFISTA;
+                    const float t = w_vec.tFISTA[timestep];
                     if (DEBUG) {
                         mexPrintBase("im_os1 = %f\n", af::sum<float>(vec.im_os[timestep][ii]));
                         mexEval();
                     }
                     if (osa_iter + iter > 0)
-                        vec.im_os[timestep][ii] = vec.im_os[timestep][ii] + (t - 1.f) / w_vec.tFISTA * (vec.im_os[timestep][ii] - FISTAApu[ii]);
+                        vec.im_os[timestep][ii] = vec.im_os[timestep][ii] + (t - 1.f) / w_vec.tFISTA[timestep] * (vec.im_os[timestep][ii] - FISTAApu[ii]);
                     af::eval(vec.im_os[timestep][ii]);
                     if (ii == inputScalars.nMultiVolumes)
-                        w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tFISTA * w_vec.tFISTA)) / 2.f;
+                        w_vec.tFISTA[timestep] = (1.f + std::sqrt(1.f + 4.f * w_vec.tFISTA[timestep] * w_vec.tFISTA[timestep])) / 2.f;
                     if (DEBUG) {
                         mexPrintBase("im_os[timestep] = %f\n", af::sum<float>(vec.im_os[timestep][ii]));
                         mexPrintBase("FISTAApu = %f\n", af::sum<float>(FISTAApu[ii]));
                         mexPrintBase("t = %f\n", t);
-                        mexPrintBase("w_vec.tFISTA = %f\n", w_vec.tFISTA);
+                        mexPrintBase("w_vec.tFISTA[timestep] = %f\n", w_vec.tFISTA[timestep]);
                         mexEval();
                     }
                 //}

@@ -427,45 +427,45 @@ inline int FISTA(af::array& im, af::array& rhs, const scalarStruct& inputScalars
 		im -= w_vec.tauCP[timestep][ii] * rhs;
 		if (ii == 0) {
 			if (inputScalars.FISTAType == 1) {
-				w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista * w_vec.tNFista)) / 2.f;
-				w_vec.betaFISTA = (1.f - w_vec.tNFista) / w_vec.tFISTA;
-				w_vec.tNFista = w_vec.tFISTA;
+				w_vec.tFISTA[timestep] = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista[timestep] * w_vec.tNFista[timestep])) / 2.f;
+				w_vec.betaFISTA[timestep] = (1.f - w_vec.tNFista[timestep]) / w_vec.tFISTA[timestep];
+				w_vec.tNFista[timestep] = w_vec.tFISTA[timestep];
 			}
 			else {
 				const uint32_t it = iter + 1;
-				w_vec.betaFISTA = static_cast<float>(it - 1) / static_cast<float>(it + 2);
-				if (w_vec.betaFISTA <= 0.f) {
-					w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista * w_vec.tNFista)) / 2.f;
-					w_vec.betaFISTA = (w_vec.tNFista - 1.f) / w_vec.tFISTA;
-					w_vec.tNFista = w_vec.tFISTA;
+				w_vec.betaFISTA[timestep] = static_cast<float>(it - 1) / static_cast<float>(it + 2);
+				if (w_vec.betaFISTA[timestep] <= 0.f) {
+					w_vec.tFISTA[timestep] = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista[timestep] * w_vec.tNFista[timestep])) / 2.f;
+					w_vec.betaFISTA[timestep] = (w_vec.tNFista[timestep] - 1.f) / w_vec.tFISTA[timestep];
+					w_vec.tNFista[timestep] = w_vec.tFISTA[timestep];
 				}
 			}
 		}
 		im.eval();
-		vec.uFISTA[ii] = im + w_vec.betaFISTA * (im - vec.uFISTA[ii]);
-		vec.uFISTA[ii].eval();
+		vec.uFISTA[timestep][ii] = im + w_vec.betaFISTA[timestep] * (im - vec.uFISTA[timestep][ii]);
+		vec.uFISTA[timestep][ii].eval();
 	}
 	else if (inputScalars.subsetsUsed == 1) {
 		af::array uPrev = im.copy();
-		im = vec.uFISTA[ii] - w_vec.tauCP[timestep][ii] * rhs; // TODO vectorize vec.uFISTA etc
+		im = vec.uFISTA[timestep][ii] - w_vec.tauCP[timestep][ii] * rhs;
 		if (ii == 0) {
 			if (inputScalars.FISTAType == 1) {
-				w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista * w_vec.tNFista)) / 2.f;
-				w_vec.betaFISTA = (w_vec.tNFista - 1.f) / w_vec.tFISTA;
-				w_vec.tNFista = w_vec.tFISTA;
+				w_vec.tFISTA[timestep] = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista[timestep] * w_vec.tNFista[timestep])) / 2.f;
+				w_vec.betaFISTA[timestep] = (w_vec.tNFista[timestep] - 1.f) / w_vec.tFISTA[timestep];
+				w_vec.tNFista[timestep] = w_vec.tFISTA[timestep];
 			}
 			else {
 				const uint32_t it = iter + 1;
-				w_vec.betaFISTA = static_cast<float>(it - 1) / static_cast<float>(it + 2);
-				if (w_vec.betaFISTA <= 0.f) {
-					w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista * w_vec.tNFista)) / 2.f;
-					w_vec.betaFISTA = (w_vec.tNFista - 1.f) / w_vec.tFISTA;
-					w_vec.tNFista = w_vec.tFISTA;
+				w_vec.betaFISTA[timestep] = static_cast<float>(it - 1) / static_cast<float>(it + 2);
+				if (w_vec.betaFISTA[timestep] <= 0.f) {
+					w_vec.tFISTA[timestep] = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista[timestep] * w_vec.tNFista[timestep])) / 2.f;
+					w_vec.betaFISTA[timestep] = (w_vec.tNFista[timestep] - 1.f) / w_vec.tFISTA[timestep];
+					w_vec.tNFista[timestep] = w_vec.tFISTA[timestep];
 				}
 			}
 		}
-		vec.uFISTA[ii] = im + w_vec.betaFISTA * (im - uPrev);
-		vec.uFISTA[ii].eval();
+		vec.uFISTA[timestep][ii] = im + w_vec.betaFISTA[timestep] * (im - uPrev);
+		vec.uFISTA[timestep][ii].eval();
 	}
 	else {
 		im -= w_vec.tauCP[timestep][ii] * rhs;
@@ -519,14 +519,14 @@ inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 			return status;
 		}
 		const float dd = static_cast<float>(af::norm(outputFP - mData.as(f32)));
-		const float dp = static_cast<float>(af::norm(vec.im_os[timestep][ii] - vec.f0POCS[ii]));
+		const float dp = static_cast<float>(af::norm(vec.im_os[timestep][ii] - vec.f0POCS[timestep][ii]));
 		if (DEBUG) {
 			mexPrintBase("dd = %f\n", dd);
 			mexEval();
 		}
 		if (iter == 0 && osa_iter == 0)
 			w_vec.dtvg = w_vec.alphaPOCS * dp;
-		vec.f0POCS[ii] = vec.im_os[timestep][ii].copy();
+		vec.f0POCS[timestep][ii] = vec.im_os[timestep][ii].copy();
 		if (DEBUG) {
 			mexPrintBase("dp = %f\n", dp);
 			mexPrintBase("w_vec.dtvg = %f\n", w_vec.dtvg);
@@ -542,7 +542,7 @@ inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 				af::eval(vec.im_os[timestep][ii]);
 				af::eval(vec.dU[timestep]);
 			}
-			const float dg = static_cast<float>(af::norm(vec.im_os[timestep][ii] - vec.f0POCS[ii]));
+			const float dg = static_cast<float>(af::norm(vec.im_os[timestep][ii] - vec.f0POCS[timestep][ii]));
 			if (DEBUG) {
 				mexPrintBase("dg = %f\n", dg);
 				mexPrintBase("w_vec.rMaxPOCS * dp = %f\n", w_vec.rMaxPOCS * dp);

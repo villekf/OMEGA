@@ -208,7 +208,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing SART or ASD-POCS");
 		if (MethodList.POCS)
-			vec.f0POCS = vec.im_os[timestep];
+			vec.f0POCS[timestep] = vec.im_os[timestep];
 		input = y.as(f32) - input;
 		if (inputScalars.storeResidual) {
 			//residual[kk] = af::sum<float>(af::matmulTN(input, input)) * .5;

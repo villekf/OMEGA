@@ -223,6 +223,9 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
     w_vec.thetaLSQR.resize(inputScalars.Nt);
     w_vec.rhoLSQR.resize(inputScalars.Nt);
     w_vec.phiLSQR.resize(inputScalars.Nt);
+    w_vec.betaFISTA = std::vector(inputScalars.Nt, 1.f);
+    w_vec.tFISTA = std::vector(inputScalars.Nt, 1.f);
+    w_vec.tNFista = std::vector(inputScalars.Nt, 1.f);
 	vec.rhs_os.resize(inputScalars.Nt);
     vec.im_os.resize(inputScalars.Nt);
     vec.uCP.resize(inputScalars.Nt);
@@ -233,6 +236,9 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
     vec.dUt.resize(inputScalars.Nt);
     vec.wLSQR.resize(inputScalars.Nt);
     vec.fLSQR.resize(inputScalars.Nt);
+    vec.f0POCS.resize(inputScalars.Nt);
+    vec.uFISTA.resize(inputScalars.Nt);
+
     for (int tt = 0; tt < inputScalars.Nt; tt++) {
 	    vec.im_os[tt].resize(inputScalars.nMultiVolumes + 1);
         vec.rhs_os[tt].resize(inputScalars.nMultiVolumes + 1);
