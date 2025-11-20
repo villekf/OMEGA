@@ -585,16 +585,14 @@ inline int SAGA(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, AF_
 }
 
 inline int BB(AF_im_vectors &vec, Weighting &w_vec, const uint32_t timestep, const int ii = 0) {
-	af::array s = vec.im_os[timestep][ii] - vec.imBB[ii];
-	af::array y = vec.rhs_os[timestep][ii] - vec.gradBB[ii];
+	af::array s = vec.im_os[timestep][ii] - vec.imBB[timestep][ii];
+	af::array y = vec.rhs_os[timestep][ii] - vec.gradBB[timestep][ii];
 	float denmo = af::dot<float>(s,y);
 	float num = af::dot<float>(s,s);
 
-	w_vec.alphaBB[ii] = (denmo != 0) ? num / denmo : 1e-4f; // Avoid division by zero
-	vec.imBB[ii] = vec.im_os[timestep][ii].copy();
-	vec.im_os[timestep][ii] = vec.imBB[ii] - w_vec.alphaBB[ii] * vec.gradBB[ii];
-	vec.gradBB[ii] = vec.rhs_os[timestep][ii];
-
-
+	w_vec.alphaBB[timestep][ii] = (denmo != 0) ? num / denmo : 1e-4f; // Avoid division by zero
+	vec.imBB[timestep][ii] = vec.im_os[timestep][ii].copy();
+	vec.im_os[timestep][ii] = vec.imBB[timestep][ii] - w_vec.alphaBB[timestep][ii] * vec.gradBB[timestep][ii];
+	vec.gradBB[timestep][ii] = vec.rhs_os[timestep][ii];
 	return 0;
 }

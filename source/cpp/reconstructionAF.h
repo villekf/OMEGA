@@ -226,6 +226,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
     w_vec.betaFISTA = std::vector(inputScalars.Nt, 1.f);
     w_vec.tFISTA = std::vector(inputScalars.Nt, 1.f);
     w_vec.tNFista = std::vector(inputScalars.Nt, 1.f);
+    w_vec.alphaBB.resize(inputScalars.Nt);
 	vec.rhs_os.resize(inputScalars.Nt);
     vec.im_os.resize(inputScalars.Nt);
     vec.uCP.resize(inputScalars.Nt);
@@ -238,6 +239,8 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
     vec.fLSQR.resize(inputScalars.Nt);
     vec.f0POCS.resize(inputScalars.Nt);
     vec.uFISTA.resize(inputScalars.Nt);
+    vec.imBB.resize(inputScalars.Nt);
+    vec.gradBB.resize(inputScalars.Nt);
 
     for (int tt = 0; tt < inputScalars.Nt; tt++) {
 	    vec.im_os[tt].resize(inputScalars.nMultiVolumes + 1);

@@ -2182,18 +2182,18 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				}
 			}
 			af::sync();
-			if (vec.gradBB.size() < ii + 1)
-				vec.gradBB.emplace_back( -vec.rhs_os[timestep][ii].copy());
+			if (vec.gradBB[timestep].size() < ii + 1)
+				vec.gradBB[timestep].emplace_back( -vec.rhs_os[timestep][ii].copy());
 			else
-				vec.gradBB[ii] = -vec.rhs_os[timestep][ii].copy();
-			if (vec.imBB.size() < ii + 1)
-				vec.imBB.emplace_back(vec.im_os[timestep][ii].copy());
+				vec.gradBB[timestep][ii] = -vec.rhs_os[timestep][ii].copy();
+			if (vec.imBB[timestep].size() < ii + 1)
+				vec.imBB[timestep].emplace_back(vec.im_os[timestep][ii].copy());
 			else
-				vec.imBB[ii] = vec.im_os[timestep][ii].copy();
-			if (w_vec.alphaBB.size() < ii + 1)
-				w_vec.alphaBB.emplace_back(1e-4f);
-			vec.im_os[timestep][ii] = vec.im_os[timestep][ii] - w_vec.alphaBB[ii] * vec.gradBB[ii];
-			vec.gradBB[ii].eval();
+				vec.imBB[timestep][ii] = vec.im_os[timestep][ii].copy();
+			if (w_vec.alphaBB[timestep].size() < ii + 1)
+				w_vec.alphaBB[timestep].emplace_back(1e-4f);
+			vec.im_os[timestep][ii] = vec.im_os[timestep][ii] - w_vec.alphaBB[timestep][ii] * vec.gradBB[timestep][ii];
+			vec.gradBB[timestep][ii].eval();
 			vec.im_os[timestep][ii].eval();
 			if (DEBUG || inputScalars.verbose >= 3)
 				mexPrint("BB initialization complete");
