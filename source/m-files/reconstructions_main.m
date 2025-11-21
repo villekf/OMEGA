@@ -698,7 +698,7 @@ elseif options.param.implementation == 2 || options.param.implementation == 3
                 end
             end
             if iscell(options.param.SinDelayed)
-                options.param.SinDelayed = single(full(options.param.SinDelayed));
+                options.param.SinDelayed = cell2mat(options.param.SinDelayed);
             end
             if ~isa(options.param.SinDelayed, 'single')
                 options.param.SinDelayed = single(options.param.SinDelayed);
