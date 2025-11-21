@@ -2183,26 +2183,26 @@ public:
 	}
 
 	template <typename T>
-	inline int loadCoord(const uint32_t timestep, uint32_t currentSubset, scalarStruct& inputScalars, const int64_t length, const T* listCoord, const T* listCoordAx = nullptr, const uint8_t* TOFIndices = nullptr) {
+	inline int loadCoord(uint32_t currentSubset, scalarStruct& inputScalars, const int64_t length, const T* listCoord, const T* listCoordAx = nullptr, const uint8_t* TOFIndices = nullptr) {
 		CUresult status = CUDA_SUCCESS;
         if (inputScalars.listmode > 0) {
             if (inputScalars.indexBased) {
-                getErrorString(cuMemFree(d_trIndex[timestep][0]));
-                getErrorString(cuMemFree(d_axIndex[timestep][0]));
-                status = cuMemAlloc(&d_trIndex[timestep][0], sizeof(uint16_t) * length * 2);
+                getErrorString(cuMemFree(d_trIndex[0][0]));
+                getErrorString(cuMemFree(d_axIndex[0][0]));
+                status = cuMemAlloc(&d_trIndex[0][0], sizeof(uint16_t) * length * 2);
                 CUDA_CHECK(status, "\n", -1);
-                status = cuMemAlloc(&d_axIndex[timestep][0], sizeof(uint16_t) * length * 2);
+                status = cuMemAlloc(&d_axIndex[0][0], sizeof(uint16_t) * length * 2);
                 CUDA_CHECK(status, "\n", -1);
-                status = cuMemcpyHtoD(d_trIndex[timestep][0], listCoord, sizeof(uint16_t) * length * 2);
+                status = cuMemcpyHtoD(d_trIndex[0][0], listCoord, sizeof(uint16_t) * length * 2);
                 CUDA_CHECK(status, "\n", -1);
-                status = cuMemcpyHtoD(d_axIndex[timestep][0], listCoordAx, sizeof(uint16_t) * length * 2);
+                status = cuMemcpyHtoD(d_axIndex[0][0], listCoordAx, sizeof(uint16_t) * length * 2);
                 CUDA_CHECK(status, "\n", -1);
             }
             if (inputScalars.TOF) {
-                getErrorString(cuMemFree(d_TOFIndex[timestep][0]));
-                status = cuMemAlloc(&d_TOFIndex[timestep][0], sizeof(uint8_t) * length);
+                getErrorString(cuMemFree(d_TOFIndex[0][0]));
+                status = cuMemAlloc(&d_TOFIndex[0][0], sizeof(uint8_t) * length);
                 CUDA_CHECK(status, "\n", -1);
-                status = cuMemcpyHtoD(d_TOFIndex[timestep][0], TOFIndices, sizeof(uint8_t) * length);
+                status = cuMemcpyHtoD(d_TOFIndex[0][0], TOFIndices, sizeof(uint8_t) * length);
                 CUDA_CHECK(status, "\n", -1);
             }
         }
@@ -2306,7 +2306,7 @@ public:
 			kTemp.emplace_back(&vec_opencl.d_image_os);
 			kTemp.emplace_back(reinterpret_cast<void*>(&d_output));
 			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
-				kTemp.emplace_back(&d_x[timestep][0]);
+				kTemp.emplace_back(&d_x[0][0]);
 			else
 				kTemp.emplace_back(&d_x[timestep][osa_iter]);
 			if ((inputScalars.CT || inputScalars.PET || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
@@ -2333,8 +2333,8 @@ public:
 			}
 			if (inputScalars.listmode > 0 && inputScalars.indexBased) {
 				if (!inputScalars.loadTOF) {
-					kTemp.emplace_back(&d_trIndex[timestep][0]);
-					kTemp.emplace_back(&d_axIndex[timestep][0]);
+					kTemp.emplace_back(&d_trIndex[0][0]);
+					kTemp.emplace_back(&d_axIndex[0][0]);
 				} else {
 					kTemp.emplace_back(&d_trIndex[timestep][osa_iter]);
 					kTemp.emplace_back(&d_axIndex[timestep][osa_iter]);
@@ -2342,7 +2342,7 @@ public:
 			}
 			if (inputScalars.listmode > 0 && inputScalars.TOF) {
 				if (!inputScalars.loadTOF) {
-					kTemp.emplace_back(&d_TOFIndex[timestep][0]);
+					kTemp.emplace_back(&d_TOFIndex[0][0]);
 				} else {
 					kTemp.emplace_back(&d_TOFIndex[timestep][osa_iter]);
 				}
@@ -2362,7 +2362,7 @@ public:
 		}
 		else if (inputScalars.FPType == 5) {
 			if (!inputScalars.loadTOF && inputScalars.listmode > 0)
-				kTemp.emplace_back(&d_x[timestep][0]);
+				kTemp.emplace_back(&d_x[0][0]);
 			else
 				kTemp.emplace_back(&d_x[timestep][osa_iter]);
 			kTemp.emplace_back(&d_z[timestep][osa_iter]);
@@ -2413,7 +2413,7 @@ public:
 				kTemp.emplace_back((void*)&length[osa_iter]);
 			}
 			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
-				kTemp.emplace_back(&d_x[timestep][0]);
+				kTemp.emplace_back(&d_x[0][0]);
 			else
 				kTemp.emplace_back(&d_x[timestep][osa_iter]);
 			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
@@ -2435,8 +2435,8 @@ public:
 			}
 			if (inputScalars.listmode > 0 && inputScalars.indexBased) {
 				if (!inputScalars.loadTOF) {
-					kTemp.emplace_back(&d_trIndex[timestep][0]);
-					kTemp.emplace_back(&d_axIndex[timestep][0]);
+					kTemp.emplace_back(&d_trIndex[0][0]);
+					kTemp.emplace_back(&d_axIndex[0][0]);
 				} else {
 					kTemp.emplace_back(&d_trIndex[timestep][osa_iter]);
 					kTemp.emplace_back(&d_axIndex[timestep][osa_iter]);
@@ -2444,7 +2444,7 @@ public:
 			}
 			if (inputScalars.listmode > 0 && inputScalars.TOF) {
 				if (!inputScalars.loadTOF) {
-					kTemp.emplace_back(&d_TOFIndex[timestep][0]);
+					kTemp.emplace_back(&d_TOFIndex[0][0]);
 				} else {
 					kTemp.emplace_back(&d_TOFIndex[timestep][osa_iter]);
 				}
@@ -2609,13 +2609,13 @@ public:
 			}
 			else {
 				if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
-					kTemp.emplace_back(&d_x[timestep][0]);
+					kTemp.emplace_back(&d_x[0][0]);
 				else
 					kTemp.emplace_back(&d_x[timestep][osa_iter]);
 				if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 					kTemp.emplace_back(&d_z[timestep][osa_iter]);
 				else if (inputScalars.indexBased && inputScalars.listmode > 0)
-					kTemp.emplace_back(&d_z[timestep][0]);
+					kTemp.emplace_back(&d_z[0][0]);
 				else
 					kTemp.emplace_back(&d_z[timestep][inputScalars.osa_iter0]);
 			}
@@ -2642,8 +2642,8 @@ public:
 			}
 			if (inputScalars.listmode > 0 && inputScalars.indexBased && !compSens) {
 				if (!inputScalars.loadTOF) {
-					kTemp.emplace_back(&d_trIndex[timestep][0]);
-					kTemp.emplace_back(&d_axIndex[timestep][0]);
+					kTemp.emplace_back(&d_trIndex[0][0]);
+					kTemp.emplace_back(&d_axIndex[0][0]);
 				} else {
 					kTemp.emplace_back(&d_trIndex[timestep][osa_iter]);
 					kTemp.emplace_back(&d_axIndex[timestep][osa_iter]);
@@ -2651,7 +2651,7 @@ public:
 			}
 			if (inputScalars.listmode > 0 && inputScalars.TOF) {
 				if (!inputScalars.loadTOF) {
-					kTemp.emplace_back(&d_TOFIndex[timestep][0]);
+					kTemp.emplace_back(&d_TOFIndex[0][0]);
 				} else {
 					kTemp.emplace_back(&d_TOFIndex[timestep][osa_iter]);
 				}
@@ -2814,7 +2814,7 @@ public:
 						kTemp.emplace_back(&d_xFull[0]);
 					else
 						if (!inputScalars.loadTOF && inputScalars.listmode > 0)
-							kTemp.emplace_back(&d_x[timestep][0]);
+							kTemp.emplace_back(&d_x[0][0]);
 						else
 							kTemp.emplace_back(&d_x[timestep][osa_iter]);
 					if (compSens)
@@ -2830,7 +2830,7 @@ public:
 						kTemp.emplace_back(&d_xFull[0]);
 					else
 						if (!inputScalars.loadTOF && inputScalars.listmode > 0)
-							kTemp.emplace_back(&d_x[timestep][0]);
+							kTemp.emplace_back(&d_x[0][0]);
 						else
 							kTemp.emplace_back(&d_x[timestep][osa_iter]);
 					if (compSens)
@@ -2901,13 +2901,13 @@ public:
 				}
 				else {
 					if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
-						kTemp.emplace_back(&d_x[timestep][0]);
+						kTemp.emplace_back(&d_x[0][0]);
 					else
 						kTemp.emplace_back(&d_x[timestep][osa_iter]);
 					if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 						kTemp.emplace_back(&d_z[timestep][osa_iter]);
 					else if (inputScalars.indexBased && inputScalars.listmode > 0)
-						kTemp.emplace_back(&d_z[timestep][0]);
+						kTemp.emplace_back(&d_z[0][0]);
 					else
 						kTemp.emplace_back(&d_z[timestep][inputScalars.osa_iter0]);
 				}
@@ -2939,8 +2939,8 @@ public:
 				}
 				if (inputScalars.listmode > 0 && inputScalars.indexBased && !compSens) {
 					if (!inputScalars.loadTOF) {
-						kTemp.emplace_back(&d_trIndex[timestep][0]);
-						kTemp.emplace_back(&d_axIndex[timestep][0]);
+						kTemp.emplace_back(&d_trIndex[0][0]);
+						kTemp.emplace_back(&d_axIndex[0][0]);
 					} else {
 						kTemp.emplace_back(&d_trIndex[timestep][osa_iter]);
 						kTemp.emplace_back(&d_axIndex[timestep][osa_iter]);
@@ -2948,7 +2948,7 @@ public:
 				}
 				if (inputScalars.listmode > 0 && inputScalars.TOF) {
 					if (!inputScalars.loadTOF) {
-						kTemp.emplace_back(&d_TOFIndex[timestep][0]);
+						kTemp.emplace_back(&d_TOFIndex[0][0]);
 					} else {
 						kTemp.emplace_back(&d_TOFIndex[timestep][osa_iter]);
 					}

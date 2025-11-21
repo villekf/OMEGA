@@ -377,8 +377,9 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 	if (w_vec.precondTypeMeas[0] || MethodList.SART || MethodList.POCS)
 		w_vec.computeM = true;
 #endif
-
-	// Load TV related input data
+    w_vec.TemporalTVsmoothing = getScalarFloat(getField(options, 0, "temporalTVsmoothing"), -15);
+	
+    // Load TV related input data
 	if (MethodList.TV && MethodList.MAP) {
 		// Is anatomical reference image used
 		w_vec.data.TV_use_anatomical = getScalarBool(getField(options, 0, "TV_use_anatomical"), -13);
@@ -738,7 +739,8 @@ inline void get_rec_methods(const mxArray* options, RecMethods& MethodList) {
 	MethodList.ProxNLM = getScalarBool(getField(options, 0, "ProxNLM"), -61);
 
     // Temporal priors
-    MethodList.QuadraticSmoothnessTemporal = getScalarBool(getField(options, 0, "quadratic_temporal"), -61);
+    MethodList.TemporalSmoothness = getScalarBool(getField(options, 0, "temporal_smoothness"), -61);
+    MethodList.TemporalTV = getScalarBool(getField(options, 0, "temporalTV"), -61);
 
 	// MAP/prior-based algorithms
 	MethodList.OSLOSEM = getScalarBool(getField(options, 0, "OSL_OSEM"), -61);

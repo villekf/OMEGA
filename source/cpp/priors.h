@@ -488,26 +488,37 @@ inline int applyTemporalPrior(
         } else {
             dUt = &vec.rhs_os[timestep][0];
         }
-        
-        // Quadratic smoothness prior gradient
-        if (MethodList.QuadraticSmoothnessTemporal) {
+
+        af::array grad = af::constant(0.f, vec.im_os[timestep][0].elements());
+        if (MethodList.TemporalSmoothness) { // First derivative smoothness prior
             if (inputScalars.verbose >= 3)
-			    mexPrint("Computing quadratic temporal smoothness prior gradient");
-            af::array grad = af::constant(0.f, vec.im_os[timestep][0].elements());
+			    mexPrint("Computing temporal smoothness prior gradient");
             if (timestep > 0) {
                 grad += (vec.im_os[timestep][0] - vec.im_os[timestep-1][0]);
             }
             if (timestep < inputScalars.Nt - 1) {
                 grad += (vec.im_os[timestep][0] - vec.im_os[timestep+1][0]);
             }
-            *dUt += w_vec.beta_temporal * grad;
+        } else if (MethodList.TemporalTV) { // Total variations prior
+            if (inputScalars.verbose >= 3)
+			    mexPrint("Computing temporal total variations prior gradient");
+            if (timestep > 0) {
+                af::array backward_diff = (vec.im_os[timestep][0] - vec.im_os[timestep-1][0]);
+                grad += (backward_diff) / (af::abs(backward_diff) + w_vec.TemporalTVsmoothing);
+            }
+            if (timestep < inputScalars.Nt - 1) {
+                af::array forward_diff = (vec.im_os[timestep][0] - vec.im_os[timestep+1][0]);
+                grad += (forward_diff) / (af::abs(forward_diff) + w_vec.TemporalTVsmoothing);
+            }
         }
+
+        *dUt += w_vec.beta_temporal * grad;
+
+        af::deviceGC();
+        af::eval(*dUt);
     }
 
-    af::deviceGC();
-    af::eval(*dUt);
-
-    if (inputScalars.verbose >= 3 && (MethodList.QuadraticSmoothnessTemporal))
+    if (inputScalars.verbose >= 3 && (MethodList.TemporalSmoothness))
         mexPrint("Temporal prior computed");
 
     return status;

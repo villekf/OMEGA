@@ -305,7 +305,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 	}
 
 	if (MethodList.NLM || MethodList.MRP || MethodList.ProxTV || MethodList.RDP || MethodList.TV || MethodList.ProxTGV || MethodList.ProxRDP || MethodList.GGMRF || MethodList.Quad || MethodList.APLS ||
-		MethodList.FMH || MethodList.Huber || MethodList.hyperbolic || MethodList.L || MethodList.WeightedMean || MethodList.TGV || MethodList.QuadraticSmoothnessTemporal)
+		MethodList.FMH || MethodList.Huber || MethodList.hyperbolic || MethodList.L || MethodList.WeightedMean || MethodList.TGV || MethodList.TemporalSmoothness || MethodList.TemporalTV)
 		MethodList.prior = true;
 
 	if (DEBUG) {
@@ -1071,64 +1071,67 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
             // Loop through each time-step
             for (uint32_t tt = t0; tt < inputScalars.Nt; tt++) {
+                uint32_t timestepData = tt; // Data is indexed by timestepData. If data is loaded per subset, timestepData is set to 0.
+
 				// Load TOF/measurement data if it wasn't preloaded
 				if (((osa_iter > inputScalars.osa_iter0 || iter > iter0) && !inputScalars.loadTOF) || inputScalars.largeDim) {
 					if (inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8))
-						mData[0][tt] = af::constant(0, lengthTOF[osa_iter], dType);
+						mData[0][0] = af::constant(0, lengthTOF[osa_iter], dType);
 					else
-						mData[0][tt] = af::constant(0, inputScalars.nRowsD * inputScalars.nColsD * lengthTOF[osa_iter], dType);
+						mData[0][0] = af::constant(0, inputScalars.nRowsD * inputScalars.nColsD * lengthTOF[osa_iter], dType);
 					if (inputScalars.largeDim) {
 						if (inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8) {
 							const F** fptr = new const F* [length[osa_iter]];
 							for (int ii = 0; ii < length[osa_iter]; ii++)
 								fptr[ii] = const_cast<const F*>(&Sin[osa_iter + ii * inputScalars.subsetsUsed]);
-							mData[0][tt] = af::array(length[osa_iter], *fptr, AFTYPE);
+							mData[0][0] = af::array(length[osa_iter], *fptr, AFTYPE);
 							af::sync();
 							delete[] fptr;
 						}
 						else
 							for (int ii = 0; ii < length[osa_iter]; ii++)
-								mData[0][tt](af::seq(inputScalars.nRowsD* inputScalars.nColsD* ii, inputScalars.nRowsD* inputScalars.nColsD* (ii + 1) - 1)) = af::array(inputScalars.nRowsD * inputScalars.nColsD, 
+								mData[0][0](af::seq(inputScalars.nRowsD* inputScalars.nColsD* ii, inputScalars.nRowsD* inputScalars.nColsD* (ii + 1) - 1)) = af::array(inputScalars.nRowsD * inputScalars.nColsD, 
 									&Sin[osa_iter * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.nRowsD * inputScalars.nColsD * ii * inputScalars.subsetsUsed], afHost);
 						if (inputScalars.CT && MethodList.CPType)
-							mData[0][tt] = af::log(inputScalars.flat / mData[0][tt].as(f32));
+							mData[0][0] = af::log(inputScalars.flat / mData[0][0].as(f32));
 					}
 #ifndef CPU
 					else if (inputScalars.listmode > 0) {
-						mData[0][tt] = af::array(length[osa_iter], &Sin[pituus[osa_iter] + inputScalars.kokoNonTOF * tt], AFTYPE);
+						mData[0][0] = af::array(length[osa_iter], &Sin[pituus[osa_iter] + inputScalars.kokoNonTOF * tt], AFTYPE);
 						if (inputScalars.indexBased)
 							if (inputScalars.TOF)
-								proj.loadCoord(tt, osa_iter, inputScalars, length[osa_iter], &w_vec.trIndex[pituus[osa_iter] * 2 + inputScalars.kokoNonTOF * 2 * tt], &w_vec.axIndex[pituus[osa_iter] * 2 + inputScalars.kokoNonTOF * 2 * tt],
+								proj.loadCoord(osa_iter, inputScalars, length[osa_iter], &w_vec.trIndex[pituus[osa_iter] * 2 + inputScalars.kokoNonTOF * 2 * tt], &w_vec.axIndex[pituus[osa_iter] * 2 + inputScalars.kokoNonTOF * 2 * tt],
 									&w_vec.TOFIndices[pituus[osa_iter] + inputScalars.kokoNonTOF * tt]);
 							else
-								proj.loadCoord(tt, osa_iter, inputScalars, length[osa_iter], &w_vec.trIndex[pituus[osa_iter] * 2 + inputScalars.kokoNonTOF * 2 * tt], &w_vec.axIndex[pituus[osa_iter] * 2 + inputScalars.kokoNonTOF * 2 * tt]);
+								proj.loadCoord(osa_iter, inputScalars, length[osa_iter], &w_vec.trIndex[pituus[osa_iter] * 2 + inputScalars.kokoNonTOF * 2 * tt], &w_vec.axIndex[pituus[osa_iter] * 2 + inputScalars.kokoNonTOF * 2 * tt]);
 						else
 							if (inputScalars.TOF)
-								proj.loadCoord(tt, osa_iter, inputScalars, length[osa_iter], &w_vec.listCoord[pituus[osa_iter] * 6 + inputScalars.kokoNonTOF * 6 * tt], &w_vec.listCoord[pituus[osa_iter] * 6 + inputScalars.kokoNonTOF * 6 * tt],
+								proj.loadCoord(osa_iter, inputScalars, length[osa_iter], &w_vec.listCoord[pituus[osa_iter] * 6 + inputScalars.kokoNonTOF * 6 * tt], &w_vec.listCoord[pituus[osa_iter] * 6 + inputScalars.kokoNonTOF * 6 * tt],
 									&w_vec.TOFIndices[pituus[osa_iter] + inputScalars.kokoNonTOF * tt]);
 							else
-								proj.loadCoord(tt, osa_iter, inputScalars, length[osa_iter], &w_vec.listCoord[pituus[osa_iter] * 6 + inputScalars.kokoNonTOF * 6 * tt]);
+								proj.loadCoord(osa_iter, inputScalars, length[osa_iter], &w_vec.listCoord[pituus[osa_iter] * 6 + inputScalars.kokoNonTOF * 6 * tt]);
 					}
 #endif
 					else {
 						if (inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8 && inputScalars.subsetType > 0) {
 							for (int64_t to = 0; to < inputScalars.nBins; to++)
-								mData[0][tt](af::seq(length[osa_iter] * to, length[osa_iter] * (to + 1) - 1)) = af::array(length[osa_iter], &Sin[pituus[osa_iter] + inputScalars.kokoNonTOF * to + inputScalars.kokoTOF * tt], AFTYPE);
+								mData[0][0](af::seq(length[osa_iter] * to, length[osa_iter] * (to + 1) - 1)) = af::array(length[osa_iter], &Sin[pituus[osa_iter] + inputScalars.kokoNonTOF * to + inputScalars.kokoTOF * tt], AFTYPE);
 						}
 						else {
 							for (int64_t to = 0; to < inputScalars.nBins; to++)
-								mData[0][tt](af::seq(inputScalars.nRowsD* inputScalars.nColsD* length[osa_iter] * to, inputScalars.nRowsD* inputScalars.nColsD* length[osa_iter] * (to + 1) - 1)) =
+								mData[0][0](af::seq(inputScalars.nRowsD* inputScalars.nColsD* length[osa_iter] * to, inputScalars.nRowsD* inputScalars.nColsD* length[osa_iter] * (to + 1) - 1)) =
 								af::array(length[osa_iter] * inputScalars.nRowsD * inputScalars.nColsD, &Sin[pituus[osa_iter] * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.kokoNonTOF * to + inputScalars.kokoTOF * tt], AFTYPE);
 						}
 					}
 					if (inputScalars.randoms_correction) {
 						if (inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8 && inputScalars.subsetType > 0))
-							aRand[tt][0] = af::array(length[osa_iter], &sc_ra[pituus[osa_iter] + inputScalars.kokoNonTOF * tt], AFTYPE).as(f32);
+							aRand[0][0] = af::array(length[osa_iter], &sc_ra[pituus[osa_iter] + inputScalars.kokoNonTOF * tt], AFTYPE).as(f32);
 						else
-							aRand[tt][0] = af::array(inputScalars.nRowsD * inputScalars.nColsD * length[osa_iter], &sc_ra[pituus[osa_iter] * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.kokoNonTOF * tt], AFTYPE).as(f32);
+							aRand[0][0] = af::array(inputScalars.nRowsD * inputScalars.nColsD * length[osa_iter], &sc_ra[pituus[osa_iter] * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.kokoNonTOF * tt], AFTYPE).as(f32);
 					}
 					subIter = 0U;
-					mData[0][tt].eval();
+                    timestepData = 0U;
+					mData[0][0].eval();
 				}
 
 				// Fill the sensitivity images with zeros, if necessary
@@ -1148,7 +1151,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
 				// Initialize some algorithms, such as the initial steps of LSQR
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-					status = initializationStep(w_vec, mData[subIter][tt], vec, proj, inputScalars, length, m_size, MethodList, iter, meanBP, pituus, tt, g, osa_iter, ii);
+					status = initializationStep(w_vec, mData[subIter][timestepData], vec, proj, inputScalars, length, m_size, MethodList, iter, meanBP, pituus, tt, g, osa_iter, ii);
 					if (status != 0)
 						return -1;
 				}
@@ -1170,7 +1173,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 						af::sync();
 						if (DEBUG) {
 							mexPrintBase("outputFP.elements() = %d\n", outputFP.elements());
-							mexPrintBase("mData[subIter][tt].elements() = %d\n", mData[subIter][tt].elements());
+							mexPrintBase("mData[subIter][timestepData].elements() = %d\n", mData[subIter][timestepData].elements());
 							mexPrintBase("outputFP = %f\n", af::sum<float>(outputFP));
 							mexPrintBase("min(outputFP) = %f\n", af::min<float>(outputFP));
 							mexPrintBase("max(outputFP) = %f\n", af::max<float>(outputFP));
@@ -1192,7 +1195,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 						//	residual[iter * inputScalars.subsets + osa_iter] = af::norm(outputFP - mData[subIter]);
 						//	residual[iter * inputScalars.subsets + osa_iter] = residual[iter * inputScalars.subsets + osa_iter] * residual[iter * inputScalars.subsets + osa_iter] * .5f;
 						//}
-						status = computeForwardStep(MethodList, mData[subIter][tt], outputFP, m_size, inputScalars, w_vec, aRand[tt][subIter], vec, proj, tt, iter, osa_iter, 0, residual);
+						status = computeForwardStep(MethodList, mData[subIter][timestepData], outputFP, m_size, inputScalars, w_vec, aRand[timestepData][subIter], vec, proj, tt, iter, osa_iter, 0, residual);
 						if (status != 0)
 							return -1;
 						if (DEBUG) {
@@ -1204,12 +1207,12 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 						if (inputScalars.CT && (MethodList.ACOSEM || MethodList.OSLCOSEM > 0 || MethodList.OSEM || MethodList.COSEM || MethodList.ECOSEM ||
 							MethodList.ROSEM || MethodList.OSLOSEM || MethodList.ROSEMMAP)) {
 							if (inputScalars.randoms_correction) {
-								OSEMapu = (mData[subIter][tt].as(f32) * outputFP) / (outputFP + aRand[tt][subIter]);
+								OSEMapu = (mData[subIter][timestepData].as(f32) * outputFP) / (outputFP + aRand[timestepData][subIter]);
 								computeIntegralImage(inputScalars, w_vec, length[osa_iter], OSEMapu, meanBP);
 								af::sync();
 							}
 							else if (iter == 0) {
-								OSEMapu = mData[subIter][tt].as(f32);
+								OSEMapu = mData[subIter][timestepData].as(f32);
 								computeIntegralImage(inputScalars, w_vec, length[osa_iter], OSEMapu, meanBP);
 								af::sync();
 							}
@@ -1277,7 +1280,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             fProj.host(FPapu);
                         }
                         af::sync();
-                        status = computeForwardStep(MethodList, mData[subIter][tt], fProj, m_size, inputScalars, w_vec, aRand[tt][subIter], vec, proj, tt, iter, osa_iter);
+                        status = computeForwardStep(MethodList, mData[subIter][timestepData], fProj, m_size, inputScalars, w_vec, aRand[timestepData][subIter], vec, proj, tt, iter, osa_iter);
                         if (status != 0)
                             return -1;
                         for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
