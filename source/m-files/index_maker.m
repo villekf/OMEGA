@@ -154,6 +154,9 @@ if subsets > 1 && options.subset_type < 8
     elseif options.subset_type == 3
         indices = cast(totalLength, tyyppi);
         port = cast(floor(totalLength/subsets), tyyppi);
+        if options.seed >= 0
+            rng(options.seed);
+        end
         if options.use_Shuffle && exist('Shuffle','file') == 3
             apu = Shuffle(indices(end), 'index')';
         elseif options.use_Shuffle && exist('Shuffle','file') == 0

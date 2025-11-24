@@ -417,7 +417,11 @@ inline __device__ float3 make_int3_float3(int3 a) {
 	return make_float3((float)a.x, (float)a.y, (float)a.z);
 }
 
-inline __device__ int3 operator-(int3 a, int3 b) {
+// inline __device__ int3 operator-(int3 a, int3 b) {
+// 	return make_int3(a.x - b.x, a.y - b.y, a.z - b.z);
+// }
+
+inline __device__ int3 operator-(const int3 a, const int3 b) {
 	return make_int3(a.x - b.x, a.y - b.y, a.z - b.z);
 }
 
@@ -431,6 +435,10 @@ inline __device__ int3 operator/(int3 a, int b) {
 
 inline __device__ float2 operator-(float2 a, float2 b) {
 	return make_float2(a.x - b.x, a.y - b.y);
+}
+
+inline __device__ int3 operator+(const int3 a, const int3 b) {
+	return make_int3(a.x + b.x, a.y + b.y, a.z + b.z);
 }
 
 inline __device__ float2 operator-(float a, float2 b) {
@@ -645,9 +653,9 @@ DEVICE void getIndex(int3* i, const uint d_size_x, const uint d_sizey, const uin
 
 #endif
 
-#if (defined(MASKBP) && !defined(PTYPE4)) // This is due to projector type 4 using sampler_MASK4 in BP mask (but only in forward projection)
+#if ((defined(MASKBP) || defined(MASKBP3D)) && !defined(PTYPE4)) // This is due to projector type 4 using sampler_MASK4 in BP mask (but only in forward projection)
 DEVICE int readMaskBP(MASKBPTYPE maskBP, typeT ind) {
-    return 
+	return 
     #ifdef USEIMAGES
     #ifdef CUDA
     #ifdef MASKBP3D
@@ -670,7 +678,7 @@ DEVICE int readMaskBP(MASKBPTYPE maskBP, typeT ind) {
 
 #if defined(MASKFP)
 DEVICE int readMaskFP(MASKFPTYPE maskFP, typeT ind) {
-    return
+	return 
 #ifdef USEIMAGES
 #ifdef CUDA
 #ifdef MASKFP3D

@@ -490,8 +490,11 @@ class ProjectorClass {
 				if (inputScalars.use_psf)
 					optionsAux.push_back("-DPSF");
 			}
-			if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
+			if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution)) {
 				optionsAux.push_back("-DMASKPRIOR");
+				if (inputScalars.maskBPZ > 1)
+					optionsAux.push_back("-DMASKBP3D");
+			}
 			if (inputScalars.eFOV)
 				optionsAux.push_back("-DEFOVZ");
 			if (MethodList.MRP) {
@@ -3107,6 +3110,16 @@ public:
 		gSize[1] = (global_size[1] + erotus[1]) / localPrior[1];
 		gSize[2] = global_size[2];
 		status = cuCtxSynchronize();
+		if (DEBUG) {
+			mexPrintBase("global_size[0] = %d\n", global_size[0]);
+			mexPrintBase("global_size[1] = %d\n", global_size[1]);
+			mexPrintBase("global_size[2] = %d\n", global_size[2]);
+			mexPrintBase("erotus[0] = %d\n", erotus[0]);
+			mexPrintBase("erotus[1] = %d\n", erotus[1]);
+			mexPrintBase("gSize[0] = %d\n", gSize[0]);
+			mexPrintBase("gSize[1] = %d\n", gSize[1]);
+			mexEval();
+		}
 		kArgs.emplace_back(reinterpret_cast<void*>(&d_inputB));
 		kArgs.emplace_back(reinterpret_cast<void*>(&d_W));
 		kArgs.emplace_back(&d_N[0]);
