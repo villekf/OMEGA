@@ -6,7 +6,6 @@ Created on Mon Jul 28 14:36:12 2025
 """
 
 import numpy as np
-from scipy.interpolate import interp2d
 
 def increaseSampling(options, x=None, y=None, interpolate_sinogram=False):
     from omegatomo.projector.detcoord import detectorCoordinates, sinogramCoordinates2D

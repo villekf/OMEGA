@@ -820,7 +820,7 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
                         ['-I"' opencl_include_path '"'], [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
 
 
-                    disp('Implementation 3 built')
+                    disp('Implementations 3 and 5 built')
                 catch ME
                     if verbose
                         warning(['Unable to build OpenCL files for implementation 3! If you do not need implementation 3 (matrix free OpenCL) ignore this warning. '...
@@ -958,7 +958,7 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
 
                 mex(compiler, complexFlag, '-outdir', folder, ldflags, cxxflags, '-DMATLAB', '-DOPENCL', cxxlib, ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
                     ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
-                disp('Implementation 3 and 5 built')
+                disp('Implementations 3 and 5 built')
             catch ME
                 if verbose
                     warning(['Unable to build OpenCL files for implementation 3 and 5! If you do not need implementation 3 or 5 (matrix free OpenCL) ignore this warning. '...
@@ -1254,7 +1254,7 @@ elseif ~ismac
             if syst == 0
                 movefile('OpenCL_device_info.mex', [folder '/OpenCL_device_info.mex'],'f');
                 movefile('OpenCL_matrixfree_multi_gpu.mex', [folder '/OpenCL_matrixfree_multi_gpu.mex'],'f');
-                disp('Implementation 3 and 5 built')
+                disp('Implementations 3 and 5 built')
             else
                 warning(['Unable to build OpenCL files for implementation 3 and 5! If you do not need implementation 3 and 5 (matrix free OpenCL) ignore this warning. ' ...
                     'If OpenCL SDK has been installed in a non-standard path, it can be added manually by using '...
@@ -1312,6 +1312,11 @@ elseif ~ismac
                 '-I/opt/AMDAPPSDK-3.0/include', '-DOPENCL', [folder '/OpenCL_matrixfree.cpp']);
             movefile('OpenCL_matrixfree.mex', [folder '/OpenCL_matrixfree_uint16.mex'],'f');
 
+            mkoctfile('--mex', '-DMATLAB', '-DAF', '-DOPENCL', '-DMTYPE2', cxxflags, '-lafopencl', '-lOpenCL', ['-L' af_path '/lib64'], ['-L' af_path '/lib'], ['-L' cuda_path '/lib64'], ['-L' opencl_lib_path], ...
+                '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64', ['-I ' folder], ['-I' af_path_include], ['-I' cuda_path '/include'], ['-I' opencl_include_path], ...
+                '-I/opt/AMDAPPSDK-3.0/include', '-DOPENCL', [folder '/OpenCL_matrixfree.cpp']);
+            movefile('OpenCL_matrixfree.mex', [folder '/OpenCL_matrixfree_uint8.mex'],'f');
+
             mkoctfile('--mex', '-DMATLAB', '-DAF', '-DOPENCL', cxxflags, '-lOpenCL', '-lafopencl', ['-L' af_path '/lib64'], ['-L' af_path '/lib'], ['-L' cuda_path '/lib64'], ['-L' opencl_lib_path], ...
                 '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64', ['-I ' folder], ['-I' af_path_include], ['-I' cuda_path '/include'], ['-I' opencl_include_path], ...
                 '-I/opt/AMDAPPSDK-3.0/include', '-DOPENCL', [folder '/OpenCL_matrixfree.cpp']);
@@ -1365,7 +1370,7 @@ else % Apple silicon MATLAB/Octave
             '-DMATLAB', '-DMETAL', ['-I' folder], [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
         disp('Implementation 5 built')
     catch e
-        warning('Error:\n%s', e.message);
+        warning(e.identifier, '%s', e.message);
         useLDclassic = 1;
     end
     if useLDclassic

@@ -326,15 +326,7 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 #endif
 #endif // END NLMREF
 #ifdef MASKPRIOR
-#ifdef USEIMAGES
-#ifdef MASKBP3D
-	, IMAGE3D maskBP
-#else
-	, IMAGE2D maskBP
-#endif
-#else
-	, const CLGLOBAL uchar* CLRESTRICT maskBP
-#endif
+	, MASKBPTYPE maskBP
 #endif
 #ifdef EFOVZ // Compute only in the voxels of the actual FOV (when using extended FOV)
 	, CONSTANT uchar* fovIndices
@@ -409,23 +401,7 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 #endif
 		return;
 #ifdef MASKPRIOR
-#ifdef USEIMAGES
-#ifdef CUDA
-#ifdef MASKBP3D
-    const int maskVal = tex3D<unsigned char>(maskBP, ii.x, ii.y, ii.z);
-#else
-    const int maskVal = tex2D<unsigned char>(maskBP, ii.x, ii.y);
-#endif
-#else
-#ifdef MASKBP3D
-    const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(ii.x, ii.y, ii.z, 0)).w;
-#else
-    const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(ii.x, ii.y)).w;
-#endif
-#endif
-#else
-	const int maskVal = maskBP[n];
-#endif
+	const int maskVal = readMaskBP(maskBP, ii);
 #ifndef MASKSCALE
     if (maskVal == 0)
         return;
@@ -687,11 +663,7 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 #endif
 	const float gamma, const float epps, const float beta
 #ifdef MASKPRIOR
-#ifdef MASKBP3D
-	, IMAGE3D maskBP
-#else
-	, IMAGE2D maskBP
-#endif
+	, MASKBPTYPE maskBP
 #endif
 #ifdef EFOVZ
 	, CONSTANT uchar* fovIndices
@@ -777,19 +749,7 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
         return;
 #endif
 #ifdef MASKPRIOR
-#ifdef CUDA
-#ifdef MASKBP3D
-    const int maskVal = tex3D<unsigned char>(maskBP, xyz.x, xyz.y, xyz.z);
-#else
-    const int maskVal = tex2D<unsigned char>(maskBP, xyz.x, xyz.y);
-#endif
-#else
-#ifdef MASKBP3D
-    const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(xyz.x, xyz.y, xyz.z, 0)).w;
-#else
-    const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(xyz.x, xyz.y)).w;
-#endif
-#endif
+	const int maskVal = readMaskBP(maskBP, xyz);
     if (maskVal == 0)
         return;
 #endif
@@ -995,11 +955,7 @@ void GGMRFKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRI
 KERNEL3
 void medianFilter3D(const CLGLOBAL float* grad, CLGLOBAL float* output, const int3 N, const int3 NOrig
 #ifdef MASKPRIOR
-#ifdef MASKBP3D
-	, IMAGE3D maskBP
-#else
-	, IMAGE2D maskBP
-#endif
+	, MASKBPTYPE maskBP
 #endif
 #ifdef EFOVZ
 	, CONSTANT uchar* fovIndices
@@ -1013,15 +969,7 @@ void medianFilter3D(const CLGLOBAL float* grad, CLGLOBAL float* output, const in
         return;
 #endif
 #ifdef MASKPRIOR
-#ifdef CUDA
-    const int maskVal = tex2D<unsigned char>(maskBP, xyz.x, xyz.y);
-#else
-#ifdef MASKBP3D
-    const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(xyz.x, xyz.y, xyz.z, 0)).w;
-#else
-    const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(xyz.x, xyz.y)).w;
-#endif
-#endif
+	const int maskVal = readMaskBP(maskBP, xyz);
     if (maskVal == 0)
         return;
 #endif
@@ -1226,11 +1174,7 @@ KERNEL3
 void ProxTVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRESTRICT gradX, const CLGLOBAL float* CLRESTRICT gradY, const CLGLOBAL float* CLRESTRICT gradZ, CLGLOBAL float* output
 // The (optional) logical mask should be zero in regions where the prior is not needed
 #ifdef MASKPRIOR
-#ifdef MASKBP3D
-	, IMAGE3D maskBP
-#else
-	, IMAGE2D maskBP
-#endif
+	, MASKBPTYPE maskBP
 #endif
 // The (optional) logical vector should be zero in axial slices where the extended FOV is
 #ifdef EFOVZ
@@ -1249,15 +1193,7 @@ void ProxTVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
         return;
 #endif
 #ifdef MASKPRIOR
-#ifdef CUDA
-    const int maskVal = tex2D<unsigned char>(maskBP, xyz.x, xyz.y);
-#else
-#ifdef MASKBP3D
-    const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(xyz.x, xyz.y, xyz.z, 0)).w;
-#else
-    const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(xyz.x, xyz.y)).w;
-#endif
-#endif
+	const int maskVal = readMaskBP(maskBP, xyz);
     if (maskVal == 0)
         return;
 #endif
@@ -1318,15 +1254,7 @@ void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLREST
         return;
 #endif
 #ifdef MASKPRIOR
-#ifdef CUDA
-    const int maskVal = tex2D<unsigned char>(maskBP, xyz.x, xyz.y);
-#else
-#ifdef MASKBP3D
-    const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(xyz.x, xyz.y, xyz.z, 0)).w;
-#else
-    const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(xyz.x, xyz.y)).w;
-#endif
-#endif
+	const int maskVal = readMaskBP(maskBP, xyz);
     if (maskVal == 0)
         return;
 #endif
@@ -1404,11 +1332,7 @@ void ProxTGVSymmDeriv(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 #endif
 	const float sigma2
 #ifdef MASKPRIOR
-#ifdef MASKBP3D
-	, IMAGE3D maskBP
-#else
-	, IMAGE2D maskBP
-#endif
+	, MASKBPTYPE maskBP
 #endif
 ) {
 	const LTYPE3 xyz = MINT3(GID0, GID1, GID2);
@@ -1420,19 +1344,7 @@ void ProxTGVSymmDeriv(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 		return;
 #ifdef MASKPRIOR
 	const LTYPE3 NDiff = (N - NOrig) / 2;
-#ifdef CUDA
-#ifdef MASKBP3D
-    const int maskVal = tex3D<unsigned char>(maskBP, xyz.x + NDiff.x, xyz.y + NDiff.y, xyz.z + NDiff.z);
-#else
-    const int maskVal = tex2D<unsigned char>(maskBP, xyz.x + NDiff.x, xyz.y + NDiff.y);
-#endif
-#else
-#ifdef MASKBP3D
-    const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(xyz.x + NDiff.x, xyz.y + NDiff.y, xyz.z + NDiff.z, 0)).w;
-#else
-    const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(xyz.x + NDiff.x, xyz.y + NDiff.y)).w;
-#endif
-#endif
+	const int maskVal = readMaskBP(maskBP, xyz + NDiff);
     if (maskVal == 0)
         return;
 #endif
@@ -1537,11 +1449,7 @@ void ProxTGVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLR
 #endif
 	const CLGLOBAL float* CLRESTRICT pX, const CLGLOBAL float* CLRESTRICT pY, const CLGLOBAL float* CLRESTRICT pZ, const float theta, const float tau
 #ifdef MASKPRIOR
-#ifdef MASKBP3D
-	, IMAGE3D maskBP
-#else
-	, IMAGE2D maskBP
-#endif
+	, MASKBPTYPE maskBP
 #endif
 ) {
 	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
@@ -1553,19 +1461,7 @@ void ProxTGVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLR
 		return;
 #ifdef MASKPRIOR
 	const LTYPE3 NDiff = (N - NOrig) / 2;
-#ifdef CUDA
-#ifdef MASKBP3D
-    const int maskVal = tex3D<unsigned char>(maskBP, xyz.x + NDiff.x, xyz.y + NDiff.y, xyz.z + NDiff.z);
-#else
-    const int maskVal = tex2D<unsigned char>(maskBP, xyz.x + NDiff.x, xyz.y + NDiff.y);
-#endif
-#else
-#ifdef MASKBP3D
-    const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(xyz.x + NDiff.x, xyz.y + NDiff.y, xyz.z + NDiff.z, 0)).w;
-#else
-    const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(xyz.x + NDiff.x, xyz.y + NDiff.y)).w;
-#endif
-#endif
+	const int maskVal = readMaskBP(maskBP, xyz + NDiff);
     if (maskVal == 0)
         return;
 #endif
@@ -1687,11 +1583,7 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
 #endif
 	const int3 N, const int3 NOrig, const float sigma, const float epps, const float beta, CONSTANT float* w
 #ifdef MASKPRIOR
-#ifdef MASKBP3D
-	, IMAGE3D maskBP
-#else
-	, IMAGE2D maskBP
-#endif
+	, MASKBPTYPE maskBP
 #endif
 #ifdef EFOVZ
 	, CONSTANT uchar* fovIndices
@@ -1712,15 +1604,7 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
         return;
 #endif
 #ifdef MASKPRIOR
-#ifdef CUDA
-    const int maskVal = tex2D<unsigned char>(maskBP, xyz.x, xyz.y);
-#else
-#ifdef MASKBP3D
-    const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(xyz.x, xyz.y, xyz.z, 0)).w;
-#else
-    const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(xyz.x, xyz.y)).w;
-#endif
-#endif
+	const int maskVal = readMaskBP(maskBP, xyz);
     if (maskVal == 0)
         return;
 #endif
@@ -1833,11 +1717,7 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 #endif
 	const float sigma, const float epps, const float beta
 #ifdef MASKPRIOR
-#ifdef MASKBP3D
-	, IMAGE3D maskBP
-#else
-	, IMAGE2D maskBP
-#endif
+	, MASKBPTYPE maskBP
 #endif
 #ifdef EFOVZ
 	, CONSTANT uchar* fovIndices
@@ -1867,15 +1747,7 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
         return;
 #endif
 #ifdef MASKPRIOR
-#ifdef CUDA
-    const int maskVal = tex2D<unsigned char>(maskBP, xyz.x, xyz.y);
-#else
-#ifdef MASKBP3D
-    const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(xyz.x, xyz.y, xyz.z, 0)).w;
-#else
-    const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(xyz.x, xyz.y)).w;
-#endif
-#endif
+	const int maskVal = readMaskBP(maskBP, xyz);
     if (maskVal == 0)
         return;
 #endif
