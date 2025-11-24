@@ -308,6 +308,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	ind++;
 
 	// Number of time steps
+	inputScalars.Nt = getScalarUInt32(prhs[ind], ind);
 	ind++;
 
 	// Use 64-bit integer atomic functions if possible
@@ -362,9 +363,12 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 
 	loadInput(inputScalars, options, type);
 	inputScalars.subsetsUsed = getScalarUInt32(getField(options, 0, "subsets"));
+	inputScalars.timestepsUsed = inputScalars.Nt;
 	if (type > 0) {
 		inputScalars.osa_iter0 = getScalarUInt32(getField(options, 0, "currentSubset"));
 		inputScalars.subsetsUsed = inputScalars.osa_iter0 + 1;
+		inputScalars.timestep0 = getScalarUInt32(getField(options, 0, "currentTimestep"));
+		inputScalars.timestepsUsed = inputScalars.timestep0 + 1;
 	}
 
 

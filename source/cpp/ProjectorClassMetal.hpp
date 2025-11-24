@@ -150,6 +150,7 @@ public:
 		const scalarStruct& inputScalars, // various scalar parameters defining the build parameters and what features to use
 		Weighting& w_vec, // specifies some of the special options/parameters used
 		const uint32_t osa_iter, // current subset (sub-iteration)
+        const uint32_t timestep,
 		const std::vector<int64_t>& length, // the number of measurements/projection/sinograms per subset
 		const uint64_t m_size, // for projector types 1-3, the total number of LORs
 		const int32_t ii = 0,
@@ -161,6 +162,7 @@ public:
 		const scalarStruct& inputScalars, // various scalar parameters defining the build parameters and what features to use
 		Weighting& w_vec, // specifies some of the special options/parameters used
 		const uint32_t osa_iter, // current subset (sub-iteration)
+        const uint32_t timestep,
 		const std::vector<int64_t>& length, // the number of measurements/projection/sinograms per subset
 		const uint64_t m_size, // for projector types 1-3, the total number of LORs
 		const bool compSens = false, // if true, computes the sensitivity image as well
