@@ -95,11 +95,6 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 	if (status != 0)
 		return;
 
-	// Set dynamic kernel data
-	status = proj.setDynamicKernelData(inputScalars, w_vec);
-	if (status != 0)
-		return;
-
 #ifndef METAL // OMEGA does not have support for Metal textures
 	cl::detail::size_t_array region = { { 0, 0, 0 } };
 #endif

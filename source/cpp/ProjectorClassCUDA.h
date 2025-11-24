@@ -2147,35 +2147,6 @@ public:
 		return 0;
 	}
 
-	/// <summary>
-	/// Sets kernel parameters that do not change per iteration but only per time step
-	/// </summary>
-	/// <param name="inputScalars various scalar parameters defining the build parameters and what features to use"></param>
-	/// <param name="w_vec specifies some of the special options/parameters used"></param>
-	/// <returns></returns>
-	inline int setDynamicKernelData(scalarStruct& inputScalars, Weighting& w_vec) {
-		/*if (inputScalars.attenuation_correction && !inputScalars.CT && inputScalars.CTAttenuation) {
-			if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.FPType == 4)) {
-				if (inputScalars.useBuffers)
-					FPArgs.emplace_back(&d_attenB);
-				else
-					FPArgs.emplace_back(&d_attenIm);
-			}
-			if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.BPType == 4) {
-				if (inputScalars.useBuffers)
-					BPArgs.emplace_back(&d_attenB);
-				else
-					BPArgs.emplace_back(&d_attenIm);
-				if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-					if (inputScalars.useBuffers)
-						SensArgs.emplace_back(&d_attenB);
-					else
-						SensArgs.emplace_back(&d_attenIm);
-				}
-			}
-		}*/
-		return 0;
-	}
 
 	template <typename T>
 	inline int loadCoord(uint32_t currentSubset, scalarStruct& inputScalars, const int64_t length, const T* listCoord, const T* listCoordAx = nullptr, const uint8_t* TOFIndices = nullptr) {

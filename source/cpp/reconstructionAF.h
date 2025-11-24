@@ -493,9 +493,6 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 			return -1;
 		}
 		af::sync();
-		status = proj.setDynamicKernelData(inputScalars, w_vec);
-		if (status != 0)
-			return -1;
 	}
 #endif
 

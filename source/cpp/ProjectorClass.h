@@ -1862,42 +1862,6 @@ public:
 		return 0;
 	}
 
-	/// <summary>
-	/// Sets kernel parameters that do not change per iteration but only per time step
-	/// </summary>
-	/// <param name="inputScalars various scalar parameters defining the build parameters and what features to use"></param>
-	/// <param name="w_vec specifies some of the special options/parameters used"></param>
-	/// <returns></returns>
-	inline int setDynamicKernelData(scalarStruct& inputScalars, Weighting& w_vec) {
-		cl_int status = CL_SUCCESS;
-        /*
-		if (inputScalars.attenuation_correction && !inputScalars.CT && inputScalars.CTAttenuation) {
-			if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.FPType == 4)) {
-				if (inputScalars.useBuffers)
-					status = kernelFP.setArg(kernelIndFP++, d_attenB);
-				else
-					status = kernelFP.setArg(kernelIndFP++, d_attenIm);
-                OCL_CHECK(status, "\n", -1);
-			}
-			if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.BPType == 4) {
-				if (inputScalars.useBuffers)
-					status = kernelBP.setArg(kernelIndBP++, d_attenB);
-				else
-					status = kernelBP.setArg(kernelIndBP++, d_attenIm);
-                OCL_CHECK(status, "\n", -1);
-				if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-					if (inputScalars.useBuffers)
-						status = kernelSensList.setArg(kernelIndSens++, d_attenB);
-					else
-						status = kernelSensList.setArg(kernelIndSens++, d_attenIm);
-                    OCL_CHECK(status, "\n", -1);
-				}
-			}
-		}
-        */
-		return status;
-	}
-
 	template <typename T>
 	inline int loadCoord(uint32_t currentSubset, scalarStruct& inputScalars, const int64_t length, const T* listCoord, const T* listCoordAx = nullptr, const uint8_t* TOFIndices = nullptr) {
 		cl_int status = CL_SUCCESS;

@@ -648,13 +648,6 @@ public:
 		return 0;
     }
 
-    inline int setDynamicKernelData(
-		scalarStruct& inputScalars,
-		Weighting& w_vec
-	) {
-		return 0;
-    }
-
     inline int forwardProjection(
 		const scalarStruct& inputScalars,
 		Weighting& w_vec,
