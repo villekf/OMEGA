@@ -157,7 +157,7 @@ if options.attenuation_correction && ~options.SPECT % PET attenuation
         end
     end
 elseif options.attenuation_correction && options.SPECT % SPECT attenuation
-    if ~isfield(options, 'vaimennus') || isempty(options.vaimennus)
+    if ~isfield(options, 'vaimennus') || (isempty(options.vaimennus) && ~iscell(options.vaimennus))
         if isempty(options.fpathCT) % Get folder if necessary
             options.fpathCT = uigetdir(matlabroot,'Select the folder containing attenuation DICOM files');
         end
@@ -192,15 +192,33 @@ elseif options.attenuation_correction && options.SPECT % SPECT attenuation
         [MUvol, ~] = imwarp(MUvol, refCT, tform, OutputView=options.refSPECT, FillValue=muAir, InterpolationMethod='linear');
         options.vaimennus = 1*MUvol;
     end
+    if options.partitions > 1
+        if ~iscell(options.vaimennus)
+            error("With dynamic reconstruction the attenuation map needs to be a cell type");
+        end
+        if numel(options.vaimennus) ~= options.partitions
+            error("No attenuation map for each timestep")
+        end
+    end
 else
     options.vaimennus = 0;
 end
 
 
-if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-    options.vaimennus = single(options.vaimennus);
+if ~iscell(options.vaimennus) 
+    if (options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles)
+        options.vaimennus = single(options.vaimennus);
+    else
+        options.vaimennus = double(options.vaimennus);
+    end
 else
-    options.vaimennus = double(options.vaimennus);
+    for kk = 1:options.partitions
+        if (options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles)
+            options.vaimennus{kk} = single(options.vaimennus{kk}(:));
+        else
+            options.vaimennus{kk} = double(options.vaimennus{kk}(:));
+        end
+    end
 end
 
 

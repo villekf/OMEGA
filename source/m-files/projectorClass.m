@@ -382,9 +382,11 @@ classdef projectorClass
                 if obj.param.offangle ~= 0
                     obj.param.angles = obj.param.angles + obj.param.offangle;
                     obj.param.swivelAngles = obj.param.swivelAngles + obj.param.offangle;
+                    if isfield(obj.param, 'vaimennus')
+                        obj.param.vaimennus = imrotate(obj.param.vaimennus, obj.param.offangle, 'crop');
+                    end
                 end
                 if isfield(obj.param, 'vaimennus')
-                    obj.param.vaimennus = imrotate(obj.param.vaimennus, obj.param.offangle, 'crop');
                     if obj.param.flipImageX
                         obj.param.vaimennus = flip(obj.param.vaimennus, 2);
                     end

@@ -898,14 +898,16 @@ public:
 	cl::Buffer d_xcenter, d_ycenter, d_zcenter, d_V, d_TOFCenter, d_output, d_meanBP, d_meanFP, d_eFOVIndices, d_weights, d_inputB, d_W, d_gaussianNLM;
 	cl::Image2D d_maskFP, d_maskBP, d_maskPrior;
 	cl::Image3D d_maskBP3, d_maskPrior3;
-	cl::Image3D d_inputImage, d_attenIm, d_urefIm, d_inputI, d_RDPrefI;
+	cl::Image3D d_inputImage, d_urefIm, d_inputI, d_RDPrefI;
 	cl::Buffer d_qX, d_qY, d_qZ;
 	cl::Buffer d_rX, d_rY, d_rXY, d_rZ, d_rXZ, d_rYZ;
 	cl::Buffer d_vX, d_vY, d_vZ;
 	cl::Buffer d_angle;
 	cl::Buffer d_vector, d_input;
 	cl::Buffer d_im, d_rhs, d_U, d_g, d_uref, d_refIm, d_RDPref;
-	cl::Buffer d_outputCT, d_maskBPB, d_attenB, d_maskPriorB;
+	std::vector<cl::Buffer> d_attenB;
+    std::vector<cl::Image3D> d_attenIm;
+    cl::Buffer d_outputCT, d_maskBPB, d_maskPriorB;
 	cl::Buffer d_rayShiftsDetector, d_rayShiftsSource; // SPECT
 	size_t memSize = 0ULL;
 	std::chrono::steady_clock::time_point tStartLocal, tStartGlobal, tStartAll;
@@ -1213,15 +1215,6 @@ public:
 					d_xFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x, NULL, &status));
 				OCL_CHECK(status, "\n", -1);
 			}
-			// Attenuation data for image-based attenuation
-			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
-				imZ = inputScalars.Nz[0];
-				if (inputScalars.useBuffers)
-					d_attenB = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.im_dim[0], NULL, &status);
-				else
-					d_attenIm = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
-				OCL_CHECK(status, "\n", -1);
-			}
 			if (inputScalars.maskFP || inputScalars.maskBP) {
 				if (inputScalars.useBuffers) {
 					if (inputScalars.maskFP) {
@@ -1291,14 +1284,18 @@ public:
 					d_zFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z, NULL, &status));
 				OCL_CHECK(status, "\n", -1);
 			}
-			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-				if (DEBUG) {
-					mexPrintBase("length[kk] = %u\n", length[kk]);
-					mexPrintBase("kk = %u\n", kk);
-					mexPrintBase("vecSize = %u\n", vecSize);
-					mexEval();
-				}
-                for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
+            for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
+                // Attenuation data for image-based attenuation
+                if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+                    imZ = inputScalars.Nz[0];
+                    if (inputScalars.useBuffers)
+                        d_attenB[timestep] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.im_dim[0], NULL, &status);
+                    else
+                        d_attenIm[timestep] = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
+                    OCL_CHECK(status, "\n", -1);
+                }
+
+			    for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
                     if ((inputScalars.CT || inputScalars.SPECT) || (inputScalars.listmode > 0 && !inputScalars.indexBased)) {
                         if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0))
                             d_x[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6, NULL, &status);
@@ -1341,32 +1338,34 @@ public:
                             OCL_CHECK(status, "\n", -1);
                         }
                     }
+			    }
+		    }
+            
+            for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+                if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
+                    d_T[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk], NULL, &status);
+                    OCL_CHECK(status, "\n", -1);
                 }
-				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
-					d_T[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk], NULL, &status);
-					OCL_CHECK(status, "\n", -1);
-				}
-				if (inputScalars.size_norm > 1 && inputScalars.normalization_correction) {
-					d_norm[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
-					OCL_CHECK(status, "\n", -1);
-				}
-				if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-					d_atten[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
-					OCL_CHECK(status, "\n", -1);
-				}
-				// Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
-				if (inputScalars.raw && inputScalars.listmode != 1) {
-					d_L[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk] * 2, NULL, &status);
-					OCL_CHECK(status, "\n", -1);
-				}
-				else if (inputScalars.listmode != 1 && ((!inputScalars.CT && !inputScalars.SPECT && !inputScalars.PET) && (inputScalars.subsets > 1 && (inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7)))) {
-					d_xyindex[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint32_t) * length[kk], NULL, &status);
-					OCL_CHECK(status, "\n", -1);
-					d_zindex[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk], NULL, &status);
-					OCL_CHECK(status, "\n", -1);
-				}
-			}
-		}
+                if (inputScalars.size_norm > 1 && inputScalars.normalization_correction) {
+                    d_norm[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
+                    OCL_CHECK(status, "\n", -1);
+                }
+                if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
+                    d_atten[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
+                    OCL_CHECK(status, "\n", -1);
+                }
+                // Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
+                if (inputScalars.raw && inputScalars.listmode != 1) {
+                    d_L[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk] * 2, NULL, &status);
+                    OCL_CHECK(status, "\n", -1);
+                } else if (inputScalars.listmode != 1 && ((!inputScalars.CT && !inputScalars.SPECT && !inputScalars.PET) && (inputScalars.subsets > 1 && (inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7)))) {
+                    d_xyindex[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint32_t) * length[kk], NULL, &status);
+                    OCL_CHECK(status, "\n", -1);
+                    d_zindex[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk], NULL, &status);
+                    OCL_CHECK(status, "\n", -1);
+                }
+            }
+        }
 		OCL_CHECK(status, "Buffer creation failed\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Buffer creation succeeded\n");
@@ -1483,19 +1482,6 @@ public:
 					OCL_CHECK(status, "\n", -1);
 				}
 			}
-			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
-				if (inputScalars.useBuffers)
-					status = CLCommandQueue[0].enqueueWriteBuffer(d_attenB, CL_FALSE, 0, sizeof(float) * inputScalars.im_dim[0], atten);
-				else {
-					cl::detail::size_t_array region = { { 0, 0, 0 } };
-					region[0] = inputScalars.Nx[0];
-					region[1] = inputScalars.Ny[0];
-					region[2] = inputScalars.Nz[0];
-					status = CLCommandQueue[0].enqueueWriteImage(d_attenIm, CL_FALSE, origin, region, 0, 0, atten);
-					OCL_CHECK(status, "\n", -1);
-				}
-				memSize += (sizeof(float) * inputScalars.im_dim[0]) / 1048576ULL;
-			}
 			if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) {
 				status = CLCommandQueue[0].enqueueWriteBuffer(d_angle, CL_FALSE, 0, sizeof(float) * inputScalars.nProjections, w_vec.angles);
 				OCL_CHECK(status, "\n", -1);
@@ -1522,8 +1508,23 @@ public:
 				OCL_CHECK(status, "\n", -1);
 				memSize += (sizeof(float) * 2 * inputScalars.n_rays) / 1048576ULL;
 			}
-			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-                for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
+
+            for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
+                if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+                    if (inputScalars.useBuffers)
+                        status = CLCommandQueue[0].enqueueWriteBuffer(d_attenB[timestep], CL_FALSE, 0, sizeof(float) * inputScalars.im_dim[0], &atten[inputScalars.im_dim[0] * timestep]);
+                    else {
+                        cl::detail::size_t_array region = { { 0, 0, 0 } };
+                        region[0] = inputScalars.Nx[0];
+                        region[1] = inputScalars.Ny[0];
+                        region[2] = inputScalars.Nz[0];
+                        status = CLCommandQueue[0].enqueueWriteImage(d_attenIm[timestep], CL_FALSE, origin, region, 0, 0, &atten[inputScalars.im_dim[0] * timestep]);
+                        OCL_CHECK(status, "\n", -1);
+                    }
+                    memSize += (sizeof(float) * inputScalars.im_dim[0]) / 1048576ULL;
+                }
+
+			    for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
                     if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
                         int64_t kerroin = 2;
                         if (inputScalars.pitch)
@@ -1576,9 +1577,11 @@ public:
                             memSize += (sizeof(uint8_t) * length[kk]) / 1048576ULL;
                         }
                     }
-                }
-				
-				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
+                }				
+			}
+
+            for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+                if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_T[kk], CL_FALSE, 0, sizeof(float) * length[kk], &inputScalars.T[pituus[kk]]);
 					OCL_CHECK(status, "\n", -1);
 				}
@@ -1606,21 +1609,10 @@ public:
 					OCL_CHECK(status, "\n", -1);
 					memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
 				}
-				if (DEBUG) {
-					mexPrintBase("length[kk] = %d\n", length[kk]);
-					if (inputScalars.pitch && kk > 0) {
-						mexPrintBase("z_det[pituus[kk] * 6] = %f\n", z_det[pituus[kk] * 6 - 1]);
-						mexPrintBase("pituus[kk] * 6 = %d\n", pituus[kk] * 6 - 1);
-					}
-					mexPrintBase("pituus[kk] = %d\n", pituus[kk]);
-					mexPrintBase("erotus = %d\n", pituus[kk + 1] - pituus[kk]);
-					mexPrintBase("kk = %d\n", kk);
-					mexPrintBase("memSize = %u\n", memSize);
-					mexEval();
-				}
-				status = CLCommandQueue[0].finish();
-				OCL_CHECK(status, "\n", -1);
-			}
+            }
+
+            status = CLCommandQueue[0].finish();
+            OCL_CHECK(status, "\n", -1);
 		}
 		OCL_CHECK(status, "Buffer write failed\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
@@ -1669,6 +1661,10 @@ public:
 			d_norm.resize(inputScalars.subsetsUsed);
 		if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation)
 			d_atten.resize(inputScalars.subsetsUsed);
+        if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+            d_attenB.resize(inputScalars.Nt);
+            d_attenIm.resize(inputScalars.Nt);
+        }
 		if (inputScalars.projector_type != 6) {
             d_scat.resize(inputScalars.Nt);
             d_x.resize(inputScalars.Nt);
@@ -1874,6 +1870,7 @@ public:
 	/// <returns></returns>
 	inline int setDynamicKernelData(scalarStruct& inputScalars, Weighting& w_vec) {
 		cl_int status = CL_SUCCESS;
+        /*
 		if (inputScalars.attenuation_correction && !inputScalars.CT && inputScalars.CTAttenuation) {
 			if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.FPType == 4)) {
 				if (inputScalars.useBuffers)
@@ -1897,6 +1894,7 @@ public:
 				}
 			}
 		}
+        */
 		return status;
 	}
 
@@ -2138,12 +2136,18 @@ public:
 
 		status = CLCommandQueue[0].finish();
 		OCL_CHECK(status, "\n", -1);
-		if (inputScalars.FPType == 4) {
-			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-				status = kernelFP.setArg(kernelIndFPSubIter++, d_atten[osa_iter]);
-				OCL_CHECK(status, "\n", -1);
-			}
-		}
+		//if (inputScalars.FPType == 4) {
+        if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
+            status = kernelFP.setArg(kernelIndFPSubIter++, d_atten[osa_iter]);
+            OCL_CHECK(status, "\n", -1);
+        } else if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+            if (inputScalars.useBuffers)
+                status = kernelFP.setArg(kernelIndFPSubIter++, d_attenB[timestep]);
+            else
+                status = kernelFP.setArg(kernelIndFPSubIter++, d_attenIm[timestep]);
+            OCL_CHECK(status, "\n", -1);
+        }
+		//}
 		if (inputScalars.FPType == 5 || inputScalars.FPType == 4) {
 			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_N[ii]));
 			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, b[ii]));
@@ -2266,10 +2270,10 @@ public:
 			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, length[osa_iter]));
 		}
 		else if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3)) {
-			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-				status = kernelFP.setArg(kernelIndFPSubIter++, d_atten[osa_iter]);
-				OCL_CHECK(status, "\n", -1);
-			}
+			//if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
+			//	status = kernelFP.setArg(kernelIndFPSubIter++, d_atten[osa_iter]);
+			//	OCL_CHECK(status, "\n", -1);
+			//}
 			if (inputScalars.maskFP) {
 				if (inputScalars.useBuffers) {
 					int subset = 0;
@@ -2441,10 +2445,16 @@ public:
 			}
 
 			// Set kernelBP arguments
-			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-				status = kernelBP.setArg(kernelIndBPSubIter++, d_atten[osa_iter]);
-				OCL_CHECK(status, "\n", -1);
-			}
+            if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
+                status = kernelBP.setArg(kernelIndBPSubIter++, d_atten[osa_iter]);
+                OCL_CHECK(status, "\n", -1);
+            } else if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+                if (inputScalars.useBuffers)
+                    status = kernelBP.setArg(kernelIndBPSubIter++, d_attenB[timestep]);
+                else
+                    status = kernelBP.setArg(kernelIndBPSubIter++, d_attenIm[timestep]);
+                OCL_CHECK(status, "\n", -1);
+            }
 			if (inputScalars.maskFP || inputScalars.maskBP) {
 				if (inputScalars.maskFP) {
 					if (inputScalars.useBuffers) {
