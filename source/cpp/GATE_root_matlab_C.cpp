@@ -33,7 +33,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 		mexErrMsgIdAndTxt("MATLAB:GATE_root_matlab:invalidNumInputs",
 			"50 input arguments required.");
 	}
-	else if (nlhs > 15) {
+	else if (nlhs > 16) {
 		mexErrMsgIdAndTxt("MATLAB:GATE_root_matlab:maxlhs",
 			"Too many output arguments.");
 	}
@@ -154,6 +154,10 @@ void mexFunction(int nlhs, mxArray *plhs[],
 		plhs[13] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
 		plhs[14] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
 	}
+	if ((store_coordinates || indexBased) && TOF)
+		plhs[15] = mxCreateNumericMatrix(Nentries, 1, mxUINT8_CLASS, mxREAL);
+	else
+		plhs[15] = mxCreateNumericMatrix(1, 1, mxUINT8_CLASS, mxREAL);
 
 	/* Assign pointers to the various parameters */
 	uint16_t * tIndex = (uint16_t*)mxGetData(plhs[8]);
@@ -164,6 +168,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	uint16_t* axIndex = nullptr;
 	uint16_t* DtrIndex = nullptr;
 	uint16_t* DaxIndex = nullptr;
+	uint8_t* TOFIndex = nullptr;
 	float* coord = nullptr, * Dcoord = nullptr;
 	if (source) {
 		S = (uint16_t*)mxGetData(plhs[5]);
@@ -181,6 +186,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
 		DtrIndex = (uint16_t*)mxGetData(plhs[13]);
 		DaxIndex = (uint16_t*)mxGetData(plhs[14]);
 	}
+	if ((store_coordinates || indexBased) && TOF)
+		TOFIndex = (uint8_t*)mxGetData(plhs[15]);
 	plhs[0] = mxCreateSharedDataCopy(prhs[31]);
 	plhs[1] = mxCreateSharedDataCopy(prhs[32]);
 	plhs[2] = mxCreateSharedDataCopy(prhs[33]);
@@ -196,7 +203,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	histogram(argv, tPoints, alku, loppu, source, linear_multp, cryst_per_block, blocks_per_ring, det_per_ring, S, SC, RA, trIndex, axIndex, DtrIndex, DaxIndex, obtain_trues, store_scatter, store_randoms,
 		scatter_components, randoms_correction, coord, Dcoord, store_coordinates, dynamic, cryst_per_block_z, transaxial_multip, rings, sinoSize, Ndist, Nang, ringDifference, span,
-		seg, Nt, TOFSize, nDistSide, Sino, SinoT, SinoC, SinoR, SinoD, detWPseudo, nPseudos, binSize, FWHM, verbose, nLayers, dx, dy, dz, bx, by, bz, Nx, Ny, Nz, dualLayerSubmodule, imDim, indexBased, tIndex, matlabPtr);
+		seg, Nt, TOFSize, nDistSide, Sino, SinoT, SinoC, SinoR, SinoD, detWPseudo, nPseudos, binSize, FWHM, verbose, nLayers, dx, dy, dz, bx, by, bz, Nx, Ny, Nz, dualLayerSubmodule, imDim, indexBased, tIndex, 
+		TOFIndex, matlabPtr);
 
 
 	mexEvalString("pause(.001);");

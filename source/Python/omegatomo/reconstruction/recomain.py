@@ -2,12 +2,37 @@
 """
 Created on Thu Mar  7 13:50:49 2024
 
-@author: Ville-Veikko Wettenhovi
+Copyright (C) 2024-2025 Ville-Veikko Wettenhovi
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 """
-import numpy as np
 import ctypes
+import numpy as np
 
 def transferData(options):
+    """
+    Transfers the Python variables to the corresponding C-struct
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Returns
+    -------
+    None.
+
+    """
     options.param.use_raw_data = ctypes.c_uint8(options.use_raw_data)
     options.param.listmode = ctypes.c_uint8(options.listmode)
     options.param.verbose = ctypes.c_int8(options.verbose)
@@ -71,6 +96,7 @@ def transferData(options):
     options.param.nProjections = ctypes.c_int64(options.nProjections)
     options.param.TOF_bins = ctypes.c_int64(options.TOF_bins)
     options.param.tau = ctypes.c_float(options.tau)
+    options.param.helicalRadius = ctypes.c_float(options.helicalRadius)
     options.param.tube_radius = ctypes.c_float(options.tube_radius)
     options.param.epps = ctypes.c_float(options.epps)
     options.param.sigma_x = ctypes.c_float(options.sigma_x)
@@ -167,6 +193,7 @@ def transferData(options):
     options.param.stochasticSubsetSelection = ctypes.c_bool(options.stochasticSubsetSelection)
     options.param.useTotLength = ctypes.c_bool(options.useTotLength)
     options.param.useParallelBeam = ctypes.c_bool(options.useParallelBeam)
+    options.param.useHelical = ctypes.c_bool(options.useHelical)
     options.param.OSEM = ctypes.c_bool(options.OSEM)
     options.param.LSQR = ctypes.c_bool(options.LSQR)
     options.param.CGLS = ctypes.c_bool(options.CGLS)
@@ -324,6 +351,23 @@ def transferData(options):
     options.param.RDP_ref = options.RDP_referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     
 def reconstructions_mainCT(options):
+    """
+    This function simply does certain CT-specific adjustments before calling
+    the main built-in reconstruction function
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Returns
+    -------
+    pz : NumPy Array
+        the reconstructed image volume.
+    FPOutputP : NumPy Array
+        The (optional) forward projections.
+    residual : NumPy Array
+        the (optional) residual/primal-dual gap.
+    """
     options.CT = True
     if options.storeResidual:
         pz, FPOutputP, residual = reconstructions_main(options)
@@ -333,6 +377,21 @@ def reconstructions_mainCT(options):
         return pz, FPOutputP
 
 def reconstructions_mainSPECT(options):
+    """
+    This function simply does certain SPECT-specific adjustments before calling
+    the main built-in reconstruction function
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Returns
+    -------
+    pz : NumPy Array
+        the reconstructed image volume.
+    FPOutputP : NumPy Array
+        The (optional) forward projections.
+    """
     options.SPECT = True
     if options.storeResidual:
         pz, FPOutputP, residual = reconstructions_main(options)
@@ -342,6 +401,22 @@ def reconstructions_mainSPECT(options):
         return pz, FPOutputP
 
 def reconstructions_main(options):
+    """
+    The main built-in reconstruction function
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Returns
+    -------
+    pz : NumPy Array
+        the reconstructed image volume.
+    FPOutputP : NumPy Array
+        The (optional) forward projections.
+    residual : NumPy Array
+        the (optional) residual/primal-dual gap.
+    """
     import time
     import os
     from .prepass import prepassPhase
@@ -350,7 +425,7 @@ def reconstructions_main(options):
     tic = time.perf_counter()
     options.addProjector()
     print('Preparing for reconstruction...')
-    if options.builtin == False:
+    if not options.builtin:
         raise ValueError('No reconstruction method selected, aborting.')
     if np.size(options.weights) > 0:
         options.empty_weight = False
@@ -377,12 +452,12 @@ def reconstructions_main(options):
             if len(options.fpath) == 0:
                 raise ValueError('No file selected')
             var = read_mat(options.fpath)
-        if options.reconstruct_trues == True:
+        if options.reconstruct_trues:
             options.SinM = np.array(var["SinTrues"],order='F')
-        elif options.reconstruct_scatter == True:
+        elif options.reconstruct_scatter:
             options.SinM = np.array(var["SinScatter"],order='F')
         else:
-            if ((options.randoms_correction or options.scatter_correction or options.normalization_correction) and options.corrections_during_reconstruction == False):
+            if ((options.randoms_correction or options.scatter_correction or options.normalization_correction) and not options.corrections_during_reconstruction):
                 if not options.precorrect:
                     try:
                         options.SinM = np.array(var["SinM"],order='F')
@@ -402,7 +477,7 @@ def reconstructions_main(options):
         options.SinM = np.load(options.fpath)
     elif options.SinM.size < 1 and options.fpath[len(options.fpath)-3:len(options.fpath)+1:1] == 'npz':
         varList = np.load(options.fpath)
-        if ((options.randoms_correction or options.scatter_correction or options.normalization_correction) and options.corrections_during_reconstruction == False):
+        if ((options.randoms_correction or options.scatter_correction or options.normalization_correction) and not options.corrections_during_reconstruction):
             if not options.precorrect:
                 try:
                     options.SinM = varList['SinM']
@@ -418,7 +493,7 @@ def reconstructions_main(options):
                 options.SinDelayed = varList['SinDelayed']
             except KeyError:
                 print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed')
-    elif options.corrections_during_reconstruction == False and not options.precorrect and (options.randoms_correction or options.scatter_correction or options.normalization_correction):
+    elif not options.corrections_during_reconstruction and not options.precorrect and (options.randoms_correction or options.scatter_correction or options.normalization_correction):
         print('Corrections selected and measurement data found. The input measurement data WILL NOT BE PRECORRECTED!!!!!! If you wish to have OMEGA-based precorrection, make sure options.precorrect = True')
     if options.randoms_correction and not options.reconstruct_scatter and not options.reconstruct_trues and options.SinDelayed.size < 1:
         import tkinter as tk
@@ -454,18 +529,18 @@ def reconstructions_main(options):
     #     normdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', '..', '..', 'mat-files')) + "/"
     #     if os.path.exists(normdir):
     #         var = read_mat(options.fpath)
-    if options.CT and options.flat <= 0:
+    if options.CT and options.flat <= 0 and not options.usingLinearizedData:
         print('No flat value input! Using the maximum value as the flat value. Alternatively, input the flat value into options.flat')
         options.flat = np.max(options.SinM).astype(dtype=np.float32)
-    if not options.CT and not options.SPECT and not(options.SinM.size == options.Ndist * options.Nang * options.TotSinos) and options.listmode == 0:
-        ValueError('The number of elements in the input data does not match the input number of angles, radial distances and total number of sinograms multiplied together!')
+    if not options.CT and not options.SPECT and not options.SinM.size == options.Ndist * options.Nang * options.TotSinos * options.Nt * options.TOF_bins_used and options.listmode == 0:
+        raise ValueError('The number of elements in the input data does not match the input number of angles, radial distances and total number of sinograms multiplied together!')
     if not options.usingLinearizedData and (options.LSQR or options.CGLS or options.FISTA or options.FISTAL1 or options.PDHG or options.PDHGL1 or options.PDDY or options.FDK or options.SART or options.ASD_POCS) and not options.largeDim and options.CT:
         from .prepass import linearizeData
         linearizeData(options)
         options.usingLinearizedData = True
-    if options.listmode == False:
+    if not options.listmode:
         options.SinM = np.reshape(options.SinM, (int(options.nRowsD), int(options.nColsD), options.nProjections, options.TOF_bins, options.Nt), order='F')
-    elif options.listmode == True and options.compute_sensitivity_image:
+    elif options.listmode and options.compute_sensitivity_image:
         from omegatomo.projector.detcoord import getCoordinates
         options.use_raw_data = True
         x, y, z = getCoordinates(options)
@@ -535,7 +610,7 @@ def reconstructions_main(options):
     # point_ptr = ctypes.pointer(options.param)
     if not options.SinM.dtype == 'float32' and not options.largeDim and options.loadTOF:
         options.SinM = options.SinM.astype(np.float32)
-    elif not options.SinM.dtype == 'uint16' or not options.SinM.dtype == 'uint8':
+    elif not options.SinM.dtype == 'uint16' and not options.SinM.dtype == 'uint8':
         options.SinM = options.SinM.astype(np.float32)
     if options.SinM.ndim > 1:
         options.SinM = options.SinM.ravel('F')
@@ -592,13 +667,14 @@ def reconstructions_main(options):
             output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], -1), order = 'F')
         else:
             output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], options.Nt), order = 'F')
-        if options.subsets == 1 and options.storeFP == True:
+        if options.subsets == 1 and options.storeFP:
             FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins), order = 'F')
     finally:
         toc = time.perf_counter()
-        if (options.verbose > 0):
+        if options.verbose > 0:
             print(f"Reconstruction took {toc - tic:0.4f} seconds")
         if options.storeResidual:
             return output, FPOutput, residual
         else:
             return output, FPOutput
+        

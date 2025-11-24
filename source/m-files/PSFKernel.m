@@ -65,7 +65,7 @@ elseif ~isstruct(options) && nargin >= 3 && ndims(options) >= 2
     options.FWHM = FWHM;
     dx = varargin{1};
     dy = varargin{2};
-    if ~ismatrix(options.FWHM)
+    if numel(options.FWHM) == 3 && options.FWHM(3) > 0
         dz = varargin{3};
         if nargin >= 5
             options.implementation = varargin{4};
@@ -83,7 +83,7 @@ if ~isfield(options,'use_psf') || options.use_psf
     if ~exist('dx','var')
         dx = options.FOVa_x / double(options.Nx);
         dy = options.FOVa_y / double(options.Ny);
-        if ~ismatrix(options.FWHM)
+        if numel(options.FWHM) == 3 && options.FWHM(3) > 0
             dz = options.axial_fov / double(options.Nz);
         end
     end
@@ -91,12 +91,12 @@ if ~isfield(options,'use_psf') || options.use_psf
     g_pituus_z = 0;
     g_pituus_x = ceil(2*(options.FWHM(1) / (2 * sqrt(2 * log(2)))) / dx);
     g_pituus_y = ceil(2*(options.FWHM(2) / (2 * sqrt(2 * log(2)))) / dy);
-    if ~ismatrix(options.FWHM)
+    if numel(options.FWHM) == 3 && options.FWHM(3) > 0
         g_pituus_z = ceil(2*(options.FWHM(3) / (2 * sqrt(2 * log(2)))) / dz);
     end
     g_x = linspace(-g_pituus_x * dx, g_pituus_x * dx, 2*g_pituus_x + 1)';
     g_y = linspace(-g_pituus_y * dy, g_pituus_y * dy, 2*g_pituus_y + 1);
-    if ~ismatrix(options.FWHM)
+    if numel(options.FWHM) == 3 && options.FWHM(3) > 0
         g_z = zeros(1,1,g_pituus_z*2+1);
         g_z(1,1,:) = linspace(-g_pituus_z * dz, g_pituus_z * dz, 2*g_pituus_z + 1);
         gaussK = gaussianKernel(g_x, g_y, g_z, options.FWHM(1) / (2 * sqrt(2 * log(2))), options.FWHM(2) / (2 * sqrt(2 * log(2))), options.FWHM(3) / (2 * sqrt(2 * log(2))));
@@ -107,7 +107,7 @@ if ~isfield(options,'use_psf') || options.use_psf
     if nargin >= 7
         options = uint32(g_pituus_x);
         varargout{1} = uint32(g_pituus_y);
-        if ~ismatrix(options.FWHM)
+        if numel(options.FWHM) == 3 && options.FWHM(3) > 0
             varargout{2} = uint32(g_pituus_z);
         end
     elseif nargin >= 3

@@ -132,6 +132,7 @@ public:
 		matlab::data::TypedArray<uint16_t> axIndex = factory.createArray<uint16_t>({ 1, 1 });
 		matlab::data::TypedArray<uint16_t> DtrIndex = factory.createArray<uint16_t>({ 1, 1 });
 		matlab::data::TypedArray<uint16_t> DaxIndex = factory.createArray<uint16_t>({ 1, 1 });
+		matlab::data::TypedArray<uint8_t> TOFIndex = factory.createArray<uint8_t>({ 1, 1 });
 
 		TChain* delay = nullptr;
 		int64_t Ndelays = 0LL;
@@ -165,6 +166,10 @@ public:
 				DaxIndex = factory.createArray<uint16_t>({ 2, Nentries });
 				std::fill(DaxIndex.begin(), DaxIndex.end(), 0.f);
 			}
+		}
+		if ((store_coordinates || indexBased) && TOF) {
+			TOFIndex = factory.createArray<uint8_t>({ 1, Nentries });
+			std::fill(TOFIndex.begin(), TOFIndex.end(), 0.f);
 		}
 
 		matlab::data::TypedArray<uint16_t> tIndex = factory.createArray<uint16_t>({ 1, 1 });
@@ -200,6 +205,7 @@ public:
 		uint16_t* axIndexPtr = getPointer(axIndex);
 		uint16_t* DtrIndexPtr = getPointer(DtrIndex);
 		uint16_t* DaxIndexPtr = getPointer(DaxIndex);
+		uint8_t* TOFIndexPtr = getPointer(TOFIndex);
 		const uint32_t* segP = getPointer(seg);
 		const uint32_t* detectors = getPointer(detectorsP);
 		const uint32_t* cryst_per_block = getPointer(cryst_per_blockP);
@@ -219,7 +225,8 @@ public:
 
 		histogram(argv, tPointer, alku, loppu, source, linear_multp, cryst_per_block, blocks_per_ring, det_per_ring, SPointer, SCPointer, RAPointer, trIndexPtr, axIndexPtr, DtrIndexPtr, DaxIndexPtr, obtain_trues, store_scatter, store_randoms,
 			scatterPointer, randoms_correction, coordP, DcoordP, store_coordinates, dynamic, cryst_per_block_z, transaxial_multip, rings, sinoSize, Ndist, Nang, ringDifference, span,
-			segP, Nt, TOFSize, nDistSide, SinoP, SinoTP, SinoCP, SinoRP, SinoDP, detWPseudo, nPseudos, binSize, FWHM, verbose, nLayers, dx, dy, dz, bx, by, bz, Nx, Ny, Nz, dualLayerSubmodule, imDim, indexBased, tIndP, matlabPtr);
+			segP, Nt, TOFSize, nDistSide, SinoP, SinoTP, SinoCP, SinoRP, SinoDP, detWPseudo, nPseudos, binSize, FWHM, verbose, nLayers, dx, dy, dz, bx, by, bz, Nx, Ny, Nz, dualLayerSubmodule, imDim, indexBased, tIndP, 
+			TOFIndexPtr, matlabPtr);
 
 
 		outputs[0] = std::move(Sino);
@@ -237,6 +244,7 @@ public:
 		outputs[12] = std::move(axIndex);
 		outputs[13] = std::move(DtrIndex);
 		outputs[14] = std::move(DaxIndex);
+		outputs[15] = std::move(TOFIndex);
 
 	}
 
@@ -245,7 +253,7 @@ public:
 			matlabPtr->feval(u"error", 0, std::vector<matlab::data::Array>({ factory.createScalar("51 inputs required") }));
 		}
 
-		if (outputs.size() > 15) {
+		if (outputs.size() > 16) {
 			matlabPtr->feval(u"error", 0, std::vector<matlab::data::Array>({ factory.createScalar("Too many output arguments") }));
 		}
 

@@ -10,7 +10,7 @@
 
 ## OMEGA v2.1.0
 
-### Breaking changes
+### Breaking (API) changes
 
 - SPECT data-handling behavior changed with ray-tracing projectors (projector type 1)
   - This is now closer to CT-functionality, meaning that subsets are projection-based
@@ -34,21 +34,31 @@
 - OMEGA can now be installed in Python through pip using `pip install omegatomo`
 
 - Added support for orthogonal distance ray-tracing projector with SPECT
-  - Voxels are weighed by a Gaussian distribution sampled at the orthogonal distance, the variance of which is determined by the parallel distance between detector and voxel center
+  - Voxels are weighted by a Gaussian distribution sampled at the orthogonal distance, the variance of which is determined by the parallel distance between detector and voxel center
 
 - Projector type 1 now has built-in support for SPECT parallel-hole and pinhole collimators
   - Variables for focal length: `options.colFxy` and `options.colFz`
   - Both take the value Inf for parallel-hole collimators
   - Both take the value 0 for pinhole collimators
   - Tested with SIMIND v8.0 built-in examples
+  
+- Added preliminary support for curved helical CT data
+  - Functionality is more limited when compared to flat panel (CB)CT
+  - Only projector type 4 is supported
+  - Rotation of the image in the detector space (`options.offangle`) is NOT supported
+  - Reconstruction speed is suboptimal as the code is not optimized
+  - In general requires the XYZ-coordinates of both the source and detector as well as the rotation angles and the radius of the circle formed by the detector (`options.helicalRadius`)
+  - Enable by setting `options.useHelical` to true
+  - Only built-in reconstruction at the moment (projector operators are NOT supported)
+  - See `helical_CT_mainExample` for an example
 
 - Added support for 3D masks
   - Forward and backward projection masks can now be either 2D or 3D
   - In 2D case, the same mask is used at each slice/projection/sinogram
   - In 3D case, you can specify a unique mask for each
   - Needs to be the same size as the image/measurement data
-  - Probably won't work with multi-resolution reconstruction
-  - Idea is the same as before, pixels/voxels with 1 are included, pixels/voxels with 0 are omitted
+  - Probably won't work with multi-resolution reconstruction, but might work with projection extrapolation
+  - Idea is the same as before, pixels/voxels with value of 1 are included, pixels/voxels with 0 are omitted
   - Implementation 2 only!
   
 - Added subset support for FISTA
@@ -84,12 +94,17 @@
   - Easily create your own algorithms by using the built-in operators for forward and/or backward projections
   - Full GPU support
   
+- Limited Mac Metal support for SPECT
+  - Supports only the forward and backward projection operators
+  - MATLAB only!
+  - Can be run with integrated Mac GPUs
+  
 - Added support for TOF with list-mode data
   - A separate uint8 vector needs to be input (`options.TOFIndices`) that contains the indices to the TOF time windows specified by `options.TOFCenter`
   - Implementation 2 only!
   
 - Added support for standalone GPU-based regularizers in Python
-  - Can be used with any data, as long as the input image is a vector and in PyOpenCL, ArrayFire, CuPy or Pytorch format
+  - Can be used with any data, as long as the input image is a vector and in PyOpenCL, ArrayFire, CuPy or PyTorch format
   - Supports RDP, non-local regularizers and gradient-based TV
   
 - Added support for parallel beam reconstruction (`options.useParallelBeam`)

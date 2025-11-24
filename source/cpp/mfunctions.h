@@ -140,6 +140,7 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	if (inputScalars.useExtendedFOV)
 		inputScalars.eFOV = mxGetNumberOfElements(getField(options, 0, "eFOVIndices")) > 1;
 	inputScalars.useParallelBeam = getScalarBool(options, 0, "useParallelBeam");
+	inputScalars.useHelical = getScalarBool(options, 0, "useHelical");
 	inputScalars.NxOrig = getScalarUInt32(options, 0, "NxOrig");
 	inputScalars.NyOrig = getScalarUInt32(options, 0, "NyOrig");
 	inputScalars.NzOrig = getScalarUInt32(options, 0, "NzOrig");
@@ -157,6 +158,8 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	if (inputScalars.CT) {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "nColsD"), -10);
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "nRowsD"), -10);
+		if (inputScalars.useHelical)
+			inputScalars.helicalRadius = getScalarFloat(options, 0, "helicalRadius");
 	} else if (inputScalars.SPECT) {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "nColsD"));
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "nRowsD"));

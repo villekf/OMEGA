@@ -427,6 +427,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		mexPrintBase("inputScalars.Ny = %u\n", inputScalars.Ny[0]);
 		mexPrintBase("inputScalars.Nz = %u\n", inputScalars.Nz[0]);
 		mexPrintBase("inputScalars.Nf = %u\n", inputScalars.Nf);
+		mexPrintBase("inputScalars.Nt = %u\n", inputScalars.Nt);
 		mexPrintBase("inputScalars.nColsD = %u\n", inputScalars.nColsD);
 		mexPrintBase("inputScalars.nRowsD = %u\n", inputScalars.nRowsD);
 		mexPrintBase("inputScalars.bmin = %f\n", inputScalars.bmin);

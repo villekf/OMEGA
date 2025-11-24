@@ -1,9 +1,44 @@
 # -*- coding: utf-8 -*-
+"""
+Copyright (C) 2024-2025 Ville-Veikko Wettenhovi
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+"""
 
 
 import numpy as np
     
 def computePixelSize(options):
+    """
+    This function computes the location of the FOV as well as the voxel sizes.
+    Separate values are computed for multi-resolution volumes.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Returns
+    -------
+    xx : NumPy array
+        The coordinates of the voxel boundaries in x-direction.
+    yy : NumPy array
+        The coordinates of the voxel boundaries in y-direction.
+    zz : NumPy array
+        The coordinates of the voxel boundaries in z-direction.
+
+    """
     FOV = np.column_stack((options.FOVa_x,options.FOVa_y, options.axial_fov)).astype(dtype=np.float32)
     etaisyys = -(FOV) / 2
     options.dx = np.zeros((FOV.shape[0]),dtype=np.float32)
@@ -34,32 +69,49 @@ def computePixelSize(options):
         else:
             if kk > 4 or (FOV.shape[0] == 5 and kk > 2):
                 if kk % 2 == 0:
-                    options.by[kk] = options.oOffsetY + FOV[0][1] / 2;
+                    options.by[kk] = options.oOffsetY + FOV[0][1] / 2
                 else:
-                    options.by[kk] = options.oOffsetY - FOV[0][1] / 2 - FOV[kk,1];
-                options.bx[kk] = xx[0];
-                options.bz[kk] = zz[0];
+                    options.by[kk] = options.oOffsetY - FOV[0][1] / 2 - FOV[kk,1]
+                options.bx[kk] = xx[0]
+                options.bz[kk] = zz[0]
             elif (kk > 2 and kk < 5) or (FOV.shape[0] == 5 and kk > 0):
                 if kk % 2 == 0:
-                    options.bx[kk] = etaisyys[0,0] + options.oOffsetX + FOV[0,0];
+                    options.bx[kk] = etaisyys[0,0] + options.oOffsetX + FOV[0,0]
                 else:
-                    options.bx[kk] = etaisyys[0,0] + options.oOffsetX - FOV[kk,0];
-                options.by[kk] = yy[0];
-                options.bz[kk] = zz[0];
+                    options.bx[kk] = etaisyys[0,0] + options.oOffsetX - FOV[kk,0]
+                options.by[kk] = yy[0]
+                options.bz[kk] = zz[0]
             elif kk > 0 and kk < 3:
-                options.bx[kk] = xx[0];
-                options.by[kk] = yy[0];
+                options.bx[kk] = xx[0]
+                options.by[kk] = yy[0]
                 if kk % 2 == 0:
-                    options.bz[kk] = options.oOffsetZ + FOV[0,2] / 2;
+                    options.bz[kk] = options.oOffsetZ + FOV[0,2] / 2
                 else:
                     options.bz[kk] = options.oOffsetZ - FOV[0][2] / 2 - FOV[kk,2]
     return xx, yy, zz
 
 
 def computePixelCenters(options, xx, yy, zz):
-    if (options.projector_type == 2 or options.projector_type == 3 or options.projector_type == 22 or options.projector_type == 33 or options.projector_type == 12 
-        or options.projector_type == 13 or options.projector_type == 21 or options.projector_type == 31 or options.projector_type == 42 or options.projector_type == 43 
-        or options.projector_type == 24 or options.projector_type == 34):
+    """
+    This function computes the coordinates of the voxel centers.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+    xx : NumPy array
+        The coordinates of the voxel boundaries in x-direction.
+    yy : NumPy array
+        The coordinates of the voxel boundaries in y-direction.
+    zz : NumPy array
+        The coordinates of the voxel boundaries in z-direction.
+
+    Returns
+    -------
+    None.
+
+    """
+    if options.projector_type in [2, 3, 22, 33, 12, 13, 21, 31, 42, 43, 24, 34]:
         options.x_center = xx[0 : -1] + options.dx[0] / 2.
         options.y_center = yy[0 : -1] + options.dy[0] / 2.
         options.z_center = zz[0 : -1] + options.dz[0] / 2.
@@ -79,6 +131,20 @@ def computePixelCenters(options, xx, yy, zz):
     options.z_center = options.z_center.astype(dtype=np.float32)
             
 def computeVoxelVolumes(options):
+    """
+    This is used by projector type 3 only. Computes a look-up table for the 
+    volumes of intersection. Uses an analytic approach to compute the volumes.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Returns
+    -------
+    None.
+
+    """
     from scipy.integrate import quad
     from scipy.special import ellipk, ellipe
     import math
@@ -87,12 +153,12 @@ def computeVoxelVolumes(options):
             return 1. / ((1. + alpha * x**2) * np.sqrt(1. - x**2) * np.sqrt(1. - k * x**2))
         def vecquad(alpha, k):
             return quad(integrand, 0, 1, args=(alpha, k))[0]
-        A = np.maximum(r**2, (b + R)**2);
-        B = np.minimum(r**2, (b + R)**2);
-        C = (b - R)**2;
-        k = np.abs((B - C) / (A - C));
-        alpha = (B - C) / C;
-        s = (b + R) * (b - R);
+        A = np.maximum(r**2, (b + R)**2)
+        B = np.minimum(r**2, (b + R)**2)
+        C = (b - R)**2
+        k = np.abs((B - C) / (A - C))
+        alpha = (B - C) / C
+        s = (b + R) * (b - R)
         vec = np.vectorize(vecquad)
         Gamma = vec(alpha,k)
         K = ellipk(k)
@@ -122,14 +188,13 @@ def computeVoxelVolumes(options):
             Gamma2 = Gamma[ind]
             V[ind] = (4. * np.pi) / 3. * r**3 * heaviside_f[ind] + ((4. / 3.) / (np.sqrt(A2 - C2))) * (Gamma2 * ((B2**2 * s2) / C2) + K2 * (s2 * (A2 - 2. * B2) + (A2 - B2) * ((3. * B2 - C2 - 2 * A2) / 3.)) + E2 * (A2 - C2) * (-s2 + (2. * A2 - 4. * B2 + 2. * C2) / 3.))
         return V
-    if (options.projector_type == 3 or options.projector_type == 33 or options.projector_type == 13 or options.projector_type == 31 or options.projector_type == 34 
-        or options.projector_type == 43):
+    if options.projector_type in [3, 33, 13, 31, 34, 43]:
         dp = np.max(np.column_stack((options.dx[0].item(),options.dy[0].item(),options.dz[0].item())))
         options.voxel_radius = math.sqrt(2.) * options.voxel_radius * (dp / 2.)
         options.bmax = options.tube_radius + options.voxel_radius
         b = np.linspace(0, options.bmax, 10000, dtype=np.float32)
         b = b[(options.tube_radius <= (b + options.voxel_radius))]
-        b = np.unique(np.round(b*10**3)/10**3);
+        b = np.unique(np.round(b*10**3)/10**3)
         V = volumeIntersection(options.tube_radius, options.voxel_radius, b)
         diffis = np.append(np.diff(V), 0)
         # diffis = np.concatenate((np.diff(V),0))
@@ -142,10 +207,24 @@ def computeVoxelVolumes(options):
         options.V = np.zeros(1, dtype=np.float32)
     
 def computeProjectorScalingValues(options):
+    """
+    Computes scaling values for CT-based projectors (4 and 5). For example, 
+    the interpolation length in projector type 4.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Returns
+    -------
+    None.
+
+    """
     options.dScaleX4 = 1. / (options.dx * options.Nx)
     options.dScaleY4 = 1. / (options.dy * options.Ny)
     options.dScaleZ4 = 1. / (options.dz * options.Nz)
-    if options.projector_type == 5 or options.projector_type == 15 or options.projector_type == 45 or options.projector_type == 54 or options.projector_type == 51:
+    if options.projector_type in [5, 15, 45, 54, 51]:
         options.dSizeY = 1. / (options.dy * options.Ny)
         options.dSizeX = 1. / (options.dx * options.Nx)
         options.dScaleX = 1. / (options.dx * (options.Nx + 1))
@@ -182,9 +261,8 @@ def computeProjectorScalingValues(options):
             else:
                 options.dL = options.dL * (options.FOVa_x / options.Nx)
     else:
-        options.kerroin = np.zeros(1,dtype=np.float32);
-    if ((options.projector_type == 4 or options.projector_type == 5 or options.projector_type == 14 or options.projector_type == 15 or options.projector_type == 45 
-            or options.projector_type == 54) and options.CT):
+        options.kerroin = np.zeros(1,dtype=np.float32)
+    if options.projector_type in [4, 5, 14, 15, 45, 54] and options.CT:
         options.use_64bit_atomics = False
         options.use_32bit_atomics = False
     options.dScaleX4 = options.dScaleX4.astype(dtype=np.float32)

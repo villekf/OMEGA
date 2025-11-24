@@ -364,12 +364,14 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		mexPrintBase("inputScalars.size_of_x = %u\n", inputScalars.size_of_x);
 		mexPrintBase("nProjections = %d\n", w_vec.nProjections);
 		mexPrintBase("inputScalars.pitch = %d\n", inputScalars.pitch);
+		mexPrintBase("inputScalars.useHelical = %d\n", inputScalars.useHelical);
 		mexPrintBase("inputScalars.randoms_correction = %d\n", inputScalars.randoms_correction);
 		mexPrintBase("inputScalars.scatter = %d\n", inputScalars.scatter);
 		mexPrintBase("nColsD = %d\n", inputScalars.nColsD);
 		mexPrintBase("nRowsD = %d\n", inputScalars.nRowsD);
 		mexPrintBase("dPitchX = %f\n", w_vec.dPitchX);
 		mexPrintBase("dPitchY = %f\n", w_vec.dPitchY);
+		mexPrintBase("helicalRadius = %f\n", inputScalars.helicalRadius);
 		mexEval();
 	}
 
@@ -604,7 +606,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             if (inputScalars.projector_type == 6)
                                 backprojectionType6(inputM, w_vec, vec, inputScalars, length[subIter], uu, proj, tt, subIter, 0, 0, 0, ii, atten);
                             else {
-                                status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, inputM, subIter, tt, length, lengthFull[subIter], meanBP, g, proj, true, ii, pituus);
+                                status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, inputM, subIter, tt, length, lengthFull[subIter], meanBP, g, proj, (inputScalars.listmode > 0 && inputScalars.computeSensImag), ii, pituus);
                                 if (status != 0) {
                                     return -1;
                                 }

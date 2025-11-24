@@ -80,11 +80,11 @@ extern "C" __global__
                           const float3 d_d, const float3 d_scale,
 #endif
 #if defined(USEGLOBAL)
-                          const CLGLOBAL float *CLRESTRICT d_xyz,
+                          const CLGLOBAL float *CLRESTRICT d_xyz, const CLGLOBAL float *CLRESTRICT d_uv, 
 #else
-                          CONSTANT float *d_xyz,
+                          CONSTANT float *d_xyz, CONSTANT float *d_uv, 
 #endif
-                          CONSTANT float *d_uv, IMAGE3D d_IImageY,
+                          IMAGE3D d_IImageY,
                           IMAGE3D d_IImageX, CLGLOBAL float *d_forw,
 #ifdef MEANDISTANCEFP
                           CONSTANT float *d_meanV,

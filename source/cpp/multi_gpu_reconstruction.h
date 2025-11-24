@@ -27,7 +27,7 @@
 #define CA_PRIVATE_IMPLEMENTATION
 #define MTL_PRIVATE_IMPLEMENTATION
 #include "Metal.hpp"
-#include "ProjectorClassMetal.hpp"
+#include "ProjectorClassMetal.cpp"
 #define CL_INT int
 #define CL_LONG long
 #define CL_SUCCESS 0

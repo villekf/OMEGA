@@ -7,6 +7,7 @@
 #define TH 100000000000.f
 #define TH32 100000.f
 #define NVOXELS 8
+#define NVOXELSHELICAL 1
 #define NVOXELS5 1
 #define NVOXELSFP 8
 

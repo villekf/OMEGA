@@ -5,17 +5,36 @@ Created on Thu Mar  7 14:08:02 2024
 @author: Ville-Veikko Wettenhovi
 """
 
-def CTEFOVCorrection(options):
+def CTEFOVCorrection(options, extrapLengthTransaxial = None, extrapLengthAxial = None, eFOVLengthTransaxial = None, eFOVLengthAxial = None):
     import numpy as np
     if options.useExtrapolation:
         print('Extrapolating the projections')
-        Pn = int(np.floor(options.SinM.shape[0] * options.extrapLength))
+        if extrapLengthTransaxial == None:
+            if hasattr(options,'extrapLength'):
+                if options.extrapLength == None:
+                    PnTr = int(np.floor(options.SinM.shape[0] * 0.3))
+                else:
+                    PnTr = int(np.floor(options.SinM.shape[0] * options.extrapLength))
+            else:
+                PnTr = int(np.floor(options.SinM.shape[0] * 0.3))
+        else:
+            PnTr = int(np.floor(options.SinM.shape[0] * extrapLengthTransaxial))
+        if extrapLengthAxial == None:
+            if hasattr(options,'extrapLength'):
+                if options.extrapLength == None:
+                    PnAx = int(np.floor(options.SinM.shape[1] * 0.25))
+                else:
+                    PnAx = int(np.floor(options.SinM.shape[1] * options.extrapLength))
+            else:
+                PnAx = int(np.floor(options.SinM.shape[1] * 0.25))
+        else:
+            PnAx = int(np.floor(options.SinM.shape[1] * extrapLengthAxial))
         if options.transaxialExtrapolation:
-            size1 = options.SinM.shape[0] + Pn * 2
+            size1 = options.SinM.shape[0] + PnTr * 2
         else:
             size1 = options.SinM.shape[0]
         if options.axialExtrapolation:
-            size2 = options.SinM.shape[1] + Pn * 2
+            size2 = options.SinM.shape[1] + PnAx * 2
         else:
             size2 = options.SinM.shape[1]
         erotus1 = size1 - options.SinM.shape[0]
@@ -99,7 +118,16 @@ def CTEFOVCorrection(options):
             print('Neither transaxial nor axial EFOV selected, but EFOV itself is selected! Setting axial EFOV to True!')
             options.axialEFOV = True
         if options.transaxialEFOV:
-            nTransaxial = int(np.floor(options.Nx * options.eFOVLength)) * 2
+            if eFOVLengthTransaxial == None:
+                if hasattr(options,'eFOVLength'):
+                    if options.eFOVLength == None:
+                        nTransaxial = int(np.floor(options.Nx * 0.4)) * 2
+                    else:
+                        nTransaxial = int(np.floor(options.Nx * options.eFOVLength)) * 2
+                else:
+                    nTransaxial = int(np.floor(options.Nx * 0.4)) * 2
+            else:
+                nTransaxial = int(np.floor(options.Nx * eFOVLengthTransaxial)) * 2
             options.NxOrig = options.Nx
             options.NyOrig = options.Ny
             options.Nx += nTransaxial
@@ -114,7 +142,28 @@ def CTEFOVCorrection(options):
             options.NxOrig = options.Nx
             options.NyOrig = options.Ny
         if options.axialEFOV:
-            nAxial = int(np.floor(options.Nz * options.eFOVLength)) * 2
+            if eFOVLengthAxial == None:
+                if hasattr(options,'eFOVLength'):
+                    if options.eFOVLength == None:
+                        if options.sourceToDetector > options.sourceToCRot:
+                            length = options.sourceToCRot + options.FOVa_x / 2.
+                            angle = (options.sourceToDetector / (options.nColsD * options.dPitchY / 2.))
+                            eFOVLengthAxial = ((length / angle - options.axial_fov / 2.) / options.axial_fov)
+                            nAxial = int(np.floor(options.Nz * eFOVLengthAxial)) * 2
+                        else:
+                            nAxial = int(np.floor(options.Nz * 0.3)) * 2
+                    else:
+                        nAxial = int(np.floor(options.Nz * options.eFOVLength)) * 2
+                else:
+                    if options.sourceToDetector > options.sourceToCRot:
+                        pituus = options.sourceToDetector - options.sourceToCRot + options.FOVa_x / 2.
+                        angle = (options.sourceToDetector / (options.nColsD * options.dPitchY))
+                        eFOVLengthAxial = ((pituus / angle - options.axial_fov / 2.) / (options.axial_fov / 2.)) / 2.
+                        nAxial = int(np.floor(options.Nz * eFOVLengthAxial)) * 2
+                    else:
+                        nAxial = int(np.floor(options.Nz * 0.3)) * 2
+            else:
+                nAxial = int(np.floor(options.Nz * eFOVLengthAxial)) * 2
             options.NzOrig = options.Nz
             options.Nz += nAxial
             options.axialFOVOrig = options.axial_fov

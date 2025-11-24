@@ -64,18 +64,37 @@ function outputFP = forwardProjectionType6(options, recApu, loopVar, koko)
             kuvaRot = apuArr;
             panelTilt = options.swivelAngles(u1) - options.angles(u1) + 180;
             panelShift = options.radiusPerProj(u1) * sind(panelTilt) / voxelSize;
-            PSFshift = (options.FOVa_y/2 - (options.radiusPerProj(u1) * cosd(panelTilt) - options.CORtoDetectorSurface)) / voxelSize;
 
             % 1. Rotate the image
             kuvaRot = imrotate(kuvaRot, -options.swivelAngles(u1), 'bilinear','crop');
-            %volume3Dviewer(kuvaRot)
             
             % 2. Translate the image
             kuvaRot = imtranslate(kuvaRot, [-panelShift, 0, 0]);
-            %volume3Dviewer(kuvaRot)
 
             % 3. Attenuation correction
+            if options.attenuation_correction
+                attenuationImage = options.vaimennus;
 
+                % 3.1. rotate attenuation map
+                attenuationImage = imrotate(attenuationImage, -options.swivelAngles(u1), 'bilinear','crop');
+
+                % 3.2 translate attenuation map
+                % attenuationImage = imtranslate(attenuationImage, [-panelShift, 0,0], FillValues=0);
+
+                % 3.3 accumulate attenuation
+                attenuationImage = cumsum(attenuationImage, 1);
+
+                % 3.4 multiply each accumulated element by voxel size and exponentiate attenuation
+                attenuationImage = exp(-options.dx * attenuationImage);
+
+                % 3.5 normalize attenuation map
+                %attenuationImageSum = sum(attenuationImage, 1) / double(options.Nx(1));
+                %attenuationImageSum(attenuationImageSum == 0) = 1;
+                %attenuationImage = attenuationImage ./ attenuationImageSum;
+
+                % 3.6 pointwise multiply with image volume
+                kuvaRot = kuvaRot .* attenuationImage;
+            end
 
             % 4. Convolve with detector PSF
             PSF = imtranslate(options.gFilter, [0, 0, options.blurPlanes(u1)], FillValues=0);
@@ -88,12 +107,22 @@ function outputFP = forwardProjectionType6(options, recApu, loopVar, koko)
             % 5. Sum
             kuvaRot = sum(kuvaRot, 1);
             kuvaRot = squeeze(kuvaRot);
+            kuvaRot = kuvaRot / double(options.Nx(1));
             outputFP(:, :, kk) = outputFP(:, :, kk) + kuvaRot;
             u1 = u1 + 1;
         end
     end
 end
 
+if iscell(recApu)
+    if numel(recApu{1}) ~= options.Nx(1) * options.Ny(1) * options.Nz(1)
+        error('Input image has incorrect dimensions! Must equal to Nx*Ny*Nz!')
+    end
+else
+    if numel(recApu) ~= options.Nx(1) * options.Ny(1) * options.Nz(1)
+        error('Input image has incorrect dimensions! Must equal to Nx*Ny*Nz!')
+    end
+end
 if (~ismac && (options.implementation == 4 || options.implementation == 1)) || (ismac && options.projector_type == 6)
     if options.projector_type == 6
         outputFP = forwardProjectionType6(options, recApu, loopVar, koko);

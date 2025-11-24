@@ -33,7 +33,7 @@ elseif abs(options.offangle) > 0
     options.x = [sXY(:,1) dXY(:,1)];
     options.y = [sXY(:,2) dXY(:,2)];
 end
-if (~isfield(options, 'uV') || (isfield(options,'uV') && isempty(options.uV))) && numel(options.x) ~= options.nColsD * options.nRowsD * options.nProjections
+if (~isfield(options, 'uV') || (isfield(options,'uV') && isempty(options.uV))) && numel(options.x) ~= options.nColsD * options.nRowsD * options.nProjections && ~options.useHelical
     options.uV = CTDetectorCoordinates(options.angles,options.pitchRoll);
     if options.implementation == 3 || options.implementation == 2 || options.implementation == 5 || options.useSingles
         options.uV = single(options.uV);
@@ -73,5 +73,9 @@ if ((isfield(options,'pitchRoll') && ~isempty(options.pitchRoll)) && isfield(opt
 elseif isfield(options, 'uV')
     options.z(1,:) = options.z(1,:) * options.dPitchX;
     options.z(2,:) = options.z(2,:) * options.dPitchX;
+end
+if options.useHelical
+    options.x = [options.x(:,1) options.y(:,1) options.z(:,1) options.x(:,2) options.y(:,2) options.z(:,2)]';
+    options.z = single(options.angles);
 end
 end

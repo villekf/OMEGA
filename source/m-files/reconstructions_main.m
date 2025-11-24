@@ -11,7 +11,7 @@ function [pz,varargout] = reconstructions_main(inputStruct,varargin)
 %   options = The modified input options-struct (optional)
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2018-2024 Ville-Veikko Wettenhovi, Samuli Summala, Jonna Kangasniemi
+% Copyright (C) 2018-2025 Ville-Veikko Wettenhovi, Samuli Summala, Jonna Kangasniemi
 %
 % This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public
 % License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later
@@ -697,11 +697,14 @@ elseif options.param.implementation == 2 || options.param.implementation == 3
                     options.param.SinDelayed{kk} = single(full(options.param.SinDelayed{kk}));
                 end
             end
-            if iscell(options.param.SinDelayed)
-                options.param.SinDelayed = cell2mat(options.param.SinDelayed);
-            end
-            if ~isa(options.param.SinDelayed, 'single')
-                options.param.SinDelayed = single(options.param.SinDelayed);
+            if iscell(options.param.SinDelayed) && ~isa(options.param.SinDelayed{1}, 'single')
+                for kk = 1 : length(options.param.SinDelayed)
+                    options.param.SinDelayed{kk} = single(options.param.SinDelayed{kk});
+                end
+            elseif ~iscell(options.param.SinDelayed)
+                if ~isa(options.param.SinDelayed, 'single')
+                    options.param.SinDelayed = single(options.param.SinDelayed);
+                end
             end
         else
             options.param.randSize = uint64(1);

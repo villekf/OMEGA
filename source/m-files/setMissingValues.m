@@ -37,7 +37,7 @@ if ~isfield(options, 'storeResidual')
     options.storeResidual = false;
 end
 if ~isfield(options, 'sourceToCRot')
-    options.sourceToCRot = 0;
+    options.sourceToCRot = 1;
 end
 if ~isfield(options, 'sourceToDetector')
     options.sourceToDetector = 1;
@@ -382,7 +382,11 @@ if ~isfield(options,'precondTypeImage')
     options.precondTypeImage = [false;false;false;false;false;false;false];
 end
 if numel(options.precondTypeImage) < 7
-    options.precondTypeImage = [options.precondTypeImage;false(7-numel(options.precondTypeImage),1)];
+    if size(options.precondTypeImage, 1) > 1
+        options.precondTypeImage = [options.precondTypeImage;false(7-numel(options.precondTypeImage),1)];
+    else
+        options.precondTypeImage = [options.precondTypeImage,false(7-numel(options.precondTypeImage),1)'];
+    end
 end
 if ~isfield(options,'precondTypeMeas')
     options.precondTypeMeas = [false;false];
@@ -878,7 +882,7 @@ if ~isfield(options, 'useMAD')
     options.useMAD = true;
 end
 if ~isfield(options, 'useImages')
-    if options.projector_type == 6
+    if options.projector_type == 6 || ismac
         options.useImages = false;
     else
         options.useImages = true;
@@ -1004,17 +1008,23 @@ end
 if ~isfield(options, 'useParallelBeam')
     options.useParallelBeam = false;
 end
+if ~isfield(options, 'useHelical')
+    options.useHelical = false;
+end
+if ~isfield(options, 'helicalRadius')
+    options.helicalRadius = 0;
+end
 if ~isfield(options, 'useTotLength')
     options.useTotLength = true;
 end
 if ~isfield(options, 'coneOfResponseStdCoeffA')
-    options.coneOfResponseStdCoeffA = 0.1;
+    options.coneOfResponseStdCoeffA = -1;
 end
 if ~isfield(options, 'coneOfResponseStdCoeffB')
-    options.coneOfResponseStdCoeffB = 0.1;
+    options.coneOfResponseStdCoeffB = -1;
 end
 if ~isfield(options, 'coneOfResponseStdCoeffC')
-    options.coneOfResponseStdCoeffC = 0.1;
+    options.coneOfResponseStdCoeffC = -1;
 end
 if ~isfield(options, 'colL') % SPECT collimator hole length
     options.colL = 1;
@@ -1030,9 +1040,6 @@ if ~isfield(options, 'colFxy') % SPECT collimator focal distance
 end
 if ~isfield(options, 'colFz') % SPECT collimator focal distance
     options.colFz = Inf; % Parallel-hole
-end
-if ~isfield(options, 'crXY') % SPECT detector crystal size
-    options.crXY = 1;
 end
 if ~isfield(options, 'rayShiftsDetector')
     options.rayShiftsDetector = [];

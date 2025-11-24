@@ -1,9 +1,42 @@
 # -*- coding: utf-8 -*-
+"""
+Copyright (C) 2024-2025 Ville-Veikko Wettenhovi, Niilo Saarlemo
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+"""
+from typing import Tuple
 import numpy as np
 from omegatomo.projector import proj
-from typing import Tuple
 
 def CTDetSource(options):
+    """
+    Computes CT source/detector coordinates if not already input. Projection
+    angles, sourceToDetector and sourceToCRot variables have to be input to 
+    options. Can also take into account offsets of the detector and/or source.
+    Default assumes that the source is directly in front of the center of the
+    detector.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Returns
+    -------
+    None.
+
+    """
     if options.angles.size == options.nProjections:
         options.angles = options.angles.reshape(1, 1, -1)
     else:
@@ -88,6 +121,27 @@ def CTDetSource(options):
         options.angles = options.angles.reshape(-1, 1)
 
 def setCTCoordinates(options):
+    """
+    Sets all the necessary coordinates for CT. The functionality depends highly
+    on the input parameters. If source/detector coordinates are manually input,
+    they are only transformed to the correct format. Otherwise the coordinates
+    themselves are computed.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Raises
+    ------
+    ValueError
+        If invalid subset type.
+
+    Returns
+    -------
+    None.
+
+    """
     if options.subsets > 1 and options.subsetType < 8 and options.subsetType > 0:
         raise ValueError('Subset types < 8 with CT data are not yet supported in Python! Use custom detector coordinates instead or subset types >= 8.')
     if options.x.size == 0 or hasattr(options, 'coord'):
@@ -106,7 +160,7 @@ def setCTCoordinates(options):
         dXY = np.dot(R, det).T
         options.x = np.column_stack((sXY[:, 0], dXY[:, 0]))
         options.y = np.column_stack((sXY[:, 1], dXY[:, 1]))
-    if options.x.size != options.nColsD * options.nRowsD * options.nProjections and options.uV.size <= 1:
+    if options.x.size != options.nColsD * options.nRowsD * options.nProjections and options.uV.size <= 1 and not options.useHelical:
         options.uV = CTDetectorCoordinates(options.angles,options.pitchRoll)
         if np.ndim(options.uV) == 3 and options.uV.shape[2] > 1:
             options.uV = np.reshape(options.uV, (-1, 2))
@@ -126,11 +180,30 @@ def setCTCoordinates(options):
         options.z[:,3] = options.z[:,3] * options.dPitchX
         options.z[:,4] = options.z[:,4] * options.dPitchX
         options.z[:,2] = options.z[:,2] * options.dPitchY
-    else:
+    elif options.uV.size > 0:
         options.z[:,0] = options.z[:,0] * options.dPitchX
         options.z[:,1] = options.z[:,1] * options.dPitchX
+    if options.useHelical:
+        options.x = np.column_stack((options.x[:,0], options.y[:,0], options.z[:,0], options.x[:,1], options.y[:,1], options.z[:,1]))
+        options.z = np.float32(options.angles)
         
 def CTDetectorCoordinates(angles, pitchRoll = np.empty(0, dtype=np.float32)):
+    """
+    Computes the direction vectors for each projection based on the input data.
+
+    Parameters
+    ----------
+    angles : NumPy array
+        Projection angles.
+    pitchRoll : NumPy array, optional
+        The pitch/roll/yaw angles. The default is np.empty(0, dtype=np.float32).
+
+    Returns
+    -------
+    uV : NumPy array
+        The direction vectors of the panel pixels for each projection.
+
+    """
     if pitchRoll.size == 0:
         uV = np.column_stack((-np.sin(angles), np.cos(angles)))
     else:
@@ -144,7 +217,25 @@ def CTDetectorCoordinates(angles, pitchRoll = np.empty(0, dtype=np.float32)):
     return uV
 
 
-def getCoordinates(options):    
+def getCoordinates(options):   
+    """
+    Computes PET sinogram coordinates if not already input.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Returns
+    -------
+    x : NumPy array
+        x-direction coordinates for detector/detector pairs.
+    y : NumPy array
+        y-direction coordinates for detector/detector pairs.
+    z : NumPy array
+        z-direction coordinates for detector/detector pairs.
+
+    """
     if isinstance(options.x, np.ndarray) and options.x.size > 1 and options.y.size > 1 and options.listmode == 0:
         if not(options.z.size == options.x.size) and options.z.size < options.nProjections:
             options.z = np.zeros(options.x.shape,dtype=np.float32)
@@ -153,7 +244,7 @@ def getCoordinates(options):
         z = options.z
     else:
         if options.use_raw_data == 0:
-            x,y = detectorCoordinates(options);
+            x,y = detectorCoordinates(options)
             if options.nLayers > 1:
                 koko = x.size / 2
             else:
@@ -161,24 +252,24 @@ def getCoordinates(options):
                 
             if options.arc_correction:
                 from omegatomo.util.arcCorrection import arc_correction
-                x, y, options = arc_correction(options, False);
+                x, y, options = arc_correction(options, False)
             if options.sampling > 1:
                 from omegatomo.util.sampling import increaseSampling
-                x, y, options = increaseSampling(options, x, y, False);
+                x, y, options = increaseSampling(options, x, y, False)
     
             # if options.arc_correction and ~options.precompute_lor
             #     [x, y, options] = arcCorrection(options, xp, yp, interpolateSinogram);
             # if options.sampling > 1 and ~options.precompute_lor
             #     [x, y, options] = increaseSampling(options, x, y, interpolateSinogram);
             z = sinogramCoordinates3D(options)
-            if not(options.NSinos == options.TotSinos):
+            if not options.NSinos == options.TotSinos:
                 z = z[0:options.NSinos,:]
             x = np.column_stack((x[:,0], y[:,0], x[:,1], y[:,1]))
         else:
             if options.det_per_ring < options.det_w_pseudo:
-                options.offangle = options.offangle / options.det_w_pseudo;
-                options.offangle = options.offangle * options.det_per_ring;
-            x, y = detectorCoordinates(options);
+                options.offangle = options.offangle / options.det_w_pseudo
+                options.offangle = options.offangle * options.det_per_ring
+            x, y = detectorCoordinates(options)
             # if options.sampling_raw > 1 and ~options.precompute_lor
             #     [x, y, options] = increaseSampling(options, x, y, interpolateSinogram);
             z_length = float(options.rings + np.sum(options.pseudot)) * options.cr_pz
@@ -233,6 +324,24 @@ def getCoordinatesSPECT(options: proj.projectorClass) -> Tuple[np.ndarray, np.nd
     return np.asfortranarray(x), np.asfortranarray(z)
     
 def detectorCoordinates(options):
+    """
+    Transaxial PET coordinates. This function mainly just calls the below one 
+    with specific options. Also, the detector space rotation is done here if
+    selected.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Returns
+    -------
+    x : NumPy array
+        x-direction coordinates for detector/detector pairs.
+    y : NumPy array
+        y-direction coordinates for detector/detector pairs.
+
+    """
     cr_p = options.cr_p
     diameter = options.diameter
     if isinstance(options.cryst_per_block, np.ndarray):
@@ -243,11 +352,11 @@ def detectorCoordinates(options):
     x = 0
     y = 0
     
-    DOI = options.DOI;
+    DOI = options.DOI
     
-    transaxial_multip = options.transaxial_multip;
+    transaxial_multip = options.transaxial_multip
     
-    diameter = diameter + DOI * 2;
+    diameter = diameter + DOI * 2
     
     
     if options.det_w_pseudo > options.det_per_ring:
@@ -258,21 +367,21 @@ def detectorCoordinates(options):
         
     elif options.nLayers > 1:
         if options.cryst_per_block[0] == options.cryst_per_block[1]:
-            x1,y1 = computeCoordinates(options, blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, False);
+            x1,y1 = computeCoordinates(options, blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, False)
             # orig_diameter = diameter + options.crystH(end) * 2;
             diameter = diameter + DOI * 2 + options.crystH[0] * 2
-            x2,y2 = computeCoordinates(options, blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, False);
+            x2,y2 = computeCoordinates(options, blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, False)
             # xp = [x;xp];
             # yp = [y;yp];
         elif options.cryst_per_block[0] > options.cryst_per_block[1]:
-            x,y = computeCoordinates(options, blocks_per_ring, transaxial_multip,options.cryst_per_block[-1].item(), diameter, cr_p, True);
+            x,y = computeCoordinates(options, blocks_per_ring, transaxial_multip,options.cryst_per_block[-1].item(), diameter, cr_p, True)
             # orig_diameter = diameter + options.crystH(end) * 2;
             # diameter = diameter + DOI * 2 + options.crystH(end) * 2;
             # [x,y] = computeCoordinates(blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, false);
             # xp = [x;xp];
             # yp = [y;yp];
         else:
-            x,y = computeCoordinates(options, blocks_per_ring, transaxial_multip,options.cryst_per_block[-1].item(), diameter, cr_p, False);
+            x,y = computeCoordinates(options, blocks_per_ring, transaxial_multip,options.cryst_per_block[-1].item(), diameter, cr_p, False)
             # orig_diameter = diameter + options.crystH(end) * 2;
             # diameter = diameter + DOI * 2 + options.crystH(end) * 2;
             # [xp,yp] = computeCoordinates(blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, true);
@@ -284,12 +393,40 @@ def detectorCoordinates(options):
     if options.flip_image:
         x = np.flip(x)
         y = np.flip(y)
-    if not(options.offangle == 0):
+    if not options.offangle == 0:
         x = np.roll(x, int(np.round(options.offangle)))
         y = np.roll(y, int(np.round(options.offangle)))
     return x, y
 
 def computeCoordinates(options, blocks_per_ring, transaxial_multip, cryst_per_block, diameter, cr_p, usePseudo):
+    """
+    Transaxial PET coordinates.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+    blocks_per_ring : int
+        Number of blocks per transaxial ring.
+    transaxial_multip : int
+        If sub-blocks are present the number of those.
+    cryst_per_block : int
+        The number of crystals per block.
+    diameter : float
+        Diameter of the bore.
+    cr_p : float
+        Crystal pitch/size in transaxial direction.
+    usePseudo : bool
+        True if pseudo detectors are present, False otherwise.
+
+    Returns
+    -------
+    x : NumPy array
+        x-direction coordinates for detector/detector pairs.
+    y : NumPy array
+        y-direction coordinates for detector/detector pairs.
+
+    """
     import math
     cryst_per_block_orig = cryst_per_block
     if usePseudo:
@@ -306,8 +443,8 @@ def computeCoordinates(options, blocks_per_ring, transaxial_multip, cryst_per_bl
     erotus = (diameter - np.sum(np.abs(widths))) / np.sum(np.cos(np.radians(angle[:((blocks_per_ring * transaxial_multip) // 2 + 1)]))) / 2
     erotusy = (diameter - np.sum(np.abs(widthsy))) / np.sum(np.abs(np.sin(np.radians(angle[:((blocks_per_ring * transaxial_multip) // 2)])))) / 2
     
-    alkupistex = (diameter / 2)
-    alkupistey = -((cryst_per_block_orig) / 2 + 0.5) * cr_p
+    alkupistex = diameter / 2.
+    alkupistey = -((cryst_per_block_orig) / 2. + 0.5) * cr_p
     
     ii = 0
     x = np.zeros(((blocks_per_ring * transaxial_multip) * (cryst_per_block)), dtype=np.float32)
@@ -418,6 +555,24 @@ def computeCoordinates(options, blocks_per_ring, transaxial_multip, cryst_per_bl
     return x, y
             
 def formDetectorIndices( det_w_pseudo, nLayers = 1, crystN = 0):
+    """
+    For raw data only. Note used at the moment.
+
+    Parameters
+    ----------
+    det_w_pseudo : int
+        Number of detectors per transaxial ring, including pseudos.
+    nLayers : int, optional
+        Number of crystal layers. The default is 1.
+    crystN : int, optional
+        DESCRIPTION. The default is 0.
+
+    Returns
+    -------
+    L : NumPy array
+        Detector indices.
+
+    """
     L = np.zeros((det_w_pseudo*(det_w_pseudo+1)//2, 2), dtype=np.int32)
     jh = 0
     for kk in range(1, det_w_pseudo + 1):
@@ -432,13 +587,36 @@ def formDetectorIndices( det_w_pseudo, nLayers = 1, crystN = 0):
     return L
         
 def sinogramCoordinates2D(options, x, y, nLayers = 1):
+    """
+    Computes the transaxial sinogram coordinates using the input detector
+    coordinates.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+    x : NumPy array
+        x-direction coordinates for detector/detector pairs.
+    y : NumPy array
+        y-direction coordinates for detector/detector pairs.
+    nLayers : TYPE, optional
+        DESCRIPTION. The default is 1.
+
+    Returns
+    -------
+    x : NumPy array
+        x-direction coordinates for sinogram bins.
+    y : NumPy array
+        y-direction coordinates for sinogram bins.
+
+    """
     det_w_pseudo = options.det_w_pseudo
     Nang = options.Nang
     Ndist = options.Ndist
     mashing = 1
     # Determine the possible mashing factor
     if Nang < options.det_w_pseudo//2:
-        mashing = (options.det_w_pseudo // Nang // 2)
+        mashing = options.det_w_pseudo // Nang // 2
         Nang = Nang * mashing
     
     
@@ -448,9 +626,9 @@ def sinogramCoordinates2D(options, x, y, nLayers = 1):
     
     # Form the detector vector pair
     if isinstance(options.cryst_per_block, np.ndarray):
-        L = formDetectorIndices(det_w_pseudo, nLayers, options.cryst_per_block[0].item());
+        L = formDetectorIndices(det_w_pseudo, nLayers, options.cryst_per_block[0].item())
     else:
-        L = formDetectorIndices(det_w_pseudo, nLayers, options.cryst_per_block);
+        L = formDetectorIndices(det_w_pseudo, nLayers, options.cryst_per_block)
     
     L = L - 1
     
@@ -463,7 +641,7 @@ def sinogramCoordinates2D(options, x, y, nLayers = 1):
     b = j + det_w_pseudo // 2;
     
     # Distance
-    i = np.abs(xa - ya - det_w_pseudo // 2);
+    i = np.abs(xa - ya - det_w_pseudo // 2)
     for kk in range(len(ya)):
         if (ya[kk] < j[kk]) or (b[kk] < xa[kk]):
             i[kk] = -i[kk]
@@ -523,6 +701,22 @@ def sinogramCoordinates2D(options, x, y, nLayers = 1):
     return x, y
     
 def sinogramCoordinates3D(options, layers = (1,1)):
+    """
+    Same as above, but for axial coordinates.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+    layers : tuple, optional
+        The crystal layer combinations. The default is (1,1).
+
+    Returns
+    -------
+    z : Numpy array
+        Axial sinogram coordinates.
+
+    """
     import math
     layer1 = layers[0]
     layer2 = layers[1]
@@ -701,7 +895,7 @@ def sinogramCoordinates3D(options, layers = (1,1)):
     return z
 
 
-def SPECTParameters(options: proj.projectorClass) -> None:
+def SPECTParameters(options: proj.projectorClass):
     if options.projector_type in [1, 11, 12, 2, 21, 22]: # Ray tracing projectors
         if options.rayShiftsDetector.size == 0: # Collimator modeling
             options.rayShiftsDetector = np.zeros((2*options.nRays, options.nRowsD, options.nColsD, options.nProjections), dtype=np.float32)
@@ -726,19 +920,24 @@ def SPECTParameters(options: proj.projectorClass) -> None:
                     tmp_x *= options.dPitchX
                     tmp_y *= options.dPitchY
                 elif np.isinf(options.colFxy) and np.isinf(options.colFz):  # Parallel-hole collimator
-                    tmp_x *= options.colR
-                    tmp_y *= options.colR
+                    tmp_x *= 2 * options.colR
+                    tmp_y *= 2 * options.colR
 
-                tmp_shift = np.vstack((tmp_x.ravel(), tmp_y.ravel())).reshape(-1, order='F')
+                tmp_shift = np.column_stack((tmp_x.ravel(), tmp_y.ravel())).T.reshape(-1, 1, order='F')
 
                 for kk in range(options.nRays):
-                    options.rayShiftsSource[2 * kk] = tmp_shift[2 * kk]
-                    options.rayShiftsSource[2 * kk + 1] = tmp_shift[2 * kk + 1]
+                    options.rayShiftsSource[2 * kk, :, :, :] = tmp_shift[2 * kk]
+                    options.rayShiftsSource[2 * kk + 1, :, :, :] = tmp_shift[2 * kk + 1]
+            
+        options.rayShiftsSource = options.rayShiftsSource.ravel('F')
 
     if options.projector_type in [12, 21, 2, 22]: # Orthogonal distance ray tracer
-        options.coneOfResponseStdCoeffA = 2*options.colR/options.colL
-        options.coneOfResponseStdCoeffB = 2*options.colR/options.colL*(options.colL+options.colD+options.cr_p/2)
-        options.coneOfResponseStdCoeffC = options.iR
+        if options.coneOfResponseStdCoeffA < 0:
+            options.coneOfResponseStdCoeffA = 2*options.colR/options.colL
+        if options.coneOfResponseStdCoeffB < 0:
+            options.coneOfResponseStdCoeffB = 2*options.colR/options.colL*(options.colL+options.colD+options.cr_p/2)
+        if options.coneOfResponseStdCoeffC < 0:
+            options.coneOfResponseStdCoeffC = options.iR
 
     if options.projector_type == 6: # Rotation-based projector
         DistanceToFirstRow = 0.5 * options.dx
@@ -768,7 +967,7 @@ def SPECTParameters(options: proj.projectorClass) -> None:
             yy = np.tile(y, (xx.shape[1], 1))
 
             if np.any(options.sigmaXY < 0.):
-                s1 = np.tile(options.sigmaZ, (xx.shape[0], yy.shape[1], 1))
+                s1 = np.tile(options.sigmaZ**2, (xx.shape[0], yy.shape[1], 1))
                 options.gFilter = (1 / (2 * np.pi * s1)) * np.exp(-(xx[:, :, None]**2 + yy[:, :, None]**2) / (2 * s1))
             else:
                 s1 = np.tile(options.sigmaZ, (xx.shape[0], yy.shape[1], 1))
@@ -784,11 +983,11 @@ def SPECTParameters(options: proj.projectorClass) -> None:
             colE = colE.max()
 
             options.gFilter = options.gFilter[rowS:rowE+1, colS:colE+1, :]
-            options.gFilter /= np.sum(options.gFilter)
+            options.gFilter /= np.sum(options.gFilter, axis=(0, 1), keepdims=True)
 
 
         panelTilt = options.swivelAngles - options.angles + 180
-        options.blurPlanes = (options.FOVa_x / 2 - (options.radiusPerProj * np.cos(np.deg2rad(panelTilt)) - options.CORtoDetectorSurface)) / options.dx
+        options.blurPlanes = np.round((options.FOVa_x / 2 - (options.radiusPerProj * np.cos(np.deg2rad(panelTilt)) - options.CORtoDetectorSurface)) / options.dx)
         options.blurPlanes2 = options.radiusPerProj * np.sin(np.deg2rad(panelTilt)) / options.dx
 
         if options.angles.size == 0:
@@ -802,5 +1001,3 @@ def SPECTParameters(options: proj.projectorClass) -> None:
         options.radiusPerProj = options.radiusPerProj.ravel('F').astype(dtype=np.float32)
         options.blurPlanes = options.blurPlanes.ravel('F').astype(dtype=np.int32)
         options.blurPlanes2 = options.blurPlanes2.ravel('F').astype(dtype=np.int32)
-
-        return None

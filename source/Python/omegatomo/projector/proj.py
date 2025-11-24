@@ -2,10 +2,6 @@
 """
 Created on Wed Mar  6 17:40:13 2024
 
-@author: Ville-Veikko Wettenhovi
-
-
-
 #########################################################################
 # Copyright (C) 2024-2025 Ville-Veikko Wettenhovi
 #
@@ -164,12 +160,12 @@ class projectorClass:
     weighted_center_weight = 2.
     offangle = 0.
     binning = 1
-    sourceToCRot = 0.
+    sourceToCRot = 1.
     sourceToDetector = 1.
     nBed = 1
     TOF_FWHM = 0.
     TOF_width = 0.
-    TOF_bins_used = 0
+    TOF_bins_used = 1
     span = 3
     cutoffFrequency = 1.
     normalFilterSigma = 0.25
@@ -441,13 +437,13 @@ class projectorClass:
     useMultiResolutionVolumes = False
     nMultiVolumes = 0
     storeMultiResolution = False
-    extrapLength = 0.2
+    extrapLength = None
     axialExtrapolation = False
     transaxialExtrapolation = False
     useExtrapolationWeighting = False
     transaxialEFOV = False
     axialEFOV = False
-    eFOVLength = 0.4
+    eFOVLength = None
     NLM_gauss = 2.
     TOF_noise_FWHM = 0.
     TOF_offset = 0.
@@ -480,9 +476,9 @@ class projectorClass:
     rayShiftsSource: npt.NDArray[np.float32] = np.empty(0, dtype=np.float32)
     CORtoDetectorSurface: float = 0 # Detector swivel radius
     swivelAngles: npt.NDArray[np.float32] = np.empty(0, dtype = np.float32)
-    coneOfResponseStdCoeffA = 0
-    coneOfResponseStdCoeffB = 0
-    coneOfResponseStdCoeffC = 0
+    coneOfResponseStdCoeffA = -1
+    coneOfResponseStdCoeffB = -1
+    coneOfResponseStdCoeffC = -1
     FISTAType = 0
     maskFPZ = 1
     maskBPZ = 1
@@ -493,6 +489,8 @@ class projectorClass:
     builtin = True
     precorrect = False
     seed = -1
+    useHelical = False
+    helicalRadius = 1.
 
     def __init__(self):
         # C-struct
@@ -568,7 +566,7 @@ class projectorClass:
                 
                 # Now the sinogram and FOV XZ-plane match in physical dimensions but not in resolution.
                 from skimage.transform import resize
-                self.SinM = resize(self.SinM, (self.Nx, self.Nz), preserve_range=True)
+                self.SinM = resize(self.SinM, (self.Nx, self.Nz), order=0, mode = 'reflect', anti_aliasing = True, preserve_range=True)
                 
             if self.swivelAngles.size == 0:
                 self.swivelAngles = self.angles + 180
@@ -866,6 +864,8 @@ class projectorClass:
                         z_det = np.reshape(z_det, (self.nProjections, 6))
                         z_det = z_det[self.index,:]
                         z_det = z_det.ravel('C')
+                    elif self.useHelical:
+                        z_det = z_det[self.index]
                     else:
                         z_det = np.reshape(z_det, (self.nProjections, 2))
                         z_det = z_det[self.index,:]
@@ -879,7 +879,7 @@ class projectorClass:
                     z_det = np.reshape(z_det, (self.nProjections, -1))
                     z_det = z_det[self.index,:]
                     z_det = z_det.ravel('C')
-                if self.CT:
+                if self.CT and not self.useHelical:
                     self.uV = self.uV[self.index,:]
         if self.listmode == 0 and self.projector_type != 6:
             if self.SPECT:
@@ -974,7 +974,10 @@ class projectorClass:
             print(f"Transaxial FOV is larger than the scanner diameter ({self.diameter})!")
         if not self.CT and not self.SPECT and self.axial_fov < (self.rings * self.cr_pz - self.cr_pz) and self.rings > 0:
             print("Axial FOV is too small, crystal ring(s) on the boundary have no slices!")
-        
+        if self.SPECT and math.sqrt(self.nRays) % 1 != 0:
+            raise ValueError("With SPECT, options.nRays has to be a square")
+        if self.SPECT and self.projector_type in [2, 12, 21, 22]:
+            print('Orthogonal distance ray tracer should be used with 1 ray.')
         if not(self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.PKMA or self.FISTA or self.FISTAL1 or self.MBSREM or self.SPS or self.MRAMLA) and any(self.precondTypeImage):
             print("Image-based preconditioning selected, but the selected algorithm(s) do not support preconditioning. No preconditioning will be performed.")
             print("Supported algorithms are: MBSREM, MRAMLA, PKMA, SPS, PDHG, PDHGL1, PDHGKL, FISTA, FISTAL1, PDDY")
@@ -1165,6 +1168,10 @@ class projectorClass:
             raise ValueError('Index-based reconstruction is not supported on CPU!')
         if self.useCPU:
             print('CPU functionality is limited and might not work correctly in all cases! Use at your own risk!')
+        if self.useHelical and not self.projector_type == 4:
+            raise ValueError('Only projector type 4 is supported with curved helical data!')
+        if self.offangle > 0 and self.useHelical:
+            print('Rotation is not yet supported with helical CT data')
             
         varNeg = ['LSQR','CGLS','FDK','SART']
         neg = [name for name in varNeg if getattr(self, name, False)]
@@ -1892,6 +1899,7 @@ class projectorClass:
             ('nProjections', ctypes.c_int64),
             ('TOF_bins', ctypes.c_int64),
             ('tau', ctypes.c_float),
+            ('helicalRadius', ctypes.c_float),
             ('tube_radius', ctypes.c_float),
             ('epps', ctypes.c_float),
             ('sigma_x', ctypes.c_float),
@@ -1988,6 +1996,7 @@ class projectorClass:
             ('stochasticSubsetSelection', ctypes.c_bool),
             ('useTotLength', ctypes.c_bool),
             ('useParallelBeam', ctypes.c_bool),
+            ('useHelical', ctypes.c_bool),
             ('OSEM', ctypes.c_bool),
             ('LSQR', ctypes.c_bool),
             ('CGLS', ctypes.c_bool),

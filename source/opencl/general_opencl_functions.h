@@ -9,7 +9,7 @@
 *
 * USEIMAGES specifies whether OpenCL images or CUDA textures are used. If it is not defined, regular buffers are used. Default is ON.
 *
-* Copyright (C) 2019-2024 Ville-Veikko Wettenhovi, Niilo Saarlemo
+* Copyright (C) 2019-2025 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
 * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by
 * the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
@@ -159,77 +159,41 @@ inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
 }
 
 // Metal scalar params unpacking
-#define UNPACK_METAL_PARAMS(params) \
-    FLOAT global_factor = params.global_factor; \
-    FLOAT d_epps = params.d_epps; \
-	uint d_size_x = params.d_size_x; \
-	uint d_det_per_ring = params.d_det_per_ring; \
-	FLOAT sigma_x = params.sigma_x; \
-	FLOAT coneOfResponseStdCoeffA = params.coneOfResponseStdCoeffA; \
-    FLOAT coneOfResponseStdCoeffB = params.coneOfResponseStdCoeffB; \
-    FLOAT coneOfResponseStdCoeffC = params.coneOfResponseStdCoeffC; \
-	FLOAT crystalSizeX = params.crystalSizeX; \
-	FLOAT crystalSizeY = params.crystalSizeY; \
-	FLOAT orthWidth = params.orthWidth; \
-	FLOAT bmin = params.bmin; \
-	FLOAT bmax = params.bmax; \
-	FLOAT Vmax = params.Vmax; \
-	uint d_sizey = params.d_sizey; \
-	long d_nProjections = params.d_nProjections; \
-	uint rings = params.rings; \
-	uint d_Nx = params.d_Nx; \
-	uint d_Ny = params.d_Ny; \
-	uint d_Nz = params.d_Nz; \
-	FLOAT d_dx = params.d_dx; \
-	FLOAT d_dy = params.d_dy; \
-	FLOAT d_dz = params.d_dz; \
-	FLOAT bx = params.bx; \
-	FLOAT by = params.by; \
-	FLOAT bz = params.bz; \
-	FLOAT d_bmaxx = params.d_bmaxx; \
-	FLOAT d_bmaxy = params.d_bmaxy; \
-	FLOAT d_bmaxz = params.d_bmaxz; \
-	unsigned char no_norm = params.no_norm; \
-	unsigned long m_size = params.m_size; \
-	uint currentSubset = params.currentSubset; \
-	int aa = params.aa; 
-
-struct ScalarParams { // For OpenCL, these are set in initializeKernel.
-    float global_factor;
-	float d_epps;
-	uint d_size_x;
-	uint d_det_per_ring;
-	float sigma_x;
-	float coneOfResponseStdCoeffA;
-    float coneOfResponseStdCoeffB;
-    float coneOfResponseStdCoeffC;
-	float crystalSizeX;
-	float crystalSizeY;
-	float orthWidth;
-	float bmin;
-	float bmax;
-	float Vmax;
-	uint d_sizey;
-	long d_nProjections;
-	uint rings;
-	uint d_Nx;
-	uint d_Ny;
-	uint d_Nz;
-	float d_dx;
-	float d_dy;
-	float d_dz;
-	float bx;
-	float by;
-	float bz;
-	float d_bmaxx;
-	float d_bmaxy;
-	float d_bmaxz;
-	unsigned char no_norm;
-	unsigned long m_size;
-	uint currentSubset;
-	int aa;
-};
-
+#define UNPACK_METAL_PARAMS(staticParams, dynamicParams) \
+    FLOAT global_factor = staticParams.global_factor; \
+    FLOAT d_epps = staticParams.epps; \
+	uint d_size_x = staticParams.nRowsD; \
+	uint d_det_per_ring = staticParams.det_per_ring; \
+	FLOAT sigma_x = staticParams.sigma_x; \
+	FLOAT coneOfResponseStdCoeffA = staticParams.coneOfResponseStdCoeffA; \
+    FLOAT coneOfResponseStdCoeffB = staticParams.coneOfResponseStdCoeffB; \
+    FLOAT coneOfResponseStdCoeffC = staticParams.coneOfResponseStdCoeffC; \
+	FLOAT crystalSizeX = staticParams.dPitchX; \
+	FLOAT crystalSizeY = staticParams.dPitchY; \
+	FLOAT bmin = staticParams.bmin; \
+	FLOAT bmax = staticParams.bmax; \
+	FLOAT Vmax = staticParams.Vmax; \
+	uint d_sizey = staticParams.nColsD; \
+	long d_nProjections = dynamicParams.nProjections; \
+	uint rings = staticParams.rings; \
+	uint d_Nx = dynamicParams.d_N[0]; \
+	uint d_Ny = dynamicParams.d_N[1]; \
+	uint d_Nz = dynamicParams.d_N[2]; \
+	FLOAT d_dx = dynamicParams.d[0]; \
+	FLOAT d_dy = dynamicParams.d[1]; \
+	FLOAT d_dz = dynamicParams.d[2]; \
+	FLOAT bx = dynamicParams.b[0]; \
+	FLOAT by = dynamicParams.b[1]; \
+	FLOAT bz = dynamicParams.b[2]; \
+	FLOAT d_bmaxx = dynamicParams.bmax[0]; \
+	FLOAT d_bmaxy = dynamicParams.bmax[1]; \
+	FLOAT d_bmaxz = dynamicParams.bmax[2]; \
+	unsigned char no_norm = dynamicParams.no_norm; \
+	unsigned long m_size = dynamicParams.m_size; \
+	uint currentSubset = dynamicParams.currentSubset; \
+	int aa = dynamicParams.aa; \
+    float orthWidth = dynamicParams.orthWidth;
+	
 #endif
 #ifdef OPENCL
 #define PTR_DEV // Metal requires address space qualifier for pointers
@@ -957,11 +921,11 @@ DEVICE void rhs(const float local_ele, PTR_THR const float *ax, const LONG local
 #ifdef INDEXBASED
 DEVICE void getDetectorCoordinatesListmode(
 #if defined(USEGLOBAL)
-	const CLGLOBAL float* d_xy,
+	const CLGLOBAL float* d_xy, const CLGLOBAL float* d_z, 
 #else
-	CONSTANT float* d_xy, 
+	CONSTANT float* d_xy, CONSTANT float* d_z, 
 #endif
-	CONSTANT float* d_z, const CLGLOBAL ushort* trIndex, const CLGLOBAL ushort* axIndex, float3* s, float3* d, const size_t idx
+	const CLGLOBAL ushort* trIndex, const CLGLOBAL ushort* axIndex, float3* s, float3* d, const size_t idx
 #if defined(N_RAYS)
 	, const int lorXY, const int lorZ, const float2 cr
 #endif
@@ -1006,7 +970,15 @@ DEVICE void getDetectorCoordinatesCT(CONSTANT float* d_xyz,
 #else
 DEVICE void getDetectorCoordinatesCT(const CLGLOBAL float* CLRESTRICT d_xyz, 
 #endif
-	CONSTANT float* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch
+#ifdef HELICAL
+	const float r, 
+#endif
+#if !defined(USEGLOBAL)
+	CONSTANT float* d_uv, 
+#else
+	const CLGLOBAL float* CLRESTRICT d_uv, 
+#endif
+	float3* s, float3* d, const int3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch
 #ifdef PROJ5
 	, float3* dR, float3* dL, float3* dU, float3* dD
 #endif
@@ -1015,6 +987,13 @@ DEVICE void getDetectorCoordinatesCT(const CLGLOBAL float* CLRESTRICT d_xyz,
 	*s = CMFLOAT3(d_xyz[id], d_xyz[id + 1], d_xyz[id + 2]);
 	*d = CMFLOAT3(d_xyz[id + 3], d_xyz[id + 4], d_xyz[id + 5]);
 	const float2 indeksi = MFLOAT2(CFLOAT(i.x) - CFLOAT(d_size_x) / 2.f + .5f, CFLOAT(i.y) - CFLOAT(d_sizey) / 2.f + .5f);
+#ifdef HELICAL
+	const float angle = d_uv[i.z];
+	const float dtheta = (d_dPitch.x / r) * indeksi.x;
+	(*d).x += r * (COSF(angle + dtheta) - COSF(angle));
+	(*d).y -= r * (SINF(angle + dtheta) - SINF(angle));
+	(*d).z += indeksi.y * d_dPitch.y;
+#else
 	id = i.z * NA;
 #if defined(PITCH)
 	const float3 apuX = MFLOAT3(d_uv[id], d_uv[id + 1], d_uv[id + 2]);
@@ -1069,16 +1048,17 @@ DEVICE void getDetectorCoordinatesCT(const CLGLOBAL float* CLRESTRICT d_xyz,
 #endif
 #endif
 #endif
+#endif
 }
 
 #elif defined(SPECT)
 DEVICE void getDetectorCoordinatesSPECT(
 #if defined(USEGLOBAL)
-	const CLGLOBAL float *d_xyz,
+	const CLGLOBAL float *d_xyz, const CLGLOBAL float *d_uv, 
 #else
-	CONSTANT float *d_xyz, 
+	CONSTANT float *d_xyz, CONSTANT float *d_uv, 
 #endif
-    CONSTANT float *d_uv, PTR_THR FLOAT3 *s, PTR_THR FLOAT3 *d, const int3 i, const uint d_size_x, const uint d_sizey, const FLOAT2 d_dPitch, const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource, int lorXY, size_t idx) {
+    PTR_THR FLOAT3 *s, PTR_THR FLOAT3 *d, const int3 i, const uint d_size_x, const uint d_sizey, const FLOAT2 d_dPitch, const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource, int lorXY, size_t idx) {
 	uint id = i.z * 6;
 	*s = CMFLOAT3((FLOAT)d_xyz[id], (FLOAT)d_xyz[id + 1], (FLOAT)d_xyz[id + 2]); // TODO remove cast
 	*d = CMFLOAT3((FLOAT)d_xyz[id + 3], (FLOAT)d_xyz[id + 4], (FLOAT)d_xyz[id + 5]); // TODO remove cast
@@ -1107,11 +1087,11 @@ DEVICE void getDetectorCoordinatesSPECT(
 // Get the detector coordinates for the current (raw) measurement
 DEVICE void getDetectorCoordinatesRaw(
 #if defined(USEGLOBAL)
-	const CLGLOBAL float* d_xy,
+	const CLGLOBAL float* d_xy, const CLGLOBAL float* d_z,
 #else
-	CONSTANT float* d_xy, 
+	CONSTANT float* d_xy, CONSTANT float* d_z,
 #endif
-	CONSTANT float *d_z, const int3 i, float3* s, float3* d, const int2 indz
+	const int3 i, float3* s, float3* d, const int2 indz
 #if defined(N_RAYS)
 	, const int lorXY, const int lorZ, const float2 cr
 #endif
@@ -1136,12 +1116,11 @@ DEVICE void getDetectorCoordinatesRaw(
 // Get the detector coordinates for the current sinogram bin (index-based subsets)
 DEVICE void getDetectorCoordinates(const CLGLOBAL uint *d_xyindex, const CLGLOBAL ushort *d_zindex, const size_t idx,
 	PTR_THR float3* s, PTR_THR float3* d, 
-#if defined(CT) || !defined(USEGLOBAL)
-	CONSTANT float *d_xy, 
+#if !defined(USEGLOBAL)
+	CONSTANT float *d_xy, CONSTANT float *d_z
 #else
-	const CLGLOBAL float *d_xy, 
+	const CLGLOBAL float *d_xy, const CLGLOBAL float *d_z
 #endif
-	CONSTANT float *d_z
 #if defined(N_RAYS)
 	, const int lorXY, const int lorZ, const float2 cr
 #endif
@@ -1182,11 +1161,10 @@ DEVICE void getDetectorCoordinates(const CLGLOBAL uint *d_xyindex, const CLGLOBA
 // Get the detector coordinates for the current measurement (no subsets or using full sinogram subsets)
 DEVICE void getDetectorCoordinatesFullSinogram(const uint d_size_x, const int3 i, PTR_THR FLOAT3* s, PTR_THR FLOAT3* d, 
 #if defined(USEGLOBAL)
-	const CLGLOBAL float* d_xy,
+	const CLGLOBAL float* d_xy, const CLGLOBAL float* d_z
 #else
-	CONSTANT float* d_xy, 
+	CONSTANT float* d_xy, CONSTANT float* d_z
 #endif
-	CONSTANT float* d_z
 #if defined(N_RAYS)
 	, const int lorXY, const int lorZ, const float2 cr
 #endif
@@ -1550,5 +1528,68 @@ DEVICE void forwardProjectAF(CLGLOBAL float* output, PTR_THR float *ax, size_t i
 	* temp
 #endif
     ;
+}
+#endif
+
+#ifdef HELICAL
+DEVICE int rayArcIntersection(
+    float3 s, 
+    float3 v,
+	float3 d, 
+    float xc, float yc, float r,
+    float zMin, float zMax,
+    float thetaSpan, float thetaCenter, 
+	float* theta, 
+    float3* intersection
+) {
+	float fx = s.x - xc;
+	float fy = s.y - yc;
+    float a = v.x * v.x + v.y * v.y;
+    float b = 2.f * (v.x * fx + v.y * fy);
+    float c = fx * fx + fy * fy - r * r;
+    float disc = b * b - 4.f * a * c;
+    if (disc < 0) 
+		return 0;
+
+    for (int signv = -1; signv <= 1; signv += 2) {
+        float t = (-b + (float)signv * SQRT(disc)) / (2.f*a);
+        if (t < 0.f) 
+			continue;
+		float3 xyz = s + v * t;
+
+		const float y = xyz.y - yc;
+		const float x = xyz.x - xc;
+		const float distX = xyz.x - d.x;
+		const float distY = xyz.y - d.y;
+		const float rr = 2.f * r * r;
+		*theta = ACOS((rr - (distX * distX + distY * distY)) / rr);
+        *theta *= -sign(ATAN2(y, x) - thetaCenter);
+		if (*theta > thetaSpan / 2.f || *theta < 0)
+			continue;
+		float dist1 = xyz.x - s.x;
+		float dist2 = xyz.y - s.y;
+		float dist = SQRT(dist1 * dist1 + dist2 * dist2);
+		float distV = SQRT(v.x * v.x + v.y * v.y);
+		float angle = v.z/distV;
+		xyz.z = angle * dist + d.z;
+        if (xyz.z < zMin || xyz.z > zMax) 
+			continue;
+
+        *intersection = xyz;
+		*theta += thetaSpan / 2.f;
+        return 1;
+    }
+    return 0;
+}
+
+DEVICE void normalizeCurvedCoordinates(float3 xyz, 
+	float zMin, float zMax,
+    float thetaSpan,
+	float theta, 
+	float* u, float* v) {
+
+    *u = theta / thetaSpan;
+
+    *v = (xyz.z - zMin) / (zMax - zMin);
 }
 #endif

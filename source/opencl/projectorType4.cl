@@ -79,6 +79,9 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #else
 	const float2 d_dPitch, 
 #endif
+#ifdef HELICAL
+    const float r,
+#endif
     const float dL, const float global_factor, 
 	///////////////////////// TOF BINS /////////////////////////
 #ifdef TOF
@@ -108,7 +111,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #else
 	const CLGLOBAL float* CLRESTRICT d_xyz,
 #endif
-#if (defined(LISTMODE) && !defined(SENS) && !defined(INDEXBASED))
+#if (defined(LISTMODE) && !defined(SENS) && !defined(INDEXBASED)) || defined(USEGLOBAL)
     const CLGLOBAL float* CLRESTRICT d_uv,
 #else
     CONSTANT float* d_uv,
@@ -270,7 +273,11 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #endif  //////////////// END MULTIRAY ////////////////
 	float3 s, d;
 #if (defined(CT) || defined(SPECT)) && !defined(LISTMODE) && !defined(PET) // CT data
+#ifdef HELICAL
+	getDetectorCoordinatesCT(d_xyz, r, d_uv, &s, &d, i, d_size_x, d_sizey, d_dPitch);
+#else
 	getDetectorCoordinatesCT(d_xyz, d_uv, &s, &d, i, d_size_x, d_sizey, d_dPitch);
+#endif
 #elif defined(LISTMODE) && !defined(SENS) // Listmode data
 #if defined(INDEXBASED)
 	getDetectorCoordinatesListmode(d_xyz, d_uv, trIndex, axIndex, &s, &d, idx
@@ -579,6 +586,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 * d_size_x = the number of detector elements (rows),
 * d_sizey = the number of detector elements (columns),
 * d_dPitch = Either a vector of float2 or two floats if PYTHON is defined, the detector size/pitch in both "row" and "column" directions
+* r = Curved helical CT ONLY! The radius of the circle formed by the curved detector
 * maskBP = 2D/3D backward projection mask, i.e. voxels with 0 will be skipped
 * T = redundancy weights for offset imaging,
 * d_N = image size in x/y/z- dimension, float3 or three floats (if PYTHON is defined),
@@ -608,6 +616,9 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
 #else
 	const float2 d_dPitch, 
 #endif
+#ifdef HELICAL
+    const float r, 
+#endif
 #ifdef OFFSET
     CONSTANT float* T, 
 #endif
@@ -628,11 +639,11 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
 #endif
     CLGLOBAL float* CLRESTRICT d_OSEM, 
 #if defined(USEGLOBAL)
-	const CLGLOBAL float* CLRESTRICT d_xyz,
+	const CLGLOBAL float* CLRESTRICT d_xyz, const CLGLOBAL float* CLRESTRICT d_uv, 
 #else
-    CONSTANT float* d_xyz, 
+    CONSTANT float* d_xyz, CONSTANT float* d_uv, 
 #endif
-    CONSTANT float* d_uv, CLGLOBAL float* CLRESTRICT d_Summ,
+    CLGLOBAL float* CLRESTRICT d_Summ,
 #ifdef NORM
     const CLGLOBAL float* CLRESTRICT d_norm,
 #endif 
@@ -652,14 +663,19 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
 #endif
     const LONG d_nProjections, const int ii) {
 
-    const int3 i = MINT3(GID0, GID1, GID2 * NVOXELS);
+#ifdef HELICAL
+    const int nVoxels = NVOXELSHELICAL;
+#else
+    const int nVoxels = NVOXELS;
+#endif
+    const int3 i = MINT3(GID0, GID1, GID2 * nVoxels);
 
 #ifdef PYTHON
 	const uint3 d_N = make_uint3(d_Nx, d_Ny, d_Nz);
 #endif
     if (i.x >= d_N.x || i.y >= d_N.y || i.z >= d_N.z)
         return;
-    size_t idx = GID0 + GID1 * d_N.x + GID2 * NVOXELS * d_N.y * d_N.x;
+    size_t idx = GID0 + GID1 * d_N.x + GID2 * nVoxels * d_N.y * d_N.x;
 #ifdef MASKBP
     if (ii == 0) {
 #ifdef USEIMAGES // TODO replace with readMaskBP
@@ -692,20 +708,21 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
 	const float3 d_d = make_float3(d_dx, d_dy, d_dz);
 	const float3 b = make_float3(bx, by, bz);
 #endif
-    float temp[NVOXELS];
-    float wSum[NVOXELS];
-    for (int zz = 0; zz < NVOXELS; zz++) {
+    float temp[nVoxels];
+    float wSum[nVoxels];
+    for (int zz = 0; zz < nVoxels; zz++) {
         temp[zz] = 0.f;
         if (no_norm == 0u)
             wSum[zz] = 0.f;
     }
-    const float3 dV = CFLOAT3(i) * d_d + d_d / 2.f + b;
+    float3 dV = CFLOAT3(i) * d_d + d_d / 2.f + b;
     const float2 koko = MFLOAT2(CFLOAT(d_size_x) * d_dPitch.x, CFLOAT(d_sizey) * d_dPitch.y );
     const float2 indeksi = MFLOAT2(CFLOAT(d_size_x) / 2.f, CFLOAT(d_sizey) / 2.f );
+#ifdef HELICAL
+	const float thetaSpan = koko.x / r;
+#endif
 #if STYPE == 12
     for (int kk = 0; kk < d_nProjections; kk += 2) {
-    // for (int kk = 0; kk < d_nProjections / 2; kk++) {
-        // kk *= 2;
 #else
     for (int kk = 0; kk < d_nProjections; kk++) {
 #endif
@@ -713,12 +730,77 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
         float3 s;
         d1 = CMFLOAT3(d_xyz[kk * 6 + 3], d_xyz[kk * 6 + 4], d_xyz[kk * 6 + 5]);
 #ifdef HELICAL
-        if (dV.z > d1.z + koko.y / 2.f || dV.z < d1.z - koko.y / 2.f)
+        const float zMax = d1.z + koko.y / 2.f;
+        const float zMin = d1.z - koko.y / 2.f;
+        if (dV.z + d_d.z * (NVOXELSHELICAL - 1) > zMax || dV.z + d_d.z * (NVOXELSHELICAL - 1) < zMin)
             continue;
 #endif
 #ifndef PARALLEL
         s = CMFLOAT3(d_xyz[kk * 6], d_xyz[kk * 6 + 1], d_xyz[kk * 6 + 2]);
 #endif
+// TODO: Improve helical part
+#ifdef HELICAL
+	    const float angle = d_uv[kk];
+        const float xc = d1.x - r * COSF(angle);
+        const float yc = d1.y + r * SINF(angle);
+		const float y = d1.y - yc;
+		const float x = d1.x - xc;
+        const float thetaCenter = ATAN2(y, x);
+        const float pz = (CFLOAT(kk) + 0.5f) / CFLOAT(d_nProjections);
+        float3 v = dV - s;
+#ifndef __CUDACC__ 
+#pragma unroll NVOXELSHELICAL
+#endif
+        for (int zz = 0; zz < NVOXELSHELICAL; zz++) {
+            const uint ind = i.z + zz;
+            if (ind >= d_N.z)
+                break;
+#if NVOXELSHELICAL > 1
+            int3 ii = {0, 0, zz};
+            dV = CFLOAT3(i + ii) * d_d + d_d / 2.f + b;
+            v = dV - s;
+            if (dV.z > zMax || dV.z < zMin) {
+                // v.z += d_d.z;
+                continue;
+            }
+#endif
+            float theta = 0.f;
+            float3 intersection;
+            int hit = rayArcIntersection(s, v, d1, xc, yc, r, zMin, zMax, thetaSpan, thetaCenter, &theta, &intersection);
+            if (hit == 0)
+                continue;
+            float px, py;
+            normalizeCurvedCoordinates(intersection, zMin, zMax, thetaSpan,	theta, &px, &py);
+            float yVar = 0.f;
+            if (px > 1.f || py > 1.f || pz > 1.f || px < 0.f || py < 0.f || pz < 0.f)
+                continue;
+#ifdef USEIMAGES
+#ifdef CUDA
+            yVar = tex3D<float>(d_forw, px, py, pz);
+#else
+            yVar = read_imagef(d_forw, samplerIm, CFLOAT4(px, py, pz, 0.f)).w;
+#endif
+#else
+            const LONG indX = CLONG_rtz(px * CFLOAT(d_size_x));
+            const LONG indY = CLONG_rtz(py * CFLOAT(d_sizey)) * CLONG_rtz(d_size_x);
+            const LONG indZ = CLONG_rtz(pz * CFLOAT(d_nProjections)) * CLONG_rtz(d_sizey) * CLONG_rtz(d_size_x);
+            yVar = d_forw[indX + indY + indZ];
+#endif
+#ifdef NORM
+            const LONG indX = CLONG_rtz(px * CFLOAT(d_size_x));
+            const LONG indY = CLONG_rtz(py * CFLOAT(d_sizey)) * CLONG_rtz(d_size_x);
+            const LONG indZ = CLONG_rtz(pz * CFLOAT(d_nProjections)) * CLONG_rtz(d_sizey) * CLONG_rtz(d_size_x);
+            yVar *= d_norm[indX + indY + indZ];
+#endif
+            const float L = distance(intersection, s);
+            const float l1 = dot(v, v);
+            const float weight = (L * L * L) / (l1)*kerroin;
+            temp[zz] += yVar * weight;
+            if (no_norm == 0u)
+                wSum[zz] += weight;
+            // v.z += d_d.z;
+        }
+#else
 #if defined(PITCH)
         const float3 apuX = CMFLOAT3(d_uv[kk * NA], d_uv[kk * NA + 1], d_uv[kk * NA + 2]) * indeksi.x;
         const float3 apuY = CMFLOAT3(d_uv[kk * NA + 3], d_uv[kk * NA + 4], d_uv[kk * NA + 5]) * indeksi.y;
@@ -726,9 +808,6 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
         const float3 apuX = MFLOAT3(indeksi.x * d_uv[kk * NA], indeksi.x * d_uv[kk * NA + 1], 0.f);
         const float3 apuY = MFLOAT3(0.f, 0.f, indeksi.y * d_dPitch.y);
 #endif
-#ifdef HELICAL
-
-#else
         d2 = apuX - apuY;
         d3 = d1 - apuX - apuY;
         const float3 normX = normalize(apuX) / koko.x;
@@ -971,7 +1050,7 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
 #endif
 #endif
     }
-    for (int zz = 0; zz < NVOXELS; zz++) {
+    for (int zz = 0; zz < nVoxels; zz++) {
         const uint ind = i.z + zz;
         if (ind >= d_N.z)
             break;

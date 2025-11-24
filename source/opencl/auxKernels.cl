@@ -1421,9 +1421,17 @@ void ProxTGVSymmDeriv(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 #ifdef MASKPRIOR
 	const LTYPE3 NDiff = (N - NOrig) / 2;
 #ifdef CUDA
+#ifdef MASKBP3D
+    const int maskVal = tex3D<unsigned char>(maskBP, xyz.x + NDiff.x, xyz.y + NDiff.y, xyz.z + NDiff.z);
+#else
     const int maskVal = tex2D<unsigned char>(maskBP, xyz.x + NDiff.x, xyz.y + NDiff.y);
+#endif
+#else
+#ifdef MASKBP3D
+    const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(xyz.x + NDiff.x, xyz.y + NDiff.y, xyz.z + NDiff.z, 0)).w;
 #else
     const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(xyz.x + NDiff.x, xyz.y + NDiff.y)).w;
+#endif
 #endif
     if (maskVal == 0)
         return;
@@ -1546,9 +1554,17 @@ void ProxTGVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLR
 #ifdef MASKPRIOR
 	const LTYPE3 NDiff = (N - NOrig) / 2;
 #ifdef CUDA
+#ifdef MASKBP3D
+    const int maskVal = tex3D<unsigned char>(maskBP, xyz.x + NDiff.x, xyz.y + NDiff.y, xyz.z + NDiff.z);
+#else
     const int maskVal = tex2D<unsigned char>(maskBP, xyz.x + NDiff.x, xyz.y + NDiff.y);
+#endif
+#else
+#ifdef MASKBP3D
+    const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(xyz.x + NDiff.x, xyz.y + NDiff.y, xyz.z + NDiff.z, 0)).w;
 #else
     const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(xyz.x + NDiff.x, xyz.y + NDiff.y)).w;
+#endif
 #endif
     if (maskVal == 0)
         return;
@@ -1992,7 +2008,11 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 #else
 #ifdef ANATOMICAL1 // TV type 1
 	const LTYPE NN = N.x * N.y * N.z;
+#ifdef CUDA
+	float s[9];
+#else
 	__private float s[9];
+#endif
 	for (int kk = 0; kk < 9; kk++)
 		s[kk] = S[n + NN * kk];
 	const float3 val = uijkP - uijk;

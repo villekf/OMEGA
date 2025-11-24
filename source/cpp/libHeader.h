@@ -129,6 +129,8 @@ struct inputStruct {
     int64_t TOF_bins = 1;
     // Small value for TV type 1 (optional)
     float tau = 0.f;
+    // The radius of the circle formed by the curved detector
+    float helicalRadius = 1.f;
     // Tube radius when using volume of intersection projector
     float tube_radius;
     // Small constant
@@ -309,6 +311,7 @@ struct inputStruct {
     // Use the total ray length when computing probability in PET and SPECT
     bool useTotLength = true;
     bool useParallelBeam = false;
+    bool useHelical = false;
     // Compute the selected algorithm/prior
     bool OSEM = false;
     bool LSQR = false;
@@ -834,6 +837,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     if (inputScalars.useExtendedFOV)
         inputScalars.eFOV = options.eFOV > 1;
     inputScalars.useParallelBeam = options.useParallelBeam;
+    inputScalars.useHelical = options.useHelical;
     inputScalars.NxOrig = options.NxOrig;
     inputScalars.NyOrig = options.NyOrig;
     inputScalars.NzOrig = options.NzOrig;
@@ -847,6 +851,8 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     if (inputScalars.CT) {
         inputScalars.nColsD = options.nColsD;
         inputScalars.nRowsD = options.nRowsD;
+        if (inputScalars.useHelical)
+            inputScalars.helicalRadius = options.helicalRadius;
     }
 	else if (inputScalars.SPECT && (inputScalars.projector_type == 1 || inputScalars.projector_type == 2 || inputScalars.projector_type == 22 || inputScalars.projector_type == 11)) {
         inputScalars.nColsD = options.nColsD;
