@@ -1835,7 +1835,7 @@ public:
 						kerroin = 6;
 					else if (inputScalars.useHelical)
 						kerroin = 1;
-					status = cuMemcpyHtoD(d_z[kk], &z_det[pituus[kk] * 2], sizeof(float) * length[kk] * kerroin);
+					status = cuMemcpyHtoD(d_z[kk], &z_det[pituus[kk] * kerroin], sizeof(float) * length[kk] * kerroin);
 					CUDA_CHECK(status, "\n", -1);
 				}
 				else {
