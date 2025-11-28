@@ -421,6 +421,9 @@ if options.largeDim
     if options.MRP || options.quad || options.Huber || options.weighted_mean || options.FMH || options.ProxTV || options.TGV || options.L || options.AD
         error('Large dimension support is only available for non-local methods, RDP, GGMRF, hyperbolic prior and TV!')
     end
+    if ismember(options.projector_type,[15 51 45 5 54 2 3])
+        error('Large dimension support currently supports only projector types 14 and 4!')
+    end
 end
 if options.use_CUDA && options.use_CPU && options.implementation == 2
     error('Both CUDA and CPU selected! Select only one!')
