@@ -88,7 +88,9 @@ The algorithms implemented so far include:
 
 For detailed installation instructions, see https://omega-doc.readthedocs.io/en/latest/installation.html. For basic usage, see https://omega-doc.readthedocs.io/en/latest/usage.html
 
-Precompiled libraries are included in [releases](https://github.com/villekf/OMEGA/releases). However, in case those do not work you can also manually compile all the necessary files. When using MATLAB or GNU Octave, run `install_mex` first. For Python, you need run `compile.py` located in `/path/to/OMEGA/source/Python`.
+Precompiled libraries are included in [releases](https://github.com/villekf/OMEGA/releases) and in the pip version in Python and in the MATLAB toolbox for MATLAB. For Python, the pip version is recommended (`pip install omegatomo`) and for MATLAB the toolbox file located in [releases](https://github.com/villekf/OMEGA/releases).
+
+However, in case those do not work you can also manually compile all the necessary files. When using MATLAB or GNU Octave, run `install_mex` to compile the necessary files. For Python, you need run `compile.py` located in `/path/to/OMEGA/source/Python`.
 
 Examples for MATLAB/GNU Octave are located in `/path/to/OMEGA/main-files` and for Python in `/path/to/OMEGA/source/Python`. If you use the pip version, you'll need to manually obtain the example files.
 
@@ -114,7 +116,11 @@ For additional install help, see [installation help](https://omega-doc.readthedo
 
 As a first step you should install either OpenCL (install either https://github.com/GPUOpen-LibrariesAndSDKs/OCL-SDK/releases/tag/1.0 for Windows or in Linux use `sudo apt install ocl-icd-opencl-dev`) or [CUDA](https://developer.nvidia.com/cuda-downloads), and then [ArrayFire](https://arrayfire.com/binaries/). See more details in the above link or below.
 
-Pre-built libraries are supplied in the [releases](https://github.com/villekf/OMEGA/releases), however, you can also manually compile everything. 
+Pre-built libraries are supplied in the [releases](https://github.com/villekf/OMEGA/releases), however, you can also manually compile everything. Python pip version and MATLAB toolbox contain prebuilt libraries, which should work in most cases.
+
+**All library paths needs to be on system path when running the mex-files or Python scripts or otherwise the required libraries will not be found. This means ArrayFire and OpenCL and/or CUDA.**
+
+Read the below part only if you encounter issues or are using Octave:
 
 For manual compilation you're going to need a C++ compiler in order to compile the MEX-files/libraries and use this software. Visual Studio and GCC have been tested to work and are recommended depending on your platform (Visual Studio in Windows, GCC in Linux, clang should work in MacOS). Specifically, Visual Studio 2019 and 2022 have been tested to work in Windows 10 and as well as g++ 9.3 and g++ 10.5 on Ubuntu 22.04. MinGW++ also works though it is unable to compile ArrayFire OpenCL reconstructions (implementation 2) in Windows by default. Octave supports only MinGW++ in Windows and as such implementation 2 in Windows is only supported if you manually compile ArrayFire from source with MinGW (for instructions, see [here](https://github.com/villekf/OMEGA/wiki/Building-ArrayFire-with-Mingw-on-Windows)).
 
@@ -165,8 +171,6 @@ You can manually add custom OpenCL paths with `install_mex(0, '/path/to/cl.h', '
 `find / -iname libOpenCL.so 2>/dev/null` to find the required library file. See `install_mex.m` for further details. `compile.py` functions similarly.
 
 CUDA functionality requires CUDA toolkit.
-
-**All library paths needs to be on system path when running the mex-files or Python scripts or otherwise the required libraries will not be found.**
 
 Links:  
 https://developer.nvidia.com/cuda-toolkit  
@@ -230,7 +234,10 @@ Here is a list of features that should appear in future releases:
     - Dynamic SPECT reconstruction
     - Built-in support for more collimator geometries
 - PET scatter correction based on SSS
+- Improved support for curved helical CT
+- Better support for analytical methods
 - Improved dual-layer PET support
+- Potential fp16 support
 - Deep learning based features
 
 ## Known Issues and Limitations
@@ -241,17 +248,15 @@ Moving bed is not supported at the moment (needs to be step-and-shoot and the di
 
 Only cylindrical symmetric scanners are supported inherently for PET, for other types of scanners the user has to input the detector coordinates or use [index-based reconstruction](https://omega-doc.readthedocs.io/en/latest/customcoordinates.html#index-based-reconstruction).
 
-For CT, only cone/fan beam flat panel scanners are supported. For other types of scanners, the user has to input the detector coordinates or modify the data such that it is approximately flat panel. There is some support for parallel beam cases, but the current implementation is slow.
+For CT, only cone/fan beam flat/curved panel scanners are supported. For curved, only cylindrical scanners are supported, but support for spherical scanners is easy to add if needed. For other types of scanners, the user has to input the detector coordinates or modify the data such that it is approximately flat panel. There is some support for parallel beam cases, but the current implementation is slow.
 
 ### MATLAB & Octave
 
-LMF output currently has to contain the time stamp (cannot be removed in GATE) and detector indices. The source location needs to be included if it was selected in the main-file, same goes for the scatter data. If you have any other options selected in the LMF output in GATE, then you will not get any sensible detector data. Source locations and/or scatter data can be deselected. LMF data, with different format than in GATE, are not supported.
-
-LMF source information is a lot more unreliable than the ASCII or ROOT version. LMF support has been deprecated in version 2.0.
+LMF support has been deprecated in version 2.0. LMF output currently has to contain the time stamp (cannot be removed in GATE) and detector indices. The source location needs to be included if it was selected in the main-file, same goes for the scatter data. If you have any other options selected in the LMF output in GATE, then you will not get any sensible detector data. Source locations and/or scatter data can be deselected. LMF data, with different format than in GATE, are not supported. LMF source information is a lot more unreliable than the ASCII or ROOT version. 
 
 ROOT or ASCII data is not yet supported with GATE CT data.
 
-ECAT PET geometry is supported only with ASCII data. ROOT data might also work (untested).
+ECAT GATE PET geometry is supported only with ASCII data. ROOT data might also work (untested).
 
 If you are experiencing crashes when using implementation 2, it might be caused by the graphics features of ArrayFire (AF). In this case I recommend renaming/removing the libforge.so files from the ArrayFire library folder (e.g. `/opt/arrayfire/lib64/`). Alternatively you can install the no-gl AF:  
 http://arrayfire.s3.amazonaws.com/index.html (3.6.2 is the latest). Finally, you can also simply build AF from source, preferably without building Forge. This seems to apply only to Linux and affects both MATLAB and Octave. Python is unaffected!
@@ -265,9 +270,9 @@ https://se.mathworks.com/matlabcentral/answers/329796-issue-with-libstdc-so-6
 
 Or see the solutions in [installation help](https://omega-doc.readthedocs.io/en/latest/installation.html#linux).
 
-If you are using ROOT data with ROOT 6.16.00 or newer you might receive the following error message: "undefined symbol: _ZN3tbb10interface78internal20isolate_within_arenaERNS1_13delegate_baseEl". This is caused by the `libtbb.so.2` used by MATLAB (located in `/matlabroot/bin/glnxa64`). Same solutions apply as with the above case (e.g. renaming the file). See [installation help](https://omega-doc.readthedocs.io/en/latest/installation.html#linux) for details.
+If you are using ROOT data with ROOT 6.16.00 or newer you might receive the following (or similar) error message: "undefined symbol: _ZN3tbb10interface78internal20isolate_within_arenaERNS1_13delegate_baseEl". This is caused by the `libtbb.so.2` used by MATLAB (located in `/matlabroot/bin/glnxa64`). Same solutions apply as with the above case (e.g. renaming the file). See [installation help](https://omega-doc.readthedocs.io/en/latest/installation.html#linux) for details.
 
-ROOT data import is unstable in MATLAB R2018b and earlier versions due to a library incompatibility between the Java virtual machine in MATLAB and ROOT. in Linux you will experience MATLAB crashes when importing ROOT data. There is a workaround for this by using MATLAB in the no Java mode (e.g `matlab -nojvm`), though you won't have any GUI or graphic features. MATLAB R2019a and up are unaffected. It is recommended to use `nojvm` for data load only (set `options.only_sinos = true` to load only the data). The new desktop might not have this issue, but this is currently untested.
+ROOT data import is unstable in MATLAB R2018b and earlier versions due to a library incompatibility between the Java virtual machine in MATLAB and ROOT. In Linux you will experience MATLAB crashes when importing ROOT data. There is a workaround for this by using MATLAB in the no Java mode (e.g `matlab -nojvm`), though you won't have any GUI or graphic features. MATLAB R2019a and up are unaffected. It is recommended to use `nojvm` for data load only (set `options.only_sinos = true` to load only the data). The new desktop might not have this issue, but this is currently untested. This affects only Linux and only MATLAB.
 
 ### Octave
 
@@ -287,7 +292,7 @@ Status messages, such as the current iteration number, might be displayed only a
 
 ### Intel
 
-Intel GPUs do not support forward and/or backward projection masks. 
+Intel GPUs might not support forward and/or backward projection masks. 
 
 ### Apple / Metal / MacOS
 
