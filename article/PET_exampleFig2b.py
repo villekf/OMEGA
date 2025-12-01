@@ -5,6 +5,7 @@ DOI will be added later.
 Used data available from: https://doi.org/10.5281/zenodo.17185907
 """
 import numpy as np
+import os
 from omegatomo.projector import proj
 from omegatomo.reconstruction import reconstructions_main
 from omegatomo.util.checkCUDA import checkCUDA
@@ -221,7 +222,7 @@ options.attenuation_correction = True
 # If no file is specified here, the user will be prompted to select one
 # if options.vaimennus is empty (or does not exist)
 # Alternatively, just input the attenuation data into options.vaimennus
-options.attenuation_datafile = path + '/511keV_attenuation_coefficients_for_VisionDerenzoAttenuation.mat'
+options.attenuation_datafile = os.path.join(path, '511keV_attenuation_coefficients_for_VisionDerenzoAttenuation.mat')
 
 
 #################### Corrections during reconstruction ####################
@@ -457,11 +458,11 @@ options.OSEM = True
 options.epps = 1e-3
 
 # Loads the measurement data
-sinogram = np.fromfile(path + '/SiemensVision_DerenzoPhantom_TOF214psFWHM_33bins_sinogram_520x95x6400_span1.bin', dtype=np.uint8)
+sinogram = np.fromfile(os.path.join(path, 'SiemensVision_DerenzoPhantom_TOF214psFWHM_33bins_sinogram_520x95x6400_span1.bin'), dtype=np.uint8)
 options.SinM = sinogram.reshape((options.Ndist, options.Nang, options.rings**2, options.TOF_bins), order='F')
 del sinogram
 # Load randoms correction data
-fpath = path + '/SiemensVision_DerenzoPhantom_TOF214psFWHM_33bins_listmode.mat'
+fpath = os.path.join(path, 'SiemensVision_DerenzoPhantom_TOF214psFWHM_33bins_listmode.mat')
 from pymatreader import read_mat
 var = read_mat(fpath, ['SinDelayed'])
 options.SinDelayed = var['SinDelayed']
@@ -479,15 +480,16 @@ toc = time.perf_counter()
 t = toc - tic
 print(f"Reconstruction process took {t:0.4f} seconds")
 
-columns_in_image, rows_in_image = np.meshgrid(np.arange(1, options.Nx + 1), np.arange(1, options.Ny + 1))
-centerX = options.Nx / 2
-centerY = options.Ny / 2
-radius = options.Nx / 2
+columns_in_image, rows_in_image = np.meshgrid(np.arange(1, options.Nx.item() + 1), np.arange(1, options.Ny.item() + 1))
+centerX = options.Nx.item() / 2
+centerY = options.Ny.item() / 2
+radius = options.Nx.item() / 2
 mask = ((rows_in_image - centerY)**2 + (columns_in_image - centerX)**2 <= radius**2)
 mask = np.dstack([mask]*pz.shape[2])
 
 pz[~mask] = 0.
 
-import matplotlib as plt
+import matplotlib.pyplot as plt
 
-plt.pyplot.imshow(pz[:,:,44])
+plt.imshow(pz[:,:,44])
+plt.show()
