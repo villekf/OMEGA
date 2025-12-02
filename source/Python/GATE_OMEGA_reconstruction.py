@@ -287,7 +287,7 @@ if __name__ == "__main__":
     gap = np.abs(sim.volume_manager.volumes[f"{pet.name}_stack"].translation[0][2]-sim.volume_manager.volumes[f"{pet.name}_stack"].translation[1][2])
     options.ringGaps = np.tile(gap - options.cryst_per_block_z * options.cr_pz, options.linear_multip - 1)
     
-    ### Transaxial FOV size (mm), this is the length of the x (row) side
+    ### Transaxial FOV size (mm), this is the length of the x (vertical/row) side
     # of the FOV (same is used for the column direction)
     options.FOVa_x = 576
     
@@ -311,7 +311,6 @@ if __name__ == "__main__":
     options.flip_image = False
     
     ### How much is the image rotated?
-    # You need to run the precompute phase again if you modify this
     # NOTE: The rotation is done in the detector space (before reconstruction).
     # This current setting is for systems whose detector blocks start from the
     # right hand side when viewing the device from front.
@@ -320,7 +319,8 @@ if __name__ == "__main__":
     
     ### Show status messages
     # These are e.g. time elapsed on various functions and what steps have been
-    # completed. It is recommended to keep this True.
+    # completed. It is recommended to keep this at 1 or 2. With value of 2, 
+    # you get more detailed timing information. Maximum is 3, minimum 0.
     options.verbose = 2
     
     ### Device used 
@@ -332,22 +332,27 @@ if __name__ == "__main__":
     
     ### Use CUDA
     # Selecting this to True will use CUDA kernels/code instead of OpenCL. This
-    # only works if the CUDA code was successfully built. Recommended only for
-    # Siddon as the orthogonal/volume-based ray tracer are slower in CUDA.
+    # only works if the CUDA code was successfully built. This is recommended
+    # if you have CUDA-capable device.
     options.useCUDA = checkCUDA(options.deviceNum)
     
     ### Use CPU
     # Selecting this to True will use CPU-based code instead of OpenCL or CUDA.
+    # Not recommended, even OpenCL with CPU should be used before this.
     options.useCPU = False
      
     ############################### PROJECTOR #################################
     ### Type of projector to use for the geometric matrix
-    # 0 = Regular Siddon's algorithm (only available with implementation 1 and
-    # when precomputed_lor = False) NOT RECOMMENDED.
     # 1 = Improved/accelerated Siddon's algorithm
     # 2 = Orthogonal distance based ray tracer
     # 3 = Volume of intersection based ray tracer
-    # See the wiki for more information:
+    # 4 = Interpolation-based projector
+    # NOTE: You can mix and match most of the projectors. I.e. 41 will use
+    # interpolation-based projector for forward projection while improved
+    # Siddon is used for backprojection.
+    # NOTE 2: The below additional options apply also in hybrid cases as long
+    # as the other projector is the corresponding projector.
+    # See the documentation for more information:
     # https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
     options.projector_type = 1
     
@@ -357,7 +362,6 @@ if __name__ == "__main__":
     options.use_psf = True
     
     # FWHM of the Gaussian used in PSF blurring in all three dimensions
-    # options.FWHM = [options.cr_p options.cr_p options.cr_pz]
     options.FWHM = np.array([options.cr_p, options.cr_p, options.cr_pz])
      
     ######################### RECONSTRUCTION SETTINGS #########################
@@ -377,7 +381,7 @@ if __name__ == "__main__":
     # 8 = Use every nth sinogram
     # 9 = Randomly select the full sinograms
     # 11 = Use prime factor sampling to select the full sinograms
-    #Most of the time subsetType 1 or 4 is sufficient.
+    # Most of the time subsetType 1 or 4 is sufficient.
     options.subsetType = 1
     
     ### Initial value for the reconstruction
@@ -435,10 +439,10 @@ if __name__ == "__main__":
     ########################## RELAXATION PARAMETER ###########################
     ### Relaxation parameter for MRAMLA, RAMLA, ROSEM, BSREM, MBSREM and PKMA
     # Use scalar if you want it to decrease as
-    # lambda / ((current_iteration - 1)/20 + 1). Use vector (length = Niter) if
+    # lambdaN / ((current_iteration - 1)/20 + 1). Use vector (length = Niter) if
     # you want your own relaxation parameters. Use empty array or zero if you
     # want to OMEGA to compute the relaxation parameter using the above formula
-    # with lamda = 1. Note that current_iteration is one-based, i.e. it starts
+    # with lamdaN = 1. Note that current_iteration is one-based, i.e. it starts
     # at 1.
     options.lambdaN = np.zeros(0, dtype=np.float32)
      
@@ -482,14 +486,6 @@ if __name__ == "__main__":
     # Next estimate update variable
     options.thetaCP = 1
     
-    # Use adaptive update of the primal and dual variables
-    # Currently only one method available
-    # Setting this to 1 uses an adaptive update for both the primal and dual
-    # variables.
-    # Can lead to unstable behavior with using multi-resolution
-    # Minimal to none use with filtering-based preconditioner
-    options.PDAdaptiveType = 0
-    
     ############################# PRECONDITIONERS #############################
     ### Applies to PDHG, PDHGL1, PDHGKL, PKMA, MBSREM, MRAMLA, PDDY, FISTA and
     ### FISTAL1
@@ -501,7 +497,7 @@ if __name__ == "__main__":
         options.precondTypeMeas[1] = True
     
     # Image-based preconditioners
-    # Setting options.precondTypeImage(1) = true when using PKMA, MRAMLA or
+    # Setting options.precondTypeImage[1] = True when using PKMA, MRAMLA or
     # MBSREM is recommended
     # precondTypeImage(0) = Diagonal normalization preconditioner (division with
     # the sensitivity image 1 / (A^T1), A is the system matrix) 
@@ -524,11 +520,11 @@ if __name__ == "__main__":
     options.precondTypeImage[5] = False
     options.precondTypeImage[6] = False
     
-    # Reference image for precondTypeImage(3). Can be either a mat-file or a
+    # Reference image for precondTypeImage[2]. Can be either a mat-file or a
     # variable
     options.referenceImage = ''
     
-    # Momentum parameter for precondTypeImage(4)
+    # Momentum parameter for precondTypeImage[3]
     # Set the desired momentum parameters to the following variable (note that
     # the length should be options.Niter * options.subsets): 
     # options.alphaPrecond = np.empty(0, dtype=np.float32)
@@ -536,7 +532,7 @@ if __name__ == "__main__":
     options.rhoPrecond = options.rho_PKMA
     options.delta1Precond = options.delta_PKMA
     
-    # Parameters for precondTypeImage(5)
+    # Parameters for precondTypeImage[4]
     # See the article for details
     options.gradV1 = 1.5
     options.gradV2 = 2
@@ -545,7 +541,7 @@ if __name__ == "__main__":
     options.gradLastIter = 24
     
     # Number of filtering iterations
-    # Applies to both precondTypeMeas(2) and precondTypeImage(6)
+    # Applies to both precondTypeMeas[1] and precondTypeImage[5]
     options.filteringIterations = 16
     
     
@@ -556,7 +552,7 @@ if __name__ == "__main__":
      
     ######################### NEIGHBORHOOD PROPERTIES #########################
     ### How many neighboring pixels are considered 
-    # With MRP, QP, L, FMH, NLM, GGMRF and weighted mean
+    # With MRP, NLM
     # E.g. if Ndx = 1, Ndy = 1, Ndz = 0, then you have 3x3 square area where
     # the pixels are taken into account (I.e. (Ndx*2+1)x(Ndy*2+1)x(Ndz*2+1)
     # area).
@@ -569,9 +565,10 @@ if __name__ == "__main__":
      
     ############################## NLM PROPERTIES #############################
     ### Filter parameter
+    # Higher values smooth the image, smaller values make it sharper
     options.NLMsigma = 900
     
-    ### Patch radius
+    ### Patch size
     options.Nlx = 1
     options.Nly = 1
     options.Nlz = 1
@@ -606,7 +603,17 @@ if __name__ == "__main__":
     
     ############################## RDP PROPERTIES #############################
     ### Edge weighting factor
+    # Higher values sharpen the image, smaller values make it smoother
+    # Note that this affects NLRD as well
     options.RDP_gamma = 1
+
+    # If True, includes also the "diagonal" corners in the neighborhood in RDP
+    # By default, only the sides which the current voxel shares a side are
+    # included
+    # See https://omega-doc.readthedocs.io/en/latest/algorithms.html#rdp for
+    # details
+    # Default is False
+    options.RDPIncludeCorners = False
      
     ###########################################################################
     ###########################################################################
