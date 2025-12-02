@@ -47,8 +47,9 @@ if __name__ == "__main__":
     world.material = "G4_AIR"
 
     # add a PET VEREOS
+	# You'll need a working material database here, or some other workaround
     sim.volume_manager.add_material_database("GateMaterials_pet.db")
-    pet = pet_vereos.add_pet(sim, "pet", create_housing=False, create_mat=False)
+    pet = pet_vereos.add_pet(sim, "pet", create_housing=False, create_mat=True)
             
     crystal = sim.volume_manager.volumes[f"{pet.name}_crystal"]
     
@@ -139,7 +140,7 @@ if __name__ == "__main__":
         os.remove(coincidenceFile)
     
     # Create coincidences using GATE's offline sorter
-    root_file = uproot.open(sim.output_dir + "PETVereonOMEGA.root")
+    root_file = uproot.open(sim.output_dir + "PETVereosOMEGA.root")
     singles_tree = root_file["EnergyWindows"]
     ns = gate.g4_units.nanosecond
     time_window = 2 * ns
