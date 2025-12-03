@@ -27,11 +27,13 @@
 
 - Most new features will be restricted to implementation 2 now and in the future (for Python this is the only one available)
   - All other implementations will only be partially supported from now on
-  - This means that testing will be limited, but potential issues will be fixed
+  - This means that testing will be limited for the other implementations, but potential issues will be fixed
   
 ### New features
 
 - OMEGA can now be installed in Python through pip using `pip install omegatomo`
+  - Examples are not included in this case and must be manually obtained from GitHub
+  - Includes precompiled library files for Windows and Linux
 
 - Added support for orthogonal distance ray-tracing projector with SPECT
   - Voxels are weighted by a Gaussian distribution sampled at the orthogonal distance, the variance of which is determined by the parallel distance between detector and voxel center
@@ -47,7 +49,7 @@
   - Only projector type 4 is supported
   - Rotation of the image in the detector space (`options.offangle`) is NOT supported
   - Reconstruction speed is suboptimal as the code is not optimized
-  - In general requires the XYZ-coordinates of both the source and detector as well as the rotation angles and the radius of the circle formed by the detector (`options.helicalRadius`)
+  - In general requires the XYZ-coordinates of both the source and detector as well as the rotation angles and the radius of the circle formed by the detector (`options.helicalRadius`, which should also be the distance from detector to focal spot)
   - Enable by setting `options.useHelical` to true
   - Only built-in reconstruction at the moment (projector operators are NOT supported)
   - See `helical_CT_mainExample` for an example
@@ -63,14 +65,14 @@
   
 - Added subset support for FISTA
   - Implementation 2 only!
-
-- Added another FISTA acceleration scheme
-  - Select with `options.FISTAType`, use either 0 or 1
-  - Implementation 2 only!
   
 - FISTA acceleration can now be used with any algorithm
   - Enable with `options.FISTA_acceleration`
   - Can lead to divergence!
+  - Implementation 2 only!
+
+- Added another FISTA acceleration scheme
+  - Select with `options.FISTAType`, use either 0 or 1
   - Implementation 2 only!
   
 - Added support for stochastic subset selection

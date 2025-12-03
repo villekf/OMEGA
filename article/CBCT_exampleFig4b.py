@@ -8,11 +8,12 @@ Planmeca_VisoG7_100kV_80mAs_500proj_kneePhantom.mat!
 Used data available from: https://doi.org/10.5281/zenodo.12722386
 """
 import numpy as np
+import os
 from omegatomo.projector import proj
 from omegatomo.util import CTEFOVCorrection
 from omegatomo.reconstruction import reconstructions_mainCT
-from omegatomo.util import checkCUDA
-import matplotlib as plt
+from omegatomo.util.checkCUDA import checkCUDA
+import matplotlib.pyplot as plt
 
 # Set the path (to the folder) of the above mat-file to here:
 path = ''
@@ -47,7 +48,7 @@ options.verbose = 2
 ###########################################################################
 
 # Load input data
-fpath = path + '\Planmeca_VisoG7_100kV_80mAs_500proj_kneePhantom.mat'
+fpath = os.path.join(path, 'Planmeca_VisoG7_100kV_80mAs_500proj_kneePhantom.mat')
 from pymatreader import read_mat
 var = read_mat(fpath)
 
@@ -423,4 +424,5 @@ print(f"{toc - tic:0.4f} seconds")
 
 z = np.int16(pz[:,:,:] * 55000) - 1000
 
-plt.pyplot.imshow(z[:,:,50], vmin=-1000, vmax=2000)
+plt.imshow(z[:,:,50], vmin=-1000, vmax=2000)
+plt.show()

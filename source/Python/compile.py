@@ -148,18 +148,24 @@ def CommandLine(args=None):
            options2 = '/O2 /DOPENCL /DAF /DMTYPE /DAF_RELEASE /DAF_OPENCL /D__x86_64 /LD /EHsc /I"' + sdir + '" /I"' + afpath + '"' + ' /I"' + openclpath + '"'
            link2 = '/link ' + libs + ' /LIBPATH:"' + aflib + '" /LIBPATH:"' + opencllib + '" /MACHINE:X64 /OUT:"' + outputPath + '\\OpenCL_matrixfree_uint16_lib.dll"'
            compile_command2 = compiler + ' ' + options2 + ' ' + files + ' ' + link2
+           options3 = '/O2 /DOPENCL /DAF /DMTYPE2 /DAF_RELEASE /DAF_OPENCL /D__x86_64 /LD /EHsc /I"' + sdir + '" /I"' + afpath + '"' + ' /I"' + openclpath + '"'
+           link3 = '/link ' + libs + ' /LIBPATH:"' + aflib + '" /LIBPATH:"' + opencllib + '" /MACHINE:X64 /OUT:"' + outputPath + '\\OpenCL_matrixfree_uint8_lib.dll"'
+           compile_command3 = compiler + ' ' + options3 + ' ' + files + ' ' + link3
            if clfound:
                try:
                    # compile_command = [compiler, options, files, link]
                    result = subprocess.run(compile_command, check=True)
                    if result.stderr is None:
                        result = subprocess.run(compile_command2, check=True)
+                       if result.stderr is None:
+                           result = subprocess.run(compile_command3, check=True)
                        print('OpenCL support compiled successfully!')
                except Exception:
                    print("OpenCL build failed")
            else:
                result = compileWindows(compile_command, 'OpenCL support compiled successfully!', "OpenCL build failed")
                result = compileWindows(compile_command2, 'OpenCL support compiled successfully!', "OpenCL build failed")
+               result = compileWindows(compile_command3, 'OpenCL support compiled successfully!', "OpenCL build failed")
                print(result)
        cudapath = ''
        if 'CUDA_PATH' in os.environ:
@@ -174,18 +180,24 @@ def CommandLine(args=None):
            options2 = '/O2 /DCUDA /DAF /DMTYPE /DAF_RELEASE /DAF_CUDA /D__x86_64 /LD /EHsc /I"' + sdir + '" /I"' + afpath + '"' + ' /I"' + cudapath + '"'
            link2 = '/link ' + libs + ' /LIBPATH:"' + aflib + '" /LIBPATH:"' + cudalib + '" /MACHINE:X64 /OUT:"' + outputPath + '\\CUDA_matrixfree_uint16_lib.dll"'
            compile_command2 = compiler + ' ' + options2 + ' ' + files + ' ' + link2
+           options3 = '/O2 /DCUDA /DAF /DMTYPE2 /DAF_RELEASE /DAF_CUDA /D__x86_64 /LD /EHsc /I"' + sdir + '" /I"' + afpath + '"' + ' /I"' + cudapath + '"'
+           link3 = '/link ' + libs + ' /LIBPATH:"' + aflib + '" /LIBPATH:"' + cudalib + '" /MACHINE:X64 /OUT:"' + outputPath + '\\CUDA_matrixfree_uint8_lib.dll"'
+           compile_command3 = compiler + ' ' + options3 + ' ' + files + ' ' + link3
            if clfound:
                try:
                    # compile_command = [compiler, options, files, link]
                    result = subprocess.run(compile_command, check=True)
                    if result.stderr is None:
                        result = subprocess.run(compile_command2, check=True)
+                       if result.stderr is None:
+                           result = subprocess.run(compile_command3, check=True)
                        print('CUDA support compiled successfully!')
                except Exception:
                    print("CUDA build failed")
            else:
                result = compileWindows(compile_command, 'CUDA support compiled successfully!', "CUDA build failed")
                result = compileWindows(compile_command2, 'CUDA support compiled successfully!', "CUDA build failed")
+               result = compileWindows(compile_command3, 'CUDA support compiled successfully!', "CUDA build failed")
                print(result)
        else:
            print('CUDA not found. No CUDA code compiled!')
@@ -337,6 +349,10 @@ def CommandLine(args=None):
                link = '-o' + outputPath + '/OpenCL_matrixfree_uint16_lib.so'
                result = subprocess.run([compiler, '-shared', '-fPIC', '-DOPENCL', '-DAF', '-DAF_OPENCL', '-DMTYPE', '-I' + sdir, '-I' + afpath, '-I' + openclpath, 
                                         link1, link, files, lib1, lib2, lib3, lib4], check=True)
+               if result.stderr is None:
+                   link = '-o' + outputPath + '/OpenCL_matrixfree_uint8_lib.so'
+                   result = subprocess.run([compiler, '-shared', '-fPIC', '-DOPENCL', '-DAF', '-DAF_OPENCL', '-DMTYPE2', '-I' + sdir, '-I' + afpath, '-I' + openclpath, 
+                                            link1, link, files, lib1, lib2, lib3, lib4], check=True)
                print('OpenCL support compiled successfully!')
        except Exception:
            print("OpenCL build failed")
@@ -363,6 +379,10 @@ def CommandLine(args=None):
                link = '-o' + outputPath + '/CUDA_matrixfree_uint16_lib.so'
                result = subprocess.run([compiler, '-shared', '-fPIC', '-DCUDA', '-DAF', '-DAF_CUDA', '-DMTYPE', '-I' + sdir, '-I' + afpath, '-I' + cudapath, 
                                         link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
+               if result.stderr is None:
+                   link = '-o' + outputPath + '/CUDA_matrixfree_uint8_lib.so'
+                   result = subprocess.run([compiler, '-shared', '-fPIC', '-DCUDA', '-DAF', '-DAF_CUDA', '-DMTYPE2', '-I' + sdir, '-I' + afpath, '-I' + cudapath, 
+                                            link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
                print('CUDA support compiled successfully!')
        except Exception:
            print("CUDA build failed")

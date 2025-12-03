@@ -1136,6 +1136,8 @@ class projectorClass:
                 raise ValueError('Large dimension support is only available for PDHG, PKMA, and FDK!')
             if self.MRP or self.quad or self.Huber or self.weighted_mean or self.FMH or self.ProxTV or self.TGV or self.L or self.AD:
                 raise ValueError('Large dimension support is only available for non-local methods, RDP, GGMRF, hyperbolic prior and TV!')
+            if self.projector_type in [45, 15, 5, 54, 51, 2, 3]:
+                raise ValueError('Large dimension support is only for projector types 4 and 14!')
         if self.useCUDA and self.useCPU:
             raise ValueError('Both CUDA and CPU selected! Select only one!')
         
