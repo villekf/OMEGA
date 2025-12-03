@@ -28,11 +28,11 @@ of the Siddon's algorithm (`projector_type = 1` in OMEGA), and using the OSEM al
 - `SPECT_exampleFig3c.m/py` contains an example script that can be used to reproduce the results of Figure 3 (c) from the article. This reconstruction uses SPECT projection data, reconstructed using the rotation-based projector
 (`projector_type = 6` in OMEGA), and using the OSEM algorithm with 5 iterations and 8 subsets.
 
-- `CBCT_exampleFig4a.m/py` contains an example script that can be used to reproduce the results of Figure 3 (a) from the article. This reconstruction uses linearized CBCT projection data, reconstructed using the interpolation-based projector 
+- `CBCT_exampleFig4a.m/py` contains an example script that can be used to reproduce the results of Figure 4 (a) from the article. This reconstruction uses linearized CBCT projection data, reconstructed using the interpolation-based projector 
 (`projector_type = 4` in OMEGA), and using the PDHG algorithm with 8 iterations and 20 subsets.
 
-- `CBCT_exampleFig4b.m/py` contains an example script that can be used to reproduce the results of Figure 3 (b) from the article. This reconstruction uses linearized CBCT projection data, reconstructed using the interpolation-based projector 
+- `CBCT_exampleFig4b.m/py` contains an example script that can be used to reproduce the results of Figure 4 (b) from the article. This reconstruction uses linearized CBCT projection data, reconstructed using the interpolation-based projector 
 (`projector_type = 4` in OMEGA), and using the CV algorithm with 8 iterations and 20 subsets, enhanced with NLRDP regularization.
 
-- `CBCT_exampleFig4c.m/py` contains an example script that can be used to reproduce the results of Figure 3 (c) from the article. This reconstruction uses original CBCT projection data, reconstructed using the interpolation-based projector 
+- `CBCT_exampleFig4c.m/py` contains an example script that can be used to reproduce the results of Figure 4 (c) from the article. This reconstruction uses original CBCT projection data, reconstructed using the interpolation-based projector 
 (`projector_type = 4` in OMEGA), and using the PKMA algorithm with 50 iterations and 20 subsets, enhanced with RDP regularization.
