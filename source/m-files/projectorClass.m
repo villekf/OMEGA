@@ -845,6 +845,9 @@ classdef projectorClass
             if obj.param.subsets > 1
                 obj.subset = 1;
             end
+            if obj.param.partitions > 1
+                obj.timestep = 1;
+            end
             if obj.param.subset_type >= 8 || obj.param.subsets == 1
                 kerroin = obj.param.nColsD * obj.param.nRowsD;
             else
@@ -945,7 +948,7 @@ classdef projectorClass
                 disp('Computing forward projection')
             end
             obj.param.currentSubset = obj.subset - 1;
-            obj.param.currentTimestep = obj.timestep - 1;
+            obj.param.currentTimestep = 0; %obj.timestep - 1; % TODO
             if obj.param.projector_type == 6
                 obj.param.uu = obj.param.uu + obj.nMeas(obj.subset);
             end
@@ -1034,7 +1037,7 @@ classdef projectorClass
                 noSensIm = false;
             end
             obj.param.currentSubset = obj.subset - 1;
-            obj.param.currentTimestep = obj.timestep - 1;
+            obj.param.currentTimestep = 0; %obj.timestep - 1; % TODO
             if obj.param.projector_type == 6
                 obj.param.ub = obj.param.ub + obj.nMeas(obj.subset);
             end

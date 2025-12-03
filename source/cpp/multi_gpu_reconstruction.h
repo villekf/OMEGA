@@ -61,8 +61,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 	const uint16_t* z_index = nullptr, const uint16_t* L = nullptr) {
 
 	const C tyyppi = (C)0;
-	// Number of measurements in each subset
-	std::vector<int64_t> length(inputScalars.subsetsUsed);
+	std::vector<int64_t> length(inputScalars.subsetsUsed); // Number of measurements in each subset
 
 	if (DEBUG) {
 		mexPrintBase("inputScalars.subsets = %u\n", inputScalars.subsets);
@@ -117,12 +116,10 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 		CL_CHECK(status);
 		FILL_BUFFER(proj.d_output, 0.f, sizeof(float) * m_size * inputScalars.nBins);
 		CL_CHECK(status);
-#ifndef METAL // Metal implementation always uses buffers
-		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
+		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 			imTot += (inputScalars.Ny[ii] + 1) * (inputScalars.Nz[ii] + 1) * inputScalars.Nx[ii];
-#endif
-		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
 			proj.d_Summ.emplace_back(BUFFER_W(sizeof(T)));
+		}
 	}
 	if (type == 2) { // Backward projection A'*y
 		if (DEBUG) {
@@ -412,9 +409,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 		}
 		READ_BUFFER(proj.d_output, sizeof(float) * m_size * inputScalars.nBins, output);
 		CL_CHECK(status);
-	}
-	else if (type == 2) {
-//#ifndef METAL
+	} else if (type == 2) {
 		size_t uu = 0;
 		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 			if (inputScalars.atomic_64bit)
