@@ -61,8 +61,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 	const uint16_t* z_index = nullptr, const uint16_t* L = nullptr) {
 
 	const C tyyppi = (C)0;
-	// Number of measurements in each subset
-	std::vector<int64_t> length(inputScalars.subsetsUsed);
+	std::vector<int64_t> length(inputScalars.subsetsUsed); // Number of measurements in each subset
 
 	if (DEBUG) {
 		mexPrintBase("inputScalars.subsets = %u\n", inputScalars.subsets);
@@ -74,7 +73,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 	for (uint32_t kk = 0; kk < inputScalars.subsetsUsed; kk++)
 		length[kk] = pituus[kk + 1u] - pituus[kk];
 	uint64_t m_size = length[inputScalars.osa_iter0];
-
+	uint32_t timestep = 0; // TODO
 	if (DEBUG) mexPrint("Adding projector");
 	CL_INT status = CL_SUCCESS;
 
@@ -92,11 +91,6 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 
 	// Input constant data to the kernels
 	status = proj.initializeKernel(inputScalars, w_vec);
-	if (status != 0)
-		return;
-
-	// Set dynamic kernel data
-	status = proj.setDynamicKernelData(inputScalars, w_vec);
 	if (status != 0)
 		return;
 
@@ -122,12 +116,10 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 		CL_CHECK(status);
 		FILL_BUFFER(proj.d_output, 0.f, sizeof(float) * m_size * inputScalars.nBins);
 		CL_CHECK(status);
-#ifndef METAL // Metal implementation always uses buffers
-		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
+		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 			imTot += (inputScalars.Ny[ii] + 1) * (inputScalars.Nz[ii] + 1) * inputScalars.Nx[ii];
-#endif
-		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
 			proj.d_Summ.emplace_back(BUFFER_W(sizeof(T)));
+		}
 	}
 	if (type == 2) { // Backward projection A'*y
 		if (DEBUG) {
@@ -303,7 +295,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 					for (cl_uint i = 0ULL; i < proj.CLCommandQueue.size(); i++) {
 						proj.CLCommandQueue[i].finish();
 					}
-					status = proj.forwardProjection(inputScalars, w_vec, osa_iter, length, m_size, ii);
+					status = proj.forwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, ii);
 					CL_CHECK(status);
 				}
 				status = proj.computeForward(inputScalars, length, osa_iter);
@@ -357,7 +349,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 						CL_CHECK(status);
 					}
 #endif
-					status = proj.forwardProjection(inputScalars, w_vec, osa_iter, length, m_size, ii);
+					status = proj.forwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, ii);
 					CL_CHECK(status);
 					if (inputScalars.FPType == 5)
 						uu -= imTot;
@@ -371,12 +363,11 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 					if (type == 0) {
 						uu += osa_iter * (inputScalars.nMultiVolumes + 1);
 						FILL_BUFFER(proj.vec_opencl.d_rhs_os[ii], (C)0, sizeof(C) * inputScalars.im_dim[ii]);
-						//status = proj.CLCommandQueue[0].enqueueFillBuffer(proj.vec_opencl.d_rhs_os[ii], (C)0, 0, sizeof(C) * inputScalars.im_dim[ii]);
 						CL_CHECK(status);
-						status = proj.backwardProjection(inputScalars, w_vec, osa_iter, length, m_size, false, ii, ii, uu);
+						status = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, false, ii, ii, uu);
 
 					} else {
-						status = proj.backwardProjection(inputScalars, w_vec, osa_iter, length, m_size, false, ii, uu);
+						status = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, false, ii, uu);
 					}
 					CL_CHECK(status);
 #ifndef METAL // Metal has no support for implementation 3
@@ -418,9 +409,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 		}
 		READ_BUFFER(proj.d_output, sizeof(float) * m_size * inputScalars.nBins, output);
 		CL_CHECK(status);
-	}
-	else if (type == 2) {
-//#ifndef METAL
+	} else if (type == 2) {
 		size_t uu = 0;
 		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 			if (inputScalars.atomic_64bit)
