@@ -1,21 +1,12 @@
-function im_vectors = PDHG1(options, im_vectors, subIter, ii)
-if (options.PDAdaptiveType == 1)
-    if iscell(im_vectors.rhsCP)
-        im_vectors.rhsCP{ii} = im_vectors.rhs{ii};
-    else
-        im_vectors.rhsCP = im_vectors.rhs;
+function im_vectors = PDHG1(options, im_vectors, subIter, ii, timestep)
+    if (options.PDAdaptiveType == 1)
+        im_vectors.rhsCP{timestep, ii} = im_vectors.rhs{timestep, ii};
     end
-end
-if (options.subsets > 1)
-    if (options.verbose >= 3)
-        disp("Using PDHG w/ subsets");
+    if (options.subsets > 1)
+        if (options.verbose >= 3)
+            disp("Using PDHG w/ subsets");
+        end
+        im_vectors.uCP{timestep, ii} = im_vectors.uCP{timestep, ii} + im_vectors.rhs{timestep, ii};
+        im_vectors.rhs{timestep, ii} = im_vectors.uCP{timestep, ii} + (options.subsets * options.thetaCP(subIter)) .* im_vectors.rhs{timestep, ii};
     end
-    if iscell(im_vectors.uCP)
-        im_vectors.uCP{ii} = im_vectors.uCP{ii} + im_vectors.rhs{ii};
-        im_vectors.rhs{ii} = im_vectors.uCP{ii} + (options.subsets * options.thetaCP(subIter)) .* im_vectors.rhs{ii};
-    else
-        im_vectors.uCP = im_vectors.uCP + im_vectors.rhs;
-        im_vectors.rhs = im_vectors.uCP + (options.subsets * options.thetaCP(subIter)) .* im_vectors.rhs;
-    end
-end
 end

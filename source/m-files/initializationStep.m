@@ -1,4 +1,4 @@
-function [im_vectors, mData, options] = initializationStep(options, mData, im_vectors, m_size, iter, subIter, varargin)
+function [im_vectors, mData, options] = initializationStep(options, mData, im_vectors, m_size, iter, subIter, timestep)
 %UNTITLED2 Summary of this function goes here
 %   Detailed explanation goes here{ii}
 if (options.param.FISTA || options.param.FISTAL1)
@@ -25,16 +25,12 @@ if (iter == 1)
         else
             im_vectors.rhs = options' * mData;
         end
-        if iscell(im_vectors.rhs)
-            temp = cell2mat(im_vectors.rhs);
-            for ll = 1 : options.param.nMultiVolumes + 1
-                im_vectors.recApu{ll} = im_vectors.rhs{ll} / options.param.alphaLSQR;
-            end
-            options.param.alphaLSQR = norm(temp);
-        else
-            options.param.alphaLSQR = norm(im_vectors.rhs);
-            im_vectors.recApu = im_vectors.rhs / options.param.alphaLSQR;
+        temp = cell2mat(im_vectors.rhs);
+        for ll = 1 : options.param.nMultiVolumes + 1
+            im_vectors.recApu{timestep, ll} = im_vectors.rhs{timestep, ll} / options.param.alphaLSQR;
         end
+        options.param.alphaLSQR = norm(temp);
+
         im_vectors.wLSQR = im_vectors.recApu;
         options.param.phiLSQR = options.param.betaLSQR;
         options.param.rhoLSQR = options.param.alphaLSQR;
@@ -55,13 +51,10 @@ if (iter == 1)
         end
         im_vectors.recApu = im_vectors.rhs;
         options.param.gammaCGLS = 0;
-        if iscell(im_vectors.rhs)
-            for ll = 1 : options.param.nMultiVolumes + 1
-                options.param.gammaCGLS = options.param.gammaCGLS + (im_vectors.rhs{ll}' * im_vectors.rhs{ll});
-            end
-        else
-            options.param.gammaCGLS = im_vectors.rhs' * im_vectors.rhs;
+        for ll = 1 : options.param.nMultiVolumes + 1
+            options.param.gammaCGLS = options.param.gammaCGLS + (im_vectors.rhs{timestep, ll}' * im_vectors.rhs{timestep, ll});
         end
+
         if (options.param.verbose >= 3)
             disp("CGLS initialization complete");
         end
@@ -71,25 +64,25 @@ if (iter == 1)
             disp("Initializing PDHG algorithm");
         end
         if ~isfield(im_vectors,'pCP')
-            im_vectors.pCP = cell(options.param.subsets, 1);
+            im_vectors.pCP = cell(options.param.partitions, options.param.subsets);
         end
         if (options.param.subsets > 1)
             % if ~isfield(im_vectors,'p0CP')
             %     im_vectors.p0CP = cell(options.param.subsets, 1);
             % end
             if ~isfield(im_vectors,'fpCP')
-                im_vectors.fpCP = cell(options.param.subsets, 1);
+                im_vectors.fpCP = cell(options.param.partitions, options.param.subsets);
             end
         end
         if subIter == 1
             im_vectors.uCP = im_vectors.recApu;
         end
-        im_vectors.pCP{subIter} = zeros(m_size, 1, options.param.cType);
+        im_vectors.pCP{timestep, subIter} = zeros(m_size, 1, options.param.cType);
         if (options.param.subsets > 1)
             if subIter == 1
                 im_vectors.p0CP = zeros(m_size, 1, options.param.cType);
             end
-            im_vectors.fpCP{subIter} = zeros(m_size, 1, options.param.cType);
+            im_vectors.fpCP{timestep, subIter} = zeros(m_size, 1, options.param.cType);
         end
         if (options.param.verbose >= 3)
             disp("PDHG initialization complete");

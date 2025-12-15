@@ -882,7 +882,7 @@ classdef projectorClass
         end
 
 
-        function y = forwardProject(obj, input, varargin)
+        function y = forwardProject(obj, input, varargin) % TODO obj.timestep input after subset_number
             %FORWARDPROJECT Computes the forward projection between the
             %object and the input vector.
             %   Output is stored in the y-vector. PSF blurring is performed
@@ -992,7 +992,7 @@ classdef projectorClass
         end
 
 
-        function [f, varargout] = backwardProject(obj, input, varargin)
+        function [f, varargout] = backwardProject(obj, input, varargin) % TODO obj.timestep input after subset_number
             %BACKWARDPROJECT Computes the backprojection between the object
             %and the input vector. Can also (optionally) compute the
             %sensitivity image.
@@ -1095,6 +1095,7 @@ classdef projectorClass
                 disp('Backprojection computed')
             end
         end
+
         function f = mtimes(obj, input)
             %MTIMES Automatically compute either the forward projection or
             %backprojection, based on the input vector length.

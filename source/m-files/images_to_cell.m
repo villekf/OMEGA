@@ -21,7 +21,7 @@ function [pz, varargout] = images_to_cell(im_vectors)
 % fn = fieldnames(im_vectors);
 % fn = fn(cellfun('isempty',strfind(fn,'apu')));
 gg = 1;
-pz = im_vectors.recImage;
+pz = cat(4, im_vectors.recImage{:});
 % loc = find(rekot);
 
 % varNonMAP = [recNames(6)];

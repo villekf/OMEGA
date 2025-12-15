@@ -31,7 +31,8 @@ if numel(options.partitions) > 1
 else
     partitions = options.partitions;
 end
-im_vectors.recImage = reshape(im_vectors.recImage,options.Nx(1),options.Ny(1),options.Nz(1),Niter,partitions);
+currentMultiVolume = 1; % TODO
+im_vectors.recImage{currentMultiVolume} = reshape(im_vectors.recImage{currentMultiVolume}, options.Nx(1), options.Ny(1), options.Nz(1), Niter, partitions);
 % fn = fieldnames(im_vectors);
 % fn = fn(cellfun('isempty',strfind(fn,'Apu')));
 % for kk = 1 : numel(fn)
