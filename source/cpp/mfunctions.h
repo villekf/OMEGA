@@ -100,11 +100,12 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 		inputScalars.T = getSingles(options, "OffsetLimit");
 	inputScalars.nProjections = getScalarInt64(options, 0, "nProjections");
 	inputScalars.subsetType = getScalarUInt32(options, 0, "subset_type");
+	inputScalars.d_Scale4.resize(inputScalars.nMultiVolumes + 1);
+	inputScalars.dSize.resize(inputScalars.nMultiVolumes + 1);
+	inputScalars.d_Scale.resize(inputScalars.nMultiVolumes + 1);
 	if (inputScalars.FPType == 4 || inputScalars.FPType == 5 || inputScalars.BPType == 4 || inputScalars.BPType == 5) {
 		inputScalars.dL = getScalarFloat(options, 0, "dL");
-		inputScalars.d_Scale4.resize(inputScalars.nMultiVolumes + 1);
-		inputScalars.dSize.resize(inputScalars.nMultiVolumes + 1);
-		inputScalars.d_Scale.resize(inputScalars.nMultiVolumes + 1);
+		
 		float* dScaleX4 = getSingles(options, "dScaleX4");
 		float* dScaleY4 = getSingles(options, "dScaleY4");
 		float* dScaleZ4 = getSingles(options, "dScaleZ4");

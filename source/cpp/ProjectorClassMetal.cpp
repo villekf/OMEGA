@@ -514,29 +514,89 @@ int ProjectorClass::initializeKernel(
     scalarStruct& inputScalars,
     Weighting& w_vec
 ) {
-    StaticScalarKernelParams params = {};
-    params.nRowsD = inputScalars.nRowsD;
-    params.nColsD = inputScalars.nColsD;
-    params.dPitchX = w_vec.dPitchX;
-    params.dPitchY = w_vec.dPitchY;
-    params.dL = inputScalars.dL;
-    params.global_factor = inputScalars.global_factor;
-    params.epps = inputScalars.epps;
-    params.det_per_ring = inputScalars.det_per_ring;
-    params.sigma_x = inputScalars.sigma_x;
-    params.coneOfResponseStdCoeffA = inputScalars.coneOfResponseStdCoeffA;
-    params.coneOfResponseStdCoeffB = inputScalars.coneOfResponseStdCoeffB;
-    params.coneOfResponseStdCoeffB = inputScalars.coneOfResponseStdCoeffB;
-    params.bmin = inputScalars.bmin;
-    params.bmax = inputScalars.bmax;
-    params.Vmax = inputScalars.Vmax;
-    params.rings = inputScalars.rings;
+    // Set scalar struct
+    kParams.nRowsD = inputScalars.nRowsD;
+    kParams.nColsD = inputScalars.nColsD;
+    kParams.dPitch = {w_vec.dPitchX, w_vec.dPitchY};
+    kParams.dL = inputScalars.dL;
+    kParams.global_factor = inputScalars.global_factor;
+    kParams.epps = inputScalars.epps;
+    kParams.det_per_ring = inputScalars.det_per_ring;
+    kParams.sigma_x = inputScalars.sigma_x;
+    kParams.coneOfResponseStdCoeffA = inputScalars.coneOfResponseStdCoeffA;
+    kParams.coneOfResponseStdCoeffB = inputScalars.coneOfResponseStdCoeffB;
+    kParams.coneOfResponseStdCoeffC = inputScalars.coneOfResponseStdCoeffC;
+    kParams.bmin = inputScalars.bmin;
+    kParams.bmax = inputScalars.bmax;
+    kParams.Vmax = inputScalars.Vmax;
+    kParams.rings = inputScalars.rings;
+    kParams.helicalRadius = inputScalars.helicalRadius;
 
     // Set buffers to kernels
-    kernelFP->setBytes((const void*)&params, (NS::UInteger)sizeof(params), 0);
-    if (DEBUG) mexPrint("initializeKernel: FP buffer 0 (static params) set");
-    kernelBP->setBytes((const void*)&params, (NS::UInteger)sizeof(params), 0);
-    if (DEBUG) mexPrint("initializeKernel: BP buffer 0 (static params) set");
+    if (inputScalars.FPType >= 1 && inputScalars.FPType <= 3) {
+        if (inputScalars.SPECT) {
+            kernelFP->setBuffer(d_rayShiftsDetector.get(), (NS::UInteger)0, 1);
+            if (DEBUG) mexPrint("initializeKernel: FP buffer 1 (rayShiftsDetector) set");
+            kernelFP->setBuffer(d_rayShiftsSource.get(), (NS::UInteger)0, 2);
+            if (DEBUG) mexPrint("initializeKernel: FP buffer 2 (rayShiftsSource) set");
+        }
+        if (inputScalars.TOF) {
+            kernelFP->setBuffer(d_TOFCenter.get(), (NS::UInteger)0, 3);
+            if (DEBUG) mexPrint("initializeKernel: FP buffer 3 (d_TOFCenter) set");
+        }
+        if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
+            kernelFP->setBuffer(d_V.get(), (NS::UInteger)0,4);
+            if (DEBUG) mexPrint("initializeKernel: FP buffer 4 (d_V) set");
+        }
+    }
+
+    if (inputScalars.BPType >= 1 && inputScalars.BPType <= 3) {
+        if (inputScalars.SPECT) {
+            kernelBP->setBuffer(d_rayShiftsDetector.get(), (NS::UInteger)0, 1);
+            if (DEBUG) mexPrint("initializeKernel: BP buffer 1 (rayShiftsDetector) set");
+            kernelBP->setBuffer(d_rayShiftsSource.get(), (NS::UInteger)0, 2);
+            if (DEBUG) mexPrint("initializeKernel: BP buffer 2 (rayShiftsSource) set");
+        }
+        if (inputScalars.TOF) {
+            kernelBP->setBuffer(d_TOFCenter.get(), (NS::UInteger)0, 3);
+            if (DEBUG) mexPrint("initializeKernel: BP buffer 3 (d_TOFCenter) set");
+        }
+        if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
+            kernelBP->setBuffer(d_V.get(), (NS::UInteger)0,4);
+            if (DEBUG) mexPrint("initializeKernel: BP buffer 4 (d_V) set");
+        }
+        /*if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
+            if (inputScalars.SPECT) {
+                kernelSensList->setBytes((const void*)&d_rayShiftsDetector, (NS::UInteger)sizeof(d_rayShiftsDetector), 1);
+                if (DEBUG) mexPrint("initializeKernel: Sens buffer 1 (d_rayShiftsDetector) set");
+                kernelSensList->setBytes((const void*)&d_rayShiftsSource, (NS::UInteger)sizeof(d_rayShiftsSource), 2);
+                if (DEBUG) mexPrint("initializeKernel: Sens buffer 2 (d_rayShiftsSource) set");
+            }
+            if (inputScalars.TOF) {
+                kernelSensList->setBytes((const void*)&d_TOFCenter, (NS::UInteger)sizeof(d_TOFCenter), 3);
+                if (DEBUG) mexPrint("initializeKernel: Sens buffer 3 (d_TOFCenter) set");
+            }
+            if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
+                kernelSensList->setBytes((const void*)&d_V, (NS::UInteger)sizeof(d_V), 4);
+                if (DEBUG) mexPrint("initializeKernel: Sens buffer 4 (d_V) set");
+            }
+        }*/
+    }
+
+    //if ((inputScalars.BPType == 4 || inputScalars.FPType == 4) && !inputScalars.CT && inputScalars.TOF) {
+    //    if (inputScalars.FPType == 4) {
+    //        kernelFP.setArg(kernelIndFP++, d_TOFCenter);
+    //        //kernelFP.setArg(kernelIndFP++, inputScalars.sigma_x);
+    //    }
+    //    if (inputScalars.BPType == 4) {
+    //        kernelBP.setArg(kernelIndBP++, d_TOFCenter);
+    //        //kernelBP.setArg(kernelIndBP++, inputScalars.sigma_x);
+    //        if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
+    //            kernelSensList.setArg(kernelIndSens++, d_TOFCenter);
+    //            //kernelSensList.setArg(kernelIndSens++, inputScalars.sigma_x);
+    //        }
+    //    }
+    //}
 
     return 0;
 }
@@ -583,21 +643,26 @@ int ProjectorClass::forwardProjection(
         tStart = std::chrono::steady_clock::now();
     }
 
-    DynamicScalarKernelParams params = {};
-    params.d_N = d_N[ii];
-    params.d = d[ii];
-    params.b = b[ii];
-    params.bmax = bmax[ii];
-    params.nProjections = length[osa_iter];
-    params.no_norm = no_norm;
-    params.m_size = m_size;
-    params.currentSubset = osa_iter;
-    params.aa = ii;
-    if (inputScalars.FPType == 2) params.orthWidth = inputScalars.tube_width; // Set here to allow for projectors 23 and 32
-    else if (inputScalars.FPType == 3) params.orthWidth = inputScalars.cylRadiusProj3;
+    kParams.d_N = d_N[ii];
+    kParams.d = d[ii];
+    kParams.b = b[ii];
+    kParams.d_bmax = bmax[ii];
+    kParams.d_Scale4 = inputScalars.d_Scale4[ii];
+    kParams.d_Scale5 = inputScalars.d_Scale[ii];
+    kParams.dSize5 = inputScalars.dSize[ii];
+    kParams.rings = inputScalars.rings;
+    kParams.det_per_ring = inputScalars.det_per_ring;
+    kParams.nProjections = length[osa_iter];
+    kParams.no_norm = no_norm;
+    kParams.m_size = m_size;
+    kParams.currentSubset = osa_iter;
+    kParams.aa = ii;
+    if (inputScalars.FPType == 2) kParams.orthWidth = inputScalars.tube_width; // Set here to allow for projector types 23 and 32
+    if (inputScalars.FPType == 3) kParams.orthWidth = inputScalars.cylRadiusProj3; // Set here to allow for projector types 23 and 32
 
-    kernelFP->setBytes((const void*)&params, (NS::UInteger)sizeof(params), 1);
-    if (DEBUG) mexPrint("forwardProjection: buffer 1 (dynamic params) set");
+    SET_KERNEL_ARG_BYTES(kernelFP, kParams, sizeof(kParams), 0);
+    //kernelFP->setBytes((const void*)&kParams, (NS::UInteger)sizeof(kParams), 0);
+    if (DEBUG) mexPrint("forwardProjection: FP buffer 0 (scalar params) set");
 
     if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3)) {
         if (inputScalars.SPECT) {
@@ -736,21 +801,23 @@ int ProjectorClass::backwardProjection(
 
     if (DEBUG) mexPrint("backwardProjection: init");
 
-    DynamicScalarKernelParams params = {};
-    params.d_N = d_N[ii];
-    params.d = d[ii];
-    params.b = b[ii];
-    params.bmax = bmax[ii];
-    params.nProjections = length[osa_iter];
-    params.no_norm = no_norm;
-    params.m_size = m_size;
-    params.currentSubset = osa_iter;
-    params.aa = ii;
-    if (inputScalars.BPType == 2) params.orthWidth = inputScalars.tube_width;
-    else if (inputScalars.BPType == 3) params.orthWidth = inputScalars.cylRadiusProj3;
+    kParams.d_N = d_N[ii];
+    kParams.d = d[ii];
+    kParams.b = b[ii];
+    kParams.d_bmax = bmax[ii];
+    kParams.d_Scale5 = inputScalars.d_Scale[ii];
+    kParams.dSize5 = inputScalars.dSizeBP;
+    kParams.nProjections = length[osa_iter];
+    kParams.no_norm = no_norm;
+    kParams.m_size = m_size;
+    kParams.currentSubset = osa_iter;
+    kParams.aa = ii;
+    if (inputScalars.BPType == 2) kParams.orthWidth = inputScalars.tube_width;
+    if (inputScalars.BPType == 3) kParams.orthWidth = inputScalars.cylRadiusProj3;
+    if (inputScalars.BPType == 4) kParams.kerroin4 = w_vec.kerroin4[ii];
 
-    kernelBP->setBytes((const void*)&params, (NS::UInteger)sizeof(params), 1);
-    if (DEBUG) mexPrint("backwardProjection: buffer 1 (dynamic params) set");
+    SET_KERNEL_ARG_BYTES(kernelBP, kParams, sizeof(kParams), 0);
+    if (DEBUG) mexPrint("backwardProjection: BP buffer 0 (static params) set");
 
     if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
         if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {

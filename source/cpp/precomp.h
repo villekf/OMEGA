@@ -8,6 +8,11 @@
 #define CTYPE3 cl_float3
 #define CTYPE2 cl_float2
 #define ITYPE3 cl_int3
+#elif defined(METAL)
+#include <simd/simd.h>
+#define CTYPE3 simd::float3
+#define CTYPE2 simd::float2
+#define ITYPE3 simd::int3
 #else
 struct float3a {
 	float x, y, z;

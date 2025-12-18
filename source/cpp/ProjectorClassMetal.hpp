@@ -9,7 +9,7 @@
 #include <simd/simd.h>
 
 // Macro definitions
-#define SET_KERNEL_ARG_BYTES(kernel, bytes, offset, index) // TODO
+#define SET_KERNEL_ARG_BYTES(kernel, bytes, size, index) kernel->setBytes((const void*)&bytes, (NS::UInteger)size, index)
 #define SET_KERNEL_ARG_BUFFER(kernel, buf, offset, index) kernel->setBuffer(buf.get(), (NS::UInteger)offset, index)
 #define SET_KERNEL_ARG_TEXTURE(kernel, tex, offset, index) // TODO
 
@@ -49,6 +49,9 @@ public:
 	// Distance from the origin to the corner of the image, voxel size and distance from the origin to the opposite corner of the image
 	std::vector<simd::float3> b, d, bmax;
 	std::vector<simd::uint3> d_N;
+
+	// Scalar kernel params
+    ScalarKernelParams kParams;
 
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_maskFPB;
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_LFull, d_zindexFull, d_xyindexFull, d_normFull, d_scatFull, d_xFull, d_zFull;

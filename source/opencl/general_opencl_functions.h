@@ -77,6 +77,33 @@
 #define FLOAT3 float3
 #endif
 
+// Macro to unpack scalar parameters for projector types 1, 2 and 3 (FP+BP)
+#define UNPACK_SCALAR_PARAMS_123(scalarParams) \
+    FLOAT global_factor = scalarParams.global_factor; \
+    FLOAT d_epps = scalarParams.epps; \
+	uint d_size_x = scalarParams.nRowsD; \
+	uint d_det_per_ring = scalarParams.det_per_ring; \
+	FLOAT sigma_x = scalarParams.sigma_x; \
+	FLOAT coneOfResponseStdCoeffA = scalarParams.coneOfResponseStdCoeffA; \
+    FLOAT coneOfResponseStdCoeffB = scalarParams.coneOfResponseStdCoeffB; \
+    FLOAT coneOfResponseStdCoeffC = scalarParams.coneOfResponseStdCoeffC; \
+	FLOAT2 crystalSize = scalarParams.dPitch; \
+	FLOAT bmin = scalarParams.bmin; \
+	FLOAT bmax = scalarParams.bmax; \
+	FLOAT Vmax = scalarParams.Vmax; \
+	uint d_sizey = scalarParams.nColsD; \
+	long d_nProjections = scalarParams.nProjections; \
+	uint rings = scalarParams.rings; \
+	uint3 d_Nxyz = scalarParams.d_N; \
+	FLOAT3 d_d = scalarParams.d; \
+	FLOAT3 b = scalarParams.b; \
+	FLOAT3 d_bmax = scalarParams.d_bmax; \
+	unsigned char no_norm = scalarParams.no_norm; \
+	unsigned long m_size = scalarParams.m_size; \
+	uint currentSubset = scalarParams.currentSubset; \
+	int aa = scalarParams.aa; \
+    float orthWidth = scalarParams.orthWidth;
+
 #ifdef METAL
 #ifdef HALF // 16-bit floating point
 #define CAST float
@@ -144,6 +171,7 @@
 #define PTR_TG threadgroup
 #define RCP(x) (1.f / x)
 #define SQRT metal::sqrt
+#define SCALAR_PARAMS(name) constant ScalarKernelParams &name
 
 // Metal function definitions
 inline FLOAT dot(half3 a, half3 b) {
