@@ -1,4 +1,10 @@
+//#if defined(METAL) // Metal
 #include "ProjectorClassMetal.hpp"
+//#elif defined(CUDA) // CUDA
+
+//#else // OpenCL
+
+//#endif
 
 int ProjectorClass::createProgram(
     NS::SharedPtr<MTL::Library>& libFP,
@@ -291,7 +297,7 @@ int ProjectorClass::createBuffers(
     const int type
 ) {
     if (inputScalars.maskFP)
-        d_maskFP.resize(inputScalars.subsetsUsed);
+        d_maskFPB.resize(inputScalars.subsetsUsed);
     if (inputScalars.raw)
         d_L.resize(inputScalars.subsetsUsed);
     if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1) {
@@ -311,25 +317,34 @@ int ProjectorClass::createBuffers(
         d_scat.resize(inputScalars.subsetsUsed);
     if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation)
         d_atten.resize(inputScalars.subsetsUsed);
-    if (inputScalars.projector_type != 6) {
-        d_x.resize(inputScalars.subsetsUsed);
-        d_z.resize(inputScalars.subsetsUsed);
+
+    d_scat.resize(inputScalars.Nt);
+    d_x.resize(inputScalars.Nt);
+    d_z.resize(inputScalars.Nt);
+    d_trIndex.resize(inputScalars.Nt);
+    d_axIndex.resize(inputScalars.Nt);
+    d_TOFIndex.resize(inputScalars.Nt);
+    for (int tt = 0; tt < inputScalars.Nt; tt++) {
+        d_scat[tt].resize(inputScalars.subsetsUsed);
+        d_x[tt].resize(inputScalars.subsetsUsed);
+        d_z[tt].resize(inputScalars.subsetsUsed);
+        d_trIndex[tt].resize(inputScalars.subsetsUsed);
+        d_axIndex[tt].resize(inputScalars.subsetsUsed);
+        d_TOFIndex[tt].resize(inputScalars.subsetsUsed);
     }
 
     if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5))
         d_T.resize(inputScalars.subsetsUsed);
 
     size_t vecSize = 1;
-    if ((inputScalars.PET 
-        || inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0)
+    if ((inputScalars.PET || inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0)
         vecSize = static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD);
-
-    size_t fpSize = sizeof(float); // Floating point size
     
     const MTL::ResourceOptions sharedOpts = (MTL::ResourceOptions)MTL::ResourceStorageModeShared;
 
+    NS::UInteger bytes;
     if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-        NS::UInteger bytes = (NS::UInteger)(fpSize * (size_t)inputScalars.size_V);
+        bytes = (NS::UInteger)(sizeof(float) * (size_t)inputScalars.size_V);
         d_V = NS::TransferPtr(mtlDevice->newBuffer((const void*)inputScalars.V, bytes, sharedOpts));
     }
 
@@ -337,121 +352,139 @@ int ProjectorClass::createBuffers(
     if ((!(inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) || inputScalars.indexBased) {
         //d_x[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x, NULL, &status);
     }
-
-    // Attenuation data for image-based attenuation
-    if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
-        NS::UInteger bytes = (NS::UInteger)(fpSize * (size_t)inputScalars.im_dim[0]);
-        d_attenB = NS::TransferPtr(mtlDevice->newBuffer((const void*)atten, bytes, sharedOpts));
-    }
     
     // Forward projection mask
     if (inputScalars.maskFP) {
         if (inputScalars.maskFPZ > 1) {
             for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-                NS::UInteger bytes = (NS::UInteger)((size_t)sizeof(uint8_t) * (size_t)inputScalars.nRowsD * (size_t)inputScalars.nColsD * (size_t)length[kk]);
+                bytes = (NS::UInteger)((size_t)sizeof(uint8_t) * (size_t)inputScalars.nRowsD * (size_t)inputScalars.nColsD * (size_t)length[kk]);
                 const uint8_t* src = &w_vec.maskFP[(size_t)pituus[kk] * (size_t)vecSize];
-                d_maskFP[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)src, bytes, sharedOpts));
+                d_maskFPB[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)src, bytes, sharedOpts));
             }
         } else {
-            NS::UInteger bytes = (NS::UInteger)((size_t)sizeof(uint8_t) * (size_t)inputScalars.nRowsD * (size_t)inputScalars.nColsD);
-            d_maskFP[0] = NS::TransferPtr(mtlDevice->newBuffer((const void*)w_vec.maskFP, bytes, sharedOpts));
+            bytes = (NS::UInteger)((size_t)sizeof(uint8_t) * (size_t)inputScalars.nRowsD * (size_t)inputScalars.nColsD);
+            d_maskFPB[0] = NS::TransferPtr(mtlDevice->newBuffer((const void*)w_vec.maskFP, bytes, sharedOpts));
         }
     }
 
     // Backprojection mask
     if (inputScalars.maskBP) {
-        NS::UInteger bytes = (NS::UInteger)((size_t)sizeof(uint8_t) * (size_t)inputScalars.Nx[0] * (size_t)inputScalars.Ny[0] * (size_t)inputScalars.maskBPZ);
-        d_maskBP = NS::TransferPtr(mtlDevice->newBuffer((const void*)w_vec.maskBP, bytes, sharedOpts));
+        bytes = (NS::UInteger)((size_t)sizeof(uint8_t) * (size_t)inputScalars.Nx[0] * (size_t)inputScalars.Ny[0] * (size_t)inputScalars.maskBPZ);
+        d_maskBPB = NS::TransferPtr(mtlDevice->newBuffer((const void*)w_vec.maskBP, bytes, sharedOpts));
     }
 
     // SPECT ray shifts (required for only projector types 1,2 and 3)
     if (inputScalars.SPECT) {
-        NS::UInteger bytes = (NS::UInteger)(fpSize * 2ull * (size_t)inputScalars.n_rays * (size_t)inputScalars.nRowsD * (size_t)inputScalars.nColsD * (size_t)inputScalars.nProjections);
+        bytes = (NS::UInteger)(sizeof(float) * 2ull * (size_t)inputScalars.n_rays * (size_t)inputScalars.nRowsD * (size_t)inputScalars.nColsD * (size_t)inputScalars.nProjections);
         d_rayShiftsDetector = NS::TransferPtr(mtlDevice->newBuffer((const void*)w_vec.rayShiftsDetector, bytes, sharedOpts));
         d_rayShiftsSource = NS::TransferPtr(mtlDevice->newBuffer((const void*)w_vec.rayShiftsSource, bytes, sharedOpts));
     }
 
     if (inputScalars.eFOV) {
-        NS::UInteger bytes = (NS::UInteger)(sizeof(uint8_t) * inputScalars.Nz[0]);
+        bytes = (NS::UInteger)(sizeof(uint8_t) * inputScalars.Nz[0]);
         d_eFOVIndices = NS::TransferPtr(mtlDevice->newBuffer((const void*)w_vec.eFOVIndices, bytes, sharedOpts));
     }
 
     if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) {
-        NS::UInteger bytes = (NS::UInteger)(sizeof(float) * inputScalars.nProjections);
+        bytes = (NS::UInteger)(sizeof(float) * inputScalars.nProjections);
         d_angle = NS::TransferPtr(mtlDevice->newBuffer((const void*)w_vec.angles, bytes, sharedOpts));
     }
 
     // TOF bin centers
     if (inputScalars.TOF) {
-        NS::UInteger bytes = (NS::UInteger)(sizeof(float) * inputScalars.nBins);
+        bytes = (NS::UInteger)(sizeof(float) * inputScalars.nBins);
         d_eFOVIndices = NS::TransferPtr(mtlDevice->newBuffer((const void*)inputScalars.TOFCenter, bytes, sharedOpts));
     }
 
     if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-        NS::UInteger bytesX = (NS::UInteger)(sizeof(float) * inputScalars.size_of_x);
-        NS::UInteger bytesZ = (NS::UInteger)(sizeof(float) * inputScalars.size_z);
-        d_xFull.emplace_back(NS::TransferPtr(mtlDevice->newBuffer((const void*)x, bytesX, sharedOpts)));
-        d_zFull.emplace_back(NS::TransferPtr(mtlDevice->newBuffer((const void*)z_det, bytesZ, sharedOpts)));
+        bytes = (NS::UInteger)(sizeof(float) * inputScalars.size_of_x);
+        d_xFull.emplace_back(NS::TransferPtr(mtlDevice->newBuffer((const void*)x, bytes, sharedOpts)));
+        bytes = (NS::UInteger)(sizeof(float) * inputScalars.size_z);
+        d_zFull.emplace_back(NS::TransferPtr(mtlDevice->newBuffer((const void*)z_det, bytes, sharedOpts)));
     }
 
-    // Per-subset buffers
-    for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-        if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
-            if (inputScalars.pitch) {
-                NS::UInteger bytesZ = (NS::UInteger)(fpSize * (size_t)length[kk] * 6u);
-                const float* srcZ = &z_det[(size_t)pituus[kk] * 6u];
-                d_z[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcZ, bytesZ, sharedOpts));
-            } else {
-                NS::UInteger bytesZ = (NS::UInteger)(fpSize * (size_t)length[kk] * 2u);
-                const float* srcZ = &z_det[(size_t)pituus[kk] * 2u];
-                d_z[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcZ, bytesZ, sharedOpts));
-            }
-        } else {
-            if (inputScalars.PET && inputScalars.listmode == 0) {
-                if (inputScalars.nLayers > 1) {
-                    NS::UInteger bytesZ = (NS::UInteger)(fpSize * (size_t)length[kk] * 3u);
-                    const float* srcZ = &z_det[(size_t)pituus[kk] * 3u];
-                    d_z[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcZ, bytesZ, sharedOpts));
-                } else {
-                    NS::UInteger bytesZ = (NS::UInteger)(fpSize * (size_t)length[kk] * 2u);
-                    const float* srcZ = &z_det[(size_t)pituus[kk] * 2u];
-                    d_z[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcZ, bytesZ, sharedOpts));
+    // Per-subset / per-timestep buffers
+    for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
+        // Attenuation data for image-based attenuation
+        if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+            bytes = (NS::UInteger)(sizeof(float) * (size_t)inputScalars.im_dim[0]);
+            d_attenB[timestep] = NS::TransferPtr(mtlDevice->newBuffer((const void*)atten, bytes, sharedOpts));
+        }
+
+        for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+            if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
+                NS::UInteger bytesX = (NS::UInteger)(sizeof(float) * (size_t)length[kk] * 6u);
+                const float* srcX = &x[(size_t)pituus[kk] * 6 + (size_t)pituus[inputScalars.subsets] * 6 * timestep];
+                d_x[timestep][kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcX, bytesX, sharedOpts));
+            } else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
+                if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF) {
+                    NS::UInteger bytesX = (NS::UInteger)(sizeof(float) * (size_t)length[kk] * 6u);
+                    const float* srcX = &w_vec.listCoord[pituus[kk] * 6u + inputScalars.kokoNonTOF * 6 * timestep];
+                    d_x[timestep][kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcX, bytesX, sharedOpts));
                 }
-            } else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased)) {
-                NS::UInteger bytesZ = (NS::UInteger)(fpSize * (size_t)inputScalars.size_z);
-                const float* srcZ = &z_det[(size_t)inputScalars.size_z];
-                d_z[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcZ, bytesZ, sharedOpts));
+            }
+
+            NS::UInteger z_coef = 1;
+            if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
+                if (inputScalars.pitch) {
+                    z_coef = 6;
+                } else {
+                    z_coef = 2;
+                }
+                bytes = (NS::UInteger)(sizeof(float) * (size_t)length[kk] * z_coef);
+                const float* srcZ = &z_det[(size_t)pituus[kk] * z_coef + pituus[inputScalars.subsets] * z_coef * timestep];
+                d_z[timestep][kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcZ, bytes, sharedOpts));
+            } else {
+                if (inputScalars.PET && inputScalars.listmode == 0) {
+                    if (inputScalars.nLayers > 1) {
+                        z_coef = 3;
+                    } else {
+                        z_coef = 2;
+                    }
+                    bytes = (NS::UInteger)(sizeof(float) * (size_t)length[kk] * z_coef);
+                    const float* srcZ = &z_det[(size_t)pituus[kk] * z_coef + pituus[inputScalars.subsets] * z_coef * timestep];
+                    d_z[timestep][kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcZ, bytes, sharedOpts));
+                } else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased)) {
+                    NS::UInteger bytesZ = (NS::UInteger)(sizeof(float) * (size_t)inputScalars.size_z);
+                    const float* srcZ = &z_det[(size_t)inputScalars.size_z];
+                    d_z[timestep][kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcZ, bytesZ, sharedOpts));
+                }
+            }
+
+            // Scatter
+            if (inputScalars.size_scat > 1 && inputScalars.scatter == 1U) {
+                NS::UInteger bytesS = (NS::UInteger)(sizeof(float) * (size_t)length[kk] * (size_t)vecSize);
+                const float* srcS = &extraCorr[pituus[kk] * vecSize + inputScalars.kokoNonTOF * timestep];
+                d_scat[timestep][kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcS, bytesS, sharedOpts));
+            }
+
+            if (inputScalars.listmode > 0 && (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF))) {
+                if (inputScalars.indexBased) {
+                    NS::UInteger bytes_tr_ax = (NS::UInteger)(sizeof(uint16_t) * length[kk] * 2);
+                    const uint16_t* srcTR = &w_vec.trIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * timestep];
+                    const uint16_t* srcAX = &w_vec.axIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * timestep];
+                    d_trIndex[timestep][kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcTR, bytes_tr_ax, sharedOpts));
+                    d_axIndex[timestep][kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcAX, bytes_tr_ax, sharedOpts));
+                }
+                if (inputScalars.TOF) {
+                    NS::UInteger bytesTOFIdx = (NS::UInteger)(sizeof(uint8_t) * length[kk]);
+                    const uint8_t* srcTOFIdx = &w_vec.TOFIndices[pituus[kk] + inputScalars.kokoNonTOF * timestep];
+                    d_TOFIndex[timestep][kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcTOFIdx, bytesTOFIdx, sharedOpts));
+                }
             }
         }
-        
+    }
+
+    for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) { // TODO move dynamic stuff to loop above.
         if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
             //d_T[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk], NULL, &status);
         }
 
-        if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
-            NS::UInteger bytesX = (NS::UInteger)(fpSize * (size_t)length[kk] * 6u);
-            const float* srcX = &x[(size_t)pituus[kk] * 6u];
-            d_x[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcX, bytesX, sharedOpts));
-        } else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
-            if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF) {
-                NS::UInteger bytesX = (NS::UInteger)(fpSize * (size_t)length[kk] * 6u);
-                const float* srcX = &w_vec.listCoord[pituus[kk] * 6u];
-                d_x[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcX, bytesX, sharedOpts));
-            }
-        }
-
         // Normalization
         if (inputScalars.size_norm > 1 && inputScalars.normalization_correction) {
-            NS::UInteger bytesN = (NS::UInteger)(fpSize * (size_t)length[kk] * (size_t)vecSize);
+            NS::UInteger bytesN = (NS::UInteger)(sizeof(float) * (size_t)length[kk] * (size_t)vecSize);
             const float* srcN = &norm[(size_t)pituus[kk] * (size_t)vecSize];
             d_norm[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcN, bytesN, sharedOpts));
-        }
-
-        // Scatter
-        if (inputScalars.size_scat > 1 && inputScalars.scatter == 1U) {
-            NS::UInteger bytesS = (NS::UInteger)(fpSize * (size_t)length[kk] * (size_t)vecSize);
-            const float* srcS = &extraCorr[(size_t)pituus[kk] * (size_t)vecSize];
-            d_scat[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcS, bytesS, sharedOpts));
         }
 
         if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
@@ -472,21 +505,6 @@ int ProjectorClass::createBuffers(
             const uint16_t* srcZ = &z_index[pituus[kk]];
             d_xyindex[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcXY, bytesXY, sharedOpts));
             d_zindex[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcZ, bytesZ, sharedOpts));
-        }
-
-        if (inputScalars.listmode > 0 && (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF))) {
-            if (inputScalars.indexBased) {
-                NS::UInteger bytes_tr_ax = (NS::UInteger)(sizeof(uint16_t) * length[kk] * 2);
-                const uint16_t* srcTR = &w_vec.trIndex[pituus[kk] * 2];
-                const uint16_t* srcAX = &w_vec.axIndex[pituus[kk] * 2];
-                d_trIndex[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcTR, bytes_tr_ax, sharedOpts));
-                d_axIndex[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcAX, bytes_tr_ax, sharedOpts));
-            }
-            if (inputScalars.TOF) {
-                NS::UInteger bytesTOFIdx = (NS::UInteger)(sizeof(uint8_t) * length[kk]);
-                const uint8_t* srcTOFIdx = &w_vec.TOFIndices[pituus[kk]];
-                d_TOFIndex[kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcTOFIdx, bytesTOFIdx, sharedOpts));
-            }
         }
     }
     return 0;
@@ -541,7 +559,11 @@ int ProjectorClass::forwardProjection(
     const int uu
 ) {
     if (DEBUG) mexPrint("forwardProjection: init");
-    if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
+    if (inputScalars.FPType == 5) {
+        global[0] = (inputScalars.nRowsD + erotus[0]);
+        global[1] = (inputScalars.nColsD + NVOXELSFP - 1) / NVOXELSFP + erotus[1];
+        global[2] = length[osa_iter];
+    } else if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
         global[0] = (inputScalars.nRowsD + erotus[0]);
         global[1] = (inputScalars.nColsD  + erotus[1]);
         global[2] = length[osa_iter];
@@ -555,6 +577,12 @@ int ProjectorClass::forwardProjection(
         global[2] = 1;
     }
 
+    std::chrono::steady_clock::time_point tStart;
+    std::chrono::steady_clock::time_point tEnd;
+    if (DEBUG || inputScalars.verbose >= 3) {
+        tStart = std::chrono::steady_clock::now();
+    }
+
     DynamicScalarKernelParams params = {};
     params.d_N = d_N[ii];
     params.d = d[ii];
@@ -565,69 +593,111 @@ int ProjectorClass::forwardProjection(
     params.m_size = m_size;
     params.currentSubset = osa_iter;
     params.aa = ii;
-    if (inputScalars.FPType == 2) params.orthWidth = inputScalars.tube_width;
+    if (inputScalars.FPType == 2) params.orthWidth = inputScalars.tube_width; // Set here to allow for projectors 23 and 32
     else if (inputScalars.FPType == 3) params.orthWidth = inputScalars.cylRadiusProj3;
 
     kernelFP->setBytes((const void*)&params, (NS::UInteger)sizeof(params), 1);
     if (DEBUG) mexPrint("forwardProjection: buffer 1 (dynamic params) set");
 
-    if (inputScalars.SPECT) {
-        kernelBP->setBuffer(d_rayShiftsDetector.get(), (NS::UInteger)0, /*index*/ 2);
-        kernelBP->setBuffer(d_rayShiftsSource.get(),   (NS::UInteger)0, /*index*/ 3);
-        if (DEBUG) mexPrint("forwardProjection: buffers 2 and 3 set (SPECT shifts)");
-    }
-    if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-        kernelFP->setBuffer(d_V.get(), (NS::UInteger)0, /*index*/ 4);
-    }
-
-    if (inputScalars.attenuation_correction && !inputScalars.CT && inputScalars.CTAttenuation) {
-        kernelFP->setBuffer(d_attenB.get(), (NS::UInteger)0, /*index*/ 5);
-        if (DEBUG) mexPrint("forwardProjection: buffer 5 set");
+    if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3)) {
+        if (inputScalars.SPECT) {
+            SET_KERNEL_ARG_BUFFER(kernelFP, d_rayShiftsDetector, 0, 2);
+            SET_KERNEL_ARG_BUFFER(kernelFP, d_rayShiftsSource, 0, 3);
+            if (DEBUG) mexPrint("forwardProjection: buffers 2 and 3 (SPECT shifts) set");
+        }
+        if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
+            SET_KERNEL_ARG_BUFFER(kernelFP, d_V, 0, 4);
+        }
     }
 
-    if (inputScalars.maskFP) {
-        int subset = 0;
-        if (inputScalars.maskFPZ > 1) subset = osa_iter;
-        kernelFP->setBuffer(d_maskFP[subset].get(), (NS::UInteger)0, /*index*/ 6);
-        if (DEBUG) mexPrint("forwardProjection: buffer 6 set");
+    if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
+        //SET_KERNEL_ARG_BUFFER(kernelFP, d_atten[timestep][osa_iter], 0, 5);
+    } else if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+        if (inputScalars.useBuffers) {
+            SET_KERNEL_ARG_BUFFER(kernelFP, d_attenB[timestep], 0, 5);
+        } else {
+            SET_KERNEL_ARG_TEXTURE(kernelFP, d_attenIm[timestep], 0, 5);
+        }
     }
+    if (DEBUG) mexPrint("forwardProjection: buffer 5 set");
 
-    if (inputScalars.maskBP) {
-        kernelFP->setBuffer(d_maskBP.get(), (NS::UInteger)0, /*index*/ 7);
-        if (DEBUG) mexPrint("forwardProjection: buffer 7 set");
+    if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3)) {    
+        if (inputScalars.maskFP) {
+            if (inputScalars.useBuffers) {
+                int subset = 0;
+                if (inputScalars.maskFPZ > 1) subset = osa_iter;
+                SET_KERNEL_ARG_BUFFER(kernelFP, d_maskFPB[subset], 0, 6);
+            } else {
+                if (inputScalars.maskFPZ > 1) {
+                    //kernelFP->setBuffer(d_maskFP3[osa_iter].get(), (NS::UInteger)0, 6);
+                } else {
+                    //kernelFP->setBuffer(d_maskFP[osa_iter].get(), (NS::UInteger)0, 6);
+                }
+            }
+            if (DEBUG) mexPrint("forwardProjection: buffer 6 set");
+        }
+
+        if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
+            SET_KERNEL_ARG_BUFFER(kernelFP, d_x[0][0], 0, 8);
+        else
+            SET_KERNEL_ARG_BUFFER(kernelFP, d_x[timestep][osa_iter], 0, 8);
+        if (DEBUG) mexPrint("forwardProjection: buffer 8 set");
+
+        if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
+            SET_KERNEL_ARG_BUFFER(kernelFP, d_z[timestep][osa_iter], 0, 9);
+        else
+            SET_KERNEL_ARG_BUFFER(kernelFP, d_z[timestep][inputScalars.osa_iter0], 0, 9);
+        if (DEBUG) mexPrint("forwardProjection: buffer 9 set");
+
+        if (inputScalars.normalization_correction) {
+            SET_KERNEL_ARG_BUFFER(kernelFP, d_norm[osa_iter], 0, 10);
+            if (DEBUG) mexPrint("forwardProjection: buffer 10 set");
+        }
+
+        if (inputScalars.scatter) {
+            SET_KERNEL_ARG_BUFFER(kernelFP, d_scat[timestep][osa_iter], 0, 11);
+            if (DEBUG) mexPrint("forwardProjection: buffer 11 set");
+        }
+
+        SET_KERNEL_ARG_BUFFER(kernelFP, d_Summ[uu], 0, 12);
+        if (DEBUG) mexPrint("forwardProjection: buffer 12 set");
+
+        if ( (inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0 ) {
+            SET_KERNEL_ARG_BUFFER(kernelFP, d_xyindex[osa_iter], 0, 13);
+            SET_KERNEL_ARG_BUFFER(kernelFP, d_zindex[osa_iter], 0, 14);
+            if (DEBUG) mexPrint("forwardProjection: buffers 13 and 14 set");
+        }
+
+        if (inputScalars.listmode > 0 && inputScalars.indexBased) {
+            if (!inputScalars.loadTOF) {
+                SET_KERNEL_ARG_BUFFER(kernelFP, d_trIndex[0][0], 0, 15);
+                SET_KERNEL_ARG_BUFFER(kernelFP, d_axIndex[0][0], 0, 16);
+            } else {
+                SET_KERNEL_ARG_BUFFER(kernelFP, d_trIndex[timestep][osa_iter], 0, 15);
+                SET_KERNEL_ARG_BUFFER(kernelFP, d_axIndex[timestep][osa_iter], 0, 16);
+            }
+        }
+        if (inputScalars.listmode > 0 && inputScalars.TOF) {
+            if (!inputScalars.loadTOF) {
+                SET_KERNEL_ARG_BUFFER(kernelFP, d_TOFIndex[0][0], 0, 17);
+            } else {
+                SET_KERNEL_ARG_BUFFER(kernelFP, d_TOFIndex[timestep][osa_iter], 0, 17);
+            }
+        }
+
+        if (inputScalars.raw)
+            SET_KERNEL_ARG_BUFFER(kernelFP, d_L[osa_iter], 0, 18);
+
+        if (inputScalars.useBuffers) {
+            SET_KERNEL_ARG_BUFFER(kernelFP, vec_opencl.d_im, 0, 19);
+        } else {
+            SET_KERNEL_ARG_TEXTURE(kernelFP, vec_opencl.d_image_os, 0, 19);
+        }
+        if (DEBUG) mexPrint("forwardProjection: buffer 19 set");
+
+        SET_KERNEL_ARG_BUFFER(kernelFP, d_output, 0, 20);
+        if (DEBUG) mexPrint("forwardProjection: buffer 20 set");
     }
-
-    kernelFP->setBuffer(d_x[osa_iter].get(), (NS::UInteger)0, /*index*/ 8);
-    kernelFP->setBuffer(d_z[osa_iter].get(), (NS::UInteger)0, /*index*/ 9);
-    if (DEBUG) mexPrint("forwardProjection: buffers 8 and 9 set");
-
-    if (inputScalars.normalization_correction) {
-        kernelFP->setBuffer(d_norm[osa_iter].get(), (NS::UInteger)0, /*index*/ 10);
-        if (DEBUG) mexPrint("forwardProjection: buffer 10 set");
-    }
-    if (inputScalars.scatter) {
-        kernelFP->setBuffer(d_scat[osa_iter].get(), (NS::UInteger)0, /*index*/ 11);
-        if (DEBUG) mexPrint("forwardProjection: buffer 11 set");
-    }
-
-    kernelFP->setBuffer(d_Summ[uu].get(), (NS::UInteger)0, /*index*/ 12);
-    if (DEBUG) mexPrint("forwardProjection: buffer 12 set");
-
-    if ( (inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7)
-        && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0 )
-    {
-        kernelFP->setBuffer(d_xyindex[osa_iter].get(), (NS::UInteger)0, /*index*/ 13);
-        kernelFP->setBuffer(d_zindex[osa_iter].get(),  (NS::UInteger)0, /*index*/ 14);
-        if (DEBUG) mexPrint("forwardProjection: buffers 13 and 14 set");
-    }
-
-    // if (inputScalars.raw)
-    //     kernelFP->setBuffer(d_L[osa_iter].get(), (NS::UInteger)0, /*index*/ 18);
-
-    kernelFP->setBuffer(vec_opencl.d_im.get(), (NS::UInteger)0, /*index*/ 19);
-    if (DEBUG) mexPrint("forwardProjection: buffer 19 set");
-    kernelFP->setBuffer(d_output.get(), (NS::UInteger)0, /*index*/ 20);
-    if (DEBUG) mexPrint("forwardProjection: buffer 20 set");
     if (DEBUG) mexPrint("forwardProjection: all buffers set");
 
     // Dispatch
@@ -658,20 +728,13 @@ int ProjectorClass::backwardProjection(
     const int uu,
     int ee
 ) {
-    if (DEBUG) mexPrint("backwardProjection: init");
-    if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
-        global[0] = (inputScalars.nRowsD + erotus[0]);
-        global[1] = (inputScalars.nColsD  + erotus[1]);
-        global[2] = length[osa_iter];
-    } else {
-        erotus[0] = length[osa_iter] % local[0];
-
-        if (erotus[0] > 0)
-            erotus[0] = (local[0] - erotus[0]);
-        global[0] = static_cast<size_t>(length[osa_iter] + erotus[0]);
-        global[1] = 1;
-        global[2] = 1;
+    std::chrono::steady_clock::time_point tStart;
+    std::chrono::steady_clock::time_point tEnd;
+    if (DEBUG || inputScalars.verbose >= 3) {
+        tStart = std::chrono::steady_clock::now();
     }
+
+    if (DEBUG) mexPrint("backwardProjection: init");
 
     DynamicScalarKernelParams params = {};
     params.d_N = d_N[ii];
@@ -689,63 +752,182 @@ int ProjectorClass::backwardProjection(
     kernelBP->setBytes((const void*)&params, (NS::UInteger)sizeof(params), 1);
     if (DEBUG) mexPrint("backwardProjection: buffer 1 (dynamic params) set");
 
-    if (inputScalars.SPECT) {
-        kernelBP->setBuffer(d_rayShiftsDetector.get(), (NS::UInteger)0, /*index*/ 2);
-        kernelBP->setBuffer(d_rayShiftsSource.get(),   (NS::UInteger)0, /*index*/ 3);
-        if (DEBUG) mexPrint("backwardProjection: buffers 2 and 3 set (SPECT shifts)");
+    if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
+        if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
+            global[0] = (inputScalars.nRowsD + erotus[0]);
+            global[1] = (inputScalars.nColsD  + erotus[1]);
+            global[2] = length[osa_iter];
+        } else {
+            erotus[0] = length[osa_iter] % local[0];
+
+            if (erotus[0] > 0)
+                erotus[0] = (local[0] - erotus[0]);
+            global[0] = static_cast<size_t>(length[osa_iter] + erotus[0]);
+            global[1] = 1;
+            global[2] = 1;
+        }
+        
+        if (inputScalars.SPECT) {
+            SET_KERNEL_ARG_BUFFER(kernelBP, d_rayShiftsDetector, 0, 2);
+            SET_KERNEL_ARG_BUFFER(kernelBP, d_rayShiftsSource, 0, 3);
+            if (DEBUG) mexPrint("backwardProjection: buffers 2 and 3 set (SPECT shifts)");
+        }
+        if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
+            SET_KERNEL_ARG_BUFFER(kernelBP, d_V, 0, 4);
+        }
+
+        if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
+            // SET_KERNEL_ARG_BUFFER(kernelBP, d_atten[timestep][osa_iter], 0, 5);
+            if (DEBUG) mexPrint("backwardProjection: buffer 5 set (attenB)");
+        } else if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+            if (inputScalars.useBuffers) {
+                SET_KERNEL_ARG_BUFFER(kernelBP, d_attenB[timestep], 0, 5);
+            } else {
+                SET_KERNEL_ARG_TEXTURE(kernelBP, d_attenIm[timestep], 0, 5);
+            }
+            if (DEBUG) mexPrint("backwardProjection: buffer 5 set (attenB)");
+        }
+        
+        if (inputScalars.maskFP) {
+            if (inputScalars.useBuffers) {
+                int subset = 0;
+                if (inputScalars.maskFPZ > 1) subset = osa_iter;
+                SET_KERNEL_ARG_BUFFER(kernelBP, d_maskFPB[subset], 0, 6);
+            } else {
+                if (inputScalars.maskFPZ > 1) {
+                    //kernelFP->setBuffer(d_maskFP3[osa_iter].get(), (NS::UInteger)0, 6);
+                } else {
+                    //kernelFP->setBuffer(d_maskFP[osa_iter].get(), (NS::UInteger)0, 6);
+                }
+            }
+            if (DEBUG) mexPrint("backwardProjection: buffer 6 (maskFP) set");
+        }
+
+        if (inputScalars.maskBP) {
+            if (inputScalars.useBuffers) {
+                SET_KERNEL_ARG_BUFFER(kernelBP, d_maskBPB, 0, 7);
+            } else {
+                if (inputScalars.maskBPZ > 1){
+                    //status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
+                } else {
+                    //status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
+                }
+            }
+            if (DEBUG) mexPrint("backwardProjection: buffer 7 (maskBP) set");
+        }
+
+        if (compSens) {
+            SET_KERNEL_ARG_BUFFER(kernelBP, d_xFull[0], 0, 8);
+            SET_KERNEL_ARG_BUFFER(kernelBP, d_zFull[0], 0, 9);
+        } else {
+            if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
+                SET_KERNEL_ARG_BUFFER(kernelBP, d_x[0][0], 0, 8);
+            else
+                SET_KERNEL_ARG_BUFFER(kernelBP, d_x[timestep][osa_iter], 0, 8);
+            if (DEBUG) mexPrint("backwardProjection: buffer 8 set");
+
+            if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
+                SET_KERNEL_ARG_BUFFER(kernelBP, d_z[timestep][osa_iter], 0, 9);
+            else
+                SET_KERNEL_ARG_BUFFER(kernelBP, d_z[timestep][inputScalars.osa_iter0], 0, 9);
+            if (DEBUG) mexPrint("backwardProjection: buffer 9 set");
+        }
+
+        if (inputScalars.normalization_correction) {
+            if (compSens)
+                SET_KERNEL_ARG_BUFFER(kernelBP, d_normFull[0], 0, 10);
+            else
+                SET_KERNEL_ARG_BUFFER(kernelBP, d_norm[osa_iter], 0, 10);
+            if (DEBUG) mexPrint("backwardProjection: buffer 10 set (norm)");
+        }
+
+        if (inputScalars.scatter) {
+            if (compSens) 
+                SET_KERNEL_ARG_BUFFER(kernelBP, d_scatFull[0], 0, 11);
+            else
+                SET_KERNEL_ARG_BUFFER(kernelBP, d_scat[timestep][osa_iter], 0, 11);
+            if (DEBUG) mexPrint("backwardProjection: buffer 11 set (scat)");
+        }
+
+        SET_KERNEL_ARG_BUFFER(kernelBP, d_Summ[uu], 0, 12);
+        if (DEBUG) mexPrint("backwardProjection: buffer 12 set (Summ)");
+
+        if ( (inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0 ) {
+            SET_KERNEL_ARG_BUFFER(kernelBP, d_xyindex[osa_iter], 0, 13);
+            SET_KERNEL_ARG_BUFFER(kernelBP, d_zindex[osa_iter], 0, 14);
+            if (DEBUG) mexPrint("backwardProjection: buffers 13 and 14 set (indices)");
+        }
+
+        if (inputScalars.listmode > 0 && inputScalars.indexBased && !compSens) {
+            if (!inputScalars.loadTOF) {
+                SET_KERNEL_ARG_BUFFER(kernelBP, d_trIndex[0][0], 0, 15);
+                SET_KERNEL_ARG_BUFFER(kernelBP, d_axIndex[0][0], 0, 16);
+            } else {
+                SET_KERNEL_ARG_BUFFER(kernelBP, d_trIndex[timestep][osa_iter], 0, 15);
+                SET_KERNEL_ARG_BUFFER(kernelBP, d_axIndex[timestep][osa_iter], 0, 16);
+            }
+        }
+
+        if (inputScalars.listmode > 0 && inputScalars.TOF) {
+            if (!inputScalars.loadTOF) {
+                SET_KERNEL_ARG_BUFFER(kernelBP, d_TOFIndex[0][0], 0, 17);
+            } else {
+                SET_KERNEL_ARG_BUFFER(kernelBP, d_TOFIndex[timestep][osa_iter], 0, 17);
+            }
+        }
+
+        if (inputScalars.raw)
+            SET_KERNEL_ARG_BUFFER(kernelBP, d_L[osa_iter], 0, 18);
+
+        SET_KERNEL_ARG_BUFFER(kernelBP, d_output, 0, 19);
+        if (DEBUG) mexPrint("backwardProjection: buffer 19 set (output)");
+
+        SET_KERNEL_ARG_BUFFER(kernelBP, vec_opencl.d_rhs_os[uu], 0, 20);
+        if (DEBUG) mexPrint("backwardProjection: buffer 20 set (rhs_os)");
     }
-    if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
-        kernelBP->setBuffer(d_V.get(), (NS::UInteger)0, /*index*/ 4);
+    if (inputScalars.CT && (inputScalars.BPType == 4 || inputScalars.BPType == 5)) { // TODO
+
     }
+    if (!inputScalars.CT && (inputScalars.BPType == 4 || inputScalars.BPType == 5)) { // TODO
+        if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
+            global[0] = (inputScalars.nRowsD + erotus[0]) / local[0];
+            global[1] = (inputScalars.nColsD + erotus[1]) / local[1];
+            global[2] = length[osa_iter];
+        } else if (inputScalars.listmode > 0 && compSens) {
+            global[0] = static_cast<size_t>(inputScalars.det_per_ring + erotusSens[0]) / local[0];
+            global[1] = (static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1]) / local[1];
+            global[2] = static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings);
+        } else {
+            erotus[0] = length[osa_iter] % local_size[0];
 
-    if (inputScalars.attenuation_correction && !inputScalars.CT && inputScalars.CTAttenuation) {
-        kernelBP->setBuffer(d_attenB.get(), (NS::UInteger)0, /*index*/ 5);
-        if (DEBUG) mexPrint("backwardProjection: buffer 5 set (attenB)");
+            if (erotus[0] > 0)
+                erotus[0] = (local_size[0] - erotus[0]);
+            global[0] = (length[osa_iter] + erotus[0]) / local[0];
+            global[1] = 1;
+            global[2] = 1;
+        }
+        
+        SET_KERNEL_ARG_BUFFER(kernelBP, d_output, 0, 1);
+        SET_KERNEL_ARG_BUFFER(kernelBP, vec_opencl.d_rhs_os[uu], 0, 2);
+        if (compSens) {
+            SET_KERNEL_ARG_BUFFER(kernelBP, d_xFull[0], 0, 3);
+            SET_KERNEL_ARG_BUFFER(kernelBP, d_zFull[0], 0, 4);
+        } else {
+            if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
+                SET_KERNEL_ARG_BUFFER(kernelBP, d_x[0][0], 0, 3);
+            else
+                SET_KERNEL_ARG_BUFFER(kernelBP, d_x[timestep][osa_iter], 0, 3);
+            if (DEBUG) mexPrint("backwardProjection: buffer 3 set");
+
+            if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
+                SET_KERNEL_ARG_BUFFER(kernelBP, d_z[timestep][osa_iter], 0, 4);
+            else if (inputScalars.indexBased && inputScalars.listmode > 0)
+                SET_KERNEL_ARG_BUFFER(kernelBP, d_z[0][0], 0, 4);
+            else
+                SET_KERNEL_ARG_BUFFER(kernelBP, d_z[timestep][inputScalars.osa_iter0], 0, 4);
+            if (DEBUG) mexPrint("backwardProjection: buffer 4 set");
+        }
     }
-
-    if (inputScalars.maskFP) {
-        int subset = 0;
-        if (inputScalars.maskFPZ > 1) subset = osa_iter;
-        kernelBP->setBuffer(d_maskFP[subset].get(), (NS::UInteger)0, /*index*/ 6);
-        if (DEBUG) mexPrint("backwardProjection: buffer 6 set (maskFP)");
-    }
-
-    if (inputScalars.maskBP) {
-        kernelBP->setBuffer(d_maskBP.get(), (NS::UInteger)0, /*index*/ 7);
-        if (DEBUG) mexPrint("backwardProjection: buffer 7 set (maskBP)");
-    }
-
-    kernelBP->setBuffer(d_x[osa_iter].get(), (NS::UInteger)0, /*index*/ 8);
-    kernelBP->setBuffer(d_z[osa_iter].get(), (NS::UInteger)0, /*index*/ 9);
-    if (DEBUG) mexPrint("backwardProjection: buffers 8 and 9 set (x, z)");
-
-    if (inputScalars.normalization_correction) {
-        kernelBP->setBuffer(d_norm[osa_iter].get(), (NS::UInteger)0, /*index*/ 10);
-        if (DEBUG) mexPrint("backwardProjection: buffer 10 set (norm)");
-    }
-    if (inputScalars.scatter) {
-        kernelBP->setBuffer(d_scat[osa_iter].get(), (NS::UInteger)0, /*index*/ 11);
-        if (DEBUG) mexPrint("backwardProjection: buffer 11 set (scat)");
-    }
-
-    kernelBP->setBuffer(d_Summ[uu].get(), (NS::UInteger)0, /*index*/ 12);
-    if (DEBUG) mexPrint("backwardProjection: buffer 12 set (Summ)");
-
-    if ( (inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7)
-        && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0 )
-    {
-        kernelBP->setBuffer(d_xyindex[osa_iter].get(), (NS::UInteger)0, /*index*/ 13);
-        kernelBP->setBuffer(d_zindex[osa_iter].get(),  (NS::UInteger)0, /*index*/ 14);
-        if (DEBUG) mexPrint("backwardProjection: buffers 13 and 14 set (indices)");
-    }
-
-    // if (inputScalars.raw)
-    //     kernelBP->setBuffer(d_L[osa_iter].get(), (NS::UInteger)0, /*index*/ 18);
-
-    kernelBP->setBuffer(d_output.get(),   (NS::UInteger)0, /*index*/ 19);
-    if (DEBUG) mexPrint("backwardProjection: buffer 19 set (output)");
-    kernelBP->setBuffer(vec_opencl.d_rhs_os[uu].get(), (NS::UInteger)0, /*index*/ 20);
-    if (DEBUG) mexPrint("backwardProjection: buffer 20 set (rhs_os)");
 
     if (DEBUG) mexPrint("backwardProjection: all buffers set");
 
