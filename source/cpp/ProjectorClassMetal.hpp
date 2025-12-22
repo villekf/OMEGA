@@ -73,6 +73,7 @@ public:
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_atten;
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_T;
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_attenB;
+    NS::SharedPtr<MTL::Buffer> d_maskPriorB;
 	NS::SharedPtr<MTL::Buffer> d_rayShiftsSource, d_rayShiftsDetector, d_maskBPB;
 
 	// Image origin

@@ -123,6 +123,7 @@
 #define make_float2(a,b) float2((a),(b))
 #define make_float3(a,b,c) float3((a),(b),(c))
 #define MFLOAT2(a,b) float2((a), (b))
+#define MFLOAT3(a,b,c) float3((a), (b), (c))
 #endif
 
 #define ACOS metal::acos
@@ -1014,7 +1015,7 @@ DEVICE void getDetectorCoordinatesCT(const CLGLOBAL float* CLRESTRICT d_xyz,
 #else
 	const CLGLOBAL float* CLRESTRICT d_uv, 
 #endif
-	float3* s, float3* d, const int3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch
+	PTR_THR float3* s, PTR_THR float3* d, const int3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch
 #ifdef PROJ5
 	, float3* dR, float3* dL, float3* dU, float3* dD
 #endif
