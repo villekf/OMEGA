@@ -111,8 +111,9 @@ typedef struct _CUDA_im_vectors {
 } CUDA_im_vectors;
 #elif defined(METAL)
 typedef struct _METAL_im_vectors {
-	std::vector<NS::SharedPtr<MTL::Buffer>> d_rhs_os;
 	NS::SharedPtr<MTL::Buffer> d_im;
+    std::vector<NS::SharedPtr<MTL::Buffer>> d_rhs_os;
+    NS::SharedPtr<MTL::Texture> d_image_os, d_image_os_int;
 } METAL_im_vectors;
 #else
 struct CPUVectors {

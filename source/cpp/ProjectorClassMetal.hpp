@@ -11,7 +11,7 @@
 // Macro definitions
 #define SET_KERNEL_ARG_BYTES(kernel, bytes, size, index) kernel->setBytes((const void*)&bytes, (NS::UInteger)size, index)
 #define SET_KERNEL_ARG_BUFFER(kernel, buf, offset, index) kernel->setBuffer(buf.get(), (NS::UInteger)offset, index)
-#define SET_KERNEL_ARG_TEXTURE(kernel, tex, offset, index) // TODO
+#define SET_KERNEL_ARG_TEXTURE(kernel, tex, index) kernel->setTexture(tex, index) 
 
 class ProjectorClass {
 	// Local size
@@ -73,7 +73,7 @@ public:
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_atten;
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_T;
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_attenB;
-    NS::SharedPtr<MTL::Buffer> d_maskPriorB;
+    NS::SharedPtr<MTL::Buffer> d_maskPriorB, d_uref;
 	NS::SharedPtr<MTL::Buffer> d_rayShiftsSource, d_rayShiftsDetector, d_maskBPB;
 
 	// Image origin

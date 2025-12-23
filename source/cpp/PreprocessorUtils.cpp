@@ -80,9 +80,10 @@ struct MacroBuilder {
 
 #define TH 100000000000.f
 #define TH32 100000.f
-#define NVOXELS 8
-#define NVOXELS5 1
-#define NVOXELSFP 8
+#define NVOXELS 1
+#define NVOXELS5 1 // How many voxels are computed per thread for BDD backprojection
+#define NVOXELSFP 8 // How many slices are computed in the same thread for BDD forward projection
+#define NVOXELSHELICAL 1
 
 struct MacroSets {
     MACROTYPE base = MACROTYPE_NULL;
@@ -113,7 +114,7 @@ static MacroSets BuildMacroDict(
     if (inputScalars.useMAD) base.addRawStr("-cl-fast-relaxed-math");
 #endif
 
-    if (inputScalars.useImages || inputScalars.FPType == 4 || inputScalars.FPType == 5 || inputScalars.BPType == 5) {
+    if ((inputScalars.useImages && inputScalars.FPType != 4 && inputScalars.FPType != 5 && inputScalars.BPType != 5) || (inputScalars.FPType == 4 || inputScalars.FPType == 5 || inputScalars.BPType == 5)) {
         base.addFlag("USEIMAGES");
         inputScalars.useBuffers = false;
     }

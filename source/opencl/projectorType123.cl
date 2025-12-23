@@ -82,9 +82,12 @@ void projectorType123(
 #if defined(METAL) ///////////////////// METAL /////////////////////
 	SCALAR_PARAMS(scalarParams) [[buffer(0)]],
 #if defined(SPECT)
-	const CLGLOBAL float* d_rayShiftsDetector [[buffer(2)]],
-	const CLGLOBAL float* d_rayShiftsSource [[buffer(3)]],
+	const CLGLOBAL float* d_rayShiftsDetector [[buffer(1)]],
+	const CLGLOBAL float* d_rayShiftsSource [[buffer(2)]],
 #endif
+#ifdef TOF ///////////////////////// TOF BINS /////////////////////////
+	CONSTANT float* TOFCenter [[buffer(3)]], 
+#endif ///////////////////////// END TOF BINS /////////////////////////
 #ifdef ORTH ///////////////////////// ORTHOGONAL-BASED RAY TRACER /////////////////////////
 	CONSTANT float* V [[buffer(4)]], 
 #endif ///////////////////////// END ORTHOGONAL-BASED RAY TRACER /////////////////////////
@@ -120,7 +123,11 @@ void projectorType123(
 #ifdef RAW	///////////////////////// RAW PET DATA /////////////////////////
 	CONSTANT ushort* d_L [[buffer(18)]], 
 #endif
+#if defined(FP)
+    IMTYPE d_OSEM TEX19,
+#else
 	const CLGLOBAL float* d_OSEM [[buffer(19)]],
+#endif
 	CLGLOBAL float* d_output [[buffer(20)]], 
 	uint3 temp_i [[thread_position_in_grid]]   // global id
 

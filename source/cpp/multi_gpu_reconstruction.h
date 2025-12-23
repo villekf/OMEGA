@@ -96,6 +96,14 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 
 #ifndef METAL // OMEGA does not have support for Metal textures
 	cl::detail::size_t_array region = { { 0, 0, 0 } };
+#else
+    NS::SharedPtr<MTL::TextureDescriptor> pTextureDesc = NS::TransferPtr(MTL::TextureDescriptor::alloc()->init());
+    pTextureDesc->setTextureType(MTL::TextureType::TextureType3D);
+    pTextureDesc->setPixelFormat(MTL::PixelFormat::PixelFormatR32Float); 
+    pTextureDesc->setWidth(0);
+    pTextureDesc->setHeight(0);
+    pTextureDesc->setDepth(0);
+    std::array<NS::UInteger, 3> region = { 0, 0, 0 };
 #endif
 	int64_t imTot = 0ULL;
 
@@ -306,7 +314,6 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 			if (type == 1) {
 				size_t uu = 0;
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-#ifndef METAL // Metal does not support projector type 5
 					region[0] = inputScalars.Nx[ii];
 					region[1] = inputScalars.Ny[ii];
 					region[2] = inputScalars.Nz[ii];
@@ -320,16 +327,31 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 							mexPrintBase("region[2] = %u\n", region[2]);
 							mexEval();
 						}
+#ifndef METAL
 						proj.vec_opencl.d_image_os_int = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
 						CL_CHECK(status);
 						status = proj.CLCommandQueue[0].enqueueWriteImage(proj.vec_opencl.d_image_os_int, CL_FALSE, proj.origin, region, 0, 0, &im[uu]);
 						CL_CHECK(status);
+#else
+                        pTextureDesc->setWidth(region[0]);
+                        pTextureDesc->setHeight(region[1]);
+                        pTextureDesc->setDepth(region[2]);
+                        proj.vec_opencl.d_image_os_int = NS::TransferPtr(proj.mtlDevice->newTexture(pTextureDesc.get()));
+                        
+                        MTL::Region mtlRegion = MTL::Region(
+                            0, 0, 0,
+                            region[0], region[1], region[2]
+                        );
+                        NS::UInteger bytesPerRow = region[0] * 4; 
+                        NS::UInteger bytesPerImage = bytesPerRow * region[1];
+                        proj.vec_opencl.d_image_os_int->replaceRegion(mtlRegion, 0, 0, &im[uu], bytesPerRow, bytesPerImage);
+#endif
 						region[0] = inputScalars.Nx[ii] + 1;
 						region[1] = inputScalars.Nz[ii] + 1;
 						region[2] = inputScalars.Ny[ii];
 						uu += imTot;
 					}
-#endif
+
 					if (DEBUG) {
 						mexPrintBase("uu = %u\n", uu);
 						mexEval();
@@ -338,17 +360,29 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 						proj.vec_opencl.d_im = BUFFER_R(sizeof(float) * inputScalars.Nx[ii] * inputScalars.Ny[ii] * inputScalars.Nz[ii]);
 						CL_CHECK(status);
 						WRITE_BUFFER(proj.vec_opencl.d_im, &im[uu], sizeof(float) * inputScalars.Nx[ii] * inputScalars.Ny[ii] * inputScalars.Nz[ii]);
-						//status = proj.CLCommandQueue[0].enqueueWriteBuffer(proj.vec_opencl.d_im, CL_FALSE, 0, sizeof(float) * inputScalars.Nx[ii] * inputScalars.Ny[ii] * inputScalars.Nz[ii], &im[uu]);
 						CL_CHECK(status);
-					}
-#ifndef METAL // OMEGA has no support for Metal textures
-					else {
+					} else {
+#ifndef METAL
 						proj.vec_opencl.d_image_os = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
 						CL_CHECK(status);
 						status = proj.CLCommandQueue[0].enqueueWriteImage(proj.vec_opencl.d_image_os, CL_FALSE, proj.origin, region, 0, 0, &im[uu]);
 						CL_CHECK(status);
-					}
+#else
+                        pTextureDesc->setWidth(region[0]);
+                        pTextureDesc->setHeight(region[1]);
+                        pTextureDesc->setDepth(region[2]);
+                        proj.vec_opencl.d_image_os = NS::TransferPtr(proj.mtlDevice->newTexture(pTextureDesc.get()));
+                        
+                        MTL::Region mtlRegion = MTL::Region(
+                            0, 0, 0,
+                            region[0], region[1], region[2]
+                        );
+                        NS::UInteger bytesPerRow = region[0] * 4; 
+                        NS::UInteger bytesPerImage = bytesPerRow * region[1];
+                        proj.vec_opencl.d_image_os->replaceRegion(mtlRegion, 0, 0, &im[uu], bytesPerRow, bytesPerImage);
 #endif
+					}
+
 					status = proj.forwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, ii);
 					CL_CHECK(status);
 					if (inputScalars.FPType == 5)

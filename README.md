@@ -295,18 +295,13 @@ Status messages, such as the current iteration number, might be displayed only a
 Intel GPUs might not support forward and/or backward projection masks. 
 
 ### Apple / Metal / MacOS
-
-- Currently supports only custom projection operations (`A * x`, `A^T * y`) due to no native ArrayFire binaries with Metal backend
-- No PET support
-- No CT support
-- Only SPECT support
+- Implementation 5 only
+- Tested with SPECT and CBCT examples
 - No automatic sensitivity image computation
-- No support for projector types 4 and 5
+- Supports projector types 1, 2, 3 and 4
 - No Python support
 - Normalization correction not tested
 - Scatter correction not tested
-- Incomplete half-precision (FP16) support
-
 
 ## Reporting Bugs and Feature Requests
 
