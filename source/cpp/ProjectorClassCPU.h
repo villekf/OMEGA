@@ -122,7 +122,7 @@ public:
 		return 0;
 	}
 
-	inline int forwardProjection(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t osa_iter, const std::vector<int64_t>& length, const int64_t* pituus, const int ii = 0, const int uu = 0) {
+	inline int forwardProjection(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t osa_iter, uint32_t timestep, const std::vector<int64_t>& length, const int64_t* pituus, const int ii = 0, const int uu = 0) {
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrintVar("Starting forward projection for projector type = ", inputScalars.FPType);
 		size_t vecSize = 1;
@@ -175,7 +175,7 @@ public:
 		return 0;
 	}
 
-	inline int backwardProjection(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t osa_iter, const std::vector<int64_t>& length, const int64_t* pituus, const bool compSens = false, const int ii = 0, const int uu = 0) {
+	inline int backwardProjection(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t osa_iter, uint32_t timestep, const std::vector<int64_t>& length, const int64_t* pituus, const bool compSens = false, const int ii = 0, const int uu = 0) {
 		if (inputScalars.verbose >= 3)
 			mexPrintVar("Starting backprojection for projector type = ", inputScalars.BPType);
 		size_t vecSize = 1;

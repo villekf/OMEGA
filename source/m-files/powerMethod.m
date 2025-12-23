@@ -120,15 +120,15 @@ for kk = 1 : Niter
     end
     for ii = 1 : nVol
         if useClass
-            if A.param.nMultiVolumes > 0
-                temp{ii} = applyImagePreconditioning(A.param, temp{ii}, x{ii}, kk, ii);
-                s(ii) = (x{ii}' * temp{ii} * A.param.subsets) ./ (x{ii}' * x{ii});
-                x{ii} = temp{ii};
-            else
-                temp = applyImagePreconditioning(A.param, temp, x{ii}, kk, ii);
-                s(ii) = (x{ii}' * temp * A.param.subsets) ./ (x{ii}' * x{ii});
-                x{ii} = temp;
-            end
+            % if A.param.nMultiVolumes >= 0
+            temp{ii} = applyImagePreconditioning(A.param, temp{ii}, x{ii}, kk, ii);
+            s(ii) = (x{ii}' * temp{ii} * A.param.subsets) ./ (x{ii}' * x{ii});
+            x{ii} = temp{ii};
+            % else
+                % temp = applyImagePreconditioning(A.param, temp, x{ii}, kk, ii);
+                % s(ii) = (x{ii}' * temp * A.param.subsets) ./ (x{ii}' * x{ii});
+                % x{ii} = temp;
+            % end
             x{ii} = x{ii} ./ norm(x{ii});
             if A.param.verbose >= 2
                 disp(['Largest eigenvalue at iteration ' num2str(kk) ' is ' num2str(s(ii))])

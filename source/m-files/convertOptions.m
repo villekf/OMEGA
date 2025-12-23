@@ -105,6 +105,9 @@ end
 if ~isfield(options,'beta')
     options.beta = 0;
 end
+if ~isfield(options, 'beta_temporal')
+    options.beta_temporal = 0;
+end
 origPrior = {'mrp';'quad';'huber';'L';'fmh';'weighted';'TV';'ad';'APLS';'TGV';'NLM';'custom'};
 origMAP = {'osem';'bsrem';'mbsrem';'rosem';'rbi';'cosem'};
 varPrior = recNames(1);

@@ -22,7 +22,8 @@ classdef projectorClass
         param
         nMeas
         nMeasSubset
-        subset
+        subset % Current subset
+        timestep % Current timestep
         index
         trans
         x
@@ -381,9 +382,11 @@ classdef projectorClass
                 if obj.param.offangle ~= 0
                     obj.param.angles = obj.param.angles + obj.param.offangle;
                     obj.param.swivelAngles = obj.param.swivelAngles + obj.param.offangle;
+                    if isfield(obj.param, 'vaimennus')
+                        obj.param.vaimennus = imrotate(obj.param.vaimennus, obj.param.offangle, 'crop');
+                    end
                 end
                 if isfield(obj.param, 'vaimennus')
-                    obj.param.vaimennus = imrotate(obj.param.vaimennus, obj.param.offangle, 'crop');
                     if obj.param.flipImageX
                         obj.param.vaimennus = flip(obj.param.vaimennus, 2);
                     end
@@ -731,8 +734,8 @@ classdef projectorClass
             elseif obj.param.CT || obj.param.PET || (obj.param.SPECT && obj.param.projector_type ~= 6)
                 if obj.param.subset_type >= 8 && obj.param.subsets > 1 && ~obj.param.FDK
                     if obj.param.CT || obj.param.SPECT
-                        x_det = reshape(x_det, 6, obj.param.partitions*obj.param.nProjections);
-                        x_det = x_det(:,obj.index);
+                        x_det = reshape(x_det, 6, obj.param.nProjections, obj.param.partitions);
+                        x_det = x_det(:,obj.index, :);
                         x_det = x_det(:);
                         if obj.param.pitch
                             z_det = reshape(z_det, 6, obj.param.nProjections);
@@ -741,8 +744,8 @@ classdef projectorClass
                         elseif obj.param.useHelical
                             z_det = z_det(obj.index);
                         else
-                            z_det = reshape(z_det, 2, obj.param.partitions*obj.param.nProjections);
-                            z_det = z_det(:,obj.index);
+                            z_det = reshape(z_det, 2, obj.param.nProjections, obj.param.partitions);
+                            z_det = z_det(:,obj.index, :);
                             z_det = z_det(:);
                         end
                     else
@@ -842,6 +845,9 @@ classdef projectorClass
             if obj.param.subsets > 1
                 obj.subset = 1;
             end
+            if obj.param.partitions > 1
+                obj.timestep = 1;
+            end
             if obj.param.subset_type >= 8 || obj.param.subsets == 1
                 kerroin = obj.param.nColsD * obj.param.nRowsD;
             else
@@ -876,7 +882,7 @@ classdef projectorClass
         end
 
 
-        function y = forwardProject(obj, input, varargin)
+        function y = forwardProject(obj, input, varargin) % TODO obj.timestep input after subset_number
             %FORWARDPROJECT Computes the forward projection between the
             %object and the input vector.
             %   Output is stored in the y-vector. PSF blurring is performed
@@ -942,6 +948,7 @@ classdef projectorClass
                 disp('Computing forward projection')
             end
             obj.param.currentSubset = obj.subset - 1;
+            obj.param.currentTimestep = 0; %obj.timestep - 1; % TODO
             if obj.param.projector_type == 6
                 obj.param.uu = obj.param.uu + obj.nMeas(obj.subset);
             end
@@ -985,7 +992,7 @@ classdef projectorClass
         end
 
 
-        function [f, varargout] = backwardProject(obj, input, varargin)
+        function [f, varargout] = backwardProject(obj, input, varargin) % TODO obj.timestep input after subset_number
             %BACKWARDPROJECT Computes the backprojection between the object
             %and the input vector. Can also (optionally) compute the
             %sensitivity image.
@@ -1030,6 +1037,7 @@ classdef projectorClass
                 noSensIm = false;
             end
             obj.param.currentSubset = obj.subset - 1;
+            obj.param.currentTimestep = 0; %obj.timestep - 1; % TODO
             if obj.param.projector_type == 6
                 obj.param.ub = obj.param.ub + obj.nMeas(obj.subset);
             end
@@ -1087,6 +1095,7 @@ classdef projectorClass
                 disp('Backprojection computed')
             end
         end
+
         function f = mtimes(obj, input)
             %MTIMES Automatically compute either the forward projection or
             %backprojection, based on the input vector length.

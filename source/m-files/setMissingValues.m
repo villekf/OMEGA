@@ -782,6 +782,9 @@ end
 if ~isfield(options, 'TVsmoothing')
     options.TVsmoothing = 1e-2;
 end
+if ~isfield(options, 'temporalTVsmoothing')
+    options.temporalTVsmoothing = 1e-2;
+end
 if ~isfield(options, 'tau')
     options.tau = 1e-8;
 end

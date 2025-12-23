@@ -8,6 +8,11 @@
 #define CTYPE3 cl_float3
 #define CTYPE2 cl_float2
 #define ITYPE3 cl_int3
+#elif defined(METAL)
+#include <simd/simd.h>
+#define CTYPE3 simd::float3
+#define CTYPE2 simd::float2
+#define ITYPE3 simd::int3
 #else
 struct float3a {
 	float x, y, z;
@@ -48,7 +53,7 @@ struct largeDimStruct {
 typedef struct structForScalars {
 	uint32_t projector_type = 1, attenuation_correction = 0, randoms_correction = 0, scatter = 0, normalization_correction = 0, 
 		nColsD, nRowsD, size_z, subsets = 1, det_per_ring, Niter = 1, Nt = 1, subsetType = 0, nMultiVolumes = 0, nLayers = 1, 
-		nRekos = 1, osa_iter0 = 0, nRekos2 = 0, subsetsUsed = 1, TOFsubsets = 1, Nxy = 0U, NxOrig = 0U, NyOrig = 0U, NzOrig = 0U, NxPrior = 0U, NyPrior = 0U, NzPrior = 0U,
+		nRekos = 1, osa_iter0 = 0, timestep0 = 0, nRekos2 = 0, subsetsUsed = 1, timestepsUsed = 1, TOFsubsets = 1, Nxy = 0U, NxOrig = 0U, NyOrig = 0U, NzOrig = 0U, NxPrior = 0U, NyPrior = 0U, NzPrior = 0U,
 		BPType = 1, FPType = 1, adaptiveType = 0, rings = 0, FISTAType = 0, maskFPZ = 1, maskBPZ = 1, currentSubset = 0;
 	uint32_t platform = 0;
 	std::vector<uint32_t> Nx{ 1, 0, 0, 0, 0, 0, 0 }, Ny{ 1, 0, 0, 0, 0, 0, 0 }, Nz{ 1, 0, 0, 0, 0, 0, 0 };
@@ -106,8 +111,9 @@ typedef struct _CUDA_im_vectors {
 } CUDA_im_vectors;
 #elif defined(METAL)
 typedef struct _METAL_im_vectors {
-	std::vector<NS::SharedPtr<MTL::Buffer>> d_rhs_os;
 	NS::SharedPtr<MTL::Buffer> d_im;
+    std::vector<NS::SharedPtr<MTL::Buffer>> d_rhs_os;
+    NS::SharedPtr<MTL::Texture> d_image_os, d_image_os_int;
 } METAL_im_vectors;
 #else
 struct CPUVectors {

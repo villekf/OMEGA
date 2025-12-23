@@ -35,51 +35,33 @@ if nargin > 2 && ~isempty(varargin{1})
 else
     noSensIm = true;
 end
-if nargin > 3 && ~isempty(varargin{2})
-    tt = varargin{2};
-else
-    tt = 1;
-end
 if numel(options.partitions) > 1
     partitions = numel(options.partitions);
 else
     partitions = options.partitions;
 end
 
-
-if tt == 1
-    if options.nMultiVolumes > 0
-        im_vectors.recImage = cell(options.nMultiVolumes + 1, 1);
-        im_vectors.recApu = cell(options.nMultiVolumes + 1, 1);
-        im_vectors.rhs = cell(options.nMultiVolumes + 1, 1);
-        if ~noSensIm
-            im_vectors.Sens = cell(options.nMultiVolumes + 1, 1);
-            for kk = 1 : options.nMultiVolumes + 1
-                if options.saveSens
-                    im_vectors.Sens{kk} = zeros(N(kk), options.subsets, type);
-                else
-                    im_vectors.Sens{kk} = zeros(N(kk), 1, type);
-                end
+im_vectors.recImage = cell(options.nMultiVolumes + 1, 1); 
+im_vectors.recApu = cell(partitions, options.nMultiVolumes + 1); % Holds current estimate
+im_vectors.rhs = cell(partitions, options.nMultiVolumes + 1); % Holds current backprojections
+im_vectors.Sens = cell(partitions, options.nMultiVolumes + 1); % Holds sensitivity image
+if ~noSensIm
+    for timestep = 1:partitions
+        for kk = 1 : options.nMultiVolumes + 1
+            if options.saveSens
+                im_vectors.Sens{timestep, kk} = zeros(N(kk), options.subsets, type);
+            else
+                im_vectors.Sens{timestep, kk} = zeros(N(kk), 1, type);
             end
         end
-        for kk = 1 : options.nMultiVolumes + 1
-            im_vectors.recImage{kk} = ones(N(kk), Niter, partitions, type);
-        end
-    else
-        im_vectors.recImage = ones(N, Niter, partitions, type);
-        im_vectors.recApu = ones(N, 1, type);
-        im_vectors.rhs = ones(N, 1, type);
-        if options.saveSens
-            im_vectors.Sens = zeros(N, options.subsets, type);
-        else
-            im_vectors.Sens = zeros(N, 1, type);
-        end
     end
-else
-    im_vectors = varargin{3};
 end
+for kk = 1 : options.nMultiVolumes + 1
+    im_vectors.recImage{kk} = ones(N(kk), Niter, partitions, type);
+end
+
 if options.save_iter
-    if options.nMultiVolumes > 0
+    for tt = 1:partitions
         im_vectors.recImage{1}(:,1,tt) = cast(options.x0(:), type);
         if options.nMultiVolumes >= 2
             im_vectors.recImage{2}(:,1,tt) = cast(options.x1(:), type);
@@ -93,27 +75,25 @@ if options.save_iter
             im_vectors.recImage{6}(:,1,tt) = cast(options.x5(:), type);
             im_vectors.recImage{7}(:,1,tt) = cast(options.x6(:), type);
         end
-    else
-        im_vectors.recImage(:,1,tt) = cast(options.x0(:), type);
     end
 end
-if options.nMultiVolumes > 0
-    im_vectors.recApu{1} = cast(options.x0(:), type);
+
+for timestep = 1:partitions
+    im_vectors.recApu{timestep, 1} = cast(options.x0(:), type);
     if options.nMultiVolumes >= 2
-        im_vectors.recApu{2} = cast(options.x1(:), type);
-        im_vectors.recApu{3} = cast(options.x2(:), type);
+        im_vectors.recApu{timestep, 2} = cast(options.x1(:), type);
+        im_vectors.recApu{timestep, 3} = cast(options.x2(:), type);
     end
     if options.nMultiVolumes >= 4
-        im_vectors.recApu{4} = cast(options.x3(:), type);
-        im_vectors.recApu{5} = cast(options.x4(:), type);
+        im_vectors.recApu{timestep, 4} = cast(options.x3(:), type);
+        im_vectors.recApu{timestep, 5} = cast(options.x4(:), type);
     end
     if options.nMultiVolumes == 6
-        im_vectors.recApu{6} = cast(options.x5(:), type);
-        im_vectors.recApu{7} = cast(options.x6(:), type);
+        im_vectors.recApu{timestep, 6} = cast(options.x5(:), type);
+        im_vectors.recApu{timestep, 7} = cast(options.x6(:), type);
     end
-else
-    im_vectors.recApu = cast(options.x0(:), type);
 end
+
 % Special ECOSEM case guarantees that OSEM and COSEM are initialized even
 % if they haven't been selected
 if options.ECOSEM
