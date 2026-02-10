@@ -1333,60 +1333,63 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
 
 // Transfers the device data to host
 // Transfer the ArrayFire arrays from the device to the host pointers
-void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, int64_t& oo, float* output, float* FPoutput, const scalarStruct& inputScalars,
+void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, float* output, float* FPoutput, const scalarStruct& inputScalars,
     std::vector<std::vector<std::vector<float>>>& FPEstimates) {
-    if (inputScalars.storeFP) {
-        size_t dim = 0ULL;
-        for (uint32_t ii = 0; ii < inputScalars.subsets * inputScalars.Niter; ii++) {
-            const uint32_t jj = ii % inputScalars.subsets;
-            const uint32_t kk = ii / inputScalars.subsets;
-            std::copy(FPEstimates[kk][jj].begin(), FPEstimates[kk][jj].end(), FPoutput + dim);
-            dim += FPEstimates[kk][jj].size();
-        }
-		if (DEBUG) {
-			mexPrintBase("dim = %d\n", dim);
-                mexEval();
-		}
-    }
-    // Transfer data back to host
-    if (CELL && inputScalars.nMultiVolumes > 0) {
-        for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-            if (DEBUG) {
-                mexPrintBase("inputScalars.Nx[ii] = %d\n", inputScalars.Nx[ii]);
-                mexPrintBase("inputScalars.Ny[ii] = %d\n", inputScalars.Ny[ii]);
-                mexPrintBase("inputScalars.Nz[ii] = %d\n", inputScalars.Nz[ii]);
-                mexEval();
+    int64_t oo = 0;
+    for (int timestep = 0; timestep < inputScalars.Nt; timestep++) {
+        if (inputScalars.storeFP) {
+            size_t dim = 0ULL;
+            for (uint32_t ii = 0; ii < inputScalars.subsets * inputScalars.Niter; ii++) {
+                const uint32_t jj = ii % inputScalars.subsets;
+                const uint32_t kk = ii / inputScalars.subsets;
+                std::copy(FPEstimates[kk][jj].begin(), FPEstimates[kk][jj].end(), FPoutput + dim);
+                dim += FPEstimates[kk][jj].size();
             }
+            if (DEBUG) {
+                mexPrintBase("dim = %d\n", dim);
+                    mexEval();
+            }
+        }
+        // Transfer data back to host
+        if (CELL && inputScalars.nMultiVolumes > 0) {
+            for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+                if (DEBUG) {
+                    mexPrintBase("inputScalars.Nx[ii] = %d\n", inputScalars.Nx[ii]);
+                    mexPrintBase("inputScalars.Ny[ii] = %d\n", inputScalars.Ny[ii]);
+                    mexPrintBase("inputScalars.Nz[ii] = %d\n", inputScalars.Nz[ii]);
+                    mexEval();
+                }
+                if (inputScalars.saveIter || inputScalars.saveIterationsMiddle > 0) {
+                }
+                else {
+                    if (MethodList.FDK)
+                        vec.rhs_os[ii].host(&output[oo]);
+                    else
+                        vec.im_os[timestep][ii].host(&output[oo]);
+                    if (inputScalars.verbose >= 3)
+                        mexPrint("Data transfered to host");
+                    oo += inputScalars.im_dim[ii];
+                }
+            }
+        }
+        else {
             if (inputScalars.saveIter || inputScalars.saveIterationsMiddle > 0) {
             }
             else {
-                if (MethodList.FDK)
-                    vec.rhs_os[ii].host(&output[oo]);
+                if (MethodList.FDK && inputScalars.largeDim) {
+                }
+                else if (MethodList.FDK && !inputScalars.largeDim) {
+                    vec.rhs_os[0].host(&output[oo]);
+                }
                 else
-                    vec.im_os[ii].host(&output[oo]);
+                    vec.im_os[timestep][0].host(&output[oo]);
                 if (inputScalars.verbose >= 3)
                     mexPrint("Data transfered to host");
-                oo += inputScalars.im_dim[ii];
+                oo += inputScalars.im_dim[0];
             }
         }
+        af::sync();
     }
-    else {
-        if (inputScalars.saveIter || inputScalars.saveIterationsMiddle > 0) {
-        }
-        else {
-            if (MethodList.FDK && inputScalars.largeDim) {
-            }
-            else if (MethodList.FDK && !inputScalars.largeDim) {
-                vec.rhs_os[0].host(&output[oo]);
-            }
-            else
-                vec.im_os[0].host(&output[oo]);
-            if (inputScalars.verbose >= 3)
-                mexPrint("Data transfered to host");
-            oo += inputScalars.im_dim[0];
-        }
-    }
-    af::sync();
 }
 
 extern "C" DLL_FUNCTION

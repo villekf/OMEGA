@@ -45,12 +45,18 @@ end
 if iscell(options.SinM)
     options.SinM = cell2mat(options.SinM);
 end
+if options.attenuation_correction
+    if iscell(options.vaimennus)
+        options.vaimennus = cell2mat(options.vaimennus);
+    end
+end
 if options.randoms_correction
     if iscell(options.SinDelayed)
         options.SinDelayed = cell2mat(options.SinDelayed);
     end
 end
 options.currentSubset = 0;
+options.currentTimestep = 0;
 
 if options.orthAxial
     crystal_size_z = (options.tube_width_z);

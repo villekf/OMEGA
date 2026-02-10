@@ -1,5 +1,13 @@
 # Release notes
 
+### New features
+- Major changes to dynamic reconstruction
+    - Loop order changed from timestep -> iteration -> sub-iteration to iteration -> sub-iteration -> timestep
+    - Allows for regularization through temporal dimension
+    - Implemented total variation and first-order derivative smoothness priors
+    - SPECT and PET only
+    - Dynamic reconstruction is supported with (at least) OSEM, RAMLA, LSQR, PDHG, FISTA, PKMA, SART, ASD-POCS and BB
+
 ## OMEGA v2.1.0
 
 ### Breaking (API) changes

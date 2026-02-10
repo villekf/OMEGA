@@ -28,9 +28,7 @@ inline af::array OSL(const af::array& Summ, const af::array& dU, const float epp
 
 // Computes the final MBSREM update
 // Can use image-based preconditioners which are applied before the final update
-inline int MBSREM(af::array& im, af::array& rhs, const float U, const float* lam, const uint32_t iter, const uint32_t osa_iter,
-	const scalarStruct& inputScalars, Weighting& w_vec, ProjectorClass& proj, const int ii = 0)
-{
+inline int MBSREM(af::array& im, af::array& rhs, const float U, const std::vector<float> lam, const uint32_t timestep, const uint32_t iter, const uint32_t osa_iter, const scalarStruct& inputScalars, Weighting& w_vec, ProjectorClass& proj, const int ii = 0) {
 	int status = 0;
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
 	af::array output;
@@ -38,10 +36,10 @@ inline int MBSREM(af::array& im, af::array& rhs, const float U, const float* lam
 	if (af::anyTrue<bool>(pp)) {
 		af::array apuIm = im;
 		apuIm(pp) = U - apuIm(pp);
-		applyImagePreconditioning(w_vec, inputScalars, rhs, apuIm, proj, kk);
+		applyImagePreconditioning(w_vec, inputScalars, rhs, apuIm, proj, timestep, kk);
 	}
 	else
-		applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, kk, ii);
+		applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, timestep, kk, ii);
 #ifndef CPU
 	status = poissonUpdateAF(im, rhs, inputScalars, lam[iter], inputScalars.epps, U, proj, ii);
 #else
@@ -53,7 +51,7 @@ inline int MBSREM(af::array& im, af::array& rhs, const float U, const float* lam
 }
 
 // BSREM subset update
-inline int BSREM(af::array& im, const af::array& rhs, const float* lam, const uint32_t iter, const scalarStruct& inputScalars, ProjectorClass& proj, const int ii = 0)
+inline int BSREM(af::array& im, const af::array& rhs, const std::vector<float> lam, const uint32_t iter, const scalarStruct& inputScalars, ProjectorClass& proj, const int ii = 0)
 {
 	int status = 0;
 #ifndef CPU
@@ -65,21 +63,20 @@ inline int BSREM(af::array& im, const af::array& rhs, const float* lam, const ui
 }
 
 // Subset-based separable paraboidal surrogates
-inline int SPS(af::array& im, af::array& rhs, const float U, const float* lam, const uint32_t iter, const uint32_t osa_iter,
-	const scalarStruct& inputScalars, Weighting& w_vec, ProjectorClass& proj, const int ii = 0) {
+inline int SPS(af::array& im, af::array& rhs, const float U, const std::vector<float> lam, const uint32_t timestep, const uint32_t iter, const uint32_t osa_iter, const scalarStruct& inputScalars, Weighting& w_vec, ProjectorClass& proj, const int ii = 0) {
 	int status = 0;
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
 	if (DEBUG) {
 		mexPrintBase("U = %f\n", U);
 		mexPrintBase("iter = %d\n", iter);
 		mexPrintBase("lam[iter] = %f\n", lam[iter]);
-		mexPrintBase("w_vec.dP = %f\n", af::sum<float>(w_vec.dP[ii]));
+		mexPrintBase("w_vec.dP[timestep] = %f\n", af::sum<float>(w_vec.dP[timestep][ii]));
 		mexEval();
 	}
-	status = applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, kk, ii);
+	status = applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, timestep, kk, ii);
 	if (status != 0)
 		return -1;
-	im += lam[iter] * rhs * w_vec.dP[ii];
+	im += lam[iter] * rhs * w_vec.dP[timestep][ii];
 	im(im <= 0) = inputScalars.epps;
 	return 0;
 }
@@ -102,7 +99,7 @@ inline af::array ECOSEM(const af::array& im, const af::array& D, const af::array
 }
 
 // ROSEM update
-inline af::array ROSEM(const af::array& im, const af::array& Summ, const af::array& rhs, const float* lam, const uint32_t iter)
+inline af::array ROSEM(const af::array& im, const af::array& Summ, const af::array& rhs, const std::vector<float> lam, const uint32_t iter)
 {
 	return (im + lam[iter] * im / Summ * (rhs - Summ));
 }
@@ -123,7 +120,7 @@ inline af::array RBI(const af::array& im, const af::array& Summ, const af::array
 }
 
 // DRAMA update
-inline af::array DRAMA(const af::array& im, const af::array& Summ, const af::array& rhs, const float* lam, const uint32_t iter, const uint32_t sub_iter, const uint32_t subsets)
+inline af::array DRAMA(const af::array& im, const af::array& Summ, const af::array& rhs, const std::vector<float> lam, const uint32_t iter, const uint32_t sub_iter, const uint32_t subsets)
 {
 	return (im + lam[iter * subsets + sub_iter] * im / Summ * rhs);
 }
@@ -151,15 +148,14 @@ inline af::array COSEM(const af::array& im, const af::array& C_co, const af::arr
 
 // PKMA
 // Can use image-based preconditioners which are applied before the final update
-inline int PKMA(af::array& im, af::array& rhs, Weighting& w_vec, const scalarStruct& inputScalars,
-	const uint32_t iter, const uint32_t osa_iter, ProjectorClass& proj, const int ii = 0) {
+inline int PKMA(af::array& im, af::array& rhs, Weighting& w_vec, const scalarStruct& inputScalars, const uint32_t timestep, const uint32_t iter, const uint32_t osa_iter, ProjectorClass& proj, const int ii = 0) {
 	int status = 0;
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
-	applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, kk, ii);
+	applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, timestep, kk, ii);
 	if (inputScalars.computeRelaxation) {
 		if (kk == 0 && ii == 0) {
-			w_vec.lambda[iter] = af::norm(im) / af::norm(rhs) * .25f;
-			const float kerroin = af::norm(im) / af::norm(rhs * w_vec.lambda[iter]);
+			w_vec.lambda[timestep][iter] = af::norm(im) / af::norm(rhs) * .25f;
+			const float kerroin = af::norm(im) / af::norm(rhs * w_vec.lambda[timestep][iter]);
 			const float kerroin2 = std::fabs(af::max<float>(im) / af::max<float>(rhs));
 			const float kerroin3 = af::median<float>(im) / af::median<float>(rhs);
 			if (DEBUG) {
@@ -170,8 +166,8 @@ inline int PKMA(af::array& im, af::array& rhs, Weighting& w_vec, const scalarStr
 			}
 		}
 		else if (iter > 0 && osa_iter == 0 && ii == 0)
-			w_vec.lambda[iter] = w_vec.lambda[iter - 1] * (1.f / (iter / 35.f + 1.f));
-		const float kerroin = af::norm(im) / af::norm(rhs * w_vec.lambda[iter]);
+			w_vec.lambda[timestep][iter] = w_vec.lambda[timestep][iter - 1] * (1.f / (iter / 35.f + 1.f));
+		const float kerroin = af::norm(im) / af::norm(rhs * w_vec.lambda[timestep][iter]);
 		const float kerroin2 = std::fabs(af::max<float>(im) / af::max<float>(rhs));
 		const float kerroin3 = af::median<float>(im) / af::median<float>(rhs);
 		const float kerroin4 = af::norm(im) / af::norm(rhs);
@@ -186,112 +182,119 @@ inline int PKMA(af::array& im, af::array& rhs, Weighting& w_vec, const scalarStr
 			mexPrintBase("kerroinJako = %f\n", kerroin5);
 			mexPrintBase("kerroinSumma = %f\n", kerroin6);
 			mexPrintBase("kerroinMean = %f\n", kerroin7);
-			mexPrintBase("w_vec.lambda[iter] = %f\n", w_vec.lambda[iter]);
+			mexPrintBase("w_vec.lambda[timestep][iter] = %f\n", w_vec.lambda[timestep][iter]);
 			mexEval();
 		}
 	}
 	if (inputScalars.relaxScaling) {
-		const float kerroin = af::norm(im) / af::norm(rhs * w_vec.lambda[iter]);
-		const float kerroin2 = std::fabs(af::max<float>(im) / af::max<float>(rhs * w_vec.lambda[iter]));
-		const float kerroin3 = af::median<float>(im) / af::median<float>(rhs * w_vec.lambda[iter]);
+		const float kerroin = af::norm(im) / af::norm(rhs * w_vec.lambda[timestep][iter]);
+		const float kerroin2 = std::fabs(af::max<float>(im) / af::max<float>(rhs * w_vec.lambda[timestep][iter]));
+		const float kerroin3 = af::median<float>(im) / af::median<float>(rhs * w_vec.lambda[timestep][iter]);
 			if (kerroin < 1.5f && kerroin > 0.f)
-				w_vec.lambda[iter] *= (kerroin / 1.5f);
+				w_vec.lambda[timestep][iter] *= (kerroin / 1.5f);
 		if (DEBUG) {
 			mexPrintBase("kerroin = %f\n", kerroin);
 			mexPrintBase("kerroinMax = %f\n", kerroin2);
 			mexPrintBase("kerroinMed = %f\n", kerroin3);
-			mexPrintBase("w_vec.lambda[iter] = %f\n", w_vec.lambda[iter]);
+			mexPrintBase("w_vec.lambda[timestep][iter] = %f\n", w_vec.lambda[timestep][iter]);
 			mexEval();
 		}
 	}
 #ifndef CPU
-	status = poissonUpdateAF(im, rhs, inputScalars, w_vec.lambda[iter], inputScalars.epps, w_vec.alphaM[kk], proj, ii);
+	status = poissonUpdateAF(im, rhs, inputScalars, w_vec.lambda[timestep][iter], inputScalars.epps, w_vec.alphaM[timestep][kk], proj, ii);
 #else
-	af::array im_apu = im - w_vec.lambda[iter] * rhs;
+	af::array im_apu = im - w_vec.lambda[timestep][iter] * rhs;
 	if (inputScalars.enforcePositivity)
 		im_apu(im_apu < inputScalars.epps) = inputScalars.epps;
-	im = (1.f - w_vec.alphaM[kk]) * im + w_vec.alphaM[kk] * im_apu;
+	im = (1.f - w_vec.alphaM[timestep][kk]) * im + w_vec.alphaM[timestep][kk] * im_apu;
 #endif
 	return status;
 }
 
-inline void LSQR(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t iter, AF_im_vectors& vec, const int ii = 0) {
+inline void LSQR(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t timestep, const uint32_t iter, AF_im_vectors& vec, const int ii = 0) {
 	if (iter == 0)
-		vec.wLSQR[ii] = vec.im_os[ii];
-	vec.im_os[ii] = vec.rhs_os[ii] - w_vec.betaLSQR * vec.im_os[ii];
+		vec.wLSQR[timestep][ii] = vec.im_os[timestep][ii];
+	vec.im_os[timestep][ii] = vec.rhs_os[timestep][ii] - w_vec.betaLSQR[timestep] * vec.im_os[timestep][ii];
 	if (ii == inputScalars.nMultiVolumes) {
-		af::array temp = vec.im_os[0];
+		af::array temp = vec.im_os[timestep][0];
 		for (int ll = 1; ll <= inputScalars.nMultiVolumes; ll++)
-			temp = af::join(0, vec.im_os[ll], temp);
-		w_vec.alphaLSQR = af::norm(temp);
+			temp = af::join(0, vec.im_os[timestep][ll], temp);
+		w_vec.alphaLSQR[timestep] = af::norm(temp);
 		for (int ll = 0; ll <= inputScalars.nMultiVolumes; ll++)
-			vec.im_os[ll] = vec.im_os[ll] / w_vec.alphaLSQR;
-		const float rho_ = sqrt(w_vec.rhoLSQR * w_vec.rhoLSQR + w_vec.betaLSQR * w_vec.betaLSQR);
-		const float c = w_vec.rhoLSQR / rho_;
-		const float s = w_vec.betaLSQR / rho_;
-		w_vec.thetaLSQR = s * w_vec.alphaLSQR;
-		w_vec.rhoLSQR = -c * w_vec.alphaLSQR;
-		const float phi_ = c * w_vec.phiLSQR;
-		w_vec.phiLSQR = s * w_vec.phiLSQR;
+			vec.im_os[timestep][ll] = vec.im_os[timestep][ll] / w_vec.alphaLSQR[timestep];
+		const float rho_ = sqrt(w_vec.rhoLSQR[timestep] * w_vec.rhoLSQR[timestep] + w_vec.betaLSQR[timestep] * w_vec.betaLSQR[timestep]);
+		const float c = w_vec.rhoLSQR[timestep] / rho_;
+		const float s = w_vec.betaLSQR[timestep] / rho_;
+		w_vec.thetaLSQR[timestep] = s * w_vec.alphaLSQR[timestep];
+		w_vec.rhoLSQR[timestep] = -c * w_vec.alphaLSQR[timestep];
+		const float phi_ = c * w_vec.phiLSQR[timestep];
+		w_vec.phiLSQR[timestep] = s * w_vec.phiLSQR[timestep];
 		for (int ll = 0; ll <= inputScalars.nMultiVolumes; ll++) {
-			vec.fLSQR[ll] = (phi_ / rho_) * vec.wLSQR[ll] + vec.fLSQR[ll];
-			vec.fLSQR[ll].eval();
-			vec.wLSQR[ll] = vec.im_os[ll] - (w_vec.thetaLSQR / rho_) * vec.wLSQR[ll];
-			vec.wLSQR[ll].eval();
+			vec.fLSQR[timestep][ll] = (phi_ / rho_) * vec.wLSQR[timestep][ll] + vec.fLSQR[timestep][ll];
+			vec.fLSQR[timestep][ll].eval();
+			vec.wLSQR[timestep][ll] = vec.im_os[timestep][ll] - (w_vec.thetaLSQR[timestep] / rho_) * vec.wLSQR[timestep][ll];
+			vec.wLSQR[timestep][ll].eval();
 			if (iter == inputScalars.Niter - 1)
-				vec.im_os[ll] = vec.fLSQR[ll];
+				vec.im_os[timestep][ll] = vec.fLSQR[timestep][ll];
 		}
 	}
 }
 
-inline void CGLS(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t iter, AF_im_vectors& vec, const int ii = 0, const bool largeDim = false) {
+inline void CGLS(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t timestep, const uint32_t iter, AF_im_vectors& vec, const int ii = 0, const bool largeDim = false) {
 	if (ii == inputScalars.nMultiVolumes) {
 		if (!largeDim) {
 			float gamma_ = 0.f;
 			for (int ll = ii; ll <= inputScalars.nMultiVolumes; ll++)
-				gamma_ += af::dot<float>(vec.rhs_os[ll], vec.rhs_os[ll]);
+				gamma_ += af::dot<float>(vec.rhs_os[timestep][ll], vec.rhs_os[timestep][ll]);
 			//gamma_ += af::sum<float>(vec.rhs_os[ll] * vec.rhs_os[ll]);
 			const float beta = gamma_ / w_vec.gammaCGLS;
 			for (int ll = ii; ll <= inputScalars.nMultiVolumes; ll++) {
-				vec.fCGLS[ll] = vec.fCGLS[ll] + w_vec.alphaCGLS * vec.im_os[ll];
+				vec.fCGLS[ll] = vec.fCGLS[ll] + w_vec.alphaCGLS * vec.im_os[timestep][ll];
 				vec.fCGLS[ll].eval();
 				if (iter == inputScalars.Niter - 1)
-					vec.im_os[ll] = vec.fCGLS[ll];
+					vec.im_os[timestep][ll] = vec.fCGLS[ll];
 				else
-					vec.im_os[ll] = vec.rhs_os[ll] + beta * vec.im_os[ll];
+					vec.im_os[timestep][ll] = vec.rhs_os[timestep][ll] + beta * vec.im_os[timestep][ll];
 			}
 			w_vec.gammaCGLS = gamma_;
 		}
 		else {
-			w_vec.gammaTempCGLS += af::dot<float>(vec.rhs_os[0], vec.rhs_os[0]);
-			vec.fCGLS[0] = vec.fCGLS[0] + w_vec.alphaCGLS * vec.im_os[0];
+			w_vec.gammaTempCGLS += af::dot<float>(vec.rhs_os[timestep][0], vec.rhs_os[timestep][0]);
+			vec.fCGLS[0] = vec.fCGLS[0] + w_vec.alphaCGLS * vec.im_os[timestep][0];
 			vec.fCGLS[0].eval();
 			if (iter == inputScalars.Niter - 1)
-				vec.im_os[0] = vec.fCGLS[0];
+				vec.im_os[timestep][0] = vec.fCGLS[0];
 		}
 	}
 }
 
-inline int SART(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, AF_im_vectors& vec, ProjectorClass& proj, const af::array& mData, const af::array& g,
-	std::vector<int64_t>& length, const int64_t* pituus, const uint32_t osa_iter, const uint32_t iter, const af::array& Summ, const af::array& rhs, const float lam, const int ii = 0) {
+inline int SART(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, AF_im_vectors& vec, ProjectorClass& proj, const af::array& mData, const af::array& g, std::vector<int64_t>& length, const int64_t* pituus, const uint32_t timestep, const uint32_t osa_iter, const uint32_t iter, const af::array& Summ, const af::array& rhs, const float lam, const int ii = 0) {
 	af::array imOld;
 	if (MethodList.prior && !MethodList.POCS)
-		imOld = vec.im_os[ii].copy();
-	vec.im_os[ii] += lam * (rhs / Summ);
+		imOld = vec.im_os[timestep][ii].copy();
+	vec.im_os[timestep][ii] += lam * (rhs / Summ);
 	if (MethodList.prior && !MethodList.POCS) {
-		vec.im_os[ii](vec.im_os[ii] < 0.f) = 0.f;
-		af::eval(vec.im_os[ii]);
+		vec.im_os[timestep][ii](vec.im_os[timestep][ii] < 0.f) = 0.f;
+		af::eval(vec.im_os[timestep][ii]);
 		if (ii == 0) {
 			int status = 0;
-			const float dp = static_cast<float>(af::norm(vec.im_os[ii] - imOld));
+			const float dp = static_cast<float>(af::norm(vec.im_os[timestep][ii] - imOld));
 			for (int kk = 0; kk < w_vec.ng; kk++) {
-				status = applyPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, osa_iter + inputScalars.subsetsUsed * iter);
-				if (status != 0)
-					return status;
-				vec.dU /= (af::norm(vec.dU) + inputScalars.epps);
-				af::eval(vec.dU);
-				vec.im_os[ii] -= dp * w_vec.beta * vec.dU;
-				af::eval(vec.im_os[ii]);
+                // Spatial prior
+				status = applySpatialPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, timestep, osa_iter + inputScalars.subsetsUsed * iter);
+				if (status != 0) return status;
+				vec.dU[timestep] /= (af::norm(vec.dU[timestep]) + inputScalars.epps);
+				af::eval(vec.dU[timestep]);
+				vec.im_os[timestep][ii] -= dp * w_vec.beta * vec.dU[timestep];
+
+                // Temporal prior
+                status = applyTemporalPrior(vec, w_vec, MethodList, inputScalars, proj);
+				if (status != 0) return status;
+                vec.dUt[timestep] /= (af::norm(vec.dUt[timestep]) + inputScalars.epps);
+				af::eval(vec.dUt[timestep]);
+				vec.im_os[timestep][ii] -= dp * w_vec.beta_temporal * vec.dUt[timestep];
+
+				af::eval(vec.im_os[timestep][ii]);
 			}
 		}
 	}
@@ -299,20 +302,20 @@ inline int SART(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 }
 
 // Necessary PDHG step, when using subsets, before regularization is applied
-inline void PDHG1(af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, const uint32_t subIter = 0, const int ii = 0) {
+inline void PDHG1(af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, const uint32_t timestep, const uint32_t subIter = 0, const int ii = 0) {
 	if (inputScalars.adaptiveType >= 1)
-		vec.rhsCP[ii] = rhs.copy();
+		vec.rhsCP[timestep][ii] = rhs.copy();
 	if (inputScalars.subsetsUsed > 1) {
 		if (DEBUG) {
-			mexPrintBase("vec.uCP[ii] = %f\n", af::sum<float>(vec.uCP[ii]));
-			mexPrintBase("w_vec.thetaCP[subIter] = %f\n", w_vec.thetaCP[subIter]);
+			mexPrintBase("vec.uCP[ii] = %f\n", af::sum<float>(vec.uCP[timestep][ii]));
+			mexPrintBase("w_vec.thetaCP[timestep][subIter] = %f\n", w_vec.thetaCP[timestep][subIter]);
 			mexEval();
 		}
 		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Using PDHG w/ subsets");
-		vec.uCP[ii] += rhs;
-		vec.uCP[ii].eval();
-		rhs = vec.uCP[ii] + (static_cast<float>(inputScalars.subsetsUsed) * w_vec.thetaCP[subIter]) * rhs;
+		vec.uCP[timestep][ii] += rhs;
+		vec.uCP[timestep][ii].eval();
+		rhs = vec.uCP[timestep][ii] + (static_cast<float>(inputScalars.subsetsUsed) * w_vec.thetaCP[timestep][subIter]) * rhs;
 		if (DEBUG) {
 			mexPrintBase("rhs = %f\n", af::sum<float>(rhs));
 			mexEval();
@@ -322,7 +325,7 @@ inline void PDHG1(af::array& rhs, const scalarStruct& inputScalars, Weighting& w
 
 // Final PDHG update step
 // Different methods for subset and non-subset cases
-inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter, const uint32_t subIter = 0, const int ii = 0, 
+inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter, const uint32_t timestep, const uint32_t subIter = 0, const int ii = 0, 
 	const int64_t* pituus = nullptr, const af::array& g = af::constant(0.f, 0), const uint64_t m_size = 1, const std::vector<int64_t>& length = std::vector<int64_t>(0)) {
 	int status = 0;
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
@@ -330,7 +333,7 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 	if (inputScalars.adaptiveType >= 1)
 		im_old = im.copy();
 	if (ii == 0) {
-		status = applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, kk, ii);
+		status = applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, timestep, kk, ii);
 		if (status != 0)
 			return -1;
 	}
@@ -338,9 +341,9 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Using PDHG w/ subsets");
 #ifndef CPU
-		status = PDHGUpdateAF(im, rhs, inputScalars, vec, inputScalars.epps, 1.f, w_vec.tauCP[ii], proj, ii);
+		status = PDHGUpdateAF(im, rhs, inputScalars, vec, inputScalars.epps, 1.f, w_vec.tauCP[timestep][ii], proj, ii);
 #else
-		im -= w_vec.tauCP[ii] * rhs;
+		im -= w_vec.tauCP[timestep][ii] * rhs;
 		im.eval();
 		if (inputScalars.enforcePositivity)
 			im(im < inputScalars.epps) = inputScalars.epps;
@@ -350,122 +353,122 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Using PDHG W/O subsets");
 #ifndef CPU
-		status = PDHGUpdateAF(im, rhs, inputScalars, vec, inputScalars.epps, w_vec.thetaCP[kk], w_vec.tauCP[ii], proj, ii);
+		status = PDHGUpdateAF(im, rhs, inputScalars, vec, inputScalars.epps, w_vec.thetaCP[timestep][kk], w_vec.tauCP[timestep][ii], proj, ii);
 #else
-		const af::array uPrev = vec.uCP[ii].copy();
-		vec.uCP[ii] -= w_vec.tauCP[ii] * rhs;
-		vec.uCP[ii].eval();
+		const af::array uPrev = vec.uCP[timestep][ii].copy();
+		vec.uCP[timestep][ii] -= w_vec.tauCP[timestep][ii] * rhs;
+		vec.uCP[timestep][ii].eval();
 		if (inputScalars.enforcePositivity)
-			vec.uCP[ii](vec.uCP[ii] < inputScalars.epps) = inputScalars.epps;
-		im = vec.uCP[ii] + w_vec.thetaCP[kk] * (vec.uCP[ii] - uPrev);
+			vec.uCP[timestep][ii](vec.uCP[timestep][ii] < inputScalars.epps) = inputScalars.epps;
+		im = vec.uCP[timestep][ii] + w_vec.thetaCP[timestep][kk] * (vec.uCP[timestep][ii] - uPrev);
 #endif
 	}
 	if ((w_vec.precondTypeMeas[1] && subIter + inputScalars.subsetsUsed * iter >= w_vec.filterIter) || !w_vec.precondTypeMeas[1]) {
 		if (ii == 0 && inputScalars.adaptiveType == 1) {
-			const af::array q = (im_old - im) / w_vec.tauCP[ii] + inputScalars.subsetsUsed * vec.rhsCP[ii];
+			const af::array q = (im_old - im) / w_vec.tauCP[timestep][ii] + inputScalars.subsetsUsed * vec.rhsCP[timestep][ii];
 			const float w = af::dot<float>((im_old - im), q) / (static_cast<float>(af::norm((im_old - im)) * af::norm(q)));
 			if (w < 0.f) {
-				w_vec.tauCP[ii] = w_vec.tauCP[ii] / (1.f + w_vec.alphaCP[ii]);
-				w_vec.sigmaCP[ii] = w_vec.sigmaCP[ii] * (1.f + w_vec.alphaCP[ii]);
-				w_vec.alphaCP[ii] *= 0.99f;
+				w_vec.tauCP[timestep][ii] = w_vec.tauCP[timestep][ii] / (1.f + w_vec.alphaCP[timestep][ii]);
+				w_vec.sigmaCP[timestep][ii] = w_vec.sigmaCP[timestep][ii] * (1.f + w_vec.alphaCP[timestep][ii]);
+				w_vec.alphaCP[timestep][ii] *= 0.99f;
 			}
 			else if (w >= .999f) {
-				w_vec.sigmaCP[ii] = w_vec.sigmaCP[ii] / (1.f + w_vec.alphaCP[ii]);
-				w_vec.tauCP[ii] = w_vec.tauCP[ii] * (1.f + w_vec.alphaCP[ii]);
-				w_vec.alphaCP[ii] *= 0.99f;
+				w_vec.sigmaCP[timestep][ii] = w_vec.sigmaCP[timestep][ii] / (1.f + w_vec.alphaCP[timestep][ii]);
+				w_vec.tauCP[timestep][ii] = w_vec.tauCP[timestep][ii] * (1.f + w_vec.alphaCP[timestep][ii]);
+				w_vec.alphaCP[timestep][ii] *= 0.99f;
 			}
-			w_vec.sigma2CP[ii] = w_vec.sigmaCP[ii];
+			w_vec.sigma2CP[timestep][ii] = w_vec.sigmaCP[timestep][ii];
 			if (inputScalars.verbose >= 3) {
-				mexPrintBase("w_vec.alphaCP[ii] = %f\n", w_vec.alphaCP[ii]);
-				mexPrintBase("w_vec.tauCP = %f\n", w_vec.tauCP[ii]);
-				mexPrintBase("w_vec.sigmaCP = %f\n", w_vec.sigmaCP[ii]);
+				mexPrintBase("w_vec.alphaCP[timestep][ii] = %f\n", w_vec.alphaCP[timestep][ii]);
+				mexPrintBase("w_vec.tauCP[timestep] = %f\n", w_vec.tauCP[timestep][ii]);
+				mexPrintBase("w_vec.sigmaCP[timestep] = %f\n", w_vec.sigmaCP[timestep][ii]);
 				mexPrintBase("w = %f\n", w);
 				mexEval();
 			}
 		}
 		else if (ii == 0 && inputScalars.adaptiveType == 2) {
-			const af::array apu = vec.im_os[ii].copy();
-			vec.im_os[ii] = (im_old - im);
-			const float q = af::sum<float>(af::abs((vec.im_os[ii]) / w_vec.tauCP[ii] + inputScalars.subsetsUsed * vec.rhsCP[ii]));
+			const af::array apu = vec.im_os[timestep][ii].copy();
+			vec.im_os[timestep][ii] = (im_old - im);
+			const float q = af::sum<float>(af::abs((vec.im_os[timestep][ii]) / w_vec.tauCP[timestep][ii] + inputScalars.subsetsUsed * vec.rhsCP[timestep][ii]));
 			af::array outputFP;
 			if (inputScalars.listmode == 0)
 				outputFP = af::constant(0.f, m_size * inputScalars.nBins);
 			else
 				outputFP = af::constant(0.f, m_size);
-			status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, subIter, length, g, m_size, proj, ii, pituus);
+			status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, subIter, timestep, length, g, m_size, proj, ii, pituus);
 			if (status != 0) {
 				return status;
 			}
-			const float w = inputScalars.subsetsUsed * af::sum<float>(af::abs(-vec.adapTypeA / w_vec.sigmaCP[ii] - outputFP));
-			if (q > w * 1.01f * std::sqrt(w_vec.LCP[ii])) {
-				w_vec.tauCP[ii] = w_vec.tauCP[ii] / (1.f - w_vec.alphaCP[ii]);
-				w_vec.sigmaCP[ii] = w_vec.sigmaCP[ii] * (1.f - w_vec.alphaCP[ii]);
-				w_vec.alphaCP[ii] *= 0.99f;
+			const float w = inputScalars.subsetsUsed * af::sum<float>(af::abs(-vec.adapTypeA / w_vec.sigmaCP[timestep][ii] - outputFP));
+			if (q > w * 1.01f * std::sqrt(w_vec.LCP[timestep][ii])) {
+				w_vec.tauCP[timestep][ii] = w_vec.tauCP[timestep][ii] / (1.f - w_vec.alphaCP[timestep][ii]);
+				w_vec.sigmaCP[timestep][ii] = w_vec.sigmaCP[timestep][ii] * (1.f - w_vec.alphaCP[timestep][ii]);
+				w_vec.alphaCP[timestep][ii] *= 0.99f;
 			}
-			else if (q < (w * std::sqrt(w_vec.LCP[ii])) / 1.01f) {
-				w_vec.sigmaCP[ii] = w_vec.sigmaCP[ii] / (1.f - w_vec.alphaCP[ii]);
-				w_vec.tauCP[ii] = w_vec.tauCP[ii] * (1.f - w_vec.alphaCP[ii]);
-				w_vec.alphaCP[ii] *= 0.99f;
+			else if (q < (w * std::sqrt(w_vec.LCP[timestep][ii])) / 1.01f) {
+				w_vec.sigmaCP[timestep][ii] = w_vec.sigmaCP[timestep][ii] / (1.f - w_vec.alphaCP[timestep][ii]);
+				w_vec.tauCP[timestep][ii] = w_vec.tauCP[timestep][ii] * (1.f - w_vec.alphaCP[timestep][ii]);
+				w_vec.alphaCP[timestep][ii] *= 0.99f;
 			}
-			w_vec.sigma2CP[ii] = w_vec.sigmaCP[ii];
-			vec.im_os[ii] = apu.copy();
+			w_vec.sigma2CP[timestep][ii] = w_vec.sigmaCP[timestep][ii];
+			vec.im_os[timestep][ii] = apu.copy();
 		}
 	}
 	return status;
 }
 
-inline int FISTA(af::array& im, af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter = 0, const uint32_t osa_iter = 0, const int ii = 0) {
+inline int FISTA(af::array& im, af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t timestep, const uint32_t iter = 0, const uint32_t osa_iter = 0, const int ii = 0) {
 	int status = 0;
 	const uint32_t kk = iter * inputScalars.subsetsUsed + osa_iter;
-	status = applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, kk, ii);
+	status = applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, timestep, kk, ii);
 	if (status != 0)
 		return -1;
 	if (inputScalars.subsetsUsed > 1 && osa_iter == inputScalars.subsets - 1) {
-		im -= w_vec.tauCP[ii] * rhs;
+		im -= w_vec.tauCP[timestep][ii] * rhs;
 		if (ii == 0) {
 			if (inputScalars.FISTAType == 1) {
-				w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista * w_vec.tNFista)) / 2.f;
-				w_vec.betaFISTA = (1.f - w_vec.tNFista) / w_vec.tFISTA;
-				w_vec.tNFista = w_vec.tFISTA;
+				w_vec.tFISTA[timestep] = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista[timestep] * w_vec.tNFista[timestep])) / 2.f;
+				w_vec.betaFISTA[timestep] = (1.f - w_vec.tNFista[timestep]) / w_vec.tFISTA[timestep];
+				w_vec.tNFista[timestep] = w_vec.tFISTA[timestep];
 			}
 			else {
 				const uint32_t it = iter + 1;
-				w_vec.betaFISTA = static_cast<float>(it - 1) / static_cast<float>(it + 2);
-				if (w_vec.betaFISTA <= 0.f) {
-					w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista * w_vec.tNFista)) / 2.f;
-					w_vec.betaFISTA = (w_vec.tNFista - 1.f) / w_vec.tFISTA;
-					w_vec.tNFista = w_vec.tFISTA;
+				w_vec.betaFISTA[timestep] = static_cast<float>(it - 1) / static_cast<float>(it + 2);
+				if (w_vec.betaFISTA[timestep] <= 0.f) {
+					w_vec.tFISTA[timestep] = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista[timestep] * w_vec.tNFista[timestep])) / 2.f;
+					w_vec.betaFISTA[timestep] = (w_vec.tNFista[timestep] - 1.f) / w_vec.tFISTA[timestep];
+					w_vec.tNFista[timestep] = w_vec.tFISTA[timestep];
 				}
 			}
 		}
 		im.eval();
-		vec.uFISTA[ii] = im + w_vec.betaFISTA * (im - vec.uFISTA[ii]);
-		vec.uFISTA[ii].eval();
+		vec.uFISTA[timestep][ii] = im + w_vec.betaFISTA[timestep] * (im - vec.uFISTA[timestep][ii]);
+		vec.uFISTA[timestep][ii].eval();
 	}
 	else if (inputScalars.subsetsUsed == 1) {
 		af::array uPrev = im.copy();
-		im = vec.uFISTA[ii] - w_vec.tauCP[ii] * rhs;
+		im = vec.uFISTA[timestep][ii] - w_vec.tauCP[timestep][ii] * rhs;
 		if (ii == 0) {
 			if (inputScalars.FISTAType == 1) {
-				w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista * w_vec.tNFista)) / 2.f;
-				w_vec.betaFISTA = (w_vec.tNFista - 1.f) / w_vec.tFISTA;
-				w_vec.tNFista = w_vec.tFISTA;
+				w_vec.tFISTA[timestep] = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista[timestep] * w_vec.tNFista[timestep])) / 2.f;
+				w_vec.betaFISTA[timestep] = (w_vec.tNFista[timestep] - 1.f) / w_vec.tFISTA[timestep];
+				w_vec.tNFista[timestep] = w_vec.tFISTA[timestep];
 			}
 			else {
 				const uint32_t it = iter + 1;
-				w_vec.betaFISTA = static_cast<float>(it - 1) / static_cast<float>(it + 2);
-				if (w_vec.betaFISTA <= 0.f) {
-					w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista * w_vec.tNFista)) / 2.f;
-					w_vec.betaFISTA = (w_vec.tNFista - 1.f) / w_vec.tFISTA;
-					w_vec.tNFista = w_vec.tFISTA;
+				w_vec.betaFISTA[timestep] = static_cast<float>(it - 1) / static_cast<float>(it + 2);
+				if (w_vec.betaFISTA[timestep] <= 0.f) {
+					w_vec.tFISTA[timestep] = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista[timestep] * w_vec.tNFista[timestep])) / 2.f;
+					w_vec.betaFISTA[timestep] = (w_vec.tNFista[timestep] - 1.f) / w_vec.tFISTA[timestep];
+					w_vec.tNFista[timestep] = w_vec.tFISTA[timestep];
 				}
 			}
 		}
-		vec.uFISTA[ii] = im + w_vec.betaFISTA * (im - uPrev);
-		vec.uFISTA[ii].eval();
+		vec.uFISTA[timestep][ii] = im + w_vec.betaFISTA[timestep] * (im - uPrev);
+		vec.uFISTA[timestep][ii].eval();
 	}
 	else {
-		im -= w_vec.tauCP[ii] * rhs;
+		im -= w_vec.tauCP[timestep][ii] * rhs;
 	}
 	im.eval();
 	rhs.eval();
@@ -474,12 +477,12 @@ inline int FISTA(af::array& im, af::array& rhs, const scalarStruct& inputScalars
 
 
 // FISTA with L1 regularization
-inline int FISTAL1(af::array& im, af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, const float beta, ProjectorClass& proj, const uint32_t iter = 0, const uint32_t osa_iter = 0, const int ii = 0) {
+inline int FISTAL1(af::array& im, af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, const float beta, ProjectorClass& proj, const uint32_t timestep, const uint32_t iter = 0, const uint32_t osa_iter = 0, const int ii = 0) {
 	int status = 0;
-	status = FISTA(im, rhs, inputScalars, w_vec, vec, proj, iter, osa_iter, ii);
+	status = FISTA(im, rhs, inputScalars, w_vec, vec, proj, timestep, iter, osa_iter, ii);
 	if (status != 0)
 		return -1;
-	const float a = w_vec.tauCP[ii] * beta;
+	const float a = w_vec.tauCP[timestep][ii] * beta;
 	if (DEBUG) {
 		mexPrintBase("a = %f\n", a);
 		mexEval();
@@ -492,9 +495,8 @@ inline int FISTAL1(af::array& im, af::array& rhs, const scalarStruct& inputScala
 }
 
 // ASD-POCS
-inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, AF_im_vectors& vec, ProjectorClass& proj, const af::array& mData, const af::array& g, 
-	std::vector<int64_t>& length, const int64_t* pituus, const uint32_t osa_iter, const uint32_t iter, const int ii = 0) {
-	vec.im_os[ii](vec.im_os[ii] < 0.f) = 0.f;
+inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, AF_im_vectors& vec, ProjectorClass& proj, const af::array& mData, const af::array& g, std::vector<int64_t>& length, const int64_t* pituus, const uint32_t timestep, const uint32_t osa_iter, const uint32_t iter, const int ii = 0) {
+	vec.im_os[timestep][ii](vec.im_os[timestep][ii] < 0.f) = 0.f;
 	if (DEBUG)
 		mexPrint("Computing ASD-POCS");
 	bool subsets = true;
@@ -512,19 +514,19 @@ inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 		else
 			outputFP = af::constant(0.f, m_size);
 		int status = 0;
-		status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, length, g, m_size, proj, ii, pituus);
+		status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, timestep, length, g, m_size, proj, ii, pituus);
 		if (status != 0) {
 			return status;
 		}
 		const float dd = static_cast<float>(af::norm(outputFP - mData.as(f32)));
-		const float dp = static_cast<float>(af::norm(vec.im_os[ii] - vec.f0POCS[ii]));
+		const float dp = static_cast<float>(af::norm(vec.im_os[timestep][ii] - vec.f0POCS[timestep][ii]));
 		if (DEBUG) {
 			mexPrintBase("dd = %f\n", dd);
 			mexEval();
 		}
 		if (iter == 0 && osa_iter == 0)
 			w_vec.dtvg = w_vec.alphaPOCS * dp;
-		vec.f0POCS[ii] = vec.im_os[ii].copy();
+		vec.f0POCS[timestep][ii] = vec.im_os[timestep][ii].copy();
 		if (DEBUG) {
 			mexPrintBase("dp = %f\n", dp);
 			mexPrintBase("w_vec.dtvg = %f\n", w_vec.dtvg);
@@ -532,15 +534,15 @@ inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 		}
 		if (ii == 0) {
 			for (int kk = 0; kk < w_vec.ng; kk++) {
-				status = applyPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, osa_iter + inputScalars.subsetsUsed * iter);
+				status = applySpatialPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, timestep, osa_iter + inputScalars.subsetsUsed * iter);
 				if (status != 0)
 					return status;
-				vec.dU /= (af::norm(vec.dU) + inputScalars.epps);
-				vec.im_os[ii] -= w_vec.dtvg * vec.dU;
-				af::eval(vec.im_os[ii]);
-				af::eval(vec.dU);
+				vec.dU[timestep] /= (af::norm(vec.dU[timestep]) + inputScalars.epps);
+				vec.im_os[timestep][ii] -= w_vec.dtvg * vec.dU[timestep];
+				af::eval(vec.im_os[timestep][ii]);
+				af::eval(vec.dU[timestep]);
 			}
-			const float dg = static_cast<float>(af::norm(vec.im_os[ii] - vec.f0POCS[ii]));
+			const float dg = static_cast<float>(af::norm(vec.im_os[timestep][ii] - vec.f0POCS[timestep][ii]));
 			if (DEBUG) {
 				mexPrintBase("dg = %f\n", dg);
 				mexPrintBase("w_vec.rMaxPOCS * dp = %f\n", w_vec.rMaxPOCS * dp);
@@ -553,26 +555,26 @@ inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 	return 0;
 }
 
-inline int SAGA(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t osa_iter, const uint32_t iter, const int ii = 0) {
+inline int SAGA(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t timestep, const uint32_t osa_iter, const uint32_t iter, const int ii = 0) {
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
 	af::array grad = af::constant(0.f, im.elements());
 	if (DEBUG) {
-		mexPrintBase("du = %d\n", vec.dU.elements());
-		mexPrintBase("vec.rhs_os[ii].elements() = %d\n", vec.rhs_os[ii].elements());
+		mexPrintBase("du = %d\n", vec.dU[timestep].elements());
+		mexPrintBase("vec.rhs_os[timestep][ii].elements() = %d\n", vec.rhs_os[timestep][ii].elements());
 		mexPrintBase("vec.stochasticHelper[ii](af::span, osa_iter).elements() = %d\n", vec.stochasticHelper[ii][osa_iter].elements());
 		mexEval();
 	}
-	if (ii == 0 && vec.dU.elements() > 1) {
-		vec.rhs_os[ii] -= vec.dU;
-		af::eval(vec.rhs_os[ii]);
+	if (ii == 0 && vec.dU[timestep].elements() > 1) {
+		vec.rhs_os[timestep][ii] -= vec.dU[timestep];
+		af::eval(vec.rhs_os[timestep][ii]);
 	}
-	grad = (vec.rhs_os[ii] - vec.stochasticHelper[ii][osa_iter]) + vec.SAGASum[ii] / static_cast<float>(inputScalars.subsetsUsed);
-	vec.SAGASum[ii] = vec.SAGASum[ii] - vec.stochasticHelper[ii][osa_iter] + vec.rhs_os[ii];
+	grad = (vec.rhs_os[timestep][ii] - vec.stochasticHelper[ii][osa_iter]) + vec.SAGASum[ii] / static_cast<float>(inputScalars.subsetsUsed);
+	vec.SAGASum[ii] = vec.SAGASum[ii] - vec.stochasticHelper[ii][osa_iter] + vec.rhs_os[timestep][ii];
 	af::eval(vec.SAGASum[ii]);
 	int status = 0;
-	vec.stochasticHelper[ii][osa_iter] = vec.rhs_os[ii].copy();
-	status = applyImagePreconditioning(w_vec, inputScalars, grad, im, proj, kk, ii);
-	im += w_vec.lambda[iter] * grad;
+	vec.stochasticHelper[ii][osa_iter] = vec.rhs_os[timestep][ii].copy();
+	status = applyImagePreconditioning(w_vec, inputScalars, grad, im, proj, timestep, kk, ii);
+	im += w_vec.lambda[timestep][iter] * grad;
 	af::eval(im);
 	//af::sync();
 	if (DEBUG) {
@@ -582,19 +584,15 @@ inline int SAGA(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, AF_
 	return status;
 }
 
-inline int BB(AF_im_vectors &vec, Weighting &w_vec, const int ii = 0)
-{
-
-	af::array s = vec.im_os[ii] - vec.imBB[ii];
-	af::array y = vec.rhs_os[ii] - vec.gradBB[ii];
+inline int BB(AF_im_vectors &vec, Weighting &w_vec, const uint32_t timestep, const int ii = 0) {
+	af::array s = vec.im_os[timestep][ii] - vec.imBB[timestep][ii];
+	af::array y = vec.rhs_os[timestep][ii] - vec.gradBB[timestep][ii];
 	float denmo = af::dot<float>(s,y);
 	float num = af::dot<float>(s,s);
 
-	w_vec.alphaBB[ii] = (denmo != 0) ? num / denmo : 1e-4f; // Avoid division by zero
-	vec.imBB[ii] = vec.im_os[ii].copy();
-	vec.im_os[ii] = vec.imBB[ii] - w_vec.alphaBB[ii] * vec.gradBB[ii];
-	vec.gradBB[ii] = vec.rhs_os[ii];
-
-
+	w_vec.alphaBB[timestep][ii] = (denmo != 0) ? num / denmo : 1e-4f; // Avoid division by zero
+	vec.imBB[timestep][ii] = vec.im_os[timestep][ii].copy();
+	vec.im_os[timestep][ii] = vec.imBB[timestep][ii] - w_vec.alphaBB[timestep][ii] * vec.gradBB[timestep][ii];
+	vec.gradBB[timestep][ii] = vec.rhs_os[timestep][ii];
 	return 0;
 }

@@ -6,7 +6,7 @@
 
 template <typename T>
 int computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const scalarStruct& inputScalars, const uint32_t iter,
-	ProjectorClass& proj, const af::array& g, T* output, uint32_t& ee, size_t& tt, const float* x0) {
+	ProjectorClass& proj, const af::array& g, T* output, uint32_t& ee, size_t& tt, const float* x0, const int timestep) {
 
 	// Compute BSREM and ROSEMMAP updates if applicable
 	// Otherwise simply save the current iterate if applicable
@@ -15,12 +15,12 @@ int computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethod
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing regularization for BSREM/ROSEMMAP");
 		int status = 0;
-		status = applyPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, iter, 0, true);
+		status = applySpatialPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, timestep, iter, 0, true);
 		if (status != 0)
 			return -1;
 		// MAP/Prior-algorithms
 		// Special case for BSREM and ROSEM-MAP
-		MAP(vec.im_os[0], w_vec.lambda[iter], vec.dU, inputScalars.epps);
+		MAP(vec.im_os[timestep][0], w_vec.lambda[timestep][iter], vec.dU[timestep], inputScalars.epps);
 		if (inputScalars.verbose >= 3)
 			mexPrint("Regularization for BSREM/ROSEMMAP computed");
 	}
@@ -44,12 +44,12 @@ int computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethod
 			tt += inputScalars.im_dim[0];
 		}
 		if (inputScalars.use_psf && inputScalars.deconvolution) {
-			af::array apu = vec.im_os[0].copy();
+			af::array apu = vec.im_os[timestep][0].copy();
 			deblur(apu, g, inputScalars, w_vec);
 			apu.host(&jelppi[tt]);
 		}
 		else
-			vec.im_os[0].host(&jelppi[tt]);
+			vec.im_os[timestep][0].host(&jelppi[tt]);
 		ee++;
 		tt += inputScalars.im_dim[0];
 	}

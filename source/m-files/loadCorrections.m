@@ -157,7 +157,7 @@ if options.attenuation_correction && ~options.SPECT % PET attenuation
         end
     end
 elseif options.attenuation_correction && options.SPECT % SPECT attenuation
-    if ~isfield(options, 'vaimennus') || isempty(options.vaimennus)
+    if ~isfield(options, 'vaimennus') || (isempty(options.vaimennus) && ~iscell(options.vaimennus))
         if isempty(options.fpathCT) % Get folder if necessary
             options.fpathCT = uigetdir(matlabroot,'Select the folder containing attenuation DICOM files');
         end
@@ -192,15 +192,33 @@ elseif options.attenuation_correction && options.SPECT % SPECT attenuation
         [MUvol, ~] = imwarp(MUvol, refCT, tform, OutputView=options.refSPECT, FillValue=muAir, InterpolationMethod='linear');
         options.vaimennus = 1*MUvol;
     end
+    if options.partitions > 1
+        if ~iscell(options.vaimennus)
+            error("With dynamic reconstruction the attenuation map needs to be a cell type");
+        end
+        if numel(options.vaimennus) ~= options.partitions
+            error("No attenuation map for each timestep")
+        end
+    end
 else
     options.vaimennus = 0;
 end
 
 
-if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-    options.vaimennus = single(options.vaimennus);
+if ~iscell(options.vaimennus) 
+    if (options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles)
+        options.vaimennus = single(options.vaimennus);
+    else
+        options.vaimennus = double(options.vaimennus);
+    end
 else
-    options.vaimennus = double(options.vaimennus);
+    for kk = 1:options.partitions
+        if (options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles)
+            options.vaimennus{kk} = single(options.vaimennus{kk}(:));
+        else
+            options.vaimennus{kk} = double(options.vaimennus{kk}(:));
+        end
+    end
 end
 
 
@@ -938,39 +956,64 @@ end
 % Other SPECT corrections
 if options.SPECT
     if options.scatter_correction && numel(options.SinDelayed) <= 1 && options.subtract_scatter% From 10.1371/journal.pone.0269542
-        if numel(options.ScatterC) == 1 % DEW
-            k = 1;
-            if ~options.corrections_during_reconstruction
-                options.SinM = options.SinM - k * squeeze(options.ScatterC{1});
-                options.scatter_correction = false;
-            else
-                options.SinDelayed = k * squeeze(options.ScatterC{1});
-                if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                    options.SinDelayed = single(options.SinDelayed);
+        if iscell(options.SinM) % SinM is cell (size = options.partitions)
+            for timestep = 1:options.partitions
+                if numel(options.ScatterC) == 1 % DEW
+                    k = 1;
+                    if ~options.corrections_during_reconstruction
+                        options.ScatterC
+                        options.SinM{timestep} = options.SinM{timestep} - k * options.ScatterC{1}{timestep};
+                        options.scatter_correction = false;
+                    else
+                        options.SinDelayed{timestep} = k * squeeze(options.ScatterC{1}{timestep});
+                        if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
+                            options.SinDelayed{timestep} = single(options.SinDelayed{timestep} );
+                        end
+                    end
+                elseif numel(options.ScatterC) == 2 % TEW
+                    kLower = diff(options.eWin) / diff(options.eWinL);
+                    kUpper = diff(options.eWin) / diff(options.eWinU);
+                    if ~options.corrections_during_reconstruction
+                        options.SinM{timestep} = options.SinM{timestep} - 0.5 * (kLower * squeeze(options.ScatterC{1}{timestep}) - kUpper * squeeze(options.ScatterC{2}{timestep}));
+                        options.scatter_correction = false;
+                    else
+                        options.SinDelayed{timestep} = 0.5 * (kLower * squeeze(options.ScatterC{1}{timestep}) + kUpper * squeeze(options.ScatterC{2}{timestep}));
+                        if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
+                            options.SinDelayed{timestep} = single(options.SinDelayed{timestep});
+                        end
+                    end
                 end
-                % randoms_correction = true;
             end
-        elseif numel(options.ScatterC) == 2 % TEW
-            kLower = diff(options.eWin) / diff(options.eWinL);
-            kUpper = diff(options.eWin) / diff(options.eWinU);
-            if  ~options.corrections_during_reconstruction
-                options.SinM = options.SinM - 0.5 * (kLower * squeeze(options.ScatterC{1}) - kUpper * squeeze(options.ScatterC{2}));
-                options.scatter_correction = false;
-            else
-                options.SinDelayed = 0.5 * (kLower * squeeze(options.ScatterC{1}) + kUpper * squeeze(options.ScatterC{2}));
-                if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                    options.SinDelayed = single(options.SinDelayed);
+        else % SinM is not cell
+            if numel(options.ScatterC) == 1 % DEW
+                k = 1;
+                if ~options.corrections_during_reconstruction
+                    options.SinM = options.SinM - k * squeeze(options.ScatterC{1});
+                    options.scatter_correction = false;
+                else
+                    options.SinDelayed = k * squeeze(options.ScatterC{1});
+                    if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
+                        options.SinDelayed = single(options.SinDelayed);
+                    end
+                    % randoms_correction = true;
                 end
-                % randoms_correction = true;
+            elseif numel(options.ScatterC) == 2 % TEW
+                kLower = diff(options.eWin) / diff(options.eWinL);
+                kUpper = diff(options.eWin) / diff(options.eWinU);
+                if ~options.corrections_during_reconstruction
+                    options.SinM = options.SinM - 0.5 * (kLower * squeeze(options.ScatterC{1}) - kUpper * squeeze(options.ScatterC{2}));
+                    options.scatter_correction = false;
+                else
+                    options.SinDelayed = 0.5 * (kLower * squeeze(options.ScatterC{1}) + kUpper * squeeze(options.ScatterC{2}));
+                    if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
+                        options.SinDelayed = single(options.SinDelayed);
+                    end
+                    % randoms_correction = true;
+                end
             end
         end
-    elseif options.scatter_correction && numel(options.ScatterC) > 1 && numel(options.SinDelayed) <= 1 && options.subtract_scatter
-        options.SinDelayed = options.ScatterC;
-        if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-            options.SinDelayed = single(options.SinDelayed);
-        end
-        % randoms_correction = true;
     end
+
     %error("break")
     if options.normalization_correction && options.corrections_during_reconstruction
         if numel(options.normalization) <= 1

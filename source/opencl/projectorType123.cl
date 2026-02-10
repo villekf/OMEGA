@@ -80,12 +80,14 @@ __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_si
 #endif
 void projectorType123(
 #if defined(METAL) ///////////////////// METAL /////////////////////
-	CONSTANT StaticScalarKernelParams& staticParams [[buffer(0)]],
-    CONSTANT DynamicScalarKernelParams& dynamicParams [[buffer(1)]],
+	SCALAR_PARAMS(scalarParams) [[buffer(0)]],
 #if defined(SPECT)
-	const CLGLOBAL float* d_rayShiftsDetector [[buffer(2)]],
-	const CLGLOBAL float* d_rayShiftsSource [[buffer(3)]],
+	const CLGLOBAL float* d_rayShiftsDetector [[buffer(1)]],
+	const CLGLOBAL float* d_rayShiftsSource [[buffer(2)]],
 #endif
+#ifdef TOF ///////////////////////// TOF BINS /////////////////////////
+	CONSTANT float* TOFCenter [[buffer(3)]], 
+#endif ///////////////////////// END TOF BINS /////////////////////////
 #ifdef ORTH ///////////////////////// ORTHOGONAL-BASED RAY TRACER /////////////////////////
 	CONSTANT float* V [[buffer(4)]], 
 #endif ///////////////////////// END ORTHOGONAL-BASED RAY TRACER /////////////////////////
@@ -121,7 +123,11 @@ void projectorType123(
 #ifdef RAW	///////////////////////// RAW PET DATA /////////////////////////
 	CONSTANT ushort* d_L [[buffer(18)]], 
 #endif
+#if defined(FP)
+    IMTYPE d_OSEM TEX19,
+#else
 	const CLGLOBAL float* d_OSEM [[buffer(19)]],
+#endif
 	CLGLOBAL float* d_output [[buffer(20)]], 
 	uint3 temp_i [[thread_position_in_grid]]   // global id
 
@@ -251,7 +257,7 @@ void projectorType123(
 #endif ///////////////////// END OPENCL/CUDA/METAL /////////////////////
 ) {
 #if defined(METAL) // Unpack scalar parameters
-	UNPACK_METAL_PARAMS(staticParams, dynamicParams)
+	UNPACK_SCALAR_PARAMS_123(scalarParams);
 	int GID0 = temp_i.x;
 	int GID1 = temp_i.y;
 	int GID2 = temp_i.z;
@@ -286,7 +292,7 @@ void projectorType123(
 	if (idx >= m_size)
 #endif
 		return;
-#if defined(PYTHON) || defined(METAL)
+#if defined(PYTHON)
 	const FLOAT2 crystalSize = make_float2(crystalSizeX, crystalSizeY);
 	const uint3 d_Nxyz = make_uint3(d_Nx, d_Ny, d_Nz);
 	const FLOAT3 d_d = make_float3(d_dx, d_dy, d_dz);

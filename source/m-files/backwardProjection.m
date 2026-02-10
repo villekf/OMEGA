@@ -1,4 +1,4 @@
-function [output, sensIm] = backwardProjection(options, input, x, z, koko, nMeas, xy_index, z_index, norm_input, corr_input, L_input, TOF, noSensIm, subIter, varargin)
+function [output, sensIm] = backwardProjection(options, input, x, z, koko, nMeas, xy_index, z_index, norm_input, corr_input, L_input, TOF, noSensIm, subIter, varargin) % TODO timestep after subIter
 % BACKWARDPROJECTION Computes the backprojection
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -24,16 +24,16 @@ else
     nCores = varargin{1};
 end
 inputCell = false;
-if options.nMultiVolumes > 0
+%if options.nMultiVolumes >= 0
     outputCell = true;
     output = cell(options.nMultiVolumes + 1, 1);
     sensIm = cell(options.nMultiVolumes + 1, 1);
     if iscell(input)
         inputCell = true;
     end
-else
-    outputCell = false;
-end
+% else
+%     outputCell = false;
+%end
 projType = options.projector_type;
 if projType == 1 || projType == 11 || projType == 21 || projType == 31
     projType = 1;
@@ -226,7 +226,7 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
         kernel_path = strrep(kernel_path, '\', '/');
         kernel_path = strrep(kernel_path, '.cl', '');
         header_directory = strrep(kernel_path,'projectorType123','');
-    elseif options.projector_type == 4 || options.projector_type == 41 || options.projector_type == 14 || options.projector_type == 45
+    elseif ismember(options.projector_type, [4, 44, 41, 14, 45])
         kernel_file = 'projectorType4.cl';
         kernel_path = which(kernel_file);
         kernel_path = strrep(kernel_path, '\', '/');

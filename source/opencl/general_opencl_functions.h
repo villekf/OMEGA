@@ -77,7 +77,93 @@
 #define FLOAT3 float3
 #endif
 
+// Macro to unpack scalar parameters for projector types 1, 2 and 3 (FP+BP)
+#define UNPACK_SCALAR_PARAMS_123(scalarParams) \
+    FLOAT global_factor = scalarParams.global_factor; \
+    FLOAT d_epps = scalarParams.epps; \
+	uint d_size_x = scalarParams.nRowsD; \
+	uint d_det_per_ring = scalarParams.det_per_ring; \
+	FLOAT sigma_x = scalarParams.sigma_x; \
+	FLOAT coneOfResponseStdCoeffA = scalarParams.coneOfResponseStdCoeffA; \
+    FLOAT coneOfResponseStdCoeffB = scalarParams.coneOfResponseStdCoeffB; \
+    FLOAT coneOfResponseStdCoeffC = scalarParams.coneOfResponseStdCoeffC; \
+	FLOAT2 crystalSize = scalarParams.dPitch; \
+	FLOAT bmin = scalarParams.bmin; \
+	FLOAT bmax = scalarParams.bmax; \
+	FLOAT Vmax = scalarParams.Vmax; \
+	uint d_sizey = scalarParams.nColsD; \
+	long d_nProjections = scalarParams.nProjections; \
+	uint rings = scalarParams.rings; \
+	uint3 d_Nxyz = scalarParams.d_N; \
+	FLOAT3 d_d = scalarParams.d; \
+	FLOAT3 b = scalarParams.b; \
+	FLOAT3 d_bmax = scalarParams.d_bmax; \
+	unsigned char no_norm = scalarParams.no_norm; \
+	unsigned long m_size = scalarParams.m_size; \
+	uint currentSubset = scalarParams.currentSubset; \
+	int aa = scalarParams.aa; \
+    float orthWidth = scalarParams.orthWidth;
+
+#define UNPACK_SCALAR_PARAMS_4_FP(scalarParams) \
+    const uint d_size_x = scalarParams.nRowsD; \
+    const uint d_sizey = scalarParams.nColsD; \
+    const float2 d_dPitch = scalarParams.dPitch; \
+    const float helicalRadius = scalarParams.helicalRadius; \
+    const float dL = scalarParams.dL; \
+    const float global_factor = scalarParams.global_factor; \
+    const float sigma_x = scalarParams.sigma_x; \
+    const uint3 d_N = scalarParams.d_N; \
+    const float3 b = scalarParams.b; \
+    const float3 bmax = scalarParams.d_bmax; \
+    const float3 d_scale = scalarParams.d_Scale4; \
+    const int rings = scalarParams.rings; \
+    const uint d_det_per_ring = scalarParams.det_per_ring; \
+    const long d_nProjections = scalarParams.nProjections; \
+    const uchar no_norm = scalarParams.no_norm; \
+    const unsigned long m_size = scalarParams.m_size; \
+    const uint currentSubset = scalarParams.currentSubset; \
+	const int aa = scalarParams.aa;
+
+#define UNPACK_SCALAR_PARAMS_4_BP(scalarParams) \
+    const uint d_size_x = scalarParams.nRowsD; \
+    const uint d_sizey = scalarParams.nColsD; \
+    const float2 d_dPitch = scalarParams.dPitch; \
+    const float helicalRadius = scalarParams.helicalRadius; \
+    const uint3 d_N = scalarParams.d_N; \
+    const float3 b = scalarParams.b; \
+    const float3 d_d = scalarParams.d; \
+    const float kerroin = scalarParams.kerroin4; \
+    const float DSC = scalarParams.DSC; \
+    const uchar no_norm = scalarParams.no_norm; \
+    const long d_nProjections = scalarParams.nProjections; \
+    const int ii = scalarParams.aa;
+
+#define UNPACK_SCALAR_PARAMS_5_FP(scalarParams) \
+    const uint d_nRows = scalarParams.nRowsD; \
+    const uint d_nCols = scalarParams.nColsD; \
+    const float2 d_dPitch = scalarParams.dPitch; \
+    const uint3 d_N = scalarParams.d_N; \
+    const float3 b = scalarParams.b; \
+    const float2 d_Size = scalarParams.dSize5; \
+    const float3 d_d = scalarParams.d; \
+    const float3 d_scale = scalarParams.d_Scale5; \
+    const long d_nProjections = scalarParams.nProjections;
+
+
 #ifdef METAL
+
+constexpr metal::sampler samplerForw(
+    metal::coord::normalized,
+    metal::filter::linear,
+    metal::address::clamp_to_edge
+);
+
+constexpr metal::sampler sampler2(
+    metal::coord::normalized,
+    metal::filter::linear,
+    metal::address::clamp_to_edge
+);
+
 #ifdef HALF // 16-bit floating point
 #define CAST float
 #define CFLOAT(a) static_cast<half>(a)
@@ -96,11 +182,28 @@
 #define make_float2(a,b) float2((a),(b))
 #define make_float3(a,b,c) float3((a),(b),(c))
 #define MFLOAT2(a,b) float2((a), (b))
+#define MFLOAT3(a,b,c) float3((a), (b), (c))
 #endif
 
 #define ACOS metal::acos
 #define ALL metal::all
 #define ANY metal::any
+#define BUF0 [[buffer(0)]]
+#define BUF1 [[buffer(1)]]
+#define BUF2 [[buffer(2)]]
+#define BUF3 [[buffer(3)]]
+#define BUF4 [[buffer(4)]]
+#define BUF5 [[buffer(5)]]
+#define BUF6 [[buffer(6)]]
+#define BUF7 [[buffer(7)]]
+#define BUF8 [[buffer(8)]]
+#define BUF9 [[buffer(9)]]
+#define BUF10 [[buffer(10)]]
+#define BUF11 [[buffer(11)]]
+#define BUF12 [[buffer(12)]]
+#define BUF13 [[buffer(13)]]
+#define BUF14 [[buffer(14)]]
+#define BUF15 [[buffer(15)]]
 #define CINT(a)   static_cast<int>(a)
 #define CINT_rtz(a) static_cast<int>(metal::trunc((a)))
 #define CINT3_rtz(a) static_cast<int3>(a)
@@ -110,10 +213,12 @@
 #define CLRESTRICT
 #define CMINT3(a,b,c) int3((a),(b),(c))
 #define CONSTANT constant
+#define CROSS metal::cross
 #define CUINT(a) (uint)(a)
 #define CUINT_rtp(a) static_cast<uint>(metal::ceil((a)))
 #define CUINT_sat_rtz(a) static_cast<uint>(metal::clamp(metal::trunc(((float)a)), 0.0f, 4294967295.0f)) // TODO replace float with FLOAT
 #define DEVICE inline
+#define DISTANCE metal::distance
 #define DIVIDE(a,b) ((a) / (b))
 #define DIVIDE3(a,b) ((a) / (b))
 #define EXP(a) metal::exp(a)
@@ -122,9 +227,13 @@
 #define FMAD3(a,b,c) metal::fma((a),(b),(c))
 #define FMAX metal::fmax
 #define FMIN metal::fmin
+#define IMAGE2D metal::texture2d<float, metal::access::sample>
+#define IMAGE3D metal::texture3d<float, metal::access::sample>
 #define ISINF metal::isinf
 #define ISNAN metal::isnan
 #define KERNEL kernel
+#define KERNEL2 kernel
+#define KERNEL3 kernel
 #define LENGTH metal::length
 #define LOCAL threadgroup
 #define LOG(a) metal::log(a)
@@ -137,6 +246,7 @@
 #define MIN metal::min
 #define MINT3(a,b,c) int3((a),(b),(c))
 #define MUINT3(a, b, c) uint3(a, b, c)
+#define NORMALIZE metal::normalize
 #define POWR metal::pow
 #define PTR_DEV device
 #define PTR_THR thread
@@ -144,7 +254,20 @@
 #define PTR_TG threadgroup
 #define RCP(x) (1.f / x)
 #define SQRT metal::sqrt
-
+#define SCALAR_PARAMS(name) constant ScalarKernelParams &name
+#ifdef USEIMAGES
+#define TEX1 [[texture(1)]]
+#define TEX2 [[texture(2)]]
+#define TEX3 [[texture(3)]]
+#define TEX4 [[texture(4)]]
+#define TEX19 [[texture(19)]]
+#else
+#define TEX1 [[buffer(1)]]
+#define TEX2 [[buffer(2)]]
+#define TEX3 [[buffer(3)]]
+#define TEX4 [[buffer(4)]]
+#define TEX19 [[buffer(19)]]
+#endif
 // Metal function definitions
 inline FLOAT dot(half3 a, half3 b) {
     return metal::dot(a, b);
@@ -158,44 +281,50 @@ inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
     atomic_fetch_add_explicit(addr, val, metal::memory_order_relaxed);
 }
 
-// Metal scalar params unpacking
-#define UNPACK_METAL_PARAMS(staticParams, dynamicParams) \
-    FLOAT global_factor = staticParams.global_factor; \
-    FLOAT d_epps = staticParams.epps; \
-	uint d_size_x = staticParams.nRowsD; \
-	uint d_det_per_ring = staticParams.det_per_ring; \
-	FLOAT sigma_x = staticParams.sigma_x; \
-	FLOAT coneOfResponseStdCoeffA = staticParams.coneOfResponseStdCoeffA; \
-    FLOAT coneOfResponseStdCoeffB = staticParams.coneOfResponseStdCoeffB; \
-    FLOAT coneOfResponseStdCoeffC = staticParams.coneOfResponseStdCoeffC; \
-	FLOAT crystalSizeX = staticParams.dPitchX; \
-	FLOAT crystalSizeY = staticParams.dPitchY; \
-	FLOAT bmin = staticParams.bmin; \
-	FLOAT bmax = staticParams.bmax; \
-	FLOAT Vmax = staticParams.Vmax; \
-	uint d_sizey = staticParams.nColsD; \
-	long d_nProjections = dynamicParams.nProjections; \
-	uint rings = staticParams.rings; \
-	uint d_Nx = dynamicParams.d_N[0]; \
-	uint d_Ny = dynamicParams.d_N[1]; \
-	uint d_Nz = dynamicParams.d_N[2]; \
-	FLOAT d_dx = dynamicParams.d[0]; \
-	FLOAT d_dy = dynamicParams.d[1]; \
-	FLOAT d_dz = dynamicParams.d[2]; \
-	FLOAT bx = dynamicParams.b[0]; \
-	FLOAT by = dynamicParams.b[1]; \
-	FLOAT bz = dynamicParams.b[2]; \
-	FLOAT d_bmaxx = dynamicParams.bmax[0]; \
-	FLOAT d_bmaxy = dynamicParams.bmax[1]; \
-	FLOAT d_bmaxz = dynamicParams.bmax[2]; \
-	unsigned char no_norm = dynamicParams.no_norm; \
-	unsigned long m_size = dynamicParams.m_size; \
-	uint currentSubset = dynamicParams.currentSubset; \
-	int aa = dynamicParams.aa; \
-    float orthWidth = dynamicParams.orthWidth;
-	
 #endif
 #ifdef OPENCL
+#define BUF0
+#define BUF1
+#define BUF2
+#define BUF3
+#define BUF4
+#define BUF5
+#define BUF6
+#define BUF7
+#define BUF8
+#define BUF9
+#define BUF10
+#define BUF11
+#define BUF12
+#define BUF13
+#define BUF14
+#define BUF15
+#define BUF16
+#define BUF17
+#define BUF18
+#define BUF19
+#define BUF20
+#define TEX0
+#define TEX1
+#define TEX2
+#define TEX3
+#define TEX4
+#define TEX5
+#define TEX6
+#define TEX7
+#define TEX8
+#define TEX9
+#define TEX10
+#define TEX11
+#define TEX12
+#define TEX13
+#define TEX14
+#define TEX15
+#define TEX16
+#define TEX17
+#define TEX18
+#define TEX19
+#define TEX20
 #define PTR_DEV // Metal requires address space qualifier for pointers
 #define PTR_THR 
 #define PTR_CONST
@@ -244,6 +373,9 @@ inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
 #define FLOOR floor
 #define CEIL ceil
 #define ATAN2 atan2
+#define NORMALIZE normalize
+#define CROSS cross
+#define DISTANCE distance
 #define ACOS acos
 #define LOG native_log
 #define CLAMP3(a, b, c) clamp(a, b, c)
@@ -295,6 +427,48 @@ __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEA
 #endif
 #endif
 #if defined(CUDA)
+#define BUF0
+#define BUF1
+#define BUF2
+#define BUF3
+#define BUF4
+#define BUF5
+#define BUF6
+#define BUF7
+#define BUF8
+#define BUF9
+#define BUF10
+#define BUF11
+#define BUF12
+#define BUF13
+#define BUF14
+#define BUF15
+#define BUF16
+#define BUF17
+#define BUF18
+#define BUF19
+#define BUF20
+#define TEX0
+#define TEX1
+#define TEX2
+#define TEX3
+#define TEX4
+#define TEX5
+#define TEX6
+#define TEX7
+#define TEX8
+#define TEX9
+#define TEX10
+#define TEX11
+#define TEX12
+#define TEX13
+#define TEX14
+#define TEX15
+#define TEX16
+#define TEX17
+#define TEX18
+#define TEX19
+#define TEX20
 #define PTR_DEV // Metal requires address space qualifier for pointers
 #define PTR_THR 
 #define PTR_CONST
@@ -302,6 +476,7 @@ __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEA
 #define MIN min
 #define FABS fabs
 #define LENGTH length
+#define NORMALIZE normalize
 #define FMIN fmin
 #define FMAX fmax
 #define MIN min
@@ -387,6 +562,8 @@ __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEA
 #define ACOS acosf
 #define SQRT sqrtf
 #define LOG logf
+#define CROSS cross
+#define DISTANCE distance
 
 template <typename tyT> 
 inline __device__ tyT sign(tyT val) {
@@ -794,14 +971,14 @@ DEVICE void multirayCoordinateShiftZ(PTR_THR FLOAT3 *s, PTR_THR FLOAT3 *d, const
 // Computes the forward projection
 // Separate cases for the Siddon and interpolated projectors
 DEVICE void forwardProject(const float local_ele, PTR_THR float *ax, const typeT local_ind, IMTYPE d_OSEM) {
-#ifdef CUDA
+#if defined(CUDA)
 #ifdef USEIMAGES
     // if (local_ind.x <= 1.f && local_ind.y <= 1.f && local_ind.z <= 1.f && local_ind.x >= 0.f && local_ind.y >= 0.f && local_ind.z >= 0.f)
 		*ax = (local_ele * tex3D<float>(d_OSEM, local_ind.x, local_ind.y, local_ind.z));
 #else
 	*ax = (local_ele * d_OSEM[local_ind]);
 #endif
-#else
+#elif defined(OPENCL)
 #ifdef PTYPE4
     // if (local_ind.x <= 1.f && local_ind.y <= 1.f && local_ind.z <= 1.f && local_ind.x >= 0.f && local_ind.y >= 0.f && local_ind.z >= 0.f)
 		*ax = (local_ele * read_imagef(d_OSEM, samplerForw, (T4)(local_ind, (typeTT)0)).w);
@@ -811,6 +988,15 @@ DEVICE void forwardProject(const float local_ele, PTR_THR float *ax, const typeT
 #else
 	*ax = (local_ele * d_OSEM[local_ind]);
 #endif
+#endif
+#elif defined(METAL)
+#ifdef PTYPE4
+    *ax = local_ele * d_OSEM.sample(samplerForw, (local_ind)).r;
+#endif
+#ifdef USEIMAGES
+    *ax = local_ele * d_OSEM.read((uint3)(local_ind)).r;
+#else
+    *ax = (local_ele * d_OSEM[local_ind]);
 #endif
 #endif
 }
@@ -986,9 +1172,9 @@ DEVICE void getDetectorCoordinatesCT(const CLGLOBAL float* CLRESTRICT d_xyz,
 #else
 	const CLGLOBAL float* CLRESTRICT d_uv, 
 #endif
-	float3* s, float3* d, const int3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch
+	PTR_THR float3* s, PTR_THR float3* d, const int3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch
 #ifdef PROJ5
-	, float3* dR, float3* dL, float3* dU, float3* dD
+	, PTR_THR float3* dR, PTR_THR float3* dL, PTR_THR float3* dU, PTR_THR float3* dD
 #endif
 ) {
 	int id = i.z * 6;

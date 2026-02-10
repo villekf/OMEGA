@@ -84,6 +84,7 @@ class ProjectorClass {
 		int TOFSteps = 0;
 		int aSteps = 0;
 		int oSteps = 0;
+        int tSteps = 1;
 	};
 	CUDAMemAlloc memAlloc;
 	bool useBuffers = true;
@@ -955,13 +956,15 @@ public:
 	CUmodule programFP, programBP, programAux, programSens;
 	CUdeviceptr d_angle, d_xcenter, d_ycenter, d_zcenter, d_V, d_TOFCenter, *d_output, *d_meanBP, *d_meanFP, d_eFOVIndices, d_weights, *d_inputB, *d_W, *d_gaussianNLM;
 	CUtexObject d_maskFP, d_maskBP, d_maskPrior;
-	CUtexObject d_inputImage, d_imageX, d_imageY, d_attenIm, d_urefIm, d_inputI, d_RDPrefI;
+	CUtexObject d_inputImage, d_imageX, d_imageY, d_urefIm, d_inputI, d_RDPrefI;
 	CUarray atArray, uRefArray, maskArrayBP, maskArrayPrior, BPArray, FPArray, integArrayXY, imArray;
 	CUdeviceptr *d_qX, *d_qY, *d_qZ;
 	CUdeviceptr *d_rX, *d_rY, *d_rXY, *d_rZ, *d_rXZ, *d_rYZ;
 	CUdeviceptr *d_vX, *d_vY, *d_vZ;
 	CUdeviceptr *d_vector, *d_input;
-	CUdeviceptr* d_im, *d_rhs, *d_U, d_g, d_uref, *d_refIm, d_attenB, d_maskBPB, *d_RDPref;
+	CUdeviceptr* d_im, *d_rhs, *d_U, d_g, d_uref, *d_refIm, d_maskBPB, *d_RDPref;
+    std::vector<CUdeviceptr> d_attenB;
+    std::vector<CUtexObject> d_attenIm;
 	CUdeviceptr d_rayShiftsDetector, d_rayShiftsSource; // SPECT
 	std::vector<void*> FPArgs, BPArgs, SensArgs;
 	CUDA_im_vectors vec_opencl;
@@ -981,14 +984,14 @@ public:
 	std::vector<CUdeviceptr> d_zindex;
 	std::vector<CUdeviceptr> d_xyindex;
 	std::vector<CUdeviceptr> d_norm;
-	std::vector<CUdeviceptr> d_scat;
-	std::vector<CUdeviceptr> d_x;
-	std::vector<CUdeviceptr> d_z;
+	std::vector<std::vector<CUdeviceptr>> d_scat;
+	std::vector<std::vector<CUdeviceptr>> d_x;
+	std::vector<std::vector<CUdeviceptr>> d_z;
 	std::vector<CUdeviceptr> d_atten;
 	std::vector<CUdeviceptr> d_T;
-	std::vector<CUdeviceptr> d_trIndex;
-	std::vector<CUdeviceptr> d_axIndex;
-	std::vector<CUdeviceptr> d_TOFIndex;
+	std::vector<std::vector<CUdeviceptr>> d_trIndex;
+	std::vector<std::vector<CUdeviceptr>> d_axIndex;
+	std::vector<std::vector<CUdeviceptr>> d_TOFIndex;
 	CUDA_TEXTURE_DESC texDesc;
 	CUDA_ARRAY_DESCRIPTOR arr2DDesc;
 	CUDA_ARRAY3D_DESCRIPTOR_st arr3DDesc;
@@ -1015,19 +1018,47 @@ public:
 		}
 		if (memAlloc.V)
 			getErrorString(cuMemFree(d_V));
-		if (memAlloc.xSteps >= 0) {
-			for (int kk = 0; kk <= memAlloc.xSteps; kk++) {
-				getErrorString(cuMemFree(d_x[kk]));
-			}
-		}
-		if (memAlloc.zType == 0) {
-			getErrorString(cuMemFree(d_z[memAlloc.zSteps]));
-		}
-		else if (memAlloc.zType == 1) {
-			for (int kk = 0; kk <= memAlloc.zSteps; kk++) {
-				getErrorString(cuMemFree(d_z[kk]));
-			}
-		}
+        if (memAlloc.atten && !useBuffers) {
+            getErrorString(cuArrayDestroy(atArray));
+        }
+        for (int tt = 0; tt < memAlloc.tSteps; tt++) {
+            if (memAlloc.atten) {
+                if (useBuffers) {
+                    getErrorString(cuMemFree(d_attenB[tt]));
+                } else {
+                    getErrorString(cuTexObjectDestroy(d_attenIm[tt]));
+                }
+            }
+            if (memAlloc.xSteps >= 0) {
+                for (int kk = 0; kk <= memAlloc.xSteps / memAlloc.tSteps; kk++) {
+                    getErrorString(cuMemFree(d_x[tt][kk]));
+                }
+            }
+            if (memAlloc.zType == 0) {
+                getErrorString(cuMemFree(d_z[tt][memAlloc.zSteps]));
+            }
+            else if (memAlloc.zType == 1) {
+                for (int kk = 0; kk <= memAlloc.zSteps / memAlloc.tSteps; kk++) {
+                    getErrorString(cuMemFree(d_z[tt][kk]));
+                }
+            }
+            if (memAlloc.extra) {
+                for (int kk = 0; kk < memAlloc.eSteps / memAlloc.tSteps; kk++) {
+                    getErrorString(cuMemFree(d_scat[tt][kk]));
+                }
+            }
+            if (memAlloc.indexBased) {
+                for (int kk = 0; kk < memAlloc.iSteps / memAlloc.tSteps; kk++) {
+                    getErrorString(cuMemFree(d_trIndex[tt][kk]));
+                    getErrorString(cuMemFree(d_axIndex[tt][kk]));
+                }
+            }
+            if (memAlloc.TOFIndex) {
+                for (int kk = 0; kk < memAlloc.TOFSteps / memAlloc.tSteps; kk++) {
+                    getErrorString(cuMemFree(d_TOFIndex[tt][kk]));
+                }
+            }
+        }
 		if (memAlloc.offsetT) {
 			for (int kk = 0; kk < memAlloc.oSteps; kk++) {
 				getErrorString(cuMemFree(d_T[kk]));
@@ -1049,22 +1080,6 @@ public:
 		if (memAlloc.norm) {
 			for (int kk = 0; kk < memAlloc.nSteps; kk++) {
 				getErrorString(cuMemFree(d_norm[kk]));
-			}
-		}
-		if (memAlloc.extra) {
-			for (int kk = 0; kk < memAlloc.eSteps; kk++) {
-				getErrorString(cuMemFree(d_scat[kk]));
-			}
-		}
-		if (memAlloc.indexBased) {
-			for (int kk = 0; kk < memAlloc.iSteps; kk++) {
-				getErrorString(cuMemFree(d_trIndex[kk]));
-				getErrorString(cuMemFree(d_axIndex[kk]));
-			}
-		}
-		if (memAlloc.TOFIndex) {
-			for (int kk = 0; kk < memAlloc.TOFSteps; kk++) {
-				getErrorString(cuMemFree(d_TOFIndex[kk]));
 			}
 		}
 		if (memAlloc.angle)
@@ -1097,15 +1112,6 @@ public:
 			else {
 				getErrorString(cuTexObjectDestroy(d_maskBP));
 				getErrorString(cuArrayDestroy(maskArrayBP));
-			}
-		}
-		if (memAlloc.atten) {
-			if (useBuffers) {
-				getErrorString(cuMemFree(d_attenB));
-			}
-			else {
-				getErrorString(cuTexObjectDestroy(d_attenIm));
-				getErrorString(cuArrayDestroy(atArray));
 			}
 		}
 		if (memAlloc.priorMask) {
@@ -1309,6 +1315,7 @@ public:
 			CUDA_CHECK(status, "\n", -1);
 			memAlloc.GGMRF = true;
 		}
+        memAlloc.tSteps = inputScalars.Nt;
 		if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM)) {
 			if (inputScalars.useImages) {
 				std::memset(&texDesc, 0, sizeof(texDesc));
@@ -1421,7 +1428,7 @@ public:
 			memAlloc.V = true;
 			// Detector coordinates
 			if ((!(inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) || inputScalars.indexBased) {
-				status = cuMemAlloc(&d_x[0], sizeof(float) * inputScalars.size_of_x);
+				status = cuMemAlloc(&d_x[0][0], sizeof(float) * inputScalars.size_of_x);
 				CUDA_CHECK(status, "\n", -1);
 				memAlloc.xSteps++;
 			}
@@ -1431,55 +1438,7 @@ public:
 				memAlloc.xFull = true;
 			}
 			// Attenuation data for image-based attenuation
-			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
-				if (inputScalars.useBuffers)
-					status = cuMemAlloc(&d_attenB, sizeof(float) * inputScalars.im_dim[0]);
-				else {
-					std::memset(&texDesc, 0, sizeof(texDesc));
-					std::memset(&resDesc, 0, sizeof(resDesc));
-					std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
-					std::memset(&arr2DDesc, 0, sizeof(arr2DDesc));
-					std::memset(&viewDesc, 0, sizeof(viewDesc));
-					arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_FLOAT;
-					arr3DDesc.NumChannels = 1;
-					arr3DDesc.Height = inputScalars.Nx[0];
-					arr3DDesc.Width = inputScalars.Ny[0];
-					arr3DDesc.Depth = inputScalars.Nz[0];
-					status = cuArray3DCreate(&atArray, &arr3DDesc);
-					CUDA_CHECK(status, "\n", -1);
-					CUDA_MEMCPY3D cpy3d;
-					std::memset(&cpy3d, 0, sizeof(cpy3d));
-					cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
-					cpy3d.srcHost = atten;
-					cpy3d.srcPitch = inputScalars.Ny[0] * sizeof(float);
-					cpy3d.srcHeight = inputScalars.Nx[0];
-					cpy3d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
-					cpy3d.dstArray = atArray;
-					cpy3d.WidthInBytes = inputScalars.Ny[0] * sizeof(float);
-					cpy3d.Height = inputScalars.Nx[0];
-					cpy3d.Depth = inputScalars.Nz[0];
-					status = cuMemcpy3D(&cpy3d);
-					CUDA_CHECK(status, "\n", -1);
-					resDesc.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
-					resDesc.res.array.hArray = atArray;
-					texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-					texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-					texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-					if (inputScalars.FPType == 4 || inputScalars.BPType == 4) {
-						texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_LINEAR;
-						texDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
-					}
-					else
-						texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
-					viewDesc.height = inputScalars.Nx[0];
-					viewDesc.width = inputScalars.Ny[0];
-					viewDesc.depth = inputScalars.Nz[0];
-					viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
-					status = cuTexObjectCreate(&d_attenIm, &resDesc, &texDesc, &viewDesc);
-					CUDA_CHECK(status, "\n", -1);
-				}
-				memAlloc.atten = true;
-			}
+			
 			if (inputScalars.maskFP || inputScalars.maskBP) {
 				if (inputScalars.maskFP) {
 					if (inputScalars.useBuffers) {
@@ -1662,105 +1621,155 @@ public:
 				CUDA_CHECK(status, "\n", -1);
 				memAlloc.rayShifts = true;
 			}
-			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-				if (DEBUG) {
-					mexPrintBase("length[kk] = %u\n", length[kk]);
-					mexPrintBase("kk = %u\n", kk);
-					mexPrintBase("vecSize = %u\n", vecSize);
-					mexEval();
-				}
-				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode != 1) {
-					size_t coef = 2;
-					if (inputScalars.useHelical)
-						coef = 1;
-					else if (inputScalars.pitch)
-						coef = 6;
-					status = cuMemAlloc(&d_z[kk], sizeof(float) * length[kk] * coef);
-					CUDA_CHECK(status, "\n", -1);
-					memAlloc.zType = 1;
-					memAlloc.zSteps++;
-				}
-				else {
-					if (inputScalars.PET && inputScalars.listmode == 0) {
-						if (inputScalars.nLayers > 1)
-							status = cuMemAlloc(&d_z[kk], sizeof(float) * length[kk] * 3);
-						else
-							status = cuMemAlloc(&d_z[kk], sizeof(float) * length[kk] * 2);
-						memAlloc.zType = 1;
-						memAlloc.zSteps++;
-					}
-					else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased)) {
-						status = cuMemAlloc(&d_z[kk], sizeof(float) * inputScalars.size_z);
-						memAlloc.zType = 0;
-						memAlloc.zSteps = kk;
-					}
-					CUDA_CHECK(status, "\n", -1);
-				}
-				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
-					status = cuMemAlloc(&d_T[kk], sizeof(float) * length[kk]);
-					CUDA_CHECK(status, "\n", -1);
-					memAlloc.offsetT = true;
-					memAlloc.oSteps++;
-				}
-				if ((inputScalars.CT || inputScalars.SPECT) || (inputScalars.listmode > 0 && !inputScalars.indexBased)) {
-					if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0)) {
-						status = cuMemAlloc(&d_x[kk], sizeof(float) * length[kk] * 6);
-						CUDA_CHECK(status, "\n", -1);
-						memAlloc.xSteps++;
-					}
-				}
-				if (inputScalars.normalization_correction) {
-					status = cuMemAlloc(&d_norm[kk], sizeof(float) * length[kk] * vecSize);
-					CUDA_CHECK(status, "\n", -1);
-					memAlloc.norm = true;
-					memAlloc.nSteps++;
-				}
-				if (inputScalars.scatter == 1U) {
-					status = cuMemAlloc(&d_scat[kk], sizeof(float) * length[kk] * vecSize);
-					CUDA_CHECK(status, "\n", -1);
-					memAlloc.extra = true;
-					memAlloc.eSteps++;
-				}
-				if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-					status = cuMemAlloc(&d_atten[kk], sizeof(float) * length[kk] * vecSize);
-					CUDA_CHECK(status, "\n", -1);
-					memAlloc.attenM = true;
-					memAlloc.aSteps++;
-				}
-				// Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
-				if (inputScalars.raw && inputScalars.listmode != 1) {
-					status = cuMemAlloc(&d_L[kk], sizeof(uint16_t) * length[kk] * 2);
-					CUDA_CHECK(status, "\n", -1);
-					memAlloc.raw = true;
-					memAlloc.lSteps++;
-				}
-				else if (inputScalars.listmode != 1 && ((!inputScalars.CT && !inputScalars.SPECT && !inputScalars.PET) && (inputScalars.subsets > 1 && (inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7)))) {
-					status = cuMemAlloc(&d_xyindex[kk], sizeof(uint32_t) * length[kk]);
-					CUDA_CHECK(status, "\n", -1);
-					status = cuMemAlloc(&d_zindex[kk], sizeof(uint16_t) * length[kk]);
-					CUDA_CHECK(status, "\n", -1);
-					memAlloc.subInd = true;
-					memAlloc.iSteps++;
-				}
-				if (inputScalars.listmode > 0 && inputScalars.indexBased) {
-					if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
-						status = cuMemAlloc(&d_trIndex[kk], sizeof(uint16_t) * length[kk] * 2);
-						CUDA_CHECK(status, "\n", -1);
-						status = cuMemAlloc(&d_axIndex[kk], sizeof(uint16_t) * length[kk] * 2);
-						CUDA_CHECK(status, "\n", -1);
-						memAlloc.indexBased = true;
-						memAlloc.iSteps++;
-					}
-				}
-				if (inputScalars.listmode > 0 && inputScalars.TOF) {
-					if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
-						status = cuMemAlloc(&d_TOFIndex[kk], sizeof(uint8_t) * length[kk]);
-						CUDA_CHECK(status, "\n", -1);
-						memAlloc.TOFIndex = true;
-						memAlloc.TOFSteps++;
-					}
-				}
+            for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
+                if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+                    if (inputScalars.useBuffers)
+                        status = cuMemAlloc(&d_attenB[timestep], sizeof(float) * inputScalars.im_dim[0]);
+                    else {
+                        std::memset(&texDesc, 0, sizeof(texDesc));
+                        std::memset(&resDesc, 0, sizeof(resDesc));
+                        std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
+                        std::memset(&arr2DDesc, 0, sizeof(arr2DDesc));
+                        std::memset(&viewDesc, 0, sizeof(viewDesc));
+                        arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_FLOAT;
+                        arr3DDesc.NumChannels = 1;
+                        arr3DDesc.Height = inputScalars.Nx[0];
+                        arr3DDesc.Width = inputScalars.Ny[0];
+                        arr3DDesc.Depth = inputScalars.Nz[0];
+                        status = cuArray3DCreate(&atArray, &arr3DDesc);
+                        CUDA_CHECK(status, "\n", -1);
+                        CUDA_MEMCPY3D cpy3d;
+                        std::memset(&cpy3d, 0, sizeof(cpy3d));
+                        cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
+                        cpy3d.srcHost = &atten[inputScalars.im_dim[0] * timestep];
+                        cpy3d.srcPitch = inputScalars.Ny[0] * sizeof(float);
+                        cpy3d.srcHeight = inputScalars.Nx[0];
+                        cpy3d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
+                        cpy3d.dstArray = atArray;
+                        cpy3d.WidthInBytes = inputScalars.Ny[0] * sizeof(float);
+                        cpy3d.Height = inputScalars.Nx[0];
+                        cpy3d.Depth = inputScalars.Nz[0];
+                        status = cuMemcpy3D(&cpy3d);
+                        CUDA_CHECK(status, "\n", -1);
+                        resDesc.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
+                        resDesc.res.array.hArray = atArray;
+                        texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+                        texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+                        texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+                        if (inputScalars.FPType == 4 || inputScalars.BPType == 4) {
+                            texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_LINEAR;
+                            texDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
+                        }
+                        else
+                            texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
+                        viewDesc.height = inputScalars.Nx[0];
+                        viewDesc.width = inputScalars.Ny[0];
+                        viewDesc.depth = inputScalars.Nz[0];
+                        viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
+                        status = cuTexObjectCreate(&d_attenIm[timestep], &resDesc, &texDesc, &viewDesc);
+                        CUDA_CHECK(status, "\n", -1);
+                    }
+                    memAlloc.atten = true;
+                }
+
+			    for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+                    if ((inputScalars.CT || inputScalars.SPECT) || (inputScalars.listmode > 0 && !inputScalars.indexBased)) {
+                        if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0)) {
+                            status = cuMemAlloc(&d_x[timestep][kk], sizeof(float) * length[kk] * 6);
+                            CUDA_CHECK(status, "\n", -1);
+                            memAlloc.xSteps++;
+                        }
+                    }
+                    if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode != 1) {
+                        size_t coef = 2;
+                        if (inputScalars.useHelical)
+                            coef = 1;
+                        else if (inputScalars.pitch)
+                            coef = 6;
+                        status = cuMemAlloc(&d_z[timestep][kk], sizeof(float) * length[kk] * coef);
+                        CUDA_CHECK(status, "\n", -1);
+                        memAlloc.zType = 1;
+                        memAlloc.zSteps++;
+                    }
+                    else {
+                        if (inputScalars.PET && inputScalars.listmode == 0) {
+                            if (inputScalars.nLayers > 1)
+                                status = cuMemAlloc(&d_z[timestep][kk], sizeof(float) * length[kk] * 3);
+                            else
+                                status = cuMemAlloc(&d_z[timestep][kk], sizeof(float) * length[kk] * 2);
+                            memAlloc.zType = 1;
+                            memAlloc.zSteps++;
+                        }
+                        else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased)) {
+                            status = cuMemAlloc(&d_z[timestep][kk], sizeof(float) * inputScalars.size_z);
+                            memAlloc.zType = 0;
+                            memAlloc.zSteps = kk;
+                        }
+                        CUDA_CHECK(status, "\n", -1);
+                    }
+                    if (inputScalars.scatter == 1U) {
+                        status = cuMemAlloc(&d_scat[timestep][kk], sizeof(float) * length[kk] * vecSize);
+                        CUDA_CHECK(status, "\n", -1);
+                        memAlloc.extra = true;
+                        memAlloc.eSteps++;
+                    }
+                    if (inputScalars.listmode > 0 && inputScalars.indexBased) {
+                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
+                            status = cuMemAlloc(&d_trIndex[timestep][kk], sizeof(uint16_t) * length[kk] * 2);
+                            CUDA_CHECK(status, "\n", -1);
+                            status = cuMemAlloc(&d_axIndex[timestep][kk], sizeof(uint16_t) * length[kk] * 2);
+                            CUDA_CHECK(status, "\n", -1);
+                            memAlloc.indexBased = true;
+                            memAlloc.iSteps++;
+                        }
+                    }
+                    if (inputScalars.listmode > 0 && inputScalars.TOF) {
+                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
+                            status = cuMemAlloc(&d_TOFIndex[timestep][kk], sizeof(uint8_t) * length[kk]);
+                            CUDA_CHECK(status, "\n", -1);
+                            memAlloc.TOFIndex = true;
+                            memAlloc.TOFSteps++;
+                        }
+                    }
+                }
 			}
+
+            for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+                if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
+                    status = cuMemAlloc(&d_T[kk], sizeof(float) * length[kk]);
+                    CUDA_CHECK(status, "\n", -1);
+                    memAlloc.offsetT = true;
+                    memAlloc.oSteps++;
+                }
+                
+                if (inputScalars.normalization_correction) {
+                    status = cuMemAlloc(&d_norm[kk], sizeof(float) * length[kk] * vecSize);
+                    CUDA_CHECK(status, "\n", -1);
+                    memAlloc.norm = true;
+                    memAlloc.nSteps++;
+                }
+                if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
+                    status = cuMemAlloc(&d_atten[kk], sizeof(float) * length[kk] * vecSize);
+                    CUDA_CHECK(status, "\n", -1);
+                    memAlloc.attenM = true;
+                    memAlloc.aSteps++;
+                }
+                // Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
+                if (inputScalars.raw && inputScalars.listmode != 1) {
+                    status = cuMemAlloc(&d_L[kk], sizeof(uint16_t) * length[kk] * 2);
+                    CUDA_CHECK(status, "\n", -1);
+                    memAlloc.raw = true;
+                    memAlloc.lSteps++;
+                }
+                else if (inputScalars.listmode != 1 && ((!inputScalars.CT && !inputScalars.SPECT && !inputScalars.PET) && (inputScalars.subsets > 1 && (inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7)))) {
+                    status = cuMemAlloc(&d_xyindex[kk], sizeof(uint32_t) * length[kk]);
+                    CUDA_CHECK(status, "\n", -1);
+                    status = cuMemAlloc(&d_zindex[kk], sizeof(uint16_t) * length[kk]);
+                    CUDA_CHECK(status, "\n", -1);
+                    memAlloc.subInd = true;
+                    memAlloc.iSteps++;
+                }
+            }
 		}
 
         CUDA_CHECK(status, "Buffer creation failed\n", -1);
@@ -1778,7 +1787,7 @@ public:
 			status = cuMemcpyHtoD(d_V, inputScalars.V, sizeof(float) * inputScalars.size_V);
 			CUDA_CHECK(status, "\n", -1);
 			if ((!(inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) || inputScalars.indexBased) {
-				status = cuMemcpyHtoD(d_x[0], x, sizeof(float) * inputScalars.size_of_x);
+				status = cuMemcpyHtoD(d_x[0][0], x, sizeof(float) * inputScalars.size_of_x);
 				CUDA_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
@@ -1800,10 +1809,6 @@ public:
 					status = cuMemcpyHtoD(d_maskBPB, w_vec.maskBP, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ);
 					CUDA_CHECK(status, "\n", -1);
 				}
-			}
-			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation && inputScalars.useBuffers) {
-				status = cuMemcpyHtoD(d_attenB, atten, sizeof(float) * inputScalars.im_dim[0]);
-				CUDA_CHECK(status, "\n", -1);
 			}
 			if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM)) {
 				if (!inputScalars.useImages)
@@ -1828,38 +1833,64 @@ public:
 				status = cuMemcpyHtoD(d_rayShiftsSource, w_vec.rayShiftsSource, sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections);
 				CUDA_CHECK(status, "\n", -1);
 			}
-			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
-					size_t kerroin = 2;
-					if (inputScalars.pitch)
-						kerroin = 6;
-					else if (inputScalars.useHelical)
-						kerroin = 1;
-					status = cuMemcpyHtoD(d_z[kk], &z_det[pituus[kk] * kerroin], sizeof(float) * length[kk] * kerroin);
-					CUDA_CHECK(status, "\n", -1);
-				}
-				else {
-					if (inputScalars.PET && inputScalars.listmode == 0) {
-						if (inputScalars.nLayers > 1)
-							status = cuMemcpyHtoD(d_z[kk], &z_det[pituus[kk] * 3], sizeof(float) * length[kk] * 3);
-						else
-							status = cuMemcpyHtoD(d_z[kk], &z_det[pituus[kk] * 2], sizeof(float) * length[kk] * 2);
-					}
-					else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased))
-						status = cuMemcpyHtoD(d_z[kk], z_det, sizeof(float) * inputScalars.size_z);
-					CUDA_CHECK(status, "\n", -1);
-				}
-				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
-					status = cuMemcpyHtoD(d_x[kk], &x[pituus[kk] * 6], sizeof(float) * length[kk] * 6);
-					CUDA_CHECK(status, "\n", -1);
-				}
-				else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
-					if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF) {
-						status = cuMemcpyHtoD(d_x[kk], &w_vec.listCoord[pituus[kk] * 6], sizeof(float) * length[kk] * 6);
-						CUDA_CHECK(status, "\n", -1);
-					}
-				}
-				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
+            for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
+                if (inputScalars.attenuation_correction && inputScalars.CTAttenuation && inputScalars.useBuffers) {
+                    status = cuMemcpyHtoD(d_attenB[timestep], &atten[inputScalars.im_dim[0] * timestep], sizeof(float) * inputScalars.im_dim[0]);
+                    CUDA_CHECK(status, "\n", -1);
+                }
+			    for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+                    if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
+                        size_t kerroin = 2;
+                        if (inputScalars.pitch)
+                            kerroin = 6;
+                        else if (inputScalars.useHelical)
+                            kerroin = 1;
+                        status = cuMemcpyHtoD(d_z[timestep][kk], &z_det[pituus[kk]*kerroin+pituus[inputScalars.subsets]*kerroin*timestep], sizeof(float) * length[kk] * kerroin);
+                        CUDA_CHECK(status, "\n", -1);
+                    }
+                    else {
+                        if (inputScalars.PET && inputScalars.listmode == 0) {
+                            if (inputScalars.nLayers > 1)
+                                status = cuMemcpyHtoD(d_z[timestep][kk], &z_det[pituus[kk] * 3 + pituus[inputScalars.subsets] * 3 * timestep], sizeof(float) * length[kk] * 3);
+                            else
+                                status = cuMemcpyHtoD(d_z[timestep][kk], &z_det[pituus[kk] * 2 + pituus[inputScalars.subsets] * 2 * timestep], sizeof(float) * length[kk] * 2);
+                        }
+                        else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased))
+                            status = cuMemcpyHtoD(d_z[timestep][kk], z_det, sizeof(float) * inputScalars.size_z);
+                        CUDA_CHECK(status, "\n", -1);
+                    }
+                    if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
+                        status = cuMemcpyHtoD(d_x[timestep][kk], &x[pituus[kk] * 6 + pituus[inputScalars.subsets] * 6 * timestep], sizeof(float) * length[kk] * 6);
+                        CUDA_CHECK(status, "\n", -1);
+                    }
+                    else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
+                        if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF) {
+                            status = cuMemcpyHtoD(d_x[timestep][kk], &w_vec.listCoord[pituus[kk] * 6 + inputScalars.kokoNonTOF * 6 * timestep], sizeof(float) * length[kk] * 6);
+                            CUDA_CHECK(status, "\n", -1);
+                        }
+                    }
+                    if (inputScalars.scatter == 1U) {
+                        status = cuMemcpyHtoD(d_scat[timestep][kk], &extraCorr[pituus[kk] * vecSize + inputScalars.kokoNonTOF * timestep], sizeof(float) * length[kk] * vecSize);
+                        CUDA_CHECK(status, "\n", -1);
+                    }
+                    if (inputScalars.listmode > 0 && inputScalars.indexBased) {
+                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
+                            status = cuMemcpyHtoD(d_trIndex[timestep][kk], &w_vec.trIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * timestep], sizeof(uint16_t) * length[kk] * 2);
+                            CUDA_CHECK(status, "\n", -1);
+                            status = cuMemcpyHtoD(d_axIndex[timestep][kk], &w_vec.axIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * timestep], sizeof(uint16_t) * length[kk] * 2);
+                            CUDA_CHECK(status, "\n", -1);
+                        }
+                    }
+                    if (inputScalars.listmode > 0 && inputScalars.TOF) {
+                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
+                            status = cuMemcpyHtoD(d_TOFIndex[timestep][kk], &w_vec.TOFIndices[pituus[kk] + inputScalars.kokoNonTOF * timestep], sizeof(uint8_t) * length[kk]);
+                            CUDA_CHECK(status, "\n", -1);
+                        }
+                    }
+                }
+			}
+            for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+                if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
 					status = cuMemcpyHtoD(d_T[kk], &inputScalars.T[pituus[kk]], sizeof(float) * length[kk]);
 					CUDA_CHECK(status, "\n", -1);
 				}
@@ -1873,46 +1904,18 @@ public:
 					status = cuMemcpyHtoD(d_xyindex[kk], &xy_index[pituus[kk]], sizeof(uint32_t) * length[kk]);
 					CUDA_CHECK(status, "\n", -1);
 				}
-				if (inputScalars.listmode > 0 && inputScalars.indexBased) {
-					if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
-						status = cuMemcpyHtoD(d_trIndex[kk], &w_vec.trIndex[pituus[kk] * 2], sizeof(uint16_t) * length[kk] * 2);
-						CUDA_CHECK(status, "\n", -1);
-						status = cuMemcpyHtoD(d_axIndex[kk], &w_vec.axIndex[pituus[kk] * 2], sizeof(uint16_t) * length[kk] * 2);
-						CUDA_CHECK(status, "\n", -1);
-					}
-				}
-				if (inputScalars.listmode > 0 && inputScalars.TOF) {
-					if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
-						status = cuMemcpyHtoD(d_TOFIndex[kk], &w_vec.TOFIndices[pituus[kk]], sizeof(uint8_t) * length[kk]);
-						CUDA_CHECK(status, "\n", -1);
-					}
-				}
+				
 				if (inputScalars.normalization_correction) {
 					status = cuMemcpyHtoD(d_norm[kk], &norm[pituus[kk] * vecSize], sizeof(float) * length[kk] * vecSize);
-					CUDA_CHECK(status, "\n", -1);
-				}
-				if (inputScalars.scatter == 1U) {
-					status = cuMemcpyHtoD(d_scat[kk], &extraCorr[pituus[kk] * vecSize], sizeof(float) * length[kk] * vecSize);
 					CUDA_CHECK(status, "\n", -1);
 				}
 				if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
 					status = cuMemcpyHtoD(d_atten[kk], &atten[pituus[kk] * vecSize], sizeof(float) * length[kk] * vecSize);
 					CUDA_CHECK(status, "\n", -1);
 				}
-				if (DEBUG) {
-					mexPrintBase("length[kk] = %d\n", length[kk]);
-					if (inputScalars.pitch && kk > 0) {
-						mexPrintBase("z_det[pituus[kk] * 6] = %f\n", z_det[pituus[kk] * 6 - 1]);
-						mexPrintBase("pituus[kk] * 6 = %d\n", pituus[kk] * 6 - 1);
-					}
-					mexPrintBase("pituus[kk] = %d\n", pituus[kk]);
-					mexPrintBase("erotus = %d\n", pituus[kk + 1] - pituus[kk]);
-					mexPrintBase("kk = %d\n", kk);
-					mexEval();
-				}
-				status = cuCtxSynchronize();
-				CUDA_CHECK(status, "\n", -1);
-			}
+            }
+            status = cuCtxSynchronize();
+            CUDA_CHECK(status, "\n", -1);
 		}
 
         CUDA_CHECK(status, "Buffer write failed\n", -1);
@@ -1958,21 +1961,28 @@ public:
 			d_xyindex.resize(inputScalars.subsetsUsed);
 			d_zindex.resize(inputScalars.subsetsUsed);
 		}
-		if (inputScalars.listmode > 0 && inputScalars.indexBased) {
-			d_trIndex.resize(inputScalars.subsetsUsed);
-			d_axIndex.resize(inputScalars.subsetsUsed);
-		}
-		if (inputScalars.listmode > 0 && inputScalars.TOF) {
-			d_TOFIndex.resize(inputScalars.subsetsUsed);
-		}
 		if (inputScalars.normalization_correction)
 			d_norm.resize(inputScalars.subsetsUsed);
-		if (inputScalars.scatter)
-			d_scat.resize(inputScalars.subsetsUsed);
 		if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation)
 			d_atten.resize(inputScalars.subsetsUsed);
-		d_x.resize(inputScalars.subsetsUsed);
-		d_z.resize(inputScalars.subsetsUsed);
+        if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+            d_attenB.resize(inputScalars.Nt);
+            d_attenIm.resize(inputScalars.Nt);
+        }
+		d_scat.resize(inputScalars.Nt);
+        d_x.resize(inputScalars.Nt);
+        d_z.resize(inputScalars.Nt);
+        d_trIndex.resize(inputScalars.Nt);
+        d_axIndex.resize(inputScalars.Nt);
+        d_TOFIndex.resize(inputScalars.Nt);
+        for (int tt = 0; tt < inputScalars.Nt; tt++) {
+            d_scat[tt].resize(inputScalars.subsetsUsed);
+            d_x[tt].resize(inputScalars.subsetsUsed);
+            d_z[tt].resize(inputScalars.subsetsUsed);
+            d_trIndex[tt].resize(inputScalars.subsetsUsed);
+            d_axIndex[tt].resize(inputScalars.subsetsUsed);
+            d_TOFIndex[tt].resize(inputScalars.subsetsUsed);
+        }
 		if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5))
 			d_T.resize(inputScalars.subsetsUsed);
 
@@ -2151,87 +2161,31 @@ public:
 		return 0;
 	}
 
-	/// <summary>
-	/// Loads "dynamic" data, i.e. if the reconstruction is dynamic (time-varying) then this loads the measurement data/randoms/scatter for the next time step
-	/// </summary>
-	/// <param name="inputScalars various scalar parameters defining the build parameters and what features to use"></param>
-	/// <param name="length the number of measurements/projection/sinograms per subset"></param>
-	/// <param name="Sino measurement data (sinograms or projections)"></param>
-	/// <param name="randomsData randoms and/or scatter data (for additive scatter correction or for randoms correction)"></param>
-	/// <param name="extraCorr scatter data (for multiplicative scatter correction)"></param>
-	/// <param name="pituus cumulative sum of length"></param>
-	/// <returns></returns>
-	inline int loadDynamicData(scalarStruct& inputScalars, const std::vector<int64_t>& length, const float* extraCorr, const int64_t* pituus, const uint32_t tt) {
-
-		CUresult status = CUDA_SUCCESS;
-		for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-			if (inputScalars.scatter == 1u) {
-				status = cuMemcpyHtoD(d_scat[kk], &extraCorr[pituus[kk] + inputScalars.kokoNonTOF * tt], sizeof(float) * length[kk]);
-				CUDA_CHECK(status, "\n", -1);
-			}
-		}
-		return 0;
-	}
-
-	/// <summary>
-	/// Sets kernel parameters that do not change per iteration but only per time step
-	/// </summary>
-	/// <param name="inputScalars various scalar parameters defining the build parameters and what features to use"></param>
-	/// <param name="w_vec specifies some of the special options/parameters used"></param>
-	/// <returns></returns>
-	inline int setDynamicKernelData(scalarStruct& inputScalars, Weighting& w_vec) {
-		if (inputScalars.attenuation_correction && !inputScalars.CT && inputScalars.CTAttenuation) {
-			if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.FPType == 4)) {
-				if (inputScalars.useBuffers)
-					FPArgs.emplace_back(&d_attenB);
-				else
-					FPArgs.emplace_back(&d_attenIm);
-			}
-			if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.BPType == 4) {
-				if (inputScalars.useBuffers)
-					BPArgs.emplace_back(&d_attenB);
-				else
-					BPArgs.emplace_back(&d_attenIm);
-				if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-					if (inputScalars.useBuffers)
-						SensArgs.emplace_back(&d_attenB);
-					else
-						SensArgs.emplace_back(&d_attenIm);
-				}
-			}
-		}
-		return 0;
-	}
 
 	template <typename T>
-	inline int loadCoord(scalarStruct& inputScalars, const int64_t length, const T* listCoord, const T* listCoordAx = nullptr, const uint8_t* TOFIndices = nullptr) {
+	inline int loadCoord(uint32_t currentSubset, scalarStruct& inputScalars, const int64_t length, const T* listCoord, const T* listCoordAx = nullptr, const uint8_t* TOFIndices = nullptr) {
 		CUresult status = CUDA_SUCCESS;
-		if (inputScalars.indexBased) {
-			getErrorString(cuMemFree(d_trIndex[0]));
-			getErrorString(cuMemFree(d_axIndex[0]));
-			status = cuMemAlloc(&d_trIndex[0], sizeof(uint16_t) * length * 2);
-			CUDA_CHECK(status, "\n", -1);
-			status = cuMemAlloc(&d_axIndex[0], sizeof(uint16_t) * length * 2);
-			CUDA_CHECK(status, "\n", -1);
-			status = cuMemcpyHtoD(d_trIndex[0], listCoord, sizeof(uint16_t) * length * 2);
-			CUDA_CHECK(status, "\n", -1);
-			status = cuMemcpyHtoD(d_axIndex[0], listCoordAx, sizeof(uint16_t) * length * 2);
-			CUDA_CHECK(status, "\n", -1);
-		}
-		else {
-			getErrorString(cuMemFree(d_x[0]));
-			status = cuMemAlloc(&d_x[0], sizeof(float) * length * 6);
-			CUDA_CHECK(status, "\n", -1);
-			status = cuMemcpyHtoD(d_x[0], listCoord, sizeof(float) * length * 6);
-			CUDA_CHECK(status, "\n", -1);
-		}
-		if (inputScalars.TOF) {
-			getErrorString(cuMemFree(d_TOFIndex[0]));
-			status = cuMemAlloc(&d_TOFIndex[0], sizeof(uint8_t) * length);
-			CUDA_CHECK(status, "\n", -1);
-			status = cuMemcpyHtoD(d_TOFIndex[0], TOFIndices, sizeof(uint8_t) * length);
-			CUDA_CHECK(status, "\n", -1);
-		}
+        if (inputScalars.listmode > 0) {
+            if (inputScalars.indexBased) {
+                getErrorString(cuMemFree(d_trIndex[0][0]));
+                getErrorString(cuMemFree(d_axIndex[0][0]));
+                status = cuMemAlloc(&d_trIndex[0][0], sizeof(uint16_t) * length * 2);
+                CUDA_CHECK(status, "\n", -1);
+                status = cuMemAlloc(&d_axIndex[0][0], sizeof(uint16_t) * length * 2);
+                CUDA_CHECK(status, "\n", -1);
+                status = cuMemcpyHtoD(d_trIndex[0][0], listCoord, sizeof(uint16_t) * length * 2);
+                CUDA_CHECK(status, "\n", -1);
+                status = cuMemcpyHtoD(d_axIndex[0][0], listCoordAx, sizeof(uint16_t) * length * 2);
+                CUDA_CHECK(status, "\n", -1);
+            }
+            if (inputScalars.TOF) {
+                getErrorString(cuMemFree(d_TOFIndex[0][0]));
+                status = cuMemAlloc(&d_TOFIndex[0][0], sizeof(uint8_t) * length);
+                CUDA_CHECK(status, "\n", -1);
+                status = cuMemcpyHtoD(d_TOFIndex[0][0], TOFIndices, sizeof(uint8_t) * length);
+                CUDA_CHECK(status, "\n", -1);
+            }
+        }
 		return 0;
 	}
 
@@ -2246,7 +2200,7 @@ public:
 	/// <param name="length the number of measurements/projection/sinograms per subset"></param>
 	/// <param name="m_size for projector types 1-3, the total number of LORs"></param>
 	/// <returns></returns>
-	inline int forwardProjection(scalarStruct& inputScalars, Weighting& w_vec, uint32_t osa_iter, const std::vector<int64_t>& length, uint64_t m_size, int ii = 0, const int uu = 0) {
+	inline int forwardProjection(scalarStruct& inputScalars, Weighting& w_vec, uint32_t osa_iter, uint32_T timestep, const std::vector<int64_t>& length, uint64_t m_size, int ii = 0, const int uu = 0) {
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrintVar("Starting forward projection for projector type = ", inputScalars.FPType);
 		CUresult status = CUDA_SUCCESS;
@@ -2311,10 +2265,16 @@ public:
 		}
 		status = cuCtxSynchronize();
 		CUDA_CHECK(status, "\n", -1);
-		if (inputScalars.FPType == 4) {
-			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation)
-				kTemp.emplace_back(&d_atten[osa_iter]);
-		}
+		//if (inputScalars.FPType == 4) {
+        if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
+            kTemp.emplace_back(&d_atten[osa_iter]);
+        } else if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+            if (inputScalars.useBuffers)
+                kTemp.emplace_back(&d_attenB[timestep]);
+            else
+                kTemp.emplace_back(&d_attenIm[timestep]);
+        }
+		//}
 		if (inputScalars.FPType == 5 || inputScalars.FPType == 4) {
 			kTemp.emplace_back(&d_N[ii]);
 			kTemp.emplace_back(&b[ii]);
@@ -2332,13 +2292,13 @@ public:
 			kTemp.emplace_back(&vec_opencl.d_image_os);
 			kTemp.emplace_back(reinterpret_cast<void*>(&d_output));
 			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
-				kTemp.emplace_back(&d_x[0]);
+				kTemp.emplace_back(&d_x[0][0]);
 			else
-				kTemp.emplace_back(&d_x[osa_iter]);
+				kTemp.emplace_back(&d_x[timestep][osa_iter]);
 			if ((inputScalars.CT || inputScalars.PET || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
-				kTemp.emplace_back(&d_z[osa_iter]);
+				kTemp.emplace_back(&d_z[timestep][osa_iter]);
 			else
-				kTemp.emplace_back(&d_z[inputScalars.osa_iter0]);
+				kTemp.emplace_back(&d_z[timestep][inputScalars.osa_iter0]);
 			if (inputScalars.maskFP) {
 				if (inputScalars.useBuffers) {
 					int subset = 0;
@@ -2359,20 +2319,18 @@ public:
 			}
 			if (inputScalars.listmode > 0 && inputScalars.indexBased) {
 				if (!inputScalars.loadTOF) {
-					kTemp.emplace_back(&d_trIndex[0]);
-					kTemp.emplace_back(&d_axIndex[0]);
-				}
-				else {
-					kTemp.emplace_back(&d_trIndex[osa_iter]);
-					kTemp.emplace_back(&d_axIndex[osa_iter]);
+					kTemp.emplace_back(&d_trIndex[0][0]);
+					kTemp.emplace_back(&d_axIndex[0][0]);
+				} else {
+					kTemp.emplace_back(&d_trIndex[timestep][osa_iter]);
+					kTemp.emplace_back(&d_axIndex[timestep][osa_iter]);
 				}
 			}
 			if (inputScalars.listmode > 0 && inputScalars.TOF) {
 				if (!inputScalars.loadTOF) {
-					kTemp.emplace_back(&d_TOFIndex[0]);
-				}
-				else {
-					kTemp.emplace_back(&d_TOFIndex[osa_iter]);
+					kTemp.emplace_back(&d_TOFIndex[0][0]);
+				} else {
+					kTemp.emplace_back(&d_TOFIndex[timestep][osa_iter]);
 				}
 			}
 			if (inputScalars.raw) {
@@ -2382,7 +2340,7 @@ public:
 			if (inputScalars.normalization_correction)
 				kTemp.emplace_back(&d_norm[osa_iter]);
 			if (inputScalars.scatter)
-				kTemp.emplace_back(&d_scat[osa_iter]);
+				kTemp.emplace_back(&d_scat[timestep][osa_iter]);
 			kTemp.emplace_back(&no_norm);
 			kTemp.emplace_back(&m_size);
 			kTemp.emplace_back(&osa_iter);
@@ -2390,10 +2348,10 @@ public:
 		}
 		else if (inputScalars.FPType == 5) {
 			if (!inputScalars.loadTOF && inputScalars.listmode > 0)
-				kTemp.emplace_back(&d_x[0]);
+				kTemp.emplace_back(&d_x[0][0]);
 			else
-				kTemp.emplace_back(&d_x[osa_iter]);
-			kTemp.emplace_back(&d_z[osa_iter]);
+				kTemp.emplace_back(&d_x[timestep][osa_iter]);
+			kTemp.emplace_back(&d_z[timestep][osa_iter]);
 			kTemp.emplace_back(&vec_opencl.d_image_os);
 			kTemp.emplace_back(&vec_opencl.d_image_os_int);
 			kTemp.emplace_back(reinterpret_cast<void*>(&d_output));
@@ -2420,8 +2378,8 @@ public:
 			kTemp.emplace_back((void*)&length[osa_iter]);
 		}
 		else if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3)) {
-			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation)
-				kTemp.emplace_back(&d_atten[osa_iter]);
+			//if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation)
+			//	kTemp.emplace_back(&d_atten[osa_iter]);
 			if (inputScalars.maskFP || inputScalars.maskBP) {
 				if (inputScalars.maskFP) {
 					if (inputScalars.useBuffers) {
@@ -2441,17 +2399,17 @@ public:
 				kTemp.emplace_back((void*)&length[osa_iter]);
 			}
 			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
-				kTemp.emplace_back(&d_x[0]);
+				kTemp.emplace_back(&d_x[0][0]);
 			else
-				kTemp.emplace_back(&d_x[osa_iter]);
+				kTemp.emplace_back(&d_x[timestep][osa_iter]);
 			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
-				kTemp.emplace_back(&d_z[osa_iter]);
+				kTemp.emplace_back(&d_z[timestep][osa_iter]);
 			else
-				kTemp.emplace_back(&d_z[inputScalars.osa_iter0]);
+				kTemp.emplace_back(&d_z[timestep][inputScalars.osa_iter0]);
 			if (inputScalars.normalization_correction)
 				kTemp.emplace_back(&d_norm[osa_iter]);
 			if (inputScalars.scatter)
-				kTemp.emplace_back(&d_scat[osa_iter]);
+				kTemp.emplace_back(&d_scat[timestep][osa_iter]);
 			kTemp.emplace_back(reinterpret_cast<void*>(&d_Summ[uu]));
 			kTemp.emplace_back(&d_N[ii]);
 			kTemp.emplace_back(&d[ii]);
@@ -2463,20 +2421,18 @@ public:
 			}
 			if (inputScalars.listmode > 0 && inputScalars.indexBased) {
 				if (!inputScalars.loadTOF) {
-					kTemp.emplace_back(&d_trIndex[0]);
-					kTemp.emplace_back(&d_axIndex[0]);
-				}
-				else {
-					kTemp.emplace_back(&d_trIndex[osa_iter]);
-					kTemp.emplace_back(&d_axIndex[osa_iter]);
+					kTemp.emplace_back(&d_trIndex[0][0]);
+					kTemp.emplace_back(&d_axIndex[0][0]);
+				} else {
+					kTemp.emplace_back(&d_trIndex[timestep][osa_iter]);
+					kTemp.emplace_back(&d_axIndex[timestep][osa_iter]);
 				}
 			}
 			if (inputScalars.listmode > 0 && inputScalars.TOF) {
 				if (!inputScalars.loadTOF) {
-					kTemp.emplace_back(&d_TOFIndex[0]);
-				}
-				else {
-					kTemp.emplace_back(&d_TOFIndex[osa_iter]);
+					kTemp.emplace_back(&d_TOFIndex[0][0]);
+				} else {
+					kTemp.emplace_back(&d_TOFIndex[timestep][osa_iter]);
 				}
 			}
 			if (inputScalars.raw) {
@@ -2543,7 +2499,7 @@ public:
 	/// <param name="m_size for projector types 1-3, the total number of LORs"></param>
 	/// <param name="compSens if true, computes the sensitivity image as well"></param>
 	/// <returns></returns>
-	inline int backwardProjection(scalarStruct& inputScalars, Weighting& w_vec, uint32_t osa_iter, std::vector<int64_t>& length, uint64_t m_size, const bool compSens = false, int ii = 0, const int uu = 0) {
+	inline int backwardProjection(scalarStruct& inputScalars, Weighting& w_vec, uint32_t osa_iter, uint32_t timestep, std::vector<int64_t>& length, uint64_t m_size, const bool compSens = false, int ii = 0, const int uu = 0) {
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrintVar("Starting backprojection for projector type = ", inputScalars.BPType);
 		CUresult status = CUDA_SUCCESS;
@@ -2607,8 +2563,14 @@ public:
 			}
 
 			// Set kernelBP arguments
-			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation)
+			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
 				kTemp.emplace_back(&d_atten[osa_iter]);
+            } else if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+                if (inputScalars.useBuffers)
+                    kTemp.emplace_back(&d_attenB[timestep]);
+                else
+                    kTemp.emplace_back(&d_attenIm[timestep]);
+            }
 			if (inputScalars.maskFP || inputScalars.maskBP) {
 				if (inputScalars.maskFP) {
 					if (inputScalars.useBuffers) {
@@ -2639,15 +2601,15 @@ public:
 			}
 			else {
 				if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
-					kTemp.emplace_back(&d_x[0]);
+					kTemp.emplace_back(&d_x[0][0]);
 				else
-					kTemp.emplace_back(&d_x[osa_iter]);
+					kTemp.emplace_back(&d_x[timestep][osa_iter]);
 				if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
-					kTemp.emplace_back(&d_z[osa_iter]);
+					kTemp.emplace_back(&d_z[timestep][osa_iter]);
 				else if (inputScalars.indexBased && inputScalars.listmode > 0)
-					kTemp.emplace_back(&d_z[0]);
+					kTemp.emplace_back(&d_z[0][0]);
 				else
-					kTemp.emplace_back(&d_z[inputScalars.osa_iter0]);
+					kTemp.emplace_back(&d_z[timestep][inputScalars.osa_iter0]);
 			}
 			if (compSens) {
 				if (inputScalars.normalization_correction)
@@ -2659,7 +2621,7 @@ public:
 				if (inputScalars.normalization_correction)
 					kTemp.emplace_back(&d_norm[osa_iter]);
 				if (inputScalars.scatter)
-					kTemp.emplace_back(&d_scat[osa_iter]);
+					kTemp.emplace_back(&d_scat[timestep][osa_iter]);
 			}
 			kTemp.emplace_back(reinterpret_cast<void*>(&d_Summ[uu]));
 			kTemp.emplace_back(&d_N[ii]);
@@ -2672,20 +2634,18 @@ public:
 			}
 			if (inputScalars.listmode > 0 && inputScalars.indexBased && !compSens) {
 				if (!inputScalars.loadTOF) {
-					kTemp.emplace_back(&d_trIndex[0]);
-					kTemp.emplace_back(&d_axIndex[0]);
-				}
-				else {
-					kTemp.emplace_back(&d_trIndex[osa_iter]);
-					kTemp.emplace_back(&d_axIndex[osa_iter]);
+					kTemp.emplace_back(&d_trIndex[0][0]);
+					kTemp.emplace_back(&d_axIndex[0][0]);
+				} else {
+					kTemp.emplace_back(&d_trIndex[timestep][osa_iter]);
+					kTemp.emplace_back(&d_axIndex[timestep][osa_iter]);
 				}
 			}
 			if (inputScalars.listmode > 0 && inputScalars.TOF) {
 				if (!inputScalars.loadTOF) {
-					kTemp.emplace_back(&d_TOFIndex[0]);
-				}
-				else {
-					kTemp.emplace_back(&d_TOFIndex[osa_iter]);
+					kTemp.emplace_back(&d_TOFIndex[0][0]);
+				} else {
+					kTemp.emplace_back(&d_TOFIndex[timestep][osa_iter]);
 				}
 			}
 			if (inputScalars.raw)
@@ -2849,13 +2809,13 @@ public:
 						kTemp.emplace_back(&d_xFull[0]);
 					else
 						if (!inputScalars.loadTOF && inputScalars.listmode > 0)
-							kTemp.emplace_back(&d_x[0]);
+							kTemp.emplace_back(&d_x[0][0]);
 						else
-							kTemp.emplace_back(&d_x[osa_iter]);
+							kTemp.emplace_back(&d_x[timestep][osa_iter]);
 					if (compSens)
 						kTemp.emplace_back(&d_zFull[0]);
 					else
-						kTemp.emplace_back(&d_z[osa_iter]);
+						kTemp.emplace_back(&d_z[timestep][osa_iter]);
 					//mexPrint("4!!!!\n");
 					kTemp.emplace_back(reinterpret_cast<void*>(&d_Summ[uu]));
 					//mexPrint("5!!!!\n");
@@ -2865,13 +2825,13 @@ public:
 						kTemp.emplace_back(&d_xFull[0]);
 					else
 						if (!inputScalars.loadTOF && inputScalars.listmode > 0)
-							kTemp.emplace_back(&d_x[0]);
+							kTemp.emplace_back(&d_x[0][0]);
 						else
-							kTemp.emplace_back(&d_x[osa_iter]);
+							kTemp.emplace_back(&d_x[timestep][osa_iter]);
 					if (compSens)
 						kTemp.emplace_back(&d_zFull[0]);
 					else
-						kTemp.emplace_back(&d_z[osa_iter]);
+						kTemp.emplace_back(&d_z[timestep][osa_iter]);
 					kTemp.emplace_back(&d_inputImage);
 					kTemp.emplace_back(reinterpret_cast<void*>(&vec_opencl.d_rhs_os[uu]));
 					kTemp.emplace_back(reinterpret_cast<void*>(&d_Summ[uu]));
@@ -2936,15 +2896,15 @@ public:
 				}
 				else {
 					if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
-						kTemp.emplace_back(&d_x[0]);
+						kTemp.emplace_back(&d_x[0][0]);
 					else
-						kTemp.emplace_back(&d_x[osa_iter]);
+						kTemp.emplace_back(&d_x[timestep][osa_iter]);
 					if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
-						kTemp.emplace_back(&d_z[osa_iter]);
+						kTemp.emplace_back(&d_z[timestep][osa_iter]);
 					else if (inputScalars.indexBased && inputScalars.listmode > 0)
-						kTemp.emplace_back(&d_z[0]);
+						kTemp.emplace_back(&d_z[0][0]);
 					else
-						kTemp.emplace_back(&d_z[inputScalars.osa_iter0]);
+						kTemp.emplace_back(&d_z[timestep][inputScalars.osa_iter0]);
 				}
 				if (inputScalars.maskFP || inputScalars.maskBP) {
 					if (inputScalars.maskFP) {
@@ -2974,20 +2934,18 @@ public:
 				}
 				if (inputScalars.listmode > 0 && inputScalars.indexBased && !compSens) {
 					if (!inputScalars.loadTOF) {
-						kTemp.emplace_back(&d_trIndex[0]);
-						kTemp.emplace_back(&d_axIndex[0]);
-					}
-					else {
-						kTemp.emplace_back(&d_trIndex[osa_iter]);
-						kTemp.emplace_back(&d_axIndex[osa_iter]);
+						kTemp.emplace_back(&d_trIndex[0][0]);
+						kTemp.emplace_back(&d_axIndex[0][0]);
+					} else {
+						kTemp.emplace_back(&d_trIndex[timestep][osa_iter]);
+						kTemp.emplace_back(&d_axIndex[timestep][osa_iter]);
 					}
 				}
 				if (inputScalars.listmode > 0 && inputScalars.TOF) {
 					if (!inputScalars.loadTOF) {
-						kTemp.emplace_back(&d_TOFIndex[0]);
-					}
-					else {
-						kTemp.emplace_back(&d_TOFIndex[osa_iter]);
+						kTemp.emplace_back(&d_TOFIndex[0][0]);
+					} else {
+						kTemp.emplace_back(&d_TOFIndex[timestep][osa_iter]);
 					}
 				}
 				if (inputScalars.raw) {
@@ -2997,7 +2955,7 @@ public:
 				if (inputScalars.normalization_correction)
 					kTemp.emplace_back(&d_norm[osa_iter]);
 				if (inputScalars.scatter)
-					kTemp.emplace_back(&d_scat[osa_iter]);
+					kTemp.emplace_back(&d_scat[timestep][osa_iter]);
 				kTemp.emplace_back(reinterpret_cast<void*>(&d_Summ[uu]));
 			}
 			kTemp.emplace_back(&no_norm);

@@ -100,11 +100,12 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 		inputScalars.T = getSingles(options, "OffsetLimit");
 	inputScalars.nProjections = getScalarInt64(options, 0, "nProjections");
 	inputScalars.subsetType = getScalarUInt32(options, 0, "subset_type");
+	inputScalars.d_Scale4.resize(inputScalars.nMultiVolumes + 1);
+	inputScalars.dSize.resize(inputScalars.nMultiVolumes + 1);
+	inputScalars.d_Scale.resize(inputScalars.nMultiVolumes + 1);
 	if (inputScalars.FPType == 4 || inputScalars.FPType == 5 || inputScalars.BPType == 4 || inputScalars.BPType == 5) {
 		inputScalars.dL = getScalarFloat(options, 0, "dL");
-		inputScalars.d_Scale4.resize(inputScalars.nMultiVolumes + 1);
-		inputScalars.dSize.resize(inputScalars.nMultiVolumes + 1);
-		inputScalars.d_Scale.resize(inputScalars.nMultiVolumes + 1);
+		
 		float* dScaleX4 = getSingles(options, "dScaleX4");
 		float* dScaleY4 = getSingles(options, "dScaleY4");
 		float* dScaleZ4 = getSingles(options, "dScaleZ4");
@@ -206,14 +207,12 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 	// Load the necessary variables if the corresponding reconstruction method is used
 	int yy = 0;
 
-	if (MethodList.DRAMA) {
-		// Relaxation parameter
-		w_vec.lambda = getSingles(options, "lam_drama");
-	}
-
-	// Load regularization parameter
+	// Load spatial regularization parameter
 	w_vec.beta = getScalarFloat(getField(options, 0, "beta"), -9);
 	w_vec.betaReg = w_vec.beta;
+
+    // Load temporal regularization parameter
+    w_vec.beta_temporal = getScalarFloat(getField(options, 0, "beta_temporal"), -9);
 
 	// Masks
 	if (inputScalars.maskFP) {
@@ -382,8 +381,9 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 	if (w_vec.precondTypeMeas[0] || MethodList.SART || MethodList.POCS)
 		w_vec.computeM = true;
 #endif
-
-	// Load TV related input data
+    w_vec.TemporalTVsmoothing = getScalarFloat(getField(options, 0, "temporalTVsmoothing"), -15);
+	
+    // Load TV related input data
 	if (MethodList.TV && MethodList.MAP) {
 		// Is anatomical reference image used
 		w_vec.data.TV_use_anatomical = getScalarBool(getField(options, 0, "TV_use_anatomical"), -13);
@@ -552,26 +552,10 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 	}
 #endif
 	if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS) {
-		// Relaxation parameter
-		w_vec.lambda = getSingles(options, "lambda");
 		// Upper bound
 		w_vec.U = getScalarFloat(getField(options, 0, "U"), -42);
 	}
-	// Relaxation parameters
-	if (MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.SART || MethodList.POCS || MethodList.SAGA)
-		w_vec.lambda = getSingles(options, "lambda");
-	if (MethodList.PKMA) {
-		w_vec.alphaM = getSingles(options, "alpha_PKMA");
-		w_vec.lambda = getSingles(options, "lambda");
-	}
-	if ((w_vec.precondTypeIm[5] || w_vec.precondTypeMeas[1]) && (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA)) {
-		w_vec.lambdaFiltered = w_vec.lambda;
-		w_vec.lambda = getSingles(options, "lambdaFiltered");
-	}
-	if (DEBUG && (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA)) {
-		mexPrintBase("w_vec.lambda[0] = %f\n", w_vec.lambda[0]);
-		mexEval();
-	}
+
 	if (w_vec.precondTypeIm[3])
 		w_vec.alphaPrecond = getSingles(options, "alphaPrecond");
 	// Power factor for ACOSEM
@@ -613,34 +597,92 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 			mexPrint("NLM loaded");
 		}
 	}
+
+    w_vec.tauCP.resize(inputScalars.Nt);
+    w_vec.tauCP2.resize(inputScalars.Nt);
+    w_vec.LCP.resize(inputScalars.Nt);
+    w_vec.LCP2.resize(inputScalars.Nt);
+    w_vec.alphaCP.resize(inputScalars.Nt);
+    w_vec.sigmaCP.resize(inputScalars.Nt);
+    w_vec.sigma2CP.resize(inputScalars.Nt);
+    w_vec.thetaCP.resize(inputScalars.Nt);
+    w_vec.lambda.resize(inputScalars.Nt);
+    w_vec.lambdaFiltered.resize(inputScalars.Nt);
+    w_vec.alphaM.resize(inputScalars.Nt);
+
+    for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) { // Currently same values are used for each timestep
+        w_vec.tauCP[timestep].resize(inputScalars.nMultiVolumes + 1);
+        w_vec.tauCP2[timestep].resize(inputScalars.nMultiVolumes + 1);
+        w_vec.sigmaCP[timestep].resize(inputScalars.nMultiVolumes + 1);
+        w_vec.sigma2CP[timestep].resize(inputScalars.nMultiVolumes + 1);
+        w_vec.thetaCP[timestep].resize(inputScalars.subsets * inputScalars.Niter);
+        w_vec.lambda[timestep].resize(inputScalars.Niter);
+        w_vec.lambdaFiltered[timestep].resize(inputScalars.Niter);
+        w_vec.alphaM[timestep].resize(inputScalars.subsets * inputScalars.Niter);
+
+        // Relaxation parameters
+        if (MethodList.DRAMA) {
+            const float *lambda = getSingles(options, "lam_drama");
+            w_vec.lambda[timestep].assign(lambda, lambda + w_vec.lambda[timestep].size());
+        }
+        if (MethodList.PKMA || MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.SART || MethodList.POCS || MethodList.SAGA) {
+            const float *lambda = getSingles(options, "lambda");
+            w_vec.lambda[timestep].assign(lambda, lambda + w_vec.lambda[timestep].size());
+        }
+        if ((w_vec.precondTypeIm[5] || w_vec.precondTypeMeas[1]) && (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA)) {
+            w_vec.lambdaFiltered[timestep] = w_vec.lambda[timestep];
+            const float *lambda = getSingles(options, "lambdaFiltered");
+            w_vec.lambda[timestep].assign(lambda, lambda + w_vec.lambda[timestep].size());
+        }
+        if (MethodList.PKMA) {
+            const float *alphaM = getSingles(options, "alpha_PKMA");
+            w_vec.alphaM[timestep].assign(alphaM, alphaM + w_vec.alphaM[timestep].size());
+        }
+
+        if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1 || MethodList.ProxTGV || MethodList.ProxTV) {
+            if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1) {
+                const float *tauCP = getSingles(options, "tauCPFilt");
+                w_vec.tauCP[timestep].assign(tauCP, tauCP + w_vec.tauCP[timestep].size());
+            }
+
+            if (w_vec.precondTypeMeas[1]) {
+                const float *tauCP2 = getSingles(options, "tauCP");
+                w_vec.tauCP2[timestep].assign(tauCP2, tauCP2 + w_vec.tauCP2[timestep].size());
+            } else {
+                const float *tauCP = getSingles(options, "tauCP");
+                w_vec.tauCP[timestep].assign(tauCP, tauCP + w_vec.tauCP[timestep].size());
+            }
+
+            if (inputScalars.adaptiveType == 1) {
+                for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
+                    w_vec.alphaCP[timestep].emplace_back(1.f);
+            } else if (inputScalars.adaptiveType == 2) {
+                 for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
+                    w_vec.alphaCP[timestep].emplace_back(.95f);
+            }
+            const float *sigmaCP = getSingles(options, "sigmaCP");
+            w_vec.sigmaCP[timestep].assign(sigmaCP, sigmaCP + w_vec.sigmaCP[timestep].size());
+            const float *sigma2CP = getSingles(options, "sigma2CP");
+            w_vec.sigma2CP[timestep].assign(sigma2CP, sigma2CP + w_vec.sigma2CP[timestep].size());
+            const float *thetaCP = getSingles(options, "thetaCP");
+            w_vec.thetaCP[timestep].assign(thetaCP, thetaCP + w_vec.thetaCP[timestep].size());
+        }
+    }
+
 	if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1) {
-		w_vec.tauCP = getSingles(options, "tauCPFilt");
-		w_vec.sigmaCP = getSingles(options, "sigmaCP");
 		w_vec.powerIterations = getScalarUInt32(getField(options, 0, "powerIterations"), -63);
 		if (DEBUG) {
 			mexPrint("PIter loaded");
 		}
 	}
+
 	if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1 || MethodList.ProxTGV || MethodList.ProxTV) {
-		if (w_vec.precondTypeMeas[1])
-			w_vec.tauCP2 = getSingles(options, "tauCP");
-		else
-			w_vec.tauCP = getSingles(options, "tauCP");
-		w_vec.sigma2CP = getSingles(options, "sigma2CP");
 		w_vec.betaReg = getScalarFloat(getField(options, 0, "beta"), -63);
-		w_vec.thetaCP = getSingles(options, "thetaCP", 0);
 		w_vec.alpha0CPTGV = getScalarFloat(getField(options, 0, "alpha0TGV"), -63);
 		w_vec.alpha1CPTGV = getScalarFloat(getField(options, 0, "alpha1TGV"), -63);
 		w_vec.UseL2Ball = getScalarBool(getField(options, 0, "useL2Ball"), -63);
 		inputScalars.FISTAType = getScalarUInt32(getField(options, 0, "FISTAType"), -63);
-		if (inputScalars.adaptiveType == 1) {
-			for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
-				//w_vec.alphaCP.emplace_back(.3f);
-				w_vec.alphaCP.emplace_back(1.f);
-		}
-		else if (inputScalars.adaptiveType == 2)
-			for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
-				w_vec.alphaCP.emplace_back(.95f);
+		
 		if (DEBUG) {
 			mexPrint("CPType loaded");
 		}
@@ -680,7 +722,7 @@ inline void get_rec_methods(const mxArray* options, RecMethods& MethodList) {
 	if (MethodList.LSQR || MethodList.CGLS)
 		MethodList.initAlg = true;
 
-	// Priors
+	// Spatial priors
 	MethodList.MRP = getScalarBool(getField(options, 0, "MRP"), -61);
 	MethodList.Quad = getScalarBool(getField(options, 0, "quad"), -61);
 	MethodList.Huber = getScalarBool(getField(options, 0, "Huber"), -61);
@@ -699,6 +741,10 @@ inline void get_rec_methods(const mxArray* options, RecMethods& MethodList) {
 	MethodList.ProxTGV = getScalarBool(getField(options, 0, "TGV"), -61);
 	MethodList.ProxRDP = getScalarBool(getField(options, 0, "ProxRDP"), -61);
 	MethodList.ProxNLM = getScalarBool(getField(options, 0, "ProxNLM"), -61);
+
+    // Temporal priors
+    MethodList.TemporalSmoothness = getScalarBool(getField(options, 0, "temporal_smoothness"), -61);
+    MethodList.TemporalTV = getScalarBool(getField(options, 0, "temporalTV"), -61);
 
 	// MAP/prior-based algorithms
 	MethodList.OSLOSEM = getScalarBool(getField(options, 0, "OSL_OSEM"), -61);
@@ -735,74 +781,81 @@ inline void get_rec_methods(const mxArray* options, RecMethods& MethodList) {
 // Transfers the device data to host
 // First transfer the ArrayFire arrays from the device to the host pointers pointing to the mxArrays
 // Transfer the mxArrays to the cell
-inline void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, int64_t& oo, mxArray* cell, mxArray* FPcell, Weighting& w_vec,
-	const uint32_t dim_n, const scalarStruct& inputScalars, std::vector<std::vector<std::vector<float>>>& FPEstimates) {
-	if (DEBUG) {
-		mexPrintBase("vec.im_os.dims(0) = %d\n", vec.im_os[0].dims(0));
-		mexPrintBase("vec.im_os.dims(1) = %d\n", vec.im_os[0].dims(1));
-		mexEval();
-	}
-	if (inputScalars.storeFP) {
-		for (uint32_t ii = 0; ii < inputScalars.subsets * inputScalars.Niter; ii++) {
-			const uint32_t jj = ii % inputScalars.subsets;
-			const uint32_t kk = ii / inputScalars.subsets;
-			const mwSize dim[1] = { static_cast<mwSize>(FPEstimates[kk][jj].size()) };
-			mxArray* apu = mxCreateNumericArray(1, dim, mxSINGLE_CLASS, mxREAL);
+inline void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, mxArray* cell, mxArray* FPcell, Weighting& w_vec,
+	const uint32_t dim_n, const scalarStruct& inputScalars, std::vector<std::vector<std::vector<float>>>& FPEstimates
+) {
+    int64_t oo = 0;
+    for (int timestep = 0; timestep < inputScalars.Nt; timestep++) {
+        if (DEBUG) {
+            mexPrintBase("vec.im_os.dims(0) = %d\n", vec.im_os[timestep][0].dims(0));
+            mexPrintBase("vec.im_os.dims(1) = %d\n", vec.im_os[timestep][0].dims(1));
+            mexEval();
+        }
+        if (inputScalars.storeFP) {
+            for (uint32_t ii = 0; ii < inputScalars.subsets * inputScalars.Niter; ii++) {
+                const uint32_t jj = ii % inputScalars.subsets;
+                const uint32_t kk = ii / inputScalars.subsets;
+                const mwSize dim[1] = { static_cast<mwSize>(FPEstimates[kk][jj].size()) };
+                mxArray* apu = mxCreateNumericArray(1, dim, mxSINGLE_CLASS, mxREAL);
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-			float* apuF = (float*)mxGetSingles(apu);
+                float* apuF = (float*)mxGetSingles(apu);
 #else
-			float* apuF = (float*)mxGetData(apu);
+                float* apuF = (float*)mxGetData(apu);
 #endif
-			std::copy(FPEstimates[kk][jj].begin(), FPEstimates[kk][jj].end(), apuF);
-			mxSetCell(FPcell, static_cast<mwIndex>(ii), mxDuplicateArray(apu));
-		}
-	}
-	// Transfer data back to host
-	if (CELL && inputScalars.nMultiVolumes > 0) {
-		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-			const mwSize dim[3] = { static_cast<mwSize>(inputScalars.Nx[ii]), static_cast<mwSize>(inputScalars.Ny[ii]), static_cast<mwSize>(inputScalars.Nz[ii]) };
-			if (DEBUG) {
-				mexPrintBase("inputScalars.Nx[ii] = %d\n", inputScalars.Nx[ii]);
-				mexPrintBase("inputScalars.Ny[ii] = %d\n", inputScalars.Ny[ii]);
-				mexPrintBase("inputScalars.Nz[ii] = %d\n", inputScalars.Nz[ii]);
-				mexEval();
-			}
-			mxArray* apu = mxCreateNumericArray(3, dim, mxSINGLE_CLASS, mxREAL);
+                std::copy(FPEstimates[kk][jj].begin(), FPEstimates[kk][jj].end(), apuF);
+                mxSetCell(FPcell, static_cast<mwIndex>(ii), mxDuplicateArray(apu));
+            }
+        }
+        // Transfer data back to host
+        if (CELL && inputScalars.nMultiVolumes > 0) {
+            for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+                const mwSize dim[3] = { static_cast<mwSize>(inputScalars.Nx[ii]), static_cast<mwSize>(inputScalars.Ny[ii]), static_cast<mwSize>(inputScalars.Nz[ii]) };
+                if (DEBUG) {
+                    mexPrintBase("inputScalars.Nx[ii] = %d\n", inputScalars.Nx[ii]);
+                    mexPrintBase("inputScalars.Ny[ii] = %d\n", inputScalars.Ny[ii]);
+                    mexPrintBase("inputScalars.Nz[ii] = %d\n", inputScalars.Nz[ii]);
+                    mexEval();
+                }
+                mxArray* apu = mxCreateNumericArray(3, dim, mxSINGLE_CLASS, mxREAL);
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-			float* apuF = (float*)mxGetSingles(apu);
+                float* apuF = (float*)mxGetSingles(apu);
 #else
-			float* apuF = (float*)mxGetData(apu);
+                float* apuF = (float*)mxGetData(apu);
 #endif
-			if (inputScalars.saveIter || inputScalars.saveIterationsMiddle > 0) {
-			}
-			else {
-				if (MethodList.FDK)
-					vec.rhs_os[ii].host(&apuF[oo]);
-				else
-					vec.im_os[ii].host(&apuF[oo]);
-				if (inputScalars.verbose >= 3)
-					mexPrint("Data transfered to host");
-			}
-			mxSetCell(cell, static_cast<mwIndex>(ii), mxDuplicateArray(apu));
-		}
-	}
-	else {
-		float* apuF = getSingles(cell, "solu");
-		if (inputScalars.saveIter || inputScalars.saveIterationsMiddle > 0) {
-		}
-		else {
-			if (MethodList.FDK && inputScalars.largeDim) {
-				//vec.rhs_os[0].host(&output[oo]);
-			}
-			else if (MethodList.FDK && !inputScalars.largeDim) {
-				vec.rhs_os[0].host(&apuF[oo]);
-			}
-			else
-				vec.im_os[0].host(&apuF[oo]);
-			if (inputScalars.verbose >= 3)
-				mexPrint("Data transfered to host");
-		}
-	}
-	af::sync();
+                if (inputScalars.saveIter || inputScalars.saveIterationsMiddle > 0) {
+                }
+                else {
+                    if (MethodList.FDK)
+                        vec.rhs_os[timestep][ii].host(&apuF[oo]);
+                    else
+                        vec.im_os[timestep][ii].host(&apuF[oo]);
+                    if (inputScalars.verbose >= 3)
+                        mexPrint("Data transfered to host");
+                }
+                mxSetCell(cell, static_cast<mwIndex>(ii), mxDuplicateArray(apu));
+            }
+        }
+        else {
+            float* apuF = getSingles(cell, "solu");
+            if (inputScalars.saveIter || inputScalars.saveIterationsMiddle > 0) {
+            }
+            else {
+                if (MethodList.FDK && inputScalars.largeDim) {
+                    //vec.rhs_os[0].host(&output[oo]);
+                }
+                else if (MethodList.FDK && !inputScalars.largeDim) {
+                    vec.rhs_os[timestep][0].host(&apuF[oo]);
+                }
+                else
+                    vec.im_os[timestep][0].host(&apuF[oo]);
+                if (inputScalars.verbose >= 3)
+                    mexPrint("Data transfered to host");
+            }
+        }
+        if (DEBUG || inputScalars.verbose >= 3)
+            mexPrintf("timestep = %u\n", timestep);
+        af::sync();
+        oo += inputScalars.im_dim[0];
+    }
 }
 #endif

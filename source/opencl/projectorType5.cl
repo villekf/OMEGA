@@ -59,48 +59,67 @@ __kernel
     __attribute__((vec_type_hint(float)))
     __attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE2, 1)))
 #else
-extern "C" __global__
+KERNEL
 #endif
-    void
-    projectorType5Forward(const uint d_nRows, const uint d_nCols,
-#ifdef PYTHON
-                          const float d_dPitchX, const float d_dPitchY,
+void projectorType5Forward(
+#if defined(METAL)
+    SCALAR_PARAMS(scalarParams) BUF0
 #else
-                          const float2 d_dPitch,
+    const uint d_nRows, const uint d_nCols
+#ifdef PYTHON
+    , const float d_dPitchX, const float d_dPitchY
+#else
+    , const float2 d_dPitch
 #endif
 #ifdef PYTHON
-                          const uint d_Nx, const uint d_Ny, const uint d_Nz,
-                          const float bx, const float by, const float bz,
-                          const float d_SizeX, const float d_SizeY,
-                          const float d_dx, const float d_dy, const float d_dz,
-                          const float d_scalex, const float d_scaley,
-                          const float d_scalez,
+    , const uint d_Nx, const uint d_Ny, const uint d_Nz
+    , const float bx, const float by, const float bz
+    , const float d_SizeX, const float d_SizeY
+    , const float d_dx, const float d_dy, const float d_dz
+    , const float d_scalex, const float d_scaley, const float d_scalez
 #else
-                          const uint3 d_N, const float3 b, const float2 d_Size,
-                          const float3 d_d, const float3 d_scale,
+    , const uint3 d_N
+    , const float3 b
+    , const float2 d_Size
+    , const float3 d_d
+    , const float3 d_scale
+#endif
 #endif
 #if defined(USEGLOBAL)
-                          const CLGLOBAL float *CLRESTRICT d_xyz, const CLGLOBAL float *CLRESTRICT d_uv, 
+    , const CLGLOBAL float *CLRESTRICT d_xyz BUF1
+    , const CLGLOBAL float *CLRESTRICT d_uv BUF2
 #else
-                          CONSTANT float *d_xyz, CONSTANT float *d_uv, 
+    , CONSTANT float *d_xyz BUF1
+    , CONSTANT float *d_uv BUF2
 #endif
-                          IMAGE3D d_IImageY,
-                          IMAGE3D d_IImageX, CLGLOBAL float *d_forw,
+    , IMAGE3D d_IImageY TEX3
+    , IMAGE3D d_IImageX TEX4
+    , CLGLOBAL float *d_forw BUF5
 #ifdef MEANDISTANCEFP
-                          CONSTANT float *d_meanV,
+    , CONSTANT float *d_meanV BUF6
 #endif
 #ifdef MASKFP
 #ifdef MASKFP3D
-                          IMAGE3D maskFP,
+    , IMAGE3D maskFP TEX7
 #else
-                          IMAGE2D maskFP,
+    , IMAGE2D maskFP TEX7 
 #endif
 #endif
 #ifdef NORM
-                          const CLGLOBAL float *CLRESTRICT d_norm,
+    , const CLGLOBAL float *CLRESTRICT d_norm BUF8
 #endif
-                          const LONG d_nProjections) {
-
+#if !defined(METAL)
+    , const LONG d_nProjections
+#else
+    , uint3 temp_i [[thread_position_in_grid]] // global id
+#endif
+) {
+#if defined(METAL)
+    UNPACK_SCALAR_PARAMS_5_FP(scalarParams);
+    int GID0 = temp_i.x;
+    int GID1 = temp_i.y;
+    int GID2 = temp_i.z;
+#endif
   const int3 i = MINT3(GID0, GID1 * NVOXELSFP, GID2);
 
   if (i.x >= d_nRows || i.y >= d_nCols || i.z >= d_nProjections)
@@ -142,10 +161,10 @@ extern "C" __global__
   getDetectorCoordinatesCT(d_xyz, d_uv, &s, &d, i, d_nRows, d_nCols, d_dPitch,
                            &dL, &dR, &dU, &dD);
   // Weight values
-  const float3 uVector = fabs(normalize(d - s));
+  const float3 uVector = FABS(NORMALIZE(d - s));
   float kerroin = d_d.x * d_d.y * d_d.z;
   const float apuZ = (b.z - s.z - d_d.z / 2.f);
-  if (fabs(s.x) <= fabs(s.y)) {
+  if (FABS(s.x) <= FABS(s.y)) {
     // Coordinates of the corners
     const float2 X =
         MFLOAT2((dL.x - s.x) / (dL.y - s.y), (dR.x - s.x) / (dR.y - s.y));
@@ -172,7 +191,7 @@ extern "C" __global__
         zUD.x = zUD.y;
         zUD.y = apu;
       }
-      const float area = fabs((xLR.x - xLR.y) * (zUD.x - zUD.y));
+      const float area = FABS((xLR.x - xLR.y) * (zUD.x - zUD.y));
       // Scale between 0 and 1
       xLR *= d_scale.x;
       dy *= d_Size.y;
@@ -182,7 +201,7 @@ extern "C" __global__
       float B = tex3D<float>(d_IImageY, xLR.x, zUD.y, dy);
       float C = tex3D<float>(d_IImageY, xLR.y, zUD.y, dy);
       float D = tex3D<float>(d_IImageY, xLR.x, zUD.x, dy);
-#else
+#elif defined(OPENCL)
       float A =
           read_imagef(d_IImageY, sampler2, (float4)(xLR.y, zUD.x, dy, 0.f)).w;
       float B =
@@ -191,6 +210,11 @@ extern "C" __global__
           read_imagef(d_IImageY, sampler2, (float4)(xLR.y, zUD.y, dy, 0.f)).w;
       float D =
           read_imagef(d_IImageY, sampler2, (float4)(xLR.x, zUD.x, dy, 0.f)).w;
+#elif defined(METAL)
+      float A = d_IImageY.sample(sampler2, (float3)(xLR.y, zUD.x, dy)).r;
+      float B = d_IImageY.sample(sampler2, (float3)(xLR.x, zUD.y, dy)).r;
+      float C = d_IImageY.sample(sampler2, (float3)(xLR.y, zUD.y, dy)).r;
+      float D = d_IImageY.sample(sampler2, (float3)(xLR.x, zUD.x, dy)).r;
 #endif
       float apu = C + D - A - B;
 #ifdef MEANDISTANCEFP
@@ -200,13 +224,13 @@ extern "C" __global__
           CFLOAT(get_image_width(d_IImageY) * get_image_height(d_IImageY));
 #else
       const float area2 = d_meanV[jj + d_N.x] *
-                          fabs((xLR.x - xLR.y) * (zUD.x - zUD.y)) *
+                          FABS((xLR.x - xLR.y) * (zUD.x - zUD.y)) *
                           CFLOAT((d_N.y + 1) * (d_N.z + 1));
 #endif
       apu += area2;
 #endif
       temp[0] += apu / area;
-      const float xInterval = fabs(zUD.x - zUD.y);
+      const float xInterval = FABS(zUD.x - zUD.y);
       for (int zz = 1; zz < NVOXELSFP; zz++) {
         const uint ind = i.y + zz;
         if (ind >= d_nCols)
@@ -214,12 +238,15 @@ extern "C" __global__
         D = B;
         A = C;
         zUD.y += xInterval;
-#ifdef CUDA
+#if defined(CUDA)
         B = tex3D<float>(d_IImageY, xLR.x, zUD.y, dy);
         C = tex3D<float>(d_IImageY, xLR.y, zUD.y, dy);
-#else
+#elif defined(OPENCL)
         B = read_imagef(d_IImageY, sampler2, (float4)(xLR.x, zUD.y, dy, 0.f)).w;
         C = read_imagef(d_IImageY, sampler2, (float4)(xLR.y, zUD.y, dy, 0.f)).w;
+#elif defined(METAL)
+        B = d_IImageY.sample(sampler2, (float3)(xLR.x, zUD.y, dy)).r;
+        C = d_IImageY.sample(sampler2, (float3)(xLR.y, zUD.y, dy)).r;
 #endif
         apu = C + D - A - B;
 #ifdef MEANDISTANCEFP
@@ -253,16 +280,16 @@ extern "C" __global__
         zUD.x = zUD.y;
         zUD.y = apu;
       }
-      const float area = fabs((yLR.x - yLR.y) * (zUD.x - zUD.y));
+      const float area = FABS((yLR.x - yLR.y) * (zUD.x - zUD.y));
       yLR *= d_scale.y;
       dx *= d_Size.x;
       zUD *= d_scale.z;
-#ifdef CUDA
+#if defined(CUDA)
       float A = tex3D<float>(d_IImageX, yLR.y, zUD.x, dx);
       float B = tex3D<float>(d_IImageX, yLR.x, zUD.y, dx);
       float C = tex3D<float>(d_IImageX, yLR.y, zUD.y, dx);
       float D = tex3D<float>(d_IImageX, yLR.x, zUD.x, dx);
-#else
+#elif defined(OPENCL)
       float A =
           read_imagef(d_IImageX, sampler2, (float4)(yLR.y, zUD.x, dx, 0.f)).w;
       float B =
@@ -271,6 +298,11 @@ extern "C" __global__
           read_imagef(d_IImageX, sampler2, (float4)(yLR.y, zUD.y, dx, 0.f)).w;
       float D =
           read_imagef(d_IImageX, sampler2, (float4)(yLR.x, zUD.x, dx, 0.f)).w;
+#elif defined(METAL)
+      float A = d_IImageX.sample(sampler2, (float3)(yLR.y, zUD.x, dx)).r;
+      float B = d_IImageX.sample(sampler2, (float3)(yLR.x, zUD.y, dx)).r;
+      float C = d_IImageX.sample(sampler2, (float3)(yLR.y, zUD.y, dx)).r;
+      float D = d_IImageX.sample(sampler2, (float3)(yLR.x, zUD.x, dx)).r;
 #endif
       float apu = C + D - A - B;
 #ifdef MEANDISTANCEFP
@@ -280,13 +312,13 @@ extern "C" __global__
           CFLOAT(get_image_width(d_IImageX) * get_image_height(d_IImageX));
 #else
       const float area2 = d_meanV[ii] *
-                          fabs((yLR.x - yLR.y) * (zUD.x - zUD.y)) *
+                          FABS((yLR.x - yLR.y) * (zUD.x - zUD.y)) *
                           CFLOAT((d_N.x + 1) * (d_N.z + 1));
 #endif
       apu += (area2);
 #endif
       temp[0] += apu / area;
-      const float yInterval = fabs(zUD.x - zUD.y);
+      const float yInterval = FABS(zUD.x - zUD.y);
       for (int zz = 1; zz < NVOXELSFP; zz++) {
         const uint ind = i.y + zz;
         if (ind >= d_nCols)
@@ -294,12 +326,15 @@ extern "C" __global__
         D = B;
         A = C;
         zUD.y += yInterval;
-#ifdef CUDA
+#if defined(CUDA)
         B = tex3D<float>(d_IImageX, yLR.x, zUD.y, dx);
         C = tex3D<float>(d_IImageX, yLR.y, zUD.y, dx);
-#else
+#elif defined(OPENCL)
         B = read_imagef(d_IImageX, sampler2, (float4)(yLR.x, zUD.y, dx, 0.f)).w;
         C = read_imagef(d_IImageX, sampler2, (float4)(yLR.y, zUD.y, dx, 0.f)).w;
+#elif defined(METAL)
+        B = d_IImageX.sample(sampler2, (float3)(yLR.x, zUD.y, dx)).r;
+        C = d_IImageX.sample(sampler2, (float3)(yLR.y, zUD.y, dx)).r;
 #endif
         apu = C + D - A - B;
 #ifdef MEANDISTANCEFP

@@ -44,7 +44,10 @@ if ismac && (options.use_32bit_atomics || options.use_64bit_atomics)
     options.use_64bit_atomics = false;
 end
 if ismac && options.useImages
-    error('MacOS implementation does not support textures (yet).')
+    warning('MacOS implementation does not support textures (yet).')
+end
+if options.partitions > 1 && options.implementation ~= 2 && false % TODO dynamic reconstruction for implementation 5 (macOS)
+    error('Dynamic reconstruction is supported only with implementation 2.')
 end
 if options.SPECT && mod(sqrt(options.nRays), 1) ~= 0
     error('With SPECT, options.nRays has to be a square')

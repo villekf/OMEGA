@@ -8,6 +8,11 @@
 #include "PreprocessorUtils.cpp"
 #include <simd/simd.h>
 
+// Macro definitions
+#define SET_KERNEL_ARG_BYTES(kernel, bytes, size, index) kernel->setBytes((const void*)&bytes, (NS::UInteger)size, index)
+#define SET_KERNEL_ARG_BUFFER(kernel, buf, offset, index) kernel->setBuffer(buf.get(), (NS::UInteger)offset, index)
+#define SET_KERNEL_ARG_TEXTURE(kernel, tex, index) kernel->setTexture(tex, index) 
+
 class ProjectorClass {
 	// Local size
 	size_t local_size[3];
@@ -45,7 +50,10 @@ public:
 	std::vector<simd::float3> b, d, bmax;
 	std::vector<simd::uint3> d_N;
 
-	std::vector<NS::SharedPtr<MTL::Buffer>> d_maskFP;
+	// Scalar kernel params
+    ScalarKernelParams kParams;
+
+	std::vector<NS::SharedPtr<MTL::Buffer>> d_maskFPB;
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_LFull, d_zindexFull, d_xyindexFull, d_normFull, d_scatFull, d_xFull, d_zFull;
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_L;
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_Summ;
@@ -55,16 +63,18 @@ public:
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_imFinal;
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_zindex;
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_xyindex;
-	std::vector<NS::SharedPtr<MTL::Buffer>> d_trIndex;
-	std::vector<NS::SharedPtr<MTL::Buffer>> d_axIndex;
-	std::vector<NS::SharedPtr<MTL::Buffer>> d_TOFIndex;
+	std::vector<std::vector<NS::SharedPtr<MTL::Buffer>>> d_trIndex;
+	std::vector<std::vector<NS::SharedPtr<MTL::Buffer>>> d_axIndex;
+	std::vector<std::vector<NS::SharedPtr<MTL::Buffer>>> d_TOFIndex;
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_norm;
-	std::vector<NS::SharedPtr<MTL::Buffer>> d_scat;
-	std::vector<NS::SharedPtr<MTL::Buffer>> d_x;
-	std::vector<NS::SharedPtr<MTL::Buffer>> d_z;
+	std::vector<std::vector<NS::SharedPtr<MTL::Buffer>>> d_scat;
+	std::vector<std::vector<NS::SharedPtr<MTL::Buffer>>> d_x;
+	std::vector<std::vector<NS::SharedPtr<MTL::Buffer>>> d_z;
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_atten;
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_T;
-	NS::SharedPtr<MTL::Buffer> d_rayShiftsSource, d_rayShiftsDetector, d_attenB, d_maskBP;
+	std::vector<NS::SharedPtr<MTL::Buffer>> d_attenB;
+    NS::SharedPtr<MTL::Buffer> d_maskPriorB, d_uref;
+	NS::SharedPtr<MTL::Buffer> d_rayShiftsSource, d_rayShiftsDetector, d_maskBPB;
 
 	// Image origin
 	MTL::Origin origin = MTL::Origin(0, 0, 0);
@@ -150,6 +160,7 @@ public:
 		const scalarStruct& inputScalars, // various scalar parameters defining the build parameters and what features to use
 		Weighting& w_vec, // specifies some of the special options/parameters used
 		const uint32_t osa_iter, // current subset (sub-iteration)
+        const uint32_t timestep,
 		const std::vector<int64_t>& length, // the number of measurements/projection/sinograms per subset
 		const uint64_t m_size, // for projector types 1-3, the total number of LORs
 		const int32_t ii = 0,
@@ -161,6 +172,7 @@ public:
 		const scalarStruct& inputScalars, // various scalar parameters defining the build parameters and what features to use
 		Weighting& w_vec, // specifies some of the special options/parameters used
 		const uint32_t osa_iter, // current subset (sub-iteration)
+        const uint32_t timestep,
 		const std::vector<int64_t>& length, // the number of measurements/projection/sinograms per subset
 		const uint64_t m_size, // for projector types 1-3, the total number of LORs
 		const bool compSens = false, // if true, computes the sensitivity image as well
