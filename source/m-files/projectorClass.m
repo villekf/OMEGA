@@ -592,7 +592,6 @@ classdef projectorClass
                 obj.param.loadTOF = false;
             end
             [obj.index, obj.nMeas, obj.param.subsets] = index_maker(obj.param);
-
             obj.param = setUpCorrections(obj.param);
 
             % Coordinates of the detectors
@@ -948,7 +947,7 @@ classdef projectorClass
                 disp('Computing forward projection')
             end
             obj.param.currentSubset = obj.subset - 1;
-            obj.param.currentTimestep = 0; %obj.timestep - 1; % TODO
+            obj.param.currentTimestep = obj.timestep - 1;
             if obj.param.projector_type == 6
                 obj.param.uu = obj.param.uu + obj.nMeas(obj.subset);
             end
@@ -1037,7 +1036,7 @@ classdef projectorClass
                 noSensIm = false;
             end
             obj.param.currentSubset = obj.subset - 1;
-            obj.param.currentTimestep = 0; %obj.timestep - 1; % TODO
+            obj.param.currentTimestep = obj.timestep - 1;
             if obj.param.projector_type == 6
                 obj.param.ub = obj.param.ub + obj.nMeas(obj.subset);
             end
