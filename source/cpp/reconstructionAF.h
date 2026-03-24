@@ -223,9 +223,9 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
     w_vec.thetaLSQR.resize(inputScalars.Nt);
     w_vec.rhoLSQR.resize(inputScalars.Nt);
     w_vec.phiLSQR.resize(inputScalars.Nt);
-    w_vec.betaFISTA = std::vector(inputScalars.Nt, 1.f);
-    w_vec.tFISTA = std::vector(inputScalars.Nt, 1.f);
-    w_vec.tNFista = std::vector(inputScalars.Nt, 1.f);
+    w_vec.betaFISTA = std::vector<float>(inputScalars.Nt, 1.f);
+    w_vec.tFISTA = std::vector<float>(inputScalars.Nt, 1.f);
+    w_vec.tNFista = std::vector<float>(inputScalars.Nt, 1.f);
     w_vec.alphaBB.resize(inputScalars.Nt);
 	vec.rhs_os.resize(inputScalars.Nt);
     vec.im_os.resize(inputScalars.Nt);

@@ -341,7 +341,7 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Using PDHG w/ subsets");
 #ifndef CPU
-		status = PDHGUpdateAF(im, rhs, inputScalars, vec, inputScalars.epps, 1.f, w_vec.tauCP[timestep][ii], proj, ii);
+		status = PDHGUpdateAF(im, rhs, inputScalars, vec, inputScalars.epps, 1.f, w_vec.tauCP[timestep][ii], proj, timestep, ii);
 #else
 		im -= w_vec.tauCP[timestep][ii] * rhs;
 		im.eval();
@@ -353,7 +353,7 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Using PDHG W/O subsets");
 #ifndef CPU
-		status = PDHGUpdateAF(im, rhs, inputScalars, vec, inputScalars.epps, w_vec.thetaCP[timestep][kk], w_vec.tauCP[timestep][ii], proj, ii);
+		status = PDHGUpdateAF(im, rhs, inputScalars, vec, inputScalars.epps, w_vec.thetaCP[timestep][kk], w_vec.tauCP[timestep][ii], proj, timestep, ii);
 #else
 		const af::array uPrev = vec.uCP[timestep][ii].copy();
 		vec.uCP[timestep][ii] -= w_vec.tauCP[timestep][ii] * rhs;
