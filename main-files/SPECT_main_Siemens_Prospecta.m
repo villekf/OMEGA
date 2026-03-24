@@ -172,6 +172,51 @@ options.nRays = 1; % Number of rays traced per detector element
 % options.rayShiftsDetector = [];
 % options.rayShiftsSource = [];
 
+%%%%%%%%%%%%%%%%%%%% CORRECTIONS DURING RECONSTRUCTION %%%%%%%%%%%%%%%%%%%%
+% Only applicable to normalization and scatter corrections.
+% Attenuation correction is performed always during reconstruction.
+options.corrections_during_reconstruction = true;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% EXTENDED FOV %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% When true (default), probabilities are normalized by ray length. When
+% false, probabilities are normalized by ray-FOV intersection length. False
+% results in incorrect normalization when using multi-resolution volumes.
+options.useTotLength = true;
+
+%%% Use extended FOV
+% Similar to above, but expands the FOV. The benefit of expanding the FOV
+% this way is to enable to the use of multi-resolution reconstruction or
+% computation of the priors/regularization only in the original FOV. The
+% default extension is 40% per side (see below).
+options.useEFOV = true;
+
+% Use transaxial extended FOV (this is off by default)
+options.transaxialEFOV = true;
+
+% Use axial extended FOV (this is on by default. If both this and
+% transaxialEFOV are false but useEFOV is true, the axial EFOV will be
+% turned on)
+options.axialEFOV = false;
+
+% Setting this to true uses multi-resolution reconstruction when using
+% extended FOV. Only applies to extended FOV!
+options.useMultiResolutionVolumes = false;
+
+% This is the scale value for the multi-resolution volumes. The original
+% voxel size is divided by this value and then used as the voxel size for
+% the multi-resolution volumes. Default is 4 times the original voxel size.
+% This means that the multi-resolution regions have larger voxel sizes if
+% this is < 1, i.e. 1/4 = 4 times the original voxel size.
+options.multiResolutionScale = 1/4;
+
+% Performs the extrapolation and adjusts the image size accordingly
+options = CTEFOVCorrection(options);
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

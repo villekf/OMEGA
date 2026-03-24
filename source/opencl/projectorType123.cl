@@ -143,6 +143,17 @@ void projectorType123(
     const float coneOfResponseStdCoeffA,
     const float coneOfResponseStdCoeffB,
     const float coneOfResponseStdCoeffC,
+#if defined(PYTHON)
+    const float totalFOVxmin,
+    const float totalFOVymin,
+    const float totalFOVzmin,
+    const float totalFOVxmax,
+    const float totalFOVymax,
+    const float totalFOVzmax,
+#else
+    const float3 totalFOVmin,
+    const float3 totalFOVmax,
+#endif
 #endif
 #if defined(PYTHON)
 	const float crystalSizeX, 
@@ -298,6 +309,10 @@ void projectorType123(
 	const FLOAT3 d_d = make_float3(d_dx, d_dy, d_dz);
 	const FLOAT3 b = make_float3(bx, by, bz);
 	const FLOAT3 d_bmax = make_float3(d_bmaxx, d_bmaxy, d_bmaxz);
+#if defined(SPECT)
+    const FLOAT3 totalFOVmin = make_float3(totalFOVxmin, totalFOVymin, totalFOVzmin);
+    const FLOAT3 totalFOVmax = make_float3(totalFOVxmax, totalFOVymax, totalFOVzmax);
+#endif
 #endif
 #ifdef MASKFP // FP mask
     const typeT maskInd = i
@@ -387,7 +402,7 @@ void projectorType123(
 #if defined(CT) && !defined(LISTMODE) && !defined(PET) // CT data
 	getDetectorCoordinatesCT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize);
 #elif defined(SPECT) && !defined(LISTMODE) && !defined(PET) // SPECT data
-	getDetectorCoordinatesSPECT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize, d_rayShiftsDetector, d_rayShiftsSource, lorXY, idx);
+	getDetectorCoordinatesSPECT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize, d_rayShiftsDetector, d_rayShiftsSource, lorXY, idx, totalFOVmin, totalFOVmax);
 #elif defined(LISTMODE) && !defined(SENS) // Listmode data
 #if defined(INDEXBASED)
 	getDetectorCoordinatesListmode(d_xy, d_z, trIndex, axIndex, &s, &d, idx

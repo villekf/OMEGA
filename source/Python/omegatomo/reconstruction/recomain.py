@@ -346,6 +346,12 @@ def transferData(options):
     options.param.coneOfResponseStdCoeffA = ctypes.c_float(options.coneOfResponseStdCoeffA)
     options.param.coneOfResponseStdCoeffB = ctypes.c_float(options.coneOfResponseStdCoeffB)
     options.param.coneOfResponseStdCoeffC = ctypes.c_float(options.coneOfResponseStdCoeffC)
+    options.param.totalFOVxmin = ctypes.c_float(options.totalFOVxmin)
+    options.param.totalFOVymin = ctypes.c_float(options.totalFOVymin)
+    options.param.totalFOVzmin = ctypes.c_float(options.totalFOVzmin)
+    options.param.totalFOVxmax = ctypes.c_float(options.totalFOVxmax)
+    options.param.totalFOVymax = ctypes.c_float(options.totalFOVymax)
+    options.param.totalFOVzmax = ctypes.c_float(options.totalFOVzmax)
     # ...until here
     options.param.NLM_ref = options.NLM_referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.RDP_ref = options.RDP_referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))

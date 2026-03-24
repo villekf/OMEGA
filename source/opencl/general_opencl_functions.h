@@ -88,6 +88,8 @@
     FLOAT coneOfResponseStdCoeffB = scalarParams.coneOfResponseStdCoeffB; \
     FLOAT coneOfResponseStdCoeffC = scalarParams.coneOfResponseStdCoeffC; \
 	FLOAT2 crystalSize = scalarParams.dPitch; \
+    FLOAT3 totalFOVmin = scalarParams.totalFOVmin; \
+    FLOAT3 totalFOVmax = scalarParams.totalFOVmax; \
 	FLOAT bmin = scalarParams.bmin; \
 	FLOAT bmax = scalarParams.bmax; \
 	FLOAT Vmax = scalarParams.Vmax; \
@@ -1246,13 +1248,92 @@ DEVICE void getDetectorCoordinatesCT(const CLGLOBAL float* CLRESTRICT d_xyz,
 }
 
 #elif defined(SPECT)
+// Helper function to shift ray endpoints to FOV boundary.
+DEVICE void extendRayToFOV(
+    PTR_THR FLOAT3 *s, // Ray start point
+    PTR_THR FLOAT3 *d, // Ray end point
+    const FLOAT3 boxMin, // FOV boundary including all multiresolution volumes
+    const FLOAT3 boxMax // FOV boundary including all multiresolution volumes
+) {
+    const float3 p0 = *s;
+    const float3 p1 = *d;
+    const float3 dir = p1 - p0;
+
+    float tmin = -1e8f;
+    float tmax =  1e8f;
+    const float epsVal = 1.0e-8f;
+
+    if (fabs(dir.x) < epsVal) {
+        if (p0.x < boxMin.x || p0.x > boxMax.x) {
+            return;
+        }
+    } else {
+        float t1 = (boxMin.x - p0.x) / dir.x;
+        float t2 = (boxMax.x - p0.x) / dir.x;
+        float tNear = fmin(t1, t2);
+        float tFar  = fmax(t1, t2);
+        tmin = fmax(tmin, tNear);
+        tmax = fmin(tmax, tFar);
+    }
+
+    if (fabs(dir.y) < epsVal) {
+        if (p0.y < boxMin.y || p0.y > boxMax.y) {
+            return;
+        }
+    } else {
+        float t1 = (boxMin.y - p0.y) / dir.y;
+        float t2 = (boxMax.y - p0.y) / dir.y;
+        float tNear = fmin(t1, t2);
+        float tFar  = fmax(t1, t2);
+        tmin = fmax(tmin, tNear);
+        tmax = fmin(tmax, tFar);
+    }
+
+    if (fabs(dir.z) < epsVal) {
+        if (p0.z < boxMin.z || p0.z > boxMax.z) {
+            return;
+        }
+    } else {
+        float t1 = (boxMin.z - p0.z) / dir.z;
+        float t2 = (boxMax.z - p0.z) / dir.z;
+        float tNear = fmin(t1, t2);
+        float tFar  = fmax(t1, t2);
+        tmin = fmax(tmin, tNear);
+        tmax = fmin(tmax, tFar);
+    }
+
+    if (tmax < tmin)
+        return;
+
+    if (!((p0.x >= boxMin.x && p0.x <= boxMax.x) && (p0.y >= boxMin.y && p0.y <= boxMax.y) && (p0.z >= boxMin.z && p0.z <= boxMax.z)))
+        *s = p0 + tmin * dir;
+
+    *d = p0 + tmax * dir;
+    return;
+}
+
+// SPECT sinogram coordinates
 DEVICE void getDetectorCoordinatesSPECT(
 #if defined(USEGLOBAL)
-	const CLGLOBAL float *d_xyz, const CLGLOBAL float *d_uv, 
+	const CLGLOBAL float *d_xyz,
+    const CLGLOBAL float *d_uv, 
 #else
-	CONSTANT float *d_xyz, CONSTANT float *d_uv, 
+	CONSTANT float *d_xyz,
+    CONSTANT float *d_uv, 
 #endif
-    PTR_THR FLOAT3 *s, PTR_THR FLOAT3 *d, const int3 i, const uint d_size_x, const uint d_sizey, const FLOAT2 d_dPitch, const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource, int lorXY, size_t idx) {
+    PTR_THR FLOAT3 *s, // Ray start point
+    PTR_THR FLOAT3 *d, // Ray end point
+    const int3 i,
+    const uint d_size_x, // Detector element count x-direction
+    const uint d_sizey, // Detector element count y-direction
+    const FLOAT2 d_dPitch, // Detector element size [mm]
+    const CLGLOBAL float* d_rayShiftsDetector, // Ray shifts [mm]
+    const CLGLOBAL float* d_rayShiftsSource, // Ray shifts [mm]
+    int lorXY,
+    size_t idx,
+    const FLOAT3 totalFOVmin, // FOV boundary including all multiresolution volumes
+    const FLOAT3 totalFOVmax // FOV boundary including all multiresolution volumes
+) {
 	uint id = i.z * 6;
 	*s = CMFLOAT3((FLOAT)d_xyz[id], (FLOAT)d_xyz[id + 1], (FLOAT)d_xyz[id + 2]); // TODO remove cast
 	*d = CMFLOAT3((FLOAT)d_xyz[id + 3], (FLOAT)d_xyz[id + 4], (FLOAT)d_xyz[id + 5]); // TODO remove cast
@@ -1274,7 +1355,11 @@ DEVICE void getDetectorCoordinatesSPECT(
 	(*s).y += apuY * (shift_det_elem.x + d_rayShiftsSource[idShift]);
 	(*s).z += shift_det_elem.y + d_rayShiftsSource[idShift+1];
 
-    *d += 100.f * (*d - *s); // Extend rays across FOV (100 too large for fp16 type)
+#ifdef TOTLENGTH // Use full ray length for computing emission probability. Thus ray endpoints require shifting to FOV boundary. The begin point (here *s) is shifted only if outside the FOV. 
+    extendRayToFOV(s, d, totalFOVmin, totalFOVmax);
+#else // Use only ray length inside FOV for calculating the probability. In this case the ray end point can be at any sufficiently large distance (as long as it is outside of FOV).
+    *d += 100.f * (*d - *s);
+#endif
 }
 #else
 #if defined(RAW) || defined(SENS)

@@ -479,6 +479,12 @@ class projectorClass:
     coneOfResponseStdCoeffA = -1
     coneOfResponseStdCoeffB = -1
     coneOfResponseStdCoeffC = -1
+    totalFOVxmin = 0.
+    totalFOVymin = 0.
+    totalFOVzmin = 0.
+    totalFOVxmax = 0.
+    totalFOVymax = 0.
+    totalFOVzmax = 0.
     FISTAType = 0
     maskFPZ = 1
     maskBPZ = 1
@@ -548,6 +554,18 @@ class projectorClass:
                 self.angles = self.angles + self.offangle
             setCTCoordinates(self)
         if self.SPECT:
+            if self.totalFOVxmin == 0:
+                self.totalFOVxmin = -self.FOVa_x / 2
+            if self.totalFOVymin == 0:
+                self.totalFOVymin = -self.FOVa_y / 2
+            if self.totalFOVzmin == 0:
+                self.totalFOVzmin = -self.axial_fov / 2
+            if self.totalFOVxmax == 0:
+                self.totalFOVxmax = self.FOVa_x / 2
+            if self.totalFOVymax == 0:
+                self.totalFOVymax = self.FOVa_y / 2
+            if self.totalFOVzmax == 0:
+                self.totalFOVzmax = self.axial_fov / 2 
             if self.projector_type == 6 and len(self.SinM > 0):
                 endSinogramRows = self.FOVa_x / self.dPitchX; # Desired amount of sinogram rows
                 endSinogramCols = self.axial_fov / self.dPitchY; # Desired amount of sinogram columns
@@ -2144,6 +2162,12 @@ class projectorClass:
             ('coneOfResponseStdCoeffA',ctypes.c_float),
             ('coneOfResponseStdCoeffB',ctypes.c_float),
             ('coneOfResponseStdCoeffC',ctypes.c_float),
+            ('totalFOVxmin',ctypes.c_float),
+            ('totalFOVymin',ctypes.c_float),
+            ('totalFOVzmin',ctypes.c_float),
+            ('totalFOVxmax',ctypes.c_float),
+            ('totalFOVymax',ctypes.c_float),
+            ('totalFOVzmax',ctypes.c_float),
             ('NLM_ref', ctypes.POINTER(ctypes.c_float)),
             ('RDP_ref', ctypes.POINTER(ctypes.c_float)),
         ]

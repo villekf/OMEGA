@@ -506,6 +506,12 @@ struct inputStruct {
     float coneOfResponseStdCoeffA;
     float coneOfResponseStdCoeffB;
     float coneOfResponseStdCoeffC;
+    float totalFOVxmin;
+    float totalFOVymin;
+    float totalFOVzmin;
+    float totalFOVxmax;
+    float totalFOVymax;
+    float totalFOVzmax;
     // SPECT end
     // More reference images
     float* NLM_ref;
@@ -860,6 +866,12 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         inputScalars.coneOfResponseStdCoeffA = options.coneOfResponseStdCoeffA;
         inputScalars.coneOfResponseStdCoeffB = options.coneOfResponseStdCoeffB;
         inputScalars.coneOfResponseStdCoeffC = options.coneOfResponseStdCoeffC;
+        inputScalars.totalFOVxmin = options.totalFOVxmin;
+        inputScalars.totalFOVymin = options.totalFOVymin;
+        inputScalars.totalFOVzmin = options.totalFOVzmin;
+        inputScalars.totalFOVxmax = options.totalFOVxmax;
+        inputScalars.totalFOVymax = options.totalFOVymax;
+        inputScalars.totalFOVzmax = options.totalFOVzmax;
     } else {
         inputScalars.nColsD = options.Nang;
         inputScalars.nRowsD = options.Ndist;

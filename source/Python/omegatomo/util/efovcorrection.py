@@ -171,3 +171,10 @@ def CTEFOVCorrection(options, extrapLengthTransaxial = None, extrapLengthAxial =
         else:
             options.axialFOVOrig = options.axial_fov
             options.NzOrig = options.Nz
+    
+    options.totalFOVxmin = -options.FOVa_x / 2
+    options.totalFOVymin = -options.FOVa_y / 2
+    options.totalFOVzmin = -options.axial_fov / 2
+    options.totalFOVxmax = options.FOVa_x / 2
+    options.totalFOVymax = options.FOVa_y / 2
+    options.totalFOVzmax = options.axial_fov / 2

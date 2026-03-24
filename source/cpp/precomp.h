@@ -92,6 +92,7 @@ typedef struct structForScalars {
 	std::vector<uint32_t> usedDevices;
 	largeDimStruct lDimStruct;
 	float coneOfResponseStdCoeffA = 0.01f, coneOfResponseStdCoeffB = 0.01f, coneOfResponseStdCoeffC = 0.01f;
+    float totalFOVxmin = 1.f, totalFOVymin = 1.f, totalFOVzmin = 1.f, totalFOVxmax = 1.f, totalFOVymax = 1.f, totalFOVzmax = 1.f;
 } scalarStruct;
 
 #ifdef OPENCL

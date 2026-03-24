@@ -29,6 +29,8 @@ class ProjectorClass {
 	unsigned int kernelIndBPSubIter = 0;
 	// Crystal pitch
 	float2 dPitch;
+    // Total FOV boundary including multi-resolution
+    float3 totalFOVmin, totalFOVmax;
 	// Image dimensions
 	int3 d_NOrig, d_NPrior;
 	// Values to add to the global size to make it divisible by local size
@@ -205,7 +207,7 @@ class ProjectorClass {
 			if (inputScalars.maskFPZ > 1)
 				options.push_back("-DMASKFP3D");
 		}
-		if (inputScalars.useTotLength && !inputScalars.SPECT)
+		if (inputScalars.useTotLength)// && !inputScalars.SPECT)
 			options.push_back("-DTOTLENGTH");
 		if (inputScalars.maskBP) {
 			options.push_back("-DMASKBP");
@@ -1251,6 +1253,10 @@ public:
 		d_NOrig = make_vec3<int3>(static_cast<int>(inputScalars.NxOrig), static_cast<int>(inputScalars.NyOrig), static_cast<int>(inputScalars.NzOrig));
 		d_NPrior = make_vec3<int3>(static_cast<int>(inputScalars.NxPrior), static_cast<int>(inputScalars.NyPrior), static_cast<int>(inputScalars.NzPrior));
 		dPitch = { w_vec.dPitchX, w_vec.dPitchY };
+        if (inputScalars.SPECT) {
+            totalFOVmin = { inputScalars.totalFOVxmin, inputScalars.totalFOVymin, inputScalars.totalFOVzmin };
+            totalFOVmax = { inputScalars.totalFOVxmax, inputScalars.totalFOVymax, inputScalars.totalFOVzmax };
+        }
 		b.resize(inputScalars.nMultiVolumes + 1);
 		d.resize(inputScalars.nMultiVolumes + 1);
 		d_N.resize(inputScalars.nMultiVolumes + 1);
@@ -2048,6 +2054,8 @@ public:
                 FPArgs.emplace_back(&inputScalars.coneOfResponseStdCoeffA);
                 FPArgs.emplace_back(&inputScalars.coneOfResponseStdCoeffB);
                 FPArgs.emplace_back(&inputScalars.coneOfResponseStdCoeffC);
+                FPArgs.emplace_back(&totalFOVmin);
+                FPArgs.emplace_back(&totalFOVmax);
 			}
 
 			FPArgs.emplace_back(&dPitch);
@@ -2074,6 +2082,8 @@ public:
                 BPArgs.emplace_back(&inputScalars.coneOfResponseStdCoeffA);
                 BPArgs.emplace_back(&inputScalars.coneOfResponseStdCoeffB);
                 BPArgs.emplace_back(&inputScalars.coneOfResponseStdCoeffC);
+                BPArgs.emplace_back(&totalFOVmin);
+                BPArgs.emplace_back(&totalFOVmax);
 			}
 
 			BPArgs.emplace_back(&dPitch);

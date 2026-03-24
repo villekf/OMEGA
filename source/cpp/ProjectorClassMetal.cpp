@@ -622,6 +622,8 @@ int ProjectorClass::initializeKernel(
     kParams.nRowsD = inputScalars.nRowsD;
     kParams.nColsD = inputScalars.nColsD;
     kParams.dPitch = {w_vec.dPitchX, w_vec.dPitchY};
+    kParams.totalFOVmin = {inputScalars.totalFOVxmin, inputScalars.totalFOVymin, inputScalars.totalFOVzmin};
+    kParams.totalFOVmax = {inputScalars.totalFOVxmax, inputScalars.totalFOVymax, inputScalars.totalFOVzmax};
     kParams.dL = inputScalars.dL;
     kParams.global_factor = inputScalars.global_factor;
     kParams.epps = inputScalars.epps;

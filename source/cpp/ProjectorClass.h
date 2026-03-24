@@ -28,6 +28,8 @@ class ProjectorClass {
 	cl_uint kernelIndFPSubIter = 0;
 	cl_uint kernelIndBPSubIter = 0;
 	cl_uint kernelIndSens = 0;
+    // Total FOV boundary including multi-resolution
+    cl_float3 totalFOVmin, totalFOVmax;
 	// Crystal pitch
 	cl_float2 dPitch;
 	// Image dimensions
@@ -203,7 +205,7 @@ class ProjectorClass {
 			if (inputScalars.maskBPZ > 1)
 				options += " -DMASKBP3D";
 		}
-		if (inputScalars.useTotLength && !inputScalars.SPECT)
+		if (inputScalars.useTotLength)// && !inputScalars.SPECT)
 			options += " -DTOTLENGTH";
 		if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights)
 			options += " -DFDK";
@@ -1101,6 +1103,10 @@ public:
 		d_NOrig = { static_cast<cl_int>(inputScalars.NxOrig), static_cast<cl_int>(inputScalars.NyOrig), static_cast<cl_int>(inputScalars.NzOrig) };
 		d_NPrior = { static_cast<cl_int>(inputScalars.NxPrior), static_cast<cl_int>(inputScalars.NyPrior), static_cast<cl_int>(inputScalars.NzPrior) };
 		dPitch = { w_vec.dPitchX, w_vec.dPitchY };
+        if (inputScalars.SPECT) {
+            totalFOVmin = { inputScalars.totalFOVxmin, inputScalars.totalFOVymin, inputScalars.totalFOVzmin };
+            totalFOVmax = { inputScalars.totalFOVxmax, inputScalars.totalFOVymax, inputScalars.totalFOVzmax };
+        }
 		b.resize(inputScalars.nMultiVolumes + 1);
 		d.resize(inputScalars.nMultiVolumes + 1);
 		d_N.resize(inputScalars.nMultiVolumes + 1);
@@ -1761,6 +1767,8 @@ public:
                 getErrorString(kernelFP.setArg(kernelIndFP++, inputScalars.coneOfResponseStdCoeffA));
                 getErrorString(kernelFP.setArg(kernelIndFP++, inputScalars.coneOfResponseStdCoeffB));
                 getErrorString(kernelFP.setArg(kernelIndFP++, inputScalars.coneOfResponseStdCoeffC));
+                getErrorString(kernelFP.setArg(kernelIndFP++, totalFOVmin));
+                getErrorString(kernelFP.setArg(kernelIndFP++, totalFOVmax));
 			}
 
 			getErrorString(kernelFP.setArg(kernelIndFP++, dPitch));
@@ -1790,6 +1798,8 @@ public:
                 getErrorString(kernelBP.setArg(kernelIndBP++, inputScalars.coneOfResponseStdCoeffA));
                 getErrorString(kernelBP.setArg(kernelIndBP++, inputScalars.coneOfResponseStdCoeffB));
                 getErrorString(kernelBP.setArg(kernelIndBP++, inputScalars.coneOfResponseStdCoeffC));
+                getErrorString(kernelBP.setArg(kernelIndBP++, totalFOVmin));
+                getErrorString(kernelBP.setArg(kernelIndBP++, totalFOVmax));
 			}
 			getErrorString(kernelBP.setArg(kernelIndBP++, dPitch));
 			if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {

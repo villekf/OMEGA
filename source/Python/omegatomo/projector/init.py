@@ -229,7 +229,7 @@ def initProjector(self):
             bOpt += ('-DMASKBP',)
             if self.maskBPZ > 1:
                 bOpt += ('-DMASKBP3D',)
-        if self.useTotLength and not self.SPECT:
+        if self.useTotLength:# and not self.SPECT:
             bOpt += ('-DTOTLENGTH',)
         if self.OffsetLimit.size > 0:
             bOpt += ('-DOFFSET',)
@@ -536,7 +536,7 @@ def initProjector(self):
                 if self.FPType in [1, 2, 3]:
                     self.kIndF = (cp.float32(self.global_factor), cp.float32(self.epps), cp.uint32(self.nRowsD), cp.uint32(self.det_per_ring), cp.float32(self.sigma_x),)
                     if self.SPECT:
-                        self.kIndF += (self.d_rayShiftsDetector, self.d_rayShiftsSource, cp.float32(self.coneOfResponseStdCoeffA), cp.float32(self.coneOfResponseStdCoeffB), cp.float32(self.coneOfResponseStdCoeffC),)
+                        self.kIndF += (self.d_rayShiftsDetector, self.d_rayShiftsSource, cp.float32(self.coneOfResponseStdCoeffA), cp.float32(self.coneOfResponseStdCoeffB), cp.float32(self.coneOfResponseStdCoeffC), cp.float32(self.totalFOVxmin), cp.float32(self.totalFOVymin), cp.float32(self.totalFOVzmin), cp.float32(self.totalFOVxmax), cp.float32(self.totalFOVymax), cp.float32(self.totalFOVzmax),)
                     self.kIndF += (cp.float32(self.dPitchX),cp.float32(self.dPitchY),)
                 elif self.FPType == 4:
                     self.kIndF = (cp.uint32(self.nRowsD), cp.uint32(self.nColsD), cp.float32(self.dPitchX),cp.float32(self.dPitchY),cp.float32(self.dL),cp.float32(self.global_factor),)
@@ -571,7 +571,7 @@ def initProjector(self):
                 if self.BPType in [1, 2, 3]:
                     self.kIndB = (cp.float32(self.global_factor), cp.float32(self.epps), cp.uint32(self.nRowsD), cp.uint32(self.det_per_ring), cp.float32(self.sigma_x),)
                     if self.SPECT:
-                        self.kIndB += (self.d_rayShiftsDetector, self.d_rayShiftsSource, cp.float32(self.coneOfResponseStdCoeffA), cp.float32(self.coneOfResponseStdCoeffB), cp.float32(self.coneOfResponseStdCoeffC),)
+                        self.kIndB += (self.d_rayShiftsDetector, self.d_rayShiftsSource, cp.float32(self.coneOfResponseStdCoeffA), cp.float32(self.coneOfResponseStdCoeffB), cp.float32(self.coneOfResponseStdCoeffC), cp.float32(self.totalFOVxmin), cp.float32(self.totalFOVymin), cp.float32(self.totalFOVzmin), cp.float32(self.totalFOVxmax), cp.float32(self.totalFOVymax), cp.float32(self.totalFOVzmax),)
                     self.kIndB += (cp.float32(self.dPitchX),cp.float32(self.dPitchY),)
                     if self.BPType in [2, 3]:
                         if self.BPType == 2:
@@ -802,6 +802,18 @@ def initProjector(self):
                     self.kIndF += 1
                     self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.coneOfResponseStdCoeffC))
                     self.kIndF += 1
+                    self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.totalFOVxmin))
+                    self.kIndF += 1
+                    self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.totalFOVymin))
+                    self.kIndF += 1
+                    self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.totalFOVzmin))
+                    self.kIndF += 1
+                    self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.totalFOVxmax))
+                    self.kIndF += 1
+                    self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.totalFOVymax))
+                    self.kIndF += 1
+                    self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.totalFOVzmax))
+                    self.kIndF += 1
                 self.knlF.set_arg(self.kIndF, self.d_dPitch)
                 self.kIndF += 1
                 if self.FPType in [2, 3]:
@@ -877,6 +889,18 @@ def initProjector(self):
                     self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.coneOfResponseStdCoeffB))
                     self.kIndB += 1
                     self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.coneOfResponseStdCoeffC))
+                    self.kIndB += 1
+                    self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.totalFOVxmin))
+                    self.kIndB += 1
+                    self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.totalFOVymin))
+                    self.kIndB += 1
+                    self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.totalFOVzmin))
+                    self.kIndB += 1
+                    self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.totalFOVxmax))
+                    self.kIndB += 1
+                    self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.totalFOVymax))
+                    self.kIndB += 1
+                    self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.totalFOVzmax))
                     self.kIndB += 1
                 self.knlB.set_arg(self.kIndB, self.d_dPitch)
                 self.kIndB += 1
