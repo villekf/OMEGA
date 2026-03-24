@@ -888,11 +888,6 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     // Load the necessary variables if the corresponding reconstruction method is used
     int yy = 0;
 
-    if (MethodList.DRAMA) {
-        // Relaxation parameter
-        w_vec.lambda = options.lam_drama;
-    }
-
     // Load regularization parameter
     w_vec.beta = options.beta;
     w_vec.betaReg = w_vec.beta;
@@ -1203,26 +1198,8 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     }
 #endif
     if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS) {
-        // Relaxation parameter
-        w_vec.lambda = options.lambdaN;
         // Upper bound
         w_vec.U = options.U;
-    }
-    // Relaxation parameters
-    if (MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.SART || MethodList.POCS || MethodList.SAGA)
-        w_vec.lambda = options.lambdaN;
-    if (MethodList.PKMA) {
-        w_vec.alphaM = options.alpha_PKMA;
-        w_vec.lambda = options.lambdaN;
-        if (DEBUG) {
-            for (int uu = 0; uu < inputScalars.Niter; uu++)
-                mexPrintBase("w_vec.alphaM[uu] = %f\n", w_vec.alphaM[uu]);
-            mexEval();
-        }
-    }
-    if ((w_vec.precondTypeIm[5] || w_vec.precondTypeMeas[1]) && (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA)) {
-        w_vec.lambdaFiltered = w_vec.lambda;
-        w_vec.lambda = options.lambdaFiltered;
     }
     if (DEBUG && (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA)) {
         mexPrintBase("w_vec.lambda[0] = %f\n", w_vec.lambda[0]);
@@ -1275,29 +1252,74 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
             mexPrint("PIter loaded");
         }
     }
-    if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1 || MethodList.ProxTGV || MethodList.ProxTV) {
-        w_vec.sigmaCP = options.sigmaCP;
-        if (w_vec.precondTypeMeas[1]) {
-            w_vec.tauCP = options.tauCPFilt;
-            w_vec.tauCP2 = options.tauCP;
+
+    w_vec.tauCP.resize(inputScalars.Nt);
+    w_vec.tauCP2.resize(inputScalars.Nt);
+    w_vec.LCP.resize(inputScalars.Nt);
+    w_vec.LCP2.resize(inputScalars.Nt);
+    w_vec.alphaCP.resize(inputScalars.Nt);
+    w_vec.sigmaCP.resize(inputScalars.Nt);
+    w_vec.sigma2CP.resize(inputScalars.Nt);
+    w_vec.thetaCP.resize(inputScalars.Nt);
+    w_vec.lambda.resize(inputScalars.Nt);
+    w_vec.lambdaFiltered.resize(inputScalars.Nt);
+    w_vec.alphaM.resize(inputScalars.Nt);
+    
+    for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) { // Currently same values are used for each timestep
+        w_vec.tauCP[timestep].resize(inputScalars.nMultiVolumes + 1);
+        w_vec.tauCP2[timestep].resize(inputScalars.nMultiVolumes + 1);
+        w_vec.sigmaCP[timestep].resize(inputScalars.nMultiVolumes + 1);
+        w_vec.sigma2CP[timestep].resize(inputScalars.nMultiVolumes + 1);
+        w_vec.thetaCP[timestep].resize(inputScalars.subsets * inputScalars.Niter);
+        w_vec.lambda[timestep].resize(inputScalars.Niter);
+        w_vec.lambdaFiltered[timestep].resize(inputScalars.Niter);
+        w_vec.alphaM[timestep].resize(inputScalars.subsets * inputScalars.Niter);
+
+        if (MethodList.DRAMA) {
+            w_vec.lambda[timestep].assign(options.lam_drama, options.lam_drama + w_vec.lambda[timestep].size());
         }
-        else
-            w_vec.tauCP = options.tauCP;
-        w_vec.sigma2CP = options.sigma2CP;
+
+        if (MethodList.PKMA || MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.SART || MethodList.POCS || MethodList.SAGA) {
+            w_vec.lambda[timestep].assign(options.lambdaN, options.lambdaN + w_vec.lambda[timestep].size());
+        }
+
+        if ((w_vec.precondTypeIm[5] || w_vec.precondTypeMeas[1]) && (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA)) {
+            w_vec.lambdaFiltered[timestep] = w_vec.lambda[timestep];
+            w_vec.lambda[timestep].assign(options.lambdaFiltered, options.lambdaFiltered + w_vec.lambda[timestep].size());
+        }
+
+        if (MethodList.PKMA) {
+            w_vec.alphaM[timestep].assign(options.alpha_PKMA, options.alpha_PKMA + w_vec.alphaM[timestep].size());
+        }
+
+        if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1 || MethodList.ProxTGV || MethodList.ProxTV) {
+            if (inputScalars.adaptiveType >= 1) {
+                for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+                    if (inputScalars.adaptiveType == 1)
+                        w_vec.alphaCP[timestep].emplace_back(1.f);
+                    else if (inputScalars.adaptiveType == 2)
+                        w_vec.alphaCP[timestep].emplace_back(.95f);
+                }
+            }
+
+            w_vec.sigmaCP[timestep].assign(options.sigmaCP, options.sigmaCP + w_vec.sigmaCP[timestep].size());
+            w_vec.sigma2CP[timestep].assign(options.sigma2CP, options.sigma2CP + w_vec.sigma2CP[timestep].size());
+            if (w_vec.precondTypeMeas[1]) {
+                w_vec.tauCP[timestep].assign(options.tauCPFilt, options.tauCPFilt + w_vec.tauCP[timestep].size());
+                w_vec.tauCP2[timestep].assign(options.tauCP, options.tauCP + w_vec.tauCP[timestep].size());
+            } else {
+                w_vec.tauCP[timestep].assign(options.tauCP, options.tauCP + w_vec.tauCP[timestep].size());
+            }
+            w_vec.thetaCP[timestep].assign(options.thetaCP, options.thetaCP + w_vec.thetaCP[timestep].size());
+        }
+    }
+
+    if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1 || MethodList.ProxTGV || MethodList.ProxTV) {
         w_vec.betaReg = options.beta;
-        w_vec.thetaCP = options.thetaCP;
         w_vec.alpha0CPTGV = options.alpha0TGV;
         w_vec.alpha1CPTGV = options.alpha1TGV;
         w_vec.UseL2Ball = options.useL2Ball;
         inputScalars.FISTAType = options.FISTAType;
-        if (inputScalars.adaptiveType >= 1) {
-            for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-                if (inputScalars.adaptiveType == 1)
-                    w_vec.alphaCP.emplace_back(1.f);
-                else if (inputScalars.adaptiveType == 2)
-                    w_vec.alphaCP.emplace_back(.95f);
-            }
-        }
         if (DEBUG) {
             mexPrint("CPType loaded");
             mexPrintBase("w_vec.sigma2CP = %d\n", w_vec.sigma2CP[0]);
@@ -1363,7 +1385,7 @@ void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, float* out
                 }
                 else {
                     if (MethodList.FDK)
-                        vec.rhs_os[ii].host(&output[oo]);
+                        vec.rhs_os[timestep][ii].host(&output[oo]);
                     else
                         vec.im_os[timestep][ii].host(&output[oo]);
                     if (inputScalars.verbose >= 3)
@@ -1379,7 +1401,7 @@ void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, float* out
                 if (MethodList.FDK && inputScalars.largeDim) {
                 }
                 else if (MethodList.FDK && !inputScalars.largeDim) {
-                    vec.rhs_os[0].host(&output[oo]);
+                    vec.rhs_os[timestep][0].host(&output[oo]);
                 }
                 else
                     vec.im_os[timestep][0].host(&output[oo]);

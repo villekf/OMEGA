@@ -2335,7 +2335,8 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 	af::array meanBP;
 	uint64_t m_size = length[0];
 	if (inputScalars.verbose > 0) {
-		mexPrintf("Starting power method for timestep %u\n", timestep);
+		mexPrintBase("Starting power method for timestep %u\n", timestep);
+        mexEval();
 	}
 	if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 		m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[0];

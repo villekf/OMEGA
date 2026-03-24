@@ -2200,7 +2200,7 @@ public:
 	/// <param name="length the number of measurements/projection/sinograms per subset"></param>
 	/// <param name="m_size for projector types 1-3, the total number of LORs"></param>
 	/// <returns></returns>
-	inline int forwardProjection(scalarStruct& inputScalars, Weighting& w_vec, uint32_t osa_iter, uint32_T timestep, const std::vector<int64_t>& length, uint64_t m_size, int ii = 0, const int uu = 0) {
+	inline int forwardProjection(scalarStruct& inputScalars, Weighting& w_vec, uint32_t osa_iter, uint32_t timestep, const std::vector<int64_t>& length, uint64_t m_size, int ii = 0, const int uu = 0) {
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrintVar("Starting forward projection for projector type = ", inputScalars.FPType);
 		CUresult status = CUDA_SUCCESS;

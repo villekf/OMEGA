@@ -444,8 +444,10 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 	if (!inputScalars.largeDim) {
         for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
             int status = 0;
-            if (inputScalars.verbose >= 3 || DEBUG)
-                mexPrintf("Loading measurement/randoms/scatter data for timestep %u\n", timestep);
+            if (inputScalars.verbose >= 3 || DEBUG) {
+                mexPrintBase("Loading measurement/randoms/scatter data for timestep %u\n", timestep);
+                mexEval();
+            }
             for (int kk = inputScalars.osa_iter0; kk < inputScalars.TOFsubsets; kk++) {
                 if ((inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8 && inputScalars.subsetType > 0) || inputScalars.listmode > 0) {
                     if (inputScalars.TOF && inputScalars.listmode == 0) {
