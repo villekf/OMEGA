@@ -2129,18 +2129,18 @@ public:
 
 		status = CLCommandQueue[0].finish();
 		OCL_CHECK(status, "\n", -1);
-		//if (inputScalars.FPType == 4) {
-        if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-            status = kernelFP.setArg(kernelIndFPSubIter++, d_atten[osa_iter]);
-            OCL_CHECK(status, "\n", -1);
-        } else if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
-            if (inputScalars.useBuffers)
-                status = kernelFP.setArg(kernelIndFPSubIter++, d_attenB[timestep]);
-            else
-                status = kernelFP.setArg(kernelIndFPSubIter++, d_attenIm[timestep]);
-            OCL_CHECK(status, "\n", -1);
-        }
-		//}
+		if (!inputScalars.CT && (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.FPType == 4)) {
+            if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
+                status = kernelFP.setArg(kernelIndFPSubIter++, d_atten[osa_iter]);
+                OCL_CHECK(status, "\n", -1);
+            } else if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+                if (inputScalars.useBuffers)
+                    status = kernelFP.setArg(kernelIndFPSubIter++, d_attenB[timestep]);
+                else
+                    status = kernelFP.setArg(kernelIndFPSubIter++, d_attenIm[timestep]);
+                OCL_CHECK(status, "\n", -1);
+            }
+		}
 		if (inputScalars.FPType == 5 || inputScalars.FPType == 4) {
 			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_N[ii]));
 			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, b[ii]));
@@ -2387,6 +2387,19 @@ public:
 			tStart = std::chrono::steady_clock::now();
 		}
 
+        if (!inputScalars.CT && (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.BPType == 4)) {
+            if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
+                status = kernelBP.setArg(kernelIndBPSubIter++, d_atten[osa_iter]);
+                OCL_CHECK(status, "\n", -1);
+            } else if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+                if (inputScalars.useBuffers)
+                    status = kernelBP.setArg(kernelIndBPSubIter++, d_attenB[timestep]);
+                else
+                    status = kernelBP.setArg(kernelIndBPSubIter++, d_attenIm[timestep]);
+                OCL_CHECK(status, "\n", -1);
+            }
+		}
+
 		if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 			if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 				global = { inputScalars.nRowsD + erotus[0], inputScalars.nColsD + erotus[1], static_cast<size_t>(length[osa_iter]) };
@@ -2438,16 +2451,6 @@ public:
 			}
 
 			// Set kernelBP arguments
-            if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-                status = kernelBP.setArg(kernelIndBPSubIter++, d_atten[osa_iter]);
-                OCL_CHECK(status, "\n", -1);
-            } else if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
-                if (inputScalars.useBuffers)
-                    status = kernelBP.setArg(kernelIndBPSubIter++, d_attenB[timestep]);
-                else
-                    status = kernelBP.setArg(kernelIndBPSubIter++, d_attenIm[timestep]);
-                OCL_CHECK(status, "\n", -1);
-            }
 			if (inputScalars.maskFP || inputScalars.maskBP) {
 				if (inputScalars.maskFP) {
 					if (inputScalars.useBuffers) {

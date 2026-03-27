@@ -2529,6 +2529,17 @@ public:
 			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
 		}
 
+        if (!inputScalars.CT && (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.BPType == 4)) {
+            if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
+                kTemp.emplace_back(&d_atten[osa_iter]);
+            } else if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+                if (inputScalars.useBuffers)
+                    kTemp.emplace_back(&d_attenB[timestep]);
+                else
+                    kTemp.emplace_back(&d_attenIm[timestep]);
+            }
+        }
+        
 		if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 			if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
 				global[0] = (inputScalars.nRowsD + erotus[0]) / local[0];
@@ -2577,14 +2588,6 @@ public:
 			}
 
 			// Set kernelBP arguments
-			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-				kTemp.emplace_back(&d_atten[osa_iter]);
-            } else if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
-                if (inputScalars.useBuffers)
-                    kTemp.emplace_back(&d_attenB[timestep]);
-                else
-                    kTemp.emplace_back(&d_attenIm[timestep]);
-            }
 			if (inputScalars.maskFP || inputScalars.maskBP) {
 				if (inputScalars.maskFP) {
 					if (inputScalars.useBuffers) {
