@@ -193,7 +193,7 @@ options.useTotLength = true;
 % this way is to enable to the use of multi-resolution reconstruction or
 % computation of the priors/regularization only in the original FOV. The
 % default extension is 40% per side (see below).
-options.useEFOV = true;
+options.useEFOV = false;
 
 % Use transaxial extended FOV (this is off by default)
 options.transaxialEFOV = true;

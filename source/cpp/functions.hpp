@@ -2583,7 +2583,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					if (status != 0)
 						return -1;
 					if (ii == 0) {
-						status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][ii], vec.im_os[timestep][ii], proj, kk, ii);
+						status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][ii], vec.im_os[timestep][ii], proj, timestep, kk, ii);
 						if (status != 0)
 							return -1;
 					}

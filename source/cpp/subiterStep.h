@@ -73,9 +73,11 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
         }
     }
     
-    if (!MethodList.BSREM && !MethodList.ROSEMMAP && !MethodList.POCS && !MethodList.SART && kk == 0) {
-        status = applyTemporalPrior(vec, w_vec, MethodList, inputScalars, proj);
-        if (status != 0) return -1;
+    if (MethodList.TemporalSmoothness || MethodList.TemporalTV) {
+        if (!MethodList.BSREM && !MethodList.ROSEMMAP && !MethodList.POCS && !MethodList.SART && kk == 0) {
+            status = applyTemporalPrior(vec, w_vec, MethodList, inputScalars, proj);
+            if (status != 0) return -1;
+        }
     }
     
     for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {

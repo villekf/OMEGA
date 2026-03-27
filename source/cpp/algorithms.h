@@ -287,12 +287,13 @@ inline int SART(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 				af::eval(vec.dU[timestep]);
 				vec.im_os[timestep][ii] -= dp * w_vec.beta * vec.dU[timestep];
 
-                // Temporal prior
-                status = applyTemporalPrior(vec, w_vec, MethodList, inputScalars, proj);
-				if (status != 0) return status;
-                vec.dUt[timestep] /= (af::norm(vec.dUt[timestep]) + inputScalars.epps);
-				af::eval(vec.dUt[timestep]);
-				vec.im_os[timestep][ii] -= dp * w_vec.beta_temporal * vec.dUt[timestep];
+                if (MethodList.TemporalSmoothness || MethodList.TemporalTV) { // Temporal prior
+                    status = applyTemporalPrior(vec, w_vec, MethodList, inputScalars, proj);
+                    if (status != 0) return status;
+                    vec.dUt[timestep] /= (af::norm(vec.dUt[timestep]) + inputScalars.epps);
+                    af::eval(vec.dUt[timestep]);
+                    vec.im_os[timestep][ii] -= dp * w_vec.beta_temporal * vec.dUt[timestep];
+                }
 
 				af::eval(vec.im_os[timestep][ii]);
 			}

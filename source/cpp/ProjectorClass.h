@@ -1891,23 +1891,26 @@ public:
 	template <typename T>
 	inline int loadCoord(uint32_t currentSubset, scalarStruct& inputScalars, const int64_t length, const T* listCoord, const T* listCoordAx = nullptr, const uint8_t* TOFIndices = nullptr) {
 		cl_int status = CL_SUCCESS;
-        if (inputScalars.listmode > 0){
-            if (inputScalars.indexBased) {
-                d_trIndex[0][0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length * 2, NULL, &status);
-                OCL_CHECK(status, "\n", -1);
-                d_axIndex[0][0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length * 2, NULL, &status);
-                OCL_CHECK(status, "\n", -1);
-                status = CLCommandQueue[0].enqueueWriteBuffer(d_trIndex[0][0], CL_FALSE, 0, sizeof(uint16_t) * length * 2, listCoord);
-                OCL_CHECK(status, "\n", -1);
-                status = CLCommandQueue[0].enqueueWriteBuffer(d_axIndex[0][0], CL_FALSE, 0, sizeof(uint16_t) * length * 2, listCoordAx);
-                OCL_CHECK(status, "\n", -1);
-            }
-            if (inputScalars.TOF) {
-                d_TOFIndex[0][0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * length, NULL, &status);
-                OCL_CHECK(status, "\n", -1);
-                status = CLCommandQueue[0].enqueueWriteBuffer(d_TOFIndex[0][0], CL_FALSE, 0, sizeof(uint8_t) * length, TOFIndices);
-                OCL_CHECK(status, "\n", -1);
-            }
+        if (inputScalars.indexBased) {
+            d_trIndex[0][0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length * 2, NULL, &status);
+            OCL_CHECK(status, "\n", -1);
+            d_axIndex[0][0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length * 2, NULL, &status);
+            OCL_CHECK(status, "\n", -1);
+            status = CLCommandQueue[0].enqueueWriteBuffer(d_trIndex[0][0], CL_FALSE, 0, sizeof(uint16_t) * length * 2, listCoord);
+            OCL_CHECK(status, "\n", -1);
+            status = CLCommandQueue[0].enqueueWriteBuffer(d_axIndex[0][0], CL_FALSE, 0, sizeof(uint16_t) * length * 2, listCoordAx);
+            OCL_CHECK(status, "\n", -1);
+        } else {
+            d_x[0][0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length * 6, NULL, &status);
+			OCL_CHECK(status, "\n", -1);
+			status = CLCommandQueue[0].enqueueWriteBuffer(d_x[0][0], CL_FALSE, 0, sizeof(float) * length * 6, listCoord);
+			OCL_CHECK(status, "\n", -1);
+        }
+        if (inputScalars.TOF) {
+            d_TOFIndex[0][0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * length, NULL, &status);
+            OCL_CHECK(status, "\n", -1);
+            status = CLCommandQueue[0].enqueueWriteBuffer(d_TOFIndex[0][0], CL_FALSE, 0, sizeof(uint8_t) * length, TOFIndices);
+            OCL_CHECK(status, "\n", -1);
         }
 		return 0;
 	}

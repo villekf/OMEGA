@@ -2175,26 +2175,30 @@ public:
 	template <typename T>
 	inline int loadCoord(uint32_t currentSubset, scalarStruct& inputScalars, const int64_t length, const T* listCoord, const T* listCoordAx = nullptr, const uint8_t* TOFIndices = nullptr) {
 		CUresult status = CUDA_SUCCESS;
-        if (inputScalars.listmode > 0) {
-            if (inputScalars.indexBased) {
-                getErrorString(cuMemFree(d_trIndex[0][0]));
-                getErrorString(cuMemFree(d_axIndex[0][0]));
-                status = cuMemAlloc(&d_trIndex[0][0], sizeof(uint16_t) * length * 2);
-                CUDA_CHECK(status, "\n", -1);
-                status = cuMemAlloc(&d_axIndex[0][0], sizeof(uint16_t) * length * 2);
-                CUDA_CHECK(status, "\n", -1);
-                status = cuMemcpyHtoD(d_trIndex[0][0], listCoord, sizeof(uint16_t) * length * 2);
-                CUDA_CHECK(status, "\n", -1);
-                status = cuMemcpyHtoD(d_axIndex[0][0], listCoordAx, sizeof(uint16_t) * length * 2);
-                CUDA_CHECK(status, "\n", -1);
-            }
-            if (inputScalars.TOF) {
-                getErrorString(cuMemFree(d_TOFIndex[0][0]));
-                status = cuMemAlloc(&d_TOFIndex[0][0], sizeof(uint8_t) * length);
-                CUDA_CHECK(status, "\n", -1);
-                status = cuMemcpyHtoD(d_TOFIndex[0][0], TOFIndices, sizeof(uint8_t) * length);
-                CUDA_CHECK(status, "\n", -1);
-            }
+        if (inputScalars.indexBased) {
+            getErrorString(cuMemFree(d_trIndex[0][0]));
+            getErrorString(cuMemFree(d_axIndex[0][0]));
+            status = cuMemAlloc(&d_trIndex[0][0], sizeof(uint16_t) * length * 2);
+            CUDA_CHECK(status, "\n", -1);
+            status = cuMemAlloc(&d_axIndex[0][0], sizeof(uint16_t) * length * 2);
+            CUDA_CHECK(status, "\n", -1);
+            status = cuMemcpyHtoD(d_trIndex[0][0], listCoord, sizeof(uint16_t) * length * 2);
+            CUDA_CHECK(status, "\n", -1);
+            status = cuMemcpyHtoD(d_axIndex[0][0], listCoordAx, sizeof(uint16_t) * length * 2);
+            CUDA_CHECK(status, "\n", -1);
+        } else {
+            getErrorString(cuMemFree(d_x[0][0]));
+            status = cuMemAlloc(&d_x[0][0], sizeof(float) * length * 6);
+            CUDA_CHECK(status, "\n", -1);
+            status = cuMemcpyHtoD(d_x[0][0], listCoord, sizeof(float) * length * 6);
+            CUDA_CHECK(status, "\n", -1);
+        }
+        if (inputScalars.TOF) {
+            getErrorString(cuMemFree(d_TOFIndex[0][0]));
+            status = cuMemAlloc(&d_TOFIndex[0][0], sizeof(uint8_t) * length);
+            CUDA_CHECK(status, "\n", -1);
+            status = cuMemcpyHtoD(d_TOFIndex[0][0], TOFIndices, sizeof(uint8_t) * length);
+            CUDA_CHECK(status, "\n", -1);
         }
 		return 0;
 	}
