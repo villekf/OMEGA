@@ -1288,6 +1288,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.alphaM[timestep].resize(inputScalars.subsets * inputScalars.Niter);
 
         if (MethodList.DRAMA) {
+            w_vec.lambda[timestep].resize(inputScalars.Niter * inputScalars.subsets);
             w_vec.lambda[timestep].assign(options.lam_drama, options.lam_drama + w_vec.lambda[timestep].size());
         }
 

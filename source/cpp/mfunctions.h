@@ -628,6 +628,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 
         // Relaxation parameters
         if (MethodList.DRAMA) {
+            w_vec.lambda[timestep].resize(inputScalars.Niter * inputScalars.subsets);
             const float *lambda = getSingles(options, "lam_drama");
             w_vec.lambda[timestep].assign(lambda, lambda + w_vec.lambda[timestep].size());
         }
