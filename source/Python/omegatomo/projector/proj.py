@@ -257,7 +257,7 @@ class projectorClass:
     use_psf = False
     save_iter = False
     deblurring = False
-    use_64bit_atomics = True
+    use_64bit_atomics = False
     use_32bit_atomics = False
     n_rays_transaxial = 1
     n_rays_axial = 1

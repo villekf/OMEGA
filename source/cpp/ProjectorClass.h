@@ -129,11 +129,16 @@ class ProjectorClass {
 
 		cl_int status = CL_SUCCESS;
 
+		std::string deviceName = CLDeviceID.getInfo<CL_DEVICE_VENDOR>(&status);
+		std::string NV("NVIDIA Corporation");
+		std::string AMD("Advanced Micro Devices, Inc.");
 		std::string kernelFile = header_directory;
 		std::string kernel_path, kernel_pathBP;
 		std::string contentFP, contentBP;
 		std::string contentAux;
 		std::string options = "-cl-single-precision-constant";
+		cl::string apu = CLDeviceID.getInfo<CL_DEVICE_EXTENSIONS>();
+		cl::string apu2 = "cl_ext_float_atomics";
 		options += " -DOPENCL";
 		if (inputScalars.useMAD) {
 			options += " -cl-fast-relaxed-math";
@@ -155,6 +160,14 @@ class ProjectorClass {
 			std::ifstream sourceHeader3(kernelFile + "opencl_functions_orth3D.h");
 			std::string contentHeader3((std::istreambuf_iterator<char>(sourceHeader3)), std::istreambuf_iterator<char>());
 			contentHeader += contentHeader3;
+		}
+		if (NV.compare(deviceName) == 0)
+			options += " -DNVIDIA";
+		else if (AMD.compare(deviceName) == 0) {
+			options += " -DAMD";
+		}
+		else if (apu.find(apu2) != std::string::npos) {
+			options += " -DINTEL";
 		}
 
 		kernel_path = kernelFile;

@@ -510,6 +510,10 @@ if options.verbose > 0
                     end
                     dispaus = [dispaus, ' with ', inffo(k1 + 4:k2(options.use_device + 1)+1)];
                 end
+                if strcmp(inffo(k1+4:k1+9), 'NVIDIA') || strcmp(inffo(k1+4:k1+6), 'AMD') || strcmp(inffo(k1+4:k1+7), 'POCL')
+                    options.use_64bit_atomics = false;
+                    options.use_32bit_atomics = false;
+                end
             end
         elseif options.implementation == 3
             inffo = OpenCL_device_info();

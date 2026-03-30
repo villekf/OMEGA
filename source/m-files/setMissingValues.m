@@ -312,7 +312,7 @@ if ~isfield(options,'platform')
     options.platform = 0;
 end
 if ~isfield(options, 'use_64bit_atomics')
-    options.use_64bit_atomics = ~ismac;
+    options.use_64bit_atomics = false;
 end
 if ~isfield(options, 'use_CUDA')
     if ismac

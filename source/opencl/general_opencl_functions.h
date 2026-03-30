@@ -878,12 +878,35 @@ DEVICE int readMaskFP(MASKFPTYPE maskFP, typeT ind) {
 }
 #endif
 
+
 // This function was taken from: https://streamhpc.com/blog/2016-02-09/atomic-operations-for-floats-in-opencl-improved/
 // Computes the atomic_add for floats
 // NOTE: Includes code for an OpenCL extension that enables float atomics, but this is currently only supported by Intel and POCL
 #if defined(ATOMICF) && !defined(ATOMIC) && !defined(ATOMIC32) && defined(OPENCL)
-// #pragma OPENCL EXTENSION cl_ext_float_atomics : enable
-// #define atomicAdd(a,b) atomic_fetch_add((volatile atomic_float *)(a),(b)) 
+#if defined(NVIDIA)
+void atomicAdd(__global float* p, float val)
+{
+    float prev;
+    asm volatile(
+        "atom.global.add.f32 %0, [%1], %2;" 
+        : "=f"(prev) 
+        : "l"(p) , "f"(val) 
+        : "memory" 
+    );
+}
+#elif defined(AMD)
+void atomicAdd(volatile __global float* p, float val) {
+    __asm__ volatile (
+		"global_atomic_add_f32 %0, %1, off\n"
+		: 
+		: "v"(p), "v"(val) 
+		: "memory"
+    );
+}
+#elif defined(INTEL)
+#pragma OPENCL EXTENSION cl_ext_float_atomics : enable
+#define atomicAdd(a,b) atomic_fetch_add((volatile atomic_float *)(a),(b)) 
+#else
 void atomicAdd(volatile CLGLOBAL float *addr, float val) {
 	union {
 		unsigned int u32;
@@ -896,6 +919,7 @@ void atomicAdd(volatile CLGLOBAL float *addr, float val) {
 		current.u32 = atomic_cmpxchg((volatile CLGLOBAL unsigned int *)addr, expected.u32, next.u32);
 	} while (current.u32 != expected.u32);
 }
+#endif
 #endif
 
 #ifdef TOF //////////////// TOF ////////////////
