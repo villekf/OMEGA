@@ -195,6 +195,7 @@ struct inputStruct {
     float dSizeZBP;
     // TV smoothing value
     float TVsmoothing;
+	float temporalTVsmoothing;
     // Anatomical weight
     float C;
     // Lange function weight
@@ -360,6 +361,8 @@ struct inputStruct {
     bool ProxTV = false;
     bool ProxRDP = false;
     bool ProxNLM = false;
+	bool temporalTV = false;
+	bool temporal_smoothness = false;
     bool MAP = false;
     bool custom = false;
     uint64_t mDim;
@@ -555,6 +558,10 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     MethodList.ProxTGV = options.TGV;
     MethodList.ProxRDP = options.ProxRDP;
     MethodList.ProxNLM = options.ProxNLM;
+
+    // Temporal priors
+    MethodList.TemporalSmoothness = options.temporal_smoothness;
+    MethodList.TemporalTV = options.temporalTV;
 
     // MAP/prior-based algorithms
     MethodList.OSLOSEM = options.OSL_OSEM;
@@ -1057,6 +1064,9 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     if (w_vec.precondTypeMeas[0] || MethodList.SART || MethodList.POCS)
         w_vec.computeM = true;
 #endif
+
+    if (MethodList.TemporalTV)
+		w_vec.TemporalTVsmoothing = options.temporalTVsmoothing;
 
     // Load TV related input data
     if (MethodList.TV && MethodList.MAP) {

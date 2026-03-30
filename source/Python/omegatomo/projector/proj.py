@@ -312,6 +312,7 @@ class projectorClass:
     Ndz = 1
     mean_type = 4
     TVsmoothing = 1e-2
+    temporalTVsmoothing = 1e-2
     TV_use_anatomical = False
     TVtype = 1
     tau = 0.
@@ -410,6 +411,8 @@ class projectorClass:
     ProxTV = False
     ProxRDP = False
     ProxNLM = False
+    temporalTV = False
+    temporal_smoothness = False
     MAP = False
     custom = False
     Vmax = 0.
