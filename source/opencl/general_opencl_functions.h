@@ -832,7 +832,7 @@ DEVICE void getIndex(int3* i, const uint d_size_x, const uint d_sizey, const uin
 
 #endif
 
-#if ((defined(MASKBP) || defined(MASKBP3D)) && !defined(PTYPE4)) // This is due to projector type 4 using sampler_MASK4 in BP mask (but only in forward projection)
+#if ((defined(MASKBP) || defined(MASKBP3D) || defined(MASKPRIOR)) && !defined(PTYPE4)) // This is due to projector type 4 using sampler_MASK4 in BP mask (but only in forward projection)
 DEVICE int readMaskBP(MASKBPTYPE maskBP, typeT ind) {
 	return 
     #ifdef USEIMAGES
