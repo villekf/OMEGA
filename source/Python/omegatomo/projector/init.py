@@ -194,6 +194,19 @@ def initProjector(self):
             import pyopencl as cl
             device = self.clctx.get_info(cl.context_info.DEVICES)
             vendor = device[0].get_info(cl.device_info.VENDOR)
+            ext = device[0].get_info(cl.device_info.EXTENSIONS)
+            if vendor == 'NVIDIA Corporation':
+                self.use_64bit_atomics = False
+                self.use_32bit_atomics = False
+                bOpt += ('-DNVIDIA',)
+            elif vendor == 'Advanced Micro Devices, Inc.':
+                self.use_64bit_atomics = False
+                self.use_32bit_atomics = False
+                bOpt += ('-DAMD',)
+            elif ext.find('cl_ext_float_atomics') >= 0:
+                self.use_64bit_atomics = False
+                self.use_32bit_atomics = False
+                bOpt += ('-DINTEL',)
         if self.useMAD:
             if self.useCUDA:
                 bOpt += ('--use_fast_math','-DUSEMAD',)
