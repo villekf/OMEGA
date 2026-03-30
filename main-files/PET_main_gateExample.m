@@ -641,28 +641,6 @@ options.platform = 0;
 % clear mex
 options.use_device = 0;
 
-% Applies to implementations 2, 3 and 5 ONLY
-%%% Use 64-bit integer atomic functions
-% If true, then 64-bit integer atomic functions (atomic add) will be used
-% if they are supported by the selected device.
-% Setting this to true will make computations faster on GPUs that support
-% the functions, but might make results slightly less reliable due to
-% floating point rounding. Recommended for OpenCL GPUs.
-options.use_64bit_atomics = true;
-
-% Applies to implementations 2, 3 and 5 ONLY
-%%% Use 32-bit integer atomic functions
-% If true, then 32-bit integer atomic functions (atomic add) will be used.
-% This is even faster than the above 64-bit atomics version, but will also
-% have significantly higher reduction in numerical/floating point accuracy.
-% This should be about 20-30% faster than the above 64-bit version, but
-% might lead to integer overflow if you have a high count measurement
-% (thousands of coincidences per sinogram bin). Use this only if speed is
-% of utmost importance. 32-bit atomics take precedence over 64-bit ones,
-% i.e. if options.use_32bit_atomics = true then the 64-bit version will be 
-% always set as false.
-options.use_32bit_atomics = false;
-
 % Implementation 2 ONLY
 %%% Use CUDA
 % Selecting this to true will use CUDA kernels/code instead of OpenCL. This
