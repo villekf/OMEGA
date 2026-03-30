@@ -188,6 +188,7 @@ struct inputStruct {
     float GGMRF_c;
     // Regularization parameter
     float beta = 0.f;
+    float beta_temporal = 0.f;
     // Unused
     float T;
     // Dimension sizes for BDD
@@ -910,6 +911,9 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     // Load regularization parameter
     w_vec.beta = options.beta;
     w_vec.betaReg = w_vec.beta;
+	
+    // Load temporal regularization parameter
+    w_vec.beta_temporal = options.beta_temporal;
 
     // Masks
     if (inputScalars.maskFP) {

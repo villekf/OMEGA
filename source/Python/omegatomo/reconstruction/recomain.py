@@ -129,6 +129,7 @@ def transferData(options):
     options.param.GGMRF_q = ctypes.c_float(options.GGMRF_q)
     options.param.GGMRF_c = ctypes.c_float(options.GGMRF_c)
     options.param.beta = ctypes.c_float(options.beta)
+    options.param.beta_temporal = ctypes.c_float(options.beta_temporal)
     options.param.T = ctypes.c_float(options.B)
     options.param.dSizeXBP = ctypes.c_float(options.dSizeXBP)
     options.param.dSizeZBP = ctypes.c_float(options.dSizeZBP)

@@ -809,6 +809,9 @@ end
 if ~isfield(options, 'temporalTV')
     options.temporalTV = false;
 end
+if ~isfield(options, 'beta_temporal')
+    options.beta_temporal = 0;
+end
 if ~isfield(options, 'tau')
     options.tau = 1e-8;
 end
