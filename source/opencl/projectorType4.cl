@@ -73,7 +73,74 @@
 
 // Forward projection
 KERNEL
-void projectorType4Forward(const uint d_size_x, const uint d_sizey, 
+void projectorType4Forward(
+#if defined(METAL)
+    SCALAR_PARAMS(scalarParams) BUF0
+#ifdef TOF
+	, CONSTANT float* TOFCenter BUF1
+#endif
+#if !defined(CT) && defined(ATN) && !defined(ATNM)
+	, IMAGE3D d_atten BUF2
+#elif !defined(CT) && !defined(ATN) && defined(ATNM)
+	, const CLGLOBAL float* CLRESTRICT d_atten BUF2
+#endif
+#ifdef FP
+    , IMAGE3D d_OSEM TEX3
+    , CLGLOBAL float* CLRESTRICT d_output BUF4
+#else
+    , const CLGLOBAL float* CLRESTRICT d_OSEM BUF3
+    , CLGLOBAL CAST* CLRESTRICT d_output BUF4
+#endif
+#if !defined(USEGLOBAL)
+	, CONSTANT float* d_xyz BUF5
+#else
+	, const CLGLOBAL float* CLRESTRICT d_xyz BUF5
+#endif
+#if (defined(LISTMODE) && !defined(SENS) && !defined(INDEXBASED)) || defined(USEGLOBAL)
+    , const CLGLOBAL float* CLRESTRICT d_uv BUF6
+#else
+    , CONSTANT float* d_uv BUF6
+#endif
+#ifdef MASKFP // TODO replace with MASKFPTYPE
+#ifdef MASKFP3D
+    , IMAGE3D maskFP BUF7
+#else
+    , IMAGE2D maskFP BUF7
+#endif
+#endif
+#if defined(MASKBP) && (defined(BP) || defined(SENS)) && !defined(CT)
+#ifdef MASKBP3D // TODO replace with MASKBPTYPE
+    , IMAGE3D maskBP BUF8
+#else
+    , IMAGE2D maskBP BUF8
+#endif
+#endif
+#if defined(SUBSETS) && !defined(LISTMODE)
+    , const CLGLOBAL uint* CLRESTRICT d_xyindex BUF9
+    , const CLGLOBAL ushort* CLRESTRICT d_zindex BUF10
+#endif
+#if defined(INDEXBASED) && defined(LISTMODE) && !defined(SENS)
+	, const CLGLOBAL ushort* CLRESTRICT trIndex BUF9
+    , const CLGLOBAL ushort* CLRESTRICT axIndex BUF10
+#endif
+#if defined(LISTMODE) && defined(TOF)
+	, const CLGLOBAL uchar* CLRESTRICT TOFIndex BUF11
+#endif
+#ifdef RAW
+    , const CLGLOBAL ushort* CLRESTRICT d_L BUF12
+#endif
+#ifdef NORM ///////////////////////// NORMALIZATION DATA /////////////////////////
+    , const CLGLOBAL float* CLRESTRICT d_norm BUF13
+#endif ///////////////////////// END NORMALIZATION DATA /////////////////////////
+#ifdef SCATTER ///////////////////////// EXTRA CORRECTION DATA /////////////////////////
+    , const CLGLOBAL float* CLRESTRICT d_scat BUF14
+#endif ///////////////////////// END EXTRA CORRECTION DATA /////////////////////////
+#if defined(BP) && !defined(CT)
+    , CLGLOBAL CAST* CLRESTRICT d_Summ BUF15
+#endif
+    , uint3 temp_i [[thread_position_in_grid]] // global id
+#else
+    const uint d_size_x, const uint d_sizey, 
 #ifdef PYTHON
 	const float d_dPitchX, const float d_dPitchY, 
 #else
@@ -159,9 +226,15 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #if defined(BP) && !defined(CT)
     CLGLOBAL CAST* CLRESTRICT d_Summ,
 #endif
-	const uchar no_norm, const ULONG m_size, const uint currentSubset, const int aa)
-{
-    //
+	const uchar no_norm, const ULONG m_size, const uint currentSubset, const int aa
+#endif
+) {
+#if defined(METAL)
+    UNPACK_SCALAR_PARAMS_4_FP(scalarParams);
+    int GID0 = temp_i.x;
+    int GID1 = temp_i.y;
+    int GID2 = temp_i.z;
+#endif
     int3 i = MINT3(GID0, GID1, GID2);
 #if STYPE == 1 || STYPE == 2 || STYPE == 4 || STYPE == 5
     getIndex(&i, d_size_x, d_sizey, currentSubset);
@@ -318,11 +391,11 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
     const float3 tBack = (bmin - s) / v;
     const float3 tFront = (bmax - s) / v;
 
-    const float3 tMin = fmin(tFront, tBack);
-    const float3 tMax = fmax(tFront, tBack);
+    const float3 tMin = FMIN(tFront, tBack);
+    const float3 tMax = FMAX(tFront, tBack);
 
-    const float tStart = fmax(fmax(tMin.x, tMin.y), tMin.z);
-    const float tEnd = fmin(fmin(tMax.x, tMax.y), tMax.z);
+    const float tStart = FMAX(FMAX(tMin.x, tMin.y), tMin.z);
+    const float tEnd = FMIN(FMIN(tMax.x, tMax.y), tMax.z);
 #ifdef TOF //////////////// TOF ////////////////
     float TOFSum = 0.f;
 #endif //////////////// END TOF ////////////////
@@ -332,7 +405,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #else
 		return;
 #endif  //////////////// END MULTIRAY ////////////////
-	float L = length(v);
+	float L = LENGTH(v);
 #ifndef CT
 #if !defined(TOTLENGTH)
 	float LL = 0.f;
@@ -610,59 +683,84 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 
 #if defined(BP) && defined(CT)// START BP
 KERNEL2
-void projectorType4Backward(const uint d_size_x, const uint d_sizey, 
+void projectorType4Backward(
+#if defined(METAL)
+    SCALAR_PARAMS(scalarParams) BUF0
+#else // Scalars
+    const uint d_size_x
+    , const uint d_sizey
 #ifdef PYTHON
-	const float d_dPitchX, const float d_dPitchY, 
+	, const float d_dPitchX, const float d_dPitchY
 #else
-	const float2 d_dPitch, 
+	, const float2 d_dPitch
 #endif
 #ifdef HELICAL
-    const float r, 
+    , const float r
+#endif
 #endif
 #ifdef OFFSET
-    CONSTANT float* T, 
+    , CONSTANT float* T BUF1
 #endif
+#if !defined(METAL) // Scalars
 #ifdef PYTHON
-	const uint d_Nx, const uint d_Ny, const uint d_Nz, const float bx, const float by, const float bz, 
-    const float d_dx, const float d_dy, const float d_dz,
+	, const uint d_Nx, const uint d_Ny, const uint d_Nz
+    , const float bx, const float by, const float bz
+    , const float d_dx, const float d_dy, const float d_dz
 #else
-	const uint3 d_N, const float3 b, const float3 d_d, 
+	, const uint3 d_N
+    , const float3 b
+    , const float3 d_d
 #endif
-    const float kerroin, 
-#ifdef USEIMAGES
-    IMAGE3D d_forw, 
-#else
-    const CLGLOBAL float* CLRESTRICT d_forw, 
+    , const float kerroin
 #endif
-#ifdef FDK
-    CONSTANT float* angle, const float DSC, 
+    , IMTYPE d_forw TEX2
+#ifdef FDK 
+    , CONSTANT float* angle BUF3
+#if !defined(METAL) // Scalar
+    , const float DSC
 #endif
-    CLGLOBAL float* CLRESTRICT d_OSEM, 
+#endif
+    , CLGLOBAL float* CLRESTRICT d_OSEM BUF4
 #if defined(USEGLOBAL)
-	const CLGLOBAL float* CLRESTRICT d_xyz, const CLGLOBAL float* CLRESTRICT d_uv, 
+	, const CLGLOBAL float* CLRESTRICT d_xyz BUF5
+    , const CLGLOBAL float* CLRESTRICT d_uv BUF6
 #else
-    CONSTANT float* d_xyz, CONSTANT float* d_uv, 
+    , CONSTANT float* d_xyz BUF5
+    , CONSTANT float* d_uv BUF6
 #endif
-    CLGLOBAL float* CLRESTRICT d_Summ,
+    , CLGLOBAL float* CLRESTRICT d_Summ BUF7
 #ifdef NORM
-    const CLGLOBAL float* CLRESTRICT d_norm,
-#endif 
-    const uchar no_norm, 
+    , const CLGLOBAL float* CLRESTRICT d_norm BUF8
+#endif
+#if !defined(METAL) // Scalar 
+    , const uchar no_norm
+#endif
 #ifdef USEIMAGES
 #ifdef MASKBP // TODO replace with MASKBPTYPE
 #ifdef MASKBP3D
-    IMAGE3D maskBP,
+    , IMAGE3D maskBP TEX9
 #else
-    IMAGE2D maskBP,
+    , IMAGE2D maskBP TEX9
 #endif
 #endif
 #else
 #ifdef MASKBP
-    const CLGLOBAL uchar* CLRESTRICT maskBP,
+    , const CLGLOBAL uchar* CLRESTRICT maskBP TEX9
 #endif
 #endif
-    const LONG d_nProjections, const int ii) {
-
+#if !defined(METAL) // Scalars
+    , const LONG d_nProjections
+    , const int ii
+#else
+    , uint3 temp_i [[thread_position_in_grid]] // global id
+#endif
+) {
+#if defined(METAL) // Unpack scalar parameters
+	UNPACK_SCALAR_PARAMS_4_BP(scalarParams);
+	int GID0 = temp_i.x;
+	int GID1 = temp_i.y;
+	int GID2 = temp_i.z;
+#endif
 #ifdef HELICAL
     const int nVoxels = NVOXELSHELICAL;
 #else
@@ -810,9 +908,9 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
 #endif
         d2 = apuX - apuY;
         d3 = d1 - apuX - apuY;
-        const float3 normX = normalize(apuX) / koko.x;
-        const float3 normY = normalize(apuY) / koko.y;
-        const float3 cP = cross(d2, d3 - d1);
+        const float3 normX = NORMALIZE(apuX) / koko.x;
+        const float3 normY = NORMALIZE(apuY) / koko.y;
+        const float3 cP = CROSS(d2, d3 - d1);
         const float pz = (CFLOAT(kk) + 0.5f) / CFLOAT(d_nProjections);
         const float dApu = d_d.z * cP.z;
 #ifdef PARALLEL
@@ -865,9 +963,9 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
 #endif
         d2_2 = apuX_2 - apuY_2;
         d3_2 = d1_2 - apuX_2 - apuY_2;
-        const float3 normX_2 = normalize(apuX_2) / koko.x;
-        const float3 normY_2 = normalize(apuY_2) / koko.y;
-        const float3 cP_2 = cross(d2_2, d3_2 - d1_2);
+        const float3 normX_2 = NORMALIZE(apuX_2) / koko.x;
+        const float3 normY_2 = NORMALIZE(apuY_2) / koko.y;
+        const float3 cP_2 = CROSS(d2_2, d3_2 - d1_2);
         const float pz_2 = (CFLOAT(uu) + 0.5f) / CFLOAT(d_nProjections);
         const float dApu_2 = d_d.z * cP_2.z;
         const float upperPart_2 = dot(cP_2, s_2 - d1_2);
@@ -905,7 +1003,7 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
             float weight = (DSC + dV.x * COSF(angle[kk]) - dV.y * SINF(angle[kk]));
             weight = (DSC * DSC) / (weight * weight) * (M_PI_F / (CFLOAT(d_nProjections) * d_dPitch.x));
 #else
-            const float L = distance(p, s);
+            const float L = DISTANCE(p, s);
             const float weight = (L * L * L) / (l1)*kerroin;
 #endif
             p -= d3;
@@ -950,7 +1048,7 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
             float3 p_2 = FMAD3(t_2, v_2, s_2);
             const float l1_2 = FMAD(v_2.z, v_2.z, vApu_2);
 #endif
-            const float L_2 = distance(p_2, s_2);
+            const float L_2 = DISTANCE(p_2, s_2);
             const float weight_2 = (L_2 * L_2 * L_2) / (l1_2)*kerroin;
             p_2 -= d3_2;
             float px_2 = dot(p_2, normX_2);
@@ -977,7 +1075,7 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
             float TT;
             float Tloc = T[kk];
             if (Tloc > koko.x / 2.f) {
-                px = fabs(px - 1.f);
+                px = FABS(px - 1.f);
                 // px = (1.f - px);
                 TT = koko.x - Tloc;
             }
@@ -993,7 +1091,7 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
             float TT_2;
             float Tloc_2 = T[uu];
             if (Tloc_2 > koko.x / 2.f) {
-                px_2 = fabs(px_2 - 1.f);
+                px_2 = FABS(px_2 - 1.f);
                 TT_2 = koko.x - Tloc_2;
             }
             else

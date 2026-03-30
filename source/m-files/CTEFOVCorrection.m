@@ -279,4 +279,43 @@ if options.useEFOV
         options.NzOrig = options.Nz;
     end
 end
+
+    % Multiresolution total FOV size
+    if numel(options.FOVa_x) == 1 % No eFOV
+        FOV = [options.FOVa_x; options.FOVa_y; options.axial_fov];
+    elseif numel(options.FOVa_x) == 3 % Axial eFOV only
+        FOV = [options.FOVa_x(1); options.FOVa_y(1); sum(options.axial_fov)];
+    elseif numel(options.FOVa_x) == 5 % Transaxial eFOV only
+        FOV = [
+            options.FOVa_x(1) + options.FOVa_x(2) + options.FOVa_x(3);
+            options.FOVa_y(1) + options.FOVa_y(4) + options.FOVa_y(5);
+            options.axial_fov(1)
+        ];
+    elseif numel(options.FOVa_x) == 7 % Axial + transaxial eFOV
+        FOV = [
+            options.FOVa_x(1) + options.FOVa_x(4) + options.FOVa_x(5);
+            options.FOVa_y(1) + options.FOVa_y(6) + options.FOVa_y(7);
+            options.axial_fov(1) + options.axial_fov(2) + options.axial_fov(3)
+        ];
+    end
+
+    options.totalFOVxmin = -FOV(1) / 2;
+    options.totalFOVymin = -FOV(2) / 2;
+    options.totalFOVzmin = -FOV(3) / 2;
+    options.totalFOVxmax = FOV(1) / 2;
+    options.totalFOVymax = FOV(2) / 2;
+    options.totalFOVzmax = FOV(3) / 2;
+
+    if isfield(options, 'oOffsetX')
+        options.totalFOVxmin = options.totalFOVxmin + options.oOffsetX;
+        options.totalFOVxmax = options.totalFOVxmax + options.oOffsetX;
+    end
+    if isfield(options, 'oOffsetY')
+        options.totalFOVymin = options.totalFOVymin + options.oOffsetY;
+        options.totalFOVymax = options.totalFOVymax + options.oOffsetY;
+    end
+    if isfield(options, 'oOffsetZ')
+        options.totalFOVzmin = options.totalFOVzmin + options.oOffsetZ;
+        options.totalFOVzmax = options.totalFOVzmax + options.oOffsetZ;
+    end
 end
