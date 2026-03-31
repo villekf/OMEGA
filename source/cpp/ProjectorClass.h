@@ -164,7 +164,9 @@ class ProjectorClass {
 		if (NV.compare(deviceName) == 0)
 			options += " -DNVIDIA";
 		else if (AMD.compare(deviceName) == 0) {
-			options += " -DAMD";
+			cl_bool is_integrated = CLDeviceID.getInfo<CL_DEVICE_HOST_UNIFIED_MEMORY>(&status);
+			if (status == CL_SUCCESS && !is_integrated)
+				options += " -DAMD";
 		}
 		else if (apu.find(apu2) != std::string::npos) {
 			options += " -DINTEL";
