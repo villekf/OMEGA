@@ -675,12 +675,50 @@ classdef projectorClass
                 obj.index = cell2mat(obj.index);
             end
 
-            [xx,yy,zz,obj.param.dx,obj.param.dy,obj.param.dz,obj.param.bx,obj.param.by,obj.param.bz] = computePixelSize([obj.param.FOVa_x; obj.param.FOVa_y; obj.param.axial_fov], [obj.param.Nx; obj.param.Ny; obj.param.Nz], ...
-                [obj.param.oOffsetX; obj.param.oOffsetY; obj.param.oOffsetZ], obj.param.cType);
+            [...
+                xx,yy,zz, ...
+                obj.param.dx,obj.param.dy,obj.param.dz,...
+                obj.param.bx,obj.param.by,obj.param.bz...
+            ] = computePixelSize(...
+                [obj.param.FOVa_x; obj.param.FOVa_y; obj.param.axial_fov], ...
+                [obj.param.Nx; obj.param.Ny; obj.param.Nz], ...
+                [obj.param.oOffsetX; obj.param.oOffsetY; obj.param.oOffsetZ], ...
+                obj.param.multiResolutionShift, ...
+                obj.param.cType...
+            );
             obj.param.Nx = uint32(obj.param.Nx);
             obj.param.Ny = uint32(obj.param.Ny);
             obj.param.Nz = uint32(obj.param.Nz);
 
+            % Multiresolution total FOV size
+            if numel(obj.param.FOVa_x) == 1 % No eFOV
+                FOV = [obj.param.FOVa_x; obj.param.FOVa_y; obj.param.axial_fov];
+            elseif numel(obj.param.FOVa_x) == 3 % Axial eFOV only
+                FOV = [obj.param.FOVa_x(1); obj.param.FOVa_y(1); sum(obj.param.axial_fov)];
+            elseif numel(obj.param.FOVa_x) == 5 % Transaxial eFOV only
+                FOV = [
+                    obj.param.FOVa_x(1) + obj.param.FOVa_x(2) + obj.param.FOVa_x(3);
+                    obj.param.FOVa_y(1) + obj.param.FOVa_y(4) + obj.param.FOVa_y(5);
+                    obj.param.axial_fov(1)
+                ];
+            elseif numel(obj.param.FOVa_x) == 7 % Axial + transaxial eFOV
+                FOV = [
+                    obj.param.FOVa_x(1) + obj.param.FOVa_x(4) + obj.param.FOVa_x(5);
+                    obj.param.FOVa_y(1) + obj.param.FOVa_y(6) + obj.param.FOVa_y(7);
+                    obj.param.axial_fov(1) + obj.param.axial_fov(2) + obj.param.axial_fov(3)
+                ];
+            end
+
+            obj.param.totalFOVxmin = -FOV(1) / 2 + obj.param.multiResolutionShift(1);
+            obj.param.totalFOVymin = -FOV(2) / 2 + obj.param.multiResolutionShift(2);
+            obj.param.totalFOVzmin = -FOV(3) / 2 + obj.param.multiResolutionShift(3);
+            obj.param.totalFOVxmax = FOV(1) / 2 + obj.param.multiResolutionShift(1);
+            obj.param.totalFOVymax = FOV(2) / 2 + obj.param.multiResolutionShift(2);
+            obj.param.totalFOVzmax = FOV(3) / 2 + obj.param.multiResolutionShift(3);
+
+            %xx = xx + obj.param.multiResolutionShift(1);
+            %yy = yy + obj.param.multiResolutionShift(2);
+            %zz = zz + obj.param.multiResolutionShift(3);
 
             if obj.param.use_raw_data
                 obj.param.LL = form_detector_pairs_raw(obj.param.rings, obj.param.det_per_ring);

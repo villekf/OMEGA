@@ -214,6 +214,9 @@ options.useMultiResolutionVolumes = false;
 % this is < 1, i.e. 1/4 = 4 times the original voxel size.
 options.multiResolutionScale = 1/4;
 
+% Shift the high-resolution (main) volume in X / Y / Z [mm]? Applies even if extended FOV or multi-resolution is not selected.
+options.multiResolutionShift = [0 0 0];
+
 % Performs the extrapolation and adjusts the image size accordingly
 options = CTEFOVCorrection(options);
 

@@ -263,24 +263,6 @@ end
 if ~isfield(options, 'oOffsetZ')
     options.oOffsetZ = 0;
 end
-if ~isfield(options, 'totalFOVxmin')
-    options.totalFOVxmin = -options.FOVa_x / 2 + options.oOffsetX;
-end
-if ~isfield(options, 'totalFOVymin')
-    options.totalFOVymin = -options.FOVa_y / 2 + options.oOffsetY;
-end
-if ~isfield(options, 'totalFOVzmin')
-    options.totalFOVzmin = -options.axial_fov / 2 + options.oOffsetZ;
-end
-if ~isfield(options, 'totalFOVxmax')
-    options.totalFOVxmax = options.FOVa_x / 2 + options.oOffsetX;
-end
-if ~isfield(options, 'totalFOVymax')
-    options.totalFOVymax = options.FOVa_y / 2 + options.oOffsetY;
-end
-if ~isfield(options, 'totalFOVzmax')
-    options.totalFOVzmax = options.axial_fov / 2 + options.oOffsetZ;
-end
 if ~isfield(options, 'tube_width_z')
     options.tube_width_z = 0;
 end
@@ -368,6 +350,9 @@ if ~isa(options.saveNIter,'uint32')
 end
 if ~isfield(options,'multiResolutionScale')
     options.multiResolutionScale = .25;
+end
+if ~isfield(options, 'multiResolutionShift')
+    options.multiResolutionShift = [0 0 0];
 end
 if ~isfield(options,'nLayers')
     options.nLayers = 1;
