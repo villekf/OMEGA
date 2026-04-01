@@ -2344,7 +2344,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 	af::randomEngine r(AF_RANDOM_ENGINE_DEFAULT, 1);
 	if (!inputScalars.largeDim) {
 		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-			if (ii > 0 && ii % 2 == 0)
+			if (ii > 0 && ii % 2 == 0 && inputScalars.im_dim[ii] == inputScalars.im_dim[ii - 1])
 				vec.im_os[timestep][ii] = vec.im_os[timestep][ii - 1];
 			else
 				vec.im_os[timestep][ii] = af::abs(af::randn(inputScalars.im_dim[ii], f32, r));
