@@ -351,9 +351,6 @@ end
 if ~isfield(options,'multiResolutionScale')
     options.multiResolutionScale = .25;
 end
-if ~isfield(options, 'multiResolutionShift')
-    options.multiResolutionShift = [0 0 0];
-end
 if ~isfield(options,'nLayers')
     options.nLayers = 1;
 end
@@ -902,6 +899,9 @@ if ~isfield(options, 'useImages')
 end
 if ~isfield(options, 'useEFOV')
     options.useEFOV = false;
+end
+if ~isfield(options, 'eFOVShift')
+    options.eFOVShift = [0 0 0];
 end
 if ~isfield(options, 'useExtrapolation')
     options.useExtrapolation = false;

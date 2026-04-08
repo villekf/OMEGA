@@ -1,4 +1,4 @@
-function [xx,yy,zz,dx,dy,dz,bx,by,bz] = computePixelSize(FOV, N, offset, multiResolutionShift, cType)
+function [xx,yy,zz,dx,dy,dz,bx,by,bz] = computePixelSize(FOV, N, offset, useMultiResolution, multiResolutionShift, cType)
 %COMPUTEPIXELSIZE Computes the pixel size and distance from origin
 %   Utility function for OMEGA
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -43,36 +43,41 @@ for kk = size(FOV,2) : - 1 : 1
     % Distance of image from the origin
     % Different cases for different volumes
     if kk == 1
-        bx(kk) = xx(1,1) + multiResolutionShift(1);
-        by(kk) = yy(1,1) + multiResolutionShift(2);
-        bz(kk) = zz(1,1) + multiResolutionShift(3);
+        bx(kk) = xx(1,1);
+        by(kk) = yy(1,1);
+        bz(kk) = zz(1,1);
+        if ~useMultiResolution % eFOV uses only main volume, shift
+            bx(kk) = bx(kk) + multiResolutionShift(1);
+            by(kk) = by(kk) + multiResolutionShift(2);
+            bz(kk) = bz(kk) + multiResolutionShift(3);
+        end
     else
         % Side volumes
         if kk > 5 || (size(FOV,2) == 5 && kk > 3)
             if mod(kk,2) == 1
-                by(kk) = offset(2) + FOV(2,1) / 2 + multiResolutionShift(2);
+                by(kk) = offset(2) + FOV(2,1) / 2;
             else
-                by(kk) = offset(2) - FOV(2,1) / 2 - FOV(2,kk) + multiResolutionShift(2);
+                by(kk) = offset(2) - FOV(2,1) / 2 - FOV(2,kk);
             end
-            bx(kk) = xx(1,1) + multiResolutionShift(1);
+            bx(kk) = xx(1,1);
             bz(kk) = zz(1,1);
         % Top and bottom volumes
         elseif (kk > 3 && kk < 6) || (size(FOV,2) == 5 && kk > 1)
             if mod(kk,2) == 1
-                bx(kk) = etaisyys(1,1) + offset(1) + FOV(1,1) + multiResolutionShift(1);
+                bx(kk) = etaisyys(1,1) + offset(1) + FOV(1,1);
             else
-                bx(kk) = etaisyys(1,1) + offset(1) - FOV(1,kk) + multiResolutionShift(1);
+                bx(kk) = etaisyys(1,1) + offset(1) - FOV(1,kk);
             end
-            by(kk) = yy(1,1);
+            by(kk) = yy(1,1) + multiResolutionShift(2); % Has to be shifted as side volumes are attached to main volume X and Y; top and bottom volumes are attached only by X
             bz(kk) = zz(1,1);
         % Front and back volumes
         elseif kk > 1 && kk < 4
-            bx(kk) = xx(1,1) + multiResolutionShift(1);
+            bx(kk) = xx(1,1);
             by(kk) = yy(1,1);
             if mod(kk,2) == 1
-                bz(kk) = etaisyys(3,1) + offset(3) + FOV(3,1) + multiResolutionShift(3);
+                bz(kk) = etaisyys(3,1) + offset(3) + FOV(3,1);
             else
-                bz(kk) = etaisyys(3,1) + offset(3) - FOV(3,kk) + multiResolutionShift(3);
+                bz(kk) = etaisyys(3,1) + offset(3) - FOV(3,kk);
             end
         end
     end

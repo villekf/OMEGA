@@ -683,7 +683,8 @@ classdef projectorClass
                 [obj.param.FOVa_x; obj.param.FOVa_y; obj.param.axial_fov], ...
                 [obj.param.Nx; obj.param.Ny; obj.param.Nz], ...
                 [obj.param.oOffsetX; obj.param.oOffsetY; obj.param.oOffsetZ], ...
-                obj.param.multiResolutionShift, ...
+                obj.param.useMultiResolutionVolumes,...
+                obj.param.eFOVShift, ...
                 obj.param.cType...
             );
             obj.param.Nx = uint32(obj.param.Nx);
@@ -709,16 +710,12 @@ classdef projectorClass
                 ];
             end
 
-            obj.param.totalFOVxmin = -FOV(1) / 2 + obj.param.multiResolutionShift(1);
-            obj.param.totalFOVymin = -FOV(2) / 2 + obj.param.multiResolutionShift(2);
-            obj.param.totalFOVzmin = -FOV(3) / 2 + obj.param.multiResolutionShift(3);
-            obj.param.totalFOVxmax = FOV(1) / 2 + obj.param.multiResolutionShift(1);
-            obj.param.totalFOVymax = FOV(2) / 2 + obj.param.multiResolutionShift(2);
-            obj.param.totalFOVzmax = FOV(3) / 2 + obj.param.multiResolutionShift(3);
-
-            %xx = xx + obj.param.multiResolutionShift(1);
-            %yy = yy + obj.param.multiResolutionShift(2);
-            %zz = zz + obj.param.multiResolutionShift(3);
+            obj.param.totalFOVxmin = -FOV(1) / 2  + obj.param.oOffsetX + obj.param.eFOVShift(1);
+            obj.param.totalFOVymin = -FOV(2) / 2  + obj.param.oOffsetY + obj.param.eFOVShift(2);
+            obj.param.totalFOVzmin = -FOV(3) / 2  + obj.param.oOffsetZ + obj.param.eFOVShift(3);
+            obj.param.totalFOVxmax = FOV(1) / 2 + obj.param.oOffsetX  + obj.param.eFOVShift(1);
+            obj.param.totalFOVymax = FOV(2) / 2 + obj.param.oOffsetY  + obj.param.eFOVShift(2);
+            obj.param.totalFOVzmax = FOV(3) / 2 + obj.param.oOffsetZ  + obj.param.eFOVShift(3);
 
             if obj.param.use_raw_data
                 obj.param.LL = form_detector_pairs_raw(obj.param.rings, obj.param.det_per_ring);

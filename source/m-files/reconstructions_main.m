@@ -690,12 +690,13 @@ end
 
 if options.param.useEFOV && ~options.param.useMultiResolutionVolumes
     if options.param.transaxialEFOV
-        nTrans = (options.param.Nx - options.param.NxOrig)/2;
-        pz = pz(1 + nTrans:end-nTrans,1 + nTrans:end-nTrans,:,:,:);
+        nTransX = (options.param.Nx - options.param.NxOrig)/2;
+        nTransY = (options.param.Ny - options.param.NyOrig)/2;
+        pz = pz((1 + nTransX-options.param.eFOVShift_Nx):(end-nTransX-options.param.eFOVShift_Nx), (1 + nTransY-options.param.eFOVShift_Ny):(end-nTransY-options.param.eFOVShift_Ny),:,:,:);
     end
     if options.param.axialEFOV
         nAxial = (options.param.Nz - options.param.NzOrig)/2;
-        pz = pz(:,:,1 + nAxial:end-nAxial,:,:,:);
+        pz = pz(:,:,1 + nAxial+options.param.eFOVShift_Nz:end-nAxial+options.param.eFOVShift_Nz,:,:,:);
     end
 end
 if options.param.storeFP && (options.param.subsets == 1 || options.param.subset_type >= 8) && options.param.implementation == 2 && ~options.param.FDK

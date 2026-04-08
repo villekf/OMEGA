@@ -51,28 +51,78 @@ options.machine_name = 'Prospecta';
 
 %%% Reconstructed image pixel count
 % NOTE: Non-square image sizes (X- and Y-direction) may not work
-options.Nx = 128; % X-direction
-options.Ny = 128; % Y-direction
+options.Nx = 64; % X-direction
+options.Ny = 64; % Y-direction
 options.Nz = 128; % Z-direction (number of axial slices)
 
 %%% FOV size [mm]
 % NOTE: Non-cubical voxels may not work
-options.FOVa_x = options.dPitchX*128; % [mm], x-axis of FOV (transaxial)
-options.FOVa_y = options.dPitchX*128; % [mm], y-axis of FOV (transaxial)
+options.FOVa_x = options.dPitchX*64; % [mm], x-axis of FOV (transaxial)
+options.FOVa_y = options.dPitchX*64; % [mm], y-axis of FOV (transaxial)
 options.axial_fov = options.dPitchY*128; % [mm], z-axis of FOV (axial)
+
+%%% FOV offset [mm]
+options.oOffsetX = 0;
+options.oOffsetY = 0;
+options.oOffsetZ = 0;
 
 %%% Flip the image?
 options.flipImageX = false;
 options.flipImageY = false;
 options.flipImageZ = false;
 
+%%% How much is the image rotated (in radians)?
+% NOTE: The rotation is done in the detector space (before reconstruction).
+% This current setting is for systems whose detector blocks start from the
+% right hand side when viewing the device from front.
+% Positive values perform the rotation in counterclockwise direction
+options.offangle = 0;
+
 %%% Use back projection mask?
 options.useMaskBP = false;
 
-%%% How much is the image rotated in degrees?
-% NOTE: The rotation is done in the detector space (before reconstruction).
-% Positive values perform the rotation in counterclockwise direction
-options.offangle = 0;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% EXTENDED FOV %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% When true (default), probabilities are normalized by ray length. When
+% false, probabilities are normalized by ray-FOV intersection length. False
+% results in incorrect normalization when using multi-resolution volumes.
+options.useTotLength = true;
+
+%%% Use extended FOV
+% Similar to above, but expands the FOV. The benefit of expanding the FOV
+% this way is to enable to the use of multi-resolution reconstruction or
+% computation of the priors/regularization only in the original FOV. The
+% default extension is 40% per side (see below).
+options.useEFOV = false;
+
+% Total extended FOV size (x y z) in mm. If less than high-resolution FOV
+% size, will be set equal.
+options.eFOVSize = [128*options.dPitchX, 128*options.dPitchX, 0];
+
+% Extended FOV shift [mm] w.r.t. high-resolution FOV. In practice,
+% if nonzero, the high-resolution area of FOV will be off-center. The
+% high-resolution FOV can be moved w.r.t. absolute origin with oOffsetX,
+% oOffsetY and oOffsetZ above.
+options.eFOVShift = -[options.oOffsetX options.oOffsetY options.oOffsetZ];
+
+% Setting this to true uses multi-resolution reconstruction when using
+% extended FOV. Only applies to extended FOV!
+options.useMultiResolutionVolumes = false;
+
+% This is the scale value for the multi-resolution volumes. The original
+% voxel size is divided by this value and then used as the voxel size for
+% the multi-resolution volumes. Default is 4 times the original voxel size.
+% This means that the multi-resolution regions have larger voxel sizes if
+% this is < 1, i.e. 1/4 = 4 times the original voxel size.
+options.multiResolutionScale = 1/4;
+
+% Performs the extrapolation and adjusts the image size accordingly
+options = CTEFOVCorrection(options);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -176,49 +226,6 @@ options.nRays = 1; % Number of rays traced per detector element
 % Only applicable to normalization and scatter corrections.
 % Attenuation correction is performed always during reconstruction.
 options.corrections_during_reconstruction = true;
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% EXTENDED FOV %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-% When true (default), probabilities are normalized by ray length. When
-% false, probabilities are normalized by ray-FOV intersection length. False
-% results in incorrect normalization when using multi-resolution volumes.
-options.useTotLength = true;
-
-%%% Use extended FOV
-% Similar to above, but expands the FOV. The benefit of expanding the FOV
-% this way is to enable to the use of multi-resolution reconstruction or
-% computation of the priors/regularization only in the original FOV. The
-% default extension is 40% per side (see below).
-options.useEFOV = false;
-
-% Use transaxial extended FOV (this is off by default)
-options.transaxialEFOV = true;
-
-% Use axial extended FOV (this is on by default. If both this and
-% transaxialEFOV are false but useEFOV is true, the axial EFOV will be
-% turned on)
-options.axialEFOV = false;
-
-% Setting this to true uses multi-resolution reconstruction when using
-% extended FOV. Only applies to extended FOV!
-options.useMultiResolutionVolumes = false;
-
-% This is the scale value for the multi-resolution volumes. The original
-% voxel size is divided by this value and then used as the voxel size for
-% the multi-resolution volumes. Default is 4 times the original voxel size.
-% This means that the multi-resolution regions have larger voxel sizes if
-% this is < 1, i.e. 1/4 = 4 times the original voxel size.
-options.multiResolutionScale = 1/4;
-
-% Shift the high-resolution (main) volume in X / Y / Z [mm]? Applies even if extended FOV or multi-resolution is not selected.
-options.multiResolutionShift = [0 0 0];
-
-% Performs the extrapolation and adjusts the image size accordingly
-options = CTEFOVCorrection(options);
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
