@@ -1,4 +1,7 @@
 %% MATLAB codes for Biograph mCT reconstruction using GATE or list-mode output
+% This example file shows how to reconstruct Siemens Biograph mCT data
+% If a scanner generated listmode file is available, that can be used to
+% as an input data.
 % Note that this file does not contain all adjustable parameters. These
 % omitted parameters will thus use default values. For the list of all
 % adjustable parameters see main_PET_full.m file.

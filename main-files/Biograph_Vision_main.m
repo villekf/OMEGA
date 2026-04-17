@@ -1,4 +1,7 @@
 %% MATLAB codes for Biograph Vision PET reconstruction using list-mode or GATE output
+% This example file shows how to reconstruct Siemens Biograph Vision data
+% If a scanner generated listmode file is available, that can be used to
+% as an input data.
 % Note that this file does not contain all adjustable parameters. These
 % omitted parameters will thus use default values. For the list of all
 % adjustable parameters see main_PET_full.m file.

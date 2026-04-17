@@ -1,7 +1,12 @@
-%% MATLAB/Octave code for CBCT reconstruction for the Planmeca data
-% This example is for using Planmeca CBCT data. This example is also useful
-% if you have the source coordinates, coordinates of the center of the
-% detector panel and all the angles of the detector panel.
+%% MATLAB/Octave code for CBCT reconstruction
+% This example can be used for any case when you have the source and 
+% detector coordinates available for your CBCT scanner. The detector
+% panel rotations (if any) can also be input. 
+% You'll also need to input the FOV size, number of pixels on the 
+% detector panel, the size of each detector pixel, projection angles,
+% flat value and source to center of rotation and source to detector
+% distances. Potential offset of the object (that is, the object is not
+% centered on origin) can also be input.
 % Reconstruction-wise everything is same as with the generic CT example.
 % Example data available from: https://doi.org/10.5281/zenodo.12722386
 
@@ -40,10 +45,10 @@ clear proj
 % Number of projections
 options.nProjections = nProjections;
 
-% Field of view
-options.FOVa_x = FOV(1);
-options.FOVa_y = FOV(2);
-options.axial_fov = FOV(3);
+% Field of view (mm)
+options.FOVa_x = FOV(1); % Row
+options.FOVa_y = FOV(2); % Column
+options.axial_fov = FOV(3); % Axial
 
 % Number of rows and columns in a single projection image
 options.nRowsD = nRowsD;
@@ -51,7 +56,8 @@ options.nColsD = nColsD;
 
 % Object offset values from the origin, i.e. how much is the origin of the
 % FOV shifted
-% That is row, column and slice directions
+% That is row, column and slice directions (mm)
+% Note: These are optional, default is 0
 options.oOffsetX = oOffset(1);
 options.oOffsetY = oOffset(2);
 options.oOffsetZ = oOffset(3);
@@ -59,21 +65,23 @@ options.oOffsetZ = oOffset(3);
 % Flat value
 options.flat = flatValue;
 
-% Distance to center of rotation and detector
+% Distance to center of rotation and detector (mm)
 options.sourceToCRot = sourceToCRot;
 options.sourceToDetector = sourceToDetector;
 
-% Detector pixel size
+% Detector pixel size (mm)
 options.dPitchX = dPitch(1);
 options.dPitchY = dPitch(2);
 
-% Projection angles
+% Projection angles (deg or rad)
 options.angles = projAngles;
 
-% Rotation of the detector panel
+% Rotation of the detector panel (rad)
+% Note that not all CBCT scanners have panel rotation
 options.pitchRoll = panelRot;
 
-% Coordinates for the source and center of the detector
+% Coordinates for the source and center of the detector (mm)
+% Separate coordinate PAIRS for each dimension
 options.x = xCoord;
 options.y = yCoord;
 options.z = zCoord;
@@ -99,8 +107,6 @@ options.z = zCoord;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% The image size is taken from a conf file, but you can manually adjust
-% these if desired
 %%% Reconstructed image pixel count (X/row-direction)
 options.Nx = 801;
 

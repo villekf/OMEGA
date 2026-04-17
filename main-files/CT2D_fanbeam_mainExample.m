@@ -288,10 +288,6 @@ options.MRAMLA = false;
 % Supported by implementations 1, 2, 4, and 5
 options.RAMLA = false;
 
-%%% Relaxed Ordered Subsets Expectation Maximization (ROSEM)
-% Supported by implementations 1, 2, 4, and 5
-options.ROSEM = false;
-
 %%% LSQR
 % Supported by implementations 1, 2, 4, and 5
 options.LSQR = true;
@@ -321,10 +317,6 @@ options.MBSREM = false;
 %%% Block Sequential Regularized Expectation Maximization (BSREM)
 % Supported by implementations 1, 2, 4, and 5
 options.BSREM = false;
-
-%%% ROSEM-MAP
-% Supported by implementations 1, 2, 4, and 5
-options.ROSEM_MAP = false;
 
 %%% Preconditioned Krasnoselskii-Mann algorithm (PKMA)
 % Supported by implementations 1, 2, 4, and 5
