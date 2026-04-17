@@ -501,7 +501,7 @@ inline int applyTemporalPrior(
             }
         } else if (MethodList.TemporalTV) { // Total variations prior
             if (inputScalars.verbose >= 3)
-			    mexPrint("Computing temporal total variations prior gradient");
+				mexPrintBase("Computing temporal total variations prior gradient for timestep %d\n", timestep);
             if (timestep > 0) {
                 af::array backward_diff = (vec.im_os[timestep][0] - vec.im_os[timestep-1][0]);
                 grad += (backward_diff) / (af::abs(backward_diff) + w_vec.TemporalTVsmoothing);
