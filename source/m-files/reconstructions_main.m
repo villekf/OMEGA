@@ -56,9 +56,9 @@ else
     partitions = options.param.partitions;
 end
 
-if options.param.listmode && partitions > 1
-    error('Dynamic reconstruction is not yet supported with listmode/custom detector data')
-end
+% if options.param.listmode && partitions > 1
+%     error('Dynamic reconstruction is not yet supported with listmode/custom detector data')
+% end
 
 if tyyppi < 2
     [options.param, RandProp, ScatterProp] = loadInputData(options.param);
@@ -157,7 +157,10 @@ if ~options.param.usingLinearizedData
         end
     end
 end
-
+if options.param.useParkerWeights
+    options.param = ParkerWeights(options.param);
+    % options.param.SinM = options.param.SinM .* w;
+end
 if ~options.param.listmode
     % Load correction data
     [options.param] = loadCorrections(options.param, RandProp, ScatterProp);
@@ -636,7 +639,7 @@ elseif ismember(options.param.implementation, [2, 3])
             for kk = 1 : length(options.param.corrVector)
                 options.param.corrVector{kk} = single(full(options.param.corrVector{kk}));
             end
-            options.param.corrVector = cell2mat(options.param.corrVector);
+            options.param.corrVector = cell2mat(options.param.corrVector(:));
         elseif ~isa(options.param.corrVector, 'single')
             options.param.corrVector = single(options.param.corrVector);
         end
@@ -652,7 +655,7 @@ elseif ismember(options.param.implementation, [2, 3])
             options.param.SinM = single(full(options.param.SinM));
         end
         if iscell(options.param.SinM)
-            options.param.SinM = cell2mat(options.param.SinM);
+            options.param.SinM = cell2mat(options.param.SinM(:));
         end
         if ~isa(options.param.SinM, 'single') && options.param.loadTOF
             options.param.SinM = single(options.param.SinM);
