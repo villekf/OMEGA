@@ -548,6 +548,9 @@ end
 if ~isfield(options, 'partitions')
     options.partitions = 1;
 end
+if ~isfield(options, 'Nt')
+    options.Nt = 1;
+end
 if ~isfield(options, 'start')
     options.start = 0;
 end
@@ -1040,6 +1043,9 @@ if ~isfield(options, 'useParallelBeam')
 end
 if ~isfield(options, 'useHelical')
     options.useHelical = false;
+end
+if ~isfield(options, 'useParkerWeights')
+    options.useParkerWeights = false;
 end
 if ~isfield(options, 'helicalRadius')
     options.helicalRadius = 0;

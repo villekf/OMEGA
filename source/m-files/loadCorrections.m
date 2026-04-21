@@ -8,7 +8,7 @@ function [options] = loadCorrections(options, RandProp, ScatterProp)
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2022-2024 Ville-Veikko Wettenhovi
+% Copyright (C) 2022-2026 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -42,6 +42,14 @@ if ~isfield(options,'TOF_bins') || options.TOF_bins == 0
 end
 if ~isfield(options,'use_machine')
     options.use_machine = 0;
+end
+if ~isfield(options,'Nt')
+    options.Nt = 1;
+end
+
+if options.listmode && options.normalization_correction && options.Nt > 1
+    warning('Normalization correction is not (yet) supported for dynamic list-mode data! Disabling it.')
+    options.normalization_correction = false;
 end
 
 if ~options.use_raw_data && options.randoms_correction
@@ -947,6 +955,9 @@ if ~options.SPECT
         else
             options.normalization = 0;
         end
+    end
+    if options.normalization_correction && ~iscell(options.SinM) && numel(options.normalization) ~= numel(options.SinM)
+        warning('Normalization coefficient vector/matrix is of different size than the measurement data. Normalization might not work correctly and might cause a crash.')
     end
     if options.sampling > 1 && ~options.precompute_lor
         [~, ~, options] = increaseSampling(options, x, y, true);

@@ -46,7 +46,12 @@ end
 if ismac && options.useImages
     warning('MacOS implementation does not support textures (yet).')
 end
-if options.partitions > 1 && options.implementation ~= 2 && false % TODO dynamic reconstruction for implementation 5 (macOS)
+if numel(options.partitions) > 1
+    partitions = numel(options.partitions);
+else
+    partitions = options.partitions;
+end
+if partitions > 1 && options.implementation ~= 2 && false % TODO dynamic reconstruction for implementation 5 (macOS)
     error('Dynamic reconstruction is supported only with implementation 2.')
 end
 if options.SPECT && mod(sqrt(options.nRays), 1) ~= 0
@@ -54,11 +59,6 @@ if options.SPECT && mod(sqrt(options.nRays), 1) ~= 0
 end
 if options.SPECT && ismember(options.projector_type, [2, 12, 21, 22]) && options.nRays > 1
     warning('Orthogonal distance ray tracer should be used with 1 ray.')
-end
-if numel(options.partitions) > 1
-    partitions = numel(options.partitions);
-else
-    partitions = options.partitions;
 end
 if options.only_sinos && options.only_reconstructions
     error('options.only_sinos and options.only_reconstructions cannot be both set to true')
@@ -150,6 +150,14 @@ end
 if partitions < 1
     warning('Number of time steps is less than one. Using one time step.')
     options.partitions = 1;
+    partitions = 1;
+end
+if partitions == 1 && (options.temporal_smoothness || options.temporalTV)
+    warning('Temporal regularization selected, but using static data. No temporal regularization will be done.')
+    options.temporal_smoothness = false;
+    options.temporalTV = false;
+elseif partitions > 1 && options.temporal_smoothness && options.temporalTV
+    error('Both temporal smoothness prior and temporal TV selected! Select only one!')
 end
 if options.start > options.end
     error('Start time is later than end time!')
@@ -229,11 +237,8 @@ end
 if options.implementation == 1 && ((isfield(options,'maskBP') && ~isscalar(options.maskBP)) || (isfield(options,'maskFP') && ~isscalar(options.maskFP)))
     warning('Mask images are not supported with implementation 1!')
 end
-if options.projector_type > 6 && options.projector_type ~= 11 && options.projector_type ~= 14 && options.projector_type ~= 12 && options.projector_type ~= 13 && ...
-        options.projector_type ~= 21 && options.projector_type ~= 22 && options.projector_type ~= 31 && options.projector_type ~= 32 && options.projector_type ~= 23 ...
-        && options.projector_type ~= 33 && options.projector_type ~= 41 && options.projector_type ~= 51 && options.projector_type ~= 15 && options.projector_type ~= 45 ...
-        && options.projector_type ~= 54 && options.projector_type ~= 55 && options.projector_type ~= 44 && options.projector_type ~= 43 && options.projector_type ~= 42 ...
-        && options.projector_type ~= 24 && options.projector_type ~= 34 && options.projector_type ~= 35 && options.projector_type ~= 25
+if options.projector_type > 6 && ~ismember(options.projector_type, ...
+        [11 12 13 14 15 21 22 23 24 25 31 32 33 34 35 41 42 43 44 45 51 54 55])
     error('The selected projector type is not supported!')
 end
 if options.use_CPU && options.projector_type ~= 1 && options.implementation == 2

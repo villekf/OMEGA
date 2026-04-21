@@ -5,6 +5,7 @@
 # (event-by-event) reconstruction. 
 # For the input measurement data, you can use the open preclinical PET data
 # available from: https://doi.org/10.5281/zenodo.3528056
+# Documentation: https://omega-doc.readthedocs.io/en/latest/customcoordinates.html
 """
 import numpy as np
 from omegatomo.projector import proj

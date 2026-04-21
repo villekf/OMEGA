@@ -292,7 +292,7 @@ if options.use_machine == 1
                 tempPos2 = ring_pos2(ind1:ind2);
                 tempNum1 = ring_number1(ind1:ind2);
                 tempNum2 = ring_number2(ind1:ind2);
-                coordinate{uu + 1} = [x(tempPos1)'; y(tempPos1)'; z(tempNum1)'; x(tempPos2)'; y(tempPos2)'; z(tempNum2)'];
+                coordinate{uu} = [x(tempPos1)'; y(tempPos1)'; z(tempNum1)'; x(tempPos2)'; y(tempPos2)'; z(tempNum2)'];
             end
         else
             coordinate = [x(ring_pos1)'; y(ring_pos1)'; z(ring_number1)'; x(ring_pos2)'; y(ring_pos2)'; z(ring_number2)'];
@@ -303,7 +303,8 @@ if options.use_machine == 1
         % options.store_raw_data = false;
         if options.randoms_correction
             if Nt > 1
-                Rcoordinate = cell(Nt,1);
+                error('Randoms correction not supported with dynamic data!')
+                % Rcoordinate = cell(Nt,1);
             end
             DD1(DD1==0) = [];
             DD2(DD2==0) = [];
@@ -313,15 +314,15 @@ if options.use_machine == 1
             ring_pos2 = uint16(mod(DD2-1, options.det_per_ring)) + 1;
             clear DD1 DD2
             if Nt > 1
-                for uu = 1 : Nt
-                    ind1 = find(tpoints == uu, 1, 'first');
-                    ind2 = find(tpoints == uu, 1, 'last');
-                    tempPos1 = ring_pos1(ind1:ind2);
-                    tempPos2 = ring_pos2(ind1:ind2);
-                    tempNum1 = ring_number1(ind1:ind2);
-                    tempNum2 = ring_number2(ind1:ind2);
-                    Rcoordinate{uu + 1} = [x(tempPos1)'; y(tempPos1)'; z(tempNum1)'; x(tempPos2)'; y(tempPos2)'; z(tempNum2)'];
-                end
+                % for uu = 1 : Nt
+                %     ind1 = find(tpoints == uu, 1, 'first');
+                %     ind2 = find(tpoints == uu, 1, 'last');
+                %     tempPos1 = ring_pos1(ind1:ind2);
+                %     tempPos2 = ring_pos2(ind1:ind2);
+                %     tempNum1 = ring_number1(ind1:ind2);
+                %     tempNum2 = ring_number2(ind1:ind2);
+                %     Rcoordinate{uu + 1} = [x(tempPos1)'; y(tempPos1)'; z(tempNum1)'; x(tempPos2)'; y(tempPos2)'; z(tempNum2)'];
+                % end
             else
                 Rcoordinate = [x(ring_pos1)'; y(ring_pos1)'; z(ring_number1)'; x(ring_pos2)'; y(ring_pos2)'; z(ring_number2)'];
             end
@@ -365,15 +366,43 @@ if options.use_machine == 1
         %             clear LL1 LL2 DD1 DD2 apu1 apu2
         %         end
     elseif options.useIndexBasedReconstruction
+        if Nt > 1
+            axIndices = cell(Nt,1);
+            trIndices = cell(Nt,1);
+        end
         LL1(LL1==0) = [];
         LL2(LL2==0) = [];
-        axIndices = [uint16(idivide(LL1'-1, options.det_per_ring));uint16(idivide(LL2'-1, options.det_per_ring))];
-        trIndices = [uint16(mod(LL1'-1, options.det_per_ring));uint16(mod(LL2'-1, options.det_per_ring))];
+        if Nt > 1
+            tpoints(tpoints==0) = [];
+            for uu = 1 : Nt
+                ind1 = find(tpoints == uu, 1, 'first');
+                ind2 = find(tpoints == uu, 1, 'last');
+                axIndices{uu} = [uint16(idivide(LL1(ind1:ind2,:)'-1, options.det_per_ring));uint16(idivide(LL2(ind1:ind2,:)'-1, options.det_per_ring))];
+                trIndices{uu} = [uint16(mod(LL1(ind1:ind2,:)'-1, options.det_per_ring));uint16(mod(LL2(ind1:ind2,:)'-1, options.det_per_ring))];
+            end
+        else
+            axIndices = [uint16(idivide(LL1'-1, options.det_per_ring));uint16(idivide(LL2'-1, options.det_per_ring))];
+            trIndices = [uint16(mod(LL1'-1, options.det_per_ring));uint16(mod(LL2'-1, options.det_per_ring))];
+        end
         if options.randoms_correction
+            if Nt > 1
+                error('Randoms correction not supported with dynamic data!')
+                % DaxIndices = cell(Nt,1);
+                % DtrIndices = cell(Nt,1);
+            end
             DD1(DD1==0) = [];
             DD2(DD2==0) = [];
-            DaxIndices = [uint16(idivide(DD1'-1, options.det_per_ring));uint16(idivide(DD2'-1, options.det_per_ring))];
-            DtrIndices = [uint16(mod(DD1'-1, options.det_per_ring));uint16(mod(DD2'-1, options.det_per_ring))];
+            if Nt > 1
+                % for uu = 1 : Nt
+                %     ind1 = find(tpoints == uu, 1, 'first');
+                %     ind2 = find(tpoints == uu, 1, 'last');
+                %     DaxIndices{uu + 1} = [uint16(idivide(DD1(ind1:ind2,:)'-1, options.det_per_ring));uint16(idivide(DD2(ind1:ind2,:)'-1, options.det_per_ring))];
+                %     DtrIndices{uu + 1} = [uint16(mod(DD1(ind1:ind2,:)'-1, options.det_per_ring));uint16(mod(DD2(ind1:ind2,:)'-1, options.det_per_ring))];
+                % end
+            else
+                DaxIndices = [uint16(idivide(DD1'-1, options.det_per_ring));uint16(idivide(DD2'-1, options.det_per_ring))];
+                DtrIndices = [uint16(mod(DD1'-1, options.det_per_ring));uint16(mod(DD2'-1, options.det_per_ring))];
+            end
         end
     end
     % end
@@ -519,11 +548,16 @@ elseif options.use_machine == 0
         end
     end
     if options.useIndexBasedReconstruction
-        trIndices = [];
-        axIndices = [];
-        if options.randoms_correction
+        if Nt > 1
+            trIndices = cell(Nt,1);
+            axIndices = cell(Nt,1);
+        else
             trIndices = [];
-            DaxIndices = [];
+            axIndices = [];
+            if options.randoms_correction
+                trIndices = [];
+                DaxIndices = [];
+            end
         end
     end
 
@@ -715,6 +749,9 @@ elseif options.use_machine == 0
 
     elseif options.use_ASCII
         %% ASCII data
+        if options.useIndexBasedReconstruction && partitions > 1
+            error('Index-based reconstruction is not supported with dynamic data yet when using ASCII data! Use ROOT data instead.')
+        end
         [ascii_ind, mSize] = get_ascii_indices(options.coincidence_mask);
         rsector_ind1 = ascii_ind.rsector_ind1;
         rsector_ind2 = ascii_ind.rsector_ind2;
@@ -1562,9 +1599,6 @@ elseif options.use_machine == 0
         %             outputUint32 = false;
         %         end
 
-        if options.useIndexBasedReconstruction && partitions > 1
-            error('Index-based reconstruction is not supported with dynamic data yet!')
-        end
 
 
         if options.verbose
@@ -1921,6 +1955,13 @@ elseif options.use_machine == 0
                     end
                     if options.randoms_correction
                         warning('Coordinates for delayed coincidences are not supported for list-mode data in dynamic mode!')
+                    end
+                end
+                if options.useIndexBasedReconstruction
+                    uind = unique(tIndex);
+                    for uu = 1 : numel(uind)
+                        trIndices{uu} = [trIndices{uu}, trIndex(:,tIndex == uind(uu))];
+                        axIndices{uu} = [axIndices{uu}, axIndex(:,tIndex == uind(uu))];
                     end
                 end
                 % ll = ll + 1;
