@@ -582,10 +582,6 @@ options.x0 = ones(options.Nx, options.Ny, options.Nz);
 % Supported by all implementations
 options.OSEM = false;
 
-%%% Accelerated COSEM (ACOSEM)
-% Supported by implementations 1, 2, 4, and 5
-options.ACOSEM = false;
-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MAP-METHODS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Any algorithm selected here will utilize any of the priors selected below
