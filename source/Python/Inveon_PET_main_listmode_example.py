@@ -1152,11 +1152,11 @@ options.useIndexBasedReconstruction = True
 # there first three rows correspond to the x/y/z-coordinates of the first
 # detector and the next three the x/y/z-coordinates for the second
 # detector. options.x can also be a vector of size 6 * NumberOfEvents.
-# The above applies when using Fourier data ordering, if you use the default
+# The above applies when using Fortran data ordering, if you use the default
 # C ordering, then the dimensions need to be NumberOfEventsx6. 
 # Alternatively, you can input the coordinates separately in options.x, 
 # options.y and options.z such that x-coordinates for source + detector are in
-# options.x, etc. These can be either Fourier or C order and will be correctly
+# options.x, etc. These can be either Fortran or C order and will be correctly
 # ordered later. However, this consumes more intermediate memory.
 # Note: List-mode reconstruction can be much more memory intensive than
 # regular reconstruction
