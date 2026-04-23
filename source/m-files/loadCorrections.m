@@ -111,9 +111,6 @@ if options.attenuation_correction && ~options.SPECT % PET attenuation
             data = load(options.attenuation_datafile);
             variables = fieldnames(data);
             options.vaimennus = double(data.(variables{1}));
-            if options.CT_attenuation
-                options.vaimennus = options.vaimennus ./ 10;
-            end
             clear data
         else
             [options.file, options.fpath] = uigetfile('*.*','Select attenuation file');
@@ -129,9 +126,6 @@ if options.attenuation_correction && ~options.SPECT % PET attenuation
                 data = load(nimi);
                 variables = fieldnames(data);
                 options.vaimennus = double(data.(variables{1}));
-                if options.CT_attenuation
-                    options.vaimennus = options.vaimennus ./ 10;
-                end
                 clear data
             end
         end
@@ -211,6 +205,9 @@ elseif options.attenuation_correction && options.SPECT % SPECT attenuation
 else
     options.vaimennus = 0;
 end
+if options.attenuation_correction && options.attIncm
+    options.vaimennus = options.vaimennus ./ 10;
+end
 
 
 if ~iscell(options.vaimennus) 
@@ -285,9 +282,9 @@ if ~options.SPECT
         randoms_correction = true;
         r_exist = isfield(options,'SinDelayed') && numel(options.SinDelayed) > 1;
         s_exist = isfield(options,'ScatterC') && numel(options.ScatterC) > 1;
-        if r_exist && isfield(options,'SinDelayed') && ~iscell(options.SinDelayed) && numel(options.SinDelayed) == 1 && randoms_correction
+        if r_exist && isfield(options,'SinDelayed') && ~iscell(options.SinDelayed) && isscalar(options.SinDelayed) && randoms_correction
             r_exist = false;
-        elseif r_exist && isfield(options,'SinDelayed') && iscell(options.SinDelayed) && numel(options.SinDelayed{1}) == 1 && randoms_correction
+        elseif r_exist && isfield(options,'SinDelayed') && iscell(options.SinDelayed) && isscalar(options.SinDelayed{1}) && randoms_correction
             r_exist = false;
         end
         if exist('RandProp','var') == 0 || isempty(RandProp)
@@ -711,9 +708,9 @@ if ~options.SPECT
         end
     elseif (options.randoms_correction || options.scatter_correction) && ~options.reconstruct_trues && ~options.reconstruct_scatter
         r_exist = isfield(options,'SinDelayed');
-        if r_exist && isfield(options,'SinDelayed') && ~iscell(options.SinDelayed) && numel(options.SinDelayed) == 1 && options.randoms_correction
+        if r_exist && isfield(options,'SinDelayed') && ~iscell(options.SinDelayed) && isscalar(options.SinDelayed) && options.randoms_correction
             r_exist = false;
-        elseif r_exist && isfield(options,'SinDelayed') && iscell(options.SinDelayed) && numel(options.SinDelayed{1}) == 1 && options.randoms_correction
+        elseif r_exist && isfield(options,'SinDelayed') && iscell(options.SinDelayed) && isscalar(options.SinDelayed{1}) && options.randoms_correction
             r_exist = false;
         end
         options.scatter = false;

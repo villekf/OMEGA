@@ -478,6 +478,10 @@ options.attenuation_correction = True
 # (i.e. using attenuation sinograms)
 options.CT_attenuation = False
 
+### Attenuation coefficients in cm
+# If the attenuation coefficients are in cm, put the below to True
+options.attIncm = True
+
 ### Rotate the attenuation image before correction
 # Rotates the attenuation image N * 90 degrees where N is the number
 # specified below. Positive values are clockwise, negative

@@ -314,6 +314,11 @@ options.attenuation_correction = false;
 % the .atn-files
 options.CT_attenuation = false;
 
+%%% Attenuation coefficients in cm
+% If the attenuation coefficients are in cm, put the below to True
+% For Inveon, this needs to be true
+options.attIncm = true;
+
 %%% Attenuation image data file
 % Specify the path (if not in MATLAB path) and filename.
 % NOTE: the attenuation data must be the only variable in the file and

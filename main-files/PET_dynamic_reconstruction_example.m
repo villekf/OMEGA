@@ -225,12 +225,17 @@ options.offangle = options.det_per_ring * (2/4);
 % For dynamic data, the attenuation can either be static (same for all
 % timesteps) or dynamic (different for each timestep). For the latter, make
 % sure that the image is of size Nx*Ny*Nz*numberOfTimesteps
-options.attenuation_correction = true;
+options.attenuation_correction = false;
 
 %%% CT-image attenuation
 % Use CT-images for the attenuation. If set to false, uses the
 % .atn-files instead (if above attenuation is set to true).
 options.CT_attenuation = true;
+
+%%% Attenuation coefficients in cm
+% If the attenuation coefficients are in cm, put the below to True
+% For Inveon, this needs to be true
+options.attIncm = true;
 
 %%% Attenuation image data file
 % Specify the path (if not in MATLAB path) and filename.

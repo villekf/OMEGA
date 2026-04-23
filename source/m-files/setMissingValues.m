@@ -596,6 +596,9 @@ end
 if ~isfield(options, 'CT_attenuation')
     options.CT_attenuation = true;
 end
+if ~isfield(options, 'attIncm')
+    options.attIncm = false;
+end
 if ~isfield(options, 'dualLayerSubmodule')
     options.dualLayerSubmodule = false;
 end

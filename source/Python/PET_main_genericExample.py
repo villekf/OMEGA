@@ -265,13 +265,18 @@ options.scatter_smoothing = False
 # data has to be correctly scaled before reconstruction.
 # You can either use the path below to input the data or manually input
 # the attenuation data into options.vaimennus
-options.attenuation_correction = True
+options.attenuation_correction = False
 
 ### Image-based attenuation correction
 # Use images (such as CT) for the attenuation. If set to false, then 
 # attenuation correction is performed in the measurement space instead
 # (i.e. using attenuation sinograms)
 options.CT_attenuation = False
+
+### Attenuation coefficients in cm
+# If the attenuation coefficients are in cm, put the below to True
+# For Inveon, this needs to be True
+options.attIncm = True
 
 ### Rotate the attenuation image before correction
 # Rotates the attenuation image N * 90 degrees where N is the number
