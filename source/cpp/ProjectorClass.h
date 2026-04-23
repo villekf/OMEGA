@@ -370,7 +370,7 @@ class ProjectorClass {
 			else
 				status = buildProgram(inputScalars.verbose, contentBP, CLContext, CLDeviceID, programBP, inputScalars.atomic_64bit, inputScalars.atomic_32bit, os_options);
 		}
-		if (inputScalars.computeSensImag) {
+		if (inputScalars.computeSensImag && inputScalars.listmode > 0) {
 			std::string os_options = options;
 			os_options += " -DBP";
 			os_options += " -DATOMICF";
@@ -896,7 +896,7 @@ class ProjectorClass {
 		//		}
 		//	}
 		//}
-		if (inputScalars.computeSensImag) {
+		if (inputScalars.computeSensImag && inputScalars.listmode > 0) {
 			if (inputScalars.BPType == 4)
 				kernelSensList = cl::Kernel(programSens, "projectorType4Forward", &status);
 			else
@@ -1321,10 +1321,12 @@ public:
                 // Attenuation data for image-based attenuation
                 if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
                     imZ = inputScalars.Nz[0];
-                    if (inputScalars.useBuffers)
-                        d_attenB[timestep] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.im_dim[0], NULL, &status);
-                    else
-                        d_attenIm[timestep] = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
+					if (inputScalars.size_atten > inputScalars.im_dim[0] || timestep == 0) {
+						if (inputScalars.useBuffers)
+							d_attenB[timestep] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.im_dim[0], NULL, &status);
+						else
+							d_attenIm[timestep] = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
+					}
                     OCL_CHECK(status, "\n", -1);
                 }
 
@@ -1374,7 +1376,7 @@ public:
 						}
                     }
                     if (inputScalars.listmode > 0 && inputScalars.TOF) {
-                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
+                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF && timestep == 0)) {
                             d_TOFIndex[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * length[kk + timestep * inputScalars.subsets], NULL, &status);
                             OCL_CHECK(status, "\n", -1);
                         }
@@ -1643,7 +1645,7 @@ public:
                         }
                     }
                     if (inputScalars.listmode > 0 && inputScalars.TOF) {
-                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
+                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF && timestep == 0)) {
                             status = CLCommandQueue[0].enqueueWriteBuffer(d_TOFIndex[timestep][kk], CL_FALSE, 0, sizeof(uint8_t) * length[kk + timestep * inputScalars.subsets], 
 								&w_vec.TOFIndices[pituus[kk + timestep * inputScalars.subsets]]);
                             OCL_CHECK(status, "\n", -1);
@@ -2333,9 +2335,9 @@ public:
 				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.normalization_correction)
-				if (inputScalars.listmode > 0 && inputScalars.indexBased)
-					status = kernelFP.setArg(kernelIndFPSubIter++, d_norm[0]);
-				else
+				//if (inputScalars.listmode > 0 && inputScalars.indexBased)
+				//	status = kernelFP.setArg(kernelIndFPSubIter++, d_norm[0]);
+				//else
 					status = kernelFP.setArg(kernelIndFPSubIter++, d_norm[osa_iter]);
 			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, length[osa_iter + timestep * inputScalars.subsets]));
 		}
