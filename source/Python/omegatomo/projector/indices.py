@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Copyright (C) 2024-2025 Ville-Veikko Wettenhovi
+Copyright (C) 2024-2026 Ville-Veikko Wettenhovi
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -77,12 +77,25 @@ def indexMaker(options):
                 options.nMeas[i] = np.size(index1)
             # Take every nth (column) measurement
         elif options.subsetType == 1:
-            for i in range(subsets):
-                index1 = np.arange(i, totalLength, subsets).astype(tyyppi)
-                [I,J,K] = ind2sub(index1, np.array((Nang, Ndist, NSinos)))
-                index1 = sub2ind(np.array((Ndist, Nang, NSinos)), J, I,K)
-                options.index = np.append(options.index, index1)
-                options.nMeas[i] = np.size(index1)
+            if options.listmode > 0 and options.Nt > 1:
+                options.index = [None] * options.Nt
+                pituus = np.zeros((subsets, options.Nt), dtype=np.int64)
+                for j in range(options.Nt):
+                    tot_length = options.listmodeIndices[j]
+                    temp_ind = []
+                    for i in range(subsets):
+                        index1 = np.arange(i, tot_length, subsets, dtype=tyyppi)
+                        temp_ind.append(index1)
+                        pituus[i, j] = len(index1)
+                    options.index[j] = np.concatenate(temp_ind)
+                options.nMeas = pituus.flatten(order='F')
+            else:
+                for i in range(subsets):
+                    index1 = np.arange(i, totalLength, subsets).astype(tyyppi)
+                    [I,J,K] = ind2sub(index1, np.array((Nang, Ndist, NSinos)))
+                    index1 = sub2ind(np.array((Ndist, Nang, NSinos)), J, I,K)
+                    options.index = np.append(options.index, index1)
+                    options.nMeas[i] = np.size(index1)
             # Take every nth (row) measurement
             # Every nth measurements
         elif options.subsetType == 2:
@@ -112,21 +125,36 @@ def indexMaker(options):
         elif options.subsetType == 7:
             raise ValueError('Not supported in Python version')
         elif options.subsetType == 0:
-            if options.listmode:
-                val = totalLength // subsets
-                if totalLength % subsets > 0:
-                    valEnd = totalLength - val * (subsets - 1)
-                else:
-                    valEnd = val
+            if options.listmode and options.Nt > 1:
+                pituus = np.zeros((subsets, options.Nt), dtype=np.int64)
+                for j in range(options.Nt):
+                    totLength  = options.listmodeIndices[j]
+                    val = totLength  // subsets
+                    if totLength  % subsets > 0:
+                        valEnd = totLength  - val * (subsets - 1)
+                    else:
+                        valEnd = val
+                    for i in range(subsets - 1):
+                        pituus[i, j] = val
+                    pituus[subsets - 1, j] = valEnd
+                options.nMeas = pituus.flatten(order='F')
+                options.index = np.zeros(1,dtype=tyyppi)
             else:
-                val = options.nProjections // subsets
-                if totalLength % subsets > 0:
-                    valEnd = options.nProjections - val * (subsets - 1)
+                if options.listmode:
+                    val = totalLength // subsets
+                    if totalLength % subsets > 0:
+                        valEnd = totalLength - val * (subsets - 1)
+                    else:
+                        valEnd = val
                 else:
-                    valEnd = val
-            options.nMeas = np.full(subsets - 1, val, dtype=np.int64)
-            options.nMeas = np.append(options.nMeas, valEnd)
-            options.index = np.zeros(1,dtype=tyyppi)
+                    val = options.nProjections // subsets
+                    if totalLength % subsets > 0:
+                        valEnd = options.nProjections - val * (subsets - 1)
+                    else:
+                        valEnd = val
+                options.nMeas = np.full(subsets - 1, val, dtype=np.int64)
+                options.nMeas = np.append(options.nMeas, valEnd)
+                options.index = np.zeros(1,dtype=tyyppi)
     elif (subsets > 1 and options.subsetType in [8, 9, 10, 11]) or subsets == 1:
         sProjections = options.nProjections // subsets
         modi = np.mod(options.nProjections, subsets)
@@ -240,6 +268,8 @@ def indexMaker(options):
                 options.nMeas[0] = options.Nang * options.Ndist * options.NSinos
     elif options.subsetType > 11:
         raise ValueError('Invalid subset type!')
+    if options.listmode == 0 and options.Nt > 1:
+        options.nMeas = np.tile(options.nMeas, options.Nt)
     if options.sampling > 1:
         options.Ndist = int(options.Ndist / options.sampling)
     options.subsets = subsets
@@ -316,31 +346,69 @@ def formSubsetIndices(options):
     if options.listmode > 0 and options.subsetType < 8 and options.subsets > 1:
         if options.subsetType > 0:
             if options.useIndexBasedReconstruction:
-                if options.trIndex.shape[0] != 2:
-                    options.trIndex = np.reshape(options.trIndex, (2, -1), order='F')
                 if options.Nt > 1:
-                    options.trIndex = options.trIndex[:,options.index,:]
+                    if isinstance(options.trIndex, list):
+                        for kk in range(options.Nt):
+                            if options.trIndex[kk].shape[0] != 2:
+                                options.trIndex[kk] = options.trIndex[kk].reshape(2, -1, order='F')
+                            options.trIndex[kk] = options.trIndex[kk][:, options.index[kk]]
+                            if options.axIndex[kk].shape[0] != 2:
+                                options.axIndex[kk] = options.axIndex[kk].reshape(2, -1, order='F')
+                            options.axIndex[kk] = options.axIndex[kk][:, options.index[kk]]
+                    else:
+                        if isinstance(options.index, list):
+                           options.index = np.concatenate(options.index)
+                        options.trIndex = options.trIndex[:, options.index, :]
+                        options.axIndex = options.axIndex[:, options.index, :]
                 else:
+                    if options.trIndex.shape[0] != 2:
+                        options.trIndex = np.reshape(options.trIndex, (2, -1), order='F')
                     options.trIndex = options.trIndex[:,options.index]
-                if options.axIndex.shape[0] != 2:
-                    options.axIndex = np.reshape(options.axIndex, (2, -1), order='F')
-                if options.Nt > 1:
-                    options.axIndex = options.axIndex[:,options.index,:]
-                else:
+                    if options.axIndex.shape[0] != 2:
+                        options.axIndex = np.reshape(options.axIndex, (2, -1), order='F')
                     options.axIndex = options.axIndex[:,options.index]
             else:
-                if not options.x.shape[0] == 6:
-                    options.x = np.reshape(options.x, (6, options.x.size // 6))
                 if options.Nt > 1:
-                    options.x = options.x[:,options.index,:]
+                    if isinstance(options.x, list):
+                        for kk in range(options.Nt):
+                            if options.x[kk].shape[0] != 6:
+                                options.x[kk] = options.x[kk].reshape(6, -1, order='F')
+                            options.x[kk] = options.x[kk][:, options.index[kk]]
+                    else:
+                        if isinstance(options.index, list):
+                            options.index = np.concatenate(options.index)
+                        options.x = options.x[:, options.index, :]
                 else:
+                    if not options.x.shape[0] == 6:
+                        options.x = np.reshape(options.x, (6, options.x.size // 6))
                     options.x = options.x[:,options.index]
             if options.TOF_bins_used > 1:
                 if options.Nt > 1:
-                    options.TOFIndices = options.TOFIndices[options.index,:]
+                    if isinstance(options.TOFIndices, list):
+                        for kk in range(options.Nt):
+                            options.TOFIndices[kk] = options.TOFIndices[kk][options.index[kk]]
+                    else:
+                        if isinstance(options.index, list):
+                            options.index = np.concatenate(options.index)
+                        options.TOFIndices = options.TOFIndices[options.index]
                 else:
                     options.TOFIndices = options.TOFIndices[options.index]
-        options.x = options.x.ravel('F')
+        if not isinstance(options.x, list):
+            options.x = options.x.ravel('F')
+        if options.useIndexBasedReconstruction and options.listmode > 0 and isinstance(options.trIndex, list):
+            for kk in range(options.Nt):
+                options.trIndex[kk] = options.trIndex[kk].flatten(order='F')
+                options.axIndex[kk] = options.axIndex[kk].flatten(order='F')
+            options.trIndex = np.concatenate(options.trIndex)
+            options.axIndex = np.concatenate(options.axIndex)
+            if options.TOF_bins > 1 and isinstance(options.TOFIndices, list):
+                options.TOFIndices = np.concatenate(options.TOFIndices)
+        elif not options.useIndexBasedReconstruction and options.listmode > 0 and isinstance(options.x, list):
+            for kk in range(options.Nt):
+                options.x[kk] = options.x[kk].flatten(order='F')
+            options.x = np.concatenate(options.x)
+            if options.TOF_bins > 1 and isinstance(options.TOFIndices, list):
+                options.TOFIndices = np.concatenate(options.TOFIndices)
         options.xy_index = np.empty(0, dtype=np.uint32)
         options.z_index = np.empty(0, dtype=np.uint16)
     elif options.listmode > 0 and (options.subsetType in [8, 9]) and options.subsets > 1:

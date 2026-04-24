@@ -145,6 +145,8 @@ def loadCorrections(options):
                 atn = np.reshape(options.vaimennus, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()))
                 atn = np.flip(atn,2)
                 options.vaimennus = atn
+            if options.attIncm:
+                options.vaimennus /= 10.
         options.vaimennus = np.asfortranarray(options.vaimennus)
         options.vaimennus = options.vaimennus.ravel('F').astype(dtype=np.float32)
     if options.normalization_correction:
@@ -276,18 +278,21 @@ def parseInputs(options, mDataFound = False):
             if options.Nt > 1:
                 for ff in range(1, options.Nt + 1):
                     if not options.use_raw_data:
-                        if options.listmode == 0:
-                            if options.TOF:
-                                temp = options.SinM[:,:,:,:,ff - 1]
-                            else:
-                                if options.SinM.ndim == 4:
-                                    temp = options.SinM[:,:,:,ff - 1]
-                                else:
-                                    temp = np.squeeze(options.SinM[:,:,:,:,ff - 1])
-                            if options.NSinos != options.TotSinos:
-                                temp = temp[:, :, :options.NSinos, :]
+                        if isinstance(options.SinM, list):
+                            temp = options.SinM[ff - 1]
                         else:
-                            temp = options.SinM[:,ff - 1]
+                            if options.listmode == 0:
+                                if options.TOF:
+                                    temp = options.SinM[:,:,:,:,ff - 1]
+                                else:
+                                    if options.SinM.ndim == 4:
+                                        temp = options.SinM[:,:,:,ff - 1]
+                                    else:
+                                        temp = np.squeeze(options.SinM[:,:,:,:,ff - 1])
+                                if options.NSinos != options.TotSinos:
+                                    temp = temp[:, :, :options.NSinos, :]
+                            else:
+                                temp = options.SinM[:,ff - 1]
                     # else:
                     #     temp = np.single(np.full(options.SinM[ff - 1]))
             
@@ -301,22 +306,31 @@ def parseInputs(options, mDataFound = False):
                             temp = np.reshape(temp, koko, order='F')
                     else:
                         if options.subsetType >= 8:
-                            temp = temp[:, :, options.index]
+                            if isinstance(options.index, list):
+                                temp = temp[:, :, options.index[ff - 1]]
+                            else:
+                                temp = temp[:, :, options.index]
                         else:
                             if temp.ndim == 3:
                                 koko = (temp.shape[0], temp.shape[1], temp.shape[2])
                             else:
                                 koko = temp.shape[0]
                             temp = temp.ravel(order='F')
-                            temp = temp[options.index]
+                            if isinstance(options.index, list):
+                                temp = temp[options.index[ff - 1]]
+                            else:
+                                temp = temp[options.index]
                             temp = np.reshape(temp, koko, order='F')
-                    if options.TOF and options.listmode == 0:
-                        options.SinM[:,:,:,:,ff - 1] = temp
+                    if isinstance(options.SinM, list):
+                        options.SinM[ff - 1] = temp
                     else:
-                        if options.SinM.ndim == 4:
-                            options.SinM[:,:,:,ff - 1] = temp
+                        if options.TOF and options.listmode == 0:
+                            options.SinM[:,:,:,:,ff - 1] = temp.ravel(order='F')
                         else:
-                            options.SinM[:,:,:,0,ff - 1] = temp
+                            if options.SinM.ndim == 4:
+                                options.SinM[:,:,:,ff - 1] = temp
+                            else:
+                                options.SinM[:,:,:,0,ff - 1] = temp
             else:
                 if not options.use_raw_data and options.listmode == 0:
                     if options.NSinos != options.TotSinos:
@@ -464,7 +478,7 @@ def parseInputs(options, mDataFound = False):
             options.maskFP = options.maskFP[:,:,options.index]
             
     
-    if mDataFound and not options.largeDim and options.loadTOF:
+    if options.Nt <= 1 and mDataFound and not options.largeDim and options.loadTOF:
         options.SinM = np.asfortranarray(options.SinM)
         options.SinM = options.SinM.ravel(order='F').astype(dtype=np.float32)
 
