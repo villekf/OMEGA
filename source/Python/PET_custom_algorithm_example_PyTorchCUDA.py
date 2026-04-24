@@ -390,3 +390,6 @@ for it in range(options.Niter):
 f_np = d_f.cpu().numpy()
 f_np = np.reshape(f_np, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()), order='F')
 plt.pyplot.imshow(f_np[:,:,20], vmin=0)
+
+from omegatomo.util.volume3Dviewer import volume3Dviewer
+volume3Dviewer(f_np)

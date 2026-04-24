@@ -646,6 +646,9 @@ if __name__ == "__main__":
     # import matplotlib as plt
     
     # plt.pyplot.imshow(pz[:,:,39])
+
+    from omegatomo.util.volume3Dviewer import volume3Dviewer
+    volume3Dviewer(pz)
         
     from scipy.io import savemat
 

@@ -785,3 +785,6 @@ pz, fp = reconstructions_mainSPECT(options)
 toc = time.perf_counter()
 print(f"{toc - tic:0.4f} seconds")
 plt.pyplot.imshow(pz[:,:,48], vmin=0)
+
+from omegatomo.util.volume3Dviewer import volume3Dviewer
+volume3Dviewer(pz)

@@ -141,3 +141,6 @@ fp = A * d_f
 f_np = fp.get(A.queue)
 f_np = np.reshape(f_np, (A.nRowsD, A.nColsD, -1), order='F')
 plt.pyplot.imshow(f_np[:,:,200], vmin=0)
+
+from omegatomo.util.volume3Dviewer import volume3Dviewer
+volume3Dviewer(f_np)

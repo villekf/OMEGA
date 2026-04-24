@@ -1392,3 +1392,6 @@ pz, fp = reconstructions_main(options)
 import matplotlib as plt
 
 plt.pyplot.imshow(pz[:,:,20])
+
+from omegatomo.util.volume3Dviewer import volume3Dviewer
+volume3Dviewer(pz)

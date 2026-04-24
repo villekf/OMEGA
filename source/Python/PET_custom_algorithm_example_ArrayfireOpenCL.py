@@ -402,5 +402,8 @@ f_np = d_f.to_ndarray()
 f_np = np.reshape(f_np, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()), order='F')
 plt.pyplot.imshow(f_np[:,:,20], vmin=0)
 
+from omegatomo.util.volume3Dviewer import volume3Dviewer
+volume3Dviewer(f_np)
+
 af.sync()
 af.device_gc()

@@ -580,3 +580,6 @@ print(f"{toc - tic:0.4f} seconds")
 z = np.int16(pz[:,:,:] * 55000) - 1000
 
 plt.pyplot.imshow(pz[:,:,120])
+
+from omegatomo.util.volume3Dviewer import volume3Dviewer
+volume3Dviewer(pz, [-1000, 2000])

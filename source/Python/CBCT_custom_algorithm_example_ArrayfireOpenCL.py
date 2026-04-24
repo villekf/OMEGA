@@ -374,6 +374,8 @@ f_np = np.reshape(f_np, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[
 z = np.int16(f_np * 55000) - 1000
 
 plt.pyplot.imshow(z[:,:,420], vmin=-1000, vmax=2000)
+from omegatomo.util.volume3Dviewer import volume3Dviewer
+volume3Dviewer(z, [-1000, 2000])
 
 af.sync()
 af.device_gc()

@@ -319,3 +319,6 @@ else:
     f_np = d_f.get()
 f_np = cp.reshape(f_np, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()), order='F')
 plt.pyplot.imshow(f_np[:,:,200], vmin=0)
+
+from omegatomo.util.volume3Dviewer import volume3Dviewer
+volume3Dviewer(f_np)
