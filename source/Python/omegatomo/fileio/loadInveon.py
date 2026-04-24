@@ -51,7 +51,7 @@ def loadInveonData(options, store_coordinates = False):
         SinoD = np.zeros((options.Ndist, options.Nang, totSinos, Nt), dtype=np.uint16, order='F')
     else:
         SinoD = np.zeros(1, dtype=np.uint16, order='F')
-    seg = np.cumsum(options.segment_table)
+    seg = np.uint32(np.cumsum(options.segment_table))
     
     fPath = os.path.dirname( __file__ )
     if os.path.exists(os.path.join(fPath, '..', 'util', 'usingPyPi.py')):
@@ -75,6 +75,7 @@ def loadInveonData(options, store_coordinates = False):
         tPoints = np.zeros(Nentries, dtype=np.uint16)
     else:
         tPoints = np.zeros(1, dtype=np.uint16)
+    options.partitions = np.array(options.partitions, dtype=np.float64)
     tPointP = tPoints.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
     segP = seg.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))
     SinoP = Sino.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
@@ -140,8 +141,8 @@ def loadInveonData(options, store_coordinates = False):
                 tempPos2 = ring_pos2[ind1:ind2 + 1]
                 tempNum1 = ring_number1[ind1:ind2 + 1]
                 tempNum2 = ring_number2[ind1:ind2 + 1]
-                coordinate[uu] = np.array([x[tempPos1 - 1], y[tempPos1 - 1], z[tempNum1 - 1],
-                                           x[tempPos2 - 1], y[tempPos2 - 1], z[tempNum2 - 1]], order='F')
+                coordinate[uu] = np.array([x[tempPos1], y[tempPos1], z[tempNum1],
+                                           x[tempPos2], y[tempPos2], z[tempNum2]], order='F')
         else:
             coordinate = np.array([x[ring_pos1], y[ring_pos1], z[ring_number1],
                                    x[ring_pos2], y[ring_pos2], z[ring_number2]], order='F')
@@ -172,6 +173,9 @@ def loadInveonData(options, store_coordinates = False):
                 Rcoordinate = np.array([x[ring_pos1], y[ring_pos1], z[ring_number1], x[ring_pos2], y[ring_pos2], z[ring_number2]], order='F')
             del DD1, DD2
     elif options.useIndexBasedReconstruction:
+        if Nt > 1:
+            coordinate = [None] * Nt
+            Rcoordinate = [None] * Nt
         LL1 = LL1[LL1 != 0]
         LL2 = LL2[LL2 != 0]
         ring_number1 = np.uint16(np.floor_divide(LL1 - 1, options.det_per_ring))
@@ -182,21 +186,30 @@ def loadInveonData(options, store_coordinates = False):
         ring_pos2 = np.reshape(ring_pos2, (-1, 1))
         ring_number1 = np.reshape(ring_number1, (-1, 1))
         ring_number2 = np.reshape(ring_number2, (-1, 1))
-        coordinate = np.asfortranarray(np.concatenate((ring_pos1.T, ring_pos2.T), axis = 0))
-        Rcoordinate = np.asfortranarray(np.concatenate((ring_number1.T, ring_number2.T), axis = 0))
-        if options.randoms_correction:
-            DD1 = DD1[DD1 != 0]
-            DD2 = DD2[DD2 != 0]
-            ring_number1 = np.uint16(np.floor_divide(DD1 - 1, options.det_per_ring))
-            ring_number2 = np.uint16(np.floor_divide(DD2 - 1, options.det_per_ring))
-            ring_pos1 = np.uint16(np.mod(DD1 - 1, options.det_per_ring))
-            ring_pos2 = np.uint16(np.mod(DD2 - 1, options.det_per_ring))
-            ring_pos1 = np.reshape(ring_pos1, (-1, 1))
-            ring_pos2 = np.reshape(ring_pos2, (-1, 1))
-            ring_number1 = np.reshape(ring_number1, (-1, 1))
-            ring_number2 = np.reshape(ring_number2, (-1, 1))
-            DtrIndices = np.asfortranarray(np.concatenate((ring_pos1.T, ring_pos2.T), axis = 0))
-            DaxIndices = np.asfortranarray(np.concatenate((ring_number1.T, ring_number2.T), axis = 0))
+        if Nt > 1:
+            for uu in range(Nt):
+                ind1 = np.where(tPoints == uu + 1)[0][0]
+                ind2 = np.where(tPoints == uu + 1)[0][-1]
+                coordinate[uu] = np.asfortranarray(np.concatenate((ring_pos1[ind1:ind2 + 1].T, ring_pos2[ind1:ind2 + 1].T), axis = 0))
+                Rcoordinate[uu] = np.asfortranarray(np.concatenate((ring_number1[ind1:ind2 + 1].T, ring_number2[ind1:ind2 + 1].T), axis = 0))
+                if options.randoms_correction:
+                    raise ValueError('Randoms correction not yet supported for dynamic data!')
+        else:
+            coordinate = np.asfortranarray(np.concatenate((ring_pos1.T, ring_pos2.T), axis = 0))
+            Rcoordinate = np.asfortranarray(np.concatenate((ring_number1.T, ring_number2.T), axis = 0))
+            if options.randoms_correction:
+                DD1 = DD1[DD1 != 0]
+                DD2 = DD2[DD2 != 0]
+                ring_number1 = np.uint16(np.floor_divide(DD1 - 1, options.det_per_ring))
+                ring_number2 = np.uint16(np.floor_divide(DD2 - 1, options.det_per_ring))
+                ring_pos1 = np.uint16(np.mod(DD1 - 1, options.det_per_ring))
+                ring_pos2 = np.uint16(np.mod(DD2 - 1, options.det_per_ring))
+                ring_pos1 = np.reshape(ring_pos1, (-1, 1))
+                ring_pos2 = np.reshape(ring_pos2, (-1, 1))
+                ring_number1 = np.reshape(ring_number1, (-1, 1))
+                ring_number2 = np.reshape(ring_number2, (-1, 1))
+                DtrIndices = np.asfortranarray(np.concatenate((ring_pos1.T, ring_pos2.T), axis = 0))
+                DaxIndices = np.asfortranarray(np.concatenate((ring_number1.T, ring_number2.T), axis = 0))
         
                 
     return Sino, SinoD, coordinate, Rcoordinate, DtrIndices, DaxIndices
