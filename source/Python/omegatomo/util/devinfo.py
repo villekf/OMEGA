@@ -2,10 +2,17 @@
             
 def deviceInfo(useAF = False, backend = 'opencl'):
     if useAF:
-        import arrayfire as af
-        if af.get_active_backend() != backend:
-            af.set_backend(backend)
-        print(af.device.info_str())
+        try:
+            import arrayfire as af
+            try:
+                if af.get_active_backend() != backend:
+                    af.set_backend(backend)
+                print(af.device.info_str())
+            except:
+                af.set_backend(af.BackendType.opencl)
+                print(af.info_string())
+        except ModuleNotFoundError:
+            print('ArrayFire not found. Unable to determine device numbers for ArrayFire.')
     elif backend == 'opencl':
         import pyopencl as cl
         # Taken from https://github.com/benshope/PyOpenCL-Tutorial/blob/master/010_introspection.py
