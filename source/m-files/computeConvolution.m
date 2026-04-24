@@ -65,7 +65,7 @@ else
     gaussK = varargin{5};
 end
 vec = reshape(vec, Nx, Ny, Nz, []);
-if ~ismatrix(gaussK)
+if Nz > 1 && g_dim_z > 0
     gaussK = reshape(gaussK, g_dim_x * 2 + 1, g_dim_y * 2 + 1, g_dim_z * 2 + 1);
     vec = padding(vec, [g_dim_x g_dim_y g_dim_z]);
 else

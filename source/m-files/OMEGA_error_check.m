@@ -51,7 +51,7 @@ if numel(options.partitions) > 1
 else
     partitions = options.partitions;
 end
-if partitions > 1 && options.implementation ~= 2 && false % TODO dynamic reconstruction for implementation 5 (macOS)
+if partitions > 1 && options.implementation ~= 2 % TODO dynamic reconstruction for implementation 5 (macOS)
     error('Dynamic reconstruction is supported only with implementation 2.')
 end
 if options.SPECT && mod(sqrt(options.nRays), 1) ~= 0

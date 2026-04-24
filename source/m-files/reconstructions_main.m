@@ -56,10 +56,6 @@ else
     partitions = options.param.partitions;
 end
 
-% if options.param.listmode && partitions > 1
-%     error('Dynamic reconstruction is not yet supported with listmode/custom detector data')
-% end
-
 if tyyppi < 2
     [options.param, RandProp, ScatterProp] = loadInputData(options.param);
 end
@@ -161,6 +157,7 @@ if options.param.useParkerWeights
     options.param = ParkerWeights(options.param);
     % options.param.SinM = options.param.SinM .* w;
 end
+
 if ~options.param.listmode
     % Load correction data
     [options.param] = loadCorrections(options.param, RandProp, ScatterProp);
@@ -177,8 +174,8 @@ options.param = parseInputData(options.param, options.index);
 % Remove negative values
 if ~options.param.CT && (~options.param.LSQR && ~options.param.CGLS)
     if iscell(options.param.SinM)
-        for timestep = 1 : partitions
-            options.param.SinM{timestep}(options.param.SinM{timestep} < 0) = 0;
+        for llo = 1 : partitions
+            options.param.SinM{llo}(options.param.SinM{llo} < 0) = 0;
         end
     else
         options.param.SinM(options.param.SinM < 0) = 0;
@@ -191,13 +188,14 @@ end
 % These include computing weights, and loading anatomic reference images
 [options.param] = prepass_phase(options.param, options.param.dz, options.param.dx, options.param.dy);
 
+%%
+
 % Compute the reconstructions
 disp('Starting image reconstruction')
+
+% Implementations 1, 4 and 5
 if ismember(options.param.implementation, [1, 4, 5])
-    %% Implementations 1, 4 and 5
-    % Updates computed on CPU 
-    % TODO: temporal prior
-    
+
     if options.param.projector_type > 3 && options.param.implementation == 4 && options.param.projector_type < 6
         error('Implementation 4 supports only projector types 1-3 and 6!')
     end
@@ -209,7 +207,7 @@ if ismember(options.param.implementation, [1, 4, 5])
         noSensIm = true;
     end
 
-    im_vectors = form_image_vectors(options.param, options.param.N, noSensIm); % Initialize cell arrays to hold current estimate and backprojection
+    im_vectors = form_image_vectors(options.param, options.param.N, noSensIm);
 
     if (options.param.RBI || options.param.OSL_RBI || options.param.COSEM || options.param.ACOSEM || options.param.OSL_COSEM > 0 || options.param.ECOSEM || (options.param.precondTypeImage(1) || options.param.precondTypeImage(2) || options.param.precondTypeImage(3)))
         computeD = true;
@@ -236,9 +234,9 @@ if ismember(options.param.implementation, [1, 4, 5])
     end
 
     % Loop through all time steps
-    for timestep = 1 : partitions
+    for llo = 1 : partitions
         if iscell(options.param.SinM)
-            Sino = options.param.SinM{timestep};
+            Sino = options.param.SinM{llo};
         else
             Sino = options.param.SinM;
         end
@@ -247,7 +245,7 @@ if ismember(options.param.implementation, [1, 4, 5])
         if options.param.additionalCorrection
             if iscell(options.param.corrVector)
                 if length(options.param.corrVector) > 1
-                    corrVector = cast(options.param.corrVector{timestep}, options.param.cType);
+                    corrVector = cast(options.param.corrVector{llo}, options.param.cType);
                 else
                     corrVector = cast(options.param.corrVector{1}, options.param.cType);
                 end
@@ -263,7 +261,7 @@ if ismember(options.param.implementation, [1, 4, 5])
         end
         if options.param.randoms_correction
             if iscell(options.param.SinDelayed)
-                SinD = cast(options.param.SinDelayed{timestep}, options.param.cType);
+                SinD = cast(options.param.SinDelayed{llo}, options.param.cType);
             else
                 SinD = cast(options.param.SinDelayed, options.param.cType);
                 options.param = rmfield(options.param, 'SinDelayed');
@@ -279,11 +277,15 @@ if ismember(options.param.implementation, [1, 4, 5])
             Sino = (full(Sino));
         end
         Sino = cast(Sino, options.param.cType);
-        if options.param.normalization_correction % TODO: time varying normalization
+        if options.param.normalization_correction
             options.param.normalization = cast(options.param.normalization, options.param.cType);
         end
 
-        if (options.param.MBSREM || options.param.MRAMLA || options.param.SPS || options.param.precondTypeImage(7)) % TODO move
+        if llo > 1
+            im_vectors = form_image_vectors(options.param, options.param.N, noSensIm, llo, im_vectors);
+        end
+
+        if (options.param.MBSREM || options.param.MRAMLA || options.param.SPS || options.param.precondTypeImage(7))
             if options.param.randoms_correction && ~options.param.CT && (options.param.MBSREM || options.param.MRAMLA)
                 allTrue = SinD > 0;
             else
@@ -358,10 +360,12 @@ if ismember(options.param.implementation, [1, 4, 5])
             end
         end
 
-        if timestep == 1 % TODO move
-            if (computeD || options.param.compute_sensitivity_image) % Compute sensitivity image for the whole measurement domain
+
+        if llo == 1
+            % Compute sensitivity image for the whole measurement domain
+            if (computeD || options.param.compute_sensitivity_image)
                 if (options.param.verbose >= 3)
-                    disp(["Starting computation of sensitivity image (D) for timestep ", num2str(timestep)]);
+                    disp("Starting computation of sensitivity image (D)");
                 end
                 options.param.D = ones(options.param.N(1), 1, options.param.cType);
                 psf = options.param.use_psf;
@@ -373,7 +377,7 @@ if ismember(options.param.implementation, [1, 4, 5])
                         apu = A * oneInput;
                         options.param.D = options.param.D + apu;
                     else
-                        options.param.D = options.param.D + backwardProject(options, oneInput, ll, corrVector); % TODO backwardProject with timestep
+                        options.param.D = options.param.D + backwardProject(options, oneInput, ll, corrVector);
                     end
                 end
                 options.param.use_psf = psf;
@@ -382,11 +386,15 @@ if ismember(options.param.implementation, [1, 4, 5])
                 end
                 if iscell(options.param.D)
                     for ii = 1 : options.param.nMultiVolumes + 1
-                        options.param.D{ii} = options.param.D{ii} ./ (options.param.subsets);
+                        if (options.param.subsets > 1)
+                            options.param.D{ii} = options.param.D{ii} ./ (options.param.subsets);
+                        end
                         options.param.D{ii}(options.param.D{ii} == 0) = 1;
                     end
                 else
-                    options.param.D = options.param.D ./ (options.param.subsets);
+                    if (options.param.subsets > 1)
+                        options.param.D = options.param.D ./ (options.param.subsets);
+                    end
                     options.param.D(options.param.D == 0) = 1;
                 end
                 if options.param.compute_sensitivity_image && ~computeD
@@ -398,13 +406,13 @@ if ismember(options.param.implementation, [1, 4, 5])
                     options.param.compute_sensitivity_image = false;
                 end
                 if (options.param.verbose >= 3)
-                    disp(["Sensitivity image D computed for timestep ", num2str(timestep)]);
+                    disp("Sensitivity image D computed");
                 end
             end
             % Compute the measurement sensitivity image for each subset
             if (computeM)
                 if (options.param.verbose >= 3)
-                    disp(["Starting computation of measurement sensitivity image (M) for timestep ", num2str(timestep)]);
+                    disp("Starting computation of measurement sensitivity image (M)");
                 end
                 options.param.M = cell(options.param.subsets, 1);
                 oneInput = cell(options.param.nMultiVolumes + 1, 1);
@@ -412,7 +420,7 @@ if ismember(options.param.implementation, [1, 4, 5])
                     oneInput{ii} = ones(options.param.N(ii), 1, options.param.cType);
                 end
                 for ll = 1 : options.param.subsets
-                    if options.param.implementation == 1
+                    if options.implementation == 1
                         if options.param.use_psf
                             oneInput{1} = computeConvolution(oneInput{1}, options.param, options.param.Nx(1), options.param.Ny(1), options.param.Nz(1), options.param.gaussK);
                         end
@@ -424,7 +432,7 @@ if ismember(options.param.implementation, [1, 4, 5])
                     options.param.M{ll}(options.param.M{ll} == 0) = 1;
                 end
                 if (options.param.verbose >= 3)
-                    disp(["M computation finished for timestep ", num2str(timestep)]);
+                    disp("M computation finished");
                 end
             end
             % Use power method to compute the tau value, if necessary
@@ -464,7 +472,7 @@ if ismember(options.param.implementation, [1, 4, 5])
                 if (~options.param.LSQR && ~options.param.CGLS) || iter == 1
                     [uu, rand] = splitMeas(options.param, Sino, options.nMeas, osa_iter, SinD);
                 end
-                [im_vectors, uu, options] = initializationStep(options, uu, im_vectors, options.nMeasSubset(osa_iter), iter, osa_iter, timestep);
+                [im_vectors, uu, options] = initializationStep(options, uu, im_vectors, options.nMeasSubset(osa_iter), iter, osa_iter);
                 if options.param.verbose > 1
                     disp('Starting forward projection')
                 end
@@ -476,12 +484,22 @@ if ismember(options.param.implementation, [1, 4, 5])
                             A = formMatrix(options, 0, 1, corrVector);
                         end
                     end
-                    if options.param.use_psf
-                        apu = computeConvolution(im_vectors.recApu{timestep, 1}, options.param, options.param.Nx(1), options.param.Ny(1), options.param.Nz(1), options.param.gaussK);
-                        outputFP = A' * apu;
-                        clear apu
+                    if iscell(im_vectors.recApu)
+                        if options.param.use_psf
+                            apu = computeConvolution(im_vectors.recApu{1}, options.param, options.param.Nx(1), options.param.Ny(1), options.param.Nz(1), options.param.gaussK);
+                            outputFP = A' * apu;
+                            clear apu
+                        else
+                            outputFP = A' * im_vectors.recApu{1};
+                        end
                     else
-                        outputFP = A' * im_vectors.recApu{timestep, 1};
+                        if options.param.use_psf
+                            apu = computeConvolution(im_vectors.recApu, options.param, options.param.Nx(1), options.param.Ny(1), options.param.Nz(1), options.param.gaussK);
+                            outputFP = A' * apu;
+                            clear apu
+                        else
+                            outputFP = A' * im_vectors.recApu;
+                        end
                     end
                 else
                     outputFP = forwardProject(options, im_vectors.recApu, osa_iter, corrVector);
@@ -535,16 +553,25 @@ if ismember(options.param.implementation, [1, 4, 5])
                                 im_vectors.Sens(im_vectors.Sens(:,osa_iter) < options.param.epps, osa_iter) = options.param.epps;
                             end
                         else
-                            im_vectors.rhs(timestep, :) = backwardProject(options, OSEMapu, osa_iter, corrVector);
+                            im_vectors.rhs = backwardProject(options, OSEMapu, osa_iter, corrVector);
                             if ~options.param.saveSens || options.param.randoms_correction
                                 im_vectors.Sens = im_vectors.rhs;
-                                for ii = 1 : options.param.nMultiVolumes + 1
-                                    im_vectors.Sens{timestep, ii}(im_vectors.Sens{timestep, ii}(:,1) < options.param.epps, 1) = options.param.epps;
+                                if iscell(im_vectors.rhs)
+                                    for ii = 1 : options.param.nMultiVolumes + 1
+                                        im_vectors.Sens{ii}(im_vectors.Sens{ii}(:,1) < options.param.epps, 1) = options.param.epps;
+                                    end
+                                else
+                                    im_vectors.Sens(im_vectors.Sens < options.param.epps, 1) = options.param.epps;
                                 end
                             else
-                                for ii = 1 : options.param.nMultiVolumes + 1
-                                    im_vectors.Sens{timestep, ii}(:,osa_iter) = im_vectors.rhs{timestep, ii};
-                                    im_vectors.Sens{timestep, ii}(im_vectors.Sens{timestep, ii}(:,osa_iter) < options.param.epps, osa_iter) = options.param.epps;
+                                if iscell(im_vectors.rhs)
+                                    for ii = 1 : options.param.nMultiVolumes + 1
+                                        im_vectors.Sens{ii}(:,osa_iter) = im_vectors.rhs{ii};
+                                        im_vectors.Sens{ii}(im_vectors.Sens{ii}(:,osa_iter) < options.param.epps, osa_iter) = options.param.epps;
+                                    end
+                                else
+                                    im_vectors.Sens(:,osa_iter) = im_vectors.rhs;
+                                    im_vectors.Sens(im_vectors.Sens(:,osa_iter) < options.param.epps, osa_iter) = options.param.epps;
                                 end
                             end
                         end
@@ -554,16 +581,16 @@ if ismember(options.param.implementation, [1, 4, 5])
                     if options.param.implementation == 1 && options.param.nMultiVolumes == 0
                         im_vectors.rhs = A * outputFP;
                         if options.param.use_psf
-                            im_vectors.rhs(timestep, :) = computeConvolution(im_vectors.rhs, options.param, options.param.Nx(1), options.param.Ny(1), options.param.Nz(1), options.param.gaussK);
+                            im_vectors.rhs = computeConvolution(im_vectors.rhs, options.param, options.param.Nx(1), options.param.Ny(1), options.param.Nz(1), options.param.gaussK);
                         end
                     else
-                        im_vectors.rhs(timestep, :) = backwardProject(options, outputFP, osa_iter, corrVector);
+                        im_vectors.rhs = backwardProject(options, outputFP, osa_iter, corrVector);
                     end
                 else
                     if options.param.implementation == 1 && options.param.nMultiVolumes == 0
-                        im_vectors.rhs(timestep, :) = A * outputFP;
+                        im_vectors.rhs = A * outputFP;
                         if options.param.use_psf
-                            im_vectors.rhs(timestep, :) = computeConvolution(im_vectors.rhs, options.param, options.param.Nx(1), options.param.Ny(1), options.param.Nz(1), options.param.gaussK);
+                            im_vectors.rhs = computeConvolution(im_vectors.rhs, options.param, options.param.Nx(1), options.param.Ny(1), options.param.Nz(1), options.param.gaussK);
                         end
                         if ~options.param.saveSens
                             im_vectors.Sens(:,1) = sum(A, 2);
@@ -583,7 +610,7 @@ if ismember(options.param.implementation, [1, 4, 5])
                             [im_vectors.rhs, im_vectors.Sens] = backwardProject(options, outputFP, osa_iter, corrVector);
                             if iscell(im_vectors.Sens)
                                 for ii = 1 : options.param.nMultiVolumes + 1
-                                    im_vectors.Sens{timestep, ii}(im_vectors.Sens{timestep, ii} < options.param.epps, 1) = options.param.epps;
+                                    im_vectors.Sens{ii}(im_vectors.Sens{ii} < options.param.epps, 1) = options.param.epps;
                                 end
                             else
                                 im_vectors.Sens(im_vectors.Sens < options.param.epps, 1) = options.param.epps;
@@ -592,8 +619,8 @@ if ismember(options.param.implementation, [1, 4, 5])
                             [im_vectors.rhs, Summ] = backwardProject(options, outputFP, osa_iter, corrVector);
                             if iscell(Summ)
                                 for ii = 1 : options.param.nMultiVolumes + 1
-                                    Summ{timestep, ii}(Summ{timestep, ii} < options.param.epps, 1) = options.param.epps;
-                                    im_vectors.Sens{timestep, ii}(:, osa_iter) = Summ{timestep, ii};
+                                    Summ{ii}(Summ{ii} < options.param.epps, 1) = options.param.epps;
+                                    im_vectors.Sens{ii}(:, osa_iter) = Summ{ii};
                                 end
                             else
                                 Summ(Summ < options.param.epps, 1) = options.param.epps;
@@ -605,18 +632,18 @@ if ismember(options.param.implementation, [1, 4, 5])
                 if options.param.subsets > 1
                     clear A
                 end
-                [im_vectors, options] = computeOSEstimates(im_vectors, options, iter, osa_iter, uu, corrVector, timestep);
+                [im_vectors, options] = computeOSEstimates(im_vectors, options, iter, osa_iter, uu, corrVector);
                 if options.param.verbose > 0 && options.param.subsets > 1
                     disp(['Sub-iteration ' num2str(osa_iter) ' completed'])
                 end
             end
-            im_vectors = init_next_iter(im_vectors, options.param, iter, timestep);
+            im_vectors = init_next_iter(im_vectors, options.param, iter, llo);
             if options.param.use_psf && options.param.deblurring
-                im_vectors = computeDeblur(im_vectors, options.param, iter, options.param.gaussK, options.param.Nx(1), options.param.Ny(1), options.param.Nz(1), timestep);
+                im_vectors = computeDeblur(im_vectors, options.param, iter, options.param.gaussK, options.param.Nx(1), options.param.Ny(1), options.param.Nz(1), llo);
             end
         end
         if partitions > 1 && options.param.verbose > 0
-            disp(['Reconstructions for timestep ' num2str(timestep) ' completed'])
+            disp(['Reconstructions for timestep ' num2str(llo) ' completed'])
         end
         if options.param.saveSens
             noSensIm = true;
@@ -624,12 +651,13 @@ if ismember(options.param.implementation, [1, 4, 5])
     end
     im_vectors = reshape_vectors(im_vectors, options.param);
     pz = images_to_cell(im_vectors);
-elseif ismember(options.param.implementation, [2, 3])
     %% Implementation 2
     % OpenCL matrix free
     % Uses ArrayFire libraries
     % Only C++ code (no pure MATLAB implementation)
     % Supports all features as implementation 1 except for NLM
+elseif ismember(options.param.implementation, [2, 3])
+    %%
 
     options.param = double_to_single(options.param);
     % if partitions == 1
@@ -639,7 +667,7 @@ elseif ismember(options.param.implementation, [2, 3])
             for kk = 1 : length(options.param.corrVector)
                 options.param.corrVector{kk} = single(full(options.param.corrVector{kk}));
             end
-            options.param.corrVector = cell2mat(options.param.corrVector(:));
+            options.param.corrVector = cell2mat(options.param.corrVector);
         elseif ~isa(options.param.corrVector, 'single')
             options.param.corrVector = single(options.param.corrVector);
         end
@@ -655,7 +683,7 @@ elseif ismember(options.param.implementation, [2, 3])
             options.param.SinM = single(full(options.param.SinM));
         end
         if iscell(options.param.SinM)
-            options.param.SinM = cell2mat(options.param.SinM(:));
+            options.param.SinM = cell2mat(options.param.SinM);
         end
         if ~isa(options.param.SinM, 'single') && options.param.loadTOF
             options.param.SinM = single(options.param.SinM);
