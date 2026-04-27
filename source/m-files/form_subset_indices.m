@@ -118,8 +118,24 @@ if options.listmode > 0 && options.subset_type < 8 && options.subsets > 1
     if options.subset_type > 0
         if options.useIndexBasedReconstruction
             if partitions > 1
-                options.trIndex = options.trIndex(:,index,:);
-                options.axIndex = options.axIndex(:,index,:);
+                if iscell(options.trIndex)
+                    for kk = 1 : options.Nt
+                        if size(options.trIndex{kk}, 1) ~= 2
+                            options.trIndex{kk} = reshape(options.trIndex{kk}, 2, []);
+                        end
+                        options.trIndex{kk} = options.trIndex{kk}(:,index{kk});
+                        if size(options.axIndex{kk}, 1) ~= 2
+                            options.axIndex{kk} = reshape(options.axIndex{kk}, 2, []);
+                        end
+                        options.axIndex{kk} = options.axIndex{kk}(:,index{kk});
+                    end
+                else
+                    if iscell(index)
+                        index = cell2mat(index);
+                    end
+                    options.trIndex = options.trIndex(:,index,:);
+                    options.axIndex = options.axIndex(:,index,:);
+                end
             else
                 if size(options.trIndex, 1) ~= 2
                     options.trIndex = reshape(options.trIndex, 2, []);
@@ -132,7 +148,19 @@ if options.listmode > 0 && options.subset_type < 8 && options.subsets > 1
             end
         else
             if partitions > 1
-                options.x = options.x(:,index,:);
+                if iscell(options.x)
+                    for kk = 1 : options.Nt
+                        if size(options.x{kk}, 1) ~= 6
+                            options.x{kk} = reshape(options.x{kk}, 6, []);
+                        end
+                        options.x{kk} = options.x{kk}(:,index{kk});
+                    end
+                else
+                    if iscell(index)
+                        index = cell2mat(index);
+                    end
+                    options.x = options.x(:,index,:);
+                end
             else
                 if size(options.x, 1) ~= 6
                     options.x = reshape(options.x, 6, []);
@@ -142,13 +170,43 @@ if options.listmode > 0 && options.subset_type < 8 && options.subsets > 1
         end
         if options.TOF_bins > 1
             if partitions > 1
-                options.TOFIndices = options.TOFIndices(index,:);
+                if iscell(options.TOFIndices)
+                    for kk = 1 : options.Nt
+                        options.TOFIndices{kk} = options.TOFIndices{kk}(index{kk});
+                    end
+                else
+                    if iscell(index)
+                        index = cell2mat(index);
+                    end
+                    options.TOFIndices = options.TOFIndices(index,:);
+                end
             else
                 options.TOFIndices = options.TOFIndices(index);
             end
         end
     end
-    options.x = options.x(:);
+    if ~iscell(options.x)
+        options.x = options.x(:);
+    end
+    if options.useIndexBasedReconstruction && options.listmode > 0 && iscell(options.trIndex)
+        for kk = 1 : options.Nt
+            options.trIndex{kk} = options.trIndex{kk}(:);
+            options.axIndex{kk} = options.axIndex{kk}(:);
+        end
+        options.trIndex = cell2mat(options.trIndex);
+        options.axIndex = cell2mat(options.axIndex);
+        if options.TOF_bins > 1 && iscell(options.TOFIndices)
+            options.TOFIndices = cell2mat(options.TOFIndices);
+        end
+    elseif ~options.useIndexBasedReconstruction && options.listmode > 0 && iscell(options.x)
+        for kk = 1 : options.Nt
+            options.x{kk} = options.x{kk}(:);
+        end
+        options.x = cell2mat(options.x);
+        if options.TOF_bins > 1 && iscell(options.TOFIndices)
+            options.TOFIndices = cell2mat(options.TOFIndices);
+        end
+    end
     % options.y = options.y(index,:);
     % if isfield(options, 'z_det')
     %     options.z_det = options.z_det(index,:);
@@ -221,6 +279,10 @@ if ~options.use_raw_data
         end
     end
 end
+% if options.Nt > 1 && options.listmode == 0
+%     pituus = repmat(pituus, 1, options.Nt);
+%     pituus = pituus(:);
+% end
 if options.use_raw_data
     if options.subsets > 1
         for kk = 1 : options.subsets

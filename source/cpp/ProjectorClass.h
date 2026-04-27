@@ -129,11 +129,16 @@ class ProjectorClass {
 
 		cl_int status = CL_SUCCESS;
 
+		std::string deviceName = CLDeviceID.getInfo<CL_DEVICE_VENDOR>(&status);
+		std::string NV("NVIDIA Corporation");
+		std::string AMD("Advanced Micro Devices, Inc.");
 		std::string kernelFile = header_directory;
 		std::string kernel_path, kernel_pathBP;
 		std::string contentFP, contentBP;
 		std::string contentAux;
 		std::string options = "-cl-single-precision-constant";
+		cl::string apu = CLDeviceID.getInfo<CL_DEVICE_EXTENSIONS>();
+		cl::string apu2 = "cl_ext_float_atomics";
 		options += " -DOPENCL";
 		if (inputScalars.useMAD) {
 			options += " -cl-fast-relaxed-math";
@@ -155,6 +160,16 @@ class ProjectorClass {
 			std::ifstream sourceHeader3(kernelFile + "opencl_functions_orth3D.h");
 			std::string contentHeader3((std::istreambuf_iterator<char>(sourceHeader3)), std::istreambuf_iterator<char>());
 			contentHeader += contentHeader3;
+		}
+		if (NV.compare(deviceName) == 0)
+			options += " -DNVIDIA";
+		else if (AMD.compare(deviceName) == 0) {
+			cl_bool is_integrated = CLDeviceID.getInfo<CL_DEVICE_HOST_UNIFIED_MEMORY>(&status);
+			if (status == CL_SUCCESS && !is_integrated)
+				options += " -DAMD";
+		}
+		else if (apu.find(apu2) != std::string::npos) {
+			options += " -DINTEL";
 		}
 
 		kernel_path = kernelFile;
@@ -231,7 +246,7 @@ class ProjectorClass {
 		}
 		if (inputScalars.CT)
 			options += " -DCT";
-		else if (inputScalars.PET)
+		else if (inputScalars.PET && inputScalars.listmode == 0)
 			options += " -DPET";
 		else if (inputScalars.SPECT) {
 			options += " -DSPECT";
@@ -355,7 +370,7 @@ class ProjectorClass {
 			else
 				status = buildProgram(inputScalars.verbose, contentBP, CLContext, CLDeviceID, programBP, inputScalars.atomic_64bit, inputScalars.atomic_32bit, os_options);
 		}
-		if (inputScalars.computeSensImag) {
+		if (inputScalars.computeSensImag && inputScalars.listmode > 0) {
 			std::string os_options = options;
 			os_options += " -DBP";
 			os_options += " -DATOMICF";
@@ -881,7 +896,7 @@ class ProjectorClass {
 		//		}
 		//	}
 		//}
-		if (inputScalars.computeSensImag) {
+		if (inputScalars.computeSensImag && inputScalars.listmode > 0) {
 			if (inputScalars.BPType == 4)
 				kernelSensList = cl::Kernel(programSens, "projectorType4Forward", &status);
 			else
@@ -1163,6 +1178,7 @@ public:
 		cl::size_type imZ = inputScalars.Nz[0];
 		if ((inputScalars.PET || inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0)
 			vecSize = static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD);
+		// NLM anatomical reference image
 		if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM)) {
 			if (inputScalars.useImages)
 				d_urefIm = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
@@ -1170,12 +1186,15 @@ public:
 				d_uref = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.im_dim[0], NULL, &status);
 			OCL_CHECK(status, "\n", -1);
 		}
+		// The input image for numerous regularization
+		// We define the image here and later input the current estimate to this image
 		if (MethodList.NLM || MethodList.RDP || MethodList.TV || MethodList.GGMRF || MethodList.APLS || MethodList.hyperbolic || inputScalars.projector_type == 6) {
 			if (inputScalars.useImages && !inputScalars.largeDim) {
 				d_inputI = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, region[0], region[1], region[2], 0, 0, NULL, &status);
 				OCL_CHECK(status, "Failed to create prior image\n", -1);
 			}
 		}
+		// RDP reference image
 		if (MethodList.RDP && w_vec.RDPLargeNeighbor && w_vec.RDP_anatomical) {
 			if (inputScalars.useImages) {
 				d_RDPrefI = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, region[0], region[1], region[2], 0, 0, NULL, &status);
@@ -1183,6 +1202,7 @@ public:
 			}
 		}
 		// Create the necessary buffers
+		// Distance-based weighting for GGMRF, RDP and hyperbolic prior
 		if (MethodList.GGMRF || (MethodList.RDP && w_vec.RDPLargeNeighbor) || MethodList.hyperbolic) {
 			d_weights = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1, NULL, &status);
 			OCL_CHECK(status, "\n", -1);
@@ -1209,6 +1229,7 @@ public:
 			OCL_CHECK(status, "\n", -1);
 		}
 		if (inputScalars.projector_type != 6) {
+			// Look-up table for voxel volumes when using projector type 3
 			if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 				d_V = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_V, NULL, &status);
 				OCL_CHECK(status, "\n", -1);
@@ -1226,6 +1247,7 @@ public:
 					d_xFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x, NULL, &status));
 				OCL_CHECK(status, "\n", -1);
 			}
+			// Mask images
 			if (inputScalars.maskFP || inputScalars.maskBP) {
 				if (inputScalars.useBuffers) {
 					if (inputScalars.maskFP) {
@@ -1299,19 +1321,27 @@ public:
                 // Attenuation data for image-based attenuation
                 if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
                     imZ = inputScalars.Nz[0];
-                    if (inputScalars.useBuffers)
-                        d_attenB[timestep] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.im_dim[0], NULL, &status);
-                    else
-                        d_attenIm[timestep] = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
+					if (inputScalars.size_atten > inputScalars.im_dim[0] || timestep == 0) {
+						if (inputScalars.useBuffers)
+							d_attenB[timestep] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.im_dim[0], NULL, &status);
+						else
+							d_attenIm[timestep] = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
+					}
                     OCL_CHECK(status, "\n", -1);
                 }
 
 			    for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-                    if ((inputScalars.CT || inputScalars.SPECT) || (inputScalars.listmode > 0 && !inputScalars.indexBased)) {
-                        if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0))
-                            d_x[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6, NULL, &status);
-                        OCL_CHECK(status, "\n", -1);
+                    if (inputScalars.CT || inputScalars.SPECT) {
+						d_x[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6, NULL, &status);
                     }
+					else if (inputScalars.listmode > 0 && !inputScalars.indexBased && (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || (!inputScalars.loadTOF && timestep == 0 && kk < inputScalars.TOFsubsets))) {
+						d_x[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk + timestep * inputScalars.subsets] * 6, NULL, &status);
+						if (DEBUG) {
+							mexPrintBase("length[kk + timestep * inputScalars.subsets] * 6 = %u\n", length[kk + timestep * inputScalars.subsets] * 6);
+							mexEval();
+						}
+					}
+					OCL_CHECK(status, "\n", -1);
                     if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode != 1) {
                         size_t coef = 2;
                         if (inputScalars.useHelical)
@@ -1330,7 +1360,7 @@ public:
                         else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased))
                             d_z[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z, NULL, &status);
                         else
-                            d_z[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
+                            d_z[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z, NULL, &status);
                         OCL_CHECK(status, "\n", -1);
                     }
                     if (inputScalars.size_scat > 1 && inputScalars.scatter == 1U) { // Scatter correction buffer
@@ -1338,16 +1368,16 @@ public:
                         OCL_CHECK(status, "\n", -1);
                     }
                     if (inputScalars.listmode > 0 && inputScalars.indexBased) {
-                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) { // First condition: load all data at once. Second condition: load one subset at a time (only 1 buffer required for each timestep).
-                            d_trIndex[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk] * 2, NULL, &status);
-                            OCL_CHECK(status, "\n", -1);
-                            d_axIndex[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk] * 2, NULL, &status);
-                            OCL_CHECK(status, "\n", -1);
-                        }
+						if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF && timestep == 0)) { // First condition: load all data at once. Second condition: load one subset at a time (only 1 buffer required for each timestep).
+							d_trIndex[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk + timestep * inputScalars.subsets] * 2, NULL, &status);
+							OCL_CHECK(status, "\n", -1);
+							d_axIndex[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk + timestep * inputScalars.subsets] * 2, NULL, &status);
+							OCL_CHECK(status, "\n", -1);
+						}
                     }
                     if (inputScalars.listmode > 0 && inputScalars.TOF) {
-                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
-                            d_TOFIndex[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * length[kk], NULL, &status);
+                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF && timestep == 0)) {
+                            d_TOFIndex[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * length[kk + timestep * inputScalars.subsets], NULL, &status);
                             OCL_CHECK(status, "\n", -1);
                         }
                     }
@@ -1355,19 +1385,27 @@ public:
 		    }
             
             for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+				// Redundancy weighting
                 if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
                     d_T[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk], NULL, &status);
                     OCL_CHECK(status, "\n", -1);
                 }
+				// Normalization weighting
                 if (inputScalars.size_norm > 1 && inputScalars.normalization_correction) {
-                    d_norm[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
+					// Todo: Improve normalization weighting for listmode
+					//if (inputScalars.listmode > 0 && inputScalars.indexBased && kk == 0)
+					//	d_norm[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_norm, NULL, &status);
+					//else
+						d_norm[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
                     OCL_CHECK(status, "\n", -1);
                 }
+				// Measurement-based attenuation correction
                 if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
                     d_atten[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
                     OCL_CHECK(status, "\n", -1);
                 }
                 // Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
+				// Note that raw data format is not used at the moment
                 if (inputScalars.raw && inputScalars.listmode != 1) {
                     d_L[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk] * 2, NULL, &status);
                     OCL_CHECK(status, "\n", -1);
@@ -1522,16 +1560,28 @@ public:
 				memSize += (sizeof(float) * 2 * inputScalars.n_rays) / 1048576ULL;
 			}
 
+			if (DEBUG) {
+				mexPrint("Timestep phase\n");
+			}
             for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
                 if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
-                    if (inputScalars.useBuffers)
-                        status = CLCommandQueue[0].enqueueWriteBuffer(d_attenB[timestep], CL_FALSE, 0, sizeof(float) * inputScalars.im_dim[0], &atten[inputScalars.im_dim[0] * timestep]);
+					if (inputScalars.useBuffers) {
+						if (inputScalars.size_atten > inputScalars.im_dim[0])
+							status = CLCommandQueue[0].enqueueWriteBuffer(d_attenB[timestep], CL_FALSE, 0, sizeof(float) * inputScalars.im_dim[0], &atten[inputScalars.im_dim[0] * timestep]);
+						else if (timestep == 0)
+							status = CLCommandQueue[0].enqueueWriteBuffer(d_attenB[timestep], CL_FALSE, 0, sizeof(float) * inputScalars.im_dim[0], atten);
+					}
                     else {
-                        cl::detail::size_t_array region = { { 0, 0, 0 } };
-                        region[0] = inputScalars.Nx[0];
-                        region[1] = inputScalars.Ny[0];
-                        region[2] = inputScalars.Nz[0];
-                        status = CLCommandQueue[0].enqueueWriteImage(d_attenIm[timestep], CL_FALSE, origin, region, 0, 0, &atten[inputScalars.im_dim[0] * timestep]);
+						cl::detail::size_t_array region = { { 0, 0, 0 } };
+						region[0] = inputScalars.Nx[0];
+						region[1] = inputScalars.Ny[0];
+						region[2] = inputScalars.Nz[0];
+						if (inputScalars.size_atten > inputScalars.im_dim[0]) {
+							status = CLCommandQueue[0].enqueueWriteImage(d_attenIm[timestep], CL_FALSE, origin, region, 0, 0, &atten[inputScalars.im_dim[0] * timestep]);
+						}
+						else if (timestep == 0) {
+							status = CLCommandQueue[0].enqueueWriteImage(d_attenIm[timestep], CL_FALSE, origin, region, 0, 0, atten);
+						}
                         OCL_CHECK(status, "\n", -1);
                     }
                     memSize += (sizeof(float) * inputScalars.im_dim[0]) / 1048576ULL;
@@ -1544,7 +1594,7 @@ public:
                             kerroin = 6;
                         else if (inputScalars.useHelical)
                             kerroin = 1;
-                        status = CLCommandQueue[0].enqueueWriteBuffer(d_z[timestep][kk], CL_FALSE, 0, sizeof(float) * length[kk] * kerroin, &z_det[pituus[kk] * kerroin + pituus[inputScalars.subsets] * kerroin * timestep]);
+                        status = CLCommandQueue[0].enqueueWriteBuffer(d_z[timestep][kk], CL_FALSE, 0, sizeof(float) * length[kk] * kerroin, &z_det[pituus[kk] * kerroin]);
                         OCL_CHECK(status, "\n", -1);
                         memSize += (sizeof(float) * length[kk] * kerroin) / 1048576ULL;
                     } else {
@@ -1552,21 +1602,28 @@ public:
                             int64_t kerroin = 2;
                             if (inputScalars.nLayers > 1)
                                 int64_t kerroin = 3;
-                            status = CLCommandQueue[0].enqueueWriteBuffer(d_z[timestep][kk], CL_FALSE, 0, sizeof(float) * length[kk] * kerroin, &z_det[pituus[kk] * kerroin + pituus[inputScalars.subsets] * kerroin * timestep]);
+                            status = CLCommandQueue[0].enqueueWriteBuffer(d_z[timestep][kk], CL_FALSE, 0, sizeof(float) * length[kk] * kerroin, &z_det[pituus[kk] * kerroin]);
                             memSize += (sizeof(float) * length[kk] * kerroin) / 1048576ULL;
-                        } else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased)) {
+                        } else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased || inputScalars.listmode > 0)) {
                             status = CLCommandQueue[0].enqueueWriteBuffer(d_z[timestep][kk], CL_FALSE, 0, sizeof(float) * inputScalars.size_z, z_det);
                             memSize += (sizeof(float) * inputScalars.size_z) / 1048576ULL;
                         }
                         OCL_CHECK(status, "\n", -1);
                     }
                     if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
-                        status = CLCommandQueue[0].enqueueWriteBuffer(d_x[timestep][kk], CL_FALSE, 0, sizeof(float) * length[kk] * 6, &x[pituus[kk] * 6 + pituus[inputScalars.subsets] * 6 * timestep]);
+                        status = CLCommandQueue[0].enqueueWriteBuffer(d_x[timestep][kk], CL_FALSE, 0, sizeof(float) * length[kk] * 6, &x[pituus[kk] * 6]);
                         OCL_CHECK(status, "\n", -1);
                         memSize += (sizeof(float) * length[kk] * 6) / 1048576ULL;
                     } else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
-                        if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF)
-                            status = CLCommandQueue[0].enqueueWriteBuffer(d_x[timestep][kk], CL_FALSE, 0, sizeof(float) * length[kk] * 6, &w_vec.listCoord[pituus[kk] * 6 + inputScalars.kokoNonTOF * 6 * timestep]);
+						if ((kk < inputScalars.TOFsubsets) || inputScalars.loadTOF || (!inputScalars.loadTOF && timestep == 0 && kk < inputScalars.TOFsubsets)) {
+							status = CLCommandQueue[0].enqueueWriteBuffer(d_x[timestep][kk], CL_FALSE, 0, sizeof(float) * length[kk + timestep * inputScalars.subsets] * 6, &w_vec.listCoord[pituus[kk + timestep * inputScalars.subsets] * 6]);
+							if (DEBUG) {
+								mexPrintBase("length[kk + timestep * inputScalars.subsets] * 6 = %u\n", length[kk + timestep * inputScalars.subsets] * 6);
+								mexPrintBase("pituus[kk + timestep * inputScalars.subsets] * 6 = %u\n", pituus[kk + timestep * inputScalars.subsets] * 6);
+								mexPrintBase("w_vec.listCoord[pituus[kk + timestep * inputScalars.subsets] * 6] = %f\n", w_vec.listCoord[pituus[kk + timestep * inputScalars.subsets] * 6]);
+								mexEval();
+							}
+						}
                         OCL_CHECK(status, "\n", -1);
                         memSize += (sizeof(float) * length[kk] * 6) / 1048576ULL;
                     }
@@ -1576,18 +1633,21 @@ public:
                         memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
                     }
                     if (inputScalars.listmode > 0 && inputScalars.indexBased) {
-                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) { // First condition: load all data at once. Second condition: load one subset at a time (only 1 buffer required for each timestep).
-                            status = CLCommandQueue[0].enqueueWriteBuffer(d_trIndex[timestep][kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk] * 2, &w_vec.trIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * timestep]);
+                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF && timestep == 0)) { // First condition: load all data at once. Second condition: load one subset at a time (only 1 buffer required for each timestep).
+                            status = CLCommandQueue[0].enqueueWriteBuffer(d_trIndex[timestep][kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk + timestep * inputScalars.subsets] * 2, 
+								&w_vec.trIndex[pituus[kk + timestep * inputScalars.subsets] * 2]);
                             OCL_CHECK(status, "\n", -1);
                             memSize += (sizeof(uint16_t) * length[kk] * 2) / 1048576ULL;
-                            status = CLCommandQueue[0].enqueueWriteBuffer(d_axIndex[timestep][kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk] * 2, &w_vec.axIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * timestep]);
+                            status = CLCommandQueue[0].enqueueWriteBuffer(d_axIndex[timestep][kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk + timestep * inputScalars.subsets] * 2, 
+								&w_vec.axIndex[pituus[kk + timestep * inputScalars.subsets] * 2]);
                             OCL_CHECK(status, "\n", -1);
                             memSize += (sizeof(uint16_t) * length[kk] * 2) / 1048576ULL;
                         }
                     }
                     if (inputScalars.listmode > 0 && inputScalars.TOF) {
-                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
-                            status = CLCommandQueue[0].enqueueWriteBuffer(d_TOFIndex[timestep][kk], CL_FALSE, 0, sizeof(uint8_t) * length[kk], &w_vec.TOFIndices[pituus[kk] + inputScalars.kokoNonTOF * timestep]);
+                        if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF && timestep == 0)) {
+                            status = CLCommandQueue[0].enqueueWriteBuffer(d_TOFIndex[timestep][kk], CL_FALSE, 0, sizeof(uint8_t) * length[kk + timestep * inputScalars.subsets], 
+								&w_vec.TOFIndices[pituus[kk + timestep * inputScalars.subsets]]);
                             OCL_CHECK(status, "\n", -1);
                             memSize += (sizeof(uint8_t) * length[kk]) / 1048576ULL;
                         }
@@ -1615,7 +1675,10 @@ public:
 				status = CLCommandQueue[0].finish();
 				OCL_CHECK(status, "\n", -1);
 				if (inputScalars.size_norm > 1ULL && inputScalars.normalization_correction) {
-					status = CLCommandQueue[0].enqueueWriteBuffer(d_norm[kk], CL_FALSE, 0, sizeof(float) * length[kk] * vecSize, &norm[pituus[kk] * vecSize]);
+					//if (inputScalars.listmode > 0 && inputScalars.indexBased  && kk == 0)
+					//	status = CLCommandQueue[0].enqueueWriteBuffer(d_norm[kk], CL_FALSE, 0, sizeof(float) * inputScalars.size_norm, norm);
+					//else
+						status = CLCommandQueue[0].enqueueWriteBuffer(d_norm[kk], CL_FALSE, 0, sizeof(float) * length[kk] * vecSize, &norm[pituus[kk] * vecSize]);
 					OCL_CHECK(status, "\n", -1);
 					memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
                 }
@@ -1973,16 +2036,17 @@ public:
 		return status;
 	}
 
-	int computeForward(const scalarStruct& inputScalars, const std::vector<int64_t>& length, const uint32_t osa_iter) {
+	int computeForward(const scalarStruct& inputScalars, const std::vector<int64_t>& length, const uint32_t osa_iter, const uint32_t timestep = 0) {
 		int status = CL_SUCCESS;
 		cl::NDRange localF = { 64, 1, 1 };
+		int indD = osa_iter + timestep * inputScalars.subsets;
 		if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
-			global = { inputScalars.nRowsD * inputScalars.nColsD * static_cast<size_t>(length[osa_iter]) * inputScalars.nBins, 1, 1 };
+			global = { inputScalars.nRowsD * inputScalars.nColsD * static_cast<size_t>(length[indD]) * inputScalars.nBins, 1, 1 };
 		else
 			if (inputScalars.listmode == 0)
-				global = { static_cast<cl::size_type>(length[osa_iter]) * inputScalars.nBins, 1, 1 };
+				global = { static_cast<cl::size_type>(length[indD]) * inputScalars.nBins, 1, 1 };
 			else
-				global = { static_cast<cl::size_type>(length[osa_iter]), 1, 1 };
+				global = { static_cast<cl::size_type>(length[indD]), 1, 1 };
 		
 		size_t erotusF = global[0] % localF[0];
 		if (erotusF > 0)
@@ -1995,7 +2059,7 @@ public:
 			mexPrintBase("erotus[0] = %u\n", erotus[0]);
 			mexPrintBase("erotus[1] = %u\n", erotus[1]);
 			mexPrintBase("global.dimensions() = %u\n", global.dimensions());
-			mexPrintBase("length[osa_iter] = %u\n", length[osa_iter]);
+			mexPrintBase("length[indD] = %u\n", length[indD]);
 			mexPrintBase("listmode = %u\n", inputScalars.listmode);
 			mexEval();
 		}
@@ -2062,15 +2126,15 @@ public:
 		kernelIndFPSubIter = kernelIndFP;
 		cl_int status = CL_SUCCESS;
 		if (inputScalars.FPType == 5)
-			global = { inputScalars.nRowsD + erotus[0], (inputScalars.nColsD + NVOXELSFP - 1) / NVOXELSFP + erotus[1], static_cast<size_t>(length[osa_iter]) };
+			global = { inputScalars.nRowsD + erotus[0], (inputScalars.nColsD + NVOXELSFP - 1) / NVOXELSFP + erotus[1], static_cast<size_t>(length[osa_iter + timestep * inputScalars.subsets]) };
 		else if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
-			global = { inputScalars.nRowsD + erotus[0], inputScalars.nColsD + erotus[1], static_cast<size_t>(length[osa_iter]) };
+			global = { inputScalars.nRowsD + erotus[0], inputScalars.nColsD + erotus[1], static_cast<size_t>(length[osa_iter + timestep * inputScalars.subsets]) };
 		else {
-			erotus[0] = length[osa_iter] % local_size[0];
+			erotus[0] = length[osa_iter + timestep * inputScalars.subsets] % local_size[0];
 
 			if (erotus[0] > 0)
 				erotus[0] = (local_size[0] - erotus[0]);
-			global = { static_cast<cl::size_type>(length[osa_iter] + erotus[0]), 1, 1 };
+			global = { static_cast<cl::size_type>(length[osa_iter + timestep * inputScalars.subsets] + erotus[0]), 1, 1 };
 		}
 		std::chrono::steady_clock::time_point tStart;
 		std::chrono::steady_clock::time_point tEnd;
@@ -2112,7 +2176,7 @@ public:
 			}
 			mexPrintBase("nRowsD = %u\n", inputScalars.nRowsD);
 			mexPrintBase("nColsD = %u\n", inputScalars.nColsD);
-			mexPrintBase("length[osa_iter] = %u\n", length[osa_iter]);
+			mexPrintBase("length[osa_iter] = %u\n", length[osa_iter + timestep * inputScalars.subsets]);
 			mexPrintBase("listmode = %u\n", inputScalars.listmode);
 			mexPrintBase("maskBP = %u\n", inputScalars.maskBP);
 			mexPrintBase("maskFP = %u\n", inputScalars.maskFP);
@@ -2126,7 +2190,6 @@ public:
 			mexPrintBase("subsetType = %u\n", inputScalars.subsetType);
 			mexEval();
 		}
-
 		status = CLCommandQueue[0].finish();
 		OCL_CHECK(status, "\n", -1);
 		if (!inputScalars.CT && (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.FPType == 4)) {
@@ -2134,10 +2197,18 @@ public:
                 status = kernelFP.setArg(kernelIndFPSubIter++, d_atten[osa_iter]);
                 OCL_CHECK(status, "\n", -1);
             } else if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
-                if (inputScalars.useBuffers)
-                    status = kernelFP.setArg(kernelIndFPSubIter++, d_attenB[timestep]);
-                else
-                    status = kernelFP.setArg(kernelIndFPSubIter++, d_attenIm[timestep]);
+				if (inputScalars.size_atten > inputScalars.im_dim[0]) {
+					if (inputScalars.useBuffers)
+						status = kernelFP.setArg(kernelIndFPSubIter++, d_attenB[timestep]);
+					else
+						status = kernelFP.setArg(kernelIndFPSubIter++, d_attenIm[timestep]);
+				}
+				else {
+					if (inputScalars.useBuffers)
+						status = kernelFP.setArg(kernelIndFPSubIter++, d_attenB[0]);
+					else
+						status = kernelFP.setArg(kernelIndFPSubIter++, d_attenIm[0]);
+				}
                 OCL_CHECK(status, "\n", -1);
             }
 		}
@@ -2167,8 +2238,10 @@ public:
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_x[timestep][osa_iter]);
 			OCL_CHECK(status, "\n", -1);
-			if ((inputScalars.CT || inputScalars.PET || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
+			if ((inputScalars.CT || inputScalars.PET))
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_z[timestep][osa_iter]);
+			else if (inputScalars.listmode > 0 && !inputScalars.indexBased)
+				status = kernelFP.setArg(kernelIndFPSubIter++, d_z[0][0]); 
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_z[timestep][inputScalars.osa_iter0]);
 			OCL_CHECK(status, "\n", -1);
@@ -2186,7 +2259,7 @@ public:
 						status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFP);
 				OCL_CHECK(status, "\n", -1);
 			}
-			status = kernelFP.setArg(kernelIndFPSubIter++, length[osa_iter]);
+			status = kernelFP.setArg(kernelIndFPSubIter++, length[osa_iter + timestep * inputScalars.subsets]);
 			if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_xyindex[osa_iter]);
 				OCL_CHECK(status, "\n", -1);
@@ -2214,7 +2287,10 @@ public:
 				kernelFP.setArg(kernelIndFPSubIter++, inputScalars.det_per_ring);
 			}
 			if (inputScalars.normalization_correction)
-				status = kernelFP.setArg(kernelIndFPSubIter++, d_norm[osa_iter]);
+				//if (inputScalars.listmode > 0 && inputScalars.indexBased)
+				//	status = kernelFP.setArg(kernelIndFPSubIter++, d_norm[0]);
+				//else
+					status = kernelFP.setArg(kernelIndFPSubIter++, d_norm[osa_iter]);
 			if (inputScalars.scatter)
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_scat[timestep][osa_iter]);
 			OCL_CHECK(status, "\n", -1);
@@ -2259,8 +2335,11 @@ public:
 				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.normalization_correction)
-				status = kernelFP.setArg(kernelIndFPSubIter++, d_norm[osa_iter]);
-			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, length[osa_iter]));
+				//if (inputScalars.listmode > 0 && inputScalars.indexBased)
+				//	status = kernelFP.setArg(kernelIndFPSubIter++, d_norm[0]);
+				//else
+					status = kernelFP.setArg(kernelIndFPSubIter++, d_norm[osa_iter]);
+			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, length[osa_iter + timestep * inputScalars.subsets]));
 		}
 		else if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3)) {
 			//if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
@@ -2282,7 +2361,7 @@ public:
 				OCL_CHECK(status, "\n", -1);
 			}
 			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT) && inputScalars.listmode == 0) {
-				status = kernelFP.setArg(kernelIndFPSubIter++, length[osa_iter]);
+				status = kernelFP.setArg(kernelIndFPSubIter++, length[osa_iter + timestep * inputScalars.subsets]);
 				OCL_CHECK(status, "\n", -1);
 			}
 			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
@@ -2290,13 +2369,19 @@ public:
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_x[timestep][osa_iter]);
 			OCL_CHECK(status, "\n", -1);
-			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
+			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT))
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_z[timestep][osa_iter]);
+			else if (inputScalars.listmode > 0 && !inputScalars.indexBased)
+				status = kernelFP.setArg(kernelIndFPSubIter++, d_z[0][0]);
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_z[timestep][inputScalars.osa_iter0]);
 			OCL_CHECK(status, "\n", -1);
-			if (inputScalars.normalization_correction)
-				kernelFP.setArg(kernelIndFPSubIter++, d_norm[osa_iter]);
+			if (inputScalars.normalization_correction) {
+				//if (inputScalars.listmode > 0 && inputScalars.indexBased)
+				//	status = kernelFP.setArg(kernelIndFPSubIter++, d_norm[0]);
+				//else
+					status = kernelFP.setArg(kernelIndFPSubIter++, d_norm[osa_iter]);
+				}
 			if (inputScalars.scatter)
 				kernelFP.setArg(kernelIndFPSubIter++, d_scat[timestep][osa_iter]);
 			status = kernelFP.setArg(kernelIndFPSubIter++, d_Summ[uu]);
@@ -2381,6 +2466,7 @@ public:
 			kernelBP = kernelSensList;
 			kernelIndBPSubIter = kernelIndSens;
 		}
+		int indD = osa_iter + timestep * inputScalars.subsets;
 		std::chrono::steady_clock::time_point tStart;
 		std::chrono::steady_clock::time_point tEnd;
 		if (DEBUG || inputScalars.verbose >= 3) {
@@ -2392,17 +2478,25 @@ public:
                 status = kernelBP.setArg(kernelIndBPSubIter++, d_atten[osa_iter]);
                 OCL_CHECK(status, "\n", -1);
             } else if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
-                if (inputScalars.useBuffers)
-                    status = kernelBP.setArg(kernelIndBPSubIter++, d_attenB[timestep]);
-                else
-                    status = kernelBP.setArg(kernelIndBPSubIter++, d_attenIm[timestep]);
+				if (inputScalars.size_atten > inputScalars.im_dim[0]) {
+					if (inputScalars.useBuffers)
+						status = kernelBP.setArg(kernelIndBPSubIter++, d_attenB[timestep]);
+					else
+						status = kernelBP.setArg(kernelIndBPSubIter++, d_attenIm[timestep]);
+				}
+				else {
+					if (inputScalars.useBuffers)
+						status = kernelBP.setArg(kernelIndBPSubIter++, d_attenB[0]);
+					else
+						status = kernelBP.setArg(kernelIndBPSubIter++, d_attenIm[0]);
+				}
                 OCL_CHECK(status, "\n", -1);
             }
 		}
 
 		if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 			if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
-				global = { inputScalars.nRowsD + erotus[0], inputScalars.nColsD + erotus[1], static_cast<size_t>(length[osa_iter]) };
+				global = { inputScalars.nRowsD + erotus[0], inputScalars.nColsD + erotus[1], static_cast<size_t>(length[indD]) };
 			else if (inputScalars.listmode > 0 && compSens)
 				if (inputScalars.nLayers > 1)
 					global = { static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0], static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1],
@@ -2410,11 +2504,11 @@ public:
 				else
 					global = { static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0], static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) };
 			else {
-				erotus[0] = length[osa_iter] % local_size[0];
+				erotus[0] = length[indD] % local_size[0];
 
 				if (erotus[0] > 0)
 					erotus[0] = (local_size[0] - erotus[0]);
-				global = { static_cast<cl::size_type>(length[osa_iter] + erotus[0]), 1, 1 };
+				global = { static_cast<cl::size_type>(length[indD] + erotus[0]), 1, 1 };
 			}
 
 			if (DEBUG) {
@@ -2437,7 +2531,7 @@ public:
 				mexPrintBase("m_size = %u\n", m_size);
 				mexPrintBase("nRowsD = %u\n", inputScalars.nRowsD);
 				mexPrintBase("nColsD = %u\n", inputScalars.nColsD);
-				mexPrintBase("length[osa_iter] = %u\n", length[osa_iter]);
+				mexPrintBase("length[indD] = %u\n", length[indD]);
 				mexPrintBase("listmode = %u\n", inputScalars.listmode);
 				mexPrintBase("rings = %u\n", inputScalars.rings);
 				mexPrintBase("im_dim = %u\n", inputScalars.im_dim[ii]);
@@ -2478,7 +2572,7 @@ public:
 				}
 			}
 			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT) && inputScalars.listmode == 0)
-				status = kernelBP.setArg(kernelIndBPSubIter++, length[osa_iter]);
+				status = kernelBP.setArg(kernelIndBPSubIter++, length[indD]);
 			OCL_CHECK(status, "\n", -1);
 			if (compSens) {
 				status = kernelBP.setArg(kernelIndBPSubIter++, d_xFull[0]);
@@ -2493,9 +2587,9 @@ public:
 				else
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_x[timestep][osa_iter]);
 				OCL_CHECK(status, "\n", -1);
-				if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
+				if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT))
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_z[timestep][osa_iter]);
-				else if (inputScalars.indexBased && inputScalars.listmode > 0)
+				else if (inputScalars.indexBased || inputScalars.listmode > 0)
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_z[0][0]);
 				else
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_z[timestep][inputScalars.osa_iter0]);
@@ -2509,7 +2603,10 @@ public:
 			}
 			else {
 				if (inputScalars.normalization_correction)
-					status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[osa_iter]);
+					//if (inputScalars.listmode > 0 && inputScalars.indexBased)
+					//	status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[0]);
+					//else
+						status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[osa_iter]);
 				if (inputScalars.scatter)
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_scat[timestep][osa_iter]);
 			}
@@ -2555,7 +2652,7 @@ public:
 				if (!inputScalars.useBuffers) {
 					cl::size_type imX = inputScalars.nRowsD;
 					cl::size_type imY = inputScalars.nColsD;
-					cl::size_type imZ = length[osa_iter];
+					cl::size_type imZ = length[indD];
 					if (inputScalars.BPType == 5) {
 						imX++;
 						imY++;
@@ -2600,7 +2697,7 @@ public:
 					mexPrintBase("m_size = %u\n", m_size);
 					mexPrintBase("nRowsD = %u\n", inputScalars.nRowsD);
 					mexPrintBase("nColsD = %u\n", inputScalars.nColsD);
-					mexPrintBase("length[osa_iter] = %u\n", length[osa_iter]);
+					mexPrintBase("length[indD] = %u\n", length[indD]);
 					mexPrintBase("listmode = %u\n", inputScalars.listmode);
 					mexPrintBase("im_dim = %u\n", inputScalars.im_dim[ii]);
 					mexPrintBase("no_norm = %u\n", no_norm);
@@ -2685,19 +2782,22 @@ public:
 					}
 				}
 				if (inputScalars.normalization_correction)
-					status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[osa_iter]);
+					//if (inputScalars.listmode > 0 && inputScalars.indexBased)
+					//	status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[0]);
+					//else
+						status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[osa_iter]);
 			}
 			else {
 				if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
-					global = { inputScalars.nRowsD + erotus[0], inputScalars.nColsD + erotus[1], static_cast<size_t>(length[osa_iter]) };
+					global = { inputScalars.nRowsD + erotus[0], inputScalars.nColsD + erotus[1], static_cast<size_t>(length[indD]) };
 				else if (inputScalars.listmode > 0 && compSens)
 					global = { static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0], static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) };
 				else {
-					erotus[0] = length[osa_iter] % local_size[0];
+					erotus[0] = length[indD] % local_size[0];
 
 					if (erotus[0] > 0)
 						erotus[0] = (local_size[0] - erotus[0]);
-					global = { static_cast<cl::size_type>(length[osa_iter] + erotus[0]), 1, 1 };
+					global = { static_cast<cl::size_type>(length[indD] + erotus[0]), 1, 1 };
 				}
 
 				if (DEBUG) {
@@ -2720,7 +2820,7 @@ public:
 					mexPrintBase("m_size = %u\n", m_size);
 					mexPrintBase("nRowsD = %u\n", inputScalars.nRowsD);
 					mexPrintBase("nColsD = %u\n", inputScalars.nColsD);
-					mexPrintBase("length[osa_iter] = %u\n", length[osa_iter]);
+					mexPrintBase("length[indD] = %u\n", length[indD]);
 					mexPrintBase("listmode = %u\n", inputScalars.listmode);
 					mexPrintBase("im_dim = %u\n", inputScalars.im_dim[ii]);
 					mexPrintBase("no_norm = %u\n", no_norm);
@@ -2752,7 +2852,7 @@ public:
 					OCL_CHECK(status, "\n", -1);
 					if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_z[timestep][osa_iter]);
-					else if (inputScalars.indexBased && inputScalars.listmode > 0)
+					else if (inputScalars.indexBased || inputScalars.listmode > 0)
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_z[0][0]);
 					else
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_z[timestep][inputScalars.osa_iter0]);
@@ -2784,7 +2884,7 @@ public:
 						OCL_CHECK(status, "\n", -1);
 					}
 				}
-				status = kernelBP.setArg(kernelIndBPSubIter++, length[osa_iter]);
+				status = kernelBP.setArg(kernelIndBPSubIter++, length[indD]);
 				if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
 					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_xyindex[osa_iter]));
 					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_zindex[osa_iter]));
@@ -2809,7 +2909,10 @@ public:
 					kernelBP.setArg(kernelIndBPSubIter++, d_L[osa_iter]);
 				}
 				if (inputScalars.normalization_correction)
-					status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[osa_iter]);
+					//if (inputScalars.listmode > 0 && inputScalars.indexBased)
+					//	status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[0]);
+					//else
+						status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[osa_iter]);
 				if (inputScalars.scatter)
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_scat[timestep][osa_iter]);
 				OCL_CHECK(status, "\n", -1);
@@ -2829,7 +2932,7 @@ public:
 				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.CT)
-				kernelBP.setArg(kernelIndBPSubIter++, static_cast<cl_long>(length[osa_iter]));
+				kernelBP.setArg(kernelIndBPSubIter++, static_cast<cl_long>(length[indD]));
 			else {
 				status = kernelBP.setArg(kernelIndBPSubIter++, static_cast<cl_ulong>(m_size));
 				OCL_CHECK(status, "\n", -1);

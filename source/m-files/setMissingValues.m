@@ -294,7 +294,7 @@ if ~isfield(options,'platform')
     options.platform = 0;
 end
 if ~isfield(options, 'use_64bit_atomics')
-    options.use_64bit_atomics = ~ismac;
+    options.use_64bit_atomics = false;
 end
 if ~isfield(options, 'use_CUDA')
     if ismac
@@ -530,6 +530,9 @@ end
 if ~isfield(options, 'partitions')
     options.partitions = 1;
 end
+if ~isfield(options, 'Nt')
+    options.Nt = 1;
+end
 if ~isfield(options, 'start')
     options.start = 0;
 end
@@ -574,6 +577,9 @@ if ~isfield(options, 'attenuation_correction')
 end
 if ~isfield(options, 'CT_attenuation')
     options.CT_attenuation = true;
+end
+if ~isfield(options, 'attIncm')
+    options.attIncm = false;
 end
 if ~isfield(options, 'dualLayerSubmodule')
     options.dualLayerSubmodule = false;
@@ -790,6 +796,9 @@ if ~isfield(options, 'temporal_smoothness')
 end
 if ~isfield(options, 'temporalTV')
     options.temporalTV = false;
+end
+if ~isfield(options, 'beta_temporal')
+    options.beta_temporal = 0;
 end
 if ~isfield(options, 'tau')
     options.tau = 1e-8;
@@ -1022,6 +1031,9 @@ if ~isfield(options, 'useParallelBeam')
 end
 if ~isfield(options, 'useHelical')
     options.useHelical = false;
+end
+if ~isfield(options, 'useParkerWeights')
+    options.useParkerWeights = false;
 end
 if ~isfield(options, 'helicalRadius')
     options.helicalRadius = 0;

@@ -124,6 +124,7 @@ options.SinM = log(flat ./ options.SinM);
 
 options.SinM = flip(options.SinM,3);
 
+% Tell OMEGA that the data has already been linearized
 options.usingLinearizedData = true;
 
 % NOTE: If you want to reduce the number of projections, you need to do

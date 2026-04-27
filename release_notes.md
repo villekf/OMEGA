@@ -1,12 +1,54 @@
 # Release notes
 
+## OMEGA v2.2.0
+
 ### New features
 - Major changes to dynamic reconstruction
-    - Loop order changed from timestep -> iteration -> sub-iteration to iteration -> sub-iteration -> timestep
-    - Allows for regularization through temporal dimension
-    - Implemented total variation and first-order derivative smoothness priors
-    - SPECT and PET only
-    - Dynamic reconstruction is supported with (at least) OSEM, RAMLA, LSQR, PDHG, FISTA, PKMA, SART, ASD-POCS and BB
+  - Loop order changed from timestep -> iteration -> sub-iteration to iteration -> sub-iteration -> timestep
+  - Allows for regularization through temporal dimension (as well as spatial one)
+  - Implemented total variation (`options.temporalTV`) and first-order derivative smoothness (`options.temporal_smoothness`) priors
+  - SPECT and PET only, though might work with CT data as well
+  - Dynamic reconstruction is supported with (at least) OSEM, RAMLA, LSQR, PDHG, FISTA, PKMA, SART, ASD-POCS and BB
+  - Added an example script for PET with both spatial and temporal regularization, and supporting both sinogram and list-mode reconstructions
+  - Implementation 2 only!
+	
+- Multi-resolution support for SPECT
+  - Added option to normalize emission probability by either ray-FOV (ray-mask) intersection length or full ray length in SPECT reconstruction
+  - This is controlled by `options.useTotLength`, where false is the first case and true the latter
+  
+- Improved FDK reconstruction for CBCT
+  - Added (optional) Parker weighting
+  - Should be used with any <2pi measurement
+  - Activate by setting `options.useParkerWeights` as true
+  - The default "weight" value is 0.25, but using 1 gives the "original" Parker weights
+  - Adjust the above value with `options.ParkerWeight`
+  - Implementation 2 only!
+  
+- Improved volume3Dviewer
+  - Works now with 4D data as well
+  - With 4D data, there's a second slider for the 4th dimension
+  - Python version now works in interactive sessions and also with 4D data
+  
+- Improved atomic operations with PET and SPECT
+  - What this primarily means is that OpenCL should now be equally fast, and most of the time faster, than CUDA
+  - PET and SPECT only!
+  - The 32/64-bit atomics are no longer recommended and have been removed from almost all examples
+  - Atomics are now computed with floats in practically every case (certain specific hardware might still benefit from the old 32/64-bit atomics, such as integrated GPUs)
+  - OpenCL is now recommended for all hardware
+  
+### Bug fixes and enhancements
+
+- Cell type is now used always in MATLAB for holding image estimates, sensitivity images and backprojections
+
+- Projector type 4 now works with Metal and CBCT example (MATLAB only!)
+
+- If you have attenuation correction data in 1/cm, you can use those without scaling by setting `options.attIncm` to true
+
+- Related to above, fixed Inveon attenuation in Python
+
+- Small improvements to many examples
+
+- Interactive Python sessions should now clear most GPU memory when using built-in reconstruction
 
 ## OMEGA v2.1.0
 

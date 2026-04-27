@@ -132,6 +132,8 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 	int status = reconstructionAF(z_det, x, Sino, randoms, inputScalars, device, pituus, w_vec, MethodList, header_directory, x0,
 		outputPtr, FPptr, atten, norm, extraCorr, size_gauss, xy_index, z_index, residual);
 
+	// Clear ArrayFire memory
+	af::deviceGC();
 	if (status != 0)
 		mexPrint("Reconstruction failed!");
 

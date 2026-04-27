@@ -1,10 +1,10 @@
 %% MATLAB/Octave code for custom algorithm reconstruction of any ray-tracing compatible data
 % This example showcases how to use data that is not in (standard) PET,
-% SPECT or CT format. Essentially the only things that are needed are the
-% FOV size, the number of voxels in each direction and the source/detector
-% coordinates. The example data is a cylindrical PET data but in reality it
-% could be anything. This is a simplified example and computes the
-% reconstructions by using the built-in class object rather than the
+% SPECT or CT format. Essentially the only things that are needed for image 
+% reconstruction in OMEGA are the FOV size, the number of voxels in each 
+% direction and the source/detector coordinates. The example data is a cylindrical 
+% PET data but in reality it could be anything. This is a simplified example and 
+% computes the reconstructions by using the built-in class object rather than the
 % built-in algorithms. This example can be modified to compute your own
 % algorithm.
 % Documentation: https://omega-doc.readthedocs.io/en/latest/customcoordinates.html
@@ -90,8 +90,6 @@ options.verbose = 1;
 %%% Reconstruction implementation used
 % 1 = Reconstructions in MATLAB (projector in a MEX-file), uses matrices.
 % (Slow and memory intensive)
-% 2 = Matrix-free reconstruction with OpenCL/CUDA (Recommended)
-% (Requires ArrayFire).
 % 3 = Multi-GPU/device matrix-free OpenCL (OSEM & MLEM only).
 % 4 = Matrix-free reconstruction with OpenMP (CPU, parallel), standard C++
 % 5 = Matrix-free reconstruction with OpenCL (parallel)
@@ -114,41 +112,6 @@ options.platform = 0;
 % NOTE: The device numbers might be different between implementation 2 and
 % implementations 3 and 5
 options.use_device = 0;
-
-% Applies to implementations 2, 3 and 5 ONLY
-%%% Use 64-bit integer atomic functions
-% If true, then 64-bit integer atomic functions (atomic add) will be used
-% if they are supported by the selected device.
-% Setting this to true will make computations faster on GPUs that support
-% the functions, but might make results slightly less reliable due to
-% floating point rounding. Recommended for OpenCL GPUs.
-options.use_64bit_atomics = true;
-
-% Applies to implementations 2, 3 and 5 ONLY
-%%% Use 32-bit integer atomic functions
-% If true, then 32-bit integer atomic functions (atomic add) will be used.
-% This is even faster than the above 64-bit atomics version, but will also
-% have significantly higher reduction in numerical/floating point accuracy.
-% This should be about 20-30% faster than the above 64-bit version, but
-% might lead to integer overflow if you have a high count measurement
-% (thousands of coincidences per sinogram bin). Use this only if speed is
-% of utmost importance. 32-bit atomics take precedence over 64-bit ones,
-% i.e. if options.use_32bit_atomics = true then the 64-bit version will be 
-% always set as false.
-options.use_32bit_atomics = false;
-
-% Implementation 2 ONLY
-%%% Use CUDA
-% Selecting this to true will use CUDA kernels/code instead of OpenCL. This
-% only works if the CUDA code was successfully built. This is recommended
-% if you have CUDA-capable device.
-options.use_CUDA = false;
-
-% Implementation 2 ONLY
-%%% Use CPU
-% Selecting this to true will use CPU-based code instead of OpenCL or CUDA.
-% Not recommended, even OpenCL with CPU should be used before this.
-options.use_CPU = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Type of projector to use for the geometric matrix
@@ -286,6 +249,7 @@ x = repmat(x, 1, size(z_det,2));
 
 z = repelem(z_det, 1, sizeX);
 
+% Save the coordinates in options.x
 options.x = [x(1,:);x(2,:);z(1,:);x(3,:);x(4,:);z(2,:)];
 
 clear x z
@@ -296,13 +260,10 @@ clear x z
 
 %% Class example (OSEM)
 
-% Here is an example of how to obtain the same results as above by using a
-% specific MATLAB class. This is a bit more simplified from above and also
-% allows more easily to use other properties files (such as
-% Inveon_PET_main.m). PSF blurring will be performed automatically if it
-% has been selected.
+% Here is an example of OSEM reconstruction using the above coordinates. 
+% PSF blurring will be performed automatically if it has been selected.
 
-% Load data
+% Load measurement data
 load Cylindrical_PET_example_cylpet_example_new_sinograms_combined_static_200x168x703_span3.mat
 % When using custom coordinates, it is important to store the measurements
 % in options.SinM BEFORE constructing the class object
@@ -314,7 +275,7 @@ end
 
 
 % Construct the forward and backward projections object (you need to rerun
-% this if you make any changes to the system):
+% this if you make any changes to the scanner/FOV):
 A = projectorClass(options);
 
 % Important if you use subsets!
@@ -334,6 +295,7 @@ for iter = 1 : options.Niter
         % Note that the system matrix is the TRANSPOSE of the matrix
         % The forward projection is stored in y
         y = A * f;
+		% This is y = H' * f if you use the matrix
         % The backprojection is stored in x
         if iter == 1
             % Sensitivity image can be computed during the first iteration

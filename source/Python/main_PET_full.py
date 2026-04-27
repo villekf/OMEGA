@@ -478,6 +478,10 @@ options.attenuation_correction = True
 # (i.e. using attenuation sinograms)
 options.CT_attenuation = False
 
+### Attenuation coefficients in cm
+# If the attenuation coefficients are in cm, put the below to True
+options.attIncm = True
+
 ### Rotate the attenuation image before correction
 # Rotates the attenuation image N * 90 degrees where N is the number
 # specified below. Positive values are clockwise, negative
@@ -720,11 +724,8 @@ options.deviceNum = 0
 ### Use 64-bit integer atomic functions
 # If True, then 64-bit integer atomic functions (atomic add) will be used
 # if they are supported by the selected device.
-# Setting this to True will make computations faster on GPUs that support
-# the functions, but might make results slightly less reliable due to
-# floating point rounding. Recommended for GPUs.
-# Note: This should be used only with OpenCL
-options.use_64bit_atomics = True
+# No longer recommended!
+options.use_64bit_atomics = False
 
 ### Use 32-bit integer atomic functions
 # If True, then 32-bit integer atomic functions (atomic add) will be used.
@@ -732,10 +733,11 @@ options.use_64bit_atomics = True
 # have significantly higher reduction in numerical/floating point accuracy.
 # This should be about 20-30# faster than the above 64-bit version, but
 # might lead to integer overflow if you have a high count measurement
-# (thousands of coincidences per sinogram bin). Use this only if speed is
-# of utmost importance. 32-bit atomics take precedence over 64-bit ones,
+# (thousands of coincidences per sinogram bin). 
+# 32-bit atomics take precedence over 64-bit ones,
 # i.e. if options.use_32bit_atomics = true then the 64-bit version will be 
 # always set as false.
+# No longer recommended!
 options.use_32bit_atomics = False
 
 ### Use CUDA
@@ -1699,3 +1701,6 @@ pz, fp = reconstructions_main(options)
 import matplotlib as plt
 
 plt.pyplot.imshow(pz[:,:,100])
+
+from omegatomo.util.volume3Dviewer import volume3Dviewer
+volume3Dviewer(pz)

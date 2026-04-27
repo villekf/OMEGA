@@ -1,4 +1,4 @@
-function im_vectors = init_next_iter(im_vectors, options, iter, timestep)
+function im_vectors = init_next_iter(im_vectors, options, iter, varargin)
 % Initialize the next iteration
 
 if options.save_iter
@@ -11,14 +11,26 @@ else
         iter_n = 1;
     end
 end
-
+if nargin > 3 && ~isempty(varargin{1})
+    tt = varargin{1};
+else
+    tt = 1;
+end
 
 if options.BSREM || options.ROSEM_MAP
-    dU = applyPrior(im_vectors.recApu{timestep, 1}, options, iter, options.beta);
-    im_vectors = MAPiter(im_vectors, options.lambda(iter), options.beta, dU, options.epps, timestep);
+    if iscell(im_vectors.recApu)
+        dU = applyPrior(im_vectors.recApu{1}, options, iter, options.beta);
+    else
+        dU = applyPrior(im_vectors.recApu, options, iter, options.beta);
+    end
+    im_vectors = MAPiter(im_vectors, options.lambda(iter), options.beta, dU, options.epps);
 end
-currentMultiVolume = 1; % TODO
-im_vectors.recImage{currentMultiVolume}(:, iter_n, timestep) = im_vectors.recApu{timestep, 1};
+
+if iscell(im_vectors.recApu)
+    im_vectors.recImage(:, iter_n, tt) = im_vectors.recApu{1};
+else
+    im_vectors.recImage(:, iter_n, tt) = im_vectors.recApu;
+end
 
 if options.verbose > 0
     disp(['Iteration ' num2str(iter) ' finished'])

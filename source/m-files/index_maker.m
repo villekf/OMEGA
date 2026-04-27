@@ -132,12 +132,28 @@ if subsets > 1 && options.subset_type < 8
         end
         % Take every nth (column) measurement
     elseif options.subset_type == 1
-        for i=1:subsets
-            index1 = cast(i:subsets:totalLength, tyyppi)';
-            [I,J,K] = ind2sub([Nang Ndist NSinos], index1);
-            index1 = cast(sub2ind([Ndist Nang NSinos], J, I,K), tyyppi);
-            index{i} = index1;
-            pituus(i) = int64(length(index{i}));
+        if options.listmode > 0 && options.Nt > 1
+            index = cell(options.Nt,1);
+            pituus = zeros(subsets, options.Nt, 'int64');
+            for j=1:options.Nt
+                totLength = options.listmodeIndices(j);
+                tempInd = cell(options.subsets,1);
+                for i=1:subsets
+                    index1 = cast(i:subsets:totLength, tyyppi)';
+                    tempInd{i} = index1;
+                    pituus(i,j) = int64(length(index1));
+                end
+                index{j} = cell2mat(tempInd);
+            end
+            pituus = pituus(:);
+        else
+            for i=1:subsets
+                index1 = cast(i:subsets:totalLength, tyyppi)';
+                [I,J,K] = ind2sub([Nang Ndist NSinos], index1);
+                index1 = cast(sub2ind([Ndist Nang NSinos], J, I,K), tyyppi);
+                index{i} = index1;
+                pituus(i) = int64(length(index{i}));
+            end
         end
         % Take every nth (row) measurement
         % Every nth measurements
@@ -203,25 +219,43 @@ if subsets > 1 && options.subset_type < 8
     elseif options.subset_type == 7 && ~options.use_raw_data
         [index, pituus] = goldenAngleSubsets(options);
     elseif options.subset_type == 0
-        if options.listmode == 1
-            val = floor(totalLength / subsets);
-            if mod(totalLength, subsets) > 0
-                valEnd = totalLength - val * (subsets - 1);
-            else
-                valEnd = val;
+        if options.listmode > 0 && options.Nt > 1
+            pituus = zeros(subsets, options.Nt, 'int64');
+            for j=1:options.Nt
+                totLength = options.listmodeIndices(j);
+                val = floor(totLength / subsets);
+                if mod(totLength, subsets) > 0
+                    valEnd = totLength - val * (subsets - 1);
+                else
+                    valEnd = val;
+                end
+                for i = 1 : subsets - 1
+                    pituus(i,j) = val;
+                end
+                pituus(subsets,j) = valEnd;
             end
+            pituus = pituus(:);
         else
-            val = floor(options.nProjections / subsets);
-            if mod(options.nProjections, subsets) > 0
-                valEnd = options.nProjections - val * (subsets - 1);
+            if options.listmode == 1
+                val = floor(totalLength / subsets);
+                if mod(totalLength, subsets) > 0
+                    valEnd = totalLength - val * (subsets - 1);
+                else
+                    valEnd = val;
+                end
             else
-                valEnd = val;
+                val = floor(options.nProjections / subsets);
+                if mod(options.nProjections, subsets) > 0
+                    valEnd = options.nProjections - val * (subsets - 1);
+                else
+                    valEnd = val;
+                end
             end
+            for i = 1 : subsets - 1
+                pituus(i) = val;
+            end
+            pituus(subsets) = valEnd;
         end
-        for i = 1 : subsets - 1
-            pituus(i) = val;
-        end
-        pituus(subsets) = valEnd;
         index = {0};
     end
 elseif (subsets > 1 && (options.subset_type == 8 || options.subset_type == 9 || options.subset_type == 10 || options.subset_type == 11 || options.subset_type == 12)) || (subsets == 1)
@@ -330,8 +364,13 @@ elseif (subsets > 1 && (options.subset_type == 8 || options.subset_type == 9 || 
         end
     end
     index = cell2mat(index);
+    pituus = pituus(:);
 elseif options.subset_type > 11
     error('Invalid subset type!')
+end
+if options.listmode == 0 && options.Nt > 1
+    pituus = repmat(pituus,1,options.Nt);
+    pituus = pituus(:);
 end
 if ~iscell(index) && size(index,1) == 1 && ~options.precompute_lor
     index = 0;

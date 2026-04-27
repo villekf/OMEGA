@@ -510,6 +510,7 @@ classdef projectorClass
             else
                 partitions = obj.param.partitions;
             end
+            obj.param.Nt = partitions;
             if partitions > 1 && obj.param.subset_type == 3
                 error('Subset type 3 is not supported with dynamic data!')
             end
@@ -557,7 +558,9 @@ classdef projectorClass
             end
 
             % Whether list-mode or sinogram/raw data is used
-            if (isfield(obj.param,'x') || isfield(obj.param,'y') || (isfield(obj.param,'z') || isfield(obj.param,'z_det'))) && (numel(obj.param.x) / 2 == numel(obj.param.SinM) || numel(obj.param.x) / 6 == numel(obj.param.SinM))
+            if (isfield(obj.param,'x') || isfield(obj.param,'y') || (isfield(obj.param,'z') || isfield(obj.param,'z_det'))) && (((numel(obj.param.x) / 2 == numel(obj.param.SinM) ...
+                    || numel(obj.param.x) / 6 == numel(obj.param.SinM))) || (numel(obj.param.SinM) == 0 && numel(obj.param.x) >= 6) || ...
+                    (iscell(obj.param.x) && (numel(obj.param.x{1}) / 2 == numel(obj.param.SinM{1}) || numel(obj.param.x{1}) / 6 == numel(obj.param.SinM{1}))))
                 det_per_ring = numel(obj.param.SinM);
                 obj.param.Nang = 1;
                 obj.param.Ndist = 1;
@@ -566,7 +569,11 @@ classdef projectorClass
                 list_mode_format = true;
                 obj.param.listmode = true;
             elseif isfield(obj.param,'trIndex') && obj.param.useIndexBasedReconstruction
-                det_per_ring = numel(obj.param.trIndex) / 2;
+                if iscell(obj.param.trIndex)
+                    det_per_ring = numel(obj.param.trIndex{1}) / 2;
+                else
+                    det_per_ring = numel(obj.param.trIndex) / 2;
+                end
                 obj.param.Nang = 1;
                 obj.param.Ndist = 1;
                 obj.param.NSinos = det_per_ring;
@@ -588,8 +595,39 @@ classdef projectorClass
                 warning('Only subset types 0, 1, and 3 are supported with list-mode/custom detector data! Switching to subset type 0.')
                 obj.param.subset_type = 0;
             end
+            if ~obj.param.listmode && obj.param.subsets > 1 && obj.param.subset_type == 0
+                warning('Subset type 0 is recommended only for list-mode data! The reconstruction will most likely not work!')
+            end
             if obj.param.listmode && (numel(partitions) > 1 || partitions > 1)
-                obj.param.loadTOF = false;
+                % obj.param.loadTOF = false;
+                obj.param.listmodeIndices = zeros(partitions,1,'uint64');
+                if obj.param.useIndexBasedReconstruction
+                    if iscell(obj.param.trIndex)
+                        for kk = 1 : partitions
+                            obj.param.listmodeIndices(kk) = uint64(numel(obj.param.trIndex{kk}) / 2);
+                        end
+                    else
+                        obj.param.listmodeIndices = repelem(uint64(numel(obj.param.trIndex) / 2 / partitions),1);
+                    end
+                else
+                    if iscell(obj.param.x)
+                        if size(obj.param.x{1},2) == 2 || size(obj.param.x{1},1) == 2
+                            listSize = 2;
+                        else
+                            listSize = 6;
+                        end
+                        for kk = 1 : partitions
+                            obj.param.listmodeIndices(kk) = uint64(numel(obj.param.x{kk}) / listSize);
+                        end
+                    else
+                        if size(obj.param.x,2) == 2 || size(obj.param.x,1) == 2
+                            listSize = 2;
+                        else
+                            listSize = 6;
+                        end
+                        obj.param.listmodeIndices = repelem(uint64(numel(obj.param.x) / listSize / partitions),1);
+                    end
+                end
             end
             [obj.index, obj.nMeas, obj.param.subsets] = index_maker(obj.param);
             obj.param = setUpCorrections(obj.param);
@@ -610,10 +648,20 @@ classdef projectorClass
                         end
                     end
                     if ~obj.param.useIndexBasedReconstruction
-                        if size(obj.param.x,2) == 2
-                            obj.param.x = [obj.param.x(:,1)'; obj.param.y(:,1)'; obj.param.z(:,1)';obj.param.x(:,2)'; obj.param.y(:,2)'; obj.param.z(:,2)'];
-                        elseif size(obj.param.x,1) == 2
-                            obj.param.x = [obj.param.x(:,1); obj.param.y(:,1); obj.param.z(:,1);obj.param.x(:,2); obj.param.y(:,2); obj.param.z(:,2)];
+                        if iscell(obj.param.x)
+                            for uu = 1 : options.Nt
+                                if size(obj.param.x{uu},2) == 2
+                                    obj.param.x{uu} = [obj.param.x{uu}(:,1)'; obj.param.y{uu}(:,1)'; obj.param.z{uu}(:,1)';obj.param.x{uu}(:,2)'; obj.param.y{uu}(:,2)'; obj.param.z{uu}(:,2)'];
+                                elseif size(obj.param.x{uu},1) == 2
+                                    obj.param.x{uu} = [obj.param.x{uu}(:,1); obj.param.y{uu}(:,1); obj.param.z{uu}(:,1);obj.param.x{uu}(:,2); obj.param.y{uu}(:,2); obj.param.z{uu}(:,2)];
+                                end
+                            end
+                        else
+                            if size(obj.param.x,2) == 2
+                                obj.param.x = [obj.param.x(:,1)'; obj.param.y(:,1)'; obj.param.z(:,1)';obj.param.x(:,2)'; obj.param.y(:,2)'; obj.param.z(:,2)'];
+                            elseif size(obj.param.x,1) == 2
+                                obj.param.x = [obj.param.x(:,1); obj.param.y(:,1); obj.param.z(:,1);obj.param.x(:,2); obj.param.y(:,2); obj.param.z(:,2)];
+                            end
                         end
                     end
                     y = 0;
@@ -628,10 +676,13 @@ classdef projectorClass
 
             if obj.param.use_raw_data
                 if list_mode_format
-                    if ~obj.param.useIndexBasedReconstruction
-                        size_x = uint32(numel(obj.param.x) / 6);
+                    if iscell(obj.param.x)
                     else
-                        size_x = uint32(numel(obj.param.x) / 2);
+                        if ~obj.param.useIndexBasedReconstruction
+                            size_x = uint32(numel(obj.param.x) / 6);
+                        else
+                            size_x = uint32(numel(obj.param.x) / 2);
+                        end
                     end
                 else
                     size_x = uint32(numel(x_det));
@@ -671,7 +722,7 @@ classdef projectorClass
             obj.param.totMeas = obj.param.nColsD * obj.param.nRowsD * obj.param.nProjections;
 
             obj.nMeas = [int64(0);int64(cumsum(obj.nMeas))];
-            if iscell(obj.index)
+            if iscell(obj.index) && (obj.param.Nt == 1 || obj.param.listmode == 0)
                 obj.index = cell2mat(obj.index);
             end
 

@@ -1,5 +1,6 @@
-function [im_vectors, options] = computeOSEstimates(im_vectors, options, iter, osa_iter, uu, corrim, timestep)
+function [im_vectors, options] = computeOSEstimates(im_vectors, options, iter, osa_iter, uu, corrim)
 for ii = 1 : options.param.nMultiVolumes + 1
+
     if (options.param.precondTypeImage(6) && options.paramilteringIterations > 0 && iter == options.paramilteringIterations)
         if (options.param.verbose >= 3)
             disp("Image-based filter iterations complete.");
@@ -23,33 +24,61 @@ for ii = 1 : options.param.nMultiVolumes + 1
         options.param.precondTypeImage(6) = false;
     end
     if (options.param.PDHG || options.param.PDHGKL || options.param.PDHGL1 || options.param.CV || options.param.PDDY)
-        [im_vectors] = PDHG1(options.param, im_vectors, osa_iter + options.param.subsets * (iter - 1), ii, timestep);
+        [im_vectors] = PDHG1(options.param, im_vectors, osa_iter + options.param.subsets * (iter - 1), ii);
     end
     if (options.param.PDDY && ii == 1)
-        PDDYApu = im_vectors.recApu{timestep, 1};
-        im_vectors.recApu{timestep, 1} = im_vectors.recApu{timestep, 1} - options.param.tauCP(1) .* im_vectors.uCP{timestep, 1};
+        if iscell(im_vectors.recApu)
+            PDDYApu = im_vectors.recApu{1};
+            im_vectors.recApu{1} = im_vectors.recApu{1} - options.param.tauCP(1) .* im_vectors.uCP{1};
+        else
+            PDDYApu = im_vectors.recApu;
+            im_vectors.recApu = im_vectors.recApu - options.param.tauCP(1) .* im_vectors.uCP;
+        end
         if (options.param.verbose == 3)
             disp("Computing PDDY step\n");
         end
     end
 end
-dU = applyPrior(im_vectors.recApu{timestep, 1}, options.param, options.param.beta, osa_iter);
 
+if iscell(im_vectors.recApu)
+    dU = applyPrior(im_vectors.recApu{1}, options.param, options.param.beta, osa_iter);
+else
+    dU = applyPrior(im_vectors.recApu, options.param, options.param.beta, osa_iter);
+end
 if (options.param.PDDY)
-    im_vectors.recApu{timestep, 1} = PDDYApu;
+    if iscell(im_vectors.recApu)
+        im_vectors.recApu{1} = PDDYApu;
+    else
+        im_vectors.recApu = PDDYApu;
+    end
 end
 
 for ii = 1 : options.param.nMultiVolumes + 1
-    if size(im_vectors.Sens{timestep, ii}, 2) > 1
-        Sens = im_vectors.Sens{timestep, ii}(:, osa_iter);
+    if iscell(im_vectors.Sens)
+        if size(im_vectors.Sens{ii},2) > 1
+            Sens = im_vectors.Sens{ii}(:, osa_iter);
+        else
+            Sens = im_vectors.Sens{ii};
+        end
     else
-        Sens = im_vectors.Sens{timestep, ii};
+        if size(im_vectors.Sens,2) > 1
+            Sens = im_vectors.Sens(:, osa_iter);
+        else
+            Sens = im_vectors.Sens;
+        end
     end
-
-    im = im_vectors.recApu{timestep, ii};
-    rhs = im_vectors.rhs{timestep, ii};
-    if isfield(options.param, 'D')
-        D = options.param.D{timestep, ii};
+    if iscell(im_vectors.recApu)
+        im = im_vectors.recApu{ii};
+        rhs = im_vectors.rhs{ii};
+        if isfield(options.param, 'D')
+            D = options.param.D{ii};
+        end
+    else
+        im = im_vectors.recApu;
+        rhs = im_vectors.rhs;
+        if isfield(options.param, 'D')
+            D = options.param.D;
+        end
     end
 
     % Compute the (matrix free) algorithms
@@ -206,20 +235,20 @@ for ii = 1 : options.param.nMultiVolumes + 1
         if (options.param.verbose >= 3)
             disp("Computing LSQR");
         end
-        [im_vectors,options.param] = LSQRim(options.param, iter, im_vectors, ii, timestep);
+        [im_vectors,options.param] = LSQRim(options.param, iter, im_vectors, ii);
     elseif (options.param.CGLS)
         if (options.param.verbose >= 3)
             disp("Computing CGLS");
         end
-        [im_vectors,options.param] = CGLS(options.param, iter, im_vectors, ii, timestep);
+        [im_vectors,options.param] = CGLS(options.param, iter, im_vectors, ii);
     elseif (options.param.PDHG || options.param.PDHGKL || options.param.PDHGL1 || options.param.CV || options.param.PDDY)
         if (options.param.verbose >= 3)
             disp("Computing PDHG/PDHGKL/PDHGL1");
         end
         if isempty(dU)
-            [im, options.param, im_vectors] = PDHG2(im, rhs, im_vectors, options.param, iter, osa_iter, timestep, ii);
+            [im, options.param, im_vectors] = PDHG2(im, rhs, im_vectors, options.param, iter, osa_iter, ii);
         else
-            [im, options.param, im_vectors] = PDHG2(im, rhs + dU, im_vectors, options.param, iter, osa_iter, timestep, ii);
+            [im, options.param, im_vectors] = PDHG2(im, rhs + dU, im_vectors, options.param, iter, osa_iter, ii);
         end
     elseif (options.param.FISTA)
         if (options.param.verbose >= 3)
@@ -234,6 +263,9 @@ for ii = 1 : options.param.nMultiVolumes + 1
     end
 end
 if ~options.param.LSQR && ~options.param.CGLS
-    im_vectors.recApu{timestep, ii} = im;
-end
+    if iscell(im_vectors.recApu)
+        im_vectors.recApu{ii} = im;
+    else
+        im_vectors.recApu = im;
+    end
 end

@@ -1,6 +1,6 @@
 function varargout = volume3Dviewer(volume, varargin)
-%VOLUME3DVIEWER Visualizes a stack of slices from any 3D (grayscale) image
-%volume
+%VOLUME3DVIEWER Visualizes a stack of slices from any 3D/4D (grayscale)
+%image volume
 %   Default setting uses the minimum and maximum values of the current
 %   slice as the respective minimum and maximum values of the figure.
 %   Default setting also uses transverse stack. The user can adjust the
@@ -15,7 +15,8 @@ function varargout = volume3Dviewer(volume, varargin)
 %       volume3Dviewer(volume, [], [], volume2)
 %       volume3Dviewer(volume, 'fit', [], volume2)
 %   Inputs:
-%       volume = The input 3D image volume
+%       volume = The input 3D/4D image volume (4th dimension is considered
+%       as separate slider)
 %       scale = The minimum and maximum values of the color range, i.e.
 %       [minimum maximum]. If you input 'fit' instead, the minimum will be
 %       minimum value in the volume and maximum the maximum value in the
@@ -31,7 +32,7 @@ function varargout = volume3Dviewer(volume, varargin)
 % See also sliceViewer
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2024-2025 Nargiza Djurabekova, Ville-Veikko Wettenhovi,
+% Copyright (C) 2024-2026 Nargiza Djurabekova, Ville-Veikko Wettenhovi,
 % Niilo Saarlemo
 %
 % This program is free software: you can redistribute it and/or modify
@@ -76,9 +77,17 @@ function varargout = volume3Dviewer(volume, varargin)
 
     if nargin >= 3 && ~isempty(varargin{2})
         if varargin{2}(1) == 1
-            volume = flipud(permute(volume, [1 3 2]));
+            if size(volume, 4) > 1
+                volume = flipud(permute(volume, [1 3 2 4]));
+            else
+                volume = flipud(permute(volume, [1 3 2]));
+            end
         elseif varargin{2}(2) == 1
-            volume = flipud(permute(volume, [3 2 1]));
+            if size(volume, 4) > 1
+                volume = flipud(permute(volume, [3 2 1 4]));
+            else
+                volume = flipud(permute(volume, [3 2 1]));
+            end
         end
     end
 
@@ -97,16 +106,37 @@ function varargout = volume3Dviewer(volume, varargin)
     end
 
     %% Volume 1 UI controls
+    % Check if 4D
+    has_4d = size(volume, 4) > 1;
+
+    % Adjust sliderSlice position depending on 4D
+    posSlice = [.05, .05, .9, .05];
+    if has_4d
+        posSlice = [.05, .10, .9, .05];
+    end
+
     % Create a slider for the slice
-    sliderSlice = uicontrol('Parent', varargout{1}, 'Style', 'slider', 'Units', 'normalized', 'Position', [.05, .05, .9, .05], ...
-        'Min', 1, 'Max', size(volume, 3), 'Value', 1, 'SliderStep', [1, 5]./(size(volume, 3)-1));
+    sliderSlice = uicontrol('Parent', varargout{1}, 'Style', 'slider', 'Units', 'normalized', 'Position', posSlice, ...
+        'Min', 1, 'Max', size(volume, 3), 'Value', 1, 'SliderStep', [1, 5]./max(1,(size(volume, 3)-1)));
 
     % Add a callback function to the slider
     if USING_MATLAB
         addlistener(sliderSlice, 'ContinuousValueChange', @(src, event) updateSlice());
     else
         set(sliderSlice, 'Callback', @(src, event) updateSlice());
-        disp("test")
+    end
+
+    % Create slider for 4th dimension if 4D
+    if has_4d
+        sliderDim4 = uicontrol('Parent', varargout{1}, 'Style', 'slider', 'Units', 'normalized', 'Position', [.05, .04, .9, .05], ...
+            'Min', 1, 'Max', size(volume, 4), 'Value', 1, 'SliderStep', [1, 5]./max(1,(size(volume, 4)-1)));
+
+        % Add a callback function to the 4D slider
+        if USING_MATLAB
+            addlistener(sliderDim4, 'ContinuousValueChange', @(src, event) updateSlice());
+        else
+            set(sliderDim4, 'Callback', @(src, event) updateSlice());
+        end
     end
 
     % Add a callback for mouse hover over the image
@@ -134,11 +164,18 @@ function varargout = volume3Dviewer(volume, varargin)
 
     %% Functions
     % Function to draw slice using imagesc
-    function drawSlice(ax, volume, scale, slice_num)
-        if isempty(scale) % Display the selected slice using imagesc
-            imagesc(ax, volume(:, :, slice_num));
+    function drawSlice(ax, vol, scl, slice_num)
+        if has_4d
+            dim4_num = round(get(sliderDim4, 'Value'));
+            img_slice = vol(:, :, slice_num, dim4_num);
         else
-            imagesc(ax, volume(:, :, slice_num), scale);
+            img_slice = vol(:, :, slice_num);
+        end
+
+        if isempty(scl) % Display the selected slice using imagesc
+            imagesc(ax, img_slice);
+        else
+            imagesc(ax, img_slice, scl);
         end
     end
 
@@ -169,27 +206,44 @@ function varargout = volume3Dviewer(volume, varargin)
         end
         if (USING_MATLAB && useColorbar); colorbar(ax, 'Position', [.85, .15, .02, .8]); end
         axis(ax, "off", "equal")
-        title(ax, ['Slice ' num2str(slice_num) '/' num2str(size(volume,3))]);
+        if has_4d
+            dim4_num = round(get(sliderDim4, 'Value'));
+            title(ax, ['Slice ' num2str(slice_num) '/' num2str(size(volume,3)) ' (T: ' num2str(dim4_num) '/' num2str(size(volume,4)) ')']);
+        else
+            title(ax, ['Slice ' num2str(slice_num) '/' num2str(size(volume,3))]);
+        end
 
         drawnow; % Refresh the figure
     end
 
     % Function to display pixel value on mouse hover
-    function displayPixelValue(~, ax, volume, slider)
+    function displayPixelValue(~, ax, vol, slider)
         cp = get(ax, 'CurrentPoint');
         x = round(cp(1, 1));
         y = round(cp(1, 2));
         slice_num = round(get(slider, 'Value'));
-        img = volume(:, :, slice_num);
+
+        if has_4d
+            dim4_num = round(get(sliderDim4, 'Value'));
+            img = vol(:, :, slice_num, dim4_num);
+        else
+            img = vol(:, :, slice_num);
+        end
         img_v = NaN;
 
         if (x > 0 && y > 0 && x <= size(img, 2) && y <= size(img, 1))
             img_v = img(y, x);
         end
+
+        str_dim4 = '';
+        if has_4d
+            str_dim4 = sprintf(' (T: %i/%i)', dim4_num, size(vol, 4));
+        end
+
         if (~isnan(img_v))
-            title(ax, sprintf("Slice %i/%i : (%i, %i) = %i", slice_num, size(volume,3), x, y, img_v));
+            title(ax, sprintf("Slice %i/%i%s : (%i, %i) = %g", slice_num, size(vol,3), str_dim4, x, y, img_v));
         else
-            title(ax, sprintf("Slice %i/%i", slice_num, size(volume,3)));
+            title(ax, sprintf("Slice %i/%i%s", slice_num, size(vol,3), str_dim4));
         end
     end
 end

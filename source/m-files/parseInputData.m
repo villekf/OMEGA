@@ -5,6 +5,8 @@ function options = parseInputData(options, index)
 %   data is correctly ordered. Not all subset types require this reordering
 if numel(options.partitions) > 1
     partitions = numel(options.partitions);
+elseif isfield(options,'Nt') && options.Nt > 1
+    partitions = options.Nt;
 else
     partitions = options.partitions;
 end
@@ -50,9 +52,17 @@ if options.subsets > 1 && options.subset_type > 0
                     end
                 else
                     if options.subset_type >= 8
-                        temp = temp(:,:,index);
+                        if iscell(index)
+                            temp = temp(:,:,index{ff});
+                        else
+                            temp = temp(:,:,index);
+                        end
                     else
-                        temp = temp(index);
+                        if iscell(index)
+                            temp = temp(index{ff});
+                        else
+                            temp = temp(index);
+                        end
                     end
                 end
                 temp = reshape(temp, koko);

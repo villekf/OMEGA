@@ -308,10 +308,7 @@ options.deviceNum = 0
 # Applies to projector types 1-3 ONLY
 # If True, then 64-bit integer atomic functions (atomic add) will be used
 # if they are supported by the selected device.
-# Setting this to True will make computations faster on GPUs that support
-# the functions, but might make results slightly less reliable due to
-# floating point rounding. Recommended for GPUs.
-# Note: This should be used only with OpenCL
+# Not recommended!
 options.use_64bit_atomics = False
 
 ### Use 32-bit integer atomic functions
@@ -321,10 +318,11 @@ options.use_64bit_atomics = False
 # have significantly higher reduction in numerical/floating point accuracy.
 # This should be about 20-30# faster than the above 64-bit version, but
 # might lead to integer overflow if you have a high count measurement
-# (thousands of coincidences per sinogram bin). Use this only if speed is
-# of utmost importance. 32-bit atomics take precedence over 64-bit ones,
+# (thousands of coincidences per sinogram bin). 
+# 32-bit atomics take precedence over 64-bit ones,
 # i.e. if options.use_32bit_atomics = true then the 64-bit version will be 
 # always set as false.
+# Not recommended!
 options.use_32bit_atomics = False
 
 ### Use CUDA
@@ -1218,3 +1216,7 @@ else:
 toc = time.perf_counter()
 print(f"{toc - tic:0.4f} seconds")
 plt.pyplot.imshow(pz[:,:,300], vmin=0)
+
+
+from omegatomo.util.volume3Dviewer import volume3Dviewer
+volume3Dviewer(pz)

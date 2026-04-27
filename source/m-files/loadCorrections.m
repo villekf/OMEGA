@@ -8,7 +8,7 @@ function [options] = loadCorrections(options, RandProp, ScatterProp)
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2022-2024 Ville-Veikko Wettenhovi
+% Copyright (C) 2022-2026 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -42,6 +42,14 @@ if ~isfield(options,'TOF_bins') || options.TOF_bins == 0
 end
 if ~isfield(options,'use_machine')
     options.use_machine = 0;
+end
+if ~isfield(options,'Nt')
+    options.Nt = 1;
+end
+
+if options.listmode && options.normalization_correction && options.Nt > 1
+    warning('Normalization correction is not (yet) supported for dynamic list-mode data! Disabling it.')
+    options.normalization_correction = false;
 end
 
 if ~options.use_raw_data && options.randoms_correction
@@ -103,9 +111,6 @@ if options.attenuation_correction && ~options.SPECT % PET attenuation
             data = load(options.attenuation_datafile);
             variables = fieldnames(data);
             options.vaimennus = double(data.(variables{1}));
-            if options.CT_attenuation
-                options.vaimennus = options.vaimennus ./ 10;
-            end
             clear data
         else
             [options.file, options.fpath] = uigetfile('*.*','Select attenuation file');
@@ -121,9 +126,6 @@ if options.attenuation_correction && ~options.SPECT % PET attenuation
                 data = load(nimi);
                 variables = fieldnames(data);
                 options.vaimennus = double(data.(variables{1}));
-                if options.CT_attenuation
-                    options.vaimennus = options.vaimennus ./ 10;
-                end
                 clear data
             end
         end
@@ -203,6 +205,9 @@ elseif options.attenuation_correction && options.SPECT % SPECT attenuation
 else
     options.vaimennus = 0;
 end
+if options.attenuation_correction && options.attIncm
+    options.vaimennus = options.vaimennus ./ 10;
+end
 
 
 if ~iscell(options.vaimennus) 
@@ -277,9 +282,9 @@ if ~options.SPECT
         randoms_correction = true;
         r_exist = isfield(options,'SinDelayed') && numel(options.SinDelayed) > 1;
         s_exist = isfield(options,'ScatterC') && numel(options.ScatterC) > 1;
-        if r_exist && isfield(options,'SinDelayed') && ~iscell(options.SinDelayed) && numel(options.SinDelayed) == 1 && randoms_correction
+        if r_exist && isfield(options,'SinDelayed') && ~iscell(options.SinDelayed) && isscalar(options.SinDelayed) && randoms_correction
             r_exist = false;
-        elseif r_exist && isfield(options,'SinDelayed') && iscell(options.SinDelayed) && numel(options.SinDelayed{1}) == 1 && randoms_correction
+        elseif r_exist && isfield(options,'SinDelayed') && iscell(options.SinDelayed) && isscalar(options.SinDelayed{1}) && randoms_correction
             r_exist = false;
         end
         if exist('RandProp','var') == 0 || isempty(RandProp)
@@ -703,9 +708,9 @@ if ~options.SPECT
         end
     elseif (options.randoms_correction || options.scatter_correction) && ~options.reconstruct_trues && ~options.reconstruct_scatter
         r_exist = isfield(options,'SinDelayed');
-        if r_exist && isfield(options,'SinDelayed') && ~iscell(options.SinDelayed) && numel(options.SinDelayed) == 1 && options.randoms_correction
+        if r_exist && isfield(options,'SinDelayed') && ~iscell(options.SinDelayed) && isscalar(options.SinDelayed) && options.randoms_correction
             r_exist = false;
-        elseif r_exist && isfield(options,'SinDelayed') && iscell(options.SinDelayed) && numel(options.SinDelayed{1}) == 1 && options.randoms_correction
+        elseif r_exist && isfield(options,'SinDelayed') && iscell(options.SinDelayed) && isscalar(options.SinDelayed{1}) && options.randoms_correction
             r_exist = false;
         end
         options.scatter = false;
@@ -947,6 +952,9 @@ if ~options.SPECT
         else
             options.normalization = 0;
         end
+    end
+    if options.normalization_correction && ~iscell(options.SinM) && numel(options.normalization) ~= numel(options.SinM)
+        warning('Normalization coefficient vector/matrix is of different size than the measurement data. Normalization might not work correctly and might cause a crash.')
     end
     if options.sampling > 1 && ~options.precompute_lor
         [~, ~, options] = increaseSampling(options, x, y, true);

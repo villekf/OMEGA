@@ -1,9 +1,14 @@
-%% MATLAB/Octave codes for PET reconstruction using Inveon PET LST or GATE output
-% This main-file provides an example on how to obtain & perform list-mode
-% (event-by-event) reconstruction. 
+%% MATLAB/Octave codes for dynamic PET reconstruction using Inveon PET LST
+% This file provides an example of dynamic reconstruction in PET, using
+% either sinogram data or listmode data.
+% This example uses BOTH spatial AND temporal regularization (RDP for
+% spatial and TV for temporal). You can disable RDP by setting options.RDP
+% to false below and the temporal TV by setting options.temporalTV = false.
+% By default, this example uses sinogram data, but you can use listmode
+% data by modifying line 1022 variable listmode to true.
 % For the input measurement data, you can use the open preclinical PET data
 % available from: https://doi.org/10.5281/zenodo.3528056
-% Documentation: https://omega-doc.readthedocs.io/en/latest/customcoordinates.html
+% Documentation: https://omega-doc.readthedocs.io/en/latest/dynamic.html
 clear
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -18,7 +23,7 @@ clear
 options.blocks_per_ring = (16);
 
 %%% R-sectors/modules/blocks/buckets in axial direction (i.e. number of physical
-%%% scanner/crystal rings) 
+%%% scanner/crystal rings)
 % Multiplying this with the below cryst_per_block_axial should equal the
 % total number of crystal rings.
 options.linear_multip = (4);
@@ -53,10 +58,6 @@ options.FOVa_y = options.FOVa_x;
 %%% Axial FOV (mm)
 options.axial_fov = 127;
 
-%%% Number of pseudo rings between physical rings (use 0 or [] if none)
-% NOTE: Inveon has no pseudo detectors/rings
-options.pseudot = [];
-
 %%% Ring gaps (mm)
 % Each ring is assumed to contain options.cryst_per_block_axial crystals
 % Input the gap between each of these rings here, for every gap
@@ -66,12 +67,6 @@ options.ringGaps = [];
 
 %%% Number of detectors per crystal ring (without pseudo detectors)
 options.det_per_ring = options.blocks_per_ring*options.cryst_per_block;
-
-%%% Number of detectors per crystal ring (with pseudo detectors)
-% NOTE: Inveon has no pseudo detectors/rings
-% If you have a single pseudo detector per block, use the commented line
-options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block);
-% options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block + 1);
 
 %%% Number of crystal rings
 options.rings = options.linear_multip * options.cryst_per_block;
@@ -83,6 +78,69 @@ options.detectors = options.det_per_ring*options.rings;
 % Used for naming purposes (measurement data)
 options.machine_name = 'Inveon';
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%% NOTE! The below sinogram properties are only needed for sinogram data,
+%%% not for listmode. 
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%% SINOGRAM PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%% Span factor/axial compression
+options.span = 3;
+
+%%% Maximum ring difference
+options.ring_difference = options.rings - 1;
+
+%%% Number of radial positions (views) in sinogram
+% You should primarily use the same number as the scanner uses.
+% However, if that information is not available you can use ndist_max
+% function to determine potential values (see help ndist_max for usage).
+% This is the ROW dimension, i.e. the number of rows in the sinogram
+options.Ndist = 128;
+
+%%% Number of angles (tangential positions) in sinogram
+% This is the final amount after possible mashing, maximum allowed is the
+% number of detectors per ring/2.
+% This is the COLUMN dimension, i.e. the number of columns in the sinogram
+options.Nang = 160;
+
+%%% Specify the amount of sinograms contained on each segment
+% (this should total the total number of sinograms).
+% Currently this is computed automatically, but you can also manually
+% specify the segment sizes.
+options.segment_table = [options.rings*2-1, options.rings*2-1 - (options.span + 1):-options.span*2:options.rings - options.ring_difference];
+if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
+    options.segment_table = [options.segment_table(1), repeat_elem(options.segment_table(2:end),2,1)];
+else
+    options.segment_table = [options.segment_table(1), repelem(options.segment_table(2:end),2)];
+end
+
+%%% Total number of sinograms
+options.TotSinos = sum(options.segment_table);
+
+%%% Number of sinograms used in reconstruction
+% The first NSinos sinograms will be used for the image reconstruction.
+% This is the number of slices in the sinogram
+options.NSinos = options.TotSinos;
+
+%%% If Ndist value is even, take one extra out of the negative side (+1) or
+% from the positive side (-1). E.g. if Ndist = 200, then with +1 the
+% interval is [-99,100] and with -1 [-100,99]. This varies from scanner to
+% scanner. If you see a slight shift in the sinograms when comparing with
+% the scanner sinograms then use the other option here. For Inveon, this
+% should be -1.
+options.ndist_side = -1;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
@@ -102,10 +160,10 @@ options.use_machine = 1;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
- 
- 
- 
+
+
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -113,7 +171,7 @@ options.use_machine = 1;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
+
 % Note that non-square transaxial image sizes can be unreliable just as the
 % non-square transaxial FOV, but they should, generally, work
 %%% Reconstructed image pixel count (X/row-direction)
@@ -135,16 +193,16 @@ options.flip_image = false;
 % Positive values perform the rotation in clockwise direction
 % The units are crystals, i.e. if the value is 1, the rotation is done by
 % rotating the coordinates equaling to one crystal pitch
-options.offangle = options.det_w_pseudo * (2/4);
- 
+options.offangle = options.det_per_ring * (2/4);
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
- 
- 
- 
+
+
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -153,33 +211,25 @@ options.offangle = options.det_w_pseudo * (2/4);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % List-mode reconstruction only supports automatic attenuation correction.
-% Randoms and/or scatter has to be done manually. Normalization is not
-% supported.
+% Randoms and/or scatter has to be done manually. Normalization is not yet
+% supported, but you can perform it manually. For sinogram, all corrections
+% are supported.
 
 %%%%%%%%%%%%%%%%%%%%%%%%% Attenuation correction %%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Image-based attenuation correction
 % Include attenuation correction from images (e.g. CT-images) (for this you
 % need attenuation images of each slice correctly rotated and scaled for
-% 511 keV). For CT-images you can use attenuationCT_to_511 or
-% create_atten_matrix_CT functions. If the below attenuation_datafile is
-% empty, UMAPs created with Inveon AW can be used (if the below
-% CT_attenuation is set to true) or, alternatively, use the produces .atn
-% files instead (CT_attenuation is false). 
-% E.g. if this is set to true, CT_attenuation = true and
-% attenuation_datafile = '', then the user will be automatically prompted
-% for the UMAP-files and they will be automatically saved as a mat-file
-% with the filename saved in the attenuation_datafile field. Alternatively,
-% if this is set to true, CT_attenuation = false and  attenuation_datafile
-% = '', then the user will be automatically prompted for the .atn-files
-% from which the attenuation images will be automatically created and
-% saved (filename is saved in the attenuation_datafile field).
+% 511 keV). 
 % You can either use the path below to input the data or manually input
 % the attenuation data into options.vaimennus
+% For dynamic data, the attenuation can either be static (same for all
+% timesteps) or dynamic (different for each timestep). For the latter, make
+% sure that the image is of size Nx*Ny*Nz*numberOfTimesteps
 options.attenuation_correction = false;
 
 %%% CT-image attenuation
-% Use CT-images (UMAP-image) for the attenuation. If set to false, uses the
-% .atn-files instead (if above attenuation is set to true). 
+% Use CT-images for the attenuation. If set to false, uses the
+% .atn-files instead (if above attenuation is set to true).
 options.CT_attenuation = true;
 
 %%% Attenuation coefficients in cm
@@ -193,6 +243,32 @@ options.attIncm = true;
 % should have the dimensions of the final reconstructed image. Previously
 % saved attenuation images can be used here.
 options.attenuation_datafile = 'Inveon_attenuation_coefficients_for_open_PET_data_128x128x159.mat';
+ 
+
+%%%%%%%%%%%%%%%%%%%%%%%% Normalization correction %%%%%%%%%%%%%%%%%%%%%%%%%
+% Sinogram data only!
+%%% Apply normalization correction
+% If set to true, normalization correction is applied in either data
+% formation or in the image reconstruction by using precomputed 
+% normalization coefficients. I.e. once you have computed the normalization
+% coefficients, turn above compute_normalization to false and set this to
+% true. Alternatively, input your own normalization data (see below)
+options.normalization_correction = false;
+
+%%% Use user-made normalization
+% Use either a .mat or .nrm file containing the normalization coefficients
+% for normalization correction, or input the normalization data into 
+% options.normalization if normalization_correction is also set to true
+% User will be prompted for the location of the file either during sinogram
+% formation or before image reconstruction (see below).
+% NOTE: If you have previously computed normalization coefficients with
+% OMEGA, you do not need to set this to true. The normalization
+% coefficients for the specified scanner will be automatically loaded. Use
+% this only if you want to use normalization coefficients computed outside
+% of OMEGA.
+% NOTE: Supports .nrm files created by the Inveon AW. 
+% Use the Inveon nrm-file here
+options.use_user_normalization = true;
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%% Global corrections %%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -200,7 +276,7 @@ options.attenuation_datafile = 'Inveon_attenuation_coefficients_for_open_PET_dat
 % This correction factor will be applied (if nonzero) to all LORs equally.
 % This can be e.g. dead time correction factor.
 options.global_correction_factor = [];
- 
+
 
 %%%%%%%%%%%%%%%%%%%% Corrections during reconstruction %%%%%%%%%%%%%%%%%%%%
 % If set to true, all the corrections are performed during the
@@ -211,15 +287,15 @@ options.global_correction_factor = [];
 % NOTE: Attenuation correction is always performed during reconstruction
 % regardless of the choice here.
 options.corrections_during_reconstruction = true;
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
- 
- 
- 
+
+
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -227,12 +303,13 @@ options.corrections_during_reconstruction = true;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
+
 %%% Total time of the measurement (s)
 % Use inf if you want the whole examination (static measurement only)
 % Note that this value is only used when LOADING data from GATE or Inveon
 % files using OMEGA's built-in functions
-options.tot_time = inf;
+% In this example we use a 30 min measurement
+options.tot_time = 60 * 30;
 
 %%% Number of time points/dynamic frames (if a static measurement, use 1)
 %%% or alternatively the size of the time window for each dynamic step (in
@@ -244,7 +321,12 @@ options.tot_time = inf;
 %%% minus the start time.
 % NOTE: The above applies ONLY when using OMEGA to load the data. If you
 % use your own data, this should be the number of time steps!
-options.partitions = 1;
+% In this example case, we first specify a 30 second timestep at the
+% beginning (there's very little activity between 0-20 seconds) and then
+% have 27 timesteps that are all 10 seconds long. After this, five
+% timesteps of 300 seconds. There's no particular reason for this specific
+% number of timesteps here and you can use any (nonzero) length.
+options.partitions = [30, repelem(10,27), repelem(300,5)];
 
 %%% Start time (s) (all measurements BEFORE this will be ignored)
 % Note that this value is only used when LOADING data from GATE or Inveon
@@ -257,15 +339,15 @@ options.start = 0;
 % Note that this value is only used when LOADING data from GATE or Inveon
 % files using OMEGA's built-in functions
 options.end = options.tot_time;
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
- 
- 
- 
+
+
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -273,11 +355,11 @@ options.end = options.tot_time;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
+
 %%% Name of current datafile/examination
 % This is used to name the saved measurement data and also load it in
 % future sessions.
-options.name = 'open_PET_data_list';
+options.name = 'dynamic_PET_data';
 
 %%% Folder for the data (.dat ASCII, .root ROOT) files
 % If no files are located in the path provided below, then the current
@@ -293,24 +375,24 @@ end
 
 %%% Compute only the reconstructions
 % If this file is run with this set to true, then the data load and
-% sinogram formation steps are always skipped. Normalization coefficients 
+% sinogram formation steps are always skipped. Normalization coefficients
 % are not computed even if selected.
 options.only_reconstructions = false;
 
 %%% Show status messages
 % These are e.g. time elapsed on various functions and what steps have been
-% completed. It is recommended to keep this at 1 or 2. With value of 2, 
+% completed. It is recommended to keep this at 1 or 2. With value of 2,
 % you get more detailed timing information. Maximum is 3, minimum 0.
 options.verbose = 1;
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
- 
- 
- 
+
+
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -318,7 +400,7 @@ options.verbose = 1;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% IMPLEMENTATIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Reconstruction implementation used
 % 1 = Reconstructions in MATLAB (projector in a MEX-file), uses matrices.
@@ -328,18 +410,18 @@ options.verbose = 1;
 % 3 = Multi-GPU/device matrix-free OpenCL (OSEM & MLEM only).
 % 4 = Matrix-free reconstruction with OpenMP (CPU, parallel), standard C++
 % 5 = Matrix-free reconstruction with OpenCL (parallel)
-% See the docs for more information: 
+% See the docs for more information:
 % https://omega-doc.readthedocs.io/en/latest/implementation.html
 options.implementation = 2;
 
 % Applies to implementations 3 and 5 ONLY
-%%% OpenCL platform used 
+%%% OpenCL platform used
 % NOTE: Use OpenCL_device_info() to determine the platform numbers and
 % their respective devices with implementations 3 or 5.
 options.platform = 0;
 
 % Applies to implementations 2, 3 and 5 ONLY
-%%% OpenCL/CUDA device used 
+%%% OpenCL/CUDA device used
 % NOTE: Use ArrayFire_OpenCL_device_info() to determine the device numbers
 % with implementation 2.
 % NOTE: Use OpenCL_device_info() to determine the platform numbers and
@@ -363,7 +445,7 @@ options.use_CUDA = false;
 % Selecting this to true will use CPU-based code instead of OpenCL or CUDA.
 % Not recommended, even OpenCL with CPU should be used before this.
 options.use_CPU = false;
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Type of projector to use for the geometric matrix
 % 1 = Improved/accelerated Siddon's algorithm
@@ -413,7 +495,7 @@ options.dL = 0.5;
 %%% Use point spread function (PSF) blurring
 % Applies PSF blurring through convolution to the image space. This is the
 % same as multiplying the geometric matrix with an image blurring matrix.
-options.use_psf = false;
+options.use_psf = true;
 
 % FWHM (mm) of the Gaussian used in PSF blurring in all three dimensions
 options.FWHM = [options.cr_p options.cr_p options.cr_pz];
@@ -427,7 +509,7 @@ options.tube_width_xy = options.cr_p;
 %%% The 3D (Z) width (mm) of the "tube" where the orthogonal distances are
 % included. If set to 0, then the 2D orthogonal ray tracer is used. If this
 % value is non-zero then the above value is IGNORED.
-% If you want the projector to be a tube, use this, if you want it to be 
+% If you want the projector to be a tube, use this, if you want it to be
 % strip, use the above
 % This slows down the reconstruction, but makes it more accurate
 options.tube_width_z = options.cr_pz;
@@ -456,10 +538,10 @@ options.voxel_radius = 1;
 options.n_rays_transaxial = 1;
 % Number of rays in axial (column) direction
 options.n_rays_axial = 1;
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
-options.Niter = 1;
+options.Niter = 2;
 
 %%% Save specific intermediate iterations
 % You can specify the intermediate iterations you wish to save here. Note
@@ -474,14 +556,16 @@ options.saveNIter = [];
 options.subsets = 8;
 
 %%% Subset type (n = subsets)
+% Note that you can use more subset types with sinogram data, but this
+% example covers both sinogram and listmode usage. Listmode data can only
+% use subset types 0 and 1 with dynamic data.
 % 0 = Measurements are divided into n segments
 % 1 = Every nth measurement is taken
-% 3 = Measurements are selected randomly
 options.subset_type = 1;
 
 %%% Initial value for the reconstruction
 options.x0 = ones(options.Nx, options.Ny, options.Nz);
- 
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -492,39 +576,18 @@ options.x0 = ones(options.Nx, options.Ny, options.Nz);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Reconstruction algorithms to use (choose only one algorithm and
 % optionally one prior)
- 
+
+%%% In this example we use PKMA, in order to use both spatial and temporal
+%%% regularization. You can freely deselect one or both of them.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% ML-METHODS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % These are non-regularized versions
 %%% Ordered Subsets Expectation Maximization (OSEM) OR Maximum-Likelihood
 %%% Expectation Maximization (MLEM) (if subsets = 1)
 % Supported by all implementations
-options.OSEM = true;
+options.OSEM = false;
 
-%%% Modified Row-Action Maximum Likelihood Algorithm (MRAMLA)
-% Supported by implementations 1, 2, 4, and 5
-options.MRAMLA = false;
 
-%%% Row-Action Maximum Likelihood Algorithm (RAMLA)
-% Supported by implementations 1, 2, 4, and 5
-options.RAMLA = false;
-
-%%% Accelerated COSEM (ACOSEM)
-% Supported by implementations 1, 2, 4, and 5
-options.ACOSEM = false;
-
-%%% FISTA
-% Supported by implementations 1, 2, 4, and 5
-options.FISTA = false;
-
-%%% LSQR
-% Supported by implementations 1, 2, 4, and 5
-options.LSQR = false;
-
-%%% CGLS
-% Supported by implementations 1, 2, 4, and 5
-options.CGLS = false;
- 
- 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MAP-METHODS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Any algorithm selected here will utilize any of the priors selected below
 % this. Note that only one algorithm and prior combination is allowed! You
@@ -544,36 +607,20 @@ options.BSREM = false;
 
 %%% Preconditioned Krasnoselskii-Mann algorithm (PKMA)
 % Supported by implementations 1, 2, 4, and 5
-options.PKMA = false;
+options.PKMA = true;
 
 %%% Primal-dual hybrid gradient (PDHG)
 % Supported by implementations 1, 2, 4, and 5
 options.PDHG = false;
 
-%%% Primal-dual hybrid gradient (PDHG) with L1 minimization
-% Supported by implementations 1, 2, 4, and 5
-options.PDHGL1 = false;
-
 %%% Primal-dual hybrid gradient (PDHG) with Kullback-Leibler minimization
 % Supported by implementations 1, 2, 4, and 5
 options.PDHGKL = false;
 
-%%% Primal-dual Davis-Yin (PDDY)
-% Supported by implementation 2
-options.PDDY = false;
-
-%%% Simultaneous ART
-% Supported by implementation 2
-options.SART = false;
-
-%%% SAGA
-% Supported by implementation 2
-options.SAGA = false;
 
 
- 
- 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PRIORS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% SPATIAL PRIORS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Median Root Prior (MRP)
 options.MRP = false;
 
@@ -583,43 +630,31 @@ options.quad = false;
 %%% Huber Prior (QP)
 options.Huber = false;
 
-%%% L-filter prior
-options.L = false;
-
-%%% Finite impulse response (FIR) Median Hybrid (FMH) prior
-options.FMH = false;
-
-%%% Weighted mean prior
-options.weighted_mean = false;
-
 %%% Total Variation (TV) prior
 options.TV = false;
-
-%%% Asymmetric Parallel Level Set (APLS) prior
-options.APLS = false;
-
-%%% Hyperbolic prior
-options.hyperbolic = false;
-
-%%% Total Generalized Variation (TGV) prior
-options.TGV = false;
 
 %%% Non-local Means (NLM) prior
 options.NLM = false;
 
 %%% Relative difference prior
-options.RDP = false;
+% In this case, we use the RDP regularization as the spatial regularization
+options.RDP = true;
 
-%%% Generalized Gaussian Markov random field (GGMRF) prior
-options.GGMRF = false;
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TEMPORAL PRIORS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% First derivative smoothness prior
+options.temporal_smoothness = false;
+
+% Temporal total variations prior
+% Temporal TV is used in this example and recommended in general
+options.temporalTV = true;
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%% ENFORCE POSITIVITY %%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Applies to PDHG, PDHGL1, PDDY, FISTA, FISTAL1, MBSREM, MRAMLA, PKMA
 % Enforces positivity in the estimate after each iteration
 options.enforcePositivity = true;
- 
- 
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%% ACOSEM PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Acceleration parameter for ACOSEM (1 equals COSEM)
 options.h = 2;
@@ -634,12 +669,12 @@ options.h = 2;
 % with lambda = 1. Note that current_iteration is one-based, i.e. it starts
 % at 1.
 options.lambda = 1;
- 
+
 
 %%%%%%%%%%%%%%%%%%%%%%%% MRAMLA & MBSREM PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%
 %%% Upper bound for MRAMLA/MBSREM (use 0 for default (computed) value)
 options.U = 0;
- 
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% PKMA PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Step size (alpha) parameter for PKMA
@@ -668,10 +703,10 @@ options.delta_PKMA = 1;
 % Note that if you change any of the model parameters, i.e. image volume
 % size, number of projections or use binning, this needs to be recomputed
 % or scaled accordingly!
-% The computed largest eigenvalue is printed if verbose > 0. This can be 
-% used as the below value as long as one is divided by it. For example, 
-% if "Largest eigenvalue for volume 0 is 100" then options.tauCP should be 
-% 1/100 (if you use filtering-based preconditioner this is the "without 
+% The computed largest eigenvalue is printed if verbose > 0. This can be
+% used as the below value as long as one is divided by it. For example,
+% if "Largest eigenvalue for volume 0 is 100" then options.tauCP should be
+% 1/100 (if you use filtering-based preconditioner this is the "without
 % filtering" value)
 % if you have a multi-resolution situation, you should input the values
 % for each volume or use zero/empty
@@ -693,14 +728,14 @@ options.sigma2CP = 1;
 
 % Use adaptive update of the primal and dual variables
 % Currently two methods available
-% Setting this to 1 or 2 uses an adaptive update for both the primal and 
+% Setting this to 1 or 2 uses an adaptive update for both the primal and
 % dual variables.
 % Can lead to unstable behavior when using with multi-resolution
 % Minimal to none use with filtering-based preconditioner
 options.PDAdaptiveType = 0;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% PRECONDITIONERS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Applies to PDHG, PDHGL1, PDHGKL, PKMA, MBSREM, MRAMLA, PDDY, FISTA, 
+%%% Applies to PDHG, PDHGL1, PDHGKL, PKMA, MBSREM, MRAMLA, PDDY, FISTA,
 %%% FISTAL1, and SAGA
 % Measurement-based preconditioners
 % precondTypeMeas(1) = Diagonal normalization preconditioner (1 / (A1))
@@ -711,18 +746,21 @@ options.precondTypeMeas = [false;false];
 % Setting options.precondTypeImage(2) = true when using PKMA, MRAMLA or
 % MBSREM is recommended
 % precondTypeImage(1) = Diagonal normalization preconditioner (division with
-% the sensitivity image 1 / (A^T1), A is the system matrix) 
+% the sensitivity image 1 / (A^T1), A is the system matrix)
 % precondTypeImage(2) = EM preconditioner (f / (A^T1), where f is the current
-% estimate) 
+% estimate)
 % precondTypeImage(3) = IEM preconditioner (max(n, fhat, f)/ (A^T1), where
-% fhat is an estimate of the final image and n is a small positive number) 
+% fhat is an estimate of the final image and n is a small positive number)
 % precondTypeImage(4) = Momentum-like preconditioner (basically a step size
-% inclusion) 
+% inclusion)
 % precondTypeImage(5) = Gradient-based preconditioner (Uses the normalized
-% divergence (sum of the gradient) of the current estimate) 
+% divergence (sum of the gradient) of the current estimate)
 % precondTypeImage(6) = Filtering-based preconditioner
 % precondTypeImage(7) = Curvature-based preconditioner
 options.precondTypeImage = [false;false;false;false;false;false;false];
+if options.PKMA || options.MBSREM
+    options.precondTypeImage(2) = true;
+end
 
 % Reference image for precondTypeImage(3). Can be either a mat-file or a
 % variable
@@ -730,7 +768,7 @@ options.referenceImage = '';
 
 % Momentum parameter for precondTypeImage(4)
 % Set the desired momentum parameters to the following variable (note that
-% the length should be options.Niter * options.subsets): 
+% the length should be options.Niter * options.subsets):
 % options.alphaPrecond = [];
 % Otherwise set the following parameters:
 options.rhoPrecond = options.rho_PKMA;
@@ -754,13 +792,22 @@ options.gradLastIter = 100;
 options.filteringIterations = 100;
 
 
-%%%%%%%%%%%%%%%%%%%%%%%%% REGULARIZATION PARAMETER %%%%%%%%%%%%%%%%%%%%%%%%
-%%% The regularization parameter for ALL regularization methods (priors)
-options.beta = 1;
- 
- 
+%%%%%%%%%%%%%%%%%%%%% SPATIAL REGULARIZATION PARAMETER %%%%%%%%%%%%%%%%%%%%
+%%% The regularization parameter for ALL spatial regularization methods
+%%% (priors)
+% Adjusted for sinogram data
+options.beta = 0.1; % 0.1 is good for listmode
+
+
+%%%%%%%%%%%%%%%%%%%% TEMPORAL REGULARIZATION PARAMETER %%%%%%%%%%%%%%%%%%%%
+%%% The regularization parameter for ALL temporal regularization methods
+%%% (priors)
+% Adjusted for sinogram data
+options.beta_temporal = 0.01; % 0.1 is good for listmode
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%% NEIGHBORHOOD PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%
-%%% How many neighboring pixels are considered 
+%%% How many neighboring pixels are considered
 % With MRP, QP, L, FMH, NLM, (RDP), GGMRF and weighted mean
 % E.g. if Ndx = 1, Ndy = 1, Ndz = 0, then you have 3x3 square area where
 % the pixels are taken into account (I.e. (Ndx*2+1)x(Ndy*2+1)x(Ndz*2+1)
@@ -770,8 +817,8 @@ options.beta = 1;
 options.Ndx = 2;
 options.Ndy = 2;
 options.Ndz = 1;
- 
- 
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% QP PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Pixel weights for quadratic prior
 % The number of pixels need to be the amount of neighboring pixels,
@@ -781,8 +828,8 @@ options.Ndz = 1;
 % they will be calculated by the algorithm and are based on the distance of
 % the voxels from the center.
 options.weights = [];
- 
- 
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% HP PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Delta parameter for Huber prior
 % Upper and lower bounds for the prior
@@ -793,67 +840,8 @@ options.huber_delta = 5;
 % If left empty then they will be calculated by the algorithm and are based
 % on the distance of the voxels from the center.
 options.weights_huber = [];
- 
- 
-%%%%%%%%%%%%%%%%%%%%%%%%%%% L-FILTER PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Weighting factors for the L-filter pixels
-% Otherwise the same as in quadratic prior, but center pixel is not Inf.
-% If left empty then they will be calculated by the algorithm such that the
-% weights resemble a Laplace distribution.
-options.a_L = [];
 
-%%% If the weighting factors are set empty, then this option will determine
-% whether the computed weights follow a 1D weighting scheme (true) or 2D 
-% (false).
-% See the docs for more information:
-% https://omega-doc.readthedocs.io/en/latest/algorithms.html#l-filter
-options.oneD_weights = false;
- 
- 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% FMH PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Pixel weights for FMH
-% The matrix size needs to be [Ndx*2+1, 4] if Nz = 1 or Ndz = 0, or
-% [Ndx*2+1, 13] otherwise.
-% The center pixel weight should be in the middle of the weight matrix.
-% If the sum of each column is > 1, then the weights will be normalized
-% such that the sum = 1.
-% If left empty then they will be calculated by the algorithm such that the
-% weights follow the same pattern as in the original article.
-options.fmh_weights = [];
 
-%%% Weighting value for the center pixel
-% Default value is 4, which was used in the original article.
-% NOTE: This option is ignored if you provide your own weights.
-options.fmh_center_weight = 4;
- 
- 
-%%%%%%%%%%%%%%%%%%%%%%%%% WEIGHTED MEAN PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%
-%%% Mean type
-% Types 1-3 compute the weighted mean just as MRP is computed, but the
-% median is replaced with the weighted mean.
-% 1 = Arithmetic mean (MRP), 2 = Harmonic mean (MRP), 3 = Geometric mean
-% (MRP)
-% Types 4-6 compute the weighted mean around the neighborhood of the voxel
-% and use joint estimation to compute the gradient where the other variable
-% corresponds to the chosen mean value and the other is based on the chosen
-% mean value. See the docs for more information.
-% 4 = Arithmetic mean, 5 = Harmonic mean, 6 = Geometric mean
-options.mean_type = 1;
-
-%%% Pixel weights for weighted mean
-% The number of pixels needs to be the amount of neighboring pixels,
-% e.g. if the above Ndx/y/z values are all 1, then 27 weights need to be
-% included. Size is (Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1). If left empty then
-% they will be calculated by the algorithm such that the weights are
-% dependent on the distance from the center pixel to the neighboring
-% pixels.
-options.weighted_weights = [];
-
-%%% Center pixel weight for weighted mean.
-% NOTE: This option is ignored if you provide your own weights.
-options.weighted_center_weight = 4;
- 
- 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TV PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% "Smoothing" parameter
 % Also used to prevent zero values in square root.
@@ -879,7 +867,7 @@ options.TV_reference_image = 'reference_image.mat';
 % https://omega-doc.readthedocs.io/en/latest/algorithms.html#tv
 options.TVtype = 1;
 
-%%% Weighting parameters for the TV prior. 
+%%% Weighting parameters for the TV prior.
 % Applicable only if use_anatomical = true. T-value is specific to the used
 % TVtype, e.g. for type 1 it is the edge threshold parameter. See the docs
 % for more details:
@@ -898,38 +886,8 @@ options.tau = 1e-8;
 % Setting this to 0 gives regular anisotropic TV with type 4
 % This affects also non-local Lange
 options.SATVPhi = 0.2;
- 
- 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%% APLS PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Scaling parameter (eta)
-% See the wiki for details:
-% https://omega-doc.readthedocs.io/en/latest/algorithms.html#tv
-options.eta = 1e-5;
-
-%%% "Smoothing" parameter (beta)
-% Also used to prevent zero values in square root.
-options.APLSsmoothing = 1e-5;
-
-%%% Specify filename for the reference image here (same rules apply as with
-% attenuation correction above). As before, this can also be a variable
-% instead.
-% NOTE: For APSL, the reference image is required!
-options.APLS_reference_image = 'reference_image.mat';
 
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% HYPERBOLIC PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Edge weighting factor
-options.hyperbolicDelta = 800;
- 
- 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TGV PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% TGV weights
-% First part
-options.alpha0TGV = 1;
-% Second part (symmetrized derivative)
-options.alpha1TGV = 2;
- 
- 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% NLM PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Filter parameter
 % Higher values smooth the image, smaller values make it sharper
@@ -994,34 +952,30 @@ options.RDP_use_anatomical = false;
 options.RDP_reference_image = '';
 
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%% GGMRF PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% GGMRF parameters
-% These affect the NLGGMRF as well
-% See the original article for details
-% https://omega-doc.readthedocs.io/en/latest/algorithms.html#ggmrf
-options.GGMRF_p = 1.5;
-options.GGMRF_q = 1;
-options.GGMRF_c = 5;
- 
+%%%%%%%%%%%%%%%%%%%%%%%%%% TEMPORAL TV PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Smoothing parameter for temporal TV
+% Prevents potential division by zero
+options.temporalTVsmoothing = 1e-6;
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
- 
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%% OPENCL DEVICE INFO %%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%% OPENCL DEVICE INFO %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
+
 %%% Implementation 2
 % Uncomment the below line and run it to determine the available device
 % numbers
 % ArrayFire_OpenCL_device_info();
- 
+
 %%% Implementation 3
 % Uncomment the below line and run it to determine the available platforms,
 % their respective numbers and device numbers
@@ -1061,10 +1015,16 @@ options = OMEGA_error_check(options);
 % options.DOI = 4.584;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%% Load the ASCII/ROOT/LST coincidence data
+%% Load the LST coincidence data
 % Loads the detector coordinates or indices for each coincidence event
 
-% You can either use the index-based reconstruction or the detector coordinates
+% Whether sinogram (false) or listmode (true) data is used
+% Default is sinogram
+listmode = false;
+
+% You can either use the index-based reconstruction or the detector
+% coordinates when using listmode data
+% Index-based is on by default
 
 % Use index-based reconstruction
 % If true, requires options.trIndex and options.axIndex variables
@@ -1077,45 +1037,45 @@ options = OMEGA_error_check(options);
 % y-coordinates while options.z should have only the z-coordinates. You can
 % also include randoms by inputting them as negative measurements. The
 % indices are used in the same order as measurements.
-options.useIndexBasedReconstruction = false;
+options.useIndexBasedReconstruction = listmode;
 
-% For list-mode data, the core component you need are the detector
-% coordinates for each event. options.x should be 6xNumberOfEvents, where
-% there first three rows correspond to the x/y/z-coordinates of the first
-% detector and the next three the x/y/z-coordinates for the second
-% detector. options.x can also be a vector of size 6 * NumberOfEvents.
+% For list-mode data, when not using the index-based reconstruction defined
+% above the core component you need are the detector coordinates for each
+% event. options.x should be 6xNumberOfEvents, where the first three rows
+% correspond to the x/y/z-coordinates of the first detector and the next
+% three the x/y/z-coordinates for the second detector. options.x can also
+% be a vector of size 6 * NumberOfEvents. 
 % Note: List-mode reconstruction can be much more memory intensive than
 % regular reconstruction
+
 % Note: Origin is assumed to be at the center. If this is not the case, you
 % can shift it with options.oOffsetX, options.oOffsetY and options.oOffsetZ
 
 if ~options.only_reconstructions && options.use_machine ~= 2
-    options.randoms_correction = true;
-    % options.coincidences = load_data(options);
-    % Save the delayed coincidences, trues, scatter and randoms to
-    % workspace (GATE only):
-    % [options.coincidences, delayed_coincidences, true_coincidences, scattered_coincidences, random_coincidences] = load_data(options);
-    % Save the coordinates of the detected coincidences to work space:
-    % Replace options.x, etc. with your own coordinates to use user input
-    % data.
-    if ~options.useIndexBasedReconstruction
-        [~, ~, ~, ~, ~, options.x, rand] = load_data(options);
+    if listmode
+        if ~options.useIndexBasedReconstruction
+            % Save the coordinates of the detected coincidences to work space:
+            % Replace options.x, etc. with your own coordinates to use user input
+            % data.
+            [~, ~, ~, ~, ~, options.x] = load_data(options);
+        else
+            % Index-based reconstruction
+            % Load the detector indices, or LOR numbers
+            [~, ~, ~, ~, ~, options.trIndex, options.axIndex] = load_data(options);
+        end
     else
-        [~, ~, ~, ~, ~, options.trIndex, options.axIndex, DtrIndex, DaxIndex] = load_data(options);
+        % Sinogram creation
+        options.SinM = load_data(options);
     end
 end
 
-if options.useIndexBasedReconstruction
+if listmode && options.useIndexBasedReconstruction
     % Coordinates for the detector pairs
     % Transaxial
     [x, y] = detector_coordinates(options);
-    % Zeros needs to be added to the first layer as it has less detector
-    % elements
     % Input the transaxial coordinates to options.x
     options.x = [x';y'];
     % Axial coordinates
-    % As above, zero rings need to be added to the end
-    % Applies only to offset detectors
     z_length = double(options.linear_multip .* options.cryst_per_block_axial(1) * options.cr_pz);
     z1 = linspace(-(z_length / 2 - options.cr_pz/2), z_length / 2 - options.cr_pz/2, options.rings)';
     % Input the axial coordinates to options.z
@@ -1123,43 +1083,30 @@ if options.useIndexBasedReconstruction
 end
 
 %% Reconstructions
-% List-mode reconstruction is performed for the selected algorithms. As
-% long as the detector coordinates are in the options-struct, the
-% list-mode/custom detector reconstruction is performed automatically. The
-% detector coordinates can also correspond to the LORs in sinograms and the
-% input measurement data should then be in sinogram format (matrix or
-% vector).
+% When using list-mode reconstruction, the detector coordinates can also
+% correspond to the LORs in sinograms and the input measurement data should
+% then be in sinogram format (matrix or vector).
 
 % The measurement data
 % For list-mode this is all ones as each coincidence is handled
 % individually
-if options.randoms_correction == false
-    if options.useIndexBasedReconstruction == true
-        options.SinM = ones(size(options.trIndex,2),1,'uint8');
-    else
-        options.SinM = ones(size(options.x,2),1,'uint8');
+% For sinogram data, we load the data earlier
+% If you want to use your own data, load it here and input it to
+% options.SinM
+if listmode
+    for t = 1 : numel(options.partitions)
+        if options.useIndexBasedReconstruction == true
+            options.SinM{t} = ones(size(options.trIndex{t},2),1,'uint8');
+        else
+            options.SinM{t} = ones(size(options.x{t},2),1,'uint8');
+        end
     end
 end
 
-% Note that if you want to add randoms, you need to add these manually:
-if options.randoms_correction == true
-    if options.useIndexBasedReconstruction == true
-        options.SinM = [ones(size(options.trIndex,2),1,'single');-ones(size(DtrIndex,2),1,'single')];
-        options.trIndex = [options.trIndex, DtrIndex];
-        options.axIndex = [options.axIndex, DaxIndex];
-    else
-        options.SinM = [ones(size(options.x,2),1,'single');-ones(size(rand,2),1,'single')];
-        options.x = [options.x, rand];
-        clear rand
-    end
-end
-% Randoms don't have to be situated last in the coordinate vector or in the
-% "measurement" vector, as long as the coordinates and the "measurement"
-% vector have the the same type of events in the same index.
-
+% The below applies only to list-mode reconstructions:
 % Since the measurement vector contains all ones, but does not contain
 % every possible LOR (and also contains some duplicates) the sensitivity
-% image is computed for the every possible LOR. Having this value set to
+% image is computed for the every measured LOR. Having this value set to
 % true, the sensitivity image is computed for all applicable LORs. This
 % requires correct values in the scanner properties, mainly the number of
 % detectors per ring, number of rings and possible (pseudo) gaps. If this is
@@ -1170,26 +1117,26 @@ end
 % measurements, by adding zero measurements to the corresponding
 % coordinates. Coordinates that appear multiple times, however, will cause
 % the sensitivity image values to be incorrect in these coordinates as the
-% values are added multiple times. 
+% values are added multiple times.
+% NOTE: If you use sinogram data with index-based recon, setting this to
+% false should be OK.
 options.compute_sensitivity_image = true;
 
 % In case the data takes a lot of memory and there isn't enough memory on
 % the GPU to store all the measurement data, set the below value to false
+% If false, loads only the current subset and timestep to the GPU at a time
 options.loadTOF = true;
 
-% In case you're running out of device (GPU) memory, you can uncomment the
-% below line which only loads the measurement and coordinate data for the
-% current subset
-% options.loadTOF = false;
-% Note that the above only helps if you use subsets
-
 if options.only_sinos == false
-    
+
     tStart = tic;
     pz = reconstructions_main(options);
     tElapsed = toc(tStart);
     disp(['Reconstruction process took ' num2str(tElapsed) ' seconds'])
 
+    pz = squeeze(pz);
+    % You can visualize dynamic images as well
+    % The upper slider is for slices while the lower one is for timesteps
     volume3Dviewer(pz, [], [0 0 1])
-    
+
 end

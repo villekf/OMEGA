@@ -5,6 +5,7 @@
 # (event-by-event) reconstruction. 
 # For the input measurement data, you can use the open preclinical PET data
 # available from: https://doi.org/10.5281/zenodo.3528056
+# Documentation: https://omega-doc.readthedocs.io/en/latest/customcoordinates.html
 """
 import numpy as np
 from omegatomo.projector import proj
@@ -264,6 +265,11 @@ options.attenuation_correction = True
 # .atn-files instead (if above attenuation is set to True). 
 options.CT_attenuation = False
 
+### Attenuation coefficients in cm
+# If the attenuation coefficients are in cm, put the below to True
+# For Inveon, this needs to be True
+options.attIncm = True
+
 ### Attenuation image data file
 # Specify the path (if not in MATLAB path) and filename.
 # NOTE: the attenuation data must be the only variable in the file and
@@ -393,26 +399,6 @@ options.verbose = 1
 # from omegatomo.util.devinfo import deviceInfo
 # deviceInfo(True)
 options.deviceNum = 0
-
-### Use 64-bit integer atomic functions
-# If True, then 64-bit integer atomic functions (atomic add) will be used
-# if they are supported by the selected device.
-# Setting this to True will make computations faster on GPUs that support
-# the functions, but might make results slightly less reliable due to
-# floating point rounding. Recommended for GPUs.
-options.use_64bit_atomics = True
-
-### Use 32-bit integer atomic functions
-# If True, then 32-bit integer atomic functions (atomic add) will be used.
-# This is even faster than the above 64-bit atomics version, but will also
-# have significantly higher reduction in numerical/floating point accuracy.
-# This should be about 20-30# faster than the above 64-bit version, but
-# might lead to integer overflow if you have a high count measurement
-# (thousands of coincidences per sinogram bin). Use this only if speed is
-# of utmost importance. 32-bit atomics take precedence over 64-bit ones,
-# i.e. if options.use_32bit_atomics = true then the 64-bit version will be 
-# always set as false.
-options.use_32bit_atomics = False
 
 ### Use CUDA
 # Selecting this to True will use CUDA kernels/code instead of OpenCL. This
@@ -1171,11 +1157,11 @@ options.useIndexBasedReconstruction = True
 # there first three rows correspond to the x/y/z-coordinates of the first
 # detector and the next three the x/y/z-coordinates for the second
 # detector. options.x can also be a vector of size 6 * NumberOfEvents.
-# The above applies when using Fourier data ordering, if you use the default
+# The above applies when using Fortran data ordering, if you use the default
 # C ordering, then the dimensions need to be NumberOfEventsx6. 
 # Alternatively, you can input the coordinates separately in options.x, 
 # options.y and options.z such that x-coordinates for source + detector are in
-# options.x, etc. These can be either Fourier or C order and will be correctly
+# options.x, etc. These can be either Fortran or C order and will be correctly
 # ordered later. However, this consumes more intermediate memory.
 # Note: List-mode reconstruction can be much more memory intensive than
 # regular reconstruction
@@ -1259,3 +1245,6 @@ pz, fp = reconstructions_main(options)
 import matplotlib as plt
 
 plt.pyplot.imshow(pz[:,:,100])
+
+from omegatomo.util.volume3Dviewer import volume3Dviewer
+volume3Dviewer(pz)

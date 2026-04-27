@@ -387,7 +387,8 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 	if (w_vec.precondTypeMeas[0] || MethodList.SART || MethodList.POCS)
 		w_vec.computeM = true;
 #endif
-    w_vec.TemporalTVsmoothing = getScalarFloat(getField(options, 0, "temporalTVsmoothing"), -15);
+    if (MethodList.TemporalTV)
+		w_vec.TemporalTVsmoothing = getScalarFloat(getField(options, 0, "temporalTVsmoothing"), -15);
 	
     // Load TV related input data
 	if (MethodList.TV && MethodList.MAP) {

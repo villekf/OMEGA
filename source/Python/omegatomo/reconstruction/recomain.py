@@ -2,7 +2,7 @@
 """
 Created on Thu Mar  7 13:50:49 2024
 
-Copyright (C) 2024-2025 Ville-Veikko Wettenhovi
+Copyright (C) 2024-2026 Ville-Veikko Wettenhovi
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -129,10 +129,12 @@ def transferData(options):
     options.param.GGMRF_q = ctypes.c_float(options.GGMRF_q)
     options.param.GGMRF_c = ctypes.c_float(options.GGMRF_c)
     options.param.beta = ctypes.c_float(options.beta)
+    options.param.beta_temporal = ctypes.c_float(options.beta_temporal)
     options.param.T = ctypes.c_float(options.B)
     options.param.dSizeXBP = ctypes.c_float(options.dSizeXBP)
     options.param.dSizeZBP = ctypes.c_float(options.dSizeZBP)
     options.param.TVsmoothing = ctypes.c_float(options.TVsmoothing)
+    options.param.temporalTVsmoothing = ctypes.c_float(options.temporalTVsmoothing)
     options.param.C = ctypes.c_float(options.C)
     options.param.SATVPhi = ctypes.c_float(options.SATVPhi)
     options.param.eta = ctypes.c_float(options.eta)
@@ -241,6 +243,8 @@ def transferData(options):
     options.param.ProxTV = ctypes.c_bool(options.ProxTV)
     options.param.ProxRDP = ctypes.c_bool(options.ProxRDP)
     options.param.ProxNLM = ctypes.c_bool(options.ProxNLM)
+    options.param.temporalTV = ctypes.c_bool(options.temporalTV)
+    options.param.temporal_smoothness = ctypes.c_bool(options.temporal_smoothness)
     options.param.MAP = ctypes.c_bool(options.MAP)
     options.param.custom = ctypes.c_bool(options.custom)
     options.param.mDim = ctypes.c_uint64(options.SinM.size // options.Nt)
@@ -436,7 +440,14 @@ def reconstructions_main(options):
     if np.size(options.weights) > 0:
         options.empty_weight = False
     fname, suffix = os.path.splitext(options.fpath)
-    if options.SinM.size < 1 and (len(options.fpath) == 0 or len(suffix) == 0):
+    if isinstance(options.SinM, list):
+        if len(options.SinM) == 0:
+            sinoSize = 0
+        else:
+            sinoSize = options.SinM[0].size
+    else:
+        sinoSize = options.SinM.size
+    if sinoSize < 1 and (len(options.fpath) == 0 or len(suffix) == 0):
         import tkinter as tk
         from tkinter.filedialog import askopenfilename
         root = tk.Tk()
@@ -444,7 +455,7 @@ def reconstructions_main(options):
         options.fpath = askopenfilename(title='Select measurement datafile',filetypes=(('NPY, NPZ and MAT files','*.mat *.npy *.npz'),('All','*.*')))
         if len(options.fpath) == 0:
             raise ValueError('No file selected')
-    if options.SinM.size < 1 and options.fpath[len(options.fpath)-3:len(options.fpath)+1:1] == 'mat':
+    if sinoSize < 1 and options.fpath[len(options.fpath)-3:len(options.fpath)+1:1] == 'mat':
         from pymatreader import read_mat
         try:
             var = read_mat(options.fpath)
@@ -479,9 +490,9 @@ def reconstructions_main(options):
                 options.SinDelayed = np.array(var["SinDelayed"],order='F')
             except KeyError:
                 print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed')
-    elif options.SinM.size < 1 and options.fpath[len(options.fpath)-3:len(options.fpath)+1:1] == 'npy':
+    elif sinoSize < 1 and options.fpath[len(options.fpath)-3:len(options.fpath)+1:1] == 'npy':
         options.SinM = np.load(options.fpath)
-    elif options.SinM.size < 1 and options.fpath[len(options.fpath)-3:len(options.fpath)+1:1] == 'npz':
+    elif sinoSize < 1 and options.fpath[len(options.fpath)-3:len(options.fpath)+1:1] == 'npz':
         varList = np.load(options.fpath)
         if ((options.randoms_correction or options.scatter_correction or options.normalization_correction) and not options.corrections_during_reconstruction):
             if not options.precorrect:
@@ -538,12 +549,15 @@ def reconstructions_main(options):
     if options.CT and options.flat <= 0 and not options.usingLinearizedData:
         print('No flat value input! Using the maximum value as the flat value. Alternatively, input the flat value into options.flat')
         options.flat = np.max(options.SinM).astype(dtype=np.float32)
-    if not options.CT and not options.SPECT and not options.SinM.size == options.Ndist * options.Nang * options.TotSinos * options.Nt * options.TOF_bins_used and options.listmode == 0:
+    if options.Nt <= 1 and not options.CT and not options.SPECT and not options.SinM.size == options.Ndist * options.Nang * options.TotSinos * options.Nt * options.TOF_bins_used and options.listmode == 0:
         raise ValueError('The number of elements in the input data does not match the input number of angles, radial distances and total number of sinograms multiplied together!')
     if not options.usingLinearizedData and (options.LSQR or options.CGLS or options.FISTA or options.FISTAL1 or options.PDHG or options.PDHGL1 or options.PDDY or options.FDK or options.SART or options.ASD_POCS) and not options.largeDim and options.CT:
         from .prepass import linearizeData
         linearizeData(options)
         options.usingLinearizedData = True
+    if options.useParkerWeights:
+        from omegatomo.util.parkerWeights import ParkerWeights
+        ParkerWeights(options)
     if not options.listmode:
         options.SinM = np.reshape(options.SinM, (int(options.nRowsD), int(options.nColsD), options.nProjections, options.TOF_bins, options.Nt), order='F')
     elif options.listmode and options.compute_sensitivity_image:
@@ -574,6 +588,10 @@ def reconstructions_main(options):
         else:
             options.empty_weight = True
     parseInputs(options, True)
+    if isinstance(options.SinM, list):
+        options.SinM = np.concatenate(options.SinM)
+    if isinstance(options.SinDelayed, list):
+        options.SinDelayed = np.concatenate(options.SinDelayed)
     if not options.CT and (not options.LSQR and not options.CGLS):
         options.SinM[options.SinM < 0] = 0
     if options.FDK:
@@ -614,6 +632,8 @@ def reconstructions_main(options):
     transferData(options)
     inStr = options.headerDir.encode('utf-8')
     # point_ptr = ctypes.pointer(options.param)
+    if isinstance(options.SinM, list):
+        options.SinM = np.concatenate(options.SinM)
     if not options.SinM.dtype == 'float32' and not options.largeDim and options.loadTOF:
         options.SinM = options.SinM.astype(np.float32)
     elif not options.SinM.dtype == 'uint16' and not options.SinM.dtype == 'uint8':

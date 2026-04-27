@@ -3,7 +3,7 @@
 Created on Wed Mar  6 17:40:13 2024
 
 #########################################################################
-# Copyright (C) 2024-2025 Ville-Veikko Wettenhovi
+# Copyright (C) 2024-2026 Ville-Veikko Wettenhovi
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -236,6 +236,7 @@ class projectorClass:
     alpha_drama = 0.
     beta0_drama = 0.
     beta = 0.
+    beta_temporal = 0.
     rho_PKMA = .45
     delta_PKMA = 100.
     delta2_PKMA = 100.
@@ -259,7 +260,7 @@ class projectorClass:
     use_psf = False
     save_iter = False
     deblurring = False
-    use_64bit_atomics = True
+    use_64bit_atomics = False
     use_32bit_atomics = False
     n_rays_transaxial = 1
     n_rays_axial = 1
@@ -297,6 +298,8 @@ class projectorClass:
     attenuation_correction = 0
     normalization_correction = 0
     global_correction_factor = 1.
+    attenuation_datafile = ''
+    attIncm = False
     rings = 0
     linear_multip = 0
     detectors = 0
@@ -313,7 +316,8 @@ class projectorClass:
     Ndy = 1
     Ndz = 1
     mean_type = 4
-    TVsmoothing = 1e-2
+    TVsmoothing = 1e-4
+    temporalTVsmoothing = 1e-4
     TV_use_anatomical = False
     TVtype = 1
     tau = 0.
@@ -412,6 +416,8 @@ class projectorClass:
     ProxTV = False
     ProxRDP = False
     ProxNLM = False
+    temporalTV = False
+    temporal_smoothness = False
     MAP = False
     custom = False
     Vmax = 0.
@@ -499,6 +505,7 @@ class projectorClass:
     seed = -1
     useHelical = False
     helicalRadius = 1.
+    useParkerWeights = False
 
     def __init__(self):
         # C-struct
@@ -719,7 +726,7 @@ class projectorClass:
             self.useMaskBP = False
         if self.maskBP.dtype != np.uint8:
             self.maskBP = self.maskBP.astype(np.uint8)
-        list_mode_format = False
+        # list_mode_format = False
         
         if self.use_raw_data:
             rings = rings - np.sum(self.pseudot)
@@ -759,21 +766,39 @@ class projectorClass:
         # elif np.sum(temp) == 0 and temp.size > 0:
         #     self.pseudot = np.empty(0, dtype = np.uint32)
         # Whether list-mode or sinogram/raw data is used
-        if isinstance(self.x, np.ndarray) and self.x.size > 0 and (self.x.size // 2 == self.SinM.size or self.x.size // 6 == self.SinM.size):
-            det_per_ring = self.SinM.size
+        xList = False
+        if isinstance(self.x, list):
+            xList = True
+        if xList:
+            xSize = self.x[0].size
+        else:
+            xSize = self.x.size
+        if (hasattr(self, 'x') or hasattr(self, 'y') or hasattr(self, 'z') or hasattr(self, 'z_det')) and xSize > 0 and \
+           ((not isinstance(self.SinM, list) and (xSize / 2 == self.SinM.size or xSize / 6 == self.SinM.size)) or
+            (not isinstance(self.SinM, list) and self.SinM.size == 0 and xSize >= 6) or
+            (isinstance(self.x, list) and
+             (self.x[0].size / 2 == self.SinM[0].size or
+              self.x[0].size / 6 == self.SinM[0].size))):
+            if isinstance(self.SinM, list):
+                det_per_ring = self.SinM[0].size
+            else:
+                det_per_ring = self.SinM.size
             self.Nang = 1
             self.Ndist = 1
             self.NSinos = det_per_ring
             self.TotSinos = self.NSinos
-            list_mode_format = True
+            # list_mode_format = True
             self.listmode = 1
         elif self.useIndexBasedReconstruction:
-            det_per_ring = self.trIndex.size // 2
+            if isinstance(self.trIndex, list):
+                det_per_ring = self.trIndex[0].size // 2
+            else:
+                det_per_ring = self.trIndex.size // 2
             self.Nang = 1
             self.Ndist = 1
             self.NSinos = det_per_ring
             self.TotSinos = self.NSinos
-            list_mode_format = True
+            # list_mode_format = True
             self.listmode = 1
         else:
             # Compute the indices for the subsets used.
@@ -789,8 +814,32 @@ class projectorClass:
         if self.listmode and self.subsets > 1 and not(self.subsetType == 0)  and not(self.subsetType == 1) and not(self.subsetType == 3):
             print('Only subset types 0, 1, and 3 are supported with list-mode data! Switching to subset type 0.')
             self.subsetType = 0
+        if self.listmode and self.subsets > 1 and self.subsetType == 0:
+           print('Subset type 0 is recommended only for list-mode data! The reconstruction will most likely not work!')
+        # if self.listmode and self.Nt > 1:
+        #     self.loadTOF = False
         if self.listmode and self.Nt > 1:
-            self.loadTOF = False
+            self.listmodeIndices = np.zeros(self.Nt, dtype=np.uint64)
+            if self.useIndexBasedReconstruction:
+                if isinstance(self.trIndex, list):
+                    for kk in range(len(self.listmodeIndices)):
+                        self.listmodeIndices[kk] = np.uint64(self.trIndex[kk].size // 2)
+                else:
+                    self.listmodeIndices[:] = np.uint64(self.trIndex.size // 2 // len(self.listmodeIndices))
+            else:
+                if isinstance(self.x, list):
+                    if self.x[0].shape[1] == 2 or self.x[0].shape[0] == 2:
+                        listSize  = 2
+                    else:
+                        listSize  = 6
+                    for kk in range(len(self.listmodeIndices)):
+                        self.listmodeIndices[kk] = np.uint64(self.x[kk].size // listSize )
+                else:
+                    if self.x.shape[1] == 2 or self.x.shape[0] == 2:
+                        listSize  = 2
+                    else:
+                        listSize  = 6
+                    self.listmodeIndices[:] = np.uint64(self.x.size // listSize  // len(self.listmodeIndices))
         indexMaker(self)
         self.setUpCorrections()
         self.x0 = self.x0.ravel('F')
@@ -812,16 +861,37 @@ class projectorClass:
                     if self.TOFIndices.size != self.SinM.size:
                         raise ValueError('The number of TOF indices does not correspond to the number of events!')
                 if not self.useIndexBasedReconstruction:
-                    if self.x.shape[0] == 2:
-                        if self.x.flags.f_contiguous:
-                            self.x = np.row_stack((self.x[0,:], self.y[0,:], self.z[0,:], self.x[1,:], self.y[1,:], self.z[1,:]))
-                        else:
-                            self.x = np.asfortranarray(np.row_stack((np.self.x[0,:], self.y[0,:], self.z[0,:], self.x[1,:], self.y[1,:], self.z[1,:])))
-                    elif self.x.shape[1] == 2:
-                        if self.x.flags.f_contiguous:
-                            self.x = np.row_stack((self.x[:,0].T(), self.y[:,0].T(), self.z[:,0].T(), self.x[:,1].T(), self.y[:,1].T(), self.z[:,1].T()))
-                        else:
-                            self.x = np.asfortranarray(np.row_stack((self.x[:,0].T(), self.y[:,0].T(), self.z[:,0].T(), self.x[:,1].T(), self.y[:,1].T(), self.z[:,1].T())))
+                    if isinstance(self.x, list):
+                        for uu in range(self.Nt):
+                            if self.x[uu].shape[1] == 2:
+                                self.x[uu] = np.asfortranarray(np.vstack([
+                                    self.x[uu][:, 0].reshape(1, -1),
+                                    self.y[uu][:, 0].reshape(1, -1),
+                                    self.z[uu][:, 0].reshape(1, -1),
+                                    self.x[uu][:, 1].reshape(1, -1),
+                                    self.y[uu][:, 1].reshape(1, -1),
+                                    self.z[uu][:, 1].reshape(1, -1),
+                                ]))
+                            elif self.x[uu].shape[0] == 2:
+                                self.x[uu] = np.asfortranarray(np.concatenate([
+                                    self.x[uu][:, 0],
+                                    self.y[uu][:, 0],
+                                    self.z[uu][:, 0],
+                                    self.x[uu][:, 1],
+                                    self.y[uu][:, 1],
+                                    self.z[uu][:, 1],
+                                ]))
+                    else:
+                        if self.x.shape[0] == 2:
+                            if self.x.flags.f_contiguous:
+                                self.x = np.row_stack((self.x[0,:], self.y[0,:], self.z[0,:], self.x[1,:], self.y[1,:], self.z[1,:]))
+                            else:
+                                self.x = np.asfortranarray(np.row_stack((np.self.x[0,:], self.y[0,:], self.z[0,:], self.x[1,:], self.y[1,:], self.z[1,:])))
+                        elif self.x.ndim >= 2 and self.x.shape[1] == 2:
+                            if self.x.flags.f_contiguous:
+                                self.x = np.row_stack((self.x[:,0].T(), self.y[:,0].T(), self.z[:,0].T(), self.x[:,1].T(), self.y[:,1].T(), self.z[:,1].T()))
+                            else:
+                                self.x = np.asfortranarray(np.row_stack((self.x[:,0].T(), self.y[:,0].T(), self.z[:,0].T(), self.x[:,1].T(), self.y[:,1].T(), self.z[:,1].T())))
                 # y = 0
                 x_det = 0
                 z_det = 0
@@ -830,25 +900,25 @@ class projectorClass:
             x_det = 0
             z_det = 0
 
-        if self.use_raw_data == True:
-            if list_mode_format == True:
-                size_x = self.x.size // 6
-            else:
-                size_x = x_det.size
-        else:
-            if list_mode_format == True:
-                if not self.useIndexBasedReconstruction:
-                    size_x = self.x.size // 6
-                else:
-                    size_x = self.x.size // 2
-            else:
-                size_x = self.Ndist
-            if self.sampling > 1:
-                size_x = size_x * self.sampling
+        # if self.use_raw_data == True:
+        #     if list_mode_format == True:
+        #         size_x = self.x.size // 6
+        #     else:
+        #         size_x = x_det.size
+        # else:
+        #     if list_mode_format == True:
+        #         if not self.useIndexBasedReconstruction:
+        #             size_x = self.x.size // 6
+        #         else:
+        #             size_x = self.x.size // 2
+        #     else:
+        #         size_x = self.Ndist
+        #     if self.sampling > 1:
+        #         size_x = size_x * self.sampling
         if self.CT == True or self.projector_type == 6:
             size_x = self.nRowsD
-            if self.listmode == True:
-                size_x = self.x.size // 6
+            # if self.listmode == True:
+            #     size_x = self.x.size // 6
         else:
             if self.SPECT == True:
                 self.dPitch = self.dPitchX
@@ -1081,7 +1151,12 @@ class projectorClass:
                 print("Number of time steps is less than one. Using one time step.")
                 self.partitions = 1
                 self.Nt = 1
-        
+        if self.Nt == 1 and (self.temporal_smoothness or self.temporalTV):
+            print('Temporal regularization selected, but using static data. No temporal regularization will be done.')
+            self.temporal_smoothness = False
+            self.temporalTV = False
+        elif self.Nt > 1 and self.temporal_smoothness and self.temporalTV:
+            raise ValueError('Both temporal smoothness prior and temporal TV selected! Select only one!')
         if self.start > self.end:
             raise ValueError("Start time is later than end time!")
         
@@ -1288,15 +1363,24 @@ class projectorClass:
                     print('ArrayFire package not found! ArrayFire features are not supported. You can install ArrayFire package with "pip install arrayfire".')
                     AFinstalled = False
                 if AFinstalled and not self.useCPU:
-                    if not self.useCUDA and af.get_active_backend() != 'opencl':
-                        af.set_backend('opencl')
                     dispaus = f"Using implementation {self.implementation} with "
-                    info = af.device.info_str()
-                    loc = info.find('[' + str(self.deviceNum) + ']')
-                    if loc == -1:
-                        loc = info.find('-' + str(self.deviceNum) + '-')
-                    loc2 = info[loc:].find('(Compute')
-                    dispaus += info[loc + 4 : loc + loc2 - 1]
+                    try:
+                        if not self.useCUDA and af.get_active_backend() != 'opencl':
+                            af.set_backend('opencl')
+                        info = af.device.info_str()
+                        loc = info.find('[' + str(self.deviceNum) + ']')
+                        if loc == -1:
+                            loc = info.find('-' + str(self.deviceNum) + '-')
+                        loc2 = info[loc:].find('(Compute')
+                        dispaus += info[loc + 4 : loc + loc2 - 1]
+                    except:
+                        af.set_backend(af.BackendType.opencl)
+                        info = af.info_string()
+                        loc = info.find('[' + str(self.deviceNum) + ']')
+                        if loc == -1:
+                            loc = info.find('-' + str(self.deviceNum) + '-')
+                        loc2 = info[loc:].find('MB')
+                        dispaus += info[loc + 4 : loc + loc2 + 2]
                     print(dispaus)
                 elif self.useCPU:
                     print('Using CPU-based reconstruction')
@@ -2114,10 +2198,12 @@ class projectorClass:
             ('GGMRF_q', ctypes.c_float),
             ('GGMRF_c', ctypes.c_float),
             ('beta', ctypes.c_float),
+            ('beta_temporal', ctypes.c_float),
             ('T', ctypes.c_float),
             ('dSizeXBP', ctypes.c_float),
             ('dSizeZBP', ctypes.c_float),
             ('TVsmoothing', ctypes.c_float),
+            ('temporalTVsmoothing', ctypes.c_float),
             ('C', ctypes.c_float),
             ('SATVPhi', ctypes.c_float),
             ('eta', ctypes.c_float),
@@ -2226,6 +2312,8 @@ class projectorClass:
             ('ProxTV', ctypes.c_bool),
             ('ProxRDP', ctypes.c_bool),
             ('ProxNLM', ctypes.c_bool),
+            ('temporalTV', ctypes.c_bool),
+            ('temporal_smoothness', ctypes.c_bool),
             ('MAP', ctypes.c_bool),
             ('custom', ctypes.c_bool),
             ('mDim', ctypes.c_uint64),
