@@ -61,19 +61,6 @@ if ~isfield(options, 'offsetCorrection')
 else
     offset = options.offsetCorrection;
 end
-if options.useEFOV
-    if ~isfield(options, 'transaxialEFOV') || ~options.transaxialEFOV
-        if ~isfield(options, 'axialEFOV') || ~options.axialEFOV
-            warning('Neither transaxial nor axial extended FOV selected! Defaulting to axial EFOV!')
-            options.transaxialEFOV = false;
-            options.axialEFOV = true;
-        else
-            options.transaxialEFOV = false;
-        end
-    elseif ~isfield(options, 'axialEFOV')
-        options.axialEFOV = false;
-    end
-end
 if options.useExtrapolation
     if ~isfield(options, 'transaxialExtrapolation') || ~options.transaxialExtrapolation
         if ~isfield(options, 'axialExtrapolation') || ~options.axialExtrapolation
@@ -85,9 +72,7 @@ if options.useExtrapolation
         end
     elseif ~isfield(options, 'axialExtrapolation')
         options.axialExtrapolation = false;
-    end
-end
-if options.useExtrapolation
+    end    
     disp('Extrapolating the projections')
     PnTr = floor(size(options.SinM, 1) * extrapLengthTransaxial);
     PnAx = floor(size(options.SinM, 2) * extrapLengthAxial);
@@ -242,80 +227,69 @@ if options.useExtrapolation
     end
 end
 if options.useEFOV
-    disp('Extending the FOV')
-    if ~(options.transaxialEFOV) && ~(options.axialEFOV)
-        warning('Neither transaxial nor axial EFOV selected, but EFOV itself is selected! Setting axial EFOV to True!')
+    options.axialEFOV = false; % Check if axial EFOV is inside FOV (after shift). If is outside (in both directions), set axialEFOV to true
+    FOVmin_z = -options.axial_fov / 2;
+    FOVmax_z = options.axial_fov / 2;
+    eFOVmin_z = -options.eFOVSize(3) / 2 + options.eFOVShift(3);
+    eFOVmax_z = options.eFOVSize(3) / 2 + options.eFOVShift(3);
+    if FOVmin_z < eFOVmin_z || FOVmax_z > eFOVmax_z % FOV not entirely inside eFOV
+        warning('The high-resolution FOV is not entirely inside the extended FOV in z-direction. No extension will be performed in the axial direction.')
+        options.eFOVShift(3) = 0; % No extension; no shift required
+        options.eFOVSize(3) = options.axial_fov;
+    else % FOV entirely inside eFOV; extension required
         options.axialEFOV = true;
     end
-    if options.transaxialEFOV
-        options.FOVxOrig = options.FOVa_x;
-        options.FOVyOrig = options.FOVa_y;
-        options.NxOrig = options.Nx;
-        options.NyOrig = options.Ny;
-        nTransaxial = floor(options.Nx * eFOVLengthTransaxial) * 2;
-        options.Nx = options.Nx + nTransaxial;
-        options.Ny = options.Ny + nTransaxial;
-        options.FOVa_x = options.FOVa_x + options.FOVa_x/options.NxOrig * nTransaxial;
-        options.FOVa_y = options.FOVa_y + options.FOVa_y/options.NyOrig * nTransaxial;
-    else
-        options.FOVxOrig = options.FOVa_x;
-        options.FOVyOrig = options.FOVa_y;
-        options.NxOrig = options.Nx;
-        options.NyOrig = options.Ny;
+
+    options.transaxialEFOV = false; % Check if transaxial EFOV is inside FOV (after shift). If is outside (in both directions), set transaxialEFOV to true
+    FOVmin_x = -options.FOVa_x / 2;
+    FOVmax_x = options.FOVa_x / 2;
+    eFOVmin_x = -options.eFOVSize(1) / 2 + options.eFOVShift(1);
+    eFOVmax_x = options.eFOVSize(1) / 2 + options.eFOVShift(1);
+    FOVmin_y = -options.FOVa_y / 2;
+    FOVmax_y = options.FOVa_y / 2;
+    eFOVmin_y = -options.eFOVSize(2) / 2 + options.eFOVShift(2);
+    eFOVmax_y = options.eFOVSize(2) / 2 + options.eFOVShift(2);
+    if FOVmin_x < eFOVmin_x || FOVmax_x > eFOVmax_x || FOVmin_y < eFOVmin_y || FOVmax_y > eFOVmax_y % FOV not entirely inside eFOV 
+        warning('The high-resolution FOV is not entirely inside the extended FOV in xy-direction. No extension will be performed in the transaxial direction.')
+        options.eFOVShift(1) = 0; % No extension; no shift required
+        options.eFOVSize(1) = options.FOVa_x;
+        options.eFOVShift(2) = 0; % No extension; no shift required
+        options.eFOVSize(2) = options.FOVa_y;
+    else % FOV entirely inside eFOV; extension required
+        options.transaxialEFOV = true;
     end
-    if options.axialEFOV
-        if ~isfield(options, 'eFOVLengthAxial') && isfield(options,'sourceToDetector') && isfield(options,'sourceToCRot') && options.sourceToDetector > options.sourceToCRot
-            length = options.sourceToCRot + options.FOVa_x / 2;
-            angle = (options.sourceToDetector / (options.nColsD * options.dPitchY / 2));
-            eFOVLengthAxial = ((length / angle - options.axial_fov / 2) / options.axial_fov);
-        end
-        nAxial = floor(options.Nz * eFOVLengthAxial) * 2;
-        options.NzOrig = options.Nz;
-        options.Nz = options.Nz + nAxial;
-        options.axialFOVOrig = options.axial_fov;
-        options.axial_fov = options.axial_fov + options.axial_fov/options.NzOrig * nAxial;
-    else
-        options.axialFOVOrig = options.axial_fov;
-        options.NzOrig = options.Nz;
+
+    if ~(options.axialEFOV || options.transaxialEFOV)
+        options.useEFOV = false;
+        warning('FOV extension is not performed; turning off options.useEFOV')
     end
 end
 
-    % Multiresolution total FOV size
-    if numel(options.FOVa_x) == 1 % No eFOV
-        FOV = [options.FOVa_x; options.FOVa_y; options.axial_fov];
-    elseif numel(options.FOVa_x) == 3 % Axial eFOV only
-        FOV = [options.FOVa_x(1); options.FOVa_y(1); sum(options.axial_fov)];
-    elseif numel(options.FOVa_x) == 5 % Transaxial eFOV only
-        FOV = [
-            options.FOVa_x(1) + options.FOVa_x(2) + options.FOVa_x(3);
-            options.FOVa_y(1) + options.FOVa_y(4) + options.FOVa_y(5);
-            options.axial_fov(1)
-        ];
-    elseif numel(options.FOVa_x) == 7 % Axial + transaxial eFOV
-        FOV = [
-            options.FOVa_x(1) + options.FOVa_x(4) + options.FOVa_x(5);
-            options.FOVa_y(1) + options.FOVa_y(6) + options.FOVa_y(7);
-            options.axial_fov(1) + options.axial_fov(2) + options.axial_fov(3)
-        ];
+if options.useEFOV
+    disp('Extending the FOV')
+    options.FOVxOrig = options.FOVa_x;
+    options.FOVyOrig = options.FOVa_y;
+    options.axialFOVOrig = options.axial_fov;    
+    options.NxOrig = options.Nx;
+    options.NyOrig = options.Ny;
+    options.NzOrig = options.Nz;
+
+    if options.transaxialEFOV
+        options.FOVa_x = options.eFOVSize(1);
+        options.FOVa_y = options.eFOVSize(2);
+        options.Nx = ceil(options.Nx * options.FOVa_x / options.FOVxOrig);
+        options.Ny = ceil(options.Ny * options.FOVa_y / options.FOVyOrig);
+    end
+    if options.axialEFOV
+        options.axial_fov = options.eFOVSize(3);
+        options.Nz = ceil(options.Nz * options.axial_fov / options.axialFOVOrig);
     end
 
-    options.totalFOVxmin = -FOV(1) / 2;
-    options.totalFOVymin = -FOV(2) / 2;
-    options.totalFOVzmin = -FOV(3) / 2;
-    options.totalFOVxmax = FOV(1) / 2;
-    options.totalFOVymax = FOV(2) / 2;
-    options.totalFOVzmax = FOV(3) / 2;
-
-    if isfield(options, 'oOffsetX')
-        options.totalFOVxmin = options.totalFOVxmin + options.oOffsetX;
-        options.totalFOVxmax = options.totalFOVxmax + options.oOffsetX;
-    end
-    if isfield(options, 'oOffsetY')
-        options.totalFOVymin = options.totalFOVymin + options.oOffsetY;
-        options.totalFOVymax = options.totalFOVymax + options.oOffsetY;
-    end
-    if isfield(options, 'oOffsetZ')
-        options.totalFOVzmin = options.totalFOVzmin + options.oOffsetZ;
-        options.totalFOVzmax = options.totalFOVzmax + options.oOffsetZ;
-    end
+    dx = options.FOVa_x / options.Nx;
+    dy = options.FOVa_y / options.Ny;
+    dz = options.axial_fov / options.Nz;
+    options.eFOVShift_Nx = round(options.eFOVShift(1) / dx, TieBreaker="fromzero"); % Add half this amount to one side and subtract from another
+    options.eFOVShift_Ny = round(options.eFOVShift(2) / dy, TieBreaker="fromzero");
+    options.eFOVShift_Nz = round(options.eFOVShift(3) / dz, TieBreaker="fromzero");
+end
 end

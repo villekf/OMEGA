@@ -4,6 +4,10 @@ Created on Thu Mar  7 14:08:02 2024
 
 @author: Ville-Veikko Wettenhovi
 """
+def _round_away_from_zero(x):
+    import numpy as np
+    x = np.asarray(x)
+    return np.sign(x) * np.floor(np.abs(x) + 0.5)
 
 def CTEFOVCorrection(options, extrapLengthTransaxial = None, extrapLengthAxial = None, eFOVLengthTransaxial = None, eFOVLengthAxial = None):
     import numpy as np
@@ -112,69 +116,70 @@ def CTEFOVCorrection(options, extrapLengthTransaxial = None, extrapLengthAxial =
                     apu = np.single(options.flat) / np.exp(apu)
                 newProj[:, options.ScatterC.shape[1] + erotus2 // 2 : , :] = apu
             options.ScatterC = newProj
+    
+    if options.useEFOV:
+        options.axialEFOV = False # Check if axial EFOV is inside FOV (after shift). If is outside (in both directions), set axialEFOV to true
+        FOVmin_z = -options.axial_fov / 2.0
+        FOVmax_z =  options.axial_fov / 2.0
+        print(options.eFOVShift)
+        eFOVmin_z = -options.eFOVSize[2] / 2.0 + options.eFOVShift[2]
+        eFOVmax_z =  options.eFOVSize[2] / 2.0 + options.eFOVShift[2]
+        if FOVmin_z < eFOVmin_z or FOVmax_z > eFOVmax_z: # FOV not entirely inside eFOV
+            print('The high-resolution FOV is not entirely inside the extended FOV in z-direction. No extension will be performed in the axial direction.')
+            options.eFOVShift[2] = 0
+            options.eFOVSize[2] = options.axial_fov
+        else:
+            options.axialEFOV = True
+            
+        options.transaxialEFOV = False
+        FOVmin_x = -options.FOVa_x / 2.0
+        FOVmax_x =  options.FOVa_x / 2.0
+        eFOVmin_x = -options.eFOVSize[0] / 2.0 + options.eFOVShift[0]
+        eFOVmax_x =  options.eFOVSize[0] / 2.0 + options.eFOVShift[0]
+
+        FOVmin_y = -options.FOVa_y / 2.0
+        FOVmax_y =  options.FOVa_y / 2.0
+        eFOVmin_y = -options.eFOVSize[1] / 2.0 + options.eFOVShift[1]
+        eFOVmax_y =  options.eFOVSize[1] / 2.0 + options.eFOVShift[1]
+
+        if (FOVmin_x < eFOVmin_x or FOVmax_x > eFOVmax_x or
+            FOVmin_y < eFOVmin_y or FOVmax_y > eFOVmax_y):
+            print('Warning: The high-resolution FOV is not entirely inside the extended FOV in xy-direction. '
+                'No extension will be performed in the transaxial direction.')
+            options.eFOVShift[0] = 0
+            options.eFOVSize[0] = options.FOVa_x
+            options.eFOVShift[1] = 0
+            options.eFOVSize[1] = options.FOVa_y
+        else:
+            options.transaxialEFOV = True
+
+        if not (options.axialEFOV or options.transaxialEFOV):
+            options.useEFOV = False
+            print('Warning: FOV extension is not performed; turning off options.useEFOV')
+
     if options.useEFOV:
         print('Extending the FOV')
-        if not(options.transaxialEFOV) and not(options.axialEFOV):
-            print('Neither transaxial nor axial EFOV selected, but EFOV itself is selected! Setting axial EFOV to True!')
-            options.axialEFOV = True
+        options.FOVxOrig = options.FOVa_x
+        options.FOVyOrig = options.FOVa_y
+        options.axialFOVOrig = options.axial_fov
+        options.NxOrig = options.Nx
+        options.NyOrig = options.Ny
+        options.NzOrig = options.Nz
+        
         if options.transaxialEFOV:
-            if eFOVLengthTransaxial == None:
-                if hasattr(options,'eFOVLength'):
-                    if options.eFOVLength == None:
-                        nTransaxial = int(np.floor(options.Nx * 0.4)) * 2
-                    else:
-                        nTransaxial = int(np.floor(options.Nx * options.eFOVLength)) * 2
-                else:
-                    nTransaxial = int(np.floor(options.Nx * 0.4)) * 2
-            else:
-                nTransaxial = int(np.floor(options.Nx * eFOVLengthTransaxial)) * 2
-            options.NxOrig = options.Nx
-            options.NyOrig = options.Ny
-            options.Nx += nTransaxial
-            options.Ny += nTransaxial
-            options.FOVxOrig = options.FOVa_x
-            options.FOVyOrig = options.FOVa_y
-            options.FOVa_x += options.FOVa_x / options.NxOrig * nTransaxial
-            options.FOVa_y += options.FOVa_y / options.NyOrig * nTransaxial
-        else:
-            options.FOVxOrig = options.FOVa_x
-            options.FOVyOrig = options.FOVa_y
-            options.NxOrig = options.Nx
-            options.NyOrig = options.Ny
+            options.FOVa_x = options.eFOVSize[0]
+            options.FOVa_y = options.eFOVSize[1]
+            options.Nx = int(np.ceil(options.Nx * options.FOVa_x / options.FOVxOrig))
+            options.Ny = int(np.ceil(options.Ny * options.FOVa_y / options.FOVyOrig))
+
         if options.axialEFOV:
-            if eFOVLengthAxial == None:
-                if hasattr(options,'eFOVLength'):
-                    if options.eFOVLength == None:
-                        if options.sourceToDetector > options.sourceToCRot:
-                            length = options.sourceToCRot + options.FOVa_x / 2.
-                            angle = (options.sourceToDetector / (options.nColsD * options.dPitchY / 2.))
-                            eFOVLengthAxial = ((length / angle - options.axial_fov / 2.) / options.axial_fov)
-                            nAxial = int(np.floor(options.Nz * eFOVLengthAxial)) * 2
-                        else:
-                            nAxial = int(np.floor(options.Nz * 0.3)) * 2
-                    else:
-                        nAxial = int(np.floor(options.Nz * options.eFOVLength)) * 2
-                else:
-                    if options.sourceToDetector > options.sourceToCRot:
-                        pituus = options.sourceToDetector - options.sourceToCRot + options.FOVa_x / 2.
-                        angle = (options.sourceToDetector / (options.nColsD * options.dPitchY))
-                        eFOVLengthAxial = ((pituus / angle - options.axial_fov / 2.) / (options.axial_fov / 2.)) / 2.
-                        nAxial = int(np.floor(options.Nz * eFOVLengthAxial)) * 2
-                    else:
-                        nAxial = int(np.floor(options.Nz * 0.3)) * 2
-            else:
-                nAxial = int(np.floor(options.Nz * eFOVLengthAxial)) * 2
-            options.NzOrig = options.Nz
-            options.Nz += nAxial
-            options.axialFOVOrig = options.axial_fov
-            options.axial_fov += options.axial_fov / options.NzOrig * nAxial
-        else:
-            options.axialFOVOrig = options.axial_fov
-            options.NzOrig = options.Nz
-    
-    options.totalFOVxmin = -options.FOVa_x / 2
-    options.totalFOVymin = -options.FOVa_y / 2
-    options.totalFOVzmin = -options.axial_fov / 2
-    options.totalFOVxmax = options.FOVa_x / 2
-    options.totalFOVymax = options.FOVa_y / 2
-    options.totalFOVzmax = options.axial_fov / 2
+            options.axial_fov = options.eFOVSize[2]
+            options.Nz = int(np.ceil(options.Nz * options.axial_fov / options.axialFOVOrig))
+
+        dx = options.FOVa_x / options.Nx
+        dy = options.FOVa_y / options.Ny
+        dz = options.axial_fov / options.Nz
+        
+        options.eFOVShift_Nx = int(_round_away_from_zero(options.eFOVShift[0] / dx))
+        options.eFOVShift_Ny = int(_round_away_from_zero(options.eFOVShift[1] / dy))
+        options.eFOVShift_Nz = int(_round_away_from_zero(options.eFOVShift[2] / dz))
