@@ -6,7 +6,8 @@
 % detector panel, the size of each detector pixel, projection angles,
 % flat value and source to center of rotation and source to detector
 % distances. Potential offset of the object (that is, the object is not
-% centered on origin) can also be input.
+% centered on origin) can also be input. Flat value (I0) is optional, as the 
+% maximum value of the input projections is used if not available.
 % Reconstruction-wise everything is same as with the generic CT example.
 % Example data available from: https://doi.org/10.5281/zenodo.12722386
 

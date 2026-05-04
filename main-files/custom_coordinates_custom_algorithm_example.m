@@ -2,13 +2,26 @@
 % This example showcases how to use data that is not in (standard) PET,
 % SPECT or CT format. Essentially the only things that are needed for image 
 % reconstruction in OMEGA are the FOV size, the number of voxels in each 
-% direction and the source/detector coordinates. The example data is a cylindrical 
+% direction and the source/detector coordinates. This means that any possible geometry
+% can be reconstructed with this, as long as you input (and know) the source-detector 
+% (or detector-detector) coordinates. The example data is a cylindrical 
 % PET data but in reality it could be anything. This is a simplified example and 
 % computes the reconstructions by using the built-in class object rather than the
 % built-in algorithms. This example can be modified to compute your own
-% algorithm.
+% algorithm, but OSEM and MLEM are shown here as examples.
+% The coordinates can be set around line 241, see that line for more details on how
+% to input the coordinates.
 % Documentation: https://omega-doc.readthedocs.io/en/latest/customcoordinates.html
-% NOTE: This example has no error checking!
+% NOTE: This example has no error checking and assumes emission tomography data with
+% probabilities. Uncomment the options.CT below to use non-emission tomography data.
+
+% Note that custom algorithm refers to your own algorithms and not the
+% built-in algorithms. This example merely has the OSEM algorithm
+% shown as an example. The forward and/or backward projections of OMEGA are
+% utilized for the computation of these algorithms. The idea of this example
+% is to show how you can compute your own algorithms with the OMEGA projector
+% operators and utilizing many of the built-in features such as subsets and
+% corrections.
 
 clear
 
@@ -242,6 +255,7 @@ options.x0 = ones(options.Nx, options.Ny, options.Nz);
 % that MATLAB is COLUMN-MAJOR, which means that column values are read
 % first. As such, if you wish to use a matrix (which is fine) use
 % 6xNumberOfMeasurements matrix. Vector format is recommended though.
+% For PET data, the source can be another detector.
 load cylpet_example_det_coord.mat
 
 sizeX = size(x,2);

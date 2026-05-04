@@ -1,10 +1,18 @@
 %% MATLAB/Octave code for GATE PET reconstruction using ASCII or ROOT input
-% Note that this file does not contain all adjustable parameters. These
+% This example is almost identical with PET_main_gateExample except that
+% here we assume TOF capability. TOF settings are adjusted in the 
+% TOF PROPERTIES section below. Any GATE data that stores the time indices
+% can be converted into TOF data. See the TOF PROPERTIES for all the 
+% adjustable parameters (around line 560).
+% Note that this file does not contain ALL adjustable parameters. These
 % omitted parameters will thus use default values. For the list of all
 % adjustable parameters see main_PET_full.m file.
 % You can use https://doi.org/10.5281/zenodo.12743217 as example data
-% Only reconstructions are performed. If you want to load ROOT/ASCII data
-% set options.only_reconstructions = false below.
+% Only reconstructions are performed which means that the sinogram data from the 
+% above link needs to be in MATLAB/Octave path. If you want to load 
+% ROOT/ASCII data set options.only_reconstructions = false below (line 660).
+% This example is based on the GATE 9 PET example scanner from the GATE doc:
+% https://opengate.readthedocs.io/en/latest/defining_a_system_scanner_ct_pet_spect_optical.html#id3
  
 clear
  
@@ -586,6 +594,7 @@ options.TOF_offset = 0;
 % use this value to control the accuracy of the TOF data. For example if
 % you want to have TOF data with 500 ps FWHM then set this value to
 % 500e-12. 
+% If you use non-GATE TOF data, this value has no effect.
 options.TOF_noise_FWHM = 100e-12;
 
 %%% FWHM of the TOF data
@@ -1565,7 +1574,6 @@ options = OMEGA_error_check(options);
 
 %% Load the ASCII/ROOT coincidence data
 % Or load the measurement data manually into options.SinM
-
 if ~options.only_reconstructions && ~options.no_data_load
     options.SinM = load_data(options);
     % Save the delayed coincidences, trues, scatter and randoms to
@@ -1581,14 +1589,13 @@ if ~options.only_reconstructions && ~options.no_data_load
 end
 
 %% Compute the normalization coefficients
-
+% This requires separate normalization measurement
 if options.compute_normalization && ~options.only_reconstructions
     [norm_matrix, options.SinM, axial_geom_coeffs, axial_block_profile, block_profile_matrix, crystal_efficiency_matrix, tr_geom_matrix] = normalization_coefficients(options);
     
 end
 
 %% Reconstructions
-
 if ~options.only_sinos && ~options.compute_normalization
 
     tStart = tic;

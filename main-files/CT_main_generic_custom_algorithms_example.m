@@ -5,14 +5,21 @@
 % uses PDHG with multi-resolution, but CGLS is also included (use without
 % multi-resolution!). PDHG should also work without multi-resolution 
 % reconstruction.
+% Flat-panel data can be reconstructed with this. If you have coordinates
+% for the source and detector, use CBCT_main_generic_custom_algorithms 
+% instead.
 % You can use the FIPS walnut data as an example data:
 % https://zenodo.org/record/1254206
+% Note that the CBCT scanner used here is custom-made!
 
 % Note that custom algorithm refers to your own algorithms and not the
 % built-in algorithms. This example merely has the CGLS/PDHG algorithms
 % shown as examples. The forward and/or backward projections of OMEGA are
 % utilized for the computation of these algorithms. CGLS has been commented
 % by default and this example uses multi-resolution reconstruction w/ PDHG.
+% The idea of this example is to show how you can compute your own algorithms 
+% with the OMEGA projector operators and utilizing many of the built-in 
+% features such as subsets and corrections.
 
 clear
 clear mex

@@ -4,8 +4,11 @@
 % adjustable parameters see main_PET_full.m file.
 % You can use https://doi.org/10.5281/zenodo.12743217 as example data
 % This example uses implementation 4 by default. Furthermore, only
-% reconstructions are performed. If you want to load ROOT/ASCII data
-% set options.only_reconstructions = false below.
+% reconstructions are performed which means that the sinogram data from the 
+% above link needs to be in MATLAB/Octave path. If you want to load 
+% ROOT/ASCII data set options.only_reconstructions = false below (line 591).
+% This example is based on the GATE 9 PET example scanner from the GATE doc:
+% https://opengate.readthedocs.io/en/latest/defining_a_system_scanner_ct_pet_spect_optical.html#id3
  
 clear
  

@@ -5,6 +5,9 @@
 % used. https://doi.org/10.5281/zenodo.4646897 works also
 % Note that https://doi.org/10.5281/zenodo.4646897 has better attenuation
 % correction
+% You'll need to modify the SCANNER PROPERTIES and SINOGRAM PROPERTIES below
+% if you wish to use your own data, and possibly the image properties, too.
+% All corrections except normalization are off by default here.
 
 clear
 

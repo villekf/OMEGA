@@ -2,10 +2,15 @@
 % This example showcases how to use data that is not in (standard) PET,
 % SPECT or CT format. Essentially the only things that are needed are the
 % FOV size, the number of voxels in each direction and the source/detector
+% coordinates. This means that any possible geometry can be reconstructed with 
+% this, as long as you input (and know) the source-detector (or detector-detector) 
 % coordinates. The example data is a cylindrical PET data but in reality it
 % could be anything. This is a simplified example.
+% The coordinates can be set around line 190, see that line for more details on how
+% to input the coordinates.
 % Documentation: https://omega-doc.readthedocs.io/en/latest/customcoordinates.html
-% NOTE: This example has no error checking!
+% NOTE: This example has no error checking and assumes emission tomography data with
+% probabilities. Uncomment the options.CT below to use non-emission tomography data.
 
 clear
 
@@ -191,6 +196,7 @@ options.SinM = raw_SinM;
 % that MATLAB is COLUMN-MAJOR, which means that column values are read
 % first. As such, if you wish to use a matrix (which is fine) use
 % 6xNumberOfMeasurements matrix. Vector format is recommended though.
+% For PET data, the source can be another detector.
 load cylpet_example_det_coord.mat
 
 sizeX = size(x,2);

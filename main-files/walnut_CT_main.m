@@ -1,7 +1,7 @@
 %% MATLAB/Octave code for CT reconstruction using FIPS walnut projection images
 % This example script uses the FIPS walnut projection images
 % (https://zenodo.org/record/1254206). This is very similar to
-% walnut2D_CT_main.m, but instead of being 2D this is a full 3D example.
+% CT2D_fanbeam_mainExample.m, but instead of being 2D this is a full 3D example.
 % This example shows how to use TIFF-projection images as the input. 
 % NOTE: This script uses implementation 2 (OpenCL, GPU) by default. 
 
