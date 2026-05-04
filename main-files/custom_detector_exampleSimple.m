@@ -180,6 +180,16 @@ options.PKMA = false;
 % Supported by implementations 1, 2, 4, and 5
 options.PDHG = true;
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PRECONDITIONERS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Image-based preconditioners
+% precondTypeImage(2) = EM preconditioner (f / (A^T1), where f is the current
+% estimate) 
+options.precondTypeImage = [false;false;false;false;false;false;false];
+if options.PKMA
+    options.precondTypeImage(2) = true;
+end
+
 % You can input other reconstruction parameters and priors as in the other
 % examples
 

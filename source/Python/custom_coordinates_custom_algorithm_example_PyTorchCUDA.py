@@ -1,30 +1,42 @@
 # -*- coding: utf-8 -*-
 """
 This example showcases how to use data that is not in (standard) PET,
-SPECT or CT format. Essentially the only things that are needed are the
-FOV size, the number of voxels in each direction and the source/detector
-coordinates. This means that any possible geometry can be reconstructed with 
-this, as long as you input (and know) the source-detector (or detector-detector) 
-coordinates. The example data is a cylindrical PET data but in reality it
-could be anything. This is a simplified example.
-The coordinates can be set around line 288, see that line for more details on how
+SPECT or CT format. Essentially the only things that are needed for image 
+reconstruction in OMEGA are the FOV size, the number of voxels in each 
+direction and the source/detector coordinates. This means that any possible geometry
+can be reconstructed with this, as long as you input (and know) the source-detector 
+(or detector-detector) coordinates. The example data is a cylindrical 
+PET data but in reality it could be anything. This is a simplified example and 
+computes the reconstructions by using the built-in class object rather than the
+built-in algorithms. This example can be modified to compute your own
+algorithm, but OSEM and MLEM are shown here as examples.
+The coordinates can be set around line 256, see that line for more details on how
 to input the coordinates.
 Documentation: https://omega-doc.readthedocs.io/en/latest/customcoordinates.html
 NOTE: This example has no error checking and assumes emission tomography data with
 probabilities. Uncomment the options.CT below to use non-emission tomography data.
+
+Note that custom algorithm refers to your own algorithms and not the
+built-in algorithms. This example merely has the OSEM and MLEM algorithms
+shown as examples. The forward and/or backward projections of OMEGA are
+utilized for the computation of these algorithms. The idea of this example
+is to show how you can compute your own algorithms with the OMEGA projector
+operators and utilizing many of the built-in features such as subsets and
+corrections.
+
+This example uses PyTorch with CuPy and thus requires CUDA (and PyTorch and CuPy)!
 """
 
 import numpy as np
 from omegatomo.projector import proj
 import matplotlib as plt
-from omegatomo.reconstruction import reconstructions_main
 
 options = proj.projectorClass()
 
 
 ### Transaxial FOV size (mm), this is the length of the x (vertical/row) side
 # of the FOV
-options.FOVa_x = 300
+options.FOVa_x = 150
 
 ### Transaxial FOV size (mm), this is the length of the y (horizontal/column) side
 # of the FOV
@@ -95,24 +107,13 @@ options.verbose = 1
 ###########################################################################
 ###########################################################################
 
-############################# IMPLEMENTATIONS #############################
+############################# DEVICE NUMBER #############################
 ### OpenCL/CUDA device used 
 # NOTE: Use 
 # from omegatomo.util.devinfo import deviceInfo
 # deviceInfo(True)
 # to determine the device nubmers
 options.deviceNum = 0
-
-### Use CUDA
-# Selecting this to True will use CUDA kernels/code instead of OpenCL. This
-# only works if the CUDA code was successfully built. This is recommended
-# if you have CUDA-capable device.
-options.useCUDA = False
-
-### Use CPU
-# Selecting this to True will use CPU-based code instead of OpenCL or CUDA.
-# Not recommended, even OpenCL with CPU should be used before this.
-options.useCPU = False
 
 ############################### PROJECTOR #################################
 ### Type of projector to use for the geometric matrix
@@ -209,7 +210,7 @@ options.n_rays_axial = 1;
 
 ######################### RECONSTRUCTION SETTINGS #########################
 ### Number of iterations (all reconstruction methods)
-options.Niter = 5
+options.Niter = 1
 
 ### Save specific intermediate iterations
 # You can specify the intermediate iterations you wish to save here. Note
@@ -222,8 +223,7 @@ options.saveNIter = np.empty(0)
 # Note: Only affects full iterations (epochs)
 # options.save_iter = False
 
-### Number of subsets (excluding subset_type = 6 and algorithms that do not
-### support subsets)
+### Number of subsets
 options.subsets = 8
 
 ### Subset type (n = subsets)
@@ -235,56 +235,6 @@ options.subsetType = 1
 ### Initial value for the reconstruction
 options.x0 = np.ones((options.Nx, options.Ny, options.Nz), dtype=np.float32)
 
-
-###########################################################################
-###########################################################################
-###########################################################################
-######################## RECONSTRUCTION ALGORITHMS ########################
-###########################################################################
-###########################################################################
-###########################################################################
-# Reconstruction algorithms to use (choose only one algorithm and
-# optionally one prior)
-
-############################### ML-METHODS ################################
-### Ordered Subsets Expectation Maximization (OSEM) OR Maximum-Likelihood
-### Expectation Maximization (MLEM) (if subsets = 1)
-# Note: OSEM, MRAMLA, RAMLA, ROSEM, RBI, COSEM, ACOSEM, ECOSEM are not
-# recommended for non-Poisson data
-options.OSEM = False
-
-### LSQR
-options.LSQR = False
-
-
-############################### MAP-METHODS ###############################
-# Any algorithm selected here will utilize any of the priors selected below
-# this. Note that only one algorithm and prior combination is allowed! You
-# can also use most of these algorithms without priors (such as PKMA or
-# PDHG).
-
-### Preconditioned Krasnoselskii-Mann algorithm (PKMA)
-options.PKMA = False
-
-### Primal-dual hybrid gradient (PDHG)
-options.PDHG = True
-
-
-############################# PRECONDITIONERS #############################
-# Image-based preconditioners
-# precondTypeImage(1) = EM preconditioner (f / (A^T1), where f is the current
-# estimate) 
-if options.PKMA:
-    options.precondTypeImage[1] = True
-
-# You can input other reconstruction parameters and priors as in the other
-# examples
-
-# Input the measurement data
-from pymatreader import read_mat
-var = read_mat('Cylindrical_PET_example_cylpet_example_new_sinograms_combined_static_200x168x703_span3.mat')
-options.SinM = np.float32(var['raw_SinM'])
-
 # Set the coordinates for EACH measurement
 # The format for options.x variable is
 # [sourceX1;sourceY1;sourceZ1;detectorX1;detectorY1;detectorZ1;sourceX2;sourceY2;sourceZ2;detectorX2...]
@@ -294,6 +244,7 @@ options.SinM = np.float32(var['raw_SinM'])
 # this should be COLUMN-MAJOR, which means that column values are read
 # first. As such, if you wish to use a matrix (which is fine) use
 # 6xNumberOfMeasurements matrix with Fortran-ordering. Vector format is recommended though.
+from pymatreader import read_mat
 var = read_mat('cylpet_example_det_coord.mat')
 
 x = var['x']
@@ -310,15 +261,81 @@ options.x = np.asfortranarray(np.vstack([x[0, :], x[1, :], z[0, :], x[2, :], x[3
 # uses the length of intersection rather than the probability
 # options.CT = True
 
-## Reconstructions
+## Class example (OSEM)
+
+# Here is an example of how to obtain the same results as above by using a
+# specific MATLAB class. This is a bit more simplified from above and also
+# allows more easily to use other properties files (such as
+# Inveon_PET_main.m). PSF blurring will be performed automatically if it
+# has been selected.
+
+# Load data
+var = read_mat('Cylindrical_PET_example_cylpet_example_new_sinograms_combined_static_200x168x703_span3.mat')
+# When using custom coordinates, it is important to store the measurements
+# in options.SinM BEFORE constructing the class object
+options.SinM = np.float32(var['raw_SinM'])
 
 
-import time
-tic = time.perf_counter()
-pz, fp = reconstructions_main(options)
-toc = time.perf_counter()
-print(f"{toc - tic:0.4f} seconds")
-plt.pyplot.imshow(pz[:,:,30], vmin=0)
+# Construct the forward and backward projections object (you need to rerun
+# this if you make any changes to the system):
+options.addProjector()
+
+# If True, uses CUDA
+options.useCUDA = True
+
+# Assumes that PyTorch tensors are input as for forward and backward projections
+# NOTE: PyTorch is row-major while OMEGA is column-major! The example reconstruction will work fine, but if you input your own data, make sure the data is structured correctly!
+# For details, see https://en.wikipedia.org/wiki/Row-_and_column-major_order
+# The above means that if column-major 3D array has dimensions (dim1, dim2, dim3), in PyTorch you would need this to be (dim3, dim2, dim1) to preserve the data structure
+options.useTorch = True
+
+# If True, assumes that CuPy arrays are the input for forward and backward projections, unless useTorch = True
+# Requires useCUDA = True
+# Default is False
+options.useCuPy = True
+
+# Compute forward projection with options * f
+# Compute backprojection with options.T() * y
+# Load the input data into options.SinM before this step to automatically handle subsets
+options.initProj()
+
+import torch
+d_f = torch.tensor(options.x0,device='cuda')
+m = options.SinM.ravel('F')
+
+
+# """
+# MLEM
+# """
+# d_m = torch.tensor(m, device='cuda')
+# Sens = options.T() * torch.ones(d_m.numel(), dtype=torch.float32, device='cuda')
+# for it in range(options.Niter):
+#     fp = options * d_f
+#     bp = options.T() * (d_m / fp)
+#     d_f = d_f / Sens * bp
+    
+    
+
+"""
+OSEM
+"""
+d_m = [None] * options.subsets
+for k in range(options.subsets):
+    d_m[k] = torch.tensor(m[options.nTotMeas[k].item() : options.nTotMeas[k + 1].item()], device='cuda')
+for it in range(options.Niter):
+    for k in range(options.subsets):
+        # This is necessary when using subsets
+        # Alternative, call options.forwardProject(d_f, k) to use forward projection
+        # options.backwardProject(m, k) for backprojection
+        options.subset = k
+        fp = options * d_f
+        Sens = options.T() * torch.ones(d_m[k].numel(), dtype=torch.float32, device='cuda')
+        bp = options.T() * (d_m[k] / fp)
+        d_f = d_f / Sens * bp
+    
+f_np = d_f.cpu().numpy()
+f_np = np.reshape(f_np, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()), order='F')
+plt.pyplot.imshow(f_np[:,:,20], vmin=0)
 
 from omegatomo.util.volume3Dviewer import volume3Dviewer
-volume3Dviewer(pz)
+volume3Dviewer(f_np)

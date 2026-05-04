@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 This example shows how to do forward projections in OMEGA using (CB)CT data
+
+This example uses PyOpenCL, but you can use CuPy, PyTorch or ArrayFire instead as well.
+
+Example data available from: https://doi.org/10.5281/zenodo.12722386
 """
 import numpy as np
 from omegatomo import proj

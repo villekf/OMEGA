@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-# Python codes for CT reconstruction using FIPS walnut projection images
+""" Python codes for CT reconstruction using FIPS walnut projection images
 This example script uses the FIPS walnut projection images
 (https://zenodo.org/record/1254206). 
 This example shows how to use TIFF-projection images as the input. 

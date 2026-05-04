@@ -8,6 +8,11 @@ multi-resolution. Filtering-based preconditioner is on.
 
 This example is NOT the recommended way for OpenCL reconstructions, the ArrayFire version is recommended instead.
 
+Note that custom algorithm refers to your own algorithms and not the built-in algorithms. This example merely has the CGLS/PDHG algorithms
+shown as examples. The forward and/or backward projections of OMEGA are utilized for the computation of these algorithms. CGLS has been commented
+by default and this example uses multi-resolution reconstruction w/ PDHG. The idea of this example is to show how you can compute your own algorithms 
+with the OMEGA projector operators and utilizing many of the built-in features such as subsets and corrections.
+
 Example data available from: https://doi.org/10.5281/zenodo.12722386
 """
 import numpy as np

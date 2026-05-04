@@ -13,6 +13,7 @@
 % ROOT/ASCII data set options.only_reconstructions = false below (line 660).
 % This example is based on the GATE 9 PET example scanner from the GATE doc:
 % https://opengate.readthedocs.io/en/latest/defining_a_system_scanner_ct_pet_spect_optical.html#id3
+% The TOF settings are not based on anything.
  
 clear
  

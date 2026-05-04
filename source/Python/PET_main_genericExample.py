@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
-"""
-## Python code for PET reconstruction using Inveon PET LST or custom input
-# This main-file provides an example on how to obtain & perform list-mode
-# (event-by-event) reconstruction. 
-# For the input measurement data, you can use the open preclinical PET data
-# available from: https://doi.org/10.5281/zenodo.3528056
+""" Python code for PET reconstruction using Inveon PET LST or custom input
+This example showcases a "generic" PET example. The example data is the
+Inveon preclinical list-mode PET data
+(https://zenodo.org/records/3528056), but any sinogram PET data can be
+used. https://doi.org/10.5281/zenodo.4646897 works also
+Note that https://doi.org/10.5281/zenodo.4646897 has better attenuation
+correction
+You'll need to modify the SCANNER PROPERTIES and SINOGRAM PROPERTIES below
+if you wish to use your own data, and possibly the image properties, too.
+All corrections except normalization and randoms are off by default here.
 """
 import numpy as np
 from omegatomo.projector import proj
