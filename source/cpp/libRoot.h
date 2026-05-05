@@ -15,4 +15,4 @@ int rootMain(const char* rootFile, const double* tPoints, const double alku, con
 	const uint32_t transaxial_multip, const uint32_t* rings, const uint64_t* sinoSize, const uint32_t Ndist, const uint32_t* Nang, const uint32_t ringDifference, const uint32_t span,
 	const uint32_t * seg, const int64_t Nt, const uint64_t TOFSize, const int32_t nDistSide, uint16_t * Sino, uint16_t * SinoT, uint16_t * SinoC, uint16_t * SinoR, uint16_t * SinoD,
 	const uint32_t* detWPseudo, const int32_t nPseudos, const double binSize, const double FWHM, const bool verbose, const int32_t nLayers, const float dx, const float dy, const float dz,
-	const float bx, const float by, const float bz, const int64_t Nx, const int64_t Ny, const int64_t Nz, const bool dualLayerSubmodule, const bool indexBased, uint16_t * tIndex);
+	const float bx, const float by, const float bz, const int64_t Nx, const int64_t Ny, const int64_t Nz, const bool dualLayerSubmodule, const bool indexBased, uint16_t * tIndex, uint8_t* TOFIndex);
