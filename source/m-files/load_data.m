@@ -57,8 +57,8 @@ function [varargout] = load_data(options)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-if nargout > 9
-    error('Too many output arguments, there can be at most nine!')
+if nargout > 10
+    error('Too many output arguments, there can be at most ten!')
 end
 
 if ~isfield(options,'TOF_bins') || options.TOF_bins == 0
@@ -331,40 +331,6 @@ if options.use_machine == 1
             % z_Rcoordinate = [z(ring_number1) z(ring_number2)];
             % clear ring_number1 ring_number2
         end
-        %     else
-        %         if partitions == 1
-        %             prompts = LL1';
-        %             if options.randoms_correction
-        %                 delays = DD1';
-        %             end
-        %             clear LL1 LL2 DD1 DD2
-        %             % Else the outputs are vectors LL1 and LL2 containing the detector
-        %             % pairs for all the counts.
-        %             % Form a similar (sparse) detectors x detectors matrix
-        %         else
-        %             prompts = cell(partitions,1);
-        %             if options.randoms_correction
-        %                 delays = cell(partitions,1);
-        %             end
-        %             %         ll = 1;
-        %             % Obtain the counts that were within a specified time-window
-        %             for kk = 1 : partitions
-        %                 apu1 = LL1(tpoints(kk) + 1:tpoints(kk+1));
-        %                 apu1(apu1 == 0) = [];
-        %                 apu2 = LL2(tpoints(kk) + 1:tpoints(kk+1));
-        %                 apu2(apu2 == 0) = [];
-        %                 prompts{kk} = accumarray([apu1 apu2],1,[options.detectors options.detectors],[],[],true);
-        %                 if options.randoms_correction
-        %                     apu1 = DD1(tpoints(kk) + 1:tpoints(kk+1));
-        %                     apu1(apu1 == 0) = [];
-        %                     apu2 = DD2(tpoints(kk) + 1:tpoints(kk+1));
-        %                     apu2(apu2 == 0) = [];
-        %                     delays{kk} = accumarray([apu1 apu2],1,[options.detectors options.detectors],[],[],true);
-        %                 end
-        %                 %             ll = ll + tpoints(kk+1);
-        %             end
-        %             clear LL1 LL2 DD1 DD2 apu1 apu2
-        %         end
     elseif options.useIndexBasedReconstruction
         if Nt > 1
             axIndices = cell(Nt,1);
@@ -468,37 +434,6 @@ elseif options.use_machine == 0
     % Total number of detectors
     detectors = uint32(options.det_per_ring.*(rings - sum(options.pseudot)));
 
-    % if (options.store_raw_data)
-    %     if options.partitions > 1
-    %         prompts = cell(partitions,1);
-    %         if options.obtain_trues
-    %             trues = cell(partitions,1);
-    %         end
-    %         if options.store_scatter
-    %             scatter = cell(partitions,1);
-    %         end
-    %         if options.store_randoms
-    %             randoms = cell(partitions,1);
-    %         end
-    %         if options.randoms_correction && ~options.use_LMF
-    %             delays = cell(partitions,1);
-    %         end
-    %     else
-    %         prompts = zeros(detectors, detectors, 'uint16');
-    %         if options.obtain_trues
-    %             trues = zeros(detectors, detectors, 'uint16');
-    %         end
-    %         if options.store_scatter
-    %             scatter = zeros(detectors, detectors, 'uint16');
-    %         end
-    %         if options.store_randoms
-    %             randoms = zeros(detectors, detectors, 'uint16');
-    %         end
-    %         if options.randoms_correction && ~options.use_LMF
-    %             delays = zeros(detectors, detectors, 'uint16');
-    %         end
-    %     end
-    % end
     if source
         % if options.obtain_trues
         %     C = cell(7,partitions);
@@ -536,6 +471,9 @@ elseif options.use_machine == 0
                 Rcoordinate = cell(Nt,1);
             end
         end
+        if options.TOF_bins > 1
+            TOFindices = cell(Nt,1);
+        end
     else
         % lisays = uint16(1);
         if store_coordinates
@@ -546,6 +484,9 @@ elseif options.use_machine == 0
                 Rcoordinate = [];
             end
         end
+        if options.TOF_bins > 1
+            TOFindices = [];
+        end
     end
     if options.useIndexBasedReconstruction
         if Nt > 1
@@ -555,7 +496,7 @@ elseif options.use_machine == 0
             trIndices = [];
             axIndices = [];
             if options.randoms_correction
-                trIndices = [];
+                DtrIndices = [];
                 DaxIndices = [];
             end
         end
@@ -1621,7 +1562,7 @@ elseif options.use_machine == 0
                 %     uint64(options.partitions), sinoSize * uint64(options.TOF_bins), int32(options.ndist_side), options.store_raw_data, raw_SinM, SinTrues, SinScatter, ...
                 %     SinRandoms, SinD, int32(options.det_w_pseudo), int32(sum(options.pseudot)), options.TOF_width, FWHM, options.verbose, options.nLayers);
                 % tic
-                [raw_SinM, SinTrues, SinScatter, SinRandoms, SinD, C, SC, RA, tIndex, coord, Dcoord, trIndex, axIndex, DtrIndex, DaxIndex] = GATE_root_matlab(nimi, partitions, alku, loppu, detectors, blocks_per_ring, cryst_per_block, det_per_ring, options.linear_multip, source, Nt, options.obtain_trues, ...
+                [raw_SinM, SinTrues, SinScatter, SinRandoms, SinD, C, SC, RA, tIndex, coord, Dcoord, trIndex, axIndex, DtrIndex, DaxIndex, TOFIndex] = GATE_root_matlab(nimi, partitions, alku, loppu, detectors, blocks_per_ring, cryst_per_block, det_per_ring, options.linear_multip, source, Nt, options.obtain_trues, ...
                     options.store_scatter, options.store_randoms, scatter_components, options.randoms_correction, store_coordinates, transaxial_multip, uint32(cryst_per_block_z), uint32(rings), sinoSize, ...
                     TOF, options.verbose, options.nLayers, options.Ndist, uint32(options.Nang), options.ring_difference, options.span, uint32(cumsum(options.segment_table)), sinoSize(end) * uint64(options.TOF_bins), options.ndist_side, raw_SinM, SinTrues, SinScatter, ...
                     SinRandoms, SinD, uint32(options.det_w_pseudo), pseudot, options.TOF_width, FWHM, dx, dy, dz, bx, by, bz, options.Nx(1), options.Ny(1), options.Nz(1), options.dualLayerSubmodule, options.useIndexBasedReconstruction);
@@ -1634,7 +1575,7 @@ elseif options.use_machine == 0
                 %     uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), uint32(cumsum(options.segment_table)), ...
                 %     uint64(options.partitions), sinoSize * uint64(options.TOF_bins), int32(options.ndist_side), options.store_raw_data, raw_SinM, SinTrues, SinScatter, ...
                 %     SinRandoms, SinD, int32(options.det_w_pseudo), int32(sum(options.pseudot)), options.TOF_width, FWHM, options.verbose, options.nLayers);
-                [raw_SinM, SinTrues, SinScatter, SinRandoms, SinD, C, SC, RA, tIndex, coord, Dcoord, trIndex, axIndex, DtrIndex, DaxIndex] = GATE_root_matlab_oct(nimi, partitions, alku, loppu, detectors, blocks_per_ring, cryst_per_block, det_per_ring, options.linear_multip, source, Nt, options.obtain_trues, ...
+                [raw_SinM, SinTrues, SinScatter, SinRandoms, SinD, C, SC, RA, tIndex, coord, Dcoord, trIndex, axIndex, DtrIndex, DaxIndex, TOFIndex] = GATE_root_matlab_oct(nimi, partitions, alku, loppu, detectors, blocks_per_ring, cryst_per_block, det_per_ring, options.linear_multip, source, Nt, options.obtain_trues, ...
                     options.store_scatter, options.store_randoms, scatter_components, options.randoms_correction, store_coordinates, transaxial_multip, uint32(cryst_per_block_z), uint32(rings), sinoSize, ...
                     TOF, options.verbose, options.nLayers, options.Ndist, uint32(options.Nang), options.ring_difference, options.span, uint32(cumsum(options.segment_table)), sinoSize(end) * uint64(options.TOF_bins), options.ndist_side, raw_SinM, SinTrues, SinScatter, ...
                     SinRandoms, SinD, uint32(options.det_w_pseudo), pseudot, options.TOF_width, FWHM, dx, dy, dz, bx, by, bz, options.Nx(1), options.Ny(1), options.Nz(1), options.dualLayerSubmodule, options.useIndexBasedReconstruction);
@@ -1648,7 +1589,7 @@ elseif options.use_machine == 0
                 %     y2, z1, z2, time, timeD, layer1, layer2, layerD1, layerD2] = GATE_root_matlab_MEX(nimi,vali,alku,loppu, detectors, blocks_per_ring, cryst_per_block, det_per_ring, source, partitions, ...
                 %     options, scatter_components, store_coordinates, uint32(transaxial_multip), uint32(cryst_per_block_z), uint32(options.rings), large_case, TOF, ...
                 %     options.verbose, outputUint32);
-                [raw_SinM, SinTrues, SinScatter, SinRandoms, SinD, C, SC, RA, tIndex, coord, Dcoord, trIndex, axIndex, DtrIndex, DaxIndex] = GATE_root_matlab_MEX(nimi, partitions, alku, loppu, detectors, blocks_per_ring, cryst_per_block, det_per_ring, options.linear_multip, source, Nt, options.obtain_trues, ...
+                [raw_SinM, SinTrues, SinScatter, SinRandoms, SinD, C, SC, RA, tIndex, coord, Dcoord, trIndex, axIndex, DtrIndex, DaxIndex, TOFIndex] = GATE_root_matlab_MEX(nimi, partitions, alku, loppu, detectors, blocks_per_ring, cryst_per_block, det_per_ring, options.linear_multip, source, Nt, options.obtain_trues, ...
                     options.store_scatter, options.store_randoms, scatter_components, options.randoms_correction, store_coordinates, transaxial_multip, uint32(cryst_per_block_z), uint32(rings), sinoSize, ...
                     TOF, options.verbose, options.nLayers, options.Ndist, uint32(options.Nang), options.ring_difference, options.span, uint32(cumsum(options.segment_table)), sinoSize(end) * uint64(options.TOF_bins), options.ndist_side, raw_SinM, SinTrues, SinScatter, ...
                     SinRandoms, SinD, uint32(options.det_w_pseudo), pseudot, options.TOF_width, FWHM, dx, dy, dz, bx, by, bz, options.Nx(1), options.Ny(1), options.Nz(1), options.dualLayerSubmodule, options.useIndexBasedReconstruction);
@@ -1680,145 +1621,12 @@ elseif options.use_machine == 0
             % end
             % zerosRemoved = false;
             if partitions == 1
-                % if exist('OCTAVE_VERSION','builtin') == 0 && (~verLessThan('matlab','9.6') && ~options.legacyROOT)
-                %     if ~options.use_raw_data
-                %         ind = L1 == 0;
-                %         L1(ind) = [];
-                %         if numel(L2) > 1
-                %             L2(L2 == 0) = [];
-                %         end
-                %         zerosRemoved = true;
-                %         if outputUint32
-                %             ringNumber1 = uint16(idivide(L1 - 1, uint32(det_per_ring)));
-                %             ringNumber2 = uint16(idivide(L2 - 1, uint32(det_per_ring)));
-                %             ringPos1 = uint16(mod(L1 - 1, uint32(det_per_ring)));
-                %             ringPos2 = uint16(mod(L2 - 1, uint32(det_per_ring)));
-                %         else
-                %             ringNumber1 = idivide(L1 - 1, uint16(det_per_ring));
-                %             ringNumber2 = idivide(L2 - 1, uint16(det_per_ring));
-                %             ringPos1 = mod(L1 - 1, uint16(det_per_ring));
-                %             ringPos2 = mod(L2 - 1, uint16(det_per_ring));
-                %         end
-                %         if TOF
-                %             [bins, discard] = FormTOFBins(options, time(~ind,1));
-                %             ringNumber1(discard) = [];
-                %             ringNumber2(discard) = [];
-                %             ringPos1(discard) = [];
-                %             ringPos2(discard) = [];
-                %             if options.obtain_trues
-                %                 trues_index(discard) = [];
-                %             end
-                %             if options.store_scatter
-                %                 scatter_index(discard) = [];
-                %             end
-                %             if options.store_randoms
-                %                 randoms_index(discard) = [];
-                %             end
-                %             clear discard
-                %         else
-                %             bins = 0;
-                %             time = alku;
-                %         end
-                %         [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCIICPP(vali, ringPos1, ringPos2, ringNumber1, ringNumber2, trues_index, scatter_index, ...
-                %             randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
-                %             uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), time, uint64(options.partitions), ...
-                %             alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM(:), SinTrues(:), SinScatter(:), SinRandoms(:), int32(options.ndist_side), ...
-                %             int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block), options.nLayers, layer1, layer2);
-                %         if options.randoms_correction
-                %             Ldelay1(Ldelay1 == 0) = [];
-                %             Ldelay2(Ldelay2 == 0) = [];
-                %             zerosRemoved = true;
-                %             if outputUint32
-                %                 ringNumber1 = uint16(idivide(Ldelay1 - 1, uint32(det_per_ring)));
-                %                 ringNumber2 = uint16(idivide(Ldelay2 - 1, uint32(det_per_ring)));
-                %                 ringPos1 = uint16(mod(Ldelay1 - 1, uint32(det_per_ring)));
-                %                 ringPos2 = uint16(mod(Ldelay2 - 1, uint32(det_per_ring)));
-                %             else
-                %                 ringNumber1 = idivide(Ldelay1 - 1, uint16(det_per_ring));
-                %                 ringNumber2 = idivide(Ldelay2 - 1, uint16(det_per_ring));
-                %                 ringPos1 = mod(Ldelay1 - 1, uint16(det_per_ring));
-                %                 ringPos2 = mod(Ldelay2 - 1, uint16(det_per_ring));
-                %             end
-                %             [SinD, ~, ~, ~] = createSinogramASCIICPP(vali, ringPos1, ringPos2, ringNumber1, ringNumber2, logical([]), logical([]), ...
-                %                 logical([]), sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
-                %                 uint32(cumsum(options.segment_table)), sinoSize, time, uint64(options.partitions), ...
-                %                 alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), SinD(:), uint16([]), uint16([]), uint16([]), int32(options.ndist_side), ...
-                %                 int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block), options.nLayers, layerD1, layerD2);
-                %         end
-                %     end
-                % end
-                % if options.store_raw_data
-                %     % In the "large" case, count matrix needs to be formed like
-                %     % in the dynamic case
-                %     if large_case
-                %         if ~zerosRemoved
-                %             L1(L1 == 0) = [];
-                %             L2(L2 == 0) = [];
-                %         end
-                %         L3 = L2;
-                %         L2(L2 > L1) = L1(L2 > L1);
-                %         L1(L3 > L1) = L3(L3 > L1);
-                %         clear L3
-                %         if sum(prompts(:)) == 0
-                %             prompts = prompts + accumarray([L1 L2],lisays,[detectors detectors],@(x) sum(x,'native'));
-                %             if max(prompts(:)) >= 65535
-                %                 lisays = uint32(1);
-                %                 prompts = accumarray([L1 L2],lisays,[detectors detectors],@(x) sum(x,'native'));
-                %             end
-                %         else
-                %             prompts = prompts + accumarray([L1 L2],lisays,[detectors detectors],@(x) sum(x,'native'));
-                %         end
-                %         if options.obtain_trues
-                %             trues_index = logical(Ltrues);
-                %             trues = trues + accumarray([L1(trues_index) L2(trues_index)],lisays,[detectors detectors],@(x) sum(x,'native'));
-                %         end
-                %         if options.store_scatter
-                %             scatter_index = logical(Lscatter);
-                %             scatter = scatter + accumarray([L1(scatter_index) L2(scatter_index)],lisays,[detectors detectors],@(x) sum(x,'native'));
-                %         end
-                %         if options.store_randoms
-                %             randoms_index = logical(Lrandoms);
-                %             randoms = randoms + accumarray([L1(randoms_index) L2(randoms_index)],lisays,[detectors detectors],@(x) sum(x,'native'));
-                %         end
-                %         if options.randoms_correction
-                %             if ~zerosRemoved
-                %                 Ldelay1(Ldelay1 == 0) = [];
-                %                 Ldelay2(Ldelay2 == 0) = [];
-                %             end
-                %             Ldelay3 = Ldelay2;
-                %             Ldelay2(Ldelay2 > Ldelay1) = Ldelay1(Ldelay2 > Ldelay1);
-                %             Ldelay1(Ldelay3 > Ldelay1) = Ldelay3(Ldelay3 > Ldelay1);
-                %             clear Ldelay3
-                %             delays = delays + accumarray([Ldelay1 Ldelay2],lisays,[detectors detectors],@(x) sum(x,'native'));
-                %         end
-                %     else
-                %         prompts = prompts + L1;
-                %         if options.obtain_trues
-                %             trues = trues + Ltrues;
-                %         end
-                %         if options.store_scatter
-                %             scatter = scatter + Lscatter;
-                %         end
-                %         if options.store_randoms
-                %             randoms = randoms + Lrandoms;
-                %         end
-                %         if options.randoms_correction
-                %             delays = delays + Ldelay1;
-                %         end
-                %     end
-                % end
                 % Save the interaction coordinates if selected
                 if store_coordinates
                     coordinate = [coordinate, coord];
                     if options.randoms_correction
                         Rcoordinate = [Rcoordinate, Dcoord];
                     end
-                    % temp = [x1, x2];
-                    % x_coordinate = [x_coordinate; temp];
-                    % temp = [y1, y2];
-                    % y_coordinate = [y_coordinate; temp];
-                    % temp = [z1, z2];
-                    % z_coordinate = [z_coordinate; temp];
                 end
                 if options.useIndexBasedReconstruction
                     trIndices = [trIndices,trIndex];
@@ -1828,126 +1636,10 @@ elseif options.use_machine == 0
                         DaxIndices = [DaxIndices,DaxIndex];
                     end
                 end
+                if options.TOF_bins > 1 && (store_coordinates || options.useIndexBasedReconstruction)
+                    TOFindices = [TOFindices, TOFIndex];
+                end
             else
-                % if int_loc(1) > 0
-                % ll = 1;
-                % if exist('OCTAVE_VERSION','builtin') == 0 && (~verLessThan('matlab','9.6') && ~options.legacyROOT)
-                %     if ~options.use_raw_data
-                %         if outputUint32
-                %             ringNumber1 = uint16(idivide(L1 - 1, uint32(det_per_ring)));
-                %             ringNumber2 = uint16(idivide(L2 - 1, uint32(det_per_ring)));
-                %             ringPos1 = uint16(mod(L1 - 1, uint32(det_per_ring)));
-                %             ringPos2 = uint16(mod(L2 - 1, uint32(det_per_ring)));
-                %         else
-                %             ringNumber1 = idivide(L1 - 1, uint16(det_per_ring));
-                %             ringNumber2 = idivide(L2 - 1, uint16(det_per_ring));
-                %             ringPos1 = mod(L1 - 1, uint16(det_per_ring));
-                %             ringPos2 = mod(L2 - 1, uint16(det_per_ring));
-                %         end
-                %         ind = time(:,1) <= 0;
-                %         ringNumber1(ind) = [];
-                %         ringNumber2(ind) = [];
-                %         ringPos1(ind) = [];
-                %         ringPos2(ind) = [];
-                %         time(ind,:) = [];
-                %         if TOF
-                %             [bins, discard] = FormTOFBins(options, time);
-                %             ringNumber1(discard) = [];
-                %             ringNumber2(discard) = [];
-                %             ringPos1(discard) = [];
-                %             ringPos2(discard) = [];
-                %             time(discard,:) = [];
-                %             if options.obtain_trues
-                %                 trues_index(discard) = [];
-                %             end
-                %             if options.store_scatter
-                %                 scatter_index(discard) = [];
-                %             end
-                %             if options.store_randoms
-                %                 randoms_index(discard) = [];
-                %             end
-                %             clear discard
-                %         else
-                %             bins = 0;
-                %         end
-                %         [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCIICPP(vali, ringPos1, ringPos2, ringNumber1, ringNumber2, trues_index, scatter_index, ...
-                %             randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
-                %             uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), time(:,1), uint64(options.partitions), ...
-                %             alku, int32(options.det_w_pseudo), int32(options.rings), uint16(bins), raw_SinM(:), SinTrues(:), SinScatter(:), SinRandoms(:), int32(options.ndist_side), ...
-                %             int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
-                %         if options.randoms_correction
-                %             if outputUint32
-                %                 ringNumber1 = uint16(idivide(Ldelay1 - 1, uint32(det_per_ring)));
-                %                 ringNumber2 = uint16(idivide(Ldelay2 - 1, uint32(det_per_ring)));
-                %                 ringPos1 = uint16(mod(Ldelay1 - 1, uint32(det_per_ring)));
-                %                 ringPos2 = uint16(mod(Ldelay2 - 1, uint32(det_per_ring)));
-                %             else
-                %                 ringNumber1 = idivide(Ldelay1 - 1, uint16(det_per_ring));
-                %                 ringNumber2 = idivide(Ldelay2 - 1, uint16(det_per_ring));
-                %                 ringPos1 = mod(Ldelay1 - 1, uint16(det_per_ring));
-                %                 ringPos2 = mod(Ldelay2 - 1, uint16(det_per_ring));
-                %             end
-                %             ind = timeD <= 0;
-                %             ringNumber1(ind) = [];
-                %             ringNumber2(ind) = [];
-                %             ringPos1(ind) = [];
-                %             ringPos2(ind) = [];
-                %             timeD(ind) = [];
-                %             [SinD, ~, ~, ~] = createSinogramASCIICPP(vali, ringPos1, ringPos2, ringNumber1, ringNumber2, logical([]), logical([]), ...
-                %                 logical([]), sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
-                %                 uint32(cumsum(options.segment_table)), sinoSize, timeD, uint64(options.partitions), ...
-                %                 alku, int32(options.det_w_pseudo), int32(options.rings), uint16(bins), SinD(:), uint16([]), uint16([]), uint16([]), int32(options.ndist_side), ...
-                %                 int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
-                %         end
-                %     end
-                % end
-                % for kk = int_loc(1) : min(int_loc(2),partitions)
-                % if options.store_raw_data
-                %     % Dynamic case
-                %     apu1 = L1(tpoints(ll) + 1:tpoints(ll+1));
-                %     apu2 = L2(tpoints(ll) + 1:tpoints(ll+1));
-                %     if exist('OCTAVE_VERSION','builtin') == 0 && (~verLessThan('matlab','9.6') && ~options.legacyROOT)
-                %         L3 = apu2;
-                %         apu2(apu2 > apu1) = apu1(apu2 > apu1);
-                %         apu1(L3 > apu1) = L3(L3 > apu1);
-                %         clear L3
-                %     end
-                %     inde = any(apu1,2);
-                %     apu1 = apu1(inde,:);
-                %     apu2 = apu2(inde,:);
-                %     if isempty(prompts{kk})
-                %         prompts{kk} = accumarray([apu1 apu2],1,[detectors detectors],[],[],true);
-                %     else
-                %         prompts{kk} = prompts{kk} + accumarray([apu1 apu2],1,[detectors detectors],[],[],true);
-                %     end
-                %     if options.obtain_trues
-                %         trues_index = logical(Ltrues(tpoints(ll) + 1:tpoints(ll+1)));
-                %         trues_index = trues_index(inde);
-                %         if isempty(trues{kk})
-                %             trues{kk} = accumarray([apu1(trues_index) apu2(trues_index)],1,[detectors detectors],[],[],true);
-                %         else
-                %             trues{kk} = trues{kk} + accumarray([apu1(trues_index) apu2(trues_index)],1,[detectors detectors],[],[],true);
-                %         end
-                %     end
-                %     if options.store_scatter
-                %         trues_index = logical(Lscatter(tpoints(ll) + 1:tpoints(ll+1)));
-                %         trues_index = trues_index(inde);
-                %         if isempty(scatter{kk})
-                %             scatter{kk} = accumarray([apu1(trues_index) apu2(trues_index)],1,[detectors detectors],[],[],true);
-                %         else
-                %             scatter{kk} = scatter{kk} + accumarray([apu1(trues_index) apu2(trues_index)],1,[detectors detectors],[],[],true);
-                %         end
-                %     end
-                %     if options.store_randoms
-                %         trues_index = logical(Lrandoms(tpoints(ll) + 1:tpoints(ll+1)));
-                %         trues_index = trues_index(inde);
-                %         if isempty(randoms{kk})
-                %             randoms{kk} = accumarray([apu1(trues_index) apu2(trues_index)],1,[detectors detectors],[],[],true);
-                %         else
-                %             randoms{kk} = randoms{kk} + accumarray([apu1(trues_index) apu2(trues_index)],1,[detectors detectors],[],[],true);
-                %         end
-                %     end
-                % end
                 if store_coordinates
                     uind = unique(tIndex);
                     for uu = 1 : numel(uind)
@@ -1963,34 +1655,15 @@ elseif options.use_machine == 0
                         trIndices{uu} = [trIndices{uu}, trIndex(:,tIndex == uind(uu))];
                         axIndices{uu} = [axIndices{uu}, axIndex(:,tIndex == uind(uu))];
                     end
+                    if options.randoms_correction
+                        warning('Indices for delayed coincidences are not supported for list-mode data in dynamic mode!')
+                    end
                 end
-                % ll = ll + 1;
-                % end
-                % if options.randoms_correction && options.store_raw_data
-                %     if  int_loc_delay(1) > 0
-                %         ll = 1;
-                %         for kk = int_loc_delay(1) : min(int_loc_delay(2),partitions)
-                %             apu1 = Ldelay1(tpoints_delay(ll) + 1:tpoints_delay(ll+1));
-                %             apu2 = Ldelay2(tpoints_delay(ll) + 1:tpoints_delay(ll+1));
-                %             if exist('OCTAVE_VERSION','builtin') == 0 && (~verLessThan('matlab','9.6') && ~options.legacyROOT)
-                %                 L3 = apu2;
-                %                 apu2(apu2 > apu1) = apu1(apu2 > apu1);
-                %                 apu1(L3 > apu1) = L3(L3 > apu1);
-                %                 clear L3
-                %             end
-                %             inde = any(apu1,2);
-                %             apu1 = apu1(inde,:);
-                %             apu2 = apu2(inde,:);
-                %             if isempty(delays{kk})
-                %                 delays{kk} = accumarray([apu1 apu2],1,[detectors detectors],[],[],true);
-                %             else
-                %                 delays{kk} = delays{kk} + accumarray([apu1 apu2],1,[detectors detectors],[],[],true);
-                %             end
-                %             ll = ll + 1;
-                %         end
-                %     end
-                % end
-                % end
+                if options.TOF_bins > 1 && (store_coordinates || options.useIndexBasedReconstruction)
+                    for uu = 1 : numel(uind)
+                        TOFindices{uu} = [TOFindices{uu}, TOFindices(tIndex == uind(uu))];
+                    end
+                end
             end
             if options.verbose
                 disp(['File ' fnames(lk).name ' loaded'])
@@ -2271,6 +1944,9 @@ if nargout >= 6
                 varargout{9} = [];
             end
         end
+        if nargout >= 10
+            varargout{10} = TOFindices;
+        end
     else
         varargout{6} = coordinate;
         if options.randoms_correction && nargout >= 7
@@ -2278,6 +1954,9 @@ if nargout >= 6
         elseif nargout >= 7
             warning('Delayed coincidence coordinates selected as output but no randoms correction selected. No coordinates will be output!')
             varargout{7} = [];
+        end
+        if nargout >= 8
+            varargout{8} = TOFindices;
         end
     end
     % varargout{7} = y_coordinate;
