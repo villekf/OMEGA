@@ -191,6 +191,8 @@ class projectorClass:
     corrections_during_reconstruction = True
     ordinaryPoisson = None
     multiResolutionScale = .25
+    eFOVSize: np.ndarray = np.zeros(3, dtype=np.float32)
+    eFOVShift: np.ndarray = np.zeros(3, dtype=np.float32)
     name = ""
     voxel_radius = 1.
     scatter_variance_reduction = False
@@ -485,12 +487,12 @@ class projectorClass:
     coneOfResponseStdCoeffA = -1
     coneOfResponseStdCoeffB = -1
     coneOfResponseStdCoeffC = -1
-    totalFOVxmin = 0.
-    totalFOVymin = 0.
-    totalFOVzmin = 0.
-    totalFOVxmax = 0.
-    totalFOVymax = 0.
-    totalFOVzmax = 0.
+    totalFOVxmin: float = 0.
+    totalFOVymin: float = 0.
+    totalFOVzmin: float = 0.
+    totalFOVxmax: float = 0.
+    totalFOVymax: float = 0.
+    totalFOVzmax: float = 0.
     FISTAType = 0
     maskFPZ = 1
     maskBPZ = 1
@@ -561,18 +563,18 @@ class projectorClass:
                 self.angles = self.angles + self.offangle
             setCTCoordinates(self)
         if self.SPECT:
-            if self.totalFOVxmin == 0:
-                self.totalFOVxmin = -self.FOVa_x / 2
-            if self.totalFOVymin == 0:
-                self.totalFOVymin = -self.FOVa_y / 2
-            if self.totalFOVzmin == 0:
-                self.totalFOVzmin = -self.axial_fov / 2
-            if self.totalFOVxmax == 0:
-                self.totalFOVxmax = self.FOVa_x / 2
-            if self.totalFOVymax == 0:
-                self.totalFOVymax = self.FOVa_y / 2
-            if self.totalFOVzmax == 0:
-                self.totalFOVzmax = self.axial_fov / 2 
+            #if self.totalFOVxmin == 0:
+            #    self.totalFOVxmin = -self.FOVa_x / 2
+            #if self.totalFOVymin == 0:
+            #    self.totalFOVymin = -self.FOVa_y / 2
+            #if self.totalFOVzmin == 0:
+            #    self.totalFOVzmin = -self.axial_fov / 2
+            #if self.totalFOVxmax == 0:
+            #    self.totalFOVxmax = self.FOVa_x / 2
+            #if self.totalFOVymax == 0:
+            #    self.totalFOVymax = self.FOVa_y / 2
+            #if self.totalFOVzmax == 0:
+            #    self.totalFOVzmax = self.axial_fov / 2 
             if self.projector_type == 6 and len(self.SinM > 0):
                 endSinogramRows = self.FOVa_x / self.dPitchX; # Desired amount of sinogram rows
                 endSinogramCols = self.axial_fov / self.dPitchY; # Desired amount of sinogram columns
@@ -941,6 +943,41 @@ class projectorClass:
         if not isinstance(self.Nz, np.ndarray):
             self.Nz = np.array(self.Nz, dtype=np.uint32, ndmin=1)
         xx, yy, zz = computePixelSize(self)
+        
+        if np.size(self.FOVa_x) == 1:  # No eFOV
+            FOV = np.array([
+                self.FOVa_x,
+                self.FOVa_y,
+                self.axial_fov
+            ], dtype=np.float32)
+        elif np.size(self.FOVa_x) == 3:  # Axial eFOV only
+            FOV = np.array([
+                self.FOVa_x[0],
+                self.FOVa_y[0],
+                np.sum(self.axial_fov)
+            ], dtype=np.float32)
+        elif np.size(self.FOVa_x) == 5:  # Transaxial eFOV only
+            FOV = np.array([
+                self.FOVa_x[0] + self.FOVa_x[1] + self.FOVa_x[2],
+                self.FOVa_y[0] + self.FOVa_y[3] + self.FOVa_y[4],
+                self.axial_fov[0]
+            ], dtype=np.float32)
+        elif np.size(self.FOVa_x) == 7:  # Axial + transaxial eFOV
+            FOV = np.array([
+                self.FOVa_x[0] + self.FOVa_x[3] + self.FOVa_x[4],
+                self.FOVa_y[0] + self.FOVa_y[5] + self.FOVa_y[6],
+                self.axial_fov[0] + self.axial_fov[1] + self.axial_fov[2]
+            ], dtype=np.float32)
+        else:
+            raise ValueError("Unexpected size for FOVa_x")
+
+        self.totalFOVxmin = -FOV[0] / 2 + self.oOffsetX + self.eFOVShift[0]
+        self.totalFOVymin = -FOV[1] / 2 + self.oOffsetY + self.eFOVShift[1]
+        self.totalFOVzmin = -FOV[2] / 2 + self.oOffsetZ + self.eFOVShift[2]
+        self.totalFOVxmax =  FOV[0] / 2 + self.oOffsetX + self.eFOVShift[0]
+        self.totalFOVymax =  FOV[1] / 2 + self.oOffsetY + self.eFOVShift[1]
+        self.totalFOVzmax =  FOV[2] / 2 + self.oOffsetZ + self.eFOVShift[2]
+        
         formSubsetIndices(self)
         if ((self.CT or self.PET or self.SPECT) and self.projector_type != 6) and self.listmode == 0:
             if self.subsetType >= 8 and self.subsets > 1 and not self.FDK:
@@ -1628,61 +1665,130 @@ class projectorClass:
         self.NzFull = nz
         if self.useEFOV:
             if self.useMultiResolutionVolumes:
+                dxM = self.FOVxOrig / (self.NxOrig * self.multiResolutionScale)
+                dyM = self.FOVyOrig / (self.NyOrig * self.multiResolutionScale)
+                dzM = self.axialFOVOrig / (self.NzOrig * self.multiResolutionScale)
+                
+                FOVxM0 = self.FOVxOrig
+                FOVyM0 = self.FOVyOrig
+                FOVzM0 = self.axialFOVOrig
+
+                NxM0 = self.NxOrig
+                NyM0 = self.NyOrig
+                NzM0 = self.NzOrig
+                
+                if self.axialEFOV:
+                    FOVxM1 = self.FOVxOrig
+                    FOVxM2 = self.FOVxOrig
+                    NxM1 = round(FOVxM1 / dxM)
+                    NxM2 = round(FOVxM2 / dxM)
+                    
+                    FOVyM1 = self.FOVyOrig
+                    FOVyM2 = self.FOVyOrig
+                    NyM1 = round(FOVyM1 / dyM)
+                    NyM2 = round(FOVyM2 / dyM)
+                    
+                    FOVzM1 = (self.axial_fov - self.axialFOVOrig) / 2 - self.eFOVShift[2]
+                    FOVzM2 = (self.axial_fov - self.axialFOVOrig) / 2 + self.eFOVShift[2]
+                    NzM1 = round(FOVzM1 / dzM)
+                    NzM2 = round(FOVzM2 / dzM)
+                    
+                if self.transaxialEFOV:
+                    FOVxM3 = (self.FOVa_x - self.FOVxOrig) / 2 - self.eFOVShift[0]
+                    FOVxM4 = (self.FOVa_x - self.FOVxOrig) / 2 + self.eFOVShift[0]
+                    FOVxM5 = self.FOVxOrig
+                    FOVxM6 = self.FOVxOrig
+                    
+                    NxM3 = round(FOVxM3 / dxM)
+                    NxM4 = round(FOVxM4 / dxM)
+                    NxM5 = round(self.NxOrig * self.multiResolutionScale)
+                    NxM6 = round(self.NxOrig * self.multiResolutionScale)
+                    
+                    FOVyM3 = self.FOVa_y
+                    FOVyM4 = self.FOVa_y
+                    FOVyM5 = (self.FOVa_y - self.FOVyOrig) / 2 - self.eFOVShift[1]
+                    FOVyM6 = (self.FOVa_y - self.FOVyOrig) / 2 + self.eFOVShift[1]
+                    
+                    NyM3 = round(FOVyM3 / dyM)
+                    NyM4 = round(FOVyM4 / dyM)
+                    NyM5 = round(FOVyM5 / dyM)
+                    NyM6 = round(FOVyM6 / dyM)
+                
                 if self.axialEFOV and self.transaxialEFOV:
                     from scipy.ndimage import zoom
                     self.nMultiVolumes = 6
                 
-                    NxM = round(self.NxOrig * self.multiResolutionScale)
-                    dxM = self.FOVxOrig / NxM
-                    NyM = round(self.NyOrig * self.multiResolutionScale)
-                    dyM = self.FOVyOrig / NyM
-                    NzM = round(self.NzOrig * self.multiResolutionScale)
-                    dzM = self.axialFOVOrig / NzM
-                
-                    NxM2 = round((self.FOVa_x - self.FOVxOrig) / 2 / dxM) * 2
-                    FOVxM = NxM2 * dxM
-                    NyM2 = round((self.FOVa_y - self.FOVyOrig) / 2 / dyM) * 2
-                    FOVyM = NyM2 * dyM
-                    NzM2 = round((self.axial_fov - self.axialFOVOrig) / 2 / dzM) * 2
-                    FOVzM = NzM2 * dzM
-                
                     self.FOVa_x = np.array([
-                        self.FOVxOrig, self.FOVxOrig, self.FOVxOrig,
-                        FOVxM / 2, FOVxM / 2,
-                        self.FOVxOrig, self.FOVxOrig
-                    ], dtype=np.float32)
-                
-                    self.FOVa_y = np.array([
-                        self.FOVyOrig, self.FOVyOrig, self.FOVyOrig,
-                        FOVyM + self.FOVyOrig, FOVyM + self.FOVyOrig,
-                        FOVyM / 2, FOVyM / 2
-                    ], dtype=np.float32)
-                
-                    self.axial_fov = np.array([
-                        self.axialFOVOrig, FOVzM / 2, FOVzM / 2,
-                        FOVzM + self.axialFOVOrig, FOVzM + self.axialFOVOrig,
-                        FOVzM + self.axialFOVOrig, FOVzM + self.axialFOVOrig
+                        FOVxM0,
+                        FOVxM1,
+                        FOVxM2,
+                        FOVxM3,
+                        FOVxM4,
+                        FOVxM5,
+                        FOVxM6
                     ], dtype=np.float32)
                 
                     self.Nx = np.array([
-                        self.NxOrig, NxM, NxM,
-                        NxM2 // 2, NxM2 // 2,
-                        NxM, NxM
+                        NxM0,
+                        NxM1,
+                        NxM2,
+                        NxM3,
+                        NxM4,
+                        NxM5,
+                        NxM6
                     ], dtype=np.uint32)
+
+                    self.FOVa_y = np.array([
+                        FOVyM0,
+                        FOVyM1,
+                        FOVyM2,
+                        FOVyM3,
+                        FOVyM4,
+                        FOVyM5,
+                        FOVyM6
+                    ], dtype=np.float32)
                 
                     self.Ny = np.array([
-                        self.NyOrig, NyM, NyM,
-                        NyM + NyM2, NyM + NyM2,
-                        NyM2 // 2, NyM2 // 2
+                        NyM0,
+                        NyM1,
+                        NyM2,
+                        NyM3,
+                        NyM4,
+                        NyM5,
+                        NyM6
                     ], dtype=np.uint32)
+                    
+                    FOVzM3 = self.axial_fov
+                    FOVzM4 = self.axial_fov
+                    FOVzM5 = self.axial_fov
+                    FOVzM6 = self.axial_fov
+                    
+                    self.axial_fov = np.array([
+                        FOVzM0,
+                        FOVzM1,
+                        FOVzM2,
+                        FOVzM3,
+                        FOVzM4,
+                        FOVzM5,
+                        FOVzM6
+                    ], dtype=np.float32)
+
+                    NzM3 = round(FOVzM3 / dzM)
+                    NzM4 = round(FOVzM4 / dzM)
+                    NzM5 = round(FOVzM5 / dzM)
+                    NzM6 = round(FOVzM6 / dzM)
                 
                     self.Nz = np.array([
-                        self.NzOrig, NzM2 // 2, NzM2 // 2,
-                        NzM + NzM2, NzM + NzM2,
-                        NzM + NzM2, NzM + NzM2
+                        NzM0,
+                        NzM1,
+                        NzM2,
+                        NzM3,
+                        NzM4,
+                        NzM5,
+                        NzM6
                     ], dtype=np.uint32)
                 
-                    print(f"Extended FOV is {(FOVxM + self.FOVxOrig) / self.FOVxOrig * 100:.2f} % of the original")
+                    print(f"Extended FOV is {FOVyM3 / self.FOVxOrig * 100:.2f} % of the original")
                 
                     if self.x0.shape[0] == nx and np.min(self.x0) != np.max(self.x0):
                         apu = zoom(self.x0, self.multiResolutionScale, order=1).astype(np.float32)
@@ -1748,26 +1854,57 @@ class projectorClass:
                 elif self.transaxialEFOV and not self.axialEFOV:
                     self.nMultiVolumes = 4
                 
-                    NxM = round(self.NxOrig * self.multiResolutionScale)
-                    dxM = self.FOVxOrig / NxM
-                    NyM = round(self.NyOrig * self.multiResolutionScale)
-                    dyM = self.FOVyOrig / NyM
-                    NzM = round(self.NzOrig * self.multiResolutionScale)
+                    self.FOVa_x = np.array([
+                        FOVxM0,
+                        FOVxM3,
+                        FOVxM4,
+                        FOVxM5,
+                        FOVxM6
+                    ], dtype=np.float32)
                 
-                    NxM2 = round((self.FOVa_x - self.FOVxOrig) / 2 / dxM) * 2
-                    FOVxM = NxM2 * dxM
-                    NyM2 = round((self.FOVa_y - self.FOVyOrig) / 2 / dyM) * 2
-                    FOVyM = NyM2 * dyM
+                    self.Nx = np.array([
+                        NxM0,
+                        NxM3,
+                        NxM4,
+                        NxM5,
+                        NxM6
+                    ], dtype=np.uint32)
+
+                    self.FOVa_y = np.array([
+                        FOVyM0,
+                        FOVyM3,
+                        FOVyM4,
+                        FOVyM5,
+                        FOVyM6
+                    ], dtype=np.float32)
                 
-                    self.FOVa_x = np.array([self.FOVxOrig, FOVxM / 2, FOVxM / 2, self.FOVxOrig, self.FOVxOrig], dtype=np.float32)
-                    self.FOVa_y = np.array([self.FOVyOrig, FOVyM + self.FOVyOrig, FOVyM + self.FOVyOrig, FOVyM / 2, FOVyM / 2], dtype=np.float32)
-                    self.axial_fov = np.array([self.axialFOVOrig] * 5, dtype=np.float32)
+                    self.Ny = np.array([
+                        NyM0,
+                        NyM3,
+                        NyM4,
+                        NyM5,
+                        NyM6
+                    ], dtype=np.uint32)
+                    
+                    NzM = round(self.Nz * self.multiResolutionScale)
+                    
+                    self.axial_fov = np.array([
+                        self.axialFOVOrig,
+                        self.axialFOVOrig,
+                        self.axialFOVOrig,
+                        self.axialFOVOrig,
+                        self.axialFOVOrig
+                    ], dtype=np.float32)
                 
-                    self.Nx = np.array([self.NxOrig, NxM2 // 2, NxM2 // 2, NxM, NxM], dtype=np.uint32)
-                    self.Ny = np.array([self.NyOrig, NyM + NyM2, NyM + NyM2, NyM2 // 2, NyM2 // 2], dtype=np.uint32)
-                    self.Nz = np.array([self.NzOrig, NzM, NzM, NzM, NzM], dtype=np.uint32)
+                    self.Nz = np.array([
+                        NzM0,
+                        NzM,
+                        NzM,
+                        NzM,
+                        NzM
+                    ], dtype=np.uint32)
                 
-                    print(f"Extended FOV is {(FOVxM + self.FOVxOrig) / self.FOVxOrig * 100:.2f} % of the original")
+                    print(f"Extended FOV is {FOVyM3 / self.FOVyOrig * 100:.2f} % of the original")
                 
                     if self.x0.shape[0] == nx and np.min(self.x0) != np.max(self.x0):
                         apu = zoom(self.x0, self.multiResolutionScale, order=1).astype(np.float32)
@@ -1795,24 +1932,43 @@ class projectorClass:
                 elif not self.transaxialEFOV and self.axialEFOV:
                     self.nMultiVolumes = 2
                 
-                    NxM = round(self.NxOrig * self.multiResolutionScale)
-                    NyM = round(self.NyOrig * self.multiResolutionScale)
-                    NzM = round(self.NzOrig * self.multiResolutionScale)
-                    dzM = self.axialFOVOrig / NzM
-                    NzM2 = round((self.axial_fov - self.axialFOVOrig) / 2 / dzM) * 2
-                    FOVzM = NzM2 * dzM
-                
-                    self.FOVa_x = np.array([self.FOVxOrig] * 3, dtype=np.float32)
-                    self.FOVa_y = np.array([self.FOVyOrig] * 3, dtype=np.float32)
-                    self.axial_fov = np.array([
-                        self.axialFOVOrig, FOVzM / 2, FOVzM / 2
+                    self.FOVa_x = np.array([
+                        FOVxM0,
+                        FOVxM1,
+                        FOVxM2
                     ], dtype=np.float32)
                 
-                    self.Nx = np.array([self.NxOrig, NxM, NxM], dtype=np.uint32)
-                    self.Ny = np.array([self.NyOrig, NyM, NyM], dtype=np.uint32)
-                    self.Nz = np.array([self.NzOrig, NzM2 // 2, NzM2 // 2], dtype=np.uint32)
+                    self.Nx = np.array([
+                        NxM0,
+                        NxM1,
+                        NxM2
+                    ], dtype=np.uint32)
+
+                    self.FOVa_y = np.array([
+                        FOVyM0,
+                        FOVyM1,
+                        FOVyM2
+                    ], dtype=np.float32)
                 
-                    print(f"Extended FOV is {(FOVzM + self.axialFOVOrig) / self.axialFOVOrig * 100:.2f} % of the original")
+                    self.Ny = np.array([
+                        NyM0,
+                        NyM1,
+                        NyM2
+                    ], dtype=np.uint32)
+                    
+                    self.axial_fov = np.array([
+                        FOVzM0,
+                        FOVzM1,
+                        FOVzM2
+                    ], dtype=np.float32)
+
+                    self.Nz = np.array([
+                        NzM0,
+                        NzM1,
+                        NzM2
+                    ], dtype=np.uint32)
+                
+                    print(f"Extended FOV is {(FOVzM1 + FOVzM2 + self.axialFOVOrig) / self.axialFOVOrig * 100:.2f} % of the original")
                 
                     if self.x0.shape[0] == nx and np.min(self.x0) != np.max(self.x0):
                         apu = zoom(self.x0, self.multiResolutionScale, order=1).astype(np.float32)
@@ -1841,15 +1997,21 @@ class projectorClass:
             else:
                 if self.eFOVIndices.size < 1:
                     self.eFOVIndices = np.zeros((self.Nz,1), dtype=np.uint8)
-                    self.eFOVIndices[(self.Nz - self.NzOrig)//2 : -(self.Nz - self.NzOrig)//2 - 1] = 1
+                    self.eFOVIndices[(self.Nz - self.NzOrig)//2 + self.eFOVShift_Nz : -(self.Nz - self.NzOrig)//2 + self.eFOVShift_Nz - 1] = 1
                 self.NzPrior = np.sum(self.eFOVIndices, dtype=np.uint32)
                 self.maskPrior = np.zeros((self.Nx, self.Ny), dtype=np.uint8)
-                self.maskPrior[(self.Nx - self.NxOrig)//2 : -(self.Nx - self.NxOrig)//2 - 1, (self.Ny - self.NyOrig)//2 : -(self.Ny - self.NyOrig)//2 - 1] = 1
+                self.maskPrior[(self.Nx - self.NxOrig)//2 - self.eFOVShift_Nx : -(self.Nx - self.NxOrig)//2 - self.eFOVShift_Nx - 1, (self.Ny - self.NyOrig)//2 - self.eFOVShift_Ny : -(self.Ny - self.NyOrig)//2 - self.eFOVShift_Ny - 1] = 1
+                
+                #from matplotlib import pyplot as plt
+                #plt.imshow(self.maskPrior, vmin=0)
+                #plt.show()
+                
                 self.NxPrior = np.sum(self.maskPrior[:,int(np.round(self.maskPrior.shape[1]/2))], dtype=np.uint32)
                 self.NyPrior = np.sum(self.maskPrior[int(np.round(self.maskPrior.shape[0]/2)),:], dtype=np.uint32)
                 if self.useMaskBP:
                     self.maskPrior = self.maskPrior + (1 - self.maskBP)
         else:
+            self.eFOVShift = [0, 0, 0]
             self.NxPrior = self.Nx
             self.NyPrior = self.Ny
             self.NzPrior = self.Nz
