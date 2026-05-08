@@ -397,6 +397,7 @@ class projectorClass:
     ASD_POCS = False
     FDK = False
     SAGA = False
+    BB = False
     MRP = False
     quad = False
     Huber = False
@@ -509,7 +510,7 @@ class projectorClass:
         # C-struct
         self.param = self.parameters()
     def addProjector(self):
-        if self.OSL_OSEM or self.MBSREM or self.ROSEM_MAP or self.OSL_RBI or self.OSL_COSEM > 0 or self.PKMA or self.SPS or self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.CV or self.SAGA or self.SART or self.ASD_POCS:
+        if self.OSL_OSEM or self.MBSREM or self.ROSEM_MAP or self.OSL_RBI or self.OSL_COSEM > 0 or self.PKMA or self.SPS or self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.CV or self.SAGA or self.BB or self.SART or self.ASD_POCS:
             self.MAP = True
         if hasattr(self, 'dPitch') and self.dPitch > 0 and self.dPitchX == 0.:
             self.dPitchX = self.dPitch
@@ -1352,7 +1353,7 @@ class projectorClass:
                     
                 algorithms = [
                     "OSEM", "MRAMLA", "RAMLA", "RBI", "ROSEM", "DRAMA", "COSEM", "ECOSEM", "ACOSEM", "LSQR", "CGLS", "FDK", "FISTA", "FISTAL1",
-                    "OSL_OSEM", "MBSREM", "BSREM", "OSL_RBI", "OSL_COSEM", "ROSEM_MAP", "PKMA", "SART", "ASD_POCS", "SAGA",
+                    "OSL_OSEM", "MBSREM", "BSREM", "OSL_RBI", "OSL_COSEM", "ROSEM_MAP", "PKMA", "SART", "ASD_POCS", "SAGA","BB",
                     "PDHG", "PDHGL1", "PDDY", "PDHGKL", "CV" ]
                 
                 
@@ -2133,6 +2134,7 @@ class projectorClass:
             ('POCS', ctypes.c_bool),
             ('FDK', ctypes.c_bool),
             ('SAGA', ctypes.c_bool),
+            ('BB', ctypes.c_bool),
             ('MRP', ctypes.c_bool),
             ('quad', ctypes.c_bool),
             ('Huber', ctypes.c_bool),

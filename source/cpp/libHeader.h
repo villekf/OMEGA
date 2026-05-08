@@ -345,6 +345,7 @@ struct inputStruct {
     bool POCS = false;
     bool FDK = false;
     bool SAGA = false;
+    bool BB = false;
     bool MRP = false;
     bool quad = false;
     bool Huber = false;
@@ -580,6 +581,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     MethodList.PDDY = options.PDDY;
     MethodList.POCS = options.POCS;
     MethodList.SAGA = options.SAGA;
+    MethodList.BB = options.BB;
 
     // Whether MAP/prior-based algorithms are used
     MethodList.MAP = options.MAP;
