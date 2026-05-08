@@ -20,6 +20,8 @@ maximum value of the input projections is used if not available.
 
 Example data available from: https://doi.org/10.5281/zenodo.12722386
 """
+import os
+import scipy.io
 import numpy as np
 from omegatomo.projector import proj
 from omegatomo.util import CTEFOVCorrection
@@ -53,7 +55,7 @@ options.verbose = 1
 ###########################################################################
 
 # Load input data
-fpath = 'Planmeca_VisoG7_100kV_80mAs_500proj_kneePhantom.mat'
+fpath = '/home/razazizi/Planmeca_VisoG7_100kV_80mAs_500proj_kneePhantom.mat'
 from pymatreader import read_mat
 var = read_mat(fpath)
 
@@ -280,7 +282,7 @@ options.dL = 0.5
 
 ######################### RECONSTRUCTION SETTINGS #########################
 ### Number of iterations (all reconstruction methods)
-options.Niter = 10
+options.Niter = 500
 ### Save specific intermediate iterations
 # You can specify the intermediate iterations you wish to save here. Note
 # that this uses zero-based indexing, i.e. 0 is the first iteration (not
@@ -293,7 +295,7 @@ options.saveNIter = np.empty(0)
 # options.save_iter = False
 
 ### Number of subsets
-options.subsets = 20
+options.subsets = 1
 
 ### Subset type (n = subsets)
 # 1 = Every nth (column) measurement is taken
@@ -354,7 +356,7 @@ options.FDK = False
 options.PKMA = False
 
 ### Primal-dual hybrid gradient (PDHG)
-options.PDHG = True
+options.PDHG = False
 
 ### Primal-dual hybrid gradient (PDHG) with L1 minimization
 options.PDHGL1 = False
@@ -362,7 +364,8 @@ options.PDHGL1 = False
 ### Primal-dual Davis-Yin (PDDY)
 options.PDDY = False
 
-
+### Barzilai-borwein
+options.BB = True
 ################################# PRIORS ##################################
 ### Total Generalized Variation (TGV) prior
 options.TGV = False
@@ -431,7 +434,7 @@ options.PDAdaptiveType = 0
 # Default values are False
 # precondTypeMeas(0) = Diagonal normalization preconditioner (1 / (A1))
 # precondTypeMeas(1) = Filtering-based preconditioner
-options.precondTypeMeas[1] = True
+options.precondTypeMeas[1] = False
 
 # Number of filtering iterations
 # Applies to both precondTypeMeas(1) and precondTypeImage(5)
@@ -583,9 +586,19 @@ pz, fp = reconstructions_mainCT(options)
 toc = time.perf_counter()
 print(f"{toc - tic:0.4f} seconds")
 
-z = np.int16(pz[:,:,:] * 55000) - 1000
+#z = np.int16(pz[:,:,:] * 55000) - 1000
 
-plt.pyplot.imshow(pz[:,:,120])
+#plt.pyplot.imshow(pz[:,:,120])
+savefolder = "/research/work/razazizi/result"
+filename = "bb500.mat"
+savefile = os.path.join(savefolder, filename)
 
-from omegatomo.util.volume3Dviewer import volume3Dviewer
-volume3Dviewer(pz, [-1000, 2000])
+scipy.io.savemat(savefile,{"f":pz} )
+savefolder = "/research/groups/CTRecon/"
+filename = "bb500.mat"
+savefile = os.path.join(savefolder, filename)
+
+scipy.io.savemat(savefile,{"f":pz} )
+print('f was saved')
+#from omegatomo.util.volume3Dviewer import volume3Dviewer
+#volume3Dviewer(pz, [-1000, 2000])

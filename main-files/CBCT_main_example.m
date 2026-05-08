@@ -37,7 +37,7 @@ options.verbose = 1;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-load Planmeca_VisoG7_100kV_80mAs_500proj_kneePhantom.mat
+load /home/razazizi/Planmeca_VisoG7_100kV_80mAs_500proj_kneePhantom.mat
 
 % Flat field corrected projections
 options.SinM = proj;
@@ -110,12 +110,15 @@ options.z = zCoord;
 
 %%% Reconstructed image pixel count (X/row-direction)
 options.Nx = 801;
+%options.Nx = 400;
 
 %%% Y/column-direction
 options.Ny = 801;
+%options.Ny = 400;
 
 %%% Z-direction (number of slices) (axial)
 options.Nz = 668;
+%options.Nz = 334;
 
 % Use these two to rotate/flip the final image
 %%% Flip the image (in horizontal direction)?
@@ -306,7 +309,7 @@ options.saveNIter = [];
 % options.save_iter = false;
 
 %%% Number of subsets (excluding subset_type = 6)
-options.subsets = 20;
+options.subsets = 1;
 
 %%% Subset type (n = subsets)
 % 1 = Every nth (column) measurement is taken
@@ -370,7 +373,9 @@ options.PKMA = false;
 
 %%% Primal-dual hybrid gradient (PDHG)
 % Supported by implementations 1, 2, 4, and 5
-options.PDHG = true;
+options.PDHG = false;
+
+options.BB = true;
 
 %%% Primal-dual hybrid gradient (PDHG) with L1 minimization
 % Supported by implementations 1, 2, 4, and 5
@@ -390,7 +395,7 @@ options.SAGA = false;
 
 %%% Barzilai-Borwein
 % Supported by implementation 2
-options.BB = false;
+options.BB = true;
 
 %%% ASD-POCS
 % Supported by implementation 2
@@ -461,7 +466,7 @@ options.PDAdaptiveType = 0;
 % Measurement-based preconditioners
 % precondTypeMeas(1) = Diagonal normalization preconditioner (1 / (A1))
 % precondTypeMeas(2) = Filtering-based preconditioner
-options.precondTypeMeas = [false;true];
+options.precondTypeMeas = [false;false];
 
 % Number of filtering iterations
 % Applies to both precondTypeMeas(2) and precondTypeImage(6)
