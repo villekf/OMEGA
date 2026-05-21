@@ -24,6 +24,8 @@ inline const bool getScalarBool(const mxArray* mx, int ind = 0, const char* name
             const bool scalar = (bool)mxGetScalar(mx);
             return scalar;
         }
+        else if (mxGetNumberOfElements(mx) == 0)
+            return false;
         else {
             mexErrMsgTxt("Scalar bool is not of size == [1 1].\n");
             return false;
@@ -47,6 +49,8 @@ inline const int8_t getScalarInt8(const mxArray* mx, int ind = 0, const char* na
             const int8_t scalar = (int8_t)mxGetScalar(mx);
             return scalar;
         }
+        else if (mxGetNumberOfElements(mx) == 0)
+            return 0;
         else {
             mexErrMsgTxt("Scalar int8 is not of size == [1 1].\n");
             return false;
@@ -70,6 +74,8 @@ inline const uint8_t getScalarUInt8(const mxArray* mx, int ind = 0, const char* 
             const uint8_t scalar = (uint8_t)mxGetScalar(mx);
             return scalar;
         }
+        else if (mxGetNumberOfElements(mx) == 0)
+            return 0;
         else {
             mexErrMsgTxt("Scalar uint8 is not of size == [1 1].\n");
             return false;
@@ -93,6 +99,8 @@ inline const int16_t getScalarInt16(const mxArray* mx, int ind = 0, const char* 
             const int16_t scalar = (int16_t)mxGetScalar(mx);
             return scalar;
         }
+        else if (mxGetNumberOfElements(mx) == 0)
+            return 0;
         else {
             mexErrMsgTxt("Scalar int16 is not of size == [1 1].\n");
             return false;
@@ -116,6 +124,8 @@ inline const uint16_t getScalarUInt16(const mxArray* mx, int ind = 0, const char
             const uint16_t scalar = (uint16_t)mxGetScalar(mx);
             return scalar;
         }
+        else if (mxGetNumberOfElements(mx) == 0)
+            return 0;
         else {
             mexErrMsgTxt("Scalar uint16 is not of size == [1 1].\n");
             return false;
@@ -139,6 +149,8 @@ inline const int32_t getScalarInt32(const mxArray* mx, int ind = 0, const char* 
             const int32_t scalar = (int32_t)mxGetScalar(mx);
             return scalar;
         }
+        else if (mxGetNumberOfElements(mx) == 0)
+            return 0L;
         else {
             mexErrMsgTxt("Scalar int32 is not of size == [1 1].\n");
             return false;
@@ -162,6 +174,8 @@ inline const uint32_t getScalarUInt32(const mxArray* mx, int ind = 0, const char
             const uint32_t scalar = (uint32_t)mxGetScalar(mx);
             return scalar;
         }
+        else if (mxGetNumberOfElements(mx) == 0)
+            return 0UL;
         else {
             mexErrMsgTxt("Scalar uint32 is not of size == [1 1].\n");
             return false;
@@ -186,6 +200,8 @@ inline const int64_t getScalarInt64(const mxArray* mx, int ind = 0, const char* 
             const int64_t scalar = (int64_t)mxGetScalar(mx);
             return scalar;
         }
+        else if (mxGetNumberOfElements(mx) == 0)
+            return 0LL;
         else {
             mexErrMsgTxt("Scalar int64 is not of size == [1 1].\n");
             return false;
@@ -209,6 +225,8 @@ inline const uint64_t getScalarUInt64(const mxArray* mx, int ind = 0, const char
             const uint64_t scalar = (uint64_t)mxGetScalar(mx);
             return scalar;
         }
+        else if (mxGetNumberOfElements(mx) == 0)
+            return 0ULL;
         else {
             mexErrMsgTxt("Scalar uint64 is not of size == [1 1].\n");
             return false;
@@ -257,6 +275,8 @@ inline const double getScalarDouble(const mxArray* mx, int ind = 0, const char* 
             const double scalar = mxGetScalar(mx);
             return scalar;
         }
+        else if (mxGetNumberOfElements(mx) == 0)
+            return 0.;
         else {
             mexErrMsgTxt("Scalar double is not of size == [1 1].\n");
             return false;
