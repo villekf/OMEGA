@@ -311,6 +311,9 @@ def CommandLine(args=None):
        elif os.path.exists('/usr/lib/x86_64-linux-gnu/'):
            openclpath = '/usr/include'
            opencllib = '/usr/lib/x86_64-linux-gnu/'
+       else:
+           openclpath = '/usr/include'
+           opencllib = '/usr/lib64'
        # if len(openclpath) == 0:
        #     raise ValueError('OpenCL not found! Please install OpenCL headers and library')
        aflib = ''
