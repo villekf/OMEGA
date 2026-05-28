@@ -1,12 +1,25 @@
 # -*- coding: utf-8 -*-
 """
-## Python code for GATE TOF PET reconstruction using ROOT or precomputed input
-# Note that this file does not contain all adjustable parameters. These
-# omitted parameters will thus use default values. For the list of all
-# adjustable parameters see main_PET_full.py file.
+Python code for GATE TOF PET reconstruction using ROOT or precomputed input
 
-# You can use the same example data as with MATLAB/Octave version. mat-files
-# are also supported: https://doi.org/10.5281/zenodo.12743217
+This example is almost identical with PET_main_gateExample except that
+here we assume TOF capability. TOF settings are adjusted in the 
+TOF PROPERTIES section below. Any GATE data that stores the time indices
+can be converted into TOF data. See the TOF PROPERTIES for all the 
+adjustable parameters (around line 510).
+Note that this file does not contain ALL adjustable parameters. These
+omitted parameters will thus use default values. For the list of all
+adjustable parameters see main_PET_full.m file.
+You can use https://doi.org/10.5281/zenodo.12743217 as example data
+
+Unlike the other Python examples, this one does NOT load ROOT files by
+default. You will be prompted for the sinogram datafile when running this
+file (MAT or NPY/NPZ file). Alternatively, uncomment the ROOT data load
+around line 1368 and load the data directly from the ROOT files.
+
+This example is based on the GATE 9 PET example scanner from the GATE doc:
+https://opengate.readthedocs.io/en/latest/defining_a_system_scanner_ct_pet_spect_optical.html#id3
+The TOF settings are not based on anything.
 """
 import numpy as np
 from omegatomo.projector import proj

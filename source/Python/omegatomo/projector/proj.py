@@ -399,6 +399,7 @@ class projectorClass:
     ASD_POCS = False
     FDK = False
     SAGA = False
+    BB = False
     MRP = False
     quad = False
     Huber = False
@@ -511,7 +512,7 @@ class projectorClass:
         # C-struct
         self.param = self.parameters()
     def addProjector(self):
-        if self.OSL_OSEM or self.MBSREM or self.ROSEM_MAP or self.OSL_RBI or self.OSL_COSEM > 0 or self.PKMA or self.SPS or self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.CV or self.SAGA or self.SART or self.ASD_POCS:
+        if self.OSL_OSEM or self.MBSREM or self.ROSEM_MAP or self.OSL_RBI or self.OSL_COSEM > 0 or self.PKMA or self.SPS or self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.CV or self.SAGA or self.BB or self.SART or self.ASD_POCS:
             self.MAP = True
         if hasattr(self, 'dPitch') and self.dPitch > 0 and self.dPitchX == 0.:
             self.dPitchX = self.dPitch
@@ -1101,7 +1102,7 @@ class projectorClass:
             print("Axial FOV is too small, crystal ring(s) on the boundary have no slices!")
         if self.SPECT and math.sqrt(self.nRays) % 1 != 0:
             raise ValueError("With SPECT, options.nRays has to be a square")
-        if self.SPECT and self.projector_type in [2, 12, 21, 22]:
+        if self.SPECT and self.projector_type in [2, 12, 21, 22] and self.nRays > 1:
             print('Orthogonal distance ray tracer should be used with 1 ray.')
         if not(self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.PKMA or self.FISTA or self.FISTAL1 or self.MBSREM or self.SPS or self.MRAMLA) and any(self.precondTypeImage):
             print("Image-based preconditioning selected, but the selected algorithm(s) do not support preconditioning. No preconditioning will be performed.")
@@ -1389,7 +1390,7 @@ class projectorClass:
                     
                 algorithms = [
                     "OSEM", "MRAMLA", "RAMLA", "RBI", "ROSEM", "DRAMA", "COSEM", "ECOSEM", "ACOSEM", "LSQR", "CGLS", "FDK", "FISTA", "FISTAL1",
-                    "OSL_OSEM", "MBSREM", "BSREM", "OSL_RBI", "OSL_COSEM", "ROSEM_MAP", "PKMA", "SART", "ASD_POCS", "SAGA",
+                    "OSL_OSEM", "MBSREM", "BSREM", "OSL_RBI", "OSL_COSEM", "ROSEM_MAP", "PKMA", "SART", "ASD_POCS", "SAGA","BB",
                     "PDHG", "PDHGL1", "PDDY", "PDHGKL", "CV" ]
                 
                 
@@ -2295,6 +2296,7 @@ class projectorClass:
             ('POCS', ctypes.c_bool),
             ('FDK', ctypes.c_bool),
             ('SAGA', ctypes.c_bool),
+            ('BB', ctypes.c_bool),
             ('MRP', ctypes.c_bool),
             ('quad', ctypes.c_bool),
             ('Huber', ctypes.c_bool),

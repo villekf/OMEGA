@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-## Python code for GATE PET reconstruction using ROOT or precomputed input
-# Note that this file does not contain all adjustable parameters. These
-# omitted parameters will thus use default values. For the list of all
-# adjustable parameters see main_PET_full.py file.
+Python code for GATE PET reconstruction using ROOT or precomputed input
 
-# You can use the same example data as with MATLAB/Octave version. mat-files
-# are also supported: https://doi.org/10.5281/zenodo.12743217
+Note that this file does not contain all adjustable parameters. These
+omitted parameters will thus use default values. For the list of all
+adjustable parameters see main_PET_full.py file.
+Unlike the MATLAB/Octave example, this file loads the data from the original
+ROOT files. You can input the measurement data directly into options.SinM or
+put options.use_root = False below and then select a presaved sinogram file
+when prompted (MAT or NPY/NPZ file).
+This example is based on the GATE 9 PET example scanner from the GATE doc:
+https://opengate.readthedocs.io/en/latest/defining_a_system_scanner_ct_pet_spect_optical.html#id3
 """
 import numpy as np
 from omegatomo.projector import proj

@@ -3,6 +3,17 @@
 % Inveon preclinical list-mode PET data
 % (https://zenodo.org/records/3528056), but any sinogram PET data can be
 % used.
+% You'll need to modify the SCANNER PROPERTIES and SINOGRAM PROPERTIES below
+% if you wish to use your own data, and possibly the image properties, too.
+% All corrections except normalization are off by default here.
+
+% Note that custom algorithm refers to your own algorithms and not the
+% built-in algorithms. This example merely has the OSEM and MLEM algorithms
+% shown as examples. The forward and/or backward projections of OMEGA are
+% utilized for the computation of these algorithms. The idea of this example
+% is to show how you can compute your own algorithms with the OMEGA projector
+% operators and utilizing many of the built-in features such as subsets and
+% corrections.
 
 clear
 

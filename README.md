@@ -30,9 +30,9 @@ Open-source multi-dimensional tomographic reconstruction software for MATLAB, GN
 
 OMEGA is a piece of software for [MATLAB](https://www.mathworks.com/), [GNU Octave](https://www.gnu.org/software/octave/) and [Python](https://www.python.org/) to reconstruct tomographic data. The purpose of OMEGA is twofold. First, it is designed to allow easy, fast, and efficient reconstruction for any ray-tracing based tomographic imaging modality. Second, it is intended for easy algorithmic development by allowing easy matrix-free implementation of the forward (`A * x`) and backward (`A^T * y`) projection operations. While OMEGA allows the use of any ray-tracing based tomographic data, it is optimized for positron emission tomography (PET), computed tomography (CT) and single photon emission computed tomography (SPECT).
 
-See [Features](https://omega-doc.readthedocs.io/en/latest/features.html) for more information on available features. See Known Issues and Limitations below for software limitations. If you wish to add your own code (e.g. reconstruction algorithm) see [Contributing code to OMEGA](https://github.com/villekf/OMEGA/wiki/Contributing-code-to-OMEGA).
+See [Features](https://omega-doc.readthedocs.io/latest/features.html) for more information on available features. See Known Issues and Limitations below for software limitations. If you wish to add your own code (e.g. reconstruction algorithm) see [Contributing code to OMEGA](https://github.com/villekf/OMEGA/wiki/Contributing-code-to-OMEGA).
 
-Documentation for the current version is available at https://omega-doc.readthedocs.io/en/latest/index.html
+Documentation for the current version is available at https://omega-doc.readthedocs.io/latest/index.html
 
 The algorithms implemented so far include:
 ### Projector models
@@ -86,7 +86,7 @@ The algorithms implemented so far include:
 
 ## Getting Started
 
-For detailed installation instructions, see https://omega-doc.readthedocs.io/en/latest/installation.html. For basic usage, see https://omega-doc.readthedocs.io/en/latest/usage.html
+For detailed installation instructions, see https://omega-doc.readthedocs.io/latest/installation.html. For basic usage, see https://omega-doc.readthedocs.io/latest/usage.html
 
 Precompiled libraries are included in [releases](https://github.com/villekf/OMEGA/releases) and in the pip version in Python and in the MATLAB toolbox for MATLAB. For Python, the pip version is recommended (`pip install omegatomo`) and for MATLAB the toolbox file located in [releases](https://github.com/villekf/OMEGA/releases).
 
@@ -112,7 +112,7 @@ The following third-party MATLAB codes are NOT required, but can be useful in ce
 
 ### Windows / Linux
 
-For additional install help, see [installation help](https://omega-doc.readthedocs.io/en/latest/installation.html).
+For additional install help, see [installation help](https://omega-doc.readthedocs.io/latest/installation.html).
 
 As a first step you should install either OpenCL (install either https://github.com/GPUOpen-LibrariesAndSDKs/OCL-SDK/releases/tag/1.0 for Windows or in Linux use `sudo apt install ocl-icd-opencl-dev`) or [CUDA](https://developer.nvidia.com/cuda-downloads), and then [ArrayFire](https://arrayfire.com/binaries/). See more details in the above link or below.
 
@@ -200,7 +200,7 @@ Using CUDA code instead of OpenCL requires the CUDA toolkit. On both cases the C
 additional input is required from the user if all the header and library data is found. By default `install_mex` and `compile.py` looks for CUDA in `/usr/local/cuda/` in Linux. 
 In Windows, CUDA location is determined from the environmental variables (PATH).
 
-For additional install help, see [installation help](https://omega-doc.readthedocs.io/en/latest/installation.html).
+For additional install help, see [installation help](https://omega-doc.readthedocs.io/latest/installation.html).
 
 Portions of version 2 were tested with the following GPUs: Nvidia Tesla A100, AMD Instinct MI100, Nvidia Tesla P100, Nvidia Tesla M40, Nvidia GeForce RTX 4060, Nvidia GeForce RTX 4090, AMD Radeon 7900 XT, Nvidia Titan RTX, Nvidia Quadro A6000 Ada, and Intel Arc A380.
 All the GPUs were tested on Linux except AMD Radeon 7900 XT which was tested on Windows.
@@ -211,7 +211,7 @@ For installation on MacOS you need Xcode. You also need the single-header versio
 
 ## Additional and upcoming features
 
-See [Features](https://omega-doc.readthedocs.io/en/latest/features.html) for more information on available features.
+See [Features](https://omega-doc.readthedocs.io/latest/features.html) for more information on available features.
 
 ### Independent functions
 The following features can be used as independent functions without any input needed from any other OMEGA files
@@ -246,7 +246,7 @@ Here is a list of features that should appear in future releases:
 
 Moving bed is not supported at the moment (needs to be step-and-shoot and the different bed positions need to be handled as separate cases). Though it should be possible to manually achieve a moving bed examination.
 
-Only cylindrical symmetric scanners are supported inherently for PET, for other types of scanners the user has to input the detector coordinates or use [index-based reconstruction](https://omega-doc.readthedocs.io/en/latest/customcoordinates.html#index-based-reconstruction).
+Only cylindrical symmetric scanners are supported inherently for PET, for other types of scanners the user has to input the detector coordinates or use [index-based reconstruction](https://omega-doc.readthedocs.io/latest/customcoordinates.html#index-based-reconstruction).
 
 For CT, only cone/fan beam flat/curved panel scanners are supported. For curved, only cylindrical scanners are supported, but support for spherical scanners is easy to add if needed. For other types of scanners, the user has to input the detector coordinates or modify the data such that it is approximately flat panel. There is some support for parallel beam cases, but the current implementation is slow.
 
@@ -268,9 +268,9 @@ Implementation 3 doesn't support TOF data. In general, implementation 3 is not r
 If you get GLIBCXX_3.4.XX/CXXABI_1.3.XX not found error (or similar with a different version number) or an error about "undefined reference to dlopen/dlclose/dlsomethingelse" when building or running files, this should be fixed with one of the methods presented here:  
 https://se.mathworks.com/matlabcentral/answers/329796-issue-with-libstdc-so-6
 
-Or see the solutions in [installation help](https://omega-doc.readthedocs.io/en/latest/installation.html#linux).
+Or see the solutions in [installation help](https://omega-doc.readthedocs.io/latest/installation.html#linux).
 
-If you are using ROOT data with ROOT 6.16.00 or newer you might receive the following (or similar) error message: "undefined symbol: _ZN3tbb10interface78internal20isolate_within_arenaERNS1_13delegate_baseEl". This is caused by the `libtbb.so.2` used by MATLAB (located in `/matlabroot/bin/glnxa64`). Same solutions apply as with the above case (e.g. renaming the file). See [installation help](https://omega-doc.readthedocs.io/en/latest/installation.html#linux) for details.
+If you are using ROOT data with ROOT 6.16.00 or newer you might receive the following (or similar) error message: "undefined symbol: _ZN3tbb10interface78internal20isolate_within_arenaERNS1_13delegate_baseEl". This is caused by the `libtbb.so.2` used by MATLAB (located in `/matlabroot/bin/glnxa64`). Same solutions apply as with the above case (e.g. renaming the file). See [installation help](https://omega-doc.readthedocs.io/latest/installation.html#linux) for details.
 
 ROOT data import is unstable in MATLAB R2018b and earlier versions due to a library incompatibility between the Java virtual machine in MATLAB and ROOT. In Linux you will experience MATLAB crashes when importing ROOT data. There is a workaround for this by using MATLAB in the no Java mode (e.g `matlab -nojvm`), though you won't have any GUI or graphic features. MATLAB R2019a and up are unaffected. It is recommended to use `nojvm` for data load only (set `options.only_sinos = true` to load only the data). The new desktop might not have this issue, but this is currently untested. This affects only Linux and only MATLAB.
 

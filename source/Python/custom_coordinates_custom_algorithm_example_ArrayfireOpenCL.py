@@ -1,15 +1,31 @@
 # -*- coding: utf-8 -*-
-## MATLAB/Octave code for custom algorithm reconstruction of any ray-tracing compatible data
-# This example showcases how to use data that is not in (standard) PET,
-# SPECT or CT format. Essentially the only things that are needed are the
-# FOV size, the number of voxels in each direction and the source/detector
-# coordinates. The example data is a cylindrical PET data but in reality it
-# could be anything. This is a simplified example and computes the
-# reconstructions by using the built-in class object rather than the
-# built-in algorithms. This example can be modified to compute your own
-# algorithm.
+"""
+This example showcases how to use data that is not in (standard) PET,
+SPECT or CT format. Essentially the only things that are needed for image 
+reconstruction in OMEGA are the FOV size, the number of voxels in each 
+direction and the source/detector coordinates. This means that any possible geometry
+can be reconstructed with this, as long as you input (and know) the source-detector 
+(or detector-detector) coordinates. The example data is a cylindrical 
+PET data but in reality it could be anything. This is a simplified example and 
+computes the reconstructions by using the built-in class object rather than the
+built-in algorithms. This example can be modified to compute your own
+algorithm, but OSEM and MLEM are shown here as examples.
+The coordinates can be set around line 256, see that line for more details on how
+to input the coordinates.
+Documentation: https://omega-doc.readthedocs.io/en/latest/customcoordinates.html
+NOTE: This example has no error checking and assumes emission tomography data with
+probabilities. Uncomment the options.CT below to use non-emission tomography data.
 
-# NOTE: This example has no error checking!
+Note that custom algorithm refers to your own algorithms and not the
+built-in algorithms. This example merely has the OSEM and MLEM algorithms
+shown as examples. The forward and/or backward projections of OMEGA are
+utilized for the computation of these algorithms. The idea of this example
+is to show how you can compute your own algorithms with the OMEGA projector
+operators and utilizing many of the built-in features such as subsets and
+corrections.
+
+This example uses Arrayfire with PyOpenCL and thus requires OpenCl (and PyOpenCL and Arrayfire)!
+"""
 
 import numpy as np
 from omegatomo.projector import proj
@@ -91,33 +107,13 @@ options.verbose = 1
 ###########################################################################
 ###########################################################################
 
-############################# IMPLEMENTATIONS #############################
+############################# DEVICE NUMBER #############################
 ### OpenCL/CUDA device used 
 # NOTE: Use 
 # from omegatomo.util.devinfo import deviceInfo
 # deviceInfo(True)
 # to determine the device nubmers
 options.deviceNum = 0
-
-### Use 64-bit integer atomic functions
-# If True, then 64-bit integer atomic functions (atomic add) will be used
-# if they are supported by the selected device.
-# Setting this to True will make computations faster on GPUs that support
-# the functions, but might make results slightly less reliable due to
-# floating point rounding. Recommended for OpenCL GPUs. Not recommended for
-# CUDA. Doesn't apply for CPU.
-options.use_64bit_atomics = True
-
-### Use CUDA
-# Selecting this to True will use CUDA kernels/code instead of OpenCL. This
-# only works if the CUDA code was successfully built. This is recommended
-# if you have CUDA-capable device.
-options.useCUDA = False
-
-### Use CPU
-# Selecting this to True will use CPU-based code instead of OpenCL or CUDA.
-# Not recommended, even OpenCL with CPU should be used before this.
-options.useCPU = False
 
 ############################### PROJECTOR #################################
 ### Type of projector to use for the geometric matrix

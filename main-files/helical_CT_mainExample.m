@@ -5,7 +5,7 @@
 % detectors with cylindrical shape. The example data is from: 
 % https://aapm.app.box.com/s/eaw4jddb53keg1bptavvvd1sf4x3pe9h/folder/144226105715
 % Any projection data from above should work, but only L506 was tested
-% For curved data, setting options.useHelical = true is mandatory
+% For curved data, setting options.useHelical = true is mandatory.
 
 clear
 
@@ -37,7 +37,7 @@ options.only_reconstructions = false;
 %%% Show status messages
 % completed. It is recommended to keep this at 1 or 2. With value of 2, 
 % you get more detailed timing information. Maximum is 3. Minimum is 0.
-options.verbose = 2;
+options.verbose = 1;
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -47,8 +47,7 @@ options.verbose = 2;
 
 % Put the folder of the DICOM projections here. Only one dataset should be
 % in this folder
-% path = '/path/to/DICOM-CT-PD_FD';
-path = 'D:\MAT-tiedostot\CBCT\DICOM-CT-PD_FD';
+path = '/path/to/DICOM-CT-PD_FD';
 
 if ~options.only_reconstructions
     [proj, vars] = loadDICOMCTPD(path);
@@ -58,27 +57,27 @@ end
 
 proj(proj < 0) = 0;
 
-% Rotation angles
+% Rotation angles (rad)
 options.angles = vars.angles;
 % The projection images
 options.SinM = proj;
-% Source-detector coordinates for each projection
+% Source-detector coordinates for each projection (mm)
 options.x = ([vars.xs, vars.xd]);
 options.y = ([vars.ys, vars.yd]);
 options.z = ([vars.zs, vars.zd]);
-% This is the radius of the circle formed by the detector array
+% This is the radius of the circle formed by the detector array (mm)
 % Usually the distance of the source to the detector
 options.helicalRadius = vars.r;
 % Total number of projections
 options.nProjections = vars.nProjections;
-% Detector pixel sizes
+% Detector pixel sizes (mm)
 options.dPitchX = vars.dPitchX;
 options.dPitchY = vars.dPitchY;
-% Source to detector and center of rotation distances
+% Source to detector and center of rotation distances (mm)
 options.sourceToDetector = vars.r;
 options.sourceToCRot = vars.sourceToCRot;
 
-% Size of the field-of-view (FOV)
+% Size of the field-of-view (FOV) (mm)
 % Transaxial FOV
 options.FOVa_x = 500;
 % Axial FOV
@@ -103,7 +102,7 @@ options.usingLinearizedData = true;
 
 % These have to be currently adjusted manually
 % The offset of the center of the FOV from the origin of the coordinate
-% system
+% system (mm)
 % options.oOffsetX = 0;
 % options.oOffsetY = 0;
 options.oOffsetZ = 300;
@@ -324,7 +323,7 @@ options.FDK = false;
 % These algorithms can utilize any of the selected priors, though only one
 % prior can be used at a time
 
-%%% Preconditioner Krasnoselskii-Mann algorithm (PKMA)
+%%% Preconditioned Krasnoselskii-Mann algorithm (PKMA)
 % Supported by implementations 1, 2, 4, and 5
 options.PKMA = false;
 

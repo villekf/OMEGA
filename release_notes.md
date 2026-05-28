@@ -6,7 +6,7 @@
 - Major changes to dynamic reconstruction
   - Loop order changed from timestep -> iteration -> sub-iteration to iteration -> sub-iteration -> timestep
   - Allows for regularization through temporal dimension (as well as spatial one)
-  - Implemented total variation (`options.temporalTV`) and first-order derivative smoothness (`options.temporal_smoothness`) priors
+  - Implemented temporal total variation (`options.temporalTV`) and first-order derivative smoothness (`options.temporal_smoothness`) priors
   - SPECT and PET only, though might work with CT data as well
   - Dynamic reconstruction is supported with (at least) OSEM, RAMLA, LSQR, PDHG, FISTA, PKMA, SART, ASD-POCS and BB
   - Added an example script for PET with both spatial and temporal regularization, and supporting both sinogram and list-mode reconstructions
@@ -15,6 +15,7 @@
 - Multi-resolution support for SPECT
   - Added option to normalize emission probability by either ray-FOV (ray-mask) intersection length or full ray length in SPECT reconstruction
   - This is controlled by `options.useTotLength`, where false is the first case and true the latter
+  - Note that the PET functionality of `options.useTotLength` remains the same, i.e. if true, uses the length of the ray between the two detectors, otherwise the length in the image only
   
 - Improved FDK reconstruction for CBCT
   - Added (optional) Parker weighting
@@ -38,8 +39,6 @@
   
 ### Bug fixes and enhancements
 
-- Cell type is now used always in MATLAB for holding image estimates, sensitivity images and backprojections
-
 - Projector type 4 now works with Metal and CBCT example (MATLAB only!)
 
 - If you have attenuation correction data in 1/cm, you can use those without scaling by setting `options.attIncm` to true
@@ -49,6 +48,8 @@
 - Small improvements to many examples
 
 - Interactive Python sessions should now clear most GPU memory when using built-in reconstruction
+
+- Added Barzilai-Borwain (BB) algorithm for Python as well (use `options.BB = True` to enable)
 
 ## OMEGA v2.1.0
 

@@ -5,6 +5,18 @@
 *.slx.r*
 *.mdl.r*
 
+# Python cache
+__pycache__/
+*.pyc
+
+# Compiled libraries
+*.so
+*.dll
+
+# Optional: editor files
+*.swp
+.DS_Store
+
 # Derived content-obscured files
 *.p
 

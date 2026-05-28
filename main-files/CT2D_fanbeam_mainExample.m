@@ -1,4 +1,5 @@
 %% MATLAB codes for fan-beam CT reconstruction using FIPS walnut projection images
+% This example is for 2D (sinogram) reconstruction, for example fan beam data.
 % This file is an example for the 2D (sinogram) reconstruction of the FIPS
 % walnut (https://zenodo.org/record/1254206)
 % Any of the sinograms can be used, but the default parameters are for

@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-# Python codes for CT reconstruction
-# This example outlines a "general" example for the (CB)CT case. This means
-# that most CT-related adjustable parameters are present, though for the
-# example data case (https://zenodo.org/record/1254206) these are mainly
-# not needed. 
-# See CT_main_full.py for an example file with ALL adjustable parameters
+This example outlines a "general" example for the (CB)CT case. This means
+that all CT-related adjustable parameters are present, though for the
+example data case (https://zenodo.org/records/6986012) these are mainly
+not needed. However, not all adjustable parameters are present in this
+example file. See CT_main_full.m for all the parameters.
+Flat-panel data can be reconstructed with this. If you have coordinates
+for the source and detector, use CBCT_main_example instead.
+Note that the CBCT scanner used here is custom-made!
+
+See CT_main_full.py for an example file with ALL adjustable parameters
 """
 
 import numpy as np

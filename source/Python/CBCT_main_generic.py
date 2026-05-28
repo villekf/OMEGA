@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-# Python codes for CBCT reconstruction for the Planmeca data
+Python codes for CBCT reconstruction for the Planmeca data
 This example contains a simplified example for Planmeca CBCT data.
 Simplified refers to less number of selectable options. You can always
 add other options manually. This example uses PDHG with subsets and
@@ -8,9 +8,15 @@ filtering. Other algorithms that have been left here are PKMA and PDDY.
 Regularization includes TV, NLM, RDP, GGMRF and the non-local variations.
 You can manually add any of the built-in priors if desired.
 
-This example also showcases CBCT cases where you have the source and center
-of detector panel coordinates, as well as additional rotation of the panel.
-Instead of the rotation of the panel, you can also input the direction vectors.
+This example can be used for any case when you have the source and 
+detector coordinates available for your CBCT scanner. The detector
+panel rotations (if any) can also be input. 
+You'll also need to input the FOV size, number of pixels on the 
+detector panel, the size of each detector pixel, projection angles,
+flat value and source to center of rotation and source to detector
+distances. Potential offset of the object (that is, the object is not
+centered on origin) can also be input. Flat value (I0) is optional, as the 
+maximum value of the input projections is used if not available.
 
 Example data available from: https://doi.org/10.5281/zenodo.12722386
 """

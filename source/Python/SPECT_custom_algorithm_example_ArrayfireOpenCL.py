@@ -7,9 +7,13 @@ data is Siemens Pro.specta projection data available at DOI
 10.5281/zenodo.17315440. Currently the support for
 some of the additional features is limited.
 
-Note that custom algorithm refers to your own algorithms and not the built-in 
-algorithms. The forward and/or backward projections of OMEGA are utilized for the computation
-of these algorithms.
+Note that custom algorithm refers to your own algorithms and not the
+built-in algorithms. This example merely has the OSEM and MLEM algorithms
+shown as examples. The forward and/or backward projections of OMEGA are
+utilized for the computation of these algorithms. The idea of this example
+is to show how you can compute your own algorithms with the OMEGA projector
+operators and utilizing many of the built-in features such as subsets and
+corrections.
 
 This example uses Arrayfire with PyOpenCL and thus requires OpenCL (with PyOpenCL and Arrayfire)!
 """

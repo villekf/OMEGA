@@ -3,6 +3,8 @@
 % omitted parameters will thus use default values. For the list of all
 % adjustable parameters see main_PET_full.m file.
 % You can use https://doi.org/10.5281/zenodo.12743217 as example data
+% This example is based on the GATE 9 PET example scanner from the GATE doc:
+% https://opengate.readthedocs.io/en/latest/defining_a_system_scanner_ct_pet_spect_optical.html#id3
 
 clear
 
@@ -558,6 +560,16 @@ options.PDHGKL = false;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PRECONDITIONERS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Image-based preconditioners
+% precondTypeImage(2) = EM preconditioner (f / (A^T1), where f is the current
+% estimate) 
+options.precondTypeImage = [false;false;false;false;false;false;false];
+if options.PKMA
+    options.precondTypeImage(2) = true;
+end
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -576,11 +588,11 @@ options = OMEGA_error_check(options);
 
 %% Load the ASCII/ROOT coincidence data
 % Or load the measurement data manually into options.SinM
-
 options.SinM = load_data(options);
 
 %% Compute the normalization coefficients
-
+% You'll need a separate normalization measurement for this
+% 
 if options.compute_normalization
     [norm_matrix, options.SinM, axial_geom_coeffs, axial_block_profile, block_profile_matrix, crystal_efficiency_matrix, tr_geom_matrix] = normalization_coefficients(options);
 end

@@ -6,10 +6,17 @@ reconstruction using sinogram PET data. Currently the support for
 some of the additional features is limited. The default configuration
 uses MLEM, but OSEM with subsets is also available.
 
-Note that custom algorithm refers to your own algorithms and not the built-in 
-algorithms. This example merely has the MLEM/OSEM algorithm shown as an example.
-The forward and/or backward projections of OMEGA are utilized for the computation
-of these algorithms.
+You'll need to modify the SCANNER PROPERTIES and SINOGRAM PROPERTIES below
+if you wish to use your own data, and possibly the image properties, too.
+Attenuation and normalization correction are on here.
+
+Note that custom algorithm refers to your own algorithms and not the
+built-in algorithms. This example merely has the OSEM and MLEM algorithms
+shown as examples. The forward and/or backward projections of OMEGA are
+utilized for the computation of these algorithms. The idea of this example
+is to show how you can compute your own algorithms with the OMEGA projector
+operators and utilizing many of the built-in features such as subsets and
+corrections.
 
 This example uses PyTorch and CuPy and thus requires CUDA (and CuPy and PyTorch)!
 """

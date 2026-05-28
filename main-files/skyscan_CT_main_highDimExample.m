@@ -5,15 +5,17 @@
 % reconstructed on GPUs that cannot store the projection data and the final
 % reconstructed image volume. The caveat is that functionality is limited.
 % Only some of the algorithms are supported, such as PDHG, FDK and PKMA.
-% Furthermore, only filtering-based preconditioner is supported.
+% Certain regularization methods are supported, such as RDP, hyperbolic,
+% GGMRF, gradient-based TV, and all non-local methods
+% Furthermore, only filtering-based preconditioner, diagonal and EM 
+% preconditioners are supported.
 % Multi-resolution reconstruction is not supported. The data and image are
 % divided into options.subsets number of segments where only one segment is
 % present at the GPU at a time. This means that the more subsets you use,
 % the less memory will be used on the GPU side. The intermediate data will
 % be stored in host (CPU) so high physical memory amount is recommended.
 % Only subset types 1 and 8 are supported, though 8 should be used with CT
-% data. Furthermore, only projector_type = 4 is supported. Only some of the
-% regularization methods are supported, such as RDP, TV, NLM and GGMRF.
+% data. Furthermore, only projector_type = 4 is supported. 
 % You can use https://doi.org/10.5281/zenodo.12744181 as example data
 
 clear

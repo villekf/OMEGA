@@ -8,9 +8,11 @@ uses PDHG without multi-resolution reconstruction, but with subsets. PDHG
 should also work with multi-resolution reconstruction and without subsets.
 
 Note that custom algorithm refers to your own algorithms and not the built-in 
-algorithms. This example merely has the PDHG algorithm shown as an example.
-The forward and/or backward projections of OMEGA are utilized for the computation
-of these algorithms.
+algorithms. This example merely has the PDHG algorithms shown as examples. 
+The forward and/or backward projections of OMEGA are utilized for the computation 
+of these algorithms. The idea of this example is to show how 
+you can compute your own algorithms with the OMEGA projector operators and utilizing 
+many of the built-in features such as subsets and corrections.
 
 This example uses PyTorch and CuPy and thus requires CUDA (and CuPy and PyTorch)!
 """

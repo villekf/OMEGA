@@ -1126,7 +1126,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 						if (inputScalars.indexBased)
 							if (inputScalars.TOF)
 								proj.loadCoord(osa_iter, inputScalars, length[indD], &w_vec.trIndex[pituus[indD] * 2], &w_vec.axIndex[pituus[indD] * 2],
-									&w_vec.TOFIndices[pituus[osa_iter]]);
+									&w_vec.TOFIndices[pituus[indD]]);
 							else
 								proj.loadCoord(osa_iter, inputScalars, length[indD], &w_vec.trIndex[pituus[indD] * 2], &w_vec.axIndex[pituus[indD] * 2]);
 						else

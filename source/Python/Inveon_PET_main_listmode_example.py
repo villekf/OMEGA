@@ -1,11 +1,17 @@
 # -*- coding: utf-8 -*-
-"""
-## Python codes for PET reconstruction using Inveon PET LST or GATE output
-# This main-file provides an example on how to obtain & perform list-mode
-# (event-by-event) reconstruction. 
-# For the input measurement data, you can use the open preclinical PET data
-# available from: https://doi.org/10.5281/zenodo.3528056
-# Documentation: https://omega-doc.readthedocs.io/en/latest/customcoordinates.html
+""" Python codes for PET reconstruction using Inveon PET LST or GATE output
+This main-file provides an example on how to obtain & perform list-mode
+(event-by-event) reconstruction. This file uses the Siemens Inveon PET list-mode
+data, but any list-mode data can be used here as long as the scanner properties
+are adjusted accordingly and the input data itself replaced. This example
+doesn't use TOF data!
+Attenuation correction is on here by default! You will be prompted for the
+attenuation datafile if one is not input into options.attenuation_datafile.
+The list-mode data is handled at around line 1144. See the comments there
+for more details on the list-mode data itself.
+For the input measurement data, you can use the open preclinical PET data
+available from: https://doi.org/10.5281/zenodo.3528056
+Documentation: https://omega-doc.readthedocs.io/en/latest/customcoordinates.html
 """
 import numpy as np
 from omegatomo.projector import proj
@@ -1144,15 +1150,24 @@ options.GGMRF_c = 5
 # These should include the transaxial and axial, respectively, detector
 # coordinate indices. Two indices are required per measurement, i.e.
 # source-detector or detector-detector pairs. The indexing has to be
-# zero-based! The transaxial coordinates should be stored in options.x and
-# axial coordinates in options.z. The indices should correspond to the
-# coordinates in each. Note that options.x should have both the x- and
-# y-coordinates while options.z should have only the z-coordinates. You can
-# also include randoms by inputting them as negative measurements. The
-# indices are used in the same order as measurements.
+# zero-based (i.e. start from zero, rather than one)! The transaxial coordinates 
+# should be stored in options.x and axial coordinates in options.z. The indices 
+# should correspond to the coordinates in each. Note that options.x should have 
+# both the x- and y-coordinates while options.z should have only the 
+# z-coordinates. You can also include randoms by inputting them as negative 
+# measurements. The indices are used in the same order as measurements.
+# This method is good symmetric cases where the same coordinates are used
+# with multiple measurements. Two of such examples would be spherical PET or 
+# dual/multi-layer PET.
 options.useIndexBasedReconstruction = True
 
-# For list-mode data, the core component you need are the detector
+# Coordinate-based reconstruction is used if the above if false.
+# Coordinate-based reconstruction is simpler than the above as you simply
+# need to input the coordinates for each measurement, but it's computationally
+# more demanding than the index-based. This method is useful in complex geometries
+# or when you simply want to reconstruct data where you have the coordinates and
+# the measurement data. There are no geometry restrictions.
+# For coordinate-based data, the core component you need are the detector
 # coordinates for each event. options.x should be 6xNumberOfEvents, where
 # there first three rows correspond to the x/y/z-coordinates of the first
 # detector and the next three the x/y/z-coordinates for the second
@@ -1212,14 +1227,15 @@ if options.randoms_correction == True:
         del rand
 # Randoms don't have to be situated last in the coordinate vector or in the
 # "measurement" vector, as long as the coordinates and the "measurement"
-# vector have the the same type of events in the same index.
+# vector have the the same type of events in the same index. That is, the coordinates
+# and the measurement data must be in the exact same order.
 
 # Since the measurement vector contains all ones, but does not contain
 # every possible LOR (and also contains some duplicates) the sensitivity
 # image is computed for the every possible LOR. Having this value set to
 # True, the sensitivity image is computed for all applicable LORs. This
 # requires correct values in the scanner properties, mainly the number of
-# detectors per ring, number of rings and possible pseudo gaps. If this is
+# detectors per ring, number of rings and possible (pseudo) gaps. If this is
 # set to False, then the sensitivity image is computed for the input
 # detector coordinates only.
 # NOTE: If you use your own detector coordinates, you can include the
@@ -1228,16 +1244,12 @@ if options.randoms_correction == True:
 # coordinates. Coordinates that appear multiple times, however, will cause
 # the sensitivity image values to be incorrect in these coordinates as the
 # values are added multiple times. 
+# You can experiment with this setting by turning it False or True.
 options.compute_sensitivity_image = True
 
 # In case the data takes a lot of memory and there isn't enough memory on
 # the GPU to store all the measurement data, set the below value to false
 options.loadTOF = True
-
-# In case you're running out of device (GPU) memory, you can uncomment the
-# below line which only loads the measurement and coordinate data for the
-# current subset
-# options.loadTOF = False
 # Note that the above only helps if you use subsets
 
 pz, fp = reconstructions_main(options)

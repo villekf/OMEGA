@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-# Python codes for CT reconstruction
-# This example file lists ALL adjustable parameters
-# New parameters are in scanner properties and reconstruction parameters,
-# and new section below reconstruction parameters (and above OpenCL device
-# info)
-# You can use the FIPS walnut data as an example data:
-# https://zenodo.org/record/1254206
+ Python codes for CT reconstruction
+ This example file lists ALL adjustable parameters
+ New parameters are in scanner properties and reconstruction parameters,
+ and new section below reconstruction parameters (and above OpenCL device
+ info)
+ Any flat-panel data can be reconstructed with this, as long as the 
+ parameters are adjusted correctly.
+ You can use the FIPS walnut data as an example data:
+ https://zenodo.org/record/1254206
 """
 
 import numpy as np

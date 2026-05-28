@@ -4,6 +4,8 @@
 % reconstruction parameters, new section for GATE LMF data, new section
 % below image properties, and new section below reconstruction parameters
 % (and above OpenCL device info) 
+% This example is based on the GATE 9 PET example scanner from the GATE doc:
+% https://opengate.readthedocs.io/en/latest/defining_a_system_scanner_ct_pet_spect_optical.html#id3
  
 clear
  

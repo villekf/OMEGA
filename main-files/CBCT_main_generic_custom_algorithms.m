@@ -1,6 +1,7 @@
 %% MATLAB/Octave code for CBCT custom algorithm reconstruction
 % This example contains a simplified example for custom algorithm
-% reconstruction for CBCT data. Currently the support for some
+% reconstruction for CBCT data. This means implementing your own algorithms
+% using the built-in A*x and A^Ty operations. Currently the support for some
 % of the additional features is limited. The default configuration uses
 % CGLS without multi-resolution reconstruction, but PDHG with
 % multi-resolution is included below CGLS, but has been commented. PDHG
@@ -8,6 +9,11 @@
 % Note that scanner functionality is the same as in CBCT_main_example.m
 % See that file for slightly more help on the scanner parameters.
 % Example data available from: https://doi.org/10.5281/zenodo.12722386
+
+% Note that custom algorithm refers to your own algorithms and not the
+% built-in algorithms. This example merely has the CGLS/PDHG algorithms
+% shown as examples. The forward and/or backward projections of OMEGA are
+% utilized for the computation of these algorithms. 
 
 clear
 clear mex

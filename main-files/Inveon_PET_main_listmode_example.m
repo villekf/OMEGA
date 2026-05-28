@@ -1,6 +1,12 @@
 %% MATLAB/Octave codes for PET reconstruction using Inveon PET LST or GATE output
 % This main-file provides an example on how to obtain & perform list-mode
-% (event-by-event) reconstruction. 
+% (event-by-event) reconstruction. This file uses the Siemens Inveon PET list-mode
+% data, but any list-mode data can be used here as long as the scanner properties
+% are adjusted accordingly and the input data itself replaced. This example
+% doesn't use TOF data!
+% Attenuation correction is on here by default!
+% The list-mode data is handled at around line 1070. See the comments there
+% for more details on the list-mode data itself.
 % For the input measurement data, you can use the open preclinical PET data
 % available from: https://doi.org/10.5281/zenodo.3528056
 % Documentation: https://omega-doc.readthedocs.io/en/latest/customcoordinates.html
@@ -1071,17 +1077,26 @@ options = OMEGA_error_check(options);
 % These should include the transaxial and axial, respectively, detector
 % coordinate indices. Two indices are required per measurement, i.e.
 % source-detector or detector-detector pairs. The indexing has to be
-% zero-based! The transaxial coordinates should be stored in options.x and
-% axial coordinates in options.z. The indices should correspond to the
-% coordinates in each. Note that options.x should have both the x- and
-% y-coordinates while options.z should have only the z-coordinates. You can
-% also include randoms by inputting them as negative measurements. The
-% indices are used in the same order as measurements.
+% zero-based (i.e. start from zero, rather than one)! The transaxial coordinates 
+% should be stored in options.x and axial coordinates in options.z. The indices 
+% should correspond to the coordinates in each. Note that options.x should have 
+% both the x- and y-coordinates while options.z should have only the 
+% z-coordinates. You can also include randoms by inputting them as negative 
+% measurements. The indices are used in the same order as measurements.
+% This method is good symmetric cases where the same coordinates are used
+% with multiple measurements. Two of such examples would be spherical PET or 
+% dual/multi-layer PET.
 options.useIndexBasedReconstruction = false;
 
-% For list-mode data, the core component you need are the detector
+% Coordinate-based reconstruction is used if the above if false.
+% Coordinate-based reconstruction is simpler than the above as you simply
+% need to input the coordinates for each measurement, but it's computationally
+% more demanding than the index-based. This method is useful in complex geometries
+% or when you simply want to reconstruct data where you have the coordinates and
+% the measurement data. There are no geometry restrictions.
+% For coordinate-based data, the core components you need are the detector
 % coordinates for each event. options.x should be 6xNumberOfEvents, where
-% there first three rows correspond to the x/y/z-coordinates of the first
+% the first three rows correspond to the x/y/z-coordinates of the first
 % detector and the next three the x/y/z-coordinates for the second
 % detector. options.x can also be a vector of size 6 * NumberOfEvents.
 % Note: List-mode reconstruction can be much more memory intensive than
@@ -1091,10 +1106,6 @@ options.useIndexBasedReconstruction = false;
 
 if ~options.only_reconstructions && options.use_machine ~= 2
     options.randoms_correction = true;
-    % options.coincidences = load_data(options);
-    % Save the delayed coincidences, trues, scatter and randoms to
-    % workspace (GATE only):
-    % [options.coincidences, delayed_coincidences, true_coincidences, scattered_coincidences, random_coincidences] = load_data(options);
     % Save the coordinates of the detected coincidences to work space:
     % Replace options.x, etc. with your own coordinates to use user input
     % data.
@@ -1109,13 +1120,9 @@ if options.useIndexBasedReconstruction
     % Coordinates for the detector pairs
     % Transaxial
     [x, y] = detector_coordinates(options);
-    % Zeros needs to be added to the first layer as it has less detector
-    % elements
     % Input the transaxial coordinates to options.x
     options.x = [x';y'];
     % Axial coordinates
-    % As above, zero rings need to be added to the end
-    % Applies only to offset detectors
     z_length = double(options.linear_multip .* options.cryst_per_block_axial(1) * options.cr_pz);
     z1 = linspace(-(z_length / 2 - options.cr_pz/2), z_length / 2 - options.cr_pz/2, options.rings)';
     % Input the axial coordinates to options.z
@@ -1123,16 +1130,18 @@ if options.useIndexBasedReconstruction
 end
 
 %% Reconstructions
-% List-mode reconstruction is performed for the selected algorithms. As
-% long as the detector coordinates are in the options-struct, the
-% list-mode/custom detector reconstruction is performed automatically. The
-% detector coordinates can also correspond to the LORs in sinograms and the
-% input measurement data should then be in sinogram format (matrix or
-% vector).
+% List-mode reconstruction is performed for the selected algorithm. As
+% long as the detector coordinates are in the options-struct (and the indices 
+% provided if using the index-based method instead), the list-mode/custom 
+% detector reconstruction is performed automatically. The detector coordinates 
+% can also correspond to the LORs in sinograms and the input measurement data should 
+% then be in sinogram format (matrix or vector).
 
 % The measurement data
 % For list-mode this is all ones as each coincidence is handled
 % individually
+% You can use sinogram, or similar, data here as well. There are no restrictions with
+% the measurement data.
 if options.randoms_correction == false
     if options.useIndexBasedReconstruction == true
         options.SinM = ones(size(options.trIndex,2),1,'uint8');
@@ -1141,7 +1150,8 @@ if options.randoms_correction == false
     end
 end
 
-% Note that if you want to add randoms, you need to add these manually:
+% Note that if you want to add randoms, you need to add these manually when using list-mode
+% data:
 if options.randoms_correction == true
     if options.useIndexBasedReconstruction == true
         options.SinM = [ones(size(options.trIndex,2),1,'single');-ones(size(DtrIndex,2),1,'single')];
@@ -1155,7 +1165,8 @@ if options.randoms_correction == true
 end
 % Randoms don't have to be situated last in the coordinate vector or in the
 % "measurement" vector, as long as the coordinates and the "measurement"
-% vector have the the same type of events in the same index.
+% vector have the the same type of events in the same index. That is, the coordinates
+% and the measurement data must be in the exact same order.
 
 % Since the measurement vector contains all ones, but does not contain
 % every possible LOR (and also contains some duplicates) the sensitivity
@@ -1171,25 +1182,24 @@ end
 % coordinates. Coordinates that appear multiple times, however, will cause
 % the sensitivity image values to be incorrect in these coordinates as the
 % values are added multiple times. 
+% You can experiment with this setting by turning it false or true.
 options.compute_sensitivity_image = true;
 
 % In case the data takes a lot of memory and there isn't enough memory on
 % the GPU to store all the measurement data, set the below value to false
+% When false, only the current subset is sent to the GPU. Note that this 
+% setting has no effect if you don't use subsets!
 options.loadTOF = true;
-
-% In case you're running out of device (GPU) memory, you can uncomment the
-% below line which only loads the measurement and coordinate data for the
-% current subset
-% options.loadTOF = false;
-% Note that the above only helps if you use subsets
 
 if options.only_sinos == false
     
     tStart = tic;
+	% Compute the reconstruction itself
     pz = reconstructions_main(options);
     tElapsed = toc(tStart);
     disp(['Reconstruction process took ' num2str(tElapsed) ' seconds'])
 
+	% Visualization
     volume3Dviewer(pz, [], [0 0 1])
     
 end
