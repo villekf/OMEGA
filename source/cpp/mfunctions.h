@@ -78,6 +78,7 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	inputScalars.pitch = getScalarBool(options, 0, "pitch");
 	inputScalars.enforcePositivity = getScalarBool(options, 0, "enforcePositivity");
 	inputScalars.multiResolution = getScalarBool(options, 0, "useMultiResolutionVolumes");
+    inputScalars.storeMultiResolution = getScalarBool(options, 0, "storeMultiResolution");
 	inputScalars.nMultiVolumes = getScalarUInt32(options, 0, "nMultiVolumes");
 	if (inputScalars.FPType == 5 || inputScalars.BPType == 5) {
 		inputScalars.meanFP = getScalarBool(options, 0, "meanFP");

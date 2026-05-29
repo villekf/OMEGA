@@ -951,6 +951,9 @@ end
 if ~isfield(options, 'useMultiResolutionVolumes')
     options.useMultiResolutionVolumes = false;
 end
+if ~isfield(options, 'storeMultiResolution') % TODO: true value stores all multi-resolution volumes as cell array.
+    options.storeMultiResolution = false;
+end
 if ~isfield(options, 'nMultiVolumes')
     options.nMultiVolumes = 0;
 end
