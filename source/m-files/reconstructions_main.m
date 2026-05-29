@@ -235,6 +235,7 @@ if ismember(options.param.implementation, [1, 4, 5])
 
     % Loop through all time steps
     for llo = 1 : partitions
+        options.timestep = llo;
         if iscell(options.param.SinM)
             Sino = options.param.SinM{llo};
         else

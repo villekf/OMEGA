@@ -241,9 +241,11 @@ if options.useEFOV
                 options.x4 = ones(options.Nx(5), options.Ny(5), options.Nz(5), options.cType) * val;
                 options.x5 = ones(options.Nx(6), options.Ny(6), options.Nz(6), options.cType) * val;
                 options.x6 = ones(options.Nx(7), options.Ny(7), options.Nz(7), options.cType) * val;
-                if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+                if options.implementation == 2 || options.implementation == 3
                     options.x0 = [options.x0(:);options.x1(:); options.x2(:); options.x3(:); options.x4(:); options.x5(:); options.x6(:)];
                     options = rmfield(options, {'x1','x2','x3','x4','x5','x6'});
+                elseif options.implementation == 5
+                    options.x0 = ones(options.Nx(1), options.Ny(1), options.Nz(1), options.cType) * val;
                 end
             end
         elseif options.transaxialEFOV && ~options.axialEFOV % Only the transaxial FOV is extended
@@ -331,9 +333,11 @@ if options.useEFOV
                 options.x2 = ones(options.Nx(3), options.Ny(3), options.Nz(3), options.cType) * val;
                 options.x3 = ones(options.Nx(4), options.Ny(4), options.Nz(4), options.cType) * val;
                 options.x4 = ones(options.Nx(5), options.Ny(5), options.Nz(5), options.cType) * val;
-                if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+                if options.implementation == 2 || options.implementation == 3
                     options.x0 = [options.x0(:);options.x1(:); options.x2(:); options.x3(:); options.x4(:)];
                     options = rmfield(options, {'x1','x2','x3','x4'});
+                elseif options.implementation == 5
+                    options.x0 = ones(options.Nx(1), options.Ny(1), options.Nz(1), options.cType) * val;
                 end
             end
         else % Only axial FOV is extended
@@ -397,9 +401,11 @@ if options.useEFOV
                 val = min(options.x0(:));
                 options.x1 = ones(options.Nx(2), options.Ny(2), options.Nz(2), options.cType) * val;
                 options.x2 = ones(options.Nx(3), options.Ny(3), options.Nz(3), options.cType) * val;
-                if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+                if options.implementation == 2 || options.implementation == 3
                     options.x0 = [options.x0(:);options.x1(:); options.x2(:)];
                     options = rmfield(options, {'x1','x2'});
+                elseif options.implementation == 5
+                    options.x0 = ones(options.Nx(1), options.Ny(1), options.Nz(1), options.cType) * val;
                 end
             end
         end

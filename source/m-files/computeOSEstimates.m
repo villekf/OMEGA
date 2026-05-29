@@ -261,11 +261,12 @@ for ii = 1 : options.param.nMultiVolumes + 1
         end
         [im_vectors, im,options.param] = FISTAL1(im, rhs, options.param, im_vectors, options.param.beta, osa_iter + options.param.subsets * (iter - 1), ii);
     end
-end
-if ~options.param.LSQR && ~options.param.CGLS
-    if iscell(im_vectors.recApu)
-        im_vectors.recApu{ii} = im;
-    else
-        im_vectors.recApu = im;
+
+    if ~options.param.LSQR && ~options.param.CGLS
+        if iscell(im_vectors.recApu)
+            im_vectors.recApu{ii} = im;
+        else
+            im_vectors.recApu = im;
+        end
     end
 end
