@@ -124,7 +124,7 @@ static MacroSets BuildMacroDict(
     if (inputScalars.useHalf) base.addFlag("HALF");
     if (inputScalars.useParallelBeam) base.addFlag("PARALLEL");
     if (inputScalars.raw == 1) base.addFlag("RAW");
-    if (inputScalars.useTotLength && !inputScalars.SPECT) base.addFlag("TOTLENGTH");
+    if (inputScalars.useTotLength) base.addFlag("TOTLENGTH");
     if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) base.addFlag("FDK");
     
     if (inputScalars.maskFP) {

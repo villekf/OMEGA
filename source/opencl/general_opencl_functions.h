@@ -1287,43 +1287,43 @@ DEVICE void extendRayToFOV(
     float tmax =  1e8f;
     const float epsVal = 1.0e-8f;
 
-    if (fabs(dir.x) < epsVal) {
+    if (FABS(dir.x) < epsVal) {
         if (p0.x < boxMin.x || p0.x > boxMax.x) {
             return;
         }
     } else {
         float t1 = (boxMin.x - p0.x) / dir.x;
         float t2 = (boxMax.x - p0.x) / dir.x;
-        float tNear = fmin(t1, t2);
-        float tFar  = fmax(t1, t2);
-        tmin = fmax(tmin, tNear);
-        tmax = fmin(tmax, tFar);
+        float tNear = FMIN(t1, t2);
+        float tFar  = FMAX(t1, t2);
+        tmin = FMAX(tmin, tNear);
+        tmax = FMIN(tmax, tFar);
     }
 
-    if (fabs(dir.y) < epsVal) {
+    if (FABS(dir.y) < epsVal) {
         if (p0.y < boxMin.y || p0.y > boxMax.y) {
             return;
         }
     } else {
         float t1 = (boxMin.y - p0.y) / dir.y;
         float t2 = (boxMax.y - p0.y) / dir.y;
-        float tNear = fmin(t1, t2);
-        float tFar  = fmax(t1, t2);
-        tmin = fmax(tmin, tNear);
-        tmax = fmin(tmax, tFar);
+        float tNear = FMIN(t1, t2);
+        float tFar  = FMAX(t1, t2);
+        tmin = FMAX(tmin, tNear);
+        tmax = FMIN(tmax, tFar);
     }
 
-    if (fabs(dir.z) < epsVal) {
+    if (FABS(dir.z) < epsVal) {
         if (p0.z < boxMin.z || p0.z > boxMax.z) {
             return;
         }
     } else {
         float t1 = (boxMin.z - p0.z) / dir.z;
         float t2 = (boxMax.z - p0.z) / dir.z;
-        float tNear = fmin(t1, t2);
-        float tFar  = fmax(t1, t2);
-        tmin = fmax(tmin, tNear);
-        tmax = fmin(tmax, tFar);
+        float tNear = FMIN(t1, t2);
+        float tFar  = FMAX(t1, t2);
+        tmin = FMAX(tmin, tNear);
+        tmax = FMIN(tmax, tFar);
     }
 
     if (tmax < tmin)

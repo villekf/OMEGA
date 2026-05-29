@@ -116,12 +116,12 @@ int ProjectorClass::createProgram(
 }
 
 int ProjectorClass::createKernels(
-    NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelFP,
-    NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelBP,
-    NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelNLM,
-    NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelMed,
-    NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelRDP,
-    NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelGGMRF,
+    NS::SharedPtr<MTL::CommandQueue>& queueFP,
+    NS::SharedPtr<MTL::CommandQueue>& queueBP,
+//    NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelNLM,
+//    NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelMed,
+//    NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelRDP,
+//    NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelGGMRF,
     const NS::SharedPtr<MTL::Library>& libFP,
     const NS::SharedPtr<MTL::Library>& libBP,
     const NS::SharedPtr<MTL::Library>& libAux,
@@ -135,62 +135,41 @@ int ProjectorClass::createKernels(
     if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3)) {
         auto fnName = NS::String::string("projectorType123", NS::ASCIIStringEncoding);
         NS::SharedPtr<MTL::Function> fnFP = NS::TransferPtr(libFP->newFunction(fnName));
-        NS::SharedPtr<MTL::ComputePipelineState> psoFP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnFP.get(), &err));
-        NS::SharedPtr<MTL::CommandQueue> queueFP = NS::TransferPtr(mtlDevice->newCommandQueue());
-        commandBufferFP = NS::TransferPtr(queueFP->commandBuffer());
-        kernelFP = NS::TransferPtr(commandBufferFP->computeCommandEncoder());
-        kernelFP->setComputePipelineState(psoFP.get());
+        psoFP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnFP.get(), &err));
+        queueFP = NS::TransferPtr(mtlDevice->newCommandQueue());
     } else if (inputScalars.FPType == 4) {
         auto fnName = NS::String::string("projectorType4Forward", NS::ASCIIStringEncoding);
         NS::SharedPtr<MTL::Function> fnFP = NS::TransferPtr(libFP->newFunction(fnName));
-        NS::SharedPtr<MTL::ComputePipelineState> psoFP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnFP.get(), &err));
-        NS::SharedPtr<MTL::CommandQueue> queueFP = NS::TransferPtr(mtlDevice->newCommandQueue());
-        commandBufferFP = NS::TransferPtr(queueFP->commandBuffer());
-        kernelFP = NS::TransferPtr(commandBufferFP->computeCommandEncoder());
-        kernelFP->setComputePipelineState(psoFP.get());
+        psoFP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnFP.get(), &err));
+        queueFP = NS::TransferPtr(mtlDevice->newCommandQueue());
     } else if (inputScalars.FPType == 5) {
         auto fnName = NS::String::string("projectorType5Forward", NS::ASCIIStringEncoding);
         NS::SharedPtr<MTL::Function> fnFP = NS::TransferPtr(libFP->newFunction(fnName));
-        NS::SharedPtr<MTL::ComputePipelineState> psoFP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnFP.get(), &err));
-        NS::SharedPtr<MTL::CommandQueue> queueFP = NS::TransferPtr(mtlDevice->newCommandQueue());
-        commandBufferFP = NS::TransferPtr(queueFP->commandBuffer());
-        kernelFP = NS::TransferPtr(commandBufferFP->computeCommandEncoder());
-        kernelFP->setComputePipelineState(psoFP.get());
+        psoFP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnFP.get(), &err));
+        queueFP = NS::TransferPtr(mtlDevice->newCommandQueue());
     }
   
     if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
         auto fnName = NS::String::string("projectorType123", NS::ASCIIStringEncoding);
         NS::SharedPtr<MTL::Function> fnBP = NS::TransferPtr(libBP->newFunction(fnName));
-        NS::SharedPtr<MTL::ComputePipelineState> psoBP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnBP.get(), &err));
-        NS::SharedPtr<MTL::CommandQueue> queueBP = NS::TransferPtr(mtlDevice->newCommandQueue());
-        commandBufferBP = NS::TransferPtr(queueBP->commandBuffer());
-        kernelBP = NS::TransferPtr(commandBufferBP->computeCommandEncoder());
-        kernelBP->setComputePipelineState(psoBP.get());
+        psoBP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnBP.get(), &err));
+        queueBP = NS::TransferPtr(mtlDevice->newCommandQueue());
     } if (inputScalars.BPType == 4) {
         if (inputScalars.FPType == 4 && inputScalars.CT) {
             auto fnName = NS::String::string("projectorType4Backward", NS::ASCIIStringEncoding);
             NS::SharedPtr<MTL::Function> fnBP = NS::TransferPtr(libBP->newFunction(fnName));
-            NS::SharedPtr<MTL::ComputePipelineState> psoBP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnBP.get(), &err));
-            NS::SharedPtr<MTL::CommandQueue> queueBP = NS::TransferPtr(mtlDevice->newCommandQueue());
-            commandBufferBP = NS::TransferPtr(queueBP->commandBuffer());
-            kernelBP = NS::TransferPtr(commandBufferBP->computeCommandEncoder());
-            kernelBP->setComputePipelineState(psoBP.get());
+            psoBP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnBP.get(), &err));
+            queueBP = NS::TransferPtr(mtlDevice->newCommandQueue());
         } else if (!inputScalars.CT) {
             auto fnName = NS::String::string("projectorType4Forward", NS::ASCIIStringEncoding);
             NS::SharedPtr<MTL::Function> fnBP = NS::TransferPtr(libBP->newFunction(fnName));
-            NS::SharedPtr<MTL::ComputePipelineState> psoBP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnBP.get(), &err));
-            NS::SharedPtr<MTL::CommandQueue> queueBP = NS::TransferPtr(mtlDevice->newCommandQueue());
-            commandBufferBP = NS::TransferPtr(queueBP->commandBuffer());
-            kernelBP = NS::TransferPtr(commandBufferBP->computeCommandEncoder());
-            kernelBP->setComputePipelineState(psoBP.get());
+            psoBP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnBP.get(), &err));
+            queueBP = NS::TransferPtr(mtlDevice->newCommandQueue());
         } else {
             auto fnName = NS::String::string("projectorType4Backward", NS::ASCIIStringEncoding);
             NS::SharedPtr<MTL::Function> fnBP = NS::TransferPtr(libBP->newFunction(fnName));
-            NS::SharedPtr<MTL::ComputePipelineState> psoBP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnBP.get(), &err));
-            NS::SharedPtr<MTL::CommandQueue> queueBP = NS::TransferPtr(mtlDevice->newCommandQueue());
-            commandBufferBP = NS::TransferPtr(queueBP->commandBuffer());
-            kernelBP = NS::TransferPtr(commandBufferBP->computeCommandEncoder());
-            kernelBP->setComputePipelineState(psoBP.get());
+            psoBP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnBP.get(), &err));
+            queueBP = NS::TransferPtr(mtlDevice->newCommandQueue());
         }
     }
 
@@ -233,7 +212,7 @@ int ProjectorClass::addProjector(
     NS::SharedPtr<MTL::Library> libFP, libBP, libAux, libSens;
     status = createProgram(libFP, libBP, libAux, libSens, header_directory, inputScalars, MethodList, w_vec, local_size, type);
     if (status != 0) return -1;
-    status = createKernels(kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelGGMRF, libFP, libBP, libAux, libSens, MethodList, w_vec, inputScalars, type);
+    status = createKernels(queueFP, queueBP, libFP, libBP, libAux, libSens, MethodList, w_vec, inputScalars, type);
     if (status != 0) return -1;
 
     if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
@@ -352,7 +331,10 @@ int ProjectorClass::createBuffers(
         d_norm.resize(inputScalars.subsetsUsed);
     if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation)
         d_atten.resize(inputScalars.subsetsUsed);
-
+    if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+        d_attenB.resize(inputScalars.Nt);
+        //d_attenIm.resize(inputScalars.Nt);
+    }
     d_scat.resize(inputScalars.Nt);
     d_x.resize(inputScalars.Nt);
     d_z.resize(inputScalars.Nt);
@@ -765,6 +747,10 @@ int ProjectorClass::forwardProjection(
     if (inputScalars.FPType == 2) kParams.orthWidth = inputScalars.tube_width; // Set here to allow for projector types 23 and 32
     if (inputScalars.FPType == 3) kParams.orthWidth = inputScalars.cylRadiusProj3; // Set here to allow for projector types 23 and 32
 
+    commandBufferFP = NS::TransferPtr(queueFP->commandBuffer());
+    kernelFP = NS::TransferPtr(commandBufferFP->computeCommandEncoder());
+    kernelFP->setComputePipelineState(psoFP.get());
+
     SET_KERNEL_ARG_BYTES(kernelFP, kParams, sizeof(kParams), 0);
     if (DEBUG) mexPrint("forwardProjection: FP buffer 0 (scalar params) set");
 
@@ -1004,6 +990,10 @@ int ProjectorClass::backwardProjection(
     if (inputScalars.BPType == 2) kParams.orthWidth = inputScalars.tube_width;
     if (inputScalars.BPType == 3) kParams.orthWidth = inputScalars.cylRadiusProj3;
     if (inputScalars.BPType == 4) kParams.kerroin4 = w_vec.kerroin4[ii];
+
+    commandBufferBP = NS::TransferPtr(queueBP->commandBuffer());
+    kernelBP = NS::TransferPtr(commandBufferBP->computeCommandEncoder());
+    kernelBP->setComputePipelineState(psoBP.get());
 
     SET_KERNEL_ARG_BYTES(kernelBP, kParams, sizeof(kParams), 0);
     if (DEBUG) mexPrint("backwardProjection: BP buffer 0 (static params) set");

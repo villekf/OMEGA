@@ -84,11 +84,13 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 	proj.no_norm = no_norm;
 
 	// Create OpenCL buffers, CUDA arrays or OneAPI buffers (in the future)
+    if (DEBUG) mexPrint("reconstruction_multigpu: proj.createBuffers call");
 	status = proj.createBuffers(inputScalars, w_vec, x, z_det, xy_index, z_index, L, pituus, atten, norm, extraCorr, length, MethodList, type);	
 	if (status != 0)
 		return;
 
 	// Input constant data to the kernels
+    if (DEBUG) mexPrint("reconstruction_multigpu: proj.initializeKernel call");
 	status = proj.initializeKernel(inputScalars, w_vec);
 	if (status != 0)
 		return;

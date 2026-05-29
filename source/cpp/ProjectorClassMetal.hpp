@@ -37,6 +37,8 @@ public:
 	NS::SharedPtr<MTL::Device> mtlDevice;
     NS::SharedPtr<MTL::CommandQueue> mtlCommandQueue;
 	NS::SharedPtr<MTL::CommandBuffer> commandBufferFP, commandBufferBP;
+    NS::SharedPtr<MTL::ComputePipelineState> psoFP, psoBP;
+    NS::SharedPtr<MTL::CommandQueue> queueFP, queueBP;
 	NS::SharedPtr<MTL::ComputeCommandEncoder> kernelMBSREM, kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelProxTVq, kernelProxTVDiv, kernelProxTVGrad, kernelElementMultiply, kernelElementDivision, 
 		kernelTV, kernelProxTGVSymmDeriv, kernelProxTGVDiv, kernelProxTGVq, kernelPoisson, kernelPDHG, kernelProxRDP, kernelProxq, kernelProxTrans, kernelProxNLM, kernelGGMRF,
 		kernelsumma, kernelEstimate, kernelPSF, kernelPSFf, kernelDiv, kernelMult, kernelForward, kernelSensList, kernelApu, kernelHyper, kernelRotate;
@@ -100,12 +102,8 @@ public:
 
 	// Create kernels (=ComputeCommandEncoder in Metal)
 	int createKernels(
-		NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelFP,
-		NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelBP,
-		NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelNLM,
-		NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelMed,
-		NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelRDP,
-		NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelGGMRF,
+		NS::SharedPtr<MTL::CommandQueue>& queueFP,
+        NS::SharedPtr<MTL::CommandQueue>& queueBP,
 		const NS::SharedPtr<MTL::Library>& libFP,
 		const NS::SharedPtr<MTL::Library>& libBP,
 		const NS::SharedPtr<MTL::Library>& libAux,
