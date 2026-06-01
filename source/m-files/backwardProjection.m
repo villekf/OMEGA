@@ -277,7 +277,7 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
         alku = 1;
         for kk = 1 : options.nMultiVolumes + 1
             output{kk} = temp(alku : alku - 1 + prod(options.N(kk)));
-            alku = prod(options.N(kk)) + 1;
+            alku = alku + prod(options.N(kk));
             if options.use_psf
                 output{kk} = computeConvolution(output{kk}, options, options.Nx(kk), options.Ny(kk), options.Nz(kk), options.gaussK);
             end
@@ -288,7 +288,7 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
             alku = 1;
             for kk = 1 : options.nMultiVolumes + 1
                 sensIm{kk} = temp(alku : alku - 1 + prod(options.N(kk)));
-                alku = prod(options.N(kk));
+                alku = alku + prod(options.N(kk));
                 if options.use_psf
                     sensIm{kk} = computeConvolution(sensIm{kk}, options, options.Nx(kk), options.Ny(kk), options.Nz(kk), options.gaussK);
                 end
