@@ -63,7 +63,7 @@ if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelli
             end
         end
     end
-    if options.implementation == 2
+    if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
         options.rayShiftsDetector = single(options.rayShiftsDetector(:));
         options.rayShiftsSource = single(options.rayShiftsSource(:));
     end
