@@ -2,7 +2,7 @@
 
 - The main FOV in multi-resolution reconstruction can be shifted off-center
 - Multi-resolution reconstruction for implementation 5
-  - options.storeMultiVolumes now works with MATLAB and implementation 5
+- options.storeMultiResolution replaces the CELL macro
 
 ## OMEGA v2.2.0
 
