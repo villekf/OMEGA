@@ -2233,6 +2233,7 @@ class projectorClass:
             ('orthAxial', ctypes.c_bool),
             ('enforcePositivity', ctypes.c_bool),
             ('useMultiResolutionVolumes', ctypes.c_bool),
+            ('storeMultiResolution', ctypes.c_bool),
             ('save_iter', ctypes.c_bool),
             ('deblurring', ctypes.c_bool),
             ('useMAD', ctypes.c_bool),

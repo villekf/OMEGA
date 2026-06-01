@@ -124,6 +124,9 @@ options.multiResolutionScale = 1/4;
 % Performs the extrapolation and adjusts the image size accordingly
 options = CTEFOVCorrection(options);
 
+% Store all multi-resolution volumes in a cell array?
+options.storeMultiResolution = false;
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

@@ -250,6 +250,8 @@ struct inputStruct {
     bool enforcePositivity = false;
     // Use multi-resolution reconstruction
     bool useMultiResolutionVolumes = false;
+    // Save multi-resolution volumes
+    bool storeMultiResolution = false;
     // Save all iterations to host
     bool save_iter = false;
     // Use deblurring
@@ -605,6 +607,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.pitch = options.pitch;
     inputScalars.enforcePositivity = options.enforcePositivity;
     inputScalars.multiResolution = options.useMultiResolutionVolumes;
+    inputScalars.storeMultiResolution = options.storeMultiResolution;
     inputScalars.nMultiVolumes = options.nMultiVolumes;
     inputScalars.indexBased = options.useIndexBasedReconstruction;
 
@@ -1402,7 +1405,7 @@ void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, float* out
             }
         }
         // Transfer data back to host
-        if (CELL && inputScalars.nMultiVolumes > 0) {
+        if (inputScalars.storeMultiResolution && inputScalars.nMultiVolumes > 0) {
             for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
                 if (DEBUG) {
                     mexPrintBase("inputScalars.Nx[ii] = %d\n", inputScalars.Nx[ii]);

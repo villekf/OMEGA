@@ -137,6 +137,9 @@ options.multiResolutionScale = 1/4
 # Performs the extrapolation and adjusts the image size accordingly
 CTEFOVCorrection(options)
 
+# Store all multi-resolution volumes in a cell array?
+options.storeMultiResolution = False
+
 ###########################################################################
 ###########################################################################
 ###########################################################################
