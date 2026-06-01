@@ -20,6 +20,27 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 import ctypes
 import numpy as np
 
+def _reshape_multiresolution_output(output, options):
+    nVolumes = int(options.nMultiVolumes) + 1
+    volSizes = (options.Nx[:nVolumes].astype(np.uint64) * options.Ny[:nVolumes].astype(np.uint64) * options.Nz[:nVolumes].astype(np.uint64)).astype(np.int64)
+    volumes = []
+    for ii in range(nVolumes):
+        volumes.append(np.empty((options.Nx[ii], options.Ny[ii], options.Nz[ii], options.Nt), dtype=output.dtype, order='F'))
+    
+    offset = 0
+    for tt in range(options.Nt):
+        for ii, volSize in enumerate(volSizes):
+            nextOffset = offset + int(volSize)
+            volumes[ii][..., tt] = output[offset:nextOffset].reshape((options.Nx[ii], options.Ny[ii], options.Nz[ii]), order='F')
+            offset = nextOffset
+    
+    if offset != output.size:
+        raise ValueError(f"Unexpected multi-resolution output size: consumed {output} values from {output.size}")
+    
+    if options.Nt == 1:
+        volumes = [volume[..., 0] for volume in volumes]
+    return volumes
+
 def transferData(options):
     """
     Transfers the Python variables to the corresponding C-struct
@@ -688,7 +709,9 @@ def reconstructions_main(options):
     c_lib = ctypes.CDLL(libname)
     c_lib.omegaMain(options.param, ctypes.c_char_p(inStr), SinoP, outputP, FPOutputP, residualP)
     try:
-        if options.useMultiResolutionVolumes and not options.storeMultiResolution:
+        if options.useMultiResolutionVolumes and options.storeMultiResolution:
+            output = _reshape_multiresolution_output(output, options)
+        elif options.useMultiResolutionVolumes and not options.storeMultiResolution:
             output = output.reshape((options.NxOrig, options.NyOrig, options.NzOrig, -1), order = 'F')
         elif not options.storeMultiResolution and options.Nt == 1:
             output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], -1), order = 'F')
