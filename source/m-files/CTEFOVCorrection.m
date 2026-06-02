@@ -61,6 +61,45 @@ if ~isfield(options, 'offsetCorrection')
 else
     offset = options.offsetCorrection;
 end
+if options.useEFOV && ~isfield(options, 'eFOVSize')
+    warning('Legacy EFOV parameters detected. Please use options.eFOVSize and options.eFOVShift instead of options.eFOVLength, options.transaxialEFOV and options.axialEFOV. Converting legacy parameters for this reconstruction.')
+
+    legacyTransaxialEFOV = isfield(options, 'transaxialEFOV') && options.transaxialEFOV;
+    legacyAxialEFOV = isfield(options, 'axialEFOV') && options.axialEFOV;
+    if ~(legacyTransaxialEFOV || legacyAxialEFOV)
+        warning('Neither transaxial nor axial extended FOV selected! Defaulting to axial EFOV!')
+        legacyAxialEFOV = true;
+    end
+
+    if isfield(options, 'eFOVLengthTransaxial')
+        legacyEFOVLengthTransaxial = options.eFOVLengthTransaxial;
+    elseif isfield(options, 'eFOVLength')
+        legacyEFOVLengthTransaxial = options.eFOVLength;
+    else
+        legacyEFOVLengthTransaxial = 0.4;
+    end
+    if isfield(options, 'eFOVLengthAxial')
+        legacyEFOVLengthAxial = options.eFOVLengthAxial;
+    elseif isfield(options, 'eFOVLength')
+        legacyEFOVLengthAxial = options.eFOVLength;
+    else
+        legacyEFOVLengthAxial = 0.4;
+    end
+
+    options.eFOVSize = [0 0 0];
+    if legacyTransaxialEFOV
+        nTransaxial = floor(double(options.Nx) * legacyEFOVLengthTransaxial) * 2;
+        options.eFOVSize(1) = options.FOVa_x + options.FOVa_x / double(options.Nx) * nTransaxial;
+        options.eFOVSize(2) = options.FOVa_y + options.FOVa_y / double(options.Ny) * nTransaxial;
+    end
+    if legacyAxialEFOV
+        nAxial = floor(double(options.Nz) * legacyEFOVLengthAxial) * 2;
+        options.eFOVSize(3) = options.axial_fov + options.axial_fov / double(options.Nz) * nAxial;
+    end
+end
+if options.useEFOV && ~isfield(options, 'eFOVShift')
+    options.eFOVShift = [0 0 0];
+end
 if options.useExtrapolation
     if ~isfield(options, 'transaxialExtrapolation') || ~options.transaxialExtrapolation
         if ~isfield(options, 'axialExtrapolation') || ~options.axialExtrapolation
