@@ -963,7 +963,7 @@ end
 
 % Other SPECT corrections
 if options.SPECT
-    if options.scatter_correction && numel(options.SinDelayed) <= 1 && options.subtract_scatter% From 10.1371/journal.pone.0269542
+    if options.scatter_correction && numel(options.SinDelayed) <= 1 && options.subtract_scatter % See 10.1088/0031-9155/56/14/R01
         if iscell(options.SinM) % SinM is cell (size = options.partitions)
             for timestep = 1:options.partitions
                 if numel(options.ScatterC) == 1 % DEW
@@ -982,7 +982,7 @@ if options.SPECT
                     kLower = diff(options.eWin) / diff(options.eWinL);
                     kUpper = diff(options.eWin) / diff(options.eWinU);
                     if ~options.corrections_during_reconstruction
-                        options.SinM{timestep} = options.SinM{timestep} - 0.5 * (kLower * squeeze(options.ScatterC{1}{timestep}) - kUpper * squeeze(options.ScatterC{2}{timestep}));
+                        options.SinM{timestep} = options.SinM{timestep} - 0.5 * (kLower * squeeze(options.ScatterC{1}{timestep}) + kUpper * squeeze(options.ScatterC{2}{timestep}));
                         options.scatter_correction = false;
                     else
                         options.SinDelayed{timestep} = 0.5 * (kLower * squeeze(options.ScatterC{1}{timestep}) + kUpper * squeeze(options.ScatterC{2}{timestep}));
@@ -1009,7 +1009,7 @@ if options.SPECT
                 kLower = diff(options.eWin) / diff(options.eWinL);
                 kUpper = diff(options.eWin) / diff(options.eWinU);
                 if ~options.corrections_during_reconstruction
-                    options.SinM = options.SinM - 0.5 * (kLower * squeeze(options.ScatterC{1}) - kUpper * squeeze(options.ScatterC{2}));
+                    options.SinM = options.SinM - 0.5 * (kLower * squeeze(options.ScatterC{1}) + kUpper * squeeze(options.ScatterC{2}));
                     options.scatter_correction = false;
                 else
                     options.SinDelayed = 0.5 * (kLower * squeeze(options.ScatterC{1}) + kUpper * squeeze(options.ScatterC{2}));
