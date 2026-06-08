@@ -1336,9 +1336,9 @@ public:
 						d_x[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[indD] * 6, NULL, &status);
                     }
 					else if (inputScalars.listmode > 0 && !inputScalars.indexBased && (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || (!inputScalars.loadTOF && timestep == 0 && kk < inputScalars.TOFsubsets))) {
-						d_x[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6, NULL, &status);
+						d_x[timestep][kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[indD] * 6, NULL, &status);
 						if (DEBUG) {
-							mexPrintBase("length[kk + timestep * inputScalars.subsets] * 6 = %u\n", length[kk] * 6);
+							mexPrintBase("length[kk + timestep * inputScalars.subsets] * 6 = %u\n", length[indD] * 6);
 							mexEval();
 						}
 					}
@@ -1618,11 +1618,11 @@ public:
                         memSize += (sizeof(float) * length[indD] * 6) / 1048576ULL;
                     } else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
 						if ((kk < inputScalars.TOFsubsets) || inputScalars.loadTOF || (!inputScalars.loadTOF && timestep == 0 && kk < inputScalars.TOFsubsets)) {
-							status = CLCommandQueue[0].enqueueWriteBuffer(d_x[timestep][kk], CL_FALSE, 0, sizeof(float) * length[kk] * 6, &w_vec.listCoord[pituus[kk] * 6]);
+							status = CLCommandQueue[0].enqueueWriteBuffer(d_x[timestep][kk], CL_FALSE, 0, sizeof(float) * length[indD] * 6, &w_vec.listCoord[pituus[indD] * 6]);
 							if (DEBUG) {
-								mexPrintBase("length[kk + timestep * inputScalars.subsets] * 6 = %u\n", length[kk] * 6);
-								mexPrintBase("pituus[kk + timestep * inputScalars.subsets] * 6 = %u\n", pituus[kk] * 6);
-								mexPrintBase("w_vec.listCoord[pituus[kk + timestep * inputScalars.subsets] * 6] = %f\n", w_vec.listCoord[pituus[kk] * 6]);
+								mexPrintBase("length[kk + timestep * inputScalars.subsets] * 6 = %u\n", length[indD] * 6);
+								mexPrintBase("pituus[kk + timestep * inputScalars.subsets] * 6 = %u\n", pituus[indD] * 6);
+								mexPrintBase("w_vec.listCoord[pituus[kk + timestep * inputScalars.subsets] * 6] = %f\n", w_vec.listCoord[pituus[indD] * 6]);
 								mexEval();
 							}
 						}
@@ -1636,20 +1636,20 @@ public:
                     }
                     if (inputScalars.listmode > 0 && inputScalars.indexBased) {
                         if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF && timestep == 0)) { // First condition: load all data at once. Second condition: load one subset at a time (only 1 buffer required for each timestep).
-                            status = CLCommandQueue[0].enqueueWriteBuffer(d_trIndex[timestep][kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk] * 2, 
-								&w_vec.trIndex[pituus[kk] * 2]);
+                            status = CLCommandQueue[0].enqueueWriteBuffer(d_trIndex[timestep][kk], CL_FALSE, 0, sizeof(uint16_t) * length[indD] * 2, 
+								&w_vec.trIndex[pituus[indD] * 2]);
                             OCL_CHECK(status, "\n", -1);
                             memSize += (sizeof(uint16_t) * length[kk] * 2) / 1048576ULL;
-                            status = CLCommandQueue[0].enqueueWriteBuffer(d_axIndex[timestep][kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk] * 2, 
-								&w_vec.axIndex[pituus[kk] * 2]);
+                            status = CLCommandQueue[0].enqueueWriteBuffer(d_axIndex[timestep][kk], CL_FALSE, 0, sizeof(uint16_t) * length[indD] * 2, 
+								&w_vec.axIndex[pituus[indD] * 2]);
                             OCL_CHECK(status, "\n", -1);
                             memSize += (sizeof(uint16_t) * length[kk] * 2) / 1048576ULL;
                         }
                     }
                     if (inputScalars.listmode > 0 && inputScalars.TOF) {
                         if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF && timestep == 0)) {
-                            status = CLCommandQueue[0].enqueueWriteBuffer(d_TOFIndex[timestep][kk], CL_FALSE, 0, sizeof(uint8_t) * length[kk], 
-								&w_vec.TOFIndices[pituus[kk]]);
+                            status = CLCommandQueue[0].enqueueWriteBuffer(d_TOFIndex[timestep][kk], CL_FALSE, 0, sizeof(uint8_t) * length[indD], 
+								&w_vec.TOFIndices[pituus[indD]]);
                             OCL_CHECK(status, "\n", -1);
                             memSize += (sizeof(uint8_t) * length[kk]) / 1048576ULL;
                         }
