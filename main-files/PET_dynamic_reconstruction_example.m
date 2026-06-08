@@ -1067,6 +1067,8 @@ if ~options.only_reconstructions && options.use_machine ~= 2
         % Sinogram creation
         options.SinM = load_data(options);
     end
+elseif ~options.only_reconstructions && options.use_machine == 2
+    options.SinM = form_sinograms(options);
 end
 
 if listmode && options.useIndexBasedReconstruction

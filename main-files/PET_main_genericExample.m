@@ -1530,10 +1530,12 @@ options = OMEGA_error_check(options);
 options.DOI = 4.584;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%% Load the LST coincidence data
+%% Load the LST coincidence data or SCN sinogram data
 
 if ~options.only_reconstructions && ~options.no_data_load && options.use_machine ~= 2
     options.SinM = load_data(options);
+elseif ~options.only_reconstructions && ~options.no_data_load && options.use_machine == 2
+    options.SinM = form_sinograms(options);
 end
 
 
