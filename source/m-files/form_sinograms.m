@@ -1101,8 +1101,7 @@ else
         end
     else
         if options.partitions ~= tof_length
-            warning('Number of dynamic frames specified in options.partitions is larger or smaller than the number of frames in the sinogram! Setting options.partitions to match the sinogram!')
-            options.partitions = tof_length;
+            error(['Number of dynamic frames specified in options.partitions is larger or smaller than the number of frames in the sinogram! Set options.partitions to match the sinogram (' num2str(tof_length) ' timesteps)!'])
         end
         temp = cell(tof_length, 1);
         for kk = options.partitions : -1 : 1
