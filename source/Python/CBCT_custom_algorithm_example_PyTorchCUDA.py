@@ -289,16 +289,16 @@ for k in range(options.Niter):
 # """
 # PDHG without subsets but with multi-resolution
 # """
-# d_m = af.interop.np_to_af_array(m)
-# p = af.constant(0., m.size)
+# d_m = torch.tensor(m,device='cuda')
+# p = torch.zeros(m.size, dtype=torch.float32,device='cuda')
 # f = [None] * (options.nMultiVolumes + 1)
 # d_f = [None] * (options.nMultiVolumes + 1)
 # NN = 0
 # NN2 = 0
 # for i in range((options.nMultiVolumes + 1)):
-#     f[i] = af.constant(0., options.N[i].item())
+#     f[i] = torch.zeros(options.N[i].item(), device='cuda')
 #     NN += options.N[i].item()
-#     d_f[i] = af.interop.np_to_af_array(options.x0[NN2 : NN])
+#     d_f[i] = torch.tensor(options.x0[NN2 : NN], device='cuda')
 #     NN2 += options.N[i].item()
 # for k in range(options.Niter):
 #     apu = options * d_f
@@ -317,31 +317,36 @@ for k in range(options.Niter):
 # """
 # d_m = [None] * options.subsets
 # for k in range(options.subsets):
-#     d_m[k] = af.interop.np_to_af_array(m[options.nTotMeas[k].item() : options.nTotMeas[k + 1].item()])
+#     d_m[k] = torch.tensor(m[options.nTotMeas[k].item() : options.nTotMeas[k + 1].item()], device='cuda')
 # p = [None] * options.subsets
 # for k in range(options.subsets):
-#     p[k] = af.constant(0., d_m[k].elements())
+#     p[k] = torch.zeros(d_m[k].numel(), dtype=torch.float32, device='cuda')
 # g1 = [None] * (options.nMultiVolumes + 1)
 # d_f = [None] * (options.nMultiVolumes + 1)
 # NN = 0
 # NN2 = 0
 # for i in range((options.nMultiVolumes + 1)):
-#     g1[i] = af.constant(0., options.N[i].item())
+#     g1[i] = torch.zeros(options.N[i].item(), device='cuda')
 #     NN += options.N[i].item()
-#     d_f[i] = af.interop.np_to_af_array(options.x0[NN2 : NN])
+#     d_f[i] = torch.tensor(options.x0[NN2 : NN], device='cuda')
 #     NN2 += options.N[i].item()
 # for k in range(options.Niter):
 #     for i in range(options.subsets):
 #         options.subset = i
 #         apu = options * d_f
-#         pl = (p[i] + sigma * (apu - d_m[i])) / (1 + sigma)
+#         if options.precondTypeMeas[1]:
+#             apu = applyMeasPreconditioning(options, apu - d_m[i])
+#             pl = p[i] + sigma * apu
+#             pl = circulantInverse(options, pl)
+#         else:
+#             pl = (p[i] + sigma * (apu - d_m[i])) / (1 + sigma)
 #         dg = options.T() * (pl - p[i])
 #         p[i] = pl
 #         for j in range((options.nMultiVolumes + 1)):
 #             g1[j] = g1[j] + dg[j]
 #             g = g1[j] + (theta * options.subsets) * dg[j]
 #             d_f[j] = d_f[j] - tau[j] * g
-#             d_f[j][d_f[j] < 0] = 0.
+#             d_f[j] = torch.clamp(d_f[j], min=0)
 #     print('Iteration ' + str(k))
 
 torch.cuda.synchronize()
@@ -353,7 +358,7 @@ if isinstance(d_f, list):
 else:
     f_np = (d_f).cpu().numpy()
 f_np = np.reshape(f_np, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()), order='F')
-plt.pyplot.imshow(f_np[:,:,200], vmin=0)
+# plt.pyplot.imshow(f_np[:,:,200], vmin=0)
 
 from omegatomo.util.volume3Dviewer import volume3Dviewer
 volume3Dviewer(f_np)
