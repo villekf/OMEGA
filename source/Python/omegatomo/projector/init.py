@@ -4,6 +4,7 @@ Created on Thu Jul 10 13:17:22 2025
 """
 
 def initProjector(self):
+    self.projectorInitialized = True
     import arrayfire as af
     import numpy as np
     import os

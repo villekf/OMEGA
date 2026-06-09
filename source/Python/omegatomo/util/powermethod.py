@@ -7,6 +7,8 @@ Created on Thu Apr 18 17:44:17 2024
 
 
 def powerMethod(A):
+    if not(A.projectorInitialized):
+        A.initProj()
     from omegatomo.util.measprecond import applyMeasPreconditioning
     if A.useAF:
         import arrayfire as af

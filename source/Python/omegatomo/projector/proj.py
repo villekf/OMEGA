@@ -505,11 +505,14 @@ class projectorClass:
     useHelical = False
     helicalRadius = 1.
     useParkerWeights = False
+    projectorAdded = False
+    projectorInitialized = False
 
     def __init__(self):
         # C-struct
         self.param = self.parameters()
     def addProjector(self):
+        self.projectorAdded = True        
         if self.OSL_OSEM or self.MBSREM or self.ROSEM_MAP or self.OSL_RBI or self.OSL_COSEM > 0 or self.PKMA or self.SPS or self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.CV or self.SAGA or self.BB or self.SART or self.ASD_POCS:
             self.MAP = True
         if hasattr(self, 'dPitch') and self.dPitch > 0 and self.dPitchX == 0.:
@@ -1353,7 +1356,7 @@ class projectorClass:
                     
                 algorithms = [
                     "OSEM", "MRAMLA", "RAMLA", "RBI", "ROSEM", "DRAMA", "COSEM", "ECOSEM", "ACOSEM", "LSQR", "CGLS", "FDK", "FISTA", "FISTAL1",
-                    "OSL_OSEM", "MBSREM", "BSREM", "OSL_RBI", "OSL_COSEM", "ROSEM_MAP", "PKMA", "SART", "ASD_POCS", "SAGA","BB",
+                    "OSL_OSEM", "MBSREM", "BSREM", "OSL_RBI", "OSL_COSEM", "ROSEM_MAP", "PKMA", "SART", "ASD_POCS", "SAGA", "BB",
                     "PDHG", "PDHGL1", "PDDY", "PDHGKL", "CV" ]
                 
                 
@@ -1902,6 +1905,8 @@ class projectorClass:
             self.g_dim_z = g_pituus_z
 
     def initProj(self):
+        if not(self.projectorAdded):
+            self.addProjector()
         from omegatomo.projector.init import initProjector
         initProjector(self)
                 
@@ -1910,10 +1915,14 @@ class projectorClass:
         return conv3D(self, f, ii)
         
     def forwardProject(self, f, subset = -1):
+        if not(self.projectorInitialized):
+            self.initProj()
         from omegatomo.projector.projfunctions import forwardProjection
         return forwardProjection(self, f, subset)
         
     def backwardProject(self, y, subset = -1):
+        if not(self.projectorInitialized):
+            self.initProj()
         from omegatomo.projector.projfunctions import backwardProjection
         return backwardProjection(self, y, subset)
     
