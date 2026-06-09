@@ -86,6 +86,7 @@ def conv3D(self, f, ii = 0):
 def forwardProjection(self, f, subset = -1):
     if subset == -1:
         subset = self.subset
+    volumes = 0
     if self.projector_type == 6:
         if not self.useCUDA:
             import arrayfire as af
@@ -163,6 +164,9 @@ def forwardProjection(self, f, subset = -1):
 
                 y = y.ravel()
     else:
+        if self.nMultiVolumes > 0 and not(isinstance(f,list)):
+            volumes = self.nMultiVolumes
+            self.nMultiVolumes = 0
         if self.useCUDA:
             if self.useCuPy:
                 import cupy as cp
@@ -720,6 +724,8 @@ def forwardProjection(self, f, subset = -1):
                     self.knlF.set_arg(kIndLoc, (cl.cltypes.int)(k))
                 cl.enqueue_nd_range_kernel(self.queue, self.knlF, self.globalSizeFP[subset], self.localSizeFP)
                 self.queue.finish()
+        if volumes > 0 and not(isinstance(f,list)):
+            self.nMultiVolumes = volumes
         if self.useAF:
             af.device.unlock_array(y)
             if not self.useImages:
@@ -731,6 +737,7 @@ def backwardProjection(self, y, subset = -1):
         subset = self.subset
     if self.nMultiVolumes > 0:
         f = [None] * (self.nMultiVolumes + 1)
+    volumes = 0
     if self.projector_type == 6:
         if not self.useCUDA:
             import arrayfire as af
@@ -838,6 +845,9 @@ def backwardProjection(self, y, subset = -1):
                     else:
                         f = torch.sum(f, 0)
     else:
+        if self.nMultiVolumes > 0 and not(isinstance(f,list)):
+            volumes = self.nMultiVolumes
+            self.nMultiVolumes = 0
         if self.useCUDA:
             if self.useCuPy:
                 import cupy as cp
@@ -1381,6 +1391,8 @@ def backwardProjection(self, y, subset = -1):
                             f[k] = f[k].astype(cl.cltypes.float) / self.TH32
                         else:
                             f = f.astype(cl.cltypes.float) / self.TH32
+        if not(isinstance(f,list)) and volumes > 0:
+            self.nMultiVolumes = volumes
         if self.use_psf:
             if self.nMultiVolumes > 0:
                 f[k] = self.computeConvolution(f[k])

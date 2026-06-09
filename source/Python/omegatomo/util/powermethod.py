@@ -69,35 +69,72 @@ def powerMethod(A):
                         else:
                             x = cl.array.to_device(A.queue, np.abs(rng.standard_normal(A.N[0].item(), dtype=np.float32)))
                             x = x / clmath.sqrt(cl.array.dot(x, x))
+    if A.nMultiVolumes > 0:
+        i = 0
+        for k in range(A.powerIterations):
+            x2 = A * x[0]
+            if A.useAF or A.useTorch or A.useCuPy:
+                x2 = applyMeasPreconditioning(A, x2)
+            x2 = A.T() * x2
+            if A.useAF:
+                L[i] = (((af.dot(x[i], x2[i])) / (af.dot(x[i], x[i])) * A.subsets).to_ndarray()).item()
+                x[i] = x2[i] / af.norm(x2[i])
+            else:
+                if A.useTorch:
+                    LL = torch.dot(x[i], x2[i]) / torch.dot(x[i], x[i]) * A.subsets
+                    L[i] = LL.cpu().numpy().item()
+                    x[i] = x2[i] / torch.norm(x2[i])
+                else:
+                    if A.useCUDA:
+                        if A.useCuPy:
+                            L[i] = (((cp.dot(x[i], x2[i])) / (cp.dot(x[i], x[i])) * A.subsets).get()).item()
+                            x[i] = x2[i] / cp.sqrt(cp.dot(x2[i], x2[i]))
+                        else:
+                            L[i] = (((cuda.gpuarray.dot(x[i], x2[i])) / (cuda.gpuarray.dot(x[i], x[i])) * A.subsets).get()).item()
+                            x[i] = x2[i] / cumath.sqrt(cuda.gpuarray.dot(x2[i], x2[i]))
+                    else:
+                        L[i] = (((cl.array.dot(x[i], x2[i])) / (cl.array.dot(x[i], x[i])) * A.subsets).get(A.queue)).item()
+                        x[i] = x2[i] / clmath.sqrt(cl.array.dot(x2[i], x2[i]))
+            if A.verbose > 0:
+                print('Largest eigenvalue at iteration ' + str(k) + ' in the main volume is ' + str(L[i]))
     for k in range(A.powerIterations):
-        x2 = A * x
-        if A.useAF or A.useTorch:
-            x2 = applyMeasPreconditioning(A, x2)
-        x2 = A.T() * x2
         if A.nMultiVolumes > 0:
+            x2 = A * x
+            if A.useAF or A.useTorch or A.useCuPy:
+                x2 = applyMeasPreconditioning(A, x2)
+            x2 = A.T() * x2
             for i in range(A.nMultiVolumes + 1):
                 if A.useAF:
-                    L[i] = (((af.dot(x[i], x2[i])) / (af.dot(x[i], x[i])) * A.subsets).to_ndarray()).item()
+                    if i > 0:
+                        L[i] = (((af.dot(x[i], x2[i])) / (af.dot(x[i], x[i])) * A.subsets).to_ndarray()).item()
                     x[i] = x2[i] / af.norm(x2[i])
                 else:
                     if A.useTorch:
                         LL = torch.dot(x[i], x2[i]) / torch.dot(x[i], x[i]) * A.subsets
-                        L[i] = LL.cpu().numpy().item()
+                        if i > 0:
+                            L[i] = LL.cpu().numpy().item()
                         x[i] = x2[i] / torch.norm(x2[i])
                     else:
                         if A.useCUDA:
                             if A.useCuPy:
-                                L[i] = (((cp.dot(x[i], x2[i])) / (cp.dot(x[i], x[i])) * A.subsets).get()).item()
+                                if i > 0:
+                                    L[i] = (((cp.dot(x[i], x2[i])) / (cp.dot(x[i], x[i])) * A.subsets).get()).item()
                                 x[i] = x2[i] / cp.sqrt(cp.dot(x2[i], x2[i]))
                             else:
-                                L[i] = (((cuda.gpuarray.dot(x[i], x2[i])) / (cuda.gpuarray.dot(x[i], x[i])) * A.subsets).get()).item()
+                                if i > 0:
+                                    L[i] = (((cuda.gpuarray.dot(x[i], x2[i])) / (cuda.gpuarray.dot(x[i], x[i])) * A.subsets).get()).item()
                                 x[i] = x2[i] / cumath.sqrt(cuda.gpuarray.dot(x2[i], x2[i]))
                         else:
-                            L[i] = (((cl.array.dot(x[i], x2[i])) / (cl.array.dot(x[i], x[i])) * A.subsets).get(A.queue)).item()
+                            if i > 0:
+                                L[i] = (((cl.array.dot(x[i], x2[i])) / (cl.array.dot(x[i], x[i])) * A.subsets).get(A.queue)).item()
                             x[i] = x2[i] / clmath.sqrt(cl.array.dot(x2[i], x2[i]))
-                if A.verbose > 0:
+                if A.verbose > 0 and i > 0:
                     print('Largest eigenvalue at iteration ' + str(k) + ' and in volume ' + str(i) + ' is ' + str(L[i]))
         else:
+            x2 = A * x
+            if A.useAF or A.useTorch or A.useCuPy:
+                x2 = applyMeasPreconditioning(A, x2)
+            x2 = A.T() * x2
             if A.useAF:
                 L = (((af.dot(x, x2)) / (af.dot(x, x)) * A.subsets).to_ndarray()).item()
                 x = x2 / af.norm(x2)
