@@ -1829,7 +1829,7 @@ public:
 						status = cuMemcpyHtoD(d_maskFPB[0], w_vec.maskFP, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD);
 					CUDA_CHECK(status, "\n", -1);
 				}
-				else if (inputScalars.maskBP) {
+				if (inputScalars.maskBP) {
 					status = cuMemcpyHtoD(d_maskBPB, w_vec.maskBP, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ);
 					CUDA_CHECK(status, "\n", -1);
 				}
