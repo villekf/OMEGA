@@ -1329,9 +1329,10 @@ DEVICE void extendRayToFOV(
     if (tmax < tmin)
         return;
 
+#if !defined(ORTH) // The original ray start point is essential for orth, as Gaussian collimator response width depends on that
     if (!((p0.x >= boxMin.x && p0.x <= boxMax.x) && (p0.y >= boxMin.y && p0.y <= boxMax.y) && (p0.z >= boxMin.z && p0.z <= boxMax.z)))
         *s = p0 + tmin * dir;
-
+#endif
     *d = p0 + tmax * dir;
     return;
 }

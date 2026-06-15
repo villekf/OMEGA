@@ -646,6 +646,11 @@ void projectorType123(
 #else
 		temp *= (FLOAT_ONE / (TotV * d_d2 * CFLOAT(apuX2 - apuX1)));
 #endif
+#elif defined(SPECT)
+#if defined(TOTLENGTH)
+        temp /= LENGTH(diff);
+#endif
+        temp *= d_d.x * d_d.y * d_d.z;
 #endif
 		if (d_N2 == 1)
 			indO = localInd.x;
@@ -1024,6 +1029,13 @@ void projectorType123(
 
 #if !defined(CT) //////////////// PET/SPECT ////////////////
 #ifdef ORTH //////////////// ORTH/VOL ////////////////
+#if defined(SPECT) && !defined(VOL)
+        temp = FLOAT_ONE;
+#if defined(TOTLENGTH)
+        temp /= LENGTH(diff);
+#endif
+        temp *= d_d.x * d_d.y * d_d.z;
+#endif
 #if defined(VOL) && defined(TOTLENGTH) //////////////// VOL+TOTLENGTH ////////////////
 		temp = 1.f / TotV;
 #elif defined(VOL) && !defined(TOTLENGTH) && defined(BP)
@@ -1371,6 +1383,13 @@ void projectorType123(
 // #if (defined(SPECT) && !defined(ORTH)) // Ray length inside BP mask
 // 		temp /= L_SPECT;
 // #endif
+#if defined(SPECT) && defined(ORTH) && !defined(VOL)
+            temp = FLOAT_ONE;
+#if defined(TOTLENGTH)
+            temp /= LENGTH(diff);
+#endif
+            temp *= d_d.x * d_d.y * d_d.z;
+#endif
 #if !defined(TOTLENGTH) && !defined(CT) && defined(FP)
 			if (LL == 0.f)
 				LL = L;
