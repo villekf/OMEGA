@@ -1687,13 +1687,13 @@ public:
                 }
 
 			    for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-					if (inputScalars.CT || inputScalars.SPECT) {
-						status = cuMemAlloc(&d_x[timestep][kk], sizeof(float) * length[kk] * 6);
+					const uint32_t indD = kk + timestep * inputScalars.subsets;
+                    if (inputScalars.CT || inputScalars.SPECT) {
+						status = cuMemAlloc(&d_x[timestep][kk], sizeof(float) * length[indD] * 6);
 						CUDA_CHECK(status, "\n", -1);
 						memAlloc.xSteps++;
-					}
-					else if (inputScalars.listmode > 0 && !inputScalars.indexBased && (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || (!inputScalars.loadTOF && timestep == 0 && kk < inputScalars.TOFsubsets))) {
-						status = cuMemAlloc(&d_x[timestep][kk], sizeof(float) * length[kk + timestep * inputScalars.subsets] * 6);
+					} else if (inputScalars.listmode > 0 && !inputScalars.indexBased && (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || (!inputScalars.loadTOF && timestep == 0 && kk < inputScalars.TOFsubsets))) {
+						status = cuMemAlloc(&d_x[timestep][kk], sizeof(float) * length[indD] * 6);
 						CUDA_CHECK(status, "\n", -1);
 						memAlloc.xSteps++;
 					}
@@ -1703,12 +1703,11 @@ public:
                             coef = 1;
                         else if (inputScalars.pitch)
                             coef = 6;
-                        status = cuMemAlloc(&d_z[timestep][kk], sizeof(float) * length[kk] * coef);
+                        status = cuMemAlloc(&d_z[timestep][kk], sizeof(float) * length[indD] * coef);
                         CUDA_CHECK(status, "\n", -1);
                         memAlloc.zType = 1;
                         memAlloc.zSteps++;
-                    }
-                    else {
+                    } else {
                         if (inputScalars.PET && inputScalars.listmode == 0) {
                             if (inputScalars.nLayers > 1)
                                 status = cuMemAlloc(&d_z[timestep][kk], sizeof(float) * length[kk] * 3);
@@ -1730,16 +1729,16 @@ public:
                         CUDA_CHECK(status, "\n", -1);
                     }
                     if (inputScalars.scatter == 1U) {
-                        status = cuMemAlloc(&d_scat[timestep][kk], sizeof(float) * length[kk] * vecSize);
+                        status = cuMemAlloc(&d_scat[timestep][kk], sizeof(float) * length[indD] * vecSize);
                         CUDA_CHECK(status, "\n", -1);
                         memAlloc.extra = true;
                         memAlloc.eSteps++;
                     }
                     if (inputScalars.listmode > 0 && inputScalars.indexBased) {
 						if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF && timestep == 0)) {
-                            status = cuMemAlloc(&d_trIndex[timestep][kk], sizeof(uint16_t) * length[kk + timestep * inputScalars.subsets] * 2);
+                            status = cuMemAlloc(&d_trIndex[timestep][kk], sizeof(uint16_t) * length[indD] * 2);
                             CUDA_CHECK(status, "\n", -1);
-                            status = cuMemAlloc(&d_axIndex[timestep][kk], sizeof(uint16_t) * length[kk + timestep * inputScalars.subsets] * 2);
+                            status = cuMemAlloc(&d_axIndex[timestep][kk], sizeof(uint16_t) * length[indD] * 2);
                             CUDA_CHECK(status, "\n", -1);
                             memAlloc.indexBased = true;
                             memAlloc.iSteps++;
@@ -1747,7 +1746,7 @@ public:
                     }
                     if (inputScalars.listmode > 0 && inputScalars.TOF) {
                         if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF && timestep == 0)) {
-                            status = cuMemAlloc(&d_TOFIndex[timestep][kk], sizeof(uint8_t) * length[kk + timestep * inputScalars.subsets]);
+                            status = cuMemAlloc(&d_TOFIndex[timestep][kk], sizeof(uint8_t) * length[indD]);
                             CUDA_CHECK(status, "\n", -1);
                             memAlloc.TOFIndex = true;
                             memAlloc.TOFSteps++;
@@ -1830,7 +1829,7 @@ public:
 						status = cuMemcpyHtoD(d_maskFPB[0], w_vec.maskFP, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD);
 					CUDA_CHECK(status, "\n", -1);
 				}
-				else if (inputScalars.maskBP) {
+				if (inputScalars.maskBP) {
 					status = cuMemcpyHtoD(d_maskBPB, w_vec.maskBP, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ);
 					CUDA_CHECK(status, "\n", -1);
 				}
@@ -1866,34 +1865,32 @@ public:
 					}
                 }
 			    for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+                    const uint32_t indD = kk + timestep * inputScalars.subsets;
                     if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
                         size_t kerroin = 2;
                         if (inputScalars.pitch)
                             kerroin = 6;
                         else if (inputScalars.useHelical)
                             kerroin = 1;
-                        status = cuMemcpyHtoD(d_z[timestep][kk], &z_det[pituus[kk] * kerroin], sizeof(float) * length[kk] * kerroin);
+                        status = cuMemcpyHtoD(d_z[timestep][kk], &z_det[pituus[indD] * kerroin], sizeof(float) * length[indD] * kerroin);
                         CUDA_CHECK(status, "\n", -1);
-                    }
-                    else {
+                    } else {
                         if (inputScalars.PET && inputScalars.listmode == 0) {
                             if (inputScalars.nLayers > 1)
                                 status = cuMemcpyHtoD(d_z[timestep][kk], &z_det[pituus[kk] * 3], sizeof(float) * length[kk] * 3);
                             else
                                 status = cuMemcpyHtoD(d_z[timestep][kk], &z_det[pituus[kk] * 2], sizeof(float) * length[kk] * 2);
-						}
-						else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased || inputScalars.listmode > 0)) {
+						} else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased || inputScalars.listmode > 0)) {
 							status = cuMemcpyHtoD(d_z[timestep][kk], z_det, sizeof(float) * inputScalars.size_z);
 						}
                         CUDA_CHECK(status, "\n", -1);
                     }
                     if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
-                        status = cuMemcpyHtoD(d_x[timestep][kk], &x[pituus[kk] * 6], sizeof(float) * length[kk] * 6);
+                        status = cuMemcpyHtoD(d_x[timestep][kk], &x[pituus[indD] * 6], sizeof(float) * length[indD] * 6);
                         CUDA_CHECK(status, "\n", -1);
-                    }
-                    else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
+                    } else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
 						if ((kk < inputScalars.TOFsubsets) || inputScalars.loadTOF || (!inputScalars.loadTOF && timestep == 0 && kk < inputScalars.TOFsubsets)) {
-                            status = cuMemcpyHtoD(d_x[timestep][kk], &w_vec.listCoord[pituus[kk + timestep * inputScalars.subsets] * 6], sizeof(float) * length[kk + timestep * inputScalars.subsets] * 6);
+                            status = cuMemcpyHtoD(d_x[timestep][kk], &w_vec.listCoord[pituus[indD] * 6], sizeof(float) * length[indD] * 6);
                             CUDA_CHECK(status, "\n", -1);
                         }
                     }
@@ -1903,15 +1900,15 @@ public:
                     }
                     if (inputScalars.listmode > 0 && inputScalars.indexBased) {
                         if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF && timestep == 0)) {
-                            status = cuMemcpyHtoD(d_trIndex[timestep][kk], &w_vec.trIndex[pituus[kk + timestep * inputScalars.subsets] * 2], sizeof(uint16_t) * length[kk + timestep * inputScalars.subsets] * 2);
+                            status = cuMemcpyHtoD(d_trIndex[timestep][kk], &w_vec.trIndex[pituus[indD] * 2], sizeof(uint16_t) * length[indD] * 2);
                             CUDA_CHECK(status, "\n", -1);
-                            status = cuMemcpyHtoD(d_axIndex[timestep][kk], &w_vec.axIndex[pituus[kk + timestep * inputScalars.subsets] * 2], sizeof(uint16_t) * length[kk + timestep * inputScalars.subsets] * 2);
+                            status = cuMemcpyHtoD(d_axIndex[timestep][kk], &w_vec.axIndex[pituus[indD] * 2], sizeof(uint16_t) * length[indD] * 2);
                             CUDA_CHECK(status, "\n", -1);
                         }
                     }
                     if (inputScalars.listmode > 0 && inputScalars.TOF) {
                         if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF && timestep == 0)) {
-                            status = cuMemcpyHtoD(d_TOFIndex[timestep][kk], &w_vec.TOFIndices[pituus[kk + timestep * inputScalars.subsets]], sizeof(uint8_t) * length[kk + timestep * inputScalars.subsets]);
+                            status = cuMemcpyHtoD(d_TOFIndex[timestep][kk], &w_vec.TOFIndices[pituus[indD]], sizeof(uint8_t) * length[indD]);
                             CUDA_CHECK(status, "\n", -1);
                         }
                     }
