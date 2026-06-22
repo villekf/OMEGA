@@ -69,6 +69,100 @@ DEVICE float normPDF2(const float x, const float mu, const float sigma) {
     const float e = EXP(-0.5f * a2);
     return INV_2PI * inv_sigma2 * e;
 }
+
+#if defined(ORTH) && !defined(VOL)
+DEVICE bool spectOrthRayBoxInterval(
+    const FLOAT3 p0,
+    const FLOAT3 dir,
+    const FLOAT3 boxMin,
+    const FLOAT3 boxMax,
+    PTR_THR FLOAT *tmin,
+    PTR_THR FLOAT *tmax
+) {
+    *tmin = FLOAT_ZERO;
+    *tmax = 1.0e8f;
+    const FLOAT epsVal = 1.0e-6f;
+
+    if (FABS(dir.x) < epsVal) {
+        if (p0.x < boxMin.x || p0.x > boxMax.x)
+            return false;
+    } else {
+        const FLOAT t1 = (boxMin.x - p0.x) / dir.x;
+        const FLOAT t2 = (boxMax.x - p0.x) / dir.x;
+        *tmin = FMAX(*tmin, FMIN(t1, t2));
+        *tmax = FMIN(*tmax, FMAX(t1, t2));
+        if (*tmax < *tmin)
+            return false;
+    }
+
+    if (FABS(dir.y) < epsVal) {
+        if (p0.y < boxMin.y || p0.y > boxMax.y)
+            return false;
+    } else {
+        const FLOAT t1 = (boxMin.y - p0.y) / dir.y;
+        const FLOAT t2 = (boxMax.y - p0.y) / dir.y;
+        *tmin = FMAX(*tmin, FMIN(t1, t2));
+        *tmax = FMIN(*tmax, FMAX(t1, t2));
+        if (*tmax < *tmin)
+            return false;
+    }
+
+    if (FABS(dir.z) < epsVal) {
+        if (p0.z < boxMin.z || p0.z > boxMax.z)
+            return false;
+    } else {
+        const FLOAT t1 = (boxMin.z - p0.z) / dir.z;
+        const FLOAT t2 = (boxMax.z - p0.z) / dir.z;
+        *tmin = FMAX(*tmin, FMIN(t1, t2));
+        *tmax = FMIN(*tmax, FMAX(t1, t2));
+        if (*tmax < *tmin)
+            return false;
+    }
+
+    return true;
+}
+
+DEVICE FLOAT spectOrthSupportRadius(
+    const FLOAT3 s,
+    const FLOAT3 diff,
+    const FLOAT3 boxMin,
+    const FLOAT3 boxMax,
+    const FLOAT coneOfResponseStdCoeffA,
+    const FLOAT coneOfResponseStdCoeffB,
+    const FLOAT coneOfResponseStdCoeffC
+) {
+    const FLOAT rayLength = LENGTH(diff);
+    if (rayLength <= 1.0e-6f)
+        return FLOAT_ZERO;
+
+    const FLOAT3 dir = diff * RCP(rayLength);
+    FLOAT dParallelMax = FLOAT_ZERO;
+
+    for (int ix = 0; ix < 2; ix++) {
+        const FLOAT x = (ix == 0) ? boxMin.x : boxMax.x;
+        for (int iy = 0; iy < 2; iy++) {
+            const FLOAT y = (iy == 0) ? boxMin.y : boxMax.y;
+            for (int iz = 0; iz < 2; iz++) {
+                const FLOAT z = (iz == 0) ? boxMin.z : boxMax.z;
+                const FLOAT3 corner = CMFLOAT3(x, y, z);
+                dParallelMax = FMAX(dParallelMax, dot(dir, corner - s));
+            }
+        }
+    }
+
+    const FLOAT fwhm = FMAD(coneOfResponseStdCoeffA, dParallelMax, coneOfResponseStdCoeffB);
+    return 3.5f * SQRT(fwhm * fwhm + coneOfResponseStdCoeffC * coneOfResponseStdCoeffC) * INV_2SQRT2LN2;
+}
+
+DEVICE bool spectOrthPrimaryIsX(const FLOAT3 diff) {
+    return FABS(diff.x) >= FABS(diff.y);
+}
+
+DEVICE int spectOrthClampedIndex(const FLOAT coord, const FLOAT b0, const FLOAT d0, const uint n0) {
+    const int maxIndex = CINT(n0) - 1;
+    return MIN(MAX(CINT_rtz((coord - b0) / d0), 0), maxIndex);
+}
+#endif
 #endif
 
 // compute voxel index, orthogonal distance based or volume of intersection ray tracer

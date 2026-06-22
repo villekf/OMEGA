@@ -498,6 +498,152 @@ void projectorType123(
 #endif
 #endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+#if defined(SPECT) && defined(ORTH) && !defined(VOL) && !defined(ATN)
+	// SPECT ODRT has finite Gaussian support around the central ray.  Use the
+	// total FOV as the physical admission box, but only traverse voxels in this
+	// local volume so multiresolution subvolumes keep their own indexing.
+	const FLOAT supportRadius = spectOrthSupportRadius(s, diff, totalFOVmin, totalFOVmax, coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC);
+	const FLOAT3 supportVec = CMFLOAT3(supportRadius, supportRadius, supportRadius);
+	FLOAT totalTmin = FLOAT_ZERO;
+	FLOAT totalTmax = FLOAT_ZERO;
+	if (supportRadius > FLOAT_ZERO && spectOrthRayBoxInterval(s, diff, totalFOVmin - supportVec, totalFOVmax + supportVec, &totalTmin, &totalTmax)) {
+		FLOAT localTmin = FLOAT_ZERO;
+		FLOAT localTmax = FLOAT_ZERO;
+		if (spectOrthRayBoxInterval(s, diff, b - supportVec, d_bmax + supportVec, &localTmin, &localTmax)) {
+			localTmin = FMAX(localTmin, totalTmin);
+			localTmax = FMIN(localTmax, totalTmax);
+			if (localTmax >= localTmin) {
+				temp = FLOAT_ONE;
+#if defined(TOTLENGTH)
+				temp /= FMAX(L * totalTmax, 1.0e-6f);
+#endif
+				temp *= d_d.x * d_d.y * d_d.z;
+#ifdef NORM
+				temp *= local_norm;
+#endif
+#ifdef SCATTER
+				temp *= local_scat;
+#endif
+				temp *= global_factor;
+#ifdef ATNM
+				temp *= d_atten[idx];
+#endif
+				const bool localXY = spectOrthPrimaryIsX(diff);
+				FLOAT3 localS = s;
+				FLOAT3 localDiff = diff;
+				uint3 localNN = d_Nxyz;
+				FLOAT localB1 = b.x;
+				FLOAT localB2 = b.y;
+				FLOAT localD1 = d_d.x;
+				FLOAT localD2 = d_d.y;
+				uint localN1 = d_Nxyz.y;
+				uint localN2 = 1u;
+				uint localN3 = d_Nxyz.x;
+
+				if (!localXY) {
+					localB1 = b.y;
+					localB2 = b.x;
+					localD1 = d_d.y;
+					localD2 = d_d.x;
+					localN1 = d_Nxyz.x;
+					localN2 = d_Nxyz.x;
+					localN3 = 1u;
+					const FLOAT swapS = localS.x;
+					localS.x = localS.y;
+					localS.y = swapS;
+					const FLOAT swapDiff = localDiff.x;
+					localDiff.x = localDiff.y;
+					localDiff.y = swapDiff;
+					const uint swapN = localNN.x;
+					localNN.x = localNN.y;
+					localNN.y = swapN;
+				}
+
+				const FLOAT primary0 = FMAD(localTmin, localDiff.x, localS.x);
+				const FLOAT primary1 = FMAD(localTmax, localDiff.x, localS.x);
+				const FLOAT primaryMin = FMIN(primary0, primary1) - supportRadius;
+				const FLOAT primaryMax = FMAX(primary0, primary1) + supportRadius;
+				const int primaryStart = spectOrthClampedIndex(primaryMin, localB1, localD1, localNN.x);
+				const int primaryEnd = spectOrthClampedIndex(primaryMax, localB1, localD1, localNN.x);
+				const FLOAT supportMid = (localTmin + localTmax) * FLOAT_HALF;
+
+				for (int primary = primaryStart; primary <= primaryEnd; primary++) {
+					center.x = localB1 + CFLOAT(primary) * localD1 + localD1 * FLOAT_HALF;
+					FLOAT tSeed = supportMid;
+					if (FABS(localDiff.x) >= 1.0e-6f)
+						tSeed = (center.x - localS.x) / localDiff.x;
+					tSeed = FMIN(FMAX(tSeed, localTmin), localTmax);
+					const int seed2 = spectOrthClampedIndex(FMAD(tSeed, localDiff.y, localS.y), localB2, localD2, localN1);
+					const int seedZ = spectOrthClampedIndex(FMAD(tSeed, localDiff.z, localS.z), _bz, dz, d_Nxyz.z);
+					int tempkSupport = seedZ;
+					orthDistance3D(primary,
+						localDiff,
+						center,
+						localS,
+						localB2, localD2, _bz, dz, temp, seed2, seedZ, d_Nxy, orth_ray_length, localN1, localN2, localN3, d_Nxyz.z, bmin, bmax, Vmax, V, localXY, ax, false, &tempkSupport, 0,
+#if defined(FP)
+						d_OSEM
+#else
+						no_norm, d_Summ, d_output
+#endif
+#ifdef TOF
+						, FLOAT_ZERO, sigma_x, &D, FLOAT_ZERO, FLOAT_ZERO, TOFWeights
+#if defined(LISTMODE)
+						, TOFid
+#endif
+#endif
+#if defined(SPECT) && defined(ATN)
+						, FLOAT_ONE
+#endif
+#if defined(MASKBP) && defined(BP)
+						, aa, maskBP
+#endif
+						, coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
+#ifdef N_RAYS
+						, lor
+#endif
+					);
+				}
+#if defined(FP)
+#if defined(N_RAYS)
+#if defined(TOF) && defined(LISTMODE)
+				int to = TOFid;
+#else
+#ifndef __CUDACC__
+#pragma unroll NBINS
+#endif
+				for (int to = 0; to < NBINS; to++)
+#endif
+					ax[to + NBINS * lor] *= temp;
+#else
+#if defined(TOF) && defined(LISTMODE)
+				size_t to = TOFid;
+#else
+#ifndef __CUDACC__
+#pragma unroll NBINS
+#endif
+				for (size_t to = 0; to < NBINS; to++) {
+#endif
+					forwardProjectAF(d_output, ax, idx, temp, to);
+#ifdef TOF
+					idx += m_size;
+#endif
+#if defined(TOF) && defined(LISTMODE)
+#else
+				}
+#endif
+#endif
+#endif
+			}
+		}
+	}
+#ifdef N_RAYS
+	continue;
+#else
+	return;
+#endif
+#endif
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	//If the LOR is perpendicular in the y-direction (Siddon cannot be used)
 	if (FABS(diff.z) < 1e-6f && (FABS(diff.y) < 1e-6f || FABS(diff.x) < 1e-6f)) {
 
@@ -1561,4 +1707,3 @@ void projectorType123(
 #endif //////////////// END FORWARD PROJECTION ////////////////
 #endif //////////////// END MULTIRAY ////////////////
 }
-
