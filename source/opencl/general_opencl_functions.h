@@ -154,6 +154,15 @@
 
 #ifdef METAL
 
+#if defined(ATOMIC32)
+#define CAST int
+#ifndef TH
+#define TH 100000.f
+#endif
+#else
+#define CAST float
+#endif
+
 constexpr metal::sampler samplerForw(
     metal::coord::normalized,
     metal::filter::linear,
@@ -167,7 +176,6 @@ constexpr metal::sampler sampler2(
 );
 
 #ifdef HALF // 16-bit floating point
-#define CAST float
 #define CFLOAT(a) static_cast<half>(a)
 #define CFLOAT3(a) half3(a)
 #define CMFLOAT3(x,y,z) half3((x), (y), (z))
@@ -176,7 +184,6 @@ constexpr metal::sampler sampler2(
 #define make_float3(a,b,c) half3((a),(b),(c)) // TODO: replace with half
 #define MFLOAT2(a,b) half2((a), (b)) // TODO: replace with half
 #else // 32-bit floating point
-#define CAST float
 #define CFLOAT(a) static_cast<float>(a)
 #define CFLOAT3(a) float3(a)
 #define CMFLOAT3(x,y,z) float3((x), (y), (z))
@@ -278,10 +285,17 @@ inline FLOAT dot(float3 a, float3 b) {
     return metal::dot(a, b);
 }
 
+#if defined(ATOMIC32)
+inline void atomicAdd(volatile device metal::atomic_int* addr, int val)
+{
+    atomic_fetch_add_explicit(addr, val, metal::memory_order_relaxed);
+}
+#else
 inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
 {
     atomic_fetch_add_explicit(addr, val, metal::memory_order_relaxed);
 }
+#endif
 
 #endif
 #ifdef OPENCL
@@ -1112,7 +1126,11 @@ DEVICE void rhs(const float local_ele, PTR_THR const float *ax, const LONG local
 #ifdef ATOMIC
 	atom_add(&d_rhs_OSEM[local_ind], convert_long(yaxTOF * TH));
 #elif defined(ATOMIC32)
+#ifdef METAL
+	atomicAdd((volatile device metal::atomic_int*)(&d_rhs_OSEM[local_ind]), CINT_rtz(yaxTOF * TH));
+#else
 	atomic_add(&d_rhs_OSEM[local_ind], CINT(yaxTOF * TH));
+#endif
 #else
 #ifdef METAL
 	atomicAdd((volatile device metal::atomic_float*)(&d_rhs_OSEM[local_ind]), yaxTOF);
@@ -1124,7 +1142,11 @@ DEVICE void rhs(const float local_ele, PTR_THR const float *ax, const LONG local
 #ifdef ATOMIC
 		atom_add(&d_Summ[local_ind], convert_long(val * TH));
 #elif defined(ATOMIC32)
+#ifdef METAL
+		atomicAdd((volatile device metal::atomic_int*)(&d_Summ[local_ind]), CINT_rtz(val * TH));
+#else
 		atomic_add(&d_Summ[local_ind], CINT(val * TH));
+#endif
 #else
 #ifdef METAL
 		atomicAdd((volatile device metal::atomic_float*)&d_Summ[local_ind], val);

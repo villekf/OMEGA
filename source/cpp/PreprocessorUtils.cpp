@@ -42,7 +42,7 @@ struct MacroBuilder {
             const_cast<NS::Object* const*>(vals.data()),
             const_cast<NS::Object* const*>(keys.data()),
             (NS::UInteger)keys.size()
-        )->autorelease();
+        );
     }
 };
 
@@ -108,6 +108,7 @@ static MacroSets BuildMacroDict(
     MacroBuilder base;
 #if defined(METAL)
     base.addFlag("METAL");
+    if (inputScalars.atomic_32bit) base.addFlag("ATOMIC32");
 #elif defined(OPENCL)
     base.addFlag("OPENCL");
     base.addRawStr("-cl-single-precision-constant");

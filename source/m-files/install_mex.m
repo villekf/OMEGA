@@ -1359,30 +1359,59 @@ elseif ~ismac
 else % Apple silicon MATLAB/Octave
     compiler = '';
     complexFlag = '';
-    ldflags = 'LDFLAGS="\$LDFLAGS -framework Metal -framework Foundation"';
-    cxxflags = 'CXXFLAGS="\$CXXFLAGS -std=c++17 "';
-    useLDclassic = 0; % There is a bug with Xcode 26.0 and C-style MEX API.
-    % See for example: https://se.mathworks.com/matlabcentral/answers/2180302-mex-failing-to-compile-function
-    try
-        disp('Trying to build implementation 5')
-        mex(compiler, complexFlag, '-outdir', folder, ...
-            '-output', 'OpenCL_matrixfree_multi_gpu', ldflags, cxxflags, ...
-            '-DMATLAB', '-DMETAL', ['-I' folder], [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
-        disp('Implementation 5 built')
-    catch e
-        warning(e.identifier, '%s', e.message);
-        useLDclassic = 1;
+    if isempty(af_path)
+        af_path = '/opt/arrayfire';
+        af_path_include = [af_path '/include'];
     end
-    if useLDclassic
+    ldflags = ['LDFLAGS="\$LDFLAGS -framework Metal -framework Foundation -Wl,-rpath,' af_path '/lib"'];
+    cxxflags = 'CXXFLAGS="\$CXXFLAGS -std=c++17 "';
+    % Xcode 26 incorrectly adds the C++ MEX adapter exports to C-style MEX
+    % entry points. Clearing LINKEXPORTCPP avoids those undefined symbols.
+    % See https://se.mathworks.com/matlabcentral/answers/2180302-mex-failing-to-compile-function
+
+    if implementation == 0 || implementation == 2
+        if exist([af_path_include '/arrayfire.h'], 'file') ~= 2 || ...
+                exist([af_path '/lib/libafmetal.dylib'], 'file') ~= 2
+            error(['ArrayFire with the Metal backend was not found in ' af_path]);
+        end
+        variantFlags = {{}, {'-DMTYPE'}, {'-DMTYPE2'}};
+        variantOutputs = {'OpenCL_matrixfree', 'OpenCL_matrixfree_uint16', 'OpenCL_matrixfree_uint8'};
+        variantMessages = {'Building Metal code for float data type.', ...
+            'Building Metal code for uint16 data type.', ...
+            'Building Metal code for uint8 data type.'};
         try
-            disp('Trying to build implementation 5 with ld_classic flag')
-            ldflags = 'LDFLAGS="\$LDFLAGS -framework Metal -framework Foundation -ld_classic"';
+            disp('Building ArrayFire_OpenCL_device_info.cpp for Metal')
             mex(compiler, complexFlag, '-outdir', folder, ...
-            '-output', 'OpenCL_matrixfree_multi_gpu', ldflags, cxxflags, ...
-            '-DMATLAB', '-DMETAL', ['-I' folder], [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
+                '-output', 'ArrayFire_OpenCL_device_info', ldflags, cxxflags, ...
+                'LINKEXPORTCPP=', ...
+                '-DMATLAB', '-DMETAL', ['-I' af_path_include], ...
+                ['-L' af_path '/lib'], '-lafmetal', [folder '/ArrayFire_OpenCL_device_info.cpp'])
+
+            for kk = 1:numel(variantOutputs)
+                disp(variantMessages{kk})
+                mex(compiler, complexFlag, '-outdir', folder, ...
+                    '-output', variantOutputs{kk}, ldflags, cxxflags, ...
+                    'LINKEXPORTCPP=', ...
+                    '-DMATLAB', '-DMETAL', '-DAF', variantFlags{kk}{:}, ...
+                    ['-I' folder], ['-I' af_path_include], ['-L' af_path '/lib'], ...
+                    '-lafmetal', [folder '/OpenCL_matrixfree.cpp'])
+            end
+            disp('Implementation 2 built with Metal support')
+        catch e
+            warning(e.identifier, '%s', e.message);
+        end
+    end
+
+    if implementation == 0 || implementation == 5
+        try
+            disp('Building Metal code for implementation 5.')
+            mex(compiler, complexFlag, '-outdir', folder, ...
+                '-output', 'OpenCL_matrixfree_multi_gpu', ldflags, cxxflags, ...
+                'LINKEXPORTCPP=', ...
+                '-DMATLAB', '-DMETAL', ['-I' folder], [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
             disp('Implementation 5 built')
         catch e
-            error('Could not build implementation 5');
+            warning(e.identifier, '%s', e.message);
         end
     end
 end

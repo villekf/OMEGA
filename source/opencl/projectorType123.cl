@@ -128,7 +128,11 @@ void projectorType123(
 #else
 	const CLGLOBAL float* d_OSEM [[buffer(19)]],
 #endif
-	CLGLOBAL float* d_output [[buffer(20)]], 
+#if defined(BP)
+	CLGLOBAL CAST* d_output [[buffer(20)]],
+#else
+	CLGLOBAL float* d_output [[buffer(20)]],
+#endif
 	uint3 temp_i [[thread_position_in_grid]]   // global id
 
 #else /////////////////////// OPENCL/CUDA ///////////////////////
@@ -1542,4 +1546,3 @@ void projectorType123(
 #endif //////////////// END FORWARD PROJECTION ////////////////
 #endif //////////////// END MULTIRAY ////////////////
 }
-

@@ -14,6 +14,10 @@
 #define SET_KERNEL_ARG_TEXTURE(kernel, tex, index) kernel->setTexture(tex, index) 
 
 class ProjectorClass {
+	// Keep the thread-local Metal autorelease pool alive until every Metal
+	// object owned by this projector has been released.
+	NS::SharedPtr<NS::AutoreleasePool> autoreleasePool;
+
 	// Local size
 	size_t local_size[3];
 	size_t local_sizePrior[3];
@@ -34,8 +38,15 @@ class ProjectorClass {
 	simd::int3 local, global, localPrior, globalPrior, globalPriorEFOV; // or use MTL::Size
 
 public:
+	ProjectorClass()
+		: autoreleasePool(NS::TransferPtr(NS::AutoreleasePool::alloc()->init())) {}
+
+	size_t memSize = 0ULL;
+	void* sensitivityHost = nullptr;
+	size_t sensitivityBytes = 0ULL;
 	NS::SharedPtr<MTL::Device> mtlDevice;
-    NS::SharedPtr<MTL::CommandQueue> mtlCommandQueue;
+	NS::SharedPtr<MTL::ComputePipelineState> psoFP, psoBP;
+	NS::SharedPtr<MTL::CommandQueue> queueFP, queueBP;
 	NS::SharedPtr<MTL::CommandBuffer> commandBufferFP, commandBufferBP;
 	NS::SharedPtr<MTL::ComputeCommandEncoder> kernelMBSREM, kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelProxTVq, kernelProxTVDiv, kernelProxTVGrad, kernelElementMultiply, kernelElementDivision, 
 		kernelTV, kernelProxTGVSymmDeriv, kernelProxTGVDiv, kernelProxTGVq, kernelPoisson, kernelPDHG, kernelProxRDP, kernelProxq, kernelProxTrans, kernelProxNLM, kernelGGMRF,
@@ -84,6 +95,16 @@ public:
 	u_char no_norm = 0;
 	int proj6 = 1;
 
+	inline int64_t getGlobalMem() const {
+		return mtlDevice ? static_cast<int64_t>(mtlDevice->recommendedMaxWorkingSetSize()) : 0LL;
+	}
+
+	// Dynamic list-mode coordinate replacement is not available in the
+	// current Metal kernel set. Keep the common implementation-2 interface
+	// intact and return an explicit failure if that path is selected.
+	template<typename... Args>
+	inline int loadCoord(Args&&...) { return -1; }
+
 	// Here init device and create programs (=libraries in Metal)
 	int createProgram(
 		NS::SharedPtr<MTL::Library>& libFP,
@@ -100,12 +121,8 @@ public:
 
 	// Create kernels (=ComputeCommandEncoder in Metal)
 	int createKernels(
-		NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelFP,
-		NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelBP,
-		NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelNLM,
-		NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelMed,
-		NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelRDP,
-		NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelGGMRF,
+		NS::SharedPtr<MTL::CommandQueue>& queueFP,
+		NS::SharedPtr<MTL::CommandQueue>& queueBP,
 		const NS::SharedPtr<MTL::Library>& libFP,
 		const NS::SharedPtr<MTL::Library>& libBP,
 		const NS::SharedPtr<MTL::Library>& libAux,

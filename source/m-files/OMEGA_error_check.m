@@ -26,6 +26,12 @@ function options = OMEGA_error_check(options)
 options = setMissingValues(options);
 options = convertOptions(options);
 
+if ismac && options.use_64bit_atomics
+    warning(['The current Metal compiler does not expose native atomic_ulong ' ...
+        'addition. Disabling 64-bit atomics; use 32-bit atomics for older Metal hardware.'])
+    options.use_64bit_atomics = false;
+end
+
 % Determine whether various different reconstruction modes are used (e.g.
 % MAP reconstruction and any prior)
 MAP = checkAlgorithmsPriors(options, 2);
@@ -38,11 +44,6 @@ OS_I4_summa = checkAlgorithmsPriors(options, 2,0) + checkAlgorithmsPriors(option
 preCondImAlg = checkAlgorithmsPriors(options, 7);
 preCondMeasAlg = checkAlgorithmsPriors(options, 8);
 
-if ismac && (options.use_32bit_atomics || options.use_64bit_atomics)
-    warning('MacOS implementation does not support 32 or 64 bit atomics. Disabling them.')
-    options.use_32bit_atomics = false;
-    options.use_64bit_atomics = false;
-end
 if ismac && options.useImages
     warning('MacOS implementation does not support textures (yet).')
 end

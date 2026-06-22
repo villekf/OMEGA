@@ -76,7 +76,7 @@ int ProjectorClass::createProgram(
     // Macros TODO: sens, aux
     auto sets = BuildMacroDict(inputScalars, w_vec, MethodList, type, local_size, local_sizePrior);
     
-    NS::Error* err;
+    NS::Error* err = nullptr;
     NS::SharedPtr<MTL::CompileOptions> optsFP = NS::TransferPtr(MTL::CompileOptions::alloc()->init());
     NS::SharedPtr<MTL::CompileOptions> optsBP = NS::TransferPtr(MTL::CompileOptions::alloc()->init());
     optsFP->setPreprocessorMacros(sets.fp);
@@ -111,17 +111,12 @@ int ProjectorClass::createProgram(
         }
     }
 
-    err->release();
     return 0;
 }
 
 int ProjectorClass::createKernels(
-    NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelFP,
-    NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelBP,
-    NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelNLM,
-    NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelMed,
-    NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelRDP,
-    NS::SharedPtr<MTL::ComputeCommandEncoder>& kernelGGMRF,
+    NS::SharedPtr<MTL::CommandQueue>& queueFP,
+    NS::SharedPtr<MTL::CommandQueue>& queueBP,
     const NS::SharedPtr<MTL::Library>& libFP,
     const NS::SharedPtr<MTL::Library>& libBP,
     const NS::SharedPtr<MTL::Library>& libAux,
@@ -132,66 +127,51 @@ int ProjectorClass::createKernels(
     const int type
 ) {
     NS::Error* err = nullptr;
+    queueFP = NS::TransferPtr(mtlDevice->newCommandQueue());
+    queueBP = NS::TransferPtr(mtlDevice->newCommandQueue());
     if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3)) {
         auto fnName = NS::String::string("projectorType123", NS::ASCIIStringEncoding);
         NS::SharedPtr<MTL::Function> fnFP = NS::TransferPtr(libFP->newFunction(fnName));
-        NS::SharedPtr<MTL::ComputePipelineState> psoFP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnFP.get(), &err));
-        NS::SharedPtr<MTL::CommandQueue> queueFP = NS::TransferPtr(mtlDevice->newCommandQueue());
-        commandBufferFP = NS::TransferPtr(queueFP->commandBuffer());
-        kernelFP = NS::TransferPtr(commandBufferFP->computeCommandEncoder());
-        kernelFP->setComputePipelineState(psoFP.get());
+        psoFP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnFP.get(), &err));
     } else if (inputScalars.FPType == 4) {
         auto fnName = NS::String::string("projectorType4Forward", NS::ASCIIStringEncoding);
         NS::SharedPtr<MTL::Function> fnFP = NS::TransferPtr(libFP->newFunction(fnName));
-        NS::SharedPtr<MTL::ComputePipelineState> psoFP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnFP.get(), &err));
-        NS::SharedPtr<MTL::CommandQueue> queueFP = NS::TransferPtr(mtlDevice->newCommandQueue());
-        commandBufferFP = NS::TransferPtr(queueFP->commandBuffer());
-        kernelFP = NS::TransferPtr(commandBufferFP->computeCommandEncoder());
-        kernelFP->setComputePipelineState(psoFP.get());
+        psoFP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnFP.get(), &err));
     } else if (inputScalars.FPType == 5) {
         auto fnName = NS::String::string("projectorType5Forward", NS::ASCIIStringEncoding);
         NS::SharedPtr<MTL::Function> fnFP = NS::TransferPtr(libFP->newFunction(fnName));
-        NS::SharedPtr<MTL::ComputePipelineState> psoFP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnFP.get(), &err));
-        NS::SharedPtr<MTL::CommandQueue> queueFP = NS::TransferPtr(mtlDevice->newCommandQueue());
-        commandBufferFP = NS::TransferPtr(queueFP->commandBuffer());
-        kernelFP = NS::TransferPtr(commandBufferFP->computeCommandEncoder());
-        kernelFP->setComputePipelineState(psoFP.get());
+        psoFP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnFP.get(), &err));
     }
   
     if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
         auto fnName = NS::String::string("projectorType123", NS::ASCIIStringEncoding);
         NS::SharedPtr<MTL::Function> fnBP = NS::TransferPtr(libBP->newFunction(fnName));
-        NS::SharedPtr<MTL::ComputePipelineState> psoBP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnBP.get(), &err));
-        NS::SharedPtr<MTL::CommandQueue> queueBP = NS::TransferPtr(mtlDevice->newCommandQueue());
-        commandBufferBP = NS::TransferPtr(queueBP->commandBuffer());
-        kernelBP = NS::TransferPtr(commandBufferBP->computeCommandEncoder());
-        kernelBP->setComputePipelineState(psoBP.get());
-    } if (inputScalars.BPType == 4) {
+        psoBP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnBP.get(), &err));
+    } else if (inputScalars.BPType == 4) {
         if (inputScalars.FPType == 4 && inputScalars.CT) {
             auto fnName = NS::String::string("projectorType4Backward", NS::ASCIIStringEncoding);
             NS::SharedPtr<MTL::Function> fnBP = NS::TransferPtr(libBP->newFunction(fnName));
-            NS::SharedPtr<MTL::ComputePipelineState> psoBP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnBP.get(), &err));
-            NS::SharedPtr<MTL::CommandQueue> queueBP = NS::TransferPtr(mtlDevice->newCommandQueue());
-            commandBufferBP = NS::TransferPtr(queueBP->commandBuffer());
-            kernelBP = NS::TransferPtr(commandBufferBP->computeCommandEncoder());
-            kernelBP->setComputePipelineState(psoBP.get());
+            psoBP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnBP.get(), &err));
         } else if (!inputScalars.CT) {
             auto fnName = NS::String::string("projectorType4Forward", NS::ASCIIStringEncoding);
             NS::SharedPtr<MTL::Function> fnBP = NS::TransferPtr(libBP->newFunction(fnName));
-            NS::SharedPtr<MTL::ComputePipelineState> psoBP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnBP.get(), &err));
-            NS::SharedPtr<MTL::CommandQueue> queueBP = NS::TransferPtr(mtlDevice->newCommandQueue());
-            commandBufferBP = NS::TransferPtr(queueBP->commandBuffer());
-            kernelBP = NS::TransferPtr(commandBufferBP->computeCommandEncoder());
-            kernelBP->setComputePipelineState(psoBP.get());
+            psoBP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnBP.get(), &err));
         } else {
             auto fnName = NS::String::string("projectorType4Backward", NS::ASCIIStringEncoding);
             NS::SharedPtr<MTL::Function> fnBP = NS::TransferPtr(libBP->newFunction(fnName));
-            NS::SharedPtr<MTL::ComputePipelineState> psoBP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnBP.get(), &err));
-            NS::SharedPtr<MTL::CommandQueue> queueBP = NS::TransferPtr(mtlDevice->newCommandQueue());
-            commandBufferBP = NS::TransferPtr(queueBP->commandBuffer());
-            kernelBP = NS::TransferPtr(commandBufferBP->computeCommandEncoder());
-            kernelBP->setComputePipelineState(psoBP.get());
+            psoBP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnBP.get(), &err));
         }
+    } else if (inputScalars.BPType == 5) {
+        auto fnName = NS::String::string("projectorType5Backward", NS::ASCIIStringEncoding);
+        NS::SharedPtr<MTL::Function> fnBP = NS::TransferPtr(libBP->newFunction(fnName));
+        psoBP = NS::TransferPtr(mtlDevice->newComputePipelineState(fnBP.get(), &err));
+    }
+
+    if (!queueFP || !queueBP || (inputScalars.FPType > 0 && !psoFP) || (inputScalars.BPType > 0 && !psoBP)) {
+        const char* msg = (err && err->localizedDescription())
+            ? err->localizedDescription()->utf8String() : "unknown Metal pipeline error";
+        mexPrintf("Metal pipeline creation failed: %s\n", msg);
+        return -1;
     }
 
     return 0;
@@ -204,6 +184,11 @@ int ProjectorClass::addProjector(
     const char* header_directory,
     const int type
 ) {
+    if (inputScalars.atomic_64bit) {
+        mexPrint("Native 64-bit atomic addition is not exposed by the current Metal compiler");
+        return -1;
+    }
+
     // Set-up the local group size
     local_size[0] = 64ULL;
     local_size[1] = 1ULL;
@@ -233,7 +218,7 @@ int ProjectorClass::addProjector(
     NS::SharedPtr<MTL::Library> libFP, libBP, libAux, libSens;
     status = createProgram(libFP, libBP, libAux, libSens, header_directory, inputScalars, MethodList, w_vec, local_size, type);
     if (status != 0) return -1;
-    status = createKernels(kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelGGMRF, libFP, libBP, libAux, libSens, MethodList, w_vec, inputScalars, type);
+    status = createKernels(queueFP, queueBP, libFP, libBP, libAux, libSens, MethodList, w_vec, inputScalars, type);
     if (status != 0) return -1;
 
     if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
@@ -336,6 +321,21 @@ int ProjectorClass::createBuffers(
     const RecMethods& MethodList,
     const int type
 ) {
+	d_attenB.resize(inputScalars.Nt);
+	if (type == 0) {
+		// Implementation 2 binds this argument before its first sensitivity
+		// image exists. NO_NORM makes a one-float placeholder sufficient;
+		// transferSensitivityImage replaces it with the real buffer later.
+		const MTL::ResourceOptions sensitivityOpts =
+			(MTL::ResourceOptions)MTL::ResourceStorageModeShared;
+		d_Summ.resize(inputScalars.nMultiVolumes + 1);
+		for (uint32_t ii = 0; ii <= inputScalars.nMultiVolumes; ++ii) {
+			float zero = 0.f;
+			d_Summ[ii] = NS::TransferPtr(
+				mtlDevice->newBuffer(&zero, sizeof(zero), sensitivityOpts));
+		}
+	}
+
     if (inputScalars.maskFP)
         d_maskFPB.resize(inputScalars.subsetsUsed);
     if (inputScalars.raw)
@@ -491,7 +491,7 @@ int ProjectorClass::createBuffers(
     // TOF bin centers
     if (inputScalars.TOF) {
         bytes = (NS::UInteger)(sizeof(float) * inputScalars.nBins);
-        d_eFOVIndices = NS::TransferPtr(mtlDevice->newBuffer((const void*)inputScalars.TOFCenter, bytes, sharedOpts));
+        d_TOFCenter = NS::TransferPtr(mtlDevice->newBuffer((const void*)inputScalars.TOFCenter, bytes, sharedOpts));
     }
 
     if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
@@ -514,14 +514,15 @@ int ProjectorClass::createBuffers(
         }
 
         for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+            const uint32_t indD = kk + timestep * inputScalars.subsets;
             if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
-                NS::UInteger bytesX = (NS::UInteger)(sizeof(float) * (size_t)length[kk] * 6u);
-                const float* srcX = &x[(size_t)pituus[kk] * 6 + (size_t)pituus[inputScalars.subsets] * 6 * timestep];
+                NS::UInteger bytesX = (NS::UInteger)(sizeof(float) * (size_t)length[indD] * 6u);
+                const float* srcX = &x[(size_t)pituus[indD] * 6u];
                 d_x[timestep][kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcX, bytesX, sharedOpts));
             } else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
                 if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF) {
-                    NS::UInteger bytesX = (NS::UInteger)(sizeof(float) * (size_t)length[kk] * 6u);
-                    const float* srcX = &w_vec.listCoord[pituus[kk] * 6u + inputScalars.kokoNonTOF * 6 * timestep];
+                    NS::UInteger bytesX = (NS::UInteger)(sizeof(float) * (size_t)length[indD] * 6u);
+                    const float* srcX = &w_vec.listCoord[(size_t)pituus[indD] * 6u];
                     d_x[timestep][kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcX, bytesX, sharedOpts));
                 }
             }
@@ -533,8 +534,8 @@ int ProjectorClass::createBuffers(
                 } else {
                     z_coef = 2;
                 }
-                bytes = (NS::UInteger)(sizeof(float) * (size_t)length[kk] * z_coef);
-                const float* srcZ = &z_det[(size_t)pituus[kk] * z_coef + pituus[inputScalars.subsets] * z_coef * timestep];
+                bytes = (NS::UInteger)(sizeof(float) * (size_t)length[indD] * z_coef);
+                const float* srcZ = &z_det[(size_t)pituus[indD] * z_coef];
                 d_z[timestep][kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcZ, bytes, sharedOpts));
             } else {
                 if (inputScalars.PET && inputScalars.listmode == 0) {
@@ -543,34 +544,34 @@ int ProjectorClass::createBuffers(
                     } else {
                         z_coef = 2;
                     }
-                    bytes = (NS::UInteger)(sizeof(float) * (size_t)length[kk] * z_coef);
-                    const float* srcZ = &z_det[(size_t)pituus[kk] * z_coef + pituus[inputScalars.subsets] * z_coef * timestep];
+                    bytes = (NS::UInteger)(sizeof(float) * (size_t)length[indD] * z_coef);
+                    const float* srcZ = &z_det[(size_t)pituus[indD] * z_coef];
                     d_z[timestep][kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcZ, bytes, sharedOpts));
                 } else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased)) {
                     NS::UInteger bytesZ = (NS::UInteger)(sizeof(float) * (size_t)inputScalars.size_z);
-                    const float* srcZ = &z_det[(size_t)inputScalars.size_z];
+                    const float* srcZ = z_det;
                     d_z[timestep][kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcZ, bytesZ, sharedOpts));
                 }
             }
 
             // Scatter
             if (inputScalars.size_scat > 1 && inputScalars.scatter == 1U) {
-                NS::UInteger bytesS = (NS::UInteger)(sizeof(float) * (size_t)length[kk] * (size_t)vecSize);
-                const float* srcS = &extraCorr[pituus[kk] * vecSize + inputScalars.kokoNonTOF * timestep];
+                NS::UInteger bytesS = (NS::UInteger)(sizeof(float) * (size_t)length[indD] * (size_t)vecSize);
+                const float* srcS = &extraCorr[(size_t)pituus[indD] * (size_t)vecSize];
                 d_scat[timestep][kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcS, bytesS, sharedOpts));
             }
 
             if (inputScalars.listmode > 0 && (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF))) {
                 if (inputScalars.indexBased) {
-                    NS::UInteger bytes_tr_ax = (NS::UInteger)(sizeof(uint16_t) * length[kk] * 2);
-                    const uint16_t* srcTR = &w_vec.trIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * timestep];
-                    const uint16_t* srcAX = &w_vec.axIndex[pituus[kk] * 2 + inputScalars.kokoNonTOF * 2 * timestep];
+                    NS::UInteger bytes_tr_ax = (NS::UInteger)(sizeof(uint16_t) * length[indD] * 2);
+                    const uint16_t* srcTR = &w_vec.trIndex[pituus[indD] * 2];
+                    const uint16_t* srcAX = &w_vec.axIndex[pituus[indD] * 2];
                     d_trIndex[timestep][kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcTR, bytes_tr_ax, sharedOpts));
                     d_axIndex[timestep][kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcAX, bytes_tr_ax, sharedOpts));
                 }
                 if (inputScalars.TOF) {
-                    NS::UInteger bytesTOFIdx = (NS::UInteger)(sizeof(uint8_t) * length[kk]);
-                    const uint8_t* srcTOFIdx = &w_vec.TOFIndices[pituus[kk] + inputScalars.kokoNonTOF * timestep];
+                    NS::UInteger bytesTOFIdx = (NS::UInteger)(sizeof(uint8_t) * length[indD]);
+                    const uint8_t* srcTOFIdx = &w_vec.TOFIndices[pituus[indD]];
                     d_TOFIndex[timestep][kk] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcTOFIdx, bytesTOFIdx, sharedOpts));
                 }
             }
@@ -638,71 +639,6 @@ int ProjectorClass::initializeKernel(
     kParams.rings = inputScalars.rings;
     kParams.helicalRadius = inputScalars.helicalRadius;
 
-    // Set buffers to kernels
-    if (inputScalars.FPType >= 1 && inputScalars.FPType <= 3) {
-        if (inputScalars.SPECT) {
-            SET_KERNEL_ARG_BUFFER(kernelFP, d_rayShiftsDetector, 0, 1);
-            if (DEBUG) mexPrint("initializeKernel: FP buffer 1 (rayShiftsDetector) set");
-            SET_KERNEL_ARG_BUFFER(kernelFP, d_rayShiftsSource, 0, 2);
-            if (DEBUG) mexPrint("initializeKernel: FP buffer 2 (rayShiftsSource) set");
-        }
-        if (inputScalars.TOF) {
-            SET_KERNEL_ARG_BUFFER(kernelFP, d_TOFCenter, 0, 3);
-            if (DEBUG) mexPrint("initializeKernel: FP buffer 3 (d_TOFCenter) set");
-        }
-        if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
-            SET_KERNEL_ARG_BUFFER(kernelFP, d_V, 0, 4);
-            if (DEBUG) mexPrint("initializeKernel: FP buffer 4 (d_V) set");
-        }
-    }
-
-    if (inputScalars.BPType >= 1 && inputScalars.BPType <= 3) {
-        if (inputScalars.SPECT) {
-            SET_KERNEL_ARG_BUFFER(kernelBP, d_rayShiftsDetector, 0, 1);
-            if (DEBUG) mexPrint("initializeKernel: BP buffer 1 (rayShiftsDetector) set");
-            SET_KERNEL_ARG_BUFFER(kernelBP, d_rayShiftsSource, 0, 2);
-            if (DEBUG) mexPrint("initializeKernel: BP buffer 2 (rayShiftsSource) set");
-        }
-        if (inputScalars.TOF) {
-            SET_KERNEL_ARG_BUFFER(kernelBP, d_TOFCenter, 0, 3);
-            if (DEBUG) mexPrint("initializeKernel: BP buffer 3 (d_TOFCenter) set");
-        }
-        if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
-            SET_KERNEL_ARG_BUFFER(kernelBP, d_V, 0, 4);
-            if (DEBUG) mexPrint("initializeKernel: BP buffer 4 (d_V) set");
-        }
-        /*if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-            if (inputScalars.SPECT) {
-                kernelSensList->setBytes((const void*)&d_rayShiftsDetector, (NS::UInteger)sizeof(d_rayShiftsDetector), 1);
-                if (DEBUG) mexPrint("initializeKernel: Sens buffer 1 (d_rayShiftsDetector) set");
-                kernelSensList->setBytes((const void*)&d_rayShiftsSource, (NS::UInteger)sizeof(d_rayShiftsSource), 2);
-                if (DEBUG) mexPrint("initializeKernel: Sens buffer 2 (d_rayShiftsSource) set");
-            }
-            if (inputScalars.TOF) {
-                kernelSensList->setBytes((const void*)&d_TOFCenter, (NS::UInteger)sizeof(d_TOFCenter), 3);
-                if (DEBUG) mexPrint("initializeKernel: Sens buffer 3 (d_TOFCenter) set");
-            }
-            if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
-                kernelSensList->setBytes((const void*)&d_V, (NS::UInteger)sizeof(d_V), 4);
-                if (DEBUG) mexPrint("initializeKernel: Sens buffer 4 (d_V) set");
-            }
-        }*/
-    }
-
-    if ((inputScalars.BPType == 4 || inputScalars.FPType == 4) && !inputScalars.CT && inputScalars.TOF) {
-        if (inputScalars.FPType == 4) {
-            SET_KERNEL_ARG_BUFFER(kernelFP, d_TOFCenter, 0, 1);
-            if (DEBUG) mexPrint("initializeKernel: FP buffer 1 (d_TOFCenter) set");
-        }
-        if (inputScalars.BPType == 4) {
-            SET_KERNEL_ARG_BUFFER(kernelBP, d_TOFCenter, 0, 1);
-            if (DEBUG) mexPrint("initializeKernel: BP buffer 1 (d_TOFCenter) set");
-            if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-                //kernelSensList.setArg(kernelIndSens++, d_TOFCenter);
-            }
-        }
-    }
-
     return 0;
 }
 
@@ -724,6 +660,27 @@ int ProjectorClass::forwardProjection(
     const int uu
 ) {
     if (DEBUG) mexPrint("forwardProjection: init");
+    commandBufferFP = NS::RetainPtr(queueFP->commandBuffer());
+    kernelFP = NS::RetainPtr(commandBufferFP->computeCommandEncoder());
+    if (!commandBufferFP || !kernelFP || !psoFP) {
+        mexPrint("Unable to create Metal forward-projection encoder");
+        return -1;
+    }
+    kernelFP->setComputePipelineState(psoFP.get());
+
+    if (inputScalars.FPType >= 1 && inputScalars.FPType <= 3) {
+        if (inputScalars.SPECT) {
+            SET_KERNEL_ARG_BUFFER(kernelFP, d_rayShiftsDetector, 0, 1);
+            SET_KERNEL_ARG_BUFFER(kernelFP, d_rayShiftsSource, 0, 2);
+        }
+        if (inputScalars.TOF)
+            SET_KERNEL_ARG_BUFFER(kernelFP, d_TOFCenter, 0, 3);
+        if (inputScalars.FPType == 2 || inputScalars.FPType == 3)
+            SET_KERNEL_ARG_BUFFER(kernelFP, d_V, 0, 4);
+    } else if (inputScalars.FPType == 4 && !inputScalars.CT && inputScalars.TOF) {
+        SET_KERNEL_ARG_BUFFER(kernelFP, d_TOFCenter, 0, 1);
+    }
+
     if (inputScalars.FPType == 5) {
         global[0] = (inputScalars.nRowsD + erotus[0]);
         global[1] = (inputScalars.nColsD + NVOXELSFP - 1) / NVOXELSFP + erotus[1];
@@ -982,6 +939,27 @@ int ProjectorClass::backwardProjection(
     const int uu,
     int ee
 ) {
+    commandBufferBP = NS::RetainPtr(queueBP->commandBuffer());
+    kernelBP = NS::RetainPtr(commandBufferBP->computeCommandEncoder());
+    if (!commandBufferBP || !kernelBP || !psoBP) {
+        mexPrint("Unable to create Metal backprojection encoder");
+        return -1;
+    }
+    kernelBP->setComputePipelineState(psoBP.get());
+
+    if (inputScalars.BPType >= 1 && inputScalars.BPType <= 3) {
+        if (inputScalars.SPECT) {
+            SET_KERNEL_ARG_BUFFER(kernelBP, d_rayShiftsDetector, 0, 1);
+            SET_KERNEL_ARG_BUFFER(kernelBP, d_rayShiftsSource, 0, 2);
+        }
+        if (inputScalars.TOF)
+            SET_KERNEL_ARG_BUFFER(kernelBP, d_TOFCenter, 0, 3);
+        if (inputScalars.BPType == 2 || inputScalars.BPType == 3)
+            SET_KERNEL_ARG_BUFFER(kernelBP, d_V, 0, 4);
+    } else if (inputScalars.BPType == 4 && !inputScalars.CT && inputScalars.TOF) {
+        SET_KERNEL_ARG_BUFFER(kernelBP, d_TOFCenter, 0, 1);
+    }
+
     std::chrono::steady_clock::time_point tStart;
     std::chrono::steady_clock::time_point tEnd;
     if (DEBUG || inputScalars.verbose >= 3) {
