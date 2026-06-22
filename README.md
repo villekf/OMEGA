@@ -295,13 +295,10 @@ Status messages, such as the current iteration number, might be displayed only a
 Intel GPUs might not support forward and/or backward projection masks. 
 
 ### Apple / Metal / MacOS
-- Implementation 5 only
+- Implementation 2 and 5 only
 - Tested with SPECT and CBCT examples
-- No automatic sensitivity image computation
-- Supports projector types 1, 2, 3 and 4
+- Supports projector types 1 and 2
 - No Python support
-- Normalization correction not tested
-- Scatter correction not tested
 
 ## Reporting Bugs and Feature Requests
 
