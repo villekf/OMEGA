@@ -207,7 +207,19 @@ All the GPUs were tested on Linux except AMD Radeon 7900 XT which was tested on 
 
 ### MacOS
 
-For installation on MacOS you need Xcode. You also need the single-header version of metal-cpp. The `Metal.hpp` header file should be placed in the folder `source/cpp`. ArrayFire-based reconstructions are not supported due to no available ArrayFire binaries with Metal backend.
+For installation on MacOS you need Xcode. For Metal support you also need the single-header version of metal-cpp. A good location for the header is `~/Documents/metal-cpp/include/Metal.hpp`; set the `METALCPP_INCLUDE_PATH` environment variable to the folder containing `Metal.hpp`, for example:
+
+```bash
+export METALCPP_INCLUDE_PATH="$HOME/Documents/metal-cpp/include"
+```
+
+If MATLAB is launched outside the shell environment, you can also set it inside MATLAB before running `install_mex`:
+
+```matlab
+setenv('METALCPP_INCLUDE_PATH', fullfile(getenv('HOME'), 'Documents', 'metal-cpp', 'include'))
+```
+
+For backwards compatibility, `install_mex` also checks `source/cpp/Metal.hpp`, but using `METALCPP_INCLUDE_PATH` keeps the external metal-cpp header separate from the OMEGA source tree. ArrayFire-based Metal reconstructions are supported when ArrayFire binaries with the Metal backend are installed, for example in `/opt/arrayfire`.
 
 ## Additional and upcoming features
 
@@ -298,6 +310,8 @@ Intel GPUs might not support forward and/or backward projection masks.
 - Implementation 2 and 5 only
 - Tested with SPECT and CBCT examples
 - Supports projector types 1 and 2
+- Requires Xcode, ArrayFire with the Metal backend, and the single-header metal-cpp `Metal.hpp`
+- Set `METALCPP_INCLUDE_PATH` to the folder containing `Metal.hpp`, e.g. `~/Documents/metal-cpp/include`
 - No Python support
 
 ## Reporting Bugs and Feature Requests
