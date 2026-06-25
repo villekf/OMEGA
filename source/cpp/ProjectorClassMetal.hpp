@@ -37,6 +37,22 @@ class ProjectorClass {
 	// Local and global sizes
 	simd::int3 local, global, localPrior, globalPrior, globalPriorEFOV; // or use MTL::Size
 
+	NS::SharedPtr<MTL::Texture> makeFloatTexture(
+		const float* data,
+		NS::UInteger width,
+		NS::UInteger height,
+		NS::UInteger depth,
+		bool force3D
+	);
+	NS::SharedPtr<MTL::Texture> makeMaskTexture(
+		const uint8_t* data,
+		NS::UInteger width,
+		NS::UInteger height,
+		NS::UInteger depth,
+		bool force3D
+	);
+	int updateImageTextureFromBuffer(const scalarStruct& inputScalars, int ii);
+
 public:
 	ProjectorClass()
 		: autoreleasePool(NS::TransferPtr(NS::AutoreleasePool::alloc()->init())) {}
@@ -82,10 +98,13 @@ public:
 	std::vector<std::vector<NS::SharedPtr<MTL::Buffer>>> d_x;
 	std::vector<std::vector<NS::SharedPtr<MTL::Buffer>>> d_z;
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_atten;
+	std::vector<NS::SharedPtr<MTL::Texture>> d_attenIm;
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_T;
 	std::vector<NS::SharedPtr<MTL::Buffer>> d_attenB;
     NS::SharedPtr<MTL::Buffer> d_maskPriorB, d_uref;
 	NS::SharedPtr<MTL::Buffer> d_rayShiftsSource, d_rayShiftsDetector, d_maskBPB;
+	std::vector<NS::SharedPtr<MTL::Texture>> d_maskFP;
+	NS::SharedPtr<MTL::Texture> d_maskBP;
 
 	// Image origin
 	MTL::Origin origin = MTL::Origin(0, 0, 0);

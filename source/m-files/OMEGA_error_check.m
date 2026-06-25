@@ -45,7 +45,7 @@ preCondImAlg = checkAlgorithmsPriors(options, 7);
 preCondMeasAlg = checkAlgorithmsPriors(options, 8);
 
 if ismac && options.useImages
-    warning('MacOS implementation does not support textures (yet).')
+    warning('MacOS implementation does not fully support textures (yet).')
 end
 if numel(options.partitions) > 1
     partitions = numel(options.partitions);

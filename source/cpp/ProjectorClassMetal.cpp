@@ -6,6 +6,83 @@
 
 //#endif
 
+NS::SharedPtr<MTL::Texture> ProjectorClass::makeFloatTexture(
+    const float* data,
+    NS::UInteger width,
+    NS::UInteger height,
+    NS::UInteger depth,
+    bool force3D
+) {
+    if (!mtlDevice || !data || width == 0 || height == 0 || depth == 0) {
+        return nullptr;
+    }
+
+    const bool is3D = force3D || depth > 1;
+    NS::SharedPtr<MTL::TextureDescriptor> desc =
+        NS::TransferPtr(MTL::TextureDescriptor::alloc()->init());
+    desc->setTextureType(is3D ? MTL::TextureType::TextureType3D
+                              : MTL::TextureType::TextureType2D);
+    desc->setPixelFormat(MTL::PixelFormat::PixelFormatR32Float);
+    desc->setWidth(width);
+    desc->setHeight(height);
+    desc->setDepth(is3D ? depth : 1);
+
+    NS::SharedPtr<MTL::Texture> texture =
+        NS::TransferPtr(mtlDevice->newTexture(desc.get()));
+    if (!texture) {
+        return nullptr;
+    }
+
+    MTL::Region mtlRegion(0, 0, 0, width, height, is3D ? depth : 1);
+    const NS::UInteger bytesPerRow = width * sizeof(float);
+    const NS::UInteger bytesPerImage = bytesPerRow * height;
+    if (is3D) {
+        texture->replaceRegion(mtlRegion, 0, 0, data, bytesPerRow, bytesPerImage);
+    } else {
+        texture->replaceRegion(mtlRegion, 0, data, bytesPerRow);
+    }
+    return texture;
+}
+
+NS::SharedPtr<MTL::Texture> ProjectorClass::makeMaskTexture(
+    const uint8_t* data,
+    NS::UInteger width,
+    NS::UInteger height,
+    NS::UInteger depth,
+    bool force3D
+) {
+    if (!data || width == 0 || height == 0 || depth == 0) {
+        return nullptr;
+    }
+    std::vector<float> mask(static_cast<size_t>(width) * static_cast<size_t>(height) * static_cast<size_t>(depth));
+    for (size_t ii = 0; ii < mask.size(); ++ii) {
+        mask[ii] = static_cast<float>(data[ii]);
+    }
+    return makeFloatTexture(mask.data(), width, height, depth, force3D);
+}
+
+int ProjectorClass::updateImageTextureFromBuffer(
+    const scalarStruct& inputScalars,
+    int ii
+) {
+    if (!vec_opencl.d_im || !vec_opencl.d_im->contents()) {
+        mexPrint("Unable to create Metal image texture: missing input buffer");
+        return -1;
+    }
+    vec_opencl.d_image_os = makeFloatTexture(
+        static_cast<const float*>(vec_opencl.d_im->contents()),
+        inputScalars.Nx[ii],
+        inputScalars.Ny[ii],
+        inputScalars.Nz[ii],
+        true
+    );
+    if (!vec_opencl.d_image_os) {
+        mexPrint("Unable to create Metal image texture");
+        return -1;
+    }
+    return 0;
+}
+
 int ProjectorClass::createProgram(
     NS::SharedPtr<MTL::Library>& libFP,
     NS::SharedPtr<MTL::Library>& libBP,
@@ -322,6 +399,7 @@ int ProjectorClass::createBuffers(
     const int type
 ) {
 	d_attenB.resize(inputScalars.Nt);
+	d_attenIm.resize(inputScalars.Nt);
 	if (type == 0) {
 		// Implementation 2 binds this argument before its first sensitivity
 		// image exists. NO_NORM makes a one-float placeholder sufficient;
@@ -446,12 +524,16 @@ int ProjectorClass::createBuffers(
             imX = inputScalars.nRowsD;
             imY = inputScalars.nColsD;
             imZ = inputScalars.maskFPZ;
-            //if (imZ > 1) {
-            //    for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++)
-            //        d_maskFP3.emplace_back(cl::Image3D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, length[kk], 0, 0, NULL, &status));
-            //}
-            //else
-            //    d_maskFP = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
+            if (imZ > 1) {
+                d_maskFP.resize(inputScalars.subsetsUsed);
+                for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+                    const uint8_t* src = &w_vec.maskFP[(size_t)pituus[kk] * (size_t)vecSize];
+                    d_maskFP[kk] = makeMaskTexture(src, imX, imY, length[kk], true);
+                }
+            } else {
+                d_maskFP.resize(1);
+                d_maskFP[0] = makeMaskTexture(w_vec.maskFP, imX, imY, 1, false);
+            }
         }
     }
 
@@ -464,10 +546,7 @@ int ProjectorClass::createBuffers(
             imX = inputScalars.Nx[0];
             imY = inputScalars.Ny[0];
             imZ = inputScalars.maskBPZ;
-            //if (imZ > 1)
-            //    d_maskBP3 = cl::Image3D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, imZ, 0, 0, NULL, &status);
-            //else
-            //    d_maskBP = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
+            d_maskBP = makeMaskTexture(w_vec.maskBP, imX, imY, imZ, imZ > 1);
         }
     }
 
@@ -505,11 +584,21 @@ int ProjectorClass::createBuffers(
     for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
         // Attenuation data for image-based attenuation
         if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+            const float* srcAtten = atten;
+            if (inputScalars.size_atten > inputScalars.im_dim[0]) {
+                srcAtten = &atten[(size_t)inputScalars.im_dim[0] * (size_t)timestep];
+            }
             if (inputScalars.useBuffers){
                 bytes = (NS::UInteger)(sizeof(float) * (size_t)inputScalars.im_dim[0]);
-                d_attenB[timestep] = NS::TransferPtr(mtlDevice->newBuffer((const void*)atten, bytes, sharedOpts));
+                d_attenB[timestep] = NS::TransferPtr(mtlDevice->newBuffer((const void*)srcAtten, bytes, sharedOpts));
             } else {
-                //d_attenIm[timestep] = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
+                d_attenIm[timestep] = makeFloatTexture(
+                    srcAtten,
+                    inputScalars.Nx[0],
+                    inputScalars.Ny[0],
+                    inputScalars.Nz[0],
+                    true
+                );
             }
         }
 
@@ -667,6 +756,7 @@ int ProjectorClass::forwardProjection(
         return -1;
     }
     kernelFP->setComputePipelineState(psoFP.get());
+    const uint32_t indD = osa_iter + timestep * inputScalars.subsets;
 
     if (inputScalars.FPType >= 1 && inputScalars.FPType <= 3) {
         if (inputScalars.SPECT) {
@@ -684,17 +774,17 @@ int ProjectorClass::forwardProjection(
     if (inputScalars.FPType == 5) {
         global[0] = (inputScalars.nRowsD + erotus[0]);
         global[1] = (inputScalars.nColsD + NVOXELSFP - 1) / NVOXELSFP + erotus[1];
-        global[2] = length[osa_iter];
+        global[2] = length[indD];
     } else if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
         global[0] = (inputScalars.nRowsD + erotus[0]);
         global[1] = (inputScalars.nColsD  + erotus[1]);
-        global[2] = length[osa_iter];
+        global[2] = length[indD];
     } else {
-        erotus[0] = length[osa_iter] % local[0];
+        erotus[0] = length[indD] % local[0];
 
         if (erotus[0] > 0)
             erotus[0] = (local[0] - erotus[0]);
-        global[0] = static_cast<size_t>(length[osa_iter] + erotus[0]);
+        global[0] = static_cast<size_t>(length[indD] + erotus[0]);
         global[1] = 1;
         global[2] = 1;
     }
@@ -714,7 +804,7 @@ int ProjectorClass::forwardProjection(
     kParams.dSize5 = inputScalars.dSize[ii];
     kParams.rings = inputScalars.rings;
     kParams.det_per_ring = inputScalars.det_per_ring;
-    kParams.nProjections = length[osa_iter];
+    kParams.nProjections = length[indD];
     kParams.no_norm = no_norm;
     kParams.m_size = m_size;
     kParams.currentSubset = osa_iter;
@@ -727,12 +817,12 @@ int ProjectorClass::forwardProjection(
 
     if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3)) {
         if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-            //SET_KERNEL_ARG_BUFFER(kernelFP, d_atten[timestep][osa_iter], 0, 5);
+            SET_KERNEL_ARG_BUFFER(kernelFP, d_atten[osa_iter], 0, 5);
         } else if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
             if (inputScalars.useBuffers) {
                 SET_KERNEL_ARG_BUFFER(kernelFP, d_attenB[timestep], 0, 5);
             } else {
-                //SET_KERNEL_ARG_TEXTURE(kernelFP, d_attenIm[timestep], 0, 5);
+                SET_KERNEL_ARG_TEXTURE(kernelFP, d_attenIm[timestep].get(), 5);
             }
         }
         if (DEBUG) mexPrint("forwardProjection: buffer 5 set");
@@ -743,11 +833,9 @@ int ProjectorClass::forwardProjection(
                 if (inputScalars.maskFPZ > 1) subset = osa_iter;
                 SET_KERNEL_ARG_BUFFER(kernelFP, d_maskFPB[subset], 0, 6);
             } else {
-                if (inputScalars.maskFPZ > 1) {
-                    //kernelFP->setBuffer(d_maskFP3[osa_iter].get(), (NS::UInteger)0, 6);
-                } else {
-                    //kernelFP->setBuffer(d_maskFP[osa_iter].get(), (NS::UInteger)0, 6);
-                }
+                int subset = 0;
+                if (inputScalars.maskFPZ > 1) subset = osa_iter;
+                SET_KERNEL_ARG_TEXTURE(kernelFP, d_maskFP[subset].get(), 6);
             }
             if (DEBUG) mexPrint("forwardProjection: buffer 6 set");
         }
@@ -806,6 +894,9 @@ int ProjectorClass::forwardProjection(
         if (inputScalars.useBuffers) {
             SET_KERNEL_ARG_BUFFER(kernelFP, vec_opencl.d_im, 0, 19);
         } else {
+            if (updateImageTextureFromBuffer(inputScalars, ii) != 0) {
+                return -1;
+            }
             SET_KERNEL_ARG_TEXTURE(kernelFP, vec_opencl.d_image_os.get(), 19);
         }
         if (DEBUG) mexPrint("forwardProjection: buffer 19 set");
@@ -946,6 +1037,7 @@ int ProjectorClass::backwardProjection(
         return -1;
     }
     kernelBP->setComputePipelineState(psoBP.get());
+    const uint32_t indD = osa_iter + timestep * inputScalars.subsets;
 
     if (inputScalars.BPType >= 1 && inputScalars.BPType <= 3) {
         if (inputScalars.SPECT) {
@@ -974,7 +1066,7 @@ int ProjectorClass::backwardProjection(
     kParams.d_bmax = bmax[ii];
     kParams.d_Scale5 = inputScalars.d_Scale[ii];
     kParams.dSize5 = inputScalars.dSizeBP;
-    kParams.nProjections = length[osa_iter];
+    kParams.nProjections = length[indD];
     kParams.no_norm = no_norm;
     kParams.m_size = m_size;
     kParams.currentSubset = osa_iter;
@@ -990,25 +1082,25 @@ int ProjectorClass::backwardProjection(
         if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
             global[0] = (inputScalars.nRowsD + erotus[0]);
             global[1] = (inputScalars.nColsD  + erotus[1]);
-            global[2] = length[osa_iter];
+            global[2] = length[indD];
         } else {
-            erotus[0] = length[osa_iter] % local[0];
+            erotus[0] = length[indD] % local[0];
 
             if (erotus[0] > 0)
                 erotus[0] = (local[0] - erotus[0]);
-            global[0] = static_cast<size_t>(length[osa_iter] + erotus[0]);
+            global[0] = static_cast<size_t>(length[indD] + erotus[0]);
             global[1] = 1;
             global[2] = 1;
         }
 
         if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-            // SET_KERNEL_ARG_BUFFER(kernelBP, d_atten[timestep][osa_iter], 0, 5);
+            SET_KERNEL_ARG_BUFFER(kernelBP, d_atten[osa_iter], 0, 5);
             if (DEBUG) mexPrint("backwardProjection: buffer 5 set (attenB)");
         } else if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
             if (inputScalars.useBuffers) {
                 SET_KERNEL_ARG_BUFFER(kernelBP, d_attenB[timestep], 0, 5);
             } else {
-                //SET_KERNEL_ARG_TEXTURE(kernelBP, d_attenIm[timestep], 0, 5);
+                SET_KERNEL_ARG_TEXTURE(kernelBP, d_attenIm[timestep].get(), 5);
             }
             if (DEBUG) mexPrint("backwardProjection: buffer 5 set (attenB)");
         }
@@ -1019,11 +1111,9 @@ int ProjectorClass::backwardProjection(
                 if (inputScalars.maskFPZ > 1) subset = osa_iter;
                 SET_KERNEL_ARG_BUFFER(kernelBP, d_maskFPB[subset], 0, 6);
             } else {
-                if (inputScalars.maskFPZ > 1) {
-                    //kernelFP->setBuffer(d_maskFP3[osa_iter].get(), (NS::UInteger)0, 6);
-                } else {
-                    //kernelFP->setBuffer(d_maskFP[osa_iter].get(), (NS::UInteger)0, 6);
-                }
+                int subset = 0;
+                if (inputScalars.maskFPZ > 1) subset = osa_iter;
+                SET_KERNEL_ARG_TEXTURE(kernelBP, d_maskFP[subset].get(), 6);
             }
             if (DEBUG) mexPrint("backwardProjection: buffer 6 (maskFP) set");
         }
@@ -1032,11 +1122,7 @@ int ProjectorClass::backwardProjection(
             if (inputScalars.useBuffers) {
                 SET_KERNEL_ARG_BUFFER(kernelBP, d_maskBPB, 0, 7);
             } else {
-                if (inputScalars.maskBPZ > 1){
-                    //status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
-                } else {
-                    //status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
-                }
+                SET_KERNEL_ARG_TEXTURE(kernelBP, d_maskBP.get(), 7);
             }
             if (DEBUG) mexPrint("backwardProjection: buffer 7 (maskBP) set");
         }

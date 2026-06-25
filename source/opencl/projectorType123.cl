@@ -91,14 +91,28 @@ void projectorType123(
 #ifdef ORTH ///////////////////////// ORTHOGONAL-BASED RAY TRACER /////////////////////////
 	CONSTANT float* V [[buffer(4)]], 
 #endif ///////////////////////// END ORTHOGONAL-BASED RAY TRACER /////////////////////////
-#if !defined(CT) && (defined(ATN) || defined(ATNM)) ///////////////////////// PET ATTENUATION CORRECTION /////////////////////////
+#if !defined(CT) && defined(ATN) && !defined(ATNM) ///////////////////////// PET ATTENUATION CORRECTION /////////////////////////
+#ifdef USEIMAGES
+	IMTYPE d_atten [[texture(5)]],
+#else
+	const CLGLOBAL float* d_atten [[buffer(5)]],
+#endif
+#elif !defined(CT) && defined(ATNM)
 	const CLGLOBAL float* d_atten [[buffer(5)]],
 #endif
 #ifdef MASKFP
+#ifdef USEIMAGES
+    MASKFPTYPE maskFP [[texture(6)]],
+#else
     MASKFPTYPE maskFP [[buffer(6)]],
 #endif
+#endif
 #if defined(MASKBP) && defined(BP) && !defined(FP)
+#ifdef USEIMAGES
+    MASKBPTYPE maskBP [[texture(7)]],
+#else
     MASKBPTYPE maskBP [[buffer(7)]],
+#endif
 #endif
 	CONSTANT float* d_xy [[buffer(8)]],
 	CONSTANT float* d_z [[buffer(9)]],

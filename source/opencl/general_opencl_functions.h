@@ -850,7 +850,13 @@ DEVICE void getIndex(int3* i, const uint d_size_x, const uint d_sizey, const uin
 DEVICE int readMaskBP(MASKBPTYPE maskBP, typeT ind) {
 	return 
     #ifdef USEIMAGES
-    #ifdef CUDA
+    #ifdef METAL
+    #ifdef MASKBP3D
+        static_cast<int>(metal::round(maskBP.read(uint3(ind.x, ind.y, ind.z)).r));
+    #else
+        static_cast<int>(metal::round(maskBP.read(uint2(ind.x, ind.y)).r));
+    #endif
+    #elif defined(CUDA)
     #ifdef MASKBP3D
         tex3D<unsigned char>(maskBP, ind.x, ind.y, ind.z);
     #else
@@ -873,7 +879,13 @@ DEVICE int readMaskBP(MASKBPTYPE maskBP, typeT ind) {
 DEVICE int readMaskFP(MASKFPTYPE maskFP, typeT ind) {
 	return 
 #ifdef USEIMAGES
-#ifdef CUDA
+#ifdef METAL
+#ifdef MASKFP3D
+        static_cast<int>(metal::round(maskFP.read(uint3(ind.x, ind.y, ind.z)).r));
+#else
+        static_cast<int>(metal::round(maskFP.read(uint2(ind.x, ind.y)).r));
+#endif
+#elif defined(CUDA)
 #ifdef MASKFP3D
         tex3D<unsigned char>(maskFP, ind.x, ind.y, ind.z);
 #else
@@ -1032,9 +1044,8 @@ DEVICE void forwardProject(const float local_ele, PTR_THR float *ax, const typeT
 #elif defined(METAL)
 #ifdef PTYPE4
     *ax = local_ele * d_OSEM.sample(samplerForw, (local_ind)).r;
-#endif
-#ifdef USEIMAGES
-    *ax = local_ele * d_OSEM.read((uint3)(local_ind)).r;
+#elif defined(USEIMAGES)
+    *ax = local_ele * d_OSEM.read(uint3(local_ind.x, local_ind.y, local_ind.z)).r;
 #else
     *ax = (local_ele * d_OSEM[local_ind]);
 #endif
@@ -1524,6 +1535,14 @@ DEVICE void compute_attenuation(const float val, const typeT ind, IMTYPE d_atten
 		tex3D<float>(d_atten, ind.x, ind.y, ind.z);
 #else
 		d_atten[ind];
+#endif
+#elif defined(METAL)
+#if defined(PTYPE4)
+        d_atten.sample(samplerForw, float3(ind.x, ind.y, ind.z)).r;
+#elif defined(USEIMAGES)
+        d_atten.read(uint3(ind.x, ind.y, ind.z)).r;
+#else
+        d_atten[ind];
 #endif
 #else
 #if defined(PTYPE4)
