@@ -1,5 +1,5 @@
 #pragma once
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 #include "cuda_error.h"
 #define CTYPE3 float3
 #define CTYPE2 float2
@@ -78,6 +78,13 @@ typedef struct structForScalars {
 	int8_t verbose = 0;
 	uint16_t n_rays = 1, n_rays3D = 1;
 	uint32_t g_dim_x = 0u, g_dim_y = 0u, g_dim_z = 0u, deblur_iterations = 0U;
+	// User-defined local/work-group (block) size per dimension. Any negative value means "use the
+	// built-in default" for that dimension (see ProjectorClass::addProjector).
+	int32_t localSize[3] = { -1, -1, -1 };
+	// Compute the (spatial) regularization/prior only every regEveryIter-th time it is reached. A value
+	// of 1 (or less) computes it every time (original behavior). The first and last time are always
+	// computed. See subiterStep.h and iterStep.h.
+	int32_t regEveryIter = 1;
 	int64_t nBins = 1, nProjections = 0, numelY = 0, numelZ = 0, TOFSize = 0, seed = -1;
 	std::vector<int64_t> im_dim{ 1 };
 	size_t size_of_x, size_atten = 1, size_norm = 1, size_center_x, size_center_y, size_center_z, size_V = 1, size_scat = 1, kokoTOF = 0, kokoNonTOF = 0, sizeLOR,
@@ -103,7 +110,7 @@ typedef struct _OpenCL_im_vectors {
 	std::vector<cl::Buffer> d_rhs_os;
 	cl::Image3D d_image_os, d_image_os_int;
 } OpenCL_im_vectors;
-#elif defined(CUDA)
+#elif defined(CUDA) || defined(HIP)
 typedef struct _CUDA_im_vectors {
 	CUdeviceptr d_meanFP, d_meanBP;
 	CUdeviceptr* d_im;

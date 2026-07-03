@@ -75,7 +75,7 @@ __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_si
 #else
 __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, 1, 1)))
 #endif
-#elif (defined(CUDA) || defined(METAL))
+#elif (defined(CUDA) || defined(HIP) || defined(METAL))
 	KERNEL
 #endif
 void projectorType123(
@@ -340,7 +340,7 @@ void projectorType123(
 		ax[to] = 0.f;
 	ax[TOFid] = d_OSEM[idx];
 #else
-#ifndef __CUDACC__ 
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++)
@@ -352,13 +352,13 @@ void projectorType123(
 #endif
 #else
 #if defined(N_RAYS) && defined(FP)
-#ifndef __CUDACC__ 
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS * N_RAYS
 #endif
 	for (int to = 0; to < NBINS * N_RAYS; to++)
 		ax[to] = 0.f;
 #else
-#ifndef __CUDACC__ 
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++)
@@ -441,7 +441,7 @@ void projectorType123(
 	// Calculate the x, y and z distances of the detector pair
 	FLOAT3 diff = d - s;
 
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 	if ((diff.x == 0.f && diff.y == 0.f && diff.z == 0.f) || (diff.x == 0.f && diff.y == 0.f) || ISINF(diff.x) || ISINF(diff.y) || ISINF(diff.z) || ISNAN(diff.x) || ISNAN(diff.y) || ISNAN(diff.z))
 #else
 	if (ALL(diff == FLOAT_ZERO) || (diff.x == FLOAT_ZERO && diff.y == FLOAT_ZERO) || ANY(ISINF(diff)) || ANY(ISNAN(diff)))
@@ -778,7 +778,7 @@ void projectorType123(
 #if defined(TOF) && defined(LISTMODE)
 		size_t to = TOFid;
 #else
-#ifndef __CUDACC__ 
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
 			for (size_t to = 0; to < NBINS; to++) {
@@ -795,7 +795,7 @@ void projectorType123(
 #if defined(TOF) && defined(LISTMODE)
 		size_t to = TOFid;
 #else
-#ifndef __CUDACC__ 
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++)
@@ -1487,7 +1487,7 @@ void projectorType123(
 #if defined(TOF) && defined(LISTMODE)
 		size_t to = TOFid;
 #else
-#ifndef __CUDACC__ 
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
 		for (size_t to = 0; to < NBINS; to++) {
@@ -1504,7 +1504,7 @@ void projectorType123(
 #if defined(TOF) && defined(LISTMODE)
 	int to = TOFid;
 #else
-#ifndef __CUDACC__ 
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++)
@@ -1519,7 +1519,7 @@ void projectorType123(
 
 
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
-#ifndef __CUDACC__ 
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
     for (size_t to = 0; to < NBINS; to++) {
@@ -1530,7 +1530,7 @@ void projectorType123(
         }
         ax[to] = apu;
     }
-#ifndef __CUDACC__ 
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
     for (size_t to = 0; to < NBINS; to++) {

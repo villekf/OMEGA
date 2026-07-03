@@ -77,6 +77,19 @@ def transferData(options):
     options.param.g_dim_x = ctypes.c_uint32(options.g_dim_x)
     options.param.g_dim_y = ctypes.c_uint32(options.g_dim_y)
     options.param.g_dim_z = ctypes.c_uint32(options.g_dim_z)
+    # Optional user-defined local/work-group (block) size. Accepts a scalar or a sequence of up to 3
+    # values; missing/negative entries keep the built-in defaults.
+    localSize = options.local_size
+    if np.isscalar(localSize):
+        localSize = [localSize]
+    else:
+        localSize = list(np.asarray(localSize).ravel())
+    localSize = (localSize + [-1, -1, -1])[:3]
+    options.param.localSizeX = ctypes.c_int32(int(localSize[0]))
+    options.param.localSizeY = ctypes.c_int32(int(localSize[1]))
+    options.param.localSizeZ = ctypes.c_int32(int(localSize[2]))
+    # Optional: compute the spatial prior only every regEveryIter-th (sub)iteration (1 = every time).
+    options.param.regEveryIter = ctypes.c_int32(int(options.regEveryIter))
     options.param.NiterAD = ctypes.c_uint32(options.NiterAD)
     if isinstance(options.inffi, np.ndarray):
         options.param.inffi = ctypes.c_uint32(options.inffi.item())
