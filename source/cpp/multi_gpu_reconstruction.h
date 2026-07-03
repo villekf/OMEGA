@@ -50,6 +50,10 @@
 	}
 #define FILL_BUFFER(buffer, value, size) status = proj.CLCommandQueue[0].enqueueFillBuffer(buffer, value, 0, size) // Fill buffer with constant value
 #define READ_BUFFER(buffer, size, output) status = proj.CLCommandQueue[0].enqueueReadBuffer(buffer, CL_FALSE, 0, size, output)
+// ProjectorClass.h (included above) also defines WRITE_BUFFER, but its version uses the unqualified
+// member CLCommandQueue and a different argument order. Here we need the proj-qualified queue and the
+// (buffer, input, size) order used by this file, so intentionally replace it.
+#undef WRITE_BUFFER
 #define WRITE_BUFFER(buffer, input, size) status = proj.CLCommandQueue[0].enqueueWriteBuffer(buffer, CL_FALSE, 0, size, input) // Write input array to buffer
 #endif
 

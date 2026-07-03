@@ -18,9 +18,17 @@
 ***************************************************************************/
 #pragma once
 #define NOMINMAX
-#ifdef CUDA
-#include "ProjectorClassCUDA.h"
-#define transferAF(varA) varA.device<CUdeviceptr>()
+#if defined(CUDA) || defined(HIP)
+#include "ProjectorClass.h"
+#if defined(HIP)
+// hipDeviceptr_t (== CUdeviceptr here) is void*, and ArrayFire does not export array::device<void*>(),
+// so device<CUdeviceptr>() would be an unresolved external. Fetch the raw device pointer through an
+// exported element type (float) and reinterpret it to CUdeviceptr* (void**); the pointer value is the
+// device address, matching how the CUDA path uses device<CUdeviceptr>() (CUdeviceptr is an integer there).
+#define transferAF(varA) reinterpret_cast<CUdeviceptr*>((varA).device<float>())
+#else
+#define transferAF(varA) (varA).device<CUdeviceptr>()
+#endif
 #elif defined(METAL)
 #include <af/internal.h>
 #include "ProjectorClassMetal.cpp"
@@ -345,7 +353,7 @@ inline int transferRHS(af::array& rhs_os, ProjectorClass& proj) {
 /// <param name="ii optional multi-resolution volume number, default is 0 (main volume)"></param>
 /// <returns></returns>
 inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, ProjectorClass& proj, const int ii, const int timestep) {
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 	CUresult status = CUDA_SUCCESS;
 #elif defined(OPENCL)
 	int status = 0;
@@ -384,7 +392,7 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 		}
 		intIm = af::flat(intIm);
 		af::sync();
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 		CUDA_TEXTURE_DESC texDesc;
 		CUDA_ARRAY3D_DESCRIPTOR_st arr3DDesc;
 		CUDA_RESOURCE_DESC resDesc;
@@ -409,7 +417,7 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 		CUDA_MEMCPY3D cpy3d;
 		std::memset(&cpy3d, 0, sizeof(cpy3d));
 		cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_DEVICE;
-		cpy3d.srcDevice = reinterpret_cast<CUdeviceptr>(intIm.device<CUdeviceptr>());
+		cpy3d.srcDevice = reinterpret_cast<CUdeviceptr>(transferAF(intIm));
 		cpy3d.srcPitch = dim0 * sizeof(float);
 		cpy3d.srcHeight = dim1;
 		cpy3d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
@@ -480,7 +488,7 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 		dim2 = intIm.dims(2);
 		intIm = af::flat(intIm);
 		af::sync();
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 		arr3DDesc.Height = dim1;
 		arr3DDesc.Width = dim0;
 		arr3DDesc.Depth = dim2;
@@ -492,7 +500,7 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 		}
 		else if (DEBUG)
 			mexPrint("Arrray creation completed\n");
-		cpy3d.srcDevice = reinterpret_cast<CUdeviceptr>(intIm.device<CUdeviceptr>());
+		cpy3d.srcDevice = reinterpret_cast<CUdeviceptr>(transferAF(intIm));
 		cpy3d.srcPitch = dim0 * sizeof(float);
 		cpy3d.srcHeight = dim1;
 		cpy3d.dstArray = proj.FPArray;
@@ -544,7 +552,7 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 	}
 	else {
 		af::sync();
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 		if (inputScalars.useBuffers) {
 			if (inputScalars.use_psf)
 				proj.vec_opencl.d_im = transferAF(vec.im_os_blurred[ii]);
@@ -554,9 +562,9 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 		else {
 			CUdeviceptr* im;
 			if (inputScalars.use_psf)
-				im = vec.im_os_blurred[ii].device<CUdeviceptr>();
+				im = transferAF(vec.im_os_blurred[ii]);
 			else
-				im = vec.im_os[timestep][ii].device<CUdeviceptr>();
+				im = transferAF(vec.im_os[timestep][ii]);
 			CUDA_TEXTURE_DESC texDesc;
 			CUDA_ARRAY3D_DESCRIPTOR_st arr3DDesc;
 			CUDA_RESOURCE_DESC resDesc;
@@ -889,11 +897,11 @@ inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& input
 	proj.d_gaussianNLM = transferAF(w_vec.gaussianNLM);
 #ifndef CPU
 	if (inputScalars.useImages) {
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 		uint32_t Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim)
 			Nz = inputScalars.lDimStruct.NzPr[kk];
-		CUdeviceptr* input = im.device<CUdeviceptr>();
+		CUdeviceptr* input = transferAF(im);
 		status = proj.transferTex(inputScalars, input, false, Nz);
 #else
 		if (inputScalars.largeDim) {
@@ -958,14 +966,14 @@ inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& input
 	proj.d_W = transferAF(grad);
 #ifndef CPU
 	if (inputScalars.useImages) {
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 		uint32_t Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim)
 			Nz = inputScalars.lDimStruct.NzPr[kk];
-		CUdeviceptr* input = im.device<CUdeviceptr>();
+		CUdeviceptr* input = transferAF(im);
 		status = proj.transferTex(inputScalars, input, false, Nz);
 		if (RDPLargeNeighbor && useRDPRef) {
-			CUdeviceptr* inputRef = RDPref.device<CUdeviceptr>();
+			CUdeviceptr* inputRef = transferAF(RDPref);
 			status = proj.transferTex(inputScalars, inputRef, true);
 		}
 #else
@@ -1033,11 +1041,11 @@ inline int GGMRFAF(af::array& grad, const af::array& im, const scalarStruct& inp
 	proj.d_W = transferAF(grad);
 #ifndef CPU
 	if (inputScalars.useImages) {
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 		uint32_t Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim)
 			Nz = inputScalars.lDimStruct.NzPr[kk];
-		CUdeviceptr* input = im.device<CUdeviceptr>();
+		CUdeviceptr* input = transferAF(im);
 		status = proj.transferTex(inputScalars, input, false, Nz);
 #else
 		if (inputScalars.largeDim) {
@@ -1103,11 +1111,11 @@ inline int TVAF(af::array& grad, const af::array& im, const scalarStruct& inputS
 		type = 1;
 #ifndef CPU
 	if (inputScalars.useImages) {
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 		uint32_t Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim)
 			Nz = inputScalars.lDimStruct.NzPr[kk];
-		CUdeviceptr* input = im.device<CUdeviceptr>();
+		CUdeviceptr* input = transferAF(im);
 		status = proj.transferTex(inputScalars, input, false, Nz);
 #else
 		if (inputScalars.largeDim) {
@@ -1166,11 +1174,11 @@ inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inp
 #ifndef CPU
 	proj.d_W = transferAF(grad);
 	if (inputScalars.useImages) {
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 		uint32_t Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim)
 			Nz = inputScalars.lDimStruct.NzPr[kk];
-		CUdeviceptr* input = im.device<CUdeviceptr>();
+		CUdeviceptr* input = transferAF(im);
 		status = proj.transferTex(inputScalars, input, false, Nz);
 #else
 		if (inputScalars.largeDim) {
@@ -1522,7 +1530,7 @@ inline int rotateCustomAF(af::array& imrot, const af::array& im, const scalarStr
 	int status = 0;
 	if (!inputScalars.useBuffers) {
 #if defined(CUDA)
-		CUdeviceptr* input = im.device<CUdeviceptr>();
+		CUdeviceptr* input = transferAF(im);
 		status = proj.transferTex(inputScalars, input, false, inputScalars.Nz[0]);
 #elif defined(OPENCL)
         status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*im.device<cl_mem>(), true), proj.d_inputI, 0, proj.origin, proj.region);

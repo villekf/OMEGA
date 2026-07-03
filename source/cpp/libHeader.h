@@ -100,6 +100,16 @@ struct inputStruct {
     uint32_t g_dim_y = 0;
     // z-axis
     uint32_t g_dim_z = 0;
+    // User-defined local/work-group (block) size (optional). Any negative value uses the built-in default.
+    // x-axis
+    int32_t localSizeX = -1;
+    // y-axis
+    int32_t localSizeY = -1;
+    // z-axis
+    int32_t localSizeZ = -1;
+    // Compute the spatial prior/regularization only every regEveryIter-th (sub)iteration (optional).
+    // 1 (or less) computes it every time (original behavior); the first and last are always computed.
+    int32_t regEveryIter = 1;
     // Number of iterations with anisotropic diffusion smoothing (optional)
     uint32_t NiterAD = 1;
     // The index for the center voxel for some priors, such as quadratic (optional)
@@ -895,6 +905,12 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     if (inputScalars.use_psf && inputScalars.deconvolution) {
         inputScalars.deblur_iterations = options.deblur_iterations;
     }
+    // Optional user-defined local/work-group (block) size. Negative values keep the built-in defaults.
+    inputScalars.localSize[0] = options.localSizeX;
+    inputScalars.localSize[1] = options.localSizeY;
+    inputScalars.localSize[2] = options.localSizeZ;
+    // Optional: compute the spatial prior only every regEveryIter-th (sub)iteration (1 = every time).
+    inputScalars.regEveryIter = options.regEveryIter;
 
     inputScalars.Nxy = inputScalars.Nx[0] * inputScalars.Ny[0];
     inputScalars.im_dim[0] = static_cast<int64_t>(inputScalars.Nxy) * static_cast<int64_t>(inputScalars.Nz[0]);

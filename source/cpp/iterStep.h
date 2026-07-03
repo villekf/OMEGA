@@ -15,9 +15,17 @@ int computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethod
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing regularization for BSREM/ROSEMMAP");
 		int status = 0;
-		status = applySpatialPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, timestep, iter, 0, true);
-		if (status != 0)
-			return -1;
+		// Compute the spatial prior only every regEveryIter-th iteration. This function runs once per
+		// iteration (iter from 0 to inputScalars.Niter - 1); the first and last are always computed.
+		const int64_t regCounter = static_cast<int64_t>(iter);
+		const int64_t regCounterMax = static_cast<int64_t>(inputScalars.Niter) - 1;
+		const bool computeReg = inputScalars.regEveryIter <= 1 || regCounter == 0 || regCounter == regCounterMax
+			|| (regCounter % static_cast<int64_t>(inputScalars.regEveryIter)) == 0;
+		if (computeReg) {
+			status = applySpatialPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, timestep, iter, 0, true);
+			if (status != 0)
+				return -1;
+		}
 		// MAP/Prior-algorithms
 		// Special case for BSREM and ROSEM-MAP
 		MAP(vec.im_os[timestep][0], w_vec.lambda[timestep][iter], vec.dU[timestep], inputScalars.epps);

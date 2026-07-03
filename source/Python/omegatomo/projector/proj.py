@@ -507,6 +507,10 @@ class projectorClass:
     useParkerWeights = False
     projectorAdded = False
     projectorInitialized = False
+    local_size = -1
+    # Compute the spatial prior/regularization only every regEveryIter-th (sub)iteration. 1 (or less)
+    # computes it every time (default); the first and last iteration are always computed.
+    regEveryIter = 1
 
     def __init__(self):
         # C-struct
@@ -1997,6 +2001,10 @@ class projectorClass:
             ('g_dim_x', ctypes.c_uint32),
             ('g_dim_y', ctypes.c_uint32),
             ('g_dim_z', ctypes.c_uint32),
+            ('localSizeX', ctypes.c_int32),
+            ('localSizeY', ctypes.c_int32),
+            ('localSizeZ', ctypes.c_int32),
+            ('regEveryIter', ctypes.c_int32),
             ('NiterAD', ctypes.c_uint32),
             ('inffi', ctypes.c_uint32),
             ('Nf', ctypes.c_uint32),
