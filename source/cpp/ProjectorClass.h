@@ -18,6 +18,7 @@
 #include <cstring>
 
 // ======== OpenCL / CUDA / Metal compatibility aliases and macros ========
+struct EmptyTextureArray {};
 #if defined(CUDA) || defined(HIP)
 using Status = CUresult;
 using KernelHandle = CUfunction;
@@ -33,6 +34,9 @@ using UInt2 = uint2;
 using UChar = unsigned char;
 using DeviceBuffer = CUdeviceptr;
 using AFDeviceBuffer = CUdeviceptr*;
+using Texture2D = CUtexObject;
+using Texture3D = CUtexObject;
+using TextureArray = CUarray;
 #define SUCCESS_VALUE CUDA_SUCCESS
 #elif defined(METAL)
 using Status = int;
@@ -49,6 +53,9 @@ using UInt2 = simd::uint2;
 using UChar = unsigned char;
 using DeviceBuffer = NS::SharedPtr<MTL::Buffer>;
 using AFDeviceBuffer = NS::SharedPtr<MTL::Buffer>;
+using Texture2D = NS::SharedPtr<MTL::Texture>;
+using Texture3D = NS::SharedPtr<MTL::Texture>;
+using TextureArray = EmptyTextureArray;
 #define SUCCESS_VALUE 0
 #else
 using Status = cl_int;
@@ -65,6 +72,9 @@ using UInt2 = cl_uint2;
 using UChar = cl_uchar;
 using DeviceBuffer = cl::Buffer;
 using AFDeviceBuffer = cl::Buffer;
+using Texture2D = cl::Image2D;
+using Texture3D = cl::Image3D;
+using TextureArray = EmptyTextureArray;
 #define SUCCESS_VALUE CL_SUCCESS
 #endif
 #if defined(CUDA) || defined(HIP) || defined(METAL)
@@ -190,11 +200,11 @@ using AFDeviceBuffer = cl::Buffer;
 #define RESIZE_TEXTURE_VECTOR(TEXTURES, ARRAYS, SIZE) do { (TEXTURES).resize(SIZE); } while(0)
 #define RESIZE_TEXTURE_ARRAY(ARRAYS, SIZE) do { } while(0)
 #define CREATE_FLOAT_TEXTURE3D_FROM_HOST(TEX, ARRAY, SRC, HEIGHT, WIDTH, DEPTH, FILTER, FLAGS) do { \
-	(TEX) = cl::Image3D(CLContext, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, format, (HEIGHT), (WIDTH), (DEPTH), 0, 0, const_cast<void*>(static_cast<const void*>(SRC)), &status); \
+	(TEX) = Texture3D(CLContext, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, format, (HEIGHT), (WIDTH), (DEPTH), 0, 0, const_cast<void*>(static_cast<const void*>(SRC)), &status); \
 } while(0)
 #define CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(TEX, ARRAY, SRC, HEIGHT, WIDTH, DEPTH, FILTER, FLAGS) do { \
 	cl::detail::size_t_array textureRegion = { (WIDTH), (HEIGHT), (DEPTH) }; \
-	(TEX) = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, (WIDTH), (HEIGHT), (DEPTH), 0, 0, NULL, &status); \
+	(TEX) = Texture3D(CLContext, CL_MEM_READ_ONLY, format, (WIDTH), (HEIGHT), (DEPTH), 0, 0, NULL, &status); \
 	OCL_CHECK(status, "Image creation failed\n", -1); \
 	status = CLCommandQueue[0].enqueueCopyBufferToImage((SRC), (TEX), 0, origin, textureRegion); \
 	OCL_CHECK(status, "Image copy failed\n", -1); \
@@ -202,13 +212,13 @@ using AFDeviceBuffer = cl::Buffer;
 	OCL_CHECK(status, "Queue finish failed after image copy\n", -1); \
 } while(0)
 #define CREATE_FLOAT_TEXTURE3D_EMPTY(TEX, ARRAY, WIDTH, HEIGHT, DEPTH) do { \
-	(TEX) = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, (WIDTH), (HEIGHT), (DEPTH), 0, 0, NULL, &status); \
+	(TEX) = Texture3D(CLContext, CL_MEM_READ_ONLY, format, (WIDTH), (HEIGHT), (DEPTH), 0, 0, NULL, &status); \
 } while(0)
 #define CREATE_MASK_TEXTURE2D_FROM_HOST(TEX, ARRAY, SRC, HEIGHT, WIDTH, FLAGS) do { \
-	(TEX) = cl::Image2D(CLContext, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, formatMask, (HEIGHT), (WIDTH), 0, const_cast<void*>(static_cast<const void*>(SRC)), &status); \
+	(TEX) = Texture2D(CLContext, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, formatMask, (HEIGHT), (WIDTH), 0, const_cast<void*>(static_cast<const void*>(SRC)), &status); \
 } while(0)
 #define CREATE_MASK_TEXTURE3D_FROM_HOST(TEX, TEX3D, ARRAY, SRC, HEIGHT, WIDTH, VIEW_DEPTH, COPY_DEPTH, ARRAY_DEPTH, FLAGS) do { \
-	(TEX3D) = cl::Image3D(CLContext, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, formatMask, (HEIGHT), (WIDTH), (VIEW_DEPTH), 0, 0, const_cast<void*>(static_cast<const void*>(SRC)), &status); \
+	(TEX3D) = Texture3D(CLContext, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, formatMask, (HEIGHT), (WIDTH), (VIEW_DEPTH), 0, 0, const_cast<void*>(static_cast<const void*>(SRC)), &status); \
 } while(0)
 #endif
 // Append one kernel argument VAR. CUDA pushes its address into the argument vector VEC; OpenCL
@@ -455,7 +465,7 @@ class ProjectorClass {
 		return spec;
 	}
 
-	inline Status createCudaTextureFromArray(CUtexObject& texture, const CUarray array, const CudaTextureSpec& spec, const bool is3D) const {
+	inline Status createCudaTextureFromArray(Texture3D& texture, const TextureArray array, const CudaTextureSpec& spec, const bool is3D) const {
 		CUDA_RESOURCE_DESC resDescLocal;
 		CUDA_TEXTURE_DESC texDescLocal;
 		CUDA_RESOURCE_VIEW_DESC viewDescLocal;
@@ -479,7 +489,7 @@ class ProjectorClass {
 		return cuTexObjectCreate(&texture, &resDescLocal, &texDescLocal, &viewDescLocal);
 	}
 
-	inline Status createCudaTexture2DFromHost(CUtexObject& texture, CUarray& array, const void* source, const CudaTextureSpec& spec) const {
+	inline Status createCudaTexture2DFromHost(Texture2D& texture, TextureArray& array, const void* source, const CudaTextureSpec& spec) const {
 		CUDA_ARRAY_DESCRIPTOR arrDesc;
 		std::memset(&arrDesc, 0, sizeof(arrDesc));
 		arrDesc.Format = spec.arrayFormat;
@@ -505,7 +515,7 @@ class ProjectorClass {
 		return createCudaTextureFromArray(texture, array, spec, false);
 	}
 
-	inline Status createCudaTexture3DFromHost(CUtexObject& texture, CUarray& array, const void* source, const CudaTextureSpec& spec) const {
+	inline Status createCudaTexture3DFromHost(Texture3D& texture, TextureArray& array, const void* source, const CudaTextureSpec& spec) const {
 		CUDA_ARRAY3D_DESCRIPTOR_st arrDesc;
 		std::memset(&arrDesc, 0, sizeof(arrDesc));
 		arrDesc.Format = spec.arrayFormat;
@@ -534,7 +544,7 @@ class ProjectorClass {
 		return createCudaTextureFromArray(texture, array, spec, true);
 	}
 
-	inline Status createCudaTexture3DFromDevice(CUtexObject& texture, CUarray& array, const CUdeviceptr source, const CudaTextureSpec& spec) const {
+	inline Status createCudaTexture3DFromDevice(Texture3D& texture, TextureArray& array, const CUdeviceptr source, const CudaTextureSpec& spec) const {
 		CUDA_ARRAY3D_DESCRIPTOR_st arrDesc;
 		std::memset(&arrDesc, 0, sizeof(arrDesc));
 		arrDesc.Format = spec.arrayFormat;
@@ -581,7 +591,7 @@ class ProjectorClass {
 		return spec;
 	}
 
-	inline NS::SharedPtr<MTL::Texture> createMetalTexture(const MetalTextureSpec& spec) const {
+	inline Texture3D createMetalTexture(const MetalTextureSpec& spec) const {
 		if (!mtlDevice || spec.width == 0 || spec.height == 0 || spec.depth == 0)
 			return nullptr;
 
@@ -594,16 +604,16 @@ class ProjectorClass {
 		desc->setHeight(spec.height);
 		desc->setDepth(is3D ? spec.depth : 1);
 
-		NS::SharedPtr<MTL::Texture> texture =
+		Texture3D texture =
 			NS::TransferPtr(mtlDevice->newTexture(desc.get()));
 		return texture;
 	}
 
-	inline NS::SharedPtr<MTL::Texture> createMetalTextureFromHost(const void* source, const MetalTextureSpec& spec) const {
+	inline Texture3D createMetalTextureFromHost(const void* source, const MetalTextureSpec& spec) const {
 		if (!source)
 			return nullptr;
 
-		NS::SharedPtr<MTL::Texture> texture = createMetalTexture(spec);
+		Texture3D texture = createMetalTexture(spec);
 		if (!texture)
 			return nullptr;
 
@@ -618,21 +628,21 @@ class ProjectorClass {
 		return texture;
 	}
 
-	inline NS::SharedPtr<MTL::Texture> createMetalFloatTextureFromHost(const float* source, const MetalTextureSpec& spec) const {
+	inline Texture3D createMetalFloatTextureFromHost(const float* source, const MetalTextureSpec& spec) const {
 		return createMetalTextureFromHost(source, spec);
 	}
 
-	inline NS::SharedPtr<MTL::Texture> createMetalFloatTextureEmpty(const MetalTextureSpec& spec) const {
+	inline Texture3D createMetalFloatTextureEmpty(const MetalTextureSpec& spec) const {
 		return createMetalTexture(spec);
 	}
 
-	inline NS::SharedPtr<MTL::Texture> createMetalFloatTextureFromBuffer(const DeviceBuffer& source, const MetalTextureSpec& spec) const {
+	inline Texture3D createMetalFloatTextureFromBuffer(const DeviceBuffer& source, const MetalTextureSpec& spec) const {
 		if (!source || !source->contents())
 			return nullptr;
 		return createMetalTextureFromHost(source->contents(), spec);
 	}
 
-	inline NS::SharedPtr<MTL::Texture> createMetalMaskTextureFromHost(const uint8_t* source, const MetalTextureSpec& spec) const {
+	inline Texture3D createMetalMaskTextureFromHost(const uint8_t* source, const MetalTextureSpec& spec) const {
 		if (!source || spec.width == 0 || spec.height == 0 || spec.depth == 0)
 			return nullptr;
 		std::vector<float> mask(static_cast<size_t>(spec.width) * static_cast<size_t>(spec.height) * static_cast<size_t>(spec.depth));
@@ -1770,19 +1780,15 @@ public:
 	AFDeviceBuffer d_vector, d_input;
 	AFDeviceBuffer d_im, d_rhs, d_U, d_refIm, d_RDPref;
 	AFDeviceBuffer d_outputCT;
+	Texture2D d_maskFP, d_maskBP, d_maskPrior;
+	Texture3D d_maskBP3, d_maskPrior3;
+	Texture3D d_inputImage, d_imageX, d_imageY, d_urefIm, d_inputI, d_RDPrefI;
+	TextureArray atArray, uRefArray, maskArrayBP, maskArrayPrior, BPArray, FPArray, integArrayXY, imArray;
+	std::vector<Texture3D> d_attenIm;
 #if defined(CUDA) || defined(HIP)
 	CUmodule programFP, programBP, programAux, programSens;
-	CUtexObject d_maskFP, d_maskBP, d_maskPrior;
-	CUtexObject d_inputImage, d_imageX, d_imageY, d_urefIm, d_inputI, d_RDPrefI;
-	CUarray atArray, uRefArray, maskArrayBP, maskArrayPrior, BPArray, FPArray, integArrayXY, imArray;
-	std::vector<CUtexObject> d_attenIm;
 	std::vector<void*> FPArgs, BPArgs, SensArgs;
 	CUDA_im_vectors vec_opencl;
-#else
-	cl::Image2D d_maskFP, d_maskBP, d_maskPrior;
-	cl::Image3D d_maskBP3, d_maskPrior3;
-	cl::Image3D d_inputImage, d_urefIm, d_inputI, d_RDPrefI;
-	std::vector<cl::Image3D> d_attenIm;
 #endif // END CUDA
 	std::chrono::steady_clock::time_point tStartLocal, tStartGlobal, tStartAll;
 	std::chrono::steady_clock::time_point tEndLocal, tEndGlobal, tEndAll;
@@ -1793,11 +1799,7 @@ public:
 	int proj6 = 1;
 	size_t memSize = 0ULL;
 
-#if defined(CUDA) || defined(HIP)
-	std::vector<CUtexObject> d_maskFP3;
-	std::vector<CUarray> maskArrayFP;
-#else
-	std::vector<cl::Image3D> d_maskFP3;
+#if !defined(CUDA) && !defined(HIP)
 	std::vector<DeviceBuffer> d_LFull, d_zindexFull, d_xyindexFull;
 	// Image origin
 	cl::detail::size_t_array origin = { { 0, 0, 0 } };
@@ -1806,6 +1808,8 @@ public:
 	cl::ImageFormat format;
 	cl::ImageFormat formatMask;
 #endif // END CUDA
+	std::vector<Texture3D> d_maskFP3;
+	std::vector<TextureArray> maskArrayFP;
 	std::vector<AFDeviceBuffer> d_Summ;
 	std::vector<AFDeviceBuffer> d_meas, d_rand, d_imTemp, d_imFinal;
 	// Vector device buffers common to both backends
