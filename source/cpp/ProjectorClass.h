@@ -292,11 +292,11 @@ class ProjectorClass {
 	unsigned int localPrior[3];
 	unsigned int globalPrior[3];
 	unsigned int globalPriorEFOV[3];
-	bool useBuffers = true;
 #else
 	cl::NDRange local, global, localPrior, globalPrior, globalPriorEFOV;
 #endif // END CUDA
 	struct ResourceState {
+		bool useBuffers = true;
 		bool xC = false;
 		bool yC = false;
 		bool zC = false;
@@ -729,9 +729,7 @@ class ProjectorClass {
 		if ((inputScalars.useImages && inputScalars.FPType != 4 && inputScalars.FPType != 5 && inputScalars.BPType != 5) || (inputScalars.FPType == 4 || inputScalars.FPType == 5 || inputScalars.BPType == 5)) {
 			ADD_OPT(options, "-DUSEIMAGES");
 			inputScalars.useBuffers = false;
-#if defined(CUDA) || defined(HIP)
-			useBuffers = false;
-#endif // END CUDA
+			memAlloc.useBuffers = false;
 		}
 		std::ifstream sourceHeader(kernelFile + "general_opencl_functions.h");
 		// Load the header text file
@@ -1832,12 +1830,12 @@ public:
 		}
 		if (memAlloc.V)
 			getErrorString(cuMemFree(d_V));
-		if (memAlloc.atten && !useBuffers) {
+		if (memAlloc.atten && !memAlloc.useBuffers) {
 			getErrorString(cuArrayDestroy(atArray));
 		}
 		for (int tt = 0; tt < memAlloc.tSteps; tt++) {
 			if (memAlloc.atten && memAlloc.attenSize < tt) {
-				if (useBuffers) {
+				if (memAlloc.useBuffers) {
 					getErrorString(cuMemFree(d_attenB[tt]));
 				}
 				else {
@@ -1904,7 +1902,7 @@ public:
 		if (memAlloc.zFull)
 			getErrorString(cuMemFree(d_zFull[0]));
 		if (memAlloc.maskFP) {
-			if (useBuffers) {
+			if (memAlloc.useBuffers) {
 				for (int ll = 0; ll < d_maskFPB.size(); ll++)
 					getErrorString(cuMemFree(d_maskFPB[ll]));
 			}
@@ -1921,7 +1919,7 @@ public:
 			}
 		}
 		if (memAlloc.maskBP) {
-			if (useBuffers) {
+			if (memAlloc.useBuffers) {
 				getErrorString(cuMemFree(d_maskBPB));
 			}
 			else {
