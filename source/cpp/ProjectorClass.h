@@ -3404,9 +3404,6 @@ public:
 				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_scat[timestep][osa_iter]);
 			}
 			KARG(kTemp, kernelFP, kernelIndFPSubIter, no_norm);
-#if !defined(CUDA) && !defined(HIP)
-			m_size = static_cast<ULong>(m_size);
-#endif // END CUDA
 			KARG(kTemp, kernelFP, kernelIndFPSubIter, m_size);
 			KARG(kTemp, kernelFP, kernelIndFPSubIter, osa_iter);
 			KARG(kTemp, kernelFP, kernelIndFPSubIter, ii);
@@ -3835,11 +3832,7 @@ public:
 			KARG(kTemp, kernelBP, kernelIndBPSubIter, d_output);
 			KARG(kTemp, kernelBP, kernelIndBPSubIter, vec_opencl.d_rhs_os[uu]);
 			KARG(kTemp, kernelBP, kernelIndBPSubIter, no_norm);
-#if defined(CUDA) || defined(HIP)
 			KARG(kTemp, kernelBP, kernelIndBPSubIter, m_size);
-#else
-			KARG(kTemp, kernelBP, kernelIndBPSubIter, static_cast<ULong>(m_size));
-#endif // END CUDA
 			KARG(kTemp, kernelBP, kernelIndBPSubIter, osa_iter);
 			KARG(kTemp, kernelBP, kernelIndBPSubIter, ii);
 			}
@@ -4211,18 +4204,10 @@ public:
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBP);
 			}
 			if (inputScalars.CT) {
-#if defined(CUDA) || defined(HIP)
 				KARG(kTemp, kernelBP, kernelIndBPSubIter, length[indD]);
-#else
-				KARG(kTemp, kernelBP, kernelIndBPSubIter, static_cast<Long>(length[indD]));
-#endif // END CUDA
 			}
 			else {
-#if defined(CUDA) || defined(HIP)
 				KARG(kTemp, kernelBP, kernelIndBPSubIter, m_size);
-#else
-				KARG(kTemp, kernelBP, kernelIndBPSubIter, static_cast<ULong>(m_size));
-#endif // END CUDA
 				KARG(kTemp, kernelBP, kernelIndBPSubIter, osa_iter);
 			}
 			KARG(kTemp, kernelBP, kernelIndBPSubIter, ii);
@@ -5443,7 +5428,6 @@ public:
 		const unsigned int gSize[3] = { static_cast<unsigned int>(size[0]), static_cast<unsigned int>(size[1]), static_cast<unsigned int>(size[2]) };
 		CUresult status = CUDA_SUCCESS;
 		std::vector<void*> kArgs;
-		unsigned char D = static_cast<unsigned char>(D2);
 		if (DEBUG) {
 			mexPrintBase("gSize[0] = %u\n", gSize[0]);
 			mexPrintBase("gSize[1] = %u\n", gSize[1]);
@@ -5459,14 +5443,11 @@ public:
 		UInt kernelIndE = 0U;
 		status = (CLCommandQueue[0]).finish();
 #endif // END CUDA
+		UChar D = static_cast<UChar>(D2);
 		if (mult) {
 			KARG(kArgs, kernelElementMultiply, kernelIndE, d_vector);
 			KARG(kArgs, kernelElementMultiply, kernelIndE, d_input);
-#if defined(CUDA) || defined(HIP)
 			KARG(kArgs, kernelElementMultiply, kernelIndE, D);
-#else
-			KARG(kArgs, kernelElementMultiply, kernelIndE, static_cast<UChar>(D2));
-#endif // END CUDA
 			// Compute the kernel
 #if defined(CUDA) || defined(HIP)
 			status = cuLaunchKernel(kernelElementMultiply, gSize[0], gSize[1], gSize[2], 1, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
@@ -5823,12 +5804,12 @@ public:
 		global[0] = (inputScalars.Nx[ii] + erotusPDHG[0][ii]) / localPrior[0];
 		global[1] = (inputScalars.Ny[ii] + erotusPDHG[1][ii]) / localPrior[1];
 		global[2] = inputScalars.Nz[ii];
-		bool apu = inputScalars.enforcePositivity;
 #else
 		status = (CLCommandQueue[0]).finish();
 		UInt kernelIndPoisson = 0U;
 		global = { inputScalars.Nx[ii] + erotusPDHG[0][ii], inputScalars.Ny[ii] + erotusPDHG[1][ii], inputScalars.Nz[ii] };
 #endif // END CUDA
+		UChar enforcePositivity = static_cast<UChar>(inputScalars.enforcePositivity);
 		if (DEBUG) {
 			mexPrintBase("global[0] = %u\n", global[0]);
 			mexPrintBase("global[1] = %u\n", global[1]);
@@ -5852,11 +5833,7 @@ public:
 		KARG(kArgs, kernelPoisson, kernelIndPoisson, lambda);
 		KARG(kArgs, kernelPoisson, kernelIndPoisson, epps);
 		KARG(kArgs, kernelPoisson, kernelIndPoisson, alpha);
-#if defined(CUDA) || defined(HIP)
-		KARG(kArgs, kernelPoisson, kernelIndPoisson, apu);
-#else
-		KARG(kArgs, kernelPoisson, kernelIndPoisson, static_cast<UChar>(inputScalars.enforcePositivity));
-#endif // END CUDA
+		KARG(kArgs, kernelPoisson, kernelIndPoisson, enforcePositivity);
 		// Compute the kernel
 #if defined(CUDA) || defined(HIP)
 		if (DEBUG || inputScalars.verbose >= 3)
@@ -5918,12 +5895,12 @@ public:
 		global[0] = (inputScalars.Nx[ii] + erotusPDHG[0][ii]) / localPrior[0];
 		global[1] = (inputScalars.Ny[ii] + erotusPDHG[1][ii]) / localPrior[1];
 		global[2] = inputScalars.Nz[ii];
-		bool apu = inputScalars.enforcePositivity;
 #else
 		status = (CLCommandQueue[0]).finish();
 		UInt kernelIndPDHG = 0U;
 		global = { inputScalars.Nx[ii] + erotusPDHG[0][ii], inputScalars.Ny[ii] + erotusPDHG[1][ii], inputScalars.Nz[ii] };
 #endif // END CUDA
+		UChar enforcePositivity = static_cast<UChar>(inputScalars.enforcePositivity);
 		if (DEBUG) {
 			mexPrintBase("global[0] = %u\n", global[0]);
 			mexPrintBase("global[1] = %u\n", global[1]);
@@ -5942,11 +5919,7 @@ public:
 		KARG(kArgs, kernelPDHG, kernelIndPDHG, epps);
 		KARG(kArgs, kernelPDHG, kernelIndPDHG, theta);
 		KARG(kArgs, kernelPDHG, kernelIndPDHG, tau);
-#if defined(CUDA) || defined(HIP)
-		KARG(kArgs, kernelPDHG, kernelIndPDHG, apu);
-#else
-		KARG(kArgs, kernelPDHG, kernelIndPDHG, static_cast<UChar>(inputScalars.enforcePositivity));
-#endif // END CUDA
+		KARG(kArgs, kernelPDHG, kernelIndPDHG, enforcePositivity);
 		// Compute the kernel
 #if defined(CUDA) || defined(HIP)
 		if (DEBUG || inputScalars.verbose >= 3)
