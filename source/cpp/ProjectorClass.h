@@ -257,8 +257,7 @@ using TimerPoint = std::chrono::steady_clock::time_point;
 	OCL_CHECK(status, "Image creation failed\n", -1); \
 	status = CLCommandQueue[0].enqueueCopyBufferToImage((SRC), (TEX), 0, origin, textureRegion); \
 	OCL_CHECK(status, "Image copy failed\n", -1); \
-	status = CLCommandQueue[0].finish(); \
-	OCL_CHECK(status, "Queue finish failed after image copy\n", -1); \
+	FINISH_QUEUE(status, "Queue finish failed after image copy\n", -1); \
 } while(0)
 #define CREATE_FLOAT_TEXTURE3D_EMPTY(TEX, ARRAY, WIDTH, HEIGHT, DEPTH) do { \
 	(TEX) = Texture3D(CLContext, CL_MEM_READ_ONLY, format, (WIDTH), (HEIGHT), (DEPTH), 0, 0, NULL, &status); \
@@ -3037,8 +3036,7 @@ public:
 		Status status = SUCCESS_VALUE;
 		cl::NDRange	globalC = { inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], inputScalars.Nz[ii] };
 
-		status = CLCommandQueue[0].finish();
-		OCL_CHECK(status, "\n", -1);
+		FINISH_QUEUE(status, "\n", -1);
 		UInt kernelInd = 0U;
 		KARG(kArgs, kernelPSFf, kernelInd, d_imFinal[ii]);
 		KARG(kArgs, kernelPSFf, kernelInd, d_imTemp[ii]);
@@ -3051,8 +3049,7 @@ public:
 		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Convolution kernel launched successfully\n");
 		}
-		status = CLCommandQueue[0].finish();
-		OCL_CHECK(status, "\n", -1);
+		FINISH_QUEUE(status, "\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Convolution computed");
 
@@ -3065,8 +3062,7 @@ public:
 		cl::NDRange	globalC = { inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], inputScalars.Nz[ii] };
 
 		cl::Buffer d_BPApu = cl::Buffer(CLContext, CL_MEM_READ_WRITE, sizeof(T) * inputScalars.im_dim[ii], NULL, &status);
-		status = CLCommandQueue[0].finish();
-		OCL_CHECK(status, "\n", -1);
+		FINISH_QUEUE(status, "\n", -1);
 		UInt kernelInd = 0U;
 		KARG(kArgs, kernelPSF, kernelInd, input);
 		KARG(kArgs, kernelPSF, kernelInd, d_BPApu);
@@ -3079,14 +3075,12 @@ public:
 		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Convolution kernel launched successfully\n");
 		}
-		status = CLCommandQueue[0].finish();
-		OCL_CHECK(status, "\n", -1);
+		FINISH_QUEUE(status, "\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Convolution computed");
 		status = CLCommandQueue[0].enqueueCopyBuffer(d_BPApu, input, 0, 0, sizeof(T) * inputScalars.im_dim[ii]);
 		OCL_CHECK(status, "\n", -1);
-		status = CLCommandQueue[0].finish();
-		OCL_CHECK(status, "\n", -1);
+		FINISH_QUEUE(status, "\n", -1);
 
 		return status;
 	}
@@ -3130,8 +3124,7 @@ public:
 		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Forward step kernel launched successfully\n");
 		}
-		status = CLCommandQueue[0].finish();
-		OCL_CHECK(status, "\n", -1);
+		FINISH_QUEUE(status, "\n", -1);
 		if (inputScalars.verbose >= 3)
 			mexPrint("Forward step computed");
 
@@ -3156,8 +3149,7 @@ public:
 		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Estimate step kernel launched successfully\n");
 		}
-		status = CLCommandQueue[0].finish();
-		OCL_CHECK(status, "\n", -1);
+		FINISH_QUEUE(status, "\n", -1);
 		if (inputScalars.verbose >= 3)
 			mexPrint("Estimate step computed");
 
@@ -3272,13 +3264,7 @@ public:
 		if (DEBUG || inputScalars.verbose >= 3) {
 			INIT_TIMER(tStart, tEnd);
 		}
-#if defined(CUDA) || defined(HIP)
-		status = cuCtxSynchronize();
-		CUDA_CHECK(status, "\n", -1);
-#else
-		status = CLCommandQueue[0].finish();
-		OCL_CHECK(status, "\n", -1);
-#endif // END CUDA
+		FINISH_QUEUE(status, "\n", -1);
 		if (!inputScalars.CT && (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.FPType == 4)) {
 			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
 				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_atten[osa_iter]);
@@ -3515,8 +3501,7 @@ public:
 			mexPrint("Forward projection kernel launched successfully\n");
 		}
 #if defined(CUDA) || defined(HIP)
-		status = cuCtxSynchronize();
-		CUDA_CHECK(status, "\n", -1);
+		FINISH_QUEUE(status, "\n", -1);
 		if (!inputScalars.useBuffers) {
 			status = cuTexObjectDestroy(vec_opencl.d_image_os);
 			if (status != CUDA_SUCCESS) {
@@ -3538,8 +3523,7 @@ public:
 			}
 		}
 #else
-		status = CLCommandQueue[0].finish();
-		OCL_CHECK(status, "\n", -1);
+		FINISH_QUEUE(status, "\n", -1);
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3) {
 			STOP_TIMER(tEnd);
@@ -3802,8 +3786,7 @@ public:
 						BACKEND_TEXTURE_LINEAR, BACKEND_TEXTURE_NORMALIZED);
 					CHECK(status, "Image creation failed\n", -1);
 #if defined(CUDA) || defined(HIP)
-					status = cuCtxSynchronize();
-					CUDA_CHECK(status, "Synchronize failed after image copy\n", -1);
+					FINISH_QUEUE(status, "Synchronize failed after image copy\n", -1);
 #endif // END CUDA
 				}
 			if (inputScalars.BPType == 4) {
@@ -4160,8 +4143,7 @@ public:
 			mexPrint("Backprojection kernel launched successfully\n");
 		}
 #if defined(CUDA) || defined(HIP)
-		status = cuCtxSynchronize();
-		CUDA_CHECK(status, "Synchronization failed after backprojection\n", -1);
+		FINISH_QUEUE(status, "Synchronization failed after backprojection\n", -1);
 		if ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5) {
 			if (!inputScalars.useBuffers) {
 				status = cuTexObjectDestroy(d_inputImage);
@@ -4175,8 +4157,7 @@ public:
 			}
 		}
 #else
-		status = CLCommandQueue[0].finish();
-		OCL_CHECK(status, "\n", -1);
+		FINISH_QUEUE(status, "\n", -1);
 #endif // END CUDA
 		if (inputScalars.listmode > 0 && compSens) {
 			kernelBP = kernelApu;
@@ -4273,10 +4254,8 @@ public:
 		gSize[0] = (global_size[0] + erotus[0]) / localPrior[0];
 		gSize[1] = (global_size[1] + erotus[1]) / localPrior[1];
 		gSize[2] = global_size[2];
-		status = cuCtxSynchronize();
-#else
-		CLCommandQueue[0].finish();
 #endif // END CUDA
+		FINISH_QUEUE(status, "\n", -1);
 		if (DEBUG) {
 			mexPrintBase("global_size[0] = %d\n", global_size[0]);
 			mexPrintBase("global_size[1] = %d\n", global_size[1]);
@@ -4316,13 +4295,7 @@ public:
 		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Median kernel launched successfully\n");
 		}
-#if defined(CUDA) || defined(HIP)
-		status = cuCtxSynchronize();
-		CUDA_CHECK(status, "Synchronize failed after MRP kernel\n", -1);
-#else
-		status = (CLCommandQueue[0]).finish();
-		OCL_CHECK(status, "Queue finish failed after MRP kernel\n", -1);
-#endif // END CUDA
+		FINISH_QUEUE(status, "Queue finish failed after MRP kernel\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
 			STOP_TIMER(tEnd);
 			PRINT_TIMER(tStart, tEnd, BACKEND_STR " MRP kernel completed in %f seconds\n");
@@ -4354,7 +4327,6 @@ public:
 		std::vector<void*> kArgs;
 		float apu = inputScalars.epps;
 #else
-		CLCommandQueue[0].finish();
 		const Int3 searchWindow = { static_cast<Int>(w_vec.Ndx) , static_cast<Int>(w_vec.Ndy) , static_cast<Int>(w_vec.Ndz) };
 		const Int3 patchWindow = { static_cast<Int>(w_vec.Nlx) , static_cast<Int>(w_vec.Nly) , static_cast<Int>(w_vec.Nlz) };
 		UInt kernelIndNLM = 0U;
@@ -4376,11 +4348,7 @@ public:
 			nOffset = { w_vec.Nlz + w_vec.Ndz, Nz - w_vec.Nlz - w_vec.Ndz };
 		else if (inputScalars.largeDim)
 			nOffset = { w_vec.Nlz + w_vec.Ndz, Nz };
-#if defined(CUDA) || defined(HIP)
-		status = cuCtxSynchronize();
-		//const int3 searchWindow = { static_cast<int>(w_vec.Ndx) , static_cast<int>(w_vec.Ndy) , static_cast<int>(w_vec.Ndz) };
-		//const int3 patchWindow = { static_cast<int>(w_vec.Nlx) , static_cast<int>(w_vec.Nly) , static_cast<int>(w_vec.Nlz) };
-#endif // END CUDA
+		FINISH_QUEUE(status, "\n", -1);
 		if (DEBUG) {
 			mexPrintBase("w_vec.Ndx = %u\n", w_vec.Ndx);
 			mexPrintBase("w_vec.Ndy = %u\n", w_vec.Ndy);
@@ -4463,8 +4431,7 @@ public:
 		status = cuLaunchKernel(kernelNLM, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the NLM kernel\n", status);
 
-		status = cuCtxSynchronize();
-		CUDA_CHECK(status, "Queue finish failed after NLM kernel\n", status);
+		FINISH_QUEUE(status, "Queue finish failed after NLM kernel\n", status);
 		if (inputScalars.useImages) {
 			status = cuTexObjectDestroy(d_inputI);
 			if (status != CUDA_SUCCESS) {
@@ -4478,8 +4445,7 @@ public:
 #else
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelNLM, cl::NullRange, globalPrior, localPrior);
 		OCL_CHECK(status, "Failed to launch the NLM kernel\n", -1);
-		status = (CLCommandQueue[0]).finish();
-		OCL_CHECK(status, "Queue finish failed after NLM kernel\n", -1);
+		FINISH_QUEUE(status, "Queue finish failed after NLM kernel\n", -1);
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3) {
 			STOP_TIMER(tEnd);
@@ -4515,11 +4481,6 @@ public:
 		if (DEBUG || inputScalars.verbose >= 3) {
 			INIT_TIMER(tStart, tEnd);
 		}
-#if !defined(CUDA) && !defined(HIP)
-		CLCommandQueue[0].finish();
-		status = (CLCommandQueue[0]).finish();
-		OCL_CHECK(status, "Queue finish failed before RDP kernel\n", -1);
-#endif // END CUDA
 		uint32_t Nz, NzOrig;
 		UInt2 nOffset;
 		if (inputScalars.largeDim)
@@ -4537,13 +4498,12 @@ public:
 			nOffset = { (Nz - NzOrig) / 2, (Nz + NzOrig) / 2 };
 		else if (inputScalars.largeDim)
 			nOffset = { Nz - NzOrig, Nz };
-#if defined(CUDA) || defined(HIP)
-		status = cuCtxSynchronize();
-#else
+#if !defined(CUDA) && !defined(HIP)
 		UInt kernelIndRDP = 0U;
 		if (inputScalars.largeDim)
 			SET_RANGE_Z(globalPrior, inputScalars.Nz[0]);
 #endif // END CUDA
+		FINISH_QUEUE(status, "Queue finish failed before RDP kernel\n", -1);
 		if (DEBUG) {
 			mexPrintBase("inputScalars.epps = %.9f\n", inputScalars.epps);
 			mexPrintBase("gamma = %f\n", gamma);
@@ -4605,8 +4565,7 @@ public:
 		status = cuLaunchKernel(kernelRDP, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the RDP kernel\n", -1);
 
-		status = cuCtxSynchronize();
-		CUDA_CHECK(status, "Queue finish failed after RDP kernel\n", -1);
+		FINISH_QUEUE(status, "Queue finish failed after RDP kernel\n", -1);
 		if (inputScalars.useImages) {
 			status = cuTexObjectDestroy(d_inputI);
 			if (status != CUDA_SUCCESS) {
@@ -4626,8 +4585,7 @@ public:
 #else
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelRDP, cl::NullRange, globalPrior, localPrior);
 		OCL_CHECK(status, "Failed to launch the RDP kernel\n", -1);
-		status = (CLCommandQueue[0]).finish();
-		OCL_CHECK(status, "Queue finish failed after RDP kernel\n", -1);
+		FINISH_QUEUE(status, "Queue finish failed after RDP kernel\n", -1);
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3) {
 			STOP_TIMER(tEnd);
@@ -4661,9 +4619,6 @@ public:
 		if (DEBUG || inputScalars.verbose >= 3) {
 			INIT_TIMER(tStart, tEnd);
 		}
-#if !defined(CUDA) && !defined(HIP)
-		CLCommandQueue[0].finish();
-#endif // END CUDA
 		uint32_t Nz, NzOrig;
 		UInt2 nOffset;
 		if (inputScalars.largeDim)
@@ -4682,13 +4637,13 @@ public:
 		else if (inputScalars.largeDim)
 			nOffset = { w_vec.Ndz, Nz };
 #if defined(CUDA) || defined(HIP)
-		status = cuCtxSynchronize();
 		std::vector<void*> kArgs;
 #else
 		UInt kernelIndGGMRF = 0U;
 		if (inputScalars.largeDim)
 			SET_RANGE_Z(globalPrior, inputScalars.Nz[0]);
 #endif // END CUDA
+		FINISH_QUEUE(status, "\n", -1);
 		if (DEBUG) {
 			mexPrintBase("p = %f\n", p);
 			mexPrintBase("q = %f\n", q);
@@ -4737,8 +4692,7 @@ public:
 		status = cuLaunchKernel(kernelGGMRF, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the GGMRF kernel\n", -1);
 
-		status = cuCtxSynchronize();
-		CUDA_CHECK(status, "Queue finish failed after GGMRF kernel\n", -1);
+		FINISH_QUEUE(status, "Queue finish failed after GGMRF kernel\n", -1);
 		if (inputScalars.useImages) {
 			status = cuTexObjectDestroy(d_inputI);
 			if (status != CUDA_SUCCESS) {
@@ -4752,8 +4706,7 @@ public:
 #else
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelGGMRF, cl::NullRange, globalPrior, localPrior);
 		OCL_CHECK(status, "Failed to launch the GGMRF kernel\n", -1);
-		status = (CLCommandQueue[0]).finish();
-		OCL_CHECK(status, "Queue finish failed after GGMRF kernel\n", -1);
+		FINISH_QUEUE(status, "Queue finish failed after GGMRF kernel\n", -1);
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3) {
 			STOP_TIMER(tEnd);
@@ -4782,17 +4735,12 @@ public:
 #if defined(CUDA) || defined(HIP)
 		status = cuLaunchKernel(kernelProxq, globalQ / 64ULL, 1, 1, 64, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the Proximal RDP helper kernel\n", -1);
-
-		status = cuCtxSynchronize();
-		CUDA_CHECK(status, "Queue finish failed after proximal RDP helper kernel\n", -1);
-		return 0;
 #else
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxq, cl::NullRange, globalQ, cl::NullRange);
 		OCL_CHECK(status, "Failed to launch the Proximal RDP helper kernel\n", -1);
-		status = (CLCommandQueue[0]).finish();
-		OCL_CHECK(status, "Queue finish failed after Proximal RDP helper kernel\n", -1);
-		return status;
 #endif // END CUDA
+		FINISH_QUEUE(status, "Queue finish failed after proximal RDP helper kernel\n", -1);
+		return status;
 	}
 
 	/// <summary>
@@ -4820,17 +4768,12 @@ public:
 #if defined(CUDA) || defined(HIP)
 		status = cuLaunchKernel(kernelProxTVq, globalQ / 64ULL, 1, 1, 64, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the Proximal TV kernel\n", -1);
-
-		status = cuCtxSynchronize();
-		CUDA_CHECK(status, "Queue finish failed after proximal TV kernel\n", -1);
-		return 0;
 #else
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTVq, cl::NullRange, globalQ, cl::NullRange);
 		OCL_CHECK(status, "Failed to launch the Proximal TV kernel\n", -1);
-		status = (CLCommandQueue[0]).finish();
-		OCL_CHECK(status, "Queue finish failed after kernel\n", -1);
-		return status;
 #endif // END CUDA
+		FINISH_QUEUE(status, "Queue finish failed after proximal TV kernel\n", -1);
+		return status;
 	}
 
 	/// <summary>
@@ -4863,17 +4806,12 @@ public:
 #if defined(CUDA) || defined(HIP)
 		status = cuLaunchKernel(kernelProxTGVq, globalQ / 64ULL, 1, 1, 64, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the Proximal TGV kernel\n", -1);
-
-		status = cuCtxSynchronize();
-		CUDA_CHECK(status, "Queue finish failed after TGV kernel\n", -1);
-		return 0;
 #else
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTGVq, cl::NullRange, globalQ, cl::NullRange);
 		OCL_CHECK(status, "Failed to launch the Proximal TGV kernel\n", -1);
-		status = (CLCommandQueue[0]).finish();
-		OCL_CHECK(status, "Queue finish failed after kernel\n", -1);
-		return status;
 #endif // END CUDA
+		FINISH_QUEUE(status, "Queue finish failed after TGV kernel\n", -1);
+		return status;
 	}
 
 	/// <summary>
@@ -4912,12 +4850,7 @@ public:
 			mexPrintBase("d_N.s[2] = %u\n", VEC_Z(d_N[0]));
 			mexEval();
 		}
-#if defined(CUDA) || defined(HIP)
-		status = cuCtxSynchronize();
-#else
-		status = (CLCommandQueue[0]).finish();
-#endif // END CUDA
-		CHECK(status, "Queue finish failed before divergence kernel\n", -1);
+		FINISH_QUEUE(status, "Queue finish failed before divergence kernel\n", -1);
 		KARG(kArgs, kernelProxTVDiv, kernelIndCPTV, d_N[0]);
 		KARG(kArgs, kernelProxTVDiv, kernelIndCPTV, d_NPrior);
 		KARG(kArgs, kernelProxTVDiv, kernelIndCPTV, d_qX);
@@ -4942,14 +4875,11 @@ public:
 #if defined(CUDA) || defined(HIP)
 		status = cuLaunchKernel(kernelProxTVDiv, globalPriorEFOV[0], globalPriorEFOV[1], globalPriorEFOV[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the Proximal TV divergence kernel\n", -1);
-
-		status = cuCtxSynchronize();
 #else
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTVDiv, cl::NullRange, globalPriorEFOV, localPrior);
 		OCL_CHECK(status, "Failed to launch the Proximal TV divergence kernel\n", -1);
-		status = (CLCommandQueue[0]).finish();
 #endif // END CUDA
-		CHECK(status, "Queue finish failed after divergence kernel\n", -1);
+		FINISH_QUEUE(status, "Queue finish failed after divergence kernel\n", -1);
 		if (inputScalars.verbose >= 3)
 			mexPrint("Proximal TV divergence computed");
 		return 0;
@@ -5034,12 +4964,7 @@ public:
 			mexPrint("Proximal TV gradient kernel launched successfully\n");
 		}
 
-#if defined(CUDA) || defined(HIP)
-		status = cuCtxSynchronize();
-#else
-		status = (CLCommandQueue[0]).finish();
-#endif // END CUDA
-		CHECK(status, "Queue finish failed after gradient kernel\n", -1);
+		FINISH_QUEUE(status, "Queue finish failed after gradient kernel\n", -1);
 		if (inputScalars.verbose >= 3)
 			mexPrint("Proximal TV gradient computed");
 		return 0;
@@ -5122,12 +5047,7 @@ public:
 			mexPrint("Proximal TV gradient kernel launched successfully\n");
 #endif // END CUDA
 		}
-#if defined(CUDA) || defined(HIP)
-		status = cuCtxSynchronize();
-#else
-		status = (CLCommandQueue[0]).finish();
-#endif // END CUDA
-		CHECK(status, "Queue finish failed after symmetric derivative kernel\n", -1);
+		FINISH_QUEUE(status, "Queue finish failed after symmetric derivative kernel\n", -1);
 		if (inputScalars.verbose >= 3)
 			mexPrint("Proximal TGV symmetric derivative computed");
 		return 0;
@@ -5173,11 +5093,7 @@ public:
 			mexPrintBase("tau = %f\n", tau);
 			mexEval();
 		}
-#if defined(CUDA) || defined(HIP)
-		status = cuCtxSynchronize();
-#else
-		status = (CLCommandQueue[0]).finish();
-#endif // END CUDA
+		FINISH_QUEUE(status, "\n", -1);
 		KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_N[0]);
 		KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_NPrior);
 		KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_rX);
@@ -5215,14 +5131,11 @@ public:
 #if defined(CUDA) || defined(HIP)
 		status = cuLaunchKernel(kernelProxTGVDiv, globalPriorEFOV[0], globalPriorEFOV[1], globalPriorEFOV[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the Proximal TGV divergence kernel\n", -1);
-
-		status = cuCtxSynchronize();
 #else
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTGVDiv, cl::NullRange, globalPriorEFOV, localPrior);
 		OCL_CHECK(status, "Failed to launch the Proximal TGV divergence kernel\n", -1);
-		status = (CLCommandQueue[0]).finish();
 #endif // END CUDA
-		CHECK(status, "Queue finish failed after divergence kernel\n", -1);
+		FINISH_QUEUE(status, "Queue finish failed after divergence kernel\n", -1);
 		if (inputScalars.verbose >= 3)
 			mexPrint("Proximal TGV divergence complete");
 		return 0;
@@ -5295,8 +5208,7 @@ public:
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting " BACKEND_STR " hyperbolic prior gradient computation");
 		Status status = SUCCESS_VALUE;
-#if defined(CUDA) || defined(HIP)
-#else
+#if !defined(CUDA) && !defined(HIP)
 		if (inputScalars.largeDim)
 			SET_RANGE_Z(globalPrior, inputScalars.Nz[0]);
 #endif // END CUDA
@@ -5327,12 +5239,11 @@ public:
 		else if (inputScalars.largeDim)
 			nOffset = { w_vec.Ndz, Nz };
 #if defined(CUDA) || defined(HIP)
-		status = cuCtxSynchronize();
 		std::vector<void*> kArgs;
 #else
-		status = (CLCommandQueue[0]).finish();
 		UInt kernelIndHyper = 0U;
 #endif // END CUDA
+		FINISH_QUEUE(status, "\n", -1);
 		KARG(kArgs, kernelHyper, kernelIndHyper, d_W);
 		if (inputScalars.useImages) {
 			KARG(kArgs, kernelHyper, kernelIndHyper, d_inputI);
@@ -5376,8 +5287,7 @@ public:
 		status = cuLaunchKernel(kernelHyper, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the hyperbolic prior gradient kernel\n", -1);
 
-		status = cuCtxSynchronize();
-		CUDA_CHECK(status, "Queue finish failed after hyperbolic prior gradient kernel\n", -1);
+		FINISH_QUEUE(status, "Queue finish failed after hyperbolic prior gradient kernel\n", -1);
 		if (inputScalars.useImages) {
 			status = cuTexObjectDestroy(d_inputI);
 			if (status != CUDA_SUCCESS) {
@@ -5391,8 +5301,7 @@ public:
 #else
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelHyper, cl::NullRange, globalPrior, localPrior);
 		OCL_CHECK(status, "Failed to launch the hyperbolic prior gradient kernel\n", -1);
-		status = (CLCommandQueue[0]).finish();
-		OCL_CHECK(status, "Queue finish failed after hyperbolic prior gradient kernel\n", -1);
+		FINISH_QUEUE(status, "Queue finish failed after hyperbolic prior gradient kernel\n", -1);
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3) {
 			STOP_TIMER(tEnd);
@@ -5420,8 +5329,7 @@ public:
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting " BACKEND_STR " TV gradient computation");
 		Status status = SUCCESS_VALUE;
-#if defined(CUDA) || defined(HIP)
-#else
+#if !defined(CUDA) && !defined(HIP)
 		if (inputScalars.largeDim)
 			SET_RANGE_Z(globalPrior, inputScalars.Nz[0]);
 #endif // END CUDA
@@ -5429,12 +5337,7 @@ public:
 		if (DEBUG || inputScalars.verbose >= 3) {
 			INIT_TIMER(tStart, tEnd);
 		}
-#if defined(CUDA) || defined(HIP)
-		status = cuCtxSynchronize();
-#else
-		status = (CLCommandQueue[0]).finish();
-		//cl::detail::size_t_array region = { inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0] * inputScalars.nRekos };
-#endif // END CUDA
+		FINISH_QUEUE(status, "\n", -1);
 		if (DEBUG) {
 			mexPrintBase("sigma = %f\n", sigma);
 			mexPrintBase("smooth = %f\n", smooth);
@@ -5503,8 +5406,7 @@ public:
 #if defined(CUDA) || defined(HIP)
 		status = cuLaunchKernel(kernelTV, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the TV gradient kernel\n", -1);
-		status = cuCtxSynchronize();
-		CUDA_CHECK(status, "Queue finish failed after TV gradient kernel\n", -1);
+		FINISH_QUEUE(status, "Queue finish failed after TV gradient kernel\n", -1);
 		if (inputScalars.useImages) {
 			status = cuTexObjectDestroy(d_inputI);
 			if (status != CUDA_SUCCESS) {
@@ -5518,8 +5420,7 @@ public:
 #else
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelTV, cl::NullRange, globalPrior, localPrior);
 		OCL_CHECK(status, "Failed to launch the TV gradient kernel\n", -1);
-		status = (CLCommandQueue[0]).finish();
-		OCL_CHECK(status, "Queue finish failed after TV gradient kernel\n", -1);
+		FINISH_QUEUE(status, "Queue finish failed after TV gradient kernel\n", -1);
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3) {
 			STOP_TIMER(tEnd);
@@ -5545,11 +5446,10 @@ public:
 		}
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
-		status = cuCtxSynchronize();
 #else
-		status = (CLCommandQueue[0]).finish();
 		UInt kernelIndPoisson = 0U;
 #endif // END CUDA
+		FINISH_QUEUE(status, "\n", -1);
 		SET_LAUNCH_RANGE3(global,
 			inputScalars.Nx[ii] + erotusPDHG[0][ii],
 			inputScalars.Ny[ii] + erotusPDHG[1][ii],
@@ -5586,14 +5486,11 @@ public:
 #if defined(CUDA) || defined(HIP)
 		status = cuLaunchKernel(kernelPoisson, global[0], global[1], global[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the Poisson update kernel\n", -1);
-
-		status = cuCtxSynchronize();
 #else
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelPoisson, cl::NullRange, global, localPrior);
 		OCL_CHECK(status, "Failed to launch the Poisson update kernel\n", -1);
-		status = (CLCommandQueue[0]).finish();
 #endif // END CUDA
-		CHECK(status, "Queue finish failed after Poisson update kernel\n", -1);
+		FINISH_QUEUE(status, "Queue finish failed after Poisson update kernel\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
 			STOP_TIMER(tEnd);
 			PRINT_TIMER(tStart, tEnd, BACKEND_STR " Poisson update completed in %f seconds\n");
@@ -5616,9 +5513,9 @@ public:
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
 #else
-		status = (CLCommandQueue[0]).finish();
 		UInt kernelIndPDHG = 0U;
 #endif // END CUDA
+		FINISH_QUEUE(status, "\n", -1);
 		SET_LAUNCH_RANGE3(global,
 			inputScalars.Nx[ii] + erotusPDHG[0][ii],
 			inputScalars.Ny[ii] + erotusPDHG[1][ii],
@@ -5650,14 +5547,11 @@ public:
 #if defined(CUDA) || defined(HIP)
 		status = cuLaunchKernel(kernelPDHG, global[0], global[1], global[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the PDHG update kernel\n", -1);
-
-		status = cuCtxSynchronize();
 #else
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelPDHG, cl::NullRange, global, localPrior);
 		OCL_CHECK(status, "Failed to launch the PDHG update kernel\n", -1);
-		status = (CLCommandQueue[0]).finish();
 #endif // END CUDA
-		CHECK(status, "Queue finish failed after PDHG update kernel\n", -1);
+		FINISH_QUEUE(status, "Queue finish failed after PDHG update kernel\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
 			STOP_TIMER(tEnd);
 			PRINT_TIMER(tStart, tEnd, BACKEND_STR " PDHG update completed in %f seconds\n");
@@ -5709,8 +5603,7 @@ public:
 #if defined(CUDA) || defined(HIP)
 		status = cuLaunchKernel(kernelRotate, global[0], global[1], global[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the bilinear image rotation kernel\n", -1);
-		status = cuCtxSynchronize();
-		CUDA_CHECK(status, "Queue finish failed after bilinear image rotation kernel\n", -1);
+		FINISH_QUEUE(status, "Queue finish failed after bilinear image rotation kernel\n", -1);
 		if (inputScalars.useImages) {
 			status = cuTexObjectDestroy(d_inputI);
 			if (status != CUDA_SUCCESS) {
@@ -5724,8 +5617,7 @@ public:
 #else
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelRotate, cl::NullRange, globalPrior, localPrior);
 		OCL_CHECK(status, "Failed to launch the bilinear image rotation kernel\n", -1);
-		status = (CLCommandQueue[0]).finish();
-		OCL_CHECK(status, "Queue finish failed after bilinear image rotation kernel\n", -1);
+		FINISH_QUEUE(status, "Queue finish failed after bilinear image rotation kernel\n", -1);
 #endif // END CUDA
 		if (inputScalars.verbose >= 3)
 			mexPrint(BACKEND_STR " bilinear image rotation computed");
@@ -5742,8 +5634,7 @@ public:
 			CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(d_inputI, imArray, input, inputScalars.Nx[0], inputScalars.Ny[0], Nz,
 				BACKEND_TEXTURE_POINT, BACKEND_TEXTURE_DEFAULT_FLAGS);
 		CUDA_CHECK(status, "Image copy failed\n", -1);
-		status = cuCtxSynchronize();
-		CUDA_CHECK(status, "Synchronization failed\n", -1);
+		FINISH_QUEUE(status, "Synchronization failed\n", -1);
 		if (DEBUG)
 			mexPrint("Synchronization completed\n");
 		return 0;
