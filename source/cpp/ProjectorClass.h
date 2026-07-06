@@ -16,6 +16,7 @@
 #pragma once
 #include "structs.h"
 #include <array>
+#include <chrono>
 #include <cstring>
 
 // ======== OpenCL / CUDA / Metal compatibility aliases and macros ========
@@ -155,6 +156,28 @@ using TextureArray = EmptyTextureArray;
 #define FINISH_QUEUE(STATUS, MSG, RETURN) do { (STATUS) = SUCCESS_VALUE; } while(0)
 #else
 #define FINISH_QUEUE(STATUS, MSG, RETURN) do { (STATUS) = CLCommandQueue[0].finish(); CHECK((STATUS), MSG, RETURN); } while(0)
+#endif
+#if defined(CUDA) || defined(HIP)
+using TimerPoint = CUevent;
+#define INIT_TIMER(START, END) do { cuEventCreate(&(START), CU_EVENT_DEFAULT); cuEventCreate(&(END), CU_EVENT_DEFAULT); } while(0)
+#define START_TIMER(START) cuEventRecord((START), CLCommandQueue[0])
+#define STOP_TIMER(END) cuEventRecord((END), CLCommandQueue[0])
+#define PRINT_TIMER(START, END, MSG) do { \
+	cuEventSynchronize((END)); \
+	float seconds = 0.f; \
+	cuEventElapsedTime(&seconds, (START), (END)); \
+	seconds /= 1000.f; \
+	mexPrintBase(MSG, seconds); \
+} while(0)
+#else
+using TimerPoint = std::chrono::steady_clock::time_point;
+#define INIT_TIMER(START, END) do {} while(0)
+#define START_TIMER(START) do { (START) = std::chrono::steady_clock::now(); } while(0)
+#define STOP_TIMER(END) do { (END) = std::chrono::steady_clock::now(); } while(0)
+#define PRINT_TIMER(START, END, MSG) do { \
+	const std::chrono::duration<double> seconds = (END) - (START); \
+	mexPrintBase(MSG, seconds); \
+} while(0)
 #endif
 #if defined(CUDA) || defined(HIP)
 #define BACKEND_TEXTURE_POINT CUfilter_mode::CU_TR_FILTER_MODE_POINT
@@ -3192,14 +3215,6 @@ public:
 				1,
 				local);
 		}
-#if !defined(CUDA) && !defined(HIP)
-		std::chrono::steady_clock::time_point tStart;
-		std::chrono::steady_clock::time_point tEnd;
-		if (DEBUG || inputScalars.verbose >= 3) {
-			tStart = std::chrono::steady_clock::now();
-		}
-#endif // END CUDA
-
 		if (DEBUG) {
 			mexPrintBase("global[0] = %u\n", global[0]);
 			mexPrintBase("global[1] = %u\n", global[1]);
@@ -3253,12 +3268,11 @@ public:
 			mexPrintBase("subsetType = %u\n", inputScalars.subsetType);
 			mexEval();
 		}
-#if defined(CUDA) || defined(HIP)
-		CUevent tStart, tEnd;
+		TimerPoint tStart, tEnd;
 		if (DEBUG || inputScalars.verbose >= 3) {
-			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
-			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
+			INIT_TIMER(tStart, tEnd);
 		}
+#if defined(CUDA) || defined(HIP)
 		status = cuCtxSynchronize();
 		CUDA_CHECK(status, "\n", -1);
 #else
@@ -3488,12 +3502,10 @@ public:
 			KARG(kTemp, kernelFP, kernelIndFPSubIter, osa_iter);
 			KARG(kTemp, kernelFP, kernelIndFPSubIter, ii);
 		}
+		if (DEBUG || inputScalars.verbose >= 3)
+			START_TIMER(tStart);
 #if defined(CUDA) || defined(HIP)
-		if (DEBUG || inputScalars.verbose >= 3)
-			cuEventRecord(tStart, CLCommandQueue[0]);
 		status = cuLaunchKernel(kernelFP, global[0], global[1], global[2], local[0], local[1], local[2], 0, CLCommandQueue[0], kTemp.data(), NULL);
-		if (DEBUG || inputScalars.verbose >= 3)
-			cuEventRecord(tEnd, CLCommandQueue[0]);
 		CUDA_CHECK(status, "Failed to launch forward projection kernel\n", -1);
 #else
 		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelFP, cl::NDRange(), global, local, NULL);
@@ -3530,17 +3542,8 @@ public:
 		OCL_CHECK(status, "\n", -1);
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3) {
-#if defined(CUDA) || defined(HIP)
-			cuEventSynchronize(tEnd);
-			float milliseconds = 0;
-			cuEventElapsedTime(&milliseconds, tStart, tEnd);
-			milliseconds /= 1000.f;
-			mexPrintBase("Forward projection completed in %f seconds\n", milliseconds);
-#else
-			tEnd = std::chrono::steady_clock::now();
-			const std::chrono::duration<double> tDiff = tEnd - tStart;
-			mexPrintBase("Forward projection completed in %f seconds\n", tDiff);
-#endif // END CUDA
+			STOP_TIMER(tEnd);
+			PRINT_TIMER(tStart, tEnd, "Forward projection completed in %f seconds\n");
 		}
 		return 0;
 	}
@@ -3582,19 +3585,9 @@ public:
 #endif // END CUDA
 		}
 		int indD = osa_iter + timestep * inputScalars.subsets;
-#if defined(CUDA) || defined(HIP)
-		CUevent tStart, tEnd;
-#else
-		std::chrono::steady_clock::time_point tStart;
-		std::chrono::steady_clock::time_point tEnd;
-#endif // END CUDA
+		TimerPoint tStart, tEnd;
 		if (DEBUG || inputScalars.verbose >= 3) {
-#if defined(CUDA) || defined(HIP)
-			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
-			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
-#else
-			tStart = std::chrono::steady_clock::now();
-#endif // END CUDA
+			INIT_TIMER(tStart, tEnd);
 		}
 
 		if (!inputScalars.CT && (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.BPType == 4)) {
@@ -4154,9 +4147,9 @@ public:
 			}
 			KARG(kTemp, kernelBP, kernelIndBPSubIter, ii);
 			}
-#if defined(CUDA) || defined(HIP)
 		if (DEBUG || inputScalars.verbose >= 3)
-			cuEventRecord(tStart, CLCommandQueue[0]);
+			START_TIMER(tStart);
+#if defined(CUDA) || defined(HIP)
 		status = cuLaunchKernel(kernelBP, global[0], global[1], global[2], local[0], local[1], local[2], 0, CLCommandQueue[0], kTemp.data(), 0);
 		CUDA_CHECK(status, "Failed to launch backprojection kernel\n", -1);
 #else
@@ -4168,8 +4161,6 @@ public:
 		}
 #if defined(CUDA) || defined(HIP)
 		status = cuCtxSynchronize();
-		if (DEBUG || inputScalars.verbose >= 3)
-			cuEventRecord(tEnd, CLCommandQueue[0]);
 		CUDA_CHECK(status, "Synchronization failed after backprojection\n", -1);
 		if ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5) {
 			if (!inputScalars.useBuffers) {
@@ -4191,17 +4182,8 @@ public:
 			kernelBP = kernelApu;
 		}
 		if (DEBUG || inputScalars.verbose >= 3) {
-#if defined(CUDA) || defined(HIP)
-			cuEventSynchronize(tEnd);
-			float milliseconds = 0;
-			cuEventElapsedTime(&milliseconds, tStart, tEnd);
-			milliseconds /= 1000.f;
-			mexPrintBase("Backprojection completed in %f seconds\n", milliseconds);
-#else
-			tEnd = std::chrono::steady_clock::now();
-			const std::chrono::duration<double> tDiff = tEnd - tStart;
-			mexPrintBase("Backprojection completed in %f seconds\n", tDiff);
-#endif // END CUDA
+			STOP_TIMER(tEnd);
+			PRINT_TIMER(tStart, tEnd, "Backprojection completed in %f seconds\n");
 		}
 		return 0;
 		}
@@ -4270,25 +4252,18 @@ public:
 #if defined(CUDA) || defined(HIP)
 	inline int computeMRP(const scalarStruct & inputScalars, const uint64_t global_size[]) {
 		std::vector<void*> kArgs;
-		CUevent tStart, tEnd;
 #else
 	inline int computeMRP(const scalarStruct & inputScalars, const uint64_t gSize[]) {
 		UInt kernelIndMed = 0U;
 		uint64_t erotus[2] = { gSize[0] % localPrior[0], gSize[1] % localPrior[1] };
 		cl::NDRange global_size(gSize[0] + (localPrior[0] - erotus[0]), gSize[1] + (localPrior[1] - erotus[1]), gSize[2]);
-		std::chrono::steady_clock::time_point tStart;
-		std::chrono::steady_clock::time_point tEnd;
 #endif // END CUDA
+		TimerPoint tStart, tEnd;
 		Status status = SUCCESS_VALUE;
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting " BACKEND_STR " median kernel computation");
 		if (DEBUG || inputScalars.verbose >= 3) {
-#if defined(CUDA) || defined(HIP)
-			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
-			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
-#else
-			tStart = std::chrono::steady_clock::now();
-#endif // END CUDA
+			INIT_TIMER(tStart, tEnd);
 		}
 #if defined(CUDA) || defined(HIP)
 		unsigned int gSize[3];
@@ -4330,12 +4305,10 @@ public:
 					KARG(kArgs, kernelMed, kernelIndMed, d_maskPrior);
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			KARG(kArgs, kernelMed, kernelIndMed, d_eFOVIndices);
+		if (DEBUG || inputScalars.verbose >= 3)
+			START_TIMER(tStart);
 #if defined(CUDA) || defined(HIP)
-		if (DEBUG || inputScalars.verbose >= 3)
-			cuEventRecord(tStart, CLCommandQueue[0]);
 		status = cuLaunchKernel(kernelMed, gSize[0], gSize[1], gSize[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
-		if (DEBUG || inputScalars.verbose >= 3)
-			cuEventRecord(tEnd, CLCommandQueue[0]);
 #else
 		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelMed, cl::NullRange, global_size, localPrior);
 #endif // END CUDA
@@ -4351,17 +4324,8 @@ public:
 		OCL_CHECK(status, "Queue finish failed after MRP kernel\n", -1);
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3) {
-#if defined(CUDA) || defined(HIP)
-			cuEventSynchronize(tEnd);
-			float milliseconds = 0;
-			cuEventElapsedTime(&milliseconds, tStart, tEnd);
-			milliseconds /= 1000.f;
-			mexPrintBase("CUDA MRP kernel completed in %f seconds\n", milliseconds);
-#else
-			tEnd = std::chrono::steady_clock::now();
-			const std::chrono::duration<double> tDiff = tEnd - tStart;
-			mexPrintBase("OpenCL MRP kernel computed in %f seconds\n", tDiff);
-#endif // END CUDA
+			STOP_TIMER(tEnd);
+			PRINT_TIMER(tStart, tEnd, BACKEND_STR " MRP kernel completed in %f seconds\n");
 		}
 		return 0;
 	}
@@ -4376,14 +4340,13 @@ public:
 	/// <returns></returns>
 #if defined(CUDA) || defined(HIP)
 	inline int computeNLM(const scalarStruct & inputScalars, Weighting & w_vec, float beta, const int kk = 0) {
-		CUevent tStart, tEnd;
-		if (DEBUG || inputScalars.verbose >= 3) {
-			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
-			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
-		}
 #else
 	inline int computeNLM(const scalarStruct & inputScalars, Weighting & w_vec, const float beta, const int kk = 0) {
 #endif // END CUDA
+		TimerPoint tStart, tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			INIT_TIMER(tStart, tEnd);
+		}
 		Status status = SUCCESS_VALUE;
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting " BACKEND_STR " NLM gradient computation");
@@ -4391,11 +4354,6 @@ public:
 		std::vector<void*> kArgs;
 		float apu = inputScalars.epps;
 #else
-		std::chrono::steady_clock::time_point tStart;
-		std::chrono::steady_clock::time_point tEnd;
-		if (DEBUG || inputScalars.verbose >= 3) {
-			tStart = std::chrono::steady_clock::now();
-		}
 		CLCommandQueue[0].finish();
 		const Int3 searchWindow = { static_cast<Int>(w_vec.Ndx) , static_cast<Int>(w_vec.Ndy) , static_cast<Int>(w_vec.Ndz) };
 		const Int3 patchWindow = { static_cast<Int>(w_vec.Nlx) , static_cast<Int>(w_vec.Nly) , static_cast<Int>(w_vec.Nlz) };
@@ -4499,12 +4457,10 @@ public:
 		if (inputScalars.largeDim)
 			KARG(kArgs, kernelNLM, kernelIndNLM, nOffset);
 		//Compute the kernel
+		if (DEBUG || inputScalars.verbose >= 3)
+			START_TIMER(tStart);
 #if defined(CUDA) || defined(HIP)
-		if (DEBUG || inputScalars.verbose >= 3)
-			cuEventRecord(tStart, CLCommandQueue[0]);
 		status = cuLaunchKernel(kernelNLM, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
-		if (DEBUG || inputScalars.verbose >= 3)
-			cuEventRecord(tEnd, CLCommandQueue[0]);
 		CUDA_CHECK(status, "Failed to launch the NLM kernel\n", status);
 
 		status = cuCtxSynchronize();
@@ -4526,17 +4482,8 @@ public:
 		OCL_CHECK(status, "Queue finish failed after NLM kernel\n", -1);
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3) {
-#if defined(CUDA) || defined(HIP)
-			cuEventSynchronize(tEnd);
-			float milliseconds = 0;
-			cuEventElapsedTime(&milliseconds, tStart, tEnd);
-			milliseconds /= 1000.f;
-			mexPrintBase("CUDA NLM gradient completed in %f seconds\n", milliseconds);
-#else
-			tEnd = std::chrono::steady_clock::now();
-			const std::chrono::duration<double> tDiff = tEnd - tStart;
-			mexPrintBase("OpenCL NLM gradient computed in %f seconds\n", tDiff);
-#endif // END CUDA
+			STOP_TIMER(tEnd);
+			PRINT_TIMER(tStart, tEnd, BACKEND_STR " NLM gradient completed in %f seconds\n");
 		}
 		if (inputScalars.largeDim)
 			VEC_Z(d_N[0]) = NzOrig;
@@ -4563,18 +4510,10 @@ public:
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
 		float apu = inputScalars.epps;
-		CUevent tStart, tEnd;
-#else
-		std::chrono::steady_clock::time_point tStart;
-		std::chrono::steady_clock::time_point tEnd;
 #endif // END CUDA
+		TimerPoint tStart, tEnd;
 		if (DEBUG || inputScalars.verbose >= 3) {
-#if defined(CUDA) || defined(HIP)
-			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
-			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
-#else
-			tStart = std::chrono::steady_clock::now();
-#endif // END CUDA
+			INIT_TIMER(tStart, tEnd);
 		}
 #if !defined(CUDA) && !defined(HIP)
 		CLCommandQueue[0].finish();
@@ -4660,12 +4599,10 @@ public:
 		if (inputScalars.largeDim)
 			KARG(kArgs, kernelRDP, kernelIndRDP, nOffset);
 		// Compute the kernel
+		if (DEBUG || inputScalars.verbose >= 3)
+			START_TIMER(tStart);
 #if defined(CUDA) || defined(HIP)
-		if (DEBUG || inputScalars.verbose >= 3)
-			cuEventRecord(tStart, CLCommandQueue[0]);
 		status = cuLaunchKernel(kernelRDP, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
-		if (DEBUG || inputScalars.verbose >= 3)
-			cuEventRecord(tEnd, CLCommandQueue[0]);
 		CUDA_CHECK(status, "Failed to launch the RDP kernel\n", -1);
 
 		status = cuCtxSynchronize();
@@ -4693,17 +4630,8 @@ public:
 		OCL_CHECK(status, "Queue finish failed after RDP kernel\n", -1);
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3) {
-#if defined(CUDA) || defined(HIP)
-			cuEventSynchronize(tEnd);
-			float milliseconds = 0;
-			cuEventElapsedTime(&milliseconds, tStart, tEnd);
-			milliseconds /= 1000.f;
-			mexPrintBase("CUDA RDP gradient completed in %f seconds\n", milliseconds);
-#else
-			tEnd = std::chrono::steady_clock::now();
-			const std::chrono::duration<double> tDiff = tEnd - tStart;
-			mexPrintBase("OpenCL RDP gradient computed in %f seconds\n", tDiff);
-#endif // END CUDA
+			STOP_TIMER(tEnd);
+			PRINT_TIMER(tStart, tEnd, BACKEND_STR " RDP gradient completed in %f seconds\n");
 		}
 		if (inputScalars.largeDim)
 			VEC_Z(d_N[0]) = NzOrig;
@@ -4729,19 +4657,9 @@ public:
 		Status status = SUCCESS_VALUE;
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting " BACKEND_STR " GGMRF gradient computation");
-#if defined(CUDA) || defined(HIP)
-		CUevent tStart, tEnd;
-#else
-		std::chrono::steady_clock::time_point tStart;
-		std::chrono::steady_clock::time_point tEnd;
-#endif // END CUDA
+		TimerPoint tStart, tEnd;
 		if (DEBUG || inputScalars.verbose >= 3) {
-#if defined(CUDA) || defined(HIP)
-			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
-			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
-#else
-			tStart = std::chrono::steady_clock::now();
-#endif // END CUDA
+			INIT_TIMER(tStart, tEnd);
 		}
 #if !defined(CUDA) && !defined(HIP)
 		CLCommandQueue[0].finish();
@@ -4813,12 +4731,10 @@ public:
 		if (inputScalars.largeDim)
 			KARG(kArgs, kernelGGMRF, kernelIndGGMRF, nOffset);
 		// Compute the kernel
+		if (DEBUG || inputScalars.verbose >= 3)
+			START_TIMER(tStart);
 #if defined(CUDA) || defined(HIP)
-		if (DEBUG || inputScalars.verbose >= 3)
-			cuEventRecord(tStart, CLCommandQueue[0]);
 		status = cuLaunchKernel(kernelGGMRF, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
-		if (DEBUG || inputScalars.verbose >= 3)
-			cuEventRecord(tEnd, CLCommandQueue[0]);
 		CUDA_CHECK(status, "Failed to launch the GGMRF kernel\n", -1);
 
 		status = cuCtxSynchronize();
@@ -4840,17 +4756,8 @@ public:
 		OCL_CHECK(status, "Queue finish failed after GGMRF kernel\n", -1);
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3) {
-#if defined(CUDA) || defined(HIP)
-			cuEventSynchronize(tEnd);
-			float milliseconds = 0;
-			cuEventElapsedTime(&milliseconds, tStart, tEnd);
-			milliseconds /= 1000.f;
-			mexPrintBase("CUDA GGMRF gradient completed in %f seconds\n", milliseconds);
-#else
-			tEnd = std::chrono::steady_clock::now();
-			const std::chrono::duration<double> tDiff = tEnd - tStart;
-			mexPrintBase("OpenCL GGMRF gradient computed in %f seconds\n", tDiff);
-#endif // END CUDA
+			STOP_TIMER(tEnd);
+			PRINT_TIMER(tStart, tEnd, BACKEND_STR " GGMRF gradient completed in %f seconds\n");
 		}
 		if (inputScalars.largeDim)
 			VEC_Z(d_N[0]) = NzOrig;
@@ -5389,20 +5296,13 @@ public:
 			mexPrint("Starting " BACKEND_STR " hyperbolic prior gradient computation");
 		Status status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
-		CUevent tStart, tEnd;
 #else
 		if (inputScalars.largeDim)
 			SET_RANGE_Z(globalPrior, inputScalars.Nz[0]);
-		std::chrono::steady_clock::time_point tStart;
-		std::chrono::steady_clock::time_point tEnd;
 #endif // END CUDA
+		TimerPoint tStart, tEnd;
 		if (DEBUG || inputScalars.verbose >= 3) {
-#if defined(CUDA) || defined(HIP)
-			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
-			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
-#else
-			tStart = std::chrono::steady_clock::now();
-#endif // END CUDA
+			INIT_TIMER(tStart, tEnd);
 		}
 		if (DEBUG) {
 			mexPrintBase("sigma = %f\n", sigma);
@@ -5470,12 +5370,10 @@ public:
 		if (inputScalars.largeDim)
 			KARG(kArgs, kernelHyper, kernelIndHyper, nOffset);
 		// Compute the kernel
+		if (DEBUG || inputScalars.verbose >= 3)
+			START_TIMER(tStart);
 #if defined(CUDA) || defined(HIP)
-		if (DEBUG || inputScalars.verbose >= 3)
-			cuEventRecord(tStart, CLCommandQueue[0]);
 		status = cuLaunchKernel(kernelHyper, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
-		if (DEBUG || inputScalars.verbose >= 3)
-			cuEventRecord(tEnd, CLCommandQueue[0]);
 		CUDA_CHECK(status, "Failed to launch the hyperbolic prior gradient kernel\n", -1);
 
 		status = cuCtxSynchronize();
@@ -5497,17 +5395,8 @@ public:
 		OCL_CHECK(status, "Queue finish failed after hyperbolic prior gradient kernel\n", -1);
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3) {
-#if defined(CUDA) || defined(HIP)
-			cuEventSynchronize(tEnd);
-			float milliseconds = 0;
-			cuEventElapsedTime(&milliseconds, tStart, tEnd);
-			milliseconds /= 1000.f;
-			mexPrintBase("CUDA hyperbolic prior gradient completed in %f seconds\n", milliseconds);
-#else
-			tEnd = std::chrono::steady_clock::now();
-			const std::chrono::duration<double> tDiff = tEnd - tStart;
-			mexPrintBase("OpenCL hyperbolic prior gradient computed in %f seconds\n", tDiff);
-#endif // END CUDA
+			STOP_TIMER(tEnd);
+			PRINT_TIMER(tStart, tEnd, BACKEND_STR " hyperbolic prior gradient completed in %f seconds\n");
 		}
 		if (inputScalars.largeDim)
 			VEC_Z(d_N[0]) = NzOrig;
@@ -5532,20 +5421,13 @@ public:
 			mexPrint("Starting " BACKEND_STR " TV gradient computation");
 		Status status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
-		CUevent tStart, tEnd;
 #else
 		if (inputScalars.largeDim)
 			SET_RANGE_Z(globalPrior, inputScalars.Nz[0]);
-		std::chrono::steady_clock::time_point tStart;
-		std::chrono::steady_clock::time_point tEnd;
 #endif // END CUDA
+		TimerPoint tStart, tEnd;
 		if (DEBUG || inputScalars.verbose >= 3) {
-#if defined(CUDA) || defined(HIP)
-			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
-			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
-#else
-			tStart = std::chrono::steady_clock::now();
-#endif // END CUDA
+			INIT_TIMER(tStart, tEnd);
 		}
 #if defined(CUDA) || defined(HIP)
 		status = cuCtxSynchronize();
@@ -5616,12 +5498,10 @@ public:
 		if (inputScalars.largeDim)
 			KARG(kArgs, kernelTV, kernelIndTV, nOffset);
 		// Compute the kernel
+		if (DEBUG || inputScalars.verbose >= 3)
+			START_TIMER(tStart);
 #if defined(CUDA) || defined(HIP)
-		if (DEBUG || inputScalars.verbose >= 3)
-			cuEventRecord(tStart, CLCommandQueue[0]);
 		status = cuLaunchKernel(kernelTV, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
-		if (DEBUG || inputScalars.verbose >= 3)
-			cuEventRecord(tEnd, CLCommandQueue[0]);
 		CUDA_CHECK(status, "Failed to launch the TV gradient kernel\n", -1);
 		status = cuCtxSynchronize();
 		CUDA_CHECK(status, "Queue finish failed after TV gradient kernel\n", -1);
@@ -5642,17 +5522,8 @@ public:
 		OCL_CHECK(status, "Queue finish failed after TV gradient kernel\n", -1);
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3) {
-#if defined(CUDA) || defined(HIP)
-			cuEventSynchronize(tEnd);
-			float milliseconds = 0;
-			cuEventElapsedTime(&milliseconds, tStart, tEnd);
-			milliseconds /= 1000.f;
-			mexPrintBase("CUDA TV gradient completed in %f seconds\n", milliseconds);
-#else
-			tEnd = std::chrono::steady_clock::now();
-			const std::chrono::duration<double> tDiff = tEnd - tStart;
-			mexPrintBase("OpenCL TV gradient computed in %f seconds\n", tDiff);
-#endif // END CUDA
+			STOP_TIMER(tEnd);
+			PRINT_TIMER(tStart, tEnd, BACKEND_STR " TV gradient completed in %f seconds\n");
 		}
 		if (inputScalars.largeDim)
 			VEC_Z(d_N[0]) = NzOrig;
@@ -5668,19 +5539,9 @@ public:
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting " BACKEND_STR " Poisson update (PKMA/MBSREM/BSREM) computation");
 		Status status = SUCCESS_VALUE;
-#if defined(CUDA) || defined(HIP)
-		CUevent tStart, tEnd;
-#else
-		std::chrono::steady_clock::time_point tStart;
-		std::chrono::steady_clock::time_point tEnd;
-#endif // END CUDA
+		TimerPoint tStart, tEnd;
 		if (DEBUG || inputScalars.verbose >= 3) {
-#if defined(CUDA) || defined(HIP)
-			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
-			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
-#else
-			tStart = std::chrono::steady_clock::now();
-#endif // END CUDA
+			INIT_TIMER(tStart, tEnd);
 		}
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
@@ -5720,12 +5581,10 @@ public:
 		KARG(kArgs, kernelPoisson, kernelIndPoisson, alpha);
 		KARG(kArgs, kernelPoisson, kernelIndPoisson, enforcePositivity);
 		// Compute the kernel
+		if (DEBUG || inputScalars.verbose >= 3)
+			START_TIMER(tStart);
 #if defined(CUDA) || defined(HIP)
-		if (DEBUG || inputScalars.verbose >= 3)
-			cuEventRecord(tStart, CLCommandQueue[0]);
 		status = cuLaunchKernel(kernelPoisson, global[0], global[1], global[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
-		if (DEBUG || inputScalars.verbose >= 3)
-			cuEventRecord(tEnd, CLCommandQueue[0]);
 		CUDA_CHECK(status, "Failed to launch the Poisson update kernel\n", -1);
 
 		status = cuCtxSynchronize();
@@ -5736,17 +5595,8 @@ public:
 #endif // END CUDA
 		CHECK(status, "Queue finish failed after Poisson update kernel\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
-#if defined(CUDA) || defined(HIP)
-			cuEventSynchronize(tEnd);
-			float milliseconds = 0;
-			cuEventElapsedTime(&milliseconds, tStart, tEnd);
-			milliseconds /= 1000.f;
-			mexPrintBase("CUDA Poisson update completed in %f seconds\n", milliseconds);
-#else
-			tEnd = std::chrono::steady_clock::now();
-			const std::chrono::duration<double> tDiff = tEnd - tStart;
-			mexPrintBase("OpenCL Poisson update computed in %f seconds\n", tDiff);
-#endif // END CUDA
+			STOP_TIMER(tEnd);
+			PRINT_TIMER(tStart, tEnd, BACKEND_STR " Poisson update completed in %f seconds\n");
 		}
 		return 0;
 	}
@@ -5759,19 +5609,9 @@ public:
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting " BACKEND_STR " PDHG update computation");
 		Status status = SUCCESS_VALUE;
-#if defined(CUDA) || defined(HIP)
-		CUevent tStart, tEnd;
-#else
-		std::chrono::steady_clock::time_point tStart;
-		std::chrono::steady_clock::time_point tEnd;
-#endif // END CUDA
+		TimerPoint tStart, tEnd;
 		if (DEBUG || inputScalars.verbose >= 3) {
-#if defined(CUDA) || defined(HIP)
-			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
-			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
-#else
-			tStart = std::chrono::steady_clock::now();
-#endif // END CUDA
+			INIT_TIMER(tStart, tEnd);
 		}
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
@@ -5805,12 +5645,10 @@ public:
 		KARG(kArgs, kernelPDHG, kernelIndPDHG, tau);
 		KARG(kArgs, kernelPDHG, kernelIndPDHG, enforcePositivity);
 		// Compute the kernel
+		if (DEBUG || inputScalars.verbose >= 3)
+			START_TIMER(tStart);
 #if defined(CUDA) || defined(HIP)
-		if (DEBUG || inputScalars.verbose >= 3)
-			cuEventRecord(tStart, CLCommandQueue[0]);
 		status = cuLaunchKernel(kernelPDHG, global[0], global[1], global[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
-		if (DEBUG || inputScalars.verbose >= 3)
-			cuEventRecord(tEnd, CLCommandQueue[0]);
 		CUDA_CHECK(status, "Failed to launch the PDHG update kernel\n", -1);
 
 		status = cuCtxSynchronize();
@@ -5821,17 +5659,8 @@ public:
 #endif // END CUDA
 		CHECK(status, "Queue finish failed after PDHG update kernel\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
-#if defined(CUDA) || defined(HIP)
-			cuEventSynchronize(tEnd);
-			float milliseconds = 0;
-			cuEventElapsedTime(&milliseconds, tStart, tEnd);
-			milliseconds /= 1000.f;
-			mexPrintBase("CUDA PDHG update completed in %f seconds\n", milliseconds);
-#else
-			tEnd = std::chrono::steady_clock::now();
-			const std::chrono::duration<double> tDiff = tEnd - tStart;
-			mexPrintBase("OpenCL PDHG update computed in %f seconds\n", tDiff);
-#endif // END CUDA
+			STOP_TIMER(tEnd);
+			PRINT_TIMER(tStart, tEnd, BACKEND_STR " PDHG update completed in %f seconds\n");
 		}
 		return 0;
 	}
