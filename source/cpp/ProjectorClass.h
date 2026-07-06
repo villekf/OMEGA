@@ -3789,6 +3789,7 @@ public:
 					FINISH_QUEUE(status, "Synchronize failed after image copy\n", -1);
 #endif // END CUDA
 				}
+#if defined(CUDA) || defined(HIP)
 			if (inputScalars.BPType == 4) {
 				global[0] = (inputScalars.Nx[ii] + erotusBP[0][ii]) / local[0];
 				global[1] = (inputScalars.Ny[ii] + erotusBP[1][ii]) / local[1];
