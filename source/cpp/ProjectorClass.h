@@ -170,7 +170,11 @@ class ProjectorClass {
 	unsigned int localPrior[3];
 	unsigned int globalPrior[3];
 	unsigned int globalPriorEFOV[3];
-	struct CUDAMemAlloc {
+	bool useBuffers = true;
+#else
+	cl::NDRange local, global, localPrior, globalPrior, globalPriorEFOV;
+#endif // END CUDA
+	struct ResourceState {
 		bool xC = false;
 		bool yC = false;
 		bool zC = false;
@@ -214,11 +218,7 @@ class ProjectorClass {
 		int tSteps = 1;
 		int attenSize = 0;
 	};
-	CUDAMemAlloc memAlloc;
-	bool useBuffers = true;
-#else
-	cl::NDRange local, global, localPrior, globalPrior, globalPriorEFOV;
-#endif // END CUDA
+	ResourceState memAlloc;
 
 #if defined(CUDA) || defined(HIP)
 	template <typename K, typename T>
@@ -1455,19 +1455,15 @@ public:
 	cl::Image3D d_inputImage, d_urefIm, d_inputI, d_RDPrefI;
 	std::vector<cl::Image3D> d_attenIm;
 	cl::Buffer d_outputCT;
-	size_t memSize = 0ULL;
 #endif // END CUDA
 	std::chrono::steady_clock::time_point tStartLocal, tStartGlobal, tStartAll;
 	std::chrono::steady_clock::time_point tEndLocal, tEndGlobal, tEndAll;
 	// Distance from the origin to the corner of the image, voxel size and distance from the origin to the opposite corner of the image
-#if defined(CUDA) || defined(HIP)
-	std::vector<float3> b, d, bmax;
-	// Image dimensions
-	std::vector<int3> d_N;
-#else
 	std::vector<Float3> b, d, bmax;
 	std::vector<Int3> d_N;
-#endif // END CUDA
+	UChar no_norm = 0;
+	int proj6 = 1;
+	size_t memSize = 0ULL;
 
 #if defined(CUDA) || defined(HIP)
 	std::vector<CUtexObject> d_maskFP3;
@@ -1478,9 +1474,6 @@ public:
 	CUDA_ARRAY3D_DESCRIPTOR_st arr3DDesc;
 	CUDA_RESOURCE_DESC resDesc;
 	CUDA_RESOURCE_VIEW_DESC viewDesc;
-	UChar no_norm = 0;
-	int proj6 = 1;
-	size_t memSize = 0ULL;
 #else
 	std::vector<cl::Image3D> d_maskFP3;
 	std::vector<cl::Buffer> d_Summ;
@@ -1631,8 +1624,6 @@ public:
 		}
 	}
 #else
-	UChar no_norm = 0;
-	int proj6 = 1;
 	~ProjectorClass() {}
 #endif // END CUDA
 	/// <summary>
@@ -1971,11 +1962,11 @@ public:
 		if (MethodList.GGMRF || (MethodList.RDP && w_vec.RDPLargeNeighbor) || MethodList.hyperbolic) {
 			ALLOC_BUFFER(d_weights, CL_MEM_READ_ONLY, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1);
 			CHECK(status, "\n", -1);
-#if defined(CUDA) || defined(HIP)
 			memAlloc.GGMRF = true;
 		}
 		memAlloc.tSteps = inputScalars.Nt;
 		// NLM anatomical reference image
+#if defined(CUDA) || defined(HIP)
 		if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM)) {
 			if (inputScalars.useImages) {
 				std::memset(&texDesc, 0, sizeof(texDesc));
@@ -2016,12 +2007,10 @@ public:
 			else
 				status = cuMemAlloc(&d_uref, sizeof(float) * inputScalars.im_dim[0]);
 			CUDA_CHECK(status, "\n", -1);
-			if (inputScalars.useImages)
-				memAlloc.NLMRef = 1;
-			else
-				memAlloc.NLMRef = 2;
-#endif // END CUDA
 		}
+#endif // END CUDA
+		if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM))
+			memAlloc.NLMRef = inputScalars.useImages ? 1 : 2;
 		if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
 			if (inputScalars.useBuffers) {
 				ALLOC_BUFFER(d_maskPriorB, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ);
@@ -2087,7 +2076,6 @@ public:
 					viewDesc.depth = inputScalars.maskBPZ;
 				viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_UINT_1X8;
 				status = cuTexObjectCreate(&d_maskPrior, &resDesc, &texDesc, &viewDesc);
-				memAlloc.priorMask = true;
 #else
 				imX = inputScalars.Nx[0];
 				imY = inputScalars.Ny[0];
@@ -2103,6 +2091,7 @@ public:
 				else
 					d_maskPrior = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
 #endif // END CUDA
+				memAlloc.priorMask = true;
 			}
 			CHECK(status, "\n", -1);
 		}
@@ -2110,24 +2099,18 @@ public:
 			if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 				ALLOC_BUFFER(d_V, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_V);
 				CHECK(status, "\n", -1);
-#if defined(CUDA) || defined(HIP)
 				memAlloc.V = true;
-#endif // END CUDA
 			}
 			// Detector coordinates
 			if ((!(inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) || inputScalars.indexBased) {
 				ALLOC_BUFFER(d_x[0][0], CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x);
 				CHECK(status, "\n", -1);
-#if defined(CUDA) || defined(HIP)
 				memAlloc.xSteps++;
-#endif // END CUDA
 			}
 			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 				ALLOC_BUFFER(d_xFull[0], CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x);
 				CHECK(status, "\n", -1);
-#if defined(CUDA) || defined(HIP)
 				memAlloc.xFull = true;
-#endif // END CUDA
 			}
 			// Mask images
 			if (inputScalars.maskFP || inputScalars.maskBP) {
@@ -2211,7 +2194,6 @@ public:
 							status = cuTexObjectCreate(&d_maskFP, &resDesc, &texDesc, &viewDesc);
 						}
 						CUDA_CHECK(status, "\n", -1);
-						memAlloc.maskFP = true;
 #else
 						imX = inputScalars.nRowsD;
 						imY = inputScalars.nColsD;
@@ -2224,9 +2206,7 @@ public:
 							d_maskFP = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
 #endif
 					}
-#if defined(CUDA) || defined(HIP)
 					memAlloc.maskFP = true;
-#endif
 				}
 				if (inputScalars.maskBP) {
 					if (inputScalars.useBuffers)
@@ -2313,48 +2293,36 @@ public:
 							d_maskBP = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
 #endif
 					}
-#if defined(CUDA) || defined(HIP)
 					memAlloc.maskBP = true;
-#endif
 				}
 			}
 			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 				ALLOC_BUFFER(d_zFull[0], CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z);
 				CHECK(status, "\n", -1);
-#if defined(CUDA) || defined(HIP)
 				memAlloc.zFull = true;
-#endif
 			}
 			if (inputScalars.SPECT) {
 				ALLOC_BUFFER(d_rayShiftsDetector, CL_MEM_READ_ONLY, sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections);
 				CHECK(status, "\n", -1);
 				ALLOC_BUFFER(d_rayShiftsSource, CL_MEM_READ_ONLY, sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections);
 				CHECK(status, "\n", -1);
-#if defined(CUDA) || defined(HIP)
 				memAlloc.rayShifts = true;
-#endif // END CUDA
 			}
 			if (inputScalars.eFOV) {
 				ALLOC_BUFFER(d_eFOVIndices, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nz[0]);
 				CHECK(status, "\n", -1);
-#if defined(CUDA) || defined(HIP)
 				memAlloc.eFOV = true;
-#endif // END CUDA
 			}
 			if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) {
 				ALLOC_BUFFER(d_angle, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.nProjections);
 				CHECK(status, "\n", -1);
-#if defined(CUDA) || defined(HIP)
 				memAlloc.angle = true;
-#endif // END CUDA
 			}
 			// TOF bin centers
 			if (inputScalars.TOF) {
 				ALLOC_BUFFER(d_TOFCenter, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.nBins);
 				CHECK(status, "\n", -1);
-#if defined(CUDA) || defined(HIP)
 				memAlloc.TOF = true;
-#endif // END CUDA
 			}
 			for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
 				if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
@@ -2397,40 +2365,34 @@ public:
 								texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_LINEAR;
 								texDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
 							}
-						else
-							texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
-						viewDesc.height = inputScalars.Nx[0];
-						viewDesc.width = inputScalars.Ny[0];
-						viewDesc.depth = inputScalars.Nz[0];
-						viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
-						status = cuTexObjectCreate(&d_attenIm[timestep], &resDesc, &texDesc, &viewDesc);
-						CUDA_CHECK(status, "\n", -1);
+							else
+								texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
+							viewDesc.height = inputScalars.Nx[0];
+							viewDesc.width = inputScalars.Ny[0];
+							viewDesc.depth = inputScalars.Nz[0];
+							viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
+							status = cuTexObjectCreate(&d_attenIm[timestep], &resDesc, &texDesc, &viewDesc);
+							CUDA_CHECK(status, "\n", -1);
 #else
-						imZ = inputScalars.Nz[0];
-						d_attenIm[timestep] = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
-						OCL_CHECK(status, "\n", -1);
+							imZ = inputScalars.Nz[0];
+							d_attenIm[timestep] = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
+							OCL_CHECK(status, "\n", -1);
 #endif // END CUDA
 						}
-#if defined(CUDA) || defined(HIP)
-					memAlloc.atten = true;
-					memAlloc.attenSize++;
-#endif // END CUDA
+						memAlloc.atten = true;
+						memAlloc.attenSize++;
 					}
 				}
 				for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
 					if (inputScalars.CT || inputScalars.SPECT) {
 						ALLOC_BUFFER(d_x[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6);
-#if defined(CUDA) || defined(HIP)
-						CUDA_CHECK(status, "\n", -1);
+						CHECK(status, "\n", -1);
 						memAlloc.xSteps++;
-#endif // END CUDA
 					}
 					else if (inputScalars.listmode > 0 && !inputScalars.indexBased && (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || (!inputScalars.loadTOF && timestep == 0 && kk < inputScalars.TOFsubsets))) {
 						ALLOC_BUFFER(d_x[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk + timestep * inputScalars.subsets] * 6);
 						CHECK(status, "\n", -1);
-#if defined(CUDA) || defined(HIP)
 						memAlloc.xSteps++;
-#endif // END CUDA
 						if (DEBUG) {
 							mexPrintBase("length[kk + timestep * inputScalars.subsets] * 6 = %u\n", length[kk + timestep * inputScalars.subsets] * 6);
 							mexEval();
@@ -2444,10 +2406,8 @@ public:
 							coef = 6;
 						ALLOC_BUFFER(d_z[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * coef);
 						CHECK(status, "\n", -1);
-#if defined(CUDA) || defined(HIP)
 						memAlloc.zType = 1;
 						memAlloc.zSteps++;
-#endif // END CUDA
 					}
 					else {
 						if (inputScalars.PET && inputScalars.listmode == 0) {
@@ -2455,34 +2415,26 @@ public:
 								ALLOC_BUFFER(d_z[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 3);
 							else
 								ALLOC_BUFFER(d_z[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 2);
-#if defined(CUDA) || defined(HIP)
 							memAlloc.zType = 1;
 							memAlloc.zSteps++;
-#endif // END CUDA
 						}
 						else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased)) {
 							ALLOC_BUFFER(d_z[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z);
-#if defined(CUDA) || defined(HIP)
 							memAlloc.zType = 0;
 							memAlloc.zSteps = kk;
-#endif // END CUDA
 						}
 						else {
 							ALLOC_BUFFER(d_z[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z);
-#if defined(CUDA) || defined(HIP)
 							memAlloc.zType = 0;
 							memAlloc.zSteps = kk;
-#endif // END CUDA
 						}
 						CHECK(status, "\n", -1);
 					}
 					if (inputScalars.size_scat > 1 && inputScalars.scatter == 1U) { // Scatter correction buffer
 						ALLOC_BUFFER(d_scat[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize);
 						CHECK(status, "\n", -1);
-#if defined(CUDA) || defined(HIP)
 						memAlloc.extra = true;
 						memAlloc.eSteps++;
-#endif // END CUDA
 					}
 					if (inputScalars.listmode > 0 && inputScalars.indexBased) {
 						if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF && timestep == 0)) {
@@ -2490,20 +2442,16 @@ public:
 							CHECK(status, "\n", -1);
 							ALLOC_BUFFER(d_axIndex[timestep][kk], CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk + timestep * inputScalars.subsets] * 2);
 							CHECK(status, "\n", -1);
-#if defined(CUDA) || defined(HIP)
 							memAlloc.indexBased = true;
 							memAlloc.iSteps++;
-#endif // END CUDA
 						}
 					}
 					if (inputScalars.listmode > 0 && inputScalars.TOF) {
 						if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF && timestep == 0)) {
 							ALLOC_BUFFER(d_TOFIndex[timestep][kk], CL_MEM_READ_ONLY, sizeof(uint8_t) * length[kk + timestep * inputScalars.subsets]);
 							CHECK(status, "\n", -1);
-#if defined(CUDA) || defined(HIP)
 							memAlloc.TOFIndex = true;
 							memAlloc.TOFSteps++;
-#endif // END CUDA
 						}
 					}
 				}
@@ -2513,48 +2461,38 @@ public:
 				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
 					ALLOC_BUFFER(d_T[kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk]);
 					CHECK(status, "\n", -1);
-#if defined(CUDA) || defined(HIP)
 					memAlloc.offsetT = true;
 					memAlloc.oSteps++;
-#endif // END CUDA
 				}
 				// Normalization weighting (OpenCL condition also requires size_norm > 1; used for both backends)
 				if (inputScalars.size_norm > 1 && inputScalars.normalization_correction) {
 					ALLOC_BUFFER(d_norm[kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize);
 					CHECK(status, "\n", -1);
-#if defined(CUDA) || defined(HIP)
 					memAlloc.norm = true;
 					memAlloc.nSteps++;
-#endif // END CUDA
 				}
 				// Measurement-based attenuation correction
 				if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
 					ALLOC_BUFFER(d_atten[kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize);
 					CHECK(status, "\n", -1);
-#if defined(CUDA) || defined(HIP)
 					memAlloc.attenM = true;
 					memAlloc.aSteps++;
-#endif // END CUDA
 				}
 				// Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
 				// Note that raw data format is not used at the moment
 				if (inputScalars.raw && inputScalars.listmode != 1) {
 					ALLOC_BUFFER(d_L[kk], CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk] * 2);
 					CHECK(status, "\n", -1);
-#if defined(CUDA) || defined(HIP)
 					memAlloc.raw = true;
 					memAlloc.lSteps++;
-#endif // END CUDA
 				}
 				else if (inputScalars.listmode != 1 && ((!inputScalars.CT && !inputScalars.SPECT && !inputScalars.PET) && (inputScalars.subsets > 1 && (inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7)))) {
 					ALLOC_BUFFER(d_xyindex[kk], CL_MEM_READ_ONLY, sizeof(uint32_t) * length[kk]);
 					CHECK(status, "\n", -1);
 					ALLOC_BUFFER(d_zindex[kk], CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk]);
 					CHECK(status, "\n", -1);
-#if defined(CUDA) || defined(HIP)
 					memAlloc.subInd = true;
 					memAlloc.iSteps++;
-#endif // END CUDA
 				}
 			}
 		}
