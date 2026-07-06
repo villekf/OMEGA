@@ -15,6 +15,7 @@
 *******************************************************************************************************************************************/
 #pragma once
 #include "structs.h"
+#include <cstring>
 
 // ======== OpenCL / CUDA / Metal compatibility aliases and macros ========
 #if defined(CUDA) || defined(HIP)
@@ -97,6 +98,97 @@ using AFDeviceBuffer = cl::Buffer;
 #define WRITE_BUFFER(BUF, SIZE, SRC) status = cuMemcpyHtoD(BUF, SRC, SIZE)
 #else
 #define WRITE_BUFFER(BUF, SIZE, SRC) status = CLCommandQueue[0].enqueueWriteBuffer(BUF, CL_FALSE, 0, SIZE, SRC)
+#endif
+#if defined(CUDA) || defined(HIP)
+#define BACKEND_TEXTURE_POINT CUfilter_mode::CU_TR_FILTER_MODE_POINT
+#define BACKEND_TEXTURE_LINEAR CUfilter_mode::CU_TR_FILTER_MODE_LINEAR
+#define BACKEND_TEXTURE_DEFAULT_FLAGS 0
+#define BACKEND_TEXTURE_READ_AS_INTEGER CU_TRSF_READ_AS_INTEGER
+#define BACKEND_TEXTURE_NORMALIZED CU_TRSF_NORMALIZED_COORDINATES
+#elif defined(METAL)
+#define BACKEND_TEXTURE_POINT 0
+#define BACKEND_TEXTURE_LINEAR 0
+#define BACKEND_TEXTURE_DEFAULT_FLAGS 0
+#define BACKEND_TEXTURE_READ_AS_INTEGER 0
+#define BACKEND_TEXTURE_NORMALIZED 0
+#else
+#define BACKEND_TEXTURE_POINT 0
+#define BACKEND_TEXTURE_LINEAR 0
+#define BACKEND_TEXTURE_DEFAULT_FLAGS 0
+#define BACKEND_TEXTURE_READ_AS_INTEGER 0
+#define BACKEND_TEXTURE_NORMALIZED 0
+#endif
+#if defined(CUDA) || defined(HIP)
+#define RESIZE_TEXTURE_VECTOR(TEXTURES, ARRAYS, SIZE) do { (TEXTURES).resize(SIZE); (ARRAYS).resize(SIZE); } while(0)
+#define RESIZE_TEXTURE_ARRAY(ARRAYS, SIZE) do { (ARRAYS).resize(SIZE); } while(0)
+#define CREATE_FLOAT_TEXTURE3D_FROM_HOST(TEX, ARRAY, SRC, HEIGHT, WIDTH, DEPTH, FILTER, FLAGS) do { \
+	const auto textureSpec = cudaFloatTextureSpec((HEIGHT), (WIDTH), (DEPTH), (FILTER), (FLAGS)); \
+	status = createCudaTexture3DFromHost((TEX), (ARRAY), (SRC), textureSpec); \
+} while(0)
+#define CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(TEX, ARRAY, SRC, HEIGHT, WIDTH, DEPTH, FILTER, FLAGS) do { \
+	const auto textureSpec = cudaFloatTextureSpec((HEIGHT), (WIDTH), (DEPTH), (FILTER), (FLAGS)); \
+	status = createCudaTexture3DFromDevice((TEX), (ARRAY), reinterpret_cast<CUdeviceptr>(SRC), textureSpec); \
+} while(0)
+#define CREATE_FLOAT_TEXTURE3D_EMPTY(TEX, ARRAY, WIDTH, HEIGHT, DEPTH) do { \
+	status = SUCCESS_VALUE; \
+} while(0)
+#define CREATE_MASK_TEXTURE2D_FROM_HOST(TEX, ARRAY, SRC, HEIGHT, WIDTH, FLAGS) do { \
+	const auto textureSpec = cudaMaskTextureSpec((HEIGHT), (WIDTH), 1, (FLAGS)); \
+	status = createCudaTexture2DFromHost((TEX), (ARRAY), (SRC), textureSpec); \
+} while(0)
+#define CREATE_MASK_TEXTURE3D_FROM_HOST(TEX, TEX3D, ARRAY, SRC, HEIGHT, WIDTH, VIEW_DEPTH, COPY_DEPTH, ARRAY_DEPTH, FLAGS) do { \
+	auto textureSpec = cudaMaskTextureSpec((HEIGHT), (WIDTH), (VIEW_DEPTH), (FLAGS)); \
+	textureSpec.copyDepth = (COPY_DEPTH); \
+	textureSpec.arrayDepth = (ARRAY_DEPTH); \
+	status = createCudaTexture3DFromHost((TEX), (ARRAY), (SRC), textureSpec); \
+} while(0)
+#elif defined(METAL)
+#define RESIZE_TEXTURE_VECTOR(TEXTURES, ARRAYS, SIZE) do { (TEXTURES).resize(SIZE); } while(0)
+#define RESIZE_TEXTURE_ARRAY(ARRAYS, SIZE) do { } while(0)
+#define CREATE_FLOAT_TEXTURE3D_FROM_HOST(TEX, ARRAY, SRC, HEIGHT, WIDTH, DEPTH, FILTER, FLAGS) do { \
+	(TEX) = createMetalFloatTextureFromHost((SRC), metalTextureSpec((HEIGHT), (WIDTH), (DEPTH), true)); \
+	status = (TEX).get() ? SUCCESS_VALUE : -1; \
+} while(0)
+#define CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(TEX, ARRAY, SRC, HEIGHT, WIDTH, DEPTH, FILTER, FLAGS) do { \
+	(TEX) = createMetalFloatTextureFromBuffer((SRC), metalTextureSpec((WIDTH), (HEIGHT), (DEPTH), true)); \
+	status = (TEX).get() ? SUCCESS_VALUE : -1; \
+} while(0)
+#define CREATE_FLOAT_TEXTURE3D_EMPTY(TEX, ARRAY, WIDTH, HEIGHT, DEPTH) do { \
+	(TEX) = createMetalFloatTextureEmpty(metalTextureSpec((WIDTH), (HEIGHT), (DEPTH), true)); \
+	status = (TEX).get() ? SUCCESS_VALUE : -1; \
+} while(0)
+#define CREATE_MASK_TEXTURE2D_FROM_HOST(TEX, ARRAY, SRC, HEIGHT, WIDTH, FLAGS) do { \
+	(TEX) = createMetalMaskTextureFromHost((SRC), metalTextureSpec((HEIGHT), (WIDTH), 1, false)); \
+	status = (TEX).get() ? SUCCESS_VALUE : -1; \
+} while(0)
+#define CREATE_MASK_TEXTURE3D_FROM_HOST(TEX, TEX3D, ARRAY, SRC, HEIGHT, WIDTH, VIEW_DEPTH, COPY_DEPTH, ARRAY_DEPTH, FLAGS) do { \
+	(TEX) = createMetalMaskTextureFromHost((SRC), metalTextureSpec((HEIGHT), (WIDTH), (VIEW_DEPTH), true)); \
+	status = (TEX).get() ? SUCCESS_VALUE : -1; \
+} while(0)
+#else
+#define RESIZE_TEXTURE_VECTOR(TEXTURES, ARRAYS, SIZE) do { (TEXTURES).resize(SIZE); } while(0)
+#define RESIZE_TEXTURE_ARRAY(ARRAYS, SIZE) do { } while(0)
+#define CREATE_FLOAT_TEXTURE3D_FROM_HOST(TEX, ARRAY, SRC, HEIGHT, WIDTH, DEPTH, FILTER, FLAGS) do { \
+	(TEX) = cl::Image3D(CLContext, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, format, (HEIGHT), (WIDTH), (DEPTH), 0, 0, const_cast<void*>(static_cast<const void*>(SRC)), &status); \
+} while(0)
+#define CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(TEX, ARRAY, SRC, HEIGHT, WIDTH, DEPTH, FILTER, FLAGS) do { \
+	cl::detail::size_t_array textureRegion = { (WIDTH), (HEIGHT), (DEPTH) }; \
+	(TEX) = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, (WIDTH), (HEIGHT), (DEPTH), 0, 0, NULL, &status); \
+	OCL_CHECK(status, "Image creation failed\n", -1); \
+	status = CLCommandQueue[0].enqueueCopyBufferToImage((SRC), (TEX), 0, origin, textureRegion); \
+	OCL_CHECK(status, "Image copy failed\n", -1); \
+	status = CLCommandQueue[0].finish(); \
+	OCL_CHECK(status, "Queue finish failed after image copy\n", -1); \
+} while(0)
+#define CREATE_FLOAT_TEXTURE3D_EMPTY(TEX, ARRAY, WIDTH, HEIGHT, DEPTH) do { \
+	(TEX) = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, (WIDTH), (HEIGHT), (DEPTH), 0, 0, NULL, &status); \
+} while(0)
+#define CREATE_MASK_TEXTURE2D_FROM_HOST(TEX, ARRAY, SRC, HEIGHT, WIDTH, FLAGS) do { \
+	(TEX) = cl::Image2D(CLContext, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, formatMask, (HEIGHT), (WIDTH), 0, const_cast<void*>(static_cast<const void*>(SRC)), &status); \
+} while(0)
+#define CREATE_MASK_TEXTURE3D_FROM_HOST(TEX, TEX3D, ARRAY, SRC, HEIGHT, WIDTH, VIEW_DEPTH, COPY_DEPTH, ARRAY_DEPTH, FLAGS) do { \
+	(TEX3D) = cl::Image3D(CLContext, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, formatMask, (HEIGHT), (WIDTH), (VIEW_DEPTH), 0, 0, const_cast<void*>(static_cast<const void*>(SRC)), &status); \
+} while(0)
 #endif
 // Append one kernel argument VAR. CUDA pushes its address into the argument vector VEC; OpenCL
 // sets it on KERNEL at the running index IDX, reporting any error inline via getErrorString.
@@ -296,6 +388,239 @@ class ProjectorClass {
 		return status;
 #endif // END CUDA
 	}
+
+#if defined(CUDA) || defined(HIP)
+	struct CudaTextureSpec {
+		size_t height = 0;
+		size_t width = 0;
+		size_t arrayDepth = 1;
+		size_t copyDepth = 1;
+		size_t viewDepth = 1;
+		size_t elementSize = sizeof(float);
+		CUarray_format arrayFormat = CUarray_format::CU_AD_FORMAT_FLOAT;
+		unsigned int channels = 1;
+		CUresourceViewFormat viewFormat = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
+		CUfilter_mode filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
+		unsigned int flags = 0;
+	};
+
+	inline CudaTextureSpec cudaFloatTextureSpec(const size_t height, const size_t width, const size_t depth,
+		const CUfilter_mode filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT, const unsigned int flags = 0) const {
+		CudaTextureSpec spec;
+		spec.height = height;
+		spec.width = width;
+		spec.arrayDepth = depth;
+		spec.copyDepth = depth;
+		spec.viewDepth = depth;
+		spec.filterMode = filterMode;
+		spec.flags = flags;
+		return spec;
+	}
+
+	inline CudaTextureSpec cudaMaskTextureSpec(const size_t height, const size_t width, const size_t depth,
+		const unsigned int flags = CU_TRSF_READ_AS_INTEGER) const {
+		CudaTextureSpec spec;
+		spec.height = height;
+		spec.width = width;
+		spec.arrayDepth = depth;
+		spec.copyDepth = depth;
+		spec.viewDepth = depth;
+		spec.elementSize = sizeof(uint8_t);
+		spec.arrayFormat = CUarray_format::CU_AD_FORMAT_UNSIGNED_INT8;
+		spec.viewFormat = CUresourceViewFormat::CU_RES_VIEW_FORMAT_UINT_1X8;
+		spec.flags = flags;
+		return spec;
+	}
+
+	inline CUresult createCudaTextureFromArray(CUtexObject& texture, const CUarray array, const CudaTextureSpec& spec, const bool is3D) const {
+		CUDA_RESOURCE_DESC resDescLocal;
+		CUDA_TEXTURE_DESC texDescLocal;
+		CUDA_RESOURCE_VIEW_DESC viewDescLocal;
+		std::memset(&resDescLocal, 0, sizeof(resDescLocal));
+		std::memset(&texDescLocal, 0, sizeof(texDescLocal));
+		std::memset(&viewDescLocal, 0, sizeof(viewDescLocal));
+
+		resDescLocal.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
+		resDescLocal.res.array.hArray = array;
+		texDescLocal.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+		texDescLocal.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+		if (is3D)
+			texDescLocal.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+		texDescLocal.filterMode = spec.filterMode;
+		texDescLocal.flags = spec.flags;
+		viewDescLocal.height = spec.height;
+		viewDescLocal.width = spec.width;
+		if (is3D)
+			viewDescLocal.depth = spec.viewDepth;
+		viewDescLocal.format = spec.viewFormat;
+		return cuTexObjectCreate(&texture, &resDescLocal, &texDescLocal, &viewDescLocal);
+	}
+
+	inline CUresult createCudaTexture2DFromHost(CUtexObject& texture, CUarray& array, const void* source, const CudaTextureSpec& spec) const {
+		CUDA_ARRAY_DESCRIPTOR arrDesc;
+		std::memset(&arrDesc, 0, sizeof(arrDesc));
+		arrDesc.Format = spec.arrayFormat;
+		arrDesc.NumChannels = spec.channels;
+		arrDesc.Height = spec.height;
+		arrDesc.Width = spec.width;
+		CUresult status = cuArrayCreate(&array, &arrDesc);
+		if (status != CUDA_SUCCESS)
+			return status;
+
+		CUDA_MEMCPY2D copy;
+		std::memset(&copy, 0, sizeof(copy));
+		copy.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
+		copy.srcHost = source;
+		copy.srcPitch = spec.width * spec.elementSize;
+		copy.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
+		copy.dstArray = array;
+		copy.WidthInBytes = spec.width * spec.elementSize;
+		copy.Height = spec.height;
+		status = cuMemcpy2D(&copy);
+		if (status != CUDA_SUCCESS)
+			return status;
+		return createCudaTextureFromArray(texture, array, spec, false);
+	}
+
+	inline CUresult createCudaTexture3DFromHost(CUtexObject& texture, CUarray& array, const void* source, const CudaTextureSpec& spec) const {
+		CUDA_ARRAY3D_DESCRIPTOR_st arrDesc;
+		std::memset(&arrDesc, 0, sizeof(arrDesc));
+		arrDesc.Format = spec.arrayFormat;
+		arrDesc.NumChannels = spec.channels;
+		arrDesc.Height = spec.height;
+		arrDesc.Width = spec.width;
+		arrDesc.Depth = spec.arrayDepth;
+		CUresult status = cuArray3DCreate(&array, &arrDesc);
+		if (status != CUDA_SUCCESS)
+			return status;
+
+		CUDA_MEMCPY3D copy;
+		std::memset(&copy, 0, sizeof(copy));
+		copy.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
+		copy.srcHost = source;
+		copy.srcPitch = spec.width * spec.elementSize;
+		copy.srcHeight = spec.height;
+		copy.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
+		copy.dstArray = array;
+		copy.WidthInBytes = spec.width * spec.elementSize;
+		copy.Height = spec.height;
+		copy.Depth = spec.copyDepth;
+		status = cuMemcpy3D(&copy);
+		if (status != CUDA_SUCCESS)
+			return status;
+		return createCudaTextureFromArray(texture, array, spec, true);
+	}
+
+	inline CUresult createCudaTexture3DFromDevice(CUtexObject& texture, CUarray& array, const CUdeviceptr source, const CudaTextureSpec& spec) const {
+		CUDA_ARRAY3D_DESCRIPTOR_st arrDesc;
+		std::memset(&arrDesc, 0, sizeof(arrDesc));
+		arrDesc.Format = spec.arrayFormat;
+		arrDesc.NumChannels = spec.channels;
+		arrDesc.Height = spec.height;
+		arrDesc.Width = spec.width;
+		arrDesc.Depth = spec.arrayDepth;
+		CUresult status = cuArray3DCreate(&array, &arrDesc);
+		if (status != CUDA_SUCCESS)
+			return status;
+
+		CUDA_MEMCPY3D copy;
+		std::memset(&copy, 0, sizeof(copy));
+		copy.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_DEVICE;
+		copy.srcDevice = source;
+		copy.srcPitch = spec.width * spec.elementSize;
+		copy.srcHeight = spec.height;
+		copy.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
+		copy.dstArray = array;
+		copy.WidthInBytes = spec.width * spec.elementSize;
+		copy.Height = spec.height;
+		copy.Depth = spec.copyDepth;
+		status = cuMemcpy3D(&copy);
+		if (status != CUDA_SUCCESS)
+			return status;
+		return createCudaTextureFromArray(texture, array, spec, true);
+	}
+#elif defined(METAL)
+	struct MetalTextureSpec {
+		NS::UInteger width = 0;
+		NS::UInteger height = 0;
+		NS::UInteger depth = 1;
+		NS::UInteger elementSize = sizeof(float);
+		MTL::PixelFormat pixelFormat = MTL::PixelFormat::PixelFormatR32Float;
+		bool force3D = false;
+	};
+
+	inline MetalTextureSpec metalTextureSpec(const size_t width, const size_t height, const size_t depth, const bool force3D) const {
+		MetalTextureSpec spec;
+		spec.width = static_cast<NS::UInteger>(width);
+		spec.height = static_cast<NS::UInteger>(height);
+		spec.depth = static_cast<NS::UInteger>(depth);
+		spec.force3D = force3D;
+		return spec;
+	}
+
+	inline NS::SharedPtr<MTL::Texture> createMetalTexture(const MetalTextureSpec& spec) const {
+		if (!mtlDevice || spec.width == 0 || spec.height == 0 || spec.depth == 0)
+			return nullptr;
+
+		const bool is3D = spec.force3D || spec.depth > 1;
+		NS::SharedPtr<MTL::TextureDescriptor> desc =
+			NS::TransferPtr(MTL::TextureDescriptor::alloc()->init());
+		desc->setTextureType(is3D ? MTL::TextureType::TextureType3D : MTL::TextureType::TextureType2D);
+		desc->setPixelFormat(spec.pixelFormat);
+		desc->setWidth(spec.width);
+		desc->setHeight(spec.height);
+		desc->setDepth(is3D ? spec.depth : 1);
+
+		NS::SharedPtr<MTL::Texture> texture =
+			NS::TransferPtr(mtlDevice->newTexture(desc.get()));
+		return texture;
+	}
+
+	inline NS::SharedPtr<MTL::Texture> createMetalTextureFromHost(const void* source, const MetalTextureSpec& spec) const {
+		if (!source)
+			return nullptr;
+
+		NS::SharedPtr<MTL::Texture> texture = createMetalTexture(spec);
+		if (!texture)
+			return nullptr;
+
+		const bool is3D = spec.force3D || spec.depth > 1;
+		MTL::Region textureRegion(0, 0, 0, spec.width, spec.height, is3D ? spec.depth : 1);
+		const NS::UInteger bytesPerRow = spec.width * spec.elementSize;
+		const NS::UInteger bytesPerImage = bytesPerRow * spec.height;
+		if (is3D)
+			texture->replaceRegion(textureRegion, 0, 0, source, bytesPerRow, bytesPerImage);
+		else
+			texture->replaceRegion(textureRegion, 0, source, bytesPerRow);
+		return texture;
+	}
+
+	inline NS::SharedPtr<MTL::Texture> createMetalFloatTextureFromHost(const float* source, const MetalTextureSpec& spec) const {
+		return createMetalTextureFromHost(source, spec);
+	}
+
+	inline NS::SharedPtr<MTL::Texture> createMetalFloatTextureEmpty(const MetalTextureSpec& spec) const {
+		return createMetalTexture(spec);
+	}
+
+	inline NS::SharedPtr<MTL::Texture> createMetalFloatTextureFromBuffer(const DeviceBuffer& source, const MetalTextureSpec& spec) const {
+		if (!source || !source->contents())
+			return nullptr;
+		return createMetalTextureFromHost(source->contents(), spec);
+	}
+
+	inline NS::SharedPtr<MTL::Texture> createMetalMaskTextureFromHost(const uint8_t* source, const MetalTextureSpec& spec) const {
+		if (!source || spec.width == 0 || spec.height == 0 || spec.depth == 0)
+			return nullptr;
+		std::vector<float> mask(static_cast<size_t>(spec.width) * static_cast<size_t>(spec.height) * static_cast<size_t>(spec.depth));
+		for (size_t ii = 0; ii < mask.size(); ++ii)
+			mask[ii] = static_cast<float>(source[ii]);
+		MetalTextureSpec floatSpec = spec;
+		floatSpec.pixelFormat = MTL::PixelFormat::PixelFormatR32Float;
+		floatSpec.elementSize = sizeof(float);
+		return createMetalTextureFromHost(mask.data(), floatSpec);
+	}
+#endif // END CUDA/METAL texture helpers
 
 	/// <summary>
 #if defined(CUDA) || defined(HIP)
@@ -1469,11 +1794,6 @@ public:
 	std::vector<CUtexObject> d_maskFP3;
 	std::vector<CUarray> maskArrayFP;
 	std::vector<CUdeviceptr*> d_Summ;
-	CUDA_TEXTURE_DESC texDesc;
-	CUDA_ARRAY_DESCRIPTOR arr2DDesc;
-	CUDA_ARRAY3D_DESCRIPTOR_st arr3DDesc;
-	CUDA_RESOURCE_DESC resDesc;
-	CUDA_RESOURCE_VIEW_DESC viewDesc;
 #else
 	std::vector<cl::Image3D> d_maskFP3;
 	std::vector<cl::Buffer> d_Summ;
@@ -1925,38 +2245,34 @@ public:
 		const scalarStruct & inputScalars, const Weighting & w_vec, const RecMethods & MethodList) {
 		Status status = SUCCESS_VALUE;
 		size_t vecSize = 1;
-#if !defined(CUDA) && !defined(HIP)
-		cl::size_type imX = inputScalars.Nx[0];
-		cl::size_type imY = inputScalars.Ny[0];
-		cl::size_type imZ = inputScalars.Nz[0];
-#endif // END CUDA
 		if ((inputScalars.PET || inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0)
 			vecSize = static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD);
-#if !defined(CUDA) && !defined(HIP)
 		// NLM anatomical reference image
 		if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM)) {
-			if (inputScalars.useImages)
-				d_urefIm = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
+			if (inputScalars.useImages) {
+				CREATE_FLOAT_TEXTURE3D_FROM_HOST(d_urefIm, uRefArray, w_vec.NLM_ref, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0],
+					BACKEND_TEXTURE_POINT, BACKEND_TEXTURE_DEFAULT_FLAGS);
+			}
 			else
-				d_uref = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.im_dim[0], NULL, &status);
-			OCL_CHECK(status, "\n", -1);
+				ALLOC_BUFFER(d_uref, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.im_dim[0]);
+			CHECK(status, "\n", -1);
+			memAlloc.NLMRef = inputScalars.useImages ? 1 : 2;
 		}
 		// The input image for numerous regularization
 		// We define the image here and later input the current estimate to this image
 		if (MethodList.NLM || MethodList.RDP || MethodList.TV || MethodList.GGMRF || MethodList.APLS || MethodList.hyperbolic || inputScalars.projector_type == 6) {
 			if (inputScalars.useImages && !inputScalars.largeDim) {
-				d_inputI = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, region[0], region[1], region[2], 0, 0, NULL, &status);
-				OCL_CHECK(status, "Failed to create prior image\n", -1);
+				CREATE_FLOAT_TEXTURE3D_EMPTY(d_inputI, imArray, region[0], region[1], region[2]);
+				CHECK(status, "Failed to create prior image\n", -1);
 			}
 		}
 		// RDP reference image
 		if (MethodList.RDP && w_vec.RDPLargeNeighbor && w_vec.RDP_anatomical) {
 			if (inputScalars.useImages) {
-				d_RDPrefI = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, region[0], region[1], region[2], 0, 0, NULL, &status);
-				OCL_CHECK(status, "Failed to create RDP reference image\n", -1);
+				CREATE_FLOAT_TEXTURE3D_EMPTY(d_RDPrefI, imArray, region[0], region[1], region[2]);
+				CHECK(status, "Failed to create RDP reference image\n", -1);
 			}
 		}
-#endif // END CUDA
 		// Create the necessary buffers
 		// Distance-based weighting for GGMRF, RDP and hyperbolic prior
 		if (MethodList.GGMRF || (MethodList.RDP && w_vec.RDPLargeNeighbor) || MethodList.hyperbolic) {
@@ -1965,132 +2281,25 @@ public:
 			memAlloc.GGMRF = true;
 		}
 		memAlloc.tSteps = inputScalars.Nt;
-		// NLM anatomical reference image
-#if defined(CUDA) || defined(HIP)
-		if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM)) {
-			if (inputScalars.useImages) {
-				std::memset(&texDesc, 0, sizeof(texDesc));
-				std::memset(&resDesc, 0, sizeof(resDesc));
-				std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
-				std::memset(&arr2DDesc, 0, sizeof(arr2DDesc));
-				std::memset(&viewDesc, 0, sizeof(viewDesc));
-				arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_FLOAT;
-				arr3DDesc.NumChannels = 1;
-				arr3DDesc.Height = inputScalars.Nx[0];
-				arr3DDesc.Width = inputScalars.Ny[0];
-				arr3DDesc.Depth = inputScalars.Nz[0];
-				status = cuArray3DCreate(&uRefArray, &arr3DDesc);
-				CUDA_MEMCPY3D cpy3d;
-				std::memset(&cpy3d, 0, sizeof(cpy3d));
-				cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
-				cpy3d.srcHost = w_vec.NLM_ref;
-				cpy3d.srcPitch = inputScalars.Ny[0] * sizeof(float);
-				cpy3d.srcHeight = inputScalars.Nx[0];
-				cpy3d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
-				cpy3d.dstArray = uRefArray;
-				cpy3d.WidthInBytes = inputScalars.Ny[0] * sizeof(float);
-				cpy3d.Height = inputScalars.Nx[0];
-				cpy3d.Depth = inputScalars.Nz[0];
-				status = cuMemcpy3D(&cpy3d);
-				resDesc.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
-				resDesc.res.array.hArray = uRefArray;
-				texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-				texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-				texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-				texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
-				viewDesc.height = inputScalars.Nx[0];
-				viewDesc.width = inputScalars.Ny[0];
-				viewDesc.depth = inputScalars.Nz[0];
-				viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
-				status = cuTexObjectCreate(&d_urefIm, &resDesc, &texDesc, &viewDesc);
-			}
-			else
-				status = cuMemAlloc(&d_uref, sizeof(float) * inputScalars.im_dim[0]);
-			CUDA_CHECK(status, "\n", -1);
-		}
-#endif // END CUDA
-		if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM))
-			memAlloc.NLMRef = inputScalars.useImages ? 1 : 2;
 		if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
 			if (inputScalars.useBuffers) {
 				ALLOC_BUFFER(d_maskPriorB, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ);
 			}
 			else {
-#if defined(CUDA) || defined(HIP)
-				std::memset(&texDesc, 0, sizeof(texDesc));
-				std::memset(&resDesc, 0, sizeof(resDesc));
-				std::memset(&viewDesc, 0, sizeof(viewDesc));
-				// Mask images
 				if (inputScalars.maskBPZ > 1) {
-					std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
-					arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_UNSIGNED_INT8;
-					arr3DDesc.NumChannels = 1;
-					arr3DDesc.Height = inputScalars.Nx[0];
-					arr3DDesc.Width = inputScalars.Ny[0];
-					arr3DDesc.Depth = inputScalars.Nz[0];
-					status = cuArray3DCreate(&maskArrayPrior, &arr3DDesc);
-					CUDA_CHECK(status, "\n", -1);
-					CUDA_MEMCPY3D cpy3d;
-					std::memset(&cpy3d, 0, sizeof(cpy3d));
-					cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
-					cpy3d.srcHost = w_vec.maskPrior;
-					cpy3d.srcPitch = inputScalars.Ny[0] * sizeof(uint8_t);
-					cpy3d.srcHeight = inputScalars.Nx[0];
-					cpy3d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
-					cpy3d.dstArray = maskArrayPrior;
-					cpy3d.WidthInBytes = inputScalars.Ny[0] * sizeof(uint8_t);
-					cpy3d.Height = inputScalars.Nx[0];
-					cpy3d.Depth = inputScalars.maskBPZ;
-					status = cuMemcpy3D(&cpy3d);
-					CUDA_CHECK(status, "\n", -1);
+					CREATE_MASK_TEXTURE3D_FROM_HOST(d_maskPrior, d_maskPrior3, maskArrayPrior, w_vec.maskPrior,
+						inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.maskBPZ, inputScalars.maskBPZ, inputScalars.Nz[0], BACKEND_TEXTURE_READ_AS_INTEGER);
 				}
 				else {
-					std::memset(&arr2DDesc, 0, sizeof(arr2DDesc));
-					arr2DDesc.Format = CUarray_format::CU_AD_FORMAT_UNSIGNED_INT8;
-					arr2DDesc.NumChannels = 1;
-					arr2DDesc.Height = inputScalars.Nx[0];
-					arr2DDesc.Width = inputScalars.Ny[0];
-					status = cuArrayCreate(&maskArrayPrior, &arr2DDesc);
-					CUDA_CHECK(status, "\n", -1);
-					CUDA_MEMCPY2D cpy2d;
-					std::memset(&cpy2d, 0, sizeof(cpy2d));
-					cpy2d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
-					cpy2d.srcHost = w_vec.maskPrior;
-					cpy2d.srcPitch = inputScalars.Ny[0] * sizeof(uint8_t);
-					cpy2d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
-					cpy2d.dstArray = maskArrayPrior;
-					cpy2d.WidthInBytes = inputScalars.Ny[0] * sizeof(uint8_t);
-					cpy2d.Height = inputScalars.Nx[0];
-					status = cuMemcpy2D(&cpy2d);
-					CUDA_CHECK(status, "\n", -1);
+					CREATE_MASK_TEXTURE2D_FROM_HOST(d_maskPrior, maskArrayPrior, w_vec.maskPrior,
+						inputScalars.Nx[0], inputScalars.Ny[0], BACKEND_TEXTURE_READ_AS_INTEGER);
 				}
-				resDesc.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
-				resDesc.res.array.hArray = maskArrayPrior;
-				texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-				texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-				texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
-				texDesc.flags = CU_TRSF_READ_AS_INTEGER;
-				viewDesc.height = inputScalars.Nx[0];
-				viewDesc.width = inputScalars.Ny[0];
-				if (inputScalars.maskBPZ > 1)
-					viewDesc.depth = inputScalars.maskBPZ;
-				viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_UINT_1X8;
-				status = cuTexObjectCreate(&d_maskPrior, &resDesc, &texDesc, &viewDesc);
-#else
-				imX = inputScalars.Nx[0];
-				imY = inputScalars.Ny[0];
-				imZ = inputScalars.maskBPZ;
 				if (DEBUG) {
-					mexPrintBase("imX = %u\n", imX);
-					mexPrintBase("imY = %u\n", imY);
-					mexPrintBase("imZ = %u\n", imZ);
+					mexPrintBase("imX = %u\n", inputScalars.Nx[0]);
+					mexPrintBase("imY = %u\n", inputScalars.Ny[0]);
+					mexPrintBase("imZ = %u\n", inputScalars.maskBPZ);
 					mexEval();
 				}
-				if (imZ > 1)
-					d_maskPrior3 = cl::Image3D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, imZ, 0, 0, NULL, &status);
-				else
-					d_maskPrior = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
-#endif // END CUDA
 				memAlloc.priorMask = true;
 			}
 			CHECK(status, "\n", -1);
@@ -2121,90 +2330,20 @@ public:
 							ALLOC_BUFFER(d_maskFPB[kk], CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD * length[kk]);
 					}
 					else {
-#if defined(CUDA) || defined(HIP)
-						std::memset(&texDesc, 0, sizeof(texDesc));
-						std::memset(&resDesc, 0, sizeof(resDesc));
-						std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
-						std::memset(&arr2DDesc, 0, sizeof(arr2DDesc));
-						std::memset(&viewDesc, 0, sizeof(viewDesc));
 						if (inputScalars.maskFPZ > 1) {
-							maskArrayFP.resize(inputScalars.subsetsUsed);
-							arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_UNSIGNED_INT8;
-							arr3DDesc.NumChannels = 1;
-							arr3DDesc.Height = inputScalars.nRowsD;
-							arr3DDesc.Width = inputScalars.nColsD;
-							CUDA_MEMCPY3D cpy3d;
-							std::memset(&cpy3d, 0, sizeof(cpy3d));
-							cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
-							cpy3d.srcPitch = inputScalars.nColsD * sizeof(uint8_t);
-							cpy3d.srcHeight = inputScalars.nRowsD;
-							cpy3d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
-							cpy3d.WidthInBytes = inputScalars.nColsD * sizeof(uint8_t);
-							cpy3d.Height = inputScalars.nRowsD;
+							RESIZE_TEXTURE_VECTOR(d_maskFP3, maskArrayFP, inputScalars.subsetsUsed);
 							for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-								arr3DDesc.Depth = length[kk];
-								status = cuArray3DCreate(&maskArrayFP[kk], &arr3DDesc);
-								CUDA_CHECK(status, "\n", -1);
-								cpy3d.Depth = length[kk];
-								cpy3d.srcHost = &w_vec.maskFP[pituus[kk] * vecSize];
-								cpy3d.dstArray = maskArrayFP[kk];
-								status = cuMemcpy3D(&cpy3d);
-								CUDA_CHECK(status, "\n", -1);
+								CREATE_MASK_TEXTURE3D_FROM_HOST(d_maskFP3[kk], d_maskFP3[kk], maskArrayFP[kk], &w_vec.maskFP[pituus[kk] * vecSize],
+									inputScalars.nRowsD, inputScalars.nColsD, length[kk], length[kk], length[kk], BACKEND_TEXTURE_READ_AS_INTEGER);
+								CHECK(status, "\n", -1);
 							}
 						}
 						else {
-							maskArrayFP.resize(1);
-							arr2DDesc.Format = CUarray_format::CU_AD_FORMAT_UNSIGNED_INT8;
-							arr2DDesc.NumChannels = 1;
-							arr2DDesc.Height = inputScalars.nRowsD;
-							arr2DDesc.Width = inputScalars.nColsD;
-							status = cuArrayCreate(&maskArrayFP[0], &arr2DDesc);
-							CUDA_CHECK(status, "\n", -1);
-							CUDA_MEMCPY2D cpy2d;
-							std::memset(&cpy2d, 0, sizeof(cpy2d));
-							cpy2d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
-							cpy2d.srcHost = w_vec.maskFP;
-							cpy2d.srcPitch = inputScalars.nColsD * sizeof(uint8_t);
-							cpy2d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
-							cpy2d.dstArray = maskArrayFP[0];
-							cpy2d.WidthInBytes = inputScalars.nColsD * sizeof(uint8_t);
-							cpy2d.Height = inputScalars.nRowsD;
-							status = cuMemcpy2D(&cpy2d);
-							CUDA_CHECK(status, "\n", -1);
+							RESIZE_TEXTURE_ARRAY(maskArrayFP, 1);
+							CREATE_MASK_TEXTURE2D_FROM_HOST(d_maskFP, maskArrayFP[0], w_vec.maskFP,
+								inputScalars.nRowsD, inputScalars.nColsD, BACKEND_TEXTURE_READ_AS_INTEGER);
+							CHECK(status, "\n", -1);
 						}
-						resDesc.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
-						texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-						texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-						texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
-						texDesc.flags = CU_TRSF_READ_AS_INTEGER;
-						viewDesc.height = inputScalars.nRowsD;
-						viewDesc.width = inputScalars.nColsD;
-						viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_UINT_1X8;
-						if (inputScalars.maskFPZ > 1) {
-							texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-							d_maskFP3.resize(inputScalars.subsetsUsed);
-							for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-								viewDesc.depth = length[kk];
-								resDesc.res.array.hArray = maskArrayFP[kk];
-								status = cuTexObjectCreate(&d_maskFP3[kk], &resDesc, &texDesc, &viewDesc);
-							}
-						}
-						else {
-							resDesc.res.array.hArray = maskArrayFP[0];
-							status = cuTexObjectCreate(&d_maskFP, &resDesc, &texDesc, &viewDesc);
-						}
-						CUDA_CHECK(status, "\n", -1);
-#else
-						imX = inputScalars.nRowsD;
-						imY = inputScalars.nColsD;
-						imZ = inputScalars.maskFPZ;
-						if (imZ > 1) {
-							for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++)
-								d_maskFP3.emplace_back(cl::Image3D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, length[kk], 0, 0, NULL, &status));
-						}
-						else
-							d_maskFP = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
-#endif
 					}
 					memAlloc.maskFP = true;
 				}
@@ -2212,86 +2351,16 @@ public:
 					if (inputScalars.useBuffers)
 						ALLOC_BUFFER(d_maskBPB, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ);
 					else {
-#if defined(CUDA) || defined(HIP)
-						std::memset(&texDesc, 0, sizeof(texDesc));
-						std::memset(&resDesc, 0, sizeof(resDesc));
-						std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
-						std::memset(&arr2DDesc, 0, sizeof(arr2DDesc));
-						std::memset(&viewDesc, 0, sizeof(viewDesc));
+						const auto flags = (inputScalars.BPType == 4 && !inputScalars.CT) ? BACKEND_TEXTURE_NORMALIZED : BACKEND_TEXTURE_READ_AS_INTEGER;
 						if (inputScalars.maskBPZ > 1) {
-							arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_UNSIGNED_INT8;
-							arr3DDesc.NumChannels = 1;
-							arr3DDesc.Height = inputScalars.Nx[0];
-							arr3DDesc.Width = inputScalars.Ny[0];
-							arr3DDesc.Depth = inputScalars.Nz[0];
-							status = cuArray3DCreate(&maskArrayBP, &arr3DDesc);
-							CUDA_CHECK(status, "\n", -1);
-							CUDA_MEMCPY3D cpy3d;
-							std::memset(&cpy3d, 0, sizeof(cpy3d));
-							cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
-							cpy3d.srcHost = w_vec.maskBP;
-							cpy3d.srcPitch = inputScalars.Ny[0] * sizeof(uint8_t);
-							cpy3d.srcHeight = inputScalars.Nx[0];
-							cpy3d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
-							cpy3d.dstArray = maskArrayBP;
-							cpy3d.WidthInBytes = inputScalars.Ny[0] * sizeof(uint8_t);
-							cpy3d.Height = inputScalars.Nx[0];
-							cpy3d.Depth = inputScalars.Nz[0];
-							status = cuMemcpy3D(&cpy3d);
-							CUDA_CHECK(status, "\n", -1);
+							CREATE_MASK_TEXTURE3D_FROM_HOST(d_maskBP, d_maskBP3, maskArrayBP, w_vec.maskBP,
+								inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.maskBPZ, inputScalars.Nz[0], inputScalars.Nz[0], flags);
 						}
 						else {
-							arr2DDesc.Format = CUarray_format::CU_AD_FORMAT_UNSIGNED_INT8;
-							arr2DDesc.NumChannels = 1;
-							arr2DDesc.Height = inputScalars.Nx[0];
-							arr2DDesc.Width = inputScalars.Ny[0];
-							status = cuArrayCreate(&maskArrayBP, &arr2DDesc);
-							CUDA_CHECK(status, "\n", -1);
-							CUDA_MEMCPY2D cpy2d;
-							std::memset(&cpy2d, 0, sizeof(cpy2d));
-							cpy2d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
-							cpy2d.srcHost = w_vec.maskBP;
-							cpy2d.srcPitch = inputScalars.Ny[0] * sizeof(uint8_t);
-							cpy2d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
-							cpy2d.dstArray = maskArrayBP;
-							cpy2d.WidthInBytes = inputScalars.Ny[0] * sizeof(uint8_t);
-							cpy2d.Height = inputScalars.Nx[0];
-							status = cuMemcpy2D(&cpy2d);
-							CUDA_CHECK(status, "\n", -1);
+							CREATE_MASK_TEXTURE2D_FROM_HOST(d_maskBP, maskArrayBP, w_vec.maskBP,
+								inputScalars.Nx[0], inputScalars.Ny[0], flags);
 						}
-						resDesc.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
-						resDesc.res.array.hArray = maskArrayBP;
-						texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-						texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-						texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
-						texDesc.flags = CU_TRSF_READ_AS_INTEGER;
-						viewDesc.height = inputScalars.Nx[0];
-						viewDesc.width = inputScalars.Ny[0];
-						viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_UINT_1X8;
-						if (inputScalars.maskBPZ > 1) {
-							viewDesc.depth = inputScalars.maskBPZ;
-							texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-						}
-						if (inputScalars.BPType == 4 && !inputScalars.CT) {
-							texDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
-						}
-						status = cuTexObjectCreate(&d_maskBP, &resDesc, &texDesc, &viewDesc);
-						CUDA_CHECK(status, "\n", -1);
-#else
-						imX = inputScalars.Nx[0];
-						imY = inputScalars.Ny[0];
-						imZ = inputScalars.maskBPZ;
-						if (DEBUG) {
-							mexPrintBase("imX = %u\n", imX);
-							mexPrintBase("imY = %u\n", imY);
-							mexPrintBase("imZ = %u\n", imZ);
-							mexEval();
-						}
-						if (imZ > 1)
-							d_maskBP3 = cl::Image3D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, imZ, 0, 0, NULL, &status);
-						else
-							d_maskBP = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
-#endif
+						CHECK(status, "\n", -1);
 					}
 					memAlloc.maskBP = true;
 				}
@@ -2330,54 +2399,12 @@ public:
 						if (inputScalars.useBuffers)
 							ALLOC_BUFFER(d_attenB[timestep], CL_MEM_READ_ONLY, sizeof(float) * inputScalars.im_dim[0]);
 						else {
-#if defined(CUDA) || defined(HIP)
-							std::memset(&texDesc, 0, sizeof(texDesc));
-							std::memset(&resDesc, 0, sizeof(resDesc));
-							std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
-							std::memset(&arr2DDesc, 0, sizeof(arr2DDesc));
-							std::memset(&viewDesc, 0, sizeof(viewDesc));
-							arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_FLOAT;
-							arr3DDesc.NumChannels = 1;
-							arr3DDesc.Height = inputScalars.Nx[0];
-							arr3DDesc.Width = inputScalars.Ny[0];
-							arr3DDesc.Depth = inputScalars.Nz[0];
-							status = cuArray3DCreate(&atArray, &arr3DDesc);
-							CUDA_CHECK(status, "\n", -1);
-							CUDA_MEMCPY3D cpy3d;
-							std::memset(&cpy3d, 0, sizeof(cpy3d));
-							cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
-							cpy3d.srcHost = &atten[inputScalars.im_dim[0] * timestep];
-							cpy3d.srcPitch = inputScalars.Ny[0] * sizeof(float);
-							cpy3d.srcHeight = inputScalars.Nx[0];
-							cpy3d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
-							cpy3d.dstArray = atArray;
-							cpy3d.WidthInBytes = inputScalars.Ny[0] * sizeof(float);
-							cpy3d.Height = inputScalars.Nx[0];
-							cpy3d.Depth = inputScalars.Nz[0];
-							status = cuMemcpy3D(&cpy3d);
-							CUDA_CHECK(status, "\n", -1);
-							resDesc.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
-							resDesc.res.array.hArray = atArray;
-							texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-							texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-							texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-							if (inputScalars.FPType == 4 || inputScalars.BPType == 4) {
-								texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_LINEAR;
-								texDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
-							}
-							else
-								texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
-							viewDesc.height = inputScalars.Nx[0];
-							viewDesc.width = inputScalars.Ny[0];
-							viewDesc.depth = inputScalars.Nz[0];
-							viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
-							status = cuTexObjectCreate(&d_attenIm[timestep], &resDesc, &texDesc, &viewDesc);
-							CUDA_CHECK(status, "\n", -1);
-#else
-							imZ = inputScalars.Nz[0];
-							d_attenIm[timestep] = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
-							OCL_CHECK(status, "\n", -1);
-#endif // END CUDA
+							const bool interpolationTexture = inputScalars.FPType == 4 || inputScalars.BPType == 4;
+							CREATE_FLOAT_TEXTURE3D_FROM_HOST(d_attenIm[timestep], atArray, &atten[inputScalars.im_dim[0] * timestep],
+								inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0],
+								interpolationTexture ? BACKEND_TEXTURE_LINEAR : BACKEND_TEXTURE_POINT,
+								interpolationTexture ? BACKEND_TEXTURE_NORMALIZED : BACKEND_TEXTURE_DEFAULT_FLAGS);
+							CHECK(status, "\n", -1);
 						}
 						memAlloc.atten = true;
 						memAlloc.attenSize++;
@@ -2508,22 +2535,11 @@ public:
 			CHECK(status, "\n", -1);
 		}
 		if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM)) {
-			if (!inputScalars.useImages)
+			if (!inputScalars.useImages) {
 				WRITE_BUFFER(d_uref, sizeof(float) * inputScalars.im_dim[0], w_vec.NLM_ref);
-#if !defined(CUDA) && !defined(HIP)
-			else {
-				cl::detail::size_t_array region = { { 0, 0, 0 } };
-				region[0] = inputScalars.Nx[0];
-				region[1] = inputScalars.Ny[0];
-				region[2] = inputScalars.Nz[0];
-				if (inputScalars.useImages)
-					status = CLCommandQueue[0].enqueueWriteImage(d_urefIm, CL_FALSE, origin, region, 0, 0, w_vec.NLM_ref);
-				else
-					status = CLCommandQueue[0].enqueueWriteBuffer(d_uref, CL_FALSE, 0, sizeof(float) * inputScalars.im_dim[0], w_vec.NLM_ref);
-				memSize += (sizeof(float) * inputScalars.im_dim[0]) / 1048576ULL;
+				CHECK(status, "\n", -1);
 			}
-			CHECK(status, "\n", -1);
-#endif // END CUDA
+			memSize += (sizeof(float) * inputScalars.im_dim[0]) / 1048576ULL;
 		}
 		if (inputScalars.projector_type != 6) {
 			if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
@@ -2566,55 +2582,24 @@ public:
 						CHECK(status, "\n", -1);
 					}
 				}
-#if !defined(CUDA) && !defined(HIP)
 				else {
-					cl::detail::size_t_array region = { { 1, 1, 1 } };
 					if (inputScalars.maskFP) {
-						region[0] = inputScalars.nRowsD;
-						region[1] = inputScalars.nColsD;
-						region[2] = inputScalars.maskFPZ;
-						if (inputScalars.maskFPZ > 1) {
-							for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-								region[2] = length[kk];
-								status = CLCommandQueue[0].enqueueWriteImage(d_maskFP3[kk], CL_FALSE, origin, region, 0, 0, &w_vec.maskFP[pituus[kk] * vecSize]);
-							}
-						}
-						else
-							status = CLCommandQueue[0].enqueueWriteImage(d_maskFP, CL_FALSE, origin, region, 0, 0, w_vec.maskFP);
-						OCL_CHECK(status, "\n", -1);
-						memSize += (sizeof(bool) * inputScalars.nRowsD * inputScalars.nColsD) / 1048576ULL;
+						const size_t maskFPDepth = inputScalars.maskFPZ > 1 ? static_cast<size_t>(inputScalars.maskFPZ) : 1ULL;
+						memSize += (sizeof(uint8_t) * static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD) * maskFPDepth) / 1048576ULL;
 					}
 					if (inputScalars.maskBP) {
-						region[0] = inputScalars.Nx[0];
-						region[1] = inputScalars.Ny[0];
-						region[2] = inputScalars.maskBPZ;
 						if (DEBUG) {
-							mexPrintBase("region[0] = %u\n", region[0]);
-							mexPrintBase("region[1] = %u\n", region[1]);
-							mexPrintBase("region[2] = %u\n", region[2]);
+							mexPrintBase("region[0] = %u\n", inputScalars.Nx[0]);
+							mexPrintBase("region[1] = %u\n", inputScalars.Ny[0]);
+							mexPrintBase("region[2] = %u\n", inputScalars.maskBPZ);
 							mexEval();
 						}
-						if (inputScalars.maskBPZ > 1)
-							status = CLCommandQueue[0].enqueueWriteImage(d_maskBP3, CL_FALSE, origin, region, 0, 0, w_vec.maskBP);
-						else
-							status = CLCommandQueue[0].enqueueWriteImage(d_maskBP, CL_FALSE, origin, region, 0, 0, w_vec.maskBP);
-						OCL_CHECK(status, "\n", -1);
-						memSize += (sizeof(bool) * inputScalars.Nx[0] * inputScalars.Ny[0]) / 1048576ULL;
+						memSize += (sizeof(uint8_t) * static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) * static_cast<size_t>(inputScalars.maskBPZ)) / 1048576ULL;
 					}
 					if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
-						cl::detail::size_t_array region = { { 1, 1, 1 } };
-						region[0] = inputScalars.Nx[0];
-						region[1] = inputScalars.Ny[0];
-						region[2] = inputScalars.maskBPZ;
-						if (inputScalars.maskBPZ > 1)
-							status = CLCommandQueue[0].enqueueWriteImage(d_maskPrior3, CL_FALSE, origin, region, 0, 0, w_vec.maskPrior);
-						else
-							status = CLCommandQueue[0].enqueueWriteImage(d_maskPrior, CL_FALSE, origin, region, 0, 0, w_vec.maskPrior);
-						OCL_CHECK(status, "\n", -1);
-						memSize += (sizeof(bool) * inputScalars.Nx[0] * inputScalars.Ny[0]) / 1048576ULL;
+						memSize += (sizeof(uint8_t) * static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) * static_cast<size_t>(inputScalars.maskBPZ)) / 1048576ULL;
 					}
 				}
-#endif // END CUDA
 			}
 			if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) {
 				WRITE_BUFFER(d_angle, sizeof(float) * inputScalars.nProjections, w_vec.angles);
@@ -2645,24 +2630,11 @@ public:
 							WRITE_BUFFER(d_attenB[timestep], sizeof(float) * inputScalars.im_dim[0], &atten[inputScalars.im_dim[0] * timestep]);
 							CHECK(status, "\n", -1);
 						}
-						else if (timestep == 0)
-							WRITE_BUFFER(d_attenB[timestep], sizeof(float) * inputScalars.im_dim[0], atten);
-					}
-#if !defined(CUDA) && !defined(HIP)
-					else {
-						cl::detail::size_t_array region = { { 0, 0, 0 } };
-						region[0] = inputScalars.Nx[0];
-						region[1] = inputScalars.Ny[0];
-						region[2] = inputScalars.Nz[0];
-						if (inputScalars.size_atten > inputScalars.im_dim[0]) {
-							status = CLCommandQueue[0].enqueueWriteImage(d_attenIm[timestep], CL_FALSE, origin, region, 0, 0, &atten[inputScalars.im_dim[0] * timestep]);
-						}
 						else if (timestep == 0) {
-							status = CLCommandQueue[0].enqueueWriteImage(d_attenIm[timestep], CL_FALSE, origin, region, 0, 0, atten);
+							WRITE_BUFFER(d_attenB[timestep], sizeof(float) * inputScalars.im_dim[0], atten);
+							CHECK(status, "\n", -1);
 						}
-						OCL_CHECK(status, "\n", -1);
 					}
-#endif // END CUDA
 					memSize += (sizeof(float) * inputScalars.im_dim[0]) / 1048576ULL;
 				}
 				for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
@@ -3875,98 +3847,27 @@ public:
 			if (inputScalars.CT) {
 
 				if (!inputScalars.useBuffers) {
-#if defined(CUDA) || defined(HIP)
-					std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
-					arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_FLOAT;
-					arr3DDesc.NumChannels = 1;
-					arr3DDesc.Height = inputScalars.nColsD;
-					arr3DDesc.Width = inputScalars.nRowsD;
-					arr3DDesc.Depth = length[indD];
-#else
-					cl::size_type imX = inputScalars.nRowsD;
-					cl::size_type imY = inputScalars.nColsD;
-					cl::size_type imZ = length[indD];
-#endif // END CUDA
+					size_t textureHeight = inputScalars.nColsD;
+					size_t textureWidth = inputScalars.nRowsD;
+					const size_t textureDepth = length[indD];
 					if (inputScalars.BPType == 5) {
-#if defined(CUDA) || defined(HIP)
-						arr3DDesc.Height++;
-						arr3DDesc.Width++;
-#else
-						imX++;
-						imY++;
-#endif // END CUDA
+						textureHeight++;
+						textureWidth++;
 					}
-#if defined(CUDA) || defined(HIP)
 					if (DEBUG) {
-						mexPrintBase("arr3DDesc.NumChannels= %u\n", arr3DDesc.NumChannels);
-						mexPrintBase("arr3DDesc.Height = %u\n", arr3DDesc.Height);
-						mexPrintBase("arr3DDesc.Width = %u\n", arr3DDesc.Width);
-						mexPrintBase("arr3DDesc.Depth = %u\n", arr3DDesc.Depth);
+						mexPrintBase("textureHeight = %u\n", textureHeight);
+						mexPrintBase("textureWidth = %u\n", textureWidth);
+						mexPrintBase("textureDepth = %u\n", textureDepth);
 						mexEval();
 						//mexEvalString("pause(2);");
-#else
-					cl::detail::size_t_array region = { imX, imY, imZ };
-					d_inputImage = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
-					OCL_CHECK(status, "Image creation failed\n", -1);
-
-					status = CLCommandQueue[0].enqueueCopyBufferToImage(d_output, d_inputImage, 0, origin, region);
-					OCL_CHECK(status, "Image copy failed\n", -1);
-					status = CLCommandQueue[0].finish();
-					OCL_CHECK(status, "Queue finish failed after image copy\n", -1);
-#endif // END CUDA
 					}
+					CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(d_inputImage, BPArray, d_output, textureHeight, textureWidth, textureDepth,
+						BACKEND_TEXTURE_LINEAR, BACKEND_TEXTURE_NORMALIZED);
+					CHECK(status, "Image creation failed\n", -1);
 #if defined(CUDA) || defined(HIP)
-				status = cuArray3DCreate(&BPArray, &arr3DDesc);
-				CUDA_CHECK(status, "Array creation failed\n", -1);
-				if (DEBUG)
-					mexPrint("Array creation succeeded\n");
-				CUDA_MEMCPY3D cpy3d;
-				std::memset(&cpy3d, 0, sizeof(cpy3d));
-				cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_DEVICE;
-				cpy3d.srcDevice = reinterpret_cast<CUdeviceptr>(d_output);
-				cpy3d.srcPitch = inputScalars.nRowsD * sizeof(float);
-				cpy3d.srcHeight = inputScalars.nColsD;
-				cpy3d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
-				cpy3d.dstArray = BPArray;
-				cpy3d.WidthInBytes = inputScalars.nRowsD * sizeof(float);
-				cpy3d.Height = inputScalars.nColsD;
-				cpy3d.Depth = length[indD];
-				if (inputScalars.BPType == 5) {
-					cpy3d.srcPitch += sizeof(float);
-					cpy3d.srcHeight++;
-					cpy3d.WidthInBytes += sizeof(float);
-					cpy3d.Height++;
-				}
-				status = cuMemcpy3D(&cpy3d);
-				CUDA_CHECK(status, "Array mem copy failed\n", -1);
-				if (DEBUG)
-					mexPrint("Array mem copy succeeded\n");
-				CUDA_RESOURCE_DESC resDescIm;
-				std::memset(&resDescIm, 0, sizeof(resDescIm));
-				std::memset(&texDesc, 0, sizeof(texDesc));
-				std::memset(&viewDesc, 0, sizeof(viewDesc));
-				viewDesc.height = inputScalars.nColsD;
-				viewDesc.width = inputScalars.nRowsD;
-				viewDesc.depth = length[indD];
-				viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
-				resDescIm.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
-				resDescIm.res.array.hArray = BPArray;
-				texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-				texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-				texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-				texDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
-				if (inputScalars.BPType == 4) {
-					texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_LINEAR;
-				}
-				else {
-					texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_LINEAR;
-					viewDesc.height++;
-					viewDesc.width++;
-				}
-				status = cuTexObjectCreate(&d_inputImage, &resDescIm, &texDesc, &viewDesc);
-				CUDA_CHECK(status, "Image creation failed\n", -1);
-				status = cuCtxSynchronize();
-				CUDA_CHECK(status, "Synchronize failed after image copy\n", -1);
+					status = cuCtxSynchronize();
+					CUDA_CHECK(status, "Synchronize failed after image copy\n", -1);
+#endif // END CUDA
 				}
 			if (inputScalars.BPType == 4) {
 				global[0] = (inputScalars.Nx[ii] + erotusBP[0][ii]) / local[0];
@@ -6149,48 +6050,12 @@ public:
 	inline int transferTex(const scalarStruct & inputScalars, CUdeviceptr * input, const bool RDP = false, const uint32_t Nz = 1) {
 
 		CUresult status = CUDA_SUCCESS;
-		CUDA_TEXTURE_DESC texDesc;
-		CUDA_ARRAY3D_DESCRIPTOR_st arr3DDesc;
-		CUDA_RESOURCE_DESC resDesc;
-		CUDA_RESOURCE_VIEW_DESC viewDesc;
-		std::memset(&texDesc, 0, sizeof(texDesc));
-		std::memset(&resDesc, 0, sizeof(resDesc));
-		std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
-		std::memset(&viewDesc, 0, sizeof(viewDesc));
-		arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_FLOAT;
-		arr3DDesc.NumChannels = 1;
-		arr3DDesc.Height = inputScalars.Nx[0];
-		arr3DDesc.Width = inputScalars.Ny[0];
-		arr3DDesc.Depth = Nz;
-		status = cuArray3DCreate(&imArray, &arr3DDesc);
-		CUDA_CHECK(status, "Failed to create image array\n", -1);
-		CUDA_MEMCPY3D cpy3d;
-		std::memset(&cpy3d, 0, sizeof(cpy3d));
-		cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_DEVICE;
-		cpy3d.srcDevice = reinterpret_cast<CUdeviceptr>(input);
-		cpy3d.srcPitch = inputScalars.Ny[0] * sizeof(float);
-		cpy3d.srcHeight = inputScalars.Nx[0];
-		cpy3d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
-		cpy3d.dstArray = imArray;
-		cpy3d.WidthInBytes = inputScalars.Ny[0] * sizeof(float);
-		cpy3d.Height = inputScalars.Nx[0];
-		cpy3d.Depth = Nz;
-		status = cuMemcpy3D(&cpy3d);
-		CUDA_CHECK(status, "Failed to copy image array\n", -1);
-		resDesc.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
-		resDesc.res.array.hArray = imArray;
-		texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-		texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-		texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-		texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
-		viewDesc.height = inputScalars.Nx[0];
-		viewDesc.width = inputScalars.Ny[0];
-		viewDesc.depth = Nz;
-		viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
 		if (RDP)
-			status = cuTexObjectCreate(&d_RDPrefI, &resDesc, &texDesc, &viewDesc);
+			CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(d_RDPrefI, imArray, input, inputScalars.Nx[0], inputScalars.Ny[0], Nz,
+				BACKEND_TEXTURE_POINT, BACKEND_TEXTURE_DEFAULT_FLAGS);
 		else
-			status = cuTexObjectCreate(&d_inputI, &resDesc, &texDesc, &viewDesc);
+			CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(d_inputI, imArray, input, inputScalars.Nx[0], inputScalars.Ny[0], Nz,
+				BACKEND_TEXTURE_POINT, BACKEND_TEXTURE_DEFAULT_FLAGS);
 		CUDA_CHECK(status, "Image copy failed\n", -1);
 		status = cuCtxSynchronize();
 		CUDA_CHECK(status, "Synchronization failed\n", -1);
