@@ -4386,11 +4386,7 @@ public:
 #endif // END CUDA
 		Status status = SUCCESS_VALUE;
 		if (inputScalars.verbose >= 3)
-#if defined(CUDA) || defined(HIP)
-			mexPrint("Starting CUDA NLM gradient computation");
-#else
-			mexPrint("Starting OpenCL NLM gradient computation");
-#endif // END CUDA
+			mexPrint("Starting " BACKEND_STR " NLM gradient computation");
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
 		float apu = inputScalars.epps;
@@ -4563,11 +4559,7 @@ public:
 #endif // END CUDA
 		Status status = SUCCESS_VALUE;
 		if (inputScalars.verbose >= 3)
-#if defined(CUDA) || defined(HIP)
-			mexPrint("Starting CUDA RDP gradient computation");
-#else
-			mexPrint("Starting OpenCL RDP gradient computation");
-#endif // END CUDA
+			mexPrint("Starting " BACKEND_STR " RDP gradient computation");
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
 		float apu = inputScalars.epps;
@@ -4736,11 +4728,7 @@ public:
 #endif // END CUDA
 		Status status = SUCCESS_VALUE;
 		if (inputScalars.verbose >= 3)
-#if defined(CUDA) || defined(HIP)
-			mexPrint("Starting CUDA GGMRF gradient computation");
-#else
-			mexPrint("Starting OpenCL GGMRF gradient computation");
-#endif // END CUDA
+			mexPrint("Starting " BACKEND_STR " GGMRF gradient computation");
 #if defined(CUDA) || defined(HIP)
 		CUevent tStart, tEnd;
 #else
@@ -5398,11 +5386,7 @@ public:
 	inline int hyperGradient(const scalarStruct & inputScalars, const float sigma, const Weighting & w_vec, const float beta, const int kk = 0) {
 #endif // END CUDA
 		if (inputScalars.verbose >= 3)
-#if defined(CUDA) || defined(HIP)
-			mexPrint("Starting CUDA hyperbolic prior gradient computation");
-#else
-			mexPrint("Starting OpenCL hyperbolic prior gradient computation");
-#endif // END CUDA
+			mexPrint("Starting " BACKEND_STR " hyperbolic prior gradient computation");
 		Status status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 		CUevent tStart, tEnd;
@@ -5545,11 +5529,7 @@ public:
 	inline int TVGradient(const scalarStruct & inputScalars, const float sigma, const float smooth, const Weighting & w_vec, const float beta, const int kk = 0, const float C = 0.f, const int type = 0) {
 #endif // END CUDA
 		if (inputScalars.verbose >= 3)
-#if defined(CUDA) || defined(HIP)
-			mexPrint("Starting CUDA TV gradient computation");
-#else
-			mexPrint("Starting OpenCL TV gradient computation");
-#endif // END CUDA
+			mexPrint("Starting " BACKEND_STR " TV gradient computation");
 		Status status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 		CUevent tStart, tEnd;
@@ -5686,11 +5666,7 @@ public:
 	inline int PoissonUpdate(const scalarStruct & inputScalars, const float lambda, const float epps, const float alpha, const int ii = 0) {
 #endif // END CUDA
 		if (inputScalars.verbose >= 3)
-#if defined(CUDA) || defined(HIP)
-			mexPrint("Starting CUDA Poisson update (PKMA/MBSREM/BSREM) computation");
-#else
-			mexPrint("Starting OpenCL Poisson update (PKMA/MBSREM/BSREM) computation");
-#endif // END CUDA
+			mexPrint("Starting " BACKEND_STR " Poisson update (PKMA/MBSREM/BSREM) computation");
 		Status status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 		CUevent tStart, tEnd;
@@ -5781,11 +5757,7 @@ public:
 	inline int PDHGUpdate(const scalarStruct & inputScalars, const float epps, const float theta, const float tau, const int ii = 0) {
 #endif // END CUDA
 		if (inputScalars.verbose >= 3)
-#if defined(CUDA) || defined(HIP)
-			mexPrint("Starting CUDA PDHG update computation");
-#else
-			mexPrint("Starting OpenCL PDHG update computation");
-#endif // END CUDA
+			mexPrint("Starting " BACKEND_STR " PDHG update computation");
 		Status status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 		CUevent tStart, tEnd;
@@ -5870,11 +5842,7 @@ public:
 	inline int rotateCustom(const scalarStruct & inputScalars, const float cosa, const float sina, const int ii = 0) {
 #endif // END CUDA
 		if (inputScalars.verbose >= 3)
-#if defined(CUDA) || defined(HIP)
-			mexPrint("Starting CUDA bilinear image rotation computation");
-#else
-			mexPrint("Starting OpenCL bilinear image rotation computation");
-#endif // END CUDA
+			mexPrint("Starting " BACKEND_STR " bilinear image rotation computation");
 		Status status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
