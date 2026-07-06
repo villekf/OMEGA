@@ -66,6 +66,15 @@ using DeviceBuffer = cl::Buffer;
 using AFDeviceBuffer = cl::Buffer;
 #define SUCCESS_VALUE CL_SUCCESS
 #endif
+#if defined(CUDA) || defined(HIP) || defined(METAL)
+#define VEC_X(VEC) ((VEC).x)
+#define VEC_Y(VEC) ((VEC).y)
+#define VEC_Z(VEC) ((VEC).z)
+#else
+#define VEC_X(VEC) ((VEC).s[0])
+#define VEC_Y(VEC) ((VEC).s[1])
+#define VEC_Z(VEC) ((VEC).s[2])
+#endif
 #if defined(CUDA) || defined(HIP)
 #define GET_KERNEL(KVAR, PROG, NAME) status = cuModuleGetFunction(&KVAR, PROG, NAME)
 #define KCHECK(MSG) CUDA_CHECK(status, MSG, status)
@@ -3328,29 +3337,19 @@ public:
 			mexPrintBase("global[2] = %u\n", global[2]);
 			mexPrintBase("erotus[0] = %u\n", erotus[0]);
 			mexPrintBase("erotus[1] = %u\n", erotus[1]);
-#if defined(CUDA) || defined(HIP)
-			mexPrintBase("d[ii].s0 = %f\n", d[ii].x);
-			mexPrintBase("d[ii].s1 = %f\n", d[ii].y);
-			mexPrintBase("d[ii].s2 = %f\n", d[ii].z);
-			mexPrintBase("b[ii].s0 = %f\n", b[ii].x);
-			mexPrintBase("b[ii].s1 = %f\n", b[ii].y);
-			mexPrintBase("b[ii].s2 = %f\n", b[ii].z);
-			mexPrintBase("bmax[ii].s0 = %f\n", bmax[ii].x);
-			mexPrintBase("bmax[ii].s1 = %f\n", bmax[ii].y);
-			mexPrintBase("bmax[ii].s2 = %f\n", bmax[ii].z);
-#else
-			mexPrintBase("d_N[ii].s0 = %u\n", d_N[ii].s[0]);
-			mexPrintBase("d_N[ii].s1 = %u\n", d_N[ii].s[1]);
-			mexPrintBase("d_N[ii].s2 = %u\n", d_N[ii].s[2]);
-			mexPrintBase("d[ii].s0 = %f\n", d[ii].s[0]);
-			mexPrintBase("d[ii].s1 = %f\n", d[ii].s[1]);
-			mexPrintBase("d[ii].s2 = %f\n", d[ii].s[2]);
-			mexPrintBase("b[ii].s0 = %f\n", b[ii].s[0]);
-			mexPrintBase("b[ii].s1 = %f\n", b[ii].s[1]);
-			mexPrintBase("b[ii].s2 = %f\n", b[ii].s[2]);
-			mexPrintBase("bmax[ii].s0 = %f\n", bmax[ii].s[0]);
-			mexPrintBase("bmax[ii].s1 = %f\n", bmax[ii].s[1]);
-			mexPrintBase("bmax[ii].s2 = %f\n", bmax[ii].s[2]);
+			mexPrintBase("d_N[ii].s0 = %u\n", VEC_X(d_N[ii]));
+			mexPrintBase("d_N[ii].s1 = %u\n", VEC_Y(d_N[ii]));
+			mexPrintBase("d_N[ii].s2 = %u\n", VEC_Z(d_N[ii]));
+			mexPrintBase("d[ii].s0 = %f\n", VEC_X(d[ii]));
+			mexPrintBase("d[ii].s1 = %f\n", VEC_Y(d[ii]));
+			mexPrintBase("d[ii].s2 = %f\n", VEC_Z(d[ii]));
+			mexPrintBase("b[ii].s0 = %f\n", VEC_X(b[ii]));
+			mexPrintBase("b[ii].s1 = %f\n", VEC_Y(b[ii]));
+			mexPrintBase("b[ii].s2 = %f\n", VEC_Z(b[ii]));
+			mexPrintBase("bmax[ii].s0 = %f\n", VEC_X(bmax[ii]));
+			mexPrintBase("bmax[ii].s1 = %f\n", VEC_Y(bmax[ii]));
+			mexPrintBase("bmax[ii].s2 = %f\n", VEC_Z(bmax[ii]));
+#if !defined(CUDA) && !defined(HIP)
 			mexPrintBase("global.dimensions() = %u\n", global.dimensions());
 			mexPrintBase("local.dimensions() = %u\n", local.dimensions());
 #endif // END CUDA
@@ -3362,15 +3361,9 @@ public:
 			mexPrintBase("FPType = %u\n", inputScalars.FPType);
 			if (inputScalars.FPType == 4) {
 				mexPrintBase("dL = %f\n", inputScalars.dL);
-#if defined(CUDA) || defined(HIP)
-				mexPrintBase("d_Scale4[ii].s[0] = %f\n", inputScalars.d_Scale4[ii].x);
-				mexPrintBase("d_Scale4[ii].s[1] = %f\n", inputScalars.d_Scale4[ii].y);
-				mexPrintBase("d_Scale4[ii].s[2] = %f\n", inputScalars.d_Scale4[ii].z);
-#else
-				mexPrintBase("d_Scale4[ii].s[0] = %f\n", inputScalars.d_Scale4[ii].s[0]);
-				mexPrintBase("d_Scale4[ii].s[1] = %f\n", inputScalars.d_Scale4[ii].s[1]);
-				mexPrintBase("d_Scale4[ii].s[2] = %f\n", inputScalars.d_Scale4[ii].s[2]);
-#endif // END CUDA
+				mexPrintBase("d_Scale4[ii].s[0] = %f\n", VEC_X(inputScalars.d_Scale4[ii]));
+				mexPrintBase("d_Scale4[ii].s[1] = %f\n", VEC_Y(inputScalars.d_Scale4[ii]));
+				mexPrintBase("d_Scale4[ii].s[2] = %f\n", VEC_Z(inputScalars.d_Scale4[ii]));
 			}
 			mexPrintBase("length[osa_iter] = %u\n", length[osa_iter + timestep * inputScalars.subsets]);
 			mexPrintBase("listmode = %u\n", inputScalars.listmode);
@@ -4649,13 +4642,11 @@ public:
 		if (inputScalars.largeDim) {
 #if defined(CUDA) || defined(HIP)
 			globalPrior[2] = Nz;
-			NzOrig = d_N[0].z;
-			d_N[0].z = Nz;
 #else
 			globalPrior = { globalPrior[0], globalPrior[1], Nz };
-			NzOrig = d_N[0].s2;
-			d_N[0].s2 = Nz;
 #endif // END CUDA
+			NzOrig = VEC_Z(d_N[0]);
+			VEC_Z(d_N[0]) = Nz;
 		}
 		if (kk == 0 && inputScalars.largeDim)
 			nOffset = { 0, Nz - w_vec.Nlz - w_vec.Ndz };
@@ -4687,15 +4678,9 @@ public:
 			mexPrintBase("w_vec.h2 = %f\n", w_vec.h2);
 			mexPrintBase("Nz = %u\n", Nz);
 			mexPrintBase("kk = %u\n", kk);
-#if defined(CUDA) || defined(HIP)
-			mexPrintBase("nOffset.x = %u\n", nOffset.x);
-			mexPrintBase("nOffset.y = %u\n", nOffset.y);
-			mexPrintBase("d_N[0].z = %u\n", d_N[0].z);
-#else
-			mexPrintBase("nOffset.x = %u\n", nOffset.s0);
-			mexPrintBase("nOffset.y = %u\n", nOffset.s1);
-			mexPrintBase("d_N[0].z = %u\n", d_N[0].s2);
-#endif // END CUDA
+			mexPrintBase("nOffset.x = %u\n", VEC_X(nOffset));
+			mexPrintBase("nOffset.y = %u\n", VEC_Y(nOffset));
+			mexPrintBase("d_N[0].z = %u\n", VEC_Z(d_N[0]));
 			mexPrintBase("w_vec.RDP_gamma = %f\n", w_vec.RDP_gamma);
 			mexPrintBase("useImages = %d\n", inputScalars.useImages);
 			mexEval();
@@ -4790,11 +4775,7 @@ public:
 #endif // END CUDA
 		}
 		if (inputScalars.largeDim)
-#if defined(CUDA) || defined(HIP)
-			d_N[0].z = NzOrig;
-#else
-			d_N[0].s2 = NzOrig;
-#endif // END CUDA
+			VEC_Z(d_N[0]) = NzOrig;
 		return 0;
 	}
 
@@ -4847,13 +4828,11 @@ public:
 		if (inputScalars.largeDim) {
 #if defined(CUDA) || defined(HIP)
 			globalPrior[2] = Nz;
-			NzOrig = d_N[0].z;
-			d_N[0].z = Nz;
 #else
 			globalPrior = { globalPrior[0], globalPrior[1], Nz };
-			NzOrig = d_N[0].s2;
-			d_N[0].s2 = Nz;
 #endif // END CUDA
+			NzOrig = VEC_Z(d_N[0]);
+			VEC_Z(d_N[0]) = Nz;
 		}
 		if (kk == 0 && inputScalars.largeDim)
 			nOffset = { 0, NzOrig };
@@ -4969,11 +4948,7 @@ public:
 #endif // END CUDA
 		}
 		if (inputScalars.largeDim)
-#if defined(CUDA) || defined(HIP)
-			d_N[0].z = NzOrig;
-#else
-			d_N[0].s2 = NzOrig;
-#endif // END CUDA
+			VEC_Z(d_N[0]) = NzOrig;
 		return 0;
 	}
 
@@ -5024,13 +4999,11 @@ public:
 		if (inputScalars.largeDim) {
 #if defined(CUDA) || defined(HIP)
 			globalPrior[2] = Nz;
-			NzOrig = d_N[0].z;
-			d_N[0].z = Nz;
 #else
 			globalPrior = { globalPrior[0], globalPrior[1], Nz };
-			NzOrig = d_N[0].s2;
-			d_N[0].s2 = Nz;
 #endif // END CUDA
+			NzOrig = VEC_Z(d_N[0]);
+			VEC_Z(d_N[0]) = Nz;
 		}
 		if (kk == 0 && inputScalars.largeDim)
 			nOffset = { 0, Nz - w_vec.Ndz };
@@ -5128,11 +5101,7 @@ public:
 #endif // END CUDA
 		}
 		if (inputScalars.largeDim)
-#if defined(CUDA) || defined(HIP)
-			d_N[0].z = NzOrig;
-#else
-			d_N[0].s2 = NzOrig;
-#endif // END CUDA
+			VEC_Z(d_N[0]) = NzOrig;
 		return 0;
 	}
 
@@ -5289,15 +5258,9 @@ public:
 			mexPrintBase("globalPriorEFOV[0] = %u\n", globalPriorEFOV[0]);
 			mexPrintBase("globalPriorEFOV[1] = %u\n", globalPriorEFOV[1]);
 			mexPrintBase("globalPriorEFOV[2] = %u\n", globalPriorEFOV[2]);
-#if defined(CUDA) || defined(HIP)
-			mexPrintBase("d_N.s[0] = %u\n", d_N[0].x);
-			mexPrintBase("d_N.s[1] = %u\n", d_N[0].y);
-			mexPrintBase("d_N.s[2] = %u\n", d_N[0].z);
-#else
-			mexPrintBase("d_N.s[0] = %u\n", d_N[0].s[0]);
-			mexPrintBase("d_N.s[1] = %u\n", d_N[0].s[1]);
-			mexPrintBase("d_N.s[2] = %u\n", d_N[0].s[2]);
-#endif // END CUDA
+			mexPrintBase("d_N.s[0] = %u\n", VEC_X(d_N[0]));
+			mexPrintBase("d_N.s[1] = %u\n", VEC_Y(d_N[0]));
+			mexPrintBase("d_N.s[2] = %u\n", VEC_Z(d_N[0]));
 			mexEval();
 		}
 #if defined(CUDA) || defined(HIP)
@@ -5382,15 +5345,9 @@ public:
 			mexPrintBase("globalPriorEFOV[0] = %u\n", globalPriorEFOV[0]);
 			mexPrintBase("globalPriorEFOV[1] = %u\n", globalPriorEFOV[1]);
 			mexPrintBase("globalPriorEFOV[2] = %u\n", globalPriorEFOV[2]);
-#if defined(CUDA) || defined(HIP)
-			mexPrintBase("d_N.s[0] = %u\n", d_N[0].x);
-			mexPrintBase("d_N.s[1] = %u\n", d_N[0].y);
-			mexPrintBase("d_N.s[2] = %u\n", d_N[0].z);
-#else
-			mexPrintBase("d_N.s[0] = %u\n", d_N[0].s[0]);
-			mexPrintBase("d_N.s[1] = %u\n", d_N[0].s[1]);
-			mexPrintBase("d_N.s[2] = %u\n", d_N[0].s[2]);
-#endif // END CUDA
+			mexPrintBase("d_N.s[0] = %u\n", VEC_X(d_N[0]));
+			mexPrintBase("d_N.s[1] = %u\n", VEC_Y(d_N[0]));
+			mexPrintBase("d_N.s[2] = %u\n", VEC_Z(d_N[0]));
 			mexPrintBase("vSize = %u\n", vSize);
 			mexEval();
 		}
@@ -5476,15 +5433,9 @@ public:
 			mexPrintBase("global[0] = %u\n", globalPriorEFOV[0]);
 			mexPrintBase("global[1] = %u\n", globalPriorEFOV[1]);
 			mexPrintBase("global[2] = %u\n", globalPriorEFOV[2]);
-#if defined(CUDA) || defined(HIP)
-			mexPrintBase("d_N.s[0] = %u\n", d_N[0].x);
-			mexPrintBase("d_N.s[1] = %u\n", d_N[0].y);
-			mexPrintBase("d_N.s[2] = %u\n", d_N[0].z);
-#else
-			mexPrintBase("d_N.s[0] = %u\n", d_N[0].s[0]);
-			mexPrintBase("d_N.s[1] = %u\n", d_N[0].s[1]);
-			mexPrintBase("d_N.s[2] = %u\n", d_N[0].s[2]);
-#endif // END CUDA
+			mexPrintBase("d_N.s[0] = %u\n", VEC_X(d_N[0]));
+			mexPrintBase("d_N.s[1] = %u\n", VEC_Y(d_N[0]));
+			mexPrintBase("d_N.s[2] = %u\n", VEC_Z(d_N[0]));
 			mexEval();
 		}
 		KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, d_N[0]);
@@ -5578,15 +5529,9 @@ public:
 			mexPrintBase("global[0] = %u\n", globalPriorEFOV[0]);
 			mexPrintBase("global[1] = %u\n", globalPriorEFOV[1]);
 			mexPrintBase("global[2] = %u\n", globalPriorEFOV[2]);
-#if defined(CUDA) || defined(HIP)
-			mexPrintBase("d_N.s[0] = %u\n", d_N[0].x);
-			mexPrintBase("d_N.s[1] = %u\n", d_N[0].y);
-			mexPrintBase("d_N.s[2] = %u\n", d_N[0].z);
-#else
-			mexPrintBase("d_N.s[0] = %u\n", d_N[0].s[0]);
-			mexPrintBase("d_N.s[1] = %u\n", d_N[0].s[1]);
-			mexPrintBase("d_N.s[2] = %u\n", d_N[0].s[2]);
-#endif // END CUDA
+			mexPrintBase("d_N.s[0] = %u\n", VEC_X(d_N[0]));
+			mexPrintBase("d_N.s[1] = %u\n", VEC_Y(d_N[0]));
+			mexPrintBase("d_N.s[2] = %u\n", VEC_Z(d_N[0]));
 			mexPrintBase("theta = %f\n", theta);
 			mexPrintBase("tau = %f\n", tau);
 			mexEval();
@@ -5757,13 +5702,11 @@ public:
 		if (inputScalars.largeDim) {
 #if defined(CUDA) || defined(HIP)
 			globalPrior[2] = Nz;
-			NzOrig = d_N[0].z;
-			d_N[0].z = Nz;
 #else
 			globalPrior = { globalPrior[0], globalPrior[1], Nz };
-			NzOrig = d_N[0].s2;
-			d_N[0].s2 = Nz;
 #endif // END CUDA
+			NzOrig = VEC_Z(d_N[0]);
+			VEC_Z(d_N[0]) = Nz;
 		}
 		if (kk == 0 && inputScalars.largeDim)
 			nOffset = { 0, Nz - w_vec.Ndz };
@@ -5855,11 +5798,7 @@ public:
 #endif // END CUDA
 		}
 		if (inputScalars.largeDim)
-#if defined(CUDA) || defined(HIP)
-			d_N[0].z = NzOrig;
-#else
-			d_N[0].s2 = NzOrig;
-#endif // END CUDA
+			VEC_Z(d_N[0]) = NzOrig;
 		return 0;
 	}
 
@@ -5921,13 +5860,11 @@ public:
 		if (inputScalars.largeDim) {
 #if defined(CUDA) || defined(HIP)
 			globalPrior[2] = Nz;
-			NzOrig = d_N[0].z;
-			d_N[0].z = Nz;
 #else
 			globalPrior = { globalPrior[0], globalPrior[1], Nz };
-			NzOrig = d_N[0].s2;
-			d_N[0].s2 = Nz;
 #endif // END CUDA
+			NzOrig = VEC_Z(d_N[0]);
+			VEC_Z(d_N[0]) = Nz;
 		}
 		if (kk == 0 && inputScalars.largeDim)
 			nOffset = { 0, Nz - 1 };
@@ -6012,11 +5949,7 @@ public:
 #endif // END CUDA
 		}
 		if (inputScalars.largeDim)
-#if defined(CUDA) || defined(HIP)
-			d_N[0].z = NzOrig;
-#else
-			d_N[0].s2 = NzOrig;
-#endif // END CUDA
+			VEC_Z(d_N[0]) = NzOrig;
 		return 0;
 	}
 
@@ -6061,21 +5994,15 @@ public:
 			mexPrintBase("global[0] = %u\n", global[0]);
 			mexPrintBase("global[1] = %u\n", global[1]);
 			mexPrintBase("global[2] = %u\n", global[2]);
-#if defined(CUDA) || defined(HIP)
 			mexPrintBase("erotusBP[0] = %u\n", erotusBP[0][ii]);
 			mexPrintBase("erotusBP[1] = %u\n", erotusBP[1][ii]);
 			mexPrintBase("erotusPDHG[0] = %u\n", erotusPDHG[0][ii]);
 			mexPrintBase("erotusPDHG[1] = %u\n", erotusPDHG[1][ii]);
 			mexPrintBase("localPrior[0] = %u\n", localPrior[0]);
 			mexPrintBase("localPrior[1] = %u\n", localPrior[1]);
-			mexPrintBase("d_N.s[0] = %u\n", d_N[ii].x);
-			mexPrintBase("d_N.s[1] = %u\n", d_N[ii].y);
-			mexPrintBase("d_N.s[2] = %u\n", d_N[ii].z);
-#else
-			mexPrintBase("d_N.s[0] = %u\n", d_N[ii].s[0]);
-			mexPrintBase("d_N.s[1] = %u\n", d_N[ii].s[1]);
-			mexPrintBase("d_N.s[2] = %u\n", d_N[ii].s[2]);
-#endif // END CUDA
+			mexPrintBase("d_N.s[0] = %u\n", VEC_X(d_N[ii]));
+			mexPrintBase("d_N.s[1] = %u\n", VEC_Y(d_N[ii]));
+			mexPrintBase("d_N.s[2] = %u\n", VEC_Z(d_N[ii]));
 			mexPrintBase("lambda = %.8f\n", lambda);
 			mexPrintBase("alpha = %f\n", alpha);
 			mexEval();
@@ -6162,15 +6089,9 @@ public:
 			mexPrintBase("global[0] = %u\n", global[0]);
 			mexPrintBase("global[1] = %u\n", global[1]);
 			mexPrintBase("global[2] = %u\n", global[2]);
-#if defined(CUDA) || defined(HIP)
-			mexPrintBase("d_N.s[0] = %u\n", d_N[ii].x);
-			mexPrintBase("d_N.s[1] = %u\n", d_N[ii].y);
-			mexPrintBase("d_N.s[2] = %u\n", d_N[ii].z);
-#else
-			mexPrintBase("d_N.s[0] = %u\n", d_N[ii].s[0]);
-			mexPrintBase("d_N.s[1] = %u\n", d_N[ii].s[1]);
-			mexPrintBase("d_N.s[2] = %u\n", d_N[ii].s[2]);
-#endif // END CUDA
+			mexPrintBase("d_N.s[0] = %u\n", VEC_X(d_N[ii]));
+			mexPrintBase("d_N.s[1] = %u\n", VEC_Y(d_N[ii]));
+			mexPrintBase("d_N.s[2] = %u\n", VEC_Z(d_N[ii]));
 			mexPrintBase("theta = %f\n", theta);
 			mexPrintBase("tau = %f\n", tau);
 			mexEval();
@@ -6242,15 +6163,9 @@ public:
 			mexPrintBase("global[0] = %u\n", global[0]);
 			mexPrintBase("global[1] = %u\n", global[1]);
 			mexPrintBase("global[2] = %u\n", global[2]);
-#if defined(CUDA) || defined(HIP)
-			mexPrintBase("d_N.s[0] = %u\n", d_N[ii].x);
-			mexPrintBase("d_N.s[1] = %u\n", d_N[ii].y);
-			mexPrintBase("d_N.s[2] = %u\n", d_N[ii].z);
-#else
-			mexPrintBase("d_N.s[0] = %u\n", d_N[ii].s[0]);
-			mexPrintBase("d_N.s[1] = %u\n", d_N[ii].s[1]);
-			mexPrintBase("d_N.s[2] = %u\n", d_N[ii].s[2]);
-#endif // END CUDA
+			mexPrintBase("d_N.s[0] = %u\n", VEC_X(d_N[ii]));
+			mexPrintBase("d_N.s[1] = %u\n", VEC_Y(d_N[ii]));
+			mexPrintBase("d_N.s[2] = %u\n", VEC_Z(d_N[ii]));
 			mexEval();
 		}
 
@@ -6261,15 +6176,9 @@ public:
 		else {
 			KARG(kArgs, kernelRotate, kernelIndRot, d_im);
 		}
-#if defined(CUDA) || defined(HIP)
-		KARG(kArgs, kernelRotate, kernelIndRot, d_N[ii].x);
-		KARG(kArgs, kernelRotate, kernelIndRot, d_N[ii].y);
-		KARG(kArgs, kernelRotate, kernelIndRot, d_N[ii].z);
-#else
-		KARG(kArgs, kernelRotate, kernelIndRot, d_N[ii].s[0]);
-		KARG(kArgs, kernelRotate, kernelIndRot, d_N[ii].s[1]);
-		KARG(kArgs, kernelRotate, kernelIndRot, d_N[ii].s[2]);
-#endif // END CUDA
+		KARG(kArgs, kernelRotate, kernelIndRot, VEC_X(d_N[ii]));
+		KARG(kArgs, kernelRotate, kernelIndRot, VEC_Y(d_N[ii]));
+		KARG(kArgs, kernelRotate, kernelIndRot, VEC_Z(d_N[ii]));
 		KARG(kArgs, kernelRotate, kernelIndRot, cosa);
 		KARG(kArgs, kernelRotate, kernelIndRot, sina);
 		// Compute the kernel
