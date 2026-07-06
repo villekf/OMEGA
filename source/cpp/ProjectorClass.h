@@ -15,6 +15,7 @@
 *******************************************************************************************************************************************/
 #pragma once
 #include "structs.h"
+#include <array>
 #include <cstring>
 
 // ======== OpenCL / CUDA / Metal compatibility aliases and macros ========
@@ -25,6 +26,7 @@ using KernelHandle = CUfunction;
 using ProgramHandle = CUmodule;
 using Int = int;
 using UInt = unsigned int;
+using WorkRange = std::array<UInt, 3>;
 using Long = int64_t;
 using ULong = uint64_t;
 using Float2 = float2;
@@ -44,6 +46,7 @@ using KernelHandle = NS::SharedPtr<MTL::ComputePipelineState>;
 using ProgramHandle = NS::SharedPtr<MTL::Library>;
 using Int = int;
 using UInt = unsigned int;
+using WorkRange = std::array<UInt, 3>;
 using Long = int64_t;
 using ULong = uint64_t;
 using Float2 = simd::float2;
@@ -63,6 +66,7 @@ using KernelHandle = cl::Kernel;
 using ProgramHandle = cl::Program;
 using Int = cl_int;
 using UInt = cl_uint;
+using WorkRange = cl::NDRange;
 using Long = cl_long;
 using ULong = cl_ulong;
 using Float2 = cl_float2;
@@ -86,6 +90,28 @@ using TextureArray = EmptyTextureArray;
 #define VEC_Y(VEC) ((VEC).s[1])
 #define VEC_Z(VEC) ((VEC).s[2])
 #endif
+#if defined(CUDA) || defined(HIP) || defined(METAL)
+#define SET_RANGE2(RANGE, X, Y) do { \
+	(RANGE)[0] = static_cast<UInt>(X); \
+	(RANGE)[1] = static_cast<UInt>(Y); \
+	(RANGE)[2] = 1U; \
+} while(0)
+#define SET_RANGE3(RANGE, X, Y, Z) do { \
+	(RANGE)[0] = static_cast<UInt>(X); \
+	(RANGE)[1] = static_cast<UInt>(Y); \
+	(RANGE)[2] = static_cast<UInt>(Z); \
+} while(0)
+#else
+#define SET_RANGE2(RANGE, X, Y) do { (RANGE) = { (X), (Y) }; } while(0)
+#define SET_RANGE3(RANGE, X, Y, Z) do { (RANGE) = { (X), (Y), (Z) }; } while(0)
+#endif
+#if defined(CUDA) || defined(HIP)
+#define SET_LAUNCH_RANGE3(RANGE, X, Y, Z, LOCAL_RANGE) \
+	SET_RANGE3((RANGE), ((X) / (LOCAL_RANGE)[0]), ((Y) / (LOCAL_RANGE)[1]), ((Z) / (LOCAL_RANGE)[2]))
+#else
+#define SET_LAUNCH_RANGE3(RANGE, X, Y, Z, LOCAL_RANGE) SET_RANGE3((RANGE), (X), (Y), (Z))
+#endif
+#define SET_RANGE_Z(RANGE, Z) SET_RANGE3((RANGE), (RANGE)[0], (RANGE)[1], (Z))
 #if defined(CUDA) || defined(HIP)
 #define GET_KERNEL(KVAR, PROG, NAME) status = cuModuleGetFunction(&KVAR, PROG, NAME)
 #define KCHECK(MSG) CUDA_CHECK(status, MSG, status)
@@ -286,15 +312,7 @@ class ProjectorClass {
 	size_t erotusPriorEFOV[3];
 	size_t erotusSens[3];
 	// Local and global sizes
-#if defined(CUDA) || defined(HIP)
-	unsigned int local[3];
-	unsigned int global[3];
-	unsigned int localPrior[3];
-	unsigned int globalPrior[3];
-	unsigned int globalPriorEFOV[3];
-#else
-	cl::NDRange local, global, localPrior, globalPrior, globalPriorEFOV;
-#endif // END CUDA
+	WorkRange local, global, localPrior, globalPrior, globalPriorEFOV;
 	struct ResourceState {
 		bool useBuffers = true;
 		bool xC = false;
@@ -2095,13 +2113,11 @@ public:
 				erotusPriorEFOV[1] = (local_sizePrior[1] - erotusPriorEFOV[1]);
 			if (erotusPriorEFOV[2] > 0)
 				erotusPriorEFOV[2] = (local_sizePrior[1] - erotusPriorEFOV[2]);
-#if defined(CUDA) || defined(HIP)
-			globalPriorEFOV[0] = (inputScalars.NxPrior + erotusPriorEFOV[0]) / local_sizePrior[0];
-			globalPriorEFOV[1] = (inputScalars.NyPrior + erotusPriorEFOV[1]) / local_sizePrior[1];
-			globalPriorEFOV[2] = (inputScalars.NzPrior + erotusPriorEFOV[2]) / local_sizePrior[2];
-#else
-			globalPriorEFOV = { inputScalars.NxPrior + erotusPriorEFOV[0], inputScalars.NyPrior + erotusPriorEFOV[1], inputScalars.NzPrior + erotusPriorEFOV[2] };
-#endif // END CUDA
+			SET_LAUNCH_RANGE3(globalPriorEFOV,
+				inputScalars.NxPrior + erotusPriorEFOV[0],
+				inputScalars.NyPrior + erotusPriorEFOV[1],
+				inputScalars.NzPrior + erotusPriorEFOV[2],
+				local_sizePrior);
 		}
 
 		erotusBP.resize(2);
@@ -2124,17 +2140,8 @@ public:
 			if (erotusBP[1][ii] > 0)
 				erotusBP[1][ii] = (local_size[1] - erotusBP[1][ii]);
 		}
-#if defined(CUDA) || defined(HIP)
-		local[0] = local_size[0];
-		local[1] = local_size[1];
-		local[2] = 1;
-		localPrior[0] = local_sizePrior[0];
-		localPrior[1] = local_sizePrior[1];
-		localPrior[2] = local_sizePrior[2];
-#else
-		local = { local_size[0] , local_size[1] };
-		localPrior = { local_sizePrior[0] , local_sizePrior[1], local_sizePrior[2] };
-#endif // END CUDA
+		SET_RANGE2(local, local_size[0], local_size[1]);
+		SET_RANGE3(localPrior, local_sizePrior[0], local_sizePrior[1], local_sizePrior[2]);
 		erotusPrior[0] = inputScalars.Nx[0] % local_sizePrior[0];
 		erotusPrior[1] = inputScalars.Ny[0] % local_sizePrior[1];
 		erotusPrior[2] = inputScalars.Nz[0] % local_sizePrior[2];
@@ -2144,14 +2151,15 @@ public:
 			erotusPrior[1] = (local_sizePrior[1] - erotusPrior[1]);
 		if (erotusPrior[2] > 0)
 			erotusPrior[2] = (local_sizePrior[1] - erotusPrior[2]);
+		SET_LAUNCH_RANGE3(globalPrior,
+			inputScalars.Nx[0] + erotusPrior[0],
+			inputScalars.Ny[0] + erotusPrior[1],
+			inputScalars.Nz[0] + erotusPrior[2],
+			localPrior);
 #if defined(CUDA) || defined(HIP)
-		globalPrior[0] = (inputScalars.Nx[0] + erotusPrior[0]) / localPrior[0];
-		globalPrior[1] = (inputScalars.Ny[0] + erotusPrior[1]) / localPrior[1];
-		globalPrior[2] = (inputScalars.Nz[0] + erotusPrior[2]) / localPrior[2];
 		d_NOrig = make_vec3<int3>(static_cast<int>(inputScalars.NxOrig), static_cast<int>(inputScalars.NyOrig), static_cast<int>(inputScalars.NzOrig));
 		d_NPrior = make_vec3<int3>(static_cast<int>(inputScalars.NxPrior), static_cast<int>(inputScalars.NyPrior), static_cast<int>(inputScalars.NzPrior));
 #else
-		globalPrior = { inputScalars.Nx[0] + erotusPrior[0], inputScalars.Ny[0] + erotusPrior[1], inputScalars.Nz[0] + erotusPrior[2] };
 		d_NOrig = { static_cast<Int>(inputScalars.NxOrig), static_cast<Int>(inputScalars.NyOrig), static_cast<Int>(inputScalars.NzOrig) };
 		d_NPrior = { static_cast<Int>(inputScalars.NxPrior), static_cast<Int>(inputScalars.NyPrior), static_cast<Int>(inputScalars.NzPrior) };
 #endif // END CUDA
@@ -3171,41 +3179,41 @@ public:
 #if defined(CUDA) || defined(HIP)
 		std::vector<int64_t> length = length1;
 		std::vector<void*> kTemp = FPArgs;
-		if (inputScalars.FPType == 5) {
-			global[0] = (inputScalars.nRowsD + erotus[0]) / local[0];
-			global[1] = ((inputScalars.nColsD + NVOXELSFP - 1) / NVOXELSFP + erotus[1]) / local[1];
-			global[2] = length[osa_iter + timestep * inputScalars.subsets];
-		}
-		else if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
-			global[0] = (inputScalars.nRowsD + erotus[0]) / local[0];
-			global[1] = (inputScalars.nColsD + erotus[1]) / local[1];
-			global[2] = length[osa_iter + timestep * inputScalars.subsets];
-		}
 #else
 		kernelIndFPSubIter = kernelIndFP;
-		if (inputScalars.FPType == 5)
-			global = { inputScalars.nRowsD + erotus[0], (inputScalars.nColsD + NVOXELSFP - 1) / NVOXELSFP + erotus[1], static_cast<size_t>(length[osa_iter + timestep * inputScalars.subsets]) };
-		else if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
-			global = { inputScalars.nRowsD + erotus[0], inputScalars.nColsD + erotus[1], static_cast<size_t>(length[osa_iter + timestep * inputScalars.subsets]) };
 #endif // END CUDA
+		if (inputScalars.FPType == 5) {
+			SET_LAUNCH_RANGE3(global,
+				inputScalars.nRowsD + erotus[0],
+				(inputScalars.nColsD + NVOXELSFP - 1) / NVOXELSFP + erotus[1],
+				length[osa_iter + timestep * inputScalars.subsets],
+				local);
+		}
+		else if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
+			SET_LAUNCH_RANGE3(global,
+				inputScalars.nRowsD + erotus[0],
+				inputScalars.nColsD + erotus[1],
+				length[osa_iter + timestep * inputScalars.subsets],
+				local);
+		}
 		else {
 			erotus[0] = length[osa_iter + timestep * inputScalars.subsets] % local_size[0];
 
 			if (erotus[0] > 0)
 				erotus[0] = (local_size[0] - erotus[0]);
-#if defined(CUDA) || defined(HIP)
-			global[0] = (length[osa_iter + timestep * inputScalars.subsets] + erotus[0]) / local[0];
-			global[1] = 1;
-			global[2] = 1;
-#else
-			global = { static_cast<cl::size_type>(length[osa_iter + timestep * inputScalars.subsets] + erotus[0]), 1, 1 };
+			SET_LAUNCH_RANGE3(global,
+				length[osa_iter + timestep * inputScalars.subsets] + erotus[0],
+				1,
+				1,
+				local);
 		}
+#if !defined(CUDA) && !defined(HIP)
 		std::chrono::steady_clock::time_point tStart;
 		std::chrono::steady_clock::time_point tEnd;
 		if (DEBUG || inputScalars.verbose >= 3) {
 			tStart = std::chrono::steady_clock::now();
-#endif // END CUDA
 		}
+#endif // END CUDA
 
 		if (DEBUG) {
 			mexPrintBase("global[0] = %u\n", global[0]);
@@ -3627,39 +3635,27 @@ public:
 		}
 
 		if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
-#if defined(CUDA) || defined(HIP)
 			if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
-				global[0] = (inputScalars.nRowsD + erotus[0]) / local[0];
-				global[1] = (inputScalars.nColsD + erotus[1]) / local[1];
-				global[2] = length[indD];
+				SET_LAUNCH_RANGE3(global,
+					inputScalars.nRowsD + erotus[0],
+					inputScalars.nColsD + erotus[1],
+					length[indD],
+					local);
 			}
 			else if (inputScalars.listmode > 0 && compSens) {
-				global[0] = static_cast<size_t>(inputScalars.det_per_ring + erotusSens[0]) / local[0];
-				global[1] = (static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1]) / local[1];
-				global[2] = static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.nLayers);
+				const size_t sensitivityDepth = static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.nLayers);
+				SET_LAUNCH_RANGE3(global,
+					static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0],
+					static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1],
+					sensitivityDepth,
+					local);
 			}
-#else
-			if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
-				global = { inputScalars.nRowsD + erotus[0], inputScalars.nColsD + erotus[1], static_cast<size_t>(length[indD]) };
-			else if (inputScalars.listmode > 0 && compSens)
-				if (inputScalars.nLayers > 1)
-					global = { static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0], static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1],
-					static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.nLayers) };
-				else
-					global = { static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0], static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) };
-#endif // END CUDA
 			else {
 				erotus[0] = length[indD] % local_size[0];
 
 				if (erotus[0] > 0)
 					erotus[0] = (local_size[0] - erotus[0]);
-#if defined(CUDA) || defined(HIP)
-				global[0] = (length[indD] + erotus[0]) / local[0];
-				global[1] = 1;
-				global[2] = 1;
-#else
-				global = { static_cast<cl::size_type>(length[indD] + erotus[0]), 1, 1 };
-#endif // END CUDA
+				SET_LAUNCH_RANGE3(global, length[indD] + erotus[0], 1, 1, local);
 			}
 
 			if (DEBUG) {
@@ -4000,35 +3996,26 @@ public:
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_norm[osa_iter]);
 			}
 			else {
-#if defined(CUDA) || defined(HIP)
 				if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
-					global[0] = (inputScalars.nRowsD + erotus[0]) / local[0];
-					global[1] = (inputScalars.nColsD + erotus[1]) / local[1];
-					global[2] = length[indD];
+					SET_LAUNCH_RANGE3(global,
+						inputScalars.nRowsD + erotus[0],
+						inputScalars.nColsD + erotus[1],
+						length[indD],
+						local);
 				}
 				else if (inputScalars.listmode > 0 && compSens) {
-					global[0] = static_cast<size_t>(inputScalars.det_per_ring + erotusSens[0]) / local[0];
-					global[1] = (static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1]) / local[1];
-					global[2] = static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings);
+					SET_LAUNCH_RANGE3(global,
+						static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0],
+						static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1],
+						static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings),
+						local);
 				}
-#else
-				if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
-					global = { inputScalars.nRowsD + erotus[0], inputScalars.nColsD + erotus[1], static_cast<size_t>(length[indD]) };
-				else if (inputScalars.listmode > 0 && compSens)
-					global = { static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0], static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) };
-#endif // END CUDA
 				else {
 					erotus[0] = length[indD] % local_size[0];
 
 					if (erotus[0] > 0)
 						erotus[0] = (local_size[0] - erotus[0]);
-#if defined(CUDA) || defined(HIP)
-					global[0] = (length[indD] + erotus[0]) / local[0];
-					global[1] = 1;
-					global[2] = 1;
-#else
-					global = { static_cast<cl::size_type>(length[indD] + erotus[0]), 1, 1 };
-#endif // END CUDA
+					SET_LAUNCH_RANGE3(global, length[indD] + erotus[0], 1, 1, local);
 				}
 
 				if (DEBUG) {
@@ -4440,11 +4427,7 @@ public:
 		else
 			Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim) {
-#if defined(CUDA) || defined(HIP)
-			globalPrior[2] = Nz;
-#else
-			globalPrior = { globalPrior[0], globalPrior[1], Nz };
-#endif // END CUDA
+			SET_RANGE_Z(globalPrior, Nz);
 			NzOrig = VEC_Z(d_N[0]);
 			VEC_Z(d_N[0]) = Nz;
 		}
@@ -4628,11 +4611,7 @@ public:
 		else
 			Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim) {
-#if defined(CUDA) || defined(HIP)
-			globalPrior[2] = Nz;
-#else
-			globalPrior = { globalPrior[0], globalPrior[1], Nz };
-#endif // END CUDA
+			SET_RANGE_Z(globalPrior, Nz);
 			NzOrig = VEC_Z(d_N[0]);
 			VEC_Z(d_N[0]) = Nz;
 		}
@@ -4647,7 +4626,7 @@ public:
 #else
 		UInt kernelIndRDP = 0U;
 		if (inputScalars.largeDim)
-			globalPrior = { globalPrior[0], globalPrior[1], inputScalars.Nz[0] };
+			SET_RANGE_Z(globalPrior, inputScalars.Nz[0]);
 #endif // END CUDA
 		if (DEBUG) {
 			mexPrintBase("inputScalars.epps = %.9f\n", inputScalars.epps);
@@ -4801,11 +4780,7 @@ public:
 		else
 			Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim) {
-#if defined(CUDA) || defined(HIP)
-			globalPrior[2] = Nz;
-#else
-			globalPrior = { globalPrior[0], globalPrior[1], Nz };
-#endif // END CUDA
+			SET_RANGE_Z(globalPrior, Nz);
 			NzOrig = VEC_Z(d_N[0]);
 			VEC_Z(d_N[0]) = Nz;
 		}
@@ -4821,7 +4796,7 @@ public:
 #else
 		UInt kernelIndGGMRF = 0U;
 		if (inputScalars.largeDim)
-			globalPrior = { globalPrior[0], globalPrior[1], inputScalars.Nz[0] };
+			SET_RANGE_Z(globalPrior, inputScalars.Nz[0]);
 #endif // END CUDA
 		if (DEBUG) {
 			mexPrintBase("p = %f\n", p);
@@ -5044,11 +5019,7 @@ public:
 		std::vector<void*> kArgs;
 #endif // END CUDA
 		if (inputScalars.largeDim)
-#if defined(CUDA) || defined(HIP)
-			globalPriorEFOV[2] = inputScalars.Nz[0];
-#else
-			globalPriorEFOV = { globalPriorEFOV[0], globalPriorEFOV[1], inputScalars.Nz[0] };
-#endif // END CUDA
+			SET_RANGE_Z(globalPriorEFOV, inputScalars.Nz[0]);
 		if (DEBUG) {
 			mexPrintBase("erotusPrior[0] = %u\n", erotusPrior[0]);
 			mexPrintBase("erotusPrior[1] = %u\n", erotusPrior[1]);
@@ -5128,11 +5099,7 @@ public:
 		std::vector<void*> kArgs;
 #endif // END CUDA
 		if (inputScalars.largeDim)
-#if defined(CUDA) || defined(HIP)
-			globalPriorEFOV[2] = inputScalars.Nz[0];
-#else
-			globalPriorEFOV = { globalPriorEFOV[0], globalPriorEFOV[1], inputScalars.Nz[0] };
-#endif // END CUDA
+			SET_RANGE_Z(globalPriorEFOV, inputScalars.Nz[0]);
 		if (DEBUG) {
 			mexPrintBase("global[0] = %u\n", globalPrior[0]);
 			mexPrintBase("global[1] = %u\n", globalPrior[1]);
@@ -5222,11 +5189,7 @@ public:
 		UInt kernelIndCPTGV = 0U;
 #endif // END CUDA
 		if (inputScalars.largeDim)
-#if defined(CUDA) || defined(HIP)
-			globalPriorEFOV[2] = inputScalars.Nz[0];
-#else
-			globalPriorEFOV = { globalPriorEFOV[0], globalPriorEFOV[1], inputScalars.Nz[0] };
-#endif // END CUDA
+			SET_RANGE_Z(globalPriorEFOV, inputScalars.Nz[0]);
 		if (DEBUG) {
 			mexPrintBase("global[0] = %u\n", globalPriorEFOV[0]);
 			mexPrintBase("global[1] = %u\n", globalPriorEFOV[1]);
@@ -5318,11 +5281,7 @@ public:
 		std::vector<void*> kArgs;
 #endif // END CUDA
 		if (inputScalars.largeDim)
-#if defined(CUDA) || defined(HIP)
-			globalPriorEFOV[2] = inputScalars.Nz[0];
-#else
-			globalPriorEFOV = { globalPriorEFOV[0], globalPriorEFOV[1], inputScalars.Nz[0] };
-#endif // END CUDA
+			SET_RANGE_Z(globalPriorEFOV, inputScalars.Nz[0]);
 		if (DEBUG) {
 			mexPrintBase("global[0] = %u\n", globalPriorEFOV[0]);
 			mexPrintBase("global[1] = %u\n", globalPriorEFOV[1]);
@@ -5464,7 +5423,7 @@ public:
 		CUevent tStart, tEnd;
 #else
 		if (inputScalars.largeDim)
-			globalPrior = { globalPrior[0], globalPrior[1], inputScalars.Nz[0] };
+			SET_RANGE_Z(globalPrior, inputScalars.Nz[0]);
 		std::chrono::steady_clock::time_point tStart;
 		std::chrono::steady_clock::time_point tEnd;
 #endif // END CUDA
@@ -5488,11 +5447,7 @@ public:
 		else
 			Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim) {
-#if defined(CUDA) || defined(HIP)
-			globalPrior[2] = Nz;
-#else
-			globalPrior = { globalPrior[0], globalPrior[1], Nz };
-#endif // END CUDA
+			SET_RANGE_Z(globalPrior, Nz);
 			NzOrig = VEC_Z(d_N[0]);
 			VEC_Z(d_N[0]) = Nz;
 		}
@@ -5615,7 +5570,7 @@ public:
 		CUevent tStart, tEnd;
 #else
 		if (inputScalars.largeDim)
-			globalPrior = { globalPrior[0], globalPrior[1], inputScalars.Nz[0] };
+			SET_RANGE_Z(globalPrior, inputScalars.Nz[0]);
 		std::chrono::steady_clock::time_point tStart;
 		std::chrono::steady_clock::time_point tEnd;
 #endif // END CUDA
@@ -5648,11 +5603,7 @@ public:
 		else
 			Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim) {
-#if defined(CUDA) || defined(HIP)
-			globalPrior[2] = Nz;
-#else
-			globalPrior = { globalPrior[0], globalPrior[1], Nz };
-#endif // END CUDA
+			SET_RANGE_Z(globalPrior, Nz);
 			NzOrig = VEC_Z(d_N[0]);
 			VEC_Z(d_N[0]) = Nz;
 		}
@@ -5773,14 +5724,15 @@ public:
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
 		status = cuCtxSynchronize();
-		global[0] = (inputScalars.Nx[ii] + erotusPDHG[0][ii]) / localPrior[0];
-		global[1] = (inputScalars.Ny[ii] + erotusPDHG[1][ii]) / localPrior[1];
-		global[2] = inputScalars.Nz[ii];
 #else
 		status = (CLCommandQueue[0]).finish();
 		UInt kernelIndPoisson = 0U;
-		global = { inputScalars.Nx[ii] + erotusPDHG[0][ii], inputScalars.Ny[ii] + erotusPDHG[1][ii], inputScalars.Nz[ii] };
 #endif // END CUDA
+		SET_LAUNCH_RANGE3(global,
+			inputScalars.Nx[ii] + erotusPDHG[0][ii],
+			inputScalars.Ny[ii] + erotusPDHG[1][ii],
+			inputScalars.Nz[ii],
+			localPrior);
 		UChar enforcePositivity = static_cast<UChar>(inputScalars.enforcePositivity);
 		if (DEBUG) {
 			mexPrintBase("global[0] = %u\n", global[0]);
@@ -5866,14 +5818,15 @@ public:
 		}
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
-		global[0] = (inputScalars.Nx[ii] + erotusPDHG[0][ii]) / localPrior[0];
-		global[1] = (inputScalars.Ny[ii] + erotusPDHG[1][ii]) / localPrior[1];
-		global[2] = inputScalars.Nz[ii];
 #else
 		status = (CLCommandQueue[0]).finish();
 		UInt kernelIndPDHG = 0U;
-		global = { inputScalars.Nx[ii] + erotusPDHG[0][ii], inputScalars.Ny[ii] + erotusPDHG[1][ii], inputScalars.Nz[ii] };
 #endif // END CUDA
+		SET_LAUNCH_RANGE3(global,
+			inputScalars.Nx[ii] + erotusPDHG[0][ii],
+			inputScalars.Ny[ii] + erotusPDHG[1][ii],
+			inputScalars.Nz[ii],
+			localPrior);
 		UChar enforcePositivity = static_cast<UChar>(inputScalars.enforcePositivity);
 		if (DEBUG) {
 			mexPrintBase("global[0] = %u\n", global[0]);
@@ -5940,13 +5893,14 @@ public:
 		Status status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
-		global[0] = (inputScalars.Nx[ii] + erotusPrior[0]) / localPrior[0];
-		global[1] = (inputScalars.Ny[ii] + erotusPrior[1]) / localPrior[1];
-		global[2] = inputScalars.Nz[ii];
 #else
 		UInt kernelIndRot = 0U;
-		global = { inputScalars.Nx[ii] + erotusPrior[0], inputScalars.Ny[ii] + erotusPrior[1], inputScalars.Nz[ii] };
 #endif // END CUDA
+		SET_LAUNCH_RANGE3(global,
+			inputScalars.Nx[ii] + erotusPrior[0],
+			inputScalars.Ny[ii] + erotusPrior[1],
+			inputScalars.Nz[ii],
+			localPrior);
 		if (DEBUG) {
 			mexPrintBase("global[0] = %u\n", global[0]);
 			mexPrintBase("global[1] = %u\n", global[1]);
