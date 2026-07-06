@@ -646,11 +646,7 @@ class ProjectorClass {
 #endif // END CUDA/METAL texture helpers
 
 	/// <summary>
-#if defined(CUDA) || defined(HIP)
-	/// This function creates the CUDA programs for the forward and backward projections and for NLM/MRP/RDP/TV/hyperbolic
-#else
-	/// This function creates the OpenCL programs for the forward and backward projections and for NLM/MRP/RDP/TV
-#endif // END CUDA
+	/// This function creates the backend programs for projection and auxiliary reconstruction kernels
 	/// </summary>
 #if !defined(CUDA) && !defined(HIP)
 	/// <param name="CLContext OpenCL context"></param>
@@ -1338,11 +1334,7 @@ class ProjectorClass {
 			}
 
 	/// <summary>
-#if defined(CUDA) || defined(HIP)
-	/// Builds the input CUDA program
-#else
-	/// Builds the input OpenCL program
-#endif // END CUDA
+	/// Builds one backend program from the supplied source
 	/// </summary>
 	/// <param name="verbose the level of verbosity"></param>
 	/// <param name="contentFP program code"></param>
@@ -1536,11 +1528,7 @@ class ProjectorClass {
 			}
 
 		/// <summary>
-#if defined(CUDA) || defined(HIP)
-	/// Creates the necessary CUDA kernels from the input programs
-#else
-	/// Creates the necessary OpenCL kernels from the input programs
-#endif // END CUDA
+	/// Creates the necessary backend kernels from the input programs
 	/// </summary>
 	/// <param name="kernelFP forward projection kernel"></param>
 	/// <param name="kernelBP backprojection kernel"></param>
@@ -1772,17 +1760,18 @@ public:
 	KernelHandle kernelMBSREM, kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelProxTVq, kernelProxTVDiv, kernelProxTVGrad, kernelElementMultiply, kernelElementDivision,
 		kernelTV, kernelProxTGVSymmDeriv, kernelProxTGVDiv, kernelProxTGVq, kernelPoisson, kernelPDHG, kernelProxRDP, kernelProxq, kernelProxTrans, kernelProxNLM, kernelGGMRF,
 		kernelsumma, kernelEstimate, kernelPSF, kernelPSFf, kernelDiv, kernelMult, kernelForward, kernelSensList, kernelApu, kernelHyper, kernelRotate;
-	// Device buffers / pointers common to both backends (plain, non-pointer)
+	// Device buffers shared across backends
 	DeviceBuffer d_xcenter, d_ycenter, d_zcenter, d_V, d_TOFCenter, d_eFOVIndices, d_weights, d_angle, d_g, d_uref, d_maskBPB, d_rayShiftsDetector, d_rayShiftsSource, d_maskPriorB;
 	std::vector<DeviceBuffer> d_attenB;
+	AFDeviceBuffer d_output, d_meanBP, d_meanFP, d_inputB, d_W, d_gaussianNLM;
+	AFDeviceBuffer d_qX, d_qY, d_qZ;
+	AFDeviceBuffer d_rX, d_rY, d_rXY, d_rZ, d_rXZ, d_rYZ;
+	AFDeviceBuffer d_vX, d_vY, d_vZ;
+	AFDeviceBuffer d_vector, d_input;
+	AFDeviceBuffer d_im, d_rhs, d_U, d_refIm, d_RDPref;
+	AFDeviceBuffer d_outputCT;
 #if defined(CUDA) || defined(HIP)
 	CUmodule programFP, programBP, programAux, programSens;
-	CUdeviceptr* d_output, * d_meanBP, * d_meanFP, * d_inputB, * d_W, * d_gaussianNLM;
-	CUdeviceptr* d_qX, * d_qY, * d_qZ;
-	CUdeviceptr* d_rX, * d_rY, * d_rXY, * d_rZ, * d_rXZ, * d_rYZ;
-	CUdeviceptr* d_vX, * d_vY, * d_vZ;
-	CUdeviceptr* d_vector, * d_input;
-	CUdeviceptr* d_im, * d_rhs, * d_U, * d_refIm, * d_RDPref;
 	CUtexObject d_maskFP, d_maskBP, d_maskPrior;
 	CUtexObject d_inputImage, d_imageX, d_imageY, d_urefIm, d_inputI, d_RDPrefI;
 	CUarray atArray, uRefArray, maskArrayBP, maskArrayPrior, BPArray, FPArray, integArrayXY, imArray;
@@ -1790,17 +1779,10 @@ public:
 	std::vector<void*> FPArgs, BPArgs, SensArgs;
 	CUDA_im_vectors vec_opencl;
 #else
-	cl::Buffer d_output, d_meanBP, d_meanFP, d_inputB, d_W, d_gaussianNLM;
-	cl::Buffer d_qX, d_qY, d_qZ;
-	cl::Buffer d_rX, d_rY, d_rXY, d_rZ, d_rXZ, d_rYZ;
-	cl::Buffer d_vX, d_vY, d_vZ;
-	cl::Buffer d_vector, d_input;
-	cl::Buffer d_im, d_rhs, d_U, d_refIm, d_RDPref;
 	cl::Image2D d_maskFP, d_maskBP, d_maskPrior;
 	cl::Image3D d_maskBP3, d_maskPrior3;
 	cl::Image3D d_inputImage, d_urefIm, d_inputI, d_RDPrefI;
 	std::vector<cl::Image3D> d_attenIm;
-	cl::Buffer d_outputCT;
 #endif // END CUDA
 	std::chrono::steady_clock::time_point tStartLocal, tStartGlobal, tStartAll;
 	std::chrono::steady_clock::time_point tEndLocal, tEndGlobal, tEndAll;
@@ -1814,15 +1796,9 @@ public:
 #if defined(CUDA) || defined(HIP)
 	std::vector<CUtexObject> d_maskFP3;
 	std::vector<CUarray> maskArrayFP;
-	std::vector<CUdeviceptr*> d_Summ;
 #else
 	std::vector<cl::Image3D> d_maskFP3;
-	std::vector<cl::Buffer> d_Summ;
-	std::vector<cl::Buffer> d_LFull, d_zindexFull, d_xyindexFull;
-	std::vector<cl::Buffer> d_meas;
-	std::vector<cl::Buffer> d_rand;
-	std::vector<cl::Buffer> d_imTemp;
-	std::vector<cl::Buffer> d_imFinal;
+	std::vector<DeviceBuffer> d_LFull, d_zindexFull, d_xyindexFull;
 	// Image origin
 	cl::detail::size_t_array origin = { { 0, 0, 0 } };
 	cl::detail::size_t_array region = { { 0, 0, 0 } };
@@ -1830,6 +1806,8 @@ public:
 	cl::ImageFormat format;
 	cl::ImageFormat formatMask;
 #endif // END CUDA
+	std::vector<AFDeviceBuffer> d_Summ;
+	std::vector<AFDeviceBuffer> d_meas, d_rand, d_imTemp, d_imFinal;
 	// Vector device buffers common to both backends
 	std::vector<DeviceBuffer> d_maskFPB;
 	std::vector<DeviceBuffer> d_normFull, d_scatFull, d_xFull, d_zFull;
