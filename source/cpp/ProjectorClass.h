@@ -16,19 +16,55 @@
 #pragma once
 #include "structs.h"
 
-// ======== OpenCL / CUDA compatibility macros (generated) ========
+// ======== OpenCL / CUDA / Metal compatibility aliases and macros ========
 #if defined(CUDA) || defined(HIP)
-#define STATUS_t CUresult
+using Status = CUresult;
+using KernelHandle = CUfunction;
+using ProgramHandle = CUmodule;
+using Int = int;
+using UInt = unsigned int;
+using Long = int64_t;
+using ULong = uint64_t;
+using Float2 = float2;
+using Float3 = float3;
+using Int3 = int3;
+using UInt2 = uint2;
+using UChar = unsigned char;
+using DeviceBuffer = CUdeviceptr;
+using AFDeviceBuffer = CUdeviceptr*;
 #define SUCCESS_VALUE CUDA_SUCCESS
-#define INT3_t int3
-#define UINT2_t uint2
-#define DEVBUF_t CUdeviceptr
+#elif defined(METAL)
+using Status = int;
+using KernelHandle = NS::SharedPtr<MTL::ComputePipelineState>;
+using ProgramHandle = NS::SharedPtr<MTL::Library>;
+using Int = int;
+using UInt = unsigned int;
+using Long = int64_t;
+using ULong = uint64_t;
+using Float2 = simd::float2;
+using Float3 = simd::float3;
+using Int3 = simd::int3;
+using UInt2 = simd::uint2;
+using UChar = unsigned char;
+using DeviceBuffer = NS::SharedPtr<MTL::Buffer>;
+using AFDeviceBuffer = NS::SharedPtr<MTL::Buffer>;
+#define SUCCESS_VALUE 0
 #else
-#define STATUS_t cl_int
+using Status = cl_int;
+using KernelHandle = cl::Kernel;
+using ProgramHandle = cl::Program;
+using Int = cl_int;
+using UInt = cl_uint;
+using Long = cl_long;
+using ULong = cl_ulong;
+using Float2 = cl_float2;
+using Float3 = cl_float3;
+using Int3 = cl_int3;
+using UInt2 = cl_uint2;
+using UChar = cl_uchar;
+using DeviceBuffer = cl::Buffer;
+using AFDeviceBuffer = cl::Buffer;
 #define SUCCESS_VALUE CL_SUCCESS
-#define INT3_t cl_int3
-#define UINT2_t cl_uint2
-#define DEVBUF_t cl::Buffer
 #endif
 #if defined(CUDA) || defined(HIP)
 #define GET_KERNEL(KVAR, PROG, NAME) status = cuModuleGetFunction(&KVAR, PROG, NAME)
@@ -98,32 +134,18 @@ class ProjectorClass {
 	std::string nvrtcOrthHeader;
 #endif // END CUDA
 	// Kernel input indices
-#if defined(CUDA) || defined(HIP)
-	unsigned int kernelInd_MRAMLA = 0;
-	unsigned int kernelIndFP = 0;
-	unsigned int kernelIndBP = 0;
-	unsigned int kernelIndFPSubIter = 0;
-	unsigned int kernelIndBPSubIter = 0;
-	// Crystal pitch
-	float2 dPitch;
-#else
-	cl_uint kernelInd_MRAMLA = 0;
-	cl_uint kernelIndFP = 0;
-	cl_uint kernelIndBP = 0;
-	cl_uint kernelIndFPSubIter = 0;
-	cl_uint kernelIndBPSubIter = 0;
-	cl_uint kernelIndSens = 0;
-#endif // END CUDA
+	UInt kernelInd_MRAMLA = 0;
+	UInt kernelIndFP = 0;
+	UInt kernelIndBP = 0;
+	UInt kernelIndFPSubIter = 0;
+	UInt kernelIndBPSubIter = 0;
+	UInt kernelIndSens = 0;
 	// Total FOV boundary including multi-resolution
-#if defined(CUDA) || defined(HIP)
-	float3 totalFOVmin, totalFOVmax;
-#else
-	cl_float3 totalFOVmin, totalFOVmax;
+	Float3 totalFOVmin, totalFOVmax;
 	// Crystal pitch
-	cl_float2 dPitch;
-#endif // END CUDA
+	Float2 dPitch;
 	// Image dimensions
-	INT3_t d_NOrig, d_NPrior;
+	Int3 d_NOrig, d_NPrior;
 	// Values to add to the global size to make it divisible by local size
 	size_t erotus[3];
 	size_t erotusPrior[3];
@@ -258,7 +280,7 @@ class ProjectorClass {
 			mexEval();
 		}
 
-		for (cl_uint i = 0; i < commandQueues.size(); i++) {
+		for (UInt i = 0; i < commandQueues.size(); i++) {
 			commandQueues[i].finish();
 		}
 
@@ -1386,19 +1408,18 @@ public:
 #if defined(CUDA) || defined(HIP)
 	std::vector<CUdevice> CUDeviceID;
 	std::vector<CUstream> CLCommandQueue;
-	CUfunction kernelMBSREM, kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelProxTVq, kernelProxTVDiv, kernelProxTVGrad, kernelElementMultiply, kernelElementDivision,
 #else
 	cl::Context CLContext;
 	std::vector<cl::Device> CLDeviceID;
 	std::vector<cl::CommandQueue> CLCommandQueue;
 	OpenCL_im_vectors vec_opencl;
-	cl::Kernel kernelMBSREM, kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelProxTVq, kernelProxTVDiv, kernelProxTVGrad, kernelElementMultiply, kernelElementDivision,
 #endif // END CUDA
+	KernelHandle kernelMBSREM, kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelProxTVq, kernelProxTVDiv, kernelProxTVGrad, kernelElementMultiply, kernelElementDivision,
 		kernelTV, kernelProxTGVSymmDeriv, kernelProxTGVDiv, kernelProxTGVq, kernelPoisson, kernelPDHG, kernelProxRDP, kernelProxq, kernelProxTrans, kernelProxNLM, kernelGGMRF,
 		kernelsumma, kernelEstimate, kernelPSF, kernelPSFf, kernelDiv, kernelMult, kernelForward, kernelSensList, kernelApu, kernelHyper, kernelRotate;
 	// Device buffers / pointers common to both backends (plain, non-pointer)
-	DEVBUF_t d_xcenter, d_ycenter, d_zcenter, d_V, d_TOFCenter, d_eFOVIndices, d_weights, d_angle, d_g, d_uref, d_maskBPB, d_rayShiftsDetector, d_rayShiftsSource, d_maskPriorB;
-	std::vector<DEVBUF_t> d_attenB;
+	DeviceBuffer d_xcenter, d_ycenter, d_zcenter, d_V, d_TOFCenter, d_eFOVIndices, d_weights, d_angle, d_g, d_uref, d_maskBPB, d_rayShiftsDetector, d_rayShiftsSource, d_maskPriorB;
+	std::vector<DeviceBuffer> d_attenB;
 #if defined(CUDA) || defined(HIP)
 	CUmodule programFP, programBP, programAux, programSens;
 	CUdeviceptr* d_output, * d_meanBP, * d_meanFP, * d_inputB, * d_W, * d_gaussianNLM;
@@ -1435,8 +1456,8 @@ public:
 	// Image dimensions
 	std::vector<int3> d_N;
 #else
-	std::vector<cl_float3> b, d, bmax;
-	std::vector<cl_int3> d_N;
+	std::vector<Float3> b, d, bmax;
+	std::vector<Int3> d_N;
 #endif // END CUDA
 
 #if defined(CUDA) || defined(HIP)
@@ -1448,7 +1469,7 @@ public:
 	CUDA_ARRAY3D_DESCRIPTOR_st arr3DDesc;
 	CUDA_RESOURCE_DESC resDesc;
 	CUDA_RESOURCE_VIEW_DESC viewDesc;
-	unsigned char no_norm = 0;
+	UChar no_norm = 0;
 	int proj6 = 1;
 	size_t memSize = 0ULL;
 #else
@@ -1467,11 +1488,11 @@ public:
 	cl::ImageFormat formatMask;
 #endif // END CUDA
 	// Vector device buffers common to both backends
-	std::vector<DEVBUF_t> d_maskFPB;
-	std::vector<DEVBUF_t> d_normFull, d_scatFull, d_xFull, d_zFull;
-	std::vector<DEVBUF_t> d_L;
-	std::vector<DEVBUF_t> d_zindex, d_xyindex, d_norm, d_atten, d_T;
-	std::vector<std::vector<DEVBUF_t>> d_scat, d_x, d_z, d_trIndex, d_axIndex, d_TOFIndex;
+	std::vector<DeviceBuffer> d_maskFPB;
+	std::vector<DeviceBuffer> d_normFull, d_scatFull, d_xFull, d_zFull;
+	std::vector<DeviceBuffer> d_L;
+	std::vector<DeviceBuffer> d_zindex, d_xyindex, d_norm, d_atten, d_T;
+	std::vector<std::vector<DeviceBuffer>> d_scat, d_x, d_z, d_trIndex, d_axIndex, d_TOFIndex;
 	std::vector<std::vector<size_t>> erotusBP, erotusPDHG;
 #if defined(CUDA) || defined(HIP)
 	~ProjectorClass() {
@@ -1601,7 +1622,7 @@ public:
 		}
 	}
 #else
-	cl_uchar no_norm = 0;
+	UChar no_norm = 0;
 	int proj6 = 1;
 	~ProjectorClass() {}
 #endif // END CUDA
@@ -1683,8 +1704,8 @@ public:
 			local_size[0] = 32ULL;
 		if (DEBUG) {
 			std::string deviceName2 = CLDeviceID[0].getInfo<CL_DEVICE_NAME>(&status);
-			cl_ulong apu = CLDeviceID[0].getInfo<CL_DEVICE_MAX_MEM_ALLOC_SIZE>(&status);
-			cl_uint apu2 = CLDeviceID[0].getInfo<CL_DEVICE_ADDRESS_BITS>(&status);
+			ULong apu = CLDeviceID[0].getInfo<CL_DEVICE_MAX_MEM_ALLOC_SIZE>(&status);
+			UInt apu2 = CLDeviceID[0].getInfo<CL_DEVICE_ADDRESS_BITS>(&status);
 			mexPrintBase("CL_DEVICE_MAX_MEM_ALLOC_SIZE = %llu\n", apu);
 			mexPrintBase("CL_DEVICE_ADDRESS_BITS = %u\n", apu2);
 			mexPrint(deviceName.c_str());
@@ -1697,7 +1718,7 @@ public:
 			mexPrint("CUDA programs successfully created\n");
 		}
 #else
-		cl_ulong constantBufferSize = CLDeviceID[0].getInfo<CL_DEVICE_MAX_CONSTANT_BUFFER_SIZE>(&status);
+		ULong constantBufferSize = CLDeviceID[0].getInfo<CL_DEVICE_MAX_CONSTANT_BUFFER_SIZE>(&status);
 
 		if ((inputScalars.size_of_x + inputScalars.size_z) * sizeof(float) >= constantBufferSize)
 			constantBuffer = true;
@@ -1817,8 +1838,8 @@ public:
 		d_NPrior = make_vec3<int3>(static_cast<int>(inputScalars.NxPrior), static_cast<int>(inputScalars.NyPrior), static_cast<int>(inputScalars.NzPrior));
 #else
 		globalPrior = { inputScalars.Nx[0] + erotusPrior[0], inputScalars.Ny[0] + erotusPrior[1], inputScalars.Nz[0] + erotusPrior[2] };
-		d_NOrig = { static_cast<cl_int>(inputScalars.NxOrig), static_cast<cl_int>(inputScalars.NyOrig), static_cast<cl_int>(inputScalars.NzOrig) };
-		d_NPrior = { static_cast<cl_int>(inputScalars.NxPrior), static_cast<cl_int>(inputScalars.NyPrior), static_cast<cl_int>(inputScalars.NzPrior) };
+		d_NOrig = { static_cast<Int>(inputScalars.NxOrig), static_cast<Int>(inputScalars.NyOrig), static_cast<Int>(inputScalars.NzOrig) };
+		d_NPrior = { static_cast<Int>(inputScalars.NxPrior), static_cast<Int>(inputScalars.NyPrior), static_cast<Int>(inputScalars.NzPrior) };
 #endif // END CUDA
 		dPitch = { w_vec.dPitchX, w_vec.dPitchY };
 		if (inputScalars.SPECT) {
@@ -1838,7 +1859,7 @@ public:
 #else
 			b[ii] = { inputScalars.bx[ii], inputScalars.by[ii], inputScalars.bz[ii] };
 			d[ii] = { inputScalars.dx[ii], inputScalars.dy[ii], inputScalars.dz[ii] };
-			d_N[ii] = { static_cast<cl_int>(inputScalars.Nx[ii]), static_cast<cl_int>(inputScalars.Ny[ii]), static_cast<cl_int>(inputScalars.Nz[ii]) };
+			d_N[ii] = { static_cast<Int>(inputScalars.Nx[ii]), static_cast<Int>(inputScalars.Ny[ii]), static_cast<Int>(inputScalars.Nz[ii]) };
 			bmax[ii] = { static_cast<float>(inputScalars.Nx[ii]) * inputScalars.dx[ii] + inputScalars.bx[ii],
 #endif // END CUDA
 				static_cast<float>(inputScalars.Ny[ii]) * inputScalars.dy[ii] + inputScalars.by[ii],
@@ -1902,7 +1923,7 @@ public:
 #endif // END CUDA
 		const uint16_t * z_index, const uint16_t * L, const int64_t * pituus, const float* atten, const float* norm, const float* extraCorr,
 		const scalarStruct & inputScalars, const Weighting & w_vec, const RecMethods & MethodList) {
-		STATUS_t status = SUCCESS_VALUE;
+		Status status = SUCCESS_VALUE;
 		size_t vecSize = 1;
 #if !defined(CUDA) && !defined(HIP)
 		cl::size_type imX = inputScalars.Nx[0];
@@ -3067,7 +3088,7 @@ public:
 
 	template <typename T>
 	inline int loadCoord(uint32_t currentSubset, scalarStruct & inputScalars, const int64_t length, const T * listCoord, const T * listCoordAx = nullptr, const uint8_t * TOFIndices = nullptr) {
-		STATUS_t status = SUCCESS_VALUE;
+		Status status = SUCCESS_VALUE;
 		if (inputScalars.indexBased) {
 #if defined(CUDA) || defined(HIP)
 			// CUDA/HIP must explicitly release the previous allocation; OpenCL's cl::Buffer reassignment does this itself.
@@ -3111,7 +3132,7 @@ public:
 
 		status = CLCommandQueue[0].finish();
 		OCL_CHECK(status, "\n", -1);
-		cl_uint kernelInd = 0U;
+		UInt kernelInd = 0U;
 		KARG(kArgs, kernelPSFf, kernelInd, d_imFinal[ii]);
 		KARG(kArgs, kernelPSFf, kernelInd, d_imTemp[ii]);
 		KARG(kArgs, kernelPSFf, kernelInd, d_g);
@@ -3139,7 +3160,7 @@ public:
 		cl::Buffer d_BPApu = cl::Buffer(CLContext, CL_MEM_READ_WRITE, sizeof(T) * inputScalars.im_dim[ii], NULL, &status);
 		status = CLCommandQueue[0].finish();
 		OCL_CHECK(status, "\n", -1);
-		cl_uint kernelInd = 0U;
+		UInt kernelInd = 0U;
 		KARG(kArgs, kernelPSF, kernelInd, input);
 		KARG(kArgs, kernelPSF, kernelInd, d_BPApu);
 		KARG(kArgs, kernelPSF, kernelInd, d_g);
@@ -3190,7 +3211,7 @@ public:
 			mexPrintBase("listmode = %u\n", inputScalars.listmode);
 			mexEval();
 		}
-		cl_uint kernelInd = 0U;
+		UInt kernelInd = 0U;
 		KARG(kArgs, kernelForward, kernelInd, d_output);
 		KARG(kArgs, kernelForward, kernelInd, d_meas[osa_iter]);
 		if (inputScalars.CT)
@@ -3214,7 +3235,7 @@ public:
 		int status = CL_SUCCESS;
 		global = { inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], inputScalars.Nz[ii] };
 
-		cl_uint kernelInd = 0U;
+		UInt kernelInd = 0U;
 		KARG(kArgs, kernelEstimate, kernelInd, d_Summ[uu]);
 		KARG(kArgs, kernelEstimate, kernelInd, vec_opencl.d_rhs_os[ii]);
 		KARG(kArgs, kernelEstimate, kernelInd, d_imFinal[ii]);
@@ -3481,7 +3502,7 @@ public:
 			}
 			KARG(kTemp, kernelFP, kernelIndFPSubIter, no_norm);
 #if !defined(CUDA) && !defined(HIP)
-			m_size = static_cast<cl_ulong>(m_size);
+			m_size = static_cast<ULong>(m_size);
 #endif // END CUDA
 			KARG(kTemp, kernelFP, kernelIndFPSubIter, m_size);
 			KARG(kTemp, kernelFP, kernelIndFPSubIter, osa_iter);
@@ -3599,7 +3620,7 @@ public:
 			KARG(kTemp, kernelFP, kernelIndFPSubIter, d_output);
 			KARG(kTemp, kernelFP, kernelIndFPSubIter, no_norm);
 			KARG(kTemp, kernelFP, kernelIndFPSubIter, m_size);
-			//status = kernelFP.setArg(kernelIndFPSubIter++, static_cast<cl_ulong>(m_size));
+			//status = kernelFP.setArg(kernelIndFPSubIter++, static_cast<ULong>(m_size));
 			KARG(kTemp, kernelFP, kernelIndFPSubIter, osa_iter);
 			KARG(kTemp, kernelFP, kernelIndFPSubIter, ii);
 		}
@@ -3914,7 +3935,7 @@ public:
 #if defined(CUDA) || defined(HIP)
 			KARG(kTemp, kernelBP, kernelIndBPSubIter, m_size);
 #else
-			KARG(kTemp, kernelBP, kernelIndBPSubIter, static_cast<cl_ulong>(m_size));
+			KARG(kTemp, kernelBP, kernelIndBPSubIter, static_cast<ULong>(m_size));
 #endif // END CUDA
 			KARG(kTemp, kernelBP, kernelIndBPSubIter, osa_iter);
 			KARG(kTemp, kernelBP, kernelIndBPSubIter, ii);
@@ -4361,14 +4382,14 @@ public:
 #if defined(CUDA) || defined(HIP)
 				KARG(kTemp, kernelBP, kernelIndBPSubIter, length[indD]);
 #else
-				KARG(kTemp, kernelBP, kernelIndBPSubIter, static_cast<cl_long>(length[indD]));
+				KARG(kTemp, kernelBP, kernelIndBPSubIter, static_cast<Long>(length[indD]));
 #endif // END CUDA
 			}
 			else {
 #if defined(CUDA) || defined(HIP)
 				KARG(kTemp, kernelBP, kernelIndBPSubIter, m_size);
 #else
-				KARG(kTemp, kernelBP, kernelIndBPSubIter, static_cast<cl_ulong>(m_size));
+				KARG(kTemp, kernelBP, kernelIndBPSubIter, static_cast<ULong>(m_size));
 #endif // END CUDA
 				KARG(kTemp, kernelBP, kernelIndBPSubIter, osa_iter);
 			}
@@ -4458,7 +4479,7 @@ public:
 #else
 		cl_int status = CL_SUCCESS;
 		int64_t mem;
-		cl_ulong mem_loc;
+		ULong mem_loc;
 		mem = CLDeviceID[0].getInfo<CL_DEVICE_GLOBAL_MEM_SIZE>(&status);
 		OCL_CHECK(status, "\n", -1);
 
@@ -4490,7 +4511,7 @@ public:
 		CUevent tStart, tEnd;
 #else
 	inline int computeMRP(const scalarStruct & inputScalars, const uint64_t gSize[]) {
-		cl_uint kernelIndMed = 0U;
+		UInt kernelIndMed = 0U;
 		uint64_t erotus[2] = { gSize[0] % localPrior[0], gSize[1] % localPrior[1] };
 		cl::NDRange global_size(gSize[0] + (localPrior[0] - erotus[0]), gSize[1] + (localPrior[1] - erotus[1]), gSize[2]);
 		std::chrono::steady_clock::time_point tStart;
@@ -4615,12 +4636,12 @@ public:
 		}
 		CLCommandQueue[0].finish();
 		cl_int status = CL_SUCCESS;
-		const cl_int3 searchWindow = { static_cast<cl_int>(w_vec.Ndx) , static_cast<cl_int>(w_vec.Ndy) , static_cast<cl_int>(w_vec.Ndz) };
-		const cl_int3 patchWindow = { static_cast<cl_int>(w_vec.Nlx) , static_cast<cl_int>(w_vec.Nly) , static_cast<cl_int>(w_vec.Nlz) };
-		cl_uint kernelIndNLM = 0ULL;
+		const Int3 searchWindow = { static_cast<Int>(w_vec.Ndx) , static_cast<Int>(w_vec.Ndy) , static_cast<Int>(w_vec.Ndz) };
+		const Int3 patchWindow = { static_cast<Int>(w_vec.Nlx) , static_cast<Int>(w_vec.Nly) , static_cast<Int>(w_vec.Nlz) };
+		UInt kernelIndNLM = 0U;
 #endif // END CUDA
 		uint32_t Nz, NzOrig;
-		UINT2_t nOffset;
+		UInt2 nOffset;
 		if (inputScalars.largeDim)
 			Nz = inputScalars.lDimStruct.NzPr[kk];
 		else
@@ -4818,7 +4839,7 @@ public:
 		OCL_CHECK(status, "Queue finish failed before RDP kernel\n", -1);
 #endif // END CUDA
 		uint32_t Nz, NzOrig;
-		UINT2_t nOffset;
+		UInt2 nOffset;
 		if (inputScalars.largeDim)
 			Nz = inputScalars.lDimStruct.NzPr[kk];
 		else
@@ -4843,7 +4864,7 @@ public:
 #if defined(CUDA) || defined(HIP)
 		status = cuCtxSynchronize();
 #else
-		cl_uint kernelIndRDP = 0ULL;
+		UInt kernelIndRDP = 0U;
 		if (inputScalars.largeDim)
 			globalPrior = { globalPrior[0], globalPrior[1], inputScalars.Nz[0] };
 #endif // END CUDA
@@ -4995,7 +5016,7 @@ public:
 		cl_int status = CL_SUCCESS;
 #endif // END CUDA
 		uint32_t Nz, NzOrig;
-		UINT2_t nOffset;
+		UInt2 nOffset;
 		if (inputScalars.largeDim)
 			Nz = inputScalars.lDimStruct.NzPr[kk];
 		else
@@ -5021,7 +5042,7 @@ public:
 		status = cuCtxSynchronize();
 		std::vector<void*> kArgs;
 #else
-		cl_uint kernelIndGGMRF = 0ULL;
+		UInt kernelIndGGMRF = 0U;
 		if (inputScalars.largeDim)
 			globalPrior = { globalPrior[0], globalPrior[1], inputScalars.Nz[0] };
 #endif // END CUDA
@@ -5121,13 +5142,13 @@ public:
 		CUresult status = CUDA_SUCCESS;
 		status = cuCtxSynchronize();
 		std::vector<void*> kArgs;
-		unsigned int kernelIndProxRDP = 0ULL;
+		UInt kernelIndProxRDP = 0U;
 #else
 	inline int ProxHelperQ(const float alpha, const uint64_t gQ) {
 		cl_int status = CL_SUCCESS;
 		cl::NDRange globalQ = { static_cast<cl::size_type>(gQ) };
 		status = (CLCommandQueue[0]).finish();
-		cl_uint kernelIndProxRDP = 0ULL;
+		UInt kernelIndProxRDP = 0U;
 #endif // END CUDA
 		KARG(kArgs, kernelProxq, kernelIndProxRDP, d_qX);
 		KARG(kArgs, kernelProxq, kernelIndProxRDP, alpha);
@@ -5165,7 +5186,7 @@ public:
 		cl::NDRange globalQ = { static_cast<cl::size_type>(gQ) };
 		cl_int status = CL_SUCCESS;
 		status = (CLCommandQueue[0]).finish();
-		cl_uint kernelIndCPTV = 0ULL;
+		UInt kernelIndCPTV = 0U;
 #endif // END CUDA
 		KARG(kArgs, kernelProxTVq, kernelIndCPTV, d_qX);
 		KARG(kArgs, kernelProxTVq, kernelIndCPTV, d_qY);
@@ -5203,7 +5224,7 @@ public:
 #else
 	inline int ProxTGVHelperQ(const scalarStruct & inputScalars, const float alpha, const uint64_t globalQ) {
 		cl_int status = CL_SUCCESS;
-		cl_uint kernelIndCPTV = 0ULL;
+		UInt kernelIndCPTV = 0U;
 		status = (CLCommandQueue[0]).finish();
 #endif // END CUDA
 		KARG(kArgs, kernelProxTGVq, kernelIndCPTV, d_rX);
@@ -5252,7 +5273,7 @@ public:
 		CUresult status = CUDA_SUCCESS;
 #else
 		cl_int status = CL_SUCCESS;
-		cl_uint kernelIndCPTV = 0ULL;
+		UInt kernelIndCPTV = 0U;
 #endif // END CUDA
 		if (inputScalars.largeDim)
 #if defined(CUDA) || defined(HIP)
@@ -5342,7 +5363,7 @@ public:
 		CUresult status = CUDA_SUCCESS;
 #else
 		cl_int status = CL_SUCCESS;
-		cl_uint kernelIndCPTV = 0ULL;
+		UInt kernelIndCPTV = 0U;
 #endif // END CUDA
 		if (inputScalars.largeDim)
 #if defined(CUDA) || defined(HIP)
@@ -5441,13 +5462,13 @@ public:
 		CUresult status = CUDA_SUCCESS;
 #else
 		cl_int status = CL_SUCCESS;
-		cl_uint kernelIndCPTGV = 0ULL;
+		UInt kernelIndCPTGV = 0U;
 #endif // END CUDA
 		if (inputScalars.largeDim)
 #if defined(CUDA) || defined(HIP)
 			globalPriorEFOV[2] = inputScalars.Nz[0];
 		std::vector<void*> kArgs;
-		unsigned int kernelIndCPTGV = 0ULL;
+		UInt kernelIndCPTGV = 0U;
 #else
 			globalPriorEFOV = { globalPriorEFOV[0], globalPriorEFOV[1], inputScalars.Nz[0] };
 #endif // END CUDA
@@ -5544,7 +5565,7 @@ public:
 		CUresult status = CUDA_SUCCESS;
 #else
 		cl_int status = CL_SUCCESS;
-		cl_uint kernelIndCPTGV = 0ULL;
+		UInt kernelIndCPTGV = 0U;
 #endif // END CUDA
 		if (inputScalars.largeDim)
 #if defined(CUDA) || defined(HIP)
@@ -5651,7 +5672,7 @@ public:
 	inline int elementWiseComp(const bool mult, const uint64_t size[], const bool D2 = false) {
 		cl::NDRange gSize = { static_cast<cl::size_type>(size[0]), static_cast<cl::size_type>(size[1]), static_cast<cl::size_type>(size[2]) };
 		cl_int status = CL_SUCCESS;
-		cl_uint kernelIndE = 0ULL;
+		UInt kernelIndE = 0U;
 		status = (CLCommandQueue[0]).finish();
 #endif // END CUDA
 		if (mult) {
@@ -5660,7 +5681,7 @@ public:
 #if defined(CUDA) || defined(HIP)
 			KARG(kArgs, kernelElementMultiply, kernelIndE, D);
 #else
-			KARG(kArgs, kernelElementMultiply, kernelIndE, static_cast<cl_uchar>(D2));
+			KARG(kArgs, kernelElementMultiply, kernelIndE, static_cast<UChar>(D2));
 #endif // END CUDA
 			// Compute the kernel
 #if defined(CUDA) || defined(HIP)
@@ -5728,7 +5749,7 @@ public:
 			mexEval();
 		}
 		uint32_t Nz, NzOrig;
-		UINT2_t nOffset;
+		UInt2 nOffset;
 		if (inputScalars.largeDim)
 			Nz = inputScalars.lDimStruct.NzPr[kk];
 		else
@@ -5755,7 +5776,7 @@ public:
 		std::vector<void*> kArgs;
 #else
 		status = (CLCommandQueue[0]).finish();
-		cl_uint kernelIndHyper = 0ULL;
+		UInt kernelIndHyper = 0U;
 #endif // END CUDA
 		KARG(kArgs, kernelHyper, kernelIndHyper, d_W);
 		if (inputScalars.useImages) {
@@ -5892,7 +5913,7 @@ public:
 			mexEval();
 		}
 		uint32_t Nz, NzOrig;
-		UINT2_t nOffset;
+		UInt2 nOffset;
 		if (inputScalars.largeDim)
 			Nz = inputScalars.lDimStruct.NzPr[kk];
 		else
@@ -5917,7 +5938,7 @@ public:
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
 #else
-		cl_uint kernelIndTV = 0ULL;
+		UInt kernelIndTV = 0U;
 #endif // END CUDA
 		KARG(kArgs, kernelTV, kernelIndTV, d_W);
 		if (inputScalars.useImages) {
@@ -6033,7 +6054,7 @@ public:
 		bool apu = inputScalars.enforcePositivity;
 #else
 		status = (CLCommandQueue[0]).finish();
-		cl_uint kernelIndPoisson = 0ULL;
+		UInt kernelIndPoisson = 0U;
 		global = { inputScalars.Nx[ii] + erotusPDHG[0][ii], inputScalars.Ny[ii] + erotusPDHG[1][ii], inputScalars.Nz[ii] };
 #endif // END CUDA
 		if (DEBUG) {
@@ -6068,7 +6089,7 @@ public:
 #if defined(CUDA) || defined(HIP)
 		KARG(kArgs, kernelPoisson, kernelIndPoisson, apu);
 #else
-		KARG(kArgs, kernelPoisson, kernelIndPoisson, static_cast<cl_uchar>(inputScalars.enforcePositivity));
+		KARG(kArgs, kernelPoisson, kernelIndPoisson, static_cast<UChar>(inputScalars.enforcePositivity));
 #endif // END CUDA
 		// Compute the kernel
 #if defined(CUDA) || defined(HIP)
@@ -6134,7 +6155,7 @@ public:
 		bool apu = inputScalars.enforcePositivity;
 #else
 		status = (CLCommandQueue[0]).finish();
-		cl_uint kernelIndPDHG = 0ULL;
+		UInt kernelIndPDHG = 0U;
 		global = { inputScalars.Nx[ii] + erotusPDHG[0][ii], inputScalars.Ny[ii] + erotusPDHG[1][ii], inputScalars.Nz[ii] };
 #endif // END CUDA
 		if (DEBUG) {
@@ -6164,7 +6185,7 @@ public:
 #if defined(CUDA) || defined(HIP)
 		KARG(kArgs, kernelPDHG, kernelIndPDHG, apu);
 #else
-		KARG(kArgs, kernelPDHG, kernelIndPDHG, static_cast<cl_uchar>(inputScalars.enforcePositivity));
+		KARG(kArgs, kernelPDHG, kernelIndPDHG, static_cast<UChar>(inputScalars.enforcePositivity));
 #endif // END CUDA
 		// Compute the kernel
 #if defined(CUDA) || defined(HIP)
@@ -6214,7 +6235,7 @@ public:
 #else
 			mexPrint("Starting OpenCL bilinear image rotation computation");
 		cl_int status = CL_SUCCESS;
-		cl_uint kernelIndRot = 0ULL;
+		UInt kernelIndRot = 0U;
 		global = { inputScalars.Nx[ii] + erotusPrior[0], inputScalars.Ny[ii] + erotusPrior[1], inputScalars.Nz[ii] };
 #endif // END CUDA
 		if (DEBUG) {
@@ -6333,5 +6354,3 @@ public:
 
 #endif // END CUDA
 	};
-
-
