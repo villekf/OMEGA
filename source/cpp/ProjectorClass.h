@@ -360,15 +360,16 @@ class ProjectorClass {
 	};
 	ResourceState memAlloc;
 
-#if defined(CUDA) || defined(HIP)
 	template <typename K, typename T>
 	inline K make_vec3(T a, T b, T c) {
 		K apu;
-		apu.x = a;
-		apu.y = b;
-		apu.z = c;
+		VEC_X(apu) = a;
+		VEC_Y(apu) = b;
+		VEC_Z(apu) = c;
 		return apu;
-#else
+	}
+
+#if !defined(CUDA) && !defined(HIP)
 	bool constantBuffer = false;
 
 	// Get the OpenCL context for the current platform
@@ -434,8 +435,8 @@ class ProjectorClass {
 		}
 
 		return status;
-#endif // END CUDA
 	}
+#endif // END CUDA
 
 #if defined(CUDA) || defined(HIP)
 	struct CudaTextureSpec {
@@ -2156,40 +2157,24 @@ public:
 			inputScalars.Ny[0] + erotusPrior[1],
 			inputScalars.Nz[0] + erotusPrior[2],
 			localPrior);
-#if defined(CUDA) || defined(HIP)
-		d_NOrig = make_vec3<int3>(static_cast<int>(inputScalars.NxOrig), static_cast<int>(inputScalars.NyOrig), static_cast<int>(inputScalars.NzOrig));
-		d_NPrior = make_vec3<int3>(static_cast<int>(inputScalars.NxPrior), static_cast<int>(inputScalars.NyPrior), static_cast<int>(inputScalars.NzPrior));
-#else
-		d_NOrig = { static_cast<Int>(inputScalars.NxOrig), static_cast<Int>(inputScalars.NyOrig), static_cast<Int>(inputScalars.NzOrig) };
-		d_NPrior = { static_cast<Int>(inputScalars.NxPrior), static_cast<Int>(inputScalars.NyPrior), static_cast<Int>(inputScalars.NzPrior) };
-#endif // END CUDA
+		d_NOrig = make_vec3<Int3>(static_cast<Int>(inputScalars.NxOrig), static_cast<Int>(inputScalars.NyOrig), static_cast<Int>(inputScalars.NzOrig));
+		d_NPrior = make_vec3<Int3>(static_cast<Int>(inputScalars.NxPrior), static_cast<Int>(inputScalars.NyPrior), static_cast<Int>(inputScalars.NzPrior));
 		dPitch = { w_vec.dPitchX, w_vec.dPitchY };
 		if (inputScalars.SPECT) {
-			totalFOVmin = { inputScalars.totalFOVxmin, inputScalars.totalFOVymin, inputScalars.totalFOVzmin };
-			totalFOVmax = { inputScalars.totalFOVxmax, inputScalars.totalFOVymax, inputScalars.totalFOVzmax };
+			totalFOVmin = make_vec3<Float3>(inputScalars.totalFOVxmin, inputScalars.totalFOVymin, inputScalars.totalFOVzmin);
+			totalFOVmax = make_vec3<Float3>(inputScalars.totalFOVxmax, inputScalars.totalFOVymax, inputScalars.totalFOVzmax);
 		}
 		b.resize(inputScalars.nMultiVolumes + 1);
 		d.resize(inputScalars.nMultiVolumes + 1);
 		d_N.resize(inputScalars.nMultiVolumes + 1);
 		bmax.resize(inputScalars.nMultiVolumes + 1);
 		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-#if defined(CUDA) || defined(HIP)
-			b[ii] = make_vec3<float3>(inputScalars.bx[ii], inputScalars.by[ii], inputScalars.bz[ii]);
-			d[ii] = make_vec3<float3>(inputScalars.dx[ii], inputScalars.dy[ii], inputScalars.dz[ii]);
-			d_N[ii] = make_vec3<int3>(static_cast<int>(inputScalars.Nx[ii]), static_cast<int>(inputScalars.Ny[ii]), static_cast<int>(inputScalars.Nz[ii]));
-			bmax[ii] = make_vec3<float3>(static_cast<float>(inputScalars.Nx[ii]) * inputScalars.dx[ii] + inputScalars.bx[ii],
-#else
-			b[ii] = { inputScalars.bx[ii], inputScalars.by[ii], inputScalars.bz[ii] };
-			d[ii] = { inputScalars.dx[ii], inputScalars.dy[ii], inputScalars.dz[ii] };
-			d_N[ii] = { static_cast<Int>(inputScalars.Nx[ii]), static_cast<Int>(inputScalars.Ny[ii]), static_cast<Int>(inputScalars.Nz[ii]) };
-			bmax[ii] = { static_cast<float>(inputScalars.Nx[ii]) * inputScalars.dx[ii] + inputScalars.bx[ii],
-#endif // END CUDA
+			b[ii] = make_vec3<Float3>(inputScalars.bx[ii], inputScalars.by[ii], inputScalars.bz[ii]);
+			d[ii] = make_vec3<Float3>(inputScalars.dx[ii], inputScalars.dy[ii], inputScalars.dz[ii]);
+			d_N[ii] = make_vec3<Int3>(static_cast<Int>(inputScalars.Nx[ii]), static_cast<Int>(inputScalars.Ny[ii]), static_cast<Int>(inputScalars.Nz[ii]));
+			bmax[ii] = make_vec3<Float3>(static_cast<float>(inputScalars.Nx[ii]) * inputScalars.dx[ii] + inputScalars.bx[ii],
 				static_cast<float>(inputScalars.Ny[ii]) * inputScalars.dy[ii] + inputScalars.by[ii],
-#if defined(CUDA) || defined(HIP)
 				static_cast<float>(inputScalars.Nz[ii]) * inputScalars.dz[ii] + inputScalars.bz[ii]);
-#else
-				static_cast<float>(inputScalars.Nz[ii])* inputScalars.dz[ii] + inputScalars.bz[ii] };
-#endif // END CUDA
 		}
 		if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 			erotusSens[0] = inputScalars.det_per_ring % local_size[0];
