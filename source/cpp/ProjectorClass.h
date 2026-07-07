@@ -2260,7 +2260,7 @@ public:
 			}
 			else
 				ALLOC_BUFFER(d_uref, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.im_dim[0]);
-			CHECK(status, "\n", -1);
+			CHECK(status, "\n", (Status)(-1));
 			memAlloc.NLMRef = inputScalars.useImages ? 1 : 2;
 		}
 		// The input image for numerous regularization
@@ -2268,21 +2268,21 @@ public:
 		if (MethodList.NLM || MethodList.RDP || MethodList.TV || MethodList.GGMRF || MethodList.APLS || MethodList.hyperbolic || inputScalars.projector_type == 6) {
 			if (inputScalars.useImages && !inputScalars.largeDim) {
 				CREATE_FLOAT_TEXTURE3D_EMPTY(d_inputI, imArray, region[0], region[1], region[2]);
-				CHECK(status, "Failed to create prior image\n", -1);
+				CHECK(status, "Failed to create prior image\n", (Status)(-1));
 			}
 		}
 		// RDP reference image
 		if (MethodList.RDP && w_vec.RDPLargeNeighbor && w_vec.RDP_anatomical) {
 			if (inputScalars.useImages) {
 				CREATE_FLOAT_TEXTURE3D_EMPTY(d_RDPrefI, imArray, region[0], region[1], region[2]);
-				CHECK(status, "Failed to create RDP reference image\n", -1);
+				CHECK(status, "Failed to create RDP reference image\n", (Status)(-1));
 			}
 		}
 		// Create the necessary buffers
 		// Distance-based weighting for GGMRF, RDP and hyperbolic prior
 		if (MethodList.GGMRF || (MethodList.RDP && w_vec.RDPLargeNeighbor) || MethodList.hyperbolic) {
 			ALLOC_BUFFER(d_weights, CL_MEM_READ_ONLY, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1);
-			CHECK(status, "\n", -1);
+			CHECK(status, "\n", (Status)(-1));
 			memAlloc.GGMRF = true;
 		}
 		memAlloc.tSteps = inputScalars.Nt;
@@ -2307,23 +2307,23 @@ public:
 				}
 				memAlloc.priorMask = true;
 			}
-			CHECK(status, "\n", -1);
+			CHECK(status, "\n", (Status)(-1));
 		}
 		if (inputScalars.projector_type != 6) {
 			if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 				ALLOC_BUFFER(d_V, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_V);
-				CHECK(status, "\n", -1);
+				CHECK(status, "\n", (Status)(-1));
 				memAlloc.V = true;
 			}
 			// Detector coordinates
 			if ((!(inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) || inputScalars.indexBased) {
 				ALLOC_BUFFER(d_x[0][0], CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x);
-				CHECK(status, "\n", -1);
+				CHECK(status, "\n", (Status)(-1));
 				memAlloc.xSteps++;
 			}
 			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 				ALLOC_BUFFER(d_xFull[0], CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x);
-				CHECK(status, "\n", -1);
+				CHECK(status, "\n", (Status)(-1));
 				memAlloc.xFull = true;
 			}
 			// Mask images
@@ -2340,14 +2340,14 @@ public:
 							for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
 								CREATE_MASK_TEXTURE3D_FROM_HOST(d_maskFP3[kk], d_maskFP3[kk], maskArrayFP[kk], &w_vec.maskFP[pituus[kk] * vecSize],
 									inputScalars.nRowsD, inputScalars.nColsD, length[kk], length[kk], length[kk], BACKEND_TEXTURE_READ_AS_INTEGER);
-								CHECK(status, "\n", -1);
+								CHECK(status, "\n", (Status)(-1));
 							}
 						}
 						else {
 							RESIZE_TEXTURE_ARRAY(maskArrayFP, 1);
 							CREATE_MASK_TEXTURE2D_FROM_HOST(d_maskFP, maskArrayFP[0], w_vec.maskFP,
 								inputScalars.nRowsD, inputScalars.nColsD, BACKEND_TEXTURE_READ_AS_INTEGER);
-							CHECK(status, "\n", -1);
+							CHECK(status, "\n", (Status)(-1));
 						}
 					}
 					memAlloc.maskFP = true;
@@ -2365,37 +2365,37 @@ public:
 							CREATE_MASK_TEXTURE2D_FROM_HOST(d_maskBP, maskArrayBP, w_vec.maskBP,
 								inputScalars.Nx[0], inputScalars.Ny[0], flags);
 						}
-						CHECK(status, "\n", -1);
+						CHECK(status, "\n", (Status)(-1));
 					}
 					memAlloc.maskBP = true;
 				}
 			}
 			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 				ALLOC_BUFFER(d_zFull[0], CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z);
-				CHECK(status, "\n", -1);
+				CHECK(status, "\n", (Status)(-1));
 				memAlloc.zFull = true;
 			}
 			if (inputScalars.SPECT) {
 				ALLOC_BUFFER(d_rayShiftsDetector, CL_MEM_READ_ONLY, sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections);
-				CHECK(status, "\n", -1);
+				CHECK(status, "\n", (Status)(-1));
 				ALLOC_BUFFER(d_rayShiftsSource, CL_MEM_READ_ONLY, sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections);
-				CHECK(status, "\n", -1);
+				CHECK(status, "\n", (Status)(-1));
 				memAlloc.rayShifts = true;
 			}
 			if (inputScalars.eFOV) {
 				ALLOC_BUFFER(d_eFOVIndices, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nz[0]);
-				CHECK(status, "\n", -1);
+				CHECK(status, "\n", (Status)(-1));
 				memAlloc.eFOV = true;
 			}
 			if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) {
 				ALLOC_BUFFER(d_angle, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.nProjections);
-				CHECK(status, "\n", -1);
+				CHECK(status, "\n", (Status)(-1));
 				memAlloc.angle = true;
 			}
 			// TOF bin centers
 			if (inputScalars.TOF) {
 				ALLOC_BUFFER(d_TOFCenter, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.nBins);
-				CHECK(status, "\n", -1);
+				CHECK(status, "\n", (Status)(-1));
 				memAlloc.TOF = true;
 			}
 			for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
@@ -2409,7 +2409,7 @@ public:
 								inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0],
 								interpolationTexture ? BACKEND_TEXTURE_LINEAR : BACKEND_TEXTURE_POINT,
 								interpolationTexture ? BACKEND_TEXTURE_NORMALIZED : BACKEND_TEXTURE_DEFAULT_FLAGS);
-							CHECK(status, "\n", -1);
+							CHECK(status, "\n", (Status)(-1));
 						}
 						memAlloc.atten = true;
 						memAlloc.attenSize++;
@@ -2418,12 +2418,12 @@ public:
 				for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
 					if (inputScalars.CT || inputScalars.SPECT) {
 						ALLOC_BUFFER(d_x[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6);
-						CHECK(status, "\n", -1);
+						CHECK(status, "\n", (Status)(-1));
 						memAlloc.xSteps++;
 					}
 					else if (inputScalars.listmode > 0 && !inputScalars.indexBased && (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || (!inputScalars.loadTOF && timestep == 0 && kk < inputScalars.TOFsubsets))) {
 						ALLOC_BUFFER(d_x[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk + timestep * inputScalars.subsets] * 6);
-						CHECK(status, "\n", -1);
+						CHECK(status, "\n", (Status)(-1));
 						memAlloc.xSteps++;
 						if (DEBUG) {
 							mexPrintBase("length[kk + timestep * inputScalars.subsets] * 6 = %u\n", length[kk + timestep * inputScalars.subsets] * 6);
@@ -2437,7 +2437,7 @@ public:
 						else if (inputScalars.pitch)
 							coef = 6;
 						ALLOC_BUFFER(d_z[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * coef);
-						CHECK(status, "\n", -1);
+						CHECK(status, "\n", (Status)(-1));
 						memAlloc.zType = 1;
 						memAlloc.zSteps++;
 					}
@@ -2460,20 +2460,20 @@ public:
 							memAlloc.zType = 0;
 							memAlloc.zSteps = kk;
 						}
-						CHECK(status, "\n", -1);
+						CHECK(status, "\n", (Status)(-1));
 					}
 					if (inputScalars.size_scat > 1 && inputScalars.scatter == 1U) { // Scatter correction buffer
 						ALLOC_BUFFER(d_scat[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize);
-						CHECK(status, "\n", -1);
+						CHECK(status, "\n", (Status)(-1));
 						memAlloc.extra = true;
 						memAlloc.eSteps++;
 					}
 					if (inputScalars.listmode > 0 && inputScalars.indexBased) {
 						if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF && timestep == 0)) {
 							ALLOC_BUFFER(d_trIndex[timestep][kk], CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk + timestep * inputScalars.subsets] * 2);
-							CHECK(status, "\n", -1);
+							CHECK(status, "\n", (Status)(-1));
 							ALLOC_BUFFER(d_axIndex[timestep][kk], CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk + timestep * inputScalars.subsets] * 2);
-							CHECK(status, "\n", -1);
+							CHECK(status, "\n", (Status)(-1));
 							memAlloc.indexBased = true;
 							memAlloc.iSteps++;
 						}
@@ -2481,7 +2481,7 @@ public:
 					if (inputScalars.listmode > 0 && inputScalars.TOF) {
 						if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF && timestep == 0)) {
 							ALLOC_BUFFER(d_TOFIndex[timestep][kk], CL_MEM_READ_ONLY, sizeof(uint8_t) * length[kk + timestep * inputScalars.subsets]);
-							CHECK(status, "\n", -1);
+							CHECK(status, "\n", (Status)(-1));
 							memAlloc.TOFIndex = true;
 							memAlloc.TOFSteps++;
 						}
@@ -2492,21 +2492,21 @@ public:
 				// Redundancy weighting
 				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
 					ALLOC_BUFFER(d_T[kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk]);
-					CHECK(status, "\n", -1);
+					CHECK(status, "\n", (Status)(-1));
 					memAlloc.offsetT = true;
 					memAlloc.oSteps++;
 				}
 				// Normalization weighting (OpenCL condition also requires size_norm > 1; used for both backends)
 				if (inputScalars.size_norm > 1 && inputScalars.normalization_correction) {
 					ALLOC_BUFFER(d_norm[kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize);
-					CHECK(status, "\n", -1);
+					CHECK(status, "\n", (Status)(-1));
 					memAlloc.norm = true;
 					memAlloc.nSteps++;
 				}
 				// Measurement-based attenuation correction
 				if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
 					ALLOC_BUFFER(d_atten[kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize);
-					CHECK(status, "\n", -1);
+					CHECK(status, "\n", (Status)(-1));
 					memAlloc.attenM = true;
 					memAlloc.aSteps++;
 				}
@@ -2514,21 +2514,21 @@ public:
 				// Note that raw data format is not used at the moment
 				if (inputScalars.raw && inputScalars.listmode != 1) {
 					ALLOC_BUFFER(d_L[kk], CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk] * 2);
-					CHECK(status, "\n", -1);
+					CHECK(status, "\n", (Status)(-1));
 					memAlloc.raw = true;
 					memAlloc.lSteps++;
 				}
 				else if (inputScalars.listmode != 1 && ((!inputScalars.CT && !inputScalars.SPECT && !inputScalars.PET) && (inputScalars.subsets > 1 && (inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7)))) {
 					ALLOC_BUFFER(d_xyindex[kk], CL_MEM_READ_ONLY, sizeof(uint32_t) * length[kk]);
-					CHECK(status, "\n", -1);
+					CHECK(status, "\n", (Status)(-1));
 					ALLOC_BUFFER(d_zindex[kk], CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk]);
-					CHECK(status, "\n", -1);
+					CHECK(status, "\n", (Status)(-1));
 					memAlloc.subInd = true;
 					memAlloc.iSteps++;
 				}
 			}
 		}
-		CHECK(status, "Buffer creation failed\n", -1);
+		CHECK(status, "Buffer creation failed\n", (Status)(-1));
 		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Buffer creation succeeded\n");
 		}
@@ -2537,35 +2537,35 @@ public:
 		if (MethodList.GGMRF || (MethodList.RDP && w_vec.RDPLargeNeighbor) || MethodList.hyperbolic) {
 			WRITE_BUFFER(d_weights, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1, w_vec.weights);
 			memSize += (sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1)) / 1048576ULL;
-			CHECK(status, "\n", -1);
+			CHECK(status, "\n", (Status)(-1));
 		}
 		if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM)) {
 			if (!inputScalars.useImages) {
 				WRITE_BUFFER(d_uref, sizeof(float) * inputScalars.im_dim[0], w_vec.NLM_ref);
-				CHECK(status, "\n", -1);
+				CHECK(status, "\n", (Status)(-1));
 			}
 			memSize += (sizeof(float) * inputScalars.im_dim[0]) / 1048576ULL;
 		}
 		if (inputScalars.projector_type != 6) {
 			if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 				WRITE_BUFFER(d_V, sizeof(float) * inputScalars.size_V, inputScalars.V);
-				CHECK(status, "\n", -1);
+				CHECK(status, "\n", (Status)(-1));
 				memSize += (sizeof(float) * inputScalars.size_V) / 1048576ULL;
 			}
 			if ((!(inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) || inputScalars.indexBased) {
 				WRITE_BUFFER(d_x[0][0], sizeof(float) * inputScalars.size_of_x, x);
-				CHECK(status, "\n", -1);
+				CHECK(status, "\n", (Status)(-1));
 				memSize += (sizeof(float) * inputScalars.size_of_x) / 1048576ULL;
 			}
 			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 				WRITE_BUFFER(d_xFull[0], sizeof(float) * inputScalars.size_of_x, x);
-				CHECK(status, "\n", -1);
+				CHECK(status, "\n", (Status)(-1));
 				WRITE_BUFFER(d_zFull[0], sizeof(float) * inputScalars.size_z, z_det);
-				CHECK(status, "\n", -1);
+				CHECK(status, "\n", (Status)(-1));
 			}
 			if (inputScalars.eFOV) {
 				WRITE_BUFFER(d_eFOVIndices, sizeof(uint8_t) * inputScalars.Nz[0], w_vec.eFOVIndices);
-				CHECK(status, "\n", -1);
+				CHECK(status, "\n", (Status)(-1));
 				memSize += (sizeof(uint8_t) * inputScalars.Nz[0]) / 1048576ULL;
 			}
 			if (inputScalars.maskFP || inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution)) {
@@ -2576,15 +2576,15 @@ public:
 								WRITE_BUFFER(d_maskFPB[kk], sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD * length[kk], &w_vec.maskFP[pituus[kk] * vecSize]);
 						else
 							WRITE_BUFFER(d_maskFPB[0], sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD, w_vec.maskFP);
-						CHECK(status, "\n", -1);
+						CHECK(status, "\n", (Status)(-1));
 					}
 					else if (inputScalars.maskBP) {
 						WRITE_BUFFER(d_maskBPB, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ, w_vec.maskBP);
-						CHECK(status, "\n", -1);
+						CHECK(status, "\n", (Status)(-1));
 					}
 					if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
 						WRITE_BUFFER(d_maskPriorB, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ, w_vec.maskPrior);
-						CHECK(status, "\n", -1);
+						CHECK(status, "\n", (Status)(-1));
 					}
 				}
 				else {
@@ -2608,20 +2608,20 @@ public:
 			}
 			if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) {
 				WRITE_BUFFER(d_angle, sizeof(float) * inputScalars.nProjections, w_vec.angles);
-				CHECK(status, "\n", -1);
+				CHECK(status, "\n", (Status)(-1));
 				memSize += (sizeof(float) * inputScalars.nProjections) / 1048576ULL;
 			}
 			if (inputScalars.TOF) {
 				WRITE_BUFFER(d_TOFCenter, sizeof(float) * inputScalars.nBins, inputScalars.TOFCenter);
-				CHECK(status, "\n", -1);
+				CHECK(status, "\n", (Status)(-1));
 				memSize += (sizeof(float) * inputScalars.nBins) / 1048576ULL;
 			}
 			if (inputScalars.SPECT) {
 				WRITE_BUFFER(d_rayShiftsDetector, sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections, w_vec.rayShiftsDetector);
-				CHECK(status, "\n", -1);
+				CHECK(status, "\n", (Status)(-1));
 				memSize += (sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections) / 1048576ULL;
 				WRITE_BUFFER(d_rayShiftsSource, sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections, w_vec.rayShiftsSource);
-				CHECK(status, "\n", -1);
+				CHECK(status, "\n", (Status)(-1));
 				memSize += (sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections) / 1048576ULL;
 			}
 
@@ -2633,11 +2633,11 @@ public:
 					if (inputScalars.useBuffers) {
 						if (inputScalars.size_atten > inputScalars.im_dim[0]) {
 							WRITE_BUFFER(d_attenB[timestep], sizeof(float) * inputScalars.im_dim[0], &atten[inputScalars.im_dim[0] * timestep]);
-							CHECK(status, "\n", -1);
+							CHECK(status, "\n", (Status)(-1));
 						}
 						else if (timestep == 0) {
 							WRITE_BUFFER(d_attenB[timestep], sizeof(float) * inputScalars.im_dim[0], atten);
-							CHECK(status, "\n", -1);
+							CHECK(status, "\n", (Status)(-1));
 						}
 					}
 					memSize += (sizeof(float) * inputScalars.im_dim[0]) / 1048576ULL;
@@ -2650,7 +2650,7 @@ public:
 						else if (inputScalars.useHelical)
 							kerroin = 1;
 						WRITE_BUFFER(d_z[timestep][kk], sizeof(float) * length[kk] * kerroin, &z_det[pituus[kk] * kerroin]);
-						CHECK(status, "\n", -1);
+						CHECK(status, "\n", (Status)(-1));
 						memSize += (sizeof(float) * length[kk] * kerroin) / 1048576ULL;
 					}
 					else {
@@ -2665,17 +2665,17 @@ public:
 							WRITE_BUFFER(d_z[timestep][kk], sizeof(float) * inputScalars.size_z, z_det);
 							memSize += (sizeof(float) * inputScalars.size_z) / 1048576ULL;
 						}
-						CHECK(status, "\n", -1);
+						CHECK(status, "\n", (Status)(-1));
 					}
 					if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
 						WRITE_BUFFER(d_x[timestep][kk], sizeof(float) * length[kk] * 6, &x[pituus[kk] * 6]);
-						CHECK(status, "\n", -1);
+						CHECK(status, "\n", (Status)(-1));
 						memSize += (sizeof(float) * length[kk] * 6) / 1048576ULL;
 					}
 					else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
 						if ((kk < inputScalars.TOFsubsets) || inputScalars.loadTOF || (!inputScalars.loadTOF && timestep == 0 && kk < inputScalars.TOFsubsets)) {
 							WRITE_BUFFER(d_x[timestep][kk], sizeof(float) * length[kk + timestep * inputScalars.subsets] * 6, &w_vec.listCoord[pituus[kk + timestep * inputScalars.subsets] * 6]);
-							CHECK(status, "\n", -1);
+							CHECK(status, "\n", (Status)(-1));
 							if (DEBUG) {
 								mexPrintBase("length[kk + timestep * inputScalars.subsets] * 6 = %u\n", length[kk + timestep * inputScalars.subsets] * 6);
 								mexPrintBase("pituus[kk + timestep * inputScalars.subsets] * 6 = %u\n", pituus[kk + timestep * inputScalars.subsets] * 6);
@@ -2687,23 +2687,23 @@ public:
 					}
 					if (inputScalars.size_scat > 1ULL && inputScalars.scatter == 1U) { // Load scatter data
 						WRITE_BUFFER(d_scat[timestep][kk], sizeof(float) * length[kk] * vecSize, &extraCorr[pituus[kk] * vecSize + inputScalars.kokoNonTOF * timestep]);
-						CHECK(status, "\n", -1);
+						CHECK(status, "\n", (Status)(-1));
 						memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
 					}
 					if (inputScalars.listmode > 0 && inputScalars.indexBased) {
 						if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF && timestep == 0)) { // First condition: load all data at once. Second condition: load one subset at a time (only 1 buffer required for each timestep).
 							WRITE_BUFFER(d_trIndex[timestep][kk], sizeof(uint16_t) * length[kk + timestep * inputScalars.subsets] * 2, &w_vec.trIndex[pituus[kk + timestep * inputScalars.subsets] * 2]);
-							CHECK(status, "\n", -1);
+							CHECK(status, "\n", (Status)(-1));
 							memSize += (sizeof(uint16_t) * length[kk] * 2) / 1048576ULL;
 							WRITE_BUFFER(d_axIndex[timestep][kk], sizeof(uint16_t) * length[kk + timestep * inputScalars.subsets] * 2, &w_vec.axIndex[pituus[kk + timestep * inputScalars.subsets] * 2]);
-							CHECK(status, "\n", -1);
+							CHECK(status, "\n", (Status)(-1));
 							memSize += (sizeof(uint16_t) * length[kk] * 2) / 1048576ULL;
 						}
 					}
 					if (inputScalars.listmode > 0 && inputScalars.TOF) {
 						if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF && timestep == 0)) {
 							WRITE_BUFFER(d_TOFIndex[timestep][kk], sizeof(uint8_t) * length[kk + timestep * inputScalars.subsets], &w_vec.TOFIndices[pituus[kk + timestep * inputScalars.subsets]]);
-							CHECK(status, "\n", -1);
+							CHECK(status, "\n", (Status)(-1));
 							memSize += (sizeof(uint8_t) * length[kk]) / 1048576ULL;
 						}
 					}
@@ -2712,37 +2712,37 @@ public:
 			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
 				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
 					WRITE_BUFFER(d_T[kk], sizeof(float) * length[kk], &inputScalars.T[pituus[kk]]);
-					CHECK(status, "\n", -1);
+					CHECK(status, "\n", (Status)(-1));
 				}
 				if (inputScalars.raw && inputScalars.listmode != 1) {
 					WRITE_BUFFER(d_L[kk], sizeof(uint16_t) * length[kk] * 2, &L[pituus[kk] * 2]);
-					CHECK(status, "\n", -1);
+					CHECK(status, "\n", (Status)(-1));
 				}
 				else if (inputScalars.listmode != 1 && ((!inputScalars.CT && !inputScalars.SPECT && !inputScalars.PET) && (inputScalars.subsets > 1 && (inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7)))) {
 					WRITE_BUFFER(d_zindex[kk], sizeof(uint16_t) * length[kk], &z_index[pituus[kk]]);
-					CHECK(status, "\n", -1);
+					CHECK(status, "\n", (Status)(-1));
 					WRITE_BUFFER(d_xyindex[kk], sizeof(uint32_t) * length[kk], &xy_index[pituus[kk]]);
-					CHECK(status, "\n", -1);
+					CHECK(status, "\n", (Status)(-1));
 					memSize += (sizeof(uint32_t) * length[kk] + sizeof(uint16_t) * length[kk]) / 1048576ULL;
 				}
 				if (inputScalars.size_norm > 1ULL && inputScalars.normalization_correction) {
 					WRITE_BUFFER(d_norm[kk], sizeof(float) * length[kk] * vecSize, &norm[pituus[kk] * vecSize]);
-					CHECK(status, "\n", -1);
+					CHECK(status, "\n", (Status)(-1));
 					memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
 				}
 				if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
 					WRITE_BUFFER(d_atten[kk], sizeof(float) * length[kk] * vecSize, &atten[pituus[kk] * vecSize]);
-					CHECK(status, "\n", -1);
+					CHECK(status, "\n", (Status)(-1));
 					memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
 				}
 			}
-			FINISH_QUEUE(status, "Buffer write failed\n", -1);
+			FINISH_QUEUE(status, "Buffer write failed\n", (Status)(-1));
 		}
-		CHECK(status, "Buffer write failed\n", -1);
+		CHECK(status, "Buffer write failed\n", (Status)(-1));
 		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Buffer write succeeded\n");
 		}
-		return 0;
+		return SUCCESS_VALUE;
 	}
 
 	/// <summary>
