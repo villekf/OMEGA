@@ -895,7 +895,13 @@ DEVICE int readMaskBP(MASKBPTYPE maskBP, typeT ind) {
 DEVICE int readMaskFP(MASKFPTYPE maskFP, typeT ind) {
 	return 
 #ifdef USEIMAGES
-#ifdef CUDA
+#ifdef METAL
+#ifdef MASKFP3D
+        static_cast<int>(metal::round(maskFP.read(uint3(ind.x, ind.y, ind.z)).r));
+#else
+        static_cast<int>(metal::round(maskFP.read(uint2(ind.x, ind.y)).r));
+#endif
+#elif defined(CUDA) || defined(HIP)
 #ifdef MASKFP3D
         tex3D<unsigned char>(maskFP, ind.x, ind.y, ind.z);
 #else

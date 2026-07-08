@@ -262,7 +262,13 @@ void projectorType4Forward(
 #endif
         return; 
 #ifdef MASKFP // TODO use readMaskFP
-#if defined(CUDA) || defined(HIP)
+#if defined(METAL)
+#ifdef MASKFP3D
+	const int maskVal = static_cast<int>(metal::round(maskFP.read(uint3(i.x, i.y, i.z)).r));
+#else
+    const int maskVal = static_cast<int>(metal::round(maskFP.read(uint2(i.x, i.y)).r));
+#endif
+#elif defined(CUDA) || defined(HIP)
 #ifdef MASKFP3D
 	const int maskVal = tex3D<unsigned char>(maskFP, i.x, i.y, i.z);
 #else

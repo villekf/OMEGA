@@ -31,7 +31,7 @@
 #endif
 #elif defined(METAL)
 #include <af/internal.h>
-#include "ProjectorClassMetal.cpp"
+#include "ProjectorClass.h"
 
 // ArrayFire's Metal backend currently stores arrays in host allocations and
 // stages them for its own kernels.  OMEGA's projectors use native MTL::Buffer
