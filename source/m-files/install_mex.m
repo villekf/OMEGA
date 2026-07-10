@@ -44,6 +44,9 @@ function install_mex(varargin)
 %   CUDA_PATH: The path to the CUDA installation folder. Default folder on
 %   Windows platforms is taken from the environment value (CUDA_PATH),
 %   elsewhere it is /usr/local/cuda/. Only needed if USE_CUDA = true.
+%   METALCPP_INCLUDE_PATH: On macOS, the path to the folder containing the
+%   single-header metal-cpp Metal.hpp file. This is read from the
+%   environment.
 %
 % OUTPUTS:
 %   Various MEX-files needed by OMEGA
@@ -388,6 +391,27 @@ if ~isempty(opencl_lib_path)
 end
 if ~isempty(af_path)
     af_path = strrep(af_path, '\','/');
+end
+metalcpp_include_path = '';
+if ismac
+    metalcpp_include_path = strtrim(getenv('METALCPP_INCLUDE_PATH'));
+    if ~isempty(metalcpp_include_path)
+        metalcpp_include_path = strrep(metalcpp_include_path, '\','/');
+        if exist(metalcpp_include_path, 'file') == 2
+            metalcpp_include_path = fileparts(metalcpp_include_path);
+        end
+    end
+    if isempty(metalcpp_include_path) || exist([metalcpp_include_path '/Metal.hpp'], 'file') ~= 2
+        if exist([folder '/Metal.hpp'], 'file') == 2
+            metalcpp_include_path = folder;
+        else
+            homeDir = getenv('HOME');
+            defaultMetalCppPath = [homeDir '/Documents/metal-cpp/include'];
+            if exist([defaultMetalCppPath '/Metal.hpp'], 'file') == 2
+                metalcpp_include_path = defaultMetalCppPath;
+            end
+        end
+    end
 end
 if ~isempty(root_path)
     root_path = strrep(root_path, '\','/');
@@ -1359,16 +1383,66 @@ elseif ~ismac
 else % Apple silicon MATLAB/Octave
     compiler = '';
     complexFlag = '';
-    ldflags = 'LDFLAGS="\$LDFLAGS -framework Metal -framework Foundation"';
+    if isempty(af_path)
+        af_path = '/opt/arrayfire';
+        af_path_include = [af_path '/include'];
+    end
+    if isempty(metalcpp_include_path) || exist([metalcpp_include_path '/Metal.hpp'], 'file') ~= 2
+        error(['The metal-cpp single-header Metal.hpp file was not found. ' ...
+            'Set METALCPP_INCLUDE_PATH to the folder containing Metal.hpp.'])
+    end
+    ldflags = ['LDFLAGS="\$LDFLAGS -framework Metal -framework Foundation -Wl,-rpath,' af_path '/lib"'];
     cxxflags = 'CXXFLAGS="\$CXXFLAGS -std=c++17 "';
-    try
-        disp('Trying to build implementation 5')
-        mex(compiler, complexFlag, '-outdir', folder, ...
-            '-output', 'OpenCL_matrixfree_multi_gpu', ldflags, cxxflags, ...
-            'LINKEXPORTCPP=', ... % There is a bug with Xcode 26.0 and C-style MEX API. See for example: https://se.mathworks.com/matlabcentral/answers/2180302-mex-failing-to-compile-function
-            '-DMATLAB', '-DMETAL', ['-I' folder], [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
-        disp('Implementation 5 built')
-    catch e
-        warning(e.identifier, '%s', e.message);
+    % Xcode 26 incorrectly adds the C++ MEX adapter exports to C-style MEX
+    % entry points. Clearing LINKEXPORTCPP avoids those undefined symbols.
+    % See https://se.mathworks.com/matlabcentral/answers/2180302-mex-failing-to-compile-function
+
+    if implementation == 0 || implementation == 2
+        if exist([af_path_include '/arrayfire.h'], 'file') ~= 2 || ...
+                exist([af_path '/lib/libafmetal.dylib'], 'file') ~= 2
+            error(['ArrayFire with the Metal backend was not found in ' af_path]);
+        end
+        variantFlags = {{}, {'-DMTYPE'}, {'-DMTYPE2'}};
+        variantOutputs = {'OpenCL_matrixfree', 'OpenCL_matrixfree_uint16', 'OpenCL_matrixfree_uint8'};
+        variantMessages = {'Building Metal code for float data type.', ...
+            'Building Metal code for uint16 data type.', ...
+            'Building Metal code for uint8 data type.'};
+        try
+            disp('Building ArrayFire_OpenCL_device_info.cpp for Metal')
+            mex(compiler, complexFlag, '-outdir', folder, ...
+                '-output', 'ArrayFire_OpenCL_device_info', ldflags, cxxflags, ...
+                'LINKEXPORTCPP=', ...
+                '-DMATLAB', '-DMETAL', ['-I' metalcpp_include_path], ...
+                ['-I' af_path_include], ...
+                ['-L' af_path '/lib'], '-lafmetal', [folder '/ArrayFire_OpenCL_device_info.cpp'])
+
+            for kk = 1:numel(variantOutputs)
+                disp(variantMessages{kk})
+                mex(compiler, complexFlag, '-outdir', folder, ...
+                    '-output', variantOutputs{kk}, ldflags, cxxflags, ...
+                    'LINKEXPORTCPP=', ...
+                    '-DMATLAB', '-DMETAL', '-DAF', variantFlags{kk}{:}, ...
+                    ['-I' folder], ['-I' metalcpp_include_path], ...
+                    ['-I' af_path_include], ['-L' af_path '/lib'], ...
+                    '-lafmetal', [folder '/OpenCL_matrixfree.cpp'])
+            end
+            disp('Implementation 2 built with Metal support')
+        catch e
+            warning(e.identifier, '%s', e.message);
+        end
+    end
+
+    if implementation == 0 || implementation == 5
+        try
+            disp('Building Metal code for implementation 5.')
+            mex(compiler, complexFlag, '-outdir', folder, ...
+                '-output', 'OpenCL_matrixfree_multi_gpu', ldflags, cxxflags, ...
+                'LINKEXPORTCPP=', ...
+                '-DMATLAB', '-DMETAL', ['-I' folder], ...
+                ['-I' metalcpp_include_path], [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
+            disp('Implementation 5 built')
+        catch e
+            warning(e.identifier, '%s', e.message);
+        end
     end
 end

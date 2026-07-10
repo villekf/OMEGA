@@ -4,6 +4,26 @@
 - Multi-resolution reconstruction for implementation 5
 - options.storeMultiResolution replaces the CELL macro
 
+## OMEGA v2.3.0
+
+### New features
+- Added HIP support, and widened Metal support
+  - 
+	
+- Combined OpenCL, CUDA, and HIP code into one
+  - Functionality between the three should now be identical
+  - Doesn't require anything from the user
+  
+### Bug fixes and enhancements
+
+- Proximal TV gradient is now correctly computed when using CUDA (previously it used Z/X/Y gradient order instead of the correct X/Y/Z)
+
+- The workgroup/block size can now be specified by the user with `options.local_size`. The values can, and should be, defined for all three dimensions
+
+- Regularization can now be applied at every Nth iteration with `options.regEveryIter`. For example `options.regEveryIter = 2` computes regularization every second iteration (the first and last are always regularized)
+
+- GGMRF now works with masking
+
 ## OMEGA v2.2.0
 
 ### New features

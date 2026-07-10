@@ -4,6 +4,7 @@ Created on Thu Jul 10 13:17:22 2025
 """
 
 def initProjector(self):
+    self.projectorInitialized = True
     import arrayfire as af
     import numpy as np
     import os
@@ -30,6 +31,18 @@ def initProjector(self):
         print('CuPy can only be used when useCUDA is True. Setting useCUDA to True!')
         self.useCUDA = True
         import cupy as cp
+    if self.useCuPy and self.useCUDA:
+        def cupyROCm():
+            cfg = cp.show_config()
+            text = cfg if isinstance(cfg, str) else ""
+            if not text:
+                return False
+            lower = text.lower()
+            if "rocm" in lower or "hip" in lower:
+                return True
+            if "cuda" in lower:
+                return False
+            return False
     if not self.useCUDA:
         import pyopencl as cl
         from pyopencl.version import VERSION
@@ -188,7 +201,10 @@ def initProjector(self):
             if self.use_64bit_atomics or self.use_32bit_atomics:
                 self.use_64bit_atomics = False
                 self.use_32bit_atomics = False
-            bOpt = ('-DCUDA','-DPYTHON',)
+            if cupyROCm():
+                bOpt = ('-DHIP','-DPYTHON',)
+            else:
+                bOpt = ('-DCUDA','-DPYTHON',)
         else:
             bOpt =('-cl-single-precision-constant -DOPENCL',)
             import pyopencl as cl

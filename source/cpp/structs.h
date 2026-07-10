@@ -14,8 +14,17 @@
 #include "precomp.h"
 #ifdef AF
 #include <arrayfire.h>
-#ifdef CUDA
+#if defined(CUDA)
 #define AF_DEFINE_CUDA_TYPES 1
+#include <af/cuda.h>
+#include <cstring>
+#elif defined(HIP)
+// We must NOT define AF_DEFINE_CUDA_TYPES here: that makes af/cuda.h declare
+// "typedef struct CUstream_st *cudaStream_t;", which our cudaStream_t -> hipStream_t alias
+// (cuda_error.h) turns into a second, conflicting definition of hipStream_t (C2371). Instead we
+// supply the only other type af/cuda.h needs (cublasMath_t) ourselves and let cudaStream_t
+// resolve to hipStream_t through the alias, keeping a single consistent stream type.
+typedef enum { CUBLAS_DEFAULT_MATH = 0, CUBLAS_TENSOR_OP_MATH = 1 } cublasMath_t;
 #include <af/cuda.h>
 #include <cstring>
 #elif defined(OPENCL)
@@ -23,7 +32,7 @@
 #endif
 #endif
 
-// Used in ProjectorClass.h and ProjectorClassCUDA.h
+// Used in ProjectorClass.h (combined OpenCL and CUDA backends)
 #if defined(OPENCL)
 #define OCL_CHECK(STATUS, MSG, RETURN) do { \
     if ((STATUS) != CL_SUCCESS) { \
@@ -32,7 +41,7 @@
         return RETURN; \
     } \
 } while(0)
-#elif defined(CUDA)
+#elif defined(CUDA) || defined(HIP)
 #define CUDA_CHECK(STATUS, MSG, RETURN) do { \
     if ((STATUS) != CUDA_SUCCESS) { \
         getErrorString(STATUS); \

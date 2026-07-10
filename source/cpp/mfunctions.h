@@ -153,6 +153,20 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	inputScalars.adaptiveType = getScalarUInt32(options, 0, "PDAdaptiveType");
 	inputScalars.storeFP = getScalarBool(options, 0, "storeFP");
 	inputScalars.useTotLength = getScalarBool(options, 0, "useTotLength");
+	// Optional user-defined local/work-group (block) size (int32 vector of up to 3 elements). Any value
+	// left negative (or the field omitted) falls back to the built-in defaults in addProjector.
+	if (mxGetFieldNumber(options, "local_size") >= 0) {
+		const mxArray* localSizeField = getField(options, 0, "local_size");
+		const size_t nLocalSize = mxGetNumberOfElements(localSizeField);
+		if (nLocalSize > 0) {
+			const int32_t* localSizeIn = getInt32s(options, "local_size");
+			for (size_t ls = 0; ls < nLocalSize && ls < 3; ls++)
+				inputScalars.localSize[ls] = localSizeIn[ls];
+		}
+	}
+	// Optional: compute the spatial prior only every regEveryIter-th (sub)iteration (1 = every time).
+	if (mxGetFieldNumber(options, "regEveryIter") >= 0)
+		inputScalars.regEveryIter = getScalarInt32(options, 0, "regEveryIter");
 	const uint32_t* devPointer = getUint32s(options, "use_device");
 	size_t devLength = mxGetNumberOfElements(mxGetField(options, 0, "use_device"));
 	inputScalars.usedDevices = std::vector<uint32_t>(devPointer, devPointer + devLength);

@@ -127,7 +127,13 @@ void projectorType5Forward(
   size_t idx = GID0 + GID1 * NVOXELSFP * d_nRows + GID2 * d_nCols * d_nRows;
 
 #ifdef MASKFP
-#ifdef CUDA
+#if defined(METAL)
+#ifdef MASKFP3D
+  const int maskVal = static_cast<int>(metal::round(maskFP.read(uint3(i.x, i.y, i.z)).r));
+#else
+  const int maskVal = static_cast<int>(metal::round(maskFP.read(uint2(i.x, i.y)).r));
+#endif
+#elif defined(CUDA) || defined(HIP)
 #ifdef MASKFP3D
   const int maskVal = tex3D<unsigned char>(maskFP, i.x, i.y, i.z);
 #else
@@ -196,7 +202,7 @@ void projectorType5Forward(
       xLR *= d_scale.x;
       dy *= d_Size.y;
       zUD *= d_scale.z;
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
       float A = tex3D<float>(d_IImageY, xLR.y, zUD.x, dy);
       float B = tex3D<float>(d_IImageY, xLR.x, zUD.y, dy);
       float C = tex3D<float>(d_IImageY, xLR.y, zUD.y, dy);
@@ -218,7 +224,7 @@ void projectorType5Forward(
 #endif
       float apu = C + D - A - B;
 #ifdef MEANDISTANCEFP
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
       const float area2 =
           d_meanV[jj + d_N.x] * fabs((xLR.x - xLR.y) * (zUD.x - zUD.y)) *
           CFLOAT(get_image_width(d_IImageY) * get_image_height(d_IImageY));
@@ -238,7 +244,7 @@ void projectorType5Forward(
         D = B;
         A = C;
         zUD.y += xInterval;
-#if defined(CUDA)
+#if defined(CUDA) || defined(HIP)
         B = tex3D<float>(d_IImageY, xLR.x, zUD.y, dy);
         C = tex3D<float>(d_IImageY, xLR.y, zUD.y, dy);
 #elif defined(OPENCL)
@@ -284,7 +290,7 @@ void projectorType5Forward(
       yLR *= d_scale.y;
       dx *= d_Size.x;
       zUD *= d_scale.z;
-#if defined(CUDA)
+#if defined(CUDA) || defined(HIP)
       float A = tex3D<float>(d_IImageX, yLR.y, zUD.x, dx);
       float B = tex3D<float>(d_IImageX, yLR.x, zUD.y, dx);
       float C = tex3D<float>(d_IImageX, yLR.y, zUD.y, dx);
@@ -306,7 +312,7 @@ void projectorType5Forward(
 #endif
       float apu = C + D - A - B;
 #ifdef MEANDISTANCEFP
-#ifdef CUDA
+#if defined(OPENCL)
       const float area2 =
           d_meanV[ii] * fabs((yLR.x - yLR.y) * (zUD.x - zUD.y)) *
           CFLOAT(get_image_width(d_IImageX) * get_image_height(d_IImageX));
@@ -326,7 +332,7 @@ void projectorType5Forward(
         D = B;
         A = C;
         zUD.y += yInterval;
-#if defined(CUDA)
+#if defined(CUDA) || defined(HIP)
         B = tex3D<float>(d_IImageX, yLR.x, zUD.y, dx);
         C = tex3D<float>(d_IImageX, yLR.y, zUD.y, dx);
 #elif defined(OPENCL)
@@ -451,7 +457,7 @@ extern "C" __global__
   size_t idx = GID0 + GID1 * d_N.x + GID2 * NVOXELS5 * d_N.y * d_N.x;
 #ifdef MASKBP
   if (ii == 0) {
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 #ifdef MASKBP3D
     const int maskVal = tex3D<unsigned char>(maskBP, i.x, i.y, i.z);
 #else
@@ -566,7 +572,7 @@ extern "C" __global__
     float3 coordB = MFLOAT3(Ax / koko.x, Dy / koko.y, dz);
     float3 coordC = MFLOAT3(Dx / koko.x, Ay / koko.y, dz);
     float3 coordD = MFLOAT3(Dx / koko.x, Dy / koko.y, dz);
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
     float A = tex3D<float>(d_IImage, coordA.x, coordA.y, coordA.z);
     float B = tex3D<float>(d_IImage, coordB.x, coordB.y, coordB.z);
     float C = tex3D<float>(d_IImage, coordC.x, coordC.y, coordC.z);
@@ -697,7 +703,7 @@ extern "C" __global__
         D = C;
         coordA = CMFLOAT3(Ax / koko.x, Ay / koko.y, dz);
         coordC = CMFLOAT3(Dx / koko.x, Ay / koko.y, dz);
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
         A = tex3D<float>(d_IImage, coordA.x, coordA.y, coordA.z);
         C = tex3D<float>(d_IImage, coordC.x, coordC.y, coordC.z);
 #else
@@ -712,7 +718,7 @@ extern "C" __global__
         C = D;
         coordB = CMFLOAT3(Ax / koko.x, Dy / koko.y, dz);
         coordD = CMFLOAT3(Dx / koko.x, Dy / koko.y, dz);
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
         B = tex3D<float>(d_IImage, coordB.x, coordB.y, coordB.z);
         D = tex3D<float>(d_IImage, coordD.x, coordD.y, coordD.z);
 #else

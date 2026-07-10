@@ -23,6 +23,9 @@ if isempty(varargin)
 else
     nCores = varargin{1};
 end
+if ismac && options.use_64bit_atomics
+    options.use_64bit_atomics = false;
+end
 if iscell(recApu)
     useCell = true;
 else

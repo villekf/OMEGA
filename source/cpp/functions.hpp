@@ -18,9 +18,50 @@
 ***************************************************************************/
 #pragma once
 #define NOMINMAX
-#ifdef CUDA
-#include "ProjectorClassCUDA.h"
-#define transferAF(varA) varA.device<CUdeviceptr>()
+#if defined(CUDA) || defined(HIP)
+#include "ProjectorClass.h"
+#if defined(HIP)
+// hipDeviceptr_t (== CUdeviceptr here) is void*, and ArrayFire does not export array::device<void*>(),
+// so device<CUdeviceptr>() would be an unresolved external. Fetch the raw device pointer through an
+// exported element type (float) and reinterpret it to CUdeviceptr* (void**); the pointer value is the
+// device address, matching how the CUDA path uses device<CUdeviceptr>() (CUdeviceptr is an integer there).
+#define transferAF(varA) reinterpret_cast<CUdeviceptr*>((varA).device<float>())
+#else
+#define transferAF(varA) (varA).device<CUdeviceptr>()
+#endif
+#elif defined(METAL)
+#include <af/internal.h>
+#include "ProjectorClass.h"
+
+// ArrayFire's Metal backend currently stores arrays in host allocations and
+// stages them for its own kernels.  OMEGA's projectors use native MTL::Buffer
+// objects, so bridge the two with shared Metal staging buffers.
+inline NS::SharedPtr<MTL::Buffer> transferAFMetal(const af::array& array,
+	ProjectorClass& proj) {
+	array.eval();
+	af::sync();
+	void* data = array.device<void>();
+	auto buffer = NS::TransferPtr(proj.mtlDevice->newBuffer(
+		data, static_cast<NS::UInteger>(array.bytes()),
+		(MTL::ResourceOptions)MTL::ResourceStorageModeShared));
+	if (!buffer) {
+		array.unlock();
+		throw std::runtime_error("Unable to create Metal staging buffer for an ArrayFire array");
+	}
+	return buffer;
+}
+
+inline void transferMetalToAF(const NS::SharedPtr<MTL::Buffer>& buffer,
+	const af::array& array) {
+	if (!buffer || !buffer->contents())
+		throw std::runtime_error("Unable to read an OMEGA Metal staging buffer");
+	void* data = nullptr;
+	if (af_get_raw_ptr(&data, array.get()) != AF_SUCCESS || !data)
+		throw std::runtime_error("Unable to access an ArrayFire Metal array");
+	std::memcpy(data, buffer->contents(), array.bytes());
+}
+
+#define transferAF(varA) transferAFMetal(varA, proj)
 #elif defined(CPU)
 #include "ProjectorClassCPU.h"
 #define transferAF(varA) varA.device<float>()
@@ -193,7 +234,7 @@ inline void largeDimLast(scalarStruct& inputScalars, ProjectorClass& proj) {
 inline void initializeRHS(AF_im_vectors& vec, const scalarStruct& inputScalars, uint32_t timestep, const int ii = 0) {
 	if (inputScalars.verbose >= 3)
 		mexPrint("Initialize the backprojection output");
-#ifdef OPENCL
+#if defined(OPENCL) || defined(METAL)
 	if (inputScalars.atomic_64bit)
 		vec.rhs_os[timestep][ii] = (af::constant(0LL, static_cast<size_t>(inputScalars.im_dim[ii]) * static_cast<size_t>(inputScalars.nRekos), 1, s64));
 	else if (inputScalars.atomic_32bit)
@@ -272,6 +313,12 @@ inline void transferSensitivityImage(af::array& apuSum, ProjectorClass& proj) {
 		proj.d_Summ.emplace_back(transferAF(apuSum));
 	else
 		proj.d_Summ[0] = transferAF(apuSum);
+#ifdef METAL
+	proj.sensitivityHost = nullptr;
+	proj.sensitivityBytes = apuSum.bytes();
+	if (af_get_raw_ptr(&proj.sensitivityHost, apuSum.get()) != AF_SUCCESS)
+		throw std::runtime_error("Unable to access the ArrayFire sensitivity image");
+#endif
 }
 
 /// <summary>
@@ -306,11 +353,13 @@ inline int transferRHS(af::array& rhs_os, ProjectorClass& proj) {
 /// <param name="ii optional multi-resolution volume number, default is 0 (main volume)"></param>
 /// <returns></returns>
 inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, ProjectorClass& proj, const int ii, const int timestep) {
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 	CUresult status = CUDA_SUCCESS;
 #elif defined(OPENCL)
 	int status = 0;
 	cl::detail::size_t_array region = { inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii] };
+#elif defined(METAL)
+	int status = 0;
 #endif
 	if (inputScalars.FPType == 5) {
 		af::array im;
@@ -343,7 +392,7 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 		}
 		intIm = af::flat(intIm);
 		af::sync();
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 		CUDA_TEXTURE_DESC texDesc;
 		CUDA_ARRAY3D_DESCRIPTOR_st arr3DDesc;
 		CUDA_RESOURCE_DESC resDesc;
@@ -368,7 +417,7 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 		CUDA_MEMCPY3D cpy3d;
 		std::memset(&cpy3d, 0, sizeof(cpy3d));
 		cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_DEVICE;
-		cpy3d.srcDevice = reinterpret_cast<CUdeviceptr>(intIm.device<CUdeviceptr>());
+		cpy3d.srcDevice = reinterpret_cast<CUdeviceptr>(transferAF(intIm));
 		cpy3d.srcPitch = dim0 * sizeof(float);
 		cpy3d.srcHeight = dim1;
 		cpy3d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
@@ -439,7 +488,7 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 		dim2 = intIm.dims(2);
 		intIm = af::flat(intIm);
 		af::sync();
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 		arr3DDesc.Height = dim1;
 		arr3DDesc.Width = dim0;
 		arr3DDesc.Depth = dim2;
@@ -451,7 +500,7 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 		}
 		else if (DEBUG)
 			mexPrint("Arrray creation completed\n");
-		cpy3d.srcDevice = reinterpret_cast<CUdeviceptr>(intIm.device<CUdeviceptr>());
+		cpy3d.srcDevice = reinterpret_cast<CUdeviceptr>(transferAF(intIm));
 		cpy3d.srcPitch = dim0 * sizeof(float);
 		cpy3d.srcHeight = dim1;
 		cpy3d.dstArray = proj.FPArray;
@@ -503,7 +552,7 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 	}
 	else {
 		af::sync();
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 		if (inputScalars.useBuffers) {
 			if (inputScalars.use_psf)
 				proj.vec_opencl.d_im = transferAF(vec.im_os_blurred[ii]);
@@ -513,9 +562,9 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 		else {
 			CUdeviceptr* im;
 			if (inputScalars.use_psf)
-				im = vec.im_os_blurred[ii].device<CUdeviceptr>();
+				im = transferAF(vec.im_os_blurred[ii]);
 			else
-				im = vec.im_os[timestep][ii].device<CUdeviceptr>();
+				im = transferAF(vec.im_os[timestep][ii]);
 			CUDA_TEXTURE_DESC texDesc;
 			CUDA_ARRAY3D_DESCRIPTOR_st arr3DDesc;
 			CUDA_RESOURCE_DESC resDesc;
@@ -659,6 +708,11 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			else if (DEBUG)
 				mexPrint("Input copy succeeded\n");
 		}
+#elif defined(METAL)
+		if (inputScalars.use_psf)
+			proj.vec_opencl.d_im = transferAF(vec.im_os_blurred[ii]);
+		else
+			proj.vec_opencl.d_im = transferAF(vec.im_os[timestep][ii]);
 #else
 		if (inputScalars.use_psf)
 			proj.vec_opencl.d_im_os = vec.im_os_blurred[ii].device<float>();
@@ -693,11 +747,15 @@ inline int forwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputScal
 	if (inputScalars.meanFP && inputScalars.FPType == 5)
 		proj.d_meanFP = transferAF(vec.meanFP);
 	status = proj.forwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, ii);
-	if (inputScalars.useBuffers)
+#ifdef METAL
+	transferMetalToAF(proj.d_output, outputFP);
+#endif
+	if (inputScalars.useBuffers) {
 		if (inputScalars.use_psf)
 			vec.im_os_blurred[ii].unlock();
 		else
 			vec.im_os[timestep][ii].unlock();
+	}
 #else
 	status = proj.forwardProjection(inputScalars, w_vec, osa_iter, timestep, length, pituus, ii);
 	if (inputScalars.use_psf)
@@ -745,6 +803,11 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 	if (inputScalars.meanBP && inputScalars.BPType == 5)
 		proj.d_meanBP = transferAF(meanBP);
 	status = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, compSens, ii);
+#ifdef METAL
+	transferMetalToAF(proj.vec_opencl.d_rhs_os[0], vec.rhs_os[timestep][ii]);
+	if (proj.no_norm == 0 && proj.sensitivityHost && !proj.d_Summ.empty())
+		std::memcpy(proj.sensitivityHost, proj.d_Summ[0]->contents(), proj.sensitivityBytes);
+#endif
 #else
 	 status = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, pituus, compSens, ii);
 #endif
@@ -755,7 +818,7 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 	if (status != 0) {
 		return -1;
 	}
-#ifdef OPENCL
+#if defined(OPENCL) || defined(METAL)
 	if (inputScalars.atomic_64bit)
 		vec.rhs_os[timestep][ii] = vec.rhs_os[timestep][ii].as(f32) / TH;
 	else if (inputScalars.atomic_32bit)
@@ -769,6 +832,33 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 	outputFP.eval();
 	return status;
 }
+
+// The current Metal projector library contains the forward/backprojector
+// kernels. Auxiliary projector-side prior kernels are not part of that
+// library yet; keep their API available so the common reconstruction driver
+// compiles and reports an unsupported selection cleanly if requested.
+#ifdef METAL
+inline int MRPAF(af::array&, af::array&, const scalarStruct&, ProjectorClass&, const uint32_t, const uint32_t, const uint32_t) { return -1; }
+inline int NLMAF(af::array&, const af::array&, const scalarStruct&, Weighting&, ProjectorClass&, const float, const int = 0) { return -1; }
+inline int RDPAF(af::array&, const af::array&, const scalarStruct&, const float, ProjectorClass&, const float, const af::array&, const Weighting&,
+	const bool = false, const bool = false, const int = 0) { return -1; }
+inline int GGMRFAF(af::array&, const af::array&, const scalarStruct&, const float, const float, const float, const float, ProjectorClass&,
+	const float, const Weighting&, const int = 0) { return -1; }
+inline int TVAF(af::array&, const af::array&, const scalarStruct&, const float, const TVdata&, ProjectorClass&, const float, const Weighting&, const int = 0) { return -1; }
+inline int hyperAF(af::array&, const af::array&, const scalarStruct&, const float, ProjectorClass&, const float, const Weighting&, const int = 0) { return -1; }
+inline int proxQAF(std::vector<af::array>&, const float, ProjectorClass&) { return -1; }
+inline int proxTVQAF(std::vector<af::array>&, const float, ProjectorClass&) { return -1; }
+inline int proxTGVQAF(std::vector<af::array>&, const scalarStruct&, const float, ProjectorClass&) { return -1; }
+inline int proxTVDivAF(const std::vector<af::array>&, af::array&, const scalarStruct&, ProjectorClass&, const uint32_t) { return -1; }
+inline int proxTVGradAF(const af::array&, std::vector<af::array>&, const scalarStruct&, const float, const std::vector<af::array>&, ProjectorClass&) { return -1; }
+inline int proxTGVSymmDerivAF(const std::vector<af::array>&, std::vector<af::array>&, const scalarStruct&, const float, ProjectorClass&) { return -1; }
+inline int proxTGVDivAF(const std::vector<af::array>&, std::vector<af::array>&, std::vector<af::array>&, const scalarStruct&,
+	const float, const float, ProjectorClass&) { return -1; }
+inline int elementWiseAF(const af::array&, af::array&, const bool, ProjectorClass&, const bool = false) { return -1; }
+inline int poissonUpdateAF(af::array&, const af::array&, const scalarStruct&, const float, const float, const float, ProjectorClass&, const int = 0) { return -1; }
+inline int PDHGUpdateAF(af::array&, const af::array&, const scalarStruct&, AF_im_vectors&, const float, const float, const float, ProjectorClass&, const uint32_t, const int = 0) { return -1; }
+inline int rotateCustomAF(af::array&, const af::array&, const scalarStruct&, ProjectorClass&, const float, const int = 0) { return -1; }
+#else
 
 // Computes custom median root prior, OpenCL, CUDA or CPU
 inline int MRPAF(af::array& padd, af::array& grad, const scalarStruct& inputScalars, ProjectorClass& proj, const uint32_t medx, const uint32_t medy, const uint32_t medz) {
@@ -807,11 +897,11 @@ inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& input
 	proj.d_gaussianNLM = transferAF(w_vec.gaussianNLM);
 #ifndef CPU
 	if (inputScalars.useImages) {
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 		uint32_t Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim)
 			Nz = inputScalars.lDimStruct.NzPr[kk];
-		CUdeviceptr* input = im.device<CUdeviceptr>();
+		CUdeviceptr* input = transferAF(im);
 		status = proj.transferTex(inputScalars, input, false, Nz);
 #else
 		if (inputScalars.largeDim) {
@@ -876,14 +966,14 @@ inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& input
 	proj.d_W = transferAF(grad);
 #ifndef CPU
 	if (inputScalars.useImages) {
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 		uint32_t Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim)
 			Nz = inputScalars.lDimStruct.NzPr[kk];
-		CUdeviceptr* input = im.device<CUdeviceptr>();
+		CUdeviceptr* input = transferAF(im);
 		status = proj.transferTex(inputScalars, input, false, Nz);
 		if (RDPLargeNeighbor && useRDPRef) {
-			CUdeviceptr* inputRef = RDPref.device<CUdeviceptr>();
+			CUdeviceptr* inputRef = transferAF(RDPref);
 			status = proj.transferTex(inputScalars, inputRef, true);
 		}
 #else
@@ -951,11 +1041,11 @@ inline int GGMRFAF(af::array& grad, const af::array& im, const scalarStruct& inp
 	proj.d_W = transferAF(grad);
 #ifndef CPU
 	if (inputScalars.useImages) {
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 		uint32_t Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim)
 			Nz = inputScalars.lDimStruct.NzPr[kk];
-		CUdeviceptr* input = im.device<CUdeviceptr>();
+		CUdeviceptr* input = transferAF(im);
 		status = proj.transferTex(inputScalars, input, false, Nz);
 #else
 		if (inputScalars.largeDim) {
@@ -1021,11 +1111,11 @@ inline int TVAF(af::array& grad, const af::array& im, const scalarStruct& inputS
 		type = 1;
 #ifndef CPU
 	if (inputScalars.useImages) {
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 		uint32_t Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim)
 			Nz = inputScalars.lDimStruct.NzPr[kk];
-		CUdeviceptr* input = im.device<CUdeviceptr>();
+		CUdeviceptr* input = transferAF(im);
 		status = proj.transferTex(inputScalars, input, false, Nz);
 #else
 		if (inputScalars.largeDim) {
@@ -1084,11 +1174,11 @@ inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inp
 #ifndef CPU
 	proj.d_W = transferAF(grad);
 	if (inputScalars.useImages) {
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 		uint32_t Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim)
 			Nz = inputScalars.lDimStruct.NzPr[kk];
-		CUdeviceptr* input = im.device<CUdeviceptr>();
+		CUdeviceptr* input = transferAF(im);
 		status = proj.transferTex(inputScalars, input, false, Nz);
 #else
 		if (inputScalars.largeDim) {
@@ -1440,7 +1530,7 @@ inline int rotateCustomAF(af::array& imrot, const af::array& im, const scalarStr
 	int status = 0;
 	if (!inputScalars.useBuffers) {
 #if defined(CUDA)
-		CUdeviceptr* input = im.device<CUdeviceptr>();
+		CUdeviceptr* input = transferAF(im);
 		status = proj.transferTex(inputScalars, input, false, inputScalars.Nz[0]);
 #elif defined(OPENCL)
         status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*im.device<cl_mem>(), true), proj.d_inputI, 0, proj.origin, proj.region);
@@ -1465,6 +1555,7 @@ inline int rotateCustomAF(af::array& imrot, const af::array& im, const scalarStr
 	}
 	return status;
 }
+#endif
 #endif
 
 // Various batch functions
@@ -2887,7 +2978,7 @@ inline void transferControl(AF_im_vectors& vec, const scalarStruct& inputScalars
 	if (compute_norm_matrix == 1u) {
 		vec.Summ[0][ii][0].unlock();
 		if (no_norm == 0u) {
-#ifdef OPENCL
+#if defined(OPENCL) || defined(METAL)
 			if (inputScalars.atomic_64bit)
 				vec.Summ[0][ii][0] = vec.Summ[0][ii][0].as(f32) / TH;
 			else if (inputScalars.atomic_32bit)
@@ -2907,7 +2998,7 @@ inline void transferControl(AF_im_vectors& vec, const scalarStruct& inputScalars
 	else if (compute_norm_matrix == 2) {
 		vec.Summ[0][ii][osa_iter].unlock();
 		if (no_norm == 0u) {
-#ifdef OPENCL
+#if defined(OPENCL) || defined(METAL)
 			if (inputScalars.atomic_64bit) {
 				vec.Summ[0][ii][osa_iter] = vec.Summ[0][ii][osa_iter].as(f32) / TH;
 			}

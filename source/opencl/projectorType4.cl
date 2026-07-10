@@ -262,7 +262,13 @@ void projectorType4Forward(
 #endif
         return; 
 #ifdef MASKFP // TODO use readMaskFP
-#ifdef CUDA
+#if defined(METAL)
+#ifdef MASKFP3D
+	const int maskVal = static_cast<int>(metal::round(maskFP.read(uint3(i.x, i.y, i.z)).r));
+#else
+    const int maskVal = static_cast<int>(metal::round(maskFP.read(uint2(i.x, i.y)).r));
+#endif
+#elif defined(CUDA) || defined(HIP)
 #ifdef MASKFP3D
 	const int maskVal = tex3D<unsigned char>(maskFP, i.x, i.y, i.z);
 #else
@@ -299,7 +305,7 @@ void projectorType4Forward(
 		ax[to] = 0.f;
 	ax[TOFid] = d_OSEM[idx];
 #else
-#ifndef __CUDACC__ 
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++)
@@ -311,13 +317,13 @@ void projectorType4Forward(
 #endif
 #else
 #if defined(N_RAYS) && defined(FP)
-#ifndef __CUDACC__ 
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS * N_RAYS
 #endif
 	for (int to = 0; to < NBINS * N_RAYS; to++)
 		ax[to] = 0.f;
 #else
-#ifndef __CUDACC__ 
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++)
@@ -517,7 +523,7 @@ void projectorType4Forward(
 #if defined(MASKBP)
             int maskVal = 1;
             if (aa == 0) {
-#ifdef CUDA // TODO replace with readMaskBP
+#if defined(CUDA) || defined(HIP) // TODO replace with readMaskBP
 #ifdef MASKBP3D
 		        maskVal = tex3D<unsigned char>(maskBP, p.x, p.y, p.z);
 #else
@@ -581,7 +587,7 @@ void projectorType4Forward(
 #if defined(TOF) && defined(LISTMODE)
 		size_t to = TOFid;
 #else
-#ifndef __CUDACC__ 
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
 		for (size_t to = 0; to < NBINS; to++) {
@@ -598,7 +604,7 @@ void projectorType4Forward(
 #if defined(TOF) && defined(LISTMODE)
 	int to = TOFid;
 #else
-#ifndef __CUDACC__ 
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++)
@@ -612,13 +618,13 @@ void projectorType4Forward(
 #if defined(TOF) && defined(LISTMODE)
 		size_t to = TOFid;
 #else
-#ifndef __CUDACC__ 
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
     for (size_t to = 0; to < NBINS; to++) {
 #endif
         float apu = 0.f;
-#ifndef __CUDACC__ 
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll N_RAYS
 #endif
         for (size_t kk = 0; kk < N_RAYS; kk++) {
@@ -632,7 +638,7 @@ void projectorType4Forward(
 #if defined(TOF) && defined(LISTMODE)
 		to = TOFid;
 #else
-#ifndef __CUDACC__ 
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
     for (size_t to = 0; to < NBINS; to++) {
@@ -777,7 +783,7 @@ void projectorType4Backward(
 #ifdef MASKBP
     if (ii == 0) {
 #ifdef USEIMAGES // TODO replace with readMaskBP
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 #ifdef MASKBP3D
         const int maskVal = tex3D<unsigned char>(maskBP, i.x, i.y, i.z);
 #else
@@ -846,7 +852,7 @@ void projectorType4Backward(
         const float thetaCenter = ATAN2(y, x);
         const float pz = (CFLOAT(kk) + 0.5f) / CFLOAT(d_nProjections);
         float3 v = dV - s;
-#ifndef __CUDACC__ 
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NVOXELSHELICAL
 #endif
         for (int zz = 0; zz < NVOXELSHELICAL; zz++) {
@@ -873,7 +879,7 @@ void projectorType4Backward(
             if (px > 1.f || py > 1.f || pz > 1.f || px < 0.f || py < 0.f || pz < 0.f)
                 continue;
 #ifdef USEIMAGES
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
             yVar = tex3D<float>(d_forw, px, py, pz);
 #else
             yVar = read_imagef(d_forw, samplerIm, CFLOAT4(px, py, pz, 0.f)).w;
@@ -977,7 +983,7 @@ void projectorType4Backward(
         const float vApu_2 = FMAD(v_2.x, v_2.x, v_2.y * v_2.y);
 #endif
 #endif
-#ifndef __CUDACC__ 
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NVOXELS
 #endif
         for (int zz = 0; zz < NVOXELS; zz++) {
@@ -1018,7 +1024,7 @@ void projectorType4Backward(
 #endif
             float yVar = 0.f;
 #ifdef USEIMAGES
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
             if (px <= 1.f && py <= 1.f && pz <= 1.f && px >= 0.f && py >= 0.f && pz >= 0.f)
                 yVar = tex3D<float>(d_forw, px, py, pz);
 #else
@@ -1055,7 +1061,7 @@ void projectorType4Backward(
             float py_2 = dot(p_2, normY_2);
             float yVar_2 = 0.f;
 #ifdef USEIMAGES
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
             if (px_2 <= 1.f && py_2 <= 1.f && pz_2 <= 1.f && px_2 >= 0.f && py_2 >= 0.f && pz_2 >= 0.f)
                 yVar_2 = tex3D<float>(d_forw, px_2, py_2, pz_2);
 #else

@@ -23,6 +23,9 @@ if isempty(varargin)
 else
     nCores = varargin{1};
 end
+if ismac && options.use_64bit_atomics
+    options.use_64bit_atomics = false;
+end
 inputCell = false;
 if options.nMultiVolumes > 0
     outputCell = true;

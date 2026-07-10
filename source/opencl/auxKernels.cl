@@ -100,7 +100,7 @@ void computeEstimate(const CLGLOBAL CAST* CLRESTRICT d_Summ, const CLGLOBAL CAST
 
 	int3 ind = CMINT3(GID0, GID1, GID2);
 	size_t idx = GID0 + GID1 * GSIZE0 + GID2 * GSIZE0 * GSIZE1;
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 	if (ind.x >= d_N.x || ind.y >= d_N.y || ind.z >= d_N.z)
 #else
 	if (any(ind >= d_N))
@@ -363,7 +363,7 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 			for (LTYPE xx = startX; xx < endX; xx += LSIZE0) {
 #if defined(NLMREF) // START NLMREF
 #ifdef USEIMAGES
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 				lCacheRef[indX][indY][indZ] = tex3D<float>(u_ref, xx, yy, zz);
 #else
 				lCacheRef[indX][indY][indZ] = read_imagef(u_ref, samplerNLM, (int4)(xx, yy, zz, 0)).w;
@@ -376,7 +376,7 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 #endif
 #endif // END NLMREF
 #ifdef USEIMAGES
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 				lCache[indX][indY][indZ] = tex3D<float>(u, xx, yy, zz);
 #else
 				lCache[indX][indY][indZ] = read_imagef(u, samplerNLM, (int4)(xx, yy, zz, 0)).w;
@@ -394,7 +394,7 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 		indZ += LSIZE2;
 	}
 	BARRIER
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 	if (ii.x >= N.x || ii.y >= N.y || ii.z >= N.z)
 #else
 	if (any(ii >= N))
@@ -706,7 +706,7 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 			for (LTYPE xx = startX; xx < endX; xx += LSIZE0) {
 #if defined(RDPREF) // START RDPREF
 #ifdef USEIMAGES
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 				lCacheRef[indX][indY][indZ] = tex3D<float>(u_ref, xx, yy, zz);
 #else
 				lCacheRef[indX][indY][indZ] = read_imagef(u_ref, samplerRDP, (int4)(xx, yy, zz, 0)).w;
@@ -719,7 +719,7 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 #endif
 #endif // END RDPREF
 #ifdef USEIMAGES
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 				lCache[indX][indY][indZ] = tex3D<float>(u, xx, yy, zz);
 #else
 				lCache[indX][indY][indZ] = read_imagef(u, samplerRDP, (int4)(xx, yy, zz, 0)).w;
@@ -738,7 +738,7 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 	}
 	BARRIER
 #endif // END RDPCORNERS
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 	if (xyz.x >= N.x || xyz.y >= N.y || xyz.z >= N.z)
 #else
 	if (any(xyz >= N))
@@ -791,7 +791,7 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 #endif
 #else
 #ifdef USEIMAGES
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 	// Current voxel
 	const float uj = tex3D<float>(u, xyz.x, xyz.y, xyz.z);
 	// Left-right
@@ -878,12 +878,27 @@ void GGMRFKernel(CLGLOBAL float* CLRESTRICT grad, IMAGE3D u,
 void GGMRFKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, 
 #endif
 	CONSTANT float* weight, const int3 N, const float p, const float q, const float c, const float pqc, const float beta
+#ifdef MASKPRIOR
+	, MASKBPTYPE maskBP
+#endif
+#ifdef EFOVZ
+	, CONSTANT uchar* fovIndices
+#endif
 #ifdef LARGEDIM
 	, const uint2 nOffset
 #endif
 ) {
 
 	LTYPE3 ii = MINT3(GID0, GID1, GID2);
+#ifdef EFOVZ
+	if (fovIndices[ii.z] == 0)
+        return;
+#endif
+#ifdef MASKPRIOR
+	const int maskVal = readMaskBP(maskBP, ii);
+    if (maskVal == 0)
+        return;
+#endif
 	const LTYPE n = (ii.x) + (ii.y) * (N.x) + (ii.z) * (N.x * N.y);
 	float output = 0.f;
 	LTYPE startX = GRID0 * LSIZE0 - SWINDOWX + LID0;
@@ -900,7 +915,7 @@ void GGMRFKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRI
 			LTYPE indX = LID0;
 			for (LTYPE xx = startX; xx < endX; xx += LSIZE0) {
 #ifdef USEIMAGES
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 				lCache[indX][indY][indZ] = tex3D<float>(u, xx, yy, zz);
 #else
 				lCache[indX][indY][indZ] = read_imagef(u, samplerNLM, (int4)(xx, yy, zz, 0)).w;
@@ -918,7 +933,7 @@ void GGMRFKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRI
 		indZ += LSIZE2;
 	}
 	BARRIER
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 	if (ii.x >= N.x || ii.y >= N.y || ii.z >= N.z)
 #else
 	if (any(ii >= N))
@@ -1182,7 +1197,7 @@ void ProxTVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 #endif
 ) {
 	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 	if (xyz.x >= N.x || xyz.y >= N.y || xyz.z >= N.z)
 #else
 	if (any(xyz >= N))
@@ -1243,7 +1258,7 @@ void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLREST
 #endif
 ) {
 	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 	if (xyz.x >= N.x || xyz.y >= N.y || xyz.z >= N.z)
 #else
 	if (any(xyz >= N))
@@ -1336,7 +1351,7 @@ void ProxTGVSymmDeriv(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 #endif
 ) {
 	const LTYPE3 xyz = MINT3(GID0, GID1, GID2);
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 	if (xyz.x >= NOrig.x || xyz.y >= NOrig.y || xyz.z >= NOrig.z)
 #else
 	if (any(xyz >= NOrig))
@@ -1453,7 +1468,7 @@ void ProxTGVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLR
 #endif
 ) {
 	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 	if (xyz.x >= NOrig.x || xyz.y >= NOrig.y || xyz.z >= NOrig.z)
 #else
 	if (any(xyz >= NOrig))
@@ -1593,7 +1608,7 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
 #endif
 ) {
 	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 	if (xyz.x >= N.x || xyz.y >= N.y || xyz.z >= N.z)
 #else
 	if (any(xyz >= N))
@@ -1624,7 +1639,7 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
 			LTYPE indX = LID0;
 			for (LTYPE xx = startX; xx < endX; xx += LSIZE0) {
 #ifdef USEIMAGES
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 				lCache[indX][indY][indZ] = tex3D<float>(u, xx, yy, zz);
 #else
 				lCache[indX][indY][indZ] = read_imagef(u, samplerTV, (int4)(xx, yy, zz, 0)).w;
@@ -1736,7 +1751,7 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 	const int3 N = MINT3(Nx, Ny, Nz);
 #endif
 	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 	if (xyz.x >= N.x || xyz.y >= N.y || xyz.z >= N.z)
 #else
 	if (any(xyz >= N))
@@ -1753,7 +1768,7 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 #endif
 	const LTYPE n = (xyz.x) + (xyz.y) * (N.x) + (xyz.z) * (N.x * N.y);
 #ifdef USEIMAGES
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 	const float uijk = tex3D<float>(u, xyz.x, xyz.y, xyz.z);
 #else
 	const float uijk = read_imagef(u, samplerTV, (int4)(xyz.x, xyz.y, xyz.z, 0)).w;
@@ -1763,7 +1778,7 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 #endif
 #if defined(SATV) // START JPTV || SATV
 #ifdef USEIMAGES
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 	float2 ux = make_float2(tex3D<float>(u, xyz.x + 1, xyz.y, xyz.z), tex3D<float>(u, xyz.x - 1, xyz.y, xyz.z));
 	float2 uy = make_float2(tex3D<float>(u, xyz.x, xyz.y + 1, xyz.z), tex3D<float>(u, xyz.x, xyz.y - 1, xyz.z));
 	float2 uz = make_float2(tex3D<float>(u, xyz.x, xyz.y, xyz.z + 1), tex3D<float>(u, xyz.x, xyz.y, xyz.z - 1));
@@ -1804,7 +1819,7 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 #endif
 #else
 #ifdef USEIMAGES
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 	const float3 uijkP = make_float3(tex3D<float>(u, xyz.x + 1, xyz.y, xyz.z), tex3D<float>(u, xyz.x, xyz.y + 1, xyz.z), tex3D<float>(u, xyz.x, xyz.y, xyz.z + 1));
 	const float3 uijkM = make_float3(tex3D<float>(u, xyz.x - 1, xyz.y, xyz.z), tex3D<float>(u, xyz.x, xyz.y - 1, xyz.z), tex3D<float>(u, xyz.x, xyz.y, xyz.z - 1));
 	const float2 ui = make_float2(tex3D<float>(u, xyz.x - 1, xyz.y + 1, xyz.z), tex3D<float>(u, xyz.x - 1, xyz.y, xyz.z + 1));
@@ -1880,7 +1895,7 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 #else
 #ifdef ANATOMICAL1 // TV type 1
 	const LTYPE NN = N.x * N.y * N.z;
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 	float s[9];
 #else
 	__private float s[9];
@@ -1973,7 +1988,7 @@ KERNEL3
 void PoissonUpdate(CLGLOBAL float* CLRESTRICT im, const CLGLOBAL float* CLRESTRICT rhs,
 	const int3 N, const float lambda, const float epps, const float alpha, const uchar enforcePositivity) {
 	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 	if (xyz.x >= N.x || xyz.y >= N.y || xyz.z >= N.z)
 #else
 	if (any(xyz >= N))
@@ -2010,7 +2025,7 @@ KERNEL3
 void PDHGUpdate(CLGLOBAL float* CLRESTRICT im, const CLGLOBAL float* CLRESTRICT rhs, CLGLOBAL float* CLRESTRICT u,
 	const int3 N, const float epps, const float theta, const float tau, const uchar enforcePositivity) {
 	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 	if (xyz.x >= N.x || xyz.y >= N.y || xyz.z >= N.z)
 #else
 	if (any(xyz >= N))
@@ -2056,7 +2071,7 @@ KERNEL void rotate(CLGLOBAL float* CLRESTRICT rotim, IMTYPE im, const int Nx, co
     if (src_x >= 0.0f && src_x < Nx && src_y >= 0.0f && src_y < Ny) {
 		float val = 0.f;
 #ifdef USEIMAGES
-#if defined(CUDA)
+#if defined(CUDA) || defined(HIP)
         val = tex3D<float>(im, src_x, src_y, xyz.z);
 #elif defined(OPENCL)
         val = read_imagef(im, samplerRotate, (int4)(src_x, src_y, xyz.z, 0)).w;

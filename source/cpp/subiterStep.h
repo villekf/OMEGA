@@ -67,12 +67,18 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             mexPrint("Priori\n");
             mexEval();
         }
-        if (!MethodList.BSREM && !MethodList.ROSEMMAP && !MethodList.POCS && !MethodList.SART && kk == 0) {
+        // Compute the spatial prior only every regEveryIter-th (sub)iteration. The counter below runs
+        // from 0 to inputScalars.subsets * inputScalars.Niter - 1; the first and last are always computed.
+        const int64_t regCounter = static_cast<int64_t>(osa_iter) + static_cast<int64_t>(inputScalars.subsets) * static_cast<int64_t>(iter);
+        const int64_t regCounterMax = static_cast<int64_t>(inputScalars.subsets) * static_cast<int64_t>(inputScalars.Niter) - 1;
+        const bool computeReg = inputScalars.regEveryIter <= 1 || regCounter == 0 || regCounter == regCounterMax
+            || (regCounter % static_cast<int64_t>(inputScalars.regEveryIter)) == 0;
+        if (!MethodList.BSREM && !MethodList.ROSEMMAP && !MethodList.POCS && !MethodList.SART && kk == 0 && computeReg) {
             status = applySpatialPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, timestep, osa_iter + inputScalars.subsets * iter, compute_norm_matrix, false, vv);
             if (status != 0) return -1;
         }
     }
-    
+
     if (MethodList.TemporalSmoothness || MethodList.TemporalTV) {
         if (!MethodList.BSREM && !MethodList.ROSEMMAP && !MethodList.POCS && !MethodList.SART && kk == 0) {
             status = applyTemporalPrior(vec, w_vec, MethodList, inputScalars, proj);

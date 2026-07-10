@@ -1072,9 +1072,15 @@ else
     if nargout > 1
         error('Inveon sinogram format can only have one output variable')
     end
-    [options.file, options.fpath] = uigetfile('*.scn','Select Inveon sinogram datafile');
-    if isequal(options.file, 0)
-        error('No file was selected')
+    [~,~,ext] = fileparts(options.fpath);
+    if exist(options.fpath,'file') ~= 2 || ~strcmp('.scn',ext)
+        [options.file, options.fpath] = uigetfile('*.scn','Select Inveon sinogram datafile');
+        if isequal(options.file, 0)
+            error('No file was selected')
+        end
+        nimi = [options.fpath options.file];
+    else
+        nimi = [options.fpath];
     end
     
     appliedCorrections.randoms = 'randoms correction';
@@ -1083,7 +1089,6 @@ else
         tic
     end
     
-    nimi = [options.fpath options.file];
     fid = fopen(nimi);
     %     SinM = fread(fid, inf, 'int32=>uint16',0,'l');
     raw_SinM = fread(fid, inf, 'int32=>int32',0,'l');
@@ -1095,8 +1100,8 @@ else
             SinM = raw_SinM;
         end
     else
-        if options.partitions > tof_length
-            error('Number of dynamic frames specified in options.partitions is larger than the number of frames in the sinogram')
+        if options.partitions ~= tof_length
+            error(['Number of dynamic frames specified in options.partitions is larger or smaller than the number of frames in the sinogram! Set options.partitions to match the sinogram (' num2str(tof_length) ' timesteps)!'])
         end
         temp = cell(tof_length, 1);
         for kk = options.partitions : -1 : 1

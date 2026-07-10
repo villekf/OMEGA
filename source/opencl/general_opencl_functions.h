@@ -154,6 +154,15 @@
 
 #ifdef METAL
 
+#if defined(ATOMIC32)
+#define CAST int
+#ifndef TH
+#define TH 100000.f
+#endif
+#else
+#define CAST float
+#endif
+
 constexpr metal::sampler samplerForw(
     metal::coord::normalized,
     metal::filter::linear,
@@ -167,7 +176,6 @@ constexpr metal::sampler sampler2(
 );
 
 #ifdef HALF // 16-bit floating point
-#define CAST float
 #define CFLOAT(a) static_cast<half>(a)
 #define CFLOAT3(a) half3(a)
 #define CMFLOAT3(x,y,z) half3((x), (y), (z))
@@ -176,7 +184,6 @@ constexpr metal::sampler sampler2(
 #define make_float3(a,b,c) half3((a),(b),(c)) // TODO: replace with half
 #define MFLOAT2(a,b) half2((a), (b)) // TODO: replace with half
 #else // 32-bit floating point
-#define CAST float
 #define CFLOAT(a) static_cast<float>(a)
 #define CFLOAT3(a) float3(a)
 #define CMFLOAT3(x,y,z) float3((x), (y), (z))
@@ -278,10 +285,17 @@ inline FLOAT dot(float3 a, float3 b) {
     return metal::dot(a, b);
 }
 
+#if defined(ATOMIC32)
+inline void atomicAdd(volatile device metal::atomic_int* addr, int val)
+{
+    atomic_fetch_add_explicit(addr, val, metal::memory_order_relaxed);
+}
+#else
 inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
 {
     atomic_fetch_add_explicit(addr, val, metal::memory_order_relaxed);
 }
+#endif
 
 #endif
 #ifdef OPENCL
@@ -428,7 +442,10 @@ __constant sampler_t sampler_MASK4 = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_NEA
 __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif
 #endif
-#if defined(CUDA)
+// CUDA and HIP share the same device-side language (kernel/qualifier keywords, intrinsics, vector
+// types, texture fetch templates, etc.), so the vast majority of these definitions are common. The
+// HIP-specific symbols (e.g. the texture object type) are separated where they differ from CUDA.
+#if defined(CUDA) || defined(HIP)
 #define BUF0
 #define BUF1
 #define BUF2
@@ -540,8 +557,13 @@ __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEA
 #define LID0 threadIdx.x
 #define LID1 threadIdx.y
 #define LID2 threadIdx.z
+#ifdef HIP
+#define IMAGE3D hipTextureObject_t
+#define IMAGE2D hipTextureObject_t
+#else
 #define IMAGE3D cudaTextureObject_t
 #define IMAGE2D cudaTextureObject_t
+#endif
 #define MUINT2(a, b) make_uint2(a, b)
 #define MINT3(a, b, c) make_int3(a, b, c)
 #define MUINT3(a, b, c) make_uint3(a, b, c)
@@ -600,6 +622,13 @@ inline __device__ float3 make_int3_float3(int3 a) {
 // 	return make_int3(a.x - b.x, a.y - b.y, a.z - b.z);
 // }
 
+// CUDA's vector_types.h defines no arithmetic operators for int3/float2/float3, so we provide them
+// here. HIP's HIP_vector_type already overloads all of these (+, -, *, /, unary -, compound
+// assignment, and scalar/vector mixes), so defining them again makes every use ambiguous. Skip them
+// under HIP and rely on the built-in ones. NOTE: the only behavioural difference is uint3 - int,
+// which yields int3 here but uint3 under HIP; its single use is CFLOAT3(N - 1) where N >= 1, so the
+// converted float value is identical.
+#ifndef HIP
 inline __device__ int3 operator-(const int3 a, const int3 b) {
 	return make_int3(a.x - b.x, a.y - b.y, a.z - b.z);
 }
@@ -724,6 +753,7 @@ inline __device__ void operator+=(float2& a, float2 b) {
 	a.x += b.x;
 	a.y += b.y;
 }
+#endif // !HIP (vector arithmetic operators are built into HIP_vector_type)
 
 inline __device__ float3 fmin(float3 a, float3 b) {
     return make_float3(a.x < b.x ? a.x : b.x, a.y < b.y ? a.y : b.y, a.z < b.z ? a.z : b.z);
@@ -836,7 +866,13 @@ DEVICE void getIndex(int3* i, const uint d_size_x, const uint d_sizey, const uin
 DEVICE int readMaskBP(MASKBPTYPE maskBP, typeT ind) {
 	return 
     #ifdef USEIMAGES
-    #ifdef CUDA
+    #ifdef METAL
+    #ifdef MASKBP3D
+        static_cast<int>(metal::round(maskBP.read(uint3(ind.x, ind.y, ind.z)).r));
+    #else
+        static_cast<int>(metal::round(maskBP.read(uint2(ind.x, ind.y)).r));
+    #endif
+    #elif defined(CUDA) || defined(HIP)
     #ifdef MASKBP3D
         tex3D<unsigned char>(maskBP, ind.x, ind.y, ind.z);
     #else
@@ -859,7 +895,13 @@ DEVICE int readMaskBP(MASKBPTYPE maskBP, typeT ind) {
 DEVICE int readMaskFP(MASKFPTYPE maskFP, typeT ind) {
 	return 
 #ifdef USEIMAGES
-#ifdef CUDA
+#ifdef METAL
+#ifdef MASKFP3D
+        static_cast<int>(metal::round(maskFP.read(uint3(ind.x, ind.y, ind.z)).r));
+#else
+        static_cast<int>(metal::round(maskFP.read(uint2(ind.x, ind.y)).r));
+#endif
+#elif defined(CUDA) || defined(HIP)
 #ifdef MASKFP3D
         tex3D<unsigned char>(maskFP, ind.x, ind.y, ind.z);
 #else
@@ -956,7 +998,7 @@ DEVICE float TOFWeight(const float element, const float sigma_x, const float D, 
 DEVICE float TOFLoop(const float DD, const float element, CONSTANT float* TOFCenter, const float sigma_x, float* D, const float epps, float* TOFWeights) {
 	float TOFSum = 0.f;
 	const float dX = element / (TRAPZ_BINS - 1.f);
-#ifndef __CUDACC__ 
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++) {
@@ -997,7 +1039,7 @@ DEVICE void multirayCoordinateShiftZ(PTR_THR FLOAT3 *s, PTR_THR FLOAT3 *d, const
 // Computes the forward projection
 // Separate cases for the Siddon and interpolated projectors
 DEVICE void forwardProject(const float local_ele, PTR_THR float *ax, const typeT local_ind, IMTYPE d_OSEM) {
-#if defined(CUDA)
+#if defined(CUDA) || defined(HIP)
 #ifdef USEIMAGES
     // if (local_ind.x <= 1.f && local_ind.y <= 1.f && local_ind.z <= 1.f && local_ind.x >= 0.f && local_ind.y >= 0.f && local_ind.z >= 0.f)
 		*ax = (local_ele * tex3D<float>(d_OSEM, local_ind.x, local_ind.y, local_ind.z));
@@ -1018,9 +1060,8 @@ DEVICE void forwardProject(const float local_ele, PTR_THR float *ax, const typeT
 #elif defined(METAL)
 #ifdef PTYPE4
     *ax = local_ele * d_OSEM.sample(samplerForw, (local_ind)).r;
-#endif
-#ifdef USEIMAGES
-    *ax = local_ele * d_OSEM.read((uint3)(local_ind)).r;
+#elif defined(USEIMAGES)
+    *ax = local_ele * d_OSEM.read(uint3(local_ind.x, local_ind.y, local_ind.z)).r;
 #else
     *ax = (local_ele * d_OSEM[local_ind]);
 #endif
@@ -1047,7 +1088,7 @@ DEVICE void denominator(PTR_THR float *ax, const typeT localInd, float local_ele
 #if defined(LISTMODE) && !defined(SENS)
 	int to = TOFIndex;
 #else
-#ifndef __CUDACC__ 
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++) {
@@ -1088,7 +1129,7 @@ DEVICE void rhs(const float local_ele, PTR_THR const float *ax, const LONG local
 #if defined(LISTMODE) && !defined(SENS)
 	int to = TOFIndex;
 #else
-#ifndef __CUDACC__ 
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++) {
@@ -1112,7 +1153,11 @@ DEVICE void rhs(const float local_ele, PTR_THR const float *ax, const LONG local
 #ifdef ATOMIC
 	atom_add(&d_rhs_OSEM[local_ind], convert_long(yaxTOF * TH));
 #elif defined(ATOMIC32)
+#ifdef METAL
+	atomicAdd((volatile device metal::atomic_int*)(&d_rhs_OSEM[local_ind]), CINT_rtz(yaxTOF * TH));
+#else
 	atomic_add(&d_rhs_OSEM[local_ind], CINT(yaxTOF * TH));
+#endif
 #else
 #ifdef METAL
 	atomicAdd((volatile device metal::atomic_float*)(&d_rhs_OSEM[local_ind]), yaxTOF);
@@ -1124,7 +1169,11 @@ DEVICE void rhs(const float local_ele, PTR_THR const float *ax, const LONG local
 #ifdef ATOMIC
 		atom_add(&d_Summ[local_ind], convert_long(val * TH));
 #elif defined(ATOMIC32)
+#ifdef METAL
+		atomicAdd((volatile device metal::atomic_int*)(&d_Summ[local_ind]), CINT_rtz(val * TH));
+#else
 		atomic_add(&d_Summ[local_ind], CINT(val * TH));
+#endif
 #else
 #ifdef METAL
 		atomicAdd((volatile device metal::atomic_float*)&d_Summ[local_ind], val);
@@ -1498,11 +1547,19 @@ DEVICE void getDetectorCoordinatesFullSinogram(const uint d_size_x, const int3 i
 DEVICE void compute_attenuation(const float val, const typeT ind, IMTYPE d_atten, PTR_THR float *jelppi, const int ii) {
 	if (ii == 0) {
         *jelppi += val * -
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
 #ifdef USEIMAGES
 		tex3D<float>(d_atten, ind.x, ind.y, ind.z);
 #else
 		d_atten[ind];
+#endif
+#elif defined(METAL)
+#if defined(PTYPE4)
+        d_atten.sample(samplerForw, float3(ind.x, ind.y, ind.z)).r;
+#elif defined(USEIMAGES)
+        d_atten.read(uint3(ind.x, ind.y, ind.z)).r;
+#else
+        d_atten[ind];
 #endif
 #else
 #if defined(PTYPE4)

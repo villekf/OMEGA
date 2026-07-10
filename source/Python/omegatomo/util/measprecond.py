@@ -73,9 +73,26 @@ def applyMeasPreconditioning(options, var):
                     # var = reshape_fortran(var, (options.nRowsD, options.nColsD, var.numel() // (options.nRowsD * options.nColsD)))
                     var = torch.reshape(var, (options.nColsD, var.numel() // (options.nRowsD * options.nColsD), options.nRowsD))
                 temp = torch.fft.fft(var, n=options.Nf, dim=2)
-                temp = temp * options.filterG
+                temp *= options.filterG
                 temp = torch.fft.ifft(temp, dim=2)
                 var = torch.ravel(torch.real(temp[:,:,:var.shape[2]]))
+        elif options.useCuPy:
+            import cupy as cp
+            if options.precondTypeMeas[1].item():
+                if not hasattr(options, 'filterG'):
+                    options.filterG = cp.asarray(options.filter0)
+                if options.subsets > 1 and (options.subsetType == 5 or options.subsetType == 4):
+                    if options.subsetType == 4:
+                        var = cp.reshape(var, (options.nRowsD, var.size // options.nRowsD), order='F')
+                    else:
+                        var = cp.reshape(var, (options.nColsD, var.size // options.nColsD), order='F')
+                else:
+                    var = cp.reshape(var, (options.nRowsD, options.nColsD, var.size // (options.nRowsD * options.nColsD)), order='F')
+                temp = cp.fft.fft(var, n=options.Nf, axis=0)
+                temp *= options.filterG.reshape((-1, 1, 1), order='F')
+                temp = cp.fft.ifft(temp, axis=0)
+                var = cp.real(temp[:var.shape[0], :, :]).ravel(order='F')
+                
     return var
             
 def circulantInverse(options, var):
@@ -129,4 +146,19 @@ def circulantInverse(options, var):
         temp /= options.FilterG
         temp = torch.fft.ifft(temp, dim=2)
         var = torch.ravel(torch.real(temp[:,:,:var.shape[2]]))
+    elif options.useCuPy:
+        import cupy as cp
+        if not hasattr(options, 'FilterG'):
+            options.FilterG = cp.asarray(options.Ffilter)
+        if options.subsets > 1 and (options.subsetType == 5 or options.subsetType == 4):
+            if options.subsetType == 4:
+                var = cp.reshape(var, (options.nRowsD, var.size // options.nRowsD), order='F')
+            else:
+                var = cp.reshape(var, (options.nColsD, var.size // options.nColsD), order='F')
+        else:
+            var = cp.reshape(var, (options.nRowsD, options.nColsD, var.size // (options.nRowsD * options.nColsD)), order='F')
+        temp = cp.fft.fft(var, n=options.Nf, axis=0)
+        temp /= options.FilterG.reshape((-1, 1, 1), order='F')
+        temp = cp.fft.ifft(temp, axis=0)
+        var = cp.real(temp[:var.shape[0], :, :]).ravel(order='F')
     return var

@@ -156,6 +156,9 @@ options.Niter = 1
 options.subsets = 20
 options.subsetType = 8
 
+# This has to be True if you want to use the filtering-based preconditioner
+options.PDHG = False
+
 # Use offset-correction
 # If you use offset imaging, i.e. the center of rotation is not in the
 # origin but rather a circle around the origin, you can enable automatic
@@ -174,6 +177,9 @@ options.RDP_gamma = 10.
 # completed. It is recommended to keep this at 1 or 2. With value of 2, 
 # you get more detailed timing information. Maximum is 3. Minimum is 0.
 options.verbose = 1
+
+# Filtering-based preconditioner
+options.precondTypeMeas[1] = False
 
 # Number of power method iterations
 options.powerIterations = 10
@@ -243,7 +249,12 @@ for k in range(options.Niter):
     for i in range(options.subsets):
         options.subset = i
         apu = options * d_f
-        pl = (p[i] + sigma * (apu - d_m[i])) / (1. + sigma)
+        if options.precondTypeMeas[1]:
+            apu = applyMeasPreconditioning(options, apu - d_m[i])
+            pl = p[i] + sigma * apu
+            pl = circulantInverse(options, pl)
+        else:
+            pl = (p[i] + sigma * (apu - d_m[i])) / (1 + sigma)
         dg = options.T() * (pl - p[i])
         p[i] = pl
         g1 = g1 + dg
@@ -306,7 +317,12 @@ for k in range(options.Niter):
 #     for i in range(options.subsets):
 #         options.subset = i
 #         apu = options * d_f
-#         pl = (p[i] + sigma * (apu - d_m[i])) / (1 + sigma)
+#         if options.precondTypeMeas[1]:
+#             apu = applyMeasPreconditioning(options, apu - d_m[i])
+#             pl = p[i] + sigma * apu
+#             pl = circulantInverse(options, pl)
+#         else:
+#             pl = (p[i] + sigma * (apu - d_m[i])) / (1 + sigma)
 #         dg = options.T() * (pl - p[i])
 #         p[i] = pl.copy()
 #         for j in range((options.nMultiVolumes + 1)):
@@ -323,7 +339,7 @@ if isinstance(d_f, list):
 else:
     f_np = d_f.get()
 f_np = cp.reshape(f_np, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()), order='F')
-plt.pyplot.imshow(f_np[:,:,200], vmin=0)
+# plt.pyplot.imshow(f_np[:,:,200], vmin=0)
 
 from omegatomo.util.volume3Dviewer import volume3Dviewer
 volume3Dviewer(f_np)
