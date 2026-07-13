@@ -53,6 +53,13 @@ if options.attenuation_correction
         options.vaimennus = cell2mat(options.vaimennus);
     end
 end
+if options.useMaskBP
+    if iscell(options.maskBP)
+        options.maskBP = cell2mat(options.maskBP);
+    elseif partitions > 1
+        options.maskBP = repmat(options.maskBP(:), partitions, 1);
+    end
+end
 if options.randoms_correction
     if iscell(options.SinDelayed)
         options.SinDelayed = cell2mat(options.SinDelayed);

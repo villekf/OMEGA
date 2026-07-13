@@ -44,8 +44,12 @@ OS_I4_summa = checkAlgorithmsPriors(options, 2,0) + checkAlgorithmsPriors(option
 preCondImAlg = checkAlgorithmsPriors(options, 7);
 preCondMeasAlg = checkAlgorithmsPriors(options, 8);
 
-if ismac && options.useImages
-    warning('MacOS implementation does not fully support textures (yet).')
+if (options.SPECT || options.PET) && options.useMultiResolutionVolumes && options.attenuation_correction && options.CT_attenuation
+    warning('Image-domain attenuation correction is not supported with multi-resolution reconstruction. Disabling attenuation correction.')
+    options.attenuation_correction = false;
+    if isfield(options, 'vaimennus')
+        options = rmfield(options, 'vaimennus');
+    end
 end
 if numel(options.partitions) > 1
     partitions = numel(options.partitions);

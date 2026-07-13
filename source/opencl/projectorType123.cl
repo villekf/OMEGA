@@ -907,17 +907,15 @@ void projectorType123(
 #if defined(BP) //////////////// BACKWARD PROJECTION ////////////////
 #if defined(MASKBP) //////////////// MASKBP ////////////////
 				int maskVal = 1;
-				if (aa == 0) {
-                    const typeT maskInd = localInd
+				const typeT maskInd = localInd
 #ifndef USEIMAGES
-                        .x + localInd.y * d_Nxyz.x
+					.x + localInd.y * d_Nxyz.x
 #ifdef MASKBP3D
-                        + localInd.z * d_Nxyz.x * d_Nxyz.y
+					+ localInd.z * d_Nxyz.x * d_Nxyz.y
 #endif
 #endif
-                    ;
-                    maskVal = readMaskBP(maskBP, maskInd);
-				}
+				;
+				maskVal = readMaskBP(maskBP, maskInd);
 				if (maskVal > 0)
 #endif //////////////// END MASKBP ////////////////
 				rhs(temp * d_in, ax, local_ind, d_output, no_norm, d_Summ
@@ -1510,17 +1508,15 @@ void projectorType123(
 #if defined(BP) //////////////// BACKWARD PROJECTION ////////////////
 #if defined(MASKBP) //////////////// MASKBP ////////////////
 			int maskVal = 1;
-			if (aa == 0) {
-                const typeT maskInd = localInd
+			const typeT maskInd = localInd
 #ifndef USEIMAGES
-                    .x * d_N2 + localInd.y * d_N3
+				.x * d_N2 + localInd.y * d_N3
 #ifdef MASKBP3D
-                    + localInd.z * d_Nxyz.x * d_Nxyz.y
+				+ localInd.z * d_Nxyz.x * d_Nxyz.y
 #endif
 #endif
-                ;
-                maskVal = readMaskBP(maskBP, maskInd);
-			}
+			;
+			maskVal = readMaskBP(maskBP, maskInd);
 			if (maskVal > 0)
 #endif //////////////// END MASKBP ////////////////
 			rhs(local_ele * temp, ax, local_ind, d_output, no_norm, d_Summ

@@ -122,293 +122,107 @@ if options.useEFOV
         if options.axialEFOV && options.transaxialEFOV % Both transaxial and axial FOVs are extended.
             options.nMultiVolumes = 6;
 
-            options.FOVa_x = ([
-                FOVxM0;
-                FOVxM1;
-                FOVxM2;
-                FOVxM3;
-                FOVxM4;
-                FOVxM5;
-                FOVxM6;
-            ]');
+            options.FOVa_x = ([FOVxM0, FOVxM1, FOVxM2, FOVxM3, FOVxM4, FOVxM5, FOVxM6]);
+            options.Nx = uint32([NxM0, NxM1, NxM2, NxM3, NxM4, NxM5, NxM6]);
 
-            options.Nx = uint32([
-                NxM0;
-                NxM1;
-                NxM2;
-                NxM3;
-                NxM4;
-                NxM5;
-                NxM6;
-            ]');
-
-            options.FOVa_y = [
-                FOVyM0;
-                FOVyM1;
-                FOVyM2;
-                FOVyM3;
-                FOVyM4;
-                FOVyM5;
-                FOVyM6;
-            ]';
-
-            options.Ny = uint32([
-                NyM0;
-                NyM1;
-                NyM2;
-                NyM3;
-                NyM4;
-                NyM5;
-                NyM6;
-            ]');
+            options.FOVa_y = [FOVyM0, FOVyM1, FOVyM2, FOVyM3, FOVyM4, FOVyM5, FOVyM6];
+            options.Ny = uint32([NyM0, NyM1, NyM2, NyM3, NyM4, NyM5, NyM6]);
 
             FOVzM3 = options.axial_fov;
             FOVzM4 = options.axial_fov;
             FOVzM5 = options.axial_fov;
             FOVzM6 = options.axial_fov;
-
-            options.axial_fov = [
-                FOVzM0;
-                FOVzM1;
-                FOVzM2;
-                FOVzM3;
-                FOVzM4;
-                FOVzM5;
-                FOVzM6;
-            ]';
-
+            options.axial_fov = [FOVzM0, FOVzM1, FOVzM2, FOVzM3, FOVzM4, FOVzM5, FOVzM6];
             NzM3 = round(FOVzM3 / dzM);
             NzM4 = round(FOVzM4 / dzM);
             NzM5 = round(FOVzM5 / dzM);
             NzM6 = round(FOVzM6 / dzM);
-
-            options.Nz = uint32([
-                NzM0;
-                NzM1;
-                NzM2;
-                NzM3;
-                NzM4;
-                NzM5;
-                NzM6;
-            ]');
-
-            disp(['Extended FOV is ' num2str(FOVyM3/options.FOVyOrig * 100) ' % of the original'])
-            % If the initial value only covers the original, dense, volume,
-            % it needs to be resized to match the extended FOV with
-            % multi-resolution
-            if size(options.x0, 1) == nx && min(options.x0(:)) ~= max(options.x0(:))
-                if exist('imresize3','file') == 2
-                    apu = single(imresize3(options.x0,options.multiResolutionScale));
-                else
-                    apu = single(imresize(options.x0,options.multiResolutionScale));
-                    [XX, YY, ZZ] = meshgrid(1:size(apu,1), 1:size(apu,1), 1:round(1/options.multiResolutionScale):size(options.x0,3));
-                    apu = interp3(apu, XX, YY, ZZ);
-                end
-                options.x1 = apu(options.Nx(4) + 1 : options.Nx(4) + options.Nx(2), options.Ny(6) + 1 : options.Ny(6) + options.Ny(2), ...
-                    1 : options.Nz(2));
-                options.x2 = apu(options.Nx(5) + 1 : options.Nx(5) + options.Nx(3), options.Ny(7) + 1 : options.Ny(7) + options.Ny(3), ...
-                    end - options.Nz(2) + 1:end);
-                options.x3 = apu(1 : options.Nx(4), :, :);
-                if mod(size(apu,1),2) == 0
-                    options.x4 = apu(options.Nx(5) + options.Nx(3) : end, :, :);
-                else
-                    options.x4 = apu(1 + options.Nx(5) + options.Nx(3) : end, :, :);
-                end
-                options.x5 = apu(options.Nx(4) + 1 : options.Nx(4) + options.Nx(2), 1:options.Ny(6), ...
-                    1 : options.Nz(4));
-                if mod(size(apu,2),2) == 0
-                    options.x6 = apu(options.Nx(5) + 1 : options.Nx(5) + options.Nx(3), options.Ny(7) + options.Ny(3) : end, ...
-                        1 : options.Nz(5));
-                else
-                    options.x6 = apu(options.Nx(5) + 1 : options.Nx(5) + options.Nx(3), 1 + options.Ny(7) + options.Ny(3) : end, ...
-                        1 : options.Nz(5));
-                end
-                options.x0 = single(options.x0(1 + (size(options.x0,1) - options.NxOrig) / 2 : ...
-                    (size(options.x0,1) - options.NxOrig) / 2 + options.NxOrig, ...
-                    1 + (size(options.x0,2) - options.NyOrig) / 2 : ...
-                    (size(options.x0,2) - options.NyOrig) / 2 + options.NyOrig,...
-                    1 + (size(options.x0,3) - options.NzOrig) / 2 : ...
-                    (size(options.x0,3) - options.NzOrig) / 2 + options.NzOrig));
-                if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
-                    options.x0 = [options.x0(:);options.x1(:); options.x2(:); options.x3(:); options.x4(:); options.x5(:); options.x6(:)];
-                    options = rmfield(options, {'x1','x2','x3','x4','x5','x6'});
-                end
-            elseif size(options.x0, 1) == options.NxOrig || min(options.x0(:)) == max(options.x0(:))
-                val = min(options.x0(:));
-                options.x1 = ones(options.Nx(2), options.Ny(2), options.Nz(2), options.cType) * val;
-                options.x2 = ones(options.Nx(3), options.Ny(3), options.Nz(3), options.cType) * val;
-                options.x3 = ones(options.Nx(4), options.Ny(4), options.Nz(4), options.cType) * val;
-                options.x4 = ones(options.Nx(5), options.Ny(5), options.Nz(5), options.cType) * val;
-                options.x5 = ones(options.Nx(6), options.Ny(6), options.Nz(6), options.cType) * val;
-                options.x6 = ones(options.Nx(7), options.Ny(7), options.Nz(7), options.cType) * val;
-                if options.implementation == 2 || options.implementation == 3
-                    options.x0 = [options.x0(:);options.x1(:); options.x2(:); options.x3(:); options.x4(:); options.x5(:); options.x6(:)];
-                    options = rmfield(options, {'x1','x2','x3','x4','x5','x6'});
-                elseif options.implementation == 5
-                    options.x0 = ones(options.Nx(1), options.Ny(1), options.Nz(1), options.cType) * val;
-                end
-            end
+            options.Nz = uint32([NzM0, NzM1, NzM2, NzM3, NzM4, NzM5, NzM6]);
         elseif options.transaxialEFOV && ~options.axialEFOV % Only the transaxial FOV is extended
             options.nMultiVolumes = 4;
 
-            options.FOVa_x = [
-                FOVxM0;
-                FOVxM3;
-                FOVxM4;
-                FOVxM5;
-                FOVxM6;
-            ]';
+            options.FOVa_x = [FOVxM0, FOVxM3, FOVxM4, FOVxM5, FOVxM6];
+            options.Nx = uint32([NxM0, NxM3, NxM4, NxM5, NxM6]);
 
-            options.Nx = uint32([
-                NxM0;
-                NxM3;
-                NxM4;
-                NxM5;
-                NxM6;
-            ]');
-
-            options.FOVa_y = [
-                FOVyM0;
-                FOVyM3;
-                FOVyM4;
-                FOVyM5;
-                FOVyM6;
-            ]';
-
-            options.Ny = uint32([
-                NyM0;
-                NyM3;
-                NyM4;
-                NyM5;
-                NyM6;
-            ]');
+            options.FOVa_y = [FOVyM0, FOVyM3, FOVyM4, FOVyM5, FOVyM6];
+            options.Ny = uint32([NyM0, NyM3, NyM4, NyM5, NyM6]);
 
             % z: not extended
             NzM = round(options.Nz * options.multiResolutionScale);
-
-            options.axial_fov = [
-                options.axialFOVOrig;
-                options.axialFOVOrig;
-                options.axialFOVOrig;
-                options.axialFOVOrig;
-                options.axialFOVOrig
-            ]';
-
-            options.Nz = uint32([
-                NzM0;
-                NzM;
-                NzM;
-                NzM;
-                NzM;
-            ]');
-
-            disp(['Extended FOV is ' num2str(FOVyM3/options.FOVyOrig * 100) ' % of the original'])
-            if size(options.x0, 1) == nx && min(options.x0(:)) ~= max(options.x0(:))
-                if exist('imresize3','file') == 2
-                    apu = single(imresize3(options.x0,options.multiResolutionScale));
-                else
-                    apu = single(imresize(options.x0,options.multiResolutionScale));
-                    [XX, YY, ZZ] = meshgrid(1:size(apu,1), 1:size(apu,1), 1:round(1/options.multiResolutionScale):size(options.x0,3));
-                    apu = interp3(apu, XX, YY, ZZ);
-                end
-                options.x1 = apu(1 : options.Nx(2), :, :);
-                if mod(size(apu,1),2) == 0
-                    options.x2 = apu(options.Nx(2) + options.Nx(4) : end, :, :);
-                else
-                    options.x2 = apu(options.Nx(2) + options.Nx(4) + 1 : end, :, :);
-                end
-                options.x3 = apu(options.Nx(2) + 1 : options.Nx(2) + options.Nx(4), 1:options.Ny(4), :);
-                options.x4 = apu(options.Nx(2) + 1 : options.Nx(2) + options.Nx(5), 1 + options.Ny(2) - options.Ny(4) : end, :);
-                options.x0 = single(options.x0(1 + (size(options.x0,1) - options.NxOrig) / 2 : ...
-                    (size(options.x0,1) - options.NxOrig) / 2 + options.NxOrig, ...
-                    1 + (size(options.x0,2) - options.NyOrig) / 2 : ...
-                    (size(options.x0,2) - options.NyOrig) / 2 + options.NyOrig, :));
-                if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
-                    options.x0 = [options.x0(:);options.x1(:); options.x2(:); options.x3(:); options.x4(:)];
-                    options = rmfield(options, {'x1','x2','x3','x4'});
-                end
-            elseif size(options.x0, 1) == options.NxOrig || min(options.x0(:)) == max(options.x0(:))
-                val = min(options.x0(:));
-                options.x1 = ones(options.Nx(2), options.Ny(2), options.Nz(2), options.cType) * val;
-                options.x2 = ones(options.Nx(3), options.Ny(3), options.Nz(3), options.cType) * val;
-                options.x3 = ones(options.Nx(4), options.Ny(4), options.Nz(4), options.cType) * val;
-                options.x4 = ones(options.Nx(5), options.Ny(5), options.Nz(5), options.cType) * val;
-                if options.implementation == 2 || options.implementation == 3
-                    options.x0 = [options.x0(:);options.x1(:); options.x2(:); options.x3(:); options.x4(:)];
-                    options = rmfield(options, {'x1','x2','x3','x4'});
-                elseif options.implementation == 5
-                    options.x0 = ones(options.Nx(1), options.Ny(1), options.Nz(1), options.cType) * val;
-                end
-            end
+            options.axial_fov = [options.axialFOVOrig, options.axialFOVOrig, options.axialFOVOrig, options.axialFOVOrig, options.axialFOVOrig];
+            options.Nz = uint32([NzM0, NzM, NzM, NzM, NzM]);
         else % Only axial FOV is extended
             options.nMultiVolumes = 2;
 
-            options.FOVa_x = [
-                FOVxM0;
-                FOVxM1;
-                FOVxM2;
-            ]';
+            options.FOVa_x = [FOVxM0, FOVxM1, FOVxM2];
+            options.Nx = uint32([NxM0, NxM1, NxM2]);
 
-            options.Nx = uint32([
-                NxM0;
-                NxM1;
-                NxM2;
-            ]');
+            options.FOVa_y = [FOVyM0, FOVyM1, FOVyM2];
+            options.Ny = uint32([NyM0, NyM1, NyM2]);
 
-            options.FOVa_y = [
-                FOVyM0;
-                FOVyM1;
-                FOVyM2;
-            ]';
+            options.axial_fov = [FOVzM0, FOVzM1, FOVzM2];
+            options.Nz = uint32([NzM0, NzM1, NzM2]);
+        end
 
-            options.Ny = uint32([
-                NyM0;
-                NyM1;
-                NyM2;
-            ]');
+        if options.axialEFOV
+            axialExtension = sum(options.axial_fov(1:3)) / options.axialFOVOrig * 100;
+        else
+            axialExtension = 100;
+        end
+        if options.transaxialEFOV
+            if options.nMultiVolumes == 6
+                transaxialExtensionX = (options.FOVa_x(4) + options.FOVa_x(1) + options.FOVa_x(5)) / options.FOVxOrig * 100;
+                transaxialExtensionY = (options.FOVa_y(6) + options.FOVa_y(1) + options.FOVa_y(7)) / options.FOVyOrig * 100;
+            else
+                transaxialExtensionX = (options.FOVa_x(2) + options.FOVa_x(1) + options.FOVa_x(3)) / options.FOVxOrig * 100;
+                transaxialExtensionY = (options.FOVa_y(4) + options.FOVa_y(1) + options.FOVa_y(5)) / options.FOVyOrig * 100;
+            end
+        else
+            transaxialExtensionX = 100;
+            transaxialExtensionY = 100;
+        end
 
-            options.axial_fov = [
-                FOVzM0;
-                FOVzM1;
-                FOVzM2;
-            ]';
+        disp(['Axial FOV extension is ' num2str(axialExtension) ' % (z) of the original'])
+        disp(['Transaxial FOV extension is ' num2str(transaxialExtensionX) ' % (x), ' num2str(transaxialExtensionY) ' % (y) of the original'])
 
-            options.Nz = uint32([
-                NzM0;
-                NzM1;
-                NzM2;
-            ]');
-
-            disp(['Extended FOV is ' num2str((FOVzM1 + FOVzM2 + options.axialFOVOrig)/options.axialFOVOrig * 100) ' % of the original'])
-            if size(options.x0, 1) == nx && min(options.x0(:)) ~= max(options.x0(:))
-                if exist('imresize3','file') == 2
-                    apu = single(imresize3(options.x0,options.multiResolutionScale));
+        if options.useMaskBP && isfield(options, 'maskBP') && (iscell(options.maskBP) || numel(options.maskBP) > 1)
+            if isfield(options, 'partitions')
+                if numel(options.partitions) > 1
+                    partitions = numel(options.partitions);
+                elseif isempty(options.partitions)
+                    partitions = 1;
                 else
-                    apu = single(imresize(options.x0,options.multiResolutionScale));
-                    [XX, YY, ZZ] = meshgrid(1:size(apu,1), 1:size(apu,1), 1:round(1/options.multiResolutionScale):size(options.x0,3));
-                    apu = interp3(apu, XX, YY, ZZ);
+                    partitions = options.partitions;
                 end
-                options.x1 = apu(:, :, 1 : options.Nz(2));
-                options.x2 = apu(:, :, end - options.Nz(3) + 1:end);
-                options.x0 = single(options.x0(:, :, ...
-                    1 + (size(options.x0,3) - options.NzOrig) / 2 : ...
-                    (size(options.x0,3) - options.NzOrig) / 2 + options.NzOrig));
-                if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
-                    options.x0 = [options.x0(:);options.x1(:); options.x2(:)];
-                    options = rmfield(options, {'x1','x2'});
+            else
+                partitions = 1;
+            end
+            maskBP = options.maskBP;
+            if iscell(maskBP)
+                for tt = 1 : numel(maskBP)
+                    maskVol = maskBP{tt};
+                    if size(maskVol, 3) == 1 && options.NzFull > 1
+                        maskVol = repmat(maskVol, 1, 1, double(options.NzFull));
+                    end
+                    options.maskBP{tt} = uint8(multiResReshape(uint8(maskVol), options) > 0);
                 end
-            elseif size(options.x0, 1) == options.NxOrig || min(options.x0(:)) == max(options.x0(:))
-                val = min(options.x0(:));
-                options.x1 = ones(options.Nx(2), options.Ny(2), options.Nz(2), options.cType) * val;
-                options.x2 = ones(options.Nx(3), options.Ny(3), options.Nz(3), options.cType) * val;
-                if options.implementation == 2 || options.implementation == 3
-                    options.x0 = [options.x0(:);options.x1(:); options.x2(:)];
-                    options = rmfield(options, {'x1','x2'});
-                elseif options.implementation == 5
-                    options.x0 = ones(options.Nx(1), options.Ny(1), options.Nz(1), options.cType) * val;
+            else
+                maskVol = maskBP;
+                if size(maskVol, 3) == 1 && options.NzFull > 1
+                    maskVol = repmat(maskVol, 1, 1, double(options.NzFull));
+                end
+                maskBP = uint8(multiResReshape(uint8(maskVol), options) > 0);
+                if partitions > 1
+                    options.maskBP = repmat({maskBP}, partitions, 1);
+                else
+                    options.maskBP = maskBP;
                 end
             end
+            options.maskBPZ = max(options.Nz);
         end
+
+        options.x0 = multiResReshape(options.x0, options);
+
         options.NxPrior = options.Nx(1);
         options.NyPrior = options.Ny(1);
         options.NzPrior = options.Nz(1);
@@ -463,4 +277,173 @@ if options.offsetCorrection
         options.OffsetLimit(kk) = (ind) * options.dPitchY/4;
     end
 end
+end
+
+function outputVol = multiResReshape(inputVol, options)
+    scale = double(options.multiResolutionScale);
+    maskInput = islogical(inputVol) || isa(inputVol, 'uint8');
+    resizeMethod = 'linear';
+    if maskInput
+        resizeMethod = 'nearest';
+    end
+    if options.nMultiVolumes == 6
+        lowResSize = [
+            double(options.Nx(4)) + round(double(options.Nx(1)) * scale) + double(options.Nx(5)), ...
+            double(options.Ny(6)) + round(double(options.Ny(1)) * scale) + double(options.Ny(7)), ...
+            double(options.Nz(2)) + round(double(options.Nz(1)) * scale) + double(options.Nz(3))
+        ];
+        lowResSize = max(lowResSize, double([max(options.Nx(2:end)), max(options.Ny(2:end)), max(options.Nz(2:end))]));
+        highResSize = [
+            round(double(options.Nx(4)) / scale) + double(options.Nx(1)) + round(double(options.Nx(5)) / scale), ...
+            round(double(options.Ny(6)) / scale) + double(options.Ny(1)) + round(double(options.Ny(7)) / scale), ...
+            round(double(options.Nz(2)) / scale) + double(options.Nz(1)) + round(double(options.Nz(3)) / scale)
+        ];
+
+        if exist('imresize3','file') == 2
+            highResVol = single(imresize3(inputVol, highResSize, resizeMethod));
+            lowResVol = single(imresize3(inputVol, lowResSize, resizeMethod));
+        else
+            [row, col, plane] = ndgrid( ...
+                linspace(1, size(inputVol, 1), highResSize(1)), ...
+                linspace(1, size(inputVol, 2), highResSize(2)), ...
+                linspace(1, size(inputVol, 3), highResSize(3)));
+            highResVol = single(interp3(single(inputVol), col, row, plane, resizeMethod));
+            [row, col, plane] = ndgrid( ...
+                linspace(1, size(inputVol, 1), lowResSize(1)), ...
+                linspace(1, size(inputVol, 2), lowResSize(2)), ...
+                linspace(1, size(inputVol, 3), lowResSize(3)));
+            lowResVol = single(interp3(single(inputVol), col, row, plane, resizeMethod));
+        end
+
+        highStart = [
+            round(double(options.Nx(4)) / scale) + 1, ...
+            round(double(options.Ny(6)) / scale) + 1, ...
+            round(double(options.Nz(2)) / scale) + 1
+        ];
+        lowStart = [
+            double(options.Nx(4)) + 1, ...
+            double(options.Ny(6)) + 1, ...
+            double(options.Nz(2)) + 1
+        ];
+        lowMainSize = [
+            round(double(options.Nx(1)) * scale), ...
+            round(double(options.Ny(1)) * scale), ...
+            round(double(options.Nz(1)) * scale)
+        ];
+
+        vol0 = highResVol(highStart(1) : highStart(1) + double(options.Nx(1)) - 1, highStart(2) : highStart(2) + double(options.Ny(1)) - 1, highStart(3) : highStart(3) + double(options.Nz(1)) - 1);
+        vol1 = lowResVol(lowStart(1) : lowStart(1) + double(options.Nx(2)) - 1, lowStart(2) : lowStart(2) + double(options.Ny(2)) - 1, 1 : double(options.Nz(2)));
+        vol2 = lowResVol(lowStart(1) : lowStart(1) + double(options.Nx(3)) - 1, lowStart(2) : lowStart(2) + double(options.Ny(3)) - 1, lowStart(3) + lowMainSize(3) : lowStart(3) + lowMainSize(3) + double(options.Nz(3)) - 1);
+        vol3 = lowResVol(1 : double(options.Nx(4)), 1 : double(options.Ny(4)), 1 : double(options.Nz(4)));
+        vol4 = lowResVol(lowStart(1) + lowMainSize(1) : lowStart(1) + lowMainSize(1) + double(options.Nx(5)) - 1, 1 : double(options.Ny(5)), 1 : double(options.Nz(5)));
+        vol5 = lowResVol(lowStart(1) : lowStart(1) + double(options.Nx(6)) - 1, 1 : double(options.Ny(6)), 1 : double(options.Nz(6)));
+        vol6 = lowResVol(lowStart(1) : lowStart(1) + double(options.Nx(7)) - 1, lowStart(2) + lowMainSize(2) : lowStart(2) + lowMainSize(2) + double(options.Ny(7)) - 1, 1 : double(options.Nz(7)));
+
+        outputVol = [vol0(:); vol1(:); vol2(:); vol3(:); vol4(:); vol5(:); vol6(:)];
+        if maskInput
+            outputVol = uint8(outputVol > 0);
+        else
+            outputVol = single(outputVol);
+        end
+    elseif options.nMultiVolumes == 4
+        lowResSize = [
+            double(options.Nx(2)) + round(double(options.Nx(1)) * scale) + double(options.Nx(3)), ...
+            double(options.Ny(4)) + round(double(options.Ny(1)) * scale) + double(options.Ny(5)), ...
+            round(double(options.Nz(1)) * scale)
+        ];
+        lowResSize = max(lowResSize, double([max(options.Nx(2:end)), max(options.Ny(2:end)), max(options.Nz(2:end))]));
+        highResSize = [
+            round(double(options.Nx(2)) / scale) + double(options.Nx(1)) + round(double(options.Nx(3)) / scale), ...
+            round(double(options.Ny(4)) / scale) + double(options.Ny(1)) + round(double(options.Ny(5)) / scale), ...
+            double(options.Nz(1))
+        ];
+
+        if exist('imresize3','file') == 2
+            highResVol = single(imresize3(inputVol, highResSize, resizeMethod));
+            lowResVol = single(imresize3(inputVol, lowResSize, resizeMethod));
+        else
+            [row, col, plane] = ndgrid( ...
+                linspace(1, size(inputVol, 1), highResSize(1)), ...
+                linspace(1, size(inputVol, 2), highResSize(2)), ...
+                linspace(1, size(inputVol, 3), highResSize(3)));
+            highResVol = single(interp3(single(inputVol), col, row, plane, resizeMethod));
+            [row, col, plane] = ndgrid( ...
+                linspace(1, size(inputVol, 1), lowResSize(1)), ...
+                linspace(1, size(inputVol, 2), lowResSize(2)), ...
+                linspace(1, size(inputVol, 3), lowResSize(3)));
+            lowResVol = single(interp3(single(inputVol), col, row, plane, resizeMethod));
+        end
+
+        highStart = [
+            round(double(options.Nx(2)) / scale) + 1, ...
+            round(double(options.Ny(4)) / scale) + 1, ...
+            1
+        ];
+        lowStart = [
+            double(options.Nx(2)) + 1, ...
+            double(options.Ny(4)) + 1, ...
+            1
+        ];
+        lowMainSize = [
+            round(double(options.Nx(1)) * scale), ...
+            round(double(options.Ny(1)) * scale), ...
+            round(double(options.Nz(1)) * scale)
+        ];
+
+        vol0 = highResVol(highStart(1) : highStart(1) + double(options.Nx(1)) - 1, highStart(2) : highStart(2) + double(options.Ny(1)) - 1, 1 : double(options.Nz(1)));
+        vol1 = lowResVol(1 : double(options.Nx(2)), 1 : double(options.Ny(2)), 1 : double(options.Nz(2)));
+        vol2 = lowResVol(lowStart(1) + lowMainSize(1) : lowStart(1) + lowMainSize(1) + double(options.Nx(3)) - 1, 1 : double(options.Ny(3)), 1 : double(options.Nz(3)));
+        vol3 = lowResVol(lowStart(1) : lowStart(1) + double(options.Nx(4)) - 1, 1 : double(options.Ny(4)), 1 : double(options.Nz(4)));
+        vol4 = lowResVol(lowStart(1) : lowStart(1) + double(options.Nx(5)) - 1, lowStart(2) + lowMainSize(2) : lowStart(2) + lowMainSize(2) + double(options.Ny(5)) - 1, 1 : double(options.Nz(5)));
+
+        outputVol = [vol0(:); vol1(:); vol2(:); vol3(:); vol4(:)];
+        if maskInput
+            outputVol = uint8(outputVol > 0);
+        else
+            outputVol = single(outputVol);
+        end
+    elseif options.nMultiVolumes == 2
+        lowResSize = [
+            round(double(options.Nx(1)) * scale), ...
+            round(double(options.Ny(1)) * scale), ...
+            double(options.Nz(2)) + round(double(options.Nz(1)) * scale) + double(options.Nz(3))
+        ];
+        lowResSize = max(lowResSize, double([max(options.Nx(2:end)), max(options.Ny(2:end)), max(options.Nz(2:end))]));
+        highResSize = [
+            double(options.Nx(1)), ...
+            double(options.Ny(1)), ...
+            round(double(options.Nz(2)) / scale) + double(options.Nz(1)) + round(double(options.Nz(3)) / scale)
+        ];
+
+        if exist('imresize3','file') == 2
+            highResVol = single(imresize3(inputVol, highResSize, resizeMethod));
+            lowResVol = single(imresize3(inputVol, lowResSize, resizeMethod));
+        else
+            [row, col, plane] = ndgrid( ...
+                linspace(1, size(inputVol, 1), highResSize(1)), ...
+                linspace(1, size(inputVol, 2), highResSize(2)), ...
+                linspace(1, size(inputVol, 3), highResSize(3)));
+            highResVol = single(interp3(single(inputVol), col, row, plane, resizeMethod));
+            [row, col, plane] = ndgrid( ...
+                linspace(1, size(inputVol, 1), lowResSize(1)), ...
+                linspace(1, size(inputVol, 2), lowResSize(2)), ...
+                linspace(1, size(inputVol, 3), lowResSize(3)));
+            lowResVol = single(interp3(single(inputVol), col, row, plane, resizeMethod));
+        end
+
+        highStart = round(double(options.Nz(2)) / scale) + 1;
+        lowStart = double(options.Nz(2)) + 1;
+        lowMainSize = round(double(options.Nz(1)) * scale);
+
+        vol0 = highResVol(1 : double(options.Nx(1)), 1 : double(options.Ny(1)), highStart : highStart + double(options.Nz(1)) - 1);
+        vol1 = lowResVol(1 : double(options.Nx(2)), 1 : double(options.Ny(2)), 1 : double(options.Nz(2)));
+        vol2 = lowResVol(1 : double(options.Nx(3)), 1 : double(options.Ny(3)), lowStart + lowMainSize : lowStart + lowMainSize + double(options.Nz(3)) - 1);
+
+        outputVol = [vol0(:); vol1(:); vol2(:)];
+        if maskInput
+            outputVol = uint8(outputVol > 0);
+        else
+            outputVol = single(outputVol);
+        end
+    end
 end

@@ -251,7 +251,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	}
 #endif
 #if defined(BP) && defined(MASKBP) ///////////////////// APPLY BP MASK /////////////////////////
-    if ((ii == 0) && (readMaskBP(maskBP, ind) == 0)) {
+    if (readMaskBP(maskBP, ind) == 0) {
         return false;
     }
 #endif ///////////////////// END BP MASK /////////////////////////

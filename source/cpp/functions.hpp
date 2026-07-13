@@ -713,6 +713,7 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			proj.vec_opencl.d_im = transferAF(vec.im_os_blurred[ii]);
 		else
 			proj.vec_opencl.d_im = transferAF(vec.im_os[timestep][ii]);
+		proj.vec_opencl.d_image_os.reset(); // The texture wraps the current volume buffer and dimensions.
 #else
 		if (inputScalars.use_psf)
 			proj.vec_opencl.d_im_os = vec.im_os_blurred[ii].device<float>();

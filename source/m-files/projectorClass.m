@@ -470,20 +470,49 @@ classdef projectorClass
             else
                 obj.param.useMaskFP = false;
             end
-            if isfield(obj.param, 'maskBP') && numel(obj.param.maskBP) > 1 && (numel(obj.param.maskBP) ~= obj.param.Nx(1) * obj.param.Ny(1) && numel(obj.param.maskBP) ~= obj.param.Nx(1) * obj.param.Ny(1) * obj.param.Nz(1))
-                error(['Incorrect size for the backward projection mask! Must be the size of a single image [' num2str(obj.param.Nx(1)) ' ' num2str(obj.param.Ny(1)) '] or 3D stack [' num2str(obj.param.Nx(1)) ' ' num2str(obj.param.Ny(1)) ' ' num2str(obj.param.Nz(1)) ']'])
-            elseif isfield(obj.param, 'maskBP') && (numel(obj.param.maskBP) ~= obj.param.Nx(1) * obj.param.Ny(1) || numel(obj.param.maskBP) ~= obj.param.Nx(1) * obj.param.Ny(1) * obj.param.Nz(1))
+            if numel(obj.param.partitions) > 1
+                partitions = numel(obj.param.partitions);
+            elseif isempty(obj.param.partitions)
+                partitions = 1;
+            else
+                partitions = obj.param.partitions;
+            end
+            if isfield(obj.param, 'maskBP') && (iscell(obj.param.maskBP) || numel(obj.param.maskBP) > 1)
+                maskBP2D = double(obj.param.Nx(1)) * double(obj.param.Ny(1));
+                maskBP3D = maskBP2D * double(obj.param.Nz(1));
+                if iscell(obj.param.maskBP)
+                    if numel(obj.param.maskBP) ~= partitions
+                        error("No backward projection mask for each timestep")
+                    end
+                    for tt = 1 : partitions
+                        if ~(numel(obj.param.maskBP{tt}) == maskBP2D || numel(obj.param.maskBP{tt}) == maskBP3D)
+                            error(['Incorrect size for the backward projection mask! Must be the size of a single image [' num2str(obj.param.Nx(1)) ' ' num2str(obj.param.Ny(1)) '] or 3D stack [' num2str(obj.param.Nx(1)) ' ' num2str(obj.param.Ny(1)) ' ' num2str(obj.param.Nz(1)) ']'])
+                        end
+                    end
+                    maskBPZ = size(obj.param.maskBP{1},3);
+                else
+                    if ~(numel(obj.param.maskBP) == maskBP2D || numel(obj.param.maskBP) == maskBP3D)
+                        error(['Incorrect size for the backward projection mask! Must be the size of a single image [' num2str(obj.param.Nx(1)) ' ' num2str(obj.param.Ny(1)) '] or 3D stack [' num2str(obj.param.Nx(1)) ' ' num2str(obj.param.Ny(1)) ' ' num2str(obj.param.Nz(1)) ']'])
+                    end
+                    maskBPZ = size(obj.param.maskBP,3);
+                end
                 if obj.param.usePriorMask
                     obj.param.useMaskBP = false;
-                    obj.param.maskBPZ = size(obj.param.maskBP,3);
+                    obj.param.maskBPZ = maskBPZ;
                 else
                     obj.param.useMaskBP = true;
-                    obj.param.maskBPZ = size(obj.param.maskBP,3);
+                    obj.param.maskBPZ = maskBPZ;
                 end
             elseif ~(obj.param.attenuation_correction && obj.param.SPECT)
                 obj.param.useMaskBP = false;
             end
-            if isfield(obj.param, 'maskBP') && ~isa(obj.param.maskBP, 'uint8')
+            if isfield(obj.param, 'maskBP') && iscell(obj.param.maskBP)
+                for tt = 1 : numel(obj.param.maskBP)
+                    if ~isa(obj.param.maskBP{tt}, 'uint8')
+                        obj.param.maskBP{tt} = uint8(obj.param.maskBP{tt});
+                    end
+                end
+            elseif isfield(obj.param, 'maskBP') && ~isa(obj.param.maskBP, 'uint8')
                 obj.param.maskBP = uint8(obj.param.maskBP);
             end
             if isfield(obj.param, 'maskFP') && ~isa(obj.param.maskFP, 'uint8')
@@ -1271,4 +1300,3 @@ classdef projectorClass
         end
     end
 end
-
