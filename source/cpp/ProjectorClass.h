@@ -421,6 +421,9 @@ class ProjectorClass {
 	size_t erotusPrior[3];
 	size_t erotusPriorEFOV[3];
 	size_t erotusSens[3];
+//#if defined(CUDA) || defined(HIP) // Unused
+//	size_t kSize = 0ULL;
+//#endif // END CUDA
 	// Local and global sizes
 	WorkRange local, global, localPrior, globalPrior, globalPriorEFOV;
 	struct ResourceState {
@@ -2053,6 +2056,7 @@ public:
 	Texture2D d_maskFP, d_maskBP, d_maskPrior;
 	Texture3D d_maskBP3, d_maskPrior3;
 	Texture3D d_inputImage, d_urefIm, d_inputI, d_RDPrefI;
+//  Texture3D d_imageX, d_imageY; // Unused
 	TextureArray atArray, uRefArray, maskArrayBP, maskArrayPrior, BPArray, FPArray, integArrayXY, imArray;
 	std::vector<Texture3D> d_attenIm;
 #if defined(CUDA) || defined(HIP)
@@ -2070,6 +2074,7 @@ public:
 	size_t memSize = 0ULL;
 
 #if defined(OPENCL)
+//  std::vector<DeviceBuffer> d_LFull, d_zindexFull, d_xyindexFull; // Unused
 	// Image origin
 	cl::detail::size_t_array origin = { { 0, 0, 0 } };
 	cl::detail::size_t_array region = { { 0, 0, 0 } };
