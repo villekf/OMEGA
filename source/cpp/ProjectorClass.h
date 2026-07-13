@@ -2511,6 +2511,9 @@ public:
 		size_t vecSize = 1;
 		if ((inputScalars.PET || inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0)
 			vecSize = static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD);
+		const size_t maskPriorDepth = inputScalars.multiResolution
+			? static_cast<size_t>(inputScalars.Nz[0])
+			: static_cast<size_t>(inputScalars.maskBPZ);
 		// NLM anatomical reference image
 		if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM)) {
 			if (inputScalars.useImages) {
@@ -2547,12 +2550,12 @@ public:
 		memAlloc.tSteps = inputScalars.Nt;
 		if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
 			if (inputScalars.useBuffers) {
-				ALLOC_BUFFER(d_maskPriorB, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ);
+				ALLOC_BUFFER(d_maskPriorB, CL_MEM_READ_ONLY, sizeof(uint8_t) * static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) * maskPriorDepth);
 			}
 			else {
 				if (inputScalars.maskBPZ > 1) {
 					CREATE_MASK_TEXTURE3D_FROM_HOST(d_maskPrior, d_maskPrior3, maskArrayPrior, w_vec.maskPrior,
-						inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.maskBPZ, inputScalars.maskBPZ, inputScalars.Nz[0], BACKEND_TEXTURE_READ_AS_INTEGER);
+						inputScalars.Nx[0], inputScalars.Ny[0], maskPriorDepth, maskPriorDepth, maskPriorDepth, BACKEND_TEXTURE_READ_AS_INTEGER);
 				}
 				else {
 					CREATE_MASK_TEXTURE2D_FROM_HOST(d_maskPrior, maskArrayPrior, w_vec.maskPrior,
@@ -2561,7 +2564,7 @@ public:
 				if (DEBUG) {
 					mexPrintBase("imX = %u\n", inputScalars.Nx[0]);
 					mexPrintBase("imY = %u\n", inputScalars.Ny[0]);
-					mexPrintBase("imZ = %u\n", inputScalars.maskBPZ);
+					mexPrintBase("imZ = %u\n", static_cast<unsigned int>(maskPriorDepth));
 					mexEval();
 				}
 				memAlloc.priorMask = true;
@@ -2872,7 +2875,7 @@ public:
 						CHECK(status, "\n", (Status)(-1));
 					}
 					if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
-						WRITE_BUFFER(d_maskPriorB, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ, w_vec.maskPrior);
+						WRITE_BUFFER(d_maskPriorB, sizeof(uint8_t) * static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) * maskPriorDepth, w_vec.maskPrior);
 						CHECK(status, "\n", (Status)(-1));
 					}
 				}
@@ -2882,7 +2885,7 @@ public:
 						memSize += (sizeof(uint8_t) * static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD) * maskFPDepth) / 1048576ULL;
 					}
 					if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
-						memSize += (sizeof(uint8_t) * static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) * static_cast<size_t>(inputScalars.maskBPZ)) / 1048576ULL;
+						memSize += (sizeof(uint8_t) * static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) * maskPriorDepth) / 1048576ULL;
 					}
 				}
 			}
