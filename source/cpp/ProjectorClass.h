@@ -2084,16 +2084,16 @@ public:
 	std::array<NS::UInteger, 3> origin = { 0, 0, 0 };
 	std::array<NS::UInteger, 3> region = { 0, 0, 0 };
 #endif // END CUDA
-	std::vector<Texture3D> d_maskFP3;
-	std::vector<TextureArray> maskArrayFP;
+	std::vector<std::vector<Texture3D>> d_maskFP3;
+	std::vector<std::vector<TextureArray>> maskArrayFP;
 	std::vector<AFDeviceBuffer> d_Summ;
 	std::vector<AFDeviceBuffer> d_meas, d_rand, d_imTemp, d_imFinal;
 	// Vector device buffers common to both backends
-	std::vector<DeviceBuffer> d_maskFPB;
+	std::vector<std::vector<DeviceBuffer>> d_maskFPB;
 	std::vector<DeviceBuffer> d_normFull, d_scatFull, d_xFull, d_zFull;
 	std::vector<DeviceBuffer> d_L;
-	std::vector<DeviceBuffer> d_zindex, d_xyindex, d_norm, d_atten, d_T;
-	std::vector<std::vector<DeviceBuffer>> d_scat, d_x, d_z, d_trIndex, d_axIndex, d_TOFIndex;
+	std::vector<DeviceBuffer> d_zindex, d_xyindex, d_T;
+	std::vector<std::vector<DeviceBuffer>> d_norm, d_atten, d_scat, d_x, d_z, d_trIndex, d_axIndex, d_TOFIndex;
 	std::vector<std::vector<size_t>> erotusBP, erotusPDHG;
 #if defined(CUDA) || defined(HIP)
 	~ProjectorClass() {
@@ -2106,9 +2106,9 @@ public:
 		if (memAlloc.SensMod)
 			getErrorString(cuModuleUnload(programSens));
 		if (memAlloc.attenM) {
-			for (int kk = 0; kk < memAlloc.aSteps; kk++) {
-				getErrorString(cuMemFree(d_atten[kk]));
-			}
+			for (const auto& timestepBuffers : d_atten)
+				for (const auto& buffer : timestepBuffers)
+					getErrorString(cuMemFree(buffer));
 		}
 		if (memAlloc.V)
 			getErrorString(cuMemFree(d_V));
@@ -2173,9 +2173,9 @@ public:
 			getErrorString(cuMemFree(d_weights));
 		}
 		if (memAlloc.norm) {
-			for (int kk = 0; kk < memAlloc.nSteps; kk++) {
-				getErrorString(cuMemFree(d_norm[kk]));
-			}
+			for (const auto& timestepBuffers : d_norm)
+				for (const auto& buffer : timestepBuffers)
+					getErrorString(cuMemFree(buffer));
 		}
 		if (memAlloc.angle)
 			getErrorString(cuMemFree(d_angle));
@@ -2185,41 +2185,44 @@ public:
 			getErrorString(cuMemFree(d_zFull[0]));
 		if (memAlloc.maskFP) {
 			if (memAlloc.useBuffers) {
-				for (int ll = 0; ll < d_maskFPB.size(); ll++)
-					getErrorString(cuMemFree(d_maskFPB[ll]));
+				for (const auto& timestepBuffers : d_maskFPB)
+					for (const auto& buffer : timestepBuffers)
+						getErrorString(cuMemFree(buffer));
 			}
 			else {
 				if (d_maskFP3.size() > 0) {
-					for (int ll = 0; ll < d_maskFP3.size(); ll++)
-						getErrorString(cuTexObjectDestroy(d_maskFP3[ll]));
+					for (const auto& timestepTextures : d_maskFP3)
+						for (const auto& texture : timestepTextures)
+							getErrorString(cuTexObjectDestroy(texture));
 				}
 				else {
 					getErrorString(cuTexObjectDestroy(d_maskFP));
 				}
-				for (int ll = 0; ll < maskArrayFP.size(); ll++)
-					getErrorString(cuArrayDestroy(maskArrayFP[ll]));
+				for (const auto& timestepArrays : maskArrayFP)
+					for (const auto& array : timestepArrays)
+						getErrorString(cuArrayDestroy(array));
 			}
 		}
 		if (memAlloc.maskBP) {
 			if (memAlloc.useBuffers) {
-				for (size_t tt = 0; tt < d_maskBPB.size(); tt++)
-					for (size_t ii = 0; ii < d_maskBPB[tt].size(); ii++)
-						getErrorString(cuMemFree(d_maskBPB[tt][ii]));
+				for (const auto& timestepBuffers : d_maskBPB)
+					for (const auto& buffer : timestepBuffers)
+						getErrorString(cuMemFree(buffer));
 			}
 			else {
-				if (d_maskBP3.size() > 0) {
-					for (size_t tt = 0; tt < d_maskBP3.size(); tt++)
-						for (size_t ii = 0; ii < d_maskBP3[tt].size(); ii++)
-							getErrorString(cuTexObjectDestroy(d_maskBP3[tt][ii]));
+				if (!d_maskBP3.empty()) {
+					for (const auto& timestepTextures : d_maskBP3)
+						for (const auto& texture : timestepTextures)
+							getErrorString(cuTexObjectDestroy(texture));
 				}
 				else {
-					for (size_t tt = 0; tt < d_maskBP.size(); tt++)
-						for (size_t ii = 0; ii < d_maskBP[tt].size(); ii++)
-							getErrorString(cuTexObjectDestroy(d_maskBP[tt][ii]));
+					for (const auto& timestepTextures : d_maskBP)
+						for (const auto& texture : timestepTextures)
+							getErrorString(cuTexObjectDestroy(texture));
 				}
-				for (size_t tt = 0; tt < maskArrayBP.size(); tt++)
-					for (size_t ii = 0; ii < maskArrayBP[tt].size(); ii++)
-						getErrorString(cuArrayDestroy(maskArrayBP[tt][ii]));
+				for (const auto& timestepArrays : maskArrayBP)
+					for (const auto& array : timestepArrays)
+						getErrorString(cuArrayDestroy(array));
 			}
 		}
 		if (memAlloc.priorMask) {
@@ -2586,22 +2589,43 @@ public:
 			if (inputScalars.maskFP || inputScalars.maskBP) {
 				if (inputScalars.maskFP) {
 					if (inputScalars.useBuffers) {
-						d_maskFPB.resize(inputScalars.subsetsUsed);
-						for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++)
-							ALLOC_BUFFER(d_maskFPB[kk], CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD * length[kk]);
-					}
-					else {
 						if (inputScalars.maskFPZ > 1) {
-							RESIZE_TEXTURE_VECTOR(d_maskFP3, maskArrayFP, inputScalars.subsetsUsed);
-							for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-								CREATE_MASK_TEXTURE3D_FROM_HOST(d_maskFP3[kk], d_maskFP3[kk], maskArrayFP[kk], &w_vec.maskFP[pituus[kk] * vecSize],
-									inputScalars.nRowsD, inputScalars.nColsD, length[kk], length[kk], length[kk], BACKEND_TEXTURE_READ_AS_INTEGER);
-								CHECK(status, "\n", (Status)(-1));
+							d_maskFPB.resize(inputScalars.Nt);
+							for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
+								d_maskFPB[timestep].resize(inputScalars.subsetsUsed);
+								for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+									const uint32_t indD = kk + timestep * inputScalars.subsets;
+									ALLOC_BUFFER(d_maskFPB[timestep][kk], CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD * length[indD]);
+								}
 							}
 						}
 						else {
-							RESIZE_TEXTURE_ARRAY(maskArrayFP, 1);
-							CREATE_MASK_TEXTURE2D_FROM_HOST(d_maskFP, maskArrayFP[0], w_vec.maskFP,
+							d_maskFPB.resize(inputScalars.Nt);
+							for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
+								d_maskFPB[timestep].resize(1);
+								ALLOC_BUFFER(d_maskFPB[timestep][0], CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD);
+							}
+						}
+					}
+					else {
+						if (inputScalars.maskFPZ > 1) {
+							d_maskFP3.resize(inputScalars.Nt);
+							maskArrayFP.resize(inputScalars.Nt);
+							for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
+								d_maskFP3[timestep].resize(inputScalars.subsetsUsed);
+								maskArrayFP[timestep].resize(inputScalars.subsetsUsed);
+								for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+									const uint32_t indD = kk + timestep * inputScalars.subsets;
+									CREATE_MASK_TEXTURE3D_FROM_HOST(d_maskFP3[timestep][kk], d_maskFP3[timestep][kk], maskArrayFP[timestep][kk], &w_vec.maskFP[pituus[indD] * vecSize],
+										inputScalars.nRowsD, inputScalars.nColsD, length[indD], length[indD], length[indD], BACKEND_TEXTURE_READ_AS_INTEGER);
+									CHECK(status, "\n", (Status)(-1));
+								}
+							}
+						}
+						else {
+							maskArrayFP.resize(1);
+							maskArrayFP[0].resize(1);
+							CREATE_MASK_TEXTURE2D_FROM_HOST(d_maskFP, maskArrayFP[0][0], w_vec.maskFP,
 								inputScalars.nRowsD, inputScalars.nColsD, BACKEND_TEXTURE_READ_AS_INTEGER);
 							CHECK(status, "\n", (Status)(-1));
 						}
@@ -2682,8 +2706,9 @@ public:
 					}
 				}
 				for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+					const uint32_t indD = kk + timestep * inputScalars.subsets;
 					if (inputScalars.CT || inputScalars.SPECT) {
-						ALLOC_BUFFER(d_x[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6);
+						ALLOC_BUFFER(d_x[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[indD] * 6);
 						CHECK(status, "\n", (Status)(-1));
 						memAlloc.xSteps++;
 					}
@@ -2702,7 +2727,7 @@ public:
 							coef = 1;
 						else if (inputScalars.pitch)
 							coef = 6;
-						ALLOC_BUFFER(d_z[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * coef);
+						ALLOC_BUFFER(d_z[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[indD] * coef);
 						CHECK(status, "\n", (Status)(-1));
 						memAlloc.zType = 1;
 						memAlloc.zSteps++;
@@ -2729,10 +2754,22 @@ public:
 						CHECK(status, "\n", (Status)(-1));
 					}
 					if (inputScalars.size_scat > 1 && inputScalars.scatter == 1U) { // Scatter correction buffer
-						ALLOC_BUFFER(d_scat[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize);
+						ALLOC_BUFFER(d_scat[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[indD] * vecSize);
 						CHECK(status, "\n", (Status)(-1));
 						memAlloc.extra = true;
 						memAlloc.eSteps++;
+					}
+					if (inputScalars.size_norm > 1 && inputScalars.normalization_correction) {
+						ALLOC_BUFFER(d_norm[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[indD] * vecSize);
+						CHECK(status, "\n", (Status)(-1));
+						memAlloc.norm = true;
+						memAlloc.nSteps++;
+					}
+					if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
+						ALLOC_BUFFER(d_atten[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[indD] * vecSize);
+						CHECK(status, "\n", (Status)(-1));
+						memAlloc.attenM = true;
+						memAlloc.aSteps++;
 					}
 					if (inputScalars.listmode > 0 && inputScalars.indexBased) {
 						if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF && timestep == 0)) {
@@ -2761,20 +2798,6 @@ public:
 					CHECK(status, "\n", (Status)(-1));
 					memAlloc.offsetT = true;
 					memAlloc.oSteps++;
-				}
-				// Normalization weighting (OpenCL condition also requires size_norm > 1; used for both backends)
-				if (inputScalars.size_norm > 1 && inputScalars.normalization_correction) {
-					ALLOC_BUFFER(d_norm[kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize);
-					CHECK(status, "\n", (Status)(-1));
-					memAlloc.norm = true;
-					memAlloc.nSteps++;
-				}
-				// Measurement-based attenuation correction
-				if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-					ALLOC_BUFFER(d_atten[kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize);
-					CHECK(status, "\n", (Status)(-1));
-					memAlloc.attenM = true;
-					memAlloc.aSteps++;
 				}
 				// Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
 				// Note that raw data format is not used at the moment
@@ -2838,10 +2861,14 @@ public:
 				if (inputScalars.useBuffers) {
 					if (inputScalars.maskFP) {
 						if (inputScalars.maskFPZ > 1)
-							for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++)
-								WRITE_BUFFER(d_maskFPB[kk], sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD * length[kk], &w_vec.maskFP[pituus[kk] * vecSize]);
+							for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++)
+								for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+									const uint32_t indD = kk + timestep * inputScalars.subsets;
+									WRITE_BUFFER(d_maskFPB[timestep][kk], sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD * length[indD], &w_vec.maskFP[pituus[indD] * vecSize]);
+								}
 						else
-							WRITE_BUFFER(d_maskFPB[0], sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD, w_vec.maskFP);
+							for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++)
+								WRITE_BUFFER(d_maskFPB[timestep][0], sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD, w_vec.maskFP);
 						CHECK(status, "\n", (Status)(-1));
 					}
 					if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
@@ -2854,8 +2881,9 @@ public:
 						const size_t maskFPDepth = inputScalars.maskFPZ > 1 ? static_cast<size_t>(inputScalars.maskFPZ) : 1ULL;
 						memSize += (sizeof(uint8_t) * static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD) * maskFPDepth) / 1048576ULL;
 					}
-					if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP)
+					if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
 						memSize += (sizeof(uint8_t) * static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) * static_cast<size_t>(inputScalars.maskBPZ)) / 1048576ULL;
+					}
 				}
 			}
 			if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) {
@@ -2910,15 +2938,16 @@ public:
 					memSize += (sizeof(float) * inputScalars.im_dim[0]) / 1048576ULL;
 				}
 				for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+					const uint32_t indD = kk + timestep * inputScalars.subsets;
 					if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
 						size_t kerroin = 2;
 						if (inputScalars.pitch)
 							kerroin = 6;
 						else if (inputScalars.useHelical)
 							kerroin = 1;
-						WRITE_BUFFER(d_z[timestep][kk], sizeof(float) * length[kk] * kerroin, &z_det[pituus[kk] * kerroin]);
+						WRITE_BUFFER(d_z[timestep][kk], sizeof(float) * length[indD] * kerroin, &z_det[pituus[indD] * kerroin]);
 						CHECK(status, "\n", (Status)(-1));
-						memSize += (sizeof(float) * length[kk] * kerroin) / 1048576ULL;
+						memSize += (sizeof(float) * length[indD] * kerroin) / 1048576ULL;
 					}
 					else {
 						if (inputScalars.PET && inputScalars.listmode == 0) {
@@ -2935,9 +2964,9 @@ public:
 						CHECK(status, "\n", (Status)(-1));
 					}
 					if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
-						WRITE_BUFFER(d_x[timestep][kk], sizeof(float) * length[kk] * 6, &x[pituus[kk] * 6]);
+						WRITE_BUFFER(d_x[timestep][kk], sizeof(float) * length[indD] * 6, &x[pituus[indD] * 6]);
 						CHECK(status, "\n", (Status)(-1));
-						memSize += (sizeof(float) * length[kk] * 6) / 1048576ULL;
+						memSize += (sizeof(float) * length[indD] * 6) / 1048576ULL;
 					}
 					else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
 						if ((kk < inputScalars.TOFsubsets) || inputScalars.loadTOF || (!inputScalars.loadTOF && timestep == 0 && kk < inputScalars.TOFsubsets)) {
@@ -2953,9 +2982,19 @@ public:
 						}
 					}
 					if (inputScalars.size_scat > 1ULL && inputScalars.scatter == 1U) { // Load scatter data
-						WRITE_BUFFER(d_scat[timestep][kk], sizeof(float) * length[kk] * vecSize, &extraCorr[pituus[kk] * vecSize + inputScalars.kokoNonTOF * timestep]);
+						WRITE_BUFFER(d_scat[timestep][kk], sizeof(float) * length[indD] * vecSize, &extraCorr[pituus[indD] * vecSize]);
 						CHECK(status, "\n", (Status)(-1));
-						memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
+						memSize += (sizeof(float) * length[indD] * vecSize) / 1048576ULL;
+					}
+					if (inputScalars.size_norm > 1ULL && inputScalars.normalization_correction) {
+						WRITE_BUFFER(d_norm[timestep][kk], sizeof(float) * length[indD] * vecSize, &norm[pituus[indD] * vecSize]);
+						CHECK(status, "\n", (Status)(-1));
+						memSize += (sizeof(float) * length[indD] * vecSize) / 1048576ULL;
+					}
+					if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
+						WRITE_BUFFER(d_atten[timestep][kk], sizeof(float) * length[indD] * vecSize, &atten[pituus[indD] * vecSize]);
+						CHECK(status, "\n", (Status)(-1));
+						memSize += (sizeof(float) * length[indD] * vecSize) / 1048576ULL;
 					}
 					if (inputScalars.listmode > 0 && inputScalars.indexBased) {
 						if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF && timestep == 0)) { // First condition: load all data at once. Second condition: load one subset at a time (only 1 buffer required for each timestep).
@@ -2991,16 +3030,6 @@ public:
 					WRITE_BUFFER(d_xyindex[kk], sizeof(uint32_t) * length[kk], &xy_index[pituus[kk]]);
 					CHECK(status, "\n", (Status)(-1));
 					memSize += (sizeof(uint32_t) * length[kk] + sizeof(uint16_t) * length[kk]) / 1048576ULL;
-				}
-				if (inputScalars.size_norm > 1ULL && inputScalars.normalization_correction) {
-					WRITE_BUFFER(d_norm[kk], sizeof(float) * length[kk] * vecSize, &norm[pituus[kk] * vecSize]);
-					CHECK(status, "\n", (Status)(-1));
-					memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
-				}
-				if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-					WRITE_BUFFER(d_atten[kk], sizeof(float) * length[kk] * vecSize, &atten[pituus[kk] * vecSize]);
-					CHECK(status, "\n", (Status)(-1));
-					memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
 				}
 			}
 			FINISH_QUEUE(status, "Buffer write failed\n", (Status)(-1));
@@ -3060,39 +3089,59 @@ public:
 			d_xyindex.resize(inputScalars.subsetsUsed);
 			d_zindex.resize(inputScalars.subsetsUsed);
 		}
-		if (inputScalars.normalization_correction)
-			d_norm.resize(inputScalars.subsetsUsed);
-		if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation)
-			d_atten.resize(inputScalars.subsetsUsed);
-		if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
-			d_attenB.resize(inputScalars.Nt);
-			d_attenIm.resize(inputScalars.Nt);
+			if (inputScalars.normalization_correction)
+				d_norm.resize(inputScalars.Nt);
+			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation)
+				d_atten.resize(inputScalars.Nt);
+			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+				d_attenB.resize(inputScalars.Nt);
+				d_attenIm.resize(inputScalars.Nt);
+			}
+			if (inputScalars.maskBP) {
+				if (inputScalars.useBuffers)
+					d_maskBPB.resize(inputScalars.Nt);
+				else {
+					maskArrayBP.resize(inputScalars.Nt);
+					if (inputScalars.maskBPZ > 1)
+						d_maskBP3.resize(inputScalars.Nt);
+					else
+						d_maskBP.resize(inputScalars.Nt);
+				}
+				for (int tt = 0; tt < inputScalars.Nt; tt++) {
+					if (inputScalars.useBuffers)
+						d_maskBPB[tt].resize(inputScalars.nMultiVolumes + 1);
+					else {
+						maskArrayBP[tt].resize(inputScalars.nMultiVolumes + 1);
+						if (inputScalars.maskBPZ > 1)
+							d_maskBP3[tt].resize(inputScalars.nMultiVolumes + 1);
+						else
+							d_maskBP[tt].resize(inputScalars.nMultiVolumes + 1);
+					}
+				}
+			}
+			for (int tt = 0; tt < inputScalars.Nt; tt++) {
+				if (inputScalars.normalization_correction)
+					d_norm[tt].resize(inputScalars.subsetsUsed);
+				if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation)
+					d_atten[tt].resize(inputScalars.subsetsUsed);
+			}
+			if (inputScalars.projector_type != 6) {
+			d_scat.resize(inputScalars.Nt);
+			d_x.resize(inputScalars.Nt);
+			d_z.resize(inputScalars.Nt);
+			d_trIndex.resize(inputScalars.Nt);
+			d_axIndex.resize(inputScalars.Nt);
+				d_TOFIndex.resize(inputScalars.Nt);
+				for (int tt = 0; tt < inputScalars.Nt; tt++) {
+					d_scat[tt].resize(inputScalars.subsetsUsed);
+				d_x[tt].resize(inputScalars.subsetsUsed);
+				d_z[tt].resize(inputScalars.subsetsUsed);
+				d_trIndex[tt].resize(inputScalars.subsetsUsed);
+				d_axIndex[tt].resize(inputScalars.subsetsUsed);
+				d_TOFIndex[tt].resize(inputScalars.subsetsUsed);
+			}
 		}
-
-        d_maskBPB.resize(inputScalars.Nt);
-        maskArrayBP.resize(inputScalars.Nt);
-        d_maskBP3.resize(inputScalars.Nt);
-        d_maskBP.resize(inputScalars.Nt);
-        d_scat.resize(inputScalars.Nt);
-        d_x.resize(inputScalars.Nt);
-        d_z.resize(inputScalars.Nt);
-        d_trIndex.resize(inputScalars.Nt);
-        d_axIndex.resize(inputScalars.Nt);
-        d_TOFIndex.resize(inputScalars.Nt);
-        for (int tt = 0; tt < inputScalars.Nt; tt++) {
-            d_scat[tt].resize(inputScalars.subsetsUsed);
-            d_x[tt].resize(inputScalars.subsetsUsed);
-            d_z[tt].resize(inputScalars.subsetsUsed);
-            d_trIndex[tt].resize(inputScalars.subsetsUsed);
-            d_axIndex[tt].resize(inputScalars.subsetsUsed);
-            d_TOFIndex[tt].resize(inputScalars.subsetsUsed);
-            d_maskBPB[tt].resize(inputScalars.nMultiVolumes + 1);
-            maskArrayBP[tt].resize(inputScalars.nMultiVolumes + 1);
-            d_maskBP3[tt].resize(inputScalars.nMultiVolumes + 1);
-            d_maskBP[tt].resize(inputScalars.nMultiVolumes + 1);
-        }
-
-            if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5))
+		if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5))
 			d_T.resize(inputScalars.subsetsUsed);
 
 		status = createAndWriteBuffers(length, x, z_det, xy_index, z_index, L, pituus, atten, norm, extraCorr, inputScalars, w_vec, MethodList);
@@ -3640,7 +3689,7 @@ public:
 				KARG_METAL_SLOT(kernelIndFPSubIter, 5);
 #endif
 			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_atten[osa_iter]);
+					KARG(kTemp, kernelFP, kernelIndFPSubIter, d_atten[timestep][osa_iter]);
 			}
 			else if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
 				if (inputScalars.size_atten > inputScalars.im_dim[0]) {
@@ -3697,11 +3746,11 @@ public:
 					int subset = 0;
 					if (inputScalars.maskFPZ > 1)
 						subset = osa_iter;
-					KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFPB[subset]);
+					KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFPB[timestep][subset]);
 				}
 				else
 					if (inputScalars.maskFPZ > 1) {
-						KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFP3[osa_iter]);
+						KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFP3[timestep][osa_iter]);
 					}
 					else {
 						KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFP);
@@ -3743,7 +3792,7 @@ public:
 				//if (inputScalars.listmode > 0 && inputScalars.indexBased)
 				//	status = kernelFP.setArg(kernelIndFPSubIter++, d_norm[0]);
 				//else
-				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_norm[osa_iter]);
+				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_norm[timestep][osa_iter]);
 			}
 			if (inputScalars.scatter) {
 				KARG_METAL_SLOT(kernelIndFPSubIter, 14);
@@ -3774,11 +3823,11 @@ public:
 					int subset = 0;
 					if (inputScalars.maskFPZ > 1)
 						subset = osa_iter;
-					KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFPB[subset]);
+					KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFPB[timestep][subset]);
 				}
 				else
 					if (inputScalars.maskFPZ > 1) {
-						KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFP3[osa_iter]);
+						KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFP3[timestep][osa_iter]);
 					}
 					else
 						KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFP);
@@ -3788,7 +3837,7 @@ public:
 				//	status = kernelFP.setArg(kernelIndFPSubIter++, d_norm[0]);
 				//else
 				KARG_METAL_SLOT(kernelIndFPSubIter, 8);
-				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_norm[osa_iter]);
+				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_norm[timestep][osa_iter]);
 			}
 			KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, length[osa_iter + timestep * inputScalars.subsets]);
 		}
@@ -3799,11 +3848,11 @@ public:
 					int subset = 0;
 					if (inputScalars.maskFPZ > 1)
 						subset = osa_iter;
-					KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFPB[subset]);
+					KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFPB[timestep][subset]);
 				}
 				else
 					if (inputScalars.maskFPZ > 1) {
-						KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFP3[osa_iter]);
+						KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFP3[timestep][osa_iter]);
 					}
 					else
 						KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFP);
@@ -3830,7 +3879,7 @@ public:
 				//	status = kernelFP.setArg(kernelIndFPSubIter++, d_norm[0]);
 				//else
 				KARG_METAL_SLOT(kernelIndFPSubIter, 10);
-				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_norm[osa_iter]);
+				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_norm[timestep][osa_iter]);
 			}
 			if (inputScalars.scatter) {
 				KARG_METAL_SLOT(kernelIndFPSubIter, 11);
@@ -4047,7 +4096,7 @@ public:
 				KARG_METAL_SLOT(kernelIndBPSubIter, 5);
 #endif
 			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-				KARG(kTemp, kernelBP, kernelIndBPSubIter, d_atten[osa_iter]);
+					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_atten[timestep][osa_iter]);
 			}
 			else if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
 				if (inputScalars.size_atten > inputScalars.im_dim[0]) {
@@ -4136,11 +4185,11 @@ public:
 						int subset = 0;
 						if (inputScalars.maskFPZ > 1)
 							subset = osa_iter;
-						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskFPB[subset]);
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskFPB[timestep][subset]);
 					}
 					else
 						if (inputScalars.maskFPZ > 1) {
-							KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskFP3[osa_iter]);
+							KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskFP3[timestep][osa_iter]);
 						}
 						else
 							KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskFP);
@@ -4198,7 +4247,7 @@ public:
 					//if (inputScalars.listmode > 0 && inputScalars.indexBased)
 					//	status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[0]);
 					//else
-					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_norm[osa_iter]);
+					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_norm[timestep][osa_iter]);
 				}
 				if (inputScalars.scatter) {
 					KARG_METAL_SLOT(kernelIndBPSubIter, 11);
@@ -4461,7 +4510,7 @@ public:
 					//if (inputScalars.listmode > 0 && inputScalars.indexBased)
 					//	status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[0]);
 					//else
-					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_norm[osa_iter]);
+					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_norm[timestep][osa_iter]);
 				}
 			}
 			else {
@@ -4555,11 +4604,11 @@ public:
 							int subset = 0;
 							if (inputScalars.maskFPZ > 1)
 								subset = osa_iter;
-							KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskFPB[subset]);
+							KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskFPB[timestep][subset]);
 						}
 						else
 							if (inputScalars.maskFPZ > 1) {
-								KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskFP3[osa_iter]);
+								KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskFP3[timestep][osa_iter]);
 							}
 							else
 								KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskFP);
@@ -4614,7 +4663,7 @@ public:
 					//if (inputScalars.listmode > 0 && inputScalars.indexBased)
 					//	status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[0]);
 					//else
-					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_norm[osa_iter]);
+					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_norm[timestep][osa_iter]);
 				}
 				if (inputScalars.scatter) {
 					KARG_METAL_SLOT(kernelIndBPSubIter, 14);

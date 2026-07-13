@@ -196,9 +196,13 @@ elseif options.attenuation_correction && options.SPECT % SPECT attenuation
     end
     if options.partitions > 1
         if ~iscell(options.vaimennus)
-            error("With dynamic reconstruction the attenuation map needs to be a cell type");
-        end
-        if numel(options.vaimennus) ~= options.partitions
+            isDynamicMeasurementAttenuation = ~options.CT_attenuation && iscell(options.SinM) && ...
+                numel(options.vaimennus) == options.nRowsD * options.nColsD * ...
+                sum(cellfun(@(x) size(x, 3), options.SinM));
+            if ~isDynamicMeasurementAttenuation
+                error("With dynamic reconstruction the attenuation map needs to be a cell type");
+            end
+        elseif numel(options.vaimennus) ~= options.partitions
             error("No attenuation map for each timestep")
         end
     end

@@ -684,7 +684,8 @@ elseif ismember(options.param.implementation, [2, 3])
             options.param.SinM = single(full(options.param.SinM));
         end
         if iscell(options.param.SinM)
-            options.param.SinM = cell2mat(options.param.SinM);
+            inputCells = cellfun(@(x) x(:), options.param.SinM, 'UniformOutput', false);
+            options.param.SinM = vertcat(inputCells{:});
         end
         if ~isa(options.param.SinM, 'single') && options.param.loadTOF
             options.param.SinM = single(options.param.SinM);

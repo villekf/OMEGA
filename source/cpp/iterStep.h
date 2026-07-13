@@ -33,45 +33,48 @@ int computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethod
 			mexPrint("Regularization for BSREM/ROSEMMAP computed");
 	}
 	const bool storeMultiResolution = inputScalars.storeMultiResolution && inputScalars.nMultiVolumes > 0;
-    bool saveCurrentMultiResolution = inputScalars.saveIter;
-    size_t multiResolutionSaveIndex = static_cast<size_t>(iter) + 1ULL;
-    if (storeMultiResolution && !inputScalars.saveIter && inputScalars.saveIterationsMiddle > 0) {
-        saveCurrentMultiResolution = false;
+    bool saveCurrent = inputScalars.saveIter;
+    size_t saveIndex = static_cast<size_t>(iter) + 1ULL;
+    if (!inputScalars.saveIter && inputScalars.saveIterationsMiddle > 0) {
+        saveCurrent = false;
         for (size_t ii = 0; ii < inputScalars.saveIterationsMiddle; ii++) {
             if (inputScalars.saveNIter[ii] == iter) {
-                multiResolutionSaveIndex = ii;
-                saveCurrentMultiResolution = true;
+                saveIndex = ii;
+                saveCurrent = true;
                 break;
             }
         }
-        if (!saveCurrentMultiResolution && iter == inputScalars.Niter - 1) {
-            multiResolutionSaveIndex = inputScalars.saveIterationsMiddle;
-            saveCurrentMultiResolution = true;
+        if (!saveCurrent && iter == inputScalars.Niter - 1) {
+            saveIndex = inputScalars.saveIterationsMiddle;
+            saveCurrent = true;
         }
     }
-    const bool saveCurrentPrimary = !storeMultiResolution && (inputScalars.saveIter ||
-        (inputScalars.saveIterationsMiddle > 0 && (iter == inputScalars.Niter - 1 ||
-            (ee < inputScalars.saveIterationsMiddle && inputScalars.saveNIter[ee] == iter))));
-    if ((storeMultiResolution && saveCurrentMultiResolution) || saveCurrentPrimary) {
+	if (saveCurrent) {
 		if (inputScalars.verbose >= 3)
 			mexPrintVar("Saving intermediate result at iteration ", iter);
 		if (DEBUG) {
 			mexPrintBase("iter = %d\n", iter);
 			mexPrintBase("ee = %d\n", ee);
-			if (inputScalars.saveIterationsMiddle > 0)
-				mexPrintBase("inputScalars.saveNIter[ee] = %d\n", inputScalars.saveNIter[ee]);
+			mexPrintBase("saveIndex = %d\n", saveIndex);
 			mexEval();
 		}
-#ifdef MATLAB
+		const size_t savedFrameCount = inputScalars.saveIter ? static_cast<size_t>(inputScalars.Niter) + 1ULL : inputScalars.saveIterationsMiddle + 1ULL;
         if (storeMultiResolution) {
-            const size_t savedFrameCount = inputScalars.saveIter ? static_cast<size_t>(inputScalars.Niter) + 1ULL : inputScalars.saveIterationsMiddle + 1ULL;
             size_t x0Offset = 0ULL;
+#ifndef MATLAB
+            size_t volumeOffset = 0ULL;
+#endif
             for (uint32_t ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+#ifdef MATLAB
                 float* outputVolume = getSingles(output, "", static_cast<mwIndex>(ii));
                 const size_t timestepOffset = static_cast<size_t>(timestep) * savedFrameCount * inputScalars.im_dim[ii];
+#else
+                float* outputVolume = output;
+                const size_t timestepOffset = volumeOffset + static_cast<size_t>(timestep) * savedFrameCount * inputScalars.im_dim[ii];
+#endif
                 if (inputScalars.saveIter && iter == 0)
                     std::memcpy(&outputVolume[timestepOffset], &x0[x0Offset], inputScalars.im_dim[ii] * sizeof(float));
-                const size_t outputOffset = timestepOffset + static_cast<size_t>(multiResolutionSaveIndex) * inputScalars.im_dim[ii];
+                const size_t outputOffset = timestepOffset + saveIndex * inputScalars.im_dim[ii];
                 if (ii == 0 && inputScalars.use_psf && inputScalars.deconvolution) {
                     af::array apu = vec.im_os[timestep][ii].copy();
                     deblur(apu, g, inputScalars, w_vec);
@@ -80,28 +83,34 @@ int computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethod
                     vec.im_os[timestep][ii].host(&outputVolume[outputOffset]);
                 }
                 x0Offset += inputScalars.im_dim[ii];
+#ifndef MATLAB
+                volumeOffset += savedFrameCount * static_cast<size_t>(inputScalars.Nt) * inputScalars.im_dim[ii];
+#endif
             }
             if (timestep == inputScalars.Nt - 1)
                 ee++;
             return 0;
         }
+#ifdef MATLAB
 		float* jelppi = getSingles(output, "solu");
 #else
 		float* jelppi = output;
 #endif
+		const size_t timestepOffset = static_cast<size_t>(timestep) * savedFrameCount * inputScalars.im_dim[0];
 		if (inputScalars.saveIter && iter == 0) {
-			std::memcpy(&jelppi[tt], &x0[0], inputScalars.im_dim[0] * sizeof(float));
-			tt += inputScalars.im_dim[0];
+			std::memcpy(&jelppi[timestepOffset], &x0[0], inputScalars.im_dim[0] * sizeof(float));
 		}
+		const size_t outputOffset = timestepOffset + saveIndex * inputScalars.im_dim[0];
 		if (inputScalars.use_psf && inputScalars.deconvolution) {
 			af::array apu = vec.im_os[timestep][0].copy();
 			deblur(apu, g, inputScalars, w_vec);
-			apu.host(&jelppi[tt]);
+			apu.host(&jelppi[outputOffset]);
 		}
 		else
-			vec.im_os[timestep][0].host(&jelppi[tt]);
-		ee++;
-		tt += inputScalars.im_dim[0];
+			vec.im_os[timestep][0].host(&jelppi[outputOffset]);
+		if (timestep == inputScalars.Nt - 1)
+			ee++;
 	}
+	(void)tt;
 	return 0;
 }
