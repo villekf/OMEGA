@@ -272,9 +272,14 @@ void projectorType4Forward(
 	const int TOFid = TOFIndex[idx];
 #endif
 #if defined(N_RAYS) && defined(FP)
-	float ax[NBINS * N_RAYS];
+	// Slightly optimize multi-ray case for TOF
+	// Only store the NBINS per ray rather than all NBINS * NRAYS combinations
+	float ax[NBINS];
+	float axRay[NBINS];
+	PTR_THR float* const axP = axRay;
 #else
 	float ax[NBINS];
+	PTR_THR float* const axP = ax;
 #endif
 #if defined(BP) && !defined(CT)
 #if defined(LISTMODE) && defined(TOF) && !defined(SENS)
@@ -293,19 +298,11 @@ void projectorType4Forward(
 #endif
 #endif
 #else
-#if defined(N_RAYS) && defined(FP)
-#if !defined(__CUDACC__) && !defined(__HIPCC__)
-#pragma unroll NBINS * N_RAYS
-#endif
-	for (int to = 0; to < NBINS * N_RAYS; to++)
-		ax[to] = FLOAT_ZERO;
-#else
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++)
 		ax[to] = FLOAT_ZERO;
-#endif
 #endif
 #ifdef NORM // Normalization included
 	float local_norm = FLOAT_ZERO;
@@ -318,6 +315,10 @@ void projectorType4Forward(
 	local_scat = d_scat[idx];
 #endif
 #endif
+#ifdef TOF // TOF constants
+	const float sigmaInv = 1.f / sigma_x;
+	const float sigmaCoef = _2PI * sigmaInv;
+#endif
 
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
 	int lor = -1;
@@ -326,6 +327,13 @@ void projectorType4Forward(
 	for (int lorZ = 0u; lorZ < N_RAYS3D; lorZ++) {
 		for (int lorXY = 0u; lorXY < N_RAYS2D; lorXY++) {
 			lor++;
+#if defined(FP)
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
+#pragma unroll NBINS
+#endif
+			for (int to = 0; to < NBINS; to++)
+				axRay[to] = FLOAT_ZERO;
+#endif
 #endif  //////////////// END MULTIRAY ////////////////
 	float3 s, d;
 #if (defined(CT) || defined(SPECT)) && !defined(LISTMODE) && !defined(PET) // CT data
@@ -400,6 +408,7 @@ void projectorType4Forward(
 	float D = FLOAT_ZERO;
 	float DD = FLOAT_ZERO;
 	TOFDis(v, tStart, L, &D, &DD);
+	const float DDsign = sign(DD);
 	float TOFWeights[NBINS];
 #endif //////////////// END TOF ////////////////
 #endif
@@ -441,7 +450,7 @@ void projectorType4Forward(
 
 #ifdef TOF
     // Shift the TOF distance from the FOV entry point to the first step
-    D -= ((t0 - tStart) * L * sign(DD));
+    D -= ((t0 - tStart) * L * DDsign);
 #endif
 #else
     // Parametric step length
@@ -543,19 +552,16 @@ void projectorType4Forward(
 		compute_attenuation(stepLen, p, d_atten, &jelppi, aa);
 #endif
 #ifdef TOF //////////////// TOF ////////////////
-			TOFSum = TOFLoop(DD, stepLen, TOFCenter, sigma_x, &D, 1e-6f, TOFWeights);
+			TOFSum = TOFLoop(DDsign, stepLen, TOFCenter, sigmaInv, sigmaCoef, &D, 1e-6f, TOFWeights);
 #endif //////////////// END TOF ////////////////
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
-			denominator(ax, p, stepLen, d_OSEM
+			denominator(axP, p, stepLen, d_OSEM
 #ifdef TOF //////////////// TOF ////////////////
-			, stepLen, TOFSum, DD, sigma_x, &D, TOFWeights
+			, TOFSum, TOFWeights
 #ifdef LISTMODE
 			, TOFid
 #endif
 #endif //////////////// END TOF ////////////////
-#ifdef N_RAYS
-			, lor
-#endif
 			);
 #endif  //////////////// END FORWARD PROJECTION ////////////////
 #if defined(BP) && !defined(CT) //////////////// BACKWARD PROJECTION ////////////////
@@ -566,17 +572,13 @@ void projectorType4Forward(
 #if defined(MASKBP)
             int maskVal = 1;
             if (aa == 0) {
-#ifdef USEIMAGES
-				maskVal = readMaskBP(maskBP, p);
-#else
 				maskVal = readMaskBP(maskBP, p, d_N);
-#endif
             }
             if (maskVal > 0)
 #endif
 			rhs(stepLen * temp, ax, local_ind, d_output, no_norm, d_Summ
 #ifdef TOF
-			, stepLen, sigma_x, &D, DD, TOFSum, TOFWeights
+			, TOFSum, TOFWeights
 #ifdef LISTMODE
 			, TOFid
 #endif
@@ -584,7 +586,7 @@ void projectorType4Forward(
 			);
 #endif //////////////// END BACKWARD PROJECTION ////////////////
 #if defined(TOF)
-			D -= (stepLen * sign(DD));
+			D -= (stepLen * DDsign);
 #endif
     }
 #if !defined(TOTLENGTH) && defined(FP) && !defined(CT)
@@ -634,14 +636,14 @@ void projectorType4Forward(
 #endif
 #elif defined(FP) && defined(N_RAYS)
 #if defined(TOF) && defined(LISTMODE)
-	int to = TOFid;
+	ax[TOFid] += axRay[TOFid] * temp;
 #else
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++)
+		ax[to] += axRay[to] * temp;
 #endif
-		ax[to + NBINS * lor] *= temp;
 #endif //////////////// END FORWARD PROJECTION ////////////////
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
 		}
@@ -649,26 +651,6 @@ void projectorType4Forward(
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
 #if defined(TOF) && defined(LISTMODE)
 		size_t to = TOFid;
-#else
-#if !defined(__CUDACC__) && !defined(__HIPCC__)
-#pragma unroll NBINS
-#endif
-    for (size_t to = 0; to < NBINS; to++) {
-#endif
-        float apu = FLOAT_ZERO;
-#if !defined(__CUDACC__) && !defined(__HIPCC__)
-#pragma unroll N_RAYS
-#endif
-        for (size_t kk = 0; kk < N_RAYS; kk++) {
-            apu += ax[to + NBINS * kk];
-        }
-        ax[to] = apu;
-#if defined(TOF) && defined(LISTMODE)
-#else
-	}
-#endif
-#if defined(TOF) && defined(LISTMODE)
-		to = TOFid;
 #else
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
@@ -814,11 +796,7 @@ void projectorType4Backward(
     size_t idx = GID0 + GID1 * d_N.x + GID2 * nVoxels * d_N.y * d_N.x;
 #ifdef MASKBP
     if (ii == 0) {
-#ifdef USEIMAGES
-		const int maskVal = readMaskBP(maskBP, i);
-#else
 		const int maskVal = readMaskBP(maskBP, i, d_N);
-#endif
         if (maskVal == 0)
             return;
     }

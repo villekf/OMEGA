@@ -27,7 +27,7 @@
 #endif
 
 // The total size of the local/shared memory region
-#if defined(NLM_) || defined(PROXNLM)
+#if defined(NLM_) || defined(PROXNLM) || defined(NLM4_)
 #define SIZEX LOCAL_SIZE + SWINDOWX * 2 + PWINDOWX * 2
 #define SIZEY LOCAL_SIZE2 + SWINDOWY * 2 + PWINDOWY * 2
 #define SIZEZ LOCAL_SIZE3 + SWINDOWZ * 2 + PWINDOWZ * 2
@@ -401,7 +401,7 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 #endif
 		return;
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, ii);
+	const int maskVal = readMaskBP(maskBP, ii, MUINT3(N.x, N.y, N.z));
 #ifndef MASKSCALE
     if (maskVal == 0)
         return;
@@ -749,7 +749,7 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
         return;
 #endif
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, xyz);
+	const int maskVal = readMaskBP(maskBP, xyz, MUINT3(N.x, N.y, N.z));
     if (maskVal == 0)
         return;
 #endif
@@ -895,7 +895,7 @@ void GGMRFKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRI
         return;
 #endif
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, ii);
+	const int maskVal = readMaskBP(maskBP, ii, MUINT3(N.x, N.y, N.z));
     if (maskVal == 0)
         return;
 #endif
@@ -984,7 +984,7 @@ void medianFilter3D(const CLGLOBAL float* grad, CLGLOBAL float* output, const in
         return;
 #endif
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, xyz);
+	const int maskVal = readMaskBP(maskBP, xyz, MUINT3(N.x, N.y, N.z));
     if (maskVal == 0)
         return;
 #endif
@@ -1208,7 +1208,7 @@ void ProxTVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
         return;
 #endif
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, xyz);
+	const int maskVal = readMaskBP(maskBP, xyz, MUINT3(N.x, N.y, N.z));
     if (maskVal == 0)
         return;
 #endif
@@ -1269,7 +1269,7 @@ void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLREST
         return;
 #endif
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, xyz);
+	const int maskVal = readMaskBP(maskBP, xyz, MUINT3(N.x, N.y, N.z));
     if (maskVal == 0)
         return;
 #endif
@@ -1359,7 +1359,7 @@ void ProxTGVSymmDeriv(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 		return;
 #ifdef MASKPRIOR
 	const LTYPE3 NDiff = (N - NOrig) / 2;
-	const int maskVal = readMaskBP(maskBP, xyz + NDiff);
+	const int maskVal = readMaskBP(maskBP, xyz + NDiff, MUINT3(N.x, N.y, N.z));
     if (maskVal == 0)
         return;
 #endif
@@ -1476,7 +1476,7 @@ void ProxTGVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLR
 		return;
 #ifdef MASKPRIOR
 	const LTYPE3 NDiff = (N - NOrig) / 2;
-	const int maskVal = readMaskBP(maskBP, xyz + NDiff);
+	const int maskVal = readMaskBP(maskBP, xyz + NDiff, MUINT3(N.x, N.y, N.z));
     if (maskVal == 0)
         return;
 #endif
@@ -1619,7 +1619,7 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
         return;
 #endif
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, xyz);
+	const int maskVal = readMaskBP(maskBP, xyz, MUINT3(N.x, N.y, N.z));
     if (maskVal == 0)
         return;
 #endif
@@ -1762,7 +1762,7 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
         return;
 #endif
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, xyz);
+	const int maskVal = readMaskBP(maskBP, xyz, MUINT3(N.x, N.y, N.z));
     if (maskVal == 0)
         return;
 #endif
