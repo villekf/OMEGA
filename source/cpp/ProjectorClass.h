@@ -593,9 +593,11 @@ class ProjectorClass {
 #endif // END CUDA
 			if (inputScalars.FPType == 4)
 				ADD_OPT(os_options, "-DFP");
-			if (inputScalars.BPType == 4 && inputScalars.CT)
-				ADD_OPT(os_options, "-DBP");
 			ADD_OPT(os_options, "-DPTYPE4");
+			// Non-positive interpolation length selects the Joseph-type projector, where the ray is sampled once per voxel plane along
+			// its dominant axis (the input dL is then unused)
+			if (inputScalars.dL <= 0.f)
+				ADD_OPT(os_options, "-DJOSEPH");
 			if (!inputScalars.largeDim) {
 				ADD_OPT_INT(os_options, "-DNVOXELS", NVOXELS);
 				if (inputScalars.useHelical) {
@@ -617,11 +619,19 @@ class ProjectorClass {
 			if (inputScalars.FPType == 4)
 				status = buildProgram(inputScalars.verbose, contentFP, CLContext, CLDeviceID, programFP, inputScalars.atomic_64bit, inputScalars.atomic_32bit, os_options);
 #endif // END CUDA
-			if (!inputScalars.CT && inputScalars.BPType == 4) {
+			if (inputScalars.BPType == 4) {
 				os_options = options;
-				ADD_OPT(os_options, "-DPTYPE4");
+				if (inputScalars.CT) {
+					ADD_OPT(os_options, "-DBP4");
+					ADD_OPT_INT(os_options, "-DNVOXELS", NVOXELS);
+				}
+				else {
+					ADD_OPT(os_options, "-DPTYPE4");
+					ADD_OPT(os_options, "-DATOMICF");
+					if (inputScalars.dL <= 0.f)
+						ADD_OPT(os_options, "-DJOSEPH");
+				}
 				ADD_OPT(os_options, "-DBP");
-				ADD_OPT(os_options, "-DATOMICF");
 #if defined(CUDA) || defined(HIP)
 				status = buildProgram(inputScalars.verbose, contentBP, programBP, os_options);
 				if (status == NVRTC_SUCCESS && DEBUG) {
@@ -717,6 +727,8 @@ class ProjectorClass {
 			if (inputScalars.BPType == 4) {
 				ADD_OPT(os_options, "-DPTYPE4");
 				ADD_OPT_INT(os_options, "-DNVOXELS", NVOXELS);
+				if (inputScalars.dL <= 0.f)
+					ADD_OPT(os_options, "-DJOSEPH");
 			}
 			else
 				ADD_OPT(os_options, "-DSIDDON");
@@ -1200,7 +1212,7 @@ class ProjectorClass {
 				}
 				if (inputScalars.BPType == 4) {
 					if (inputScalars.FPType == 4 && inputScalars.CT)
-						GET_KERNEL(kernelBP, programFP, "projectorType4Backward");
+						GET_KERNEL(kernelBP, programBP, "projectorType4Backward");
 					else if (!inputScalars.CT)
 						GET_KERNEL(kernelBP, programBP, "projectorType4Forward");
 					else
@@ -2895,7 +2907,7 @@ public:
 		cl_int status = CL_SUCCESS;
 #endif // END CUDA
 
-		if (inputScalars.FPType == 4 || inputScalars.FPType == 5) {
+		if (inputScalars.FPType == 4 || inputScalars.FPType == 5 || inputScalars.FPType == 7) {
 			KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.nRowsD);
 			KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.nColsD);
 			KARG(FPArgs, kernelFP, kernelIndFP, dPitch);
@@ -2904,7 +2916,7 @@ public:
 			}
 		}
 
-		if (inputScalars.BPType == 4 || inputScalars.BPType == 5) {
+		if (inputScalars.BPType == 4 || inputScalars.BPType == 5 || inputScalars.BPType == 7) {
 			KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.nRowsD);
 			KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.nColsD);
 			KARG(BPArgs, kernelBP, kernelIndBP, dPitch);
@@ -3922,7 +3934,8 @@ public:
 		else {
 			if (inputScalars.CT) {
 
-				if (!inputScalars.useBuffers) {
+				// Projector type 7 always reads the projection data from a buffer, no image/texture is needed
+				if (!inputScalars.useBuffers && inputScalars.BPType != 7) {
 #if defined(CUDA) || defined(HIP)
 					std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
 					arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_FLOAT;
@@ -4102,9 +4115,9 @@ public:
 					}
 					mexEval();
 				}
-				if (inputScalars.offset)
+				if (inputScalars.offset && inputScalars.BPType != 7)
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_T[osa_iter]);
-				if (inputScalars.BPType == 5 || inputScalars.BPType == 4) {
+				if (inputScalars.BPType == 5 || inputScalars.BPType == 4 || inputScalars.BPType == 7) {
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_N[ii]);
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, b[ii]);
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d[ii]);
@@ -4112,7 +4125,7 @@ public:
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, inputScalars.d_Scale[ii]);
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, inputScalars.dSizeBP);
 					}
-					else {
+					else if (inputScalars.BPType == 4) {
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, w_vec.kerroin4[ii]);
 					}
 				}
@@ -4344,7 +4357,7 @@ public:
 #endif // END CUDA
 				}
 			KARG(kTemp, kernelBP, kernelIndBPSubIter, no_norm);
-			if (inputScalars.CT && inputScalars.maskBP && (inputScalars.BPType == 4 || inputScalars.BPType == 5)) {
+			if (inputScalars.CT && inputScalars.maskBP && (inputScalars.BPType == 4 || inputScalars.BPType == 5 || inputScalars.BPType == 7)) {
 				if (inputScalars.useBuffers) {
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBPB);
 				}

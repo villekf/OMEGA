@@ -238,6 +238,13 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
         kernel_path = strrep(kernel_path, '\', '/');
         kernel_path = strrep(kernel_path, '.cl', '');
         header_directory = strrep(kernel_path,'projectorType5','');
+    elseif options.projector_type == 7 || options.projector_type == 71 || options.projector_type == 17 || options.projector_type == 74 ...
+            || options.projector_type == 47 || options.projector_type == 75 || options.projector_type == 57
+        kernel_file = 'projectorType7.cl';
+        kernel_path = which(kernel_file);
+        kernel_path = strrep(kernel_path, '\', '/');
+        kernel_path = strrep(kernel_path, '.cl', '');
+        header_directory = strrep(kernel_path,'projectorType7','');
     elseif options.projector_type == 6
         header_directory = '';
     else

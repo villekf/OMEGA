@@ -41,9 +41,10 @@
 #else
 #define NA 2
 #endif
-#if defined(PTYPE4)
+#if defined(PTYPE4) && !defined(BP4)
 #define typeT float3
 #define T4 float4
+#define T2 float2
 #define typeTT float
 #else
 #ifdef USEIMAGES
@@ -56,6 +57,7 @@
 #endif
 #endif
 #define T4 int4
+#define T2 int2
 #define typeTT int
 #endif
 
@@ -423,7 +425,7 @@ __constant sampler_t samplerForw = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_LINEA
 __constant sampler_t samplerSiddon = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 
 #if defined(MASKBP) && defined(PTYPE4) && !defined(CT) && defined(BP)
-__constant sampler_t sampler_MASK4 = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
+__constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 #else
 __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif
@@ -739,6 +741,61 @@ inline __device__ void operator+=(float2& a, float2 b) {
 	a.x += b.x;
 	a.y += b.y;
 }
+
+inline __device__ void operator+=(float2& a, float b) {
+	a.x += b;
+	a.y += b;
+}
+
+inline __device__ void operator-=(float2& a, float2 b) {
+	a.x -= b.x;
+	a.y -= b.y;
+}
+
+inline __device__ void operator*=(float2& a, float2 b) {
+	a.x *= b.x;
+	a.y *= b.y;
+}
+
+inline __device__ void operator/=(float2& a, float b) {
+	a.x /= b;
+	a.y /= b;
+}
+
+inline __device__ void operator/=(float2& a, float2 b) {
+	a.x /= b.x;
+	a.y /= b.y;
+}
+
+inline __device__ void operator*=(float3& a, float b) {
+	a.x *= b;
+	a.y *= b;
+	a.z *= b;
+}
+
+inline __device__ void operator-=(float3& a, float b) {
+	a.x -= b;
+	a.y -= b;
+	a.z -= b;
+}
+
+inline __device__ void operator+=(float3& a, float b) {
+	a.x += b;
+	a.y += b;
+	a.z += b;
+}
+
+inline __device__ void operator/=(float3& a, float b) {
+	a.x /= b;
+	a.y /= b;
+	a.z /= b;
+}
+
+inline __device__ void operator/=(float3& a, float3 b) {
+	a.x /= b.x;
+	a.y /= b.y;
+	a.z /= b.z;
+}
 #endif // !HIP (vector arithmetic operators are built into HIP_vector_type)
 
 inline __device__ float3 fmin(float3 a, float3 b) {
@@ -848,8 +905,12 @@ DEVICE void getIndex(int3* i, const uint d_size_x, const uint d_sizey, const uin
 
 #endif
 
-#if ((defined(MASKBP) || defined(MASKBP3D) || defined(MASKPRIOR)) && !defined(PTYPE4)) // This is due to projector type 4 using sampler_MASK4 in BP mask (but only in forward projection)
-DEVICE int readMaskBP(MASKBPTYPE maskBP, typeT ind) {
+#if (defined(MASKBP) || defined(MASKBP3D) || defined(MASKPRIOR))
+DEVICE int readMaskBP(MASKBPTYPE maskBP, typeT ind
+#ifndef USEIMAGES
+		, uint3 d_N
+#endif
+) {
 	return 
     #ifdef USEIMAGES
     #if defined(CUDA) || defined(HIP)
@@ -860,13 +921,17 @@ DEVICE int readMaskBP(MASKBPTYPE maskBP, typeT ind) {
     #endif
     #else
     #ifdef MASKBP3D
-        read_imageui(maskBP, sampler_MASK, (int4)(ind.x, ind.y, ind.z, 0)).w;
+        read_imageui(maskBP, sampler_MASK, (T4)(ind.x, ind.y, ind.z, 0)).w;
     #else
-        read_imageui(maskBP, sampler_MASK, (int2)(ind.x, ind.y)).w;
+        read_imageui(maskBP, sampler_MASK, (T2)(ind.x, ind.y)).w;
     #endif
     #endif
     #else
-        maskBP[ind];
+    #ifdef MASKBP3D
+        maskBP[i.x + i.y * d_N.x + i.z * d_N.x * d_N.y];
+    #else
+        maskBP[i.x + i.y * d_N.x];
+    #endif
     #endif
 }
 #endif

@@ -4,7 +4,8 @@
 * projector and a voxel-based backprojector. The ray-based forward projector can be used with any data while the backprojector should be
 * used for CT-like data only (i.e. projection-type data). The ray-based forward projector does support backprojection as well but as with
 * projector types 1-3, it is not efficient backprojector, though it is completely adjoint. The voxel-based backprojector is not exactly
-* adjoint with the forward projection, but the difference is less than 1%.
+* adjoint with the forward projection, but the difference is less than 1%. Note that Joseph (10.1109/TMI.1982.4307572) method can now
+* also be selected by setting the interpolation length (dL) as negative.
 *
 * Used by implementations 2, 3 and 5.
 *
@@ -15,7 +16,9 @@
 * parameters the kernel should be loaded from cache leading to a slightly faster startup time.
 * 
 * The ray-based forward projection projects a ray from the source to each detector pixel. Once the ray enters the FOV, the values are
-* linearly interpolated at each d_L step, weighted by the fixed length of d_L. The ray-based forward projector works for all data.
+* linearly interpolated at each d_L step, weighted by the fixed length of d_L. The ray-based forward projector works for all data. The
+* Joseph style is different as it computes the values only in the centers of the voxel of each slice, using the dimension that has the most
+* amount of intersected voxels. The center is still along the ray so the ray values are only computed in the center regions.
 *
 * INPUTS:
 * d_size_x = the number of detector elements (rows),
@@ -23,8 +26,6 @@
 * d_dPitch = Either a vector of float2 or two floats if PYTHON is defined, the detector size/pitch in both "row" and "column" directions
 * d_L = Interpolation length, i.e. the length that is moved everytime the interpolation is done, forward projection only
 * global_factor = a global correction factor, e.g. dead time, can be simply 1.f
-* maskFP = 2D/3D Forward projection mask, i.e. LORs/measurements with 0 will be skipped
-* maskBP = 2D/3D backward projection mask, i.e. voxels with 0 will be skipped
 * d_TOFCenter = Offset of the TOF center from the first center of the FOV,
 * sigma_x = TOF STD, 
 * d_atten = attenuation data (images, if USEIMAGES is defined, or buffer),
@@ -34,9 +35,16 @@
 * d_scale = precomputed scaling value, float3 or three floats (if PYTHON is defined), see computeProjectorScalingValues.m
 * d_OSEM = image for current estimates or the input buffer for backward projection,
 * d_output = forward or backward projection,
-* d_xy/z = detector x/y/z-coordinates,
+* d_xyz = detector x/y/z-coordinates,
+* d_uv = detector direction vectors,
 * rings = Number of detector rings, PET only and only when computing listmode sensitivity image,
 * d_det_per_ring = number of detectors per ring, (only for listmode data sensitivity image computation, can be any value otherwise)
+* maskFP = 2D/3D Forward projection mask, i.e. LORs/measurements with 0 will be skipped
+* maskBP = 2D/3D backward projection mask, i.e. voxels with 0 will be skipped
+* d_nProjections = The number of projections,
+* d_xy/zindex = Subset index values for subset type 3,
+* tr/axIndex = Transaxial and axial indices for index-based reconstruction,
+* TOFindex = TOF indices for list-mode TOF,
 * d_norm = normalization coefficients,
 * d_scat = scatter coefficients when using the system matrix method (multiplication), 
 * d_Summ = buffer for d_Summ (sensitivity image),
@@ -48,7 +56,7 @@
 * OUTPUTS:
 * d_output = forward projection,
 *
-* Copyright (C) 2022-2025 Ville-Veikko Wettenhovi
+* Copyright (C) 2022-2026 Ville-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by
 * the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
@@ -101,12 +109,8 @@ void projectorType4Forward(
 #else
     , CONSTANT float* d_uv BUF6
 #endif
-#ifdef MASKFP // TODO replace with MASKFPTYPE
-#ifdef MASKFP3D
-    , IMAGE3D maskFP BUF7
-#else
-    , IMAGE2D maskFP BUF7
-#endif
+#ifdef MASKFP
+    , MASKFPTYPE maskFP BUF7
 #endif
 #if defined(MASKBP) && (defined(BP) || defined(SENS)) && !defined(CT)
 #ifdef MASKBP3D // TODO replace with MASKBPTYPE
@@ -186,19 +190,11 @@ void projectorType4Forward(
 #ifdef SENS
 	const int rings, const uint d_det_per_ring,
 #endif
-#ifdef MASKFP // TODO replace with MASKFPTYPE
-#ifdef MASKFP3D
-    IMAGE3D maskFP,
-#else
-    IMAGE2D maskFP,
-#endif
+#ifdef MASKFP
+    MASKFPTYPE maskFP,
 #endif
 #if defined(MASKBP) && (defined(BP) || defined(SENS)) && !defined(CT)
-#ifdef MASKBP3D // TODO replace with MASKBPTYPE
-    IMAGE3D maskBP,
-#else
-    IMAGE2D maskBP,
-#endif
+    MASKBPTYPE maskBP,
 #endif
     const LONG d_nProjections,
 #if defined(SUBSETS) && !defined(LISTMODE)
@@ -261,22 +257,9 @@ void projectorType4Forward(
 #endif
 #endif
         return; 
-#ifdef MASKFP // TODO use readMaskFP
-#if defined(CUDA) || defined(HIP)
-#ifdef MASKFP3D
-	const int maskVal = tex3D<unsigned char>(maskFP, i.x, i.y, i.z);
-#else
-    const int maskVal = tex2D<unsigned char>(maskFP, i.x, i.y);
-#endif
-#else
-#ifdef MASKFP3D
-    const int maskVal = read_imageui(maskFP, sampler_MASK, (int4)(i.x, i.y, i.z, 0)).w;
-#else
-    const int maskVal = read_imageui(maskFP, sampler_MASK, (int2)(i.x, i.y)).w;
-#endif
-#endif
-    if (maskVal == 0)
-        return;
+#ifdef MASKFP
+	if (readMaskFP(maskFP, i) == 0)
+		return;
 #endif
 #ifdef PYTHON
 	const float2 d_dPitch = make_float2(d_dPitchX, d_dPitchY);
@@ -296,7 +279,7 @@ void projectorType4Forward(
 #if defined(BP) && !defined(CT)
 #if defined(LISTMODE) && defined(TOF) && !defined(SENS)
 	for (int to = 0; to < NBINS; to++)
-		ax[to] = 0.f;
+		ax[to] = FLOAT_ZERO;
 	ax[TOFid] = d_OSEM[idx];
 #else
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
@@ -304,7 +287,7 @@ void projectorType4Forward(
 #endif
 	for (int to = 0; to < NBINS; to++)
 #ifdef SENS
-		ax[to] = 1.f;
+		ax[to] = FLOAT_ONE;
 #else
 		ax[to] = d_OSEM[idx + to * m_size];
 #endif
@@ -315,23 +298,23 @@ void projectorType4Forward(
 #pragma unroll NBINS * N_RAYS
 #endif
 	for (int to = 0; to < NBINS * N_RAYS; to++)
-		ax[to] = 0.f;
+		ax[to] = FLOAT_ZERO;
 #else
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++)
-		ax[to] = 0.f;
+		ax[to] = FLOAT_ZERO;
 #endif
 #endif
 #ifdef NORM // Normalization included
-	float local_norm = 0.f;
+	float local_norm = FLOAT_ZERO;
 	local_norm = d_norm[idx];
 #endif
 #ifndef CT
 
 #ifdef SCATTER // Scatter data included
-	float local_scat = 0.f;
+	float local_scat = FLOAT_ZERO;
 	local_scat = d_scat[idx];
 #endif
 #endif
@@ -397,7 +380,7 @@ void projectorType4Forward(
     const float tStart = FMAX(FMAX(tMin.x, tMin.y), tMin.z);
     const float tEnd = FMIN(FMIN(tMax.x, tMax.y), tMax.z);
 #ifdef TOF //////////////// TOF ////////////////
-    float TOFSum = 0.f;
+    float TOFSum = FLOAT_ZERO;
 #endif //////////////// END TOF ////////////////
     if (tStart >= tEnd)
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
@@ -408,58 +391,121 @@ void projectorType4Forward(
 	float L = LENGTH(v);
 #ifndef CT
 #if !defined(TOTLENGTH)
-	float LL = 0.f;
+	float LL = FLOAT_ZERO;
 #endif
 #ifdef ATN // Attenuation included
-	float jelppi = 0.f;
+	float jelppi = FLOAT_ZERO;
 #endif
 #ifdef TOF //////////////// TOF ////////////////
-	float D = 0.f;
-	float DD = 0.f;
+	float D = FLOAT_ZERO;
+	float DD = FLOAT_ZERO;
 	TOFDis(v, tStart, L, &D, &DD);
 	float TOFWeights[NBINS];
 #endif //////////////// END TOF ////////////////
 #endif
-    const float tStep = DIVIDE(dL, L);
-
-    // s = (s - bmin) * d_scale;
-    // v *= d_scale;
-    float temp = 0.f;
-
-    float t = tStart;
-#if (defined(ATN) && defined(BP)) || (defined(BP) && !defined(TOTLENGTH) && !defined(CT))
-    for (uint ii = 0; ii < NSTEPS; ii++) {
-#if (defined(ATN) && defined(BP))
-#ifndef USEMAD
-        float3 p = t * v + s;
-#else
-        float3 p = FMAD3(t, v, s);
-#endif
-        p = (p - bmin) * d_scale;
-		compute_attenuation(dL, p, d_atten, &jelppi, aa);
-#else
-        LL += dL;
-#endif
-        t += tStep;
-        if (t >= tEnd)
-            break;
+#ifdef JOSEPH
+    // Joseph method
+	// First compute the number of slices the ray traverses in each dimension
+    const float crx = FABS(v.x) * d_scale.x * CFLOAT(d_N.x);
+    const float cry = FABS(v.y) * d_scale.y * CFLOAT(d_N.y);
+    const float crz = FABS(v.z) * d_scale.z * CFLOAT(d_N.z);
+    // Parametric spacing between adjacent voxel plane centers
+    const float tStep = FLOAT_ONE / FMAX(FMAX(crx, cry), crz);
+    // Compute the "coordinate" of the entry point for the dimension that has the most voxels that the ray intersects
+    float sInd;
+    float vDim;
+    if (crx >= cry && crx >= crz) {
+        sInd = (s.x + v.x * tStart - b.x) * d_scale.x * CFLOAT(d_N.x) - FLOAT_HALF;
+        vDim = v.x;
     }
-    t = tStart + tStep / 10.f;
+    else if (cry >= crz) {
+        sInd = (s.y + v.y * tStart - b.y) * d_scale.y * CFLOAT(d_N.y) - FLOAT_HALF;
+        vDim = v.y;
+    }
+    else {
+        sInd = (s.z + v.z * tStart - b.z) * d_scale.z * CFLOAT(d_N.z) - FLOAT_HALF;
+        vDim = v.z;
+    }
+    // Determine the first t value, depending on whether the ray is descending or ascending
+    float t0;
+    if (vDim > FLOAT_ZERO)
+        t0 = tStart + (FLOOR(sInd) - sInd) * tStep;
+    else
+        t0 = tStart + (sInd - FLOOR(sInd)) * tStep;
+    // Number of steps and the physical length of one step (the interpolation weight)
+    uint nSteps = 0U;
+    if (t0 <= tEnd)
+        nSteps = CUINT((tEnd - t0) / tStep) + 1U;
+	// The length is also constant here
+    const float stepLen = tStep * L;
+
+#ifdef TOF
+    // Shift the TOF distance from the FOV entry point to the first step
+    D -= ((t0 - tStart) * L * sign(DD));
+#endif
+#else
+    // Parametric step length
+    const float tStep = DIVIDE(dL, L);
+    // The interpolation weight is the fixed input dL
+    const float stepLen = dL;
+    float t0 = tStart;
+	// Compute the total number of steps
+    uint nSteps = 0;
+    if (t0 <= tEnd)
+        nSteps = CUINT((tEnd - t0) / tStep) + 1u;
+#endif // END JOSEPH
+    // The position update can be precomputed with the constant parametric step length
+    const float3 dp = v * d_scale * tStep;
+
+    float temp = FLOAT_ZERO;
+
+	// Attenuation correction for non-CT cases
+#if (defined(ATN) && defined(BP)) || (defined(BP) && !defined(TOTLENGTH) && !defined(CT))
+#if (defined(ATN) && defined(BP))
+    {
+        float3 pAtn;
+        for (uint ii = 0; ii < nSteps; ii++) {
+			// Rather than always increment with the constant size, occasionally compute fresh values
+			// to avoid numerical errors with summation
+            if ((ii & 63u) == 0u) {
+                const float t = t0 + CFLOAT(ii) * tStep;
+#ifndef USEMAD
+                pAtn = t * v + s;
+#else
+                pAtn = FMAD3(t, v, s);
+#endif
+                pAtn = (pAtn - bmin) * d_scale;
+            }
+            else
+                pAtn += dp;
+            compute_attenuation(stepLen, pAtn, d_atten, &jelppi, aa);
+        }
+    }
+#else
+    // With a counted loop the total traversed length is known without marching the ray
+    LL = CFLOAT(nSteps) * stepLen;
+#endif
+#ifndef JOSEPH
+    t0 = tStart + tStep / 10.f;
+    nSteps = 0;
+    if (t0 <= tEnd)
+        nSteps = CUINT((tEnd - t0) / tStep) + 1u;
+#endif
 #endif
 #if !defined(CT) //////////////// PET ////////////////
 #if defined(TOTLENGTH) //////////////// TOTLENGTH ////////////////
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
-		temp = 1.f / (L * CFLOAT(N_RAYS));
+		temp = FLOAT_ONE / (L * CFLOAT(N_RAYS));
 #else
-		temp = 1.f / L;
+		temp = FLOAT_ONE / L;
 #endif //////////////// END MULTIRAY ////////////////
 #elif !defined(TOTLENGTH) && defined(BP) //////////////// NOTTOTLENGTH+BP ////////////////
-		if (LL == 0.f)
+		if (LL == FLOAT_ZERO)
 			LL = L;
 #ifdef N_RAYS  //////////////// MULTIRAY ////////////////
-		temp = 1.f / (LL * CFLOAT(N_RAYS));
+		temp = FLOAT_ONE / (LL * CFLOAT(N_RAYS));
 #else //////////////// SINGLERAY ////////////////
-		temp = 1.f / LL;
+		temp = FLOAT_ONE / LL;
 #endif //////////////// END MULTIRAY ////////////////
 #endif //////////////// END TOTLENGTH ////////////////
 #if defined(ATN) && defined(BP)
@@ -478,24 +524,31 @@ void projectorType4Forward(
 		temp *= global_factor;
 #endif
 #endif //////////////// END PET ////////////////
-    // for (uint ii = 0; ii < NSTEPS; ii++) {
-    while (t <= tEnd) {
+    // Increment the interpolation coordinate except at every 64th step where it's recomputed
+	// The recomputation is done to avoid numerical errors of (floating-point) summation (round-off errors)
+    float3 p = MFLOAT3(FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO);
+    for (uint ii = 0; ii < nSteps; ii++) {
+        if ((ii & 63u) == 0u) {
+            const float t = t0 + CFLOAT(ii) * tStep;
 #ifndef USEMAD
-        float3 p = v * t + s;
+            p = v * t + s;
 #else
-        float3 p = FMAD3(t, v, s);
+            p = FMAD3(t, v, s);
 #endif
-        p = (p - bmin) * d_scale;
+            p = (p - bmin) * d_scale;
+        }
+        else
+            p += dp;
 #if defined(ATN) && defined(FP)
-		compute_attenuation(dL, p, d_atten, &jelppi, aa);
+		compute_attenuation(stepLen, p, d_atten, &jelppi, aa);
 #endif
 #ifdef TOF //////////////// TOF ////////////////
-			TOFSum = TOFLoop(DD, dL, TOFCenter, sigma_x, &D, 1e-6f, TOFWeights);
+			TOFSum = TOFLoop(DD, stepLen, TOFCenter, sigma_x, &D, 1e-6f, TOFWeights);
 #endif //////////////// END TOF ////////////////
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
-			denominator(ax, p, dL, d_OSEM
+			denominator(ax, p, stepLen, d_OSEM
 #ifdef TOF //////////////// TOF ////////////////
-			, dL, TOFSum, DD, sigma_x, &D, TOFWeights
+			, stepLen, TOFSum, DD, sigma_x, &D, TOFWeights
 #ifdef LISTMODE
 			, TOFid
 #endif
@@ -508,34 +561,22 @@ void projectorType4Forward(
 #if defined(BP) && !defined(CT) //////////////// BACKWARD PROJECTION ////////////////
             const uint local_ind = CUINT_rtz(p.x * CFLOAT(d_N.x)) + CUINT_rtz(p.y * CFLOAT(d_N.y)) * d_N.x + CUINT_rtz(p.z * CFLOAT(d_N.z)) * d_N.x * d_N.y;
             if (local_ind <= 0 || local_ind >= d_N.x * d_N.y * d_N.z) {
-                t += tStep;
-                if (t > tEnd)
-                    break;
-                else
-                    continue;
+                continue;
             }
 #if defined(MASKBP)
             int maskVal = 1;
             if (aa == 0) {
-#if defined(CUDA) || defined(HIP) // TODO replace with readMaskBP
-#ifdef MASKBP3D
-		        maskVal = tex3D<unsigned char>(maskBP, p.x, p.y, p.z);
+#ifdef USEIMAGES
+				maskVal = readMaskBP(maskBP, p);
 #else
-		        maskVal = tex2D<unsigned char>(maskBP, p.x, p.y);
-#endif
-#else
-#ifdef MASKBP3D
-		        maskVal = read_imageui(maskBP, sampler_MASK4, (float4)(p.x, p.y, p.z, 0)).w;
-#else
-		        maskVal = read_imageui(maskBP, sampler_MASK4, (float2)(p.x, p.y)).w;
-#endif
+				maskVal = readMaskBP(maskBP, p, d_N);
 #endif
             }
             if (maskVal > 0)
 #endif
-			rhs(dL * temp, ax, local_ind, d_output, no_norm, d_Summ
+			rhs(stepLen * temp, ax, local_ind, d_output, no_norm, d_Summ
 #ifdef TOF
-			, dL, sigma_x, &D, DD, TOFSum, TOFWeights
+			, stepLen, sigma_x, &D, DD, TOFSum, TOFWeights
 #ifdef LISTMODE
 			, TOFid
 #endif
@@ -543,22 +584,19 @@ void projectorType4Forward(
 			);
 #endif //////////////// END BACKWARD PROJECTION ////////////////
 #if defined(TOF)
-			D -= (dL * sign(DD));
+			D -= (stepLen * sign(DD));
 #endif
-#if !defined(TOTLENGTH) && defined(FP) && !defined(CT)
-			LL += dL;
-#endif
-        t += tStep;
-        // if (t > tEnd)
-        //     break;
     }
+#if !defined(TOTLENGTH) && defined(FP) && !defined(CT)
+		LL = CFLOAT(nSteps) * stepLen;
+#endif
 #if !defined(TOTLENGTH) && !defined(CT) && defined(FP)
-        if (LL == 0.f)
+        if (LL == FLOAT_ZERO)
             LL = L;
 #if defined(N_RAYS) && !defined(ORTH) //////////////// MULTIRAY ////////////////
-        temp = 1.f / (LL * CFLOAT(N_RAYS));
+        temp = FLOAT_ONE / (LL * CFLOAT(N_RAYS));
 #else //////////////// SINGLERAY ////////////////
-		temp = 1.f / LL;
+		temp = FLOAT_ONE / LL;
 #endif //////////////// END MULTIRAY ////////////////
 #ifdef NORM
         temp *= local_norm;
@@ -617,7 +655,7 @@ void projectorType4Forward(
 #endif
     for (size_t to = 0; to < NBINS; to++) {
 #endif
-        float apu = 0.f;
+        float apu = FLOAT_ZERO;
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll N_RAYS
 #endif
@@ -776,26 +814,10 @@ void projectorType4Backward(
     size_t idx = GID0 + GID1 * d_N.x + GID2 * nVoxels * d_N.y * d_N.x;
 #ifdef MASKBP
     if (ii == 0) {
-#ifdef USEIMAGES // TODO replace with readMaskBP
-#if defined(CUDA) || defined(HIP)
-#ifdef MASKBP3D
-        const int maskVal = tex3D<unsigned char>(maskBP, i.x, i.y, i.z);
+#ifdef USEIMAGES
+		const int maskVal = readMaskBP(maskBP, i);
 #else
-        const int maskVal = tex2D<unsigned char>(maskBP, i.x, i.y);
-#endif
-#else
-#ifdef MASKBP3D
-        const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(i.x, i.y, i.z, 0)).w;
-#else
-        const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(i.x, i.y)).w;
-#endif
-#endif
-#else
-#ifdef MASKBP3D
-		const int maskVal = maskBP[i.x + i.y * d_N.x + i.z * d_N.x * d_N.y];
-#else
-        const int maskVal = maskBP[i.x + i.y * d_N.x];
-#endif
+		const int maskVal = readMaskBP(maskBP, i, d_N);
 #endif
         if (maskVal == 0)
             return;
@@ -899,6 +921,7 @@ void projectorType4Backward(
             // v.z += d_d.z;
         }
 #else
+	// This part could be slightly improved with precomputation but the benefits are rather marginal
 #if defined(PITCH)
         const float3 apuX = CMFLOAT3(d_uv[kk * NA], d_uv[kk * NA + 1], d_uv[kk * NA + 2]) * indeksi.x;
         const float3 apuY = CMFLOAT3(d_uv[kk * NA + 3], d_uv[kk * NA + 4], d_uv[kk * NA + 5]) * indeksi.y;
