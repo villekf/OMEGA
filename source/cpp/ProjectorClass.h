@@ -166,6 +166,7 @@ class ProjectorClass {
 		bool xFull = false;
 		bool zFull = false;
 		bool offsetT = false;
+		bool geom5 = false;
 		bool indexBased = false;
 		bool TOFIndex = false;
 		bool angle = false;
@@ -180,6 +181,7 @@ class ProjectorClass {
 		int TOFSteps = 0;
 		int aSteps = 0;
 		int oSteps = 0;
+		int g5Steps = 0;
 		int tSteps = 1;
 		int attenSize = 0;
 	};
@@ -1483,6 +1485,10 @@ public:
 	std::vector<DEVBUF_t> d_normFull, d_scatFull, d_xFull, d_zFull;
 	std::vector<DEVBUF_t> d_L;
 	std::vector<DEVBUF_t> d_zindex, d_xyindex, d_norm, d_atten, d_T;
+	// Precomputed per-projection geometry for the BDD backprojection (16 floats per projection, one buffer per subset)
+	std::vector<DEVBUF_t> d_geomProj5;
+	// Host-side storage for the above geometry
+	std::vector<std::vector<float>> geomProj5Host;
 	std::vector<std::vector<DEVBUF_t>> d_scat, d_x, d_z, d_trIndex, d_axIndex, d_TOFIndex;
 	std::vector<std::vector<size_t>> erotusBP, erotusPDHG;
 #if defined(CUDA) || defined(HIP)
@@ -1548,6 +1554,11 @@ public:
 		if (memAlloc.offsetT) {
 			for (int kk = 0; kk < memAlloc.oSteps; kk++) {
 				getErrorString(cuMemFree(d_T[kk]));
+			}
+		}
+		if (memAlloc.geom5) {
+			for (int kk = 0; kk < memAlloc.g5Steps; kk++) {
+				getErrorString(cuMemFree(d_geomProj5[kk]));
 			}
 		}
 		if (memAlloc.TOF) {
@@ -2500,6 +2511,14 @@ public:
 					memAlloc.oSteps++;
 #endif // END CUDA
 				}
+				if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0) {
+					ALLOC_BUFFER(d_geomProj5[kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 16);
+					CHECK(status, "\n", -1);
+#if defined(CUDA) || defined(HIP)
+					memAlloc.geom5 = true;
+					memAlloc.g5Steps++;
+#endif // END CUDA
+				}
 				// Normalization weighting (OpenCL condition also requires size_norm > 1; used for both backends)
 				if (inputScalars.size_norm > 1 && inputScalars.normalization_correction) {
 					ALLOC_BUFFER(d_norm[kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize);
@@ -2781,6 +2800,53 @@ public:
 					WRITE_BUFFER(d_T[kk], sizeof(float) * length[kk], &inputScalars.T[pituus[kk]]);
 					CHECK(status, "\n", -1);
 				}
+				// Per projection: s (3), d3 (3), normX (3), normY (3), crossP (3), upperPart (1), i.e. 16 floats.
+				// Previously computed in the kernel itself
+				if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0) {
+					const float indX = static_cast<float>(inputScalars.nRowsD) / 2.f;
+					const float indY = static_cast<float>(inputScalars.nColsD) / 2.f;
+					const size_t uvStride = inputScalars.pitch ? 6 : 2;
+					const float* xs = &x[pituus[kk] * 6];
+					const float* uv = &z_det[pituus[kk] * uvStride];
+					geomProj5Host[kk].resize(static_cast<size_t>(length[kk]) * 16);
+					for (int64_t pp = 0; pp < length[kk]; pp++) {
+						const float sX = xs[pp * 6], sY = xs[pp * 6 + 1], sZ = xs[pp * 6 + 2];
+						const float dX = xs[pp * 6 + 3], dY = xs[pp * 6 + 4], dZ = xs[pp * 6 + 5];
+						float aXx, aXy, aXz, aYx, aYy, aYz;
+						if (inputScalars.pitch) {
+							aXx = uv[pp * 6] * indX; aXy = uv[pp * 6 + 1] * indX; aXz = uv[pp * 6 + 2] * indX;
+							aYx = uv[pp * 6 + 3] * indY; aYy = uv[pp * 6 + 4] * indY; aYz = uv[pp * 6 + 5] * indY;
+						}
+						else {
+							aXx = uv[pp * 2] * indX; aXy = uv[pp * 2 + 1] * indX; aXz = 0.f;
+							aYx = 0.f; aYy = 0.f; aYz = indY * w_vec.dPitchY;
+						}
+						// d3 = d - apuX - apuY
+						const float d3x = dX - aXx - aYx, d3y = dY - aXy - aYy, d3z = dZ - aXz - aYz;
+						// d2 = apuX - apuY
+						const float d2x = aXx - aYx, d2y = aXy - aYy, d2z = aXz - aYz;
+						const float nXl = std::sqrt(aXx * aXx + aXy * aXy + aXz * aXz);
+						const float nYl = std::sqrt(aYx * aYx + aYy * aYy + aYz * aYz);
+						// d3 - d = -apuX - apuY
+						const float ddx = d3x - dX, ddy = d3y - dY, ddz = d3z - dZ;
+						// crossP = cross(d2, d3 - d)
+						const float cx = d2y * ddz - d2z * ddy;
+						const float cy = d2z * ddx - d2x * ddz;
+						const float cz = d2x * ddy - d2y * ddx;
+						// upperPart = dot(crossP, s - d)
+						const float up = cx * (sX - dX) + cy * (sY - dY) + cz * (sZ - dZ);
+						float* g = &geomProj5Host[kk][pp * 16];
+						g[0] = sX; g[1] = sY; g[2] = sZ;
+						g[3] = d3x; g[4] = d3y; g[5] = d3z;
+						g[6] = aXx / nXl; g[7] = aXy / nXl; g[8] = aXz / nXl;
+						g[9] = aYx / nYl; g[10] = aYy / nYl; g[11] = aYz / nYl;
+						g[12] = cx; g[13] = cy; g[14] = cz;
+						g[15] = up;
+					}
+					WRITE_BUFFER(d_geomProj5[kk], sizeof(float) * length[kk] * 16, geomProj5Host[kk].data());
+					CHECK(status, "\n", -1);
+					memSize += (sizeof(float) * length[kk] * 16) / 1048576ULL;
+				}
 				if (inputScalars.raw && inputScalars.listmode != 1) {
 					WRITE_BUFFER(d_L[kk], sizeof(uint16_t) * length[kk] * 2, &L[pituus[kk] * 2]);
 					CHECK(status, "\n", -1);
@@ -2882,6 +2948,10 @@ public:
 		}
 		if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5))
 			d_T.resize(inputScalars.subsetsUsed);
+		if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0) {
+			d_geomProj5.resize(inputScalars.subsetsUsed);
+			geomProj5Host.resize(inputScalars.subsetsUsed);
+		}
 
 		status = createAndWriteBuffers(length, x, z_det, xy_index, z_index, L, pituus, atten, norm, extraCorr, inputScalars, w_vec, MethodList);
 #if defined(CUDA) || defined(HIP)
@@ -4179,6 +4249,7 @@ public:
 					}
 					else
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_z[timestep][osa_iter]);
+					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_geomProj5[osa_iter]);
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_inputImage);
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, vec_opencl.d_rhs_os[uu]);
 #if defined(CUDA) || defined(HIP)

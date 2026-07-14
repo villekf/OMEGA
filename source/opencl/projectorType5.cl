@@ -1,8 +1,8 @@
 
 /******************************************************************************
  * Matrix free projectors for forward and backward projections. This is the
- *branchless distance-driven projector. Based on:
- *https://doi.org/10.1109/TCI.2017.2675705
+ * branchless distance-driven projector. Based on:
+ * https://doi.org/10.1109/TCI.2017.2675705
  *
  * Used by implementations 2, 3 and 5.
  *
@@ -13,39 +13,39 @@
  * d_nRows = the number of detector elements (rows),
  * d_nCols = the number of detector elements (columns),
  * d_dPitch = Either a vector of float2 or two floats if PYTHON is defined, the
- *detector size/pitch in both "row" and "column" directions maskFP = 2D/3D
- *Forward projection mask, i.e. LORs/measurements with 0 will be skipped d_N =
- *image size in x/y/z- dimension, float3 or three floats (if PYTHON is defined),
+ * detector size/pitch in both "row" and "column" directions maskFP = 2D/3D
+ * Forward projection mask, i.e. LORs/measurements with 0 will be skipped d_N =
+ * image size in x/y/z- dimension, float3 or three floats (if PYTHON is defined),
  * d_b = distance from the pixel space to origin (z/x/y-dimension), float3 or
- *three floats (if PYTHON is defined), d_Size = precomputed scaling value,
- *float2 or two floats (if PYTHON is defined), see
- *computeProjectorScalingValues.m d_d = distance between adjecent voxels in
- *z/x/y-dimension, float3 or three floats (if PYTHON is defined), d_scale =
- *precomputed scaling value, float3 or three floats (if PYTHON is defined), see
- *computeProjectorScalingValues.m d_xy/z = detector x/y/z-coordinates, d_uv =
- *Direction coordinates for the detector panel, d_IImageY = Integral image of
- *the image volume for XZ-plane, d_IImageX = Integral image of the image volume
- *for YZ-plane, d_forw = forward projection, d_meanV = mean values for each
- *integral image slice, first for d_IImageY d_nProjections = Number of
- *projections/sinograms,
+ * three floats (if PYTHON is defined), d_Size = precomputed scaling value,
+ * float2 or two floats (if PYTHON is defined), see
+ * computeProjectorScalingValues.m d_d = distance between adjecent voxels in
+ * z/x/y-dimension, float3 or three floats (if PYTHON is defined), d_scale =
+ * precomputed scaling value, float3 or three floats (if PYTHON is defined), see
+ * computeProjectorScalingValues.m d_xy/z = detector x/y/z-coordinates, d_uv =
+ * Direction coordinates for the detector panel, d_IImageY = Integral image of
+ * the image volume for XZ-plane, d_IImageX = Integral image of the image volume
+ * for YZ-plane, d_forw = forward projection, d_meanV = mean values for each
+ * integral image slice, first for d_IImageY d_nProjections = Number of
+ * projections/sinograms,
  *
  * OUTPUTS:
  * d_forw = forward projection,
  *
- * Copyright (C) 2022-2024 Ville-Veikko Wettenhovi
+ * Copyright (C) 2022-2026 Ville-Veikko Wettenhovi
  *
  * This program is free software: you can redistribute it and/or modify it under
- *the terms of the GNU General Public License as published by the Free Software
- *Foundation, either version 3 of the License, or (at your option) any later
- *version.
+ * the terms of the GNU General Public License as published by the Free Software
+ * Foundation, either version 3 of the License, or (at your option) any later
+ * version.
  *
  * This program is distributed in the hope that it wiL be useful, but WITHOUT
- *ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- *FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
- *details.
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+ * FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+ * details.
  *
  * You should have received a copy of the GNU General Public License along with
- *this program. If not, see <https://www.gnu.org/licenses/>.
+ * this program. If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 #ifdef OPENCL
 CONSTANT sampler_t sampler2 =
@@ -156,6 +156,7 @@ void projectorType5Forward(
   float temp[NVOXELSFP];
   for (int zz = 0; zz < NVOXELSFP; zz++)
     temp[zz] = 0.f;
+  const int maxZZ = MIN(NVOXELSFP, CINT(d_nCols) - i.y);
 #ifdef CT
   // Get source and detector coordinates
   getDetectorCoordinatesCT(d_xyz, d_uv, &s, &d, i, d_nRows, d_nCols, d_dPitch,
@@ -173,28 +174,27 @@ void projectorType5Forward(
     kerroin /= uVector.y;
     const float apuX = (b.x - s.x - d_d.x / 2.f);
     const float apuV = b.y - s.y;
+#ifdef MEANDISTANCEFP
+#if defined(OPENCL)
+    const float meanKoko = CFLOAT(get_image_width(d_IImageY) * get_image_height(d_IImageY));
+#else
+    const float meanKoko = CFLOAT((d_N.y + 1) * (d_N.z + 1));
+#endif
+#endif
+    float dyDiv2 = d_d.y / 2.f;
     for (uint jj = 0; jj < d_N.y; jj++) {
-      float dy = CFLOAT(jj) * d_d.y + d_d.y / 2.f;
-      const float v = dy + apuV;
-      float2 xLR = v * X;
-      float2 zUD = v * Z;
+      const float v = dyDiv2 + apuV;
+      const float dy = dyDiv2 * d_Size.y;
+      dyDiv2 += d_d.y;
       // Shift the origin to the corner of the slice
-      xLR -= apuX;
-      zUD -= apuZ;
-      if (xLR.x > xLR.y) {
-        const float apu = xLR.x;
-        xLR.x = xLR.y;
-        xLR.y = apu;
-      }
-      if (zUD.x > zUD.y) {
-        const float apu = zUD.x;
-        zUD.x = zUD.y;
-        zUD.y = apu;
-      }
+      const float2 xLR0 = v * X - apuX;
+      const float2 zUD0 = v * Z - apuZ;
+      float2 xLR = MFLOAT2(FMIN(xLR0.x, xLR0.y), FMAX(xLR0.x, xLR0.y));
+      float2 zUD = MFLOAT2(FMIN(zUD0.x, zUD0.y), FMAX(zUD0.x, zUD0.y));
       const float area = FABS((xLR.x - xLR.y) * (zUD.x - zUD.y));
+      const float invArea = FLOAT_ONE / area;
       // Scale between 0 and 1
       xLR *= d_scale.x;
-      dy *= d_Size.y;
       zUD *= d_scale.z;
 #if defined(CUDA) || defined(HIP)
       float A = tex3D<float>(d_IImageY, xLR.y, zUD.x, dy);
@@ -218,23 +218,13 @@ void projectorType5Forward(
 #endif
       float apu = C + D - A - B;
 #ifdef MEANDISTANCEFP
-#if defined(CUDA) || defined(HIP)
-      const float area2 =
-          d_meanV[jj + d_N.x] * fabs((xLR.x - xLR.y) * (zUD.x - zUD.y)) *
-          CFLOAT(get_image_width(d_IImageY) * get_image_height(d_IImageY));
-#else
       const float area2 = d_meanV[jj + d_N.x] *
-                          FABS((xLR.x - xLR.y) * (zUD.x - zUD.y)) *
-                          CFLOAT((d_N.y + 1) * (d_N.z + 1));
-#endif
+                          FABS((xLR.x - xLR.y) * (zUD.x - zUD.y)) * meanKoko;
       apu += area2;
 #endif
-      temp[0] += apu / area;
+      temp[0] += apu * invArea;
       const float xInterval = FABS(zUD.x - zUD.y);
-      for (int zz = 1; zz < NVOXELSFP; zz++) {
-        const uint ind = i.y + zz;
-        if (ind >= d_nCols)
-          break;
+      for (int zz = 1; zz < maxZZ; zz++) {
         D = B;
         A = C;
         zUD.y += xInterval;
@@ -252,7 +242,7 @@ void projectorType5Forward(
 #ifdef MEANDISTANCEFP
         apu += (area2);
 #endif
-        temp[zz] += apu / area;
+        temp[zz] += apu * invArea;
       }
     }
   } else {
@@ -263,26 +253,26 @@ void projectorType5Forward(
     kerroin /= uVector.x;
     const float apuY = (b.y - s.y - d_d.y / 2.f);
     const float apuV = b.x - s.x;
+#ifdef MEANDISTANCEFP
+#if defined(OPENCL)
+    const float meanKoko =
+        CFLOAT(get_image_width(d_IImageX) * get_image_height(d_IImageX));
+#else
+    const float meanKoko = CFLOAT((d_N.x + 1) * (d_N.z + 1));
+#endif
+#endif
+    float dxBase = d_d.x / 2.f;
     for (uint ii = 0; ii < d_N.x; ii++) {
-      float dx = CFLOAT(ii) * d_d.x + d_d.x / 2.f;
-      const float v = dx + apuV;
-      float2 yLR = v * Y;
-      float2 zUD = v * Z;
-      yLR -= apuY;
-      zUD -= apuZ;
-      if (yLR.x > yLR.y) {
-        const float apu = yLR.x;
-        yLR.x = yLR.y;
-        yLR.y = apu;
-      }
-      if (zUD.x > zUD.y) {
-        const float apu = zUD.x;
-        zUD.x = zUD.y;
-        zUD.y = apu;
-      }
+      const float v = dxBase + apuV;
+      const float dx = dxBase * d_Size.x;
+      dxBase += d_d.x;
+      const float2 yLR0 = v * Y - apuY;
+      const float2 zUD0 = v * Z - apuZ;
+      float2 yLR = MFLOAT2(FMIN(yLR0.x, yLR0.y), FMAX(yLR0.x, yLR0.y));
+      float2 zUD = MFLOAT2(FMIN(zUD0.x, zUD0.y), FMAX(zUD0.x, zUD0.y));
       const float area = FABS((yLR.x - yLR.y) * (zUD.x - zUD.y));
+      const float invArea = 1.f / area;
       yLR *= d_scale.y;
-      dx *= d_Size.x;
       zUD *= d_scale.z;
 #if defined(CUDA) || defined(HIP)
       float A = tex3D<float>(d_IImageX, yLR.y, zUD.x, dx);
@@ -306,23 +296,13 @@ void projectorType5Forward(
 #endif
       float apu = C + D - A - B;
 #ifdef MEANDISTANCEFP
-#if defined(OPENCL)
-      const float area2 =
-          d_meanV[ii] * fabs((yLR.x - yLR.y) * (zUD.x - zUD.y)) *
-          CFLOAT(get_image_width(d_IImageX) * get_image_height(d_IImageX));
-#else
       const float area2 = d_meanV[ii] *
-                          FABS((yLR.x - yLR.y) * (zUD.x - zUD.y)) *
-                          CFLOAT((d_N.x + 1) * (d_N.z + 1));
-#endif
+                          FABS((yLR.x - yLR.y) * (zUD.x - zUD.y)) * meanKoko;
       apu += (area2);
 #endif
-      temp[0] += apu / area;
+      temp[0] += apu * invArea;
       const float yInterval = FABS(zUD.x - zUD.y);
-      for (int zz = 1; zz < NVOXELSFP; zz++) {
-        const uint ind = i.y + zz;
-        if (ind >= d_nCols)
-          break;
+      for (int zz = 1; zz < maxZZ; zz++) {
         D = B;
         A = C;
         zUD.y += yInterval;
@@ -340,15 +320,13 @@ void projectorType5Forward(
 #ifdef MEANDISTANCEFP
         apu += (area2);
 #endif
-        temp[zz] += apu / area;
+        temp[zz] += apu * invArea;
       }
     }
   }
-  for (int zz = 0; zz < NVOXELSFP; zz++) {
-    if (idx >= d_nCols * d_nRows * d_nProjections)
-      break;
+  for (int zz = 0; zz < maxZZ; zz++) {
 #if defined(NORM)
-    temp[zz] *= local_norm;
+    temp[zz] *= d_norm[idx];
 #endif
     d_forw[idx] += temp[zz] * kerroin;
     idx += d_nRows;
@@ -425,7 +403,7 @@ extern "C" __global__
 #else
                            CONSTANT float *d_xyz,
 #endif
-                           CONSTANT float *d_uv, IMAGE3D d_IImage,
+                           CONSTANT float *d_uv, const CLGLOBAL float *CLRESTRICT d_geom5, IMAGE3D d_IImage,
                            CLGLOBAL float *d_forw, CLGLOBAL float *d_Summ,
 #ifdef MEANDISTANCEBP
                            CONSTANT float *d_meanV,
@@ -490,35 +468,28 @@ extern "C" __global__
 #endif
   const float2 koko = MFLOAT2(CFLOAT(d_nRows + 1) * d_dPitch.x,
                               CFLOAT(d_nCols + 1) * d_dPitch.y);
-  const float2 indeksi = MFLOAT2(CFLOAT(d_nRows) / 2.f, CFLOAT(d_nCols) / 2.f);
 #ifdef CT
   float3 dV2 = dV;
+  const float2 invKoko = MFLOAT2(1.f / koko.x, 1.f / koko.y);
+  const float invNProj = 1.f / CFLOAT(d_nProjections);
+  // Number of valid axial voxels for this thread
+  const int maxZZ5 = MIN(NVOXELS5, CINT(d_N.z) - i.z);
   for (int kk = 0; kk < d_nProjections; kk++) {
     float3 vLU, vRD;
-    const int id = kk * 6;
-    const float3 s = CMFLOAT3(d_xyz[id], d_xyz[id + 1], d_xyz[id + 2]);
-    const float3 d = CMFLOAT3(d_xyz[id + 3], d_xyz[id + 4], d_xyz[id + 5]);
-#if defined(PITCH)
-    const float3 apuX =
-        CMFLOAT3(d_uv[kk * NA], d_uv[kk * NA + 1], d_uv[kk * NA + 2]) *
-        indeksi.x;
-    const float3 apuY =
-        CMFLOAT3(d_uv[kk * NA + 3], d_uv[kk * NA + 4], d_uv[kk * NA + 5]) *
-        indeksi.y;
-#else
-    const float3 apuX =
-        CMFLOAT3(indeksi.x * d_uv[kk * NA], indeksi.x * d_uv[kk * NA + 1], 0.f);
-    const float3 apuY = CMFLOAT3(0.f, 0.f, indeksi.y * d_dPitch.y);
-#endif
-    const float3 d2 = apuX - apuY;
-    const float3 d3 = d - apuX - apuY;
-    const float3 normX = normalize(apuX);
-    const float3 normY = normalize(apuY);
-    const float3 v = normalize(dV - s);
-    const float3 aVar = d3 - d;
-    const float3 crossP = cross(d2, d3 - d);
-    const float upperPart = dot(crossP, s - d);
-    if (fabs(s.x) <= fabs(s.y)) {
+    // Per-projection geometry precomputed on the host (ProjectorClassTest5.h)
+    const int id = kk * 16;
+    const float3 s = CMFLOAT3(d_geom5[id], d_geom5[id + 1], d_geom5[id + 2]);
+    const float3 d3 =
+        CMFLOAT3(d_geom5[id + 3], d_geom5[id + 4], d_geom5[id + 5]);
+    const float3 normX =
+        CMFLOAT3(d_geom5[id + 6], d_geom5[id + 7], d_geom5[id + 8]);
+    const float3 normY =
+        CMFLOAT3(d_geom5[id + 9], d_geom5[id + 10], d_geom5[id + 11]);
+    const float3 crossP =
+        CMFLOAT3(d_geom5[id + 12], d_geom5[id + 13], d_geom5[id + 14]);
+    const float upperPart = d_geom5[id + 15];
+    const bool sxDim = fabs(s.x) <= fabs(s.y);
+    if (sxDim) {
       if (s.y > 0.f) {
         vLU = CMFLOAT3(dV.x - d_d.x / 2.f, dV.y, dV.z - d_d.z / 2.f) - s; // A
         vRD = CMFLOAT3(dV.x + d_d.x / 2.f, dV.y, dV.z + d_d.z / 2.f) - s; // D
@@ -561,11 +532,13 @@ extern "C" __global__
       Ay = Dy;
       Dy = yA;
     }
-    const float dz = (CFLOAT(kk) + 0.5f) / CFLOAT(d_nProjections);
-    float3 coordA = MFLOAT3(Ax / koko.x, Ay / koko.y, dz);
-    float3 coordB = MFLOAT3(Ax / koko.x, Dy / koko.y, dz);
-    float3 coordC = MFLOAT3(Dx / koko.x, Ay / koko.y, dz);
-    float3 coordD = MFLOAT3(Dx / koko.x, Dy / koko.y, dz);
+    const float dz = (CFLOAT(kk) + 0.5f) * invNProj;
+    const float AxN = Ax * invKoko.x;
+    const float DxN = Dx * invKoko.x;
+    float3 coordA = MFLOAT3(AxN, Ay * invKoko.y, dz);
+    float3 coordB = MFLOAT3(AxN, Dy * invKoko.y, dz);
+    float3 coordC = MFLOAT3(DxN, Ay * invKoko.y, dz);
+    float3 coordD = MFLOAT3(DxN, Dy * invKoko.y, dz);
 #if defined(CUDA) || defined(HIP)
     float A = tex3D<float>(d_IImage, coordA.x, coordA.y, coordA.z);
     float B = tex3D<float>(d_IImage, coordB.x, coordB.y, coordB.z);
@@ -578,32 +551,36 @@ extern "C" __global__
     float D = read_imagef(d_IImage, sampler2, (float4)(coordD, 0.f)).w;
 #endif
 #ifdef NORM
-    LONG indX = CLONG_rtz(coordA.x * CFLOAT(d_size_x));
-    LONG indY = CLONG_rtz(coordA.y * CFLOAT(d_sizey)) * CLONG_rtz(d_size_x);
+    LONG indX = CLONG_rtz(coordA.x * CFLOAT(d_nRows));
+    LONG indY = CLONG_rtz(coordA.y * CFLOAT(d_nCols)) * CLONG_rtz(d_nRows);
     LONG indZ = CLONG_rtz(coordA.z * CFLOAT(d_nProjections)) *
-                CLONG_rtz(d_sizey) * CLONG_rtz(d_size_x);
+                CLONG_rtz(d_nCols) * CLONG_rtz(d_nRows);
     A *= d_norm[indX + indY + indZ];
-    indX = CLONG_rtz(coordB.x * CFLOAT(d_size_x));
-    indY = CLONG_rtz(coordB.y * CFLOAT(d_sizey)) * CLONG_rtz(d_size_x);
-    indZ = CLONG_rtz(coordB.z * CFLOAT(d_nProjections)) * CLONG_rtz(d_sizey) *
-           CLONG_rtz(d_size_x);
+    indX = CLONG_rtz(coordB.x * CFLOAT(d_nRows));
+    indY = CLONG_rtz(coordB.y * CFLOAT(d_nCols)) * CLONG_rtz(d_nRows);
+    indZ = CLONG_rtz(coordB.z * CFLOAT(d_nProjections)) * CLONG_rtz(d_nCols) *
+           CLONG_rtz(d_nRows);
     B *= d_norm[indX + indY + indZ];
-    indX = CLONG_rtz(coordB.x * CFLOAT(d_size_x));
-    indY = CLONG_rtz(coordB.y * CFLOAT(d_sizey)) * CLONG_rtz(d_size_x);
-    indZ = CLONG_rtz(coordB.z * CFLOAT(d_nProjections)) * CLONG_rtz(d_sizey) *
-           CLONG_rtz(d_size_x);
+    indX = CLONG_rtz(coordC.x * CFLOAT(d_nRows));
+    indY = CLONG_rtz(coordC.y * CFLOAT(d_nCols)) * CLONG_rtz(d_nRows);
+    indZ = CLONG_rtz(coordC.z * CFLOAT(d_nProjections)) * CLONG_rtz(d_nCols) *
+           CLONG_rtz(d_nRows);
     C *= d_norm[indX + indY + indZ];
-    indX = CLONG_rtz(coordB.x * CFLOAT(d_size_x));
-    indY = CLONG_rtz(coordB.y * CFLOAT(d_sizey)) * CLONG_rtz(d_size_x);
-    indZ = CLONG_rtz(coordB.z * CFLOAT(d_nProjections)) * CLONG_rtz(d_sizey) *
-           CLONG_rtz(d_size_x);
+    indX = CLONG_rtz(coordD.x * CFLOAT(d_nRows));
+    indY = CLONG_rtz(coordD.y * CFLOAT(d_nCols)) * CLONG_rtz(d_nRows);
+    indZ = CLONG_rtz(coordD.z * CFLOAT(d_nProjections)) * CLONG_rtz(d_nCols) *
+           CLONG_rtz(d_nRows);
     D *= d_norm[indX + indY + indZ];
 #endif
+    const float3 vd = dV - s;
     float kerroin;
-    if (fabs(s.x) <= fabs(s.y))
-      kerroin = d_d.y / fabs(v.y);
+    if (sxDim)
+      kerroin = d_d.y * LENGTH(vd) / FABS(vd.y);
     else
-      kerroin = d_d.x / fabs(v.x);
+      kerroin = d_d.x * LENGTH(vd) / FABS(vd.x);
+#ifdef FDK
+    kerroin /= 6.f;
+#endif
 #ifdef OFFSET
     float OffTT;
     float OffT = T[kk];
@@ -623,24 +600,25 @@ extern "C" __global__
     coordB.x -= OffTT;
     coordC.x -= OffTT;
     coordD.x -= OffTT;
+    const float invOffTT = 1.f / (2.f * OffTT);
     float wA = 1.f, wB = 1.f, wC = 1.f, wD = 1.f;
     if (coordA.x <= OffTT && coordA.x >= -OffTT) {
-      wA = SINF(M_PI_2_F * ((coordA.x + OffTT) / (2.f * OffTT)));
+      wA = SINF(M_PI_2_F * ((coordA.x + OffTT) * invOffTT));
       wA *= wA;
     } else if (coordA.x < -OffTT)
       wA = 0.f;
     if (coordB.x <= OffTT && coordB.x >= -OffTT) {
-      wB = SINF(M_PI_2_F * ((coordB.x + OffTT) / (2.f * OffTT)));
+      wB = SINF(M_PI_2_F * ((coordB.x + OffTT) * invOffTT));
       wB *= wB;
     } else if (coordB.x < -OffTT)
       wB = 0.f;
     if (coordC.x <= OffTT && coordC.x >= -OffTT) {
-      wC = SINF(M_PI_2_F * ((coordC.x + OffTT) / (2.f * OffTT)));
+      wC = SINF(M_PI_2_F * ((coordC.x + OffTT) * invOffTT));
       wC *= wC;
     } else if (coordC.x < -OffTT)
       wC = 0.f;
     if (coordD.x <= OffTT && coordD.x >= -OffTT) {
-      wD = SINF(M_PI_2_F * ((coordD.x + OffTT) / (2.f * OffTT)));
+      wD = SINF(M_PI_2_F * ((coordD.x + OffTT) * invOffTT));
       wD *= wD;
     } else if (coordD.x < -OffTT)
       wD = 0.f;
@@ -657,25 +635,23 @@ extern "C" __global__
 #ifdef MEANDISTANCEBP
       apu += area * fabs(coordA.y - coordD.y) * fabs(coordA.x - coordD.x);
 #endif
-#ifdef FDK
-      kerroin /= 6.f;
-#endif
       temp[0] += apu * kerroin;
       if (no_norm == 0u)
         wSum[0] += kerroin;
     }
-    for (int zz = 1; zz < NVOXELS5; zz++) {
-      const uint ind = i.z + zz;
-      if (ind >= d_N.z)
-        break;
+    dV2.z = dV.z;
+    for (int zz = 1; zz < maxZZ5; zz++) {
       vRD.z += d_d.z;
       vLU.z += d_d.z;
-      dV2.z = CFLOAT(i.z + zz) * d_d.z + d_d.z / 2.f + b.z;
-      float3 v2 = normalize(dV2 - s);
-      if (fabs(s.x) <= fabs(s.y))
-        kerroin = d_d.y / fabs(v2.y);
+      dV2.z += d_d.z;
+      const float3 vd2 = dV2 - s;
+      if (sxDim)
+        kerroin = d_d.y * LENGTH(vd2) / FABS(vd2.y);
       else
-        kerroin = d_d.x / fabs(v2.x);
+        kerroin = d_d.x * LENGTH(vd2) / FABS(vd2.x);
+#ifdef FDK
+      kerroin /= 6.f;
+#endif
       tLU = upperPart / (dot(-vLU, crossP));
       tRD = upperPart / (dot(-vRD, crossP));
 #ifdef USEMAD
@@ -695,8 +671,8 @@ extern "C" __global__
         Dy = yA;
         B = A;
         D = C;
-        coordA = CMFLOAT3(Ax / koko.x, Ay / koko.y, dz);
-        coordC = CMFLOAT3(Dx / koko.x, Ay / koko.y, dz);
+        coordA = CMFLOAT3(AxN, Ay * invKoko.y, dz);
+        coordC = CMFLOAT3(DxN, Ay * invKoko.y, dz);
 #if defined(CUDA) || defined(HIP)
         A = tex3D<float>(d_IImage, coordA.x, coordA.y, coordA.z);
         C = tex3D<float>(d_IImage, coordC.x, coordC.y, coordC.z);
@@ -705,13 +681,13 @@ extern "C" __global__
         C = read_imagef(d_IImage, sampler2, (float4)(coordC, 0.f)).w;
 #endif
 #ifdef MEANDISTANCEBP
-        coordD = (float4)(Dx / koko.x, Dy / koko.y, dz, 0.f);
+        coordD = CMFLOAT3(DxN, Dy * invKoko.y, dz);
 #endif
       } else {
         A = B;
         C = D;
-        coordB = CMFLOAT3(Ax / koko.x, Dy / koko.y, dz);
-        coordD = CMFLOAT3(Dx / koko.x, Dy / koko.y, dz);
+        coordB = CMFLOAT3(AxN, Dy * invKoko.y, dz);
+        coordD = CMFLOAT3(DxN, Dy * invKoko.y, dz);
 #if defined(CUDA) || defined(HIP)
         B = tex3D<float>(d_IImage, coordB.x, coordB.y, coordB.z);
         D = tex3D<float>(d_IImage, coordD.x, coordD.y, coordD.z);
@@ -720,7 +696,7 @@ extern "C" __global__
         D = read_imagef(d_IImage, sampler2, (float4)(coordD, 0.f)).w;
 #endif
 #ifdef MEANDISTANCEBP
-        coordA = (float4)(Ax / koko.x, Ay / koko.y, dz, 0.f);
+        coordA = CMFLOAT3(AxN, Ay * invKoko.y, dz);
 #endif
       }
 #ifdef OFFSET
@@ -732,19 +708,13 @@ extern "C" __global__
 #ifdef MEANDISTANCEBP
         apu += area * fabs(coordA.y - coordD.y) * fabs(coordA.x - coordD.x);
 #endif
-#ifdef FDK
-        kerroin /= 6.f;
-#endif
         temp[zz] += apu * kerroin;
         if (no_norm == 0u)
           wSum[zz] += kerroin;
       }
     }
   }
-  for (int zz = 0; zz < NVOXELS5; zz++) {
-    const uint ind = i.z + zz;
-    if (ind >= d_N.z)
-      break;
+  for (int zz = 0; zz < maxZZ5; zz++) {
     d_forw[idx] = temp[zz];
     if (no_norm == 0u)
       d_Summ[idx] = wSum[zz];
