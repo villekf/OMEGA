@@ -15,6 +15,12 @@
 #define CUmodule                                      hipModule_t
 #define CUresult                                      hipError_t
 #define CUstream                                      hipStream_t
+#define cuStreamCreate                                hipStreamCreateWithFlags
+#define cuStreamDestroy                               hipStreamDestroy
+#define cuStreamWaitEvent                             hipStreamWaitEvent
+#define cuEventDestroy                                hipEventDestroy
+#define CU_STREAM_NON_BLOCKING                        hipStreamNonBlocking
+#define CU_EVENT_DISABLE_TIMING                       hipEventDisableTiming
 // Runtime-API stream handle. Maps to the same type as the driver-API CUstream so that code using
 // either name shares one stream type under HIP. NOTE: af/cuda.h must not also typedef cudaStream_t
 // (see structs.h) or this alias would redefine hipStream_t.
@@ -43,13 +49,16 @@
 #define cuMemFree                                     hipFree
 #define cuMemGetInfo                                  hipMemGetInfo
 #define cuMemcpyHtoD                                  hipMemcpyHtoD
+#define cuMemcpyDtoH                                  hipMemcpyDtoH
 #define cuMemcpy2D                                    hipMemcpyParam2D
 #define cuMemcpy3D                                    hipDrvMemcpy3D
+#define cuMemcpy3DAsync                               hipDrvMemcpy3DAsync
 #define cuModuleGetFunction                           hipModuleGetFunction
 #define cuModuleLoadDataEx                            hipModuleLoadDataEx
 #define cuModuleUnload                                hipModuleUnload
 #define cuLaunchKernel                                hipModuleLaunchKernel
 #define cuCtxSynchronize                              hipDeviceSynchronize
+#define cuStreamSynchronize                           hipStreamSynchronize
 #define cuDeviceGetAttribute                          hipDeviceGetAttribute
 #define cuArrayCreate                                 hipArrayCreate
 #define cuArray3DCreate                               hipArray3DCreate

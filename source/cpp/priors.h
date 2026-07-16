@@ -13,7 +13,6 @@ inline int MRP(const af::array& im, const uint32_t medx, const uint32_t medy, co
 		dU += (im - grad) * beta;
 	else
 		dU += (im - (grad)) / (grad + inputScalars.epps) * beta;
-	af::sync();
 	if (DEBUG) {
 		mexPrintBase("min(grad2) = %f\n", af::min<float>(grad));
 		mexPrintBase("grad2 = %f\n", af::sum<float>(grad));
@@ -263,11 +262,9 @@ inline int proxTV(const af::array& im, const scalarStruct& inputScalars, AF_im_v
 	int status = 0;
 #ifndef CPU
 	status = proxTVGradAF(im, vec.qProxTV, inputScalars, w_vec.sigma2CP[timestep][0], vec.vProxTGV, proj);
-	af::sync();
 	if (status != 0)
 		return -1;
 	status = proxTVQAF(vec.qProxTV, beta, proj);
-	af::sync();
 	if (status != 0)
 		return -1;
 	status = proxTVDivAF(vec.qProxTV, dU, inputScalars, proj, timestep);
@@ -294,7 +291,6 @@ inline int proxTGV(const af::array& im, const scalarStruct& inputScalars, AF_im_
 		mexEval();
 	}
 	status = proxTGVSymmDerivAF(vec.vProxTGV, vec.qProxTGV, inputScalars, w_vec.sigma2CP[timestep][0], proj);
-	af::sync();
 	if (status != 0)
 		return -1;
 	status = proxTGVQAF(vec.qProxTGV, inputScalars, w_vec.alpha1CPTGV, proj);
@@ -302,7 +298,6 @@ inline int proxTGV(const af::array& im, const scalarStruct& inputScalars, AF_im_
 		mexPrintBase("vec.qCPTGV2 = %f\n", af::sum<float>(vec.qProxTGV[2]));
 		mexEval();
 	}
-	af::sync();
 	if (status != 0)
 		return -1;
 	if (DEBUG) {
@@ -323,7 +318,6 @@ inline int proxTGV(const af::array& im, const scalarStruct& inputScalars, AF_im_
 
 inline int RDP(const af::array& im, const scalarStruct& inputScalars, const float gamma, ProjectorClass& proj, af::array& dU, const float beta, const af::array& RDPref, const Weighting& w_vec, const bool RDPLargeNeighbor = false, const bool useRDPRef = false, const int kk = 0) {
 	int status = 0;
-	af::sync();
 	if (DEBUG) {
 		mexPrintBase("im_RDP = %f\n", af::sum<float>(im));
 		mexPrintBase("isnan(im_RDP) = %d\n", af::anyTrue<bool>(af::isNaN(im)));
@@ -341,7 +335,6 @@ inline int RDP(const af::array& im, const scalarStruct& inputScalars, const floa
 
 inline int GGMRF(const af::array& im, const scalarStruct& inputScalars, const float p, const float q, const float c, const float pqc, ProjectorClass& proj, af::array& dU, const Weighting& w_vec, const float beta, const int kk = 0) {
 	int status = 0;
-	af::sync();
 	if (DEBUG) {
 		mexPrintBase("im_GGMRF = %f\n", af::sum<float>(im));
 		mexPrintBase("isnan(im_GGMRF) = %d\n", af::anyTrue<bool>(af::isNaN(im)));
@@ -360,7 +353,6 @@ inline int GGMRF(const af::array& im, const scalarStruct& inputScalars, const fl
 inline int NLM(ProjectorClass& proj, const af::array& im, Weighting& w_vec, const scalarStruct& inputScalars, af::array& dU, const float beta, const int kk = 0)
 {
 	int status = 0;
-	af::sync();
 	status = NLMAF(dU, im, inputScalars, w_vec, proj, beta, kk);
 	return status;
 }
@@ -462,7 +454,6 @@ inline int applySpatialPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMeth
 			mexPrint("Computing GGMRF prior gradient");
 		status = GGMRF(vec.im_os[timestep][0], inputScalars, w_vec.GGMRF_p, w_vec.GGMRF_q, w_vec.GGMRF_c, w_vec.GGMRF_pqc, proj, *dU, w_vec, beta, kk);
 	}
-	af::deviceGC();
 	if (inputScalars.verbose >= 3 && (MethodList.MRP || MethodList.Quad || MethodList.Huber || MethodList.L || MethodList.FMH || MethodList.TV 
 		|| MethodList.WeightedMean || MethodList.AD || MethodList.APLS || MethodList.TGV || MethodList.NLM || MethodList.RDP || MethodList.ProxTGV 
 		|| MethodList.ProxTV || MethodList.ProxRDP || MethodList.ProxNLM || MethodList.GGMRF))
@@ -514,7 +505,6 @@ inline int applyTemporalPrior(
 
         *dUt += w_vec.beta_temporal * grad;
 
-        af::deviceGC();
         af::eval(*dUt);
     }
 

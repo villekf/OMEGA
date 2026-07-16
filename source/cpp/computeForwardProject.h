@@ -104,8 +104,10 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				mexPrint("CT mode");
 			if (inputScalars.verbose >= 3 && inputScalars.randoms_correction)
 				mexPrint("Adding scatter data to forward projection");
-			if (inputScalars.randoms_correction)
-				input = af::exp(-input) * inputScalars.flat - (y.as(f32) * af::exp(-input)) / (af::exp(-input) + randomsData);
+			if (inputScalars.randoms_correction) {
+				const af::array expInput = af::exp(-input);
+				input = expInput * inputScalars.flat - (y.as(f32) * expInput) / (expInput + randomsData);
+			}
 			else
 				input = af::exp(-input) * inputScalars.flat - y.as(f32);
 		}
@@ -128,8 +130,10 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				mexPrint("CT mode");
 			if (inputScalars.verbose >= 3 && inputScalars.randoms_correction)
 				mexPrint("Adding scatter data to forward projection");
-			if (inputScalars.randoms_correction)
-				input = (y.as(f32) * af::exp(-input)) / (af::exp(-input) + randomsData) - af::exp(-input) * inputScalars.flat;
+			if (inputScalars.randoms_correction) {
+				const af::array expInput = af::exp(-input);
+				input = (y.as(f32) * expInput) / (expInput + randomsData) - expInput * inputScalars.flat;
+			}
 			else
 				input = y.as(f32) - af::exp(-input) * inputScalars.flat;
 		}
@@ -155,8 +159,10 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				mexPrint("CT mode");
 			if (inputScalars.verbose >= 3 && inputScalars.randoms_correction)
 				mexPrint("Adding scatter data to forward projection");
-			if (inputScalars.randoms_correction)
-				input = af::exp(-input) * inputScalars.flat - (y.as(f32) * af::exp(-input)) / (af::exp(-input) + randomsData);
+			if (inputScalars.randoms_correction) {
+				const af::array expInput = af::exp(-input);
+				input = expInput * inputScalars.flat - (y.as(f32) * expInput) / (expInput + randomsData);
+			}
 			else
 				input = af::exp(-input) * inputScalars.flat - y.as(f32);
 		}
@@ -356,8 +362,10 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				mexPrint("CT mode");
 			if (inputScalars.verbose >= 3 && inputScalars.randoms_correction)
 				mexPrint("Adding scatter data to forward projection");
-			if (inputScalars.randoms_correction)
-				input = af::exp(-input) * inputScalars.flat - (y.as(f32) * af::exp(-input)) / (af::exp(-input) + randomsData);
+			if (inputScalars.randoms_correction) {
+				const af::array expInput = af::exp(-input);
+				input = expInput * inputScalars.flat - (y.as(f32) * expInput) / (expInput + randomsData);
+			}
 			else
 				input = af::exp(-input) * inputScalars.flat - y.as(f32);
 		}
@@ -392,12 +400,11 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 	input(af::isNaN(input)) = inputScalars.epps;
 	input(af::isInf(input)) = inputScalars.epps;
 	input.eval();
-	af::sync();
 	if (DEBUG || inputScalars.verbose >= 3) {
+		af::sync();
 		proj.tEndLocal = std::chrono::steady_clock::now();
 		const std::chrono::duration<double> tDiff = proj.tEndLocal - proj.tStartLocal;
 		mexPrintBase("Computations required for backprojection completed in %f seconds\n", tDiff);
 	}
-	af::deviceGC();
 	return 0;
 }

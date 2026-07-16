@@ -44,7 +44,7 @@
 #if defined(PTYPE4) && !defined(BP4)
 #define typeT float3
 #define T4 float4
-#define T3 float2
+#define T3 float3
 #define T2 float2
 #define typeTT float
 #else
@@ -58,7 +58,7 @@
 #endif
 #endif
 #define T4 int4
-#define T3 int2
+#define T3 int3
 #define T2 int2
 #define typeTT int
 #endif
@@ -658,6 +658,10 @@ inline __device__ float2 operator+(float a, float2 b) {
 
 inline __device__ float2 operator+(float2 a, float b) {
 	return make_float2(a.x + b, a.y + b);
+}
+
+inline __device__ float2 operator-(float2 a, float b) {
+	return make_float2(a.x - b, a.y - b);
 }
 
 inline __device__ float2 operator*(float2 a, float2 b) {

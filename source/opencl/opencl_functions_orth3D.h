@@ -241,7 +241,7 @@ DEVICE int orthDistance3D(const int tempi,
 	int zz = tempk;
 	center.z = centerZ0;
 #ifdef CRYSTZ
-	for (zz = tempk; zz < maksimiZ; zz++) {
+	for (zz = MAX(tempk, minimiZ); zz < maksimiZ; zz++) {
 #endif
 		center.z = bz + CFLOAT(zz) * dz + dz / FLOAT_TWO;
 		const FLOAT z0 = center.z - s.z;
@@ -249,7 +249,7 @@ DEVICE int orthDistance3D(const int tempi,
 		l.y = diff.y * z0;
 #ifdef CRYSTXY
 		center.y = centerY0;
-		for (uu1 = temp2; uu1 < maksimiXY; uu1++) {
+		for (uu1 = MAX(temp2, minimiXY); uu1 < maksimiXY; uu1++) { 
 #else
 		uu1 = temp2;
 		center.y = centerY0;
@@ -287,7 +287,7 @@ DEVICE int orthDistance3D(const int tempi,
 #endif
 #ifdef CRYSTXY
 		center.y = centerY0 - d2;
-		for (uu2 = temp2 - 1; uu2 >= minimiXY; uu2--) {
+		for (uu2 = MIN(temp2, maksimiXY) - 1; uu2 >= minimiXY; uu2--) {
 			breikki = orthogonalHelper3D(tempi, uu2, d_N2, d_N3, d_Nxy, zz, s, l, diff, orth_ray_length, center, bmin, bmax, Vmax, V, XY, ax, temp, 
 #if defined(FP)
 				d_OSEM
@@ -326,13 +326,13 @@ DEVICE int orthDistance3D(const int tempi,
 	}
 	*k = zz - 1;
 	center.z = centerZ0 - dz;
-	for (zz = tempk - 1; zz >= minimiZ; zz--) {
+	for (zz = MIN(tempk, maksimiZ) - 1; zz >= minimiZ; zz--) { 
 		const FLOAT z0 = center.z - s.z;
 		l.x = diff.x * z0 - apu1;
 		l.y = diff.y * z0;
 #ifdef CRYSTXY
 		center.y = centerY0;
-		for (uu1 = temp2; uu1 < maksimiXY; uu1++) {
+		for (uu1 = MAX(temp2, minimiXY); uu1 < maksimiXY; uu1++) { 
 #else
 		uu1 = temp2;
 		center.y = centerY0;
@@ -369,7 +369,7 @@ DEVICE int orthDistance3D(const int tempi,
 #endif
 #ifdef CRYSTXY
 		center.y = centerY0 - d2;
-		for (uu2 = temp2 - 1; uu2 >= minimiXY; uu2--) {
+		for (uu2 = MIN(temp2, maksimiXY) - 1; uu2 >= minimiXY; uu2--) {
 			breikki = orthogonalHelper3D(tempi, uu2, d_N2, d_N3, d_Nxy, zz, s, l, diff, orth_ray_length, center, bmin, bmax, Vmax, V, XY, ax, temp, 
 #if defined(FP)
 				d_OSEM

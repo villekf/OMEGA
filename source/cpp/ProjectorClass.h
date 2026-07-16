@@ -672,7 +672,7 @@ class ProjectorClass {
 			ADD_OPT(os_options, "-DPROJ5");
 			if (inputScalars.meanFP)
 				ADD_OPT(os_options, "-DMEANDISTANCEFP");
-			else if (inputScalars.meanBP)
+			if (inputScalars.meanBP)
 				ADD_OPT(os_options, "-DMEANDISTANCEBP");
 			if (inputScalars.FPType == 5)
 				ADD_OPT(os_options, "-DFP");
@@ -1492,6 +1492,32 @@ public:
 	std::vector<std::vector<DEVBUF_t>> d_scat, d_x, d_z, d_trIndex, d_axIndex, d_TOFIndex;
 	std::vector<std::vector<size_t>> erotusBP, erotusPDHG;
 #if defined(CUDA) || defined(HIP)
+	// This is used to define the additional queues/streams in the multi-resolution case
+	// Note that these are only used in the multi-resolution case
+	std::vector<CUstream> sideQueues;
+	CUevent evMain = nullptr;
+	std::vector<CUevent> evSide;
+	// Persistent per-volume FP input arrays/textures
+	// Previously these were always recreated
+	std::vector<CUarray> FPArrayCache;
+	std::vector<CUtexObject> FPTexCache;
+	std::vector<CUarray> intArrayCacheXY;
+	std::vector<CUtexObject> intTexCacheXY;
+	std::vector<CUarray> intArrayCacheYZ;
+	std::vector<CUtexObject> intTexCacheYZ;
+#else
+	std::vector<cl::CommandQueue> sideQueues;
+	// Persistent per-volume FP input images
+	std::vector<cl::Image3D> d_imageCache;
+	std::vector<cl::Image3D> d_intImageCacheXY;
+	std::vector<cl::Image3D> d_intImageCacheYZ;
+#endif
+	// Cached dimensions of the above (3 entries per volume; third entry 0 = not yet created)
+	std::vector<size_t> imageCacheDims, intImageCacheDimsXY, intImageCacheDimsYZ;
+	// Cached dimensions of the persistent BP input image/texture (third entry 0 = not yet created)
+	size_t BPImageDims[3] = { 0, 0, 0 };
+	// ==== End Mod additions ====
+#if defined(CUDA) || defined(HIP)
 	~ProjectorClass() {
 		CUresult status = CUDA_SUCCESS;
 		if (memAlloc.FPMod)
@@ -1622,12 +1648,107 @@ public:
 		else if (memAlloc.NLMRef == 2) {
 			getErrorString(cuMemFree(d_uref));
 		}
+		for (size_t kk = 0; kk < FPTexCache.size(); kk++) {
+			if (imageCacheDims[kk * 3 + 2] != 0) {
+				getErrorString(cuTexObjectDestroy(FPTexCache[kk]));
+				getErrorString(cuArrayDestroy(FPArrayCache[kk]));
+			}
+		}
+		for (size_t kk = 0; kk < intTexCacheXY.size(); kk++) {
+			if (intImageCacheDimsXY[kk * 3 + 2] != 0) {
+				getErrorString(cuTexObjectDestroy(intTexCacheXY[kk]));
+				getErrorString(cuArrayDestroy(intArrayCacheXY[kk]));
+			}
+		}
+		for (size_t kk = 0; kk < intTexCacheYZ.size(); kk++) {
+			if (intImageCacheDimsYZ[kk * 3 + 2] != 0) {
+				getErrorString(cuTexObjectDestroy(intTexCacheYZ[kk]));
+				getErrorString(cuArrayDestroy(intArrayCacheYZ[kk]));
+			}
+		}
+		if (BPImageDims[2] != 0) {
+			getErrorString(cuTexObjectDestroy(d_inputImage));
+			getErrorString(cuArrayDestroy(BPArray));
+		}
+		for (size_t kk = 0; kk < sideQueues.size(); kk++)
+			getErrorString(cuStreamDestroy(sideQueues[kk]));
+		for (size_t kk = 0; kk < evSide.size(); kk++)
+			getErrorString(cuEventDestroy(evSide[kk]));
+		if (evMain != nullptr)
+			getErrorString(cuEventDestroy(evMain));
 	}
 #else
 	cl_uchar no_norm = 0;
 	int proj6 = 1;
 	~ProjectorClass() {}
 #endif // END CUDA
+
+	/// <summary>
+	/// Create the additional queues/streams for the multi-resolution case,
+	//// The main queue/stream is always the ArrayFire queue/stream, the other volumes use their own ones
+	/// </summary>
+	/// <param name="n number of additional multi-resolution volumes (inputScalars.nMultiVolumes)"></param>
+	inline int initSideQueues(const int n) {
+		if (n <= 0 || static_cast<int>(sideQueues.size()) >= n)
+			return 0;
+#if defined(CUDA) || defined(HIP)
+		CUresult status = CUDA_SUCCESS;
+		if (evMain == nullptr) {
+			status = cuEventCreate(&evMain, CU_EVENT_DISABLE_TIMING);
+			CUDA_CHECK(status, "Failed to create main stream event\n", -1);
+		}
+		for (int kk = static_cast<int>(sideQueues.size()); kk < n; kk++) {
+			CUstream s;
+			// Create the stream
+			status = cuStreamCreate(&s, CU_STREAM_NON_BLOCKING);
+			CUDA_CHECK(status, "Failed to create side stream\n", -1);
+			sideQueues.push_back(s);
+			CUevent e;
+			// Create the event to make sure all relevant computations are complete after the BP
+			status = cuEventCreate(&e, CU_EVENT_DISABLE_TIMING);
+			CUDA_CHECK(status, "Failed to create side stream event\n", -1);
+			evSide.push_back(e);
+		}
+#else
+		cl_int status = CL_SUCCESS;
+		for (int kk = static_cast<int>(sideQueues.size()); kk < n; kk++) {
+			sideQueues.push_back(cl::CommandQueue(CLContext, CLDeviceID[0], 0, &status));
+			OCL_CHECK(status, "Failed to create side command queue\n", -1);
+		}
+#endif
+		return 0;
+	}
+
+	/// <summary>
+	/// This function forces the main queue/stream to wait for all the side queues/streams
+	// This makes sure that the computations will only proceed after all the BPs are done
+	/// </summary>
+	inline int joinSideQueues() {
+#if defined(CUDA) || defined(HIP)
+		CUresult status = CUDA_SUCCESS;
+		for (size_t kk = 0; kk < sideQueues.size(); kk++) {
+			status = cuEventRecord(evSide[kk], sideQueues[kk]);
+			CUDA_CHECK(status, "Failed to record side stream event\n", -1);
+			status = cuStreamWaitEvent(CLCommandQueue[0], evSide[kk], 0);
+			CUDA_CHECK(status, "Failed to make main stream wait for side stream\n", -1);
+		}
+#else
+		cl_int status = CL_SUCCESS;
+		if (sideQueues.size() > 0) {
+			std::vector<cl::Event> waitList(sideQueues.size());
+			for (size_t kk = 0; kk < sideQueues.size(); kk++) {
+				status = sideQueues[kk].enqueueMarkerWithWaitList(nullptr, &waitList[kk]);
+				OCL_CHECK(status, "Failed to enqueue side queue marker\n", -1);
+				status = sideQueues[kk].flush();
+				OCL_CHECK(status, "Failed to flush side queue\n", -1);
+			}
+			status = CLCommandQueue[0].enqueueBarrierWithWaitList(&waitList);
+			OCL_CHECK(status, "Failed to enqueue main queue barrier\n", -1);
+		}
+#endif
+		return 0;
+	}
+	
 	/// <summary>
 	/// This function creates the projector class object
 	/// </summary>
@@ -1887,6 +2008,8 @@ public:
 		d_Summ.resize(1);
 		d_Summ[0] = nullptr;
 #else
+		if (d_Summ.size() < 1)
+			d_Summ.resize(1);
 		region = { inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0] * inputScalars.nRekos };
 #endif // END CUDA
 		return 0;
@@ -3453,11 +3576,16 @@ public:
 			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
 			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
 		}
+#ifndef AF
+		// Synchronization is not necessary when using AF, but only when using the custom reconstructions
 		status = cuCtxSynchronize();
 		CUDA_CHECK(status, "\n", -1);
+#endif
 #else
+#ifndef AF
 		status = CLCommandQueue[0].finish();
 		OCL_CHECK(status, "\n", -1);
+#endif
 #endif // END CUDA
 		if (!inputScalars.CT && (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.FPType == 4)) {
 			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
@@ -3700,31 +3828,15 @@ public:
 			mexPrint("Forward projection kernel launched successfully\n");
 		}
 #if defined(CUDA) || defined(HIP)
+#ifndef AF
 		status = cuCtxSynchronize();
 		CUDA_CHECK(status, "\n", -1);
-		if (!inputScalars.useBuffers) {
-			status = cuTexObjectDestroy(vec_opencl.d_image_os);
-			if (status != CUDA_SUCCESS) {
-				getErrorString(status);
-			}
-			status = cuArrayDestroy(FPArray);
-			if (status != CUDA_SUCCESS) {
-				getErrorString(status);
-			}
-		}
-		if (inputScalars.FPType == 5) {
-			status = cuTexObjectDestroy(vec_opencl.d_image_os_int);
-			if (status != CUDA_SUCCESS) {
-				getErrorString(status);
-			}
-			status = cuArrayDestroy(integArrayXY);
-			if (status != CUDA_SUCCESS) {
-				getErrorString(status);
-			}
-		}
+#endif
 #else
+#ifndef AF
 		status = CLCommandQueue[0].finish();
 		OCL_CHECK(status, "\n", -1);
+#endif
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3) {
 #if defined(CUDA) || defined(HIP)
@@ -3733,7 +3845,11 @@ public:
 			cuEventElapsedTime(&milliseconds, tStart, tEnd);
 			milliseconds /= 1000.f;
 			mexPrintBase("Forward projection completed in %f seconds\n", milliseconds);
+			// Previously, the events weren't correctly destroyed
+			cuEventDestroy(tStart);
+			cuEventDestroy(tEnd);
 #else
+			CLCommandQueue[0].finish();
 			tEnd = std::chrono::steady_clock::now();
 			const std::chrono::duration<double> tDiff = tEnd - tStart;
 			mexPrintBase("Forward projection completed in %f seconds\n", tDiff);
@@ -3753,11 +3869,12 @@ public:
 	/// <param name="compSens if true, computes the sensitivity image as well"></param>
 	/// <returns></returns>
 #if defined(CUDA) || defined(HIP)
-	inline int backwardProjection(scalarStruct & inputScalars, Weighting & w_vec, uint32_t osa_iter, uint32_t timestep, std::vector<int64_t>&length, uint64_t m_size, const bool compSens = false, int ii = 0, const int uu = 0) {
+	inline int backwardProjection(scalarStruct & inputScalars, Weighting & w_vec, uint32_t osa_iter, uint32_t timestep, std::vector<int64_t>&length, uint64_t m_size, const bool compSens = false, int ii = 0, const int uu = 0,
+		const int queueIdx = 0, const bool newInput = true) {
 		if (inputScalars.verbose >= 3 || DEBUG)
 #else
 	inline int backwardProjection(const scalarStruct & inputScalars, Weighting & w_vec, const uint32_t osa_iter, const uint32_t timestep, const std::vector<int64_t>&length, const uint64_t m_size, const bool compSens = false, const int32_t ii = 0, const int uu = 0,
-		int ee = -1) {
+		int ee = -1, const int queueIdx = 0, const bool newInput = true) {
 		if (inputScalars.verbose >= 3)
 #endif // END CUDA
 			mexPrintVar("Starting backprojection for projector type = ", inputScalars.BPType);
@@ -4037,67 +4154,82 @@ public:
 						//mexEvalString("pause(2);");
 #else
 					cl::detail::size_t_array region = { imX, imY, imZ };
-					d_inputImage = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
-					OCL_CHECK(status, "Image creation failed\n", -1);
-
-					status = CLCommandQueue[0].enqueueCopyBufferToImage(d_output, d_inputImage, 0, origin, region);
-					OCL_CHECK(status, "Image copy failed\n", -1);
-					status = CLCommandQueue[0].finish();
-					OCL_CHECK(status, "Queue finish failed after image copy\n", -1);
+					// Make the inputs persistent such that they are only created when required
+					if (newInput) {
+						if (BPImageDims[0] != imX || BPImageDims[1] != imY || BPImageDims[2] != imZ) {
+							d_inputImage = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
+							OCL_CHECK(status, "Image creation failed\n", -1);
+							BPImageDims[0] = imX;
+							BPImageDims[1] = imY;
+							BPImageDims[2] = imZ;
+						}
+						status = CLCommandQueue[0].enqueueCopyBufferToImage(d_output, d_inputImage, 0, origin, region);
+						OCL_CHECK(status, "Image copy failed\n", -1);
+					}
 #endif // END CUDA
 					}
 #if defined(CUDA) || defined(HIP)
-				status = cuArray3DCreate(&BPArray, &arr3DDesc);
-				CUDA_CHECK(status, "Array creation failed\n", -1);
-				if (DEBUG)
-					mexPrint("Array creation succeeded\n");
-				CUDA_MEMCPY3D cpy3d;
-				std::memset(&cpy3d, 0, sizeof(cpy3d));
-				cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_DEVICE;
-				cpy3d.srcDevice = reinterpret_cast<CUdeviceptr>(d_output);
-				cpy3d.srcPitch = inputScalars.nRowsD * sizeof(float);
-				cpy3d.srcHeight = inputScalars.nColsD;
-				cpy3d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
-				cpy3d.dstArray = BPArray;
-				cpy3d.WidthInBytes = inputScalars.nRowsD * sizeof(float);
-				cpy3d.Height = inputScalars.nColsD;
-				cpy3d.Depth = length[indD];
-				if (inputScalars.BPType == 5) {
-					cpy3d.srcPitch += sizeof(float);
-					cpy3d.srcHeight++;
-					cpy3d.WidthInBytes += sizeof(float);
-					cpy3d.Height++;
+				// Create only when necessary
+				if (newInput) {
+					if (BPImageDims[0] != arr3DDesc.Width || BPImageDims[1] != arr3DDesc.Height || BPImageDims[2] != arr3DDesc.Depth) {
+						if (BPImageDims[2] != 0) {
+							getErrorString(cuTexObjectDestroy(d_inputImage));
+							getErrorString(cuArrayDestroy(BPArray));
+						}
+						status = cuArray3DCreate(&BPArray, &arr3DDesc);
+						CUDA_CHECK(status, "Array creation failed\n", -1);
+						if (DEBUG)
+							mexPrint("Array creation succeeded\n");
+						CUDA_RESOURCE_DESC resDescIm;
+						std::memset(&resDescIm, 0, sizeof(resDescIm));
+						std::memset(&texDesc, 0, sizeof(texDesc));
+						std::memset(&viewDesc, 0, sizeof(viewDesc));
+						viewDesc.height = inputScalars.nColsD;
+						viewDesc.width = inputScalars.nRowsD;
+						viewDesc.depth = length[indD];
+						viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
+						resDescIm.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
+						resDescIm.res.array.hArray = BPArray;
+						texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+						texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+						texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+						texDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
+						if (inputScalars.BPType == 4) {
+							texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_LINEAR;
+						}
+						else {
+							texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_LINEAR;
+							viewDesc.height++;
+							viewDesc.width++;
+						}
+						status = cuTexObjectCreate(&d_inputImage, &resDescIm, &texDesc, &viewDesc);
+						CUDA_CHECK(status, "Image creation failed\n", -1);
+						BPImageDims[0] = arr3DDesc.Width;
+						BPImageDims[1] = arr3DDesc.Height;
+						BPImageDims[2] = arr3DDesc.Depth;
+					}
+					CUDA_MEMCPY3D cpy3d;
+					std::memset(&cpy3d, 0, sizeof(cpy3d));
+					cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_DEVICE;
+					cpy3d.srcDevice = reinterpret_cast<CUdeviceptr>(d_output);
+					cpy3d.srcPitch = inputScalars.nRowsD * sizeof(float);
+					cpy3d.srcHeight = inputScalars.nColsD;
+					cpy3d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
+					cpy3d.dstArray = BPArray;
+					cpy3d.WidthInBytes = inputScalars.nRowsD * sizeof(float);
+					cpy3d.Height = inputScalars.nColsD;
+					cpy3d.Depth = length[indD];
+					if (inputScalars.BPType == 5) {
+						cpy3d.srcPitch += sizeof(float);
+						cpy3d.srcHeight++;
+						cpy3d.WidthInBytes += sizeof(float);
+						cpy3d.Height++;
+					}
+					status = cuMemcpy3DAsync(&cpy3d, CLCommandQueue[0]);
+					CUDA_CHECK(status, "Array mem copy failed\n", -1);
+					if (DEBUG)
+						mexPrint("Array mem copy succeeded\n");
 				}
-				status = cuMemcpy3D(&cpy3d);
-				CUDA_CHECK(status, "Array mem copy failed\n", -1);
-				if (DEBUG)
-					mexPrint("Array mem copy succeeded\n");
-				CUDA_RESOURCE_DESC resDescIm;
-				std::memset(&resDescIm, 0, sizeof(resDescIm));
-				std::memset(&texDesc, 0, sizeof(texDesc));
-				std::memset(&viewDesc, 0, sizeof(viewDesc));
-				viewDesc.height = inputScalars.nColsD;
-				viewDesc.width = inputScalars.nRowsD;
-				viewDesc.depth = length[indD];
-				viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
-				resDescIm.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
-				resDescIm.res.array.hArray = BPArray;
-				texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-				texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-				texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-				texDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
-				if (inputScalars.BPType == 4) {
-					texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_LINEAR;
-				}
-				else {
-					texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_LINEAR;
-					viewDesc.height++;
-					viewDesc.width++;
-				}
-				status = cuTexObjectCreate(&d_inputImage, &resDescIm, &texDesc, &viewDesc);
-				CUDA_CHECK(status, "Image creation failed\n", -1);
-				status = cuCtxSynchronize();
-				CUDA_CHECK(status, "Synchronize failed after image copy\n", -1);
 				}
 			if (inputScalars.BPType == 4) {
 				global[0] = (inputScalars.Nx[ii] + erotusBP[0][ii]) / local[0];
@@ -4461,35 +4593,50 @@ public:
 #if defined(CUDA) || defined(HIP)
 		if (DEBUG || inputScalars.verbose >= 3)
 			cuEventRecord(tStart, CLCommandQueue[0]);
-		status = cuLaunchKernel(kernelBP, global[0], global[1], global[2], local[0], local[1], local[2], 0, CLCommandQueue[0], kTemp.data(), 0);
+		if (queueIdx > 0 && static_cast<size_t>(queueIdx) <= sideQueues.size()) {
+			status = cuEventRecord(evMain, CLCommandQueue[0]);
+			CUDA_CHECK(status, "Failed to record main stream event\n", -1);
+			status = cuStreamWaitEvent(sideQueues[queueIdx - 1], evMain, 0);
+			CUDA_CHECK(status, "Failed to make side stream wait for the main stream\n", -1);
+			status = cuLaunchKernel(kernelBP, global[0], global[1], global[2], local[0], local[1], local[2], 0, sideQueues[queueIdx - 1], kTemp.data(), 0);
+		}
+		else
+			status = cuLaunchKernel(kernelBP, global[0], global[1], global[2], local[0], local[1], local[2], 0, CLCommandQueue[0], kTemp.data(), 0);
 		CUDA_CHECK(status, "Failed to launch backprojection kernel\n", -1);
 #else
-		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelBP, cl::NDRange(), global, local, NULL);
-		OCL_CHECK(status, "\n", -1);
+		if (queueIdx > 0 && static_cast<size_t>(queueIdx) <= sideQueues.size()) {
+			cl::Event evMain;
+			status = CLCommandQueue[0].enqueueMarkerWithWaitList(nullptr, &evMain);
+			OCL_CHECK(status, "Failed to enqueue main queue marker\n", -1);
+			std::vector<cl::Event> waitList = { evMain };
+			status = sideQueues[queueIdx - 1].enqueueBarrierWithWaitList(&waitList);
+			OCL_CHECK(status, "Failed to enqueue side queue barrier\n", -1);
+			status = sideQueues[queueIdx - 1].enqueueNDRangeKernel(kernelBP, cl::NDRange(), global, local, NULL);
+			OCL_CHECK(status, "\n", -1);
+			status = sideQueues[queueIdx - 1].flush();
+			OCL_CHECK(status, "Failed to flush side queue\n", -1);
+		}
+		else {
+			status = CLCommandQueue[0].enqueueNDRangeKernel(kernelBP, cl::NDRange(), global, local, NULL);
+			OCL_CHECK(status, "\n", -1);
+		}
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Backprojection kernel launched successfully\n");
 		}
 #if defined(CUDA) || defined(HIP)
-		status = cuCtxSynchronize();
 		if (DEBUG || inputScalars.verbose >= 3)
-			cuEventRecord(tEnd, CLCommandQueue[0]);
+			cuEventRecord(tEnd, queueIdx > 0 && static_cast<size_t>(queueIdx) <= sideQueues.size() ? sideQueues[queueIdx - 1] : CLCommandQueue[0]);
+		
+#ifndef AF
+		status = cuCtxSynchronize();
 		CUDA_CHECK(status, "Synchronization failed after backprojection\n", -1);
-		if ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5) {
-			if (!inputScalars.useBuffers) {
-				status = cuTexObjectDestroy(d_inputImage);
-				if (status != CUDA_SUCCESS) {
-					getErrorString(status);
-				}
-				status = cuArrayDestroy(BPArray);
-				if (status != CUDA_SUCCESS) {
-					getErrorString(status);
-				}
-			}
-		}
+#endif
 #else
+#ifndef AF
 		status = CLCommandQueue[0].finish();
 		OCL_CHECK(status, "\n", -1);
+#endif
 #endif // END CUDA
 		if (inputScalars.listmode > 0 && compSens) {
 			kernelBP = kernelApu;
@@ -4501,7 +4648,13 @@ public:
 			cuEventElapsedTime(&milliseconds, tStart, tEnd);
 			milliseconds /= 1000.f;
 			mexPrintBase("Backprojection completed in %f seconds\n", milliseconds);
+			cuEventDestroy(tStart);
+			cuEventDestroy(tEnd);
 #else
+			if (queueIdx > 0 && static_cast<size_t>(queueIdx) <= sideQueues.size())
+				sideQueues[queueIdx - 1].finish();
+			else
+				CLCommandQueue[0].finish();
 			tEnd = std::chrono::steady_clock::now();
 			const std::chrono::duration<double> tDiff = tEnd - tStart;
 			mexPrintBase("Backprojection completed in %f seconds\n", tDiff);
