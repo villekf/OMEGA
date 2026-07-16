@@ -4,8 +4,13 @@ Created on Thu Jul 10 13:17:22 2025
 """
 
 def initProjector(self):
+    try:
+        import arrayfire as af
+    except ModuleNotFoundError:
+        if self.useAF:
+            print('ArrayFire selected, but not found. Aborting.')
+            return
     self.projectorInitialized = True
-    import arrayfire as af
     import numpy as np
     import os
     from omegatomo.reconstruction.prepass import prepassPhase
@@ -33,16 +38,20 @@ def initProjector(self):
         import cupy as cp
     if self.useCuPy and self.useCUDA:
         def cupyROCm():
-            cfg = cp.show_config()
-            text = cfg if isinstance(cfg, str) else ""
-            if not text:
+            try:
+                return bool(cp.cuda.runtime.is_hip)
+            except AttributeError:
+                pass
+            try:
+                import io
+                import contextlib
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    cp.show_config()
+                lower = buf.getvalue().lower()
+                return "rocm" in lower or "hip" in lower
+            except Exception:
                 return False
-            lower = text.lower()
-            if "rocm" in lower or "hip" in lower:
-                return True
-            if "cuda" in lower:
-                return False
-            return False
     if not self.useCUDA:
         import pyopencl as cl
         from pyopencl.version import VERSION
@@ -112,6 +121,15 @@ def initProjector(self):
         self.BPType = 6
     else:
         raise ValueError('Invalid backprojector!')
+    # CuPy does not support the texture API (cupy.cuda.texture) on ROCm/HIP; creating a CUDA
+    # array fails at runtime with hipErrorUnknown. Fall back to buffers where the kernels
+    # support them, otherwise raise an error.
+    if self.useCuPy and self.useCUDA and cupyROCm():
+        if self.FPType in [4, 5] or self.BPType == 5:
+            raise ValueError('Forward projector types 4 and 5 and backprojector type 5 require texture support, which CuPy does not provide on ROCm/HIP. Use forward projector types 1-3 and/or backprojector types 1-4 instead.')
+        if self.useImages:
+            print('CuPy does not support textures on ROCm/HIP. Setting useImages to False, buffers will be used instead!')
+            self.useImages = False
     # if self.useAF == False and (self.FPType == 5 or self.BPType == 5):
     #     raise ValueError('Branchless distance-driven (projector type 5) can only be used with Arrayfire!')
     if (self.useAF == False and self.useCuPy == False) and self.projector_type == 6:
@@ -224,7 +242,9 @@ def initProjector(self):
                 self.use_32bit_atomics = False
                 bOpt += ('-DINTEL',)
         if self.useMAD:
-            if self.useCUDA:
+            if self.useCUDA and cupyROCm():
+                bOpt += ('-ffast-math','-DUSEMAD',)
+            elif self.useCUDA:
                 bOpt += ('--use_fast_math','-DUSEMAD',)
             else:
                 bOpt += (' -cl-fast-relaxed-math -DUSEMAD',)
@@ -312,7 +332,13 @@ def initProjector(self):
         if self.subsets > 1 and self.listmode == 0:
             bOpt += ('-DSTYPE=' + str(self.subsetType),'-DNSUBSETS=' + str(self.subsets),)
         
-        bOptFP = bOpt + ('-DFP',)
+        # hipRTC force-includes hiprtc_runtime.h, which uses FP as a type name, so a command-line
+        # -DFP breaks that header. ROCm builds pass -DOMEGA_FP instead; general_opencl_functions.h
+        # maps it back to FP after the hipRTC prelude.
+        if self.useCUDA and cupyROCm():
+            bOptFP = bOpt + ('-DOMEGA_FP',)
+        else:
+            bOptFP = bOpt + ('-DFP',)
         if self.localSizeFP[1] > 1:
             bOptFP += ('-DLOCAL_SIZE=' + str(self.localSizeFP[0]),'-DLOCAL_SIZE2=' + str(self.localSizeFP[1]),)
         else:

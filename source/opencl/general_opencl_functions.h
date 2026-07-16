@@ -20,6 +20,12 @@
 * You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 *******************************************************************************************************************************************/
 
+// hipRTC force-includes hiprtc_runtime.h, which uses FP as a type name; defining FP on the
+// command line breaks that header. HIP RTC builds therefore pass -DOMEGA_FP instead, and it
+// is mapped back to FP here, after the hipRTC prelude has already been processed.
+#if defined(OMEGA_FP) && !defined(FP)
+#define FP
+#endif
 #ifdef ATOMIC
 #pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
 #endif
@@ -222,6 +228,7 @@ constexpr metal::sampler sampler2(
 #define CONSTANT constant
 #define CROSS metal::cross
 #define CUINT(a) (uint)(a)
+#define CUINT3(a) uint3(a)
 #define CUINT_rtp(a) static_cast<uint>(metal::ceil((a)))
 #define CUINT_sat_rtz(a) static_cast<uint>(metal::clamp(metal::trunc(((float)a)), 0.0f, 4294967295.0f)) // TODO replace float with FLOAT
 #define DEVICE inline
@@ -366,6 +373,7 @@ inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
 #define CFLOAT(a) convert_float(a)
 #define CFLOAT3(a) convert_float3(a)
 #define CUINT(a) convert_uint(a)
+#define CUINT3(a) convert_uint3(a)
 #define CUINT_rtp(a) convert_uint_rtp(a)
 #define CUINT_rtz(a) convert_uint_rtz(a)
 #define CUINT_rte(a) convert_uint_rte(a)
@@ -516,6 +524,7 @@ __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEA
 #define CFLOAT(a) (float)(a)
 #define CFLOAT3(a) convert_float3(a)
 #define CUINT(a) (unsigned int)(a)
+#define CUINT3(a) convert_uint3(a)
 #define CUINT_rtp(a) __float2uint_ru(a)
 #define CUINT_rtz(a) __float2uint_rd(a)
 #define CUINT_rte(a) __float2uint_rn(a)
@@ -865,6 +874,11 @@ inline __device__ float2 fabs(float2 v) {
 template<typename T>
 inline __device__ float3 convert_float3(const T& a) {
     return make_float3(static_cast<float>(a.x), static_cast<float>(a.y), static_cast<float>(a.z));
+}
+
+template<typename T>
+inline __device__ uint3 convert_uint3(const T& a) {
+    return make_uint3(static_cast<unsigned int>(a.x), static_cast<unsigned int>(a.y), static_cast<unsigned int>(a.z));
 }
 #endif
 
