@@ -269,7 +269,11 @@ void projectorType4Forward(
 	const float3 bmax = make_float3(d_bmaxx, d_bmaxy, d_bmaxz);
 #endif
 #if defined(LISTMODE) && defined(TOF)
+#if defined(SENS)
+	const int TOFid = 0;
+#else
 	const int TOFid = TOFIndex[idx];
+#endif
 #endif
 #if defined(N_RAYS) && defined(FP)
 	// Slightly optimize multi-ray case for TOF

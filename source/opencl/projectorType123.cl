@@ -327,7 +327,11 @@ void projectorType123(
 		return;
 #endif // End FP mask
 #if defined(LISTMODE) && defined(TOF)
+#if defined(SENS)
+	const int TOFid = 0;
+#else
 	const int TOFid = TOFIndex[idx];
+#endif
 #endif
 #if defined(N_RAYS) && defined(FP)
 	// Slightly optimize multi-ray case for TOF
@@ -1055,6 +1059,7 @@ void projectorType123(
             if (ii == 0) {
 				tempk_b = tempk_a;
                 if (ux >= 0) {
+                    center.x = b1 + d1 * CFLOAT(tempi_a - 1) + d1 / 2.f;
                     for (int kk = tempi_a - 1; kk >= 0; kk--) {
                         int uu = orthDistance3D(kk, 
                             diff, //diff.y, diff.x, diff.z, 
@@ -1084,9 +1089,11 @@ void projectorType123(
                         );
                         if (uu == 0)
                             break;
+                        center.x -= d1;
                     }
                 }
                 else {
+                    center.x = b1 + d1 * CFLOAT(tempi_a + 1) + d1 / 2.f;
                     for (int kk = tempi_a + 1; kk < d_NN.x; kk++) {
                         int uu = orthDistance3D(kk, 
                             diff, //diff.y, diff.x, diff.z, 
@@ -1116,6 +1123,7 @@ void projectorType123(
                         );
                         if (uu == 0)
                             break;
+                        center.x += d1;
                     }
                 }
             }
@@ -1231,6 +1239,7 @@ void projectorType123(
 		if (ux < 0) {
 			if (tempiOld != tempi_a)
 				tempi_a++;
+            center.x = b1 + d1 * CFLOAT(tempi_a - 1) + d1 / 2.f;
 			for (int ii = tempi_a - 1; ii >= 0; ii--) {
 				//const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
                 center.x = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
@@ -1268,6 +1277,7 @@ void projectorType123(
 		else {
 			if (tempiOld != tempi_a)
 				tempi_a--;
+            center.x = b1 + d1 * CFLOAT(tempi_a + 1) + d1 / 2.f;
 			for (int ii = tempi_a + 1; ii < d_NN.x; ii++) {
 				int uu = orthDistance3D(ii, 
                     diff, //diff.y, diff.x, diff.z, 

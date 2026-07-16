@@ -65,6 +65,14 @@
 #else
 #define ADD_OPT(OPTS, FLAG) OPTS += " " FLAG
 #endif
+// Build option selecting the forward projection. hipRTC force-includes hiprtc_runtime.h, which
+// uses FP as a type name, so a command-line -DFP breaks that header. HIP passes -DOMEGA_FP
+// instead; general_opencl_functions.h maps it back to FP after the hipRTC prelude.
+#if defined(HIP)
+#define FP_FLAG "-DOMEGA_FP"
+#else
+#define FP_FLAG "-DFP"
+#endif
 // Append an integer-valued build option "FLAG=VALUE". CUDA stores the formatted std::string
 // directly in the (std::string) options vector; OpenCL appends it to the options string.
 #if defined(CUDA) || defined(HIP)
@@ -536,7 +544,7 @@ class ProjectorClass {
 #else
 			std::string os_optionsFP = os_options;
 #endif // END CUDA
-			ADD_OPT(os_optionsFP, "-DFP");
+			ADD_OPT(os_optionsFP, FP_FLAG);
 			if (inputScalars.FPType == 3)
 				ADD_OPT(os_optionsFP, "-DVOL");
 			if (inputScalars.FPType == 2 || inputScalars.FPType == 3)
@@ -594,7 +602,7 @@ class ProjectorClass {
 			std::string os_options = options;
 #endif // END CUDA
 			if (inputScalars.FPType == 4)
-				ADD_OPT(os_options, "-DFP");
+				ADD_OPT(os_options, FP_FLAG);
 			ADD_OPT(os_options, "-DPTYPE4");
 			// Non-positive interpolation length selects the Joseph-type projector, where the ray is sampled once per voxel plane along
 			// its dominant axis (the input dL is then unused)
@@ -675,7 +683,7 @@ class ProjectorClass {
 			if (inputScalars.meanBP)
 				ADD_OPT(os_options, "-DMEANDISTANCEBP");
 			if (inputScalars.FPType == 5)
-				ADD_OPT(os_options, "-DFP");
+				ADD_OPT(os_options, FP_FLAG);
 			if (inputScalars.BPType == 5)
 				ADD_OPT(os_options, "-DBP");
 			if (inputScalars.pitch) {
@@ -1566,13 +1574,21 @@ public:
 				}
 			}
 			if (memAlloc.indexBased) {
-				for (int kk = 0; kk < memAlloc.iSteps / memAlloc.tSteps; kk++) {
+				// When the data is loaded one subset at a time, only a single buffer at [0][0] exists
+				int nIndex = memAlloc.iSteps / memAlloc.tSteps;
+				if (nIndex == 0)
+					nIndex = tt == 0 ? memAlloc.iSteps : 0;
+				for (int kk = 0; kk < nIndex; kk++) {
 					getErrorString(cuMemFree(d_trIndex[tt][kk]));
 					getErrorString(cuMemFree(d_axIndex[tt][kk]));
 				}
 			}
 			if (memAlloc.TOFIndex) {
-				for (int kk = 0; kk < memAlloc.TOFSteps / memAlloc.tSteps; kk++) {
+				// When the data is loaded one subset at a time, only a single buffer at [0][0] exists
+				int nTOF = memAlloc.TOFSteps / memAlloc.tSteps;
+				if (nTOF == 0)
+					nTOF = tt == 0 ? memAlloc.TOFSteps : 0;
+				for (int kk = 0; kk < nTOF; kk++) {
 					getErrorString(cuMemFree(d_TOFIndex[tt][kk]));
 				}
 			}
@@ -2541,7 +2557,8 @@ public:
 						memAlloc.xSteps++;
 #endif // END CUDA
 					}
-					else if (inputScalars.listmode > 0 && !inputScalars.indexBased && (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || (!inputScalars.loadTOF && timestep == 0 && kk < inputScalars.TOFsubsets))) {
+					// First condition: load all data at once. Second condition: load one subset at a time (only 1 buffer required, loadCoord reloads it for each subset/timestep)
+					else if (inputScalars.listmode > 0 && !inputScalars.indexBased && (inputScalars.loadTOF || (kk == 0 && timestep == 0))) {
 						ALLOC_BUFFER(d_x[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk + timestep * inputScalars.subsets] * 6);
 						CHECK(status, "\n", -1);
 #if defined(CUDA) || defined(HIP)
@@ -2866,7 +2883,7 @@ public:
 						if (inputScalars.PET && inputScalars.listmode == 0) {
 							int64_t kerroin = 2;
 							if (inputScalars.nLayers > 1)
-								int64_t kerroin = 3;
+								kerroin = 3;
 							WRITE_BUFFER(d_z[timestep][kk], sizeof(float) * length[kk] * kerroin, &z_det[pituus[kk] * kerroin]);
 							memSize += (sizeof(float) * length[kk] * kerroin) / 1048576ULL;
 						}
@@ -2882,7 +2899,7 @@ public:
 						memSize += (sizeof(float) * length[kk] * 6) / 1048576ULL;
 					}
 					else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
-						if ((kk < inputScalars.TOFsubsets) || inputScalars.loadTOF || (!inputScalars.loadTOF && timestep == 0 && kk < inputScalars.TOFsubsets)) {
+						if (inputScalars.loadTOF || (kk == 0 && timestep == 0)) {
 							WRITE_BUFFER(d_x[timestep][kk], sizeof(float) * length[kk + timestep * inputScalars.subsets] * 6, &w_vec.listCoord[pituus[kk + timestep * inputScalars.subsets] * 6]);
 							CHECK(status, "\n", -1);
 							if (DEBUG) {

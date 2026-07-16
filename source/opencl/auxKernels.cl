@@ -5,7 +5,7 @@
 * derivatives and other functions. This file uses the preprocessor definitions and functions from general_opencl_functions.h. Note that
 * the inclusion is not done here but rather during the compilation.
 *
-* Copyright (C) 2019-2024 Ville-Veikko Wettenhovi
+* Copyright (C) 2019-2026 Ville-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by
 * the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
@@ -126,7 +126,7 @@ void Convolution3D(const CLGLOBAL CAST* input, CLGLOBAL CAST* output,
 	int4 ind = CMINT4(GID0, GID1, GID2, 0);
 	int4 ind_uus = CMINT4(0, 0, 0, 0);
 	const uint Nyx = GSIZE0 * GSIZE1;
-	float result = 0.f;
+	float result = FLOAT_ZERO;
 	int c = 0;
 	for (int k = -window_size_z; k <= window_size_z; k++) {
 		if (ind.z < window_size_z) {
@@ -193,7 +193,7 @@ void Convolution3D_f(const CLGLOBAL float* input, CLGLOBAL float* output,
 	CONSTANT float* convolution_window, int window_size_x, int window_size_y, int window_size_z) {
 	int4 ind = CMINT4(GID0, GID1, GID2, 0);
 	int4 ind_uus = CMINT4(0, 0, 0, 0);
-	float result = 0.f;
+	float result = FLOAT_ZERO;
 	const uint Nyx = GSIZE0 * GSIZE1;
 	int c = 0;
 	for (int k = -window_size_z; k <= window_size_z; k++) {
@@ -285,7 +285,10 @@ KERN
 void vectorElementDivision(const CLGLOBAL float* CLRESTRICT input, CLGLOBAL float* output) {
 	const LTYPE3 xyz = MINT3(GID0, GID1, GID2);
 	const LTYPE n = xyz.x + xyz.y * GSIZE0 + xyz.z * GSIZE0 * GSIZE1;
-	const float div = input[xyz.x];
+	float div = input[xyz.x];
+	// Make sure there is no division by zero
+	if (fabs(div) < 1e-12f)
+		div = (div < FLOAT_ZERO) ? -1e-12f : 1e-12f;
 	output[2 * n] /= div;
 	output[2 * n + 1] /= div;
 }
@@ -293,7 +296,7 @@ void vectorElementDivision(const CLGLOBAL float* CLRESTRICT input, CLGLOBAL floa
 // Non-local means
 #ifdef NLM_ // START NLM
 #if defined(USEIMAGES) && defined(OPENCL)
-CONSTANT sampler_t samplerNLM = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP;
+CONSTANT sampler_t samplerNLM = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif
 
 KERNEL3
@@ -341,7 +344,7 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 	LTYPE3 ii = MINT3(GID0, GID1, GID2);
 	const LTYPE n = (ii.x) + (ii.y) * (N.x) + (ii.z) * (N.x * N.y);
 	float weight_sum = epps;
-	float output = 0.f;
+	float output = FLOAT_ZERO;
 #if NLTYPE == 1
 	float outputAla = epps;
 #endif
@@ -370,7 +373,7 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 #endif
 #else
 				if (xx < 0 || yy < 0 || zz < 0 || xx >= N.x || yy >= N.y || zz >= N.z)
-					lCacheRef[indX][indY][indZ] = 0.f;
+					lCacheRef[indX][indY][indZ] = FLOAT_ZERO;
 				else
 					lCacheRef[indX][indY][indZ] = u_ref[(xx) + (yy) * N.x + (zz) * N.x * N.y];
 #endif
@@ -383,7 +386,7 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 #endif
 #else
 				if (xx < 0 || yy < 0 || zz < 0 || xx >= N.x || yy >= N.y || zz >= N.z)
-					lCache[indX][indY][indZ] = 0.f;
+					lCache[indX][indY][indZ] = FLOAT_ZERO;
 				else
 					lCache[indX][indY][indZ] = u[(xx) + (yy) * N.x + (zz) * N.x * N.y];
 #endif
@@ -401,18 +404,22 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 #endif
 		return;
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, ii, CUINT(N));
+	const int maskVal = readMaskBP(maskBP, ii, CUINT3(N));
 #ifndef MASKSCALE
     if (maskVal == 0)
         return;
 #endif
 #endif
 #if defined(NLMADAPTIVE)
-	float hh = 0.f;
+	float hh = FLOAT_ZERO;
 	const float pSize = CFLOAT((PWINDOWX * 2 + 1) * (PWINDOWY * 2 + 1) * (PWINDOWZ * 2 + 1));
 #endif
 	const int3 xxyyzz = CMINT3(LID0 + SWINDOWX + PWINDOWX, LID1 + SWINDOWY + PWINDOWY, LID2 + SWINDOWZ + PWINDOWZ);
 	const float uj = lCache[xxyyzz.x][xxyyzz.y][xxyyzz.z];
+#if NLTYPE == 6
+	// Precompute for NLGGMRF
+	const float cpq = POWR(c, p - q);
+#endif
 #ifdef MASKSCALE
 	if (maskVal == 0) {
 #pragma unroll
@@ -422,12 +429,12 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 				int k = 0;
 				if (i == 0 && j == 0)
 					continue;
-				float weight = 0.f;
-				float distance = 0.f;
+				float weight = FLOAT_ZERO;
+				float distance = FLOAT_ZERO;
 				int pz = 0;
 #pragma unroll
 					for (int py = -1; py <= 1; py++) {
-						int dim_g = (pz + 1) * (3) * (3) + (py + 1) * (3);
+						int dim_g = (pz + PWINDOWZ) * (PWINDOWX * 2 + 1) * (PWINDOWY * 2 + 1) + (py + PWINDOWY) * (PWINDOWX * 2 + 1) + (PWINDOWX - 1);
 #pragma unroll
 						for (int px = -1; px <= 1; px++) {
 							const float gg = gaussian[dim_g++];
@@ -478,19 +485,20 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 				// Lange
 				const float u = (uj - uk);
 				const float uabs = sign(u);
-				output += weight * (uabs - uabs / (fabs(u) / gamma + 1.f));
+				output += weight * (uabs - uabs / (fabs(u) / gamma + FLOAT_ONE));
 #elif NLTYPE == 6
 				// NLGGMRF
 				const float delta = uj - uk;
-				const float deltapqc = 1.f + POWR(fabs(delta / c), p - q);
-				output += weight * (POWR(fabs(delta), p - 1.f) / deltapqc) * (p - gamma * (POWR(fabs(delta), p - q) / deltapqc)) * sign(delta);
+				const float dcpq = POWR(fabs(delta / c), p - q);
+				const float deltapqc = FLOAT_ONE + dcpq;
+				output += weight * (POWR(fabs(delta), p - FLOAT_ONE) / deltapqc) * (p - gamma * ((dcpq * cpq) / deltapqc)) * sign(delta);
 #elif NLTYPE == 7
 				const float u = (uk - uj);
 				const float apu = (u * u + gamma * gamma);
 // #ifndef USEMAD // START FMAD
-				output += ((2.f * u * u * u) / (apu * apu) - 2.f * (u / apu));
+				output += ((FLOAT_TWO * u * u * u) / (apu * apu) - FLOAT_TWO * (u / apu));
 // #else
-// 				output += ((2.f * u * u * u) / FMAD(apu, apu, -2.f * (u / apu)));
+// 				output += ((FLOAT_TWO * u * u * u) / FMAD(apu, apu, -FLOAT_TWO * (u / apu)));
 // #endif // END FMAD
 #else
  				//NLTV
@@ -528,8 +536,8 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 			for (int k = -SWINDOWZ; k <= SWINDOWZ; k++) {
 				if (i == 0 && j == 0 && k == 0)
 					continue;
-				float weight = 0.f;
-				float distance = 0.f;
+				float weight = FLOAT_ZERO;
+				float distance = FLOAT_ZERO;
 #pragma unroll
 				for (int pz = -PWINDOWZ; pz <= PWINDOWZ; pz++) {
 #pragma unroll
@@ -586,19 +594,20 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 				// Lange
 				const float u = (uj - uk);
 				const float uabs = sign(u);
-				output += weight * (uabs - uabs / (fabs(u) / gamma + 1.f));
+				output += weight * (uabs - uabs / (fabs(u) / gamma + FLOAT_ONE));
 #elif NLTYPE == 6
 				// NLGGMRF
 				const float delta = uj - uk;
-				const float deltapqc = 1.f + POWR(fabs(delta / c), p - q);
-				output += weight * (POWR(fabs(delta), p - 1.f) / deltapqc) * (p - gamma * (POWR(fabs(delta), p - q) / deltapqc)) * sign(delta);
+				const float dcpq = POWR(fabs(delta / c), p - q);
+				const float deltapqc = FLOAT_ONE + dcpq;
+				output += weight * (POWR(fabs(delta), p - FLOAT_ONE) / deltapqc) * (p - gamma * ((dcpq * cpq) / deltapqc)) * sign(delta);
 #elif NLTYPE == 7
 				const float u = (uk - uj);
 				const float apu = (u * u + gamma * gamma);
 // #ifndef USEMAD // START FMAD
-				output += ((2.f * u * u * u) / (apu * apu) - 2.f * (u / apu));
+				output += ((FLOAT_TWO * u * u * u) / (apu * apu) - FLOAT_TWO * (u / apu));
 // #else
-// 				output += ((2.f * u * u * u) / FMAD(apu, apu, -2.f * (u / apu)));
+// 				output += ((FLOAT_TWO * u * u * u) / FMAD(apu, apu, -FLOAT_TWO * (u / apu)));
 // #endif // END FMAD
 #else
  				//NLTV
@@ -612,7 +621,7 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 #ifdef MASKSCALE
 	}
 #endif
-	weight_sum = 1.f / weight_sum;
+	weight_sum = FLOAT_ONE / weight_sum;
 	output *= weight_sum;
 #if NLTYPE == 2 // START NLM NLTYPE
 	output = uj - output;
@@ -620,7 +629,7 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 	// Lange with NLMRP
 	output = uj - output;
 	const float uabs = sign(output);
-	output = (uabs - uabs / (fabs(output) / gamma + 1.f));
+	output = (uabs - uabs / (fabs(output) / gamma + FLOAT_ONE));
 #elif NLTYPE == 1
 #ifndef USEMAD // START FMAD
 	output /= SQRT(outputAla * weight_sum + epps);
@@ -641,7 +650,7 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 #ifdef RDP // START RDP
 #ifdef OPENCL
 #ifdef USEIMAGES
-CONSTANT sampler_t samplerRDP = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP;
+CONSTANT sampler_t samplerRDP = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif
 #ifdef RDPCORNERS
 __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE2, LOCAL_SIZE3)))
@@ -687,7 +696,7 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 #endif
 	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
 #ifdef RDPCORNERS // START RDPCORNERS
-	float output = 0.f;
+	float output = FLOAT_ZERO;
 	LTYPE startX = GRID0 * LSIZE0 - SWINDOWX + LID0;
 	LTYPE startY = GRID1 * LSIZE1 - SWINDOWY + LID1;
 	LTYPE startZ = GRID2 * LSIZE2 - SWINDOWZ + LID2;
@@ -713,7 +722,7 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 #endif
 #else
 				if (xx < 0 || yy < 0 || zz < 0 || xx >= N.x || yy >= N.y || zz >= N.z)
-					lCacheRef[indX][indY][indZ] = 0.f;
+					lCacheRef[indX][indY][indZ] = FLOAT_ZERO;
 				else
 					lCacheRef[indX][indY][indZ] = u_ref[(xx) + (yy) * N.x + (zz) * N.x * N.y];
 #endif
@@ -726,7 +735,7 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 #endif
 #else
 				if (xx < 0 || yy < 0 || zz < 0 || xx >= N.x || yy >= N.y || zz >= N.z)
-					lCache[indX][indY][indZ] = 0.f;
+					lCache[indX][indY][indZ] = FLOAT_ZERO;
 				else
 					lCache[indX][indY][indZ] = u[(xx) + (yy) * N.x + (zz) * N.x * N.y];
 #endif
@@ -749,7 +758,7 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
         return;
 #endif
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, xyz, CUINT(N));
+	const int maskVal = readMaskBP(maskBP, xyz, CUINT3(N));
     if (maskVal == 0)
         return;
 #endif
@@ -782,9 +791,9 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 		}
 	}
 	if (isnan(output))
-		output = 0.f;
+		output = FLOAT_ZERO;
 #ifdef LARGEDIM
-	if (xyz.z > nOffset.x && xyz.z < nOffset.y)
+	if (xyz.z >= nOffset.x && xyz.z < nOffset.y)
 		grad[n - N.x * N.y * nOffset.x] += beta * output;
 #else
 	grad[n] += beta * output;
@@ -813,9 +822,9 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 #else
 	// Current voxel
 	const float uj = u[xyz.x + xyz.y * N.x + xyz.z * N.x * N.y];
-	float2 ux = MFLOAT2(0.f, 0.f);
-	float2 uy = MFLOAT2(0.f, 0.f);
-	float2 uz = MFLOAT2(0.f, 0.f);
+	float2 ux = MFLOAT2(FLOAT_ZERO, FLOAT_ZERO);
+	float2 uy = MFLOAT2(FLOAT_ZERO, FLOAT_ZERO);
+	float2 uz = MFLOAT2(FLOAT_ZERO, FLOAT_ZERO);
 	// Left-right
 	if (xyz.x < N.x - 1)
 		ux.x = u[(xyz.x + 1) + xyz.y * N.x + xyz.z * N.x * N.y];
@@ -851,9 +860,9 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 		+ uj_uz * FMAD2(gamma, fabs(uj_uz), uj + 3.f * uz + epps * epps) / (divPow2Z * divPow2Z + epps);
 #endif // END FMAD
 	if (isnan(output.x))
-		output.x = 0.f;
+		output.x = FLOAT_ZERO;
 	if (isnan(output.y))
-		output.y = 0.f;
+		output.y = FLOAT_ZERO;
 #ifdef LARGEDIM
 	if (xyz.z >= nOffset.x && xyz.z < nOffset.y)
 		grad[n - N.x * N.y * nOffset.x] += beta * (output.x + output.y);
@@ -868,7 +877,7 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 // Generalized Gaussian Markov random field
 #ifdef GGMRF // START GGMRF
 #if defined(USEIMAGES) && defined(OPENCL)
-CONSTANT sampler_t samplerNLM = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP;
+CONSTANT sampler_t samplerNLM = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif
 
 KERNEL3
@@ -890,17 +899,8 @@ void GGMRFKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRI
 ) {
 
 	LTYPE3 ii = MINT3(GID0, GID1, GID2);
-#ifdef EFOVZ
-	if (fovIndices[ii.z] == 0)
-        return;
-#endif
-#ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, ii, CUINT(N));
-    if (maskVal == 0)
-        return;
-#endif
 	const LTYPE n = (ii.x) + (ii.y) * (N.x) + (ii.z) * (N.x * N.y);
-	float output = 0.f;
+	float output = FLOAT_ZERO;
 	LTYPE startX = GRID0 * LSIZE0 - SWINDOWX + LID0;
 	LTYPE startY = GRID1 * LSIZE1 - SWINDOWY + LID1;
 	LTYPE startZ = GRID2 * LSIZE2 - SWINDOWZ + LID2;
@@ -922,7 +922,7 @@ void GGMRFKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRI
 #endif
 #else
 				if (xx < 0 || yy < 0 || zz < 0 || xx >= N.x || yy >= N.y || zz >= N.z)
-					lCache[indX][indY][indZ] = 0.f;
+					lCache[indX][indY][indZ] = FLOAT_ZERO;
 				else
 					lCache[indX][indY][indZ] = u[(xx) + (yy) * N.x + (zz) * N.x * N.y];
 #endif
@@ -939,8 +939,18 @@ void GGMRFKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRI
 	if (any(ii >= N))
 #endif
 		return;
+#ifdef EFOVZ
+	if (fovIndices[ii.z] == 0)
+        return;
+#endif
+#ifdef MASKPRIOR
+	const int maskVal = readMaskBP(maskBP, ii, CUINT3(N));
+    if (maskVal == 0)
+        return;
+#endif
 	const int3 xxyyzz = CMINT3(LID0 + SWINDOWX, LID1 + SWINDOWY, LID2 + SWINDOWZ);
 	const float uj = lCache[xxyyzz.x][xxyyzz.y][xxyyzz.z];
+	const float cpq = POWR(c, p - q);
 	int uu = 0;
 	for (int i = -SWINDOWX; i <= SWINDOWX; i++) {
 		for (int j = -SWINDOWY; j <= SWINDOWY; j++) {
@@ -949,9 +959,11 @@ void GGMRFKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRI
 					continue;
 				const float uk = lCache[xxyyzz.x + i][xxyyzz.y + j][xxyyzz.z + k];
 				const float delta = uj - uk;
-				const float deltapqc = 1.f + POWR(fabs(delta / c), p - q);
-				if (delta != 0.f)
-					output += weight[uu] * (POWR(fabs(delta), p - 1.f) / deltapqc) * (p - pqc * (POWR(fabs(delta), p - q) / deltapqc)) * sign(delta);
+				if (delta != FLOAT_ZERO) {
+					const float dcpq = POWR(fabs(delta / c), p - q);
+					const float deltapqc = FLOAT_ONE + dcpq;
+					output += weight[uu] * (POWR(fabs(delta), p - FLOAT_ONE) / deltapqc) * (p - pqc * ((dcpq * cpq) / deltapqc)) * sign(delta);
+				}
 				uu++;
 			}
 		}
@@ -980,21 +992,17 @@ void medianFilter3D(const CLGLOBAL float* grad, CLGLOBAL float* output, const in
 	if (xyz.x >= N.x + SEARCH_WINDOW_X || xyz.y >= N.y + SEARCH_WINDOW_Y || xyz.z >= N.z + SEARCH_WINDOW_Z || xyz.x < SEARCH_WINDOW_X || xyz.y < SEARCH_WINDOW_Y || xyz.z < SEARCH_WINDOW_Z)
 		return;
 #ifdef EFOVZ
-	if (fovIndices[xyz.z] == 0)
+	if (fovIndices[xyz.z - SEARCH_WINDOW_Z] == 0)
         return;
 #endif
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, xyz, CUINT(N));
+	const LTYPE3 xyzOrig = MINT3(xyz.x - SEARCH_WINDOW_X, xyz.y - SEARCH_WINDOW_Y, xyz.z - SEARCH_WINDOW_Z);
+	const int maskVal = readMaskBP(maskBP, xyzOrig, CUINT3(N));
     if (maskVal == 0)
         return;
 #endif
 	const LTYPE n = (xyz.x - SEARCH_WINDOW_X) + (xyz.y - SEARCH_WINDOW_Y) * (N.x) + (xyz.z - SEARCH_WINDOW_Z) * (N.x * N.y);
 	float median[KOKO];
-	float medianF[KOKO];
-	for (int ll = 0; ll < KOKO; ll++) {
-		medianF[ll] = 0.f;
-		median[ll] = 0.f;
-	}
 	int uu = 0;
 	for (LTYPE x = -SEARCH_WINDOW_X; x <= SEARCH_WINDOW_X; x++) {
 		for (LTYPE y = -SEARCH_WINDOW_Y; y <= SEARCH_WINDOW_Y; y++) {
@@ -1011,11 +1019,11 @@ void medianFilter3D(const CLGLOBAL float* grad, CLGLOBAL float* output, const in
 			if (median[hh] > median[ll] || (median[hh] == median[ll] && hh < ll))
 				ind++;
 		}
-		medianF[ind] = median[hh];
-		if (ind == KOKO / 2)
-			break;
+		if (ind == KOKO / 2) {
+			output[n] = median[hh];
+			return;
+		}
 	}
-	output[n] = medianF[KOKO / 2];
 }
 #endif // END MEDIAN
 
@@ -1141,10 +1149,10 @@ void ProxTVq(CLGLOBAL float* inputX, CLGLOBAL float* inputY, CLGLOBAL float* inp
 	const float3 apu = MFLOAT3(inputX[idx], inputY[idx], inputZ[idx]);
 #ifdef L2 // START L2
 // L2 norm
-	const float scale = fmax(1.f, length(apu) / alpha);
+	const float scale = fmax(FLOAT_ONE, length(apu) / alpha);
 #else
 // L1 norm
-	const float scale = fmax(fmax(fabs(apu.z), fmax(fabs(apu.x), fabs(apu.y))) / alpha, 1.f);
+	const float scale = fmax(fmax(fabs(apu.z), fmax(fabs(apu.x), fabs(apu.y))) / alpha, FLOAT_ONE);
 #endif // END L2
 	inputX[idx] = apu.x / scale;
 	inputY[idx] = apu.y / scale;
@@ -1165,13 +1173,13 @@ void ProxTGVq(CLGLOBAL float* inputX, CLGLOBAL float* inputY, CLGLOBAL float* in
 	const float3 apu = MFLOAT3(inputX[idx], inputY[idx], inputZ[idx]);
 	const float3 apu2 = MFLOAT3(input2XY[idx], input2XZ[idx], input2YZ[idx]);
 #else
-	const float3 apu = MFLOAT3(inputX[idx], inputY[idx], 0.f);
-	const float3 apu2 = MFLOAT3(input2XY[idx], 0.f, 0.f);
+	const float3 apu = MFLOAT3(inputX[idx], inputY[idx], FLOAT_ZERO);
+	const float3 apu2 = MFLOAT3(input2XY[idx], FLOAT_ZERO, FLOAT_ZERO);
 #endif
 #ifdef L2 // START L2
-	const float scale = fmax(1.f, SQRT(apu.x * apu.x + apu.y * apu.y + apu.z * apu.z + (apu2.x * apu2.x) * 2.f + (apu2.y * apu2.y) * 2.f + (apu2.z * apu2.z) * 2.f) / alpha);
+	const float scale = fmax(FLOAT_ONE, SQRT(apu.x * apu.x + apu.y * apu.y + apu.z * apu.z + (apu2.x * apu2.x) * FLOAT_TWO + (apu2.y * apu2.y) * FLOAT_TWO + (apu2.z * apu2.z) * FLOAT_TWO) / alpha);
 #else
-	const float scale = fmax(fmax(fabs(apu2.z),fmax(fabs(apu2.y), fmax(fabs(apu2.x), fmax(fabs(apu.z), fmax(fabs(apu.x), fabs(apu.y)))))) / alpha, 1.f);
+	const float scale = fmax(fmax(fabs(apu2.z),fmax(fabs(apu2.y), fmax(fabs(apu2.x), fmax(fabs(apu.z), fmax(fabs(apu.x), fabs(apu.y)))))) / alpha, FLOAT_ONE);
 #endif // END L2
 	inputX[idx] = apu.x / scale;
 	inputY[idx] = apu.y / scale;
@@ -1208,7 +1216,7 @@ void ProxTVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
         return;
 #endif
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, xyz, CUINT(N));
+	const int maskVal = readMaskBP(maskBP, xyz, CUINT3(N));
     if (maskVal == 0)
         return;
 #endif
@@ -1220,7 +1228,7 @@ void ProxTVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 #else
 	const LTYPE y = x;
 #endif
-	float apuVal = 0.f;
+	float apuVal = FLOAT_ZERO;
 // Transpose of forward difference (backward difference)
 #if DIFFTYPE == 0 // START DIFFTYPE == 0
 		backwardDiffX(&apuVal, xyz, NOrig, y, gradX);
@@ -1269,13 +1277,13 @@ void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLREST
         return;
 #endif
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, xyz, CUINT(N));
+	const int maskVal = readMaskBP(maskBP, xyz, CUINT3(N));
     if (maskVal == 0)
         return;
 #endif
 		
 	const LTYPE x = xyz.x + xyz.y * N.x + xyz.z * N.x * N.y;
-	float apuVal = 0.f;
+	float apuVal = FLOAT_ZERO;
 	float imApu = im[x];
 #if defined(EFOVZ)
 	const LTYPE3 NDiff = (N - NOrig) / 2;
@@ -1293,14 +1301,14 @@ void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLREST
 #endif
 	apuVal *=  sigma2;
 	outputX[y] += apuVal;
-	apuVal = 0.f;
+	apuVal = FLOAT_ZERO;
 	forwardDiffY2(&apuVal, xyz, N, im, imApu);
 #ifdef PROXTGV
 	apuVal -= vY[y];
 #endif
 	apuVal *=  sigma2;
 	outputY[y] += apuVal;
-	apuVal = 0.f;
+	apuVal = FLOAT_ZERO;
 	forwardDiffZ2(&apuVal, xyz, N, im, imApu);
 #if defined(PROXTGV) && defined(TGVZ)
 	apuVal -= vZ[y];
@@ -1317,14 +1325,14 @@ void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLREST
 #endif
 	apuVal *=  sigma2;
 	outputX[y] += apuVal;
-	apuVal = 0.f;
+	apuVal = FLOAT_ZERO;
 	backwardDiffY2(&apuVal, xyz, N, im, imApu);
 #ifdef PROXTGV
 	apuVal -= vY[y];
 #endif
 	apuVal *=  sigma2;
 	outputY[y] += apuVal;
-	apuVal = 0.f;
+	apuVal = FLOAT_ZERO;
 	backwardDiffZ2(&apuVal, xyz, N, im, imApu);
 #if defined(PROXTGV) && defined(TGVZ)
 	apuVal -= vZ[y];
@@ -1359,14 +1367,14 @@ void ProxTGVSymmDeriv(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 		return;
 #ifdef MASKPRIOR
 	const LTYPE3 NDiff = (N - NOrig) / 2;
-	const int maskVal = readMaskBP(maskBP, xyz + NDiff, CUINT(N));
+	const int maskVal = readMaskBP(maskBP, xyz + NDiff, CUINT3(N));
     if (maskVal == 0)
         return;
 #endif
 		
 	const LTYPE x = xyz.x + xyz.y * NOrig.x + xyz.z * NOrig.x * NOrig.y;
 /////////////// X ///////////////
-	float apuVal = 0.f;
+	float apuVal = FLOAT_ZERO;
 	float imApuX = vX[x];
 // Forward difference
 #if DIFFTYPE == 0 // START DIFFTYPE == 0
@@ -1374,37 +1382,37 @@ void ProxTGVSymmDeriv(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 	apuVal *= sigma2;
 	qX[x] += apuVal;
 /////////////// Y ///////////////
-	apuVal = 0.f;
+	apuVal = FLOAT_ZERO;
 	float imApuY = vY[x];
 	forwardDiffY2(&apuVal, xyz, NOrig, vY, imApuY);
 	apuVal *= sigma2;
 	qY[x] += apuVal;
 #ifdef TGVZ
 /////////////// Z ///////////////
-	apuVal = 0.f;
+	apuVal = FLOAT_ZERO;
 	float imApuZ = vZ[x];
 	forwardDiffZ2(&apuVal, xyz, NOrig, vZ, imApuZ);
 	apuVal *= sigma2;
 	qZ[x] += apuVal;
 #endif
 /////////////// XY/YX ///////////////
-	apuVal = 0.f;
+	apuVal = FLOAT_ZERO;
 	forwardDiffY2(&apuVal, xyz, NOrig, vX, imApuX);
 	forwardDiffX2(&apuVal, xyz, NOrig, vY, imApuY);
-	apuVal *= sigma2 * .5f;
+	apuVal *= sigma2 * FLOAT_HALF;
 	q2XY[x] += apuVal;
 #ifdef TGVZ
 /////////////// XZ/ZX ///////////////
-	apuVal = 0.f;
+	apuVal = FLOAT_ZERO;
 	forwardDiffZ2(&apuVal, xyz, NOrig, vX, imApuX);
 	forwardDiffX2(&apuVal, xyz, NOrig, vZ, imApuZ);
-	apuVal *= sigma2 * .5f;
+	apuVal *= sigma2 * FLOAT_HALF;
 	q2XZ[x] += apuVal;
 /////////////// YZ/ZY ///////////////
-	apuVal = 0.f;
+	apuVal = FLOAT_ZERO;
 	forwardDiffZ2(&apuVal, xyz, NOrig, vY, imApuY);
 	forwardDiffY2(&apuVal, xyz, NOrig, vZ, imApuZ);
-	apuVal *= sigma2 * .5f;
+	apuVal *= sigma2 * FLOAT_HALF;
 	q2YZ[x] += apuVal;
 #endif
 /////////////////////////
@@ -1415,37 +1423,37 @@ void ProxTGVSymmDeriv(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 	apuValX *=  sigma2;
 	qX[x] += apuValX;
 /////////////// Y ///////////////
-	apuVal = 0.f;
+	apuVal = FLOAT_ZERO;
 	float imApuY = vY[x];
 	backwardDiffY2(&apuValY, xyz, NOrig, vY, imApuY);
 	apuValY *=  sigma2;
 	qY[x] += apuValY;
 #ifdef TGVZ
 /////////////// Z ///////////////
-	apuVal = 0.f;
+	apuVal = FLOAT_ZERO;
 	float imApuZ = vZ[x];
 	backwardDiffZ2(&apuValZ, xyz, NOrig, vZ, imApuZ);
 	apuValZ *=  sigma2;
 	qZ[x] += apuValZ;
 #endif
 /////////////// XY/YX ///////////////
-	apuVal = 0.f;
+	apuVal = FLOAT_ZERO;
 	backwardDiffY2(&apuVal, xyz, NOrig, vX, imApuX);
 	backwardDiffX2(&apuVal, xyz, NOrig, vY, imApuY);
-	apuVal *=  sigma2 * .5f;
+	apuVal *=  sigma2 * FLOAT_HALF;
 	q2XY[x] += apuVal;
 #ifdef TGVZ
 /////////////// XZ/ZX ///////////////
-	apuVal = 0.f;
+	apuVal = FLOAT_ZERO;
 	backwardDiffZ2(&apuVal, xyz, NOrig, vX, imApuX);
 	backwardDiffX2(&apuVal, xyz, NOrig, vZ, imApuZ);
-	apuVal *=  sigma2 * .5f;
+	apuVal *=  sigma2 * FLOAT_HALF;
 	q2XZ[x] += apuVal;
 /////////////// YZ/ZY ///////////////
-	apuVal = 0.f;
+	apuVal = FLOAT_ZERO;
 	backwardDiffZ2(&apuVal, xyz, NOrig, vY, imApuY);
 	backwardDiffY2(&apuVal, xyz, NOrig, vZ, imApuZ);
-	apuVal *=  sigma2 * .5f;
+	apuVal *=  sigma2 * FLOAT_HALF;
 	q2YZ[x] += apuVal;
 #endif
 // Central difference?
@@ -1476,12 +1484,12 @@ void ProxTGVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLR
 		return;
 #ifdef MASKPRIOR
 	const LTYPE3 NDiff = (N - NOrig) / 2;
-	const int maskVal = readMaskBP(maskBP, xyz + NDiff, CUINT(N));
+	const int maskVal = readMaskBP(maskBP, xyz + NDiff, CUINT3(N));
     if (maskVal == 0)
         return;
 #endif
 	const LTYPE x = xyz.x + xyz.y * NOrig.x + xyz.z * NOrig.x * NOrig.y;
-	float apuVal = 0.f;
+	float apuVal = FLOAT_ZERO;
 // Transpose of forward difference
 #if DIFFTYPE == 0 // START DIFFTYPE == 0
 /////////////// X ///////////////
@@ -1495,11 +1503,11 @@ void ProxTGVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLR
 		float v1 = FMAD(tau, pX[x] + apuVal, vApu);
 		vX[x] = FMAD(theta, v1 - vApu, v1);
 #else
-		float v1 = vApu + tau * 1.f * (pX[x] + apuVal);
+		float v1 = vApu + tau * FLOAT_ONE * (pX[x] + apuVal);
 		vX[x] = v1 + theta * (v1 - vApu);
 #endif
 /////////////// Y ///////////////
-		apuVal = 0.f;
+		apuVal = FLOAT_ZERO;
 		backwardDiffY(&apuVal, xyz, NOrig, x, qY);
 		backwardDiffX(&apuVal, xyz, NOrig, x, q2XY);
 #ifdef TGVZ
@@ -1510,12 +1518,12 @@ void ProxTGVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLR
 		v1 = FMAD(tau, pY[x] + apuVal, vApu);
 		vY[x] = FMAD(theta, v1 - vApu, v1);
 #else
-		v1 = vApu + tau * 1.f * (pY[x] + apuVal);
+		v1 = vApu + tau * FLOAT_ONE * (pY[x] + apuVal);
 		vY[x] = v1 + theta * (v1 - vApu);
 #endif
 #ifdef TGVZ
 /////////////// Z ///////////////
-		apuVal = 0.f;
+		apuVal = FLOAT_ZERO;
 		backwardDiffZ(&apuVal, xyz, NOrig, x, qZ);
 		backwardDiffX(&apuVal, xyz, NOrig, x, q2XZ);
 		backwardDiffY(&apuVal, xyz, NOrig, x, q2YZ);
@@ -1524,7 +1532,7 @@ void ProxTGVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLR
 		v1 = FMAD(tau, pZ[x] + apuVal, vApu);
 		vZ[x] = FMAD(theta, v1 - vApu, v1);
 #else
-		v1 = vApu + tau * 1.f * (pZ[x] + apuVal);
+		v1 = vApu + tau * FLOAT_ONE * (pZ[x] + apuVal);
 		vZ[x] = v1 + theta * (v1 - vApu);
 #endif
 #endif
@@ -1545,7 +1553,7 @@ void ProxTGVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLR
 		vX[x] = v1 + theta * (v1 - vApu);
 #endif
 /////////////// Y ///////////////
-		apuVal = 0.f;
+		apuVal = FLOAT_ZERO;
 		forwardDiffY(&apuVal, xyz, NOrig, x, qY);
 		forwardDiffX(&apuVal, xyz, NOrig, x, q2XY);
 #ifdef TGVZ
@@ -1561,7 +1569,7 @@ void ProxTGVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLR
 #endif
 #ifdef TGVZ
 /////////////// Z ///////////////
-		apuVal = 0.f;
+		apuVal = FLOAT_ZERO;
 		forwardDiffZ(&apuVal, xyz, NOrig, x, qZ);
 		forwardDiffX(&apuVal, xyz, NOrig, x, q2XZ);
 		forwardDiffY(&apuVal, xyz, NOrig, x, q2YZ);
@@ -1583,7 +1591,7 @@ void ProxTGVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLR
 // Gradient of hyperbolic prior
 #if defined(HYPER) // START HYPER
 #ifdef OPENCL
-CONSTANT sampler_t samplerTV = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP;
+CONSTANT sampler_t samplerTV = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif
 
 #ifdef OPENCL
@@ -1619,12 +1627,12 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
         return;
 #endif
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, xyz, CUINT(N));
+	const int maskVal = readMaskBP(maskBP, xyz, CUINT3(N));
     if (maskVal == 0)
         return;
 #endif
 	const LTYPE n = (xyz.x) + (xyz.y) * (N.x) + (xyz.z) * (N.x * N.y);
-	float output = 0.f;
+	float output = FLOAT_ZERO;
 	LTYPE startX = GRID0 * LSIZE0 - SWINDOWX + LID0;
 	LTYPE startY = GRID1 * LSIZE1 - SWINDOWY + LID1;
 	LTYPE startZ = GRID2 * LSIZE2 - SWINDOWZ + LID2;
@@ -1646,7 +1654,7 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
 #endif
 #else
 				if (xx < 0 || yy < 0 || zz < 0 || xx >= N.x || yy >= N.y || zz >= N.z)
-					lCache[indX][indY][indZ] = 0.f;
+					lCache[indX][indY][indZ] = FLOAT_ZERO;
 				else
 					lCache[indX][indY][indZ] = u[(xx) + (yy) * N.x + (zz) * N.x * N.y];
 #endif
@@ -1659,6 +1667,7 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
 	BARRIER
 	const int3 xxyyzz = CMINT3(LID0 + SWINDOWX, LID1 + SWINDOWY, LID2 + SWINDOWZ);
 	const float uj = lCache[xxyyzz.x][xxyyzz.y][xxyyzz.z];
+	const float invSigma = FLOAT_ONE / sigma;
 	int uu = 0;
 	for (int k = -SWINDOWZ; k <= SWINDOWZ; k++) {
 		for (int j = -SWINDOWY; j <= SWINDOWY; j++) {
@@ -1666,8 +1675,8 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
 				if (i == 0 && j == 0 && k == 0)
 					continue;
 				const float u = lCache[xxyyzz.x + i][xxyyzz.y + j][xxyyzz.z + k];
-				const float ux = (uj - u) / sigma;
-				output += (ux / sigma) / SQRT(1.f + ux * ux) * w[uu++];
+				const float ux = (uj - u) * invSigma;
+				output += ux * invSigma * RSQRT(FMAD(ux, ux, FLOAT_ONE)) * w[uu++];
 			}
 		}
 	}
@@ -1692,7 +1701,7 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
 // Non-reference image TVs are identical (not counting Lange or weighted)
 #if defined(TVGRAD) // START TVGRAD
 #ifdef OPENCL
-CONSTANT sampler_t samplerTV = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP;
+CONSTANT sampler_t samplerTV = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif
 
 DEVICE float sqrtVal(const float3 input, const float epps
@@ -1762,7 +1771,7 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
         return;
 #endif
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, xyz, CUINT(N));
+	const int maskVal = readMaskBP(maskBP, xyz, CUINT3(N));
     if (maskVal == 0)
         return;
 #endif
@@ -1788,9 +1797,9 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 	float2 uz = { read_imagef(u, samplerTV, (int4)(xyz.x, xyz.y, xyz.z + 1, 0)).w, read_imagef(u, samplerTV, (int4)(xyz.x, xyz.y, xyz.z - 1, 0)).w };
 #endif
 #else
-	float2 ux = MFLOAT2(0.f, 0.f);
-	float2 uy = MFLOAT2(0.f, 0.f);
-	float2 uz = MFLOAT2(0.f, 0.f);
+	float2 ux = MFLOAT2(FLOAT_ZERO, FLOAT_ZERO);
+	float2 uy = MFLOAT2(FLOAT_ZERO, FLOAT_ZERO);
+	float2 uz = MFLOAT2(FLOAT_ZERO, FLOAT_ZERO);
 	if (xyz.x < N.x - 1)
 		ux.x = u[(xyz.x + 1) + (xyz.y) * N.x + (xyz.z) * N.x * N.y];
 	if (xyz.x > 0)
@@ -1810,7 +1819,7 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 	const float2 uabsx = ux / (fabs(ux) + epps);
 	const float2 uabsy = uy / (fabs(uy) + epps);
 	const float2 uabsz = uz / (fabs(uz) + epps);
-	float2 output = uabsx - uabsx / (fabs(ux) / sigma + 1.f) + uabsy - uabsy / (fabs(uy) / sigma + 1.f) + uabsz - uabsz / (fabs(uz) / sigma + 1.f);
+	float2 output = uabsx - uabsx / (fabs(ux) / sigma + FLOAT_ONE) + uabsy - uabsy / (fabs(uy) / sigma + FLOAT_ONE) + uabsz - uabsz / (fabs(uz) / sigma + FLOAT_ONE);
 #ifdef LARGEDIM
 	if (xyz.z >= nOffset.x && xyz.z < nOffset.y)
 		grad[n - N.x * N.y * nOffset.x] += beta * (output.x + output.y);
@@ -1833,11 +1842,11 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 	const float2 uk = {read_imagef(u, samplerTV, (int4)(xyz.x + 1, xyz.y, xyz.z - 1, 0)).w, read_imagef(u, samplerTV, (int4)(xyz.x, xyz.y + 1, xyz.z - 1, 0)).w};
 #endif
 #else
-	float3 uijkP = MFLOAT3(0.f, 0.f, 0.f);
-	float3 uijkM = MFLOAT3(0.f, 0.f, 0.f);
-	float2 ui = MFLOAT2(0.f, 0.f);
-	float2 uj = MFLOAT2(0.f, 0.f);
-	float2 uk = MFLOAT2(0.f, 0.f);
+	float3 uijkP = MFLOAT3(FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO);
+	float3 uijkM = MFLOAT3(FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO);
+	float2 ui = MFLOAT2(FLOAT_ZERO, FLOAT_ZERO);
+	float2 uj = MFLOAT2(FLOAT_ZERO, FLOAT_ZERO);
+	float2 uk = MFLOAT2(FLOAT_ZERO, FLOAT_ZERO);
 	if (xyz.x < N.x - 1)
 		uijkP.x = u[(xyz.x + 1) + (xyz.y) * N.x + (xyz.z) * N.x * N.y];
 	if (xyz.y < N.y - 1)
@@ -1911,18 +1920,18 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 		s[5] * (u2.y) * (u2.z) + s[7] * (u2.y) * (u2.z) + epps);
 	const float pvalijkZ = SQRT(u3.x * u3.x * s[0] + u3.y * u3.y * s[4] + u3.z * u3.z * s[8] + s[1] * (u3.x) * (u3.y) + s[3] * (u3.x) * (u3.y) + s[2] * (u3.x) * (u3.z) + s[6] * (u3.x) * (u3.z) + 
 		s[5] * (u3.y) * (u3.z) + s[7] * (u3.y) * (u3.z) + epps);
-	const float dx = s[0] * (2.f * (uijk - uijkM.x)) + s[3] * u1.y + s[2] * u1.z + s[6] * u1.z + s[1] * u1.y;
-	const float dy = s[4] * (2.f * (uijk - uijkM.y)) + s[5] * u2.z + s[3] * u2.x + s[1] * u2.x + s[7] * u2.z;
-	const float dz = s[8] * (2.f * (uijk - uijkM.z)) + s[6] * u3.x + s[5] * u3.y + s[7] * u3.y + s[2] * u3.x;
-	const float d = s[1] * val.x + s[2] * val.x + s[3] * val.x + s[6] * val.x + s[1] * val.y + s[3] * val.y + s[5] * val.y + s[7] * val.y + s[2] * val.z + s[5] * val.z + s[6] * val.z + s[7] * val.z + s[0] * 2.f * val.x + s[4] * 2.f * val.y + s[8] * 2.f * val.z;
+	const float dx = s[0] * (FLOAT_TWO * (uijk - uijkM.x)) + s[3] * u1.y + s[2] * u1.z + s[6] * u1.z + s[1] * u1.y;
+	const float dy = s[4] * (FLOAT_TWO * (uijk - uijkM.y)) + s[5] * u2.z + s[3] * u2.x + s[1] * u2.x + s[7] * u2.z;
+	const float dz = s[8] * (FLOAT_TWO * (uijk - uijkM.z)) + s[6] * u3.x + s[5] * u3.y + s[7] * u3.y + s[2] * u3.x;
+	const float d = s[1] * val.x + s[2] * val.x + s[3] * val.x + s[6] * val.x + s[1] * val.y + s[3] * val.y + s[5] * val.y + s[7] * val.y + s[2] * val.z + s[5] * val.z + s[6] * val.z + s[7] * val.z + s[0] * FLOAT_TWO * val.x + s[4] * FLOAT_TWO * val.y + s[8] * FLOAT_TWO * val.z;
 #ifdef LARGEDIM
 	if (xyz.z >= nOffset.x && xyz.z < nOffset.y)
-		grad[n - N.x * N.y * nOffset.x] += beta * .5f * (d / pvalijk + dx / pvalijkX + dy / pvalijkY + dz / pvalijkZ);
+		grad[n - N.x * N.y * nOffset.x] += beta * FLOAT_HALF * (d / pvalijk + dx / pvalijkX + dy / pvalijkY + dz / pvalijkZ);
 #else
-	grad[n] += beta * .5f * (d / pvalijk + dx / pvalijkX + dy / pvalijkY + dz / pvalijkZ);
+	grad[n] += beta * FLOAT_HALF * (d / pvalijk + dx / pvalijkX + dy / pvalijkY + dz / pvalijkZ);
 #endif
 #elif defined(ANATOMICAL2) // TV type 2
-	float3 uijkR = MFLOAT3(0.f, 0.f, 0.f);
+	float3 uijkR = MFLOAT3(FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO);
 	if (xyz.x < N.x - 1)
 		uijkR.x = S[(xyz.x + 1) + (xyz.y) * N.x + (xyz.z) * N.x * N.y];
 	if (xyz.y < N.y - 1)
@@ -1939,7 +1948,7 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 	grad[n] += beta * ((3.f * uijk - uijkP.x - uijkP.y - uijkP.z) / pvalijk + (uijk - uijkM.x) / sqrtVal(u1, epps) + (uijk - uijkM.y) / sqrtVal(u2, epps) + (uijk - uijkM.z) / sqrtVal(u3, epps) + 1e-7f);
 #endif
 #elif defined(ANATOMICAL3) // APLS
-	float3 uijkR = MFLOAT3(0.f, 0.f, 0.f);
+	float3 uijkR = MFLOAT3(FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO);
 	if (xyz.x < N.x - 1)
 		uijkR.x = S[(xyz.x + 1) + (xyz.y) * N.x + (xyz.z) * N.x * N.y];
 	if (xyz.y < N.y - 1)
@@ -1959,13 +1968,13 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 	const float pvalijkZ = SQRT(u3.x * u3.x + u3.y * u3.y + u3.z * u3.z + apuRXYZ * apuRXYZ + epps);
 #ifdef LARGEDIM
 	if (xyz.z >= nOffset.x && xyz.z < nOffset.y)
-		grad[n - N.x * N.y * nOffset.x] += beta * .5f * ((6.f * uijk - 2.f * uijkP.x - 2.f * uijkP.y - 2.f * uijkP.z + 2.f * (epsilon.x*(uijk - uijkP.x) + epsilon.y*(uijk - uijkP.y) + epsilon.z*(uijk - uijkP.z)) * (epsilon.x + epsilon.y + epsilon.z)) / pvalijk + 
-			2.f * (u1.x - epsilon.x * (epsilon.x * u1.x + epsilon.y * u1.y + epsilon.z * u1.z)) / pvalijkX + 2.f * (u2.y - epsilon.y * (epsilon.x * u2.x + epsilon.y * u2.y + epsilon.z * u2.z)) / pvalijkY + 
-			2.f * (u3.z - epsilon.z * (epsilon.x * u3.x + epsilon.y * u3.y + epsilon.z * u3.z))/ pvalijkZ + 1e-7f);
+		grad[n - N.x * N.y * nOffset.x] += beta * FLOAT_HALF * ((6.f * uijk - FLOAT_TWO * uijkP.x - FLOAT_TWO * uijkP.y - FLOAT_TWO * uijkP.z + FLOAT_TWO * (epsilon.x*(uijk - uijkP.x) + epsilon.y*(uijk - uijkP.y) + epsilon.z*(uijk - uijkP.z)) * (epsilon.x + epsilon.y + epsilon.z)) / pvalijk + 
+			FLOAT_TWO * (u1.x - epsilon.x * (epsilon.x * u1.x + epsilon.y * u1.y + epsilon.z * u1.z)) / pvalijkX + FLOAT_TWO * (u2.y - epsilon.y * (epsilon.x * u2.x + epsilon.y * u2.y + epsilon.z * u2.z)) / pvalijkY + 
+			FLOAT_TWO * (u3.z - epsilon.z * (epsilon.x * u3.x + epsilon.y * u3.y + epsilon.z * u3.z))/ pvalijkZ + 1e-7f);
 #else
-	grad[n] += beta * .5f * ((6.f * uijk - 2.f * uijkP.x - 2.f * uijkP.y - 2.f * uijkP.z + 2.f * (epsilon.x*(uijk - uijkP.x) + epsilon.y*(uijk - uijkP.y) + epsilon.z*(uijk - uijkP.z)) * (epsilon.x + epsilon.y + epsilon.z)) / pvalijk + 
-		2.f * (u1.x - epsilon.x * (epsilon.x * u1.x + epsilon.y * u1.y + epsilon.z * u1.z)) / pvalijkX + 2.f * (u2.y - epsilon.y * (epsilon.x * u2.x + epsilon.y * u2.y + epsilon.z * u2.z)) / pvalijkY + 
-		2.f * (u3.z - epsilon.z * (epsilon.x * u3.x + epsilon.y * u3.y + epsilon.z * u3.z))/ pvalijkZ + 1e-7f);
+	grad[n] += beta * FLOAT_HALF * ((6.f * uijk - FLOAT_TWO * uijkP.x - FLOAT_TWO * uijkP.y - FLOAT_TWO * uijkP.z + FLOAT_TWO * (epsilon.x*(uijk - uijkP.x) + epsilon.y*(uijk - uijkP.y) + epsilon.z*(uijk - uijkP.z)) * (epsilon.x + epsilon.y + epsilon.z)) / pvalijk + 
+		FLOAT_TWO * (u1.x - epsilon.x * (epsilon.x * u1.x + epsilon.y * u1.y + epsilon.z * u1.z)) / pvalijkX + FLOAT_TWO * (u2.y - epsilon.y * (epsilon.x * u2.x + epsilon.y * u2.y + epsilon.z * u2.z)) / pvalijkY + 
+		FLOAT_TWO * (u3.z - epsilon.z * (epsilon.x * u3.x + epsilon.y * u3.y + epsilon.z * u3.z))/ pvalijkZ + 1e-7f);
 #endif
 #else // Non-reference image TV
 	const float pvalijk = sqrtVal(uijkP - uijk, epps);
@@ -2006,7 +2015,7 @@ void PoissonUpdate(CLGLOBAL float* CLRESTRICT im, const CLGLOBAL float* CLRESTRI
 	if (enforcePositivity)
 		imApu = fmax(epps, imApu);
 #ifdef PKMA
-	im[n] = (1.f - alpha) * imOld  + alpha * imApu;
+	im[n] = (FLOAT_ONE - alpha) * imOld  + alpha * imApu;
 #elif defined(MBSREM)
 	if (imApu >= alpha)
 		imApu = alpha - epps;
@@ -2053,7 +2062,7 @@ void PDHGUpdate(CLGLOBAL float* CLRESTRICT im, const CLGLOBAL float* CLRESTRICT 
 
 #ifdef ROTATE
 #if defined(USEIMAGES) && defined(OPENCL)
-CONSTANT sampler_t samplerRotate = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_LINEAR | CLK_ADDRESS_CLAMP;
+CONSTANT sampler_t samplerRotate = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_LINEAR | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif
 // Initial version from: https://stackoverflow.com/questions/9833316/cuda-image-rotation/10008412#10008412
 KERNEL void rotate(CLGLOBAL float* CLRESTRICT rotim, IMTYPE im, const int Nx, const int Ny, const int Nz, const float cosa, const float sina) {
@@ -2062,19 +2071,19 @@ KERNEL void rotate(CLGLOBAL float* CLRESTRICT rotim, IMTYPE im, const int Nx, co
 		return;
 	const LTYPE n = (xyz.x) + (xyz.y) * (Nx) + (xyz.z) * (Nx * Ny);
 
-    const float xA = (float)(xyz.x - Nx/2) + 0.5f;
-    const float yA = (float)(xyz.y - Ny/2) + 0.5f;
+    const float xA = (float)(xyz.x - Nx/2) + FLOAT_HALF;
+    const float yA = (float)(xyz.y - Ny/2) + FLOAT_HALF;
 
-    const float src_x = (xA * cosa - yA * sina + Nx/2) - 0.5f;
-    const float src_y = (xA * sina + yA * cosa + Ny/2) - 0.5f;
+    const float src_x = (xA * cosa - yA * sina + Nx/2) - FLOAT_HALF;
+    const float src_y = (xA * sina + yA * cosa + Ny/2) - FLOAT_HALF;
 
     if (src_x >= 0.0f && src_x < Nx && src_y >= 0.0f && src_y < Ny) {
-		float val = 0.f;
+		float val = FLOAT_ZERO;
 #ifdef USEIMAGES
 #if defined(CUDA) || defined(HIP)
-        val = tex3D<float>(im, src_x, src_y, xyz.z);
+        val = tex3D<float>(im, src_x + FLOAT_HALF, src_y + FLOAT_HALF, CFLOAT(xyz.z) + FLOAT_HALF);
 #elif defined(OPENCL)
-        val = read_imagef(im, samplerRotate, (int4)(src_x, src_y, xyz.z, 0)).w;
+        val = read_imagef(im, samplerRotate, (float4)(src_x + FLOAT_HALF, src_y + FLOAT_HALF, CFLOAT(xyz.z) + FLOAT_HALF, FLOAT_ZERO)).w;
 #endif
 #else
         // BILINEAR INTERPOLATION
@@ -2091,9 +2100,9 @@ KERNEL void rotate(CLGLOBAL float* CLRESTRICT rotim, IMTYPE im, const int Nx, co
         const int idx_src01 = min(max(0, src_x0 + src_y1 * Nx), (Nx * Ny) - 1);
         const int idx_src11 = min(max(0, src_x1 + src_y1 * Nx), (Nx * Ny) - 1);
 
-        val  = (1.0f - sx) * (1.0f - sy) * im[idx_src00 + xyz.z * Nx * Ny];
-        val += (       sx) * (1.0f - sy) * im[idx_src10 + xyz.z * Nx * Ny];
-        val += (1.0f - sx) * (       sy) * im[idx_src01 + xyz.z * Nx * Ny];
+        val  = (FLOAT_ONE - sx) * (FLOAT_ONE - sy) * im[idx_src00 + xyz.z * Nx * Ny];
+        val += (       sx) * (FLOAT_ONE - sy) * im[idx_src10 + xyz.z * Nx * Ny];
+        val += (FLOAT_ONE - sx) * (       sy) * im[idx_src01 + xyz.z * Nx * Ny];
         val += (       sx) * (       sy) * im[idx_src11 + xyz.z * Nx * Ny];
 #endif
 		rotim[n] = val;
