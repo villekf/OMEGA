@@ -1105,7 +1105,7 @@ class ProjectorClass {
 				testi.push_back(contentFP);
 				cl::Program::Sources source(testi);
 				program = cl::Program(CLContext, source);
-				status = program.build(options.c_str());
+				status = program.build({ CLDeviceID }, options.c_str());
 				if (status == CL_SUCCESS && (DEBUG || verbose >= 3)) {
 					mexPrint("OpenCL program (64-bit atomics) built\n");
 #endif // END CUDA
@@ -1159,7 +1159,7 @@ class ProjectorClass {
 			testi.push_back(contentFP);
 			cl::Program::Sources source(testi);
 			program = cl::Program(CLContext, source);
-			status = program.build(options.c_str());
+			status = program.build({ CLDeviceID }, options.c_str());
 			if (status == CL_SUCCESS && (DEBUG || verbose >= 3)) {
 				mexPrint("OpenCL program built\n");
 			}
@@ -1829,10 +1829,10 @@ public:
 		// Create the OpenCL context and command queue and assign the device
 #ifdef AF
 		CLContext = afcl::getContext(true);
-		std::vector<cl::Device> devices = CLContext.getInfo<CL_CONTEXT_DEVICES>(&status);
-		OCL_CHECK(status, "\n", -1);
-		CLDeviceID.push_back(devices[0]);
 		CLCommandQueue.push_back(cl::CommandQueue(afcl::getQueue(true), true));
+		// Use AF command queue to query for the current OpenCL device
+		CLDeviceID.push_back(CLCommandQueue[0].getInfo<CL_QUEUE_DEVICE>(&status));
+		OCL_CHECK(status, "\n", -1);
 #else
 		status = clGetPlatformsContext(inputScalars.platform, CLContext, CLCommandQueue, inputScalars.usedDevices, CLDeviceID);
 #endif
