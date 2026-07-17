@@ -996,6 +996,9 @@ def backwardProjection(self, y, subset = -1):
                             else:
                                 kIndLoc += (self.d_x[subset],)
                                 kIndLoc += (self.d_z[subset],)
+                                # Precomputed geometry; only present when the kernel was built with -DGEOM5
+                                if self.listmode == 0:
+                                    kIndLoc += (self.d_geom5[subset],)
                                 # if self.useTorch:
                                 #     kIndLoc += (yD,)
                                 #     kIndLoc += (fD,)
@@ -1277,6 +1280,10 @@ def backwardProjection(self, y, subset = -1):
                             kIndLoc += 1
                             self.knlB.set_arg(kIndLoc, self.d_z[subset].data)
                             kIndLoc += 1
+                            # Precomputed geometry; only present when the kernel was built with -DGEOM5
+                            if self.listmode == 0:
+                                self.knlB.set_arg(kIndLoc, self.d_geom5[subset].data)
+                                kIndLoc += 1
                             self.knlB.set_arg(kIndLoc, d_im)
                             kIndLoc += 1
                             if self.useAF:

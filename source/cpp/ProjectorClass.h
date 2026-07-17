@@ -686,6 +686,10 @@ class ProjectorClass {
 				ADD_OPT(os_options, FP_FLAG);
 			if (inputScalars.BPType == 5)
 				ADD_OPT(os_options, "-DBP");
+			// BDD uses precomputed values, but you can also use it with the original on the fly calculations
+			// If GEOM5 is not defined, the kernel uses the old format, otherwise it assumes precomputed values
+			if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0)
+				ADD_OPT(os_options, "-DGEOM5");
 			if (inputScalars.pitch) {
 				ADD_OPT_INT(os_options, "-DNVOXELS5", 1);
 			}
@@ -4398,7 +4402,9 @@ public:
 					}
 					else
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_z[timestep][osa_iter]);
-					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_geomProj5[osa_iter]);
+					// Only when the kernel was built with -DGEOM5
+					if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0)
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_geomProj5[osa_iter]);
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_inputImage);
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, vec_opencl.d_rhs_os[uu]);
 #if defined(CUDA) || defined(HIP)

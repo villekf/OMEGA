@@ -403,7 +403,11 @@ extern "C" __global__
 #else
                            CONSTANT float *d_xyz,
 #endif
-                           CONSTANT float *d_uv, const CLGLOBAL float *CLRESTRICT d_geom5, IMAGE3D d_IImage,
+                           CONSTANT float *d_uv,
+#ifdef GEOM5
+                           const CLGLOBAL float *CLRESTRICT d_geom5,
+#endif
+                           IMAGE3D d_IImage,
                            CLGLOBAL float *d_forw, CLGLOBAL float *d_Summ,
 #ifdef MEANDISTANCEBP
                            CONSTANT float *d_meanV,
@@ -474,9 +478,13 @@ extern "C" __global__
   const float invNProj = 1.f / CFLOAT(d_nProjections);
   // Number of valid axial voxels for this thread
   const int maxZZ5 = MIN(NVOXELS5, CINT(d_N.z) - i.z);
+#ifndef GEOM5
+  const float2 indeksi = MFLOAT2(CFLOAT(d_nRows) / 2.f, CFLOAT(d_nCols) / 2.f);
+#endif
   for (int kk = 0; kk < d_nProjections; kk++) {
     float3 vLU, vRD;
-    // Per-projection geometry precomputed on the host (ProjectorClassTest5.h)
+#ifdef GEOM5
+    // Per-projection geometry precomputed on the host
     const int id = kk * 16;
     const float3 s = CMFLOAT3(d_geom5[id], d_geom5[id + 1], d_geom5[id + 2]);
     const float3 d3 =
@@ -488,6 +496,30 @@ extern "C" __global__
     const float3 crossP =
         CMFLOAT3(d_geom5[id + 12], d_geom5[id + 13], d_geom5[id + 14]);
     const float upperPart = d_geom5[id + 15];
+#else
+    // Compute the per-projection geometry in-kernel, this is the original behavior
+    const int id = kk * 6;
+    const float3 s = CMFLOAT3(d_xyz[id], d_xyz[id + 1], d_xyz[id + 2]);
+    const float3 d = CMFLOAT3(d_xyz[id + 3], d_xyz[id + 4], d_xyz[id + 5]);
+#if defined(PITCH)
+    const float3 apuX =
+        CMFLOAT3(d_uv[kk * NA], d_uv[kk * NA + 1], d_uv[kk * NA + 2]) *
+        indeksi.x;
+    const float3 apuY =
+        CMFLOAT3(d_uv[kk * NA + 3], d_uv[kk * NA + 4], d_uv[kk * NA + 5]) *
+        indeksi.y;
+#else
+    const float3 apuX =
+        CMFLOAT3(indeksi.x * d_uv[kk * NA], indeksi.x * d_uv[kk * NA + 1], 0.f);
+    const float3 apuY = CMFLOAT3(0.f, 0.f, indeksi.y * d_dPitch.y);
+#endif
+    const float3 d2 = apuX - apuY;
+    const float3 d3 = d - apuX - apuY;
+    const float3 normX = normalize(apuX);
+    const float3 normY = normalize(apuY);
+    const float3 crossP = cross(d2, d3 - d);
+    const float upperPart = dot(crossP, s - d);
+#endif
     const bool sxDim = fabs(s.x) <= fabs(s.y);
     if (sxDim) {
       if (s.y > 0.f) {

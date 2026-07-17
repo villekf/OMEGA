@@ -50,8 +50,6 @@
 #if defined(PTYPE4) && !defined(BP4)
 #define typeT float3
 #define T4 float4
-#define T3 float3
-#define T2 float2
 #define typeTT float
 #else
 #ifdef USEIMAGES
@@ -64,9 +62,27 @@
 #endif
 #endif
 #define T4 int4
+#define typeTT int
+#endif
+// The backprojection mask is read with normalized float coordinates only in the ray-based
+// (non-CT) projector type 4 backprojection
+#if defined(MASKBP) && defined(PTYPE4) && !defined(BP4) && !defined(CT) && (defined(BP) || defined(SENS))
+#define MASKBPNORM
+#define T3 float3
+#define T2 float2
+#else
 #define T3 int3
 #define T2 int2
-#define typeTT int
+#endif
+// FP mask is always read with integer indices
+#ifdef USEIMAGES
+#define MASKFPT int3
+#else
+#if defined(OPENCL) || defined(METAL)
+#define MASKFPT long
+#else
+#define MASKFPT long long
+#endif
 #endif
 
 #ifdef HALF
@@ -438,11 +454,13 @@ __constant sampler_t samplerForw = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_LINEA
 #endif
 __constant sampler_t samplerSiddon = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 
-#if defined(MASKBP) && defined(PTYPE4) && !defined(CT) && defined(BP)
+#ifdef MASKBPNORM
 __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 #else
 __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif
+// The forward projection mask is always read with (unnormalized) integer coordinates
+__constant sampler_t sampler_MASKFP = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif
 // CUDA and HIP share the same device-side language (kernel/qualifier keywords, intrinsics, vector
 // types, texture fetch templates, etc.), so the vast majority of these definitions are common. The
@@ -622,14 +640,10 @@ inline __device__ float3 make_int3_float3(int3 a) {
 	return make_float3((float)a.x, (float)a.y, (float)a.z);
 }
 
-// inline __device__ int3 operator-(int3 a, int3 b) {
-// 	return make_int3(a.x - b.x, a.y - b.y, a.z - b.z);
-// }
-
 // CUDA's vector_types.h defines no arithmetic operators for int3/float2/float3, so we provide them
 // here. HIP's HIP_vector_type already overloads all of these (+, -, *, /, unary -, compound
 // assignment, and scalar/vector mixes), so defining them again makes every use ambiguous. Skip them
-// under HIP and rely on the built-in ones. NOTE: the only behavioural difference is uint3 - int,
+// under HIP and rely on the built-in ones. NOTE: the only behavioral difference is uint3 - int,
 // which yields int3 here but uint3 under HIP; its single use is CFLOAT3(N - 1) where N >= 1, so the
 // converted float value is identical.
 #ifndef HIP
@@ -953,7 +967,7 @@ DEVICE int readMaskBP(MASKBPTYPE maskBP,
     #endif
     #endif
 #else
-#if defined(PTYPE4) && !defined(BP4)
+#ifdef MASKBPNORM
 	// Normalized coordinates
 	const LONG indX = CLONG_rtz(ind.x * CFLOAT(d_N.x));
 	const LONG indY = CLONG_rtz(ind.y * CFLOAT(d_N.y));
@@ -977,8 +991,8 @@ DEVICE int readMaskBP(MASKBPTYPE maskBP,
 #endif
 
 #if defined(MASKFP)
-DEVICE int readMaskFP(MASKFPTYPE maskFP, typeT ind) {
-	return 
+DEVICE int readMaskFP(MASKFPTYPE maskFP, MASKFPT ind) {
+	return
 #ifdef USEIMAGES
 #if defined(CUDA) || defined(HIP)
 #ifdef MASKFP3D
@@ -988,9 +1002,9 @@ DEVICE int readMaskFP(MASKFPTYPE maskFP, typeT ind) {
 #endif
 #else
 #ifdef MASKFP3D
-        read_imageui(maskFP, sampler_MASK, (int4)(ind.x, ind.y, ind.z, 0)).w;
+        read_imageui(maskFP, sampler_MASKFP, (int4)(ind.x, ind.y, ind.z, 0)).w;
 #else
-        read_imageui(maskFP, sampler_MASK, (int2)(ind.x, ind.y)).w;
+        read_imageui(maskFP, sampler_MASKFP, (int2)(ind.x, ind.y)).w;
 #endif
 #endif
 #else

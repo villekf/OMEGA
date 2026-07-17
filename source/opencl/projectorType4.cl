@@ -258,7 +258,15 @@ void projectorType4Forward(
 #endif
         return; 
 #ifdef MASKFP
-	if (readMaskFP(maskFP, i) == 0)
+    const MASKFPT maskInd = i
+#ifndef USEIMAGES
+    .x + i.y * d_size_x
+#ifdef MASKFP3D
+     + i.z * d_size_x * d_sizey
+#endif
+#endif
+    ;
+	if (readMaskFP(maskFP, maskInd) == 0)
 		return;
 #endif
 #ifdef PYTHON
