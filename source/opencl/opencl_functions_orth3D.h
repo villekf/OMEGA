@@ -2,7 +2,7 @@
 /*******************************************************************************************************************************************
 * Special functions for the 3D orthogonal distance-based ray tracer and volume of intersection ray tracer.
 *
-* Copyright (C) 2020-2024 Ville-Veikko Wettenhovi, Niilo Saarlemo
+* Copyright (C) 2020-2026 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
 * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by
 * the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
@@ -18,6 +18,9 @@
 #else
 #define THR 0.01f
 #endif
+
+#define SQRT_8LN2 2.35482004503094938f // 2*sqrt(2*ln(2)), i.e. FWHM/sigma
+#define INV_8LN2 0.18033688011112042f // 1/(8*ln(2))
 
 #ifndef PTYPE4
 // Compute the orthogonal distance from the ray to the current voxel (center)
@@ -90,7 +93,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	CLGLOBAL CAST* d_Summ, CLGLOBAL CAST* d_output, const bool no_norm
 #endif
 #ifdef TOF
-	, const FLOAT element, const FLOAT sigma_x, float* D, const FLOAT DD, const FLOAT TOFSum, float* TOFWeights
+	, const float TOFSum, float* TOFWeights
 #ifdef LISTMODE
 	, const int TOFid
 #endif
@@ -99,13 +102,10 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	, FLOAT jelppi
 #endif
 #if defined(MASKBP) && defined(BP)
-    , const int ii, MASKBPTYPE maskBP
+    , const int ii, MASKBPTYPE maskBP, const uint3 d_N
 #endif
 #ifdef SPECT
-    , const FLOAT coneOfResponseStdCoeffA, const FLOAT coneOfResponseStdCoeffB, const FLOAT coneOfResponseStdCoeffC, const FLOAT orth_ray_length_inv_signed
-#endif
-#ifdef N_RAYS
-    , int lor
+    , const FLOAT coneOfResponseStdCoeffA, const FLOAT coneOfResponseStdCoeffB, const FLOAT c2, const FLOAT orth_ray_length_inv_signed
 #endif
 ) {
 #ifdef SPECT // Check for voxel behind detector
@@ -114,7 +114,37 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
         return false;
     }
 #endif
-#if (defined(FP) || (defined(MASKBP) && defined(BP))) && defined(USEIMAGES) ///////////////////// 2D/3D indices /////////////////////
+    const FLOAT x0 = FMAD(-FLOAT_ONE, s.y, center.y);
+	const FLOAT y1 = FMAD(diff.z, x0, -l.y);
+	const FLOAT z1 = FMAD(-diff.x, x0, l.z);
+	const FLOAT norm2 = FMAD(l.x, l.x, FMAD(y1, y1, z1 * z1));
+	float local_ele;
+#ifdef SPECT ////////////////////////// SPECT ////////////////////
+	const float t = FMAD(coneOfResponseStdCoeffA, d_parallel, coneOfResponseStdCoeffB);   // A*d_parallel + B
+	const float var8ln2 = FMAD(t, t, c2); // (2*sqrt(2*ln2)*CORstd)^2
+	// norm2 >= 3.5^2 * CORstd^2 * orth_ray_length^2;
+	if (norm2 >= 12.25f * INV_8LN2 * var8ln2 * orth_ray_length * orth_ray_length) {
+		return true;
+	}
+	const float invSTD = RSQRT(var8ln2) * SQRT_8LN2; // 1/CORstd
+	const float a = SQRT(norm2) / orth_ray_length * invSTD;
+	local_ele = INV_2PI * invSTD * invSTD * EXP(-0.5f * a * a);
+#elif defined(VOL) //////////// VOL /////////////
+	if (norm2 > bmax * bmax * orth_ray_length * orth_ray_length) {
+		return true;
+	}
+	local_ele = SQRT(norm2) / orth_ray_length;
+	if (local_ele < bmin)
+		local_ele = Vmax;
+	else
+		local_ele = V[CUINT_rte((local_ele - bmin) * CC)];
+#else //////////// ORTH /////////////
+	if (norm2 >= (FLOAT_ONE - THR) * (FLOAT_ONE - THR) * orth_ray_length * orth_ray_length) {
+		return true;
+	}
+	local_ele = FLOAT_ONE - SQRT(norm2) / orth_ray_length;
+#endif //////////// END SPECT/VOL/ORTH /////////////
+#if (defined(FP) && defined(USEIMAGES)) || (defined(MASKBP) && defined(BP)) ///////////////////// 2D/3D indices /////////////////////
 	int3 ind;
     if (XY)
         ind = CMINT3(tempi, uu, zz);
@@ -127,37 +157,9 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 #endif
 #if (defined(FP) && !defined(USEIMAGES))
 	const LONG ind = CLONG_rtz(local_ind);
-#endif
-#if (defined(BP) && defined(MASKBP)) && !defined(USEIMAGES)
-    const LONG ind = CLONG_rtz(local_ind
-#if !defined(MASKBP3D)
-    - zz * d_Nxy
-#endif
-    );
 #endif ///////////////////// END 2D/3D indices /////////////////////
-    float local_ele = compute_element_orth_3D(s, l, diff, center, orth_ray_length);
-#ifdef SPECT ////////////////////////// SPECT ////////////////////
-    float t = FMAD(coneOfResponseStdCoeffA, d_parallel, coneOfResponseStdCoeffB);   // A*d_parallel + B
-    float t2 = t * t;
-    float c2 = coneOfResponseStdCoeffC * coneOfResponseStdCoeffC;
-    float CORstd = SQRT(t2 + c2) * INV_2SQRT2LN2;
-    local_ele = normPDF2(local_ele, 0.f, CORstd);
-#endif //////////// END SPECT / NOT SPECT /////////////
-#ifdef VOL
-	if (local_ele > bmax) {
-		return true;
-	}
-	if (local_ele < bmin)
-		local_ele = Vmax;
-	else
-		local_ele = V[CUINT_rte((local_ele - bmin) * CC)];
-#else
-	if (local_ele <= THR) {
-		return true;
-	}
-#endif
 #if defined(BP) && defined(MASKBP) ///////////////////// APPLY BP MASK /////////////////////////
-    if ((ii == 0) && (readMaskBP(maskBP, ind) == 0)) {
+    if ((ii == 0) && (readMaskBP(maskBP, ind, d_N) == 0)) {
         return false;
     }
 #endif ///////////////////// END BP MASK /////////////////////////
@@ -167,22 +169,19 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
 	denominator(ax, ind, local_ele, d_OSEM
 #ifdef TOF //////////////// TOF ////////////////
-				, element, TOFSum, DD, sigma_x, D, TOFWeights
+				, TOFSum, TOFWeights
 #ifdef LISTMODE
-        , TOFid
+				, TOFid
 #endif
 #endif //////////////// END TOF ////////////////
-#ifdef N_RAYS //////////////// MULTIRAY
-        , lor
-#endif //////////////// END MULTIRAY
 	);
 #endif //////////////// END FORWARD PROJECTION ////////////////
 #if defined(BP) //////////////// BACKWARD PROJECTION ////////////////
 	rhs(local_ele * temp, ax, local_ind, d_output, no_norm, d_Summ
 #ifdef TOF
-				, element, sigma_x, D, DD, TOFSum, TOFWeights
+			, TOFSum, TOFWeights
 #ifdef LISTMODE
-        , TOFid
+			, TOFid
 #endif
 #endif
     );
@@ -208,7 +207,7 @@ DEVICE int orthDistance3D(const int tempi,
 	const bool no_norm, CLGLOBAL CAST* Summ, CLGLOBAL CAST* d_rhs_OSEM 
 #endif
 #ifdef TOF
-	, const FLOAT element, const FLOAT sigma_x, float* D, const FLOAT DD, const FLOAT TOFSum, float* TOFWeights
+	, const float TOFSum, float* TOFWeights
 #ifdef LISTMODE
 	, const int TOFid
 #endif
@@ -217,17 +216,17 @@ DEVICE int orthDistance3D(const int tempi,
 	, FLOAT jelppi
 #endif
 #if defined(MASKBP) && defined(BP)
-	, const int ii, MASKBPTYPE maskBP
+	, const int ii, MASKBPTYPE maskBP, const uint3 d_N
 #endif
 #ifdef SPECT
     , const FLOAT coneOfResponseStdCoeffA, const FLOAT coneOfResponseStdCoeffB, const FLOAT coneOfResponseStdCoeffC, const FLOAT orth_ray_length_inv_signed
 #endif
-#ifdef N_RAYS
-    , int lor
-#endif
 ) {
 	int uu = 0;
 	bool breikki = false;
+#ifdef SPECT
+	const FLOAT c2 = coneOfResponseStdCoeffC * coneOfResponseStdCoeffC;
+#endif
     FLOAT3 l; // Precomputed cross product elements
 	const FLOAT v0 = center.x - s.x;
     l.z = diff.y * v0;
@@ -237,20 +236,23 @@ DEVICE int orthDistance3D(const int tempi,
 	const int maksimiXY = CINT(d_N1);
 	const int minimiXY = 0;
 	int uu1 = 0, uu2 = 0;
+	const FLOAT centerY0 = b2 + CFLOAT(temp2) * d2 + d2 / FLOAT_TWO;
+	const FLOAT centerZ0 = bz + CFLOAT(tempk) * dz + dz / FLOAT_TWO;
+	int zz = tempk;
+	center.z = centerZ0;
 #ifdef CRYSTZ
-	int zz = tempk;
-	for (zz = tempk; zz < maksimiZ; zz++) {
-#else
-	int zz = tempk;
+	for (zz = MAX(tempk, minimiZ); zz < maksimiZ; zz++) {
 #endif
 		center.z = bz + CFLOAT(zz) * dz + dz / FLOAT_TWO;
 		const FLOAT z0 = center.z - s.z;
 		l.x = diff.x * z0 - apu1;
 		l.y = diff.y * z0;
 #ifdef CRYSTXY
-		for (uu1 = temp2; uu1 < maksimiXY; uu1++) {
+		center.y = centerY0;
+		for (uu1 = MAX(temp2, minimiXY); uu1 < maksimiXY; uu1++) {
 #else
 		uu1 = temp2;
+		center.y = centerY0;
 #endif
 			center.y = b2 + CFLOAT(uu1) * d2 + d2 / FLOAT_TWO;
 			breikki = orthogonalHelper3D(tempi, uu1, d_N2, d_N3, d_Nxy, zz, s, l, diff, orth_ray_length, center, bmin, bmax, Vmax, V, XY, ax, temp, 
@@ -260,7 +262,7 @@ DEVICE int orthDistance3D(const int tempi,
 				Summ, d_rhs_OSEM, no_norm
 #endif
 #ifdef TOF
-				, element, sigma_x, D, DD, TOFSum, TOFWeights
+				, TOFSum, TOFWeights
 #ifdef LISTMODE
 				, TOFid
 #endif
@@ -269,13 +271,10 @@ DEVICE int orthDistance3D(const int tempi,
 				, jelppi
 #endif
 #if defined(MASKBP) && defined(BP)
-				, ii, maskBP
+				, ii, maskBP, d_N
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
-#endif
-#ifdef N_RAYS
-                    , lor
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, c2, orth_ray_length_inv_signed
 #endif
 			);
 #ifdef CRYSTXY
@@ -283,11 +282,12 @@ DEVICE int orthDistance3D(const int tempi,
 				break;
 			}
 			uu++;
+			center.y += d2;
 		}
 #endif
 #ifdef CRYSTXY
-		for (uu2 = temp2 - 1; uu2 >= minimiXY; uu2--) {
-			center.y = b2 + CFLOAT(uu2) * d2 + d2 / FLOAT_TWO;
+		center.y = centerY0 - d2;
+		for (uu2 = MIN(temp2, maksimiXY) - 1; uu2 >= minimiXY; uu2--) {
 			breikki = orthogonalHelper3D(tempi, uu2, d_N2, d_N3, d_Nxy, zz, s, l, diff, orth_ray_length, center, bmin, bmax, Vmax, V, XY, ax, temp, 
 #if defined(FP)
 				d_OSEM
@@ -295,7 +295,7 @@ DEVICE int orthDistance3D(const int tempi,
 				Summ, d_rhs_OSEM, no_norm
 #endif
 #ifdef TOF
-				, element, sigma_x, D, DD, TOFSum, TOFWeights
+				, TOFSum, TOFWeights
 #ifdef LISTMODE
 				, TOFid
 #endif
@@ -304,19 +304,17 @@ DEVICE int orthDistance3D(const int tempi,
 				, jelppi
 #endif
 #if defined(MASKBP) && defined(BP)
-				, ii, maskBP
+				, ii, maskBP, d_N
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
-#endif
-#ifdef N_RAYS
-                    , lor
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, c2, orth_ray_length_inv_signed
 #endif
 			);
 			if (breikki) {
 				break;
 			}
 			uu++;
+			center.y -= d2;
 		}
 #else
 	uu2 = temp2 - 1;
@@ -324,19 +322,21 @@ DEVICE int orthDistance3D(const int tempi,
 #ifdef CRYSTZ
 	if (uu1 == temp2 && uu2 == temp2 - 1 && breikki)
 		break;
+	center.z += dz;
 	}
 	*k = zz - 1;
-	for (zz = tempk - 1; zz >= minimiZ; zz--) {
-		center.z = bz + CFLOAT(zz) * dz + dz / FLOAT_TWO;
+	center.z = centerZ0 - dz;
+	for (zz = MIN(tempk, maksimiZ) - 1; zz >= minimiZ; zz--) {
 		const FLOAT z0 = center.z - s.z;
 		l.x = diff.x * z0 - apu1;
 		l.y = diff.y * z0;
 #ifdef CRYSTXY
-		for (uu1 = temp2; uu1 < maksimiXY; uu1++) {
+		center.y = centerY0;
+		for (uu1 = MAX(temp2, minimiXY); uu1 < maksimiXY; uu1++) {
 #else
 		uu1 = temp2;
+		center.y = centerY0;
 #endif
-			center.y = b2 + CFLOAT(uu1) * d2 + d2 / FLOAT_TWO;
 			breikki = orthogonalHelper3D(tempi, uu1, d_N2, d_N3, d_Nxy, zz, s, l, diff, orth_ray_length, center, bmin, bmax, Vmax, V, XY, ax, temp, 
 #if defined(FP)
 				d_OSEM
@@ -344,7 +344,7 @@ DEVICE int orthDistance3D(const int tempi,
 				Summ, d_rhs_OSEM, no_norm
 #endif
 #ifdef TOF
-				, element, sigma_x, D, DD, TOFSum, TOFWeights
+				, TOFSum, TOFWeights
 #ifdef LISTMODE
 				, TOFid
 #endif
@@ -353,13 +353,10 @@ DEVICE int orthDistance3D(const int tempi,
 				, jelppi
 #endif
 #if defined(MASKBP) && defined(BP)
-				, ii, maskBP
+				, ii, maskBP, d_N
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
-#endif
-#ifdef N_RAYS
-                    , lor
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, c2, orth_ray_length_inv_signed
 #endif
 			);
 #ifdef CRYSTXY
@@ -367,11 +364,12 @@ DEVICE int orthDistance3D(const int tempi,
 				break;
 			}
 			uu++;
+			center.y += d2;
 		}
 #endif
 #ifdef CRYSTXY
-		for (uu2 = temp2 - 1; uu2 >= minimiXY; uu2--) {
-			center.y = b2 + CFLOAT(uu2) * d2 + d2 / FLOAT_TWO;
+		center.y = centerY0 - d2;
+		for (uu2 = MIN(temp2, maksimiXY) - 1; uu2 >= minimiXY; uu2--) {
 			breikki = orthogonalHelper3D(tempi, uu2, d_N2, d_N3, d_Nxy, zz, s, l, diff, orth_ray_length, center, bmin, bmax, Vmax, V, XY, ax, temp, 
 #if defined(FP)
 				d_OSEM
@@ -379,7 +377,7 @@ DEVICE int orthDistance3D(const int tempi,
 				Summ, d_rhs_OSEM, no_norm
 #endif
 #ifdef TOF
-				, element, sigma_x, D, DD, TOFSum, TOFWeights
+				, TOFSum, TOFWeights
 #ifdef LISTMODE
 				, TOFid
 #endif
@@ -388,25 +386,24 @@ DEVICE int orthDistance3D(const int tempi,
 				, jelppi
 #endif
 #if defined(MASKBP) && defined(BP)
-				, ii, maskBP
+				, ii, maskBP, d_N
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
-#endif
-#ifdef N_RAYS
-                    , lor
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, c2, orth_ray_length_inv_signed
 #endif
 			);
 			if (breikki) {
 				break;
 			}
 			uu++;
+			center.y -= d2;
 		}
 #else
 	uu2 = temp2 - 1;
 #endif
 		if (uu1 == temp2 && uu2 == temp2 - 1 && breikki)
 			break;
+		center.z -= dz;
 	}
 	if (preStep) {
 		if (ku < 0)

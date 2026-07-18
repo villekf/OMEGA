@@ -3,9 +3,47 @@
 Created on Thu Jul 10 13:17:22 2025
 """
 
+def computeGeom5(x, uv, nRowsD, nColsD, dPitchY, pitch):
+    """
+    Precompute the per-projection geometry used by the branchless distance-driven
+    backprojection (projectorType5.cl built with -DGEOM5). Returns 16 floats per
+    projection: s (3), d3 (3), normX (3), normY (3), crossP (3), upperPart (1).
+    """
+    import numpy as np
+    nProj = x.size // 6
+    xs = np.reshape(x, (nProj, 6)).astype(np.float32, copy=False)
+    s = xs[:, 0:3]
+    d = xs[:, 3:6]
+    indX = np.float32(nRowsD) / np.float32(2.)
+    indY = np.float32(nColsD) / np.float32(2.)
+    if pitch:
+        uvs = np.reshape(uv, (nProj, 6)).astype(np.float32, copy=False)
+        apuX = uvs[:, 0:3] * indX
+        apuY = uvs[:, 3:6] * indY
+    else:
+        uvs = np.reshape(uv, (nProj, 2)).astype(np.float32, copy=False)
+        apuX = np.zeros((nProj, 3), dtype=np.float32)
+        apuX[:, 0] = uvs[:, 0] * indX
+        apuX[:, 1] = uvs[:, 1] * indX
+        apuY = np.zeros((nProj, 3), dtype=np.float32)
+        apuY[:, 2] = indY * np.float32(dPitchY)
+    d3 = d - apuX - apuY
+    d2 = apuX - apuY
+    normX = apuX / np.linalg.norm(apuX, axis=1, keepdims=True)
+    normY = apuY / np.linalg.norm(apuY, axis=1, keepdims=True)
+    crossP = np.cross(d2, d3 - d)
+    upperPart = np.sum(crossP * (s - d), axis=1, keepdims=True)
+    geom = np.hstack((s, d3, normX, normY, crossP, upperPart)).astype(np.float32)
+    return np.ascontiguousarray(geom).ravel()
+
 def initProjector(self):
+    try:
+        import arrayfire as af
+    except ModuleNotFoundError:
+        if self.useAF:
+            print('ArrayFire selected, but not found. Aborting.')
+            return
     self.projectorInitialized = True
-    import arrayfire as af
     import numpy as np
     import os
     from omegatomo.reconstruction.prepass import prepassPhase
@@ -33,16 +71,20 @@ def initProjector(self):
         import cupy as cp
     if self.useCuPy and self.useCUDA:
         def cupyROCm():
-            cfg = cp.show_config()
-            text = cfg if isinstance(cfg, str) else ""
-            if not text:
+            try:
+                return bool(cp.cuda.runtime.is_hip)
+            except AttributeError:
+                pass
+            try:
+                import io
+                import contextlib
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    cp.show_config()
+                lower = buf.getvalue().lower()
+                return "rocm" in lower or "hip" in lower
+            except Exception:
                 return False
-            lower = text.lower()
-            if "rocm" in lower or "hip" in lower:
-                return True
-            if "cuda" in lower:
-                return False
-            return False
     if not self.useCUDA:
         import pyopencl as cl
         from pyopencl.version import VERSION
@@ -112,6 +154,15 @@ def initProjector(self):
         self.BPType = 6
     else:
         raise ValueError('Invalid backprojector!')
+    # CuPy does not support the texture API (cupy.cuda.texture) on ROCm/HIP; creating a CUDA
+    # array fails at runtime with hipErrorUnknown. Fall back to buffers where the kernels
+    # support them, otherwise raise an error.
+    if self.useCuPy and self.useCUDA and cupyROCm():
+        if self.FPType in [4, 5] or self.BPType == 5:
+            raise ValueError('Forward projector types 4 and 5 and backprojector type 5 require texture support, which CuPy does not provide on ROCm/HIP. Use forward projector types 1-3 and/or backprojector types 1-4 instead.')
+        if self.useImages:
+            print('CuPy does not support textures on ROCm/HIP. Setting useImages to False, buffers will be used instead!')
+            self.useImages = False
     # if self.useAF == False and (self.FPType == 5 or self.BPType == 5):
     #     raise ValueError('Branchless distance-driven (projector type 5) can only be used with Arrayfire!')
     if (self.useAF == False and self.useCuPy == False) and self.projector_type == 6:
@@ -224,7 +275,9 @@ def initProjector(self):
                 self.use_32bit_atomics = False
                 bOpt += ('-DINTEL',)
         if self.useMAD:
-            if self.useCUDA:
+            if self.useCUDA and cupyROCm():
+                bOpt += ('-ffast-math','-DUSEMAD',)
+            elif self.useCUDA:
                 bOpt += ('--use_fast_math','-DUSEMAD',)
             else:
                 bOpt += (' -cl-fast-relaxed-math -DUSEMAD',)
@@ -312,7 +365,13 @@ def initProjector(self):
         if self.subsets > 1 and self.listmode == 0:
             bOpt += ('-DSTYPE=' + str(self.subsetType),'-DNSUBSETS=' + str(self.subsets),)
         
-        bOptFP = bOpt + ('-DFP',)
+        # hipRTC force-includes hiprtc_runtime.h, which uses FP as a type name, so a command-line
+        # -DFP breaks that header. ROCm builds pass -DOMEGA_FP instead; general_opencl_functions.h
+        # maps it back to FP after the hipRTC prelude.
+        if self.useCUDA and cupyROCm():
+            bOptFP = bOpt + ('-DOMEGA_FP',)
+        else:
+            bOptFP = bOpt + ('-DFP',)
         if self.localSizeFP[1] > 1:
             bOptFP += ('-DLOCAL_SIZE=' + str(self.localSizeFP[0]),'-DLOCAL_SIZE2=' + str(self.localSizeFP[1]),)
         else:
@@ -363,8 +422,10 @@ def initProjector(self):
             else:
                 bOptBP += ('-DCAST=float',)
         elif self.BPType == 4:
-            bOptBP += ('-DPTYPE4','-DNVOXELS=' + str(self.NVOXELS),)
-            if not self.CT:
+            if self.CT:
+                bOptBP += ('-DBP4','-DNVOXELS=' + str(self.NVOXELS),)
+            else:
+                bOptBP += ('-DPTYPE4','-DNVOXELS=' + str(self.NVOXELS),)
                 bOptBP += ('-DATOMICF',)
                 if self.use_64bit_atomics:
                     bOptBP += ('-DATOMIC','-DCAST=long','-DTH=' + str(self.TH),)
@@ -374,6 +435,9 @@ def initProjector(self):
                     bOptBP += ('-DCAST=float',)
         elif self.BPType == 5:
             bOptBP += ('-DPROJ5','-DNVOXELS5=' + str(self.NVOXELS5),)
+            # Use the per-projection geometry precomputed with computeGeom5 (stored in self.d_geom5)
+            if self.CT and self.listmode == 0:
+                bOptBP += ('-DGEOM5',)
             if self.meanBP:
                 bOptBP += ('-DMEANDISTANCEBP',)
     else:
@@ -439,6 +503,18 @@ def initProjector(self):
                     else:
                         for i in range(self.subsets):
                             self.d_z[i] = cp.asarray(np.zeros(1,dtype=np.float32))
+                # Precomputed per-projection geometry for the BDD backprojection (see -DGEOM5 in projectorType5.cl)
+                if self.BPType == 5 and self.CT and self.listmode == 0:
+                    self.d_geom5 = [None] * self.subsets
+                    apuG = self.x.ravel()
+                    apuG2 = self.z.ravel()
+                    if self.pitch:
+                        kerroin = 6
+                    else:
+                        kerroin = 2
+                    for i in range(self.subsets):
+                        geom = computeGeom5(apuG[self.nMeas[i] * 6 : self.nMeas[i + 1] * 6], apuG2[self.nMeas[i] * kerroin : self.nMeas[i + 1] * kerroin], self.nRowsD, self.nColsD, self.dPitchY, self.pitch)
+                        self.d_geom5[i] = cp.asarray(geom)
                 if (self.attenuation_correction and not self.CTAttenuation):
                     self.d_atten = [None] * self.subsets
                     for i in range(self.subsets):
@@ -693,6 +769,18 @@ def initProjector(self):
                 else:
                     for i in range(self.subsets):
                         self.d_z[i] = cl.array.to_device(self.queue, np.zeros(1,dtype=np.float32))
+            # Precomputed per-projection geometry for the BDD backprojection (see -DGEOM5 in projectorType5.cl)
+            if self.BPType == 5 and self.CT and self.listmode == 0:
+                self.d_geom5 = [None] * self.subsets
+                apuG = self.x.ravel()
+                apuG2 = self.z.ravel()
+                if self.pitch:
+                    kerroin = 6
+                else:
+                    kerroin = 2
+                for i in range(self.subsets):
+                    geom = computeGeom5(apuG[self.nMeas[i] * 6 : self.nMeas[i + 1] * 6], apuG2[self.nMeas[i] * kerroin : self.nMeas[i + 1] * kerroin], self.nRowsD, self.nColsD, self.dPitchY, self.pitch)
+                    self.d_geom5[i] = cl.array.to_device(self.queue, geom)
             if (self.attenuation_correction and not self.CTAttenuation):
                 self.d_atten = [None] * self.subsets
                 for i in range(self.subsets):

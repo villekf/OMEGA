@@ -533,10 +533,20 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 			}
 		}
 		if (indexBased) {
-			trIndex[kk * 2] = static_cast<uint16_t>(ring_pos1) + layerID1 * detWPseudo[0];
-			trIndex[kk * 2 + 1] = static_cast<uint16_t>(ring_pos2) + layerID2 * detWPseudo[0];
-			axIndex[kk * 2] = static_cast<uint16_t>(ring_number1) + layerID1 * rings[0];
-			axIndex[kk * 2 + 1] = static_cast<uint16_t>(ring_number2) + layerID2 * rings[0];
+			// Index-based TOF indexing also swaps the TOF directions when needed
+			// The behavior should be the same to the sinogram version
+			if (ring_pos2 < ring_pos1) {
+				trIndex[kk * 2] = static_cast<uint16_t>(ring_pos2) + layerID2 * detWPseudo[0];
+				trIndex[kk * 2 + 1] = static_cast<uint16_t>(ring_pos1) + layerID1 * detWPseudo[0];
+				axIndex[kk * 2] = static_cast<uint16_t>(ring_number2) + layerID2 * rings[0];
+				axIndex[kk * 2 + 1] = static_cast<uint16_t>(ring_number1) + layerID1 * rings[0];
+			}
+			else {
+				trIndex[kk * 2] = static_cast<uint16_t>(ring_pos1) + layerID1 * detWPseudo[0];
+				trIndex[kk * 2 + 1] = static_cast<uint16_t>(ring_pos2) + layerID2 * detWPseudo[0];
+				axIndex[kk * 2] = static_cast<uint16_t>(ring_number1) + layerID1 * rings[0];
+				axIndex[kk * 2 + 1] = static_cast<uint16_t>(ring_number2) + layerID2 * rings[0];
+			}
 			if (TOFSize > sinoSize[0])
 				TOFIndex[kk] = static_cast<uint8_t>(bins);
 		}

@@ -757,31 +757,35 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     // Output dimensions
     const size_t dim[5] = { static_cast<size_t>(inputScalars.Nx[0]), static_cast<size_t>(inputScalars.Ny[0]), static_cast<size_t>(inputScalars.Nz[0]), static_cast<size_t>(outSize2), static_cast<size_t>(inputScalars.Nt) };
 
-    if (inputScalars.projector_type == 1 || inputScalars.projector_type == 11 || inputScalars.projector_type == 14 || inputScalars.projector_type == 15 || inputScalars.projector_type == 12 || inputScalars.projector_type == 13)
+    if (inputScalars.projector_type == 1 || inputScalars.projector_type == 11 || inputScalars.projector_type == 14 || inputScalars.projector_type == 15 || inputScalars.projector_type == 12 || inputScalars.projector_type == 13 || inputScalars.projector_type == 17)
         inputScalars.FPType = 1;
     else if (inputScalars.projector_type == 2 || inputScalars.projector_type == 21 || inputScalars.projector_type == 24 || inputScalars.projector_type == 22 || inputScalars.projector_type == 23)
         inputScalars.FPType = 2;
     else if (inputScalars.projector_type == 3 || inputScalars.projector_type == 31 || inputScalars.projector_type == 34 || inputScalars.projector_type == 32 || inputScalars.projector_type == 33)
         inputScalars.FPType = 3;
-    else if (inputScalars.projector_type == 41 || inputScalars.projector_type == 4 || inputScalars.projector_type == 42 || inputScalars.projector_type == 43 || inputScalars.projector_type == 45)
+    else if (inputScalars.projector_type == 41 || inputScalars.projector_type == 4 || inputScalars.projector_type == 42 || inputScalars.projector_type == 43 || inputScalars.projector_type == 45 || inputScalars.projector_type == 47)
         inputScalars.FPType = 4;
-    else if (inputScalars.projector_type == 51 || inputScalars.projector_type == 5 || inputScalars.projector_type == 54)
+    else if (inputScalars.projector_type == 51 || inputScalars.projector_type == 5 || inputScalars.projector_type == 54 || inputScalars.projector_type == 57)
         inputScalars.FPType = 5;
     else if (inputScalars.projector_type == 6)
         inputScalars.FPType = 6;
+    else if (inputScalars.projector_type == 71 || inputScalars.projector_type == 7 || inputScalars.projector_type == 74 || inputScalars.projector_type == 75)
+        inputScalars.FPType = 7;
 
-    if (inputScalars.projector_type == 11 || inputScalars.projector_type == 41 || inputScalars.projector_type == 51 || inputScalars.projector_type == 21 || inputScalars.projector_type == 31 || inputScalars.projector_type == 1)
+    if (inputScalars.projector_type == 11 || inputScalars.projector_type == 41 || inputScalars.projector_type == 51 || inputScalars.projector_type == 21 || inputScalars.projector_type == 31 || inputScalars.projector_type == 1 || inputScalars.projector_type == 71)
         inputScalars.BPType = 1;
     else if (inputScalars.projector_type == 12 || inputScalars.projector_type == 42 || inputScalars.projector_type == 22 || inputScalars.projector_type == 32 || inputScalars.projector_type == 2)
         inputScalars.BPType = 2;
     else if (inputScalars.projector_type == 13 || inputScalars.projector_type == 43 || inputScalars.projector_type == 23 || inputScalars.projector_type == 33 || inputScalars.projector_type == 3)
         inputScalars.BPType = 3;
-    else if (inputScalars.projector_type == 14 || inputScalars.projector_type == 4 || inputScalars.projector_type == 24 || inputScalars.projector_type == 34 || inputScalars.projector_type == 54)
+    else if (inputScalars.projector_type == 14 || inputScalars.projector_type == 4 || inputScalars.projector_type == 24 || inputScalars.projector_type == 34 || inputScalars.projector_type == 54 || inputScalars.projector_type == 74)
         inputScalars.BPType = 4;
-    else if (inputScalars.projector_type == 15 || inputScalars.projector_type == 5 || inputScalars.projector_type == 45)
+    else if (inputScalars.projector_type == 15 || inputScalars.projector_type == 5 || inputScalars.projector_type == 45 || inputScalars.projector_type == 75)
         inputScalars.BPType = 5;
     else if (inputScalars.projector_type == 6)
         inputScalars.BPType = 6;
+    else if (inputScalars.projector_type == 17 || inputScalars.projector_type == 7 || inputScalars.projector_type == 47 || inputScalars.projector_type == 57)
+        inputScalars.BPType = 7;
 
 	inputScalars.seed = options.seed;
     inputScalars.det_per_ring = options.det_per_ring;
