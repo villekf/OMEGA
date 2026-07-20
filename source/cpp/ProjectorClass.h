@@ -240,12 +240,13 @@ using TimerPoint = std::chrono::steady_clock::time_point;
 #define CREATE_FLOAT_TEXTURE3D_EMPTY(TEX, ARRAY, WIDTH, HEIGHT, DEPTH) do { \
 	status = SUCCESS_VALUE; \
 } while(0)
+// Mask call sites pass x/Nx first and y/Ny second; CUDA texture specs take height before width.
 #define CREATE_MASK_TEXTURE2D_FROM_HOST(TEX, ARRAY, SRC, HEIGHT, WIDTH, FLAGS) do { \
-	const auto textureSpec = cudaMaskTextureSpec((HEIGHT), (WIDTH), 1, (FLAGS)); \
+	const auto textureSpec = cudaMaskTextureSpec((WIDTH), (HEIGHT), 1, (FLAGS)); \
 	status = createCudaTexture2DFromHost((TEX), (ARRAY), (SRC), textureSpec); \
 } while(0)
 #define CREATE_MASK_TEXTURE3D_FROM_HOST(TEX, TEX3D, ARRAY, SRC, HEIGHT, WIDTH, VIEW_DEPTH, COPY_DEPTH, ARRAY_DEPTH, FLAGS) do { \
-	auto textureSpec = cudaMaskTextureSpec((HEIGHT), (WIDTH), (VIEW_DEPTH), (FLAGS)); \
+	auto textureSpec = cudaMaskTextureSpec((WIDTH), (HEIGHT), (VIEW_DEPTH), (FLAGS)); \
 	textureSpec.copyDepth = (COPY_DEPTH); \
 	textureSpec.arrayDepth = (ARRAY_DEPTH); \
 	status = createCudaTexture3DFromHost((TEX), (ARRAY), (SRC), textureSpec); \
