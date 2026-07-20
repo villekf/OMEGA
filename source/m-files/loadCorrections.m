@@ -195,9 +195,13 @@ elseif options.attenuation_correction && options.SPECT % SPECT attenuation
     end
     if options.partitions > 1
         if ~iscell(options.vaimennus)
-            error("With dynamic reconstruction the attenuation map needs to be a cell type");
-        end
-        if numel(options.vaimennus) ~= options.partitions
+            isDynamicMeasurementAttenuation = ~options.CT_attenuation && iscell(options.SinM) && ...
+                numel(options.vaimennus) == options.nRowsD * options.nColsD * ...
+                sum(cellfun(@(x) size(x, 3), options.SinM));
+            if ~isDynamicMeasurementAttenuation
+                error("With dynamic reconstruction the attenuation map needs to be a cell type");
+            end
+        elseif numel(options.vaimennus) ~= options.partitions
             error("No attenuation map for each timestep")
         end
     end
@@ -246,13 +250,13 @@ if ~options.SPECT
                     options.normalization = data.(variables{1});
                     clear data
 					if iscell(options.SinM)
-                    	if numel(options.normalization) ~= numel(options.SinM{1})
-                        	error('Size mismatch between the current data and the normalization data file')
-                    	end
+						if numel(options.normalization) ~= numel(options.SinM{1})
+							error('Size mismatch between the current data and the normalization data file')
+						end
 					else
-                    	if numel(options.normalization) ~= numel(options.SinM)
-                        	error('Size mismatch between the current data and the normalization data file')
-                    	end
+						if numel(options.normalization) ~= numel(options.SinM)
+							error('Size mismatch between the current data and the normalization data file')
+						end
 					end
                 end
                 options.normalization = options.normalization(:);
@@ -968,7 +972,7 @@ end
 
 % Other SPECT corrections
 if options.SPECT
-    if options.scatter_correction && numel(options.SinDelayed) <= 1 && options.subtract_scatter% From 10.1371/journal.pone.0269542
+    if options.scatter_correction && numel(options.SinDelayed) <= 1 && options.subtract_scatter % See 10.1088/0031-9155/56/14/R01
         if iscell(options.SinM) % SinM is cell (size = options.partitions)
             for timestep = 1:options.partitions
                 if numel(options.ScatterC) == 1 % DEW
@@ -986,7 +990,7 @@ if options.SPECT
                     kLower = diff(options.eWin) / diff(options.eWinL);
                     kUpper = diff(options.eWin) / diff(options.eWinU);
                     if ~options.corrections_during_reconstruction
-                        options.SinM{timestep} = options.SinM{timestep} - 0.5 * (kLower * squeeze(options.ScatterC{1}{timestep}) - kUpper * squeeze(options.ScatterC{2}{timestep}));
+                        options.SinM{timestep} = options.SinM{timestep} - 0.5 * (kLower * squeeze(options.ScatterC{1}{timestep}) + kUpper * squeeze(options.ScatterC{2}{timestep}));
                         options.scatter_correction = false;
                     else
                         options.SinDelayed{timestep} = 0.5 * (kLower * squeeze(options.ScatterC{1}{timestep}) + kUpper * squeeze(options.ScatterC{2}{timestep}));
@@ -1013,7 +1017,7 @@ if options.SPECT
                 kLower = diff(options.eWin) / diff(options.eWinL);
                 kUpper = diff(options.eWin) / diff(options.eWinU);
                 if ~options.corrections_during_reconstruction
-                    options.SinM = options.SinM - 0.5 * (kLower * squeeze(options.ScatterC{1}) - kUpper * squeeze(options.ScatterC{2}));
+                    options.SinM = options.SinM - 0.5 * (kLower * squeeze(options.ScatterC{1}) + kUpper * squeeze(options.ScatterC{2}));
                     options.scatter_correction = false;
                 else
                     options.SinDelayed = 0.5 * (kLower * squeeze(options.ScatterC{1}) + kUpper * squeeze(options.ScatterC{2}));

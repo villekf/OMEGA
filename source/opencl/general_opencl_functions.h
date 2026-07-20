@@ -180,6 +180,15 @@
 
 #ifdef METAL
 
+#if defined(ATOMIC32)
+#define CAST int
+#ifndef TH
+#define TH 100000.f
+#endif
+#else
+#define CAST float
+#endif
+
 constexpr metal::sampler samplerForw(
     metal::coord::normalized,
     metal::filter::linear,
@@ -192,8 +201,13 @@ constexpr metal::sampler sampler2(
     metal::address::clamp_to_edge
 );
 
+constexpr metal::sampler samplerMask(
+    metal::coord::normalized,
+    metal::filter::nearest,
+    metal::address::clamp_to_edge
+);
+
 #ifdef HALF // 16-bit floating point
-#define CAST float
 #define CFLOAT(a) static_cast<half>(a)
 #define CFLOAT3(a) half3(a)
 #define CMFLOAT3(x,y,z) half3((x), (y), (z))
@@ -202,7 +216,6 @@ constexpr metal::sampler sampler2(
 #define make_float3(a,b,c) half3((a),(b),(c)) // TODO: replace with half
 #define MFLOAT2(a,b) half2((a), (b)) // TODO: replace with half
 #else // 32-bit floating point
-#define CAST float
 #define CFLOAT(a) static_cast<float>(a)
 #define CFLOAT3(a) float3(a)
 #define CMFLOAT3(x,y,z) float3((x), (y), (z))
@@ -246,6 +259,7 @@ constexpr metal::sampler sampler2(
 #define CUINT(a) (uint)(a)
 #define CUINT3(a) uint3(a)
 #define CUINT_rtp(a) static_cast<uint>(metal::ceil((a)))
+#define CUINT_rtz(a) static_cast<uint>(metal::trunc((a)))
 #define CUINT_sat_rtz(a) static_cast<uint>(metal::clamp(metal::trunc(((float)a)), 0.0f, 4294967295.0f)) // TODO replace float with FLOAT
 #define DEVICE inline
 #define DISTANCE metal::distance
@@ -292,12 +306,18 @@ constexpr metal::sampler sampler2(
 #define TEX2 [[texture(2)]]
 #define TEX3 [[texture(3)]]
 #define TEX4 [[texture(4)]]
+#define TEX7 [[texture(7)]]
+#define TEX8 [[texture(8)]]
+#define TEX9 [[texture(9)]]
 #define TEX19 [[texture(19)]]
 #else
 #define TEX1 [[buffer(1)]]
 #define TEX2 [[buffer(2)]]
 #define TEX3 [[buffer(3)]]
 #define TEX4 [[buffer(4)]]
+#define TEX7 [[buffer(7)]]
+#define TEX8 [[buffer(8)]]
+#define TEX9 [[buffer(9)]]
 #define TEX19 [[buffer(19)]]
 #endif
 // Metal function definitions
@@ -308,10 +328,17 @@ inline FLOAT dot(float3 a, float3 b) {
     return metal::dot(a, b);
 }
 
+#if defined(ATOMIC32)
+inline void atomicAdd(volatile device metal::atomic_int* addr, int val)
+{
+    atomic_fetch_add_explicit(addr, val, metal::memory_order_relaxed);
+}
+#else
 inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
 {
     atomic_fetch_add_explicit(addr, val, metal::memory_order_relaxed);
 }
+#endif
 
 #endif
 #ifdef OPENCL
@@ -952,20 +979,35 @@ DEVICE int readMaskBP(MASKBPTYPE maskBP,
 	const T3 ind,
 	const uint3 d_N) {
 #ifdef USEIMAGES
+#if defined(METAL)
+#ifdef MASKBPNORM
+    #ifdef MASKBP3D
+        return static_cast<int>(metal::round(maskBP.sample(samplerMask, ind).r));
+    #else
+        return static_cast<int>(metal::round(maskBP.sample(samplerMask, ind.xy).r));
+    #endif
+#else
+    #ifdef MASKBP3D
+        return static_cast<int>(metal::round(maskBP.read(uint3(ind)).r));
+    #else
+        return static_cast<int>(metal::round(maskBP.read(uint2(ind.xy)).r));
+    #endif
+#endif
+#elif defined(CUDA) || defined(HIP)
 	return
-    #if defined(CUDA) || defined(HIP)
     #ifdef MASKBP3D
         tex3D<unsigned char>(maskBP, ind.x, ind.y, ind.z);
     #else
         tex2D<unsigned char>(maskBP, ind.x, ind.y);
     #endif
     #else
+	return
     #ifdef MASKBP3D
         read_imageui(maskBP, sampler_MASK, (T4)(ind.x, ind.y, ind.z, 0)).w;
     #else
         read_imageui(maskBP, sampler_MASK, (T2)(ind.x, ind.y)).w;
     #endif
-    #endif
+#endif
 #else
 #ifdef MASKBPNORM
 	// Normalized coordinates
@@ -994,7 +1036,13 @@ DEVICE int readMaskBP(MASKBPTYPE maskBP,
 DEVICE int readMaskFP(MASKFPTYPE maskFP, MASKFPT ind) {
 	return
 #ifdef USEIMAGES
-#if defined(CUDA) || defined(HIP)
+#ifdef METAL
+#ifdef MASKFP3D
+        static_cast<int>(metal::round(maskFP.read(uint3(ind.x, ind.y, ind.z)).r));
+#else
+        static_cast<int>(metal::round(maskFP.read(uint2(ind.x, ind.y)).r));
+#endif
+#elif defined(CUDA) || defined(HIP)
 #ifdef MASKFP3D
         tex3D<unsigned char>(maskFP, ind.x, ind.y, ind.z);
 #else
@@ -1151,9 +1199,8 @@ DEVICE void forwardProject(const float local_ele, PTR_THR float *ax, const typeT
 #elif defined(METAL)
 #ifdef PTYPE4
     *ax = local_ele * d_OSEM.sample(samplerForw, (local_ind)).r;
-#endif
-#ifdef USEIMAGES
-    *ax = local_ele * d_OSEM.read((uint3)(local_ind)).r;
+#elif defined(USEIMAGES)
+    *ax = local_ele * d_OSEM.read(uint3(local_ind.x, local_ind.y, local_ind.z)).r;
 #else
     *ax = (local_ele * d_OSEM[local_ind]);
 #endif
@@ -1234,7 +1281,11 @@ DEVICE void rhs(const float local_ele, PTR_THR const float *ax, const LONG local
 #ifdef ATOMIC
 	atom_add(&d_rhs_OSEM[local_ind], convert_long(yaxTOF * TH));
 #elif defined(ATOMIC32)
+#ifdef METAL
+	atomicAdd((volatile device metal::atomic_int*)(&d_rhs_OSEM[local_ind]), CINT_rtz(yaxTOF * TH));
+#else
 	atomic_add(&d_rhs_OSEM[local_ind], CINT(yaxTOF * TH));
+#endif
 #else
 #ifdef METAL
 	atomicAdd((volatile device metal::atomic_float*)(&d_rhs_OSEM[local_ind]), yaxTOF);
@@ -1246,7 +1297,11 @@ DEVICE void rhs(const float local_ele, PTR_THR const float *ax, const LONG local
 #ifdef ATOMIC
 		atom_add(&d_Summ[local_ind], convert_long(val * TH));
 #elif defined(ATOMIC32)
+#ifdef METAL
+		atomicAdd((volatile device metal::atomic_int*)(&d_Summ[local_ind]), CINT_rtz(val * TH));
+#else
 		atomic_add(&d_Summ[local_ind], CINT(val * TH));
+#endif
 #else
 #ifdef METAL
 		atomicAdd((volatile device metal::atomic_float*)&d_Summ[local_ind], val);
@@ -1409,51 +1464,52 @@ DEVICE void extendRayToFOV(
     float tmax =  1e8f;
     const float epsVal = 1.0e-8f;
 
-    if (fabs(dir.x) < epsVal) {
+    if (FABS(dir.x) < epsVal) {
         if (p0.x < boxMin.x || p0.x > boxMax.x) {
             return;
         }
     } else {
         float t1 = (boxMin.x - p0.x) / dir.x;
         float t2 = (boxMax.x - p0.x) / dir.x;
-        float tNear = fmin(t1, t2);
-        float tFar  = fmax(t1, t2);
-        tmin = fmax(tmin, tNear);
-        tmax = fmin(tmax, tFar);
+        float tNear = FMIN(t1, t2);
+        float tFar  = FMAX(t1, t2);
+        tmin = FMAX(tmin, tNear);
+        tmax = FMIN(tmax, tFar);
     }
 
-    if (fabs(dir.y) < epsVal) {
+    if (FABS(dir.y) < epsVal) {
         if (p0.y < boxMin.y || p0.y > boxMax.y) {
             return;
         }
     } else {
         float t1 = (boxMin.y - p0.y) / dir.y;
         float t2 = (boxMax.y - p0.y) / dir.y;
-        float tNear = fmin(t1, t2);
-        float tFar  = fmax(t1, t2);
-        tmin = fmax(tmin, tNear);
-        tmax = fmin(tmax, tFar);
+        float tNear = FMIN(t1, t2);
+        float tFar  = FMAX(t1, t2);
+        tmin = FMAX(tmin, tNear);
+        tmax = FMIN(tmax, tFar);
     }
 
-    if (fabs(dir.z) < epsVal) {
+    if (FABS(dir.z) < epsVal) {
         if (p0.z < boxMin.z || p0.z > boxMax.z) {
             return;
         }
     } else {
         float t1 = (boxMin.z - p0.z) / dir.z;
         float t2 = (boxMax.z - p0.z) / dir.z;
-        float tNear = fmin(t1, t2);
-        float tFar  = fmax(t1, t2);
-        tmin = fmax(tmin, tNear);
-        tmax = fmin(tmax, tFar);
+        float tNear = FMIN(t1, t2);
+        float tFar  = FMAX(t1, t2);
+        tmin = FMAX(tmin, tNear);
+        tmax = FMIN(tmax, tFar);
     }
 
     if (tmax < tmin)
         return;
 
+#if !defined(ORTH) // The original ray start point is essential for orth, as Gaussian collimator response width depends on that
     if (!((p0.x >= boxMin.x && p0.x <= boxMax.x) && (p0.y >= boxMin.y && p0.y <= boxMax.y) && (p0.z >= boxMin.z && p0.z <= boxMax.z)))
         *s = p0 + tmin * dir;
-
+#endif
     *d = p0 + tmax * dir;
     return;
 }
@@ -1624,6 +1680,14 @@ DEVICE void compute_attenuation(const float val, const typeT ind, IMTYPE d_atten
 		tex3D<float>(d_atten, ind.x, ind.y, ind.z);
 #else
 		d_atten[ind];
+#endif
+#elif defined(METAL)
+#if defined(PTYPE4)
+        d_atten.sample(samplerForw, float3(ind.x, ind.y, ind.z)).r;
+#elif defined(USEIMAGES)
+        d_atten.read(uint3(ind.x, ind.y, ind.z)).r;
+#else
+        d_atten[ind];
 #endif
 #else
 #if defined(PTYPE4)

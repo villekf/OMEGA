@@ -263,24 +263,6 @@ end
 if ~isfield(options, 'oOffsetZ')
     options.oOffsetZ = 0;
 end
-if ~isfield(options, 'totalFOVxmin')
-    options.totalFOVxmin = -options.FOVa_x / 2 + options.oOffsetX;
-end
-if ~isfield(options, 'totalFOVymin')
-    options.totalFOVymin = -options.FOVa_y / 2 + options.oOffsetY;
-end
-if ~isfield(options, 'totalFOVzmin')
-    options.totalFOVzmin = -options.axial_fov / 2 + options.oOffsetZ;
-end
-if ~isfield(options, 'totalFOVxmax')
-    options.totalFOVxmax = options.FOVa_x / 2 + options.oOffsetX;
-end
-if ~isfield(options, 'totalFOVymax')
-    options.totalFOVymax = options.FOVa_y / 2 + options.oOffsetY;
-end
-if ~isfield(options, 'totalFOVzmax')
-    options.totalFOVzmax = options.axial_fov / 2 + options.oOffsetZ;
-end
 if ~isfield(options, 'tube_width_z')
     options.tube_width_z = 0;
 end
@@ -927,6 +909,9 @@ end
 if ~isfield(options, 'useEFOV')
     options.useEFOV = false;
 end
+if ~isfield(options, 'eFOVShift')
+    options.eFOVShift = [0 0 0];
+end
 if ~isfield(options, 'useExtrapolation')
     options.useExtrapolation = false;
 end
@@ -965,6 +950,9 @@ if ~isfield(options, 'delta_PKMA')
 end
 if ~isfield(options, 'useMultiResolutionVolumes')
     options.useMultiResolutionVolumes = false;
+end
+if ~isfield(options, 'storeMultiResolution') % TODO: true value stores all multi-resolution volumes as cell array.
+    options.storeMultiResolution = false;
 end
 if ~isfield(options, 'nMultiVolumes')
     options.nMultiVolumes = 0;

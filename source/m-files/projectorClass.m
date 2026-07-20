@@ -458,35 +458,99 @@ classdef projectorClass
             end
             obj.param.MAP = ll > 0;
 
-            if isfield(obj.param, 'maskFP') && numel(obj.param.maskFP) > 1 && ((numel(obj.param.maskFP) ~= obj.param.nRowsD * obj.param.nColsD && numel(obj.param.maskFP) ~= obj.param.nRowsD * obj.param.nColsD * obj.param.nProjections && (obj.param.CT || obj.param.SPECT)) || (numel(obj.param.maskFP) ~= obj.param.Nang * obj.param.Ndist && numel(obj.param.maskFP) ~= obj.param.Nang * obj.param.Ndist * obj.param.NSinos && ~obj.param.CT))
+            expectedMaskProjections = obj.param.nProjections;
+            if obj.param.SPECT && iscell(obj.param.SinM)
+                expectedMaskProjections = sum(cellfun(@(x) size(x, 3), obj.param.SinM));
+            end
+            if isfield(obj.param, 'maskFP') && iscell(obj.param.maskFP)
+                if ~obj.param.SPECT || ~iscell(obj.param.SinM) || numel(obj.param.maskFP) ~= numel(obj.param.SinM)
+                    error('Dynamic forward projection masks require one mask per SPECT timeframe!')
+                end
+                maskProjectionCounts = zeros(numel(obj.param.SinM), 1);
+                for kk = 1 : numel(obj.param.SinM)
+                    maskProjectionCounts(kk) = size(obj.param.SinM{kk}, 3);
+                    if size(obj.param.maskFP{kk}, 1) ~= obj.param.nRowsD || size(obj.param.maskFP{kk}, 2) ~= obj.param.nColsD
+                        error('Each dynamic forward projection mask must match the projection image row and column dimensions!')
+                    end
+                    maskDepth = size(obj.param.maskFP{kk}, 3);
+                    if maskDepth == 1
+                        obj.param.maskFP{kk} = repmat(obj.param.maskFP{kk}, 1, 1, maskProjectionCounts(kk));
+                    elseif maskDepth ~= maskProjectionCounts(kk)
+                        error('Each dynamic forward projection mask must contain either one image or one image per projection in its timeframe!')
+                    end
+                    obj.param.maskFP{kk} = uint8(obj.param.maskFP{kk});
+                end
+                obj.param.useMaskFP = true;
+                obj.param.maskFPZ = sum(maskProjectionCounts);
+            elseif isfield(obj.param, 'maskFP') && numel(obj.param.maskFP) > 1 && ((numel(obj.param.maskFP) ~= obj.param.nRowsD * obj.param.nColsD && numel(obj.param.maskFP) ~= obj.param.nRowsD * obj.param.nColsD * expectedMaskProjections && (obj.param.CT || obj.param.SPECT)) || (numel(obj.param.maskFP) ~= obj.param.Nang * obj.param.Ndist && numel(obj.param.maskFP) ~= obj.param.Nang * obj.param.Ndist * obj.param.NSinos && ~obj.param.CT && ~obj.param.SPECT))
                 if obj.param.CT || obj.param.SPECT
-                    error(['Incorrect size for the forward projection mask! Must be the size of a single projection image [' num2str(obj.param.nRowsD) ' ' num2str(obj.param.nColsD) '] or full stack of [' num2str(obj.param.nRowsD) ' ' num2str(obj.param.nColsD)  ' ' num2str(obj.param.nProjections) ']'])
+                    error(['Incorrect size for the forward projection mask! Must be the size of a single projection image [' num2str(obj.param.nRowsD) ' ' num2str(obj.param.nColsD) '] or full stack of [' num2str(obj.param.nRowsD) ' ' num2str(obj.param.nColsD)  ' ' num2str(expectedMaskProjections) ']'])
                 else
                     error(['Incorrect size for the forward projection mask! Must be the size of a single sinogram image [' num2str(obj.param.nRowsD) ' ' num2str(obj.param.nColsD) '] or all sinograms [' num2str(obj.param.nRowsD) ' ' num2str(obj.param.nColsD) ' ' num2str(obj.param.NSinos) ']'])
                 end
-            elseif isfield(obj.param, 'maskFP') && numel(obj.param.maskFP) > 1 && (numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD || numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD * obj.param.nProjections)
+            elseif isfield(obj.param, 'maskFP') && numel(obj.param.maskFP) > 1 && (numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD || numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD * expectedMaskProjections)
                 obj.param.useMaskFP = true;
                 obj.param.maskFPZ = size(obj.param.maskFP,3);
             else
                 obj.param.useMaskFP = false;
             end
-            if isfield(obj.param, 'maskBP') && numel(obj.param.maskBP) > 1 && (numel(obj.param.maskBP) ~= obj.param.Nx(1) * obj.param.Ny(1) && numel(obj.param.maskBP) ~= obj.param.Nx(1) * obj.param.Ny(1) * obj.param.Nz(1))
-                error(['Incorrect size for the backward projection mask! Must be the size of a single image [' num2str(obj.param.Nx(1)) ' ' num2str(obj.param.Ny(1)) '] or 3D stack [' num2str(obj.param.Nx(1)) ' ' num2str(obj.param.Ny(1)) ' ' num2str(obj.param.Nz(1)) ']'])
-            elseif isfield(obj.param, 'maskBP') && (numel(obj.param.maskBP) ~= obj.param.Nx(1) * obj.param.Ny(1) || numel(obj.param.maskBP) ~= obj.param.Nx(1) * obj.param.Ny(1) * obj.param.Nz(1))
+            if numel(obj.param.partitions) > 1
+                partitions = numel(obj.param.partitions);
+            elseif isempty(obj.param.partitions)
+                partitions = 1;
+            else
+                partitions = obj.param.partitions;
+            end
+            if isfield(obj.param, 'maskBP') && (iscell(obj.param.maskBP) || numel(obj.param.maskBP) > 1)
+                maskBP2D = double(obj.param.Nx(1)) * double(obj.param.Ny(1));
+                maskBP3D = maskBP2D * double(obj.param.Nz(1));
+                if iscell(obj.param.maskBP)
+                    if numel(obj.param.maskBP) ~= partitions
+                        error("No backward projection mask for each timestep")
+                    end
+                    maskBPElements = numel(obj.param.maskBP{1});
+                    for tt = 1 : partitions
+                        if ~(numel(obj.param.maskBP{tt}) == maskBP2D || numel(obj.param.maskBP{tt}) == maskBP3D)
+                            error(['Incorrect size for the backward projection mask! Must be the size of a single image [' num2str(obj.param.Nx(1)) ' ' num2str(obj.param.Ny(1)) '] or 3D stack [' num2str(obj.param.Nx(1)) ' ' num2str(obj.param.Ny(1)) ' ' num2str(obj.param.Nz(1)) ']'])
+                        elseif numel(obj.param.maskBP{tt}) ~= maskBPElements
+                            error('All dynamic backward projection masks must use the same 2D or 3D dimensions!')
+                        end
+                    end
+                    if maskBPElements == maskBP3D
+                        maskBPZ = obj.param.Nz(1);
+                    else
+                        maskBPZ = 1;
+                    end
+                else
+                    if ~(numel(obj.param.maskBP) == maskBP2D || numel(obj.param.maskBP) == maskBP3D)
+                        error(['Incorrect size for the backward projection mask! Must be the size of a single image [' num2str(obj.param.Nx(1)) ' ' num2str(obj.param.Ny(1)) '] or 3D stack [' num2str(obj.param.Nx(1)) ' ' num2str(obj.param.Ny(1)) ' ' num2str(obj.param.Nz(1)) ']'])
+                    end
+                    if numel(obj.param.maskBP) == maskBP3D
+                        maskBPZ = obj.param.Nz(1);
+                    else
+                        maskBPZ = 1;
+                    end
+                end
                 if obj.param.usePriorMask
                     obj.param.useMaskBP = false;
-                    obj.param.maskBPZ = size(obj.param.maskBP,3);
+                    obj.param.maskBPZ = maskBPZ;
                 else
                     obj.param.useMaskBP = true;
-                    obj.param.maskBPZ = size(obj.param.maskBP,3);
+                    obj.param.maskBPZ = maskBPZ;
                 end
             elseif ~(obj.param.attenuation_correction && obj.param.SPECT)
                 obj.param.useMaskBP = false;
             end
-            if isfield(obj.param, 'maskBP') && ~isa(obj.param.maskBP, 'uint8')
+            if isfield(obj.param, 'maskBP') && iscell(obj.param.maskBP)
+                for tt = 1 : numel(obj.param.maskBP)
+                    if ~isa(obj.param.maskBP{tt}, 'uint8')
+                        obj.param.maskBP{tt} = uint8(obj.param.maskBP{tt});
+                    end
+                end
+            elseif isfield(obj.param, 'maskBP') && ~isa(obj.param.maskBP, 'uint8')
                 obj.param.maskBP = uint8(obj.param.maskBP);
             end
-            if isfield(obj.param, 'maskFP') && ~isa(obj.param.maskFP, 'uint8')
+            if isfield(obj.param, 'maskFP') && ~iscell(obj.param.maskFP) && ~isa(obj.param.maskFP, 'uint8')
                 obj.param.maskFP = uint8(obj.param.maskFP);
             end
             rings = obj.param.rings;
@@ -511,6 +575,22 @@ classdef projectorClass
                 partitions = obj.param.partitions;
             end
             obj.param.Nt = partitions;
+            if obj.param.SPECT && partitions > 1 && iscell(obj.param.SinM)
+                projectionCounts = zeros(partitions, 1);
+                for kk = 1 : partitions
+                    projectionCounts(kk) = size(obj.param.SinM{kk}, 3);
+                    if projectionCounts(kk) < 1
+                        error('Every dynamic SPECT timeframe must contain at least one projection image!')
+                    end
+                end
+                obj.param.nProjectionsPerFrame = projectionCounts;
+                if numel(obj.param.angles) ~= sum(projectionCounts) || ...
+                        numel(obj.param.radiusPerProj) ~= sum(projectionCounts) || ...
+                        numel(obj.param.swivelAngles) ~= sum(projectionCounts)
+                    error(['Dynamic SPECT geometry must contain one angle, radius, and swivel angle ' ...
+                        'for every projection image across all timeframes!'])
+                end
+            end
             if partitions > 1 && obj.param.subset_type == 3
                 error('Subset type 3 is not supported with dynamic data!')
             end
@@ -722,15 +802,52 @@ classdef projectorClass
             obj.param.totMeas = obj.param.nColsD * obj.param.nRowsD * obj.param.nProjections;
 
             obj.nMeas = [int64(0);int64(cumsum(obj.nMeas))];
-            if iscell(obj.index) && (obj.param.Nt == 1 || obj.param.listmode == 0)
+            if iscell(obj.index) && (obj.param.Nt == 1 || ...
+                    (obj.param.listmode == 0 && ~isfield(obj.param, 'nProjectionsPerFrame')))
                 obj.index = cell2mat(obj.index);
             end
 
-            [xx,yy,zz,obj.param.dx,obj.param.dy,obj.param.dz,obj.param.bx,obj.param.by,obj.param.bz] = computePixelSize([obj.param.FOVa_x; obj.param.FOVa_y; obj.param.axial_fov], [obj.param.Nx; obj.param.Ny; obj.param.Nz], ...
-                [obj.param.oOffsetX; obj.param.oOffsetY; obj.param.oOffsetZ], obj.param.cType);
+            [...
+                xx,yy,zz, ...
+                obj.param.dx,obj.param.dy,obj.param.dz,...
+                obj.param.bx,obj.param.by,obj.param.bz...
+            ] = computePixelSize(...
+                [obj.param.FOVa_x; obj.param.FOVa_y; obj.param.axial_fov], ...
+                [obj.param.Nx; obj.param.Ny; obj.param.Nz], ...
+                [obj.param.oOffsetX; obj.param.oOffsetY; obj.param.oOffsetZ], ...
+                obj.param.useMultiResolutionVolumes,...
+                obj.param.eFOVShift, ...
+                obj.param.cType...
+            );
             obj.param.Nx = uint32(obj.param.Nx);
             obj.param.Ny = uint32(obj.param.Ny);
             obj.param.Nz = uint32(obj.param.Nz);
+
+            % Multiresolution total FOV size
+            if numel(obj.param.FOVa_x) == 1 % No eFOV
+                FOV = [obj.param.FOVa_x; obj.param.FOVa_y; obj.param.axial_fov];
+            elseif numel(obj.param.FOVa_x) == 3 % Axial eFOV only
+                FOV = [obj.param.FOVa_x(1); obj.param.FOVa_y(1); sum(obj.param.axial_fov)];
+            elseif numel(obj.param.FOVa_x) == 5 % Transaxial eFOV only
+                FOV = [
+                    obj.param.FOVa_x(1) + obj.param.FOVa_x(2) + obj.param.FOVa_x(3);
+                    obj.param.FOVa_y(1) + obj.param.FOVa_y(4) + obj.param.FOVa_y(5);
+                    obj.param.axial_fov(1)
+                ];
+            elseif numel(obj.param.FOVa_x) == 7 % Axial + transaxial eFOV
+                FOV = [
+                    obj.param.FOVa_x(1) + obj.param.FOVa_x(4) + obj.param.FOVa_x(5);
+                    obj.param.FOVa_y(1) + obj.param.FOVa_y(6) + obj.param.FOVa_y(7);
+                    obj.param.axial_fov(1) + obj.param.axial_fov(2) + obj.param.axial_fov(3)
+                ];
+            end
+
+            obj.param.totalFOVxmin = -FOV(1) / 2  + obj.param.oOffsetX + obj.param.eFOVShift(1);
+            obj.param.totalFOVymin = -FOV(2) / 2  + obj.param.oOffsetY + obj.param.eFOVShift(2);
+            obj.param.totalFOVzmin = -FOV(3) / 2  + obj.param.oOffsetZ + obj.param.eFOVShift(3);
+            obj.param.totalFOVxmax = FOV(1) / 2 + obj.param.oOffsetX  + obj.param.eFOVShift(1);
+            obj.param.totalFOVymax = FOV(2) / 2 + obj.param.oOffsetY  + obj.param.eFOVShift(2);
+            obj.param.totalFOVzmax = FOV(3) / 2 + obj.param.oOffsetZ  + obj.param.eFOVShift(3);
 
 
             if obj.param.use_raw_data
@@ -784,16 +901,35 @@ classdef projectorClass
             elseif obj.param.CT || obj.param.PET || (obj.param.SPECT && obj.param.projector_type ~= 6)
                 if obj.param.subset_type >= 8 && obj.param.subsets > 1 && ~obj.param.FDK
                     if obj.param.CT || obj.param.SPECT
-                        x_det = reshape(x_det, 6, obj.param.nProjections, obj.param.partitions);
-                        x_det = x_det(:,obj.index, :);
-                        x_det = x_det(:);
+                        if obj.param.SPECT && isfield(obj.param, 'nProjectionsPerFrame')
+                            projectionCounts = double(obj.param.nProjectionsPerFrame(:));
+                            xFrames = cell(1, obj.param.Nt);
+                            zFrames = cell(1, obj.param.Nt);
+                            projectionOffset = 0;
+                            for tt = 1 : obj.param.Nt
+                                frameRange = projectionOffset + (1 : projectionCounts(tt));
+                                xFrames{tt} = x_det(:, frameRange);
+                                xFrames{tt} = xFrames{tt}(:, obj.index{tt});
+                                zFrames{tt} = z_det(:, frameRange);
+                                zFrames{tt} = zFrames{tt}(:, obj.index{tt});
+                                projectionOffset = projectionOffset + projectionCounts(tt);
+                            end
+                            x_det = cell2mat(xFrames);
+                            z_det = cell2mat(zFrames);
+                            x_det = x_det(:);
+                            z_det = z_det(:);
+                        else
+                            x_det = reshape(x_det, 6, obj.param.nProjections, obj.param.partitions);
+                            x_det = x_det(:,obj.index, :);
+                            x_det = x_det(:);
+                        end
                         if obj.param.pitch
                             z_det = reshape(z_det, 6, obj.param.nProjections);
                             z_det = z_det(:,obj.index);
                             z_det = z_det(:);
                         elseif obj.param.useHelical
                             z_det = z_det(obj.index);
-                        else
+                        elseif ~(obj.param.SPECT && isfield(obj.param, 'nProjectionsPerFrame'))
                             z_det = reshape(z_det, 2, obj.param.nProjections, obj.param.partitions);
                             z_det = z_det(:,obj.index, :);
                             z_det = z_det(:);
@@ -872,18 +1008,37 @@ classdef projectorClass
             if obj.param.offsetCorrection && obj.param.subsets > 1
                 obj.param.OffsetLimit = obj.param.OffsetLimit(obj.index);
             end
-			if obj.param.SPECT
+            if obj.param.SPECT
                 obj.param = SPECTParameters(obj.param);
             end
 
             if obj.param.projector_type == 6
                 %obj.param = SPECTParameters(obj.param);
                 if obj.param.subsets > 1 && (obj.param.subset_type == 8 || obj.param.subset_type == 9 || obj.param.subset_type == 10 || obj.param.subset_type == 11)
-                    obj.param.angles = obj.param.angles(obj.index);
-                    obj.param.swivelAngles = obj.param.swivelAngles(obj.index);
-                    obj.param.radiusPerProj = obj.param.radiusPerProj(obj.index);
-                    obj.param.blurPlanes = obj.param.blurPlanes(obj.index);
-                    obj.param.blurPlanes2 = obj.param.blurPlanes2(obj.index);
+                    geometryFields = {'angles', 'swivelAngles', 'radiusPerProj', 'blurPlanes', 'blurPlanes2'};
+                    if iscell(obj.index)
+                        projectionCounts = double(obj.param.nProjectionsPerFrame(:));
+                        for fieldIndex = 1 : numel(geometryFields)
+                            field = geometryFields{fieldIndex};
+                            values = obj.param.(field);
+                            reordered = cell(obj.param.Nt, 1);
+                            projectionOffset = 0;
+                            for tt = 1 : obj.param.Nt
+                                frameRange = projectionOffset + (1 : projectionCounts(tt));
+                                reordered{tt} = values(frameRange);
+                                reordered{tt} = reordered{tt}(obj.index{tt});
+                                reordered{tt} = reordered{tt}(:);
+                                projectionOffset = projectionOffset + projectionCounts(tt);
+                            end
+                            obj.param.(field) = cell2mat(reordered);
+                        end
+                    else
+                        for fieldIndex = 1 : numel(geometryFields)
+                            field = geometryFields{fieldIndex};
+                            values = obj.param.(field);
+                            obj.param.(field) = values(obj.index);
+                        end
+                    end
                 end
             end
             %% This part is used when the observation matrix is calculated on-the-fly
@@ -1236,4 +1391,3 @@ classdef projectorClass
         end
     end
 end
-

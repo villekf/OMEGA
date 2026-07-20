@@ -9,6 +9,7 @@
 #define CTYPE2 cl_float2
 #define ITYPE3 cl_int3
 #elif defined(METAL)
+#include "metal_error.hpp"
 #include <simd/simd.h>
 #define CTYPE3 simd::float3
 #define CTYPE2 simd::float2
@@ -65,7 +66,7 @@ typedef struct structForScalars {
 	bool use_psf = false, TOF = false, SPECT = false, pitch = false, PET = false, meanFP = false, meanBP = false,
 		maskFP = false, maskBP = false, orthXY = false, orthZ = false, CT = false, atomic_64bit = false, atomic_32bit = false, loadTOF = true,
 		saveIter = false, enforcePositivity = false, computeSensImag = false, useMAD = true, useImages = false, eFOV = false,
-		useExtendedFOV = false, use64BitIndices = false, TGV2D = false, multiResolution = false, offset = false, relaxScaling = false,
+		useExtendedFOV = false, use64BitIndices = false, TGV2D = false, multiResolution = false, storeMultiResolution = false, offset = false, relaxScaling = false,
 		computeRelaxation = false, storeFP = false, deconvolution = false, CTAttenuation = true, largeDim = false, storeResidual = false,
 		useBuffers = true, useFDKWeights = false, indexBased = false, FISTAAcceleration = false, stochastic = false, useTotLength = true,
 		useParallelBeam = false, useHelical = false;

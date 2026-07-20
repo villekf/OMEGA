@@ -1,5 +1,13 @@
 # Release notes
 
+- Dynamic reconstruction improvements
+  - Timeframes can now contain different amount of projection images
+  - Measurement-domain correction data is now correctly indexed in dynamic reconstruction
+  - Dynamic reconstruction output now uses spatial dimensions followed by saved iteration and timeframe dimensions consistently. With `options.storeMultiResolution`, each cell/list item is one volume with this same dimension order.
+- The main FOV in multi-resolution reconstruction can be shifted off-center
+- Multi-resolution reconstruction for implementation 5
+- options.storeMultiResolution replaces the CELL macro
+
 ## OMEGA v2.3.0
 
 ### New features

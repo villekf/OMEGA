@@ -355,8 +355,20 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	size_t mDim = mxGetNumberOfElements(Sin) / static_cast<size_t>(inputScalars.Nt);
 
 	mxArray* cell_array_ptr, * FPptr, *resPtr;
-	if (CELL && inputScalars.nMultiVolumes > 0)
-		cell_array_ptr = mxCreateCellMatrix(static_cast<mwSize>(inputScalars.nMultiVolumes) + 1, 1);
+	if (inputScalars.storeMultiResolution && inputScalars.nMultiVolumes > 0) {
+        cell_array_ptr = mxCreateCellMatrix(static_cast<mwSize>(inputScalars.nMultiVolumes) + 1, 1);
+        for (uint32_t ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+            const mwSize multiResolutionDim[5] = {
+                static_cast<mwSize>(inputScalars.Nx[ii]),
+                static_cast<mwSize>(inputScalars.Ny[ii]),
+                static_cast<mwSize>(inputScalars.Nz[ii]),
+                static_cast<mwSize>(outSize2),
+                static_cast<mwSize>(inputScalars.Nt)
+            };
+            mxSetCell(cell_array_ptr, static_cast<mwIndex>(ii),
+                mxCreateNumericArray(5, multiResolutionDim, mxSINGLE_CLASS, mxREAL));
+        }
+    }
 	else
 		cell_array_ptr = mxCreateNumericArray(5, dim, mxSINGLE_CLASS, mxREAL);
 	if (inputScalars.raw)

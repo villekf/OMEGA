@@ -260,6 +260,8 @@ struct inputStruct {
     bool enforcePositivity = false;
     // Use multi-resolution reconstruction
     bool useMultiResolutionVolumes = false;
+    // Save multi-resolution volumes
+    bool storeMultiResolution = false;
     // Save all iterations to host
     bool save_iter = false;
     // Use deblurring
@@ -615,6 +617,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.pitch = options.pitch;
     inputScalars.enforcePositivity = options.enforcePositivity;
     inputScalars.multiResolution = options.useMultiResolutionVolumes;
+    inputScalars.storeMultiResolution = options.storeMultiResolution;
     inputScalars.nMultiVolumes = options.nMultiVolumes;
     inputScalars.indexBased = options.useIndexBasedReconstruction;
 
@@ -1406,7 +1409,6 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
 // Transfer the ArrayFire arrays from the device to the host pointers
 void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, float* output, float* FPoutput, const scalarStruct& inputScalars,
     std::vector<std::vector<std::vector<float>>>& FPEstimates) {
-    int64_t oo = 0;
     for (int timestep = 0; timestep < inputScalars.Nt; timestep++) {
         if (inputScalars.storeFP) {
             size_t dim = 0ULL;
@@ -1422,7 +1424,8 @@ void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, float* out
             }
         }
         // Transfer data back to host
-        if (CELL && inputScalars.nMultiVolumes > 0) {
+        if (inputScalars.storeMultiResolution && inputScalars.nMultiVolumes > 0) {
+            size_t volumeOffset = 0ULL;
             for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
                 if (DEBUG) {
                     mexPrintBase("inputScalars.Nx[ii] = %d\n", inputScalars.Nx[ii]);
@@ -1433,30 +1436,31 @@ void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, float* out
                 if (inputScalars.saveIter || inputScalars.saveIterationsMiddle > 0) {
                 }
                 else {
+                    const size_t outputOffset = volumeOffset + static_cast<size_t>(timestep) * inputScalars.im_dim[ii];
                     if (MethodList.FDK)
-                        vec.rhs_os[timestep][ii].host(&output[oo]);
+                        vec.rhs_os[timestep][ii].host(&output[outputOffset]);
                     else
-                        vec.im_os[timestep][ii].host(&output[oo]);
+                        vec.im_os[timestep][ii].host(&output[outputOffset]);
                     if (inputScalars.verbose >= 3)
                         mexPrint("Data transfered to host");
-                    oo += inputScalars.im_dim[ii];
                 }
+                volumeOffset += static_cast<size_t>(inputScalars.Nt) * inputScalars.im_dim[ii];
             }
         }
         else {
             if (inputScalars.saveIter || inputScalars.saveIterationsMiddle > 0) {
             }
             else {
+                const size_t outputOffset = static_cast<size_t>(timestep) * inputScalars.im_dim[0];
                 if (MethodList.FDK && inputScalars.largeDim) {
                 }
                 else if (MethodList.FDK && !inputScalars.largeDim) {
-                    vec.rhs_os[timestep][0].host(&output[oo]);
+                    vec.rhs_os[timestep][0].host(&output[outputOffset]);
                 }
                 else
-                    vec.im_os[timestep][0].host(&output[oo]);
+                    vec.im_os[timestep][0].host(&output[outputOffset]);
                 if (inputScalars.verbose >= 3)
                     mexPrint("Data transfered to host");
-                oo += inputScalars.im_dim[0];
             }
         }
         af::sync();

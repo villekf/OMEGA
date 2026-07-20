@@ -571,7 +571,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                         vec.im_os[tt][ii] = af::constant(1.f, inputScalars.im_dim[ii], af_dtype::f32);
                         if (inputScalars.projector_type == 6) {
                             oneInput = af::constant(1.f, inputScalars.nRowsD, inputScalars.nColsD, length[indD], af_dtype::f32);
-                            forwardProjectionType6(oneInput, w_vec, vec, inputScalars, length[indD], uu, proj, ii, atten);
+                            forwardProjectionType6(oneInput, w_vec, vec, inputScalars, length[indD], pituus[indD], proj, ii, atten);
                             uu += length[indD];
                         }
                         else {
@@ -629,7 +629,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             af::array inputM = E(af::seq(alku, alku + lengthFull[indD] * nBins - 1), af_dtype::f32);
                             computeIntegralImage(inputScalars, w_vec, length[indD], inputM, meanBP);
                             if (inputScalars.projector_type == 6)
-                                backprojectionType6(inputM, w_vec, vec, inputScalars, length[indD], uu, proj, tt, subIter, 0, 0, 0, ii, atten);
+                                backprojectionType6(inputM, w_vec, vec, inputScalars, length[indD], pituus[indD], proj, tt, subIter, 0, 0, 0, ii, atten);
                             else {
                                 status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, inputM, subIter, tt, length, lengthFull[indD], meanBP, g, proj, (inputScalars.listmode > 0 && inputScalars.computeSensImag), ii, pituus);
                                 if (status != 0) {
@@ -787,7 +787,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             computeIntegralImage(inputScalars, w_vec, length[indD], oneInput, meanBP);
                             oneInput.eval();
                             if (inputScalars.projector_type == 6)
-                                backprojectionType6(oneInput, w_vec, vec, inputScalars, length[indD], uu, proj, 0, subIter, 0, 0, 0, ii, atten);
+                                backprojectionType6(oneInput, w_vec, vec, inputScalars, length[indD], pituus[indD], proj, 0, subIter, 0, 0, 0, ii, atten);
                             else {
                                 status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput, subIter, timestep, length, lengthFull[indD], meanBP, g, proj, false, ii, pituus);
                                 if (status != 0) {
@@ -840,7 +840,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     vec.im_os[timestep][ii] = af::constant(1.f, inputScalars.im_dim[ii]);
                     if (inputScalars.projector_type == 6) {
                         oneInput = af::constant(1.f, inputScalars.nRowsD, inputScalars.nColsD, length[indD]);
-                        forwardProjectionType6(oneInput, w_vec, vec, inputScalars, length[indD], uu, proj, ii, atten);
+                        forwardProjectionType6(oneInput, w_vec, vec, inputScalars, length[indD], pituus[indD], proj, ii, atten);
                         uu += length[indD];
                     }
                     else {
@@ -914,7 +914,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 				vec.im_os[timestep][0] = af::constant(1.f, inputScalars.im_dim[0]);
 				if (inputScalars.projector_type == 6) {
 					oneInput1 = af::constant(1.f, inputScalars.nRowsD, inputScalars.nColsD, length[indD]);
-					forwardProjectionType6(oneInput1, w_vec, vec, inputScalars, length[indD], uu, proj, 0, atten);
+					forwardProjectionType6(oneInput1, w_vec, vec, inputScalars, length[indD], pituus[indD], proj, 0, atten);
 					uu += length[indD];
 				}
 				else {
@@ -927,7 +927,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 				vec.im_os[timestep][0] = af::array(inputScalars.im_dim[0], w_vec.RDP_ref);
 				if (inputScalars.projector_type == 6) {
 					oneInput2 = af::constant(1.f, inputScalars.nRowsD, inputScalars.nColsD, length[indD]);
-					forwardProjectionType6(oneInput2, w_vec, vec, inputScalars, length[indD], uu, proj, 0, atten);
+					forwardProjectionType6(oneInput2, w_vec, vec, inputScalars, length[indD], pituus[indD], proj, 0, atten);
 					uu += length[indD];
 				}
 				else {
@@ -949,7 +949,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 				oneInput1 = (apuData / (oneInput2 * oneInput2)) * oneInput1;
 				af::eval(oneInput1);
 				if (inputScalars.projector_type == 6)
-					backprojectionType6(oneInput1, w_vec, vec, inputScalars, length[indD], uu, proj, timestep, ll, 0, 0, 0, 0, atten);
+					backprojectionType6(oneInput1, w_vec, vec, inputScalars, length[indD], pituus[indD], proj, timestep, ll, 0, 0, 0, 0, atten);
 				else {
 					status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput1, ll, timestep, length, lengthFull[indD], meanBP, g, proj, false, 0, pituus);
 					if (status != 0) {
@@ -1234,7 +1234,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 						}
 						const bool CTOSEMBranch = inputScalars.CT && (MethodList.ACOSEM || MethodList.OSLCOSEM > 0 || MethodList.OSEM || MethodList.COSEM || MethodList.ECOSEM ||
 							MethodList.ROSEM || MethodList.OSLOSEM || MethodList.ROSEMMAP);
-#ifndef CPU
+#if defined(CUDA) || defined(HIP) || defined(OPENCL) || defined(METAL)
 						const bool concurrentBP = inputScalars.nMultiVolumes > 0 && !CTOSEMBranch;
 #else
 						const bool concurrentBP = false;
@@ -1259,9 +1259,9 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 								}
 							}
 							if (compute_norm_matrix == 1u)
-								transferSensitivityImage(vec.Summ[0][ii][0], proj);
+								transferSensitivityImage(vec.Summ[0][ii][0], proj, static_cast<size_t>(ii));
 							else if (compute_norm_matrix == 2u)
-								transferSensitivityImage(vec.Summ[0][ii][osa_iter], proj);
+								transferSensitivityImage(vec.Summ[0][ii][osa_iter], proj, static_cast<size_t>(ii));
 							status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, tt, length, m_size, meanBP, g, proj, false, ii, pituus, false,
 								concurrentBP ? ii + 1 : 0, !concurrentBP, ii == 0 || CTOSEMBranch);
 							if (status != 0) {
@@ -1296,7 +1296,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             mexEval();
                         }
                         for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
-                            forwardProjectionType6(fProj, w_vec, vec, inputScalars, length[indD], uu, proj, ii, atten);
+                            forwardProjectionType6(fProj, w_vec, vec, inputScalars, length[indD], pituus[indD], proj, ii, atten);
                         fProj.eval();
                         fProj = af::flat(fProj);
                         fProj(fProj < inputScalars.epps) = inputScalars.epps;
@@ -1315,7 +1315,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                         if (status != 0)
                             return -1;
                         for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
-                            backprojectionType6(fProj, w_vec, vec, inputScalars, length[indD], uu, proj, tt, osa_iter, iter, compute_norm_matrix, iter0, ii, atten);
+                            backprojectionType6(fProj, w_vec, vec, inputScalars, length[indD], pituus[indD], proj, tt, osa_iter, iter, compute_norm_matrix, iter0, ii, atten);
                     }
                 }
 

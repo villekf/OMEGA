@@ -20,6 +20,46 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 import ctypes
 import numpy as np
 
+def _saved_image_count(options):
+    if options.save_iter:
+        return int(options.Niter) + 1
+    if options.saveNIter.size > 0:
+        return int(options.saveNIter.size) + 1
+    return 1
+
+def _reshape_image_output(output, spatialShape, savedImageCount, timeFrameCount):
+    shape = (*map(int, spatialShape), int(savedImageCount), int(timeFrameCount))
+    expectedSize = int(np.prod(shape, dtype=np.int64))
+    if output.size != expectedSize:
+        raise ValueError(f"Unexpected reconstruction output size: got {output.size} values, expected {expectedSize}")
+    output = output.reshape(shape, order='F')
+    if timeFrameCount == 1:
+        output = output[..., 0]
+    elif savedImageCount == 1:
+        output = output[..., 0, :]
+    return output
+
+def _reshape_multiresolution_output(output, options):
+    nVolumes = int(options.nMultiVolumes) + 1
+    volSizes = (options.Nx[:nVolumes].astype(np.uint64) * options.Ny[:nVolumes].astype(np.uint64) * options.Nz[:nVolumes].astype(np.uint64)).astype(np.int64)
+    savedImageCount = _saved_image_count(options)
+    volumes = []
+    offset = 0
+    for ii, volSize in enumerate(volSizes):
+        outputSize = int(volSize) * savedImageCount * int(options.Nt)
+        nextOffset = offset + outputSize
+        volumes.append(_reshape_image_output(
+            output[offset:nextOffset],
+            (options.Nx[ii], options.Ny[ii], options.Nz[ii]),
+            savedImageCount,
+            options.Nt,
+        ))
+        offset = nextOffset
+
+    if offset != output.size:
+        raise ValueError(f"Unexpected multi-resolution output size: consumed {offset} values from {output.size}")
+    return volumes
+
 def transferData(options):
     """
     Transfers the Python variables to the corresponding C-struct
@@ -707,12 +747,12 @@ def reconstructions_main(options):
     c_lib = ctypes.CDLL(libname)
     c_lib.omegaMain(options.param, ctypes.c_char_p(inStr), SinoP, outputP, FPOutputP, residualP)
     try:
-        if options.useMultiResolutionVolumes and not options.storeMultiResolution:
-            output = output.reshape((options.NxOrig, options.NyOrig, options.NzOrig, -1), order = 'F')
-        elif not options.storeMultiResolution and options.Nt == 1:
-            output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], -1), order = 'F')
+        if options.useMultiResolutionVolumes and options.storeMultiResolution:
+            output = _reshape_multiresolution_output(output, options)
+        elif options.useMultiResolutionVolumes and not options.storeMultiResolution:
+            output = _reshape_image_output(output, (options.NxOrig, options.NyOrig, options.NzOrig), _saved_image_count(options), options.Nt)
         else:
-            output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], options.Nt), order = 'F')
+            output = _reshape_image_output(output, (options.Nx[0], options.Ny[0], options.Nz[0]), _saved_image_count(options), options.Nt)
         if options.subsets == 1 and options.storeFP:
             FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins), order = 'F')
     finally:
@@ -723,4 +763,3 @@ def reconstructions_main(options):
             return output, FPOutput, residual
         else:
             return output, FPOutput
-        

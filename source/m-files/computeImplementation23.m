@@ -8,6 +8,9 @@ if ~isfield(options,'compute_sensitivity_image')
 end
 fp = [];
 res = [];
+if ismac && options.use_64bit_atomics
+    options.use_64bit_atomics = false;
+end
 if options.use_32bit_atomics && options.use_64bit_atomics
     options.use_64bit_atomics = false;
 end
@@ -43,16 +46,27 @@ else
 end
 
 if iscell(options.SinM)
-    options.SinM = cell2mat(options.SinM);
+    inputCells = cellfun(@(x) x(:), options.SinM, 'UniformOutput', false);
+    options.SinM = vertcat(inputCells{:});
 end
 if options.attenuation_correction
     if iscell(options.vaimennus)
-        options.vaimennus = cell2mat(options.vaimennus);
+        inputCells = cellfun(@(x) x(:), options.vaimennus, 'UniformOutput', false);
+        options.vaimennus = vertcat(inputCells{:});
+    end
+end
+if options.useMaskBP
+    if iscell(options.maskBP)
+        inputCells = cellfun(@(x) x(:), options.maskBP, 'UniformOutput', false);
+        options.maskBP = vertcat(inputCells{:});
+    elseif partitions > 1
+        options.maskBP = repmat(options.maskBP(:), partitions, 1);
     end
 end
 if options.randoms_correction
     if iscell(options.SinDelayed)
-        options.SinDelayed = cell2mat(options.SinDelayed);
+        inputCells = cellfun(@(x) x(:), options.SinDelayed, 'UniformOutput', false);
+        options.SinDelayed = vertcat(inputCells{:});
     end
 end
 options.currentSubset = 0;
@@ -221,4 +235,3 @@ else
 end
 
 end
-
