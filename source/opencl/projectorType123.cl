@@ -413,7 +413,7 @@ void projectorType123(
 	// Load the next detector index
 #if defined(CT) && !defined(LISTMODE) && !defined(PET) // CT data
 	getDetectorCoordinatesCT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize);
-#elif defined(SPECT) && !defined(LISTMODE) && !defined(PET) // SPECT data
+#elif defined(SPECT) && (!defined(LISTMODE) || defined(SENS)) && !defined(PET) // SPECT data
 	getDetectorCoordinatesSPECT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize, d_rayShiftsDetector, d_rayShiftsSource, lorXY, idx, totalFOVmin, totalFOVmax);
 #elif defined(LISTMODE) && !defined(SENS) // Listmode data
 #if defined(INDEXBASED)
@@ -425,7 +425,7 @@ void projectorType123(
 		, lorXY, lorZ, crystalSize
 #endif
 	);
-#elif defined(RAW) || defined(SENS) // raw data
+#elif defined(RAW) || (defined(SENS) && !defined(SPECT)) // raw data
 	getDetectorCoordinatesRaw(d_xy, d_z, i, &s, &d, indz
 #if defined(N_RAYS)
 		, lorXY, lorZ, crystalSize

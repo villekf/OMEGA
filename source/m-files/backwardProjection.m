@@ -42,7 +42,12 @@ elseif projType == 2 || projType == 12 || projType == 22 || projType == 32
 elseif projType == 3 || projType == 13 || projType == 33 || projType == 23
     projType = 3;
 end
-if options.compute_sensitivity_image
+if options.listmode > 0 && options.compute_sensitivity_image && isfield(options,'xSens') && isfield(options,'zSens') && ~isempty(options.xSens) && ~isempty(options.zSens) && ~options.SPECT
+    x = options.xSens;
+    z_det = options.zSens;
+	options.det_per_ring = numel(x) / 2;
+	options.rings = numel(z_det);
+elseif options.listmode > 0 && options.compute_sensitivity_image && ~options.useIndexBasedReconstruction
     options.use_raw_data = true;
     [x, ~, z, ~] = get_coordinates(options);
     options.use_raw_data = false;

@@ -574,13 +574,19 @@ def reconstructions_main(options):
         ParkerWeights(options)
     if not options.listmode:
         options.SinM = np.reshape(options.SinM, (int(options.nRowsD), int(options.nColsD), options.nProjections, options.TOF_bins, options.Nt), order='F')
-    elif options.listmode and options.compute_sensitivity_image:
-        from omegatomo.projector.detcoord import getCoordinates
-        options.use_raw_data = True
-        x, y, z = getCoordinates(options)
-        options.use_raw_data = False
-        options.uV = np.float32(x)
-        options.z = np.float32(z)
+    elif options.listmode and options.compute_sensitivity_image and not(options.SPECT):
+        if hasattr(options, 'xSens') and np.size(options.xSens) > 0 and hasattr(options, 'zSens') and np.size(options.zSens) > 0:
+            options.uV = np.float32(np.asfortranarray(options.xSens))
+            options.z = np.float32(np.asfortranarray(options.zSens))
+	        options.det_per_ring = options.uV.size // 2
+	        options.rings = options.z.size
+        else:
+            from omegatomo.projector.detcoord import getCoordinates
+            options.use_raw_data = True
+            x, y, z = getCoordinates(options)
+            options.use_raw_data = False
+            options.uV = np.float32(x)
+            options.z = np.float32(z)
     if (options.quad or options.FMH or options.L or options.weighted_mean or options.Huber or options.GGMRF) and options.MAP:
         if hasattr(options, 'weights') and np.size(options.weights) > 0:
             weights_flat = np.array(options.weights).flatten()

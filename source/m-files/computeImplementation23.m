@@ -102,7 +102,12 @@ elseif options.projector_type == 7 || options.projector_type == 71 || options.pr
 else
     error('Invalid projector for OpenCL')
 end
-if options.listmode > 0 && options.compute_sensitivity_image && ~options.useIndexBasedReconstruction
+if options.listmode > 0 && options.compute_sensitivity_image && isfield(options,'xSens') && isfield(options,'zSens') && ~isempty(options.xSens) && ~isempty(options.zSens) && ~options.SPECT
+    x = options.xSens;
+    z_det = options.zSens;
+	options.det_per_ring = numel(x) / 2;
+	options.rings = numel(z_det);
+elseif options.listmode > 0 && options.compute_sensitivity_image && ~options.useIndexBasedReconstruction
     options.use_raw_data = true;
     [x, ~, z_det, ~] = get_coordinates(options);
     options.use_raw_data = false;

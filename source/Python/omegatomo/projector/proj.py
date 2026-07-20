@@ -511,6 +511,8 @@ class projectorClass:
     # Compute the spatial prior/regularization only every regEveryIter-th (sub)iteration. 1 (or less)
     # computes it every time (default); the first and last iteration are always computed.
     regEveryIter = 1
+    xSens = np.empty(0, dtype = np.float32)
+    zSens = np.empty(0, dtype = np.float32)
 
     def __init__(self):
         # C-struct
