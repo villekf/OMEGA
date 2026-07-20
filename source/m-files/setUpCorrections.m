@@ -356,7 +356,7 @@ if options.offsetCorrection
         end
         dist = abs((dx - sx) .* (sy) - ((sx) .* (dy - sy))) ./ sqrt((dx - sx).^2 + (dy - sy).^2);
         [~, ind] = min(dist);
-        options.OffsetLimit(kk) = (ind) * options.dPitchY/4;
+        options.OffsetLimit(kk) = (ind) * options.dPitchX/4;
     end
 end
 end
