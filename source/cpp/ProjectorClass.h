@@ -2939,7 +2939,7 @@ public:
 #if !defined(METAL)
 				if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0) {
 					ALLOC_BUFFER(d_geomProj5[kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 16);
-					CHECK(status, "\n", -1);
+					CHECK(status, "\n", (Status)-1);
 #if defined(CUDA) || defined(HIP)
 					memAlloc.geom5 = true;
 					memAlloc.g5Steps++;
@@ -3209,7 +3209,7 @@ public:
 						g[15] = up;
 					}
 					WRITE_BUFFER(d_geomProj5[kk], sizeof(float) * length[kk] * 16, geomProj5Host[kk].data());
-					CHECK(status, "\n", -1);
+					CHECK(status, "\n", (Status)-1);
 					memSize += (sizeof(float) * length[kk] * 16) / 1048576ULL;
 				}
 #endif
