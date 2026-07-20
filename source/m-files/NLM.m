@@ -67,7 +67,7 @@ elseif options.NLRD
 elseif options.NLLange
     type = 4;
 elseif options.NLGGMRF
-    type = 5;
+    type = 6;
 else
     type = 0;
 end
@@ -80,11 +80,6 @@ else
 end
 output = reshape(output, N, M, K);
 % Convert back to original image size
-output = output(padx + 1 : end - padx,pady + 1 : end - padx,padz + 1 : end - padz);
+output = output(padx + 1 : end - padx,pady + 1 : end - pady,padz + 1 : end - padz);
 output = output(:);
-if options.NLM_MRP && type == 2
-    input = input(padx + 1 : end - padx,pady + 1 : end - padx,padz + 1 : end - padz);
-    output = input - output;
-end
-% output = cast(output, options.cType);
 end

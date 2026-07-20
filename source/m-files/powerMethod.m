@@ -37,7 +37,7 @@ function s = powerMethod(A, varargin)
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-if nargin >= 2 || isempty(varargin) || isempty(varargin{1})
+if nargin < 2 || isempty(varargin) || isempty(varargin{1})
     Niter = 10;
 else
     Niter = varargin{1};
@@ -47,7 +47,7 @@ end
 % else
 %     useTV = varargin{2};
 % end
-if nargin >= 3|| isempty(varargin) || isempty(varargin{2})
+if nargin < 3 || isempty(varargin) || isempty(varargin{2})
     useFilt = false;
 else
     useFilt = true;
@@ -99,8 +99,10 @@ for kk = 1 : Niter
     else
         if useClass && A.param.implementation == 1
             temp = B' * x{1};
-        else
+        elseif useClass
             temp = A * x{1};
+        else
+            temp = A * x;
         end
     end
     if useFilt

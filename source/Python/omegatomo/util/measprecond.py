@@ -68,7 +68,7 @@ def applyMeasPreconditioning(options, var):
                     if options.subsetType == 4:
                         var = torch.reshape(var, (var.numel() // options.nRowsD, options.nRowsD))
                     else:
-                        var = torch.reshape(var, (var.numel() // options.nColsD), options.nColsD)
+                        var = torch.reshape(var, (var.numel() // options.nColsD, options.nColsD))
                 else:
                     # var = reshape_fortran(var, (options.nRowsD, options.nColsD, var.numel() // (options.nRowsD * options.nColsD)))
                     var = torch.reshape(var, (options.nColsD, var.numel() // (options.nRowsD * options.nColsD), options.nRowsD))

@@ -66,7 +66,7 @@ if license('test', 'image_toolbox') || exist('medfilt3','file') == 2
     if Nz==1
         grad = medfilt2(reshape(im,Nx,Ny), [medx medy], 'symmetric');
     else
-        grad = medfilt3(reshape(im,Nx,Ny,Nz), [medx medx medz]);
+        grad = medfilt3(reshape(im,Nx,Ny,Nz), [medx medy medz]);
     end
 else % If Image Processing Toolbox does not exist or Octave is used (slower and more memory intensive)
     if nargin >= 9 && isempty(varargin{2})

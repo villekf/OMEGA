@@ -50,7 +50,7 @@ if nargout >= 2
     weights = [weights_RDP(1:ceil(numel(weights_RDP(:))/2) - 1),weights_RDP(ceil(numel(weights_RDP(:))/2) + 1 : end)]';
     apu = bsxfun(@minus,im(tr_offsets(:,ceil(numel(weights_RDP(:))/2))),im(tr_offsets(:,[1:(ceil(numel(weights_RDP(:))/2)-1) (ceil(numel(weights_RDP(:))/2)+1):end])))*weights;
     apu3 = bsxfun(@plus,im(tr_offsets(:,ceil(numel(weights_RDP(:))/2))),im(tr_offsets(:,[1:(ceil(numel(weights_RDP(:))/2)-1) (ceil(numel(weights_RDP(:))/2)+1):end])))*weights;
-    mrf = -apu.^2 / (apu3 + gamma * abs(apu));
+    mrf = -apu.^2 ./ (apu3 + gamma * abs(apu));
     varargout{1} = mrf;
 end
 try
@@ -65,17 +65,31 @@ try
 catch ME
     warning('Out of memory, switching to slower fallback code')
     weights_RDP(isinf(weights_RDP)) = 0;
-    weights_RDP = reshape(weights_RDP, Ndy * 2 + 1, Ndx * 2 + 1, Ndz * 2 + 1);
+    weights_RDP = reshape(weights_RDP, Ndx * 2 + 1, Ndy * 2 + 1, Ndz * 2 + 1);
     im_orig = reshape(im_orig,Nx,Ny,Nz);
     grad = zeros(size(im_orig));
     for kk = 1 : numel(grad)
+        x = mod(kk - 1, Nx) + 1;
+        y = mod(floor((kk - 1) / Nx), Ny) + 1;
         z = floor((kk - 1) / (Nx * Ny)) + 1;
-        x = floor((kk - 1) / Nx) + 1 - (Nx * (z - 1));
-        y = mod(kk - 1, Ny) + 1;
         for zz = -Ndz : Ndz
             for yy = -Ndy : Ndy
                 for xx = -Ndx : Ndx
-                    apu = im_orig(x, y, z) / im(x + xx + 1, y + yy + 1, z + zz + 1);
+					if zz == 0 && yy == 0 && xx == 0
+						continue;
+					if x + xx <= 0
+						indx = x + abs(xx);
+					else
+						indx = x + xx;
+					if y + yy <= 0
+						indy = y + abs(yy);
+					else
+						indy = y + yy;
+					if z + zz <= 0
+						indz = z + abs(zz);
+					else
+						indz = z + zz;
+                    apu = im_orig(x, y, z) / im(indx, indy, indz);
                     grad(x, y, z) = grad(x, y, z) + weights_RDP(xx + Ndx + 1,yy + Ndy + 1,zz + Ndz + 1) * ((apu - 1)*(gamma * abs(apu - 1) + apu + 3)) / (apu + 1 + gamma * abs(apu - 1)).^2;
                     %                     apu = im_orig(y, x, z) - im(y + yy + 1, x + xx + 1, z + zz + 1);
                     %                     grad(y, x, z) = -weights_RDP(yy + Ndy + 1,xx + Ndx + 1,zz + Ndz + 1) * (apu * (gamma * abs(apu) + im_orig(y, x, z) + 3 * im(y + yy + 1, x + xx + 1, z + zz + 1))) ...

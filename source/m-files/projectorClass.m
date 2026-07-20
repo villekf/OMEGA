@@ -227,7 +227,7 @@ classdef projectorClass
                     obj.param.z = reshape(obj.param.z, [], 2);
                 end
                 obj.param.uV = varargin{3};
-                if size(obj.param.uV,1) == 2 || size(obj.param.uV) == 6
+                if size(obj.param.uV,1) == 2 || size(obj.param.uV,1) == 6
                 else
                     obj.param.uV = reshape(obj.param.uV, [], numel(obj.param.x) / 2);
                 end
@@ -607,7 +607,7 @@ classdef projectorClass
                             obj.param.listmodeIndices(kk) = uint64(numel(obj.param.trIndex{kk}) / 2);
                         end
                     else
-                        obj.param.listmodeIndices = repelem(uint64(numel(obj.param.trIndex) / 2 / partitions),1);
+                        obj.param.listmodeIndices = repmat(uint64(numel(obj.param.trIndex) / 2 / partitions), partitions, 1);
                     end
                 else
                     if iscell(obj.param.x)
@@ -625,7 +625,7 @@ classdef projectorClass
                         else
                             listSize = 6;
                         end
-                        obj.param.listmodeIndices = repelem(uint64(numel(obj.param.x) / listSize / partitions),1);
+                        obj.param.listmodeIndices = repmat(uint64(numel(obj.param.x) / listSize / partitions), partitions, 1);
                     end
                 end
             end

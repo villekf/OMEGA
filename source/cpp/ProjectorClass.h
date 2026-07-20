@@ -1353,7 +1353,7 @@ class ProjectorClass {
 				if (inputScalars.maskBPZ > 1)
 					ADD_OPT(optionsAux, "-DMASKBP3D");
 			}
-			if (inputScalars.eFOV)
+			if (inputScalars.eFOV && !inputScalars.multiResolution)
 				ADD_OPT(optionsAux, "-DEFOVZ");
 			if (MethodList.MRP) {
 				ADD_OPT(optionsAux, "-DMEDIAN");
@@ -2821,7 +2821,7 @@ public:
 				CHECK(status, "\n", (Status)(-1));
 				memAlloc.rayShifts = true;
 			}
-			if (inputScalars.eFOV) {
+			if (inputScalars.eFOV && !inputScalars.multiResolution) {
 				ALLOC_BUFFER(d_eFOVIndices, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nz[0]);
 				CHECK(status, "\n", (Status)(-1));
 				memAlloc.eFOV = true;
@@ -3013,7 +3013,7 @@ public:
 				WRITE_BUFFER(d_zFull[0], sizeof(float) * inputScalars.size_z, z_det);
 				CHECK(status, "\n", (Status)(-1));
 			}
-			if (inputScalars.eFOV) {
+			if (inputScalars.eFOV && !inputScalars.multiResolution) {
 				WRITE_BUFFER(d_eFOVIndices, sizeof(uint8_t) * inputScalars.Nz[0], w_vec.eFOVIndices);
 				CHECK(status, "\n", (Status)(-1));
 				memSize += (sizeof(uint8_t) * inputScalars.Nz[0]) / 1048576ULL;

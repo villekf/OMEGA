@@ -105,7 +105,7 @@ void TVKernel(T* grad, const T* u, const int Nx, const int Ny, const int Nz, con
 				w3 = exp3(-w3 * w3);
 				grad[n] += beta * (-(w4.x * u4.x + w4.y * u4.y + w4.z * u4.z) / pvalijk + (w1.x * (uijk - uijkM.x)) / sqrtVal(u1, epps, type, w1) + (w2.y * (uijk - uijkM.y)) / sqrtVal(u2, epps, type, w2) + (w3.y * (uijk - uijkM.z)) / sqrtVal(u3, epps, type, w3));
 			}
-			if (type == 1 && anatomical) {
+			else if (type == 1 && anatomical) {
 				const int64_t NN = Nxy * Nz;
 				T s[9];
 				for (int kk = 0; kk < 9; kk++)
@@ -143,7 +143,7 @@ void TVKernel(T* grad, const T* u, const int Nx, const int Ny, const int Nz, con
 				const T pvalijk = std::sqrt(apu.x * apu.x + apu.y * apu.y + apu.z * apu.z + C * (apuS.x * apuS.x + apuS.y * apuS.y + apuS.z * apuS.z) + epps);
 				grad[n] += beta * (((T)3. * uijk - uijkP.x - uijkP.y - uijkP.z) / pvalijk + (uijk - uijkM.x) / sqrtVal(u1, epps, type) + (uijk - uijkM.y) / sqrtVal(u2, epps, type) + (uijk - uijkM.z) / sqrtVal(u3, epps, type) + 1e-7f);
 			}
-			if (type == 5 && anatomical) {
+			else if (type == 5 && anatomical) {
 				float3<T> uijkR;
 				if (x < Nx - 1)
 					uijkR.x = S[(x + 1) + (y)*Nx + (z)*Nxy];
