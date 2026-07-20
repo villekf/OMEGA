@@ -40,9 +40,11 @@ void GGMRFKernel(T* grad, const T* u, T* weight, const int Nx, const int Ny, con
 					else
 						uk = u[dim_n];
 					const T delta = uj - uk;
-					const T deltapqc = 1.f + std::pow(std::abs(delta / c), p - q);
-					if (delta != (T)0.)
-						output += weight[uu++] * (std::pow(std::abs(delta), p - (T)1.) / deltapqc) * (p - pqc * (std::pow(std::abs(delta), p - q) / deltapqc)) * sign(delta);
+					if (delta != (T)0.) {
+						const T deltapqc = 1.f + std::pow(std::abs(delta / c), p - q);
+						output += weight[uu] * (std::pow(std::abs(delta), p - (T)1.) / deltapqc) * (p - pqc * (std::pow(std::abs(delta), p - q) / deltapqc)) * sign(delta);
+					}
+					uu++;
 				}
 			}
 		}

@@ -889,6 +889,8 @@ inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& input
 
 	int status = 0;
 #ifdef CPU
+	// Accumulate the NLM gradient to the backprojection
+	const af::array dUorig = grad.copy();
 	grad = padding(grad, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], w_vec.Ndx + w_vec.Nlx, w_vec.Ndy + w_vec.Nly, w_vec.Ndz + w_vec.Nlz);
 	const af::array imApu = padding(im, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], w_vec.Ndx + w_vec.Nlx, w_vec.Ndy + w_vec.Nly, w_vec.Ndz + w_vec.Nlz);
 #endif
@@ -948,6 +950,7 @@ inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& input
 	grad = grad(af::seq(w_vec.Ndx + w_vec.Nlx, inputScalars.Nx[0] + w_vec.Ndx + w_vec.Nlx - 1), af::seq(w_vec.Ndy + w_vec.Nly, inputScalars.Ny[0] + w_vec.Ndy + w_vec.Nly - 1), af::seq(w_vec.Ndz + w_vec.Nlz, inputScalars.Nz[0] + w_vec.Ndz + w_vec.Nlz - 1));
 	grad = af::flat(grad);
 	grad *= beta;
+	grad += dUorig;
 	grad.eval();
 #endif
 #ifdef OPENCL
@@ -1165,7 +1168,6 @@ inline int TVAF(af::array& grad, const af::array& im, const scalarStruct& inputS
 }
 
 // Hyperbolic prior
-// No CPU support
 inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inputScalars, const float sigma, ProjectorClass& proj, const float beta, const Weighting& w_vec, const int kk = 0) {
 	im.eval();
 	int status = 0;
@@ -1210,7 +1212,11 @@ inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inp
 		return -1;
 	}
 #else
-
+	proj.d_W = transferAF(grad);
+	proj.d_inputB = transferAF(im);
+	status = proj.hyperGradient(inputScalars, sigma, beta);
+	grad.unlock();
+	im.unlock();
 #endif
 #ifdef OPENCL
 	if (inputScalars.largeDim)

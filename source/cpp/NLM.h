@@ -110,11 +110,11 @@ void NLMFunc(T* grad, const T* u_ref, const T* u, const T* gaussian, const int32
 						const T uabs = sign(u);
 						output += weight * (uabs - uabs / (std::fabs(u) / gamma + (T)1.));
 					}
-					else if (type == 5) {
+					else if (type == 6) {
 						// GGMRF
 						const T delta = uj - uk;
 						const T deltapqc = 1.f + std::pow(std::fabs(delta / c), p - q);
-						output += weight * (std::pow(abs(delta), p - 1.f) / deltapqc) * (p - gamma * (std::pow(fabs(delta), p - q) / deltapqc)) * sign(delta);
+						output += weight * (std::pow(std::fabs(delta), p - 1.f) / deltapqc) * (p - gamma * (std::pow(fabs(delta), p - q) / deltapqc)) * sign(delta);
 					}
 					else {
 						const T apuU = uj - uk;
@@ -136,7 +136,7 @@ void NLMFunc(T* grad, const T* u_ref, const T* u, const T* gaussian, const int32
 			output = (uabs - uabs / (std::fabs(output) / gamma + (T)1.));
 		}
 		else if (type == 1)
-			output /= std::sqrt(outputAla * weight_sum);
+			output /= std::sqrt(outputAla * weight_sum + epps);
 
 		grad[n] = output;
 	}

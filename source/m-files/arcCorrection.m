@@ -4,7 +4,7 @@ function [x, y, options] = arcCorrection(options, interpolateSinogram)
 %   sinogram. Works only with sinogram data and without precomputation.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2020-2025 Ville-Veikko Wettenhovi
+% Copyright (C) 2020-2026 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify it
 % under the terms of the GNU General Public License as published by the
@@ -220,7 +220,7 @@ if interpolateSinogram
     if iscell(options.SinM)
         if numel(options.SinM{1}) == size(options.SinM{1},1)
             for kk = 1 : options.partitions
-                options.SinM{kk} = reshape(options.SinM{kk}, options.Ndist, options.Nang, numel(options.SinM)/(options.Ndist * options.Nang));
+                options.SinM{kk} = reshape(options.SinM{kk}, options.Ndist, options.Nang, numel(options.SinM{kk})/(options.Ndist * options.Nang));
             end
         end
     else
@@ -232,7 +232,7 @@ if interpolateSinogram
     if iscell(options.SinM)
         uus_SinM = cell(size(options.SinM));
         for hh = 1 : options.partitions
-            for uu = 1 : size(apu_SinM,4)
+            for uu = 1 : size(options.SinM{hh},4)
                 apu_SinM = zeros(size(options.SinM{hh},1),size(options.SinM{hh},2)+2,size(options.SinM{hh},3));
                 % Use parfor if available
                 if license('test','Distrib_Computing_Toolbox')
@@ -242,7 +242,7 @@ if interpolateSinogram
                     Nang = options.Nang;
                     arc_interpolation = options.arc_interpolation;
                     try
-                        parfor kk = 1 : size(options.SinM,3)
+                        parfor kk = 1 : size(options.SinM{hh},3)
                             if exist('scatteredInterpolant', 'file') == 2 && (~strcmp('cubic',arc_interpolation) && ~strcmp('v4',arc_interpolation))
                                 F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double(temp(:,:,kk)), [],1));
                                 apu_SinM(:,:,kk) = F(angle, distance);
@@ -251,7 +251,7 @@ if interpolateSinogram
                             end
                         end
                     catch
-                        for kk = 1 : size(options.SinM,3)
+                        for kk = 1 : size(options.SinM{hh},3)
                             if exist('scatteredInterpolant', 'file') == 2 && (~strcmp('cubic',arc_interpolation) && ~strcmp('v4',arc_interpolation))
                                 F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double([options.SinM{hh}(:,end,kk,uu), options.SinM{hh}(:,:,kk,uu), options.SinM{hh}(:,1,kk,uu)]), [],1));
                                 apu_SinM(:,:,kk) = F(angle, distance);
@@ -261,7 +261,7 @@ if interpolateSinogram
                         end
                     end
                 else
-                    for kk = 1 : size(options.SinM,3)
+                    for kk = 1 : size(options.SinM{hh},3)
                         if exist('scatteredInterpolant', 'file') == 2 && (~strcmp('cubic',options.arc_interpolation) && ~strcmp('v4',options.arc_interpolation))
                             F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double([options.SinM{hh}(:,end,kk,uu), options.SinM{hh}(:,:,kk,uu), options.SinM{hh}(:,1,kk,uu)]), [],1));
                             apu_SinM(:,:,kk) = F(angle, distance);
@@ -270,12 +270,13 @@ if interpolateSinogram
                         end
                     end
                 end
+                apu_SinM = apu_SinM(:,2:end-1,:);
                 apu_SinM(isnan(apu_SinM)) = single(0);
                 uus_SinM{hh}(:,:,:,uu) = single(apu_SinM);
             end
-            endTime = toc;
             options.SinM{hh} = uus_SinM{hh};
         end
+        endTime = toc;
     else
         for uu = 1 : size(options.SinM,4)
             uus_SinM = zeros(size(options.SinM,1),size(options.SinM,2)+2,size(options.SinM,3));
@@ -287,7 +288,7 @@ if interpolateSinogram
                 arc_interpolation = options.arc_interpolation;
                 try
                     parfor kk = 1 : size(options.SinM,3)
-                        if exist('scatteredInterpolant', 'file') == 3 && (~strcmp('cubic',arc_interpolation) && ~strcmp('v4',arc_interpolation))
+                        if exist('scatteredInterpolant', 'file') == 2 && (~strcmp('cubic',arc_interpolation) && ~strcmp('v4',arc_interpolation))
                             F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double(temp(:,:,kk)), [],1));
                             uus_SinM(:,:,kk) = F(angle, distance);
                         else
@@ -296,7 +297,7 @@ if interpolateSinogram
                     end
                 catch
                     for kk = 1 : size(options.SinM,3)
-                        if exist('scatteredInterpolant', 'file') == 3 && (~strcmp('cubic',arc_interpolation) && ~strcmp('v4',arc_interpolation))
+                        if exist('scatteredInterpolant', 'file') == 2 && (~strcmp('cubic',arc_interpolation) && ~strcmp('v4',arc_interpolation))
                             F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double(temp(:,:,kk)), [],1));
                             uus_SinM(:,:,kk) = F(angle, distance);
                         else
@@ -306,7 +307,7 @@ if interpolateSinogram
                 end
             else
                 for kk = 1 : size(options.SinM,3)
-                    if exist('scatteredInterpolant', 'file') == 3 && (~strcmp('cubic',options.arc_interpolation) && ~strcmp('v4',options.arc_interpolation))
+                    if exist('scatteredInterpolant', 'file') == 2 && (~strcmp('cubic',options.arc_interpolation) && ~strcmp('v4',options.arc_interpolation))
                         F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double([options.SinM(:,end,kk,uu), options.SinM(:,:,kk,uu), options.SinM(:,1,kk,uu)]), [],1));
                         uus_SinM(:,:,kk) = F(angle, distance);
                     else

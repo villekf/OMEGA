@@ -1645,7 +1645,7 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 					}
 					T attApu = (T)0.;
 
-					for (uint32_t ii = apuX1; ii < apuX2; ii++) {
+					for (uint32_t ii = apuX1; ii <= apuX2; ii++) {
 						T d_in = d_d2;
 						if (ii == apuX1) {
 							local_ind += d_N3 * ii;

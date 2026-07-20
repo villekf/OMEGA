@@ -262,8 +262,13 @@ public:
 		else
 			type = 0;
 
-		NLMFunc(d_W, w_vec.NLM_ref, d_inputB, d_gaussianNLM, w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, w_vec.Nlx, w_vec.Nly, w_vec.Nlz, inputScalars.Nx[0],
-			inputScalars.Ny[0], inputScalars.Nz[0], inputScalars.Nxy, w_vec.h2, type, w_vec.RDP_gamma, inputScalars.epps, w_vec.GGMRF_p, w_vec.GGMRF_q, w_vec.GGMRF_c);
+		// Input padded sizes
+		const uint32_t pNx = inputScalars.Nx[0] + 2u * (w_vec.Ndx + w_vec.Nlx);
+		const uint32_t pNy = inputScalars.Ny[0] + 2u * (w_vec.Ndy + w_vec.Nly);
+		const uint32_t pNz = inputScalars.Nz[0] + 2u * (w_vec.Ndz + w_vec.Nlz);
+		NLMFunc(d_W, w_vec.NLM_ref, d_inputB, d_gaussianNLM, w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, w_vec.Nlx, w_vec.Nly, w_vec.Nlz, pNx,
+			pNy, pNz, static_cast<int32_t>(pNx * pNy), w_vec.h2, type, w_vec.RDP_gamma, inputScalars.epps, w_vec.GGMRF_p, w_vec.GGMRF_q, w_vec.GGMRF_c,
+			w_vec.NLM_anatomical);
 		if (inputScalars.verbose >= 3)
 			mexPrint("OpenMP NLM gradient computed");
 		return 0;
@@ -302,10 +307,10 @@ public:
 
 	inline int hyperGradient(const scalarStruct& inputScalars, const float sigma, const float beta) {
 		if (inputScalars.verbose >= 3)
-			mexPrint("Starting OpenMP GGMRF gradient computation");
+			mexPrint("Starting OpenMP hyperbolic gradient computation");
 		hyperbolicKernel(d_W, d_inputB, weights, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], sigma, beta, Ndx, Ndy, Ndz);
 		if (inputScalars.verbose >= 3)
-			mexPrint("OpenMP GGMRF gradient computed");
+			mexPrint("OpenMP hyperbolic gradient computed");
 		return 0;
 	}
 
