@@ -2042,8 +2042,8 @@ public:
 	NS::SharedPtr<MTL::Device> mtlDevice;
 	NS::SharedPtr<MTL::CommandQueue> queueFP, queueBP;
 	METAL_im_vectors vec_opencl;
-	void* sensitivityHost = nullptr;
-	size_t sensitivityBytes = 0ULL;
+	std::vector<void*> sensitivityHosts;
+	std::vector<size_t> sensitivityByteCounts;
 	ScalarKernelParams kParams;
 #endif // END METAL
 #if defined(CUDA) || defined(HIP)
@@ -2127,7 +2127,13 @@ public:
 	std::vector<CUtexObject> intTexCacheXY;
 	std::vector<CUarray> intArrayCacheYZ;
 	std::vector<CUtexObject> intTexCacheYZ;
-	#elif defined(OPENCL)
+#elif defined(METAL)
+	// One queue and retained last command buffer per multi-resolution volume.
+	// Waiting for the last command buffer is sufficient because Metal queues
+	// execute their own command buffers in submission order.
+	std::vector<NS::SharedPtr<MTL::CommandQueue>> sideQueues;
+	std::vector<NS::SharedPtr<MTL::CommandBuffer>> sideCommandBuffers;
+#elif defined(OPENCL)
 	std::vector<cl::CommandQueue> sideQueues;
 	// Persistent per-volume FP input images
 	std::vector<cl::Image3D> d_imageCache;
@@ -2314,10 +2320,20 @@ public:
 	/// Create the additional queues/streams for the multi-resolution case,
 	//// The main queue/stream is always the ArrayFire queue/stream, the other volumes use their own ones
 	/// </summary>
-	/// <param name="n number of additional multi-resolution volumes (inputScalars.nMultiVolumes)"></param>
+	/// <param name="n">Number of queues, one for the main image plus each multi-resolution volume</param>
 	inline int initSideQueues(const int n) {
 #if defined(METAL)
-		(void)n;
+		if (n <= 0 || static_cast<int>(sideQueues.size()) >= n)
+			return 0;
+		for (int kk = static_cast<int>(sideQueues.size()); kk < n; kk++) {
+			auto queue = NS::TransferPtr(mtlDevice->newCommandQueue());
+			if (!queue) {
+				mexPrint("Failed to create Metal side command queue\n");
+				return -1;
+			}
+			sideQueues.push_back(std::move(queue));
+			sideCommandBuffers.emplace_back(nullptr);
+		}
 		return 0;
 #else
 		if (n <= 0 || static_cast<int>(sideQueues.size()) >= n)
@@ -2364,7 +2380,23 @@ public:
 			status = cuStreamWaitEvent(CLCommandQueue[0], evSide[kk], 0);
 			CUDA_CHECK(status, "Failed to make main stream wait for side stream\n", -1);
 		}
-	#elif defined(OPENCL)
+#elif defined(METAL)
+		int result = 0;
+		for (auto& commandBuffer : sideCommandBuffers) {
+			if (!commandBuffer)
+				continue;
+			commandBuffer->waitUntilCompleted();
+			if (commandBuffer->status() == MTL::CommandBufferStatusError) {
+				NS::Error* error = commandBuffer->error();
+				const char* message = error && error->localizedDescription()
+					? error->localizedDescription()->utf8String() : "unknown Metal error";
+				mexPrintBase("Metal side-queue backprojection failed: %s\n", message);
+				result = -1;
+			}
+			commandBuffer.reset();
+		}
+		return result;
+#elif defined(OPENCL)
 		cl_int status = CL_SUCCESS;
 		if (sideQueues.size() > 0) {
 			std::vector<cl::Event> waitList(sideQueues.size());
@@ -4185,11 +4217,13 @@ public:
 		}
 		int indD = osa_iter + timestep * inputScalars.subsets;
 #if defined(METAL)
-		if (!queueBP || !kernelBP) {
+		const bool useMetalSideQueue = queueIdx > 0 && static_cast<size_t>(queueIdx) <= sideQueues.size();
+		MTL::CommandQueue* activeQueue = useMetalSideQueue ? sideQueues[queueIdx - 1].get() : queueBP.get();
+		if (!activeQueue || !kernelBP) {
 			mexPrint("Unable to create Metal backprojection encoder");
 			return -1;
 		}
-		NS::SharedPtr<MTL::CommandBuffer> commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+		NS::SharedPtr<MTL::CommandBuffer> commandBuffer = NS::RetainPtr(activeQueue->commandBuffer());
 		NS::SharedPtr<MTL::ComputeCommandEncoder> encoder = NS::RetainPtr(commandBuffer->computeCommandEncoder());
 		if (!commandBuffer || !encoder) {
 			mexPrint("Unable to create Metal backprojection encoder");
@@ -4570,9 +4604,34 @@ public:
 						textureHeight++;
 						textureWidth++;
 					}
-					CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(d_inputImage, BPArray, d_output, textureHeight, textureWidth, textureDepth,
-						BACKEND_TEXTURE_LINEAR, BACKEND_TEXTURE_NORMALIZED);
-					CHECK(status, "Image creation failed\n", -1);
+					if (newInput) {
+						if (!d_output || !d_output->contents()) {
+							mexPrint("Metal backprojection input buffer is unavailable\n");
+							return -1;
+						}
+						if (!d_inputImage || BPImageDims[0] != textureWidth || BPImageDims[1] != textureHeight || BPImageDims[2] != textureDepth) {
+							d_inputImage = createMetalFloatTextureEmpty(
+								metalTextureSpec(textureWidth, textureHeight, textureDepth, true));
+							if (!d_inputImage) {
+								mexPrint("Metal backprojection input texture creation failed\n");
+								return -1;
+							}
+							BPImageDims[0] = textureWidth;
+							BPImageDims[1] = textureHeight;
+							BPImageDims[2] = textureDepth;
+						}
+						const MTL::Region textureRegion(0, 0, 0,
+							static_cast<NS::UInteger>(textureWidth),
+							static_cast<NS::UInteger>(textureHeight),
+							static_cast<NS::UInteger>(textureDepth));
+						const NS::UInteger bytesPerRow = static_cast<NS::UInteger>(textureWidth * sizeof(float));
+						const NS::UInteger bytesPerImage = bytesPerRow * static_cast<NS::UInteger>(textureHeight);
+						d_inputImage->replaceRegion(textureRegion, 0, 0, d_output->contents(), bytesPerRow, bytesPerImage);
+					}
+					else if (!d_inputImage) {
+						mexPrint("Metal backprojection input texture cannot be reused before it is initialized\n");
+						return -1;
+					}
 #endif // END CUDA
 				}
 #if defined(CUDA) || defined(HIP)
@@ -4973,7 +5032,19 @@ public:
 			encoder->dispatchThreadgroups(threadgroupsPerGrid, threadsPerThreadgroup);
 			encoder->endEncoding();
 			commandBuffer->commit();
-			commandBuffer->waitUntilCompleted();
+			if (useMetalSideQueue) {
+				sideCommandBuffers[queueIdx - 1] = commandBuffer;
+			}
+			else {
+				commandBuffer->waitUntilCompleted();
+				if (commandBuffer->status() == MTL::CommandBufferStatusError) {
+					NS::Error* error = commandBuffer->error();
+					const char* message = error && error->localizedDescription()
+						? error->localizedDescription()->utf8String() : "unknown Metal error";
+					mexPrintBase("Metal backprojection failed: %s\n", message);
+					return -1;
+				}
+			}
 		}
 #elif defined(OPENCL)
 		if (queueIdx > 0 && static_cast<size_t>(queueIdx) <= sideQueues.size()) {
@@ -5026,7 +5097,10 @@ public:
 			PRINT_TIMER(tStart, tEnd, "Backprojection completed in %f seconds\n");
 #elif defined(METAL)
 			STOP_TIMER(tEnd);
-			PRINT_TIMER(tStart, tEnd, "Backprojection completed in %f seconds\n");
+			if (useMetalSideQueue)
+				PRINT_TIMER(tStart, tEnd, "Backprojection submitted in %f seconds\n");
+			else
+				PRINT_TIMER(tStart, tEnd, "Backprojection completed in %f seconds\n");
 #endif // END CUDA
 		}
 		return 0;
