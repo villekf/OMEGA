@@ -1,7 +1,7 @@
 function [im_vectors, options] = computeOSEstimates(im_vectors, options, iter, osa_iter, uu, corrim)
 for ii = 1 : options.param.nMultiVolumes + 1
 
-    if (options.param.precondTypeImage(6) && options.paramilteringIterations > 0 && iter == options.paramilteringIterations)
+    if (options.param.precondTypeImage(6) && options.param.filteringIterations > 0 && iter == options.param.filteringIterations)
         if (options.param.verbose >= 3)
             disp("Image-based filter iterations complete.");
         end
@@ -35,7 +35,7 @@ for ii = 1 : options.param.nMultiVolumes + 1
             im_vectors.recApu = im_vectors.recApu - options.param.tauCP(1) .* im_vectors.uCP;
         end
         if (options.param.verbose == 3)
-            disp("Computing PDDY step\n");
+            disp("Computing PDDY step");
         end
     end
 end
@@ -139,7 +139,7 @@ for ii = 1 : options.param.nMultiVolumes + 1
         if (options.param.verbose >= 3)
             disp("Computing DRAMA");
         end
-        im = DRAMA(im, Sens, rhs, options.param.lambda, iter, osa_iter, options.param.subsets);
+        im = DRAMA(im, Sens, rhs, options.param.lam_drama, iter, osa_iter, options.param.subsets);
     end
 
     % Complete data OSEM
@@ -210,7 +210,7 @@ for ii = 1 : options.param.nMultiVolumes + 1
         im = RBI(im, Sens, rhs, D, options.param.beta, dU);
     elseif (options.param.OSL_COSEM > 0)
         if (options.param.verbose >= 3)
-            disp(["Computing OSL-COSEM ", num2str(options.param.OSL_COSEM)]);
+            disp(['Computing OSL-COSEM ' num2str(options.param.OSL_COSEM)]);
         end
         [im, im_vectors.C_co] = COSEM(im, rhs, im_vectors.C_co, D + dU, options.param.h, options.param.OSL_COSEM, osa_iter);
         if (options.param.OSL_COSEM == 1)
@@ -261,7 +261,6 @@ for ii = 1 : options.param.nMultiVolumes + 1
         end
         [im_vectors, im,options.param] = FISTAL1(im, rhs, options.param, im_vectors, options.param.beta, osa_iter + options.param.subsets * (iter - 1), ii);
     end
-
     if ~options.param.LSQR && ~options.param.CGLS
         if iscell(im_vectors.recApu)
             im_vectors.recApu{ii} = im;

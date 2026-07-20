@@ -299,7 +299,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             else if (MethodList.LSQR) {
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing LSQR");
-                LSQR(inputScalars, w_vec, timestep, iter, vec);
+                LSQR(inputScalars, w_vec, timestep, iter, vec, ii);
             }
             else if (MethodList.CGLS) {
                 if (inputScalars.verbose >= 3)

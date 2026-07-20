@@ -58,7 +58,7 @@
 * [1] Jacobs, F., Sundermann, E., De Sutter, B., Christiaens, M. Lemahieu, I. (1998). A Fast Algorithm to Calculate the Exact Radiological 
 * Path through a Pixel or Voxel Space. Journal of computing and information technology, 6 (1), 89-94.
 *
-* Copyright (C) 2019-2024 Ville-Veikko Wettenhovi, Niilo Saarlemo
+* Copyright (C) 2019-2026 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
 * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by
 * the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
@@ -345,12 +345,21 @@ void projectorType123(
 		return;
 #endif // End FP mask
 #if defined(LISTMODE) && defined(TOF)
+#if defined(SENS)
+	const int TOFid = 0;
+#else
 	const int TOFid = TOFIndex[idx];
 #endif
+#endif
 #if defined(N_RAYS) && defined(FP)
-	float ax[NBINS * N_RAYS];
+	// Slightly optimize multi-ray case for TOF
+	// Only store the NBINS per ray rather than all NBINS * NRAYS combinations
+	float ax[NBINS];
+	float axRay[NBINS];
+	PTR_THR float* const axP = axRay;
 #else
 	float ax[NBINS];
+	PTR_THR float* const axP = ax;
 #endif
 #ifdef BP
 #if defined(LISTMODE) && defined(TOF) && !defined(SENS)
@@ -369,19 +378,11 @@ void projectorType123(
 #endif
 #endif
 #else
-#if defined(N_RAYS) && defined(FP)
-#if !defined(__CUDACC__) && !defined(__HIPCC__)
-#pragma unroll NBINS * N_RAYS
-#endif
-	for (int to = 0; to < NBINS * N_RAYS; to++)
-		ax[to] = 0.f;
-#else
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++)
 		ax[to] = 0.f;
-#endif
 #endif
 	const uint d_Nxy = d_Nxyz.x * d_Nxyz.y;
 	FLOAT local_norm = FLOAT_ZERO;
@@ -392,6 +393,10 @@ void projectorType123(
 #endif
 #ifdef SCATTER // Scatter data included
 	local_scat = d_scat[idx];
+#endif
+#ifdef TOF // TOF constants
+	const float sigmaInv = 1.f / sigma_x;
+	const float sigmaCoef = _2PI * sigmaInv;
 #endif
 #ifdef ORTH // Orthogonal or volume-based
 	FLOAT b1, b2, d1, d2;
@@ -406,6 +411,13 @@ void projectorType123(
 	for (int lorZ = 0u; lorZ < N_RAYS3D; lorZ++) {
 		for (int lorXY = 0u; lorXY < N_RAYS2D; lorXY++) {
 			lor++;
+#if defined(FP)
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
+#pragma unroll NBINS
+#endif
+			for (int to = 0; to < NBINS; to++)
+				axRay[to] = 0.f;
+#endif
 #elif defined(SPECT)
 	const int lorXY = 0;
 #endif  //////////////// END MULTIRAY ////////////////
@@ -460,9 +472,9 @@ void projectorType123(
 	FLOAT3 diff = d - s;
 
 #if defined(CUDA) || defined(HIP)
-	if ((diff.x == 0.f && diff.y == 0.f && diff.z == 0.f) || (diff.x == 0.f && diff.y == 0.f) || ISINF(diff.x) || ISINF(diff.y) || ISINF(diff.z) || ISNAN(diff.x) || ISNAN(diff.y) || ISNAN(diff.z))
+	if ((diff.x == FLOAT_ZERO && diff.y == FLOAT_ZERO) || ISINF(diff.x) || ISINF(diff.y) || ISINF(diff.z) || ISNAN(diff.x) || ISNAN(diff.y) || ISNAN(diff.z))
 #else
-	if (ALL(diff == FLOAT_ZERO) || (diff.x == FLOAT_ZERO && diff.y == FLOAT_ZERO) || ANY(ISINF(diff)) || ANY(ISNAN(diff)))
+	if ((diff.x == FLOAT_ZERO && diff.y == FLOAT_ZERO) || ANY(ISINF(diff)) || ANY(ISNAN(diff)))
 #endif
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
 		continue;
@@ -598,14 +610,14 @@ void projectorType123(
 						localDiff,
 						center,
 						localS,
-						localB2, localD2, _bz, dz, temp, seed2, seedZ, d_Nxy, orth_ray_length, localN1, localN2, localN3, d_Nxyz.z, bmin, bmax, Vmax, V, localXY, ax, false, &tempkSupport, 0,
+						localB2, localD2, _bz, dz, temp, seed2, seedZ, d_Nxy, orth_ray_length, localN1, localN2, localN3, d_Nxyz.z, bmin, bmax, Vmax, V, localXY, axP, false, &tempkSupport, 0,
 #if defined(FP)
 						d_OSEM
 #else
 						no_norm, d_Summ, d_output
 #endif
 #ifdef TOF
-						, FLOAT_ZERO, sigma_x, &D, FLOAT_ZERO, FLOAT_ZERO, TOFWeights
+						, FLOAT_ZERO, TOFWeights
 #if defined(LISTMODE)
 						, TOFid
 #endif
@@ -614,12 +626,9 @@ void projectorType123(
 						, FLOAT_ONE
 #endif
 #if defined(MASKBP) && defined(BP)
-						, aa, maskBP
+						, aa, maskBP, d_Nxyz
 #endif
 						, coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
-#ifdef N_RAYS
-						, lor
-#endif
 					);
 				}
 #if defined(FP)
@@ -632,7 +641,7 @@ void projectorType123(
 #endif
 				for (int to = 0; to < NBINS; to++)
 #endif
-					ax[to + NBINS * lor] *= temp;
+					ax[to] += axRay[to] * temp;
 #else
 #if defined(TOF) && defined(LISTMODE)
 				size_t to = TOFid;
@@ -685,7 +694,8 @@ void projectorType123(
 		if (FABS(diff.y) < 1e-6f && d.y <= d_bmax.y && d.y >= b.y && s.y <= d_bmax.y && s.y >= b.y) {
 			apuX1 = 0;
 			apuX2 = d_Nxyz.x - 1;
-// #if defined(LISTMODE)
+			dT1 = d_d.x;
+			dT2 = d_d.x;
 			FLOAT dist1, dist2 = FLOAT_ZERO;
 			if (s.x > d.x) {
 				dist1 = (b.x - d.x);
@@ -695,29 +705,21 @@ void projectorType123(
 				dist1 = (b.x - s.x);
 				dist2 = (b.x + CFLOAT(d_Nxyz.x) * d_d.x - d.x);
 			}
-			for (int kk = 0; kk < d_Nxyz.x; kk++) {
-				if (dist1 >= FLOAT_ZERO) {
+			if (dist1 < FLOAT_ZERO) {
+				const int kk = CINT(CEIL(-dist1 / d_d.x));
+				if (kk < CINT(d_Nxyz.x)) {
 					apuX1 = kk;
-					if (kk == 0)
-						dT1 = d_d.x;
-					else
-						dT1 = MIN(dist1, d_d.x);
-					break;
+					dT1 = MIN(dist1 + CFLOAT(kk) * d_d.x, d_d.x);
 				}
-				dist1 += d_d.x;
 			}
-			for (int kk = d_Nxyz.x - 1; kk >= apuX1; kk--) {
-				if (dist2 <= FLOAT_ZERO) {
+			if (dist2 > FLOAT_ZERO) {
+				const int mm = CINT(CEIL(dist2 / d_d.x));
+				const int kk = CINT(d_Nxyz.x) - 1 - mm;
+				if (kk >= apuX1) {
 					apuX2 = kk;
-					if (kk == d_Nxyz.x - 1)
-						dT2 = d_d.x;
-					else
-						dT2 = MIN(-dist2, d_d.x);
-					break;
+					dT2 = MIN(CFLOAT(mm) * d_d.x - dist2, d_d.x);
 				}
-				dist2 -= d_d.x;
 			}
-// #endif
 			d_b = b.y;
 			dd = d.y;
 			d_db = d_d.y;
@@ -737,7 +739,8 @@ void projectorType123(
 		else if (FABS(diff.x) < 1e-6f && d.x <= d_bmax.x && d.x >= b.x && s.x <= d_bmax.x && s.x >= b.x) {
 			apuX1 = 0;
 			apuX2 = d_Nxyz.y - 1;
-// #if defined(LISTMODE)
+			dT1 = d_d.y;
+			dT2 = d_d.y;
 			FLOAT dist1, dist2 = FLOAT_ZERO;
 			if (s.y > d.y) {
 				dist1 = (b.y - d.y);
@@ -747,29 +750,21 @@ void projectorType123(
 				dist1 = (b.y - s.y);
 				dist2 = (b.y + CFLOAT(d_Nxyz.y) * d_d.y - d.y);
 			}
-			for (int kk = 0; kk < d_Nxyz.y; kk++) {
-				if (dist1 >= 0.f) {
+			if (dist1 < FLOAT_ZERO) {
+				const int kk = CINT(CEIL(-dist1 / d_d.y));
+				if (kk < CINT(d_Nxyz.y)) {
 					apuX1 = kk;
-					if (kk == 0)
-						dT1 = d_d.y;
-					else
-						dT1 = MIN(dist1, d_d.y);
-					break;
+					dT1 = MIN(dist1 + CFLOAT(kk) * d_d.y, d_d.y);
 				}
-				dist1 += d_d.y;
 			}
-			for (int kk = d_Nxyz.y - 1; kk >= apuX1; kk--) {
-				if (dist2 <= 0.f) {
+			if (dist2 > FLOAT_ZERO) {
+				const int mm = CINT(CEIL(dist2 / d_d.y));
+				const int kk = CINT(d_Nxyz.y) - 1 - mm;
+				if (kk >= apuX1) {
 					apuX2 = kk;
-					if (kk == d_Nxyz.y - 1)
-						dT2 = d_d.y;
-					else
-						dT2 = MIN(-dist2, d_d.y);
-					break;
+					dT2 = MIN(CFLOAT(mm) * d_d.y - dist2, d_d.y);
 				}
-				dist2 -= d_d.y;
 			}
-// #endif
 			d_b = b.x;
 			dd = d.x;
 			d_db = d_d.x;
@@ -825,6 +820,7 @@ void projectorType123(
 			float dI = (d_d2 * d_N1) / 2.f * sign(diff.y);
 			D = dI;
 			DD = D;
+			const float DDsign = sign(DD);
 #endif //////////////// END TOF ////////////////
 			for (int ii = apuX1; ii <= apuX2; ii++) {
 				float d_in = d_d2;
@@ -852,7 +848,7 @@ void projectorType123(
 #endif
 #endif
 #ifdef TOF //////////////// TOF ////////////////
-				const float TOFSum = TOFLoop(DD, d_in, TOFCenter, sigma_x, &D, d_epps, TOFWeights);
+				const float TOFSum = TOFLoop(DDsign, d_in, TOFCenter, sigmaInv, sigmaCoef, &D, d_epps, TOFWeights);
 #endif //////////////// END TOF ////////////////
 #ifdef ORTH //////////////// ORTH/VOL ////////////////
 				//const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
@@ -861,14 +857,14 @@ void projectorType123(
                     diff, //diff.y, diff.x, diff.z, 
                     center, //xcenter, 
                     s, // s.x, s.y, s.z, 
-                    b2, d2, _bz, dz, temp, indO, localInd.z, d_Nxy, orth_ray_length, d_N1, d_N3, d_N2, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
+                    b2, d2, _bz, dz, temp, indO, localInd.z, d_Nxy, orth_ray_length, d_N1, d_N3, d_N2, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, false, &tempk_b, uz,
 #if defined(FP)
 					d_OSEM
 #else
 					no_norm, d_Summ, d_output 
 #endif
 #ifdef TOF
-				, d_d2, sigma_x, &D, DD, TOFSum, TOFWeights
+				, TOFSum, TOFWeights
 #if defined(LISTMODE)
 				, TOFid
 #endif
@@ -877,50 +873,36 @@ void projectorType123(
 				, EXP(jelppi)
 #endif
 #if defined(MASKBP) && defined(BP)
-				, aa, maskBP
+				, aa, maskBP, d_Nxyz
 #endif
 #ifdef SPECT
                 , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
-#endif
-#ifdef N_RAYS
-                    , lor
 #endif
 				);
 #else //////////////// SIDDON ////////////////
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
 #ifdef USEIMAGES
-				denominator(ax, localInd, d_in, d_OSEM
+				denominator(axP, localInd, d_in, d_OSEM
 #else
-				denominator(ax, local_ind, d_in, d_OSEM
+				denominator(axP, local_ind, d_in, d_OSEM
 #endif
 #ifdef TOF //////////////// TOF ////////////////
-				, d_in, TOFSum, DD, sigma_x, &D, TOFWeights
+				, TOFSum, TOFWeights
 #ifdef LISTMODE
 				, TOFid
 #endif
 #endif //////////////// END TOF ////////////////
-#ifdef N_RAYS
-				, lor
-#endif
 				);
 #endif  //////////////// END FORWARD PROJECTION ////////////////
 #if defined(BP) //////////////// BACKWARD PROJECTION ////////////////
 #if defined(MASKBP) //////////////// MASKBP ////////////////
 				int maskVal = 1;
-				const typeT maskInd = localInd
-#ifndef USEIMAGES
-					.x + localInd.y * d_Nxyz.x
-#ifdef MASKBP3D
-					+ localInd.z * d_Nxyz.x * d_Nxyz.y
-#endif
-#endif
-				;
-				maskVal = readMaskBP(maskBP, maskInd);
+				maskVal = readMaskBP(maskBP, localInd, d_Nxyz);
 				if (maskVal > 0)
 #endif //////////////// END MASKBP ////////////////
 				rhs(temp * d_in, ax, local_ind, d_output, no_norm, d_Summ
 #ifdef TOF //////////////// TOF ////////////////
-				, d_in, sigma_x, &D, DD, TOFSum, TOFWeights
+				, TOFSum, TOFWeights
 #ifdef LISTMODE
 				, TOFid
 #endif
@@ -938,7 +920,7 @@ void projectorType123(
 					localInd.y++;
 #endif
 #if defined(TOF)
-				D -= (d_d2 * sign(DD));
+				D -= (d_d2 * DDsign);
 #endif
 			}
 #if defined(FP) && !defined(N_RAYS) //////////////// FORWARD PROJECTION ////////////////
@@ -960,14 +942,14 @@ void projectorType123(
 #endif
 #elif defined(FP) && defined(N_RAYS)
 #if defined(TOF) && defined(LISTMODE)
-		size_t to = TOFid;
+		ax[TOFid] += axRay[TOFid] * temp;
 #else
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++)
+		ax[to] += axRay[to] * temp;
 #endif
-		ax[to + NBINS * lor] *= temp;
 #endif //////////////// END FORWARD PROJECTION ////////////////
 
 	}
@@ -1026,6 +1008,7 @@ void projectorType123(
 		// L = LENGTH(s + (d - s) * tc);
 #ifdef TOF
 		TOFDis(diff, tc, L, &D, &DD);
+		const float DDsign = sign(DD);
 #endif
 #if (defined(ATN) && defined(BP)) || defined(ORTH) || (defined(BP) && !defined(TOTLENGTH) && !defined(CT))
 		float tx0_a = tx0, ty0_a = ty0, tz0_a = tz0;
@@ -1046,78 +1029,16 @@ void projectorType123(
 			local_ind = compute_ind(tempj, tempi * d_N2, tempk, d_N3, d_Nxy);
 #endif
 #endif
-			if (tz0 < ty0 && tz0 < tx0) {
-// #if defined(LISTMODE)
-				if (tz0 >= 0.f && tz0 <= 1.f) {
-					if (tc < 0.f) {
-						local_ele = tz0 * L;
-						compute_element(&tz0, &tc, L, tzu, uz, &tempk);
-					}
-					else
-						local_ele = compute_element(&tz0, &tc, L, tzu, uz, &tempk);
-				}
-				else if (tc >= 0.f && tc <= 1.f) {
-					if (tz0 > 1.f) {
-						local_ele = (1.f - tc) * L;
-						compute_element(&tz0, &tc, L, tzu, uz, &tempk);
-					}
-					else
-					local_ele = compute_element(&tz0, &tc, L, tzu, uz, &tempk);
-				}
-				else
-					compute_element(&tz0, &tc, L, tzu, uz, &tempk);
-// #else
-// 				local_ele = compute_element(&tz0, &tc, L, tzu, uz, &tempk);
-// #endif
-			}
-			else if (ty0 < tx0) {
-// #if defined(LISTMODE)
-				if (ty0 >= 0.f && ty0 <= 1.f) {
-					if (tc < 0.f) {
-						local_ele = ty0 * L;
-						compute_element(&ty0, &tc, L, tyu, uy, &tempj);
-					}
-					else
-						local_ele = compute_element(&ty0, &tc, L, tyu, uy, &tempj);
-				}
-				else if (tc >= 0.f && tc <= 1.f) {
-					if (ty0 > 1.f) {
-						local_ele = (1.f - tc) * L;
-						compute_element(&ty0, &tc, L, tyu, uy, &tempj);
-					}
-					else
-						local_ele = compute_element(&ty0, &tc, L, tyu, uy, &tempj);
-				}
-				else
-					compute_element(&ty0, &tc, L, tyu, uy, &tempj);
-// #else
-// 				local_ele = compute_element(&ty0, &tc, L, tyu, uy, &tempj);
-// #endif
-			}
-			else {
-// #if defined(LISTMODE)
-				if (tx0 >= 0.f && tx0 <= 1.f) {
-					if (tc < 0.f) {
-						local_ele = tx0 * L;
-						compute_element(&tx0, &tc, L, txu, ux, &tempi);
-					}
-					else
-						local_ele = compute_element(&tx0, &tc, L, txu, ux, &tempi);
-				}
-				else if (tc >= 0.f && tc <= 1.f) {
-					if (tx0 > 1.f) {
-						local_ele = (1.f - tc) * L;
-						compute_element(&tx0, &tc, L, txu, ux, &tempi);
-					}
-					else
-						local_ele = compute_element(&tx0, &tc, L, txu, ux, &tempi);
-				}
-				else
-					compute_element(&tx0, &tc, L, txu, ux, &tempi);
-// #else
-// 				local_ele = compute_element(&tx0, &tc, L, txu, ux, &tempi);
-// #endif
-			}
+			bool passAtn = false;
+			// This version avoids branching more than the previous one
+			// Due to the nature of Siddon's method, there will always be some branching
+			// Compute the length of intersection and move to the next voxel
+			if (tz0 < ty0 && tz0 < tx0)
+				local_ele = compute_element(&tz0, &tc, L, tzu, uz, &tempk, &passAtn);
+			else if (ty0 < tx0)
+				local_ele = compute_element(&ty0, &tc, L, tyu, uy, &tempj, &passAtn);
+			else
+				local_ele = compute_element(&tx0, &tc, L, txu, ux, &tempi, &passAtn);
 #if defined(ATN) && !defined(SPECT)
 #ifdef USEIMAGES
 			compute_attenuation(local_ele, localInd, d_atten, &jelppi, aa);
@@ -1260,84 +1181,12 @@ void projectorType123(
 			tempk_a = tempk;
 #endif //////////////// END ORTH/VOL ////////////////
 			bool pass = false;
-			if (tz0 < ty0 && tz0 < tx0) {
-// #if defined(LISTMODE)
-				if (tz0 >= 0.f && tz0 <= 1.f) {
-					if (tc < 0.f) {
-						local_ele = tz0 * L;
-						compute_element(&tz0, &tc, L, tzu, uz, &tempk);
-					}
-					else
-						local_ele = compute_element(&tz0, &tc, L, tzu, uz, &tempk);
-					pass = true;
-				}
-				else if (tc >= 0.f && tc <= 1.f) {
-					if (tz0 > 1.f) {
-						local_ele = (1.f - tc) * L;
-						compute_element(&tz0, &tc, L, tzu, uz, &tempk);
-					}
-					else
-						local_ele = compute_element(&tz0, &tc, L, tzu, uz, &tempk);
-					pass = true;
-				}
-				else
-					compute_element(&tz0, &tc, L, tzu, uz, &tempk);
-// #else
-// 				local_ele = compute_element(&tz0, &tc, L, tzu, uz, &tempk);
-// #endif
-			}
-			else if (ty0 < tx0) {
-// #if defined(LISTMODE)
-				if (ty0 >= 0.f && ty0 <= 1.f) {
-					if (tc < 0.f) {
-						local_ele = ty0 * L;
-						compute_element(&ty0, &tc, L, tyu, uy, &tempj);
-					}
-					else
-						local_ele = compute_element(&ty0, &tc, L, tyu, uy, &tempj);
-					pass = true;
-				}
-				else if (tc >= 0.f && tc <= 1.f) {
-					if (ty0 > 1.f) {
-						local_ele = (1.f - tc) * L;
-						compute_element(&ty0, &tc, L, tyu, uy, &tempj);
-					}
-					else
-						local_ele = compute_element(&ty0, &tc, L, tyu, uy, &tempj);
-					pass = true;
-				}
-				else
-					compute_element(&ty0, &tc, L, tyu, uy, &tempj);
-// #else
-// 				local_ele = compute_element(&ty0, &tc, L, tyu, uy, &tempj);
-// #endif
-			}
-			else {
-// #if defined(LISTMODE)
-				if (tx0 >= 0.f && tx0 <= 1.f) {
-					if (tc < 0.f) {
-						local_ele = tx0 * L;
-						compute_element(&tx0, &tc, L, txu, ux, &tempi);
-					}
-					else
-						local_ele = compute_element(&tx0, &tc, L, txu, ux, &tempi);
-					pass = true;
-				}
-				else if (tc >= 0.f && tc <= 1.f) {
-					if (tx0 > 1.f) {
-						local_ele = (1.f - tc) * L;
-						compute_element(&tx0, &tc, L, txu, ux, &tempi);
-					}
-					else
-						local_ele = compute_element(&tx0, &tc, L, txu, ux, &tempi);
-					pass = true;
-				}
-				else
-					compute_element(&tx0, &tc, L, txu, ux, &tempi);
-// #else
-// 				local_ele = compute_element(&tx0, &tc, L, txu, ux, &tempi);
-// #endif
-			}
+			if (tz0 < ty0 && tz0 < tx0)
+				local_ele = compute_element(&tz0, &tc, L, tzu, uz, &tempk, &pass);
+			else if (ty0 < tx0)
+				local_ele = compute_element(&ty0, &tc, L, tyu, uy, &tempj, &pass);
+			else
+				local_ele = compute_element(&tx0, &tc, L, txu, ux, &tempi, &pass);
 #if !defined(TOTLENGTH) && defined(FP) && !defined(CT)
 			LL += local_ele;
 #endif
@@ -1352,14 +1201,15 @@ void projectorType123(
 			localInd2 = compute_ind(tempj_c, tempi_c, tempk_c, d_Nxyz.x, d_Nxy);
 #endif
 #endif
+			bool passAtn = false;
 			if (tz0_c < ty0_c && tz0_c < tx0_c) {
-				local_ele2 = compute_element(&tz0_c, &tc_c, L, tzu_c, uz_c, &tempk_c);
+				local_ele2 = compute_element(&tz0_c, &tc_c, L, tzu_c, uz_c, &tempk_c, &passAtn);
 			}
 			else if (ty0_c < tx0_c) {
-				local_ele2 = compute_element(&ty0_c, &tc_c, L, tyu_c, uy_c, &tempj_c);
+				local_ele2 = compute_element(&ty0_c, &tc_c, L, tyu_c, uy_c, &tempj_c, &passAtn);
 			}
 			else {
-				local_ele2 = compute_element(&tx0_c, &tc_c, L, txu_c, ux_c, &tempi_c);
+				local_ele2 = compute_element(&tx0_c, &tc_c, L, txu_c, ux_c, &tempi_c, &passAtn);
 			}
 #endif
 #if defined(ATN) && (defined(FP) || defined(SPECT))
@@ -1371,116 +1221,109 @@ void projectorType123(
 			}
 #endif
 #ifdef TOF //////////////// TOF ////////////////
-			TOFSum = TOFLoop(DD, local_ele2, TOFCenter, sigma_x, &D, d_epps, TOFWeights);
+			TOFSum = TOFLoop(DDsign, local_ele2, TOFCenter, sigmaInv, sigmaCoef, &D, d_epps, TOFWeights);
 #endif //////////////// END TOF ////////////////
 #ifdef ORTH //////////////// ORTH/VOL ////////////////
+#if defined(SPECT) && defined(ATN)
+			const float atnSPECT = EXP(jelppi);
+#endif
             if (ii == 0) {
 				tempk_b = tempk_a;
                 if (ux >= 0) {
+                    center.x = b1 + d1 * CFLOAT(tempi_a - 1) + d1 / 2.f;
                     for (int kk = tempi_a - 1; kk >= 0; kk--) {
-						//const float xcenter = b1 + d1 * CFLOAT(kk) + d1 / 2.f;
-                        center.x = b1 + d1 * CFLOAT(kk) + d1 / 2.f;
                         int uu = orthDistance3D(kk, 
                             diff, //diff.y, diff.x, diff.z, 
                             center, //xcenter, 
                             s, // s.x, s.y, s.z,
-                            b2, d2, _bz, dz, temp, tempj_a, tempk_b, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, true, &tempk_b, uz, 
+                            b2, d2, _bz, dz, temp, tempj_a, tempk_b, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, true, &tempk_b, uz,
 #if defined(FP) //////////////// FP ////////////////
                             d_OSEM
 #else //////////////// BP ////////////////
                             no_norm, d_Summ, d_output 
 #endif //////////////// END FP/BP ////////////////
 #ifdef TOF //////////////// TOF ////////////////
-                        , local_ele2, sigma_x, &D, DD, TOFSum, TOFWeights
+                        , TOFSum, TOFWeights
 #if defined(LISTMODE)
 						, TOFid
 #endif
 #endif //////////////// END TOF ////////////////
 #if defined(SPECT) && defined(ATN)
-						, EXP(jelppi)
+						, atnSPECT
 #endif
 #if defined(MASKBP) && defined(BP) //////////////// MASKBP ////////////////
-						, aa, maskBP
+						, aa, maskBP, d_Nxyz
 #endif //////////////// END MASKBP ////////////////
 #ifdef SPECT
                         , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
 #endif
-#ifdef N_RAYS
-                        , lor
-#endif
                         );
                         if (uu == 0)
                             break;
+                        center.x -= d1;
                     }
                 }
                 else {
+                    center.x = b1 + d1 * CFLOAT(tempi_a + 1) + d1 / 2.f;
                     for (int kk = tempi_a + 1; kk < d_NN.x; kk++) {
-						//const float xcenter = b1 + d1 * CFLOAT(kk) + d1 / 2.f;
-                        center.x = b1 + d1 * CFLOAT(kk) + d1 / 2.f;
                         int uu = orthDistance3D(kk, 
                             diff, //diff.y, diff.x, diff.z, 
                             center, //xcenter, 
                             s, // s.x, s.y, s.z,
-                            b2, d2, _bz, dz, temp, tempj_a, tempk_b, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, true, &tempk_b, uz, 
+                            b2, d2, _bz, dz, temp, tempj_a, tempk_b, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, true, &tempk_b, uz,
 #if defined(FP) //////////////// FP ////////////////
                             d_OSEM
 #else //////////////// BP ////////////////
                             no_norm, d_Summ, d_output 
 #endif //////////////// END FP/BP ////////////////
 #ifdef TOF //////////////// TOF ////////////////
-                        , local_ele2, sigma_x, &D, DD, TOFSum, TOFWeights
+                        , TOFSum, TOFWeights
 #if defined(LISTMODE)
 						, TOFid
 #endif
 #endif //////////////// END TOF ////////////////
 #if defined(SPECT) && defined(ATN)
-						, EXP(jelppi)
+						, atnSPECT
 #endif
 #if defined(MASKBP) && defined(BP) //////////////// MASKBP ////////////////
-						, aa, maskBP
+						, aa, maskBP, d_Nxyz
 #endif //////////////// END MASKBP ////////////////
 #ifdef SPECT
                         , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
 #endif
-#ifdef N_RAYS
-                    , lor
-#endif
                         );
                         if (uu == 0)
                             break;
+                        center.x += d1;
                     }
                 }
             }
 			if (tz0_a >= tx0_a && ty0_a >= tx0_a) {
-				//const float xcenter = b1 + d1 * CFLOAT(localInd.x) + d1 / 2.f;
                 center.x = b1 + d1 * CFLOAT(localInd.x) + d1 / 2.f;
 				orthDistance3D(localInd.x, 
                     diff, //diff.y, diff.x, diff.z, 
                     center, //xcenter, 
                     s, // s.x, s.y, s.z,
-                    b2, d2, _bz, dz, temp, localInd.y, localInd.z, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
+                    b2, d2, _bz, dz, temp, localInd.y, localInd.z, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, false, &tempk_b, uz,
 #if defined(FP) //////////////// FP ////////////////
 					d_OSEM
 #else //////////////// BP ////////////////
 					no_norm, d_Summ, d_output 
 #endif //////////////// END FP/BP ////////////////
 #ifdef TOF //////////////// TOF ////////////////
-				, local_ele, sigma_x, &D, DD, TOFSum, TOFWeights
+				, TOFSum, TOFWeights
 #if defined(LISTMODE)
 				, TOFid
 #endif
 #endif //////////////// END TOF ////////////////
 #if defined(SPECT) && defined(ATN)
-				, EXP(jelppi)
+				, atnSPECT
 #endif
 #if defined(MASKBP) && defined(BP) //////////////// MASKBP ////////////////
-				, aa, maskBP
+				, aa, maskBP, d_Nxyz
 #endif //////////////// END MASKBP ////////////////
 #ifdef SPECT
                 , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
-#endif
-#ifdef N_RAYS
-                    , lor
 #endif
 				);
 #ifdef ORTH
@@ -1490,38 +1333,27 @@ void projectorType123(
 #else //////////////// SIDDON ////////////////
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
 #ifdef USEIMAGES
-			denominator(ax, localInd, local_ele, d_OSEM
+			denominator(axP, localInd, local_ele, d_OSEM
 #else
-			denominator(ax, local_ind, local_ele, d_OSEM
+			denominator(axP, local_ind, local_ele, d_OSEM
 #endif
 #ifdef TOF //////////////// TOF ////////////////
-			, local_ele, TOFSum, DD, sigma_x, &D, TOFWeights
+			, TOFSum, TOFWeights
 #ifdef LISTMODE
 			, TOFid
 #endif
 #endif //////////////// END TOF ////////////////
-#ifdef N_RAYS
-			, lor
-#endif
 			);
 #endif  //////////////// END FORWARD PROJECTION ////////////////
 #if defined(BP) //////////////// BACKWARD PROJECTION ////////////////
 #if defined(MASKBP) //////////////// MASKBP ////////////////
 			int maskVal = 1;
-			const typeT maskInd = localInd
-#ifndef USEIMAGES
-				.x * d_N2 + localInd.y * d_N3
-#ifdef MASKBP3D
-				+ localInd.z * d_Nxyz.x * d_Nxyz.y
-#endif
-#endif
-			;
-			maskVal = readMaskBP(maskBP, maskInd);
+			maskVal = readMaskBP(maskBP, localInd, d_Nxyz);
 			if (maskVal > 0)
 #endif //////////////// END MASKBP ////////////////
 			rhs(local_ele * temp, ax, local_ind, d_output, no_norm, d_Summ
 #ifdef TOF
-			, local_ele, sigma_x, &D, DD, TOFSum, TOFWeights
+			, TOFSum, TOFWeights
 #ifdef LISTMODE
 			, TOFid
 #endif
@@ -1530,7 +1362,7 @@ void projectorType123(
 #endif //////////////// END BACKWARD PROJECTION ////////////////
 #endif //////////////// END ORTH/VOL ////////////////
 #if defined(TOF)
-			D -= (local_ele2 * sign(DD));
+			D -= (local_ele2 * DDsign);
 #endif
 			if (tempi < 0 || tempi >= d_Nxyz.x || tempj < 0 || tempj >= d_Nxyz.y || tempk < 0 || tempk >= d_Nxyz.z) {
 				break;
@@ -1577,9 +1409,13 @@ void projectorType123(
 #endif
 
 #ifdef ORTH
+#if defined(SPECT) && defined(ATN)
+		const float atnSPECT2 = EXP(jelppi);
+#endif
 		if (ux < 0) {
 			if (tempiOld != tempi_a)
 				tempi_a++;
+            center.x = b1 + d1 * CFLOAT(tempi_a - 1) + d1 / 2.f;
 			for (int ii = tempi_a - 1; ii >= 0; ii--) {
 				//const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
                 center.x = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
@@ -1587,72 +1423,67 @@ void projectorType123(
                     diff, //diff.y, diff.x, diff.z, 
                     center, //xcenter, 
                     s, // s.x, s.y, s.z,
-                    b2, d2, _bz, dz, temp, tempj_a, tempk_a, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
+                    b2, d2, _bz, dz, temp, tempj_a, tempk_a, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, false, &tempk_b, uz,
 #if defined(FP)
 					d_OSEM
 #else
 					no_norm, d_Summ, d_output 
 #endif
 #ifdef TOF
-				, local_ele, sigma_x, &D, DD, TOFSum, TOFWeights
+				, TOFSum, TOFWeights
 #ifdef LISTMODE
 				, TOFid
 #endif
 #endif
 #if defined(SPECT) && defined(ATN)
-				, EXP(jelppi)
+				, atnSPECT2
 #endif
 #if defined(MASKBP) && defined(BP)
-				, aa, maskBP
+				, aa, maskBP, d_Nxyz
 #endif
 #ifdef SPECT
                 , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
 #endif
-#ifdef N_RAYS
-                    , lor
-#endif
 				);
 				if (uu == 0)
 					break;
+				center.x -= d1;
 			}
 		}
 		else {
 			if (tempiOld != tempi_a)
 				tempi_a--;
+            center.x = b1 + d1 * CFLOAT(tempi_a + 1) + d1 / 2.f;
 			for (int ii = tempi_a + 1; ii < d_NN.x; ii++) {
-				//const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
-                center.x = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
 				int uu = orthDistance3D(ii, 
                     diff, //diff.y, diff.x, diff.z, 
                     center, //xcenter, 
                     s, // s.x, s.y, s.z,
-                    b2, d2, _bz, dz, temp, tempj_a, tempk_a, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
+                    b2, d2, _bz, dz, temp, tempj_a, tempk_a, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, false, &tempk_b, uz,
 #if defined(FP)
 					d_OSEM
 #else
 					no_norm, d_Summ, d_output 
 #endif
 #ifdef TOF
-				, local_ele, sigma_x, &D, DD, TOFSum, TOFWeights
+				, TOFSum, TOFWeights
 #ifdef LISTMODE
 				, TOFid
 #endif
 #endif
 #if defined(SPECT) && defined(ATN)
-				, EXP(jelppi)
+				, atnSPECT2
 #endif
 #if defined(MASKBP) && defined(BP)
-				, aa, maskBP
+				, aa, maskBP, d_Nxyz
 #endif
 #ifdef SPECT
                 , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
 #endif
-#ifdef N_RAYS
-                    , lor
-#endif
 				);
 				if (uu == 0)
 					break;
+				center.x += d1;
 			}
 		}
 #endif
@@ -1681,14 +1512,14 @@ void projectorType123(
 #endif
 #elif defined(FP) && defined(N_RAYS)
 #if defined(TOF) && defined(LISTMODE)
-	int to = TOFid;
+	ax[TOFid] += axRay[TOFid] * temp;
 #else
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++)
+		ax[to] += axRay[to] * temp;
 #endif
-		ax[to + NBINS * lor] *= temp;
 #endif //////////////// END FORWARD PROJECTION ////////////////
 	}
 //  */
@@ -1698,26 +1529,22 @@ void projectorType123(
 
 
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
+#if defined(TOF) && defined(LISTMODE)
+    size_t to = TOFid;
+#else
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
     for (size_t to = 0; to < NBINS; to++) {
-        float apu = 0.f;
-#pragma unroll N_RAYS
-		for (size_t kk = 0; kk < N_RAYS; kk++) {
-            apu += ax[to + NBINS * kk];
-        }
-        ax[to] = apu;
-    }
-#if !defined(__CUDACC__) && !defined(__HIPCC__)
-#pragma unroll NBINS
 #endif
-    for (size_t to = 0; to < NBINS; to++) {
         forwardProjectAF(d_output, ax, idx, 1.f, to);
 #ifdef TOF
         idx += m_size;
 #endif
+#if defined(TOF) && defined(LISTMODE)
+#else
     }
+#endif
 #endif //////////////// END FORWARD PROJECTION ////////////////
 #endif //////////////// END MULTIRAY ////////////////
 }

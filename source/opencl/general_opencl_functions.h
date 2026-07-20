@@ -9,7 +9,7 @@
 *
 * USEIMAGES specifies whether OpenCL images or CUDA textures are used. If it is not defined, regular buffers are used. Default is ON.
 *
-* Copyright (C) 2019-2025 Ville-Veikko Wettenhovi, Niilo Saarlemo
+* Copyright (C) 2019-2026 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
 * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by
 * the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
@@ -20,6 +20,12 @@
 * You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 *******************************************************************************************************************************************/
 
+// hipRTC force-includes hiprtc_runtime.h, which uses FP as a type name; defining FP on the
+// command line breaks that header. HIP RTC builds therefore pass -DOMEGA_FP instead, and it
+// is mapped back to FP here, after the hipRTC prelude has already been processed.
+#if defined(OMEGA_FP) && !defined(FP)
+#define FP
+#endif
 #ifdef ATOMIC
 #pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
 #endif
@@ -41,7 +47,7 @@
 #else
 #define NA 2
 #endif
-#if defined(PTYPE4)
+#if defined(PTYPE4) && !defined(BP4)
 #define typeT float3
 #define T4 float4
 #define typeTT float
@@ -57,6 +63,26 @@
 #endif
 #define T4 int4
 #define typeTT int
+#endif
+// The backprojection mask is read with normalized float coordinates only in the ray-based
+// (non-CT) projector type 4 backprojection
+#if defined(MASKBP) && defined(PTYPE4) && !defined(BP4) && !defined(CT) && (defined(BP) || defined(SENS))
+#define MASKBPNORM
+#define T3 float3
+#define T2 float2
+#else
+#define T3 int3
+#define T2 int2
+#endif
+// FP mask is always read with integer indices
+#ifdef USEIMAGES
+#define MASKFPT int3
+#else
+#if defined(OPENCL) || defined(METAL)
+#define MASKFPT long
+#else
+#define MASKFPT long long
+#endif
 #endif
 
 #ifdef HALF
@@ -175,6 +201,12 @@ constexpr metal::sampler sampler2(
     metal::address::clamp_to_edge
 );
 
+constexpr metal::sampler samplerMask(
+    metal::coord::normalized,
+    metal::filter::nearest,
+    metal::address::clamp_to_edge
+);
+
 #ifdef HALF // 16-bit floating point
 #define CFLOAT(a) static_cast<half>(a)
 #define CFLOAT3(a) half3(a)
@@ -213,6 +245,7 @@ constexpr metal::sampler sampler2(
 #define BUF13 [[buffer(13)]]
 #define BUF14 [[buffer(14)]]
 #define BUF15 [[buffer(15)]]
+#define CEIL metal::ceil
 #define CINT(a)   static_cast<int>(a)
 #define CINT_rtz(a) static_cast<int>(metal::trunc((a)))
 #define CINT3_rtz(a) static_cast<int3>(a)
@@ -224,7 +257,9 @@ constexpr metal::sampler sampler2(
 #define CONSTANT constant
 #define CROSS metal::cross
 #define CUINT(a) (uint)(a)
+#define CUINT3(a) uint3(a)
 #define CUINT_rtp(a) static_cast<uint>(metal::ceil((a)))
+#define CUINT_rtz(a) static_cast<uint>(metal::trunc((a)))
 #define CUINT_sat_rtz(a) static_cast<uint>(metal::clamp(metal::trunc(((float)a)), 0.0f, 4294967295.0f)) // TODO replace float with FLOAT
 #define DEVICE inline
 #define DISTANCE metal::distance
@@ -236,6 +271,7 @@ constexpr metal::sampler sampler2(
 #define FMAD3(a,b,c) metal::fma((a),(b),(c))
 #define FMAX metal::fmax
 #define FMIN metal::fmin
+#define FLOOR metal::floor
 #define IMAGE2D metal::texture2d<float, metal::access::sample>
 #define IMAGE3D metal::texture3d<float, metal::access::sample>
 #define ISINF metal::isinf
@@ -263,18 +299,25 @@ constexpr metal::sampler sampler2(
 #define PTR_TG threadgroup
 #define RCP(x) (1.f / x)
 #define SQRT metal::sqrt
+#define RSQRT(x) metal::rsqrt(x)
 #define SCALAR_PARAMS(name) constant ScalarKernelParams &name
 #ifdef USEIMAGES
 #define TEX1 [[texture(1)]]
 #define TEX2 [[texture(2)]]
 #define TEX3 [[texture(3)]]
 #define TEX4 [[texture(4)]]
+#define TEX7 [[texture(7)]]
+#define TEX8 [[texture(8)]]
+#define TEX9 [[texture(9)]]
 #define TEX19 [[texture(19)]]
 #else
 #define TEX1 [[buffer(1)]]
 #define TEX2 [[buffer(2)]]
 #define TEX3 [[buffer(3)]]
 #define TEX4 [[buffer(4)]]
+#define TEX7 [[buffer(7)]]
+#define TEX8 [[buffer(8)]]
+#define TEX9 [[buffer(9)]]
 #define TEX19 [[buffer(19)]]
 #endif
 // Metal function definitions
@@ -373,6 +416,7 @@ inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
 #define CFLOAT(a) convert_float(a)
 #define CFLOAT3(a) convert_float3(a)
 #define CUINT(a) convert_uint(a)
+#define CUINT3(a) convert_uint3(a)
 #define CUINT_rtp(a) convert_uint_rtp(a)
 #define CUINT_rtz(a) convert_uint_rtz(a)
 #define CUINT_rte(a) convert_uint_rte(a)
@@ -383,6 +427,7 @@ inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
 #define SINF(a) native_sin(a)
 #define COSF(a) native_cos(a)
 #define SQRT native_sqrt
+#define RSQRT(x) native_rsqrt(x)
 #define POWR native_powr
 #define POWN pown
 #define RCP(x) native_recip(x)
@@ -436,11 +481,13 @@ __constant sampler_t samplerForw = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_LINEA
 #endif
 __constant sampler_t samplerSiddon = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 
-#if defined(MASKBP) && defined(PTYPE4) && !defined(CT) && defined(BP)
-__constant sampler_t sampler_MASK4 = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
+#ifdef MASKBPNORM
+__constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 #else
 __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif
+// The forward projection mask is always read with (unnormalized) integer coordinates
+__constant sampler_t sampler_MASKFP = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif
 // CUDA and HIP share the same device-side language (kernel/qualifier keywords, intrinsics, vector
 // types, texture fetch templates, etc.), so the vast majority of these definitions are common. The
@@ -522,6 +569,7 @@ __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEA
 #define CFLOAT(a) (float)(a)
 #define CFLOAT3(a) convert_float3(a)
 #define CUINT(a) (unsigned int)(a)
+#define CUINT3(a) convert_uint3(a)
 #define CUINT_rtp(a) __float2uint_ru(a)
 #define CUINT_rtz(a) __float2uint_rd(a)
 #define CUINT_rte(a) __float2uint_rn(a)
@@ -585,6 +633,7 @@ __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEA
 #define ATAN2 atan2f
 #define ACOS acosf
 #define SQRT sqrtf
+#define RSQRT(x) __frsqrt_rn(x)
 #define LOG logf
 #define CROSS cross
 #define DISTANCE distance
@@ -618,14 +667,10 @@ inline __device__ float3 make_int3_float3(int3 a) {
 	return make_float3((float)a.x, (float)a.y, (float)a.z);
 }
 
-// inline __device__ int3 operator-(int3 a, int3 b) {
-// 	return make_int3(a.x - b.x, a.y - b.y, a.z - b.z);
-// }
-
 // CUDA's vector_types.h defines no arithmetic operators for int3/float2/float3, so we provide them
 // here. HIP's HIP_vector_type already overloads all of these (+, -, *, /, unary -, compound
 // assignment, and scalar/vector mixes), so defining them again makes every use ambiguous. Skip them
-// under HIP and rely on the built-in ones. NOTE: the only behavioural difference is uint3 - int,
+// under HIP and rely on the built-in ones. NOTE: the only behavioral difference is uint3 - int,
 // which yields int3 here but uint3 under HIP; its single use is CFLOAT3(N - 1) where N >= 1, so the
 // converted float value is identical.
 #ifndef HIP
@@ -663,6 +708,10 @@ inline __device__ float2 operator+(float a, float2 b) {
 
 inline __device__ float2 operator+(float2 a, float b) {
 	return make_float2(a.x + b, a.y + b);
+}
+
+inline __device__ float2 operator-(float2 a, float b) {
+	return make_float2(a.x - b, a.y - b);
 }
 
 inline __device__ float2 operator*(float2 a, float2 b) {
@@ -753,6 +802,61 @@ inline __device__ void operator+=(float2& a, float2 b) {
 	a.x += b.x;
 	a.y += b.y;
 }
+
+inline __device__ void operator+=(float2& a, float b) {
+	a.x += b;
+	a.y += b;
+}
+
+inline __device__ void operator-=(float2& a, float2 b) {
+	a.x -= b.x;
+	a.y -= b.y;
+}
+
+inline __device__ void operator*=(float2& a, float2 b) {
+	a.x *= b.x;
+	a.y *= b.y;
+}
+
+inline __device__ void operator/=(float2& a, float b) {
+	a.x /= b;
+	a.y /= b;
+}
+
+inline __device__ void operator/=(float2& a, float2 b) {
+	a.x /= b.x;
+	a.y /= b.y;
+}
+
+inline __device__ void operator*=(float3& a, float b) {
+	a.x *= b;
+	a.y *= b;
+	a.z *= b;
+}
+
+inline __device__ void operator-=(float3& a, float b) {
+	a.x -= b;
+	a.y -= b;
+	a.z -= b;
+}
+
+inline __device__ void operator+=(float3& a, float b) {
+	a.x += b;
+	a.y += b;
+	a.z += b;
+}
+
+inline __device__ void operator/=(float3& a, float b) {
+	a.x /= b;
+	a.y /= b;
+	a.z /= b;
+}
+
+inline __device__ void operator/=(float3& a, float3 b) {
+	a.x /= b.x;
+	a.y /= b.y;
+	a.z /= b.z;
+}
 #endif // !HIP (vector arithmetic operators are built into HIP_vector_type)
 
 inline __device__ float3 fmin(float3 a, float3 b) {
@@ -812,6 +916,11 @@ template<typename T>
 inline __device__ float3 convert_float3(const T& a) {
     return make_float3(static_cast<float>(a.x), static_cast<float>(a.y), static_cast<float>(a.z));
 }
+
+template<typename T>
+inline __device__ uint3 convert_uint3(const T& a) {
+    return make_uint3(static_cast<unsigned int>(a.x), static_cast<unsigned int>(a.y), static_cast<unsigned int>(a.z));
+}
 #endif
 
 #if STYPE == 1 || STYPE == 2 || STYPE == 4 || STYPE == 5
@@ -862,38 +971,70 @@ DEVICE void getIndex(int3* i, const uint d_size_x, const uint d_sizey, const uin
 
 #endif
 
-#if ((defined(MASKBP) || defined(MASKBP3D) || defined(MASKPRIOR)) && !defined(PTYPE4)) // This is due to projector type 4 using sampler_MASK4 in BP mask (but only in forward projection)
-DEVICE int readMaskBP(MASKBPTYPE maskBP, typeT ind) {
-	return 
-    #ifdef USEIMAGES
-    #ifdef METAL
+#if (defined(MASKBP) || defined(MASKBP3D) || defined(MASKPRIOR))
+// Read the backprojection/prior mask value at the input voxel
+// ind contains the voxel coordinates; for the ray-based projector type 4 these are normalized [0, 1) coordinates
+// d_N contains the mask dimensions, only used with buffers (2D masks ignore ind.z)
+DEVICE int readMaskBP(MASKBPTYPE maskBP,
+	const T3 ind,
+	const uint3 d_N) {
+#ifdef USEIMAGES
+#if defined(METAL)
+#ifdef MASKBPNORM
     #ifdef MASKBP3D
-        static_cast<int>(metal::round(maskBP.read(uint3(ind.x, ind.y, ind.z)).r));
+        return static_cast<int>(metal::round(maskBP.sample(samplerMask, ind).r));
     #else
-        static_cast<int>(metal::round(maskBP.read(uint2(ind.x, ind.y)).r));
+        return static_cast<int>(metal::round(maskBP.sample(samplerMask, ind.xy).r));
     #endif
-    #elif defined(CUDA) || defined(HIP)
+#else
+    #ifdef MASKBP3D
+        return static_cast<int>(metal::round(maskBP.read(uint3(ind)).r));
+    #else
+        return static_cast<int>(metal::round(maskBP.read(uint2(ind.xy)).r));
+    #endif
+#endif
+#elif defined(CUDA) || defined(HIP)
+	return
     #ifdef MASKBP3D
         tex3D<unsigned char>(maskBP, ind.x, ind.y, ind.z);
     #else
         tex2D<unsigned char>(maskBP, ind.x, ind.y);
     #endif
     #else
+	return
     #ifdef MASKBP3D
-        read_imageui(maskBP, sampler_MASK, (int4)(ind.x, ind.y, ind.z, 0)).w;
+        read_imageui(maskBP, sampler_MASK, (T4)(ind.x, ind.y, ind.z, 0)).w;
     #else
-        read_imageui(maskBP, sampler_MASK, (int2)(ind.x, ind.y)).w;
+        read_imageui(maskBP, sampler_MASK, (T2)(ind.x, ind.y)).w;
     #endif
-    #endif
-    #else
-        maskBP[ind];
-    #endif
+#endif
+#else
+#ifdef MASKBPNORM
+	// Normalized coordinates
+	const LONG indX = CLONG_rtz(ind.x * CFLOAT(d_N.x));
+	const LONG indY = CLONG_rtz(ind.y * CFLOAT(d_N.y));
+#ifdef MASKBP3D
+	const LONG indZ = CLONG_rtz(ind.z * CFLOAT(d_N.z));
+#endif
+#else
+	const LONG indX = CLONG_rtz(ind.x);
+	const LONG indY = CLONG_rtz(ind.y);
+#ifdef MASKBP3D
+	const LONG indZ = CLONG_rtz(ind.z);
+#endif
+#endif
+	return maskBP[indX + indY * CLONG_rtz(d_N.x)
+#ifdef MASKBP3D
+		+ indZ * CLONG_rtz(d_N.x) * CLONG_rtz(d_N.y)
+#endif
+	];
+#endif
 }
 #endif
 
 #if defined(MASKFP)
-DEVICE int readMaskFP(MASKFPTYPE maskFP, typeT ind) {
-	return 
+DEVICE int readMaskFP(MASKFPTYPE maskFP, MASKFPT ind) {
+	return
 #ifdef USEIMAGES
 #ifdef METAL
 #ifdef MASKFP3D
@@ -909,9 +1050,9 @@ DEVICE int readMaskFP(MASKFPTYPE maskFP, typeT ind) {
 #endif
 #else
 #ifdef MASKFP3D
-        read_imageui(maskFP, sampler_MASK, (int4)(ind.x, ind.y, ind.z, 0)).w;
+        read_imageui(maskFP, sampler_MASKFP, (int4)(ind.x, ind.y, ind.z, 0)).w;
 #else
-        read_imageui(maskFP, sampler_MASK, (int2)(ind.x, ind.y)).w;
+        read_imageui(maskFP, sampler_MASKFP, (int2)(ind.x, ind.y)).w;
 #endif
 #endif
 #else
@@ -967,11 +1108,9 @@ void atomicAdd(volatile CLGLOBAL float *addr, float val) {
 #ifdef TOF //////////////// TOF ////////////////
 #define _2PI 0.3989423f
 
-DEVICE float normPDF(const float x, const float mu, const float sigma) {
-
-	const float a = (x - mu) / sigma;
-
-	return _2PI / sigma * EXP(-0.5f * a * a);
+DEVICE float normPDF(const float x, const float mu, const float invSigma, const float piPerSigma) {
+	const float a = (x - mu) * invSigma;
+	return piPerSigma * EXP(-0.5f * a * a);
 }
 
 DEVICE void TOFDis(const float3 diff, const float tc, const float LL, float* D, float* DD) {
@@ -979,30 +1118,30 @@ DEVICE void TOFDis(const float3 diff, const float tc, const float LL, float* D, 
 	*DD = *D;
 }
 
-DEVICE float TOFWeight(const float element, const float sigma_x, const float D, const float DD, const float TOFCenter, float dX) {
-	float output = normPDF(D, TOFCenter, sigma_x);
-	dX *= sign(DD);
+DEVICE float TOFWeight(const float element, const float invSigma, const float piPerSigma, const float D, const float DDsign, const float TOFCenter, float dX) {
+	float output = normPDF(D, TOFCenter, invSigma, piPerSigma);
+	dX *= DDsign;
 #pragma unroll
 	for (int tr = 1; tr < CINT(TRAPZ_BINS) - 1; tr++)
 #ifdef USEMAD
-		output += (normPDF(FMAD(-dX, CFLOAT(tr), D), TOFCenter, sigma_x) * 2.f);
-	output += normPDF(FMAD(-element, sign(DD), D), TOFCenter, sigma_x);
+		output += (normPDF(FMAD(-dX, CFLOAT(tr), D), TOFCenter, invSigma, piPerSigma) * 2.f);
+	output += normPDF(FMAD(-element, DDsign, D), TOFCenter, invSigma, piPerSigma);
 #else
-		output += (normPDF(D - dX * CFLOAT(tr), TOFCenter, sigma_x) * 2.f);
-	output += normPDF(D - element * sign(DD), TOFCenter, sigma_x);
+		output += (normPDF(D - dX * CFLOAT(tr), TOFCenter, invSigma, piPerSigma) * 2.f);
+	output += normPDF(D - element * DDsign, TOFCenter, invSigma, piPerSigma);
 #endif
 	return output;
 }
 
 
-DEVICE float TOFLoop(const float DD, const float element, CONSTANT float* TOFCenter, const float sigma_x, float* D, const float epps, float* TOFWeights) {
+DEVICE float TOFLoop(const float DDsign, const float element, CONSTANT float* TOFCenter, const float invSigma, const float piPerSigma, float* D, const float epps, float* TOFWeights) {
 	float TOFSum = 0.f;
 	const float dX = element / (TRAPZ_BINS - 1.f);
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++) {
-		TOFWeights[to] = TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], dX) * dX;
+		TOFWeights[to] = TOFWeight(element, invSigma, piPerSigma, *D, DDsign, TOFCenter[to], dX) * dX;
 		TOFSum += TOFWeights[to];
 	}
 	if (TOFSum < epps)
@@ -1072,13 +1211,10 @@ DEVICE void forwardProject(const float local_ele, PTR_THR float *ax, const typeT
 // Includes TOF-specific weighting
 DEVICE void denominator(PTR_THR float *ax, const typeT localInd, float local_ele, IMTYPE d_OSEM
 #ifdef TOF
-	, const float element, const float TOFSum, const float DD, const float sigma_x, float* D, float* TOFWeights
+	, const float TOFSum, float* TOFWeights
 #ifdef LISTMODE
 	, const int TOFIndex
 #endif
-#endif
-#ifdef N_RAYS
-	, const int lor
 #endif
 ) {
 	float apu = 0.f;
@@ -1094,20 +1230,12 @@ DEVICE void denominator(PTR_THR float *ax, const typeT localInd, float local_ele
 	for (int to = 0; to < NBINS; to++) {
 #endif
 		const float joku = TOFWeights[to] * dX;
-#ifdef N_RAYS
-		ax[to + NBINS * lor] += joku;
-#else
 		ax[to] += joku;
-#endif
 #if !defined(LISTMODE) || defined(SENS)
 	}
 #endif
 #else
-#ifdef N_RAYS
-	ax[lor] += apu;
-#else
 	ax[0] += apu;
-#endif
 #endif
 }
 #endif
@@ -1116,7 +1244,7 @@ DEVICE void denominator(PTR_THR float *ax, const typeT localInd, float local_ele
 // Compute the backprojection
 DEVICE void rhs(const float local_ele, PTR_THR const float *ax, const LONG local_ind, CLGLOBAL CAST* d_rhs_OSEM, const uchar no_norm, CLGLOBAL CAST* d_Summ
 #ifdef TOF
-	, const FLOAT element, const FLOAT sigma_x, float* D, const FLOAT DD, const FLOAT TOFSum, float* TOFWeights
+	, const FLOAT TOFSum, float* TOFWeights
 #ifdef LISTMODE
 	, const int TOFIndex
 #endif
@@ -1579,15 +1707,9 @@ DEVICE void compute_attenuation(const float val, const typeT ind, IMTYPE d_atten
 #if !defined(PTYPE4) && !defined(PROJ5)
 // Compute the voxel index where the current perpendicular measurement starts
 DEVICE int perpendicular_start(const float d_b, const float d, const float d_d, const uint d_N) {
-	int tempi = 0;
-	float start = d_b - d + d_d;
-	for (uint ii = 0u; ii < d_N; ii++) {
-		if (start > 0.f) {
-			tempi = CINT(ii);
-			break;
-		}
-		start += d_d;
-	}
+	int tempi = CINT(FLOOR((d - d_b) / d_d));
+	if (tempi < 0 || tempi >= CINT(d_N))
+		tempi = 0;
 	return tempi;
 }
 
@@ -1734,8 +1856,11 @@ DEVICE float voxelValue(const float t0, const float tc, const float L) {
 
 // #ifdef SIDDON
 // compute the distance that the ray traverses in the current voxel
-DEVICE float compute_element(PTR_THR float *t0, PTR_THR float *tc, const float L, const float tu, const int u, PTR_THR int *temp_ijk) {
-	float local_ele = voxelValue(*t0, *tc, L);
+DEVICE float compute_element(PTR_THR float* t0, PTR_THR float* tc, const float L, const float tu, const int u, PTR_THR int* temp_ijk, PTR_THR bool* pass) {
+	*pass = (*t0 >= 0.f && *t0 <= 1.f) || (*tc >= 0.f && *tc <= 1.f);
+	float local_ele = 0.f;
+	if (*pass)
+		local_ele = voxelValue(FMIN(*t0, 1.f), FMAX(*tc, 0.f), L);
 	*temp_ijk += u;
 	*tc = *t0;
 	*t0 += tu;

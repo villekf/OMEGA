@@ -293,9 +293,15 @@ inline af::array computeConvolution(const af::array& vec, const af::array& g, co
 	if (inputScalars.verbose >= 3)
 		mexPrint("Starting PSF blurring");
 	af::array apu = af::moddims(vec, inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii], nRekos);
-	padding(apu, inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii], inputScalars.g_dim_x + 1, inputScalars.g_dim_y + 1, inputScalars.g_dim_z + 1,
+	apu = padding(apu, inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii], inputScalars.g_dim_x + 1, inputScalars.g_dim_y + 1, inputScalars.g_dim_z + 1,
 		false, inputScalars.nRekos2);
 	apu = af::convolve3(apu, g);
+	if (inputScalars.Nz[ii] > 1)
+		apu = apu(af::seq(inputScalars.g_dim_x + 1, inputScalars.Nx[ii] + inputScalars.g_dim_x), af::seq(inputScalars.g_dim_y + 1, inputScalars.Ny[ii] + inputScalars.g_dim_y),
+			af::seq(inputScalars.g_dim_z + 1, inputScalars.Nz[ii] + inputScalars.g_dim_z), af::span);
+	else
+		apu = apu(af::seq(inputScalars.g_dim_x + 1, inputScalars.Nx[ii] + inputScalars.g_dim_x), af::seq(inputScalars.g_dim_y + 1, inputScalars.Ny[ii] + inputScalars.g_dim_y),
+			af::span, af::span);
 	if (inputScalars.verbose >= 3)
 		mexPrint("PSF blurring complete");
 	return af::flat(apu);
@@ -307,18 +313,26 @@ inline af::array computeConvolution(const af::array& vec, const af::array& g, co
 /// <param name="apuSum the sensitivity image"></param>
 /// <param name="proj the projector class object"></param>
 /// <returns></returns>
-inline void transferSensitivityImage(af::array& apuSum, ProjectorClass& proj) {
+inline void transferSensitivityImage(af::array& apuSum, ProjectorClass& proj, const size_t bufferIndex = 0) {
 	apuSum.eval();
-	af::sync();
+#ifdef METAL
+	if (proj.d_Summ.size() <= bufferIndex)
+		proj.d_Summ.resize(bufferIndex + 1);
+	proj.d_Summ[bufferIndex] = transferAF(apuSum);
+	if (proj.sensitivityHosts.size() <= bufferIndex) {
+		proj.sensitivityHosts.resize(bufferIndex + 1, nullptr);
+		proj.sensitivityByteCounts.resize(bufferIndex + 1, 0ULL);
+	}
+	proj.sensitivityHosts[bufferIndex] = nullptr;
+	proj.sensitivityByteCounts[bufferIndex] = apuSum.bytes();
+	if (af_get_raw_ptr(&proj.sensitivityHosts[bufferIndex], apuSum.get()) != AF_SUCCESS)
+		throw std::runtime_error("Unable to access the ArrayFire sensitivity image");
+#else
+	(void)bufferIndex;
 	if (proj.d_Summ.size() < 1)
 		proj.d_Summ.emplace_back(transferAF(apuSum));
 	else
 		proj.d_Summ[0] = transferAF(apuSum);
-#ifdef METAL
-	proj.sensitivityHost = nullptr;
-	proj.sensitivityBytes = apuSum.bytes();
-	if (af_get_raw_ptr(&proj.sensitivityHost, apuSum.get()) != AF_SUCCESS)
-		throw std::runtime_error("Unable to access the ArrayFire sensitivity image");
 #endif
 }
 
@@ -328,22 +342,44 @@ inline void transferSensitivityImage(af::array& apuSum, ProjectorClass& proj) {
 /// <param name="rhs_os the backprojection"></param>
 /// <param name="proj the projector class object"></param>
 /// <returns></returns>
-inline int transferRHS(af::array& rhs_os, ProjectorClass& proj) {
-	af::sync();
+inline int transferRHS(af::array& rhs_os, ProjectorClass& proj, const size_t bufferIndex = 0) {
 	if (DEBUG) {
 		mexPrintBase("proj.vec_opencl.d_rhs_os.size() = %u\n", proj.vec_opencl.d_rhs_os.size());
 		mexEval();
 	}
+#ifdef METAL
+	if (proj.vec_opencl.d_rhs_os.size() <= bufferIndex)
+		proj.vec_opencl.d_rhs_os.resize(bufferIndex + 1);
+	proj.vec_opencl.d_rhs_os[bufferIndex] = transferAF(rhs_os);
+#else
+	(void)bufferIndex;
 	if (proj.vec_opencl.d_rhs_os.size() < 1)
 		proj.vec_opencl.d_rhs_os.emplace_back(transferAF(rhs_os));
 	else
 		proj.vec_opencl.d_rhs_os[0] = transferAF(rhs_os);
+#endif
 	if (DEBUG) {
 		mexPrintBase("proj.vec_opencl.d_rhs_os.size() = %u\n", proj.vec_opencl.d_rhs_os.size());
 		mexEval();
 	}
 	return 0;
 }
+
+#ifdef METAL
+inline void transferMetalBackprojectionToAF(AF_im_vectors& vec, ProjectorClass& proj,
+	const uint32_t timestep, const int ii) {
+	const size_t bufferIndex = static_cast<size_t>(ii);
+	if (proj.vec_opencl.d_rhs_os.size() <= bufferIndex)
+		throw std::runtime_error("Missing Metal backprojection staging buffer");
+	transferMetalToAF(proj.vec_opencl.d_rhs_os[bufferIndex], vec.rhs_os[timestep][ii]);
+	if (proj.no_norm == 0 && proj.d_Summ.size() > bufferIndex && proj.d_Summ[bufferIndex] &&
+		proj.sensitivityHosts.size() > bufferIndex && proj.sensitivityHosts[bufferIndex] &&
+		proj.sensitivityByteCounts.size() > bufferIndex && proj.d_Summ[bufferIndex]->contents()) {
+		std::memcpy(proj.sensitivityHosts[bufferIndex], proj.d_Summ[bufferIndex]->contents(),
+			proj.sensitivityByteCounts[bufferIndex]);
+	}
+}
+#endif
 
 /// <summary>
 /// Copy the current estimates from an ArrayFire array to an OpenCL image/CUDA texture. For branchless distance-driven, compute the integral images before copy
@@ -364,9 +400,6 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 #endif
 	if (inputScalars.FPType == 5) {
 		af::array im;
-		af::sync();
-		af::deviceGC();
-		mexEval();
 		af::array intIm = af::constant(0.f, inputScalars.Ny[ii] + 1, inputScalars.Nz[ii] + 1, inputScalars.Nx[ii]);
 		if (inputScalars.meanFP) {
 			im = af::reorder(af::moddims(vec.im_os[timestep][ii], inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii], inputScalars.nRekos), 1, 2, 0);
@@ -392,29 +425,62 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			mexEval();
 		}
 		intIm = af::flat(intIm);
-		af::sync();
 #if defined(CUDA) || defined(HIP)
-		CUDA_TEXTURE_DESC texDesc;
-		CUDA_ARRAY3D_DESCRIPTOR_st arr3DDesc;
-		CUDA_RESOURCE_DESC resDesc;
-		CUDA_RESOURCE_VIEW_DESC viewDesc;
-		std::memset(&texDesc, 0, sizeof(texDesc));
-		std::memset(&resDesc, 0, sizeof(resDesc));
-		std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
-		std::memset(&viewDesc, 0, sizeof(viewDesc));
-		arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_FLOAT;
-		arr3DDesc.NumChannels = 1;
-		arr3DDesc.Height = dim1;
-		arr3DDesc.Width = dim0;
-		arr3DDesc.Depth = dim2;
-		status = cuArray3DCreate(&proj.integArrayXY, &arr3DDesc);
-		if (status != CUDA_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Failed to create integral array\n");
-			return -1;
+		if (proj.intTexCacheXY.size() <= static_cast<size_t>(ii)) {
+			proj.intTexCacheXY.resize(ii + 1);
+			proj.intArrayCacheXY.resize(ii + 1);
+			proj.intImageCacheDimsXY.resize((ii + 1) * 3, 0);
 		}
-		else if (DEBUG)
-			mexPrint("Arrray creation completed\n");
+		if (proj.intImageCacheDimsXY[ii * 3] != static_cast<size_t>(dim0) || proj.intImageCacheDimsXY[ii * 3 + 1] != static_cast<size_t>(dim1) || proj.intImageCacheDimsXY[ii * 3 + 2] != static_cast<size_t>(dim2)) {
+			if (proj.intImageCacheDimsXY[ii * 3 + 2] != 0) {
+				getErrorString(cuTexObjectDestroy(proj.intTexCacheXY[ii]));
+				getErrorString(cuArrayDestroy(proj.intArrayCacheXY[ii]));
+			}
+			CUDA_TEXTURE_DESC texDesc;
+			CUDA_ARRAY3D_DESCRIPTOR_st arr3DDesc;
+			CUDA_RESOURCE_DESC resDesc;
+			CUDA_RESOURCE_VIEW_DESC viewDesc;
+			std::memset(&texDesc, 0, sizeof(texDesc));
+			std::memset(&resDesc, 0, sizeof(resDesc));
+			std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
+			std::memset(&viewDesc, 0, sizeof(viewDesc));
+			arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_FLOAT;
+			arr3DDesc.NumChannels = 1;
+			arr3DDesc.Height = dim1;
+			arr3DDesc.Width = dim0;
+			arr3DDesc.Depth = dim2;
+			status = cuArray3DCreate(&proj.intArrayCacheXY[ii], &arr3DDesc);
+			if (status != CUDA_SUCCESS) {
+				getErrorString(status);
+				mexPrint("Failed to create integral array\n");
+				return -1;
+			}
+			else if (DEBUG)
+				mexPrint("Arrray creation completed\n");
+			resDesc.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
+			resDesc.res.array.hArray = proj.intArrayCacheXY[ii];
+			texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+			texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+			texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+			texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_LINEAR;
+			texDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
+			viewDesc.height = dim1;
+			viewDesc.width = dim0;
+			viewDesc.depth = dim2;
+			viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
+			status = cuTexObjectCreate(&proj.intTexCacheXY[ii], &resDesc, &texDesc, &viewDesc);
+			if (status != CUDA_SUCCESS) {
+				getErrorString(status);
+				mexPrint("Integral image xz copy failed\n");
+				return -1;
+			}
+			else if (DEBUG)
+				mexPrint("Texture creation completed\n");
+			proj.intImageCacheDimsXY[ii * 3] = static_cast<size_t>(dim0);
+			proj.intImageCacheDimsXY[ii * 3 + 1] = static_cast<size_t>(dim1);
+			proj.intImageCacheDimsXY[ii * 3 + 2] = static_cast<size_t>(dim2);
+		}
+		proj.vec_opencl.d_image_os_int = proj.intTexCacheXY[ii];
 		CUDA_MEMCPY3D cpy3d;
 		std::memset(&cpy3d, 0, sizeof(cpy3d));
 		cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_DEVICE;
@@ -422,11 +488,11 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 		cpy3d.srcPitch = dim0 * sizeof(float);
 		cpy3d.srcHeight = dim1;
 		cpy3d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
-		cpy3d.dstArray = proj.integArrayXY;
+		cpy3d.dstArray = proj.intArrayCacheXY[ii];
 		cpy3d.WidthInBytes = dim0 * sizeof(float);
 		cpy3d.Height = dim1;
 		cpy3d.Depth = dim2;
-		status = cuMemcpy3D(&cpy3d);
+		status = cuMemcpy3DAsync(&cpy3d, proj.CLCommandQueue[0]);
 		if (status != CUDA_SUCCESS) {
 			getErrorString(status);
 			mexPrint("Failed to copy integral array\n");
@@ -434,37 +500,24 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 		}
 		else if (DEBUG)
 			mexPrint("Arrray copy completed\n");
-		resDesc.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
-		resDesc.res.array.hArray = proj.integArrayXY;
-		texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-		texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-		texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-		texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_LINEAR;
-		texDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
-		viewDesc.height = dim1;
-		viewDesc.width = dim0;
-		viewDesc.depth = dim2;
-		viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
-		status = cuTexObjectCreate(&proj.vec_opencl.d_image_os_int, &resDesc, &texDesc, &viewDesc);
-		if (status != CUDA_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Integral image xz copy failed\n");
-			return -1;
-		}
-		else if (DEBUG)
-			mexPrint("Texture creation completed\n");
-		status = cuCtxSynchronize();
-		if (status != CUDA_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Synchronization failed\n");
-			return -1;
-		}
-		else if (DEBUG)
-			mexPrint("Synchronization completed\n");
 #elif defined(OPENCL)
 		region = { static_cast<cl_ulong>(dim0), static_cast<cl_ulong>(dim1), static_cast<cl_ulong>(dim2) };
-		proj.vec_opencl.d_image_os_int = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
-		af::sync();
+		if (proj.d_intImageCacheXY.size() <= static_cast<size_t>(ii)) {
+			proj.d_intImageCacheXY.resize(ii + 1);
+			proj.intImageCacheDimsXY.resize((ii + 1) * 3, 0);
+		}
+		if (proj.intImageCacheDimsXY[ii * 3] != region[0] || proj.intImageCacheDimsXY[ii * 3 + 1] != region[1] || proj.intImageCacheDimsXY[ii * 3 + 2] != region[2]) {
+			proj.d_intImageCacheXY[ii] = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				mexPrint("Failed to create integral image\n");
+				return -1;
+			}
+			proj.intImageCacheDimsXY[ii * 3] = region[0];
+			proj.intImageCacheDimsXY[ii * 3 + 1] = region[1];
+			proj.intImageCacheDimsXY[ii * 3 + 2] = region[2];
+		}
+		proj.vec_opencl.d_image_os_int = proj.d_intImageCacheXY[ii];
 		cl_int status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*intIm.device<cl_mem>(), true), proj.vec_opencl.d_image_os_int, 0, proj.origin, region);
 		if (status != 0) {
 			getErrorString(status);
@@ -472,13 +525,12 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			return -1;
 		}
 #endif
-		af::sync();
 		intIm.unlock();
 		intIm = af::constant(0.f, inputScalars.Nx[ii] + 1, inputScalars.Nz[ii] + 1, inputScalars.Ny[ii]);
 		if (inputScalars.meanFP) {
 			im = af::reorder(af::moddims(vec.im_os[timestep][ii], inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii], inputScalars.nRekos), 0, 2, 1, 3);
-			vec.meanFP(af::seq(inputScalars.Nx[ii], inputScalars.Nx[ii] + inputScalars.Ny[ii])) = af::flat(af::mean(af::mean(im, 0), 1));
-			im -= af::tile(vec.meanFP(af::seq(inputScalars.Nx[ii], inputScalars.Nx[ii] + inputScalars.Ny[ii])), im.dims(0), im.dims(1), 1);
+			vec.meanFP(af::seq(inputScalars.Nx[ii], inputScalars.Nx[ii] + inputScalars.Ny[ii] - 1)) = af::flat(af::mean(af::mean(im, 0), 1));
+			im -= af::tile(vec.meanFP(af::seq(inputScalars.Nx[ii], inputScalars.Nx[ii] + inputScalars.Ny[ii] - 1)), im.dims(0), im.dims(1), 1);
 			intIm(af::seq(1, af::end), af::seq(1, af::end), af::span) = af::sat(im);
 		}
 		else
@@ -488,27 +540,74 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 		dim1 = intIm.dims(1);
 		dim2 = intIm.dims(2);
 		intIm = af::flat(intIm);
-		af::sync();
 #if defined(CUDA) || defined(HIP)
-		arr3DDesc.Height = dim1;
-		arr3DDesc.Width = dim0;
-		arr3DDesc.Depth = dim2;
-		status = cuArray3DCreate(&proj.FPArray, &arr3DDesc);
-		if (status != CUDA_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Failed to create integral array\n");
-			return -1;
+		if (proj.intTexCacheYZ.size() <= static_cast<size_t>(ii)) {
+			proj.intTexCacheYZ.resize(ii + 1);
+			proj.intArrayCacheYZ.resize(ii + 1);
+			proj.intImageCacheDimsYZ.resize((ii + 1) * 3, 0);
 		}
-		else if (DEBUG)
-			mexPrint("Arrray creation completed\n");
-		cpy3d.srcDevice = reinterpret_cast<CUdeviceptr>(transferAF(intIm));
-		cpy3d.srcPitch = dim0 * sizeof(float);
-		cpy3d.srcHeight = dim1;
-		cpy3d.dstArray = proj.FPArray;
-		cpy3d.WidthInBytes = dim0 * sizeof(float);
-		cpy3d.Height = dim1;
-		cpy3d.Depth = dim2;
-		status = cuMemcpy3D(&cpy3d);
+		if (proj.intImageCacheDimsYZ[ii * 3] != static_cast<size_t>(dim0) || proj.intImageCacheDimsYZ[ii * 3 + 1] != static_cast<size_t>(dim1) || proj.intImageCacheDimsYZ[ii * 3 + 2] != static_cast<size_t>(dim2)) {
+			if (proj.intImageCacheDimsYZ[ii * 3 + 2] != 0) {
+				getErrorString(cuTexObjectDestroy(proj.intTexCacheYZ[ii]));
+				getErrorString(cuArrayDestroy(proj.intArrayCacheYZ[ii]));
+			}
+			CUDA_TEXTURE_DESC texDesc;
+			CUDA_ARRAY3D_DESCRIPTOR_st arr3DDesc;
+			CUDA_RESOURCE_DESC resDesc;
+			CUDA_RESOURCE_VIEW_DESC viewDesc;
+			std::memset(&texDesc, 0, sizeof(texDesc));
+			std::memset(&resDesc, 0, sizeof(resDesc));
+			std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
+			std::memset(&viewDesc, 0, sizeof(viewDesc));
+			arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_FLOAT;
+			arr3DDesc.NumChannels = 1;
+			arr3DDesc.Height = dim1;
+			arr3DDesc.Width = dim0;
+			arr3DDesc.Depth = dim2;
+			status = cuArray3DCreate(&proj.intArrayCacheYZ[ii], &arr3DDesc);
+			if (status != CUDA_SUCCESS) {
+				getErrorString(status);
+				mexPrint("Failed to create integral array\n");
+				return -1;
+			}
+			else if (DEBUG)
+				mexPrint("Arrray creation completed\n");
+			resDesc.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
+			resDesc.res.array.hArray = proj.intArrayCacheYZ[ii];
+			texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+			texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+			texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+			texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_LINEAR;
+			texDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
+			viewDesc.height = dim1;
+			viewDesc.width = dim0;
+			viewDesc.depth = dim2;
+			viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
+			status = cuTexObjectCreate(&proj.intTexCacheYZ[ii], &resDesc, &texDesc, &viewDesc);
+			if (status != CUDA_SUCCESS) {
+				getErrorString(status);
+				mexPrint("Integral image yz copy failed\n");
+				return -1;
+			}
+			else if (DEBUG)
+				mexPrint("Texture creation completed\n");
+			proj.intImageCacheDimsYZ[ii * 3] = static_cast<size_t>(dim0);
+			proj.intImageCacheDimsYZ[ii * 3 + 1] = static_cast<size_t>(dim1);
+			proj.intImageCacheDimsYZ[ii * 3 + 2] = static_cast<size_t>(dim2);
+		}
+		proj.vec_opencl.d_image_os = proj.intTexCacheYZ[ii];
+		CUDA_MEMCPY3D cpy3dYZ;
+		std::memset(&cpy3dYZ, 0, sizeof(cpy3dYZ));
+		cpy3dYZ.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_DEVICE;
+		cpy3dYZ.srcDevice = reinterpret_cast<CUdeviceptr>(transferAF(intIm));
+		cpy3dYZ.srcPitch = dim0 * sizeof(float);
+		cpy3dYZ.srcHeight = dim1;
+		cpy3dYZ.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
+		cpy3dYZ.dstArray = proj.intArrayCacheYZ[ii];
+		cpy3dYZ.WidthInBytes = dim0 * sizeof(float);
+		cpy3dYZ.Height = dim1;
+		cpy3dYZ.Depth = dim2;
+		status = cuMemcpy3DAsync(&cpy3dYZ, proj.CLCommandQueue[0]);
 		if (status != CUDA_SUCCESS) {
 			getErrorString(status);
 			mexPrint("Failed to copy integral array\n");
@@ -516,43 +615,34 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 		}
 		else if (DEBUG)
 			mexPrint("Arrray copy completed\n");
-		resDesc.res.array.hArray = proj.FPArray;
-		viewDesc.height = dim1;
-		viewDesc.width = dim0;
-		viewDesc.depth = dim2;
-		status = cuTexObjectCreate(&proj.vec_opencl.d_image_os, &resDesc, &texDesc, &viewDesc);
-		if (status != CUDA_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Integral image yz copy failed\n");
-			return -1;
-		}
-		else if (DEBUG)
-			mexPrint("Texture creation completed\n");
-		status = cuCtxSynchronize();
-		if (status != CUDA_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Synchronization failed\n");
-			return -1;
-		}
-		else if (DEBUG)
-			mexPrint("Synchronization completed\n");
 #elif defined(OPENCL)
 		region = { static_cast<cl_ulong>(dim0), static_cast<cl_ulong>(dim1), static_cast<cl_ulong>(dim2) };
-		proj.vec_opencl.d_image_os = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
-		af::sync();
+		if (proj.d_intImageCacheYZ.size() <= static_cast<size_t>(ii)) {
+			proj.d_intImageCacheYZ.resize(ii + 1);
+			proj.intImageCacheDimsYZ.resize((ii + 1) * 3, 0);
+		}
+		if (proj.intImageCacheDimsYZ[ii * 3] != region[0] || proj.intImageCacheDimsYZ[ii * 3 + 1] != region[1] || proj.intImageCacheDimsYZ[ii * 3 + 2] != region[2]) {
+			proj.d_intImageCacheYZ[ii] = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				mexPrint("Failed to create integral image\n");
+				return -1;
+			}
+			proj.intImageCacheDimsYZ[ii * 3] = region[0];
+			proj.intImageCacheDimsYZ[ii * 3 + 1] = region[1];
+			proj.intImageCacheDimsYZ[ii * 3 + 2] = region[2];
+		}
+		proj.vec_opencl.d_image_os = proj.d_intImageCacheYZ[ii];
 		status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*intIm.device<cl_mem>(), true), proj.vec_opencl.d_image_os, 0, proj.origin, region);
 		if (status != 0) {
 			getErrorString(status);
 			mexPrint("Integral image yz copy failed\n");
 			return -1;
 		}
-		status = proj.CLCommandQueue[0].finish();
 #endif
 		intIm.unlock();
-		af::deviceGC();
 	}
 	else {
-		af::sync();
 #if defined(CUDA) || defined(HIP)
 		if (inputScalars.useBuffers) {
 			if (inputScalars.use_psf)
@@ -566,30 +656,69 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 				im = transferAF(vec.im_os_blurred[ii]);
 			else
 				im = transferAF(vec.im_os[timestep][ii]);
-			CUDA_TEXTURE_DESC texDesc;
-			CUDA_ARRAY3D_DESCRIPTOR_st arr3DDesc;
-			CUDA_RESOURCE_DESC resDesc;
-			CUDA_RESOURCE_VIEW_DESC viewDesc;
-			std::memset(&texDesc, 0, sizeof(texDesc));
-			std::memset(&resDesc, 0, sizeof(resDesc));
-			std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
-			std::memset(&viewDesc, 0, sizeof(viewDesc));
-			arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_FLOAT;
-			arr3DDesc.NumChannels = 1;
-			arr3DDesc.Height = inputScalars.Ny[ii];
-			arr3DDesc.Width = inputScalars.Nx[ii];
-			arr3DDesc.Depth = inputScalars.Nz[ii];
-			status = cuArray3DCreate(&proj.FPArray, &arr3DDesc);
-			if (status != CUDA_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create image array\n");
-				return -1;
+			if (proj.FPTexCache.size() <= static_cast<size_t>(ii)) {
+				proj.FPTexCache.resize(ii + 1);
+				proj.FPArrayCache.resize(ii + 1);
+				proj.imageCacheDims.resize((ii + 1) * 3, 0);
 			}
-			status = cuCtxSynchronize();
-			if (status != CUDA_SUCCESS) {
-				getErrorString(status);
-				return -1;
+			if (proj.imageCacheDims[ii * 3] != static_cast<size_t>(inputScalars.Nx[ii]) || proj.imageCacheDims[ii * 3 + 1] != static_cast<size_t>(inputScalars.Ny[ii]) || proj.imageCacheDims[ii * 3 + 2] != static_cast<size_t>(inputScalars.Nz[ii])) {
+				if (proj.imageCacheDims[ii * 3 + 2] != 0) {
+					getErrorString(cuTexObjectDestroy(proj.FPTexCache[ii]));
+					getErrorString(cuArrayDestroy(proj.FPArrayCache[ii]));
+				}
+				CUDA_TEXTURE_DESC texDesc;
+				CUDA_ARRAY3D_DESCRIPTOR_st arr3DDesc;
+				CUDA_RESOURCE_DESC resDesc;
+				CUDA_RESOURCE_VIEW_DESC viewDesc;
+				std::memset(&texDesc, 0, sizeof(texDesc));
+				std::memset(&resDesc, 0, sizeof(resDesc));
+				std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
+				std::memset(&viewDesc, 0, sizeof(viewDesc));
+				arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_FLOAT;
+				arr3DDesc.NumChannels = 1;
+				arr3DDesc.Height = inputScalars.Ny[ii];
+				arr3DDesc.Width = inputScalars.Nx[ii];
+				arr3DDesc.Depth = inputScalars.Nz[ii];
+				status = cuArray3DCreate(&proj.FPArrayCache[ii], &arr3DDesc);
+				if (status != CUDA_SUCCESS) {
+					getErrorString(status);
+					mexPrint("Failed to create image array\n");
+					return -1;
+				}
+				resDesc.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
+				resDesc.res.array.hArray = proj.FPArrayCache[ii];
+				if (inputScalars.FPType == 4) {
+					texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+					texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+					texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+					texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_LINEAR;
+					texDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
+				}
+				else {
+					texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+					texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+					texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+					texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
+				}
+				viewDesc.height = inputScalars.Ny[ii];
+				viewDesc.width = inputScalars.Nx[ii];
+				viewDesc.depth = inputScalars.Nz[ii];
+				viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
+				status = cuTexObjectCreate(&proj.FPTexCache[ii], &resDesc, &texDesc, &viewDesc);
+				if (status != CUDA_SUCCESS) {
+					getErrorString(status);
+					mexPrint("Image texture creation failed\n");
+					status = cuArrayDestroy(proj.FPArrayCache[ii]);
+					if (status != CUDA_SUCCESS) {
+						getErrorString(status);
+					}
+					return -1;
+				}
+				proj.imageCacheDims[ii * 3] = static_cast<size_t>(inputScalars.Nx[ii]);
+				proj.imageCacheDims[ii * 3 + 1] = static_cast<size_t>(inputScalars.Ny[ii]);
+				proj.imageCacheDims[ii * 3 + 2] = static_cast<size_t>(inputScalars.Nz[ii]);
 			}
+			proj.vec_opencl.d_image_os = proj.FPTexCache[ii];
 			if (DEBUG) {
 				mexPrintBase("vec.im_os[timestep][ii].elements() = %u\n", vec.im_os[timestep][ii].elements());
 				mexPrintBase("inputScalars.Nx[ii] * sizeof(float) = %u\n", inputScalars.Nx[ii] * sizeof(float));
@@ -605,66 +734,16 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			cpy3d.srcPitch = inputScalars.Nx[ii] * sizeof(float);
 			cpy3d.srcHeight = inputScalars.Ny[ii];
 			cpy3d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
-			cpy3d.dstArray = proj.FPArray;
+			cpy3d.dstArray = proj.FPArrayCache[ii];
 			cpy3d.WidthInBytes = inputScalars.Nx[ii] * sizeof(float);
 			cpy3d.Height = inputScalars.Ny[ii];
 			cpy3d.Depth = inputScalars.Nz[ii];
-			status = cuMemcpy3D(&cpy3d);
+			status = cuMemcpy3DAsync(&cpy3d, proj.CLCommandQueue[0]);
 			if (status != CUDA_SUCCESS) {
 				getErrorString(status);
 				mexPrint("Failed to copy image array\n");
-				status = cuArrayDestroy(proj.FPArray);
-				if (status != CUDA_SUCCESS) {
-					getErrorString(status);
-				}
 				return -1;
 			}
-			status = cuCtxSynchronize();
-			if (status != CUDA_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-			resDesc.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
-			resDesc.res.array.hArray = proj.FPArray;
-			if (inputScalars.FPType == 4) {
-				texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-				texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-				texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-				texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_LINEAR;
-				texDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
-			}
-			else {
-				texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-				texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-				texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-				texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
-			}
-			viewDesc.height = inputScalars.Ny[ii];
-			viewDesc.width = inputScalars.Nx[ii];
-			viewDesc.depth = inputScalars.Nz[ii];
-			viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
-			status = cuTexObjectCreate(&proj.vec_opencl.d_image_os, &resDesc, &texDesc, &viewDesc);
-			if (status != CUDA_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Integral image xz copy failed\n");
-				status = cuArrayDestroy(proj.FPArray);
-				if (status != CUDA_SUCCESS) {
-					getErrorString(status);
-				}
-				return -1;
-			}
-			status = cuCtxSynchronize();
-			if (status != CUDA_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Synchronization failed\n");
-				status = cuArrayDestroy(proj.FPArray);
-				if (status != CUDA_SUCCESS) {
-					getErrorString(status);
-				}
-				return -1;
-			}
-			else if (DEBUG)
-				mexPrint("Synchronization completed\n");
 			if (inputScalars.use_psf)
 				vec.im_os_blurred[ii].unlock();
 			else
@@ -676,26 +755,34 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 				proj.vec_opencl.d_im = cl::Buffer(*vec.im_os_blurred[ii].device<cl_mem>(), true);
 			else
 				proj.vec_opencl.d_im = cl::Buffer(*vec.im_os[timestep][ii].device<cl_mem>(), true);
-			proj.CLCommandQueue[0].finish();
 		}
 		else {
-			proj.vec_opencl.d_image_os = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create input images\n");
-				return -1;
+			if (proj.d_imageCache.size() <= static_cast<size_t>(ii)) {
+				proj.d_imageCache.resize(ii + 1);
+				proj.imageCacheDims.resize((ii + 1) * 3, 0);
 			}
-			else if (DEBUG)
-				mexPrint("Input image created\n");
+			if (proj.imageCacheDims[ii * 3] != region[0] || proj.imageCacheDims[ii * 3 + 1] != region[1] || proj.imageCacheDims[ii * 3 + 2] != region[2]) {
+				proj.d_imageCache[ii] = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					mexPrint("Failed to create input images\n");
+					return -1;
+				}
+				else if (DEBUG)
+					mexPrint("Input image created\n");
+				proj.imageCacheDims[ii * 3] = region[0];
+				proj.imageCacheDims[ii * 3 + 1] = region[1];
+				proj.imageCacheDims[ii * 3 + 2] = region[2];
+			}
+			proj.vec_opencl.d_image_os = proj.d_imageCache[ii];
 			cl_mem* im;
 			if (inputScalars.use_psf)
 				im = vec.im_os_blurred[ii].device<cl_mem>();
 			else
 				im = vec.im_os[timestep][ii].device<cl_mem>();
 			cl::Buffer d_im_os = cl::Buffer(*im, true);
-			proj.CLCommandQueue[0].finish();
 			status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(d_im_os, proj.vec_opencl.d_image_os, 0, proj.origin, region);
-			proj.CLCommandQueue[0].finish();
+			// Mod: no finish needed, same in-order queue as ArrayFire
 			if (inputScalars.use_psf)
 				vec.im_os_blurred[ii].unlock();
 			else
@@ -722,7 +809,6 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			proj.vec_opencl.d_im_os = vec.im_os[timestep][ii].device<float>();
 #endif
 	}
-	af::sync();
 	return 0;
 }
 
@@ -774,8 +860,8 @@ inline int forwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputScal
 
 // Same as above, but for backprojection
 inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputScalars, Weighting& w_vec, af::array& outputFP, uint32_t osa_iter, uint32_t timestep,
-	std::vector<int64_t>& length, uint64_t m_size, af::array& meanBP, const af::array& g, ProjectorClass& proj, const bool compSens = false, const int ii = 0, 
-	const int64_t* pituus = nullptr, const bool FDK = false) {
+	std::vector<int64_t>& length, uint64_t m_size, af::array& meanBP, const af::array& g, ProjectorClass& proj, const bool compSens = false, const int ii = 0,
+	const int64_t* pituus = nullptr, const bool FDK = false, const int queueIdx = 0, const bool finalize = true, const bool newInput = true) {
 	int status = 0;
 	outputFP.eval();
 	if (!FDK)
@@ -795,7 +881,13 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 	if (DEBUG) {
 		mexPrint("Transferring backprojection output\n");
 	}
-	status = transferRHS(vec.rhs_os[timestep][ii], proj);
+	status = transferRHS(vec.rhs_os[timestep][ii], proj,
+#ifdef METAL
+		static_cast<size_t>(ii)
+#else
+		0
+#endif
+	);
 	if (status != 0) {
 		return -1;
 	}
@@ -804,15 +896,22 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 #ifndef CPU
 	if (inputScalars.meanBP && inputScalars.BPType == 5)
 		proj.d_meanBP = transferAF(meanBP);
-	status = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, compSens, ii);
+#if defined(CUDA) || defined(HIP)
+	status = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, compSens, ii, 0, queueIdx, newInput);
+#elif defined(METAL)
+	status = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, compSens, ii, ii, ii, queueIdx, newInput);
+#else
+	status = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, compSens, ii, 0, -1, queueIdx, newInput);
+#endif
 #ifdef METAL
-	transferMetalToAF(proj.vec_opencl.d_rhs_os[0], vec.rhs_os[timestep][ii]);
-	if (proj.no_norm == 0 && proj.sensitivityHost && !proj.d_Summ.empty())
-		std::memcpy(proj.sensitivityHost, proj.d_Summ[0]->contents(), proj.sensitivityBytes);
+	if (finalize && status == 0)
+		transferMetalBackprojectionToAF(vec, proj, timestep, ii);
 #endif
 #else
 	 status = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, pituus, compSens, ii);
 #endif
+	if (!finalize)
+		return status;
 	vec.rhs_os[timestep][ii].unlock();
 	outputFP.unlock();
 	if (inputScalars.meanBP && inputScalars.BPType == 5)
@@ -833,6 +932,30 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 	vec.rhs_os[timestep][ii].eval();
 	outputFP.eval();
 	return status;
+}
+
+// Required as a separate step in the multi-queue/stream case as the unlocks need to be done after everything is done
+inline int finalizeBackwardProjectionAF(AF_im_vectors& vec, const scalarStruct& inputScalars, const Weighting& w_vec, af::array& outputFP, af::array& meanBP,
+	const af::array& g, ProjectorClass& proj, const uint32_t timestep, const int ii = 0) {
+#ifdef METAL
+	transferMetalBackprojectionToAF(vec, proj, timestep, ii);
+#endif
+	vec.rhs_os[timestep][ii].unlock();
+	outputFP.unlock();
+	if (inputScalars.meanBP && inputScalars.BPType == 5)
+		meanBP.unlock();
+#if defined(OPENCL) || defined(METAL)
+	if (inputScalars.atomic_64bit)
+		vec.rhs_os[timestep][ii] = vec.rhs_os[timestep][ii].as(f32) / TH;
+	else if (inputScalars.atomic_32bit)
+		vec.rhs_os[timestep][ii] = vec.rhs_os[timestep][ii].as(f32) / TH32;
+#endif
+	if (inputScalars.use_psf) {
+		const int nRekos = vec.rhs_os[timestep][ii].elements() / (inputScalars.im_dim[ii]);
+		vec.rhs_os[timestep][ii] = computeConvolution(vec.rhs_os[timestep][ii], g, inputScalars, w_vec, nRekos, ii);
+	}
+	vec.rhs_os[timestep][ii].eval();
+	return 0;
 }
 
 // The current Metal projector library contains the forward/backprojector
@@ -892,6 +1015,8 @@ inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& input
 
 	int status = 0;
 #ifdef CPU
+	// Accumulate the NLM gradient to the backprojection
+	const af::array dUorig = grad.copy();
 	grad = padding(grad, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], w_vec.Ndx + w_vec.Nlx, w_vec.Ndy + w_vec.Nly, w_vec.Ndz + w_vec.Nlz);
 	const af::array imApu = padding(im, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], w_vec.Ndx + w_vec.Nlx, w_vec.Ndy + w_vec.Nly, w_vec.Ndz + w_vec.Nlz);
 #endif
@@ -951,6 +1076,7 @@ inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& input
 	grad = grad(af::seq(w_vec.Ndx + w_vec.Nlx, inputScalars.Nx[0] + w_vec.Ndx + w_vec.Nlx - 1), af::seq(w_vec.Ndy + w_vec.Nly, inputScalars.Ny[0] + w_vec.Ndy + w_vec.Nly - 1), af::seq(w_vec.Ndz + w_vec.Nlz, inputScalars.Nz[0] + w_vec.Ndz + w_vec.Nlz - 1));
 	grad = af::flat(grad);
 	grad *= beta;
+	grad += dUorig;
 	grad.eval();
 #endif
 #ifdef OPENCL
@@ -1168,7 +1294,6 @@ inline int TVAF(af::array& grad, const af::array& im, const scalarStruct& inputS
 }
 
 // Hyperbolic prior
-// No CPU support
 inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inputScalars, const float sigma, ProjectorClass& proj, const float beta, const Weighting& w_vec, const int kk = 0) {
 	im.eval();
 	int status = 0;
@@ -1213,7 +1338,11 @@ inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inp
 		return -1;
 	}
 #else
-
+	proj.d_W = transferAF(grad);
+	proj.d_inputB = transferAF(im);
+	status = proj.hyperGradient(inputScalars, sigma, beta);
+	grad.unlock();
+	im.unlock();
 #endif
 #ifdef OPENCL
 	if (inputScalars.largeDim)
@@ -1892,7 +2021,6 @@ inline int filtering(const af::array& filter, af::array& input, ProjectorClass& 
 #else
 	temp *= af::tile(filter, 1, temp.dims(1), temp.dims(2));
 #endif
-	af::sync();
 	if (DEBUG) {
 		mexPrintBase("temp = %f\n", af::sum<float>(temp));
 		mexEval();
@@ -1927,7 +2055,6 @@ inline int filtering2D(const af::array& filter, af::array& input, ProjectorClass
 	ifft2InPlace(temp);
 	input = af::flat(af::real(temp(af::seq(0, input.dims(0) - 1), af::seq(0, input.dims(0) - 1), af::span)));
 	input.eval();
-	af::deviceGC();
 	return 0;
 }
 
@@ -1944,7 +2071,6 @@ inline int filteringInverse(const af::array& filter, af::array& input, Projector
 	temp /= af::tile(filter, 1, temp.dims(1), temp.dims(2));
 	temp.eval();
 #endif
-	af::sync();
 	af::ifftInPlace(temp);
 	input = af::flat(af::real(temp(af::seq(0, input.dims(0) - 1), af::span, af::span)));
 	return 0;
@@ -2094,14 +2220,12 @@ inline int applyImagePreconditioning(Weighting& w_vec, const scalarStruct& input
 	if (w_vec.precondTypeIm[5] && kk <= w_vec.filterIter) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Applying filtering-based preconditioner, type 5");
-		af::deviceGC();
 		input = af::moddims(input, inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii]);
 		status = filtering2D(w_vec.filterIm, input, proj, inputScalars.Nf);
 		if (status != 0)
 			return -1;
 	}
 	input.eval();
-	af::deviceGC();
 	if (inputScalars.verbose >= 3 && (w_vec.precondTypeIm[0] || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2] || w_vec.precondTypeIm[3] ||
 		(w_vec.precondTypeIm[4] && kk >= w_vec.gradInitIter) || w_vec.precondTypeIm[5] || w_vec.precondTypeIm[6]))
 		mexPrint("Image-based preconditioning applied");
@@ -2160,7 +2284,6 @@ inline int applyMeasPreconditioning(const Weighting& w_vec, const scalarStruct& 
 			input /= w_vec.M[timestep][subIter];
 		}
 		input.eval();
-		af::deviceGC();
 		if (inputScalars.verbose >= 3)
 			mexPrint("Measurement-based preconditioning applied");
 	}
@@ -2178,8 +2301,6 @@ inline void computeIntegralImage(const scalarStruct& inputScalars, const Weighti
 			mexPrintBase("length = %d\n", length);
 			mexEval();
 		}
-		af::sync();
-		af::deviceGC();
 		outputFP = af::moddims(outputFP, inputScalars.nRowsD, inputScalars.nColsD, length);
 		if (inputScalars.meanBP) {
 			meanBP = af::mean(af::mean(outputFP, 0), 1);
@@ -2191,8 +2312,6 @@ inline void computeIntegralImage(const scalarStruct& inputScalars, const Weighti
 		outputFP = af::flat(af::join(1, af::constant(0.f, outputFP.dims(0), 1, outputFP.dims(2)), outputFP));
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrint("Integral images computed");
-		af::sync();
-		af::deviceGC();
 	}
 }
 
@@ -2220,7 +2339,7 @@ inline void deblur(af::array& vec, const af::array& g, const scalarStruct& input
 
 // The initialization steps for LSQR, CGLS, CP and FISTA algorithms
 // Apply PSF blurring if applicable
-inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors& vec, ProjectorClass& proj, scalarStruct& inputScalars, std::vector<int64_t> length, uint64_t m_size, const RecMethods& MethodList, uint32_t curIter, af::array& meanBP, const int64_t* pituus, const uint32_t timestep, const af::array& g = af::constant(0.f, 1, 1), const uint32_t subIter = 0, const int ii = 0) {
+inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors& vec, ProjectorClass& proj, scalarStruct& inputScalars, std::vector<int64_t>& length, uint64_t m_size, const RecMethods& MethodList, uint32_t curIter, af::array& meanBP, const int64_t* pituus, const uint32_t timestep, const af::array& g = af::constant(0.f, 1, 1), const uint32_t subIter = 0, const int ii = 0) {
 	if (MethodList.FISTA || MethodList.FISTAL1) {
 		if (curIter == 0 && subIter == 0)
 			vec.uFISTA[timestep].emplace_back(vec.im_os[timestep][ii]);
@@ -2233,7 +2352,6 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 	if (curIter == 0) {
 		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Starting initialization step");
-		af::sync();
 		int status = 0;
 		uint64_t yy = 0u;
 		af::array mDataApu;
@@ -2262,11 +2380,9 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				if (status != 0) {
 					return -1;
 				}
-				af::sync();
 				if (inputScalars.BPType == 5)
 					mData = mDataApu;
 			}
-			af::sync();
 			if (DEBUG) {
 				mexPrintBase("!!!!!!!!!!!!!!!!!!!!!!!vec.rhs_os[timestep] = %f\n", af::sum<float>(vec.rhs_os[timestep][ii]));
 				mexEval();
@@ -2288,7 +2404,6 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				}
 				w_vec.phiLSQR[timestep] = w_vec.betaLSQR[timestep];
 				w_vec.rhoLSQR[timestep] = w_vec.alphaLSQR[timestep];
-				af::sync();
 				if (DEBUG || inputScalars.verbose >= 3)
 					mexPrint("LSQR initialization complete");
 			}
@@ -2308,7 +2423,6 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 					return -1;
 				}
 			}
-			af::sync();
 			if (vec.gradBB[timestep].size() < ii + 1)
 				vec.gradBB[timestep].emplace_back( -vec.rhs_os[timestep][ii].copy());
 			else
@@ -2343,9 +2457,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				if (status != 0) {
 					return -1;
 				}
-				af::sync();
 			}
-			af::sync();
 			vec.im_os[timestep][ii] = vec.rhs_os[timestep][ii].copy();
 			if (ii == inputScalars.nMultiVolumes) {
 				for (int ll = 0; ll <= inputScalars.nMultiVolumes; ll++)
@@ -2395,8 +2507,6 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				mexPrint("PDHG initialization complete");
 		}
 	}
-	af::sync();
-	af::deviceGC();
 	return 0;
 }
 
@@ -2413,9 +2523,7 @@ inline int computeACOSEMWeight(scalarStruct& inputScalars, std::vector<int64_t>&
 			outputFP = af::constant(0.f, m_size * inputScalars.nBins);
 		else
 			outputFP = af::constant(0.f, m_size);
-		af::sync();
 		status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, timestep, length, g, m_size, proj, 0, pituus);
-		af::sync();
 		if (status != 0)
 			return -1;
 	}
@@ -3010,7 +3118,6 @@ inline void transferControl(AF_im_vectors& vec, const scalarStruct& inputScalars
 #endif
 			if (inputScalars.use_psf) {
 				vec.Summ[0][ii][osa_iter] = computeConvolution(vec.Summ[0][ii][osa_iter], g, inputScalars, w_vec, 1, ii);
-				af::sync();
 			}
 			vec.Summ[0][ii][osa_iter](vec.Summ[0][ii][osa_iter] < inputScalars.epps) = inputScalars.epps;
 			vec.Summ[0][ii][osa_iter].eval();

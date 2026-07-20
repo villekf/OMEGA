@@ -98,6 +98,9 @@ typedef struct Weighting_ {
 	std::vector<af::array> preRef, gradF, RDPref;
     std::vector<std::vector<af::array>> dP, M, D;
 	af::array gaussianNLM, gFilter, filter, filterIm, Ffilter;
+	// The noise-weighted (NW-FBP) ramp filter bank, one filter per noise-weighting level (Nf x nLevelsNW)
+	af::array filterNW;
+	uint32_t nLevelsNW = 10U;
 	af_flux_function FluxType;
 	af_diffusion_eq DiffusionType;
 #endif
@@ -139,6 +142,9 @@ typedef struct RecMethods_ {
 	bool CPType = false;
 	bool OSL = false;
 	bool FDK = false;
+	// Noise-weighted FBP (Zeng 2013). When selected, FDK is set as well: NW-FBP follows the FDK
+	// path exactly, except that the filtering is performed with the ray-by-ray noise-weighted filter bank
+	bool NWFBP = false;
 	bool BB = false;
 	bool prior = false;
     bool TemporalSmoothness = false; // First derivative smoothness prior

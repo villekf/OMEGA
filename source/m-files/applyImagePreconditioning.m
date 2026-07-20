@@ -50,9 +50,9 @@ if (options.precondTypeImage(1) || options.precondTypeImage(2) || options.precon
             fieldname = ['referenceImage' num2str(ii)];
         end
         if iscell(options.D)
-            input = input * (max(im, max(VAL, options.(fieldname))) ./ options.D{ii});
+            input = input .* (max(im, max(VAL, options.(fieldname))) ./ options.D{ii});
         else
-            input = input * (max(im, max(VAL, options.(fieldname))) ./ options.D);
+            input = input .* (max(im, max(VAL, options.(fieldname))) ./ options.D);
         end
     end
 end

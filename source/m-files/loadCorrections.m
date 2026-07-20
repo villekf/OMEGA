@@ -101,7 +101,6 @@ if options.attenuation_correction && ~options.SPECT % PET attenuation
     if ~isfield(options,'vaimennus') || isempty(options.vaimennus)
         if ~isempty(options.attenuation_datafile) && strcmp(options.attenuation_datafile(end-2:end), 'mhd')
             [options.vaimennus, apuStruct] = loadMetaImage(options.attenuation_datafile);
-            options.vaimennus = options.vaimennus;
             if options.CT_attenuation
                 if round(apuStruct.EleSpacing(1)*100)/100 > round(options.FOVa_x(1) / double(options.Nx(1))*100)/100 ||  round(apuStruct.EleSpacing(1)*100)/100 < round(options.FOVa_x(1) / double(options.Nx(1))*100)/100
                     options.vaimennus = options.vaimennus .* (apuStruct.EleSpacing(1) / (options.FOVa_x(1) / double(options.Nx(1))));
@@ -250,9 +249,15 @@ if ~options.SPECT
                     variables = fieldnames(data);
                     options.normalization = data.(variables{1});
                     clear data
-                    if numel(options.normalization) ~= numel(options.SinM{1})
-                        error('Size mismatch between the current data and the normalization data file')
-                    end
+					if iscell(options.SinM)
+						if numel(options.normalization) ~= numel(options.SinM{1})
+							error('Size mismatch between the current data and the normalization data file')
+						end
+					else
+						if numel(options.normalization) ~= numel(options.SinM)
+							error('Size mismatch between the current data and the normalization data file')
+						end
+					end
                 end
                 options.normalization = options.normalization(:);
             else
@@ -973,7 +978,6 @@ if options.SPECT
                 if numel(options.ScatterC) == 1 % DEW
                     k = 1;
                     if ~options.corrections_during_reconstruction
-                        options.ScatterC
                         options.SinM{timestep} = options.SinM{timestep} - k * options.ScatterC{1}{timestep};
                         options.scatter_correction = false;
                     else
@@ -1061,7 +1065,7 @@ end
 if ~isfield(options, 'scatter')
     options.scatter = false;
 end
-if options.scatter_correction && ~options.subtract_scatter && (iscell(options.ScatterC) && numel(options.ScatterC{1}) > 1) || (~iscell(options.ScatterC) && numel(options.ScatterC) > 1)
+if options.scatter_correction && ~options.subtract_scatter && ((iscell(options.ScatterC) && numel(options.ScatterC{1}) > 1) || (~iscell(options.ScatterC) && numel(options.ScatterC) > 1))
     options.scatter = true;
 else
     options.scatter = false;

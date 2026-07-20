@@ -4,7 +4,7 @@ if (options.verbose >= 3)
 end
 f(1 : end - 1, :, :) = diff(im);
 f(end, :, :) = -1 * im(end, :, :);
-g(:, 1 : end - 1, :) = diff(im, 1, 1);
+g(:, 1 : end - 1, :) = diff(im, 1, 2);
 g(:, end, :) = -1 * im(:, end, :);
-h(:, :, 1 : end - 1) = diff(im, 1, 2);
+h(:, :, 1 : end - 1) = diff(im, 1, 3);
 h(:, :, end) = -1 * im(:, :, end);

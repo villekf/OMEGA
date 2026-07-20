@@ -29,6 +29,9 @@ void hyperbolicKernel(T* grad, const T* u, const T* w, const int Nx, const int N
 			for (int j = -Ndy; j <= Ndy; j++) {
 				const int y_n = y + j;
 				for (int i = -Ndx; i <= Ndx; i++) {
+					// Skip the center voxel
+					if (i == 0 && j == 0 && k == 0)
+						continue;
 					const int x_n = x + i;
 					const int dim_n = z_n * Nxy + y_n * static_cast<int32_t>(Nx) + x_n;
 					T uk;

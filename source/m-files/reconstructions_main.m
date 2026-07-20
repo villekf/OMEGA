@@ -85,7 +85,7 @@ if (options.param.quad || options.param.FMH || options.param.L || options.param.
     if ~isempty(options.param.weights)
         if length(options.param.weights(:)) < ((options.param.Ndx*2+1) * (options.param.Ndy*2+1) * (options.param.Ndz*2+1))
             error(['Weights vector is too short, needs to be ' num2str(((options.param.Ndx*2+1) * (options.param.Ndy*2+1) * (options.param.Ndz*2+1))) ' in length'])
-        elseif length(options.param.weights(:)) > ((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))
+        elseif length(options.param.weights(:)) > ((options.param.Ndx*2+1) * (options.param.Ndy*2+1) * (options.param.Ndz*2+1))
             error(['Weights vector is too long, needs to be ' num2str(((options.param.Ndx*2+1) * (options.param.Ndy*2+1) * (options.param.Ndz*2+1))) ' in length'])
         end
         if ~isinf(options.param.weights(ceil(((options.param.Ndx*2+1) * (options.param.Ndy*2+1) * (options.param.Ndz*2+1)/2))))
@@ -763,7 +763,7 @@ elseif nargout > 3
 end
 if nargout > 4 && options.param.storeResidual
     varargout{4} = res;
-elseif nargout > 3
+elseif nargout > 4
     varargout{4} = [];
 end
 

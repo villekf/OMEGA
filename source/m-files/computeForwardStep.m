@@ -35,7 +35,7 @@ if (options.precondTypeMeas(2) && options.filteringIterations > 0 && kk == optio
 end
 if (options.randoms_correction)
     if ((options.MBSREM || options.MRAMLA || options.SPS) && ~options.CT && ~all(rand > 0))
-        indeksit = y > 0 && rand == 0 && input <= options.epsilon_mramla;
+        indeksit = y > 0 & rand == 0 & input <= options.epsilon_mramla;
         indS = any(indeksit);
     end
     if (~options.CT)

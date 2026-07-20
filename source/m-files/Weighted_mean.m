@@ -127,7 +127,7 @@ elseif mean_type == 5
     grad = sum(grad,2);
     grad = grad(:);
     if nargout >= 2
-        mrf = bsxfun(@rdivide, bsxfun(@minus, im, f), 2*im);
+        mrf = bsxfun(@rdivide, bsxfun(@minus, im, mm), 2*im);
         mrf = bsxfun(@times, mrf, weighted_weights(:)');
         mrf = sum(mrf,2);
         varargout{1} = mrf;

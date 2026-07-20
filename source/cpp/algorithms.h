@@ -244,11 +244,11 @@ inline void CGLS(const scalarStruct& inputScalars, Weighting& w_vec, const uint3
 	if (ii == inputScalars.nMultiVolumes) {
 		if (!largeDim) {
 			float gamma_ = 0.f;
-			for (int ll = ii; ll <= inputScalars.nMultiVolumes; ll++)
+			for (int ll = 0; ll <= inputScalars.nMultiVolumes; ll++)
 				gamma_ += af::dot<float>(vec.rhs_os[timestep][ll], vec.rhs_os[timestep][ll]);
 			//gamma_ += af::sum<float>(vec.rhs_os[ll] * vec.rhs_os[ll]);
 			const float beta = gamma_ / w_vec.gammaCGLS;
-			for (int ll = ii; ll <= inputScalars.nMultiVolumes; ll++) {
+			for (int ll = 0; ll <= inputScalars.nMultiVolumes; ll++) {
 				vec.fCGLS[ll] = vec.fCGLS[ll] + w_vec.alphaCGLS * vec.im_os[timestep][ll];
 				vec.fCGLS[ll].eval();
 				if (iter == inputScalars.Niter - 1)

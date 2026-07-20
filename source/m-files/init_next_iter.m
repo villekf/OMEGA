@@ -19,9 +19,9 @@ end
 
 if options.BSREM || options.ROSEM_MAP
     if iscell(im_vectors.recApu)
-        dU = applyPrior(im_vectors.recApu{1}, options, iter, options.beta);
+        dU = applyPrior(im_vectors.recApu{1}, options, 1, iter);
     else
-        dU = applyPrior(im_vectors.recApu, options, iter, options.beta);
+        dU = applyPrior(im_vectors.recApu, options, 1, iter);
     end
     im_vectors = MAPiter(im_vectors, options.lambda(iter), options.beta, dU, options.epps);
 end

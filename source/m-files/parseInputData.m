@@ -117,7 +117,7 @@ if options.subsets > 1 && options.subset_type > 0
                     end
                 else
                     if iscell(options.SinM)
-                        options.SinM{1} = reshape(options.SinM{1}, numel(options.SinM) / options.TOF_bins, options.TOF_bins);
+                        options.SinM{1} = reshape(options.SinM{1}, numel(options.SinM{1}) / options.TOF_bins, options.TOF_bins);
                         options.SinM{1} = options.SinM{1}(index,:);
                     else
                         options.SinM = reshape(options.SinM, numel(options.SinM) / options.TOF_bins, options.TOF_bins);

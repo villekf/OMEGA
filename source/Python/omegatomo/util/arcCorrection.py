@@ -145,13 +145,13 @@ def arc_correction(options, interpolate_sinogram):
     yy1 = y[:, 0].reshape(options.Ndist, options.Nang, order='F')
     yy2 = y[:, 1].reshape(options.Ndist, options.Nang, order='F')
     
-    apu = xx1[:, :J].copy()
-    xx1[:, :J] = np.flipud(xx2[:, :J])
-    xx2[:, :J] = np.flipud(apu)
+    apu = xx1[:, :J+1].copy()
+    xx1[:, :J+1] = np.flipud(xx2[:, :J+1])
+    xx2[:, :J+1] = np.flipud(apu)
     
-    apu = yy1[:, :J].copy()
-    yy1[:, :J] = np.flipud(yy2[:, :J])
-    yy2[:, :J] = np.flipud(apu)
+    apu = yy1[:, :J+1].copy()
+    yy1[:, :J+1] = np.flipud(yy2[:, :J+1])
+    yy2[:, :J+1] = np.flipud(apu)
     
     # Flatten back to 2D coordinates
     x[:, 0] = xx1.ravel('F')

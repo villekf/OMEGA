@@ -210,7 +210,7 @@ using TimerPoint = std::chrono::steady_clock::time_point;
 #define STOP_TIMER(END) do { (END) = std::chrono::steady_clock::now(); } while(0)
 #define PRINT_TIMER(START, END, MSG) do { \
 	const std::chrono::duration<double> seconds = (END) - (START); \
-	mexPrintBase(MSG, seconds); \
+	mexPrintBase(MSG, seconds.count()); \
 } while(0)
 #endif
 #if defined(CUDA) || defined(HIP)
@@ -318,6 +318,14 @@ using TimerPoint = std::chrono::steady_clock::time_point;
 #elif defined(OPENCL)
 #define ADD_OPT(OPTS, FLAG) OPTS += " " FLAG
 #endif
+// Build option selecting the forward projection. hipRTC force-includes hiprtc_runtime.h, which
+// uses FP as a type name, so a command-line -DFP breaks that header. HIP passes -DOMEGA_FP
+// instead; general_opencl_functions.h maps it back to FP after the hipRTC prelude.
+#if defined(HIP)
+#define FP_FLAG "-DOMEGA_FP"
+#else
+#define FP_FLAG "-DFP"
+#endif
 // Append an integer-valued build option "FLAG=VALUE". CUDA stores the formatted std::string
 // directly in the (std::string) options vector; OpenCL appends it to the options string.
 #if defined(CUDA) || defined(HIP) || defined(METAL)
@@ -422,6 +430,9 @@ class ProjectorClass {
 	size_t erotusPrior[3];
 	size_t erotusPriorEFOV[3];
 	size_t erotusSens[3];
+//#if defined(CUDA) || defined(HIP) // Unused
+//	size_t kSize = 0ULL;
+//#endif // END CUDA
 	// Local and global sizes
 	WorkRange local, global, localPrior, globalPrior, globalPriorEFOV;
 	struct ResourceState {
@@ -452,6 +463,7 @@ class ProjectorClass {
 		bool xFull = false;
 		bool zFull = false;
 		bool offsetT = false;
+		bool geom5 = false;
 		bool indexBased = false;
 		bool TOFIndex = false;
 		bool angle = false;
@@ -466,6 +478,7 @@ class ProjectorClass {
 		int TOFSteps = 0;
 		int aSteps = 0;
 		int oSteps = 0;
+		int g5Steps = 0;
 		int tSteps = 1;
 		int attenSize = 0;
 	};
@@ -1090,7 +1103,7 @@ class ProjectorClass {
 #elif defined(OPENCL)
 			std::string os_optionsFP = os_options;
 #endif // END CUDA
-			ADD_OPT(os_optionsFP, "-DFP");
+			ADD_OPT(os_optionsFP, FP_FLAG);
 			if (inputScalars.FPType == 3)
 				ADD_OPT(os_optionsFP, "-DVOL");
 			if (inputScalars.FPType == 2 || inputScalars.FPType == 3)
@@ -1134,10 +1147,12 @@ class ProjectorClass {
 			std::string os_options = options;
 #endif // END CUDA
 			if (inputScalars.FPType == 4)
-				ADD_OPT(os_options, "-DFP");
-			if (inputScalars.BPType == 4 && inputScalars.CT)
-				ADD_OPT(os_options, "-DBP");
+				ADD_OPT(os_options, FP_FLAG);
 			ADD_OPT(os_options, "-DPTYPE4");
+			// Non-positive interpolation length selects the Joseph-type projector, where the ray is sampled once per voxel plane along
+			// its dominant axis (the input dL is then unused)
+			if (inputScalars.dL <= 0.f)
+				ADD_OPT(os_options, "-DJOSEPH");
 			if (!inputScalars.largeDim) {
 				ADD_OPT_INT(os_options, "-DNVOXELS", NVOXELS);
 				if (inputScalars.useHelical) {
@@ -1154,21 +1169,19 @@ class ProjectorClass {
 				if (status == BUILD_SUCCESS_VALUE)
 					memAlloc.FPMod = true;
 			}
-			if (!inputScalars.CT && inputScalars.BPType == 4) {
+			if (inputScalars.BPType == 4) {
 				os_options = options;
-				ADD_OPT(os_options, "-DPTYPE4");
-				ADD_OPT(os_options, "-DBP");
-				ADD_OPT(os_options, "-DATOMICF");
-				status = buildBackendProgram(contentBP, programBP, os_options);
-				if (status == BUILD_SUCCESS_VALUE && DEBUG) {
-					mexPrint("BP 4 program built\n");
+				if (inputScalars.CT) {
+					ADD_OPT(os_options, "-DBP4");
+					ADD_OPT_INT(os_options, "-DNVOXELS", NVOXELS);
 				}
-				else if (status != BUILD_SUCCESS_VALUE)
-					return status;
-				if (status == BUILD_SUCCESS_VALUE)
-					memAlloc.BPMod = true;
-			}
-			else if (inputScalars.CT && inputScalars.BPType == 4 && inputScalars.FPType != 4) {
+				else {
+					ADD_OPT(os_options, "-DPTYPE4");
+					ADD_OPT(os_options, "-DATOMICF");
+					if (inputScalars.dL <= 0.f)
+						ADD_OPT(os_options, "-DJOSEPH");
+				}
+				ADD_OPT(os_options, "-DBP");
 				status = buildBackendProgram(contentBP, programBP, os_options);
 				if (status == BUILD_SUCCESS_VALUE && DEBUG) {
 					mexPrint("BP 4 program built\n");
@@ -1188,12 +1201,18 @@ class ProjectorClass {
 			ADD_OPT(os_options, "-DPROJ5");
 			if (inputScalars.meanFP)
 				ADD_OPT(os_options, "-DMEANDISTANCEFP");
-			else if (inputScalars.meanBP)
+			if (inputScalars.meanBP)
 				ADD_OPT(os_options, "-DMEANDISTANCEBP");
 			if (inputScalars.FPType == 5)
-				ADD_OPT(os_options, "-DFP");
+				ADD_OPT(os_options, FP_FLAG);
 			if (inputScalars.BPType == 5)
 				ADD_OPT(os_options, "-DBP");
+			// BDD uses precomputed values, but you can also use it with the original on the fly calculations
+			// If GEOM5 is not defined, the kernel uses the old format, otherwise it assumes precomputed values
+#if !defined(METAL)
+			if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0)
+				ADD_OPT(os_options, "-DGEOM5");
+#endif
 			if (inputScalars.pitch) {
 				ADD_OPT_INT(os_options, "-DNVOXELS5", 1);
 			}
@@ -1238,6 +1257,8 @@ class ProjectorClass {
 			if (inputScalars.BPType == 4) {
 				ADD_OPT(os_options, "-DPTYPE4");
 				ADD_OPT_INT(os_options, "-DNVOXELS", NVOXELS);
+				if (inputScalars.dL <= 0.f)
+					ADD_OPT(os_options, "-DJOSEPH");
 			}
 			else
 				ADD_OPT(os_options, "-DSIDDON");
@@ -1333,7 +1354,7 @@ class ProjectorClass {
 				if (inputScalars.maskBPZ > 1)
 					ADD_OPT(optionsAux, "-DMASKBP3D");
 			}
-			if (inputScalars.eFOV)
+			if (inputScalars.eFOV && !inputScalars.multiResolution)
 				ADD_OPT(optionsAux, "-DEFOVZ");
 			if (MethodList.MRP) {
 				ADD_OPT(optionsAux, "-DMEDIAN");
@@ -1642,7 +1663,7 @@ class ProjectorClass {
 				testi.push_back(contentFP);
 				cl::Program::Sources source(testi);
 				program = cl::Program(CLContext, source);
-				status = program.build(options.c_str());
+				status = program.build({ CLDeviceID }, options.c_str());
 				if (status == CL_SUCCESS && (DEBUG || verbose >= 3)) {
 					mexPrint("OpenCL program (64-bit atomics) built\n");
 #endif // END CUDA
@@ -1696,7 +1717,7 @@ class ProjectorClass {
 			testi.push_back(contentFP);
 			cl::Program::Sources source(testi);
 			program = cl::Program(CLContext, source);
-			status = program.build(options.c_str());
+			status = program.build({ CLDeviceID }, options.c_str());
 			if (status == CL_SUCCESS && (DEBUG || verbose >= 3)) {
 				mexPrint("OpenCL program built\n");
 			}
@@ -1763,7 +1784,7 @@ class ProjectorClass {
 				}
 				if (inputScalars.BPType == 4) {
 					if (inputScalars.FPType == 4 && inputScalars.CT)
-						GET_KERNEL(kernelBP, programFP, "projectorType4Backward");
+						GET_KERNEL(kernelBP, programBP, "projectorType4Backward");
 					else if (!inputScalars.CT)
 						GET_KERNEL(kernelBP, programBP, "projectorType4Forward");
 					else
@@ -2025,8 +2046,8 @@ public:
 	NS::SharedPtr<MTL::Device> mtlDevice;
 	NS::SharedPtr<MTL::CommandQueue> queueFP, queueBP;
 	METAL_im_vectors vec_opencl;
-	void* sensitivityHost = nullptr;
-	size_t sensitivityBytes = 0ULL;
+	std::vector<void*> sensitivityHosts;
+	std::vector<size_t> sensitivityByteCounts;
 	ScalarKernelParams kParams;
 #endif // END METAL
 #if defined(CUDA) || defined(HIP)
@@ -2057,6 +2078,7 @@ public:
 	std::vector<std::vector<Texture3D>> d_maskBP3;
 	Texture3D d_maskPrior3;
 	Texture3D d_inputImage, d_urefIm, d_inputI, d_RDPrefI;
+	// Texture3D d_imageX, d_imageY; // Unused
 	TextureArray atArray, uRefArray, maskArrayPrior, BPArray, FPArray, integArrayXY, imArray;
 	std::vector<std::vector<TextureArray>> maskArrayBP;
 	std::vector<Texture3D> d_attenIm;
@@ -2075,6 +2097,7 @@ public:
 	size_t memSize = 0ULL;
 
 #if defined(OPENCL)
+//  std::vector<DeviceBuffer> d_LFull, d_zindexFull, d_xyindexFull; // Unused
 	// Image origin
 	cl::detail::size_t_array origin = { { 0, 0, 0 } };
 	cl::detail::size_t_array region = { { 0, 0, 0 } };
@@ -2095,7 +2118,43 @@ public:
 	std::vector<DeviceBuffer> d_L;
 	std::vector<DeviceBuffer> d_zindex, d_xyindex, d_T;
 	std::vector<std::vector<DeviceBuffer>> d_norm, d_atten, d_scat, d_x, d_z, d_trIndex, d_axIndex, d_TOFIndex;
+	// Precomputed per-projection geometry for the BDD backprojection (16 floats per projection, one buffer per subset)
+	std::vector<DeviceBuffer> d_geomProj5;
+	// Host-side storage for the above geometry
+	std::vector<std::vector<float>> geomProj5Host;
 	std::vector<std::vector<size_t>> erotusBP, erotusPDHG;
+#if defined(CUDA) || defined(HIP)
+	// This is used to define the additional queues/streams in the multi-resolution case
+	// Note that these are only used in the multi-resolution case
+	std::vector<CUstream> sideQueues;
+	CUevent evMain = nullptr;
+	std::vector<CUevent> evSide;
+	// Persistent per-volume FP input arrays/textures
+	// Previously these were always recreated
+	std::vector<CUarray> FPArrayCache;
+	std::vector<CUtexObject> FPTexCache;
+	std::vector<CUarray> intArrayCacheXY;
+	std::vector<CUtexObject> intTexCacheXY;
+	std::vector<CUarray> intArrayCacheYZ;
+	std::vector<CUtexObject> intTexCacheYZ;
+#elif defined(METAL)
+	// One queue and retained last command buffer per multi-resolution volume.
+	// Waiting for the last command buffer is sufficient because Metal queues
+	// execute their own command buffers in submission order.
+	std::vector<NS::SharedPtr<MTL::CommandQueue>> sideQueues;
+	std::vector<NS::SharedPtr<MTL::CommandBuffer>> sideCommandBuffers;
+#elif defined(OPENCL)
+	std::vector<cl::CommandQueue> sideQueues;
+	// Persistent per-volume FP input images
+	std::vector<cl::Image3D> d_imageCache;
+	std::vector<cl::Image3D> d_intImageCacheXY;
+	std::vector<cl::Image3D> d_intImageCacheYZ;
+#endif
+	// Cached dimensions of the above (3 entries per volume; third entry 0 = not yet created)
+	std::vector<size_t> imageCacheDims, intImageCacheDimsXY, intImageCacheDimsYZ;
+	// Cached dimensions of the persistent BP input image/texture (third entry 0 = not yet created)
+	size_t BPImageDims[3] = { 0, 0, 0 };
+	// ==== End Mod additions ====
 #if defined(CUDA) || defined(HIP)
 	~ProjectorClass() {
 		if (memAlloc.FPMod)
@@ -2144,13 +2203,21 @@ public:
 				}
 			}
 			if (memAlloc.indexBased) {
-				for (int kk = 0; kk < memAlloc.iSteps / memAlloc.tSteps; kk++) {
+				// When the data is loaded one subset at a time, only a single buffer at [0][0] exists
+				int nIndex = memAlloc.iSteps / memAlloc.tSteps;
+				if (nIndex == 0)
+					nIndex = tt == 0 ? memAlloc.iSteps : 0;
+				for (int kk = 0; kk < nIndex; kk++) {
 					getErrorString(cuMemFree(d_trIndex[tt][kk]));
 					getErrorString(cuMemFree(d_axIndex[tt][kk]));
 				}
 			}
 			if (memAlloc.TOFIndex) {
-				for (int kk = 0; kk < memAlloc.TOFSteps / memAlloc.tSteps; kk++) {
+				// When the data is loaded one subset at a time, only a single buffer at [0][0] exists
+				int nTOF = memAlloc.TOFSteps / memAlloc.tSteps;
+				if (nTOF == 0)
+					nTOF = tt == 0 ? memAlloc.TOFSteps : 0;
+				for (int kk = 0; kk < nTOF; kk++) {
 					getErrorString(cuMemFree(d_TOFIndex[tt][kk]));
 				}
 			}
@@ -2158,6 +2225,11 @@ public:
 		if (memAlloc.offsetT) {
 			for (int kk = 0; kk < memAlloc.oSteps; kk++) {
 				getErrorString(cuMemFree(d_T[kk]));
+			}
+		}
+		if (memAlloc.geom5) {
+			for (int kk = 0; kk < memAlloc.g5Steps; kk++) {
+				getErrorString(cuMemFree(d_geomProj5[kk]));
 			}
 		}
 		if (memAlloc.TOF) {
@@ -2237,10 +2309,136 @@ public:
 		else if (memAlloc.NLMRef == 2) {
 			getErrorString(cuMemFree(d_uref));
 		}
+		for (size_t kk = 0; kk < FPTexCache.size(); kk++) {
+			if (imageCacheDims[kk * 3 + 2] != 0) {
+				getErrorString(cuTexObjectDestroy(FPTexCache[kk]));
+				getErrorString(cuArrayDestroy(FPArrayCache[kk]));
+			}
+		}
+		for (size_t kk = 0; kk < intTexCacheXY.size(); kk++) {
+			if (intImageCacheDimsXY[kk * 3 + 2] != 0) {
+				getErrorString(cuTexObjectDestroy(intTexCacheXY[kk]));
+				getErrorString(cuArrayDestroy(intArrayCacheXY[kk]));
+			}
+		}
+		for (size_t kk = 0; kk < intTexCacheYZ.size(); kk++) {
+			if (intImageCacheDimsYZ[kk * 3 + 2] != 0) {
+				getErrorString(cuTexObjectDestroy(intTexCacheYZ[kk]));
+				getErrorString(cuArrayDestroy(intArrayCacheYZ[kk]));
+			}
+		}
+		if (BPImageDims[2] != 0) {
+			getErrorString(cuTexObjectDestroy(d_inputImage));
+			getErrorString(cuArrayDestroy(BPArray));
+		}
+		for (size_t kk = 0; kk < sideQueues.size(); kk++)
+			getErrorString(cuStreamDestroy(sideQueues[kk]));
+		for (size_t kk = 0; kk < evSide.size(); kk++)
+			getErrorString(cuEventDestroy(evSide[kk]));
+		if (evMain != nullptr)
+			getErrorString(cuEventDestroy(evMain));
 	}
 #elif defined(OPENCL)
 	~ProjectorClass() {}
 #endif // END CUDA
+
+	/// <summary>
+	/// Create the additional queues/streams for the multi-resolution case,
+	//// The main queue/stream is always the ArrayFire queue/stream, the other volumes use their own ones
+	/// </summary>
+	/// <param name="n">Number of queues, one for the main image plus each multi-resolution volume</param>
+	inline int initSideQueues(const int n) {
+#if defined(METAL)
+		if (n <= 0 || static_cast<int>(sideQueues.size()) >= n)
+			return 0;
+		for (int kk = static_cast<int>(sideQueues.size()); kk < n; kk++) {
+			auto queue = NS::TransferPtr(mtlDevice->newCommandQueue());
+			if (!queue) {
+				mexPrint("Failed to create Metal side command queue\n");
+				return -1;
+			}
+			sideQueues.push_back(std::move(queue));
+			sideCommandBuffers.emplace_back(nullptr);
+		}
+		return 0;
+#else
+		if (n <= 0 || static_cast<int>(sideQueues.size()) >= n)
+			return 0;
+#if defined(CUDA) || defined(HIP)
+		CUresult status = CUDA_SUCCESS;
+		if (evMain == nullptr) {
+			status = cuEventCreate(&evMain, CU_EVENT_DISABLE_TIMING);
+			CUDA_CHECK(status, "Failed to create main stream event\n", -1);
+		}
+		for (int kk = static_cast<int>(sideQueues.size()); kk < n; kk++) {
+			CUstream s;
+			// Create the stream
+			status = cuStreamCreate(&s, CU_STREAM_NON_BLOCKING);
+			CUDA_CHECK(status, "Failed to create side stream\n", -1);
+			sideQueues.push_back(s);
+			CUevent e;
+			// Create the event to make sure all relevant computations are complete after the BP
+			status = cuEventCreate(&e, CU_EVENT_DISABLE_TIMING);
+			CUDA_CHECK(status, "Failed to create side stream event\n", -1);
+			evSide.push_back(e);
+		}
+#else
+		cl_int status = CL_SUCCESS;
+		for (int kk = static_cast<int>(sideQueues.size()); kk < n; kk++) {
+			sideQueues.push_back(cl::CommandQueue(CLContext, CLDeviceID[0], 0, &status));
+			OCL_CHECK(status, "Failed to create side command queue\n", -1);
+		}
+#endif
+		return 0;
+#endif
+	}
+
+	/// <summary>
+	/// This function forces the main queue/stream to wait for all the side queues/streams
+	// This makes sure that the computations will only proceed after all the BPs are done
+	/// </summary>
+	inline int joinSideQueues() {
+#if defined(CUDA) || defined(HIP)
+		CUresult status = CUDA_SUCCESS;
+		for (size_t kk = 0; kk < sideQueues.size(); kk++) {
+			status = cuEventRecord(evSide[kk], sideQueues[kk]);
+			CUDA_CHECK(status, "Failed to record side stream event\n", -1);
+			status = cuStreamWaitEvent(CLCommandQueue[0], evSide[kk], 0);
+			CUDA_CHECK(status, "Failed to make main stream wait for side stream\n", -1);
+		}
+#elif defined(METAL)
+		int result = 0;
+		for (auto& commandBuffer : sideCommandBuffers) {
+			if (!commandBuffer)
+				continue;
+			commandBuffer->waitUntilCompleted();
+			if (commandBuffer->status() == MTL::CommandBufferStatusError) {
+				NS::Error* error = commandBuffer->error();
+				const char* message = error && error->localizedDescription()
+					? error->localizedDescription()->utf8String() : "unknown Metal error";
+				mexPrintBase("Metal side-queue backprojection failed: %s\n", message);
+				result = -1;
+			}
+			commandBuffer.reset();
+		}
+		return result;
+#elif defined(OPENCL)
+		cl_int status = CL_SUCCESS;
+		if (sideQueues.size() > 0) {
+			std::vector<cl::Event> waitList(sideQueues.size());
+			for (size_t kk = 0; kk < sideQueues.size(); kk++) {
+				status = sideQueues[kk].enqueueMarkerWithWaitList(nullptr, &waitList[kk]);
+				OCL_CHECK(status, "Failed to enqueue side queue marker\n", -1);
+				status = sideQueues[kk].flush();
+				OCL_CHECK(status, "Failed to flush side queue\n", -1);
+			}
+			status = CLCommandQueue[0].enqueueBarrierWithWaitList(&waitList);
+			OCL_CHECK(status, "Failed to enqueue main queue barrier\n", -1);
+		}
+#endif
+		return 0;
+	}
+
 	/// <summary>
 	/// This function creates the projector class object
 	/// </summary>
@@ -2307,10 +2505,10 @@ public:
 		// Create the OpenCL context and command queue and assign the device
 #ifdef AF
 		CLContext = afcl::getContext(true);
-		std::vector<cl::Device> devices = CLContext.getInfo<CL_CONTEXT_DEVICES>(&status);
-		OCL_CHECK(status, "\n", -1);
-		CLDeviceID.push_back(devices[0]);
 		CLCommandQueue.push_back(cl::CommandQueue(afcl::getQueue(true), true));
+		// Use AF command queue to query for the current OpenCL device
+		CLDeviceID.push_back(CLCommandQueue[0].getInfo<CL_QUEUE_DEVICE>(&status));
+		OCL_CHECK(status, "\n", -1);
 #else
 		status = clGetPlatformsContext(inputScalars.platform, CLContext, CLCommandQueue, inputScalars.usedDevices, CLDeviceID);
 #endif
@@ -2477,7 +2675,9 @@ public:
 			mexPrint("Luuppi valmis\n");
 		d_Summ.resize(1);
 		d_Summ[0] = nullptr;
-#elif defined(OPENCL)
+#else
+		if (d_Summ.size() < 1)
+			d_Summ.resize(1);
 		region = { inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0] * inputScalars.nRekos };
 #endif // END CUDA
 		return 0;
@@ -2651,7 +2851,7 @@ public:
 				CHECK(status, "\n", (Status)(-1));
 				memAlloc.rayShifts = true;
 			}
-			if (inputScalars.eFOV) {
+			if (inputScalars.eFOV && !inputScalars.multiResolution) {
 				ALLOC_BUFFER(d_eFOVIndices, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nz[0]);
 				CHECK(status, "\n", (Status)(-1));
 				memAlloc.eFOV = true;
@@ -2716,7 +2916,8 @@ public:
 						CHECK(status, "\n", (Status)(-1));
 						memAlloc.xSteps++;
 					}
-					else if (inputScalars.listmode > 0 && !inputScalars.indexBased && (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || (!inputScalars.loadTOF && timestep == 0 && kk < inputScalars.TOFsubsets))) {
+					// First condition: load all data at once. Second condition: load one subset at a time (only 1 buffer required, loadCoord reloads it for each subset/timestep)
+					else if (inputScalars.listmode > 0 && !inputScalars.indexBased && (inputScalars.loadTOF || (kk == 0 && timestep == 0))) {
 						ALLOC_BUFFER(d_x[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk + timestep * inputScalars.subsets] * 6);
 						CHECK(status, "\n", (Status)(-1));
 						memAlloc.xSteps++;
@@ -2803,6 +3004,16 @@ public:
 					memAlloc.offsetT = true;
 					memAlloc.oSteps++;
 				}
+#if !defined(METAL)
+				if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0) {
+					ALLOC_BUFFER(d_geomProj5[kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 16);
+					CHECK(status, "\n", (Status)-1);
+#if defined(CUDA) || defined(HIP)
+					memAlloc.geom5 = true;
+					memAlloc.g5Steps++;
+#endif // END CUDA
+				}
+#endif
 				// Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
 				// Note that raw data format is not used at the moment
 				if (inputScalars.raw && inputScalars.listmode != 1) {
@@ -2856,7 +3067,7 @@ public:
 				WRITE_BUFFER(d_zFull[0], sizeof(float) * inputScalars.size_z, z_det);
 				CHECK(status, "\n", (Status)(-1));
 			}
-			if (inputScalars.eFOV) {
+			if (inputScalars.eFOV && !inputScalars.multiResolution) {
 				WRITE_BUFFER(d_eFOVIndices, sizeof(uint8_t) * inputScalars.Nz[0], w_vec.eFOVIndices);
 				CHECK(status, "\n", (Status)(-1));
 				memSize += (sizeof(uint8_t) * inputScalars.Nz[0]) / 1048576ULL;
@@ -2957,7 +3168,7 @@ public:
 						if (inputScalars.PET && inputScalars.listmode == 0) {
 							int64_t kerroin = 2;
 							if (inputScalars.nLayers > 1)
-								int64_t kerroin = 3;
+								kerroin = 3;
 							WRITE_BUFFER(d_z[timestep][kk], sizeof(float) * length[kk] * kerroin, &z_det[pituus[kk] * kerroin]);
 							memSize += (sizeof(float) * length[kk] * kerroin) / 1048576ULL;
 						}
@@ -2973,7 +3184,7 @@ public:
 						memSize += (sizeof(float) * length[indD] * 6) / 1048576ULL;
 					}
 					else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
-						if ((kk < inputScalars.TOFsubsets) || inputScalars.loadTOF || (!inputScalars.loadTOF && timestep == 0 && kk < inputScalars.TOFsubsets)) {
+						if (inputScalars.loadTOF || (kk == 0 && timestep == 0)) {
 							WRITE_BUFFER(d_x[timestep][kk], sizeof(float) * length[kk + timestep * inputScalars.subsets] * 6, &w_vec.listCoord[pituus[kk + timestep * inputScalars.subsets] * 6]);
 							CHECK(status, "\n", (Status)(-1));
 							if (DEBUG) {
@@ -3024,6 +3235,55 @@ public:
 					WRITE_BUFFER(d_T[kk], sizeof(float) * length[kk], &inputScalars.T[pituus[kk]]);
 					CHECK(status, "\n", (Status)(-1));
 				}
+				// Per projection: s (3), d3 (3), normX (3), normY (3), crossP (3), upperPart (1), i.e. 16 floats.
+				// Previously computed in the kernel itself
+#if !defined(METAL)
+				if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0) {
+					const float indX = static_cast<float>(inputScalars.nRowsD) / 2.f;
+					const float indY = static_cast<float>(inputScalars.nColsD) / 2.f;
+					const size_t uvStride = inputScalars.pitch ? 6 : 2;
+					const float* xs = &x[pituus[kk] * 6];
+					const float* uv = &z_det[pituus[kk] * uvStride];
+					geomProj5Host[kk].resize(static_cast<size_t>(length[kk]) * 16);
+					for (int64_t pp = 0; pp < length[kk]; pp++) {
+						const float sX = xs[pp * 6], sY = xs[pp * 6 + 1], sZ = xs[pp * 6 + 2];
+						const float dX = xs[pp * 6 + 3], dY = xs[pp * 6 + 4], dZ = xs[pp * 6 + 5];
+						float aXx, aXy, aXz, aYx, aYy, aYz;
+						if (inputScalars.pitch) {
+							aXx = uv[pp * 6] * indX; aXy = uv[pp * 6 + 1] * indX; aXz = uv[pp * 6 + 2] * indX;
+							aYx = uv[pp * 6 + 3] * indY; aYy = uv[pp * 6 + 4] * indY; aYz = uv[pp * 6 + 5] * indY;
+						}
+						else {
+							aXx = uv[pp * 2] * indX; aXy = uv[pp * 2 + 1] * indX; aXz = 0.f;
+							aYx = 0.f; aYy = 0.f; aYz = indY * w_vec.dPitchY;
+						}
+						// d3 = d - apuX - apuY
+						const float d3x = dX - aXx - aYx, d3y = dY - aXy - aYy, d3z = dZ - aXz - aYz;
+						// d2 = apuX - apuY
+						const float d2x = aXx - aYx, d2y = aXy - aYy, d2z = aXz - aYz;
+						const float nXl = std::sqrt(aXx * aXx + aXy * aXy + aXz * aXz);
+						const float nYl = std::sqrt(aYx * aYx + aYy * aYy + aYz * aYz);
+						// d3 - d = -apuX - apuY
+						const float ddx = d3x - dX, ddy = d3y - dY, ddz = d3z - dZ;
+						// crossP = cross(d2, d3 - d)
+						const float cx = d2y * ddz - d2z * ddy;
+						const float cy = d2z * ddx - d2x * ddz;
+						const float cz = d2x * ddy - d2y * ddx;
+						// upperPart = dot(crossP, s - d)
+						const float up = cx * (sX - dX) + cy * (sY - dY) + cz * (sZ - dZ);
+						float* g = &geomProj5Host[kk][pp * 16];
+						g[0] = sX; g[1] = sY; g[2] = sZ;
+						g[3] = d3x; g[4] = d3y; g[5] = d3z;
+						g[6] = aXx / nXl; g[7] = aXy / nXl; g[8] = aXz / nXl;
+						g[9] = aYx / nYl; g[10] = aYy / nYl; g[11] = aYz / nYl;
+						g[12] = cx; g[13] = cy; g[14] = cz;
+						g[15] = up;
+					}
+					WRITE_BUFFER(d_geomProj5[kk], sizeof(float) * length[kk] * 16, geomProj5Host[kk].data());
+					CHECK(status, "\n", (Status)-1);
+					memSize += (sizeof(float) * length[kk] * 16) / 1048576ULL;
+				}
+#endif
 				if (inputScalars.raw && inputScalars.listmode != 1) {
 					WRITE_BUFFER(d_L[kk], sizeof(uint16_t) * length[kk] * 2, &L[pituus[kk] * 2]);
 					CHECK(status, "\n", (Status)(-1));
@@ -3147,6 +3407,12 @@ public:
 		}
 		if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5))
 			d_T.resize(inputScalars.subsetsUsed);
+#if !defined(METAL)
+		if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0) {
+			d_geomProj5.resize(inputScalars.subsetsUsed);
+			geomProj5Host.resize(inputScalars.subsetsUsed);
+		}
+#endif
 
 		status = createAndWriteBuffers(length, x, z_det, xy_index, z_index, L, pituus, atten, norm, extraCorr, inputScalars, w_vec, MethodList);
 		if (status != SUCCESS_VALUE) {
@@ -3185,7 +3451,7 @@ public:
 		kParams.helicalRadius = inputScalars.helicalRadius;
 		return 0;
 #else
-		if (inputScalars.FPType == 4 || inputScalars.FPType == 5) {
+		if (inputScalars.FPType == 4 || inputScalars.FPType == 5 || inputScalars.FPType == 7) {
 			KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.nRowsD);
 			KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.nColsD);
 			KARG(FPArgs, kernelFP, kernelIndFP, dPitch);
@@ -3194,7 +3460,7 @@ public:
 			}
 		}
 
-		if (inputScalars.BPType == 4 || inputScalars.BPType == 5) {
+		if (inputScalars.BPType == 4 || inputScalars.BPType == 5 || inputScalars.BPType == 7) {
 			KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.nRowsD);
 			KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.nColsD);
 			KARG(BPArgs, kernelBP, kernelIndBP, dPitch);
@@ -3662,7 +3928,18 @@ public:
 		if (DEBUG || inputScalars.verbose >= 3) {
 			INIT_TIMER(tStart, tEnd);
 		}
-		FINISH_QUEUE(status, "\n", -1);
+#if defined(CUDA) || defined(HIP)
+#ifndef AF
+		// ArrayFire and the projector share a stream; custom reconstruction inputs need an explicit synchronization.
+		status = cuCtxSynchronize();
+		CUDA_CHECK(status, "\n", -1);
+#endif
+#elif defined(OPENCL)
+#ifndef AF
+		status = CLCommandQueue[0].finish();
+		OCL_CHECK(status, "\n", -1);
+#endif
+#endif
 #if defined(METAL)
 		kernelIndFPSubIter = 1U;
 		if (inputScalars.FPType >= 1 && inputScalars.FPType <= 3) {
@@ -3966,33 +4243,30 @@ public:
 			mexPrint("Forward projection kernel launched successfully\n");
 		}
 #if defined(CUDA) || defined(HIP)
-		FINISH_QUEUE(status, "\n", -1);
-		if (!inputScalars.useBuffers) {
-			status = cuTexObjectDestroy(vec_opencl.d_image_os);
-			if (status != CUDA_SUCCESS) {
-				getErrorString(status);
-			}
-			status = cuArrayDestroy(FPArray);
-			if (status != CUDA_SUCCESS) {
-				getErrorString(status);
-			}
-		}
-		if (inputScalars.FPType == 5) {
-			status = cuTexObjectDestroy(vec_opencl.d_image_os_int);
-			if (status != CUDA_SUCCESS) {
-				getErrorString(status);
-			}
-			status = cuArrayDestroy(integArrayXY);
-			if (status != CUDA_SUCCESS) {
-				getErrorString(status);
-			}
-		}
+		if (DEBUG || inputScalars.verbose >= 3)
+			STOP_TIMER(tEnd);
+#ifndef AF
+		status = cuCtxSynchronize();
+		CUDA_CHECK(status, "\n", -1);
+#endif
 #elif defined(OPENCL)
-		FINISH_QUEUE(status, "\n", -1);
+#ifndef AF
+		status = CLCommandQueue[0].finish();
+		OCL_CHECK(status, "\n", -1);
+#endif
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3) {
+#if defined(OPENCL)
+			CLCommandQueue[0].finish();
 			STOP_TIMER(tEnd);
+#elif defined(METAL)
+			STOP_TIMER(tEnd);
+#endif
 			PRINT_TIMER(tStart, tEnd, "Forward projection completed in %f seconds\n");
+#if defined(CUDA) || defined(HIP)
+			cuEventDestroy(tStart);
+			cuEventDestroy(tEnd);
+#endif
 		}
 		return 0;
 	}
@@ -4008,11 +4282,13 @@ public:
 	/// <param name="compSens if true, computes the sensitivity image as well"></param>
 	/// <returns></returns>
 #if defined(CUDA) || defined(HIP)
-	inline int backwardProjection(scalarStruct & inputScalars, Weighting & w_vec, uint32_t osa_iter, uint32_t timestep, std::vector<int64_t>&length, uint64_t m_size, const bool compSens = false, int ii = 0, const int uu = 0) {
+	inline int backwardProjection(scalarStruct & inputScalars, Weighting & w_vec, uint32_t osa_iter, uint32_t timestep, std::vector<int64_t>&length, uint64_t m_size, const bool compSens = false, int ii = 0, const int uu = 0,
+		const int queueIdx = 0, const bool newInput = true) {
 #elif defined(METAL) || defined(OPENCL)
-	inline int backwardProjection(const scalarStruct & inputScalars, Weighting & w_vec, const uint32_t osa_iter, const uint32_t timestep, const std::vector<int64_t>&length, const uint64_t m_size, const bool compSens = false, const int32_t ii = 0, const int uu = 0, int ee = -1) {
+	inline int backwardProjection(const scalarStruct & inputScalars, Weighting & w_vec, const uint32_t osa_iter, const uint32_t timestep, const std::vector<int64_t>&length, const uint64_t m_size, const bool compSens = false, const int32_t ii = 0, const int uu = 0,
+		int ee = -1, const int queueIdx = 0, const bool newInput = true) {
 #endif // END CUDA
-        if (inputScalars.verbose >= 3 || DEBUG)
+		if (inputScalars.verbose >= 3 || DEBUG)
 		    mexPrintVar("Starting backprojection for projector type = ", inputScalars.BPType);
 		Status status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
@@ -4035,11 +4311,13 @@ public:
 		}
 		int indD = osa_iter + timestep * inputScalars.subsets;
 #if defined(METAL)
-		if (!queueBP || !kernelBP) {
+		const bool useMetalSideQueue = queueIdx > 0 && static_cast<size_t>(queueIdx) <= sideQueues.size();
+		MTL::CommandQueue* activeQueue = useMetalSideQueue ? sideQueues[queueIdx - 1].get() : queueBP.get();
+		if (!activeQueue || !kernelBP) {
 			mexPrint("Unable to create Metal backprojection encoder");
 			return -1;
 		}
-		NS::SharedPtr<MTL::CommandBuffer> commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+		NS::SharedPtr<MTL::CommandBuffer> commandBuffer = NS::RetainPtr(activeQueue->commandBuffer());
 		NS::SharedPtr<MTL::ComputeCommandEncoder> encoder = NS::RetainPtr(commandBuffer->computeCommandEncoder());
 		if (!commandBuffer || !encoder) {
 			mexPrint("Unable to create Metal backprojection encoder");
@@ -4309,8 +4587,109 @@ public:
 			}
 		else {
 			if (inputScalars.CT) {
-
-				if (!inputScalars.useBuffers) {
+				// Projector type 7 always reads the projection data from a buffer, no image/texture is needed
+				if (!inputScalars.useBuffers && inputScalars.BPType != 7) {
+#if defined(CUDA) || defined(HIP)
+					CUDA_ARRAY3D_DESCRIPTOR_st arr3DDesc;
+					std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
+					arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_FLOAT;
+					arr3DDesc.NumChannels = 1;
+					arr3DDesc.Height = inputScalars.nColsD;
+					arr3DDesc.Width = inputScalars.nRowsD;
+					arr3DDesc.Depth = length[indD];
+					if (inputScalars.BPType == 5) {
+						arr3DDesc.Height++;
+						arr3DDesc.Width++;
+					}
+					if (DEBUG) {
+						mexPrintBase("arr3DDesc.Height = %u\n", arr3DDesc.Height);
+						mexPrintBase("arr3DDesc.Width = %u\n", arr3DDesc.Width);
+						mexPrintBase("arr3DDesc.Depth = %u\n", arr3DDesc.Depth);
+						mexEval();
+					}
+					if (newInput) {
+						if (BPImageDims[0] != arr3DDesc.Width || BPImageDims[1] != arr3DDesc.Height || BPImageDims[2] != arr3DDesc.Depth) {
+							if (BPImageDims[2] != 0) {
+								getErrorString(cuTexObjectDestroy(d_inputImage));
+								getErrorString(cuArrayDestroy(BPArray));
+							}
+							status = cuArray3DCreate(&BPArray, &arr3DDesc);
+							CUDA_CHECK(status, "Array creation failed\n", -1);
+							CUDA_TEXTURE_DESC texDesc;
+							CUDA_RESOURCE_DESC resDescIm;
+							CUDA_RESOURCE_VIEW_DESC viewDesc;
+							std::memset(&texDesc, 0, sizeof(texDesc));
+							std::memset(&resDescIm, 0, sizeof(resDescIm));
+							std::memset(&viewDesc, 0, sizeof(viewDesc));
+							viewDesc.height = inputScalars.nColsD;
+							viewDesc.width = inputScalars.nRowsD;
+							viewDesc.depth = length[indD];
+							viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
+							resDescIm.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
+							resDescIm.res.array.hArray = BPArray;
+							texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+							texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+							texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+							texDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
+							texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_LINEAR;
+							if (inputScalars.BPType == 5) {
+								viewDesc.height++;
+								viewDesc.width++;
+							}
+							status = cuTexObjectCreate(&d_inputImage, &resDescIm, &texDesc, &viewDesc);
+							CUDA_CHECK(status, "Image creation failed\n", -1);
+							BPImageDims[0] = arr3DDesc.Width;
+							BPImageDims[1] = arr3DDesc.Height;
+							BPImageDims[2] = arr3DDesc.Depth;
+						}
+						CUDA_MEMCPY3D cpy3d;
+						std::memset(&cpy3d, 0, sizeof(cpy3d));
+						cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_DEVICE;
+						cpy3d.srcDevice = reinterpret_cast<CUdeviceptr>(d_output);
+						cpy3d.srcPitch = inputScalars.nRowsD * sizeof(float);
+						cpy3d.srcHeight = inputScalars.nColsD;
+						cpy3d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
+						cpy3d.dstArray = BPArray;
+						cpy3d.WidthInBytes = inputScalars.nRowsD * sizeof(float);
+						cpy3d.Height = inputScalars.nColsD;
+						cpy3d.Depth = length[indD];
+						if (inputScalars.BPType == 5) {
+							cpy3d.srcPitch += sizeof(float);
+							cpy3d.srcHeight++;
+							cpy3d.WidthInBytes += sizeof(float);
+							cpy3d.Height++;
+						}
+						status = cuMemcpy3DAsync(&cpy3d, CLCommandQueue[0]);
+						CUDA_CHECK(status, "Array mem copy failed\n", -1);
+					}
+#elif defined(OPENCL)
+					cl::size_type imX = inputScalars.nRowsD;
+					cl::size_type imY = inputScalars.nColsD;
+					cl::size_type imZ = length[indD];
+					if (inputScalars.BPType == 5) {
+						imX++;
+						imY++;
+					}
+					if (DEBUG) {
+						mexPrintBase("image width = %u\n", imX);
+						mexPrintBase("image height = %u\n", imY);
+						mexPrintBase("image depth = %u\n", imZ);
+						mexEval();
+					}
+					cl::detail::size_t_array region = { imX, imY, imZ };
+					// Make the inputs persistent such that they are only created when required
+					if (newInput) {
+						if (BPImageDims[0] != imX || BPImageDims[1] != imY || BPImageDims[2] != imZ) {
+							d_inputImage = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
+							OCL_CHECK(status, "Image creation failed\n", -1);
+							BPImageDims[0] = imX;
+							BPImageDims[1] = imY;
+							BPImageDims[2] = imZ;
+						}
+						status = CLCommandQueue[0].enqueueCopyBufferToImage(d_output, d_inputImage, 0, origin, region);
+						OCL_CHECK(status, "Image copy failed\n", -1);
+					}
+				#elif defined(METAL)
 					size_t textureHeight = inputScalars.nColsD;
 					size_t textureWidth = inputScalars.nRowsD;
 					const size_t textureDepth = length[indD];
@@ -4318,18 +4697,34 @@ public:
 						textureHeight++;
 						textureWidth++;
 					}
-					if (DEBUG) {
-						mexPrintBase("textureHeight = %u\n", textureHeight);
-						mexPrintBase("textureWidth = %u\n", textureWidth);
-						mexPrintBase("textureDepth = %u\n", textureDepth);
-						mexEval();
-						//mexEvalString("pause(2);");
+					if (newInput) {
+						if (!d_output || !d_output->contents()) {
+							mexPrint("Metal backprojection input buffer is unavailable\n");
+							return -1;
+						}
+						if (!d_inputImage || BPImageDims[0] != textureWidth || BPImageDims[1] != textureHeight || BPImageDims[2] != textureDepth) {
+							d_inputImage = createMetalFloatTextureEmpty(
+								metalTextureSpec(textureWidth, textureHeight, textureDepth, true));
+							if (!d_inputImage) {
+								mexPrint("Metal backprojection input texture creation failed\n");
+								return -1;
+							}
+							BPImageDims[0] = textureWidth;
+							BPImageDims[1] = textureHeight;
+							BPImageDims[2] = textureDepth;
+						}
+						const MTL::Region textureRegion(0, 0, 0,
+							static_cast<NS::UInteger>(textureWidth),
+							static_cast<NS::UInteger>(textureHeight),
+							static_cast<NS::UInteger>(textureDepth));
+						const NS::UInteger bytesPerRow = static_cast<NS::UInteger>(textureWidth * sizeof(float));
+						const NS::UInteger bytesPerImage = bytesPerRow * static_cast<NS::UInteger>(textureHeight);
+						d_inputImage->replaceRegion(textureRegion, 0, 0, d_output->contents(), bytesPerRow, bytesPerImage);
 					}
-					CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(d_inputImage, BPArray, d_output, textureHeight, textureWidth, textureDepth,
-						BACKEND_TEXTURE_LINEAR, BACKEND_TEXTURE_NORMALIZED);
-					CHECK(status, "Image creation failed\n", -1);
-#if defined(CUDA) || defined(HIP)
-					FINISH_QUEUE(status, "Synchronize failed after image copy\n", -1);
+					else if (!d_inputImage) {
+						mexPrint("Metal backprojection input texture cannot be reused before it is initialized\n");
+						return -1;
+					}
 #endif // END CUDA
 				}
 #if defined(CUDA) || defined(HIP)
@@ -4419,11 +4814,11 @@ public:
 					}
 					mexEval();
 				}
-				if (inputScalars.offset) {
+				if (inputScalars.offset && inputScalars.BPType != 7) {
 					KARG_METAL_SLOT(kernelIndBPSubIter, 1);
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_T[osa_iter]);
 				}
-				if (inputScalars.BPType == 5 || inputScalars.BPType == 4) {
+				if (inputScalars.BPType == 5 || inputScalars.BPType == 4 || inputScalars.BPType == 7) {
 					KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, d_N[ii]);
 					KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, b[ii]);
 					KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, d[ii]);
@@ -4431,7 +4826,7 @@ public:
 						KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, inputScalars.d_Scale[ii]);
 						KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, inputScalars.dSizeBP);
 					}
-					else {
+					else if (inputScalars.BPType == 4) {
 						KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, w_vec.kerroin4[ii]);
 					}
 				}
@@ -4493,8 +4888,13 @@ public:
 					if (compSens) {
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_zFull[0]);
 					}
-						else
-							KARG(kTemp, kernelBP, kernelIndBPSubIter, d_z[timestep][osa_iter]);
+					else
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_z[timestep][osa_iter]);
+					// Only when the kernel was built with -DGEOM5
+#if !defined(METAL)
+					if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0)
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_geomProj5[osa_iter]);
+#endif
 					KARG_METAL_SLOT(kernelIndBPSubIter, 2);
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_inputImage);
 					KARG_METAL_SLOT(kernelIndBPSubIter, 4);
@@ -4681,7 +5081,7 @@ public:
 #endif // END CUDA
 				}
 			KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, no_norm);
-			if (inputScalars.CT && inputScalars.maskBP && (inputScalars.BPType == 4 || inputScalars.BPType == 5)) {
+			if (inputScalars.CT && inputScalars.maskBP && (inputScalars.BPType == 4 || inputScalars.BPType == 5 || inputScalars.BPType == 7)) {
 				KARG_METAL_SLOT(kernelIndBPSubIter, 9);
 				if (inputScalars.useBuffers) {
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBPB[timestep][ii]);
@@ -4706,7 +5106,15 @@ public:
 		if (DEBUG || inputScalars.verbose >= 3)
 			START_TIMER(tStart);
 #if defined(CUDA) || defined(HIP)
-		status = cuLaunchKernel(kernelBP, global[0], global[1], global[2], local[0], local[1], local[2], 0, CLCommandQueue[0], kTemp.data(), 0);
+		if (queueIdx > 0 && static_cast<size_t>(queueIdx) <= sideQueues.size()) {
+			status = cuEventRecord(evMain, CLCommandQueue[0]);
+			CUDA_CHECK(status, "Failed to record main stream event\n", -1);
+			status = cuStreamWaitEvent(sideQueues[queueIdx - 1], evMain, 0);
+			CUDA_CHECK(status, "Failed to make side stream wait for the main stream\n", -1);
+			status = cuLaunchKernel(kernelBP, global[0], global[1], global[2], local[0], local[1], local[2], 0, sideQueues[queueIdx - 1], kTemp.data(), 0);
+		}
+		else
+			status = cuLaunchKernel(kernelBP, global[0], global[1], global[2], local[0], local[1], local[2], 0, CLCommandQueue[0], kTemp.data(), 0);
 		CUDA_CHECK(status, "Failed to launch backprojection kernel\n", -1);
 #elif defined(METAL)
 		{
@@ -4715,38 +5123,76 @@ public:
 			encoder->dispatchThreadgroups(threadgroupsPerGrid, threadsPerThreadgroup);
 			encoder->endEncoding();
 			commandBuffer->commit();
-			commandBuffer->waitUntilCompleted();
+			if (useMetalSideQueue) {
+				sideCommandBuffers[queueIdx - 1] = commandBuffer;
+			}
+			else {
+				commandBuffer->waitUntilCompleted();
+				if (commandBuffer->status() == MTL::CommandBufferStatusError) {
+					NS::Error* error = commandBuffer->error();
+					const char* message = error && error->localizedDescription()
+						? error->localizedDescription()->utf8String() : "unknown Metal error";
+					mexPrintBase("Metal backprojection failed: %s\n", message);
+					return -1;
+				}
+			}
 		}
 #elif defined(OPENCL)
-		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelBP, cl::NDRange(), global, local, NULL);
-		OCL_CHECK(status, "\n", -1);
+		if (queueIdx > 0 && static_cast<size_t>(queueIdx) <= sideQueues.size()) {
+			cl::Event evMain;
+			status = CLCommandQueue[0].enqueueMarkerWithWaitList(nullptr, &evMain);
+			OCL_CHECK(status, "Failed to enqueue main queue marker\n", -1);
+			std::vector<cl::Event> waitList = { evMain };
+			status = sideQueues[queueIdx - 1].enqueueBarrierWithWaitList(&waitList);
+			OCL_CHECK(status, "Failed to enqueue side queue barrier\n", -1);
+			status = sideQueues[queueIdx - 1].enqueueNDRangeKernel(kernelBP, cl::NDRange(), global, local, NULL);
+			OCL_CHECK(status, "\n", -1);
+			status = sideQueues[queueIdx - 1].flush();
+			OCL_CHECK(status, "Failed to flush side queue\n", -1);
+		}
+		else {
+			status = CLCommandQueue[0].enqueueNDRangeKernel(kernelBP, cl::NDRange(), global, local, NULL);
+			OCL_CHECK(status, "\n", -1);
+		}
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Backprojection kernel launched successfully\n");
 		}
 #if defined(CUDA) || defined(HIP)
-		FINISH_QUEUE(status, "Synchronization failed after backprojection\n", -1);
-		if ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5) {
-			if (!inputScalars.useBuffers) {
-				status = cuTexObjectDestroy(d_inputImage);
-				if (status != CUDA_SUCCESS) {
-					getErrorString(status);
-				}
-				status = cuArrayDestroy(BPArray);
-				if (status != CUDA_SUCCESS) {
-					getErrorString(status);
-				}
-			}
-		}
+		if (DEBUG || inputScalars.verbose >= 3)
+			cuEventRecord(tEnd, queueIdx > 0 && static_cast<size_t>(queueIdx) <= sideQueues.size() ? sideQueues[queueIdx - 1] : CLCommandQueue[0]);
+#ifndef AF
+		status = cuCtxSynchronize();
+		CUDA_CHECK(status, "Synchronization failed after backprojection\n", -1);
+#endif
 #elif defined(OPENCL)
-		FINISH_QUEUE(status, "\n", -1);
+#ifndef AF
+		status = CLCommandQueue[0].finish();
+		OCL_CHECK(status, "\n", -1);
+#endif
 #endif // END CUDA
 		if (inputScalars.listmode > 0 && compSens) {
 			kernelBP = kernelApu;
 		}
 		if (DEBUG || inputScalars.verbose >= 3) {
+#if defined(CUDA) || defined(HIP)
+			PRINT_TIMER(tStart, tEnd, "Backprojection completed in %f seconds\n");
+			cuEventDestroy(tStart);
+			cuEventDestroy(tEnd);
+#elif defined(OPENCL)
+			if (queueIdx > 0 && static_cast<size_t>(queueIdx) <= sideQueues.size())
+				sideQueues[queueIdx - 1].finish();
+			else
+				CLCommandQueue[0].finish();
 			STOP_TIMER(tEnd);
 			PRINT_TIMER(tStart, tEnd, "Backprojection completed in %f seconds\n");
+#elif defined(METAL)
+			STOP_TIMER(tEnd);
+			if (useMetalSideQueue)
+				PRINT_TIMER(tStart, tEnd, "Backprojection submitted in %f seconds\n");
+			else
+				PRINT_TIMER(tStart, tEnd, "Backprojection completed in %f seconds\n");
+#endif // END CUDA
 		}
 		return 0;
 		}
