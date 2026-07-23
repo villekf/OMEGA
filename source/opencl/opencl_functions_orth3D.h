@@ -249,7 +249,7 @@ DEVICE int orthDistance3D(const int tempi,
 		l.y = diff.y * z0;
 #ifdef CRYSTXY
 		center.y = centerY0;
-		for (uu1 = MAX(temp2, minimiXY); uu1 < maksimiXY; uu1++) { 
+		for (uu1 = MAX(temp2, minimiXY); uu1 < maksimiXY; uu1++) {
 #else
 		uu1 = temp2;
 		center.y = centerY0;
@@ -326,13 +326,13 @@ DEVICE int orthDistance3D(const int tempi,
 	}
 	*k = zz - 1;
 	center.z = centerZ0 - dz;
-	for (zz = MIN(tempk, maksimiZ) - 1; zz >= minimiZ; zz--) { 
+	for (zz = MIN(tempk, maksimiZ) - 1; zz >= minimiZ; zz--) {
 		const FLOAT z0 = center.z - s.z;
 		l.x = diff.x * z0 - apu1;
 		l.y = diff.y * z0;
 #ifdef CRYSTXY
 		center.y = centerY0;
-		for (uu1 = MAX(temp2, minimiXY); uu1 < maksimiXY; uu1++) { 
+		for (uu1 = MAX(temp2, minimiXY); uu1 < maksimiXY; uu1++) {
 #else
 		uu1 = temp2;
 		center.y = centerY0;

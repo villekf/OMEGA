@@ -9,6 +9,7 @@
 #define CTYPE2 cl_float2
 #define ITYPE3 cl_int3
 #elif defined(METAL)
+#include "metal_error.hpp"
 #include <simd/simd.h>
 #define CTYPE3 simd::float3
 #define CTYPE2 simd::float2

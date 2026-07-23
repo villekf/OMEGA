@@ -91,14 +91,28 @@ void projectorType123(
 #ifdef ORTH ///////////////////////// ORTHOGONAL-BASED RAY TRACER /////////////////////////
 	CONSTANT float* V [[buffer(4)]], 
 #endif ///////////////////////// END ORTHOGONAL-BASED RAY TRACER /////////////////////////
-#if !defined(CT) && (defined(ATN) || defined(ATNM)) ///////////////////////// PET ATTENUATION CORRECTION /////////////////////////
+#if !defined(CT) && defined(ATN) && !defined(ATNM) ///////////////////////// PET ATTENUATION CORRECTION /////////////////////////
+#ifdef USEIMAGES
+	IMTYPE d_atten [[texture(5)]],
+#else
+	const CLGLOBAL float* d_atten [[buffer(5)]],
+#endif
+#elif !defined(CT) && defined(ATNM)
 	const CLGLOBAL float* d_atten [[buffer(5)]],
 #endif
 #ifdef MASKFP
+#ifdef USEIMAGES
+    MASKFPTYPE maskFP [[texture(6)]],
+#else
     MASKFPTYPE maskFP [[buffer(6)]],
 #endif
+#endif
 #if defined(MASKBP) && defined(BP) && !defined(FP)
+#ifdef USEIMAGES
+    MASKBPTYPE maskBP [[texture(7)]],
+#else
     MASKBPTYPE maskBP [[buffer(7)]],
+#endif
 #endif
 	CONSTANT float* d_xy [[buffer(8)]],
 	CONSTANT float* d_z [[buffer(9)]],
@@ -128,7 +142,11 @@ void projectorType123(
 #else
 	const CLGLOBAL float* d_OSEM [[buffer(19)]],
 #endif
-	CLGLOBAL float* d_output [[buffer(20)]], 
+#if defined(BP)
+	CLGLOBAL CAST* d_output [[buffer(20)]],
+#else
+	CLGLOBAL float* d_output [[buffer(20)]],
+#endif
 	uint3 temp_i [[thread_position_in_grid]]   // global id
 
 #else /////////////////////// OPENCL/CUDA ///////////////////////
@@ -691,7 +709,7 @@ void projectorType123(
                     diff, //diff.y, diff.x, diff.z, 
                     center, //xcenter, 
                     s, // s.x, s.y, s.z, 
-                    b2, d2, _bz, dz, temp, indO, localInd.z, d_Nxy, orth_ray_length, d_N1, d_N3, d_N2, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, false, &tempk_b, uz, 
+                    b2, d2, _bz, dz, temp, indO, localInd.z, d_Nxy, orth_ray_length, d_N1, d_N3, d_N2, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, false, &tempk_b, uz,
 #if defined(FP)
 					d_OSEM
 #else
@@ -1065,7 +1083,7 @@ void projectorType123(
                             diff, //diff.y, diff.x, diff.z, 
                             center, //xcenter, 
                             s, // s.x, s.y, s.z,
-                            b2, d2, _bz, dz, temp, tempj_a, tempk_b, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, true, &tempk_b, uz, 
+                            b2, d2, _bz, dz, temp, tempj_a, tempk_b, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, true, &tempk_b, uz,
 #if defined(FP) //////////////// FP ////////////////
                             d_OSEM
 #else //////////////// BP ////////////////
@@ -1099,7 +1117,7 @@ void projectorType123(
                             diff, //diff.y, diff.x, diff.z, 
                             center, //xcenter, 
                             s, // s.x, s.y, s.z,
-                            b2, d2, _bz, dz, temp, tempj_a, tempk_b, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, true, &tempk_b, uz, 
+                            b2, d2, _bz, dz, temp, tempj_a, tempk_b, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, true, &tempk_b, uz,
 #if defined(FP) //////////////// FP ////////////////
                             d_OSEM
 #else //////////////// BP ////////////////
@@ -1133,7 +1151,7 @@ void projectorType123(
                     diff, //diff.y, diff.x, diff.z, 
                     center, //xcenter, 
                     s, // s.x, s.y, s.z,
-                    b2, d2, _bz, dz, temp, localInd.y, localInd.z, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, false, &tempk_b, uz, 
+                    b2, d2, _bz, dz, temp, localInd.y, localInd.z, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, false, &tempk_b, uz,
 #if defined(FP) //////////////// FP ////////////////
 					d_OSEM
 #else //////////////// BP ////////////////
@@ -1247,7 +1265,7 @@ void projectorType123(
                     diff, //diff.y, diff.x, diff.z, 
                     center, //xcenter, 
                     s, // s.x, s.y, s.z,
-                    b2, d2, _bz, dz, temp, tempj_a, tempk_a, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, false, &tempk_b, uz, 
+                    b2, d2, _bz, dz, temp, tempj_a, tempk_a, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, false, &tempk_b, uz,
 #if defined(FP)
 					d_OSEM
 #else
@@ -1283,7 +1301,7 @@ void projectorType123(
                     diff, //diff.y, diff.x, diff.z, 
                     center, //xcenter, 
                     s, // s.x, s.y, s.z,
-                    b2, d2, _bz, dz, temp, tempj_a, tempk_a, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, false, &tempk_b, uz, 
+                    b2, d2, _bz, dz, temp, tempj_a, tempk_a, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, false, &tempk_b, uz,
 #if defined(FP)
 					d_OSEM
 #else
@@ -1372,4 +1390,3 @@ void projectorType123(
 #endif //////////////// END FORWARD PROJECTION ////////////////
 #endif //////////////// END MULTIRAY ////////////////
 }
-

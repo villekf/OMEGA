@@ -110,13 +110,17 @@ void projectorType4Forward(
     , CONSTANT float* d_uv BUF6
 #endif
 #ifdef MASKFP
+#ifdef USEIMAGES
+    , MASKFPTYPE maskFP TEX7
+#else
     , MASKFPTYPE maskFP BUF7
 #endif
+#endif
 #if defined(MASKBP) && (defined(BP) || defined(SENS)) && !defined(CT)
-#ifdef MASKBP3D // TODO replace with MASKBPTYPE
-    , IMAGE3D maskBP BUF8
+#ifdef USEIMAGES
+    , MASKBPTYPE maskBP TEX8
 #else
-    , IMAGE2D maskBP BUF8
+    , MASKBPTYPE maskBP BUF8
 #endif
 #endif
 #if defined(SUBSETS) && !defined(LISTMODE)
@@ -143,6 +147,7 @@ void projectorType4Forward(
     , CLGLOBAL CAST* CLRESTRICT d_Summ BUF15
 #endif
     , uint3 temp_i [[thread_position_in_grid]] // global id
+    , uint3 grid_size [[threads_per_grid]]
 #else
     const uint d_size_x, const uint d_sizey, 
 #ifdef PYTHON
@@ -249,7 +254,11 @@ void projectorType4Forward(
 	size_t idx = GID0;
 	if (idx >= m_size)
 #else
+#if defined(METAL)
+    size_t idx = GID0 + GID1 * grid_size.x + GID2 * grid_size.y * grid_size.x;
+#else
     size_t idx = GID0 + GID1 * GSIZE0 + GID2 * GSIZE1 * GSIZE0;
+#endif
 #if STYPE == 3 || STYPE == 6 || STYPE == 7
     if (idx >= m_size)
 #else
@@ -887,6 +896,8 @@ void projectorType4Backward(
 #ifdef USEIMAGES
 #if defined(CUDA) || defined(HIP)
             yVar = tex3D<float>(d_forw, px, py, pz);
+#elif defined(METAL)
+            yVar = d_forw.sample(samplerForw, float3(px, py, pz)).r;
 #else
             yVar = read_imagef(d_forw, samplerIm, CFLOAT4(px, py, pz, 0.f)).w;
 #endif
@@ -1034,6 +1045,9 @@ void projectorType4Backward(
 #if defined(CUDA) || defined(HIP)
             if (px <= 1.f && py <= 1.f && pz <= 1.f && px >= 0.f && py >= 0.f && pz >= 0.f)
                 yVar = tex3D<float>(d_forw, px, py, pz);
+#elif defined(METAL)
+            if (px <= 1.f && py <= 1.f && pz <= 1.f && px >= 0.f && py >= 0.f && pz >= 0.f)
+                yVar = d_forw.sample(samplerForw, float3(px, py, pz)).r;
 #else
             if (px <= 1.f && py <= 1.f && pz <= 1.f && px >= 0.f && py >= 0.f && pz >= 0.f)
                 yVar = read_imagef(d_forw, samplerIm, CFLOAT4(px, py, pz, 0.f)).w;
@@ -1071,6 +1085,9 @@ void projectorType4Backward(
 #if defined(CUDA) || defined(HIP)
             if (px_2 <= 1.f && py_2 <= 1.f && pz_2 <= 1.f && px_2 >= 0.f && py_2 >= 0.f && pz_2 >= 0.f)
                 yVar_2 = tex3D<float>(d_forw, px_2, py_2, pz_2);
+#elif defined(METAL)
+            if (px_2 <= 1.f && py_2 <= 1.f && pz_2 <= 1.f && px_2 >= 0.f && py_2 >= 0.f && pz_2 >= 0.f)
+                yVar_2 = d_forw.sample(samplerForw, float3(px_2, py_2, pz_2)).r;
 #else
             if (px_2 <= 1.f && py_2 <= 1.f && pz_2 <= 1.f && px_2 >= 0.f && py_2 >= 0.f && pz_2 >= 0.f)
                 yVar_2 = read_imagef(d_forw, samplerIm, CFLOAT4(px_2, py_2, pz_2, 0.f)).w;

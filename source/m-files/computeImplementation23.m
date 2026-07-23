@@ -8,6 +8,9 @@ if ~isfield(options,'compute_sensitivity_image')
 end
 fp = [];
 res = [];
+if ismac && options.use_64bit_atomics
+    options.use_64bit_atomics = false;
+end
 if options.use_32bit_atomics && options.use_64bit_atomics
     options.use_64bit_atomics = false;
 end
@@ -221,4 +224,3 @@ else
 end
 
 end
-

@@ -1968,12 +1968,12 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 	const float pvalijkZ = SQRT(u3.x * u3.x + u3.y * u3.y + u3.z * u3.z + apuRXYZ * apuRXYZ + epps);
 #ifdef LARGEDIM
 	if (xyz.z >= nOffset.x && xyz.z < nOffset.y)
-		grad[n - N.x * N.y * nOffset.x] += beta * FLOAT_HALF * ((6.f * uijk - FLOAT_TWO * uijkP.x - FLOAT_TWO * uijkP.y - FLOAT_TWO * uijkP.z + FLOAT_TWO * (epsilon.x*(uijk - uijkP.x) + epsilon.y*(uijk - uijkP.y) + epsilon.z*(uijk - uijkP.z)) * (epsilon.x + epsilon.y + epsilon.z)) / pvalijk + 
-			FLOAT_TWO * (u1.x - epsilon.x * (epsilon.x * u1.x + epsilon.y * u1.y + epsilon.z * u1.z)) / pvalijkX + FLOAT_TWO * (u2.y - epsilon.y * (epsilon.x * u2.x + epsilon.y * u2.y + epsilon.z * u2.z)) / pvalijkY + 
+		grad[n - N.x * N.y * nOffset.x] += beta * FLOAT_HALF * ((6.f * uijk - FLOAT_TWO * uijkP.x - FLOAT_TWO * uijkP.y - FLOAT_TWO * uijkP.z + FLOAT_TWO * (epsilon.x*(uijk - uijkP.x) + epsilon.y*(uijk - uijkP.y) + epsilon.z*(uijk - uijkP.z)) * (epsilon.x + epsilon.y + epsilon.z)) / pvalijk +
+			FLOAT_TWO * (u1.x - epsilon.x * (epsilon.x * u1.x + epsilon.y * u1.y + epsilon.z * u1.z)) / pvalijkX + FLOAT_TWO * (u2.y - epsilon.y * (epsilon.x * u2.x + epsilon.y * u2.y + epsilon.z * u2.z)) / pvalijkY +
 			FLOAT_TWO * (u3.z - epsilon.z * (epsilon.x * u3.x + epsilon.y * u3.y + epsilon.z * u3.z))/ pvalijkZ + 1e-7f);
 #else
-	grad[n] += beta * FLOAT_HALF * ((6.f * uijk - FLOAT_TWO * uijkP.x - FLOAT_TWO * uijkP.y - FLOAT_TWO * uijkP.z + FLOAT_TWO * (epsilon.x*(uijk - uijkP.x) + epsilon.y*(uijk - uijkP.y) + epsilon.z*(uijk - uijkP.z)) * (epsilon.x + epsilon.y + epsilon.z)) / pvalijk + 
-		FLOAT_TWO * (u1.x - epsilon.x * (epsilon.x * u1.x + epsilon.y * u1.y + epsilon.z * u1.z)) / pvalijkX + FLOAT_TWO * (u2.y - epsilon.y * (epsilon.x * u2.x + epsilon.y * u2.y + epsilon.z * u2.z)) / pvalijkY + 
+	grad[n] += beta * FLOAT_HALF * ((6.f * uijk - FLOAT_TWO * uijkP.x - FLOAT_TWO * uijkP.y - FLOAT_TWO * uijkP.z + FLOAT_TWO * (epsilon.x*(uijk - uijkP.x) + epsilon.y*(uijk - uijkP.y) + epsilon.z*(uijk - uijkP.z)) * (epsilon.x + epsilon.y + epsilon.z)) / pvalijk +
+		FLOAT_TWO * (u1.x - epsilon.x * (epsilon.x * u1.x + epsilon.y * u1.y + epsilon.z * u1.z)) / pvalijkX + FLOAT_TWO * (u2.y - epsilon.y * (epsilon.x * u2.x + epsilon.y * u2.y + epsilon.z * u2.z)) / pvalijkY +
 		FLOAT_TWO * (u3.z - epsilon.z * (epsilon.x * u3.x + epsilon.y * u3.y + epsilon.z * u3.z))/ pvalijkZ + 1e-7f);
 #endif
 #else // Non-reference image TV
