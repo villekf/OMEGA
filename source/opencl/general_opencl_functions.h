@@ -275,7 +275,11 @@ constexpr metal::sampler sampler2(
 #define make_uint3(a,b,c) uint3((a),(b),(c))
 #define MAX metal::max
 #define MIN metal::min
+#ifndef LTYPE3
 #define MINT3(a,b,c) int3((a),(b),(c))
+#else
+#define MINT3(a,b,c) long3((a),(b),(c))
+#endif
 #define MUINT3(a, b, c) uint3(a, b, c)
 #define NORMALIZE metal::normalize
 #define POWR metal::pow
@@ -414,6 +418,7 @@ inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
 #define LOG native_log
 #define CLAMP3(a, b, c) clamp(a, b, c)
 #define CINT(a) convert_int(a)
+#define CINT3(a) convert_int3(a)
 #define CINT3_rtz(a) convert_int3_rtz(a)
 #define FMAD(a,b,c) mad(a,b,c)
 #define FMAD2(a,b,c) mad(a,b,c)
@@ -548,6 +553,7 @@ __constant sampler_t sampler_MASKFP = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_N
 #define CUINT_rte(a) __float2uint_rn(a)
 #define CUINT_sat_rtz(a) __float2uint_rd(a)
 #define CINT(a) (int)(a)
+#define CINT3(a) make_long3_int3(a)
 #define CINT3_rtz(a) __float2int_rz3(a)
 #define CLONG_rtz(a) __float2ll_rz(a)
 #define SINF(a) sinf(a)
@@ -586,7 +592,11 @@ __constant sampler_t sampler_MASKFP = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_N
 #define IMAGE2D cudaTextureObject_t
 #endif
 #define MUINT2(a, b) make_uint2(a, b)
+#ifndef LTYPE3
 #define MINT3(a, b, c) make_int3(a, b, c)
+#else
+#define MINT3(a, b, c) make_long3(a, b, c)
+#endif
 #define MUINT3(a, b, c) make_uint3(a, b, c)
 #define MFLOAT3(a, b, c) make_float3(a, b, c)
 #define MFLOAT2(a, b) make_float2(a, b)
@@ -638,6 +648,10 @@ inline __device__ int3 __float2int_rz3(float3 a) {
 
 inline __device__ float3 make_int3_float3(int3 a) {
 	return make_float3((float)a.x, (float)a.y, (float)a.z);
+}
+
+inline __device__ int3 make_long3_int3(long3 a) {
+    return make_int3(static_cast<int>(a.x), static_cast<int>(a.y), static_cast<int>(a.z));
 }
 
 // CUDA's vector_types.h defines no arithmetic operators for int3/float2/float3, so we provide them

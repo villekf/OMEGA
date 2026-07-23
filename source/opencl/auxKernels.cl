@@ -758,7 +758,7 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
         return;
 #endif
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, xyz, CUINT3(N));
+	const int maskVal = readMaskBP(maskBP, CINT3(xyz), CUINT3(N));
     if (maskVal == 0)
         return;
 #endif
@@ -1216,7 +1216,7 @@ void ProxTVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
         return;
 #endif
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, xyz, CUINT3(N));
+	const int maskVal = readMaskBP(maskBP, CINT3(xyz), CUINT3(N));
     if (maskVal == 0)
         return;
 #endif
@@ -1277,7 +1277,7 @@ void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLREST
         return;
 #endif
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, xyz, CUINT3(N));
+	const int maskVal = readMaskBP(maskBP, CINT3(xyz), CUINT3(N));
     if (maskVal == 0)
         return;
 #endif
@@ -1627,7 +1627,7 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
         return;
 #endif
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, xyz, CUINT3(N));
+	const int maskVal = readMaskBP(maskBP, CINT3(xyz), CUINT3(N));
     if (maskVal == 0)
         return;
 #endif
@@ -1771,7 +1771,7 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
         return;
 #endif
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, xyz, CUINT3(N));
+	const int maskVal = readMaskBP(maskBP, CINT3(xyz), CUINT3(N));
     if (maskVal == 0)
         return;
 #endif
