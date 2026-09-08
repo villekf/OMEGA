@@ -110,6 +110,12 @@ void NLMFunc(T* grad, const T* u_ref, const T* u, const T* gaussian, const int32
 						const T uabs = sign(u);
 						output += weight * (uabs - uabs / (std::fabs(u) / gamma + (T)1.));
 					}
+					else if (type == 7) {
+						// Geman-McClure, i.e. the derivative of the potential delta^2 / (delta^2 + gamma^2)
+						const T delta = uj - uk;
+						const T apu = delta * delta + gamma * gamma;
+						output += weight * ((T)2. * gamma * gamma * delta) / (apu * apu);
+					}
 					else if (type == 6) {
 						// GGMRF
 						const T delta = uj - uk;

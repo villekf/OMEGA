@@ -512,6 +512,15 @@ options.SATVPhi = 10
 ### Use Non-local GGMRF (NLGGMRF)
 options.NLGGMRF = False
 
+### Use non-local Geman-McClure (NLGM)
+options.NLGM = False
+
+### Scaling value for NLGM
+# Differences much larger than this are ignored by the prior. Note that this
+# also scales the overall strength of the prior, as the slope at small
+# differences is 2 / options.GM_delta**2
+options.GM_delta = 1.
+
 ### Use MRP algorithm (without normalization)
 # I.e. gradient = im - NLM_filtered(im)
 options.NLM_MRP = False

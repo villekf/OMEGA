@@ -557,6 +557,15 @@ options.NLAdaptive = false;
 %%% Summed constant for adaptive NL
 options.NLAdaptiveConstant = 2.0e-7;
 
+%%% Include the reference voxel itself in the neighborhood
+% By default the voxel being denoised is left out of the weighted sum entirely.
+% If true, it is included with the largest of the neighborhood weights, as in
+% the original NLM of Buades et al. For the filtered variants (options.NLM_MRP
+% and options.NLLangeFiltered) this pulls the filtered value back towards the
+% current voxel; for the others it only relaxes the regularization, by at most
+% a factor of two, where the voxel has few reliable non-local matches
+options.NLMaxWeight = false;
+
 % Note that only one of the below options for NLM can be selected!
 % If all the below ones are false, regular NLM is used!
 %%% Use Non-local total variation (NLTV)
@@ -573,6 +582,15 @@ options.SATVPhi = 4;
 
 %%% Use Non-local GGMRF (NLGGMRF)
 options.NLGGMRF = false;
+
+%%% Use non-local Geman-McClure (NLGM)
+options.NLGM = false;
+
+%%% Scaling value for NLGM
+% Differences much larger than this are ignored by the prior. Note that this
+% also scales the overall strength of the prior, as the slope at small
+% differences is 2 / options.GM_delta^2
+options.GM_delta = 1;
 
 %%% Use MRP algorithm (without normalization)
 % I.e. gradient = im - NLM_filtered(im)

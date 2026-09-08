@@ -184,6 +184,8 @@ struct inputStruct {
     float TimeStepAD;
     // RDP scaling value
     float RDP_gamma;
+    // Geman-McClure scaling value, i.e. the delta of NLGM
+    float GM_delta;
     // Huber bound
     float huber_delta;
     // Bounds for the gradient-based preconditioner
@@ -294,10 +296,14 @@ struct inputStruct {
     bool NLLange = false;
     // Use NLGGMRF
     bool NLGGMRF = false;
+    // Use non-local Geman-McClure
+    bool NLGM = false;
     // Use reference image for NLM
     bool NLM_use_anatomical = false;
     // Use adaptive NLM
     bool NLAdaptive = false;
+    // Include the reference voxel itself in the NLM neighborhood with the largest of the weights
+    bool NLMaxWeight = false;
     // Use anatomical weighting for TV
     bool TV_use_anatomical = false;
     // Include neighboring corners with RDP
@@ -1270,11 +1276,15 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.NLM_MRP = options.NLM_MRP;
         w_vec.NLLange = options.NLLange;
         w_vec.NLGGMRF = options.NLGGMRF;
+        w_vec.NLGM = options.NLGM;
         w_vec.NLAdaptive = options.NLAdaptive;
+        w_vec.NLMaxWeight = options.NLMaxWeight;
         if (w_vec.NLRD)
             w_vec.RDP_gamma = options.RDP_gamma;
         else if (w_vec.NLLange)
             w_vec.RDP_gamma = options.SATVPhi;
+        else if (w_vec.NLGM)
+            w_vec.RDP_gamma = options.GM_delta;
         else if (w_vec.NLGGMRF) {
             w_vec.GGMRF_p = options.GGMRF_p;
             w_vec.GGMRF_q = options.GGMRF_q;

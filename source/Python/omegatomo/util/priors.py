@@ -192,7 +192,8 @@ def NLReg(im, Nx, Ny, Nz, h, beta, SW = (1, 1, 1), PW = (1, 1, 1), rType = 0, cl
         3 = PyOpenCL. Default is 0.
         
         NLType: The regularization type. 0 = NLM, 1 = NLTV, 2 = NLM filtered, 3 = 
-        NLRD, 4 = NL Lange, 5 = NL filtered with Lange, and 6 = NLGGMRF.
+        NLRD, 4 = NL Lange, 5 = NL filtered with Lange, 6 = NLGGMRF, and
+        7 = NL Geman-McClure.
         
         SW: The search window (neighborhood) size. A tuple that that contains the number
         of voxels included for each dimension. Default is (1, 1, 1) which corresponds
@@ -207,7 +208,9 @@ def NLReg(im, Nx, Ny, Nz, h, beta, SW = (1, 1, 1), PW = (1, 1, 1), rType = 0, cl
         while smaller values emphasize the center voxel.
         
         gamma: The adjustable value for NLRD. Scalar float. Only required by NLRD.
-        Lower values smooth the image, while larger make it sharper.
+        Lower values smooth the image, while larger make it sharper. Also used as the
+        delta of NL Geman-McClure (NLType 7), where differences much larger than it
+        are ignored by the prior.
         
         phi: The adjustable value for NLLange. Scalar float. Only required by NLLange.
         

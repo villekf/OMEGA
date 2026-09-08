@@ -335,6 +335,10 @@ class projectorClass:
     sigma_x = 1
     w_sum = 1.
     RDP_gamma = 1.
+    ## Scaling value of the Geman-McClure potential, i.e. the delta of NLGM. Differences much larger
+    # than this are ignored by the prior; it also scales the overall strength, as the slope at small
+    # differences is 2 / GM_delta^2
+    GM_delta = 1.
     NLMsigma = 1.
     NLAdaptiveConstant = 1.
     TimeStepAD = 1.
@@ -342,10 +346,15 @@ class projectorClass:
     huber_delta = 1.
     NLM_use_anatomical = False
     NLAdaptive = False
+    ## Include the reference voxel itself in the NLM neighborhood with the largest of the weights,
+    # as in the original NLM of Buades et al., instead of leaving it out of the sum entirely
+    NLMaxWeight = False
     NLTV = False
     NLRD = False
     NLLange = False
     NLGGMRF = False
+    ## Use the non-local Geman-McClure prior (NLGM)
+    NLGM = False
     NLM_MRP = False
     med_no_norm = False
     alpha0TGV = 0.
@@ -1404,6 +1413,8 @@ class projectorClass:
                             print(f"{priors[0]} prior selected with NL Lange.")
                         elif self.NLGGMRF:
                             print(f"{priors[0]} prior selected with NLGGMRF.")
+                        elif self.NLGM:
+                            print(f"{priors[0]} prior selected with NL Geman-McClure.")
                         elif self.NLM_MRP:
                             print(f"{priors[0]} prior selected with filtering mode.")
                         else:
@@ -2055,6 +2066,7 @@ class projectorClass:
             ('KAD', ctypes.c_float),
             ('TimeStepAD', ctypes.c_float),
             ('RDP_gamma', ctypes.c_float),
+            ('GM_delta', ctypes.c_float),
             ('huber_delta', ctypes.c_float),
             ('gradV1', ctypes.c_float),
             ('gradV2', ctypes.c_float),
@@ -2115,8 +2127,10 @@ class projectorClass:
             ('NLRD', ctypes.c_bool),
             ('NLLange', ctypes.c_bool),
             ('NLGGMRF', ctypes.c_bool),
+            ('NLGM', ctypes.c_bool),
             ('NLM_use_anatomical', ctypes.c_bool),
             ('NLAdaptive', ctypes.c_bool),
+            ('NLMaxWeight', ctypes.c_bool),
             ('TV_use_anatomical', ctypes.c_bool),
             ('RDPIncludeCorners', ctypes.c_bool),
             ('RDP_use_anatomical', ctypes.c_bool),

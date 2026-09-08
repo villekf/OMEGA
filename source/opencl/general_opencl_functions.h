@@ -2194,6 +2194,9 @@ DEVICE float NLMGradient(NLM_IN_T uIn,
 #if NLTYPE == 1
     float outputAla = epps;
 #endif
+#ifdef NLMAXWEIGHT
+    float maxWeight = FLOAT_ZERO;
+#endif
     const float uj = NLMFETCH(uIn, x, y, z);
 #if NLTYPE == 6
     // Precompute for NLGGMRF
@@ -2265,6 +2268,9 @@ DEVICE float NLMGradient(NLM_IN_T uIn,
                 weight = EXP(-distance / h);
 #endif
                 weight_sum += weight;
+#ifdef NLMAXWEIGHT
+                maxWeight = FMAX(maxWeight, weight);
+#endif
                 const float uk = NLMFETCH(uIn, x + i, y + j, z + k);
                 // Different NLM regularization methods
                 // NLTYPE 0 = MRF NLM
@@ -2274,7 +2280,7 @@ DEVICE float NLMGradient(NLM_IN_T uIn,
                 // NLTYPE 4 = NL Lange
                 // NLTYPE 5 = NLM filtered with Lange
                 // NLTYPE 6 = NLGGMRF
-                // NLTYPE 7 = ?
+                // NLTYPE 7 = NLGM
 #if NLTYPE == 2 || NLTYPE == 5 // START NLM NLTYPE
                 // NLMRP
                 output += weight * uk;
@@ -2302,9 +2308,10 @@ DEVICE float NLMGradient(NLM_IN_T uIn,
                 const float deltapqc = FLOAT_ONE + dcpq;
                 output += weight * (POWR(fabs(delta), p - FLOAT_ONE) / deltapqc) * (p - gamma * ((dcpq * cpq) / deltapqc)) * sign(delta);
 #elif NLTYPE == 7
-                const float u = (uk - uj);
-                const float apu = (u * u + gamma * gamma);
-                output += ((FLOAT_TWO * u * u * u) / (apu * apu) - FLOAT_TWO * (u / apu));
+				// NLGM (Non-local Geman-McClure)
+                const float delta = uj - uk;
+                const float apu = (delta * delta + gamma * gamma);
+                output += weight * (FLOAT_TWO * gamma * gamma * delta) / (apu * apu);
 #else
                 //NLTV
                 const float apuU = uj - uk;
@@ -2314,6 +2321,12 @@ DEVICE float NLMGradient(NLM_IN_T uIn,
             }
         }
     }
+#ifdef NLMAXWEIGHT
+#if NLTYPE == 2 || NLTYPE == 5
+    output += maxWeight * uj;
+#endif
+    weight_sum += maxWeight;
+#endif
     weight_sum = FLOAT_ONE / weight_sum;
     output *= weight_sum;
 #if NLTYPE == 2 // START NLM NLTYPE

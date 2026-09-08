@@ -1420,11 +1420,16 @@ class ProjectorClass {
 				else if (w_vec.NLGGMRF) {
 					ADD_OPT_INT(optionsAux, "-DNLTYPE", 6);
 				}
+				else if (w_vec.NLGM) {
+					ADD_OPT_INT(optionsAux, "-DNLTYPE", 7);
+				}
 				else {
 					ADD_OPT_INT(optionsAux, "-DNLTYPE", 0);
 				}
 				if (w_vec.NLAdaptive)
 					ADD_OPT(optionsAux, "-DNLMADAPTIVE");
+				if (w_vec.NLMaxWeight)
+					ADD_OPT(optionsAux, "-DNLMAXWEIGHT");
 				if (w_vec.NLM_anatomical)
 					ADD_OPT(optionsAux, "-DNLMREF");
 				ADD_OPT_INT(optionsAux, "-DSWINDOWX", w_vec.Ndx);
@@ -2563,11 +2568,16 @@ public:
 			else if (w_vec.NLGGMRF) {
 				ADD_OPT_INT(os_options, "-DNLTYPE", 6);
 			}
+			else if (w_vec.NLGM) {
+				ADD_OPT_INT(os_options, "-DNLTYPE", 7);
+			}
 			else {
 				ADD_OPT_INT(os_options, "-DNLTYPE", 0);
 			}
 			if (w_vec.NLAdaptive)
 				ADD_OPT(os_options, "-DNLMADAPTIVE");
+			if (w_vec.NLMaxWeight)
+				ADD_OPT(os_options, "-DNLMAXWEIGHT");
 			if (w_vec.NLM_anatomical)
 				ADD_OPT(os_options, "-DNLMREF");
 			ADD_OPT_INT(os_options, "-DSWINDOWX", w_vec.Ndx);
@@ -5783,7 +5793,7 @@ public:
 		KARG(kArgs, kernelNLM, kernelIndNLM, inputScalars.epps);
 #endif // END CUDA
 		KARG(kArgs, kernelNLM, kernelIndNLM, beta);
-		if (w_vec.NLRD || w_vec.NLLange || w_vec.NLGGMRF)
+		if (w_vec.NLRD || w_vec.NLLange || w_vec.NLGGMRF || w_vec.NLGM)
 			KARG(kArgs, kernelNLM, kernelIndNLM, w_vec.RDP_gamma);
 		if (w_vec.NLGGMRF) {
 			KARG(kArgs, kernelNLM, kernelIndNLM, w_vec.GGMRF_p);

@@ -36,7 +36,7 @@ inline int MBSREM(af::array& im, af::array& rhs, const float U, const std::vecto
 	if (af::anyTrue<bool>(pp)) {
 		af::array apuIm = im;
 		apuIm(pp) = U - apuIm(pp);
-		status = applyImagePreconditioning(w_vec, inputScalars, rhs, apuIm, proj, timestep, kk, ii);
+		status = applyImagePreconditioning(w_vec, inputScalars, rhs, apuIm, proj, timestep, kk);
 	}
 	else
 		status = applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, timestep, kk, ii);
