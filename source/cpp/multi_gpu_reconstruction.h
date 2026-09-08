@@ -253,11 +253,16 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 			}
 		}
 		uu = 0;
+		const size_t nSummPerSubset = static_cast<size_t>(inputScalars.nMultiVolumes) + 1ULL;
+		proj.d_meas.resize(inputScalars.subsetsUsed);
+		if (inputScalars.randoms_correction)
+			proj.d_rand.resize(inputScalars.subsetsUsed);
+		proj.d_Summ.resize(static_cast<size_t>(inputScalars.subsetsUsed) * nSummPerSubset);
 		for (uint32_t osa_iter = inputScalars.osa_iter0; osa_iter < inputScalars.subsetsUsed; osa_iter++) {
 			m_size = length[osa_iter];
 			if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 				m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[osa_iter];
-			proj.d_meas.emplace_back(cl::Buffer(proj.CLContext, CL_MEM_READ_ONLY, sizeof(float) * m_size * inputScalars.nBins, NULL, &status));
+			proj.d_meas[osa_iter] = cl::Buffer(proj.CLContext, CL_MEM_READ_ONLY, sizeof(float) * m_size * inputScalars.nBins, NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
@@ -268,7 +273,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 				return;
 			}
 			if (inputScalars.randoms_correction) {
-				proj.d_rand.emplace_back(cl::Buffer(proj.CLContext, CL_MEM_READ_ONLY, sizeof(float) * m_size, NULL, &status));
+				proj.d_rand[osa_iter] = cl::Buffer(proj.CLContext, CL_MEM_READ_ONLY, sizeof(float) * m_size, NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
@@ -280,13 +285,21 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 				}
 			}
 			for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+				const size_t sInd = static_cast<size_t>(ii) + static_cast<size_t>(osa_iter) * nSummPerSubset;
 				if (proj.no_norm == 0) {
-					proj.d_Summ.emplace_back(cl::Buffer(proj.CLContext, CL_MEM_READ_WRITE, sizeof(C) * inputScalars.im_dim[ii], NULL, &status));
-					status = proj.CLCommandQueue[0].enqueueFillBuffer(proj.d_Summ[ii + osa_iter * (inputScalars.nMultiVolumes + 1)], (C)0, 0, sizeof(C) * inputScalars.im_dim[ii]);
+					proj.d_Summ[sInd] = cl::Buffer(proj.CLContext, CL_MEM_READ_WRITE, sizeof(C) * inputScalars.im_dim[ii], NULL, &status);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
 						return;
 					}
+					status = proj.CLCommandQueue[0].enqueueFillBuffer(proj.d_Summ[sInd], (C)0, 0, sizeof(C) * inputScalars.im_dim[ii]);
+				}
+				else {
+					proj.d_Summ[sInd] = cl::Buffer(proj.CLContext, CL_MEM_READ_WRITE, sizeof(C), NULL, &status);
+				}
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return;
 				}
 			}
 			uu += m_size * inputScalars.nBins;

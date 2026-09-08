@@ -140,6 +140,7 @@
     const float dL = scalarParams.dL; \
     const float global_factor = scalarParams.global_factor; \
     const float sigma_x = scalarParams.sigma_x; \
+    const float d_epps = scalarParams.epps; \
     const uint3 d_N = scalarParams.d_N; \
     const float3 b = scalarParams.b; \
     const float3 bmax = scalarParams.d_bmax; \
@@ -1128,8 +1129,8 @@ DEVICE float normPDF(const float x, const float mu, const float invSigma, const 
 	return piPerSigma * EXP(-0.5f * a * a);
 }
 
-DEVICE void TOFDis(const float3 diff, const float tc, const float LL, float* D, float* DD) {
-	*D = length(diff * tc) - LL / 2.f;
+DEVICE void TOFDis(const float tStart, const float LL, float* D, float* DD) {
+	*D = LL * tStart - LL / 2.f;
 	*DD = *D;
 }
 
@@ -1167,16 +1168,18 @@ DEVICE float TOFLoop(const float DDsign, const float element, CONSTANT float* TO
 
 #if defined(N_RAYS)
 DEVICE void multirayCoordinateShiftXY(PTR_THR FLOAT3 *s, PTR_THR FLOAT3 *d, const int lor, const float cr) {
-	float interval = cr / (CFLOAT(N_RAYS2D * 2));
-	(*s).x += (interval - cr / 2.f);
-	(*d).x += (interval - cr / 2.f);
-	(*s).y += (interval - cr / 2.f);
-	(*d).y += (interval - cr / 2.f);
-	interval *= 2.f;
-	(*s).x += interval * lor;
-	(*d).x += interval * lor;
-	(*s).y += interval * lor;
-	(*d).y += interval * lor;
+	const float dx = (*d).x - (*s).x;
+	const float dy = (*d).y - (*s).y;
+	const float lenXY = SQRT(dx * dx + dy * dy);
+	if (lenXY < 1e-8f)
+		return;
+	const float interval = ((CFLOAT(lor) + FLOAT_HALF) * (cr / CFLOAT(N_RAYS2D)) - cr * FLOAT_HALF) / lenXY;
+	const float shiftX = -dy * interval;
+	const float shiftY = dx * interval;
+	(*s).x += shiftX;
+	(*d).x += shiftX;
+	(*s).y += shiftY;
+	(*d).y += shiftY;
 }
 
 DEVICE void multirayCoordinateShiftZ(PTR_THR FLOAT3 *s, PTR_THR FLOAT3 *d, const int lor, const float cr) {
@@ -1285,14 +1288,13 @@ DEVICE void rhs(const float local_ele, PTR_THR const float *ax, const LONG local
 #endif
 #else
 	float yaxTOF = ax[0] * local_ele;
-	const float val = local_ele;
-	// test
-	if (ISNAN(local_ele))
-		yaxTOF = 0.f;
-	//else
-	//	yaxTOF = 1.f;
-
+	float val = local_ele;
 #endif
+	// test
+	if (ISNAN(val))
+		val = 0.f;
+	if (ISNAN(yaxTOF))
+		yaxTOF = 0.f;
 #ifdef ATOMIC
 	atom_add(&d_rhs_OSEM[local_ind], convert_long(yaxTOF * TH));
 #elif defined(ATOMIC32)
@@ -1391,6 +1393,9 @@ DEVICE void getDetectorCoordinatesCT(const CLGLOBAL float* CLRESTRICT d_xyz,
 	const CLGLOBAL float* CLRESTRICT d_uv, 
 #endif
 	PTR_THR float3* s, PTR_THR float3* d, const int3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch
+#if defined(N_RAYS) && !defined(PROJ5)
+	, const int lorXY, const int lorZ
+#endif
 #ifdef PROJ5
 	, PTR_THR float3* dR, PTR_THR float3* dL, PTR_THR float3* dU, PTR_THR float3* dD
 #endif
@@ -1398,7 +1403,13 @@ DEVICE void getDetectorCoordinatesCT(const CLGLOBAL float* CLRESTRICT d_xyz,
 	int id = i.z * 6;
 	*s = CMFLOAT3(d_xyz[id], d_xyz[id + 1], d_xyz[id + 2]);
 	*d = CMFLOAT3(d_xyz[id + 3], d_xyz[id + 4], d_xyz[id + 5]);
-	const float2 indeksi = MFLOAT2(CFLOAT(i.x) - CFLOAT(d_size_x) / 2.f + .5f, CFLOAT(i.y) - CFLOAT(d_sizey) / 2.f + .5f);
+	float2 indeksi = MFLOAT2(CFLOAT(i.x) - CFLOAT(d_size_x) / 2.f + .5f, CFLOAT(i.y) - CFLOAT(d_sizey) / 2.f + .5f);
+#if defined(N_RAYS) && !defined(PROJ5)
+	if (N_RAYS2D > 1)
+		indeksi.x += (CFLOAT(lorXY) + .5f) / CFLOAT(N_RAYS2D) - .5f;
+	if (N_RAYS3D > 1)
+		indeksi.y += (CFLOAT(lorZ) + .5f) / CFLOAT(N_RAYS3D) - .5f;
+#endif
 #ifdef HELICAL
 	const float angle = d_uv[i.z];
 	const float dtheta = (d_dPitch.x / r) * indeksi.x;
@@ -1736,7 +1747,7 @@ DEVICE void perpendicular_elements(const float d_b, const float d_d1, const uint
 #elif !defined(CT) && !defined(ATN) && defined(ATNM)
 	const CLGLOBAL float* CLRESTRICT d_atten,
 #endif
-	const float local_norm, const float L) {
+	const float local_norm, const float L, const float pathLength, const int apuX1, const int apuX2, const float dT1, const float dT2) {
 	int apu = perpendicular_start(d_b, d, d_d1, d_N1);
 	*z_loop = CLONG_rtz(apu) * CLONG_rtz(d_N) + *z_loop * CLONG_rtz(d_N1) * CLONG_rtz(d_N2);
 	if (d_N == 1)
@@ -1755,7 +1766,7 @@ DEVICE void perpendicular_elements(const float d_b, const float d_d1, const uint
 #ifdef TOTLENGTH
 	float temp = FLOAT_ONE / (L * CFLOAT(N_RAYS));
 #else
-	float temp = FLOAT_ONE / (CFLOAT(d_N2) * d_d2 * CFLOAT(N_RAYS));
+	float temp = FLOAT_ONE / (pathLength * CFLOAT(N_RAYS));
 #endif
 #elif defined(ORTH)
 	float temp = FLOAT_ONE;
@@ -1763,7 +1774,7 @@ DEVICE void perpendicular_elements(const float d_b, const float d_d1, const uint
 #ifdef TOTLENGTH
 	float temp = FLOAT_ONE / L;
 #else
-	float temp = FLOAT_ONE / (CFLOAT(d_N2) * d_d2);
+	float temp = FLOAT_ONE / pathLength;
 #endif
 #endif //////////////// END MULTIRAY ////////////////
 #if defined(ATN) && !defined(SPECT) //////////////// ATTENUATION ////////////////
@@ -1773,7 +1784,14 @@ DEVICE void perpendicular_elements(const float d_b, const float d_d1, const uint
 #else
 		LONG atnind = *z_loop;
 #endif
-		for (int iii = 0u; iii < d_N2; iii++) {
+		for (int iii = apuX1; iii <= apuX2; iii++) {
+			float d_in = d_d2;
+			if (iii == apuX1 && iii == apuX2)
+				d_in = FMAX(dT1 + dT2 - d_d2, FLOAT_ZERO);
+			else if (iii == apuX1)
+				d_in = dT1;
+			else if (iii == apuX2)
+				d_in = dT2;
 #ifdef USEIMAGES
 			if (d_NN == 1)
 				atnind.x = iii;
@@ -1784,7 +1802,7 @@ DEVICE void perpendicular_elements(const float d_b, const float d_d1, const uint
 		// (*z_loop has the varying coordinate at zero) instead of accumulating the offset
 		atnind = *z_loop + CLONG_rtz(iii) * CLONG_rtz(d_NN);
 #endif
-			compute_attenuation(d_d2, atnind, d_atten, &jelppi, ii);
+			compute_attenuation(d_in, atnind, d_atten, &jelppi, ii);
 		}
 		temp *= EXP(jelppi);
 #endif //////////////// END ATTENUATION ////////////////
@@ -1890,7 +1908,7 @@ DEVICE int voxel_index(const float pt, const float diff, const float d, const fl
 
 DEVICE bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1, const float diff2, const float max1, const float max2,
 	const float d1, const float d2, const uint N1, const uint N2, PTR_THR int *temp1, PTR_THR int *temp2, PTR_THR float *t1u, PTR_THR float *t2u, PTR_THR uint *Np,
-	const int TYYPPI, const float ys, const float xs, const float yd, const float xd, PTR_THR float *tc, PTR_THR int *u1, PTR_THR int *u2, PTR_THR float *t10, PTR_THR float *t20, PTR_THR bool *xy) {
+	const int TYYPPI, const float ys, const float xs, const float yd, const float xd, PTR_THR float *tc, PTR_THR int *u1, PTR_THR int *u2, PTR_THR float *t10, PTR_THR float *t20, PTR_THR bool *xy, PTR_THR float *tMaxOut) {
 	// If neither x- nor y-directions are perpendicular
 // Correspond to the equations (9) and (10) from reference [2]
 	const float apu_tx = b1 - xs;
@@ -1909,6 +1927,7 @@ DEVICE bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1
 	// (3-4)
 	*tc = FMAX(txmin, tymin);
 	const float tmax = FMIN(txmax, tymax);
+	*tMaxOut = tmax;
 #ifdef ORTH
 	if (*tc == *t10 || *tc == txback)
 		*xy = true;
@@ -1960,7 +1979,7 @@ DEVICE bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1
 
 DEVICE bool siddon_pre_loop_3D(const FLOAT3 b, const FLOAT3 diff, const FLOAT3 max, const FLOAT3 dd, const uint3 N, PTR_THR int *tempi, PTR_THR int *tempj, PTR_THR int *tempk, 
     PTR_THR float *txu, PTR_THR float *tyu, PTR_THR float *tzu, PTR_THR uint *Np, const int TYYPPI, const FLOAT3 s, const FLOAT3 d, PTR_THR float *tc, PTR_THR int *i, PTR_THR int *j, PTR_THR int *k, PTR_THR float *tx0, 
-	PTR_THR float *ty0, PTR_THR float *tz0, PTR_THR bool *xy, const int3 ii) {
+	PTR_THR float *ty0, PTR_THR float *tz0, PTR_THR bool *xy, const int3 ii, PTR_THR float *tMaxOut) {
 
 	const float3 apuT = (float3)b - (float3)s;
 	const float3 t0 = apuT / (float3)diff;
@@ -1971,6 +1990,7 @@ DEVICE bool siddon_pre_loop_3D(const FLOAT3 b, const FLOAT3 diff, const FLOAT3 m
 
 	*tc = FMAX(FMAX(tMin.x, tMin.z), tMin.y);
 	const float tmax = FMIN(FMIN(tMax.x, tMax.z), tMax.y);
+	*tMaxOut = tmax;
 	*tx0 = t0.x;
 	*ty0 = t0.y;
 	*tz0 = t0.z;

@@ -568,6 +568,9 @@ extern "C" __global__
 #ifndef GEOM5
   const float2 indeksi = MFLOAT2(CFLOAT(d_nRows) / 2.f, CFLOAT(d_nCols) / 2.f);
 #endif
+#ifdef MEANDISTANCEBP
+  const float meanKokoBP = CFLOAT((d_nRows + 1) * (d_nCols + 1));
+#endif
   for (int kk = 0; kk < d_nProjections; kk++) {
     float3 vLU, vRD;
 #ifdef GEOM5
@@ -654,10 +657,12 @@ extern "C" __global__
     const float dz = (CFLOAT(kk) + 0.5f) * invNProj;
     const float AxN = Ax * invKoko.x;
     const float DxN = Dx * invKoko.x;
-    float3 coordA = MFLOAT3(AxN, Ay * invKoko.y, dz);
-    float3 coordB = MFLOAT3(AxN, Dy * invKoko.y, dz);
-    float3 coordC = MFLOAT3(DxN, Ay * invKoko.y, dz);
-    float3 coordD = MFLOAT3(DxN, Dy * invKoko.y, dz);
+    const float AyN = Ay * invKoko.y;
+    const float DyN = Dy * invKoko.y;
+    float3 coordA = MFLOAT3(AxN, AyN, dz);
+    float3 coordB = MFLOAT3(AxN, DyN, dz);
+    float3 coordC = MFLOAT3(DxN, AyN, dz);
+    float3 coordD = MFLOAT3(DxN, DyN, dz);
 #if defined(CUDA) || defined(HIP)
     float A = tex3D<float>(d_IImage, coordA.x, coordA.y, coordA.z);
     float B = tex3D<float>(d_IImage, coordB.x, coordB.y, coordB.z);
@@ -748,16 +753,16 @@ extern "C" __global__
     float apu = (A + D - C - B);
 #endif
 #ifdef MEANDISTANCEBP
-    float area = d_meanV[kk] * CFLOAT((d_nRows + 1) * (d_nCols + 1));
+    const float area = d_meanV[kk] * meanKokoBP;
 #endif
     if (apu != 0.f) {
 #ifdef MEANDISTANCEBP
-      apu += area * fabs(coordA.y - coordD.y) * fabs(coordA.x - coordD.x);
+      apu += area * FABS(AyN - DyN) * FABS(AxN - DxN);
 #endif
       temp[0] += apu * kerroin;
-      if (no_norm == 0u)
-        wSum[0] += kerroin;
     }
+    if (no_norm == 0u)
+      wSum[0] += kerroin;
     dV2.z = dV.z;
     for (int zz = 1; zz < maxZZ5; zz++) {
       vRD.z += d_d.z;
@@ -799,8 +804,6 @@ extern "C" __global__
         A = read_imagef(d_IImage, sampler2, (float4)(coordA, 0.f)).w;
         C = read_imagef(d_IImage, sampler2, (float4)(coordC, 0.f)).w;
 #endif
-#ifdef MEANDISTANCEBP
-        coordD = CMFLOAT3(DxN, Dy * invKoko.y, dz);
 #endif
       } else {
         A = B;
@@ -814,10 +817,10 @@ extern "C" __global__
         B = read_imagef(d_IImage, sampler2, (float4)(coordB, 0.f)).w;
         D = read_imagef(d_IImage, sampler2, (float4)(coordD, 0.f)).w;
 #endif
-#ifdef MEANDISTANCEBP
-        coordA = CMFLOAT3(AxN, Ay * invKoko.y, dz);
 #endif
       }
+      const float AyN2 = Ay * invKoko.y;
+      const float DyN2 = Dy * invKoko.y;
 #ifdef OFFSET
       apu = (A * wA + D * wD - C * wC - B * wB);
 #else
@@ -825,12 +828,12 @@ extern "C" __global__
 #endif
       if (apu != 0.f) {
 #ifdef MEANDISTANCEBP
-        apu += area * fabs(coordA.y - coordD.y) * fabs(coordA.x - coordD.x);
+        apu += area * FABS(AyN2 - DyN2) * FABS(AxN - DxN);
 #endif
         temp[zz] += apu * kerroin;
-        if (no_norm == 0u)
-          wSum[zz] += kerroin;
       }
+      if (no_norm == 0u)
+        wSum[zz] += kerroin;
     }
   }
   // Start fastPDHG computations

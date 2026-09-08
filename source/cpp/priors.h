@@ -270,6 +270,8 @@ inline int proxTV(const af::array& im, const scalarStruct& inputScalars, AF_im_v
 	if (status != 0)
 		return -1;
 	status = proxTVDivAF(vec.qProxTV, dU, inputScalars, proj, timestep);
+	if (status != 0)
+		return -1;
 	if (DEBUG) {
 		mexPrintBase("beta = %f\n", beta);
 		mexPrintBase("w_vec.sigma2CP[timestep] = %f\n", w_vec.sigma2CP[timestep][0]);
@@ -287,6 +289,8 @@ inline int proxTGV(const af::array& im, const scalarStruct& inputScalars, AF_im_
 	int status = 0;
 #ifndef CPU
 	status = proxTV(im, inputScalars, vec, proj, w_vec, dU, w_vec.alpha0CPTGV, timestep);
+	if (status != 0)
+		return -1;
 	if (DEBUG) {
 		mexPrintBase("vec.qProxTV = %f\n", af::sum<float>(vec.qProxTV[0]));
 		mexPrintBase("vec.qProxTGV = %f\n", af::sum<float>(vec.qProxTGV[0]));
@@ -296,6 +300,8 @@ inline int proxTGV(const af::array& im, const scalarStruct& inputScalars, AF_im_
 	if (status != 0)
 		return -1;
 	status = proxTGVQAF(vec.qProxTGV, inputScalars, w_vec.alpha1CPTGV, proj);
+	if (status != 0)
+		return -1;
 	if (DEBUG) {
 		mexPrintBase("vec.qCPTGV2 = %f\n", af::sum<float>(vec.qProxTGV[2]));
 		mexEval();
@@ -326,6 +332,8 @@ inline int RDP(const af::array& im, const scalarStruct& inputScalars, const floa
 		mexEval();
 	}
 	status = RDPAF(dU, im, inputScalars, gamma, proj, beta, RDPref, w_vec, RDPLargeNeighbor, useRDPRef, kk);
+	if (status != 0)
+		return -1;
 	if (DEBUG) {
 		mexPrintBase("grad = %f\n", af::sum<float>(dU));
 		mexPrintBase("min(grad) = %f\n", af::min<float>(dU));
@@ -343,6 +351,8 @@ inline int GGMRF(const af::array& im, const scalarStruct& inputScalars, const fl
 		mexEval();
 	}
 	status = GGMRFAF(dU, im, inputScalars, p, q, c, pqc, proj, beta, w_vec, kk);
+	if (status != 0)
+		return -1;
 	if (DEBUG) {
 		mexPrintBase("grad = %f\n", af::sum<float>(dU));
 		mexEval();
@@ -374,6 +384,8 @@ inline int applySpatialPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMeth
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing MRP gradient");
 		status = MRP(vec.im_os[timestep][0], w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars, proj, *dU, beta, w_vec.med_no_norm);
+		if (status != 0)
+			return -1;
 	}
 	else if (MethodList.Quad) {
 		if (inputScalars.verbose >= 3)
@@ -407,19 +419,20 @@ inline int applySpatialPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMeth
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing TV prior gradient");
 		status = TVprior(inputScalars, w_vec.data, vec.im_os[timestep][0], w_vec, proj, *dU, beta, kk);
+		if (status != 0)
+			return -1;
 	}
 	else if (MethodList.hyperbolic) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing hyperbolic prior gradient");
 		status = hyperbolic(inputScalars, vec.im_os[timestep][0], w_vec, proj, *dU, beta, kk);
+		if (status != 0)
+			return -1;
 	}
 	else if (MethodList.AD) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing AD prior gradient");
-		if (osa_iter == 0u) {
-			*dU += af::constant(0.f, inputScalars.im_dim[0], 1);
-		}
-		else {
+		if (osa_iter != 0u) {
 			*dU += beta * AD(vec.im_os[timestep][0], inputScalars, w_vec.TimeStepAD, w_vec.KAD, w_vec.NiterAD, w_vec.FluxType,
 				w_vec.DiffusionType, w_vec.med_no_norm);
 		}
@@ -428,6 +441,8 @@ inline int applySpatialPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMeth
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing APLS prior gradient");
 		status = TVprior(inputScalars, w_vec.data, vec.im_os[timestep][0], w_vec, proj, *dU, beta, kk);
+		if (status != 0)
+			return -1;
 	}
 	else if (MethodList.ProxTGV || MethodList.TGV) {
 		if (inputScalars.verbose >= 3)
@@ -435,26 +450,36 @@ inline int applySpatialPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMeth
 		if (osa_iter >= 100)
 			w_vec.sigma2CP[timestep] = w_vec.sigmaCP[timestep];
 		status = proxTGV(vec.im_os[timestep][0], inputScalars, vec, proj, w_vec, *dU, osa_iter, timestep);
+		if (status != 0)
+			return -1;
 	}
 	else if (MethodList.ProxTV) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing proximal TV prior");
 		status = proxTV(vec.im_os[timestep][0], inputScalars, vec, proj, w_vec, *dU, w_vec.betaReg, timestep);
+		if (status != 0)
+			return -1;
 	}
 	else if (MethodList.NLM) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing NLM prior gradient");
 		status = NLM(proj, vec.im_os[timestep][0], w_vec, inputScalars, *dU, beta, kk);
+		if (status != 0)
+			return -1;
 	}
 	else if (MethodList.RDP) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing RDP prior gradient");
 		status = RDP(vec.im_os[timestep][0], inputScalars, w_vec.RDP_gamma, proj, *dU, beta, w_vec.RDPref[timestep], w_vec, w_vec.RDPLargeNeighbor, w_vec.RDP_anatomical, kk);
+		if (status != 0)
+			return -1;
 	}
 	else if (MethodList.GGMRF) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing GGMRF prior gradient");
 		status = GGMRF(vec.im_os[timestep][0], inputScalars, w_vec.GGMRF_p, w_vec.GGMRF_q, w_vec.GGMRF_c, w_vec.GGMRF_pqc, proj, *dU, w_vec, beta, kk);
+		if (status != 0)
+			return -1;
 	}
 	if (inputScalars.verbose >= 3 && (MethodList.MRP || MethodList.Quad || MethodList.Huber || MethodList.L || MethodList.FMH || MethodList.TV 
 		|| MethodList.WeightedMean || MethodList.AD || MethodList.APLS || MethodList.TGV || MethodList.NLM || MethodList.RDP || MethodList.ProxTGV 

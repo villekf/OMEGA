@@ -36,12 +36,16 @@ inline int MBSREM(af::array& im, af::array& rhs, const float U, const std::vecto
 	if (af::anyTrue<bool>(pp)) {
 		af::array apuIm = im;
 		apuIm(pp) = U - apuIm(pp);
-		applyImagePreconditioning(w_vec, inputScalars, rhs, apuIm, proj, timestep, kk);
+		status = applyImagePreconditioning(w_vec, inputScalars, rhs, apuIm, proj, timestep, kk, ii);
 	}
 	else
-		applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, timestep, kk, ii);
+		status = applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, timestep, kk, ii);
+	if (status != 0)
+		return -1;
 #ifndef CPU
 	status = poissonUpdateAF(im, rhs, inputScalars, lam[iter], inputScalars.epps, U, proj, ii);
+	if (status != 0)
+		return -1;
 #else
 	im = im + lam[iter] * rhs;
 	im(im < inputScalars.epps) = inputScalars.epps;
@@ -56,6 +60,8 @@ inline int BSREM(af::array& im, const af::array& rhs, const std::vector<float> l
 	int status = 0;
 #ifndef CPU
 	status = poissonUpdateAF(im, rhs, inputScalars, lam[iter], inputScalars.epps, 1.f, proj, ii);
+	if (status != 0)
+		return -1;
 #else
 	 im = (im + lam[iter] * im * rhs);
 #endif
@@ -151,7 +157,9 @@ inline af::array COSEM(const af::array& im, const af::array& C_co, const af::arr
 inline int PKMA(af::array& im, af::array& rhs, Weighting& w_vec, const scalarStruct& inputScalars, const uint32_t timestep, const uint32_t iter, const uint32_t osa_iter, ProjectorClass& proj, const int ii = 0) {
 	int status = 0;
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
-	applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, timestep, kk, ii);
+	status = applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, timestep, kk, ii);
+	if (status != 0)
+		return -1;
 	if (inputScalars.computeRelaxation) {
 		if (kk == 0 && ii == 0) {
 			w_vec.lambda[timestep][iter] = af::norm(im) / af::norm(rhs) * .25f;
@@ -202,6 +210,8 @@ inline int PKMA(af::array& im, af::array& rhs, Weighting& w_vec, const scalarStr
 	}
 #ifndef CPU
 	status = poissonUpdateAF(im, rhs, inputScalars, w_vec.lambda[timestep][iter], inputScalars.epps, w_vec.alphaM[timestep][kk], proj, ii);
+	if (status != 0)
+		return -1;
 #else
 	af::array im_apu = im - w_vec.lambda[timestep][iter] * rhs;
 	if (inputScalars.enforcePositivity)
@@ -343,6 +353,8 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 			mexPrint("Using PDHG w/ subsets");
 #ifndef CPU
 		status = PDHGUpdateAF(im, rhs, inputScalars, vec, inputScalars.epps, 1.f, w_vec.tauCP[timestep][ii], proj, timestep, ii);
+		if (status != 0)
+			return -1;
 #else
 		im -= w_vec.tauCP[timestep][ii] * rhs;
 		im.eval();
@@ -355,6 +367,8 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 			mexPrint("Using PDHG W/O subsets");
 #ifndef CPU
 		status = PDHGUpdateAF(im, rhs, inputScalars, vec, inputScalars.epps, w_vec.thetaCP[timestep][kk], w_vec.tauCP[timestep][ii], proj, timestep, ii);
+		if (status != 0)
+			return -1;
 #else
 		const af::array uPrev = vec.uCP[timestep][ii].copy();
 		vec.uCP[timestep][ii] -= w_vec.tauCP[timestep][ii] * rhs;
@@ -575,6 +589,8 @@ inline int SAGA(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, AF_
 	int status = 0;
 	vec.stochasticHelper[ii][osa_iter] = vec.rhs_os[timestep][ii].copy();
 	status = applyImagePreconditioning(w_vec, inputScalars, grad, im, proj, timestep, kk, ii);
+	if (status != 0)
+		return -1;
 	im += w_vec.lambda[timestep][iter] * grad;
 	af::eval(im);
 	//af::sync();
