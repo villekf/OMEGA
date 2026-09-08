@@ -7,6 +7,7 @@ data is Siemens Pro.specta projection data available at DOI
 10.5281/zenodo.17315440
 """
 import numpy as np
+from omegatomo.util import CTEFOVCorrection
 from omegatomo.projector import proj
 from omegatomo.reconstruction import reconstructions_mainSPECT
 from pymatreader import read_mat
@@ -14,7 +15,7 @@ from pymatreader import read_mat
 # Initialize projector class for reconstruction
 options = proj.projectorClass()
 
-options.fpath = '' # Path to .mat file
+options.fpath = './jaszczak_spectct_projection_data.mat' # Path to .mat file
 
 ###########################################################################
 ###########################################################################
@@ -66,13 +67,13 @@ options.machine_name = 'Prospecta'
 # NOTE: Non-square image sizes (X- and Y-direction) may not work
 options.Nx = 64; # X-direction
 options.Ny = 64; # Y-direction
-options.Nz = 128; # Z-direction (number of axial slices)
+options.Nz = 64; # Z-direction (number of axial slices)
 
 ### FOV size [mm]
 # NOTE: Non-cubical voxels may not work
 options.FOVa_x = options.dPitchX*64; # [mm], x-axis of FOV (transaxial)
 options.FOVa_y = options.dPitchX*64; # [mm], y-axis of FOV (transaxial)
-options.axial_fov = options.dPitchY*128; # [mm], z-axis of FOV (axial)
+options.axial_fov = options.dPitchY*64; # [mm], z-axis of FOV (axial)
 
 ### Flip the image?
 options.flipImageX = False
@@ -81,12 +82,62 @@ options.flipImageZ = False
 
 ### Use back projection mask?
 options.useMaskBP = False
-options.maskBP = np.ones((options.Nx, options.Ny, options.Nz))
+#options.maskBP = np.ones((options.Nx, options.Ny, options.Nz))
+# Axial offset centers the phantom
+options.oOffsetX = 0
+options.oOffsetY = 0
+options.oOffsetZ = -16 * options.dPitchX
 
 ### How much is the image rotated in degrees?
 # NOTE: The rotation is done in the detector space (before reconstruction).
 # Positive values perform the rotation in counterclockwise direction
 options.offangle = 0
+
+
+###########################################################################
+###########################################################################
+############################## EXTENDED FOV ###############################
+###########################################################################
+###########################################################################
+
+# When true (default), probabilities are normalized by ray length. When
+# false, probabilities are normalized by ray-FOV intersection length. False
+# results in incorrect normalization when using multi-resolution volumes.
+options.useTotLength = True
+
+### Use extended FOV
+# Similar to above, but expands the FOV. The benefit of expanding the FOV
+# this way is to enable to the use of multi-resolution reconstruction or
+# computation of the priors/regularization only in the original FOV. The
+# default extension is 40% per side
+options.useEFOV = False
+
+# Total extended FOV size (x y z) in mm. If less than high-resolution FOV
+# size, will be set equal.
+options.eFOVSize = np.array([128*options.dPitchX, 128*options.dPitchX, 0])
+
+# Extended FOV shift [mm] w.r.t. high-resolution FOV. In practice,
+# if nonzero, the high-resolution area of FOV will be off-center. The
+# high-resolution FOV can be moved w.r.t. absolute origin with oOffsetX,
+# oOffsetY and oOffsetZ above.
+options.eFOVShift = -1*np.array([options.oOffsetX, options.oOffsetY, options.oOffsetZ])
+
+# Setting this to True uses multi-resolution reconstruction when using
+# extended FOV. Only applies to extended FOV!
+options.useMultiResolutionVolumes = False
+
+# This is the scale value for the multi-resolution volumes. The original
+# voxel size is divided by this value and then used as the voxel size for
+# the multi-resolution volumes. Default is 4 times the original voxel size.
+# This means that the multi-resolution regions have larger voxel sizes if
+# this is < 1, i.e. 1/4 = 4 times the original voxel size.
+options.multiResolutionScale = 1/4
+
+# Performs the extrapolation and adjusts the image size accordingly
+CTEFOVCorrection(options)
+
+# Store all multi-resolution volumes in a cell array?
+options.storeMultiResolution = False
 
 ###########################################################################
 ###########################################################################
@@ -165,11 +216,12 @@ options.colFz = np.inf
 # 4. For the Siddon ray tracer, the CDRF is defined by shifting the rays to
 # the shape of the collimator hole. The values of rayShiftsDetector and
 # rayShiftsSource represent [shift1XY, shift1Z, shift2XY, ...] in mm. Size
-# should be 2*nRays x nColsD x nRowsD x nProjections. If not input, values
+# should be 2*n_rays_axial*n_rays_transaxial x nColsD x nRowsD x nHeads. If not input, values
 # are calculated automatically.
-options.nRays = 1  # Number of rays traced per detector element
-# options.rayShiftsDetector = np.zeros((2*options.nRays, options.nColsD, options.nRowsD, options.nProjections));
-# options.rayShiftsSource = np.zeros((2*options.nRays, options.nColsD, options.nRowsD, options.nProjections));
+options.n_rays_axial = 4
+options.n_rays_transaxial = 8
+# options.rayShiftsDetector = np.zeros((2*options.n_rays_axial*options.n_rays_transaxial, options.nColsD, options.nRowsD, options.nHeads));
+# options.rayShiftsSource = np.zeros((2*options.n_rays_axial*options.n_rays_transaxial, options.nColsD, options.nRowsD, options.nHeads));
 
 ###########################################################################
 ###########################################################################

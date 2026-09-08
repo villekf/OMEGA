@@ -147,6 +147,9 @@ void projectorType123(
 #else
 	CLGLOBAL float* d_output [[buffer(20)]],
 #endif
+#if defined(SPECT)
+	const CLGLOBAL uint* d_detectorVector [[buffer(21)]],
+#endif
 	uint3 temp_i [[thread_position_in_grid]]   // global id
 
 #else /////////////////////// OPENCL/CUDA ///////////////////////
@@ -162,15 +165,17 @@ void projectorType123(
     const float coneOfResponseStdCoeffB,
     const float coneOfResponseStdCoeffC,
 #if defined(PYTHON)
-    const float totalFOVxmin,
-    const float totalFOVymin,
-    const float totalFOVzmin,
-    const float totalFOVxmax,
-    const float totalFOVymax,
-    const float totalFOVzmax,
+    const float ellipseCenterX,
+    const float ellipseCenterY,
+    const float ellipseCenterZ,
+    const float ellipseRadiusX,
+    const float ellipseRadiusY,
+    const float ellipseRadiusZ,
+    const float ellipsePower,
 #else
-    const float3 totalFOVmin,
-    const float3 totalFOVmax,
+    const float3 ellipseCenter,
+    const float3 ellipseRadii,
+    const float ellipsePower,
 #endif
 #endif
 #if defined(PYTHON)
@@ -281,6 +286,9 @@ void projectorType123(
 #else
 	CLGLOBAL float* d_output,
 #endif
+#if defined(SPECT)
+	const CLGLOBAL uint* CLRESTRICT d_detectorVector,
+#endif
 	///////////////////////// END FORWARD OR BACKWARD PROJECTIONS /////////////////////////
 	const uchar no_norm, const ULONG m_size, const uint currentSubset, const int aa
 #endif ///////////////////// END OPENCL/CUDA/METAL /////////////////////
@@ -328,11 +336,22 @@ void projectorType123(
 	const FLOAT3 b = make_float3(bx, by, bz);
 	const FLOAT3 d_bmax = make_float3(d_bmaxx, d_bmaxy, d_bmaxz);
 #if defined(SPECT)
-    const FLOAT3 totalFOVmin = make_float3(totalFOVxmin, totalFOVymin, totalFOVzmin);
-    const FLOAT3 totalFOVmax = make_float3(totalFOVxmax, totalFOVymax, totalFOVzmax);
+    const FLOAT3 ellipseCenter = make_float3(ellipseCenterX, ellipseCenterY, ellipseCenterZ);
+    const FLOAT3 ellipseRadii = make_float3(ellipseRadiusX, ellipseRadiusY, ellipseRadiusZ);
 #endif
+#endif
+#if defined(SPECT) && (defined(MASKFPBYDETECTOR) || defined(NORMBYDETECTOR))
+    const uint detectorHead = d_detectorVector[i.z];
 #endif
 #ifdef MASKFP // FP mask
+ #ifdef MASKFPBYDETECTOR
+  #ifdef USEIMAGES
+    typeT maskInd = i;
+    maskInd.z = detectorHead;
+  #else
+    const typeT maskInd = i.x + i.y * d_size_x + detectorHead * d_size_x * d_sizey;
+  #endif
+ #else
     const typeT maskInd = i
 #ifndef USEIMAGES
     .x + i.y * d_size_x
@@ -341,6 +360,7 @@ void projectorType123(
 #endif
 #endif
     ;
+ #endif
 	if (readMaskFP(maskFP, maskInd) == 0)
 		return;
 #endif // End FP mask
@@ -389,7 +409,11 @@ void projectorType123(
 	FLOAT local_scat = FLOAT_ZERO;
 
 #ifdef NORM // Normalization included
-	local_norm = d_norm[idx];
+	#ifdef NORMBYDETECTOR
+		local_norm = d_norm[i.x + i.y * d_size_x + detectorHead * d_size_x * d_sizey];
+	#else
+		local_norm = d_norm[idx];
+	#endif
 #endif
 #ifdef SCATTER // Scatter data included
 	local_scat = d_scat[idx];
@@ -418,8 +442,6 @@ void projectorType123(
 			for (int to = 0; to < NBINS; to++)
 				axRay[to] = 0.f;
 #endif
-#elif defined(SPECT)
-	const int lorXY = 0;
 #endif  //////////////// END MULTIRAY ////////////////
 	FLOAT3 s, d;
 #if defined(NLAYERS) && !defined(LISTMODE)
@@ -432,7 +454,25 @@ void projectorType123(
 #if defined(CT) && !defined(LISTMODE) && !defined(PET) // CT data
 	getDetectorCoordinatesCT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize);
 #elif defined(SPECT) && (!defined(LISTMODE) || defined(SENS)) && !defined(PET) // SPECT data
-	getDetectorCoordinatesSPECT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize, d_rayShiftsDetector, d_rayShiftsSource, lorXY, idx, totalFOVmin, totalFOVmax);
+#if defined(ORTH)
+    FLOAT3 collimatorOrigin;
+#endif
+	getDetectorCoordinatesSPECT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize, d_rayShiftsDetector, d_rayShiftsSource, d_detectorVector, lor, ellipseCenter, ellipseRadii, ellipsePower
+#if defined(ORTH)
+        , &collimatorOrigin
+#endif
+    );
+#if defined(ORTH)
+    const FLOAT spectNormalizationLength = LENGTH(d - s);
+    if (spectNormalizationLength <= FLOAT_ZERO) {
+#ifdef N_RAYS
+        continue;
+#else
+        return;
+#endif
+    }
+    s = collimatorOrigin;
+#endif
 #elif defined(LISTMODE) && !defined(SENS) // Listmode data
 #if defined(INDEXBASED)
 	getDetectorCoordinatesListmode(d_xy, d_z, trIndex, axIndex, &s, &d, idx
@@ -527,6 +567,153 @@ void projectorType123(
 #endif
 #endif
 #endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+#if defined(SPECT) && defined(ORTH) && !defined(VOL) && !defined(ATN)
+	// SPECT ODRT has finite Gaussian support around the central ray.  Use the
+	// total FOV as the physical admission box, but only traverse voxels in this
+	// local volume so multiresolution subvolumes keep their own indexing.
+	const FLOAT3 totalFOVmin = ellipseCenter - ellipseRadii;
+	const FLOAT3 totalFOVmax = ellipseCenter + ellipseRadii;
+	const FLOAT supportRadius = spectOrthSupportRadius(s, diff, totalFOVmin, totalFOVmax, coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC);
+	const FLOAT3 supportVec = CMFLOAT3(supportRadius, supportRadius, supportRadius);
+	FLOAT totalTmin = FLOAT_ZERO;
+	FLOAT totalTmax = FLOAT_ZERO;
+	if (supportRadius > FLOAT_ZERO && spectOrthRayBoxInterval(s, diff, totalFOVmin - supportVec, totalFOVmax + supportVec, &totalTmin, &totalTmax)) {
+		FLOAT localTmin = FLOAT_ZERO;
+		FLOAT localTmax = FLOAT_ZERO;
+		if (spectOrthRayBoxInterval(s, diff, b - supportVec, d_bmax + supportVec, &localTmin, &localTmax)) {
+			localTmin = FMAX(localTmin, totalTmin);
+			localTmax = FMIN(localTmax, totalTmax);
+			if (localTmax >= localTmin) {
+				temp = FLOAT_ONE;
+#if defined(TOTLENGTH)
+				// Normalize by the shared clipped chord, independent of the
+				// local voxel grid and the collimator origin used for blur.
+				temp /= FMAX(spectNormalizationLength, 1.0e-6f);
+#endif
+				temp *= d_d.x * d_d.y * d_d.z;
+#ifdef NORM
+				temp *= local_norm;
+#endif
+#ifdef SCATTER
+				temp *= local_scat;
+#endif
+				temp *= global_factor;
+#ifdef ATNM
+				temp *= d_atten[idx];
+#endif
+				const bool localXY = spectOrthPrimaryIsX(diff);
+				FLOAT3 localS = s;
+				FLOAT3 localDiff = diff;
+				uint3 localNN = d_Nxyz;
+				FLOAT localB1 = b.x;
+				FLOAT localB2 = b.y;
+				FLOAT localD1 = d_d.x;
+				FLOAT localD2 = d_d.y;
+				uint localN1 = d_Nxyz.y;
+				uint localN2 = 1u;
+				uint localN3 = d_Nxyz.x;
+
+				if (!localXY) {
+					localB1 = b.y;
+					localB2 = b.x;
+					localD1 = d_d.y;
+					localD2 = d_d.x;
+					localN1 = d_Nxyz.x;
+					localN2 = d_Nxyz.x;
+					localN3 = 1u;
+					const FLOAT swapS = localS.x;
+					localS.x = localS.y;
+					localS.y = swapS;
+					const FLOAT swapDiff = localDiff.x;
+					localDiff.x = localDiff.y;
+					localDiff.y = swapDiff;
+					const uint swapN = localNN.x;
+					localNN.x = localNN.y;
+					localNN.y = swapN;
+				}
+
+				const FLOAT primary0 = FMAD(localTmin, localDiff.x, localS.x);
+				const FLOAT primary1 = FMAD(localTmax, localDiff.x, localS.x);
+				const FLOAT primaryMin = FMIN(primary0, primary1) - supportRadius;
+				const FLOAT primaryMax = FMAX(primary0, primary1) + supportRadius;
+				const int primaryStart = spectOrthClampedIndex(primaryMin, localB1, localD1, localNN.x);
+				const int primaryEnd = spectOrthClampedIndex(primaryMax, localB1, localD1, localNN.x);
+				const FLOAT supportMid = (localTmin + localTmax) * FLOAT_HALF;
+
+				for (int primary = primaryStart; primary <= primaryEnd; primary++) {
+					center.x = localB1 + CFLOAT(primary) * localD1 + localD1 * FLOAT_HALF;
+					FLOAT tSeed = supportMid;
+					if (FABS(localDiff.x) >= 1.0e-6f)
+						tSeed = (center.x - localS.x) / localDiff.x;
+					tSeed = FMIN(FMAX(tSeed, localTmin), localTmax);
+					const int seed2 = spectOrthClampedIndex(FMAD(tSeed, localDiff.y, localS.y), localB2, localD2, localN1);
+					const int seedZ = spectOrthClampedIndex(FMAD(tSeed, localDiff.z, localS.z), _bz, dz, d_Nxyz.z);
+					int tempkSupport = seedZ;
+					orthDistance3D(primary,
+						localDiff,
+						center,
+						localS,
+						localB2, localD2, _bz, dz, temp, seed2, seedZ, d_Nxy, orth_ray_length, localN1, localN2, localN3, d_Nxyz.z, bmin, bmax, Vmax, V, localXY, axP, false, &tempkSupport, 0,
+#if defined(FP)
+						d_OSEM
+#else
+						no_norm, d_Summ, d_output
+#endif
+#ifdef TOF
+						, FLOAT_ZERO, TOFWeights
+#if defined(LISTMODE)
+						, TOFid
+#endif
+#endif
+#if defined(SPECT) && defined(ATN)
+						, FLOAT_ONE
+#endif
+#if defined(MASKBP) && defined(BP)
+						, aa, maskBP, d_Nxyz
+#endif
+						, coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
+					);
+				}
+#if defined(FP)
+#if defined(N_RAYS)
+#if defined(TOF) && defined(LISTMODE)
+				int to = TOFid;
+#else
+#ifndef __CUDACC__
+#pragma unroll NBINS
+#endif
+				for (int to = 0; to < NBINS; to++)
+#endif
+					ax[to] += axRay[to] * temp;
+#else
+#if defined(TOF) && defined(LISTMODE)
+				size_t to = TOFid;
+#else
+#ifndef __CUDACC__
+#pragma unroll NBINS
+#endif
+				for (size_t to = 0; to < NBINS; to++) {
+#endif
+					forwardProjectAF(d_output, ax, idx, temp, to);
+#ifdef TOF
+					idx += m_size;
+#endif
+#if defined(TOF) && defined(LISTMODE)
+#else
+				}
+#endif
+#endif
+#endif
+			}
+		}
+	}
+#ifdef N_RAYS
+	continue;
+#else
+	return;
+#endif
+#endif
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	//If the LOR is perpendicular in the y-direction (Siddon cannot be used)
 	if (FABS(diff.z) < 1e-6f && (FABS(diff.y) < 1e-6f || FABS(diff.x) < 1e-6f)) {
@@ -664,6 +851,11 @@ void projectorType123(
 #else
 		temp *= (FLOAT_ONE / (TotV * d_d2 * CFLOAT(apuX2 - apuX1)));
 #endif
+#elif defined(SPECT)
+#if defined(TOTLENGTH)
+        temp /= spectNormalizationLength;
+#endif
+        temp *= d_d.x * d_d.y * d_d.z;
 #endif
 		if (d_N2 == 1)
 			indO = localInd.x;
@@ -751,9 +943,7 @@ void projectorType123(
 #if defined(BP) //////////////// BACKWARD PROJECTION ////////////////
 #if defined(MASKBP) //////////////// MASKBP ////////////////
 				int maskVal = 1;
-				if (aa == 0) {
-                    maskVal = readMaskBP(maskBP, localInd, d_Nxyz);
-				}
+				maskVal = readMaskBP(maskBP, localInd, d_Nxyz);
 				if (maskVal > 0)
 #endif //////////////// END MASKBP ////////////////
 				rhs(temp * d_in, ax, local_ind, d_output, no_norm, d_Summ
@@ -968,6 +1158,13 @@ void projectorType123(
 
 #if !defined(CT) //////////////// PET/SPECT ////////////////
 #ifdef ORTH //////////////// ORTH/VOL ////////////////
+#if defined(SPECT) && !defined(VOL)
+        temp = FLOAT_ONE;
+#if defined(TOTLENGTH)
+        temp /= spectNormalizationLength;
+#endif
+        temp *= d_d.x * d_d.y * d_d.z;
+#endif
 #if defined(VOL) && defined(TOTLENGTH) //////////////// VOL+TOTLENGTH ////////////////
 		temp = 1.f / TotV;
 #elif defined(VOL) && !defined(TOTLENGTH) && defined(BP)
@@ -1197,9 +1394,7 @@ void projectorType123(
 #if defined(BP) //////////////// BACKWARD PROJECTION ////////////////
 #if defined(MASKBP) //////////////// MASKBP ////////////////
 			int maskVal = 1;
-			if (aa == 0) {
-                maskVal = readMaskBP(maskBP, localInd, d_Nxyz);
-			}
+			maskVal = readMaskBP(maskBP, localInd, d_Nxyz);
 			if (maskVal > 0)
 #endif //////////////// END MASKBP ////////////////
 			rhs(local_ele * temp, ax, local_ind, d_output, no_norm, d_Summ
@@ -1226,6 +1421,13 @@ void projectorType123(
 // #if (defined(SPECT) && !defined(ORTH)) // Ray length inside BP mask
 // 		temp /= L_SPECT;
 // #endif
+#if defined(SPECT) && defined(ORTH) && !defined(VOL)
+            temp = FLOAT_ONE;
+#if defined(TOTLENGTH)
+            temp /= spectNormalizationLength;
+#endif
+            temp *= d_d.x * d_d.y * d_d.z;
+#endif
 #if !defined(TOTLENGTH) && !defined(CT) && defined(FP)
 			if (LL == 0.f)
 				LL = L;

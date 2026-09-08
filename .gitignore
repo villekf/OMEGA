@@ -56,3 +56,6 @@ toolbox.ignore
 /resources
 .gitattributes
 /doc/*.png
+
+# Local validation scripts and datasets
+/tests/

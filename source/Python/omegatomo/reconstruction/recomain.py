@@ -20,6 +20,46 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 import ctypes
 import numpy as np
 
+def _saved_image_count(options):
+    if options.save_iter:
+        return int(options.Niter) + 1
+    if options.saveNIter.size > 0:
+        return int(options.saveNIter.size) + 1
+    return 1
+
+def _reshape_image_output(output, spatialShape, savedImageCount, timeFrameCount):
+    shape = (*map(int, spatialShape), int(savedImageCount), int(timeFrameCount))
+    expectedSize = int(np.prod(shape, dtype=np.int64))
+    if output.size != expectedSize:
+        raise ValueError(f"Unexpected reconstruction output size: got {output.size} values, expected {expectedSize}")
+    output = output.reshape(shape, order='F')
+    if timeFrameCount == 1:
+        output = output[..., 0]
+    elif savedImageCount == 1:
+        output = output[..., 0, :]
+    return output
+
+def _reshape_multiresolution_output(output, options):
+    nVolumes = int(options.nMultiVolumes) + 1
+    volSizes = (options.Nx[:nVolumes].astype(np.uint64) * options.Ny[:nVolumes].astype(np.uint64) * options.Nz[:nVolumes].astype(np.uint64)).astype(np.int64)
+    savedImageCount = _saved_image_count(options)
+    volumes = []
+    offset = 0
+    for ii, volSize in enumerate(volSizes):
+        outputSize = int(volSize) * savedImageCount * int(options.Nt)
+        nextOffset = offset + outputSize
+        volumes.append(_reshape_image_output(
+            output[offset:nextOffset],
+            (options.Nx[ii], options.Ny[ii], options.Nz[ii]),
+            savedImageCount,
+            options.Nt,
+        ))
+        offset = nextOffset
+
+    if offset != output.size:
+        raise ValueError(f"Unexpected multi-resolution output size: consumed {offset} values from {output.size}")
+    return volumes
+
 def transferData(options):
     """
     Transfers the Python variables to the corresponding C-struct
@@ -45,6 +85,7 @@ def transferData(options):
     options.param.randoms_correction = ctypes.c_uint32(options.randoms_correction)
     options.param.nColsD = ctypes.c_uint32(options.nColsD)
     options.param.nRowsD = ctypes.c_uint32(options.nRowsD)
+    options.param.nHeads = ctypes.c_uint32(options.nHeads)
     options.param.Nang = ctypes.c_uint32(options.Nang)
     options.param.Ndist = ctypes.c_uint32(options.Ndist)
     options.param.subsets = ctypes.c_uint32(options.subsets)
@@ -103,6 +144,7 @@ def transferData(options):
     options.param.FluxType = ctypes.c_uint32(options.FluxType)
     options.param.DiffusionType = ctypes.c_uint32(options.DiffusionType)
     options.param.POCS_NgradIter = ctypes.c_uint32(options.POCS_NgradIter)
+    options.param.normZ = ctypes.c_uint32(options.normZ)
     options.param.maskFPZ = ctypes.c_uint32(options.maskFPZ)
     options.param.maskBPZ = ctypes.c_uint32(options.maskBPZ)
     options.param.FISTAType = ctypes.c_uint32(options.FISTAType)
@@ -176,12 +218,13 @@ def transferData(options):
     options.param.orthAxial = ctypes.c_bool(options.orthAxial)
     options.param.enforcePositivity = ctypes.c_bool(options.enforcePositivity)
     options.param.useMultiResolutionVolumes = ctypes.c_bool(options.useMultiResolutionVolumes)
+    options.param.storeMultiResolution = ctypes.c_bool(options.storeMultiResolution)
     options.param.save_iter = ctypes.c_bool(options.save_iter)
     options.param.deblurring = ctypes.c_bool(options.deblurring)
     options.param.useMAD = ctypes.c_bool(options.useMAD)
     options.param.useImages = ctypes.c_bool(options.useImages)
     options.param.useEFOV = ctypes.c_bool(options.useEFOV)
-    options.param.CTAttenuation = ctypes.c_bool(options.CTAttenuation)
+    options.param.CTAttenuation = ctypes.c_bool(options.CT_attenuation)
     options.param.offsetCorrection = ctypes.c_bool(options.offsetCorrection)
     options.param.relaxationScaling = ctypes.c_bool(options.relaxationScaling)
     options.param.computeRelaxationParameters = ctypes.c_bool(options.computeRelaxationParameters)
@@ -328,10 +371,14 @@ def transferData(options):
     options.param.TOFIndices = options.TOFIndices.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
     options.param.angles = options.angles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.swivelAngles = options.swivelAngles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.blurPlanes = options.blurPlanes.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
-    options.param.blurPlanes2 = options.blurPlanes2.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
-    options.param.gFilter = options.gFilter.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.gFSize = np.array(options.gFilter.shape, dtype=np.uint64)
+    # Only type-6 uses per-volume lists. Other projectors retain empty arrays.
+    blur_planes = options.blurPlanes[0] if isinstance(options.blurPlanes, list) else options.blurPlanes
+    blur_planes2 = options.blurPlanes2[0] if isinstance(options.blurPlanes2, list) else options.blurPlanes2
+    g_filter = options.gFilter[0] if isinstance(options.gFilter, list) else options.gFilter
+    options.param.blurPlanes = blur_planes.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
+    options.param.blurPlanes2 = blur_planes2.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
+    options.param.gFilter = g_filter.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    options.gFSize = np.array(g_filter.shape if g_filter.size else (0, 0, 0), dtype=np.uint64)
     options.param.gFSize = options.gFSize.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
     options.param.precondTypeImage = options.precondTypeImage.ctypes.data_as(ctypes.POINTER(ctypes.c_bool))
     options.param.precondTypeMeas = options.precondTypeMeas.ctypes.data_as(ctypes.POINTER(ctypes.c_bool))
@@ -361,15 +408,22 @@ def transferData(options):
     #For SPECT...
     options.param.rayShiftsDetector = options.rayShiftsDetector.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.rayShiftsSource = options.rayShiftsSource.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    # Geometry is subset ordered; detector-head indices must use the same order.
+    frames = getattr(options, 'DetectorVectorFrames', None)
+    options._native_detector_vector = np.ascontiguousarray(
+        np.concatenate(frames) if options.SPECT and isinstance(frames, list) else options.DetectorVector,
+        dtype=np.uint32)
+    options.param.detectorVector = options._native_detector_vector.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))
     options.param.coneOfResponseStdCoeffA = ctypes.c_float(options.coneOfResponseStdCoeffA)
     options.param.coneOfResponseStdCoeffB = ctypes.c_float(options.coneOfResponseStdCoeffB)
     options.param.coneOfResponseStdCoeffC = ctypes.c_float(options.coneOfResponseStdCoeffC)
-    options.param.totalFOVxmin = ctypes.c_float(options.totalFOVxmin)
-    options.param.totalFOVymin = ctypes.c_float(options.totalFOVymin)
-    options.param.totalFOVzmin = ctypes.c_float(options.totalFOVzmin)
-    options.param.totalFOVxmax = ctypes.c_float(options.totalFOVxmax)
-    options.param.totalFOVymax = ctypes.c_float(options.totalFOVymax)
-    options.param.totalFOVzmax = ctypes.c_float(options.totalFOVzmax)
+    options.param.ellipseCenterX = ctypes.c_float(options.ellipseCenterX)
+    options.param.ellipseCenterY = ctypes.c_float(options.ellipseCenterY)
+    options.param.ellipseCenterZ = ctypes.c_float(options.ellipseCenterZ)
+    options.param.ellipseRadiusX = ctypes.c_float(options.ellipseRadiusX)
+    options.param.ellipseRadiusY = ctypes.c_float(options.ellipseRadiusY)
+    options.param.ellipseRadiusZ = ctypes.c_float(options.ellipseRadiusZ)
+    options.param.ellipsePower = ctypes.c_float(options.ellipsePower)
     # ...until here
     options.param.NLM_ref = options.NLM_referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.RDP_ref = options.RDP_referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
@@ -707,12 +761,12 @@ def reconstructions_main(options):
     c_lib = ctypes.CDLL(libname)
     c_lib.omegaMain(options.param, ctypes.c_char_p(inStr), SinoP, outputP, FPOutputP, residualP)
     try:
-        if options.useMultiResolutionVolumes and not options.storeMultiResolution:
-            output = output.reshape((options.NxOrig, options.NyOrig, options.NzOrig, -1), order = 'F')
-        elif not options.storeMultiResolution and options.Nt == 1:
-            output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], -1), order = 'F')
+        if options.useMultiResolutionVolumes and options.storeMultiResolution:
+            output = _reshape_multiresolution_output(output, options)
+        elif options.useMultiResolutionVolumes and not options.storeMultiResolution:
+            output = _reshape_image_output(output, (options.NxOrig, options.NyOrig, options.NzOrig), _saved_image_count(options), options.Nt)
         else:
-            output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], options.Nt), order = 'F')
+            output = _reshape_image_output(output, (options.Nx[0], options.Ny[0], options.Nz[0]), _saved_image_count(options), options.Nt)
         if options.subsets == 1 and options.storeFP:
             FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins), order = 'F')
     finally:
@@ -723,4 +777,3 @@ def reconstructions_main(options):
             return output, FPOutput, residual
         else:
             return output, FPOutput
-        

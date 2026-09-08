@@ -33,6 +33,8 @@ struct inputStruct {
     uint32_t nColsD;
     // Number of rows in the projection image/sinogram
     uint32_t nRowsD;
+    // Number of SPECT detector heads
+    uint32_t nHeads = 1;
     // Number of angular samples in the sinogram
     uint32_t Nang;
     // Number of radial distances in the sinogram
@@ -128,6 +130,8 @@ struct inputStruct {
     uint32_t DiffusionType;
     // POCS TV iteration number
     uint32_t POCS_NgradIter;
+    // Number of detector-indexed normalization images
+    uint32_t normZ = 1;
     // Number of slices in mask images
     uint32_t maskFPZ = 1;
     uint32_t maskBPZ = 1;
@@ -260,6 +264,8 @@ struct inputStruct {
     bool enforcePositivity = false;
     // Use multi-resolution reconstruction
     bool useMultiResolutionVolumes = false;
+    // Save multi-resolution volumes
+    bool storeMultiResolution = false;
     // Save all iterations to host
     bool save_iter = false;
     // Use deblurring
@@ -518,15 +524,17 @@ struct inputStruct {
     // SPECT values
     float* rayShiftsDetector;
     float* rayShiftsSource;
+    uint32_t* detectorVector;
     float coneOfResponseStdCoeffA;
     float coneOfResponseStdCoeffB;
     float coneOfResponseStdCoeffC;
-    float totalFOVxmin;
-    float totalFOVymin;
-    float totalFOVzmin;
-    float totalFOVxmax;
-    float totalFOVymax;
-    float totalFOVzmax;
+    float ellipseCenterX;
+    float ellipseCenterY;
+    float ellipseCenterZ;
+    float ellipseRadiusX;
+    float ellipseRadiusY;
+    float ellipseRadiusZ;
+    float ellipsePower;
     // SPECT end
     // More reference images
     float* NLM_ref;
@@ -615,6 +623,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.pitch = options.pitch;
     inputScalars.enforcePositivity = options.enforcePositivity;
     inputScalars.multiResolution = options.useMultiResolutionVolumes;
+    inputScalars.storeMultiResolution = options.storeMultiResolution;
     inputScalars.nMultiVolumes = options.nMultiVolumes;
     inputScalars.indexBased = options.useIndexBasedReconstruction;
 
@@ -656,6 +665,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
 
     // The size of the first dimension in the input sinogram/projection
     inputScalars.nRowsD = options.nRowsD;
+    inputScalars.nHeads = options.nHeads;
 
     inputScalars.verbose = options.verbose;
 
@@ -827,11 +837,12 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         inputScalars.T = options.offsetVal;
     inputScalars.nProjections = options.nProjections;
     inputScalars.subsetType = options.subsetType;
+    inputScalars.d_Scale4.resize(inputScalars.nMultiVolumes + 1);
+    inputScalars.dSize.resize(inputScalars.nMultiVolumes + 1);
+    inputScalars.d_Scale.resize(inputScalars.nMultiVolumes + 1);
     if (inputScalars.FPType == 4 || inputScalars.FPType == 5 || inputScalars.BPType == 4 || inputScalars.BPType == 5) {
         inputScalars.dL = options.dL;
-        inputScalars.d_Scale4.resize(inputScalars.nMultiVolumes + 1);
-        inputScalars.dSize.resize(inputScalars.nMultiVolumes + 1);
-        inputScalars.d_Scale.resize(inputScalars.nMultiVolumes + 1);
+        
         float* dScaleX4 = options.dScaleX4;
         float* dScaleY4 = options.dScaleY4;
         float* dScaleZ4 = options.dScaleZ4;
@@ -887,18 +898,19 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         if (inputScalars.useHelical)
             inputScalars.helicalRadius = options.helicalRadius;
     }
-	else if (inputScalars.SPECT && (inputScalars.projector_type == 1 || inputScalars.projector_type == 2 || inputScalars.projector_type == 22 || inputScalars.projector_type == 11)) {
+	else if (inputScalars.SPECT && (inputScalars.projector_type == 1 || inputScalars.projector_type == 2 || inputScalars.projector_type == 3 || inputScalars.projector_type == 22 || inputScalars.projector_type == 11 || inputScalars.projector_type == 13 || inputScalars.projector_type == 23 || inputScalars.projector_type == 33 || inputScalars.projector_type == 31 || inputScalars.projector_type == 32)) {
         inputScalars.nColsD = options.nColsD;
         inputScalars.nRowsD = options.nRowsD;
         inputScalars.coneOfResponseStdCoeffA = options.coneOfResponseStdCoeffA;
         inputScalars.coneOfResponseStdCoeffB = options.coneOfResponseStdCoeffB;
         inputScalars.coneOfResponseStdCoeffC = options.coneOfResponseStdCoeffC;
-        inputScalars.totalFOVxmin = options.totalFOVxmin;
-        inputScalars.totalFOVymin = options.totalFOVymin;
-        inputScalars.totalFOVzmin = options.totalFOVzmin;
-        inputScalars.totalFOVxmax = options.totalFOVxmax;
-        inputScalars.totalFOVymax = options.totalFOVymax;
-        inputScalars.totalFOVzmax = options.totalFOVzmax;
+        inputScalars.ellipseCenterX = options.ellipseCenterX;
+        inputScalars.ellipseCenterY = options.ellipseCenterY;
+        inputScalars.ellipseCenterZ = options.ellipseCenterZ;
+        inputScalars.ellipseRadiusX = options.ellipseRadiusX;
+        inputScalars.ellipseRadiusY = options.ellipseRadiusY;
+        inputScalars.ellipseRadiusZ = options.ellipseRadiusZ;
+        inputScalars.ellipsePower = options.ellipsePower;
     } else {
         inputScalars.nColsD = options.Nang;
         inputScalars.nRowsD = options.Ndist;
@@ -945,6 +957,9 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.maskFP = options.maskFP;
         inputScalars.maskFPZ = options.maskFPZ;
     }
+    if (inputScalars.normalization_correction) {
+        inputScalars.normZ = options.normZ;
+    }
     if (inputScalars.maskBP) {
         w_vec.maskBP = options.maskBP;
         inputScalars.maskBPZ = options.maskBPZ;
@@ -956,22 +971,20 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     else if (inputScalars.maskBP)
         w_vec.maskPrior = options.maskBP;
     // CT-related variables such as number of projection images
+    w_vec.nProjections = options.nProjections;
     if (inputScalars.CT) {
-        w_vec.nProjections = options.nProjections;
         w_vec.dPitchX = options.dPitchX;
         w_vec.dPitchY = options.dPitchY;
     } else if (inputScalars.SPECT) {
-        w_vec.nProjections = options.nProjections;
 		w_vec.dPitchX = options.dPitchX;
 		w_vec.dPitchY = options.dPitchY;
-		if (inputScalars.projector_type == 1 || inputScalars.projector_type == 2 || inputScalars.projector_type == 22 || inputScalars.projector_type == 11) {
+		if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 			w_vec.rayShiftsDetector = options.rayShiftsDetector;
 			w_vec.rayShiftsSource = options.rayShiftsSource;
+			w_vec.detectorVector = options.detectorVector;
 		}
     } else {
-        w_vec.nProjections = options.nProjections;
-        // Detector pitch
-        w_vec.dPitchX = options.cr_p;
+        w_vec.dPitchX = options.cr_p; // Detector pitch
         w_vec.dPitchY = options.cr_pz;
     }
     if (inputScalars.FPType == 4 || inputScalars.BPType == 4)
@@ -1253,7 +1266,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.U = options.U;
     }
     if (DEBUG && (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA)) {
-        mexPrintBase("w_vec.lambda[0] = %f\n", w_vec.lambda[0]);
+        mexPrintBase("w_vec.lambda[0][0] = %f\n", w_vec.lambda[0][0]);
         mexEval();
     }
     if (w_vec.precondTypeIm[3])
@@ -1374,8 +1387,8 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         inputScalars.FISTAType = options.FISTAType;
         if (DEBUG) {
             mexPrint("CPType loaded");
-            mexPrintBase("w_vec.sigma2CP = %d\n", w_vec.sigma2CP[0]);
-            mexPrintBase("w_vec.sigmaCP = %d\n", w_vec.sigmaCP[0]);
+            mexPrintBase("w_vec.sigma2CP = %d\n", w_vec.sigma2CP[0][0]);
+            mexPrintBase("w_vec.sigmaCP = %d\n", w_vec.sigmaCP[0][0]);
             mexPrintBase("w_vec.alpha1CPTGV = %d\n", w_vec.alpha1CPTGV);
             mexPrintBase("w_vec.alpha0CPTGV = %d\n", w_vec.alpha0CPTGV);
             mexPrintBase("options.sigma2CP = %d\n", options.sigma2CP[0]);
@@ -1409,7 +1422,6 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
 // Transfer the ArrayFire arrays from the device to the host pointers
 void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, float* output, float* FPoutput, const scalarStruct& inputScalars,
     std::vector<std::vector<std::vector<float>>>& FPEstimates) {
-    int64_t oo = 0;
     for (int timestep = 0; timestep < inputScalars.Nt; timestep++) {
         if (inputScalars.storeFP) {
             size_t dim = 0ULL;
@@ -1425,7 +1437,8 @@ void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, float* out
             }
         }
         // Transfer data back to host
-        if (CELL && inputScalars.nMultiVolumes > 0) {
+        if (inputScalars.storeMultiResolution && inputScalars.nMultiVolumes > 0) {
+            size_t volumeOffset = 0ULL;
             for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
                 if (DEBUG) {
                     mexPrintBase("inputScalars.Nx[ii] = %d\n", inputScalars.Nx[ii]);
@@ -1436,30 +1449,31 @@ void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, float* out
                 if (inputScalars.saveIter || inputScalars.saveIterationsMiddle > 0) {
                 }
                 else {
+                    const size_t outputOffset = volumeOffset + static_cast<size_t>(timestep) * inputScalars.im_dim[ii];
                     if (MethodList.FDK)
-                        vec.rhs_os[timestep][ii].host(&output[oo]);
+                        vec.rhs_os[timestep][ii].host(&output[outputOffset]);
                     else
-                        vec.im_os[timestep][ii].host(&output[oo]);
+                        vec.im_os[timestep][ii].host(&output[outputOffset]);
                     if (inputScalars.verbose >= 3)
                         mexPrint("Data transfered to host");
-                    oo += inputScalars.im_dim[ii];
                 }
+                volumeOffset += static_cast<size_t>(inputScalars.Nt) * inputScalars.im_dim[ii];
             }
         }
         else {
             if (inputScalars.saveIter || inputScalars.saveIterationsMiddle > 0) {
             }
             else {
+                const size_t outputOffset = static_cast<size_t>(timestep) * inputScalars.im_dim[0];
                 if (MethodList.FDK && inputScalars.largeDim) {
                 }
                 else if (MethodList.FDK && !inputScalars.largeDim) {
-                    vec.rhs_os[timestep][0].host(&output[oo]);
+                    vec.rhs_os[timestep][0].host(&output[outputOffset]);
                 }
                 else
-                    vec.im_os[timestep][0].host(&output[oo]);
+                    vec.im_os[timestep][0].host(&output[outputOffset]);
                 if (inputScalars.verbose >= 3)
                     mexPrint("Data transfered to host");
-                oo += inputScalars.im_dim[0];
             }
         }
         af::sync();

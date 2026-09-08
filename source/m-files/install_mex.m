@@ -699,6 +699,27 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
     %%%%%%%%%%%%%%%%%%%%%%%%% Implementations 2, 3 & 5 %%%%%%%%%%%%%%%%%%%%%%%%
     if (ispc)
         %%% Windows %%%
+        if use_CUDA && (implementation == 0 || implementation == 5)
+            if strcmp(cc.Manufacturer, 'Microsoft')
+            elseif strcmp(cc.Manufacturer, 'Intel')
+            else
+                compflags = 'COMPFLAGS="$COMPFLAGS -std=c++17"';
+                cxxflags = 'CXXFLAGS="$CXXFLAGS -Wp"';
+            end
+            try
+                disp('Building CUDA code for implementation 5.')
+                mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_multi_gpu', ...
+                    compflags, cxxflags, '-DMATLAB', '-DCUDA', ['-I ' folder], ...
+                    ['-I"' cuda_path '/include"'], '-lcuda', '-lnvrtc', ...
+                    ['-L"' cuda_path '/lib/x64"'], [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
+                disp('Implementation 5 built with CUDA support')
+            catch ME
+                warning('CUDA support for implementation 5 not enabled')
+                if verbose
+                    disp(ME.message)
+                end
+            end
+        end
         if isempty(opencl_include_path)
             warning('No OpenCL SDK found. Implementations 2 and 3 will not be built. Use install_mex(1, ''C:/PATH/TO/OPENCL/INCLUDE'', ''C:/PATH/TO/OPENCL/LIB/X64'') to set OpenCL include and library paths.')
         else
@@ -827,7 +848,7 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
                     end
                 end
             end
-            if implementation == 0 || implementation == 3
+            if implementation == 0 || implementation == 3 || (implementation == 5 && ~use_CUDA)
                 if strcmp(cc.Manufacturer, 'Microsoft')
                     cxxflags = 'CXXFLAGS="$CXXFLAGS"';
                 elseif strcmp(cc.Manufacturer, 'Intel')
@@ -968,7 +989,24 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
                 end
             end
         end
-        if implementation == 0 || implementation == 3
+        if use_CUDA && (implementation == 0 || implementation == 5)
+            compflags = 'COMPFLAGS="$COMPFLAGS -std=c++17"';
+            cxxflags = 'CXXFLAGS="$CXXFLAGS -w"';
+            try
+                disp('Building CUDA code for implementation 5.')
+                mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_multi_gpu', ...
+                    ldflags, compflags, cxxflags, '-DMATLAB', '-DCUDA', ['-I' folder], ...
+                    ['-I"' cuda_path '/include"'], '-lcuda', '-lnvrtc', ...
+                    ['-L"' cuda_path '/lib64"'], [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
+                disp('Implementation 5 built with CUDA support')
+            catch ME
+                warning('CUDA support for implementation 5 not enabled')
+                if verbose
+                    disp(ME.message)
+                end
+            end
+        end
+        if implementation == 0 || implementation == 3 || (implementation == 5 && ~use_CUDA)
             if strcmp(cc.Manufacturer, 'Microsoft')
                 cxxflags = 'CXXFLAGS="$CXXFLAGS"';
             elseif strcmp(cc.Manufacturer, 'Intel')
@@ -1303,6 +1341,15 @@ elseif ~ismac
                 disp('CUDA support enabled.')
             catch
                 warning('CUDA support not enabled')
+            end
+            try
+                mkoctfile('--mex', '-DMATLAB', '-DCUDA', '-lcuda', '-lnvrtc', ...
+                    ['-L' cuda_path '/lib64'], ['-I ' folder], ['-I' cuda_path '/include'], ...
+                    [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
+                movefile('OpenCL_matrixfree_multi_gpu.mex', [folder '/CUDA_matrixfree_multi_gpu.mex'],'f');
+                disp('Implementation 5 built with CUDA support.')
+            catch
+                warning('CUDA support for implementation 5 not enabled')
             end
         end
 

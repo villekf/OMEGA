@@ -259,60 +259,85 @@ if subsets > 1 && options.subset_type < 8
         index = {0};
     end
 elseif (subsets > 1 && (options.subset_type == 8 || options.subset_type == 9 || options.subset_type == 10 || options.subset_type == 11 || options.subset_type == 12)) || (subsets == 1)
-    sProjections = floor(options.nProjections / subsets);
-    pituus = zeros(subsets, 1, 'int64');
-    index = cell(subsets, 1);
-    modi = mod(options.nProjections, subsets);
-    uu = double(modi > 0);
-    ind1 = 1;
-    ind2 = sProjections + uu;
-    if options.subset_type == 8 && subsets > 1
-        for kk = 1 : subsets
-            index{kk} = (kk : subsets : options.nProjections)';
-            pituus(kk) = numel(index{kk});
+    dynamicProjectionSubsets = options.listmode == 0 && options.Nt > 1 && ...
+        isfield(options, 'nProjectionsPerFrame') && numel(options.nProjectionsPerFrame) == options.Nt;
+    if dynamicProjectionSubsets
+        projectionCounts = double(options.nProjectionsPerFrame(:));
+        if any(projectionCounts < 1 | projectionCounts ~= fix(projectionCounts))
+            error('The number of projection images in every timeframe must be a positive integer!')
         end
-    elseif options.subset_type == 9 && subsets > 1
-        apu = randperm(options.nProjections)';
-        for kk = 1 : subsets
-            index{kk} = apu(ind1 : ind2);
-            pituus(kk) = numel(index{kk});
-            modi = modi - 1;
-            if modi <= 0
-                uu = 0;
+        index = cell(options.Nt, 1);
+        pituus = zeros(subsets, options.Nt, 'int64');
+        angleOffset = 0;
+        for tt = 1 : options.Nt
+            frameOptions = options;
+            frameOptions.nProjections = projectionCounts(tt);
+            if options.subset_type == 10 && isfield(options, 'angles')
+                frameOptions.angles = options.angles(angleOffset + (1 : projectionCounts(tt)));
             end
-            ind1 = ind2 + 1;
-            ind2 = ind2 + (floor(options.nProjections / subsets)) + uu;
+            [index{tt}, pituus(:,tt)] = projectionSubsetIndices(frameOptions, subsets);
+            angleOffset = angleOffset + projectionCounts(tt);
         end
-    elseif options.subset_type == 10 && subsets > 1
-        if ~isfield(options,'angles')
-            error('Subset type 10 is only available with CT data and when the projections angles (options.angles) are supplied!')
+        pituus = pituus(:);
+    else
+        [index, pituus] = projectionSubsetIndices(options, subsets);
+    end
+elseif options.subset_type > 11
+    error('Invalid subset type!')
+end
+if options.listmode == 0 && options.Nt > 1 && ...
+        ~(exist('dynamicProjectionSubsets', 'var') && dynamicProjectionSubsets)
+    pituus = repmat(pituus,1,options.Nt);
+    pituus = pituus(:);
+end
+if ~iscell(index) && size(index,1) == 1 && ~options.precompute_lor
+    index = 0;
+end
+end
+
+function [index, pituus] = projectionSubsetIndices(options, subsets)
+% Form projection-image subsets for one timeframe.
+sProjections = floor(options.nProjections / subsets);
+pituus = zeros(subsets, 1, 'int64');
+subsetIndex = cell(subsets, 1);
+modi = mod(options.nProjections, subsets);
+uu = double(modi > 0);
+ind1 = 1;
+ind2 = sProjections + uu;
+
+if options.subset_type == 8 && subsets > 1
+    for kk = 1 : subsets
+        subsetIndex{kk} = (kk : subsets : options.nProjections)';
+        pituus(kk) = numel(subsetIndex{kk});
+    end
+elseif options.subset_type == 9 && subsets > 1
+    apu = randperm(options.nProjections)';
+    for kk = 1 : subsets
+        subsetIndex{kk} = apu(ind1 : ind2);
+        pituus(kk) = numel(subsetIndex{kk});
+        modi = modi - 1;
+        if modi <= 0
+            uu = 0;
         end
-        ga = 2.39996322972865332;
-        options.angles = abs(options.angles);
-        angles = options.angles - min(options.angles);
-        anglesOrig = angles;
-        maksimi = max(angles);
-        ga = ga * (maksimi / (2*pi));
-        angle = 0;
-        for kk = 1 : subsets - 1
-            ind = zeros(floor(numel(options.angles) / subsets),1);
-            for ii = 1 : floor(numel(options.angles) / subsets)
-                [~,I] = min(abs(angles-angle));
-                II = find(ismember(anglesOrig,angles(I)));
-                angles(I) = [];
-                ind(ii) = II;
-                angle = angle + ga;
-                if angle > maksimi
-                    angle = angle - maksimi;
-                end
-            end
-            index{kk} = ind;
-            pituus(kk) = numel(index{kk});
-        end
-        ind = zeros(ceil(numel(options.angles) / subsets),1);
-        for ii = 1 : ceil(numel(options.angles) / subsets)
+        ind1 = ind2 + 1;
+        ind2 = ind2 + sProjections + uu;
+    end
+elseif options.subset_type == 10 && subsets > 1
+    if ~isfield(options,'angles') || numel(options.angles) ~= options.nProjections
+        error('Subset type 10 requires one projection angle for every projection image in the current timeframe!')
+    end
+    ga = 2.39996322972865332;
+    angles = abs(options.angles);
+    angles = angles - min(angles);
+    anglesOrig = angles;
+    maksimi = max(angles);
+    ga = ga * (maksimi / (2*pi));
+    angle = 0;
+    for kk = 1 : subsets - 1
+        ind = zeros(floor(numel(options.angles) / subsets),1);
+        for ii = 1 : floor(numel(options.angles) / subsets)
             [~,I] = min(abs(angles-angle));
-            II = find(ismember(anglesOrig,angles(I)));
+            II = find(ismember(anglesOrig,angles(I)), 1);
             angles(I) = [];
             ind(ii) = II;
             angle = angle + ga;
@@ -320,58 +345,61 @@ elseif (subsets > 1 && (options.subset_type == 8 || options.subset_type == 9 || 
                 angle = angle - maksimi;
             end
         end
-        index{subsets} = ind;
-        pituus(subsets) = numel(index{subsets});
-    elseif options.subset_type == 11 && subsets > 1
-        v = powerFactorSubsets(options.nProjections);
-        for kk = 1 : subsets
-            index{kk} = v(ind1 : ind2);
-            pituus(kk) = numel(index{kk});
-            modi = modi - 1;
-            if modi <= 0
-                uu = 0;
-            end
-            ind1 = ind2 + 1;
-            ind2 = ind2 + (floor(options.nProjections / subsets)) + uu;
+        subsetIndex{kk} = ind;
+        pituus(kk) = numel(subsetIndex{kk});
+    end
+    ind = zeros(ceil(numel(options.angles) / subsets),1);
+    for ii = 1 : ceil(numel(options.angles) / subsets)
+        [~,I] = min(abs(angles-angle));
+        II = find(ismember(anglesOrig,angles(I)), 1);
+        angles(I) = [];
+        ind(ii) = II;
+        angle = angle + ga;
+        if angle > maksimi
+            angle = angle - maksimi;
         end
-    elseif options.subset_type == 12 && subsets > 1
-        for kk = 1 : subsets
-            index{kk} = [(kk : subsets : options.nProjections/2);(kk + options.nProjections/2 : subsets : options.nProjections)];
-            index{kk} = index{kk}(:);
-            pituus(kk) = numel(index{kk});
+    end
+    subsetIndex{subsets} = ind;
+    pituus(subsets) = numel(subsetIndex{subsets});
+elseif options.subset_type == 11 && subsets > 1
+    v = powerFactorSubsets(options.nProjections);
+    for kk = 1 : subsets
+        subsetIndex{kk} = v(ind1 : ind2);
+        pituus(kk) = numel(subsetIndex{kk});
+        modi = modi - 1;
+        if modi <= 0
+            uu = 0;
         end
+        ind1 = ind2 + 1;
+        ind2 = ind2 + sProjections + uu;
+    end
+elseif options.subset_type == 12 && subsets > 1
+    for kk = 1 : subsets
+        subsetIndex{kk} = [(kk : subsets : options.nProjections/2); ...
+            (kk + options.nProjections/2 : subsets : options.nProjections)];
+        subsetIndex{kk} = subsetIndex{kk}(:);
+        pituus(kk) = numel(subsetIndex{kk});
+    end
+else
+    if options.use_raw_data
+        pituus = int64(options.detectors^2/2 + options.detectors/2);
+        subsetIndex{1} = uint32(1 : pituus)';
+    elseif options.listmode
+        if options.useIndexBasedReconstruction
+            pituus(1) = numel(options.trIndex) / 2;
+        else
+            pituus(1) = numel(options.x) / 6;
+        end
+        subsetIndex = {0};
     else
-        if options.use_raw_data
-            pituus = int64(options.detectors^2/2 + options.detectors/2);
-            index{1} = uint32(1 : pituus)';
-        else
-            index{1} = (1 : options.nProjections)';
-        end
-        pituus(1) = numel(index{1});
-    end
-    if options.subsets == 1
-        if (options.CT || options.PET || options.SPECT) && options.listmode == 0
-            pituus(1) = options.NSinos;
-        elseif options.listmode
-            if options.useIndexBasedReconstruction
-                pituus(1) = numel(options.trIndex) / 2;
-            else
-                pituus(1) = numel(options.x) / 6;
-            end
-            index = {0};
-        else
+        subsetIndex{1} = (1 : options.nProjections)';
+        if subsets == 1 && ~(options.CT || options.PET || options.SPECT)
             pituus(1) = options.Nang * options.Ndist * options.NSinos;
+        else
+            pituus(1) = numel(subsetIndex{1});
         end
     end
-    index = cell2mat(index);
-    pituus = pituus(:);
-elseif options.subset_type > 11
-    error('Invalid subset type!')
 end
-if options.listmode == 0 && options.Nt > 1
-    pituus = repmat(pituus,1,options.Nt);
-    pituus = pituus(:);
-end
-if ~iscell(index) && size(index,1) == 1 && ~options.precompute_lor
-    index = 0;
+index = cell2mat(subsetIndex);
+pituus = pituus(:);
 end

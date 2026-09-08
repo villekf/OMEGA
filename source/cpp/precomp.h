@@ -28,6 +28,7 @@ struct float2a {
 #include <cstdio>
 #include <cstdint>
 #include <fstream>
+#include <limits>
 #ifdef MATLAB
 #include "mexFunktio.h"
 #endif
@@ -53,9 +54,9 @@ struct largeDimStruct {
 
 typedef struct structForScalars {
 	uint32_t projector_type = 1, attenuation_correction = 0, randoms_correction = 0, scatter = 0, normalization_correction = 0, 
-		nColsD, nRowsD, size_z, subsets = 1, det_per_ring, Niter = 1, Nt = 1, subsetType = 0, nMultiVolumes = 0, nLayers = 1, 
+		nColsD, nRowsD, nHeads = 1, size_z, subsets = 1, det_per_ring, Niter = 1, Nt = 1, subsetType = 0, nMultiVolumes = 0, nLayers = 1,
 		nRekos = 1, osa_iter0 = 0, timestep0 = 0, nRekos2 = 0, subsetsUsed = 1, timestepsUsed = 1, TOFsubsets = 1, Nxy = 0U, NxOrig = 0U, NyOrig = 0U, NzOrig = 0U, NxPrior = 0U, NyPrior = 0U, NzPrior = 0U,
-		BPType = 1, FPType = 1, adaptiveType = 0, rings = 0, FISTAType = 0, maskFPZ = 1, maskBPZ = 1, currentSubset = 0;
+		BPType = 1, FPType = 1, adaptiveType = 0, rings = 0, FISTAType = 0, maskFPZ = 1, normZ = 1, maskBPZ = 1, currentSubset = 0;
 	uint32_t platform = 0;
 	std::vector<uint32_t> Nx{ 1, 0, 0, 0, 0, 0, 0 }, Ny{ 1, 0, 0, 0, 0, 0, 0 }, Nz{ 1, 0, 0, 0, 0, 0, 0 };
 	float crystal_size_z = 0.f, epps = 1e-6f, sigma_x = 0.f, tube_width = 0.f, bmin = 0.f, bmax = 0.f, Vmax = 0.f, global_factor = 1.f,
@@ -66,7 +67,7 @@ typedef struct structForScalars {
 	bool use_psf = false, TOF = false, SPECT = false, pitch = false, PET = false, meanFP = false, meanBP = false,
 		maskFP = false, maskBP = false, orthXY = false, orthZ = false, CT = false, atomic_64bit = false, atomic_32bit = false, loadTOF = true,
 		saveIter = false, enforcePositivity = false, computeSensImag = false, useMAD = true, useImages = false, eFOV = false,
-		useExtendedFOV = false, use64BitIndices = false, TGV2D = false, multiResolution = false, offset = false, relaxScaling = false,
+		useExtendedFOV = false, use64BitIndices = false, TGV2D = false, multiResolution = false, storeMultiResolution = false, offset = false, relaxScaling = false,
 		computeRelaxation = false, storeFP = false, deconvolution = false, CTAttenuation = true, largeDim = false, storeResidual = false,
 		useBuffers = true, useFDKWeights = false, indexBased = false, FISTAAcceleration = false, stochastic = false, useTotLength = true,
 		useParallelBeam = false, useHelical = false;
@@ -105,7 +106,8 @@ typedef struct structForScalars {
 	std::vector<uint32_t> usedDevices;
 	largeDimStruct lDimStruct;
 	float coneOfResponseStdCoeffA = 0.01f, coneOfResponseStdCoeffB = 0.01f, coneOfResponseStdCoeffC = 0.01f;
-    float totalFOVxmin = 1.f, totalFOVymin = 1.f, totalFOVzmin = 1.f, totalFOVxmax = 1.f, totalFOVymax = 1.f, totalFOVzmax = 1.f;
+	float ellipseCenterX = 0.f, ellipseCenterY = 0.f, ellipseCenterZ = 0.f, ellipseRadiusX = 1.f, ellipseRadiusY = 1.f, ellipseRadiusZ = 1.f,
+		ellipsePower = std::numeric_limits<float>::infinity();
 } scalarStruct;
 
 #ifdef OPENCL
@@ -119,8 +121,13 @@ typedef struct _OpenCL_im_vectors {
 #elif defined(CUDA) || defined(HIP)
 typedef struct _CUDA_im_vectors {
 	CUdeviceptr d_meanFP, d_meanBP;
+#if !defined(AF)
+	CUdeviceptr d_im;
+	std::vector<CUdeviceptr> d_rhs_os;
+#else
 	CUdeviceptr* d_im;
 	std::vector<CUdeviceptr*> d_rhs_os;
+#endif
 	CUtexObject d_image_os, d_image_os_int;
 } CUDA_im_vectors;
 #elif defined(METAL)

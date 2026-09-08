@@ -27,7 +27,7 @@ if options.BSREM || options.ROSEM_MAP
 end
 
 if iscell(im_vectors.recApu)
-    im_vectors.recImage(:, iter_n, tt) = im_vectors.recApu{1};
+    im_vectors.recImage = im_vectors.recApu;
 else
     im_vectors.recImage(:, iter_n, tt) = im_vectors.recApu;
 end

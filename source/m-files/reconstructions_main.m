@@ -235,6 +235,7 @@ if ismember(options.param.implementation, [1, 4, 5])
 
     % Loop through all time steps
     for llo = 1 : partitions
+        options.timestep = llo;
         if iscell(options.param.SinM)
             Sino = options.param.SinM{llo};
         else
@@ -683,7 +684,8 @@ elseif ismember(options.param.implementation, [2, 3])
             options.param.SinM = single(full(options.param.SinM));
         end
         if iscell(options.param.SinM)
-            options.param.SinM = cell2mat(options.param.SinM);
+            inputCells = cellfun(@(x) x(:), options.param.SinM, 'UniformOutput', false);
+            options.param.SinM = vertcat(inputCells{:});
         end
         if ~isa(options.param.SinM, 'single') && options.param.loadTOF
             options.param.SinM = single(options.param.SinM);
@@ -721,12 +723,13 @@ end
 
 if options.param.useEFOV && ~options.param.useMultiResolutionVolumes
     if options.param.transaxialEFOV
-        nTrans = (options.param.Nx - options.param.NxOrig)/2;
-        pz = pz(1 + nTrans:end-nTrans,1 + nTrans:end-nTrans,:,:,:);
+        nTransX = (options.param.Nx - options.param.NxOrig)/2;
+        nTransY = (options.param.Ny - options.param.NyOrig)/2;
+        pz = pz((1 + nTransX-options.param.eFOVShift_Nx):(end-nTransX-options.param.eFOVShift_Nx), (1 + nTransY-options.param.eFOVShift_Ny):(end-nTransY-options.param.eFOVShift_Ny),:,:,:);
     end
     if options.param.axialEFOV
         nAxial = (options.param.Nz - options.param.NzOrig)/2;
-        pz = pz(:,:,1 + nAxial:end-nAxial,:,:,:);
+        pz = pz(:,:,1 + nAxial+options.param.eFOVShift_Nz:end-nAxial+options.param.eFOVShift_Nz,:,:,:);
     end
 end
 if options.param.storeFP && (options.param.subsets == 1 || options.param.subset_type >= 8) && options.param.implementation == 2 && ~options.param.FDK

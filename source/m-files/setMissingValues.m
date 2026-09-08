@@ -268,23 +268,29 @@ end
 if ~isfield(options, 'oOffsetZ')
     options.oOffsetZ = 0;
 end
-if ~isfield(options, 'totalFOVxmin')
-    options.totalFOVxmin = -options.FOVa_x / 2 + options.oOffsetX;
+if ~isfield(options, 'ellipseCenterX')
+    options.ellipseCenterX = 0;
 end
-if ~isfield(options, 'totalFOVymin')
-    options.totalFOVymin = -options.FOVa_y / 2 + options.oOffsetY;
+if ~isfield(options, 'ellipseCenterY')
+    options.ellipseCenterY = 0;
 end
-if ~isfield(options, 'totalFOVzmin')
-    options.totalFOVzmin = -options.axial_fov / 2 + options.oOffsetZ;
+if ~isfield(options, 'ellipseCenterZ')
+    options.ellipseCenterZ = 0;
 end
-if ~isfield(options, 'totalFOVxmax')
-    options.totalFOVxmax = options.FOVa_x / 2 + options.oOffsetX;
+if ~isfield(options, 'ellipseRadiusX') || ~isfield(options, 'ellipseRadiusY') || ~isfield(options, 'ellipseRadiusZ')
+    options.ellipseRadiusX = options.FOVa_x / 2;
+    options.ellipseRadiusY = options.FOVa_y / 2;
+    options.ellipseRadiusZ = options.axial_fov / 2;
+    options.ellipseParametersDerived = true;
 end
-if ~isfield(options, 'totalFOVymax')
-    options.totalFOVymax = options.FOVa_y / 2 + options.oOffsetY;
+if ~isfield(options, 'ellipsePower')
+    options.ellipsePower = Inf;
 end
-if ~isfield(options, 'totalFOVzmax')
-    options.totalFOVzmax = options.axial_fov / 2 + options.oOffsetZ;
+if ~isfield(options, 'ellipseCenterOffsetApplied') || ~options.ellipseCenterOffsetApplied
+    options.ellipseCenterX = options.ellipseCenterX + options.oOffsetX;
+    options.ellipseCenterY = options.ellipseCenterY + options.oOffsetY;
+    options.ellipseCenterZ = options.ellipseCenterZ + options.oOffsetZ;
+    options.ellipseCenterOffsetApplied = true;
 end
 if ~isfield(options, 'tube_width_z')
     options.tube_width_z = 0;
@@ -331,13 +337,17 @@ if ~isfield(options, 'nRays')
 end
 if ~isfield(options, 'n_rays_transaxial')
     if options.SPECT
-        options.n_rays_transaxial = options.nRays;
+        options.n_rays_transaxial = sqrt(options.nRays);
     else
         options.n_rays_transaxial = 1;
     end
 end
 if ~isfield(options, 'n_rays_axial')
-    options.n_rays_axial = 1;
+    if options.SPECT
+        options.n_rays_axial = sqrt(options.nRays);
+    else
+        options.n_rays_axial = 1;
+    end
 end
 if ~isfield(options, 'cpu_to_gpu_factor')
     options.cpu_to_gpu_factor = 1;
@@ -932,6 +942,9 @@ end
 if ~isfield(options, 'useEFOV')
     options.useEFOV = false;
 end
+if ~isfield(options, 'eFOVShift')
+    options.eFOVShift = [0 0 0];
+end
 if ~isfield(options, 'useExtrapolation')
     options.useExtrapolation = false;
 end
@@ -970,6 +983,9 @@ if ~isfield(options, 'delta_PKMA')
 end
 if ~isfield(options, 'useMultiResolutionVolumes')
     options.useMultiResolutionVolumes = false;
+end
+if ~isfield(options, 'storeMultiResolution') % TODO: true value stores all multi-resolution volumes as cell array.
+    options.storeMultiResolution = false;
 end
 if ~isfield(options, 'nMultiVolumes')
     options.nMultiVolumes = 0;
@@ -1034,6 +1050,9 @@ end
 if ~isfield(options, 'FISTAType')
     options.FISTAType = 0;
 end
+if ~isfield(options,'normZ')
+    options.normZ = 1;
+end
 if ~isfield(options,'maskFPZ')
     options.maskFPZ = 1;
 end
@@ -1073,6 +1092,12 @@ end
 if ~isfield(options, 'colL') % SPECT collimator hole length
     options.colL = 1;
 end
+if ~isfield(options, 'colLxy') % SPECT transaxial collimator hole length
+    options.colLxy = options.colL;
+end
+if ~isfield(options, 'colLz') % SPECT axial collimator hole length
+    options.colLz = options.colL;
+end
 if ~isfield(options, 'colD') % SPECT collimator distance from detector surface
     options.colD = 1;
 end
@@ -1090,6 +1115,12 @@ if ~isfield(options, 'rayShiftsDetector')
 end
 if ~isfield(options, 'rayShiftsSource')
     options.rayShiftsSource = [];
+end
+if ~isfield(options, 'nHeads') || isempty(options.nHeads)
+    options.nHeads = 1;
+end
+if options.SPECT && (~isfield(options, 'DetectorVector') || isempty(options.DetectorVector))
+    options.DetectorVector = zeros(options.nProjections, 1, 'uint32');
 end
 if ~isfield(options, 'iR')
     options.iR = 1;

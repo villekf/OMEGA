@@ -22,9 +22,10 @@ function options = SPECTParameters(options)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelling, ray tracing projectors
+    nRays = options.n_rays_transaxial * options.n_rays_axial;
     if numel(options.rayShiftsDetector) == 0
         options.rayShiftsDetector = [0; 0];
-        options.rayShiftsDetector = repmat(options.rayShiftsDetector, [options.nRays, options.nRowsD, options.nColsD, options.nProjections]);
+        options.rayShiftsDetector = repmat(options.rayShiftsDetector, [nRays, options.nRowsD, options.nColsD, options.nHeads]);
 
         if options.colFxy == 0 && options.colFz == 0 % Pinhole collimator
             dx = linspace(-(options.nRowsD/2-0.5)*options.dPitchX, (options.nRowsD/2-0.5)*options.dPitchX, options.nRowsD);
@@ -32,7 +33,7 @@ if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelli
             
             for ii = 1:options.nRowsD
                 for jj = 1:options.nColsD
-                    for kk = 1:options.nRays
+                    for kk = 1:nRays
                         options.rayShiftsDetector(2*(kk-1)+1, ii, jj, :) = -dx(ii);
                         options.rayShiftsDetector(2*(kk-1)+2, ii, jj, :) = -dy(jj);
                     end
@@ -42,11 +43,11 @@ if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelli
     end
     if numel(options.rayShiftsSource) == 0
         options.rayShiftsSource = [0; 0];
-        options.rayShiftsSource = repmat(options.rayShiftsSource, [options.nRays, options.nRowsD, options.nColsD, options.nProjections]);
+        options.rayShiftsSource = repmat(options.rayShiftsSource, [nRays, options.nRowsD, options.nColsD, options.nHeads]);
 
-        if options.nRays > 1 % Multiray shifts
-            nRays = sqrt(options.nRays);
-            [tmp_x, tmp_y] = meshgrid(linspace(-0.5, 0.5, nRays));
+        if nRays > 1 % Multiray shifts
+            [tmp_x, tmp_y] = ndgrid(linspace(-0.5, 0.5, options.n_rays_transaxial), ...
+                linspace(-0.5, 0.5, options.n_rays_axial));
             if options.colFxy == 0 && options.colFz == 0 % Pinhole collimator
                 tmp_x = options.dPitchX * tmp_x;
                 tmp_y = options.dPitchY * tmp_y;
@@ -57,10 +58,20 @@ if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelli
 
             tmp_shift = reshape([tmp_x(:), tmp_y(:)].', 1, [])';
 
-            for kk = 1:options.nRays
+            for kk = 1:nRays
                 options.rayShiftsSource(2*(kk-1)+1,:,:,:) = tmp_shift(2*(kk-1)+1);
                 options.rayShiftsSource(2*(kk-1)+2,:,:,:) = tmp_shift(2*(kk-1)+2);
             end
+        end
+    end
+    if ismember(options.projector_type, [1, 11, 12, 21])
+        % Source shifts use the transaxial collimator length as reference.
+        lengthXY = options.colD + 0.5 * options.colLxy;
+        lengthZ = options.colD + 0.5 * options.colLz;
+        if lengthXY ~= lengthZ
+            detectorShiftZ = options.rayShiftsDetector(2:2:end,:,:,:);
+            options.rayShiftsSource(2:2:end,:,:,:) = detectorShiftZ + ...
+                (options.rayShiftsSource(2:2:end,:,:,:) - detectorShiftZ) * (lengthXY / lengthZ);
         end
     end
     if ismember(options.implementation, [2, 3, 5])

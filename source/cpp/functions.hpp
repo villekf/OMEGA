@@ -30,38 +30,8 @@
 #define transferAF(varA) (varA).device<CUdeviceptr>()
 #endif
 #elif defined(METAL)
-#include <af/internal.h>
 #include "ProjectorClass.h"
-
-// ArrayFire's Metal backend currently stores arrays in host allocations and
-// stages them for its own kernels.  OMEGA's projectors use native MTL::Buffer
-// objects, so bridge the two with shared Metal staging buffers.
-inline NS::SharedPtr<MTL::Buffer> transferAFMetal(const af::array& array,
-	ProjectorClass& proj) {
-	array.eval();
-	af::sync();
-	void* data = array.device<void>();
-	auto buffer = NS::TransferPtr(proj.mtlDevice->newBuffer(
-		data, static_cast<NS::UInteger>(array.bytes()),
-		(MTL::ResourceOptions)MTL::ResourceStorageModeShared));
-	if (!buffer) {
-		array.unlock();
-		throw std::runtime_error("Unable to create Metal staging buffer for an ArrayFire array");
-	}
-	return buffer;
-}
-
-inline void transferMetalToAF(const NS::SharedPtr<MTL::Buffer>& buffer,
-	const af::array& array) {
-	if (!buffer || !buffer->contents())
-		throw std::runtime_error("Unable to read an OMEGA Metal staging buffer");
-	void* data = nullptr;
-	if (af_get_raw_ptr(&data, array.get()) != AF_SUCCESS || !data)
-		throw std::runtime_error("Unable to access an ArrayFire Metal array");
-	std::memcpy(data, buffer->contents(), array.bytes());
-}
-
-#define transferAF(varA) transferAFMetal(varA, proj)
+#define transferAF(varA) NS::RetainPtr(reinterpret_cast<MTL::Buffer*>((varA).device<void>()))
 #elif defined(CPU)
 #include "ProjectorClassCPU.h"
 #define transferAF(varA) varA.device<float>()
@@ -446,27 +416,12 @@ inline af::array computeConvolution(const af::array& vec, const af::array& g, co
 /// <param name="apuSum the sensitivity image"></param>
 /// <param name="proj the projector class object"></param>
 /// <returns></returns>
-inline void transferSensitivityImage(af::array& apuSum, ProjectorClass& proj, const size_t bufferIndex = 0) {
+inline void transferSensitivityImage(af::array& apuSum, ProjectorClass& proj) {
 	apuSum.eval();
-#ifdef METAL
-	if (proj.d_Summ.size() <= bufferIndex)
-		proj.d_Summ.resize(bufferIndex + 1);
-	proj.d_Summ[bufferIndex] = transferAF(apuSum);
-	if (proj.sensitivityHosts.size() <= bufferIndex) {
-		proj.sensitivityHosts.resize(bufferIndex + 1, nullptr);
-		proj.sensitivityByteCounts.resize(bufferIndex + 1, 0ULL);
-	}
-	proj.sensitivityHosts[bufferIndex] = nullptr;
-	proj.sensitivityByteCounts[bufferIndex] = apuSum.bytes();
-	if (af_get_raw_ptr(&proj.sensitivityHosts[bufferIndex], apuSum.get()) != AF_SUCCESS)
-		throw std::runtime_error("Unable to access the ArrayFire sensitivity image");
-#else
-	(void)bufferIndex;
 	if (proj.d_Summ.size() < 1)
 		proj.d_Summ.emplace_back(transferAF(apuSum));
 	else
 		proj.d_Summ[0] = transferAF(apuSum);
-#endif
 }
 
 /// <summary>
@@ -475,44 +430,21 @@ inline void transferSensitivityImage(af::array& apuSum, ProjectorClass& proj, co
 /// <param name="rhs_os the backprojection"></param>
 /// <param name="proj the projector class object"></param>
 /// <returns></returns>
-inline int transferRHS(af::array& rhs_os, ProjectorClass& proj, const size_t bufferIndex = 0) {
+inline int transferRHS(af::array& rhs_os, ProjectorClass& proj) {
 	if (DEBUG) {
 		mexPrintBase("proj.vec_opencl.d_rhs_os.size() = %u\n", proj.vec_opencl.d_rhs_os.size());
 		mexEval();
 	}
-#ifdef METAL
-	if (proj.vec_opencl.d_rhs_os.size() <= bufferIndex)
-		proj.vec_opencl.d_rhs_os.resize(bufferIndex + 1);
-	proj.vec_opencl.d_rhs_os[bufferIndex] = transferAF(rhs_os);
-#else
-	(void)bufferIndex;
 	if (proj.vec_opencl.d_rhs_os.size() < 1)
 		proj.vec_opencl.d_rhs_os.emplace_back(transferAF(rhs_os));
 	else
 		proj.vec_opencl.d_rhs_os[0] = transferAF(rhs_os);
-#endif
 	if (DEBUG) {
 		mexPrintBase("proj.vec_opencl.d_rhs_os.size() = %u\n", proj.vec_opencl.d_rhs_os.size());
 		mexEval();
 	}
 	return 0;
 }
-
-#ifdef METAL
-inline void transferMetalBackprojectionToAF(AF_im_vectors& vec, ProjectorClass& proj,
-	const uint32_t timestep, const int ii) {
-	const size_t bufferIndex = static_cast<size_t>(ii);
-	if (proj.vec_opencl.d_rhs_os.size() <= bufferIndex)
-		throw std::runtime_error("Missing Metal backprojection staging buffer");
-	transferMetalToAF(proj.vec_opencl.d_rhs_os[bufferIndex], vec.rhs_os[timestep][ii]);
-	if (proj.no_norm == 0 && proj.d_Summ.size() > bufferIndex && proj.d_Summ[bufferIndex] &&
-		proj.sensitivityHosts.size() > bufferIndex && proj.sensitivityHosts[bufferIndex] &&
-		proj.sensitivityByteCounts.size() > bufferIndex && proj.d_Summ[bufferIndex]->contents()) {
-		std::memcpy(proj.sensitivityHosts[bufferIndex], proj.d_Summ[bufferIndex]->contents(),
-			proj.sensitivityByteCounts[bufferIndex]);
-	}
-}
-#endif
 
 /// <summary>
 /// Copy the current estimates from an ArrayFire array to an OpenCL image/CUDA texture. For branchless distance-driven, compute the integral images before copy
@@ -955,6 +887,7 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			proj.vec_opencl.d_im = transferAF(vec.im_os_blurred[ii]);
 		else
 			proj.vec_opencl.d_im = transferAF(vec.im_os[timestep][ii]);
+		proj.vec_opencl.d_image_os.reset(); // The texture wraps the current volume buffer and dimensions.
 #else
 		if (inputScalars.use_psf)
 			proj.vec_opencl.d_im_os = vec.im_os_blurred[ii].device<float>();
@@ -988,9 +921,6 @@ inline int forwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputScal
 	if (inputScalars.meanFP && inputScalars.FPType == 5)
 		proj.d_meanFP = transferAF(vec.meanFP);
 	status = proj.forwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, ii);
-#ifdef METAL
-	transferMetalToAF(proj.d_output, outputFP);
-#endif
 	if (inputScalars.useBuffers) {
 		if (inputScalars.use_psf)
 			vec.im_os_blurred[ii].unlock();
@@ -1046,21 +976,9 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 		mexPrint("Transferring backprojection output\n");
 	}
 	if (fastStep)
-		status = transferRHS(vec.im_os[timestep][ii], proj,
-#ifdef METAL
-			static_cast<size_t>(ii)
-#else
-			0
-#endif
-		);
+		status = transferRHS(vec.im_os[timestep][ii], proj);
 	else
-		status = transferRHS(vec.rhs_os[timestep][ii], proj,
-#ifdef METAL
-			static_cast<size_t>(ii)
-#else
-			0
-#endif
-		);
+		status = transferRHS(vec.rhs_os[timestep][ii], proj);
 	if (status != 0) {
 		return -1;
 	}
@@ -1103,7 +1021,7 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 				Nz = inputScalars.lDimStruct.NzPr[lDimChunk];
 			if (proj.transferTex(inputScalars, proj.vec_opencl.d_rhs_os[0], false, Nz) != 0)
 				return -1;
-#else
+#elif defined(OPENCL)
 			const size_t origRegionZ = proj.region[2];
 			if (inputScalars.largeDim && lDimChunk >= 0) {
 				proj.region[2] = inputScalars.lDimStruct.NzPr[lDimChunk];
@@ -1123,13 +1041,13 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 	}
 	if (inputScalars.meanBP && inputScalars.BPType == 5)
 		proj.d_meanBP = transferAF(meanBP);
-#if defined(CUDA) || defined(HIP)
-	status = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, MethodList, compSens, ii, 0, queueIdx, newInput);
-#elif defined(METAL)
-	status = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, MethodList, compSens, ii, ii, ii, queueIdx, newInput);
-#else
-	status = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, MethodList, compSens, ii, 0, -1, queueIdx, newInput);
+#if defined(METAL)
+	// With image-mode BP the projected data is copied from d_output into a
+	// Metal texture. Synchronize the preceding ArrayFire update before that
+	// CPU-side texture upload.
+	af::sync();
 #endif
+	status = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, MethodList, compSens, ii, 0, -1, queueIdx, newInput);
 	// Only unlock after all the queues/streams have finalized
 	if (fastStep && finalize) {
 		if (proj.fastAlg == 0)
@@ -1152,10 +1070,6 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 	}
 	if (ii == 0 && finalize && inputScalars.fastPDHG && proj.fastNLMUsed && MethodList.NLM)
 		w_vec.gaussianNLM.unlock();
-#ifdef METAL
-	if (finalize && status == 0)
-		transferMetalBackprojectionToAF(vec, proj, timestep, ii);
-#endif
 #else
 	 status = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, pituus, compSens, ii);
 #endif
@@ -1189,9 +1103,6 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 // Required as a separate step in the multi-queue/stream case as the unlocks need to be done after everything is done
 inline int finalizeBackwardProjectionAF(AF_im_vectors& vec, const scalarStruct& inputScalars, const Weighting& w_vec, const RecMethods& MethodList, af::array& outputFP, af::array& meanBP,
 	const af::array& g, ProjectorClass& proj, const uint32_t timestep, const int ii = 0) {
-#ifdef METAL
-	transferMetalBackprojectionToAF(vec, proj, timestep, ii);
-#endif
 #ifndef CPU
 	const bool fastStep = inputScalars.fastPDHG && proj.fastStep != 0;
 #else
@@ -1243,10 +1154,9 @@ inline int finalizeBackwardProjectionAF(AF_im_vectors& vec, const scalarStruct& 
 	return 0;
 }
 
-// The current Metal projector library contains the forward/backprojector
-// kernels. Auxiliary projector-side prior kernels are not part of that
-// library yet; keep their API available so the common reconstruction driver
-// compiles and reports an unsupported selection cleanly if requested.
+// Metal does not yet expose the auxiliary projector-side prior kernels
+// other than PDHG. Keep their API available so the common reconstruction
+// driver reports an unsupported selection cleanly.
 #ifdef METAL
 inline int MRPAF(af::array&, af::array&, const scalarStruct&, ProjectorClass&, const uint32_t, const uint32_t, const uint32_t) { return -1; }
 inline int NLMAF(af::array&, const af::array&, const scalarStruct&, Weighting&, ProjectorClass&, const float, const int = 0) { return -1; }
@@ -1266,8 +1176,6 @@ inline int proxTGVDivAF(const std::vector<af::array>&, std::vector<af::array>&, 
 	const float, const float, ProjectorClass&) { return -1; }
 inline int elementWiseAF(const af::array&, af::array&, const bool, ProjectorClass&, const bool = false) { return -1; }
 inline int poissonUpdateAF(af::array&, const af::array&, const scalarStruct&, const float, const float, const float, ProjectorClass&, const int = 0) { return -1; }
-inline int PDHGUpdateAF(af::array&, const af::array&, const scalarStruct&, AF_im_vectors&, const float, const float, const float, ProjectorClass&, const uint32_t, const int = 0) { return -1; }
-inline int rotateCustomAF(af::array&, const af::array&, const scalarStruct&, ProjectorClass&, const float, const int = 0) { return -1; }
 #else
 
 // Computes custom median root prior, OpenCL, CUDA or CPU
@@ -1944,7 +1852,11 @@ inline int poissonUpdateAF(af::array& im, const af::array& rhs, const scalarStru
 	return status;
 }
 
+#endif
+#endif
+
 // Same as above, but for PDHG
+#ifndef CPU
 inline int PDHGUpdateAF(af::array& im, const af::array& rhs, const scalarStruct& inputScalars, AF_im_vectors& vec, const float epps, const float theta, const float tau, ProjectorClass& proj, const uint32_t timestep, const int ii = 0) {
 	int status = 0;
 	proj.d_im = transferAF(im);
@@ -1959,12 +1871,14 @@ inline int PDHGUpdateAF(af::array& im, const af::array& rhs, const scalarStruct&
 	}
 	return status;
 }
+#endif
 
+#if !defined(CPU)
 inline int rotateCustomAF(af::array& imrot, const af::array& im, const scalarStruct& inputScalars, ProjectorClass& proj, const float angle, const int ii = 0) {
 	int status = 0;
 	if (!inputScalars.useBuffers) {
-#if defined(CUDA)
-		CUdeviceptr* input = transferAF(im);
+#if defined(CUDA) || defined(HIP) || defined(METAL)
+		AFDEVBUFF_t input = transferAF(im);
 		status = proj.transferTex(inputScalars, input, false, inputScalars.Nz[0]);
 #elif defined(OPENCL)
         status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*im.device<cl_mem>(), true), proj.d_inputI, 0, proj.origin, proj.region);
@@ -1981,7 +1895,7 @@ inline int rotateCustomAF(af::array& imrot, const af::array& im, const scalarStr
 	proj.d_rhs = transferAF(imrot);
 	const float cosa = std::cos(-angle);
 	const float sina = std::sin(-angle);
-	status = proj.rotateCustom(inputScalars, cosa, sina);
+	status = proj.rotateCustom(inputScalars, cosa, sina, ii);
 	imrot.unlock();
 	im.unlock();
 	if (status != 0) {
@@ -1989,7 +1903,6 @@ inline int rotateCustomAF(af::array& imrot, const af::array& im, const scalarStr
 	}
 	return status;
 }
-#endif
 #endif
 
 // Various batch functions
@@ -2122,7 +2035,7 @@ inline void forwardProjectionType6(af::array& fProj, const Weighting& w_vec, AF_
 		mexPrint("Starting SPECT forward projection");
 	int64_t u1 = uu;
 	const af::array apuArr = af::moddims(vec.im_os[timestep][ii], inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii]);
-
+    
 	for (int kk = 0; kk < length; kk++) {
 		af::array kuvaRot;
         
@@ -2185,7 +2098,7 @@ inline void forwardProjectionType6(af::array& fProj, const Weighting& w_vec, AF_
 		//kuvaRot = af::reorder(kuvaRot, 2, 1, 0);
         kuvaRot = af::sum(kuvaRot, 0);
 		kuvaRot = af::reorder(kuvaRot, 1, 2, 0);
-        kuvaRot /= inputScalars.Nx[0];
+		kuvaRot /= inputScalars.Nx[0];
         if (DEBUG || inputScalars.verbose > 2)
             mexPrint("Projector 6 FP step 5 complete");
 
@@ -2210,7 +2123,7 @@ inline af::array backProjectionType6Helper(af::array &fProj, const Weighting& w_
 
         // 1. Smear the input FP across the image volume
         kuvaRot = af::tile(kuvaRot, 1, 1, inputScalars.Nx[ii]); // Repeat through z-axis
-        kuvaRot /= inputScalars.Nx[0];
+		kuvaRot /= inputScalars.Nx[0];
         
         // 2. Attenuation correction
         if (inputScalars.attenuation_correction && (atten != nullptr)) {
@@ -2284,7 +2197,6 @@ inline void backprojectionType6(af::array& fProj, const Weighting& w_vec, AF_im_
 	const uint8_t compute_norm_matrix = 0, const uint32_t iter0 = 0, const int ii = 0, const float* atten = nullptr) {
 	if (DEBUG || inputScalars.verbose >= 3)
 		mexPrint("Starting SPECT backprojection");
-    
     vec.rhs_os[timestep][ii] = backProjectionType6Helper(fProj, w_vec, inputScalars, proj, length, timestep, uu, ii, atten);
 	vec.rhs_os[timestep][ii](vec.rhs_os[timestep][ii] < inputScalars.epps && vec.rhs_os[timestep][ii] >= 0.f) = inputScalars.epps;
     
@@ -2292,7 +2204,7 @@ inline void backprojectionType6(af::array& fProj, const Weighting& w_vec, AF_im_
 		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Computing sensitivity image");
         
-        af::array sensProj = af::constant(1.f, inputScalars.nColsD, inputScalars.nRowsD, length);
+		af::array sensProj = af::constant(1.f, inputScalars.nColsD, inputScalars.nRowsD, length);
 		if (compute_norm_matrix == 2) {
 			vec.Summ[0][ii][osa_iter] = backProjectionType6Helper(sensProj, w_vec, inputScalars, proj, length, timestep, uu, ii, atten);
 			vec.Summ[0][ii][osa_iter](vec.Summ[0][ii][osa_iter] < inputScalars.epps) = 1.f;
