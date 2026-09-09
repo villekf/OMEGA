@@ -629,7 +629,6 @@ extern "C" __global__
       }
     }
     float tLU = upperPart / (dot(-vLU, crossP));
-    ;
     float tRD = upperPart / (dot(-vRD, crossP));
 #ifdef USEMAD
     float3 pLU = FMAD3(vLU, tLU, s);
@@ -804,7 +803,6 @@ extern "C" __global__
         A = read_imagef(d_IImage, sampler2, (float4)(coordA, 0.f)).w;
         C = read_imagef(d_IImage, sampler2, (float4)(coordC, 0.f)).w;
 #endif
-#endif
       } else {
         A = B;
         C = D;
@@ -816,7 +814,6 @@ extern "C" __global__
 #else
         B = read_imagef(d_IImage, sampler2, (float4)(coordB, 0.f)).w;
         D = read_imagef(d_IImage, sampler2, (float4)(coordD, 0.f)).w;
-#endif
 #endif
       }
       const float AyN2 = Ay * invKoko.y;
