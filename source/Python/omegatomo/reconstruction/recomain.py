@@ -707,6 +707,8 @@ def reconstructions_main(options):
         SinoP = options.SinM.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     outputP = output.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     FPOutputP = FPOutput.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    from omegatomo.util.dllpath import addDLLDirectories
+    addDLLDirectories()
     c_lib = ctypes.CDLL(libname)
     c_lib.omegaMain(options.param, ctypes.c_char_p(inStr), SinoP, outputP, FPOutputP, residualP)
     try:
