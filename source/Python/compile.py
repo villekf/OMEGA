@@ -167,8 +167,58 @@ def CommandLine(args=None):
                result = compileWindows(compile_command2, 'OpenCL support compiled successfully!', "OpenCL build failed")
                result = compileWindows(compile_command3, 'OpenCL support compiled successfully!', "OpenCL build failed")
                print(result)
+       # HIP is tried first, CUDA is used only if the HIP build fails or ROCm is not found.
+       # Both produce the same CUDA_matrixfree_lib output names, see install_mex.m.
+       hipRoot = ''
+       hippath = ''
+       hiplib = ''
+       hipBuilt = False
+       if 'HIP_PATH' in os.environ:
+           hipRoot = os.environ['HIP_PATH']
+       elif 'ROCM_PATH' in os.environ:
+           hipRoot = os.environ['ROCM_PATH']
+       else:
+           for kk in range(8, 4, -1):
+               for ll in range(9, -1, -1):
+                   if os.path.exists('C:\\Program Files\\AMD\\ROCm\\' + str(kk) + '.' + str(ll)):
+                       hipRoot = 'C:\\Program Files\\AMD\\ROCm\\' + str(kk) + '.' + str(ll)
+                       break
+               if len(hipRoot) > 0:
+                   break
+       if len(hipRoot) > 0 and os.path.exists(os.path.join(hipRoot, 'include', 'hip')):
+           hippath = os.path.join(hipRoot, 'include')
+           hiplib = os.path.join(hipRoot, 'lib')
+       if len(hippath) > 0:
+           options = '/std:c++17 /O2 /DHIP /DAF /DAF_RELEASE /DAF_CUDA /D__HIP_PLATFORM_AMD__ /D__x86_64 /LD /EHsc /I"' + sdir + '" /I"' + afpath + '"' + ' /I"' + hippath + '"'
+           libs = '"amdhip64.lib" "hiprtc.lib" "afcuda.lib"'
+           link = '/link ' + libs + ' /LIBPATH:"' + aflib + '" /LIBPATH:"' + hiplib + '" /MACHINE:X64 /OUT:"' + outputPath + '\\CUDA_matrixfree_lib.dll"'
+           files = '"' + sdir + '\\omega_maincpp.cpp"'
+           compile_command = compiler + ' ' + options + ' ' + files + ' ' + link
+           options2 = '/std:c++17 /O2 /DHIP /DAF /DMTYPE /DAF_RELEASE /DAF_CUDA /D__HIP_PLATFORM_AMD__ /D__x86_64 /LD /EHsc /I"' + sdir + '" /I"' + afpath + '"' + ' /I"' + hippath + '"'
+           link2 = '/link ' + libs + ' /LIBPATH:"' + aflib + '" /LIBPATH:"' + hiplib + '" /MACHINE:X64 /OUT:"' + outputPath + '\\CUDA_matrixfree_uint16_lib.dll"'
+           compile_command2 = compiler + ' ' + options2 + ' ' + files + ' ' + link2
+           options3 = '/std:c++17 /O2 /DHIP /DAF /DMTYPE2 /DAF_RELEASE /DAF_CUDA /D__HIP_PLATFORM_AMD__ /D__x86_64 /LD /EHsc /I"' + sdir + '" /I"' + afpath + '"' + ' /I"' + hippath + '"'
+           link3 = '/link ' + libs + ' /LIBPATH:"' + aflib + '" /LIBPATH:"' + hiplib + '" /MACHINE:X64 /OUT:"' + outputPath + '\\CUDA_matrixfree_uint8_lib.dll"'
+           compile_command3 = compiler + ' ' + options3 + ' ' + files + ' ' + link3
+           if clfound:
+               try:
+                   result = subprocess.run(compile_command, check=True)
+                   result = subprocess.run(compile_command2, check=True)
+                   result = subprocess.run(compile_command3, check=True)
+                   hipBuilt = True
+                   print('HIP support compiled successfully!')
+               except Exception:
+                   print("HIP build failed")
+           else:
+               result = compileWindows(compile_command, 'HIP support compiled successfully!', "HIP build failed")
+               result2 = compileWindows(compile_command2, 'HIP support compiled successfully!', "HIP build failed")
+               result3 = compileWindows(compile_command3, 'HIP support compiled successfully!', "HIP build failed")
+               hipBuilt = result == 'HIP support compiled successfully!' and result2 == 'HIP support compiled successfully!' and result3 == 'HIP support compiled successfully!'
+               print(result3)
+       else:
+           print('ROCm/HIP not found.')
        cudapath = ''
-       if 'CUDA_PATH' in os.environ:
+       if 'CUDA_PATH' in os.environ and not hipBuilt:
            cudapath = os.environ['CUDA_PATH'] + '\\include'
            cudalib = os.environ['CUDA_PATH'] + '\\lib\\x64'
        if len(cudapath) > 0:
@@ -199,7 +249,7 @@ def CommandLine(args=None):
                result = compileWindows(compile_command2, 'CUDA support compiled successfully!', "CUDA build failed")
                result = compileWindows(compile_command3, 'CUDA support compiled successfully!', "CUDA build failed")
                print(result)
-       else:
+       elif not hipBuilt:
            print('CUDA not found. No CUDA code compiled!')
        
        if len(rpath) > 0:
@@ -359,6 +409,44 @@ def CommandLine(args=None):
                print('OpenCL support compiled successfully!')
        except Exception:
            print("OpenCL build failed")
+       # HIP is tried first, CUDA is used only if the HIP build fails or ROCm is not found.
+       # Both produce the same CUDA_matrixfree_lib output names, see install_mex.m.
+       # NOTE: ROCm uses lib, not lib64.
+       hipRoot = ''
+       hippath = ''
+       hiplib = ''
+       hipBuilt = False
+       if 'ROCM_PATH' in os.environ:
+           hipRoot = os.environ['ROCM_PATH']
+       elif 'HIP_PATH' in os.environ:
+           hipRoot = os.environ['HIP_PATH']
+       elif os.path.exists('/opt/rocm'):
+           hipRoot = '/opt/rocm'
+       if len(hipRoot) > 0 and os.path.exists(os.path.join(hipRoot, 'include', 'hip')):
+           hippath = os.path.join(hipRoot, 'include')
+           hiplib = os.path.join(hipRoot, 'lib')
+       if len(hippath) > 0:
+           lib1 = '-L' + hiplib
+           lib3 = '-lamdhip64'
+           lib4 = '-lafcuda'
+           lib5 = '-lhiprtc'
+           link = '-o' + outputPath + '/CUDA_matrixfree_lib.so'
+           files = '' + sdir + '/omega_maincpp.cpp'
+           try:
+               result = subprocess.run([compiler, '-shared', '-fPIC', '-std=c++17', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', '-I' + sdir, '-I' + afpath, '-I' + hippath,
+                                        link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
+               link = '-o' + outputPath + '/CUDA_matrixfree_uint16_lib.so'
+               result = subprocess.run([compiler, '-shared', '-fPIC', '-std=c++17', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', '-DMTYPE', '-I' + sdir, '-I' + afpath, '-I' + hippath,
+                                        link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
+               link = '-o' + outputPath + '/CUDA_matrixfree_uint8_lib.so'
+               result = subprocess.run([compiler, '-shared', '-fPIC', '-std=c++17', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', '-DMTYPE2', '-I' + sdir, '-I' + afpath, '-I' + hippath,
+                                        link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
+               hipBuilt = True
+               print('HIP support compiled successfully!')
+           except Exception:
+               print("HIP build failed")
+       else:
+           print('ROCm/HIP not found.')
        cudapath = ''
        cudalib = ''
        if os.path.exists('/usr/local/cuda/targets/x86_64-linux'):
@@ -369,27 +457,28 @@ def CommandLine(args=None):
            cudalib = '/usr/lib/x86_64-linux'
        # if len(cudapath) == 0:
        #     raise ValueError('CUDA not found. CUDA version not compiled.')
-       lib1 = '-L' + cudalib
-       lib3 = '-lcuda'
-       lib4 = '-lafcuda'
-       lib5 = '-lnvrtc'
-       link = '-o' + outputPath + '/CUDA_matrixfree_lib.so'
-       files = '' + sdir + '/omega_maincpp.cpp'
-       try:
-           result = subprocess.run([compiler, '-shared', '-fPIC', '-DCUDA', '-DAF', '-DAF_CUDA', '-I' + sdir, '-I' + afpath, '-I' + cudapath, 
-                                    link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
-           if result.stderr is None:
-               link = '-o' + outputPath + '/CUDA_matrixfree_uint16_lib.so'
-               result = subprocess.run([compiler, '-shared', '-fPIC', '-DCUDA', '-DAF', '-DAF_CUDA', '-DMTYPE', '-I' + sdir, '-I' + afpath, '-I' + cudapath, 
+       if not hipBuilt:
+           lib1 = '-L' + cudalib
+           lib3 = '-lcuda'
+           lib4 = '-lafcuda'
+           lib5 = '-lnvrtc'
+           link = '-o' + outputPath + '/CUDA_matrixfree_lib.so'
+           files = '' + sdir + '/omega_maincpp.cpp'
+           try:
+               result = subprocess.run([compiler, '-shared', '-fPIC', '-DCUDA', '-DAF', '-DAF_CUDA', '-I' + sdir, '-I' + afpath, '-I' + cudapath,
                                         link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
                if result.stderr is None:
-                   link = '-o' + outputPath + '/CUDA_matrixfree_uint8_lib.so'
-                   result = subprocess.run([compiler, '-shared', '-fPIC', '-DCUDA', '-DAF', '-DAF_CUDA', '-DMTYPE2', '-I' + sdir, '-I' + afpath, '-I' + cudapath, 
+                   link = '-o' + outputPath + '/CUDA_matrixfree_uint16_lib.so'
+                   result = subprocess.run([compiler, '-shared', '-fPIC', '-DCUDA', '-DAF', '-DAF_CUDA', '-DMTYPE', '-I' + sdir, '-I' + afpath, '-I' + cudapath,
                                             link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
-               print('CUDA support compiled successfully!')
-       except Exception:
-           print("CUDA build failed")
-           
+                   if result.stderr is None:
+                       link = '-o' + outputPath + '/CUDA_matrixfree_uint8_lib.so'
+                       result = subprocess.run([compiler, '-shared', '-fPIC', '-DCUDA', '-DAF', '-DAF_CUDA', '-DMTYPE2', '-I' + sdir, '-I' + afpath, '-I' + cudapath,
+                                                link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
+                   print('CUDA support compiled successfully!')
+           except Exception:
+               print("CUDA build failed")
+
        lib4 = '-lafcpu'
        # lib3 = '-liomp5'
        link = '-o' + outputPath + '/CPU_matrixfree_lib.so'
