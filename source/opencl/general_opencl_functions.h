@@ -597,12 +597,16 @@ __constant sampler_t sampler_MASKFP = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_N
 #define FMAD2(a, b, c) __fmaf_rn2(a, b, c)
 #define FMAD3(a, b, c) __fmaf_rn3(a, b, c)
 #define CLAMP3(a, b, c) clamp3(a, b, c)
-#define GID0 (threadIdx.x + blockIdx.x * blockDim.x)
-#define GID1 (threadIdx.y + blockIdx.y * blockDim.y)
-#define GID2 (threadIdx.z + blockIdx.z * blockDim.z)
-#define GSIZE0 (blockDim.x * gridDim.x)
-#define GSIZE1 (blockDim.y * gridDim.y)
-#define GSIZE2 (blockDim.z * gridDim.z)
+// Widened to 64-bit (via ULONG) to match OpenCL's get_global_id/get_global_size, which return
+// size_t
+// This keeps global-index arithmetic shared with OpenCL kernels (e.g. idx = GID0 + GID1 *
+// d_size_x + GID2 * d_sizey * d_size_x) from silently overflowing 32-bit at large volumes
+#define GID0 ((ULONG)threadIdx.x + (ULONG)blockIdx.x * (ULONG)blockDim.x)
+#define GID1 ((ULONG)threadIdx.y + (ULONG)blockIdx.y * (ULONG)blockDim.y)
+#define GID2 ((ULONG)threadIdx.z + (ULONG)blockIdx.z * (ULONG)blockDim.z)
+#define GSIZE0 ((ULONG)blockDim.x * (ULONG)gridDim.x)
+#define GSIZE1 ((ULONG)blockDim.y * (ULONG)gridDim.y)
+#define GSIZE2 ((ULONG)blockDim.z * (ULONG)gridDim.z)
 #define GRID0 blockIdx.x
 #define GRID1 blockIdx.y
 #define GRID2 blockIdx.z
