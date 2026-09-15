@@ -13,6 +13,7 @@ New features:
   - SPECT only
   - See PyTorch examples
 - Metal support for reconstructions with ArrayFire backend (both Python and MATLAB)
+- ```options.useMAD``` controls HIP unsafe atomics in Python custom operators; notable performance improvement with backprojection
 
 Changed behaviour:
 - SPECT ray tracer projectors now normalize emission probability based on a pre-determined superellipse

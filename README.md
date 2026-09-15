@@ -219,7 +219,9 @@ If MATLAB is launched outside the shell environment, you can also set it inside 
 setenv('METALCPP_INCLUDE_PATH', fullfile(getenv('HOME'), 'Documents', 'metal-cpp', 'include'))
 ```
 
-For backwards compatibility, `install_mex` also checks `source/cpp/Metal.hpp`, but using `METALCPP_INCLUDE_PATH` keeps the external metal-cpp header separate from the OMEGA source tree. ArrayFire-based Metal reconstructions are supported when ArrayFire binaries with the Metal backend are installed, for example in `/opt/arrayfire`.
+For backwards compatibility, `install_mex` also checks `source/cpp/Metal.hpp`, but using `METALCPP_INCLUDE_PATH` keeps the external metal-cpp header separate from the OMEGA source tree. 
+
+ArrayFire-based Metal reconstructions require ArrayFire binaries with Metal backend support. That support is not included in the ArrayFire mainline releases; the source code can be downloaded from [https://github.com/arrayfire/arrayfire/tree/experimental/metal](https://github.com/arrayfire/arrayfire/tree/experimental/metal). A good location to install the compiled source is `/opt/arrayfire`.
 
 ## Additional and upcoming features
 
@@ -311,7 +313,6 @@ Intel GPUs might not support forward and/or backward projection masks.
 - Supports projector types 1, 2, 4, and 6
 - Requires Xcode, ArrayFire with the Metal backend, and the single-header metal-cpp `Metal.hpp`
 - Set `METALCPP_INCLUDE_PATH` to the folder containing `Metal.hpp`, e.g. `~/Documents/metal-cpp/include`
-- No Python support
 
 ## Reporting Bugs and Feature Requests
 
