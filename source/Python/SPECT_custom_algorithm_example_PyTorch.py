@@ -15,29 +15,33 @@ is to show how you can compute your own algorithms with the OMEGA projector
 operators and utilizing many of the built-in features such as subsets and
 corrections.
 
-This example uses PyTorch and CuPy and thus requires CUDA (with CuPy and PyTorch)!
+This example uses PyTorch thus requires either a CUDA or Metal compatible device.
 """
 
 import numpy as np
 from omegatomo.projector import proj
 import torch
+import sys
 from pymatreader import read_mat
+options = proj.projectorClass() # Initialize projector object
 
-options = proj.projectorClass()
 
-# Required for SPECT data
-options.SPECT = True
 
-# Assumes that PyTorch tensors are used as input to either forward or backward projections
-options.useTorch = True
+options.fpath = './jaszczak_spectct_projection_data.mat' # Path to .mat file
 
-# Required for PyTorch
-options.useCUDA = True
 
-# Uses CuPy instead of PyCUDA (recommended)
-options.useCuPy = True
 
-options.fpath = '' # Path to .mat file
+# Set PyTorch backend
+options.SPECT = True # Required for SPECT data
+options.useTorch = True # Use PyTorch tensors for storing data
+if sys.platform == 'darwin':
+    options.useMetal = True
+    device = torch.device("mps")
+else:
+    options.useCUDA = True
+    options.useCuPy = True # Use CuPy, PyCUDA support is deprecated
+    device = torch.device("cuda")
+
 
 ###########################################################################
 ###########################################################################
@@ -104,7 +108,7 @@ options.flipImageZ = False
 
 ### Use back projection mask?
 options.useMaskBP = False
-options.maskBP = np.ones((options.Nx, options.Ny, options.Nz))
+#options.maskBP = np.ones((options.Nx, options.Ny, options.Nz))
 
 ### How much is the image rotated in degrees?
 # NOTE: The rotation is done in the detector space (before reconstruction).
@@ -188,11 +192,12 @@ options.colFz = np.inf
 # 4. For the Siddon ray tracer, the CDRF is defined by shifting the rays to
 # the shape of the collimator hole. The values of rayShiftsDetector and
 # rayShiftsSource represent [shift1XY, shift1Z, shift2XY, ...] in mm. Size
-# should be 2*nRays x nColsD x nRowsD x nProjections. If not input, values
+# should be 2*n_rays_axial*n_rays_transaxial x nColsD x nRowsD x nHeads. If not input, values
 # are calculated automatically.
-options.nRays = 1  # Number of rays traced per detector element
-# options.rayShiftsDetector = np.zeros((2*options.nRays, options.nColsD, options.nRowsD, options.nProjections));
-# options.rayShiftsSource = np.zeros((2*options.nRays, options.nColsD, options.nRowsD, options.nProjections));
+options.n_rays_axial = 1
+options.n_rays_transaxial = 1
+# options.rayShiftsDetector = np.zeros((2*options.n_rays_axial*options.n_rays_transaxial, options.nColsD, options.nRowsD, options.nHeads));
+# options.rayShiftsSource = np.zeros((2*options.n_rays_axial*options.n_rays_transaxial, options.nColsD, options.nRowsD, options.nHeads));
  
 ###########################################################################
 ###########################################################################
@@ -236,7 +241,7 @@ options.projector_type = 1
 # implies hardware texture interpolation, which typically has 8 bit 
 # precision. With buffers, software interpolation with 32 bit floats is
 # used.
-options.useImages = True
+options.useImages = False
 
 # This has to be True if you want to use the filtering-based preconditioner
 options.PDHG = False
@@ -258,9 +263,9 @@ options.initProj()
 ### MLEM/OSEM
 m = options.SinM.ravel('F') # Measurements ()
 d_m = [None] * options.subsets
-d_f = torch.tensor(options.x0,device='cuda') # Transfer initial value to GPU (default = array of ones)
+d_f = torch.tensor(options.x0,device=device) # Transfer initial value to GPU (default = array of ones)
 for k in range(options.subsets): # Split data to subsets
-    d_m[k] = torch.tensor(m[options.nTotMeas[k].item() : options.nTotMeas[k + 1].item()], device='cuda')
+    d_m[k] = torch.tensor(m[options.nTotMeas[k].item() : options.nTotMeas[k + 1].item()], device=device)
 for it in range(options.Niter):
     for k in range(options.subsets):
         # This is necessary when using subsets
@@ -268,7 +273,7 @@ for it in range(options.Niter):
         # options.backwardProject(m, k) for backprojection
         options.subset = k
         fp = options * d_f
-        Sens = options.T() * torch.ones(d_m[k].numel(), dtype=torch.float32, device='cuda')
+        Sens = options.T() * torch.ones(d_m[k].numel(), dtype=torch.float32, device=device)
         Sens[Sens <= 0] = options.epps
         bp = options.T() * (d_m[k] / fp)
         d_f = d_f / Sens * bp

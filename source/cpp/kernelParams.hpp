@@ -64,8 +64,9 @@ struct ScalarKernelParams { // Kernel scalar values that do not change with time
     float Vmax;
     CL_UINT32 rings;
     float helicalRadius;
-    CL_FLOAT3 totalFOVmin;
-    CL_FLOAT3 totalFOVmax;
+    CL_FLOAT3 ellipseCenter;
+    CL_FLOAT3 ellipseRadii;
+    float ellipsePower;
     // Dynamic (change per subset or timestep)
     CL_UINT3 d_N;
     CL_FLOAT3 b;
@@ -82,6 +83,16 @@ struct ScalarKernelParams { // Kernel scalar values that do not change with time
     CL_UINT64 m_size;
     CL_UINT32 currentSubset;
     CL_INT32 aa;
+    // Below parameters are used in PDHG update kernel
+    CL_INT3 N_PDHG;
+    float epps_PDHG;
+    float theta_PDHG;
+    float tau_PDHG;
+    CL_UINT8 enforcePositivity_PDHG;
+    // Below parameters are used in the rotation kernel
+    CL_INT3 N_rotate;
+    float cosa_rotate;
+    float sina_rotate;
 };
 
 #undef CL_FLOAT2

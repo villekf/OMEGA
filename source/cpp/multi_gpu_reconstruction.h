@@ -71,6 +71,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 		const size_t vecSize = ((inputScalars.PET || inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0)
 			? static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD) : 1ULL;
 		const size_t lastMeas = static_cast<size_t>(pituus[inputScalars.subsetsUsed]) * vecSize;
+		const bool normalizationIndexedData = inputScalars.SPECT && inputScalars.normZ == inputScalars.nHeads;
 		bool bad = false;
 		auto checkSize = [&](const char* name, const size_t have, const size_t need) {
 			if (have < need) {
@@ -87,7 +88,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 			checkSize("maskBP", inputScalars.size_maskBP, static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) *
 				static_cast<size_t>(inputScalars.maskBPZ));
 		if (inputScalars.normalization_correction && inputScalars.size_norm > 1ULL)
-			checkSize("normalization", inputScalars.size_norm, lastMeas);
+			checkSize("normalization", inputScalars.size_norm, normalizationIndexedData ? static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD) * static_cast<size_t>(inputScalars.nHeads) : lastMeas);
 		if (inputScalars.attenuation_correction) {
 			if (inputScalars.CTAttenuation)
 				checkSize("attenuation image", inputScalars.size_atten, static_cast<size_t>(inputScalars.im_dim[0]));
@@ -335,44 +336,26 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 			m_size = length[osa_iter];
 			if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 				m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[osa_iter];
-			proj.d_meas[osa_iter] = cl::Buffer(proj.CLContext, CL_MEM_READ_ONLY, sizeof(float) * m_size * inputScalars.nBins, NULL, &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return;
-			}
-			status = proj.CLCommandQueue[0].enqueueWriteBuffer(proj.d_meas[osa_iter], CL_FALSE, 0, sizeof(float) * m_size * inputScalars.nBins, &meas[uu]);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return;
-			}
+			proj.d_meas[osa_iter] = proj.makeDeviceBuffer(sizeof(float) * m_size * inputScalars.nBins, CL_MEM_READ_ONLY, status);
+			CHECK(status, "\n", );
+			status = proj.writeDeviceBuffer(proj.d_meas[osa_iter], &meas[uu], sizeof(float) * m_size * inputScalars.nBins);
+			CHECK(status, "\n", );
 			if (inputScalars.randoms_correction) {
-				proj.d_rand[osa_iter] = cl::Buffer(proj.CLContext, CL_MEM_READ_ONLY, sizeof(float) * m_size, NULL, &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return;
-				}
-				status = proj.CLCommandQueue[0].enqueueWriteBuffer(proj.d_rand[osa_iter], CL_FALSE, 0, sizeof(float) * m_size, &rand[uu]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return;
-				}
+				proj.d_rand[osa_iter] = proj.makeDeviceBuffer(sizeof(float) * m_size, CL_MEM_READ_ONLY, status);
+				CHECK(status, "\n", );
+				status = proj.writeDeviceBuffer(proj.d_rand[osa_iter], &rand[uu], sizeof(float) * m_size);
+				CHECK(status, "\n", );
 			}
 			for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 				const size_t sInd = static_cast<size_t>(ii) + static_cast<size_t>(osa_iter) * nSummPerSubset;
 				if (proj.no_norm == 0) {
-					proj.d_Summ[sInd] = cl::Buffer(proj.CLContext, CL_MEM_READ_WRITE, sizeof(C) * inputScalars.im_dim[ii], NULL, &status);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return;
-					}
-					status = proj.CLCommandQueue[0].enqueueFillBuffer(proj.d_Summ[sInd], (C)0, 0, sizeof(C) * inputScalars.im_dim[ii]);
-				}
-				else {
-					proj.d_Summ[sInd] = cl::Buffer(proj.CLContext, CL_MEM_READ_WRITE, sizeof(C), NULL, &status);
-				}
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return;
+					proj.d_Summ[sInd] = proj.makeDeviceBuffer(sizeof(C) * inputScalars.im_dim[ii], CL_MEM_READ_WRITE, status);
+					CHECK(status, "\n", );
+					status = proj.fillDeviceBuffer(proj.d_Summ[sInd], (C)0, sizeof(C) * inputScalars.im_dim[ii]);
+					CHECK(status, "\n", );
+				} else {
+					proj.d_Summ[sInd] = proj.makeDeviceBuffer(sizeof(C), CL_MEM_READ_WRITE, status);
+					CHECK(status, "\n", );
 				}
 			}
 			uu += m_size * inputScalars.nBins;

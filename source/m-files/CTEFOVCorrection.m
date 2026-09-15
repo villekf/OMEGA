@@ -299,23 +299,34 @@ end
         ];
     end
 
-    options.totalFOVxmin = -FOV(1) / 2;
-    options.totalFOVymin = -FOV(2) / 2;
-    options.totalFOVzmin = -FOV(3) / 2;
-    options.totalFOVxmax = FOV(1) / 2;
-    options.totalFOVymax = FOV(2) / 2;
-    options.totalFOVzmax = FOV(3) / 2;
-
-    if isfield(options, 'oOffsetX')
-        options.totalFOVxmin = options.totalFOVxmin + options.oOffsetX;
-        options.totalFOVxmax = options.totalFOVxmax + options.oOffsetX;
+    if ~isfield(options, 'ellipseCenterX')
+        options.ellipseCenterX = 0;
     end
-    if isfield(options, 'oOffsetY')
-        options.totalFOVymin = options.totalFOVymin + options.oOffsetY;
-        options.totalFOVymax = options.totalFOVymax + options.oOffsetY;
+    if ~isfield(options, 'ellipseCenterY')
+        options.ellipseCenterY = 0;
     end
-    if isfield(options, 'oOffsetZ')
-        options.totalFOVzmin = options.totalFOVzmin + options.oOffsetZ;
-        options.totalFOVzmax = options.totalFOVzmax + options.oOffsetZ;
+    if ~isfield(options, 'ellipseCenterZ')
+        options.ellipseCenterZ = 0;
+    end
+    if ~isfield(options, 'ellipseRadiusX') || ~isfield(options, 'ellipseRadiusY') || ~isfield(options, 'ellipseRadiusZ') || (isfield(options, 'ellipseParametersDerived') && options.ellipseParametersDerived)
+        options.ellipseRadiusX = FOV(1) / 2;
+        options.ellipseRadiusY = FOV(2) / 2;
+        options.ellipseRadiusZ = FOV(3) / 2;
+        options.ellipseParametersDerived = true;
+    end
+    if ~isfield(options, 'ellipsePower')
+        options.ellipsePower = Inf;
+    end
+    if ~isfield(options, 'ellipseCenterOffsetApplied') || ~options.ellipseCenterOffsetApplied
+        if isfield(options, 'oOffsetX')
+            options.ellipseCenterX = options.ellipseCenterX + options.oOffsetX;
+        end
+        if isfield(options, 'oOffsetY')
+            options.ellipseCenterY = options.ellipseCenterY + options.oOffsetY;
+        end
+        if isfield(options, 'oOffsetZ')
+            options.ellipseCenterZ = options.ellipseCenterZ + options.oOffsetZ;
+        end
+        options.ellipseCenterOffsetApplied = true;
     end
 end

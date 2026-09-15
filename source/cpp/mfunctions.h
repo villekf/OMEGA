@@ -189,16 +189,18 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	} else if (inputScalars.SPECT) {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "nColsD"));
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "nRowsD"));
-        if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.BPType == 1 || inputScalars.BPType == 2) {
+		inputScalars.nHeads = getScalarUInt32(getField(options, 0, "nHeads"));
+        if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
             inputScalars.coneOfResponseStdCoeffA = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffA"));
             inputScalars.coneOfResponseStdCoeffB = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffB"));
             inputScalars.coneOfResponseStdCoeffC = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffC"));
-            inputScalars.totalFOVxmin = getScalarFloat(getField(options, 0, "totalFOVxmin"));
-            inputScalars.totalFOVymin = getScalarFloat(getField(options, 0, "totalFOVymin"));
-            inputScalars.totalFOVzmin = getScalarFloat(getField(options, 0, "totalFOVzmin"));
-            inputScalars.totalFOVxmax = getScalarFloat(getField(options, 0, "totalFOVxmax"));
-            inputScalars.totalFOVymax = getScalarFloat(getField(options, 0, "totalFOVymax"));
-            inputScalars.totalFOVzmax = getScalarFloat(getField(options, 0, "totalFOVzmax"));
+            inputScalars.ellipseCenterX = getScalarFloat(getField(options, 0, "ellipseCenterX"));
+            inputScalars.ellipseCenterY = getScalarFloat(getField(options, 0, "ellipseCenterY"));
+            inputScalars.ellipseCenterZ = getScalarFloat(getField(options, 0, "ellipseCenterZ"));
+            inputScalars.ellipseRadiusX = getScalarFloat(getField(options, 0, "ellipseRadiusX"));
+            inputScalars.ellipseRadiusY = getScalarFloat(getField(options, 0, "ellipseRadiusY"));
+            inputScalars.ellipseRadiusZ = getScalarFloat(getField(options, 0, "ellipseRadiusZ"));
+            inputScalars.ellipsePower = getScalarFloat(getField(options, 0, "ellipsePower"));
         }
         /*if (inputScalars.FPType == 6 || inputScalars.BPType == 6) {
             inputScalars.FOVa_y = getScalarFloat(getField(options, 0, "FOVa_y"));
@@ -256,6 +258,9 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 			mexEval();
 		}
 	}
+    if (inputScalars.normalization_correction)
+        if (mxGetFieldNumber(options, "normZ") >= 0)
+            inputScalars.normZ = getScalarUInt32(getField(options, 0, "normZ"));
 	if (inputScalars.maskBP) {
 		w_vec.maskBP = getUint8s(options, "maskBP");
 		inputScalars.maskBPZ = getScalarUInt32(getField(options, 0, "maskBPZ"));
@@ -282,9 +287,10 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		w_vec.nProjections = getScalarInt64(getField(options, 0, "nProjections"));
 		w_vec.dPitchX = getScalarFloat(getField(options, 0, "dPitchX"));
 		w_vec.dPitchY = getScalarFloat(getField(options, 0, "dPitchY"));
-		if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.BPType == 1 || inputScalars.BPType == 2) {
+		if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 			w_vec.rayShiftsDetector = getSingles(options, "rayShiftsDetector");
 			w_vec.rayShiftsSource = getSingles(options, "rayShiftsSource");
+			w_vec.detectorVector = getUint32s(options, "DetectorVector");
 		}
 	} else {
 		w_vec.nProjections = getScalarInt64(getField(options, 0, "nProjections"));

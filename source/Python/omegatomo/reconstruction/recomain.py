@@ -45,6 +45,7 @@ def transferData(options):
     options.param.randoms_correction = ctypes.c_uint32(options.randoms_correction)
     options.param.nColsD = ctypes.c_uint32(options.nColsD)
     options.param.nRowsD = ctypes.c_uint32(options.nRowsD)
+    options.param.nHeads = ctypes.c_uint32(options.nHeads)
     options.param.Nang = ctypes.c_uint32(options.Nang)
     options.param.Ndist = ctypes.c_uint32(options.Ndist)
     options.param.subsets = ctypes.c_uint32(options.subsets)
@@ -103,6 +104,7 @@ def transferData(options):
     options.param.FluxType = ctypes.c_uint32(options.FluxType)
     options.param.DiffusionType = ctypes.c_uint32(options.DiffusionType)
     options.param.POCS_NgradIter = ctypes.c_uint32(options.POCS_NgradIter)
+    options.param.normZ = ctypes.c_uint32(options.normZ)
     options.param.maskFPZ = ctypes.c_uint32(options.maskFPZ)
     options.param.maskBPZ = ctypes.c_uint32(options.maskBPZ)
     options.param.FISTAType = ctypes.c_uint32(options.FISTAType)
@@ -331,10 +333,12 @@ def transferData(options):
     options.param.TOFIndices = options.TOFIndices.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
     options.param.angles = options.angles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.swivelAngles = options.swivelAngles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.blurPlanes = options.blurPlanes.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
-    options.param.blurPlanes2 = options.blurPlanes2.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
-    options.param.gFilter = options.gFilter.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.gFSize = np.array(options.gFilter.shape, dtype=np.uint64)
+    options.param.blurPlanes = options.blurPlanes[0].ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
+    options.param.blurPlanes2 = options.blurPlanes2[0].ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
+    # Python custom type-6 stores one CDRF per volume.  The native branch is
+    # still single-filter, so retain its established volume-0 interface here.
+    options.param.gFilter = options.gFilter[0].ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    options.gFSize = np.array(options.gFilter[0].shape, dtype=np.uint64)
     options.param.gFSize = options.gFSize.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
     options.param.precondTypeImage = options.precondTypeImage.ctypes.data_as(ctypes.POINTER(ctypes.c_bool))
     options.param.precondTypeMeas = options.precondTypeMeas.ctypes.data_as(ctypes.POINTER(ctypes.c_bool))
@@ -364,15 +368,17 @@ def transferData(options):
     #For SPECT...
     options.param.rayShiftsDetector = options.rayShiftsDetector.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.rayShiftsSource = options.rayShiftsSource.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    options.param.detectorVector = options.DetectorVector.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))
     options.param.coneOfResponseStdCoeffA = ctypes.c_float(options.coneOfResponseStdCoeffA)
     options.param.coneOfResponseStdCoeffB = ctypes.c_float(options.coneOfResponseStdCoeffB)
     options.param.coneOfResponseStdCoeffC = ctypes.c_float(options.coneOfResponseStdCoeffC)
-    options.param.totalFOVxmin = ctypes.c_float(options.totalFOVxmin)
-    options.param.totalFOVymin = ctypes.c_float(options.totalFOVymin)
-    options.param.totalFOVzmin = ctypes.c_float(options.totalFOVzmin)
-    options.param.totalFOVxmax = ctypes.c_float(options.totalFOVxmax)
-    options.param.totalFOVymax = ctypes.c_float(options.totalFOVymax)
-    options.param.totalFOVzmax = ctypes.c_float(options.totalFOVzmax)
+    options.param.ellipseCenterX = ctypes.c_float(options.ellipseCenterX)
+    options.param.ellipseCenterY = ctypes.c_float(options.ellipseCenterY)
+    options.param.ellipseCenterZ = ctypes.c_float(options.ellipseCenterZ)
+    options.param.ellipseRadiusX = ctypes.c_float(options.ellipseRadiusX)
+    options.param.ellipseRadiusY = ctypes.c_float(options.ellipseRadiusY)
+    options.param.ellipseRadiusZ = ctypes.c_float(options.ellipseRadiusZ)
+    options.param.ellipsePower = ctypes.c_float(options.ellipsePower)
     # ...until here
     options.param.NLM_ref = options.NLM_referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.RDP_ref = options.RDP_referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
@@ -728,4 +734,3 @@ def reconstructions_main(options):
             return output, FPOutput, residual
         else:
             return output, FPOutput
-        

@@ -114,8 +114,9 @@
     FLOAT coneOfResponseStdCoeffB = scalarParams.coneOfResponseStdCoeffB; \
     FLOAT coneOfResponseStdCoeffC = scalarParams.coneOfResponseStdCoeffC; \
 	FLOAT2 crystalSize = scalarParams.dPitch; \
-    FLOAT3 totalFOVmin = scalarParams.totalFOVmin; \
-    FLOAT3 totalFOVmax = scalarParams.totalFOVmax; \
+    FLOAT3 ellipseCenter = scalarParams.ellipseCenter; \
+    FLOAT3 ellipseRadii = scalarParams.ellipseRadii; \
+    FLOAT ellipsePower = scalarParams.ellipsePower; \
 	FLOAT bmin = scalarParams.bmin; \
 	FLOAT bmax = scalarParams.bmax; \
 	FLOAT Vmax = scalarParams.Vmax; \
@@ -177,6 +178,21 @@
     const float3 d_d = scalarParams.d; \
     const float3 d_scale = scalarParams.d_Scale5; \
     const long d_nProjections = scalarParams.nProjections;
+
+#define UNPACK_SCALAR_PARAMS_PDHG(scalarParams) \
+    const int3 N = scalarParams.N_PDHG; \
+    const float epps = scalarParams.epps_PDHG; \
+    const float theta = scalarParams.theta_PDHG; \
+    const float tau = scalarParams.tau_PDHG; \
+    const uchar enforcePositivity = scalarParams.enforcePositivity_PDHG;
+
+#define UNPACK_SCALAR_PARAMS_ROTATE(scalarParams) \
+    const int3 N_rotate = scalarParams.N_rotate; \
+    const int Nx = N_rotate.x; \
+    const int Ny = N_rotate.y; \
+    const int Nz = N_rotate.z; \
+    const float cosa = scalarParams.cosa_rotate; \
+    const float sina = scalarParams.sina_rotate;
 
 
 #ifdef METAL
@@ -298,6 +314,8 @@ constexpr metal::sampler samplerMask(
 #define MUINT3(a, b, c) uint3(a, b, c)
 #define NORMALIZE metal::normalize
 #define POWR metal::pow
+#define SINF(a) metal::sin(a)
+#define COSF(a) metal::cos(a)
 #define PTR_DEV device
 #define PTR_THR thread
 #define PTR_CONST constant
@@ -1479,68 +1497,146 @@ DEVICE void getDetectorCoordinatesCT(const CLGLOBAL float* CLRESTRICT d_xyz,
 }
 
 #elif defined(SPECT)
-// Helper function to shift ray endpoints to FOV boundary.
-DEVICE void extendRayToFOV(
+DEVICE void extendRayToEllipse(
     PTR_THR FLOAT3 *s, // Ray start point
     PTR_THR FLOAT3 *d, // Ray end point
-    const FLOAT3 boxMin, // FOV boundary including all multiresolution volumes
-    const FLOAT3 boxMax // FOV boundary including all multiresolution volumes
+    const FLOAT3 ellipseCenter,
+    const FLOAT3 ellipseRadii,
+    const FLOAT ellipsePower
 ) {
-    const float3 p0 = *s;
-    const float3 p1 = *d;
-    const float3 dir = p1 - p0;
+#ifdef CUPY_HIP_FINITE_ELLIPSE_POWER
+    // CuPy stages the public infinity sentinel as a finite value; this
+    // comparison is safe under hipRTC's finite-math assumptions.
+    if (ellipsePower > 1.0e20f) {
+#else
+    if (ISINF(ellipsePower)) {
+#endif
+        const FLOAT cx = ellipseCenter.x;
+        const FLOAT cy = ellipseCenter.y;
+        const FLOAT cz = ellipseCenter.z;
+        const FLOAT ax = ellipseRadii.x;
+        const FLOAT ay = ellipseRadii.y;
+        const FLOAT az = ellipseRadii.z;
+        const FLOAT3 boxMin = CMFLOAT3(cx - ax, cy - ay, cz - az);
+        const FLOAT3 boxMax = CMFLOAT3(cx + ax, cy + ay, cz + az);
+        const FLOAT3 p0 = *s;
+        const FLOAT3 p1 = *d;
+        const FLOAT3 dir = p1 - p0;
 
-    float tmin = -1e8f;
-    float tmax =  1e8f;
-    const float epsVal = 1.0e-8f;
+        FLOAT tmin = -1e8f;
+        FLOAT tmax =  1e8f;
+        const FLOAT epsVal = 1.0e-8f;
 
-    if (FABS(dir.x) < epsVal) {
-        if (p0.x < boxMin.x || p0.x > boxMax.x) {
+        if (FABS(dir.x) < epsVal) {
+            if (p0.x < boxMin.x || p0.x > boxMax.x) {
+                *d = *s;
+                return;
+            }
+        } else {
+            FLOAT t1 = (boxMin.x - p0.x) / dir.x;
+            FLOAT t2 = (boxMax.x - p0.x) / dir.x;
+            FLOAT tNear = FMIN(t1, t2);
+            FLOAT tFar = FMAX(t1, t2);
+            tmin = FMAX(tmin, tNear);
+            tmax = FMIN(tmax, tFar);
+        }
+
+        if (FABS(dir.y) < epsVal) {
+            if (p0.y < boxMin.y || p0.y > boxMax.y) {
+                *d = *s;
+                return;
+            }
+        } else {
+            FLOAT t1 = (boxMin.y - p0.y) / dir.y;
+            FLOAT t2 = (boxMax.y - p0.y) / dir.y;
+            FLOAT tNear = FMIN(t1, t2);
+            FLOAT tFar = FMAX(t1, t2);
+            tmin = FMAX(tmin, tNear);
+            tmax = FMIN(tmax, tFar);
+        }
+
+        if (FABS(dir.z) < epsVal) {
+            if (p0.z < boxMin.z || p0.z > boxMax.z) {
+                *d = *s;
+                return;
+            }
+        } else {
+            FLOAT t1 = (boxMin.z - p0.z) / dir.z;
+            FLOAT t2 = (boxMax.z - p0.z) / dir.z;
+            FLOAT tNear = FMIN(t1, t2);
+            FLOAT tFar = FMAX(t1, t2);
+            tmin = FMAX(tmin, tNear);
+            tmax = FMIN(tmax, tFar);
+        }
+
+        if (tmax < tmin) {
+            *d = *s;
             return;
         }
-    } else {
-        float t1 = (boxMin.x - p0.x) / dir.x;
-        float t2 = (boxMax.x - p0.x) / dir.x;
-        float tNear = FMIN(t1, t2);
-        float tFar  = FMAX(t1, t2);
-        tmin = FMAX(tmin, tNear);
-        tmax = FMIN(tmax, tFar);
-    }
 
-    if (FABS(dir.y) < epsVal) {
-        if (p0.y < boxMin.y || p0.y > boxMax.y) {
+        if (!((p0.x >= boxMin.x && p0.x <= boxMax.x) && (p0.y >= boxMin.y && p0.y <= boxMax.y) && (p0.z >= boxMin.z && p0.z <= boxMax.z)))
+            *s = p0 + tmin * dir;
+
+        *d = p0 + tmax * dir;
+    } else if (ellipsePower == FLOAT_TWO) {
+        const FLOAT cx = ellipseCenter.x;
+        const FLOAT cy = ellipseCenter.y;
+        const FLOAT cz = ellipseCenter.z;
+        const FLOAT ax = ellipseRadii.x;
+        const FLOAT ay = ellipseRadii.y;
+        const FLOAT az = ellipseRadii.z;
+        const FLOAT3 p0 = *s;
+        const FLOAT3 dir = *d - p0;
+        const FLOAT px = p0.x - cx;
+        const FLOAT py = p0.y - cy;
+        const FLOAT invAx2 = FLOAT_ONE / (ax * ax);
+        const FLOAT invAy2 = FLOAT_ONE / (ay * ay);
+        const FLOAT A = dir.x * dir.x * invAx2 + dir.y * dir.y * invAy2;
+        const FLOAT B = FLOAT_TWO * (px * dir.x * invAx2 + py * dir.y * invAy2);
+        const FLOAT C = px * px * invAx2 + py * py * invAy2 - FLOAT_ONE;
+        const FLOAT epsVal = 1.0e-8f;
+        FLOAT tmin = -1e8f;
+        FLOAT tmax = 1e8f;
+
+        if (A < epsVal) {
+            if (C > FLOAT_ZERO) {
+                *d = *s;
+                return;
+            }
+        } else {
+            const FLOAT discriminant = B * B - 4.f * A * C;
+            if (discriminant < FLOAT_ZERO) {
+                *d = *s;
+                return;
+            }
+            const FLOAT t1 = (-B - SQRT(discriminant)) / (FLOAT_TWO * A);
+            const FLOAT t2 = (-B + SQRT(discriminant)) / (FLOAT_TWO * A);
+            tmin = FMAX(tmin, t1);
+            tmax = FMIN(tmax, t2);
+        }
+
+        if (FABS(dir.z) < epsVal) {
+            if (p0.z < cz - az || p0.z > cz + az) {
+                *d = *s;
+                return;
+            }
+        } else {
+            const FLOAT t1 = (cz - az - p0.z) / dir.z;
+            const FLOAT t2 = (cz + az - p0.z) / dir.z;
+            tmin = FMAX(tmin, FMIN(t1, t2));
+            tmax = FMIN(tmax, FMAX(t1, t2));
+        }
+
+        if (tmax < tmin) {
+            *d = *s;
             return;
         }
-    } else {
-        float t1 = (boxMin.y - p0.y) / dir.y;
-        float t2 = (boxMax.y - p0.y) / dir.y;
-        float tNear = FMIN(t1, t2);
-        float tFar  = FMAX(t1, t2);
-        tmin = FMAX(tmin, tNear);
-        tmax = FMIN(tmax, tFar);
+
+        if (C > FLOAT_ZERO || p0.z < cz - az || p0.z > cz + az)
+            *s = p0 + tmin * dir;
+
+        *d = p0 + tmax * dir;
     }
-
-    if (FABS(dir.z) < epsVal) {
-        if (p0.z < boxMin.z || p0.z > boxMax.z) {
-            return;
-        }
-    } else {
-        float t1 = (boxMin.z - p0.z) / dir.z;
-        float t2 = (boxMax.z - p0.z) / dir.z;
-        float tNear = FMIN(t1, t2);
-        float tFar  = FMAX(t1, t2);
-        tmin = FMAX(tmin, tNear);
-        tmax = FMIN(tmax, tFar);
-    }
-
-    if (tmax < tmin)
-        return;
-
-    if (!((p0.x >= boxMin.x && p0.x <= boxMax.x) && (p0.y >= boxMin.y && p0.y <= boxMax.y) && (p0.z >= boxMin.z && p0.z <= boxMax.z)))
-        *s = p0 + tmin * dir;
-
-    *d = p0 + tmax * dir;
-    return;
 }
 
 // SPECT sinogram coordinates
@@ -1560,10 +1656,11 @@ DEVICE void getDetectorCoordinatesSPECT(
     const FLOAT2 d_dPitch, // Detector element size [mm]
     const CLGLOBAL float* d_rayShiftsDetector, // Ray shifts [mm]
     const CLGLOBAL float* d_rayShiftsSource, // Ray shifts [mm]
-    int lorXY,
-    size_t idx,
-    const FLOAT3 totalFOVmin, // FOV boundary including all multiresolution volumes
-    const FLOAT3 totalFOVmax // FOV boundary including all multiresolution volumes
+    const CLGLOBAL uint* d_detectorVector, // Detector head for each projection
+    int lor,
+    const FLOAT3 ellipseCenter,
+    const FLOAT3 ellipseRadii,
+    const FLOAT ellipsePower
 ) {
 	uint id = i.z * 6;
 	*s = CMFLOAT3((FLOAT)d_xyz[id], (FLOAT)d_xyz[id + 1], (FLOAT)d_xyz[id + 2]); // TODO remove cast
@@ -1574,7 +1671,9 @@ DEVICE void getDetectorCoordinatesSPECT(
     ); // Amount of shift from sinogram center to current detector element
 	
     id = i.z * NA; // Index of d_uv (detector panel normal vector)
-    uint idShift = 2*lorXY + (2*N_RAYS) * idx; // Index of rayShiftsDetector
+    const uint detectorElement = i.x + i.y * d_size_x;
+    const uint detectorHead = d_detectorVector[i.z];
+    uint idShift = 2*lor + (2*N_RAYS) * (detectorElement + detectorHead * d_size_x * d_sizey); // Index of rayShiftsDetector
 
 	const FLOAT apuX = d_uv[id]; // X component of detector panel normal vector
 	const FLOAT apuY = d_uv[id + 1]; // Y component of detector panel normal vector
@@ -1586,11 +1685,7 @@ DEVICE void getDetectorCoordinatesSPECT(
 	(*s).y += apuY * (shift_det_elem.x + d_rayShiftsSource[idShift]);
 	(*s).z += shift_det_elem.y + d_rayShiftsSource[idShift+1];
 
-#ifdef TOTLENGTH // Use full ray length for computing emission probability. Thus ray endpoints require shifting to FOV boundary. The begin point (here *s) is shifted only if outside the FOV. 
-    extendRayToFOV(s, d, totalFOVmin, totalFOVmax);
-#else // Use only ray length inside FOV for calculating the probability. In this case the ray end point can be at any sufficiently large distance (as long as it is outside of FOV).
-    *d += 100.f * (*d - *s);
-#endif
+    extendRayToEllipse(s, d, ellipseCenter, ellipseRadii, ellipsePower);
 }
 #else
 #if defined(RAW) || defined(SENS)

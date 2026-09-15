@@ -56,6 +56,36 @@ def loadCorrections(options):
 
     """
     import os
+    normalization_shape = np.asarray(options.normalization).shape
+    options.normZ = int(normalization_shape[2]) if options.SPECT and len(normalization_shape) == 3 else 1
+    normalization_indexed_stack = bool(options.SPECT and int(options.normZ) == int(options.nHeads))
+
+    def expand_detector_stack(values, target_shape, timestep=0):
+        """Expand a detector-head stack for corrections applied before projection kernels."""
+        compact = np.asarray(values).reshape((int(options.nRowsD), int(options.nColsD), int(options.nHeads)), order='F')
+        detector_vector = np.asarray(options.DetectorVector, dtype=np.uint32).reshape(-1)
+        projection_counts = np.asarray(
+            getattr(options, 'nProjectionsPerFrame', [options.nProjections]), dtype=np.int64
+        ).reshape(-1)
+        if projection_counts.size == int(options.Nt):
+            offsets = np.concatenate(([0], np.cumsum(projection_counts, dtype=np.int64)))
+            detector_vector = detector_vector[int(offsets[timestep]) : int(offsets[timestep + 1])]
+        frame_stride = int(options.nRowsD) * int(options.nColsD)
+        if len(target_shape) == 1:
+            if int(target_shape[0]) % frame_stride != 0:
+                raise ValueError('The detector-indexed normalization cannot be expanded to the correction data shape.')
+            n_projections = int(target_shape[0]) // frame_stride
+        else:
+            n_projections = int(target_shape[2])
+        if detector_vector.size < n_projections:
+            raise ValueError('DetectorVector is shorter than the projection data used for normalization correction.')
+        expanded = compact[:, :, detector_vector[:n_projections]]
+        if len(target_shape) == 1:
+            return expanded.ravel(order='F')
+        while expanded.ndim < len(target_shape):
+            expanded = np.expand_dims(expanded, axis=-1)
+        return expanded
+
     if options.attenuation_correction == 1:
         if options.vaimennus.size == 0:
             if len(options.attenuation_datafile) > 0 and options.attenuation_datafile[len(options.attenuation_datafile)-3:len(options.attenuation_datafile)+1:1] == 'mhd':
@@ -190,17 +220,42 @@ def loadCorrections(options):
                         options.normalization = apu[variables[0]]
                     else:
                         raise ValueError('Unsupported datatype!')
+            normalization_shape = np.asarray(options.normalization).shape
+            options.normZ = int(normalization_shape[2]) if options.SPECT and len(normalization_shape) == 3 else 1
+            normalization_indexed_stack = bool(options.SPECT and int(options.normZ) == int(options.nHeads))
             options.normalization = 1. / options.normalization.ravel('F').astype(dtype=np.float32)
-            if ~options.use_raw_data and options.NSinos != options.TotSinos:
+            if ~options.use_raw_data and options.NSinos != options.TotSinos and not normalization_indexed_stack:
                 options.normalization = options.normalization[0 : options.Ndist * options.Nang * options.NSinos]
+        if normalization_indexed_stack and options.normalization.size != int(options.nRowsD) * int(options.nColsD) * int(options.nHeads):
+            raise ValueError('Detector-indexed normalization must contain one detector image for each detector head.')
         if not options.corrections_during_reconstruction and options.precorrect:
-            options.normalization = np.reshape(options.normalization, options.SinM.shape, order='F')
-            options.SinM = options.SinM.astype(np.float32) / options.normalization
+            if normalization_indexed_stack:
+                if isinstance(options.SinM, list):
+                    options.SinM = [
+                        frame.astype(np.float32) / expand_detector_stack(options.normalization, frame.shape, timestep)
+                        for timestep, frame in enumerate(options.SinM)
+                    ]
+                    normalization_for_data = None
+                else:
+                    normalization_for_data = expand_detector_stack(options.normalization, options.SinM.shape)
+            else:
+                normalization_for_data = np.reshape(options.normalization, options.SinM.shape, order='F')
+            if normalization_for_data is not None:
+                options.SinM = options.SinM.astype(np.float32) / normalization_for_data
             options.normalization_correction = False
         else:
             options.normalization = options.normalization.ravel('F').astype(dtype=np.float32)
     if options.scatter_correction and options.normalization_correction and options.normalize_scatter and options.corrections_during_reconstruction:
-        options.ScatterC /= options.normalization
+        if normalization_indexed_stack:
+            if isinstance(options.ScatterC, list):
+                options.ScatterC = [
+                    frame / expand_detector_stack(options.normalization, frame.shape, timestep)
+                    for timestep, frame in enumerate(options.ScatterC)
+                ]
+            else:
+                options.ScatterC /= expand_detector_stack(options.normalization, options.ScatterC.shape)
+        else:
+            options.ScatterC /= options.normalization
     if options.randoms_correction and options.ordinaryPoisson and options.variance_reduction:
         from omegatomo.util.Randoms_variance_reduction import Randoms_variance_reduction
         options.SinDelayed = Randoms_variance_reduction(options.SinDelayed, options)
@@ -242,7 +297,7 @@ def loadCorrections(options):
     if options.sampling > 1:
         if options.corrections_during_reconstruction:
             from omegatomo.util.sampling import interpolateSinog
-            if options.normalization_correction:
+            if options.normalization_correction and not normalization_indexed_stack:
                 options.normalization = interpolateSinog(options.normalization, options.sampling, options.Ndist, options.Nang, options.sampling_interpolation_method)
             if options.randoms_correction:
                 options.SinDelayed = interpolateSinog(options.SinDelayed, options.sampling, options.Ndist, options.Nang, options.sampling_interpolation_method)
@@ -273,6 +328,15 @@ def parseInputs(options, mDataFound = False):
     None.
 
     """
+    normalization_indexed_stack = bool(options.SPECT and int(options.normZ) == int(options.nHeads))
+    single_frame_list = (
+        options.Nt <= 1 and isinstance(options.SinM, list)
+    )
+    if single_frame_list:
+        options.SinM = options.SinM[0]
+        if isinstance(options.index, list):
+            options.index = options.index[0]
+
     if options.subsets > 1 and options.subsetType > 0:
         if mDataFound and not options.largeDim:
             if options.Nt > 1:
@@ -354,9 +418,11 @@ def parseInputs(options, mDataFound = False):
                         options.SinM = options.SinM.ravel(order='F')
                         options.SinM = options.SinM[options.index]
         if options.normalization_correction and options.corrections_during_reconstruction:
-            if not options.use_raw_data and options.NSinos != options.TotSinos:
+            if not normalization_indexed_stack and not options.use_raw_data and options.NSinos != options.TotSinos:
                 options.normalization = options.normalization[:options.NSinos * options.Ndist * options.Nang]
-            if options.subsetType >= 8:
+            if normalization_indexed_stack:
+                options.normalization = options.normalization.ravel(order='F').astype(dtype=np.float32)
+            elif options.subsetType >= 8:
                 options.normalization = np.reshape(options.normalization, (options.Ndist, options.Nang, -1),order='F')
                 options.normalization = options.normalization[:, :, options.index]
                 options.normalization = options.normalization.ravel(order='F').astype(dtype=np.float32)
@@ -474,13 +540,19 @@ def parseInputs(options, mDataFound = False):
             options.scatter_correction = False
         if options.randoms_correction and not options.corrections_during_reconstruction:
             options.randoms_correction = False
-        if options.useMaskFP and options.maskFPZ > 1 and options.subsetType >= 8:
+        if options.useMaskFP and options.maskFPZ > 1 and options.maskFPZ != options.nHeads and options.subsetType >= 8:
             options.maskFP = options.maskFP[:,:,options.index]
             
     
     if options.Nt <= 1 and mDataFound and not options.largeDim and options.loadTOF:
-        options.SinM = np.asfortranarray(options.SinM)
-        options.SinM = options.SinM.ravel(order='F').astype(dtype=np.float32)
+        if single_frame_list:
+            options.SinM = [np.asfortranarray(options.SinM).astype(dtype=np.float32)]
+            options.index = [options.index]
+        else:
+            options.SinM = np.asfortranarray(options.SinM)
+            options.SinM = options.SinM.ravel(order='F').astype(dtype=np.float32)
+    if single_frame_list and not isinstance(options.index, list):
+        options.index = [options.index]
 
 
 def TVPrepass(options):
