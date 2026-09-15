@@ -128,6 +128,8 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing MRAMLA");
                 status = MBSREM(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], w_vec.U, w_vec.lambda[timestep], timestep, iter, osa_iter, inputScalars, w_vec, proj, ii);
+                if (status != 0)
+                    return -1;
             }
 
             // Row-action Maximum Likelihood (RAMLA)
@@ -135,6 +137,8 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing RAMLA");
                 status = BSREM(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], w_vec.lambda[timestep], iter, inputScalars, proj, ii);
+                if (status != 0)
+                    return -1;
             }
 
             // Relaxed OSEM (ROSEM)
@@ -207,6 +211,8 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                 float uu;
                 vec.im_os[timestep][ii] = COSEM(vec.im_os[timestep][ii], vec.C_co, w_vec.D[0][ii], w_vec.h_ACOSEM, 1u);
                 status = computeACOSEMWeight(inputScalars, length, uu, osa_iter, timestep, mData[timestep], m_size, w_vec, vec, proj, subSum, pituus, g);
+                if (status != 0)
+                    return -1;
                 if (inputScalars.CT)
                     vec.im_os[timestep][ii] *= (w_vec.ACOSEM_rhs / uu);
                 else
@@ -236,11 +242,15 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing BSREM");
                 status = BSREM(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], w_vec.lambda[timestep], iter, inputScalars, proj, ii);
+                if (status != 0)
+                    return -1;
             }
             else if (MethodList.MBSREM) {
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing MBSREM");
                 status = MBSREM(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], w_vec.U, w_vec.lambda[timestep], timestep, iter, osa_iter, inputScalars, w_vec, proj, ii);
+                if (status != 0)
+                    return -1;
             }
             else if (MethodList.ROSEMMAP) {
                 if (inputScalars.verbose >= 3)
@@ -293,11 +303,15 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                 if (DEBUG || inputScalars.verbose >= 3)
                     mexPrint("Computing PKMA");
                 status = PKMA(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], w_vec, inputScalars, timestep, iter, osa_iter, proj, ii);
+                if (status != 0)
+                    return -1;
             }
             else if (MethodList.SPS) {
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing SPS");
                 status = SPS(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], w_vec.U, w_vec.lambda[timestep], timestep, iter, osa_iter, inputScalars, w_vec, proj, ii);
+                if (status != 0)
+                    return -1;
             }
             else if (MethodList.LSQR) {
                 if (inputScalars.verbose >= 3)
@@ -317,32 +331,47 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                     mexEval();
                 }
                 status = SART(inputScalars, w_vec, MethodList, vec, proj, mData[timestep], g, length, pituus, timestep, osa_iter, iter , *Sens, vec.rhs_os[timestep][ii], w_vec.lambda[timestep][iter], ii);
-                if (MethodList.POCS)
+                if (status != 0)
+                    return -1;
+                if (MethodList.POCS) {
                     status = POCS(inputScalars, w_vec, MethodList, vec, proj, mData[timestep], g, length, pituus, timestep, osa_iter, iter, ii);
+                    if (status != 0)
+                        return -1;
+                }
             }
             else if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) {
                 if (DEBUG || inputScalars.verbose >= 3)
                     mexPrint("Computing PDHG/PDHGKL/PDHGL1/PDDY");
                 status = PDHG2(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], inputScalars, w_vec, vec, proj, iter, timestep, osa_iter, ii, pituus, g, m_size, length);
+                if (status != 0)
+                    return -1;
             }
             else if (MethodList.FISTA) {
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing FISTA");
                 status = FISTA(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], inputScalars, w_vec, vec, proj, timestep, iter, osa_iter, ii);
+                if (status != 0)
+                    return -1;
             }
             else if (MethodList.FISTAL1) {
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing FISTAL1");
                 status = FISTAL1(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], inputScalars, w_vec, vec, w_vec.beta, proj, timestep, iter, osa_iter, ii);
+                if (status != 0)
+                    return -1;
             }
             else if (MethodList.SAGA) {
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing SAGA");
                 status = SAGA(vec.im_os[timestep][ii], inputScalars, w_vec, vec, proj, timestep, osa_iter, iter, ii);
+                if (status != 0)
+                    return -1;
             } else if (MethodList.BB) {
                 if(inputScalars.verbose>=3)
                     mexPrint("Computing BB");
                 status = BB(vec, w_vec, timestep, ii);
+                if (status != 0)
+                    return -1;
             }
             if (inputScalars.FISTAAcceleration) {
                 //if ((w_vec.precondTypeIm[5] && w_vec.filterIter > 0 && osa_iter + inputScalars.subsets * iter >= w_vec.filterIter) || !w_vec.precondTypeIm[5]) {

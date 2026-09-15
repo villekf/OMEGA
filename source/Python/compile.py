@@ -27,68 +27,68 @@ def CommandLine(args=None):
         def find_visual_studio():
             # Find Visual Studio installation
             vs_paths = [
-                        r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat",
-                        r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat",
-                        r"C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat",
-                        r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat",
-                        r"C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat",
-                        r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat",
-                        r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvarsall.bat",
-                        r"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvarsall.bat",
-                        r"C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\VC\Auxiliary\Build\vcvarsall.bat",
-                    ]
+					r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat",
+					r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat",
+					r"C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat",
+					r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat",
+					r"C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat",
+					r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat",
+					r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvarsall.bat",
+					r"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvarsall.bat",
+					r"C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\VC\Auxiliary\Build\vcvarsall.bat",
+				]
             for path in vs_paths:
-                if os.path.exists(path):
-                    return path
-                return None
+                    if os.path.exists(path):
+                        return path
+                    return None
         def compileWindows(compiler_cmd, succeeded, failed):
             import tempfile
             vcvarsall_path = find_visual_studio()
             if vcvarsall_path == None:
-                print("Visual Studio not found. Use x64 Native Tools Command Prompt to compile the files.")
-                return failed
+                    print("Visual Studio not found. Use x64 Native Tools Command Prompt to compile the files.")
+                    return failed
             # Create a batch script that sets up VS environment and runs the compiler
             with tempfile.NamedTemporaryFile(mode='w', suffix='.bat', delete=False) as f:
-                f.write(f'@echo off\n')
-                f.write(f'call "{vcvarsall_path}" x64\n')
-                f.write('if %errorlevel% neq 0 (\n')
-                f.write('    echo Failed to setup Visual Studio environment\n')
-                f.write('    exit /b %errorlevel%\n')
-                f.write(')\n')
-                cmd_parts = []
-                for arg in compiler_cmd:
-                    cmd_parts.append(arg)
-                
-                # Join all parts with spaces
-                full_command = ''.join(cmd_parts)
-                f.write(full_command + '\n')
-                temp_batch = f.name
+                    f.write(f'@echo off\n')
+                    f.write(f'call "{vcvarsall_path}" x64\n')
+                    f.write('if %errorlevel% neq 0 (\n')
+                    f.write('    echo Failed to setup Visual Studio environment\n')
+                    f.write('    exit /b %errorlevel%\n')
+                    f.write(')\n')
+                    cmd_parts = []
+                    for arg in compiler_cmd:
+                        cmd_parts.append(arg)
+
+                    # Join all parts with spaces
+                    full_command = ''.join(cmd_parts)
+                    f.write(full_command + '\n')
+                    temp_batch = f.name
             try:
-                # Run the batch script
-                result = subprocess.run(
-                    [temp_batch],
-                    shell=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=60
-                )
-                
-                if result.returncode == 0:
-                    return succeeded
-                else:
-                    return failed
-                    
+                    # Run the batch script
+                    result = subprocess.run(
+                        [temp_batch],
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=60
+                    )
+
+                    if result.returncode == 0:
+                        return succeeded
+                    else:
+                        return failed
+
             except subprocess.TimeoutExpired:
-                return "Compilation timed out", ""
+                    return "Compilation timed out", ""
             except Exception as e:
-                return f"Error during compilation: {str(e)}", ""
+                    return f"Error during compilation: {str(e)}", ""
             finally:
-                # Clean up temporary batch file
-                try:
-                    os.unlink(temp_batch)
-                except:
-                    pass
-                    
+                    # Clean up temporary batch file
+                    try:
+                        os.unlink(temp_batch)
+                    except:
+                        pass
+
         homedir = os.path.expanduser('~')
         if len(openclpath) > 0:
             opencllib = os.path.join(openclpath, 'lib', 'x64')
@@ -96,7 +96,7 @@ def CommandLine(args=None):
         elif 'CUDA_PATH' in os.environ:
             openclpath = os.path.join(os.environ['CUDA_PATH'], 'include')
             opencllib = os.path.join(os.environ['CUDA_PATH'] , 'lib', 'x64')
-        elif 'OCL_ROOT' in os.environ: 
+        elif 'OCL_ROOT' in os.environ:
             openclpath = os.path.join(os.environ['OCL_ROOT'], 'include')
             opencllib = os.path.join(os.environ['OCL_ROOT'], 'lib', 'x86_64')
         elif 'INTELOCLSDKROOT' in os.environ:
@@ -153,23 +153,73 @@ def CommandLine(args=None):
             link3 = '/link ' + libs + ' /LIBPATH:"' + aflib + '" /LIBPATH:"' + opencllib + '" /MACHINE:X64 /OUT:"' + outputPath + '\\OpenCL_matrixfree_uint8_lib.dll"'
             compile_command3 = compiler + ' ' + options3 + ' ' + files + ' ' + link3
             if clfound:
-                try:
-                    # compile_command = [compiler, options, files, link]
-                    result = subprocess.run(compile_command, check=True)
-                    if result.stderr is None:
-                        result = subprocess.run(compile_command2, check=True)
+                    try:
+                        # compile_command = [compiler, options, files, link]
+                        result = subprocess.run(compile_command, check=True)
                         if result.stderr is None:
-                            result = subprocess.run(compile_command3, check=True)
-                        print('OpenCL support compiled successfully!')
-                except Exception:
-                    print("OpenCL build failed")
+                            result = subprocess.run(compile_command2, check=True)
+                            if result.stderr is None:
+                                    result = subprocess.run(compile_command3, check=True)
+                            print('OpenCL support compiled successfully!')
+                    except Exception:
+                        print("OpenCL build failed")
             else:
-                result = compileWindows(compile_command, 'OpenCL support compiled successfully!', "OpenCL build failed")
-                result = compileWindows(compile_command2, 'OpenCL support compiled successfully!', "OpenCL build failed")
-                result = compileWindows(compile_command3, 'OpenCL support compiled successfully!', "OpenCL build failed")
-                print(result)
+                    result = compileWindows(compile_command, 'OpenCL support compiled successfully!', "OpenCL build failed")
+                    result = compileWindows(compile_command2, 'OpenCL support compiled successfully!', "OpenCL build failed")
+                    result = compileWindows(compile_command3, 'OpenCL support compiled successfully!', "OpenCL build failed")
+                    print(result)
+        # HIP is tried first, CUDA is used only if the HIP build fails or ROCm is not found.
+        # Both produce the same CUDA_matrixfree_lib output names, see install_mex.m.
+        hipRoot = ''
+        hippath = ''
+        hiplib = ''
+        hipBuilt = False
+        if 'HIP_PATH' in os.environ:
+            hipRoot = os.environ['HIP_PATH']
+        elif 'ROCM_PATH' in os.environ:
+            hipRoot = os.environ['ROCM_PATH']
+        else:
+            for kk in range(8, 4, -1):
+                    for ll in range(9, -1, -1):
+                        if os.path.exists('C:\\Program Files\\AMD\\ROCm\\' + str(kk) + '.' + str(ll)):
+                            hipRoot = 'C:\\Program Files\\AMD\\ROCm\\' + str(kk) + '.' + str(ll)
+                            break
+                    if len(hipRoot) > 0:
+                        break
+        if len(hipRoot) > 0 and os.path.exists(os.path.join(hipRoot, 'include', 'hip')):
+            hippath = os.path.join(hipRoot, 'include')
+            hiplib = os.path.join(hipRoot, 'lib')
+        if len(hippath) > 0:
+            options = '/std:c++17 /O2 /DHIP /DAF /DAF_RELEASE /DAF_CUDA /D__HIP_PLATFORM_AMD__ /D__x86_64 /LD /EHsc /I"' + sdir + '" /I"' + afpath + '"' + ' /I"' + hippath + '"'
+            libs = '"amdhip64.lib" "hiprtc.lib" "afcuda.lib"'
+            link = '/link ' + libs + ' /LIBPATH:"' + aflib + '" /LIBPATH:"' + hiplib + '" /MACHINE:X64 /OUT:"' + outputPath + '\\CUDA_matrixfree_lib.dll"'
+            files = '"' + sdir + '\\omega_maincpp.cpp"'
+            compile_command = compiler + ' ' + options + ' ' + files + ' ' + link
+            options2 = '/std:c++17 /O2 /DHIP /DAF /DMTYPE /DAF_RELEASE /DAF_CUDA /D__HIP_PLATFORM_AMD__ /D__x86_64 /LD /EHsc /I"' + sdir + '" /I"' + afpath + '"' + ' /I"' + hippath + '"'
+            link2 = '/link ' + libs + ' /LIBPATH:"' + aflib + '" /LIBPATH:"' + hiplib + '" /MACHINE:X64 /OUT:"' + outputPath + '\\CUDA_matrixfree_uint16_lib.dll"'
+            compile_command2 = compiler + ' ' + options2 + ' ' + files + ' ' + link2
+            options3 = '/std:c++17 /O2 /DHIP /DAF /DMTYPE2 /DAF_RELEASE /DAF_CUDA /D__HIP_PLATFORM_AMD__ /D__x86_64 /LD /EHsc /I"' + sdir + '" /I"' + afpath + '"' + ' /I"' + hippath + '"'
+            link3 = '/link ' + libs + ' /LIBPATH:"' + aflib + '" /LIBPATH:"' + hiplib + '" /MACHINE:X64 /OUT:"' + outputPath + '\\CUDA_matrixfree_uint8_lib.dll"'
+            compile_command3 = compiler + ' ' + options3 + ' ' + files + ' ' + link3
+            if clfound:
+                    try:
+                        result = subprocess.run(compile_command, check=True)
+                        result = subprocess.run(compile_command2, check=True)
+                        result = subprocess.run(compile_command3, check=True)
+                        hipBuilt = True
+                        print('HIP support compiled successfully!')
+                    except Exception:
+                        print("HIP build failed")
+            else:
+                    result = compileWindows(compile_command, 'HIP support compiled successfully!', "HIP build failed")
+                    result2 = compileWindows(compile_command2, 'HIP support compiled successfully!', "HIP build failed")
+                    result3 = compileWindows(compile_command3, 'HIP support compiled successfully!', "HIP build failed")
+                    hipBuilt = result == 'HIP support compiled successfully!' and result2 == 'HIP support compiled successfully!' and result3 == 'HIP support compiled successfully!'
+                    print(result3)
+        else:
+            print('ROCm/HIP not found.')
         cudapath = ''
-        if 'CUDA_PATH' in os.environ:
+        if 'CUDA_PATH' in os.environ and not hipBuilt:
             cudapath = os.environ['CUDA_PATH'] + '\\include'
             cudalib = os.environ['CUDA_PATH'] + '\\lib\\x64'
         if len(cudapath) > 0:
@@ -185,24 +235,24 @@ def CommandLine(args=None):
             link3 = '/link ' + libs + ' /LIBPATH:"' + aflib + '" /LIBPATH:"' + cudalib + '" /MACHINE:X64 /OUT:"' + outputPath + '\\CUDA_matrixfree_uint8_lib.dll"'
             compile_command3 = compiler + ' ' + options3 + ' ' + files + ' ' + link3
             if clfound:
-                try:
-                    # compile_command = [compiler, options, files, link]
-                    result = subprocess.run(compile_command, check=True)
-                    if result.stderr is None:
-                        result = subprocess.run(compile_command2, check=True)
+                    try:
+                        # compile_command = [compiler, options, files, link]
+                        result = subprocess.run(compile_command, check=True)
                         if result.stderr is None:
-                            result = subprocess.run(compile_command3, check=True)
-                        print('CUDA support compiled successfully!')
-                except Exception:
-                    print("CUDA build failed")
+                            result = subprocess.run(compile_command2, check=True)
+                            if result.stderr is None:
+                                    result = subprocess.run(compile_command3, check=True)
+                            print('CUDA support compiled successfully!')
+                    except Exception:
+                        print("CUDA build failed")
             else:
-                result = compileWindows(compile_command, 'CUDA support compiled successfully!', "CUDA build failed")
-                result = compileWindows(compile_command2, 'CUDA support compiled successfully!', "CUDA build failed")
-                result = compileWindows(compile_command3, 'CUDA support compiled successfully!', "CUDA build failed")
-                print(result)
-        else:
+                    result = compileWindows(compile_command, 'CUDA support compiled successfully!', "CUDA build failed")
+                    result = compileWindows(compile_command2, 'CUDA support compiled successfully!', "CUDA build failed")
+                    result = compileWindows(compile_command3, 'CUDA support compiled successfully!', "CUDA build failed")
+                    print(result)
+        elif not hipBuilt:
             print('CUDA not found. No CUDA code compiled!')
-        
+
         if len(rpath) > 0:
             rlib = os.path.join(rpath, 'lib')
             rpath = os.path.join(rpath, 'include')
@@ -214,31 +264,31 @@ def CommandLine(args=None):
             rpath = os.path.join('C:/Program Files/root', 'include')
         else:
             for yy in range(6,13):
-                if os.path.exists(rpath):
-                    break
-                for xx in range(0,60,2):
                     if os.path.exists(rpath):
                         break
-                    for zz in range(0,60):
-                        if xx < 10:
-                            xc = '0' + str(xx)
-                        else:
-                            xc = str(xx)
-                        if zz < 10:
-                            zc = '0' + str(zz)
-                        else:
-                            zc = str(zz)
-                        rpath = 'C:/root_v' + str(yy) + '.' + xc + '.' + zc
+                    for xx in range(0,60,2):
                         if os.path.exists(rpath):
                             break
-                        rpath = 'C:/Program Files/root_v' + str(yy) + '.' + xc + '.' + zc
-                        if os.path.exists(rpath):
-                            break
+                        for zz in range(0,60):
+                            if xx < 10:
+                                    xc = '0' + str(xx)
+                            else:
+                                    xc = str(xx)
+                            if zz < 10:
+                                    zc = '0' + str(zz)
+                            else:
+                                    zc = str(zz)
+                            rpath = 'C:/root_v' + str(yy) + '.' + xc + '.' + zc
+                            if os.path.exists(rpath):
+                                    break
+                            rpath = 'C:/Program Files/root_v' + str(yy) + '.' + xc + '.' + zc
+                            if os.path.exists(rpath):
+                                    break
             rlib = os.path.join(rpath, 'lib')
             rpath = os.path.join(rpath, 'include')
-                
-            
-            
+
+
+
         options = '/O2 /openmp /DCPU /DAF /DAF_RELEASE /DAF_CPU /D__x86_64 /LD /EHsc /I"' + sdir + '" /I"' + afpath + '"'
         libs = '"afcpu.lib"'
         link = '/link ' + libs + ' /LIBPATH:"' + aflib + '" /MACHINE:X64 /OUT:"' + outputPath + '\\CPU_matrixfree_lib.dll"'
@@ -246,42 +296,42 @@ def CommandLine(args=None):
         compile_command = compiler + ' ' + options + ' ' + files + ' ' + link
         if clfound:
             try:
-                result = subprocess.run(compile_command, check=True)
-                if result.stderr is None:
-                    print('CPU support compiled successfully!')
+                    result = subprocess.run(compile_command, check=True)
+                    if result.stderr is None:
+                        print('CPU support compiled successfully!')
             except Exception:
-                print("CPU build failed")
+                    print("CPU build failed")
         else:
             result = compileWindows(compile_command, 'CPU support compiled successfully!', "CPU build failed")
             print(result)
-            
+
         options = '/O2 /D__x86_64 /LD /EHsc /I"' + sdir + '"'
         link = '/link ' + '/MACHINE:X64 /OUT:"' + outputPath + '\\createSinogram.dll"'
         files = '"' + sdir + '\\createSinogram.cpp"'
         compile_command = compiler + ' ' + options + ' ' + files + ' ' + link
         if clfound:
             try:
-                subprocess.run(compile_command, check=True)
+                    subprocess.run(compile_command, check=True)
             except Exception:
-                print("Build failed")
+                    print("Build failed")
         else:
             result = compileWindows(compile_command, '', "Build failed")
             print(result)
-        
+
         options = '/O2 /D__x86_64 /LD /EHsc /I"' + sdir + '"'
         link = '/link ' + '/MACHINE:X64 /OUT:"' + outputPath + '\\inveon.dll"'
         files = '"' + sdir + '\\inveonMain.cpp"'
         compile_command = compiler + ' ' + options + ' ' + files + ' ' + link
         if clfound:
             try:
-                subprocess.run(compile_command, check=True)
-                print('Inveon list-mode support compiled successfully!')
+                    subprocess.run(compile_command, check=True)
+                    print('Inveon list-mode support compiled successfully!')
             except Exception:
-                print("Build failed")
+                    print("Build failed")
         else:
             result = compileWindows(compile_command, 'Inveon list-mode support compiled successfully!', "Build failed")
             print(result)
-            
+
         options = '/std:c++17 /O2 /D__x86_64 /LD /EHsc /I"' + sdir + '" /I"' + rpath + '"'
         libs = '"libCore.lib" "libRIO.lib" "libTree.lib"'
         link = '/link ' + libs + ' /LIBPATH:"' + rlib + '" /MACHINE:X64 /OUT:"' + outputPath + '\\libRoot.dll"'
@@ -289,14 +339,14 @@ def CommandLine(args=None):
         compile_command = compiler + ' ' + options + ' ' + files + ' ' + link
         if clfound:
             try:
-                result = subprocess.run(compile_command, check=True)
-                print('ROOT support compiled successfully!')
+                    result = subprocess.run(compile_command, check=True)
+                    print('ROOT support compiled successfully!')
             except Exception:
-                print("ROOT support build failed")
+                    print("ROOT support build failed")
         else:
             result = compileWindows(compile_command, 'ROOT support compiled successfully!', "ROOT support build failed")
             print(result)
-    
+
     elif sys.platform == 'darwin':
         compiler = 'g++'
         aflib = ''
@@ -327,7 +377,7 @@ def CommandLine(args=None):
                 '-DAF',
                 '-I' + sdir,
                 '-I' + afpath,
-                
+
                 '-I' + metalpath,
                 files,
                 '-L' + aflib,
@@ -341,7 +391,7 @@ def CommandLine(args=None):
             print('Metal backend for float datatype built')
         except Exception:
             print('Could not build Metal backend for float datatype')
-        
+
         try:
             result = subprocess.run([
                 compiler,
@@ -367,7 +417,7 @@ def CommandLine(args=None):
             print('Metal backend for uint16 datatype built')
         except Exception:
             print('Could not build Metal backend for uint16 datatype')
-    
+
         try:
             result = subprocess.run([
                 compiler,
@@ -392,7 +442,7 @@ def CommandLine(args=None):
             print('Metal backend for uint8 datatype built')
         except Exception:
             print('Could not build Metal backend for uint8 datatype')
-        
+
 
     else:
         compiler = 'g++'
@@ -429,7 +479,7 @@ def CommandLine(args=None):
             aflib = '/opt/arrayfire/lib64'
         # if len(afpath) == 0:
         #     raise ValueError('ArrayFire not found! Please install ArrayFire and input install directory with -A /path/to/arrayfire')
-            
+
         sdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', 'cpp'))
         # options = ['-shared', '-fPIC', '-DOPENCL', '-DAF', '-DAF_OPENCL', '-I' + sdir, '-I' + afpath, '-I' + openclpath]
         # options = '-shared -fPIC -DOPENCL -DAF -DAF_RELEASE -DAF_OPENCL -I' + sdir + ' -I' + afpath + ' -I' + openclpath
@@ -444,19 +494,57 @@ def CommandLine(args=None):
         # compile_command = [compiler, options, files, link]
         # print(compile_command)
         try:
-            result = subprocess.run([compiler, '-shared', '-fPIC', '-DOPENCL', '-DAF', '-DAF_OPENCL', '-I' + sdir, '-I' + afpath, '-I' + openclpath, 
-                                        link1, link, files, lib1, lib2, lib3, lib4], check=True)
-            if result.stderr is None:
-                link = '-o' + outputPath + '/OpenCL_matrixfree_uint16_lib.so'
-                result = subprocess.run([compiler, '-shared', '-fPIC', '-DOPENCL', '-DAF', '-DAF_OPENCL', '-DMTYPE', '-I' + sdir, '-I' + afpath, '-I' + openclpath, 
-                                            link1, link, files, lib1, lib2, lib3, lib4], check=True)
-                if result.stderr is None:
-                    link = '-o' + outputPath + '/OpenCL_matrixfree_uint8_lib.so'
-                    result = subprocess.run([compiler, '-shared', '-fPIC', '-DOPENCL', '-DAF', '-DAF_OPENCL', '-DMTYPE2', '-I' + sdir, '-I' + afpath, '-I' + openclpath, 
+            result = subprocess.run([compiler, '-shared', '-fPIC', '-DOPENCL', '-DAF', '-DAF_OPENCL', '-I' + sdir, '-I' + afpath, '-I' + openclpath,
                                                 link1, link, files, lib1, lib2, lib3, lib4], check=True)
-                print('OpenCL support compiled successfully!')
+            if result.stderr is None:
+                    link = '-o' + outputPath + '/OpenCL_matrixfree_uint16_lib.so'
+                    result = subprocess.run([compiler, '-shared', '-fPIC', '-DOPENCL', '-DAF', '-DAF_OPENCL', '-DMTYPE', '-I' + sdir, '-I' + afpath, '-I' + openclpath,
+                                                    link1, link, files, lib1, lib2, lib3, lib4], check=True)
+                    if result.stderr is None:
+                        link = '-o' + outputPath + '/OpenCL_matrixfree_uint8_lib.so'
+                        result = subprocess.run([compiler, '-shared', '-fPIC', '-DOPENCL', '-DAF', '-DAF_OPENCL', '-DMTYPE2', '-I' + sdir, '-I' + afpath, '-I' + openclpath,
+                                                        link1, link, files, lib1, lib2, lib3, lib4], check=True)
+                    print('OpenCL support compiled successfully!')
         except Exception:
             print("OpenCL build failed")
+        # HIP is tried first, CUDA is used only if the HIP build fails or ROCm is not found.
+        # Both produce the same CUDA_matrixfree_lib output names, see install_mex.m.
+        # NOTE: ROCm uses lib, not lib64.
+        hipRoot = ''
+        hippath = ''
+        hiplib = ''
+        hipBuilt = False
+        if 'ROCM_PATH' in os.environ:
+            hipRoot = os.environ['ROCM_PATH']
+        elif 'HIP_PATH' in os.environ:
+            hipRoot = os.environ['HIP_PATH']
+        elif os.path.exists('/opt/rocm'):
+            hipRoot = '/opt/rocm'
+        if len(hipRoot) > 0 and os.path.exists(os.path.join(hipRoot, 'include', 'hip')):
+            hippath = os.path.join(hipRoot, 'include')
+            hiplib = os.path.join(hipRoot, 'lib')
+        if len(hippath) > 0:
+            lib1 = '-L' + hiplib
+            lib3 = '-lamdhip64'
+            lib4 = '-lafcuda'
+            lib5 = '-lhiprtc'
+            link = '-o' + outputPath + '/CUDA_matrixfree_lib.so'
+            files = '' + sdir + '/omega_maincpp.cpp'
+            try:
+                    result = subprocess.run([compiler, '-shared', '-fPIC', '-std=c++17', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', '-I' + sdir, '-I' + afpath, '-I' + hippath,
+                                                    link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
+                    link = '-o' + outputPath + '/CUDA_matrixfree_uint16_lib.so'
+                    result = subprocess.run([compiler, '-shared', '-fPIC', '-std=c++17', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', '-DMTYPE', '-I' + sdir, '-I' + afpath, '-I' + hippath,
+                                                    link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
+                    link = '-o' + outputPath + '/CUDA_matrixfree_uint8_lib.so'
+                    result = subprocess.run([compiler, '-shared', '-fPIC', '-std=c++17', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', '-DMTYPE2', '-I' + sdir, '-I' + afpath, '-I' + hippath,
+                                                    link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
+                    hipBuilt = True
+                    print('HIP support compiled successfully!')
+            except Exception:
+                    print("HIP build failed")
+        else:
+            print('ROCm/HIP not found.')
         cudapath = ''
         cudalib = ''
         if os.path.exists('/usr/local/cuda/targets/x86_64-linux'):
@@ -467,46 +555,47 @@ def CommandLine(args=None):
             cudalib = '/usr/lib/x86_64-linux'
         # if len(cudapath) == 0:
         #     raise ValueError('CUDA not found. CUDA version not compiled.')
-        lib1 = '-L' + cudalib
-        lib3 = '-lcuda'
-        lib4 = '-lafcuda'
-        lib5 = '-lnvrtc'
-        link = '-o' + outputPath + '/CUDA_matrixfree_lib.so'
-        files = '' + sdir + '/omega_maincpp.cpp'
-        try:
-            result = subprocess.run([compiler, '-shared', '-fPIC', '-DCUDA', '-DAF', '-DAF_CUDA', '-I' + sdir, '-I' + afpath, '-I' + cudapath, 
-                                        link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
-            if result.stderr is None:
-                link = '-o' + outputPath + '/CUDA_matrixfree_uint16_lib.so'
-                result = subprocess.run([compiler, '-shared', '-fPIC', '-DCUDA', '-DAF', '-DAF_CUDA', '-DMTYPE', '-I' + sdir, '-I' + afpath, '-I' + cudapath, 
-                                            link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
-                if result.stderr is None:
-                    link = '-o' + outputPath + '/CUDA_matrixfree_uint8_lib.so'
-                    result = subprocess.run([compiler, '-shared', '-fPIC', '-DCUDA', '-DAF', '-DAF_CUDA', '-DMTYPE2', '-I' + sdir, '-I' + afpath, '-I' + cudapath, 
-                                                link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
-                print('CUDA support compiled successfully!')
-        except Exception:
-            print("CUDA build failed")
-            
+        if not hipBuilt:
+            lib1 = '-L' + cudalib
+            lib3 = '-lcuda'
+            lib4 = '-lafcuda'
+            lib5 = '-lnvrtc'
+            link = '-o' + outputPath + '/CUDA_matrixfree_lib.so'
+            files = '' + sdir + '/omega_maincpp.cpp'
+            try:
+                    result = subprocess.run([compiler, '-shared', '-fPIC', '-DCUDA', '-DAF', '-DAF_CUDA', '-I' + sdir, '-I' + afpath, '-I' + cudapath,
+                                                    link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
+                    if result.stderr is None:
+                        link = '-o' + outputPath + '/CUDA_matrixfree_uint16_lib.so'
+                        result = subprocess.run([compiler, '-shared', '-fPIC', '-DCUDA', '-DAF', '-DAF_CUDA', '-DMTYPE', '-I' + sdir, '-I' + afpath, '-I' + cudapath,
+                                                        link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
+                        if result.stderr is None:
+                            link = '-o' + outputPath + '/CUDA_matrixfree_uint8_lib.so'
+                            result = subprocess.run([compiler, '-shared', '-fPIC', '-DCUDA', '-DAF', '-DAF_CUDA', '-DMTYPE2', '-I' + sdir, '-I' + afpath, '-I' + cudapath,
+                                                                link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
+                        print('CUDA support compiled successfully!')
+            except Exception:
+                    print("CUDA build failed")
+
         lib4 = '-lafcpu'
         # lib3 = '-liomp5'
         link = '-o' + outputPath + '/CPU_matrixfree_lib.so'
         files = '' + sdir + '/omega_maincpp.cpp'
         try:
             result = subprocess.run([compiler, '-shared','-fopenmp', '-fPIC', '-DCPU', '-DAF', '-DAF_CPU', '-I' + sdir, '-I' + afpath,
-                                        link1, link, files, lib2, lib4], check=True)
+                                                link1, link, files, lib2, lib4], check=True)
             if result.stderr is None:
-                print('CPU support compiled successfully!')
+                    print('CPU support compiled successfully!')
         except Exception:
             print("CPU build failed")
-            
+
         link = '-o' + outputPath + '/createSinogram.so'
         files = '' + sdir + '/createSinogram.cpp'
         try:
             result = subprocess.run([compiler, '-shared', '-fPIC', '-I' + sdir, link, files], check=True)
         except Exception:
             print("Build failed")
-            
+
         link = '-o' + outputPath + '/inveon.so'
         files = '' + sdir + '/inveonMain.cpp'
         try:
@@ -514,7 +603,7 @@ def CommandLine(args=None):
             print('Inveon list-mode support compiled successfully!')
         except Exception:
             print("Build failed")
-        
+
         if len(rpath) > 0:
             rlib = os.path.join(rpath, 'lib')
             rpath = os.path.join(rpath, 'include')
@@ -523,7 +612,7 @@ def CommandLine(args=None):
             rpath = rpath[:-1]
             rlib = result = os.popen('root-config --libdir').read()
             rlib = rlib[:-1]
-            
+
         lib1 = '-L' + rlib
         lib2 = '-lCore'
         lib3 = '-lRIO'
@@ -536,13 +625,13 @@ def CommandLine(args=None):
             print('ROOT support compiled successfully!')
         except Exception:
             print("ROOT support build failed")
-				
+
 def compileOMEGA(args=None):
     import sys
     if args is None:
         args = sys.argv[1:]
     CommandLine(args)
-				
-            
+
+
 if __name__ == '__main__':
     compileOMEGA()

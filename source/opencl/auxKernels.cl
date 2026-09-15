@@ -99,13 +99,13 @@ void computeEstimate(const CLGLOBAL CAST* CLRESTRICT d_Summ, const CLGLOBAL CAST
 	) {
 
 	int3 ind = CMINT3(GID0, GID1, GID2);
-	size_t idx = GID0 + GID1 * GSIZE0 + GID2 * GSIZE0 * GSIZE1;
 #if defined(CUDA) || defined(HIP)
 	if (ind.x >= d_N.x || ind.y >= d_N.y || ind.z >= d_N.z)
 #else
 	if (any(ind >= d_N))
 #endif
 		return;
+	const size_t idx = (size_t)(ind.x) + (size_t)(ind.y) * (size_t)(d_N.x) + (size_t)(ind.z) * (size_t)(d_N.x) * (size_t)(d_N.y);
 	float apu = d_im[idx];
 #ifdef CT
 	apu *= flat;
@@ -120,53 +120,33 @@ void computeEstimate(const CLGLOBAL CAST* CLRESTRICT d_Summ, const CLGLOBAL CAST
 // PSF blurring
 // This is mainly for non-float inputs
 #ifdef PSF // START PSF
+// A separate mirroring function rather than retyping the same operations for every dimension
+// Slightly reduces code usage
+DEVICE int mirrorIndex(int i, const int n) {
+	while (i < 0 || i >= n) {
+		if (i < 0)
+			i = -i - 1;
+		if (i >= n)
+			i = 2 * n - 1 - i;
+	}
+	return i;
+}
+// Indexing was previously a bit messed up here, but this function hasn't been, and isn't, supported
 KERN
 void Convolution3D(const CLGLOBAL CAST* input, CLGLOBAL CAST* output,
-	CONSTANT float* convolution_window, int window_size_x, int window_size_y, int window_size_z) {
-	int4 ind = CMINT4(GID0, GID1, GID2, 0);
-	int4 ind_uus = CMINT4(0, 0, 0, 0);
-	const uint Nyx = GSIZE0 * GSIZE1;
+	CONSTANT float* convolution_window, int window_size_x, int window_size_y, int window_size_z, const int3 N) {
+	const int4 ind = CMINT4(GID0, GID1, GID2, 0);
+	if (ind.x >= N.x || ind.y >= N.y || ind.z >= N.z)
+		return;
+	const LONG Nyx = CLONG_rtz(N.x) * CLONG_rtz(N.y);
 	float result = FLOAT_ZERO;
 	int c = 0;
 	for (int k = -window_size_z; k <= window_size_z; k++) {
-		if (ind.z < window_size_z) {
-			if (k < -ind.z)
-				ind_uus.z = abs(k) - 1 - ind.z;
-			else
-				ind_uus.z = k + ind.z;
-		}
-		else {
-			ind_uus.z = ind.z + k;
-			if (ind_uus.z >= GSIZE2)
-				ind_uus.z = GSIZE2 - 1 - (ind_uus.z - GSIZE2);
-		}
-		ind_uus.z *= Nyx;
+		const LONG indZ = CLONG_rtz(mirrorIndex(ind.z + k, N.z)) * Nyx;
 		for (int j = -window_size_y; j <= window_size_y; j++) {
-			if (ind.y < window_size_y) {
-				if (j < -ind.y)
-					ind_uus.y = abs(j) - 1 - ind.y;
-				else
-					ind_uus.y = j + ind.y;
-			}
-			else {
-				ind_uus.y = ind.y + j;
-				if (ind_uus.y >= GSIZE1)
-					ind_uus.y = GSIZE1 - 1 - (ind_uus.y - GSIZE1);
-			}
-			ind_uus.y *= GSIZE0;
+			const LONG indY = CLONG_rtz(mirrorIndex(ind.y + j, N.y)) * CLONG_rtz(N.x);
 			for (int i = (-window_size_x); i <= window_size_x; i++) {
-				if (ind.x < window_size_x) {
-					if (i < -ind.x)
-						ind_uus.x = abs(i) - 1 - ind.x;
-					else
-						ind_uus.x = i + ind.x;
-				}
-				else {
-					ind_uus.x = ind.x + i;
-					if (ind_uus.x >= GSIZE0)
-						ind_uus.x = GSIZE0 - 1 - (ind_uus.x - GSIZE0);
-				}
-				int indeksi = ind_uus.x + ind_uus.y + ind_uus.z;
+				const LONG indeksi = CLONG_rtz(mirrorIndex(ind.x + i, N.x)) + indY + indZ;
 #if defined(ATOMIC) || defined(ATOMIC32) // START ATOMIC/ATOMIC32
 				float p = convert_float(input[indeksi]) / TH;
 #else
@@ -178,63 +158,33 @@ void Convolution3D(const CLGLOBAL CAST* input, CLGLOBAL CAST* output,
 			}
 		}
 	}
+	const LONG outInd = CLONG_rtz(ind.x) + CLONG_rtz(ind.y) * CLONG_rtz(N.x) + CLONG_rtz(ind.z) * Nyx;
 #ifdef ATOMIC // START ATOMIC
-	output[ind.x + ind.y * GSIZE0 + ind.z * Nyx] = convert_long(result * TH);
+	output[outInd] = convert_long(result * TH);
 #elif defined(ATOMIC32)
-	output[ind.x + ind.y * GSIZE0 + ind.z * Nyx] = convert_int(result * TH);
+	output[outInd] = convert_int(result * TH);
 #else
-	output[ind.x + ind.y * GSIZE0 + ind.z * Nyx] = result;
+	output[outInd] = result;
 #endif // END ATOMIC
 }
 
 // PSF blurring, floats
 KERNEL3
 void Convolution3D_f(const CLGLOBAL float* input, CLGLOBAL float* output,
-	CONSTANT float* convolution_window, int window_size_x, int window_size_y, int window_size_z) {
-	int4 ind = CMINT4(GID0, GID1, GID2, 0);
-	int4 ind_uus = CMINT4(0, 0, 0, 0);
+	CONSTANT float* convolution_window, int window_size_x, int window_size_y, int window_size_z, const int3 N) {
+	const int4 ind = CMINT4(GID0, GID1, GID2, 0);
+	// See Convolution3D above
+	if (ind.x >= N.x || ind.y >= N.y || ind.z >= N.z)
+		return;
 	float result = FLOAT_ZERO;
-	const uint Nyx = GSIZE0 * GSIZE1;
+	const LONG Nyx = CLONG_rtz(N.x) * CLONG_rtz(N.y);
 	int c = 0;
 	for (int k = -window_size_z; k <= window_size_z; k++) {
-		if (ind.z < window_size_z) {
-			if (k < -ind.z)
-				ind_uus.z = abs(k) - 1 - ind.z;
-			else
-				ind_uus.z = k + ind.z;
-		}
-		else {
-			ind_uus.z = ind.z + k;
-			if (ind_uus.z >= GSIZE2)
-				ind_uus.z = GSIZE2 - 1 - (ind_uus.z - GSIZE2);
-		}
-		ind_uus.z *= Nyx;
+		const LONG indZ = CLONG_rtz(mirrorIndex(ind.z + k, N.z)) * Nyx;
 		for (int j = -window_size_y; j <= window_size_y; j++) {
-			if (ind.y < window_size_y) {
-				if (j < -ind.y)
-					ind_uus.y = abs(j) - 1 - ind.y;
-				else
-					ind_uus.y = j + ind.y;
-			}
-			else {
-				ind_uus.y = ind.y + j;
-				if (ind_uus.y >= GSIZE1)
-					ind_uus.y = GSIZE1 - 1 - (ind_uus.y - GSIZE1);
-			}
-			ind_uus.y *= GSIZE0;
+			const LONG indY = CLONG_rtz(mirrorIndex(ind.y + j, N.y)) * CLONG_rtz(N.x);
 			for (int i = (-window_size_x); i <= window_size_x; i++) {
-				if (ind.x < window_size_x) {
-					if (i < -ind.x)
-						ind_uus.x = abs(i) - 1 - ind.x;
-					else
-						ind_uus.x = i + ind.x;
-				}
-				else {
-					ind_uus.x = ind.x + i;
-					if (ind_uus.x >= GSIZE0)
-						ind_uus.x = GSIZE0 - 1 - (ind_uus.x - GSIZE0);
-				}
-				int indeksi = ind_uus.x + ind_uus.y + ind_uus.z;
+				const LONG indeksi = CLONG_rtz(mirrorIndex(ind.x + i, N.x)) + indY + indZ;
 				float p = input[indeksi];
 				p *= convolution_window[c];
 				result += p;
@@ -242,7 +192,7 @@ void Convolution3D_f(const CLGLOBAL float* input, CLGLOBAL float* output,
 			}
 		}
 	}
-	output[ind.x + ind.y * GSIZE0 + ind.z * Nyx] = result;
+	output[CLONG_rtz(ind.x) + CLONG_rtz(ind.y) * CLONG_rtz(N.x) + CLONG_rtz(ind.z) * Nyx] = result;
 }
 
 // Division by the sensitivity image
@@ -423,6 +373,9 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 #if NLTYPE == 1
 		float outputAla = epps;
 #endif
+#ifdef NLMAXWEIGHT
+		float maxWeight = FLOAT_ZERO;
+#endif
 #if defined(NLMADAPTIVE)
 		float hh = FLOAT_ZERO;
 		const float pSize = CFLOAT((PWINDOWX * 2 + 1) * (PWINDOWY * 2 + 1) * (PWINDOWZ * 2 + 1));
@@ -461,6 +414,9 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
  				weight = EXP(-distance / h);
 #endif
  				weight_sum += weight;
+#ifdef NLMAXWEIGHT
+				maxWeight = FMAX(maxWeight, weight);
+#endif
 				const float uk = NLMFETCH(lCache, xxyyzz.x + i, xxyyzz.y + j, xxyyzz.z);
  				// Different NLM regularization methods
 				// NLTYPE 0 = MRF NLM
@@ -470,7 +426,7 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 				// NLTYPE 4 = NL Lange
 				// NLTYPE 5 = NLM filtered with Lange
 				// NLTYPE 6 = NLGGMRF
-				// NLTYPE 7 = ?
+				// NLTYPE 7 = NLGM
 #if NLTYPE == 2 || NLTYPE == 5 // START NLM NLTYPE
 				// NLMRP
  				output += weight * uk;
@@ -498,13 +454,9 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 				const float deltapqc = FLOAT_ONE + dcpq;
 				output += weight * (POWR(fabs(delta), p - FLOAT_ONE) / deltapqc) * (p - gamma * ((dcpq * cpq) / deltapqc)) * sign(delta);
 #elif NLTYPE == 7
-				const float u = (uk - uj);
-				const float apu = (u * u + gamma * gamma);
-// #ifndef USEMAD // START FMAD
-				output += ((FLOAT_TWO * u * u * u) / (apu * apu) - FLOAT_TWO * (u / apu));
-// #else
-// 				output += ((FLOAT_TWO * u * u * u) / FMAD(apu, apu, -FLOAT_TWO * (u / apu)));
-// #endif // END FMAD
+				const float delta = uj - uk;
+				const float apu = (delta * delta + gamma * gamma);
+				output += weight * (FLOAT_TWO * gamma * gamma * delta) / (apu * apu);
 #else
  				//NLTV
 				const float apuU = uj - uk;
@@ -513,6 +465,12 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 #endif // END NLM NLTYPE
 				}
 			}
+#ifdef NLMAXWEIGHT
+#if NLTYPE == 2 || NLTYPE == 5
+		output += maxWeight * uj;
+#endif
+		weight_sum += maxWeight;
+#endif
 		weight_sum = FLOAT_ONE / weight_sum;
 		output *= weight_sum;
 #if NLTYPE == 2 // START NLM NLTYPE
@@ -971,8 +929,10 @@ DEVICE void forwardDiffZ2(float* apuVal, const LTYPE3 xyz, const int3 N, const C
 #endif
 // Computing q of proximal TV (see http://dx.doi.org/10.1088/0031-9155/57/10/3065)
 KERN
-void ProxTVq(CLGLOBAL float* inputX, CLGLOBAL float* inputY, CLGLOBAL float* inputZ, const float alpha) {
+void ProxTVq(CLGLOBAL float* inputX, CLGLOBAL float* inputY, CLGLOBAL float* inputZ, const float alpha, const LTYPE N) {
 	LTYPE idx = GID0;
+	if (idx >= N)
+		return;
 	const float3 apu = MFLOAT3(inputX[idx], inputY[idx], inputZ[idx]);
 #ifdef L2 // START L2
 // L2 norm
@@ -991,11 +951,13 @@ KERN
 // Same as above, but for TGV
 // TGVZ refers to full 3D TGV, i.e. it takes into account x-, y- and z-axis voxels
 #ifdef TGVZ
-void ProxTGVq(CLGLOBAL float* inputX, CLGLOBAL float* inputY, CLGLOBAL float* inputZ, CLGLOBAL float* input2XY, CLGLOBAL float* input2XZ, CLGLOBAL float* input2YZ, const float alpha) {
+void ProxTGVq(CLGLOBAL float* inputX, CLGLOBAL float* inputY, CLGLOBAL float* inputZ, CLGLOBAL float* input2XY, CLGLOBAL float* input2XZ, CLGLOBAL float* input2YZ, const float alpha, const LTYPE N) {
 #else
-void ProxTGVq(CLGLOBAL float* inputX, CLGLOBAL float* inputY, CLGLOBAL float* input2XY, const float alpha) {
+void ProxTGVq(CLGLOBAL float* inputX, CLGLOBAL float* inputY, CLGLOBAL float* input2XY, const float alpha, const LTYPE N) {
 #endif
 	LTYPE idx = GID0;
+	if (idx >= N)
+		return;
 #ifdef TGVZ
 	const float3 apu = MFLOAT3(inputX[idx], inputY[idx], inputZ[idx]);
 	const float3 apu2 = MFLOAT3(input2XY[idx], input2XZ[idx], input2YZ[idx]);

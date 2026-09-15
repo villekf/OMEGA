@@ -442,6 +442,9 @@ if options.NLM
     elseif options.NLLange
         image_properties.NLMType = 'Non-local Lange function prior (NLL)';
         image_properties.LangePhi = options.SATVPhi;
+    elseif options.NLGM
+        image_properties.NLMType = 'Non-local Geman-McClure prior (NLGM)';
+        image_properties.GM_delta = options.GM_delta;
     else
         image_properties.NLMType = 'MRF-type NLM prior';
     end

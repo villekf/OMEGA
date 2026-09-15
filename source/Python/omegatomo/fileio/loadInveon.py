@@ -64,6 +64,8 @@ def loadInveonData(options, store_coordinates = False):
         libname = str(os.path.join(libdir,"inveon.dll"))
     else:
         libname = str(os.path.join(libdir,"inveon.so"))
+    from omegatomo.util.dllpath import addDLLDirectories
+    addDLLDirectories()
     c_lib = ctypes.CDLL(libname)
     
     inStr = nimi.encode('utf-8')

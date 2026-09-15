@@ -893,11 +893,20 @@ end
 if ~isfield(options, 'NLGGMRF')
     options.NLGGMRF = false;
 end
+if ~isfield(options, 'NLGM')
+    options.NLGM = false;
+end
+if ~isfield(options, 'GM_delta')
+    options.GM_delta = 1;
+end
 if ~isfield(options, 'NLM_MRP')
     options.NLM_MRP = false;
 end
 if ~isfield(options, 'NLAdaptive')
     options.NLAdaptive = false;
+end
+if ~isfield(options, 'NLMaxWeight')
+    options.NLMaxWeight = false;
 end
 if ~isfield(options, 'NLAdaptiveConstant')
     options.NLAdaptiveConstant = 1e-5;

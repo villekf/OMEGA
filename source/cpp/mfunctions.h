@@ -614,11 +614,15 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		w_vec.NLM_MRP = getScalarBool(getField(options, 0, "NLM_MRP"), -49);
 		w_vec.NLLange = getScalarBool(getField(options, 0, "NLLange"), -49);
 		w_vec.NLGGMRF = getScalarBool(getField(options, 0, "NLGGMRF"), -49);
+		w_vec.NLGM = getScalarBool(getField(options, 0, "NLGM"), -49);
 		w_vec.NLAdaptive = getScalarBool(getField(options, 0, "NLAdaptive"), -49);
+		w_vec.NLMaxWeight = getScalarBool(getField(options, 0, "NLMaxWeight"), -49);
 		if (w_vec.NLRD)
 			w_vec.RDP_gamma = getScalarFloat(getField(options, 0, "RDP_gamma"), -29);
 		else if (w_vec.NLLange)
 			w_vec.RDP_gamma = getScalarFloat(getField(options, 0, "SATVPhi"), -23);
+		else if (w_vec.NLGM)
+			w_vec.RDP_gamma = getScalarFloat(getField(options, 0, "GM_delta"), -29);
 		else if (w_vec.NLGGMRF) {
 			w_vec.GGMRF_p = getScalarFloat(getField(options, 0, "GGMRF_p"), -29);
 			w_vec.GGMRF_q = getScalarFloat(getField(options, 0, "GGMRF_q"), -29);

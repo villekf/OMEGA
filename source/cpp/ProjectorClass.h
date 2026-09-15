@@ -1496,11 +1496,16 @@ class ProjectorClass {
 				else if (w_vec.NLGGMRF) {
 					ADD_OPT_INT(optionsAux, "-DNLTYPE", 6);
 				}
+				else if (w_vec.NLGM) {
+					ADD_OPT_INT(optionsAux, "-DNLTYPE", 7);
+				}
 				else {
 					ADD_OPT_INT(optionsAux, "-DNLTYPE", 0);
 				}
 				if (w_vec.NLAdaptive)
 					ADD_OPT(optionsAux, "-DNLMADAPTIVE");
+				if (w_vec.NLMaxWeight)
+					ADD_OPT(optionsAux, "-DNLMAXWEIGHT");
 				if (w_vec.NLM_anatomical)
 					ADD_OPT(optionsAux, "-DNLMREF");
 				ADD_OPT_INT(optionsAux, "-DSWINDOWX", w_vec.Ndx);
@@ -2657,11 +2662,16 @@ public:
 			else if (w_vec.NLGGMRF) {
 				ADD_OPT_INT(os_options, "-DNLTYPE", 6);
 			}
+			else if (w_vec.NLGM) {
+				ADD_OPT_INT(os_options, "-DNLTYPE", 7);
+			}
 			else {
 				ADD_OPT_INT(os_options, "-DNLTYPE", 0);
 			}
 			if (w_vec.NLAdaptive)
 				ADD_OPT(os_options, "-DNLMADAPTIVE");
+			if (w_vec.NLMaxWeight)
+				ADD_OPT(os_options, "-DNLMAXWEIGHT");
 			if (w_vec.NLM_anatomical)
 				ADD_OPT(os_options, "-DNLMREF");
 			ADD_OPT_INT(os_options, "-DSWINDOWX", w_vec.Ndx);
@@ -4022,13 +4032,16 @@ public:
 			if (inputScalars.FPType == 4) {
 				KARG(FPArgs, kernelFP, kernelIndFP, d_TOFCenter);
 				KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.sigma_x);
+				KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.epps);
 			}
 			if (inputScalars.BPType == 4) {
 				KARG(BPArgs, kernelBP, kernelIndBP, d_TOFCenter);
 				KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.sigma_x);
+				KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.epps);
 				if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 					KARG(SensArgs, kernelSensList, kernelIndSens, d_TOFCenter);
 					KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.sigma_x);
+					KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.epps);
 				}
 			}
 		}
@@ -4099,6 +4112,7 @@ public:
 		KARG(kArgs, kernelPSFf, kernelInd, inputScalars.g_dim_x);
 		KARG(kArgs, kernelPSFf, kernelInd, inputScalars.g_dim_y);
 		KARG(kArgs, kernelPSFf, kernelInd, inputScalars.g_dim_z);
+		KARG(kArgs, kernelPSFf, kernelInd, d_N[ii]);
 		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelPSFf, cl::NDRange(), globalC, localPrior, NULL);
 		OCL_CHECK(status, "\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
@@ -5921,7 +5935,7 @@ public:
 		KARG(kArgs, kernelNLM, kernelIndNLM, inputScalars.epps);
 #endif // END CUDA
 		KARG(kArgs, kernelNLM, kernelIndNLM, beta);
-		if (w_vec.NLRD || w_vec.NLLange || w_vec.NLGGMRF)
+		if (w_vec.NLRD || w_vec.NLLange || w_vec.NLGGMRF || w_vec.NLGM)
 			KARG(kArgs, kernelNLM, kernelIndNLM, w_vec.RDP_gamma);
 		if (w_vec.NLGGMRF) {
 			KARG(kArgs, kernelNLM, kernelIndNLM, w_vec.GGMRF_p);
@@ -6302,10 +6316,12 @@ public:
 #if defined(CUDA) || defined(HIP)
 	inline int ProxTVHelperQ(float alpha, const uint64_t globalQ) {
 		std::vector<void*> kArgs;
+		int64_t nQ = static_cast<int64_t>(globalQ);
 #elif defined(OPENCL)
 	inline int ProxTVHelperQ(const float alpha, const uint64_t gQ) {
 		cl::NDRange globalQ = { static_cast<cl::size_type>(gQ) };
 		UINT32_t kernelIndCPTV = 0U;
+		int64_t nQ = static_cast<int64_t>(gQ);
 #endif // END CUDA
 		STATUS_t status = SUCCESS_VALUE;
 		//FINISH_QUEUE(status, "Queue finish failed before proximal TV kernel\n", -1);
@@ -6313,9 +6329,10 @@ public:
 		KARG(kArgs, kernelProxTVq, kernelIndCPTV, d_qY);
 		KARG(kArgs, kernelProxTVq, kernelIndCPTV, d_qZ);
 		KARG(kArgs, kernelProxTVq, kernelIndCPTV, alpha);
+		KARG(kArgs, kernelProxTVq, kernelIndCPTV, nQ);
 		// Compute the kernel
 #if defined(CUDA) || defined(HIP)
-		status = cuLaunchKernel(kernelProxTVq, globalQ / 64ULL, 1, 1, 64, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
+		status = cuLaunchKernel(kernelProxTVq, (globalQ + 63ULL) / 64ULL, 1, 1, 64, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the Proximal TV kernel\n", -1);
 #elif defined(OPENCL)
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTVq, cl::NullRange, globalQ, cl::NullRange);
@@ -6335,9 +6352,11 @@ public:
 #if defined(CUDA) || defined(HIP)
 	inline int ProxTGVHelperQ(const scalarStruct & inputScalars, float alpha, const uint64_t globalQ) {
 		std::vector<void*> kArgs;
+		int64_t nQ = static_cast<int64_t>(globalQ);
 #elif defined(OPENCL)
 	inline int ProxTGVHelperQ(const scalarStruct & inputScalars, const float alpha, const uint64_t globalQ) {
 		UINT32_t kernelIndCPTV = 0U;
+		int64_t nQ = static_cast<int64_t>(globalQ);
 #endif // END CUDA
 		STATUS_t status = SUCCESS_VALUE;
 		//FINISH_QUEUE(status, "Queue finish failed before proximal TGV kernel\n", -1);
@@ -6351,9 +6370,10 @@ public:
 			KARG(kArgs, kernelProxTGVq, kernelIndCPTV, d_rYZ);
 		}
 		KARG(kArgs, kernelProxTGVq, kernelIndCPTV, alpha);
+		KARG(kArgs, kernelProxTGVq, kernelIndCPTV, nQ);
 		// Compute the kernel
 #if defined(CUDA) || defined(HIP)
-		status = cuLaunchKernel(kernelProxTGVq, globalQ / 64ULL, 1, 1, 64, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
+		status = cuLaunchKernel(kernelProxTGVq, (globalQ + 63ULL) / 64ULL, 1, 1, 64, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the Proximal TGV kernel\n", -1);
 #elif defined(OPENCL)
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTGVq, cl::NullRange, globalQ, cl::NullRange);

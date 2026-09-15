@@ -135,6 +135,7 @@ def transferData(options):
     options.param.KAD = ctypes.c_float(options.KAD)
     options.param.TimeStepAD = ctypes.c_float(options.TimeStepAD)
     options.param.RDP_gamma = ctypes.c_float(options.RDP_gamma)
+    options.param.GM_delta = ctypes.c_float(options.GM_delta)
     options.param.huber_delta = ctypes.c_float(options.huber_delta)
     options.param.gradV1 = ctypes.c_float(options.gradV1)
     options.param.gradV2 = ctypes.c_float(options.gradV2)
@@ -195,8 +196,10 @@ def transferData(options):
     options.param.NLRD = ctypes.c_bool(options.NLRD)
     options.param.NLLange = ctypes.c_bool(options.NLLange)
     options.param.NLGGMRF = ctypes.c_bool(options.NLGGMRF)
+    options.param.NLGM = ctypes.c_bool(options.NLGM)
     options.param.NLM_use_anatomical = ctypes.c_bool(options.NLM_use_anatomical)
     options.param.NLAdaptive = ctypes.c_bool(options.NLAdaptive)
+    options.param.NLMaxWeight = ctypes.c_bool(options.NLMaxWeight)
     options.param.TV_use_anatomical = ctypes.c_bool(options.TV_use_anatomical)
     options.param.RDPIncludeCorners = ctypes.c_bool(options.RDPIncludeCorners)
     options.param.RDP_use_anatomical = ctypes.c_bool(options.RDP_use_anatomical)
@@ -710,6 +713,8 @@ def reconstructions_main(options):
         SinoP = options.SinM.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     outputP = output.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     FPOutputP = FPOutput.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    from omegatomo.util.dllpath import addDLLDirectories
+    addDLLDirectories()
     c_lib = ctypes.CDLL(libname)
     c_lib.omegaMain(options.param, ctypes.c_char_p(inStr), SinoP, outputP, FPOutputP, residualP)
     try:

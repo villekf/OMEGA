@@ -785,6 +785,8 @@ if options.verbose > 0
                         dispi2 = [dispi2, ' prior selected with NL Lange.'];
                     elseif options.NLGGMRF
                         dispi2 = [dispi2, ' prior selected with NLGGMRF.'];
+                    elseif options.NLGM
+                        dispi2 = [dispi2, ' prior selected with NL Geman-McClure.'];
                     elseif options.NLM_MRP
                         dispi2 = [dispi2, ' prior selected with filtering mode.'];
                     else
@@ -792,6 +794,9 @@ if options.verbose > 0
                     end
                     if options.NLAdaptive
                         dispi2 = [dispi2, ' Using adaptive weighting.'];
+                    end
+                    if options.NLMaxWeight
+                        dispi2 = [dispi2, ' Using the maximum weight for the reference voxel.'];
                     end
                 end
             end

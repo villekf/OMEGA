@@ -217,25 +217,34 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 			}
 		}
 		uu = 0;
+		const size_t nSummPerSubset = static_cast<size_t>(inputScalars.nMultiVolumes) + 1ULL;
+		proj.d_meas.resize(inputScalars.subsetsUsed);
+		if (inputScalars.randoms_correction)
+			proj.d_rand.resize(inputScalars.subsetsUsed);
+		proj.d_Summ.resize(static_cast<size_t>(inputScalars.subsetsUsed) * nSummPerSubset);
 		for (uint32_t osa_iter = inputScalars.osa_iter0; osa_iter < inputScalars.subsetsUsed; osa_iter++) {
 			m_size = length[osa_iter];
 			if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 				m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[osa_iter];
-			proj.d_meas.emplace_back(proj.makeDeviceBuffer(sizeof(float) * m_size * inputScalars.nBins, BACKEND_BUFFER_READ_ONLY, status));
+			proj.d_meas[osa_iter] = proj.makeDeviceBuffer(sizeof(float) * m_size * inputScalars.nBins, BACKEND_BUFFER_READ_ONLY, status);
 			CHECK(status, "\n", );
 			status = proj.writeDeviceBuffer(proj.d_meas[osa_iter], &meas[uu], sizeof(float) * m_size * inputScalars.nBins);
 			CHECK(status, "\n", );
 			if (inputScalars.randoms_correction) {
-				proj.d_rand.emplace_back(proj.makeDeviceBuffer(sizeof(float) * m_size, BACKEND_BUFFER_READ_ONLY, status));
+				proj.d_rand[osa_iter] = proj.makeDeviceBuffer(sizeof(float) * m_size, BACKEND_BUFFER_READ_ONLY, status);
 				CHECK(status, "\n", );
 				status = proj.writeDeviceBuffer(proj.d_rand[osa_iter], &rand[uu], sizeof(float) * m_size);
 				CHECK(status, "\n", );
 			}
 			for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+				const size_t sInd = static_cast<size_t>(ii) + static_cast<size_t>(osa_iter) * nSummPerSubset;
 				if (proj.no_norm == 0) {
-					proj.d_Summ.emplace_back(proj.makeDeviceBuffer(sizeof(C) * inputScalars.im_dim[ii], BACKEND_BUFFER_READ_WRITE, status));
+					proj.d_Summ[sInd] = proj.makeDeviceBuffer(sizeof(C) * inputScalars.im_dim[ii], BACKEND_BUFFER_READ_WRITE, status);
 					CHECK(status, "\n", );
-					status = proj.fillDeviceBuffer(proj.d_Summ[ii + osa_iter * (inputScalars.nMultiVolumes + 1)], (C)0, sizeof(C) * inputScalars.im_dim[ii]);
+					status = proj.fillDeviceBuffer(proj.d_Summ[sInd], (C)0, sizeof(C) * inputScalars.im_dim[ii]);
+					CHECK(status, "\n", );
+				} else {
+					proj.d_Summ[sInd] = proj.makeDeviceBuffer(sizeof(C), BACKEND_BUFFER_READ_WRITE, status);
 					CHECK(status, "\n", );
 				}
 			}

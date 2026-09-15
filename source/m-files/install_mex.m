@@ -127,6 +127,7 @@ else
 end
 
 af_path_include = [af_path '/include'];
+hip_path = '';
 
 if ispc
     [~,homedir] = system('echo %userprofile%');
@@ -294,9 +295,44 @@ if ispc
     if isempty(cuda_path)
         cuda_path = getenv('CUDA_PATH');
     end
+    % ROCm/HIP root used by the HIP build below. Falls back to cuda_path, i.e. the seventh
+    % input of install_mex, so that explicitly passing the ROCm root as that input keeps working.
+    if ~isempty(getenv('HIP_PATH'))
+        hip_path = getenv('HIP_PATH');
+    elseif ~isempty(getenv('ROCM_PATH'))
+        hip_path = getenv('ROCM_PATH');
+    else
+        for kk = 8 : -1 : 5
+            for ll = 9 : -1 : 0
+                if exist(['C:/Program Files/AMD/ROCm/' num2str(kk) '.' num2str(ll)],'dir') == 7
+                    hip_path = ['C:/Program Files/AMD/ROCm/' num2str(kk) '.' num2str(ll)];
+                    break;
+                end
+            end
+            if ~isempty(hip_path)
+                break;
+            end
+        end
+    end
+    if exist([hip_path '/include/hip'],'dir') ~= 7
+        hip_path = cuda_path;
+    end
 elseif ~ismac % Linux
     if isempty(cuda_path)
         cuda_path = '/usr/local/cuda';
+    end
+    % ROCm/HIP root used by the HIP build below. ROCm places its libraries in lib, not lib64.
+    % Falls back to cuda_path, i.e. the seventh input of install_mex, so that explicitly
+    % passing the ROCm root as that input keeps working.
+    if ~isempty(getenv('ROCM_PATH'))
+        hip_path = getenv('ROCM_PATH');
+    elseif ~isempty(getenv('HIP_PATH'))
+        hip_path = getenv('HIP_PATH');
+    elseif exist('/opt/rocm','dir') == 7
+        hip_path = '/opt/rocm';
+    end
+    if exist([hip_path '/include/hip'],'dir') ~= 7
+        hip_path = cuda_path;
     end
     [~,ldirA] = system('echo $HOME');
     ldir = [ldirA(1:end-1) '/arrayfire/'];
@@ -309,7 +345,7 @@ elseif ~ismac % Linux
         af_path_include = '/opt/arrayfire/include/';
     elseif exist('/usr/local/include/af/','dir') == 7 && isempty(af_path)
         af_path = '/usr/local';
-        af_path_include = '/usr/local/include/af';
+        af_path_include = '/usr/local/include/';
     elseif exist('/usr/local/arrayfire/','dir') == 7 && isempty(af_path)
         af_path = '/usr/local/arrayfire';
         af_path_include = '/usr/local/arrayfire/include/';
@@ -735,24 +771,44 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
                             cxxflags = 'CXXFLAGS="$CXXFLAGS -Wp"';
                         end
                         try
-                            disp('Building CUDA code for float data type.')
-                            mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree', compflags, cxxflags, '-DMATLAB', '-DCUDA', '-DAF', ['-I ' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', ...
-                                '-lnvrtc', ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib/x64"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
+                            disp('Building HIP code for float data type.')
+                            mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree', compflags, cxxflags, '-DMATLAB', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', ['-I ' folder], ['-I"' hip_path '/include"'], '-lafcuda', '-lamdhip64', ...
+                                '-lhiprtc', ['-L"' af_path '/lib"'], ['-L"' hip_path '/lib"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
 
-                            disp('Building CUDA code for uint16 data type.')
-                            mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint16', compflags, cxxflags, '-DMATLAB', '-DCUDA', '-DAF', '-DMTYPE', ['-I ' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', ...
-                                '-lnvrtc', ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib/x64"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
+                            disp('Building HIP code for uint16 data type.')
+                            mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint16', compflags, cxxflags, '-DMATLAB', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', '-DMTYPE', ['-I ' folder], ['-I"' hip_path '/include"'], '-lafcuda', '-lamdhip64', ...
+                                '-lhiprtc', ['-L"' af_path '/lib"'], ['-L"' hip_path '/lib"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
 
-                            disp('Building CUDA code for uint8 data type.')
-                            mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint8', compflags, cxxflags, '-DMATLAB', '-DCUDA', '-DAF', '-DMTYPE2', ['-I ' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', ...
-                                '-lnvrtc', ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib/x64"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
+                            disp('Building HIP code for uint8 data type.')
+                            mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint8', compflags, cxxflags, '-DMATLAB', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', '-DMTYPE2', ['-I ' folder], ['-I"' hip_path '/include"'], '-lafcuda', '-lamdhip64', ...
+                                '-lhiprtc', ['-L"' af_path '/lib"'], ['-L"' hip_path '/lib"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
 
-                            disp('CUDA support enabled')
+                            disp('Building ArrayFire_HIP_device_info.cpp')
+                            mex(compiler, '-largeArrayDims', '-outdir', folder, '-output', 'ArrayFire_HIP_device_info', '-lafcuda', '-lamdhip64', ['-L"' af_path '/lib"'],['-L"' hip_path '/lib"'], ...
+                                ['-I ' folder], ['-I"' hip_path '/include"'], ['-I"' af_path '/include"'], [folder '/ArrayFire_OpenCL_device_info.cpp'])
+
+                            disp('HIP support enabled')
                         catch
-                            if strcmp(cc.Manufacturer, 'GNU')
-                                warning('CUDA support is not available with MinGW. Please use Visual Studio instead.')
-                            else
-                                warning('CUDA support not enabled')
+                            try
+                                disp('Building CUDA code for float data type.')
+                                mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree', compflags, cxxflags, '-DMATLAB', '-DCUDA', '-DAF', ['-I ' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', ...
+                                    '-lnvrtc', ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib/x64"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
+
+                                disp('Building CUDA code for uint16 data type.')
+                                mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint16', compflags, cxxflags, '-DMATLAB', '-DCUDA', '-DAF', '-DMTYPE', ['-I ' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', ...
+                                    '-lnvrtc', ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib/x64"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
+
+                                disp('Building CUDA code for uint8 data type.')
+                                mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint8', compflags, cxxflags, '-DMATLAB', '-DCUDA', '-DAF', '-DMTYPE2', ['-I ' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', ...
+                                    '-lnvrtc', ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib/x64"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
+
+                                disp('CUDA support enabled')
+                            catch
+                                if strcmp(cc.Manufacturer, 'GNU')
+                                    warning('CUDA support is not available with MinGW. Please use Visual Studio instead.')
+                                else
+                                    warning('CUDA support not enabled')
+                                end
                             end
                         end
                     end
@@ -886,25 +942,45 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
             if use_CUDA
                 compflags = 'COMPFLAGS="$COMPFLAGS -std=c++17"';
                 cxxflags = 'CXXFLAGS="$CXXFLAGS -w"';
-                try
-                    disp('Building CUDA code for float data type.')
-                    mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree', ldflags, compflags, cxxflags, '-DMATLAB', '-DCUDA', '-DAF', ['-I' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', '-lnvrtc', ...
-                        ['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib64"'], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp']);
+				try
+					disp('Building HIP code for float data type.')
+					mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree', ldflags, compflags, cxxflags, '-DMATLAB', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', ['-I ' folder], ['-I"' hip_path '/include"'], '-lafcuda', '-lamdhip64', ...
+						'-lhiprtc', ['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'], ['-L"' hip_path '/lib"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
 
-                    disp('Building CUDA code for uint16 data type.')
-                    mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint16', ldflags, compflags, cxxflags, '-DMATLAB', '-DCUDA', '-DAF', '-DMTYPE', ['-I' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', '-lnvrtc', ...
-                        ['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib64"'], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp']);
+					disp('Building HIP code for uint16 data type.')
+					mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint16', ldflags, compflags, cxxflags, '-DMATLAB', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', '-DMTYPE', ['-I ' folder], ['-I"' hip_path '/include"'], '-lafcuda', '-lamdhip64', ...
+						'-lhiprtc', ['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'], ['-L"' hip_path '/lib"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
 
-                    disp('Building CUDA code for uint8 data type.')
-                    mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint8', ldflags, compflags, cxxflags, '-DMATLAB', '-DCUDA', '-DAF', '-DMTYPE2', ['-I' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', '-lnvrtc', ...
-                        ['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib64"'], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp']);
+					disp('Building HIP code for uint8 data type.')
+					mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint8', ldflags, compflags, cxxflags, '-DMATLAB', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', '-DMTYPE2', ['-I ' folder], ['-I"' hip_path '/include"'], '-lafcuda', '-lamdhip64', ...
+						'-lhiprtc', ['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'], ['-L"' hip_path '/lib"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
 
-                    disp('CUDA support enabled')
-                catch ME
-                    warning('CUDA support not enabled')
-                    if verbose
-                        disp(ME.message)
-                    end
+					disp('Building ArrayFire_HIP_device_info.cpp')
+					mex(compiler, '-largeArrayDims', '-outdir', folder, '-output', 'ArrayFire_HIP_device_info', '-lafcuda', '-lamdhip64', ['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'],['-L"' hip_path '/lib"'], ...
+						['-I ' folder], ['-I"' hip_path '/include"'], ['-I"' af_path '/include"'], [folder '/ArrayFire_OpenCL_device_info.cpp'])
+
+					disp('HIP support enabled')
+				catch
+					try
+						disp('Building CUDA code for float data type.')
+						mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree', ldflags, compflags, cxxflags, '-DMATLAB', '-DCUDA', '-DAF', ['-I' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', '-lnvrtc', ...
+							['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib64"'], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp']);
+
+						disp('Building CUDA code for uint16 data type.')
+						mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint16', ldflags, compflags, cxxflags, '-DMATLAB', '-DCUDA', '-DAF', '-DMTYPE', ['-I' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', '-lnvrtc', ...
+							['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib64"'], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp']);
+
+						disp('Building CUDA code for uint8 data type.')
+						mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint8', ldflags, compflags, cxxflags, '-DMATLAB', '-DCUDA', '-DAF', '-DMTYPE2', ['-I' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', '-lnvrtc', ...
+							['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib64"'], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp']);
+
+						disp('CUDA support enabled')
+					catch ME
+						warning('CUDA support not enabled')
+						if verbose
+							disp(ME.message)
+						end
+					end
                end
             end
         end

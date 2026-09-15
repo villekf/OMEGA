@@ -68,15 +68,31 @@ elseif options.NLLange
     type = 4;
 elseif options.NLGGMRF
     type = 6;
+elseif options.NLGM
+    type = 7;
 else
     type = 0;
 end
+% Each variant has its own scaling value. The order mirrors form_data_variables in mfunctions.h
+% so that the same options give the same prior on every implementation
+if options.NLRD
+    gamma = options.RDP_gamma;
+elseif options.NLLange
+    gamma = options.SATVPhi;
+elseif options.NLGM
+    gamma = options.GM_delta;
+elseif options.NLGGMRF
+    % NLGGMRF derives its scaling value from the GGMRF parameters rather than taking it directly
+    gamma = (options.GGMRF_p - options.GGMRF_q) / (options.GGMRF_c^(options.GGMRF_p - options.GGMRF_q));
+else
+    gamma = options.RDP_gamma;
+end
 if options.useSingles
     output = NLM_funcSingle(padInput, input, single(options.gaussianNLM), Ndx, Ndy, Ndz, Nlx, Nly, Nlz,...
-        N, M, K, (h2*h2), type, options.RDP_gamma, epps, options.GGMRF_p, options.GGMRF_q, options.GGMRF_c);
+        N, M, K, (h2*h2), type, gamma, epps, options.GGMRF_p, options.GGMRF_q, options.GGMRF_c);
 else
     output = NLM_func(padInput, input, options.gaussianNLM, Ndx, Ndy, Ndz, Nlx, Nly, Nlz,...
-        N, M, K, (h2*h2), type, options.RDP_gamma, epps, options.GGMRF_p, options.GGMRF_q, options.GGMRF_c);
+        N, M, K, (h2*h2), type, gamma, epps, options.GGMRF_p, options.GGMRF_q, options.GGMRF_c);
 end
 output = reshape(output, N, M, K);
 % Convert back to original image size
