@@ -136,6 +136,16 @@ struct CPUVectors {
 };
 #endif
 
+// Optional device-resident inputs/outputs for implementation 5 (e.g. MATLAB gpuArray data)
+// Every member is a device pointer valid in the backend's current context; nullptr means the
+// corresponding host array is used instead, i.e. the original behavior
+typedef struct _deviceIO {
+	const void* im = nullptr;      // Forward projection input image (type 1)
+	const void* meas = nullptr;    // Backprojection input measurements (type 2)
+	void* output = nullptr;        // FP measurement output (type 1) or BP image output (type 2)
+	void* sensIm = nullptr;        // BP sensitivity image output (type 2, only when no_norm == 0)
+} deviceIO;
+
 inline void mexPrint(const char* str) {
 #ifdef MATLAB
 	mexPrintf("%s\n", str);

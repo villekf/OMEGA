@@ -292,7 +292,6 @@ using TimerPoint = std::chrono::steady_clock::time_point;
 	OCL_CHECK(status, "Image creation failed\n", -1); \
 	status = CLCommandQueue[0].enqueueCopyBufferToImage((SRC), (TEX), 0, origin, textureRegion); \
 	OCL_CHECK(status, "Image copy failed\n", -1); \
-	//FINISH_QUEUE(status, "Queue finish failed after image copy\n", -1); \
 } while(0)
 #define CREATE_FLOAT_TEXTURE3D_EMPTY(TEX, ARRAY, WIDTH, HEIGHT, DEPTH) do { \
 	(TEX) = TEX3D_t(CLContext, CL_MEM_READ_ONLY, format, (WIDTH), (HEIGHT), (DEPTH), 0, 0, NULL, &status); \
@@ -2015,7 +2014,8 @@ public:
 #endif
 	{}
 
-#if defined(METAL) || defined(OPENCL) // Used for implementations 3 and 5; not supported by CUDA/HIP
+#if defined(METAL) || defined(OPENCL) || defined(CUDA) || defined(HIP) // Used for implementations 3 and 5
+#if defined(METAL) || defined(OPENCL)
 	inline DEVBUFF_t makeDeviceBuffer(const size_t bytes, const UINT64_t flags, STATUS_t& status) {
 		DEVBUFF_t buffer{};
 #if defined(METAL)
@@ -2072,12 +2072,142 @@ public:
 		return CLCommandQueue[0].enqueueFillBuffer(buffer, value, 0, bytes);
 #endif
 	}
+#elif defined(CUDA) || defined(HIP)
+	// Allocate (driver API) device memory
+	// flags is the OpenCL cl_mem_flags, but those are not used with CUDA/HIP
+	// Every allocation made here is owned by this object and released in the class destructor
+	inline AFDEVBUFF_t makeDeviceBuffer(const size_t bytes, const UINT64_t flags, STATUS_t& status) {
+		(void)flags;
+		CUdeviceptr buffer = 0;
+		status = cuMemAlloc(&buffer, bytes);
+		if (status != CUDA_SUCCESS)
+			return nullptr;
+		ownedBuffers.push_back(buffer);
+		return reinterpret_cast<AFDEVBUFF_t>(buffer);
+	}
+
+	inline STATUS_t writeDeviceBuffer(AFDEVBUFF_t& buffer, const void* input, const size_t bytes) {
+		// const_cast is required because under HIP, cuMemcpyHtoDAsync aliases to hipMemcpyHtoDAsync,
+		// whose src parameter is non-const in some ROCm versions
+		return cuMemcpyHtoDAsync(reinterpret_cast<CUdeviceptr>(buffer), const_cast<void*>(input), bytes, CLCommandQueue[0]);
+	}
+
+	inline STATUS_t readDeviceBuffer(const AFDEVBUFF_t& buffer, void* output, const size_t bytes) {
+		return cuMemcpyDtoHAsync(output, reinterpret_cast<CUdeviceptr>(buffer), bytes, CLCommandQueue[0]);
+	}
+
+	template <typename T>
+	inline STATUS_t fillDeviceBuffer(AFDEVBUFF_t& buffer, const T value, const size_t bytes) {
+		CUdeviceptr ptr = reinterpret_cast<CUdeviceptr>(buffer);
+		if (value == static_cast<T>(0)) {
+			return cuMemsetD8Async(ptr, 0, bytes, CLCommandQueue[0]);
+		}
+		else if (sizeof(T) == 4 && bytes % 4 == 0) {
+			unsigned int pattern = 0u;
+			std::memcpy(&pattern, &value, sizeof(unsigned int));
+			return cuMemsetD32Async(ptr, pattern, bytes / 4, CLCommandQueue[0]);
+		}
+		else {
+			std::vector<unsigned char> hostPattern(bytes);
+			size_t offset = 0;
+			while (offset + sizeof(T) <= bytes) {
+				std::memcpy(hostPattern.data() + offset, &value, sizeof(T));
+				offset += sizeof(T);
+			}
+			if (offset < bytes)
+				std::memcpy(hostPattern.data() + offset, &value, bytes - offset);
+			// Synchronous copy is required here: hostPattern is a local staging buffer that is
+			// destroyed when this function returns, so an async HtoD copy would race its destruction
+			// hostPattern is a non-const local vector, so its data() is already a non-const pointer
+			// (no const_cast needed here, unlike writeDeviceBuffer's const void* input)
+			return cuMemcpyHtoD(ptr, hostPattern.data(), bytes);
+		}
+	}
+
+	// Wrap memory owned by someone else (e.g. a MATLAB gpuArray)
+	inline AFDEVBUFF_t adoptDeviceBuffer(void* devicePtr) {
+		return reinterpret_cast<AFDEVBUFF_t>(devicePtr);
+	}
+	// Device-to-device copy of `bytes` bytes
+	inline STATUS_t copyDeviceBuffer(AFDEVBUFF_t& dst, const void* src, const size_t bytes) {
+		return cuMemcpyDtoDAsync(reinterpret_cast<CUdeviceptr>(dst), reinterpret_cast<CUdeviceptr>(const_cast<void*>(src)), bytes, CLCommandQueue[0]);
+	}
+#endif
 
 	inline STATUS_t finishDeviceQueue() {
 		STATUS_t status = SUCCESS_VALUE;
 		FINISH_QUEUE(status, "Queue finish failed\n", status);
 		return status;
 	}
+
+	// Synchronize every queue/stream, not just the main one
+	// OpenCL can have one queue per device in the multi-GPU case
+	inline STATUS_t finishAllDeviceQueues() {
+#if defined(OPENCL)
+		STATUS_t status = SUCCESS_VALUE;
+		for (size_t i = 0; i < CLCommandQueue.size(); i++) {
+			status = CLCommandQueue[i].finish();
+			if (status != SUCCESS_VALUE)
+				return status;
+		}
+		return status;
+#else
+		return finishDeviceQueue();
+#endif
+	}
+
+	// Create a 3D float image/texture for the forward projection input from a HOST pointer
+	// X/Y/Z are the image dimensions, in the same (x, y, z) order on every backend 
+	// Public (unlike createCudaTexture3DFromHost and the CREATE_FLOAT_TEXTURE3D_FROM_HOST macro it wraps, which are
+	// only usable from inside this class) so that free functions such as the multi-GPU reconstruction
+	// path can build the FP input texture through a ProjectorClass object
+	inline STATUS_t makeImageTextureFromHost(TEX3D_t& tex, TEXARRAY_t& array, const float* src,
+		const size_t X, const size_t Y, const size_t Z,
+		const decltype(BACKEND_TEXTURE_POINT) filter = BACKEND_TEXTURE_POINT,
+		const unsigned int flags = BACKEND_TEXTURE_DEFAULT_FLAGS) {
+		STATUS_t status = SUCCESS_VALUE;
+		CREATE_FLOAT_TEXTURE3D_FROM_HOST(tex, array, src, X, Y, Z, filter, flags);
+#if defined(CUDA) || defined(HIP)
+		// Track the CUarray/CUtexObject so the destructor can release them; OpenCL/Metal are tied to the object 
+		// lifetime (cl::Image3D / NS::SharedPtr) and need no tracking
+		if (status == SUCCESS_VALUE) {
+			ownedTextures.push_back(tex);
+			ownedArrays.push_back(array);
+		}
+#endif
+		return status;
+	}
+
+#if defined(CUDA) || defined(HIP)
+	// Create a 3D float image/texture for the forward projection input from a raw DEVICE pointer
+	// (e.g. MATLAB's gpuArray)
+	// Takes a void* rather than DEVBUFF_t because the multi-GPU caller
+	// holds the address as AFDEVBUFF_t (CUdeviceptr*), not the plain CUdeviceptr that DEVBUFF_t is
+	// on this backend; CREATE_FLOAT_TEXTURE3D_FROM_DEVICE reinterpret_casts it to CUdeviceptr itself
+	inline STATUS_t makeImageTextureFromDevice(TEX3D_t& tex, TEXARRAY_t& array, const void* src,
+		const size_t X, const size_t Y, const size_t Z,
+		const decltype(BACKEND_TEXTURE_POINT) filter = BACKEND_TEXTURE_POINT,
+		const unsigned int flags = BACKEND_TEXTURE_DEFAULT_FLAGS) {
+		STATUS_t status = SUCCESS_VALUE;
+		CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(tex, array, src, X, Y, Z, filter, flags);
+		if (status == SUCCESS_VALUE) {
+			ownedTextures.push_back(tex);
+			ownedArrays.push_back(array);
+		}
+		return status;
+	}
+#else
+	// Create a 3D float image/texture for the forward projection input from the backend's native
+	// device buffer type (cl::Buffer on OpenCL, NS::SharedPtr<MTL::Buffer> on Metal)
+	inline STATUS_t makeImageTextureFromDevice(TEX3D_t& tex, TEXARRAY_t& array, const DEVBUFF_t& src,
+		const size_t X, const size_t Y, const size_t Z,
+		const decltype(BACKEND_TEXTURE_POINT) filter = BACKEND_TEXTURE_POINT,
+		const unsigned int flags = BACKEND_TEXTURE_DEFAULT_FLAGS) {
+		STATUS_t status = SUCCESS_VALUE;
+		CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(tex, array, src, X, Y, Z, filter, flags);
+		return status;
+	}
+#endif
 #endif
 
 #if defined(METAL)
@@ -2163,6 +2293,14 @@ public:
 	std::vector<std::vector<float>> geomProj5Host;
 	std::vector<std::vector<size_t>> erotusBP, erotusPDHG;
 #if defined(CUDA) || defined(HIP)
+	// Buffers allocated by makeDeviceBuffer and owned by this object; released in the destructor.
+	std::vector<CUdeviceptr> ownedBuffers;
+	// Textures/arrays created by makeImageTextureFrom*; released in the destructor.
+	std::vector<CUtexObject> ownedTextures;
+	std::vector<CUarray> ownedArrays;
+	// True when this object retained the CUDA/HIP primary context itself (non-ArrayFire init path);
+	// only then does the destructor release it.
+	bool ownsContext = false;
 	// This is used to define the additional queues/streams in the multi-resolution case
 	// Note that these are only used in the multi-resolution case
 	std::vector<CUstream> sideQueues;
@@ -2393,6 +2531,25 @@ public:
 			getErrorString(cuEventDestroy(evSide[kk]));
 		if (evMain != nullptr)
 			getErrorString(cuEventDestroy(evMain));
+		// Textures/arrays created by makeImageTextureFrom* (implementations 3/5 gpuArray support)
+		// Freed before ownedBuffers and the primary context release below
+		for (size_t kk = 0; kk < ownedTextures.size(); kk++)
+			getErrorString(cuTexObjectDestroy(ownedTextures[kk]));
+		ownedTextures.clear();
+		for (size_t kk = 0; kk < ownedArrays.size(); kk++)
+			getErrorString(cuArrayDestroy(ownedArrays[kk]));
+		ownedArrays.clear();
+		// Buffers allocated by makeDeviceBuffer (implementations 3/5 gpuArray support)
+		for (size_t kk = 0; kk < ownedBuffers.size(); kk++)
+			getErrorString(cuMemFree(ownedBuffers[kk]));
+		ownedBuffers.clear();
+		// Only release the primary context if this object retained it itself (non-ArrayFire init
+		// path in addProjector)
+		// Must be done last, after every other CUDA/HIP release above
+		// The CUDeviceID.empty() guard defends against an early addProjector failure that set
+		// ownsContext before CUDeviceID.push_back(curDevice) ran
+		if (ownsContext && !CUDeviceID.empty())
+			getErrorString(cuDevicePrimaryCtxRelease(CUDeviceID[0]));
 	}
 #elif defined(OPENCL)
 	~ProjectorClass() {}
@@ -2400,7 +2557,7 @@ public:
 
 	/// <summary>
 	/// Create the additional queues/streams for the multi-resolution case,
-	//// The main queue/stream is always the ArrayFire queue/stream, the other volumes use their own ones
+	/// The main queue/stream is always the ArrayFire queue/stream, the other volumes use their own ones
 	/// </summary>
 	/// <param name="n">Number of queues, one for the main image plus each multi-resolution volume</param>
 	inline int initSideQueues(const int n) {
@@ -2701,10 +2858,52 @@ public:
 #endif // END CUDA
 
 #if defined(CUDA) || defined(HIP)
+#ifdef AF
 		// Create the CUDA/HIP context and stream and assign the device
 		int af_id = af::getDevice();
 		CUDeviceID.push_back(afcu::getNativeId(af_id));
 		CLCommandQueue.push_back(afcu::getStream(CUDeviceID[0]));
+#else
+		// Implementations 3 and 5 do not use ArrayFire
+		// MATLAB's gpuArray memory lives in the device's primary context, so attach to the 
+		// context that is already current (set by mxInitGPU) and only retain the primary 
+		// context ourselves when there is none
+		status = cuInit(0);
+		CHECK(status, "Failed to initialize the CUDA driver API\n", -1);
+		CUcontext CUContext = nullptr;
+		status = cuCtxGetCurrent(&CUContext);
+		CUdevice curDevice = 0;
+		if (status != CUDA_SUCCESS || CUContext == nullptr) {
+			int deviceCount = 0;
+			status = cuDeviceGetCount(&deviceCount);
+			CHECK(status, "Failed to query the number of CUDA devices\n", -1);
+			if (deviceCount <= 0) {
+				mexPrint("No CUDA devices found\n");
+				return -1;
+			}
+			int devNum = static_cast<int>(inputScalars.platform);
+			if (devNum < 0 || devNum >= deviceCount)
+				devNum = 0;
+			status = cuDeviceGet(&curDevice, devNum);
+			CHECK(status, "Failed to get the CUDA device\n", -1);
+			status = cuDevicePrimaryCtxRetain(&CUContext, curDevice);
+			CHECK(status, "Failed to retain the CUDA primary context\n", -1);
+			// Set immediately after the retain succeeds (not after cuCtxSetCurrent) so that a
+			// later failure in this block still leaves the destructor able to release the
+			// primary context we just retained, instead of leaking it
+			ownsContext = true;
+			status = cuCtxSetCurrent(CUContext);
+			CHECK(status, "Failed to set the CUDA context\n", -1);
+		}
+		else {
+			status = cuCtxGetDevice(&curDevice);
+			CHECK(status, "Failed to get the CUDA device of the current context\n", -1);
+		}
+		CUDeviceID.push_back(curDevice);
+		// The legacy default stream, which synchronizes with the work MATLAB submits through the
+		// CUDA runtime API
+		CLCommandQueue.push_back(reinterpret_cast<CUstream>(0));
+#endif
 
 		status2 = createProgram(programFP, programBP, programAux, header_directory, inputScalars, MethodList, w_vec, local_size, type);
 		if (status2 != NVRTC_SUCCESS) {

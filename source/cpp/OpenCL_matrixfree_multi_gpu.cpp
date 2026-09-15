@@ -2,8 +2,9 @@
 * Matrix free computations for OMEGA for implementations 3 and 5.
 * This code is very similar to the other matrix-free code, but this one
 * can also be run without installing ArrayFire.
-* Unlike the non-OpenCL versions, this one uses (32-bit) floats and thus
-* can be slightly more inaccurate.
+* Currently this supports host inputs as well as MATLAB gpuArray inputs
+* (CUDA only at the moment). Since Apple hardware uses shared memory
+* the host data is essentially device data on Metal side.
 * 
 * Copyright(C) 2020-2026 Ville-Veikko Wettenhovi
 *
@@ -23,12 +24,22 @@
 #ifdef MATLAB
 #include "mfunctions.h"
 #endif
+#if defined(MATLABGPU)
+#include "gpu/mxGPUArray.h"
+#endif
 #ifndef METAL
 #include "ProjectorClass.h"
 #endif
 #include "multi_gpu_reconstruction.h"
 
 void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
+#if defined(MATLABGPU)
+	// Initialize the MATLAB GPU API
+	// This also makes MATLAB's CUDA context current, which the
+	// projector then attaches to
+	if (mxInitGPU() != MX_GPU_SUCCESS)
+		mexErrMsgTxt("mxInitGPU failed to initialize the MATLAB GPU API.");
+#endif
 	// Check for the number of input and output arguments
 	if (nrhs < 53)
 		mexErrMsgTxt("Too few input arguments. There must be at least 53.");
@@ -371,6 +382,28 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		inputScalars.timestepsUsed = inputScalars.timestep0 + 1;
 	}
 
+	// Detect MATLAB gpuArray inputs (MATLABGPU/CUDA build only)
+	// This depends on the "type", that is whether forward or backprojection is used
+	// as well as whether host or gpuArray data is used
+	// If gpuArray data is present, then the type uses gpuArrays for both inputs
+	// and outputs, otherwise host data for both
+	bool imOnDevice = false;
+	bool measOnDevice = false;
+#if defined(MATLABGPU)
+	mxGPUArray const* gIm = nullptr;
+	mxGPUArray const* gMeas = nullptr;
+	mxGPUArray* outGPU = nullptr;
+	mxGPUArray* sensGPU = nullptr;
+	const mxArray* x0Field = getField(options, 0, "x0");
+	{
+		const bool x0IsGPU = mxIsGPUArray(x0Field);
+		const bool SinIsGPU = mxIsGPUArray(Sin);
+		if (type == 0 && (x0IsGPU || SinIsGPU))
+			mexErrMsgTxt("Implementation 3 (type == 0) does not support gpuArray inputs.");
+		imOnDevice = (type == 1) && x0IsGPU;
+		measOnDevice = (type == 2) && SinIsGPU;
+	}
+#endif
 
 	if (DEBUG) {
 		mexPrint("Set output vector");
@@ -404,37 +437,82 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	}
 	mxArray* array_ptr = nullptr;
 	mxArray* sens_ptr = nullptr;
+	// Previously the host outputs were created here in the conditional
+	// However, now that the gpuArray support is included as well it is
+	// codewise more efficient to define only the sizes and class types here
+	// These can then be shared in the output creation, whether a host or
+	// gpuArray output is used
+	mwSize const* arrDims = mDim;
+	mxClassID arrClassID = mxSINGLE_CLASS;
+	mwSize const* sensDims = d;
+	mxClassID sensClassID = mxSINGLE_CLASS;
 	if (type == 1) {
-		array_ptr = mxCreateNumericArray(1, mDim, mxSINGLE_CLASS, mxREAL);
-		sens_ptr = mxCreateNumericArray(1, d, mxSINGLE_CLASS, mxREAL);
+		arrDims = mDim; 
+		arrClassID = mxSINGLE_CLASS;
+		sensDims = d; 
+		sensClassID = mxSINGLE_CLASS;
 	}
 	else if (type == 2 && (inputScalars.atomic_32bit || inputScalars.atomic_64bit)) {
 		if (no_norm == 0)
-			if (inputScalars.atomic_32bit)
-				sens_ptr = mxCreateNumericArray(1, mDim, mxINT32_CLASS, mxREAL);
-			else
-				sens_ptr = mxCreateNumericArray(1, mDim, mxINT64_CLASS, mxREAL);
+			if (inputScalars.atomic_32bit) {
+				sensDims = mDim; 
+				sensClassID = mxINT32_CLASS;
+			}
+			else {
+				sensDims = mDim; 
+				sensClassID = mxINT64_CLASS;
+			}
 		else
-			if (inputScalars.atomic_32bit)
-				sens_ptr = mxCreateNumericArray(1, d, mxINT32_CLASS, mxREAL);
-			else
-				sens_ptr = mxCreateNumericArray(1, d, mxINT64_CLASS, mxREAL);
-		if (inputScalars.atomic_32bit)
-			array_ptr = mxCreateNumericArray(1, mDim, mxINT32_CLASS, mxREAL);
-		else
-			array_ptr = mxCreateNumericArray(1, mDim, mxINT64_CLASS, mxREAL);
+			if (inputScalars.atomic_32bit) {
+				sensDims = d; 
+				sensClassID = mxINT32_CLASS;
+			}
+			else {
+				sensDims = d; 
+				sensClassID = mxINT64_CLASS;
+			}
+		if (inputScalars.atomic_32bit) {
+			arrDims = mDim; 
+			arrClassID = mxINT32_CLASS;
+		}
+		else {
+			arrDims = mDim; 
+			arrClassID = mxINT64_CLASS;
+		}
 	}
 	else {
-		array_ptr = mxCreateNumericArray(1, mDim, mxSINGLE_CLASS, mxREAL);
-		if (no_norm == 0 && type == 2)
-			sens_ptr = mxCreateNumericArray(1, mDim, mxSINGLE_CLASS, mxREAL);
+		arrDims = mDim; arrClassID = mxSINGLE_CLASS;
+		if (no_norm == 0 && type == 2) {
+			sensDims = mDim; 
+			sensClassID = mxSINGLE_CLASS;
+		}
 		else
-			if (type == 0 && inputScalars.atomic_32bit)
-				sens_ptr = mxCreateNumericArray(1, d, mxINT32_CLASS, mxREAL);
-			else if (type == 0 && inputScalars.atomic_64bit)
-				sens_ptr = mxCreateNumericArray(1, mDim, mxINT64_CLASS, mxREAL);
-			else
-				sens_ptr = mxCreateNumericArray(1, d, mxSINGLE_CLASS, mxREAL);
+			if (type == 0 && inputScalars.atomic_32bit) {
+				sensDims = d; 
+				sensClassID = mxINT32_CLASS;
+			}
+			else if (type == 0 && inputScalars.atomic_64bit) {
+				sensDims = mDim; 
+				sensClassID = mxINT64_CLASS;
+			}
+			else {
+				sensDims = d; 
+				sensClassID = mxSINGLE_CLASS;
+			}
+	}
+
+#if defined(MATLABGPU)
+	if ((type == 1 && imOnDevice) || (type == 2 && measOnDevice)) {
+		// gpuArray outputs
+		outGPU = mxGPUCreateGPUArray(1, arrDims, arrClassID, mxREAL, MX_GPU_INITIALIZE_VALUES);
+		sensGPU = mxGPUCreateGPUArray(1, sensDims, sensClassID, mxREAL, MX_GPU_INITIALIZE_VALUES);
+	}
+	else
+#endif
+	{
+		// Host outputs
+		array_ptr = mxCreateNumericArray(1, arrDims, arrClassID, mxREAL);
+		sens_ptr = mxCreateNumericArray(1, sensDims, sensClassID, mxREAL);
 	}
 
 	if (DEBUG) {
@@ -470,12 +548,41 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 			w_vec.TOFIndices = getUint8s(options, "TOFIndices", 0);
 	}
 
-	const float* Sino = getSingles(Sin, "solu");
-	inputScalars.size_meas = mxGetNumberOfElements(Sin);
+	const float* Sino = nullptr;
+#if defined(MATLABGPU)
+	if (measOnDevice) {
+		gMeas = mxGPUCreateFromMxArray(Sin);
+		if (mxGPUGetClassID(gMeas) != mxSINGLE_CLASS || mxGPUGetComplexity(gMeas) != mxREAL) {
+			mxGPUDestroyGPUArray(gMeas);
+			mexErrMsgTxt("The measurement gpuArray input must be real, single precision.");
+		}
+		Sino = (const float*)mxGPUGetDataReadOnly(gMeas);
+		inputScalars.size_meas = mxGPUGetNumberOfElements(gMeas);
+	}
+	else
+#endif
+	{
+		Sino = getSingles(Sin, "solu");
+		inputScalars.size_meas = mxGetNumberOfElements(Sin);
+	}
 	const float* randoms = getSingles(sc_ra, "solu");
 	const float* extraCorr = getSingles(options, "ScatterC", 0);
-	const float* x0 = getSingles(options, "x0");
-	if (DEBUG) {
+	const float* x0 = nullptr;
+#if defined(MATLABGPU)
+	if (imOnDevice) {
+		gIm = mxGPUCreateFromMxArray(x0Field);
+		if (mxGPUGetClassID(gIm) != mxSINGLE_CLASS || mxGPUGetComplexity(gIm) != mxREAL) {
+			mxGPUDestroyGPUArray(gIm);
+			mexErrMsgTxt("The initial image (options.x0) gpuArray input must be real, single precision.");
+		}
+		x0 = (const float*)mxGPUGetDataReadOnly(gIm);
+	}
+	else
+#endif
+	{
+		x0 = getSingles(options, "x0");
+	}
+	if (DEBUG && !imOnDevice) {
 		mexPrintBase("x0[0] = %f\n", x0[0]);
 		mexPrintBase("x0.dim = %u\n", mxGetNumberOfElements(mxGetField(options, 0, "x0")));
 		mexEval();
@@ -484,30 +591,81 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	if (DEBUG) {
 		mexPrint("Pointers set");
 	}
+#if defined(MATLABGPU)
+	// Fill in the device-resident inputs/outputs
+	// Members are left null (i.e. host arrays are used) unless this call's own input for this type is 
+	// a gpuArray; the outputs (outGPU/sensGPU) were only allocated above under that same condition, so 
+	// this stays consistent with the "output lives where the input lives"
+	deviceIO devIO;
+	if (imOnDevice)
+		devIO.im = x0;
+	if (measOnDevice)
+		devIO.meas = Sino;
+	if (outGPU)
+		devIO.output = mxGPUGetData(outGPU);
+	if (sensGPU)
+		devIO.sensIm = mxGPUGetData(sensGPU);
+#endif
 	if (inputScalars.atomic_32bit && (type == 2)) {
-		int32_t* output = getInt32s(array_ptr, "solu");
-		int32_t* sensIm = getInt32s(sens_ptr, "solu");
-		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L);
-		plhs[0] = array_ptr;
-		if (nlhs > 1)
-			plhs[1] = sens_ptr;
+		int32_t* output = array_ptr ? getInt32s(array_ptr, "solu") : nullptr;
+		int32_t* sensIm = sens_ptr ? getInt32s(sens_ptr, "solu") : nullptr;
+		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L
+#if defined(MATLABGPU)
+			, devIO
+#endif
+		);
+#if defined(MATLABGPU)
+		if (outGPU) {
+			plhs[0] = mxGPUCreateMxArrayOnGPU(outGPU);
+			mxGPUDestroyGPUArray(outGPU);
+			if (nlhs > 1)
+				plhs[1] = mxGPUCreateMxArrayOnGPU(sensGPU);
+			mxGPUDestroyGPUArray(sensGPU);
+		}
 		else
-			mxDestroyArray(sens_ptr);
+#endif
+		{
+			plhs[0] = array_ptr;
+			if (nlhs > 1)
+				plhs[1] = sens_ptr;
+			else
+				mxDestroyArray(sens_ptr);
+		}
 	}
 	else if (inputScalars.atomic_64bit && (type == 2)) {
-		int64_t* output = getInt64s(array_ptr, "solu");
-		int64_t* sensIm = getInt64s(sens_ptr, "solu");
-		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L);
-		plhs[0] = array_ptr;
-		if (nlhs > 1)
-			plhs[1] = sens_ptr;
+		int64_t* output = array_ptr ? getInt64s(array_ptr, "solu") : nullptr;
+		int64_t* sensIm = sens_ptr ? getInt64s(sens_ptr, "solu") : nullptr;
+		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L
+#if defined(MATLABGPU)
+			, devIO
+#endif
+		);
+#if defined(MATLABGPU)
+		if (outGPU) {
+			plhs[0] = mxGPUCreateMxArrayOnGPU(outGPU);
+			mxGPUDestroyGPUArray(outGPU);
+			if (nlhs > 1)
+				plhs[1] = mxGPUCreateMxArrayOnGPU(sensGPU);
+			mxGPUDestroyGPUArray(sensGPU);
+		}
 		else
-			mxDestroyArray(sens_ptr);
+#endif
+		{
+			plhs[0] = array_ptr;
+			if (nlhs > 1)
+				plhs[1] = sens_ptr;
+			else
+				mxDestroyArray(sens_ptr);
+		}
 	}
 	else if (inputScalars.atomic_64bit && (type == 0)) {
-		float* output = getSingles(array_ptr, "solu");
-		int64_t* sensIm = getInt64s(sens_ptr, "solu");
-		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L);
+		float* output = array_ptr ? getSingles(array_ptr, "solu") : nullptr;
+		int64_t* sensIm = sens_ptr ? getInt64s(sens_ptr, "solu") : nullptr;
+		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L
+#if defined(MATLABGPU)
+			, devIO
+#endif
+		);
 		plhs[0] = array_ptr;
 		if (nlhs > 1)
 			plhs[1] = sens_ptr;
@@ -515,9 +673,13 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 			mxDestroyArray(sens_ptr);
 	}
 	else if (inputScalars.atomic_32bit && (type == 0)) {
-		float* output = getSingles(array_ptr, "solu");
-		int32_t* sensIm = getInt32s(sens_ptr, "solu");
-		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L);
+		float* output = array_ptr ? getSingles(array_ptr, "solu") : nullptr;
+		int32_t* sensIm = sens_ptr ? getInt32s(sens_ptr, "solu") : nullptr;
+		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L
+#if defined(MATLABGPU)
+			, devIO
+#endif
+		);
 		plhs[0] = array_ptr;
 		if (nlhs > 1)
 			plhs[1] = sens_ptr;
@@ -525,16 +687,38 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 			mxDestroyArray(sens_ptr);
 	}
 	else {
-		float* output = getSingles(array_ptr, "solu");
-		float* sensIm = getSingles(sens_ptr, "solu");
-		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L);
-		plhs[0] = array_ptr;
-		if (nlhs > 1)
-			plhs[1] = sens_ptr;
+		float* output = array_ptr ? getSingles(array_ptr, "solu") : nullptr;
+		float* sensIm = sens_ptr ? getSingles(sens_ptr, "solu") : nullptr;
+		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L
+#if defined(MATLABGPU)
+			, devIO
+#endif
+		);
+#if defined(MATLABGPU)
+		if (outGPU) {
+			plhs[0] = mxGPUCreateMxArrayOnGPU(outGPU);
+			mxGPUDestroyGPUArray(outGPU);
+			if (nlhs > 1)
+				plhs[1] = mxGPUCreateMxArrayOnGPU(sensGPU);
+			mxGPUDestroyGPUArray(sensGPU);
+		}
 		else
-			mxDestroyArray(sens_ptr);
+#endif
+		{
+			plhs[0] = array_ptr;
+			if (nlhs > 1)
+				plhs[1] = sens_ptr;
+			else
+				mxDestroyArray(sens_ptr);
+		}
 	}
 
+#if defined(MATLABGPU)
+	if (gIm)
+		mxGPUDestroyGPUArray(gIm);
+	if (gMeas)
+		mxGPUDestroyGPUArray(gMeas);
+#endif
 
 	return;
 }
