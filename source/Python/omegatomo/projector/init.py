@@ -584,6 +584,10 @@ def initProjector(self):
         )
         return
 
+    if (self.useMAD and self.useCUDA and self.useCuPy and cupyROCm()
+            and (self.BPType in (1, 2, 3) or (self.BPType == 4 and not self.CT))):
+        bOptBP += ("-munsafe-fp-atomics",)
+
     if self.useCUDA:
         self.no_norm = 1
         self.mSize = self.nRowsD * self.nColsD * self.nProjections
