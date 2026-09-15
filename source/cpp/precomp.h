@@ -121,13 +121,8 @@ typedef struct _OpenCL_im_vectors {
 #elif defined(CUDA) || defined(HIP)
 typedef struct _CUDA_im_vectors {
 	CUdeviceptr d_meanFP, d_meanBP;
-#if !defined(AF)
-	CUdeviceptr d_im;
-	std::vector<CUdeviceptr> d_rhs_os;
-#else
 	CUdeviceptr* d_im;
 	std::vector<CUdeviceptr*> d_rhs_os;
-#endif
 	CUtexObject d_image_os, d_image_os_int;
 } CUDA_im_vectors;
 #elif defined(METAL)

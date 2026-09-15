@@ -41,13 +41,7 @@ using INT3_t = int3;
 using UINT2_t = uint2;
 using UCHAR_t = unsigned char;
 using DEVBUFF_t = CUdeviceptr;
-#if !defined(AF)
-// Standalone implementation 5 uses CUDA driver pointers directly. ArrayFire
-// builds retain the pointer-to-device-pointer representation it expects.
-using AFDEVBUFF_t = CUdeviceptr;
-#else
 using AFDEVBUFF_t = CUdeviceptr*;
-#endif
 using TEX2D_t = CUtexObject;
 using TEX3D_t = CUtexObject;
 using TEXARRAY_t = CUarray;
@@ -181,15 +175,6 @@ using TEXARRAY_t = EmptyTextureArray;
 #elif defined(OPENCL)
 #define ALLOC_BUFFER(BUF, FLAGS, SIZE) BUF = cl::Buffer(CLContext, FLAGS, SIZE, NULL, &status)
 #endif
-// Backend-neutral buffer access flags. CUDA and Metal ignore the OpenCL access mode
-// because their allocation APIs do not encode it.
-#if defined(CUDA) || defined(HIP) || defined(METAL)
-#define BACKEND_BUFFER_READ_ONLY 0
-#define BACKEND_BUFFER_READ_WRITE 0
-#elif defined(OPENCL)
-#define BACKEND_BUFFER_READ_ONLY CL_MEM_READ_ONLY
-#define BACKEND_BUFFER_READ_WRITE CL_MEM_READ_WRITE
-#endif
 // Upload SIZE bytes from host SRC into device buffer BUF (non-blocking/asynchronous on OpenCL)
 #if defined(CUDA) || defined(HIP)
 #define WRITE_BUFFER(BUF, SIZE, SRC) status = cuMemcpyHtoD(BUF, SRC, SIZE)
@@ -204,21 +189,6 @@ using TEXARRAY_t = EmptyTextureArray;
 } while(0)
 #elif defined(OPENCL)
 #define WRITE_BUFFER(BUF, SIZE, SRC) status = CLCommandQueue[0].enqueueWriteBuffer(BUF, CL_FALSE, 0, SIZE, SRC)
-#endif
-// Download SIZE bytes from device buffer BUF into host destination DST
-#if defined(CUDA) || defined(HIP)
-#define READ_BUFFER(BUF, SIZE, DST) status = cuMemcpyDtoH((DST), (BUF), (SIZE))
-#elif defined(METAL)
-#define READ_BUFFER(BUF, SIZE, DST) do { \
-	if ((BUF).get() && (BUF)->contents()) { \
-		std::memcpy((DST), (BUF)->contents(), SIZE); \
-		status = SUCCESS_VALUE; \
-	} else { \
-		status = -1; \
-	} \
-} while(0)
-#elif defined(OPENCL)
-#define READ_BUFFER(BUF, SIZE, DST) status = CLCommandQueue[0].enqueueReadBuffer(BUF, CL_FALSE, 0, SIZE, DST)
 #endif
 // Queue/stream synchronization
 #if defined(CUDA) || defined(HIP)
@@ -336,6 +306,7 @@ using TimerPoint = std::chrono::steady_clock::time_point;
 	OCL_CHECK(status, "Image creation failed\n", -1); \
 	status = CLCommandQueue[0].enqueueCopyBufferToImage((SRC), (TEX), 0, origin, textureRegion); \
 	OCL_CHECK(status, "Image copy failed\n", -1); \
+	//FINISH_QUEUE(status, "Queue finish failed after image copy\n", -1); \
 } while(0)
 #define CREATE_FLOAT_TEXTURE3D_EMPTY(TEX, ARRAY, WIDTH, HEIGHT, DEPTH) do { \
 	(TEX) = TEX3D_t(CLContext, CL_MEM_READ_ONLY, format, (WIDTH), (HEIGHT), (DEPTH), 0, 0, NULL, &status); \
@@ -2103,38 +2074,61 @@ public:
 #endif
 	{}
 
+#if defined(METAL) || defined(OPENCL) // Used for implementations 3 and 5; not supported by CUDA/HIP
 	inline DEVBUFF_t makeDeviceBuffer(const size_t bytes, const UINT64_t flags, STATUS_t& status) {
 		DEVBUFF_t buffer{};
-		ALLOC_BUFFER(buffer, flags, bytes);
+#if defined(METAL)
+		(void)flags;
+		buffer = NS::TransferPtr(mtlDevice->newBuffer(static_cast<NS::UInteger>(bytes), (MTL::ResourceOptions)MTL::ResourceStorageModeShared));
+		status = buffer.get() ? SUCCESS_VALUE : -1;
+#elif defined(OPENCL)
+		buffer = cl::Buffer(CLContext, static_cast<cl_mem_flags>(flags), bytes, NULL, &status);
+#endif
 		return buffer;
 	}
 
 	inline STATUS_t writeDeviceBuffer(DEVBUFF_t& buffer, const void* input, const size_t bytes) {
-		STATUS_t status = SUCCESS_VALUE;
-		WRITE_BUFFER(buffer, bytes, input);
-		return status;
+#if defined(METAL)
+		if (!buffer || !buffer->contents())
+			return -1;
+		std::memcpy(buffer->contents(), input, bytes);
+		return SUCCESS_VALUE;
+#elif defined(OPENCL)
+		return CLCommandQueue[0].enqueueWriteBuffer(buffer, CL_FALSE, 0, bytes, input);
+#endif
 	}
 
 	inline STATUS_t readDeviceBuffer(const DEVBUFF_t& buffer, void* output, const size_t bytes) {
-		STATUS_t status = SUCCESS_VALUE;
-		READ_BUFFER(buffer, bytes, output);
-		return status;
+#if defined(METAL)
+		if (!buffer || !buffer->contents())
+			return -1;
+		std::memcpy(output, buffer->contents(), bytes);
+		return SUCCESS_VALUE;
+#elif defined(OPENCL)
+		return CLCommandQueue[0].enqueueReadBuffer(buffer, CL_FALSE, 0, bytes, output);
+#endif
 	}
 
 	template <typename T>
 	inline STATUS_t fillDeviceBuffer(DEVBUFF_t& buffer, const T value, const size_t bytes) {
-#if defined(OPENCL)
-		return CLCommandQueue[0].enqueueFillBuffer(buffer, value, 0, bytes);
-#else
-		std::vector<unsigned char> fillData(bytes);
-		for (size_t offset = 0; offset < bytes; offset += sizeof(value)) {
-			const size_t remaining = bytes - offset;
-			const size_t copyBytes = remaining < sizeof(value) ? remaining : sizeof(value);
-			std::memcpy(fillData.data() + offset, &value, copyBytes);
+#if defined(METAL)
+		if (!buffer || !buffer->contents())
+			return -1;
+		if (value == static_cast<T>(0)) {
+			std::memset(buffer->contents(), 0, bytes);
 		}
-		STATUS_t status = SUCCESS_VALUE;
-		WRITE_BUFFER(buffer, bytes, fillData.data());
-		return status;
+		else {
+			size_t offset = 0;
+			while (offset + sizeof(T) <= bytes) {
+				std::memcpy(static_cast<unsigned char*>(buffer->contents()) + offset, &value, sizeof(T));
+				offset += sizeof(T);
+			}
+			if (offset < bytes)
+				std::memcpy(static_cast<unsigned char*>(buffer->contents()) + offset, &value, bytes - offset);
+		}
+		return SUCCESS_VALUE;
+#elif defined(OPENCL)
+		return CLCommandQueue[0].enqueueFillBuffer(buffer, value, 0, bytes);
 #endif
 	}
 
@@ -2143,24 +2137,7 @@ public:
 		FINISH_QUEUE(status, "Queue finish failed\n", status);
 		return status;
 	}
-
-	// Create and populate a floating-point 3D texture through the backend-specific
-	// texture compatibility macro. This is also available to future CUDA callers.
-	inline STATUS_t createFloatTexture3DFromHost(TEX3D_t& texture, TEXARRAY_t& array, const float* source,
-		const size_t width, const size_t height, const size_t depth) {
-		STATUS_t status = SUCCESS_VALUE;
-		CREATE_FLOAT_TEXTURE3D_FROM_HOST(texture, array, source, width, height, depth,
-			BACKEND_TEXTURE_POINT, BACKEND_TEXTURE_DEFAULT_FLAGS);
-		return status;
-	}
-
-	inline STATUS_t createFloatTexture3DFromDevice(TEX3D_t& texture, TEXARRAY_t& array, const AFDEVBUFF_t& source,
-		const size_t width, const size_t height, const size_t depth) {
-		STATUS_t status = SUCCESS_VALUE;
-		CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(texture, array, source, width, height, depth,
-			BACKEND_TEXTURE_POINT, BACKEND_TEXTURE_DEFAULT_FLAGS);
-		return status;
-	}
+#endif
 
 #if defined(METAL)
 	NS::SharedPtr<MTL::Device> mtlDevice;
@@ -2171,10 +2148,6 @@ public:
 #if defined(CUDA) || defined(HIP)
 	std::vector<CUdevice> CUDeviceID;
 	std::vector<CUstream> CLCommandQueue;
-#if !defined(AF)
-	CUcontext standaloneContext = nullptr;
-	CUdevice standaloneDevice = 0;
-#endif
 #elif defined(OPENCL)
 	cl::Context CLContext;
 	std::vector<cl::Device> CLDeviceID;
@@ -2481,12 +2454,6 @@ public:
 			getErrorString(cuEventDestroy(evSide[kk]));
 		if (evMain != nullptr)
 			getErrorString(cuEventDestroy(evMain));
-#if !defined(AF)
-		if (!CLCommandQueue.empty())
-			getErrorString(cuStreamDestroy(CLCommandQueue[0]));
-		if (standaloneContext != nullptr)
-			getErrorString(cuDevicePrimaryCtxRelease(standaloneDevice));
-#endif
 	}
 #elif defined(OPENCL) || defined(METAL)
 	~ProjectorClass() {}
@@ -2796,25 +2763,9 @@ public:
 
 #if defined(CUDA) || defined(HIP)
 		// Create the CUDA/HIP context and stream and assign the device
-#if defined(AF)
 		int af_id = af::getDevice();
 		CUDeviceID.push_back(afcu::getNativeId(af_id));
 		CLCommandQueue.push_back(afcu::getStream(CUDeviceID[0]));
-#else
-		status = cuInit(0);
-		CUDA_CHECK(status, "Failed to initialize CUDA\n", -1);
-		status = cuDeviceGet(&standaloneDevice, inputScalars.platform);
-		CUDA_CHECK(status, "Failed to select the CUDA device\n", -1);
-		status = cuDevicePrimaryCtxRetain(&standaloneContext, standaloneDevice);
-		CUDA_CHECK(status, "Failed to retain the CUDA context\n", -1);
-		status = cuCtxSetCurrent(standaloneContext);
-		CUDA_CHECK(status, "Failed to activate the CUDA context\n", -1);
-		CUDeviceID.push_back(standaloneDevice);
-		CUstream stream = nullptr;
-		status = cuStreamCreate(&stream, CU_STREAM_DEFAULT);
-		CUDA_CHECK(status, "Failed to create the CUDA stream\n", -1);
-		CLCommandQueue.push_back(stream);
-#endif
 
 		status2 = createProgram(programFP, programBP, programAux, header_directory, inputScalars, MethodList, w_vec, local_size, type);
 		if (status2 != NVRTC_SUCCESS) {
@@ -4725,7 +4676,7 @@ public:
 #if defined(CUDA) || defined(HIP)
 	inline int backwardProjection(scalarStruct & inputScalars, Weighting & w_vec, uint32_t osa_iter, uint32_t timestep,
 		std::vector<int64_t>&length, uint64_t m_size, const RecMethods & MethodList = RecMethods(), const bool compSens = false, int ii = 0, const int uu = 0,
-		int ee = -1, const int queueIdx = 0, const bool newInput = true) {
+		const int queueIdx = 0, const bool newInput = true) {
 #elif defined(METAL) || defined(OPENCL)
 	// MethodList defaults to an empty RecMethods() so the METAL branch below keeps compiling unchanged
 	// TODO: Metal support for fastPDHG?

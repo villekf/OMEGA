@@ -376,14 +376,9 @@ if options.implementation == 3 && exist('OpenCL_matrixfree_multi_gpu','file') ~=
     error(['OpenCL reconstruction (implementation 3) selected, but OpenCL MEX-files were not installed. Run install_mex to build OpenCL MEX-files.' sprintf('\n') ...
         'If you already ran install_mex, make sure you have installed OpenCL and it can be found on path.'])
 end
-if options.implementation == 5
-    if options.use_CUDA && exist('CUDA_matrixfree_multi_gpu','file') ~= 3
-        error(['CUDA reconstruction (implementation 5) selected, but the CUDA MEX-file was not installed. Run install_mex to build CUDA MEX-files.' sprintf('\n') ...
-            'If you already ran install_mex, make sure that CUDA and its driver libraries can be found on path.'])
-    elseif ~options.use_CUDA && exist('OpenCL_matrixfree_multi_gpu','file') ~= 3
-        error(['OpenCL reconstruction (implementation 5) selected, but OpenCL MEX-files were not installed. Run install_mex to build OpenCL MEX-files.' sprintf('\n') ...
-            'If you already ran install_mex, make sure you have installed OpenCL and it can be found on path.'])
-    end
+if options.implementation == 5 && exist('OpenCL_matrixfree_multi_gpu','file') ~= 3
+    error(['OpenCL reconstruction (implementation 5) selected, but OpenCL MEX-files were not installed. Run install_mex to build OpenCL MEX-files.' sprintf('\n') ...
+        'If you already ran install_mex, make sure you have installed OpenCL and it can be found on path.'])
 end
 if options.implementation == 3 && NMLOS
     warning(['Implementation ' num2str(options.implementation) ' selected with reconstruction algorithms other than OSEM. '...
@@ -500,7 +495,7 @@ if options.largeDim
         error('A 3D backprojection/prior mask is not supported with largeDim! Use a 2D (transaxial) mask instead.')
     end
 end
-if options.use_CUDA && options.use_CPU && (options.implementation == 2 || options.implementation == 5)
+if options.use_CUDA && options.use_CPU && options.implementation == 2
     error('Both CUDA and CPU selected! Select only one!')
 end
 if options.TOF_bins_used > 1 && (options.projector_type ~= 1 && options.projector_type ~= 11 && options.projector_type ~= 3 && options.projector_type ~= 33 && options.projector_type ~= 31 ...

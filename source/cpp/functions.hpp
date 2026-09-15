@@ -1047,7 +1047,11 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 	// CPU-side texture upload.
 	af::sync();
 #endif
+#if defined(CUDA) || defined(HIP)
+	status = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, MethodList, compSens, ii, 0, queueIdx, newInput);
+#elif defined(OPENCL) || defined(METAL)
 	status = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, MethodList, compSens, ii, 0, -1, queueIdx, newInput);
+#endif
 	// Only unlock after all the queues/streams have finalized
 	if (fastStep && finalize) {
 		if (proj.fastAlg == 0)

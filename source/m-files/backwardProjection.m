@@ -268,23 +268,13 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
     if ~isa(input,'single')
         input = single(input);
     end
-    if options.use_CUDA
-        [output, sensIm] = CUDA_matrixfree_multi_gpu( options.Nx, options.Ny, options.Nz, options.dx, options.dy, options.dz, options.bx, options.by, options.bz, ...
-            z, x, options.nRowsD, options.verbose, options.LL, options.TOF, ... % 15
-            TOFSize, options.sigma_x, options.TOFCenter, options.TOF_bins, options.use_device, options.use_raw_data, options.use_psf, header_directory, options.vaimennus, ... % 24
-            options.normalization, nMeas, options.attenuation_correction, options.normalization_correction, 1, options.subsets, options.epps, options.xy_index, ...
-            options.z_index, crystal_size_z, ... % 34
-            options.x_center, options.y_center, options.z_center, single(0), 0, options.projector_type, n_rays, n_rays3D, ... % 42
-            options, input, options.partitions, options.use_64bit_atomics, options.bmin, options.bmax, options.Vmax, options.V, options.gaussK, 2, noSensIm); % 51
-    else
-        [output, sensIm] = OpenCL_matrixfree_multi_gpu( options.Nx, options.Ny, options.Nz, options.dx, options.dy, options.dz, options.bx, options.by, options.bz, ...
-            z, x, options.nRowsD, options.verbose, options.LL, options.TOF, ... % 15
-            TOFSize, options.sigma_x, options.TOFCenter, options.TOF_bins, options.platform, options.use_raw_data, options.use_psf, header_directory, options.vaimennus, ... % 24
-            options.normalization, nMeas, options.attenuation_correction, options.normalization_correction, 1, options.subsets, options.epps, options.xy_index, ...
-            options.z_index, crystal_size_z, ... % 34
-            options.x_center, options.y_center, options.z_center, single(0), 0, options.projector_type, n_rays, n_rays3D, ... % 42
-            options, input, options.partitions, options.use_64bit_atomics, options.bmin, options.bmax, options.Vmax, options.V, options.gaussK, 2, noSensIm); % 51
-    end
+    [output, sensIm] = OpenCL_matrixfree_multi_gpu( options.Nx, options.Ny, options.Nz, options.dx, options.dy, options.dz, options.bx, options.by, options.bz, ...
+        z, x, options.nRowsD, options.verbose, options.LL, options.TOF, ... % 15
+        TOFSize, options.sigma_x, options.TOFCenter, options.TOF_bins, options.platform, options.use_raw_data, options.use_psf, header_directory, options.vaimennus, ... % 24
+        options.normalization, nMeas, options.attenuation_correction, options.normalization_correction, 1, options.subsets, options.epps, options.xy_index, ...
+        options.z_index, crystal_size_z, ... % 34
+        options.x_center, options.y_center, options.z_center, single(0), 0, options.projector_type, n_rays, n_rays3D, ... % 42
+        options, input, options.partitions, options.use_64bit_atomics, options.bmin, options.bmax, options.Vmax, options.V, options.gaussK, 2, noSensIm); % 51
     if options.use_64bit_atomics
         output = single(output) / 99999997952;
         if ~isempty(sensIm) && numel(sensIm) > 1
