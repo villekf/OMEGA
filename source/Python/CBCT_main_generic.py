@@ -24,7 +24,7 @@ import numpy as np
 from omegatomo.projector import proj
 from omegatomo.util import CTEFOVCorrection
 from omegatomo.reconstruction import reconstructions_mainCT
-import matplotlib as plt
+import matplotlib.pyplot as plt
 
 options = proj.projectorClass()
 
@@ -594,7 +594,7 @@ print(f"{toc - tic:0.4f} seconds")
 
 z = np.int16(pz[:,:,:] * 55000) - 1000
 
-plt.pyplot.imshow(pz[:,:,120])
+plt.imshow(pz[:,:,120])
 
 from omegatomo.util.volume3Dviewer import volume3Dviewer
-volume3Dviewer(pz, [-1000, 2000])
+volume3Dviewer(z, [-1000, 2000])
