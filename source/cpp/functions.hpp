@@ -297,45 +297,25 @@ inline void largeDimFirst(scalarStruct& inputScalars, ProjectorClass& proj, cons
 	if (iter == 0) {
 		inputScalars.lDimStruct.NzOrig = inputScalars.Nz[0];
 		inputScalars.lDimStruct.imDimOrig = inputScalars.im_dim[0];
-#if defined(OPENCL)
-		inputScalars.lDimStruct.bzOrig = proj.b[0].s[2];
-		inputScalars.lDimStruct.bmaxZOrig = proj.bmax[0].s[2];
-		inputScalars.lDimStruct.d_Scale4ZOrig = inputScalars.d_Scale4[0].s[2];
-#elif defined(CUDA)
-		inputScalars.lDimStruct.bzOrig = proj.b[0].z;
-		inputScalars.lDimStruct.bmaxZOrig = proj.bmax[0].z;
-		inputScalars.lDimStruct.d_Scale4ZOrig = inputScalars.d_Scale4[0].z;
-#endif
+        inputScalars.lDimStruct.bzOrig = VEC_Z(proj.b[0]);
+		inputScalars.lDimStruct.bmaxZOrig = VEC_Z(proj.bmax[0]);
+		inputScalars.lDimStruct.d_Scale4ZOrig = VEC_Z(inputScalars.d_Scale4[0]);
 	}
 	inputScalars.Nz[0] = inputScalars.lDimStruct.Nz[iter];
 	inputScalars.im_dim[0] = inputScalars.lDimStruct.imDim[iter];
-#if defined(OPENCL)
-	proj.d_N[0].s[2] = inputScalars.lDimStruct.Nz[iter];
-	proj.b[0].s[2] = inputScalars.lDimStruct.bz[iter];
-	proj.bmax[0].s[2] = inputScalars.lDimStruct.bmaxZ[iter];
-	inputScalars.d_Scale4[0].s[2] = inputScalars.lDimStruct.d_Scale4Z[iter];
-#elif defined(CUDA)
-	proj.d_N[0].z = inputScalars.lDimStruct.Nz[iter];
-	proj.b[0].z = inputScalars.lDimStruct.bz[iter];
-	proj.bmax[0].z = inputScalars.lDimStruct.bmaxZ[iter];
-	inputScalars.d_Scale4[0].z = inputScalars.lDimStruct.d_Scale4Z[iter];
-#endif
+	VEC_Z(proj.d_N[0]) = inputScalars.lDimStruct.Nz[iter];
+	VEC_Z(proj.b[0]) = inputScalars.lDimStruct.bz[iter];
+	VEC_Z(proj.bmax[0]) = inputScalars.lDimStruct.bmaxZ[iter];
+	VEC_Z(inputScalars.d_Scale4[0]) = inputScalars.lDimStruct.d_Scale4Z[iter];
 }
 
 inline void largeDimLast(scalarStruct& inputScalars, ProjectorClass& proj) {
 	inputScalars.Nz[0] = inputScalars.lDimStruct.NzOrig;
 	inputScalars.im_dim[0] = inputScalars.lDimStruct.imDimOrig;
-#if defined(OPENCL)
-	proj.d_N[0].s[2] = inputScalars.lDimStruct.NzOrig;
-	proj.b[0].s[2] = inputScalars.lDimStruct.bzOrig;
-	proj.bmax[0].s[2] = inputScalars.lDimStruct.bmaxZOrig;
-	inputScalars.d_Scale4[0].s[2] = inputScalars.lDimStruct.d_Scale4ZOrig;
-#elif defined(CUDA)
-	proj.d_N[0].z = inputScalars.lDimStruct.NzOrig;
-	proj.b[0].z = inputScalars.lDimStruct.bzOrig;
-	proj.bmax[0].z = inputScalars.lDimStruct.bmaxZOrig;
-	inputScalars.d_Scale4[0].z = inputScalars.lDimStruct.d_Scale4ZOrig;
-#endif
+	VEC_Z(proj.d_N[0]) = inputScalars.lDimStruct.NzOrig;
+	VEC_Z(proj.b[0]) = inputScalars.lDimStruct.bzOrig;
+	VEC_Z(proj.bmax[0]) = inputScalars.lDimStruct.bmaxZOrig;
+	VEC_Z(inputScalars.d_Scale4[0]) = inputScalars.lDimStruct.d_Scale4ZOrig;
 }
 
 // Fill the backprojection (aka right-hand side) with zeros
@@ -589,6 +569,17 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			mexPrint("Integral image xz copy failed\n");
 			return -1;
 		}
+#elif defined(METAL)
+		{
+			auto source = transferAF(intIm);
+			status = proj.makeImageTextureFromDevice(proj.vec_opencl.d_image_os_int, proj.imArray, source,
+				static_cast<size_t>(dim0), static_cast<size_t>(dim1), static_cast<size_t>(dim2),
+				BACKEND_TEXTURE_LINEAR, BACKEND_TEXTURE_NORMALIZED);
+			if (status != 0) {
+				mexPrint("Integral image xz copy failed\n");
+				return -1;
+			}
+		}
 #endif
 		intIm.unlock();
 		intIm = af::constant(0.f, inputScalars.Nx[ii] + 1, inputScalars.Nz[ii] + 1, inputScalars.Ny[ii]);
@@ -703,6 +694,17 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			getErrorString(status);
 			mexPrint("Integral image yz copy failed\n");
 			return -1;
+		}
+#elif defined(METAL)
+		{
+			auto source = transferAF(intIm);
+			status = proj.makeImageTextureFromDevice(proj.vec_opencl.d_image_os, proj.imArray, source,
+				static_cast<size_t>(dim0), static_cast<size_t>(dim1), static_cast<size_t>(dim2),
+				BACKEND_TEXTURE_LINEAR, BACKEND_TEXTURE_NORMALIZED);
+			if (status != 0) {
+				mexPrint("Integral image yz copy failed\n");
+				return -1;
+			}
 		}
 #endif
 		intIm.unlock();
@@ -1172,7 +1174,6 @@ inline int proxTVGradAF(const af::array&, std::vector<af::array>&, const scalarS
 inline int proxTGVSymmDerivAF(const std::vector<af::array>&, std::vector<af::array>&, const scalarStruct&, const float, ProjectorClass&) { return -1; }
 inline int proxTGVDivAF(const std::vector<af::array>&, std::vector<af::array>&, std::vector<af::array>&, const scalarStruct&,
 	const float, const float, ProjectorClass&) { return -1; }
-inline int elementWiseAF(const af::array&, af::array&, const bool, ProjectorClass&, const bool = false) { return -1; }
 inline int poissonUpdateAF(af::array&, const af::array&, const scalarStruct&, const float, const float, const float, ProjectorClass&, const int = 0) { return -1; }
 #else
 
@@ -1812,6 +1813,24 @@ inline int proxTGVDivAF(const std::vector<af::array>& q, std::vector<af::array>&
 	return status;
 }
 
+// Poisson-estimate update kernel call for PKMA, MBSREM and BSREM
+inline int poissonUpdateAF(af::array& im, const af::array& rhs, const scalarStruct& inputScalars, const float lambda, const float epps, const float alpha, ProjectorClass& proj, const int ii = 0) {
+	int status = 0;
+	proj.d_im = transferAF(im);
+	proj.d_rhs = transferAF(rhs);
+	status = proj.PoissonUpdate(inputScalars, lambda, epps, alpha, ii);
+	rhs.unlock();
+	im.unlock();
+	if (status != 0) {
+		return -1;
+	}
+	return status;
+}
+
+#endif
+#endif
+
+#ifndef CPU
 // Computes elementwise multiplication or division, depending on mult-variable
 inline int elementWiseAF(const af::array& vector, af::array& input, const bool mult, ProjectorClass& proj, const bool D2 = false) {
 	int status = 0;
@@ -1836,25 +1855,7 @@ inline int elementWiseAF(const af::array& vector, af::array& input, const bool m
 	return status;
 }
 
-// Poisson-estimate update kernel call for PKMA, MBSREM and BSREM
-inline int poissonUpdateAF(af::array& im, const af::array& rhs, const scalarStruct& inputScalars, const float lambda, const float epps, const float alpha, ProjectorClass& proj, const int ii = 0) {
-	int status = 0;
-	proj.d_im = transferAF(im);
-	proj.d_rhs = transferAF(rhs);
-	status = proj.PoissonUpdate(inputScalars, lambda, epps, alpha, ii);
-	rhs.unlock();
-	im.unlock();
-	if (status != 0) {
-		return -1;
-	}
-	return status;
-}
-
-#endif
-#endif
-
 // Same as above, but for PDHG
-#ifndef CPU
 inline int PDHGUpdateAF(af::array& im, const af::array& rhs, const scalarStruct& inputScalars, AF_im_vectors& vec, const float epps, const float theta, const float tau, ProjectorClass& proj, const uint32_t timestep, const int ii = 0) {
 	int status = 0;
 	proj.d_im = transferAF(im);

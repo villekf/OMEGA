@@ -333,12 +333,17 @@ def transferData(options):
     options.param.TOFIndices = options.TOFIndices.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
     options.param.angles = options.angles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.swivelAngles = options.swivelAngles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.blurPlanes = options.blurPlanes[0].ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
-    options.param.blurPlanes2 = options.blurPlanes2[0].ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
-    # Python custom type-6 stores one CDRF per volume.  The native branch is
-    # still single-filter, so retain its established volume-0 interface here.
-    options.param.gFilter = options.gFilter[0].ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.gFSize = np.array(options.gFilter[0].shape, dtype=np.uint64)
+    if options.projector_type in (6, 16, 26, 61, 62, 66):
+        options.param.blurPlanes = options.blurPlanes[0].ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
+        options.param.blurPlanes2 = options.blurPlanes2[0].ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
+        # The native type-6 branch uses the volume-0 filter.
+        options.param.gFilter = options.gFilter[0].ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+        options.gFSize = np.array(options.gFilter[0].shape, dtype=np.uint64)
+    else:
+        options.param.blurPlanes = None
+        options.param.blurPlanes2 = None
+        options.param.gFilter = None
+        options.gFSize = np.zeros(3, dtype=np.uint64)
     options.param.gFSize = options.gFSize.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
     options.param.precondTypeImage = options.precondTypeImage.ctypes.data_as(ctypes.POINTER(ctypes.c_bool))
     options.param.precondTypeMeas = options.precondTypeMeas.ctypes.data_as(ctypes.POINTER(ctypes.c_bool))
@@ -716,7 +721,9 @@ def reconstructions_main(options):
     from omegatomo.util.dllpath import addDLLDirectories
     addDLLDirectories()
     c_lib = ctypes.CDLL(libname)
-    c_lib.omegaMain(options.param, ctypes.c_char_p(inStr), SinoP, outputP, FPOutputP, residualP)
+    status = c_lib.omegaMain(options.param, ctypes.c_char_p(inStr), SinoP, outputP, FPOutputP, residualP)
+    if status != 0:
+        raise RuntimeError(f'Native reconstruction failed with status {status}; see the backend diagnostics above.')
     try:
         if options.useMultiResolutionVolumes and not options.storeMultiResolution:
             output = output.reshape((options.NxOrig, options.NyOrig, options.NzOrig, -1), order = 'F')

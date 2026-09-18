@@ -1607,7 +1607,7 @@ class ProjectorClass {
 			if (status == NVRTC_SUCCESS)
 				memAlloc.auxMod = true;
 #elif defined(METAL)
-			if (MethodList.CPType || inputScalars.projector_type == 6) {
+			if (MethodList.CPType || inputScalars.projector_type == 6 || w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]) {
 				status = buildProgram(inputScalars.verbose, contentAux, programAux, optionsAux);
 				if (status != SUCCESS_VALUE)
 					return status;
@@ -2043,17 +2043,7 @@ class ProjectorClass {
 				mexPrint("Proximal TGV kernel successfully created\n");
 			}
 		}
-		if (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]) {
-			CREATE_KERNEL(kernelElementMultiply, programAux, "vectorElementMultiply", "Failed to create element-wise multiplication kernel\n");
-			if (DEBUG || inputScalars.verbose >= 3) {
-				mexPrint("Element-wise kernels successfully created\n");
-			}
-			CREATE_KERNEL(kernelElementDivision, programAux, "vectorElementDivision", "Failed to create element-wise division kernel\n");
-			if (DEBUG || inputScalars.verbose >= 3) {
-				mexPrint("Element-wise kernels successfully created\n");
-			}
-		}
-#if defined(OPENCL)
+	#if defined(OPENCL)
 		if (type == 0) {
 			kernelsumma = cl::Kernel(programAux, "summa", &status);
 			OCL_CHECK(status, "Failed to create implementation 3 kernels\n", -1);
@@ -2071,6 +2061,16 @@ class ProjectorClass {
 		}
 #endif // END CUDA
 #endif // END non-Metal auxiliary kernel creation
+		if (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]) {
+			CREATE_KERNEL(kernelElementMultiply, programAux, "vectorElementMultiply", "Failed to create element-wise multiplication kernel\n");
+			if (DEBUG || inputScalars.verbose >= 3) {
+				mexPrint("Element-wise kernels successfully created\n");
+			}
+			CREATE_KERNEL(kernelElementDivision, programAux, "vectorElementDivision", "Failed to create element-wise division kernel\n");
+			if (DEBUG || inputScalars.verbose >= 3) {
+				mexPrint("Element-wise kernels successfully created\n");
+			}
+			}
 		if (inputScalars.computeSensImag && inputScalars.listmode > 0) {
 			if (inputScalars.BPType == 4)
 				GET_KERNEL(kernelSensList, programSens, "projectorType4Forward");
@@ -4601,6 +4601,9 @@ public:
 					// for the multi-resolution volumes b/bmax already span the whole volume
 					bzGlobalFP[0] = (ii == 0) ? inputScalars.lDimStruct.bz[0] : VEC_Z(b[ii]);
 					bzGlobalFP[1] = (ii == 0) ? inputScalars.lDimStruct.bmaxZ[inputScalars.subsets - 1] : VEC_Z(bmax[ii]);
+#ifdef METAL
+					kParams.dSize5 = { bzGlobalFP[0], bzGlobalFP[1] };
+#endif
 					KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, bzGlobalFP[0]);
 					KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, bzGlobalFP[1]);
 				}
@@ -4974,11 +4977,18 @@ public:
 		kParams.d_Scale5 = inputScalars.d_Scale[ii];
 		kParams.dSize5 = inputScalars.dSizeBP;
 		kParams.kerroin4 = (inputScalars.BPType == 4 && w_vec.kerroin4) ? w_vec.kerroin4[ii] : 0.f;
+		kParams.DSC = inputScalars.DSC;
 		kParams.nProjections = length[indD];
 		kParams.no_norm = no_norm;
 		kParams.m_size = m_size;
 		kParams.currentSubset = osa_iter;
 		kParams.aa = ii;
+		if (MethodList.FDK && inputScalars.largeDim && inputScalars.BPType == 4) {
+			int64_t angleOffset = 0;
+			for (uint32_t subset = 0; subset < osa_iter; subset++)
+				angleOffset += length[subset + timestep * inputScalars.subsets];
+			kParams.dSize5 = { static_cast<float>(angleOffset), static_cast<float>(inputScalars.nProjections) };
+		}
 		if (inputScalars.BPType == 2)
 			kParams.orthWidth = inputScalars.tube_width;
 		if (inputScalars.BPType == 3)
@@ -5491,11 +5501,13 @@ public:
 					KARG_METAL_SLOT(kernelIndBPSubIter, 7);
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_Summ[ee]);
 					if (inputScalars.meanBP) {
+						if (inputScalars.BPType == 5)
+							KARG_METAL_SLOT(kernelIndBPSubIter, 8);
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_meanBP);
 					}
 				}
 				if (inputScalars.normalization_correction) {
-					KARG_METAL_SLOT(kernelIndBPSubIter, 8);
+					KARG_METAL_SLOT(kernelIndBPSubIter, inputScalars.BPType == 5 ? 9 : 8);
 					// TODO: Listmode normalization
 					//if (inputScalars.listmode > 0 && inputScalars.indexBased)
 					//	status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[0]);
@@ -5566,6 +5578,9 @@ public:
 					// Non-CT BP 4 needs the same volume information as FP
 					bzGlobalBP[0] = (ii == 0) ? inputScalars.lDimStruct.bz[0] : VEC_Z(b[ii]);
 					bzGlobalBP[1] = (ii == 0) ? inputScalars.lDimStruct.bmaxZ[inputScalars.subsets - 1] : VEC_Z(bmax[ii]);
+#ifdef METAL
+					kParams.dSize5 = { bzGlobalBP[0], bzGlobalBP[1] };
+#endif
 					KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, bzGlobalBP[0]);
 					KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, bzGlobalBP[1]);
 				}
@@ -5672,7 +5687,7 @@ public:
 				}
 			KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, no_norm);
 			if (inputScalars.CT && inputScalars.maskBP && (inputScalars.BPType == 4 || inputScalars.BPType == 5 || inputScalars.BPType == 7)) {
-				KARG_METAL_SLOT(kernelIndBPSubIter, 9);
+				KARG_METAL_SLOT(kernelIndBPSubIter, inputScalars.BPType == 5 ? 10 : 9);
 				if (inputScalars.useBuffers) {
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBPB);
 				}
@@ -6887,7 +6902,8 @@ public:
 	/// <param name="mult if true, performs multiplication, otherwise division"></param>
 	/// <param name="D2 if true, assumes 2D case, otherwise 1D"></param>
 	/// <returns></returns>
-#if defined(CUDA) || defined(HIP)
+#endif // END non-Metal auxiliary kernels
+	#if defined(CUDA) || defined(HIP)
 	inline int elementWiseComp(const bool mult, const uint64_t size[], bool D2 = false) {
 		const unsigned int gSize[3] = { static_cast<unsigned int>(size[0]), static_cast<unsigned int>(size[1]), static_cast<unsigned int>(size[2]) };
 		std::vector<void*> kArgs;
@@ -6897,11 +6913,22 @@ public:
 			mexPrintBase("gSize[2] = %u\n", gSize[2]);
 			mexEval();
 		}
-#elif defined(OPENCL)
+	#elif defined(OPENCL)
 	inline int elementWiseComp(const bool mult, const uint64_t size[], const bool D2 = false) {
 		cl::NDRange gSize = { static_cast<cl::size_type>(size[0]), static_cast<cl::size_type>(size[1]), static_cast<cl::size_type>(size[2]) };
 		UINT32_t kernelIndE = 0U;
-#endif // END CUDA
+	#elif defined(METAL)
+	inline int elementWiseComp(const bool mult, const uint64_t size[], const bool D2 = false) {
+		MTL::Size gSize = MTL::Size::Make(static_cast<NS::UInteger>(size[0]), static_cast<NS::UInteger>(size[1]), static_cast<NS::UInteger>(size[2]));
+		UINT32_t kernelIndE = 0U;
+		if (!queueBP || !(mult ? kernelElementMultiply : kernelElementDivision))
+			return -1;
+		auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+		auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+		if (!commandBuffer || !encoder)
+			return -1;
+		encoder->setComputePipelineState((mult ? kernelElementMultiply : kernelElementDivision).get());
+	#endif // END CUDA
 		STATUS_t status = SUCCESS_VALUE;
 		UCHAR_t D = static_cast<UCHAR_t>(D2);
 		//FINISH_QUEUE(status, "Failed to synchronize before element-wise kernel\n", -1);
@@ -6912,6 +6939,10 @@ public:
 			// Compute the kernel
 #if defined(CUDA) || defined(HIP)
 			status = cuLaunchKernel(kernelElementMultiply, gSize[0], gSize[1], gSize[2], 1, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
+#elif defined(METAL)
+			encoder->dispatchThreads(gSize, MTL::Size::Make(1, 1, 1));
+			encoder->endEncoding();
+			submitMetalCommandBuffer(commandBuffer.get());
 #elif defined(OPENCL)
 			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelElementMultiply, cl::NullRange, gSize, cl::NullRange);
 #endif // END CUDA
@@ -6922,6 +6953,10 @@ public:
 			// Compute the kernel
 #if defined(CUDA) || defined(HIP)
 			status = cuLaunchKernel(kernelElementDivision, gSize[0], gSize[1], gSize[2], 1, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
+#elif defined(METAL)
+			encoder->dispatchThreads(gSize, MTL::Size::Make(1, 1, 1));
+			encoder->endEncoding();
+			submitMetalCommandBuffer(commandBuffer.get());
 #elif defined(OPENCL)
 			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelElementDivision, cl::NullRange, gSize, cl::NullRange);
 #endif // END CUDA
@@ -6930,6 +6965,8 @@ public:
 		//FINISH_QUEUE(status, "Queue finish failed after element-wise kernel\n", -1);
 		return 0;
 	}
+
+#if !defined(METAL)
 
 	/// <summary>
 	/// The gradient of hyperbolic prior

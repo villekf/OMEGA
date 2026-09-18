@@ -215,14 +215,25 @@ void vectorMult(const CLGLOBAL float* input, CLGLOBAL float* output) {
 // Complex elementwise multiplication
 // Used by the filtering
 // This kernel assumes that the imaginary element is right after the real element, i.e. [real,imaginary,real,imaginary,...]
-#if !defined(METAL)
+
+#if defined(METAL)
+KERNEL
+void vectorElementMultiply(const CLGLOBAL float* CLRESTRICT input BUF0, CLGLOBAL float* output BUF1, constant uchar& D2 BUF2,
+	uint3 metalGlobalId [[thread_position_in_grid]], uint3 metalGridSize [[threads_per_grid]]) {
+	const LTYPE3 xyz = MINT3(metalGlobalId.x, metalGlobalId.y, metalGlobalId.z);
+	const LTYPE gridX = metalGridSize.x;
+	const LTYPE gridY = metalGridSize.y;
+#else
 KERN
 void vectorElementMultiply(const CLGLOBAL float* CLRESTRICT input, CLGLOBAL float* output, const uchar D2) {
 	const LTYPE3 xyz = MINT3(GID0, GID1, GID2);
-	const LTYPE n = xyz.x + xyz.y * GSIZE0 + xyz.z * GSIZE0 * GSIZE1;
+	const LTYPE gridX = GSIZE0;
+	const LTYPE gridY = GSIZE1;
+#endif
+	const LTYPE n = xyz.x + xyz.y * gridX + xyz.z * gridX * gridY;
 	float mult;
 	if (D2)
-		mult = input[xyz.x + xyz.y * GSIZE0];
+		mult = input[xyz.x + xyz.y * gridX];
 	else
 		mult = input[xyz.x];
 	output[2 * n] *= mult;
@@ -232,18 +243,29 @@ void vectorElementMultiply(const CLGLOBAL float* CLRESTRICT input, CLGLOBAL floa
 // Complex elementwise division
 // Used by the filtering
 // This kernel assumes that the imaginary element is right after the real element, i.e. [real,imaginary,real,imaginary,...]
+
+#if defined(METAL)
+KERNEL
+void vectorElementDivision(const CLGLOBAL float* CLRESTRICT input BUF0, CLGLOBAL float* output BUF1,
+	uint3 metalGlobalId [[thread_position_in_grid]], uint3 metalGridSize [[threads_per_grid]]) {
+	const LTYPE3 xyz = MINT3(metalGlobalId.x, metalGlobalId.y, metalGlobalId.z);
+	const LTYPE gridX = metalGridSize.x;
+	const LTYPE gridY = metalGridSize.y;
+#else
 KERN
 void vectorElementDivision(const CLGLOBAL float* CLRESTRICT input, CLGLOBAL float* output) {
 	const LTYPE3 xyz = MINT3(GID0, GID1, GID2);
-	const LTYPE n = xyz.x + xyz.y * GSIZE0 + xyz.z * GSIZE0 * GSIZE1;
+	const LTYPE gridX = GSIZE0;
+	const LTYPE gridY = GSIZE1;
+#endif
+	const LTYPE n = xyz.x + xyz.y * gridX + xyz.z * gridX * gridY;
 	float div = input[xyz.x];
 	// Make sure there is no division by zero
-	if (fabs(div) < 1e-12f)
+	if (FABS(div) < 1e-12f)
 		div = (div < FLOAT_ZERO) ? -1e-12f : 1e-12f;
 	output[2 * n] /= div;
 	output[2 * n + 1] /= div;
 }
-#endif
 
 // Non-local means
 #ifdef NLM_ // START NLM

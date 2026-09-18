@@ -152,7 +152,9 @@
     const uchar no_norm = scalarParams.no_norm; \
     const unsigned long m_size = scalarParams.m_size; \
     const uint currentSubset = scalarParams.currentSubset; \
-	const int aa = scalarParams.aa;
+    const int aa = scalarParams.aa; \
+    const float bzGlobalMin = scalarParams.dSize5.x; \
+    const float bzGlobalMax = scalarParams.dSize5.y;
 
 #define UNPACK_SCALAR_PARAMS_4_BP(scalarParams) \
     const uint d_size_x = scalarParams.nRowsD; \
@@ -162,11 +164,14 @@
     const uint3 d_N = scalarParams.d_N; \
     const float3 b = scalarParams.b; \
     const float3 d_d = scalarParams.d; \
+    const float2 dSize5 = scalarParams.dSize5; \
     const float kerroin = scalarParams.kerroin4; \
     const float DSC = scalarParams.DSC; \
     const uchar no_norm = scalarParams.no_norm; \
     const long d_nProjections = scalarParams.nProjections; \
-    const int ii = scalarParams.aa;
+    const int ii = scalarParams.aa; \
+    const float bzGlobalMin = scalarParams.dSize5.x; \
+    const float bzGlobalMax = scalarParams.dSize5.y;
 
 #define UNPACK_SCALAR_PARAMS_5_FP(scalarParams) \
     const uint d_nRows = scalarParams.nRowsD; \
@@ -178,6 +183,19 @@
     const float3 d_d = scalarParams.d; \
     const float3 d_scale = scalarParams.d_Scale5; \
     const long d_nProjections = scalarParams.nProjections;
+
+#define UNPACK_SCALAR_PARAMS_5_BP(scalarParams) \
+    const uint d_nRows = scalarParams.nRowsD; \
+    const uint d_nCols = scalarParams.nColsD; \
+    const float2 d_dPitch = scalarParams.dPitch; \
+    const uint3 d_N = scalarParams.d_N; \
+    const float3 b = scalarParams.b; \
+    const float3 d_d = scalarParams.d; \
+    const float3 d_scale = scalarParams.d_Scale5; \
+    const float2 d_Size = scalarParams.dSize5; \
+    const long d_nProjections = scalarParams.nProjections; \
+    const uchar no_norm = scalarParams.no_norm; \
+    const int ii = scalarParams.aa;
 
 #define UNPACK_SCALAR_PARAMS_PDHG(scalarParams) \
     const int3 N = scalarParams.N_PDHG; \
@@ -335,6 +353,7 @@ using metal::dot;
 #define TEX7 [[texture(7)]]
 #define TEX8 [[texture(8)]]
 #define TEX9 [[texture(9)]]
+#define TEX10 [[texture(10)]]
 #define TEX19 [[texture(19)]]
 #else
 #define TEX1 [[buffer(1)]]
@@ -344,8 +363,10 @@ using metal::dot;
 #define TEX7 [[buffer(7)]]
 #define TEX8 [[buffer(8)]]
 #define TEX9 [[buffer(9)]]
+#define TEX10 [[buffer(10)]]
 #define TEX19 [[buffer(19)]]
 #endif
+
 #if defined(ATOMIC32)
 inline void atomicAdd(volatile device metal::atomic_int* addr, int val)
 {
