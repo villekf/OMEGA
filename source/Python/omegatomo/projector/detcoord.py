@@ -174,12 +174,8 @@ def setCTCoordinates(options):
         options.z = options.uV
     if options.pitchRoll.size > 0:
         options.pitch = True
-        options.z[:,0] = options.z[:,0] * options.dPitchX
-        options.z[:,1] = options.z[:,1] * options.dPitchX
-        options.z[:,5] = options.z[:,5] * options.dPitchY
-        options.z[:,3] = options.z[:,3] * options.dPitchX
-        options.z[:,4] = options.z[:,4] * options.dPitchX
-        options.z[:,2] = options.z[:,2] * options.dPitchY
+        options.z[:, :3] *= options.dPitchX
+        options.z[:, 3:] *= options.dPitchY
     elif options.uV.size > 0:
         options.z[:,0] = options.z[:,0] * options.dPitchX
         options.z[:,1] = options.z[:,1] * options.dPitchX
@@ -204,12 +200,16 @@ def CTDetectorCoordinates(angles, pitchRoll = np.empty(0, dtype=np.float32)):
         The direction vectors of the panel pixels for each projection.
 
     """
+    angles = np.asarray(angles).reshape(-1)
     if pitchRoll.size == 0:
         uV = np.column_stack((-np.sin(angles), np.cos(angles)))
     else:
-        pitchRoll.reshape(pitchRoll.size // 2, 2)
-        uV = np.column_stack(((-np.sin(angles) * np.cos(pitchRoll[:,0] - np.cos(angles) * np.sin(pitchRoll[:,0]) * np.sin(pitchRoll[:,1]))), 
-                             (np.cos(angles) * np.cos(pitchRoll[:,0]) - np.cos(angles) * np.sin(pitchRoll[:,0]) * np.sin(pitchRoll[:,1])),
+        pitchRoll = np.asarray(pitchRoll).reshape(-1, 2)
+        if pitchRoll.shape[0] not in (1, angles.size):
+            raise ValueError('pitchRoll must contain one pitch/roll pair or one pair per projection')
+        pitchRoll = np.broadcast_to(pitchRoll, (angles.size, 2))
+        uV = np.column_stack(((-np.sin(angles) * np.cos(pitchRoll[:,0]) - np.cos(angles) * np.sin(pitchRoll[:,0]) * np.sin(pitchRoll[:,1])),
+                             (np.cos(angles) * np.cos(pitchRoll[:,0]) - np.sin(angles) * np.sin(pitchRoll[:,0]) * np.sin(pitchRoll[:,1])),
                              (np.sin(pitchRoll[:,0]) * np.cos(pitchRoll[:,1])),
                              (np.sin(angles) * np.sin(pitchRoll[:,0]) - np.cos(angles) * np.cos(pitchRoll[:,0]) * np.sin(pitchRoll[:,1])),
                              (-(np.cos(angles) * np.sin(pitchRoll[:,0]) + np.sin(angles) * np.cos(pitchRoll[:,0]) * np.sin(pitchRoll[:,1]))),

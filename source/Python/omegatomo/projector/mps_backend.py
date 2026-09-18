@@ -198,6 +198,8 @@ def _validate_configuration(self: Any) -> None:
         errors.append('integer accumulation is unsupported by the Metal/MPS custom-operator path')
     if self.use_psf:
         errors.append('PSF convolution is unsupported by the Metal/MPS custom-operator path')
+    if getattr(self, 'FDK', False):
+        errors.append('FDK filtering and weighting are not implemented by the Metal/MPS custom-operator path')
     if errors:
         raise ValueError('Metal/MPS configuration: ' + '; '.join(errors))
 

@@ -14,7 +14,9 @@ def _coordinate_slice(self, name, timestep, subset, stride):
         start = int(offsets[subset]) * stride
         stop = int(offsets[subset + 1]) * stride
         return frame[start:stop]
-    flat = np.asarray(getattr(self, name), dtype=np.float32).ravel(order='F')
+    # CT stores one projection per row; SPECT stores one per column.
+    order = 'C' if self.CT and self.listmode == 0 else 'F'
+    flat = np.asarray(getattr(self, name), dtype=np.float32).ravel(order=order)
     q = timestep * int(self.subsets) + subset
     start = int(self.nMeas[q]) * stride
     stop = int(self.nMeas[q + 1]) * stride
@@ -107,6 +109,8 @@ def computeGeom5(x, uv, nRowsD, nColsD, dPitchY, pitch):
     return np.ascontiguousarray(geom).ravel()
 
 def initProjector(self):
+    if self.useMetal and not self.useTorch:
+        raise ValueError('The Metal/MPS projector requires useTorch=True.')
     self.CTAttenuation = self.CT_attenuation # TODO: consistent CT_attenuation vs CTAttenuation?
     try:
         import arrayfire as af

@@ -224,6 +224,8 @@ constexpr metal::sampler samplerMask(
     metal::address::clamp_to_edge
 );
 
+using metal::dot;
+
 #ifdef HALF // 16-bit floating point
 #define CFLOAT(a) static_cast<half>(a)
 #define CFLOAT3(a) half3(a)
@@ -277,6 +279,7 @@ constexpr metal::sampler samplerMask(
 #define CUINT3(a) uint3(a)
 #define CUINT_rtp(a) static_cast<uint>(metal::ceil((a)))
 #define CUINT_rtz(a) static_cast<uint>(metal::trunc((a)))
+#define CUINT_rte(a) static_cast<uint>(metal::rint((a)))
 #define CUINT_sat_rtz(a) static_cast<uint>(metal::clamp(metal::trunc(((float)a)), 0.0f, 4294967295.0f)) // TODO replace float with FLOAT
 #define DEVICE inline
 #define DISTANCE metal::distance
@@ -343,14 +346,6 @@ constexpr metal::sampler samplerMask(
 #define TEX9 [[buffer(9)]]
 #define TEX19 [[buffer(19)]]
 #endif
-// Metal function definitions
-inline FLOAT dot(half3 a, half3 b) {
-    return metal::dot(a, b);
-}
-inline FLOAT dot(float3 a, float3 b) {
-    return metal::dot(a, b);
-}
-
 #if defined(ATOMIC32)
 inline void atomicAdd(volatile device metal::atomic_int* addr, int val)
 {
