@@ -1320,9 +1320,9 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 								}
 							}
 							if (compute_norm_matrix == 1u)
-								transferSensitivityImage(vec.Summ[0][ii][0], proj, static_cast<size_t>(ii));
+								transferSensitivityImage(vec.Summ[0][ii][0], proj);
 							else if (compute_norm_matrix == 2u)
-								transferSensitivityImage(vec.Summ[0][ii][osa_iter], proj, static_cast<size_t>(ii));
+								transferSensitivityImage(vec.Summ[0][ii][osa_iter], proj);
 							status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, outputFP, osa_iter, tt, length, m_size, meanBP, g, proj, false, ii, pituus, false,
 								concurrentBP ? ii + 1 : 0, !concurrentBP, ii == 0 || CTOSEMBranch);
 							if (status != 0) {

@@ -1,37 +1,44 @@
 # -*- coding: utf-8 -*-
 """
-## Python codes for SPECT custom algorithm reconstruction
-This example contains a simplified example for custom algorithm
-reconstruction using projection SPECT data. In this case the
-data is Siemens Pro.specta projection data available at DOI
-10.5281/zenodo.17315440. Currently the support for
-some of the additional features is limited.
+This example contains an example of PyTorch and OMEGA interoperability 
+using projection SPECT data. The dataset is Siemens Pro.specta
+projection data available at DOI 10.5281/zenodo.17315440.
 
-Note that custom algorithm refers to your own algorithms and not the
-built-in algorithms. This example merely has the OSEM and MLEM algorithms
-shown as examples. The forward and/or backward projections of OMEGA are
-utilized for the computation of these algorithms. The idea of this example
-is to show how you can compute your own algorithms with the OMEGA projector
-operators and utilizing many of the built-in features such as subsets and
-corrections.
+This version implements a deep-image-prior reconstruction with a 3-D U-net.
+The OMEGA forward and backward projectors are used to optimize the network
+parameters directly from the measured SPECT projections.
 
-This example uses Arrayfire with PyOpenCL and thus requires OpenCL (with PyOpenCL and Arrayfire)!
+This example uses PyTorch thus requires either a CUDA or Metal compatible device.
 """
+
+# %% Imports and run configuration
+from pathlib import Path
 
 import numpy as np
 from omegatomo.projector import proj
-import arrayfire as af
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from pymatreader import read_mat
 
+# %% OMEGA data, scanner, and reconstruction configuration
 options = proj.projectorClass()
 
-# Required for SPECT data
-options.SPECT = True
+# Path to .mat file
+options.fpath = './jaszczak_spectct_projection_data.mat' 
 
-# Assumes that Arrayfire arrays are used as input to either forward or backward projections
-options.useAF = True
 
-options.fpath = '' # Path to .mat file
+# Set PyTorch backend
+options.SPECT = True # Required for SPECT data
+options.useTorch = True # Use PyTorch tensors for storing data
+if sys.platform == 'darwin':
+    options.useMetal = True
+    device = torch.device("mps")
+else:
+    options.useCUDA = True
+    options.useCuPy = True # Use CuPy, PyCUDA support is deprecated
+    device = torch.device("cuda")
+
 
 ###########################################################################
 ###########################################################################
@@ -79,31 +86,31 @@ options.machine_name = 'Prospecta'
 ###########################################################################
 ###########################################################################
  
-### Reconstructed image pixel count
+### Reconstructed image pixel count. U-net uses 64x64x64 as input.
 # NOTE: Non-square image sizes (X- and Y-direction) may not work
 options.Nx = 64; # X-direction
 options.Ny = 64; # Y-direction
-options.Nz = 128; # Z-direction (number of axial slices)
+options.Nz = 64; # Z-direction
 
 ### FOV size [mm]
 # NOTE: Non-cubical voxels may not work
 options.FOVa_x = options.dPitchX*64; # [mm], x-axis of FOV (transaxial)
 options.FOVa_y = options.dPitchX*64; # [mm], y-axis of FOV (transaxial)
-options.axial_fov = options.dPitchY*128; # [mm], z-axis of FOV (axial)
+options.axial_fov = options.dPitchY*64; # [mm], z-axis of FOV (axial)
 
 ### Flip the image?
 options.flipImageX = False
 options.flipImageY = False
 options.flipImageZ = False
 
-### Use back projection mask?
-options.useMaskBP = False
-options.maskBP = np.ones((options.Nx, options.Ny, options.Nz))
 
 ### How much is the image rotated in degrees?
 # NOTE: The rotation is done in the detector space (before reconstruction).
 # Positive values perform the rotation in counterclockwise direction
 options.offangle = 0
+
+# Axial offset; this centers the phantom
+options.oOffsetZ = -16 * options.dPitchX
 
 ###########################################################################
 ###########################################################################
@@ -117,23 +124,6 @@ options.offangle = 0
 # Currently scaling and resampling is not supported for the attenuation map.
 options.attenuation_correction = False
 
-######################### Normalization correction ########################
-# If set to true, normalization correction is applied to either the
-# projection data or in the image reconstruction by using predefined
-# normalization coefficients.
-options.normalization_correction = False
-options.normalization = np.ndarray([])
-
-############################ Scatter correction ###########################
-# Uses linear interpolation between scatter windows. options.ScatterC{1} 
-# contains the lower scatter window and options.ScatterC{2} contains the 
-# upper scatter window (sizes equal options.SinM).
-# See for example: 10.1371/journal.pone.0269542
-options.scatter_correction = False
-options.ScatterC = np.ndarray([])
-options.eWin = np.array(energy_window).squeeze() # Main energy window: [lowerLimit upperLimit]
-options.eWinL = None  # Lower energy window: [lowerLimit upperLimit]
-options.eWinU = None  # Upper energy window: [lowerLimit upperLimit]
 
 ########################### Resolution recovery ##########################
 ### Collimator-detector response function (CDRF)
@@ -188,7 +178,6 @@ options.n_rays_axial = 1
 options.n_rays_transaxial = 1
 # options.rayShiftsDetector = np.zeros((2*options.n_rays_axial*options.n_rays_transaxial, options.nColsD, options.nRowsD, options.nHeads));
 # options.rayShiftsSource = np.zeros((2*options.n_rays_axial*options.n_rays_transaxial, options.nColsD, options.nRowsD, options.nHeads));
-
  
 ###########################################################################
 ###########################################################################
@@ -201,7 +190,7 @@ options.n_rays_transaxial = 1
 ### Name of current datafile/examination
 # This is used to name the saved measurement data and also load it in
 # future sessions.
-options.name = 'spect_example'
+options.name = 'spect_DIP_example'
 
 ### Show status messages
 # These are e.g. time elapsed on various functions and what steps have been
@@ -232,57 +221,227 @@ options.projector_type = 1
 # implies hardware texture interpolation, which typically has 8 bit 
 # precision. With buffers, software interpolation with 32 bit floats is
 # used.
-options.useImages = True
-
-# This has to be True if you want to use the filtering-based preconditioner
-options.PDHG = False
+options.useImages = False
 
 ###########################################################################
 ###########################################################################
+####################### DEEP IMAGE PRIOR SETTINGS #########################
 ###########################################################################
 ###########################################################################
 
-options.Niter = 5 # Number of iterations
-options.subsets = 8 # 1 for MLEM
-# 8: every nth projection (n=options.subsets)
-options.subsetType = 8 
+# %% Projector initialization
+# DIP uses the complete measurement set in every network update.
+options.Niter = 25
+options.subsets = 1
+options.subsetType = 8
 
-# Initialize projector
-options.addProjector()
+# Intermediate saving
+CHECKPOINT_EVERY = 0  # Set to 0 to disable intermediate checkpoints.
+OUTPUT_DIR = "spect_DIP_output"
+
+# %% Reconstruction helpers and U-net definition
+class ConvBlock3D(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        negative_slope: float = 0.2,
+    ):
+        super().__init__()
+
+        self.block = nn.Sequential(
+            nn.Conv3d(
+                in_channels,
+                out_channels,
+                kernel_size=3,
+                padding=1,
+                bias=False,
+            ),
+            nn.BatchNorm3d(
+                out_channels,
+                affine=True,
+                track_running_stats=False,
+            ),
+            nn.LeakyReLU(negative_slope, inplace=False),
+            nn.Conv3d(
+                out_channels,
+                out_channels,
+                kernel_size=3,
+                padding=1,
+                bias=False,
+            ),
+            nn.BatchNorm3d(
+                out_channels,
+                affine=True,
+                track_running_stats=False,
+            ),
+            nn.LeakyReLU(negative_slope, inplace=False),
+        )
+
+    def forward(self, x):
+        return self.block(x)
+
+# Network architecture inspired by 10.1088/1361-6560/ace49c
+class UNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        c1, c2, c3, c4 = 32, 64, 128, 256
+
+        self.enc1 = ConvBlock3D(1, c1)
+        self.down1 = nn.Conv3d(c1, c2, kernel_size=3, stride=2, padding=1)
+
+        self.enc2 = ConvBlock3D(c2, c2)
+        self.down2 = nn.Conv3d(c2, c3, kernel_size=3, stride=2, padding=1)
+
+        self.enc3 = ConvBlock3D(c3, c3)
+        self.down3 = nn.Conv3d(c3, c4, kernel_size=3, stride=2, padding=1)
+
+        self.bottleneck = ConvBlock3D(c4, c4)
+
+        self.up3 = nn.ConvTranspose3d(c4, c3, kernel_size=2, stride=2)
+        self.dec3 = ConvBlock3D(c3 + c3, c3)
+
+        self.up2 = nn.ConvTranspose3d(c3, c2, kernel_size=2, stride=2)
+        self.dec2 = ConvBlock3D(c2 + c2, c2)
+
+        self.up1 = nn.ConvTranspose3d(c2, c1, kernel_size=2, stride=2)
+        self.dec1 = ConvBlock3D(c1 + c1, c1)
+
+        self.output = nn.Conv3d(c1, 1, kernel_size=1)
+
+    def forward(self, z):
+        e1 = self.enc1(z)
+        e2 = self.enc2(self.down1(e1))
+        e3 = self.enc3(self.down2(e2))
+        b = self.bottleneck(self.down3(e3))
+
+        x = self.up3(b)
+        x = self.dec3(torch.cat((x, e3), dim=1))
+
+        x = self.up2(x)
+        x = self.dec2(torch.cat((x, e2), dim=1))
+
+        x = self.up1(x)
+        x = self.dec1(torch.cat((x, e1), dim=1))
+
+        return F.relu(self.output(x))
+
+# Minimized objective functions to select from
+def objGaussianLS(A, fp, y):
+    residual = fp - y
+    objective = torch.sum(residual.square())
+    gradient_x_vector = 2.0 * (A.T() * residual)
+    return objective, gradient_x_vector
+
+def objPoissonLogLikelihood(A, fp, y):
+    objective = torch.sum(fp - y * torch.log(fp))
+    gradient_x_vector = A.T() * (1.0 - y / fp)
+    return objective, gradient_x_vector
+
+def objPoissonKL(A, fp, y):
+    objective_terms = fp - y
+    positive = y > 0
+    objective_terms[positive] += (y[positive] * (torch.log(y[positive]) - torch.log(fp[positive])))
+    objective = torch.sum(objective_terms)
+    gradient_x_vector = A.T() * (1.0 - y / fp)
+    return objective, gradient_x_vector
+
+
+# %% Reconstruction
+options.addProjector() # Initialize projector
 options.initProj()
 
-### MLEM/OSEM
-m = options.SinM.ravel('F') # Measurements
-d_m = [None] * options.subsets
-d_f = af.interop.np_to_af_array(options.x0) # Transfer initial value to GPU (default = array of ones)
-for k in range(options.subsets): # Split data to subsets
-    d_m[k] = af.interop.np_to_af_array(m[options.nTotMeas[k].item() : options.nTotMeas[k + 1].item()])
-for it in range(options.Niter):
-    for k in range(options.subsets):
-        # This is necessary when using subsets
-        # Alternative, call options.forwardProject(d_f, k) to use forward projection
-        # options.backwardProject(m, k) for backprojection
-        options.subset = k
-        fp = options * d_f
-        Sens = options.T() * af.constant(1, d_m[k].elements())
-        Sens[Sens <= 0] = options.epps
-        bp = options.T() * (d_m[k] / fp)
-        d_f = d_f / Sens * bp
-        af.eval(d_f)
-    print(f'{"ML" if options.subsets==1 else "OS"}EM iteration {it+1}/{options.Niter} finished', end=f'{"\r" if it!=options.Niter-1 else "\n"}')
+measured = np.asarray(options.SinM, dtype=np.float32).ravel(order="F")
+y = torch.as_tensor(measured, dtype=torch.float32, device=device)
 
-# Sync
-af.sync()
-af.device_gc()
+# NCDHW = (1,1,z,y,x).
+fixed_noise = torch.randn((1, 1, int(options.Nz[0]), int(options.Ny[0]), int(options.Nx[0])), dtype=torch.float32, device=device)
 
-f = d_f.to_ndarray()
-f = np.reshape(f, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()), order='F')
-f = np.nan_to_num(f, nan=options.epps)
+model = UNet().to(device)
 
-# Plot
-from matplotlib import pyplot as plt
-plt.imshow(f[:,:,39], vmin=0)
-plt.show()
+optimizer = torch.optim.LBFGS(
+    model.parameters(),
+    lr=1.0,
+    max_iter=80,
+    max_eval=100,
+    history_size=20,
+    tolerance_grad=1e-7,
+    tolerance_change=1e-9,
+    line_search_fn="strong_wolfe",
+)
 
+output_dir = Path(OUTPUT_DIR)
+output_dir.mkdir(parents=True, exist_ok=True)
+loss_history = []
+
+model.train()
+for iteration in range(1, options.Niter + 1):
+    def closure():
+        # LBFGS can call this function more than once, so every evaluation must start from clean gradients and recompute the current model.
+        optimizer.zero_grad(set_to_none=True)
+
+        x_ncdhw = model(fixed_noise)
+        x_vector = x_ncdhw.reshape(-1)
+
+        with torch.no_grad():
+            options.subset = 0
+            dip_fp = options * x_vector.detach() + options.epps # Forward projection of U-net output. Add scatter here if used.
+            
+            # LS, Gaussian noise:
+            #objective, gradient_x_vector = objGaussianLS(options, dip_fp, y)
+            
+            # Negative poisson log-likelihood
+            #objective, gradient_x_vector = objPoissonLogLikelihood(options, dip_fp, y)
+            
+            # KL divergence
+            objective, gradient_x_vector = objPoissonKL(options, dip_fp, y)
+            
+            gradient_x = gradient_x_vector.reshape_as(x_ncdhw).to(
+                device=x_ncdhw.device,
+                dtype=x_ncdhw.dtype,
+            )
+
+        x_ncdhw.backward(gradient=gradient_x)
+        return objective
+
+    objective = optimizer.step(closure)
+    objective_value = float(objective.detach().cpu())
+    loss_history.append(objective_value)
+    print(
+        f"DIP iteration {iteration}/{options.Niter}: "
+        f"objective={objective_value:.7e}"
+    )
+
+    if CHECKPOINT_EVERY and iteration % CHECKPOINT_EVERY == 0:
+        torch.save({
+            "iteration": iteration,
+            "shape_xyz": (int(options.Nx[0]), int(options.Ny[0]), int(options.Nz[0])),
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "fixed_noise": fixed_noise.detach().cpu(),
+            "loss_history": list(loss_history),
+        }, output_dir / "spect_dip_checkpoint.pt",)
+
+model.eval()
+with torch.no_grad():
+    f_DIP = model(fixed_noise)
+
+# Convert (z,y,x) C-order storage to (x,y,z) NumPy volume.
+f_DIP = f_DIP[0, 0].detach().cpu().numpy()
+f_DIP = np.transpose(f_DIP, (2, 1, 0))
+
+np.save(output_dir / "spect_dip_reconstruction.npy", f_DIP)
+np.save(output_dir / "spect_dip_loss_history.npy", np.asarray(loss_history))
+torch.save({
+    "iteration": iteration,
+    "shape_xyz": (int(options.Nx[0]), int(options.Ny[0]), int(options.Nz[0])),
+    "model_state_dict": model.state_dict(),
+    "optimizer_state_dict": optimizer.state_dict(),
+    "fixed_noise": fixed_noise.detach().cpu(),
+    "loss_history": list(loss_history),
+}, output_dir / "spect_dip_checkpoint.pt",)
+
+# %% Plot
 from omegatomo.util.volume3Dviewer import volume3Dviewer
-volume3Dviewer(f)
+volume3Dviewer(f_DIP)

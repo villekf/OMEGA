@@ -14,6 +14,7 @@ def powerMethod(A):
         import arrayfire as af
     elif A.useTorch:
         import torch
+        device = 'mps' if getattr(A, 'useMetal', False) else 'cuda'
     elif A.useCUDA:
         if A.useCuPy:
             import cupy as cp
@@ -33,7 +34,7 @@ def powerMethod(A):
                 x[i] = x[i] / af.norm(x[i])
             else:
                 if A.useTorch:
-                    x[i] = torch.randn(A.N[i].item(), dtype=torch.float32, device='cuda').abs()
+                    x[i] = torch.randn(A.N[i].item(), dtype=torch.float32, device=device).abs()
                     x[i] = x[i] / torch.norm(x[i])
                 else:
                     if A.useCuPy:
@@ -55,7 +56,7 @@ def powerMethod(A):
                 x = x / af.norm(x)
             else:
                 if A.useTorch:
-                    x = torch.randn(A.N[0].item(), dtype=torch.float32, device='cuda').abs()
+                    x = torch.randn(A.N[0].item(), dtype=torch.float32, device=device).abs()
                     x = x / torch.norm(x)
                 else:
                     if A.useCuPy:
@@ -74,7 +75,10 @@ def powerMethod(A):
     if A.nMultiVolumes > 0:
         i = 0
         for k in range(A.powerIterations):
-            x2 = A * x[0]
+            if A.useTorch and getattr(A, 'useMetal', False):
+                x2 = A * [x[0], *[torch.zeros_like(v) for v in x[1:]]]
+            else:
+                x2 = A * x[0]
             if A.useAF or A.useTorch or A.useCuPy:
                 x2 = applyMeasPreconditioning(A, x2)
             x2 = A.T() * x2

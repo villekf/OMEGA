@@ -56,3 +56,61 @@ toolbox.ignore
 /resources
 .gitattributes
 /doc/*.png
+# Autosave files
+*.asv
+*.m~
+*.autosave
+*.slx.r*
+*.mdl.r*
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Compiled libraries
+*.so
+*.dll
+
+# Optional: editor files
+*.swp
+.DS_Store
+
+# Derived content-obscured files
+*.p
+
+# Compiled MEX files
+*.mex*
+
+# Packaged app and toolbox files
+*.mlappinstall
+*.mltbx
+
+# Deployable archives
+*.ctf
+
+# Generated helpsearch folders
+helpsearch*/
+
+# Code generation folders
+slprj/
+sccprj/
+codegen/
+
+# Cache files
+*.slxc
+
+# Cloud based storage dotfile
+.MATLABDriveTag
+
+# buildtool cache folder
+.buildtool/
+
+# SimBiology backup files
+*.sbproj.backup
+*.sbproj.bak
+
+toolbox.ignore
+*.prj
+/resources
+.gitattributes
+/doc/*.png

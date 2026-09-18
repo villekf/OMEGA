@@ -14,7 +14,7 @@ from pymatreader import read_mat
 # Initialize projector class for reconstruction
 options = proj.projectorClass()
 
-options.fpath = '' # Path to .mat file
+options.fpath = './jaszczak_spectct_projection_data.mat' # Path to .mat file
 
 ###########################################################################
 ###########################################################################
@@ -66,13 +66,13 @@ options.machine_name = 'Prospecta'
 # NOTE: Non-square image sizes (X- and Y-direction) may not work
 options.Nx = 64; # X-direction
 options.Ny = 64; # Y-direction
-options.Nz = 128; # Z-direction (number of axial slices)
+options.Nz = 64; # Z-direction (number of axial slices)
 
 ### FOV size [mm]
 # NOTE: Non-cubical voxels may not work
 options.FOVa_x = options.dPitchX*64; # [mm], x-axis of FOV (transaxial)
 options.FOVa_y = options.dPitchX*64; # [mm], y-axis of FOV (transaxial)
-options.axial_fov = options.dPitchY*128; # [mm], z-axis of FOV (axial)
+options.axial_fov = options.dPitchY*64; # [mm], z-axis of FOV (axial)
 
 ### Flip the image?
 options.flipImageX = False
@@ -81,7 +81,12 @@ options.flipImageZ = False
 
 ### Use back projection mask?
 options.useMaskBP = False
-options.maskBP = np.ones((options.Nx, options.Ny, options.Nz))
+#options.maskBP = np.ones((options.Nx, options.Ny, options.Nz))
+
+# Axial offset centers the phantom
+options.oOffsetX = 0
+options.oOffsetY = 0
+options.oOffsetZ = -16 * options.dPitchX
 
 ### How much is the image rotated in degrees?
 # NOTE: The rotation is done in the detector space (before reconstruction).
@@ -165,11 +170,12 @@ options.colFz = np.inf
 # 4. For the Siddon ray tracer, the CDRF is defined by shifting the rays to
 # the shape of the collimator hole. The values of rayShiftsDetector and
 # rayShiftsSource represent [shift1XY, shift1Z, shift2XY, ...] in mm. Size
-# should be 2*nRays x nColsD x nRowsD x nProjections. If not input, values
+# should be 2*n_rays_axial*n_rays_transaxial x nColsD x nRowsD x nHeads. If not input, values
 # are calculated automatically.
-options.nRays = 1  # Number of rays traced per detector element
-# options.rayShiftsDetector = np.zeros((2*options.nRays, options.nColsD, options.nRowsD, options.nProjections));
-# options.rayShiftsSource = np.zeros((2*options.nRays, options.nColsD, options.nRowsD, options.nProjections));
+options.n_rays_axial = 4
+options.n_rays_transaxial = 8
+# options.rayShiftsDetector = np.zeros((2*options.n_rays_axial*options.n_rays_transaxial, options.nColsD, options.nRowsD, options.nHeads));
+# options.rayShiftsSource = np.zeros((2*options.n_rays_axial*options.n_rays_transaxial, options.nColsD, options.nRowsD, options.nHeads));
 
 ###########################################################################
 ###########################################################################

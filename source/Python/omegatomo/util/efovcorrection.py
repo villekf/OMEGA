@@ -172,9 +172,13 @@ def CTEFOVCorrection(options, extrapLengthTransaxial = None, extrapLengthAxial =
             options.axialFOVOrig = options.axial_fov
             options.NzOrig = options.Nz
     
-    options.totalFOVxmin = -options.FOVa_x / 2
-    options.totalFOVymin = -options.FOVa_y / 2
-    options.totalFOVzmin = -options.axial_fov / 2
-    options.totalFOVxmax = options.FOVa_x / 2
-    options.totalFOVymax = options.FOVa_y / 2
-    options.totalFOVzmax = options.axial_fov / 2
+    if options.ellipseParametersDerived or options.ellipseRadiusX == 0 or options.ellipseRadiusY == 0 or options.ellipseRadiusZ == 0:
+        options.ellipseRadiusX = options.FOVa_x / 2
+        options.ellipseRadiusY = options.FOVa_y / 2
+        options.ellipseRadiusZ = options.axial_fov / 2
+        options.ellipseParametersDerived = True
+    if not options.ellipseCenterOffsetApplied:
+        options.ellipseCenterX += options.oOffsetX
+        options.ellipseCenterY += options.oOffsetY
+        options.ellipseCenterZ += options.oOffsetZ
+        options.ellipseCenterOffsetApplied = True

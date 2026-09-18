@@ -215,13 +215,25 @@ void vectorMult(const CLGLOBAL float* input, CLGLOBAL float* output) {
 // Complex elementwise multiplication
 // Used by the filtering
 // This kernel assumes that the imaginary element is right after the real element, i.e. [real,imaginary,real,imaginary,...]
+
+#if defined(METAL)
+KERNEL
+void vectorElementMultiply(const CLGLOBAL float* CLRESTRICT input BUF0, CLGLOBAL float* output BUF1, constant uchar& D2 BUF2,
+	uint3 metalGlobalId [[thread_position_in_grid]], uint3 metalGridSize [[threads_per_grid]]) {
+	const LTYPE3 xyz = MINT3(metalGlobalId.x, metalGlobalId.y, metalGlobalId.z);
+	const LTYPE gridX = metalGridSize.x;
+	const LTYPE gridY = metalGridSize.y;
+#else
 KERN
 void vectorElementMultiply(const CLGLOBAL float* CLRESTRICT input, CLGLOBAL float* output, const uchar D2) {
 	const LTYPE3 xyz = MINT3(GID0, GID1, GID2);
-	const LTYPE n = xyz.x + xyz.y * GSIZE0 + xyz.z * GSIZE0 * GSIZE1;
+	const LTYPE gridX = GSIZE0;
+	const LTYPE gridY = GSIZE1;
+#endif
+	const LTYPE n = xyz.x + xyz.y * gridX + xyz.z * gridX * gridY;
 	float mult;
 	if (D2)
-		mult = input[xyz.x + xyz.y * GSIZE0];
+		mult = input[xyz.x + xyz.y * gridX];
 	else
 		mult = input[xyz.x];
 	output[2 * n] *= mult;
@@ -231,13 +243,25 @@ void vectorElementMultiply(const CLGLOBAL float* CLRESTRICT input, CLGLOBAL floa
 // Complex elementwise division
 // Used by the filtering
 // This kernel assumes that the imaginary element is right after the real element, i.e. [real,imaginary,real,imaginary,...]
+
+#if defined(METAL)
+KERNEL
+void vectorElementDivision(const CLGLOBAL float* CLRESTRICT input BUF0, CLGLOBAL float* output BUF1,
+	uint3 metalGlobalId [[thread_position_in_grid]], uint3 metalGridSize [[threads_per_grid]]) {
+	const LTYPE3 xyz = MINT3(metalGlobalId.x, metalGlobalId.y, metalGlobalId.z);
+	const LTYPE gridX = metalGridSize.x;
+	const LTYPE gridY = metalGridSize.y;
+#else
 KERN
 void vectorElementDivision(const CLGLOBAL float* CLRESTRICT input, CLGLOBAL float* output) {
 	const LTYPE3 xyz = MINT3(GID0, GID1, GID2);
-	const LTYPE n = xyz.x + xyz.y * GSIZE0 + xyz.z * GSIZE0 * GSIZE1;
+	const LTYPE gridX = GSIZE0;
+	const LTYPE gridY = GSIZE1;
+#endif
+	const LTYPE n = xyz.x + xyz.y * gridX + xyz.z * gridX * gridY;
 	float div = input[xyz.x];
 	// Make sure there is no division by zero
-	if (fabs(div) < 1e-12f)
+	if (FABS(div) < 1e-12f)
 		div = (div < FLOAT_ZERO) ? -1e-12f : 1e-12f;
 	output[2 * n] /= div;
 	output[2 * n + 1] /= div;
@@ -1569,13 +1593,31 @@ void PoissonUpdate(CLGLOBAL float* CLRESTRICT im, const CLGLOBAL float* CLRESTRI
 // Different variations for subset and non-subset versions
 #if defined(PDHG)
 KERNEL3
-void PDHGUpdate(CLGLOBAL float* CLRESTRICT im, const CLGLOBAL float* CLRESTRICT rhs, CLGLOBAL float* CLRESTRICT u,
-	const int3 N, const float epps, const float theta, const float tau, const uchar enforcePositivity) {
+void PDHGUpdate(
+	CLGLOBAL float* CLRESTRICT im BUF0,
+	const CLGLOBAL float* CLRESTRICT rhs BUF1,
+	CLGLOBAL float* CLRESTRICT u BUF2,
+#ifdef METAL
+	SCALAR_PARAMS(scalarParams) BUF3,
+	uint3 metalGlobalId [[thread_position_in_grid]]
+#else
+	const int3 N,
+	const float epps,
+	const float theta,
+	const float tau,
+	const uchar enforcePositivity
+#endif
+) {
+#ifdef METAL
+	UNPACK_SCALAR_PARAMS_PDHG(scalarParams)
+	LTYPE3 xyz = MINT3(metalGlobalId.x, metalGlobalId.y, metalGlobalId.z);
+#else
 	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
+#endif
 #if defined(CUDA) || defined(HIP)
 	if (xyz.x >= N.x || xyz.y >= N.y || xyz.z >= N.z)
 #else
-	if (any(xyz >= N))
+	if (ANY(xyz >= N))
 #endif
 		return;
 	const LTYPE n = (xyz.x) + (xyz.y) * (N.x) + (xyz.z) * (N.x * N.y);
@@ -1587,7 +1629,7 @@ void PDHGUpdate(CLGLOBAL float* CLRESTRICT im, const CLGLOBAL float* CLRESTRICT 
 	float uNew = uPrev;
 	uNew -= tau * rhs[n];
 	if (enforcePositivity)
-		uNew = fmax(epps, uNew);
+		uNew = FMAX(epps, uNew);
 	u[n] = uNew;
 	im[n] = uNew + theta * (uNew - uPrev);
 #endif
@@ -1598,10 +1640,26 @@ void PDHGUpdate(CLGLOBAL float* CLRESTRICT im, const CLGLOBAL float* CLRESTRICT 
 #ifdef ROTATE
 #if defined(USEIMAGES) && defined(OPENCL)
 CONSTANT sampler_t samplerRotate = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_LINEAR | CLK_ADDRESS_CLAMP_TO_EDGE;
+#elif defined(USEIMAGES) && defined(METAL)
+constexpr metal::sampler samplerRotate(metal::coord::pixel, metal::filter::linear, metal::address::clamp_to_edge);
 #endif
-// Initial version from: https://stackoverflow.com/questions/9833316/cuda-image-rotation/10008412#10008412
-KERNEL void rotate(CLGLOBAL float* CLRESTRICT rotim, IMTYPE im, const int Nx, const int Ny, const int Nz, const float cosa, const float sina) {
+KERNEL void rotate(
+	CLGLOBAL float* CLRESTRICT rotim BUF0,
+	IMTYPE im TEX1,
+#ifdef METAL
+	SCALAR_PARAMS(scalarParams) BUF2,
+	uint3 metalGlobalId [[thread_position_in_grid]]
+#else
+	const int Nx, const int Ny, const int Nz, const float cosa, const float sina
+#endif
+) {
+	// Initial version from: https://stackoverflow.com/questions/9833316/cuda-image-rotation/10008412#10008412
+#ifdef METAL
+	UNPACK_SCALAR_PARAMS_ROTATE(scalarParams)
+	LTYPE3 xyz = MINT3(metalGlobalId.x, metalGlobalId.y, metalGlobalId.z);
+#else
 	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
+#endif
 	if (xyz.x >= Nx || xyz.y >= Ny || xyz.z >= Nz)
 		return;
 	const LTYPE n = (xyz.x) + (xyz.y) * (Nx) + (xyz.z) * (Nx * Ny);
@@ -1619,6 +1677,8 @@ KERNEL void rotate(CLGLOBAL float* CLRESTRICT rotim, IMTYPE im, const int Nx, co
         val = tex3D<float>(im, src_x + FLOAT_HALF, src_y + FLOAT_HALF, CFLOAT(xyz.z) + FLOAT_HALF);
 #elif defined(OPENCL)
         val = read_imagef(im, samplerRotate, (float4)(src_x + FLOAT_HALF, src_y + FLOAT_HALF, CFLOAT(xyz.z) + FLOAT_HALF, FLOAT_ZERO)).w;
+#elif defined(METAL)
+		val = im.sample(samplerRotate, float3(src_x + FLOAT_HALF, src_y + FLOAT_HALF, CFLOAT(xyz.z) + FLOAT_HALF)).r;
 #endif
 #else
         // BILINEAR INTERPOLATION
@@ -1630,10 +1690,10 @@ KERNEL void rotate(CLGLOBAL float* CLRESTRICT rotim, IMTYPE im, const int Nx, co
         const float sx = (src_x - src_x0);
         const float sy = (src_y - src_y0);
 
-        const int idx_src00 = min(max(0, src_x0 + src_y0 * Nx), (Nx * Ny) - 1);
-        const int idx_src10 = min(max(0, src_x1 + src_y0 * Nx), (Nx * Ny) - 1);
-        const int idx_src01 = min(max(0, src_x0 + src_y1 * Nx), (Nx * Ny) - 1);
-        const int idx_src11 = min(max(0, src_x1 + src_y1 * Nx), (Nx * Ny) - 1);
+        const int idx_src00 = MIN(MAX(0, src_x0 + src_y0 * Nx), (Nx * Ny) - 1);
+        const int idx_src10 = MIN(MAX(0, src_x1 + src_y0 * Nx), (Nx * Ny) - 1);
+        const int idx_src01 = MIN(MAX(0, src_x0 + src_y1 * Nx), (Nx * Ny) - 1);
+        const int idx_src11 = MIN(MAX(0, src_x1 + src_y1 * Nx), (Nx * Ny) - 1);
 
         val  = (FLOAT_ONE - sx) * (FLOAT_ONE - sy) * im[idx_src00 + xyz.z * Nx * Ny];
         val += (       sx) * (FLOAT_ONE - sy) * im[idx_src10 + xyz.z * Nx * Ny];

@@ -26,6 +26,57 @@ function options = OMEGA_error_check(options)
 options = setMissingValues(options);
 options = convertOptions(options);
 
+% SPECT collimator ray shifts are stored once per detector head and detector
+% element.
+if options.SPECT
+    if options.normalization_correction && ndims(options.normalization) == 3
+        options.normZ = size(options.normalization, 3);
+    end
+    if ~isfield(options, 'DetectorVector') || isempty(options.DetectorVector)
+        options.DetectorVector = zeros(options.nProjections, 1, 'uint32');
+    elseif numel(options.DetectorVector) ~= options.nProjections
+        error(['DetectorVector must contain one detector-head index for each projection (' ...
+            num2str(options.nProjections) ' values required).'])
+    else
+        options.DetectorVector = uint32(options.DetectorVector(:));
+    end
+    if any(options.DetectorVector >= options.nHeads)
+        error('DetectorVector contains an index outside the available detector heads.')
+    end
+    if options.useMaskFP && options.maskFPZ == options.nHeads && ...
+            numel(options.maskFP) ~= options.nRowsD * options.nColsD * options.nHeads
+        error('Detector-indexed forward mask must contain one image for each detector head.')
+    end
+    if options.normalization_correction && options.normZ == options.nHeads && ...
+            numel(options.normalization) ~= options.nRowsD * options.nColsD * options.nHeads
+        error('Detector-indexed normalization must contain one image for each detector head.')
+    end
+
+    if ismember(options.projector_type, [1, 11, 12, 2, 21, 22, 3, 13, 23, 31, 32, 33])
+        if isfield(options, 'nHeads') && ~isempty(options.nHeads)
+            nHeads = double(options.nHeads);
+        else
+            nHeads = 1;
+        end
+        compactRayShiftSize = 2 * double(options.n_rays_transaxial) * double(options.n_rays_axial) * double(options.nRowsD) * ...
+            double(options.nColsD) * nHeads;
+
+        detectorSize = numel(options.rayShiftsDetector);
+        sourceSize = numel(options.rayShiftsSource);
+        if detectorSize > 0 && detectorSize ~= compactRayShiftSize
+            error(['rayShiftsDetector has an invalid size. Expected compact size ' ...
+                num2str(compactRayShiftSize) ', got ' num2str(detectorSize) '.'])
+        end
+        if sourceSize > 0 && sourceSize ~= compactRayShiftSize
+            error(['rayShiftsSource has an invalid size. Expected compact size ' ...
+                num2str(compactRayShiftSize) ', got ' num2str(sourceSize) '.'])
+        end
+        if detectorSize > 0 && sourceSize > 0 && detectorSize ~= sourceSize
+            error('rayShiftsDetector and rayShiftsSource must have the same compact size.')
+        end
+    end
+end
+
 if ismac && options.use_64bit_atomics
     warning(['The current Metal compiler does not expose native atomic_ulong ' ...
         'addition. Disabling 64-bit atomics; use 32-bit atomics for older Metal hardware.'])
@@ -55,7 +106,7 @@ end
 if options.SPECT && mod(sqrt(options.nRays), 1) ~= 0
     error('With SPECT, options.nRays has to be a square')
 end
-if options.SPECT && ismember(options.projector_type, [2, 12, 21, 22]) && options.nRays > 1
+if options.SPECT && ismember(options.projector_type, [2, 12, 21, 22]) && options.n_rays_transaxial * options.n_rays_axial > 1
     warning('Orthogonal distance ray tracer should be used with 1 ray.')
 end
 if options.only_sinos && options.only_reconstructions
@@ -325,9 +376,9 @@ if options.implementation == 3 && exist('OpenCL_matrixfree_multi_gpu','file') ~=
     error(['OpenCL reconstruction (implementation 3) selected, but OpenCL MEX-files were not installed. Run install_mex to build OpenCL MEX-files.' sprintf('\n') ...
         'If you already ran install_mex, make sure you have installed OpenCL and it can be found on path.'])
 end
-if options.implementation == 5 && exist('OpenCL_matrixfree_multi_gpu','file') ~= 3
-    error(['OpenCL reconstruction (implementation 5) selected, but OpenCL MEX-files were not installed. Run install_mex to build OpenCL MEX-files.' sprintf('\n') ...
-        'If you already ran install_mex, make sure you have installed OpenCL and it can be found on path.'])
+if options.implementation == 5 && exist('OpenCL_matrixfree_multi_gpu','file') ~= 3 && exist('CUDA_matrixfree_multi_gpu','file') ~= 3
+    error(['Multi-GPU reconstruction (implementation 5) selected, but neither the OpenCL nor the CUDA MEX-files were installed. Run install_mex to build them.' sprintf('\n') ...
+        'If you already ran install_mex, make sure you have installed OpenCL (or, for gpuArray support, the CUDA toolkit) and it can be found on path.'])
 end
 if options.implementation == 3 && NMLOS
     warning(['Implementation ' num2str(options.implementation) ' selected with reconstruction algorithms other than OSEM. '...
@@ -771,9 +822,6 @@ if options.verbose > 0
                 else
                     aray = 'ray';
                 end
-                if options.SPECT
-                    disp(['Improved Siddon''s algorithm selected with ' num2str(options.n_rays_transaxial) ' ' ray '.'])
-                else
                     disp(['Improved Siddon''s algorithm selected with ' num2str(options.n_rays_transaxial) ' transaxial ' ray ' and ' ...
                     num2str(options.n_rays_axial) ' axial ' aray '.'])
                 end
@@ -857,7 +905,11 @@ if options.verbose > 0
 
         end
         if options.attenuation_correction && ~options.CT
-            disp('Attenuation correction ON.')
+            if options.CT_attenuation
+                disp('Attenuation correction (image domain) ON.')
+            else
+                disp('Attenuation correction (measurement domain) ON.')
+            end
         end
         if options.randoms_correction && ~options.CT
             dispi = 'Randoms correction ON';

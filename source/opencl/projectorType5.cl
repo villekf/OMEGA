@@ -217,10 +217,10 @@ void projectorType5Forward(
       float D =
           read_imagef(d_IImageY, sampler2, (float4)(xLR.x, zUD.x, dy, 0.f)).w;
 #elif defined(METAL)
-      float A = d_IImageY.sample(sampler2, (float3)(xLR.y, zUD.x, dy)).r;
-      float B = d_IImageY.sample(sampler2, (float3)(xLR.x, zUD.y, dy)).r;
-      float C = d_IImageY.sample(sampler2, (float3)(xLR.y, zUD.y, dy)).r;
-      float D = d_IImageY.sample(sampler2, (float3)(xLR.x, zUD.x, dy)).r;
+      float A = d_IImageY.sample(sampler2, float3(xLR.y, zUD.x, dy)).r;
+      float B = d_IImageY.sample(sampler2, float3(xLR.x, zUD.y, dy)).r;
+      float C = d_IImageY.sample(sampler2, float3(xLR.y, zUD.y, dy)).r;
+      float D = d_IImageY.sample(sampler2, float3(xLR.x, zUD.x, dy)).r;
 #endif
       float apu = C + D - A - B;
 #ifdef MEANDISTANCEFP
@@ -241,8 +241,8 @@ void projectorType5Forward(
         B = read_imagef(d_IImageY, sampler2, (float4)(xLR.x, zUD.y, dy, 0.f)).w;
         C = read_imagef(d_IImageY, sampler2, (float4)(xLR.y, zUD.y, dy, 0.f)).w;
 #elif defined(METAL)
-        B = d_IImageY.sample(sampler2, (float3)(xLR.x, zUD.y, dy)).r;
-        C = d_IImageY.sample(sampler2, (float3)(xLR.y, zUD.y, dy)).r;
+        B = d_IImageY.sample(sampler2, float3(xLR.x, zUD.y, dy)).r;
+        C = d_IImageY.sample(sampler2, float3(xLR.y, zUD.y, dy)).r;
 #endif
         apu = C + D - A - B;
 #ifdef MEANDISTANCEFP
@@ -295,10 +295,10 @@ void projectorType5Forward(
       float D =
           read_imagef(d_IImageX, sampler2, (float4)(yLR.x, zUD.x, dx, 0.f)).w;
 #elif defined(METAL)
-      float A = d_IImageX.sample(sampler2, (float3)(yLR.y, zUD.x, dx)).r;
-      float B = d_IImageX.sample(sampler2, (float3)(yLR.x, zUD.y, dx)).r;
-      float C = d_IImageX.sample(sampler2, (float3)(yLR.y, zUD.y, dx)).r;
-      float D = d_IImageX.sample(sampler2, (float3)(yLR.x, zUD.x, dx)).r;
+      float A = d_IImageX.sample(sampler2, float3(yLR.y, zUD.x, dx)).r;
+      float B = d_IImageX.sample(sampler2, float3(yLR.x, zUD.y, dx)).r;
+      float C = d_IImageX.sample(sampler2, float3(yLR.y, zUD.y, dx)).r;
+      float D = d_IImageX.sample(sampler2, float3(yLR.x, zUD.x, dx)).r;
 #endif
       float apu = C + D - A - B;
 #ifdef MEANDISTANCEFP
@@ -319,8 +319,8 @@ void projectorType5Forward(
         B = read_imagef(d_IImageX, sampler2, (float4)(yLR.x, zUD.y, dx, 0.f)).w;
         C = read_imagef(d_IImageX, sampler2, (float4)(yLR.y, zUD.y, dx, 0.f)).w;
 #elif defined(METAL)
-        B = d_IImageX.sample(sampler2, (float3)(yLR.x, zUD.y, dx)).r;
-        C = d_IImageX.sample(sampler2, (float3)(yLR.y, zUD.y, dx)).r;
+        B = d_IImageX.sample(sampler2, float3(yLR.x, zUD.y, dx)).r;
+        C = d_IImageX.sample(sampler2, float3(yLR.y, zUD.y, dx)).r;
 #endif
         apu = C + D - A - B;
 #ifdef MEANDISTANCEFP
@@ -376,7 +376,9 @@ void projectorType5Forward(
  * d_forw = backprojection,
  ******************************************************************************/
 
-#ifdef OPENCL
+#if defined(METAL)
+KERNEL
+#elif defined(OPENCL)
 __kernel
     __attribute__((vec_type_hint(float)))
     __attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE2, 1)))
@@ -384,6 +386,32 @@ __kernel
 extern "C" __global__
 #endif
     void
+#if defined(METAL)
+    projectorType5Backward(
+        SCALAR_PARAMS(scalarParams) BUF0
+#ifdef OFFSET
+        , CONSTANT float* T BUF1
+#endif
+        , const CLGLOBAL float* d_xyz BUF5
+        , const CLGLOBAL float* d_uv BUF6
+        , IMAGE3D d_IImage TEX2
+        , CLGLOBAL float* d_forw BUF4
+        , CLGLOBAL float* d_Summ BUF7
+#ifdef MEANDISTANCEBP
+        , CONSTANT float* d_meanV BUF8
+#endif
+#ifdef NORM
+        , const CLGLOBAL float* d_norm BUF9
+#endif
+#ifdef MASKBP
+#ifdef MASKBP3D
+        , IMAGE3D maskBP TEX10
+#else
+        , IMAGE2D maskBP TEX10
+#endif
+#endif
+        , uint3 temp_i [[thread_position_in_grid]])
+#else
     projectorType5Backward(const uint d_nRows, const uint d_nCols,
 #ifdef PYTHON
                            const float d_dPitchX, const float d_dPitchY,
@@ -486,7 +514,15 @@ extern "C" __global__
     , const int fastPriorZOffset
     , const uchar fastStep
 #endif // END FASTPDHG
-) {
+)
+#endif
+{
+#if defined(METAL)
+  UNPACK_SCALAR_PARAMS_5_BP(scalarParams);
+  int GID0 = temp_i.x;
+  int GID1 = temp_i.y;
+  int GID2 = temp_i.z;
+#endif
   const int3 i = MINT3(GID0, GID1, GID2 * NVOXELS5);
 #ifdef PYTHON
   const uint3 d_N = make_uint3(d_Nx, d_Ny, d_Nz);
@@ -520,7 +556,13 @@ extern "C" __global__
   size_t idx = GID0 + GID1 * d_N.x + GID2 * NVOXELS5 * d_N.y * d_N.x;
 #ifdef MASKBP
   if (ii == 0) {
-#if defined(CUDA) || defined(HIP)
+#if defined(METAL)
+#ifdef MASKBP3D
+    const int maskVal = static_cast<int>(metal::round(maskBP.read(uint3(i.x, i.y, i.z)).r));
+#else
+    const int maskVal = static_cast<int>(metal::round(maskBP.read(uint2(i.x, i.y)).r));
+#endif
+#elif defined(CUDA) || defined(HIP)
 #ifdef MASKBP3D
     const int maskVal = tex3D<unsigned char>(maskBP, i.x, i.y, i.z);
 #else
@@ -605,12 +647,12 @@ extern "C" __global__
 #endif
     const float3 d2 = apuX - apuY;
     const float3 d3 = d - apuX - apuY;
-    const float3 normX = normalize(apuX);
-    const float3 normY = normalize(apuY);
-    const float3 crossP = cross(d2, d3 - d);
+    const float3 normX = NORMALIZE(apuX);
+    const float3 normY = NORMALIZE(apuY);
+    const float3 crossP = CROSS(d2, d3 - d);
     const float upperPart = dot(crossP, s - d);
 #endif
-    const bool sxDim = fabs(s.x) <= fabs(s.y);
+    const bool sxDim = FABS(s.x) <= FABS(s.y);
     if (sxDim) {
       if (s.y > 0.f) {
         vLU = CMFLOAT3(dV.x - d_d.x / 2.f, dV.y, dV.z - d_d.z / 2.f) - s; // A
@@ -662,7 +704,12 @@ extern "C" __global__
     float3 coordB = MFLOAT3(AxN, DyN, dz);
     float3 coordC = MFLOAT3(DxN, AyN, dz);
     float3 coordD = MFLOAT3(DxN, DyN, dz);
-#if defined(CUDA) || defined(HIP)
+#if defined(METAL)
+    float A = d_IImage.sample(sampler2, coordA).r;
+    float B = d_IImage.sample(sampler2, coordB).r;
+    float C = d_IImage.sample(sampler2, coordC).r;
+    float D = d_IImage.sample(sampler2, coordD).r;
+#elif defined(CUDA) || defined(HIP)
     float A = tex3D<float>(d_IImage, coordA.x, coordA.y, coordA.z);
     float B = tex3D<float>(d_IImage, coordB.x, coordB.y, coordB.z);
     float C = tex3D<float>(d_IImage, coordC.x, coordC.y, coordC.z);
@@ -708,10 +755,10 @@ extern "C" __global__
     float OffTT;
     float OffT = T[kk];
     if (OffT > koko.x / 2.f) {
-      coordA.x = fabs(coordA.x - 1.f);
-      coordB.x = fabs(coordB.x - 1.f);
-      coordC.x = fabs(coordC.x - 1.f);
-      coordD.x = fabs(coordD.x - 1.f);
+      coordA.x = FABS(coordA.x - 1.f);
+      coordB.x = FABS(coordB.x - 1.f);
+      coordC.x = FABS(coordC.x - 1.f);
+      coordD.x = FABS(coordD.x - 1.f);
       OffTT = koko.x - OffT;
     } else
       OffTT = OffT;
@@ -796,7 +843,10 @@ extern "C" __global__
         D = C;
         coordA = CMFLOAT3(AxN, Ay * invKoko.y, dz);
         coordC = CMFLOAT3(DxN, Ay * invKoko.y, dz);
-#if defined(CUDA) || defined(HIP)
+#if defined(METAL)
+        A = d_IImage.sample(sampler2, coordA).r;
+        C = d_IImage.sample(sampler2, coordC).r;
+#elif defined(CUDA) || defined(HIP)
         A = tex3D<float>(d_IImage, coordA.x, coordA.y, coordA.z);
         C = tex3D<float>(d_IImage, coordC.x, coordC.y, coordC.z);
 #else
@@ -808,7 +858,10 @@ extern "C" __global__
         C = D;
         coordB = CMFLOAT3(AxN, Dy * invKoko.y, dz);
         coordD = CMFLOAT3(DxN, Dy * invKoko.y, dz);
-#if defined(CUDA) || defined(HIP)
+#if defined(METAL)
+        B = d_IImage.sample(sampler2, coordB).r;
+        D = d_IImage.sample(sampler2, coordD).r;
+#elif defined(CUDA) || defined(HIP)
         B = tex3D<float>(d_IImage, coordB.x, coordB.y, coordB.z);
         D = tex3D<float>(d_IImage, coordD.x, coordD.y, coordD.z);
 #else
