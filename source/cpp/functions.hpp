@@ -1041,12 +1041,6 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 	}
 	if (inputScalars.meanBP && inputScalars.BPType == 5)
 		proj.d_meanBP = transferAF(meanBP);
-#if defined(METAL)
-	// With image-mode BP the projected data is copied from d_output into a
-	// Metal texture. Synchronize the preceding ArrayFire update before that
-	// CPU-side texture upload.
-	af::sync();
-#endif
 #if defined(CUDA) || defined(HIP)
 	status = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, MethodList, compSens, ii, 0, queueIdx, newInput);
 #elif defined(OPENCL) || defined(METAL)

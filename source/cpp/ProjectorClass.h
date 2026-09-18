@@ -179,14 +179,7 @@ using TEXARRAY_t = EmptyTextureArray;
 #if defined(CUDA) || defined(HIP)
 #define WRITE_BUFFER(BUF, SIZE, SRC) status = cuMemcpyHtoD(BUF, SRC, SIZE)
 #elif defined(METAL)
-#define WRITE_BUFFER(BUF, SIZE, SRC) do { \
-	if ((BUF).get() && (BUF)->contents()) { \
-		std::memcpy((BUF)->contents(), (SRC), SIZE); \
-		status = SUCCESS_VALUE; \
-	} else { \
-		status = -1; \
-	} \
-} while(0)
+#define WRITE_BUFFER(BUF, SIZE, SRC) status = writeDeviceBuffer(BUF, SRC, SIZE)
 #elif defined(OPENCL)
 #define WRITE_BUFFER(BUF, SIZE, SRC) status = CLCommandQueue[0].enqueueWriteBuffer(BUF, CL_FALSE, 0, SIZE, SRC)
 #endif
@@ -265,22 +258,10 @@ using TimerPoint = std::chrono::steady_clock::time_point;
 	status = (TEX).get() ? SUCCESS_VALUE : -1; \
 } while(0)
 #define CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(TEX, ARRAY, SRC, X_DIM, Y_DIM, DEPTH, FILTER, FLAGS) do { \
-	const auto textureSpec = metalTextureSpec((X_DIM), (Y_DIM), (DEPTH), true); \
-	if (!(SRC) || !(SRC)->contents()) { \
-		status = -1; \
-	} else { \
-		if (!(TEX) || (TEX)->width() != textureSpec.width || (TEX)->height() != textureSpec.height || (TEX)->depth() != textureSpec.depth) \
-			(TEX) = createMetalFloatTextureEmpty(textureSpec); \
-		if (!(TEX)) { \
-			status = -1; \
-		} else { \
-			const MTL::Region textureRegion(0, 0, 0, textureSpec.width, textureSpec.height, textureSpec.depth); \
-			const NS::UInteger bytesPerRow = textureSpec.width * textureSpec.elementSize; \
-			const NS::UInteger bytesPerImage = bytesPerRow * textureSpec.height; \
-			(TEX)->replaceRegion(textureRegion, 0, 0, (SRC)->contents(), bytesPerRow, bytesPerImage); \
-			status = SUCCESS_VALUE; \
-		} \
-	} \
+    const auto textureSpec = metalTextureSpec((X_DIM), (Y_DIM), (DEPTH), true); \
+    if (!(TEX) || (TEX)->width() != textureSpec.width || (TEX)->height() != textureSpec.height || (TEX)->depth() != textureSpec.depth) \
+        (TEX) = createMetalFloatTextureEmpty(textureSpec); \
+    status = copyMetalBufferToTexture((SRC), (TEX), textureSpec); \
 } while(0)
 #define CREATE_FLOAT_TEXTURE3D_EMPTY(TEX, ARRAY, WIDTH, HEIGHT, DEPTH) do { \
 	(TEX) = createMetalFloatTextureEmpty(metalTextureSpec((WIDTH), (HEIGHT), (DEPTH), true)); \
@@ -807,10 +788,51 @@ class ProjectorClass {
 		return createMetalTexture(spec);
 	}
 
+	inline void submitMetalCommandBuffer(MTL::CommandBuffer* commandBuffer) const {
+#ifdef AF
+		if (commandBuffer->commandQueue() == afmtl::getQueue()) {
+			afmtl::submit(commandBuffer);
+			return;
+		}
+#endif
+		commandBuffer->commit();
+	}
+
+	inline STATUS_t copyMetalBufferToTexture(const DEVBUFF_t& source, const TEX3D_t& texture, const MetalTextureSpec& spec) const {
+		const NS::UInteger bytesPerRow = spec.width * spec.elementSize;
+		const NS::UInteger bytesPerImage = bytesPerRow * spec.height;
+		if (!source || !texture || source->length() < bytesPerImage * spec.depth)
+			return -1;
+#ifdef AF
+		auto commandBuffer = NS::RetainPtr(afmtl::getQueue()->commandBuffer());
+#else
+		if (!queueFP)
+			return -1;
+		auto commandBuffer = NS::RetainPtr(queueFP->commandBuffer());
+#endif
+		if (!commandBuffer)
+			return -1;
+		auto encoder = NS::RetainPtr(commandBuffer->blitCommandEncoder());
+		if (!encoder)
+			return -1;
+		encoder->copyFromBuffer(source.get(), 0, bytesPerRow,
+			texture->textureType() == MTL::TextureType3D ? bytesPerImage : 0,
+			MTL::Size::Make(spec.width, spec.height, spec.depth), texture.get(), 0, 0, MTL::Origin::Make(0, 0, 0));
+		encoder->endEncoding();
+		submitMetalCommandBuffer(commandBuffer.get());
+#ifndef AF
+		commandBuffer->waitUntilCompleted();
+		if (commandBuffer->status() == MTL::CommandBufferStatusError)
+			return -1;
+#endif
+		return SUCCESS_VALUE;
+	}
+
 	inline TEX3D_t createMetalFloatTextureFromBuffer(const DEVBUFF_t& source, const MetalTextureSpec& spec) const {
-		if (!source || !source->contents())
+		TEX3D_t texture = createMetalTexture(spec);
+		if (copyMetalBufferToTexture(source, texture, spec) != SUCCESS_VALUE)
 			return nullptr;
-		return createMetalTextureFromHost(source->contents(), spec);
+		return texture;
 	}
 
 	inline TEX3D_t createMetalMaskTextureFromHost(const uint8_t* source, const MetalTextureSpec& spec) const {
@@ -826,7 +848,7 @@ class ProjectorClass {
 	}
 
 	inline int updateMetalImageTextureFromBuffer(const scalarStruct& inputScalars, const int ii) {
-		if (!vec_opencl.d_im || !vec_opencl.d_im->contents()) {
+		if (!vec_opencl.d_im) {
 			// Standalone projector calls upload image-mode input directly into
 			// d_image_os. ArrayFire calls instead provide d_im and require the
 			// cached texture to be refreshed below after every subset/volume.
@@ -855,11 +877,8 @@ class ProjectorClass {
 			mexPrint("Unable to create Metal image texture");
 			return -1;
 		}
-		const MTL::Region textureRegion(0, 0, 0, spec.width, spec.height, spec.depth);
-		const NS::UInteger bytesPerRow = spec.width * spec.elementSize;
-		const NS::UInteger bytesPerImage = bytesPerRow * spec.height;
-		FPTexCache[volume]->replaceRegion(textureRegion, 0, 0,
-			vec_opencl.d_im->contents(), bytesPerRow, bytesPerImage);
+		if (copyMetalBufferToTexture(vec_opencl.d_im, FPTexCache[volume], spec) != SUCCESS_VALUE)
+			return -1;
 		vec_opencl.d_image_os = FPTexCache[volume];
 		return 0;
 	}
@@ -4833,8 +4852,10 @@ public:
 			const MTL::Size threadgroupsPerGrid = MTL::Size::Make(global[0] / localFP[0], global[1] / localFP[1], global[2] / localFP[2]);
 			encoder->dispatchThreadgroups(threadgroupsPerGrid, threadsPerThreadgroup);
 			encoder->endEncoding();
-			commandBuffer->commit();
+			submitMetalCommandBuffer(commandBuffer.get());
+#ifndef AF
 			commandBuffer->waitUntilCompleted();
+#endif
 		}
 #elif defined(OPENCL)
 		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelFP, cl::NDRange(), global, localFP, NULL);
@@ -5282,7 +5303,7 @@ public:
 						textureWidth++;
 					}
 					if (newInput) {
-						if (!d_output || !d_output->contents()) {
+						if (!d_output) {
 							mexPrint("Metal backprojection input buffer is unavailable\n");
 							return -1;
 						}
@@ -5297,13 +5318,9 @@ public:
 							BPImageDims[1] = textureHeight;
 							BPImageDims[2] = textureDepth;
 						}
-						const MTL::Region textureRegion(0, 0, 0,
-							static_cast<NS::UInteger>(textureWidth),
-							static_cast<NS::UInteger>(textureHeight),
-							static_cast<NS::UInteger>(textureDepth));
-						const NS::UInteger bytesPerRow = static_cast<NS::UInteger>(textureWidth * sizeof(float));
-						const NS::UInteger bytesPerImage = bytesPerRow * static_cast<NS::UInteger>(textureHeight);
-						d_inputImage->replaceRegion(textureRegion, 0, 0, d_output->contents(), bytesPerRow, bytesPerImage);
+						if (copyMetalBufferToTexture(d_output, d_inputImage,
+							metalTextureSpec(textureWidth, textureHeight, textureDepth, true)) != SUCCESS_VALUE)
+							return -1;
 					}
 					else if (!d_inputImage) {
 						mexPrint("Metal backprojection input texture cannot be reused before it is initialized\n");
@@ -5777,10 +5794,15 @@ public:
 			const MTL::Size threadgroupsPerGrid = MTL::Size::Make(global[0] / localBP[0], global[1] / localBP[1], global[2] / localBP[2]);
 			encoder->dispatchThreadgroups(threadgroupsPerGrid, threadsPerThreadgroup);
 			encoder->endEncoding();
-			commandBuffer->commit();
+#ifdef AF
+			if (useMetalSideQueue)
+				af::sync();
+#endif
+			submitMetalCommandBuffer(commandBuffer.get());
 			if (useMetalSideQueue) {
 				sideCommandBuffers[queueIdx - 1] = commandBuffer;
 			}
+#ifndef AF
 			else {
 				commandBuffer->waitUntilCompleted();
 				if (commandBuffer->status() == MTL::CommandBufferStatusError) {
@@ -5791,6 +5813,7 @@ public:
 					return -1;
 				}
 			}
+#endif
 		}
 #elif defined(OPENCL)
 		if (queueIdx > 0 && static_cast<size_t>(queueIdx) <= sideQueues.size()) {
@@ -7312,7 +7335,10 @@ public:
 				global[0] / localPrior[0], global[1] / localPrior[1], global[2] / localPrior[2]);
 			encoder->dispatchThreadgroups(threadgroupsPerGrid, threadsPerThreadgroup);
 			encoder->endEncoding();
-			commandBuffer->commit();
+			submitMetalCommandBuffer(commandBuffer.get());
+#ifndef AF
+			commandBuffer->waitUntilCompleted();
+#endif
 		}
 #elif defined(OPENCL)
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelPDHG, cl::NullRange, global, localPrior);
@@ -7412,7 +7438,7 @@ public:
 				global[0] / localPrior[0], global[1] / localPrior[1], global[2] / localPrior[2]);
 			encoder->dispatchThreadgroups(threadgroupsPerGrid, threadsPerThreadgroup);
 			encoder->endEncoding();
-			commandBuffer->commit();
+			submitMetalCommandBuffer(commandBuffer.get());
 		}
 #elif defined(OPENCL)
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelRotate, cl::NullRange, globalPrior, localPrior);
