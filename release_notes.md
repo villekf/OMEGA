@@ -1,5 +1,47 @@
 # Release notes
 
+New examples:
+- SPECT_main_DIP_PyTorch.py
+  - Deep image prior regularized SPECT reconstruction example 
+  - Highlights OMEGA interoperability with PyTorch framework
+  - Tested with Metal (M4) and CUDA (RTX 4060)
+
+New features:
+- CUDA support for MATLAB projection operators
+  - `options.use_CUDA` controls the backend as with implementation 2
+- Initial Metal support for PyTorch projection operators
+  - SPECT only
+  - See PyTorch examples
+- Metal support for reconstructions with ArrayFire backend (both Python and MATLAB)
+- ```options.useMAD``` controls HIP unsafe atomics in Python custom operators; notable performance improvement with backprojection
+
+Changed behaviour:
+- SPECT ray tracer projectors now normalize emission probability based on a pre-determined superellipse
+  - Defaults to the superellipse corresponding to FOV boundary
+  - Traced rays are clipped to the inside of the superellipse
+  - Currently only ```options.ellipsePower``` values of 2 (elliptic cylinder, an ellipse in the transaxial
+    plane) and ```Inf``` (box, the default) are supported; other superellipse powers raise an error
+- Memory optimization for SPECT
+  - These arrays can now be input as size nRowsD * nColsD * nHeads (one image for each detector head):
+    - FP mask
+    - BP mask
+    - Normalization image / detector uniformity image
+  - These arrays have to be input as size 2 * n_rays_transaxial * n_rays_axial x nRowsD x nColsD x nHeads (one image for each detector head):
+    - rayShiftsSource
+    - rayShiftsDetector
+- SPECT multi-ray projector now uses ```options.n_rays_transaxial``` and ```options.n_rays_axial``` as used in sinogram reconstructions with other modalities
+  - The old ```options.nRays``` is still supported, but not recommended to use.
+  - ```options.nRays=n^2``` converts silently into values of ```options.n_rays_transaxial=n``` and ```options.n_rays_axial=n```
+- SPECT rotation projector with Python custom operators now has better emission probability normalization when detectors are inside FOV
+
+Other changes:
+- Unified SPECT rotation projector logic for all three Python operator backends
+
+Bug fixes:
+- Fixed texture input for standalone Metal projector calls
+- Fixed the missing Metal definition for projector type 4
+
+
 ## OMEGA v2.3.0
 
 ### New features

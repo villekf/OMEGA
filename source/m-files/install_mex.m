@@ -913,6 +913,38 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
                             'install_mex(0, ''C:\PATH\TO\OPENCL\INCLUDE'', ''C:\PATH\TO\OPENCL\LIB\X64'')']);
                     end
                 end
+                if use_CUDA
+                    try
+                        %%%%%%%%%%%%%%%%%%%%%%%%% Implementation 5 (CUDA, gpuArray) %%%%%%%%%%%%%%%%%%%%%%%%
+                        % MATLAB's mxGPU library was renamed across releases: gpu -> gpumexbinder.
+                        % Pick whichever this installation actually ships.
+                        gpuLibPath = fullfile(matlabroot, 'extern', 'lib', computer('arch'), 'microsoft');
+                        if exist(fullfile(gpuLibPath, 'gpumexbinder.lib'), 'file') == 2
+                            gpuLib = '-lgpumexbinder';
+                        elseif exist(fullfile(gpuLibPath, 'gpu.lib'), 'file') == 2
+                            gpuLib = '-lgpu';
+                        else
+                            gpuLib = '-lmwgpu';
+                        end
+                        mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_multi_gpu', cxxflags, ...
+                            '-DMATLAB', '-DCUDA', '-DMATLABGPU', ['-I ' folder], ['-I"' cuda_path '/include"'], ...
+                            ['-I"' fullfile(matlabroot,'toolbox','parallel','gpu','extern','include') '"'], ...
+                            '-lcuda', '-lnvrtc', '-lcudart', gpuLib, ['-L"' cuda_path '/lib/x64"'], ...
+                            ['-L"' fullfile(matlabroot,'extern','lib',computer('arch'),'microsoft') '"'], ...
+                            [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
+
+                        disp('Implementation 5 built with CUDA and gpuArray support')
+                    catch ME
+                        if verbose
+                            warning('Unable to build CUDA support for implementation 5 (gpuArray)! Compiler error:');
+                            disp(ME.message)
+                        else
+                            warning(['Unable to build CUDA support for implementation 5 (gpuArray)! Implementation 5 will still work with OpenCL, '...
+                                'but will not accept gpuArray inputs. Compiler error is shown with install_mex(1). If the CUDA toolkit has been installed '...
+                                'in a non-standard path, it can be added manually by using install_mex(0, [], [], [], [], true, ''C:\PATH\TO\CUDA'')']);
+                        end
+                    end
+                end
             end
         end
     else
@@ -1069,6 +1101,38 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
                     warning(['Unable to build OpenCL files for implementation 3 and 5! If you do not need implementation 3 or 5 (matrix free OpenCL) ignore this warning. '...
                         'Compiler error is shown with install_mex(1). If OpenCL SDK has been installed in a non-standard path, it can be added manually by using '...
                         'install_mex(0, ''/PATH/TO/OPENCL/INCLUDE'', ''/PATH/TO/OPENCL/LIB/X64'')']);
+                end
+            end
+            if use_CUDA
+                try
+                    %%%%%%%%%%%%%%%%%%%%%%%%% Implementation 5 (CUDA, gpuArray) %%%%%%%%%%%%%%%%%%%%%%%%
+                    % MATLAB's mxGPU library was renamed across releases: gpu -> gpumexbinder.
+                    % Pick whichever this installation actually ships.
+                    gpuLibPath = fullfile(matlabroot, 'bin', computer('arch'));
+                    if exist(fullfile(gpuLibPath, 'libgpumexbinder.so'), 'file') == 2
+                        gpuLib = '-lgpumexbinder';
+                    elseif exist(fullfile(gpuLibPath, 'libgpu.so'), 'file') == 2
+                        gpuLib = '-lgpu';
+                    else
+                        gpuLib = '-lmwgpu';
+                    end
+                    mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_multi_gpu', ldflags, cxxflags, ...
+                        '-DMATLAB', '-DCUDA', '-DMATLABGPU', ['-I ' folder], ['-I"' cuda_path '/include"'], ...
+                        ['-I"' fullfile(matlabroot,'toolbox','parallel','gpu','extern','include') '"'], ...
+                        '-lcuda', '-lnvrtc', '-lcudart', gpuLib, ['-L"' cuda_path '/lib64"'], ...
+                        ['-L"' fullfile(matlabroot,'bin',computer('arch')) '"'], ...
+                        [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
+
+                    disp('Implementation 5 built with CUDA and gpuArray support')
+                catch ME
+                    if verbose
+                        warning('Unable to build CUDA support for implementation 5 (gpuArray)! Compiler error:');
+                        disp(ME.message)
+                    else
+                        warning(['Unable to build CUDA support for implementation 5 (gpuArray)! Implementation 5 will still work with OpenCL, '...
+                            'but will not accept gpuArray inputs. Compiler error is shown with install_mex(1). If the CUDA toolkit has been installed '...
+                            'in a non-standard path, it can be added manually by using install_mex(0, [], [], [], [], true, ''/PATH/TO/CUDA'')']);
+                    end
                 end
             end
         end

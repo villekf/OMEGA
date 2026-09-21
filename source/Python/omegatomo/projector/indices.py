@@ -48,6 +48,97 @@ def indexMaker(options):
         tyyppi = np.uint64
     else:
         tyyppi = np.uint32
+    dynamicProjectionSubsets = (
+        options.listmode == 0 and options.Nt > 1 and
+        ((subsets > 1 and options.subsetType in [8, 9, 10, 11]) or subsets == 1) and
+        hasattr(options, 'nProjectionsPerFrame') and
+        np.size(options.nProjectionsPerFrame) == options.Nt
+    )
+    if dynamicProjectionSubsets:
+        projectionCounts = np.asarray(options.nProjectionsPerFrame, dtype=float).reshape(-1)
+        if np.any((projectionCounts < 1) | (projectionCounts != np.fix(projectionCounts))):
+            raise ValueError('The number of projection images in every timeframe must be a positive integer!')
+        projectionCounts = projectionCounts.astype(np.int64)
+        options.projectionFrameOffsets = np.concatenate(
+            (np.asarray([0], dtype=np.int64), np.cumsum(projectionCounts, dtype=np.int64))
+        )
+        options.index = [None] * options.Nt
+        pituus = np.zeros((subsets, options.Nt), dtype=np.int64)
+        if options.subsetType == 9:
+            if options.seed < 0:
+                generator = np.random.default_rng()
+            else:
+                generator = np.random.default_rng(options.seed)
+        for tt in range(options.Nt):
+            nProjections = int(projectionCounts[tt])
+            sProjections = nProjections // subsets
+            modi = np.mod(nProjections, subsets)
+            uu = (modi > 0).astype(np.int64)
+            ind1 = 0
+            ind2 = sProjections + uu
+            temp_ind = []
+            if options.subsetType == 8 and subsets > 1:
+                for kk in range(subsets):
+                    index1 = np.arange(kk, nProjections, subsets).astype(tyyppi)
+                    temp_ind.append(index1)
+                    pituus[kk, tt] = np.size(index1)
+            elif options.subsetType == 9 and subsets > 1:
+                apu = generator.permutation(nProjections).astype(tyyppi)
+                for kk in range(subsets):
+                    index1 = apu[ind1:ind2]
+                    temp_ind.append(index1)
+                    pituus[kk, tt] = np.size(index1)
+                    modi = modi - 1
+                    if modi <= 0:
+                        uu = 0
+                    ind1 = ind2
+                    ind2 = ind2 + sProjections + uu
+            elif options.subsetType == 10 and subsets > 1:
+                raise ValueError('Not supported in Python version!')
+            elif options.subsetType == 11 and subsets > 1:
+                factors = []
+                value = nProjections
+                divisor = 2
+                while value > 1:
+                    while value % divisor == 0:
+                        factors.append(divisor)
+                        value //= divisor
+                    divisor += 1
+                n2 = np.array(factors)
+                nn = np.flipud(np.cumprod(np.flipud(n2[1:])))
+                N = np.size(factors)
+                p = np.zeros((N, nProjections), dtype=tyyppi)
+                for ll in range(1, N + 1):
+                    p1 = np.arange(factors[ll - 1])
+                    if ll == 1:
+                        p1 = np.tile(p1, nProjections // np.size(p1))
+                    else:
+                        p1 = np.repeat(p1, np.prod(n2[:ll - 1]))
+                        p1 = np.tile(p1, nProjections // np.size(p1))
+                    p[ll - 1, :] = p1
+                indices = np.zeros(nProjections, dtype=tyyppi)
+                for rr in range(nProjections):
+                    tt_index = p[:len(nn), rr] * nn
+                    indices[rr] = np.sum(tt_index) + p[-1, rr]
+                for kk in range(subsets):
+                    index1 = indices[ind1:ind2]
+                    temp_ind.append(index1)
+                    pituus[kk, tt] = np.size(index1)
+                    modi = modi - 1
+                    if modi <= 0:
+                        uu = 0
+                    ind1 = ind2
+                    ind2 = ind2 + sProjections + uu
+            else:
+                index1 = np.arange(0, nProjections).astype(tyyppi)
+                temp_ind.append(index1)
+                if not (options.CT or options.PET or options.SPECT):
+                    pituus[0, tt] = options.Nang * options.Ndist * options.NSinos
+                else:
+                    pituus[0, tt] = np.size(index1)
+            options.index[tt] = np.concatenate(temp_ind)
+        options.nMeas = pituus.flatten(order='F')
+
     if subsets > 1 and options.subsetType < 8:
         totalLength = Ndist*Nang*NSinos
         options.index = np.empty(0, dtype=tyyppi)
@@ -155,7 +246,7 @@ def indexMaker(options):
                 options.nMeas = np.full(subsets - 1, val, dtype=np.int64)
                 options.nMeas = np.append(options.nMeas, valEnd)
                 options.index = np.zeros(1,dtype=tyyppi)
-    elif (subsets > 1 and options.subsetType in [8, 9, 10, 11]) or subsets == 1:
+    elif ((subsets > 1 and options.subsetType in [8, 9, 10, 11]) or subsets == 1) and not dynamicProjectionSubsets:
         sProjections = options.nProjections // subsets
         modi = np.mod(options.nProjections, subsets)
         uu = (modi > 0).astype(np.int64)
@@ -268,8 +359,16 @@ def indexMaker(options):
                 options.nMeas[0] = options.Nang * options.Ndist * options.NSinos
     elif options.subsetType > 11:
         raise ValueError('Invalid subset type!')
-    if options.listmode == 0 and options.Nt > 1:
+    if options.listmode == 0 and options.Nt > 1 and not dynamicProjectionSubsets:
         options.nMeas = np.tile(options.nMeas, options.Nt)
+    nMeas = np.asarray(options.nMeas, dtype=np.int64)
+    if nMeas.size == subsets * options.Nt:
+        if nMeas.ndim == 2 and nMeas.shape == (subsets, options.Nt):
+            options.nMeasPerFrameSubset = nMeas.T.copy()
+        else:
+            options.nMeasPerFrameSubset = nMeas.reshape((subsets, options.Nt), order='F').T
+    else:
+        options.nMeasPerFrameSubset = nMeas.reshape((subsets, 1), order='F').T
     if options.sampling > 1:
         options.Ndist = int(options.Ndist / options.sampling)
     options.subsets = subsets

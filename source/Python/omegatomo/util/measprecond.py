@@ -54,28 +54,16 @@ def applyMeasPreconditioning(options, var):
                 af.ifft_inplace(temp)
                 var = af.flat(af.real(temp[:var.shape[0], :, :]))
         elif options.useTorch:
-            # def reshape_fortran(x, shape):
-            #     if len(x.shape) > 0:
-            #         x = x.permute(*reversed(range(len(x.shape))))
-            #     return x.reshape(*reversed(shape)).permute(*reversed(range(len(shape))))
             import torch
             if options.precondTypeMeas[1].item():
                 if not hasattr(options, 'filterG'):
-                    import numpy as np
-                    options.filter0 = np.reshape(options.filter0, (1, 1, -1))
-                    options.filterG = torch.tensor(options.filter0, device='cuda')
-                if (options.subsets > 1 and (options.subsetType == 5 or options.subsetType == 4)):
-                    if options.subsetType == 4:
-                        var = torch.reshape(var, (var.numel() // options.nRowsD, options.nRowsD))
-                    else:
-                        var = torch.reshape(var, (var.numel() // options.nColsD, options.nColsD))
-                else:
-                    # var = reshape_fortran(var, (options.nRowsD, options.nColsD, var.numel() // (options.nRowsD * options.nColsD)))
-                    var = torch.reshape(var, (options.nColsD, var.numel() // (options.nRowsD * options.nColsD), options.nRowsD))
-                temp = torch.fft.fft(var, n=options.Nf, dim=2)
+                    options.filterG = torch.as_tensor(options.filter0, dtype=var.dtype, device=var.device).reshape(-1)
+                width = options.nColsD if options.subsets > 1 and options.subsetType == 5 else options.nRowsD
+                var = var.reshape(-1, width)
+                temp = torch.fft.fft(var, n=options.Nf, dim=-1)
                 temp *= options.filterG
-                temp = torch.fft.ifft(temp, dim=2)
-                var = torch.ravel(torch.real(temp[:,:,:var.shape[2]]))
+                temp = torch.fft.ifft(temp, dim=-1)
+                var = temp.real[:, :width].reshape(-1).contiguous()
         elif options.useCuPy:
             import cupy as cp
             if options.precondTypeMeas[1].item():
@@ -132,20 +120,13 @@ def circulantInverse(options, var):
     elif options.useTorch:
         import torch
         if not hasattr(options, 'FilterG'):
-            import numpy as np
-            options.Ffilter = np.reshape(options.Ffilter, (1, 1, -1))
-            options.FilterG = torch.tensor(options.Ffilter, device='cuda')
-        if options.subsets > 1 and (options.subsetType == 5 or options.subsetType == 4):
-            if options.subsetType == 4:
-                var = torch.reshape(var, (options.nRowsD, var.numel() // options.nRowsD))
-            else:
-                var = torch.reshape(var, (options.nColsD, var.numel() // options.nColsD))
-        else:
-            var = torch.reshape(var, (options.nColsD, var.numel() // (options.nRowsD * options.nColsD), options.nRowsD))
-        temp = torch.fft.fft(var, n=options.Nf, dim=2)
+            options.FilterG = torch.as_tensor(options.Ffilter, dtype=var.dtype, device=var.device).reshape(-1)
+        width = options.nColsD if options.subsets > 1 and options.subsetType == 5 else options.nRowsD
+        var = var.reshape(-1, width)
+        temp = torch.fft.fft(var, n=options.Nf, dim=-1)
         temp /= options.FilterG
-        temp = torch.fft.ifft(temp, dim=2)
-        var = torch.ravel(torch.real(temp[:,:,:var.shape[2]]))
+        temp = torch.fft.ifft(temp, dim=-1)
+        var = temp.real[:, :width].reshape(-1).contiguous()
     elif options.useCuPy:
         import cupy as cp
         if not hasattr(options, 'FilterG'):

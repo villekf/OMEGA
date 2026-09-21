@@ -188,6 +188,18 @@ if (options.implementation == 4 && ~ismac) || (ismac && options.projector_type =
         end
     end
 elseif options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || ismac
+    % Determined here, before input is reshaped/converted below, so that
+    % the gpuArray-ness of the original input is not lost
+    useGPUArray = isa(input, 'gpuArray');
+    if useGPUArray
+        if options.implementation ~= 5
+            error('gpuArray input is only supported with implementation 5!')
+        end
+        if exist('CUDA_matrixfree_multi_gpu','file') ~= 3
+            error(['gpuArray input was used, but the CUDA build of implementation 5 (CUDA_matrixfree_multi_gpu) was not found. ' ...
+                'Run install_mex to build it. gpuArray input requires a CUDA-enabled installation and the CUDA toolkit.'])
+        end
+    end
     if ~isfield(options,'orthTransaxial') && (options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 22 || options.projector_type == 33)
         if options.projector_type == 3 || options.projector_type == 33
             options.orthTransaxial = true;
@@ -268,7 +280,13 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
     if ~isa(input,'single')
         input = single(input);
     end
-    [output, sensIm] = OpenCL_matrixfree_multi_gpu( options.Nx, options.Ny, options.Nz, options.dx, options.dy, options.dz, options.bx, options.by, options.bz, ...
+    if useGPUArray
+        options = gatherHostFields(options, {});
+        mexProjector = @CUDA_matrixfree_multi_gpu;
+    else
+        mexProjector = @OpenCL_matrixfree_multi_gpu;
+    end
+    [output, sensIm] = mexProjector( options.Nx, options.Ny, options.Nz, options.dx, options.dy, options.dz, options.bx, options.by, options.bz, ...
         z, x, options.nRowsD, options.verbose, options.LL, options.TOF, ... % 15
         TOFSize, options.sigma_x, options.TOFCenter, options.TOF_bins, options.platform, options.use_raw_data, options.use_psf, header_directory, options.vaimennus, ... % 24
         options.normalization, nMeas, options.attenuation_correction, options.normalization_correction, 1, options.subsets, options.epps, options.xy_index, ...

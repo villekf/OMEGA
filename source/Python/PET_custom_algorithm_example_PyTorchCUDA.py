@@ -18,7 +18,7 @@ is to show how you can compute your own algorithms with the OMEGA projector
 operators and utilizing many of the built-in features such as subsets and
 corrections.
 
-This example uses PyTorch and CuPy and thus requires CUDA (and CuPy and PyTorch)!
+This example uses PyTorch and CuPy and thus requires a CUDA or HIP (AMD ROCm) capable device (and CuPy and PyTorch)! For HIP, install the ROCm builds of CuPy and PyTorch; HIP is then used automatically.
 """
 import numpy as np
 from omegatomo.projector import proj
@@ -354,7 +354,7 @@ options.useTorch = True
 # Required for PyTorch
 options.useCUDA = True
 
-# Uses CuPy instead of PyCUDA (recommended)
+# Uses CuPy (required; PyCUDA is no longer supported). A ROCm build of CuPy enables HIP
 options.useCuPy = True
 
 # Compute forward projection with options * f

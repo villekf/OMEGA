@@ -147,6 +147,9 @@ void projectorType123(
 #else
 	CLGLOBAL float* d_output [[buffer(20)]],
 #endif
+#if defined(SPECT)
+	const CLGLOBAL uint* d_detectorVector [[buffer(21)]],
+#endif
 	uint3 temp_i [[thread_position_in_grid]]   // global id
 
 #else /////////////////////// OPENCL/CUDA ///////////////////////
@@ -162,15 +165,17 @@ void projectorType123(
     const float coneOfResponseStdCoeffB,
     const float coneOfResponseStdCoeffC,
 #if defined(PYTHON)
-    const float totalFOVxmin,
-    const float totalFOVymin,
-    const float totalFOVzmin,
-    const float totalFOVxmax,
-    const float totalFOVymax,
-    const float totalFOVzmax,
+    const float ellipseCenterX,
+    const float ellipseCenterY,
+    const float ellipseCenterZ,
+    const float ellipseRadiusX,
+    const float ellipseRadiusY,
+    const float ellipseRadiusZ,
+    const float ellipsePower,
 #else
-    const float3 totalFOVmin,
-    const float3 totalFOVmax,
+    const float3 ellipseCenter,
+    const float3 ellipseRadii,
+    const float ellipsePower,
 #endif
 #endif
 #if defined(PYTHON)
@@ -281,6 +286,9 @@ void projectorType123(
 #else
 	CLGLOBAL float* d_output,
 #endif
+#if defined(SPECT)
+	const CLGLOBAL uint* CLRESTRICT d_detectorVector,
+#endif
 	///////////////////////// END FORWARD OR BACKWARD PROJECTIONS /////////////////////////
 	const uchar no_norm, const ULONG m_size, const uint currentSubset, const int aa
 #endif ///////////////////// END OPENCL/CUDA/METAL /////////////////////
@@ -328,11 +336,22 @@ void projectorType123(
 	const FLOAT3 b = make_float3(bx, by, bz);
 	const FLOAT3 d_bmax = make_float3(d_bmaxx, d_bmaxy, d_bmaxz);
 #if defined(SPECT)
-    const FLOAT3 totalFOVmin = make_float3(totalFOVxmin, totalFOVymin, totalFOVzmin);
-    const FLOAT3 totalFOVmax = make_float3(totalFOVxmax, totalFOVymax, totalFOVzmax);
+    const FLOAT3 ellipseCenter = make_float3(ellipseCenterX, ellipseCenterY, ellipseCenterZ);
+    const FLOAT3 ellipseRadii = make_float3(ellipseRadiusX, ellipseRadiusY, ellipseRadiusZ);
 #endif
+#endif
+#if defined(SPECT) && (defined(MASKFPBYDETECTOR) || defined(NORMBYDETECTOR))
+    const uint detectorHead = d_detectorVector[i.z];
 #endif
 #ifdef MASKFP // FP mask
+ #ifdef MASKFPBYDETECTOR
+  #ifdef USEIMAGES
+    typeT maskInd = i;
+    maskInd.z = detectorHead;
+  #else
+    const typeT maskInd = i.x + i.y * d_size_x + detectorHead * d_size_x * d_sizey;
+  #endif
+ #else
     const typeT maskInd = i
 #ifndef USEIMAGES
     .x + i.y * d_size_x
@@ -341,6 +360,7 @@ void projectorType123(
 #endif
 #endif
     ;
+ #endif
 	if (readMaskFP(maskFP, maskInd) == 0)
 		return;
 #endif // End FP mask
@@ -389,7 +409,11 @@ void projectorType123(
 	FLOAT local_scat = FLOAT_ZERO;
 
 #ifdef NORM // Normalization included
-	local_norm = d_norm[idx];
+	#ifdef NORMBYDETECTOR
+		local_norm = d_norm[i.x + i.y * d_size_x + detectorHead * d_size_x * d_sizey];
+	#else
+		local_norm = d_norm[idx];
+	#endif
 #endif
 #ifdef SCATTER // Scatter data included
 	local_scat = d_scat[idx];
@@ -418,8 +442,6 @@ void projectorType123(
 			for (int to = 0; to < NBINS; to++)
 				axRay[to] = 0.f;
 #endif
-#elif defined(SPECT)
-	const int lorXY = 0;
 #endif  //////////////// END MULTIRAY ////////////////
 	FLOAT3 s, d;
 #if defined(NLAYERS) && !defined(LISTMODE)
@@ -436,7 +458,7 @@ void projectorType123(
 #endif
 	);
 #elif defined(SPECT) && (!defined(LISTMODE) || defined(SENS)) && !defined(PET) // SPECT data
-	getDetectorCoordinatesSPECT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize, d_rayShiftsDetector, d_rayShiftsSource, lorXY, idx, totalFOVmin, totalFOVmax);
+	getDetectorCoordinatesSPECT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize, d_rayShiftsDetector, d_rayShiftsSource, d_detectorVector, lor, ellipseCenter, ellipseRadii, ellipsePower);
 #elif defined(LISTMODE) && !defined(SENS) // Listmode data
 #if defined(INDEXBASED)
 	getDetectorCoordinatesListmode(d_xy, d_z, trIndex, axIndex, &s, &d, idx

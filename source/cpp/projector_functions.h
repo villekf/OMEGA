@@ -498,7 +498,7 @@ inline void get_detector_coordinates_CT(const T* x,const T* z, const uint32_t si
 }
 
 template <typename T>
-inline void get_detector_coordinates_SPECT(const T* x, const T* z, Det<T>& detectors, const int64_t lo, const uint32_t lorXY, const uint32_t size_x, const uint32_t size_y, const int64_t ix, const int64_t iy, const int64_t iz, const T dPitchXY, const uint8_t list_mode_format, const uint32_t nRays2D, const T* rayShiftsDetector, const T* rayShiftsSource) {
+inline void get_detector_coordinates_SPECT(const T* x, const T* z, Det<T>& detectors, const int64_t lo, const uint32_t lor, const uint32_t size_x, const uint32_t size_y, const int64_t ix, const int64_t iy, const int64_t iz, const T dPitchXY, const uint8_t list_mode_format, const uint32_t nRays2D, const uint32_t nRays3D, const T* rayShiftsDetector, const T* rayShiftsSource) {
 	const int idx = iz * 6;
 	detectors.xs = x[idx + 0]; // Detector panel center inner normal vector
 	detectors.ys = x[idx + 1];
@@ -517,8 +517,8 @@ inline void get_detector_coordinates_SPECT(const T* x, const T* z, Det<T>& detec
 	detectors.yd += dPitchXY * z[idz + 1] * indeksi1;
 	detectors.zd += dPitchXY * indeksi2;
 	
-	if (nRays2D > 1) { // Add ray shift
-		const int idr = lorXY * 2;
+	if (nRays2D * nRays3D > 1) { // Add ray shift
+		const int idr = lor * 2;
 
 		detectors.xd += z[idz+0] * rayShiftsDetector[idr] / 2.;
 		detectors.yd += z[idz+1] * rayShiftsDetector[idr] / 2.;
@@ -1451,7 +1451,7 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 				if (CT) { // CT data
 					get_detector_coordinates_CT(x, z, param.size_x, detectors, lo, param.subsets, param.size_y, ix, iy, iz, param.dPitchZ, param.nProjections, param.listMode, param.pitch);
 				} else if (SPECT) { // SPECT data
-					get_detector_coordinates_SPECT(x, z, detectors, lo, lorXY, param.size_x, param.size_y, ix, iy, iz, param.dPitchXY, param.listMode, param.nRays2D, param.rayShiftsDetector, param.rayShiftsSource);	
+					get_detector_coordinates_SPECT(x, z, detectors, lo, lor, param.size_x, param.size_y, ix, iy, iz, param.dPitchXY, param.listMode, param.nRays2D, param.nRays3D, param.rayShiftsDetector, param.rayShiftsSource);
 				} else {
 					// Raw data
 					// Pure list-mode format (e.g. event-by-event)

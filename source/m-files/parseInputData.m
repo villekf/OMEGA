@@ -147,10 +147,13 @@ if options.subsets > 1 && options.subset_type > 0
         end
     end
     if options.normalization_correction && options.corrections_during_reconstruction
-        if options.use_raw_data == false && options.NSinos ~= options.TotSinos
+        detectorIndexedNorm = options.SPECT && options.normZ == options.nHeads;
+        if options.use_raw_data == false && options.NSinos ~= options.TotSinos && ~detectorIndexedNorm
             options.normalization = options.normalization(1:options.NSinos*options.Ndist*options.Nang);
         end
-        if options.subset_type >= 8
+        if detectorIndexedNorm
+            options.normalization = options.normalization(:);
+        elseif options.subset_type >= 8
             options.normalization = reshape(options.normalization, options.Ndist, options.Nang, []);
             options.normalization = options.normalization(:,:,index,:);
             options.normalization = options.normalization(:);
@@ -247,7 +250,10 @@ if options.subsets > 1 && options.subset_type > 0
             options.CT_attenuation = true;
         end
     end
-    if options.useMaskFP && options.maskFPZ > 1 && options.subset_type >= 8
+    if options.SPECT && isfield(options, 'DetectorVector') && options.subset_type >= 8
+        options.DetectorVector = uint32(options.DetectorVector(index));
+    end
+    if options.useMaskFP && options.maskFPZ > 1 && options.maskFPZ ~= options.nHeads && options.subset_type >= 8
         options.maskFP = uint8(options.maskFP(:,:,index));
     elseif options.useMaskFP && options.subset_type == 3
         error('Forward projection mask is not supported with subset type 3!')
