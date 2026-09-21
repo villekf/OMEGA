@@ -15,7 +15,7 @@ is to show how you can compute your own algorithms with the OMEGA projector
 operators and utilizing many of the built-in features such as subsets and
 corrections.
 
-This example uses PyTorch thus requires either a CUDA or Metal compatible device.
+This example uses PyTorch thus requires either a CUDA, HIP (AMD ROCm) or Metal compatible device. For HIP, install the ROCm builds of CuPy and PyTorch.
 """
 
 import numpy as np
@@ -39,8 +39,8 @@ if sys.platform == 'darwin':
     device = torch.device("mps")
 else:
     options.useCUDA = True
-    options.useCuPy = True # Use CuPy, PyCUDA support is deprecated
-    device = torch.device("cuda")
+    options.useCuPy = True # Use CuPy (required for CUDA and HIP; PyCUDA is no longer supported)
+    device = torch.device("cuda") # Also used by ROCm (HIP) builds of PyTorch
 
 
 ###########################################################################
@@ -278,7 +278,7 @@ for it in range(options.Niter):
         bp = options.T() * (d_m[k] / fp)
         d_f = d_f / Sens * bp
         d_f = torch.clamp(d_f, min=1e-6)
-    print(f'{"ML" if options.subsets==1 else "OS"}EM iteration {it+1}/{options.Niter} finished', end=f'{"\r" if it!=options.Niter-1 else "\n"}')
+    print(f'{"ML" if options.subsets==1 else "OS"}EM iteration {it+1}/{options.Niter} finished', end='\r' if it != options.Niter - 1 else '\n')
 
 # Back to CPU
 f = d_f.cpu().numpy()

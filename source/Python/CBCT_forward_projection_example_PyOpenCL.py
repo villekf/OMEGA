@@ -119,7 +119,7 @@ A.CT = True
 
 # The above should work in all cases, but the below part should be adjusted if
 # you use CuPy, Arrayfire or PyTorch instead!
-# If True, uses CUDA
+# If True, uses CUDA (or HIP, when CuPy is a ROCm build)
 # options.useCUDA = True
 
 # If True, assumes that CuPy arrays are the input for forward and backward projections, unless useTorch = True

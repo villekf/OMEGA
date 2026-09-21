@@ -8,7 +8,7 @@ This version implements a deep-image-prior reconstruction with a 3-D U-net.
 The OMEGA forward and backward projectors are used to optimize the network
 parameters directly from the measured SPECT projections.
 
-This example uses PyTorch thus requires either a CUDA or Metal compatible device.
+This example uses PyTorch thus requires either a CUDA, HIP (AMD ROCm) or Metal compatible device. For HIP, install the ROCm builds of CuPy and PyTorch.
 """
 
 # %% Imports and run configuration
@@ -36,8 +36,8 @@ if sys.platform == 'darwin':
     device = torch.device("mps")
 else:
     options.useCUDA = True
-    options.useCuPy = True # Use CuPy, PyCUDA support is deprecated
-    device = torch.device("cuda")
+    options.useCuPy = True # Use CuPy (required for CUDA and HIP; PyCUDA is no longer supported)
+    device = torch.device("cuda") # Also used by ROCm (HIP) builds of PyTorch
 
 
 ###########################################################################
