@@ -29,6 +29,7 @@ struct float2a {
 #include <cstdint>
 #include <fstream>
 #include <limits>
+#include <cmath>
 #ifdef MATLAB
 #include "mexFunktio.h"
 #endif
@@ -107,7 +108,7 @@ typedef struct structForScalars {
 	largeDimStruct lDimStruct;
 	float coneOfResponseStdCoeffA = 0.01f, coneOfResponseStdCoeffB = 0.01f, coneOfResponseStdCoeffC = 0.01f;
 	float ellipseCenterX = 0.f, ellipseCenterY = 0.f, ellipseCenterZ = 0.f, ellipseRadiusX = 1.f, ellipseRadiusY = 1.f, ellipseRadiusZ = 1.f,
-		ellipsePower = std::numeric_limits<float>::infinity();
+		ellipsePower = std::numeric_limits<float>::max(); // Box support, see extendRayToEllipse
 } scalarStruct;
 
 #ifdef OPENCL

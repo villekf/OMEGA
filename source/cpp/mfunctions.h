@@ -201,6 +201,9 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
             inputScalars.ellipseRadiusY = getScalarFloat(getField(options, 0, "ellipseRadiusY"));
             inputScalars.ellipseRadiusZ = getScalarFloat(getField(options, 0, "ellipseRadiusZ"));
             inputScalars.ellipsePower = getScalarFloat(getField(options, 0, "ellipsePower"));
+            // Kernels test for box support with a finite threshold, as isinf() is unreliable under fast-math
+            if (!std::isfinite(inputScalars.ellipsePower))
+                inputScalars.ellipsePower = std::numeric_limits<float>::max();
         }
         /*if (inputScalars.FPType == 6 || inputScalars.BPType == 6) {
             inputScalars.FOVa_y = getScalarFloat(getField(options, 0, "FOVa_y"));
@@ -258,9 +261,15 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 			mexEval();
 		}
 	}
-    if (inputScalars.normalization_correction)
-        if (mxGetFieldNumber(options, "normZ") >= 0)
+    if (inputScalars.normalization_correction) {
+        // Derive normZ from the actual element count so a per-projection normalization supplied
+        // as a plain vector (normZ left at its nHeads-colliding default) is not misread as
+        // detector-head indexed. size_norm/nRowsD/nColsD/SPECT are all set before this point.
+        if (inputScalars.SPECT && inputScalars.size_norm > 1 && inputScalars.nRowsD * inputScalars.nColsD > 0)
+            inputScalars.normZ = static_cast<uint32_t>(inputScalars.size_norm / (static_cast<size_t>(inputScalars.nRowsD) * inputScalars.nColsD));
+        else if (mxGetFieldNumber(options, "normZ") >= 0)
             inputScalars.normZ = getScalarUInt32(getField(options, 0, "normZ"));
+    }
 	if (inputScalars.maskBP) {
 		w_vec.maskBP = getUint8s(options, "maskBP");
 		inputScalars.maskBPZ = getScalarUInt32(getField(options, 0, "maskBPZ"));

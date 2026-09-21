@@ -1186,8 +1186,13 @@ class projectorClass:
     def OMEGAErrorCheck(self):
         if self.SPECT:
             normalization = np.asarray(self.normalization)
-            if normalization.ndim == 3:
-                self.normZ = int(normalization.shape[2])
+            if self.normalization_correction and normalization.size > 1:
+                normZ = normalization.size / (self.nRowsD * self.nColsD)
+                if normZ % 1 != 0 or not (int(normZ) == int(self.nProjections) or int(normZ) == int(self.nHeads)):
+                    raise ValueError(f'Normalization array has an invalid size. Must contain one image per '
+                                      f'projection [{self.nRowsD} {self.nColsD} {self.nProjections}] or one image '
+                                      f'per detector head [{self.nRowsD} {self.nColsD} {self.nHeads}].')
+                self.normZ = int(normZ)
             if self.colLxy is None:
                 self.colLxy = self.colL
             if self.colLz is None:
@@ -1211,6 +1216,18 @@ class projectorClass:
             if np.any(self.DetectorVector >= int(self.nHeads)):
                 raise ValueError(f'DetectorVector contains an index outside the available detector heads [0, {int(self.nHeads) - 1}].')
 
+            # implementation 2 with useCPU (CPU_matrixfree_lib, built from omega_maincpp.cpp with -DCPU and
+            # no GPU backend macro) routes through ProjectorClassCPU.h / projector_functions.h (see
+            # functions.hpp's #elif defined(CPU) branch), a separate plain C++ projector with no
+            # DetectorVector/per-head indexing at all.
+            if self.implementation == 2 and self.useCPU and (
+                (self.normalization_correction and self.normZ == self.nHeads and self.normZ != self.nProjections) or
+                (self.useMaskFP and self.maskFPZ > 1 and self.maskFPZ == self.nHeads and self.maskFPZ != self.nProjections)
+            ):
+                raise ValueError('Detector-head indexed normalization/forward projection mask (nRowsD x nColsD x '
+                                  'nHeads) is not supported by the CPU implementation. Use a GPU implementation or '
+                                  'supply one image per projection.')
+
             if self.projector_type in [1, 11, 12, 2, 21, 22, 3, 13, 23, 33, 31, 32, 16, 26, 61, 62]:
                 compact_ray_shift_size = 2 * int(self.n_rays_transaxial) * int(self.n_rays_axial) * int(self.nRowsD) * int(self.nColsD) * int(self.nHeads)
                 detector_size = int(np.size(self.rayShiftsDetector))
@@ -1221,6 +1238,12 @@ class projectorClass:
                     raise ValueError(f'rayShiftsSource has an invalid size. Expected compact size {compact_ray_shift_size}, got {source_size}.')
                 if detector_size > 0 and source_size > 0 and detector_size != source_size:
                     raise ValueError('rayShiftsDetector and rayShiftsSource must have the same compact size.')
+
+                if not (self.ellipsePower == 2 or np.isinf(self.ellipsePower)):
+                    raise ValueError('ellipsePower must be 2 (elliptic cylinder) or Inf (box); other '
+                                      'superellipse powers are not supported.')
+                if self.ellipseRadiusX <= 0 or self.ellipseRadiusY <= 0 or self.ellipseRadiusZ <= 0:
+                    raise ValueError('ellipseRadiusX, ellipseRadiusY and ellipseRadiusZ must all be greater than zero.')
 
         if self.FOVa_x > 0 and self.FOVa_y == 0:
             self.FOVa_y = self.FOVa_x

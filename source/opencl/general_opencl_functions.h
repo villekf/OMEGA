@@ -116,7 +116,7 @@
 	FLOAT2 crystalSize = scalarParams.dPitch; \
     FLOAT3 ellipseCenter = scalarParams.ellipseCenter; \
     FLOAT3 ellipseRadii = scalarParams.ellipseRadii; \
-    FLOAT ellipsePower = scalarParams.ellipsePower; \
+    float ellipsePower = scalarParams.ellipsePower; \
 	FLOAT bmin = scalarParams.bmin; \
 	FLOAT bmax = scalarParams.bmax; \
 	FLOAT Vmax = scalarParams.Vmax; \
@@ -1518,15 +1518,11 @@ DEVICE void extendRayToEllipse(
     PTR_THR FLOAT3 *d, // Ray end point
     const FLOAT3 ellipseCenter,
     const FLOAT3 ellipseRadii,
-    const FLOAT ellipsePower
+    const float ellipsePower
 ) {
-#ifdef CUPY_HIP_FINITE_ELLIPSE_POWER
-    // CuPy stages the public infinity sentinel as a finite value; this
-    // comparison is safe under hipRTC's finite-math assumptions.
+    // Box support. Hosts pass FLT_MAX instead of Inf since isinf() is unreliable
+    // under fast-math (-ffast-math, -cl-fast-relaxed-math, Metal fast math)
     if (ellipsePower > 1.0e20f) {
-#else
-    if (ISINF(ellipsePower)) {
-#endif
         const FLOAT cx = ellipseCenter.x;
         const FLOAT cy = ellipseCenter.y;
         const FLOAT cz = ellipseCenter.z;
@@ -1594,7 +1590,7 @@ DEVICE void extendRayToEllipse(
             *s = p0 + tmin * dir;
 
         *d = p0 + tmax * dir;
-    } else if (ellipsePower == FLOAT_TWO) {
+    } else if (ellipsePower == 2.f) {
         const FLOAT cx = ellipseCenter.x;
         const FLOAT cy = ellipseCenter.y;
         const FLOAT cz = ellipseCenter.z;
@@ -1676,7 +1672,7 @@ DEVICE void getDetectorCoordinatesSPECT(
     int lor,
     const FLOAT3 ellipseCenter,
     const FLOAT3 ellipseRadii,
-    const FLOAT ellipsePower
+    const float ellipsePower
 ) {
 	uint id = i.z * 6;
 	*s = CMFLOAT3((FLOAT)d_xyz[id], (FLOAT)d_xyz[id + 1], (FLOAT)d_xyz[id + 2]); // TODO remove cast

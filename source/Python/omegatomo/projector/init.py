@@ -5,6 +5,13 @@ Created on Thu Jul 10 13:17:22 2025
 import numpy as np
 
 
+def _kernel_ellipse_power(value):
+    # Kernels test for box support (ellipsePower = inf) with a finite threshold,
+    # since isinf() is unreliable under fast-math
+    value = float(value)
+    return float(np.finfo(np.float32).max) if not np.isfinite(value) else value
+
+
 def _coordinate_slice(self, name, timestep, subset, stride):
     """Return one frame/subset coordinate slice in kernel order."""
     frames = getattr(self, name + 'Frames', None)
@@ -361,7 +368,7 @@ def initProjector(self):
                 self.use_64bit_atomics = False
                 self.use_32bit_atomics = False
             if cupyROCm():
-                bOpt = ('-DHIP','-DCUPY_HIP_FINITE_ELLIPSE_POWER','-DPYTHON',)
+                bOpt = ('-DHIP','-DPYTHON',)
             else:
                 bOpt = ('-DCUDA','-DPYTHON',)
         else:
@@ -757,13 +764,11 @@ def initProjector(self):
                     self.knlPSF = mod.get_function('Convolution3D_f')
                     self.d_gaussPSF = cp.asarray(self.gaussK.ravel('F'))
 
-                # ``inf`` is the public box-support value.  hipRTC receives
-                # a finite sentinel instead, because ``isinf`` is unreliable
-                # for a runtime scalar when HIP fast-math is enabled.
-                ellipse_power_kernel = self.ellipsePower
-                if cupyROCm() and np.isinf(ellipse_power_kernel):
-                    ellipse_power_kernel = np.finfo(np.float32).max
-                    
+                # ``inf`` is the public box-support value.  Kernels receive a
+                # finite sentinel instead on every backend, because ``isinf``
+                # is unreliable under fast-math.
+                ellipse_power_kernel = _kernel_ellipse_power(self.ellipsePower)
+
                 if self.FPType in [1, 2, 3]:
                     self.kIndF = (cp.float32(self.global_factor), cp.float32(self.epps), cp.uint32(self.nRowsD), cp.uint32(self.det_per_ring), cp.float32(self.sigma_x),)
                     if self.SPECT:
@@ -1036,7 +1041,7 @@ def initProjector(self):
                     self.kIndF += 1
                     self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.ellipseRadiusZ))
                     self.kIndF += 1
-                    self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.ellipsePower))
+                    self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(_kernel_ellipse_power(self.ellipsePower)))
                     self.kIndF += 1
                 self.knlF.set_arg(self.kIndF, self.d_dPitch)
                 self.kIndF += 1
@@ -1126,7 +1131,7 @@ def initProjector(self):
                     self.kIndB += 1
                     self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.ellipseRadiusZ))
                     self.kIndB += 1
-                    self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.ellipsePower))
+                    self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(_kernel_ellipse_power(self.ellipsePower)))
                     self.kIndB += 1
                 self.knlB.set_arg(self.kIndB, self.d_dPitch)
                 self.kIndB += 1

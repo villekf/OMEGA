@@ -146,7 +146,12 @@ def _pack_scalar_kernel_params(self: Any, timestep: int, subset: int, volume: in
         float(self.ellipseRadiusY),
         float(self.ellipseRadiusZ),
     ))
-    f32('ellipsePower', float(self.ellipsePower))
+    # Kernels test for box support (ellipsePower = inf) with a finite threshold,
+    # since isinf() is unreliable under fast-math
+    _ellipsePower = float(self.ellipsePower)
+    if not np.isfinite(_ellipsePower):
+        _ellipsePower = float(np.finfo(np.float32).max)
+    f32('ellipsePower', _ellipsePower)
 
     u3('d_N', (nx, ny, nz))
     f3('b', (bx, by, bz))

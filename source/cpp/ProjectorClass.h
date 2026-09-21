@@ -301,7 +301,7 @@ using TimerPoint = std::chrono::steady_clock::time_point;
 // Append one kernel argument VAR. CUDA pushes its address into the argument vector VEC; OpenCL
 // sets it on KERNEL at the running index IDX, reporting any error inline via getErrorString.
 #if defined(CUDA) || defined(HIP)
-#define KARG(VEC, KERNEL, IDX, VAR) VEC.emplace_back(reinterpret_cast<void*>(&VAR))
+#define KARG(VEC, KERNEL, IDX, VAR) VEC.emplace_back(reinterpret_cast<void*>(&(VAR)))
 #define KARG_SCALAR(VEC, KERNEL, IDX, VAR) KARG(VEC, KERNEL, IDX, VAR)
 #define KARG_METAL_SLOT(IDX, SLOT) do {} while(0)
 #elif defined(METAL)
@@ -2239,14 +2239,40 @@ public:
 	// Public (unlike createCudaTexture3DFromHost and the CREATE_FLOAT_TEXTURE3D_FROM_HOST macro it wraps, which are
 	// only usable from inside this class) so that free functions such as the multi-GPU reconstruction
 	// path can build the FP input texture through a ProjectorClass object
+#if defined(CUDA) || defined(HIP)
+	// Release a texture/array previously created by makeImageTextureFrom{Host,Device} and tracked in
+	// ownedTextures/ownedArrays, if any, freeing it immediately instead of waiting for the destructor.
+	// Without this, repeated calls (e.g. multi_gpu_reconstruction.h type 1 allocating a new full-image
+	// FP input texture per subset/volume) leak one texture and CUDA array per call.
+	inline void releaseOwnedTexture(TEX3D_t& tex) {
+		if (tex != 0) {
+			for (size_t kk = 0; kk < ownedTextures.size(); kk++) {
+				if (ownedTextures[kk] == tex) {
+					// The kernel that reads this texture may still be in flight
+					getErrorString(cuStreamSynchronize(CLCommandQueue[0]));
+					getErrorString(cuTexObjectDestroy(ownedTextures[kk]));
+					getErrorString(cuArrayDestroy(ownedArrays[kk]));
+					ownedTextures.erase(ownedTextures.begin() + kk);
+					ownedArrays.erase(ownedArrays.begin() + kk);
+					tex = 0;
+					break;
+				}
+			}
+		}
+	}
+#endif
+
 	inline STATUS_t makeImageTextureFromHost(TEX3D_t& tex, TEXARRAY_t& array, const float* src,
 		const size_t X, const size_t Y, const size_t Z,
 		const decltype(BACKEND_TEXTURE_POINT) filter = BACKEND_TEXTURE_POINT,
 		const unsigned int flags = BACKEND_TEXTURE_DEFAULT_FLAGS) {
 		STATUS_t status = SUCCESS_VALUE;
+#if defined(CUDA) || defined(HIP)
+		releaseOwnedTexture(tex);
+#endif
 		CREATE_FLOAT_TEXTURE3D_FROM_HOST(tex, array, src, X, Y, Z, filter, flags);
 #if defined(CUDA) || defined(HIP)
-		// Track the CUarray/CUtexObject so the destructor can release them; OpenCL/Metal are tied to the object 
+		// Track the CUarray/CUtexObject so the destructor can release them; OpenCL/Metal are tied to the object
 		// lifetime (cl::Image3D / NS::SharedPtr) and need no tracking
 		if (status == SUCCESS_VALUE) {
 			ownedTextures.push_back(tex);
@@ -2267,7 +2293,9 @@ public:
 		const decltype(BACKEND_TEXTURE_POINT) filter = BACKEND_TEXTURE_POINT,
 		const unsigned int flags = BACKEND_TEXTURE_DEFAULT_FLAGS) {
 		STATUS_t status = SUCCESS_VALUE;
-		CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(tex, array, src, X, Y, Z, filter, flags);
+		releaseOwnedTexture(tex);
+		// hipDeviceptr_t is void*, so the const must be dropped before the macro's reinterpret_cast
+		CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(tex, array, const_cast<void*>(src), X, Y, Z, filter, flags);
 		if (status == SUCCESS_VALUE) {
 			ownedTextures.push_back(tex);
 			ownedArrays.push_back(array);
@@ -4912,11 +4940,14 @@ public:
 		STATUS_t status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kTemp = BPArgs;
-#elif defined(OPENCL)
+		const int ee = uu; // CUDA/HIP have no separate sensitivity-image index
+#else
+#if defined(OPENCL)
 		kernelIndBPSubIter = kernelIndBP;
-#endif // END CUDA
+#endif
         if (ee < 0)
 			ee = uu;
+#endif // END CUDA
 		if (inputScalars.listmode > 0 && compSens) {
 			kernelApu = kernelBP;
 			kernelBP = kernelSensList;

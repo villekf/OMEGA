@@ -914,6 +914,9 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         inputScalars.ellipseRadiusY = options.ellipseRadiusY;
         inputScalars.ellipseRadiusZ = options.ellipseRadiusZ;
         inputScalars.ellipsePower = options.ellipsePower;
+        // Kernels test for box support with a finite threshold, as isinf() is unreliable under fast-math
+        if (!std::isfinite(inputScalars.ellipsePower))
+            inputScalars.ellipsePower = std::numeric_limits<float>::max();
     } else {
         inputScalars.nColsD = options.Nang;
         inputScalars.nRowsD = options.Ndist;
@@ -961,7 +964,15 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         inputScalars.maskFPZ = options.maskFPZ;
     }
     if (inputScalars.normalization_correction) {
-        inputScalars.normZ = options.normZ;
+        // Derive normZ from the actual element count so a per-projection normalization supplied
+        // as a plain vector (normZ left at its nHeads-colliding default) is not misread as
+        // detector-head indexed. inputScalars.size_norm isn't set yet at this point in the Python
+        // path (omega_maincpp.cpp sets it from options.sizeNorm after copyStruct returns), so the
+        // raw options.sizeNorm field is used instead; nRowsD/nColsD/SPECT are already copied above.
+        if (inputScalars.SPECT && options.sizeNorm > 1 && inputScalars.nRowsD * inputScalars.nColsD > 0)
+            inputScalars.normZ = static_cast<uint32_t>(options.sizeNorm / (static_cast<uint64_t>(inputScalars.nRowsD) * inputScalars.nColsD));
+        else
+            inputScalars.normZ = options.normZ;
     }
     if (inputScalars.maskBP) {
         w_vec.maskBP = options.maskBP;

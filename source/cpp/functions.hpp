@@ -297,25 +297,31 @@ inline void largeDimFirst(scalarStruct& inputScalars, ProjectorClass& proj, cons
 	if (iter == 0) {
 		inputScalars.lDimStruct.NzOrig = inputScalars.Nz[0];
 		inputScalars.lDimStruct.imDimOrig = inputScalars.im_dim[0];
-        inputScalars.lDimStruct.bzOrig = VEC_Z(proj.b[0]);
+#ifndef CPU
+		inputScalars.lDimStruct.bzOrig = VEC_Z(proj.b[0]);
 		inputScalars.lDimStruct.bmaxZOrig = VEC_Z(proj.bmax[0]);
 		inputScalars.lDimStruct.d_Scale4ZOrig = VEC_Z(inputScalars.d_Scale4[0]);
+#endif
 	}
 	inputScalars.Nz[0] = inputScalars.lDimStruct.Nz[iter];
 	inputScalars.im_dim[0] = inputScalars.lDimStruct.imDim[iter];
+#ifndef CPU
 	VEC_Z(proj.d_N[0]) = inputScalars.lDimStruct.Nz[iter];
 	VEC_Z(proj.b[0]) = inputScalars.lDimStruct.bz[iter];
 	VEC_Z(proj.bmax[0]) = inputScalars.lDimStruct.bmaxZ[iter];
 	VEC_Z(inputScalars.d_Scale4[0]) = inputScalars.lDimStruct.d_Scale4Z[iter];
+#endif
 }
 
 inline void largeDimLast(scalarStruct& inputScalars, ProjectorClass& proj) {
 	inputScalars.Nz[0] = inputScalars.lDimStruct.NzOrig;
 	inputScalars.im_dim[0] = inputScalars.lDimStruct.imDimOrig;
+#ifndef CPU
 	VEC_Z(proj.d_N[0]) = inputScalars.lDimStruct.NzOrig;
 	VEC_Z(proj.b[0]) = inputScalars.lDimStruct.bzOrig;
 	VEC_Z(proj.bmax[0]) = inputScalars.lDimStruct.bmaxZOrig;
 	VEC_Z(inputScalars.d_Scale4[0]) = inputScalars.lDimStruct.d_Scale4ZOrig;
+#endif
 }
 
 // Fill the backprojection (aka right-hand side) with zeros

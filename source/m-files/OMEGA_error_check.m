@@ -29,8 +29,14 @@ options = convertOptions(options);
 % SPECT collimator ray shifts are stored once per detector head and detector
 % element.
 if options.SPECT
-    if options.normalization_correction && ndims(options.normalization) == 3
-        options.normZ = size(options.normalization, 3);
+    if options.normalization_correction && isfield(options, 'normalization') && numel(options.normalization) > 1
+        options.normZ = numel(options.normalization) / (options.nRowsD * options.nColsD);
+        if mod(options.normZ, 1) ~= 0 || ~(options.normZ == options.nProjections || options.normZ == options.nHeads)
+            error(['Normalization array has an invalid size. Must contain one image per projection [' ...
+                num2str(options.nRowsD) ' ' num2str(options.nColsD) ' ' num2str(options.nProjections) ...
+                '] or one image per detector head [' num2str(options.nRowsD) ' ' num2str(options.nColsD) ' ' ...
+                num2str(options.nHeads) '].'])
+        end
     end
     if ~isfield(options, 'DetectorVector') || isempty(options.DetectorVector)
         options.DetectorVector = zeros(options.nProjections, 1, 'uint32');
@@ -47,9 +53,17 @@ if options.SPECT
             numel(options.maskFP) ~= options.nRowsD * options.nColsD * options.nHeads
         error('Detector-indexed forward mask must contain one image for each detector head.')
     end
-    if options.normalization_correction && options.normZ == options.nHeads && ...
-            numel(options.normalization) ~= options.nRowsD * options.nColsD * options.nHeads
-        error('Detector-indexed normalization must contain one image for each detector head.')
+
+    % Implementation 4 (projector_mex.cpp) and implementation 2 with use_CPU (CPU_matrixfree, built
+    % from OpenCL_matrixfree.cpp with -DCPU and no GPU backend macro) both route through
+    % ProjectorClassCPU.h / projector_functions.h (see functions.hpp's #elif defined(CPU) branch),
+    % a separate plain C++ projector with no DetectorVector/per-head indexing at all. Implementation
+    % 1 already errors out for all SPECT data above.
+    if (options.implementation == 4 || (options.implementation == 2 && options.use_CPU)) && ...
+            ((options.normalization_correction && options.normZ == options.nHeads && options.normZ ~= options.nProjections) || ...
+             (options.useMaskFP && options.maskFPZ > 1 && options.maskFPZ == options.nHeads && options.maskFPZ ~= options.nProjections))
+        error(['Detector-head indexed normalization/forward projection mask (nRowsD x nColsD x nHeads) is not ' ...
+            'supported by the CPU implementation. Use a GPU implementation or supply one image per projection.'])
     end
 
     if ismember(options.projector_type, [1, 11, 12, 2, 21, 22, 3, 13, 23, 31, 32, 33])
@@ -73,6 +87,14 @@ if options.SPECT
         end
         if detectorSize > 0 && sourceSize > 0 && detectorSize ~= sourceSize
             error('rayShiftsDetector and rayShiftsSource must have the same compact size.')
+        end
+
+        if ~(options.ellipsePower == 2 || isinf(options.ellipsePower))
+            error(['ellipsePower must be 2 (elliptic cylinder) or Inf (box); other superellipse ' ...
+                'powers are not supported.'])
+        end
+        if options.ellipseRadiusX <= 0 || options.ellipseRadiusY <= 0 || options.ellipseRadiusZ <= 0
+            error('ellipseRadiusX, ellipseRadiusY and ellipseRadiusZ must all be greater than zero.')
         end
     end
 end
