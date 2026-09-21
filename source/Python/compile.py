@@ -25,22 +25,36 @@ def CommandLine(args=None):
 
     if os.name == 'nt':
         def find_visual_studio():
-            # Find Visual Studio installation
-            vs_paths = [
-					r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat",
-					r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat",
-					r"C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat",
-					r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat",
-					r"C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat",
-					r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat",
-					r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvarsall.bat",
-					r"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvarsall.bat",
-					r"C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\VC\Auxiliary\Build\vcvarsall.bat",
-				]
-            for path in vs_paths:
-                    if os.path.exists(path):
-                        return path
-                    return None
+            # Find vcvarsall.bat of the newest Visual Studio installation that has the C++ tools
+            vcvarsSubPath = os.path.join('VC', 'Auxiliary', 'Build', 'vcvarsall.bat')
+            # 1. Already inside a Visual Studio developer prompt
+            if 'VSINSTALLDIR' in os.environ:
+                path = os.path.join(os.environ['VSINSTALLDIR'], vcvarsSubPath)
+                if os.path.exists(path):
+                    return path
+            # 2. vswhere.exe finds VS 2017 and newer of any edition (incl. Build Tools) in any install location
+            programFilesX86 = os.environ.get('ProgramFiles(x86)', r'C:\Program Files (x86)')
+            vswhere = os.path.join(programFilesX86, 'Microsoft Visual Studio', 'Installer', 'vswhere.exe')
+            if os.path.exists(vswhere):
+                try:
+                    result = subprocess.run([vswhere, '-latest', '-products', '*', '-requires',
+                        'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath'],
+                        capture_output=True, text=True, timeout=30)
+                    for installPath in result.stdout.splitlines():
+                        path = os.path.join(installPath.strip(), vcvarsSubPath)
+                        if os.path.exists(path):
+                            return path
+                except (OSError, subprocess.SubprocessError):
+                    pass
+            # 3. Default install locations, newest version first (VS 2026 installs to the folder "18")
+            programFiles = os.environ.get('ProgramFiles', r'C:\Program Files')
+            for version in ['18', '2022', '2019', '2017']:
+                for root in [programFiles, programFilesX86]:
+                    for edition in ['Enterprise', 'Professional', 'Community', 'BuildTools', 'Preview']:
+                        path = os.path.join(root, 'Microsoft Visual Studio', version, edition, vcvarsSubPath)
+                        if os.path.exists(path):
+                            return path
+            return None
         def compileWindows(compiler_cmd, succeeded, failed):
             import tempfile
             vcvarsall_path = find_visual_studio()
