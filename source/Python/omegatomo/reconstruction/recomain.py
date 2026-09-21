@@ -19,6 +19,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 """
 import ctypes
 import numpy as np
+import warnings
 
 def transferData(options):
     """
@@ -733,11 +734,13 @@ def reconstructions_main(options):
             output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], options.Nt), order = 'F')
         if options.subsets == 1 and options.storeFP:
             FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins), order = 'F')
-    finally:
-        toc = time.perf_counter()
-        if options.verbose > 0:
-            print(f"Reconstruction took {toc - tic:0.4f} seconds")
-        if options.storeResidual:
-            return output, FPOutput, residual
-        else:
-            return output, FPOutput
+    except Exception as e:
+        # Keep the reconstruction even if the output dimensions do not match
+        warnings.warn(f'Could not reshape the reconstruction output ({e}); returning the unreshaped (flat) arrays instead.')
+    toc = time.perf_counter()
+    if options.verbose > 0:
+        print(f"Reconstruction took {toc - tic:0.4f} seconds")
+    if options.storeResidual:
+        return output, FPOutput, residual
+    else:
+        return output, FPOutput
