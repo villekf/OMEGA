@@ -399,7 +399,7 @@ if options.implementation == 3 && exist('OpenCL_matrixfree_multi_gpu','file') ~=
         'If you already ran install_mex, make sure you have installed OpenCL and it can be found on path.'])
 end
 if options.implementation == 5 && exist('OpenCL_matrixfree_multi_gpu','file') ~= 3 && exist('CUDA_matrixfree_multi_gpu','file') ~= 3
-    error(['Multi-GPU reconstruction (implementation 5) selected, but neither the OpenCL nor the CUDA MEX-files were installed. Run install_mex to build them.' sprintf('\n') ...
+    error(['Implementation 5 selected, but neither the OpenCL nor the CUDA MEX-files were installed. Run install_mex to build them.' sprintf('\n') ...
         'If you already ran install_mex, make sure you have installed OpenCL (or, for gpuArray support, the CUDA toolkit) and it can be found on path.'])
 end
 if options.implementation == 3 && NMLOS
