@@ -547,25 +547,26 @@ def reconstructions_main(options):
         root = tk.Tk()
         root.withdraw()
         fpath = askopenfilename(title='Select randoms datafile',filetypes=(('NPY, NPZ and MAT files','*.mat *.npy *.npz'),('All','*.*')))
-        if len(options.fpath) == 0:
+        if len(fpath) == 0:
             print('No file selected, disabling randoms correction')
             options.randoms_correction = False
-        if fpath[len(fpath)-3:len(fpath)+1:1] == 'mat' and options.randoms_correction:
-            from pymatreader import read_mat
-            var = read_mat(fpath)
-            try:
-                options.SinDelayed = np.array(var["SinDelayed"],order='F')
-            except KeyError:
-                print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed. Disabling randoms correction')
-                options.randoms_correction = False
-        elif fpath[len(fpath)-3:len(fpath)+1:1] == 'npy':
-            options.SinDelayed = np.load(fpath)
-        elif fpath[len(fpath)-3:len(fpath)+1:1] == 'npz':
-            varList = np.load(fpath)
-            try:
-                options.SinDelayed = varList['SinDelayed']
-            except KeyError:
-                print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed. Disabling randoms correction')
+        else:
+            if fpath[len(fpath)-3:len(fpath)+1:1] == 'mat' and options.randoms_correction:
+                from pymatreader import read_mat
+                var = read_mat(fpath)
+                try:
+                    options.SinDelayed = np.array(var["SinDelayed"],order='F')
+                except KeyError:
+                    print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed. Disabling randoms correction')
+                    options.randoms_correction = False
+            elif fpath[len(fpath)-3:len(fpath)+1:1] == 'npy':
+                options.SinDelayed = np.load(fpath)
+            elif fpath[len(fpath)-3:len(fpath)+1:1] == 'npz':
+                varList = np.load(fpath)
+                try:
+                    options.SinDelayed = varList['SinDelayed']
+                except KeyError:
+                    print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed. Disabling randoms correction')
     if options.TOF and options.TOF_bins_used == 1:
         options.TOF_bins = options.TOF_bins_used
         options.SinM = np.sum(options.SinM, axis=3)
@@ -669,9 +670,8 @@ def reconstructions_main(options):
     # point_ptr = ctypes.pointer(options.param)
     if isinstance(options.SinM, list):
         options.SinM = np.concatenate(options.SinM)
-    if not options.SinM.dtype == 'float32' and not options.largeDim and options.loadTOF:
-        options.SinM = options.SinM.astype(np.float32)
-    elif not options.SinM.dtype == 'uint16' and not options.SinM.dtype == 'uint8':
+    keep_int = options.SinM.dtype in (np.uint16, np.uint8) and (options.largeDim or not options.loadTOF)
+    if not keep_int and not options.SinM.dtype == 'float32':
         options.SinM = options.SinM.astype(np.float32)
     if options.SinM.ndim > 1:
         options.SinM = options.SinM.ravel('F')
@@ -726,14 +726,26 @@ def reconstructions_main(options):
     if status != 0:
         raise RuntimeError(f'Native reconstruction failed with status {status}; see the backend diagnostics above.')
     try:
+        # Number of saved image volumes per timestep: options.saveNIter/save_iter
+        # cause the native code to store one volume per requested iteration
+        # (plus the initial estimate), in addition to the per-timestep volumes.
+        if options.saveNIter.size > 0:
+            numSaves = int(options.saveNIter.size) + 1
+        elif options.save_iter:
+            numSaves = int(options.Niter) + 1
+        else:
+            numSaves = 1
         if options.useMultiResolutionVolumes and not options.storeMultiResolution:
             output = output.reshape((options.NxOrig, options.NyOrig, options.NzOrig, -1), order = 'F')
         elif not options.storeMultiResolution and options.Nt == 1:
             output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], -1), order = 'F')
+        elif numSaves > 1:
+            # Memory layout (fastest to slowest): spatial voxels, timestep, save index
+            output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], options.Nt, numSaves), order = 'F')
         else:
             output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], options.Nt), order = 'F')
         if options.subsets == 1 and options.storeFP:
-            FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins), order = 'F')
+            FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins, options.Niter), order = 'F')
     except Exception as e:
         # Keep the reconstruction even if the output dimensions do not match
         warnings.warn(f'Could not reshape the reconstruction output ({e}); returning the unreshaped (flat) arrays instead.')

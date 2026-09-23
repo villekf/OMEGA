@@ -77,9 +77,10 @@ def applyMeasPreconditioning(options, var):
                 else:
                     var = cp.reshape(var, (options.nRowsD, options.nColsD, var.size // (options.nRowsD * options.nColsD)), order='F')
                 temp = cp.fft.fft(var, n=options.Nf, axis=0)
-                temp *= options.filterG.reshape((-1, 1, 1), order='F')
+                filterShape = (-1,) + (1,) * (var.ndim - 1)
+                temp *= options.filterG.reshape(filterShape, order='F')
                 temp = cp.fft.ifft(temp, axis=0)
-                var = cp.real(temp[:var.shape[0], :, :]).ravel(order='F')
+                var = cp.real(temp[:var.shape[0], ...]).ravel(order='F')
                 
     return var
             
@@ -139,7 +140,8 @@ def circulantInverse(options, var):
         else:
             var = cp.reshape(var, (options.nRowsD, options.nColsD, var.size // (options.nRowsD * options.nColsD)), order='F')
         temp = cp.fft.fft(var, n=options.Nf, axis=0)
-        temp /= options.FilterG.reshape((-1, 1, 1), order='F')
+        filterShape = (-1,) + (1,) * (var.ndim - 1)
+        temp /= options.FilterG.reshape(filterShape, order='F')
         temp = cp.fft.ifft(temp, axis=0)
-        var = cp.real(temp[:var.shape[0], :, :]).ravel(order='F')
+        var = cp.real(temp[:var.shape[0], ...]).ravel(order='F')
     return var

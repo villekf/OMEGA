@@ -639,21 +639,27 @@ class projectorClass:
                 self.angles += self.offangle
                 self.swivelAngles += self.offangle
             
-            if self.vaimennus.size > 0 and self.offangle != 0:
-                from skimage.transform import rotate
-                self.vaimennus = rotate(self.vaimennus, self.offangle)
+            if self.vaimennus.size > 0:
+                if self.offangle != 0:
+                    from skimage.transform import rotate
+                    self.vaimennus = rotate(self.vaimennus, self.offangle)
+                if self.vaimennus.ndim == 1:
+                    Nx = self.Nx[0].item() if isinstance(self.Nx, np.ndarray) else self.Nx
+                    Ny = self.Ny[0].item() if isinstance(self.Ny, np.ndarray) else self.Ny
+                    Nz = self.Nz[0].item() if isinstance(self.Nz, np.ndarray) else self.Nz
+                    self.vaimennus = np.reshape(self.vaimennus, (Nx, Ny, Nz), order='F')
                 if self.flipImageX:
-                    self.vaimennus = np.flip(self.vaimennus, 2)
-                if self.flipImageY:
                     self.vaimennus = np.flip(self.vaimennus, 1)
+                if self.flipImageY:
+                    self.vaimennus = np.flip(self.vaimennus, 0)
                 if self.flipImageZ:
-                    self.vaimennus = np.flip(self.vaimennus, 3)
-                    
+                    self.vaimennus = np.flip(self.vaimennus, 2)
+
             if self.flipImageZ:
                 if isinstance(self.SinM, list):
-                    self.SinM = [np.flip(frame, axis=2) for frame in self.SinM]
+                    self.SinM = [np.flip(frame, axis=1) for frame in self.SinM]
                 else:
-                    self.SinM = np.flip(self.SinM, axis=2)
+                    self.SinM = np.flip(self.SinM, axis=1)
             
             if 'n_rays_transaxial' not in self.__dict__:
                 self.n_rays_transaxial = int(np.sqrt(self.nRays))
@@ -741,7 +747,7 @@ class projectorClass:
                 self.TOFCenter = np.float32(self.TOFCenter)
         else:
             self.sigma_x = 0.
-        if self.ordinaryPoisson == None:
+        if self.ordinaryPoisson is None:
             self.ordinaryPoisson = self.corrections_during_reconstruction
         compact_mask_size = self.nRowsD * self.nColsD * self.nHeads if self.SPECT else -1
         valid_projection_mask_sizes = (self.nRowsD * self.nColsD, self.nRowsD * self.nColsD * self.nProjections, compact_mask_size)
@@ -791,28 +797,21 @@ class projectorClass:
         if self.Nt > 1 and self.subsetType == 3:
             raise ValueError('Subset type 3 is not supported with dynamic data!')
         temp = self.pseudot
-        if isinstance(temp, int):
-            if temp > 0:
-                if isinstance(self.cryst_per_block, np.ndarray):
-                    self.pseudot = np.array(self.cryst_per_block[0].item() + 1,dtype=np.uint32)
-                else:
-                    self.pseudot = np.array(self.cryst_per_block + 1,dtype=np.uint32)
-            else:
-                self.pseudot = np.empty(0, dtype = np.uint32)
+        if isinstance(temp, np.ndarray):
+            temp = int(temp.reshape(-1)[0].item()) if temp.size > 0 else 0
         elif temp is None:
-            self.pseudot = np.empty(0, dtype = np.uint32)
-        elif isinstance(temp, np.ndarray):
-            if len(temp) > 0 and np.sum(temp) > 0:
-                self.pseudot = np.zeros(temp, dtype=np.uint32)
-                for kk in range(1,temp + 1):
-                    if isinstance(self.cryst_per_block, np.ndarray):
-                        self.pseudot[kk - 1] = np.array(self.cryst_per_block[0].item() + 1,dtype=np.uint32) * kk
-                    else:
-                        self.pseudot[kk - 1] = np.array(self.cryst_per_block + 1,dtype=np.uint32) * kk
+            temp = 0
         else:
-            self.pseudot = np.array(0,dtype=np.uint32)
-        # elif np.sum(temp) == 0 and temp.size > 0:
-        #     self.pseudot = np.empty(0, dtype = np.uint32)
+            temp = int(temp)
+        if temp > 0:
+            self.pseudot = np.zeros(temp, dtype=np.uint32)
+            for kk in range(1, temp + 1):
+                if isinstance(self.cryst_per_block, np.ndarray):
+                    self.pseudot[kk - 1] = np.uint32(self.cryst_per_block[0].item() + 1) * kk
+                else:
+                    self.pseudot[kk - 1] = np.uint32(self.cryst_per_block + 1) * kk
+        else:
+            self.pseudot = np.empty(0, dtype = np.uint32)
         # Whether list-mode or sinogram/raw data is used
         xList = False
         if isinstance(self.x, list):
@@ -932,14 +931,14 @@ class projectorClass:
                     else:
                         if self.x.shape[0] == 2:
                             if self.x.flags.f_contiguous:
-                                self.x = np.row_stack((self.x[0,:], self.y[0,:], self.z[0,:], self.x[1,:], self.y[1,:], self.z[1,:]))
+                                self.x = np.vstack((self.x[0,:], self.y[0,:], self.z[0,:], self.x[1,:], self.y[1,:], self.z[1,:]))
                             else:
-                                self.x = np.asfortranarray(np.row_stack((np.self.x[0,:], self.y[0,:], self.z[0,:], self.x[1,:], self.y[1,:], self.z[1,:])))
+                                self.x = np.asfortranarray(np.vstack((self.x[0,:], self.y[0,:], self.z[0,:], self.x[1,:], self.y[1,:], self.z[1,:])))
                         elif self.x.ndim >= 2 and self.x.shape[1] == 2:
                             if self.x.flags.f_contiguous:
-                                self.x = np.row_stack((self.x[:,0].T(), self.y[:,0].T(), self.z[:,0].T(), self.x[:,1].T(), self.y[:,1].T(), self.z[:,1].T()))
+                                self.x = np.vstack((self.x[:,0], self.y[:,0], self.z[:,0], self.x[:,1], self.y[:,1], self.z[:,1]))
                             else:
-                                self.x = np.asfortranarray(np.row_stack((self.x[:,0].T(), self.y[:,0].T(), self.z[:,0].T(), self.x[:,1].T(), self.y[:,1].T(), self.z[:,1].T())))
+                                self.x = np.asfortranarray(np.vstack((self.x[:,0], self.y[:,0], self.z[:,0], self.x[:,1], self.y[:,1], self.z[:,1])))
                 # y = 0
                 x_det = 0
                 z_det = 0
@@ -1258,7 +1257,7 @@ class projectorClass:
         if not(self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.PKMA or self.FISTA or self.FISTAL1 or self.MBSREM or self.SPS or self.MRAMLA) and any(self.precondTypeImage):
             print("Image-based preconditioning selected, but the selected algorithm(s) do not support preconditioning. No preconditioning will be performed.")
             print("Supported algorithms are: MBSREM, MRAMLA, PKMA, SPS, PDHG, PDHGL1, PDHGKL, FISTA, FISTAL1, PDDY")
-            self.precondTypeImage = np.array([False, False, False, False, False, False])
+            self.precondTypeImage = np.full((7, 1), False)
         
         if np.sum(self.precondTypeImage[0:3]) > 1:
             raise ValueError("Only one of the first 3 image-based preconditioners can be selected at a time!")
@@ -1266,7 +1265,7 @@ class projectorClass:
         if not(self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.PKMA or self.FISTA or self.FISTAL1 or self.MBSREM or self.SPS or self.MRAMLA) and any(self.precondTypeMeas):
             print("Measurement-based preconditioning selected, but the selected algorithm does not support preconditioning. No preconditioning will be performed.")
             print("Supported algorithms are: MBSREM, MRAMLA, PKMA, SPS, PDHG, PDHGL1, PDHGKL, FISTA, FISTAL1, PDDY")
-            self.precondTypeMeas = np.array([False, False])        
+            self.precondTypeMeas = np.full((2, 1), False)
         
         if not self.CT and not self.SPECT and self.span > self.ring_difference and self.NSinos > 1 and not self.use_raw_data:
             raise ValueError(f"Span value cannot be larger than ring difference ({self.ring_difference})!")
@@ -1363,7 +1362,7 @@ class projectorClass:
             raise ValueError('RDP with include corners is supported only on OpenCL and CUDA!')
         if self.TV and self.TVtype == 2 and not self.TV_use_anatomical:
             print('Using TV type = 2, but no anatomical reference set. Using TV type = 1 instead!')
-            self.TVtype == 1
+            self.TVtype = 1
         if self.projector_type not in [1, 2, 3, 4, 5, 6, 11, 14, 12, 13, 16, 21, 22, 23, 24, 26, 31, 32, 33, 34, 41, 42, 43, 44, 45, 51, 15, 54, 55, 61, 62, 66]:
             raise ValueError('The selected projector type is not supported!')
         if self.APLS and not os.path.exists(self.APLS_ref_image) and self.MAP and not type(self.APLS_ref_image) == np.ndarray:
@@ -1401,7 +1400,10 @@ class projectorClass:
             
         if self.projector_type not in (1, 2, 6, 11, 16, 21, 22, 26, 61, 62, 66) and self.SPECT:
             raise ValueError('SPECT only supports projector types 1, 2 and 6, plus supported hybrid variants!')
-        
+
+        if self.SPECT and self.projector_type in (12, 21, 16, 61, 26, 62):
+            print('Warning: The forward and backward projector types differ. The backprojector is not the exact adjoint of the forward projector, so gradient-based algorithms will use inexact gradients.')
+
         if self.projector_type in (6, 16, 26, 61, 62, 66):
             if self.subsets > 1 and self.subsetType < 8:
                 raise ValueError('Subset types 0-7 are not supported with projector type 6!')
@@ -1740,11 +1742,11 @@ class projectorClass:
                 if self.oOffsetZ != 0 or self.oOffsetX != 0 or self.oOffsetY != 0:
                     print(f'Object offset is [{self.oOffsetX}, {self.oOffsetY}, {self.oOffsetZ}] (XYZ).')
                     
-            if self.normalization_correction and not self.CT:
-                print('Normalization correction ON.')
-            elif self.normalization_correction and self.compute_normalization and not self.CT:
+            if self.normalization_correction and self.compute_normalization and not self.CT:
                 print('Normalization correction cannot be applied when computing normalization coefficients. Disabling normalization correction.')
                 self.normalization_correction = False
+            elif self.normalization_correction and not self.CT:
+                print('Normalization correction ON.')
             elif self.compute_normalization and not self.CT:
                 print('Computing normalization coefficients.')
             if not (self.compute_normalization or self.only_sinos):
@@ -2146,7 +2148,7 @@ class projectorClass:
         
     
     def __imul__(self, B):
-            return self.__mul__(self, B)
+            return self.__mul__(B)
     
     def __mul__(self, B):
         if self.trans:

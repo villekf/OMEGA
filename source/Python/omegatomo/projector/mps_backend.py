@@ -618,9 +618,13 @@ def _require_mps_float32_contiguous(tensor: Any, name: str) -> Any:
 
 
 def _projection_size(self: Any, timestep: int, subset: int) -> int:
+    # Non-listmode TOF kernels write NBINS values per LOR, at idx + to * m_size
+    # (see projectorType123.cl/projectorType4.cl); listmode TOF writes a single
+    # value per event (the TOFid-selected bin only), so no extra factor there.
+    tof_bins = int(self.TOF_bins_used) if (self.TOF and self.listmode == 0) else 1
     if self.subsetType > 7 or self.subsets == 1:
-        return int(getattr(self, 'measurement_nRowsD', self.nRowsD) * getattr(self, 'measurement_nColsD', self.nColsD) * self.nProjSubset[timestep, subset])
-    return int(self.nMeasSubset[timestep, subset])
+        return int(getattr(self, 'measurement_nRowsD', self.nRowsD) * getattr(self, 'measurement_nColsD', self.nColsD) * self.nProjSubset[timestep, subset]) * tof_bins
+    return int(self.nMeasSubset[timestep, subset]) * tof_bins
 
 
 def forward_projection_mps(self: Any, f: Any, subset: int, timestep: int) -> Any:

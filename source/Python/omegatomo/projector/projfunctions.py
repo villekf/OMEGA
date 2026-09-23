@@ -13,6 +13,85 @@ def _mask_fp_resource(self, subset):
     return self.d_maskFP
 
 
+def _geometry_buffer(buffers, timestep, subset):
+    """Select the per-subset d_x/d_z geometry buffer, falling back to the
+    shared index-0 buffer whenever init.py (_initialize_coordinate_buffers)
+    did not build a separate entry for this subset. This is the single
+    source of truth for that choice -- callers must not re-derive the
+    CT/PET/SPECT/listmode condition by hand, since that has repeatedly
+    drifted out of sync with the buffer-population logic in init.py."""
+    per = buffers[timestep]
+    return per[subset] if per[subset] is not None else per[0]
+
+
+def _tof_output_bins(self):
+    """Number of TOF bins the FP output measurement vector must be widened by.
+
+    The non-listmode TOF kernels (projectorType123.cl, projectorType4.cl) write
+    NBINS values per LOR at idx + to * m_size (NBINS == self.TOF_bins_used, the
+    -DNBINS the kernel was compiled with), so the output buffer must have
+    m_size * TOF_bins_used elements or the kernel writes/reads out of bounds.
+    Listmode TOF instead writes a single value per event (only the TOFid-selected
+    bin), so m_size alone is already correct there -- no extra factor.
+    """
+    return int(self.TOF_bins_used) if (self.TOF and self.listmode == 0) else 1
+
+
+def _expected_measurement_length(self, timestep, subset):
+    """The number of elements the FP output / BP input measurement vector must
+    have for this (timestep, subset): the base per-projection size (subsetType
+    > 7 or subsets == 1 uses the full nRowsD*nColsD*nProjSubset image, other
+    subset types use the raw nMeasSubset LOR count) times the TOF bin factor
+    from _tof_output_bins. Single source of truth for both the FP allocation
+    size and the BP input-length validation, so they cannot drift apart."""
+    if self.subsetType > 7 or self.subsets == 1:
+        base = int(self.nRowsD) * int(self.nColsD) * int(self.nProjSubset[timestep, subset].item())
+    else:
+        base = int(self.nMeasSubset[timestep, subset].item())
+    return base * _tof_output_bins(self)
+
+
+def _element_count(x):
+    """Cheap host-side element count for an AF/torch/CuPy/PyOpenCL array --
+    no device sync, no host copy."""
+    if hasattr(x, 'elements'):
+        return int(x.elements())
+    if hasattr(x, 'numel'):
+        return int(x.numel())
+    return int(x.size)
+
+
+def _validate_forward_input(self, f):
+    """Validate the FP input image element count(s) against N[k] before any
+    device work happens, so a caller-side size mistake raises a clear
+    ValueError instead of letting a kernel read/write out of bounds."""
+    N = np.asarray(self.N).reshape(-1)
+    if isinstance(f, list):
+        volume_count = int(self.nMultiVolumes) + 1
+        if len(f) != volume_count:
+            raise ValueError(f'Expected {volume_count} volume inputs, got {len(f)}')
+        for k, image in enumerate(f):
+            count = _element_count(image)
+            expected = int(N[k])
+            if count != expected:
+                raise ValueError(f'Volume {k} has {count} elements; expected {expected}')
+    else:
+        count = _element_count(f)
+        expected = int(N[0])
+        if count != expected:
+            raise ValueError(f'Input image has {count} elements; expected {expected}')
+
+
+def _validate_backward_input(self, y, timestep, subset):
+    """Validate the BP input measurement length before any device work
+    happens, so a caller-side size mistake raises a clear ValueError instead
+    of letting a kernel read/write out of bounds."""
+    count = _element_count(y)
+    expected = _expected_measurement_length(self, timestep, subset)
+    if count != expected:
+        raise ValueError(f'Backprojection input has {count} elements; expected {expected}')
+
+
 def conv3D(self, f, ii = 0):
     if getattr(self, "useMetal", False):
         raise NotImplementedError("The separate PSF convolution kernel is not yet wired to the Metal/MPS bridge.")
@@ -24,7 +103,7 @@ def conv3D(self, f, ii = 0):
         if self.useCuPy:
             import cupy as cp
         else:
-            import pycuda as cuda
+            raise ValueError('PyCUDA is no longer supported. Please use CuPy.')
     else:
         import pyopencl as cl
     if self.useAF:
@@ -39,36 +118,22 @@ def conv3D(self, f, ii = 0):
         if self.useCUDA:
             if self.useTorch:
                 output = torch.zeros(self.N[ii].item(), dtype=torch.float32, device='cuda')
-            elif self.useCuPy:
-                output = cp.zeros(self.N[ii].item(), dtype=cp.float32)
             else:
-                output = cuda.gpuarray.zeros(self.N[ii].item(), dtype=np.float32)
+                output = cp.zeros(self.N[ii].item(), dtype=cp.float32)
         else:
             output = cl.array.zeros(self.queue, self.N[ii].item(), dtype=cl.cltypes.float)
         if not self.useCUDA:
             self.knlPSF.set_arg(kInd, f.data)
     if self.useCUDA:
-        if self.useCuPy:
-            if self.useTorch:
-                fD = cp.asarray(f)
-                outputD = cp.asarray(output)
-                self.knlPSF((globalSize[0] // 16, globalSize[1] // 16, globalSize[2] // 1), (16,16,1),(fD, outputD, self.d_gaussPSF, cp.int32(self.g_dim_x), cp.int32(self.g_dim_y), cp.int32(self.g_dim_z)))
-            else:
-                self.knlPSF((globalSize[0] // 16, globalSize[1] // 16, globalSize[2] // 1), (16,16,1),(f, output, self.d_gaussPSF, cp.int32(self.g_dim_x), cp.int32(self.g_dim_y), cp.int32(self.g_dim_z)))
+        # Convolution3D_f (auxKernels.cl) now splits its trailing int3 N (image dimensions)
+        # into three separate ints under -DPYTHON, matching every other vector-typed kernel
+        # argument in this codebase (see RDPKernel/TVKernel/NLM for the same pattern).
+        if self.useTorch:
+            fD = cp.asarray(f)
+            outputD = cp.asarray(output)
+            self.knlPSF((globalSize[0] // 16, globalSize[1] // 16, globalSize[2] // 1), (16,16,1),(fD, outputD, self.d_gaussPSF, cp.int32(self.g_dim_x), cp.int32(self.g_dim_y), cp.int32(self.g_dim_z), cp.int32(self.Nx[ii].item()), cp.int32(self.Ny[ii].item()), cp.int32(self.Nz[ii].item())))
         else:
-            if self.useTorch:
-                class Holder(cuda.driver.PointerHolderBase):
-                    def __init__(self, t):
-                        super(Holder, self).__init__()
-                        self.t = t
-                        self.gpudata = t.data_ptr()
-                    def get_pointer(self):
-                        return self.t.data_ptr()
-                fD = Holder(f)
-                outputD = Holder(output)
-                self.knlPSF(fD, outputD, self.d_gaussPSF.gpudata, np.int32(self.g_dim_x), np.int32(self.g_dim_y), np.int32(self.g_dim_z), block=(16,16,1), grid=(globalSize[0], globalSize[1], globalSize[2]))
-            else:
-                self.knlPSF(f.gpudata, output.gpudata, self.d_gaussPSF.gpudata, np.int32(self.g_dim_x), np.int32(self.g_dim_y), np.int32(self.g_dim_z), block=(16,16,1), grid=(globalSize[0], globalSize[1], globalSize[2]))
+            self.knlPSF((globalSize[0] // 16, globalSize[1] // 16, globalSize[2] // 1), (16,16,1),(f, output, self.d_gaussPSF, cp.int32(self.g_dim_x), cp.int32(self.g_dim_y), cp.int32(self.g_dim_z), cp.int32(self.Nx[ii].item()), cp.int32(self.Ny[ii].item()), cp.int32(self.Nz[ii].item())))
         if self.useTorch:
             torch.cuda.synchronize()
     else:
@@ -87,6 +152,8 @@ def conv3D(self, f, ii = 0):
         self.knlPSF.set_arg(kInd, (cl.cltypes.int)(self.g_dim_y))
         kInd += 1
         self.knlPSF.set_arg(kInd, (cl.cltypes.int)(self.g_dim_z))
+        kInd += 1
+        self.knlPSF.set_arg(kInd, cl.cltypes.make_int3(self.Nx[ii].item(), self.Ny[ii].item(), self.Nz[ii].item()))
         cl.enqueue_nd_range_kernel(self.queue, self.knlPSF, globalSize, (16, 16, 1))
         self.queue.finish()
     if self.useAF:
@@ -100,6 +167,10 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
         timestep = self.timestep
     timestep = int(timestep)
     subset = int(subset)
+    if isinstance(f, list):
+        # Work on a shallow copy so PSF convolution below (which replaces f[k] in place)
+        # never mutates the caller's own list.
+        f = list(f)
     if self.useMetal:
         from omegatomo.projector.mps_backend import forward_projection_mps
         return forward_projection_mps(self, f, subset, timestep)
@@ -147,6 +218,7 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                 output += partial
             return output
     else:
+        _validate_forward_input(self, f)
         if self.nMultiVolumes > 0 and not(isinstance(f,list)):
             volumes = self.nMultiVolumes
             self.nMultiVolumes = 0
@@ -160,22 +232,17 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                     elif self.listmode > 0:
                         apu = self.x.ravel()
                         self.d_x[timestep][0] = cp.asarray(apu[self.nMeas[timestep * self.subsets + subset] * 6 : self.nMeas[timestep * self.subsets + subset + 1] * 6])
+                measLen = _expected_measurement_length(self, timestep, subset)
                 if self.useTorch:
                     import torch
-                    if self.subsetType > 7 or self.subsets == 1:
-                        y = torch.zeros(self.nRowsD * self.nColsD * self.nProjSubset[timestep, subset].item(), dtype=torch.float32, device='cuda')
-                    else:
-                        y = torch.zeros(self.nMeasSubset[timestep, subset].item(), dtype=torch.float32, device='cuda')
+                    y = torch.zeros(measLen, dtype=torch.float32, device='cuda')
                     yD = cp.asarray(y)
                 else:
-                    if self.subsetType > 7 or self.subsets == 1:
-                        y = cp.zeros(self.nRowsD * self.nColsD * self.nProjSubset[timestep, subset].item(), dtype=cp.float32)
-                    else:
-                        y = cp.zeros(self.nMeasSubset[timestep, subset].item(), dtype=cp.float32)
+                    y = cp.zeros(measLen, dtype=cp.float32)
                 for k in range(self.nMultiVolumes + 1):
                     if isinstance(f,list):
                         if self.use_psf:
-                            f[k] = self.computeConvolution(f[k])
+                            f[k] = self.computeConvolution(f[k], k)
                         if self.useTorch:
                             fD = cp.asarray(f[k])
                     else:
@@ -275,14 +342,8 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                             kIndLoc += (yD,)
                         else:
                             kIndLoc += (y,)
-                        if (self.listmode == 0 and not self.CT):
-                            kIndLoc += (self.d_x[timestep][0],)
-                        else:
-                            kIndLoc += (self.d_x[timestep][subset], )
-                        if (self.CT or self.PET or self.listmode > 0):
-                            kIndLoc += (self.d_z[timestep][subset],)
-                        else:
-                            kIndLoc += (self.d_z[timestep][0],)
+                        kIndLoc += (_geometry_buffer(self.d_x, timestep, subset),)
+                        kIndLoc += (_geometry_buffer(self.d_z, timestep, subset),)
                         if self.useMaskFP:
                             kIndLoc += (_mask_fp_resource(self, subset),)
                         kIndLoc += (cp.int64(self.nProjSubset[timestep, subset].item()),)
@@ -298,8 +359,8 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                         kIndLoc += (cp.uint32(subset),)
                         kIndLoc += (cp.int32(k),)
                     elif self.FPType == 5:
-                        kIndLoc += (self.d_x[timestep][subset], )
-                        kIndLoc += (self.d_z[timestep][subset],)
+                        kIndLoc += (_geometry_buffer(self.d_x, timestep, subset),)
+                        kIndLoc += (_geometry_buffer(self.d_z, timestep, subset),)
                         # self.knlF.set_arg(kIndLoc, d_im)
                         # kIndLoc += 1
                         # self.knlF.set_arg(kIndLoc, d_imInt)
@@ -318,14 +379,8 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                             kIndLoc += (_mask_fp_resource(self, subset),)
                         if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
                             kIndLoc += (cp.int64(self.nProjSubset[timestep, subset].item()),)
-                        if (((self.listmode == 0 and not (self.CT or self.SPECT)) or self.useIndexBasedReconstruction)) or (not self.loadTOF and self.listmode > 0):
-                            kIndLoc += (self.d_x[timestep][0],)
-                        else:
-                            kIndLoc += (self.d_x[timestep][subset], )
-                        if (self.CT or self.PET or self.SPECT or (self.listmode > 0 and not self.useIndexBasedReconstruction)):
-                            kIndLoc += (self.d_z[timestep][subset],)
-                        else:
-                            kIndLoc += (self.d_z[timestep][0],)
+                        kIndLoc += (_geometry_buffer(self.d_x, timestep, subset),)
+                        kIndLoc += (_geometry_buffer(self.d_z, timestep, subset),)
                         if (self.normalization_correction):
                             kIndLoc += (self.d_norm[subset],)
                         if (self.additionalCorrection):
@@ -425,19 +480,14 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                 elif self.listmode > 0:
                     apu = self.x.ravel()
                     self.d_x[timestep][0] = cl.array.to_device(self.queue, apu[self.nMeas[timestep * self.subsets + subset] * 6 : self.nMeas[timestep * self.subsets + subset + 1] * 6])
+            measLen = _expected_measurement_length(self, timestep, subset)
             if self.useAF:
                 import arrayfire as af
-                if self.subsetType > 7 or self.subsets == 1:
-                    y = af.data.constant(0., self.nRowsD * self.nColsD * self.nProjSubset[timestep, subset].item())
-                else:
-                    y = af.data.constant(0., self.nMeasSubset[timestep, subset].item())
+                y = af.data.constant(0., measLen)
                 yPtr = y.raw_ptr()
                 yD = cl.MemoryObject.from_int_ptr(yPtr)
             else:
-                if self.subsetType > 7 or self.subsets == 1:
-                    y = cl.array.zeros(self.queue, self.nRowsD * self.nColsD * self.nProjSubset[timestep, subset].item(), dtype=cl.cltypes.float)
-                else:
-                    y = cl.array.zeros(self.queue, self.nMeasSubset[timestep, subset].item(), dtype=cl.cltypes.float)
+                y = cl.array.zeros(self.queue, measLen, dtype=cl.cltypes.float)
             imformat = cl.ImageFormat(cl.channel_order.A, cl.channel_type.FLOAT)
             mf = cl.mem_flags
             for k in range(self.nMultiVolumes + 1):
@@ -456,7 +506,7 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                             d_im = cl.Image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Nx[k].item() + 1, self.Nz[k].item() + 1, self.Ny[k].item()))
                     if isinstance(f,list):
                         if self.use_psf:
-                            f[k] = self.computeConvolution(f[k])
+                            f[k] = self.computeConvolution(f[k], k)
                         if self.useAF:
                             if self.FPType < 5:
                                 fPtr = f[k].raw_ptr()
@@ -569,15 +619,9 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                     else:
                         self.knlF.set_arg(kIndLoc, y.data)
                     kIndLoc += 1
-                    if (self.listmode == 0 and not self.CT):
-                        self.knlF.set_arg(kIndLoc, self.d_x[timestep][0].data)
-                    else:
-                        self.knlF.set_arg(kIndLoc, self.d_x[timestep][subset].data)
+                    self.knlF.set_arg(kIndLoc, _geometry_buffer(self.d_x, timestep, subset).data)
                     kIndLoc += 1
-                    if (self.CT or self.PET or self.listmode > 0):
-                        self.knlF.set_arg(kIndLoc, self.d_z[timestep][subset].data)
-                    else:
-                        self.knlF.set_arg(kIndLoc, self.d_z[timestep][0].data)
+                    self.knlF.set_arg(kIndLoc, _geometry_buffer(self.d_z, timestep, subset).data)
                     kIndLoc += 1
                     if self.useMaskFP:
                         self.knlF.set_arg(kIndLoc, _mask_fp_resource(self, subset))
@@ -592,7 +636,7 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                     if (self.normalization_correction):
                         self.knlF.set_arg(kIndLoc, self.d_norm[subset].data)
                         kIndLoc += 1
-                    elif (self.additionalCorrection):
+                    if (self.additionalCorrection):
                         self.knlF.set_arg(kIndLoc, self.d_corr[subset].data)
                         kIndLoc += 1
                     self.knlF.set_arg(kIndLoc, (cl.cltypes.uchar)(self.no_norm))
@@ -603,9 +647,9 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                     kIndLoc += 1
                     self.knlF.set_arg(kIndLoc, (cl.cltypes.int)(k))
                 elif self.FPType == 5:
-                    self.knlF.set_arg(kIndLoc, self.d_x[timestep][subset].data)
+                    self.knlF.set_arg(kIndLoc, _geometry_buffer(self.d_x, timestep, subset).data)
                     kIndLoc += 1
-                    self.knlF.set_arg(kIndLoc, self.d_z[timestep][subset].data)
+                    self.knlF.set_arg(kIndLoc, _geometry_buffer(self.d_z, timestep, subset).data)
                     kIndLoc += 1
                     self.knlF.set_arg(kIndLoc, d_im)
                     kIndLoc += 1
@@ -628,20 +672,14 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                     if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
                         self.knlF.set_arg(kIndLoc, (cl.cltypes.long)(self.nProjSubset[timestep, subset].item()))
                         kIndLoc += 1
-                    if ((self.listmode == 0 or self.useIndexBasedReconstruction) and not (self.CT or self.SPECT)) or (not self.loadTOF and self.listmode > 0):
-                        self.knlF.set_arg(kIndLoc, self.d_x[timestep][0].data)
-                    else:
-                        self.knlF.set_arg(kIndLoc, self.d_x[timestep][subset].data)
+                    self.knlF.set_arg(kIndLoc, _geometry_buffer(self.d_x, timestep, subset).data)
                     kIndLoc += 1
-                    if (self.CT or self.PET or self.SPECT or (self.listmode > 0 and not self.useIndexBasedReconstruction)):
-                        self.knlF.set_arg(kIndLoc, self.d_z[timestep][subset].data)
-                    else:
-                        self.knlF.set_arg(kIndLoc, self.d_z[timestep][0].data)
+                    self.knlF.set_arg(kIndLoc, _geometry_buffer(self.d_z, timestep, subset).data)
                     kIndLoc += 1
                     if (self.normalization_correction):
                         self.knlF.set_arg(kIndLoc, self.d_norm[subset].data)
                         kIndLoc += 1
-                    elif (self.additionalCorrection):
+                    if (self.additionalCorrection):
                         self.knlF.set_arg(kIndLoc, self.d_corr[subset].data)
                         kIndLoc += 1
                     self.knlF.set_arg(kIndLoc, self.d_Sens.data)
@@ -748,6 +786,7 @@ def backwardProjection(self, y, subset = -1, timestep = -1):
                 outputs.append(output)
             return outputs[0] if int(self.nMultiVolumes) == 0 else outputs
     else:
+        _validate_backward_input(self, y, timestep, subset)
         if self.nMultiVolumes > 0:
             f = [None] * (self.nMultiVolumes + 1)
         if self.nMultiVolumes > 0 and not(isinstance(f,list)):
@@ -791,14 +830,8 @@ def backwardProjection(self, y, subset = -1, timestep = -1):
                             kIndLoc += (self.d_maskBP,)
                         if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
                             kIndLoc += ((self.nProjSubset[timestep, subset].item()),)
-                        if ((self.listmode == 0 or self.useIndexBasedReconstruction) and not (self.CT or self.SPECT)) or (not self.loadTOF and self.listmode > 0):
-                            kIndLoc += (self.d_x[timestep][0],)
-                        else:
-                            kIndLoc += (self.d_x[timestep][subset],)
-                        if (self.CT or self.PET or self.SPECT or (self.listmode > 0 and not self.useIndexBasedReconstruction)):
-                            kIndLoc += (self.d_z[timestep][subset],)
-                        else:
-                            kIndLoc += (self.d_z[timestep][0],)
+                        kIndLoc += (_geometry_buffer(self.d_x, timestep, subset),)
+                        kIndLoc += (_geometry_buffer(self.d_z, timestep, subset),)
                         if (self.normalization_correction):
                             kIndLoc += (self.d_norm[subset],)
                         if (self.additionalCorrection):
@@ -894,12 +927,12 @@ def backwardProjection(self, y, subset = -1, timestep = -1):
                                         kIndLoc += (f[k],)
                                     else:
                                         kIndLoc += (f,)
-                                kIndLoc += (self.d_x[timestep][subset],)
-                                kIndLoc += (self.d_z[timestep][subset],)
+                                kIndLoc += (_geometry_buffer(self.d_x, timestep, subset),)
+                                kIndLoc += (_geometry_buffer(self.d_z, timestep, subset),)
                                 kIndLoc += (self.d_Sens,)
                             else:
-                                kIndLoc += (self.d_x[timestep][subset],)
-                                kIndLoc += (self.d_z[timestep][subset],)
+                                kIndLoc += (_geometry_buffer(self.d_x, timestep, subset),)
+                                kIndLoc += (_geometry_buffer(self.d_z, timestep, subset),)
                                 # Precomputed geometry; only present when the kernel was built with -DGEOM5
                                 if self.listmode == 0:
                                     kIndLoc += (self.d_geom5[timestep][subset],)
@@ -959,14 +992,8 @@ def backwardProjection(self, y, subset = -1, timestep = -1):
                                     kIndLoc += (f[k],)
                                 else:
                                     kIndLoc += (f,)
-                            if self.listmode == 0 and not self.CT:
-                                kIndLoc += (self.d_x[timestep][0],)
-                            else:
-                                kIndLoc += (self.d_x[timestep][subset],)
-                            if (self.CT or self.PET or self.listmode > 0):
-                                kIndLoc += (self.d_z[timestep][subset],)
-                            else:
-                                kIndLoc += (self.d_z[timestep][0],)
+                            kIndLoc += (_geometry_buffer(self.d_x, timestep, subset),)
+                            kIndLoc += (_geometry_buffer(self.d_z, timestep, subset),)
                             if self.useMaskFP:
                                 kIndLoc += (_mask_fp_resource(self, subset),)
                             if self.useMaskBP:
@@ -1026,18 +1053,35 @@ def backwardProjection(self, y, subset = -1, timestep = -1):
                         d_im = cl.create_image(self.clctx, cl.mem_flags.READ_ONLY, imformat, shape=(self.nRowsD + 1, self.nColsD + 1, self.nProjSubset[timestep, subset].item()))
                     else:
                         d_im = cl.Image(self.clctx, cl.mem_flags.READ_ONLY, imformat, shape=(self.nRowsD + 1, self.nColsD + 1, self.nProjSubset[timestep, subset].item()))
-                    y = af.moddims(y, self.nRowsD, d1=self.nColsD, d2=self.nProjSubset[timestep, subset].item())
-                    if self.meanBP:
-                        d_meanBP = af.mean(af.mean(y, dim=0), dim=1)
-                        y -= af.tile(d_meanBP, self.nRowsD, d1=self.nColsD)
-                        mPtr = d_meanBP.raw_ptr()
-                        dMeanBP = cl.MemoryObject.from_int_ptr(mPtr)
-                    y = af.sat(y)
-                    y = af.join(0, af.data.constant(0, 1, d1=y.shape[1], d2=y.shape[2]), y)
-                    y = af.flat(af.join(1, af.data.constant(0, y.shape[0], 1, y.shape[2]), y))
-                    yPtr = y.raw_ptr()
-                    yD = cl.MemoryObject.from_int_ptr(yPtr)
-                    cl.enqueue_copy(self.queue, d_im, yD, offset=(0), origin=(0,0,0), region=(self.nRowsD + 1, self.nColsD + 1, self.nProjSubset[timestep, subset].item()));
+                    if self.useAF:
+                        y = af.moddims(y, self.nRowsD, d1=self.nColsD, d2=self.nProjSubset[timestep, subset].item())
+                        if self.meanBP:
+                            d_meanBP = af.mean(af.mean(y, dim=0), dim=1)
+                            y -= af.tile(d_meanBP, self.nRowsD, d1=self.nColsD)
+                            mPtr = d_meanBP.raw_ptr()
+                            dMeanBP = cl.MemoryObject.from_int_ptr(mPtr)
+                        y = af.sat(y)
+                        y = af.join(0, af.data.constant(0, 1, d1=y.shape[1], d2=y.shape[2]), y)
+                        y = af.flat(af.join(1, af.data.constant(0, y.shape[0], 1, y.shape[2]), y))
+                        yPtr = y.raw_ptr()
+                        yD = cl.MemoryObject.from_int_ptr(yPtr)
+                        cl.enqueue_copy(self.queue, d_im, yD, offset=(0), origin=(0,0,0), region=(self.nRowsD + 1, self.nColsD + 1, self.nProjSubset[timestep, subset].item()));
+                    else:
+                        # Non-ArrayFire (plain PyOpenCL) path: reproduce the AF computation above
+                        # on the host with NumPy -- reshape into (rows, cols, projections), optional
+                        # meanBP subtraction, 2-D cumulative sum (summed-area table) over the row and
+                        # column axes, then zero-pad one leading row and column before uploading.
+                        nProj = int(self.nProjSubset[timestep, subset].item())
+                        y_host = np.asarray(y.get()).reshape((self.nRowsD, self.nColsD, nProj), order='F').astype(np.float32)
+                        if self.meanBP:
+                            meanBP_host = np.mean(y_host, axis=(0, 1)).astype(np.float32)
+                            y_host = y_host - meanBP_host.reshape((1, 1, nProj))
+                            dMeanBP = cl.Buffer(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=meanBP_host)
+                        y_host = np.cumsum(y_host, axis=0)
+                        y_host = np.cumsum(y_host, axis=1)
+                        padded = np.zeros((self.nRowsD + 1, self.nColsD + 1, nProj), dtype=np.float32, order='F')
+                        padded[1:, 1:, :] = y_host
+                        cl.enqueue_copy(self.queue, d_im, padded, origin=(0, 0, 0), region=(self.nRowsD + 1, self.nColsD + 1, nProj));
             
             for k in range(self.nMultiVolumes + 1):
                 if self.useAF:
@@ -1067,15 +1111,9 @@ def backwardProjection(self, y, subset = -1, timestep = -1):
                     if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
                         self.knlB.set_arg(kIndLoc, (cl.cltypes.long)(self.nProjSubset[timestep, subset].item()))
                         kIndLoc += 1
-                    if ((self.listmode == 0 or self.useIndexBasedReconstruction) and not (self.CT or self.SPECT)) or (not self.loadTOF and self.listmode > 0):
-                        self.knlB.set_arg(kIndLoc, self.d_x[timestep][0].data)
-                    else:
-                        self.knlB.set_arg(kIndLoc, self.d_x[timestep][subset].data)
+                    self.knlB.set_arg(kIndLoc, _geometry_buffer(self.d_x, timestep, subset).data)
                     kIndLoc += 1
-                    if (self.CT or self.PET or self.SPECT or (self.listmode > 0 and not self.useIndexBasedReconstruction)):
-                        self.knlB.set_arg(kIndLoc, self.d_z[timestep][subset].data)
-                    else:
-                        self.knlB.set_arg(kIndLoc, self.d_z[timestep][0].data)
+                    self.knlB.set_arg(kIndLoc, _geometry_buffer(self.d_z, timestep, subset).data)
                     kIndLoc += 1
                     if (self.normalization_correction):
                         self.knlB.set_arg(kIndLoc, self.d_norm[subset].data)
@@ -1162,22 +1200,16 @@ def backwardProjection(self, y, subset = -1, timestep = -1):
                                 else:
                                     self.knlB.set_arg(kIndLoc, f.data)
                             kIndLoc += 1
-                            if not self.loadTOF and self.listmode > 0:
-                                self.knlB.set_arg(kIndLoc, self.d_x[timestep][0].data)
-                            else:
-                                self.knlB.set_arg(kIndLoc, self.d_x[timestep][subset].data)
+                            self.knlB.set_arg(kIndLoc, _geometry_buffer(self.d_x, timestep, subset).data)
                             kIndLoc += 1
-                            self.knlB.set_arg(kIndLoc, self.d_z[timestep][subset].data)
+                            self.knlB.set_arg(kIndLoc, _geometry_buffer(self.d_z, timestep, subset).data)
                             kIndLoc += 1
                             self.knlB.set_arg(kIndLoc, self.d_Sens.data)
                             kIndLoc += 1
                         else:
-                            if not self.loadTOF and self.listmode > 0:
-                                self.knlB.set_arg(kIndLoc, self.d_x[timestep][0].data)
-                            else:
-                                self.knlB.set_arg(kIndLoc, self.d_x[timestep][subset].data)
+                            self.knlB.set_arg(kIndLoc, _geometry_buffer(self.d_x, timestep, subset).data)
                             kIndLoc += 1
-                            self.knlB.set_arg(kIndLoc, self.d_z[timestep][subset].data)
+                            self.knlB.set_arg(kIndLoc, _geometry_buffer(self.d_z, timestep, subset).data)
                             kIndLoc += 1
                             # Precomputed geometry; only present when the kernel was built with -DGEOM5
                             if self.listmode == 0:
@@ -1219,15 +1251,9 @@ def backwardProjection(self, y, subset = -1, timestep = -1):
                             else:
                                 self.knlB.set_arg(kIndLoc, f.data)
                         kIndLoc += 1
-                        if ((self.listmode == 0 or self.useIndexBasedReconstruction) and not self.CT) or (not self.loadTOF and self.listmode > 0):
-                            self.knlB.set_arg(kIndLoc, self.d_x[timestep][0].data)
-                        else:
-                            self.knlB.set_arg(kIndLoc, self.d_x[timestep][subset].data)
+                        self.knlB.set_arg(kIndLoc, _geometry_buffer(self.d_x, timestep, subset).data)
                         kIndLoc += 1
-                        if (self.CT or self.PET or (self.listmode > 0 and not self.useIndexBasedReconstruction)):
-                            self.knlB.set_arg(kIndLoc, self.d_z[timestep][subset].data)
-                        else:
-                            self.knlB.set_arg(kIndLoc, self.d_z[timestep][0].data)
+                        self.knlB.set_arg(kIndLoc, _geometry_buffer(self.d_z, timestep, subset).data)
                         kIndLoc += 1
                         if self.useMaskFP:
                             self.knlB.set_arg(kIndLoc, _mask_fp_resource(self, subset))
@@ -1245,7 +1271,7 @@ def backwardProjection(self, y, subset = -1, timestep = -1):
                         if (self.normalization_correction):
                             self.knlB.set_arg(kIndLoc, self.d_norm[subset].data)
                             kIndLoc += 1
-                        elif (self.additionalCorrection):
+                        if (self.additionalCorrection):
                             self.knlB.set_arg(kIndLoc, self.d_corr[subset].data)
                             kIndLoc += 1
                         self.knlB.set_arg(kIndLoc, self.d_Sens.data)
@@ -1298,7 +1324,8 @@ def backwardProjection(self, y, subset = -1, timestep = -1):
             self.nMultiVolumes = volumes
         if self.use_psf:
             if self.nMultiVolumes > 0:
-                f[k] = self.computeConvolution(f[k])
+                for k in range(self.nMultiVolumes + 1):
+                    f[k] = self.computeConvolution(f[k], k)
             else:
                 f = self.computeConvolution(f)
     return f
@@ -2003,14 +2030,18 @@ def type6_backward(self: Any, y: Any, output: Any, volume: int, subset: int, tim
             projection = ops.resize(projection, (nz, ny))
         depth_shift = int(_type6_volume_view_value(self, 'blurPlanes', volume, view))
         smeared = ops.smear(projection, nx) * _type6_path_weight(self, volume, view, nx)
+        # The forward projection attenuates before blurring (see type6_forward and the C++
+        # reference backProjectionType6Angle in functions.hpp), and the two steps do not
+        # commute, so the adjoint has to blur first and attenuate second, using the same
+        # rotated/shifted attenuation map as before.
+        blurred = ops.blur(smeared, ops.shift_kernel(kernel, depth_shift, nx))
         if attenuation is not None:
             attenuation_rotated = ops.rotate(attenuation, angle)
             attenuation_rotated = ops.shift_image_y(
                 attenuation_rotated, -int(_type6_volume_view_value(self, 'blurPlanes2', volume, view))
             )
-            smeared = ops.attenuation(smeared, attenuation_rotated, float(self.dx[volume]))
-        rotated = ops.blur(smeared, ops.shift_kernel(kernel, depth_shift, nx))
-        rotated = ops.shift_image_y(rotated, int(_type6_volume_view_value(self, 'blurPlanes2', volume, view)))
+            blurred = ops.attenuation(blurred, attenuation_rotated, float(self.dx[volume]))
+        rotated = ops.shift_image_y(blurred, int(_type6_volume_view_value(self, 'blurPlanes2', volume, view)))
         ops.add_to(image, ops.rotate(rotated, -angle))
         if (local_view + 1) % 16 == 0:
             ops.synchronize(ops.device(y))

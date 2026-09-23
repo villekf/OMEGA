@@ -260,6 +260,8 @@ def initProjector(self):
     #     raise ValueError('Branchless distance-driven (projector type 5) can only be used with Arrayfire!')
     if (self.useAF == False and self.useCuPy == False and not self.useMetal) and self.projector_type in (6, 66):
         raise ValueError('Projector type 6 can only be used with Arrayfire (OpenCL), CuPy (CUDA), or PyTorch MPS!')
+    if self.projector_type in (6, 66) and self.useCUDA and not self.useTorch:
+        raise ValueError('Projector type 6 on CUDA requires useTorch=True (PyTorch tensors)!')
     if self.projector_type in (16, 26, 61, 62) and not self.useMetal:
         raise ValueError('Hybrid projector types 16, 26, 61, and 62 are supported only by the PyTorch MPS custom-operator path!')
         
@@ -471,9 +473,7 @@ def initProjector(self):
             bOpt += ('-DLISTMODE',)
         if self.listmode > 0 and self.useIndexBasedReconstruction:
             bOpt += ('-DINDEXBASED',)
-        if self.listmode > 0 and ~self.useIndexBasedReconstruction and not vendor == 'NVIDIA Corporation':
-            bOpt += ('-DUSEGLOBAL',)
-        elif not self.useMetal:
+        if self.listmode > 0 or not self.useMetal:
             bOpt += ('-DUSEGLOBAL',)
         if (((self.FPType == 1 or self.BPType == 1 or self.FPType == 4 or self.BPType == 4) and self.n_rays_transaxial * self.n_rays_axial > 1) or self.SPECT):
             bOpt += ('-DN_RAYS=' + str(self.n_rays_transaxial * self.n_rays_axial),)
@@ -664,13 +664,23 @@ def initProjector(self):
                             self.d_maskFP = cp.cuda.texture.TextureObject(res, tdes)
                         elif self.maskFPZ > 1:
                             self.d_maskFP = [None] * self.subsets
+                            # maskFP has already been reordered into subset-contiguous projection
+                            # order by prepass.parseInputs (only done for subsetType >= 8); slice it
+                            # per subset using the per-subset projection counts rather than the
+                            # cumulative nMeas offsets (which are start boundaries, not per-subset
+                            # depths, and previously caused every subset to reread from the start of
+                            # the full mask array with a mismatched depth).
+                            maskFP3 = self.maskFP.reshape((self.nRowsD, self.nColsD, -1), order='F')
+                            offsets = np.concatenate(([0], np.cumsum(np.asarray(self.nProjSubset[0]))))
                             for i in range(self.subsets):
-                                array = cp.cuda.texture.CUDAarray(chl, self.nRowsD, self.nColsD, self.nMeas[i])
-                                self.maskFP = self.maskFP.reshape((self.nMeas[i], self.nColsD, self.nRowsD))
-                                array.copy_from(self.maskFP[self.nMeas[i] : self.nMeas[i + 1],:,:])
-                                # array.copy_from(self.maskFP[:,:,self.nMeas[i] : self.nMeas[i + 1]].reshape((self.nMeas[i], self.nColsD, self.nRowsD)))
+                                start = int(offsets[i])
+                                stop = int(offsets[i + 1])
+                                depth = stop - start
+                                array = cp.cuda.texture.CUDAarray(chl, self.nRowsD, self.nColsD, depth)
+                                subMask = np.ascontiguousarray(np.transpose(maskFP3[:, :, start:stop], (2, 1, 0)))
+                                array.copy_from(subMask)
                                 res = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=array)
-                                tdes= cp.cuda.texture.TextureDescriptor(addressModes=(cp.cuda.runtime.cudaAddressModeClamp, cp.cuda.runtime.cudaAddressModeClamp,cp.cuda.runtime.cudaAddressModeClamp), 
+                                tdes= cp.cuda.texture.TextureDescriptor(addressModes=(cp.cuda.runtime.cudaAddressModeClamp, cp.cuda.runtime.cudaAddressModeClamp,cp.cuda.runtime.cudaAddressModeClamp),
                                                                         filterMode=cp.cuda.runtime.cudaFilterModePoint, normalizedCoords=0)
                                 self.d_maskFP[i] = cp.cuda.texture.TextureObject(res, tdes)
                         else:
@@ -909,11 +919,23 @@ def initProjector(self):
                         self.d_maskFP = cl.Image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskFP, shape=(self.nRowsD, self.nColsD, self.nHeads))
                 elif self.maskFPZ > 1:
                     self.d_maskFP = [None] * self.subsets
+                    # maskFP has already been reordered into subset-contiguous projection order by
+                    # prepass.parseInputs (only done for subsetType >= 8); slice it per subset using
+                    # the per-subset projection counts rather than the cumulative nMeas offsets
+                    # (which are start boundaries, not per-subset depths, and previously caused
+                    # every subset image to reread from the start of the full mask array with a
+                    # mismatched depth).
+                    maskFP3 = np.asfortranarray(self.maskFP).reshape((self.nRowsD, self.nColsD, -1), order='F')
+                    offsets = np.concatenate(([0], np.cumsum(np.asarray(self.nProjSubset[0]))))
                     for i in range(self.subsets):
+                        start = int(offsets[i])
+                        stop = int(offsets[i + 1])
+                        depth = stop - start
+                        subMask = np.asfortranarray(maskFP3[:, :, start:stop])
                         if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
-                            self.d_maskFP[i] = cl.create_image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskFP, shape=(self.nRowsD, self.nColsD, self.nMeas[i]))
+                            self.d_maskFP[i] = cl.create_image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=subMask, shape=(self.nRowsD, self.nColsD, depth))
                         else:
-                            self.d_maskFP[i] = cl.Image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskFP, shape=(self.nRowsD, self.nColsD, self.nMeas[i]))
+                            self.d_maskFP[i] = cl.Image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=subMask, shape=(self.nRowsD, self.nColsD, depth))
                 else:
                     if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
                         self.d_maskFP = cl.create_image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskFP, shape=(self.nRowsD, self.nColsD))
@@ -1029,17 +1051,9 @@ def initProjector(self):
                     self.kIndF += 1
                     self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.coneOfResponseStdCoeffC))
                     self.kIndF += 1
-                    self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.ellipseCenterX))
+                    self.knlF.set_arg(self.kIndF, cl.cltypes.make_float3(self.ellipseCenterX, self.ellipseCenterY, self.ellipseCenterZ))
                     self.kIndF += 1
-                    self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.ellipseCenterY))
-                    self.kIndF += 1
-                    self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.ellipseCenterZ))
-                    self.kIndF += 1
-                    self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.ellipseRadiusX))
-                    self.kIndF += 1
-                    self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.ellipseRadiusY))
-                    self.kIndF += 1
-                    self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.ellipseRadiusZ))
+                    self.knlF.set_arg(self.kIndF, cl.cltypes.make_float3(self.ellipseRadiusX, self.ellipseRadiusY, self.ellipseRadiusZ))
                     self.kIndF += 1
                     self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(_kernel_ellipse_power(self.ellipsePower)))
                     self.kIndF += 1
@@ -1119,17 +1133,9 @@ def initProjector(self):
                     self.kIndB += 1
                     self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.coneOfResponseStdCoeffC))
                     self.kIndB += 1
-                    self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.ellipseCenterX))
+                    self.knlB.set_arg(self.kIndB, cl.cltypes.make_float3(self.ellipseCenterX, self.ellipseCenterY, self.ellipseCenterZ))
                     self.kIndB += 1
-                    self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.ellipseCenterY))
-                    self.kIndB += 1
-                    self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.ellipseCenterZ))
-                    self.kIndB += 1
-                    self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.ellipseRadiusX))
-                    self.kIndB += 1
-                    self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.ellipseRadiusY))
-                    self.kIndB += 1
-                    self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.ellipseRadiusZ))
+                    self.knlB.set_arg(self.kIndB, cl.cltypes.make_float3(self.ellipseRadiusX, self.ellipseRadiusY, self.ellipseRadiusZ))
                     self.kIndB += 1
                     self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(_kernel_ellipse_power(self.ellipsePower)))
                     self.kIndB += 1
