@@ -18,6 +18,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 
 import numpy as np
+from omegatomo.util.matlabRound import matlabRound
     
 def computePixelSize(options):
     """
@@ -194,7 +195,7 @@ def computeVoxelVolumes(options):
         options.bmax = options.tube_radius + options.voxel_radius
         b = np.linspace(0, options.bmax, 10000, dtype=np.float32)
         b = b[(options.tube_radius <= (b + options.voxel_radius))]
-        b = np.unique(np.round(b*10**3)/10**3)
+        b = np.unique(matlabRound(b*10**3)/10**3)
         V = volumeIntersection(options.tube_radius, options.voxel_radius, b)
         diffis = np.append(np.diff(V), 0)
         # diffis = np.concatenate((np.diff(V),0))

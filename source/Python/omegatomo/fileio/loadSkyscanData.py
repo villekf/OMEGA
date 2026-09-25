@@ -47,9 +47,9 @@ def loadSkyscanData(options):
 
     for i in range(len(hdr)):
         if hdr[i].split("=")[0] == 'Number of Columns':
-            options.nRowsD = int(hdr[i].split("=")[1]) // options.binning
+            options.nRowsD = int(hdr[i].split("=")[1]) / options.binning
         if hdr[i].split("=")[0] == 'Number of Rows':
-            options.nColsD = int(hdr[i].split("=")[1]) // options.binning
+            options.nColsD = int(hdr[i].split("=")[1]) / options.binning
         if hdr[i].split("=")[0] == 'Camera Pixel Size (um)':
             options.dPitchX = float(hdr[i].split("=")[1]) * options.binning / 1000
         if hdr[i].split("=")[0] == 'Camera Pixel Size (um)':

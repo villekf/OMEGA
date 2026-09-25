@@ -26,6 +26,7 @@ import numpy.typing as npt
 import ctypes
 import math
 import os
+import warnings
 from typing import Optional
 from .coordinates import computePixelCenters
 from .coordinates import computePixelSize
@@ -87,6 +88,13 @@ class projectorClass:
     precondTypeImage = np.full((7, 1), False)
     precondTypeMeas = np.full((2, 1), False)
     ScatterC = np.empty(0, dtype = np.float32)
+    # Main/lower/upper energy windows ([lowerLimit, upperLimit]) for SPECT
+    # DEW/TEW scatter correction (see loadCorrections' SPECT scatter branch).
+    # Only used when options.ScatterC is a list of 1 (DEW) or 2 (TEW)
+    # per-window scatter estimates.
+    eWin = np.empty(0, dtype = np.float32)
+    eWinL = np.empty(0, dtype = np.float32)
+    eWinU = np.empty(0, dtype = np.float32)
     vaimennus = np.empty(0, dtype = np.float32)
     SinM = np.empty(0, dtype = np.float32)
     SinDelayed = np.empty(0, dtype = np.float32)
@@ -144,7 +152,6 @@ class projectorClass:
     only_sinos = False
     only_reconstructions = False
     usingLinearizedData = False
-    no_data_load = False
     errorChecking = False
     no_data_load = False
     fill_sinogram_gaps = False
@@ -219,8 +226,9 @@ class projectorClass:
     rotateAttImage = 0.
     flipAttImageXY = False
     flipAttImageZ = False
-    NSinos = 0
-    TotSinos = NSinos
+    # NSinos is redefined below (to 1); TotSinos is evaluated here against the
+    # original NSinos = 0 default, so it is kept at 0 explicitly.
+    TotSinos = 0
     V = np.empty(0, dtype = np.float32)
     uu = 0
     ub = 0
@@ -270,6 +278,12 @@ class projectorClass:
     n_rays_transaxial = 1
     n_rays_axial = 1
     RDPIncludeCorners = False
+    ## Mean subtraction for projector type 5 (FP and BP, respectively), before computing the
+    # summed-area-table (integral) image sampled with hardware (texture) linear interpolation.
+    # Depending on the geometry (e.g. detector pixels whose footprint is small compared to a
+    # voxel) the limited interpolation precision of GPUs can cause noticeable errors; subtracting
+    # the per-slice (FP) or per-projection (BP) mean before the integral image reduces these
+    # errors, at a small extra cost. OFF by default.
     meanFP = False
     meanBP = False
     Niter = 4
@@ -372,7 +386,11 @@ class projectorClass:
     useImages = True
     useEFOV = False
     useExtrapolation = False
-    CTAttenuation = True
+    useInpaint = False  # MATLAB-only, experimental (unofficial) feature; not supported in Python, see CTEFOVCorrection
+    # Note: CTAttenuation (no underscore) is NOT a user-facing default here. It is an internal,
+    # derived mirror of CT_attenuation (see the `CT_attenuation` default above), set in exactly
+    # one place (initProjector, in init.py) once the projector is constructed. Do not set
+    # CTAttenuation directly; set CT_attenuation instead.
     flat = 0.
     use2DTGV = False
     hyperbolicDelta = 1.
@@ -462,12 +480,23 @@ class projectorClass:
     nMultiVolumes = 0
     storeMultiResolution = False
     extrapLength = None
+    # Per-direction override of extrapLength, used by CTEFOVCorrection. None
+    # means "not specified", i.e. fall back to extrapLength (and, failing
+    # that, the hard-coded default).
+    extrapLengthAxial = None
+    extrapLengthTransaxial = None
     axialExtrapolation = False
     transaxialExtrapolation = False
     useExtrapolationWeighting = False
     transaxialEFOV = False
     axialEFOV = False
     eFOVLength = None
+    # Per-direction override of eFOVLength, used by CTEFOVCorrection. None
+    # means "not specified". eFOVLengthAxial is additionally overridden by a
+    # geometry-derived value in CTEFOVCorrection when it is not specified and
+    # a usable cone-beam geometry is available.
+    eFOVLengthAxial = None
+    eFOVLengthTransaxial = None
     NLM_gauss = 2.
     TOF_noise_FWHM = 0.
     TOF_offset = 0.
@@ -535,14 +564,54 @@ class projectorClass:
     # Compute the spatial prior/regularization only every regEveryIter-th (sub)iteration. 1 (or less)
     # computes it every time (default); the first and last iteration are always computed.
     regEveryIter = 1
+    # Optimize PDHG/PKMA/MBSREM/BSREM in specific cases by fusing the image-domain update into the
+    # backprojection kernel. Only specific configurations are supported (see checkFastPDHG in
+    # functions.hpp); set this to False to explicitly disable fastPDHG, mirroring MATLAB/Octave's
+    # options.fastPDHG = false.
+    fastPDHG = True
     xSens = np.empty(0, dtype = np.float32)
     zSens = np.empty(0, dtype = np.float32)
 
     def __init__(self):
         # C-struct
         self.param = self.parameters()
+
+    def _isListModeCandidate(self):
+        """True when custom [x;y;z] (or [x;y;z;z_det]) event coordinates were supplied whose
+        size matches self.SinM, i.e. this call will take the "list-mode with custom
+        coordinates" branch in addProjector() (as opposed to index-based reconstruction, which
+        is instead signalled directly by self.useIndexBasedReconstruction). Factored out so the
+        same detection can be evaluated once early -- to set self.listmode ahead of
+        OMEGAErrorCheck(), which needs to know whether list-mode/index-based data is in play to
+        correctly exempt it from sinogram-only checks -- and again later, unchanged, at the
+        point where Nang/Ndist/NSinos/TotSinos are actually collapsed for list-mode data."""
+        xList = isinstance(self.x, list)
+        xSize = self.x[0].size if xList else self.x.size
+        return (hasattr(self, 'x') or hasattr(self, 'y') or hasattr(self, 'z') or hasattr(self, 'z_det')) and xSize > 0 and \
+            ((not isinstance(self.SinM, list) and (xSize / 2 == self.SinM.size or xSize / 6 == self.SinM.size)) or
+             (not isinstance(self.SinM, list) and self.SinM.size == 0 and xSize >= 6) or
+             (isinstance(self.x, list) and
+              (self.x[0].size / 2 == self.SinM[0].size or
+               self.x[0].size / 6 == self.SinM[0].size)))
+
     def addProjector(self):
-        self.projectorAdded = True        
+        self.projectorAdded = True
+        # MATLAB/Octave-style option name aliases, accepted for convenience so scripts written
+        # against the MATLAB API also work here. hasattr() is only True when the user actually
+        # assigned the MATLAB-named attribute (these names have no Python-side class default),
+        # so a canonical Python attribute the user set directly is never clobbered by a default.
+        for matlabName, pyName in (('subset_type', 'subsetType'), ('use_CUDA', 'useCUDA'),
+                                    ('use_CPU', 'useCPU'), ('use_device', 'deviceNum')):
+            if hasattr(self, matlabName):
+                setattr(self, pyName, getattr(self, matlabName))
+        # CT_attenuation is the sole user-facing option (matches MATLAB's options.CT_attenuation).
+        # CTAttenuation is an internal, derived mirror consumed by the ctypes struct (field name is
+        # fixed by libHeader.h) and by the rest of the Python codebase; it is set here, in exactly
+        # one place (addProjector, not initProjector), so that it is available to every code path
+        # that builds/uses the projector -- including ones (e.g. the type-6 SPECT rotation-based
+        # projector's forward/backward helpers) that call addProjector() directly without going
+        # through initProj()/initProjector() -- and so the two names can never disagree.
+        self.CTAttenuation = self.CT_attenuation
         if self.OSL_OSEM or self.MBSREM or self.ROSEM_MAP or self.OSL_RBI or self.OSL_COSEM > 0 or self.PKMA or self.SPS or self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.CV or self.SAGA or self.BB or self.SART or self.ASD_POCS:
             self.MAP = True
         if hasattr(self, 'dPitch') and self.dPitch > 0 and self.dPitchX == 0.:
@@ -676,8 +745,8 @@ class projectorClass:
             self.Nang = self.nColsD
             self.use_raw_data = 0
         
-        if (type(self.cryst_per_block_axial) == np.ndarray and self.cryst_per_block_axial.size == 0) and ((type(self.cryst_per_block) == np.ndarray and self.cryst_per_block.size > 0) 
-                                                                                                          or (type(self.cryst_per_block) != np.ndarray and self.cryst_per_block > 0)):
+        if (isinstance(self.cryst_per_block_axial, np.ndarray) and self.cryst_per_block_axial.size == 0) and ((isinstance(self.cryst_per_block, np.ndarray) and self.cryst_per_block.size > 0)
+                                                                                                          or (not isinstance(self.cryst_per_block, np.ndarray) and self.cryst_per_block > 0)):
             self.cryst_per_block_axial = self.cryst_per_block
         if self.rings == 0 and self.cryst_per_block_axial >= 1 and self.linear_multip >= 1:
             self.rings = self.cryst_per_block_axial * self.linear_multip
@@ -706,7 +775,7 @@ class projectorClass:
         if self.detectors == 0:
             self.detectors = self.det_w_pseudo * self.rings
         if self.ring_difference == 0 and self.rings > 0:
-            self.ring_difference = self.rings - 1;
+            self.ring_difference = self.rings - 1
         if self.segment_table.size == 0 and self.span > 0 and self.rings > 0:
             self.segment_table = np.concatenate((np.array(self.rings*2-1,ndmin=1), np.arange(self.rings*2-1 - (self.span + 1), max(self.Nz - self.ring_difference*2, self.rings - self.ring_difference), -self.span*2)))
             self.segment_table = np.insert(np.repeat(self.segment_table[1:], 2), 0, self.segment_table[0])
@@ -719,11 +788,19 @@ class projectorClass:
             self.NSinos = np.sum(self.segment_table)
         if self.TotSinos == 0:
             self.TotSinos = self.NSinos
+        # Pre-determine (self.listmode only, not NSinos/TotSinos/Nang/Ndist) whether this call
+        # will end up being list-mode data -- either custom coordinates (_isListModeCandidate())
+        # or index-based reconstruction (self.useIndexBasedReconstruction, already set by the
+        # caller before addProjector() runs) -- so that OMEGAErrorCheck()'s sinogram-only checks
+        # (e.g. the sinogram angle-count check) can see self.listmode and correctly exempt this
+        # case. The full determination, including the Nang/Ndist/NSinos/TotSinos collapse, is
+        # repeated unchanged in its original place below (after TOF/mask/Nt/pseudot setup);
+        # collapsing NSinos/TotSinos here instead would change what OMEGAErrorCheck's OTHER
+        # checks (e.g. span vs. ring_difference, which relies on seeing NSinos still at its
+        # pre-list-mode value) observe, so only self.listmode is set early.
+        self.listmode = 1 if (self._isListModeCandidate() or self.useIndexBasedReconstruction) else 0
         self.OMEGAErrorCheck()
-        self.TOF = self.TOF_bins > 1 and (self.projector_type == 1 or self.projector_type == 11 or self.projector_type == 3 or self.projector_type == 33 
-                                                      or self.projector_type == 13 or self.projector_type == 31 or self.projector_type == 4 
-                                                      or self.projector_type == 14 or self.projector_type == 41 or self.projector_type == 44 
-                                                      or self.projector_type == 34 or self.projector_type == 43)
+        self.TOF = self.TOF_bins > 1 and self.projector_type in (1, 11, 3, 33, 13, 31, 4, 14, 41, 44, 34, 43)
         if self.TOF:
             if self.TOF_bins_used == 0 and self.TOF_bins > 0:
                 self.TOF_bins_used = self.TOF_bins
@@ -812,20 +889,11 @@ class projectorClass:
                     self.pseudot[kk - 1] = np.uint32(self.cryst_per_block + 1) * kk
         else:
             self.pseudot = np.empty(0, dtype = np.uint32)
-        # Whether list-mode or sinogram/raw data is used
-        xList = False
-        if isinstance(self.x, list):
-            xList = True
-        if xList:
-            xSize = self.x[0].size
-        else:
-            xSize = self.x.size
-        if (hasattr(self, 'x') or hasattr(self, 'y') or hasattr(self, 'z') or hasattr(self, 'z_det')) and xSize > 0 and \
-           ((not isinstance(self.SinM, list) and (xSize / 2 == self.SinM.size or xSize / 6 == self.SinM.size)) or
-            (not isinstance(self.SinM, list) and self.SinM.size == 0 and xSize >= 6) or
-            (isinstance(self.x, list) and
-             (self.x[0].size / 2 == self.SinM[0].size or
-              self.x[0].size / 6 == self.SinM[0].size))):
+        # Whether list-mode or sinogram/raw data is used. self.listmode was already
+        # pre-computed (via _isListModeCandidate()/useIndexBasedReconstruction) ahead of
+        # OMEGAErrorCheck() above; this recomputes the same condition (now that self.SinM/
+        # self.trIndex are fully final) to also collapse Nang/Ndist/NSinos/TotSinos.
+        if self._isListModeCandidate():
             if isinstance(self.SinM, list):
                 det_per_ring = self.SinM[0].size
             else:
@@ -1023,27 +1091,7 @@ class projectorClass:
                         z_det = z_det[frame_index,:]
                         z_det = z_det.ravel('C')
                 elif self.SPECT:
-                    projection_counts = np.asarray(self.nProjectionsPerFrame, dtype=np.int64).reshape(-1)
-                    if projection_counts.size != self.Nt:
-                        raise ValueError('nProjectionsPerFrame must contain one value per SPECT timeframe.')
-                    if int(np.sum(projection_counts)) != x_det.shape[1] or int(np.sum(projection_counts)) != z_det.shape[1]:
-                        raise ValueError('Concatenated SPECT geometry does not match nProjectionsPerFrame.')
-                    self.xFrames = []
-                    self.zFrames = []
-                    frame_offsets = np.concatenate(([0], np.cumsum(projection_counts, dtype=np.int64)))
-                    for timestep in range(self.Nt):
-                        frame_start = int(frame_offsets[timestep])
-                        frame_stop = int(frame_offsets[timestep + 1])
-                        x_frame = x_det[:, frame_start:frame_stop]
-                        z_frame = z_det[:, frame_start:frame_stop]
-                        frame_index = self.index[timestep] if isinstance(self.index, list) else self.index
-                        if self.subsetType >= 8 or self.subsets == 1:
-                            x_frame = x_frame[:, frame_index]
-                            z_frame = z_frame[:, frame_index]
-                        self.xFrames.append(np.asfortranarray(x_frame))
-                        self.zFrames.append(np.asfortranarray(z_frame))
-                    x_det = np.concatenate([frame.ravel(order='F') for frame in self.xFrames])
-                    z_det = np.concatenate([frame.ravel(order='F') for frame in self.zFrames])
+                    x_det, z_det = self._sliceSPECTFramesByIndex(x_det, z_det, checkFrameCount=True, checkZShape=True)
                 else:
                     frame_index = self.index[0] if isinstance(self.index, list) and self.Nt == 1 else self.index
                     z_det = np.reshape(z_det, (self.nProjections, -1))
@@ -1056,25 +1104,7 @@ class projectorClass:
             not isinstance(getattr(self, 'xFrames', None), list)
             or len(self.xFrames) != self.Nt
         ):
-            projection_counts = np.asarray(self.nProjectionsPerFrame, dtype=np.int64).reshape(-1)
-            if int(np.sum(projection_counts)) != x_det.shape[1]:
-                raise ValueError('Concatenated SPECT geometry does not match nProjectionsPerFrame.')
-            self.xFrames = []
-            self.zFrames = []
-            frame_offsets = np.concatenate(([0], np.cumsum(projection_counts, dtype=np.int64)))
-            for timestep in range(self.Nt):
-                frame_start = int(frame_offsets[timestep])
-                frame_stop = int(frame_offsets[timestep + 1])
-                x_frame = x_det[:, frame_start:frame_stop]
-                z_frame = z_det[:, frame_start:frame_stop]
-                frame_index = self.index[timestep] if isinstance(self.index, list) else self.index
-                if self.subsetType >= 8 or self.subsets == 1:
-                    x_frame = x_frame[:, frame_index]
-                    z_frame = z_frame[:, frame_index]
-                self.xFrames.append(np.asfortranarray(x_frame))
-                self.zFrames.append(np.asfortranarray(z_frame))
-            x_det = np.concatenate([frame.ravel(order='F') for frame in self.xFrames])
-            z_det = np.concatenate([frame.ravel(order='F') for frame in self.zFrames])
+            x_det, z_det = self._sliceSPECTFramesByIndex(x_det, z_det, checkFrameCount=False, checkZShape=False)
 
         if self.listmode == 0 and self.projector_type not in (6, 66):
             if self.SPECT:
@@ -1085,12 +1115,10 @@ class projectorClass:
                 self.z = z_det
         computePixelCenters(self, xx, yy, zz)
         computeVoxelVolumes(self)
-        if (self.projector_type == 4 or self.projector_type == 5 or self.projector_type == 14 or self.projector_type == 41 
-                    or self.projector_type == 15 or self.projector_type == 45 or self.projector_type == 54 or self.projector_type == 51 
-                    or self.projector_type == 42 or self.projector_type == 43 or self.projector_type == 24 or self.projector_type == 34):
+        if self.projector_type in (4, 5, 14, 41, 15, 45, 54, 51, 42, 43, 24, 34):
             computeProjectorScalingValues(self)
         if self.offsetCorrection and self.subsets > 1:
-            self.OffsetLimit = self.OffsetLimit[self.index];
+            self.OffsetLimit = self.OffsetLimit[self.index]
 
         if self.SPECT:
             from .detcoord import SPECTParameters
@@ -1158,16 +1186,12 @@ class projectorClass:
         if self.projector_type in [2, 3, 22, 33, 13, 12, 31, 32, 21, 23, 42, 43, 34, 24, 26, 62]:
             if self.projector_type in [3, 33, 13, 31, 32, 23, 43, 34]:
                 self.orthTransaxial = True
-            elif (self.projector_type in [2, 22, 12, 21, 24, 42, 26, 62]) and (self.tube_width_xy > 0 or self.SPECT):
-                self.orthTransaxial = True
+                self.orthAxial = True
+            elif self.projector_type in [2, 22, 12, 21, 24, 42, 26, 62]:
+                self.orthTransaxial = (self.tube_width_xy > 0 or self.SPECT)
+                self.orthAxial = (self.tube_width_z > 0 or self.SPECT)
             else:
                 self.orthTransaxial = False
-        if self.projector_type in [2, 3, 22, 33, 13, 12, 31, 32, 21, 23, 42, 43, 34, 24, 26, 62]:
-            if self.projector_type in [3, 33, 13, 31, 32, 23, 43, 34]:
-                self.orthAxial = True
-            elif (self.projector_type in [2, 22, 12, 21, 24, 42, 26, 62]) and (self.tube_width_z > 0 or self.SPECT):
-                self.orthAxial = True
-            else:
                 self.orthAxial = False
         if self.use_32bit_atomics and self.use_64bit_atomics:
             self.use_64bit_atomics = False
@@ -1180,8 +1204,56 @@ class projectorClass:
             self.z = self.z.astype(dtype=np.float32)
         if self.listmode and self.randoms_correction:
             self.randoms_correction = False
-        
-        
+
+    def _sliceSPECTFramesByIndex(self, x_det, z_det, checkFrameCount, checkZShape):
+        # Splits the concatenated (all timeframes) SPECT detector coordinate
+        # arrays x_det/z_det into per-timeframe chunks according to
+        # nProjectionsPerFrame, applies the (possibly per-frame) subset index
+        # to each chunk, and re-concatenates. Stores the per-frame chunks in
+        # self.xFrames/self.zFrames and returns the flattened, index-applied
+        # x_det/z_det. Used both right after the subset-type >= 8 reordering
+        # and as a fallback when that reordering was skipped.
+        projection_counts = np.asarray(self.nProjectionsPerFrame, dtype=np.int64).reshape(-1)
+        if checkFrameCount and projection_counts.size != self.Nt:
+            raise ValueError('nProjectionsPerFrame must contain one value per SPECT timeframe.')
+        sizeMismatch = int(np.sum(projection_counts)) != x_det.shape[1]
+        if checkZShape:
+            sizeMismatch = sizeMismatch or int(np.sum(projection_counts)) != z_det.shape[1]
+        if sizeMismatch:
+            raise ValueError('Concatenated SPECT geometry does not match nProjectionsPerFrame.')
+        self.xFrames = []
+        self.zFrames = []
+        frame_offsets = np.concatenate(([0], np.cumsum(projection_counts, dtype=np.int64)))
+        for timestep in range(self.Nt):
+            frame_start = int(frame_offsets[timestep])
+            frame_stop = int(frame_offsets[timestep + 1])
+            x_frame = x_det[:, frame_start:frame_stop]
+            z_frame = z_det[:, frame_start:frame_stop]
+            frame_index = self.index[timestep] if isinstance(self.index, list) else self.index
+            if self.subsetType >= 8 or self.subsets == 1:
+                x_frame = x_frame[:, frame_index]
+                z_frame = z_frame[:, frame_index]
+            self.xFrames.append(np.asfortranarray(x_frame))
+            self.zFrames.append(np.asfortranarray(z_frame))
+        x_det = np.concatenate([frame.ravel(order='F') for frame in self.xFrames])
+        z_det = np.concatenate([frame.ravel(order='F') for frame in self.zFrames])
+        return x_det, z_det
+
+    # Text appended to the filtering-preconditioner status message for each supported window
+    _FILTER_WINDOW_TEXT = {
+        'hamming': ' with Hamming window.',
+        'hann': ' with Hann window.',
+        'blackman': ' with Blackman window.',
+        'nuttal': ' with Nuttal window.',
+        'gaussian': ' with Gaussian window.',
+        'shepp-logan': ' with Shepp-Logan window.',
+        'cosine': ' with cosine window.',
+        'parzen': ' with Parzen window.',
+    }
+
+    def _filterWindowMessage(self, prefix):
+        return prefix + self._FILTER_WINDOW_TEXT.get(self.filterWindow, ' (no windowing).')
+
     def OMEGAErrorCheck(self):
         if self.SPECT:
             normalization = np.asarray(self.normalization)
@@ -1280,12 +1352,11 @@ class projectorClass:
         if not self.CT and not self.SPECT and self.ring_difference < 0 and not self.use_raw_data:
             raise ValueError("Ring difference has to be at least 0!")
         
-        if not self.CT and not self.SPECT and self.Nang > self.det_w_pseudo / 2 and not self.use_raw_data and self.Nang > 1:
+        if not self.CT and not self.SPECT and self.Nang > self.det_w_pseudo / 2 and not self.use_raw_data and self.listmode == 0 and not self.useIndexBasedReconstruction:
             raise ValueError(f"Number of sinogram angles can be at most the number of detectors per ring divided by two ({self.det_w_pseudo / 2})!")
-        
-        if not self.CT and not self.SPECT and self.TotSinos < self.NSinos and not self.use_raw_data and self.TotSinos > 0:
-            print(f"The number of sinograms used ({self.NSinos}) is larger than the total number of sinograms ({self.TotSinos})! Setting the total number of sinograms to that of sinograms used!")
-            self.TotSinos = self.NSinos
+
+        if not self.CT and not self.SPECT and self.TotSinos < self.NSinos and not self.use_raw_data:
+            raise ValueError(f"The numnber of sinograms used ({self.NSinos}) is larger than the total number of sinograms ({self.TotSinos})!")
         
         if not self.CT and not self.SPECT and (self.ndist_side > 1 and self.Ndist % 2 == 0 or self.ndist_side < -1 and self.Ndist % 2 == 0) and not self.use_raw_data:
             raise ValueError("ndist_side can be either 1 or -1!")
@@ -1320,7 +1391,22 @@ class projectorClass:
         if self.subsets < 1:
             print("Number of subsets is less than one! Using one subset.")
             self.subsets = 1
-        
+
+        # Port of setMissingValues.m:370-383: saveNIter is reset when save_iter (save every
+        # iteration) is requested, and any entries that are no longer reachable given the
+        # (possibly just-clamped) Niter are trimmed off, so it stays consistent with how
+        # recomain.py sizes the saved-iteration outputs (options.saveNIter.size).
+        if self.save_iter:
+            self.saveNIter = np.empty(0, dtype = np.uint32)
+        if self.saveNIter.size > 0 and (self.Niter - 1) <= np.max(self.saveNIter):
+            loc = int(np.argmax(self.saveNIter >= (self.Niter - 1)))
+            if loc > 0:
+                self.saveNIter = self.saveNIter[:loc]
+            else:
+                self.saveNIter = np.empty(0, dtype = np.uint32)
+        if self.saveNIter.dtype != np.uint32:
+            self.saveNIter = self.saveNIter.astype(np.uint32)
+
         if self.useMultiResolutionVolumes and not self.useEFOV:
             print("Multi-resolution reconstruction selected, but extended FOV is not selected! Disabling multi-resolution volumes.")
             self.useMultiResolutionVolumes = False
@@ -1330,8 +1416,8 @@ class projectorClass:
         if self.FDK and self.storeFP:
             print('Forward projections cannot be stored with FDK/FBP!')
             
-        # if not self.CT and not self.SPECT and self.det_per_ring == self.det_w_pseudo and self.fill_sinogram_gaps:
-        #     raise ValueError('Gap filling is only supported with pseudo detectors!')
+        if not self.CT and not self.SPECT and self.det_per_ring == self.det_w_pseudo and self.fill_sinogram_gaps:
+            raise ValueError('Gap filling is only supported with pseudo detectors!')
         if not self.largeDim and not self.x0.any():
             if not self.CT:
                 print('Initial value is an empty array, using the default values (1)')
@@ -1365,7 +1451,7 @@ class projectorClass:
             self.TVtype = 1
         if self.projector_type not in [1, 2, 3, 4, 5, 6, 11, 14, 12, 13, 16, 21, 22, 23, 24, 26, 31, 32, 33, 34, 41, 42, 43, 44, 45, 51, 15, 54, 55, 61, 62, 66]:
             raise ValueError('The selected projector type is not supported!')
-        if self.APLS and not os.path.exists(self.APLS_ref_image) and self.MAP and not type(self.APLS_ref_image) == np.ndarray:
+        if self.APLS and not os.path.exists(self.APLS_ref_image) and self.MAP and not isinstance(self.APLS_ref_image, np.ndarray):
             raise FileNotFoundError('APLS selected, but the anatomical reference image was not found on path!')
         if self.epps <= 0:
             print('Epsilon value is zero or less than zero; must be a positive value. Using the default value (1e-6).')
@@ -1387,7 +1473,7 @@ class projectorClass:
             print('Summing TOF bins.')
             # self.TOF_bins = self.TOF_bins_used
         
-        if self.useCPU and self.projector_type in [2, 3, 4, 5, 15, 25, 35, 45, 21, 22, 23, 24, 31, 32, 33, 34, 35, 41, 42, 43, 44, 45, 51, 52, 53, 54, 55, 14, 12, 13]:
+        if self.useCPU and self.projector_type not in (1, 11) and self.implementation == 2:
             raise ValueError('Selected projector type is not supported with CPU implementation!')
         if self.projector_type == 2 and self.CT:
             raise ValueError('Orthogonal distance-based projector is NOT supported when using CT data!')
@@ -1500,15 +1586,16 @@ class projectorClass:
             # if self.only_sinos:
             #     print('Loading only data.')
             if self.useMultiResolutionVolumes:
+                from omegatomo.util.matlabRound import matlabRound
                 if self.transaxialEFOV:
-                    Nx = self.NxOrig + round((self.Nx - self.NxOrig) * self.multiResolutionScale)
-                    Ny = self.NyOrig + round((self.Ny - self.NyOrig) * self.multiResolutionScale)
+                    Nx = self.NxOrig + int(matlabRound((self.Nx - self.NxOrig) * self.multiResolutionScale))
+                    Ny = self.NyOrig + int(matlabRound((self.Ny - self.NyOrig) * self.multiResolutionScale))
                 else:
                     Nx = self.Nx
                     Ny = self.Ny
-                    
+
                 if self.axialEFOV:
-                    Nz = self.NzOrig + round((self.Nz - self.NzOrig) * self.multiResolutionScale)
+                    Nz = self.NzOrig + int(matlabRound((self.Nz - self.NzOrig) * self.multiResolutionScale))
                 else:
                     Nz = self.Nz
             else:
@@ -1519,12 +1606,14 @@ class projectorClass:
             if not (self.compute_normalization or self.only_sinos):
                 if self.deviceNum < 0:
                     raise ValueError('Device number has to be positive!')
-                try:
-                    import arrayfire as af
-                    AFinstalled = True
-                except ModuleNotFoundError:
-                    print('ArrayFire package not found! ArrayFire features are not supported. You can install ArrayFire package with "pip install arrayfire".')
-                    AFinstalled = False
+                AFinstalled = False
+                if self.useAF:
+                    try:
+                        import arrayfire as af
+                        AFinstalled = True
+                    except (ImportError, OSError, RuntimeError):
+                        print('ArrayFire package not found! ArrayFire features are not supported. You can install ArrayFire package with "pip install arrayfire".')
+                        AFinstalled = False
                 if AFinstalled and not self.useCPU:
                     dispaus = f"Using implementation {self.implementation} with "
                     try:
@@ -1536,7 +1625,7 @@ class projectorClass:
                             loc = info.find('-' + str(self.deviceNum) + '-')
                         loc2 = info[loc:].find('(Compute')
                         dispaus += info[loc + 4 : loc + loc2 - 1]
-                    except:
+                    except Exception:
                         af.set_backend(af.BackendType.opencl)
                         info = af.info_string()
                         loc = info.find('[' + str(self.deviceNum) + ']')
@@ -1612,7 +1701,7 @@ class projectorClass:
                         dispi = f"{dispi} in 2.5D mode."
                     print(dispi)
                 elif self.projector_type == 3 or self.projector_type == 33:
-                    print('Volume of intersection based ray tracer selected.');
+                    print('Volume of intersection based ray tracer selected.')
                 elif self.projector_type == 4:
                     print('Interpolation-based projector selected.')
                 elif self.projector_type == 5:
@@ -1655,7 +1744,7 @@ class projectorClass:
                     else:
                         print('PSF ON.')
                 if self.attenuation_correction and not self.CT:
-                    if self.CT_attenuation or self.CTAttenuation:
+                    if self.CT_attenuation:
                         print('Attenuation correction (image domain) ON.')
                     else:
                         print('Attenuation correction (measurement domain) ON.')
@@ -1693,51 +1782,13 @@ class projectorClass:
                         print('Using image-based preconditioning with normalized gradient preconditioner.')
                 
                     if self.precondTypeImage[5]:
-                        dispP = 'Using image-based preconditioning with filtering preconditioner'
-                        if self.filterWindow == 'hamming':
-                            dispP += ' with Hamming window.'
-                        elif self.filterWindow == 'hann':
-                            dispP += ' with Hann window.'
-                        elif self.filterWindow == 'blackman':
-                            dispP += ' with Blackman window.'
-                        elif self.filterWindow == 'nuttal':
-                            dispP += ' with Nuttal window.'
-                        elif self.filterWindow == 'gaussian':
-                            dispP += ' with Gaussian window.'
-                        elif self.filterWindow == 'shepp-logan':
-                            dispP += ' with Shepp-Logan window.'
-                        elif self.filterWindow == 'cosine':
-                            dispP += ' with cosine window.'
-                        elif self.filterWindow == 'parzen':
-                            dispP += ' with Parzen window.'
-                        else:
-                            dispP += ' (no windowing).'
-                        print(dispP)
+                        print(self._filterWindowMessage('Using image-based preconditioning with filtering preconditioner'))
                 if any(self.precondTypeMeas):
                     if self.precondTypeMeas[0]:
                         print('Using measurement-based preconditioning with diagonal preconditioner.')
-                
+
                     if self.precondTypeMeas[1]:
-                        dispP = 'Using measurement-based preconditioning with filtering preconditioner'
-                        if self.filterWindow == 'hamming':
-                            dispP += ' with Hamming window.'
-                        elif self.filterWindow == 'hann':
-                            dispP += ' with Hann window.'
-                        elif self.filterWindow == 'blackman':
-                            dispP += ' with Blackman window.'
-                        elif self.filterWindow == 'nuttal':
-                            dispP += ' with Nuttal window.'
-                        elif self.filterWindow == 'gaussian':
-                            dispP += ' with Gaussian window.'
-                        elif self.filterWindow == 'shepp-logan':
-                            dispP += ' with Shepp-Logan window.'
-                        elif self.filterWindow == 'cosine':
-                            dispP += ' with cosine window.'
-                        elif self.filterWindow == 'parzen':
-                            dispP += ' with Parzen window.'
-                        else:
-                            dispP += ' (no windowing).'
-                        print(dispP)
+                        print(self._filterWindowMessage('Using measurement-based preconditioning with filtering preconditioner'))
                 
                 if self.oOffsetZ != 0 or self.oOffsetX != 0 or self.oOffsetY != 0:
                     print(f'Object offset is [{self.oOffsetX}, {self.oOffsetY}, {self.oOffsetZ}] (XYZ).')
@@ -1833,6 +1884,7 @@ class projectorClass:
     
     
     def setUpCorrections(self):
+        from omegatomo.util.matlabRound import matlabRound
         nx = self.Nx
         ny = self.Ny
         nz = self.Nz
@@ -1847,22 +1899,52 @@ class projectorClass:
         self.NzFull = nz
         if self.useEFOV:
             if self.useMultiResolutionVolumes:
+                # If the axial (or transaxial) extended FOV is smaller than
+                # one multi-resolution voxel, the corresponding side
+                # volume(s) would end up with zero thickness (NzM2/NxM2/
+                # NyM2 = 0), which crashes later on. In that case disable
+                # the EFOV direction in question and fall back to the other
+                # direction's multi-resolution branch (or to no multi-
+                # resolution volumes at all if neither direction remains).
+                if self.axialEFOV:
+                    NzMchk = int(matlabRound(self.NzOrig * self.multiResolutionScale))
+                    dzMchk = self.axialFOVOrig / NzMchk
+                    NzM2chk = int(matlabRound((self.axial_fov - self.axialFOVOrig) / 2 / dzMchk)) * 2
+                    if NzM2chk <= 0:
+                        warnings.warn('Axial extended FOV is smaller than one multi-resolution voxel, disabling axial EFOV.')
+                        self.axialEFOV = False
+                        self.Nz = self.NzOrig
+                        self.axial_fov = self.axialFOVOrig
+                if self.transaxialEFOV:
+                    NxMchk = int(matlabRound(self.NxOrig * self.multiResolutionScale))
+                    dxMchk = self.FOVxOrig / NxMchk
+                    NxM2chk = int(matlabRound((self.FOVa_x - self.FOVxOrig) / 2 / dxMchk)) * 2
+                    NyMchk = int(matlabRound(self.NyOrig * self.multiResolutionScale))
+                    dyMchk = self.FOVyOrig / NyMchk
+                    NyM2chk = int(matlabRound((self.FOVa_y - self.FOVyOrig) / 2 / dyMchk)) * 2
+                    if NxM2chk <= 0 or NyM2chk <= 0:
+                        warnings.warn('Transaxial extended FOV is smaller than one multi-resolution voxel, disabling transaxial EFOV.')
+                        self.transaxialEFOV = False
+                        self.Nx = self.NxOrig
+                        self.Ny = self.NyOrig
+                        self.FOVa_x = self.FOVxOrig
+                        self.FOVa_y = self.FOVyOrig
                 if self.axialEFOV and self.transaxialEFOV:
                     from scipy.ndimage import zoom
                     self.nMultiVolumes = 6
                 
-                    NxM = round(self.NxOrig * self.multiResolutionScale)
+                    NxM = int(matlabRound(self.NxOrig * self.multiResolutionScale))
                     dxM = self.FOVxOrig / NxM
-                    NyM = round(self.NyOrig * self.multiResolutionScale)
+                    NyM = int(matlabRound(self.NyOrig * self.multiResolutionScale))
                     dyM = self.FOVyOrig / NyM
-                    NzM = round(self.NzOrig * self.multiResolutionScale)
+                    NzM = int(matlabRound(self.NzOrig * self.multiResolutionScale))
                     dzM = self.axialFOVOrig / NzM
                 
-                    NxM2 = round((self.FOVa_x - self.FOVxOrig) / 2 / dxM) * 2
+                    NxM2 = int(matlabRound((self.FOVa_x - self.FOVxOrig) / 2 / dxM)) * 2
                     FOVxM = NxM2 * dxM
-                    NyM2 = round((self.FOVa_y - self.FOVyOrig) / 2 / dyM) * 2
+                    NyM2 = int(matlabRound((self.FOVa_y - self.FOVyOrig) / 2 / dyM)) * 2
                     FOVyM = NyM2 * dyM
-                    NzM2 = round((self.axial_fov - self.axialFOVOrig) / 2 / dzM) * 2
+                    NzM2 = int(matlabRound((self.axial_fov - self.axialFOVOrig) / 2 / dzM)) * 2
                     FOVzM = NzM2 * dzM
                 
                     self.FOVa_x = np.array([
@@ -1967,15 +2049,15 @@ class projectorClass:
                 elif self.transaxialEFOV and not self.axialEFOV:
                     self.nMultiVolumes = 4
                 
-                    NxM = round(self.NxOrig * self.multiResolutionScale)
+                    NxM = int(matlabRound(self.NxOrig * self.multiResolutionScale))
                     dxM = self.FOVxOrig / NxM
-                    NyM = round(self.NyOrig * self.multiResolutionScale)
+                    NyM = int(matlabRound(self.NyOrig * self.multiResolutionScale))
                     dyM = self.FOVyOrig / NyM
-                    NzM = round(self.NzOrig * self.multiResolutionScale)
+                    NzM = int(matlabRound(self.NzOrig * self.multiResolutionScale))
                 
-                    NxM2 = round((self.FOVa_x - self.FOVxOrig) / 2 / dxM) * 2
+                    NxM2 = int(matlabRound((self.FOVa_x - self.FOVxOrig) / 2 / dxM)) * 2
                     FOVxM = NxM2 * dxM
-                    NyM2 = round((self.FOVa_y - self.FOVyOrig) / 2 / dyM) * 2
+                    NyM2 = int(matlabRound((self.FOVa_y - self.FOVyOrig) / 2 / dyM)) * 2
                     FOVyM = NyM2 * dyM
                 
                     self.FOVa_x = np.array([self.FOVxOrig, FOVxM / 2, FOVxM / 2, self.FOVxOrig, self.FOVxOrig], dtype=np.float32)
@@ -2014,11 +2096,11 @@ class projectorClass:
                 elif not self.transaxialEFOV and self.axialEFOV:
                     self.nMultiVolumes = 2
                 
-                    NxM = round(self.NxOrig * self.multiResolutionScale)
-                    NyM = round(self.NyOrig * self.multiResolutionScale)
-                    NzM = round(self.NzOrig * self.multiResolutionScale)
+                    NxM = int(matlabRound(self.NxOrig * self.multiResolutionScale))
+                    NyM = int(matlabRound(self.NyOrig * self.multiResolutionScale))
+                    NzM = int(matlabRound(self.NzOrig * self.multiResolutionScale))
                     dzM = self.axialFOVOrig / NzM
-                    NzM2 = round((self.axial_fov - self.axialFOVOrig) / 2 / dzM) * 2
+                    NzM2 = int(matlabRound((self.axial_fov - self.axialFOVOrig) / 2 / dzM)) * 2
                     FOVzM = NzM2 * dzM
                 
                     self.FOVa_x = np.array([self.FOVxOrig] * 3, dtype=np.float32)
@@ -2053,10 +2135,20 @@ class projectorClass:
                         x1 = np.ones((self.Nx[1], self.Ny[1], self.Nz[1]), dtype=np.float32, order='F') * val
                         x2 = np.ones((self.Nx[2], self.Ny[2], self.Nz[2]), dtype=np.float32, order='F') * val
                         self.x0 = np.concatenate([self.x0.ravel('F'), x1.ravel('F'), x2.ravel('F')])
-                
-                self.NxPrior = self.Nx[0].item()
-                self.NyPrior = self.Ny[0].item()
-                self.NzPrior = self.Nz[0].item()
+                elif not self.axialEFOV and not self.transaxialEFOV:
+                    # Neither direction has a usable extension left: skip
+                    # multi-resolution volume creation entirely.
+                    self.useMultiResolutionVolumes = False
+                    self.nMultiVolumes = 0
+
+                if self.useMultiResolutionVolumes:
+                    self.NxPrior = self.Nx[0].item()
+                    self.NyPrior = self.Ny[0].item()
+                    self.NzPrior = self.Nz[0].item()
+                else:
+                    self.NxPrior = self.Nx
+                    self.NyPrior = self.Ny
+                    self.NzPrior = self.Nz
             else:
                 if self.eFOVIndices.size < 1:
                     self.eFOVIndices = np.zeros((self.Nz,1), dtype=np.uint8)
@@ -2064,8 +2156,8 @@ class projectorClass:
                 self.NzPrior = np.sum(self.eFOVIndices, dtype=np.uint32)
                 self.maskPrior = np.zeros((self.Nx, self.Ny), dtype=np.uint8)
                 self.maskPrior[(self.Nx - self.NxOrig)//2 : -(self.Nx - self.NxOrig)//2 - 1, (self.Ny - self.NyOrig)//2 : -(self.Ny - self.NyOrig)//2 - 1] = 1
-                self.NxPrior = np.sum(self.maskPrior[:,int(np.round(self.maskPrior.shape[1]/2))], dtype=np.uint32)
-                self.NyPrior = np.sum(self.maskPrior[int(np.round(self.maskPrior.shape[0]/2)),:], dtype=np.uint32)
+                self.NxPrior = np.sum(self.maskPrior[:,int(matlabRound(self.maskPrior.shape[1]/2))], dtype=np.uint32)
+                self.NyPrior = np.sum(self.maskPrior[int(matlabRound(self.maskPrior.shape[0]/2)),:], dtype=np.uint32)
                 if self.useMaskBP:
                     self.maskPrior = self.maskPrior + (1 - self.maskBP)
         else:
@@ -2073,12 +2165,12 @@ class projectorClass:
             self.NyPrior = self.Ny
             self.NzPrior = self.Nz
         if self.offsetCorrection:
-            self.OffsetLimit = np.zeros((self.nProjections, 1), dtype=np.float32);
+            self.OffsetLimit = np.zeros((self.nProjections, 1), dtype=np.float32)
             for kk in range(self.nProjections):
-                sx = self.x[kk, 0];
-                sy = self.x[kk, 1];
-                dx = self.x[kk, 3];
-                dy = self.x[kk, 4];
+                sx = self.x[kk, 0]
+                sy = self.x[kk, 1]
+                dx = self.x[kk, 3]
+                dy = self.x[kk, 4]
                 ii = np.arange(0., self.nRowsD, 0.25, dtype=np.float32) - self.nRowsD / 2
                 if self.pitch:
                     dx = dx + self.z[kk, 0] * ii + self.z[kk, 3] * ii
@@ -2111,7 +2203,7 @@ class projectorClass:
             if len(self.FWHM) >= 3:
                 g_z = np.zeros((1,1,g_pituus_z * 2 + 1), dtype=np.float32, order='F')
                 g_z[0,0,:] = np.reshape(np.linspace(-g_pituus_z * self.dz[0], g_pituus_z * self.dz[0], 2*g_pituus_z + 1, dtype=np.float32), (1,1,-1), order='F')
-                self.gaussK = gaussianKernel(g_x, g_y, g_z, self.FWHM[0].item() / (2. * math.sqrt(2. * math.log(2.))), self.FWHM[1].item() / (2. * math.sqrt(2. * math.log(2.))), self.FWHM[2].item() / (2. * math.sqrt(2. * math.log(2.))));
+                self.gaussK = gaussianKernel(g_x, g_y, g_z, self.FWHM[0].item() / (2. * math.sqrt(2. * math.log(2.))), self.FWHM[1].item() / (2. * math.sqrt(2. * math.log(2.))), self.FWHM[2].item() / (2. * math.sqrt(2. * math.log(2.))))
             else:
                 self.gaussK = gaussianKernel(g_x, g_y, 0, self.FWHM[0].item() / (2. * math.sqrt(2. * math.log(2.))), self.FWHM[1].item() / (2. * math.sqrt(2. * math.log(2.))))
             self.gaussK = np.asfortranarray(self.gaussK)
@@ -2327,6 +2419,7 @@ class projectorClass:
             ('RDPIncludeCorners', ctypes.c_bool),
             ('RDP_use_anatomical', ctypes.c_bool),
             ('useL2Ball', ctypes.c_bool),
+            ('fastPDHG', ctypes.c_bool),
             ('saveSens', ctypes.c_bool),
             ('use_64bit_atomics', ctypes.c_bool),
             ('use_32bit_atomics', ctypes.c_bool),

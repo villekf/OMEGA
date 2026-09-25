@@ -566,7 +566,7 @@ def _kernel_args(
 ) -> list[Any]:
     """Bind every Metal resource slot, using typed empty buffers when inactive."""
     empty_f = self.mps_empty_float32
-    atten = self.d_attenuation_image if getattr(self, 'CTAttenuation', False) else self.d_attenuation[timestep][subset]
+    atten = self.d_attenuation_image if self.CTAttenuation else self.d_attenuation[timestep][subset]
     if (direction == 'forward' and self.FPType in (1, 2, 3)) or (direction == 'backward' and self.BPType in (1, 2, 3)):
         args = [empty_f] * 22
         args[0] = scalar_params

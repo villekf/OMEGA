@@ -21,10 +21,10 @@ def checkCUDA(deviceNum = 0):
             info = info[loc:]
             loc2 = info.find("\n")
             cuda = info[:loc2].find('NVIDIA')
-        if cuda > 0:
+        if cuda != -1:
             return True
         else:
             return False
-    except ModuleNotFoundError:
+    except (ImportError, OSError, RuntimeError):
         print('ArrayFire not found. Unable to determine whether the GPU is CUDA capable or not!')
         return False

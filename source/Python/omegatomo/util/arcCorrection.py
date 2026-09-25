@@ -9,6 +9,7 @@ import numpy as np
 
 def arc_correction(options, interpolate_sinogram):
     from omegatomo.projector.detcoord import detectorCoordinates, sinogramCoordinates2D
+    from omegatomo.util.matlabRound import matlabRound
     xp, yp = detectorCoordinates(options)
     x_o, y_o = sinogramCoordinates2D(options, xp, yp)
 
@@ -32,42 +33,48 @@ def arc_correction(options, interpolate_sinogram):
     # yp -= options.diameter / 2
 
     quarter_len = len(xp) // 4
-    for kk in range(quarter_len):
-        if options.det_w_pseudo > options.det_per_ring:
-            r = int(options.det_w_pseudo / 2)
-            val_range = np.arange(kk + r - (options.cryst_per_block + 1), kk + r + (options.cryst_per_block + 1) + 1)
-        else:
-            r = int(options.det_w_pseudo / 2)
-            val_range = np.arange(kk + r - options.cryst_per_block, kk + r + options.cryst_per_block + 1)
+    # Vectorized over kk: val_range is a fixed-width sliding window whose
+    # start shifts by 1 with kk, so it is built as one (quarter_len, window)
+    # gather-index matrix instead of being recomputed every iteration.
+    # angle_ref (= l_angles[ll]) and the blocks_per_ring%4 branch below are
+    # both invariant across kk (ll is never reassigned in the loop, and both
+    # branches compute the same ind1), matching the original per-kk results
+    # exactly.
+    kk_idx = np.arange(quarter_len)
+    r = int(options.det_w_pseudo / 2)
+    if options.det_w_pseudo > options.det_per_ring:
+        half_width = options.cryst_per_block + 1
+    else:
+        half_width = options.cryst_per_block
+    offsets = np.arange(-half_width, half_width + 1)
+    val_range_matrix = kk_idx[:, None] + r + offsets[None, :]
 
-        angle_ref = l_angles[ll]
-        dx = xp[kk] - xp[val_range]
-        dy = yp[kk] - yp[val_range]
-        angle1 = np.round(np.degrees(np.arctan2(dy, dx)) * 1e4) / 1e4
+    angle_ref = l_angles[ll]
+    dx = xp[kk_idx][:, None] - xp[val_range_matrix]
+    dy = yp[kk_idx][:, None] - yp[val_range_matrix]
+    angle1 = matlabRound(np.degrees(np.arctan2(dy, dx)) * 1e4) / 1e4
 
-        if options.blocks_per_ring % 4 == 0:
-            diffs = np.abs(np.abs(angle1) - angle_ref)
-            ind1 = np.argmin(diffs)
-        else:
-            ind1 = np.argmin(np.abs(np.abs(angle1) - angle_ref))
+    diffs = np.abs(np.abs(angle1) - angle_ref)
+    ind1 = np.argmin(diffs, axis=1)
 
-        x2 = xp[val_range[ind1]]
-        y2 = yp[val_range[ind1]]
+    sel_idx = val_range_matrix[kk_idx, ind1]
+    x2 = xp[sel_idx]
+    y2 = yp[sel_idx]
 
-        p = np.array([xp[kk], yp[kk]])
-        q = np.array([x2, y2])
-        d = q - p
-        d_dot = np.dot(d, d)
-        p_dot = np.dot(p, p)
-        pd_dot = np.dot(2 * p, d)
-        rad2 = (options.diameter / 2) ** 2
+    p = np.column_stack((xp[kk_idx], yp[kk_idx]))
+    q = np.column_stack((x2, y2))
+    d = q - p
+    d_dot = np.sum(d * d, axis=1)
+    p_dot = np.sum(p * p, axis=1)
+    pd_dot = np.sum(2 * p * d, axis=1)
+    rad2 = (options.diameter / 2) ** 2
 
-        sqrt_term = pd_dot ** 2 - 4 * d_dot * (p_dot - rad2)
-        l = (-pd_dot - np.sqrt(sqrt_term)) / (2 * d_dot)
+    sqrt_term = pd_dot ** 2 - 4 * d_dot * (p_dot - rad2)
+    l_param = (-pd_dot - np.sqrt(sqrt_term)) / (2 * d_dot)
 
-        lx = p + l * d
-        new_xp[kk] = lx[0]
-        new_yp[kk] = lx[1]
+    lx = p + l_param[:, None] * d
+    new_xp[:quarter_len] = lx[:, 0]
+    new_yp[:quarter_len] = lx[:, 1]
 
     # Mirror fill
     new_xp[:quarter_len] += options.diameter / 2
@@ -122,14 +129,15 @@ def arc_correction(options, interpolate_sinogram):
     sin_a = np.sin(np.radians(angles)).squeeze()
     rot_matrix = np.array([[cos_a, -sin_a], [sin_a, cos_a]], order='F')  # shape: (2, 2, Nang)
     
-    # Rotate all points with each matrix (broadcasting)
-    new_xy1 = np.zeros((options.Ndist * options.Nang,2),order='F')
-    new_xy2 = np.zeros((options.Ndist * options.Nang,2),order='F')
-    for ii in range(0, rot_matrix.shape[2]):
-        new_xy1[ii * options.Ndist:(ii + 1) * options.Ndist] = (rot_matrix[:,:,ii] @ alku1).T + options.diameter / 2
-        new_xy2[ii * options.Ndist:(ii + 1) * options.Ndist] = (rot_matrix[:,:,ii] @ alku2).T + options.diameter / 2
-    # new_xy1 = np.einsum('ijk,k->ji', rot_matrix, alku1) + options.diameter / 2
-    # new_xy2 = np.einsum('ijk,k->ji', rot_matrix, alku2) + options.diameter / 2
+    # Rotate all points with each matrix (broadcasting).
+    # out[n, l, a] = sum_b rot_matrix[a, b, n] * alku[b, l], i.e. exactly
+    # (rot_matrix[:, :, n] @ alku).T[l, a] for every n -- a batched version
+    # of the per-ii 2x2 matmul below, reshaped (Nang, Ndist, 2) -> (Nang *
+    # Ndist, 2) in the same n-major, l-minor order the loop filled.
+    new_xy1 = (np.einsum('abn,bl->nla', rot_matrix, alku1) + options.diameter / 2).reshape(-1, 2)
+    new_xy2 = (np.einsum('abn,bl->nla', rot_matrix, alku2) + options.diameter / 2).reshape(-1, 2)
+    new_xy1 = np.asfortranarray(new_xy1)
+    new_xy2 = np.asfortranarray(new_xy2)
 
     # Multiply each matrix with alku1 and alku2 (2 x Ndist vectors)
     # Result will be shape (options.Nang, 2) after transpose
@@ -217,6 +225,15 @@ def arc_correction(options, interpolate_sinogram):
             distance[:, [0]]
         ], axis=1)
     
+        # points depends only on angle_o/distance_o (fixed above the uu/zz
+        # loops), so it is hoisted out of both loops instead of being
+        # rebuilt on every (uu, zz) iteration; griddata's unstructured
+        # per-slice interpolation itself is left as a loop (see report:
+        # scipy's vector-valued support differs across
+        # options.arc_interpolation methods, so merging slices into one
+        # griddata call is not provably identical for every method).
+        points = np.column_stack((angle_o.ravel('F'), distance_o.ravel('F')))
+
         for uu in range(options.SinM.shape[3]):
             sinm = options.SinM[..., uu]
             sinm_ext = np.concatenate([
@@ -224,14 +241,13 @@ def arc_correction(options, interpolate_sinogram):
                 sinm,
                 sinm[:, :1, :]
             ], axis=1)
-            
+
             for zz in range(sinm_ext.shape[2]):
                 values = sinm_ext[:, :, zz].astype(np.float32)
-            
-                # Flatten the grid and values
-                points = np.column_stack((angle_o.ravel('F'), distance_o.ravel('F')))
+
+                # Flatten the values (points is invariant, computed above)
                 vals = values.ravel('F')
-            
+
                 # Interpolate
                 interpolated = griddata(
                     points,

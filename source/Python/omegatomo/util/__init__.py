@@ -9,5 +9,6 @@ from .efovcorrection import CTEFOVCorrection
 from .devinfo import deviceInfo
 from .powermethod import powerMethod
 from .measprecond import applyMeasPreconditioning
+from .matlabRound import matlabRound
 
-__all__ = ["CTEFOVCorrection", "deviceInfo", "powerMethod", "applyMeasPreconditioning"]
+__all__ = ["CTEFOVCorrection", "deviceInfo", "powerMethod", "applyMeasPreconditioning", "matlabRound"]

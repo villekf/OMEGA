@@ -21,6 +21,90 @@ import ctypes
 import numpy as np
 import warnings
 
+# ctypes scalar type -> NumPy dtype, used by _as_ptr() below to validate/coerce
+# the arrays pointed to by POINTER(...) struct fields.
+_CTYPE_TO_NUMPY_DTYPE = {
+    ctypes.c_uint8: np.uint8,
+    ctypes.c_int8: np.int8,
+    ctypes.c_uint16: np.uint16,
+    ctypes.c_int16: np.int16,
+    ctypes.c_uint32: np.uint32,
+    ctypes.c_int32: np.int32,
+    ctypes.c_uint64: np.uint64,
+    ctypes.c_int64: np.int64,
+    ctypes.c_float: np.float32,
+    ctypes.c_double: np.float64,
+    ctypes.c_bool: np.bool_,
+}
+
+# Scalar struct fields whose C-struct name differs from the options attribute
+# name they are sourced from.
+_SCALAR_NAME_OVERRIDES = {
+    'T': 'B',
+    'POCS': 'ASD_POCS',
+}
+
+# Pointer struct fields whose C-struct name differs from the options
+# attribute name they are sourced from.
+_POINTER_NAME_OVERRIDES = {
+    'atten': 'vaimennus',
+    'norm': 'normalization',
+    'pituus': 'nMeas',
+    'gaussPSF': 'gaussK',
+    'saveNiter': 'saveNIter',
+    'randoms': 'SinDelayed',
+    'offsetVal': 'OffsetLimit',
+    'kerroin4': 'kerroin',
+    'filter': 'filter0',
+    'TV_ref': 'TV_referenceImage',
+    'NLM_ref': 'NLM_referenceImage',
+    'RDP_ref': 'RDP_referenceImage',
+    'trIndices': 'trIndex',
+    'axIndices': 'axIndex',
+    'detectorVector': 'DetectorVector',
+}
+
+# Pointer struct fields set through bespoke logic in transferData() (the
+# type-6/PSF-blurring precomputed geometry), rather than through
+# _POINTER_NAME_OVERRIDES and _as_ptr().
+_POINTER_SPECIAL_FIELDS = {'blurPlanes', 'blurPlanes2', 'gFilter', 'gFSize'}
+
+
+def _as_ptr(options, attr, ctype):
+    """
+    Returns a ctypes POINTER(ctype) to the array stored in options.<attr>.
+
+    The pointed-to array is guaranteed to have the NumPy dtype matching
+    `ctype` and to be contiguous, WITHOUT changing an already C- or
+    F-contiguous array's memory order: OMEGA routinely hands this function
+    Fortran-ordered multi-dimensional arrays (e.g. weighted_weights, the CT
+    uV/z coordinate arrays, masks, gaussK), and the C++ side expects that
+    same F order, so silently forcing C order here would reorder the memory
+    and hand the native code different data (a bug that a 1-D-array-only
+    regression check cannot see: a 1-D array is both C- and F-contiguous).
+
+    If options.<attr> already has the right dtype and is C- or F-contiguous,
+    it is used unchanged. If only its dtype is wrong, it is converted with
+    `astype(dtype, order='K')`, which preserves its existing C/F memory
+    order. If it is neither C- nor F-contiguous (a real edge case; today
+    this silently produced a garbage pointer), it is copied to Fortran
+    order (OMEGA's convention) with a warning naming the attribute. Either
+    way, the (possibly new) array is stored back onto options.<attr> so it
+    stays alive -- and the pointer stays valid -- for as long as options is
+    used.
+    """
+    dtype = _CTYPE_TO_NUMPY_DTYPE[ctype]
+    arr = getattr(options, attr)
+    if arr.dtype != dtype or not (arr.flags['C_CONTIGUOUS'] or arr.flags['F_CONTIGUOUS']):
+        if arr.flags['C_CONTIGUOUS'] or arr.flags['F_CONTIGUOUS']:
+            arr = arr.astype(dtype, order='K')
+        else:
+            print('_as_ptr: options.%s is neither C- nor F-contiguous; copying to Fortran order' % attr)
+            arr = np.asfortranarray(arr, dtype=dtype)
+        setattr(options, attr, arr)
+    return arr.ctypes.data_as(ctypes.POINTER(ctype))
+
+
 def transferData(options):
     """
     Transfers the Python variables to the corresponding C-struct
@@ -34,51 +118,6 @@ def transferData(options):
     None.
 
     """
-    options.param.use_raw_data = ctypes.c_uint8(options.use_raw_data)
-    options.param.listmode = ctypes.c_uint8(options.listmode)
-    options.param.verbose = ctypes.c_int8(options.verbose)
-    options.param.n_rays_transaxial = ctypes.c_uint16(options.n_rays_transaxial)
-    options.param.n_rays_axial = ctypes.c_uint16(options.n_rays_axial)
-    options.param.projector_type = ctypes.c_uint32(options.projector_type)
-    options.param.attenuation_correction = ctypes.c_uint32(options.attenuation_correction)
-    options.param.additionalCorrection = ctypes.c_uint32(options.additionalCorrection)
-    options.param.normalization_correction = ctypes.c_uint32(options.normalization_correction)
-    options.param.randoms_correction = ctypes.c_uint32(options.randoms_correction)
-    options.param.nColsD = ctypes.c_uint32(options.nColsD)
-    options.param.nRowsD = ctypes.c_uint32(options.nRowsD)
-    options.param.nHeads = ctypes.c_uint32(options.nHeads)
-    options.param.Nang = ctypes.c_uint32(options.Nang)
-    options.param.Ndist = ctypes.c_uint32(options.Ndist)
-    options.param.subsets = ctypes.c_uint32(options.subsets)
-    options.param.det_per_ring = ctypes.c_uint32(options.det_per_ring)
-    options.param.rings = ctypes.c_uint32(options.rings)
-    options.param.NxOrig = ctypes.c_uint32(options.NxOrig)
-    options.param.NyOrig = ctypes.c_uint32(options.NyOrig)
-    options.param.NzOrig = ctypes.c_uint32(options.NzOrig)
-    options.param.NxPrior = ctypes.c_uint32(options.NxPrior)
-    options.param.NyPrior = ctypes.c_uint32(options.NyPrior)
-    options.param.NzPrior = ctypes.c_uint32(options.NzPrior)
-    options.param.Niter = ctypes.c_uint32(options.Niter)
-    options.param.Nt = ctypes.c_uint32(options.Nt)
-    options.param.subsetType = ctypes.c_uint32(options.subsetType)
-    options.param.nMultiVolumes = ctypes.c_uint32(options.nMultiVolumes)
-    options.param.nLayers = ctypes.c_uint32(options.nLayers)
-    options.param.PDAdaptiveType = ctypes.c_uint32(options.PDAdaptiveType)
-    options.param.powerIterations = ctypes.c_uint32(options.powerIterations)
-    options.param.deblur_iterations = ctypes.c_uint32(options.deblur_iterations)
-    options.param.gradInitIter = ctypes.c_uint32(options.gradInitIter)
-    options.param.gradLastIter = ctypes.c_uint32(options.gradLastIter)
-    options.param.filteringIterations = ctypes.c_uint32(options.filteringIterations)
-    options.param.mean_type = ctypes.c_uint32(options.mean_type)
-    options.param.Ndx = ctypes.c_uint32(options.Ndx)
-    options.param.Ndy = ctypes.c_uint32(options.Ndy)
-    options.param.Ndz = ctypes.c_uint32(options.Ndz)
-    options.param.Nlx = ctypes.c_uint32(options.Nlx)
-    options.param.Nly = ctypes.c_uint32(options.Nly)
-    options.param.Nlz = ctypes.c_uint32(options.Nlz)
-    options.param.g_dim_x = ctypes.c_uint32(options.g_dim_x)
-    options.param.g_dim_y = ctypes.c_uint32(options.g_dim_y)
-    options.param.g_dim_z = ctypes.c_uint32(options.g_dim_z)
     # Optional user-defined local/work-group (block) size. Accepts a scalar or a sequence of up to 3
     # values; missing/negative entries keep the built-in defaults.
     localSize = options.local_size
@@ -87,253 +126,67 @@ def transferData(options):
     else:
         localSize = list(np.asarray(localSize).ravel())
     localSize = (localSize + [-1, -1, -1])[:3]
-    options.param.localSizeX = ctypes.c_int32(int(localSize[0]))
-    options.param.localSizeY = ctypes.c_int32(int(localSize[1]))
-    options.param.localSizeZ = ctypes.c_int32(int(localSize[2]))
-    # Optional: compute the spatial prior only every regEveryIter-th (sub)iteration (1 = every time).
-    options.param.regEveryIter = ctypes.c_int32(int(options.regEveryIter))
-    options.param.NiterAD = ctypes.c_uint32(options.NiterAD)
+
     if isinstance(options.inffi, np.ndarray):
-        options.param.inffi = ctypes.c_uint32(options.inffi.item())
+        inffiVal = options.inffi.item()
     else:
-        options.param.inffi = ctypes.c_uint32(options.inffi)
-    options.param.Nf = ctypes.c_uint32(options.Nf)
-    options.param.deviceNum = ctypes.c_uint32(options.deviceNum)
-    options.param.platform = ctypes.c_uint32(options.platform)
-    options.param.derivativeType = ctypes.c_uint32(options.derivativeType)
-    options.param.TVtype = ctypes.c_uint32(options.TVtype)
-    options.param.FluxType = ctypes.c_uint32(options.FluxType)
-    options.param.DiffusionType = ctypes.c_uint32(options.DiffusionType)
-    options.param.POCS_NgradIter = ctypes.c_uint32(options.POCS_NgradIter)
-    options.param.normZ = ctypes.c_uint32(options.normZ)
-    options.param.maskFPZ = ctypes.c_uint32(options.maskFPZ)
-    options.param.maskBPZ = ctypes.c_uint32(options.maskBPZ)
-    options.param.FISTAType = ctypes.c_uint32(options.FISTAType)
-    options.param.nProjections = ctypes.c_int64(options.nProjections)
-    options.param.TOF_bins = ctypes.c_int64(options.TOF_bins)
-    options.param.tau = ctypes.c_float(options.tau)
-    options.param.helicalRadius = ctypes.c_float(options.helicalRadius)
-    options.param.tube_radius = ctypes.c_float(options.tube_radius)
-    options.param.epps = ctypes.c_float(options.epps)
-    options.param.sigma_x = ctypes.c_float(options.sigma_x)
-    options.param.tube_width_z = ctypes.c_float(options.tube_width_z)
-    options.param.tube_width_xy = ctypes.c_float(options.tube_width_xy)
-    options.param.bmin = ctypes.c_float(options.bmin)
-    options.param.bmax = ctypes.c_float(options.bmax)
-    options.param.Vmax = ctypes.c_float(options.Vmax)
-    options.param.global_factor = ctypes.c_float(options.global_factor)
-    options.param.dL = ctypes.c_float(options.dL)
-    options.param.flat = ctypes.c_float(options.flat)
-    options.param.U = ctypes.c_float(options.U)
-    options.param.h_ACOSEM = ctypes.c_float(options.h_ACOSEM)
-    options.param.dPitchX = ctypes.c_float(options.dPitchX)
-    options.param.dPitchY = ctypes.c_float(options.dPitchY)
-    options.param.cr_p = ctypes.c_float(options.cr_p)
-    options.param.cr_pz = ctypes.c_float(options.cr_pz)
-    options.param.NLMsigma = ctypes.c_float(options.NLMsigma)
-    options.param.NLAdaptiveConstant = ctypes.c_float(options.NLAdaptiveConstant)
-    options.param.w_sum = ctypes.c_float(options.w_sum)
-    options.param.KAD = ctypes.c_float(options.KAD)
-    options.param.TimeStepAD = ctypes.c_float(options.TimeStepAD)
-    options.param.RDP_gamma = ctypes.c_float(options.RDP_gamma)
-    options.param.GM_delta = ctypes.c_float(options.GM_delta)
-    options.param.huber_delta = ctypes.c_float(options.huber_delta)
-    options.param.gradV1 = ctypes.c_float(options.gradV1)
-    options.param.gradV2 = ctypes.c_float(options.gradV2)
-    options.param.alpha0TGV = ctypes.c_float(options.alpha0TGV)
-    options.param.alpha1TGV = ctypes.c_float(options.alpha1TGV)
-    options.param.GGMRF_p = ctypes.c_float(options.GGMRF_p)
-    options.param.GGMRF_q = ctypes.c_float(options.GGMRF_q)
-    options.param.GGMRF_c = ctypes.c_float(options.GGMRF_c)
-    options.param.beta = ctypes.c_float(options.beta)
-    options.param.beta_temporal = ctypes.c_float(options.beta_temporal)
-    options.param.T = ctypes.c_float(options.B)
-    options.param.dSizeXBP = ctypes.c_float(options.dSizeXBP)
-    options.param.dSizeZBP = ctypes.c_float(options.dSizeZBP)
-    options.param.TVsmoothing = ctypes.c_float(options.TVsmoothing)
-    options.param.temporalTVsmoothing = ctypes.c_float(options.temporalTVsmoothing)
-    options.param.C = ctypes.c_float(options.C)
-    options.param.SATVPhi = ctypes.c_float(options.SATVPhi)
-    options.param.eta = ctypes.c_float(options.eta)
-    options.param.APLSsmoothing = ctypes.c_float(options.APLSsmoothing)
-    options.param.hyperbolicDelta = ctypes.c_float(options.hyperbolicDelta)
-    options.param.sourceToCRot = ctypes.c_float(options.sourceToCRot)
-    options.param.POCS_alpha = ctypes.c_float(options.POCS_alpha)
-    options.param.POCS_rMax = ctypes.c_float(options.POCS_rMax)
-    options.param.POCS_alphaRed = ctypes.c_float(options.POCS_alphaRed)
-    options.param.POCSepps = ctypes.c_float(options.POCSepps)
-    options.param.use_psf = ctypes.c_bool(options.use_psf)
-    options.param.TOF = ctypes.c_bool(options.TOF)
-    options.param.pitch = ctypes.c_bool(options.pitch)
-    options.param.SPECT = ctypes.c_bool(options.SPECT)
-    options.param.PET = ctypes.c_bool(options.PET)
-    options.param.CT = ctypes.c_bool(options.CT)
-    options.param.largeDim = ctypes.c_bool(options.largeDim)
-    options.param.loadTOF = ctypes.c_bool(options.loadTOF)
-    options.param.storeResidual = ctypes.c_bool(options.storeResidual)
-    options.param.FISTA_acceleration = ctypes.c_bool(options.FISTA_acceleration)
-    options.param.meanFP = ctypes.c_bool(options.meanFP)
-    options.param.meanBP = ctypes.c_bool(options.meanBP)
-    options.param.useMaskFP = ctypes.c_bool(options.useMaskFP)
-    options.param.useMaskBP = ctypes.c_bool(options.useMaskBP)
-    options.param.orthTransaxial = ctypes.c_bool(options.orthTransaxial)
-    options.param.orthAxial = ctypes.c_bool(options.orthAxial)
-    options.param.enforcePositivity = ctypes.c_bool(options.enforcePositivity)
-    options.param.useMultiResolutionVolumes = ctypes.c_bool(options.useMultiResolutionVolumes)
-    options.param.save_iter = ctypes.c_bool(options.save_iter)
-    options.param.deblurring = ctypes.c_bool(options.deblurring)
-    options.param.useMAD = ctypes.c_bool(options.useMAD)
-    options.param.useImages = ctypes.c_bool(options.useImages)
-    options.param.useEFOV = ctypes.c_bool(options.useEFOV)
-    options.param.CTAttenuation = ctypes.c_bool(options.CTAttenuation)
-    options.param.offsetCorrection = ctypes.c_bool(options.offsetCorrection)
-    options.param.relaxationScaling = ctypes.c_bool(options.relaxationScaling)
-    options.param.computeRelaxationParameters = ctypes.c_bool(options.computeRelaxationParameters)
-    options.param.storeFP = ctypes.c_bool(options.storeFP)
-    options.param.use2DTGV = ctypes.c_bool(options.use2DTGV)
-    options.param.med_no_norm = ctypes.c_bool(options.med_no_norm)
-    options.param.NLM_MRP = ctypes.c_bool(options.NLM_MRP)
-    options.param.NLTV = ctypes.c_bool(options.NLTV)
-    options.param.NLRD = ctypes.c_bool(options.NLRD)
-    options.param.NLLange = ctypes.c_bool(options.NLLange)
-    options.param.NLGGMRF = ctypes.c_bool(options.NLGGMRF)
-    options.param.NLGM = ctypes.c_bool(options.NLGM)
-    options.param.NLM_use_anatomical = ctypes.c_bool(options.NLM_use_anatomical)
-    options.param.NLAdaptive = ctypes.c_bool(options.NLAdaptive)
-    options.param.NLMaxWeight = ctypes.c_bool(options.NLMaxWeight)
-    options.param.TV_use_anatomical = ctypes.c_bool(options.TV_use_anatomical)
-    options.param.RDPIncludeCorners = ctypes.c_bool(options.RDPIncludeCorners)
-    options.param.RDP_use_anatomical = ctypes.c_bool(options.RDP_use_anatomical)
-    options.param.useL2Ball = ctypes.c_bool(options.useL2Ball)
-    options.param.saveSens = ctypes.c_bool(options.saveSens)
-    options.param.use_64bit_atomics = ctypes.c_bool(options.use_64bit_atomics)
-    options.param.use_32bit_atomics = ctypes.c_bool(options.use_32bit_atomics)
-    options.param.compute_sensitivity_image = ctypes.c_bool(options.compute_sensitivity_image)
-    options.param.useFDKWeights = ctypes.c_bool(options.useFDKWeights)
-    options.param.useIndexBasedReconstruction = ctypes.c_bool(options.useIndexBasedReconstruction)
-    options.param.stochasticSubsetSelection = ctypes.c_bool(options.stochasticSubsetSelection)
-    options.param.useTotLength = ctypes.c_bool(options.useTotLength)
-    options.param.useParallelBeam = ctypes.c_bool(options.useParallelBeam)
-    options.param.useHelical = ctypes.c_bool(options.useHelical)
-    options.param.OSEM = ctypes.c_bool(options.OSEM)
-    options.param.LSQR = ctypes.c_bool(options.LSQR)
-    options.param.CGLS = ctypes.c_bool(options.CGLS)
-    options.param.SART = ctypes.c_bool(options.SART)
-    options.param.FISTA = ctypes.c_bool(options.FISTA)
-    options.param.FISTAL1 = ctypes.c_bool(options.FISTAL1)
-    options.param.MRAMLA = ctypes.c_bool(options.MRAMLA)
-    options.param.RAMLA = ctypes.c_bool(options.RAMLA)
-    options.param.ROSEM = ctypes.c_bool(options.ROSEM)
-    options.param.RBI = ctypes.c_bool(options.RBI)
-    options.param.DRAMA = ctypes.c_bool(options.DRAMA)
-    options.param.COSEM = ctypes.c_bool(options.COSEM)
-    options.param.ECOSEM = ctypes.c_bool(options.ECOSEM)
-    options.param.ACOSEM = ctypes.c_bool(options.ACOSEM)
-    options.param.OSL_OSEM = ctypes.c_bool(options.OSL_OSEM)
-    options.param.MBSREM = ctypes.c_bool(options.MBSREM)
-    options.param.BSREM = ctypes.c_bool(options.BSREM)
-    options.param.ROSEM_MAP = ctypes.c_bool(options.ROSEM_MAP)
-    options.param.OSL_RBI = ctypes.c_bool(options.OSL_RBI)
-    options.param.OSL_COSEM = ctypes.c_bool(options.OSL_COSEM)
-    options.param.PKMA = ctypes.c_bool(options.PKMA)
-    options.param.SPS = ctypes.c_bool(options.SPS)
-    options.param.PDHG = ctypes.c_bool(options.PDHG)
-    options.param.PDHGKL = ctypes.c_bool(options.PDHGKL)
-    options.param.PDHGL1 = ctypes.c_bool(options.PDHGL1)
-    options.param.PDDY = ctypes.c_bool(options.PDDY)
-    options.param.CV = ctypes.c_bool(options.CV)
-    options.param.POCS = ctypes.c_bool(options.ASD_POCS)
-    options.param.FDK = ctypes.c_bool(options.FDK)
-    options.param.SAGA = ctypes.c_bool(options.SAGA)
-    options.param.BB = ctypes.c_bool(options.BB)
-    options.param.MRP = ctypes.c_bool(options.MRP)
-    options.param.quad = ctypes.c_bool(options.quad)
-    options.param.Huber = ctypes.c_bool(options.Huber)
-    options.param.L = ctypes.c_bool(options.L)
-    options.param.FMH = ctypes.c_bool(options.FMH)
-    options.param.weighted_mean = ctypes.c_bool(options.weighted_mean)
-    options.param.TV = ctypes.c_bool(options.TV)
-    options.param.hyperbolic = ctypes.c_bool(options.hyperbolic)
-    options.param.AD = ctypes.c_bool(options.AD)
-    options.param.APLS = ctypes.c_bool(options.APLS)
-    options.param.TGV = ctypes.c_bool(options.TGV)
-    options.param.NLM = ctypes.c_bool(options.NLM)
-    options.param.RDP = ctypes.c_bool(options.RDP)
-    options.param.GGMRF = ctypes.c_bool(options.GGMRF)
-    options.param.ProxTV = ctypes.c_bool(options.ProxTV)
-    options.param.ProxRDP = ctypes.c_bool(options.ProxRDP)
-    options.param.ProxNLM = ctypes.c_bool(options.ProxNLM)
-    options.param.temporalTV = ctypes.c_bool(options.temporalTV)
-    options.param.temporal_smoothness = ctypes.c_bool(options.temporal_smoothness)
-    options.param.MAP = ctypes.c_bool(options.MAP)
-    options.param.custom = ctypes.c_bool(options.custom)
-    options.param.mDim = ctypes.c_uint64(options.SinM.size // options.Nt)
-    options.param.nIterSaved = ctypes.c_uint64(options.saveNIter.size)
-    options.param.sizeScat = ctypes.c_uint64(options.corrVector.size)
-    options.param.eFOV = ctypes.c_uint64(options.eFOVIndices.size)
+        inffiVal = options.inffi
+
+    # sizeX: number of listmode sensitivity-image source coordinates when computing
+    # the sensitivity image in listmode, otherwise the number of x-coordinates.
     if options.listmode and options.compute_sensitivity_image:
-        options.param.sizeX = ctypes.c_uint64(options.uV.size)
+        sizeXVal = options.uV.size
     else:
-        options.param.sizeX = ctypes.c_uint64(options.x.size)
-    options.param.sizeZ = ctypes.c_uint64(options.z.size)
-    options.param.sizeAtten = ctypes.c_uint64(options.vaimennus.size)
-    options.param.sizeNorm = ctypes.c_uint64(options.normalization.size)
-    options.param.sizePSF = ctypes.c_uint64(options.gaussK.size)
-    options.param.sizeXYind = ctypes.c_uint64(options.xy_index.size)
-    options.param.sizeZind = ctypes.c_uint64(options.z_index.size)
-    options.param.xCenterSize = ctypes.c_uint64(options.x_center.size)
-    options.param.yCenterSize = ctypes.c_uint64(options.y_center.size)
-    options.param.zCenterSize = ctypes.c_uint64(options.z_center.size)
-    options.param.sizeV = ctypes.c_uint64(options.V.size)
-    options.param.measElem = ctypes.c_uint64(options.SinM.size)
-    options.param.seed = ctypes.c_int64(options.seed)
-    options.param.x = options.x.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.z = options.z.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.uV = options.uV.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.dx = options.dx.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.dy = options.dy.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.dz = options.dz.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.bx = options.bx.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.by = options.by.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.bz = options.bz.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.atten = options.vaimennus.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.norm = options.normalization.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.pituus = options.nMeas.ctypes.data_as(ctypes.POINTER(ctypes.c_int64))
-    options.param.xy_index = options.xy_index.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))
-    options.param.z_index = options.z_index.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
-    options.param.x_center = options.x_center.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.y_center = options.y_center.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.z_center = options.z_center.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.V = options.V.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.gaussPSF = options.gaussK.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.gaussianNLM = options.gaussianNLM.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.saveNiter = options.saveNIter.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))
-    options.param.Nx = options.Nx.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))
-    options.param.Ny = options.Ny.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))
-    options.param.Nz = options.Nz.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))
-    if not options.SinDelayed.dtype == 'single':
+        sizeXVal = options.x.size
+
+    if options.SinDelayed.dtype != np.float32:
         options.SinDelayed = options.SinDelayed.astype(np.float32)
-    options.param.randoms = options.SinDelayed.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.corrVector = options.corrVector.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.x0 = options.x0.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.offsetVal = options.OffsetLimit.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.dScaleX4 = options.dScaleX4.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.dScaleY4 = options.dScaleY4.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.dScaleZ4 = options.dScaleZ4.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.dSizeX = options.dSizeX.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.dSizeY = options.dSizeY.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.dScaleX = options.dScaleX.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.dScaleY = options.dScaleY.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.dScaleZ = options.dScaleZ.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.kerroin4 = options.kerroin.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.lam_drama = options.lam_drama.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.maskFP = options.maskFP.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
-    options.param.maskBP = options.maskBP.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
-    options.param.eFOVIndices = options.eFOVIndices.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
-    options.param.maskPrior = options.maskPrior.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
-    options.param.TOFIndices = options.TOFIndices.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
-    options.param.angles = options.angles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.swivelAngles = options.swivelAngles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+
+    # Scalar struct fields with bespoke values (array sizes, conditional
+    # selection, explicit type coercion, etc.) rather than a plain
+    # options.<field name> (or renamed) lookup.
+    scalarValueOverrides = {
+        'localSizeX': int(localSize[0]),
+        'localSizeY': int(localSize[1]),
+        'localSizeZ': int(localSize[2]),
+        'regEveryIter': int(options.regEveryIter),
+        'inffi': inffiVal,
+        'mDim': options.SinM.size // options.Nt,
+        'nIterSaved': options.saveNIter.size,
+        'sizeScat': options.corrVector.size,
+        'eFOV': options.eFOVIndices.size,
+        'sizeX': sizeXVal,
+        'sizeZ': options.z.size,
+        'sizeAtten': options.vaimennus.size,
+        'sizeNorm': options.normalization.size,
+        'sizePSF': options.gaussK.size,
+        'sizeXYind': options.xy_index.size,
+        'sizeZind': options.z_index.size,
+        'xCenterSize': options.x_center.size,
+        'yCenterSize': options.y_center.size,
+        'zCenterSize': options.z_center.size,
+        'sizeV': options.V.size,
+        'measElem': options.SinM.size,
+    }
+
+    setFields = set()
+    for name, ctype in options.param._fields_:
+        if name in _POINTER_SPECIAL_FIELDS:
+            continue
+        if issubclass(ctype, ctypes._Pointer):
+            attr = _POINTER_NAME_OVERRIDES.get(name, name)
+            setattr(options.param, name, _as_ptr(options, attr, ctype._type_))
+        else:
+            if name in scalarValueOverrides:
+                value = scalarValueOverrides[name]
+            else:
+                attr = _SCALAR_NAME_OVERRIDES.get(name, name)
+                value = getattr(options, attr)
+            setattr(options.param, name, ctype(value))
+        setFields.add(name)
+
+    # The native type-6 (rotation-dependent PSF blurring) branch uses
+    # precomputed per-plane blur indices and the volume-0 filter/size.
     if options.projector_type in (6, 16, 26, 61, 62, 66):
         options.param.blurPlanes = options.blurPlanes[0].ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
         options.param.blurPlanes2 = options.blurPlanes2[0].ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
@@ -346,49 +199,58 @@ def transferData(options):
         options.param.gFilter = None
         options.gFSize = np.zeros(3, dtype=np.uint64)
     options.param.gFSize = options.gFSize.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
-    options.param.precondTypeImage = options.precondTypeImage.ctypes.data_as(ctypes.POINTER(ctypes.c_bool))
-    options.param.precondTypeMeas = options.precondTypeMeas.ctypes.data_as(ctypes.POINTER(ctypes.c_bool))
-    options.param.referenceImage = options.referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.filterIm = options.filterIm.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.filter = options.filter0.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.filter2 = options.filter2.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.Ffilter = options.Ffilter.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.s = options.s.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.weights_quad = options.weights_quad.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.weights_huber = options.weights_huber.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.weighted_weights = options.weighted_weights.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.APLS_ref_image = options.APLS_ref_image.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.lambdaN = options.lambdaN.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.lambdaFiltered = options.lambdaFiltered.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.alpha_PKMA = options.alpha_PKMA.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.alphaPrecond = options.alphaPrecond.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.tauCP = options.tauCP.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.tauCPFilt = options.tauCPFilt.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.sigmaCP = options.sigmaCP.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.sigma2CP = options.sigma2CP.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.thetaCP = options.thetaCP.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.TOFCenter = options.TOFCenter.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.TV_ref = options.TV_referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.trIndices = options.trIndex.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
-    options.param.axIndices = options.axIndex.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
-    #For SPECT...
-    options.param.rayShiftsDetector = options.rayShiftsDetector.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.rayShiftsSource = options.rayShiftsSource.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.detectorVector = options.DetectorVector.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))
-    options.param.coneOfResponseStdCoeffA = ctypes.c_float(options.coneOfResponseStdCoeffA)
-    options.param.coneOfResponseStdCoeffB = ctypes.c_float(options.coneOfResponseStdCoeffB)
-    options.param.coneOfResponseStdCoeffC = ctypes.c_float(options.coneOfResponseStdCoeffC)
-    options.param.ellipseCenterX = ctypes.c_float(options.ellipseCenterX)
-    options.param.ellipseCenterY = ctypes.c_float(options.ellipseCenterY)
-    options.param.ellipseCenterZ = ctypes.c_float(options.ellipseCenterZ)
-    options.param.ellipseRadiusX = ctypes.c_float(options.ellipseRadiusX)
-    options.param.ellipseRadiusY = ctypes.c_float(options.ellipseRadiusY)
-    options.param.ellipseRadiusZ = ctypes.c_float(options.ellipseRadiusZ)
-    options.param.ellipsePower = ctypes.c_float(options.ellipsePower)
-    # ...until here
-    options.param.NLM_ref = options.NLM_referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.RDP_ref = options.RDP_referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    
+    setFields.update(_POINTER_SPECIAL_FIELDS)
+
+    missing = [name for name, _ in options.param._fields_ if name not in setFields]
+    if missing:
+        raise RuntimeError('transferData: struct field(s) left unset: %s' % missing)
+
+
+def _selectPrecorrectedMeasurement(options, getKey):
+    """
+    Selects either the corrected ('SinM') or the raw ('raw_SinM') measurement
+    data key, matching the precorrection semantics shared by the MAT and NPZ
+    measurement-file loaders. `getKey(key)` returns the array for that key,
+    or raises KeyError.
+    """
+    if (options.randoms_correction or options.scatter_correction or options.normalization_correction) and not options.corrections_during_reconstruction:
+        if not options.precorrect:
+            try:
+                return getKey('SinM')
+            except KeyError:
+                options.precorrect = True
+                return getKey('raw_SinM')
+        else:
+            return getKey('raw_SinM')
+    else:
+        return getKey('raw_SinM')
+
+
+def _nativeLibPath(libdir, name):
+    """
+    Returns the full path to the native reconstruction library `name` inside
+    `libdir`, using the platform-appropriate shared-library extension
+    ('.dll' on Windows, '.so' everywhere else).
+    """
+    import os
+    ext = '.dll' if os.name == 'nt' else '.so'
+    return str(os.path.join(libdir, name + ext))
+
+
+def _loadDelayedMeasurement(options, getKey):
+    """
+    Loads the randoms ('SinDelayed') data from an already-open measurement
+    file, matching the semantics shared by the MAT and NPZ measurement-file
+    loaders. `getKey(key)` returns the array for that key, or raises
+    KeyError.
+    """
+    if options.randoms_correction and not options.reconstruct_scatter and not options.reconstruct_trues and options.SinDelayed.size < 1:
+        try:
+            options.SinDelayed = getKey('SinDelayed')
+        except KeyError:
+            print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed')
+
+
 def reconstructions_mainCT(options):
     """
     This function simply does certain CT-specific adjustments before calling
@@ -408,12 +270,7 @@ def reconstructions_mainCT(options):
         the (optional) residual/primal-dual gap.
     """
     options.CT = True
-    if options.storeResidual:
-        pz, FPOutputP, residual = reconstructions_main(options)
-        return pz, FPOutputP, residual
-    else:
-        pz, FPOutputP = reconstructions_main(options)
-        return pz, FPOutputP
+    return reconstructions_main(options)
 
 def reconstructions_mainSPECT(options):
     """
@@ -432,12 +289,7 @@ def reconstructions_mainSPECT(options):
         The (optional) forward projections.
     """
     options.SPECT = True
-    if options.storeResidual:
-        pz, FPOutputP, residual = reconstructions_main(options)
-        return pz, FPOutputP, residual
-    else:
-        pz, FPOutputP = reconstructions_main(options)
-        return pz, FPOutputP
+    return reconstructions_main(options)
 
 def reconstructions_main(options):
     """
@@ -484,7 +336,8 @@ def reconstructions_main(options):
         options.fpath = askopenfilename(title='Select measurement datafile',filetypes=(('NPY, NPZ and MAT files','*.mat *.npy *.npz'),('All','*.*')))
         if len(options.fpath) == 0:
             raise ValueError('No file selected')
-    if sinoSize < 1 and options.fpath[len(options.fpath)-3:len(options.fpath)+1:1] == 'mat':
+        fname, suffix = os.path.splitext(options.fpath)
+    if sinoSize < 1 and suffix == '.mat':
         from pymatreader import read_mat
         try:
             var = read_mat(options.fpath)
@@ -498,47 +351,21 @@ def reconstructions_main(options):
             if len(options.fpath) == 0:
                 raise ValueError('No file selected')
             var = read_mat(options.fpath)
+        matGet = lambda key: np.array(var[key], order='F')
         if options.reconstruct_trues:
-            options.SinM = np.array(var["SinTrues"],order='F')
+            options.SinM = matGet('SinTrues')
         elif options.reconstruct_scatter:
-            options.SinM = np.array(var["SinScatter"],order='F')
+            options.SinM = matGet('SinScatter')
         else:
-            if ((options.randoms_correction or options.scatter_correction or options.normalization_correction) and not options.corrections_during_reconstruction):
-                if not options.precorrect:
-                    try:
-                        options.SinM = np.array(var["SinM"],order='F')
-                    except KeyError:
-                        options.SinM = np.array(var["raw_SinM"],order='F')
-                        options.precorrect = True
-                else:
-                    options.SinM = np.array(var["raw_SinM"],order='F')
-            else:
-                options.SinM = np.array(var["raw_SinM"],order='F')
-        if options.randoms_correction and not options.reconstruct_scatter and not options.reconstruct_trues and options.SinDelayed.size < 1:
-            try:
-                options.SinDelayed = np.array(var["SinDelayed"],order='F')
-            except KeyError:
-                print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed')
-    elif sinoSize < 1 and options.fpath[len(options.fpath)-3:len(options.fpath)+1:1] == 'npy':
+            options.SinM = _selectPrecorrectedMeasurement(options, matGet)
+        _loadDelayedMeasurement(options, matGet)
+    elif sinoSize < 1 and suffix == '.npy':
         options.SinM = np.load(options.fpath)
-    elif sinoSize < 1 and options.fpath[len(options.fpath)-3:len(options.fpath)+1:1] == 'npz':
+    elif sinoSize < 1 and suffix == '.npz':
         varList = np.load(options.fpath)
-        if ((options.randoms_correction or options.scatter_correction or options.normalization_correction) and not options.corrections_during_reconstruction):
-            if not options.precorrect:
-                try:
-                    options.SinM = varList['SinM']
-                except KeyError:
-                    options.SinM = varList['raw_SinM']
-                    options.precorrect = True
-            else:
-                options.SinM = varList['raw_SinM']
-        else:
-            options.SinM = varList['raw_SinM']
-        if options.randoms_correction and not options.reconstruct_scatter and not options.reconstruct_trues and options.SinDelayed.size < 1:
-            try:
-                options.SinDelayed = varList['SinDelayed']
-            except KeyError:
-                print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed')
+        npzGet = lambda key: varList[key]
+        options.SinM = _selectPrecorrectedMeasurement(options, npzGet)
+        _loadDelayedMeasurement(options, npzGet)
     elif not options.corrections_during_reconstruction and not options.precorrect and (options.randoms_correction or options.scatter_correction or options.normalization_correction):
         print('Corrections selected and measurement data found. The input measurement data WILL NOT BE PRECORRECTED!!!!!! If you wish to have OMEGA-based precorrection, make sure options.precorrect = True')
     if options.randoms_correction and not options.reconstruct_scatter and not options.reconstruct_trues and options.SinDelayed.size < 1:
@@ -551,7 +378,8 @@ def reconstructions_main(options):
             print('No file selected, disabling randoms correction')
             options.randoms_correction = False
         else:
-            if fpath[len(fpath)-3:len(fpath)+1:1] == 'mat' and options.randoms_correction:
+            _, fsuffix = os.path.splitext(fpath)
+            if fsuffix == '.mat' and options.randoms_correction:
                 from pymatreader import read_mat
                 var = read_mat(fpath)
                 try:
@@ -559,9 +387,9 @@ def reconstructions_main(options):
                 except KeyError:
                     print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed. Disabling randoms correction')
                     options.randoms_correction = False
-            elif fpath[len(fpath)-3:len(fpath)+1:1] == 'npy':
+            elif fsuffix == '.npy':
                 options.SinDelayed = np.load(fpath)
-            elif fpath[len(fpath)-3:len(fpath)+1:1] == 'npz':
+            elif fsuffix == '.npz':
                 varList = np.load(fpath)
                 try:
                     options.SinDelayed = varList['SinDelayed']
@@ -660,18 +488,18 @@ def reconstructions_main(options):
         residual = np.zeros(1, dtype=np.float32)
     fPath = os.path.dirname( __file__ )
     if os.path.exists(os.path.join(fPath, '..', 'util', 'usingPyPi.py')):
-        libdir = os.path.join(os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..')), "libs")
-        options.headerDir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', 'opencl')) + "/"
+        libdir = os.path.join(os.path.abspath(os.path.join(fPath, '..')), "libs")
     else:
-        libdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..'))
-        options.headerDir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', '..', 'opencl')) + "/"
+        libdir = os.path.abspath(os.path.join(fPath, '..', '..'))
+    from omegatomo.util.paths import opencl_header_dir
+    options.headerDir = opencl_header_dir()
     transferData(options)
     inStr = options.headerDir.encode('utf-8')
     # point_ptr = ctypes.pointer(options.param)
     if isinstance(options.SinM, list):
         options.SinM = np.concatenate(options.SinM)
     keep_int = options.SinM.dtype in (np.uint16, np.uint8) and (options.largeDim or not options.loadTOF)
-    if not keep_int and not options.SinM.dtype == 'float32':
+    if not keep_int and options.SinM.dtype != np.float32:
         options.SinM = options.SinM.astype(np.float32)
     if options.SinM.ndim > 1:
         options.SinM = options.SinM.ravel('F')
@@ -682,21 +510,11 @@ def reconstructions_main(options):
             libN = 'CUDA_matrixfree_uint8_lib'
         else:
             libN = 'CUDA_matrixfree_lib'
-        if os.name == 'posix':
-            libname = str(os.path.join(libdir, libN + ".so"))
-        elif os.name == 'nt':
-            libname = str(os.path.join(libdir,libN + ".dll"))
-        else:
-            libname = str(os.path.join(libdir,libN + ".so"))
+        libname = _nativeLibPath(libdir, libN)
     elif options.useCPU:
-        if not options.SinM.dtype == 'float32':
+        if options.SinM.dtype != np.float32:
             options.SinM = options.SinM.astype(np.float32)
-        if os.name == 'posix':
-            libname = str(os.path.join(libdir,"CPU_matrixfree_lib.so"))
-        elif os.name == 'nt':
-            libname = str(os.path.join(libdir,"CPU_matrixfree_lib.dll"))
-        else:
-            libname = str(os.path.join(libdir,"CPU_matrixfree_lib.so"))
+        libname = _nativeLibPath(libdir, 'CPU_matrixfree_lib')
     else:
         if options.SinM.dtype == 'uint16':
             libN = 'OpenCL_matrixfree_uint16_lib'
@@ -704,12 +522,7 @@ def reconstructions_main(options):
             libN = 'OpenCL_matrixfree_uint8_lib'
         else:
             libN = 'OpenCL_matrixfree_lib'
-        if os.name == 'posix':
-            libname = str(os.path.join(libdir, libN + ".so"))
-        elif os.name == 'nt':
-            libname = str(os.path.join(libdir,libN + ".dll"))
-        else:
-            libname = str(os.path.join(libdir,libN + ".so"))
+        libname = _nativeLibPath(libdir, libN)
     residualP = residual.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     if options.SinM.dtype == 'uint16':
         SinoP = options.SinM.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))

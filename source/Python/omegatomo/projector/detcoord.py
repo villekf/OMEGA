@@ -15,6 +15,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 """
+from __future__ import annotations
 from typing import Tuple
 import numpy as np
 from omegatomo.projector import proj
@@ -166,16 +167,21 @@ def setCTCoordinates(options):
             options.uV = np.reshape(options.uV, (-1, 2))
     if options.flip_image:
         options.y = -options.y
-        options.uV[:,1] = -options.uV[:,1]
-        if options.pitchRoll.size > 0:
-            options.uV[:,4] = -options.uV[:,4]
+        if options.uV.size > 0:
+            options.uV[:,1] = -options.uV[:,1]
+            if options.pitchRoll.size > 0:
+                options.uV[:,4] = -options.uV[:,4]
     if options.uV.size > 0:
         options.x = np.column_stack((options.x[:,0], options.y[:,0], options.z[:,0], options.x[:,1], options.y[:,1], options.z[:,1]))
         options.z = options.uV
     if options.pitchRoll.size > 0:
         options.pitch = True
-        options.z[:, :3] *= options.dPitchX
-        options.z[:, 3:] *= options.dPitchY
+        # Scale by physical axis, not by vector: the in-plane (x,y)
+        # components of both the u- and v-direction vectors use the
+        # transaxial pitch, while the axial (z) component of both vectors
+        # uses the axial pitch (setCTCoordinates.m:61-71 pattern [X,X,Y,X,X,Y]).
+        options.z[:, [0, 1, 3, 4]] *= options.dPitchX
+        options.z[:, [2, 5]] *= options.dPitchY
     elif options.uV.size > 0:
         options.z[:,0] = options.z[:,0] * options.dPitchX
         options.z[:,1] = options.z[:,1] * options.dPitchX
@@ -244,26 +250,46 @@ def getCoordinates(options):
         z = options.z
     else:
         if options.use_raw_data == 0:
-            x,y = detectorCoordinates(options)
+            xp,yp = detectorCoordinates(options)
             if options.nLayers > 1:
-                koko = x.size / 2
+                # Port of get_coordinates.m:64-82: build the sinogram (and
+                # axial) coordinates separately for each of the nLayers^2
+                # layer1/layer2 combinations, then concatenate.
+                layerCombos = [(1, 1), (1, 2), (2, 1), (2, 2)]
+                xList = []
+                yList = []
+                zList = []
+                for kk in range(int(options.nLayers) ** 2):
+                    xk, yk = sinogramCoordinates2D(options, xp, yp, layers=layerCombos[kk])
+                    zk = sinogramCoordinates3D(options, layerCombos[kk])
+                    xList.append(xk)
+                    yList.append(yk)
+                    zList.append(zk)
+                x = np.concatenate(xList, axis=0)
+                y = np.concatenate(yList, axis=0)
+                z = np.concatenate(zList, axis=0)
             else:
-                x, y = sinogramCoordinates2D(options, x, y)
-                
+                # Single-layer path: kept in its original order (z computed
+                # after arc_correction/sampling below) so single-layer
+                # results are unchanged by this fix.
+                x, y = sinogramCoordinates2D(options, xp, yp)
+                z = None
+
             if options.arc_correction:
                 from omegatomo.util.arcCorrection import arc_correction
                 x, y, options = arc_correction(options, False)
             if options.sampling > 1:
                 from omegatomo.util.sampling import increaseSampling
                 x, y, options = increaseSampling(options, x, y, False)
-    
+
             # if options.arc_correction and ~options.precompute_lor
             #     [x, y, options] = arcCorrection(options, xp, yp, interpolateSinogram);
             # if options.sampling > 1 and ~options.precompute_lor
             #     [x, y, options] = increaseSampling(options, x, y, interpolateSinogram);
-            z = sinogramCoordinates3D(options)
-            if not options.NSinos == options.TotSinos:
-                z = z[0:options.NSinos,:]
+            if z is None:
+                z = sinogramCoordinates3D(options)
+                if not options.NSinos == options.TotSinos:
+                    z = z[0:options.NSinos,:]
             x = np.column_stack((x[:,0], y[:,0], x[:,1], y[:,1]))
         else:
             if options.det_per_ring < options.det_w_pseudo:
@@ -293,23 +319,43 @@ def getCoordinatesSPECT(options: proj.projectorClass) -> Tuple[np.ndarray, np.nd
     x: np.ndarray = np.zeros((6, nProjections), dtype=np.float32)
     z: np.ndarray = np.zeros((2, nProjections), dtype=np.float32)
 
-    for ii in range(nProjections):
-        r1: float = options.radiusPerProj[ii]
-        r2: float = options.CORtoDetectorSurface
+    # Vectorized over projections; per-element formulas kept identical to the
+    # former per-ii loop (np.asarray is a no-op for existing ndarrays, so
+    # this changes nothing numerically, only removes the Python-level loop).
+    #
+    # NumPy's classic (pre-NEP50) value-based promotion treats a Python
+    # float/int combined with a bare numpy float32 SCALAR as a real
+    # float64 upcast (both operands cast to float64 before the op), but
+    # the same Python float/int combined with a float32 ARRAY keeps
+    # float32 (value-based casting only kicks in for arrays, regardless of
+    # the *other* operand's own dtype/precision). The original per-ii loop
+    # indexed float32 scalars out of options.radiusPerProj/angles/
+    # swivelAngles, so every term mixing one of those scalars with a plain
+    # Python float/int (r2, the colD+0.5*colLxy shift, and the "+90" in the
+    # z formula) was silently upcast to float64 -- with the float32
+    # trig result widened losslessly to float64 first -- before being
+    # stored back into the float32 x/z arrays. That is reproduced here by
+    # explicitly widening the (still float32-computed) trig array to
+    # float64 before multiplying, so the vectorized path matches
+    # bit-for-bit instead of picking up float32-array value-based casting.
+    r1: np.ndarray = np.asarray(options.radiusPerProj)
+    r2: float = options.CORtoDetectorSurface
 
-        alpha1: float = options.angles[ii]
-        alpha2: float = options.swivelAngles[ii]
+    alpha1: np.ndarray = np.asarray(options.angles)
+    alpha2: np.ndarray = np.asarray(options.swivelAngles)
 
-        x[0, ii] = r1 * np.cos(np.deg2rad(alpha1)) + r2 * np.cos(np.deg2rad(alpha2))
-        x[1, ii] = r1 * np.sin(np.deg2rad(alpha1)) + r2 * np.sin(np.deg2rad(alpha2))
-        x[2, ii] = 0
+    x[0, :] = r1 * np.cos(np.deg2rad(alpha1)) + r2 * np.cos(np.deg2rad(alpha2)).astype(np.float64)
+    x[1, :] = r1 * np.sin(np.deg2rad(alpha1)) + r2 * np.sin(np.deg2rad(alpha2)).astype(np.float64)
+    x[2, :] = 0
 
-        x[3, ii] = x[0, ii] + (options.colD + 0.5 * options.colLxy) * np.cos(np.deg2rad(alpha2))
-        x[4, ii] = x[1, ii] + (options.colD + 0.5 * options.colLxy) * np.sin(np.deg2rad(alpha2))
-        x[5, ii] = 0
+    colShift = options.colD + 0.5 * options.colLxy
+    x[3, :] = x[0, :] + colShift * np.cos(np.deg2rad(alpha2)).astype(np.float64)
+    x[4, :] = x[1, :] + colShift * np.sin(np.deg2rad(alpha2)).astype(np.float64)
+    x[5, :] = 0
 
-        z[0, ii] = np.cos(np.deg2rad(alpha2 + 90))
-        z[1, ii] = np.sin(np.deg2rad(alpha2 + 90))
+    alpha2_shifted = alpha2.astype(np.float64) + 90
+    z[0, :] = np.cos(np.deg2rad(alpha2_shifted))
+    z[1, :] = np.sin(np.deg2rad(alpha2_shifted))
 
     if options.flipImageX:  # Horizontal
         x[0, :] = -x[0, :]
@@ -342,6 +388,7 @@ def detectorCoordinates(options):
         y-direction coordinates for detector/detector pairs.
 
     """
+    from omegatomo.util.matlabRound import matlabRound
     cr_p = options.cr_p
     diameter = options.diameter
     if isinstance(options.cryst_per_block, np.ndarray):
@@ -351,51 +398,95 @@ def detectorCoordinates(options):
     blocks_per_ring = options.blocks_per_ring
     x = 0
     y = 0
-    
+
     DOI = options.DOI
-    
+
     transaxial_multip = options.transaxial_multip
-    
+
     diameter = diameter + DOI * 2
-    
-    
+
+    # Length (within the Inf-padded, pseudo-inclusive "xp"/"yp" array) of
+    # the layer-1 segment, used below to split the array back into its two
+    # layers for the offangle circshift (detector_coordinates.m:134-144).
+    # Only meaningful when options.nLayers > 1.
+    koko = None
     if options.det_w_pseudo > options.det_per_ring:
-        
+
         xp,yp = computeCoordinates(options, blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, True)
         x = xp
         y = yp
-        
+
     elif options.nLayers > 1:
-        if options.cryst_per_block[0] == options.cryst_per_block[1]:
+        # Port of detector_coordinates.m:77-115 (multi-layer PET). MATLAB
+        # returns both a trimmed "x"/"y" (Inf-padding rows removed) and a
+        # pseudo-inclusive "xp"/"yp" (Inf padding kept). Every Python caller
+        # of this function uses only the "xp"/"yp" variant (matching
+        # get_coordinates.m's "[~, ~, xp, yp] = detector_coordinates(...)"),
+        # so only that variant -- with the Inf placeholders kept -- is built
+        # and returned here.
+        def _cpb(idx):
+            v = options.cryst_per_block
+            return v[idx].item() if isinstance(v, np.ndarray) else v[idx]
+        cpb1 = _cpb(0)
+        cpb2 = _cpb(1)
+        nLayersInt = int(options.nLayers)
+        if cpb1 == cpb2:
             x1,y1 = computeCoordinates(options, blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, False)
             # orig_diameter = diameter + options.crystH(end) * 2;
             diameter = diameter + DOI * 2 + options.crystH[0] * 2
             x2,y2 = computeCoordinates(options, blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, False)
-            # xp = [x;xp];
-            # yp = [y;yp];
-        elif options.cryst_per_block[0] > options.cryst_per_block[1]:
-            x,y = computeCoordinates(options, blocks_per_ring, transaxial_multip,options.cryst_per_block[-1].item(), diameter, cr_p, True)
+            koko = x1.size
+        elif cpb1 > cpb2:
+            x1,y1 = computeCoordinates(options, blocks_per_ring, transaxial_multip, cpb1, diameter, cr_p, False)
             # orig_diameter = diameter + options.crystH(end) * 2;
-            # diameter = diameter + DOI * 2 + options.crystH(end) * 2;
-            # [x,y] = computeCoordinates(blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, false);
-            # xp = [x;xp];
-            # yp = [y;yp];
+            diameter = diameter + DOI * 2 + options.crystH[0] * 2
+            x2,y2 = computeCoordinates(options, blocks_per_ring, transaxial_multip, cpb2, diameter, cr_p, False)
+            n = options.det_w_pseudo * nLayersInt
+            half = n // 2
+            idxAll = np.arange(1, half + 1)
+            insert_indices = np.setdiff1d(idxAll, np.arange(cpb1, half + 1, cpb1))
+            xTmp = np.full(n, np.inf, dtype=np.float32)
+            xTmp[insert_indices - 1] = x2
+            yTmp = np.full(n, np.inf, dtype=np.float32)
+            yTmp[insert_indices - 1] = y2
+            x2 = xTmp
+            y2 = yTmp
+            koko = x2.size
         else:
-            x,y = computeCoordinates(options, blocks_per_ring, transaxial_multip,options.cryst_per_block[-1].item(), diameter, cr_p, False)
+            x1,y1 = computeCoordinates(options, blocks_per_ring, transaxial_multip, cpb1, diameter, cr_p, False)
+            n = (options.det_w_pseudo // 2) * nLayersInt
+            idxAll = np.arange(1, n + 1)
+            insert_indices = np.setdiff1d(idxAll, np.arange(cpb2, n + 1, cpb2))
+            xTmp = np.full(n, np.inf, dtype=np.float32)
+            xTmp[insert_indices - 1] = x1
+            yTmp = np.full(n, np.inf, dtype=np.float32)
+            yTmp[insert_indices - 1] = y1
+            x1 = xTmp
+            y1 = yTmp
             # orig_diameter = diameter + options.crystH(end) * 2;
-            # diameter = diameter + DOI * 2 + options.crystH(end) * 2;
-            # [xp,yp] = computeCoordinates(blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, true);
-            # xp = [xp;x];
-            # yp = [yp;y];
+            diameter = diameter + DOI * 2 + options.crystH[0] * 2
+            x2,y2 = computeCoordinates(options, blocks_per_ring, transaxial_multip, cpb2, diameter, cr_p, False)
+            koko = x1.size
+        # xp = [x1;x2]; yp = [y1;y2]; (detector_coordinates.m:110-111)
+        x = np.concatenate((x1, x2))
+        y = np.concatenate((y1, y2))
     else:
         x,y = computeCoordinates(options, blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, False)
-    
+
     if options.flip_image:
         x = np.flip(x)
         y = np.flip(y)
     if not options.offangle == 0:
-        x = np.roll(x, int(np.round(options.offangle)))
-        y = np.roll(y, int(np.round(options.offangle)))
+        if options.nLayers > 1 and koko is not None:
+            x1 = np.roll(x[:koko], int(matlabRound(options.offangle)))
+            x2 = np.roll(x[koko:], int(matlabRound(options.offangle)))
+            x = np.concatenate((x1, x2))
+            y1 = np.roll(y[:koko], int(matlabRound(options.offangle)))
+            y2 = np.roll(y[koko:], int(matlabRound(options.offangle)))
+            y = np.concatenate((y1, y2))
+        else:
+            x = np.roll(x, int(matlabRound(options.offangle)))
+            y = np.roll(y, int(matlabRound(options.offangle)))
     return x, y
 
 def computeCoordinates(options, blocks_per_ring, transaxial_multip, cryst_per_block, diameter, cr_p, usePseudo):
@@ -586,7 +677,44 @@ def formDetectorIndices( det_w_pseudo, nLayers = 1, crystN = 0):
         L = L[~np.isin(L[:, 1], temp)]
     return L
         
-def sinogramCoordinates2D(options, x, y, nLayers = 1):
+def _fillMissing2D(a):
+    """
+    Linearly interpolate NaN entries of a 2-D array from their non-NaN
+    neighbours. Mirrors MATLAB's fillmissing2(A,'linear') (with a
+    fillmissing/fillVal fallback), used by sinogram_coordinates_2D.m to fill
+    mashed sinogram bins that never received a directly-computed LOR.
+    Entries outside the convex hull of the known samples (which plain linear
+    interpolation cannot reach) fall back to nearest-neighbour
+    extrapolation, matching fillmissing2's behaviour at the array boundary.
+
+    Parameters
+    ----------
+    a : NumPy array
+        2-D array possibly containing NaN entries.
+
+    Returns
+    -------
+    NumPy array
+        Copy of ``a`` with NaN entries filled.
+
+    """
+    from scipy.interpolate import griddata
+    mask = ~np.isnan(a)
+    if np.all(mask) or not np.any(mask):
+        return a
+    rows, cols = np.indices(a.shape)
+    points = np.column_stack((rows[mask], cols[mask]))
+    values = a[mask]
+    missing = np.column_stack((rows[~mask], cols[~mask]))
+    filled = griddata(points, values, missing, method='linear')
+    stillMissing = np.isnan(filled)
+    if np.any(stillMissing):
+        filled[stillMissing] = griddata(points, values, missing[stillMissing], method='nearest')
+    out = a.copy()
+    out[~mask] = filled
+    return out
+
+def sinogramCoordinates2D(options, x, y, nLayers = 1, layers = (1, 1)):
     """
     Computes the transaxial sinogram coordinates using the input detector
     coordinates.
@@ -601,6 +729,12 @@ def sinogramCoordinates2D(options, x, y, nLayers = 1):
         y-direction coordinates for detector/detector pairs.
     nLayers : TYPE, optional
         DESCRIPTION. The default is 1.
+    layers : tuple, optional
+        The crystal layer combination (layer1, layer2) selecting, for
+        multi-layer PET, which half of the (pseudo-inclusive) input x/y
+        arrays each end of the LOR is taken from (1 = first det_w_pseudo
+        entries, 2 = the remaining entries). The default is (1, 1), i.e.
+        both ends from the (only) layer, matching single-layer PET.
 
     Returns
     -------
@@ -667,14 +801,32 @@ def sinogramCoordinates2D(options, x, y, nLayers = 1):
         i = i + np.abs(np.min(i))
     
     L = L[accepted_lors,:]
-    
-    xx1 = x[L[:,0]]
-    yy1 = y[L[:,0]]
-    xx2 = x[L[:,1]]
-    yy2 = y[L[:,1]]
-    
+
+    # Select the layer-specific detector sub-array for each end of the LOR
+    # (sinogram_coordinates_2D.m:134-155). layers == (1,1) (the default)
+    # reproduces the previous single-layer behaviour exactly, since x/y then
+    # equal their own "layer 1" slice.
+    layer1, layer2 = layers
+    if layer1 == 1:
+        x1_ = x[:det_w_pseudo]
+        y1_ = y[:det_w_pseudo]
+    else:
+        x1_ = x[det_w_pseudo:]
+        y1_ = y[det_w_pseudo:]
+    if layer2 == 1:
+        x2_ = x[:det_w_pseudo]
+        y2_ = y[:det_w_pseudo]
+    else:
+        x2_ = x[det_w_pseudo:]
+        y2_ = y[det_w_pseudo:]
+
+    xx1 = x1_[L[:,0]]
+    yy1 = y1_[L[:,0]]
+    xx2 = x2_[L[:,1]]
+    yy2 = y2_[L[:,1]]
+
     ##
-    
+
     x = np.zeros((Ndist, Nang),dtype=np.float32,order='F')
     y = np.zeros((Ndist, Nang),dtype=np.float32,order='F')
     x2 = np.zeros((Ndist, Nang),dtype=np.float32,order='F')
@@ -684,9 +836,25 @@ def sinogramCoordinates2D(options, x, y, nLayers = 1):
     np.add.at(x2, (i, j), xx2)
     np.add.at(y2, (i, j), yy2)
 
-    
     # If mashing is present, combine the coordinates
     if mashing > 1:
+        # MATLAB (sinogram_coordinates_2D.m:160-190) aggregates each bin
+        # with the mean (not the sum) when mashing is present, and fills any
+        # bin that never received a directly-computed LOR (NaN, via
+        # accumarray's fill value) with a linear interpolation from its
+        # neighbours, before the mashing block-reduce below.
+        count = np.zeros((Ndist, Nang), dtype=np.float64)
+        np.add.at(count, (i, j), 1)
+        with np.errstate(invalid='ignore', divide='ignore'):
+            x = np.where(count > 0, x / count, np.nan).astype(np.float32)
+            y = np.where(count > 0, y / count, np.nan).astype(np.float32)
+            x2 = np.where(count > 0, x2 / count, np.nan).astype(np.float32)
+            y2 = np.where(count > 0, y2 / count, np.nan).astype(np.float32)
+        if np.any(np.isnan(x)):
+            x = _fillMissing2D(x)
+            y = _fillMissing2D(y)
+            x2 = _fillMissing2D(x2)
+            y2 = _fillMissing2D(y2)
         from skimage.measure import block_reduce
         # Compute the mean coordinates
         x = block_reduce(x, block_size=(1,mashing), func=np.mean)
@@ -903,6 +1071,23 @@ def _type6_scalar(values, volume: int) -> float:
     return float(values[min(volume, values.size - 1)])
 
 
+def _type6_sigma_provided(value) -> bool:
+    """True when ``value`` is a user-supplied sigmaZ/sigmaXY (scalar or a
+    per-plane array), mirroring MATLAB's ``isfield(options, 'sigmaZ')`` /
+    ``isfield(options, 'sigmaXY')`` checks in SPECTParameters.m.
+
+    proj.py defaults sigmaZ/sigmaXY to the scalar sentinel ``-1.``; only
+    that scalar sentinel means "not provided". Any array -- regardless of
+    its values' sign -- counts as user-provided, just like a MATLAB field
+    that exists counts as provided regardless of its contents. A bare
+    ``value < 0.`` check (the previous behavior) breaks for array input
+    with "the truth value of an array ... is ambiguous", which is exactly
+    the crash this guards against.
+    """
+    arr = np.atleast_1d(np.asarray(value, dtype=np.float64))
+    return not (arr.size == 1 and arr.reshape(-1)[0] < 0.)
+
+
 def _type6_auto_filter(options: proj.projectorClass, volume: int, depth: int | None = None) -> np.ndarray:
     """Generate one rotation-projector CDRF on a volume's pixel grid."""
     nx = int(np.asarray(options.Nx).reshape(-1)[volume])
@@ -1019,6 +1204,7 @@ def _type6_total_lengths(options: proj.projectorClass) -> np.ndarray:
 
 
 def SPECTParameters(options: proj.projectorClass):
+    from omegatomo.util.matlabRound import matlabRound
     if options.projector_type in [1, 11, 12, 16, 2, 21, 22, 26, 61, 62]: # Ray tracing projectors
         nRays = int(options.n_rays_transaxial * options.n_rays_axial)
         if options.rayShiftsDetector.size == 0: # Collimator modeling
@@ -1027,12 +1213,13 @@ def SPECTParameters(options: proj.projectorClass):
             if options.colFxy == 0 and options.colFz == 0:
                 dx = np.linspace(-(options.nRowsD / 2 - 0.5) * options.dPitchX, (options.nRowsD / 2 - 0.5) * options.dPitchX, options.nRowsD)
                 dy = np.linspace(-(options.nColsD / 2 - 0.5) * options.dPitchY, (options.nColsD / 2 - 0.5) * options.dPitchY, options.nColsD)
-                
-                for ii in range(options.nRowsD):
-                    for jj in range(options.nColsD):
-                        for kk in range(nRays):
-                            options.rayShiftsDetector[2 * kk, ii, jj, :] = -dx[ii]
-                            options.rayShiftsDetector[2 * kk + 1, ii, jj, :] = -dy[jj]    
+
+                # Broadcasts over (ray, row, col, head): the value depends only
+                # on ii (row) for the even ray-shift entries and only on jj
+                # (col) for the odd ones, so a single assignment per parity
+                # reproduces the former triple loop exactly.
+                options.rayShiftsDetector[0::2, :, :, :] = -dx[None, :, None, None]
+                options.rayShiftsDetector[1::2, :, :, :] = -dy[None, None, :, None]
 
         if options.rayShiftsSource.size == 0:
             options.rayShiftsSource = np.zeros((2*nRays, options.nRowsD, options.nColsD, options.nHeads), dtype=np.float32)
@@ -1051,17 +1238,27 @@ def SPECTParameters(options: proj.projectorClass):
 
                 tmp_shift = np.column_stack((tmp_x.ravel(), tmp_y.ravel())).T.reshape(-1, 1, order='F')
 
-                for kk in range(nRays):
-                    options.rayShiftsSource[2 * kk, :, :, :] = tmp_shift[2 * kk]
-                    options.rayShiftsSource[2 * kk + 1, :, :, :] = tmp_shift[2 * kk + 1]
+                # tmp_shift[idx] is constant over (row, col, head) for every
+                # ray-shift index idx = 0..2*nRays-1, so one broadcast
+                # assignment reproduces the former per-ray loop exactly.
+                options.rayShiftsSource[:, :, :, :] = tmp_shift.reshape(2 * nRays, 1, 1, 1)
 
         if options.projector_type in [1, 11, 12, 16, 21, 61]:
+            # Keep the central detector-normal vector unchanged. Scale each
+            # source-detector shift difference so that the two angular
+            # response components use their corresponding septa lengths
+            # (SPECTParameters.m:67-82).
+            referenceLength = options.colD + 0.5 * options.colL
             lengthXY = options.colD + 0.5 * options.colLxy
             lengthZ = options.colD + 0.5 * options.colLz
-            if lengthXY != lengthZ:
+            if referenceLength != lengthZ:
+                detectorShiftXY = options.rayShiftsDetector[0::2, :, :, :]
+                options.rayShiftsSource[0::2, :, :, :] = detectorShiftXY + \
+                    (options.rayShiftsSource[0::2, :, :, :] - detectorShiftXY) * (referenceLength / lengthZ)
+            if referenceLength != lengthXY:
                 detectorShiftZ = options.rayShiftsDetector[1::2, :, :, :]
                 options.rayShiftsSource[1::2, :, :, :] = detectorShiftZ + \
-                    (options.rayShiftsSource[1::2, :, :, :] - detectorShiftZ) * (lengthXY / lengthZ)
+                    (options.rayShiftsSource[1::2, :, :, :] - detectorShiftZ) * (referenceLength / lengthXY)
 
         options.rayShiftsDetector = options.rayShiftsDetector.ravel('F')
         options.rayShiftsSource = options.rayShiftsSource.ravel('F')
@@ -1140,7 +1337,7 @@ def SPECTParameters(options: proj.projectorClass):
         Distances = DistanceToFirstRow[..., np.newaxis] + np.arange(nx * 4, dtype=np.float32) * options.dx
 
         if options.gFilter.size == 0:
-            if options.sigmaZ < 0.:
+            if not _type6_sigma_provided(options.sigmaZ):
                 col_l_xy = float(options.colLxy) if options.colLxy > 0. else float(options.colL)
                 col_l_z = float(options.colLz) if options.colLz > 0. else float(options.colL)
                 distance_from_exit = Distances + options.cr_p / 2.
@@ -1169,7 +1366,7 @@ def SPECTParameters(options: proj.projectorClass):
             xx = np.tile(x.T, (1, x.shape[1]))
             yy = np.tile(y, (xx.shape[1], 1))
 
-            if np.any(options.sigmaXY < 0.):
+            if not _type6_sigma_provided(options.sigmaXY):
                 s1 = np.tile(options.sigmaZ**2, (xx.shape[0], yy.shape[1], 1))
                 options.gFilter = (1 / (2 * np.pi * s1)) * np.exp(-(xx[:, :, None]**2 + yy[:, :, None]**2) / (2 * s1))
             else:
@@ -1178,7 +1375,10 @@ def SPECTParameters(options: proj.projectorClass):
                 options.gFilter = np.exp(-(xx[:, :, None]**2 / (2 * s1**2) + yy[:, :, None]**2 / (2 * s2**2)))
 
 
-            mid_slice = options.gFilter[:, :, options.gFilter.shape[2] // 4]
+            # MATLAB: options.gFilter(:,:,max(1,floor(end/4))), 1-based. The
+            # equivalent 0-based Python index is that MATLAB index minus 1.
+            mid_idx = max(0, options.gFilter.shape[2] // 4 - 1)
+            mid_slice = options.gFilter[:, :, mid_idx]
             rowE, colE = np.where(mid_slice > 1e-6)
             rowS = rowE.min()
             colS = colE.min()
@@ -1190,10 +1390,15 @@ def SPECTParameters(options: proj.projectorClass):
 
 
         panelTilt = options.swivelAngles - options.angles + 180
-        options.blurPlanes = np.round((options.FOVa_x / 2 - (options.radiusPerProj * np.cos(np.deg2rad(panelTilt)) - options.CORtoDetectorSurface)) / options.dx)
+        # MATLAB's int32() numeric-to-integer conversion rounds to nearest
+        # with ties away from zero (like MATLAB's round()), not truncation;
+        # SPECTParameters.m:151 relies on that via int32(options.blurPlanes).
+        options.blurPlanes = matlabRound((options.FOVa_x / 2 - (options.radiusPerProj * np.cos(np.deg2rad(panelTilt)) - options.CORtoDetectorSurface)) / options.dx)
         # Retain the detector-panel displacement in millimetres for the MPS custom operator.  It converts this distance to fractional pixels using the translated axis' pitch for the current image volume. Keep blurPlanes2 as the integer native-projector representation.
         options.blurPlanes2Linear = options.radiusPerProj * np.sin(np.deg2rad(panelTilt))
-        options.blurPlanes2 = options.blurPlanes2Linear / options.dx
+        # MATLAB rounds this shift via int32() (ties away from zero), not
+        # truncation -- see the same reasoning as options.blurPlanes above.
+        options.blurPlanes2 = matlabRound(options.blurPlanes2Linear / options.dx)
 
         if options.angles.size == 0:
             options.angles = (np.repeat(options.startAngle, (options.nProjections // options.nHeads)) + np.tile(np.arange(0,options.angleIncrement * (options.nProjections / options.nHeads),options.angleIncrement), (options.nHeads, 1)))

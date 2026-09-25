@@ -73,6 +73,139 @@ def _load_array_file(path, mat_key_index='auto'):
     else:
         raise ValueError('Unsupported datatype!')
 
+def _load_reference_image(options, value, resize=True, emptyMessage=None,
+                           squareCheck=None, squareOrder='C',
+                           squareErrorMsg='Reference image has to be square',
+                           squareResizeGuardNz1=False, squareUsesItem=True,
+                           elseCheckNdim3=True, elseCheckShape0=True,
+                           elseResizeGuardNz1=False,
+                           finalize=True, castBeforeAsfortran=False, doAsfortran=True):
+    """
+    Loads a reference/anatomical-weighting image (from a .npy/.npz/.mat path
+    if `value` is a string) and, unless `resize` is False, reshapes a flat/
+    column input into a cubic (koko_apu, koko_apu, Nz) volume and/or resizes
+    a 3D input to match the current reconstruction size (options.Nx/Ny/Nz).
+
+    This factors out the "load if str, maybe resize to (Nx,Ny,Nz), ravel F
+    float32" pattern shared by TVPrepass, APLSPrepass, NLMPrepass, the RDP
+    reference image and the IEM referenceImage loading in prepassPhase.
+    Every one of those call sites has slightly different quirks (reshape
+    order, whether Nx/Ny/Nz are read with `.item()`, whether the resize is
+    guarded by Nz > 1, whether shape[0] is checked, whether there even is a
+    flat/column-reshape branch, ...) that were written independently; these
+    are preserved exactly via the keyword arguments below rather than
+    unified, since some may be latent bugs.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+    value : str or NumPy array
+        The reference image, or a path to load it from.
+    resize : bool, optional
+        If False, only the string-loading step is performed (used by RDP,
+        which never resizes its reference image). The default is True.
+    emptyMessage : str or None, optional
+        If not None and `value` is an empty string, raises
+        ValueError(emptyMessage). If None (the IEM referenceImage site), an
+        empty string is instead passed straight to _load_array_file, which
+        raises its own "Unsupported datatype!" ValueError.
+    squareCheck : None, 'shape1', or 'ndim1_or_shape1', optional
+        Selects how a flat/column input is detected for the square-reshape
+        branch (TV: 'shape1', APLS: 'ndim1_or_shape1'). None (the default)
+        disables this branch entirely, as for NLM, RDP and IEM.
+    finalize : bool, optional
+        If True (default), performs the final conversion (optionally
+        np.asfortranarray, then ravel('F').astype(float32)). If False, the
+        possibly reshaped/resized array is returned as-is; used by
+        TVPrepass, which still needs the 3D array for its own min/max
+        normalization and the TVtype == 1 assembleS() call before raveling
+        it itself.
+    castBeforeAsfortran : bool, optional
+        If True, casts to float32 before np.asfortranarray (TV, APLS). If
+        False (the default), the cast happens only in the final
+        ravel().astype() step (NLM, RDP, IEM).
+    doAsfortran : bool, optional
+        If False, skips the np.asfortranarray step entirely (RDP). The
+        default is True.
+
+    Returns
+    -------
+    NumPy array
+        The loaded (and, depending on the parameters, reshaped/resized/
+        finalized) reference image.
+
+    """
+    if isinstance(value, str):
+        if emptyMessage is not None and len(value) == 0:
+            raise ValueError(emptyMessage)
+        value = _load_array_file(value, mat_key_index='last')
+    if resize:
+        if squareCheck == 'shape1':
+            isFlat = value.shape[1] == 1
+        elif squareCheck == 'ndim1_or_shape1':
+            isFlat = value.ndim == 1 or value.shape[1] == 1
+        else:
+            isFlat = False
+        if isFlat:
+            Nz0 = options.Nz[0].item() if squareUsesItem else options.Nz[0]
+            Nx0 = options.Nx[0].item() if squareUsesItem else options.Nx[0]
+            Ny0 = options.Ny[0].item() if squareUsesItem else options.Ny[0]
+            koko_apu = np.sqrt(np.size(value) / Nz0)
+            if np.floor(koko_apu) != koko_apu:
+                raise ValueError(squareErrorMsg)
+            koko_apu = int(koko_apu)
+            value = value.reshape((koko_apu, koko_apu, Nz0), order=squareOrder)
+            if koko_apu != Nx0 or value.shape[2] != Nz0:
+                if not squareResizeGuardNz1 or Nz0 > 1:
+                    from skimage.transform import resize as resizeImage
+                    print('Resizing reference image')
+                    value = resizeImage(value, (Nx0, Ny0, Nz0))
+        else:
+            Nx0 = options.Nx[0].item()
+            Ny0 = options.Ny[0].item()
+            Nz0 = options.Nz[0].item()
+            if elseCheckNdim3:
+                mismatch = value.ndim == 3 and (
+                    (elseCheckShape0 and value.shape[0] != Nx0) or
+                    value.shape[1] != Ny0 or value.shape[2] != Nz0
+                )
+            else:
+                mismatch = value.shape[1] != Ny0 or value.shape[2] != Nz0
+            if mismatch and (not elseResizeGuardNz1 or Nz0 > 1):
+                from skimage.transform import resize as resizeImage
+                print('Resizing reference image')
+                value = resizeImage(value, (Nx0, Ny0, Nz0))
+    if finalize:
+        if castBeforeAsfortran:
+            value = value.astype(dtype=np.float32)
+        if doAsfortran:
+            value = np.asfortranarray(value)
+        value = value.ravel('F').astype(dtype=np.float32)
+    return value
+
+def _compute_lambda_vals(niter, subsets, stochastic):
+    """
+    Vectorized form of the per-iteration relaxation parameter loop used for
+    BSREM/RAMLA/MBSREM/MRAMLA/ROSEM(_MAP)/PKMA/SPS/SART/ASD_POCS/SAGA.
+    """
+    i = np.arange(niter, dtype=np.float64)
+    if stochastic:
+        return 1. / (0.4 / subsets * i + 1.)
+    else:
+        return 1. / (i / 20. + 1.)
+
+def _pkma_relaxation_values(niter, subsets, rho, delta):
+    """
+    Vectorized form of the (kk, ll) double loop used for PKMA-style momentum
+    coefficients (alpha_PKMA, alphaPrecond, thetaCP). The original loops
+    walk oo = 0 .. niter*subsets - 1 in row-major (kk outer, ll inner) order,
+    computing 1 + rho*oo / (oo + delta) at each oo; this returns that same
+    sequence directly as a function of oo.
+    """
+    oo = np.arange(niter * subsets, dtype=np.float64)
+    return 1. + (rho * oo) / (oo + delta)
+
 def linearizeData(options):
     """
     This function linearizes the input measurement data.
@@ -110,6 +243,7 @@ def loadCorrections(options):
 
     """
     import os
+    from omegatomo.util.matlabRound import matlabRound
     normalization_shape = np.asarray(options.normalization).shape
     options.normZ = int(normalization_shape[2]) if options.SPECT and len(normalization_shape) == 3 else 1
     normalization_indexed_stack = bool(options.SPECT and int(options.normZ) == int(options.nHeads))
@@ -151,7 +285,7 @@ def loadCorrections(options):
                     options.vaimennus = np.asfortranarray(np.transpose(options.vaimennus, (2, 1, 0)))
                     apu = np.array(list(metaImage.GetSpacing()))
                     if options.CT_attenuation:
-                        if round(apu[0].item()*100.)/100. > round(options.FOVa_x[0].item() / (options.Nx[0].item())*100.)/100. or round(apu[0].item()*100)/100 < round(options.FOVa_x[0].item() / (options.Nx[0].item())*100.)/100.:
+                        if matlabRound(apu[0].item()*100.)/100. > matlabRound(options.FOVa_x[0].item() / (options.Nx[0].item())*100.)/100. or matlabRound(apu[0].item()*100)/100 < matlabRound(options.FOVa_x[0].item() / (options.Nx[0].item())*100.)/100.:
                             options.vaimennus = options.vaimennus * (apu[0].item() / (options.FOVa_x[0].item() / (options.Nx[0].item())))
                 except ModuleNotFoundError:
                     print('SimpleITK package not found! MetaImages cannot be loaded. You can install SimpleITK package with "pip install SimpleITK".')
@@ -180,7 +314,7 @@ def loadCorrections(options):
                         options.vaimennus = GetArrayFromImage(metaImage)
                         apu = np.array(list(metaImage.GetSpacing()))
                         if options.CT_attenuation:
-                            if round(apu[0].item()*100.)/100. > round(options.FOVa_x[0].item() / (options.Nx[0].item())*100.)/100. or round(apu[0].item()*100)/100 < round(options.FOVa_x[0].item() / (options.Nx[0].item())*100.)/100.:
+                            if matlabRound(apu[0].item()*100.)/100. > matlabRound(options.FOVa_x[0].item() / (options.Nx[0].item())*100.)/100. or matlabRound(apu[0].item()*100)/100 < matlabRound(options.FOVa_x[0].item() / (options.Nx[0].item())*100.)/100.:
                                 options.vaimennus = options.vaimennus * (apu[0].item() / (options.FOVa_x[0].item() / (options.Nx[0].item())))
                     except ModuleNotFoundError:
                         print('SimpleITK package not found! MetaImages cannot be loaded. You can install SimpleITK package with "pip install SimpleITK".')
@@ -287,6 +421,69 @@ def loadCorrections(options):
             options.normalization_correction = False
         else:
             options.normalization = options.normalization.ravel('F').astype(dtype=np.float32)
+    # Other SPECT corrections: DEW/TEW scatter estimation from one (DEW) or
+    # two (TEW) energy windows in options.ScatterC. Mirrors MATLAB's
+    # loadCorrections.m "Other SPECT corrections" block. options.ScatterC is
+    # here a list of 1 (DEW) or 2 (TEW) windows; each window is either a
+    # plain array (static data) or a list of per-timestep arrays (dynamic
+    # data), mirroring MATLAB's ScatterC{w}/ScatterC{w}{timestep} cells.
+    if (options.SPECT and options.scatter_correction and isinstance(options.ScatterC, list)
+            and options.SinDelayed.size <= 1 and options.subtract_scatter):  # From 10.1371/journal.pone.0269542
+        nWindows = len(options.ScatterC)
+        if nWindows not in (1, 2):
+            raise ValueError('options.ScatterC must contain either one (DEW) or two (TEW) scatter energy windows for SPECT scatter correction!')
+        if nWindows == 2:
+            kLower = np.diff(np.asarray(options.eWin, dtype=np.float64)) / np.diff(np.asarray(options.eWinL, dtype=np.float64))
+            kUpper = np.diff(np.asarray(options.eWin, dtype=np.float64)) / np.diff(np.asarray(options.eWinU, dtype=np.float64))
+
+        def _scatterWindow(w, timestep):
+            data = options.ScatterC[w]
+            if timestep is not None and isinstance(data, list):
+                data = data[timestep]
+            return np.squeeze(data)
+
+        def _combinedScatterEstimate(timestep=None):
+            if nWindows == 1:  # DEW
+                k = 1.
+                return k * _scatterWindow(0, timestep)
+            else:  # TEW
+                return 0.5 * (kLower * _scatterWindow(0, timestep) + kUpper * _scatterWindow(1, timestep))
+
+        useSingle = (options.implementation == 2 or options.implementation == 3
+                     or options.implementation == 5 or options.useSingles)
+        if isinstance(options.SinM, list):  # Dynamic data (SinM is a list of size options.Nt)
+            if not options.corrections_during_reconstruction:
+                for timestep in range(options.Nt):
+                    options.SinM[timestep] = options.SinM[timestep] - _combinedScatterEstimate(timestep)
+                options.scatter_correction = False
+            else:
+                options.SinDelayed = np.stack(
+                    [np.asfortranarray(_combinedScatterEstimate(timestep)) for timestep in range(options.Nt)], axis=-1)
+                if useSingle:
+                    options.SinDelayed = options.SinDelayed.astype(np.float32)
+                options.scatter_correction = False
+                # Matches MATLAB loadCorrections.m's final flag-normalization
+                # (~line 1074): during-reconstruction randoms_correction is
+                # only enabled when options.ordinaryPoisson is set.
+                options.randoms_correction = options.ordinaryPoisson
+        else:  # Static data (SinM is not a list)
+            scatterEstimate = _combinedScatterEstimate()
+            if not options.corrections_during_reconstruction:
+                options.SinM = options.SinM - scatterEstimate
+                options.scatter_correction = False
+            else:
+                options.SinDelayed = np.asfortranarray(scatterEstimate)
+                if useSingle:
+                    options.SinDelayed = options.SinDelayed.astype(np.float32)
+                options.scatter_correction = False
+                # Matches MATLAB loadCorrections.m's final flag-normalization
+                # (~line 1074): during-reconstruction randoms_correction is
+                # only enabled when options.ordinaryPoisson is set.
+                options.randoms_correction = options.ordinaryPoisson
+        # ScatterC has now been fully consumed into SinM/SinDelayed above, so
+        # it is reset to an empty array to avoid the generic (plain-array)
+        # scatter-correction handling below re-processing it.
+        options.ScatterC = np.empty(0, dtype=np.float32)
     if options.scatter_correction and options.normalization_correction and options.normalize_scatter and options.corrections_during_reconstruction:
         if normalization_indexed_stack:
             if isinstance(options.ScatterC, list):
@@ -330,7 +527,10 @@ def loadCorrections(options):
     elif options.scatter_correction and options.ScatterC.size > 0 and options.SinDelayed.size <= 1 and options.subtract_scatter and options.ordinaryPoisson:
         options.SinDelayed = np.asfortranarray(options.ScatterC.astype(np.float32))
         options.scatter_correction = False
-        options.randoms_correction = True
+        # Matches MATLAB loadCorrections.m's final flag-normalization (~line 1078): during-
+        # reconstruction randoms_correction is only enabled when SinDelayed ends up with more
+        # than one element (and ordinaryPoisson, already guaranteed true by this branch).
+        options.randoms_correction = options.SinDelayed.size > 1
     elif options.scatter_correction and options.ScatterC.size > 0 and options.SinDelayed.size > 1 and options.subtract_scatter and options.ordinaryPoisson:
         options.SinDelayed += np.asfortranarray(options.ScatterC.astype(np.float32))
     if options.arc_correction:
@@ -460,16 +660,43 @@ def parseInputs(options, mDataFound = False):
                         options.SinM = options.SinM.ravel(order='F')
                         options.SinM = options.SinM[options.index]
         if options.normalization_correction and options.corrections_during_reconstruction:
-            if not normalization_indexed_stack and not options.use_raw_data and options.NSinos != options.TotSinos:
-                options.normalization = options.normalization[:options.NSinos * options.Ndist * options.Nang]
-            if normalization_indexed_stack:
-                options.normalization = options.normalization.ravel(order='F').astype(dtype=np.float32)
-            elif options.subsetType >= 8:
-                options.normalization = np.reshape(options.normalization, (options.Ndist, options.Nang, -1),order='F')
-                options.normalization = options.normalization[:, :, options.index]
-                options.normalization = options.normalization.ravel(order='F').astype(dtype=np.float32)
+            if options.Nt > 1 and not normalization_indexed_stack:
+                # Mirror the per-frame handling already used for SinM/SinDelayed/ScatterC
+                # above: options.normalization is a flat, frame-major-concatenated array (one
+                # Ndist*Nang*TotSinos block per frame -- see init.py's [Nt][subsets] device
+                # buffer construction, which slices this same flat array via
+                # options.nTotMeas[timestep*subsets+subset : ...+1]) that must be truncated to
+                # NSinos (if reduced) and subset-selected PER FRAME, not once for the whole
+                # array. Without this loop (pre-existing bug, not previously reachable/tested
+                # since nothing built genuinely per-frame normalization before), a single
+                # frame's worth of (subset-reordered) data would silently replace the entire
+                # array, and every other frame's device-buffer slice ends up empty or reads
+                # out of bounds (observed as a native OpenCL kernel crash).
+                single_frame_len = options.Ndist * options.Nang * options.TotSinos
+                out_frames = []
+                for ff in range(1, options.Nt + 1):
+                    frame = options.normalization[(ff - 1) * single_frame_len: ff * single_frame_len]
+                    frame = np.reshape(frame, (options.Ndist, options.Nang, -1), order='F')
+                    if not options.use_raw_data and options.NSinos != options.TotSinos:
+                        frame = frame[:, :, :options.NSinos]
+                    idx = options.index[ff - 1] if isinstance(options.index, list) else options.index
+                    if options.subsetType >= 8:
+                        frame = frame[:, :, idx]
+                    else:
+                        frame = frame.ravel(order='F')[idx]
+                    out_frames.append(np.asarray(frame).ravel(order='F'))
+                options.normalization = np.concatenate(out_frames).astype(dtype=np.float32)
             else:
-                options.normalization = options.normalization[options.index]
+                if not normalization_indexed_stack and not options.use_raw_data and options.NSinos != options.TotSinos:
+                    options.normalization = options.normalization[:options.NSinos * options.Ndist * options.Nang]
+                if normalization_indexed_stack:
+                    options.normalization = options.normalization.ravel(order='F').astype(dtype=np.float32)
+                elif options.subsetType >= 8:
+                    options.normalization = np.reshape(options.normalization, (options.Ndist, options.Nang, -1),order='F')
+                    options.normalization = options.normalization[:, :, options.index]
+                    options.normalization = options.normalization.ravel(order='F').astype(dtype=np.float32)
+                else:
+                    options.normalization = options.normalization[options.index]
         
         if options.additionalCorrection and hasattr(options, 'corrVector') and options.corrVector.size > 0:
             if options.subsetType >= 8:
@@ -571,7 +798,27 @@ def parseInputs(options, mDataFound = False):
                 
         
         if options.attenuation_correction and not options.CT_attenuation:
-            if options.subsetType >= 8:
+            if options.Nt > 1:
+                # Measurement-domain attenuation is per-timestep in C++/MATLAB for dynamic
+                # data (see init.py's [Nt][subsets] d_atten construction, sliced from this
+                # same flat array via options.nTotMeas); mirror the per-frame handling above
+                # (normalization_correction, SinM/SinDelayed/ScatterC) instead of subset-
+                # selecting the whole Nt-frame-concatenated array with a single frame's worth
+                # of indices (pre-existing bug -- see the normalization_correction branch
+                # above for the full explanation of the failure mode this avoids).
+                single_frame_len = options.Ndist * options.Nang * options.TotSinos
+                out_frames = []
+                for ff in range(1, options.Nt + 1):
+                    frame = options.vaimennus[(ff - 1) * single_frame_len: ff * single_frame_len]
+                    idx = options.index[ff - 1] if isinstance(options.index, list) else options.index
+                    if options.subsetType >= 8:
+                        frame = np.reshape(frame, (options.Ndist, options.Nang, -1), order='F')
+                        frame = frame[:, :, idx]
+                    else:
+                        frame = frame[idx]
+                    out_frames.append(np.asarray(frame).ravel(order='F'))
+                options.vaimennus = np.concatenate(out_frames)
+            elif options.subsetType >= 8:
                 options.vaimennus = np.reshape(options.vaimennus, (options.Ndist, options.Nang, -1), order='F')
                 options.vaimennus = options.vaimennus[:, :, options.index]
                 options.vaimennus = options.vaimennus.ravel(order='F')
@@ -618,9 +865,7 @@ def TVPrepass(options):
         Weighting coefficients for TV type 1 when using anatomical weighting.
 
     """
-    from skimage.transform import resize #scikit-image
     def assembleS(alkuarvo,T,Ny,Nx,Nz):
-        S = np.zeros((Nx * Ny * Nz * 3, 3),order='F',dtype=np.float32)
         f = -np.diff(alkuarvo, axis=1)
         f = np.concatenate((f, np.zeros((Nx, 1, Nz),order='F',dtype=np.float32)), axis=1)
         f = f.ravel('F')
@@ -630,42 +875,37 @@ def TVPrepass(options):
         h = -np.diff(alkuarvo, axis=2)
         h = np.concatenate((h, np.zeros((Nx, Ny, 1),order='F',dtype=np.float32)), axis=2)
         h = h.ravel('F')
-        
+
         gradvec = np.vstack((f, g, h))
-        
+
         gradnorm = np.linalg.norm(gradvec, axis=0)
-        
+
         gamma = np.exp(-gradnorm ** 2 / (T ** 2))
-        
-        # Construct the matrix S
-        for ll in range(np.size(gradnorm)):
-            if gradnorm[ll] > 0:
-                nu = gradvec[:, ll] / gradnorm[ll]
-                B = np.eye(3) - (1. - gamma[ll]) * np.outer(nu, nu)
-            else:
-                B = np.eye(3)
-            S[3 * ll:3 * ll + 3, :] = B
+
+        # Construct the matrix S. Vectorized form of the per-voxel loop:
+        #   B = I - (1 - gamma) * outer(nu, nu) where gradnorm > 0, else I
+        #   S[3*ll:3*ll+3, :] = B
+        L = np.size(gradnorm)
+        eye3 = np.eye(3)
+        B = np.broadcast_to(eye3, (L, 3, 3)).copy()
+        mask = gradnorm > 0
+        if np.any(mask):
+            nu = gradvec[:, mask] / gradnorm[mask]
+            outer = np.einsum('il,jl->lij', nu, nu)
+            B[mask] = eye3 - (1. - gamma[mask])[:, None, None] * outer
+        S = np.zeros((Nx * Ny * Nz * 3, 3),order='F',dtype=np.float32)
+        S[:, :] = B.reshape(L * 3, 3)
         return S
     if options.TV_use_anatomical:
-        if isinstance(options.TV_referenceImage, str):
-            if len(options.TV_referenceImage) == 0:
-                raise ValueError('TV with anatomical weighting selected, but no reference image provided!')
-            options.TV_referenceImage = _load_array_file(options.TV_referenceImage, mat_key_index='last')
-        if options.TV_referenceImage.shape[1] == 1:
-            koko_apu = np.sqrt(np.size(options.TV_referenceImage) / options.Nz[0].item())
-            if np.floor(koko_apu) != koko_apu:
-                raise ValueError('Reference image has to be square')
-            koko_apu = int(koko_apu)
-            options.TV_referenceImage = options.TV_referenceImage.reshape((koko_apu, koko_apu, options.Nz[0].item()))
-            if koko_apu != options.Nx[0].item() or options.TV_referenceImage.shape[2] != options.Nz[0].item():
-                if options.Nz[0].item() > 1:
-                    print('Resizing reference image')
-                    options.TV_referenceImage = resize(options.TV_referenceImage, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()))
-        else:
-            if options.TV_referenceImage.shape[1] != options.Ny[0].item() or options.TV_referenceImage.shape[2] != options.Nz[0].item():
-                if options.Nz[0].item() > 1:
-                    print('Resizing reference image')
-                    options.TV_referenceImage = resize(options.TV_referenceImage, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()))
+        options.TV_referenceImage = _load_reference_image(
+            options, options.TV_referenceImage,
+            emptyMessage='TV with anatomical weighting selected, but no reference image provided!',
+            squareCheck='shape1', squareOrder='F',
+            squareErrorMsg='Reference image has to be square',
+            squareResizeGuardNz1=True, squareUsesItem=True,
+            elseCheckNdim3=False, elseResizeGuardNz1=True,
+            finalize=False,
+        )
         options.TV_referenceImage = options.TV_referenceImage.astype(dtype=np.float32)
         options.TV_referenceImage = options.TV_referenceImage - np.min(options.TV_referenceImage)
         options.TV_referenceImage = options.TV_referenceImage / np.max(options.TV_referenceImage)
@@ -705,30 +945,15 @@ def APLSPrepass(options):
     None.
 
     """
-    from skimage.transform import resize #scikit-image
-    if isinstance(options.APLS_ref_image, str):
-        if len(options.APLS_ref_image) == 0:
-            raise ValueError('APLS selected, but no reference image provided!')
-        options.APLS_ref_image = _load_array_file(options.APLS_ref_image, mat_key_index='last')
-    if options.APLS_ref_image.ndim == 1 or options.APLS_ref_image.shape[1] == 1:
-        koko_apu = np.sqrt(np.size(options.APLS_ref_image) / options.Nz[0])
-        if koko_apu != np.floor(koko_apu):
-            raise ValueError('Reference image has to be 2D/3D if different size than reconstruction size!')
-        koko_apu = int(koko_apu)
-        options.APLS_ref_image = options.APLS_ref_image.reshape((koko_apu, koko_apu, options.Nz[0]), order = 'F')
-        if koko_apu != options.Nx[0] or options.APLS_ref_image.shape[2] != options.Nz[0]:
-            print('Resizing reference image')
-            options.APLS_ref_image = resize(options.APLS_ref_image, (options.Nx[0], options.Ny[0], options.Nz[0]))
-    else:
-        Nx0 = options.Nx[0].item()
-        Ny0 = options.Ny[0].item()
-        Nz0 = options.Nz[0].item()
-        if options.APLS_ref_image.ndim == 3 and (options.APLS_ref_image.shape[0] != Nx0 or options.APLS_ref_image.shape[1] != Ny0 or options.APLS_ref_image.shape[2] != Nz0):
-            print('Resizing reference image')
-            options.APLS_ref_image = resize(options.APLS_ref_image, (Nx0, Ny0, Nz0))
-    options.APLS_ref_image = options.APLS_ref_image.astype(dtype=np.float32)
-    options.APLS_ref_image = np.asfortranarray(options.APLS_ref_image)
-    options.APLS_ref_image = options.APLS_ref_image.ravel('F')
+    options.APLS_ref_image = _load_reference_image(
+        options, options.APLS_ref_image,
+        emptyMessage='APLS selected, but no reference image provided!',
+        squareCheck='ndim1_or_shape1', squareOrder='F',
+        squareErrorMsg='Reference image has to be 2D/3D if different size than reconstruction size!',
+        squareResizeGuardNz1=False, squareUsesItem=False,
+        elseCheckNdim3=True, elseCheckShape0=True, elseResizeGuardNz1=False,
+        finalize=True, castBeforeAsfortran=True, doAsfortran=True,
+    )
 
 def computeWeights(options, GGMRF):
     """
@@ -752,51 +977,28 @@ def computeWeights(options, GGMRF):
     distX = options.FOVa_x[0] / options.Nx[0]
     distY = options.FOVa_y[0] / options.Ny[0]
     distZ = options.axial_fov[0] / options.Nz[0]
-    
+
     if np.size(options.weights) == 0:
-        options.weights = np.zeros(((options.Ndx * 2 + 1) * (options.Ndy * 2 + 1) * (options.Ndz * 2 + 1)),order='F',dtype=np.float32)
-        cc = np.zeros((options.Ndy * 2 + 1) * (options.Ndx * 2 + 1),order='F',dtype=np.float32)
-        lt = 0
+        # Offset vectors, each running from +N down to -N (matches the
+        # element order the original loop-based implementation produced).
+        xr = np.arange(options.Ndx, -options.Ndx-1, -1) * distX
+        yr = np.arange(options.Ndy, -options.Ndy-1, -1) * distY
+        zr = np.arange(options.Ndz, -options.Ndz-1, -1) * distZ
         if GGMRF:
-            for jj in range(options.Ndx, -options.Ndx-1, -1):
-                lt += 1
-                ll = 0
-                for kk in range(options.Ndy, -options.Ndy-1, -1):
-                    ll += 1
-                    if options.Ndx == 0 or options.Nx[0] == 1:
-                        apu = np.column_stack(((np.arange(options.Ndz, -options.Ndz-1, -1) * distZ), (np.repeat(kk, options.Ndy*2+1) * distY)))
-                    else:
-                        if options.Ndx != options.Ndz:
-                            apu = np.column_stack(((np.arange(options.Ndz, -options.Ndz-1, -1) * distZ), (np.repeat(kk, options.Ndz*2+1) * distY), 
-                                                   (np.repeat(jj, options.Ndz*2+1) * distX)))
-                        else:
-                            apu = np.column_stack(((np.arange(options.Ndz, -options.Ndz-1, -1) * distZ), (np.repeat(kk, options.Ndy*2+1) * distY), (np.repeat(jj, options.Ndx*2+1) * distX)))
-                    edist = np.sqrt(np.sum(apu**2, axis=1))
-                    if options.Ndx != options.Ndz:
-                        cc[(options.Ndz*2+1)*(ll-1):(options.Ndz*2+1)*ll] = edist
-                    else:
-                        cc[(options.Ndy*2+1)*(ll-1):(options.Ndy*2+1)*ll] = edist
-                if options.Ndx != options.Ndz:
-                    cc = cc[0:(options.Ndx*2+1)*(options.Ndz*2+1)]
-                options.weights[(options.Ndz*2+1)*(options.Ndy*2+1)*(lt-1):(options.Ndz*2+1)*(options.Ndy*2+1)*lt] = cc
+            # GGMRF-style ordering: z varies fastest, then y, then x slowest.
+            Zg, Yg, Xg = np.meshgrid(zr, yr, xr, indexing='ij')
+            if options.Ndx == 0 or options.Nx[0] == 1:
+                dist = np.sqrt(Zg**2 + Yg**2)
+            else:
+                dist = np.sqrt(Zg**2 + Yg**2 + Xg**2)
         else:
-            for jj in range(options.Ndz, -options.Ndz-1, -1):
-                lt += 1
-                ll = 0
-                for kk in range(options.Ndy, -options.Ndy-1, -1):
-                    ll += 1
-                    if options.Ndz == 0 or options.Nz[0].item() == 1:
-                        apu = np.column_stack(((np.arange(options.Ndx, -options.Ndx-1, -1) * distX), (np.repeat(kk, options.Ndy*2+1) * distY)))
-                    else:
-                        if options.Ndz != options.Ndx:
-                            apu = np.column_stack(((np.arange(options.Ndx, -options.Ndx-1, -1) * distX), (np.repeat(kk, options.Ndy*2+1) * distY), 
-                                                   (np.concatenate((np.zeros(options.Ndx-options.Ndz), np.repeat(jj, options.Ndz*2+1) * distZ, np.zeros(options.Ndx-options.Ndz))))))
-                        else:
-                            apu = np.column_stack(((np.arange(options.Ndx, -options.Ndx-1, -1) * distX), (np.repeat(kk, options.Ndy*2+1) * distY), (np.repeat(jj, options.Ndz*2+1) * distZ)))
-                    edist = np.sqrt(np.sum(apu**2, axis=1))
-                    cc[(options.Ndy*2+1)*(ll-1):(options.Ndy*2+1)*ll] = edist
-                options.weights[(options.Ndx*2+1)*(options.Ndy*2+1)*(lt-1):(options.Ndx*2+1)*(options.Ndy*2+1)*lt] = cc
-        options.weights = 1.0 / options.weights
+            # Default ordering: x varies fastest, then y, then z slowest.
+            Xg, Yg, Zg = np.meshgrid(xr, yr, zr, indexing='ij')
+            if options.Ndz == 0 or options.Nz[0] == 1:
+                dist = np.sqrt(Xg**2 + Yg**2)
+            else:
+                dist = np.sqrt(Xg**2 + Yg**2 + Zg**2)
+        options.weights = 1.0 / dist.flatten(order='F')
         options.weights = options.weights.astype(dtype=np.float32)
         
 def quadWeights(options, isEmpty):
@@ -902,19 +1104,13 @@ def NLMPrepass(options):
     gaussian = gaussianKernel(g_x, g_y, g_z, options.NLM_gauss, options.NLM_gauss, options.NLM_gauss)
     options.gaussianNLM = gaussian.flatten('F').astype(dtype=np.float32)
     if options.NLM_use_anatomical:
-        if isinstance(options.NLM_referenceImage, str):
-            if len(options.NLM_referenceImage) == 0:
-                raise ValueError('NLM with anatomical weighting selected, but no reference image provided!')
-            options.NLM_referenceImage = _load_array_file(options.NLM_referenceImage, mat_key_index='last')
-        Nx0 = options.Nx[0].item()
-        Ny0 = options.Ny[0].item()
-        Nz0 = options.Nz[0].item()
-        if options.NLM_referenceImage.ndim == 3 and (options.NLM_referenceImage.shape[0] != Nx0 or options.NLM_referenceImage.shape[1] != Ny0 or options.NLM_referenceImage.shape[2] != Nz0):
-            from skimage.transform import resize #scikit-image
-            print('Resizing reference image')
-            options.NLM_referenceImage = resize(options.NLM_referenceImage, (Nx0, Ny0, Nz0))
-        options.NLM_referenceImage = np.asfortranarray(options.NLM_referenceImage)
-        options.NLM_referenceImage = options.NLM_referenceImage.ravel('F').astype(dtype=np.float32)
+        options.NLM_referenceImage = _load_reference_image(
+            options, options.NLM_referenceImage,
+            emptyMessage='NLM with anatomical weighting selected, but no reference image provided!',
+            squareCheck=None,
+            elseCheckNdim3=True, elseCheckShape0=True, elseResizeGuardNz1=False,
+            finalize=True, castBeforeAsfortran=False, doAsfortran=True,
+        )
 
 def prepassPhase(options):
     """
@@ -938,6 +1134,7 @@ def prepassPhase(options):
 
     """
     from .rampfilt import rampFilt
+    from omegatomo.util.matlabRound import matlabRound
     options.Nf = options.nRowsD
     if not isinstance(options.tauCP, np.ndarray):
         options.tauCP = np.array(options.tauCP, dtype=np.float32, ndmin=1)
@@ -952,20 +1149,16 @@ def prepassPhase(options):
     if not isinstance(options.alpha_PKMA, np.ndarray):
         options.alpha_PKMA = np.array(options.alpha_PKMA, dtype=np.float32, ndmin=1)
     if options.precondTypeImage[2]:
-        if isinstance(options.referenceImage, str):
-            options.referenceImage = _load_array_file(options.referenceImage, mat_key_index='last')
-        Nx0 = options.Nx[0].item()
-        Ny0 = options.Ny[0].item()
-        Nz0 = options.Nz[0].item()
-        if options.referenceImage.ndim == 3 and (options.referenceImage.shape[0] != Nx0 or options.referenceImage.shape[1] != Ny0 or options.referenceImage.shape[2] != Nz0):
-            from skimage.transform import resize #scikit-image
-            print('Resizing reference image')
-            options.referenceImage = resize(options.referenceImage, (Nx0, Ny0, Nz0))
-        options.referenceImage = np.asfortranarray(options.referenceImage)
-        options.referenceImage = options.referenceImage.ravel('F').astype(dtype=np.float32)
-        if np.size(options.referenceImage) == round((options.NxFull - options.NxOrig) * options.multiResolutionScale) * \
-            round((options.NyFull - options.NyOrig) * options.multiResolutionScale) * \
-            round((options.NzFull - options.NzOrig) * options.multiResolutionScale):
+        options.referenceImage = _load_reference_image(
+            options, options.referenceImage,
+            emptyMessage=None,
+            squareCheck=None,
+            elseCheckNdim3=True, elseCheckShape0=True, elseResizeGuardNz1=False,
+            finalize=True, castBeforeAsfortran=False, doAsfortran=True,
+        )
+        if np.size(options.referenceImage) == int(matlabRound((options.NxFull - options.NxOrig) * options.multiResolutionScale)) * \
+            int(matlabRound((options.NyFull - options.NyOrig) * options.multiResolutionScale)) * \
+            int(matlabRound((options.NzFull - options.NzOrig) * options.multiResolutionScale)):
             skip = True
         else:
             skip = False
@@ -1044,50 +1237,31 @@ def prepassPhase(options):
     
         # Lambda values (relaxation parameters)
         if (options.BSREM or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM_MAP or options.ROSEM or options.PKMA or options.SPS or options.SART or options.ASD_POCS or options.SAGA) and (np.size(options.lambdaN) == 0 or np.sum(options.lambdaN) == 0.):
-            lambda_vals = np.zeros(options.Niter, dtype=np.float32)
-            if options.stochasticSubsetSelection:
-                for i in range(options.Niter):
-                    lambda_vals[i] = 1. / (0.4 / options.subsets * i + 1.)
-            else:
-                for i in range(options.Niter):
-                    lambda_vals[i] = 1. / (i / 20. + 1.)
-            options.lambdaN = lambda_vals
+            options.lambdaN = _compute_lambda_vals(options.Niter, options.subsets, options.stochasticSubsetSelection).astype(np.float32)
             if options.CT and not options.SART and not options.ASD_POCS:
                 options.lambdaN = options.lambdaN / 10000.
         elif (options.BSREM or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM_MAP or options.ROSEM or options.PKMA or options.SPS or options.SART or options.ASD_POCS or options.SAGA):
             if np.size(options.lambdaN) < options.Niter:
                 print('Warning: The number of relaxation values must be at least the number of iterations times the number of subsets! Computing custom relaxation values.')
-                lambda_vals = np.zeros(options.Niter, dtype=np.float32)
-                if options.stochasticSubsetSelection:
-                    for i in range(options.Niter):
-                        lambda_vals[i] = 1. / (0.4 / options.subsets * i + 1.)
-                else:
-                    for i in range(options.Niter):
-                        lambda_vals[i] = 1. / (i / 20. + 1.)
-                options.lambdaN = lambda_vals
+                options.lambdaN = _compute_lambda_vals(options.Niter, options.subsets, options.stochasticSubsetSelection).astype(np.float32)
                 if options.CT and not options.SART and not options.ASD_POCS:
                     options.lambdaN = options.lambdaN / 10000.
             elif np.size(options.lambdaN) > options.Niter:
                 print('Warning: The number of relaxation values is more than the number of iterations. Later values are ignored!')
     
         if options.DRAMA:
+            # r(i, j) = i * subsets + j + 1 (the loop's running counter starting at 1);
+            # the pre-loop lam_drama[0, 0] assignment is always overwritten by the
+            # i = j = 0 iteration below (r = 1 there too), so it is folded in directly.
             options.lam_drama = np.zeros((options.Niter, options.subsets),order='F',dtype=np.float32)
-            options.lam_drama[0, 0] = options.beta_drama / (options.alpha_drama * options.beta0_drama)
-            r = 1
-            for i in range(options.Niter):
-                for j in range(options.subsets):
-                    options.lam_drama[i, j] = options.beta_drama / (options.alpha_drama * options.beta0_drama + r)
-                    r += 1
-            
+            r_vals = np.arange(1, options.Niter * options.subsets + 1, dtype=np.float64).reshape((options.Niter, options.subsets))
+            options.lam_drama[:, :] = options.beta_drama / (options.alpha_drama * options.beta0_drama + r_vals)
+
         if options.PKMA and (np.size(options.alpha_PKMA) < options.Niter * options.subsets or np.sum(options.alpha_PKMA) == 0.):
             if np.size(options.alpha_PKMA) < options.Niter * options.subsets:
                 print('Warning: The number of PKMA alpha (momentum) values must be at least the number of iterations times the number of subsets! Computing custom alpha values.')
                 options.alpha_PKMA = np.zeros(options.Niter * options.subsets, dtype=np.float32)
-                oo = 0
-                for kk in range(options.Niter):
-                    for ll in range(options.subsets):
-                        options.alpha_PKMA[oo] = 1. + (options.rho_PKMA * (kk * options.subsets + ll)) / (kk * options.subsets + ll + options.delta_PKMA)
-                        oo += 1
+                options.alpha_PKMA[:] = _pkma_relaxation_values(options.Niter, options.subsets, options.rho_PKMA, options.delta_PKMA)
         elif options.PKMA:
             if np.size(options.alpha_PKMA) > options.Niter * options.subsets:
                 print('Warning: The number of PKMA alpha (momentum) values is higher than the total number of iterations times subsets. The final values will be ignored.')
@@ -1130,11 +1304,12 @@ def prepassPhase(options):
             if options.weighted_mean:
                 weightedWeights(options)
             if options.RDP and options.RDPIncludeCorners and options.RDP_use_anatomical:
-                if isinstance(options.RDP_referenceImage, str):
-                    if len(options.RDP_referenceImage) == 0:
-                        raise ValueError('RDP with anatomical weighting selected, but no reference image provided!')
-                    options.RDP_referenceImage = _load_array_file(options.RDP_referenceImage, mat_key_index='last')
-                options.RDP_referenceImage = options.RDP_referenceImage.ravel('F').astype(dtype=np.float32)
+                options.RDP_referenceImage = _load_reference_image(
+                    options, options.RDP_referenceImage,
+                    emptyMessage='RDP with anatomical weighting selected, but no reference image provided!',
+                    resize=False,
+                    finalize=True, castBeforeAsfortran=False, doAsfortran=False,
+                )
             if options.verbose:
                 print('Prepass phase for MRP, quadratic prior, L-filter, FMH, RDP and weighted mean completed')
         if (options.NLM and options.MAP):
@@ -1152,11 +1327,7 @@ def prepassPhase(options):
             options.thetaCP = np.array(options.thetaCP, dtype=np.float32, ndmin=1)
         if np.size(options.thetaCP) != options.subsets * options.Niter and np.size(options.alpha_PKMA) != options.subsets * options.Niter:
             options.thetaCP = np.zeros((options.Niter * options.subsets, 1), order='F', dtype=np.float32)
-            oo = 0
-            for kk in range(1, options.Niter + 1):
-                for ll in range(options.subsets):
-                    options.thetaCP[oo] = 1. + (options.rho_PKMA * ((kk - 1) * options.subsets + ll)) / ((kk - 1) * options.subsets + ll + options.delta_PKMA)
-                    oo += 1
+            options.thetaCP[:, 0] = _pkma_relaxation_values(options.Niter, options.subsets, options.rho_PKMA, options.delta_PKMA)
         else:
             options.thetaCP = options.alpha_PKMA.astype(dtype=np.float32)
         
@@ -1185,11 +1356,7 @@ def prepassPhase(options):
         if np.size(options.alphaPrecond) < options.Niter * options.subsets:
             print('Warning: The number of alpha (momentum) values must be at least the number of iterations times the number of subsets! Computing custom alpha values.')
             options.alphaPrecond = np.zeros(options.Niter * options.subsets, dtype=np.float32)
-            oo = 0
-            for kk in range(options.Niter):
-                for ll in range(options.subsets):
-                    options.alphaPrecond[oo] = 1. + (options.rho_PKMA * (kk * options.subsets + ll)) / (kk * options.subsets + ll + options.delta_PKMA)
-                    oo += 1
+            options.alphaPrecond[:] = _pkma_relaxation_values(options.Niter, options.subsets, options.rho_PKMA, options.delta_PKMA)
     
     if options.precondTypeMeas[1]:
         if options.subsets > 1 and options.subsetType == 5:

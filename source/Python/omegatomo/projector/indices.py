@@ -16,7 +16,129 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 """
 import numpy as np
-   
+
+
+def _prime_factor_order(n, tyyppi):
+    """
+    Computes the prime-factor (mixed-radix) permutation of range(n) used by
+    subsetType 11. Equivalent to computing, for every projection index rr,
+    a mixed-radix digit expansion of rr using the prime factors of n (from
+    smallest to largest place value) and re-reading those digits with the
+    place values reversed.
+
+    Parameters
+    ----------
+    n : int
+        Number of projections to order (must be > 1).
+    tyyppi : NumPy dtype
+        Integer dtype used for the returned index array (np.uint32 for
+        non-CT, np.uint64 for CT).
+
+    Returns
+    -------
+    indices : NumPy array (tyyppi)
+        The prime-factor ordering of range(n).
+    """
+    factors = []
+    value = n
+    divisor = 2
+    while value > 1:
+        while value % divisor == 0:
+            factors.append(divisor)
+            value //= divisor
+        divisor += 1
+    n2 = np.array(factors)
+    nn = np.flipud(np.cumprod(np.flipud(n2[1:])))
+    N = np.size(factors)
+    p = np.zeros((N, n), dtype=tyyppi)
+    for ll in range(1, N + 1):
+        p1 = np.arange(factors[ll - 1])
+        if ll == 1:
+            p1 = np.tile(p1, n // np.size(p1))
+        else:
+            p1 = np.repeat(p1, np.prod(n2[:ll - 1]))
+            p1 = np.tile(p1, n // np.size(p1))
+        p[ll - 1, :] = p1
+    # Vectorized form of: for rr in range(n): indices[rr] = sum(p[:len(nn), rr] * nn) + p[-1, rr]
+    indices = np.zeros(n, dtype=tyyppi)
+    indices[:] = np.sum(p[:len(nn), :] * nn[:, None], axis=0) + p[-1, :]
+    return indices
+
+
+def _projection_subset_indices(nProjections, subsets, subsetType, generator, tyyppi):
+    """
+    Splits `nProjections` projections (either the full, static acquisition or
+    a single dynamic timeframe) into `subsets` subsets for subsetType 8, 9, 10
+    (unsupported), 11, or any other value, which falls back to a single subset
+    containing every projection in order (this is the branch actually taken
+    whenever subsets == 1, regardless of the requested subsetType).
+
+    Parameters
+    ----------
+    nProjections : int
+        Number of projections to split.
+    subsets : int
+        Number of subsets.
+    subsetType : int
+        The subset selection method.
+    generator : numpy.random.Generator or None
+        Used (and advanced) only for subsetType 9 with subsets > 1.
+    tyyppi : NumPy dtype
+        Integer dtype used for the returned index array.
+
+    Returns
+    -------
+    index : NumPy array (tyyppi)
+        Concatenated (subset-major) index array.
+    lengths : NumPy array (int64), shape (subsets,)
+        Number of indices in each subset. Only lengths[0] is populated by the
+        fallback (non 8/9/10/11) branch; the caller is responsible for any
+        CT/PET/SPECT-specific override of that single value.
+    """
+    sProjections = nProjections // subsets
+    modi = np.mod(nProjections, subsets)
+    uu = (modi > 0).astype(np.int64)
+    ind1 = 0
+    ind2 = sProjections + uu
+    temp_ind = []
+    lengths = np.zeros(subsets, dtype=np.int64)
+    if subsetType == 8 and subsets > 1:
+        for kk in range(subsets):
+            index1 = np.arange(kk, nProjections, subsets).astype(tyyppi)
+            temp_ind.append(index1)
+            lengths[kk] = np.size(index1)
+    elif subsetType == 9 and subsets > 1:
+        apu = generator.permutation(nProjections).astype(tyyppi)
+        for kk in range(subsets):
+            index1 = apu[ind1:ind2]
+            temp_ind.append(index1)
+            lengths[kk] = np.size(index1)
+            modi = modi - 1
+            if modi <= 0:
+                uu = 0
+            ind1 = ind2
+            ind2 = ind2 + sProjections + uu
+    elif subsetType == 10 and subsets > 1:
+        raise ValueError('Not supported in Python version!')
+    elif subsetType == 11 and subsets > 1:
+        indices = _prime_factor_order(nProjections, tyyppi)
+        for kk in range(subsets):
+            index1 = indices[ind1:ind2]
+            temp_ind.append(index1)
+            lengths[kk] = np.size(index1)
+            modi = modi - 1
+            if modi <= 0:
+                uu = 0
+            ind1 = ind2
+            ind2 = ind2 + sProjections + uu
+    else:
+        index1 = np.arange(0, nProjections).astype(tyyppi)
+        temp_ind.append(index1)
+        lengths[0] = np.size(index1)
+    index = np.concatenate(temp_ind) if temp_ind else np.empty(0, dtype=tyyppi)
+    return index, lengths
+
+
 def indexMaker(options):
     """
     This function is used to generate the subset indices for the selected 
@@ -64,79 +186,20 @@ def indexMaker(options):
         )
         options.index = [None] * options.Nt
         pituus = np.zeros((subsets, options.Nt), dtype=np.int64)
+        generator = None
         if options.subsetType == 9:
             if options.seed < 0:
                 generator = np.random.default_rng()
             else:
                 generator = np.random.default_rng(options.seed)
+        usedFallbackArm = not (subsets > 1 and options.subsetType in (8, 9, 10, 11))
         for tt in range(options.Nt):
             nProjections = int(projectionCounts[tt])
-            sProjections = nProjections // subsets
-            modi = np.mod(nProjections, subsets)
-            uu = (modi > 0).astype(np.int64)
-            ind1 = 0
-            ind2 = sProjections + uu
-            temp_ind = []
-            if options.subsetType == 8 and subsets > 1:
-                for kk in range(subsets):
-                    index1 = np.arange(kk, nProjections, subsets).astype(tyyppi)
-                    temp_ind.append(index1)
-                    pituus[kk, tt] = np.size(index1)
-            elif options.subsetType == 9 and subsets > 1:
-                apu = generator.permutation(nProjections).astype(tyyppi)
-                for kk in range(subsets):
-                    index1 = apu[ind1:ind2]
-                    temp_ind.append(index1)
-                    pituus[kk, tt] = np.size(index1)
-                    modi = modi - 1
-                    if modi <= 0:
-                        uu = 0
-                    ind1 = ind2
-                    ind2 = ind2 + sProjections + uu
-            elif options.subsetType == 10 and subsets > 1:
-                raise ValueError('Not supported in Python version!')
-            elif options.subsetType == 11 and subsets > 1:
-                factors = []
-                value = nProjections
-                divisor = 2
-                while value > 1:
-                    while value % divisor == 0:
-                        factors.append(divisor)
-                        value //= divisor
-                    divisor += 1
-                n2 = np.array(factors)
-                nn = np.flipud(np.cumprod(np.flipud(n2[1:])))
-                N = np.size(factors)
-                p = np.zeros((N, nProjections), dtype=tyyppi)
-                for ll in range(1, N + 1):
-                    p1 = np.arange(factors[ll - 1])
-                    if ll == 1:
-                        p1 = np.tile(p1, nProjections // np.size(p1))
-                    else:
-                        p1 = np.repeat(p1, np.prod(n2[:ll - 1]))
-                        p1 = np.tile(p1, nProjections // np.size(p1))
-                    p[ll - 1, :] = p1
-                indices = np.zeros(nProjections, dtype=tyyppi)
-                for rr in range(nProjections):
-                    tt_index = p[:len(nn), rr] * nn
-                    indices[rr] = np.sum(tt_index) + p[-1, rr]
-                for kk in range(subsets):
-                    index1 = indices[ind1:ind2]
-                    temp_ind.append(index1)
-                    pituus[kk, tt] = np.size(index1)
-                    modi = modi - 1
-                    if modi <= 0:
-                        uu = 0
-                    ind1 = ind2
-                    ind2 = ind2 + sProjections + uu
-            else:
-                index1 = np.arange(0, nProjections).astype(tyyppi)
-                temp_ind.append(index1)
-                if not (options.CT or options.PET or options.SPECT):
-                    pituus[0, tt] = options.Nang * options.Ndist * options.NSinos
-                else:
-                    pituus[0, tt] = np.size(index1)
-            options.index[tt] = np.concatenate(temp_ind)
+            index1, lengths = _projection_subset_indices(nProjections, subsets, options.subsetType, generator, tyyppi)
+            if usedFallbackArm and not (options.CT or options.PET or options.SPECT):
+                lengths[0] = options.Nang * options.Ndist * options.NSinos
+            options.index[tt] = index1
+            pituus[:, tt] = lengths
         options.nMeas = pituus.flatten(order='F')
 
     if subsets > 1 and options.subsetType < 8:
@@ -243,106 +306,45 @@ def indexMaker(options):
                 options.nMeas = np.append(options.nMeas, valEnd)
                 options.index = np.zeros(1,dtype=tyyppi)
     elif ((subsets > 1 and options.subsetType in [8, 9, 10, 11]) or subsets == 1) and not dynamicProjectionSubsets:
-        sProjections = options.nProjections // subsets
-        modi = np.mod(options.nProjections, subsets)
-        uu = (modi > 0).astype(np.int64)
-        ind1 = 0
-        ind2 = sProjections + uu
-        options.index = np.empty(0, dtype=tyyppi)
-        options.nMeas = np.zeros((subsets, 1), dtype = np.int64)
-        if options.subsetType == 8 and subsets > 1:
-            for kk in range(subsets):
-                index1 = np.arange(kk, options.nProjections, subsets).astype(tyyppi)
-                options.index = np.append(options.index, index1)
-                options.nMeas[kk] = np.size(index1)
-        elif options.subsetType == 9 and subsets > 1:
+        # Subset type 10 (golden angle sampling) is not supported in Python; kept here for reference.
+        # ga = 2.39996322972865332
+        # options.angles = np.abs(options.angles)
+        # angles = options.angles - np.min(options.angles)
+        # anglesOrig = angles
+        # maksimi = np.max(angles)
+        # ga = ga * (maksimi / (2.*np.pi))
+        # angle = 0.
+        # for kk in range(subsets - 1):
+        #     ind = np.zeros(options.angles.size // subsets,1, dtype = tyyppi)
+        #     for ii in range(options.angles.size // subsets):
+        #         I = np.argmin(np.abs(angles-angle))
+        #         II = numpy.where(np.isin(anglesOrig,angles[I[0]]) > 0)
+        #         angles[I] = []
+        #         ind[ii] = II
+        #         angle = angle + ga
+        #         if angle > maksimi:
+        #             angle = angle - maksimi
+        #     index{kk} = ind
+        #     options.nMeas(kk) = numel(index{kk})
+        # ind = np.zeros(ceil(numel(options.angles) / subsets),1)
+        # for ii = 1 : ceil(numel(options.angles) / subsets)
+        #     [~,I] = min(abs(angles-angle))
+        #     II = find(ismember(anglesOrig,angles(I)))
+        #     angles(I) = []
+        #     ind(ii) = II
+        #     angle = angle + ga
+        #     if angle > maksimi:
+        #         angle = angle - maksimi
+        # index{subsets} = ind
+        # options.nMeas(subsets) = numel(index{subsets})
+        generator = None
+        if options.subsetType == 9 and subsets > 1:
             if options.seed < 0:
                 generator = np.random.default_rng()
             else:
                 generator = np.random.default_rng(options.seed)
-            apu = generator.permutation(options.nProjections).astype(tyyppi)
-            for kk in range(subsets):
-                index1 = apu[ind1 : ind2]
-                options.index = np.append(options.index, index1)
-                options.nMeas[kk] = np.size(index1)
-                modi = modi - 1
-                if modi <= 0:
-                    uu = 0
-                ind1 = ind2
-                ind2 = ind2 + (options.nProjections // subsets) + uu
-        elif options.subsetType == 10 and subsets > 1:
-            raise ValueError('Not supported in Python version!')
-            # ga = 2.39996322972865332
-            # options.angles = np.abs(options.angles)
-            # angles = options.angles - np.min(options.angles)
-            # anglesOrig = angles
-            # maksimi = np.max(angles)
-            # ga = ga * (maksimi / (2.*np.pi))
-            # angle = 0.
-            # for kk in range(subsets - 1):
-            #     ind = np.zeros(options.angles.size // subsets,1, dtype = tyyppi)
-            #     for ii in range(options.angles.size // subsets):
-            #         I = np.argmin(np.abs(angles-angle))
-            #         II = numpy.where(np.isin(anglesOrig,angles[I[0]]) > 0)
-            #         angles[I] = []
-            #         ind[ii] = II
-            #         angle = angle + ga
-            #         if angle > maksimi:
-            #             angle = angle - maksimi
-            #     index{kk} = ind
-            #     options.nMeas(kk) = numel(index{kk})
-            # ind = np.zeros(ceil(numel(options.angles) / subsets),1)
-            # for ii = 1 : ceil(numel(options.angles) / subsets)
-            #     [~,I] = min(abs(angles-angle))
-            #     II = find(ismember(anglesOrig,angles(I)))
-            #     angles(I) = []
-            #     ind(ii) = II
-            #     angle = angle + ga
-            #     if angle > maksimi:
-            #         angle = angle - maksimi
-            # index{subsets} = ind
-            # options.nMeas(subsets) = numel(index{subsets})
-        elif options.subsetType == 11 and subsets > 1:
-            def factor(n):
-                factors = []
-                divisor = 2
-                
-                while n > 1:
-                    while n % divisor == 0:
-                        factors.append(divisor)
-                        n //= divisor
-                    divisor += 1
-                
-                return factors
-            n = factor(options.nProjections)
-            n2 = np.array(n)
-            nn = np.flipud(np.cumprod(np.flipud(n2[1:])))
-            N = np.size(n)
-            p = np.zeros((N, options.nProjections), dtype=tyyppi)
-            for ll in range(1, N + 1):
-                p1 = np.arange(n[ll - 1])
-                if ll == 1:
-                    p1 = np.tile(p1, options.nProjections // np.size(p1))
-                else:
-                    p1 = np.repeat(p1, np.prod(n[:ll - 1]))
-                    p1 = np.tile(p1, options.nProjections // np.size(p1))
-                p[ll - 1, :] = p1
-            
-            indices = np.zeros(options.nProjections, dtype=tyyppi)
-            for r in range(1, options.nProjections + 1):
-                tt = p[:len(nn), r - 1] * nn
-                indices[r - 1] = np.sum(tt) + p[-1, r - 1]
-            for kk in range(subsets):
-                options.index = np.append(options.index, indices[ind1:ind2])
-                options.nMeas[kk] = np.size(indices[ind1:ind2])
-                modi -= 1
-                if modi <= 0:
-                    uu = 0
-                ind1 = ind2
-                ind2 = ind2 + (options.nProjections // subsets) + uu
-        else:
-            options.index = np.arange(0, options.nProjections).astype(tyyppi)
-            options.nMeas[0] = options.index.size
+        options.index, lengths = _projection_subset_indices(options.nProjections, subsets, options.subsetType, generator, tyyppi)
+        options.nMeas = lengths.reshape((subsets, 1))
         if options.subsets == 1:
             if (options.CT or options.PET or options.SPECT) and options.listmode == 0:
                 options.nMeas[0] = options.NSinos

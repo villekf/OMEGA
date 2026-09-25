@@ -26,7 +26,6 @@ def rampFilt(N, ww, c, sigma, use2D = False):
         w = (.355768 - .487396 * np.cos(w / c) + .144232 * np.cos(2*w / c) - .012604 * np.cos(3*w / c))
         filt[1:] *= w[1:]
     elif ww == 'gaussian':
-        sigma = 0.1  # Adjust the sigma value accordingly
         w = np.exp((-1/2) * (((np.arange(filt.shape[0] - 1, -1, -1) - N/2)/(sigma*(N/2))) ** 2))
         filt[1:] *= w[1:]
     elif ww == 'shepp-logan':
@@ -36,7 +35,7 @@ def rampFilt(N, ww, c, sigma, use2D = False):
         filt[1:] *= np.cos(w[1:] / (2 * c))
     elif ww == 'parzen':
         L = N + 1
-        w = np.arange(filt.shape[0])
+        w = np.arange(filt.shape[0], dtype=np.float64)
         w[np.abs(w) <= L/4] = 1 - 6 * (w[np.abs(w) <= L/4] / (L/2))**2 * (1 - np.abs(w[np.abs(w) <= L/4]) / (L/2))
         w[np.logical_and(np.abs(w) > L/4, np.abs(w) <= L/2)] = 2 * (1 - np.abs(w[np.logical_and(np.abs(w) > L/4, np.abs(w) <= L/2)]) / (L/2))**3
         filt[1:] *= w[1:]
