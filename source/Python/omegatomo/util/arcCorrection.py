@@ -78,9 +78,9 @@ def arc_correction(options, interpolate_sinogram):
     kk_idx = np.arange(quarter_len)
     r = int(options.det_w_pseudo / 2)
     if options.det_w_pseudo > options.det_per_ring:
-        half_width = options.cryst_per_block + 1
+        half_width = cryst_per_block_val + 1
     else:
-        half_width = options.cryst_per_block
+        half_width = cryst_per_block_val
     offsets = np.arange(-half_width, half_width + 1)
     val_range_matrix = kk_idx[:, None] + r + offsets[None, :]
 
@@ -138,7 +138,8 @@ def arc_correction(options, interpolate_sinogram):
     yy2 = y[:, 1].reshape(options.Ndist, options.Nang, order='F')
 
     # Compute LOR angles (degrees), shift to avoid negatives, find J
-    angle = np.degrees(np.arctan((yy1 - yy2) / (xx1 - xx2))) + 90
+    with np.errstate(divide='ignore', invalid='ignore'):
+        angle = np.degrees(np.arctan((yy1 - yy2) / (xx1 - xx2))) + 90
     angle[angle == 180] = 0
     J = np.argmin(np.mean(angle, axis=0))
 
