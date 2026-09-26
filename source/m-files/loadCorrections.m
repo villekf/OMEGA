@@ -775,10 +775,6 @@ if ~options.SPECT
             options.SinDelayed = {0};
         end
     end
-    if options.arc_correction && ~options.precompute_lor
-        [x, y, options] = arcCorrection(options, true);
-    end
-
     % Load (or compute) normalization correction coefficients
     if (options.normalization_correction && options.corrections_during_reconstruction) && ~options.use_user_normalization
         if ~isfield(options,'normalization') || isempty(options.normalization)
@@ -960,6 +956,9 @@ if ~options.SPECT
     end
     if options.normalization_correction && ~iscell(options.SinM) && numel(options.normalization) ~= numel(options.SinM)
         warning('Normalization coefficient vector/matrix is of different size than the measurement data. Normalization might not work correctly and might cause a crash.')
+    end
+    if options.arc_correction && ~options.precompute_lor
+        [x, y, options] = arcCorrection(options, true);
     end
     if options.sampling > 1 && ~options.precompute_lor
         [~, ~, options] = increaseSampling(options, x, y, true);

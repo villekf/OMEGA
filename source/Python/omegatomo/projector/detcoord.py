@@ -590,7 +590,7 @@ def computeCoordinates(options, blocks_per_ring, transaxial_multip, cryst_per_bl
             alkupistey = y[ii] - (cr_p) * np.sin(np.radians(angle[blocks])) * extraVar
             alkublock = blocks + 1
             ii += 1
-            for blocks in range(alkublock, blocks_per_ring * transaxial_multip + 1):
+            for blocks in range(alkublock, blocks_per_ring * transaxial_multip):
                 for crystals in range(1, cryst_per_block + 1):
                     if blocks > 0 and crystals == 1:
                         x[ii] = alkupistex - (cr_p * 0.5) * np.cos(np.radians(angle[blocks])) - erotus * np.cos(
@@ -618,7 +618,7 @@ def computeCoordinates(options, blocks_per_ring, transaxial_multip, cryst_per_bl
     else:
         if usePseudo:
             alkublock = blocks + 1
-            for blocks in range(alkublock, blocks_per_ring * transaxial_multip + 1):
+            for blocks in range(alkublock, blocks_per_ring * transaxial_multip):
                 for crystals in range(1, cryst_per_block + 1):
                     if blocks > 0 and crystals == 1:
                         x[ii] = alkupistex - (cr_p * 0.5) * np.cos(np.radians(angle[blocks])) - erotus * np.cos(
