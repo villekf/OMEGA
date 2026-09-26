@@ -954,8 +954,15 @@ if ~options.SPECT
             options.normalization = 0;
         end
     end
-    if options.normalization_correction && ~iscell(options.SinM) && numel(options.normalization) ~= numel(options.SinM)
-        warning('Normalization coefficient vector/matrix is of different size than the measurement data. Normalization might not work correctly and might cause a crash.')
+    if options.normalization_correction && options.corrections_during_reconstruction && numel(options.normalization) > 1
+        if iscell(options.SinM)
+            SinM_numel = numel(options.SinM{1});
+        else
+            SinM_numel = numel(options.SinM);
+        end
+        if mod(SinM_numel, numel(options.normalization)) ~= 0
+            warning('Normalization coefficient vector/matrix is of different size than the measurement data. Normalization might not work correctly and might cause a crash.')
+        end
     end
     if options.arc_correction && ~options.precompute_lor
         [x, y, options] = arcCorrection(options, true);
