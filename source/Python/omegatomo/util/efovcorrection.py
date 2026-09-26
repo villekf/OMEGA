@@ -11,6 +11,45 @@ def _round_away_from_zero(x):
 
 def CTEFOVCorrection(options, extrapLengthTransaxial = None, extrapLengthAxial = None, eFOVLengthTransaxial = None, eFOVLengthAxial = None):
     import numpy as np
+    if options.useEFOV:
+        import warnings
+        size = getattr(options, 'eFOVSize', None)
+        # projectorClass supplies an all-zero size even for legacy callers.
+        # Any nonzero explicit geometry takes precedence over legacy settings.
+        if size is None or not np.any(size):
+            warnings.warn('Legacy EFOV parameters detected. Please use options.eFOVSize '
+                          'and options.eFOVShift instead of legacy EFOV lengths and flags. '
+                          'Converting legacy parameters for this reconstruction.',
+                          UserWarning, stacklevel=2)
+            transaxial = getattr(options, 'transaxialEFOV', False)
+            axial = getattr(options, 'axialEFOV', False)
+            if not (transaxial or axial):
+                warnings.warn('Neither transaxial nor axial extended FOV selected! '
+                              'Defaulting to axial EFOV!', UserWarning, stacklevel=2)
+                axial = True
+
+            def legacy_length(argument, name):
+                if argument is not None:
+                    return argument
+                value = getattr(options, name, None)
+                if value is None:
+                    value = getattr(options, 'eFOVLength', None)
+                return 0.4 if value is None else value
+
+            size = np.zeros(3, dtype=np.float64)
+            if transaxial:
+                length = legacy_length(eFOVLengthTransaxial, 'eFOVLengthTransaxial')
+                n_transaxial = np.floor(options.Nx * length) * 2
+                size[0] = options.FOVa_x * (1 + n_transaxial / options.Nx)
+                size[1] = options.FOVa_y * (1 + n_transaxial / options.Ny)
+            if axial:
+                length = legacy_length(eFOVLengthAxial, 'eFOVLengthAxial')
+                n_axial = np.floor(options.Nz * length) * 2
+                size[2] = options.axial_fov * (1 + n_axial / options.Nz)
+        options.eFOVSize = np.array(size, dtype=np.float64, copy=True)
+        shift = getattr(options, 'eFOVShift', None)
+        options.eFOVShift = (np.zeros(3, dtype=np.float64) if shift is None
+                             else np.array(shift, dtype=np.float64, copy=True))
     if options.useExtrapolation:
         print('Extrapolating the projections')
         if extrapLengthTransaxial == None:

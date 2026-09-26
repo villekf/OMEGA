@@ -1976,7 +1976,6 @@ class projectorClass:
                         NzM6
                     ], dtype=np.uint32)
                 
-                    print(f"Extended FOV is {FOVyM3 / self.FOVxOrig * 100:.2f} % of the original")
                 
                 elif self.transaxialEFOV and not self.axialEFOV:
                     self.nMultiVolumes = 4
@@ -2031,7 +2030,6 @@ class projectorClass:
                         NzM
                     ], dtype=np.uint32)
                 
-                    print(f"Extended FOV is {FOVyM3 / self.FOVyOrig * 100:.2f} % of the original")
                 
                 elif not self.transaxialEFOV and self.axialEFOV:
                     self.nMultiVolumes = 2
@@ -2072,7 +2070,17 @@ class projectorClass:
                         NzM2
                     ], dtype=np.uint32)
                 
-                    print(f"Extended FOV is {(FOVzM1 + FOVzM2 + self.axialFOVOrig) / self.axialFOVOrig * 100:.2f} % of the original")
+                axialExtension = (np.sum(self.axial_fov[:3]) / self.axialFOVOrig * 100
+                                  if self.axialEFOV else 100.)
+                if self.transaxialEFOV:
+                    xSides, ySides = ((3, 4), (5, 6)) if self.nMultiVolumes == 6 else ((1, 2), (3, 4))
+                    transaxialExtensionX = np.sum(self.FOVa_x[[0, *xSides]]) / self.FOVxOrig * 100
+                    transaxialExtensionY = np.sum(self.FOVa_y[[0, *ySides]]) / self.FOVyOrig * 100
+                else:
+                    transaxialExtensionX = transaxialExtensionY = 100.
+                print(f"Axial FOV extension is {axialExtension:.2f} % (z) of the original")
+                print(f"Transaxial FOV extension is {transaxialExtensionX:.2f} % (x), "
+                      f"{transaxialExtensionY:.2f} % (y) of the original")
                 
                 from omegatomo.util.multiresolution import pack_multiresolution
                 self.x0 = pack_multiresolution(self.x0, self)
