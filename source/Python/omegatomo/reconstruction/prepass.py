@@ -357,7 +357,9 @@ def loadCorrections(options):
         options.vaimennus = np.asfortranarray(options.vaimennus)
         options.vaimennus = options.vaimennus.ravel('F').astype(dtype=np.float32)
     if options.normalization_correction:
+        normalizationFromFile = False
         if options.normalization.size == 0:
+            normalizationFromFile = True
             normdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', '..', '..', 'mat-files')) + "/" +  options.machine_name + '_normalization_' + str(options.Ndist) + 'x' + str(options.Nang) + '_span' + str(options.span) + '.mat'
             if os.path.exists(normdir):
                 try:
@@ -417,7 +419,13 @@ def loadCorrections(options):
             else:
                 normalization_for_data = np.reshape(options.normalization, options.SinM.shape, order='F')
             if normalization_for_data is not None:
-                options.SinM = options.SinM.astype(np.float32) / normalization_for_data
+                # File-loaded normalization was inverted on load, so dividing multiplies
+                # by the raw coefficients. A prefilled PET normalization is multiplied
+                # directly (as in MATLAB); SPECT divides (as in MATLAB).
+                if not options.SPECT and not normalizationFromFile:
+                    options.SinM = options.SinM.astype(np.float32) * normalization_for_data
+                else:
+                    options.SinM = options.SinM.astype(np.float32) / normalization_for_data
             options.normalization_correction = False
         else:
             options.normalization = options.normalization.ravel('F').astype(dtype=np.float32)
