@@ -454,9 +454,10 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 		af::array intIm = af::constant(0.f, inputScalars.Ny[ii] + 1, inputScalars.Nz[ii] + 1, inputScalars.Nx[ii]);
 		if (inputScalars.meanFP) {
 			im = af::reorder(af::moddims(vec.im_os[timestep][ii], inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii], inputScalars.nRekos), 1, 2, 0);
+			const af::array mFPXY = af::mean(af::mean(im, 0), 1);
 			vec.meanFP = af::constant(0.f, inputScalars.Nx[ii] + inputScalars.Ny[ii]);
-			vec.meanFP(af::seq(0, inputScalars.Nx[ii] - 1)) = af::flat(af::mean(af::mean(im, 0), 1));
-			im -= af::tile(vec.meanFP(af::seq(0, inputScalars.Nx[ii] - 1)), im.dims(0), im.dims(1), 1);
+			vec.meanFP(af::seq(0, inputScalars.Nx[ii] - 1)) = af::flat(mFPXY);
+			im -= af::tile(mFPXY, im.dims(0), im.dims(1));
 			intIm(af::seq(1, af::end), af::seq(1, af::end), af::span) = af::sat(im);
 			im.eval();
 		}
@@ -591,8 +592,9 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 		intIm = af::constant(0.f, inputScalars.Nx[ii] + 1, inputScalars.Nz[ii] + 1, inputScalars.Ny[ii]);
 		if (inputScalars.meanFP) {
 			im = af::reorder(af::moddims(vec.im_os[timestep][ii], inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii], inputScalars.nRekos), 0, 2, 1, 3);
-			vec.meanFP(af::seq(inputScalars.Nx[ii], inputScalars.Nx[ii] + inputScalars.Ny[ii] - 1)) = af::flat(af::mean(af::mean(im, 0), 1));
-			im -= af::tile(vec.meanFP(af::seq(inputScalars.Nx[ii], inputScalars.Nx[ii] + inputScalars.Ny[ii] - 1)), im.dims(0), im.dims(1), 1);
+			const af::array mFPYZ = af::mean(af::mean(im, 0), 1);
+			vec.meanFP(af::seq(inputScalars.Nx[ii], inputScalars.Nx[ii] + inputScalars.Ny[ii] - 1)) = af::flat(mFPYZ);
+			im -= af::tile(mFPYZ, im.dims(0), im.dims(1));
 			intIm(af::seq(1, af::end), af::seq(1, af::end), af::span) = af::sat(im);
 		}
 		else
@@ -2029,6 +2031,140 @@ inline af::array translateHelperType6(const af::array im, const int shift0, cons
     return imtrans;
 }
 
+// Resamples a dense attenuation map (covering the union bounding box of every multi-resolution
+// volume, at volume 0's own, finest, voxel size) onto multi-resolution volume ii's own grid, using
+// each side's PHYSICAL position (bx/by/bz) and voxel size (dx/dy/dz)
+//
+// Implemented as a mean-preserving box average via a 3D summed-area table (SAT): for each target
+// voxel, the exact physical box it occupies is mapped into fractional source-map index space, the
+// (zero-padded) SAT is trilinearly sampled at the box's 8 corners, and the standard inclusion-
+// exclusion box-sum is divided by the box's volume (in source-voxel units) to get the mean mu. This
+// is preferred over plain trilinear point-sampling of the map because multi-resolution side volumes
+// are normally coarser than the map (multiResolutionScale < 1), so a single point sample would alias/
+// under-sample the many source voxels each target voxel actually covers; the box average reduces to
+// (numerically) the same result as point-sampling when a target voxel is no coarser than the source
+// (its box collapses towards a single corner), so one formula covers both directions. Edge-clamping
+// of the box corners only guards against floating-point spill a fraction of a voxel past the map's
+// own edge -- the volumes are built to exactly tile the map's extent, so genuine out-of-map sampling
+// should not otherwise occur.
+inline af::array resampleAttenuationType6Volume(const af::array& attenMap, const scalarStruct& inputScalars, const int ii,
+	const float bxMap, const float byMap, const float bzMap, const int NxMap, const int NyMap, const int NzMap) {
+	if (ii == 0 && inputScalars.Nx[0] == static_cast<uint32_t>(NxMap) && inputScalars.Ny[0] == static_cast<uint32_t>(NyMap) &&
+		inputScalars.Nz[0] == static_cast<uint32_t>(NzMap))
+		return attenMap; // Identity: no multi-resolution split, the map already IS volume 0's own grid
+
+	// Zero-padded 3D summed-area table: sat(i,j,k) = sum of every source voxel with index < (i,j,k)
+	af::array sat = af::accum(af::accum(af::accum(attenMap, 0), 1), 2);
+	sat = af::join(0, af::constant(0.f, 1, NyMap, NzMap), sat);
+	sat = af::join(1, af::constant(0.f, NxMap + 1, 1, NzMap), sat);
+	sat = af::join(2, af::constant(0.f, NxMap + 1, NyMap + 1, 1), sat);
+
+	const int nx = inputScalars.Nx[ii], ny = inputScalars.Ny[ii], nz = inputScalars.Nz[ii];
+	const float dx = inputScalars.dx[ii], dy = inputScalars.dy[ii], dz = inputScalars.dz[ii];
+	const float bxV = inputScalars.bx[ii], byV = inputScalars.by[ii], bzV = inputScalars.bz[ii];
+	const float dxMap = inputScalars.dx[0], dyMap = inputScalars.dy[0], dzMap = inputScalars.dz[0];
+
+	// Physical voxel-boundary edges of volume ii along each axis, converted into fractional
+	// map-index space (0..NMap) and clamped for numerical spill at the map's own boundary
+	af::array xEdges = af::clamp((bxV + af::range(af::dim4(nx + 1), 0, f32) * dx - bxMap) / dxMap, 0.f, static_cast<float>(NxMap));
+	af::array yEdges = af::clamp((byV + af::range(af::dim4(ny + 1), 0, f32) * dy - byMap) / dyMap, 0.f, static_cast<float>(NyMap));
+	af::array zEdges = af::clamp((bzV + af::range(af::dim4(nz + 1), 0, f32) * dz - bzMap) / dzMap, 0.f, static_cast<float>(NzMap));
+
+	af::array X = af::tile(af::moddims(xEdges, nx + 1, 1, 1), 1, ny + 1, nz + 1);
+	af::array Y = af::tile(af::moddims(yEdges, 1, ny + 1, 1), nx + 1, 1, nz + 1);
+	af::array Z = af::tile(af::moddims(zEdges, 1, 1, nz + 1), nx + 1, ny + 1, 1);
+
+	// ArrayFire has no 3D interpolation primitive -- only af::approx1 (1D) and af::approx2 (2D)
+	// exist, af::approx3 does not (any version). The SAT is therefore trilinearly sampled by
+	// hand: floor/frac split each axis (mirroring projfunctions.py's
+	// _type6_resample_attenuation_numpy floor/clip order exactly), the 8 integer corners
+	// bracketing (X,Y,Z) are gathered via flat linear array indexing (af::array(idx) with idx
+	// shaped like the query -- standard AF linear/gather indexing), and blended with the
+	// fractional (fx,fy,fz) weights.
+	af::array x0 = af::floor(X);
+	af::array y0 = af::floor(Y);
+	af::array z0 = af::floor(Z);
+	af::array fx = X - x0, fy = Y - y0, fz = Z - z0;
+	af::array x1 = af::min(x0 + 1.f, static_cast<double>(NxMap));
+	af::array y1 = af::min(y0 + 1.f, static_cast<double>(NyMap));
+	af::array z1 = af::min(z0 + 1.f, static_cast<double>(NzMap));
+
+	const af::array satFlat = af::flat(sat);
+	const long long strideY = static_cast<long long>(NxMap) + 1;
+	const long long strideZ = strideY * (static_cast<long long>(NyMap) + 1);
+	auto gatherCorner = [&](const af::array& xi, const af::array& yi, const af::array& zi) -> af::array {
+		af::array idx = af::flat(xi + yi * static_cast<float>(strideY) + zi * static_cast<float>(strideZ)).as(u32);
+		return af::moddims(satFlat(idx), xi.dims());
+	};
+	af::array c000 = gatherCorner(x0, y0, z0), c100 = gatherCorner(x1, y0, z0);
+	af::array c010 = gatherCorner(x0, y1, z0), c110 = gatherCorner(x1, y1, z0);
+	af::array c001 = gatherCorner(x0, y0, z1), c101 = gatherCorner(x1, y0, z1);
+	af::array c011 = gatherCorner(x0, y1, z1), c111 = gatherCorner(x1, y1, z1);
+	af::array c00 = c000 * (1.f - fx) + c100 * fx;
+	af::array c10 = c010 * (1.f - fx) + c110 * fx;
+	af::array c01 = c001 * (1.f - fx) + c101 * fx;
+	af::array c11 = c011 * (1.f - fx) + c111 * fx;
+	af::array c0 = c00 * (1.f - fy) + c10 * fy;
+	af::array c1 = c01 * (1.f - fy) + c11 * fy;
+	af::array satAtCorners = c0 * (1.f - fz) + c1 * fz;
+
+	af::array boxSum =
+		  satAtCorners(af::seq(1, nx), af::seq(1, ny), af::seq(1, nz))
+		- satAtCorners(af::seq(0, nx - 1), af::seq(1, ny), af::seq(1, nz))
+		- satAtCorners(af::seq(1, nx), af::seq(0, ny - 1), af::seq(1, nz))
+		- satAtCorners(af::seq(1, nx), af::seq(1, ny), af::seq(0, nz - 1))
+		+ satAtCorners(af::seq(0, nx - 1), af::seq(0, ny - 1), af::seq(1, nz))
+		+ satAtCorners(af::seq(0, nx - 1), af::seq(1, ny), af::seq(0, nz - 1))
+		+ satAtCorners(af::seq(1, nx), af::seq(0, ny - 1), af::seq(0, nz - 1))
+		- satAtCorners(af::seq(0, nx - 1), af::seq(0, ny - 1), af::seq(0, nz - 1));
+
+	af::array dXe = af::diff1(xEdges, 0);
+	af::array dYe = af::diff1(yEdges, 0);
+	af::array dZe = af::diff1(zEdges, 0);
+	af::array volu = af::tile(af::moddims(dXe, nx, 1, 1), 1, ny, nz)
+		* af::tile(af::moddims(dYe, 1, ny, 1), nx, 1, nz)
+		* af::tile(af::moddims(dZe, 1, 1, nz), nx, ny, 1);
+	volu(volu < 1e-6f) = 1e-6f; // Guard fully-clamped (degenerate, outside the map) voxels
+	af::array resampled = boxSum / volu;
+	resampled.eval();
+	return resampled;
+}
+
+// NOTE: multi-resolution volumes (nMultiVolumes > 0) are not yet supported/validated
+// Builds multi-resolution volume ii's own attenuation image from the host-provided attenuation map.
+// The map is expected to cover the union bounding box of every multi-resolution volume (0..
+// nMultiVolumes), at volume 0's own (finest) voxel size -- i.e. exactly the same "single dense array
+// covering the full, pre-split FOV" convention already used for options.x0 / options.referenceImage
+// with multi-resolution volumes. With nMultiVolumes == 0 the map IS volume 0's own grid and this is
+// a plain, unchanged reinterpretation of the host buffer (bit-identical to the pre-existing
+// behavior). CTAttenuation must be true: type 6's rotate-and-integrate attenuation model needs a full
+// image-domain map, unlike the precomputed LOR/sinogram-domain attenuation factors used elsewhere
+// when CTAttenuation is false, which this projector cannot consume.
+inline af::array buildType6AttenuationVolume(const scalarStruct& inputScalars, const int ii, const float* atten) {
+	if (!(inputScalars.attenuation_correction && inputScalars.CTAttenuation && (atten != nullptr)))
+		return af::array();
+	if (inputScalars.nMultiVolumes == 0)
+		return af::array(inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], atten);
+
+	float bxMap = inputScalars.bx[0], byMap = inputScalars.by[0], bzMap = inputScalars.bz[0];
+	float bxHi = inputScalars.bx[0] + inputScalars.Nx[0] * inputScalars.dx[0];
+	float byHi = inputScalars.by[0] + inputScalars.Ny[0] * inputScalars.dy[0];
+	float bzHi = inputScalars.bz[0] + inputScalars.Nz[0] * inputScalars.dz[0];
+	for (int jj = 1; jj <= inputScalars.nMultiVolumes; jj++) {
+		bxMap = (std::min)(bxMap, inputScalars.bx[jj]);
+		byMap = (std::min)(byMap, inputScalars.by[jj]);
+		bzMap = (std::min)(bzMap, inputScalars.bz[jj]);
+		bxHi = (std::max)(bxHi, inputScalars.bx[jj] + inputScalars.Nx[jj] * inputScalars.dx[jj]);
+		byHi = (std::max)(byHi, inputScalars.by[jj] + inputScalars.Ny[jj] * inputScalars.dy[jj]);
+		bzHi = (std::max)(bzHi, inputScalars.bz[jj] + inputScalars.Nz[jj] * inputScalars.dz[jj]);
+	}
+	const int NxMap = static_cast<int>(std::lround((bxHi - bxMap) / inputScalars.dx[0]));
+	const int NyMap = static_cast<int>(std::lround((byHi - byMap) / inputScalars.dy[0]));
+	const int NzMap = static_cast<int>(std::lround((bzHi - bzMap) / inputScalars.dz[0]));
+	const af::array attenMap = af::array(NxMap, NyMap, NzMap, atten);
+	return resampleAttenuationType6Volume(attenMap, inputScalars, ii, bxMap, byMap, bzMap, NxMap, NyMap, NzMap);
+}
+
 // SPECT forward projection (projector type 6)
 inline void forwardProjectionType6(af::array& fProj, const Weighting& w_vec, AF_im_vectors& vec, const scalarStruct& inputScalars,
 	const int64_t length, const int64_t uu, ProjectorClass& proj, const int ii = 0, const float* atten = nullptr, const int timestep = 0) {
@@ -2041,10 +2177,10 @@ inline void forwardProjectionType6(af::array& fProj, const Weighting& w_vec, AF_
 	int64_t u1 = uu;
 	const af::array apuArr = af::moddims(vec.im_os[timestep][ii], inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii]);
 
-	// Pre-transfer the attenuation volume if it doesn't yet exist
-	af::array attenBase;
-	if (inputScalars.attenuation_correction && (atten != nullptr))
-		attenBase = af::array(inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii], atten);
+	// Pre-transfer/resample the attenuation volume if it doesn't yet exist (once per call, not
+	// per projection angle below)
+	af::array attenBase = buildType6AttenuationVolume(inputScalars, ii, atten);
+	const bool useAtten = (inputScalars.attenuation_correction && inputScalars.CTAttenuation && (atten != nullptr));
 
 	for (int kk = 0; kk < length; kk++) {
 		af::array kuvaRot;
@@ -2061,7 +2197,7 @@ inline void forwardProjectionType6(af::array& fProj, const Weighting& w_vec, AF_
             mexPrint("Projector 6 FP step 2 complete");
 
         // 3. Process and apply attenuation image
-        if (inputScalars.attenuation_correction && (atten != nullptr)) {
+        if (useAtten) {
             // 3.1. rotate attenuation map
             af::array attenuationImage = rotateHelperType6(attenBase, inputScalars, proj, -w_vec.swivelAngles[u1], ii);
 
@@ -2169,11 +2305,11 @@ inline af::array backProjectionType6Helper(const af::array &fProj, const Weighti
     if (compSens)
         *outputSens = af::constant(0.f, inputScalars.Nx[ii] * inputScalars.Ny[ii] * inputScalars.Nz[ii], 1);
 
-    const bool useAtten = (inputScalars.attenuation_correction && (atten != nullptr));
-	// Pre-transfer the attenuation image
+    const bool useAtten = (inputScalars.attenuation_correction && inputScalars.CTAttenuation && (atten != nullptr));
+	// Pre-transfer/resample the attenuation image (once per call, not per projection angle below)
 	af::array attenBase;
 	if (useAtten)
-		attenBase = af::array(inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii], atten);
+		attenBase = buildType6AttenuationVolume(inputScalars, ii, atten);
 
     for (int kk = 0; kk < length; kk++) {
         /* N:=w_vec.distInt[u1] interpretation
