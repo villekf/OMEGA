@@ -1,8 +1,8 @@
 /*******************************************************************************************************************************************
-* Implements either the improved Siddon's algorithm, orthogonal distance based projector or volume-based projector for OMEGA.
+* Implements the improved Siddon's algorithm for OMEGA.
 *
-* Implementation 1 supports only Siddon's algorithm and outputs the sparse system matrix. Implementation 4 supports projectors 1-3 and is 
-* computed matrix-free.
+* Implementation 1 supports only Siddon's algorithm and outputs the sparse system matrix. Implementation 4 supports only projector type 1
+* (improved Siddon) and is computed matrix-free.
 * 
 * This file contains the mex-functions for both the implementation type 1 and type 4.
 * 
@@ -320,12 +320,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		param.bmin = getScalarDouble(options, 0, "bmin");
 		param.bmax = getScalarDouble(options, 0, "bmax");
 		param.Vmax = getScalarDouble(options, 0, "Vmax");
-		if (param.projType == 2)
-			param.orthWidth = getScalarDouble(options, 0, "tube_width_z");
-		else if (param.projType == 3) {
-			param.orthWidth = getScalarDouble(options, 0, "tube_radius");
-			param.V = getDoubles(options, "V");
-		}
 
 		// Small constant to prevent division by zero
 		param.epps = getScalarDouble(prhs[ind], ind);

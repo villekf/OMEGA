@@ -196,8 +196,8 @@ disp('Starting image reconstruction')
 % Implementations 1, 4 and 5
 if ismember(options.param.implementation, [1, 4, 5])
 
-    if options.param.projector_type > 3 && options.param.implementation == 4 && options.param.projector_type < 6
-        error('Implementation 4 supports only projector types 1-3 and 6!')
+    if options.param.implementation == 4 && ~ismember(options.param.projector_type, [1 11 6 16 61 66])
+        error('Selected projector type is not supported with CPU implementation!')
     end
 
     if options.param.OSEM || options.param.ECOSEM || options.param.ROSEM || options.param.RBI || options.param.OSL_RBI || options.param.DRAMA || ...

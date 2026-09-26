@@ -316,6 +316,10 @@ struct inputStruct {
     bool RDP_use_anatomical = false;
     // Use L2 ball with PDHG
     bool useL2Ball = true;
+    // Optimize PDHG/PKMA/MBSREM/BSREM in specific cases by fusing the image-domain update into the
+    // backprojection kernel. Only specific configurations are supported, see checkFastPDHG in
+    // functions.hpp. Set this to false to explicitly disable fastPDHG (mirrors mfunctions.h/precomp.h).
+    bool fastPDHG = true;
     // Save the sensitivity image
     bool saveSens = false;
     // Use 64-bit atomic functions
@@ -936,6 +940,10 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.localSize[2] = options.localSizeZ;
     // Optional: compute the spatial prior only every regEveryIter-th (sub)iteration (1 = every time).
     inputScalars.regEveryIter = options.regEveryIter;
+    // Optimize PDHG/PKMA/MBSREM/BSREM in specific cases; set to false to explicitly disable fastPDHG
+    // (mirrors mfunctions.h:178-179). Only specific configurations are supported, see checkFastPDHG
+    // in functions.hpp.
+    inputScalars.fastPDHG = options.fastPDHG;
 
     inputScalars.Nxy = inputScalars.Nx[0] * inputScalars.Ny[0];
     inputScalars.im_dim[0] = static_cast<int64_t>(inputScalars.Nxy) * static_cast<int64_t>(inputScalars.Nz[0]);

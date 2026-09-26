@@ -99,24 +99,51 @@ if ismember(options.projector_type, [12, 2, 21, 22]) % Orthogonal distance ray t
     % Now the collimator response FWHM is sqrt((az+b)^2+c^2) where z is distance along detector element normal vector
 end
 if options.projector_type == 6
-    DistanceToFirstRow = 0.5*options.dx;
-    Distances = repmat(DistanceToFirstRow,1,options.Nx*4)+repmat((0:double(options.Nx*4)-1)*double(options.dx),length(DistanceToFirstRow),1);
+    % Nx/Ny/Nz/dx/dy/dz may be vectors when multi-resolution volumes are in
+    % use (options.useMultiResolutionVolumes). The C++/MEX side only
+    % consumes a single options.gFilter/blurPlanes shared by all volumes
+    % (see mfunctions.h/libHeader.h), so the CDRF and blur-plane geometry
+    % below are always computed from the main (first) volume's geometry,
+    % matching the previous scalar-only behavior bit-for-bit when Nx/dx
+    % etc. are scalars.
+    DistanceToFirstRow = 0.5*options.dx(1);
+    Distances = repmat(DistanceToFirstRow,1,options.Nx(1)*4)+repmat((0:double(options.Nx(1)*4)-1)*double(options.dx(1)),length(DistanceToFirstRow),1);
     Distances = Distances-options.colL-options.colD; %these are distances to the actual detector surface
 
     if (~isfield(options,'gFilter'))
         if ~isfield(options, 'sigmaZ')
-            Rg = 2*options.colR*(options.colL+options.colD+(Distances)+options.cr_p/2)/options.colL; %Anger, "Scintillation Camera with Multichannel Collimators", J Nucl Med 5:515-531 (1964)
-            Rg(Rg<0) = 0;
+            % Axial and transaxial collimator responses use their own septa
+            % lengths (colLz/colLxy), each falling back to the uniform-hole
+            % length colL when not positive. Ported from the newer Python
+            % behavior (detcoord.py, projector type 6 CDRF computation) so
+            % that asymmetric collimator holes (colLxy ~= colLz) are handled
+            % identically in MATLAB and Python.
+            if options.colLxy > 0
+                colLxy = options.colLxy;
+            else
+                colLxy = options.colL;
+            end
+            if options.colLz > 0
+                colLz = options.colLz;
+            else
+                colLz = options.colL;
+            end
+            Rg_z = 2*options.colR*(options.colL+options.colD+(Distances)+options.cr_p/2)/colLz; %Anger, "Scintillation Camera with Multichannel Collimators", J Nucl Med 5:515-531 (1964)
+            Rg_xy = 2*options.colR*(options.colL+options.colD+(Distances)+options.cr_p/2)/colLxy;
+            Rg_z(Rg_z<0) = 0;
+            Rg_xy(Rg_xy<0) = 0;
             FWHMrot = 1;
 
-            FWHM = sqrt(Rg.^2+options.iR^2);
-            FWHM_pixel = FWHM/options.dx;
-            expr = FWHM_pixel.^2-FWHMrot^2;
+            FWHM_z = sqrt(Rg_z.^2+options.iR^2);
+            FWHM_xy = sqrt(Rg_xy.^2+options.iR^2);
+            FWHM_z_pixel = FWHM_z/options.dz(1);
+            FWHM_xy_pixel = FWHM_xy/options.dy(1);
+            expr = FWHM_xy_pixel.^2-FWHMrot^2;
             expr(expr<=0) = 10^-16;
             FWHM_WithinPlane = sqrt(expr);
 
             %Parametrit CDR-mallinnukseen
-            options.sigmaZ = FWHM_pixel./(2*sqrt(2*log(2)));
+            options.sigmaZ = FWHM_z_pixel./(2*sqrt(2*log(2)));
             options.sigmaXY = FWHM_WithinPlane./(2*sqrt(2*log(2)));
         end
         maxI = max([options.Nx(1), options.Ny(1), options.Nz(1)]);
@@ -133,8 +160,8 @@ if options.projector_type == 6
             s2 = double(repmat(permute(options.sigmaXY,[4 3 2 1]), size(xx,1), size(yy,2), 1));
             options.gFilter = exp(-(xx.^2./(2*s1.^2) + yy.^2./(2*s2.^2))); % .* (1 / (2*pi*s1.*s2)) ;
         end
-        [rowE,colE] = find(options.gFilter(:,:,end/4) > 1e-6);
-        [rowS,colS] = find(options.gFilter(:,:,end/4) > 1e-6);
+        [rowE,colE] = find(options.gFilter(:,:,max(1,floor(end/4))) > 1e-6);
+        [rowS,colS] = find(options.gFilter(:,:,max(1,floor(end/4))) > 1e-6);
         rowS = min(rowS);
         colS = min(colS);
         rowE = max(rowE);
@@ -144,8 +171,8 @@ if options.projector_type == 6
     end
 
     panelTilt = options.swivelAngles - options.angles + 180;
-    options.blurPlanes = (options.FOVa_x/2 - (options.radiusPerProj .* cosd(panelTilt) - options.CORtoDetectorSurface)) / options.dx; % PSF shift
-    options.blurPlanes2 = options.radiusPerProj .* sind(panelTilt) / options.dx; % Panel shift
+    options.blurPlanes = (options.FOVa_x(1)/2 - (options.radiusPerProj .* cosd(panelTilt) - options.CORtoDetectorSurface)) / options.dx(1); % PSF shift
+    options.blurPlanes2 = options.radiusPerProj .* sind(panelTilt) / options.dx(1); % Panel shift
 
     if options.implementation == 2
         options.blurPlanes = int32(options.blurPlanes);

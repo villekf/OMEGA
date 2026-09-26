@@ -80,6 +80,7 @@ elseif options.nLayers > 1
         % orig_diameter = diameter + options.crystH(end) * 2;
         diameter = diameter + DOI * 2 + options.crystH(1) * 2;
         [x2,y2] = computeCoordinates(blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, false);
+        koko = size(x1,1);
     elseif options.cryst_per_block(1) > options.cryst_per_block(2)
         [x1,y1] = computeCoordinates(blocks_per_ring, transaxial_multip,options.cryst_per_block(1), diameter, cr_p, false);
         % orig_diameter = diameter + options.crystH(end) * 2;
