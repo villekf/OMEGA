@@ -250,6 +250,20 @@ if interpolateSinogram
         end
     end
 
+    if isfield(options, 'corrVector') && options.additionalCorrection
+        if iscell(options.corrVector)
+            for kk = 1 : numel(options.corrVector)
+                if numel(options.corrVector{kk}) > 1 && mod(numel(options.corrVector{kk}), N) == 0
+                    options.corrVector{kk} = applyToField(options.corrVector{kk});
+                end
+            end
+        else
+            if numel(options.corrVector) > 1 && mod(numel(options.corrVector), N) == 0
+                options.corrVector = applyToField(options.corrVector);
+            end
+        end
+    end
+
     if isfield(options, 'ScatterC') && options.scatter_correction
         if iscell(options.ScatterC)
             for kk = 1 : numel(options.ScatterC)
