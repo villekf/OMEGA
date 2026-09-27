@@ -244,6 +244,18 @@ def loadCorrections(options):
     """
     import os
     from omegatomo.util.matlabRound import matlabRound
+    if options.listmode and options.normalization_correction and options.Nt > 1:
+        # Mirrors MATLAB's loadCorrections.m (~line 50): normalization for PET list-mode
+        # data is a per-detector-pair (or per-crystal-efficiency) table, not a value that
+        # can be stored/subset-selected per LOR-event the way corrVector/vaimennus are, so
+        # dynamic (Nt > 1) list-mode data -- where options.index is a genuine per-frame
+        # list of different-length index arrays (see indices.py's subsetType==1 list-mode
+        # branch) -- cannot be handled by the normalization_correction branch below, which
+        # (like MATLAB) assumes a uniform options.Ndist*options.Nang*options.TotSinos block
+        # per frame. Python previously had no equivalent guard and would silently mis-slice
+        # or crash instead of disabling the (unsupported) correction as MATLAB does.
+        print('Warning: Normalization correction is not (yet) supported for dynamic list-mode data! Disabling it.')
+        options.normalization_correction = False
     normalization_shape = np.asarray(options.normalization).shape
     options.normZ = int(normalization_shape[2]) if options.SPECT and len(normalization_shape) == 3 else 1
     normalization_indexed_stack = bool(options.SPECT and int(options.normZ) == int(options.nHeads))
@@ -558,6 +570,30 @@ def loadCorrections(options):
                 
         
         
+def _frame_measurement_bounds(options, ff):
+    """
+    Returns frame `ff`'s (1-based) [start, stop) span, and its own
+    nProjections, within a flat array that concatenates one block of
+    measurement-domain data per [timestep][subset] -- the same layout
+    init.py's per-frame device-buffer construction (d_atten/d_corr/d_norm)
+    slices via options.nTotMeas[timestep*subsets : (timestep+1)*subsets+1].
+
+    Using these boundaries (rather than assuming a uniform
+    options.Ndist*options.Nang*options.TotSinos-sized block per frame) is
+    required for dynamic LIST-MODE data, where each frame can have a
+    different number of events (see options.listmodeIndices / indices.py's
+    subsetType==1 list-mode branch); for sinogram data every frame has the
+    same length and this is numerically identical to the uniform split.
+    Factored out of the options.corrVector per-frame fix (see below) so the
+    options.vaimennus per-frame fix can share it instead of duplicating the
+    nTotMeas arithmetic.
+    """
+    start = int(options.nTotMeas[(ff - 1) * options.subsets])
+    stop = int(options.nTotMeas[ff * options.subsets])
+    frame_nProjections = (stop - start) // (options.Ndist * options.Nang)
+    return start, stop, frame_nProjections
+
+
 def parseInputs(options, mDataFound = False):
     """
     This function parses the input measurement data such that the elements
@@ -707,7 +743,39 @@ def parseInputs(options, mDataFound = False):
                     options.normalization = options.normalization[options.index]
         
         if options.additionalCorrection and hasattr(options, 'corrVector') and options.corrVector.size > 0:
-            if options.subsetType >= 8:
+            if options.Nt > 1:
+                # corrVector is per-timestep in C++/MATLAB for dynamic data (see init.py's
+                # [Nt][subsets] d_corr construction, sliced from this same flat array via
+                # options.nTotMeas): mirror the per-frame handling already used for
+                # normalization/vaimennus/SinDelayed/ScatterC above instead of subset-selecting
+                # the whole Nt-frame-concatenated array with a single frame's worth of indices
+                # (pre-existing bug -- see the normalization_correction branch above for the
+                # full explanation of the failure mode this avoids). Per-frame boundaries are
+                # taken from options.nTotMeas (the same cumulative [Nt][subsets] boundaries
+                # init.py uses to slice d_corr) rather than assumed to be a uniform
+                # options.corrVector.size // options.Nt split: unlike normalization/vaimennus
+                # (always a fixed Ndist*Nang*TotSinos per frame), corrVector's per-frame length
+                # can genuinely differ -- e.g. list-mode data with a different number of events
+                # in each dynamic frame -- which options.nTotMeas already accounts for. The
+                # frame's own nProjections is likewise re-derived from its own (start, stop)
+                # span rather than taken from the single global options.nProjections (which
+                # -- like TotSinos for normalization/vaimennus -- is only valid as-is when
+                # every frame has the same length; for list-mode data with a different event
+                # count per frame it is frame 0's count only, see proj.py's addProjector()).
+                out_frames = []
+                for ff in range(1, options.Nt + 1):
+                    start, stop, frame_nProjections = _frame_measurement_bounds(options, ff)
+                    frame = options.corrVector[start:stop]
+                    idx = options.index[ff - 1] if isinstance(options.index, list) else options.index
+                    if options.subsetType >= 8:
+                        frame = np.reshape(frame, (options.Ndist, options.Nang, frame_nProjections, -1), order='F')
+                        frame = frame[:, :, idx, :]
+                    else:
+                        frame = np.reshape(frame, (options.Ndist * options.Nang * frame_nProjections, -1), order='F')
+                        frame = frame[idx, :]
+                    out_frames.append(np.asarray(frame).ravel(order='F'))
+                options.corrVector = np.concatenate(out_frames).astype(dtype=np.float32)
+            elif options.subsetType >= 8:
                 options.corrVector = np.reshape(options.corrVector, (options.Ndist, options.Nang, options.nProjections, -1), order='F')
                 options.corrVector = options.corrVector[:, :, options.index, :]
                 options.corrVector = options.corrVector.ravel(order='F')
@@ -721,7 +789,20 @@ def parseInputs(options, mDataFound = False):
                 and not options.reconstruct_trues and not options.reconstruct_scatter) and not options.largeDim:
             
             if options.SinDelayed.size > 1:
-                if options.Nt > 1:
+                if options.listmode > 0 and options.Nt > 1:
+                    # Unlike corrVector/vaimennus (flat, nTotMeas-boundary-delimited per-
+                    # event arrays), options.SinDelayed here is still assumed to be a
+                    # (Ndist, Nang, TotSinos, Nt) sinogram stack (see the reshape/indexing
+                    # below): it has no equivalent per-event layout, so it cannot be
+                    # subset-selected for list-mode data, which has no Ndist/Nang axes and,
+                    # for dynamic frames, a different event count per frame (see
+                    # options.listmodeIndices). Mirrors MATLAB's reconstructions_main.m,
+                    # which disables randoms_correction outright for all list-mode data;
+                    # Python previously had no equivalent guard here and would raise/
+                    # misindex instead of failing gracefully.
+                    print('Warning: Randoms correction (SinDelayed) is not supported for dynamic list-mode data! Disabling it.')
+                    options.randoms_correction = False
+                elif options.Nt > 1:
                     for ff in range(1, options.Nt + 1):
                         if not options.use_raw_data:
                             temp = options.SinDelayed[:,:,:,ff - 1]
@@ -760,7 +841,18 @@ def parseInputs(options, mDataFound = False):
         if (options.scatter_correction and options.corrections_during_reconstruction 
                 and not options.reconstruct_trues and not options.reconstruct_scatter):
             if not options.largeDim:
-                if options.Nt > 1: #and isinstance(options.ScatterC, list) and len(options.ScatterC) > 1:
+                _scatterC_dynamic_listmode_unsupported = options.listmode > 0 and options.Nt > 1
+                if _scatterC_dynamic_listmode_unsupported:
+                    # See the analogous options.SinDelayed guard above: options.ScatterC
+                    # here is still assumed to be a (Ndist, Nang, TotSinos, bins, Nt)
+                    # sinogram stack, which has no per-event equivalent for list-mode's
+                    # (possibly per-frame-variable-length) event arrays. Skip straight past
+                    # the SinDelayed += ScatterC combination below too, since options.ScatterC
+                    # was never subset-selected/reshaped and combining it now would corrupt
+                    # options.SinDelayed with the raw, wrongly-shaped array.
+                    print('Warning: Scatter correction (ScatterC) is not supported for dynamic list-mode data! Disabling it.')
+                    options.scatter_correction = False
+                elif options.Nt > 1: #and isinstance(options.ScatterC, list) and len(options.ScatterC) > 1:
                     for ff in range(1, options.Nt + 1):
                         if not options.use_raw_data:
                             temp = options.ScatterC[:,:,:,:,ff - 1]
@@ -794,10 +886,11 @@ def parseInputs(options, mDataFound = False):
                     else:
                         options.ScatterC = options.ScatterC.ravel(order='F').astype(dtype=np.float32)
                         options.ScatterC = options.ScatterC[options.index]
-                if options.randoms_correction == 1 and options.SinDelayed.size == options.ScatterC.size:
-                    options.SinDelayed = options.SinDelayed + options.ScatterC
-                else:
-                    options.SinDelayed = options.ScatterC
+                if not _scatterC_dynamic_listmode_unsupported:
+                    if options.randoms_correction == 1 and options.SinDelayed.size == options.ScatterC.size:
+                        options.SinDelayed = options.SinDelayed + options.ScatterC
+                    else:
+                        options.SinDelayed = options.ScatterC
             else:
                 if options.randoms_correction == 1 and options.SinDelayed.size == options.ScatterC.size:
                     options.SinDelayed = options.SinDelayed + options.ScatterC
@@ -813,11 +906,16 @@ def parseInputs(options, mDataFound = False):
                 # (normalization_correction, SinM/SinDelayed/ScatterC) instead of subset-
                 # selecting the whole Nt-frame-concatenated array with a single frame's worth
                 # of indices (pre-existing bug -- see the normalization_correction branch
-                # above for the full explanation of the failure mode this avoids).
-                single_frame_len = options.Ndist * options.Nang * options.TotSinos
+                # above for the full explanation of the failure mode this avoids). Per-frame
+                # boundaries come from options.nTotMeas (via the shared
+                # _frame_measurement_bounds() helper, factored out of the corrVector fix
+                # below) rather than a uniform options.Ndist*options.Nang*options.TotSinos
+                # split: like corrVector, vaimennus's per-frame length can genuinely differ
+                # for list-mode data with a different number of events per dynamic frame.
                 out_frames = []
                 for ff in range(1, options.Nt + 1):
-                    frame = options.vaimennus[(ff - 1) * single_frame_len: ff * single_frame_len]
+                    start, stop, _ = _frame_measurement_bounds(options, ff)
+                    frame = options.vaimennus[start:stop]
                     idx = options.index[ff - 1] if isinstance(options.index, list) else options.index
                     if options.subsetType >= 8:
                         frame = np.reshape(frame, (options.Ndist, options.Nang, -1), order='F')
