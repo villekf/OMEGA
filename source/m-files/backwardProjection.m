@@ -123,6 +123,16 @@ if (options.implementation == 4 && ~ismac) || (ismac && options.projector_type =
         end
         options.ub = options.ub + koko;
     else
+        % The CPU MEX files read the attenuation image without type conversion
+        if isfield(options, 'vaimennus') && isnumeric(options.vaimennus)
+            if options.implementation == 4 && options.useSingles
+                if ~isa(options.vaimennus, 'single')
+                    options.vaimennus = single(options.vaimennus);
+                end
+            elseif ~isa(options.vaimennus, 'double')
+                options.vaimennus = double(options.vaimennus);
+            end
+        end
         for ii = 1 : options.nMultiVolumes + 1
             if outputCell
                 if inputCell

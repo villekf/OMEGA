@@ -130,7 +130,6 @@ void improved_siddon_precomputed(paramStruct<double>& param, const int64_t nMeas
 		uint32_t d_N3 = param.Nx;
 		uint32_t local_ind = 0u;
 		int localIndX = 0, localIndY = 0, localIndZ = 0;
-		bool XY = false;
 
 		double local_norm = 0., local_scat = 0.;
 		if (param.normalizationCorrection)
@@ -168,6 +167,7 @@ void improved_siddon_precomputed(paramStruct<double>& param, const int64_t nMeas
 				d_d2 = param.dy;
 				d_db = param.dx;
 			}
+			localIndZ = tempk;
 			temp = perpendicular_elements(d_N2, dd, d_d2, d_b, d_db, d_N0, d_N1, param.atten, local_norm, param.attenuationCorrection, param.normalizationCorrection, param.CTAttenuation, tempk, d_N3, param.globalFactor, param.scatterCorrectionMult,
 				local_scat, localIndX, localIndY, localIndZ, L, 1, param.projType, param.Nx, param.Ny, CT, lo);
 			local_ind = tempk;
@@ -188,22 +188,22 @@ void improved_siddon_precomputed(paramStruct<double>& param, const int64_t nMeas
 			if (std::fabs(z_diff) < 1e-8) {
 				tempk = static_cast<uint32_t>(std::fabs(detectors.zs - param.bz) / param.dz);
 				skip = siddon_pre_loop_2D(param.bx, param.by, x_diff, y_diff, bmaxx, bmaxy, param.dx, param.dy, param.Nx, param.Ny, tempi, tempj, txu, tyu, Np, TYPE,
-					detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, iu, ju, tx0, ty0, param.projType, XY);
+					detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, iu, ju, tx0, ty0);
 			}
 			//Detectors on different rings (e.g. oblique sinograms)
 			else if (std::fabs(y_diff) < 1e-8) {
 				tempj = perpendicular_start(param.by, detectors.yd, param.dy, param.Ny);
 				skip = siddon_pre_loop_2D(param.bx, param.bz, x_diff, z_diff, bmaxx, bmaxz, param.dx, param.dz, param.Nx, param.Nz, tempi, tempk, txu, tzu, Np, TYPE,
-					detectors.zs, detectors.xs, detectors.zd, detectors.xd, tc, iu, ku, tx0, tz0, param.projType, XY);
+					detectors.zs, detectors.xs, detectors.zd, detectors.xd, tc, iu, ku, tx0, tz0);
 			}
 			else if (std::fabs(x_diff) < 1e-8) {
 				tempi = perpendicular_start(param.bx, detectors.xd, param.dx, param.Nx);
 				skip = siddon_pre_loop_2D(param.by, param.bz, y_diff, z_diff, bmaxy, bmaxz, param.dy, param.dz, param.Ny, param.Nz, tempj, tempk, tyu, tzu, Np, TYPE,
-					detectors.zs, detectors.ys, detectors.zd, detectors.yd, tc, ju, ku, ty0, tz0, param.projType, XY);
+					detectors.zs, detectors.ys, detectors.zd, detectors.yd, tc, ju, ku, ty0, tz0);
 			}
 			else {
 				skip = siddon_pre_loop_3D(param.bx, param.by, param.bz, x_diff, y_diff, z_diff, bmaxx, bmaxy, bmaxz, param.dx, param.dy, param.dz, param.Nx, param.Ny, param.Nz, tempi, tempj, tempk, tyu, txu, tzu,
-					Np, TYPE, detectors, tc, iu, ju, ku, tx0, ty0, tz0, param.projType, XY);
+					Np, TYPE, detectors, tc, iu, ju, ku, tx0, ty0, tz0);
 			}
 			if (!CT) {
 				temp = 1. / L;

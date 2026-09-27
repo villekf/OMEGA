@@ -314,13 +314,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		if (nlhs != 2)
 			mexErrMsgTxt("Invalid number of output arguments. There has to be two.");
 
-		param.x_center = getDoubles(options, "x_center");
-		param.y_center = getDoubles(options, "y_center");
-		param.z_center = getDoubles(options, "z_center");
-		param.bmin = getScalarDouble(options, 0, "bmin");
-		param.bmax = getScalarDouble(options, 0, "bmax");
-		param.Vmax = getScalarDouble(options, 0, "Vmax");
-
 		// Small constant to prevent division by zero
 		param.epps = getScalarDouble(prhs[ind], ind);
 		ind++;
