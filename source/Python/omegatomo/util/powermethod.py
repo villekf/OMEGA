@@ -126,6 +126,7 @@ def powerMethod(A, seed=None):
     if not(A.projectorInitialized):
         A.initProj()
     from omegatomo.util.measprecond import applyMeasPreconditioning
+    from omegatomo.util.imageprecond import applyImagePreconditioning
     ops = _PowerMethodOps(A, seed=seed)
 
     L = [None] * (A.nMultiVolumes + 1)
@@ -147,6 +148,7 @@ def powerMethod(A, seed=None):
                 x2 = A * x[0]
             x2 = applyMeasPreconditioning(A, x2, subIter=0)
             x2 = A.T() * x2
+            x2[i] = applyImagePreconditioning(A, x2[i], x[i], k + 1, i)
             L[i] = ops.dot(x[i], x2[i]) / ops.dot(x[i], x[i]) * A.subsets
             x[i] = ops.scale(x2[i], ops.norm(x2[i]))
             if A.verbose > 0:
@@ -157,6 +159,7 @@ def powerMethod(A, seed=None):
             x2 = applyMeasPreconditioning(A, x2, subIter=0)
             x2 = A.T() * x2
             for i in range(A.nMultiVolumes + 1):
+                x2[i] = applyImagePreconditioning(A, x2[i], x[i], k + 1, i)
                 if i > 0:
                     L[i] = ops.dot(x[i], x2[i]) / ops.dot(x[i], x[i]) * A.subsets
                 x[i] = ops.scale(x2[i], ops.norm(x2[i]))
@@ -166,6 +169,7 @@ def powerMethod(A, seed=None):
             x2 = A * x
             x2 = applyMeasPreconditioning(A, x2, subIter=0)
             x2 = A.T() * x2
+            x2 = applyImagePreconditioning(A, x2, x, k + 1, 0)
             L = ops.dot(x, x2) / ops.dot(x, x) * A.subsets
             x = ops.scale(x2, ops.norm(x2))
             if A.verbose > 0:
