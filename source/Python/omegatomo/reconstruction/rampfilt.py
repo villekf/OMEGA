@@ -50,6 +50,7 @@ def rampFilt(N, ww, c, sigma, use2D = False):
         filt = np.concatenate((filt, filt[-2:0:-1]))
     
     if use2D:
+        filt = filt.reshape(int(N), 1)
         filt = np.tile(filt, (1, int(N)))
         filt = filt * filt.T
         filt = filt / np.max(filt)
