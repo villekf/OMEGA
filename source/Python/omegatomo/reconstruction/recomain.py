@@ -424,6 +424,11 @@ def reconstructions_main(options):
         from omegatomo.util.parkerWeights import ParkerWeights
         ParkerWeights(options)
     if not options.listmode:
+        if isinstance(options.SinM, list):
+            # Frames must be contiguous (frame 1, then frame 2, ...), like MATLAB's
+            # cell2mat(cellfun(@(x) x(:), ...)); np.reshape on a list would stack the
+            # frames along a new leading axis and interleave them in F order.
+            options.SinM = np.concatenate([np.asarray(frame).ravel(order='F') for frame in options.SinM])
         options.SinM = np.reshape(options.SinM, (int(options.nRowsD), int(options.nColsD), options.nProjections, options.TOF_bins, options.Nt), order='F')
     elif options.listmode and options.compute_sensitivity_image and not(options.SPECT):
         if hasattr(options, 'xSens') and np.size(options.xSens) > 0 and hasattr(options, 'zSens') and np.size(options.zSens) > 0:
