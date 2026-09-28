@@ -3828,7 +3828,17 @@ public:
 						}
 					}
 					if (inputScalars.size_scat > 1ULL && inputScalars.scatter == 1U) { // Load scatter data
-						WRITE_BUFFER(d_scat[timestep][kk], sizeof(float) * length[kk] * vecSize, &extraCorr[pituus[kk] * vecSize + inputScalars.kokoNonTOF * timestep]);
+						// size_scat is the TOTAL element count of corrVector/extraCorr across all Nt
+						// frames (see mfunctions.h), while kokoNonTOF is exactly one timestep's frame
+						// size. If Nt > 1 but the caller only supplied a single (shared) frame's worth
+						// of data (size_scat == kokoNonTOF), there is no per-timestep block to offset
+						// into -- adding kokoNonTOF * timestep for timestep > 0 would read past the end
+						// of the host array. Mirror the CTAttenuation handling just above in this same
+						// loop and only add the per-timestep offset when more than one frame was
+						// actually supplied.
+						const uint64_t scatTimestepOffset = (inputScalars.size_scat > static_cast<size_t>(inputScalars.kokoNonTOF)) ?
+							(static_cast<uint64_t>(inputScalars.kokoNonTOF) * timestep) : 0ULL;
+						WRITE_BUFFER(d_scat[timestep][kk], sizeof(float) * length[kk] * vecSize, &extraCorr[pituus[kk] * vecSize + scatTimestepOffset]);
 						CHECK(status, "\n", (STATUS_t)(-1));
 						memSize += (sizeof(float) * length[kk] * vecSize);
 					}

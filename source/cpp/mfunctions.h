@@ -74,7 +74,21 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	inputScalars.FISTAAcceleration = getScalarBool(options, 0, "FISTA_acceleration");
 	inputScalars.stochastic = getScalarBool(options, 0, "stochasticSubsetSelection");
 	if (inputScalars.scatter == 1U) {
-		inputScalars.size_scat = mxGetNumberOfElements(mxGetCell(getField(options, 0, "ScatterC"), 0));
+		// Non-subtracted (multiplicative) scatter/general correction data is merged into corrVector
+		// on the MATLAB side (reconstructions_main.m) and passed as a plain (non-cell) single array
+		// concatenated across all timesteps, exactly like Sin/SinM. ScatterC itself is NOT read here
+		// (reading it as a cell here while OpenCL_matrixfree.cpp read it as a plain array was the
+		// cause of the previous silent no-op/segfault).
+		const int corrVectorFieldNum = mxGetFieldNumber(options, "corrVector");
+		const mxArray* corrVectorArr = (corrVectorFieldNum >= 0) ? mxGetField(options, 0, "corrVector") : nullptr;
+		if (corrVectorArr == nullptr || mxGetNumberOfElements(corrVectorArr) == 0 || !mxIsSingle(corrVectorArr))
+			mexErrMsgTxt("additionalCorrection is enabled, but corrVector is missing, empty, or not of type single.");
+		// size_scat is only ever used elsewhere (ProjectorClass.h/ProjectorClassCPU.h) as a ">1"
+		// gate on whether to allocate/upload scatter data, never for indexing -- the actual per-
+		// timestep addressing into extraCorr uses kokoNonTOF/pituus, same as for Sin. Match the
+		// Python entry (recomain.py: 'sizeScat': options.corrVector.size) and use the total element
+		// count across all timesteps here as well, rather than a per-timestep count.
+		inputScalars.size_scat = mxGetNumberOfElements(corrVectorArr);
 	}
 	inputScalars.PET = getScalarBool(options, 0, "PET");
 	inputScalars.CT = getScalarBool(options, 0, "CT");
