@@ -171,7 +171,13 @@ void Convolution3D(const CLGLOBAL CAST* input, CLGLOBAL CAST* output,
 // PSF blurring, floats
 KERNEL3
 void Convolution3D_f(const CLGLOBAL float* input, CLGLOBAL float* output,
-	CONSTANT float* convolution_window, int window_size_x, int window_size_y, int window_size_z, const int3 N) {
+	CONSTANT float* convolution_window, int window_size_x, int window_size_y, int window_size_z,
+#ifdef PYTHON
+	const int Nx, const int Ny, const int Nz) {
+	const int3 N = MINT3(Nx, Ny, Nz);
+#else
+	const int3 N) {
+#endif
 	const int4 ind = CMINT4(GID0, GID1, GID2, 0);
 	// See Convolution3D above
 	if (ind.x >= N.x || ind.y >= N.y || ind.z >= N.z)

@@ -17,7 +17,61 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 """
+import os
 import numpy as np
+
+def _load_array_file(path, mat_key_index='auto'):
+    """
+    Loads an array stored in a .npy, .npz, or .mat file.
+
+    Parameters
+    ----------
+    path : str
+        Full path to the .npy/.npz/.mat file.
+    mat_key_index : 'auto', 'last', or int, optional
+        Selects which variable to use when reading a .mat file (ignored for
+        .npy/.npz files, which always use the first stored array):
+            'auto' - Mirrors the historical attenuation-loading convention:
+                     if the first key in the loaded dict is '__header__' the
+                     4th key (index 3) is used, otherwise the 1st key
+                     (index 0) is used.
+            'last' - Uses the last variable in the loaded dict
+                     (list(var)[-1]), as used by the various reference
+                     image loaders.
+            int    - Uses that literal index into the loaded dict's keys.
+        The default is 'auto'.
+
+    Returns
+    -------
+    NumPy array, or None if pymatreader is required but not installed.
+
+    """
+    ext = os.path.splitext(path)[1].lower()
+    if ext == '.npy':
+        return np.load(path, allow_pickle=True)
+    elif ext == '.npz':
+        apu = np.load(path, allow_pickle=True)
+        variables = list(apu.keys())
+        return apu[variables[0]]
+    elif ext == '.mat':
+        try:
+            from pymatreader import read_mat
+        except ModuleNotFoundError:
+            print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
+            return None
+        var = read_mat(path)
+        keys = list(var)
+        if mat_key_index == 'last':
+            return np.array(var[keys[-1]])
+        elif mat_key_index == 'auto':
+            if keys[0] == '__header__':
+                return np.array(var[keys[3]])
+            else:
+                return np.array(var[keys[0]])
+        else:
+            return np.array(var[keys[mat_key_index]])
+    else:
+        raise ValueError('Unsupported datatype!')
 
 def linearizeData(options):
     """
@@ -88,7 +142,7 @@ def loadCorrections(options):
 
     if options.attenuation_correction == 1:
         if options.vaimennus.size == 0:
-            if len(options.attenuation_datafile) > 0 and options.attenuation_datafile[len(options.attenuation_datafile)-3:len(options.attenuation_datafile)+1:1] == 'mhd':
+            if len(options.attenuation_datafile) > 0 and os.path.splitext(options.attenuation_datafile)[1].lower() == '.mhd':
                 try:
                     from SimpleITK import ReadImage as loadMetaImage
                     from SimpleITK import GetArrayFromImage
@@ -101,20 +155,12 @@ def loadCorrections(options):
                             options.vaimennus = options.vaimennus * (apu[0].item() / (options.FOVa_x[0].item() / (options.Nx[0].item())))
                 except ModuleNotFoundError:
                     print('SimpleITK package not found! MetaImages cannot be loaded. You can install SimpleITK package with "pip install SimpleITK".')
-            elif len(options.attenuation_datafile) > 0 and  options.attenuation_datafile[len(options.attenuation_datafile)-3:len(options.attenuation_datafile)+1:1] == 'mat':
-                try:
-                    from pymatreader import read_mat
-                    var = read_mat(options.attenuation_datafile)
-                    if list(var)[0] == '__header__':
-                        options.vaimennus = np.array(var[list(var)[3]]).astype(np.float32)
-                    else:
-                        options.vaimennus = np.array(var[list(var)[0]]).astype(np.float32)
-                except ModuleNotFoundError:
-                    print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
-            elif len(options.attenuation_datafile) > 0 and  (options.attenuation_datafile[len(options.attenuation_datafile)-3:len(options.attenuation_datafile)+1:1] == 'npy' or options.attenuation_datafile[len(options.attenuation_datafile)-3:len(options.attenuation_datafile)+1:1] == 'npz'):
-                apu = np.load(options.attenuation_datafile, allow_pickle=True)
-                variables = list(apu.keys())
-                options.vaimennus = apu[variables[0]]
+            elif len(options.attenuation_datafile) > 0 and os.path.splitext(options.attenuation_datafile)[1].lower() == '.mat':
+                apu = _load_array_file(options.attenuation_datafile, mat_key_index='auto')
+                if apu is not None:
+                    options.vaimennus = apu.astype(np.float32)
+            elif len(options.attenuation_datafile) > 0 and os.path.splitext(options.attenuation_datafile)[1].lower() in ('.npy', '.npz'):
+                options.vaimennus = _load_array_file(options.attenuation_datafile)
             else:
                 import tkinter as tk
                 from tkinter.filedialog import askopenfilename
@@ -123,7 +169,8 @@ def loadCorrections(options):
                 nimi = askopenfilename(title='Select attenuation datafile',filetypes=(('MHD, NPY, NPZ and MAT files','*.mhd *.mat *.npy *.npz'),('All','*.*')))
                 if len(nimi) == 0:
                     raise ValueError("No file selected!")
-                if nimi[len(nimi)-3:len(nimi)+1:1] == 'mhd':
+                nimiExt = os.path.splitext(nimi)[1].lower()
+                if nimiExt == '.mhd':
                     try:
                         from SimpleITK import ReadImage as loadMetaImage
                         from SimpleITK import GetArrayFromImage
@@ -137,24 +184,20 @@ def loadCorrections(options):
                                 options.vaimennus = options.vaimennus * (apu[0].item() / (options.FOVa_x[0].item() / (options.Nx[0].item())))
                     except ModuleNotFoundError:
                         print('SimpleITK package not found! MetaImages cannot be loaded. You can install SimpleITK package with "pip install SimpleITK".')
-                elif nimi[len(nimi)-3:len(nimi)+1:1] == 'mat':
-                    try:
-                        from pymatreader import read_mat
-                        var = read_mat(nimi)
-                        if list(var)[0] == '__header__':
-                            options.vaimennus = np.array(var[list(var)[3]]).astype(np.float32)
-                        else:
-                            options.vaimennus = np.array(var[list(var)[0]]).astype(np.float32)
-                    except ModuleNotFoundError:
-                        print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
-                elif (nimi[len(nimi)-3:len(nimi)+1:1] == 'npy' or nimi[len(nimi)-3:len(nimi)+1:1] == 'npz'):
-                    apu = np.load(nimi, allow_pickle=True)
-                    variables = list(apu.keys())
-                    options.vaimennus = apu[variables[3]]
+                elif nimiExt == '.mat':
+                    apu = _load_array_file(nimi, mat_key_index='auto')
+                    if apu is not None:
+                        options.vaimennus = apu.astype(np.float32)
+                elif nimiExt in ('.npy', '.npz'):
+                    options.vaimennus = _load_array_file(nimi)
                 else:
                     raise ValueError('Unsupported datatype!')
         if options.CT_attenuation:
-            if not options.vaimennus.shape[0] == options.Nx[0] or not options.vaimennus.shape[1] == options.Ny[0].item() or not options.vaimennus.shape[2] == options.Nz[0].item():
+            if options.vaimennus.ndim == 1:
+                size_mismatch = options.vaimennus.shape[0] != options.N[0]
+            else:
+                size_mismatch = (not options.vaimennus.shape[0] == options.Nx[0] or not options.vaimennus.shape[1] == options.Ny[0].item() or not options.vaimennus.shape[2] == options.Nz[0].item())
+            if size_mismatch:
                 if options.vaimennus.shape[0] != options.N[0]:
                     print('Error: Attenuation data is of different size than the reconstructed image. Attempting resize!')
                     if options.vaimennus.ndim == 1:
@@ -206,25 +249,24 @@ def loadCorrections(options):
                     nimi = askopenfilename(title='Select normalization datafile',filetypes=(('NRM, NPY, NPZ and MAT files','*.nrm *.mat *.npy *.npz'),('All','*.*')))
                     if len(nimi) == 0:
                         raise ValueError("No file selected!")
-                    if nimi[len(nimi)-3:len(nimi)+1:1] == 'nrm':
+                    nimiExt = os.path.splitext(nimi)[1].lower()
+                    if nimiExt == '.nrm':
                         options.normalization = np.fromfile(nimi, dtype=np.float32)
-                        if options.normalization.size != options.Ndist * options.Nang * options.TotSinos and ~options.use_raw_data:
+                        if options.normalization.size != options.Ndist * options.Nang * options.TotSinos and not options.use_raw_data:
                             raise ValueError('Size mismatch between the current data and the normalization data file')
-                    elif nimi[len(nimi)-3:len(nimi)+1:1] == 'mat':
+                    elif nimiExt == '.mat':
                         from pymatreader import read_mat
                         var = read_mat(nimi)
                         options.normalization = np.array(var["normalization"])
-                    elif (nimi[len(nimi)-3:len(nimi)+1:1] == 'npy' or nimi[len(nimi)-3:len(nimi)+1:1] == 'npz'):
-                        apu = np.load(nimi, allow_pickle=True)
-                        variables = list(apu.keys())
-                        options.normalization = apu[variables[0]]
+                    elif nimiExt in ('.npy', '.npz'):
+                        options.normalization = _load_array_file(nimi)
                     else:
                         raise ValueError('Unsupported datatype!')
             normalization_shape = np.asarray(options.normalization).shape
             options.normZ = int(normalization_shape[2]) if options.SPECT and len(normalization_shape) == 3 else 1
             normalization_indexed_stack = bool(options.SPECT and int(options.normZ) == int(options.nHeads))
             options.normalization = 1. / options.normalization.ravel('F').astype(dtype=np.float32)
-            if ~options.use_raw_data and options.NSinos != options.TotSinos and not normalization_indexed_stack:
+            if not options.use_raw_data and options.NSinos != options.TotSinos and not normalization_indexed_stack:
                 options.normalization = options.normalization[0 : options.Ndist * options.Nang * options.NSinos]
         if normalization_indexed_stack and options.normalization.size != int(options.nRowsD) * int(options.nColsD) * int(options.nHeads):
             raise ValueError('Detector-indexed normalization must contain one detector image for each detector head.')
@@ -608,21 +650,12 @@ def TVPrepass(options):
         if isinstance(options.TV_referenceImage, str):
             if len(options.TV_referenceImage) == 0:
                 raise ValueError('TV with anatomical weighting selected, but no reference image provided!')
-            if options.TV_referenceImage[len(options.TV_referenceImage)-3:len(options.TV_referenceImage)+1:1] == 'mat':
-                try:
-                    from pymatreader import read_mat
-                    apu = read_mat(options.TV_referenceImage)
-                    options.TV_referenceImage = np.array(apu[list(apu)[-1]])
-                except ModuleNotFoundError:
-                    print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
-            else:
-                apu = np.load(options.TV_referenceImage, allow_pickle=True)
-                variables = list(apu.keys())
-                options.TV_referenceImage = apu[variables[0]]
+            options.TV_referenceImage = _load_array_file(options.TV_referenceImage, mat_key_index='last')
         if options.TV_referenceImage.shape[1] == 1:
             koko_apu = np.sqrt(np.size(options.TV_referenceImage) / options.Nz[0].item())
             if np.floor(koko_apu) != koko_apu:
                 raise ValueError('Reference image has to be square')
+            koko_apu = int(koko_apu)
             options.TV_referenceImage = options.TV_referenceImage.reshape((koko_apu, koko_apu, options.Nz[0].item()))
             if koko_apu != options.Nx[0].item() or options.TV_referenceImage.shape[2] != options.Nz[0].item():
                 if options.Nz[0].item() > 1:
@@ -638,7 +671,7 @@ def TVPrepass(options):
         options.TV_referenceImage = options.TV_referenceImage / np.max(options.TV_referenceImage)
         if options.TVtype == 1:
             options.TV_referenceImage = options.TV_referenceImage.reshape((options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()),order='F')
-            S = assembleS(options.TV_referenceImage, options.T, options.Ny[0].item(), options.Nx[0].item(), options.Nz[0].item())
+            S = assembleS(options.TV_referenceImage, options.B, options.Ny[0].item(), options.Nx[0].item(), options.Nz[0].item())
             S = S.astype(dtype=np.float32)
             s1 = S[0::3, 0]
             s2 = S[0::3, 1]
@@ -676,29 +709,23 @@ def APLSPrepass(options):
     if isinstance(options.APLS_ref_image, str):
         if len(options.APLS_ref_image) == 0:
             raise ValueError('APLS selected, but no reference image provided!')
-        if options.APLS_ref_image[len(options.APLS_ref_image)-3:len(options.APLS_ref_image)+1:1] == 'mat':
-            try:
-                from pymatreader import read_mat
-                apu = read_mat(options.APLS_ref_image)
-                options.APLS_ref_image = np.array(apu[list(apu)[-1]])
-            except ModuleNotFoundError:
-                print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
-        else:
-            apu = np.load(options.APLS_ref_image, allow_pickle=True)
-            variables = list(apu.keys())
-            options.APLS_ref_image = apu[variables[0]]
+        options.APLS_ref_image = _load_array_file(options.APLS_ref_image, mat_key_index='last')
     if options.APLS_ref_image.ndim == 1 or options.APLS_ref_image.shape[1] == 1:
         koko_apu = np.sqrt(np.size(options.APLS_ref_image) / options.Nz[0])
         if koko_apu != np.floor(koko_apu):
             raise ValueError('Reference image has to be 2D/3D if different size than reconstruction size!')
+        koko_apu = int(koko_apu)
         options.APLS_ref_image = options.APLS_ref_image.reshape((koko_apu, koko_apu, options.Nz[0]), order = 'F')
         if koko_apu != options.Nx[0] or options.APLS_ref_image.shape[2] != options.Nz[0]:
             print('Resizing reference image')
             options.APLS_ref_image = resize(options.APLS_ref_image, (options.Nx[0], options.Ny[0], options.Nz[0]))
     else:
-        if options.APLS_ref_image.shape[1] != options.Ny or options.APLS_ref_image.shape[2] != options.Nz:
+        Nx0 = options.Nx[0].item()
+        Ny0 = options.Ny[0].item()
+        Nz0 = options.Nz[0].item()
+        if options.APLS_ref_image.ndim == 3 and (options.APLS_ref_image.shape[0] != Nx0 or options.APLS_ref_image.shape[1] != Ny0 or options.APLS_ref_image.shape[2] != Nz0):
             print('Resizing reference image')
-            options.APLS_ref_image = resize(options.APLS_ref_image, (options.Nx[0], options.Ny[0], options.Nz[0]))
+            options.APLS_ref_image = resize(options.APLS_ref_image, (Nx0, Ny0, Nz0))
     options.APLS_ref_image = options.APLS_ref_image.astype(dtype=np.float32)
     options.APLS_ref_image = np.asfortranarray(options.APLS_ref_image)
     options.APLS_ref_image = options.APLS_ref_image.ravel('F')
@@ -878,21 +905,14 @@ def NLMPrepass(options):
         if isinstance(options.NLM_referenceImage, str):
             if len(options.NLM_referenceImage) == 0:
                 raise ValueError('NLM with anatomical weighting selected, but no reference image provided!')
-            if options.NLM_referenceImage[len(options.NLM_referenceImage)-3:len(options.NLM_referenceImage)+1:1] == 'mat':
-                try:
-                    from pymatreader import read_mat
-                    apu = read_mat(options.NLM_referenceImage)
-                    options.NLM_referenceImage = np.array(apu[list(apu)[-1]])
-                except ModuleNotFoundError:
-                    print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
-            else:
-                apu = np.load(options.NLM_referenceImage, allow_pickle=True)
-                variables = list(apu.keys())
-                options.NLM_referenceImage = apu[variables[0]]
-        if options.NLM_referenceImage.ndim > 1 and options.NLM_referenceImage.shape[1] != options.Ny or options.NLM_referenceImage.shape[2] != options.Nz:
+            options.NLM_referenceImage = _load_array_file(options.NLM_referenceImage, mat_key_index='last')
+        Nx0 = options.Nx[0].item()
+        Ny0 = options.Ny[0].item()
+        Nz0 = options.Nz[0].item()
+        if options.NLM_referenceImage.ndim == 3 and (options.NLM_referenceImage.shape[0] != Nx0 or options.NLM_referenceImage.shape[1] != Ny0 or options.NLM_referenceImage.shape[2] != Nz0):
             from skimage.transform import resize #scikit-image
             print('Resizing reference image')
-            options.NLM_referenceImage = resize(options.NLM_referenceImage, (options.Nx[0], options.Ny[0], options.Nz[0]))
+            options.NLM_referenceImage = resize(options.NLM_referenceImage, (Nx0, Ny0, Nz0))
         options.NLM_referenceImage = np.asfortranarray(options.NLM_referenceImage)
         options.NLM_referenceImage = options.NLM_referenceImage.ravel('F').astype(dtype=np.float32)
 
@@ -933,24 +953,14 @@ def prepassPhase(options):
         options.alpha_PKMA = np.array(options.alpha_PKMA, dtype=np.float32, ndmin=1)
     if options.precondTypeImage[2]:
         if isinstance(options.referenceImage, str):
-            if options.referenceImage[len(options.referenceImage)-3:len(options.referenceImage)+1:1] == 'mat':
-                try:
-                    from pymatreader import read_mat
-                    apu = read_mat(options.referenceImage)
-                    options.referenceImage = np.array(apu[list(apu)[-1]])
-                except ModuleNotFoundError:
-                    print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
-            else:
-                apu = np.load(options.referenceImage, allow_pickle=True)
-                if isinstance(list, apu):
-                    variables = list(apu.keys())
-                    options.referenceImage = apu[variables[0]]
-                else:
-                    options.referenceImage = apu
-        if options.referenceImage.ndim > 1 and options.referenceImage.shape[1] != options.Ny or options.referenceImage.shape[2] != options.Nz:
+            options.referenceImage = _load_array_file(options.referenceImage, mat_key_index='last')
+        Nx0 = options.Nx[0].item()
+        Ny0 = options.Ny[0].item()
+        Nz0 = options.Nz[0].item()
+        if options.referenceImage.ndim == 3 and (options.referenceImage.shape[0] != Nx0 or options.referenceImage.shape[1] != Ny0 or options.referenceImage.shape[2] != Nz0):
             from skimage.transform import resize #scikit-image
             print('Resizing reference image')
-            options.referenceImage = resize(options.referenceImage, (options.Nx[0], options.Ny[0], options.Nz[0]))
+            options.referenceImage = resize(options.referenceImage, (Nx0, Ny0, Nz0))
         options.referenceImage = np.asfortranarray(options.referenceImage)
         options.referenceImage = options.referenceImage.ravel('F').astype(dtype=np.float32)
         if np.size(options.referenceImage) == round((options.NxFull - options.NxOrig) * options.multiResolutionScale) * \
@@ -965,7 +975,9 @@ def prepassPhase(options):
         
         if not skip and options.nMultiVolumes > 0:
             options.referenceImage = options.referenceImage.reshape(options.NxFull, options.NyFull, options.NzFull, order = 'F')
-            
+            from scipy.ndimage import zoom
+            apu = zoom(options.referenceImage, options.multiResolutionScale, order=1).astype(np.float32)
+
         if not skip:
             if options.nMultiVolumes == 6:
                 options.referenceImage = options.referenceImage[
@@ -1114,24 +1126,14 @@ def prepassPhase(options):
                 options.weights = options.weights.astype(np.float32)
                 options.inffi = np.where(np.isinf(options.weights))[0]
                 if len(options.inffi) == 0:
-                    options.inffi = np.floor(options.weights.size / 2)[0]
+                    options.inffi = options.weights.size // 2
             if options.weighted_mean:
                 weightedWeights(options)
             if options.RDP and options.RDPIncludeCorners and options.RDP_use_anatomical:
                 if isinstance(options.RDP_referenceImage, str):
                     if len(options.RDP_referenceImage) == 0:
                         raise ValueError('RDP with anatomical weighting selected, but no reference image provided!')
-                    if options.RDP_referenceImage[len(options.RDP_referenceImage)-3:len(options.RDP_referenceImage)+1:1] == 'mat':
-                        try:
-                            from pymatreader import read_mat
-                            apu = read_mat(options.RDP_referenceImage)
-                            options.RDP_referenceImage = np.array(apu[list(apu)[-1]])
-                        except ModuleNotFoundError:
-                            print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
-                    else:
-                        apu = np.load(options.RDP_referenceImage, allow_pickle=True)
-                        variables = list(apu.keys())
-                        options.RDP_referenceImage = apu[variables[0]]
+                    options.RDP_referenceImage = _load_array_file(options.RDP_referenceImage, mat_key_index='last')
                 options.RDP_referenceImage = options.RDP_referenceImage.ravel('F').astype(dtype=np.float32)
             if options.verbose:
                 print('Prepass phase for MRP, quadratic prior, L-filter, FMH, RDP and weighted mean completed')
@@ -1175,7 +1177,7 @@ def prepassPhase(options):
         #         options.tauCPFilt = apu.copy()
     
     if options.precondTypeImage[5]:
-        options.Nf = 2 ** np.ceil(np.log2(options.Nx[0].item()))
+        options.Nf = (2 ** np.ceil(np.log2(options.Nx[0].item()))).astype(dtype=np.uint32).item()
         options.filterIm = rampFilt(options.Nf, options.filterWindow, options.cutoffFrequency, options.normalFilterSigma, True)
         options.filterIm = options.filterIm.astype(dtype=np.float32)
 

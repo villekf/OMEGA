@@ -16,11 +16,7 @@ def powerMethod(A):
         import torch
         device = 'mps' if getattr(A, 'useMetal', False) else 'cuda'
     elif A.useCUDA:
-        if A.useCuPy:
-            import cupy as cp
-        else:
-            import pycuda as cuda
-            from pycuda import cumath
+        import cupy as cp
     else:
         import pyopencl as cl
         from pyopencl import clmath
@@ -44,12 +40,8 @@ def powerMethod(A):
                     else:
                         import numpy as np
                         rng = np.random.default_rng()
-                        if A.useCUDA:
-                            x[i] = cuda.gpuarray.to_gpu(np.abs(rng.standard_normal(A.N[i].item(), dtype=np.float32)))
-                            x[i] = x[i] / cumath.sqrt(cuda.gpuarray.dot(x[i], x[i]))
-                        else:
-                            x[i] = cl.array.to_device(A.queue, np.abs(rng.standard_normal(A.N[i].item(), dtype=np.float32)))
-                            x[i] = x[i] / clmath.sqrt(cl.array.dot(x[i], x[i]))
+                        x[i] = cl.array.to_device(A.queue, np.abs(rng.standard_normal(A.N[i].item(), dtype=np.float32)))
+                        x[i] = x[i] / clmath.sqrt(cl.array.dot(x[i], x[i]))
         else:
             if A.useAF:
                 x = af.abs(af.randn(A.N[0].item()))
@@ -66,12 +58,8 @@ def powerMethod(A):
                     else:
                         import numpy as np
                         rng = np.random.default_rng()
-                        if A.useCUDA:
-                            x = cuda.gpuarray.to_gpu(np.abs(rng.standard_normal(A.N[0].item(), dtype=np.float32)))
-                            x = x / cumath.sqrt(cuda.gpuarray.dot(x, x))
-                        else:
-                            x = cl.array.to_device(A.queue, np.abs(rng.standard_normal(A.N[0].item(), dtype=np.float32)))
-                            x = x / clmath.sqrt(cl.array.dot(x, x))
+                        x = cl.array.to_device(A.queue, np.abs(rng.standard_normal(A.N[0].item(), dtype=np.float32)))
+                        x = x / clmath.sqrt(cl.array.dot(x, x))
     if A.nMultiVolumes > 0:
         i = 0
         for k in range(A.powerIterations):
@@ -92,12 +80,8 @@ def powerMethod(A):
                     x[i] = x2[i] / torch.norm(x2[i])
                 else:
                     if A.useCUDA:
-                        if A.useCuPy:
-                            L[i] = (((cp.dot(x[i], x2[i])) / (cp.dot(x[i], x[i])) * A.subsets).get()).item()
-                            x[i] = x2[i] / cp.sqrt(cp.dot(x2[i], x2[i]))
-                        else:
-                            L[i] = (((cuda.gpuarray.dot(x[i], x2[i])) / (cuda.gpuarray.dot(x[i], x[i])) * A.subsets).get()).item()
-                            x[i] = x2[i] / cumath.sqrt(cuda.gpuarray.dot(x2[i], x2[i]))
+                        L[i] = (((cp.dot(x[i], x2[i])) / (cp.dot(x[i], x[i])) * A.subsets).get()).item()
+                        x[i] = x2[i] / cp.sqrt(cp.dot(x2[i], x2[i]))
                     else:
                         L[i] = (((cl.array.dot(x[i], x2[i])) / (cl.array.dot(x[i], x[i])) * A.subsets).get(A.queue)).item()
                         x[i] = x2[i] / clmath.sqrt(cl.array.dot(x2[i], x2[i]))
@@ -122,14 +106,9 @@ def powerMethod(A):
                         x[i] = x2[i] / torch.norm(x2[i])
                     else:
                         if A.useCUDA:
-                            if A.useCuPy:
-                                if i > 0:
-                                    L[i] = (((cp.dot(x[i], x2[i])) / (cp.dot(x[i], x[i])) * A.subsets).get()).item()
-                                x[i] = x2[i] / cp.sqrt(cp.dot(x2[i], x2[i]))
-                            else:
-                                if i > 0:
-                                    L[i] = (((cuda.gpuarray.dot(x[i], x2[i])) / (cuda.gpuarray.dot(x[i], x[i])) * A.subsets).get()).item()
-                                x[i] = x2[i] / cumath.sqrt(cuda.gpuarray.dot(x2[i], x2[i]))
+                            if i > 0:
+                                L[i] = (((cp.dot(x[i], x2[i])) / (cp.dot(x[i], x[i])) * A.subsets).get()).item()
+                            x[i] = x2[i] / cp.sqrt(cp.dot(x2[i], x2[i]))
                         else:
                             if i > 0:
                                 L[i] = (((cl.array.dot(x[i], x2[i])) / (cl.array.dot(x[i], x[i])) * A.subsets).get(A.queue)).item()
@@ -151,12 +130,8 @@ def powerMethod(A):
                     x = x2 / torch.norm(x2)
                 else:
                     if A.useCUDA:
-                        if A.useCuPy:
-                            L = (((cp.dot(x, x2)) / (cp.dot(x, x)) * A.subsets).get()).item()
-                            x = x2 / cp.sqrt(cp.dot(x2, x2))
-                        else:
-                            L = (((cuda.gpuarray.dot(x, x2)) / (cuda.gpuarray.dot(x, x)) * A.subsets).get()).item()
-                            x = x2 / cuda.cumath.sqrt(cuda.gpuarray.dot(x2, x2))
+                        L = (((cp.dot(x, x2)) / (cp.dot(x, x)) * A.subsets).get()).item()
+                        x = x2 / cp.sqrt(cp.dot(x2, x2))
                     else:
                         L = (((cl.array.dot(x, x2)) / (cl.array.dot(x, x)) * A.subsets).get(A.queue)).item()
                         x = x2 / clmath.sqrt(cl.array.dot(x2, x2))
