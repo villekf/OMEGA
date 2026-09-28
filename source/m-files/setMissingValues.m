@@ -431,7 +431,7 @@ if ~isfield(options, 'gradV1')
     options.gradV1 = 0.5;
 end
 if ~isfield(options, 'gradV2')
-    options.gradV1 = 2.5;
+    options.gradV2 = 2.5;
 end
 if ~isfield(options, 'gradInitIter')
     options.gradInitIter = options.subsets;
