@@ -65,19 +65,13 @@ if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelli
         end
     end
     if ismember(options.projector_type, [1, 11, 12, 21])
-        % Keep the central detector-normal vector unchanged. Scale each source-detector shift difference so that the two angular response components use their corresponding septa lengths.
-        referenceLength = options.colD + 0.5 * options.colL;
+        % Source shifts use the transaxial collimator length as reference.
         lengthXY = options.colD + 0.5 * options.colLxy;
         lengthZ = options.colD + 0.5 * options.colLz;
-        if referenceLength ~= lengthZ
-            detectorShiftXY = options.rayShiftsDetector(1:2:end,:,:,:);
-            options.rayShiftsSource(1:2:end,:,:,:) = detectorShiftXY + ...
-                (options.rayShiftsSource(1:2:end,:,:,:) - detectorShiftXY) * (referenceLength / lengthZ);
-        end
-        if referenceLength ~= lengthXY
+        if lengthXY ~= lengthZ
             detectorShiftZ = options.rayShiftsDetector(2:2:end,:,:,:);
             options.rayShiftsSource(2:2:end,:,:,:) = detectorShiftZ + ...
-                (options.rayShiftsSource(2:2:end,:,:,:) - detectorShiftZ) * (referenceLength / lengthXY);
+                (options.rayShiftsSource(2:2:end,:,:,:) - detectorShiftZ) * (lengthXY / lengthZ);
         end
     end
     if ismember(options.implementation, [2, 3, 5])

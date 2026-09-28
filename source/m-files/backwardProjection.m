@@ -45,15 +45,35 @@ elseif projType == 2 || projType == 12 || projType == 22 || projType == 32
 elseif projType == 3 || projType == 13 || projType == 33 || projType == 23
     projType = 3;
 end
-if options.listmode > 0 && options.compute_sensitivity_image && isfield(options,'xSens') && isfield(options,'zSens') && ~isempty(options.xSens) && ~isempty(options.zSens) && ~options.SPECT
+listmodeSPECTSensitivity = options.listmode > 0 && options.compute_sensitivity_image && options.SPECT;
+if listmodeSPECTSensitivity
+	if isfield(options, 'sensitivityViewWeights') && ~isempty(options.sensitivityViewWeights)
+		if isfield(options, 'xSens') && isfield(options, 'zSens') && ...
+				~isempty(options.xSens) && ~isempty(options.zSens)
+			x = options.xSens;
+			z = options.zSens;
+		else
+			[x, z] = get_coordinates_SPECT(options);
+		end
+	else
+		[x, z, options.sensitivityViewWeights] = prepareSPECTListmodeSensitivity(options);
+	end
+elseif options.listmode > 0 && options.compute_sensitivity_image && isfield(options,'xSens') && isfield(options,'zSens') && ~isempty(options.xSens) && ~isempty(options.zSens)
     x = options.xSens;
     z_det = options.zSens;
-	options.det_per_ring = numel(x) / 2;
-	options.rings = numel(z_det);
+	z = z_det;
+	if ~options.SPECT
+		options.det_per_ring = numel(x) / 2;
+		options.rings = numel(z_det);
+	end
 elseif options.listmode > 0 && options.compute_sensitivity_image && ~options.useIndexBasedReconstruction
-    options.use_raw_data = true;
-    [x, ~, z, ~] = get_coordinates(options);
-    options.use_raw_data = false;
+	if options.SPECT
+		[x, z] = get_coordinates_SPECT(options);
+	else
+		options.use_raw_data = true;
+		[x, ~, z, ~] = get_coordinates(options);
+		options.use_raw_data = false;
+	end
 end
 
 function output = backwardProjectionType6(options, input, koko)
@@ -270,6 +290,35 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
     else
         error('Invalid projector for OpenCL')
     end
+    if listmodeSPECTSensitivity
+        % The sensitivity kernel consumes one weight per full projection view,
+        % with geometry stored independently in x/z. Flatten the per-frame
+        % request to a one-timestep, one-subset MEX call.
+        nSensitivityViews = size(options.sensitivityViewWeights, 1);
+        if isfield(options, 'sensitivityTimestep') && ~isempty(options.sensitivityTimestep)
+            sensitivityTimestep = double(options.sensitivityTimestep) + 1;
+        elseif isfield(options, 'currentTimestep') && ~isempty(options.currentTimestep)
+            sensitivityTimestep = double(options.currentTimestep) + 1;
+        else
+            sensitivityTimestep = 1;
+        end
+        if sensitivityTimestep < 1 || sensitivityTimestep > size(options.sensitivityViewWeights, 2) || ...
+                sensitivityTimestep ~= floor(sensitivityTimestep)
+            error('The requested SPECT sensitivity timestep is outside sensitivityViewWeights.')
+        end
+        input = options.sensitivityViewWeights(:, sensitivityTimestep);
+        options.sensitivityViewWeights = input;
+        options.Nt = 1;
+        options.partitions = 1;
+        options.subsets = 1;
+        options.currentSubset = 0;
+        options.currentTimestep = 0;
+        options.nProjections = nSensitivityViews;
+        options.totMeas = nSensitivityViews;
+        nMeas = int64([0; nSensitivityViews]);
+        subIter = 0;
+        noSensIm = true;
+    end
     if numel(nMeas) == 1
         nMeas = [0;nMeas];
     end
@@ -310,7 +359,7 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
         alku = 1;
         for kk = 1 : options.nMultiVolumes + 1
             output{kk} = temp(alku : alku - 1 + prod(options.N(kk)));
-            alku = prod(options.N(kk)) + 1;
+            alku = alku + prod(options.N(kk));
             if options.use_psf
                 output{kk} = computeConvolution(output{kk}, options, options.Nx(kk), options.Ny(kk), options.Nz(kk), options.gaussK);
             end
@@ -321,7 +370,7 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
             alku = 1;
             for kk = 1 : options.nMultiVolumes + 1
                 sensIm{kk} = temp(alku : alku - 1 + prod(options.N(kk)));
-                alku = prod(options.N(kk));
+                alku = alku + prod(options.N(kk));
                 if options.use_psf
                     sensIm{kk} = computeConvolution(sensIm{kk}, options, options.Nx(kk), options.Ny(kk), options.Nz(kk), options.gaussK);
                 end

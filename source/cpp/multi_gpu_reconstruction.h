@@ -1,11 +1,10 @@
 /**************************************************************************
-* This is a hybrid Objective-C++ / C++ function for the device selection,
-* queue creation, program building and kernel creation, as well as the
-* output data and kernel release.
-* The file is pure C++ for OpenCL (implementations 3 and 5) and for
-* CUDA/HIP (implementation 5 only).
-* For Metal (METAL preprocessor directive declared) the file contains
-* Objective-C syntax.
+* This function handles device selection, queue and program creation,
+* kernel creation, and output and kernel release.
+* Backend-neutral buffer and texture operations are delegated to ProjectorClass.
+* Implementations 3 and 5 support OpenCL; implementation 5 also uses the
+* shared compatibility layer for CUDA/HIP and Metal. The Metal path contains
+* Objective-C++ syntax.
 *
 * Copyright(C) 2020-2026 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
@@ -495,19 +494,36 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
                         uu += inputScalars.im_dim[ii];
                     }
                 }
-                if (type == 2 || type == 0) {
-                    for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-                        int uu = ii;
+				if (type == 2 || type == 0) {
+					for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+						int uu = ii;
                         if (type == 0) {
                             uu += osa_iter * (inputScalars.nMultiVolumes + 1);
                             status = proj.fillDeviceBuffer(proj.vec_opencl.d_rhs_os[ii], (C)0, sizeof(C) * inputScalars.im_dim[ii]);
                             CHECK(status, "\n", );
                             retVal = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, MethodList, false, ii, ii, uu);
 
-                        } 
+						}
 						else {
-                            retVal = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, MethodList, false, ii, uu);
-                        }
+                            const bool computeListmodeSensitivity = inputScalars.listmode > 0 && inputScalars.computeSensImag;
+                            uint64_t projectionSize = m_size;
+                            if (computeListmodeSensitivity) {
+                                if (inputScalars.SPECT) {
+                                    projectionSize = static_cast<uint64_t>(inputScalars.nRowsD) *
+									static_cast<uint64_t>(inputScalars.nColsD) *
+									static_cast<uint64_t>(inputScalars.size_of_x / 6);
+                                }
+                                else if (inputScalars.PET) {
+                                    projectionSize = static_cast<uint64_t>(inputScalars.det_per_ring) *
+									static_cast<uint64_t>(inputScalars.det_per_ring) *
+									static_cast<uint64_t>(inputScalars.rings) *
+									static_cast<uint64_t>(inputScalars.rings);
+								if (inputScalars.nLayers > 1)
+									projectionSize *= static_cast<uint64_t>(inputScalars.nLayers);
+                                }
+                            }
+                            retVal = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, projectionSize, MethodList, computeListmodeSensitivity, ii, uu);
+						}
                         if (retVal != 0) {
                             mexPrint("Backprojection failed\n");
                             return;

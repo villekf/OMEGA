@@ -64,6 +64,17 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	inputScalars.relaxScaling = getScalarBool(options, 0, "relaxationScaling");
 	inputScalars.computeRelaxation = getScalarBool(options, 0, "computeRelaxationParameters");
 	inputScalars.computeSensImag = getScalarBool(options, 0, "compute_sensitivity_image");
+	const int sensitivityWeightsField = mxGetFieldNumber(options, "sensitivityViewWeights");
+	if (sensitivityWeightsField >= 0) {
+		const mxArray* sensitivityWeights = mxGetField(options, 0, "sensitivityViewWeights");
+		if (sensitivityWeights && !mxIsEmpty(sensitivityWeights)) {
+			if (!mxIsSingle(sensitivityWeights) || mxIsComplex(sensitivityWeights))
+				mexErrMsgTxt("sensitivityViewWeights must be a real single-precision matrix.");
+			const size_t count = mxGetNumberOfElements(sensitivityWeights);
+			const float* values = getSingles(options, "sensitivityViewWeights");
+			inputScalars.sensitivityViewWeights.assign(values, values + count);
+		}
+	}
 	inputScalars.CT = getScalarBool(options, 0, "CT");
 	inputScalars.atomic_32bit = getScalarBool(options, 0, "use_32bit_atomics");
 	inputScalars.scatter = static_cast<uint32_t>(getScalarBool(options, 0, "additionalCorrection"));
@@ -82,6 +93,7 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	inputScalars.pitch = getScalarBool(options, 0, "pitch");
 	inputScalars.enforcePositivity = getScalarBool(options, 0, "enforcePositivity");
 	inputScalars.multiResolution = getScalarBool(options, 0, "useMultiResolutionVolumes");
+    inputScalars.storeMultiResolution = getScalarBool(options, 0, "storeMultiResolution");
 	inputScalars.nMultiVolumes = getScalarUInt32(options, 0, "nMultiVolumes");
 	if (inputScalars.FPType == 5 || inputScalars.BPType == 5) {
 		inputScalars.meanFP = getScalarBool(options, 0, "meanFP");
@@ -300,6 +312,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 			w_vec.rayShiftsDetector = getSingles(options, "rayShiftsDetector");
 			w_vec.rayShiftsSource = getSingles(options, "rayShiftsSource");
 			w_vec.detectorVector = getUint32s(options, "DetectorVector");
+			w_vec.detectorVectorSize = mxGetNumberOfElements(getField(options, 0, "DetectorVector"));
 		}
 	} else {
 		w_vec.nProjections = getScalarInt64(getField(options, 0, "nProjections"));
@@ -865,19 +878,15 @@ inline void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, mxA
             }
         }
         // Transfer data back to host
-        if (CELL && inputScalars.nMultiVolumes > 0) {
-            // TODO: Multi-resolution store for dynamic case
-            if (inputScalars.Nt > 1)
-                mexErrMsgTxt("Storing the separate multi-resolution volumes is not supported with dynamic (multiple time step) data!");
+        if (inputScalars.storeMultiResolution && inputScalars.nMultiVolumes > 0) {
             for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-                const mwSize dim[3] = { static_cast<mwSize>(inputScalars.Nx[ii]), static_cast<mwSize>(inputScalars.Ny[ii]), static_cast<mwSize>(inputScalars.Nz[ii]) };
                 if (DEBUG) {
                     mexPrintBase("inputScalars.Nx[ii] = %d\n", inputScalars.Nx[ii]);
                     mexPrintBase("inputScalars.Ny[ii] = %d\n", inputScalars.Ny[ii]);
                     mexPrintBase("inputScalars.Nz[ii] = %d\n", inputScalars.Nz[ii]);
                     mexEval();
                 }
-                mxArray* apu = mxCreateNumericArray(3, dim, mxSINGLE_CLASS, mxREAL);
+                mxArray* apu = mxGetCell(cell, static_cast<mwIndex>(ii));
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
                 float* apuF = (float*)mxGetSingles(apu);
 #else
@@ -887,13 +896,12 @@ inline void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, mxA
                 }
                 else {
                     if (MethodList.FDK)
-                        vec.rhs_os[timestep][ii].host(&apuF[oo]);
+                        vec.rhs_os[timestep][ii].host(&apuF[static_cast<size_t>(timestep) * inputScalars.im_dim[ii]]);
                     else
-                        vec.im_os[timestep][ii].host(&apuF[oo]);
+                        vec.im_os[timestep][ii].host(&apuF[static_cast<size_t>(timestep) * inputScalars.im_dim[ii]]);
                     if (inputScalars.verbose >= 3)
                         mexPrint("Data transfered to host");
                 }
-                mxSetCell(cell, static_cast<mwIndex>(ii), mxDuplicateArray(apu));
             }
         }
         else {

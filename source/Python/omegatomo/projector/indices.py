@@ -54,6 +54,11 @@ def indexMaker(options):
         hasattr(options, 'nProjectionsPerFrame') and
         np.size(options.nProjectionsPerFrame) == options.Nt
     )
+    dynamicListmodeSubsets = (
+        options.listmode > 0 and options.Nt > 1 and
+        np.size(getattr(options, 'listmodeIndices', [])) == options.Nt and
+        options.subsetType in (0, 1, 3)
+    )
     if dynamicProjectionSubsets:
         projectionCounts = np.asarray(options.nProjectionsPerFrame, dtype=float).reshape(-1)
         if np.any((projectionCounts < 1) | (projectionCounts != np.fix(projectionCounts))):
@@ -138,8 +143,32 @@ def indexMaker(options):
                     pituus[0, tt] = np.size(index1)
             options.index[tt] = np.concatenate(temp_ind)
         options.nMeas = pituus.flatten(order='F')
+    elif dynamicListmodeSubsets:
+        eventCounts = np.asarray(options.listmodeIndices, dtype=np.int64).reshape(-1)
+        if np.any(eventCounts < 0):
+            raise ValueError('Listmode event counts must be non-negative.')
+        options.index = [None] * options.Nt
+        pituus = np.zeros((subsets, options.Nt), dtype=np.int64)
+        generator = np.random.default_rng(options.seed) if options.subsetType == 3 and options.seed >= 0 else np.random.default_rng()
+        for tt, eventCount in enumerate(eventCounts):
+            if options.subsetType == 1:
+                frameIndices = [np.arange(kk, eventCount, subsets, dtype=tyyppi) for kk in range(subsets)]
+                options.index[tt] = np.concatenate(frameIndices)
+                for kk, indices in enumerate(frameIndices):
+                    pituus[kk, tt] = indices.size
+            elif options.subsetType == 3:
+                frameIndices = np.array_split(generator.permutation(int(eventCount)).astype(tyyppi), subsets)
+                options.index[tt] = np.concatenate(frameIndices)
+                for kk, indices in enumerate(frameIndices):
+                    pituus[kk, tt] = indices.size
+            else:
+                val = int(eventCount) // subsets
+                pituus[:-1, tt] = val
+                pituus[-1, tt] = int(eventCount) - val * (subsets - 1)
+                options.index[tt] = np.zeros(1, dtype=tyyppi)
+        options.nMeas = pituus.flatten(order='F')
 
-    if subsets > 1 and options.subsetType < 8:
+    if subsets > 1 and options.subsetType < 8 and not dynamicListmodeSubsets:
         totalLength = Ndist*Nang*NSinos
         options.index = np.empty(0, dtype=tyyppi)
         options.nMeas = np.zeros((subsets, 1), dtype = np.int64)
@@ -242,7 +271,7 @@ def indexMaker(options):
                 options.nMeas = np.full(subsets - 1, val, dtype=np.int64)
                 options.nMeas = np.append(options.nMeas, valEnd)
                 options.index = np.zeros(1,dtype=tyyppi)
-    elif ((subsets > 1 and options.subsetType in [8, 9, 10, 11]) or subsets == 1) and not dynamicProjectionSubsets:
+    elif ((subsets > 1 and options.subsetType in [8, 9, 10, 11]) or subsets == 1) and not dynamicProjectionSubsets and not dynamicListmodeSubsets:
         sProjections = options.nProjections // subsets
         modi = np.mod(options.nProjections, subsets)
         uu = (modi > 0).astype(np.int64)
@@ -344,7 +373,9 @@ def indexMaker(options):
             options.index = np.arange(0, options.nProjections).astype(tyyppi)
             options.nMeas[0] = options.index.size
         if options.subsets == 1:
-            if (options.CT or options.PET or options.SPECT) and options.listmode == 0:
+            if options.listmode > 0 and options.Nt > 1 and np.size(getattr(options, 'listmodeIndices', [])) == options.Nt:
+                options.nMeas = np.asarray(options.listmodeIndices, dtype=np.int64).reshape(-1)
+            elif (options.CT or options.PET or options.SPECT) and options.listmode == 0:
                 options.nMeas[0] = options.NSinos
             elif options.listmode == 1:
                 if options.useIndexBasedReconstruction:
@@ -469,14 +500,28 @@ def formSubsetIndices(options):
                             if options.x[kk].shape[0] != 6:
                                 options.x[kk] = options.x[kk].reshape(6, -1, order='F')
                             options.x[kk] = options.x[kk][:, options.index[kk]]
+                            if options.SPECT and isinstance(options.z, list):
+                                if options.z[kk].shape[0] != 5:
+                                    options.z[kk] = options.z[kk].reshape(5, -1, order='F')
+                                options.z[kk] = options.z[kk][:, options.index[kk]]
                     else:
                         if isinstance(options.index, list):
                             options.index = np.concatenate(options.index)
                         options.x = options.x[:, options.index, :]
+                        if options.SPECT and not isinstance(options.z, list):
+                            z = np.asarray(options.z)
+                            if z.ndim == 1:
+                                z = z.reshape(5, -1, order='F')
+                            options.z = z[:, options.index]
                 else:
                     if not options.x.shape[0] == 6:
                         options.x = np.reshape(options.x, (6, options.x.size // 6))
                     options.x = options.x[:,options.index]
+                    if options.SPECT:
+                        z = np.asarray(options.z)
+                        if z.ndim == 1:
+                            z = z.reshape(5, -1, order='F')
+                        options.z = z[:, options.index]
             if options.TOF_bins_used > 1:
                 if options.Nt > 1:
                     if isinstance(options.TOFIndices, list):
@@ -501,7 +546,11 @@ def formSubsetIndices(options):
         elif not options.useIndexBasedReconstruction and options.listmode > 0 and isinstance(options.x, list):
             for kk in range(options.Nt):
                 options.x[kk] = options.x[kk].flatten(order='F')
+                if options.SPECT and isinstance(options.z, list):
+                    options.z[kk] = options.z[kk].flatten(order='F')
             options.x = np.concatenate(options.x)
+            if options.SPECT and isinstance(options.z, list):
+                options.z = np.concatenate(options.z)
             if options.TOF_bins > 1 and isinstance(options.TOFIndices, list):
                 options.TOFIndices = np.concatenate(options.TOFIndices)
         options.xy_index = np.empty(0, dtype=np.uint32)
@@ -528,6 +577,11 @@ def formSubsetIndices(options):
         options.z_index = np.arange(0, options.NSinos, dtype=np.uint16)
         options.z_index = np.repeat(options.z_index, (options.Nang * options.Ndist))
         options.z_index = options.z_index[options.index]
+
+    if options.listmode > 0 and not options.useIndexBasedReconstruction and isinstance(options.x, list):
+        options.x = np.concatenate([np.asarray(value).ravel(order='F') for value in options.x])
+        if options.SPECT and isinstance(options.z, list):
+            options.z = np.concatenate([np.asarray(value).ravel(order='F') for value in options.z])
     
         options.xy_index = options.xy_index[options.index]
     else:

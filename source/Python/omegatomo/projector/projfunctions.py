@@ -44,7 +44,7 @@ def _expected_measurement_length(self, timestep, subset):
     subset types use the raw nMeasSubset LOR count) times the TOF bin factor
     from _tof_output_bins. Single source of truth for both the FP allocation
     size and the BP input-length validation, so they cannot drift apart."""
-    if self.subsetType > 7 or self.subsets == 1:
+    if self.listmode == 0 and (self.subsetType > 7 or self.subsets == 1):
         base = int(self.nRowsD) * int(self.nColsD) * int(self.nProjSubset[timestep, subset].item())
     else:
         base = int(self.nMeasSubset[timestep, subset].item())

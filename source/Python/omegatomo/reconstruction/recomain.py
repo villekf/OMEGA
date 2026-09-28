@@ -21,6 +21,83 @@ import ctypes
 import numpy as np
 import warnings
 
+
+def _spect_listmode_sensitivity_weights(options, n_views):
+    supplied = np.asarray(getattr(options, 'sensitivityViewWeights', np.empty(0)))
+    if supplied.size:
+        weights = np.asarray(supplied, dtype=np.float32)
+        if weights.shape != (n_views, int(options.Nt)) or not np.all(np.isfinite(weights)) or np.any(weights < 0):
+            raise ValueError('sensitivityViewWeights must be a finite, non-negative nViews-by-Nt array.')
+        return np.asfortranarray(weights)
+    if int(options.Nt) == 1:
+        return np.ones((n_views, 1), dtype=np.float32, order='F')
+
+    frame_index = np.asarray(getattr(options, 'temporalBinIndex', np.empty(0))).reshape(-1)
+    if frame_index.size == n_views and np.all(np.isfinite(frame_index)) and np.all(frame_index == np.floor(frame_index)) and np.all((frame_index >= 0) & (frame_index < int(options.Nt))):
+        weights = np.zeros((n_views, int(options.Nt)), dtype=np.float32, order='F')
+        weights[np.arange(n_views), frame_index.astype(np.int64)] = 1
+        return weights
+
+    capture_start = np.asarray(getattr(options, 'measurementStartMs', np.empty(0)), dtype=np.float64).reshape(-1)
+    capture_end = np.asarray(getattr(options, 'measurementEndMs', np.empty(0)), dtype=np.float64).reshape(-1)
+    frame_start = np.asarray(getattr(options, 'dynamicPartitionStartMs', np.empty(0)), dtype=np.float64).reshape(-1)
+    frame_end = np.asarray(getattr(options, 'dynamicPartitionEndMs', np.empty(0)), dtype=np.float64).reshape(-1)
+    if capture_start.size == n_views and capture_end.size == n_views and frame_start.size == int(options.Nt) and frame_end.size == int(options.Nt):
+        duration = capture_end - capture_start
+        if np.all(np.isfinite(capture_start)) and np.all(np.isfinite(capture_end)) and np.all(duration >= 0) and np.all(np.isfinite(frame_start)) and np.all(np.isfinite(frame_end)):
+            overlap = np.maximum(0, np.minimum(capture_end[:, None], frame_end[None, :]) - np.maximum(capture_start[:, None], frame_start[None, :]))
+            weights = np.zeros((n_views, int(options.Nt)), dtype=np.float32, order='F')
+            positive = duration > 0
+            weights[positive, :] = (overlap[positive, :] / duration[positive, None]).astype(np.float32)
+            zero = ~positive
+            if np.any(zero):
+                if frame_index.size != n_views:
+                    raise ValueError('Zero-duration SPECT views require temporalBinIndex for dynamic sensitivity.')
+                for timestep in range(int(options.Nt)):
+                    weights[zero & (frame_index == timestep), timestep] = 1
+            return weights
+    raise ValueError('Dynamic listmode SPECT sensitivity requires view timing, temporalBinIndex, or explicit sensitivityViewWeights.')
+
+def _saved_image_count(options):
+    if options.save_iter:
+        return int(options.Niter) + 1
+    if options.saveNIter.size > 0:
+        return int(options.saveNIter.size) + 1
+    return 1
+
+def _reshape_image_output(output, spatialShape, savedImageCount, timeFrameCount):
+    shape = (*map(int, spatialShape), int(savedImageCount), int(timeFrameCount))
+    expectedSize = int(np.prod(shape, dtype=np.int64))
+    if output.size != expectedSize:
+        raise ValueError(f"Unexpected reconstruction output size: got {output.size} values, expected {expectedSize}")
+    output = output.reshape(shape, order='F')
+    if timeFrameCount == 1:
+        output = output[..., 0]
+    elif savedImageCount == 1:
+        output = output[..., 0, :]
+    return output
+
+def _reshape_multiresolution_output(output, options):
+    nVolumes = int(options.nMultiVolumes) + 1
+    volSizes = (options.Nx[:nVolumes].astype(np.uint64) * options.Ny[:nVolumes].astype(np.uint64) * options.Nz[:nVolumes].astype(np.uint64)).astype(np.int64)
+    savedImageCount = _saved_image_count(options)
+    volumes = []
+    offset = 0
+    for ii, volSize in enumerate(volSizes):
+        outputSize = int(volSize) * savedImageCount * int(options.Nt)
+        nextOffset = offset + outputSize
+        volumes.append(_reshape_image_output(
+            output[offset:nextOffset],
+            (options.Nx[ii], options.Ny[ii], options.Nz[ii]),
+            savedImageCount,
+            options.Nt,
+        ))
+        offset = nextOffset
+
+    if offset != output.size:
+        raise ValueError(f"Unexpected multi-resolution output size: consumed {offset} values from {output.size}")
+    return volumes
+
 def transferData(options):
     """
     Transfers the Python variables to the corresponding C-struct
@@ -34,6 +111,11 @@ def transferData(options):
     None.
 
     """
+    # Loaders may use None for an absent optional correction. The native
+    # interface always receives a pointer and an element count, so normalize
+    # that representation to an empty array before taking either.
+    if options.normalization is None:
+        options.normalization = np.empty(0, dtype=np.float32)
     options.param.use_raw_data = ctypes.c_uint8(options.use_raw_data)
     options.param.listmode = ctypes.c_uint8(options.listmode)
     options.param.verbose = ctypes.c_int8(options.verbose)
@@ -180,12 +262,13 @@ def transferData(options):
     options.param.orthAxial = ctypes.c_bool(options.orthAxial)
     options.param.enforcePositivity = ctypes.c_bool(options.enforcePositivity)
     options.param.useMultiResolutionVolumes = ctypes.c_bool(options.useMultiResolutionVolumes)
+    options.param.storeMultiResolution = ctypes.c_bool(options.storeMultiResolution)
     options.param.save_iter = ctypes.c_bool(options.save_iter)
     options.param.deblurring = ctypes.c_bool(options.deblurring)
     options.param.useMAD = ctypes.c_bool(options.useMAD)
     options.param.useImages = ctypes.c_bool(options.useImages)
     options.param.useEFOV = ctypes.c_bool(options.useEFOV)
-    options.param.CTAttenuation = ctypes.c_bool(options.CTAttenuation)
+    options.param.CTAttenuation = ctypes.c_bool(options.CT_attenuation)
     options.param.offsetCorrection = ctypes.c_bool(options.offsetCorrection)
     options.param.relaxationScaling = ctypes.c_bool(options.relaxationScaling)
     options.param.computeRelaxationParameters = ctypes.c_bool(options.computeRelaxationParameters)
@@ -335,11 +418,14 @@ def transferData(options):
     options.param.angles = options.angles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.swivelAngles = options.swivelAngles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     if options.projector_type in (6, 16, 26, 61, 62, 66):
-        options.param.blurPlanes = options.blurPlanes[0].ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
-        options.param.blurPlanes2 = options.blurPlanes2[0].ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
+        blur_planes = options.blurPlanes[0] if isinstance(options.blurPlanes, list) else options.blurPlanes
+        blur_planes2 = options.blurPlanes2[0] if isinstance(options.blurPlanes2, list) else options.blurPlanes2
+        g_filter = options.gFilter[0] if isinstance(options.gFilter, list) else options.gFilter
+        options.param.blurPlanes = blur_planes.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
+        options.param.blurPlanes2 = blur_planes2.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
         # The native type-6 branch uses the volume-0 filter.
-        options.param.gFilter = options.gFilter[0].ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-        options.gFSize = np.array(options.gFilter[0].shape, dtype=np.uint64)
+        options.param.gFilter = g_filter.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+        options.gFSize = np.array(g_filter.shape if g_filter.size else (0, 0, 0), dtype=np.uint64)
     else:
         options.param.blurPlanes = None
         options.param.blurPlanes2 = None
@@ -374,7 +460,12 @@ def transferData(options):
     #For SPECT...
     options.param.rayShiftsDetector = options.rayShiftsDetector.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.rayShiftsSource = options.rayShiftsSource.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.detectorVector = options.DetectorVector.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))
+    # Geometry is subset ordered; detector-head indices must use the same order.
+    frames = getattr(options, 'DetectorVectorFrames', None)
+    options._native_detector_vector = np.ascontiguousarray(
+        np.concatenate(frames) if options.SPECT and isinstance(frames, list) else options.DetectorVector,
+        dtype=np.uint32)
+    options.param.detectorVector = options._native_detector_vector.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))
     options.param.coneOfResponseStdCoeffA = ctypes.c_float(options.coneOfResponseStdCoeffA)
     options.param.coneOfResponseStdCoeffB = ctypes.c_float(options.coneOfResponseStdCoeffB)
     options.param.coneOfResponseStdCoeffC = ctypes.c_float(options.coneOfResponseStdCoeffC)
@@ -388,6 +479,11 @@ def transferData(options):
     # ...until here
     options.param.NLM_ref = options.NLM_referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.RDP_ref = options.RDP_referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    options.param.zSens = options.zSens.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    options.param.sizeZSens = ctypes.c_uint64(options.zSens.size)
+    options.param.sizeDetectorVector = ctypes.c_uint64(np.size(options.DetectorVector))
+    options.param.sensitivityViewWeights = options.sensitivityViewWeights.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    options.param.sizeSensitivityViewWeights = ctypes.c_uint64(options.sensitivityViewWeights.size)
     
 def reconstructions_mainCT(options):
     """
@@ -590,7 +686,15 @@ def reconstructions_main(options):
         ParkerWeights(options)
     if not options.listmode:
         options.SinM = np.reshape(options.SinM, (int(options.nRowsD), int(options.nColsD), options.nProjections, options.TOF_bins, options.Nt), order='F')
-    elif options.listmode and options.compute_sensitivity_image and not(options.SPECT):
+    elif options.listmode and options.compute_sensitivity_image and options.SPECT:
+        from omegatomo.projector.detcoord import getCoordinatesSPECT
+        x_sensitivity, z_sensitivity = getCoordinatesSPECT(options)
+        options.uV = np.float32(np.asfortranarray(x_sensitivity))
+        options.zSens = np.float32(np.asfortranarray(z_sensitivity))
+        options.sensitivityViewWeights = _spect_listmode_sensitivity_weights(
+            options, options.uV.size // 6
+        )
+    elif options.listmode and options.compute_sensitivity_image:
         if hasattr(options, 'xSens') and np.size(options.xSens) > 0 and hasattr(options, 'zSens') and np.size(options.zSens) > 0:
             options.uV = np.float32(np.asfortranarray(options.xSens))
             options.z = np.float32(np.asfortranarray(options.zSens))
@@ -726,24 +830,12 @@ def reconstructions_main(options):
     if status != 0:
         raise RuntimeError(f'Native reconstruction failed with status {status}; see the backend diagnostics above.')
     try:
-        # Number of saved image volumes per timestep: options.saveNIter/save_iter
-        # cause the native code to store one volume per requested iteration
-        # (plus the initial estimate), in addition to the per-timestep volumes.
-        if options.saveNIter.size > 0:
-            numSaves = int(options.saveNIter.size) + 1
-        elif options.save_iter:
-            numSaves = int(options.Niter) + 1
+        if options.useMultiResolutionVolumes and options.storeMultiResolution:
+            output = _reshape_multiresolution_output(output, options)
+        elif options.useMultiResolutionVolumes and not options.storeMultiResolution:
+            output = _reshape_image_output(output, (options.NxOrig, options.NyOrig, options.NzOrig), _saved_image_count(options), options.Nt)
         else:
-            numSaves = 1
-        if options.useMultiResolutionVolumes and not options.storeMultiResolution:
-            output = output.reshape((options.NxOrig, options.NyOrig, options.NzOrig, -1), order = 'F')
-        elif not options.storeMultiResolution and options.Nt == 1:
-            output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], -1), order = 'F')
-        elif numSaves > 1:
-            # Memory layout (fastest to slowest): spatial voxels, timestep, save index
-            output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], options.Nt, numSaves), order = 'F')
-        else:
-            output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], options.Nt), order = 'F')
+            output = _reshape_image_output(output, (options.Nx[0], options.Ny[0], options.Nz[0]), _saved_image_count(options), options.Nt)
         if options.subsets == 1 and options.storeFP:
             FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins, options.Niter), order = 'F')
     except Exception as e:

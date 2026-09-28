@@ -240,6 +240,7 @@ using TimerPoint = std::chrono::steady_clock::time_point;
 #define CREATE_FLOAT_TEXTURE3D_EMPTY(TEX, ARRAY, WIDTH, HEIGHT, DEPTH) do { \
 	status = SUCCESS_VALUE; \
 } while(0)
+// Mask call sites pass x/Nx first and y/Ny second; CUDA texture specs take height before width.
 #define CREATE_MASK_TEXTURE2D_FROM_HOST(TEX, ARRAY, SRC, X_DIM, Y_DIM, FLAGS) do { \
 	const auto textureSpec = cudaMaskTextureSpec((Y_DIM), (X_DIM), 1, (FLAGS)); \
 	status = createCudaTexture2DFromHost((TEX), (ARRAY), (SRC), textureSpec); \
@@ -1350,6 +1351,24 @@ class ProjectorClass {
 #elif defined(OPENCL)
 			std::string os_options = options;
 #endif // END CUDA
+			// SPECT sensitivity uses full-view detector geometry, so compile it as a
+			// projection-domain kernel even though the main projector is listmode.
+			if (inputScalars.SPECT) {
+#if defined(OPENCL)
+				const std::string listmodeFlag = "-DLISTMODE";
+				const size_t listmodeFlagPos = os_options.find(listmodeFlag);
+				if (listmodeFlagPos != std::string::npos)
+					os_options.erase(listmodeFlagPos, listmodeFlag.size());
+#else
+				std::vector<std::string> projectionOptions;
+				projectionOptions.reserve(os_options.size());
+				for (const auto& option : os_options) {
+					if (option != "-DLISTMODE")
+						projectionOptions.push_back(option);
+				}
+				os_options.swap(projectionOptions);
+#endif
+			}
 			ADD_OPT(os_options, "-DBP");
 			ADD_OPT(os_options, "-DATOMICF");
 			ADD_OPT(os_options, "-DSENS");
@@ -2336,8 +2355,9 @@ public:
 		kernelPDHG, kernelProxRDP, kernelProxq, kernelProxTrans, kernelProxNLM, kernelGGMRF, kernelsumma, kernelEstimate, kernelPSF, 
 		kernelPSFf, kernelDiv, kernelMult, kernelForward, kernelSensList, kernelApu, kernelHyper, kernelRotate;
 	// Device buffers shared across backends
-	DEVBUFF_t d_xcenter, d_ycenter, d_zcenter, d_V, d_TOFCenter, d_eFOVIndices, d_weights, d_angle, d_g, d_uref, d_maskBPB, 
+	DEVBUFF_t d_xcenter, d_ycenter, d_zcenter, d_V, d_TOFCenter, d_eFOVIndices, d_weights, d_angle, d_g, d_uref,
 		d_rayShiftsDetector, d_rayShiftsSource, d_maskPriorB;
+	std::vector<std::vector<DEVBUFF_t>> d_maskBPB;
 	std::vector<DEVBUFF_t> d_attenB;
 	AFDEVBUFF_t d_output, d_meanBP, d_meanFP, d_inputB, d_W, d_gaussianNLM;
 	AFDEVBUFF_t d_qX, d_qY, d_qZ;
@@ -2348,10 +2368,14 @@ public:
 	// Sensitivity image used by fastPDHG
 	AFDEVBUFF_t d_precond;
 	AFDEVBUFF_t d_outputCT;
-	TEX2D_t d_maskFP, d_maskBP, d_maskPrior;
-	TEX3D_t d_maskBP3, d_maskPrior3;
+	TEX2D_t d_maskFP, d_maskPrior;
+	std::vector<std::vector<TEX2D_t>> d_maskBP;
+	std::vector<std::vector<TEX3D_t>> d_maskBP3;
+	TEX3D_t d_maskPrior3;
 	TEX3D_t d_inputImage, d_urefIm, d_inputI, d_RDPrefI;
-	TEXARRAY_t atArray, uRefArray, maskArrayBP, maskArrayPrior, BPArray, FPArray, integArrayXY, imArray;
+	// Texture3D d_imageX, d_imageY; // Unused
+	TEXARRAY_t atArray, uRefArray, maskArrayPrior, BPArray, FPArray, integArrayXY, imArray;
+	std::vector<std::vector<TEXARRAY_t>> maskArrayBP;
 	std::vector<TEX3D_t> d_attenIm;
 #if defined(CUDA) || defined(HIP)
 	CUmodule programFP, programBP, programAux, programSens;
@@ -2381,17 +2405,17 @@ public:
 	std::array<NS::UInteger, 3> origin = { 0, 0, 0 };
 	std::array<NS::UInteger, 3> region = { 0, 0, 0 };
 #endif // END CUDA
-	std::vector<TEX3D_t> d_maskFP3;
-	std::vector<TEXARRAY_t> maskArrayFP;
+	std::vector<std::vector<TEX3D_t>> d_maskFP3;
+	std::vector<std::vector<TEXARRAY_t>> maskArrayFP;
 	std::vector<AFDEVBUFF_t> d_Summ;
 	std::vector<AFDEVBUFF_t> d_meas, d_rand, d_imTemp, d_imFinal;
 	// Vector device buffers common to both backends
-	std::vector<DEVBUFF_t> d_maskFPB;
+	std::vector<std::vector<DEVBUFF_t>> d_maskFPB;
 	std::vector<std::vector<DEVBUFF_t>> d_detectorVector;
 	std::vector<DEVBUFF_t> d_normFull, d_scatFull, d_xFull, d_zFull;
 	std::vector<DEVBUFF_t> d_L;
-	std::vector<DEVBUFF_t> d_zindex, d_xyindex, d_norm, d_atten, d_T;
-	std::vector<std::vector<DEVBUFF_t>> d_scat, d_x, d_z, d_trIndex, d_axIndex, d_TOFIndex;
+	std::vector<DEVBUFF_t> d_zindex, d_xyindex, d_T;
+	std::vector<std::vector<DEVBUFF_t>> d_norm, d_atten, d_scat, d_x, d_z, d_trIndex, d_axIndex, d_TOFIndex;
 	// Precomputed per-projection geometry for the BDD backprojection (16 floats per projection, one buffer per subset)
 	std::vector<DEVBUFF_t> d_geomProj5;
 	// Host-side storage for the above geometry
@@ -2474,9 +2498,9 @@ public:
 		if (memAlloc.SensMod)
 			getErrorString(cuModuleUnload(programSens));
 		if (memAlloc.attenM) {
-			for (int kk = 0; kk < memAlloc.aSteps; kk++) {
-				getErrorString(cuMemFree(d_atten[kk]));
-			}
+			for (const auto& timestepBuffers : d_atten)
+				for (const auto& buffer : timestepBuffers)
+					getErrorString(cuMemFree(buffer));
 		}
 		if (memAlloc.V)
 			getErrorString(cuMemFree(d_V));
@@ -2557,9 +2581,9 @@ public:
 			getErrorString(cuMemFree(d_weights));
 		}
 		if (memAlloc.norm) {
-			for (int kk = 0; kk < memAlloc.nSteps; kk++) {
-				getErrorString(cuMemFree(d_norm[kk]));
-			}
+			for (const auto& timestepBuffers : d_norm)
+				for (const auto& buffer : timestepBuffers)
+					getErrorString(cuMemFree(buffer));
 		}
 		if (memAlloc.angle)
 			getErrorString(cuMemFree(d_angle));
@@ -2569,28 +2593,44 @@ public:
 			getErrorString(cuMemFree(d_zFull[0]));
 		if (memAlloc.maskFP) {
 			if (memAlloc.useBuffers) {
-				for (int ll = 0; ll < d_maskFPB.size(); ll++)
-					getErrorString(cuMemFree(d_maskFPB[ll]));
+				for (const auto& timestepBuffers : d_maskFPB)
+					for (const auto& buffer : timestepBuffers)
+						getErrorString(cuMemFree(buffer));
 			}
 			else {
 				if (d_maskFP3.size() > 0) {
-					for (int ll = 0; ll < d_maskFP3.size(); ll++)
-						getErrorString(cuTexObjectDestroy(d_maskFP3[ll]));
+					for (const auto& timestepTextures : d_maskFP3)
+						for (const auto& texture : timestepTextures)
+							getErrorString(cuTexObjectDestroy(texture));
 				}
 				else {
 					getErrorString(cuTexObjectDestroy(d_maskFP));
 				}
-				for (int ll = 0; ll < maskArrayFP.size(); ll++)
-					getErrorString(cuArrayDestroy(maskArrayFP[ll]));
+				for (const auto& timestepArrays : maskArrayFP)
+					for (const auto& array : timestepArrays)
+						getErrorString(cuArrayDestroy(array));
 			}
 		}
 		if (memAlloc.maskBP) {
 			if (memAlloc.useBuffers) {
-				getErrorString(cuMemFree(d_maskBPB));
+				for (const auto& timestepBuffers : d_maskBPB)
+					for (const auto& buffer : timestepBuffers)
+						getErrorString(cuMemFree(buffer));
 			}
 			else {
-				getErrorString(cuTexObjectDestroy(d_maskBP));
-				getErrorString(cuArrayDestroy(maskArrayBP));
+				if (!d_maskBP3.empty()) {
+					for (const auto& timestepTextures : d_maskBP3)
+						for (const auto& texture : timestepTextures)
+							getErrorString(cuTexObjectDestroy(texture));
+				}
+				else {
+					for (const auto& timestepTextures : d_maskBP)
+						for (const auto& texture : timestepTextures)
+							getErrorString(cuTexObjectDestroy(texture));
+				}
+				for (const auto& timestepArrays : maskArrayBP)
+					for (const auto& array : timestepArrays)
+						getErrorString(cuArrayDestroy(array));
 			}
 		}
 		if (memAlloc.priorMask) {
@@ -3230,8 +3270,10 @@ public:
 				static_cast<float>(inputScalars.Nz[ii]) * inputScalars.dz[ii] + inputScalars.bz[ii]);
 		}
 		if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-			erotusSens[0] = inputScalars.det_per_ring % local_size[0];
-			erotusSens[1] = inputScalars.det_per_ring % local_size[1];
+			const size_t sensitivityDetectorRows = inputScalars.SPECT ? inputScalars.nRowsD : inputScalars.det_per_ring;
+			const size_t sensitivityDetectorCols = inputScalars.SPECT ? inputScalars.nColsD : inputScalars.det_per_ring;
+			erotusSens[0] = sensitivityDetectorRows % local_size[0];
+			erotusSens[1] = sensitivityDetectorCols % local_size[1];
 			if (erotusSens[1] > 0)
 				erotusSens[1] = (local_size[1] - erotusSens[1]);
 			if (erotusSens[0] > 0)
@@ -3276,6 +3318,9 @@ public:
 		size_t vecSize = 1;
 		if ((inputScalars.PET || inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0)
 			vecSize = static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD);
+		const size_t maskPriorDepth = inputScalars.multiResolution
+			? static_cast<size_t>(inputScalars.Nz[0])
+			: static_cast<size_t>(inputScalars.maskBPZ);
 		// Check for the correct size of the inputs
 		{
 			bool missing = false;
@@ -3353,12 +3398,12 @@ public:
 		memAlloc.tSteps = inputScalars.Nt;
 		if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
 			if (inputScalars.useBuffers) {
-				ALLOC_BUFFER(d_maskPriorB, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ);
+				ALLOC_BUFFER(d_maskPriorB, CL_MEM_READ_ONLY, sizeof(uint8_t) * static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) * maskPriorDepth);
 			}
 			else {
 				if (inputScalars.maskBPZ > 1) {
 					CREATE_MASK_TEXTURE3D_FROM_HOST(d_maskPrior, d_maskPrior3, maskArrayPrior, w_vec.maskPrior,
-						inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.maskBPZ, inputScalars.maskBPZ, inputScalars.Nz[0], BACKEND_TEXTURE_READ_AS_INTEGER);
+						inputScalars.Nx[0], inputScalars.Ny[0], maskPriorDepth, maskPriorDepth, maskPriorDepth, BACKEND_TEXTURE_READ_AS_INTEGER);
 				}
 				else {
 					CREATE_MASK_TEXTURE2D_FROM_HOST(d_maskPrior, maskArrayPrior, w_vec.maskPrior,
@@ -3367,7 +3412,7 @@ public:
 				if (DEBUG) {
 					mexPrintBase("imX = %u\n", inputScalars.Nx[0]);
 					mexPrintBase("imY = %u\n", inputScalars.Ny[0]);
-					mexPrintBase("imZ = %u\n", inputScalars.maskBPZ);
+					mexPrintBase("imZ = %u\n", static_cast<unsigned int>(maskPriorDepth));
 					mexEval();
 				}
 			}
@@ -3391,75 +3436,63 @@ public:
 				CHECK(status, "\n", (STATUS_t)(-1));
 				memAlloc.xFull = true;
 			}
-			// Mask images
+			// Mask images. Dynamic SPECT keeps separate resources per timestep;
+			// detector-head stacks are shared within each timestep.
 			if (inputScalars.maskFP || inputScalars.maskBP) {
-					if (inputScalars.maskFP) {
-						if (inputScalars.useBuffers) {
-							// As with the textures below, a 3D mask is stored per subset while a 2D mask is a
-							// single mask shared by every subset (bound as d_maskFPB[0])
-							if (inputScalars.maskFPZ > 1) {
-								if (inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads) {
-									d_maskFPB.resize(1);
-									ALLOC_BUFFER(d_maskFPB[0], CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nHeads);
+				if (inputScalars.maskFP) {
+					if (inputScalars.useBuffers) {
+						d_maskFPB.resize(inputScalars.Nt);
+						for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
+							if (inputScalars.maskFPZ > 1 && !(inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads)) {
+								d_maskFPB[timestep].resize(inputScalars.subsetsUsed);
+								for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+									const uint32_t indD = kk + timestep * inputScalars.subsets;
+									ALLOC_BUFFER(d_maskFPB[timestep][kk], CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD * length[indD]);
 									CHECK(status, "\n", (STATUS_t)(-1));
 								}
-								else {
-									d_maskFPB.resize(inputScalars.subsetsUsed);
-									for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-										ALLOC_BUFFER(d_maskFPB[kk], CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD * length[kk]);
-										CHECK(status, "\n", (STATUS_t)(-1));
-									}
-								}
-						}
-						else {
-							d_maskFPB.resize(1);
-							ALLOC_BUFFER(d_maskFPB[0], CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD);
-							CHECK(status, "\n", (STATUS_t)(-1));
+							}
+							else {
+								d_maskFPB[timestep].resize(1);
+								const size_t maskDepth = (inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads) ? inputScalars.nHeads : 1ULL;
+								ALLOC_BUFFER(d_maskFPB[timestep][0], CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD * maskDepth);
+								CHECK(status, "\n", (STATUS_t)(-1));
+							}
 						}
 					}
-						else {
-							if (inputScalars.maskFPZ > 1) {
-								if (inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads) {
-									RESIZE_TEXTURE_VECTOR(d_maskFP3, maskArrayFP, 1);
-									CREATE_MASK_TEXTURE3D_FROM_HOST(d_maskFP3[0], d_maskFP3[0], maskArrayFP[0], w_vec.maskFP,
-										inputScalars.nRowsD, inputScalars.nColsD, inputScalars.nHeads, inputScalars.nHeads, inputScalars.nHeads, BACKEND_TEXTURE_READ_AS_INTEGER);
+					else if (inputScalars.maskFPZ > 1) {
+						d_maskFP3.resize(inputScalars.Nt);
+						maskArrayFP.resize(inputScalars.Nt);
+						for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
+							if (inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads) {
+								d_maskFP3[timestep].resize(1);
+								maskArrayFP[timestep].resize(1);
+								CREATE_MASK_TEXTURE3D_FROM_HOST(d_maskFP3[timestep][0], d_maskFP3[timestep][0], maskArrayFP[timestep][0], w_vec.maskFP,
+									inputScalars.nRowsD, inputScalars.nColsD, inputScalars.nHeads, inputScalars.nHeads, inputScalars.nHeads, BACKEND_TEXTURE_READ_AS_INTEGER);
+								CHECK(status, "\n", (STATUS_t)(-1));
+							}
+							else {
+								d_maskFP3[timestep].resize(inputScalars.subsetsUsed);
+								maskArrayFP[timestep].resize(inputScalars.subsetsUsed);
+								for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+									const uint32_t indD = kk + timestep * inputScalars.subsets;
+									CREATE_MASK_TEXTURE3D_FROM_HOST(d_maskFP3[timestep][kk], d_maskFP3[timestep][kk], maskArrayFP[timestep][kk], &w_vec.maskFP[pituus[indD] * vecSize],
+										inputScalars.nRowsD, inputScalars.nColsD, length[indD], length[indD], length[indD], BACKEND_TEXTURE_READ_AS_INTEGER);
 									CHECK(status, "\n", (STATUS_t)(-1));
 								}
-								else {
-									RESIZE_TEXTURE_VECTOR(d_maskFP3, maskArrayFP, inputScalars.subsetsUsed);
-									for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-										CREATE_MASK_TEXTURE3D_FROM_HOST(d_maskFP3[kk], d_maskFP3[kk], maskArrayFP[kk], &w_vec.maskFP[pituus[kk] * vecSize],
-											inputScalars.nRowsD, inputScalars.nColsD, length[kk], length[kk], length[kk], BACKEND_TEXTURE_READ_AS_INTEGER);
-										CHECK(status, "\n", (STATUS_t)(-1));
-									}
-								}
+							}
 						}
-						else {
-							RESIZE_TEXTURE_ARRAY(maskArrayFP, 1);
-							CREATE_MASK_TEXTURE2D_FROM_HOST(d_maskFP, maskArrayFP[0], w_vec.maskFP,
-								inputScalars.nRowsD, inputScalars.nColsD, BACKEND_TEXTURE_READ_AS_INTEGER);
-							CHECK(status, "\n", (STATUS_t)(-1));
-						}
+					}
+					else {
+						maskArrayFP.resize(1);
+						maskArrayFP[0].resize(1);
+						CREATE_MASK_TEXTURE2D_FROM_HOST(d_maskFP, maskArrayFP[0][0], w_vec.maskFP,
+							inputScalars.nRowsD, inputScalars.nColsD, BACKEND_TEXTURE_READ_AS_INTEGER);
+						CHECK(status, "\n", (STATUS_t)(-1));
 					}
 					memAlloc.maskFP = true;
 				}
-				if (inputScalars.maskBP) {
-					if (inputScalars.useBuffers)
-						ALLOC_BUFFER(d_maskBPB, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ);
-					else {
-						const auto flags = (inputScalars.BPType == 4 && !inputScalars.CT) ? BACKEND_TEXTURE_NORMALIZED : BACKEND_TEXTURE_READ_AS_INTEGER;
-						if (inputScalars.maskBPZ > 1) {
-							CREATE_MASK_TEXTURE3D_FROM_HOST(d_maskBP, d_maskBP3, maskArrayBP, w_vec.maskBP,
-								inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.maskBPZ, inputScalars.Nz[0], inputScalars.Nz[0], flags);
-						}
-						else {
-							CREATE_MASK_TEXTURE2D_FROM_HOST(d_maskBP, maskArrayBP, w_vec.maskBP,
-								inputScalars.Nx[0], inputScalars.Ny[0], flags);
-						}
-						CHECK(status, "\n", (STATUS_t)(-1));
-					}
+				if (inputScalars.maskBP)
 					memAlloc.maskBP = true;
-				}
 			}
 			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 				ALLOC_BUFFER(d_zFull[0], CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z);
@@ -3491,7 +3524,32 @@ public:
 				CHECK(status, "\n", (STATUS_t)(-1));
 				memAlloc.TOF = true;
 			}
+			const auto maskBPFlags = (inputScalars.BPType == 4 && !inputScalars.CT) ? BACKEND_TEXTURE_NORMALIZED : BACKEND_TEXTURE_READ_AS_INTEGER;
+			size_t maskBPTextureOffset = 0ULL;
 			for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
+				if (inputScalars.maskBP) {
+					for (size_t volume = 0; volume < inputScalars.nMultiVolumes + 1; volume++) {
+						const size_t maskBPDepth = inputScalars.maskBPZ > 1U
+							? (inputScalars.multiResolution ? static_cast<size_t>(inputScalars.Nz[volume]) : static_cast<size_t>(inputScalars.maskBPZ))
+							: 1ULL;
+						const size_t maskBPElements = static_cast<size_t>(inputScalars.Nx[volume]) * static_cast<size_t>(inputScalars.Ny[volume]) * maskBPDepth;
+						if (inputScalars.useBuffers) {
+							ALLOC_BUFFER(d_maskBPB[timestep][volume], CL_MEM_READ_ONLY, sizeof(uint8_t) * maskBPElements);
+						}
+						else {
+							if (inputScalars.maskBPZ > 1) {
+								CREATE_MASK_TEXTURE3D_FROM_HOST(d_maskBP3[timestep][volume], d_maskBP3[timestep][volume], maskArrayBP[timestep][volume], &w_vec.maskBP[maskBPTextureOffset],
+									inputScalars.Nx[volume], inputScalars.Ny[volume], maskBPDepth, maskBPDepth, maskBPDepth, maskBPFlags);
+							}
+							else {
+								CREATE_MASK_TEXTURE2D_FROM_HOST(d_maskBP[timestep][volume], maskArrayBP[timestep][volume], &w_vec.maskBP[maskBPTextureOffset],
+									inputScalars.Nx[volume], inputScalars.Ny[volume], maskBPFlags);
+							}
+							maskBPTextureOffset += maskBPElements;
+						}
+						CHECK(status, "\n", (STATUS_t)(-1));
+					}
+				}
 				if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
 					if (inputScalars.size_atten > inputScalars.im_dim[0] || timestep == 0) {
 						if (inputScalars.useBuffers)
@@ -3509,13 +3567,20 @@ public:
 					}
 				}
 				for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+					const uint32_t indD = kk + timestep * inputScalars.subsets;
 					if (inputScalars.SPECT) {
 						const size_t detectorIndex = static_cast<size_t>(kk) + static_cast<size_t>(timestep) * static_cast<size_t>(inputScalars.subsets);
-						ALLOC_BUFFER(d_detectorVector[timestep][kk], CL_MEM_READ_ONLY, sizeof(uint32_t) * length[detectorIndex]);
+						const size_t detectorCount = inputScalars.listmode > 0
+							? (w_vec.detectorVectorSize > 0 ? w_vec.detectorVectorSize : static_cast<size_t>(inputScalars.nProjections))
+							: static_cast<size_t>(length[detectorIndex]);
+						ALLOC_BUFFER(d_detectorVector[timestep][kk], CL_MEM_READ_ONLY, sizeof(uint32_t) * detectorCount);
 						CHECK(status, "\n", (STATUS_t)(-1));
 					}
 					if (inputScalars.CT || inputScalars.SPECT) {
-						ALLOC_BUFFER(d_x[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6);
+						// The event projector still needs one six-coordinate LOR per event.
+						// Full-view SPECT sensitivity geometry is stored separately in d_xFull.
+						const size_t coordinateCount = static_cast<size_t>(length[indD]) * 6ULL;
+						ALLOC_BUFFER(d_x[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * coordinateCount);
 						CHECK(status, "\n", (STATUS_t)(-1));
 						memAlloc.xSteps++;
 					}
@@ -3530,13 +3595,20 @@ public:
 							mexEval();
 						}
 					}
-					if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode != 1) {
+					if (inputScalars.SPECT && inputScalars.listmode == 1) {
+						const size_t coordinateCount = static_cast<size_t>(length[kk + timestep * inputScalars.subsets]) * 5ULL;
+						ALLOC_BUFFER(d_z[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * coordinateCount);
+						CHECK(status, "\n", (STATUS_t)(-1));
+						memAlloc.zType = 1;
+						memAlloc.zSteps++;
+					}
+					else if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode != 1) {
 						size_t coef = 2;
 						if (inputScalars.useHelical)
 							coef = 1;
 						else if (inputScalars.pitch)
 							coef = 6;
-						ALLOC_BUFFER(d_z[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * coef);
+						ALLOC_BUFFER(d_z[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[indD] * coef);
 						CHECK(status, "\n", (STATUS_t)(-1));
 						memAlloc.zType = 1;
 						memAlloc.zSteps++;
@@ -3565,10 +3637,25 @@ public:
 						CHECK(status, "\n", (STATUS_t)(-1));
 					}
 					if (inputScalars.size_scat > 1 && inputScalars.scatter == 1U) { // Scatter correction buffer
-						ALLOC_BUFFER(d_scat[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize);
+						ALLOC_BUFFER(d_scat[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[indD] * vecSize);
 						CHECK(status, "\n", (STATUS_t)(-1));
 						memAlloc.extra = true;
 						memAlloc.eSteps++;
+					}
+					if (inputScalars.size_norm > 1 && inputScalars.normalization_correction) {
+						const size_t normElements = (inputScalars.SPECT && inputScalars.normZ == inputScalars.nHeads)
+							? static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD) * static_cast<size_t>(inputScalars.nHeads)
+							: static_cast<size_t>(length[indD]) * vecSize;
+						ALLOC_BUFFER(d_norm[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * normElements);
+						CHECK(status, "\n", (STATUS_t)(-1));
+						memAlloc.norm = true;
+						memAlloc.nSteps++;
+					}
+					if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
+						ALLOC_BUFFER(d_atten[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[indD] * vecSize);
+						CHECK(status, "\n", (STATUS_t)(-1));
+						memAlloc.attenM = true;
+						memAlloc.aSteps++;
 					}
 					if (inputScalars.listmode > 0 && inputScalars.indexBased) {
 						if (inputScalars.loadTOF || (kk == inputScalars.osa_iter0 && !inputScalars.loadTOF && timestep == inputScalars.timestep0)) {
@@ -3608,23 +3695,6 @@ public:
 #endif // END CUDA
 				}
 #endif
-					// Normalization weighting
-					if (inputScalars.size_norm > 1 && inputScalars.normalization_correction) {
-						if (inputScalars.SPECT && inputScalars.normZ == inputScalars.nHeads)
-							ALLOC_BUFFER(d_norm[kk], CL_MEM_READ_ONLY, sizeof(float) * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nHeads);
-						else
-							ALLOC_BUFFER(d_norm[kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize);
-					CHECK(status, "\n", (STATUS_t)(-1));
-					memAlloc.norm = true;
-					memAlloc.nSteps++;
-				}
-				// Measurement-based attenuation correction
-				if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-					ALLOC_BUFFER(d_atten[kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize);
-					CHECK(status, "\n", (STATUS_t)(-1));
-					memAlloc.attenM = true;
-					memAlloc.aSteps++;
-				}
 				// Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
 				// Note that raw data format is not used at the moment
 				if (inputScalars.raw && inputScalars.listmode != 1) {
@@ -3687,32 +3757,26 @@ public:
 			}
 			if (inputScalars.maskFP || inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution)) {
 				if (inputScalars.useBuffers) {
-						if (inputScalars.maskFP) {
-							if (inputScalars.maskFPZ > 1) {
-								if (inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads)
-									WRITE_BUFFER(d_maskFPB[0], sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nHeads, w_vec.maskFP);
-								else
-									for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++)
-										WRITE_BUFFER(d_maskFPB[kk], sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD * length[kk],
-											&w_vec.maskFP[pituus[kk] * vecSize]);
-							}
-							else
-								WRITE_BUFFER(d_maskFPB[0], sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD, w_vec.maskFP);
+					if (inputScalars.maskFP) {
+						if (inputScalars.maskFPZ > 1 && !(inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads))
+							for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++)
+								for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+									const uint32_t indD = kk + timestep * inputScalars.subsets;
+									WRITE_BUFFER(d_maskFPB[timestep][kk], sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD * length[indD], &w_vec.maskFP[pituus[indD] * vecSize]);
+								}
+						else {
+							for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++)
+								WRITE_BUFFER(d_maskFPB[timestep][0], sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD *
+									((inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads) ? inputScalars.nHeads : 1ULL), w_vec.maskFP);
+						}
 						CHECK(status, "\n", (STATUS_t)(-1));
 						const size_t maskFPDepth = inputScalars.maskFPZ > 1 ? static_cast<size_t>(inputScalars.maskFPZ) : 1ULL;
-						memSize += (sizeof(uint8_t) * static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD) * maskFPDepth);
-					}
-					if (inputScalars.maskBP) {
-						WRITE_BUFFER(d_maskBPB, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ, w_vec.maskBP);
-						CHECK(status, "\n", (STATUS_t)(-1));
-						memSize += (sizeof(uint8_t) * static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) * 
-							static_cast<size_t>(inputScalars.maskBPZ));
+						memSize += sizeof(uint8_t) * static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD) * maskFPDepth;
 					}
 					if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
-						WRITE_BUFFER(d_maskPriorB, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ, w_vec.maskPrior);
+						WRITE_BUFFER(d_maskPriorB, sizeof(uint8_t) * static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) * maskPriorDepth, w_vec.maskPrior);
 						CHECK(status, "\n", (STATUS_t)(-1));
-						memSize += (sizeof(uint8_t) * static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) * 
-							static_cast<size_t>(inputScalars.maskBPZ));
+						memSize += sizeof(uint8_t) * static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) * maskPriorDepth;
 					}
 				}
 				else {
@@ -3720,19 +3784,8 @@ public:
 						const size_t maskFPDepth = inputScalars.maskFPZ > 1 ? static_cast<size_t>(inputScalars.maskFPZ) : 1ULL;
 						memSize += (sizeof(uint8_t) * static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD) * maskFPDepth);
 					}
-					if (inputScalars.maskBP) {
-						if (DEBUG) {
-							mexPrintBase("region[0] = %u\n", inputScalars.Nx[0]);
-							mexPrintBase("region[1] = %u\n", inputScalars.Ny[0]);
-							mexPrintBase("region[2] = %u\n", inputScalars.maskBPZ);
-							mexEval();
-						}
-						memSize += (sizeof(uint8_t) * static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) * 
-							static_cast<size_t>(inputScalars.maskBPZ));
-					}
 					if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
-						memSize += (sizeof(uint8_t) * static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) * 
-							static_cast<size_t>(inputScalars.maskBPZ));
+						memSize += sizeof(uint8_t) * static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) * maskPriorDepth;
 					}
 				}
 			}
@@ -3759,7 +3812,22 @@ public:
 			if (DEBUG) {
 				mexPrint("Timestep phase\n");
 			}
+			size_t maskBPBufferOffset = 0ULL;
 			for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
+				if (inputScalars.maskBP) {
+					for (size_t volume = 0; volume < inputScalars.nMultiVolumes + 1; volume++) {
+						const size_t maskBPDepth = inputScalars.maskBPZ > 1U
+							? (inputScalars.multiResolution ? static_cast<size_t>(inputScalars.Nz[volume]) : static_cast<size_t>(inputScalars.maskBPZ))
+							: 1ULL;
+						const size_t maskBPElements = static_cast<size_t>(inputScalars.Nx[volume]) * static_cast<size_t>(inputScalars.Ny[volume]) * maskBPDepth;
+						if (inputScalars.useBuffers) {
+							WRITE_BUFFER(d_maskBPB[timestep][volume], sizeof(uint8_t) * maskBPElements, &w_vec.maskBP[maskBPBufferOffset]);
+							CHECK(status, "\n", (STATUS_t)(-1));
+							maskBPBufferOffset += maskBPElements;
+						}
+						memSize += (sizeof(uint8_t) * maskBPElements) / 1048576ULL;
+					}
+				}
 				if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
 					if (inputScalars.useBuffers) {
 						if (inputScalars.size_atten > inputScalars.im_dim[0]) {
@@ -3775,22 +3843,42 @@ public:
 					}
 				}
 				for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+					const uint32_t indD = kk + timestep * inputScalars.subsets;
 					if (inputScalars.SPECT) {
 						const size_t detectorIndex = static_cast<size_t>(kk) + static_cast<size_t>(timestep) * static_cast<size_t>(inputScalars.subsets);
-						WRITE_BUFFER(d_detectorVector[timestep][kk], sizeof(uint32_t) * length[detectorIndex],
-							&w_vec.detectorVector[pituus[detectorIndex]]);
+						if (inputScalars.listmode > 0) {
+							const size_t detectorCount = w_vec.detectorVectorSize > 0
+								? w_vec.detectorVectorSize : static_cast<size_t>(inputScalars.nProjections);
+							WRITE_BUFFER(d_detectorVector[timestep][kk], sizeof(uint32_t) * detectorCount,
+								w_vec.detectorVector);
+						}
+						else {
+							WRITE_BUFFER(d_detectorVector[timestep][kk], sizeof(uint32_t) * length[detectorIndex],
+								&w_vec.detectorVector[pituus[detectorIndex]]);
+						}
 						CHECK(status, "\n", (STATUS_t)(-1));
-						memSize += sizeof(uint32_t) * length[detectorIndex];
+						memSize += sizeof(uint32_t) * (inputScalars.listmode > 0
+							? (w_vec.detectorVectorSize > 0 ? w_vec.detectorVectorSize : static_cast<size_t>(inputScalars.nProjections))
+							: static_cast<size_t>(length[detectorIndex]));
 					}
-					if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
+					if (inputScalars.SPECT && inputScalars.listmode == 1) {
+						const size_t eventIndex = static_cast<size_t>(kk) +
+							static_cast<size_t>(timestep) * static_cast<size_t>(inputScalars.subsets);
+						const float* listCoordZ = w_vec.listCoordZ ? w_vec.listCoordZ : z_det;
+						WRITE_BUFFER(d_z[timestep][kk], sizeof(float) * length[eventIndex] * 5,
+							&listCoordZ[pituus[eventIndex] * 5]);
+						CHECK(status, "\n", (STATUS_t)(-1));
+						memSize += sizeof(float) * length[eventIndex] * 5;
+					}
+					else if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
 						size_t kerroin = 2;
 						if (inputScalars.pitch)
 							kerroin = 6;
 						else if (inputScalars.useHelical)
 							kerroin = 1;
-						WRITE_BUFFER(d_z[timestep][kk], sizeof(float) * length[kk] * kerroin, &z_det[pituus[kk] * kerroin]);
+						WRITE_BUFFER(d_z[timestep][kk], sizeof(float) * length[indD] * kerroin, &z_det[pituus[indD] * kerroin]);
 						CHECK(status, "\n", (STATUS_t)(-1));
-						memSize += (sizeof(float) * length[kk] * kerroin);
+						memSize += sizeof(float) * length[indD] * kerroin;
 					}
 					else {
 						const uint32_t zTimestep = inputScalars.listmode > 0 ? 0U : timestep;
@@ -3809,12 +3897,13 @@ public:
 						CHECK(status, "\n", (STATUS_t)(-1));
 					}
 					if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
-						WRITE_BUFFER(d_x[timestep][kk], sizeof(float) * length[kk] * 6, &x[pituus[kk] * 6]);
+						WRITE_BUFFER(d_x[timestep][kk], sizeof(float) * length[indD] * 6, &x[pituus[indD] * 6]);
 						CHECK(status, "\n", (STATUS_t)(-1));
-						memSize += (sizeof(float) * length[kk] * 6);
+						memSize += sizeof(float) * length[indD] * 6;
 					}
 					else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
-						if (inputScalars.loadTOF || (kk == inputScalars.osa_iter0 && timestep == inputScalars.timestep0)) {
+						if (inputScalars.SPECT || inputScalars.loadTOF ||
+							(kk == inputScalars.osa_iter0 && timestep == inputScalars.timestep0)) {
 							WRITE_BUFFER(d_x[timestep][kk], sizeof(float) * length[kk + timestep * inputScalars.subsets] * 6, 
 								&w_vec.listCoord[pituus[kk + timestep * inputScalars.subsets] * 6]);
 							CHECK(status, "\n", (STATUS_t)(-1));
@@ -3828,9 +3917,24 @@ public:
 						}
 					}
 					if (inputScalars.size_scat > 1ULL && inputScalars.scatter == 1U) { // Load scatter data
-						WRITE_BUFFER(d_scat[timestep][kk], sizeof(float) * length[kk] * vecSize, &extraCorr[pituus[kk] * vecSize + inputScalars.kokoNonTOF * timestep]);
+						WRITE_BUFFER(d_scat[timestep][kk], sizeof(float) * length[indD] * vecSize, &extraCorr[pituus[indD] * vecSize]);
 						CHECK(status, "\n", (STATUS_t)(-1));
-						memSize += (sizeof(float) * length[kk] * vecSize);
+						memSize += sizeof(float) * length[indD] * vecSize;
+					}
+					if (inputScalars.size_norm > 1ULL && inputScalars.normalization_correction) {
+						if (inputScalars.SPECT && inputScalars.normZ == inputScalars.nHeads)
+							WRITE_BUFFER(d_norm[timestep][kk], sizeof(float) * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nHeads, norm);
+						else
+							WRITE_BUFFER(d_norm[timestep][kk], sizeof(float) * length[indD] * vecSize, &norm[pituus[indD] * vecSize]);
+						CHECK(status, "\n", (STATUS_t)(-1));
+						memSize += sizeof(float) * ((inputScalars.SPECT && inputScalars.normZ == inputScalars.nHeads)
+							? static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD) * static_cast<size_t>(inputScalars.nHeads)
+							: static_cast<size_t>(length[indD]) * vecSize);
+					}
+					if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
+						WRITE_BUFFER(d_atten[timestep][kk], sizeof(float) * length[indD] * vecSize, &atten[pituus[indD] * vecSize]);
+						CHECK(status, "\n", (STATUS_t)(-1));
+						memSize += sizeof(float) * length[indD] * vecSize;
 					}
 					if (inputScalars.listmode > 0 && inputScalars.indexBased) {
 						// First condition: load all data at once. Second condition: load one subset at a time (only 1 buffer required for each timestep).
@@ -3922,22 +4026,6 @@ public:
 					CHECK(status, "\n", (STATUS_t)(-1));
 					memSize += (sizeof(uint32_t) * length[kk] + sizeof(uint16_t) * length[kk]);
 				}
-					if (inputScalars.size_norm > 1ULL && inputScalars.normalization_correction) {
-					if (inputScalars.SPECT && inputScalars.normZ == inputScalars.nHeads) {
-							WRITE_BUFFER(d_norm[kk], sizeof(float) * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nHeads, norm);
-							memSize += (sizeof(float) * static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD) * static_cast<size_t>(inputScalars.nHeads));
-						}
-						else {
-							WRITE_BUFFER(d_norm[kk], sizeof(float) * length[kk] * vecSize, &norm[pituus[kk] * vecSize]);
-							memSize += (sizeof(float) * length[kk] * vecSize);
-						}
-						CHECK(status, "\n", (STATUS_t)(-1));
-					}
-				if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-					WRITE_BUFFER(d_atten[kk], sizeof(float) * length[kk] * vecSize, &atten[pituus[kk] * vecSize]);
-					CHECK(status, "\n", (STATUS_t)(-1));
-					memSize += (sizeof(float) * length[kk] * vecSize);
-				}
 			}
 			FINISH_QUEUE(status, "Buffer write failed\n", (STATUS_t)(-1));
 		}
@@ -4010,24 +4098,52 @@ public:
 			d_xyindex.resize(inputScalars.subsetsUsed);
 			d_zindex.resize(inputScalars.subsetsUsed);
 		}
-		if (inputScalars.normalization_correction)
-			d_norm.resize(inputScalars.subsetsUsed);
-		if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation)
-			d_atten.resize(inputScalars.subsetsUsed);
-		if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
-			d_attenB.resize(inputScalars.Nt);
-			d_attenIm.resize(inputScalars.Nt);
-		}
-		if (inputScalars.projector_type != 6) {
+			if (inputScalars.normalization_correction)
+				d_norm.resize(inputScalars.Nt);
+			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation)
+				d_atten.resize(inputScalars.Nt);
+			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+				d_attenB.resize(inputScalars.Nt);
+				d_attenIm.resize(inputScalars.Nt);
+			}
+			if (inputScalars.maskBP) {
+				if (inputScalars.useBuffers)
+					d_maskBPB.resize(inputScalars.Nt);
+				else {
+					maskArrayBP.resize(inputScalars.Nt);
+					if (inputScalars.maskBPZ > 1)
+						d_maskBP3.resize(inputScalars.Nt);
+					else
+						d_maskBP.resize(inputScalars.Nt);
+				}
+				for (int tt = 0; tt < inputScalars.Nt; tt++) {
+					if (inputScalars.useBuffers)
+						d_maskBPB[tt].resize(inputScalars.nMultiVolumes + 1);
+					else {
+						maskArrayBP[tt].resize(inputScalars.nMultiVolumes + 1);
+						if (inputScalars.maskBPZ > 1)
+							d_maskBP3[tt].resize(inputScalars.nMultiVolumes + 1);
+						else
+							d_maskBP[tt].resize(inputScalars.nMultiVolumes + 1);
+					}
+				}
+			}
+			for (int tt = 0; tt < inputScalars.Nt; tt++) {
+				if (inputScalars.normalization_correction)
+					d_norm[tt].resize(inputScalars.subsetsUsed);
+				if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation)
+					d_atten[tt].resize(inputScalars.subsetsUsed);
+			}
+			if (inputScalars.projector_type != 6) {
 			d_scat.resize(inputScalars.Nt);
 			d_x.resize(inputScalars.Nt);
 			d_z.resize(inputScalars.Nt);
             d_detectorVector.resize(inputScalars.Nt);
 			d_trIndex.resize(inputScalars.Nt);
 			d_axIndex.resize(inputScalars.Nt);
-			d_TOFIndex.resize(inputScalars.Nt);
-			for (int tt = 0; tt < inputScalars.Nt; tt++) {
-				d_scat[tt].resize(inputScalars.subsetsUsed);
+				d_TOFIndex.resize(inputScalars.Nt);
+				for (int tt = 0; tt < inputScalars.Nt; tt++) {
+					d_scat[tt].resize(inputScalars.subsetsUsed);
 				d_x[tt].resize(inputScalars.subsetsUsed);
 				d_z[tt].resize(inputScalars.subsetsUsed);
                 d_detectorVector[tt].resize(inputScalars.subsetsUsed);
@@ -4594,7 +4710,7 @@ public:
 				KARG_METAL_SLOT(kernelIndFPSubIter, 5);
 #endif
 			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_atten[osa_iter]);
+					KARG(kTemp, kernelFP, kernelIndFPSubIter, d_atten[timestep][osa_iter]);
 			}
 			else if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
 				if (inputScalars.size_atten > inputScalars.im_dim[0]) {
@@ -4648,13 +4764,13 @@ public:
 			KARG(kTemp, kernelFP, kernelIndFPSubIter, vec_opencl.d_image_os);
 			KARG(kTemp, kernelFP, kernelIndFPSubIter, d_output);
 			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || 
-				(!inputScalars.loadTOF && inputScalars.listmode > 0)) {
+				(!inputScalars.loadTOF && inputScalars.listmode > 0 && !inputScalars.SPECT)) {
 				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_x[0][0]);
 			}
 			else {
 				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_x[timestep][osa_iter]);
 			}
-			if ((inputScalars.CT || inputScalars.PET)) {
+			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT)) {
 				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_z[timestep][osa_iter]);
 			}
 			else if (inputScalars.listmode > 0) {
@@ -4669,11 +4785,11 @@ public:
 					int subset = 0;
 					if (inputScalars.maskFPZ > 1 && !(inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads))
 						subset = osa_iter;
-					KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFPB[subset]);
+					KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFPB[timestep][subset]);
 				}
 				else
 					if (inputScalars.maskFPZ > 1) {
-						KARG(kTemp, kernelFP, kernelIndFPSubIter, (inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads) ? d_maskFP3[0] : d_maskFP3[osa_iter]);
+						KARG(kTemp, kernelFP, kernelIndFPSubIter, (inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads) ? d_maskFP3[timestep][0] : d_maskFP3[timestep][osa_iter]);
 					}
 					else {
 						KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFP);
@@ -4716,7 +4832,7 @@ public:
 				//if (inputScalars.listmode > 0 && inputScalars.indexBased)
 				//	status = kernelFP.setArg(kernelIndFPSubIter++, d_norm[0]);
 				//else
-				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_norm[osa_iter]);
+				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_norm[timestep][osa_iter]);
 			}
 			if (inputScalars.scatter) {
 				KARG_METAL_SLOT(kernelIndFPSubIter, 14);
@@ -4747,11 +4863,11 @@ public:
 					int subset = 0;
 					if (inputScalars.maskFPZ > 1 && !(inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads))
 						subset = osa_iter;
-					KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFPB[subset]);
+					KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFPB[timestep][subset]);
 				}
 				else
 					if (inputScalars.maskFPZ > 1) {
-						KARG(kTemp, kernelFP, kernelIndFPSubIter, (inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads) ? d_maskFP3[0] : d_maskFP3[osa_iter]);
+						KARG(kTemp, kernelFP, kernelIndFPSubIter, (inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads) ? d_maskFP3[timestep][0] : d_maskFP3[timestep][osa_iter]);
 					}
 					else
 						KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFP);
@@ -4762,7 +4878,7 @@ public:
 				//	status = kernelFP.setArg(kernelIndFPSubIter++, d_norm[0]);
 				//else
 				KARG_METAL_SLOT(kernelIndFPSubIter, 8);
-				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_norm[osa_iter]);
+				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_norm[timestep][osa_iter]);
 			}
 			KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, length[osa_iter + timestep * inputScalars.subsets]);
 		}
@@ -4773,11 +4889,11 @@ public:
 					int subset = 0;
 					if (inputScalars.maskFPZ > 1 && !(inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads))
 						subset = osa_iter;
-					KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFPB[subset]);
+					KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFPB[timestep][subset]);
 				}
 				else
 					if (inputScalars.maskFPZ > 1) {
-						KARG(kTemp, kernelFP, kernelIndFPSubIter, (inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads) ? d_maskFP3[0] : d_maskFP3[osa_iter]);
+						KARG(kTemp, kernelFP, kernelIndFPSubIter, (inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads) ? d_maskFP3[timestep][0] : d_maskFP3[timestep][osa_iter]);
 					}
 					else
 						KARG(kTemp, kernelFP, kernelIndFPSubIter, d_maskFP);
@@ -4786,7 +4902,7 @@ public:
 				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, length[osa_iter + timestep * inputScalars.subsets]);
 			}
 			KARG_METAL_SLOT(kernelIndFPSubIter, 8);
-			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0)) {
+			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0 && !inputScalars.SPECT)) {
 				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_x[0][0]);
 			}
 			else
@@ -4805,7 +4921,7 @@ public:
 				//	status = kernelFP.setArg(kernelIndFPSubIter++, d_norm[0]);
 				//else
 				KARG_METAL_SLOT(kernelIndFPSubIter, 10);
-				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_norm[osa_iter]);
+				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_norm[timestep][osa_iter]);
 			}
 			if (inputScalars.scatter) {
 				KARG_METAL_SLOT(kernelIndFPSubIter, 11);
@@ -5009,7 +5125,9 @@ public:
 		kParams.dSize5 = inputScalars.dSizeBP;
 		kParams.kerroin4 = (inputScalars.BPType == 4 && w_vec.kerroin4) ? w_vec.kerroin4[ii] : 0.f;
 		kParams.DSC = inputScalars.DSC;
-		kParams.nProjections = length[indD];
+		kParams.nProjections = compSens && inputScalars.SPECT
+			? static_cast<int64_t>(inputScalars.size_of_x / 6)
+			: length[indD];
 		kParams.no_norm = no_norm;
 		kParams.m_size = m_size;
 		kParams.currentSubset = osa_iter;
@@ -5034,7 +5152,7 @@ public:
 				KARG_METAL_SLOT(kernelIndBPSubIter, 5);
 #endif
 			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-				KARG(kTemp, kernelBP, kernelIndBPSubIter, d_atten[osa_iter]);
+					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_atten[timestep][osa_iter]);
 			}
 			else if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
 				if (inputScalars.size_atten > inputScalars.im_dim[0]) {
@@ -5058,9 +5176,15 @@ public:
 				SET_LAUNCH_RANGE3(global, inputScalars.nRowsD + erotus[0], inputScalars.nColsD + erotus[1], length[indD], local);
 			}
 			else if (inputScalars.listmode > 0 && compSens) {
-				const size_t sensitivityDepth = static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.nLayers);
-				SET_LAUNCH_RANGE3(global, static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0], 
-					static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], sensitivityDepth, local);
+				if (inputScalars.SPECT) {
+					SET_LAUNCH_RANGE3(global, inputScalars.nRowsD + erotusSens[0],
+						inputScalars.nColsD + erotusSens[1], inputScalars.size_of_x / 6, local);
+				}
+				else {
+					const size_t sensitivityDepth = static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.nLayers);
+					SET_LAUNCH_RANGE3(global, static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0],
+						static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], sensitivityDepth, local);
+				}
 			}
 			else {
 				erotus[0] = length[indD] % local_size[0];
@@ -5112,11 +5236,11 @@ public:
 						int subset = 0;
 						if (inputScalars.maskFPZ > 1 && !(inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads))
 							subset = osa_iter;
-						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskFPB[subset]);
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskFPB[timestep][subset]);
 					}
 					else
 						if (inputScalars.maskFPZ > 1) {
-							KARG(kTemp, kernelBP, kernelIndBPSubIter, (inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads) ? d_maskFP3[0] : d_maskFP3[osa_iter]);
+							KARG(kTemp, kernelBP, kernelIndBPSubIter, (inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads) ? d_maskFP3[timestep][0] : d_maskFP3[timestep][osa_iter]);
 						}
 						else
 							KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskFP);
@@ -5124,28 +5248,33 @@ public:
 				if (inputScalars.maskBP) {
 					KARG_METAL_SLOT(kernelIndBPSubIter, 7);
 					if (inputScalars.useBuffers) {
-						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBPB);
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBPB[timestep][ii]);
 					}
-					else
-#if defined(OPENCL)
+					else {
 						if (inputScalars.maskBPZ > 1) {
-							KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBP3);
+							KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBP3[timestep][ii]);
 						}
 						else
-#endif // END CUDA
-							KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBP);
+							KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBP[timestep][ii]);
+					}
 				}
 			}
 			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT) && inputScalars.listmode == 0)
 				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, length[indD]);
 			KARG_METAL_SLOT(kernelIndBPSubIter, 8);
 			if (compSens) {
+#if !defined(METAL)
+				if (inputScalars.SPECT)
+					KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, inputScalars.size_of_x / 6);
+#endif
 				KARG(kTemp, kernelBP, kernelIndBPSubIter, d_xFull[0]);
 				KARG(kTemp, kernelBP, kernelIndBPSubIter, d_zFull[0]);
+#if !defined(METAL)
 				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, inputScalars.rings);
+#endif
 			}
 			else {
-				if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0)) {
+				if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0 && !inputScalars.SPECT)) {
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_x[0][0]);
 				}
 				else
@@ -5176,7 +5305,7 @@ public:
 					//if (inputScalars.listmode > 0 && inputScalars.indexBased)
 					//	status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[0]);
 					//else
-					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_norm[osa_iter]);
+					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_norm[timestep][osa_iter]);
 				}
 				if (inputScalars.scatter) {
 					KARG_METAL_SLOT(kernelIndBPSubIter, 11);
@@ -5543,7 +5672,7 @@ public:
 					//if (inputScalars.listmode > 0 && inputScalars.indexBased)
 					//	status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[0]);
 					//else
-					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_norm[osa_iter]);
+					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_norm[timestep][osa_iter]);
 				}
 			}
 			else {
@@ -5555,9 +5684,15 @@ public:
 						localBP);
 				}
 				else if (inputScalars.listmode > 0 && compSens) {
-					SET_LAUNCH_RANGE3(global, static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0],
-						static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], 
-						static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings), localBP);
+					if (inputScalars.SPECT) {
+						SET_LAUNCH_RANGE3(global, inputScalars.nRowsD + erotusSens[0],
+							inputScalars.nColsD + erotusSens[1], inputScalars.size_of_x / 6, localBP);
+					}
+					else {
+						SET_LAUNCH_RANGE3(global, static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0],
+							static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1],
+							static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings), localBP);
+					}
 				}
 				else {
 					erotus[0] = length[indD] % local_size[0];
@@ -5626,7 +5761,7 @@ public:
 					KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, inputScalars.det_per_ring);
 				}
 				else {
-					if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0)) {
+					if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0 && !inputScalars.SPECT)) {
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_x[0][0]);
 					}
 					else
@@ -5647,11 +5782,11 @@ public:
 							int subset = 0;
 							if (inputScalars.maskFPZ > 1 && !(inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads))
 								subset = osa_iter;
-							KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskFPB[subset]);
+							KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskFPB[timestep][subset]);
 						}
 						else
 							if (inputScalars.maskFPZ > 1) {
-								KARG(kTemp, kernelBP, kernelIndBPSubIter, (inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads) ? d_maskFP3[0] : d_maskFP3[osa_iter]);
+								KARG(kTemp, kernelBP, kernelIndBPSubIter, (inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads) ? d_maskFP3[timestep][0] : d_maskFP3[timestep][osa_iter]);
 							}
 							else
 								KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskFP);
@@ -5659,16 +5794,15 @@ public:
 					if (inputScalars.maskBP) {
 						KARG_METAL_SLOT(kernelIndBPSubIter, 8);
 						if (inputScalars.useBuffers) {
-							KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBPB);
+							KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBPB[timestep][ii]);
 						}
-						else
-#if defined(OPENCL)
+						else {
 							if (inputScalars.maskBPZ > 1) {
-								KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBP3);
+								KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBP3[timestep][ii]);
 							}
 							else
-#endif // END CUDA
-								KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBP);
+								KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBP[timestep][ii]);
+						}
 					}
 				}
 				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, length[indD]);
@@ -5707,7 +5841,7 @@ public:
 					//if (inputScalars.listmode > 0 && inputScalars.indexBased)
 					//	status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[0]);
 					//else
-					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_norm[osa_iter]);
+					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_norm[timestep][osa_iter]);
 				}
 				if (inputScalars.scatter) {
 					KARG_METAL_SLOT(kernelIndBPSubIter, 14);
@@ -5720,16 +5854,15 @@ public:
 			if (inputScalars.CT && inputScalars.maskBP && (inputScalars.BPType == 4 || inputScalars.BPType == 5 || inputScalars.BPType == 7)) {
 				KARG_METAL_SLOT(kernelIndBPSubIter, inputScalars.BPType == 5 ? 10 : 9);
 				if (inputScalars.useBuffers) {
-					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBPB);
+					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBPB[timestep][ii]);
 				}
-				else
-#if defined(OPENCL)
+				else {
 					if (inputScalars.maskBPZ > 1) {
-						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBP3);
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBP3[timestep][ii]);
 					}
 					else
-#endif // END CUDA
-						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBP);
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBP[timestep][ii]);
+				}
 			}
 			if (inputScalars.CT) {
 				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, length[indD]);

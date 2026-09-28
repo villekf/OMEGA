@@ -466,9 +466,16 @@ def _upload_static_buffers(self: Any, torch: Any) -> None:
                 else:
                     values = mask_fp
                 self.d_maskFP[timestep][subset] = _mps_tensor_from_numpy(torch, values, np.uint8)
-    self.d_maskBP = self.mps_empty_uint8
+    self.d_maskBPVolumes = [self.mps_empty_uint8] * (int(self.nMultiVolumes) + 1)
     if self.useMaskBP and self.maskBP.size:
-        self.d_maskBP = _mps_tensor_from_numpy(torch, self.maskBP.ravel(order='F'), np.uint8)
+        mask = self.maskBP.ravel(order='F')
+        offset = 0
+        for volume in range(int(self.nMultiVolumes) + 1):
+            count = int(self.N[volume]) if self.maskBPZ > 1 else int(self.Nx[volume]) * int(self.Ny[volume])
+            self.d_maskBPVolumes[volume] = _mps_tensor_from_numpy(torch, mask[offset:offset + count], np.uint8)
+            offset += count
+
+    self.d_maskBP = self.d_maskBPVolumes[0]
 
     if int(getattr(self, 'FPType', 0)) == 6 or int(getattr(self, 'BPType', 0)) == 6:
         if isinstance(self.gFilter, (list, tuple)) and len(self.gFilter):
@@ -563,6 +570,7 @@ def _kernel_args(
     subset: int,
     timestep: int,
     direction: str,
+    volume: int = 0,
 ) -> list[Any]:
     """Bind every Metal resource slot, using typed empty buffers when inactive."""
     empty_f = self.mps_empty_float32
@@ -576,7 +584,7 @@ def _kernel_args(
         args[4] = self.d_V
         args[5] = atten
         args[6] = self.d_maskFP[timestep][subset]
-        args[7] = self.d_maskBP
+        args[7] = self.d_maskBPVolumes[volume]
         args[8] = _geometry_buffer(self, 'x', timestep, subset)
         args[9] = _geometry_buffer(self, 'z', timestep, subset)
         args[10] = self.d_norm[timestep][subset]
@@ -602,7 +610,7 @@ def _kernel_args(
         args[6] = _geometry_buffer(self, 'z', timestep, subset)
         args[7] = self.d_Sens
         args[8] = self.d_norm[timestep][subset]
-        args[9] = self.d_maskBP
+        args[9] = self.d_maskBPVolumes[volume]
     return args
 
 
@@ -622,7 +630,7 @@ def _projection_size(self: Any, timestep: int, subset: int) -> int:
     # (see projectorType123.cl/projectorType4.cl); listmode TOF writes a single
     # value per event (the TOFid-selected bin only), so no extra factor there.
     tof_bins = int(self.TOF_bins_used) if (self.TOF and self.listmode == 0) else 1
-    if self.subsetType > 7 or self.subsets == 1:
+    if self.listmode == 0 and (self.subsetType > 7 or self.subsets == 1):
         return int(getattr(self, 'measurement_nRowsD', self.nRowsD) * getattr(self, 'measurement_nColsD', self.nColsD) * self.nProjSubset[timestep, subset]) * tof_bins
     return int(self.nMeasSubset[timestep, subset]) * tof_bins
 
@@ -650,7 +658,7 @@ def forward_projection_mps(self: Any, f: Any, subset: int, timestep: int) -> Any
                 type6_forward(self, image, partial, volume, subset, timestep, ops=_type6_torch_ops(self))
             torch.mps.synchronize()
         else:
-            args = _kernel_args(self, self.d_scalar_params[timestep][subset][volume], image, partial, subset, timestep, 'forward')
+            args = _kernel_args(self, self.d_scalar_params[timestep][subset][volume], image, partial, subset, timestep, 'forward', volume)
             self.knlF(
                 *args,
                 threads=tuple(int(value) for value in self.globalSizeFP[timestep][subset]),
@@ -678,7 +686,7 @@ def backward_projection_mps(self: Any, y: Any, subset: int, timestep: int) -> An
                 type6_backward(self, y, output, volume, subset, timestep, ops=_type6_torch_ops(self))
             torch.mps.synchronize()
         else:
-            args = _kernel_args(self, self.d_scalar_params[timestep][subset][volume], y, output, subset, timestep, 'backward')
+            args = _kernel_args(self, self.d_scalar_params[timestep][subset][volume], y, output, subset, timestep, 'backward', volume)
             self.knlB(
                 *args,
                 threads=tuple(int(value) for value in self.globalSizeBP[timestep][subset][volume]),

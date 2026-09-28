@@ -110,6 +110,27 @@ def loadCorrections(options):
 
     """
     import os
+    if options.SPECT and options.scatter_correction and isinstance(options.ScatterC, (list, tuple)):
+        # Veriton and SIMIND loaders supply one DEW or two TEW windows.
+        # Convert them to the additive scatter estimate before the generic
+        # correction code, which consumes an ndarray rather than windows.
+        windows = options.ScatterC
+        if len(windows) == 1:
+            options.ScatterC = np.asfortranarray(windows[0], dtype=np.float32)
+        elif len(windows) == 2:
+            main_width = float(np.diff(np.asarray(options.eWin).reshape(-1))[0])
+            lower_width = float(np.diff(np.asarray(options.eWinL).reshape(-1))[0])
+            upper_width = float(np.diff(np.asarray(options.eWinU).reshape(-1))[0])
+            if min(main_width, lower_width, upper_width) <= 0:
+                raise ValueError('SPECT energy windows must have positive widths.')
+            lower, upper = (np.asarray(w, dtype=np.float32) for w in windows)
+            if lower.shape != upper.shape:
+                raise ValueError('SPECT scatter windows must have matching shapes.')
+            options.ScatterC = np.asfortranarray(
+                0.5 * (main_width / lower_width * lower + main_width / upper_width * upper),
+                dtype=np.float32)
+        else:
+            raise ValueError('SPECT scatter correction requires one DEW or two TEW windows.')
     normalization_shape = np.asarray(options.normalization).shape
     options.normZ = int(normalization_shape[2]) if options.SPECT and len(normalization_shape) == 3 else 1
     normalization_indexed_stack = bool(options.SPECT and int(options.normZ) == int(options.nHeads))
@@ -515,7 +536,7 @@ def parseInputs(options, mDataFound = False):
                     #         options.SinDelayed[0] = options.SinDelayed[0][options.index]
                     # else:
                     if options.subsetType >= 8:
-                        options.SinDelayed = np.reshape(options.SinDelayed, (options.Ndist, options.Nang, -1))
+                        options.SinDelayed = np.reshape(options.SinDelayed, (options.Ndist, options.Nang, -1), order='F')
                         options.SinDelayed = options.SinDelayed[:, :, options.index]
                         options.SinDelayed = options.SinDelayed.ravel(order='F').astype(dtype=np.float32)
                     else:

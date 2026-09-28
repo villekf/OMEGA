@@ -117,6 +117,13 @@ OS_I4_summa = checkAlgorithmsPriors(options, 2,0) + checkAlgorithmsPriors(option
 preCondImAlg = checkAlgorithmsPriors(options, 7);
 preCondMeasAlg = checkAlgorithmsPriors(options, 8);
 
+if (options.SPECT || options.PET) && options.useMultiResolutionVolumes && options.attenuation_correction && options.CT_attenuation
+    warning('Image-domain attenuation correction is not supported with multi-resolution reconstruction. Disabling attenuation correction.')
+    options.attenuation_correction = false;
+    if isfield(options, 'vaimennus')
+        options = rmfield(options, 'vaimennus');
+    end
+end
 if numel(options.partitions) > 1
     partitions = numel(options.partitions);
 else
@@ -481,7 +488,7 @@ if (options.projector_type == 6)
         error('Subset types 0-7 are not supported with projector type 6!')
     end
 end
-if (~options.use_raw_data && options.SPECT) && ~ismember(options.subset_type, [8,9,10,11])
+if (~options.use_raw_data && options.SPECT && options.listmode == 0) && ~ismember(options.subset_type, [8,9,10,11])
     error('Only subset types 8-11 are supported with SPECT sinogram reconstruction')
 end
 if options.FDK && (options.Niter > 1 || options.subsets > 1)

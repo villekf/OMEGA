@@ -64,11 +64,13 @@ typedef struct structForScalars {
 		dL = 0.f, flat = 0.f, cylRadiusProj3 = 0.f, DSC = 0.f, helicalRadius = 0.f;//, T = 0.f
 	std::vector<float> dx{ 0.f, 0.f }, dy{ 0.f, 0.f }, dz{ 0.f, 0.f }, bx{ 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f }, by{ 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f }, 
 		bz{ 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f };
+	// Column-major [projection frame, timestep] weights for listmode SPECT sensitivity.
+	std::vector<float> sensitivityViewWeights;
     bool useHalf = false;
 	bool use_psf = false, TOF = false, SPECT = false, pitch = false, PET = false, meanFP = false, meanBP = false,
 		maskFP = false, maskBP = false, orthXY = false, orthZ = false, CT = false, atomic_64bit = false, atomic_32bit = false, loadTOF = true,
 		saveIter = false, enforcePositivity = false, computeSensImag = false, useMAD = true, useImages = false, eFOV = false,
-		useExtendedFOV = false, use64BitIndices = false, TGV2D = false, multiResolution = false, offset = false, relaxScaling = false,
+		useExtendedFOV = false, use64BitIndices = false, TGV2D = false, multiResolution = false, storeMultiResolution = false, offset = false, relaxScaling = false,
 		computeRelaxation = false, storeFP = false, deconvolution = false, CTAttenuation = true, largeDim = false, storeResidual = false,
 		useBuffers = true, useFDKWeights = false, indexBased = false, FISTAAcceleration = false, stochastic = false, useTotLength = true,
 		useParallelBeam = false, useHelical = false;

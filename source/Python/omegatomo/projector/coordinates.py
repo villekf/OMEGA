@@ -56,6 +56,7 @@ def computePixelSize(options):
             xx = np.linspace(etaisyys[kk,0] + options.oOffsetX, -etaisyys[kk,0] + options.oOffsetX, options.Nx + 1, dtype=np.float32)
             yy = np.linspace(etaisyys[kk,1] + options.oOffsetY, -etaisyys[kk,1] + options.oOffsetY, options.Ny + 1, dtype=np.float32)
             zz = np.linspace(etaisyys[kk,2] + options.oOffsetZ, -etaisyys[kk,2] + options.oOffsetZ, options.Nz + 1, dtype=np.float32)
+        
         # Distance of adjacent pixels
         options.dx[kk] = xx[1] - xx[0]
         options.dy[kk] = yy[1] - yy[0]
@@ -66,6 +67,10 @@ def computePixelSize(options):
             options.bx[kk] = xx[0]
             options.by[kk] = yy[0]
             options.bz[kk] = zz[0]
+            if not options.useMultiResolutionVolumes:
+                options.bx[kk] += options.eFOVShift[0]
+                options.by[kk] += options.eFOVShift[1]
+                options.bz[kk] += options.eFOVShift[2]
         else:
             if kk > 4 or (FOV.shape[0] == 5 and kk > 2):
                 if kk % 2 == 0:
@@ -73,14 +78,14 @@ def computePixelSize(options):
                 else:
                     options.by[kk] = options.oOffsetY - FOV[0][1] / 2 - FOV[kk,1]
                 options.bx[kk] = xx[0]
-                options.bz[kk] = zz[0]
+                options.bz[kk] = zz[0] + options.eFOVShift[2]
             elif (kk > 2 and kk < 5) or (FOV.shape[0] == 5 and kk > 0):
                 if kk % 2 == 0:
                     options.bx[kk] = etaisyys[0,0] + options.oOffsetX + FOV[0,0]
                 else:
                     options.bx[kk] = etaisyys[0,0] + options.oOffsetX - FOV[kk,0]
-                options.by[kk] = yy[0]
-                options.bz[kk] = zz[0]
+                options.by[kk] = yy[0] + options.eFOVShift[1]
+                options.bz[kk] = zz[0] + options.eFOVShift[2]
             elif kk > 0 and kk < 3:
                 options.bx[kk] = xx[0]
                 options.by[kk] = yy[0]
