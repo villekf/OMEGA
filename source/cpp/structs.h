@@ -111,12 +111,13 @@ typedef struct Weighting_ {
 	af_diffusion_eq DiffusionType;
 #endif
 	TVdata data;
-	float *sigma_PKMA = nullptr, * uv = nullptr, * angles = nullptr, * NLM_ref = nullptr, * refImage = nullptr, * alphaPrecond = nullptr, * kerroin4 = nullptr, * weights = nullptr, *listCoord = nullptr, * RDP_ref = nullptr;
+	float *sigma_PKMA = nullptr, * uv = nullptr, * angles = nullptr, * NLM_ref = nullptr, * refImage = nullptr, * alphaPrecond = nullptr, * kerroin4 = nullptr, * weights = nullptr, *listCoord = nullptr, *listCoordZ = nullptr, * RDP_ref = nullptr;
 	uint32_t* rekot = nullptr;
     int32_t *distInt = nullptr, *distInt2 = nullptr;
 	uint8_t* maskFP = nullptr, * maskBP = nullptr, * eFOVIndices = nullptr, *maskPrior = nullptr, *maskOffset = nullptr, *TOFIndices = nullptr;
 	uint16_t* axIndex = nullptr, * trIndex = nullptr;
 	uint32_t* detectorVector = nullptr;
+	size_t detectorVectorSize = 0;
 	std::vector<float> epsilon_mramla, betaLSQR, alphaLSQR, thetaLSQR, rhoLSQR, phiLSQR, betaFISTA, tFISTA, tNFista;
     std::vector<std::vector<float>> tauCP, tauCP2, LCP, LCP2, alphaCP, sigmaCP, sigma2CP, thetaCP, lambda, lambdaFiltered, alphaM, alphaBB;
     float U = 1000000.f, h_ACOSEM = 1.f, TimeStepAD, KAD, w_sum = 0.f, h2 = 1.f, huber_delta = 0.f, ACOSEM_rhs = 0.f, h_ACOSEM_2 = 1.f, RDP_gamma = 1.f,
@@ -127,7 +128,7 @@ typedef struct Weighting_ {
 	uint32_t Ndx = 1u, Ndy = 1u, Ndz = 0u, NiterAD = 1u, dimmu, inffi, Nlx = 1u, Nly = 1u, Nlz = 0u;
 	bool med_no_norm = false, MBSREM_prepass = false, NLM_MRP = false, NLTV = false, NLRD = false, NLLange = false, NLM_anatomical = false, computeD = false,
 		precondIm = false, precondMeas = false, computeM = false, RDPLargeNeighbor = false, UseL2Ball = true, NLLangeFiltered = false, filteringOrig = false, NLGGMRF = false, RDP_anatomical = false, 
-		NLAdaptive = false;
+		NLAdaptive = false, NLMaxWeight = false, NLGM = false;
 	std::vector<bool> precondTypeMeas{ false, false }, precondTypeIm{ false, false, false, false, false, false, false };
 	int64_t nProjections = 0LL;
 	uint32_t nPriors = 0U, nMAP = 0U, nMAPML = 0U, nMLEM = 0U, nOS = 0U, nTot = 0U, nMAPOS = 0U, nPriorsTot = 0U, ng = 20U;

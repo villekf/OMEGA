@@ -8,10 +8,11 @@ This version implements a deep-image-prior reconstruction with a 3-D U-net.
 The OMEGA forward and backward projectors are used to optimize the network
 parameters directly from the measured SPECT projections.
 
-This example uses PyTorch thus requires either a CUDA or Metal compatible device.
+This example uses PyTorch thus requires either a CUDA, HIP (AMD ROCm) or Metal compatible device. For HIP, install the ROCm builds of CuPy and PyTorch.
 """
 
 # %% Imports and run configuration
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -36,8 +37,8 @@ if sys.platform == 'darwin':
     device = torch.device("mps")
 else:
     options.useCUDA = True
-    options.useCuPy = True # Use CuPy, PyCUDA support is deprecated
-    device = torch.device("cuda")
+    options.useCuPy = True # Use CuPy (required for CUDA and HIP; PyCUDA is no longer supported)
+    device = torch.device("cuda") # Also used by ROCm (HIP) builds of PyTorch
 
 
 ###########################################################################
@@ -213,8 +214,11 @@ options.verbose = 1
 # 6 = Rotation-based projector
 # See the documentation on some details on the projectors:
 # https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
-# NOTE: with rotation-based projector, the sinogram must be resized and
-# resampled to match FOV XZ-plane size and resolution.
+# NOTE: with rotation-based projector, the custom-operator FP/BP helpers
+# resample internally between the detector grid and each volume's
+# image-sized projection grid, so the sinogram does not need to be
+# pre-resized or pre-resampled to match the FOV XZ-plane (see proj.py,
+# around line 632, for the shared type-6 FP/BP grid-transform helpers).
 options.projector_type = 1
 
 ### Use images instead of buffers? For rotation-based projector this

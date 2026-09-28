@@ -188,6 +188,8 @@ struct inputStruct {
     float TimeStepAD;
     // RDP scaling value
     float RDP_gamma;
+    // Geman-McClure scaling value, i.e. the delta of NLGM
+    float GM_delta;
     // Huber bound
     float huber_delta;
     // Bounds for the gradient-based preconditioner
@@ -300,10 +302,14 @@ struct inputStruct {
     bool NLLange = false;
     // Use NLGGMRF
     bool NLGGMRF = false;
+    // Use non-local Geman-McClure
+    bool NLGM = false;
     // Use reference image for NLM
     bool NLM_use_anatomical = false;
     // Use adaptive NLM
     bool NLAdaptive = false;
+    // Include the reference voxel itself in the NLM neighborhood with the largest of the weights
+    bool NLMaxWeight = false;
     // Use anatomical weighting for TV
     bool TV_use_anatomical = false;
     // Include neighboring corners with RDP
@@ -539,6 +545,12 @@ struct inputStruct {
     // More reference images
     float* NLM_ref;
     float* RDP_ref;
+    // Optional full-view sensitivity geometry for listmode SPECT.
+    float* zSens = nullptr;
+    uint64_t sizeZSens = 0;
+    uint64_t sizeDetectorVector = 0;
+    float* sensitivityViewWeights = nullptr;
+    uint64_t sizeSensitivityViewWeights = 0;
 };
 
 void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting& w_vec, RecMethods& MethodList) {
@@ -911,6 +923,9 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         inputScalars.ellipseRadiusY = options.ellipseRadiusY;
         inputScalars.ellipseRadiusZ = options.ellipseRadiusZ;
         inputScalars.ellipsePower = options.ellipsePower;
+        // Kernels test for box support with a finite threshold, as isinf() is unreliable under fast-math
+        if (!std::isfinite(inputScalars.ellipsePower))
+            inputScalars.ellipsePower = std::numeric_limits<float>::max();
     } else {
         inputScalars.nColsD = options.Nang;
         inputScalars.nRowsD = options.Ndist;
@@ -958,7 +973,15 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         inputScalars.maskFPZ = options.maskFPZ;
     }
     if (inputScalars.normalization_correction) {
-        inputScalars.normZ = options.normZ;
+        // Derive normZ from the actual element count so a per-projection normalization supplied
+        // as a plain vector (normZ left at its nHeads-colliding default) is not misread as
+        // detector-head indexed. inputScalars.size_norm isn't set yet at this point in the Python
+        // path (omega_maincpp.cpp sets it from options.sizeNorm after copyStruct returns), so the
+        // raw options.sizeNorm field is used instead; nRowsD/nColsD/SPECT are already copied above.
+        if (inputScalars.SPECT && options.sizeNorm > 1 && inputScalars.nRowsD * inputScalars.nColsD > 0)
+            inputScalars.normZ = static_cast<uint32_t>(options.sizeNorm / (static_cast<uint64_t>(inputScalars.nRowsD) * inputScalars.nColsD));
+        else
+            inputScalars.normZ = options.normZ;
     }
     if (inputScalars.maskBP) {
         w_vec.maskBP = options.maskBP;
@@ -979,13 +1002,19 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
 		w_vec.dPitchX = options.dPitchX;
 		w_vec.dPitchY = options.dPitchY;
 		if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
-			w_vec.rayShiftsDetector = options.rayShiftsDetector;
-			w_vec.rayShiftsSource = options.rayShiftsSource;
-			w_vec.detectorVector = options.detectorVector;
+		w_vec.rayShiftsDetector = options.rayShiftsDetector;
+		w_vec.rayShiftsSource = options.rayShiftsSource;
+		w_vec.detectorVector = options.detectorVector;
+		w_vec.detectorVectorSize = static_cast<size_t>(options.sizeDetectorVector);
 		}
     } else {
         w_vec.dPitchX = options.cr_p; // Detector pitch
         w_vec.dPitchY = options.cr_pz;
+    }
+    if (inputScalars.SPECT && inputScalars.listmode > 0 && options.sizeSensitivityViewWeights > 0) {
+        inputScalars.sensitivityViewWeights.assign(
+            options.sensitivityViewWeights,
+            options.sensitivityViewWeights + options.sizeSensitivityViewWeights);
     }
     if (inputScalars.FPType == 4 || inputScalars.BPType == 4)
         w_vec.kerroin4 = options.kerroin4;
@@ -1283,11 +1312,15 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.NLM_MRP = options.NLM_MRP;
         w_vec.NLLange = options.NLLange;
         w_vec.NLGGMRF = options.NLGGMRF;
+        w_vec.NLGM = options.NLGM;
         w_vec.NLAdaptive = options.NLAdaptive;
+        w_vec.NLMaxWeight = options.NLMaxWeight;
         if (w_vec.NLRD)
             w_vec.RDP_gamma = options.RDP_gamma;
         else if (w_vec.NLLange)
             w_vec.RDP_gamma = options.SATVPhi;
+        else if (w_vec.NLGM)
+            w_vec.RDP_gamma = options.GM_delta;
         else if (w_vec.NLGGMRF) {
             w_vec.GGMRF_p = options.GGMRF_p;
             w_vec.GGMRF_q = options.GGMRF_q;

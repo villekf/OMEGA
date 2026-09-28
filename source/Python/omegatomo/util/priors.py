@@ -39,7 +39,6 @@ def RDP(im, Nx, Ny, Nz, gamma, beta, rType = 0, clctx = -1, queue = -1):
         import torch
     elif rType == 3:
         import pyopencl as cl
-    import os
     import numpy as np
     
     if type(Nx) == np.ndarray:
@@ -56,10 +55,13 @@ def RDP(im, Nx, Ny, Nz, gamma, beta, rType = 0, clctx = -1, queue = -1):
         queue = cl.CommandQueue.from_int_ptr(q)
         bOpt = ('-cl-single-precision-constant', '-DOPENCL', '-DCAST=float',)
     elif rType == 1 or rType == 2:
-        bOpt = ('-DCUDA', '-DPYTHON',)
+        isHip = bool(getattr(cp.cuda.runtime, 'is_hip', False))
+        bOpt = ('-DHIP', '-DPYTHON',) if isHip else ('-DCUDA', '-DPYTHON',)
+        if isHip:
+            raise ValueError('RDP standalone function requires CUDA texture support, which CuPy does not provide on ROCm/HIP. Use forward/backward projector types 1-4 with the full OMEGA reconstruction pipeline instead, or use a non-ROCm CuPy build.')
     elif rType == 3:
         bOpt = ('-cl-single-precision-constant', '-DOPENCL', '-DCAST=float',)
-    
+
     bOpt += ('-DRDP', '-DUSEIMAGES', '-DLOCAL_SIZE=16', '-DLOCAL_SIZE2=16',)
     
     epps = 1e-8
@@ -76,7 +78,8 @@ def RDP(im, Nx, Ny, Nz, gamma, beta, rType = 0, clctx = -1, queue = -1):
     globalSize[1] = Ny + erotus[1]
     globalSize[2] = Nz
     
-    headerDir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', '..', 'opencl')) + "/"
+    from omegatomo.util.paths import opencl_header_dir
+    headerDir = opencl_header_dir()
     with open(headerDir + 'general_opencl_functions.h', encoding="utf8") as f:
         hlines = f.read()
     with open(headerDir + 'auxKernels.cl', encoding="utf8") as f:
@@ -192,7 +195,8 @@ def NLReg(im, Nx, Ny, Nz, h, beta, SW = (1, 1, 1), PW = (1, 1, 1), rType = 0, cl
         3 = PyOpenCL. Default is 0.
         
         NLType: The regularization type. 0 = NLM, 1 = NLTV, 2 = NLM filtered, 3 = 
-        NLRD, 4 = NL Lange, 5 = NL filtered with Lange, and 6 = NLGGMRF.
+        NLRD, 4 = NL Lange, 5 = NL filtered with Lange, 6 = NLGGMRF, and
+        7 = NL Geman-McClure.
         
         SW: The search window (neighborhood) size. A tuple that that contains the number
         of voxels included for each dimension. Default is (1, 1, 1) which corresponds
@@ -207,7 +211,9 @@ def NLReg(im, Nx, Ny, Nz, h, beta, SW = (1, 1, 1), PW = (1, 1, 1), rType = 0, cl
         while smaller values emphasize the center voxel.
         
         gamma: The adjustable value for NLRD. Scalar float. Only required by NLRD.
-        Lower values smooth the image, while larger make it sharper.
+        Lower values smooth the image, while larger make it sharper. Also used as the
+        delta of NL Geman-McClure (NLType 7), where differences much larger than it
+        are ignored by the prior.
         
         phi: The adjustable value for NLLange. Scalar float. Only required by NLLange.
         
@@ -244,7 +250,6 @@ def NLReg(im, Nx, Ny, Nz, h, beta, SW = (1, 1, 1), PW = (1, 1, 1), rType = 0, cl
         import torch
     elif rType == 3:
         import pyopencl as cl
-    import os
     import numpy as np
     
     if type(Nx) == np.ndarray:
@@ -261,11 +266,14 @@ def NLReg(im, Nx, Ny, Nz, h, beta, SW = (1, 1, 1), PW = (1, 1, 1), rType = 0, cl
         queue = cl.CommandQueue.from_int_ptr(q)
         bOpt = ('-cl-single-precision-constant', '-DOPENCL', '-DCAST=float',)
     elif rType == 1 or rType == 2:
-        bOpt = ('-DCUDA', '-DPYTHON',)
+        isHip = bool(getattr(cp.cuda.runtime, 'is_hip', False))
+        bOpt = ('-DHIP', '-DPYTHON',) if isHip else ('-DCUDA', '-DPYTHON',)
+        if isHip:
+            raise ValueError('NLReg standalone function requires CUDA texture support, which CuPy does not provide on ROCm/HIP. Use forward/backward projector types 1-4 with the full OMEGA reconstruction pipeline instead, or use a non-ROCm CuPy build.')
     elif rType == 3:
         bOpt = ('-cl-single-precision-constant', '-DOPENCL', '-DCAST=float',)
-    
-    bOpt += ('-DNLM_', '-DUSEIMAGES', '-DLOCAL_SIZE=16', '-DLOCAL_SIZE2=16', '-DNLTYPE=' + str(NLType), '-DSWINDOWX=' + str(SW[0]), 
+
+    bOpt += ('-DNLM_', '-DUSEIMAGES', '-DLOCAL_SIZE=16', '-DLOCAL_SIZE2=16', '-DNLTYPE=' + str(NLType), '-DSWINDOWX=' + str(SW[0]),
              '-DSWINDOWY=' + str(SW[1]), '-DSWINDOWZ=' + str(SW[2]), '-DPWINDOWX=' + str(PW[0]), '-DPWINDOWY=' + str(PW[1]), 
              '-DPWINDOWZ=' + str(PW[2]),)
     if (useAdaptive):
@@ -290,7 +298,8 @@ def NLReg(im, Nx, Ny, Nz, h, beta, SW = (1, 1, 1), PW = (1, 1, 1), rType = 0, cl
     globalSize[1] = Ny + erotus[1]
     globalSize[2] = Nz
     
-    headerDir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', '..', 'opencl')) + "/"
+    from omegatomo.util.paths import opencl_header_dir
+    headerDir = opencl_header_dir()
     with open(headerDir + 'general_opencl_functions.h', encoding="utf8") as f:
         hlines = f.read()
     with open(headerDir + 'auxKernels.cl', encoding="utf8") as f:
@@ -483,7 +492,6 @@ def TV(im, Nx, Ny, Nz, beta, sValue = 1e-4, rType = 0, clctx = -1, queue = -1, L
         import torch
     elif rType == 3:
         import pyopencl as cl
-    import os
     import numpy as np
     
     if type(Nx) == np.ndarray:
@@ -500,10 +508,13 @@ def TV(im, Nx, Ny, Nz, beta, sValue = 1e-4, rType = 0, clctx = -1, queue = -1, L
         queue = cl.CommandQueue.from_int_ptr(q)
         bOpt = ('-cl-single-precision-constant', '-DOPENCL', '-DCAST=float',)
     elif rType == 1 or rType == 2:
-        bOpt = ('-DCUDA', '-DPYTHON',)
+        isHip = bool(getattr(cp.cuda.runtime, 'is_hip', False))
+        bOpt = ('-DHIP', '-DPYTHON',) if isHip else ('-DCUDA', '-DPYTHON',)
+        if isHip:
+            raise ValueError('TV standalone function requires CUDA texture support, which CuPy does not provide on ROCm/HIP. Use forward/backward projector types 1-4 with the full OMEGA reconstruction pipeline instead, or use a non-ROCm CuPy build.')
     elif rType == 3:
         bOpt = ('-cl-single-precision-constant', '-DOPENCL', '-DCAST=float',)
-    
+
     bOpt += ('-DTVGRAD', '-DUSEIMAGES', '-DLOCAL_SIZE=16', '-DLOCAL_SIZE2=16',)
     
     if Lange:
@@ -522,7 +533,8 @@ def TV(im, Nx, Ny, Nz, beta, sValue = 1e-4, rType = 0, clctx = -1, queue = -1, L
     globalSize[1] = Ny + erotus[1]
     globalSize[2] = Nz
     
-    headerDir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', '..', 'opencl')) + "/"
+    from omegatomo.util.paths import opencl_header_dir
+    headerDir = opencl_header_dir()
     with open(headerDir + 'general_opencl_functions.h', encoding="utf8") as f:
         hlines = f.read()
     with open(headerDir + 'auxKernels.cl', encoding="utf8") as f:

@@ -6,7 +6,7 @@ with or without subsets and with or without multi-resolution reconstruction. For
 on before trying them. Likewise, turn the multi-resolution off when using non-multi-resolution cases. Default is with subsets but without
 multi-resolution. Filtering-based preconditioner is on.
 
-For CUDA, there are no recommendations on which version to use. This version uses PyTorch inputs, but CuPy version is available too.
+For CUDA/HIP, there are no recommendations on which version to use. This version uses PyTorch inputs, but CuPy version is available too. For HIP, install the ROCm builds of CuPy and PyTorch; HIP is then used automatically.
 
 Note that custom algorithm refers to your own algorithms and not the built-in algorithms. This example merely has the CGLS/PDHG algorithms
 shown as examples. The forward and/or backward projections of OMEGA are utilized for the computation of these algorithms. CGLS has been commented
@@ -145,7 +145,7 @@ options.flip_image = True
 # reconstruction, i.e. the rotation is performed in the detector space.
 # Positive values perform the rotation in counter-clockwise direction
 options.offangle = (3.*np.pi)/2.
-# Computation device (this has no effect on CUDA)
+# Computation device (this has no effect on CUDA/HIP)
 options.deviceNum = 0
 # Projector, see https://omega-doc.readthedocs.io/en/latest/selectingprojector.html for details
 options.projector_type = 5
@@ -194,7 +194,7 @@ options.powerIterations = 10
 # Needed for CT data
 options.CT = True
 
-# If True, uses CUDA
+# If True, uses CUDA (or HIP, when CuPy is a ROCm build)
 options.useCUDA = True
 
 # Assumes that PyTorch tensors are input as for forward and backward projections

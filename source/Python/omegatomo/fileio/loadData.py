@@ -116,6 +116,8 @@ def loadROOT(options, store_coordinates = False):
         libname = str(os.path.join(libdir,"libRoot.dll"))
     else:
         libname = str(os.path.join(libdir,"libRoot.so"))
+    from omegatomo.util.dllpath import addDLLDirectories
+    addDLLDirectories()
     c_lib = ctypes.CDLL(libname)
     DtrIndex = np.empty(0, dtype=np.uint16)
     DaxIndex = np.empty(0, dtype=np.uint16)

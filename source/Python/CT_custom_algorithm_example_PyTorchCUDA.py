@@ -14,7 +14,7 @@ of these algorithms. The idea of this example is to show how
 you can compute your own algorithms with the OMEGA projector operators and utilizing 
 many of the built-in features such as subsets and corrections.
 
-This example uses PyTorch and CuPy and thus requires CUDA (and CuPy and PyTorch)!
+This example uses PyTorch and CuPy and thus requires a CUDA or HIP (AMD ROCm) capable device (and CuPy and PyTorch)! For HIP, install the ROCm builds of CuPy and PyTorch; HIP is then used automatically.
 """
 import numpy as np
 from omegatomo.projector import proj
@@ -276,10 +276,10 @@ CTEFOVCorrection(options)
 # offset weighting by setting this to True.
 options.offsetCorrection = False
 
-### OpenCL/CUDA device used
+### OpenCL/CUDA/HIP device used
 options.deviceNum = 0
 
-# If True, uses CUDA
+# If True, uses CUDA (or HIP, when CuPy is a ROCm build)
 options.useCUDA = True
 
 # Assumes that PyTorch tensors are input as for forward and backward projections

@@ -116,7 +116,7 @@
 	FLOAT2 crystalSize = scalarParams.dPitch; \
     FLOAT3 ellipseCenter = scalarParams.ellipseCenter; \
     FLOAT3 ellipseRadii = scalarParams.ellipseRadii; \
-    FLOAT ellipsePower = scalarParams.ellipsePower; \
+    float ellipsePower = scalarParams.ellipsePower; \
 	FLOAT bmin = scalarParams.bmin; \
 	FLOAT bmax = scalarParams.bmax; \
 	FLOAT Vmax = scalarParams.Vmax; \
@@ -141,6 +141,7 @@
     const float dL = scalarParams.dL; \
     const float global_factor = scalarParams.global_factor; \
     const float sigma_x = scalarParams.sigma_x; \
+    const float d_epps = scalarParams.epps; \
     const uint3 d_N = scalarParams.d_N; \
     const float3 b = scalarParams.b; \
     const float3 bmax = scalarParams.d_bmax; \
@@ -151,7 +152,9 @@
     const uchar no_norm = scalarParams.no_norm; \
     const unsigned long m_size = scalarParams.m_size; \
     const uint currentSubset = scalarParams.currentSubset; \
-	const int aa = scalarParams.aa;
+    const int aa = scalarParams.aa; \
+    const float bzGlobalMin = scalarParams.dSize5.x; \
+    const float bzGlobalMax = scalarParams.dSize5.y;
 
 #define UNPACK_SCALAR_PARAMS_4_BP(scalarParams) \
     const uint d_size_x = scalarParams.nRowsD; \
@@ -161,11 +164,14 @@
     const uint3 d_N = scalarParams.d_N; \
     const float3 b = scalarParams.b; \
     const float3 d_d = scalarParams.d; \
+    const float2 dSize5 = scalarParams.dSize5; \
     const float kerroin = scalarParams.kerroin4; \
     const float DSC = scalarParams.DSC; \
     const uchar no_norm = scalarParams.no_norm; \
     const long d_nProjections = scalarParams.nProjections; \
-    const int ii = scalarParams.aa;
+    const int ii = scalarParams.aa; \
+    const float bzGlobalMin = scalarParams.dSize5.x; \
+    const float bzGlobalMax = scalarParams.dSize5.y;
 
 #define UNPACK_SCALAR_PARAMS_5_FP(scalarParams) \
     const uint d_nRows = scalarParams.nRowsD; \
@@ -177,6 +183,19 @@
     const float3 d_d = scalarParams.d; \
     const float3 d_scale = scalarParams.d_Scale5; \
     const long d_nProjections = scalarParams.nProjections;
+
+#define UNPACK_SCALAR_PARAMS_5_BP(scalarParams) \
+    const uint d_nRows = scalarParams.nRowsD; \
+    const uint d_nCols = scalarParams.nColsD; \
+    const float2 d_dPitch = scalarParams.dPitch; \
+    const uint3 d_N = scalarParams.d_N; \
+    const float3 b = scalarParams.b; \
+    const float3 d_d = scalarParams.d; \
+    const float3 d_scale = scalarParams.d_Scale5; \
+    const float2 d_Size = scalarParams.dSize5; \
+    const long d_nProjections = scalarParams.nProjections; \
+    const uchar no_norm = scalarParams.no_norm; \
+    const int ii = scalarParams.aa;
 
 #define UNPACK_SCALAR_PARAMS_PDHG(scalarParams) \
     const int3 N = scalarParams.N_PDHG; \
@@ -222,6 +241,8 @@ constexpr metal::sampler samplerMask(
     metal::filter::nearest,
     metal::address::clamp_to_edge
 );
+
+using metal::dot;
 
 #ifdef HALF // 16-bit floating point
 #define CFLOAT(a) static_cast<half>(a)
@@ -276,6 +297,7 @@ constexpr metal::sampler samplerMask(
 #define CUINT3(a) uint3(a)
 #define CUINT_rtp(a) static_cast<uint>(metal::ceil((a)))
 #define CUINT_rtz(a) static_cast<uint>(metal::trunc((a)))
+#define CUINT_rte(a) static_cast<uint>(metal::rint((a)))
 #define CUINT_sat_rtz(a) static_cast<uint>(metal::clamp(metal::trunc(((float)a)), 0.0f, 4294967295.0f)) // TODO replace float with FLOAT
 #define DEVICE inline
 #define DISTANCE metal::distance
@@ -331,6 +353,7 @@ constexpr metal::sampler samplerMask(
 #define TEX7 [[texture(7)]]
 #define TEX8 [[texture(8)]]
 #define TEX9 [[texture(9)]]
+#define TEX10 [[texture(10)]]
 #define TEX19 [[texture(19)]]
 #else
 #define TEX1 [[buffer(1)]]
@@ -340,11 +363,9 @@ constexpr metal::sampler samplerMask(
 #define TEX7 [[buffer(7)]]
 #define TEX8 [[buffer(8)]]
 #define TEX9 [[buffer(9)]]
+#define TEX10 [[buffer(10)]]
 #define TEX19 [[buffer(19)]]
 #endif
-// Metal function definitions
-using metal::dot;
-
 #if defined(ATOMIC32)
 inline void atomicAdd(volatile device metal::atomic_int* addr, int val)
 {
@@ -609,12 +630,16 @@ __constant sampler_t sampler_MASKFP = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_N
 #define FMAD2(a, b, c) __fmaf_rn2(a, b, c)
 #define FMAD3(a, b, c) __fmaf_rn3(a, b, c)
 #define CLAMP3(a, b, c) clamp3(a, b, c)
-#define GID0 (threadIdx.x + blockIdx.x * blockDim.x)
-#define GID1 (threadIdx.y + blockIdx.y * blockDim.y)
-#define GID2 (threadIdx.z + blockIdx.z * blockDim.z)
-#define GSIZE0 (blockDim.x * gridDim.x)
-#define GSIZE1 (blockDim.y * gridDim.y)
-#define GSIZE2 (blockDim.z * gridDim.z)
+// Widened to 64-bit (via ULONG) to match OpenCL's get_global_id/get_global_size, which return
+// size_t
+// This keeps global-index arithmetic shared with OpenCL kernels (e.g. idx = GID0 + GID1 *
+// d_size_x + GID2 * d_sizey * d_size_x) from silently overflowing 32-bit at large volumes
+#define GID0 ((ULONG)threadIdx.x + (ULONG)blockIdx.x * (ULONG)blockDim.x)
+#define GID1 ((ULONG)threadIdx.y + (ULONG)blockIdx.y * (ULONG)blockDim.y)
+#define GID2 ((ULONG)threadIdx.z + (ULONG)blockIdx.z * (ULONG)blockDim.z)
+#define GSIZE0 ((ULONG)blockDim.x * (ULONG)gridDim.x)
+#define GSIZE1 ((ULONG)blockDim.y * (ULONG)gridDim.y)
+#define GSIZE2 ((ULONG)blockDim.z * (ULONG)gridDim.z)
 #define GRID0 blockIdx.x
 #define GRID1 blockIdx.y
 #define GRID2 blockIdx.z
@@ -1141,8 +1166,8 @@ DEVICE float normPDF(const float x, const float mu, const float invSigma, const 
 	return piPerSigma * EXP(-0.5f * a * a);
 }
 
-DEVICE void TOFDis(const float3 diff, const float tc, const float LL, float* D, float* DD) {
-	*D = length(diff * tc) - LL / 2.f;
+DEVICE void TOFDis(const float tStart, const float LL, float* D, float* DD) {
+	*D = LL * tStart - LL / 2.f;
 	*DD = *D;
 }
 
@@ -1180,16 +1205,18 @@ DEVICE float TOFLoop(const float DDsign, const float element, CONSTANT float* TO
 
 #if defined(N_RAYS)
 DEVICE void multirayCoordinateShiftXY(PTR_THR FLOAT3 *s, PTR_THR FLOAT3 *d, const int lor, const float cr) {
-	float interval = cr / (CFLOAT(N_RAYS2D * 2));
-	(*s).x += (interval - cr / 2.f);
-	(*d).x += (interval - cr / 2.f);
-	(*s).y += (interval - cr / 2.f);
-	(*d).y += (interval - cr / 2.f);
-	interval *= 2.f;
-	(*s).x += interval * lor;
-	(*d).x += interval * lor;
-	(*s).y += interval * lor;
-	(*d).y += interval * lor;
+	const float dx = (*d).x - (*s).x;
+	const float dy = (*d).y - (*s).y;
+	const float lenXY = SQRT(dx * dx + dy * dy);
+	if (lenXY < 1e-8f)
+		return;
+	const float interval = ((CFLOAT(lor) + FLOAT_HALF) * (cr / CFLOAT(N_RAYS2D)) - cr * FLOAT_HALF) / lenXY;
+	const float shiftX = -dy * interval;
+	const float shiftY = dx * interval;
+	(*s).x += shiftX;
+	(*d).x += shiftX;
+	(*s).y += shiftY;
+	(*d).y += shiftY;
 }
 
 DEVICE void multirayCoordinateShiftZ(PTR_THR FLOAT3 *s, PTR_THR FLOAT3 *d, const int lor, const float cr) {
@@ -1298,14 +1325,13 @@ DEVICE void rhs(const float local_ele, PTR_THR const float *ax, const LONG local
 #endif
 #else
 	float yaxTOF = ax[0] * local_ele;
-	const float val = local_ele;
-	// test
-	if (ISNAN(local_ele))
-		yaxTOF = 0.f;
-	//else
-	//	yaxTOF = 1.f;
-
+	float val = local_ele;
 #endif
+	// test
+	if (ISNAN(val))
+		val = 0.f;
+	if (ISNAN(yaxTOF))
+		yaxTOF = 0.f;
 #ifdef ATOMIC
 	atom_add(&d_rhs_OSEM[local_ind], convert_long(yaxTOF * TH));
 #elif defined(ATOMIC32)
@@ -1343,6 +1369,45 @@ DEVICE void rhs(const float local_ele, PTR_THR const float *ax, const LONG local
 
 // Detector coordinates for listmode data
 #ifdef LISTMODE
+#if defined(SPECT)
+DEVICE void extendRayToEllipse(
+	PTR_THR FLOAT3 *s, PTR_THR FLOAT3 *d, const FLOAT3 ellipseCenter,
+	const FLOAT3 ellipseRadii, const float ellipsePower
+);
+DEVICE void getDetectorCoordinatesListmodeSPECT(
+#if defined(USEGLOBAL)
+	const CLGLOBAL float* d_xyz, const CLGLOBAL float* d_z,
+#elif defined(METAL)
+	CONSTANT float* d_xyz, CONSTANT float* d_z,
+#else
+	CONSTANT float* d_xyz,
+	const CLGLOBAL float* d_z,
+#endif
+	const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource,
+	PTR_THR FLOAT3* s, PTR_THR FLOAT3* d, const size_t idx, const uint d_size_x, const uint d_sizey,
+	const int lor, const FLOAT3 ellipseCenter, const FLOAT3 ellipseRadii, const float ellipsePower
+) {
+	const size_t i = idx * 6;
+	const size_t iz = idx * 5;
+	*s = CMFLOAT3(d_xyz[i], d_xyz[i + 1], d_xyz[i + 2]);
+	*d = CMFLOAT3(d_xyz[i + 3], d_xyz[i + 4], d_xyz[i + 5]);
+	const FLOAT ux = (FLOAT)d_z[iz];
+	const FLOAT uy = (FLOAT)d_z[iz + 1];
+	const uint detectorElement = (uint)d_z[iz + 2];
+	const uint detectorHead = (uint)d_z[iz + 3];
+	const uint idShift = 2u * (uint)lor + (2u * N_RAYS) *
+		(detectorElement + detectorHead * d_size_x * d_sizey);
+	const FLOAT shiftDetectorXY = (FLOAT)d_rayShiftsDetector[idShift];
+	const FLOAT shiftSourceXY = (FLOAT)d_rayShiftsSource[idShift];
+	(*d).x += ux * shiftDetectorXY;
+	(*d).y += uy * shiftDetectorXY;
+	(*d).z += (FLOAT)d_rayShiftsDetector[idShift + 1u];
+	(*s).x += ux * shiftSourceXY;
+	(*s).y += uy * shiftSourceXY;
+	(*s).z += (FLOAT)d_rayShiftsSource[idShift + 1u];
+	extendRayToEllipse(s, d, ellipseCenter, ellipseRadii, ellipsePower);
+}
+#endif
 #ifdef INDEXBASED
 DEVICE void getDetectorCoordinatesListmode(
 #if defined(USEGLOBAL)
@@ -1370,7 +1435,7 @@ DEVICE void getDetectorCoordinatesListmode(
 #endif
 }
 #else
-DEVICE void getDetectorCoordinatesListmode(const CLGLOBAL float* d_xyz, float3* s, float3* d, const size_t idx
+DEVICE void getDetectorCoordinatesListmode(const CLGLOBAL float* d_xyz, PTR_THR FLOAT3* s, PTR_THR FLOAT3* d, const size_t idx
 #if defined(N_RAYS)
 	, const int lorXY, const int lorZ, const float2 cr
 #endif
@@ -1404,6 +1469,9 @@ DEVICE void getDetectorCoordinatesCT(const CLGLOBAL float* CLRESTRICT d_xyz,
 	const CLGLOBAL float* CLRESTRICT d_uv, 
 #endif
 	PTR_THR float3* s, PTR_THR float3* d, const int3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch
+#if defined(N_RAYS) && !defined(PROJ5)
+	, const int lorXY, const int lorZ
+#endif
 #ifdef PROJ5
 	, PTR_THR float3* dR, PTR_THR float3* dL, PTR_THR float3* dU, PTR_THR float3* dD
 #endif
@@ -1411,7 +1479,13 @@ DEVICE void getDetectorCoordinatesCT(const CLGLOBAL float* CLRESTRICT d_xyz,
 	int id = i.z * 6;
 	*s = CMFLOAT3(d_xyz[id], d_xyz[id + 1], d_xyz[id + 2]);
 	*d = CMFLOAT3(d_xyz[id + 3], d_xyz[id + 4], d_xyz[id + 5]);
-	const float2 indeksi = MFLOAT2(CFLOAT(i.x) - CFLOAT(d_size_x) / 2.f + .5f, CFLOAT(i.y) - CFLOAT(d_sizey) / 2.f + .5f);
+	float2 indeksi = MFLOAT2(CFLOAT(i.x) - CFLOAT(d_size_x) / 2.f + .5f, CFLOAT(i.y) - CFLOAT(d_sizey) / 2.f + .5f);
+#if defined(N_RAYS) && !defined(PROJ5)
+	if (N_RAYS2D > 1)
+		indeksi.x += (CFLOAT(lorXY) + .5f) / CFLOAT(N_RAYS2D) - .5f;
+	if (N_RAYS3D > 1)
+		indeksi.y += (CFLOAT(lorZ) + .5f) / CFLOAT(N_RAYS3D) - .5f;
+#endif
 #ifdef HELICAL
 	const float angle = d_uv[i.z];
 	const float dtheta = (d_dPitch.x / r) * indeksi.x;
@@ -1482,15 +1556,11 @@ DEVICE void extendRayToEllipse(
     PTR_THR FLOAT3 *d, // Ray end point
     const FLOAT3 ellipseCenter,
     const FLOAT3 ellipseRadii,
-    const FLOAT ellipsePower
+    const float ellipsePower
 ) {
-#ifdef CUPY_HIP_FINITE_ELLIPSE_POWER
-    // CuPy stages the public infinity sentinel as a finite value; this
-    // comparison is safe under hipRTC's finite-math assumptions.
+    // Box support. Hosts pass FLT_MAX instead of Inf since isinf() is unreliable
+    // under fast-math (-ffast-math, -cl-fast-relaxed-math, Metal fast math)
     if (ellipsePower > 1.0e20f) {
-#else
-    if (ISINF(ellipsePower)) {
-#endif
         const FLOAT cx = ellipseCenter.x;
         const FLOAT cy = ellipseCenter.y;
         const FLOAT cz = ellipseCenter.z;
@@ -1558,7 +1628,7 @@ DEVICE void extendRayToEllipse(
             *s = p0 + tmin * dir;
 
         *d = p0 + tmax * dir;
-    } else if (ellipsePower == FLOAT_TWO) {
+    } else if (ellipsePower == 2.f) {
         const FLOAT cx = ellipseCenter.x;
         const FLOAT cy = ellipseCenter.y;
         const FLOAT cz = ellipseCenter.z;
@@ -1832,7 +1902,7 @@ DEVICE void perpendicular_elements(const float d_b, const float d_d1, const uint
 #elif !defined(CT) && !defined(ATN) && defined(ATNM)
 	const CLGLOBAL float* CLRESTRICT d_atten,
 #endif
-	const float local_norm, const float L) {
+	const float local_norm, const float L, const float pathLength, const int apuX1, const int apuX2, const float dT1, const float dT2) {
 	int apu = perpendicular_start(d_b, d, d_d1, d_N1);
 	*z_loop = CLONG_rtz(apu) * CLONG_rtz(d_N) + *z_loop * CLONG_rtz(d_N1) * CLONG_rtz(d_N2);
 	if (d_N == 1)
@@ -1851,7 +1921,7 @@ DEVICE void perpendicular_elements(const float d_b, const float d_d1, const uint
 #ifdef TOTLENGTH
 	float temp = FLOAT_ONE / (L * CFLOAT(N_RAYS));
 #else
-	float temp = FLOAT_ONE / (CFLOAT(d_N2) * d_d2 * CFLOAT(N_RAYS));
+	float temp = FLOAT_ONE / (pathLength * CFLOAT(N_RAYS));
 #endif
 #elif defined(ORTH)
 	float temp = FLOAT_ONE;
@@ -1859,7 +1929,7 @@ DEVICE void perpendicular_elements(const float d_b, const float d_d1, const uint
 #ifdef TOTLENGTH
 	float temp = FLOAT_ONE / L;
 #else
-	float temp = FLOAT_ONE / (CFLOAT(d_N2) * d_d2);
+	float temp = FLOAT_ONE / pathLength;
 #endif
 #endif //////////////// END MULTIRAY ////////////////
 #if defined(ATN) && !defined(SPECT) //////////////// ATTENUATION ////////////////
@@ -1869,7 +1939,14 @@ DEVICE void perpendicular_elements(const float d_b, const float d_d1, const uint
 #else
 		LONG atnind = *z_loop;
 #endif
-		for (int iii = 0u; iii < d_N2; iii++) {
+		for (int iii = apuX1; iii <= apuX2; iii++) {
+			float d_in = d_d2;
+			if (iii == apuX1 && iii == apuX2)
+				d_in = FMAX(dT1 + dT2 - d_d2, FLOAT_ZERO);
+			else if (iii == apuX1)
+				d_in = dT1;
+			else if (iii == apuX2)
+				d_in = dT2;
 #ifdef USEIMAGES
 			if (d_NN == 1)
 				atnind.x = iii;
@@ -1880,7 +1957,7 @@ DEVICE void perpendicular_elements(const float d_b, const float d_d1, const uint
 		// (*z_loop has the varying coordinate at zero) instead of accumulating the offset
 		atnind = *z_loop + CLONG_rtz(iii) * CLONG_rtz(d_NN);
 #endif
-			compute_attenuation(d_d2, atnind, d_atten, &jelppi, ii);
+			compute_attenuation(d_in, atnind, d_atten, &jelppi, ii);
 		}
 		temp *= EXP(jelppi);
 #endif //////////////// END ATTENUATION ////////////////
@@ -1986,7 +2063,7 @@ DEVICE int voxel_index(const float pt, const float diff, const float d, const fl
 
 DEVICE bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1, const float diff2, const float max1, const float max2,
 	const float d1, const float d2, const uint N1, const uint N2, PTR_THR int *temp1, PTR_THR int *temp2, PTR_THR float *t1u, PTR_THR float *t2u, PTR_THR uint *Np,
-	const int TYYPPI, const float ys, const float xs, const float yd, const float xd, PTR_THR float *tc, PTR_THR int *u1, PTR_THR int *u2, PTR_THR float *t10, PTR_THR float *t20, PTR_THR bool *xy) {
+	const int TYYPPI, const float ys, const float xs, const float yd, const float xd, PTR_THR float *tc, PTR_THR int *u1, PTR_THR int *u2, PTR_THR float *t10, PTR_THR float *t20, PTR_THR bool *xy, PTR_THR float *tMaxOut) {
 	// If neither x- nor y-directions are perpendicular
 // Correspond to the equations (9) and (10) from reference [2]
 	const float apu_tx = b1 - xs;
@@ -2005,6 +2082,7 @@ DEVICE bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1
 	// (3-4)
 	*tc = FMAX(txmin, tymin);
 	const float tmax = FMIN(txmax, tymax);
+	*tMaxOut = tmax;
 #ifdef ORTH
 	if (*tc == *t10 || *tc == txback)
 		*xy = true;
@@ -2056,7 +2134,7 @@ DEVICE bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1
 
 DEVICE bool siddon_pre_loop_3D(const FLOAT3 b, const FLOAT3 diff, const FLOAT3 max, const FLOAT3 dd, const uint3 N, PTR_THR int *tempi, PTR_THR int *tempj, PTR_THR int *tempk, 
     PTR_THR float *txu, PTR_THR float *tyu, PTR_THR float *tzu, PTR_THR uint *Np, const int TYYPPI, const FLOAT3 s, const FLOAT3 d, PTR_THR float *tc, PTR_THR int *i, PTR_THR int *j, PTR_THR int *k, PTR_THR float *tx0, 
-	PTR_THR float *ty0, PTR_THR float *tz0, PTR_THR bool *xy, const int3 ii) {
+	PTR_THR float *ty0, PTR_THR float *tz0, PTR_THR bool *xy, const int3 ii, PTR_THR float *tMaxOut) {
 
 	const float3 apuT = (float3)b - (float3)s;
 	const float3 t0 = apuT / (float3)diff;
@@ -2067,6 +2145,7 @@ DEVICE bool siddon_pre_loop_3D(const FLOAT3 b, const FLOAT3 diff, const FLOAT3 m
 
 	*tc = FMAX(FMAX(tMin.x, tMin.z), tMin.y);
 	const float tmax = FMIN(FMIN(tMax.x, tMax.z), tMax.y);
+	*tMaxOut = tmax;
 	*tx0 = t0.x;
 	*ty0 = t0.y;
 	*tz0 = t0.z;
@@ -2270,6 +2349,9 @@ DEVICE float NLMGradient(NLM_IN_T uIn,
 #if NLTYPE == 1
     float outputAla = epps;
 #endif
+#ifdef NLMAXWEIGHT
+    float maxWeight = FLOAT_ZERO;
+#endif
     const float uj = NLMFETCH(uIn, x, y, z);
 #if NLTYPE == 6
     // Precompute for NLGGMRF
@@ -2341,6 +2423,9 @@ DEVICE float NLMGradient(NLM_IN_T uIn,
                 weight = EXP(-distance / h);
 #endif
                 weight_sum += weight;
+#ifdef NLMAXWEIGHT
+                maxWeight = FMAX(maxWeight, weight);
+#endif
                 const float uk = NLMFETCH(uIn, x + i, y + j, z + k);
                 // Different NLM regularization methods
                 // NLTYPE 0 = MRF NLM
@@ -2350,7 +2435,7 @@ DEVICE float NLMGradient(NLM_IN_T uIn,
                 // NLTYPE 4 = NL Lange
                 // NLTYPE 5 = NLM filtered with Lange
                 // NLTYPE 6 = NLGGMRF
-                // NLTYPE 7 = ?
+                // NLTYPE 7 = NLGM
 #if NLTYPE == 2 || NLTYPE == 5 // START NLM NLTYPE
                 // NLMRP
                 output += weight * uk;
@@ -2378,9 +2463,10 @@ DEVICE float NLMGradient(NLM_IN_T uIn,
                 const float deltapqc = FLOAT_ONE + dcpq;
                 output += weight * (POWR(fabs(delta), p - FLOAT_ONE) / deltapqc) * (p - gamma * ((dcpq * cpq) / deltapqc)) * sign(delta);
 #elif NLTYPE == 7
-                const float u = (uk - uj);
-                const float apu = (u * u + gamma * gamma);
-                output += ((FLOAT_TWO * u * u * u) / (apu * apu) - FLOAT_TWO * (u / apu));
+				// NLGM (Non-local Geman-McClure)
+                const float delta = uj - uk;
+                const float apu = (delta * delta + gamma * gamma);
+                output += weight * (FLOAT_TWO * gamma * gamma * delta) / (apu * apu);
 #else
                 //NLTV
                 const float apuU = uj - uk;
@@ -2390,6 +2476,12 @@ DEVICE float NLMGradient(NLM_IN_T uIn,
             }
         }
     }
+#ifdef NLMAXWEIGHT
+#if NLTYPE == 2 || NLTYPE == 5
+    output += maxWeight * uj;
+#endif
+    weight_sum += maxWeight;
+#endif
     weight_sum = FLOAT_ONE / weight_sum;
     output *= weight_sum;
 #if NLTYPE == 2 // START NLM NLTYPE

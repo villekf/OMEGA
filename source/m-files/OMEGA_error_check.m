@@ -29,8 +29,14 @@ options = convertOptions(options);
 % SPECT collimator ray shifts are stored once per detector head and detector
 % element.
 if options.SPECT
-    if options.normalization_correction && ndims(options.normalization) == 3
-        options.normZ = size(options.normalization, 3);
+    if options.normalization_correction && isfield(options, 'normalization') && numel(options.normalization) > 1
+        options.normZ = numel(options.normalization) / (options.nRowsD * options.nColsD);
+        if mod(options.normZ, 1) ~= 0 || ~(options.normZ == options.nProjections || options.normZ == options.nHeads)
+            error(['Normalization array has an invalid size. Must contain one image per projection [' ...
+                num2str(options.nRowsD) ' ' num2str(options.nColsD) ' ' num2str(options.nProjections) ...
+                '] or one image per detector head [' num2str(options.nRowsD) ' ' num2str(options.nColsD) ' ' ...
+                num2str(options.nHeads) '].'])
+        end
     end
     if ~isfield(options, 'DetectorVector') || isempty(options.DetectorVector)
         options.DetectorVector = zeros(options.nProjections, 1, 'uint32');
@@ -47,9 +53,17 @@ if options.SPECT
             numel(options.maskFP) ~= options.nRowsD * options.nColsD * options.nHeads
         error('Detector-indexed forward mask must contain one image for each detector head.')
     end
-    if options.normalization_correction && options.normZ == options.nHeads && ...
-            numel(options.normalization) ~= options.nRowsD * options.nColsD * options.nHeads
-        error('Detector-indexed normalization must contain one image for each detector head.')
+
+    % Implementation 4 (projector_mex.cpp) and implementation 2 with use_CPU (CPU_matrixfree, built
+    % from OpenCL_matrixfree.cpp with -DCPU and no GPU backend macro) both route through
+    % ProjectorClassCPU.h / projector_functions.h (see functions.hpp's #elif defined(CPU) branch),
+    % a separate plain C++ projector with no DetectorVector/per-head indexing at all. Implementation
+    % 1 already errors out for all SPECT data above.
+    if (options.implementation == 4 || (options.implementation == 2 && options.use_CPU)) && ...
+            ((options.normalization_correction && options.normZ == options.nHeads && options.normZ ~= options.nProjections) || ...
+             (options.useMaskFP && options.maskFPZ > 1 && options.maskFPZ == options.nHeads && options.maskFPZ ~= options.nProjections))
+        error(['Detector-head indexed normalization/forward projection mask (nRowsD x nColsD x nHeads) is not ' ...
+            'supported by the CPU implementation. Use a GPU implementation or supply one image per projection.'])
     end
 
     if ismember(options.projector_type, [1, 11, 12, 2, 21, 22, 3, 13, 23, 31, 32, 33])
@@ -73,6 +87,14 @@ if options.SPECT
         end
         if detectorSize > 0 && sourceSize > 0 && detectorSize ~= sourceSize
             error('rayShiftsDetector and rayShiftsSource must have the same compact size.')
+        end
+
+        if ~(options.ellipsePower == 2 || isinf(options.ellipsePower))
+            error(['ellipsePower must be 2 (elliptic cylinder) or Inf (box); other superellipse ' ...
+                'powers are not supported.'])
+        end
+        if options.ellipseRadiusX <= 0 || options.ellipseRadiusY <= 0 || options.ellipseRadiusZ <= 0
+            error('ellipseRadiusX, ellipseRadiusY and ellipseRadiusZ must all be greater than zero.')
         end
     end
 end
@@ -383,14 +405,9 @@ if options.implementation == 3 && exist('OpenCL_matrixfree_multi_gpu','file') ~=
     error(['OpenCL reconstruction (implementation 3) selected, but OpenCL MEX-files were not installed. Run install_mex to build OpenCL MEX-files.' sprintf('\n') ...
         'If you already ran install_mex, make sure you have installed OpenCL and it can be found on path.'])
 end
-if options.implementation == 5
-    if options.use_CUDA && exist('CUDA_matrixfree_multi_gpu','file') ~= 3
-        error(['CUDA reconstruction (implementation 5) selected, but the CUDA MEX-file was not installed. Run install_mex to build CUDA MEX-files.' sprintf('\n') ...
-            'If you already ran install_mex, make sure that CUDA and its driver libraries can be found on path.'])
-    elseif ~options.use_CUDA && exist('OpenCL_matrixfree_multi_gpu','file') ~= 3
-        error(['OpenCL reconstruction (implementation 5) selected, but OpenCL MEX-files were not installed. Run install_mex to build OpenCL MEX-files.' sprintf('\n') ...
-            'If you already ran install_mex, make sure you have installed OpenCL and it can be found on path.'])
-    end
+if options.implementation == 5 && exist('OpenCL_matrixfree_multi_gpu','file') ~= 3 && exist('CUDA_matrixfree_multi_gpu','file') ~= 3
+    error(['Implementation 5 selected, but neither the OpenCL nor the CUDA MEX-files were installed. Run install_mex to build them.' sprintf('\n') ...
+        'If you already ran install_mex, make sure you have installed OpenCL (or, for gpuArray support, the CUDA toolkit) and it can be found on path.'])
 end
 if options.implementation == 3 && NMLOS
     warning(['Implementation ' num2str(options.implementation) ' selected with reconstruction algorithms other than OSEM. '...
@@ -471,7 +488,7 @@ if (options.projector_type == 6)
         error('Subset types 0-7 are not supported with projector type 6!')
     end
 end
-if (~options.use_raw_data && options.SPECT) && ~ismember(options.subset_type, [8,9,10,11])
+if (~options.use_raw_data && options.SPECT && options.listmode == 0) && ~ismember(options.subset_type, [8,9,10,11])
     error('Only subset types 8-11 are supported with SPECT sinogram reconstruction')
 end
 if options.FDK && (options.Niter > 1 || options.subsets > 1)
@@ -507,7 +524,7 @@ if options.largeDim
         error('A 3D backprojection/prior mask is not supported with largeDim! Use a 2D (transaxial) mask instead.')
     end
 end
-if options.use_CUDA && options.use_CPU && (options.implementation == 2 || options.implementation == 5)
+if options.use_CUDA && options.use_CPU && options.implementation == 2
     error('Both CUDA and CPU selected! Select only one!')
 end
 if options.TOF_bins_used > 1 && (options.projector_type ~= 1 && options.projector_type ~= 11 && options.projector_type ~= 3 && options.projector_type ~= 33 && options.projector_type ~= 31 ...
@@ -792,6 +809,8 @@ if options.verbose > 0
                         dispi2 = [dispi2, ' prior selected with NL Lange.'];
                     elseif options.NLGGMRF
                         dispi2 = [dispi2, ' prior selected with NLGGMRF.'];
+                    elseif options.NLGM
+                        dispi2 = [dispi2, ' prior selected with NL Geman-McClure.'];
                     elseif options.NLM_MRP
                         dispi2 = [dispi2, ' prior selected with filtering mode.'];
                     else
@@ -799,6 +818,9 @@ if options.verbose > 0
                     end
                     if options.NLAdaptive
                         dispi2 = [dispi2, ' Using adaptive weighting.'];
+                    end
+                    if options.NLMaxWeight
+                        dispi2 = [dispi2, ' Using the maximum weight for the reference voxel.'];
                     end
                 end
             end

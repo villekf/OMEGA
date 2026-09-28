@@ -64,6 +64,17 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	inputScalars.relaxScaling = getScalarBool(options, 0, "relaxationScaling");
 	inputScalars.computeRelaxation = getScalarBool(options, 0, "computeRelaxationParameters");
 	inputScalars.computeSensImag = getScalarBool(options, 0, "compute_sensitivity_image");
+	const int sensitivityWeightsField = mxGetFieldNumber(options, "sensitivityViewWeights");
+	if (sensitivityWeightsField >= 0) {
+		const mxArray* sensitivityWeights = mxGetField(options, 0, "sensitivityViewWeights");
+		if (sensitivityWeights && !mxIsEmpty(sensitivityWeights)) {
+			if (!mxIsSingle(sensitivityWeights) || mxIsComplex(sensitivityWeights))
+				mexErrMsgTxt("sensitivityViewWeights must be a real single-precision matrix.");
+			const size_t count = mxGetNumberOfElements(sensitivityWeights);
+			const float* values = getSingles(options, "sensitivityViewWeights");
+			inputScalars.sensitivityViewWeights.assign(values, values + count);
+		}
+	}
 	inputScalars.CT = getScalarBool(options, 0, "CT");
 	inputScalars.atomic_32bit = getScalarBool(options, 0, "use_32bit_atomics");
 	inputScalars.scatter = static_cast<uint32_t>(getScalarBool(options, 0, "additionalCorrection"));
@@ -202,6 +213,9 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
             inputScalars.ellipseRadiusY = getScalarFloat(getField(options, 0, "ellipseRadiusY"));
             inputScalars.ellipseRadiusZ = getScalarFloat(getField(options, 0, "ellipseRadiusZ"));
             inputScalars.ellipsePower = getScalarFloat(getField(options, 0, "ellipsePower"));
+            // Kernels test for box support with a finite threshold, as isinf() is unreliable under fast-math
+            if (!std::isfinite(inputScalars.ellipsePower))
+                inputScalars.ellipsePower = std::numeric_limits<float>::max();
         }
         /*if (inputScalars.FPType == 6 || inputScalars.BPType == 6) {
             inputScalars.FOVa_y = getScalarFloat(getField(options, 0, "FOVa_y"));
@@ -259,9 +273,15 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 			mexEval();
 		}
 	}
-    if (inputScalars.normalization_correction)
-        if (mxGetFieldNumber(options, "normZ") >= 0)
+    if (inputScalars.normalization_correction) {
+        // Derive normZ from the actual element count so a per-projection normalization supplied
+        // as a plain vector (normZ left at its nHeads-colliding default) is not misread as
+        // detector-head indexed. size_norm/nRowsD/nColsD/SPECT are all set before this point.
+        if (inputScalars.SPECT && inputScalars.size_norm > 1 && inputScalars.nRowsD * inputScalars.nColsD > 0)
+            inputScalars.normZ = static_cast<uint32_t>(inputScalars.size_norm / (static_cast<size_t>(inputScalars.nRowsD) * inputScalars.nColsD));
+        else if (mxGetFieldNumber(options, "normZ") >= 0)
             inputScalars.normZ = getScalarUInt32(getField(options, 0, "normZ"));
+    }
 	if (inputScalars.maskBP) {
 		w_vec.maskBP = getUint8s(options, "maskBP");
 		inputScalars.maskBPZ = getScalarUInt32(getField(options, 0, "maskBPZ"));
@@ -292,6 +312,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 			w_vec.rayShiftsDetector = getSingles(options, "rayShiftsDetector");
 			w_vec.rayShiftsSource = getSingles(options, "rayShiftsSource");
 			w_vec.detectorVector = getUint32s(options, "DetectorVector");
+			w_vec.detectorVectorSize = mxGetNumberOfElements(getField(options, 0, "DetectorVector"));
 		}
 	} else {
 		w_vec.nProjections = getScalarInt64(getField(options, 0, "nProjections"));
@@ -615,11 +636,15 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		w_vec.NLM_MRP = getScalarBool(getField(options, 0, "NLM_MRP"), -49);
 		w_vec.NLLange = getScalarBool(getField(options, 0, "NLLange"), -49);
 		w_vec.NLGGMRF = getScalarBool(getField(options, 0, "NLGGMRF"), -49);
+		w_vec.NLGM = getScalarBool(getField(options, 0, "NLGM"), -49);
 		w_vec.NLAdaptive = getScalarBool(getField(options, 0, "NLAdaptive"), -49);
+		w_vec.NLMaxWeight = getScalarBool(getField(options, 0, "NLMaxWeight"), -49);
 		if (w_vec.NLRD)
 			w_vec.RDP_gamma = getScalarFloat(getField(options, 0, "RDP_gamma"), -29);
 		else if (w_vec.NLLange)
 			w_vec.RDP_gamma = getScalarFloat(getField(options, 0, "SATVPhi"), -23);
+		else if (w_vec.NLGM)
+			w_vec.RDP_gamma = getScalarFloat(getField(options, 0, "GM_delta"), -29);
 		else if (w_vec.NLGGMRF) {
 			w_vec.GGMRF_p = getScalarFloat(getField(options, 0, "GGMRF_p"), -29);
 			w_vec.GGMRF_q = getScalarFloat(getField(options, 0, "GGMRF_q"), -29);

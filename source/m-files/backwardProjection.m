@@ -45,15 +45,35 @@ elseif projType == 2 || projType == 12 || projType == 22 || projType == 32
 elseif projType == 3 || projType == 13 || projType == 33 || projType == 23
     projType = 3;
 end
-if options.listmode > 0 && options.compute_sensitivity_image && isfield(options,'xSens') && isfield(options,'zSens') && ~isempty(options.xSens) && ~isempty(options.zSens) && ~options.SPECT
+listmodeSPECTSensitivity = options.listmode > 0 && options.compute_sensitivity_image && options.SPECT;
+if listmodeSPECTSensitivity
+	if isfield(options, 'sensitivityViewWeights') && ~isempty(options.sensitivityViewWeights)
+		if isfield(options, 'xSens') && isfield(options, 'zSens') && ...
+				~isempty(options.xSens) && ~isempty(options.zSens)
+			x = options.xSens;
+			z = options.zSens;
+		else
+			[x, z] = get_coordinates_SPECT(options);
+		end
+	else
+		[x, z, options.sensitivityViewWeights] = prepareSPECTListmodeSensitivity(options);
+	end
+elseif options.listmode > 0 && options.compute_sensitivity_image && isfield(options,'xSens') && isfield(options,'zSens') && ~isempty(options.xSens) && ~isempty(options.zSens)
     x = options.xSens;
     z_det = options.zSens;
-	options.det_per_ring = numel(x) / 2;
-	options.rings = numel(z_det);
+	z = z_det;
+	if ~options.SPECT
+		options.det_per_ring = numel(x) / 2;
+		options.rings = numel(z_det);
+	end
 elseif options.listmode > 0 && options.compute_sensitivity_image && ~options.useIndexBasedReconstruction
-    options.use_raw_data = true;
-    [x, ~, z, ~] = get_coordinates(options);
-    options.use_raw_data = false;
+	if options.SPECT
+		[x, z] = get_coordinates_SPECT(options);
+	else
+		options.use_raw_data = true;
+		[x, ~, z, ~] = get_coordinates(options);
+		options.use_raw_data = false;
+	end
 end
 
 function output = backwardProjectionType6(options, input, koko)
@@ -188,6 +208,18 @@ if (options.implementation == 4 && ~ismac) || (ismac && options.projector_type =
         end
     end
 elseif options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || ismac
+    % Determined here, before input is reshaped/converted below, so that
+    % the gpuArray-ness of the original input is not lost
+    useGPUArray = isa(input, 'gpuArray');
+    if useGPUArray
+        if options.implementation ~= 5
+            error('gpuArray input is only supported with implementation 5!')
+        end
+        if exist('CUDA_matrixfree_multi_gpu','file') ~= 3
+            error(['gpuArray input was used, but the CUDA build of implementation 5 (CUDA_matrixfree_multi_gpu) was not found. ' ...
+                'Run install_mex to build it. gpuArray input requires a CUDA-enabled installation and the CUDA toolkit.'])
+        end
+    end
     if ~isfield(options,'orthTransaxial') && (options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 22 || options.projector_type == 33)
         if options.projector_type == 3 || options.projector_type == 33
             options.orthTransaxial = true;
@@ -258,6 +290,35 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
     else
         error('Invalid projector for OpenCL')
     end
+    if listmodeSPECTSensitivity
+        % The sensitivity kernel consumes one weight per full projection view,
+        % with geometry stored independently in x/z. Flatten the per-frame
+        % request to a one-timestep, one-subset MEX call.
+        nSensitivityViews = size(options.sensitivityViewWeights, 1);
+        if isfield(options, 'sensitivityTimestep') && ~isempty(options.sensitivityTimestep)
+            sensitivityTimestep = double(options.sensitivityTimestep) + 1;
+        elseif isfield(options, 'currentTimestep') && ~isempty(options.currentTimestep)
+            sensitivityTimestep = double(options.currentTimestep) + 1;
+        else
+            sensitivityTimestep = 1;
+        end
+        if sensitivityTimestep < 1 || sensitivityTimestep > size(options.sensitivityViewWeights, 2) || ...
+                sensitivityTimestep ~= floor(sensitivityTimestep)
+            error('The requested SPECT sensitivity timestep is outside sensitivityViewWeights.')
+        end
+        input = options.sensitivityViewWeights(:, sensitivityTimestep);
+        options.sensitivityViewWeights = input;
+        options.Nt = 1;
+        options.partitions = 1;
+        options.subsets = 1;
+        options.currentSubset = 0;
+        options.currentTimestep = 0;
+        options.nProjections = nSensitivityViews;
+        options.totMeas = nSensitivityViews;
+        nMeas = int64([0; nSensitivityViews]);
+        subIter = 0;
+        noSensIm = true;
+    end
     if numel(nMeas) == 1
         nMeas = [0;nMeas];
     end
@@ -268,23 +329,19 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
     if ~isa(input,'single')
         input = single(input);
     end
-    if options.use_CUDA
-        [output, sensIm] = CUDA_matrixfree_multi_gpu( options.Nx, options.Ny, options.Nz, options.dx, options.dy, options.dz, options.bx, options.by, options.bz, ...
-            z, x, options.nRowsD, options.verbose, options.LL, options.TOF, ... % 15
-            TOFSize, options.sigma_x, options.TOFCenter, options.TOF_bins, options.use_device, options.use_raw_data, options.use_psf, header_directory, options.vaimennus, ... % 24
-            options.normalization, nMeas, options.attenuation_correction, options.normalization_correction, 1, options.subsets, options.epps, options.xy_index, ...
-            options.z_index, crystal_size_z, ... % 34
-            options.x_center, options.y_center, options.z_center, single(0), 0, options.projector_type, n_rays, n_rays3D, ... % 42
-            options, input, options.partitions, options.use_64bit_atomics, options.bmin, options.bmax, options.Vmax, options.V, options.gaussK, 2, noSensIm); % 51
+    if useGPUArray
+        options = gatherHostFields(options, {});
+        mexProjector = @CUDA_matrixfree_multi_gpu;
     else
-        [output, sensIm] = OpenCL_matrixfree_multi_gpu( options.Nx, options.Ny, options.Nz, options.dx, options.dy, options.dz, options.bx, options.by, options.bz, ...
-            z, x, options.nRowsD, options.verbose, options.LL, options.TOF, ... % 15
-            TOFSize, options.sigma_x, options.TOFCenter, options.TOF_bins, options.platform, options.use_raw_data, options.use_psf, header_directory, options.vaimennus, ... % 24
-            options.normalization, nMeas, options.attenuation_correction, options.normalization_correction, 1, options.subsets, options.epps, options.xy_index, ...
-            options.z_index, crystal_size_z, ... % 34
-            options.x_center, options.y_center, options.z_center, single(0), 0, options.projector_type, n_rays, n_rays3D, ... % 42
-            options, input, options.partitions, options.use_64bit_atomics, options.bmin, options.bmax, options.Vmax, options.V, options.gaussK, 2, noSensIm); % 51
+        mexProjector = @OpenCL_matrixfree_multi_gpu;
     end
+    [output, sensIm] = mexProjector( options.Nx, options.Ny, options.Nz, options.dx, options.dy, options.dz, options.bx, options.by, options.bz, ...
+        z, x, options.nRowsD, options.verbose, options.LL, options.TOF, ... % 15
+        TOFSize, options.sigma_x, options.TOFCenter, options.TOF_bins, options.platform, options.use_raw_data, options.use_psf, header_directory, options.vaimennus, ... % 24
+        options.normalization, nMeas, options.attenuation_correction, options.normalization_correction, 1, options.subsets, options.epps, options.xy_index, ...
+        options.z_index, crystal_size_z, ... % 34
+        options.x_center, options.y_center, options.z_center, single(0), 0, options.projector_type, n_rays, n_rays3D, ... % 42
+        options, input, options.partitions, options.use_64bit_atomics, options.bmin, options.bmax, options.Vmax, options.V, options.gaussK, 2, noSensIm); % 51
     if options.use_64bit_atomics
         output = single(output) / 99999997952;
         if ~isempty(sensIm) && numel(sensIm) > 1

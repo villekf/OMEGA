@@ -29,6 +29,7 @@ struct float2a {
 #include <cstdint>
 #include <fstream>
 #include <limits>
+#include <cmath>
 #ifdef MATLAB
 #include "mexFunktio.h"
 #endif
@@ -63,6 +64,8 @@ typedef struct structForScalars {
 		dL = 0.f, flat = 0.f, cylRadiusProj3 = 0.f, DSC = 0.f, helicalRadius = 0.f;//, T = 0.f
 	std::vector<float> dx{ 0.f, 0.f }, dy{ 0.f, 0.f }, dz{ 0.f, 0.f }, bx{ 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f }, by{ 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f }, 
 		bz{ 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f };
+	// Column-major [projection frame, timestep] weights for listmode SPECT sensitivity.
+	std::vector<float> sensitivityViewWeights;
     bool useHalf = false;
 	bool use_psf = false, TOF = false, SPECT = false, pitch = false, PET = false, meanFP = false, meanBP = false,
 		maskFP = false, maskBP = false, orthXY = false, orthZ = false, CT = false, atomic_64bit = false, atomic_32bit = false, loadTOF = true,
@@ -107,7 +110,7 @@ typedef struct structForScalars {
 	largeDimStruct lDimStruct;
 	float coneOfResponseStdCoeffA = 0.01f, coneOfResponseStdCoeffB = 0.01f, coneOfResponseStdCoeffC = 0.01f;
 	float ellipseCenterX = 0.f, ellipseCenterY = 0.f, ellipseCenterZ = 0.f, ellipseRadiusX = 1.f, ellipseRadiusY = 1.f, ellipseRadiusZ = 1.f,
-		ellipsePower = std::numeric_limits<float>::infinity();
+		ellipsePower = std::numeric_limits<float>::max(); // Box support, see extendRayToEllipse
 } scalarStruct;
 
 #ifdef OPENCL
@@ -121,13 +124,8 @@ typedef struct _OpenCL_im_vectors {
 #elif defined(CUDA) || defined(HIP)
 typedef struct _CUDA_im_vectors {
 	CUdeviceptr d_meanFP, d_meanBP;
-#if !defined(AF)
-	CUdeviceptr d_im;
-	std::vector<CUdeviceptr> d_rhs_os;
-#else
 	CUdeviceptr* d_im;
 	std::vector<CUdeviceptr*> d_rhs_os;
-#endif
 	CUtexObject d_image_os, d_image_os_int;
 } CUDA_im_vectors;
 #elif defined(METAL)
@@ -142,6 +140,16 @@ struct CPUVectors {
 	std::vector<float*> d_rhs_os;
 };
 #endif
+
+// Optional device-resident inputs/outputs for implementation 5 (e.g. MATLAB gpuArray data)
+// Every member is a device pointer valid in the backend's current context; nullptr means the
+// corresponding host array is used instead, i.e. the original behavior
+typedef struct _deviceIO {
+	const void* im = nullptr;      // Forward projection input image (type 1)
+	const void* meas = nullptr;    // Backprojection input measurements (type 2)
+	void* output = nullptr;        // FP measurement output (type 1) or BP image output (type 2)
+	void* sensIm = nullptr;        // BP sensitivity image output (type 2, only when no_norm == 0)
+} deviceIO;
 
 inline void mexPrint(const char* str) {
 #ifdef MATLAB

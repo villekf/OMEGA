@@ -26,6 +26,7 @@
 // (see structs.h) or this alias would redefine hipStream_t.
 #define cudaStream_t                                  hipStream_t
 #define CUdevice                                      hipDevice_t
+#define CUcontext                                     hipCtx_t
 #define CUevent                                       hipEvent_t
 #define CUtexObject                                   hipTextureObject_t
 #define CUarray                                       hipArray_t
@@ -45,11 +46,24 @@
 #define CUDA_RESOURCE_VIEW_DESC                       HIP_RESOURCE_VIEW_DESC
 #define CUDA_TEXTURE_DESC                             HIP_TEXTURE_DESC
 // --- driver functions ---
+#define cuInit                                        hipInit
+#define cuDeviceGetCount                              hipGetDeviceCount
+#define cuDeviceGet                                   hipDeviceGet
+#define cuDevicePrimaryCtxRetain                      hipDevicePrimaryCtxRetain
+#define cuDevicePrimaryCtxRelease                     hipDevicePrimaryCtxRelease
+#define cuCtxGetCurrent                               hipCtxGetCurrent
+#define cuCtxSetCurrent                               hipCtxSetCurrent
+#define cuCtxGetDevice                                hipCtxGetDevice
 #define cuMemAlloc                                    hipMalloc
 #define cuMemFree                                     hipFree
 #define cuMemGetInfo                                  hipMemGetInfo
 #define cuMemcpyHtoD                                  hipMemcpyHtoD
 #define cuMemcpyDtoH                                  hipMemcpyDtoH
+#define cuMemcpyHtoDAsync                             hipMemcpyHtoDAsync
+#define cuMemcpyDtoHAsync                             hipMemcpyDtoHAsync
+#define cuMemcpyDtoDAsync                             hipMemcpyDtoDAsync
+#define cuMemsetD8Async                               hipMemsetD8Async
+#define cuMemsetD32Async                              hipMemsetD32Async
 #define cuMemcpy2D                                    hipMemcpyParam2D
 #define cuMemcpy3D                                    hipDrvMemcpy3D
 #define cuMemcpy3DAsync                               hipDrvMemcpy3DAsync
@@ -126,6 +140,19 @@ inline void gpuAssert(CUresult code, const char* file, int line)
 		std::cerr << "GPUassert: " << errstr << ", " << file << ", line " << line << std::endl;
 	}
 }
+#endif
+
+// The implementation 3/5 buffer helpers (ProjectorClass::makeDeviceBuffer etc.) take an OpenCL
+// cl_mem_flags value, which CUDA/HIP allocations ignore; these macros are only defined by the
+// OpenCL headers (and set to 0 by metal_error.hpp for Metal), so define them here too
+#ifndef CL_MEM_READ_ONLY
+#define CL_MEM_READ_ONLY 0
+#endif
+#ifndef CL_MEM_WRITE_ONLY
+#define CL_MEM_WRITE_ONLY 0
+#endif
+#ifndef CL_MEM_READ_WRITE
+#define CL_MEM_READ_WRITE 0
 #endif
 
 #define TH 100000000000.f

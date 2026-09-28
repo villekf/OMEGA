@@ -146,7 +146,12 @@ def _pack_scalar_kernel_params(self: Any, timestep: int, subset: int, volume: in
         float(self.ellipseRadiusY),
         float(self.ellipseRadiusZ),
     ))
-    f32('ellipsePower', float(self.ellipsePower))
+    # Kernels test for box support (ellipsePower = inf) with a finite threshold,
+    # since isinf() is unreliable under fast-math
+    _ellipsePower = float(self.ellipsePower)
+    if not np.isfinite(_ellipsePower):
+        _ellipsePower = float(np.finfo(np.float32).max)
+    f32('ellipsePower', _ellipsePower)
 
     u3('d_N', (nx, ny, nz))
     f3('b', (bx, by, bz))
@@ -198,6 +203,8 @@ def _validate_configuration(self: Any) -> None:
         errors.append('integer accumulation is unsupported by the Metal/MPS custom-operator path')
     if self.use_psf:
         errors.append('PSF convolution is unsupported by the Metal/MPS custom-operator path')
+    if getattr(self, 'FDK', False):
+        errors.append('FDK filtering and weighting are not implemented by the Metal/MPS custom-operator path')
     if errors:
         raise ValueError('Metal/MPS configuration: ' + '; '.join(errors))
 
@@ -619,9 +626,13 @@ def _require_mps_float32_contiguous(tensor: Any, name: str) -> Any:
 
 
 def _projection_size(self: Any, timestep: int, subset: int) -> int:
-    if self.subsetType > 7 or self.subsets == 1:
-        return int(getattr(self, 'measurement_nRowsD', self.nRowsD) * getattr(self, 'measurement_nColsD', self.nColsD) * self.nProjSubset[timestep, subset])
-    return int(self.nMeasSubset[timestep, subset])
+    # Non-listmode TOF kernels write NBINS values per LOR, at idx + to * m_size
+    # (see projectorType123.cl/projectorType4.cl); listmode TOF writes a single
+    # value per event (the TOFid-selected bin only), so no extra factor there.
+    tof_bins = int(self.TOF_bins_used) if (self.TOF and self.listmode == 0) else 1
+    if self.listmode == 0 and (self.subsetType > 7 or self.subsets == 1):
+        return int(getattr(self, 'measurement_nRowsD', self.nRowsD) * getattr(self, 'measurement_nColsD', self.nColsD) * self.nProjSubset[timestep, subset]) * tof_bins
+    return int(self.nMeasSubset[timestep, subset]) * tof_bins
 
 
 def forward_projection_mps(self: Any, f: Any, subset: int, timestep: int) -> Any:

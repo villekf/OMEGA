@@ -271,6 +271,8 @@ public:
 			type = 5;
 		else if (w_vec.NLGGMRF)
 			type = 6;
+		else if (w_vec.NLGM)
+			type = 7;
 		else
 			type = 0;
 

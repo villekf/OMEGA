@@ -28,8 +28,8 @@ def volume3Dviewer(
     """
     
     import matplotlib.pyplot as plt
-    from matplotlib.widgets import Slider
-    
+    from matplotlib.widgets import Slider, Button
+
     # Rotation
     if rotation not in [None, [0, 0, 1], [0, 1, 0], [1, 0, 0]]:
         raise ValueError("rotation must be one of None, [0,0,1], [1,0,0], [0,1,0]")
@@ -112,18 +112,37 @@ def volume3Dviewer(
 
     ax.set_title(make_title(idx0, idx4_0))
 
+    # Arrow buttons on both sides of a horizontal slider, stepping one step at a time
+    def add_arrows(slider, bottom, height):
+        ax_prev = plt.axes([0.03, bottom, 0.04, height])
+        ax_next = plt.axes([0.925, bottom, 0.04, height])
+        button_prev = Button(ax_prev, '◀')
+        button_next = Button(ax_next, '▶')
+
+        def step(delta):
+            current = int(round(slider.val))
+            new = min(max(current + delta, int(slider.valmin)), int(slider.valmax))
+            if new != current:
+                slider.set_val(new)
+
+        button_prev.on_clicked(lambda event: step(-1))
+        button_next.on_clicked(lambda event: step(1))
+        return button_prev, button_next
+
     # Horizontal slider for slice index (Z)
     # Position: if 4D, shift up to make room for the second slider
     slice_slider_bottom = 0.09 if has_4d else 0.04
-    ax_slice = plt.axes([0.05, slice_slider_bottom, 0.9, 0.04])
+    ax_slice = plt.axes([0.115, slice_slider_bottom, 0.80, 0.04])
     slicer = Slider(ax_slice, 'Z', 0, n_slices - 1, valinit=idx0, valstep=1)
     slicer.valtext.set_visible(False)
+    slice_arrows = add_arrows(slicer, slice_slider_bottom, 0.04)
 
     # Horizontal slider for 4th dimension (T)
     if has_4d:
-        ax_dim4 = plt.axes([0.05, 0.03, 0.9, 0.04])
+        ax_dim4 = plt.axes([0.115, 0.03, 0.80, 0.04])
         slider_dim4 = Slider(ax_dim4, 'T', 0, n_dim4 - 1, valinit=idx4_0, valstep=1)
         slider_dim4.valtext.set_visible(False)
+        dim4_arrows = add_arrows(slider_dim4, 0.03, 0.04)
 
     # Vertical slider for blending (overlay)
     if overlay:
@@ -170,9 +189,10 @@ def volume3Dviewer(
         alphar.on_changed(_update)
 
     # Prevent garbage collection of widget objects in interactive environments
-    fig._widgets = [slicer]
+    fig._widgets = [slicer, *slice_arrows]
     if has_4d:
         fig._widgets.append(slider_dim4)
+        fig._widgets.extend(dim4_arrows)
     if overlay:
         fig._widgets.append(alphar)
 

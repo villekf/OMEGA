@@ -24,7 +24,7 @@ is to show how you can compute your own algorithms with the OMEGA projector
 operators and utilizing many of the built-in features such as subsets and
 corrections.
 
-This example uses PyTorch with CuPy and thus requires CUDA (and PyTorch and CuPy)!
+This example uses PyTorch with CuPy and thus requires a CUDA or HIP (AMD ROCm) capable device (and PyTorch and CuPy)! For HIP, install the ROCm builds of CuPy and PyTorch; HIP is then used automatically.
 """
 
 import numpy as np
@@ -108,7 +108,7 @@ options.verbose = 1
 ###########################################################################
 
 ############################# DEVICE NUMBER #############################
-### OpenCL/CUDA device used 
+### OpenCL/CUDA/HIP device used
 # NOTE: Use 
 # from omegatomo.util.devinfo import deviceInfo
 # deviceInfo(True)
@@ -280,7 +280,7 @@ options.SinM = np.float32(var['raw_SinM'])
 # this if you make any changes to the system):
 options.addProjector()
 
-# If True, uses CUDA
+# If True, uses CUDA (or HIP, when CuPy is a ROCm build)
 options.useCUDA = True
 
 # Assumes that PyTorch tensors are input as for forward and backward projections

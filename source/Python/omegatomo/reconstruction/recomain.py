@@ -19,6 +19,44 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 """
 import ctypes
 import numpy as np
+import warnings
+
+
+def _spect_listmode_sensitivity_weights(options, n_views):
+    supplied = np.asarray(getattr(options, 'sensitivityViewWeights', np.empty(0)))
+    if supplied.size:
+        weights = np.asarray(supplied, dtype=np.float32)
+        if weights.shape != (n_views, int(options.Nt)) or not np.all(np.isfinite(weights)) or np.any(weights < 0):
+            raise ValueError('sensitivityViewWeights must be a finite, non-negative nViews-by-Nt array.')
+        return np.asfortranarray(weights)
+    if int(options.Nt) == 1:
+        return np.ones((n_views, 1), dtype=np.float32, order='F')
+
+    frame_index = np.asarray(getattr(options, 'temporalBinIndex', np.empty(0))).reshape(-1)
+    if frame_index.size == n_views and np.all(np.isfinite(frame_index)) and np.all(frame_index == np.floor(frame_index)) and np.all((frame_index >= 0) & (frame_index < int(options.Nt))):
+        weights = np.zeros((n_views, int(options.Nt)), dtype=np.float32, order='F')
+        weights[np.arange(n_views), frame_index.astype(np.int64)] = 1
+        return weights
+
+    capture_start = np.asarray(getattr(options, 'measurementStartMs', np.empty(0)), dtype=np.float64).reshape(-1)
+    capture_end = np.asarray(getattr(options, 'measurementEndMs', np.empty(0)), dtype=np.float64).reshape(-1)
+    frame_start = np.asarray(getattr(options, 'dynamicPartitionStartMs', np.empty(0)), dtype=np.float64).reshape(-1)
+    frame_end = np.asarray(getattr(options, 'dynamicPartitionEndMs', np.empty(0)), dtype=np.float64).reshape(-1)
+    if capture_start.size == n_views and capture_end.size == n_views and frame_start.size == int(options.Nt) and frame_end.size == int(options.Nt):
+        duration = capture_end - capture_start
+        if np.all(np.isfinite(capture_start)) and np.all(np.isfinite(capture_end)) and np.all(duration >= 0) and np.all(np.isfinite(frame_start)) and np.all(np.isfinite(frame_end)):
+            overlap = np.maximum(0, np.minimum(capture_end[:, None], frame_end[None, :]) - np.maximum(capture_start[:, None], frame_start[None, :]))
+            weights = np.zeros((n_views, int(options.Nt)), dtype=np.float32, order='F')
+            positive = duration > 0
+            weights[positive, :] = (overlap[positive, :] / duration[positive, None]).astype(np.float32)
+            zero = ~positive
+            if np.any(zero):
+                if frame_index.size != n_views:
+                    raise ValueError('Zero-duration SPECT views require temporalBinIndex for dynamic sensitivity.')
+                for timestep in range(int(options.Nt)):
+                    weights[zero & (frame_index == timestep), timestep] = 1
+            return weights
+    raise ValueError('Dynamic listmode SPECT sensitivity requires view timing, temporalBinIndex, or explicit sensitivityViewWeights.')
 
 def _saved_image_count(options):
     if options.save_iter:
@@ -73,6 +111,11 @@ def transferData(options):
     None.
 
     """
+    # Loaders may use None for an absent optional correction. The native
+    # interface always receives a pointer and an element count, so normalize
+    # that representation to an empty array before taking either.
+    if options.normalization is None:
+        options.normalization = np.empty(0, dtype=np.float32)
     options.param.use_raw_data = ctypes.c_uint8(options.use_raw_data)
     options.param.listmode = ctypes.c_uint8(options.listmode)
     options.param.verbose = ctypes.c_int8(options.verbose)
@@ -175,6 +218,7 @@ def transferData(options):
     options.param.KAD = ctypes.c_float(options.KAD)
     options.param.TimeStepAD = ctypes.c_float(options.TimeStepAD)
     options.param.RDP_gamma = ctypes.c_float(options.RDP_gamma)
+    options.param.GM_delta = ctypes.c_float(options.GM_delta)
     options.param.huber_delta = ctypes.c_float(options.huber_delta)
     options.param.gradV1 = ctypes.c_float(options.gradV1)
     options.param.gradV2 = ctypes.c_float(options.gradV2)
@@ -236,8 +280,10 @@ def transferData(options):
     options.param.NLRD = ctypes.c_bool(options.NLRD)
     options.param.NLLange = ctypes.c_bool(options.NLLange)
     options.param.NLGGMRF = ctypes.c_bool(options.NLGGMRF)
+    options.param.NLGM = ctypes.c_bool(options.NLGM)
     options.param.NLM_use_anatomical = ctypes.c_bool(options.NLM_use_anatomical)
     options.param.NLAdaptive = ctypes.c_bool(options.NLAdaptive)
+    options.param.NLMaxWeight = ctypes.c_bool(options.NLMaxWeight)
     options.param.TV_use_anatomical = ctypes.c_bool(options.TV_use_anatomical)
     options.param.RDPIncludeCorners = ctypes.c_bool(options.RDPIncludeCorners)
     options.param.RDP_use_anatomical = ctypes.c_bool(options.RDP_use_anatomical)
@@ -371,14 +417,20 @@ def transferData(options):
     options.param.TOFIndices = options.TOFIndices.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
     options.param.angles = options.angles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.swivelAngles = options.swivelAngles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    # Only type-6 uses per-volume lists. Other projectors retain empty arrays.
-    blur_planes = options.blurPlanes[0] if isinstance(options.blurPlanes, list) else options.blurPlanes
-    blur_planes2 = options.blurPlanes2[0] if isinstance(options.blurPlanes2, list) else options.blurPlanes2
-    g_filter = options.gFilter[0] if isinstance(options.gFilter, list) else options.gFilter
-    options.param.blurPlanes = blur_planes.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
-    options.param.blurPlanes2 = blur_planes2.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
-    options.param.gFilter = g_filter.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.gFSize = np.array(g_filter.shape if g_filter.size else (0, 0, 0), dtype=np.uint64)
+    if options.projector_type in (6, 16, 26, 61, 62, 66):
+        blur_planes = options.blurPlanes[0] if isinstance(options.blurPlanes, list) else options.blurPlanes
+        blur_planes2 = options.blurPlanes2[0] if isinstance(options.blurPlanes2, list) else options.blurPlanes2
+        g_filter = options.gFilter[0] if isinstance(options.gFilter, list) else options.gFilter
+        options.param.blurPlanes = blur_planes.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
+        options.param.blurPlanes2 = blur_planes2.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
+        # The native type-6 branch uses the volume-0 filter.
+        options.param.gFilter = g_filter.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+        options.gFSize = np.array(g_filter.shape if g_filter.size else (0, 0, 0), dtype=np.uint64)
+    else:
+        options.param.blurPlanes = None
+        options.param.blurPlanes2 = None
+        options.param.gFilter = None
+        options.gFSize = np.zeros(3, dtype=np.uint64)
     options.param.gFSize = options.gFSize.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
     options.param.precondTypeImage = options.precondTypeImage.ctypes.data_as(ctypes.POINTER(ctypes.c_bool))
     options.param.precondTypeMeas = options.precondTypeMeas.ctypes.data_as(ctypes.POINTER(ctypes.c_bool))
@@ -427,6 +479,11 @@ def transferData(options):
     # ...until here
     options.param.NLM_ref = options.NLM_referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.RDP_ref = options.RDP_referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    options.param.zSens = options.zSens.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    options.param.sizeZSens = ctypes.c_uint64(options.zSens.size)
+    options.param.sizeDetectorVector = ctypes.c_uint64(np.size(options.DetectorVector))
+    options.param.sensitivityViewWeights = options.sensitivityViewWeights.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    options.param.sizeSensitivityViewWeights = ctypes.c_uint64(options.sensitivityViewWeights.size)
     
 def reconstructions_mainCT(options):
     """
@@ -586,25 +643,26 @@ def reconstructions_main(options):
         root = tk.Tk()
         root.withdraw()
         fpath = askopenfilename(title='Select randoms datafile',filetypes=(('NPY, NPZ and MAT files','*.mat *.npy *.npz'),('All','*.*')))
-        if len(options.fpath) == 0:
+        if len(fpath) == 0:
             print('No file selected, disabling randoms correction')
             options.randoms_correction = False
-        if fpath[len(fpath)-3:len(fpath)+1:1] == 'mat' and options.randoms_correction:
-            from pymatreader import read_mat
-            var = read_mat(fpath)
-            try:
-                options.SinDelayed = np.array(var["SinDelayed"],order='F')
-            except KeyError:
-                print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed. Disabling randoms correction')
-                options.randoms_correction = False
-        elif fpath[len(fpath)-3:len(fpath)+1:1] == 'npy':
-            options.SinDelayed = np.load(fpath)
-        elif fpath[len(fpath)-3:len(fpath)+1:1] == 'npz':
-            varList = np.load(fpath)
-            try:
-                options.SinDelayed = varList['SinDelayed']
-            except KeyError:
-                print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed. Disabling randoms correction')
+        else:
+            if fpath[len(fpath)-3:len(fpath)+1:1] == 'mat' and options.randoms_correction:
+                from pymatreader import read_mat
+                var = read_mat(fpath)
+                try:
+                    options.SinDelayed = np.array(var["SinDelayed"],order='F')
+                except KeyError:
+                    print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed. Disabling randoms correction')
+                    options.randoms_correction = False
+            elif fpath[len(fpath)-3:len(fpath)+1:1] == 'npy':
+                options.SinDelayed = np.load(fpath)
+            elif fpath[len(fpath)-3:len(fpath)+1:1] == 'npz':
+                varList = np.load(fpath)
+                try:
+                    options.SinDelayed = varList['SinDelayed']
+                except KeyError:
+                    print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed. Disabling randoms correction')
     if options.TOF and options.TOF_bins_used == 1:
         options.TOF_bins = options.TOF_bins_used
         options.SinM = np.sum(options.SinM, axis=3)
@@ -628,7 +686,15 @@ def reconstructions_main(options):
         ParkerWeights(options)
     if not options.listmode:
         options.SinM = np.reshape(options.SinM, (int(options.nRowsD), int(options.nColsD), options.nProjections, options.TOF_bins, options.Nt), order='F')
-    elif options.listmode and options.compute_sensitivity_image and not(options.SPECT):
+    elif options.listmode and options.compute_sensitivity_image and options.SPECT:
+        from omegatomo.projector.detcoord import getCoordinatesSPECT
+        x_sensitivity, z_sensitivity = getCoordinatesSPECT(options)
+        options.uV = np.float32(np.asfortranarray(x_sensitivity))
+        options.zSens = np.float32(np.asfortranarray(z_sensitivity))
+        options.sensitivityViewWeights = _spect_listmode_sensitivity_weights(
+            options, options.uV.size // 6
+        )
+    elif options.listmode and options.compute_sensitivity_image:
         if hasattr(options, 'xSens') and np.size(options.xSens) > 0 and hasattr(options, 'zSens') and np.size(options.zSens) > 0:
             options.uV = np.float32(np.asfortranarray(options.xSens))
             options.z = np.float32(np.asfortranarray(options.zSens))
@@ -708,9 +774,8 @@ def reconstructions_main(options):
     # point_ptr = ctypes.pointer(options.param)
     if isinstance(options.SinM, list):
         options.SinM = np.concatenate(options.SinM)
-    if not options.SinM.dtype == 'float32' and not options.largeDim and options.loadTOF:
-        options.SinM = options.SinM.astype(np.float32)
-    elif not options.SinM.dtype == 'uint16' and not options.SinM.dtype == 'uint8':
+    keep_int = options.SinM.dtype in (np.uint16, np.uint8) and (options.largeDim or not options.loadTOF)
+    if not keep_int and not options.SinM.dtype == 'float32':
         options.SinM = options.SinM.astype(np.float32)
     if options.SinM.ndim > 1:
         options.SinM = options.SinM.ravel('F')
@@ -758,8 +823,12 @@ def reconstructions_main(options):
         SinoP = options.SinM.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     outputP = output.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     FPOutputP = FPOutput.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    from omegatomo.util.dllpath import addDLLDirectories
+    addDLLDirectories()
     c_lib = ctypes.CDLL(libname)
-    c_lib.omegaMain(options.param, ctypes.c_char_p(inStr), SinoP, outputP, FPOutputP, residualP)
+    status = c_lib.omegaMain(options.param, ctypes.c_char_p(inStr), SinoP, outputP, FPOutputP, residualP)
+    if status != 0:
+        raise RuntimeError(f'Native reconstruction failed with status {status}; see the backend diagnostics above.')
     try:
         if options.useMultiResolutionVolumes and options.storeMultiResolution:
             output = _reshape_multiresolution_output(output, options)
@@ -768,12 +837,14 @@ def reconstructions_main(options):
         else:
             output = _reshape_image_output(output, (options.Nx[0], options.Ny[0], options.Nz[0]), _saved_image_count(options), options.Nt)
         if options.subsets == 1 and options.storeFP:
-            FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins), order = 'F')
-    finally:
-        toc = time.perf_counter()
-        if options.verbose > 0:
-            print(f"Reconstruction took {toc - tic:0.4f} seconds")
-        if options.storeResidual:
-            return output, FPOutput, residual
-        else:
-            return output, FPOutput
+            FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins, options.Niter), order = 'F')
+    except Exception as e:
+        # Keep the reconstruction even if the output dimensions do not match
+        warnings.warn(f'Could not reshape the reconstruction output ({e}); returning the unreshaped (flat) arrays instead.')
+    toc = time.perf_counter()
+    if options.verbose > 0:
+        print(f"Reconstruction took {toc - tic:0.4f} seconds")
+    if options.storeResidual:
+        return output, FPOutput, residual
+    else:
+        return output, FPOutput

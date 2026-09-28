@@ -67,6 +67,8 @@ def saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, Nang, Ndist, 
     binsP = bins.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
     layer1P = layer1.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
     layer2P = layer2.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
+    from omegatomo.util.dllpath import addDLLDirectories
+    addDLLDirectories()
     c_lib = ctypes.CDLL(libname)
     c_lib.sinoMain(pos1P, pos2P, ring1P, ring2P, truesP, scatterP, randP, ctypes.c_uint64(sinoSize), ctypes.c_uint32(Ndist), 
                     ctypes.c_uint32(Nang), ctypes.c_uint32(ringDifference), ctypes.c_uint32(span), segP, ctypes.c_uint64(sinoSize), 

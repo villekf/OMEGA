@@ -24,7 +24,7 @@ import numpy as np
 from omegatomo.projector import proj
 from omegatomo.util import CTEFOVCorrection
 from omegatomo.reconstruction import reconstructions_mainCT
-import matplotlib as plt
+import matplotlib.pyplot as plt
 
 options = proj.projectorClass()
 
@@ -527,6 +527,15 @@ options.SATVPhi = 5
 ### Use Non-local GGMRF (NLGGMRF)
 options.NLGGMRF = False
 
+### Use non-local Geman-McClure (NLGM)
+options.NLGM = False
+
+### Scaling value for NLGM
+# Differences much larger than this are ignored by the prior. Note that this
+# also scales the overall strength of the prior, as the slope at small
+# differences is 2 / options.GM_delta**2
+options.GM_delta = 1.
+
 ### Use MRP algorithm (without normalization)
 # I.e. gradient = im - NLM_filtered(im)
 options.NLM_MRP = False
@@ -585,7 +594,7 @@ print(f"{toc - tic:0.4f} seconds")
 
 z = np.int16(pz[:,:,:] * 55000) - 1000
 
-plt.pyplot.imshow(pz[:,:,120])
+plt.imshow(pz[:,:,120])
 
 from omegatomo.util.volume3Dviewer import volume3Dviewer
-volume3Dviewer(pz, [-1000, 2000])
+volume3Dviewer(z, [-1000, 2000])

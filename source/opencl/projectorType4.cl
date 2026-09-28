@@ -161,7 +161,7 @@ void projectorType4Forward(
     const float dL, const float global_factor, 
 	///////////////////////// TOF BINS /////////////////////////
 #ifdef TOF
-	CONSTANT float* TOFCenter, const float sigma_x, 
+	CONSTANT float* TOFCenter, const float sigma_x, const float d_epps,
 #endif
 	///////////////////////// END TOF BINS /////////////////////////
     ////////////////////////////////////////////////////////////////////////
@@ -364,9 +364,17 @@ void projectorType4Forward(
 	float3 s, d;
 #if (defined(CT) || defined(SPECT)) && !defined(LISTMODE) && !defined(PET) // CT data
 #ifdef HELICAL
-	getDetectorCoordinatesCT(d_xyz, r, d_uv, &s, &d, i, d_size_x, d_sizey, d_dPitch);
+	getDetectorCoordinatesCT(d_xyz, r, d_uv, &s, &d, i, d_size_x, d_sizey, d_dPitch
+#if defined(N_RAYS)
+		, lorXY, lorZ
+#endif
+	);
 #else
-	getDetectorCoordinatesCT(d_xyz, d_uv, &s, &d, i, d_size_x, d_sizey, d_dPitch);
+	getDetectorCoordinatesCT(d_xyz, d_uv, &s, &d, i, d_size_x, d_sizey, d_dPitch
+#if defined(N_RAYS)
+		, lorXY, lorZ
+#endif
+	);
 #endif
 #elif defined(LISTMODE) && !defined(SENS) // Listmode data
 #if defined(INDEXBASED)
@@ -404,6 +412,16 @@ void projectorType4Forward(
 	);
 #endif
     float3 v = d - s;
+#if defined(CUDA) || defined(HIP)
+	if ((v.x == FLOAT_ZERO && v.y == FLOAT_ZERO) || ISINF(v.x) || ISINF(v.y) || ISINF(v.z) || ISNAN(v.x) || ISNAN(v.y) || ISNAN(v.z))
+#else
+	if ((v.x == FLOAT_ZERO && v.y == FLOAT_ZERO) || ANY(ISINF(v)) || ANY(ISNAN(v)))
+#endif
+#ifdef N_RAYS //////////////// MULTIRAY ////////////////
+		continue;
+#else
+		return;
+#endif  //////////////// END MULTIRAY ////////////////
     const float3 bmin = b;
     const float3 tBack = (bmin - s) / v;
     const float3 tFront = (bmax - s) / v;
@@ -444,7 +462,7 @@ void projectorType4Forward(
 #ifdef TOF //////////////// TOF ////////////////
 	float D = FLOAT_ZERO;
 	float DD = FLOAT_ZERO;
-	TOFDis(v, tStart, L, &D, &DD);
+	TOFDis(tStart, L, &D, &DD);
 	const float DDsign = sign(DD);
 	float TOFWeights[NBINS];
 #endif //////////////// END TOF ////////////////
@@ -479,7 +497,7 @@ void projectorType4Forward(
     // Determine the first t value, depending on whether the ray is descending or ascending
     float t0;
     if (vDim > FLOAT_ZERO)
-        t0 = tStartG + (FLOOR(sInd) - sInd) * tStep;
+        t0 = tStartG + (CEIL(sInd) - sInd) * tStep;
     else
         t0 = tStartG + (sInd - FLOOR(sInd)) * tStep;
 #ifdef LARGEDIM
@@ -494,18 +512,13 @@ void projectorType4Forward(
         nSteps = CUINT((tEnd - t0) / tStep) + 1U;
 	// The length is also constant here
     const float stepLen = tStep * L;
-
-#ifdef TOF
-    // Shift the TOF distance from the FOV entry point to the first step
-    D -= ((t0 - tStart) * L * DDsign);
-#endif
 #else
     // Parametric step length
     const float tStep = DIVIDE(dL, L);
     // The interpolation weight is the fixed input dL
     const float stepLen = dL;
 	// Same as above
-    float t0 = tStartG;
+    float t0 = tStartG + tStep / 10.f;
 #ifdef LARGEDIM
 	if (tStart > tStartG)
 		t0 += FLOOR((tStart - t0) / tStep + FLOAT_ONE) * tStep;
@@ -515,6 +528,9 @@ void projectorType4Forward(
     if (t0 <= tEnd)
         nSteps = CUINT((tEnd - t0) / tStep) + 1u;
 #endif // END JOSEPH
+#ifdef TOF
+    D -= ((t0 - tStart) * L * DDsign);
+#endif
     // The position update can be precomputed with the constant parametric step length
     const float3 dp = v * d_scale * tStep;
 
@@ -545,16 +561,6 @@ void projectorType4Forward(
 #else
     // With a counted loop the total traversed length is known without marching the ray
     LL = CFLOAT(nSteps) * stepLen;
-#endif
-#ifndef JOSEPH
-    t0 = tStartG + tStep / 10.f;
-#ifdef LARGEDIM
-	if (tStart > tStartG)
-		t0 += FLOOR((tStart - t0) / tStep + FLOAT_ONE) * tStep;
-#endif
-    nSteps = 0;
-    if (t0 <= tEnd)
-        nSteps = CUINT((tEnd - t0) / tStep) + 1u;
 #endif
 #endif
 #if !defined(CT) //////////////// PET ////////////////
@@ -589,8 +595,17 @@ void projectorType4Forward(
 		temp *= global_factor;
 #endif
 #endif //////////////// END PET ////////////////
+#if defined(CT) && defined(N_RAYS) //////////////// MULTIRAY CT ////////////////
+	// Average over the rays
+	temp = FLOAT_ONE / CFLOAT(N_RAYS);
+#endif //////////////// END MULTIRAY CT ////////////////
     // Increment the interpolation coordinate except at every 64th step where it's recomputed
 	// The recomputation is done to avoid numerical errors of (floating-point) summation (round-off errors)
+#if defined(BP) && !defined(CT)
+	// Loop invariant, previously recomputed for every sample
+	const uint imNxy = d_N.x * d_N.y;
+	const uint imNvox = imNxy * d_N.z;
+#endif
     float3 p = MFLOAT3(FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO);
     for (uint ii = 0; ii < nSteps; ii++) {
         if ((ii & 63u) == 0u) {
@@ -608,7 +623,7 @@ void projectorType4Forward(
 		compute_attenuation(stepLen, p, d_atten, &jelppi, aa);
 #endif
 #ifdef TOF //////////////// TOF ////////////////
-			TOFSum = TOFLoop(DDsign, stepLen, TOFCenter, sigmaInv, sigmaCoef, &D, 1e-6f, TOFWeights);
+			TOFSum = TOFLoop(DDsign, stepLen, TOFCenter, sigmaInv, sigmaCoef, &D, d_epps, TOFWeights);
 #endif //////////////// END TOF ////////////////
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
 			denominator(axP, p, stepLen, d_OSEM
@@ -621,25 +636,24 @@ void projectorType4Forward(
 			);
 #endif  //////////////// END FORWARD PROJECTION ////////////////
 #if defined(BP) && !defined(CT) //////////////// BACKWARD PROJECTION ////////////////
-            const uint local_ind = CUINT_rtz(p.x * CFLOAT(d_N.x)) + CUINT_rtz(p.y * CFLOAT(d_N.y)) * d_N.x + CUINT_rtz(p.z * CFLOAT(d_N.z)) * d_N.x * d_N.y;
-            if (local_ind <= 0 || local_ind >= d_N.x * d_N.y * d_N.z) {
-                continue;
-            }
+            const uint local_ind = CUINT_rtz(p.x * CFLOAT(d_N.x)) + CUINT_rtz(p.y * CFLOAT(d_N.y)) * d_N.x + CUINT_rtz(p.z * CFLOAT(d_N.z)) * imNxy;
+            if (local_ind < imNvox) {
 #if defined(MASKBP)
-            int maskVal = 1;
-            if (aa == 0) {
-				maskVal = readMaskBP(maskBP, p, d_N);
-            }
-            if (maskVal > 0)
+                int maskVal = 1;
+                if (aa == 0) {
+					maskVal = readMaskBP(maskBP, p, d_N);
+                }
+                if (maskVal > 0)
 #endif
-			rhs(stepLen * temp, ax, local_ind, d_output, no_norm, d_Summ
+				rhs(stepLen * temp, ax, local_ind, d_output, no_norm, d_Summ
 #ifdef TOF
-			, TOFSum, TOFWeights
+				, TOFSum, TOFWeights
 #ifdef LISTMODE
-			, TOFid
+				, TOFid
 #endif
 #endif
-			);
+				);
+            }
 #endif //////////////// END BACKWARD PROJECTION ////////////////
 #if defined(TOF)
 			D -= (stepLen * DDsign);
@@ -705,6 +719,9 @@ void projectorType4Forward(
 		}
 	}
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
+#if defined(CT) && defined(NORM)
+	ax[0] *= local_norm;
+#endif
 #if defined(TOF) && defined(LISTMODE)
 		size_t to = TOFid;
 #else
@@ -1204,10 +1221,14 @@ void projectorType4Backward(
             }
 #endif
 #ifdef NORM
-            const LONG indX = CLONG_rtz(px * CFLOAT(d_size_x));
-            const LONG indY = CLONG_rtz(py * CFLOAT(d_sizey)) * CLONG_rtz(d_size_x);
-            const LONG indZ = CLONG_rtz(pz * CFLOAT(d_nProjections)) * CLONG_rtz(d_sizey) * CLONG_rtz(d_size_x);
-            yVar *= d_norm[indX + indY + indZ];
+            if (px < 1.f && py < 1.f && pz < 1.f && px >= 0.f && py >= 0.f && pz >= 0.f) {
+				const LONG indX = CLONG_rtz(px * CFLOAT(d_size_x));
+				const LONG indY = CLONG_rtz(py * CFLOAT(d_sizey)) * CLONG_rtz(d_size_x);
+				const LONG indZ = CLONG_rtz(pz * CFLOAT(d_nProjections)) * CLONG_rtz(d_sizey) * CLONG_rtz(d_size_x);
+				yVar *= d_norm[indX + indY + indZ];
+            }
+            else
+                yVar = 0.f;
 #endif
 #if STYPE == 12
             const float t_2 = DIVIDE(upperPart_2, lowerPart_2);
@@ -1242,6 +1263,16 @@ void projectorType4Backward(
                 const LONG indZ = CLONG_rtz(pz_2 * CFLOAT(d_nProjections)) * CLONG_rtz(d_sizey) * CLONG_rtz(d_size_x);
                 yVar_2 = d_forw[indX + indY + indZ];
             }
+#endif
+#ifdef NORM
+            if (px_2 < 1.f && py_2 < 1.f && pz_2 < 1.f && px_2 >= 0.f && py_2 >= 0.f && pz_2 >= 0.f) {
+                const LONG indX_2 = CLONG_rtz(px_2 * CFLOAT(d_size_x));
+                const LONG indY_2 = CLONG_rtz(py_2 * CFLOAT(d_sizey)) * CLONG_rtz(d_size_x);
+                const LONG indZ_2 = CLONG_rtz(pz_2 * CFLOAT(d_nProjections)) * CLONG_rtz(d_sizey) * CLONG_rtz(d_size_x);
+                yVar_2 *= d_norm[indX_2 + indY_2 + indZ_2];
+            }
+            else
+                yVar_2 = 0.f;
 #endif
 #endif
 #ifdef OFFSET

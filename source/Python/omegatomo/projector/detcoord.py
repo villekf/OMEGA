@@ -174,12 +174,8 @@ def setCTCoordinates(options):
         options.z = options.uV
     if options.pitchRoll.size > 0:
         options.pitch = True
-        options.z[:,0] = options.z[:,0] * options.dPitchX
-        options.z[:,1] = options.z[:,1] * options.dPitchX
-        options.z[:,5] = options.z[:,5] * options.dPitchY
-        options.z[:,3] = options.z[:,3] * options.dPitchX
-        options.z[:,4] = options.z[:,4] * options.dPitchX
-        options.z[:,2] = options.z[:,2] * options.dPitchY
+        options.z[:, :3] *= options.dPitchX
+        options.z[:, 3:] *= options.dPitchY
     elif options.uV.size > 0:
         options.z[:,0] = options.z[:,0] * options.dPitchX
         options.z[:,1] = options.z[:,1] * options.dPitchX
@@ -204,12 +200,16 @@ def CTDetectorCoordinates(angles, pitchRoll = np.empty(0, dtype=np.float32)):
         The direction vectors of the panel pixels for each projection.
 
     """
+    angles = np.asarray(angles).reshape(-1)
     if pitchRoll.size == 0:
         uV = np.column_stack((-np.sin(angles), np.cos(angles)))
     else:
-        pitchRoll.reshape(pitchRoll.size // 2, 2)
-        uV = np.column_stack(((-np.sin(angles) * np.cos(pitchRoll[:,0] - np.cos(angles) * np.sin(pitchRoll[:,0]) * np.sin(pitchRoll[:,1]))), 
-                             (np.cos(angles) * np.cos(pitchRoll[:,0]) - np.cos(angles) * np.sin(pitchRoll[:,0]) * np.sin(pitchRoll[:,1])),
+        pitchRoll = np.asarray(pitchRoll).reshape(-1, 2)
+        if pitchRoll.shape[0] not in (1, angles.size):
+            raise ValueError('pitchRoll must contain one pitch/roll pair or one pair per projection')
+        pitchRoll = np.broadcast_to(pitchRoll, (angles.size, 2))
+        uV = np.column_stack(((-np.sin(angles) * np.cos(pitchRoll[:,0]) - np.cos(angles) * np.sin(pitchRoll[:,0]) * np.sin(pitchRoll[:,1])),
+                             (np.cos(angles) * np.cos(pitchRoll[:,0]) - np.sin(angles) * np.sin(pitchRoll[:,0]) * np.sin(pitchRoll[:,1])),
                              (np.sin(pitchRoll[:,0]) * np.cos(pitchRoll[:,1])),
                              (np.sin(angles) * np.sin(pitchRoll[:,0]) - np.cos(angles) * np.cos(pitchRoll[:,0]) * np.sin(pitchRoll[:,1])),
                              (-(np.cos(angles) * np.sin(pitchRoll[:,0]) + np.sin(angles) * np.cos(pitchRoll[:,0]) * np.sin(pitchRoll[:,1]))),
@@ -1021,8 +1021,9 @@ def _type6_total_lengths(options: proj.projectorClass) -> np.ndarray:
 def SPECTParameters(options: proj.projectorClass):
     if options.projector_type in [1, 11, 12, 16, 2, 21, 22, 26, 61, 62]: # Ray tracing projectors
         nRays = int(options.n_rays_transaxial * options.n_rays_axial)
+        ray_shift_shape = (2 * nRays, options.nRowsD, options.nColsD, options.nHeads)
         if options.rayShiftsDetector.size == 0: # Collimator modeling
-            options.rayShiftsDetector = np.zeros((2*nRays, options.nRowsD, options.nColsD, options.nHeads), dtype=np.float32)
+            options.rayShiftsDetector = np.zeros(ray_shift_shape, dtype=np.float32)
             
             if options.colFxy == 0 and options.colFz == 0:
                 dx = np.linspace(-(options.nRowsD / 2 - 0.5) * options.dPitchX, (options.nRowsD / 2 - 0.5) * options.dPitchX, options.nRowsD)
@@ -1034,34 +1035,44 @@ def SPECTParameters(options: proj.projectorClass):
                             options.rayShiftsDetector[2 * kk, ii, jj, :] = -dx[ii]
                             options.rayShiftsDetector[2 * kk + 1, ii, jj, :] = -dy[jj]    
 
-        if options.rayShiftsSource.size == 0:
-            options.rayShiftsSource = np.zeros((2*nRays, options.nRowsD, options.nColsD, options.nHeads), dtype=np.float32)
+        if options.rayShiftsDetector.size:
+            options.rayShiftsDetector = np.asarray(options.rayShiftsDetector, dtype=np.float32).reshape(ray_shift_shape, order='F')
+        generate_source_shifts = options.rayShiftsSource.size == 0
+        if generate_source_shifts:
+            options.rayShiftsSource = np.zeros(ray_shift_shape, dtype=np.float32)
+        else:
+            options.rayShiftsSource = np.asarray(options.rayShiftsSource, dtype=np.float32).reshape(ray_shift_shape, order='F')
             
-            if nRays > 1: # Multiray shifts
-                tmp_x, tmp_y = np.meshgrid(
-                    np.linspace(-0.5, 0.5, options.n_rays_transaxial),
-                    np.linspace(-0.5, 0.5, options.n_rays_axial)
-                )
-                if options.colFxy == 0 and options.colFz == 0: # Pinhole collimator
-                    tmp_x *= options.dPitchX
-                    tmp_y *= options.dPitchY
-                elif np.isinf(options.colFxy) and np.isinf(options.colFz):  # Parallel-hole collimator
-                    tmp_x *= 2 * options.colR
-                    tmp_y *= 2 * options.colR
+        if generate_source_shifts and nRays > 1: # Multiray shifts
+            tmp_x, tmp_y = np.meshgrid(
+                np.linspace(-0.5, 0.5, options.n_rays_transaxial),
+                np.linspace(-0.5, 0.5, options.n_rays_axial)
+            )
+            if options.colFxy == 0 and options.colFz == 0: # Pinhole collimator
+                tmp_x *= options.dPitchX
+                tmp_y *= options.dPitchY
+            elif np.isinf(options.colFxy) and np.isinf(options.colFz):  # Parallel-hole collimator
+                tmp_x *= 2 * options.colR
+                tmp_y *= 2 * options.colR
 
-                tmp_shift = np.column_stack((tmp_x.ravel(), tmp_y.ravel())).T.reshape(-1, 1, order='F')
+            tmp_shift = np.column_stack((tmp_x.ravel(), tmp_y.ravel())).T.reshape(-1, 1, order='F')
 
-                for kk in range(nRays):
-                    options.rayShiftsSource[2 * kk, :, :, :] = tmp_shift[2 * kk]
-                    options.rayShiftsSource[2 * kk + 1, :, :, :] = tmp_shift[2 * kk + 1]
+            for kk in range(nRays):
+                options.rayShiftsSource[2 * kk, :, :, :] = tmp_shift[2 * kk]
+                options.rayShiftsSource[2 * kk + 1, :, :, :] = tmp_shift[2 * kk + 1]
 
         if options.projector_type in [1, 11, 12, 16, 21, 61]:
+            referenceLength = options.colD + 0.5 * options.colL
             lengthXY = options.colD + 0.5 * options.colLxy
             lengthZ = options.colD + 0.5 * options.colLz
-            if lengthXY != lengthZ:
+            if referenceLength != lengthZ:
+                detectorShiftXY = options.rayShiftsDetector[0::2, :, :, :]
+                options.rayShiftsSource[0::2, :, :, :] = detectorShiftXY + \
+                    (options.rayShiftsSource[0::2, :, :, :] - detectorShiftXY) * (referenceLength / lengthZ)
+            if referenceLength != lengthXY:
                 detectorShiftZ = options.rayShiftsDetector[1::2, :, :, :]
                 options.rayShiftsSource[1::2, :, :, :] = detectorShiftZ + \
-                    (options.rayShiftsSource[1::2, :, :, :] - detectorShiftZ) * (lengthXY / lengthZ)
+                    (options.rayShiftsSource[1::2, :, :, :] - detectorShiftZ) * (referenceLength / lengthXY)
 
         options.rayShiftsDetector = options.rayShiftsDetector.ravel('F')
         options.rayShiftsSource = options.rayShiftsSource.ravel('F')

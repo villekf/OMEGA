@@ -345,6 +345,10 @@ class projectorClass:
     sigma_x = 1
     w_sum = 1.
     RDP_gamma = 1.
+    ## Scaling value of the Geman-McClure potential, i.e. the delta of NLGM. Differences much larger
+    # than this are ignored by the prior; it also scales the overall strength, as the slope at small
+    # differences is 2 / GM_delta^2
+    GM_delta = 1.
     NLMsigma = 1.
     NLAdaptiveConstant = 1.
     TimeStepAD = 1.
@@ -352,10 +356,15 @@ class projectorClass:
     huber_delta = 1.
     NLM_use_anatomical = False
     NLAdaptive = False
+    ## Include the reference voxel itself in the NLM neighborhood with the largest of the weights,
+    # as in the original NLM of Buades et al., instead of leaving it out of the sum entirely
+    NLMaxWeight = False
     NLTV = False
     NLRD = False
     NLLange = False
     NLGGMRF = False
+    ## Use the non-local Geman-McClure prior (NLGM)
+    NLGM = False
     NLM_MRP = False
     med_no_norm = False
     alpha0TGV = 0.
@@ -530,6 +539,7 @@ class projectorClass:
     regEveryIter = 1
     xSens = np.empty(0, dtype = np.float32)
     zSens = np.empty(0, dtype = np.float32)
+    sensitivityViewWeights = np.empty(0, dtype = np.float32)
 
     def __init__(self):
         # C-struct
@@ -588,15 +598,45 @@ class projectorClass:
                 self.angles = self.angles + self.offangle
             setCTCoordinates(self)
         if self.SPECT:
-            # Dynamic SPECT projection images are represented as one list entry
-            # per timeframe.  A four-dimensional input keeps the same temporal
-            # ordering when normalized here.
+            # Listmode SPECT stores one vector of events per timeframe rather
+            # than a 3-D detector image stack. Detect that layout before the
+            # sinogram normalization below inspects shape[2].
+            spect_event_listmode = False
+            if isinstance(self.SinM, list) and self.SinM and isinstance(self.x, list) and len(self.x) == len(self.SinM):
+                spect_event_listmode = all(
+                    np.asarray(coords).size % 6 == 0 and
+                    np.asarray(coords).size // 6 == np.asarray(events).size
+                    for coords, events in zip(self.x, self.SinM)
+                )
+            elif isinstance(self.SinM, np.ndarray) and self.SinM.size and np.asarray(self.x).size % 6 == 0:
+                spect_event_listmode = np.asarray(self.x).size // 6 == self.SinM.size
+            if spect_event_listmode:
+                self.listmode = 1
+                if self.subsets == 1 and self.subsetType not in (0, 1, 3):
+                    self.subsetType = 1
+                if isinstance(self.SinM, list):
+                    self.Nt = len(self.SinM)
+                projection_counts = np.asarray(
+                    getattr(self, 'nProjectionsPerFrame', getattr(self, 'nProjectionsPerPartition', [self.nProjections])),
+                    dtype=np.int64,
+                ).reshape(-1)
+                if projection_counts.size == 0 or np.any(projection_counts < 1):
+                    raise ValueError('Listmode SPECT needs a positive projection-frame count for every timeframe.')
+                self.nProjectionsPerFrame = projection_counts
+                total_projections = int(np.sum(projection_counts))
+                if self.angles.size != total_projections or self.radiusPerProj.size != total_projections:
+                    raise ValueError('Listmode SPECT angles and radii must contain one value for every projection frame.')
+                if self.swivelAngles.size not in (0, total_projections):
+                    raise ValueError('Listmode SPECT swivelAngles must contain one value for every projection frame.')
+                self.nProjections = int(np.max(projection_counts))
+            # Dynamic sinogram SPECT data are represented as one list entry per
+            # timeframe. A 4-D input keeps the same temporal ordering.
             if isinstance(self.SinM, np.ndarray) and self.SinM.size > 0:
-                if self.SinM.ndim == 4:
+                if self.SinM.ndim == 4 and not spect_event_listmode:
                     self.SinM = [self.SinM[:, :, :, tt] for tt in range(self.SinM.shape[3])]
                 #else:
                 #    self.SinM = [self.SinM]
-            if isinstance(self.SinM, list) and self.SinM:
+            if isinstance(self.SinM, list) and self.SinM and not spect_event_listmode:
                 self.Nt = len(self.SinM)
                 self.nProjectionsPerFrame = np.asarray(
                     [np.asarray(frame).shape[2] for frame in self.SinM],
@@ -610,7 +650,7 @@ class projectorClass:
                 if self.swivelAngles.size not in (0, total_projections):
                     raise ValueError('Dynamic SPECT swivelAngles must contain one value for every projection image across all timeframes.')
                 self.nProjections = int(np.max(self.nProjectionsPerFrame))
-            elif isinstance(self.SinM, np.ndarray) and self.SinM.size > 0:
+            elif isinstance(self.SinM, np.ndarray) and self.SinM.size > 0 and not spect_event_listmode:
                 self.nProjectionsPerFrame = np.asarray([self.nProjections], dtype=np.int64)
             if self.ellipseRadiusX == 0 or self.ellipseRadiusY == 0 or self.ellipseRadiusZ == 0:
                 self.ellipseRadiusX = self.FOVa_x / 2
@@ -632,21 +672,27 @@ class projectorClass:
                 self.angles += self.offangle
                 self.swivelAngles += self.offangle
             
-            if self.vaimennus.size > 0 and self.offangle != 0:
-                from skimage.transform import rotate
-                self.vaimennus = rotate(self.vaimennus, self.offangle)
+            if self.vaimennus.size > 0:
+                if self.offangle != 0:
+                    from skimage.transform import rotate
+                    self.vaimennus = rotate(self.vaimennus, self.offangle)
+                if self.vaimennus.ndim == 1:
+                    Nx = self.Nx[0].item() if isinstance(self.Nx, np.ndarray) else self.Nx
+                    Ny = self.Ny[0].item() if isinstance(self.Ny, np.ndarray) else self.Ny
+                    Nz = self.Nz[0].item() if isinstance(self.Nz, np.ndarray) else self.Nz
+                    self.vaimennus = np.reshape(self.vaimennus, (Nx, Ny, Nz), order='F')
                 if self.flipImageX:
-                    self.vaimennus = np.flip(self.vaimennus, 2)
-                if self.flipImageY:
                     self.vaimennus = np.flip(self.vaimennus, 1)
+                if self.flipImageY:
+                    self.vaimennus = np.flip(self.vaimennus, 0)
                 if self.flipImageZ:
-                    self.vaimennus = np.flip(self.vaimennus, 3)
-                    
+                    self.vaimennus = np.flip(self.vaimennus, 2)
+
             if self.flipImageZ:
                 if isinstance(self.SinM, list):
-                    self.SinM = [np.flip(frame, axis=2) for frame in self.SinM]
+                    self.SinM = [np.flip(frame, axis=1) for frame in self.SinM]
                 else:
-                    self.SinM = np.flip(self.SinM, axis=2)
+                    self.SinM = np.flip(self.SinM, axis=1)
             
             if 'n_rays_transaxial' not in self.__dict__:
                 self.n_rays_transaxial = int(np.sqrt(self.nRays))
@@ -734,7 +780,7 @@ class projectorClass:
                 self.TOFCenter = np.float32(self.TOFCenter)
         else:
             self.sigma_x = 0.
-        if self.ordinaryPoisson == None:
+        if self.ordinaryPoisson is None:
             self.ordinaryPoisson = self.corrections_during_reconstruction
         compact_mask_size = self.nRowsD * self.nColsD * self.nHeads if self.SPECT else -1
         valid_projection_mask_sizes = (self.nRowsD * self.nColsD, self.nRowsD * self.nColsD * self.nProjections, compact_mask_size)
@@ -784,28 +830,21 @@ class projectorClass:
         if self.Nt > 1 and self.subsetType == 3:
             raise ValueError('Subset type 3 is not supported with dynamic data!')
         temp = self.pseudot
-        if isinstance(temp, int):
-            if temp > 0:
-                if isinstance(self.cryst_per_block, np.ndarray):
-                    self.pseudot = np.array(self.cryst_per_block[0].item() + 1,dtype=np.uint32)
-                else:
-                    self.pseudot = np.array(self.cryst_per_block + 1,dtype=np.uint32)
-            else:
-                self.pseudot = np.empty(0, dtype = np.uint32)
+        if isinstance(temp, np.ndarray):
+            temp = int(temp.reshape(-1)[0].item()) if temp.size > 0 else 0
         elif temp is None:
-            self.pseudot = np.empty(0, dtype = np.uint32)
-        elif isinstance(temp, np.ndarray):
-            if len(temp) > 0 and np.sum(temp) > 0:
-                self.pseudot = np.zeros(temp, dtype=np.uint32)
-                for kk in range(1,temp + 1):
-                    if isinstance(self.cryst_per_block, np.ndarray):
-                        self.pseudot[kk - 1] = np.array(self.cryst_per_block[0].item() + 1,dtype=np.uint32) * kk
-                    else:
-                        self.pseudot[kk - 1] = np.array(self.cryst_per_block + 1,dtype=np.uint32) * kk
+            temp = 0
         else:
-            self.pseudot = np.array(0,dtype=np.uint32)
-        # elif np.sum(temp) == 0 and temp.size > 0:
-        #     self.pseudot = np.empty(0, dtype = np.uint32)
+            temp = int(temp)
+        if temp > 0:
+            self.pseudot = np.zeros(temp, dtype=np.uint32)
+            for kk in range(1, temp + 1):
+                if isinstance(self.cryst_per_block, np.ndarray):
+                    self.pseudot[kk - 1] = np.uint32(self.cryst_per_block[0].item() + 1) * kk
+                else:
+                    self.pseudot[kk - 1] = np.uint32(self.cryst_per_block + 1) * kk
+        else:
+            self.pseudot = np.empty(0, dtype = np.uint32)
         # Whether list-mode or sinogram/raw data is used
         xList = False
         if isinstance(self.x, list):
@@ -814,14 +853,14 @@ class projectorClass:
             xSize = self.x[0].size
         else:
             xSize = self.x.size
-        if (hasattr(self, 'x') or hasattr(self, 'y') or hasattr(self, 'z') or hasattr(self, 'z_det')) and xSize > 0 and \
+        if spect_event_listmode or ((hasattr(self, 'x') or hasattr(self, 'y') or hasattr(self, 'z') or hasattr(self, 'z_det')) and xSize > 0 and \
            ((not isinstance(self.SinM, list) and (xSize / 2 == self.SinM.size or xSize / 6 == self.SinM.size)) or
             (not isinstance(self.SinM, list) and self.SinM.size == 0 and xSize >= 6) or
             (isinstance(self.x, list) and
              (self.x[0].size / 2 == self.SinM[0].size or
-              self.x[0].size / 6 == self.SinM[0].size))):
+              self.x[0].size / 6 == self.SinM[0].size)))):
             if isinstance(self.SinM, list):
-                det_per_ring = self.SinM[0].size
+                det_per_ring = max(np.asarray(frame).size for frame in self.SinM)
             else:
                 det_per_ring = self.SinM.size
             self.Nang = 1
@@ -851,11 +890,12 @@ class projectorClass:
             self.PET = True
         else:
             self.PET = False
-            self.nProjections = self.NSinos
+            if not (self.SPECT and self.listmode):
+                self.nProjections = self.NSinos
         if self.listmode and self.subsets > 1 and not(self.subsetType == 0)  and not(self.subsetType == 1) and not(self.subsetType == 3):
             print('Only subset types 0, 1, and 3 are supported with list-mode data! Switching to subset type 0.')
             self.subsetType = 0
-        if self.listmode and self.subsets > 1 and self.subsetType == 0:
+        if not self.listmode and self.subsets > 1 and self.subsetType == 0:
            print('Subset type 0 is recommended only for list-mode data! The reconstruction will most likely not work!')
         # if self.listmode and self.Nt > 1:
         #     self.loadTOF = False
@@ -925,14 +965,14 @@ class projectorClass:
                     else:
                         if self.x.shape[0] == 2:
                             if self.x.flags.f_contiguous:
-                                self.x = np.row_stack((self.x[0,:], self.y[0,:], self.z[0,:], self.x[1,:], self.y[1,:], self.z[1,:]))
+                                self.x = np.vstack((self.x[0,:], self.y[0,:], self.z[0,:], self.x[1,:], self.y[1,:], self.z[1,:]))
                             else:
-                                self.x = np.asfortranarray(np.row_stack((np.self.x[0,:], self.y[0,:], self.z[0,:], self.x[1,:], self.y[1,:], self.z[1,:])))
+                                self.x = np.asfortranarray(np.vstack((self.x[0,:], self.y[0,:], self.z[0,:], self.x[1,:], self.y[1,:], self.z[1,:])))
                         elif self.x.ndim >= 2 and self.x.shape[1] == 2:
                             if self.x.flags.f_contiguous:
-                                self.x = np.row_stack((self.x[:,0].T(), self.y[:,0].T(), self.z[:,0].T(), self.x[:,1].T(), self.y[:,1].T(), self.z[:,1].T()))
+                                self.x = np.vstack((self.x[:,0], self.y[:,0], self.z[:,0], self.x[:,1], self.y[:,1], self.z[:,1]))
                             else:
-                                self.x = np.asfortranarray(np.row_stack((self.x[:,0].T(), self.y[:,0].T(), self.z[:,0].T(), self.x[:,1].T(), self.y[:,1].T(), self.z[:,1].T())))
+                                self.x = np.asfortranarray(np.vstack((self.x[:,0], self.y[:,0], self.z[:,0], self.x[:,1], self.y[:,1], self.z[:,1])))
                 # y = 0
                 x_det = 0
                 z_det = 0
@@ -969,9 +1009,10 @@ class projectorClass:
                 self.dPitch = self.cr_p
                 self.dPitchY = self.cr_p
                 self.dPitchX = self.cr_pz
-            self.nProjections = self.NSinos
-            self.nRowsD = self.Ndist
-            self.nColsD = self.Nang
+            if not (self.SPECT and self.listmode):
+                self.nProjections = self.NSinos
+                self.nRowsD = self.Ndist
+                self.nColsD = self.Nang
 
         # self.size_x = size_x
         # self.totMeas = self.nColsD * self.nRowsD * self.nProjections
@@ -1166,7 +1207,12 @@ class projectorClass:
 
         if self.subsets > 1:
             self.subset = 0
-        if self.subsetType >= 8 or self.subsets == 1:
+        if self.listmode > 0:
+            # Listmode measurements already count individual events. Unlike
+            # projection-image data, they must not be expanded by detector
+            # rows and columns when building per-subset measurement sizes.
+            kerroin = 1
+        elif self.subsetType >= 8 or self.subsets == 1:
             kerroin = self.nColsD * self.nRowsD
         else:
             kerroin = 1
@@ -1176,7 +1222,8 @@ class projectorClass:
         self.nMeasSubset[:, :] = self.nMeasPerFrameSubset * kerroin
         self.nProjSubset[:, :] = self.nMeasPerFrameSubset
         if self.listmode == 1:
-            self.x = self.x.astype(dtype=np.float32)
+            self.x = np.asarray(self.x, dtype=np.float32)
+            self.z = np.asarray(self.z, dtype=np.float32)
             if self.x.flags.f_contiguous:
                 self.x = self.x.ravel('F')
             else:
@@ -1210,6 +1257,9 @@ class projectorClass:
         if isinstance(self.x, int):
             self.x = np.zeros(1, dtype=np.float32)
             self.z = np.zeros(1, dtype=np.float32)
+        elif isinstance(self.x, list):
+            self.x = np.concatenate([np.asarray(value, dtype=np.float32).ravel(order='F') for value in self.x])
+            self.z = np.concatenate([np.asarray(value, dtype=np.float32).ravel(order='F') for value in self.z])
         else:
             self.x = self.x.astype(dtype=np.float32)
             self.z = self.z.astype(dtype=np.float32)
@@ -1220,8 +1270,13 @@ class projectorClass:
     def OMEGAErrorCheck(self):
         if self.SPECT:
             normalization = np.asarray(self.normalization)
-            if normalization.ndim == 3:
-                self.normZ = int(normalization.shape[2])
+            if self.normalization_correction and normalization.size > 1:
+                normZ = normalization.size / (self.nRowsD * self.nColsD)
+                if normZ % 1 != 0 or not (int(normZ) == int(self.nProjections) or int(normZ) == int(self.nHeads)):
+                    raise ValueError(f'Normalization array has an invalid size. Must contain one image per '
+                                      f'projection [{self.nRowsD} {self.nColsD} {self.nProjections}] or one image '
+                                      f'per detector head [{self.nRowsD} {self.nColsD} {self.nHeads}].')
+                self.normZ = int(normZ)
             if self.colLxy is None:
                 self.colLxy = self.colL
             if self.colLz is None:
@@ -1245,6 +1300,18 @@ class projectorClass:
             if np.any(self.DetectorVector >= int(self.nHeads)):
                 raise ValueError(f'DetectorVector contains an index outside the available detector heads [0, {int(self.nHeads) - 1}].')
 
+            # implementation 2 with useCPU (CPU_matrixfree_lib, built from omega_maincpp.cpp with -DCPU and
+            # no GPU backend macro) routes through ProjectorClassCPU.h / projector_functions.h (see
+            # functions.hpp's #elif defined(CPU) branch), a separate plain C++ projector with no
+            # DetectorVector/per-head indexing at all.
+            if self.implementation == 2 and self.useCPU and (
+                (self.normalization_correction and self.normZ == self.nHeads and self.normZ != self.nProjections) or
+                (self.useMaskFP and self.maskFPZ > 1 and self.maskFPZ == self.nHeads and self.maskFPZ != self.nProjections)
+            ):
+                raise ValueError('Detector-head indexed normalization/forward projection mask (nRowsD x nColsD x '
+                                  'nHeads) is not supported by the CPU implementation. Use a GPU implementation or '
+                                  'supply one image per projection.')
+
             if self.projector_type in [1, 11, 12, 2, 21, 22, 3, 13, 23, 33, 31, 32, 16, 26, 61, 62]:
                 compact_ray_shift_size = 2 * int(self.n_rays_transaxial) * int(self.n_rays_axial) * int(self.nRowsD) * int(self.nColsD) * int(self.nHeads)
                 detector_size = int(np.size(self.rayShiftsDetector))
@@ -1255,6 +1322,12 @@ class projectorClass:
                     raise ValueError(f'rayShiftsSource has an invalid size. Expected compact size {compact_ray_shift_size}, got {source_size}.')
                 if detector_size > 0 and source_size > 0 and detector_size != source_size:
                     raise ValueError('rayShiftsDetector and rayShiftsSource must have the same compact size.')
+
+                if not (self.ellipsePower == 2 or np.isinf(self.ellipsePower)):
+                    raise ValueError('ellipsePower must be 2 (elliptic cylinder) or Inf (box); other '
+                                      'superellipse powers are not supported.')
+                if self.ellipseRadiusX <= 0 or self.ellipseRadiusY <= 0 or self.ellipseRadiusZ <= 0:
+                    raise ValueError('ellipseRadiusX, ellipseRadiusY and ellipseRadiusZ must all be greater than zero.')
 
         if self.FOVa_x > 0 and self.FOVa_y == 0:
             self.FOVa_y = self.FOVa_x
@@ -1269,7 +1342,7 @@ class projectorClass:
         if not(self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.PKMA or self.FISTA or self.FISTAL1 or self.MBSREM or self.SPS or self.MRAMLA) and any(self.precondTypeImage):
             print("Image-based preconditioning selected, but the selected algorithm(s) do not support preconditioning. No preconditioning will be performed.")
             print("Supported algorithms are: MBSREM, MRAMLA, PKMA, SPS, PDHG, PDHGL1, PDHGKL, FISTA, FISTAL1, PDDY")
-            self.precondTypeImage = np.array([False, False, False, False, False, False])
+            self.precondTypeImage = np.full((7, 1), False)
         
         if np.sum(self.precondTypeImage[0:3]) > 1:
             raise ValueError("Only one of the first 3 image-based preconditioners can be selected at a time!")
@@ -1277,7 +1350,7 @@ class projectorClass:
         if not(self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.PKMA or self.FISTA or self.FISTAL1 or self.MBSREM or self.SPS or self.MRAMLA) and any(self.precondTypeMeas):
             print("Measurement-based preconditioning selected, but the selected algorithm does not support preconditioning. No preconditioning will be performed.")
             print("Supported algorithms are: MBSREM, MRAMLA, PKMA, SPS, PDHG, PDHGL1, PDHGKL, FISTA, FISTAL1, PDDY")
-            self.precondTypeMeas = np.array([False, False])        
+            self.precondTypeMeas = np.full((2, 1), False)
         
         if not self.CT and not self.SPECT and self.span > self.ring_difference and self.NSinos > 1 and not self.use_raw_data:
             raise ValueError(f"Span value cannot be larger than ring difference ({self.ring_difference})!")
@@ -1374,7 +1447,7 @@ class projectorClass:
             raise ValueError('RDP with include corners is supported only on OpenCL and CUDA!')
         if self.TV and self.TVtype == 2 and not self.TV_use_anatomical:
             print('Using TV type = 2, but no anatomical reference set. Using TV type = 1 instead!')
-            self.TVtype == 1
+            self.TVtype = 1
         if self.projector_type not in [1, 2, 3, 4, 5, 6, 11, 14, 12, 13, 16, 21, 22, 23, 24, 26, 31, 32, 33, 34, 41, 42, 43, 44, 45, 51, 15, 54, 55, 61, 62, 66]:
             raise ValueError('The selected projector type is not supported!')
         if self.APLS and not os.path.exists(self.APLS_ref_image) and self.MAP and not type(self.APLS_ref_image) == np.ndarray:
@@ -1412,7 +1485,10 @@ class projectorClass:
             
         if self.projector_type not in (1, 2, 6, 11, 16, 21, 22, 26, 61, 62, 66) and self.SPECT:
             raise ValueError('SPECT only supports projector types 1, 2 and 6, plus supported hybrid variants!')
-        
+
+        if self.SPECT and self.projector_type in (12, 21, 16, 61, 26, 62):
+            print('Warning: The forward and backward projector types differ. The backprojector is not the exact adjoint of the forward projector, so gradient-based algorithms will use inexact gradients.')
+
         if self.projector_type in (6, 16, 26, 61, 62, 66):
             if self.subsets > 1 and self.subsetType < 8:
                 raise ValueError('Subset types 0-7 are not supported with projector type 6!')
@@ -1594,6 +1670,8 @@ class projectorClass:
                             print(f"{priors[0]} prior selected with NL Lange.")
                         elif self.NLGGMRF:
                             print(f"{priors[0]} prior selected with NLGGMRF.")
+                        elif self.NLGM:
+                            print(f"{priors[0]} prior selected with NL Geman-McClure.")
                         elif self.NLM_MRP:
                             print(f"{priors[0]} prior selected with filtering mode.")
                         else:
@@ -1749,11 +1827,11 @@ class projectorClass:
                 if self.oOffsetZ != 0 or self.oOffsetX != 0 or self.oOffsetY != 0:
                     print(f'Object offset is [{self.oOffsetX}, {self.oOffsetY}, {self.oOffsetZ}] (XYZ).')
                     
-            if self.normalization_correction and not self.CT:
-                print('Normalization correction ON.')
-            elif self.normalization_correction and self.compute_normalization and not self.CT:
+            if self.normalization_correction and self.compute_normalization and not self.CT:
                 print('Normalization correction cannot be applied when computing normalization coefficients. Disabling normalization correction.')
                 self.normalization_correction = False
+            elif self.normalization_correction and not self.CT:
+                print('Normalization correction ON.')
             elif self.compute_normalization and not self.CT:
                 print('Computing normalization coefficients.')
             if not (self.compute_normalization or self.only_sinos):
@@ -2187,7 +2265,7 @@ class projectorClass:
         
     
     def __imul__(self, B):
-            return self.__mul__(self, B)
+            return self.__mul__(B)
     
     def __mul__(self, B):
         if self.trans:
@@ -2297,6 +2375,7 @@ class projectorClass:
             ('KAD', ctypes.c_float),
             ('TimeStepAD', ctypes.c_float),
             ('RDP_gamma', ctypes.c_float),
+            ('GM_delta', ctypes.c_float),
             ('huber_delta', ctypes.c_float),
             ('gradV1', ctypes.c_float),
             ('gradV2', ctypes.c_float),
@@ -2358,8 +2437,10 @@ class projectorClass:
             ('NLRD', ctypes.c_bool),
             ('NLLange', ctypes.c_bool),
             ('NLGGMRF', ctypes.c_bool),
+            ('NLGM', ctypes.c_bool),
             ('NLM_use_anatomical', ctypes.c_bool),
             ('NLAdaptive', ctypes.c_bool),
+            ('NLMaxWeight', ctypes.c_bool),
             ('TV_use_anatomical', ctypes.c_bool),
             ('RDPIncludeCorners', ctypes.c_bool),
             ('RDP_use_anatomical', ctypes.c_bool),
@@ -2532,4 +2613,9 @@ class projectorClass:
             ('ellipsePower',ctypes.c_float),
             ('NLM_ref', ctypes.POINTER(ctypes.c_float)),
             ('RDP_ref', ctypes.POINTER(ctypes.c_float)),
+            ('zSens', ctypes.POINTER(ctypes.c_float)),
+            ('sizeZSens', ctypes.c_uint64),
+            ('sizeDetectorVector', ctypes.c_uint64),
+            ('sensitivityViewWeights', ctypes.POINTER(ctypes.c_float)),
+            ('sizeSensitivityViewWeights', ctypes.c_uint64),
         ]

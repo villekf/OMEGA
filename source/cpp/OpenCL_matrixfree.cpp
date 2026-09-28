@@ -411,6 +411,8 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		}
 		else {
 			w_vec.listCoord = getSingles(options, "x", 0);
+			if (inputScalars.SPECT)
+				w_vec.listCoordZ = getSingles(options, "z", 0);
 			//inputScalars.size_of_x = mxGetNumberOfElements(getField(options, 0, "x"));
 		}
 		if (inputScalars.TOF)

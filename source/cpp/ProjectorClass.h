@@ -41,13 +41,7 @@ using INT3_t = int3;
 using UINT2_t = uint2;
 using UCHAR_t = unsigned char;
 using DEVBUFF_t = CUdeviceptr;
-#if !defined(AF)
-// Standalone implementation 5 uses CUDA driver pointers directly. ArrayFire
-// builds retain the pointer-to-device-pointer representation it expects.
-using AFDEVBUFF_t = CUdeviceptr;
-#else
 using AFDEVBUFF_t = CUdeviceptr*;
-#endif
 using TEX2D_t = CUtexObject;
 using TEX3D_t = CUtexObject;
 using TEXARRAY_t = CUarray;
@@ -181,44 +175,13 @@ using TEXARRAY_t = EmptyTextureArray;
 #elif defined(OPENCL)
 #define ALLOC_BUFFER(BUF, FLAGS, SIZE) BUF = cl::Buffer(CLContext, FLAGS, SIZE, NULL, &status)
 #endif
-// Backend-neutral buffer access flags. CUDA and Metal ignore the OpenCL access mode
-// because their allocation APIs do not encode it.
-#if defined(CUDA) || defined(HIP) || defined(METAL)
-#define BACKEND_BUFFER_READ_ONLY 0
-#define BACKEND_BUFFER_READ_WRITE 0
-#elif defined(OPENCL)
-#define BACKEND_BUFFER_READ_ONLY CL_MEM_READ_ONLY
-#define BACKEND_BUFFER_READ_WRITE CL_MEM_READ_WRITE
-#endif
 // Upload SIZE bytes from host SRC into device buffer BUF (non-blocking/asynchronous on OpenCL)
 #if defined(CUDA) || defined(HIP)
 #define WRITE_BUFFER(BUF, SIZE, SRC) status = cuMemcpyHtoD(BUF, SRC, SIZE)
 #elif defined(METAL)
-#define WRITE_BUFFER(BUF, SIZE, SRC) do { \
-	if ((BUF).get() && (BUF)->contents()) { \
-		std::memcpy((BUF)->contents(), (SRC), SIZE); \
-		status = SUCCESS_VALUE; \
-	} else { \
-		status = -1; \
-	} \
-} while(0)
+#define WRITE_BUFFER(BUF, SIZE, SRC) status = writeDeviceBuffer(BUF, SRC, SIZE)
 #elif defined(OPENCL)
 #define WRITE_BUFFER(BUF, SIZE, SRC) status = CLCommandQueue[0].enqueueWriteBuffer(BUF, CL_FALSE, 0, SIZE, SRC)
-#endif
-// Download SIZE bytes from device buffer BUF into host destination DST
-#if defined(CUDA) || defined(HIP)
-#define READ_BUFFER(BUF, SIZE, DST) status = cuMemcpyDtoH((DST), (BUF), (SIZE))
-#elif defined(METAL)
-#define READ_BUFFER(BUF, SIZE, DST) do { \
-	if ((BUF).get() && (BUF)->contents()) { \
-		std::memcpy((DST), (BUF)->contents(), SIZE); \
-		status = SUCCESS_VALUE; \
-	} else { \
-		status = -1; \
-	} \
-} while(0)
-#elif defined(OPENCL)
-#define READ_BUFFER(BUF, SIZE, DST) status = CLCommandQueue[0].enqueueReadBuffer(BUF, CL_FALSE, 0, SIZE, DST)
 #endif
 // Queue/stream synchronization
 #if defined(CUDA) || defined(HIP)
@@ -296,22 +259,10 @@ using TimerPoint = std::chrono::steady_clock::time_point;
 	status = (TEX).get() ? SUCCESS_VALUE : -1; \
 } while(0)
 #define CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(TEX, ARRAY, SRC, X_DIM, Y_DIM, DEPTH, FILTER, FLAGS) do { \
-	const auto textureSpec = metalTextureSpec((X_DIM), (Y_DIM), (DEPTH), true); \
-	if (!(SRC) || !(SRC)->contents()) { \
-		status = -1; \
-	} else { \
-		if (!(TEX) || (TEX)->width() != textureSpec.width || (TEX)->height() != textureSpec.height || (TEX)->depth() != textureSpec.depth) \
-			(TEX) = createMetalFloatTextureEmpty(textureSpec); \
-		if (!(TEX)) { \
-			status = -1; \
-		} else { \
-			const MTL::Region textureRegion(0, 0, 0, textureSpec.width, textureSpec.height, textureSpec.depth); \
-			const NS::UInteger bytesPerRow = textureSpec.width * textureSpec.elementSize; \
-			const NS::UInteger bytesPerImage = bytesPerRow * textureSpec.height; \
-			(TEX)->replaceRegion(textureRegion, 0, 0, (SRC)->contents(), bytesPerRow, bytesPerImage); \
-			status = SUCCESS_VALUE; \
-		} \
-	} \
+    const auto textureSpec = metalTextureSpec((X_DIM), (Y_DIM), (DEPTH), true); \
+    if (!(TEX) || (TEX)->width() != textureSpec.width || (TEX)->height() != textureSpec.height || (TEX)->depth() != textureSpec.depth) \
+        (TEX) = createMetalFloatTextureEmpty(textureSpec); \
+    status = copyMetalBufferToTexture((SRC), (TEX), textureSpec); \
 } while(0)
 #define CREATE_FLOAT_TEXTURE3D_EMPTY(TEX, ARRAY, WIDTH, HEIGHT, DEPTH) do { \
 	(TEX) = createMetalFloatTextureEmpty(metalTextureSpec((WIDTH), (HEIGHT), (DEPTH), true)); \
@@ -351,7 +302,7 @@ using TimerPoint = std::chrono::steady_clock::time_point;
 // Append one kernel argument VAR. CUDA pushes its address into the argument vector VEC; OpenCL
 // sets it on KERNEL at the running index IDX, reporting any error inline via getErrorString.
 #if defined(CUDA) || defined(HIP)
-#define KARG(VEC, KERNEL, IDX, VAR) VEC.emplace_back(reinterpret_cast<void*>(&VAR))
+#define KARG(VEC, KERNEL, IDX, VAR) VEC.emplace_back(reinterpret_cast<void*>(&(VAR)))
 #define KARG_SCALAR(VEC, KERNEL, IDX, VAR) KARG(VEC, KERNEL, IDX, VAR)
 #define KARG_METAL_SLOT(IDX, SLOT) do {} while(0)
 #elif defined(METAL)
@@ -838,10 +789,51 @@ class ProjectorClass {
 		return createMetalTexture(spec);
 	}
 
+	inline void submitMetalCommandBuffer(MTL::CommandBuffer* commandBuffer) const {
+#ifdef AF
+		if (commandBuffer->commandQueue() == afmtl::getQueue()) {
+			afmtl::submit(commandBuffer);
+			return;
+		}
+#endif
+		commandBuffer->commit();
+	}
+
+	inline STATUS_t copyMetalBufferToTexture(const DEVBUFF_t& source, const TEX3D_t& texture, const MetalTextureSpec& spec) const {
+		const NS::UInteger bytesPerRow = spec.width * spec.elementSize;
+		const NS::UInteger bytesPerImage = bytesPerRow * spec.height;
+		if (!source || !texture || source->length() < bytesPerImage * spec.depth)
+			return -1;
+#ifdef AF
+		auto commandBuffer = NS::RetainPtr(afmtl::getQueue()->commandBuffer());
+#else
+		if (!queueFP)
+			return -1;
+		auto commandBuffer = NS::RetainPtr(queueFP->commandBuffer());
+#endif
+		if (!commandBuffer)
+			return -1;
+		auto encoder = NS::RetainPtr(commandBuffer->blitCommandEncoder());
+		if (!encoder)
+			return -1;
+		encoder->copyFromBuffer(source.get(), 0, bytesPerRow,
+			texture->textureType() == MTL::TextureType3D ? bytesPerImage : 0,
+			MTL::Size::Make(spec.width, spec.height, spec.depth), texture.get(), 0, 0, MTL::Origin::Make(0, 0, 0));
+		encoder->endEncoding();
+		submitMetalCommandBuffer(commandBuffer.get());
+#ifndef AF
+		commandBuffer->waitUntilCompleted();
+		if (commandBuffer->status() == MTL::CommandBufferStatusError)
+			return -1;
+#endif
+		return SUCCESS_VALUE;
+	}
+
 	inline TEX3D_t createMetalFloatTextureFromBuffer(const DEVBUFF_t& source, const MetalTextureSpec& spec) const {
-		if (!source || !source->contents())
+		TEX3D_t texture = createMetalTexture(spec);
+		if (copyMetalBufferToTexture(source, texture, spec) != SUCCESS_VALUE)
 			return nullptr;
-		return createMetalTextureFromHost(source->contents(), spec);
+		return texture;
 	}
 
 	inline TEX3D_t createMetalMaskTextureFromHost(const uint8_t* source, const MetalTextureSpec& spec) const {
@@ -857,7 +849,7 @@ class ProjectorClass {
 	}
 
 	inline int updateMetalImageTextureFromBuffer(const scalarStruct& inputScalars, const int ii) {
-		if (!vec_opencl.d_im || !vec_opencl.d_im->contents()) {
+		if (!vec_opencl.d_im) {
 			// Standalone projector calls upload image-mode input directly into
 			// d_image_os. ArrayFire calls instead provide d_im and require the
 			// cached texture to be refreshed below after every subset/volume.
@@ -886,11 +878,8 @@ class ProjectorClass {
 			mexPrint("Unable to create Metal image texture");
 			return -1;
 		}
-		const MTL::Region textureRegion(0, 0, 0, spec.width, spec.height, spec.depth);
-		const NS::UInteger bytesPerRow = spec.width * spec.elementSize;
-		const NS::UInteger bytesPerImage = bytesPerRow * spec.height;
-		FPTexCache[volume]->replaceRegion(textureRegion, 0, 0,
-			vec_opencl.d_im->contents(), bytesPerRow, bytesPerImage);
+		if (copyMetalBufferToTexture(vec_opencl.d_im, FPTexCache[volume], spec) != SUCCESS_VALUE)
+			return -1;
 		vec_opencl.d_image_os = FPTexCache[volume];
 		return 0;
 	}
@@ -1362,6 +1351,24 @@ class ProjectorClass {
 #elif defined(OPENCL)
 			std::string os_options = options;
 #endif // END CUDA
+			// SPECT sensitivity uses full-view detector geometry, so compile it as a
+			// projection-domain kernel even though the main projector is listmode.
+			if (inputScalars.SPECT) {
+#if defined(OPENCL)
+				const std::string listmodeFlag = "-DLISTMODE";
+				const size_t listmodeFlagPos = os_options.find(listmodeFlag);
+				if (listmodeFlagPos != std::string::npos)
+					os_options.erase(listmodeFlagPos, listmodeFlag.size());
+#else
+				std::vector<std::string> projectionOptions;
+				projectionOptions.reserve(os_options.size());
+				for (const auto& option : os_options) {
+					if (option != "-DLISTMODE")
+						projectionOptions.push_back(option);
+				}
+				os_options.swap(projectionOptions);
+#endif
+			}
 			ADD_OPT(os_options, "-DBP");
 			ADD_OPT(os_options, "-DATOMICF");
 			ADD_OPT(os_options, "-DSENS");
@@ -1497,11 +1504,16 @@ class ProjectorClass {
 				else if (w_vec.NLGGMRF) {
 					ADD_OPT_INT(optionsAux, "-DNLTYPE", 6);
 				}
+				else if (w_vec.NLGM) {
+					ADD_OPT_INT(optionsAux, "-DNLTYPE", 7);
+				}
 				else {
 					ADD_OPT_INT(optionsAux, "-DNLTYPE", 0);
 				}
 				if (w_vec.NLAdaptive)
 					ADD_OPT(optionsAux, "-DNLMADAPTIVE");
+				if (w_vec.NLMaxWeight)
+					ADD_OPT(optionsAux, "-DNLMAXWEIGHT");
 				if (w_vec.NLM_anatomical)
 					ADD_OPT(optionsAux, "-DNLMREF");
 				ADD_OPT_INT(optionsAux, "-DSWINDOWX", w_vec.Ndx);
@@ -1614,7 +1626,7 @@ class ProjectorClass {
 			if (status == NVRTC_SUCCESS)
 				memAlloc.auxMod = true;
 #elif defined(METAL)
-			if (MethodList.CPType || inputScalars.projector_type == 6) {
+			if (MethodList.CPType || inputScalars.projector_type == 6 || w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]) {
 				status = buildProgram(inputScalars.verbose, contentAux, programAux, optionsAux);
 				if (status != SUCCESS_VALUE)
 					return status;
@@ -2050,17 +2062,7 @@ class ProjectorClass {
 				mexPrint("Proximal TGV kernel successfully created\n");
 			}
 		}
-		if (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]) {
-			CREATE_KERNEL(kernelElementMultiply, programAux, "vectorElementMultiply", "Failed to create element-wise multiplication kernel\n");
-			if (DEBUG || inputScalars.verbose >= 3) {
-				mexPrint("Element-wise kernels successfully created\n");
-			}
-			CREATE_KERNEL(kernelElementDivision, programAux, "vectorElementDivision", "Failed to create element-wise division kernel\n");
-			if (DEBUG || inputScalars.verbose >= 3) {
-				mexPrint("Element-wise kernels successfully created\n");
-			}
-		}
-#if defined(OPENCL)
+	#if defined(OPENCL)
 		if (type == 0) {
 			kernelsumma = cl::Kernel(programAux, "summa", &status);
 			OCL_CHECK(status, "Failed to create implementation 3 kernels\n", -1);
@@ -2078,6 +2080,16 @@ class ProjectorClass {
 		}
 #endif // END CUDA
 #endif // END non-Metal auxiliary kernel creation
+		if (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]) {
+			CREATE_KERNEL(kernelElementMultiply, programAux, "vectorElementMultiply", "Failed to create element-wise multiplication kernel\n");
+			if (DEBUG || inputScalars.verbose >= 3) {
+				mexPrint("Element-wise kernels successfully created\n");
+			}
+			CREATE_KERNEL(kernelElementDivision, programAux, "vectorElementDivision", "Failed to create element-wise division kernel\n");
+			if (DEBUG || inputScalars.verbose >= 3) {
+				mexPrint("Element-wise kernels successfully created\n");
+			}
+			}
 		if (inputScalars.computeSensImag && inputScalars.listmode > 0) {
 			if (inputScalars.BPType == 4)
 				GET_KERNEL(kernelSensList, programSens, "projectorType4Forward");
@@ -2099,40 +2111,125 @@ public:
 #endif
 	{}
 
+#if defined(METAL) || defined(OPENCL) || defined(CUDA) || defined(HIP) // Used for implementations 3 and 5
+#if defined(METAL) || defined(OPENCL)
 	inline DEVBUFF_t makeDeviceBuffer(const size_t bytes, const UINT64_t flags, STATUS_t& status) {
 		DEVBUFF_t buffer{};
-		ALLOC_BUFFER(buffer, flags, bytes);
+#if defined(METAL)
+		(void)flags;
+		buffer = NS::TransferPtr(mtlDevice->newBuffer(static_cast<NS::UInteger>(bytes), (MTL::ResourceOptions)MTL::ResourceStorageModeShared));
+		status = buffer.get() ? SUCCESS_VALUE : -1;
+#elif defined(OPENCL)
+		buffer = cl::Buffer(CLContext, static_cast<cl_mem_flags>(flags), bytes, NULL, &status);
+#endif
 		return buffer;
 	}
 
 	inline STATUS_t writeDeviceBuffer(DEVBUFF_t& buffer, const void* input, const size_t bytes) {
-		STATUS_t status = SUCCESS_VALUE;
-		WRITE_BUFFER(buffer, bytes, input);
-		return status;
+#if defined(METAL)
+		if (!buffer || !buffer->contents())
+			return -1;
+		std::memcpy(buffer->contents(), input, bytes);
+		return SUCCESS_VALUE;
+#elif defined(OPENCL)
+		return CLCommandQueue[0].enqueueWriteBuffer(buffer, CL_FALSE, 0, bytes, input);
+#endif
 	}
 
 	inline STATUS_t readDeviceBuffer(const DEVBUFF_t& buffer, void* output, const size_t bytes) {
-		STATUS_t status = SUCCESS_VALUE;
-		READ_BUFFER(buffer, bytes, output);
-		return status;
+#if defined(METAL)
+		if (!buffer || !buffer->contents())
+			return -1;
+		std::memcpy(output, buffer->contents(), bytes);
+		return SUCCESS_VALUE;
+#elif defined(OPENCL)
+		return CLCommandQueue[0].enqueueReadBuffer(buffer, CL_FALSE, 0, bytes, output);
+#endif
 	}
 
 	template <typename T>
 	inline STATUS_t fillDeviceBuffer(DEVBUFF_t& buffer, const T value, const size_t bytes) {
-#if defined(OPENCL)
-		return CLCommandQueue[0].enqueueFillBuffer(buffer, value, 0, bytes);
-#else
-		std::vector<unsigned char> fillData(bytes);
-		for (size_t offset = 0; offset < bytes; offset += sizeof(value)) {
-			const size_t remaining = bytes - offset;
-			const size_t copyBytes = remaining < sizeof(value) ? remaining : sizeof(value);
-			std::memcpy(fillData.data() + offset, &value, copyBytes);
+#if defined(METAL)
+		if (!buffer || !buffer->contents())
+			return -1;
+		if (value == static_cast<T>(0)) {
+			std::memset(buffer->contents(), 0, bytes);
 		}
-		STATUS_t status = SUCCESS_VALUE;
-		WRITE_BUFFER(buffer, bytes, fillData.data());
-		return status;
+		else {
+			size_t offset = 0;
+			while (offset + sizeof(T) <= bytes) {
+				std::memcpy(static_cast<unsigned char*>(buffer->contents()) + offset, &value, sizeof(T));
+				offset += sizeof(T);
+			}
+			if (offset < bytes)
+				std::memcpy(static_cast<unsigned char*>(buffer->contents()) + offset, &value, bytes - offset);
+		}
+		return SUCCESS_VALUE;
+#elif defined(OPENCL)
+		return CLCommandQueue[0].enqueueFillBuffer(buffer, value, 0, bytes);
 #endif
 	}
+#elif defined(CUDA) || defined(HIP)
+	// Allocate (driver API) device memory
+	// flags is the OpenCL cl_mem_flags, but those are not used with CUDA/HIP
+	// Every allocation made here is owned by this object and released in the class destructor
+	inline AFDEVBUFF_t makeDeviceBuffer(const size_t bytes, const UINT64_t flags, STATUS_t& status) {
+		(void)flags;
+		CUdeviceptr buffer = 0;
+		status = cuMemAlloc(&buffer, bytes);
+		if (status != CUDA_SUCCESS)
+			return nullptr;
+		ownedBuffers.push_back(buffer);
+		return reinterpret_cast<AFDEVBUFF_t>(buffer);
+	}
+
+	inline STATUS_t writeDeviceBuffer(AFDEVBUFF_t& buffer, const void* input, const size_t bytes) {
+		// const_cast is required because under HIP, cuMemcpyHtoDAsync aliases to hipMemcpyHtoDAsync,
+		// whose src parameter is non-const in some ROCm versions
+		return cuMemcpyHtoDAsync(reinterpret_cast<CUdeviceptr>(buffer), const_cast<void*>(input), bytes, CLCommandQueue[0]);
+	}
+
+	inline STATUS_t readDeviceBuffer(const AFDEVBUFF_t& buffer, void* output, const size_t bytes) {
+		return cuMemcpyDtoHAsync(output, reinterpret_cast<CUdeviceptr>(buffer), bytes, CLCommandQueue[0]);
+	}
+
+	template <typename T>
+	inline STATUS_t fillDeviceBuffer(AFDEVBUFF_t& buffer, const T value, const size_t bytes) {
+		CUdeviceptr ptr = reinterpret_cast<CUdeviceptr>(buffer);
+		if (value == static_cast<T>(0)) {
+			return cuMemsetD8Async(ptr, 0, bytes, CLCommandQueue[0]);
+		}
+		else if (sizeof(T) == 4 && bytes % 4 == 0) {
+			unsigned int pattern = 0u;
+			std::memcpy(&pattern, &value, sizeof(unsigned int));
+			return cuMemsetD32Async(ptr, pattern, bytes / 4, CLCommandQueue[0]);
+		}
+		else {
+			std::vector<unsigned char> hostPattern(bytes);
+			size_t offset = 0;
+			while (offset + sizeof(T) <= bytes) {
+				std::memcpy(hostPattern.data() + offset, &value, sizeof(T));
+				offset += sizeof(T);
+			}
+			if (offset < bytes)
+				std::memcpy(hostPattern.data() + offset, &value, bytes - offset);
+			// Synchronous copy is required here: hostPattern is a local staging buffer that is
+			// destroyed when this function returns, so an async HtoD copy would race its destruction
+			// hostPattern is a non-const local vector, so its data() is already a non-const pointer
+			// (no const_cast needed here, unlike writeDeviceBuffer's const void* input)
+			return cuMemcpyHtoD(ptr, hostPattern.data(), bytes);
+		}
+	}
+
+	// Wrap memory owned by someone else (e.g. a MATLAB gpuArray)
+	inline AFDEVBUFF_t adoptDeviceBuffer(void* devicePtr) {
+		return reinterpret_cast<AFDEVBUFF_t>(devicePtr);
+	}
+	// Device-to-device copy of `bytes` bytes
+	inline STATUS_t copyDeviceBuffer(AFDEVBUFF_t& dst, const void* src, const size_t bytes) {
+		return cuMemcpyDtoDAsync(reinterpret_cast<CUdeviceptr>(dst), reinterpret_cast<CUdeviceptr>(const_cast<void*>(src)), bytes, CLCommandQueue[0]);
+	}
+#endif
 
 	inline STATUS_t finishDeviceQueue() {
 		STATUS_t status = SUCCESS_VALUE;
@@ -2140,23 +2237,103 @@ public:
 		return status;
 	}
 
-	// Create and populate a floating-point 3D texture through the backend-specific
-	// texture compatibility macro. This is also available to future CUDA callers.
-	inline STATUS_t createFloatTexture3DFromHost(TEX3D_t& texture, TEXARRAY_t& array, const float* source,
-		const size_t width, const size_t height, const size_t depth) {
+	// Synchronize every queue/stream, not just the main one
+	// OpenCL can have one queue per device in the multi-GPU case
+	inline STATUS_t finishAllDeviceQueues() {
+#if defined(OPENCL)
 		STATUS_t status = SUCCESS_VALUE;
-		CREATE_FLOAT_TEXTURE3D_FROM_HOST(texture, array, source, width, height, depth,
-			BACKEND_TEXTURE_POINT, BACKEND_TEXTURE_DEFAULT_FLAGS);
+		for (size_t i = 0; i < CLCommandQueue.size(); i++) {
+			status = CLCommandQueue[i].finish();
+			if (status != SUCCESS_VALUE)
+				return status;
+		}
+		return status;
+#else
+		return finishDeviceQueue();
+#endif
+	}
+
+	// Create a 3D float image/texture for the forward projection input from a HOST pointer
+	// X/Y/Z are the image dimensions, in the same (x, y, z) order on every backend 
+	// Public (unlike createCudaTexture3DFromHost and the CREATE_FLOAT_TEXTURE3D_FROM_HOST macro it wraps, which are
+	// only usable from inside this class) so that free functions such as the multi-GPU reconstruction
+	// path can build the FP input texture through a ProjectorClass object
+#if defined(CUDA) || defined(HIP)
+	// Release a texture/array previously created by makeImageTextureFrom{Host,Device} and tracked in
+	// ownedTextures/ownedArrays, if any, freeing it immediately instead of waiting for the destructor.
+	// Without this, repeated calls (e.g. multi_gpu_reconstruction.h type 1 allocating a new full-image
+	// FP input texture per subset/volume) leak one texture and CUDA array per call.
+	inline void releaseOwnedTexture(TEX3D_t& tex) {
+		if (tex != 0) {
+			for (size_t kk = 0; kk < ownedTextures.size(); kk++) {
+				if (ownedTextures[kk] == tex) {
+					// The kernel that reads this texture may still be in flight
+					getErrorString(cuStreamSynchronize(CLCommandQueue[0]));
+					getErrorString(cuTexObjectDestroy(ownedTextures[kk]));
+					getErrorString(cuArrayDestroy(ownedArrays[kk]));
+					ownedTextures.erase(ownedTextures.begin() + kk);
+					ownedArrays.erase(ownedArrays.begin() + kk);
+					tex = 0;
+					break;
+				}
+			}
+		}
+	}
+#endif
+
+	inline STATUS_t makeImageTextureFromHost(TEX3D_t& tex, TEXARRAY_t& array, const float* src,
+		const size_t X, const size_t Y, const size_t Z,
+		const decltype(BACKEND_TEXTURE_POINT) filter = BACKEND_TEXTURE_POINT,
+		const unsigned int flags = BACKEND_TEXTURE_DEFAULT_FLAGS) {
+		STATUS_t status = SUCCESS_VALUE;
+#if defined(CUDA) || defined(HIP)
+		releaseOwnedTexture(tex);
+#endif
+		CREATE_FLOAT_TEXTURE3D_FROM_HOST(tex, array, src, X, Y, Z, filter, flags);
+#if defined(CUDA) || defined(HIP)
+		// Track the CUarray/CUtexObject so the destructor can release them; OpenCL/Metal are tied to the object
+		// lifetime (cl::Image3D / NS::SharedPtr) and need no tracking
+		if (status == SUCCESS_VALUE) {
+			ownedTextures.push_back(tex);
+			ownedArrays.push_back(array);
+		}
+#endif
 		return status;
 	}
 
-	inline STATUS_t createFloatTexture3DFromDevice(TEX3D_t& texture, TEXARRAY_t& array, const AFDEVBUFF_t& source,
-		const size_t width, const size_t height, const size_t depth) {
+#if defined(CUDA) || defined(HIP)
+	// Create a 3D float image/texture for the forward projection input from a raw DEVICE pointer
+	// (e.g. MATLAB's gpuArray)
+	// Takes a void* rather than DEVBUFF_t because the multi-GPU caller
+	// holds the address as AFDEVBUFF_t (CUdeviceptr*), not the plain CUdeviceptr that DEVBUFF_t is
+	// on this backend; CREATE_FLOAT_TEXTURE3D_FROM_DEVICE reinterpret_casts it to CUdeviceptr itself
+	inline STATUS_t makeImageTextureFromDevice(TEX3D_t& tex, TEXARRAY_t& array, const void* src,
+		const size_t X, const size_t Y, const size_t Z,
+		const decltype(BACKEND_TEXTURE_POINT) filter = BACKEND_TEXTURE_POINT,
+		const unsigned int flags = BACKEND_TEXTURE_DEFAULT_FLAGS) {
 		STATUS_t status = SUCCESS_VALUE;
-		CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(texture, array, source, width, height, depth,
-			BACKEND_TEXTURE_POINT, BACKEND_TEXTURE_DEFAULT_FLAGS);
+		releaseOwnedTexture(tex);
+		// hipDeviceptr_t is void*, so the const must be dropped before the macro's reinterpret_cast
+		CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(tex, array, const_cast<void*>(src), X, Y, Z, filter, flags);
+		if (status == SUCCESS_VALUE) {
+			ownedTextures.push_back(tex);
+			ownedArrays.push_back(array);
+		}
 		return status;
 	}
+#else
+	// Create a 3D float image/texture for the forward projection input from the backend's native
+	// device buffer type (cl::Buffer on OpenCL, NS::SharedPtr<MTL::Buffer> on Metal)
+	inline STATUS_t makeImageTextureFromDevice(TEX3D_t& tex, TEXARRAY_t& array, const DEVBUFF_t& src,
+		const size_t X, const size_t Y, const size_t Z,
+		const decltype(BACKEND_TEXTURE_POINT) filter = BACKEND_TEXTURE_POINT,
+		const unsigned int flags = BACKEND_TEXTURE_DEFAULT_FLAGS) {
+		STATUS_t status = SUCCESS_VALUE;
+		CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(tex, array, src, X, Y, Z, filter, flags);
+		return status;
+	}
+#endif
+#endif
 
 #if defined(METAL)
 	NS::SharedPtr<MTL::Device> mtlDevice;
@@ -2167,10 +2344,6 @@ public:
 #if defined(CUDA) || defined(HIP)
 	std::vector<CUdevice> CUDeviceID;
 	std::vector<CUstream> CLCommandQueue;
-#if !defined(AF)
-	CUcontext standaloneContext = nullptr;
-	CUdevice standaloneDevice = 0;
-#endif
 #elif defined(OPENCL)
 	cl::Context CLContext;
 	std::vector<cl::Device> CLDeviceID;
@@ -2249,6 +2422,14 @@ public:
 	std::vector<std::vector<float>> geomProj5Host;
 	std::vector<std::vector<size_t>> erotusBP, erotusPDHG;
 #if defined(CUDA) || defined(HIP)
+	// Buffers allocated by makeDeviceBuffer and owned by this object; released in the destructor.
+	std::vector<CUdeviceptr> ownedBuffers;
+	// Textures/arrays created by makeImageTextureFrom*; released in the destructor.
+	std::vector<CUtexObject> ownedTextures;
+	std::vector<CUarray> ownedArrays;
+	// True when this object retained the CUDA/HIP primary context itself (non-ArrayFire init path);
+	// only then does the destructor release it.
+	bool ownsContext = false;
 	// This is used to define the additional queues/streams in the multi-resolution case
 	// Note that these are only used in the multi-resolution case
 	std::vector<CUstream> sideQueues;
@@ -2498,12 +2679,25 @@ public:
 			getErrorString(cuEventDestroy(evSide[kk]));
 		if (evMain != nullptr)
 			getErrorString(cuEventDestroy(evMain));
-#if !defined(AF)
-		if (!CLCommandQueue.empty())
-			getErrorString(cuStreamDestroy(CLCommandQueue[0]));
-		if (standaloneContext != nullptr)
-			getErrorString(cuDevicePrimaryCtxRelease(standaloneDevice));
-#endif
+		// Textures/arrays created by makeImageTextureFrom* (implementations 3/5 gpuArray support)
+		// Freed before ownedBuffers and the primary context release below
+		for (size_t kk = 0; kk < ownedTextures.size(); kk++)
+			getErrorString(cuTexObjectDestroy(ownedTextures[kk]));
+		ownedTextures.clear();
+		for (size_t kk = 0; kk < ownedArrays.size(); kk++)
+			getErrorString(cuArrayDestroy(ownedArrays[kk]));
+		ownedArrays.clear();
+		// Buffers allocated by makeDeviceBuffer (implementations 3/5 gpuArray support)
+		for (size_t kk = 0; kk < ownedBuffers.size(); kk++)
+			getErrorString(cuMemFree(ownedBuffers[kk]));
+		ownedBuffers.clear();
+		// Only release the primary context if this object retained it itself (non-ArrayFire init
+		// path in addProjector)
+		// Must be done last, after every other CUDA/HIP release above
+		// The CUDeviceID.empty() guard defends against an early addProjector failure that set
+		// ownsContext before CUDeviceID.push_back(curDevice) ran
+		if (ownsContext && !CUDeviceID.empty())
+			getErrorString(cuDevicePrimaryCtxRelease(CUDeviceID[0]));
 	}
 #elif defined(OPENCL) || defined(METAL)
 	~ProjectorClass() {}
@@ -2511,7 +2705,7 @@ public:
 
 	/// <summary>
 	/// Create the additional queues/streams for the multi-resolution case,
-	//// The main queue/stream is always the ArrayFire queue/stream, the other volumes use their own ones
+	/// The main queue/stream is always the ArrayFire queue/stream, the other volumes use their own ones
 	/// </summary>
 	/// <param name="n">Number of queues, one for the main image plus each multi-resolution volume</param>
 	inline int initSideQueues(const int n) {
@@ -2679,11 +2873,16 @@ public:
 			else if (w_vec.NLGGMRF) {
 				ADD_OPT_INT(os_options, "-DNLTYPE", 6);
 			}
+			else if (w_vec.NLGM) {
+				ADD_OPT_INT(os_options, "-DNLTYPE", 7);
+			}
 			else {
 				ADD_OPT_INT(os_options, "-DNLTYPE", 0);
 			}
 			if (w_vec.NLAdaptive)
 				ADD_OPT(os_options, "-DNLMADAPTIVE");
+			if (w_vec.NLMaxWeight)
+				ADD_OPT(os_options, "-DNLMAXWEIGHT");
 			if (w_vec.NLM_anatomical)
 				ADD_OPT(os_options, "-DNLMREF");
 			ADD_OPT_INT(os_options, "-DSWINDOWX", w_vec.Ndx);
@@ -2807,25 +3006,51 @@ public:
 #endif // END CUDA
 
 #if defined(CUDA) || defined(HIP)
+#ifdef AF
 		// Create the CUDA/HIP context and stream and assign the device
-#if defined(AF)
 		int af_id = af::getDevice();
 		CUDeviceID.push_back(afcu::getNativeId(af_id));
 		CLCommandQueue.push_back(afcu::getStream(CUDeviceID[0]));
 #else
+		// Implementations 3 and 5 do not use ArrayFire
+		// MATLAB's gpuArray memory lives in the device's primary context, so attach to the 
+		// context that is already current (set by mxInitGPU) and only retain the primary 
+		// context ourselves when there is none
 		status = cuInit(0);
-		CUDA_CHECK(status, "Failed to initialize CUDA\n", -1);
-		status = cuDeviceGet(&standaloneDevice, inputScalars.platform);
-		CUDA_CHECK(status, "Failed to select the CUDA device\n", -1);
-		status = cuDevicePrimaryCtxRetain(&standaloneContext, standaloneDevice);
-		CUDA_CHECK(status, "Failed to retain the CUDA context\n", -1);
-		status = cuCtxSetCurrent(standaloneContext);
-		CUDA_CHECK(status, "Failed to activate the CUDA context\n", -1);
-		CUDeviceID.push_back(standaloneDevice);
-		CUstream stream = nullptr;
-		status = cuStreamCreate(&stream, CU_STREAM_DEFAULT);
-		CUDA_CHECK(status, "Failed to create the CUDA stream\n", -1);
-		CLCommandQueue.push_back(stream);
+		CHECK(status, "Failed to initialize the CUDA driver API\n", -1);
+		CUcontext CUContext = nullptr;
+		status = cuCtxGetCurrent(&CUContext);
+		CUdevice curDevice = 0;
+		if (status != CUDA_SUCCESS || CUContext == nullptr) {
+			int deviceCount = 0;
+			status = cuDeviceGetCount(&deviceCount);
+			CHECK(status, "Failed to query the number of CUDA devices\n", -1);
+			if (deviceCount <= 0) {
+				mexPrint("No CUDA devices found\n");
+				return -1;
+			}
+			int devNum = static_cast<int>(inputScalars.platform);
+			if (devNum < 0 || devNum >= deviceCount)
+				devNum = 0;
+			status = cuDeviceGet(&curDevice, devNum);
+			CHECK(status, "Failed to get the CUDA device\n", -1);
+			status = cuDevicePrimaryCtxRetain(&CUContext, curDevice);
+			CHECK(status, "Failed to retain the CUDA primary context\n", -1);
+			// Set immediately after the retain succeeds (not after cuCtxSetCurrent) so that a
+			// later failure in this block still leaves the destructor able to release the
+			// primary context we just retained, instead of leaking it
+			ownsContext = true;
+			status = cuCtxSetCurrent(CUContext);
+			CHECK(status, "Failed to set the CUDA context\n", -1);
+		}
+		else {
+			status = cuCtxGetDevice(&curDevice);
+			CHECK(status, "Failed to get the CUDA device of the current context\n", -1);
+		}
+		CUDeviceID.push_back(curDevice);
+		// The legacy default stream, which synchronizes with the work MATLAB submits through the
+		// CUDA runtime API
+		CLCommandQueue.push_back(reinterpret_cast<CUstream>(0));
 #endif
 
 		status2 = createProgram(programFP, programBP, programAux, header_directory, inputScalars, MethodList, w_vec, local_size, type);
@@ -3045,8 +3270,10 @@ public:
 				static_cast<float>(inputScalars.Nz[ii]) * inputScalars.dz[ii] + inputScalars.bz[ii]);
 		}
 		if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-			erotusSens[0] = inputScalars.det_per_ring % local_size[0];
-			erotusSens[1] = inputScalars.det_per_ring % local_size[1];
+			const size_t sensitivityDetectorRows = inputScalars.SPECT ? inputScalars.nRowsD : inputScalars.det_per_ring;
+			const size_t sensitivityDetectorCols = inputScalars.SPECT ? inputScalars.nColsD : inputScalars.det_per_ring;
+			erotusSens[0] = sensitivityDetectorRows % local_size[0];
+			erotusSens[1] = sensitivityDetectorCols % local_size[1];
 			if (erotusSens[1] > 0)
 				erotusSens[1] = (local_size[1] - erotusSens[1]);
 			if (erotusSens[0] > 0)
@@ -3342,11 +3569,18 @@ public:
 				for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
 					const uint32_t indD = kk + timestep * inputScalars.subsets;
 					if (inputScalars.SPECT) {
-						ALLOC_BUFFER(d_detectorVector[timestep][kk], CL_MEM_READ_ONLY, sizeof(uint32_t) * length[indD]);
+						const size_t detectorIndex = static_cast<size_t>(kk) + static_cast<size_t>(timestep) * static_cast<size_t>(inputScalars.subsets);
+						const size_t detectorCount = inputScalars.listmode > 0
+							? (w_vec.detectorVectorSize > 0 ? w_vec.detectorVectorSize : static_cast<size_t>(inputScalars.nProjections))
+							: static_cast<size_t>(length[detectorIndex]);
+						ALLOC_BUFFER(d_detectorVector[timestep][kk], CL_MEM_READ_ONLY, sizeof(uint32_t) * detectorCount);
 						CHECK(status, "\n", (STATUS_t)(-1));
 					}
 					if (inputScalars.CT || inputScalars.SPECT) {
-						ALLOC_BUFFER(d_x[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[indD] * 6);
+						// The event projector still needs one six-coordinate LOR per event.
+						// Full-view SPECT sensitivity geometry is stored separately in d_xFull.
+						const size_t coordinateCount = static_cast<size_t>(length[indD]) * 6ULL;
+						ALLOC_BUFFER(d_x[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * coordinateCount);
 						CHECK(status, "\n", (STATUS_t)(-1));
 						memAlloc.xSteps++;
 					}
@@ -3361,7 +3595,14 @@ public:
 							mexEval();
 						}
 					}
-					if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode != 1) {
+					if (inputScalars.SPECT && inputScalars.listmode == 1) {
+						const size_t coordinateCount = static_cast<size_t>(length[kk + timestep * inputScalars.subsets]) * 5ULL;
+						ALLOC_BUFFER(d_z[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * coordinateCount);
+						CHECK(status, "\n", (STATUS_t)(-1));
+						memAlloc.zType = 1;
+						memAlloc.zSteps++;
+					}
+					else if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode != 1) {
 						size_t coef = 2;
 						if (inputScalars.useHelical)
 							coef = 1;
@@ -3604,12 +3845,32 @@ public:
 				for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
 					const uint32_t indD = kk + timestep * inputScalars.subsets;
 					if (inputScalars.SPECT) {
-						WRITE_BUFFER(d_detectorVector[timestep][kk], sizeof(uint32_t) * length[indD],
-							&w_vec.detectorVector[pituus[indD]]);
+						const size_t detectorIndex = static_cast<size_t>(kk) + static_cast<size_t>(timestep) * static_cast<size_t>(inputScalars.subsets);
+						if (inputScalars.listmode > 0) {
+							const size_t detectorCount = w_vec.detectorVectorSize > 0
+								? w_vec.detectorVectorSize : static_cast<size_t>(inputScalars.nProjections);
+							WRITE_BUFFER(d_detectorVector[timestep][kk], sizeof(uint32_t) * detectorCount,
+								w_vec.detectorVector);
+						}
+						else {
+							WRITE_BUFFER(d_detectorVector[timestep][kk], sizeof(uint32_t) * length[detectorIndex],
+								&w_vec.detectorVector[pituus[detectorIndex]]);
+						}
 						CHECK(status, "\n", (STATUS_t)(-1));
-						memSize += sizeof(uint32_t) * length[indD];
+						memSize += sizeof(uint32_t) * (inputScalars.listmode > 0
+							? (w_vec.detectorVectorSize > 0 ? w_vec.detectorVectorSize : static_cast<size_t>(inputScalars.nProjections))
+							: static_cast<size_t>(length[detectorIndex]));
 					}
-					if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
+					if (inputScalars.SPECT && inputScalars.listmode == 1) {
+						const size_t eventIndex = static_cast<size_t>(kk) +
+							static_cast<size_t>(timestep) * static_cast<size_t>(inputScalars.subsets);
+						const float* listCoordZ = w_vec.listCoordZ ? w_vec.listCoordZ : z_det;
+						WRITE_BUFFER(d_z[timestep][kk], sizeof(float) * length[eventIndex] * 5,
+							&listCoordZ[pituus[eventIndex] * 5]);
+						CHECK(status, "\n", (STATUS_t)(-1));
+						memSize += sizeof(float) * length[eventIndex] * 5;
+					}
+					else if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
 						size_t kerroin = 2;
 						if (inputScalars.pitch)
 							kerroin = 6;
@@ -3641,7 +3902,8 @@ public:
 						memSize += sizeof(float) * length[indD] * 6;
 					}
 					else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
-						if (inputScalars.loadTOF || (kk == inputScalars.osa_iter0 && timestep == inputScalars.timestep0)) {
+						if (inputScalars.SPECT || inputScalars.loadTOF ||
+							(kk == inputScalars.osa_iter0 && timestep == inputScalars.timestep0)) {
 							WRITE_BUFFER(d_x[timestep][kk], sizeof(float) * length[kk + timestep * inputScalars.subsets] * 6, 
 								&w_vec.listCoord[pituus[kk + timestep * inputScalars.subsets] * 6]);
 							CHECK(status, "\n", (STATUS_t)(-1));
@@ -4083,13 +4345,16 @@ public:
 			if (inputScalars.FPType == 4) {
 				KARG(FPArgs, kernelFP, kernelIndFP, d_TOFCenter);
 				KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.sigma_x);
+				KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.epps);
 			}
 			if (inputScalars.BPType == 4) {
 				KARG(BPArgs, kernelBP, kernelIndBP, d_TOFCenter);
 				KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.sigma_x);
+				KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.epps);
 				if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 					KARG(SensArgs, kernelSensList, kernelIndSens, d_TOFCenter);
 					KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.sigma_x);
+					KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.epps);
 				}
 			}
 		}
@@ -4160,6 +4425,7 @@ public:
 		KARG(kArgs, kernelPSFf, kernelInd, inputScalars.g_dim_x);
 		KARG(kArgs, kernelPSFf, kernelInd, inputScalars.g_dim_y);
 		KARG(kArgs, kernelPSFf, kernelInd, inputScalars.g_dim_z);
+		KARG(kArgs, kernelPSFf, kernelInd, d_N[ii]);
 		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelPSFf, cl::NDRange(), globalC, localPrior, NULL);
 		OCL_CHECK(status, "\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
@@ -4479,6 +4745,9 @@ public:
 					// for the multi-resolution volumes b/bmax already span the whole volume
 					bzGlobalFP[0] = (ii == 0) ? inputScalars.lDimStruct.bz[0] : VEC_Z(b[ii]);
 					bzGlobalFP[1] = (ii == 0) ? inputScalars.lDimStruct.bmaxZ[inputScalars.subsets - 1] : VEC_Z(bmax[ii]);
+#ifdef METAL
+					kParams.dSize5 = { bzGlobalFP[0], bzGlobalFP[1] };
+#endif
 					KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, bzGlobalFP[0]);
 					KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, bzGlobalFP[1]);
 				}
@@ -4495,13 +4764,13 @@ public:
 			KARG(kTemp, kernelFP, kernelIndFPSubIter, vec_opencl.d_image_os);
 			KARG(kTemp, kernelFP, kernelIndFPSubIter, d_output);
 			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || 
-				(!inputScalars.loadTOF && inputScalars.listmode > 0)) {
+				(!inputScalars.loadTOF && inputScalars.listmode > 0 && !inputScalars.SPECT)) {
 				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_x[0][0]);
 			}
 			else {
 				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_x[timestep][osa_iter]);
 			}
-			if ((inputScalars.CT || inputScalars.PET)) {
+			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT)) {
 				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_z[timestep][osa_iter]);
 			}
 			else if (inputScalars.listmode > 0) {
@@ -4633,7 +4902,7 @@ public:
 				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, length[osa_iter + timestep * inputScalars.subsets]);
 			}
 			KARG_METAL_SLOT(kernelIndFPSubIter, 8);
-			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0)) {
+			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0 && !inputScalars.SPECT)) {
 				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_x[0][0]);
 			}
 			else
@@ -4730,8 +4999,10 @@ public:
 			const MTL::Size threadgroupsPerGrid = MTL::Size::Make(global[0] / localFP[0], global[1] / localFP[1], global[2] / localFP[2]);
 			encoder->dispatchThreadgroups(threadgroupsPerGrid, threadsPerThreadgroup);
 			encoder->endEncoding();
-			commandBuffer->commit();
+			submitMetalCommandBuffer(commandBuffer.get());
+#ifndef AF
 			commandBuffer->waitUntilCompleted();
+#endif
 		}
 #elif defined(OPENCL)
 		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelFP, cl::NDRange(), global, localFP, NULL);
@@ -4772,7 +5043,7 @@ public:
 #if defined(CUDA) || defined(HIP)
 	inline int backwardProjection(scalarStruct & inputScalars, Weighting & w_vec, uint32_t osa_iter, uint32_t timestep,
 		std::vector<int64_t>&length, uint64_t m_size, const RecMethods & MethodList = RecMethods(), const bool compSens = false, int ii = 0, const int uu = 0,
-		int ee = -1, const int queueIdx = 0, const bool newInput = true) {
+		const int queueIdx = 0, const bool newInput = true) {
 #elif defined(METAL) || defined(OPENCL)
 	// MethodList defaults to an empty RecMethods() so the METAL branch below keeps compiling unchanged
 	// TODO: Metal support for fastPDHG?
@@ -4785,11 +5056,14 @@ public:
 		STATUS_t status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kTemp = BPArgs;
-#elif defined(OPENCL)
+		const int ee = uu; // CUDA/HIP have no separate sensitivity-image index
+#else
+#if defined(OPENCL)
 		kernelIndBPSubIter = kernelIndBP;
-#endif // END CUDA
+#endif
         if (ee < 0)
 			ee = uu;
+#endif // END CUDA
 		if (inputScalars.listmode > 0 && compSens) {
 			kernelApu = kernelBP;
 			kernelBP = kernelSensList;
@@ -4850,11 +5124,20 @@ public:
 		kParams.d_Scale5 = inputScalars.d_Scale[ii];
 		kParams.dSize5 = inputScalars.dSizeBP;
 		kParams.kerroin4 = (inputScalars.BPType == 4 && w_vec.kerroin4) ? w_vec.kerroin4[ii] : 0.f;
-		kParams.nProjections = length[indD];
+		kParams.DSC = inputScalars.DSC;
+		kParams.nProjections = compSens && inputScalars.SPECT
+			? static_cast<int64_t>(inputScalars.size_of_x / 6)
+			: length[indD];
 		kParams.no_norm = no_norm;
 		kParams.m_size = m_size;
 		kParams.currentSubset = osa_iter;
 		kParams.aa = ii;
+		if (MethodList.FDK && inputScalars.largeDim && inputScalars.BPType == 4) {
+			int64_t angleOffset = 0;
+			for (uint32_t subset = 0; subset < osa_iter; subset++)
+				angleOffset += length[subset + timestep * inputScalars.subsets];
+			kParams.dSize5 = { static_cast<float>(angleOffset), static_cast<float>(inputScalars.nProjections) };
+		}
 		if (inputScalars.BPType == 2)
 			kParams.orthWidth = inputScalars.tube_width;
 		if (inputScalars.BPType == 3)
@@ -4893,9 +5176,15 @@ public:
 				SET_LAUNCH_RANGE3(global, inputScalars.nRowsD + erotus[0], inputScalars.nColsD + erotus[1], length[indD], local);
 			}
 			else if (inputScalars.listmode > 0 && compSens) {
-				const size_t sensitivityDepth = static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.nLayers);
-				SET_LAUNCH_RANGE3(global, static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0], 
-					static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], sensitivityDepth, local);
+				if (inputScalars.SPECT) {
+					SET_LAUNCH_RANGE3(global, inputScalars.nRowsD + erotusSens[0],
+						inputScalars.nColsD + erotusSens[1], inputScalars.size_of_x / 6, local);
+				}
+				else {
+					const size_t sensitivityDepth = static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.nLayers);
+					SET_LAUNCH_RANGE3(global, static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0],
+						static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], sensitivityDepth, local);
+				}
 			}
 			else {
 				erotus[0] = length[indD] % local_size[0];
@@ -4974,12 +5263,18 @@ public:
 				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, length[indD]);
 			KARG_METAL_SLOT(kernelIndBPSubIter, 8);
 			if (compSens) {
+#if !defined(METAL)
+				if (inputScalars.SPECT)
+					KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, inputScalars.size_of_x / 6);
+#endif
 				KARG(kTemp, kernelBP, kernelIndBPSubIter, d_xFull[0]);
 				KARG(kTemp, kernelBP, kernelIndBPSubIter, d_zFull[0]);
+#if !defined(METAL)
 				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, inputScalars.rings);
+#endif
 			}
 			else {
-				if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0)) {
+				if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0 && !inputScalars.SPECT)) {
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_x[0][0]);
 				}
 				else
@@ -5178,7 +5473,7 @@ public:
 						textureWidth++;
 					}
 					if (newInput) {
-						if (!d_output || !d_output->contents()) {
+						if (!d_output) {
 							mexPrint("Metal backprojection input buffer is unavailable\n");
 							return -1;
 						}
@@ -5193,13 +5488,9 @@ public:
 							BPImageDims[1] = textureHeight;
 							BPImageDims[2] = textureDepth;
 						}
-						const MTL::Region textureRegion(0, 0, 0,
-							static_cast<NS::UInteger>(textureWidth),
-							static_cast<NS::UInteger>(textureHeight),
-							static_cast<NS::UInteger>(textureDepth));
-						const NS::UInteger bytesPerRow = static_cast<NS::UInteger>(textureWidth * sizeof(float));
-						const NS::UInteger bytesPerImage = bytesPerRow * static_cast<NS::UInteger>(textureHeight);
-						d_inputImage->replaceRegion(textureRegion, 0, 0, d_output->contents(), bytesPerRow, bytesPerImage);
+						if (copyMetalBufferToTexture(d_output, d_inputImage,
+							metalTextureSpec(textureWidth, textureHeight, textureDepth, true)) != SUCCESS_VALUE)
+							return -1;
 					}
 					else if (!d_inputImage) {
 						mexPrint("Metal backprojection input texture cannot be reused before it is initialized\n");
@@ -5370,11 +5661,13 @@ public:
 					KARG_METAL_SLOT(kernelIndBPSubIter, 7);
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_Summ[ee]);
 					if (inputScalars.meanBP) {
+						if (inputScalars.BPType == 5)
+							KARG_METAL_SLOT(kernelIndBPSubIter, 8);
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_meanBP);
 					}
 				}
 				if (inputScalars.normalization_correction) {
-					KARG_METAL_SLOT(kernelIndBPSubIter, 8);
+					KARG_METAL_SLOT(kernelIndBPSubIter, inputScalars.BPType == 5 ? 9 : 8);
 					// TODO: Listmode normalization
 					//if (inputScalars.listmode > 0 && inputScalars.indexBased)
 					//	status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[0]);
@@ -5391,9 +5684,15 @@ public:
 						localBP);
 				}
 				else if (inputScalars.listmode > 0 && compSens) {
-					SET_LAUNCH_RANGE3(global, static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0],
-						static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], 
-						static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings), localBP);
+					if (inputScalars.SPECT) {
+						SET_LAUNCH_RANGE3(global, inputScalars.nRowsD + erotusSens[0],
+							inputScalars.nColsD + erotusSens[1], inputScalars.size_of_x / 6, localBP);
+					}
+					else {
+						SET_LAUNCH_RANGE3(global, static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0],
+							static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1],
+							static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings), localBP);
+					}
 				}
 				else {
 					erotus[0] = length[indD] % local_size[0];
@@ -5445,6 +5744,9 @@ public:
 					// Non-CT BP 4 needs the same volume information as FP
 					bzGlobalBP[0] = (ii == 0) ? inputScalars.lDimStruct.bz[0] : VEC_Z(b[ii]);
 					bzGlobalBP[1] = (ii == 0) ? inputScalars.lDimStruct.bmaxZ[inputScalars.subsets - 1] : VEC_Z(bmax[ii]);
+#ifdef METAL
+					kParams.dSize5 = { bzGlobalBP[0], bzGlobalBP[1] };
+#endif
 					KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, bzGlobalBP[0]);
 					KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, bzGlobalBP[1]);
 				}
@@ -5459,7 +5761,7 @@ public:
 					KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, inputScalars.det_per_ring);
 				}
 				else {
-					if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0)) {
+					if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0 && !inputScalars.SPECT)) {
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_x[0][0]);
 					}
 					else
@@ -5550,7 +5852,7 @@ public:
 				}
 			KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, no_norm);
 			if (inputScalars.CT && inputScalars.maskBP && (inputScalars.BPType == 4 || inputScalars.BPType == 5 || inputScalars.BPType == 7)) {
-				KARG_METAL_SLOT(kernelIndBPSubIter, 9);
+				KARG_METAL_SLOT(kernelIndBPSubIter, inputScalars.BPType == 5 ? 10 : 9);
 				if (inputScalars.useBuffers) {
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_maskBPB[timestep][ii]);
 				}
@@ -5671,10 +5973,15 @@ public:
 			const MTL::Size threadgroupsPerGrid = MTL::Size::Make(global[0] / localBP[0], global[1] / localBP[1], global[2] / localBP[2]);
 			encoder->dispatchThreadgroups(threadgroupsPerGrid, threadsPerThreadgroup);
 			encoder->endEncoding();
-			commandBuffer->commit();
+#ifdef AF
+			if (useMetalSideQueue)
+				af::sync();
+#endif
+			submitMetalCommandBuffer(commandBuffer.get());
 			if (useMetalSideQueue) {
 				sideCommandBuffers[queueIdx - 1] = commandBuffer;
 			}
+#ifndef AF
 			else {
 				commandBuffer->waitUntilCompleted();
 				if (commandBuffer->status() == MTL::CommandBufferStatusError) {
@@ -5685,6 +5992,7 @@ public:
 					return -1;
 				}
 			}
+#endif
 		}
 #elif defined(OPENCL)
 		if (queueIdx > 0 && static_cast<size_t>(queueIdx) <= sideQueues.size()) {
@@ -5979,7 +6287,7 @@ public:
 		KARG(kArgs, kernelNLM, kernelIndNLM, inputScalars.epps);
 #endif // END CUDA
 		KARG(kArgs, kernelNLM, kernelIndNLM, beta);
-		if (w_vec.NLRD || w_vec.NLLange || w_vec.NLGGMRF)
+		if (w_vec.NLRD || w_vec.NLLange || w_vec.NLGGMRF || w_vec.NLGM)
 			KARG(kArgs, kernelNLM, kernelIndNLM, w_vec.RDP_gamma);
 		if (w_vec.NLGGMRF) {
 			KARG(kArgs, kernelNLM, kernelIndNLM, w_vec.GGMRF_p);
@@ -6360,10 +6668,12 @@ public:
 #if defined(CUDA) || defined(HIP)
 	inline int ProxTVHelperQ(float alpha, const uint64_t globalQ) {
 		std::vector<void*> kArgs;
+		int64_t nQ = static_cast<int64_t>(globalQ);
 #elif defined(OPENCL)
 	inline int ProxTVHelperQ(const float alpha, const uint64_t gQ) {
 		cl::NDRange globalQ = { static_cast<cl::size_type>(gQ) };
 		UINT32_t kernelIndCPTV = 0U;
+		int64_t nQ = static_cast<int64_t>(gQ);
 #endif // END CUDA
 		STATUS_t status = SUCCESS_VALUE;
 		//FINISH_QUEUE(status, "Queue finish failed before proximal TV kernel\n", -1);
@@ -6371,9 +6681,10 @@ public:
 		KARG(kArgs, kernelProxTVq, kernelIndCPTV, d_qY);
 		KARG(kArgs, kernelProxTVq, kernelIndCPTV, d_qZ);
 		KARG(kArgs, kernelProxTVq, kernelIndCPTV, alpha);
+		KARG(kArgs, kernelProxTVq, kernelIndCPTV, nQ);
 		// Compute the kernel
 #if defined(CUDA) || defined(HIP)
-		status = cuLaunchKernel(kernelProxTVq, globalQ / 64ULL, 1, 1, 64, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
+		status = cuLaunchKernel(kernelProxTVq, (globalQ + 63ULL) / 64ULL, 1, 1, 64, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the Proximal TV kernel\n", -1);
 #elif defined(OPENCL)
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTVq, cl::NullRange, globalQ, cl::NullRange);
@@ -6393,9 +6704,11 @@ public:
 #if defined(CUDA) || defined(HIP)
 	inline int ProxTGVHelperQ(const scalarStruct & inputScalars, float alpha, const uint64_t globalQ) {
 		std::vector<void*> kArgs;
+		int64_t nQ = static_cast<int64_t>(globalQ);
 #elif defined(OPENCL)
 	inline int ProxTGVHelperQ(const scalarStruct & inputScalars, const float alpha, const uint64_t globalQ) {
 		UINT32_t kernelIndCPTV = 0U;
+		int64_t nQ = static_cast<int64_t>(globalQ);
 #endif // END CUDA
 		STATUS_t status = SUCCESS_VALUE;
 		//FINISH_QUEUE(status, "Queue finish failed before proximal TGV kernel\n", -1);
@@ -6409,9 +6722,10 @@ public:
 			KARG(kArgs, kernelProxTGVq, kernelIndCPTV, d_rYZ);
 		}
 		KARG(kArgs, kernelProxTGVq, kernelIndCPTV, alpha);
+		KARG(kArgs, kernelProxTGVq, kernelIndCPTV, nQ);
 		// Compute the kernel
 #if defined(CUDA) || defined(HIP)
-		status = cuLaunchKernel(kernelProxTGVq, globalQ / 64ULL, 1, 1, 64, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
+		status = cuLaunchKernel(kernelProxTGVq, (globalQ + 63ULL) / 64ULL, 1, 1, 64, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the Proximal TGV kernel\n", -1);
 #elif defined(OPENCL)
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTGVq, cl::NullRange, globalQ, cl::NullRange);
@@ -6752,7 +7066,8 @@ public:
 	/// <param name="mult if true, performs multiplication, otherwise division"></param>
 	/// <param name="D2 if true, assumes 2D case, otherwise 1D"></param>
 	/// <returns></returns>
-#if defined(CUDA) || defined(HIP)
+#endif // END non-Metal auxiliary kernels
+	#if defined(CUDA) || defined(HIP)
 	inline int elementWiseComp(const bool mult, const uint64_t size[], bool D2 = false) {
 		const unsigned int gSize[3] = { static_cast<unsigned int>(size[0]), static_cast<unsigned int>(size[1]), static_cast<unsigned int>(size[2]) };
 		std::vector<void*> kArgs;
@@ -6762,11 +7077,22 @@ public:
 			mexPrintBase("gSize[2] = %u\n", gSize[2]);
 			mexEval();
 		}
-#elif defined(OPENCL)
+	#elif defined(OPENCL)
 	inline int elementWiseComp(const bool mult, const uint64_t size[], const bool D2 = false) {
 		cl::NDRange gSize = { static_cast<cl::size_type>(size[0]), static_cast<cl::size_type>(size[1]), static_cast<cl::size_type>(size[2]) };
 		UINT32_t kernelIndE = 0U;
-#endif // END CUDA
+	#elif defined(METAL)
+	inline int elementWiseComp(const bool mult, const uint64_t size[], const bool D2 = false) {
+		MTL::Size gSize = MTL::Size::Make(static_cast<NS::UInteger>(size[0]), static_cast<NS::UInteger>(size[1]), static_cast<NS::UInteger>(size[2]));
+		UINT32_t kernelIndE = 0U;
+		if (!queueBP || !(mult ? kernelElementMultiply : kernelElementDivision))
+			return -1;
+		auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+		auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+		if (!commandBuffer || !encoder)
+			return -1;
+		encoder->setComputePipelineState((mult ? kernelElementMultiply : kernelElementDivision).get());
+	#endif // END CUDA
 		STATUS_t status = SUCCESS_VALUE;
 		UCHAR_t D = static_cast<UCHAR_t>(D2);
 		//FINISH_QUEUE(status, "Failed to synchronize before element-wise kernel\n", -1);
@@ -6777,6 +7103,10 @@ public:
 			// Compute the kernel
 #if defined(CUDA) || defined(HIP)
 			status = cuLaunchKernel(kernelElementMultiply, gSize[0], gSize[1], gSize[2], 1, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
+#elif defined(METAL)
+			encoder->dispatchThreads(gSize, MTL::Size::Make(1, 1, 1));
+			encoder->endEncoding();
+			submitMetalCommandBuffer(commandBuffer.get());
 #elif defined(OPENCL)
 			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelElementMultiply, cl::NullRange, gSize, cl::NullRange);
 #endif // END CUDA
@@ -6787,6 +7117,10 @@ public:
 			// Compute the kernel
 #if defined(CUDA) || defined(HIP)
 			status = cuLaunchKernel(kernelElementDivision, gSize[0], gSize[1], gSize[2], 1, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
+#elif defined(METAL)
+			encoder->dispatchThreads(gSize, MTL::Size::Make(1, 1, 1));
+			encoder->endEncoding();
+			submitMetalCommandBuffer(commandBuffer.get());
 #elif defined(OPENCL)
 			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelElementDivision, cl::NullRange, gSize, cl::NullRange);
 #endif // END CUDA
@@ -6795,6 +7129,8 @@ public:
 		//FINISH_QUEUE(status, "Queue finish failed after element-wise kernel\n", -1);
 		return 0;
 	}
+
+#if !defined(METAL)
 
 	/// <summary>
 	/// The gradient of hyperbolic prior
@@ -7200,7 +7536,10 @@ public:
 				global[0] / localPrior[0], global[1] / localPrior[1], global[2] / localPrior[2]);
 			encoder->dispatchThreadgroups(threadgroupsPerGrid, threadsPerThreadgroup);
 			encoder->endEncoding();
-			commandBuffer->commit();
+			submitMetalCommandBuffer(commandBuffer.get());
+#ifndef AF
+			commandBuffer->waitUntilCompleted();
+#endif
 		}
 #elif defined(OPENCL)
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelPDHG, cl::NullRange, global, localPrior);
@@ -7300,7 +7639,7 @@ public:
 				global[0] / localPrior[0], global[1] / localPrior[1], global[2] / localPrior[2]);
 			encoder->dispatchThreadgroups(threadgroupsPerGrid, threadsPerThreadgroup);
 			encoder->endEncoding();
-			commandBuffer->commit();
+			submitMetalCommandBuffer(commandBuffer.get());
 		}
 #elif defined(OPENCL)
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelRotate, cl::NullRange, globalPrior, localPrior);

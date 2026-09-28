@@ -36,9 +36,13 @@ subtractMean = false;
 if nargin >= 2
     subtractMean = varargin{1};
 end
-type = class(input);
+if isa(input, 'gpuArray')
+    type = classUnderlying(input);
+else
+    type = class(input);
+end
 input = double(input);
-output = zeros(size(input,1) + 1, size(input,2) + 1, size(input,3));
+output = zeros(size(input,1) + 1, size(input,2) + 1, size(input,3), 'like', input);
 if subtractMean
     meanVal = mean(mean(input, 1), 2);
     input = bsxfun(@minus, input, meanVal);

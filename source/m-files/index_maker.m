@@ -385,7 +385,9 @@ else
         pituus = int64(options.detectors^2/2 + options.detectors/2);
         subsetIndex{1} = uint32(1 : pituus)';
     elseif options.listmode
-        if options.useIndexBasedReconstruction
+        if options.Nt > 1 && isfield(options, 'listmodeIndices') && numel(options.listmodeIndices) == options.Nt
+            pituus = int64(options.listmodeIndices(:));
+        elseif options.useIndexBasedReconstruction
             pituus(1) = numel(options.trIndex) / 2;
         else
             pituus(1) = numel(options.x) / 6;
