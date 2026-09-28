@@ -45,17 +45,26 @@ else
     partitions = options.partitions;
 end
 
+% Each cell here holds one timestep's data, which may still be a multi-dimensional
+% (Ndist x Nang x NSinos(x TOF_bins)) array rather than a column vector: parseInputData
+% only columnizes per-frame cells when subsets > 1 (and subset_type > 0), so this branch
+% -- reached whenever largeDim skipped reconstructions_main.m's own cell2mat, or whenever
+% subsets == 1 -- must columnize each frame itself before cell2mat. Otherwise cell2mat
+% concatenates the 1xNt cell along dimension 2 instead of stacking whole frames end to
+% end, which interleaves timesteps instead of keeping each one contiguous (the C++ side
+% offsets into each array by that array's per-timestep element count times the timestep
+% index, i.e. expects frame 1 fully before frame 2).
 if iscell(options.SinM)
-    options.SinM = cell2mat(options.SinM);
+    options.SinM = cell2mat(cellfun(@(x) x(:), options.SinM, 'UniformOutput', false));
 end
 if options.attenuation_correction
     if iscell(options.vaimennus)
-        options.vaimennus = cell2mat(options.vaimennus);
+        options.vaimennus = cell2mat(cellfun(@(x) x(:), options.vaimennus, 'UniformOutput', false));
     end
 end
 if options.randoms_correction
     if iscell(options.SinDelayed)
-        options.SinDelayed = cell2mat(options.SinDelayed);
+        options.SinDelayed = cell2mat(cellfun(@(x) x(:), options.SinDelayed, 'UniformOutput', false));
     end
 end
 options.currentSubset = 0;
