@@ -547,6 +547,10 @@ struct inputStruct {
     // More reference images
     float* NLM_ref;
     float* RDP_ref;
+    // Neighborhood index/weight data for the L-filter and FMH priors
+    uint32_t* tr_offsets;
+    float* a_L;
+    float* fmh_weights;
 };
 
 void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting& w_vec, RecMethods& MethodList) {
@@ -1177,6 +1181,12 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
             mexPrint("Neighborhood loaded");
         }
     }
+#ifdef AF
+    if ((MethodList.L || MethodList.FMH) && MethodList.MAP) {
+        // Index values for the neighborhood
+        w_vec.tr_offsets = af::array(inputScalars.im_dim[0], w_vec.dimmu, options.tr_offsets, afHost);
+    }
+#endif
     if (MethodList.FMH || MethodList.Quad || MethodList.Huber)
         w_vec.inffi = options.inffi;
     // Weights for the quadratic prior
@@ -1235,6 +1245,15 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         if (DEBUG) {
             mexPrint("Huber loaded");
         }
+    }
+    if (MethodList.L && MethodList.MAP)
+        w_vec.a_L = af::array(w_vec.dimmu, options.a_L, afHost);
+    if (MethodList.FMH && MethodList.MAP) {
+        if (inputScalars.Nz[0] == 1 || w_vec.Ndz == 0)
+            w_vec.fmh_weights = af::array(w_vec.Ndx * 2 + 1, 4, options.fmh_weights, afHost);
+        else
+            w_vec.fmh_weights = af::array((std::max)(w_vec.Ndz * 2 + 1, w_vec.Ndx * 2 + 1), 13, options.fmh_weights, afHost);
+        w_vec.alku_fmh = options.inffi;
     }
     if (MethodList.WeightedMean && MethodList.MAP) {
         w_vec.weighted_weights = af::moddims(af::array(w_vec.dimmu, options.weighted_weights, afHost), w_vec.Ndx * 2U + 1U, w_vec.Ndy * 2U + 1U, w_vec.Ndz * 2U + 1U);

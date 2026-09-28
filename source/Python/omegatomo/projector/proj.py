@@ -105,6 +105,7 @@ class projectorClass:
     pseudot = np.empty(0, dtype = np.uint32)
     weights = np.empty(0, dtype = np.float32)
     weights_huber = np.empty(0, dtype = np.float32)
+    tr_offsets = np.empty(0, dtype = np.uint32)
     a_L = np.empty(0, dtype = np.float32)
     fmh_weights = np.empty(0, dtype = np.float32)
     weighted_weights = np.empty(0, dtype = np.float32)
@@ -1326,17 +1327,20 @@ class projectorClass:
             raise ValueError("With SPECT, options.nRays has to be a square")
         if self.SPECT and self.projector_type in [2, 12, 21, 22, 26, 62] and self.n_rays_transaxial * self.n_rays_axial > 1:
             print('Orthogonal distance ray tracer should be used with 1 ray.')
-        if not(self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.PKMA or self.FISTA or self.FISTAL1 or self.MBSREM or self.SPS or self.MRAMLA) and any(self.precondTypeImage):
+        # Algorithm lists taken exactly from recNames.m's varPreCondIm/varPreCondMeas
+        # (case 7/8): {MRAMLA, MBSREM, FISTA, FISTAL1, PKMA, SPS, PDHG, PDHGKL,
+        # PDHGL1, PDDY, SAGA} for both image- and measurement-based preconditioning.
+        if not(self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.PKMA or self.FISTA or self.FISTAL1 or self.MBSREM or self.SPS or self.MRAMLA or self.SAGA) and any(self.precondTypeImage):
             print("Image-based preconditioning selected, but the selected algorithm(s) do not support preconditioning. No preconditioning will be performed.")
-            print("Supported algorithms are: MBSREM, MRAMLA, PKMA, SPS, PDHG, PDHGL1, PDHGKL, FISTA, FISTAL1, PDDY")
+            print("Supported algorithms are: MBSREM, MRAMLA, PKMA, SPS, PDHG, PDHGL1, PDHGKL, FISTA, FISTAL1, PDDY, SAGA")
             self.precondTypeImage = np.full((7, 1), False)
-        
+
         if np.sum(self.precondTypeImage[0:3]) > 1:
             raise ValueError("Only one of the first 3 image-based preconditioners can be selected at a time!")
-        
-        if not(self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.PKMA or self.FISTA or self.FISTAL1 or self.MBSREM or self.SPS or self.MRAMLA) and any(self.precondTypeMeas):
+
+        if not(self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.PKMA or self.FISTA or self.FISTAL1 or self.MBSREM or self.SPS or self.MRAMLA or self.SAGA) and any(self.precondTypeMeas):
             print("Measurement-based preconditioning selected, but the selected algorithm does not support preconditioning. No preconditioning will be performed.")
-            print("Supported algorithms are: MBSREM, MRAMLA, PKMA, SPS, PDHG, PDHGL1, PDHGKL, FISTA, FISTAL1, PDDY")
+            print("Supported algorithms are: MBSREM, MRAMLA, PKMA, SPS, PDHG, PDHGL1, PDHGKL, FISTA, FISTAL1, PDDY, SAGA")
             self.precondTypeMeas = np.full((2, 1), False)
         
         if not self.CT and not self.SPECT and self.span > self.ring_difference and self.NSinos > 1 and not self.use_raw_data:
@@ -1446,6 +1450,19 @@ class projectorClass:
             raise ValueError('Reference image for RDP is only supported with options.RDPIncludeCorners = True')
         if self.implementation == 2 and self.useCPU and self.RDP and self.RDPIncludeCorners:
             raise ValueError('RDP with include corners is supported only on OpenCL and CUDA!')
+        if self.hyperbolic and self.implementation != 2:
+            raise ValueError('Hyperbolic prior is only available when using implementation 2!')
+        elif self.implementation == 2 and self.TV and self.TVtype == 3:
+            # Port of OMEGA_error_check.m:361-370: TV type 3 is really the
+            # hyperbolic prior when using implementation 2, so switch the
+            # active prior over before prepass.py computes any prior weights
+            # (TVPrepass/etc., called later from prepassPhase) and before the
+            # prior mutual-exclusion check below counts the selected priors.
+            self.TV = False
+            self.hyperbolic = True
+            if self.TV_use_anatomical:
+                print('Hyperbolic prior does not support anatomic weighting at the moment when using implementation 2')
+                self.TV_use_anatomical = False
         if self.TV and self.TVtype == 2 and not self.TV_use_anatomical:
             print('Using TV type = 2, but no anatomical reference set. Using TV type = 1 instead!')
             self.TVtype = 1
@@ -1493,7 +1510,9 @@ class projectorClass:
         if self.projector_type in (6, 16, 26, 61, 62, 66):
             if self.subsets > 1 and self.subsetType < 8:
                 raise ValueError('Subset types 0-7 are not supported with projector type 6!')
-        
+        elif self.SPECT and self.subsets > 1 and self.subsetType < 8:
+            raise ValueError('Subset types 0-7 are not supported with SPECT data. Use subset types 8-11.')
+
         if self.FDK and (self.Niter > 1 or self.subsets > 1):
             if self.largeDim:
                 self.Niter = 1
@@ -2171,7 +2190,10 @@ class projectorClass:
                 sy = self.x[kk, 1]
                 dx = self.x[kk, 3]
                 dy = self.x[kk, 4]
-                ii = np.arange(0., self.nRowsD, 0.25, dtype=np.float32) - self.nRowsD / 2
+                # Matches MATLAB setUpCorrections.m:381-403: (0:0.25:nRowsD)' includes
+                # the nRowsD endpoint (4*nRowsD + 1 samples), and dPitchX (not
+                # dPitchY) is the pitch used for this transaxial search/limit.
+                ii = np.linspace(0., float(self.nRowsD), 4 * int(self.nRowsD) + 1, dtype=np.float32) - self.nRowsD / 2
                 if self.pitch:
                     dx = dx + self.z[kk, 0] * ii + self.z[kk, 3] * ii
                     dy = dy + self.z[kk, 1] * ii + self.z[kk, 4] * ii
@@ -2180,7 +2202,10 @@ class projectorClass:
                     dy = dy + self.z[kk, 1] * ii
                 dist = np.abs((dx - sx) * (sy) - ((sx) * (dy - sy))) / np.sqrt((dx - sx)**2 + (dy - sy)**2)
                 ind = np.argmin(dist)
-                self.OffsetLimit[kk] = ind * self.dPitchY/4
+                # MATLAB's `[~, ind] = min(dist)` returns a 1-based index; np.argmin
+                # returns 0-based, so +1 is needed to match MATLAB's OffsetLimit(kk)
+                # = (ind) * dPitchX / 4.
+                self.OffsetLimit[kk] = (ind + 1) * self.dPitchX / 4
             
             
     def PSFKernel(self):
@@ -2588,4 +2613,7 @@ class projectorClass:
             ('ellipsePower',ctypes.c_float),
             ('NLM_ref', ctypes.POINTER(ctypes.c_float)),
             ('RDP_ref', ctypes.POINTER(ctypes.c_float)),
+            ('tr_offsets', ctypes.POINTER(ctypes.c_uint32)),
+            ('a_L', ctypes.POINTER(ctypes.c_float)),
+            ('fmh_weights', ctypes.POINTER(ctypes.c_float)),
         ]

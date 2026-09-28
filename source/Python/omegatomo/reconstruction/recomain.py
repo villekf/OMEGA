@@ -397,7 +397,14 @@ def reconstructions_main(options):
                     print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed. Disabling randoms correction')
     if options.TOF and options.TOF_bins_used == 1:
         options.TOF_bins = options.TOF_bins_used
-        options.SinM = np.sum(options.SinM, axis=3)
+        if isinstance(options.SinM, list):
+            # Same list-stacking hazard as the SinM reshape below: np.sum on the raw
+            # list would first stack frames along a new leading axis (via np.asarray),
+            # shifting axis=3 off the intended TOF_bins axis onto nProjections instead.
+            # Sum each frame individually so the TOF axis is reduced correctly per frame.
+            options.SinM = [np.sum(np.asarray(frame), axis=3) for frame in options.SinM]
+        else:
+            options.SinM = np.sum(options.SinM, axis=3)
         options.TOF = False
     loadCorrections(options)
     # if options.normalization_correction and options.corrections_during_reconstruction == True:
@@ -452,10 +459,21 @@ def reconstructions_main(options):
         else:
             options.empty_weight = True
     parseInputs(options, True)
+    # Each list entry is one timestep's frame, which can still be a multi-dimensional
+    # (Ndist x Nang x NSinos(x TOF_bins)) array here: parseInputs only flattens per-frame
+    # data when subsets > 1 (and subsetType > 0); with subsets == 1 (or largeDim) the
+    # per-partition loop above never runs, so np.concatenate would otherwise join the
+    # frames along axis 0 of their native (row-major-read, Fortran-ordered) shape instead
+    # of stacking whole frames end to end -- interleaving timesteps instead of keeping
+    # each one contiguous (the C++ side offsets into SinM/SinDelayed by that array's
+    # per-timestep element count times the timestep index, i.e. expects frame 1 fully
+    # before frame 2). Raveling each frame with order='F' first (a no-op if already 1-D,
+    # as it is once the subsets > 1 path above already ran) guarantees frame-contiguous
+    # memory order regardless of which path produced the list.
     if isinstance(options.SinM, list):
-        options.SinM = np.concatenate(options.SinM)
+        options.SinM = np.concatenate([np.asarray(frame).ravel(order='F') for frame in options.SinM])
     if isinstance(options.SinDelayed, list):
-        options.SinDelayed = np.concatenate(options.SinDelayed)
+        options.SinDelayed = np.concatenate([np.asarray(frame).ravel(order='F') for frame in options.SinDelayed])
     if not options.CT and (not options.LSQR and not options.CGLS):
         options.SinM[options.SinM < 0] = 0
     if options.FDK:
@@ -496,8 +514,11 @@ def reconstructions_main(options):
     transferData(options)
     inStr = options.headerDir.encode('utf-8')
     # point_ptr = ctypes.pointer(options.param)
+    # Same frame-contiguity concern as the earlier SinM/SinDelayed concatenation above
+    # (this list form can reappear here for the Nt <= 1 case via prepassPhase's
+    # single_frame_list re-wrapping); ravel each frame with order='F' before joining them.
     if isinstance(options.SinM, list):
-        options.SinM = np.concatenate(options.SinM)
+        options.SinM = np.concatenate([np.asarray(frame).ravel(order='F') for frame in options.SinM])
     keep_int = options.SinM.dtype in (np.uint16, np.uint8) and (options.largeDim or not options.loadTOF)
     if not keep_int and options.SinM.dtype != np.float32:
         options.SinM = options.SinM.astype(np.float32)
@@ -557,8 +578,45 @@ def reconstructions_main(options):
             output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], options.Nt, numSaves), order = 'F')
         else:
             output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], options.Nt), order = 'F')
+        # Port of reconstructions_main.m:722-731: crop the extended FOV back off
+        # the output. This only makes sense once `output` has actually been
+        # reshaped above (the first three axes are spatial in every branch
+        # except the useMultiResolutionVolumes one, which MATLAB also skips
+        # here) -- if any of the reshapes above raised, we never reach this
+        # point and the (still flat) output is returned unmodified, exactly as
+        # MATLAB's crop would be meaningless on an unreshaped array.
+        if options.useEFOV and not options.useMultiResolutionVolumes:
+            if options.transaxialEFOV:
+                # MATLAB crops both x and y with the same nTrans computed from Nx.
+                nTrans = int((int(options.Nx[0]) - int(options.NxOrig)) // 2)
+                if nTrans > 0:
+                    output = output[nTrans:-nTrans, nTrans:-nTrans, ...]
+            if options.axialEFOV:
+                nAxial = int((int(options.Nz[0]) - int(options.NzOrig)) // 2)
+                if nAxial > 0:
+                    output = output[:, :, nAxial:-nAxial, ...]
         if options.subsets == 1 and options.storeFP:
             FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins, options.Niter), order = 'F')
+        elif options.storeFP and options.subsets > 1 and options.subsetType >= 8 and not options.FDK:
+            # Port of reconstructions_main.m:732-741 for the subsets > 1 (subset
+            # type >= 8) case. device_to_host() in reconstructionAF.h fills the
+            # flat FPptr/FPOutput buffer iteration-major, subset-minor (for ii in
+            # 0..subsets*Niter-1: kk = ii // subsets is the iteration, jj = ii %
+            # subsets is the subset), each block being that subset's forward
+            # projection with TOF bins packed into the trailing dimension. Split
+            # it into that same Niter*subsets list of chunks and reshape each to
+            # (nRowsD, nColsD, meas*TOF_bins), mirroring MATLAB's fp{uu} cell.
+            fpList = []
+            offset = 0
+            nMeas = np.asarray(options.nMeas).reshape(-1)
+            for _ in range(int(options.Niter)):
+                for ii in range(int(options.subsets)):
+                    meas = int(nMeas[ii + 1] - nMeas[ii])
+                    block = int(options.nRowsD) * int(options.nColsD) * meas * int(options.TOF_bins)
+                    fpList.append(FPOutput[offset : offset + block].reshape(
+                        (options.nRowsD, options.nColsD, meas * options.TOF_bins), order='F'))
+                    offset += block
+            FPOutput = fpList
     except Exception as e:
         # Keep the reconstruction even if the output dimensions do not match
         warnings.warn(f'Could not reshape the reconstruction output ({e}); returning the unreshaped (flat) arrays instead.')

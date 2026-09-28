@@ -18,6 +18,7 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 """
 import os
+import math
 import numpy as np
 
 def _load_array_file(path, mat_key_index='auto'):
@@ -191,7 +192,11 @@ def _compute_lambda_vals(niter, subsets, stochastic):
     """
     i = np.arange(niter, dtype=np.float64)
     if stochastic:
-        return 1. / (0.4 / subsets * i + 1.)
+        # Matches MATLAB prepass_phase.m:134-137: the stochastic branch uses the
+        # 1-based iteration counter (lambda(i) = 1/(0.4/subsets*i+1) for i =
+        # 1..Niter), unlike the non-stochastic branch below which effectively
+        # uses (i-1).
+        return 1. / (0.4 / subsets * (i + 1.) + 1.)
     else:
         return 1. / (i / 20. + 1.)
 
@@ -447,6 +452,12 @@ def loadCorrections(options):
     # here a list of 1 (DEW) or 2 (TEW) windows; each window is either a
     # plain array (static data) or a list of per-timestep arrays (dynamic
     # data), mirroring MATLAB's ScatterC{w}/ScatterC{w}{timestep} cells.
+    # This whole branch is gated on options.SinDelayed.size <= 1, i.e. no
+    # pre-existing (r_exist false) randoms estimate, so -- like MATLAB's
+    # paired "no r_exist" branches (loadCorrections.m lines 389-395/451-457)
+    # -- the combined scatter estimate is assigned to SinDelayed as-is here,
+    # with no TOF_bins division (that only applies when a real randoms
+    # estimate is being divided; see the TOF_bins handling further below).
     if (options.SPECT and options.scatter_correction and isinstance(options.ScatterC, list)
             and options.SinDelayed.size <= 1 and options.subtract_scatter):  # From 10.1371/journal.pone.0269542
         nWindows = len(options.ScatterC)
@@ -542,9 +553,43 @@ def loadCorrections(options):
             elif options.SinDelayed.size > 0 and options.randoms_correction:
                 options.SinM = options.SinM.astype(np.float32) - options.SinDelayed.astype(np.float32) 
     if options.scatter_correction and options.ScatterC.size > 0 and not options.subtract_scatter:
+        # options.corrVector is a general multiplicative correction vector (see
+        # its per-frame handling in parseInputs below): if the user has already
+        # supplied one (signalled by options.additionalCorrection being True,
+        # together with a corrVector of more than one element, before this
+        # function runs), fold the non-subtracted scatter estimate into it via
+        # elementwise multiplication instead of overwriting it. Both vectors are
+        # still in full, un-permuted measurement order here -- subset selection
+        # for corrVector/ScatterC happens later, in parseInputs -- so no
+        # reordering is needed before combining them.
+        hasUserCorrVector = (options.additionalCorrection and hasattr(options, 'corrVector')
+                             and np.size(options.corrVector) > 1)
         options.additionalCorrection = True
-        options.corrVector = options.ScatterC
+        if hasUserCorrVector:
+            corrFlat = np.ravel(options.corrVector, order='F').astype(np.float32)
+            scatterFlat = np.ravel(options.ScatterC, order='F').astype(np.float32)
+            if corrFlat.size != scatterFlat.size:
+                raise ValueError('options.corrVector (size {}) and options.ScatterC (size {}) must have '
+                                  'the same number of elements to be merged into a single multiplicative '
+                                  'correction vector!'.format(corrFlat.size, scatterFlat.size))
+            options.corrVector = corrFlat * scatterFlat
+        else:
+            options.corrVector = options.ScatterC
+        # The non-subtracted scatter estimate has now been folded into corrVector
+        # (applied via additionalCorrection, independent of scatter_correction --
+        # see libHeader.h/mfunctions.h: inputScalars.scatter = options.additionalCorrection).
+        # Clear scatter_correction so parseInputs' subset-selection block below (gated on
+        # options.scatter_correction) does not also try to re-select/merge the same,
+        # already-consumed options.ScatterC into SinDelayed. Matches this function's own
+        # pattern for absorbed scatter in the sibling branch just below (options.SinDelayed
+        # = ...; options.scatter_correction = False).
+        options.scatter_correction = False
     elif options.scatter_correction and options.ScatterC.size > 0 and options.SinDelayed.size <= 1 and options.subtract_scatter and options.ordinaryPoisson:
+        # No pre-existing randoms estimate (r_exist false in MATLAB terms): the
+        # scatter estimate becomes SinDelayed as-is. Matches MATLAB
+        # loadCorrections.m's "else" branches paired with the TOF_bins division
+        # below (e.g. lines 389-395/451-457): scatter is NOT divided by TOF_bins
+        # when there is no randoms estimate to divide.
         options.SinDelayed = np.asfortranarray(options.ScatterC.astype(np.float32))
         options.scatter_correction = False
         # Matches MATLAB loadCorrections.m's final flag-normalization (~line 1078): during-
@@ -552,7 +597,23 @@ def loadCorrections(options):
         # than one element (and ordinaryPoisson, already guaranteed true by this branch).
         options.randoms_correction = options.SinDelayed.size > 1
     elif options.scatter_correction and options.ScatterC.size > 0 and options.SinDelayed.size > 1 and options.subtract_scatter and options.ordinaryPoisson:
+        # A real (r_exist true) randoms estimate exists and is being combined
+        # with scatter. Matches MATLAB loadCorrections.m's `SinDelayed = SinDelayed
+        # / TOF_bins + ScatterC` pattern (e.g. lines 385-387/447-449/485-487/561-
+        # 563/608-610/638-640, both the dynamic-cell and static branches): the
+        # non-TOF randoms estimate is divided by TOF_bins before adding the
+        # (non-TOF) scatter estimate.
+        if options.TOF_bins > 1:
+            options.SinDelayed = options.SinDelayed.astype(np.float32) / options.TOF_bins
         options.SinDelayed += np.asfortranarray(options.ScatterC.astype(np.float32))
+        options.scatter_correction = False
+    elif (not options.scatter_correction and options.randoms_correction and options.ordinaryPoisson
+            and options.SinDelayed.size > 1 and options.TOF_bins > 1):
+        # No scatter correction, but a real randoms estimate exists and TOF data
+        # is used. Matches MATLAB loadCorrections.m's `elseif ~scatter_correction
+        # && TOF_bins > 1 && r_exist` branches (e.g. lines 397-402/500-505/566-
+        # 571/645-650): the randoms estimate is divided by TOF_bins on its own.
+        options.SinDelayed = options.SinDelayed.astype(np.float32) / options.TOF_bins
     if options.arc_correction:
         from omegatomo.util.arcCorrection import arc_correction
         x, y, options = arc_correction(options, True)
@@ -1157,7 +1218,402 @@ def huberWeights(options):
         options.weights_huber = np.concatenate((options.weights_huber[:half_len], options.weights_huber[half_len + 1:]))
     options.weights_huber = options.weights_huber[~np.isinf(options.weights_huber)]
     options.weights_huber = options.weights_huber.astype(dtype=np.float32)
-    
+
+def _sub2ind_f(shape, subs):
+    """
+    NumPy equivalent of MATLAB's sub2ind for column-major (Fortran) linear
+    indices, using 1-based subscripts (to match MATLAB's convention exactly).
+
+    Mirrors MATLAB's own behaviour when fewer subscripts than dimensions are
+    given: only shape[0 : len(subs) - 1] contribute strides (any trailing
+    entries of `shape` beyond that are simply unused, exactly as MATLAB's
+    sub2ind/array-indexing rules collapse trailing dimensions into the last
+    given subscript without that subscript's own coefficient changing).
+
+    Parameters
+    ----------
+    shape : sequence of int
+        Size of each array dimension (MATLAB's `sz`).
+    subs : sequence of array_like
+        One (broadcastable) 1-based subscript array per dimension actually
+        indexed (may be shorter than `shape`).
+
+    Returns
+    -------
+    NumPy array
+        1-based linear (column-major) indices, same broadcast shape as the
+        elements of `subs`.
+    """
+    subs = [np.asarray(sub, dtype=np.int64) for sub in subs]
+    idx = np.zeros(np.broadcast_shapes(*[sub.shape for sub in subs]), dtype=np.int64)
+    stride = 1
+    for i, sub in enumerate(subs):
+        idx = idx + (sub - 1) * stride
+        if i < len(shape) - 1:
+            stride *= int(shape[i])
+    return idx + 1
+
+def computeOffsets(options):
+    """
+    Computes the neighborhood offset indices ("tr_offsets") required by the
+    L-filter and FMH priors. Direct port of computeOffsets.m, valid for
+    implementation 2 only (the only case supported by the Python interface):
+    tr_offsets always ends up 0-based (MATLAB instead keeps 1-based indices
+    and explicitly subtracts 1 at the end for implementation 2; both are
+    folded together here since implementation 2 is the only path).
+
+    This is a literal translation of the MATLAB ndgrid/sub2ind construction,
+    including its quirk of always building the neighborhood grid from Ndx
+    (not Ndy/Ndz) and only special-casing an Ndz that differs from Ndx -- so
+    it is only exercised/verified here for the common Ndx == Ndy case that
+    the rest of OMEGA assumes for this prior family.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Returns
+    -------
+    None.
+
+    """
+    Nx = int(options.Nx[0]); Ny = int(options.Ny[0]); Nz = int(options.Nz[0])
+    Ndx = int(options.Ndx); Ndy = int(options.Ndy); Ndz = int(options.Ndz)
+    N = Nx * Ny * Nz
+    s = (Nx + Ndx * 2, Ny + Ndy * 2, Nz + Ndz * 2)
+    N_pad = min(3, Ndx + Ndy + Ndz)
+
+    # ndgrid(1:(Ndx*2+1)) called with N_pad output arguments: N_pad arrays,
+    # each of shape (a,)*N_pad (1-based values, matching MATLAB exactly,
+    # including that the range is always driven by Ndx even for the
+    # "y"/"z" grids).
+    a = Ndx * 2 + 1
+    vec = np.arange(1, a + 1, dtype=np.int64)
+    if N_pad >= 1:
+        c1 = list(np.meshgrid(*([vec] * N_pad), indexing='ij'))
+    else:
+        c1 = []
+    c2 = [Ndy + 1] * N_pad
+
+    if N_pad == 3:
+        if Ndz > Ndx and Ndz > 1:
+            pad_shape = c1[0].shape[:2] + (Ndz,)
+            for i in range(3):
+                c1[i] = np.concatenate([c1[i], np.zeros(pad_shape, dtype=c1[i].dtype)], axis=2)
+            total_len = c1[0].shape[2]
+            for kk in range(Ndz - 1, -1, -1):
+                idx = total_len - 1 - kk
+                c1[0][:, :, idx] = c1[0][:, :, idx - 1]
+                c1[1][:, :, idx] = c1[1][:, :, idx - 1]
+                c1[2][:, :, idx] = c1[2][:, :, idx - 1] + 1
+            c2[2] = Ndz + 1
+        elif Ndz < Ndx and Ndz > 1:
+            del_pos = a - 1 - 2 * (Ndx - Ndz)
+            for i in range(3):
+                c1[i] = np.delete(c1[i], del_pos, axis=2)
+            c2[2] = Ndz + 1
+
+    offsets = _sub2ind_f(s, c1) - _sub2ind_f(s, c2)
+    offsets = offsets.flatten(order='F')
+
+    n = np.arange(1, N + 1, dtype=np.int64)
+    if Nz == 1:
+        s2 = (Nx + Ndx * 2, Ny + Ndy * 2)
+        tr_ind = _sub2ind_f(s2, [
+            np.mod(n - 1, Nx) + (Ndx + 1),
+            np.mod((n - 1) // Nx, Ny) + (Ndy + 1),
+        ])
+    else:
+        tr_ind = _sub2ind_f(s, [
+            np.mod(n - 1, Nx) + (Ndx + 1),
+            np.mod((n - 1) // Nx, Ny) + (Ndy + 1),
+            (n - 1) // (Nx * Ny) + (Ndz + 1),
+        ])
+
+    tr_offsets = tr_ind[:, None] + offsets[None, :]
+    # MATLAB keeps tr_offsets 1-based and subtracts 1 afterwards for
+    # implementation 2; folded into a single 0-based result here.
+    # The C++ side reads this as raw (im_dim[0], dimmu) column-major memory
+    # (matching MATLAB's uint32 array), so it must be Fortran-ordered here.
+    options.tr_offsets = np.asfortranarray((tr_offsets - 1).astype(np.uint32))
+    options.Ndx = np.uint32(Ndx)
+    options.Ndy = np.uint32(Ndy)
+    options.Ndz = np.uint32(Ndz)
+
+def lfilterWeights(options, Ndx, Ndy, Ndz, dx, dy, dz, oned_weights):
+    """
+    Computes the (Laplace distributed) weights for the L-filter prior.
+    Direct port of lfilter_weights.m. The weights are either 1D
+    (oned_weights = True) or 2D/3D distance-based (oned_weights = False).
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data (only used
+        here for options.implementation, matching the MATLAB signature's
+        remaining behaviour after the weights are computed).
+    Ndx : int
+        Neighborhood size in x-direction.
+    Ndy : int
+        Neighborhood size in y-direction.
+    Ndz : int
+        Neighborhood size in z-direction.
+    dx : float
+        Distance between adjacent voxels in x-direction.
+    dy : float
+        Distance between adjacent voxels in y-direction.
+    dz : float
+        Distance between adjacent voxels in z-direction.
+    oned_weights : bool
+        If True, 1D weights are computed, otherwise 2D/3D weights.
+
+    Returns
+    -------
+    NumPy array
+        The L-filter weights, column vector (1D) or (Ndx*2+1, Ndy*2+1,
+        Ndz*2+1)-flattened (2D/3D case), in Fortran (column-major) order.
+
+    """
+    Ndx = int(Ndx); Ndy = int(Ndy); Ndz = int(Ndz)
+    N = (Ndx * 2 + 1) * (Ndy * 2 + 1) * (Ndz * 2 + 1)
+
+    if oned_weights:
+        if N == 3:
+            alpha = np.array([0.15168, 0.69663])
+            alpha = np.concatenate((alpha, np.flip(alpha[:-1])))
+        elif N == 9:
+            alpha = np.array([-0.01899, 0.02904, 0.06965, 0.23795, 0.36469])
+            alpha = np.concatenate((alpha, np.flip(alpha[:-1])))
+        elif N == 25:
+            alpha = np.array([0.0055, 0.00335, -0.00427, -0.00101, -0.00008, 0.00065,
+                               0.00314, 0.01064, 0.02907, 0.06499, 0.11835, 0.17195, 0.19541])
+            alpha = np.concatenate((alpha, np.flip(alpha[:-1])))
+        elif N < 67:
+            from scipy import integrate
+            b = 1. / math.sqrt(2.)
+            CorrM = np.zeros((N, N))
+            for i in range(1, math.ceil(N / 2) + 1):
+                K = math.factorial(N) / (math.factorial(i - 1) * math.factorial(N - i))
+
+                def f1(x, i=i):
+                    return x ** 2 * (0.5 * np.exp(x / b)) ** (i - 1) * (1 - 0.5 * np.exp(x / b)) ** (N - i) * (1 / (2 * b) * np.exp(x / b))
+
+                def f2(x, i=i):
+                    return x ** 2 * (1 - 0.5 * np.exp(-x / b)) ** (i - 1) * (1 - (1 - 0.5 * np.exp(-x / b))) ** (N - i) * (1 / (2 * b) * np.exp(-x / b))
+
+                val1, _ = integrate.quad(f1, -np.inf, 0)
+                val2, _ = integrate.quad(f2, 0, np.inf)
+                CorrM[i - 1, i - 1] = K * (val1 + val2)
+                for j in range(i + 1, N - i + 2):
+                    K2 = math.factorial(N) / (math.factorial(i - 1) * math.factorial(j - i - 1) * math.factorial(N - j))
+
+                    def f1_2(y, x, i=i, j=j):
+                        return x * y * (0.5 * np.exp(x / b)) ** (i - 1) * (0.5 * np.exp(y / b) - 0.5 * np.exp(x / b)) ** (j - i - 1) \
+                            * (1 - 0.5 * np.exp(y / b)) ** (N - j) * (1 / (2 * b) * np.exp(x / b)) * (1 / (2 * b) * np.exp(y / b))
+
+                    def f2_2(y, x, i=i, j=j):
+                        return x * y * (1 - 0.5 * np.exp(-x / b)) ** (i - 1) * (1 - 0.5 * np.exp(-y / b) - (1 - 0.5 * np.exp(-x / b))) ** (j - i - 1) \
+                            * (1 - (1 - 0.5 * np.exp(-y / b))) ** (N - j) * (1 / (2 * b) * np.exp(-x / b)) * (1 / (2 * b) * np.exp(-y / b))
+
+                    val1, _ = integrate.dblquad(f1_2, -np.inf, 0, -np.inf, 0)
+                    val2, _ = integrate.dblquad(f2_2, 0, np.inf, 0, np.inf)
+                    CorrM[i - 1, j - 1] = K2 * (val1 + val2)
+            CorrM = CorrM + np.triu(CorrM, 1).T
+            temp = np.rot90(CorrM, 2)
+            temp_flat = temp.flatten(order='F')
+            if N > 1:
+                idx1based = np.arange(N, N * N, N - 1)
+                temp_flat[idx1based - 1] = 0.
+            temp = temp_flat.reshape((N, N), order='F')
+            CorrM = CorrM + temp
+            e = np.ones((N, 1))
+            # e'/CorrM*e == e' * (CorrM\e) for symmetric CorrM (which CorrM is
+            # by construction here), so this avoids a separate right-division.
+            v = np.linalg.solve(CorrM, e)
+            alpha = (v / np.sum(v)).flatten()
+        else:
+            b = 1. / math.sqrt(2.)
+            x = np.linspace(-4, 0, math.ceil(N / 2))
+            alpha = 0.5 * np.exp(x / b)
+            alpha = np.concatenate((alpha, np.flip(alpha[:-1])))
+            alpha = alpha / np.sum(alpha)
+    else:
+        dx = float(dx); dy = float(dy); dz = float(dz)
+        dxy = math.sqrt(dx ** 2 + dy ** 2)
+        dxz = math.sqrt(dx ** 2 + dz ** 2)
+        dyz = math.sqrt(dy ** 2 + dz ** 2)
+        dxyz = math.sqrt(math.sqrt(dy ** 2 + dx ** 2) + dz ** 2)
+        dmin = min(dx, dy, dz)
+        b = 1. / math.sqrt(2.)
+        x = np.linspace(-1.5, 0, min(1, Ndx) + min(1, Ndy) + 1)
+        alpha1 = 0.5 * np.exp(x / b)
+        if Ndz > 0:
+            alpha = np.zeros((Ndx * 2 + 1) * (Ndy * 2 + 1) * (Ndz * 2 + 1))
+            ll = 0
+            for lz in range(-Ndz, Ndz + 1):
+                for ly in range(-Ndy, Ndy + 1):
+                    for lx in range(-Ndx, Ndx + 1):
+                        if ly == 0 and lz == 0 and lx != 0:
+                            alpha[ll] = alpha1[1] / (dx * abs(lx))
+                        elif ly == 0 and lz == 0 and lx == 0:
+                            alpha[ll] = alpha1[-1] / dmin
+                        elif lx == 0 and lz == 0:
+                            alpha[ll] = alpha1[1] / (dy * abs(ly))
+                        elif lx == 0 and ly == 0:
+                            alpha[ll] = alpha1[1] / (dz * abs(lz))
+                        elif ly != 0 and lz == 0 and lx != 0:
+                            alpha[ll] = alpha1[0] / dxy
+                        elif ly != 0 and lz != 0 and lx == 0:
+                            alpha[ll] = alpha1[0] / dyz
+                        elif ly == 0 and lz != 0 and lx != 0:
+                            alpha[ll] = alpha1[0] / dxz
+                        elif ly != 0 and lz != 0 and lx != 0:
+                            alpha[ll] = alpha1[0] / dxyz
+                        ll += 1
+        else:
+            alpha = np.zeros((Ndx * 2 + 1) * (Ndy * 2 + 1))
+            ll = 0
+            for ly in range(-Ndy, Ndy + 1):
+                for lx in range(-Ndx, Ndx + 1):
+                    if ly == 0 and lx != 0:
+                        alpha[ll] = alpha1[1] / (dx * abs(lx))
+                    elif ly == 0 and lx == 0:
+                        alpha[ll] = alpha1[-1] / dmin
+                    elif lx == 0:
+                        alpha[ll] = alpha1[1] / (dy * abs(ly))
+                    elif ly != 0 and lx != 0:
+                        alpha[ll] = alpha1[0] / dxy
+                    ll += 1
+        alpha = alpha / np.sum(alpha)
+    return alpha
+
+def fmhWeights(options):
+    """
+    Computes weights for the FMH prior. Direct port of fmhWeights.m.
+    options.weights are needed as the input data. They can be formed with
+    computeWeights (unused here directly, but matches the MATLAB docstring).
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Returns
+    -------
+    None.
+
+    """
+    distX = options.FOVa_x[0] / float(options.Nx[0])
+    distY = options.FOVa_y[0] / float(options.Ny[0])
+    distZ = float(options.axial_fov[0]) / float(options.Nz[0])
+    Ndx = int(options.Ndx)
+    Ndz = int(options.Ndz)
+
+    if np.size(options.fmh_weights) == 0:
+        kerroin = options.fmh_center_weight ** (1. / 4.) * distX
+        if options.Nz[0] == 1 or Ndz == 0:
+            # Column-major (Fortran) storage: the C++ side reads this as raw
+            # (rows, cols) memory via af::array.
+            options.fmh_weights = np.zeros((Ndx * 2 + 1, 4), order='F')
+            for jjj in range(1, 5):
+                apu = np.zeros(Ndx * 2 + 1)
+                hhh = 0
+                if jjj == 1 or jjj == 3:
+                    for iii in range(Ndx, -Ndx - 1, -1):
+                        if iii == 0:
+                            apu[hhh] = options.fmh_center_weight
+                        else:
+                            apu[hhh] = kerroin / math.sqrt((distX * iii) ** 2 + (distY * iii) ** 2)
+                        hhh += 1
+                elif jjj == 2:
+                    for iii in range(Ndx, -Ndx - 1, -1):
+                        if iii == 0:
+                            apu[hhh] = options.fmh_center_weight
+                        else:
+                            apu[hhh] = kerroin / abs(distX * iii)
+                        hhh += 1
+                elif jjj == 4:
+                    for iii in range(Ndx, -Ndx - 1, -1):
+                        if iii == 0:
+                            apu[hhh] = options.fmh_center_weight
+                        else:
+                            apu[hhh] = kerroin / abs(distY * iii)
+                        hhh += 1
+                options.fmh_weights[:, jjj - 1] = apu
+        else:
+            # Column-major (Fortran) storage: the C++ side reads this as raw
+            # (rows, cols) memory via af::array.
+            options.fmh_weights = np.zeros((max(Ndx * 2 + 1, Ndz * 2 + 1), 13), order='F')
+            lll = 0
+            for kkk in (1, 0):
+                for jjj in range(1, 10):
+                    lll += 1
+                    if kkk == 1:
+                        apu = np.zeros(Ndz * 2 + 1)
+                        hhh = 0
+                        if jjj in (1, 3, 7, 9):
+                            for iii in range(Ndz, -Ndz - 1, -1):
+                                if iii == 0:
+                                    apu[hhh] = options.fmh_center_weight
+                                else:
+                                    apu[hhh] = kerroin / math.sqrt(math.sqrt((distZ * iii) ** 2 + (distX * iii) ** 2) ** 2 + (distY * iii) ** 2)
+                                hhh += 1
+                        elif jjj in (2, 8):
+                            for iii in range(Ndz, -Ndz - 1, -1):
+                                if iii == 0:
+                                    apu[hhh] = options.fmh_center_weight
+                                else:
+                                    apu[hhh] = kerroin / math.sqrt((distZ * iii) ** 2 + (distX * iii) ** 2)
+                                hhh += 1
+                        elif jjj in (4, 6):
+                            for iii in range(Ndz, -Ndz - 1, -1):
+                                if iii == 0:
+                                    apu[hhh] = options.fmh_center_weight
+                                else:
+                                    apu[hhh] = kerroin / math.sqrt((distZ * iii) ** 2 + (distY * iii) ** 2)
+                                hhh += 1
+                        elif jjj == 5:
+                            for iii in range(Ndz, -Ndz - 1, -1):
+                                if iii == 0:
+                                    apu[hhh] = options.fmh_center_weight
+                                else:
+                                    apu[hhh] = kerroin / abs(distZ * iii)
+                                hhh += 1
+                        else:
+                            continue
+                        options.fmh_weights[:, lll - 1] = apu
+                    else:
+                        apu = np.zeros(Ndx * 2 + 1)
+                        hhh = 0
+                        if jjj == 1 or jjj == 3:
+                            for iii in range(Ndx, -Ndx - 1, -1):
+                                if iii == 0:
+                                    apu[hhh] = options.fmh_center_weight
+                                else:
+                                    apu[hhh] = kerroin / math.sqrt((distX * iii) ** 2 + (distY * iii) ** 2)
+                                hhh += 1
+                        elif jjj == 2:
+                            for iii in range(Ndx, -Ndx - 1, -1):
+                                if iii == 0:
+                                    apu[hhh] = options.fmh_center_weight
+                                else:
+                                    apu[hhh] = kerroin / abs(distX * iii)
+                                hhh += 1
+                        elif jjj == 4:
+                            for iii in range(Ndx, -Ndx - 1, -1):
+                                if iii == 0:
+                                    apu[hhh] = options.fmh_center_weight
+                                else:
+                                    apu[hhh] = kerroin / abs(distY * iii)
+                                hhh += 1
+                        else:
+                            break
+                        options.fmh_weights[:, lll - 1] = apu
+        options.fmh_weights = np.asfortranarray(options.fmh_weights / np.sum(options.fmh_weights, axis=0))
+    if options.implementation == 2:
+        options.fmh_weights = np.asfortranarray(options.fmh_weights.astype(np.float32))
+
 def weightedWeights(options):
     """
     Special weighting for weighted mean.
@@ -1178,6 +1634,10 @@ def weightedWeights(options):
         options.weighted_weights = kerroin * options.weights
         options.weighted_weights[np.isinf(options.weighted_weights)] = options.weighted_center_weight
         options.weighted_weights /= np.sum(options.weighted_weights)
+    # Matches MATLAB weightedWeights.m:13: w_sum is (re)computed unconditionally
+    # here, from whatever weighted_weights ends up being -- freshly computed
+    # above, or user-supplied custom weights left untouched by the `if` above.
+    options.w_sum = float(np.sum(options.weighted_weights))
     options.weighted_weights = np.reshape(options.weighted_weights, (options.Ndx * 2 + 1, options.Ndy * 2 + 1, options.Ndz * 2 + 1),order='F').astype(dtype=np.float32)
 
 def NLMPrepass(options):
@@ -1325,7 +1785,7 @@ def prepassPhase(options):
     if (options.MRP or options.quad or options.Huber or options.TV or options.FMH or options.L or options.weighted_mean or options.APLS or options.BSREM
         or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM or options.DRAMA or options.ROSEM_MAP or options.ECOSEM or options.SART or options.ASD_POCS 
         or options.COSEM or options.ACOSEM or options.AD or np.any(options.OSL_COSEM) or options.NLM or options.OSL_RBI or options.RBI or options.PKMA or options.SAGA
-        or options.RDP or options.SPS or options.ProxNLM or options.GGMRF):
+        or options.RDP or options.SPS or options.ProxNLM or options.GGMRF or options.hyperbolic):
     
         # Compute and/or load necessary variables for the TV regularization
         if options.TV and options.MAP:
@@ -1383,8 +1843,9 @@ def prepassPhase(options):
             # certain priors
             # Specifies the indices of the center pixel and its neighborhood
             if (options.L or options.FMH):
-                raise ValueError('L-filter and FMH-filter are not yet implemented!')
-                # options = computeOffsets(options)
+                if options.implementation != 2:
+                    raise ValueError('L-filter and FMH-filter are only supported with implementation 2 in the Python interface!')
+                computeOffsets(options)
             # else:
             #     if options.MRP:
             #         options.medx = options.Ndx * 2 + 1
@@ -1396,12 +1857,13 @@ def prepassPhase(options):
                 huberWeights(options)
             # if options.RDP:
             #     options = RDPWeights(options)
-            if options.L and np.size(options.a_L) == 0:
-                raise ValueError('L-filter and FMH-filter are not yet implemented!')
-                # options.a_L = lfilter_weights(options.Ndx, options.Ndy, options.Ndz, dx, dy, dz, options.oneD_weights)
+            if options.L:
+                if np.size(options.a_L) == 0:
+                    options.a_L = lfilterWeights(options, options.Ndx, options.Ndy, options.Ndz,
+                                                  options.dx[0], options.dy[0], options.dz[0], options.oneD_weights)
+                options.a_L = np.asarray(options.a_L, dtype=np.float32)
             if options.FMH:
-                raise ValueError('L-filter and FMH-filter are not yet implemented!')
-                # options = fmhWeights(options)
+                fmhWeights(options)
             if (options.FMH or options.quad or options.Huber) and options.implementation == 2:
                 options.weights = options.weights.astype(np.float32)
                 options.inffi = np.where(np.isinf(options.weights))[0]
