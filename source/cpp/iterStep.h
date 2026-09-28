@@ -6,7 +6,7 @@
 
 template <typename T>
 int computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const scalarStruct& inputScalars, const uint32_t iter,
-	ProjectorClass& proj, const af::array& g, T* output, uint32_t& ee, size_t& tt, const float* x0, const int timestep) {
+	ProjectorClass& proj, const af::array& g, T* output, const bool doSave, const uint32_t slot, const float* x0, const int timestep) {
 
 	// Compute BSREM and ROSEMMAP updates if applicable
 	// Otherwise simply save the current iterate if applicable
@@ -32,14 +32,12 @@ int computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethod
 		if (inputScalars.verbose >= 3)
 			mexPrint("Regularization for BSREM/ROSEMMAP computed");
 	}
-	if (inputScalars.saveIter || (inputScalars.saveIterationsMiddle > 0 && (iter == inputScalars.Niter - 1 || inputScalars.saveNIter[ee] == iter))) {
+	if (doSave) {
 		if (inputScalars.verbose >= 3)
 			mexPrintVar("Saving intermediate result at iteration ", iter);
 		if (DEBUG) {
 			mexPrintBase("iter = %d\n", iter);
-			mexPrintBase("ee = %d\n", ee);
-			if (inputScalars.saveIterationsMiddle > 0)
-				mexPrintBase("inputScalars.saveNIter[ee] = %d\n", inputScalars.saveNIter[ee]);
+			mexPrintBase("slot = %d\n", slot);
 			mexEval();
 		}
 #ifdef MATLAB
@@ -47,19 +45,27 @@ int computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethod
 #else
 		float* jelppi = output;
 #endif
+		// Output memory layout is [Nx,Ny,Nz,Nt,saves], i.e. voxel fastest, then timestep, then
+		// save slot: the offset for a given (slot, timestep) pair is (slot * Nt + timestep) * im_dim[0].
+		// This is computed explicitly here (rather than via a running write offset) so that it is
+		// correct regardless of the order in which timesteps are processed, and identical to the
+		// pre-existing single-timestep (Nt == 1) layout when Nt == 1.
+		const size_t timestepOffset = static_cast<size_t>(timestep) * static_cast<size_t>(inputScalars.im_dim[0]);
+		const size_t slotStride = static_cast<size_t>(inputScalars.Nt) * static_cast<size_t>(inputScalars.im_dim[0]);
 		if (inputScalars.saveIter && iter == 0) {
-			std::memcpy(&jelppi[tt], &x0[0], inputScalars.im_dim[0] * sizeof(float));
-			tt += inputScalars.im_dim[0];
+			// Slot 0 always holds the initial value x0. x0 holds a single initial image shared by
+			// all timesteps (see the Nt-loop initialization above that (re)reads x0 from offset 0
+			// for every timestep), so the same source data is copied into each timestep's slot-0 region.
+			std::memcpy(&jelppi[timestepOffset], &x0[0], inputScalars.im_dim[0] * sizeof(float));
 		}
+		const size_t offset = static_cast<size_t>(slot) * slotStride + timestepOffset;
 		if (inputScalars.use_psf && inputScalars.deconvolution) {
 			af::array apu = vec.im_os[timestep][0].copy();
 			deblur(apu, g, inputScalars, w_vec);
-			apu.host(&jelppi[tt]);
+			apu.host(&jelppi[offset]);
 		}
 		else
-			vec.im_os[timestep][0].host(&jelppi[tt]);
-		ee++;
-		tt += inputScalars.im_dim[0];
+			vec.im_os[timestep][0].host(&jelppi[offset]);
 	}
 	return 0;
 }
