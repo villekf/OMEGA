@@ -105,7 +105,37 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		mem_portions = 0.1f;
 	else
 		mem_portions = 0.2f;
-	float image_bytes = static_cast<float>(inputScalars.im_dim[0] * inputScalars.subsets);
+
+	// Decide, once and up front, whether the sensitivity image (vec.Summ) genuinely needs a separate
+	// slot per timestep. The common case (including every Nt == 1 run) is a single shared slot: only
+	// image-based attenuation with one image per timestep, or a multiplicative corrVector with one
+	// frame per timestep, make the sensitivity image itself differ across timesteps. Normalization and
+	// measurement-domain (sinogram) attenuation are single buffers shared by all timesteps (d_norm[kk],
+	// d_atten[kk] -- not indexed by timestep at all), randoms/scatter are additive and never reach the
+	// sensitivity image, and neither TOF nor masks nor PSF vary per timestep. This mirrors the exact
+	// per-timestep detection ProjectorClass.h already uses at each site that actually reads these inputs
+	// (e.g. "size_atten > im_dim[0]" gates every d_attenB/d_attenIm[timestep] use).
+	const bool sensAttenPerTimestep = inputScalars.attenuation_correction && inputScalars.CTAttenuation &&
+		inputScalars.size_atten > static_cast<size_t>(inputScalars.im_dim[0]);
+	// corrVector/extraCorr per-timestep frames: size_scat is the TOTAL element count across all Nt
+	// frames (see mfunctions.h/OpenCL_matrixfree.cpp), while kokoNonTOF is exactly one timestep's frame
+	// size (same quantity Sin/sc_ra are offset by by "kokoNonTOF * timestep"). size_scat > kokoNonTOF
+	// therefore means more than one frame's worth of data was actually supplied.
+	const bool sensCorrVectorPerTimestep = inputScalars.scatter == 1U &&
+		inputScalars.size_scat > static_cast<size_t>(inputScalars.kokoNonTOF);
+	// List-mode data with a precomputed sensitivity image (computeSensImag, not computeD) is only ever
+	// populated for timestep 0 by the dedicated precompute block below (even though it already indexes
+	// vec.Summ by the real timestep) -- a separate, pre-existing limitation of that code path. Extending
+	// per-timestep slots into it here would leave vec.Summ[timestep > 0] allocated but never assigned
+	// (an empty af::array), so it is explicitly excluded rather than silently left half-working.
+	const bool sensListmodePrecomputeOnly = inputScalars.listmode > 0 && inputScalars.computeSensImag && !w_vec.computeD;
+	inputScalars.sensPerTimestep = inputScalars.Nt > 1U && !sensListmodePrecomputeOnly && (sensAttenPerTimestep || sensCorrVectorPerTimestep);
+
+	// For the sensitivity-image-needed memory check below: with a shared sensitivity image the memory
+	// footprint is unchanged from the Nt == 1 case (one slot reused by every timestep); with per-timestep
+	// slots it scales by Nt.
+	float image_bytes = static_cast<float>(inputScalars.im_dim[0] * inputScalars.subsets) *
+		(inputScalars.sensPerTimestep ? static_cast<float>(inputScalars.Nt) : 1.f);
 
 	size_t ll = 0ULL;
 
@@ -200,7 +230,6 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 	}
 
 	uint32_t nIter = 1;
-	size_t eInd = 0ULL;
 	// Create a vector holding the forward projections, if applicable
 	std::vector<std::vector<std::vector<float>>> FPEstimates;
 	if (inputScalars.storeFP) {
@@ -374,7 +403,9 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 	// 64-bit atomic operations require signed 64-bit integers
 	// 32-bit atomic operations require signed 32-bit integers
     vec.Summ.resize(inputScalars.Nt);
-    for (uint32_t timestep = 0; timestep < 1; timestep++) {
+    // Only slot 0 is needed when the sensitivity image is shared across timesteps (the common case);
+    // allocate the subset/multi-volume arrays for every timestep only when sensPerTimestep requires it.
+    for (uint32_t timestep = 0; timestep < (inputScalars.sensPerTimestep ? inputScalars.Nt : 1U); timestep++) {
         if (compute_norm_matrix == 2u) {
             vec.Summ[timestep].resize(inputScalars.nMultiVolumes + 1);
             for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
@@ -1153,6 +1184,16 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                 int indD = osa_iter + tt * inputScalars.subsets;
                 uint32_t timestepData = tt; // Data is indexed by timestepData. If data is loaded per subset, timestepData is set to 0.
 
+                // Sensitivity image slot for this timestep, and whether this (subset, timestep) pass is
+                // the one that should actually (re)compute it. With a shared sensitivity image (the
+                // common case), only the first timestep processed for this subset (tt == t0) computes
+                // it; every later timestep reuses that finalized image untouched (see the no_norm
+                // save/restore below), since recomputing/re-finalizing it again per timestep is both
+                // wasteful and, for atomics-based accumulation, actively wrong (it would re-accumulate
+                // into an already-finalized float image using integer atomics).
+                const uint32_t sIdx = inputScalars.sensPerTimestep ? tt : 0u;
+                const bool computeSensThisTimestep = inputScalars.sensPerTimestep || (tt == t0);
+
                 m_size = length[indD];
                 if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
                     m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[indD];
@@ -1218,16 +1259,21 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
 				// Fill the sensitivity images with zeros, if necessary
 				// Different versions depending on whether 64/32/float atomics are used
-				if (compute_norm_matrix == 1u && proj.no_norm == 0) {
+				// With a shared sensitivity image (!sensPerTimestep) and Nt > 1, this must happen only
+				// once per (iter, subset) -- at tt == t0 -- since it is about to be recomputed from
+				// scratch by this same timestep's backprojection below; zeroing it again for later
+				// timesteps would erase the image tt == t0 just finished (and, for sensPerTimestep,
+				// each timestep owns its own slot and zeroes it independently, same as before).
+				if (compute_norm_matrix == 1u && proj.no_norm == 0 && computeSensThisTimestep) {
 					for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 						if (inputScalars.atomic_64bit) {
-							vec.Summ[0][ii][0] = af::constant(0LL, inputScalars.im_dim[ii], 1, s64);
+							vec.Summ[sIdx][ii][0] = af::constant(0LL, inputScalars.im_dim[ii], 1, s64);
 						}
 						else if (inputScalars.atomic_32bit) {
-							vec.Summ[0][ii][0] = af::constant(0, inputScalars.im_dim[ii], 1, s32);
+							vec.Summ[sIdx][ii][0] = af::constant(0, inputScalars.im_dim[ii], 1, s32);
 						}
 						else
-							vec.Summ[0][ii][0] = af::constant(0.f, inputScalars.im_dim[ii], 1);
+							vec.Summ[sIdx][ii][0] = af::constant(0.f, inputScalars.im_dim[ii], 1);
 					}
 				}
 
@@ -1300,38 +1346,52 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 							setFastPDHGSubIterParams(proj, inputScalars, w_vec, MethodList, tt, iter, osa_iter);
 						}
 #endif
+						// With a shared sensitivity image (!sensPerTimestep) and Nt > 1, only tt == t0 should
+						// actually populate/finalize vec.Summ for this subset; later timesteps must reuse
+						// the image tt == t0 already finalized, untouched. Forcing no_norm here (for the
+						// duration of this timestep's backprojection(s) and their transferControl calls,
+						// both immediate below and, for concurrentBP, the deferred ones after
+						// joinSideQueues) makes the backprojection kernel skip the atomic sensitivity
+						// accumulation entirely (it would otherwise re-accumulate into an already-
+						// finalized float image using integer atomics -- undefined behaviour, and a
+						// possible OOB write for 64-bit atomics) and makes transferControl below just
+						// unlock the (still-valid, already-finalized) image instead of re-finalizing it.
+						const uint8_t savedNoNormTT = proj.no_norm;
+						if (!computeSensThisTimestep)
+							proj.no_norm = 1u;
 						for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 							if (ii == 0 && inputScalars.adaptiveType == 2 && MethodList.CPType)
 								vec.adapTypeA = outputFP.copy();
 
-							if (CTOSEMBranch) {
+							if (CTOSEMBranch && computeSensThisTimestep) {
 								if (inputScalars.randoms_correction || iter == 0 || (compute_norm_matrix == 1u && proj.no_norm == 0)) {
 									status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, OSEMapu, osa_iter,tt,  length, m_size, meanBP, g, proj, false, ii, pituus);
 									if (compute_norm_matrix == 1u) {
-										vec.Summ[0][ii][0] = vec.rhs_os[tt][ii];
-										vec.Summ[0][ii][0](vec.Summ[0][ii][0] < inputScalars.epps) = inputScalars.epps;
-										vec.Summ[0][ii][0].eval();
+										vec.Summ[sIdx][ii][0] = vec.rhs_os[tt][ii];
+										vec.Summ[sIdx][ii][0](vec.Summ[sIdx][ii][0] < inputScalars.epps) = inputScalars.epps;
+										vec.Summ[sIdx][ii][0].eval();
 									}
 									else if (compute_norm_matrix == 2u) {
-										vec.Summ[0][ii][osa_iter] = vec.rhs_os[tt][ii];
-										vec.Summ[0][ii][osa_iter](vec.Summ[0][ii][osa_iter] < inputScalars.epps) = inputScalars.epps;
-										vec.Summ[0][ii][osa_iter].eval();
+										vec.Summ[sIdx][ii][osa_iter] = vec.rhs_os[tt][ii];
+										vec.Summ[sIdx][ii][osa_iter](vec.Summ[sIdx][ii][osa_iter] < inputScalars.epps) = inputScalars.epps;
+										vec.Summ[sIdx][ii][osa_iter].eval();
 									}
 								}
 							}
 							if (compute_norm_matrix == 1u)
-								transferSensitivityImage(vec.Summ[0][ii][0], proj);
+								transferSensitivityImage(vec.Summ[sIdx][ii][0], proj);
 							else if (compute_norm_matrix == 2u)
-								transferSensitivityImage(vec.Summ[0][ii][osa_iter], proj);
+								transferSensitivityImage(vec.Summ[sIdx][ii][osa_iter], proj);
 							status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, outputFP, osa_iter, tt, length, m_size, meanBP, g, proj, false, ii, pituus, false,
 								concurrentBP ? ii + 1 : 0, !concurrentBP, ii == 0 || CTOSEMBranch);
 							if (status != 0) {
 								if (compute_norm_matrix == 1u) {
-									vec.Summ[0][ii][0].unlock();
+									vec.Summ[sIdx][ii][0].unlock();
 								}
 								else if (compute_norm_matrix == 2) {
-									vec.Summ[0][ii][osa_iter].unlock();
+									vec.Summ[sIdx][ii][osa_iter].unlock();
 								}
+								proj.no_norm = savedNoNormTT;
 								return -1;
 							}
 							if (!concurrentBP)
@@ -1354,6 +1414,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 							}
 						}
 #endif
+						proj.no_norm = savedNoNormTT;
 					} else if (inputScalars.projector_type == 6) { // SPECT rotation-based projector
                         af::array fProj = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[indD]);
                         if (DEBUG) {
@@ -1381,7 +1442,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                         if (status != 0)
                             return -1;
                         for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
-                            backprojectionType6(fProj, w_vec, vec, inputScalars, length[indD], uu, proj, tt, osa_iter, iter, compute_norm_matrix, iter0, ii, atten);
+                            backprojectionType6(fProj, w_vec, vec, inputScalars, length[indD], uu, proj, tt, osa_iter, iter, compute_norm_matrix, iter0, ii, atten, sIdx, computeSensThisTimestep);
                     }
                 }
 
@@ -1578,9 +1639,33 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
         } // End main subset loop
 
         if (!inputScalars.largeDim) {
-            for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) { // TODO fix variable "ee" incrementation
+            // Determine, once per real iteration (shared by all timesteps), whether this iteration's
+            // estimate should be saved and to which output slot. This must NOT be recomputed per
+            // timestep: the previous per-timestep "ee"/"tt" running counters advanced once per
+            // (timestep, save) pair rather than once per iteration, which both misindexed saveNIter
+            // for timestep > 0 (out-of-bounds/wrong-entry reads and missed saves) and produced an
+            // interleaved output instead of the [Nx,Ny,Nz,Nt,saves] layout for Nt > 1.
+            bool doSaveIter = false;
+            uint32_t saveSlot = 0U;
+            if (inputScalars.saveIter) {
+                doSaveIter = true;
+                saveSlot = iter + 1U; // Slot 0 is reserved for x0 (written inside computeOSEstimatesIter)
+            }
+            else if (inputScalars.saveIterationsMiddle > 0) {
+                if (iter == inputScalars.Niter - 1) {
+                    // The final iteration is always saved, into the last (reserved) slot
+                    doSaveIter = true;
+                    saveSlot = static_cast<uint32_t>(inputScalars.saveIterationsMiddle);
+                }
+                else if (static_cast<size_t>(ee) < inputScalars.saveIterationsMiddle && inputScalars.saveNIter[ee] == iter) {
+                    doSaveIter = true;
+                    saveSlot = ee;
+                    ee++;
+                }
+            }
+            for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
                 // Compute some subset-based algorithms that require special operations after each iteration such as BSREM or ROSEM. Also copy the current iteration if needed.
-                status = computeOSEstimatesIter(vec, w_vec, MethodList, inputScalars, iter, proj, g, cell, ee, eInd, x0, timestep);
+                status = computeOSEstimatesIter(vec, w_vec, MethodList, inputScalars, iter, proj, g, cell, doSaveIter, saveSlot, x0, timestep);
                 if (status != 0) return -1;
 
                 // Enforce positivity if applicable (all timesteps)

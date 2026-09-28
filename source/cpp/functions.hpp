@@ -2352,12 +2352,18 @@ inline af::array backProjectionType6Helper(const af::array &fProj, const Weighti
 }
 
 // SPECT backprojection (projector type 6)
+// sensIdx is the vec.Summ timestep slot to use (0 for a shared sensitivity image, or the real timestep
+// when inputScalars.sensPerTimestep is set -- see reconstructionAF.h). allowSensCompute additionally
+// gates the sensitivity computation itself: with a shared sensitivity image and Nt > 1, only the first
+// timestep processed for a given subset (tt == t0) should (re)compute/finalize it; the caller passes
+// false for every later timestep so it reuses the already-finalized image untouched instead of
+// overwriting it with its own (otherwise identical) computation.
 inline void backprojectionType6(af::array& fProj, const Weighting& w_vec, AF_im_vectors& vec,
 	const scalarStruct& inputScalars, const int64_t length, const int64_t uu, ProjectorClass& proj, uint32_t timestep, const uint32_t osa_iter = 0, const uint32_t iter = 0,
-	const uint8_t compute_norm_matrix = 0, const uint32_t iter0 = 0, const int ii = 0, const float* atten = nullptr) {
+	const uint8_t compute_norm_matrix = 0, const uint32_t iter0 = 0, const int ii = 0, const float* atten = nullptr, const uint32_t sensIdx = 0, const bool allowSensCompute = true) {
 	if (DEBUG || inputScalars.verbose >= 3)
 		mexPrint("Starting SPECT backprojection");
-	const bool compSens = ((iter == iter0 && compute_norm_matrix == 2) || compute_norm_matrix == 1);
+	const bool compSens = allowSensCompute && ((iter == iter0 && compute_norm_matrix == 2) || compute_norm_matrix == 1);
 	af::array sensProj, sensOut;
 	if (compSens) {
 		if (DEBUG || inputScalars.verbose >= 3)
@@ -2371,11 +2377,11 @@ inline void backprojectionType6(af::array& fProj, const Weighting& w_vec, AF_im_
 
 	if (compSens) {
 		if (compute_norm_matrix == 2) {
-			vec.Summ[0][ii][osa_iter] = sensOut;
-			vec.Summ[0][ii][osa_iter](vec.Summ[0][ii][osa_iter] < inputScalars.epps) = 1.f;
+			vec.Summ[sensIdx][ii][osa_iter] = sensOut;
+			vec.Summ[sensIdx][ii][osa_iter](vec.Summ[sensIdx][ii][osa_iter] < inputScalars.epps) = 1.f;
 		} else {
-			vec.Summ[0][ii][0] = sensOut;
-			vec.Summ[0][ii][0](vec.Summ[0][ii][0] < inputScalars.epps) = 1.f;
+			vec.Summ[sensIdx][ii][0] = sensOut;
+			vec.Summ[sensIdx][ii][0](vec.Summ[sensIdx][ii][0] < inputScalars.epps) = 1.f;
 		}
 		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Sensitivity image computed");
@@ -3475,48 +3481,56 @@ inline void initializeProxPriors(const RecMethods& MethodList, const scalarStruc
 // Transfer memory control back to ArrayFire
 inline void transferControl(AF_im_vectors& vec, const scalarStruct& inputScalars, const af::array& g, const Weighting& w_vec, const uint32_t timestep, const uint8_t compute_norm_matrix = 2, const uint8_t no_norm = 1,
 	const uint32_t osa_iter = 0, const int ii = 0) {
+	// Sensitivity image slot for this timestep: 0 for a shared sensitivity image (the common case, and
+	// always for Nt == 1), or the real timestep when inputScalars.sensPerTimestep requires a separate
+	// slot per timestep (see reconstructionAF.h). When the caller passed no_norm == 1 because this
+	// timestep's backprojection did not (re)compute the sensitivity image (shared-image case, timestep
+	// other than the one that owns it for this subset), the no_norm == 0u guards below skip finalizing
+	// it again -- only the unlock() runs, releasing the lock transferSensitivityImage took to pass the
+	// (untouched) image to the backprojection kernel.
+	const uint32_t sIdx = inputScalars.sensPerTimestep ? timestep : 0u;
 	if (compute_norm_matrix == 1u) {
-		vec.Summ[0][ii][0].unlock();
+		vec.Summ[sIdx][ii][0].unlock();
 		if (no_norm == 0u) {
 #if defined(OPENCL) || defined(METAL)
 			if (inputScalars.atomic_64bit)
-				vec.Summ[0][ii][0] = vec.Summ[0][ii][0].as(f32) / TH;
+				vec.Summ[sIdx][ii][0] = vec.Summ[sIdx][ii][0].as(f32) / TH;
 			else if (inputScalars.atomic_32bit)
-				vec.Summ[0][ii][0] = vec.Summ[0][ii][0].as(f32) / TH32;
+				vec.Summ[sIdx][ii][0] = vec.Summ[sIdx][ii][0].as(f32) / TH32;
 #endif
 			if (inputScalars.use_psf) {
-				vec.Summ[0][ii][0] = computeConvolution(vec.Summ[0][ii][0], g, inputScalars, w_vec, 1, ii);
+				vec.Summ[sIdx][ii][0] = computeConvolution(vec.Summ[sIdx][ii][0], g, inputScalars, w_vec, 1, ii);
 			}
 			// Prevent division by zero
-			vec.Summ[0][ii][0](vec.Summ[0][ii][0] < inputScalars.epps) = inputScalars.epps;
-			vec.Summ[0][ii][0].eval();
+			vec.Summ[sIdx][ii][0](vec.Summ[sIdx][ii][0] < inputScalars.epps) = inputScalars.epps;
+			vec.Summ[sIdx][ii][0].eval();
 			if (DEBUG) {
 				mexPrint("Sens image steps 1 done\n");
 			}
 		}
 	}
 	else if (compute_norm_matrix == 2) {
-		vec.Summ[0][ii][osa_iter].unlock();
+		vec.Summ[sIdx][ii][osa_iter].unlock();
 		if (no_norm == 0u) {
 #if defined(OPENCL) || defined(METAL)
 			if (inputScalars.atomic_64bit) {
-				vec.Summ[0][ii][osa_iter] = vec.Summ[0][ii][osa_iter].as(f32) / TH;
+				vec.Summ[sIdx][ii][osa_iter] = vec.Summ[sIdx][ii][osa_iter].as(f32) / TH;
 			}
 			else if (inputScalars.atomic_32bit) {
-				vec.Summ[0][ii][osa_iter] = vec.Summ[0][ii][osa_iter].as(f32) / TH32;
+				vec.Summ[sIdx][ii][osa_iter] = vec.Summ[sIdx][ii][osa_iter].as(f32) / TH32;
 			}
 #endif
 			if (inputScalars.use_psf) {
-				vec.Summ[0][ii][osa_iter] = computeConvolution(vec.Summ[0][ii][osa_iter], g, inputScalars, w_vec, 1, ii);
+				vec.Summ[sIdx][ii][osa_iter] = computeConvolution(vec.Summ[sIdx][ii][osa_iter], g, inputScalars, w_vec, 1, ii);
 			}
-			vec.Summ[0][ii][osa_iter](vec.Summ[0][ii][osa_iter] < inputScalars.epps) = inputScalars.epps;
-			vec.Summ[0][ii][osa_iter].eval();
+			vec.Summ[sIdx][ii][osa_iter](vec.Summ[sIdx][ii][osa_iter] < inputScalars.epps) = inputScalars.epps;
+			vec.Summ[sIdx][ii][osa_iter].eval();
 			if (DEBUG) {
 				mexPrint("Sens image steps 2 done\n");
 			}
 			if (DEBUG) {
 				mexPrintBase("inputScalars.epps = %f\n", inputScalars.epps);
-				mexPrintBase("min(Summ) = %f\n", af::min<float>(vec.Summ[0][ii][osa_iter]));
+				mexPrintBase("min(Summ) = %f\n", af::min<float>(vec.Summ[sIdx][ii][osa_iter]));
 				mexEval();
 			}
 		}
