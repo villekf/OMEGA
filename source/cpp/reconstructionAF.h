@@ -480,6 +480,39 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
     }
 
 	// Create OpenCL buffers, CUDA/HIP arrays or Metal buffers
+	if (inputScalars.SPECT && inputScalars.listmode > 0 && inputScalars.computeSensImag) {
+		if (inputScalars.size_of_x % 6 != 0 || inputScalars.size_z % 2 != 0 ||
+			inputScalars.size_of_x / 6 != inputScalars.size_z / 2) {
+			std::fprintf(stderr, "Listmode SPECT sensitivity requires six x coordinates and two z coordinates per projection frame.\n");
+			return -1;
+		}
+		const size_t sensitivityViews = inputScalars.size_of_x / 6;
+		if (w_vec.detectorVectorSize != sensitivityViews) {
+			std::fprintf(stderr, "Listmode SPECT sensitivity requires one DetectorVector entry per full projection frame.\n");
+			return -1;
+		}
+		const size_t expectedWeightCount = sensitivityViews * static_cast<size_t>(inputScalars.Nt);
+		if (!inputScalars.sensitivityViewWeights.empty()) {
+			if (inputScalars.sensitivityViewWeights.size() != expectedWeightCount) {
+				std::fprintf(stderr, "sensitivityViewWeights must have one row per full projection frame and one column per timestep.\n");
+				return -1;
+			}
+			for (const float weight : inputScalars.sensitivityViewWeights) {
+				if (!std::isfinite(weight) || weight < 0.f) {
+					std::fprintf(stderr, "sensitivityViewWeights must contain finite, non-negative values.\n");
+					return -1;
+				}
+			}
+		}
+		else if (inputScalars.Nt == 1) {
+			// A static scan uses its full projection geometry with unit view weights.
+			inputScalars.sensitivityViewWeights.assign(expectedWeightCount, 1.f);
+		}
+		else {
+			std::fprintf(stderr, "Dynamic listmode SPECT sensitivity requires per-view timing, temporalBinIndex, or sensitivityViewWeights for every frame.\n");
+			return -1;
+		}
+	}
 	status = proj.createBuffers(inputScalars, w_vec, x, z_det, xy_index, z_index, L, pituus, atten, norm, extraCorr, length, MethodList);
 	if (status != 0) return -1;
 
@@ -726,7 +759,9 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
     
     for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
         // Compute sensitivity image for the whole measurement domain.
-        if ((w_vec.computeD || (inputScalars.listmode > 0 && inputScalars.computeSensImag)) && timestep == 0) {
+        const bool frameSpecificSPECTSensitivity = inputScalars.SPECT && inputScalars.listmode > 0 && inputScalars.computeSensImag;
+        if ((w_vec.computeD || (inputScalars.listmode > 0 && inputScalars.computeSensImag)) &&
+            (timestep == 0 || frameSpecificSPECTSensitivity)) {
             if (DEBUG || inputScalars.verbose >= 3)
                 mexPrint("Starting computation of sensitivity image (D)");
             w_vec.D[timestep].resize(inputScalars.nMultiVolumes + 1);
@@ -791,16 +826,26 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
             else {
                 for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
                     if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-                        uint64_t m_size = inputScalars.det_per_ring * inputScalars.det_per_ring * inputScalars.rings * inputScalars.rings;
-                        if (inputScalars.nLayers > 1)
-                            m_size *= inputScalars.nLayers;
+                        uint64_t m_size;
+                        af::array oneInput;
+                        if (inputScalars.SPECT) {
+                            const size_t sensitivityViews = inputScalars.size_of_x / 6;
+                            m_size = static_cast<uint64_t>(inputScalars.nRowsD) * inputScalars.nColsD * sensitivityViews;
+                            const float* frameWeights = inputScalars.sensitivityViewWeights.data() + sensitivityViews * timestep;
+                            oneInput = af::array(static_cast<dim_t>(sensitivityViews), frameWeights, afHost);
+                        }
+                        else {
+                            m_size = static_cast<uint64_t>(inputScalars.det_per_ring) * inputScalars.det_per_ring * inputScalars.rings * inputScalars.rings;
+                            if (inputScalars.nLayers > 1)
+                                m_size *= inputScalars.nLayers;
+                            oneInput = af::constant(0.f, 1, 1);
+                        }
                         if (DEBUG) {
                             mexPrintBase("m_size = %u\n", m_size);
                             mexPrintBase("inputScalars.det_per_ring = %u\n", inputScalars.det_per_ring);
                             mexPrintBase("inputScalars.rings = %u\n", inputScalars.rings);
                             mexEval();
                         }
-                        af::array oneInput = af::constant(0.f, 1, 1);
                         status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, oneInput, 0, timestep, length, m_size, meanBP, g, 
                             proj, true, ii, pituus);
                         if (status != 0) {

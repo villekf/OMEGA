@@ -543,6 +543,12 @@ struct inputStruct {
     // More reference images
     float* NLM_ref;
     float* RDP_ref;
+    // Optional full-view sensitivity geometry for listmode SPECT.
+    float* zSens = nullptr;
+    uint64_t sizeZSens = 0;
+    uint64_t sizeDetectorVector = 0;
+    float* sensitivityViewWeights = nullptr;
+    uint64_t sizeSensitivityViewWeights = 0;
 };
 
 void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting& w_vec, RecMethods& MethodList) {
@@ -993,13 +999,19 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
 		w_vec.dPitchX = options.dPitchX;
 		w_vec.dPitchY = options.dPitchY;
 		if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
-			w_vec.rayShiftsDetector = options.rayShiftsDetector;
-			w_vec.rayShiftsSource = options.rayShiftsSource;
-			w_vec.detectorVector = options.detectorVector;
+		w_vec.rayShiftsDetector = options.rayShiftsDetector;
+		w_vec.rayShiftsSource = options.rayShiftsSource;
+		w_vec.detectorVector = options.detectorVector;
+		w_vec.detectorVectorSize = static_cast<size_t>(options.sizeDetectorVector);
 		}
     } else {
         w_vec.dPitchX = options.cr_p; // Detector pitch
         w_vec.dPitchY = options.cr_pz;
+    }
+    if (inputScalars.SPECT && inputScalars.listmode > 0 && options.sizeSensitivityViewWeights > 0) {
+        inputScalars.sensitivityViewWeights.assign(
+            options.sensitivityViewWeights,
+            options.sensitivityViewWeights + options.sizeSensitivityViewWeights);
     }
     if (inputScalars.FPType == 4 || inputScalars.BPType == 4)
         w_vec.kerroin4 = options.kerroin4;

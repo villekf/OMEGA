@@ -114,8 +114,13 @@ void projectorType123(
     MASKBPTYPE maskBP [[buffer(7)]],
 #endif
 #endif
+#if defined(USEGLOBAL)
+	const CLGLOBAL float* d_xy [[buffer(8)]],
+	const CLGLOBAL float* d_z [[buffer(9)]],
+#else
 	CONSTANT float* d_xy [[buffer(8)]],
 	CONSTANT float* d_z [[buffer(9)]],
+#endif
 #ifdef NORM ///////////////////////// PET NORMALIZATION DATA /////////////////////////
 	CONSTANT float* d_norm [[buffer(10)]],
 #endif
@@ -216,7 +221,7 @@ void projectorType123(
 #endif
 	///////////////////////// END FORWARD/BACKWARD PROJECTION MASK /////////////////////////
 	///////////////////////// FULL PROJECTIONS/SINOGRAMS /////////////////////////
-#if (defined(CT) || defined(SPECT) || defined(PET)) && !defined(LISTMODE)
+#if (defined(CT) || defined(SPECT) || defined(PET)) && (!defined(LISTMODE) || (defined(SENS) && defined(SPECT)))
 	const LONG d_nProjections,
 #endif
 	///////////////////////// END FULL PROJECTIONS/SINOGRAMS /////////////////////////
@@ -306,6 +311,10 @@ void projectorType123(
 #if (defined(CT) || defined(SPECT) || defined(PET)) && !defined(LISTMODE)
 	size_t idx = i.x + i.y * d_size_x + i.z * d_sizey * d_size_x;
 	if (i.x >= d_size_x || i.y >= d_sizey || i.z >= d_nProjections)
+#elif defined(SENS) && defined(SPECT)
+	size_t idx = i.x + i.y * d_size_x + i.z * d_size_x * d_sizey;
+	if (i.x >= d_size_x || i.y >= d_sizey || i.z >= d_nProjections)
+		return;
 #elif defined(SENS)
 	int2 indz;
 	indz.x = i.z / rings;
@@ -341,17 +350,43 @@ void projectorType123(
 #endif
 #endif
 #if defined(SPECT) && (defined(MASKFPBYDETECTOR) || defined(NORMBYDETECTOR))
+#if defined(LISTMODE) && !defined(SENS)
+    const uint detectorHead = (uint)d_z[idx * 5 + 3];
+#else
     const uint detectorHead = d_detectorVector[i.z];
 #endif
+#endif
 #ifdef MASKFP // FP mask
- #ifdef MASKFPBYDETECTOR
-  #ifdef USEIMAGES
+#if defined(SPECT) && defined(LISTMODE) && !defined(SENS)
+	const uint detectorElement = (uint)d_z[idx * 5 + 2];
+	const uint eventHead = (uint)d_z[idx * 5 + 3];
+	const uint eventProjection = (uint)d_z[idx * 5 + 4];
+	#ifdef USEIMAGES
+		typeT maskInd = i;
+		maskInd.x = detectorElement % d_size_x;
+		maskInd.y = detectorElement / d_size_x;
+		#ifdef MASKFPBYDETECTOR
+			maskInd.z = eventHead;
+		#elif defined(MASKFP3D)
+			maskInd.z = eventProjection;
+		#endif
+	#else
+		const typeT maskInd = detectorElement
+		#ifdef MASKFPBYDETECTOR
+			+ eventHead * d_size_x * d_sizey
+		#elif defined(MASKFP3D)
+			+ eventProjection * d_size_x * d_sizey
+		#endif
+		;
+	#endif
+#elif defined(MASKFPBYDETECTOR)
+ #ifdef USEIMAGES
     typeT maskInd = i;
     maskInd.z = detectorHead;
-  #else
-    const typeT maskInd = i.x + i.y * d_size_x + detectorHead * d_size_x * d_sizey;
-  #endif
  #else
+    const typeT maskInd = i.x + i.y * d_size_x + detectorHead * d_size_x * d_sizey;
+ #endif
+#else
     const typeT maskInd = i
 #ifndef USEIMAGES
     .x + i.y * d_size_x
@@ -360,7 +395,7 @@ void projectorType123(
 #endif
 #endif
     ;
- #endif
+#endif
 	if (readMaskFP(maskFP, maskInd) == 0)
 		return;
 #endif // End FP mask
@@ -392,7 +427,11 @@ void projectorType123(
 #endif
 	for (int to = 0; to < NBINS; to++)
 #ifdef SENS
+#if defined(SPECT)
+		ax[to] = d_OSEM[i.z];
+#else
 		ax[to] = 1.f;
+#endif
 #else
 		ax[to] = d_OSEM[idx + to * m_size];
 #endif
@@ -410,9 +449,17 @@ void projectorType123(
 
 #ifdef NORM // Normalization included
 	#ifdef NORMBYDETECTOR
+#if defined(SPECT) && defined(LISTMODE) && !defined(SENS)
+		local_norm = d_norm[(uint)d_z[idx * 5 + 2] + (uint)d_z[idx * 5 + 3] * d_size_x * d_sizey];
+#else
 		local_norm = d_norm[i.x + i.y * d_size_x + detectorHead * d_size_x * d_sizey];
+#endif
 	#else
+#if defined(SPECT) && defined(LISTMODE) && !defined(SENS)
+		local_norm = d_norm[(uint)d_z[idx * 5 + 2] + (uint)d_z[idx * 5 + 4] * d_size_x * d_sizey];
+#else
 		local_norm = d_norm[idx];
+#endif
 	#endif
 #endif
 #ifdef SCATTER // Scatter data included
@@ -460,15 +507,22 @@ void projectorType123(
 #elif defined(SPECT) && (!defined(LISTMODE) || defined(SENS)) && !defined(PET) // SPECT data
 	getDetectorCoordinatesSPECT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize, d_rayShiftsDetector, d_rayShiftsSource, d_detectorVector, lor, ellipseCenter, ellipseRadii, ellipsePower);
 #elif defined(LISTMODE) && !defined(SENS) // Listmode data
-#if defined(INDEXBASED)
+#if defined(SPECT)
+	getDetectorCoordinatesListmodeSPECT(d_xy, d_z, d_rayShiftsDetector, d_rayShiftsSource,
+		&s, &d, idx, d_size_x, d_sizey, lor, ellipseCenter, ellipseRadii, ellipsePower);
+#elif defined(INDEXBASED)
 	getDetectorCoordinatesListmode(d_xy, d_z, trIndex, axIndex, &s, &d, idx
-#else
-	getDetectorCoordinatesListmode(d_xy, &s, &d, idx
-#endif
 #if defined(N_RAYS)
 		, lorXY, lorZ, crystalSize
 #endif
 	);
+#else
+	getDetectorCoordinatesListmode(d_xy, &s, &d, idx
+#if defined(N_RAYS)
+		, lorXY, lorZ, crystalSize
+#endif
+	);
+#endif
 #elif defined(RAW) || (defined(SENS) && !defined(SPECT)) // raw data
 	getDetectorCoordinatesRaw(d_xy, d_z, i, &s, &d, indz
 #if defined(N_RAYS)

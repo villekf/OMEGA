@@ -537,6 +537,7 @@ class projectorClass:
     regEveryIter = 1
     xSens = np.empty(0, dtype = np.float32)
     zSens = np.empty(0, dtype = np.float32)
+    sensitivityViewWeights = np.empty(0, dtype = np.float32)
 
     def __init__(self):
         # C-struct
@@ -595,15 +596,45 @@ class projectorClass:
                 self.angles = self.angles + self.offangle
             setCTCoordinates(self)
         if self.SPECT:
-            # Dynamic SPECT projection images are represented as one list entry
-            # per timeframe.  A four-dimensional input keeps the same temporal
-            # ordering when normalized here.
+            # Listmode SPECT stores one vector of events per timeframe rather
+            # than a 3-D detector image stack. Detect that layout before the
+            # sinogram normalization below inspects shape[2].
+            spect_event_listmode = False
+            if isinstance(self.SinM, list) and self.SinM and isinstance(self.x, list) and len(self.x) == len(self.SinM):
+                spect_event_listmode = all(
+                    np.asarray(coords).size % 6 == 0 and
+                    np.asarray(coords).size // 6 == np.asarray(events).size
+                    for coords, events in zip(self.x, self.SinM)
+                )
+            elif isinstance(self.SinM, np.ndarray) and self.SinM.size and np.asarray(self.x).size % 6 == 0:
+                spect_event_listmode = np.asarray(self.x).size // 6 == self.SinM.size
+            if spect_event_listmode:
+                self.listmode = 1
+                if self.subsets == 1 and self.subsetType not in (0, 1, 3):
+                    self.subsetType = 1
+                if isinstance(self.SinM, list):
+                    self.Nt = len(self.SinM)
+                projection_counts = np.asarray(
+                    getattr(self, 'nProjectionsPerFrame', getattr(self, 'nProjectionsPerPartition', [self.nProjections])),
+                    dtype=np.int64,
+                ).reshape(-1)
+                if projection_counts.size == 0 or np.any(projection_counts < 1):
+                    raise ValueError('Listmode SPECT needs a positive projection-frame count for every timeframe.')
+                self.nProjectionsPerFrame = projection_counts
+                total_projections = int(np.sum(projection_counts))
+                if self.angles.size != total_projections or self.radiusPerProj.size != total_projections:
+                    raise ValueError('Listmode SPECT angles and radii must contain one value for every projection frame.')
+                if self.swivelAngles.size not in (0, total_projections):
+                    raise ValueError('Listmode SPECT swivelAngles must contain one value for every projection frame.')
+                self.nProjections = int(np.max(projection_counts))
+            # Dynamic sinogram SPECT data are represented as one list entry per
+            # timeframe. A 4-D input keeps the same temporal ordering.
             if isinstance(self.SinM, np.ndarray) and self.SinM.size > 0:
-                if self.SinM.ndim == 4:
+                if self.SinM.ndim == 4 and not spect_event_listmode:
                     self.SinM = [self.SinM[:, :, :, tt] for tt in range(self.SinM.shape[3])]
                 #else:
                 #    self.SinM = [self.SinM]
-            if isinstance(self.SinM, list) and self.SinM:
+            if isinstance(self.SinM, list) and self.SinM and not spect_event_listmode:
                 self.Nt = len(self.SinM)
                 self.nProjectionsPerFrame = np.asarray(
                     [np.asarray(frame).shape[2] for frame in self.SinM],
@@ -617,7 +648,7 @@ class projectorClass:
                 if self.swivelAngles.size not in (0, total_projections):
                     raise ValueError('Dynamic SPECT swivelAngles must contain one value for every projection image across all timeframes.')
                 self.nProjections = int(np.max(self.nProjectionsPerFrame))
-            elif isinstance(self.SinM, np.ndarray) and self.SinM.size > 0:
+            elif isinstance(self.SinM, np.ndarray) and self.SinM.size > 0 and not spect_event_listmode:
                 self.nProjectionsPerFrame = np.asarray([self.nProjections], dtype=np.int64)
             if self.ellipseRadiusX == 0 or self.ellipseRadiusY == 0 or self.ellipseRadiusZ == 0:
                 self.ellipseRadiusX = self.FOVa_x / 2
@@ -821,14 +852,14 @@ class projectorClass:
             xSize = self.x[0].size
         else:
             xSize = self.x.size
-        if (hasattr(self, 'x') or hasattr(self, 'y') or hasattr(self, 'z') or hasattr(self, 'z_det')) and xSize > 0 and \
+        if spect_event_listmode or ((hasattr(self, 'x') or hasattr(self, 'y') or hasattr(self, 'z') or hasattr(self, 'z_det')) and xSize > 0 and \
            ((not isinstance(self.SinM, list) and (xSize / 2 == self.SinM.size or xSize / 6 == self.SinM.size)) or
             (not isinstance(self.SinM, list) and self.SinM.size == 0 and xSize >= 6) or
             (isinstance(self.x, list) and
              (self.x[0].size / 2 == self.SinM[0].size or
-              self.x[0].size / 6 == self.SinM[0].size))):
+              self.x[0].size / 6 == self.SinM[0].size)))):
             if isinstance(self.SinM, list):
-                det_per_ring = self.SinM[0].size
+                det_per_ring = max(np.asarray(frame).size for frame in self.SinM)
             else:
                 det_per_ring = self.SinM.size
             self.Nang = 1
@@ -858,11 +889,12 @@ class projectorClass:
             self.PET = True
         else:
             self.PET = False
-            self.nProjections = self.NSinos
+            if not (self.SPECT and self.listmode):
+                self.nProjections = self.NSinos
         if self.listmode and self.subsets > 1 and not(self.subsetType == 0)  and not(self.subsetType == 1) and not(self.subsetType == 3):
             print('Only subset types 0, 1, and 3 are supported with list-mode data! Switching to subset type 0.')
             self.subsetType = 0
-        if self.listmode and self.subsets > 1 and self.subsetType == 0:
+        if not self.listmode and self.subsets > 1 and self.subsetType == 0:
            print('Subset type 0 is recommended only for list-mode data! The reconstruction will most likely not work!')
         # if self.listmode and self.Nt > 1:
         #     self.loadTOF = False
@@ -977,9 +1009,10 @@ class projectorClass:
                 self.dPitch = self.cr_p
                 self.dPitchY = self.cr_p
                 self.dPitchX = self.cr_pz
-            self.nProjections = self.NSinos
-            self.nRowsD = self.Ndist
-            self.nColsD = self.Nang
+            if not (self.SPECT and self.listmode):
+                self.nProjections = self.NSinos
+                self.nRowsD = self.Ndist
+                self.nColsD = self.Nang
 
         # self.size_x = size_x
         # self.totMeas = self.nColsD * self.nRowsD * self.nProjections
@@ -1132,7 +1165,12 @@ class projectorClass:
 
         if self.subsets > 1:
             self.subset = 0
-        if self.subsetType >= 8 or self.subsets == 1:
+        if self.listmode > 0:
+            # Listmode measurements already count individual events. Unlike
+            # projection-image data, they must not be expanded by detector
+            # rows and columns when building per-subset measurement sizes.
+            kerroin = 1
+        elif self.subsetType >= 8 or self.subsets == 1:
             kerroin = self.nColsD * self.nRowsD
         else:
             kerroin = 1
@@ -1142,7 +1180,8 @@ class projectorClass:
         self.nMeasSubset[:, :] = self.nMeasPerFrameSubset * kerroin
         self.nProjSubset[:, :] = self.nMeasPerFrameSubset
         if self.listmode == 1:
-            self.x = self.x.astype(dtype=np.float32)
+            self.x = np.asarray(self.x, dtype=np.float32)
+            self.z = np.asarray(self.z, dtype=np.float32)
             if self.x.flags.f_contiguous:
                 self.x = self.x.ravel('F')
             else:
@@ -1176,6 +1215,9 @@ class projectorClass:
         if isinstance(self.x, int):
             self.x = np.zeros(1, dtype=np.float32)
             self.z = np.zeros(1, dtype=np.float32)
+        elif isinstance(self.x, list):
+            self.x = np.concatenate([np.asarray(value, dtype=np.float32).ravel(order='F') for value in self.x])
+            self.z = np.concatenate([np.asarray(value, dtype=np.float32).ravel(order='F') for value in self.z])
         else:
             self.x = self.x.astype(dtype=np.float32)
             self.z = self.z.astype(dtype=np.float32)
@@ -2493,4 +2535,9 @@ class projectorClass:
             ('ellipsePower',ctypes.c_float),
             ('NLM_ref', ctypes.POINTER(ctypes.c_float)),
             ('RDP_ref', ctypes.POINTER(ctypes.c_float)),
+            ('zSens', ctypes.POINTER(ctypes.c_float)),
+            ('sizeZSens', ctypes.c_uint64),
+            ('sizeDetectorVector', ctypes.c_uint64),
+            ('sensitivityViewWeights', ctypes.POINTER(ctypes.c_float)),
+            ('sizeSensitivityViewWeights', ctypes.c_uint64),
         ]

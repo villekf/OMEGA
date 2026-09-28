@@ -21,6 +21,43 @@ import ctypes
 import numpy as np
 import warnings
 
+
+def _spect_listmode_sensitivity_weights(options, n_views):
+    supplied = np.asarray(getattr(options, 'sensitivityViewWeights', np.empty(0)))
+    if supplied.size:
+        weights = np.asarray(supplied, dtype=np.float32)
+        if weights.shape != (n_views, int(options.Nt)) or not np.all(np.isfinite(weights)) or np.any(weights < 0):
+            raise ValueError('sensitivityViewWeights must be a finite, non-negative nViews-by-Nt array.')
+        return np.asfortranarray(weights)
+    if int(options.Nt) == 1:
+        return np.ones((n_views, 1), dtype=np.float32, order='F')
+
+    frame_index = np.asarray(getattr(options, 'temporalBinIndex', np.empty(0))).reshape(-1)
+    if frame_index.size == n_views and np.all(np.isfinite(frame_index)) and np.all(frame_index == np.floor(frame_index)) and np.all((frame_index >= 0) & (frame_index < int(options.Nt))):
+        weights = np.zeros((n_views, int(options.Nt)), dtype=np.float32, order='F')
+        weights[np.arange(n_views), frame_index.astype(np.int64)] = 1
+        return weights
+
+    capture_start = np.asarray(getattr(options, 'measurementStartMs', np.empty(0)), dtype=np.float64).reshape(-1)
+    capture_end = np.asarray(getattr(options, 'measurementEndMs', np.empty(0)), dtype=np.float64).reshape(-1)
+    frame_start = np.asarray(getattr(options, 'dynamicPartitionStartMs', np.empty(0)), dtype=np.float64).reshape(-1)
+    frame_end = np.asarray(getattr(options, 'dynamicPartitionEndMs', np.empty(0)), dtype=np.float64).reshape(-1)
+    if capture_start.size == n_views and capture_end.size == n_views and frame_start.size == int(options.Nt) and frame_end.size == int(options.Nt):
+        duration = capture_end - capture_start
+        if np.all(np.isfinite(capture_start)) and np.all(np.isfinite(capture_end)) and np.all(duration >= 0) and np.all(np.isfinite(frame_start)) and np.all(np.isfinite(frame_end)):
+            overlap = np.maximum(0, np.minimum(capture_end[:, None], frame_end[None, :]) - np.maximum(capture_start[:, None], frame_start[None, :]))
+            weights = np.zeros((n_views, int(options.Nt)), dtype=np.float32, order='F')
+            positive = duration > 0
+            weights[positive, :] = (overlap[positive, :] / duration[positive, None]).astype(np.float32)
+            zero = ~positive
+            if np.any(zero):
+                if frame_index.size != n_views:
+                    raise ValueError('Zero-duration SPECT views require temporalBinIndex for dynamic sensitivity.')
+                for timestep in range(int(options.Nt)):
+                    weights[zero & (frame_index == timestep), timestep] = 1
+            return weights
+    raise ValueError('Dynamic listmode SPECT sensitivity requires view timing, temporalBinIndex, or explicit sensitivityViewWeights.')
+
 def transferData(options):
     """
     Transfers the Python variables to the corresponding C-struct
@@ -34,6 +71,11 @@ def transferData(options):
     None.
 
     """
+    # Loaders may use None for an absent optional correction. The native
+    # interface always receives a pointer and an element count, so normalize
+    # that representation to an empty array before taking either.
+    if options.normalization is None:
+        options.normalization = np.empty(0, dtype=np.float32)
     options.param.use_raw_data = ctypes.c_uint8(options.use_raw_data)
     options.param.listmode = ctypes.c_uint8(options.listmode)
     options.param.verbose = ctypes.c_int8(options.verbose)
@@ -388,6 +430,11 @@ def transferData(options):
     # ...until here
     options.param.NLM_ref = options.NLM_referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.RDP_ref = options.RDP_referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    options.param.zSens = options.zSens.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    options.param.sizeZSens = ctypes.c_uint64(options.zSens.size)
+    options.param.sizeDetectorVector = ctypes.c_uint64(np.size(options.DetectorVector))
+    options.param.sensitivityViewWeights = options.sensitivityViewWeights.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    options.param.sizeSensitivityViewWeights = ctypes.c_uint64(options.sensitivityViewWeights.size)
     
 def reconstructions_mainCT(options):
     """
@@ -589,7 +636,15 @@ def reconstructions_main(options):
         ParkerWeights(options)
     if not options.listmode:
         options.SinM = np.reshape(options.SinM, (int(options.nRowsD), int(options.nColsD), options.nProjections, options.TOF_bins, options.Nt), order='F')
-    elif options.listmode and options.compute_sensitivity_image and not(options.SPECT):
+    elif options.listmode and options.compute_sensitivity_image and options.SPECT:
+        from omegatomo.projector.detcoord import getCoordinatesSPECT
+        x_sensitivity, z_sensitivity = getCoordinatesSPECT(options)
+        options.uV = np.float32(np.asfortranarray(x_sensitivity))
+        options.zSens = np.float32(np.asfortranarray(z_sensitivity))
+        options.sensitivityViewWeights = _spect_listmode_sensitivity_weights(
+            options, options.uV.size // 6
+        )
+    elif options.listmode and options.compute_sensitivity_image:
         if hasattr(options, 'xSens') and np.size(options.xSens) > 0 and hasattr(options, 'zSens') and np.size(options.zSens) > 0:
             options.uV = np.float32(np.asfortranarray(options.xSens))
             options.z = np.float32(np.asfortranarray(options.zSens))

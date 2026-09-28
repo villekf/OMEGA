@@ -353,7 +353,9 @@ elseif (subsets > 1 && (options.subset_type == 8 || options.subset_type == 9 || 
         if (options.CT || options.PET || options.SPECT) && options.listmode == 0
             pituus(1) = options.NSinos;
         elseif options.listmode
-            if options.useIndexBasedReconstruction
+            if options.Nt > 1
+                pituus = int64(options.listmodeIndices(:));
+            elseif options.useIndexBasedReconstruction
                 pituus(1) = numel(options.trIndex) / 2;
             else
                 pituus(1) = numel(options.x) / 6;

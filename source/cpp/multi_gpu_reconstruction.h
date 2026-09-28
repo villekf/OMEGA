@@ -495,19 +495,36 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
                         uu += inputScalars.im_dim[ii];
                     }
                 }
-                if (type == 2 || type == 0) {
-                    for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-                        int uu = ii;
+				if (type == 2 || type == 0) {
+					for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+						int uu = ii;
                         if (type == 0) {
                             uu += osa_iter * (inputScalars.nMultiVolumes + 1);
                             status = proj.fillDeviceBuffer(proj.vec_opencl.d_rhs_os[ii], (C)0, sizeof(C) * inputScalars.im_dim[ii]);
                             CHECK(status, "\n", );
                             retVal = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, MethodList, false, ii, ii, uu);
 
-                        } 
+						}
 						else {
-                            retVal = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, MethodList, false, ii, uu);
-                        }
+                            const bool computeListmodeSensitivity = inputScalars.listmode > 0 && inputScalars.computeSensImag;
+                            uint64_t projectionSize = m_size;
+                            if (computeListmodeSensitivity) {
+                                if (inputScalars.SPECT) {
+                                    projectionSize = static_cast<uint64_t>(inputScalars.nRowsD) *
+									static_cast<uint64_t>(inputScalars.nColsD) *
+									static_cast<uint64_t>(inputScalars.size_of_x / 6);
+                                }
+                                else if (inputScalars.PET) {
+                                    projectionSize = static_cast<uint64_t>(inputScalars.det_per_ring) *
+									static_cast<uint64_t>(inputScalars.det_per_ring) *
+									static_cast<uint64_t>(inputScalars.rings) *
+									static_cast<uint64_t>(inputScalars.rings);
+								if (inputScalars.nLayers > 1)
+									projectionSize *= static_cast<uint64_t>(inputScalars.nLayers);
+                                }
+                            }
+                            retVal = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, projectionSize, MethodList, computeListmodeSensitivity, ii, uu);
+						}
                         if (retVal != 0) {
                             mexPrint("Backprojection failed\n");
                             return;

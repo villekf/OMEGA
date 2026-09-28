@@ -1350,6 +1350,24 @@ class ProjectorClass {
 #elif defined(OPENCL)
 			std::string os_options = options;
 #endif // END CUDA
+			// SPECT sensitivity uses full-view detector geometry, so compile it as a
+			// projection-domain kernel even though the main projector is listmode.
+			if (inputScalars.SPECT) {
+#if defined(OPENCL)
+				const std::string listmodeFlag = "-DLISTMODE";
+				const size_t listmodeFlagPos = os_options.find(listmodeFlag);
+				if (listmodeFlagPos != std::string::npos)
+					os_options.erase(listmodeFlagPos, listmodeFlag.size());
+#else
+				std::vector<std::string> projectionOptions;
+				projectionOptions.reserve(os_options.size());
+				for (const auto& option : os_options) {
+					if (option != "-DLISTMODE")
+						projectionOptions.push_back(option);
+				}
+				os_options.swap(projectionOptions);
+#endif
+			}
 			ADD_OPT(os_options, "-DBP");
 			ADD_OPT(os_options, "-DATOMICF");
 			ADD_OPT(os_options, "-DSENS");
@@ -3230,8 +3248,10 @@ public:
 				static_cast<float>(inputScalars.Nz[ii]) * inputScalars.dz[ii] + inputScalars.bz[ii]);
 		}
 		if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-			erotusSens[0] = inputScalars.det_per_ring % local_size[0];
-			erotusSens[1] = inputScalars.det_per_ring % local_size[1];
+			const size_t sensitivityDetectorRows = inputScalars.SPECT ? inputScalars.nRowsD : inputScalars.det_per_ring;
+			const size_t sensitivityDetectorCols = inputScalars.SPECT ? inputScalars.nColsD : inputScalars.det_per_ring;
+			erotusSens[0] = sensitivityDetectorRows % local_size[0];
+			erotusSens[1] = sensitivityDetectorCols % local_size[1];
 			if (erotusSens[1] > 0)
 				erotusSens[1] = (local_size[1] - erotusSens[1]);
 			if (erotusSens[0] > 0)
@@ -3511,11 +3531,17 @@ public:
 				for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
 					if (inputScalars.SPECT) {
 						const size_t detectorIndex = static_cast<size_t>(kk) + static_cast<size_t>(timestep) * static_cast<size_t>(inputScalars.subsets);
-						ALLOC_BUFFER(d_detectorVector[timestep][kk], CL_MEM_READ_ONLY, sizeof(uint32_t) * length[detectorIndex]);
+						const size_t detectorCount = inputScalars.listmode > 0
+							? (w_vec.detectorVectorSize > 0 ? w_vec.detectorVectorSize : static_cast<size_t>(inputScalars.nProjections))
+							: static_cast<size_t>(length[detectorIndex]);
+						ALLOC_BUFFER(d_detectorVector[timestep][kk], CL_MEM_READ_ONLY, sizeof(uint32_t) * detectorCount);
 						CHECK(status, "\n", (STATUS_t)(-1));
 					}
 					if (inputScalars.CT || inputScalars.SPECT) {
-						ALLOC_BUFFER(d_x[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6);
+						// The event projector still needs one six-coordinate LOR per event.
+						// Full-view SPECT sensitivity geometry is stored separately in d_xFull.
+						const size_t coordinateCount = static_cast<size_t>(length[kk]) * 6ULL;
+						ALLOC_BUFFER(d_x[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * coordinateCount);
 						CHECK(status, "\n", (STATUS_t)(-1));
 						memAlloc.xSteps++;
 					}
@@ -3530,7 +3556,14 @@ public:
 							mexEval();
 						}
 					}
-					if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode != 1) {
+					if (inputScalars.SPECT && inputScalars.listmode == 1) {
+						const size_t coordinateCount = static_cast<size_t>(length[kk + timestep * inputScalars.subsets]) * 5ULL;
+						ALLOC_BUFFER(d_z[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * coordinateCount);
+						CHECK(status, "\n", (STATUS_t)(-1));
+						memAlloc.zType = 1;
+						memAlloc.zSteps++;
+					}
+					else if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode != 1) {
 						size_t coef = 2;
 						if (inputScalars.useHelical)
 							coef = 1;
@@ -3777,12 +3810,31 @@ public:
 				for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
 					if (inputScalars.SPECT) {
 						const size_t detectorIndex = static_cast<size_t>(kk) + static_cast<size_t>(timestep) * static_cast<size_t>(inputScalars.subsets);
-						WRITE_BUFFER(d_detectorVector[timestep][kk], sizeof(uint32_t) * length[detectorIndex],
-							&w_vec.detectorVector[pituus[detectorIndex]]);
+						if (inputScalars.listmode > 0) {
+							const size_t detectorCount = w_vec.detectorVectorSize > 0
+								? w_vec.detectorVectorSize : static_cast<size_t>(inputScalars.nProjections);
+							WRITE_BUFFER(d_detectorVector[timestep][kk], sizeof(uint32_t) * detectorCount,
+								w_vec.detectorVector);
+						}
+						else {
+							WRITE_BUFFER(d_detectorVector[timestep][kk], sizeof(uint32_t) * length[detectorIndex],
+								&w_vec.detectorVector[pituus[detectorIndex]]);
+						}
 						CHECK(status, "\n", (STATUS_t)(-1));
-						memSize += sizeof(uint32_t) * length[detectorIndex];
+						memSize += sizeof(uint32_t) * (inputScalars.listmode > 0
+							? (w_vec.detectorVectorSize > 0 ? w_vec.detectorVectorSize : static_cast<size_t>(inputScalars.nProjections))
+							: static_cast<size_t>(length[detectorIndex]));
 					}
-					if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
+					if (inputScalars.SPECT && inputScalars.listmode == 1) {
+						const size_t eventIndex = static_cast<size_t>(kk) +
+							static_cast<size_t>(timestep) * static_cast<size_t>(inputScalars.subsets);
+						const float* listCoordZ = w_vec.listCoordZ ? w_vec.listCoordZ : z_det;
+						WRITE_BUFFER(d_z[timestep][kk], sizeof(float) * length[eventIndex] * 5,
+							&listCoordZ[pituus[eventIndex] * 5]);
+						CHECK(status, "\n", (STATUS_t)(-1));
+						memSize += sizeof(float) * length[eventIndex] * 5;
+					}
+					else if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
 						size_t kerroin = 2;
 						if (inputScalars.pitch)
 							kerroin = 6;
@@ -3814,7 +3866,8 @@ public:
 						memSize += (sizeof(float) * length[kk] * 6);
 					}
 					else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
-						if (inputScalars.loadTOF || (kk == inputScalars.osa_iter0 && timestep == inputScalars.timestep0)) {
+						if (inputScalars.SPECT || inputScalars.loadTOF ||
+							(kk == inputScalars.osa_iter0 && timestep == inputScalars.timestep0)) {
 							WRITE_BUFFER(d_x[timestep][kk], sizeof(float) * length[kk + timestep * inputScalars.subsets] * 6, 
 								&w_vec.listCoord[pituus[kk + timestep * inputScalars.subsets] * 6]);
 							CHECK(status, "\n", (STATUS_t)(-1));
@@ -4648,13 +4701,13 @@ public:
 			KARG(kTemp, kernelFP, kernelIndFPSubIter, vec_opencl.d_image_os);
 			KARG(kTemp, kernelFP, kernelIndFPSubIter, d_output);
 			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || 
-				(!inputScalars.loadTOF && inputScalars.listmode > 0)) {
+				(!inputScalars.loadTOF && inputScalars.listmode > 0 && !inputScalars.SPECT)) {
 				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_x[0][0]);
 			}
 			else {
 				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_x[timestep][osa_iter]);
 			}
-			if ((inputScalars.CT || inputScalars.PET)) {
+			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT)) {
 				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_z[timestep][osa_iter]);
 			}
 			else if (inputScalars.listmode > 0) {
@@ -4786,7 +4839,7 @@ public:
 				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, length[osa_iter + timestep * inputScalars.subsets]);
 			}
 			KARG_METAL_SLOT(kernelIndFPSubIter, 8);
-			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0)) {
+			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0 && !inputScalars.SPECT)) {
 				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_x[0][0]);
 			}
 			else
@@ -5009,7 +5062,9 @@ public:
 		kParams.dSize5 = inputScalars.dSizeBP;
 		kParams.kerroin4 = (inputScalars.BPType == 4 && w_vec.kerroin4) ? w_vec.kerroin4[ii] : 0.f;
 		kParams.DSC = inputScalars.DSC;
-		kParams.nProjections = length[indD];
+		kParams.nProjections = compSens && inputScalars.SPECT
+			? static_cast<int64_t>(inputScalars.size_of_x / 6)
+			: length[indD];
 		kParams.no_norm = no_norm;
 		kParams.m_size = m_size;
 		kParams.currentSubset = osa_iter;
@@ -5058,9 +5113,15 @@ public:
 				SET_LAUNCH_RANGE3(global, inputScalars.nRowsD + erotus[0], inputScalars.nColsD + erotus[1], length[indD], local);
 			}
 			else if (inputScalars.listmode > 0 && compSens) {
-				const size_t sensitivityDepth = static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.nLayers);
-				SET_LAUNCH_RANGE3(global, static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0], 
-					static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], sensitivityDepth, local);
+				if (inputScalars.SPECT) {
+					SET_LAUNCH_RANGE3(global, inputScalars.nRowsD + erotusSens[0],
+						inputScalars.nColsD + erotusSens[1], inputScalars.size_of_x / 6, local);
+				}
+				else {
+					const size_t sensitivityDepth = static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.nLayers);
+					SET_LAUNCH_RANGE3(global, static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0],
+						static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], sensitivityDepth, local);
+				}
 			}
 			else {
 				erotus[0] = length[indD] % local_size[0];
@@ -5140,12 +5201,18 @@ public:
 				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, length[indD]);
 			KARG_METAL_SLOT(kernelIndBPSubIter, 8);
 			if (compSens) {
+#if !defined(METAL)
+				if (inputScalars.SPECT)
+					KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, inputScalars.size_of_x / 6);
+#endif
 				KARG(kTemp, kernelBP, kernelIndBPSubIter, d_xFull[0]);
 				KARG(kTemp, kernelBP, kernelIndBPSubIter, d_zFull[0]);
+#if !defined(METAL)
 				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, inputScalars.rings);
+#endif
 			}
 			else {
-				if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0)) {
+				if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0 && !inputScalars.SPECT)) {
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_x[0][0]);
 				}
 				else
@@ -5555,9 +5622,15 @@ public:
 						localBP);
 				}
 				else if (inputScalars.listmode > 0 && compSens) {
-					SET_LAUNCH_RANGE3(global, static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0],
-						static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], 
-						static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings), localBP);
+					if (inputScalars.SPECT) {
+						SET_LAUNCH_RANGE3(global, inputScalars.nRowsD + erotusSens[0],
+							inputScalars.nColsD + erotusSens[1], inputScalars.size_of_x / 6, localBP);
+					}
+					else {
+						SET_LAUNCH_RANGE3(global, static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0],
+							static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1],
+							static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings), localBP);
+					}
 				}
 				else {
 					erotus[0] = length[indD] % local_size[0];
@@ -5626,7 +5699,7 @@ public:
 					KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, inputScalars.det_per_ring);
 				}
 				else {
-					if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0)) {
+					if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0 && !inputScalars.SPECT)) {
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_x[0][0]);
 					}
 					else

@@ -105,15 +105,21 @@ elseif options.projector_type == 7 || options.projector_type == 71 || options.pr
 else
     error('Invalid projector for OpenCL')
 end
-if options.listmode > 0 && options.compute_sensitivity_image && isfield(options,'xSens') && isfield(options,'zSens') && ~isempty(options.xSens) && ~isempty(options.zSens) && ~options.SPECT
+if options.listmode > 0 && options.compute_sensitivity_image && options.SPECT
+	[x, z_det, options.sensitivityViewWeights] = prepareSPECTListmodeSensitivity(options);
+elseif options.listmode > 0 && options.compute_sensitivity_image && isfield(options,'xSens') && isfield(options,'zSens') && ~isempty(options.xSens) && ~isempty(options.zSens)
     x = options.xSens;
     z_det = options.zSens;
-	options.det_per_ring = numel(x) / 2;
-	options.rings = numel(z_det);
-elseif options.listmode > 0 && options.compute_sensitivity_image && ~options.useIndexBasedReconstruction
-    options.use_raw_data = true;
-    [x, ~, z_det, ~] = get_coordinates(options);
-    options.use_raw_data = false;
+	if ~options.SPECT
+		options.det_per_ring = numel(x) / 2;
+		options.rings = numel(z_det);
+	end
+elseif options.listmode > 0 && options.compute_sensitivity_image && (options.SPECT || ~options.useIndexBasedReconstruction)
+	if ~options.SPECT
+		options.use_raw_data = true;
+		[x, ~, z_det, ~] = get_coordinates(options);
+		options.use_raw_data = false;
+	end
 end
 if (~options.largeDim && ~(~options.loadTOF && ~isa(options.SinM,'single'))) || (options.largeDim && isa(options.SinM,'uint32')) || options.use_CPU
     options.SinM = single(options.SinM);

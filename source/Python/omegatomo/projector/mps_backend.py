@@ -618,7 +618,7 @@ def _require_mps_float32_contiguous(tensor: Any, name: str) -> Any:
 
 
 def _projection_size(self: Any, timestep: int, subset: int) -> int:
-    if self.subsetType > 7 or self.subsets == 1:
+    if self.listmode == 0 and (self.subsetType > 7 or self.subsets == 1):
         return int(getattr(self, 'measurement_nRowsD', self.nRowsD) * getattr(self, 'measurement_nColsD', self.nColsD) * self.nProjSubset[timestep, subset])
     return int(self.nMeasSubset[timestep, subset])
 

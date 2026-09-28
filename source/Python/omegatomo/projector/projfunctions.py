@@ -162,13 +162,13 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                         self.d_x[timestep][0] = cp.asarray(apu[self.nMeas[timestep * self.subsets + subset] * 6 : self.nMeas[timestep * self.subsets + subset + 1] * 6])
                 if self.useTorch:
                     import torch
-                    if self.subsetType > 7 or self.subsets == 1:
+                    if self.listmode == 0 and (self.subsetType > 7 or self.subsets == 1):
                         y = torch.zeros(self.nRowsD * self.nColsD * self.nProjSubset[timestep, subset].item(), dtype=torch.float32, device='cuda')
                     else:
                         y = torch.zeros(self.nMeasSubset[timestep, subset].item(), dtype=torch.float32, device='cuda')
                     yD = cp.asarray(y)
                 else:
-                    if self.subsetType > 7 or self.subsets == 1:
+                    if self.listmode == 0 and (self.subsetType > 7 or self.subsets == 1):
                         y = cp.zeros(self.nRowsD * self.nColsD * self.nProjSubset[timestep, subset].item(), dtype=cp.float32)
                     else:
                         y = cp.zeros(self.nMeasSubset[timestep, subset].item(), dtype=cp.float32)
@@ -427,14 +427,14 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                     self.d_x[timestep][0] = cl.array.to_device(self.queue, apu[self.nMeas[timestep * self.subsets + subset] * 6 : self.nMeas[timestep * self.subsets + subset + 1] * 6])
             if self.useAF:
                 import arrayfire as af
-                if self.subsetType > 7 or self.subsets == 1:
+                if self.listmode == 0 and (self.subsetType > 7 or self.subsets == 1):
                     y = af.data.constant(0., self.nRowsD * self.nColsD * self.nProjSubset[timestep, subset].item())
                 else:
                     y = af.data.constant(0., self.nMeasSubset[timestep, subset].item())
                 yPtr = y.raw_ptr()
                 yD = cl.MemoryObject.from_int_ptr(yPtr)
             else:
-                if self.subsetType > 7 or self.subsets == 1:
+                if self.listmode == 0 and (self.subsetType > 7 or self.subsets == 1):
                     y = cl.array.zeros(self.queue, self.nRowsD * self.nColsD * self.nProjSubset[timestep, subset].item(), dtype=cl.cltypes.float)
                 else:
                     y = cl.array.zeros(self.queue, self.nMeasSubset[timestep, subset].item(), dtype=cl.cltypes.float)

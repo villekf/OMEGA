@@ -1370,6 +1370,45 @@ DEVICE void rhs(const float local_ele, PTR_THR const float *ax, const LONG local
 
 // Detector coordinates for listmode data
 #ifdef LISTMODE
+#if defined(SPECT)
+DEVICE void extendRayToEllipse(
+	PTR_THR FLOAT3 *s, PTR_THR FLOAT3 *d, const FLOAT3 ellipseCenter,
+	const FLOAT3 ellipseRadii, const float ellipsePower
+);
+DEVICE void getDetectorCoordinatesListmodeSPECT(
+#if defined(USEGLOBAL)
+	const CLGLOBAL float* d_xyz, const CLGLOBAL float* d_z,
+#elif defined(METAL)
+	CONSTANT float* d_xyz, CONSTANT float* d_z,
+#else
+	CONSTANT float* d_xyz,
+	const CLGLOBAL float* d_z,
+#endif
+	const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource,
+	PTR_THR FLOAT3* s, PTR_THR FLOAT3* d, const size_t idx, const uint d_size_x, const uint d_sizey,
+	const int lor, const FLOAT3 ellipseCenter, const FLOAT3 ellipseRadii, const float ellipsePower
+) {
+	const size_t i = idx * 6;
+	const size_t iz = idx * 5;
+	*s = CMFLOAT3(d_xyz[i], d_xyz[i + 1], d_xyz[i + 2]);
+	*d = CMFLOAT3(d_xyz[i + 3], d_xyz[i + 4], d_xyz[i + 5]);
+	const FLOAT ux = (FLOAT)d_z[iz];
+	const FLOAT uy = (FLOAT)d_z[iz + 1];
+	const uint detectorElement = (uint)d_z[iz + 2];
+	const uint detectorHead = (uint)d_z[iz + 3];
+	const uint idShift = 2u * (uint)lor + (2u * N_RAYS) *
+		(detectorElement + detectorHead * d_size_x * d_sizey);
+	const FLOAT shiftDetectorXY = (FLOAT)d_rayShiftsDetector[idShift];
+	const FLOAT shiftSourceXY = (FLOAT)d_rayShiftsSource[idShift];
+	(*d).x += ux * shiftDetectorXY;
+	(*d).y += uy * shiftDetectorXY;
+	(*d).z += (FLOAT)d_rayShiftsDetector[idShift + 1u];
+	(*s).x += ux * shiftSourceXY;
+	(*s).y += uy * shiftSourceXY;
+	(*s).z += (FLOAT)d_rayShiftsSource[idShift + 1u];
+	extendRayToEllipse(s, d, ellipseCenter, ellipseRadii, ellipsePower);
+}
+#endif
 #ifdef INDEXBASED
 DEVICE void getDetectorCoordinatesListmode(
 #if defined(USEGLOBAL)
@@ -1397,7 +1436,7 @@ DEVICE void getDetectorCoordinatesListmode(
 #endif
 }
 #else
-DEVICE void getDetectorCoordinatesListmode(const CLGLOBAL float* d_xyz, float3* s, float3* d, const size_t idx
+DEVICE void getDetectorCoordinatesListmode(const CLGLOBAL float* d_xyz, PTR_THR FLOAT3* s, PTR_THR FLOAT3* d, const size_t idx
 #if defined(N_RAYS)
 	, const int lorXY, const int lorZ, const float2 cr
 #endif

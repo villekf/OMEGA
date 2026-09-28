@@ -481,7 +481,7 @@ if (options.projector_type == 6)
         error('Subset types 0-7 are not supported with projector type 6!')
     end
 end
-if (~options.use_raw_data && options.SPECT) && ~ismember(options.subset_type, [8,9,10,11])
+if (~options.use_raw_data && options.SPECT && options.listmode == 0) && ~ismember(options.subset_type, [8,9,10,11])
     error('Only subset types 8-11 are supported with SPECT sinogram reconstruction')
 end
 if options.FDK && (options.Niter > 1 || options.subsets > 1)

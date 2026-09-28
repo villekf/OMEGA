@@ -53,7 +53,14 @@ def _initialize_coordinate_buffers(self, upload):
         else:
             self.d_x[timestep][0] = upload(_full_coordinate_frame(self, 'x', timestep))
 
-        if subset_geometry or pet_geometry:
+        if self.SPECT and self.listmode > 0 and not self.useIndexBasedReconstruction:
+            z_values = np.asarray(self.z, dtype=np.float32).ravel(order='F')
+            for subset in range(self.subsets):
+                index = timestep * self.subsets + subset
+                start = int(self.nMeas[index]) * 5
+                stop = int(self.nMeas[index + 1]) * 5
+                self.d_z[timestep][subset] = upload(z_values[start:stop])
+        elif subset_geometry or pet_geometry:
             for subset in range(self.subsets):
                 self.d_z[timestep][subset] = upload(
                     _coordinate_slice(self, 'z', timestep, subset, z_stride)
@@ -67,7 +74,7 @@ def _initialize_coordinate_buffers(self, upload):
 def _initialize_detector_vector_buffers(self, upload, empty=None):
     """Create detector-head-index buffers aligned with each frame/subset geometry slice."""
     self.d_detectorVector = [[empty] * self.subsets for _ in range(self.Nt)]
-    if not self.SPECT:
+    if not self.SPECT or self.listmode > 0:
         return
     frames = getattr(self, 'DetectorVectorFrames', None)
     if not isinstance(frames, list) or len(frames) != self.Nt:

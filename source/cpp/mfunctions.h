@@ -64,6 +64,17 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	inputScalars.relaxScaling = getScalarBool(options, 0, "relaxationScaling");
 	inputScalars.computeRelaxation = getScalarBool(options, 0, "computeRelaxationParameters");
 	inputScalars.computeSensImag = getScalarBool(options, 0, "compute_sensitivity_image");
+	const int sensitivityWeightsField = mxGetFieldNumber(options, "sensitivityViewWeights");
+	if (sensitivityWeightsField >= 0) {
+		const mxArray* sensitivityWeights = mxGetField(options, 0, "sensitivityViewWeights");
+		if (sensitivityWeights && !mxIsEmpty(sensitivityWeights)) {
+			if (!mxIsSingle(sensitivityWeights) || mxIsComplex(sensitivityWeights))
+				mexErrMsgTxt("sensitivityViewWeights must be a real single-precision matrix.");
+			const size_t count = mxGetNumberOfElements(sensitivityWeights);
+			const float* values = getSingles(options, "sensitivityViewWeights");
+			inputScalars.sensitivityViewWeights.assign(values, values + count);
+		}
+	}
 	inputScalars.CT = getScalarBool(options, 0, "CT");
 	inputScalars.atomic_32bit = getScalarBool(options, 0, "use_32bit_atomics");
 	inputScalars.scatter = static_cast<uint32_t>(getScalarBool(options, 0, "additionalCorrection"));
@@ -300,6 +311,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 			w_vec.rayShiftsDetector = getSingles(options, "rayShiftsDetector");
 			w_vec.rayShiftsSource = getSingles(options, "rayShiftsSource");
 			w_vec.detectorVector = getUint32s(options, "DetectorVector");
+			w_vec.detectorVectorSize = mxGetNumberOfElements(getField(options, 0, "DetectorVector"));
 		}
 	} else {
 		w_vec.nProjections = getScalarInt64(getField(options, 0, "nProjections"));
