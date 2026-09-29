@@ -162,25 +162,58 @@ if options.subsets > 1 && options.subset_type > 0
         end
     end
     if options.additionalCorrection && isfield(options,'corrVector') && numel(options.corrVector) > 1
-        if options.subset_type >= 8
-            if iscell(options.corrVector)
+        if iscell(options.corrVector)
+            % Per-timestep cells: the same (per-frame-identical, see below) index is
+            % applied to every cell already, one frame per cell, so no partition loop
+            % is needed here.
+            if options.subset_type >= 8
                 for kk = 1 : numel(options.corrVector)
                     options.corrVector{kk} = reshape(options.corrVector{kk}, options.Ndist, options.Nang, []);
                     options.corrVector{kk} = options.corrVector{kk}(:,:,index,:);
                     options.corrVector{kk} = options.corrVector{kk}(:);
                 end
             else
-                options.corrVector = reshape(options.corrVector, options.Ndist, options.Nang, []);
-                options.corrVector = options.corrVector(:,:,index,:);
-                options.corrVector = options.corrVector(:);
-            end
-        else
-            if iscell(options.corrVector)
                 for kk = 1 : numel(options.corrVector)
                     options.corrVector{kk} = options.corrVector{kk}(index);
                 end
+            end
+        else
+            % A non-cell corrVector can either be a single frame that is implicitly
+            % reused for every timestep, or a concatenation of `partitions` per-timestep
+            % frames (one frame per timestep). The latter must be permuted frame by
+            % frame -- mirroring the SinDelayed per-partition loop below -- and matches
+            % how the C++ side offsets into corrVector/extraCorr by kokoNonTOF *
+            % timestep (ProjectorClass.h: "size_scat is the TOTAL element count ...
+            % across all Nt frames ... while kokoNonTOF is exactly one timestep's frame
+            % size"). Permuting the whole concatenated array at once (as if it were a
+            % single frame), as before, silently kept only one frame's worth of
+            % subset-selected data for the per-timestep case.
+            oneFrame = 0;
+            if isfield(options, 'totMeas')
+                oneFrame = options.totMeas;
+            end
+            if partitions > 1 && oneFrame > 0 && numel(options.corrVector) == oneFrame * partitions
+                corrFrames = cell(partitions, 1);
+                for ff = 1 : partitions
+                    temp = options.corrVector((ff - 1) * oneFrame + 1 : ff * oneFrame);
+                    if options.subset_type >= 8
+                        temp = reshape(temp, options.Ndist, options.Nang, []);
+                        temp = temp(:,:,index,:);
+                        temp = temp(:);
+                    else
+                        temp = temp(index);
+                    end
+                    corrFrames{ff} = temp(:);
+                end
+                options.corrVector = cell2mat(corrFrames);
             else
-                options.corrVector = options.corrVector(index);
+                if options.subset_type >= 8
+                    options.corrVector = reshape(options.corrVector, options.Ndist, options.Nang, []);
+                    options.corrVector = options.corrVector(:,:,index,:);
+                    options.corrVector = options.corrVector(:);
+                else
+                    options.corrVector = options.corrVector(index);
+                end
             end
         end
     end

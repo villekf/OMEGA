@@ -95,7 +95,6 @@ if subsets > 1 && options.subset_type < 8
     pituus = zeros(subsets, 1, 'int64');
     % Take every nth column from the sinogram
     if options.subset_type == 4 && ~options.use_raw_data
-        maksimi = numel(1 : subsets : Nang);
         for i=1:subsets
             koko = i:subsets:Nang;
             osa = length(koko);
@@ -103,17 +102,11 @@ if subsets > 1 && options.subset_type < 8
             if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
                 index1 = index1 + cast(repeat_elem((0:(osa)*NSinos-1)'*Ndist*subsets,Ndist), tyyppi);
             else
-                index1 = index1 + cast(repelem((0:(osa)*NSinos-1)'*Ndist*subsets,Ndist), tyyppi);
+                index1 = index1 + cast(repelem((0:(osa)*NSinos-1)'*Ndist*subsets,Ndist,1), tyyppi);
             end
             if mod(Nang,subsets) > 0
-                if osa < maksimi
-                    erotus = osa - 1;
-                else
-                    erotus = mod(Nang,subsets) - subsets;
-                end
-                index1 = cast((int64(index1) + int64(repelem((0:NSinos-1)'*Ndist*erotus,Ndist*osa))), tyyppi);
-                % ero = [zeros(Ndist*osa, 1, 'int64');repelem(Ndist*erotus, numel(index1) - Ndist*osa)'];
-                % index1 = cast(int64(index1) + ero, tyyppi);
+                erotus = Nang - osa * subsets;
+                index1 = cast((int64(index1) + int64(repelem((0:NSinos-1)'*Ndist*erotus,Ndist*osa,1))), tyyppi);
             end
             index{i} = index1;
             pituus(i) = int64(length(index{i}));

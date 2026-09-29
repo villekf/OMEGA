@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import numpy as np
+from omegatomo.util.matlabRound import matlabRound
 
 def indexMaker(options):
     subsets = options.subsets;
@@ -345,7 +346,7 @@ def computeVoxelVolumes(options):
         options.bmax = options.tube_radius + options.voxel_radius
         b = np.linspace(0, options.bmax, 10000, dtype=np.float32)
         b = b[(options.tube_radius <= (b + options.voxel_radius))]
-        b = np.unique(np.round(b*10**3)/10**3);
+        b = np.unique(matlabRound(b*10**3)/10**3);
         V = volumeIntersection(options.tube_radius, options.voxel_radius, b)
         diffis = np.append(np.diff(V), 0)
         # diffis = np.concatenate((np.diff(V),0))
@@ -356,36 +357,3 @@ def computeVoxelVolumes(options):
         options.V = options.V.astype(dtype=np.float32)
     else:
         options.V = np.zeros(1, dtype=np.float32)
-    
-def computeProjectorScalingValues(options):
-    options.dScaleX4 = 1. / (options.dx * options.Nx)
-    options.dScaleY4 = 1. / (options.dy * options.Ny)
-    options.dScaleZ4 = 1. / (options.dz * options.Nz)
-    if options.projector_type == 5 or options.projector_type == 15 or options.projector_type == 45 or options.projector_type == 54 or options.projector_type == 51:
-        options.dSizeY = 1. / (options.dy * options.Ny)
-        options.dSizeX = 1. / (options.dx * options.Nx)
-        options.dScaleX = 1. / (options.dx * (options.Nx + 1))
-        options.dScaleY = 1. / (options.dy * (options.Ny + 1))
-        options.dScaleZ = 1. / (options.dz * (options.Nz + 1))
-        options.dSizeZBP = (options.nColsD + 1) * options.dPitchX
-        options.dSizeXBP = (options.nRowsD + 1) * options.dPitchY
-        options.dSizeY = options.dSizeY.astype(dtype=np.float32)
-        options.dSizeX = options.dSizeY.astype(dtype=np.float32)
-        options.dScaleX = options.dScaleX.astype(dtype=np.float32)
-        options.dScaleY = options.dScaleY.astype(dtype=np.float32)
-        options.dScaleZ = options.dScaleZ.astype(dtype=np.float32)
-    if options.projector_type == 4 or options.projector_type == 14 or options.projector_type == 54:
-        options.kerroin = (options.dx * options.dy * options.dz) / (options.dPitchX * options.dPitchY * options.sourceToDetector)
-        if options.dL == 0:
-            options.dL = options.FOVa_x / options.Nx
-        else:
-            options.dL = options.dL * (options.FOVa_x / options.Nx)
-    else:
-        options.kerroin = np.zeros(1,dtype=np.float32);
-    if ((options.projector_type == 4 or options.projector_type == 5 or options.projector_type == 14 or options.projector_type == 15 or options.projector_type == 45 
-            or options.projector_type == 54) and options.CT):
-        options.use_64bit_atomics = False
-        options.use_32bit_atomics = False
-    options.dScaleX4 = options.dScaleX4.astype(dtype=np.float32)
-    options.dScaleY4 = options.dScaleY4.astype(dtype=np.float32)
-    options.dScaleZ4 = options.dScaleZ4.astype(dtype=np.float32)

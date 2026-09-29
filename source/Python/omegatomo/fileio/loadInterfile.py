@@ -87,12 +87,18 @@ def loadInterfile(filename):
         filename = filename[:-3] + 'img'
     path = os.path.split(filename)[0] + '/'
 
+    # Apply the byte order parsed from the "imagedata byte order" header tag
+    # (machinefmt: 'l' little-endian, 'b' big-endian), matching loadInterfile.m's
+    # fread(..., machinefmt) call.
+    byteorder = '>' if machinefmt == 'b' else '<'
+    readDtype = np.dtype(type).newbyteorder(byteorder)
+
     try:
         with open(path + f_name, 'rb') as f:
-            output = np.fromfile(f, dtype=type, count=-1)
-    except FileNotFoundError: 
+            output = np.fromfile(f, dtype=readDtype, count=-1)
+    except FileNotFoundError:
         with open(filename, 'rb') as f:
-            output = np.fromfile(f, dtype=type, count=-1)
+            output = np.fromfile(f, dtype=readDtype, count=-1)
     
     try:
         output = np.reshape(output, (n_dim1, n_dim2, n_dim3, n_dim4, n_dim5), order='F')

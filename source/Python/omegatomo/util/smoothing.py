@@ -22,7 +22,30 @@ def randoms_smoothing(randoms: np.ndarray, options):
     if options.verbose > 0:
         print("Beginning randoms/scatter smoothing")
 
-    Ndx, Ndy, Ndz = 2, 2, 0
+    # The 7x7 moving-mean below is a spatial (Ndist x Nang) smoothing and is
+    # only meaningful when `randoms` genuinely has that 2-D sinogram/detector
+    # structure (e.g. a real sinogram, or index-based reconstruction fed a
+    # sinogram-shaped custom input). Pure list-mode data -- one randoms/scatter
+    # value per event, with no Ndist/Nang extent -- has no spatial neighbors to
+    # average over, so averaging consecutive entries would just mix unrelated
+    # events together. OMEGA's own listmode/useIndexBasedReconstruction setup
+    # collapses Ndist and Nang to 1 for that case (see proj.py's listmode
+    # branches), so checking the first two axes distinguishes the two cases
+    # without needing to inspect options.listmode/useIndexBasedReconstruction
+    # directly (both a raw event-list and an index-based-without-sinogram input
+    # end up with the same degenerate Ndist=Nang=1 shape). This is
+    # intentionally conservative: skip smoothing (with a warning) whenever
+    # spatial structure cannot be established, rather than risk smoothing
+    # across unrelated list-mode events.
+    randoms = np.asarray(randoms)
+    if randoms.ndim < 2 or randoms.shape[0] <= 1 or randoms.shape[1] <= 1:
+        print("Warning: randoms/scatter smoothing was requested, but the input data does not "
+              "have a detectable 2-D (Ndist x Nang) sinogram structure -- it looks like flat "
+              "list-mode/event-based data instead. Skipping smoothing for this array, since a "
+              "spatial moving-mean average is not meaningful for purely event-based data.")
+        return randoms
+
+    Ndx, Ndy, Ndz = 7, 7, 0
 
     if Ndz == 0:
         kernel = np.ones((Ndx, Ndy, 1)) / (Ndx * Ndy)

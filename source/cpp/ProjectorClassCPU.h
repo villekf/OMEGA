@@ -70,18 +70,6 @@ public:
 			param.nLayers = true;
 		param.computeSensIm = inputScalars.computeSensImag;
 		param.rings = inputScalars.rings;
-		param.x_center = inputScalars.x_center;
-		param.y_center = inputScalars.y_center;
-		param.z_center = inputScalars.z_center;
-		param.bmin = inputScalars.bmin;
-		param.bmax = inputScalars.bmax;
-		param.Vmax = inputScalars.Vmax;
-		if (param.projType == 2 || param.projType == 21 || param.projType == 12)
-			param.orthWidth = inputScalars.orthXY;
-		else if (param.projType == 3 || param.projType == 31 || param.projType == 13) {
-			param.orthWidth = inputScalars.cylRadiusProj3;
-			param.V = inputScalars.V;
-		}
 		param.epps = inputScalars.epps;
 		param.dPitchZ = w_vec.dPitchY;
 		param.nProjections = inputScalars.nProjections;

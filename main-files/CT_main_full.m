@@ -388,6 +388,16 @@ options.use_CPU = false;
 % NOTE: Projector types 1-3 should not be used as backprojectors for CT!
 options.projector_type = 4;
 
+%%% Mean subtraction for projector type 5 (FP and BP separately)
+% Projector type 5 uses integral images (summed-area tables) sampled with
+% hardware (texture) linear interpolation. Depending on the geometry (e.g.
+% detector pixels whose footprint is small compared to a voxel) the limited
+% interpolation precision of GPUs can cause noticeable errors. Subtracting
+% the per-slice (FP) or per-projection (BP) mean before computing the
+% integral image reduces these errors, at a small extra cost.
+options.meanFP = false;
+options.meanBP = false;
+
 %%% Use mask
 % The mask needs to be a binary mask (uint8 or logical) where 1 means that
 % the pixel is included while 0 means it is skipped. Separate masks can be

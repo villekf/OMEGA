@@ -38,12 +38,8 @@ else
     outputCell = false;
 end
 projType = options.projector_type;
-if projType == 1 || projType == 11 || projType == 21 || projType == 31
+if projType == 1 || projType == 11
     projType = 1;
-elseif projType == 2 || projType == 12 || projType == 22 || projType == 32
-    projType = 2;
-elseif projType == 3 || projType == 13 || projType == 33 || projType == 23
-    projType = 3;
 end
 listmodeSPECTSensitivity = options.listmode > 0 && options.compute_sensitivity_image && options.SPECT;
 if listmodeSPECTSensitivity
@@ -147,6 +143,16 @@ if (options.implementation == 4 && ~ismac) || (ismac && options.projector_type =
         end
         options.ub = options.ub + koko;
     else
+        % The CPU MEX files read the attenuation image without type conversion
+        if isfield(options, 'vaimennus') && isnumeric(options.vaimennus)
+            if options.implementation == 4 && options.useSingles
+                if ~isa(options.vaimennus, 'single')
+                    options.vaimennus = single(options.vaimennus);
+                end
+            elseif ~isa(options.vaimennus, 'double')
+                options.vaimennus = double(options.vaimennus);
+            end
+        end
         for ii = 1 : options.nMultiVolumes + 1
             if outputCell
                 if inputCell
@@ -286,7 +292,11 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
         kernel_path = strrep(kernel_path, '.cl', '');
         header_directory = strrep(kernel_path,'projectorType7','');
     elseif options.projector_type == 6
-        header_directory = '';
+        kernel_file = 'auxKernels.cl';
+        kernel_path = which(kernel_file);
+        kernel_path = strrep(kernel_path, '\', '/');
+        kernel_path = strrep(kernel_path, '.cl', '');
+        header_directory = strrep(kernel_path,'auxKernels','');
     else
         error('Invalid projector for OpenCL')
     end
@@ -325,6 +335,10 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
     if options.projector_type == 5 || options.projector_type == 15 || options.projector_type == 45
         input = reshape(input, options.nRowsD, options.nColsD, nMeas(subIter + 2) - nMeas(subIter + 1));
         [input, meanBP] = computeIntegralImage(input, options.meanBP);
+        if options.meanBP
+            % One mean per projection in this subset's measurement block
+            options.meanBPvec = single(meanBP(:));
+        end
     end
     if ~isa(input,'single')
         input = single(input);
@@ -359,7 +373,12 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
         alku = 1;
         for kk = 1 : options.nMultiVolumes + 1
             output{kk} = temp(alku : alku - 1 + prod(options.N(kk)));
-            alku = prod(options.N(kk)) + 1;
+            % Was previously "alku = prod(options.N(kk)) + 1;", which discards the
+            % offset accumulated over previous volumes instead of advancing past this
+            % volume's block. That is a no-op bug for exactly 2 volumes (nMultiVolumes
+            % == 1, since alku isn't read again after the loop's last iteration) but
+            % reads the wrong slice of temp for 3 or more volumes.
+            alku = alku + prod(options.N(kk));
             if options.use_psf
                 output{kk} = computeConvolution(output{kk}, options, options.Nx(kk), options.Ny(kk), options.Nz(kk), options.gaussK);
             end
@@ -370,7 +389,9 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
             alku = 1;
             for kk = 1 : options.nMultiVolumes + 1
                 sensIm{kk} = temp(alku : alku - 1 + prod(options.N(kk)));
-                alku = prod(options.N(kk));
+                % Same fix as the output{} split above (this variant was additionally
+                % missing the "+ 1", so it was wrong even for exactly 2 volumes).
+                alku = alku + prod(options.N(kk));
                 if options.use_psf
                     sensIm{kk} = computeConvolution(sensIm{kk}, options, options.Nx(kk), options.Ny(kk), options.Nz(kk), options.gaussK);
                 end

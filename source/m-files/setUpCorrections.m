@@ -86,6 +86,48 @@ if options.useEFOV
             warning('No scale value input for multi-resolution reconstruction. Using default value of 1/4 of the original voxel size.')
             options.multiResolutionScale = .25;
         end
+        % If the axial (or transaxial) extended FOV is smaller than one
+        % multi-resolution voxel, the corresponding side volume(s) would
+        % end up with zero thickness (NzM2/NxM2/NyM2 = 0), which crashes
+        % later on. In that case disable the EFOV direction in question and
+        % fall back to the other direction's multi-resolution branch (or to
+        % no multi-resolution volumes at all if neither direction remains).
+        if options.axialEFOV
+            NzMchk = round(options.NzOrig * options.multiResolutionScale);
+            dzMchk = options.axialFOVOrig / NzMchk;
+            NzM2chk = round((options.axial_fov - options.axialFOVOrig) / 2 / dzMchk) * 2;
+            if NzM2chk <= 0
+                warning('Axial extended FOV is smaller than one multi-resolution voxel, disabling axial EFOV.')
+                options.axialEFOV = false;
+                options.Nz = options.NzOrig;
+                options.axial_fov = options.axialFOVOrig;
+            end
+        end
+        if options.transaxialEFOV
+            NxMchk = round(options.NxOrig * options.multiResolutionScale);
+            dxMchk = options.FOVxOrig / NxMchk;
+            NxM2chk = round((options.FOVa_x - options.FOVxOrig) / 2 / dxMchk) * 2;
+            NyMchk = round(options.NyOrig * options.multiResolutionScale);
+            dyMchk = options.FOVyOrig / NyMchk;
+            NyM2chk = round((options.FOVa_y - options.FOVyOrig) / 2 / dyMchk) * 2;
+            if NxM2chk <= 0 || NyM2chk <= 0
+                warning('Transaxial extended FOV is smaller than one multi-resolution voxel, disabling transaxial EFOV.')
+                options.transaxialEFOV = false;
+                options.Nx = options.NxOrig;
+                options.Ny = options.NyOrig;
+                options.FOVa_x = options.FOVxOrig;
+                options.FOVa_y = options.FOVyOrig;
+            end
+        end
+        if ~options.axialEFOV && ~options.transaxialEFOV
+            % Neither direction has a usable extension left: skip
+            % multi-resolution volume creation entirely.
+            options.useMultiResolutionVolumes = false;
+            options.nMultiVolumes = 0;
+            options.NxPrior = options.Nx;
+            options.NyPrior = options.Ny;
+            options.NzPrior = options.Nz;
+        else
         if options.axialEFOV && options.transaxialEFOV
             options.nMultiVolumes = 6;
 
@@ -309,6 +351,7 @@ if options.useEFOV
         options.NxPrior = options.Nx(1);
         options.NyPrior = options.Ny(1);
         options.NzPrior = options.Nz(1);
+        end
     else
         % This is for non-multiresolution case
         % The idea is that priors/regularization is not computed in the

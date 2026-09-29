@@ -382,6 +382,42 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		inputScalars.timestepsUsed = inputScalars.timestep0 + 1;
 	}
 
+	// Per-slice/per-projection mean arrays for projector type 5 mean subtraction (options.meanFP/meanBP).
+	// forwardProjection.m/backwardProjection.m only set these MATLAB fields when the corresponding
+	// boolean flag (already loaded above into inputScalars.meanFP/meanBP) is true, so their presence
+	// and size are validated here rather than assuming a placeholder is always supplied.
+	const float* meanFP = nullptr;
+	const float* meanBP = nullptr;
+	if (type == 1 && inputScalars.FPType == 5 && inputScalars.meanFP) {
+		if (mxGetFieldNumber(options, "meanFPvec") < 0)
+			mexErrMsgTxt("options.meanFP is true, but options.meanFPvec (the per-slice FP means) was not provided.");
+		const mxArray* meanFPField = getField(options, 0, "meanFPvec");
+		size_t needMeanFP = 0ULL;
+		for (uint32_t ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
+			needMeanFP += static_cast<size_t>(inputScalars.Nx[ii]) + static_cast<size_t>(inputScalars.Ny[ii]);
+		if (mxGetNumberOfElements(meanFPField) != needMeanFP) {
+			mexPrintBase("options.meanFPvec has %llu elements, but %llu were expected (sum of Nx + Ny over all volumes)\n",
+				static_cast<unsigned long long>(mxGetNumberOfElements(meanFPField)), static_cast<unsigned long long>(needMeanFP));
+			mexEval();
+			mexErrMsgTxt("Invalid options.meanFPvec size.");
+		}
+		meanFP = getSingles(options, "meanFPvec");
+	}
+	if (type == 2 && inputScalars.BPType == 5 && inputScalars.meanBP) {
+		if (mxGetFieldNumber(options, "meanBPvec") < 0)
+			mexErrMsgTxt("options.meanBP is true, but options.meanBPvec (the per-projection BP means) was not provided.");
+		const mxArray* meanBPField = getField(options, 0, "meanBPvec");
+		const size_t indD0 = static_cast<size_t>(inputScalars.osa_iter0) + static_cast<size_t>(inputScalars.timestep0) * static_cast<size_t>(inputScalars.subsets);
+		const size_t needMeanBP = static_cast<size_t>(pituus[indD0 + 1] - pituus[indD0]);
+		if (mxGetNumberOfElements(meanBPField) != needMeanBP) {
+			mexPrintBase("options.meanBPvec has %llu elements, but %llu were expected (number of projections in this subset)\n",
+				static_cast<unsigned long long>(mxGetNumberOfElements(meanBPField)), static_cast<unsigned long long>(needMeanBP));
+			mexEval();
+			mexErrMsgTxt("Invalid options.meanBPvec size.");
+		}
+		meanBP = getSingles(options, "meanBPvec");
+	}
+
 	// Detect MATLAB gpuArray inputs (MATLABGPU/CUDA build only)
 	// This depends on the "type", that is whether forward or backprojection is used
 	// as well as whether host or gpuArray data is used
@@ -611,7 +647,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	if (inputScalars.atomic_32bit && (type == 2)) {
 		int32_t* output = array_ptr ? getInt32s(array_ptr, "solu") : nullptr;
 		int32_t* sensIm = sens_ptr ? getInt32s(sens_ptr, "solu") : nullptr;
-		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L
+		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L, meanFP, meanBP
 #if defined(MATLABGPU)
 			, devIO
 #endif
@@ -637,7 +673,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	else if (inputScalars.atomic_64bit && (type == 2)) {
 		int64_t* output = array_ptr ? getInt64s(array_ptr, "solu") : nullptr;
 		int64_t* sensIm = sens_ptr ? getInt64s(sens_ptr, "solu") : nullptr;
-		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L
+		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L, meanFP, meanBP
 #if defined(MATLABGPU)
 			, devIO
 #endif
@@ -663,7 +699,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	else if (inputScalars.atomic_64bit && (type == 0)) {
 		float* output = array_ptr ? getSingles(array_ptr, "solu") : nullptr;
 		int64_t* sensIm = sens_ptr ? getInt64s(sens_ptr, "solu") : nullptr;
-		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L
+		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L, meanFP, meanBP
 #if defined(MATLABGPU)
 			, devIO
 #endif
@@ -677,7 +713,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	else if (inputScalars.atomic_32bit && (type == 0)) {
 		float* output = array_ptr ? getSingles(array_ptr, "solu") : nullptr;
 		int32_t* sensIm = sens_ptr ? getInt32s(sens_ptr, "solu") : nullptr;
-		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L
+		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L, meanFP, meanBP
 #if defined(MATLABGPU)
 			, devIO
 #endif
@@ -691,7 +727,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	else {
 		float* output = array_ptr ? getSingles(array_ptr, "solu") : nullptr;
 		float* sensIm = sens_ptr ? getSingles(sens_ptr, "solu") : nullptr;
-		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L
+		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L, meanFP, meanBP
 #if defined(MATLABGPU)
 			, devIO
 #endif

@@ -77,6 +77,15 @@ typedef struct structForScalars {
 	// Set this to false to explicitly disable fastPDHG
 	// On MATLAB/Octave, you can do this just with options.fastPDHG = false;
 	bool fastPDHG = true;
+	// True only when Nt > 1 AND some sensitivity-affecting input (image-based attenuation or the
+	// multiplicative corrVector/extraCorr) genuinely differs per timestep. Computed once, early, in
+	// reconstructionAF() and consumed there plus in functions.hpp (transferControl, backprojectionType6)
+	// and subiterStep.h (computeOSEstimates) to pick vec.Summ's timestep slot: sIdx = sensPerTimestep ?
+	// timestep : 0. When false (the common case, including all Nt == 1 runs), every timestep shares the
+	// single sensitivity image computed from timestep 0 -- see reconstructionAF.h for why per-timestep
+	// slots are otherwise unnecessary (normalization and measurement-domain attenuation are single
+	// buffers shared by all timesteps).
+	bool sensPerTimestep = false;
 	int64_t Nf = 0;
 	std::vector<CTYPE3> d_Scale;
 	std::vector<CTYPE3> d_Scale4;

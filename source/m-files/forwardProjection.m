@@ -34,10 +34,6 @@ end
 projType = options.projector_type;
 if projType == 1 || (projType >= 10 && projType < 20)
     projType = 1;
-elseif projType == 2 || (projType >= 20 && projType < 30)
-    projType = 2;
-elseif projType == 3 || (projType >= 30 && projType < 40)
-    projType = 3;
 end
 if options.additionalCorrection && isempty(corr_input)
     error('Additional correction selected, but no data inserted!')
@@ -118,11 +114,11 @@ function outputFP = forwardProjectionType6(options, recApu, loopVar, koko)
 end
 
 if iscell(recApu)
-    if numel(recApu{1}) ~= options.Nx(1) * options.Ny(1) * options.Nz(1)
+    if ~isempty(recApu{1}) && numel(recApu{1}) ~= options.Nx(1) * options.Ny(1) * options.Nz(1)
         error('Input image has incorrect dimensions! Must equal to Nx*Ny*Nz!')
     end
 else
-    if numel(recApu) ~= options.Nx(1) * options.Ny(1) * options.Nz(1)
+    if ~isempty(recApu) && numel(recApu) ~= options.Nx(1) * options.Ny(1) * options.Nz(1)
         error('Input image has incorrect dimensions! Must equal to Nx*Ny*Nz!')
     end
 end
@@ -133,6 +129,16 @@ if (~ismac && (options.implementation == 4 || options.implementation == 1)) || (
         outputFP = outputFP(:);
         outputFP(outputFP < options.epps) = options.epps;
     else
+        % The CPU MEX files read the attenuation image without type conversion
+        if isfield(options, 'vaimennus') && isnumeric(options.vaimennus)
+            if options.implementation == 4 && options.useSingles
+                if ~isa(options.vaimennus, 'single')
+                    options.vaimennus = single(options.vaimennus);
+                end
+            elseif ~isa(options.vaimennus, 'double')
+                options.vaimennus = double(options.vaimennus);
+            end
+        end
         for ii = loopVar
             if ii == 1 || isscalar(loopVar)
                 if useCell
@@ -289,17 +295,45 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
         end
         if options.projector_type == 5 || options.projector_type == 51 || options.projector_type == 54
             kopio = recApu;
+            meanFPX = cell(size(recApu,1), 1);
+            meanFPY = cell(size(recApu,1), 1);
             for kk = 1 : size(recApu,1)
                 recApu{kk} = reshape(recApu{kk}, options.Nx(kk), options.Ny(kk), options.Nz(kk));
                 kopio{kk} = reshape(kopio{kk}, options.Nx(kk), options.Ny(kk), options.Nz(kk));
                 kopio{kk} = permute(kopio{kk}, [1 3 2]);
-                [recApu{kk}, meanFP] = computeIntegralImage(recApu{kk}, options.meanFP);
-                [kopio{kk}, meanFP] = computeIntegralImage(kopio{kk}, options.meanFP);
+                % Matches the single-volume branch below (permute(recApu,[2 3 1]) before
+                % computeIntegralImage): without this, recApu{kk} stays in (Nx,Ny,Nz)
+                % orientation and its integral image/mean are computed along the wrong
+                % axes instead of producing the YZ image (Ny+1,Nz+1,Nx) the C++ side
+                % (multi_gpu_reconstruction.h, d_image_os_int) expects.
+                recApu{kk} = permute(recApu{kk}, [2 3 1]);
+                [recApu{kk}, meanFPX{kk}] = computeIntegralImage(recApu{kk}, options.meanFP);
+                [kopio{kk}, meanFPY{kk}] = computeIntegralImage(kopio{kk}, options.meanFP);
             end
         end
-        options.x0 = cell2mat(recApu);
+        % cell2mat does not support gpuArray cells ("CELL2MAT does not support
+        % cell arrays containing cell arrays or objects"), so vertcat(c{:}) is
+        % used instead. This works identically to cell2mat here because every
+        % cell element is already a column vector (recApu{kk}/kopio{kk} come
+        % out of computeIntegralImage as cast(output(:), type), and
+        % meanFPBlocks{kk} is built with (:) below), and it works for both
+        % plain double/single arrays and gpuArray.
+        options.x0 = vertcat(recApu{:});
         if options.projector_type == 5 || options.projector_type == 51 || options.projector_type == 54
-            options.x0 = [options.x0;cell2mat(kopio)];
+            options.x0 = [options.x0;vertcat(kopio{:})];
+            if options.meanFP
+                % Per volume: [Nx(kk) means of the YZ integral image; Ny(kk) means of the XZ integral image],
+                % concatenated volume by volume (matches the C++ implementation-5 per-volume upload order)
+                meanFPBlocks = cell(size(recApu,1), 1);
+                for kk = 1 : size(recApu,1)
+                    meanFPBlocks{kk} = [meanFPX{kk}(:); meanFPY{kk}(:)];
+                end
+                options.meanFPvec = single(vertcat(meanFPBlocks{:}));
+                % meanFPvec is read by the MEX from the options struct via the
+                % regular (host) mxArray API, so it must be a host array even
+                % when x0 stays on the device: gatherHostFields below gathers
+                % every gpuArray field except 'x0', which covers meanFPvec.
+            end
         end
     else
         if options.use_psf
@@ -309,9 +343,13 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
             recApu = reshape(recApu, options.Nx(1), options.Ny(1), options.Nz(1));
             kopio = permute(recApu, [1 3 2]);
             recApu = permute(recApu, [2 3 1]);
-            [recApu, meanFP] = computeIntegralImage(recApu, options.meanFP);
-            [kopio, meanFP] = computeIntegralImage(kopio, options.meanFP);
+            [recApu, meanFPX] = computeIntegralImage(recApu, options.meanFP);
+            [kopio, meanFPY] = computeIntegralImage(kopio, options.meanFP);
             recApu = [recApu(:);kopio(:)];
+            if options.meanFP
+                % [Nx means of the YZ integral image (d_image_os_int); Ny means of the XZ integral image (d_image_os)]
+                options.meanFPvec = single([meanFPX(:); meanFPY(:)]);
+            end
         end
         options.x0 = recApu;
     end
@@ -352,7 +390,11 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
         kernel_path = strrep(kernel_path, '.cl', '');
         header_directory = strrep(kernel_path,'projectorType7','');
     elseif options.projector_type == 6
-        header_directory = '';
+        kernel_file = 'auxKernels.cl';
+        kernel_path = which(kernel_file);
+        kernel_path = strrep(kernel_path, '\', '/');
+        kernel_path = strrep(kernel_path, '.cl', '');
+        header_directory = strrep(kernel_path,'auxKernels','');
     else
         error('Invalid projector for OpenCL')
     end

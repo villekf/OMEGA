@@ -10,6 +10,7 @@ import numpy as np
 def Randoms_variance_reduction(Randoms, options):
     """Applies 3D fan-sum variance reduction to input randoms."""
     from omegatomo.projector.detcoord import detectorCoordinates, sinogramCoordinates2D, sinogramCoordinates3D
+    from omegatomo.util.matlabRound import matlabRound
     if options.verbose > 0:
         print("Starting Randoms variance reduction")
 
@@ -32,21 +33,34 @@ def Randoms_variance_reduction(Randoms, options):
 
     # Normalize z to start from zero
     z = z - np.min(z)
-    ring = (np.round(z / z[1, 0]) + 1).astype(np.int32)
+    ring = (matlabRound(z / z[1, 0]) + 1).astype(np.int32)
 
-    # Determine each LOR's detector index
-    for u in range(options.Ndist * options.Nang):
-        i = u % options.Ndist
-        j = u // options.Ndist
+    # Determine each LOR's detector index: for every LOR endpoint, the FIRST
+    # detector (in ascending index order) within 1e-3 of it, matching the
+    # original nested-loop `break` semantics exactly. Vectorized via
+    # broadcasting in chunks (bounds memory for large LOR/detector counts)
+    # instead of a Python-level loop over LORs and detectors.
+    def _first_detector_match(qx, qy, chunk=4000):
+        n_u = qx.shape[0]
+        out = np.zeros(n_u, dtype=np.int32)
+        tol_sq = 1e-3 ** 2
+        for start in range(0, n_u, chunk):
+            end = min(start + chunk, n_u)
+            ddx = qx[start:end, None] - detectors_x[None, :]
+            ddy = qy[start:end, None] - detectors_y[None, :]
+            mask = (ddx * ddx + ddy * ddy) < tol_sq
+            found = mask.any(axis=1)
+            # argmax returns the index of the FIRST True (ties broken by the
+            # lowest index), same as the ascending-order `break` above.
+            first_idx = np.argmax(mask, axis=1)
+            out[start:end][found] = (first_idx[found] + 1).astype(np.int32)
+        return out
 
-        for d in range(len(detectors_x)):
-            if np.linalg.norm([x[u, 0] - detectors_x[d], y[u, 0] - detectors_y[d]]) < 1e-3:
-                det_num[i, j, 0] = d + 1
-                break
-        for d in range(len(detectors_x)):
-            if np.linalg.norm([x[u, 1] - detectors_x[d], y[u, 1] - detectors_y[d]]) < 1e-3:
-                det_num[i, j, 1] = d + 1
-                break
+    # x[:, 0]/y[:, 0] are already ordered by u = i + j*Ndist (Fortran order),
+    # so reshaping the per-u match result the same way reproduces det_num
+    # exactly, without a Python loop over (i, j).
+    det_num[:, :, 0] = _first_detector_match(x[:, 0], y[:, 0]).reshape(options.Ndist, options.Nang, order='F')
+    det_num[:, :, 1] = _first_detector_match(x[:, 1], y[:, 1]).reshape(options.Ndist, options.Nang, order='F')
 
     # Vectorized construction
     testi1 = det_num[:, :, 0].flatten('F')
@@ -83,14 +97,14 @@ def Randoms_variance_reduction(Randoms, options):
     coeffs_detectors = np.zeros_like(randoms_det)
     coeffs_detectors[hits_det > 0] = mean_det / randoms_det[hits_det > 0]
 
-    for k in range(sino_amount):
-        r1 = ring[k, 0]
-        r2 = ring[k, 1]
-        for i in range(options.Ndist):
-            for j in range(options.Nang):
-                d1 = det_num[i, j, 0] + (r1 - 1) * detectors_ring - 1
-                d2 = det_num[i, j, 1] + (r2 - 1) * detectors_ring - 1
-                coeff_matrix[i, j, k] = coeffs_detectors[d1] * coeffs_detectors[d2]
+    # d1/d2 depend on (i, j) only through det_num, and on k only through
+    # ring[k, :]; build both as broadcast (Ndist, Nang, sino_amount) index
+    # arrays and gather with fancy indexing instead of the Python triple loop.
+    r1_k = ring[:sino_amount, 0].reshape(1, 1, -1)
+    r2_k = ring[:sino_amount, 1].reshape(1, 1, -1)
+    d1_idx = det_num[:, :, 0:1] + (r1_k - 1) * detectors_ring - 1
+    d2_idx = det_num[:, :, 1:2] + (r2_k - 1) * detectors_ring - 1
+    coeff_matrix[:, :, :sino_amount] = coeffs_detectors[d1_idx] * coeffs_detectors[d2_idx]
 
     New_randoms = Randoms.astype(dtype=np.float32) * coeff_matrix
 

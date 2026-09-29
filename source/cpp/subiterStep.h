@@ -101,12 +101,16 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                     vec.im_os[timestep][0] = vec.im_os[timestep][0](af::seq(inputScalars.lDimStruct.startPr[vv], af::end));
         }
 
+        // Sensitivity image slot for this timestep: 0 for a shared sensitivity image (the common case,
+        // and always for Nt == 1), or the real timestep when inputScalars.sensPerTimestep requires a
+        // separate slot per timestep (see reconstructionAF.h).
+        const uint32_t sIdx = inputScalars.sensPerTimestep ? timestep : 0u;
         for (int ii = kk; ii <= inputScalars.nMultiVolumes; ii++) {
             af::array* Sens = nullptr;
             if (compute_norm_matrix == 1u) {
-                Sens = &vec.Summ[0][ii][0];
+                Sens = &vec.Summ[sIdx][ii][0];
             } else if (compute_norm_matrix == 2u) {
-                Sens = &vec.Summ[0][ii][osa_iter];
+                Sens = &vec.Summ[sIdx][ii][osa_iter];
             }
 
             // Compute the (matrix free) algorithms

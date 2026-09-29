@@ -267,7 +267,11 @@ if options.useEFOV
         if ~isfield(options, 'eFOVLengthAxial') && isfield(options,'sourceToDetector') && isfield(options,'sourceToCRot') && options.sourceToDetector > options.sourceToCRot
             length = options.sourceToCRot + options.FOVa_x / 2;
             angle = (options.sourceToDetector / (options.nColsD * options.dPitchY / 2));
-            eFOVLengthAxial = ((length / angle - options.axial_fov / 2) / options.axial_fov);
+            % A negative value here means the detector's axial coverage is
+            % already smaller than the volume, i.e. no axial extension is
+            % needed. Clamp at zero so nAxial below cannot go negative and
+            % shrink Nz/axial_fov.
+            eFOVLengthAxial = max(0, (length / angle - options.axial_fov / 2) / options.axial_fov);
         end
         nAxial = floor(options.Nz * eFOVLengthAxial) * 2;
         options.NzOrig = options.Nz;

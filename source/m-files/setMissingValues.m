@@ -431,7 +431,7 @@ if ~isfield(options, 'gradV1')
     options.gradV1 = 0.5;
 end
 if ~isfield(options, 'gradV2')
-    options.gradV1 = 2.5;
+    options.gradV2 = 2.5;
 end
 if ~isfield(options, 'gradInitIter')
     options.gradInitIter = options.subsets;
@@ -736,6 +736,9 @@ if ~isfield(options, 'det_per_ring')
     if isfield(options, 'blocks_per_ring') && isfield(options, 'cryst_per_block')
         options.det_per_ring = options.blocks_per_ring*options.cryst_per_block(end);
     else
+        if ~isfield(options, 'Nang')
+            options.Nang = 1;
+        end
         options.det_per_ring = options.Nang * 2 * options.Ndist;
     end
 end

@@ -30,7 +30,11 @@ template <typename T, typename C>
 inline void reconstruction_multigpu(const float* z_det, const float* x, scalarStruct& inputScalars, Weighting& w_vec, RecMethods& MethodList, const int64_t* pituus,
 	const char* header_directory, const float* meas, const float* im, T* output, C* sensIm, const int type = 0, const int no_norm = 1, const float* rand = nullptr, const float* atten = nullptr,
 	const float* norm = nullptr, const float* extraCorr = nullptr, const size_t size_gauss = 0, const uint32_t* xy_index = nullptr,
-	const uint16_t* z_index = nullptr, const uint16_t* L = nullptr, const deviceIO& devIO = deviceIO()) {
+	const uint16_t* z_index = nullptr, const uint16_t* L = nullptr,
+	// Per-slice (FP, size sum(Nx[ii] + Ny[ii]) over all volumes) and per-projection (BP, size length[indD]) mean
+	// arrays for projector type 5 mean subtraction (options.meanFP/meanBP). Only non-null when the MATLAB side
+	// validated their presence/size, i.e. type == 1 with inputScalars.meanFP or type == 2 with inputScalars.meanBP
+	const float* meanFP = nullptr, const float* meanBP = nullptr, const deviceIO& devIO = deviceIO()) {
 
 	// type == 0 (implementation 3) has no gpuArray support
 	if (type == 0 && (devIO.im != nullptr || devIO.meas != nullptr || devIO.output != nullptr || devIO.sensIm != nullptr)) {
@@ -415,6 +419,21 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
     #endif
                 if (type == 1) {
                     size_t uu = 0;
+                    // FPType == 5 only: running offset into the XZ section of x0, relative to the start
+                    // of that section (imTot, the combined size of every volume's YZ block). x0 is laid
+                    // out as two sections (see forwardProjection.m): all volumes' YZ integral images
+                    // (d_image_os_int), then all volumes' XZ integral images (d_image_os). uu (above)
+                    // tracks the running offset within the YZ section for this same reason. The YZ and
+                    // XZ block sizes ((Ny[ii]+1)*(Nz[ii]+1)*Nx[ii] and (Nx[ii]+1)*(Nz[ii]+1)*Ny[ii]) differ
+                    // from each other and from im_dim[ii] (the plain Nx*Ny*Nz voxel count used to stride
+                    // the non-FPType5/useBuffers paths below), so both need their own accumulator that
+                    // advances by that volume's own block size - im_dim[ii] only coincides with the FPType
+                    // 5 block sizes for a single volume (nMultiVolumes == 0), which is why a shared
+                    // im_dim[ii]-based stride previously looked correct but silently broke multi-volume FP.
+                    size_t uuXZ = 0;
+                    // Offset into meanFP, per volume ii; meanFP is laid out as consecutive
+                    // (Nx[ii] + Ny[ii])-sized blocks, one per volume (see forwardProjection.m)
+                    size_t uuMean = 0;
                     // Projector types 4 and 5 sample the image with linear interpolation and normalized
                     // coordinates (see samplerIm/samplerForw in general_opencl_functions.h)
 					// On OpenCL/Metal the sampler is declared in the kernel and these are ignored
@@ -426,6 +445,9 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
                         region[0] = inputScalars.Nx[ii];
                         region[1] = inputScalars.Ny[ii];
                         region[2] = inputScalars.Nz[ii];
+                        // Absolute x0 offset of this volume's XZ block; only meaningful (and only used
+                        // below) when FPType == 5, computed unconditionally here since it is cheap.
+                        const size_t uuXZAbs = imTot + uuXZ;
                         if (inputScalars.FPType == 5) {
                             region[0] = inputScalars.Ny[ii] + 1;
                             region[1] = inputScalars.Nz[ii] + 1;
@@ -440,7 +462,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
                             if (devIO.im != nullptr) {
                                 status = proj.makeImageTextureFromDevice(proj.vec_opencl.d_image_os_int, proj.FPArray,
                                     static_cast<const float*>(devIO.im) + uu, region[0], region[1], region[2], texFilter, texFlags);
-                            } 
+                            }
 							else
     #endif
                             {
@@ -450,7 +472,6 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
                             region[0] = inputScalars.Nx[ii] + 1;
                             region[1] = inputScalars.Nz[ii] + 1;
                             region[2] = inputScalars.Ny[ii];
-                            uu += imTot;
                         }
 
                         if (DEBUG) {
@@ -461,7 +482,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
     #if defined(CUDA) || defined(HIP)
                             if (devIO.im != nullptr) {
                                 proj.vec_opencl.d_im = proj.adoptDeviceBuffer(const_cast<float*>(static_cast<const float*>(devIO.im) + uu));
-                            } 
+                            }
 							else
     #endif
                             {
@@ -470,18 +491,30 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
                                 status = proj.writeDeviceBuffer(proj.vec_opencl.d_im, &im[uu], sizeof(float) * inputScalars.Nx[ii] * inputScalars.Ny[ii] * inputScalars.Nz[ii]);
                                 CHECK(status, "\n", );
                             }
-                        } 
+                        }
 						else {
+                            // FPType == 5 reads its XZ block from the XZ section (uuXZAbs); every other
+                            // FPType that reaches this texture path reads the plain per-volume image at uu.
+                            const size_t readOffset = (inputScalars.FPType == 5) ? uuXZAbs : uu;
     #if defined(CUDA) || defined(HIP)
                             if (devIO.im != nullptr) {
                                 status = proj.makeImageTextureFromDevice(proj.vec_opencl.d_image_os, proj.FPArray,
-                                    static_cast<const float*>(devIO.im) + uu, region[0], region[1], region[2], texFilter, texFlags);
+                                    static_cast<const float*>(devIO.im) + readOffset, region[0], region[1], region[2], texFilter, texFlags);
                             } else
     #endif
                             {
-                                status = proj.makeImageTextureFromHost(proj.vec_opencl.d_image_os, proj.FPArray, &im[uu], region[0], region[1], region[2], texFilter, texFlags);
+                                status = proj.makeImageTextureFromHost(proj.vec_opencl.d_image_os, proj.FPArray, &im[readOffset], region[0], region[1], region[2], texFilter, texFlags);
                             }
                             CHECK(status, "\n", );
+                        }
+
+                        if (inputScalars.FPType == 5 && inputScalars.meanFP && meanFP != nullptr) {
+                            const size_t meanCount = static_cast<size_t>(inputScalars.Nx[ii]) + static_cast<size_t>(inputScalars.Ny[ii]);
+                            proj.d_meanFP = proj.makeDeviceBuffer(sizeof(float) * meanCount, CL_MEM_READ_ONLY, status);
+                            CHECK(status, "\n", );
+                            status = proj.writeDeviceBuffer(proj.d_meanFP, &meanFP[uuMean], sizeof(float) * meanCount);
+                            CHECK(status, "\n", );
+                            uuMean += meanCount;
                         }
 
                         retVal = proj.forwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, ii);
@@ -489,15 +522,26 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
                             mexPrint("Forward projection failed\n");
                             return;
                         }
-                        if (inputScalars.FPType == 5)
-                            uu -= imTot;
 
-                        uu += inputScalars.im_dim[ii];
+                        if (inputScalars.FPType == 5) {
+                            uu += static_cast<size_t>(inputScalars.Ny[ii] + 1) * static_cast<size_t>(inputScalars.Nz[ii] + 1) * static_cast<size_t>(inputScalars.Nx[ii]);
+                            uuXZ += static_cast<size_t>(inputScalars.Nx[ii] + 1) * static_cast<size_t>(inputScalars.Nz[ii] + 1) * static_cast<size_t>(inputScalars.Ny[ii]);
+                        } else {
+                            uu += inputScalars.im_dim[ii];
+                        }
                     }
                 }
-				if (type == 2 || type == 0) {
-					for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-						int uu = ii;
+                if (type == 2 || type == 0) {
+                    // meanBP is one value per projection in this subset's measurement block; it does not
+                    // depend on the (multi-resolution) volume ii, so it is uploaded once per subset/timestep
+                    if (type == 2 && inputScalars.BPType == 5 && inputScalars.meanBP && meanBP != nullptr) {
+                        proj.d_meanBP = proj.makeDeviceBuffer(sizeof(float) * static_cast<size_t>(length[indD]), CL_MEM_READ_ONLY, status);
+                        CHECK(status, "\n", );
+                        status = proj.writeDeviceBuffer(proj.d_meanBP, meanBP, sizeof(float) * static_cast<size_t>(length[indD]));
+                        CHECK(status, "\n", );
+                    }
+                    for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+                        int uu = ii;
                         if (type == 0) {
                             uu += osa_iter * (inputScalars.nMultiVolumes + 1);
                             status = proj.fillDeviceBuffer(proj.vec_opencl.d_rhs_os[ii], (C)0, sizeof(C) * inputScalars.im_dim[ii]);
