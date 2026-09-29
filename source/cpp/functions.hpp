@@ -2927,7 +2927,7 @@ inline int computeACOSEMWeight(scalarStruct& inputScalars, std::vector<int64_t>&
 	}
 	else {
 		outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[osa_iter + inputScalars.subsets * timestep]);
-		forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[osa_iter + inputScalars.subsets * timestep], subSum, proj);
+		forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[osa_iter + inputScalars.subsets * timestep], subSum, proj, 0, nullptr, timestep);
 	}
 	if (inputScalars.CT)
 		w_vec.ACOSEM_rhs = af::sum<float>(af::exp(-outputFP));
@@ -2975,7 +2975,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			af::array outputFP;
 			if (inputScalars.projector_type == 6) {
 				outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[0]);
-				forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, 0, atten);
+				forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, 0, atten, timestep);
 				outputFP.eval();
 				outputFP = af::flat(outputFP);
 			}
@@ -3031,7 +3031,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 						outputFP = af::constant(0.f, m_size * inputScalars.nBins);
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 					if (inputScalars.projector_type == 6) {
-						forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, ii, atten);
+						forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, ii, atten, timestep);
 						outputFP.eval();
 						outputFP = af::flat(outputFP);
 					}
@@ -3162,7 +3162,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 						outputFP = af::constant(0.f, m_size * inputScalars.nBins);
 				for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++) {
 					if (inputScalars.projector_type == 6) {
-						forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, ii, atten);
+						forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, ii, atten, timestep);
 						outputFP.eval();
 						outputFP = af::flat(outputFP);
 					}
@@ -3184,7 +3184,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++) {
 					proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]);
 					if (inputScalars.projector_type == 6)
-						backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, 0, 0, 0, 0, ii);
+						backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, ii);
 					else
 						status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, outputFP, 0, timestep, length, m_size, meanBP, g, proj, false, ii, pituus);
 					af::sync();
@@ -3295,7 +3295,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				af::sync();
 				if (inputScalars.projector_type == 6) {
 					outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[0]);
-					forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, 0, atten);
+					forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, 0, atten, timestep);
 					outputFP.eval();
 					outputFP = af::flat(outputFP);
 				}
@@ -3352,7 +3352,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 						outputFP = af::constant(0.f, m_size * inputScalars.nBins);
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 					if (inputScalars.projector_type == 6) {
-						forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, ii, atten);
+						forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, ii, atten, timestep);
 						outputFP.eval();
 						outputFP = af::flat(outputFP);
 					}

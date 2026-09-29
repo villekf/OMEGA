@@ -862,9 +862,13 @@ def initProjector(self):
                     # [Nt][subsets] (mirrors mps_backend.py's d_norm) instead of a flat
                     # [subsets] list that only ever captured frame 0.
                     self.d_norm = [[None] * self.subsets for _ in range(self.Nt)]
+                    # A static (single-frame) normalization is shared by every timestep, as in C++: slice it
+                    # with the frame-0 offsets. It is recognised by holding exactly frame 0's measurements
+                    # (after prepass permutation); a frame-concatenated one holds all Nt frames.
+                    normStatic = (self.Nt > 1 and np.size(self.normalization) == self.nTotMeas[self.subsets].item())
                     for timestep in range(self.Nt):
                         for i in range(self.subsets):
-                            index = timestep * self.subsets + i
+                            index = i if normStatic else timestep * self.subsets + i
                             if self.SPECT and self.normZ == self.nHeads:
                                 self.d_norm[timestep][i] = upload(self.normalization)
                             else:
@@ -1046,9 +1050,13 @@ def initProjector(self):
                 # [Nt][subsets] (mirrors mps_backend.py's d_norm) instead of a flat [subsets]
                 # list that only ever captured frame 0.
                 self.d_norm = [[None] * self.subsets for _ in range(self.Nt)]
+                # A static (single-frame) normalization is shared by every timestep, as in C++: slice it
+                # with the frame-0 offsets. It is recognised by holding exactly frame 0's measurements
+                # (after prepass permutation); a frame-concatenated one holds all Nt frames.
+                normStatic = (self.Nt > 1 and np.size(self.normalization) == self.nTotMeas[self.subsets].item())
                 for timestep in range(self.Nt):
                     for i in range(self.subsets):
-                        index = timestep * self.subsets + i
+                        index = i if normStatic else timestep * self.subsets + i
                         if self.SPECT and self.normZ == self.nHeads:
                             self.d_norm[timestep][i] = upload(self.normalization)
                         else:
