@@ -664,7 +664,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                         vec.im_os[tt][ii] = af::constant(1.f, inputScalars.im_dim[ii], af_dtype::f32);
                         if (inputScalars.projector_type == 6) {
                             oneInput = af::constant(1.f, inputScalars.nRowsD, inputScalars.nColsD, length[indD], af_dtype::f32);
-                            forwardProjectionType6(oneInput, w_vec, vec, inputScalars, length[indD], uu, proj, ii, atten);
+                            forwardProjectionType6(oneInput, w_vec, vec, inputScalars, length[indD], uu, proj, ii, atten, tt);
                             uu += length[indD];
                         }
                         else {
@@ -960,7 +960,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     vec.im_os[timestep][ii] = af::constant(1.f, inputScalars.im_dim[ii]);
                     if (inputScalars.projector_type == 6) {
                         oneInput = af::constant(1.f, inputScalars.nRowsD, inputScalars.nColsD, length[indD]);
-                        forwardProjectionType6(oneInput, w_vec, vec, inputScalars, length[indD], uu, proj, ii, atten);
+                        forwardProjectionType6(oneInput, w_vec, vec, inputScalars, length[indD], uu, proj, ii, atten, timestep);
                         uu += length[indD];
                     }
                     else {
@@ -1013,7 +1013,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 				vec.im_os[timestep][0] = af::constant(1.f, inputScalars.im_dim[0]);
 				if (inputScalars.projector_type == 6) {
 					oneInput1 = af::constant(1.f, inputScalars.nRowsD, inputScalars.nColsD, length[indD]);
-					forwardProjectionType6(oneInput1, w_vec, vec, inputScalars, length[indD], uu, proj, 0, atten);
+					forwardProjectionType6(oneInput1, w_vec, vec, inputScalars, length[indD], uu, proj, 0, atten, timestep);
 					uu += length[indD];
 				}
 				else {
@@ -1026,7 +1026,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 				vec.im_os[timestep][0] = af::array(inputScalars.im_dim[0], w_vec.RDP_ref);
 				if (inputScalars.projector_type == 6) {
 					oneInput2 = af::constant(1.f, inputScalars.nRowsD, inputScalars.nColsD, length[indD]);
-					forwardProjectionType6(oneInput2, w_vec, vec, inputScalars, length[indD], uu, proj, 0, atten);
+					forwardProjectionType6(oneInput2, w_vec, vec, inputScalars, length[indD], uu, proj, 0, atten, timestep);
 					uu += length[indD];
 				}
 				else {
@@ -1468,7 +1468,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             mexEval();
                         }
                         for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
-                            forwardProjectionType6(fProj, w_vec, vec, inputScalars, length[indD], uu, proj, ii, atten);
+                            forwardProjectionType6(fProj, w_vec, vec, inputScalars, length[indD], uu, proj, ii, atten, tt);
                         fProj.eval();
                         fProj = af::flat(fProj);
                         fProj(fProj < inputScalars.epps) = inputScalars.epps;

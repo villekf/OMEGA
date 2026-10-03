@@ -45,6 +45,18 @@ else
     partitions = options.partitions;
 end
 
+% Dynamic SPECT: the C++ side reads the detector-head index of timestep tt / subset kk
+% from DetectorVector at the offset pituus[kk + tt * subsets], i.e. it expects the vector
+% concatenated over all Nt frames (as the Python interface does). OMEGA_error_check,
+% setMissingValues and parseInputData only handle a single frame's worth
+% (nProjections values, already permuted into subset order), which would make every
+% timestep after the first read past the end of the array. The head layout is identical
+% for every frame, so replicate the (already subset-ordered) frame Nt times.
+if options.SPECT && partitions > 1 && isfield(options, 'DetectorVector') ...
+        && ~isempty(options.DetectorVector) && numel(options.DetectorVector) == options.nProjections
+    options.DetectorVector = repmat(uint32(options.DetectorVector(:)), partitions, 1);
+end
+
 % Each cell here holds one timestep's data, which may still be a multi-dimensional
 % (Ndist x Nang x NSinos(x TOF_bins)) array rather than a column vector: parseInputData
 % only columnizes per-frame cells when subsets > 1 (and subset_type > 0), so this branch

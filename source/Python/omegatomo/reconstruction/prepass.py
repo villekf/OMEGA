@@ -765,7 +765,20 @@ def parseInputs(options, mDataFound = False):
                         options.SinM = options.SinM.ravel(order='F')
                         options.SinM = options.SinM[options.index]
         if options.normalization_correction and options.corrections_during_reconstruction:
-            if options.Nt > 1 and not normalization_indexed_stack:
+            # A static normalization is a single frame (one Ndist*Nang image per projection) that
+            # is shared by every timestep (the C++ side reads it with frame-0 offsets only, and
+            # MATLAB's parseInputData permutes it once with the single subset index). It must be
+            # subset-permuted ONCE and passed on as one frame, exactly as for Nt == 1, instead of
+            # being sliced into Nt frame-sized blocks (which leaves every block after the first
+            # empty). Only the genuinely frame-concatenated form (Nt blocks) goes through the
+            # per-frame loop below. The NSinos-truncated size is also accepted because a
+            # file-loaded normalization is already cut to NSinos on load (see above).
+            normalization_frame_sizes = {int(options.Ndist) * int(options.Nang) * int(options.TotSinos)}
+            if not options.use_raw_data and options.NSinos != options.TotSinos:
+                normalization_frame_sizes.add(int(options.Ndist) * int(options.Nang) * int(options.NSinos))
+            normalization_is_static = (not normalization_indexed_stack
+                                       and int(np.size(options.normalization)) in normalization_frame_sizes)
+            if options.Nt > 1 and not normalization_indexed_stack and not normalization_is_static:
                 # Mirror the per-frame handling already used for SinM/SinDelayed/ScatterC
                 # above: options.normalization is a flat, frame-major-concatenated array (one
                 # Ndist*Nang*TotSinos block per frame -- see init.py's [Nt][subsets] device
@@ -796,12 +809,16 @@ def parseInputs(options, mDataFound = False):
                     options.normalization = options.normalization[:options.NSinos * options.Ndist * options.Nang]
                 if normalization_indexed_stack:
                     options.normalization = options.normalization.ravel(order='F').astype(dtype=np.float32)
-                elif options.subsetType >= 8:
-                    options.normalization = np.reshape(options.normalization, (options.Ndist, options.Nang, -1),order='F')
-                    options.normalization = options.normalization[:, :, options.index]
-                    options.normalization = options.normalization.ravel(order='F').astype(dtype=np.float32)
                 else:
-                    options.normalization = options.normalization[options.index]
+                    # Static normalization with Nt > 1: the subset index is identical for every
+                    # frame, so use frame 0's (options.index is a per-frame list when Nt > 1).
+                    normalization_index = options.index[0] if (options.Nt > 1 and isinstance(options.index, list)) else options.index
+                    if options.subsetType >= 8:
+                        options.normalization = np.reshape(options.normalization, (options.Ndist, options.Nang, -1),order='F')
+                        options.normalization = options.normalization[:, :, normalization_index]
+                        options.normalization = options.normalization.ravel(order='F').astype(dtype=np.float32)
+                    else:
+                        options.normalization = options.normalization[normalization_index]
         
         if options.additionalCorrection and hasattr(options, 'corrVector') and options.corrVector.size > 0:
             if options.Nt > 1:

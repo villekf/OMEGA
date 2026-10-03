@@ -1073,7 +1073,6 @@ class projectorClass:
                 self.dPitch = self.dPitchX
                 self.dPitchY = self.dPitchY
                 self.dPitchX = self.dPitchX
-                self.cr_p = self.dPitchX
             else:
                 self.dPitch = self.cr_p
                 self.dPitchY = self.cr_p
@@ -1369,7 +1368,7 @@ class projectorClass:
         if self.SPECT and math.sqrt(self.nRays) % 1 != 0:
             raise ValueError("With SPECT, options.nRays has to be a square")
         if self.SPECT and self.projector_type in [2, 12, 21, 22, 26, 62] and self.n_rays_transaxial * self.n_rays_axial > 1:
-            print('Orthogonal distance ray tracer should be used with 1 ray.')
+            raise ValueError('Multiple rays are not supported with the orthogonal distance-based projector (projector type 2) in SPECT. Use n_rays_transaxial = n_rays_axial = 1.')
         # Algorithm lists taken exactly from recNames.m's varPreCondIm/varPreCondMeas
         # (case 7/8): {MRAMLA, MBSREM, FISTA, FISTAL1, PKMA, SPS, PDHG, PDHGKL,
         # PDHGL1, PDDY, SAGA} for both image- and measurement-based preconditioning.

@@ -128,8 +128,8 @@ end
 if options.SPECT && mod(sqrt(options.nRays), 1) ~= 0
     error('With SPECT, options.nRays has to be a square')
 end
-if options.SPECT && ismember(options.projector_type, [2, 12, 21, 22]) && options.n_rays_transaxial * options.n_rays_axial > 1
-    warning('Orthogonal distance ray tracer should be used with 1 ray.')
+if options.SPECT && ismember(options.projector_type, [2, 12, 21, 22, 26, 62]) && options.n_rays_transaxial * options.n_rays_axial > 1
+    error('Multiple rays are not supported with the orthogonal distance-based projector (projector type 2) in SPECT. Use n_rays_transaxial = n_rays_axial = 1.')
 end
 if options.only_sinos && options.only_reconstructions
     error('options.only_sinos and options.only_reconstructions cannot be both set to true')
