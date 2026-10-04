@@ -182,9 +182,11 @@ void projectorType5Forward(
     const float apuV = b.y - s.y;
 #ifdef MEANDISTANCEFP
 #if defined(OPENCL)
-    const float meanKoko = CFLOAT(get_image_width(d_IImageY) * get_image_height(d_IImageY));
+    const float texWidthX = CFLOAT(get_image_width(d_IImageY));
+    const float texWidthZ = CFLOAT(get_image_height(d_IImageY));
 #else
-    const float meanKoko = CFLOAT((d_N.y + 1) * (d_N.z + 1));
+    const float texWidthX = CFLOAT(d_N.x + 1);
+    const float texWidthZ = CFLOAT(d_N.z + 1);
 #endif
 #endif
     float dyDiv2 = d_d.y / 2.f;
@@ -224,8 +226,16 @@ void projectorType5Forward(
 #endif
       float apu = C + D - A - B;
 #ifdef MEANDISTANCEFP
-      const float area2 = d_meanV[jj + d_N.x] *
-                          FABS((xLR.x - xLR.y) * (zUD.x - zUD.y)) * meanKoko;
+      // Add back mean * (footprint area in texel units), clipped to the
+      // valid SAT range [0, N] per axis so that footprints extending past
+      // the volume do not pick up spurious out-of-range area.
+      const float xLenClip =
+          FMIN(FMAX(xLR.y * texWidthX - 0.5f, 0.f), CFLOAT(d_N.x)) -
+          FMIN(FMAX(xLR.x * texWidthX - 0.5f, 0.f), CFLOAT(d_N.x));
+      float zLenClip =
+          FMIN(FMAX(zUD.y * texWidthZ - 0.5f, 0.f), CFLOAT(d_N.z)) -
+          FMIN(FMAX(zUD.x * texWidthZ - 0.5f, 0.f), CFLOAT(d_N.z));
+      float area2 = d_meanV[jj + d_N.x] * xLenClip * zLenClip;
       apu += area2;
 #endif
       temp[0] += apu * invArea;
@@ -233,6 +243,9 @@ void projectorType5Forward(
       for (int zz = 1; zz < maxZZ; zz++) {
         D = B;
         A = C;
+#ifdef MEANDISTANCEFP
+        const float zLoPrev = zUD.y;
+#endif
         zUD.y += xInterval;
 #if defined(CUDA) || defined(HIP)
         B = tex3D<float>(d_IImageY, xLR.x, zUD.y, dy);
@@ -246,7 +259,14 @@ void projectorType5Forward(
 #endif
         apu = C + D - A - B;
 #ifdef MEANDISTANCEFP
-        apu += (area2);
+        // The z-window advances by xInterval each step, so its clipped
+        // length (and hence the add-back area) must be recomputed here
+        // rather than reusing the zz=0 value.
+        zLenClip =
+            FMIN(FMAX(zUD.y * texWidthZ - 0.5f, 0.f), CFLOAT(d_N.z)) -
+            FMIN(FMAX(zLoPrev * texWidthZ - 0.5f, 0.f), CFLOAT(d_N.z));
+        area2 = d_meanV[jj + d_N.x] * xLenClip * zLenClip;
+        apu += area2;
 #endif
         temp[zz] += apu * invArea;
       }
@@ -261,10 +281,11 @@ void projectorType5Forward(
     const float apuV = b.x - s.x;
 #ifdef MEANDISTANCEFP
 #if defined(OPENCL)
-    const float meanKoko =
-        CFLOAT(get_image_width(d_IImageX) * get_image_height(d_IImageX));
+    const float texWidthY = CFLOAT(get_image_width(d_IImageX));
+    const float texWidthZ = CFLOAT(get_image_height(d_IImageX));
 #else
-    const float meanKoko = CFLOAT((d_N.x + 1) * (d_N.z + 1));
+    const float texWidthY = CFLOAT(d_N.y + 1);
+    const float texWidthZ = CFLOAT(d_N.z + 1);
 #endif
 #endif
     float dxBase = d_d.x / 2.f;
@@ -302,8 +323,16 @@ void projectorType5Forward(
 #endif
       float apu = C + D - A - B;
 #ifdef MEANDISTANCEFP
-      const float area2 = d_meanV[ii] *
-                          FABS((yLR.x - yLR.y) * (zUD.x - zUD.y)) * meanKoko;
+      // Add back mean * (footprint area in texel units), clipped to the
+      // valid SAT range [0, N] per axis so that footprints extending past
+      // the volume do not pick up spurious out-of-range area.
+      const float yLenClip =
+          FMIN(FMAX(yLR.y * texWidthY - 0.5f, 0.f), CFLOAT(d_N.y)) -
+          FMIN(FMAX(yLR.x * texWidthY - 0.5f, 0.f), CFLOAT(d_N.y));
+      float zLenClip =
+          FMIN(FMAX(zUD.y * texWidthZ - 0.5f, 0.f), CFLOAT(d_N.z)) -
+          FMIN(FMAX(zUD.x * texWidthZ - 0.5f, 0.f), CFLOAT(d_N.z));
+      float area2 = d_meanV[ii] * yLenClip * zLenClip;
       apu += (area2);
 #endif
       temp[0] += apu * invArea;
@@ -311,6 +340,9 @@ void projectorType5Forward(
       for (int zz = 1; zz < maxZZ; zz++) {
         D = B;
         A = C;
+#ifdef MEANDISTANCEFP
+        const float zLoPrev = zUD.y;
+#endif
         zUD.y += yInterval;
 #if defined(CUDA) || defined(HIP)
         B = tex3D<float>(d_IImageX, yLR.x, zUD.y, dx);
@@ -324,6 +356,13 @@ void projectorType5Forward(
 #endif
         apu = C + D - A - B;
 #ifdef MEANDISTANCEFP
+        // The z-window advances by yInterval each step, so its clipped
+        // length (and hence the add-back area) must be recomputed here
+        // rather than reusing the zz=0 value.
+        zLenClip =
+            FMIN(FMAX(zUD.y * texWidthZ - 0.5f, 0.f), CFLOAT(d_N.z)) -
+            FMIN(FMAX(zLoPrev * texWidthZ - 0.5f, 0.f), CFLOAT(d_N.z));
+        area2 = d_meanV[ii] * yLenClip * zLenClip;
         apu += (area2);
 #endif
         temp[zz] += apu * invArea;
@@ -611,7 +650,8 @@ extern "C" __global__
   const float2 indeksi = MFLOAT2(CFLOAT(d_nRows) / 2.f, CFLOAT(d_nCols) / 2.f);
 #endif
 #ifdef MEANDISTANCEBP
-  const float meanKokoBP = CFLOAT((d_nRows + 1) * (d_nCols + 1));
+  const float texWidthRow = CFLOAT(d_nRows + 1);
+  const float texWidthCol = CFLOAT(d_nCols + 1);
 #endif
   for (int kk = 0; kk < d_nProjections; kk++) {
     float3 vLU, vRD;
@@ -799,12 +839,30 @@ extern "C" __global__
     float apu = (A + D - C - B);
 #endif
 #ifdef MEANDISTANCEBP
-    const float area = d_meanV[kk] * meanKokoBP;
+    // Add-back area clipped to the valid SAT range [0, N] per axis, so
+    // that footprints extending past the detector (including rays that
+    // miss the detector entirely) do not pick up spurious out-of-range
+    // area. Ax >= Dx and Ay >= Dy are guaranteed by the swaps above.
+    const float rowLenClip =
+        FMIN(FMAX(AxN * texWidthRow - 0.5f, 0.f), CFLOAT(d_nRows)) -
+        FMIN(FMAX(DxN * texWidthRow - 0.5f, 0.f), CFLOAT(d_nRows));
+    const float colLenClip =
+        FMIN(FMAX(AyN * texWidthCol - 0.5f, 0.f), CFLOAT(d_nCols)) -
+        FMIN(FMAX(DyN * texWidthCol - 0.5f, 0.f), CFLOAT(d_nCols));
+    const float clippedArea = FABS(rowLenClip) * FABS(colLenClip);
+    if (clippedArea > 0.f) {
+#ifdef OFFSET
+      // wA==wB and wC==wD (both pairs share the same x-coordinate), so w
+      // (their average) is the same weight already applied to the whole
+      // box-sum above; reuse it here for consistency. w does not depend
+      // on z, so it is also valid for the zz-loop's add-back below.
+      apu += d_meanV[kk] * clippedArea * w;
+#else
+      apu += d_meanV[kk] * clippedArea;
+#endif
+    }
 #endif
     if (apu != 0.f) {
-#ifdef MEANDISTANCEBP
-      apu += area * FABS(AyN - DyN) * FABS(AxN - DxN);
-#endif
       temp[0] += apu * kerroin;
     }
     if (no_norm == 0u)
@@ -876,10 +934,23 @@ extern "C" __global__
 #else
       apu = (A + D - C - B);
 #endif
-      if (apu != 0.f) {
 #ifdef MEANDISTANCEBP
-        apu += area * FABS(AyN2 - DyN2) * FABS(AxN - DxN);
+      // AxN/DxN (row axis) are unchanged within this zz loop -- only the
+      // column-axis (y) bounds move per z-step -- so rowLenClip (computed
+      // above) is reused and only the column length is recomputed here.
+      const float colLenClip2 =
+          FMIN(FMAX(AyN2 * texWidthCol - 0.5f, 0.f), CFLOAT(d_nCols)) -
+          FMIN(FMAX(DyN2 * texWidthCol - 0.5f, 0.f), CFLOAT(d_nCols));
+      const float clippedArea2 = FABS(rowLenClip) * FABS(colLenClip2);
+      if (clippedArea2 > 0.f) {
+#ifdef OFFSET
+        apu += d_meanV[kk] * clippedArea2 * w;
+#else
+        apu += d_meanV[kk] * clippedArea2;
 #endif
+      }
+#endif
+      if (apu != 0.f) {
         temp[zz] += apu * kerroin;
       }
       if (no_norm == 0u)

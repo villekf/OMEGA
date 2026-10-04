@@ -1286,48 +1286,60 @@ classdef projectorClass
                 apu = 1;
                 if obj.param.subsets > 1
                     apu = obj.param.subsets;
-                    obj.param.subsets = 1;
                 end
-                if obj.param.implementation == 1
-                    if exist('OCTAVE_VERSION','builtin') == 0
-                        lor2 = [uint64(0);cumsum(uint64(obj.param.lor_a))];
-                    else
-                        lor2 = [uint64(0);cumsum(uint64(obj.param.lor_a),'native')];
+                if obj.param.implementation == 1 && apu > 1
+                    y = [];
+                    for kk = 1 : apu
+                        [m_size, xy_index_input, z_index_input, L_input, lor_input, lor2, norm_input, corr_input] = splitInput(obj.param, obj.nMeas, kk, obj.param.xy_index, obj.param.z_index, obj.param.LL, ...
+                            obj.param.lor_a, corrVec);
+                        [ykk, ~] = forwardProjection(obj.param, input, obj.x, obj.z, m_size, obj.nMeas(kk), xy_index_input, z_index_input, norm_input, corr_input, L_input, obj.param.TOF, lor2, lor_input, obj.param.summa(kk), loopVar, kk - 1);
+                        y = [y; ykk];
                     end
                 else
-                    lor2 = [];
-                end
-                if obj.param.projector_type == 6
-                    koko = obj.nMeas(end);
-                else
-                    koko = obj.param.totMeas;
-                end
-                nMeasInput = obj.nMeas(end);
-                projectionOptions = obj.param;
-                projectionOptions.sensitivityTimestep = double(obj.timestep) - 1;
-                projectionX = obj.x;
-                projectionZ = obj.z;
-                if obj.param.SPECT && obj.param.listmode && obj.param.partitions > 1 && obj.param.subsets == 1
-                    frameStart = double(obj.nMeas(obj.timestep));
-                    frameEnd = double(obj.nMeas(obj.timestep + 1));
-                    frameCount = frameEnd - frameStart;
-                    projectionX = obj.x(frameStart * 6 + 1 : frameEnd * 6);
-                    projectionZ = obj.z(frameStart * 5 + 1 : frameEnd * 5);
-                    projectionOptions.Nt = 1;
-                    projectionOptions.partitions = 1;
-                    projectionOptions.currentTimestep = 0;
-                    projectionOptions.totMeas = frameCount;
-                    projectionOptions.x = projectionX;
-                    projectionOptions.z = projectionZ;
-                    koko = frameCount;
-                    nMeasInput = int64([0; frameCount]);
-                elseif obj.param.listmode && obj.param.partitions > 1
-                    nMeasInput = obj.nMeas;
-                end
-                [y, ~] = forwardProjection(projectionOptions, input, projectionX, projectionZ, koko, nMeasInput, obj.param.xy_index, obj.param.z_index, obj.param.normalization, corrVec, obj.param.LL, obj.param.TOF, lor2, ...
-                    obj.param.lor_a, sum(obj.param.summa), loopVar, 0);
-                if apu > 1
-                    obj.param.subsets = apu;
+                    if apu > 1
+                        obj.param.subsets = 1;
+                    end
+                    if obj.param.implementation == 1
+                        if exist('OCTAVE_VERSION','builtin') == 0
+                            lor2 = [uint64(0);cumsum(uint64(obj.param.lor_a(:)))];
+                        else
+                            lor2 = [uint64(0);cumsum(uint64(obj.param.lor_a(:)),'native')];
+                        end
+                    else
+                        lor2 = [];
+                    end
+                    if obj.param.projector_type == 6
+                        koko = obj.nMeas(end);
+                    else
+                        koko = obj.param.totMeas;
+                    end
+                    nMeasInput = obj.nMeas(end);
+                    projectionOptions = obj.param;
+                    projectionOptions.sensitivityTimestep = double(obj.timestep) - 1;
+                    projectionX = obj.x;
+                    projectionZ = obj.z;
+                    if obj.param.SPECT && obj.param.listmode && obj.param.partitions > 1 && obj.param.subsets == 1
+                        frameStart = double(obj.nMeas(obj.timestep));
+                        frameEnd = double(obj.nMeas(obj.timestep + 1));
+                        frameCount = frameEnd - frameStart;
+                        projectionX = obj.x(frameStart * 6 + 1 : frameEnd * 6);
+                        projectionZ = obj.z(frameStart * 5 + 1 : frameEnd * 5);
+                        projectionOptions.Nt = 1;
+                        projectionOptions.partitions = 1;
+                        projectionOptions.currentTimestep = 0;
+                        projectionOptions.totMeas = frameCount;
+                        projectionOptions.x = projectionX;
+                        projectionOptions.z = projectionZ;
+                        koko = frameCount;
+                        nMeasInput = int64([0; frameCount]);
+                    elseif obj.param.listmode && obj.param.partitions > 1
+                        nMeasInput = obj.nMeas;
+                    end
+                    [y, ~] = forwardProjection(projectionOptions, input, projectionX, projectionZ, koko, nMeasInput, obj.param.xy_index, obj.param.z_index, obj.param.normalization, corrVec, obj.param.LL, obj.param.TOF, lor2, ...
+                        obj.param.lor_a(:), sum(obj.param.summa), loopVar, 0);
+                    if apu > 1
+                        obj.param.subsets = apu;
+                    end
                 end
             end
             if obj.param.verbose > 1
@@ -1545,13 +1557,23 @@ classdef projectorClass
                     obj.param.lor_a, corrVec);
                 [~, A] = forwardProjection(obj.param, [], obj.x, obj.z, m_size, obj.nMeas(obj.subset), xy_index_input, z_index_input, norm_input, corr_input, L_input, obj.param.TOF, lor2, lor_input, obj.param.summa(obj.subset), ii, obj.subset - 1);
             else
-                if exist('OCTAVE_VERSION','builtin') == 0
-                    lor2 = [uint64(0);cumsum(uint64(obj.param.lor_a))];
+                if obj.param.subsets > 1
+                    A = [];
+                    for kk = 1 : obj.param.subsets
+                        [m_size, xy_index_input, z_index_input, L_input, lor_input, lor2, norm_input, corr_input] = splitInput(obj.param, obj.nMeas, kk, obj.param.xy_index, obj.param.z_index, obj.param.LL, ...
+                            obj.param.lor_a, corrVec);
+                        [~, Akk] = forwardProjection(obj.param, [], obj.x, obj.z, m_size, obj.nMeas(kk), xy_index_input, z_index_input, norm_input, corr_input, L_input, obj.param.TOF, lor2, lor_input, obj.param.summa(kk), ii, kk - 1);
+                        A = [A, Akk];
+                    end
                 else
-                    lor2 = [uint64(0);cumsum(uint64(obj.param.lor_a),'native')];
+                    if exist('OCTAVE_VERSION','builtin') == 0
+                        lor2 = [uint64(0);cumsum(uint64(obj.param.lor_a(:)))];
+                    else
+                        lor2 = [uint64(0);cumsum(uint64(obj.param.lor_a(:)),'native')];
+                    end
+                    [~, A] = forwardProjection(obj.param, [], obj.x, obj.z, obj.param.totMeas, obj.nMeas(obj.subset), obj.param.xy_index, obj.param.z_index, obj.param.normalization, corrVec, obj.param.LL, obj.param.TOF, lor2, ...
+                        obj.param.lor_a(:), sum(obj.param.summa), ii, obj.subset - 1);
                 end
-                [~, A] = forwardProjection(obj.param, [], obj.x, obj.z, obj.param.totMeas, obj.nMeas(obj.subset), obj.param.xy_index, obj.param.z_index, obj.param.normalization, corrVec, obj.param.LL, obj.param.TOF, lor2, ...
-                    obj.param.lor_a, sum(obj.param.summa), ii, obj.subset - 1);
             end
             if obj.param.verbose > 0
                 disp('System matrix computed')

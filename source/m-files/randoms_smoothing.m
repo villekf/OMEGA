@@ -27,9 +27,21 @@ if options.use_raw_data
     prompt = conv2(prompt, single(g));
     randoms = double(prompt(tril(true(options.detectors,options.detectors),0)));
 else
-    padd = padding(randoms,[floor(Ndx/2) floor(Ndy/2) floor(Ndz/2)]);
-    randoms = convn(padd, g, 'valid');
-    
+    % The moving-mean above is a spatial (Ndist x Nang) smoothing and is only
+    % meaningful when randoms genuinely has that 2-D sinogram structure. Skip
+    % it (with a warning, rather than crashing or silently mixing unrelated
+    % values together) for flat/list-mode-shaped input with no real Ndist/Nang
+    % extent, mirroring the same conservative check in the Python port
+    % (smoothing.py).
+    if ndims(randoms) < 2 || size(randoms,1) <= 1 || size(randoms,2) <= 1
+        warning(['randoms/scatter smoothing was requested, but the input data does not have a ' ...
+            'detectable 2-D (Ndist x Nang) sinogram structure -- it looks like flat ' ...
+            'list-mode/event-based data instead. Skipping smoothing for this array, since a ' ...
+            'spatial moving-mean average is not meaningful for purely event-based data.']);
+    else
+        padd = padding(randoms,[floor(Ndx/2) floor(Ndy/2) floor(Ndz/2)]);
+        randoms = convn(padd, g, 'valid');
+    end
 end
 if options.verbose
     disp('Smoothing complete')

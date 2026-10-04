@@ -69,7 +69,6 @@ void improved_siddon_precomputation_phase(paramStruct<double>& param, const int6
 		const double z_diff = (detectors.zd - detectors.zs);
 		if ((y_diff == 0. && x_diff == 0. && z_diff == 0.) || (y_diff == 0. && x_diff == 0.) || std::isinf(y_diff) || std::isinf(x_diff))
 			continue;
-		bool XY = false;
 		uint16_t temp_koko = 0u;
 
 		uint32_t Np = 0u;
@@ -107,7 +106,7 @@ void improved_siddon_precomputation_phase(paramStruct<double>& param, const int6
 				if (tempk >= param.Nz || tempk < 0)
 					skip = true;
 				skip = siddon_pre_loop_2D(param.bx, param.by, x_diff, y_diff, bmaxx, bmaxy, param.dx, param.dy, param.Nx, param.Ny, tempi, tempj, txu, tyu, Np, TYPE,
-					detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, iu, ju, tx0, ty0, param.projType, XY);
+					detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, iu, ju, tx0, ty0) || skip;
 			}
 			//Detectors on different rings (e.g. oblique sinograms)
 			else if (std::fabs(y_diff) < 1e-8) {
@@ -115,18 +114,18 @@ void improved_siddon_precomputation_phase(paramStruct<double>& param, const int6
 					skip = true;
 				tempj = perpendicular_start(param.by, detectors.yd, param.dy, param.Ny);
 				skip = siddon_pre_loop_2D(param.bx, param.bz, x_diff, z_diff, bmaxx, bmaxz, param.dx, param.dz, param.Nx, param.Nz, tempi, tempk, txu, tzu, Np, TYPE,
-					detectors.zs, detectors.xs, detectors.zd, detectors.xd, tc, iu, ku, tx0, tz0, param.projType, XY);
+					detectors.zs, detectors.xs, detectors.zd, detectors.xd, tc, iu, ku, tx0, tz0) || skip;
 			}
 			else if (std::fabs(x_diff) < 1e-8) {
 				if (detectors.xd > bmaxx || detectors.xd < param.bx)
 					skip = true;
 				tempi = perpendicular_start(param.bx, detectors.xd, param.dx, param.Nx);
 				skip = siddon_pre_loop_2D(param.by, param.bz, y_diff, z_diff, bmaxy, bmaxz, param.dy, param.dz, param.Ny, param.Nz, tempj, tempk, tyu, tzu, Np, TYPE,
-					detectors.zs, detectors.ys, detectors.zd, detectors.yd, tc, ju, ku, ty0, tz0, param.projType, XY);
+					detectors.zs, detectors.ys, detectors.zd, detectors.yd, tc, ju, ku, ty0, tz0) || skip;
 			}
 			else {
 				skip = siddon_pre_loop_3D(param.bx, param.by, param.bz, x_diff, y_diff, z_diff, bmaxx, bmaxy, bmaxz, param.dx, param.dy, param.dz, param.Nx, param.Ny, param.Nz, tempi, tempj, tempk, tyu, txu, tzu,
-					Np, TYPE, detectors, tc, iu, ju, ku, tx0, ty0, tz0, param.projType, XY);
+					Np, TYPE, detectors, tc, iu, ju, ku, tx0, ty0, tz0);
 			}
 
 			if (!skip) {

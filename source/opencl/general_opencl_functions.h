@@ -2048,14 +2048,14 @@ DEVICE void perpendicular_elements(const float d_b, const float d_d1, const uint
 #endif //////////////// END MULTIRAY ////////////////
 #else //////////////// PET ////////////////
 	// Probability
-#ifdef N_RAYS //////////////// MULTIRAY ////////////////
+#if defined(ORTH)
+	float temp = FLOAT_ONE;
+#elif defined(N_RAYS) //////////////// MULTIRAY ////////////////
 #ifdef TOTLENGTH
 	float temp = FLOAT_ONE / (L * CFLOAT(N_RAYS));
 #else
 	float temp = FLOAT_ONE / (pathLength * CFLOAT(N_RAYS));
 #endif
-#elif defined(ORTH)
-	float temp = FLOAT_ONE;
 #else
 #ifdef TOTLENGTH
 	float temp = FLOAT_ONE / L;

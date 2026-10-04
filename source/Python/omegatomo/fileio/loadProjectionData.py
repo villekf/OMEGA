@@ -12,7 +12,7 @@ def loadProjectionData(ftype, fpath = '', dims = None, binning = 1, headerBytes 
     import os
     import glob
     import re
-    if dims == None:
+    if dims is None:
         dims = np.zeros(3, dtype=np.uint64)
     def atoi(text):
         return int(text) if text.isdigit() else text
@@ -81,22 +81,22 @@ def loadProjectionData(ftype, fpath = '', dims = None, binning = 1, headerBytes 
                 A = np.fromfile(file, dtype = ftype, count=nRead)
         if dims[0].item() > 0 and dims[1].item() > 0:
             if nFiles == 1:
-                A = np.reshape(A, (dims[0].item() * binning, dims[1].item() * binning, dims[2].item()))
+                A = np.reshape(A, (dims[0].item() * binning, dims[1].item() * binning, dims[2].item()), order='F')
             else:
-                A = np.reshape(A, (dims[0].item() * binning, dims[1].item() * binning))
+                A = np.reshape(A, (dims[0].item() * binning, dims[1].item() * binning), order='F')
         if dims[0].item() > 0 and dims[1].item() > 0:
             if nFiles == 1:
                 if binning > 1:
                     for kk in range(dims[2].item()):
-                        B = np.sum(np.reshape(A[:,:,kk],(binning,-1)),axis=0)
-                        B = np.squeeze(np.sum(np.reshape(B,(A.shape[0]//binning,binning,-1)),axis=1))
+                        B = np.sum(np.reshape(A[:,:,kk],(binning,-1), order='F'),axis=0)
+                        B = np.squeeze(np.sum(np.reshape(B,(A.shape[0]//binning,binning,-1), order='F'),axis=1))
                         projData[:,:,kk] = B.astype(ftype)
                 else:
                     projData = A
             else:
                 if binning > 1:
-                    B = np.sum(np.reshape(A,(binning,-1)),axis=0)
-                    B = np.squeeze(np.sum(np.reshape(B,(A.shape[0]//binning,binning,-1)),axis=1))
+                    B = np.sum(np.reshape(A,(binning,-1), order='F'),axis=0)
+                    B = np.squeeze(np.sum(np.reshape(B,(A.shape[0]//binning,binning,-1), order='F'),axis=1))
                     projData[:,:,ll] = B.astype(ftype)
                 else:
                     projData[:,:,ll] = A.astype(ftype)

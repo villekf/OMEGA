@@ -29,7 +29,8 @@ def saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, Nang, Ndist, 
         detPerRing = Nang * 2
         
     if segTable.size == 0 and span > 0 and rings > 0:
-        segTable = np.concatenate((np.array(rings*2-1,ndmin=1, dtype=np.uint32), np.arange(rings*2-1 - (span + 1), rings - ringDifference, - span*2, dtype=np.uint32)))
+        segStop = max(rings*2-1 - 2*ringDifference, rings - ringDifference)
+        segTable = np.concatenate((np.array(rings*2-1,ndmin=1, dtype=np.uint32), np.arange(rings*2-1 - (span + 1), segStop, - span*2, dtype=np.uint32)))
         segTable = np.insert(np.repeat(segTable[1:], 2), 0, segTable[0])
         
     if span == 1:

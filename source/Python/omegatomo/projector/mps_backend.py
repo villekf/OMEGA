@@ -414,6 +414,10 @@ def _upload_static_buffers(self: Any, torch: Any) -> None:
     self.d_axIndex = [[self.mps_empty_uint16] * self.subsets for _ in range(self.Nt)]
     self.d_TOFIndex = [[self.mps_empty_uint8] * self.subsets for _ in range(self.Nt)]
     self.d_L = [[self.mps_empty_uint16] * self.subsets for _ in range(self.Nt)]
+    # A static (single-frame) normalization is shared by every timestep, as in C++: slice it with
+    # the frame-0 offsets (recognised by holding exactly frame 0's measurements after prepass
+    # permutation; a frame-concatenated one holds all Nt frames).
+    normalization_static = bool(self.Nt > 1 and normalization.size == int(self.nTotMeas[self.subsets]))
     for timestep in range(self.Nt):
         for subset in range(self.subsets):
             index = timestep * self.subsets + subset
@@ -427,7 +431,13 @@ def _upload_static_buffers(self: Any, torch: Any) -> None:
                 if getattr(self, 'SPECT', False) and int(getattr(self, 'normZ', 1)) == int(getattr(self, 'nHeads', 1)):
                     self.d_norm[timestep][subset] = _mps_tensor_from_numpy(torch, normalization, np.float32)
                 else:
-                    self.d_norm[timestep][subset] = _mps_tensor_from_numpy(torch, normalization[measurement_start:measurement_stop], np.float32)
+                    if normalization_static:
+                        norm_start = self.nTotMeas[subset]
+                        norm_stop = self.nTotMeas[subset + 1]
+                    else:
+                        norm_start = measurement_start
+                        norm_stop = measurement_stop
+                    self.d_norm[timestep][subset] = _mps_tensor_from_numpy(torch, normalization[norm_start:norm_stop], np.float32)
             if corr_vector.size:
                 self.d_scatter[timestep][subset] = _mps_tensor_from_numpy(torch, corr_vector[measurement_start:measurement_stop], np.float32)
             if offset_limit.size:
@@ -574,7 +584,7 @@ def _kernel_args(
 ) -> list[Any]:
     """Bind every Metal resource slot, using typed empty buffers when inactive."""
     empty_f = self.mps_empty_float32
-    atten = self.d_attenuation_image if getattr(self, 'CTAttenuation', False) else self.d_attenuation[timestep][subset]
+    atten = self.d_attenuation_image if self.CTAttenuation else self.d_attenuation[timestep][subset]
     if (direction == 'forward' and self.FPType in (1, 2, 3)) or (direction == 'backward' and self.BPType in (1, 2, 3)):
         args = [empty_f] * 22
         args[0] = scalar_params

@@ -243,6 +243,16 @@ options.projector_type = 4
 # accuracy. Recommed values are between [0.5 1].
 options.dL = 1
 
+### Mean subtraction for projector type 5 (FP and BP separately)
+# Projector type 5 uses integral images (summed-area tables) sampled with
+# hardware (texture) linear interpolation. Depending on the geometry (e.g.
+# detector pixels whose footprint is small compared to a voxel) the limited
+# interpolation precision of GPUs can cause noticeable errors. Subtracting
+# the per-slice (FP) or per-projection (BP) mean before computing the
+# integral image reduces these errors, at a small extra cost.
+options.meanFP = False
+options.meanBP = False
+
 
 ######################### RECONSTRUCTION SETTINGS #########################
 ### Number of iterations (all reconstruction methods)

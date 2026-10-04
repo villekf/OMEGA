@@ -168,6 +168,79 @@ else
     [options.param] = loadCorrections(options.param, RandProp, ScatterProp);
 end
 
+% Non-subtracted (multiplicative) scatter correction is applied through the general
+% multiplicative correction vector (corrVector) for implementations 2/3. loadCorrections
+% sets options.param.scatter = true exactly when scatter_correction is enabled with
+% subtract_scatter false and a non-trivial ScatterC, leaving the (non-subtracted) scatter
+% estimate in options.param.ScatterC. Merge it into corrVector here, elementwise with any
+% user-supplied corrVector, BEFORE parseInputData (right below) permutes corrVector into
+% subset order: ScatterC itself is never permuted into subset order anywhere, so this is
+% the last point at which corrVector and ScatterC are guaranteed to still be in the same
+% (original, non-subset) order. parseInputData then reorders the merged corrVector exactly
+% as it reorders SinM.
+if options.param.scatter
+    hasCorrVector = options.param.additionalCorrection && isfield(options.param, 'corrVector') && numel(options.param.corrVector) > 1;
+    if hasCorrVector
+        if iscell(options.param.corrVector) || iscell(options.param.ScatterC)
+            if iscell(options.param.corrVector)
+                nCV = numel(options.param.corrVector);
+            else
+                nCV = 1;
+            end
+            if iscell(options.param.ScatterC)
+                nSC = numel(options.param.ScatterC);
+            else
+                nSC = 1;
+            end
+            nMerged = max(nCV, nSC);
+            mergedCorr = cell(nMerged, 1);
+            for kk = 1 : nMerged
+                if iscell(options.param.corrVector)
+                    cv = options.param.corrVector{min(kk, nCV)};
+                else
+                    cv = options.param.corrVector;
+                end
+                if iscell(options.param.ScatterC)
+                    sc = options.param.ScatterC{min(kk, nSC)};
+                else
+                    sc = options.param.ScatterC;
+                end
+                % Flatten both operands before the elementwise multiplication: cv and sc
+                % need not share the same shape (only the same number of elements), and a
+                % shape mismatch here would otherwise error obscurely (or silently
+                % broadcast) instead of with a clear message.
+                cv = single(full(cv(:)));
+                sc = single(full(sc(:)));
+                if numel(cv) ~= numel(sc)
+                    error('options.corrVector (size %d) and options.ScatterC (size %d) must have the same number of elements to be merged into a single multiplicative correction vector!', numel(cv), numel(sc));
+                end
+                mergedCorr{kk} = cv .* sc;
+            end
+            options.param.corrVector = mergedCorr;
+        else
+            cv = single(full(options.param.corrVector(:)));
+            sc = single(full(options.param.ScatterC(:)));
+            if numel(cv) ~= numel(sc)
+                error('options.corrVector (size %d) and options.ScatterC (size %d) must have the same number of elements to be merged into a single multiplicative correction vector!', numel(cv), numel(sc));
+            end
+            options.param.corrVector = cv .* sc;
+        end
+    else
+        options.param.corrVector = options.param.ScatterC;
+    end
+    options.param.additionalCorrection = true;
+    % The non-subtracted scatter estimate has now been folded into corrVector (applied
+    % via additionalCorrection, independent of scatter_correction/randoms_correction --
+    % see libHeader.h/mfunctions.h: inputScalars.scatter = options.additionalCorrection).
+    % Clear scatter_correction so that the SinDelayed-fallback check below (and the
+    % analogous check in computeImplementation23.m) does not think a (nonexistent, since
+    % this is the non-subtracted/multiplicative case) SinDelayed randoms/scatter array
+    % still needs to be supplied -- mirrors the pattern loadCorrections.m already uses
+    % once scatter has been absorbed elsewhere (e.g. lines ~762, 770, 987, 999, 1013,
+    % 1026, 1088).
+    options.param.scatter_correction = false;
+end
+
 options.param = parseInputData(options.param, options.index);
 
 % Remove negative values
@@ -195,8 +268,8 @@ disp('Starting image reconstruction')
 % Implementations 1, 4 and 5
 if ismember(options.param.implementation, [1, 4, 5])
 
-    if options.param.projector_type > 3 && options.param.implementation == 4 && options.param.projector_type < 6
-        error('Implementation 4 supports only projector types 1-3 and 6!')
+    if options.param.implementation == 4 && ~ismember(options.param.projector_type, [1 11 6 16 61 66])
+        error('Selected projector type is not supported with CPU implementation!')
     end
 
     if options.param.OSEM || options.param.ECOSEM || options.param.ROSEM || options.param.RBI || options.param.OSL_RBI || options.param.DRAMA || ...
@@ -675,11 +748,28 @@ elseif ismember(options.param.implementation, [2, 3])
     % if partitions == 1
     % end
     if options.param.additionalCorrection
-        if iscell(options.param.corrVector) && ~isa(options.param.corrVector{1}, 'single')
+        if iscell(options.param.corrVector)
+            % Always flatten a per-timestep cell corrVector into a single concatenated array
+            % (matching how SinM is cell2mat'd below), regardless of whether the individual
+            % cells are already single -- previously the cell2mat step was skipped whenever
+            % the cells were already single, leaving corrVector as a cell (which the MEX does
+            % not accept).
             for kk = 1 : length(options.param.corrVector)
-                options.param.corrVector{kk} = single(full(options.param.corrVector{kk}));
+                if ~isa(options.param.corrVector{kk}, 'single')
+                    options.param.corrVector{kk} = single(full(options.param.corrVector{kk}));
+                end
             end
-            options.param.corrVector = cell2mat(options.param.corrVector);
+            % Flatten each per-timestep frame to a column vector BEFORE cell2mat. When
+            % subsets == 1 (or largeDim), parseInputData never runs its per-partition
+            % reordering loop, so a cell entry can still be a multi-dimensional
+            % (Ndist x Nang x NSinos(x TOF_bins)) array here. cell2mat on a 1xNt cell of
+            % such arrays concatenates along dimension 2 instead of stacking whole frames,
+            % which interleaves frames instead of keeping each one contiguous (the C++ side
+            % offsets into corrVector by kokoNonTOF * timestep, i.e. expects frame 1 fully
+            % before frame 2). Flattening first (a no-op if already a column, as it is once
+            % parseInputData's subsets > 1 path already ran) guarantees frame-contiguous
+            % memory order regardless of which path produced the cell.
+            options.param.corrVector = cell2mat(cellfun(@(x) x(:), options.param.corrVector, 'UniformOutput', false));
         elseif ~isa(options.param.corrVector, 'single')
             options.param.corrVector = single(options.param.corrVector);
         end
@@ -695,8 +785,14 @@ elseif ismember(options.param.implementation, [2, 3])
             options.param.SinM = single(full(options.param.SinM));
         end
         if iscell(options.param.SinM)
-            inputCells = cellfun(@(x) x(:), options.param.SinM, 'UniformOutput', false);
-            options.param.SinM = vertcat(inputCells{:});
+            % See the corrVector flattening above: each per-timestep cell must be
+            % columnized before cell2mat so frames are stacked contiguously in memory
+            % (frame 1 fully, then frame 2, ...) rather than concatenated along dimension
+            % 2, which is what a 1xNt cell of multi-dimensional per-frame arrays would
+            % otherwise do (this is the subsets == 1 / largeDim path where
+            % parseInputData's per-partition loop -- which already flattens each frame --
+            % never runs).
+            options.param.SinM = cell2mat(cellfun(@(x) x(:), options.param.SinM, 'UniformOutput', false));
         end
         if ~isa(options.param.SinM, 'single') && options.param.loadTOF
             options.param.SinM = single(options.param.SinM);

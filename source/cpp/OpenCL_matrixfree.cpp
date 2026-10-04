@@ -342,7 +342,10 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	const size_t outSize2 = Ni + 1ULL;
 
 	// Output dimensions
-	const mwSize dim[5] = { static_cast<mwSize>(inputScalars.Nx[0]), static_cast<mwSize>(inputScalars.Ny[0]), static_cast<mwSize>(inputScalars.Nz[0]), static_cast<mwSize>(outSize2), static_cast<mwSize>(inputScalars.Nt) }; 
+	// Layout is [Nx,Ny,Nz,Nt,saves]: voxel fastest, then timestep, then save slot (matches the
+	// write offset (slot * Nt + timestep) * im_dim[0] used in computeOSEstimatesIter/reconstructionAF,
+	// and the Python-side reshape to (Nx,Ny,Nz,Nt,numSaves) in recomain.py).
+	const mwSize dim[5] = { static_cast<mwSize>(inputScalars.Nx[0]), static_cast<mwSize>(inputScalars.Ny[0]), static_cast<mwSize>(inputScalars.Nz[0]), static_cast<mwSize>(inputScalars.Nt), static_cast<mwSize>(outSize2) };
 
 	loadInput(inputScalars, options);
 
@@ -480,7 +483,10 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 #else
 	const uint8_t* Sino = getUint8s(Sin, "solu");
 #endif
-	const float* extraCorr = getSingles(options, "ScatterC", 0);
+	// Non-subtracted (multiplicative) scatter and any other general multiplicative correction are
+	// merged into corrVector on the MATLAB side; ScatterC is not read here (see form_data_variables
+	// in mfunctions.h for the corresponding size_scat computation).
+	const float* extraCorr = getSingles(options, "corrVector", 0);
 	const float* x0 = getSingles(options, "x0");
 	float* residual = getSingles(resPtr, "solu");
 

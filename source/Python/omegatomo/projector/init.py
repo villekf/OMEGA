@@ -12,6 +12,100 @@ def _kernel_ellipse_power(value):
     return float(np.finfo(np.float32).max) if not np.isfinite(value) else value
 
 
+def _build_kIndF(self):
+    """The constant FP kernel-argument prefix (everything set once at init
+    time, before any per-subset geometry/output arguments), shared by the
+    OpenCL/AF ``set_arg`` chain and the CuPy argument tuple -- both used to
+    hand-duplicate this exact sequence. See projfunctions._KernelArgs."""
+    from omegatomo.projector.projfunctions import _KernelArgs
+    ellipse_power_kernel = _kernel_ellipse_power(self.ellipsePower)
+    a = _KernelArgs(self)
+    if self.FPType in (1, 2, 3):
+        a.f32(self.global_factor).f32(self.epps).u32(self.nRowsD).u32(self.det_per_ring).f32(self.sigma_x)
+        if self.SPECT:
+            a.buf(self.d_rayShiftsDetector).buf(self.d_rayShiftsSource)
+            a.f32(self.coneOfResponseStdCoeffA).f32(self.coneOfResponseStdCoeffB).f32(self.coneOfResponseStdCoeffC)
+            a.vec3f(self.ellipseCenterX, self.ellipseCenterY, self.ellipseCenterZ)
+            a.vec3f(self.ellipseRadiusX, self.ellipseRadiusY, self.ellipseRadiusZ)
+            a.f32(ellipse_power_kernel)
+        a.vec2f(self.dPitchX, self.dPitchY)
+        if self.FPType in (2, 3):
+            if self.FPType == 2:
+                a.f32(self.tube_width_z)
+            else:
+                a.f32(self.tube_radius)
+            a.f32(self.bmin).f32(self.bmax).f32(self.Vmax)
+    elif self.FPType == 4:
+        a.u32(self.nRowsD).u32(self.nColsD).vec2f(self.dPitchX, self.dPitchY).f32(self.dL).f32(self.global_factor)
+    elif self.FPType == 5:
+        a.u32(self.nRowsD).u32(self.nColsD).vec2f(self.dPitchX, self.dPitchY)
+    if self.FPType in (1, 2, 3):
+        if self.TOF:
+            a.buf(self.d_TOFCenter)
+        if self.FPType in (2, 3):
+            a.buf(self.d_V)
+        a.u32(self.nColsD)
+    # NOTE (pre-existing, preserved): the CuPy source this replaces never
+    # had the "not self.CT" guard the OpenCL/AF source had here -- kept
+    # per-backend exactly as before rather than silently unified, since TOF
+    # is not currently exercised together with CT by any known config and
+    # this is not the place to change behaviour.
+    if self.FPType == 4 and self.TOF and (self.useCUDA or not self.CT):
+        a.buf(self.d_TOFCenter)
+        a.f32(self.sigma_x)
+    if (self.attenuation_correction and self.CTAttenuation and self.FPType in (1, 2, 3, 4)
+            and not (getattr(self, 'imageAttenuationIsMultiResolution', False)
+                     and self.attenuation_correction and self.CTAttenuation)):
+        if self.useImages or self.useCUDA:
+            a.img(self.d_atten)
+        else:
+            a.buf(self.d_atten)
+    return a
+
+
+def _build_kIndB(self):
+    """The constant BP kernel-argument prefix -- see _build_kIndF."""
+    from omegatomo.projector.projfunctions import _KernelArgs
+    ellipse_power_kernel = _kernel_ellipse_power(self.ellipsePower)
+    a = _KernelArgs(self)
+    if self.BPType in (4, 5):
+        a.u32(self.nRowsD).u32(self.nColsD).vec2f(self.dPitchX, self.dPitchY)
+        if self.BPType == 4 and not self.CT:
+            a.f32(self.dL).f32(self.global_factor)
+    elif self.BPType in (1, 2, 3):
+        a.f32(self.global_factor).f32(self.epps).u32(self.nRowsD).u32(self.det_per_ring).f32(self.sigma_x)
+        if self.SPECT:
+            a.buf(self.d_rayShiftsDetector).buf(self.d_rayShiftsSource)
+            a.f32(self.coneOfResponseStdCoeffA).f32(self.coneOfResponseStdCoeffB).f32(self.coneOfResponseStdCoeffC)
+            a.vec3f(self.ellipseCenterX, self.ellipseCenterY, self.ellipseCenterZ)
+            a.vec3f(self.ellipseRadiusX, self.ellipseRadiusY, self.ellipseRadiusZ)
+            a.f32(ellipse_power_kernel)
+        a.vec2f(self.dPitchX, self.dPitchY)
+        if self.BPType in (2, 3):
+            if self.BPType == 2:
+                a.f32(self.tube_width_z)
+            else:
+                a.f32(self.tube_radius)
+            a.f32(self.bmin).f32(self.bmax).f32(self.Vmax)
+    if self.BPType in (1, 2, 3):
+        if self.TOF:
+            a.buf(self.d_TOFCenter)
+        if self.BPType in (2, 3):
+            a.buf(self.d_V)
+        a.u32(self.nColsD)
+    if self.BPType == 4 and not self.CT and self.TOF:
+        a.buf(self.d_TOFCenter)
+        a.f32(self.sigma_x)
+    if (self.attenuation_correction and self.CTAttenuation and self.BPType in (1, 2, 3, 4) and not self.CT
+            and not (getattr(self, 'imageAttenuationIsMultiResolution', False)
+                     and self.attenuation_correction and self.CTAttenuation)):
+        if self.useImages or self.useCUDA:
+            a.img(self.d_atten)
+        else:
+            a.buf(self.d_atten)
+    return a
+
+
 def _coordinate_slice(self, name, timestep, subset, stride):
     """Return one frame/subset coordinate slice in kernel order."""
     frames = getattr(self, name + 'Frames', None)
@@ -189,24 +283,102 @@ def computeGeom5(x, uv, nRowsD, nColsD, dPitchY, pitch):
     geom = np.hstack((s, d3, normX, normY, crossP, upperPart)).astype(np.float32)
     return np.ascontiguousarray(geom).ravel()
 
+# ---------------------------------------------------------------------------
+# FPType/BPType table
+#
+# options.projector_type is either a single digit N (FP=BP=N) or a two-digit
+# number "FB" where F is the forward-projector type and B is the
+# backprojector type -- but not every F/B combination exists (e.g. there is
+# no FP3/BP6), so this is an explicit table, not a pure divmod. It is a
+# direct transcription of the two membership-list if/elif chains this
+# replaces; verify_fptype_bptype.py checks the two are identical (values
+# AND the two raises) over range(0, 70).
+# ---------------------------------------------------------------------------
+_FPTYPE_GROUPS = {
+    1: (1, 11, 12, 13, 14, 15, 16),
+    2: (2, 21, 22, 23, 24, 25, 26),
+    3: (3, 31, 32, 33, 34, 35),
+    4: (4, 41, 42, 43, 44, 45),
+    5: (5, 51, 52, 53, 54, 55),
+    6: (6, 61, 62, 66),
+}
+_BPTYPE_GROUPS = {
+    1: (1, 11, 21, 31, 41, 51, 61),
+    2: (2, 12, 22, 32, 42, 52, 62),
+    3: (3, 13, 23, 33, 43, 53),
+    4: (4, 14, 24, 34, 44, 54),
+    5: (5, 15, 25, 35, 45, 55),
+    6: (6, 16, 26, 66),
+}
+FPTYPE_TABLE = {pt: fp for fp, members in _FPTYPE_GROUPS.items() for pt in members}
+BPTYPE_TABLE = {pt: bp for bp, members in _BPTYPE_GROUPS.items() for pt in members}
+
+
+def _read(directory, name, encoding='utf8'):
+    """Read one OpenCL/CUDA/HIP kernel header/source file out of
+    `directory` (as returned by omegatomo.util.paths.opencl_header_dir(),
+    already ending in '/'). `encoding=None` reproduces the one call site
+    (opencl_functions_orth3D.h) that historically opened without an
+    explicit encoding."""
+    with open(directory + name, encoding=encoding) as f:
+        return f.read()
+
+
+def _cl_image(clctx, flags, imformat, shape, hostbuf):
+    """One READ_ONLY/COPY_HOST_PTR OpenCL image, hiding the pyopencl
+    VERSION branch (cl.create_image() was added as the replacement for
+    the old cl.Image() constructor call convention in newer pyopencl)."""
+    import pyopencl as cl
+    from pyopencl.version import VERSION
+    if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
+        return cl.create_image(clctx, flags, imformat, hostbuf=hostbuf, shape=shape)
+    else:
+        return cl.Image(clctx, flags, imformat, hostbuf=hostbuf, shape=shape)
+
+
+def _cupy_texture(data_c_order, shape_xyz, *, linear, normalized, uint8=False, address='clamp'):
+    """One CuPy CUDA texture (ChannelFormatDescriptor + CUDAarray +
+    ResourceDescriptor + TextureDescriptor + TextureObject), preserving
+    each call site's own filterMode/normalizedCoords/channel-format
+    choice via the linear/normalized/uint8 flags -- these are NOT the
+    same at every site (e.g. the attenuation texture's BPType==4-and-not-CT
+    branch uses filterMode=Linear while the mask textures' equivalent
+    branch uses filterMode=Point), so callers must pass their own exact
+    flags rather than relying on a default."""
+    import cupy as cp
+    if uint8:
+        chl = cp.cuda.texture.ChannelFormatDescriptor(8, 0, 0, 0, cp.cuda.runtime.cudaChannelFormatKindUnsigned)
+    else:
+        chl = cp.cuda.texture.ChannelFormatDescriptor(32, 0, 0, 0, cp.cuda.runtime.cudaChannelFormatKindFloat)
+    array = cp.cuda.texture.CUDAarray(chl, *shape_xyz)
+    array.copy_from(data_c_order)
+    res = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=array)
+    addr = (cp.cuda.runtime.cudaAddressModeClamp if address == 'clamp'
+            else cp.cuda.runtime.cudaAddressModeBorder)
+    filt = cp.cuda.runtime.cudaFilterModeLinear if linear else cp.cuda.runtime.cudaFilterModePoint
+    tdes = cp.cuda.texture.TextureDescriptor(addressModes=(addr, addr, addr),
+                                              filterMode=filt, normalizedCoords=(1 if normalized else 0))
+    return cp.cuda.texture.TextureObject(res, tdes)
+
+
 def initProjector(self):
     if self.useMetal and not self.useTorch:
         raise ValueError('The Metal/MPS projector requires useTorch=True.')
-    self.CTAttenuation = self.CT_attenuation # TODO: consistent CT_attenuation vs CTAttenuation?
-    try:
-        import arrayfire as af
-    except ModuleNotFoundError:
-        if self.useAF:
+    # CTAttenuation (the internal mirror of the user-facing CT_attenuation option) is derived once,
+    # in addProjector() (proj.py), not here -- see the comment there. addProjector() always runs
+    # before initProjector(), so self.CTAttenuation is already set by this point.
+    if self.useAF:
+        try:
+            import arrayfire as af
+        except (ImportError, OSError, RuntimeError):
             print('ArrayFire selected, but not found. Aborting.')
             return
     self.projectorInitialized = True
     import numpy as np
-    import os
     from omegatomo.reconstruction.prepass import prepassPhase
     from omegatomo.reconstruction.prepass import parseInputs
     from omegatomo.reconstruction.prepass import loadCorrections
     if self.useAF:
-        # import arrayfire as af
         if af.get_active_backend() != 'opencl' and not self.useCUDA:
             af.set_backend('opencl')
 
@@ -250,8 +422,7 @@ def initProjector(self):
                 return False
     if not self.useCUDA and not self.useMetal:
         import pyopencl as cl
-        from pyopencl.version import VERSION
-        
+
         if self.useAF:
             ctx = af.opencl.get_context(retain=True)
             self.clctx = cl.Context.from_int_ptr(ctx)
@@ -293,34 +464,12 @@ def initProjector(self):
         self.trIndex = self.trIndex.ravel('F')
         self.axIndex = self.axIndex.ravel('F')
 
-    if self.projector_type in [1, 11, 14, 15, 12, 13, 16]:
-        self.FPType = 1
-    elif self.projector_type in [2, 21, 22, 23, 24, 25, 26]:
-        self.FPType = 2
-    elif self.projector_type in [3, 31, 32, 33, 34, 35]:
-        self.FPType = 3
-    elif self.projector_type in [4, 41, 42, 43, 44, 45]:
-        self.FPType = 4
-    elif self.projector_type in [5, 51, 52, 53, 54, 55]:
-        self.FPType = 5
-    elif self.projector_type in [6, 61, 62, 66]:
-        self.FPType = 6
-    else:
+    if self.projector_type not in FPTYPE_TABLE:
         raise ValueError('Invalid forward projector!')
-    if self.projector_type in [1, 11, 21, 31, 41, 51, 61]:
-        self.BPType = 1
-    elif self.projector_type in [2, 12, 22, 32, 42, 52, 62]:
-        self.BPType = 2
-    elif self.projector_type in [3, 13, 23, 33, 43, 53]:
-        self.BPType = 3
-    elif self.projector_type in [4, 14, 24, 34, 44, 54]:
-        self.BPType = 4
-    elif self.projector_type in [5, 15, 25, 35, 45, 55]:
-        self.BPType = 5
-    elif self.projector_type in [6, 16, 26, 66]:
-        self.BPType = 6
-    else:
+    self.FPType = FPTYPE_TABLE[self.projector_type]
+    if self.projector_type not in BPTYPE_TABLE:
         raise ValueError('Invalid backprojector!')
+    self.BPType = BPTYPE_TABLE[self.projector_type]
     if (
         getattr(self, 'imageAttenuationIsMultiResolution', False)
         and self.attenuation_correction
@@ -339,6 +488,18 @@ def initProjector(self):
         if self.useImages:
             print('CuPy does not support textures on ROCm/HIP. Setting useImages to False, buffers will be used instead!')
             self.useImages = False
+    # ProjectorClass.h:979-984 forces -DUSEIMAGES (silently, no message) whenever FPType is 4 or
+    # 5 or BPType is 5 -- those kernels have no non-texture code path -- on every backend. The
+    # CuPy argument builders (_build_kIndF/_build_kIndB, `self.useImages or self.useCUDA`) also
+    # already always hand CUDA a texture for attenuation regardless of useImages. Force
+    # useImages the same way here so every useImages-gated choice (the -DUSEIMAGES compile flag
+    # below, and every image-vs-buffer argument builder) stays in agreement -- otherwise a
+    # user-requested useImages=False could compile a kernel that expects textures while Python
+    # still hands it buffers (or vice versa). Skip CuPy-on-ROCm, which cannot use textures at
+    # all and was already handled (with its own error/fallback) just above.
+    rocm_no_textures = self.useCuPy and self.useCUDA and cupyROCm()
+    if not rocm_no_textures and (self.FPType in (4, 5) or self.BPType == 5 or self.useCUDA):
+        self.useImages = True
     # if self.useAF == False and (self.FPType == 5 or self.BPType == 5):
     #     raise ValueError('Branchless distance-driven (projector type 5) can only be used with Arrayfire!')
     if (self.useAF == False and self.useCuPy == False and not self.useMetal) and self.projector_type in (6, 66):
@@ -349,33 +510,23 @@ def initProjector(self):
         raise ValueError('Hybrid projector types 16, 26, 61, and 62 are supported only by the PyTorch MPS custom-operator path!')
         
     if self.FPType != 6 or self.BPType != 6:
-        fPath = os.path.dirname( __file__ )
-        if os.path.exists(os.path.join(fPath, '..', 'util', 'usingPyPi.py')):
-            headerDir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', 'opencl')) + "/"
-        else:
-            headerDir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', '..', 'opencl')) + "/"
-        with open(headerDir + 'general_opencl_functions.h', encoding="utf8") as f:
-            hlines = f.read()
+        from omegatomo.util.paths import opencl_header_dir
+        headerDir = opencl_header_dir()
+        hlines = _read(headerDir, 'general_opencl_functions.h')
         linesFP = None
         linesBP = None
         if self.FPType in [1, 2, 3]:
-            with open(headerDir + 'projectorType123.cl', encoding="utf8") as f:
-                linesFP = f.read()
+            linesFP = _read(headerDir, 'projectorType123.cl')
         elif self.FPType in [4]:
-            with open(headerDir + 'projectorType4.cl', encoding="utf8") as f:
-                linesFP = f.read()
+            linesFP = _read(headerDir, 'projectorType4.cl')
         elif self.FPType in [5]:
-            with open(headerDir + 'projectorType5.cl', encoding="utf8") as f:
-                linesFP = f.read()
+            linesFP = _read(headerDir, 'projectorType5.cl')
         if self.BPType in [1, 2, 3]:
-            with open(headerDir + 'projectorType123.cl', encoding="utf8") as f:
-                linesBP = f.read()
+            linesBP = _read(headerDir, 'projectorType123.cl')
         elif self.BPType in [4]:
-            with open(headerDir + 'projectorType4.cl', encoding="utf8") as f:
-                linesBP = f.read()
+            linesBP = _read(headerDir, 'projectorType4.cl')
         elif self.BPType in [5]:
-            with open(headerDir + 'projectorType5.cl', encoding="utf8") as f:
-                linesBP = f.read()
+            linesBP = _read(headerDir, 'projectorType5.cl')
         frame_count = int(getattr(self, 'Nt', 1))
         globalSize = [[None] * self.subsets for _ in range(frame_count)]
         # self.mSize = [None] * self.subsets
@@ -490,8 +641,7 @@ def initProjector(self):
                 bOpt += ('-DCRYSTXY',)
             if self.orthAxial:
                 bOpt += ('-DCRYSTZ',)
-            with open(headerDir + 'opencl_functions_orth3D.h') as f:
-                hlines2 = f.read()
+            hlines2 = _read(headerDir, 'opencl_functions_orth3D.h', encoding=None)
             if self.FPType in [2, 3]:
                 linesFP = hlines + hlines2 + linesFP
             elif linesFP is not None:
@@ -698,8 +848,13 @@ def initProjector(self):
             if self.useCuPy:
                 # if self.FPType == 5:
                 #     raise ValueError('Not yet supported')
+                # Backend upload adapter (Stage 1: plain host->device array
+                # upload only; image-vs-texture resources go through
+                # _cl_image/_cupy_texture above instead, since the CuPy and
+                # OpenCL image APIs differ too much to share one call).
+                upload = cp.asarray
                 self.d_Sens = cp.empty(shape=(1,1), dtype=cp.float32)
-                _initialize_coordinate_buffers(self, lambda value: cp.asarray(value))
+                _initialize_coordinate_buffers(self, upload)
                 # Precomputed per-projection geometry for the BDD backprojection (see -DGEOM5 in projectorType5.cl)
                 if self.BPType == 5 and self.CT and self.listmode == 0:
                     self.d_geom5 = [[None] * self.subsets for _ in range(self.Nt)]
@@ -714,11 +869,13 @@ def initProjector(self):
                                 self.dPitchY,
                                 self.pitch,
                             )
-                            self.d_geom5[timestep][subset] = cp.asarray(geom)
+                            self.d_geom5[timestep][subset] = upload(geom)
                 if (self.attenuation_correction and not self.CTAttenuation):
-                    self.d_atten = [None] * self.subsets
-                    for i in range(self.subsets):
-                        self.d_atten[i] = cp.asarray(self.vaimennus[self.nTotMeas[i].item() : self.nTotMeas[i + 1].item()])
+                    self.d_atten = [[None] * self.subsets for _ in range(self.Nt)]
+                    for timestep in range(self.Nt):
+                        for i in range(self.subsets):
+                            index = timestep * self.subsets + i
+                            self.d_atten[timestep][i] = upload(self.vaimennus[self.nTotMeas[index].item() : self.nTotMeas[index + 1].item()])
                 elif (getattr(self, 'imageAttenuationIsMultiResolution', False)
                         and self.attenuation_correction and self.CTAttenuation):
                     upload_image = None
@@ -745,32 +902,23 @@ def initProjector(self):
                     )
                 elif (self.attenuation_correction and self.CTAttenuation):
                     if not self.useImages:
-                        self.d_atten = cp.asarray(self.vaimennus)
+                        self.d_atten = upload(self.vaimennus)
                     else:
-                        chl = cp.cuda.texture.ChannelFormatDescriptor(32,0,0,0, cp.cuda.runtime.cudaChannelFormatKindFloat)
-                        array = cp.cuda.texture.CUDAarray(chl, self.Nx[0].item(), self.Ny[0].item(), self.Nz[0].item())
-                        array.copy_from(self.vaimennus.reshape((self.Nz[0].item(), self.Ny[0].item(), self.Nx[0].item())))
-                        res = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=array)
-                        if self.BPType == 4 and not self.CT:
-                            tdes= cp.cuda.texture.TextureDescriptor(addressModes=(cp.cuda.runtime.cudaAddressModeClamp, cp.cuda.runtime.cudaAddressModeClamp,cp.cuda.runtime.cudaAddressModeClamp), 
-                                                                    filterMode=cp.cuda.runtime.cudaFilterModeLinear, normalizedCoords=1)
-                        else:
-                            tdes= cp.cuda.texture.TextureDescriptor(addressModes=(cp.cuda.runtime.cudaAddressModeClamp, cp.cuda.runtime.cudaAddressModeClamp,cp.cuda.runtime.cudaAddressModeClamp), 
-                                                                    filterMode=cp.cuda.runtime.cudaFilterModePoint, normalizedCoords=0)
-                        self.d_atten = cp.cuda.texture.TextureObject(res, tdes)
+                        linear_norm = (self.BPType == 4 and not self.CT)
+                        self.d_atten = _cupy_texture(
+                            self.vaimennus.reshape((self.Nz[0].item(), self.Ny[0].item(), self.Nx[0].item())),
+                            (self.Nx[0].item(), self.Ny[0].item(), self.Nz[0].item()),
+                            linear=linear_norm, normalized=linear_norm)
                 if self.useMaskFP:
                     if not self.useImages:
-                        self.d_maskFP = cp.asarray(self.maskFP)
+                        self.d_maskFP = upload(self.maskFP)
                     else:
-                        chl = cp.cuda.texture.ChannelFormatDescriptor(8,0,0,0, cp.cuda.runtime.cudaChannelFormatKindUnsigned)
                         self.maskFP = self.maskFP.ravel('F')
                         if self.SPECT and self.maskFPZ > 1 and self.maskFPZ == self.nHeads:
-                            array = cp.cuda.texture.CUDAarray(chl, self.nRowsD, self.nColsD, self.nHeads)
-                            array.copy_from(self.maskFP.reshape((self.nHeads, self.nColsD, self.nRowsD)))
-                            res = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=array)
-                            tdes= cp.cuda.texture.TextureDescriptor(addressModes=(cp.cuda.runtime.cudaAddressModeClamp, cp.cuda.runtime.cudaAddressModeClamp,cp.cuda.runtime.cudaAddressModeClamp),
-                                                                    filterMode=cp.cuda.runtime.cudaFilterModePoint, normalizedCoords=0)
-                            self.d_maskFP = cp.cuda.texture.TextureObject(res, tdes)
+                            self.d_maskFP = _cupy_texture(
+                                self.maskFP.reshape((self.nHeads, self.nColsD, self.nRowsD)),
+                                (self.nRowsD, self.nColsD, self.nHeads),
+                                linear=False, normalized=False, uint8=True)
                         elif self.maskFPZ > 1:
                             self.d_maskFP = [None] * self.subsets
                             # maskFP has already been reordered into subset-contiguous projection
@@ -785,76 +933,80 @@ def initProjector(self):
                                 start = int(offsets[i])
                                 stop = int(offsets[i + 1])
                                 depth = stop - start
-                                array = cp.cuda.texture.CUDAarray(chl, self.nRowsD, self.nColsD, depth)
                                 subMask = np.ascontiguousarray(np.transpose(maskFP3[:, :, start:stop], (2, 1, 0)))
-                                array.copy_from(subMask)
-                                res = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=array)
-                                tdes= cp.cuda.texture.TextureDescriptor(addressModes=(cp.cuda.runtime.cudaAddressModeClamp, cp.cuda.runtime.cudaAddressModeClamp,cp.cuda.runtime.cudaAddressModeClamp),
-                                                                        filterMode=cp.cuda.runtime.cudaFilterModePoint, normalizedCoords=0)
-                                self.d_maskFP[i] = cp.cuda.texture.TextureObject(res, tdes)
+                                self.d_maskFP[i] = _cupy_texture(
+                                    subMask, (self.nRowsD, self.nColsD, depth),
+                                    linear=False, normalized=False, uint8=True)
                         else:
-                            array = cp.cuda.texture.CUDAarray(chl, self.nRowsD, self.nColsD)
-                            array.copy_from(self.maskFP.reshape((self.nColsD, self.nRowsD)))
-                            res = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=array)
-                            tdes= cp.cuda.texture.TextureDescriptor(addressModes=(cp.cuda.runtime.cudaAddressModeClamp, cp.cuda.runtime.cudaAddressModeClamp,cp.cuda.runtime.cudaAddressModeClamp), 
-                                                                    filterMode=cp.cuda.runtime.cudaFilterModePoint, normalizedCoords=0)
-                            self.d_maskFP = cp.cuda.texture.TextureObject(res, tdes)
+                            self.d_maskFP = _cupy_texture(
+                                self.maskFP.reshape((self.nColsD, self.nRowsD)),
+                                (self.nRowsD, self.nColsD),
+                                linear=False, normalized=False, uint8=True)
                 if self.useMaskBP:
                     if not self.useImages:
-                        self.d_maskBP = cp.asarray(self.maskBP)
+                        self.d_maskBP = upload(self.maskBP)
                     else:
-                        chl = cp.cuda.texture.ChannelFormatDescriptor(8,0,0,0, cp.cuda.runtime.cudaChannelFormatKindUnsigned)
                         self.maskBP = self.maskBP.ravel('F')
+                        normalized_bp = (self.BPType == 4 and not self.CT)
                         if self.maskBPZ > 1:
-                            array = cp.cuda.texture.CUDAarray(chl, self.Nx[0].item(), self.Ny[0].item(), self.maskBPZ)
-                            array.copy_from(self.maskBP.reshape((self.maskBPZ, self.Ny[0].item(), self.Nx[0].item())))
+                            self.d_maskBP = _cupy_texture(
+                                self.maskBP.reshape((self.maskBPZ, self.Ny[0].item(), self.Nx[0].item())),
+                                (self.Nx[0].item(), self.Ny[0].item(), self.maskBPZ),
+                                linear=False, normalized=normalized_bp, uint8=True)
                         else:
-                            array = cp.cuda.texture.CUDAarray(chl, self.Nx[0].item(), self.Ny[0].item())
-                            array.copy_from(self.maskBP.reshape((self.Ny[0].item(), self.Nx[0].item())))
-                        res = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=array)
-                        if self.BPType == 4 and not self.CT:
-                            tdes= cp.cuda.texture.TextureDescriptor(addressModes=(cp.cuda.runtime.cudaAddressModeClamp, cp.cuda.runtime.cudaAddressModeClamp,cp.cuda.runtime.cudaAddressModeClamp), 
-                                                                    filterMode=cp.cuda.runtime.cudaFilterModePoint, normalizedCoords=1)
-                        else:
-                            tdes= cp.cuda.texture.TextureDescriptor(addressModes=(cp.cuda.runtime.cudaAddressModeClamp, cp.cuda.runtime.cudaAddressModeClamp,cp.cuda.runtime.cudaAddressModeClamp), 
-                                                                    filterMode=cp.cuda.runtime.cudaFilterModePoint, normalizedCoords=0)
-                        self.d_maskBP = cp.cuda.texture.TextureObject(res, tdes)
+                            self.d_maskBP = _cupy_texture(
+                                self.maskBP.reshape((self.Ny[0].item(), self.Nx[0].item())),
+                                (self.Nx[0].item(), self.Ny[0].item()),
+                                linear=False, normalized=normalized_bp, uint8=True)
                 if self.TOF:
-                    self.d_TOFCenter = cp.asarray(self.TOFCenter)
-                _initialize_detector_vector_buffers(self, lambda value: cp.asarray(value))
+                    self.d_TOFCenter = upload(self.TOFCenter)
+                _initialize_detector_vector_buffers(self, upload)
                 if self.SPECT:
-                    self.d_rayShiftsDetector = cp.asarray(self.rayShiftsDetector)
-                    self.d_rayShiftsSource = cp.asarray(self.rayShiftsSource)
+                    self.d_rayShiftsDetector = upload(self.rayShiftsDetector)
+                    self.d_rayShiftsSource = upload(self.rayShiftsSource)
                 if (self.BPType == 2 or self.BPType == 3 or self.FPType == 2 or self.FPType == 3):
-                    self.d_V = cp.asarray(self.V)
+                    self.d_V = upload(self.V)
                 if (self.normalization_correction):
-                    self.d_norm = [None] * self.subsets
-                    for i in range(self.subsets):
-                        if self.SPECT and self.normZ == self.nHeads:
-                            self.d_norm[i] = cp.asarray(self.normalization)
-                        else:
-                            self.d_norm[i] = cp.asarray(self.normalization[self.nTotMeas[i].item() : self.nTotMeas[i + 1].item()])
+                    # Normalization is per-timestep in C++/MATLAB for dynamic data; build
+                    # [Nt][subsets] (mirrors mps_backend.py's d_norm) instead of a flat
+                    # [subsets] list that only ever captured frame 0.
+                    self.d_norm = [[None] * self.subsets for _ in range(self.Nt)]
+                    # A static (single-frame) normalization is shared by every timestep, as in C++: slice it
+                    # with the frame-0 offsets. It is recognised by holding exactly frame 0's measurements
+                    # (after prepass permutation); a frame-concatenated one holds all Nt frames.
+                    normStatic = (self.Nt > 1 and np.size(self.normalization) == self.nTotMeas[self.subsets].item())
+                    for timestep in range(self.Nt):
+                        for i in range(self.subsets):
+                            index = i if normStatic else timestep * self.subsets + i
+                            if self.SPECT and self.normZ == self.nHeads:
+                                self.d_norm[timestep][i] = upload(self.normalization)
+                            else:
+                                self.d_norm[timestep][i] = upload(self.normalization[self.nTotMeas[index].item() : self.nTotMeas[index + 1].item()])
                 if (self.additionalCorrection):
-                    self.d_corr = [None] * self.subsets
-                    for i in range(self.subsets):
-                        self.d_corr[i] = cp.asarray(self.corrVector[self.nTotMeas[i].item() : self.nTotMeas[i + 1].item()])
+                    # Additional corrections (randoms/scatter) are per-timestep in C++/MATLAB
+                    # for dynamic data; build [Nt][subsets] (mirrors mps_backend.py's d_scatter).
+                    self.d_corr = [[None] * self.subsets for _ in range(self.Nt)]
+                    for timestep in range(self.Nt):
+                        for i in range(self.subsets):
+                            index = timestep * self.subsets + i
+                            self.d_corr[timestep][i] = upload(self.corrVector[self.nTotMeas[index].item() : self.nTotMeas[index + 1].item()])
                 if (self.listmode != 1 and ((not self.CT and not self.SPECT and not self.PET) and (self.subsets > 1 and (self.subsetType == 3 or self.subsetType == 6 or self.subsetType == 7)))):
                     self.d_zindex = [None] * self.subsets
                     self.d_xyindex = [None] * self.subsets
                     for i in range(self.subsets):
-                        self.d_xyindex[i] = cp.asarray(self.xy_index[self.nMeas[i] : self.nMeas[i + 1]])
-                        self.d_zindex[i] = cp.asarray(self.z_index[self.nMeas[i] : self.nMeas[i + 1]])
+                        self.d_xyindex[i] = upload(self.xy_index[self.nMeas[i] : self.nMeas[i + 1]])
+                        self.d_zindex[i] = upload(self.z_index[self.nMeas[i] : self.nMeas[i + 1]])
                 if (self.listmode > 0 and self.useIndexBasedReconstruction):
                     self.d_trIndex = [None] * self.subsets
                     self.d_axIndex = [None] * self.subsets
                     for i in range(self.subsets):
                         if self.loadTOF:
-                            self.d_trIndex[i] = cp.asarray(self.trIndex[self.nMeas[i] * 2 : self.nMeas[i + 1] * 2])
-                            self.d_axIndex[i] = cp.asarray(self.axIndex[self.nMeas[i] * 2 : self.nMeas[i + 1] * 2])
+                            self.d_trIndex[i] = upload(self.trIndex[self.nMeas[i] * 2 : self.nMeas[i + 1] * 2])
+                            self.d_axIndex[i] = upload(self.axIndex[self.nMeas[i] * 2 : self.nMeas[i + 1] * 2])
                 if self.OffsetLimit.size > 0 and ((self.BPType == 4 and self.CT) or self.BPType == 5):
                     self.d_T = [None] * self.subsets
                     for i in range(self.subsets):
-                        self.d_T[i] = cp.asarray(self.OffsetLimit[self.nMeas[i].item() : self.nMeas[i + 1].item()])
+                        self.d_T[i] = upload(self.OffsetLimit[self.nMeas[i].item() : self.nMeas[i + 1].item()])
                 mod = cp.RawModule(code=linesFP, options=bOptFP)
                 # import sys
                 # mod.compile(log_stream=sys.stdout)
@@ -875,86 +1027,20 @@ def initProjector(self):
                     self.knlB = mod.get_function('projectorType5Backward')
                 
                 if self.use_psf:
-                    with open(headerDir + 'auxKernels.cl', encoding="utf8") as f:
-                        lines = f.read()
+                    lines = _read(headerDir, 'auxKernels.cl')
                     lines = hlines + lines
                     bOpt += ('-DCAST=float','-DPSF','-DLOCAL_SIZE=' + str(localSize[0]),'-DLOCAL_SIZE2=' + str(localSize[1]),)
                     mod = cp.RawModule(code=lines, options=bOpt)
                     self.knlPSF = mod.get_function('Convolution3D_f')
-                    self.d_gaussPSF = cp.asarray(self.gaussK.ravel('F'))
+                    self.d_gaussPSF = upload(self.gaussK.ravel('F'))
 
                 # ``inf`` is the public box-support value.  Kernels receive a
                 # finite sentinel instead on every backend, because ``isinf``
-                # is unreliable under fast-math.
-                ellipse_power_kernel = _kernel_ellipse_power(self.ellipsePower)
+                # is unreliable under fast-math.  (Consumed inside
+                # _build_kIndF/_build_kIndB below.)
 
-                if self.FPType in [1, 2, 3]:
-                    self.kIndF = (cp.float32(self.global_factor), cp.float32(self.epps), cp.uint32(self.nRowsD), cp.uint32(self.det_per_ring), cp.float32(self.sigma_x),)
-                    if self.SPECT:
-                        self.kIndF += (self.d_rayShiftsDetector, self.d_rayShiftsSource, cp.float32(self.coneOfResponseStdCoeffA), cp.float32(self.coneOfResponseStdCoeffB), cp.float32(self.coneOfResponseStdCoeffC), cp.float32(self.ellipseCenterX), cp.float32(self.ellipseCenterY), cp.float32(self.ellipseCenterZ), cp.float32(self.ellipseRadiusX), cp.float32(self.ellipseRadiusY), cp.float32(self.ellipseRadiusZ), cp.float32(ellipse_power_kernel),)
-                    self.kIndF += (cp.float32(self.dPitchX),cp.float32(self.dPitchY),)
-                elif self.FPType == 4:
-                    self.kIndF = (cp.uint32(self.nRowsD), cp.uint32(self.nColsD), cp.float32(self.dPitchX),cp.float32(self.dPitchY),cp.float32(self.dL),cp.float32(self.global_factor),)
-                elif self.FPType == 5:
-                    self.kIndF = (cp.uint32(self.nRowsD), cp.uint32(self.nColsD), cp.float32(self.dPitchX),cp.float32(self.dPitchY),)
-                if self.FPType in [2,3]:
-                    if self.FPType == 2:
-                        self.kIndF += (cp.float32(self.tube_width_z),)
-                    else:
-                        self.kIndF += (cp.float32(self.tube_radius),)
-                    self.kIndF += (cp.float32(self.bmin), cp.float32(self.bmax), cp.float32(self.Vmax),)
-                if self.FPType in [1, 2, 3]:
-                    if self.TOF:
-                        self.kIndF += (self.d_TOFCenter, )
-                    if self.FPType in [2, 3]:
-                        self.kIndF += (self.d_V, )
-                    self.kIndF += (cp.uint32(self.nColsD),)
-                if self.FPType == 4 and self.TOF:
-                    self.kIndF += (self.d_TOFCenter, )
-                    self.kIndF += (cp.float32(self.sigma_x), )
-                if (self.attenuation_correction and self.CTAttenuation
-                        and not (getattr(self, 'imageAttenuationIsMultiResolution', False)
-                                 and self.attenuation_correction and self.CTAttenuation)
-                        and self.FPType in [1, 2, 3, 4]):
-                    self.kIndF += (self.d_atten,)
-                    
-                
-                if self.BPType == 4 or self.BPType == 5:
-                    self.kIndB = (cp.uint32(self.nRowsD), cp.uint32(self.nColsD), cp.float32(self.dPitchX),cp.float32(self.dPitchY),)
-                if self.BPType == 4 and not self.CT:
-                    self.kIndB += (cp.float32(self.dL),)
-                    self.kIndB += (cp.float32(self.global_factor),)
-                if self.BPType in [1, 2, 3]:
-                    self.kIndB = (cp.float32(self.global_factor), cp.float32(self.epps), cp.uint32(self.nRowsD), cp.uint32(self.det_per_ring), cp.float32(self.sigma_x),)
-                    if self.SPECT:
-                        self.kIndB += (self.d_rayShiftsDetector, self.d_rayShiftsSource, cp.float32(self.coneOfResponseStdCoeffA), cp.float32(self.coneOfResponseStdCoeffB), cp.float32(self.coneOfResponseStdCoeffC), cp.float32(self.ellipseCenterX), cp.float32(self.ellipseCenterY), cp.float32(self.ellipseCenterZ), cp.float32(self.ellipseRadiusX), cp.float32(self.ellipseRadiusY), cp.float32(self.ellipseRadiusZ), cp.float32(ellipse_power_kernel),)
-                    self.kIndB += (cp.float32(self.dPitchX),cp.float32(self.dPitchY),)
-                    if self.BPType in [2, 3]:
-                        if self.BPType == 2:
-                            self.kIndB  += (cp.float32(self.tube_width_z),)
-                        else:
-                            self.kIndB  += (cp.float32(self.tube_radius),)
-                        self.kIndB += (cp.float32(self.bmin),)
-                        self.kIndB += (cp.float32(self.bmax),)
-                        self.kIndB += (cp.float32(self.Vmax),)
-                    # if self.useMaskFP:
-                        # self.kIndB += (self.d_maskFP,)
-                # if self.useMaskBP:
-                    # self.kIndB += (self.d_maskBP,)
-                if self.BPType in [1, 2, 3]:
-                    if self.TOF:
-                        self.kIndB += (self.d_TOFCenter,)
-                    if self.BPType in [2, 3]:
-                        self.kIndB += (self.d_V,)
-                    self.kIndB += (cp.uint32(self.nColsD),)
-                if self.BPType == 4 and not self.CT and self.TOF:
-                    self.kIndB += (self.d_TOFCenter,)
-                    self.kIndB += (cp.float32(self.sigma_x),)
-                if (self.attenuation_correction and self.CTAttenuation
-                        and not (getattr(self, 'imageAttenuationIsMultiResolution', False)
-                                 and self.attenuation_correction and self.CTAttenuation)
-                        and self.BPType in [1, 2, 3, 4] and not self.CT):
-                    self.kIndB += (self.d_atten,)
+                self.kIndF = _build_kIndF(self).as_tuple()
+                self.kIndB = _build_kIndB(self).as_tuple()
             else:
                 raise ValueError('Unsupported selection. Note that PyCUDA is no longer supported!')
     else:
@@ -988,10 +1074,10 @@ def initProjector(self):
                         if k == 0:
                             self.dSizeBP = cl.cltypes.make_float2(self.dSizeXBP, self.dSizeZBP)
             self.d_dPitch = cl.cltypes.make_float2(self.dPitchX, self.dPitchY)
-            _initialize_coordinate_buffers(
-                self,
-                lambda value: cl.array.to_device(self.queue, value),
-            )
+            # Backend upload adapter (see the matching CuPy `upload` above).
+            def upload(value):
+                return cl.array.to_device(self.queue, value)
+            _initialize_coordinate_buffers(self, upload)
             # Precomputed per-projection geometry for the BDD backprojection (see -DGEOM5 in projectorType5.cl)
             if self.BPType == 5 and self.CT and self.listmode == 0:
                 self.d_geom5 = [[None] * self.subsets for _ in range(self.Nt)]
@@ -1006,11 +1092,13 @@ def initProjector(self):
                             self.dPitchY,
                             self.pitch,
                         )
-                        self.d_geom5[timestep][subset] = cl.array.to_device(self.queue, geom)
+                        self.d_geom5[timestep][subset] = upload(geom)
             if (self.attenuation_correction and not self.CTAttenuation):
-                self.d_atten = [None] * self.subsets
-                for i in range(self.subsets):
-                    self.d_atten[i] = cl.array.to_device(self.queue, self.vaimennus[self.nTotMeas[i].item() : self.nTotMeas[i + 1].item()])
+                self.d_atten = [[None] * self.subsets for _ in range(self.Nt)]
+                for timestep in range(self.Nt):
+                    for i in range(self.subsets):
+                        index = timestep * self.subsets + i
+                        self.d_atten[timestep][i] = upload(self.vaimennus[self.nTotMeas[index].item() : self.nTotMeas[index + 1].item()])
             elif (getattr(self, 'imageAttenuationIsMultiResolution', False)
                     and self.attenuation_correction and self.CTAttenuation):
                 upload_image = None
@@ -1039,24 +1127,20 @@ def initProjector(self):
             elif (self.attenuation_correction and self.CTAttenuation):
                 if self.useImages:
                     imformat = cl.ImageFormat(cl.channel_order.A, cl.channel_type.FLOAT)
-                    if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
-                        self.d_atten = cl.create_image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.vaimennus, shape=(self.Nx[0].item(), self.Ny[0].item(), self.Nz[0].item()))
-                    else:
-                        self.d_atten = cl.Image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.vaimennus, shape=(self.Nx[0].item(), self.Ny[0].item(), self.Nz[0].item()))
+                    self.d_atten = _cl_image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat,
+                                              (self.Nx[0].item(), self.Ny[0].item(), self.Nz[0].item()), self.vaimennus)
                 else:
-                    self.d_atten = cl.array.to_device(self.queue, self.vaimennus)
+                    self.d_atten = upload(self.vaimennus)
                 # self.d_atten = cl.image_from_array(self.clctx, np.reshape(self.vaimennus, (self.Nx[0].item(), self.Ny[0].item(), self.Nz[0].item()), order='F'))
-            _initialize_detector_vector_buffers(self, lambda value: cl.array.to_device(self.queue, value))
+            _initialize_detector_vector_buffers(self, upload)
             if self.SPECT:
-                self.d_rayShiftsDetector = cl.array.to_device(self.queue, self.rayShiftsDetector)
-                self.d_rayShiftsSource = cl.array.to_device(self.queue, self.rayShiftsSource)
+                self.d_rayShiftsDetector = upload(self.rayShiftsDetector)
+                self.d_rayShiftsSource = upload(self.rayShiftsSource)
             if self.useMaskFP:
                 imformat = cl.ImageFormat(cl.channel_order.A, cl.channel_type.UNSIGNED_INT8)
                 if self.SPECT and self.maskFPZ > 1 and self.maskFPZ == self.nHeads:
-                    if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
-                        self.d_maskFP = cl.create_image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskFP, shape=(self.nRowsD, self.nColsD, self.nHeads))
-                    else:
-                        self.d_maskFP = cl.Image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskFP, shape=(self.nRowsD, self.nColsD, self.nHeads))
+                    self.d_maskFP = _cl_image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat,
+                                               (self.nRowsD, self.nColsD, self.nHeads), self.maskFP)
                 elif self.maskFPZ > 1:
                     self.d_maskFP = [None] * self.subsets
                     # maskFP has already been reordered into subset-contiguous projection order by
@@ -1072,61 +1156,66 @@ def initProjector(self):
                         stop = int(offsets[i + 1])
                         depth = stop - start
                         subMask = np.asfortranarray(maskFP3[:, :, start:stop])
-                        if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
-                            self.d_maskFP[i] = cl.create_image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=subMask, shape=(self.nRowsD, self.nColsD, depth))
-                        else:
-                            self.d_maskFP[i] = cl.Image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=subMask, shape=(self.nRowsD, self.nColsD, depth))
+                        self.d_maskFP[i] = _cl_image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat,
+                                                      (self.nRowsD, self.nColsD, depth), subMask)
                 else:
-                    if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
-                        self.d_maskFP = cl.create_image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskFP, shape=(self.nRowsD, self.nColsD))
-                    else:
-                        self.d_maskFP = cl.Image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskFP, shape=(self.nRowsD, self.nColsD))
+                    self.d_maskFP = _cl_image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat,
+                                               (self.nRowsD, self.nColsD), self.maskFP)
                 # self.d_maskFP = cl.image_from_array(self.clctx, np.ascontiguousarray(self.maskFP))
             if self.useMaskBP:
                 imformat = cl.ImageFormat(cl.channel_order.A, cl.channel_type.UNSIGNED_INT8)
                 if self.maskBPZ > 1:
-                    if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
-                        self.d_maskBP = cl.create_image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskBP, shape=(self.Nx[0].item(), self.Ny[0].item(), self.maskBPZ))
-                    else:
-                        self.d_maskBP = cl.Image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskBP, shape=(self.Nx[0].item(), self.Ny[0].item(), self.maskBPZ))
+                    self.d_maskBP = _cl_image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat,
+                                               (self.Nx[0].item(), self.Ny[0].item(), self.maskBPZ), self.maskBP)
                 else:
-                    if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
-                        self.d_maskBP = cl.create_image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskBP, shape=(self.Nx[0].item(), self.Ny[0].item()))
-                    else:
-                        self.d_maskBP = cl.Image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.maskBP, shape=(self.Nx[0].item(), self.Ny[0].item()))
+                    self.d_maskBP = _cl_image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat,
+                                               (self.Nx[0].item(), self.Ny[0].item()), self.maskBP)
                 # self.d_maskBP = cl.image_from_array(self.clctx, np.ascontiguousarray(self.maskBP))
             if self.TOF:
-                self.d_TOFCenter = cl.array.to_device(self.queue, self.TOFCenter)
+                self.d_TOFCenter = upload(self.TOFCenter)
             if (self.BPType == 2 or self.BPType == 3 or self.FPType == 2 or self.FPType == 3):
-                self.d_V = cl.array.to_device(self.queue, self.V)
+                self.d_V = upload(self.V)
             if (self.normalization_correction):
-                self.d_norm = [None] * self.subsets
-                for i in range(self.subsets):
-                    if self.SPECT and self.normZ == self.nHeads:
-                        self.d_norm[i] = cl.array.to_device(self.queue, self.normalization)
-                    else:
-                        self.d_norm[i] = cl.array.to_device(self.queue, self.normalization[self.nTotMeas[i].item() : self.nTotMeas[i + 1].item()])
+                # Normalization is per-timestep in C++/MATLAB for dynamic data; build
+                # [Nt][subsets] (mirrors mps_backend.py's d_norm) instead of a flat [subsets]
+                # list that only ever captured frame 0.
+                self.d_norm = [[None] * self.subsets for _ in range(self.Nt)]
+                # A static (single-frame) normalization is shared by every timestep, as in C++: slice it
+                # with the frame-0 offsets. It is recognised by holding exactly frame 0's measurements
+                # (after prepass permutation); a frame-concatenated one holds all Nt frames.
+                normStatic = (self.Nt > 1 and np.size(self.normalization) == self.nTotMeas[self.subsets].item())
+                for timestep in range(self.Nt):
+                    for i in range(self.subsets):
+                        index = i if normStatic else timestep * self.subsets + i
+                        if self.SPECT and self.normZ == self.nHeads:
+                            self.d_norm[timestep][i] = upload(self.normalization)
+                        else:
+                            self.d_norm[timestep][i] = upload(self.normalization[self.nTotMeas[index].item() : self.nTotMeas[index + 1].item()])
             if (self.additionalCorrection):
-                self.d_corr = [None] * self.subsets
-                for i in range(self.subsets):
-                    self.d_corr[i] = cl.array.to_device(self.queue, self.corrVector[self.nTotMeas[i].item() : self.nTotMeas[i + 1].item()])
+                # Additional corrections (randoms/scatter) are per-timestep in C++/MATLAB for
+                # dynamic data; build [Nt][subsets] (mirrors mps_backend.py's d_scatter).
+                self.d_corr = [[None] * self.subsets for _ in range(self.Nt)]
+                for timestep in range(self.Nt):
+                    for i in range(self.subsets):
+                        index = timestep * self.subsets + i
+                        self.d_corr[timestep][i] = upload(self.corrVector[self.nTotMeas[index].item() : self.nTotMeas[index + 1].item()])
             if (self.listmode != 1 and ((not self.CT and not self.SPECT and not self.PET) and (self.subsets > 1 and (self.subsetType == 3 or self.subsetType == 6 or self.subsetType == 7)))):
                 self.d_zindex = [None] * self.subsets
                 self.d_xyindex = [None] * self.subsets
                 for i in range(self.subsets):
-                    self.d_xyindex[i] = cl.array.to_device(self.queue, self.xy_index[self.nMeas[i] : self.nMeas[i + 1]])
-                    self.d_zindex[i] = cl.array.to_device(self.queue, self.z_index[self.nMeas[i] : self.nMeas[i + 1]])
+                    self.d_xyindex[i] = upload(self.xy_index[self.nMeas[i] : self.nMeas[i + 1]])
+                    self.d_zindex[i] = upload(self.z_index[self.nMeas[i] : self.nMeas[i + 1]])
             if (self.listmode > 0 and self.useIndexBasedReconstruction):
                 self.d_trIndex = [None] * self.subsets
                 self.d_axIndex = [None] * self.subsets
                 for i in range(self.subsets):
                     if self.loadTOF:
-                        self.d_trIndex[i] = cl.array.to_device(self.queue, self.trIndex[self.nMeas[i] * 2 : self.nMeas[i + 1] * 2])
-                        self.d_axIndex[i] = cl.array.to_device(self.queue, self.axIndex[self.nMeas[i] * 2 : self.nMeas[i + 1] * 2])
+                        self.d_trIndex[i] = upload(self.trIndex[self.nMeas[i] * 2 : self.nMeas[i + 1] * 2])
+                        self.d_axIndex[i] = upload(self.axIndex[self.nMeas[i] * 2 : self.nMeas[i + 1] * 2])
             if self.OffsetLimit.size > 0 and ((self.BPType == 4 and self.CT) or self.BPType == 5):
                 self.d_T = [None] * self.subsets
                 for i in range(self.subsets):
-                    self.d_T[i] = cl.array.to_device(self.queue, self.OffsetLimit[self.nMeas[i].item() : self.nMeas[i + 1].item()])
+                    self.d_T[i] = upload(self.OffsetLimit[self.nMeas[i].item() : self.nMeas[i + 1].item()])
             # d_Sens = cl.Buffer(clctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=Sens)
             # d_x = cl.Buffer(self.clctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self.x)
             # z = cl.Buffer(clctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self.z)
@@ -1148,181 +1237,15 @@ def initProjector(self):
                 self.knlB = prg.projectorType5Backward
             
             if self.use_psf:
-                with open(headerDir + 'auxKernels.cl', encoding="utf8") as f:
-                    lines = f.read()
+                lines = _read(headerDir, 'auxKernels.cl')
                 lines = hlines + lines
                 bOpt +=(' -DCAST=float',' -DPSF',' -DLOCAL_SIZE=' + str(localSize[0]), ' -DLOCAL_SIZE2=' + str(localSize[1]),)
                 prg = cl.Program(self.clctx, lines).build(' '.join(bOpt))
                 self.knlPSF = prg.Convolution3D_f
-                self.d_gaussPSF = cl.array.to_device(self.queue, self.gaussK.ravel('F'))
+                self.d_gaussPSF = upload(self.gaussK.ravel('F'))
                 
-            self.kIndF = 0
-            if self.FPType == 4 or self.FPType == 5:
-                self.knlF.set_arg(self.kIndF, (cl.cltypes.uint)(self.nRowsD))
-                self.kIndF += 1
-                self.knlF.set_arg(self.kIndF, (cl.cltypes.uint)(self.nColsD))
-                self.kIndF += 1
-                self.knlF.set_arg(self.kIndF, self.d_dPitch)
-                self.kIndF += 1
-            if self.FPType == 4:
-                self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.dL))
-                self.kIndF += 1
-                self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.global_factor))
-                self.kIndF += 1
-            if self.FPType in [1, 2, 3]:
-                self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.global_factor))
-                self.kIndF += 1
-                self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.epps))
-                self.kIndF += 1
-                self.knlF.set_arg(self.kIndF, (cl.cltypes.uint)(self.nRowsD))
-                self.kIndF += 1
-                self.knlF.set_arg(self.kIndF, (cl.cltypes.uint)(self.det_per_ring))
-                self.kIndF += 1
-                self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.sigma_x))
-                self.kIndF += 1
-                if self.SPECT:
-                    self.knlF.set_arg(self.kIndF, self.d_rayShiftsDetector.data)
-                    self.kIndF += 1
-                    self.knlF.set_arg(self.kIndF, self.d_rayShiftsSource.data)
-                    self.kIndF += 1
-                    self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.coneOfResponseStdCoeffA))
-                    self.kIndF += 1
-                    self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.coneOfResponseStdCoeffB))
-                    self.kIndF += 1
-                    self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.coneOfResponseStdCoeffC))
-                    self.kIndF += 1
-                    self.knlF.set_arg(self.kIndF, cl.cltypes.make_float3(self.ellipseCenterX, self.ellipseCenterY, self.ellipseCenterZ))
-                    self.kIndF += 1
-                    self.knlF.set_arg(self.kIndF, cl.cltypes.make_float3(self.ellipseRadiusX, self.ellipseRadiusY, self.ellipseRadiusZ))
-                    self.kIndF += 1
-                    self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(_kernel_ellipse_power(self.ellipsePower)))
-                    self.kIndF += 1
-                self.knlF.set_arg(self.kIndF, self.d_dPitch)
-                self.kIndF += 1
-                if self.FPType in [2, 3]:
-                    if self.FPType == 2:
-                        self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.tube_width_z))
-                        self.kIndF += 1
-                    else:
-                        self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.tube_radius))
-                        self.kIndF += 1
-                    self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.bmin))
-                    self.kIndF += 1
-                    self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.bmax))
-                    self.kIndF += 1
-                    self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.Vmax))
-                    self.kIndF += 1
-            # if self.useMaskFP:
-            #     self.knlF.set_arg(self.kIndF, self.d_maskFP)
-            #     self.kIndF += 1
-            if self.FPType in [1, 2, 3]:
-                if self.TOF:
-                    self.knlF.set_arg(self.kIndF, self.d_TOFCenter.data)
-                    self.kIndF += 1
-                if self.FPType in [2, 3]:
-                    self.knlF.set_arg(self.kIndF, self.d_V.data)
-                    self.kIndF += 1
-                self.knlF.set_arg(self.kIndF, (cl.cltypes.uint)(self.nColsD))
-                self.kIndF += 1
-            if self.FPType == 4 and not self.CT and self.TOF:
-                self.knlF.set_arg(self.kIndF, self.d_TOFCenter.data)
-                self.kIndF += 1
-                self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.sigma_x))
-                self.kIndF += 1
-            if (self.attenuation_correction and self.CTAttenuation
-                    and not (getattr(self, 'imageAttenuationIsMultiResolution', False)
-                             and self.attenuation_correction and self.CTAttenuation)
-                    and self.FPType in [1, 2, 3, 4]):
-                if self.useImages:
-                    self.knlF.set_arg(self.kIndF, self.d_atten)
-                else:
-                    self.knlF.set_arg(self.kIndF, self.d_atten.data)
-                self.kIndF += 1
-                    
-                
-            
-            self.kIndB = 0
-            if self.BPType == 4 or self.BPType == 5:
-                self.knlB.set_arg(self.kIndB, (cl.cltypes.uint)(self.nRowsD))
-                self.kIndB += 1
-                self.knlB.set_arg(self.kIndB, (cl.cltypes.uint)(self.nColsD))
-                self.kIndB += 1
-                self.knlB.set_arg(self.kIndB, self.d_dPitch)
-                self.kIndB += 1
-            if self.BPType == 4 and not self.CT:
-                self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.dL))
-                self.kIndB += 1
-                self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.global_factor))
-                self.kIndB += 1
-            if self.BPType in [1, 2, 3]:
-                self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.global_factor))
-                self.kIndB += 1
-                self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.epps))
-                self.kIndB += 1
-                self.knlB.set_arg(self.kIndB, (cl.cltypes.uint)(self.nRowsD))
-                self.kIndB += 1
-                self.knlB.set_arg(self.kIndB, (cl.cltypes.uint)(self.det_per_ring))
-                self.kIndB += 1
-                self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.sigma_x))
-                self.kIndB += 1
-                if self.SPECT:
-                    self.knlB.set_arg(self.kIndB, self.d_rayShiftsDetector.data)
-                    self.kIndB += 1
-                    self.knlB.set_arg(self.kIndB, self.d_rayShiftsSource.data)
-                    self.kIndB += 1
-                    self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.coneOfResponseStdCoeffA))
-                    self.kIndB += 1
-                    self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.coneOfResponseStdCoeffB))
-                    self.kIndB += 1
-                    self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.coneOfResponseStdCoeffC))
-                    self.kIndB += 1
-                    self.knlB.set_arg(self.kIndB, cl.cltypes.make_float3(self.ellipseCenterX, self.ellipseCenterY, self.ellipseCenterZ))
-                    self.kIndB += 1
-                    self.knlB.set_arg(self.kIndB, cl.cltypes.make_float3(self.ellipseRadiusX, self.ellipseRadiusY, self.ellipseRadiusZ))
-                    self.kIndB += 1
-                    self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(_kernel_ellipse_power(self.ellipsePower)))
-                    self.kIndB += 1
-                self.knlB.set_arg(self.kIndB, self.d_dPitch)
-                self.kIndB += 1
-                if self.BPType in [2, 3]:
-                    if self.BPType == 2:
-                        self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.tube_width_z))
-                        self.kIndB += 1
-                    else:
-                        self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.tube_radius))
-                        self.kIndB += 1
-                    self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.bmin))
-                    self.kIndB += 1
-                    self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.bmax))
-                    self.kIndB += 1
-                    self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.Vmax))
-                    self.kIndB += 1
-            if self.BPType in [1, 2, 3]:
-                if self.TOF:
-                    self.knlB.set_arg(self.kIndB, self.d_TOFCenter.data)
-                    self.kIndB += 1
-                if self.BPType in [2, 3]:
-                    self.knlB.set_arg(self.kIndB, self.d_V.data)
-                    self.kIndB += 1
-                self.knlB.set_arg(self.kIndB, (cl.cltypes.uint)(self.nColsD))
-                self.kIndB += 1
-            if self.BPType == 4 and not self.CT and self.TOF:
-                self.knlB.set_arg(self.kIndB, self.d_TOFCenter.data)
-                self.kIndB += 1
-                self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.sigma_x))
-                self.kIndB += 1
-            if (self.attenuation_correction and self.CTAttenuation
-                    and not (getattr(self, 'imageAttenuationIsMultiResolution', False)
-                             and self.attenuation_correction and self.CTAttenuation)
-                    and self.BPType in [1, 2, 3, 4] and not self.CT):
-                if self.useImages:
-                    self.knlB.set_arg(self.kIndB, self.d_atten)
-                else:
-                    self.knlB.set_arg(self.kIndB, self.d_atten.data)
-                self.kIndB += 1
-            # if self.BPType in [1, 2, 3] and self.useMaskFP:
-            #     self.knlB.set_arg(self.kIndB, self.d_maskFP)
-            #     self.kIndB += 1
-            # if self.BPType in [1, 2, 3] and self.useMaskBP:
-            #     self.knlB.set_arg(self.kIndB, self.d_maskBP)
-            #     self.kIndB += 1
+            fp_args = _build_kIndF(self)
+            self.kIndF = fp_args.apply_opencl(self.knlF, 0)
+
+            bp_args = _build_kIndB(self)
+            self.kIndB = bp_args.apply_opencl(self.knlB, 0)

@@ -73,11 +73,43 @@ if options.useEFOV
             options.multiResolutionScale = .25;
         end
 
-        % x: up-down direction in figure above
-        % y: left-right direction in figure above
-        dxM = options.FOVxOrig / (options.NxOrig * options.multiResolutionScale); % Multiresolution voxel sizes
-        dyM = options.FOVyOrig / (options.NyOrig * options.multiResolutionScale);
-        dzM = options.axialFOVOrig / (options.NzOrig * options.multiResolutionScale); 
+        NxM = max(1, round(double(options.NxOrig) * options.multiResolutionScale));
+        NyM = max(1, round(double(options.NyOrig) * options.multiResolutionScale));
+        NzM = max(1, round(double(options.NzOrig) * options.multiResolutionScale));
+        dxM = options.FOVxOrig / NxM; % Multiresolution voxel sizes
+        dyM = options.FOVyOrig / NyM;
+        dzM = options.axialFOVOrig / NzM;
+
+        % A shifted EFOV can leave one side with zero or negative thickness
+        % at the active coarse resolution. Disable that EFOV direction before
+        % constructing slab dimensions so no zero-sized volume reaches the
+        % projector.
+        if options.axialEFOV
+            zLow = (options.axial_fov - options.axialFOVOrig) / 2 - options.eFOVShift(3);
+            zHigh = (options.axial_fov - options.axialFOVOrig) / 2 + options.eFOVShift(3);
+            if min(round(zLow / dzM), round(zHigh / dzM)) <= 0
+                warning('Axial extended FOV is smaller than one multi-resolution voxel on a shifted side; disabling axial EFOV.')
+                options.axialEFOV = false;
+                options.Nz = options.NzOrig;
+                options.axial_fov = options.axialFOVOrig;
+            end
+        end
+        if options.transaxialEFOV
+            xLow = (options.FOVa_x - options.FOVxOrig) / 2 - options.eFOVShift(1);
+            xHigh = (options.FOVa_x - options.FOVxOrig) / 2 + options.eFOVShift(1);
+            yLow = (options.FOVa_y - options.FOVyOrig) / 2 - options.eFOVShift(2);
+            yHigh = (options.FOVa_y - options.FOVyOrig) / 2 + options.eFOVShift(2);
+            if min([round(xLow / dxM), round(xHigh / dxM), round(yLow / dyM), round(yHigh / dyM)]) <= 0
+                warning('Transaxial extended FOV is smaller than one multi-resolution voxel on a shifted side; disabling transaxial EFOV.')
+                options.transaxialEFOV = false;
+                options.Nx = options.NxOrig;
+                options.Ny = options.NyOrig;
+                options.FOVa_x = options.FOVxOrig;
+                options.FOVa_y = options.FOVyOrig;
+            end
+        end
+
+        if options.axialEFOV || options.transaxialEFOV
             
         FOVxM0 = options.FOVxOrig; % Size of FOV 0 (main volume)
         FOVyM0 = options.FOVyOrig;
@@ -112,8 +144,8 @@ if options.useEFOV
 
             NxM3 = round(FOVxM3 / dxM); % Multiresolution amount of voxels x-direction (volume 3)
             NxM4 = round(FOVxM4 / dxM); % Multiresolution amount of voxels x-direction (volume 4)
-            NxM5 = round(options.NxOrig * options.multiResolutionScale);
-            NxM6 = round(options.NxOrig * options.multiResolutionScale);
+            NxM5 = NxM;
+            NxM6 = NxM;
 
             FOVyM3 = options.FOVa_y;
             FOVyM4 = options.FOVa_y;
@@ -155,7 +187,6 @@ if options.useEFOV
             options.Ny = uint32([NyM0, NyM3, NyM4, NyM5, NyM6]);
 
             % z: not extended
-            NzM = round(options.Nz * options.multiResolutionScale);
             options.axial_fov = [options.axialFOVOrig, options.axialFOVOrig, options.axialFOVOrig, options.axialFOVOrig, options.axialFOVOrig];
             options.Nz = uint32([NzM0, NzM, NzM, NzM, NzM]);
         else % Only axial FOV is extended
@@ -233,6 +264,25 @@ if options.useEFOV
         options.NxPrior = options.Nx(1);
         options.NyPrior = options.Ny(1);
         options.NzPrior = options.Nz(1);
+        else
+            options.useMultiResolutionVolumes = false;
+            options.nMultiVolumes = 0;
+            options.Nx = options.NxOrig;
+            options.Ny = options.NyOrig;
+            options.Nz = options.NzOrig;
+            options.FOVa_x = options.FOVxOrig;
+            options.FOVa_y = options.FOVyOrig;
+            options.axial_fov = options.axialFOVOrig;
+            options.eFOVShift = [0 0 0];
+            options.eFOVIndices = ones(options.Nz, 1, 'uint8');
+            options.maskPrior = ones(options.Nx, options.Ny, 'uint8');
+            if options.useMaskBP && isfield(options, 'maskBP') && ~iscell(options.maskBP) && numel(options.maskBP) > 1
+                options.maskPrior = options.maskPrior - uint8(~options.maskBP);
+            end
+            options.NxPrior = options.Nx;
+            options.NyPrior = options.Ny;
+            options.NzPrior = options.Nz;
+        end
     else
         % This is for non-multiresolution case
         % The idea is that priors/regularization is not computed in the

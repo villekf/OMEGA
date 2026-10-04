@@ -1,7 +1,16 @@
 function [x, y, options] = arcCorrection(options, interpolateSinogram)
 %ARCCORRECTION Performs arc correction on the detector coordinates
-%   This function outputs the arc corrected detector coordinates and
-%   sinogram. Works only with sinogram data and without precomputation.
+%   This function projects the (origin-centred) detector coordinates onto
+%   an ideal circle of radius (diameter + 2*DOI)/2 to obtain an
+%   equidistant, arc-corrected LOR geometry, and optionally interpolates
+%   the measurement data (and, when applicable, the normalization,
+%   randoms/scatter, and scatter correction data used during
+%   reconstruction) from the original LOR grid onto this new grid. The
+%   interpolation is performed with sparse barycentric (Delaunay) or
+%   nearest-neighbor weights (see arcInterpWeights), computed in an
+%   absolute angle/signed-distance frame shared by both LOR grids, so
+%   that the interpolated data are not rotated relative to the returned
+%   coordinates. Works only with sinogram data and without precomputation.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Copyright (C) 2020-2026 Ville-Veikko Wettenhovi
@@ -20,11 +29,27 @@ function [x, y, options] = arcCorrection(options, interpolateSinogram)
 % with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% mashing = options.det_w_pseudo / options.Nang / 2;
-[~, ~, xp, yp] = detector_coordinates(options);
-orig_xp = xp;
-orig_yp = yp;
+if isfield(options, 'DOI') && ~isempty(options.DOI)
+    DOI = options.DOI;
+else
+    DOI = 0;
+end
+% The detectors reside at radius diameter/2 + DOI, not diameter/2
+D = options.diameter + 2 * DOI;
+cpb = options.cryst_per_block(1);
+
+% The original (non-arc-corrected) LOR coordinates, used only for the
+% interpolation, are computed with the TRUE options (flip as given)
+[~, ~, orig_xp, orig_yp] = detector_coordinates(options);
 [x_o, y_o] = sinogram_coordinates_2D(options, orig_xp, orig_yp);
+
+% The arc-corrected geometry itself (new_xp/new_yp, J, eka/vika,
+% rotations) is built with flip_image forced to false: flip_image breaks
+% the quadrant mirror-fill below, and flipping is not needed here since
+% the interpolation (below) works with absolute positions
+geomOptions = options;
+geomOptions.flip_image = false;
+[~, ~, xp, yp] = detector_coordinates(geomOptions);
 
 new_xp = zeros(size(xp));
 new_yp = zeros(size(yp));
@@ -39,23 +64,20 @@ ll = 1;
 
 % Shift to the zero angle (with x-axis)
 if options.det_w_pseudo > options.det_per_ring
-    xp = circshift(xp, -options.offangle - (options.cryst_per_block + 1) / 2);
-    yp = circshift(yp, -options.offangle - (options.cryst_per_block + 1) / 2);
+    shift = round(options.offangle) + floor((cpb + 1) / 2);
 else
-    xp = circshift(xp, -options.offangle - options.cryst_per_block / 2);
-    yp = circshift(yp, -options.offangle - options.cryst_per_block / 2);
+    shift = round(options.offangle) + floor(cpb / 2);
 end
-
-xp = xp - options.diameter / 2;
-yp = yp - options.diameter / 2;
+xp = circshift(xp, -shift);
+yp = circshift(yp, -shift);
 
 % Determine the points along the circle that reside (approximately) on the
 % same line as the original LOR
 for kk = 1 : length(xp) / 4
     if options.det_w_pseudo > options.det_per_ring
-        vali = kk + options.det_w_pseudo / 2 - (options.cryst_per_block + 1) : kk + options.det_w_pseudo / 2 + (options.cryst_per_block + 1);
+        vali = kk + options.det_w_pseudo / 2 - (cpb + 1) : kk + options.det_w_pseudo / 2 + (cpb + 1);
     else
-        vali = kk + options.det_w_pseudo / 2 - options.cryst_per_block : kk + options.det_w_pseudo / 2 + options.cryst_per_block;
+        vali = kk + options.det_w_pseudo / 2 - cpb : kk + options.det_w_pseudo / 2 + cpb;
     end
     kulma = l_angles(ll);
     angle1 = atand((yp(kk)-yp(vali))./(xp(kk)-xp(vali)));
@@ -69,54 +91,46 @@ for kk = 1 : length(xp) / 4
         [~, ind1] = min(abs(abs(angle1) - kulma));
     end
     if options.det_w_pseudo > options.det_per_ring
-        x2 = xp(kk + options.det_w_pseudo / 2 - (options.cryst_per_block + 1) + ind1 - 1);
-        y2 = yp(kk + options.det_w_pseudo / 2 - (options.cryst_per_block + 1) + ind1 - 1);
+        x2 = xp(kk + options.det_w_pseudo / 2 - (cpb + 1) + ind1 - 1);
+        y2 = yp(kk + options.det_w_pseudo / 2 - (cpb + 1) + ind1 - 1);
     else
-        x2 = xp(kk + options.det_w_pseudo / 2 - options.cryst_per_block + ind1 - 1);
-        y2 = yp(kk + options.det_w_pseudo / 2 - options.cryst_per_block + ind1 - 1);
+        x2 = xp(kk + options.det_w_pseudo / 2 - cpb + ind1 - 1);
+        y2 = yp(kk + options.det_w_pseudo / 2 - cpb + ind1 - 1);
     end
     p = [xp(kk); yp(kk)];
     q = [x2; y2];
     d = q - p;
-    l = ((-dot(2*p,d) - sqrt(dot(2*p,d)^2 - 4*dot(d,d)*(dot(p,p) - (options.diameter/2)^2)))/ (2*dot(d,d)));
+    l = ((-dot(2*p,d) - sqrt(dot(2*p,d)^2 - 4*dot(d,d)*(dot(p,p) - (D/2)^2)))/ (2*dot(d,d)));
     lx = p + l * d;
     new_xp(kk) = lx(1);
     new_yp(kk) = lx(2);
 end
 
-new_xp(1 : length(xp) / 4) = new_xp(1 : length(xp) / 4) + options.diameter/2;
-new_yp(1 : length(yp) / 4) = new_yp(1 : length(yp) / 4) + options.diameter/2;
+new_xp(1 : length(xp) / 4) = new_xp(1 : length(xp) / 4) + D/2;
+new_yp(1 : length(yp) / 4) = new_yp(1 : length(yp) / 4) + D/2;
 
 new_yp(kk + 1: kk * 2) = flip(new_yp(1: kk));
-diffi = diff([flip(new_yp(1 : kk)) ; options.diameter/2]);
-diffi = options.diameter/2 + cumsum(flip(diffi));
+diffi = diff([flip(new_yp(1 : kk)) ; D/2]);
+diffi = D/2 + cumsum(flip(diffi));
 new_yp(kk * 2 + 1 : end) = [diffi ; flip(diffi)];
 
-diffi = diff([new_xp(1 : kk) ; options.diameter/2]);
-diffi = options.diameter/2 + cumsum(flip(diffi));
+diffi = diff([new_xp(1 : kk) ; D/2]);
+diffi = D/2 + cumsum(flip(diffi));
 new_xp(kk + 1: kk * 2) = diffi;
 new_xp(kk * 2 + 1 : end) = flip(new_xp(1 : kk * 2));
 xp = new_xp;
 yp = new_yp;
 
-if options.det_w_pseudo > options.det_per_ring
-    xp = circshift(xp, options.offangle + (options.cryst_per_block + 1) / 2);
-    yp = circshift(yp, options.offangle + (options.cryst_per_block + 1) / 2);
-else
-    xp = circshift(xp, options.offangle + options.cryst_per_block / 2);
-    yp = circshift(yp, options.offangle + options.cryst_per_block / 2);
-end
+xp = circshift(xp, shift);
+yp = circshift(yp, shift);
 
-[x, y] = sinogram_coordinates_2D(options, xp, yp);
+[x, y] = sinogram_coordinates_2D(geomOptions, xp, yp);
 
 
 xx1 = reshape(x(:,1),options.Ndist,options.Nang);
 xx2 = reshape(x(:,2),options.Ndist,options.Nang);
 yy1 = reshape(y(:,1),options.Ndist,options.Nang);
 yy2 = reshape(y(:,2),options.Ndist,options.Nang);
-
-% y_orig = y;
-% x_orig = x;
 
 angle = atand((yy1-yy2)./(xx1-xx2)) + 90;
 angle(angle == 180) = 0;
@@ -129,15 +143,15 @@ vika = xx1(end,J);
 alkux = linspace(eka, vika, options.Ndist);
 
 % Determine the y-coordinates
-alkuy = sqrt((options.diameter/2)^2 - (alkux - options.diameter/2).^2) + options.diameter/2;
+alkuy = sqrt((D/2)^2 - (alkux - D/2).^2) + D/2;
 
 alku = [alkux; alkuy];
 
-alku2 = alku - options.diameter/2;
+alku2 = alku - D/2;
 
-alku = [alkux; abs(alkuy - options.diameter)];
+alku = [alkux; abs(alkuy - D)];
 
-alku1 = alku - options.diameter/2;
+alku1 = alku - D/2;
 
 
 angles = linspace(0, 180, options.Nang + 1);
@@ -152,8 +166,8 @@ rot_matrix = squeeze(num2cell(rot_matrix, [1 2]))';
 
 % Arc correction
 % Rotate the arc corrected coordinates for the whole ring
-new_xy1 = cell2mat(cellfun(@(x) x * alku1, rot_matrix, 'UniformOutput', false))' + options.diameter/2;
-new_xy2 = cell2mat(cellfun(@(x) x * alku2, rot_matrix, 'UniformOutput', false))' + options.diameter/2;
+new_xy1 = cell2mat(cellfun(@(x) x * alku1, rot_matrix, 'UniformOutput', false))' + D/2;
+new_xy2 = cell2mat(cellfun(@(x) x * alku2, rot_matrix, 'UniformOutput', false))' + D/2;
 
 
 x = [new_xy1(:,1), new_xy2(:,1)];
@@ -175,154 +189,177 @@ x(:,2) = xx2(:);
 y(:,1) = yy1(:);
 y(:,2) = yy2(:);
 
-xx1_o = reshape(x_o(:,1),options.Ndist,options.Nang);
-xx2_o = reshape(x_o(:,2),options.Ndist,options.Nang);
-yy1_o = reshape(y_o(:,1),options.Ndist,options.Nang);
-yy2_o = reshape(y_o(:,2),options.Ndist,options.Nang);
+x = x - D / 2;
+y = y - D / 2;
 
-x = x - options.diameter / 2;
-y = y - options.diameter / 2;
+% Equidistance check: the signed distance of each LOR from the origin
+% must change by a constant step within each angular bin (column). This
+% uses the UNFOLDED signed distance (not lorDistance, which folds the
+% angle into [0,pi) and flips the sign of s along with it): a column
+% whose LOR angle lies exactly at the 0/pi fold would otherwise have its
+% sign flip mid-column and trigger a false equidistance warning.
+% Endpoint order (columns 1/2 of x,y) is consistent within each column.
+s_chk = (x(:,1) .* y(:,2) - x(:,2) .* y(:,1)) ./ hypot(x(:,2) - x(:,1), y(:,2) - y(:,1));
+s_chk = reshape(s_chk, options.Ndist, options.Nang);
+d_chk = diff(s_chk, 1, 1);
+colSpread = max(d_chk, [], 1) - min(d_chk, [], 1);
+if max(colSpread) > 1e-3 * median(abs(d_chk(:)))
+    warning('Arc correction failed to make all the LORs equidistant.')
+end
 
 if interpolateSinogram
-    
-    
-    % Angles
-    angle_o = atand((yy1_o-yy2_o)./(xx1_o-xx2_o));
-    angle_o = angle_o - min(angle_o(:,1));
-    angle_o(angle_o<0) = angle_o(angle_o<0) + 180;
-    angle_o = [-angle_o(:,2), angle_o, abs(angle_o(:,1)-180)];
-    angle = atand((yy1-yy2)./(xx1-xx2));
-    angle = angle - min(angle(:,1));
-    angle(angle<0) = angle(angle<0) + 180;
-    angle = [-angle(:,2), angle, abs(angle(:,1)-180)];
-    
-    
-    % Orthogonal distances
-    % x0 = options.diameter/2;
-    % y0 = options.diameter/2;
-    x0 = 0;
-    y0 = 0;
-    distance_o = ((abs((y_o(:,1)-y_o(:,2))*x0 - (x_o(:,1) - x_o(:,2))*y0 + x_o(:,1).*y_o(:,2) - y_o(:,1).*x_o(:,2))./sqrt((y_o(:,1)-y_o(:,2)).^2 + (x_o(:,1)-x_o(:,2)).^2)));
-    distance_o = reshape(distance_o, options.Ndist, options.Nang);
-    distance_o(options.Ndist/2 + 1 : end,:) = -distance_o(options.Ndist/2 + 1 : end,:);
-    distance_o = [distance_o(:,1), distance_o, distance_o(:,1)];
-    distance = ((abs((y(:,1)-y(:,2))*x0 - (x(:,1) - x(:,2))*y0 + x(:,1).*y(:,2) - y(:,1).*x(:,2))./sqrt((y(:,1)-y(:,2)).^2 + (x(:,1)-x(:,2)).^2)));
-    distance = reshape(distance, options.Ndist, options.Nang);
-    distance(options.Ndist/2 + 1 : end,:) = -distance(options.Ndist/2 + 1 : end,:);
-    distance = [distance(:,1), distance, distance(:,1)];
-    testi = diff(distance);
-    if round(min(testi(:)),3) ~= round(max(testi(:)),3)
-        warning('Arc correction failed to make all the LORs equidistant.')
-    end
-    
-    
-    % Interpolate the sinogram
-    if iscell(options.SinM)
-        if numel(options.SinM{1}) == size(options.SinM{1},1)
-            for kk = 1 : options.partitions
-                options.SinM{kk} = reshape(options.SinM{kk}, options.Ndist, options.Nang, numel(options.SinM{kk})/(options.Ndist * options.Nang));
-            end
-        end
-    else
-        if numel(options.SinM) == size(options.SinM,1) && ~isscalar(options.SinM)
-            options.SinM = reshape(options.SinM, options.Ndist, options.Nang, options.NSinos, []);
-        end
-    end
     tic
+    W = arcInterpWeights(x_o, y_o, x, y, options.Ndist, options.Nang, options.arc_interpolation);
+
+    N = options.Ndist * options.Nang;
+    applyToField = @(A) applyArc(A, W, options.Ndist, options.Nang, options.arc_interpolation, x_o, y_o, x, y);
+
+    % Interpolate the measured sinogram(s) (numeric array, or a cell
+    % array of partitions)
     if iscell(options.SinM)
-        uus_SinM = cell(size(options.SinM));
-        for hh = 1 : options.partitions
-            for uu = 1 : size(options.SinM{hh},4)
-                apu_SinM = zeros(size(options.SinM{hh},1),size(options.SinM{hh},2)+2,size(options.SinM{hh},3));
-                % Use parfor if available
-                if license('test','Distrib_Computing_Toolbox')
-                    temp = options.SinM{hh}(:,:,:,uu);
-                    temp = [temp(:,end,:), temp, temp(:,1,:)];
-                    Ndist = options.Ndist;
-                    Nang = options.Nang;
-                    arc_interpolation = options.arc_interpolation;
-                    try
-                        parfor kk = 1 : size(options.SinM{hh},3)
-                            if exist('scatteredInterpolant', 'file') == 2 && (~strcmp('cubic',arc_interpolation) && ~strcmp('v4',arc_interpolation))
-                                F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double(temp(:,:,kk)), [],1));
-                                apu_SinM(:,:,kk) = F(angle, distance);
-                            else
-                                apu_SinM(:,:,kk) = griddata(angle_o, distance_o, double(temp(:,:,kk)), angle, distance, arc_interpolation);
-                            end
-                        end
-                    catch
-                        for kk = 1 : size(options.SinM{hh},3)
-                            if exist('scatteredInterpolant', 'file') == 2 && (~strcmp('cubic',arc_interpolation) && ~strcmp('v4',arc_interpolation))
-                                F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double([options.SinM{hh}(:,end,kk,uu), options.SinM{hh}(:,:,kk,uu), options.SinM{hh}(:,1,kk,uu)]), [],1));
-                                apu_SinM(:,:,kk) = F(angle, distance);
-                            else
-                                apu_SinM(:,:,kk) = griddata(angle_o, distance_o, double([options.SinM{hh}(:,end,kk,uu), options.SinM{hh}(:,:,kk,uu), options.SinM{hh}(:,1,kk,uu)]), angle, distance, arc_interpolation);
-                            end
-                        end
-                    end
-                else
-                    for kk = 1 : size(options.SinM{hh},3)
-                        if exist('scatteredInterpolant', 'file') == 2 && (~strcmp('cubic',options.arc_interpolation) && ~strcmp('v4',options.arc_interpolation))
-                            F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double([options.SinM{hh}(:,end,kk,uu), options.SinM{hh}(:,:,kk,uu), options.SinM{hh}(:,1,kk,uu)]), [],1));
-                            apu_SinM(:,:,kk) = F(angle, distance);
-                        else
-                            apu_SinM(:,:,kk) = griddata(angle_o, distance_o, double([options.SinM{hh}(:,end,kk,uu), options.SinM{hh}(:,:,kk,uu), options.SinM{hh}(:,1,kk,uu)]), angle, distance, options.arc_interpolation);
-                        end
-                    end
-                end
-                apu_SinM = apu_SinM(:,2:end-1,:);
-                apu_SinM(isnan(apu_SinM)) = single(0);
-                uus_SinM{hh}(:,:,:,uu) = single(apu_SinM);
-            end
-            options.SinM{hh} = uus_SinM{hh};
+        for kk = 1 : options.partitions
+            options.SinM{kk} = applyToField(options.SinM{kk});
         end
-        endTime = toc;
     else
-        for uu = 1 : size(options.SinM,4)
-            uus_SinM = zeros(size(options.SinM,1),size(options.SinM,2)+2,size(options.SinM,3));
-            if license('test','Distrib_Computing_Toolbox')
-                temp = options.SinM(:,:,:,uu);
-                temp = [temp(:,end,:), temp, temp(:,1,:)];
-                Ndist = options.Ndist;
-                Nang = options.Nang;
-                arc_interpolation = options.arc_interpolation;
-                try
-                    parfor kk = 1 : size(options.SinM,3)
-                        if exist('scatteredInterpolant', 'file') == 2 && (~strcmp('cubic',arc_interpolation) && ~strcmp('v4',arc_interpolation))
-                            F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double(temp(:,:,kk)), [],1));
-                            uus_SinM(:,:,kk) = F(angle, distance);
-                        else
-                            uus_SinM(:,:,kk) = griddata(angle_o, distance_o, double(temp(:,:,kk)), angle, distance, arc_interpolation);
-                        end
-                    end
-                catch
-                    for kk = 1 : size(options.SinM,3)
-                        if exist('scatteredInterpolant', 'file') == 2 && (~strcmp('cubic',arc_interpolation) && ~strcmp('v4',arc_interpolation))
-                            F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double(temp(:,:,kk)), [],1));
-                            uus_SinM(:,:,kk) = F(angle, distance);
-                        else
-                            uus_SinM(:,:,kk) = griddata(angle_o, distance_o, double(temp(:,:,kk)), angle, distance, arc_interpolation);
-                        end
-                    end
-                end
-            else
-                for kk = 1 : size(options.SinM,3)
-                    if exist('scatteredInterpolant', 'file') == 2 && (~strcmp('cubic',options.arc_interpolation) && ~strcmp('v4',options.arc_interpolation))
-                        F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double([options.SinM(:,end,kk,uu), options.SinM(:,:,kk,uu), options.SinM(:,1,kk,uu)]), [],1));
-                        uus_SinM(:,:,kk) = F(angle, distance);
-                    else
-                        uus_SinM(:,:,kk) = griddata(angle_o, distance_o, double([options.SinM(:,end,kk,uu), options.SinM(:,:,kk,uu), options.SinM(:,1,kk,uu)]), angle, distance, options.arc_interpolation);
-                    end
+        options.SinM = applyToField(options.SinM);
+    end
+
+    % When corrections are applied during reconstruction, the
+    % normalization / randoms (SinDelayed) / scatter correction data are
+    % still in the original (non-arc-corrected) geometry and must be
+    % interpolated with the same weights. If normalization has already
+    % been precorrected into SinM (not during reconstruction), it must
+    % not be touched here.
+    if options.normalization_correction && options.corrections_during_reconstruction ...
+            && isfield(options, 'normalization') && numel(options.normalization) > 1 ...
+            && mod(numel(options.normalization), N) == 0
+        options.normalization = applyToField(options.normalization);
+    end
+
+    if isfield(options, 'SinDelayed')
+        if iscell(options.SinDelayed)
+            for kk = 1 : numel(options.SinDelayed)
+                if numel(options.SinDelayed{kk}) > 1 && mod(numel(options.SinDelayed{kk}), N) == 0
+                    options.SinDelayed{kk} = applyToField(options.SinDelayed{kk});
                 end
             end
-            uus_SinM = uus_SinM(:,2:end-1,:);
-            uus_SinM(isnan(uus_SinM)) = single(0);
-            options.SinM(:,:,:,uu) = single(uus_SinM);
+        else
+            if numel(options.SinDelayed) > 1 && mod(numel(options.SinDelayed), N) == 0
+                options.SinDelayed = applyToField(options.SinDelayed);
+            end
         end
-        endTime = toc;
     end
+
+    if isfield(options, 'corrVector') && options.additionalCorrection
+        if iscell(options.corrVector)
+            for kk = 1 : numel(options.corrVector)
+                if numel(options.corrVector{kk}) > 1 && mod(numel(options.corrVector{kk}), N) == 0
+                    options.corrVector{kk} = applyToField(options.corrVector{kk});
+                end
+            end
+        else
+            if numel(options.corrVector) > 1 && mod(numel(options.corrVector), N) == 0
+                options.corrVector = applyToField(options.corrVector);
+            end
+        end
+    end
+
+    if isfield(options, 'ScatterC') && options.scatter_correction
+        if iscell(options.ScatterC)
+            for kk = 1 : numel(options.ScatterC)
+                if numel(options.ScatterC{kk}) > 1 && mod(numel(options.ScatterC{kk}), N) == 0
+                    options.ScatterC{kk} = applyToField(options.ScatterC{kk});
+                end
+            end
+        else
+            if numel(options.ScatterC) > 1 && mod(numel(options.ScatterC), N) == 0
+                options.ScatterC = applyToField(options.ScatterC);
+            end
+        end
+    end
+    endTime = toc;
     if options.verbose
         disp(['Arc correction complete in ' num2str(endTime) ' seconds'])
     end
 end
+end
+
+function out = applyArc(A, W, Ndist, Nang, method, x_o, y_o, x, y)
+% Applies the arc-correction interpolation to A if (and only if) A is
+% sinogram-shaped, i.e. numel(A) is a positive multiple of Ndist*Nang.
+% Any trailing dimensions (TOF bins, multiple sinograms, dynamic frames,
+% etc.) are treated as independent columns and interpolated identically.
+N = Ndist * Nang;
+if isempty(A) || numel(A) == 0 || mod(numel(A), N) ~= 0
+    out = A;
+    return
+end
+sz = size(A);
+ncols = numel(A) / N;
+Ar = reshape(A, N, ncols);
+if ~isempty(W)
+    B = W * double(Ar);
+else
+    B = arcGriddataFallback(x_o, y_o, x, y, Ndist, Nang, method, Ar);
+end
+if isa(A, 'double')
+    B = double(B);
+else
+    B = single(B);
+end
+out = reshape(B, sz);
+end
+
+function out = arcGriddataFallback(x_o, y_o, x, y, Ndist, Nang, method, Ar)
+% Fallback interpolation (used only for methods other than 'linear' and
+% 'nearest', e.g. 'natural', 'cubic', 'v4'), based on the same periodic
+% (angle, signed distance) points as arcInterpWeights, but evaluated with
+% griddata. This may be considerably slower than the sparse-matrix path.
+N = Ndist * Nang;
+[th_o, s_o] = lorDistance(x_o, y_o);
+[th_n, s_n] = lorDistance(x, y);
+ds = (max(s_o) - min(s_o)) / (Ndist - 1);
+u_o = th_o / (pi / Nang);
+v_o = s_o / ds;
+u_n = th_n / (pi / Nang);
+v_n = s_n / ds;
+
+Pu = [u_o - Nang; u_o; u_o + Nang];
+Pv = [-v_o; v_o; -v_o];
+srcIdx = repmat((1 : N)', 3, 1);
+
+key = round([Pu, Pv] * 1e6);
+[~, ~, ic] = unique(key, 'rows', 'stable');
+numUnique = max(ic);
+Pu_u = accumarray(ic, Pu, [numUnique, 1], @mean);
+Pu_v = accumarray(ic, Pv, [numUnique, 1], @mean);
+
+ncols = size(Ar, 2);
+out = zeros(size(Ar));
+for cc = 1 : ncols
+    vals = double(Ar(:, cc));
+    valsRep = vals(srcIdx);
+    avgVals = accumarray(ic, valsRep, [numUnique, 1], @mean);
+    outC = griddata(Pu_u, Pu_v, avgVals, u_n, v_n, method);
+    outC(isnan(outC)) = 0;
+    out(:, cc) = outC;
+end
+end
+
+function [th, s] = lorDistance(x, y)
+% Canonical (angle, signed distance) parametrisation of a set of LORs,
+% each given by two endpoints (columns 1 and 2 of x and y), folded into
+% the [0, pi) angular range (see arcInterpWeights).
+x1 = x(:,1); x2 = x(:,2);
+y1 = y(:,1); y2 = y(:,2);
+dx = x2 - x1;
+dy = y2 - y1;
+th = atan2(dy, dx);
+s = (x1 .* y2 - x2 .* y1) ./ hypot(dx, dy);
+idx = th < 0;
+th(idx) = th(idx) + pi;
+s(idx) = -s(idx);
+idx = th >= pi;
+th(idx) = th(idx) - pi;
+s(idx) = -s(idx);
 end

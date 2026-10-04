@@ -324,6 +324,25 @@ if options.useEFOV
         options.Nz = ceil(options.Nz * options.axial_fov / options.axialFOVOrig);
     end
 
+    % Multiresolution total FOV size
+    if numel(options.FOVa_x) == 1 % No eFOV
+        FOV = [options.FOVa_x; options.FOVa_y; options.axial_fov];
+    elseif numel(options.FOVa_x) == 3 % Axial eFOV only
+        FOV = [options.FOVa_x(1); options.FOVa_y(1); sum(options.axial_fov)];
+    elseif numel(options.FOVa_x) == 5 % Transaxial eFOV only
+        FOV = [
+            options.FOVa_x(1) + options.FOVa_x(2) + options.FOVa_x(3);
+            options.FOVa_y(1) + options.FOVa_y(4) + options.FOVa_y(5);
+            options.axial_fov(1)
+        ];
+    elseif numel(options.FOVa_x) == 7 % Axial + transaxial eFOV
+        FOV = [
+            options.FOVa_x(1) + options.FOVa_x(4) + options.FOVa_x(5);
+            options.FOVa_y(1) + options.FOVa_y(6) + options.FOVa_y(7);
+            options.axial_fov(1) + options.axial_fov(2) + options.axial_fov(3)
+        ];
+    end
+
     dx = options.FOVa_x / options.Nx;
     dy = options.FOVa_y / options.Ny;
     dz = options.axial_fov / options.Nz;

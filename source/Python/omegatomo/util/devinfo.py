@@ -11,7 +11,7 @@ def deviceInfo(useAF = False, backend = 'opencl'):
             except:
                 af.set_backend(af.BackendType.opencl)
                 print(af.info_string())
-        except ModuleNotFoundError:
+        except (ImportError, OSError, RuntimeError):
             print('ArrayFire not found. Unable to determine device numbers for ArrayFire.')
     elif backend == 'opencl':
         import pyopencl as cl

@@ -32,7 +32,7 @@ else
     q = 0.25;
 end
 
-if isfield(options,'detOffsetRow ') && sum(options.detOffsetRow) > 0
+if isfield(options,'detOffsetRow') && sum(options.detOffsetRow) > 0
     detOffset = options.detOffsetRow;
 else
     detOffset = 0;

@@ -145,8 +145,8 @@ end
 if options.SPECT && mod(sqrt(options.nRays), 1) ~= 0
     error('With SPECT, options.nRays has to be a square')
 end
-if options.SPECT && ismember(options.projector_type, [2, 12, 21, 22]) && options.n_rays_transaxial * options.n_rays_axial > 1
-    warning('Orthogonal distance ray tracer should be used with 1 ray.')
+if options.SPECT && ismember(options.projector_type, [2, 12, 21, 22, 26, 62]) && options.n_rays_transaxial * options.n_rays_axial > 1
+    error('Multiple rays are not supported with the orthogonal distance-based projector (projector type 2) in SPECT. Use n_rays_transaxial = n_rays_axial = 1.')
 end
 if options.only_sinos && options.only_reconstructions
     error('options.only_sinos and options.only_reconstructions cannot be both set to true')
@@ -196,7 +196,21 @@ end
 if ~options.CT && ~options.SPECT && options.ring_difference < 0 && ~options.use_raw_data
     error('Ring difference has to be at least 0!')
 end
-if ~options.CT && ~options.SPECT && options.Nang(end) > options.det_w_pseudo(end)/2 && ~options.use_raw_data
+% List-mode data with custom detector coordinates (options.x/y/z(_det) sized
+% to match options.SinM) or index-based reconstruction (options.useIndexBasedReconstruction)
+% collapses Nang/Ndist to 1 with no matching scanner geometry (det_w_pseudo can be 0), so it
+% must never be validated against the sinogram angle-count limit below. This mirrors
+% projectorClass.m's own list-mode/index-based detection (~line 561-582), replicated here
+% (rather than relying on options.listmode) because THIS function is called, both directly
+% from main-files and from projectorClass.m (~line 421), BEFORE that detection runs -- at
+% that point options.listmode still only reflects whatever the caller explicitly set (default
+% false), not the auto-detected custom-coordinates case.
+isListModeCandidate = (isfield(options,'x') || isfield(options,'y') || (isfield(options,'z') || isfield(options,'z_det'))) && ...
+    (((numel(options.x) / 2 == numel(options.SinM) || numel(options.x) / 6 == numel(options.SinM))) || ...
+    (numel(options.SinM) == 0 && numel(options.x) >= 6) || ...
+    (iscell(options.x) && (numel(options.x{1}) / 2 == numel(options.SinM{1}) || numel(options.x{1}) / 6 == numel(options.SinM{1}))));
+if ~options.CT && ~options.SPECT && options.Nang(end) > options.det_w_pseudo(end)/2 && ~options.use_raw_data ...
+        && ~isListModeCandidate && ~options.listmode && ~options.useIndexBasedReconstruction
     error(['Number of sinogram angles can be at most the number of detectors per ring divided by two(' num2str(options.det_w_pseudo(1)/2) ')!'])
 end
 if ~options.CT && ~options.SPECT && options.TotSinos < options.NSinos && ~options.use_raw_data
@@ -326,10 +340,13 @@ if options.implementation == 1 && ((isfield(options,'maskBP') && ~isscalar(optio
     warning('Mask images are not supported with implementation 1!')
 end
 if options.projector_type > 6 && ~ismember(options.projector_type, ...
-        [11 12 13 14 15 21 22 23 24 25 31 32 33 34 35 41 42 43 44 45 51 54 55])
+        [11 12 13 14 15 16 21 22 23 24 25 26 31 32 33 34 35 41 42 43 44 45 51 54 55 61 62 66])
     error('The selected projector type is not supported!')
 end
 if options.use_CPU && ~ismember(options.projector_type, [11 1]) && options.implementation == 2
+    error('Selected projector type is not supported with CPU implementation!')
+end
+if options.implementation == 4 && ~ismember(options.projector_type, [1 11 6 16 61 66])
     error('Selected projector type is not supported with CPU implementation!')
 end
 if sum(options.precondTypeImage) == 0 && (options.PKMA || options.MRAMLA || options.MBSREM)
@@ -339,12 +356,12 @@ if options.APLS && exist(options.APLS_reference_image,'file') ~= 2 && MAP
     error('APLS selected, but the anatomical reference image was not found on path!')
 end
 if options.epps <= 0
-    warning('Epsilon value is zero or less than zero; must be a positive value. Using the default value (1e-8).')
-    options.epps = 1e-8;
+    warning('Epsilon value is zero or less than zero; must be a positive value. Using the default value (1e-6).')
+    options.epps = 1e-6;
 end
 if numel(options.epps) > 1
-    warning('Epsilon has to be a scalar value! Using the default value (1e-8).')
-    options.epps = 1e-8;
+    warning('Epsilon has to be a scalar value! Using the default value (1e-6).')
+    options.epps = 1e-6;
 end
 if ~options.CT && ~options.SPECT && options.store_scatter && sum(options.scatter_components) <= 0
     error('Store scatter selected, but no scatter components have been selected!')
@@ -484,8 +501,8 @@ end
 if (options.projector_type == 6) && ~options.SPECT
     error('Projector type 6 is only supported with SPECT data!')
 end
-if (options.projector_type ~= 6 && options.projector_type ~= 1 && options.projector_type ~= 11 && options.projector_type ~= 2 && options.projector_type ~= 22) && options.SPECT
-    error('SPECT only supports projector types 1, 2 and 6!')
+if ~ismember(options.projector_type, [1 2 6 11 16 21 22 26 61 62 66]) && options.SPECT
+    error('SPECT only supports projector types 1, 2 and 6, plus supported hybrid variants!')
 end
 if options.projector_type ~= 4 && options.useHelical
     error('Helical CT only supports projector type 4 at the moment!')
@@ -861,19 +878,14 @@ if options.verbose > 0
                 else
                     aray = 'ray';
                 end
-                    disp(['Improved Siddon''s algorithm selected with ' num2str(options.n_rays_transaxial) ' transaxial ' ray ' and ' ...
+                disp(['Improved Siddon''s algorithm selected with ' num2str(options.n_rays_transaxial) ' transaxial ' ray ' and ' ...
                     num2str(options.n_rays_axial) ' axial ' aray '.'])
-                end
             end
         elseif options.projector_type == 1 || options.projector_type == 11
             disp('Improved Siddon''s algorithm selected with 1 ray.')
         elseif options.projector_type == 2 || options.projector_type == 22
             dispi = 'Orthogonal distance-based ray tracer selected';
-            if options.tube_width_z > 0 || options.implementation == 4
-                dispi = [dispi, ' in 3D mode.'];
-            elseif options.tube_width_z == 0 && options.implementation == 4
-                warning('2.5D mode not available with implementation 4! Switching to 3D mode!')
-                options.tube_width_z = options.tube_width_xy;
+            if options.tube_width_z > 0
                 dispi = [dispi, ' in 3D mode.'];
             else
                 dispi = [dispi, ' in 2.5D mode.'];
