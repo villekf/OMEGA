@@ -1884,6 +1884,137 @@ DEVICE void compute_attenuation(const float val, const typeT ind, IMTYPE d_atten
 }
 #endif
 
+#if defined(MRATN)
+DEVICE float read_multiresolution_attenuation(IMTYPE d_atten, const int x, const int y, const int z,
+	const uint nx, const uint ny) {
+#if defined(CUDA) || defined(HIP)
+#ifdef USEIMAGES
+	return tex3D<float>(d_atten, (float)x, (float)y, (float)z);
+#else
+	return d_atten[(LONG)x + (LONG)y * (LONG)nx + (LONG)z * (LONG)nx * (LONG)ny];
+#endif
+#else
+#ifdef USEIMAGES
+	return read_imagef(d_atten, samplerSiddon, (int4)(x, y, z, 0)).w;
+#else
+	return d_atten[(LONG)x + (LONG)y * (LONG)nx + (LONG)z * (LONG)nx * (LONG)ny];
+#endif
+#endif
+}
+
+DEVICE void compute_multiresolution_attenuation(const float val, const typeT ind, IMTYPE d_atten,
+	PTR_THR float *jelppi, const uint3 volumeDims, const float3 volumeSpacing, const float3 volumeOrigin,
+	const uint attenuationNx, const uint attenuationNy, const uint attenuationNz,
+	const float attenuationDx, const float attenuationDy, const float attenuationDz,
+	const float attenuationBx, const float attenuationBy, const float attenuationBz) {
+	int x, y, z;
+#ifdef USEIMAGES
+	x = ind.x; y = ind.y; z = ind.z;
+#else
+	const LONG localIndex = (LONG)ind;
+	x = (int)(localIndex % (LONG)volumeDims.x);
+	y = (int)((localIndex / (LONG)volumeDims.x) % (LONG)volumeDims.y);
+	z = (int)(localIndex / ((LONG)volumeDims.x * (LONG)volumeDims.y));
+#endif
+	const int ix = (int)floor((volumeOrigin.x + ((float)x + 0.5f) * volumeSpacing.x - attenuationBx) / attenuationDx);
+	const int iy = (int)floor((volumeOrigin.y + ((float)y + 0.5f) * volumeSpacing.y - attenuationBy) / attenuationDy);
+	const int iz = (int)floor((volumeOrigin.z + ((float)z + 0.5f) * volumeSpacing.z - attenuationBz) / attenuationDz);
+	if (ix >= 0 && ix < (int)attenuationNx && iy >= 0 && iy < (int)attenuationNy && iz >= 0 && iz < (int)attenuationNz)
+		*jelppi += val * -read_multiresolution_attenuation(d_atten, ix, iy, iz, attenuationNx, attenuationNy);
+}
+
+DEVICE float integrate_multiresolution_attenuation_prefix(IMTYPE d_atten, const float3 source, const float3 direction,
+	const float3 volumeOrigin, const float3 volumeMaximum, const float rayLength,
+	const uint attenuationNx, const uint attenuationNy, const uint attenuationNz,
+	const float attenuationDx, const float attenuationDy, const float attenuationDz,
+	const float attenuationBx, const float attenuationBy, const float attenuationBz) {
+	float entry = 0.f, volumeExit = 1.f;
+	const float starts[3] = { source.x, source.y, source.z };
+	const float dirs[3] = { direction.x, direction.y, direction.z };
+	const float vmin[3] = { volumeOrigin.x, volumeOrigin.y, volumeOrigin.z };
+	const float vmax[3] = { volumeMaximum.x, volumeMaximum.y, volumeMaximum.z };
+	for (int axis = 0; axis < 3; ++axis) {
+		if (fabs(dirs[axis]) < 1.0e-12f) {
+			if (starts[axis] < vmin[axis] || starts[axis] >= vmax[axis]) return 0.f;
+			continue;
+		}
+		const float a = (vmin[axis] - starts[axis]) / dirs[axis];
+		const float b = (vmax[axis] - starts[axis]) / dirs[axis];
+		entry = fmax(entry, fmin(a, b));
+		volumeExit = fmin(volumeExit, fmax(a, b));
+	}
+	if (volumeExit <= entry || entry <= 0.f) return 0.f;
+	const float prefixEnd = fmin(entry, 1.f);
+	float t = 0.f, end = prefixEnd;
+	const float amin[3] = { attenuationBx, attenuationBy, attenuationBz };
+	const float ad[3] = { attenuationDx, attenuationDy, attenuationDz };
+	const int an[3] = { (int)attenuationNx, (int)attenuationNy, (int)attenuationNz };
+	for (int axis = 0; axis < 3; ++axis) {
+		const float maximum = amin[axis] + (float)an[axis] * ad[axis];
+		if (fabs(dirs[axis]) < 1.0e-12f) {
+			if (starts[axis] < amin[axis] || starts[axis] >= maximum) return 0.f;
+			continue;
+		}
+		const float a = (amin[axis] - starts[axis]) / dirs[axis];
+		const float b = (maximum - starts[axis]) / dirs[axis];
+		t = fmax(t, fmin(a, b));
+		end = fmin(end, fmax(a, b));
+	}
+	if (end <= t) return 0.f;
+	#if defined(CUDA) || defined(HIP)
+	const float probe = nextafterf(t, end);
+	#else
+	const float probe = nextafter(t, end);
+	#endif
+	int index[3], step[3];
+	float nextBoundary[3], deltaT[3];
+	for (int axis = 0; axis < 3; ++axis) {
+		const float position = starts[axis] + dirs[axis] * probe;
+		step[axis] = dirs[axis] > 0.f ? 1 : (dirs[axis] < 0.f ? -1 : 0);
+		const float coordinate = (position - amin[axis]) / ad[axis];
+		index[axis] = (int)floor(coordinate);
+		if (step[axis] < 0) {
+			const float nearestBoundary = floor(coordinate + 0.5f);
+			const float boundaryTolerance = 4.f * 1.1920928955078125e-7f * fmax(1.f, fabs(coordinate));
+			if (fabs(coordinate - nearestBoundary) <= boundaryTolerance)
+				index[axis] = (int)nearestBoundary - 1;
+		}
+		index[axis] = max(0, min(index[axis], an[axis] - 1));
+		if (step[axis] == 0) {
+			nextBoundary[axis] = 3.402823466e+38f;
+			deltaT[axis] = 3.402823466e+38f;
+		}
+		else {
+			const float plane = amin[axis] + (float)(index[axis] + (step[axis] > 0 ? 1 : 0)) * ad[axis];
+			nextBoundary[axis] = (plane - starts[axis]) / dirs[axis];
+			deltaT[axis] = ad[axis] / fabs(dirs[axis]);
+			while (nextBoundary[axis] <= t) nextBoundary[axis] += deltaT[axis];
+		}
+	}
+	float integral = 0.f;
+	const uint maxSteps = attenuationNx + attenuationNy + attenuationNz + 3u;
+	for (uint count = 0u; count < maxSteps && t < end; ++count) {
+		if (index[0] < 0 || index[0] >= an[0] || index[1] < 0 || index[1] >= an[1] || index[2] < 0 || index[2] >= an[2])
+			break;
+		const float next = fmin(end, fmin(nextBoundary[0], fmin(nextBoundary[1], nextBoundary[2])));
+		if (next > t)
+			integral += (next - t) * rayLength * read_multiresolution_attenuation(d_atten, index[0], index[1], index[2], attenuationNx, attenuationNy);
+		if (next >= end) break;
+		bool advanced = false;
+		for (int axis = 0; axis < 3; ++axis) {
+			if (nextBoundary[axis] <= next) {
+				index[axis] += step[axis];
+				nextBoundary[axis] += deltaT[axis];
+				advanced = true;
+			}
+		}
+		if (!advanced) break;
+		t = next;
+	}
+	return -integral;
+}
+#endif
+
 #if !defined(PTYPE4) && !defined(PROJ5)
 // Compute the voxel index where the current perpendicular measurement starts
 DEVICE int perpendicular_start(const float d_b, const float d, const float d_d, const uint d_N) {

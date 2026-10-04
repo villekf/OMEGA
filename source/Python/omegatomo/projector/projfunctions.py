@@ -4,6 +4,10 @@ Created on Thu Jul 10 13:25:14 2025
 """
 
 import numpy as np
+from omegatomo.projector.init import (
+    _multiresolution_image_attenuation_args,
+    _uses_multiresolution_image_attenuation,
+)
 
 def _mask_fp_resource(self, subset):
     if self.SPECT and self.maskFPZ == self.nHeads:
@@ -288,7 +292,9 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                         ff = cp.cuda.texture.TextureObject(res, tdes)
                     kIndLoc = self.kIndF
                     if self.FPType == 1 or self.FPType == 2 or self.FPType == 3 or self.FPType == 4:
-                        if (self.attenuation_correction and not self.CTAttenuation):
+                        if _uses_multiresolution_image_attenuation(self):
+                            kIndLoc += (self.d_imageAttenuation[timestep][k],)
+                        elif (self.attenuation_correction and not self.CTAttenuation):
                             kIndLoc += (self.d_atten[subset],)
                     if self.FPType == 5 or self.FPType == 4:
                         kIndLoc += (cp.uint32(self.Nx[k].item()),)
@@ -460,6 +466,10 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                         kIndLoc += (cp.uint64(self.nMeasSubset[timestep, subset].item()),)
                         kIndLoc += (cp.uint32(subset),)
                         kIndLoc += (cp.int32(k),)
+                        if _uses_multiresolution_image_attenuation(self):
+                            kIndLoc += _multiresolution_image_attenuation_args(
+                                self, timestep, k, (cp.uint32, cp.float32),
+                            )
                     self.knlF((self.globalSizeFP[timestep][subset][0] // self.localSizeFP[0], self.globalSizeFP[timestep][subset][1] // self.localSizeFP[1], self.globalSizeFP[timestep][subset][2]), (self.localSizeFP[0], self.localSizeFP[1], 1),kIndLoc)
             if self.useTorch:
                 torch.cuda.synchronize()
@@ -586,7 +596,11 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                         d_im = cl.MemoryObject.from_int_ptr(fPtr)
                 kIndLoc = self.kIndF
                 if self.FPType == 1 or self.FPType == 2 or self.FPType == 3 or self.FPType == 4:
-                    if (self.attenuation_correction and not self.CTAttenuation):
+                    if _uses_multiresolution_image_attenuation(self):
+                        resource = self.d_imageAttenuation[timestep][k]
+                        self.knlF.set_arg(kIndLoc, resource if self.useImages else resource.data)
+                        kIndLoc += 1
+                    elif (self.attenuation_correction and not self.CTAttenuation):
                         self.knlF.set_arg(kIndLoc, self.d_atten[subset].data)
                         kIndLoc += 1
                     # elif self.attenuation_correction and self.CTAttenuation:
@@ -728,6 +742,13 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                     self.knlF.set_arg(kIndLoc, (cl.cltypes.uint)(subset))
                     kIndLoc += 1
                     self.knlF.set_arg(kIndLoc, (cl.cltypes.int)(k))
+                    kIndLoc += 1
+                    if _uses_multiresolution_image_attenuation(self):
+                        for value in _multiresolution_image_attenuation_args(
+                            self, timestep, k, (cl.cltypes.uint, cl.cltypes.float),
+                        ):
+                            self.knlF.set_arg(kIndLoc, value)
+                            kIndLoc += 1
                 cl.enqueue_nd_range_kernel(self.queue, self.knlF, self.globalSizeFP[timestep][subset], self.localSizeFP)
                 self.queue.finish()
         if volumes > 0 and not(isinstance(f,list)):
@@ -822,7 +843,9 @@ def backwardProjection(self, y, subset = -1, timestep = -1):
                         yy = yy.ravel(order='F')
                     kIndLoc = self.kIndB
                     if self.BPType in [1, 2, 3]:
-                        if (self.attenuation_correction and not self.CTAttenuation):
+                        if _uses_multiresolution_image_attenuation(self):
+                            kIndLoc += (self.d_imageAttenuation[timestep][k],)
+                        elif (self.attenuation_correction and not self.CTAttenuation):
                             kIndLoc += (self.d_atten[subset],)
                         if self.useMaskFP:
                             kIndLoc += (_mask_fp_resource(self, subset),)
@@ -876,6 +899,10 @@ def backwardProjection(self, y, subset = -1, timestep = -1):
                         kIndLoc += (cp.uint64(self.nMeasSubset[timestep, subset].item()),)
                         kIndLoc += (cp.uint32(subset),)
                         kIndLoc += (cp.int32(k),)
+                        if _uses_multiresolution_image_attenuation(self):
+                            kIndLoc += _multiresolution_image_attenuation_args(
+                                self, timestep, k, (cp.uint32, cp.float32),
+                            )
                     else:
                         if self.CT:
                             if self.OffsetLimit.size > 0:
@@ -1099,7 +1126,11 @@ def backwardProjection(self, y, subset = -1, timestep = -1):
                         f = cl.array.zeros(self.queue, self.N[k].item(), dtype=cltype)
                 kIndLoc = self.kIndB
                 if self.BPType in [1, 2, 3]:
-                    if (self.attenuation_correction and not self.CTAttenuation):
+                    if _uses_multiresolution_image_attenuation(self):
+                        resource = self.d_imageAttenuation[timestep][k]
+                        self.knlB.set_arg(kIndLoc, resource if self.useImages else resource.data)
+                        kIndLoc += 1
+                    elif (self.attenuation_correction and not self.CTAttenuation):
                         self.knlB.set_arg(kIndLoc, self.d_atten[subset].data)
                         kIndLoc += 1
                     if self.useMaskFP:
@@ -1169,6 +1200,13 @@ def backwardProjection(self, y, subset = -1, timestep = -1):
                     self.knlB.set_arg(kIndLoc, (cl.cltypes.uint)(subset))
                     kIndLoc += 1
                     self.knlB.set_arg(kIndLoc, (cl.cltypes.int)(k))
+                    kIndLoc += 1
+                    if _uses_multiresolution_image_attenuation(self):
+                        for value in _multiresolution_image_attenuation_args(
+                            self, timestep, k, (cl.cltypes.uint, cl.cltypes.float),
+                        ):
+                            self.knlB.set_arg(kIndLoc, value)
+                            kIndLoc += 1
                 else:
                     if self.CT:
                         if self.OffsetLimit.size > 0:

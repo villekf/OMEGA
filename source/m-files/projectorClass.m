@@ -379,14 +379,16 @@ classdef projectorClass
                 if numel(obj.param.swivelAngles) == 0
                     obj.param.swivelAngles = obj.param.angles + 180;
                 end
+                multiResolutionImageAttenuation = obj.param.useMultiResolutionVolumes && ...
+                    obj.param.attenuation_correction && obj.param.CT_attenuation;
                 if obj.param.offangle ~= 0
                     obj.param.angles = obj.param.angles + obj.param.offangle;
                     obj.param.swivelAngles = obj.param.swivelAngles + obj.param.offangle;
-                    if isfield(obj.param, 'vaimennus')
+                    if isfield(obj.param, 'vaimennus') && ~multiResolutionImageAttenuation
                         obj.param.vaimennus = imrotate(obj.param.vaimennus, obj.param.offangle, 'crop');
                     end
                 end
-                if isfield(obj.param, 'vaimennus')
+                if isfield(obj.param, 'vaimennus') && ~multiResolutionImageAttenuation
                     if obj.param.flipImageX
                         obj.param.vaimennus = flip(obj.param.vaimennus, 2);
                     end
@@ -1058,10 +1060,10 @@ classdef projectorClass
             [obj.param.V,obj.param.Vmax,obj.param.bmin,obj.param.bmax] = computeVoxelVolumes(obj.param.dx,obj.param.dy,obj.param.dz,obj.param);
 
 
-            if (obj.param.projector_type == 2 || obj.param.projector_type == 3 || obj.param.projector_type == 22 || obj.param.projector_type == 33)
+            if (obj.param.projector_type == 2 || obj.param.projector_type == 3 || obj.param.projector_type == 21 || obj.param.projector_type == 22 || obj.param.projector_type == 33)
                 if obj.param.projector_type == 3 || obj.param.projector_type == 33
                     obj.param.orthTransaxial = true;
-                elseif (obj.param.projector_type == 2 || obj.param.projector_type == 22) && (isfield(options,'tube_width_xy') && options.tube_width_xy > 0 || options.SPECT)
+                elseif (obj.param.projector_type == 2 || obj.param.projector_type == 21 || obj.param.projector_type == 22) && (isfield(options,'tube_width_xy') && options.tube_width_xy > 0 || options.SPECT)
                     obj.param.orthTransaxial = true;
                 else
                     obj.param.orthTransaxial = false;
@@ -1069,10 +1071,10 @@ classdef projectorClass
             else
                 obj.param.orthTransaxial = false;
             end
-            if (obj.param.projector_type == 2 || obj.param.projector_type == 3 || obj.param.projector_type == 22 || obj.param.projector_type == 33)
+            if (obj.param.projector_type == 2 || obj.param.projector_type == 3 || obj.param.projector_type == 21 || obj.param.projector_type == 22 || obj.param.projector_type == 33)
                 if obj.param.projector_type == 3 || obj.param.projector_type == 33
                     obj.param.orthAxial = true;
-                elseif (obj.param.projector_type == 2 || obj.param.projector_type == 22) && (isfield(obj.param,'tube_width_z') && obj.param.tube_width_z > 0 || options.SPECT)
+                elseif (obj.param.projector_type == 2 || obj.param.projector_type == 21 || obj.param.projector_type == 22) && (isfield(obj.param,'tube_width_z') && obj.param.tube_width_z > 0 || options.SPECT)
                     obj.param.orthAxial = true;
                 else
                     obj.param.orthAxial = false;
@@ -1175,6 +1177,10 @@ classdef projectorClass
             obj.trans = false;
 
             obj.param.use_device = uint32(obj.param.use_device);
+            if obj.param.useMultiResolutionVolumes && obj.param.attenuation_correction && obj.param.CT_attenuation && ...
+                    isfield(obj.param, 'vaimennus') && ~isempty(obj.param.vaimennus)
+                obj.param = prepareMultiResolutionAttenuation(obj.param);
+            end
         end
 
         function obj = initCorrections(obj)

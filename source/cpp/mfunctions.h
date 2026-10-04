@@ -14,6 +14,7 @@
 *************************************************************************************************************************************************/
 #pragma once
 #include "structs.h"
+#include <cmath>
 
 inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const int type = -1) {
 
@@ -95,6 +96,62 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	inputScalars.multiResolution = getScalarBool(options, 0, "useMultiResolutionVolumes");
     inputScalars.storeMultiResolution = getScalarBool(options, 0, "storeMultiResolution");
 	inputScalars.nMultiVolumes = getScalarUInt32(options, 0, "nMultiVolumes");
+	if (inputScalars.attenuation_correction && inputScalars.multiResolution && inputScalars.nMultiVolumes > 0 &&
+		inputScalars.SPECT && inputScalars.CTAttenuation) {
+		if (inputScalars.projector_type != 1 && inputScalars.projector_type != 2 && inputScalars.projector_type != 11 &&
+			inputScalars.projector_type != 21 && inputScalars.projector_type != 22)
+			mexErrMsgTxt("Multi-resolution image-domain attenuation requires SPECT Siddon or orthogonal projectors (types 1, 2, 11, 21, or 22).");
+#if defined(CPU)
+		mexErrMsgTxt("Multi-resolution image-domain attenuation is not implemented by the native C++ CPU projector.");
+#endif
+#if defined(METAL)
+		mexErrMsgTxt("Multi-resolution image-domain attenuation is not implemented by the Metal/MPS projector backend.");
+#endif
+		const char* metadataFields[] = {
+			"imageAttenuationGridDims", "imageAttenuationGridSpacing", "imageAttenuationGridOrigin"
+		};
+		const int dimsField = mxGetFieldNumber(options, metadataFields[0]);
+		const int spacingField = mxGetFieldNumber(options, metadataFields[1]);
+		const int originField = mxGetFieldNumber(options, metadataFields[2]);
+		if (dimsField < 0 || spacingField < 0 || originField < 0)
+			mexErrMsgTxt("Multi-resolution image-domain attenuation requires full-FOV attenuation grid metadata.");
+
+		const mxArray* dimsArray = mxGetField(options, 0, metadataFields[0]);
+		const mxArray* spacingArray = mxGetField(options, 0, metadataFields[1]);
+		const mxArray* originArray = mxGetField(options, 0, metadataFields[2]);
+		if (!dimsArray || !mxIsUint32(dimsArray) || mxIsComplex(dimsArray) || mxGetM(dimsArray) != 2 || mxGetN(dimsArray) != 3 ||
+			!spacingArray || !mxIsSingle(spacingArray) || mxIsComplex(spacingArray) || mxGetM(spacingArray) != 2 || mxGetN(spacingArray) != 3 ||
+			!originArray || !mxIsSingle(originArray) || mxIsComplex(originArray) || mxGetM(originArray) != 2 || mxGetN(originArray) != 3)
+			mexErrMsgTxt("Image attenuation grid dimensions must be 2x3 uint32 arrays; spacing and origin must be 2x3 single arrays.");
+
+		// MATLAB stores 2x3 arrays column-major (fineX, coarseX, fineY, ...).
+		// The projector ABI stores each grid as a consecutive x/y/z triplet.
+		const uint32_t* dimsValues = static_cast<const uint32_t*>(mxGetData(dimsArray));
+		const float* spacingValues = static_cast<const float*>(mxGetData(spacingArray));
+		const float* originValues = static_cast<const float*>(mxGetData(originArray));
+		for (uint32_t grid = 0; grid < 2; ++grid) {
+			for (uint32_t axis = 0; axis < 3; ++axis) {
+				const uint32_t sourceIndex = grid + 2U * axis;
+				const uint32_t targetIndex = grid * 3U + axis;
+				inputScalars.imageAttenuationGridDims[targetIndex] = dimsValues[sourceIndex];
+				inputScalars.imageAttenuationGridSpacing[targetIndex] = spacingValues[sourceIndex];
+				inputScalars.imageAttenuationGridOrigin[targetIndex] = originValues[sourceIndex];
+				if (dimsValues[sourceIndex] == 0U || !(spacingValues[sourceIndex] > 0.f) ||
+					!std::isfinite(spacingValues[sourceIndex]) || !std::isfinite(originValues[sourceIndex]))
+					mexErrMsgTxt("Image attenuation grid dimensions, spacing, or origin are invalid.");
+			}
+		}
+		const uint64_t fineSize = static_cast<uint64_t>(inputScalars.imageAttenuationGridDims[0]) *
+			inputScalars.imageAttenuationGridDims[1] * inputScalars.imageAttenuationGridDims[2];
+		const uint64_t coarseSize = static_cast<uint64_t>(inputScalars.imageAttenuationGridDims[3]) *
+			inputScalars.imageAttenuationGridDims[4] * inputScalars.imageAttenuationGridDims[5];
+		const uint64_t frameStride = fineSize + coarseSize;
+		const bool staticMapSize = inputScalars.size_atten == frameStride;
+		const bool dynamicMapSize = inputScalars.Nt > 1 &&
+			inputScalars.size_atten == frameStride * static_cast<uint64_t>(inputScalars.Nt);
+		if (!staticMapSize && !dynamicMapSize)
+			mexErrMsgTxt("The packed multi-resolution attenuation data do not match the fine/coarse grids and timeframe count.");
+	}
 	if (inputScalars.FPType == 5 || inputScalars.BPType == 5) {
 		inputScalars.meanFP = getScalarBool(options, 0, "meanFP");
 		inputScalars.meanBP = getScalarBool(options, 0, "meanBP");

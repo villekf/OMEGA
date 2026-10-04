@@ -129,7 +129,9 @@ if options.attenuation_correction && ~options.SPECT % PET attenuation
             end
         end
     end
-    if options.CT_attenuation
+    if options.CT_attenuation && options.useMultiResolutionVolumes && options.nMultiVolumes > 0
+        options = prepareMultiResolutionAttenuation(options);
+    elseif options.CT_attenuation
         if size(options.vaimennus,1) ~= options.Nx(1) || size(options.vaimennus,2) ~= options.Ny(1) || size(options.vaimennus,3) ~= options.Nz(1)
             if size(options.vaimennus,1) ~= options.N(1)
                 warning('Error: Attenuation data is of different size than the reconstructed image. Attempting resize.')
@@ -188,17 +190,40 @@ elseif options.attenuation_correction && options.SPECT % SPECT attenuation
         MUvol = HU_to_mu(CTvol, options.keV);
         muAir = HU_to_mu(-1000, options.keV);
 
+        % Use the pre-split full-FOV reference for multi-resolution maps.
+        % Its world center stays at (0,0,0); any tile union beyond it is
+        % padded symmetrically by prepareMultiResolutionAttenuation.
+        if options.useMultiResolutionVolumes && options.nMultiVolumes > 0
+            fineDims = double([options.NxFull, options.NyFull, options.NzFull]);
+            if isfield(options, 'imageAttenuationFineDims')
+                fineDims = double(options.imageAttenuationFineDims(:).');
+            end
+            fineFOV = double([options.FOVa_x(1), options.FOVa_y(1), options.axial_fov(1)]);
+            if isfield(options, 'imageAttenuationFineFOV')
+                fineFOV = double(options.imageAttenuationFineFOV(:).');
+            end
+            attenuationRef = imref3d(fineDims, fineFOV(1) .* [-0.5, 0.5], ...
+                fineFOV(2) .* [-0.5, 0.5], fineFOV(3) .* [-0.5, 0.5]);
+        else
+            attenuationRef = options.refSPECT;
+        end
+
         % Use imwarp to change the CT volume limits
         tform = affinetform3d(eye(4)); % No scaling or rotation
-        [MUvol, ~] = imwarp(MUvol, refCT, tform, OutputView=options.refSPECT, FillValue=muAir, InterpolationMethod='linear');
+        [MUvol, ~] = imwarp(MUvol, refCT, tform, OutputView=attenuationRef, FillValue=muAir, InterpolationMethod='linear');
         options.vaimennus = 1*MUvol;
+    end
+    if options.CT_attenuation && options.useMultiResolutionVolumes && options.nMultiVolumes > 0
+        options = prepareMultiResolutionAttenuation(options);
     end
     if options.partitions > 1
         if ~iscell(options.vaimennus)
+            isPreparedImageAttenuation = options.CT_attenuation && ...
+                isfield(options, 'imageAttenuationIsMultiResolution') && options.imageAttenuationIsMultiResolution;
             isDynamicMeasurementAttenuation = ~options.CT_attenuation && iscell(options.SinM) && ...
                 numel(options.vaimennus) == options.nRowsD * options.nColsD * ...
                 sum(cellfun(@(x) size(x, 3), options.SinM));
-            if ~isDynamicMeasurementAttenuation
+            if ~isDynamicMeasurementAttenuation && ~isPreparedImageAttenuation
                 error("With dynamic reconstruction the attenuation map needs to be a cell type");
             end
         elseif numel(options.vaimennus) ~= options.partitions
@@ -208,7 +233,8 @@ elseif options.attenuation_correction && options.SPECT % SPECT attenuation
 else
     options.vaimennus = 0;
 end
-if options.attenuation_correction && options.attIncm
+if options.attenuation_correction && options.attIncm && ...
+        ~(isfield(options, 'imageAttenuationIsMultiResolution') && options.imageAttenuationIsMultiResolution)
     options.vaimennus = options.vaimennus ./ 10;
 end
 

@@ -672,7 +672,10 @@ class projectorClass:
                 self.angles += self.offangle
                 self.swivelAngles += self.offangle
             
-            if self.vaimennus.size > 0:
+            if self.vaimennus.size > 0 and not (
+                self.useMultiResolutionVolumes and self.SPECT and self.attenuation_correction and
+                self.CT_attenuation
+            ):
                 if self.offangle != 0:
                     from skimage.transform import rotate
                     self.vaimennus = rotate(self.vaimennus, self.offangle)
@@ -1450,6 +1453,13 @@ class projectorClass:
             self.TVtype = 1
         if self.projector_type not in [1, 2, 3, 4, 5, 6, 11, 14, 12, 13, 16, 21, 22, 23, 24, 26, 31, 32, 33, 34, 41, 42, 43, 44, 45, 51, 15, 54, 55, 61, 62, 66]:
             raise ValueError('The selected projector type is not supported!')
+        if (self.attenuation_correction and self.CT_attenuation and self.useMultiResolutionVolumes and self.SPECT):
+            if self.projector_type not in (1, 2, 11, 21, 22):
+                raise ValueError('Multi-resolution image-domain attenuation requires native SPECT Siddon or orthogonal projectors for both forward and backward projection.')
+            if self.implementation == 2 and self.useCPU:
+                raise ValueError('Multi-resolution image-domain attenuation is not implemented in the native C++ CPU reconstruction path.')
+            if self.useMetal:
+                raise ValueError('Multi-resolution image-domain attenuation is not implemented by the Metal/MPS projector backend.')
         if self.APLS and not os.path.exists(self.APLS_ref_image) and self.MAP and not type(self.APLS_ref_image) == np.ndarray:
             raise FileNotFoundError('APLS selected, but the anatomical reference image was not found on path!')
         if self.epps <= 0:
@@ -1930,6 +1940,14 @@ class projectorClass:
         self.NxFull = nx
         self.NyFull = ny
         self.NzFull = nz
+        if self.useMultiResolutionVolumes:
+            self.imageAttenuationFineDims = np.asarray([nx, ny, nz], dtype=np.float64)
+            self.imageAttenuationFineFOV = np.asarray([
+                float(np.asarray(self.FOVa_x).reshape(-1)[0]),
+                float(np.asarray(self.FOVa_y).reshape(-1)[0]),
+                float(np.asarray(self.axial_fov).reshape(-1)[0]),
+            ], dtype=np.float64)
+            self.imageAttenuationFineSpacing = self.imageAttenuationFineFOV / self.imageAttenuationFineDims
         if self.useEFOV:
             if self.useMultiResolutionVolumes:
                 dxM = self.FOVxOrig / (self.NxOrig * self.multiResolutionScale)
@@ -2618,4 +2636,7 @@ class projectorClass:
             ('sizeDetectorVector', ctypes.c_uint64),
             ('sensitivityViewWeights', ctypes.POINTER(ctypes.c_float)),
             ('sizeSensitivityViewWeights', ctypes.c_uint64),
+            ('imageAttenuationGridDims', ctypes.c_uint32 * 6),
+            ('imageAttenuationGridSpacing', ctypes.c_float * 6),
+            ('imageAttenuationGridOrigin', ctypes.c_float * 6),
         ]

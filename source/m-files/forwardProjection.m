@@ -250,19 +250,19 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
                 'Run install_mex to build it. gpuArray input requires a CUDA-enabled installation and the CUDA toolkit.'])
         end
     end
-    if ~isfield(options,'orthTransaxial') && (options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 22 || options.projector_type == 33)
+    if ~isfield(options,'orthTransaxial') && (options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 21 || options.projector_type == 22 || options.projector_type == 33)
         if options.projector_type == 3 || options.projector_type == 33
             options.orthTransaxial = true;
-        elseif (options.projector_type == 2 || options.projector_type == 22) && (isfield(options,'tube_width_xy') && options.tube_width_xy > 0 || options.SPECT)
+        elseif (options.projector_type == 2 || options.projector_type == 21 || options.projector_type == 22) && (isfield(options,'tube_width_xy') && options.tube_width_xy > 0 || options.SPECT)
             options.orthTransaxial = true;
         else
             options.orthTransaxial = false;
         end
     end
-    if ~isfield(options,'orthAxial') && (options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 22 || options.projector_type == 33)
+    if ~isfield(options,'orthAxial') && (options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 21 || options.projector_type == 22 || options.projector_type == 33)
         if options.projector_type == 3 || options.projector_type == 33
             options.orthAxial = true;
-        elseif (options.projector_type == 2 || options.projector_type == 22) && (isfield(obj.param,'tube_width_z') && obj.param.tube_width_z > 0 || options.SPECT)
+        elseif (options.projector_type == 2 || options.projector_type == 21 || options.projector_type == 22) && (isfield(obj.param,'tube_width_z') && obj.param.tube_width_z > 0 || options.SPECT)
             options.orthAxial = true;
         else
             options.orthAxial = false;
@@ -326,7 +326,7 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
         crystal_size_z = (options.tube_width_xy);
     end
     if options.projector_type == 1 || options.projector_type == 11 ...
-            || options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 22 || options.projector_type == 33
+            || options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 21 || options.projector_type == 22 || options.projector_type == 33
         kernel_file = 'projectorType123.cl';
         kernel_path = which(kernel_file);
         kernel_path = strrep(kernel_path, '\', '/');

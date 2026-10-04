@@ -39,28 +39,58 @@ def computePixelSize(options):
         The coordinates of the voxel boundaries in z-direction.
 
     """
-    FOV = np.column_stack((options.FOVa_x,options.FOVa_y, options.axial_fov)).astype(dtype=np.float32)
-    etaisyys = -(FOV) / 2
+    # Keep the physical dimensions in double precision while calculating the
+    # grid.  In particular, do not infer voxel spacing from the first interval
+    # of a float32 linspace: its rounded intervals are not uniform and can
+    # differ between otherwise matching multi-resolution slabs.
+    FOV = np.column_stack((options.FOVa_x, options.FOVa_y, options.axial_fov)).astype(dtype=np.float64)
+    etaisyys = -FOV / 2
     options.dx = np.zeros((FOV.shape[0]),dtype=np.float32)
     options.dy = np.zeros((FOV.shape[0]),dtype=np.float32)
     options.dz = np.zeros((FOV.shape[0]),dtype=np.float32)
     options.bx = np.zeros((FOV.shape[0]),dtype=np.float32)
     options.by = np.zeros((FOV.shape[0]),dtype=np.float32)
     options.bz = np.zeros((FOV.shape[0]),dtype=np.float32)
+    def count(axis, index):
+        value = getattr(options, axis)
+        return int(value[index]) if isinstance(value, np.ndarray) else int(value)
+
+    offsets = np.asarray([options.oOffsetX, options.oOffsetY, options.oOffsetZ], dtype=np.float64)
+    spacings = np.empty_like(FOV)
+    for kk in range(FOV.shape[0]):
+        dims = np.asarray([count('Nx', kk), count('Ny', kk), count('Nz', kk)], dtype=np.float64)
+        spacings[kk] = FOV[kk] / dims
+        options.dx[kk], options.dy[kk], options.dz[kk] = spacings[kk].astype(np.float32)
+
+    # In multi-resolution EFOVs the neighboring slabs are portions of one
+    # global grid. Anchor their shared faces to the central slab's voxel
+    # boundaries, using the actual integer dimensions and per-volume spacing.
+    # This also avoids small gaps/overlaps when slab FOVs were rounded to
+    # integer coarse voxels during EFOV setup.
+    mr_count = FOV.shape[0] if getattr(options, 'useMultiResolutionVolumes', False) else 0
+    mr_layout = mr_count in (3, 5, 7)
+    if mr_layout:
+        if np.isclose(float(getattr(options, 'multiResolutionScale', 0.0)), 1.0,
+                      rtol=0.0, atol=1.0e-12):
+            # At unit scale every slab represents the same voxel grid. Small
+            # float32 differences in its separately stored FOV lengths must
+            # not give neighboring slabs different voxel sizes.
+            spacings[:] = spacings[0]
+            options.dx[:] = spacings[:, 0].astype(np.float32)
+            options.dy[:] = spacings[:, 1].astype(np.float32)
+            options.dz[:] = spacings[:, 2].astype(np.float32)
+        central_dims = np.asarray([count('Nx', 0), count('Ny', 0), count('Nz', 0)], dtype=np.float64)
+        central_start = (offsets - FOV[0] / 2).astype(np.float32)
+        central_step = np.asarray([options.dx[0], options.dy[0], options.dz[0]], dtype=np.float32)
+        central_end = (central_start + central_dims.astype(np.float32) * central_step).astype(np.float32)
+
     for kk in range(FOV.shape[0] - 1, -1, -1):
-        if isinstance(options.Nx, np.ndarray):
-            xx = np.linspace(etaisyys[kk,0] + options.oOffsetX, -etaisyys[kk,0] + options.oOffsetX, options.Nx[kk].item() + 1, dtype=np.float32)
-            yy = np.linspace(etaisyys[kk,1] + options.oOffsetY, -etaisyys[kk,1] + options.oOffsetY, options.Ny[kk].item() + 1, dtype=np.float32)
-            zz = np.linspace(etaisyys[kk,2] + options.oOffsetZ, -etaisyys[kk,2] + options.oOffsetZ, options.Nz[kk].item() + 1, dtype=np.float32)
-        else:
-            xx = np.linspace(etaisyys[kk,0] + options.oOffsetX, -etaisyys[kk,0] + options.oOffsetX, options.Nx + 1, dtype=np.float32)
-            yy = np.linspace(etaisyys[kk,1] + options.oOffsetY, -etaisyys[kk,1] + options.oOffsetY, options.Ny + 1, dtype=np.float32)
-            zz = np.linspace(etaisyys[kk,2] + options.oOffsetZ, -etaisyys[kk,2] + options.oOffsetZ, options.Nz + 1, dtype=np.float32)
-        
-        # Distance of adjacent pixels
-        options.dx[kk] = xx[1] - xx[0]
-        options.dy[kk] = yy[1] - yy[0]
-        options.dz[kk] = zz[1] - zz[0]
+        dims = (count('Nx', kk), count('Ny', kk), count('Nz', kk))
+        step = np.asarray([options.dx[kk], options.dy[kk], options.dz[kk]], dtype=np.float32)
+        starts = (offsets - FOV[kk] / 2).astype(np.float32)
+        xx = starts[0] + np.arange(dims[0] + 1, dtype=np.float32) * step[0]
+        yy = starts[1] + np.arange(dims[1] + 1, dtype=np.float32) * step[1]
+        zz = starts[2] + np.arange(dims[2] + 1, dtype=np.float32) * step[2]
     
         # Distance of image from the origin
         if kk == 0:
@@ -72,14 +102,38 @@ def computePixelSize(options):
                 options.by[kk] += options.eFOVShift[1]
                 options.bz[kk] += options.eFOVShift[2]
         else:
-            if kk > 4 or (FOV.shape[0] == 5 and kk > 2):
+            if mr_layout:
+                options.bx[kk], options.by[kk], options.bz[kk] = starts
+                if mr_count in (3, 7) and kk in (1, 2):
+                    # Lower and upper axial slabs abut the central slab.
+                    options.bx[kk], options.by[kk] = central_start[:2]
+                    if kk == 1:
+                        options.bz[kk] = np.float32(
+                            central_start[2] - np.float32(dims[2]) * step[2]
+                        )
+                    else:
+                        options.bz[kk] = central_end[2]
+                x_sides = (3, 4) if mr_count == 7 else ((1, 2) if mr_count == 5 else ())
+                y_sides = (5, 6) if mr_count == 7 else ((3, 4) if mr_count == 5 else ())
+                if kk in x_sides:
+                    options.bx[kk] = (np.float32(central_start[0] - np.float32(dims[0]) * step[0])
+                                      if kk == x_sides[0] else central_end[0])
+                    # These slabs span the full transverse y and axial fields.
+                    options.by[kk] = np.float32(starts[1] + options.eFOVShift[1])
+                    options.bz[kk] = np.float32(starts[2] + options.eFOVShift[2])
+                if kk in y_sides:
+                    options.bx[kk] = central_start[0]
+                    options.by[kk] = (np.float32(central_start[1] - np.float32(dims[1]) * step[1])
+                                      if kk == y_sides[0] else central_end[1])
+                    options.bz[kk] = np.float32(starts[2] + options.eFOVShift[2])
+            elif kk > 4:
                 if kk % 2 == 0:
                     options.by[kk] = options.oOffsetY + FOV[0][1] / 2
                 else:
                     options.by[kk] = options.oOffsetY - FOV[0][1] / 2 - FOV[kk,1]
                 options.bx[kk] = xx[0]
                 options.bz[kk] = zz[0] + options.eFOVShift[2]
-            elif (kk > 2 and kk < 5) or (FOV.shape[0] == 5 and kk > 0):
+            elif kk > 2 and kk < 5:
                 if kk % 2 == 0:
                     options.bx[kk] = etaisyys[0,0] + options.oOffsetX + FOV[0,0]
                 else:

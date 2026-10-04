@@ -117,17 +117,27 @@ OS_I4_summa = checkAlgorithmsPriors(options, 2,0) + checkAlgorithmsPriors(option
 preCondImAlg = checkAlgorithmsPriors(options, 7);
 preCondMeasAlg = checkAlgorithmsPriors(options, 8);
 
-if (options.SPECT || options.PET) && options.useMultiResolutionVolumes && options.attenuation_correction && options.CT_attenuation
-    warning('Image-domain attenuation correction is not supported with multi-resolution reconstruction. Disabling attenuation correction.')
-    options.attenuation_correction = false;
-    if isfield(options, 'vaimennus')
-        options = rmfield(options, 'vaimennus');
-    end
-end
 if numel(options.partitions) > 1
     partitions = numel(options.partitions);
 else
     partitions = options.partitions;
+end
+if options.useMultiResolutionVolumes && options.attenuation_correction && options.CT_attenuation
+    if ~options.SPECT
+        error('Multi-resolution image-domain attenuation correction is currently supported only for SPECT.')
+    end
+    if ~ismember(options.projector_type, [1, 2, 11, 21, 22])
+        error('Multi-resolution image-domain attenuation requires SPECT Siddon or orthogonal projectors (types 1, 2, 11, 21, or 22).')
+    end
+    if options.implementation == 1 || options.implementation == 4
+        error('Multi-resolution image-domain attenuation is not implemented by the CPU projector backends.')
+    end
+    if options.implementation == 2 && options.use_CPU
+        error('Multi-resolution image-domain attenuation is not implemented by the native C++ CPU backend.')
+    end
+    if ismac && ismember(options.implementation, [2, 3, 5])
+        error('Multi-resolution image-domain attenuation is not implemented by the Metal/MPS projector backend.')
+    end
 end
 if partitions > 1 && options.implementation ~= 2 % TODO dynamic reconstruction for implementation 5 (macOS)
     error('Dynamic reconstruction is supported only with implementation 2.')

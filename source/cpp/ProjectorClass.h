@@ -1185,6 +1185,8 @@ class ProjectorClass {
 		// Build projector program
 		if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 1 || 
 			inputScalars.FPType == 2 || inputScalars.FPType == 3) {
+			const bool multiResolutionImageAttenuation = inputScalars.attenuation_correction && inputScalars.CTAttenuation &&
+				inputScalars.multiResolution && inputScalars.SPECT && inputScalars.nMultiVolumes > 0;
 #if defined(CUDA) || defined(HIP) || defined(METAL)
 			std::vector<std::string> os_options = options;
 #elif defined(OPENCL)
@@ -1198,6 +1200,10 @@ class ProjectorClass {
 			std::string os_optionsFP = os_options;
 #endif // END CUDA
 			ADD_OPT(os_optionsFP, FP_FLAG);
+#if defined(CUDA) || defined(HIP) || defined(OPENCL)
+			if (multiResolutionImageAttenuation)
+				ADD_OPT(os_optionsFP, "-DMRATN");
+#endif
 			if (inputScalars.FPType == 3)
 				ADD_OPT(os_optionsFP, "-DVOL");
 			if (inputScalars.FPType == 2 || inputScalars.FPType == 3)
@@ -1220,6 +1226,10 @@ class ProjectorClass {
 					mexPrint("Trying to build BP 1-3 program\n");
 				}
 				ADD_OPT(os_options, "-DBP");
+#if defined(CUDA) || defined(HIP) || defined(OPENCL)
+				if (multiResolutionImageAttenuation)
+					ADD_OPT(os_options, "-DMRATN");
+#endif
 				if (inputScalars.BPType == 3)
 					ADD_OPT(os_options, "-DVOL");
 				if (inputScalars.BPType == 2 || inputScalars.BPType == 3)
@@ -1372,6 +1382,13 @@ class ProjectorClass {
 			ADD_OPT(os_options, "-DBP");
 			ADD_OPT(os_options, "-DATOMICF");
 			ADD_OPT(os_options, "-DSENS");
+			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation &&
+				inputScalars.multiResolution && inputScalars.SPECT && inputScalars.nMultiVolumes > 0 &&
+				inputScalars.BPType >= 1 && inputScalars.BPType <= 3) {
+#if defined(CUDA) || defined(HIP) || defined(OPENCL)
+				ADD_OPT(os_options, "-DMRATN");
+#endif
+			}
 			if (inputScalars.BPType == 3)
 				ADD_OPT(os_options, "-DVOL");
 			if (inputScalars.BPType == 2 || inputScalars.BPType == 3)
@@ -2105,6 +2122,45 @@ class ProjectorClass {
 		return status;
 	}
 public:
+	struct ImageAttenuationGrid {
+		uint32_t Nx = 1U, Ny = 1U, Nz = 1U;
+		float dx = 1.f, dy = 1.f, dz = 1.f;
+		float bx = 0.f, by = 0.f, bz = 0.f;
+		size_t size = 1ULL;
+	};
+
+	inline ImageAttenuationGrid imageAttenuationGrid(const scalarStruct& inputScalars, const bool coarse) const {
+		ImageAttenuationGrid grid;
+		const size_t resolution = (coarse && inputScalars.multiResolution && inputScalars.SPECT && inputScalars.nMultiVolumes > 0) ? 1ULL : 0ULL;
+		const size_t metadataOffset = resolution * 3ULL;
+		if (inputScalars.imageAttenuationGridDims[metadataOffset] > 0U &&
+			inputScalars.imageAttenuationGridDims[metadataOffset + 1ULL] > 0U &&
+			inputScalars.imageAttenuationGridDims[metadataOffset + 2ULL] > 0U) {
+			grid.Nx = inputScalars.imageAttenuationGridDims[metadataOffset];
+			grid.Ny = inputScalars.imageAttenuationGridDims[metadataOffset + 1ULL];
+			grid.Nz = inputScalars.imageAttenuationGridDims[metadataOffset + 2ULL];
+			grid.dx = inputScalars.imageAttenuationGridSpacing[metadataOffset];
+			grid.dy = inputScalars.imageAttenuationGridSpacing[metadataOffset + 1ULL];
+			grid.dz = inputScalars.imageAttenuationGridSpacing[metadataOffset + 2ULL];
+			grid.bx = inputScalars.imageAttenuationGridOrigin[metadataOffset];
+			grid.by = inputScalars.imageAttenuationGridOrigin[metadataOffset + 1ULL];
+			grid.bz = inputScalars.imageAttenuationGridOrigin[metadataOffset + 2ULL];
+		}
+		else {
+			grid.Nx = inputScalars.Nx[0]; grid.Ny = inputScalars.Ny[0]; grid.Nz = inputScalars.Nz[0];
+			grid.dx = inputScalars.dx[0]; grid.dy = inputScalars.dy[0]; grid.dz = inputScalars.dz[0];
+			grid.bx = inputScalars.bx[0]; grid.by = inputScalars.by[0]; grid.bz = inputScalars.bz[0];
+		}
+		grid.size = static_cast<size_t>(grid.Nx) * grid.Ny * grid.Nz;
+		return grid;
+	}
+
+	inline size_t imageAttenuationFrameStride(const scalarStruct& inputScalars) const {
+		if (inputScalars.multiResolution && inputScalars.SPECT && inputScalars.CTAttenuation && inputScalars.attenuation_correction && inputScalars.nMultiVolumes > 0)
+			return imageAttenuationGrid(inputScalars, false).size + imageAttenuationGrid(inputScalars, true).size;
+		return static_cast<size_t>(inputScalars.im_dim[0]);
+	}
+
 	ProjectorClass()
 #if defined(METAL)
 		: autoreleasePool(NS::TransferPtr(NS::AutoreleasePool::alloc()->init()))
@@ -2358,7 +2414,7 @@ public:
 	DEVBUFF_t d_xcenter, d_ycenter, d_zcenter, d_V, d_TOFCenter, d_eFOVIndices, d_weights, d_angle, d_g, d_uref,
 		d_rayShiftsDetector, d_rayShiftsSource, d_maskPriorB;
 	std::vector<std::vector<DEVBUFF_t>> d_maskBPB;
-	std::vector<DEVBUFF_t> d_attenB;
+	std::vector<std::vector<DEVBUFF_t>> d_attenB;
 	AFDEVBUFF_t d_output, d_meanBP, d_meanFP, d_inputB, d_W, d_gaussianNLM;
 	AFDEVBUFF_t d_qX, d_qY, d_qZ;
 	AFDEVBUFF_t d_rX, d_rY, d_rXY, d_rZ, d_rXZ, d_rYZ;
@@ -2376,7 +2432,8 @@ public:
 	// Texture3D d_imageX, d_imageY; // Unused
 	TEXARRAY_t atArray, uRefArray, maskArrayPrior, BPArray, FPArray, integArrayXY, imArray;
 	std::vector<std::vector<TEXARRAY_t>> maskArrayBP;
-	std::vector<TEX3D_t> d_attenIm;
+	std::vector<std::vector<TEX3D_t>> d_attenIm;
+	std::vector<std::vector<TEXARRAY_t>> attenuationArrays;
 #if defined(CUDA) || defined(HIP)
 	CUmodule programFP, programBP, programAux, programSens;
 	std::vector<void*> FPArgs, BPArgs, SensArgs;
@@ -2504,18 +2561,23 @@ public:
 		}
 		if (memAlloc.V)
 			getErrorString(cuMemFree(d_V));
-		if (memAlloc.atten && !memAlloc.useBuffers) {
-			getErrorString(cuArrayDestroy(atArray));
-		}
-		for (int tt = 0; tt < memAlloc.tSteps; tt++) {
-			if (memAlloc.atten && memAlloc.attenSize < tt) {
-				if (memAlloc.useBuffers) {
-					getErrorString(cuMemFree(d_attenB[tt]));
-				}
-				else {
-					getErrorString(cuTexObjectDestroy(d_attenIm[tt]));
+		if (memAlloc.atten) {
+			for (size_t tt = 0; tt < d_attenB.size(); ++tt) {
+				for (size_t resolution = 0; resolution < d_attenB[tt].size(); ++resolution) {
+					if (memAlloc.useBuffers) {
+						if (d_attenB[tt][resolution] != 0)
+							getErrorString(cuMemFree(d_attenB[tt][resolution]));
+					}
+					else {
+						if (tt < d_attenIm.size() && resolution < d_attenIm[tt].size() && d_attenIm[tt][resolution] != 0)
+							getErrorString(cuTexObjectDestroy(d_attenIm[tt][resolution]));
+						if (tt < attenuationArrays.size() && resolution < attenuationArrays[tt].size() && attenuationArrays[tt][resolution])
+							getErrorString(cuArrayDestroy(attenuationArrays[tt][resolution]));
+					}
 				}
 			}
+		}
+		for (int tt = 0; tt < memAlloc.tSteps; tt++) {
 			if (memAlloc.xSteps >= 0) {
 				for (int kk = 0; kk <= memAlloc.xSteps / memAlloc.tSteps; kk++) {
 					getErrorString(cuMemFree(d_x[tt][kk]));
@@ -3551,13 +3613,40 @@ public:
 					}
 				}
 				if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
-					if (inputScalars.size_atten > inputScalars.im_dim[0] || timestep == 0) {
+					const bool multiResolutionAttenuation = inputScalars.multiResolution && inputScalars.SPECT && inputScalars.nMultiVolumes > 0;
+					const size_t attenuationFrameStride = imageAttenuationFrameStride(inputScalars);
+					const bool dynamicAttenuation = inputScalars.Nt > 1 && inputScalars.size_atten == attenuationFrameStride * static_cast<size_t>(inputScalars.Nt);
+					const size_t attenuationFrame = dynamicAttenuation ? timestep : 0ULL;
+					if (multiResolutionAttenuation) {
+						if (dynamicAttenuation || timestep == 0) {
+							for (size_t resolution = 0; resolution < 2; ++resolution) {
+								const ImageAttenuationGrid grid = imageAttenuationGrid(inputScalars, resolution == 1);
+								const size_t mapOffset = attenuationFrame * attenuationFrameStride + (resolution == 1 ? imageAttenuationGrid(inputScalars, false).size : 0ULL);
+								if (inputScalars.useBuffers) {
+									ALLOC_BUFFER(d_attenB[timestep][resolution], CL_MEM_READ_ONLY, sizeof(float) * grid.size);
+								}
+								else {
+								const bool interpolationTexture = inputScalars.FPType == 4 || inputScalars.BPType == 4;
+								CREATE_FLOAT_TEXTURE3D_FROM_HOST(d_attenIm[timestep][resolution], attenuationArrays[timestep][resolution], &atten[mapOffset],
+										grid.Nx, grid.Ny, grid.Nz,
+										interpolationTexture ? BACKEND_TEXTURE_LINEAR : BACKEND_TEXTURE_POINT,
+										interpolationTexture ? BACKEND_TEXTURE_NORMALIZED : BACKEND_TEXTURE_DEFAULT_FLAGS);
+									CHECK(status, "\n", (STATUS_t)(-1));
+								}
+								memAlloc.atten = true;
+								memAlloc.attenSize++;
+							}
+						}
+					}
+					else if (dynamicAttenuation || timestep == 0) {
+						const ImageAttenuationGrid grid = imageAttenuationGrid(inputScalars, false);
 						if (inputScalars.useBuffers)
-							ALLOC_BUFFER(d_attenB[timestep], CL_MEM_READ_ONLY, sizeof(float) * inputScalars.im_dim[0]);
+							ALLOC_BUFFER(d_attenB[timestep][0], CL_MEM_READ_ONLY, sizeof(float) * grid.size);
 						else {
 							const bool interpolationTexture = inputScalars.FPType == 4 || inputScalars.BPType == 4;
-							CREATE_FLOAT_TEXTURE3D_FROM_HOST(d_attenIm[timestep], atArray, &atten[inputScalars.im_dim[0] * timestep],
-								inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0],
+							const size_t mapOffset = dynamicAttenuation ? timestep * attenuationFrameStride : 0ULL;
+							CREATE_FLOAT_TEXTURE3D_FROM_HOST(d_attenIm[timestep][0], attenuationArrays[timestep][0], &atten[mapOffset],
+								grid.Nx, grid.Ny, grid.Nz,
 								interpolationTexture ? BACKEND_TEXTURE_LINEAR : BACKEND_TEXTURE_POINT,
 								interpolationTexture ? BACKEND_TEXTURE_NORMALIZED : BACKEND_TEXTURE_DEFAULT_FLAGS);
 							CHECK(status, "\n", (STATUS_t)(-1));
@@ -3829,17 +3918,25 @@ public:
 					}
 				}
 				if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
-					if (inputScalars.useBuffers) {
-						if (inputScalars.size_atten > inputScalars.im_dim[0]) {
-							WRITE_BUFFER(d_attenB[timestep], sizeof(float) * inputScalars.im_dim[0], &atten[inputScalars.im_dim[0] * timestep]);
+					const bool multiResolutionAttenuation = inputScalars.multiResolution && inputScalars.SPECT && inputScalars.nMultiVolumes > 0;
+					const size_t attenuationFrameStride = imageAttenuationFrameStride(inputScalars);
+					const bool dynamicAttenuation = inputScalars.Nt > 1 && inputScalars.size_atten == attenuationFrameStride * static_cast<size_t>(inputScalars.Nt);
+					const size_t attenuationFrame = dynamicAttenuation ? timestep : 0ULL;
+					if (multiResolutionAttenuation && inputScalars.useBuffers && (dynamicAttenuation || timestep == 0)) {
+						for (size_t resolution = 0; resolution < 2; ++resolution) {
+							const ImageAttenuationGrid grid = imageAttenuationGrid(inputScalars, resolution == 1);
+							const size_t mapOffset = attenuationFrame * attenuationFrameStride + (resolution == 1 ? imageAttenuationGrid(inputScalars, false).size : 0ULL);
+							WRITE_BUFFER(d_attenB[timestep][resolution], sizeof(float) * grid.size, &atten[mapOffset]);
 							CHECK(status, "\n", (STATUS_t)(-1));
-							memSize += (sizeof(float) * inputScalars.im_dim[0]);
+							memSize += sizeof(float) * grid.size;
 						}
-						else if (timestep == 0) {
-							WRITE_BUFFER(d_attenB[timestep], sizeof(float) * inputScalars.im_dim[0], atten);
-							CHECK(status, "\n", (STATUS_t)(-1));
-							memSize += (sizeof(float) * inputScalars.im_dim[0]);
-						}
+					}
+					else if (!multiResolutionAttenuation && inputScalars.useBuffers && (dynamicAttenuation || timestep == 0)) {
+						const ImageAttenuationGrid grid = imageAttenuationGrid(inputScalars, false);
+						const size_t mapOffset = dynamicAttenuation ? timestep * attenuationFrameStride : 0ULL;
+						WRITE_BUFFER(d_attenB[timestep][0], sizeof(float) * grid.size, &atten[mapOffset]);
+						CHECK(status, "\n", (STATUS_t)(-1));
+						memSize += sizeof(float) * grid.size;
 					}
 				}
 				for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
@@ -4105,6 +4202,13 @@ public:
 			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
 				d_attenB.resize(inputScalars.Nt);
 				d_attenIm.resize(inputScalars.Nt);
+				attenuationArrays.resize(inputScalars.Nt);
+				const size_t attenuationResolutionCount = (inputScalars.multiResolution && inputScalars.SPECT && inputScalars.nMultiVolumes > 0) ? 2ULL : 1ULL;
+				for (uint32_t timestep = 0; timestep < inputScalars.Nt; ++timestep) {
+					d_attenB[timestep].resize(attenuationResolutionCount);
+					d_attenIm[timestep].resize(attenuationResolutionCount);
+					attenuationArrays[timestep].resize(attenuationResolutionCount);
+				}
 			}
 			if (inputScalars.maskBP) {
 				if (inputScalars.useBuffers)
@@ -4713,19 +4817,15 @@ public:
 					KARG(kTemp, kernelFP, kernelIndFPSubIter, d_atten[timestep][osa_iter]);
 			}
 			else if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
-				if (inputScalars.size_atten > inputScalars.im_dim[0]) {
-					if (inputScalars.useBuffers) {
-						KARG(kTemp, kernelFP, kernelIndFPSubIter, d_attenB[timestep]);
-					}
-					else
-						KARG(kTemp, kernelFP, kernelIndFPSubIter, d_attenIm[timestep]);
+				const size_t attenuationFrameStride = imageAttenuationFrameStride(inputScalars);
+				const bool dynamicAttenuation = inputScalars.Nt > 1 && inputScalars.size_atten == attenuationFrameStride * static_cast<size_t>(inputScalars.Nt);
+				const size_t attenuationFrame = dynamicAttenuation ? timestep : 0ULL;
+				const size_t attenuationResolution = (inputScalars.multiResolution && inputScalars.SPECT && ii > 0) ? 1ULL : 0ULL;
+				if (inputScalars.useBuffers) {
+					KARG(kTemp, kernelFP, kernelIndFPSubIter, d_attenB[attenuationFrame][attenuationResolution]);
 				}
 				else {
-					if (inputScalars.useBuffers) {
-						KARG(kTemp, kernelFP, kernelIndFPSubIter, d_attenB[0]);
-					}
-					else
-						KARG(kTemp, kernelFP, kernelIndFPSubIter, d_attenIm[0]);
+					KARG(kTemp, kernelFP, kernelIndFPSubIter, d_attenIm[attenuationFrame][attenuationResolution]);
 				}
 			}
 		}
@@ -4987,6 +5087,19 @@ public:
 			KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, m_size);
 			KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, osa_iter);
 			KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, ii);
+			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation && inputScalars.multiResolution &&
+				inputScalars.SPECT && inputScalars.nMultiVolumes > 0) {
+				ImageAttenuationGrid attenuationGrid = imageAttenuationGrid(inputScalars, ii > 0);
+				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGrid.Nx);
+				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGrid.Ny);
+				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGrid.Nz);
+				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGrid.dx);
+				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGrid.dy);
+				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGrid.dz);
+				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGrid.bx);
+				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGrid.by);
+				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGrid.bz);
+			}
 		}
 		if (DEBUG || inputScalars.verbose >= 3)
 			START_TIMER(tStart);
@@ -5155,19 +5268,29 @@ public:
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_atten[timestep][osa_iter]);
 			}
 			else if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
-				if (inputScalars.size_atten > inputScalars.im_dim[0]) {
+				if (inputScalars.multiResolution && inputScalars.SPECT && inputScalars.nMultiVolumes > 0) {
+					const size_t attenuationFrameStride = imageAttenuationFrameStride(inputScalars);
+					const bool dynamicAttenuation = inputScalars.Nt > 1 &&
+						inputScalars.size_atten == attenuationFrameStride * static_cast<size_t>(inputScalars.Nt);
+					const size_t attenuationFrame = dynamicAttenuation ? timestep : 0ULL;
+					const size_t attenuationResolution = ii > 0 ? 1ULL : 0ULL;
 					if (inputScalars.useBuffers) {
-						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_attenB[timestep]);
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_attenB[attenuationFrame][attenuationResolution]);
 					}
-					else
-						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_attenIm[timestep]);
+					else {
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_attenIm[attenuationFrame][attenuationResolution]);
+					}
 				}
 				else {
+					const size_t attenuationFrameStride = imageAttenuationFrameStride(inputScalars);
+					const bool dynamicAttenuation = inputScalars.Nt > 1 &&
+						inputScalars.size_atten == attenuationFrameStride * static_cast<size_t>(inputScalars.Nt);
+					const size_t attenuationFrame = dynamicAttenuation ? timestep : 0ULL;
 					if (inputScalars.useBuffers) {
-						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_attenB[0]);
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_attenB[attenuationFrame][0]);
 					}
 					else
-						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_attenIm[0]);
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_attenIm[attenuationFrame][0]);
 				}
 			}
 		}
@@ -5359,6 +5482,19 @@ public:
 			KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, m_size);
 			KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, osa_iter);
 			KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, ii);
+			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation && inputScalars.multiResolution &&
+				inputScalars.SPECT && inputScalars.nMultiVolumes > 0) {
+				ImageAttenuationGrid attenuationGrid = imageAttenuationGrid(inputScalars, ii > 0);
+				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGrid.Nx);
+				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGrid.Ny);
+				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGrid.Nz);
+				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGrid.dx);
+				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGrid.dy);
+				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGrid.dz);
+				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGrid.bx);
+				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGrid.by);
+				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGrid.bz);
+			}
 			}
 		else {
 			if (inputScalars.CT) {

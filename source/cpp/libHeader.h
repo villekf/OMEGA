@@ -551,6 +551,10 @@ struct inputStruct {
     uint64_t sizeDetectorVector = 0;
     float* sensitivityViewWeights = nullptr;
     uint64_t sizeSensitivityViewWeights = 0;
+    // Image attenuation grids, packed as fine/coarse XYZ triples.
+    uint32_t imageAttenuationGridDims[6] = {};
+    float imageAttenuationGridSpacing[6] = {};
+    float imageAttenuationGridOrigin[6] = {};
 };
 
 void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting& w_vec, RecMethods& MethodList) {
@@ -894,6 +898,11 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.NxOrig = options.NxOrig;
     inputScalars.NyOrig = options.NyOrig;
     inputScalars.NzOrig = options.NzOrig;
+    for (int attenuationAxis = 0; attenuationAxis < 6; ++attenuationAxis) {
+        inputScalars.imageAttenuationGridDims[attenuationAxis] = options.imageAttenuationGridDims[attenuationAxis];
+        inputScalars.imageAttenuationGridSpacing[attenuationAxis] = options.imageAttenuationGridSpacing[attenuationAxis];
+        inputScalars.imageAttenuationGridOrigin[attenuationAxis] = options.imageAttenuationGridOrigin[attenuationAxis];
+    }
     inputScalars.NxPrior = options.NxPrior;
     inputScalars.NyPrior = options.NyPrior;
     inputScalars.NzPrior = options.NzPrior;

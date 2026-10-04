@@ -61,6 +61,13 @@ if options.useEFOV
     options.NyFull = ny;
     options.NzFull = nz;
     if options.useMultiResolutionVolumes
+        % Preserve the full-FOV fine grid before the emission image is split
+        % into multi-resolution slabs. Image-domain attenuation stays on this
+        % grid (with symmetric zero padding added later only if shifted slabs
+        % extend beyond its centered support).
+        options.imageAttenuationFineDims = double([nx, ny, nz]);
+        options.imageAttenuationFineFOV = double([options.FOVa_x, options.FOVa_y, options.axial_fov]);
+        options.imageAttenuationFineSpacing = options.imageAttenuationFineFOV ./ options.imageAttenuationFineDims;
         if ~isfield(options, 'multiResolutionScale')
             warning('No scale value input for multi-resolution reconstruction. Using default value of 1/4 of the original voxel size.')
             options.multiResolutionScale = .25;

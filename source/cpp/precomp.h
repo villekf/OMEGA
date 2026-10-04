@@ -82,6 +82,10 @@ typedef struct structForScalars {
 	std::vector<CTYPE3> d_Scale4;
 	std::vector<CTYPE2> dSize;
 	CTYPE2 dSizeBP;
+	// Image attenuation grid metadata, packed as fine/coarse XYZ triples.
+	uint32_t imageAttenuationGridDims[6] = {};
+	float imageAttenuationGridSpacing[6] = {};
+	float imageAttenuationGridOrigin[6] = {};
 	uint8_t raw = 0, fp = 0, listmode = 0;
 	int8_t verbose = 0;
 	uint16_t n_rays = 1, n_rays3D = 1;

@@ -484,6 +484,19 @@ def transferData(options):
     options.param.sizeDetectorVector = ctypes.c_uint64(np.size(options.DetectorVector))
     options.param.sensitivityViewWeights = options.sensitivityViewWeights.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.sizeSensitivityViewWeights = ctypes.c_uint64(options.sensitivityViewWeights.size)
+    attenuation_dims = np.zeros((2, 3), dtype=np.uint32)
+    attenuation_spacing = np.zeros((2, 3), dtype=np.float32)
+    attenuation_origin = np.zeros((2, 3), dtype=np.float32)
+    if hasattr(options, 'imageAttenuationGridDims'):
+        dims = np.asarray(options.imageAttenuationGridDims, dtype=np.uint32).reshape(-1, 3)
+        spacing = np.asarray(options.imageAttenuationGridSpacing, dtype=np.float32).reshape(-1, 3)
+        origin = np.asarray(options.imageAttenuationGridOrigin, dtype=np.float32).reshape(-1, 3)
+        attenuation_dims[:dims.shape[0]] = dims
+        attenuation_spacing[:spacing.shape[0]] = spacing
+        attenuation_origin[:origin.shape[0]] = origin
+    options.param.imageAttenuationGridDims = (ctypes.c_uint32 * 6)(*attenuation_dims.ravel())
+    options.param.imageAttenuationGridSpacing = (ctypes.c_float * 6)(*attenuation_spacing.ravel())
+    options.param.imageAttenuationGridOrigin = (ctypes.c_float * 6)(*attenuation_origin.ravel())
     
 def reconstructions_mainCT(options):
     """

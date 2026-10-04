@@ -296,6 +296,11 @@ void projectorType123(
 #endif
 	///////////////////////// END FORWARD OR BACKWARD PROJECTIONS /////////////////////////
 	const uchar no_norm, const ULONG m_size, const uint currentSubset, const int aa
+#if defined(MRATN) && !defined(METAL)
+	, const uint atnNx, const uint atnNy, const uint atnNz
+	, const float atnDx, const float atnDy, const float atnDz
+	, const float atnBx, const float atnBy, const float atnBz
+#endif
 #endif ///////////////////// END OPENCL/CUDA/METAL /////////////////////
 ) {
 #if defined(METAL) // Unpack scalar parameters
@@ -593,6 +598,11 @@ void projectorType123(
 	int tempi = 0, tempj = 0, tempk = 0, ux = 0, uy = 0, uz = 0;
 
 	float L = LENGTH(diff);
+#if defined(MRATN) && !defined(METAL)
+	jelppi = integrate_multiresolution_attenuation_prefix(
+		d_atten, s, diff, b, d_bmax, L,
+		atnNx, atnNy, atnNz, atnDx, atnDy, atnDz, atnBx, atnBy, atnBz);
+#endif
 #ifndef TOTLENGTH
 	float LL = FLOAT_ZERO;
 #endif
@@ -967,10 +977,22 @@ void projectorType123(
 				const float dTOF = d_in;
 #endif
 #if defined(ATN) && defined(SPECT)
+#ifdef MRATN
+				#ifdef USEIMAGES
+				compute_multiresolution_attenuation(d_in, localInd, d_atten, &jelppi,
+					d_Nxyz, d_d, b, atnNx, atnNy, atnNz,
+					atnDx, atnDy, atnDz, atnBx, atnBy, atnBz);
+				#else
+				compute_multiresolution_attenuation(d_in, local_ind, d_atten, &jelppi,
+					d_Nxyz, d_d, b, atnNx, atnNy, atnNz,
+					atnDx, atnDy, atnDz, atnBx, atnBy, atnBz);
+				#endif
+#else
 #ifdef USEIMAGES
 				compute_attenuation(d_in, localInd, d_atten, &jelppi, aa);
 #else
 				compute_attenuation(d_in, local_ind, d_atten, &jelppi, aa);
+#endif
 #endif
 #if defined(SPECT) && !defined(ORTH)
 				d_in *= EXP(jelppi);
@@ -1409,7 +1431,13 @@ void projectorType123(
 #endif
 #if defined(ATN) && (defined(FP) || defined(SPECT))
 			if (pass) {
+#ifdef MRATN
+				compute_multiresolution_attenuation(local_ele2, localInd2, d_atten, &jelppi,
+					d_Nxyz, d_d, b, atnNx, atnNy, atnNz,
+					atnDx, atnDy, atnDz, atnBx, atnBy, atnBz);
+#else
 				compute_attenuation(local_ele2, localInd2, d_atten, &jelppi, aa);
+#endif
 #if defined(SPECT) && !defined(ORTH)
 				local_ele *= EXP(jelppi);
 #endif

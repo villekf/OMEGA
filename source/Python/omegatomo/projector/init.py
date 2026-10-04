@@ -89,6 +89,73 @@ def _initialize_detector_vector_buffers(self, upload, empty=None):
                 frame[int(offsets[subset]) : int(offsets[subset + 1])]
             )
 
+
+def _image_attenuation_grid(self, volume):
+    grid = 0 if int(volume) == 0 else 1
+    dims = np.asarray(self.imageAttenuationGridDims[grid], dtype=np.uint32)
+    spacing = np.asarray(self.imageAttenuationGridSpacing[grid], dtype=np.float32)
+    origin = np.asarray(self.imageAttenuationGridOrigin[grid], dtype=np.float32)
+    return grid, dims, spacing, origin
+
+
+def _image_attenuation_host_map(self, timestep, volume):
+    """Return a packed full-FOV image map for a time and MR volume class."""
+    grid, dims, _, _ = _image_attenuation_grid(self, volume)
+    sizes = np.asarray(self.imageAttenuationMapSizes, dtype=np.uint64).reshape(-1)
+    maps_per_frame = int(sizes.size)
+    n_frames = int(getattr(self, 'imageAttenuationFrames', 1))
+    frame = int(timestep) if n_frames > 1 else 0
+    if frame < 0 or frame >= n_frames:
+        raise ValueError(f'Attenuation frame {frame} is outside the prepared {n_frames}-frame map.')
+    if grid >= maps_per_frame:
+        raise ValueError('Multi-resolution image attenuation is missing the coarse full-FOV map.')
+    start = frame * int(np.sum(sizes, dtype=np.uint64)) + int(np.sum(sizes[:grid], dtype=np.uint64))
+    stop = start + int(sizes[grid])
+    values = np.asarray(self.vaimennus, dtype=np.float32).reshape(-1)
+    if stop > values.size or int(sizes[grid]) != int(np.prod(dims, dtype=np.uint64)):
+        raise ValueError('Prepared image attenuation data do not match their full-FOV grid metadata.')
+    return np.ascontiguousarray(values[start:stop]), dims
+
+
+def _initialize_multiresolution_image_attenuation(self, upload_buffer, upload_image=None):
+    """Upload the fine/coarse full-FOV maps once for each attenuation frame."""
+    if not (
+        getattr(self, 'imageAttenuationIsMultiResolution', False)
+        and self.attenuation_correction
+        and self.CTAttenuation
+    ):
+        return
+    self.d_imageAttenuation = [[None] * (self.nMultiVolumes + 1) for _ in range(self.Nt)]
+    self._imageAttenuationArrayOwners = []
+    n_frames = int(getattr(self, 'imageAttenuationFrames', 1))
+    n_grids = int(np.asarray(self.imageAttenuationGridDims).shape[0])
+    uploaded = []
+    for timestep in range(n_frames):
+        frame_maps = []
+        for grid in range(n_grids):
+            host, dims = _image_attenuation_host_map(self, timestep, grid)
+            if self.useImages:
+                if upload_image is None:
+                    raise ValueError('Image-domain attenuation textures are unavailable on this backend.')
+                frame_maps.append(upload_image(host, dims))
+            else:
+                frame_maps.append(upload_buffer(host))
+        uploaded.append(frame_maps)
+    for timestep in range(self.Nt):
+        source_frame = timestep if n_frames > 1 else 0
+        frame_maps = uploaded[source_frame]
+        self.d_imageAttenuation[timestep] = [frame_maps[0]] + [frame_maps[1]] * self.nMultiVolumes
+
+
+def _multiresolution_image_attenuation_args(self, timestep, volume, scalar_type):
+    """Return MRATN grid dimensions, spacing, and origin in kernel ABI order."""
+    _, dims, spacing, origin = _image_attenuation_grid(self, volume)
+    return (
+        scalar_type[0](dims[0]), scalar_type[0](dims[1]), scalar_type[0](dims[2]),
+        scalar_type[1](spacing[0]), scalar_type[1](spacing[1]), scalar_type[1](spacing[2]),
+        scalar_type[1](origin[0]), scalar_type[1](origin[1]), scalar_type[1](origin[2]),
+    )
+
 def computeGeom5(x, uv, nRowsD, nColsD, dPitchY, pitch):
     """
     Precompute the per-projection geometry used by the branchless distance-driven
@@ -254,6 +321,15 @@ def initProjector(self):
         self.BPType = 6
     else:
         raise ValueError('Invalid backprojector!')
+    if (
+        getattr(self, 'imageAttenuationIsMultiResolution', False)
+        and self.attenuation_correction
+        and self.CTAttenuation
+    ):
+        if self.useMetal:
+            raise ValueError('Multi-resolution image-domain attenuation is not implemented by the Metal/MPS projector.')
+        if not self.SPECT or self.projector_type not in (1, 2, 11, 21, 22):
+            raise ValueError('Multi-resolution image-domain attenuation requires the Python SPECT Siddon or orthogonal projector path (projector types 1, 2, 11, 21, or 22).')
     # CuPy does not support the texture API (cupy.cuda.texture) on ROCm/HIP; creating a CUDA
     # array fails at runtime with hipErrorUnknown. Fall back to buffers where the kernels
     # support them, otherwise raise an error.
@@ -447,6 +523,8 @@ def initProjector(self):
             bOpt += ('-DOFFSET',)
         if self.attenuation_correction and self.CTAttenuation:
             bOpt += ('-DATN',)
+            if self.SPECT and getattr(self, 'imageAttenuationIsMultiResolution', False) and self.attenuation_correction and self.CTAttenuation:
+                bOpt += ('-DMRATN',)
         elif self.attenuation_correction and not self.CTAttenuation:
             bOpt += ('-DATNM',)
         if self.normalization_correction:
@@ -641,6 +719,30 @@ def initProjector(self):
                     self.d_atten = [None] * self.subsets
                     for i in range(self.subsets):
                         self.d_atten[i] = cp.asarray(self.vaimennus[self.nTotMeas[i].item() : self.nTotMeas[i + 1].item()])
+                elif (getattr(self, 'imageAttenuationIsMultiResolution', False)
+                        and self.attenuation_correction and self.CTAttenuation):
+                    upload_image = None
+                    if self.useImages:
+                        def upload_image(host, dims):
+                            nx, ny, nz = (int(v) for v in dims)
+                            channel = cp.cuda.texture.ChannelFormatDescriptor(
+                                32, 0, 0, 0, cp.cuda.runtime.cudaChannelFormatKindFloat,
+                            )
+                            array = cp.cuda.texture.CUDAarray(channel, nx, ny, nz)
+                            array.copy_from(host.reshape((nz, ny, nx)))
+                            self._imageAttenuationArrayOwners.append(array)
+                            resource = cp.cuda.texture.ResourceDescriptor(
+                                cp.cuda.runtime.cudaResourceTypeArray, cuArr=array,
+                            )
+                            texture = cp.cuda.texture.TextureDescriptor(
+                                addressModes=(cp.cuda.runtime.cudaAddressModeClamp,) * 3,
+                                filterMode=cp.cuda.runtime.cudaFilterModePoint,
+                                normalizedCoords=0,
+                            )
+                            return cp.cuda.texture.TextureObject(resource, texture)
+                    _initialize_multiresolution_image_attenuation(
+                        self, lambda host: cp.asarray(host), upload_image,
+                    )
                 elif (self.attenuation_correction and self.CTAttenuation):
                     if not self.useImages:
                         self.d_atten = cp.asarray(self.vaimennus)
@@ -810,7 +912,10 @@ def initProjector(self):
                 if self.FPType == 4 and self.TOF:
                     self.kIndF += (self.d_TOFCenter, )
                     self.kIndF += (cp.float32(self.sigma_x), )
-                if self.attenuation_correction and self.CTAttenuation and self.FPType in [1, 2, 3, 4]:
+                if (self.attenuation_correction and self.CTAttenuation
+                        and not (getattr(self, 'imageAttenuationIsMultiResolution', False)
+                                 and self.attenuation_correction and self.CTAttenuation)
+                        and self.FPType in [1, 2, 3, 4]):
                     self.kIndF += (self.d_atten,)
                     
                 
@@ -845,7 +950,10 @@ def initProjector(self):
                 if self.BPType == 4 and not self.CT and self.TOF:
                     self.kIndB += (self.d_TOFCenter,)
                     self.kIndB += (cp.float32(self.sigma_x),)
-                if self.attenuation_correction and self.CTAttenuation and self.BPType in [1, 2, 3, 4] and not self.CT:
+                if (self.attenuation_correction and self.CTAttenuation
+                        and not (getattr(self, 'imageAttenuationIsMultiResolution', False)
+                                 and self.attenuation_correction and self.CTAttenuation)
+                        and self.BPType in [1, 2, 3, 4] and not self.CT):
                     self.kIndB += (self.d_atten,)
             else:
                 raise ValueError('Unsupported selection. Note that PyCUDA is no longer supported!')
@@ -903,6 +1011,31 @@ def initProjector(self):
                 self.d_atten = [None] * self.subsets
                 for i in range(self.subsets):
                     self.d_atten[i] = cl.array.to_device(self.queue, self.vaimennus[self.nTotMeas[i].item() : self.nTotMeas[i + 1].item()])
+            elif (getattr(self, 'imageAttenuationIsMultiResolution', False)
+                    and self.attenuation_correction and self.CTAttenuation):
+                upload_image = None
+                if self.useImages:
+                    def upload_image(host, dims):
+                        nx, ny, nz = (int(v) for v in dims)
+                        imformat = cl.ImageFormat(cl.channel_order.A, cl.channel_type.FLOAT)
+                        if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
+                            return cl.create_image(
+                                self.clctx,
+                                cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+                                imformat,
+                                hostbuf=host,
+                                shape=(nx, ny, nz),
+                            )
+                        return cl.Image(
+                            self.clctx,
+                            cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+                            imformat,
+                            hostbuf=host,
+                            shape=(nx, ny, nz),
+                        )
+                _initialize_multiresolution_image_attenuation(
+                    self, lambda host: cl.array.to_device(self.queue, host), upload_image,
+                )
             elif (self.attenuation_correction and self.CTAttenuation):
                 if self.useImages:
                     imformat = cl.ImageFormat(cl.channel_order.A, cl.channel_type.FLOAT)
@@ -1096,7 +1229,10 @@ def initProjector(self):
                 self.kIndF += 1
                 self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.sigma_x))
                 self.kIndF += 1
-            if self.attenuation_correction and self.CTAttenuation and self.FPType in [1, 2, 3, 4]:
+            if (self.attenuation_correction and self.CTAttenuation
+                    and not (getattr(self, 'imageAttenuationIsMultiResolution', False)
+                             and self.attenuation_correction and self.CTAttenuation)
+                    and self.FPType in [1, 2, 3, 4]):
                 if self.useImages:
                     self.knlF.set_arg(self.kIndF, self.d_atten)
                 else:
@@ -1175,7 +1311,10 @@ def initProjector(self):
                 self.kIndB += 1
                 self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.sigma_x))
                 self.kIndB += 1
-            if self.attenuation_correction and self.CTAttenuation and self.BPType in [1, 2, 3, 4] and not self.CT:
+            if (self.attenuation_correction and self.CTAttenuation
+                    and not (getattr(self, 'imageAttenuationIsMultiResolution', False)
+                             and self.attenuation_correction and self.CTAttenuation)
+                    and self.BPType in [1, 2, 3, 4] and not self.CT):
                 if self.useImages:
                     self.knlB.set_arg(self.kIndB, self.d_atten)
                 else:
