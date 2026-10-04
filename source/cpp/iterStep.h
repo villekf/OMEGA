@@ -70,8 +70,6 @@ int computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethod
 				volumeOffset += savedFrameCount * static_cast<size_t>(inputScalars.Nt) * inputScalars.im_dim[ii];
 #endif
 			}
-			if (timestep == inputScalars.Nt - 1)
-				ee++;
 			return 0;
 		}
 #ifdef MATLAB
@@ -92,9 +90,6 @@ int computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethod
 		} else {
 			vec.im_os[timestep][0].host(&jelppi[outputOffset]);
 		}
-		if (timestep == inputScalars.Nt - 1)
-			ee++;
 	}
-	(void)tt;
 	return 0;
 }

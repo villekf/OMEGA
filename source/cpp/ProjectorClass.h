@@ -5397,8 +5397,10 @@ public:
 			KARG_METAL_SLOT(kernelIndBPSubIter, 8);
 			if (compSens) {
 #if !defined(METAL)
-				if (inputScalars.SPECT)
-					KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, inputScalars.size_of_x / 6);
+				if (inputScalars.SPECT) {
+					auto spectSizeOfX = inputScalars.size_of_x / 6;
+					KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, spectSizeOfX);
+				}
 #endif
 				KARG(kTemp, kernelBP, kernelIndBPSubIter, d_xFull[0]);
 				KARG(kTemp, kernelBP, kernelIndBPSubIter, d_zFull[0]);

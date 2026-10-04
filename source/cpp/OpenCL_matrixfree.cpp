@@ -365,8 +365,8 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
                 static_cast<mwSize>(inputScalars.Nx[ii]),
                 static_cast<mwSize>(inputScalars.Ny[ii]),
                 static_cast<mwSize>(inputScalars.Nz[ii]),
-                static_cast<mwSize>(outSize2),
-                static_cast<mwSize>(inputScalars.Nt)
+                static_cast<mwSize>(inputScalars.Nt),
+                static_cast<mwSize>(outSize2)
             };
             mxSetCell(cell_array_ptr, static_cast<mwIndex>(ii),
                 mxCreateNumericArray(5, multiResolutionDim, mxSINGLE_CLASS, mxREAL));

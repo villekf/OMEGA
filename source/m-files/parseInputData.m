@@ -307,8 +307,23 @@ if options.subsets > 1 && options.subset_type > 0
             detectorOffsets = [0; cumsum(projectionCounts)];
             detectorVector = uint32(options.DetectorVector(:));
             selectedVectors = cell(numel(index), 1);
+            hasPerFrameDetectorVector = numel(detectorVector) ~= detectorOffsets(end) ...
+                && all(projectionCounts == numel(detectorVector));
+            if numel(detectorVector) ~= detectorOffsets(end) && ~hasPerFrameDetectorVector
+                error(['Dynamic DetectorVector must contain either one entry per projection across all ' ...
+                    'timeframes or one complete frame''s detector mapping when all frames have equal size.']);
+            end
             for tt = 1 : numel(index)
-                selectedVectors{tt} = detectorVector(detectorOffsets(tt) + index{tt});
+                if hasPerFrameDetectorVector
+                    % OMEGA_error_check/setMissingValues may provide one shared detector
+                    % mapping of length nProjections for every dynamic frame. Dynamic
+                    % subset indices are local to each frame, so apply them directly and
+                    % repeat the selected mapping for each frame. An offset here would
+                    % incorrectly index past the end of that single-frame mapping.
+                    selectedVectors{tt} = detectorVector(index{tt});
+                else
+                    selectedVectors{tt} = detectorVector(detectorOffsets(tt) + index{tt});
+                end
             end
             options.DetectorVector = vertcat(selectedVectors{:});
         else

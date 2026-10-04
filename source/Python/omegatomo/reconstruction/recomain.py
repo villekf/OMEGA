@@ -65,15 +65,17 @@ def _saved_image_count(options):
     return 1
 
 def _reshape_image_output(output, spatialShape, savedImageCount, timeFrameCount):
-    shape = (*map(int, spatialShape), int(savedImageCount), int(timeFrameCount))
+    # The C++ writer stores [voxel, timestep, save slot] in Fortran order,
+    # matching the MATLAB MEX dimensions [Nx, Ny, Nz, Nt, saves].
+    shape = (*map(int, spatialShape), int(timeFrameCount), int(savedImageCount))
     expectedSize = int(np.prod(shape, dtype=np.int64))
     if output.size != expectedSize:
         raise ValueError(f"Unexpected reconstruction output size: got {output.size} values, expected {expectedSize}")
     output = output.reshape(shape, order='F')
     if timeFrameCount == 1:
-        output = output[..., 0]
-    elif savedImageCount == 1:
         output = output[..., 0, :]
+    elif savedImageCount == 1:
+        output = output[..., 0]
     return output
 
 def _reshape_multiresolution_output(output, options):

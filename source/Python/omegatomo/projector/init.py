@@ -367,13 +367,14 @@ def initProjector(self):
     # CTAttenuation (the internal mirror of the user-facing CT_attenuation option) is derived once,
     # in addProjector() (proj.py), not here -- see the comment there. addProjector() always runs
     # before initProjector(), so self.CTAttenuation is already set by this point.
+    self.projectorInitialized = False
     if self.useAF:
         try:
             import arrayfire as af
         except (ImportError, OSError, RuntimeError):
+
             print('ArrayFire selected, but not found. Aborting.')
             return
-    self.projectorInitialized = True
     import numpy as np
     from omegatomo.reconstruction.prepass import prepassPhase
     from omegatomo.reconstruction.prepass import parseInputs
@@ -420,8 +421,13 @@ def initProjector(self):
                 return "rocm" in lower or "hip" in lower
             except Exception:
                 return False
+    else:
+        def cupyROCm():
+            return False
     if not self.useCUDA and not self.useMetal:
         import pyopencl as cl
+        import pyopencl.array
+        from pyopencl.version import VERSION
 
         if self.useAF:
             ctx = af.opencl.get_context(retain=True)
@@ -1249,3 +1255,4 @@ def initProjector(self):
 
             bp_args = _build_kIndB(self)
             self.kIndB = bp_args.apply_opencl(self.knlB, 0)
+    self.projectorInitialized = True

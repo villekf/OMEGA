@@ -21,10 +21,7 @@ function im_vectors = reshape_vectors(im_vectors, options)
 if options.save_iter
     Niter = options.Niter + 1;
 else
-    Niter = numel(options.saveNIter);
-    if Niter == 0
-        Niter = 1;
-    end
+    Niter = numel(options.saveNIter) + 1;
 end
 if numel(options.partitions) > 1
     partitions = numel(options.partitions);
