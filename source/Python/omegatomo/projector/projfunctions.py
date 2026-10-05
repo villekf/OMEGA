@@ -1343,7 +1343,15 @@ def backwardProjection(self, y, subset = -1, timestep = -1):
                             kIndLoc += (cp.uint64(self.nMeasSubset[timestep, subset].item()),)
                             kIndLoc += (cp.uint32(subset),)
                         kIndLoc += (cp.int32(k),)
-                        self.knlB((self.globalSizeBP[timestep][subset][k][0] // self.localSizeBP[0], self.globalSizeBP[timestep][subset][k][1] // self.localSizeBP[1], self.globalSizeBP[timestep][subset][k][2]), (self.localSizeBP[0], self.localSizeBP[1], 1), kIndLoc)
+                    self.knlB(
+                        (
+                            self.globalSizeBP[timestep][subset][k][0] // self.localSizeBP[0],
+                            self.globalSizeBP[timestep][subset][k][1] // self.localSizeBP[1],
+                            self.globalSizeBP[timestep][subset][k][2],
+                        ),
+                        (self.localSizeBP[0], self.localSizeBP[1], 1),
+                        kIndLoc,
+                    )
             if self.useTorch:
                 torch.cuda.synchronize()
         else:
