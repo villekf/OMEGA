@@ -598,7 +598,7 @@ void projectorType123(
 	int tempi = 0, tempj = 0, tempk = 0, ux = 0, uy = 0, uz = 0;
 
 	float L = LENGTH(diff);
-#if defined(MRATN) && !defined(METAL)
+#if defined(MRATN) && !defined(METAL) && !(defined(SPECT) && defined(ORTH) && !defined(VOL))
 	jelppi = integrate_multiresolution_attenuation_prefix(
 		d_atten, s, diff, b, d_bmax, L,
 		atnNx, atnNy, atnNz, atnDx, atnDy, atnDz, atnBx, atnBy, atnBz);
@@ -636,7 +636,7 @@ void projectorType123(
 #endif
 #endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#if defined(SPECT) && defined(ORTH) && !defined(VOL) && !defined(ATN)
+#if defined(SPECT) && defined(ORTH) && !defined(VOL) && (!defined(ATN) || defined(MRATN))
 	// SPECT ODRT has finite Gaussian support around the central ray.  Use the
 	// total FOV as the physical admission box, but only traverse voxels in this
 	// local volume so multiresolution subvolumes keep their own indexing.
@@ -708,13 +708,34 @@ void projectorType123(
 				const int primaryStart = spectOrthClampedIndex(primaryMin, localB1, localD1, localNN.x);
 				const int primaryEnd = spectOrthClampedIndex(primaryMax, localB1, localD1, localNN.x);
 				const FLOAT supportMid = (localTmin + localTmax) * FLOAT_HALF;
-
+#if defined(ATN) && defined(MRATN)
+				FLOAT attenuationPrefix = FLOAT_ZERO;
+				FLOAT previousT = FLOAT_ZERO;
+				// Accumulate the attenuation prefix between support planes. For
+				// negative-going rays the prefix decreases with primary index, so
+				// subtract the intervening segment and preserve traversal order.
+#endif
 				for (int primary = primaryStart; primary <= primaryEnd; primary++) {
 					center.x = localB1 + CFLOAT(primary) * localD1 + localD1 * FLOAT_HALF;
 					FLOAT tSeed = supportMid;
 					if (FABS(localDiff.x) >= 1.0e-6f)
 						tSeed = (center.x - localS.x) / localDiff.x;
 					tSeed = FMIN(FMAX(tSeed, localTmin), localTmax);
+#if defined(ATN) && defined(MRATN)
+					// The ray may miss this active slab while its finite ODRT support
+					// overlaps it. Integrate the selected full-FOV attenuation grid
+					// from the physical ray start to this support plane in either case.
+					tSeed = FMIN(FMAX(tSeed, FLOAT_ZERO), FLOAT_ONE);
+					const FLOAT segmentLog = integrate_multiresolution_attenuation_segment(
+						d_atten, s, diff, FMIN(previousT, tSeed), FMAX(previousT, tSeed), L,
+						atnNx, atnNy, atnNz, atnDx, atnDy, atnDz, atnBx, atnBy, atnBz);
+					if (tSeed >= previousT)
+						attenuationPrefix += segmentLog;
+					else
+						attenuationPrefix -= segmentLog;
+					previousT = tSeed;
+					const FLOAT supportAttenuation = EXP(attenuationPrefix);
+#endif
 					const int seed2 = spectOrthClampedIndex(FMAD(tSeed, localDiff.y, localS.y), localB2, localD2, localN1);
 					const int seedZ = spectOrthClampedIndex(FMAD(tSeed, localDiff.z, localS.z), _bz, dz, d_Nxyz.z);
 					int tempkSupport = seedZ;
@@ -735,7 +756,7 @@ void projectorType123(
 #endif
 #endif
 #if defined(SPECT) && defined(ATN)
-						, FLOAT_ONE
+						, supportAttenuation
 #endif
 #if defined(MASKBP) && defined(BP)
 						, aa, maskBP, d_Nxyz

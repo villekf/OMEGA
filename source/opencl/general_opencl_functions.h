@@ -1923,29 +1923,16 @@ DEVICE void compute_multiresolution_attenuation(const float val, const typeT ind
 		*jelppi += val * -read_multiresolution_attenuation(d_atten, ix, iy, iz, attenuationNx, attenuationNy);
 }
 
-DEVICE float integrate_multiresolution_attenuation_prefix(IMTYPE d_atten, const float3 source, const float3 direction,
-	const float3 volumeOrigin, const float3 volumeMaximum, const float rayLength,
+DEVICE float integrate_multiresolution_attenuation_segment(IMTYPE d_atten, const float3 source, const float3 direction,
+	const float startParameter, const float endParameter, const float rayLength,
 	const uint attenuationNx, const uint attenuationNy, const uint attenuationNz,
 	const float attenuationDx, const float attenuationDy, const float attenuationDz,
 	const float attenuationBx, const float attenuationBy, const float attenuationBz) {
-	float entry = 0.f, volumeExit = 1.f;
+	float t = fmin(fmax(startParameter, 0.f), 1.f);
+	float end = fmin(fmax(endParameter, 0.f), 1.f);
+	if (end <= t) return 0.f;
 	const float starts[3] = { source.x, source.y, source.z };
 	const float dirs[3] = { direction.x, direction.y, direction.z };
-	const float vmin[3] = { volumeOrigin.x, volumeOrigin.y, volumeOrigin.z };
-	const float vmax[3] = { volumeMaximum.x, volumeMaximum.y, volumeMaximum.z };
-	for (int axis = 0; axis < 3; ++axis) {
-		if (fabs(dirs[axis]) < 1.0e-12f) {
-			if (starts[axis] < vmin[axis] || starts[axis] >= vmax[axis]) return 0.f;
-			continue;
-		}
-		const float a = (vmin[axis] - starts[axis]) / dirs[axis];
-		const float b = (vmax[axis] - starts[axis]) / dirs[axis];
-		entry = fmax(entry, fmin(a, b));
-		volumeExit = fmin(volumeExit, fmax(a, b));
-	}
-	if (volumeExit <= entry || entry <= 0.f) return 0.f;
-	const float prefixEnd = fmin(entry, 1.f);
-	float t = 0.f, end = prefixEnd;
 	const float amin[3] = { attenuationBx, attenuationBy, attenuationBz };
 	const float ad[3] = { attenuationDx, attenuationDy, attenuationDz };
 	const int an[3] = { (int)attenuationNx, (int)attenuationNy, (int)attenuationNz };
@@ -2012,6 +1999,34 @@ DEVICE float integrate_multiresolution_attenuation_prefix(IMTYPE d_atten, const 
 		t = next;
 	}
 	return -integral;
+}
+
+DEVICE float integrate_multiresolution_attenuation_prefix(IMTYPE d_atten, const float3 source, const float3 direction,
+	const float3 volumeOrigin, const float3 volumeMaximum, const float rayLength,
+	const uint attenuationNx, const uint attenuationNy, const uint attenuationNz,
+	const float attenuationDx, const float attenuationDy, const float attenuationDz,
+	const float attenuationBx, const float attenuationBy, const float attenuationBz) {
+	float entry = 0.f, volumeExit = 1.f;
+	const float starts[3] = { source.x, source.y, source.z };
+	const float dirs[3] = { direction.x, direction.y, direction.z };
+	const float vmin[3] = { volumeOrigin.x, volumeOrigin.y, volumeOrigin.z };
+	const float vmax[3] = { volumeMaximum.x, volumeMaximum.y, volumeMaximum.z };
+	for (int axis = 0; axis < 3; ++axis) {
+		if (fabs(dirs[axis]) < 1.0e-12f) {
+			if (starts[axis] < vmin[axis] || starts[axis] >= vmax[axis]) return 0.f;
+			continue;
+		}
+		const float a = (vmin[axis] - starts[axis]) / dirs[axis];
+		const float b = (vmax[axis] - starts[axis]) / dirs[axis];
+		entry = fmax(entry, fmin(a, b));
+		volumeExit = fmin(volumeExit, fmax(a, b));
+	}
+	if (volumeExit <= entry || entry <= 0.f) return 0.f;
+	return integrate_multiresolution_attenuation_segment(
+		d_atten, source, direction, 0.f, fmin(entry, 1.f), rayLength,
+		attenuationNx, attenuationNy, attenuationNz,
+		attenuationDx, attenuationDy, attenuationDz,
+		attenuationBx, attenuationBy, attenuationBz);
 }
 #endif
 
