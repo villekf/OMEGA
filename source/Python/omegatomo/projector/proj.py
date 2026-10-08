@@ -665,11 +665,11 @@ class projectorClass:
             if self.offangle > 0:
                 self.angles = self.angles + self.offangle
             setCTCoordinates(self)
+        spect_event_listmode = False
         if self.SPECT:
             # Listmode SPECT stores one vector of events per timeframe rather
             # than a 3-D detector image stack. Detect that layout before the
             # sinogram normalization below inspects shape[2].
-            spect_event_listmode = False
             if isinstance(self.SinM, list) and self.SinM and isinstance(self.x, list) and len(self.x) == len(self.SinM):
                 spect_event_listmode = all(
                     np.asarray(coords).size % 6 == 0 and
