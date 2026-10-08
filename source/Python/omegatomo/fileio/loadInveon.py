@@ -46,6 +46,8 @@ def loadInveonData(options, store_coordinates = False):
         Nt = options.partitions
         vali = (loppu - alku) / options.partitions
         options.partitions = np.repeat(vali, options.partitions)
+    if Nt > 1 and options.randoms_correction and (store_coordinates or options.useIndexBasedReconstruction):
+        raise ValueError('Randoms correction not supported with dynamic data!')
     Sino = np.zeros((options.Ndist, options.Nang, totSinos, Nt), dtype=np.uint16, order='F')
     if options.randoms_correction:
         SinoD = np.zeros((options.Ndist, options.Nang, totSinos, Nt), dtype=np.uint16, order='F')
@@ -73,7 +75,7 @@ def loadInveonData(options, store_coordinates = False):
         storeL = True
     else:
         storeL = False
-    if storeL:
+    if storeL and Nt > 1:
         tPoints = np.zeros(Nentries, dtype=np.uint16)
     else:
         tPoints = np.zeros(1, dtype=np.uint16)
@@ -101,14 +103,33 @@ def loadInveonData(options, store_coordinates = False):
     DP1 = DD1.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
     LP2 = LL2.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
     DP2 = DD2.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
+    nPrompts = ctypes.c_uint64(0)
+    nDelays = ctypes.c_uint64(0)
+    c_lib.inveonMain.restype = ctypes.c_int
+    c_lib.inveonMain.argtypes = [ctypes.POINTER(ctypes.c_double), ctypes.c_double, ctypes.c_double, ctypes.c_uint64, ctypes.c_uint32, ctypes.c_bool, ctypes.c_uint64,
+                                 ctypes.c_bool, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32, ctypes.POINTER(ctypes.c_uint32), ctypes.c_uint64,
+                                 ctypes.c_int32, ctypes.c_bool, ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint16), ctypes.POINTER(ctypes.c_uint16), ctypes.POINTER(ctypes.c_uint16),
+                                 ctypes.POINTER(ctypes.c_uint16), ctypes.POINTER(ctypes.c_uint16), ctypes.POINTER(ctypes.c_uint16), ctypes.POINTER(ctypes.c_uint16),
+                                 ctypes.POINTER(ctypes.c_uint64), ctypes.POINTER(ctypes.c_uint64)]
     val = c_lib.inveonMain(partitionsP, ctypes.c_double(alku), ctypes.c_double(loppu), ctypes.c_uint64(Nentries), ctypes.c_uint32(options.detectors), ctypes.c_bool(options.randoms_correction), ctypes.c_uint64(sinoSize), 
                    ctypes.c_bool(False), ctypes.c_uint32(options.Ndist), ctypes.c_uint32(options.Nang), ctypes.c_uint32(options.ring_difference), ctypes.c_uint32(options.span),
-                   segP, ctypes.c_uint64(Nt), ctypes.c_int32(options.ndist_side), ctypes.c_bool(storeL), ctypes.c_char_p(inStr), LP1, LP2, tPointP, DP1, DP2, SinoP, SinoDP)
+                   segP, ctypes.c_uint64(Nt), ctypes.c_int32(options.ndist_side), ctypes.c_bool(storeL), ctypes.c_char_p(inStr), LP1, LP2, tPointP, DP1, DP2, SinoP, SinoDP, ctypes.byref(nPrompts), ctypes.byref(nDelays))
     if val == 0:
         inStr = nimi.encode('latin-1')
         val = c_lib.inveonMain(partitionsP, ctypes.c_double(alku), ctypes.c_double(loppu), ctypes.c_uint64(Nentries), ctypes.c_uint32(options.detectors), ctypes.c_bool(options.randoms_correction), ctypes.c_uint64(sinoSize), 
                        ctypes.c_bool(False), ctypes.c_uint32(options.Ndist), ctypes.c_uint32(options.Nang), ctypes.c_uint32(options.ring_difference), ctypes.c_uint32(options.span),
-                       segP, ctypes.c_uint64(Nt), ctypes.c_int32(options.ndist_side), ctypes.c_bool(storeL), ctypes.c_char_p(inStr), LP1, LP2, tPointP, DP1, DP2, SinoP, SinoDP)
+                       segP, ctypes.c_uint64(Nt), ctypes.c_int32(options.ndist_side), ctypes.c_bool(storeL), ctypes.c_char_p(inStr), LP1, LP2, tPointP, DP1, DP2, SinoP, SinoDP, ctypes.byref(nPrompts), ctypes.byref(nDelays))
+    if storeL:
+        # Only the stored events are kept (the arrays are allocated for the maximum possible number of events)
+        nP = int(nPrompts.value)
+        nD = int(nDelays.value)
+        LL1 = LL1[:nP]
+        LL2 = LL2[:nP]
+        if Nt > 1:
+            tPoints = tPoints[:nP]
+        if options.randoms_correction:
+            DD1 = DD1[:nD]
+            DD2 = DD2[:nD]
     coordinate = None
     Rcoordinate = None
     DtrIndices = None
@@ -151,9 +172,6 @@ def loadInveonData(options, store_coordinates = False):
         del LL1, LL2
 
         if options.randoms_correction:
-            if Nt > 1:
-                Rcoordinate = [None] * Nt
-            
             DD1 = DD1[DD1 != 0]
             DD2 = DD2[DD2 != 0]
             
@@ -162,17 +180,7 @@ def loadInveonData(options, store_coordinates = False):
             ring_pos1 = np.uint16(np.mod(DD1 - 1, options.det_per_ring))
             ring_pos2 = np.uint16(np.mod(DD2 - 1, options.det_per_ring))
             
-            if Nt > 1:
-                for uu in range(Nt):
-                    ind1 = np.argmax(tPoints == uu + 1)
-                    ind2 = np.size(tPoints) - np.argmax(tPoints[::-1] == uu + 1) - 1
-                    tempPos1 = ring_pos1[ind1:ind2 + 1]
-                    tempPos2 = ring_pos2[ind1:ind2 + 1]
-                    tempNum1 = ring_number1[ind1:ind2 + 1]
-                    tempNum2 = ring_number2[ind1:ind2 + 1]
-                    Rcoordinate[uu] = np.array([x[tempPos1], y[tempPos1], z[tempNum1], x[tempPos2], y[tempPos2], z[tempNum2]], order='F')
-            else:
-                Rcoordinate = np.array([x[ring_pos1], y[ring_pos1], z[ring_number1], x[ring_pos2], y[ring_pos2], z[ring_number2]], order='F')
+            Rcoordinate = np.array([x[ring_pos1], y[ring_pos1], z[ring_number1], x[ring_pos2], y[ring_pos2], z[ring_number2]], order='F')
             del DD1, DD2
     elif options.useIndexBasedReconstruction:
         if Nt > 1:
@@ -194,8 +202,6 @@ def loadInveonData(options, store_coordinates = False):
                 ind2 = np.where(tPoints == uu + 1)[0][-1]
                 coordinate[uu] = np.asfortranarray(np.concatenate((ring_pos1[ind1:ind2 + 1].T, ring_pos2[ind1:ind2 + 1].T), axis = 0))
                 Rcoordinate[uu] = np.asfortranarray(np.concatenate((ring_number1[ind1:ind2 + 1].T, ring_number2[ind1:ind2 + 1].T), axis = 0))
-                if options.randoms_correction:
-                    raise ValueError('Randoms correction not yet supported for dynamic data!')
         else:
             coordinate = np.asfortranarray(np.concatenate((ring_pos1.T, ring_pos2.T), axis = 0))
             Rcoordinate = np.asfortranarray(np.concatenate((ring_number1.T, ring_number2.T), axis = 0))
