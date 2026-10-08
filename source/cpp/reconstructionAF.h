@@ -503,7 +503,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     proj.memSize += (sizeof(float) * length[kk + timestep * inputScalars.subsets]);
                 } else {
                     aRand[timestep][kk] = af::array(inputScalars.nRowsD * inputScalars.nColsD * length[kk + timestep * inputScalars.subsets], 
-                        &sc_ra[pituus[kk + timestep * inputScalars.subsets]], AFTYPE);
+                        &sc_ra[pituus[kk + timestep * inputScalars.subsets] * inputScalars.nRowsD * inputScalars.nColsD], AFTYPE);
                     proj.memSize += (sizeof(float) * inputScalars.nRowsD * inputScalars.nColsD * length[kk + timestep * inputScalars.subsets]);
                 }
             }
