@@ -70,6 +70,14 @@ class projectorClass:
     blurPlanes2Linear: npt.NDArray[np.float32] = np.empty((0, 0), dtype = np.float32)
     radiusPerProj: npt.NDArray[np.float32] = np.empty(0, dtype = np.float32)
     gFilter = np.empty(0, dtype = np.float32)
+    # User-supplied ODRT SPECT gFilter sampling pitch in the filter's
+    # ray-local (u, v, depth) axes. Empty means no ODRT lookup filter.
+    gFilterODRTData: npt.NDArray[np.float32] = np.empty(0, dtype = np.float32)
+    gFilterSpacing: npt.NDArray[np.float32] = np.empty(0, dtype = np.float32)
+    gFilterCustom = False
+    gFilterNu = 0
+    gFilterNv = 0
+    gFilterNd = 0
     type6TotalLength: npt.NDArray[np.float32] = np.empty(0, dtype = np.float32)
     filterIm = np.empty(0, dtype = np.float32)
     filter0 = np.empty(0, dtype = np.float32)
@@ -2615,6 +2623,14 @@ class projectorClass:
             ('blurPlanes2', ctypes.POINTER(ctypes.c_int32)),
             ('gFilter', ctypes.POINTER(ctypes.c_float)),
             ('gFSize', ctypes.POINTER(ctypes.c_uint64)),
+            ('gFilterODRT', ctypes.POINTER(ctypes.c_float)),
+            ('gFilterODRTNu', ctypes.c_uint32),
+            ('gFilterODRTNv', ctypes.c_uint32),
+            ('gFilterODRTNd', ctypes.c_uint32),
+            ('gFilterODRTDu', ctypes.c_float),
+            ('gFilterODRTDv', ctypes.c_float),
+            ('gFilterODRTDd', ctypes.c_float),
+            ('gFilterODRTCustom', ctypes.c_uint32),
             ('precondTypeImage', ctypes.POINTER(ctypes.c_bool)),
             ('precondTypeMeas', ctypes.POINTER(ctypes.c_bool)),
             ('referenceImage', ctypes.POINTER(ctypes.c_float)),

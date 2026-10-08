@@ -469,6 +469,7 @@ class ProjectorClass {
 		bool TOFIndex = false;
 		bool angle = false;
 		bool rayShifts = false;
+		bool odrtPSF = false;
 		int zType = -1;
 		int xSteps = -1;
 		int zSteps = -1;
@@ -2355,7 +2356,7 @@ public:
 		kernelPSFf, kernelDiv, kernelMult, kernelForward, kernelSensList, kernelApu, kernelHyper, kernelRotate;
 	// Device buffers shared across backends
 	DEVBUFF_t d_xcenter, d_ycenter, d_zcenter, d_V, d_TOFCenter, d_eFOVIndices, d_weights, d_angle, d_g, d_uref, d_maskBPB, 
-		d_rayShiftsDetector, d_rayShiftsSource, d_maskPriorB;
+		d_rayShiftsDetector, d_rayShiftsSource, d_maskPriorB, d_gFilter;
 	std::vector<DEVBUFF_t> d_attenB;
 	AFDEVBUFF_t d_output, d_meanBP, d_meanFP, d_inputB, d_W, d_gaussianNLM;
 	AFDEVBUFF_t d_qX, d_qY, d_qZ;
@@ -2498,6 +2499,8 @@ public:
 		}
 		if (memAlloc.V)
 			getErrorString(cuMemFree(d_V));
+		if (memAlloc.odrtPSF)
+			getErrorString(cuMemFree(d_gFilter));
 		if (memAlloc.atten && !memAlloc.useBuffers) {
 			getErrorString(cuArrayDestroy(atArray));
 		}
@@ -3400,6 +3403,12 @@ public:
 				CHECK(status, "\n", (STATUS_t)(-1));
 				memAlloc.V = true;
 			}
+			if (inputScalars.SPECT &&
+				(inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3)) {
+				ALLOC_BUFFER(d_gFilter, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_gFilter);
+				CHECK(status, "\n", (STATUS_t)(-1));
+				memAlloc.odrtPSF = true;
+			}
 			// Detector coordinates
 			if ((!(inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) || inputScalars.indexBased) {
 				ALLOC_BUFFER(d_x[0][0], CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x);
@@ -3700,6 +3709,20 @@ public:
 				WRITE_BUFFER(d_V, sizeof(float) * inputScalars.size_V, inputScalars.V);
 				CHECK(status, "\n", (STATUS_t)(-1));
 				memSize += (sizeof(float) * inputScalars.size_V);
+			}
+			if (memAlloc.odrtPSF) {
+				// An OpenCL non-blocking upload must not outlive MATLAB-owned option
+				// memory. The lookup is static, so upload it synchronously once.
+				const float dummyPSFValue = 0.f;
+				const float* psfValues = inputScalars.gFilterData ? inputScalars.gFilterData : &dummyPSFValue;
+#if defined(OPENCL)
+				status = CLCommandQueue[0].enqueueWriteBuffer(d_gFilter, CL_TRUE, 0,
+					sizeof(float) * inputScalars.size_gFilter, psfValues);
+#else
+				WRITE_BUFFER(d_gFilter, sizeof(float) * inputScalars.size_gFilter, psfValues);
+#endif
+				CHECK(status, "Failed to upload SPECT ODRT gFilter\n", (STATUS_t)(-1));
+				memSize += sizeof(float) * inputScalars.size_gFilter;
 			}
 			if ((!(inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) || inputScalars.indexBased) {
 				WRITE_BUFFER(d_x[0][0], sizeof(float) * inputScalars.size_of_x, x);
@@ -4139,6 +4162,13 @@ public:
 		kParams.coneOfResponseStdCoeffA = inputScalars.coneOfResponseStdCoeffA;
 		kParams.coneOfResponseStdCoeffB = inputScalars.coneOfResponseStdCoeffB;
 		kParams.coneOfResponseStdCoeffC = inputScalars.coneOfResponseStdCoeffC;
+		kParams.gFilterNu = inputScalars.gFilterNu;
+		kParams.gFilterNv = inputScalars.gFilterNv;
+		kParams.gFilterNd = inputScalars.gFilterNd;
+		kParams.gFilterDu = inputScalars.gFilterDu;
+		kParams.gFilterDv = inputScalars.gFilterDv;
+		kParams.gFilterDd = inputScalars.gFilterDd;
+		kParams.gFilterCustom = inputScalars.gFilterCustom;
 		kParams.tube_width = inputScalars.tube_width;
 		kParams.cylRadiusProj3 = inputScalars.cylRadiusProj3;
 		kParams.bmin = inputScalars.bmin;
@@ -4194,6 +4224,16 @@ public:
 				KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.coneOfResponseStdCoeffA);
 				KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.coneOfResponseStdCoeffB);
 				KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.coneOfResponseStdCoeffC);
+				if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
+					KARG(FPArgs, kernelFP, kernelIndFP, d_gFilter);
+					KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.gFilterNu);
+					KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.gFilterNv);
+					KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.gFilterNd);
+					KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.gFilterDu);
+					KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.gFilterDv);
+					KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.gFilterDd);
+					KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.gFilterCustom);
+				}
 				KARG(FPArgs, kernelFP, kernelIndFP, ellipseCenter);
 				KARG(FPArgs, kernelFP, kernelIndFP, ellipseRadii);
 				KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.ellipsePower);
@@ -4223,6 +4263,16 @@ public:
 				KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.coneOfResponseStdCoeffA);
 				KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.coneOfResponseStdCoeffB);
 				KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.coneOfResponseStdCoeffC);
+				if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
+					KARG(BPArgs, kernelBP, kernelIndBP, d_gFilter);
+					KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.gFilterNu);
+					KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.gFilterNv);
+					KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.gFilterNd);
+					KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.gFilterDu);
+					KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.gFilterDv);
+					KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.gFilterDd);
+					KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.gFilterCustom);
+				}
 				KARG(BPArgs, kernelBP, kernelIndBP, ellipseCenter);
 				KARG(BPArgs, kernelBP, kernelIndBP, ellipseRadii);
 				KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.ellipsePower);
@@ -4245,6 +4295,26 @@ public:
 				KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.nRowsD);
 				KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.det_per_ring);
 				KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.sigma_x);
+				if (inputScalars.SPECT) {
+					KARG(SensArgs, kernelSensList, kernelIndSens, d_rayShiftsDetector);
+					KARG(SensArgs, kernelSensList, kernelIndSens, d_rayShiftsSource);
+					KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.coneOfResponseStdCoeffA);
+					KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.coneOfResponseStdCoeffB);
+					KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.coneOfResponseStdCoeffC);
+					if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
+						KARG(SensArgs, kernelSensList, kernelIndSens, d_gFilter);
+						KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.gFilterNu);
+						KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.gFilterNv);
+						KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.gFilterNd);
+						KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.gFilterDu);
+						KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.gFilterDv);
+						KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.gFilterDd);
+						KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.gFilterCustom);
+					}
+					KARG(SensArgs, kernelSensList, kernelIndSens, ellipseCenter);
+					KARG(SensArgs, kernelSensList, kernelIndSens, ellipseRadii);
+					KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.ellipsePower);
+				}
 				KARG(SensArgs, kernelSensList, kernelIndSens, dPitch);
 				if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 					if (inputScalars.BPType == 2) {
@@ -4929,6 +4999,10 @@ public:
 			if (inputScalars.SPECT) {
 				KARG_METAL_SLOT(kernelIndFPSubIter, 21);
 				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_detectorVector[timestep][osa_iter]);
+				if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
+					KARG_METAL_SLOT(kernelIndFPSubIter, 22);
+					KARG(kTemp, kernelFP, kernelIndFPSubIter, d_gFilter);
+				}
 			}
 			KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, no_norm);
 			KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, m_size);
@@ -5302,6 +5376,10 @@ public:
 			if (inputScalars.SPECT) {
 				KARG_METAL_SLOT(kernelIndBPSubIter, 21);
 				KARG(kTemp, kernelBP, kernelIndBPSubIter, d_detectorVector[timestep][osa_iter]);
+				if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
+					KARG_METAL_SLOT(kernelIndBPSubIter, 22);
+					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_gFilter);
+				}
 			}
 			KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, no_norm);
 			KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, m_size);

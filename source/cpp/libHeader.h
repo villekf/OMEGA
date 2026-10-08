@@ -491,6 +491,15 @@ struct inputStruct {
     // Blurring kernel for the rotation-based projector
     float* gFilter;
     uint64_t* gFSize;
+    // Separate ray-local SPECT ODRT lookup; the type-6 filter above remains independent.
+    float* gFilterODRT;
+    uint32_t gFilterODRTNu;
+    uint32_t gFilterODRTNv;
+    uint32_t gFilterODRTNd;
+    float gFilterODRTDu;
+    float gFilterODRTDv;
+    float gFilterODRTDd;
+    uint32_t gFilterODRTCustom;
     // Which image-based preconditioners are used
     bool* precondTypeImage;
     // Which measurement-based preconditioners are used
@@ -742,6 +751,29 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
 
     // The type of projector used (Siddon or orthogonal)
     inputScalars.projector_type = options.projector_type;
+
+    // Keep the ray-local ODRT lookup separate from the type-6 rotation CDRF.
+    // Empty lookup tables use a valid one-float device allocation downstream.
+    inputScalars.gFilterData = nullptr;
+    inputScalars.size_gFilter = 1;
+    inputScalars.gFilterNu = inputScalars.gFilterNv = inputScalars.gFilterNd = 0U;
+    inputScalars.gFilterDu = inputScalars.gFilterDv = inputScalars.gFilterDd = 1.f;
+    inputScalars.gFilterCustom = 0U;
+    const bool pureSPECTODRT = inputScalars.SPECT &&
+        (inputScalars.projector_type == 2U || inputScalars.projector_type == 12U ||
+            inputScalars.projector_type == 21U || inputScalars.projector_type == 22U);
+    if (pureSPECTODRT && options.gFilterODRTCustom != 0U) {
+        inputScalars.gFilterData = options.gFilterODRT;
+        inputScalars.gFilterNu = options.gFilterODRTNu;
+        inputScalars.gFilterNv = options.gFilterODRTNv;
+        inputScalars.gFilterNd = options.gFilterODRTNd;
+        inputScalars.gFilterDu = options.gFilterODRTDu;
+        inputScalars.gFilterDv = options.gFilterODRTDv;
+        inputScalars.gFilterDd = options.gFilterODRTDd;
+        inputScalars.gFilterCustom = 1U;
+        inputScalars.size_gFilter = static_cast<size_t>(inputScalars.gFilterNu) *
+            static_cast<size_t>(inputScalars.gFilterNv) * static_cast<size_t>(inputScalars.gFilterNd);
+    }
 
     // Number of rays in Siddon
     inputScalars.n_rays = options.n_rays_transaxial;

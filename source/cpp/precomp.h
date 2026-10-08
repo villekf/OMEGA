@@ -113,6 +113,12 @@ typedef struct structForScalars {
 	float* V = nullptr;
 	float* x_center = nullptr, *y_center = nullptr, *z_center = nullptr;
 	float* gaussian = nullptr;
+	// Optional user-supplied SPECT ODRT lookup table. The table is host-side
+	// (u-fast/Fortran order) until ProjectorClass uploads it to the device.
+	float* gFilterData = nullptr;
+	size_t size_gFilter = 1;
+	uint32_t gFilterNu = 0U, gFilterNv = 0U, gFilterNd = 0U, gFilterCustom = 0U;
+	float gFilterDu = 1.f, gFilterDv = 1.f, gFilterDd = 1.f;
 	float* TOFCenter = nullptr;
 	uint64_t* pituus, length;
 	std::vector<uint32_t> usedDevices;

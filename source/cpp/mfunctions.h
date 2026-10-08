@@ -104,6 +104,25 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	inputScalars.PET = getScalarBool(options, 0, "PET");
 	inputScalars.CT = getScalarBool(options, 0, "CT");
 	inputScalars.SPECT = getScalarBool(options, 0, "SPECT");
+	if (inputScalars.SPECT) {
+		const int gFilterFieldNumber = mxGetFieldNumber(options, "gFilter");
+		const mxArray* gFilterField = gFilterFieldNumber >= 0 ? mxGetField(options, 0, "gFilter") : nullptr;
+		const bool hasProvidedFilter = gFilterField && !mxIsEmpty(gFilterField);
+		const bool pureODRTProjector = inputScalars.projector_type == 2U ||
+			inputScalars.projector_type == 12U || inputScalars.projector_type == 21U ||
+			inputScalars.projector_type == 22U;
+		// `gFilter` is the public input for either pure projector family, but
+		// the stored representations differ: type 6 applies a depth-shifted
+		// image-grid convolution kernel, while ODRT samples ray-local
+		// (u, v, depth) values using explicit mm spacing and direct weights.
+		// A hybrid needs both representations; keep its legacy type-6 filter
+		// interpretation and leave the ODRT direction on its analytic path.
+		if (hasProvidedFilter && !pureODRTProjector && inputScalars.projector_type != 6U &&
+			inputScalars.projector_type != 16U && inputScalars.projector_type != 26U &&
+			inputScalars.projector_type != 61U && inputScalars.projector_type != 62U &&
+			inputScalars.projector_type != 66U)
+			mexErrMsgTxt("A custom SPECT ODRT gFilter is supported only for projector types 2, 12, 21, and 22.");
+	}
 	inputScalars.pitch = getScalarBool(options, 0, "pitch");
 	inputScalars.enforcePositivity = getScalarBool(options, 0, "enforcePositivity");
 	inputScalars.multiResolution = getScalarBool(options, 0, "useMultiResolutionVolumes");
@@ -215,7 +234,7 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "nColsD"));
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "nRowsD"));
 		inputScalars.nHeads = getScalarUInt32(getField(options, 0, "nHeads"));
-        if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
+		if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
             inputScalars.coneOfResponseStdCoeffA = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffA"));
             inputScalars.coneOfResponseStdCoeffB = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffB"));
             inputScalars.coneOfResponseStdCoeffC = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffC"));
@@ -225,11 +244,71 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
             inputScalars.ellipseRadiusX = getScalarFloat(getField(options, 0, "ellipseRadiusX"));
             inputScalars.ellipseRadiusY = getScalarFloat(getField(options, 0, "ellipseRadiusY"));
             inputScalars.ellipseRadiusZ = getScalarFloat(getField(options, 0, "ellipseRadiusZ"));
-            inputScalars.ellipsePower = getScalarFloat(getField(options, 0, "ellipsePower"));
-            // Kernels test for box support with a finite threshold, as isinf() is unreliable under fast-math
-            if (!std::isfinite(inputScalars.ellipsePower))
-                inputScalars.ellipsePower = std::numeric_limits<float>::max();
-        }
+			inputScalars.ellipsePower = getScalarFloat(getField(options, 0, "ellipsePower"));
+			// Kernels test for box support with a finite threshold, as isinf() is unreliable under fast-math
+			if (!std::isfinite(inputScalars.ellipsePower))
+				inputScalars.ellipsePower = std::numeric_limits<float>::max();
+			const bool hasSPECTOrthogonalDirection =
+				inputScalars.FPType == 2 || inputScalars.FPType == 3 ||
+				inputScalars.BPType == 2 || inputScalars.BPType == 3;
+			if (hasSPECTOrthogonalDirection) {
+				// Always initialize the ODRT signature fields. The device buffer is
+				// allocated with one dummy float when custom lookup is disabled.
+				inputScalars.gFilterData = nullptr;
+				inputScalars.size_gFilter = 1;
+				inputScalars.gFilterNu = inputScalars.gFilterNv = inputScalars.gFilterNd = 0U;
+				inputScalars.gFilterDu = inputScalars.gFilterDv = inputScalars.gFilterDd = 1.f;
+				inputScalars.gFilterCustom = 0U;
+
+				const bool pureODRTProjector = inputScalars.projector_type == 2U ||
+					inputScalars.projector_type == 12U || inputScalars.projector_type == 21U ||
+					inputScalars.projector_type == 22U;
+				const int gFilterFieldNumber = mxGetFieldNumber(options, "gFilter");
+				const mxArray* gFilterField = gFilterFieldNumber >= 0 ? mxGetField(options, 0, "gFilter") : nullptr;
+				const bool hasProvidedFilter = gFilterField && !mxIsEmpty(gFilterField);
+				if (pureODRTProjector && hasProvidedFilter) {
+					if (!mxIsSingle(gFilterField) || mxIsComplex(gFilterField) || mxGetNumberOfDimensions(gFilterField) > 3)
+						mexErrMsgTxt("ODRT gFilter must be a real single-precision 2-D or 3-D array with axes (u, v, depth).");
+					const mwSize* filterDims = mxGetDimensions(gFilterField);
+					const mwSize filterNumDims = mxGetNumberOfDimensions(gFilterField);
+					const mwSize nu = filterDims[0];
+					const mwSize nv = filterDims[1];
+					const mwSize nd = filterNumDims >= 3 ? filterDims[2] : 1;
+					const mwSize maxDim = static_cast<mwSize>(std::numeric_limits<uint32_t>::max());
+					if (nu == 0 || nv == 0 || nd == 0 || nu > maxDim || nv > maxDim || nd > maxDim)
+						mexErrMsgTxt("ODRT gFilter dimensions must be positive and fit in uint32.");
+					const size_t filterCount = mxGetNumberOfElements(gFilterField);
+					const float* filterValues = static_cast<const float*>(mxGetData(gFilterField));
+					bool hasPositiveWeight = false;
+					for (size_t jj = 0; jj < filterCount; ++jj) {
+						if (!std::isfinite(filterValues[jj]) || filterValues[jj] < 0.f)
+							mexErrMsgTxt("ODRT gFilter must contain finite, non-negative weights.");
+						hasPositiveWeight = hasPositiveWeight || filterValues[jj] > 0.f;
+					}
+					if (!hasPositiveWeight)
+						mexErrMsgTxt("ODRT gFilter must contain at least one positive weight.");
+
+					const int spacingFieldNumber = mxGetFieldNumber(options, "gFilterSpacing");
+					const mxArray* spacingField = spacingFieldNumber >= 0 ? mxGetField(options, 0, "gFilterSpacing") : nullptr;
+					if (!spacingField || !mxIsSingle(spacingField) || mxIsComplex(spacingField) ||
+						mxGetNumberOfElements(spacingField) != 3)
+						mexErrMsgTxt("gFilterSpacing must contain three positive finite single-precision values (du, dv, dd) in mm.");
+					const float* spacing = static_cast<const float*>(mxGetData(spacingField));
+					if (!std::isfinite(spacing[0]) || !std::isfinite(spacing[1]) || !std::isfinite(spacing[2]) ||
+						spacing[0] <= 0.f || spacing[1] <= 0.f || spacing[2] <= 0.f)
+						mexErrMsgTxt("gFilterSpacing must contain three positive finite values (du, dv, dd) in mm.");
+
+					inputScalars.gFilterData = const_cast<float*>(filterValues);
+					inputScalars.size_gFilter = filterCount;
+					inputScalars.gFilterNu = static_cast<uint32_t>(nu);
+					inputScalars.gFilterNv = static_cast<uint32_t>(nv);
+					inputScalars.gFilterNd = static_cast<uint32_t>(nd);
+					inputScalars.gFilterDu = spacing[0];
+					inputScalars.gFilterDv = spacing[1];
+					inputScalars.gFilterDd = spacing[2];
+					inputScalars.gFilterCustom = 1U;
+				}
+		}
         /*if (inputScalars.FPType == 6 || inputScalars.BPType == 6) {
             inputScalars.FOVa_y = getScalarFloat(getField(options, 0, "FOVa_y"));
             inputScalars.CORtoDetectorSurface = getScalarFloat(getField(options, 0, "CORtoDetectorSurface"));

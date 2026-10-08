@@ -98,6 +98,64 @@ if ismember(options.projector_type, [12, 2, 21, 22]) % Orthogonal distance ray t
     end
     % Now the collimator response FWHM is sqrt((az+b)^2+c^2) where z is distance along detector element normal vector
 end
+if ismember(options.projector_type, [2, 12, 21, 22])
+    % Optional precomputed SPECT ODRT lookup. The table axes are ray-local
+    % (u, v, depth), stored in MATLAB/Fortran order (u is contiguous).
+    % Lateral coordinate zero lies at sample index (N-1)/2, so even-sized
+    % lateral axes are centered between their two middle samples. Depth index
+    % zero is at the original ray start before ellipse clipping; the kernel
+    % restores the per-ray distance removed by clipping. gFilterSpacing is
+    % (du, dv, dd) in mm.
+    % An empty filter preserves the analytic CoR kernel. Both type 6 and ODRT
+    % model the detector response, but their arrays are not drop-in: type 6
+    % uses a depth-shifted image-grid convolution kernel, while ODRT samples a
+    % ray-local (u,v,depth) table with explicit mm spacing and direct weights.
+    % The public gFilter input is shared for pure modes. Hybrids 26/62 need
+    % both representations, so they retain type-6 gFilter semantics and use
+    % the analytic ODRT response until both inputs can be supplied/converted.
+    if ~isfield(options, 'gFilter') || isempty(options.gFilter)
+        options.gFilter = single([]);
+        options.gFilterSpacing = single([]);
+        options.gFilterCustom = false;
+        options.gFilterNu = uint32(0);
+        options.gFilterNv = uint32(0);
+        options.gFilterNd = uint32(0);
+    else
+        if ~isnumeric(options.gFilter) || ~isreal(options.gFilter) || ndims(options.gFilter) > 3
+            error('ODRT gFilter must be a real numeric 2-D or 3-D array with axes (u, v, depth).');
+        end
+        psf = single(options.gFilter);
+        psfSize = [size(psf, 1), size(psf, 2), size(psf, 3)];
+        if any(psfSize < 1) || any(double(psfSize) > double(intmax('uint32')))
+            error('ODRT gFilter dimensions must be positive and fit in uint32.');
+        end
+        if any(~isfinite(psf(:))) || any(psf(:) < 0) || ~any(psf(:) > 0)
+            error('ODRT gFilter must contain finite, non-negative weights and at least one positive value.');
+        end
+        if ~isfield(options, 'gFilterSpacing') || ~isnumeric(options.gFilterSpacing) || ...
+                ~isreal(options.gFilterSpacing) || numel(options.gFilterSpacing) ~= 3
+            error('gFilterSpacing must contain three positive finite values (du, dv, dd) in mm.');
+        end
+        spacing = single(options.gFilterSpacing(:).');
+        if any(~isfinite(spacing)) || any(spacing <= 0)
+            error('gFilterSpacing must contain three positive finite values representable as single precision.');
+        end
+        options.gFilter = psf;
+        options.gFilterSpacing = spacing;
+        options.gFilterCustom = true;
+        options.gFilterNu = uint32(psfSize(1));
+        options.gFilterNv = uint32(psfSize(2));
+        options.gFilterNd = uint32(psfSize(3));
+    end
+elseif ismember(options.projector_type, [6, 16, 26, 61, 62, 66])
+    % Clear only ray-local ODRT metadata if a parameter struct is reused.
+    % Keep the established type-6 gFilter contents and interpretation.
+    options.gFilterSpacing = single([]);
+    options.gFilterCustom = false;
+    options.gFilterNu = uint32(0);
+    options.gFilterNv = uint32(0);
+    options.gFilterNd = uint32(0);
+end
 if options.projector_type == 6
     % Nx/Ny/Nz/dx/dy/dz may be vectors when multi-resolution volumes are in
     % use (options.useMultiResolutionVolumes). The C++/MEX side only
