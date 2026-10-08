@@ -25,3 +25,25 @@ int rootMain(const char* rootFile, const double* tPoints, const double alku, con
 
 	return 0;
 }
+
+int rootEntries(const char* rootFile, int64_t* nCoincidences, int64_t* nDelays) {
+
+	*nCoincidences = 0;
+	*nDelays = 0;
+	TFile* inFile = TFile::Open(rootFile, "READ");
+	if (inFile == nullptr || inFile->IsZombie()) {
+		delete inFile;
+		return -1;
+	}
+	TTree* tree = nullptr;
+	inFile->GetObject("Coincidences", tree);
+	if (tree != nullptr)
+		*nCoincidences = static_cast<int64_t>(tree->GetEntries());
+	tree = nullptr;
+	inFile->GetObject("delay", tree);
+	if (tree != nullptr)
+		*nDelays = static_cast<int64_t>(tree->GetEntries());
+	inFile->Close();
+	delete inFile;
+	return 0;
+}
