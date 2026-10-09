@@ -643,6 +643,10 @@ def reconstructions_main(options):
         libdir = os.path.abspath(os.path.join(fPath, '..', '..'))
     from omegatomo.util.paths import opencl_header_dir
     options.headerDir = opencl_header_dir()
+    # The native code reads one initial value block per (multi-resolution) volume from x0; an
+    # undersized x0 would make it read past the end of the array
+    if not options.largeDim and not options.FDK and options.x0.size < int(np.sum(options.N)):
+        raise ValueError(f'Initial value x0 has {options.x0.size} elements but the reconstruction volume(s) require {int(np.sum(options.N))}!')
     transferData(options)
     inStr = options.headerDir.encode('utf-8')
     # point_ptr = ctypes.pointer(options.param)

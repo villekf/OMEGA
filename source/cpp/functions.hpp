@@ -3291,7 +3291,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				if (ii > 0 && ii % 2 == 0)
 					vec.im_os[timestep][ii] = vec.im_os[timestep][ii - 1];
 				else
-					vec.im_os[timestep][ii] = af::abs(af::randn(inputScalars.im_dim[ii]));
+					vec.im_os[timestep][ii] = af::abs(af::randn(inputScalars.im_dim[ii], f32, r));
 				vec.im_os[timestep][ii] = vec.im_os[timestep][ii] / af::norm(vec.im_os[timestep][ii]);
 			}
 			for (int kk = 0; kk < w_vec.powerIterations; kk++) {

@@ -186,20 +186,11 @@ if options.useEFOV
                 options.x2 = apu(options.Nx(5) + 1 : options.Nx(5) + options.Nx(3), options.Ny(7) + 1 : options.Ny(7) + options.Ny(3), ...
                     end - options.Nz(2) + 1:end);
                 options.x3 = apu(1 : options.Nx(4), :, :);
-                if mod(size(apu,1),2) == 0
-                    options.x4 = apu(options.Nx(5) + options.Nx(3) : end, :, :);
-                else
-                    options.x4 = apu(1 + options.Nx(5) + options.Nx(3) : end, :, :);
-                end
+                options.x4 = apu(end - options.Nx(5) + 1 : end, :, :);
                 options.x5 = apu(options.Nx(4) + 1 : options.Nx(4) + options.Nx(2), 1:options.Ny(6), ...
                     1 : options.Nz(4));
-                if mod(size(apu,2),2) == 0
-                    options.x6 = apu(options.Nx(5) + 1 : options.Nx(5) + options.Nx(3), options.Ny(7) + options.Ny(3) : end, ...
-                        1 : options.Nz(5));
-                else
-                    options.x6 = apu(options.Nx(5) + 1 : options.Nx(5) + options.Nx(3), 1 + options.Ny(7) + options.Ny(3) : end, ...
-                        1 : options.Nz(5));
-                end
+                options.x6 = apu(options.Nx(5) + 1 : options.Nx(5) + options.Nx(3), end - options.Ny(7) + 1 : end, ...
+                    1 : options.Nz(5));
                 options.x0 = single(options.x0(1 + (size(options.x0,1) - options.NxOrig) / 2 : ...
                     (size(options.x0,1) - options.NxOrig) / 2 + options.NxOrig, ...
                     1 + (size(options.x0,2) - options.NyOrig) / 2 : ...
@@ -271,13 +262,9 @@ if options.useEFOV
                     apu = interp3(apu, XX, YY, ZZ);
                 end
                 options.x1 = apu(1 : options.Nx(2), :, :);
-                if mod(size(apu,1),2) == 0
-                    options.x2 = apu(options.Nx(2) + options.Nx(4) : end, :, :);
-                else
-                    options.x2 = apu(options.Nx(2) + options.Nx(4) + 1 : end, :, :);
-                end
+                options.x2 = apu(end - options.Nx(3) + 1 : end, :, :);
                 options.x3 = apu(options.Nx(2) + 1 : options.Nx(2) + options.Nx(4), 1:options.Ny(4), :);
-                options.x4 = apu(options.Nx(2) + 1 : options.Nx(2) + options.Nx(5), 1 + options.Ny(2) - options.Ny(4) : end, :);
+                options.x4 = apu(options.Nx(2) + 1 : options.Nx(2) + options.Nx(5), end - options.Ny(5) + 1 : end, :);
                 options.x0 = single(options.x0(1 + (size(options.x0,1) - options.NxOrig) / 2 : ...
                     (size(options.x0,1) - options.NxOrig) / 2 + options.NxOrig, ...
                     1 + (size(options.x0,2) - options.NyOrig) / 2 : ...

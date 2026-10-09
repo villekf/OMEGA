@@ -2060,29 +2060,15 @@ class projectorClass:
                         ]
                         x2 = apu[self.Nx[4]:self.Nx[4] + self.Nx[2],
                             self.Ny[6]:self.Ny[6] + self.Ny[2],
-                            -self.Nz[1]:]
+                            apu.shape[2] - self.Nz[2]:]
                         x3 = apu[:self.Nx[3], :, :]
-                        if apu.shape[0] % 2 == 0:
-                            x4 = apu[self.Nx[4] + self.Nx[2]:, :, :]
-                        else:
-                            x4 = apu[1 + self.Nx[4] + self.Nx[2]:, :, :]
+                        x4 = apu[apu.shape[0] - self.Nx[4]:, :, :]
                         x5 = apu[
                             self.Nx[3]:self.Nx[3] + self.Nx[1],
                             :self.Ny[5],
                             :self.Nz[3]
                         ]
-                        if apu.shape[1] % 2 == 0:
-                            x6 = apu[
-                                self.Nx[4]:self.Nx[4] + self.Nx[2],
-                                self.Ny[6] + self.Ny[2]:,
-                                :self.Nz[4]
-                            ]
-                        else:
-                            x6 = apu[
-                                self.Nx[4]:self.Nx[4] + self.Nx[2],
-                                1 + self.Ny[6] + self.Ny[2]:,
-                                :self.Nz[4]
-                            ]
+                        x6 = apu[self.Nx[4]:self.Nx[4] + self.Nx[2], apu.shape[1] - self.Ny[6]:, :self.Nz[4]]
                 
                         sx0 = self.x0.shape
                         self.x0 = self.x0[
@@ -2112,6 +2098,7 @@ class projectorClass:
                             x6.ravel('F')])
                 
                 elif self.transaxialEFOV and not self.axialEFOV:
+                    from scipy.ndimage import zoom
                     self.nMultiVolumes = 4
                 
                     NxM = int(matlabRound(self.NxOrig * self.multiResolutionScale))
@@ -2137,11 +2124,12 @@ class projectorClass:
                 
                     if self.x0.shape[0] == nx and np.min(self.x0) != np.max(self.x0):
                         apu = zoom(self.x0, self.multiResolutionScale, order=1).astype(np.float32)
-                        self.x1 = apu[self.Nx[1]:self.Nx[1] + self.Nx[0], :, :]
-                        if apu.shape[0] % 2 == 0:
-                            self.x2 = apu[self.Nx[2] + self.Nx[0]:, :, :]
-                        else:
-                            self.x2 = apu[1 + self.Nx[2] + self.Nx[0]:, :, :]
+                        # Volumes 1 and 2 are the x-direction side strips over the whole extended y-range,
+                        # volumes 3 and 4 the y-direction side strips over the original x-range
+                        x1 = apu[:self.Nx[1], :, :]
+                        x2 = apu[apu.shape[0] - self.Nx[2]:, :, :]
+                        x3 = apu[self.Nx[1]:self.Nx[1] + self.Nx[3], :self.Ny[3], :]
+                        x4 = apu[self.Nx[1]:self.Nx[1] + self.Nx[4], apu.shape[1] - self.Ny[4]:, :]
                 
                         sx0 = self.x0.shape
                         self.x0 = self.x0[
@@ -2150,15 +2138,18 @@ class projectorClass:
                             int((sx0[2] - self.NzOrig) // 2):int((sx0[2] - self.NzOrig) // 2 + self.NzOrig)
                         ].astype(np.float32)
                 
-                        self.x0 = np.concatenate([self.x0.ravel('F'), x1.ravel('F'), x2.ravel('F')])
+                        self.x0 = np.concatenate([self.x0.ravel('F'), x1.ravel('F'), x2.ravel('F'), x3.ravel('F'), x4.ravel('F')])
                 
                     elif self.x0.shape[0] == self.NxOrig or np.min(self.x0) == np.max(self.x0):
                         val = np.min(self.x0)
                         self.x0 = self.x0[:self.Nx[0].item(), :self.Ny[0].item(),:]
                         x1 = np.ones((self.Nx[1], self.Ny[1], self.Nz[1]), dtype=np.float32, order='F') * val
                         x2 = np.ones((self.Nx[2], self.Ny[2], self.Nz[2]), dtype=np.float32, order='F') * val
-                        self.x0 = np.concatenate([self.x0.ravel('F'), x1.ravel('F'), x2.ravel('F')])
+                        x3 = np.ones((self.Nx[3], self.Ny[3], self.Nz[3]), dtype=np.float32, order='F') * val
+                        x4 = np.ones((self.Nx[4], self.Ny[4], self.Nz[4]), dtype=np.float32, order='F') * val
+                        self.x0 = np.concatenate([self.x0.ravel('F'), x1.ravel('F'), x2.ravel('F'), x3.ravel('F'), x4.ravel('F')])
                 elif not self.transaxialEFOV and self.axialEFOV:
+                    from scipy.ndimage import zoom
                     self.nMultiVolumes = 2
                 
                     NxM = int(matlabRound(self.NxOrig * self.multiResolutionScale))
@@ -2183,7 +2174,7 @@ class projectorClass:
                     if self.x0.shape[0] == nx and np.min(self.x0) != np.max(self.x0):
                         apu = zoom(self.x0, self.multiResolutionScale, order=1).astype(np.float32)
                         x1 = apu[:, :, :self.Nz[1]]
-                        x2 = apu[:, :, -self.Nz[2]:]
+                        x2 = apu[:, :, apu.shape[2] - self.Nz[2]:]
                 
                         sx0 = self.x0.shape
                         self.x0 = self.x0[
