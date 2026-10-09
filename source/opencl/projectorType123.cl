@@ -155,6 +155,9 @@ void projectorType123(
 #if defined(SPECT)
 	const CLGLOBAL uint* d_detectorVector [[buffer(21)]],
 #endif
+#if defined(SPECT) && defined(ORTH)
+	const CLGLOBAL float* gFilter [[buffer(22)]],
+#endif
 	uint3 temp_i [[thread_position_in_grid]]   // global id
 
 #else /////////////////////// OPENCL/CUDA ///////////////////////
@@ -169,6 +172,20 @@ void projectorType123(
     const float coneOfResponseStdCoeffA,
     const float coneOfResponseStdCoeffB,
     const float coneOfResponseStdCoeffC,
+#if defined(ORTH)
+#if defined(ODRT_TEXTURE)
+    IMAGE3D gFilter,
+#else
+    const CLGLOBAL float* CLRESTRICT gFilter,
+#endif
+    const uint gFilterNu,
+    const uint gFilterNv,
+    const uint gFilterNd,
+    const float gFilterDu,
+    const float gFilterDv,
+    const float gFilterDd,
+    const uint gFilterCustom,
+#endif
 #if defined(PYTHON)
     const float ellipseCenterX,
     const float ellipseCenterY,
@@ -496,6 +513,9 @@ void projectorType123(
 #endif
 #endif  //////////////// END MULTIRAY ////////////////
 	FLOAT3 s, d;
+#ifdef SPECT
+	FLOAT rayDepthOffset = FLOAT_ZERO;
+#endif
 #if defined(NLAYERS) && !defined(LISTMODE)
 	const uint layer = i.z / NLAYERS;
 	// if (layer != 0)
@@ -513,7 +533,7 @@ void projectorType123(
 #if defined(ORTH)
     FLOAT3 collimatorOrigin;
 #endif
-	getDetectorCoordinatesSPECT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize, d_rayShiftsDetector, d_rayShiftsSource, d_detectorVector, lor, ellipseCenter, ellipseRadii, ellipsePower
+	getDetectorCoordinatesSPECT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize, d_rayShiftsDetector, d_rayShiftsSource, d_detectorVector, lor, ellipseCenter, ellipseRadii, ellipsePower, &rayDepthOffset
 #if defined(ORTH)
         , &collimatorOrigin
 #endif
@@ -532,7 +552,7 @@ void projectorType123(
 #elif defined(LISTMODE) && !defined(SENS) // Listmode data
 #if defined(SPECT)
 	getDetectorCoordinatesListmodeSPECT(d_xy, d_z, d_rayShiftsDetector, d_rayShiftsSource,
-		&s, &d, idx, d_size_x, d_sizey, lor, ellipseCenter, ellipseRadii, ellipsePower);
+		&s, &d, idx, d_size_x, d_sizey, lor, ellipseCenter, ellipseRadii, ellipsePower, &rayDepthOffset);
 #elif defined(INDEXBASED)
 	getDetectorCoordinatesListmode(d_xy, d_z, trIndex, axIndex, &s, &d, idx
 #if defined(N_RAYS)
@@ -1048,7 +1068,10 @@ void projectorType123(
 				, aa, maskBP, d_Nxyz
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed, rayDepthOffset
+#endif
+#if defined(SPECT) && defined(ORTH)
+                , gFilter, gFilterNu, gFilterNv, gFilterNd, gFilterDu, gFilterDv, gFilterDd, gFilterCustom
 #endif
 				);
 #else //////////////// SIDDON ////////////////
@@ -1499,9 +1522,12 @@ void projectorType123(
 						, aa, maskBP, d_Nxyz
 #endif //////////////// END MASKBP ////////////////
 #ifdef SPECT
-                        , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
+                        , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed, rayDepthOffset
 #endif
-                        );
+#if defined(SPECT) && defined(ORTH)
+                        , gFilter, gFilterNu, gFilterNv, gFilterNd, gFilterDu, gFilterDv, gFilterDd, gFilterCustom
+#endif
+						);
                         if (uu == 0)
                             break;
                         center.x -= d1;
@@ -1533,9 +1559,12 @@ void projectorType123(
 						, aa, maskBP, d_Nxyz
 #endif //////////////// END MASKBP ////////////////
 #ifdef SPECT
-                        , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
+                        , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed, rayDepthOffset
 #endif
-                        );
+#if defined(SPECT) && defined(ORTH)
+                        , gFilter, gFilterNu, gFilterNv, gFilterNd, gFilterDu, gFilterDv, gFilterDd, gFilterCustom
+#endif
+						);
                         if (uu == 0)
                             break;
                         center.x += d1;
@@ -1567,7 +1596,10 @@ void projectorType123(
 				, aa, maskBP, d_Nxyz
 #endif //////////////// END MASKBP ////////////////
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed, rayDepthOffset
+#endif
+#if defined(SPECT) && defined(ORTH)
+                , gFilter, gFilterNu, gFilterNv, gFilterNd, gFilterDu, gFilterDv, gFilterDd, gFilterCustom
 #endif
 				);
 #ifdef ORTH
@@ -1691,7 +1723,10 @@ void projectorType123(
 				, aa, maskBP, d_Nxyz
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed, rayDepthOffset
+#endif
+#if defined(SPECT) && defined(ORTH)
+                , gFilter, gFilterNu, gFilterNv, gFilterNd, gFilterDu, gFilterDv, gFilterDd, gFilterCustom
 #endif
 				);
 				if (uu == 0)
@@ -1727,7 +1762,10 @@ void projectorType123(
 				, aa, maskBP, d_Nxyz
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed, rayDepthOffset
+#endif
+#if defined(SPECT) && defined(ORTH)
+                , gFilter, gFilterNu, gFilterNv, gFilterNd, gFilterDu, gFilterDv, gFilterDd, gFilterCustom
 #endif
 				);
 				if (uu == 0)

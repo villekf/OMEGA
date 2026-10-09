@@ -12,6 +12,79 @@ def _kernel_ellipse_power(value):
     return float(np.finfo(np.float32).max) if not np.isfinite(value) else value
 
 
+def _odrt_psf_host_buffer(self):
+    """Return the ODRT lookup table in u-fast device-buffer order.
+
+    A one-element dummy resource keeps the unconditional SPECT+ORTH binding
+    valid when the user has not supplied a filter; the kernel flag then
+    selects the original analytic response.
+    """
+    if bool(getattr(self, 'gFilterCustom', False)):
+        return np.asarray(self.gFilter, dtype=np.float32).ravel(order='F')
+    return np.zeros(1, dtype=np.float32)
+
+
+def _append_odrt_psf_args(args, self):
+    spacing = np.asarray(getattr(self, 'gFilterSpacing', np.empty(0)), dtype=np.float32).reshape(-1)
+    if spacing.size != 3:
+        spacing = np.zeros(3, dtype=np.float32)
+    psf_texture = getattr(self, 'd_gFilterODRTTexture', None)
+    if psf_texture is not None:
+        args.img(psf_texture)
+    else:
+        args.buf(self.d_gFilterODRT)
+    args.u32(int(getattr(self, 'gFilterNu', 0)))
+    args.u32(int(getattr(self, 'gFilterNv', 0)))
+    args.u32(int(getattr(self, 'gFilterNd', 0)))
+    args.f32(float(spacing[0])).f32(float(spacing[1])).f32(float(spacing[2]))
+    args.u32(int(bool(getattr(self, 'gFilterCustom', False))))
+
+
+def _create_odrt_psf_texture(self, cp):
+    """Create the persistent CUDA 3D texture used by the ODRT PSF lookup.
+
+    The PSF is stored as Fortran (u, v, depth), so the corresponding CUDA
+    array dimensions are (u, v, depth), with u contiguous in the source.
+    CUDA array copies consume a C-contiguous (depth, v, u) view.
+    """
+    from cupy.cuda.texture import (
+        ChannelFormatDescriptor,
+        CUDAarray,
+        ResourceDescriptor,
+        TextureDescriptor,
+        TextureObject,
+    )
+
+    if bool(getattr(self, 'gFilterCustom', False)):
+        nu = int(self.gFilterNu)
+        nv = int(self.gFilterNv)
+        nd = int(self.gFilterNd)
+        flat = cp.asarray(_odrt_psf_host_buffer(self), dtype=cp.float32)
+        source = cp.ascontiguousarray(flat.reshape((nd, nv, nu)))
+    else:
+        # The kernel argument is always present; this zero texture is not
+        # sampled when gFilterCustom is false and the analytic path is used.
+        nu = nv = nd = 1
+        source = cp.zeros((1, 1, 1), dtype=cp.float32)
+
+    channel = ChannelFormatDescriptor(
+        32, 0, 0, 0, cp.cuda.runtime.cudaChannelFormatKindFloat
+    )
+    array = CUDAarray(channel, nu, nv, nd)
+    array.copy_from(source)
+    resource = ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=array)
+    border = cp.cuda.runtime.cudaAddressModeBorder
+    descriptor = TextureDescriptor(
+        addressModes=(border, border, border),
+        filterMode=cp.cuda.runtime.cudaFilterModeLinear,
+        normalizedCoords=0,
+    )
+    texture = TextureObject(resource, descriptor)
+    # Keep the backing CUDA array alive for the full projector lifetime.
+    self.d_gFilterODRTArray = array
+    self.d_gFilterODRTTexture = texture
+
+
 def _build_kIndF(self):
     """The constant FP kernel-argument prefix (everything set once at init
     time, before any per-subset geometry/output arguments), shared by the
@@ -25,6 +98,8 @@ def _build_kIndF(self):
         if self.SPECT:
             a.buf(self.d_rayShiftsDetector).buf(self.d_rayShiftsSource)
             a.f32(self.coneOfResponseStdCoeffA).f32(self.coneOfResponseStdCoeffB).f32(self.coneOfResponseStdCoeffC)
+            if self.FPType in (2, 3):
+                _append_odrt_psf_args(a, self)
             a.vec3f(self.ellipseCenterX, self.ellipseCenterY, self.ellipseCenterZ)
             a.vec3f(self.ellipseRadiusX, self.ellipseRadiusY, self.ellipseRadiusZ)
             a.f32(ellipse_power_kernel)
@@ -77,6 +152,8 @@ def _build_kIndB(self):
         if self.SPECT:
             a.buf(self.d_rayShiftsDetector).buf(self.d_rayShiftsSource)
             a.f32(self.coneOfResponseStdCoeffA).f32(self.coneOfResponseStdCoeffB).f32(self.coneOfResponseStdCoeffC)
+            if self.BPType in (2, 3):
+                _append_odrt_psf_args(a, self)
             a.vec3f(self.ellipseCenterX, self.ellipseCenterY, self.ellipseCenterZ)
             a.vec3f(self.ellipseRadiusX, self.ellipseRadiusY, self.ellipseRadiusZ)
             a.f32(ellipse_power_kernel)
@@ -613,6 +690,10 @@ def initProjector(self):
                 bOpt = ('-DHIP','-DPYTHON',)
             else:
                 bOpt = ('-DCUDA','-DPYTHON',)
+                if (self.useCuPy and self.SPECT
+                        and (self.FPType in (2, 3) or self.BPType in (2, 3))
+                        and getattr(self, '_useODRTTexture', True)):
+                    bOpt += ('-DODRT_TEXTURE',)
         else:
             bOpt =('-cl-single-precision-constant -DOPENCL',)
             import pyopencl as cl
@@ -859,6 +940,12 @@ def initProjector(self):
                 # _cl_image/_cupy_texture above instead, since the CuPy and
                 # OpenCL image APIs differ too much to share one call).
                 upload = cp.asarray
+                if self.SPECT and (self.FPType in (2, 3) or self.BPType in (2, 3)):
+                    if (not cupyROCm() and getattr(self, '_useODRTTexture', True)):
+                        self.d_gFilterODRT = None
+                        _create_odrt_psf_texture(self, cp)
+                    else:
+                        self.d_gFilterODRT = upload(_odrt_psf_host_buffer(self))
                 self.d_Sens = cp.empty(shape=(1,1), dtype=cp.float32)
                 _initialize_coordinate_buffers(self, upload)
                 # Precomputed per-projection geometry for the BDD backprojection (see -DGEOM5 in projectorType5.cl)
@@ -1083,6 +1170,8 @@ def initProjector(self):
             # Backend upload adapter (see the matching CuPy `upload` above).
             def upload(value):
                 return cl.array.to_device(self.queue, value)
+            if self.SPECT and (self.FPType in (2, 3) or self.BPType in (2, 3)):
+                self.d_gFilterODRT = upload(_odrt_psf_host_buffer(self))
             _initialize_coordinate_buffers(self, upload)
             # Precomputed per-projection geometry for the BDD backprojection (see -DGEOM5 in projectorType5.cl)
             if self.BPType == 5 and self.CT and self.listmode == 0:

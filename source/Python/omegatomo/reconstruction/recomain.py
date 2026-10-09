@@ -143,9 +143,9 @@ _POINTER_NAME_OVERRIDES = {
 }
 
 # Pointer struct fields set through bespoke logic in transferData() (the
-# type-6/PSF-blurring precomputed geometry), rather than through
+# type-6 and ODRT PSF lookup buffers), rather than through
 # _POINTER_NAME_OVERRIDES and _as_ptr().
-_POINTER_SPECIAL_FIELDS = {'blurPlanes', 'blurPlanes2', 'gFilter', 'gFSize'}
+_POINTER_SPECIAL_FIELDS = {'blurPlanes', 'blurPlanes2', 'gFilter', 'gFSize', 'gFilterODRT'}
 
 
 def _as_ptr(options, attr, ctype):
@@ -196,6 +196,39 @@ def transferData(options):
     None.
 
     """
+    pure_odrt = (bool(getattr(options, 'SPECT', False)) and
+                 getattr(options, 'projector_type', None) in (2, 12, 21, 22))
+    odrt_custom = pure_odrt and bool(getattr(options, 'gFilterCustom', False))
+    if bool(getattr(options, 'gFilterCustom', False)) and not pure_odrt:
+        raise ValueError('Custom SPECT ODRT gFilter is supported only for SPECT projector types 2, 12, 21, and 22.')
+    if odrt_custom:
+        raw_filter = np.asarray(options.gFilter)
+        if not np.issubdtype(raw_filter.dtype, np.number) or np.iscomplexobj(raw_filter):
+            raise ValueError('ODRT gFilter must be a real numeric array.')
+        try:
+            with np.errstate(over='ignore', invalid='ignore'):
+                odrt_filter = np.asarray(raw_filter, dtype=np.float32)
+                odrt_spacing = np.asarray(options.gFilterSpacing, dtype=np.float32).reshape(-1)
+        except (TypeError, ValueError) as exc:
+            raise ValueError('ODRT gFilter and gFilterSpacing must be representable as float32 arrays.') from exc
+        if odrt_filter.ndim == 2:
+            odrt_filter = odrt_filter[:, :, None]
+        if odrt_filter.ndim != 3 or min(odrt_filter.shape) < 1:
+            raise ValueError('ODRT gFilter must be a non-empty 2-D or 3-D array with axes (u, v, depth).')
+        if any(int(dim) > np.iinfo(np.uint32).max for dim in odrt_filter.shape):
+            raise ValueError('ODRT gFilter dimensions must fit in uint32.')
+        if (not np.all(np.isfinite(odrt_filter)) or np.any(odrt_filter < 0.) or
+                not np.any(odrt_filter > 0.)):
+            raise ValueError('ODRT gFilter must contain finite, non-negative weights and at least one positive value.')
+        if (odrt_spacing.size != 3 or not np.all(np.isfinite(odrt_spacing)) or
+                np.any(odrt_spacing <= 0.)):
+            raise ValueError('gFilterSpacing must contain three positive finite values (du, dv, dd).')
+        options.gFilterODRTData = np.asfortranarray(odrt_filter)
+        options.gFilterSpacing = np.ascontiguousarray(odrt_spacing, dtype=np.float32)
+        options.gFilterNu, options.gFilterNv, options.gFilterNd = map(int, odrt_filter.shape)
+    else:
+        options.gFilterODRTData = np.empty(0, dtype=np.float32)
+        options.gFilterNu = options.gFilterNv = options.gFilterNd = 0
     # Loaders may use None for an absent optional correction. The native
     # interface always receives a pointer and an element count, so normalize
     # that representation to an empty array before taking either.
@@ -272,6 +305,13 @@ def transferData(options):
         'imageAttenuationGridDims': tuple(attenuation_dims.ravel()),
         'imageAttenuationGridSpacing': tuple(attenuation_spacing.ravel()),
         'imageAttenuationGridOrigin': tuple(attenuation_origin.ravel()),
+        'gFilterODRTNu': int(options.gFilterNu),
+        'gFilterODRTNv': int(options.gFilterNv),
+        'gFilterODRTNd': int(options.gFilterNd),
+        'gFilterODRTDu': float(options.gFilterSpacing[0]) if odrt_custom else 1.0,
+        'gFilterODRTDv': float(options.gFilterSpacing[1]) if odrt_custom else 1.0,
+        'gFilterODRTDd': float(options.gFilterSpacing[2]) if odrt_custom else 1.0,
+        'gFilterODRTCustom': int(odrt_custom),
     }
 
     setFields = set()
@@ -310,6 +350,10 @@ def transferData(options):
         options.param.gFilter = None
         options.gFSize = np.zeros(3, dtype=np.uint64)
     options.param.gFSize = options.gFSize.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
+    if odrt_custom:
+        options.param.gFilterODRT = options.gFilterODRTData.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    else:
+        options.param.gFilterODRT = None
     setFields.update(_POINTER_SPECIAL_FIELDS)
 
     missing = [name for name, _ in options.param._fields_ if name not in setFields]

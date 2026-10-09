@@ -14,7 +14,7 @@ from typing import Any, Iterable
 import numpy as np
 
 
-SCALAR_KERNEL_PARAMS_SIZE = 352
+SCALAR_KERNEL_PARAMS_SIZE = 384
 
 _OFFSETS = {
     "nRowsD": 0,
@@ -61,6 +61,13 @@ _OFFSETS = {
     "N_rotate": 320,
     "cosa_rotate": 336,
     "sina_rotate": 340,
+    "gFilterNu": 352,
+    "gFilterNv": 356,
+    "gFilterNd": 360,
+    "gFilterDu": 364,
+    "gFilterDv": 368,
+    "gFilterDd": 372,
+    "gFilterCustom": 376,
 }
 
 
@@ -183,6 +190,16 @@ def _pack_scalar_kernel_params(self: Any, timestep: int, subset: int, volume: in
     i3('N_rotate', (0, 0, 0))
     f32('cosa_rotate', 0.0)
     f32('sina_rotate', 0.0)
+    u32('gFilterNu', int(getattr(self, 'gFilterNu', 0)))
+    u32('gFilterNv', int(getattr(self, 'gFilterNv', 0)))
+    u32('gFilterNd', int(getattr(self, 'gFilterNd', 0)))
+    spacing = np.asarray(getattr(self, 'gFilterSpacing', np.empty(0)), dtype=np.float32).reshape(-1)
+    if spacing.size != 3:
+        spacing = np.zeros(3, dtype=np.float32)
+    f32('gFilterDu', float(spacing[0]))
+    f32('gFilterDv', float(spacing[1]))
+    f32('gFilterDd', float(spacing[2]))
+    u32('gFilterCustom', int(bool(getattr(self, 'gFilterCustom', False))))
     return bytes(blob)
 
 
@@ -487,6 +504,20 @@ def _upload_static_buffers(self: Any, torch: Any) -> None:
 
     self.d_maskBP = self.d_maskBPVolumes[0]
 
+    # ODRT uses a separate buffer so type-6 gFilter keeps its detector-plane
+    # convolution meaning in hybrid projector configurations. Bind a valid
+    # one-float resource when lookup is disabled; the packed flag selects the
+    # original analytic Gaussian path.
+    if getattr(self, 'SPECT', False) and (
+        int(getattr(self, 'FPType', 0)) in (2, 3) or int(getattr(self, 'BPType', 0)) in (2, 3)
+    ):
+        odrt_filter = (
+            np.asarray(self.gFilter, dtype=np.float32).ravel(order='F')
+            if bool(getattr(self, 'gFilterCustom', False))
+            else np.zeros(1, dtype=np.float32)
+        )
+        self.d_gFilterODRT = _mps_tensor_from_numpy(torch, odrt_filter, np.float32)
+
     if int(getattr(self, 'FPType', 0)) == 6 or int(getattr(self, 'BPType', 0)) == 6:
         if isinstance(self.gFilter, (list, tuple)) and len(self.gFilter):
             self.d_gFilter = [
@@ -609,6 +640,9 @@ def _kernel_args(
         args[19] = dynamic_input
         args[20] = output
         args[21] = self.d_detectorVector[timestep][subset]
+        projector_type = self.FPType if direction == 'forward' else self.BPType
+        if self.SPECT and projector_type in (2, 3):
+            args.append(self.d_gFilterODRT)
     elif direction == 'backward' and self.BPType == 4:
         args = [empty_f] * 10
         args[0] = scalar_params

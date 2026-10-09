@@ -113,6 +113,13 @@
 	FLOAT coneOfResponseStdCoeffA = scalarParams.coneOfResponseStdCoeffA; \
     FLOAT coneOfResponseStdCoeffB = scalarParams.coneOfResponseStdCoeffB; \
     FLOAT coneOfResponseStdCoeffC = scalarParams.coneOfResponseStdCoeffC; \
+	uint gFilterNu = scalarParams.gFilterNu; \
+	uint gFilterNv = scalarParams.gFilterNv; \
+	uint gFilterNd = scalarParams.gFilterNd; \
+	float gFilterDu = scalarParams.gFilterDu; \
+	float gFilterDv = scalarParams.gFilterDv; \
+	float gFilterDd = scalarParams.gFilterDd; \
+	bool gFilterCustom = scalarParams.gFilterCustom != 0; \
 	FLOAT2 crystalSize = scalarParams.dPitch; \
     FLOAT3 ellipseCenter = scalarParams.ellipseCenter; \
     FLOAT3 ellipseRadii = scalarParams.ellipseRadii; \
@@ -1385,7 +1392,8 @@ DEVICE void getDetectorCoordinatesListmodeSPECT(
 #endif
 	const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource,
 	PTR_THR FLOAT3* s, PTR_THR FLOAT3* d, const size_t idx, const uint d_size_x, const uint d_sizey,
-	const int lor, const FLOAT3 ellipseCenter, const FLOAT3 ellipseRadii, const float ellipsePower
+	const int lor, const FLOAT3 ellipseCenter, const FLOAT3 ellipseRadii, const float ellipsePower,
+	PTR_THR FLOAT* rayDepthOffset
 ) {
 	const size_t i = idx * 6;
 	const size_t iz = idx * 5;
@@ -1405,7 +1413,9 @@ DEVICE void getDetectorCoordinatesListmodeSPECT(
 	(*s).x += ux * shiftSourceXY;
 	(*s).y += uy * shiftSourceXY;
 	(*s).z += (FLOAT)d_rayShiftsSource[idShift + 1u];
+	const FLOAT3 rayOriginBeforeClip = *s;
 	extendRayToEllipse(s, d, ellipseCenter, ellipseRadii, ellipsePower);
+	*rayDepthOffset = LENGTH(*s - rayOriginBeforeClip);
 }
 #endif
 #ifdef INDEXBASED
@@ -1706,11 +1716,12 @@ DEVICE void getDetectorCoordinatesSPECT(
     const FLOAT2 d_dPitch, // Detector element size [mm]
     const CLGLOBAL float* d_rayShiftsDetector, // Ray shifts [mm]
     const CLGLOBAL float* d_rayShiftsSource, // Ray shifts [mm]
-    const CLGLOBAL uint* d_detectorVector, // Detector head for each projection
-    int lor,
+	const CLGLOBAL uint* d_detectorVector, // Detector head for each projection
+	int lor,
     const FLOAT3 ellipseCenter,
     const FLOAT3 ellipseRadii,
-    const FLOAT ellipsePower
+    const FLOAT ellipsePower,
+	PTR_THR FLOAT* rayDepthOffset
 #if defined(ORTH)
     , PTR_THR FLOAT3 *collimatorOrigin
 #endif
@@ -1738,10 +1749,12 @@ DEVICE void getDetectorCoordinatesSPECT(
 	(*s).y += apuY * (shift_det_elem.x + d_rayShiftsSource[idShift]);
 	(*s).z += shift_det_elem.y + d_rayShiftsSource[idShift+1];
 
-    #if defined(ORTH)
-    *collimatorOrigin = *s;
-    #endif
-    extendRayToEllipse(s, d, ellipseCenter, ellipseRadii, ellipsePower);
+	const FLOAT3 rayOriginBeforeClip = *s;
+#if defined(ORTH)
+	*collimatorOrigin = *s;
+#endif
+	extendRayToEllipse(s, d, ellipseCenter, ellipseRadii, ellipsePower);
+	*rayDepthOffset = LENGTH(*s - rayOriginBeforeClip);
 }
 #else
 #if defined(RAW) || defined(SENS)
