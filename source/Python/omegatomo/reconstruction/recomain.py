@@ -21,6 +21,84 @@ import ctypes
 import numpy as np
 import warnings
 
+def _spect_listmode_sensitivity_weights(options, n_views):
+    supplied = np.asarray(getattr(options, 'sensitivityViewWeights', np.empty(0)))
+    if supplied.size:
+        weights = np.asarray(supplied, dtype=np.float32)
+        if weights.shape != (n_views, int(options.Nt)) or not np.all(np.isfinite(weights)) or np.any(weights < 0):
+            raise ValueError('sensitivityViewWeights must be a finite, non-negative nViews-by-Nt array.')
+        return np.asfortranarray(weights)
+    if int(options.Nt) == 1:
+        return np.ones((n_views, 1), dtype=np.float32, order='F')
+
+    frame_index = np.asarray(getattr(options, 'temporalBinIndex', np.empty(0))).reshape(-1)
+    if frame_index.size == n_views and np.all(np.isfinite(frame_index)) and np.all(frame_index == np.floor(frame_index)) and np.all((frame_index >= 0) & (frame_index < int(options.Nt))):
+        weights = np.zeros((n_views, int(options.Nt)), dtype=np.float32, order='F')
+        weights[np.arange(n_views), frame_index.astype(np.int64)] = 1
+        return weights
+
+    capture_start = np.asarray(getattr(options, 'measurementStartMs', np.empty(0)), dtype=np.float64).reshape(-1)
+    capture_end = np.asarray(getattr(options, 'measurementEndMs', np.empty(0)), dtype=np.float64).reshape(-1)
+    frame_start = np.asarray(getattr(options, 'dynamicPartitionStartMs', np.empty(0)), dtype=np.float64).reshape(-1)
+    frame_end = np.asarray(getattr(options, 'dynamicPartitionEndMs', np.empty(0)), dtype=np.float64).reshape(-1)
+    if capture_start.size == n_views and capture_end.size == n_views and frame_start.size == int(options.Nt) and frame_end.size == int(options.Nt):
+        duration = capture_end - capture_start
+        if np.all(np.isfinite(capture_start)) and np.all(np.isfinite(capture_end)) and np.all(duration >= 0) and np.all(np.isfinite(frame_start)) and np.all(np.isfinite(frame_end)):
+            overlap = np.maximum(0, np.minimum(capture_end[:, None], frame_end[None, :]) - np.maximum(capture_start[:, None], frame_start[None, :]))
+            weights = np.zeros((n_views, int(options.Nt)), dtype=np.float32, order='F')
+            positive = duration > 0
+            weights[positive, :] = (overlap[positive, :] / duration[positive, None]).astype(np.float32)
+            zero = ~positive
+            if np.any(zero):
+                if frame_index.size != n_views:
+                    raise ValueError('Zero-duration SPECT views require temporalBinIndex for dynamic sensitivity.')
+                for timestep in range(int(options.Nt)):
+                    weights[zero & (frame_index == timestep), timestep] = 1
+            return weights
+    raise ValueError('Dynamic listmode SPECT sensitivity requires view timing, temporalBinIndex, or explicit sensitivityViewWeights.')
+
+def _saved_image_count(options):
+    if options.save_iter:
+        return int(options.Niter) + 1
+    if options.saveNIter.size > 0:
+        return int(options.saveNIter.size) + 1
+    return 1
+
+def _reshape_image_output(output, spatialShape, savedImageCount, timeFrameCount):
+    # The C++ writer stores [voxel, timestep, save slot] in Fortran order,
+    # matching the MATLAB MEX dimensions [Nx, Ny, Nz, Nt, saves].
+    shape = (*map(int, spatialShape), int(timeFrameCount), int(savedImageCount))
+    expectedSize = int(np.prod(shape, dtype=np.int64))
+    if output.size != expectedSize:
+        raise ValueError(f"Unexpected reconstruction output size: got {output.size} values, expected {expectedSize}")
+    output = output.reshape(shape, order='F')
+    if timeFrameCount == 1:
+        output = output[..., 0, :]
+    elif savedImageCount == 1:
+        output = output[..., 0]
+    return output
+
+def _reshape_multiresolution_output(output, options):
+    nVolumes = int(options.nMultiVolumes) + 1
+    volSizes = (options.Nx[:nVolumes].astype(np.uint64) * options.Ny[:nVolumes].astype(np.uint64) * options.Nz[:nVolumes].astype(np.uint64)).astype(np.int64)
+    savedImageCount = _saved_image_count(options)
+    volumes = []
+    offset = 0
+    for ii, volSize in enumerate(volSizes):
+        outputSize = int(volSize) * savedImageCount * int(options.Nt)
+        nextOffset = offset + outputSize
+        volumes.append(_reshape_image_output(
+            output[offset:nextOffset],
+            (options.Nx[ii], options.Ny[ii], options.Nz[ii]),
+            savedImageCount,
+            options.Nt,
+        ))
+        offset = nextOffset
+
+    if offset != output.size:
+        raise ValueError(f"Unexpected multi-resolution output size: consumed {offset} values from {output.size}")
+    return volumes
+
 # ctypes scalar type -> NumPy dtype, used by _as_ptr() below to validate/coerce
 # the arrays pointed to by POINTER(...) struct fields.
 _CTYPE_TO_NUMPY_DTYPE = {
@@ -65,9 +143,9 @@ _POINTER_NAME_OVERRIDES = {
 }
 
 # Pointer struct fields set through bespoke logic in transferData() (the
-# type-6/PSF-blurring precomputed geometry), rather than through
+# type-6 and ODRT PSF lookup buffers), rather than through
 # _POINTER_NAME_OVERRIDES and _as_ptr().
-_POINTER_SPECIAL_FIELDS = {'blurPlanes', 'blurPlanes2', 'gFilter', 'gFSize'}
+_POINTER_SPECIAL_FIELDS = {'blurPlanes', 'blurPlanes2', 'gFilter', 'gFSize', 'gFilterODRT'}
 
 
 def _as_ptr(options, attr, ctype):
@@ -118,6 +196,44 @@ def transferData(options):
     None.
 
     """
+    pure_odrt = (bool(getattr(options, 'SPECT', False)) and
+                 getattr(options, 'projector_type', None) in (2, 12, 21, 22))
+    odrt_custom = pure_odrt and bool(getattr(options, 'gFilterCustom', False))
+    if bool(getattr(options, 'gFilterCustom', False)) and not pure_odrt:
+        raise ValueError('Custom SPECT ODRT gFilter is supported only for SPECT projector types 2, 12, 21, and 22.')
+    if odrt_custom:
+        raw_filter = np.asarray(options.gFilter)
+        if not np.issubdtype(raw_filter.dtype, np.number) or np.iscomplexobj(raw_filter):
+            raise ValueError('ODRT gFilter must be a real numeric array.')
+        try:
+            with np.errstate(over='ignore', invalid='ignore'):
+                odrt_filter = np.asarray(raw_filter, dtype=np.float32)
+                odrt_spacing = np.asarray(options.gFilterSpacing, dtype=np.float32).reshape(-1)
+        except (TypeError, ValueError) as exc:
+            raise ValueError('ODRT gFilter and gFilterSpacing must be representable as float32 arrays.') from exc
+        if odrt_filter.ndim == 2:
+            odrt_filter = odrt_filter[:, :, None]
+        if odrt_filter.ndim != 3 or min(odrt_filter.shape) < 1:
+            raise ValueError('ODRT gFilter must be a non-empty 2-D or 3-D array with axes (u, v, depth).')
+        if any(int(dim) > np.iinfo(np.uint32).max for dim in odrt_filter.shape):
+            raise ValueError('ODRT gFilter dimensions must fit in uint32.')
+        if (not np.all(np.isfinite(odrt_filter)) or np.any(odrt_filter < 0.) or
+                not np.any(odrt_filter > 0.)):
+            raise ValueError('ODRT gFilter must contain finite, non-negative weights and at least one positive value.')
+        if (odrt_spacing.size != 3 or not np.all(np.isfinite(odrt_spacing)) or
+                np.any(odrt_spacing <= 0.)):
+            raise ValueError('gFilterSpacing must contain three positive finite values (du, dv, dd).')
+        options.gFilterODRTData = np.asfortranarray(odrt_filter)
+        options.gFilterSpacing = np.ascontiguousarray(odrt_spacing, dtype=np.float32)
+        options.gFilterNu, options.gFilterNv, options.gFilterNd = map(int, odrt_filter.shape)
+    else:
+        options.gFilterODRTData = np.empty(0, dtype=np.float32)
+        options.gFilterNu = options.gFilterNv = options.gFilterNd = 0
+    # Loaders may use None for an absent optional correction. The native
+    # interface always receives a pointer and an element count, so normalize
+    # that representation to an empty array before taking either.
+    if options.normalization is None:
+        options.normalization = np.empty(0, dtype=np.float32)
     # Optional user-defined local/work-group (block) size. Accepts a scalar or a sequence of up to 3
     # values; missing/negative entries keep the built-in defaults.
     localSize = options.local_size
@@ -134,6 +250,7 @@ def transferData(options):
 
     # sizeX: number of listmode sensitivity-image source coordinates when computing
     # the sensitivity image in listmode, otherwise the number of x-coordinates.
+
     if options.listmode and options.compute_sensitivity_image:
         sizeXVal = options.uV.size
     else:
@@ -141,6 +258,21 @@ def transferData(options):
 
     if options.SinDelayed.dtype != np.float32:
         options.SinDelayed = options.SinDelayed.astype(np.float32)
+
+    detectorFrames = getattr(options, 'DetectorVectorFrames', None)
+    if options.SPECT and isinstance(detectorFrames, list):
+        options.DetectorVector = np.ascontiguousarray(np.concatenate(detectorFrames), dtype=np.uint32)
+
+    attenuation_dims = np.zeros((2, 3), dtype=np.uint32)
+    attenuation_spacing = np.zeros((2, 3), dtype=np.float32)
+    attenuation_origin = np.zeros((2, 3), dtype=np.float32)
+    if hasattr(options, 'imageAttenuationGridDims'):
+        dims = np.asarray(options.imageAttenuationGridDims, dtype=np.uint32).reshape(-1, 3)
+        spacing = np.asarray(options.imageAttenuationGridSpacing, dtype=np.float32).reshape(-1, 3)
+        origin = np.asarray(options.imageAttenuationGridOrigin, dtype=np.float32).reshape(-1, 3)
+        attenuation_dims[:dims.shape[0]] = dims
+        attenuation_spacing[:spacing.shape[0]] = spacing
+        attenuation_origin[:origin.shape[0]] = origin
 
     # Scalar struct fields with bespoke values (array sizes, conditional
     # selection, explicit type coercion, etc.) rather than a plain
@@ -167,6 +299,19 @@ def transferData(options):
         'zCenterSize': options.z_center.size,
         'sizeV': options.V.size,
         'measElem': options.SinM.size,
+        'sizeZSens': options.zSens.size,
+        'sizeDetectorVector': np.size(options.DetectorVector),
+        'sizeSensitivityViewWeights': options.sensitivityViewWeights.size,
+        'imageAttenuationGridDims': tuple(attenuation_dims.ravel()),
+        'imageAttenuationGridSpacing': tuple(attenuation_spacing.ravel()),
+        'imageAttenuationGridOrigin': tuple(attenuation_origin.ravel()),
+        'gFilterODRTNu': int(options.gFilterNu),
+        'gFilterODRTNv': int(options.gFilterNv),
+        'gFilterODRTNd': int(options.gFilterNd),
+        'gFilterODRTDu': float(options.gFilterSpacing[0]) if odrt_custom else 1.0,
+        'gFilterODRTDv': float(options.gFilterSpacing[1]) if odrt_custom else 1.0,
+        'gFilterODRTDd': float(options.gFilterSpacing[2]) if odrt_custom else 1.0,
+        'gFilterODRTCustom': int(odrt_custom),
     }
 
     setFields = set()
@@ -176,6 +321,9 @@ def transferData(options):
         if issubclass(ctype, ctypes._Pointer):
             attr = _POINTER_NAME_OVERRIDES.get(name, name)
             setattr(options.param, name, _as_ptr(options, attr, ctype._type_))
+        elif issubclass(ctype, ctypes.Array):
+            value = scalarValueOverrides.get(name, getattr(options, name, ()))
+            setattr(options.param, name, ctype(*value))
         else:
             if name in scalarValueOverrides:
                 value = scalarValueOverrides[name]
@@ -188,17 +336,24 @@ def transferData(options):
     # The native type-6 (rotation-dependent PSF blurring) branch uses
     # precomputed per-plane blur indices and the volume-0 filter/size.
     if options.projector_type in (6, 16, 26, 61, 62, 66):
-        options.param.blurPlanes = options.blurPlanes[0].ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
-        options.param.blurPlanes2 = options.blurPlanes2[0].ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
+        blur_planes = options.blurPlanes[0] if isinstance(options.blurPlanes, list) else options.blurPlanes
+        blur_planes2 = options.blurPlanes2[0] if isinstance(options.blurPlanes2, list) else options.blurPlanes2
+        g_filter = options.gFilter[0] if isinstance(options.gFilter, list) else options.gFilter
+        options.param.blurPlanes = blur_planes.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
+        options.param.blurPlanes2 = blur_planes2.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
         # The native type-6 branch uses the volume-0 filter.
-        options.param.gFilter = options.gFilter[0].ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-        options.gFSize = np.array(options.gFilter[0].shape, dtype=np.uint64)
+        options.param.gFilter = g_filter.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+        options.gFSize = np.array(g_filter.shape if g_filter.size else (0, 0, 0), dtype=np.uint64)
     else:
         options.param.blurPlanes = None
         options.param.blurPlanes2 = None
         options.param.gFilter = None
         options.gFSize = np.zeros(3, dtype=np.uint64)
     options.param.gFSize = options.gFSize.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
+    if odrt_custom:
+        options.param.gFilterODRT = options.gFilterODRTData.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    else:
+        options.param.gFilterODRT = None
     setFields.update(_POINTER_SPECIAL_FIELDS)
 
     missing = [name for name, _ in options.param._fields_ if name not in setFields]
@@ -249,6 +404,7 @@ def _loadDelayedMeasurement(options, getKey):
             options.SinDelayed = getKey('SinDelayed')
         except KeyError:
             print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed')
+
 
 
 def reconstructions_mainCT(options):
@@ -430,7 +586,15 @@ def reconstructions_main(options):
             # frames along a new leading axis and interleave them in F order.
             options.SinM = np.concatenate([np.asarray(frame).ravel(order='F') for frame in options.SinM])
         options.SinM = np.reshape(options.SinM, (int(options.nRowsD), int(options.nColsD), options.nProjections, options.TOF_bins, options.Nt), order='F')
-    elif options.listmode and options.compute_sensitivity_image and not(options.SPECT):
+    elif options.listmode and options.compute_sensitivity_image and options.SPECT:
+        from omegatomo.projector.detcoord import getCoordinatesSPECT
+        x_sensitivity, z_sensitivity = getCoordinatesSPECT(options)
+        options.uV = np.float32(np.asfortranarray(x_sensitivity))
+        options.zSens = np.float32(np.asfortranarray(z_sensitivity))
+        options.sensitivityViewWeights = _spect_listmode_sensitivity_weights(
+            options, options.uV.size // 6
+        )
+    elif options.listmode and options.compute_sensitivity_image:
         if hasattr(options, 'xSens') and np.size(options.xSens) > 0 and hasattr(options, 'zSens') and np.size(options.zSens) > 0:
             options.uV = np.float32(np.asfortranarray(options.xSens))
             options.z = np.float32(np.asfortranarray(options.zSens))
@@ -565,24 +729,12 @@ def reconstructions_main(options):
     if status != 0:
         raise RuntimeError(f'Native reconstruction failed with status {status}; see the backend diagnostics above.')
     try:
-        # Number of saved image volumes per timestep: options.saveNIter/save_iter
-        # cause the native code to store one volume per requested iteration
-        # (plus the initial estimate), in addition to the per-timestep volumes.
-        if options.saveNIter.size > 0:
-            numSaves = int(options.saveNIter.size) + 1
-        elif options.save_iter:
-            numSaves = int(options.Niter) + 1
+        if options.useMultiResolutionVolumes and options.storeMultiResolution:
+            output = _reshape_multiresolution_output(output, options)
+        elif options.useMultiResolutionVolumes and not options.storeMultiResolution:
+            output = _reshape_image_output(output, (options.NxOrig, options.NyOrig, options.NzOrig), _saved_image_count(options), options.Nt)
         else:
-            numSaves = 1
-        if options.useMultiResolutionVolumes and not options.storeMultiResolution:
-            output = output.reshape((options.NxOrig, options.NyOrig, options.NzOrig, -1), order = 'F')
-        elif not options.storeMultiResolution and options.Nt == 1:
-            output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], -1), order = 'F')
-        elif numSaves > 1:
-            # Memory layout (fastest to slowest): spatial voxels, timestep, save index
-            output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], options.Nt, numSaves), order = 'F')
-        else:
-            output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], options.Nt), order = 'F')
+            output = _reshape_image_output(output, (options.Nx[0], options.Ny[0], options.Nz[0]), _saved_image_count(options), options.Nt)
         # Port of reconstructions_main.m:722-731: crop the extended FOV back off
         # the output. This only makes sense once `output` has actually been
         # reshaped above (the first three axes are spatial in every branch

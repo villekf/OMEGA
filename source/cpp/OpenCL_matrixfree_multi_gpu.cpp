@@ -579,6 +579,8 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		}
 		else {
 			w_vec.listCoord = getSingles(options, "x", 0);
+			if (inputScalars.SPECT)
+				w_vec.listCoordZ = getSingles(options, "z", 0);
 		}
 		if (inputScalars.TOF)
 			w_vec.TOFIndices = getUint8s(options, "TOFIndices", 0);

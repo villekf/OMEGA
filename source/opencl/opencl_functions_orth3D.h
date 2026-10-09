@@ -34,6 +34,209 @@ DEVICE FLOAT compute_element_parallel_3D(
 #define INV_SQRT_2PI 0.3989422804014327f // 1/sqrt(2*pi)
 #define INV_2PI 0.15915494309189535f // 1/(2*pi) = (1/sqrt(2*pi))^2
 #define INV_2SQRT2LN2 0.42466090014400953f // 1/(2*sqrt(2*ln2))
+DEVICE float normPDF2(const float x, const float mu, const float sigma) {
+    const float inv_sigma = RCP(sigma);
+    const float inv_sigma2 = inv_sigma * inv_sigma;
+    const float a = (x - mu) * inv_sigma;
+    const float a2 = a * a;
+    const float e = EXP(-0.5f * a2);
+    return INV_2PI * inv_sigma2 * e;
+}
+
+#if defined(ORTH) && !defined(VOL)
+DEVICE bool spectOrthRayBoxInterval(
+    const FLOAT3 p0,
+    const FLOAT3 dir,
+    const FLOAT3 boxMin,
+    const FLOAT3 boxMax,
+    PTR_THR FLOAT *tmin,
+    PTR_THR FLOAT *tmax
+) {
+    *tmin = FLOAT_ZERO;
+    *tmax = 1.0e8f;
+    const FLOAT epsVal = 1.0e-6f;
+
+    if (FABS(dir.x) < epsVal) {
+        if (p0.x < boxMin.x || p0.x > boxMax.x)
+            return false;
+    } else {
+        const FLOAT t1 = (boxMin.x - p0.x) / dir.x;
+        const FLOAT t2 = (boxMax.x - p0.x) / dir.x;
+        *tmin = FMAX(*tmin, FMIN(t1, t2));
+        *tmax = FMIN(*tmax, FMAX(t1, t2));
+        if (*tmax < *tmin)
+            return false;
+    }
+
+    if (FABS(dir.y) < epsVal) {
+        if (p0.y < boxMin.y || p0.y > boxMax.y)
+            return false;
+    } else {
+        const FLOAT t1 = (boxMin.y - p0.y) / dir.y;
+        const FLOAT t2 = (boxMax.y - p0.y) / dir.y;
+        *tmin = FMAX(*tmin, FMIN(t1, t2));
+        *tmax = FMIN(*tmax, FMAX(t1, t2));
+        if (*tmax < *tmin)
+            return false;
+    }
+
+    if (FABS(dir.z) < epsVal) {
+        if (p0.z < boxMin.z || p0.z > boxMax.z)
+            return false;
+    } else {
+        const FLOAT t1 = (boxMin.z - p0.z) / dir.z;
+        const FLOAT t2 = (boxMax.z - p0.z) / dir.z;
+        *tmin = FMAX(*tmin, FMIN(t1, t2));
+        *tmax = FMIN(*tmax, FMAX(t1, t2));
+        if (*tmax < *tmin)
+            return false;
+    }
+
+    return true;
+}
+
+DEVICE FLOAT spectOrthSupportRadius(
+    const FLOAT3 s,
+    const FLOAT3 diff,
+    const FLOAT3 boxMin,
+    const FLOAT3 boxMax,
+    const FLOAT coneOfResponseStdCoeffA,
+    const FLOAT coneOfResponseStdCoeffB,
+    const FLOAT coneOfResponseStdCoeffC
+) {
+    const FLOAT rayLength = LENGTH(diff);
+    if (rayLength <= 1.0e-6f)
+        return FLOAT_ZERO;
+
+    const FLOAT3 dir = diff * RCP(rayLength);
+    FLOAT dParallelMax = FLOAT_ZERO;
+
+    for (int ix = 0; ix < 2; ix++) {
+        const FLOAT x = (ix == 0) ? boxMin.x : boxMax.x;
+        for (int iy = 0; iy < 2; iy++) {
+            const FLOAT y = (iy == 0) ? boxMin.y : boxMax.y;
+            for (int iz = 0; iz < 2; iz++) {
+                const FLOAT z = (iz == 0) ? boxMin.z : boxMax.z;
+                const FLOAT3 corner = CMFLOAT3(x, y, z);
+                dParallelMax = FMAX(dParallelMax, dot(dir, corner - s));
+            }
+        }
+    }
+
+    const FLOAT fwhm = FMAD(coneOfResponseStdCoeffA, dParallelMax, coneOfResponseStdCoeffB);
+    return 3.5f * SQRT(fwhm * fwhm + coneOfResponseStdCoeffC * coneOfResponseStdCoeffC) * INV_2SQRT2LN2;
+}
+
+DEVICE bool spectOrthPrimaryIsX(const FLOAT3 diff) {
+    return FABS(diff.x) >= FABS(diff.y);
+}
+
+DEVICE int spectOrthClampedIndex(const FLOAT coord, const FLOAT b0, const FLOAT d0, const uint n0) {
+    const int maxIndex = CINT(n0) - 1;
+    return MIN(MAX(CINT_rtz((coord - b0) / d0), 0), maxIndex);
+}
+#endif
+
+#if defined(ODRT_TEXTURE)
+#define SPECTPSF_RESOURCE IMAGE3D
+#else
+#define SPECTPSF_RESOURCE const CLGLOBAL float* CLRESTRICT
+#endif
+
+// Zero-extended read from a Fortran/ArrayFire ordered PSF volume. The first
+// axis is contiguous: u + Nu * (v + Nv * depth).
+#if !defined(ODRT_TEXTURE)
+DEVICE float readSPECTPSF3DZero(const CLGLOBAL float* psf,
+	const uint Nu, const uint Nv, const uint Nd,
+	const int iu, const int iv, const int id) {
+	if (psf == 0 || iu < 0 || iv < 0 || id < 0 || iu >= CINT(Nu) || iv >= CINT(Nv) || id >= CINT(Nd))
+		return 0.f;
+	const size_t ind = (size_t)iu + (size_t)Nu * ((size_t)iv + (size_t)Nv * (size_t)id);
+	return psf[ind];
+}
+#endif
+
+// Sample a SPECT PSF in the ray-local orthogonal plane and along-ray depth.
+// u/v are physical signed offsets in mm, centered at the lateral PSF center
+// ((N - 1) / 2); depth is the physical distance from the original SPECT ray
+// start to the voxel. Ellipse clipping advances the integration ray start, so
+// the per-ray offset is added back before sampling. du/dv/dd are the sample
+// pitches in mm. Trilinear interpolation uses zero extension:
+// each out-of-range corner contributes zero, including within one sample pitch
+// of the table boundary. This gives a smooth falloff at finite PSF support.
+DEVICE float sampleSPECTPSF3D(SPECTPSF_RESOURCE psf,
+	const uint Nu, const uint Nv, const uint Nd,
+	const float u_mm, const float v_mm, const float depth_mm,
+	const float du_mm, const float dv_mm, const float dd_mm) {
+	if (Nu == 0u || Nv == 0u || Nd == 0u ||
+		!(du_mm > 0.f) || !(dv_mm > 0.f) || !(dd_mm > 0.f))
+		return 0.f;
+
+	const float fu = u_mm / du_mm + 0.5f * ((float)Nu - 1.f);
+	const float fv = v_mm / dv_mm + 0.5f * ((float)Nv - 1.f);
+	const float fd = depth_mm / dd_mm;
+	// If the coordinate is farther than one sample beyond the table, all
+	// interpolation corners are zero. These comparisons also reject NaNs.
+	if (!(fu >= -1.f && fu < (float)Nu) ||
+		!(fv >= -1.f && fv < (float)Nv) ||
+		!(fd >= -1.f && fd < (float)Nd))
+		return 0.f;
+
+#if defined(ODRT_TEXTURE)
+	// CUDA's unnormalized texture coordinates place texel centers at n+0.5.
+	// Border addressing supplies zero-valued neighbors for edge interpolation.
+	return tex3D<float>(psf, fu + 0.5f, fv + 0.5f, fd + 0.5f);
+#else
+
+	const float bu = FLOOR(fu), bv = FLOOR(fv), bd = FLOOR(fd);
+	const int iu0 = CINT(bu), iv0 = CINT(bv), id0 = CINT(bd);
+	const int iu1 = iu0 + 1, iv1 = iv0 + 1, id1 = id0 + 1;
+	const float tu = fu - bu, tv = fv - bv, td = fd - bd;
+
+	const float p000 = readSPECTPSF3DZero(psf, Nu, Nv, Nd, iu0, iv0, id0);
+	const float p100 = readSPECTPSF3DZero(psf, Nu, Nv, Nd, iu1, iv0, id0);
+	const float p010 = readSPECTPSF3DZero(psf, Nu, Nv, Nd, iu0, iv1, id0);
+	const float p110 = readSPECTPSF3DZero(psf, Nu, Nv, Nd, iu1, iv1, id0);
+	const float p001 = readSPECTPSF3DZero(psf, Nu, Nv, Nd, iu0, iv0, id1);
+	const float p101 = readSPECTPSF3DZero(psf, Nu, Nv, Nd, iu1, iv0, id1);
+	const float p011 = readSPECTPSF3DZero(psf, Nu, Nv, Nd, iu0, iv1, id1);
+	const float p111 = readSPECTPSF3DZero(psf, Nu, Nv, Nd, iu1, iv1, id1);
+
+	const float p00 = p000 + tu * (p100 - p000);
+	const float p10 = p010 + tu * (p110 - p010);
+	const float p01 = p001 + tu * (p101 - p001);
+	const float p11 = p011 + tu * (p111 - p011);
+	const float p0 = p00 + tv * (p10 - p00);
+	const float p1 = p01 + tv * (p11 - p01);
+	return p0 + td * (p1 - p0);
+#endif
+}
+
+// Intersect an integer scan interval with the set of indices whose affine
+// coordinate lies within one table axis' zero-extended interpolation support.
+// Extra indices on both sides guard float rounding and keep this independent
+// of the actual PSF values (which may contain holes).
+DEVICE bool clipSPECTPSFInterval(const FLOAT coord0, const FLOAT coordStep,
+	const FLOAT lower, const FLOAT upper, PTR_THR int* lo, PTR_THR int* hi) {
+	if (*lo >= *hi)
+		return false;
+	if (FABS(coordStep) < 1.0e-8f) {
+		if (coord0 < lower - 1.0e-4f || coord0 > upper + 1.0e-4f) {
+			*hi = *lo;
+			return false;
+		}
+		return true;
+	}
+	const FLOAT t0 = (lower - coord0) / coordStep;
+	const FLOAT t1 = (upper - coord0) / coordStep;
+	const FLOAT tlo = FMIN(t0, t1);
+	const FLOAT thi = FMAX(t0, t1);
+	const int clippedLo = MAX(*lo, CINT(CEIL(tlo)) - 1);
+	const int clippedHi = MIN(*hi, CINT(FLOOR(thi)) + 2);
+	*lo = clippedLo;
+	*hi = MAX(clippedLo, clippedHi);
+	return *lo < *hi;
+}
 #endif
 
 // compute voxel index, orthogonal distance based or volume of intersection ray tracer
@@ -112,6 +315,10 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 #endif
 #ifdef SPECT
     , const FLOAT coneOfResponseStdCoeffA, const FLOAT coneOfResponseStdCoeffB, const FLOAT c2, const FLOAT orth_ray_length_inv_signed
+	, const FLOAT rayDepthOffset
+	, SPECTPSF_RESOURCE gFilter, const uint Nu, const uint Nv, const uint Nd
+	, const FLOAT du, const FLOAT dv, const FLOAT dd, const bool gFilterCustom
+	, const FLOAT3 ray, const FLOAT3 e1, const FLOAT3 e2
 #endif
 ) {
 #ifdef SPECT // Check for voxel behind detector
@@ -120,22 +327,33 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
         return false;
     }
 #endif
-    const FLOAT x0 = FMAD(-FLOAT_ONE, s.y, center.y);
+	float local_ele;
+#ifdef SPECT ////////////////////////// SPECT ////////////////////
+	if (gFilterCustom) {
+		const FLOAT3 q = (center - s) - ray * d_parallel;
+		const float u = dot(q, e1);
+		const float v = dot(q, e2);
+		local_ele = sampleSPECTPSF3D(gFilter, Nu, Nv, Nd, u, v, d_parallel + rayDepthOffset, du, dv, dd);
+	} else {
+		const FLOAT x0 = FMAD(-FLOAT_ONE, s.y, center.y);
+		const FLOAT y1 = FMAD(diff.z, x0, -l.y);
+		const FLOAT z1 = FMAD(-diff.x, x0, l.z);
+		const FLOAT norm2 = FMAD(l.x, l.x, FMAD(y1, y1, z1 * z1));
+		const float t = FMAD(coneOfResponseStdCoeffA, d_parallel, coneOfResponseStdCoeffB);   // A*d_parallel + B
+		const float var8ln2 = FMAD(t, t, c2); // (2*sqrt(2*ln2)*CORstd)^2
+		// norm2 >= 3.5^2 * CORstd^2 * orth_ray_length^2;
+		if (norm2 >= 12.25f * INV_8LN2 * var8ln2 * orth_ray_length * orth_ray_length) {
+			return true;
+		}
+		const float invSTD = RSQRT(var8ln2) * SQRT_8LN2; // 1/CORstd
+		const float a = SQRT(norm2) * orth_ray_length_inv * invSTD;
+		local_ele = INV_2PI * invSTD * invSTD * EXP(-0.5f * a * a);
+	}
+#elif defined(VOL) //////////// VOL /////////////
+	const FLOAT x0 = FMAD(-FLOAT_ONE, s.y, center.y);
 	const FLOAT y1 = FMAD(diff.z, x0, -l.y);
 	const FLOAT z1 = FMAD(-diff.x, x0, l.z);
 	const FLOAT norm2 = FMAD(l.x, l.x, FMAD(y1, y1, z1 * z1));
-	float local_ele;
-#ifdef SPECT ////////////////////////// SPECT ////////////////////
-	const float t = FMAD(coneOfResponseStdCoeffA, d_parallel, coneOfResponseStdCoeffB);   // A*d_parallel + B
-	const float var8ln2 = FMAD(t, t, c2); // (2*sqrt(2*ln2)*CORstd)^2
-	// norm2 >= 3.5^2 * CORstd^2 * orth_ray_length^2;
-	if (norm2 >= 12.25f * INV_8LN2 * var8ln2 * orth_ray_length * orth_ray_length) {
-		return true;
-	}
-	const float invSTD = RSQRT(var8ln2) * SQRT_8LN2; // 1/CORstd
-	const float a = SQRT(norm2) * orth_ray_length_inv * invSTD;
-	local_ele = INV_2PI * invSTD * invSTD * EXP(-0.5f * a * a);
-#elif defined(VOL) //////////// VOL /////////////
 	if (norm2 > bmax * bmax * orth_ray_length * orth_ray_length) {
 		return true;
 	}
@@ -145,6 +363,10 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	else
 		local_ele = V[CUINT_rte((FMIN(local_ele, bmax) - bmin) * CC)];
 #else //////////// ORTH /////////////
+	const FLOAT x0 = FMAD(-FLOAT_ONE, s.y, center.y);
+	const FLOAT y1 = FMAD(diff.z, x0, -l.y);
+	const FLOAT z1 = FMAD(-diff.x, x0, l.z);
+	const FLOAT norm2 = FMAD(l.x, l.x, FMAD(y1, y1, z1 * z1));
 	if (norm2 >= (FLOAT_ONE - THR) * (FLOAT_ONE - THR) * orth_ray_length * orth_ray_length) {
 		return true;
 	}
@@ -165,7 +387,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	const LONG ind = CLONG_rtz(local_ind);
 #endif ///////////////////// END 2D/3D indices /////////////////////
 #if defined(BP) && defined(MASKBP) ///////////////////// APPLY BP MASK /////////////////////////
-    if ((ii == 0) && (readMaskBP(maskBP, ind, d_N) == 0)) {
+    if (readMaskBP(maskBP, ind, d_N) == 0) {
         return false;
     }
 #endif ///////////////////// END BP MASK /////////////////////////
@@ -226,6 +448,9 @@ DEVICE int orthDistance3D(const int tempi,
 #endif
 #ifdef SPECT
     , const FLOAT coneOfResponseStdCoeffA, const FLOAT coneOfResponseStdCoeffB, const FLOAT coneOfResponseStdCoeffC, const FLOAT orth_ray_length_inv_signed
+	, const FLOAT rayDepthOffset
+	, SPECTPSF_RESOURCE gFilter, const uint Nu, const uint Nv, const uint Nd
+	, const FLOAT du, const FLOAT dv, const FLOAT dd, const bool gFilterCustom
 #endif
 ) {
 	int uu = 0;
@@ -244,6 +469,19 @@ DEVICE int orthDistance3D(const int tempi,
 	int uu1 = 0, uu2 = 0;
 	// Computed once here rather than dividing separately for every voxel in the helper
 	const FLOAT orth_ray_length_inv = FLOAT_ONE / orth_ray_length;
+#ifdef SPECT
+	FLOAT3 ray = MFLOAT3(FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO);
+	FLOAT3 e1 = MFLOAT3(FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO);
+	FLOAT3 e2 = MFLOAT3(FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO);
+	if (gFilterCustom) {
+		ray = diff * orth_ray_length_inv;
+		FLOAT3 ref = MFLOAT3(FLOAT_ZERO, FLOAT_ZERO, FLOAT_ONE);
+		if (FABS(ray.z) > 0.999f)
+			ref = CMFLOAT3(FLOAT_ONE, FLOAT_ZERO, FLOAT_ZERO);
+		e1 = NORMALIZE(CROSS(ref, ray));
+		e2 = CROSS(ray, e1);
+	}
+#endif
 	int loXY = minimiXY, hiXY = maksimiXY;
 #if !defined(SPECT) && defined(CRYSTXY)
 	const FLOAT quadA = diff.x * diff.x + diff.z * diff.z;
@@ -262,6 +500,33 @@ DEVICE int orthDistance3D(const int tempi,
 	for (zz = MAX(tempk, minimiZ); zz < maksimiZ; zz++) {
 #endif
 		center.z = bz + CFLOAT(zz) * dz + dz / FLOAT_TWO;
+		int scanLoXY = loXY, scanHiXY = hiXY;
+#if defined(SPECT) && defined(CRYSTXY)
+		if (gFilterCustom) {
+			// Each ray-local coordinate is affine in the transaxial scan index.
+			// Restrict this slice to the table's zero-extended support; this is
+			// independent of PSF values, including sparse/non-monotone tables.
+			FLOAT3 origin = center;
+			origin.y = b2 + d2 / FLOAT_TWO;
+			const FLOAT3 offset = origin - s;
+			const FLOAT parallel = dot(offset, ray);
+			const FLOAT depth = parallel + rayDepthOffset;
+			const FLOAT3 q = offset - ray * parallel;
+			const FLOAT uLimit = FLOAT_HALF * (CFLOAT(Nu) + FLOAT_ONE) * du;
+			const FLOAT vLimit = FLOAT_HALF * (CFLOAT(Nv) + FLOAT_ONE) * dv;
+			const FLOAT depthLimit = CFLOAT(Nd) * dd;
+			bool hasSupport = clipSPECTPSFInterval(dot(q, e1), d2 * e1.y,
+				-uLimit, uLimit, &scanLoXY, &scanHiXY);
+			if (hasSupport)
+				hasSupport = clipSPECTPSFInterval(dot(q, e2), d2 * e2.y,
+					-vLimit, vLimit, &scanLoXY, &scanHiXY);
+			if (hasSupport)
+				hasSupport = clipSPECTPSFInterval(depth, d2 * ray.y,
+					FLOAT_ZERO, depthLimit, &scanLoXY, &scanHiXY);
+			if (!hasSupport)
+				scanHiXY = scanLoXY;
+		}
+#endif
 		const FLOAT z0 = center.z - s.z;
 		l.x = diff.x * z0 - apu1;
 		l.y = diff.y * z0;
@@ -273,9 +538,9 @@ DEVICE int orthDistance3D(const int tempi,
 #if !defined(SPECT)
 		// tubeRangeXY gives the exact range, so one ascending pass covers the whole row. The
 		// bidirectional scan below is only needed when the tube end has to be found on the fly
-		for (uu1 = loXY; uu1 < hiXY; uu1++) {
+		for (uu1 = scanLoXY; uu1 < scanHiXY; uu1++) {
 #else
-		for (uu1 = MAX(temp2, loXY); uu1 < hiXY; uu1++) {
+		for (uu1 = MAX(temp2, scanLoXY); uu1 < scanHiXY; uu1++) {
 #endif
 #else
 		uu1 = temp2;
@@ -300,7 +565,9 @@ DEVICE int orthDistance3D(const int tempi,
 				, ii, maskBP, d_N
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, c2, orth_ray_length_inv_signed
+				, coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, c2, orth_ray_length_inv_signed
+				, rayDepthOffset, gFilter, Nu, Nv, Nd, du, dv, dd, gFilterCustom
+				, ray, e1, e2
 #endif
 			);
 #ifdef CRYSTXY
@@ -325,7 +592,7 @@ DEVICE int orthDistance3D(const int tempi,
 #if defined(CRYSTXY) && defined(SPECT)
 		// Only SPECT reaches this: without the analytic range the scan has to start at the ray and
 		// walk outward in both directions, stopping at the first voxel outside the response
-		for (uu2 = MIN(temp2, hiXY) - 1; uu2 >= loXY; uu2--) {
+		for (uu2 = MIN(temp2, scanHiXY) - 1; uu2 >= scanLoXY; uu2--) {
 			center.y = b2 + CFLOAT(uu2) * d2 + d2 / FLOAT_TWO;
 			breikki = orthogonalHelper3D(tempi, uu2, d_N2, d_N3, d_Nxy, zz, s, l, diff, orth_ray_length, orth_ray_length_inv, center, bmin, bmax, Vmax, V, XY, ax, temp, 
 #if defined(FP)
@@ -346,7 +613,9 @@ DEVICE int orthDistance3D(const int tempi,
 				, ii, maskBP, d_N
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, c2, orth_ray_length_inv_signed
+				, coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, c2, orth_ray_length_inv_signed
+				, rayDepthOffset, gFilter, Nu, Nv, Nd, du, dv, dd, gFilterCustom
+				, ray, e1, e2
 #endif
 			);
 			if (breikki) {
@@ -363,13 +632,42 @@ DEVICE int orthDistance3D(const int tempi,
 	if (loXY >= hiXY)
 		break;
 #else
-	if (uu1 == temp2 && uu2 == temp2 - 1 && breikki)
-		break;
+#if defined(SPECT) && defined(CRYSTXY)
+		if (!gFilterCustom && uu1 == temp2 && uu2 == temp2 - 1 && breikki)
+			break;
+#else
+		if (uu1 == temp2 && uu2 == temp2 - 1 && breikki)
+			break;
+#endif
 #endif
 	}
 	*k = zz - 1;
 	for (zz = MIN(tempk, maksimiZ) - 1; zz >= minimiZ; zz--) {
 		center.z = bz + CFLOAT(zz) * dz + dz / FLOAT_TWO;
+		int scanLoXY = loXY, scanHiXY = hiXY;
+#if defined(SPECT) && defined(CRYSTXY)
+		if (gFilterCustom) {
+			FLOAT3 origin = center;
+			origin.y = b2 + d2 / FLOAT_TWO;
+			const FLOAT3 offset = origin - s;
+			const FLOAT parallel = dot(offset, ray);
+			const FLOAT depth = parallel + rayDepthOffset;
+			const FLOAT3 q = offset - ray * parallel;
+			const FLOAT uLimit = FLOAT_HALF * (CFLOAT(Nu) + FLOAT_ONE) * du;
+			const FLOAT vLimit = FLOAT_HALF * (CFLOAT(Nv) + FLOAT_ONE) * dv;
+			const FLOAT depthLimit = CFLOAT(Nd) * dd;
+			bool hasSupport = clipSPECTPSFInterval(dot(q, e1), d2 * e1.y,
+				-uLimit, uLimit, &scanLoXY, &scanHiXY);
+			if (hasSupport)
+				hasSupport = clipSPECTPSFInterval(dot(q, e2), d2 * e2.y,
+					-vLimit, vLimit, &scanLoXY, &scanHiXY);
+			if (hasSupport)
+				hasSupport = clipSPECTPSFInterval(depth, d2 * ray.y,
+					FLOAT_ZERO, depthLimit, &scanLoXY, &scanHiXY);
+			if (!hasSupport)
+				scanHiXY = scanLoXY;
+		}
+#endif
 		const FLOAT z0 = center.z - s.z;
 		l.x = diff.x * z0 - apu1;
 		l.y = diff.y * z0;
@@ -380,9 +678,9 @@ DEVICE int orthDistance3D(const int tempi,
 #if !defined(SPECT)
 		// tubeRangeXY gives the exact range, so one ascending pass covers the whole row. The
 		// bidirectional scan below is only needed when the tube end has to be found on the fly
-		for (uu1 = loXY; uu1 < hiXY; uu1++) {
+		for (uu1 = scanLoXY; uu1 < scanHiXY; uu1++) {
 #else
-		for (uu1 = MAX(temp2, loXY); uu1 < hiXY; uu1++) {
+		for (uu1 = MAX(temp2, scanLoXY); uu1 < scanHiXY; uu1++) {
 #endif
 #else
 		uu1 = temp2;
@@ -407,7 +705,9 @@ DEVICE int orthDistance3D(const int tempi,
 				, ii, maskBP, d_N
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, c2, orth_ray_length_inv_signed
+				, coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, c2, orth_ray_length_inv_signed
+				, rayDepthOffset, gFilter, Nu, Nv, Nd, du, dv, dd, gFilterCustom
+				, ray, e1, e2
 #endif
 			);
 #ifdef CRYSTXY
@@ -432,7 +732,7 @@ DEVICE int orthDistance3D(const int tempi,
 #if defined(CRYSTXY) && defined(SPECT)
 		// Only SPECT reaches this: without the analytic range the scan has to start at the ray and
 		// walk outward in both directions, stopping at the first voxel outside the response
-		for (uu2 = MIN(temp2, hiXY) - 1; uu2 >= loXY; uu2--) {
+		for (uu2 = MIN(temp2, scanHiXY) - 1; uu2 >= scanLoXY; uu2--) {
 			center.y = b2 + CFLOAT(uu2) * d2 + d2 / FLOAT_TWO;
 			breikki = orthogonalHelper3D(tempi, uu2, d_N2, d_N3, d_Nxy, zz, s, l, diff, orth_ray_length, orth_ray_length_inv, center, bmin, bmax, Vmax, V, XY, ax, temp, 
 #if defined(FP)
@@ -453,7 +753,9 @@ DEVICE int orthDistance3D(const int tempi,
 				, ii, maskBP, d_N
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, c2, orth_ray_length_inv_signed
+				, coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, c2, orth_ray_length_inv_signed
+				, rayDepthOffset, gFilter, Nu, Nv, Nd, du, dv, dd, gFilterCustom
+				, ray, e1, e2
 #endif
 			);
 			if (breikki) {
@@ -468,8 +770,13 @@ DEVICE int orthDistance3D(const int tempi,
 		if (loXY >= hiXY)
 			break;
 #else
+	#if defined(SPECT) && defined(CRYSTXY)
+		if (!gFilterCustom && uu1 == temp2 && uu2 == temp2 - 1 && breikki)
+			break;
+	#else
 		if (uu1 == temp2 && uu2 == temp2 - 1 && breikki)
 			break;
+	#endif
 #endif
 	}
 	if (preStep) {

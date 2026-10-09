@@ -266,6 +266,8 @@ struct inputStruct {
     bool enforcePositivity = false;
     // Use multi-resolution reconstruction
     bool useMultiResolutionVolumes = false;
+    // Save multi-resolution volumes
+    bool storeMultiResolution = false;
     // Save all iterations to host
     bool save_iter = false;
     // Use deblurring
@@ -491,6 +493,15 @@ struct inputStruct {
     // Blurring kernel for the rotation-based projector
     float* gFilter;
     uint64_t* gFSize;
+    // Separate ray-local SPECT ODRT lookup; the type-6 filter above remains independent.
+    float* gFilterODRT;
+    uint32_t gFilterODRTNu;
+    uint32_t gFilterODRTNv;
+    uint32_t gFilterODRTNd;
+    float gFilterODRTDu;
+    float gFilterODRTDv;
+    float gFilterODRTDd;
+    uint32_t gFilterODRTCustom;
     // Which image-based preconditioners are used
     bool* precondTypeImage;
     // Which measurement-based preconditioners are used
@@ -547,10 +558,20 @@ struct inputStruct {
     // More reference images
     float* NLM_ref;
     float* RDP_ref;
+    // Optional full-view sensitivity geometry for listmode SPECT.
+    float* zSens = nullptr;
+    uint64_t sizeZSens = 0;
+    uint64_t sizeDetectorVector = 0;
+    float* sensitivityViewWeights = nullptr;
+    uint64_t sizeSensitivityViewWeights = 0;
+    // Image attenuation grids, packed as fine/coarse XYZ triples.
+    uint32_t imageAttenuationGridDims[6] = {};
+    float imageAttenuationGridSpacing[6] = {};
+    float imageAttenuationGridOrigin[6] = {};
     // Neighborhood index/weight data for the L-filter and FMH priors
-    uint32_t* tr_offsets;
-    float* a_L;
-    float* fmh_weights;
+    uint32_t* tr_offsets = nullptr;
+    float* a_L = nullptr;
+    float* fmh_weights = nullptr;
 };
 
 void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting& w_vec, RecMethods& MethodList) {
@@ -635,6 +656,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.pitch = options.pitch;
     inputScalars.enforcePositivity = options.enforcePositivity;
     inputScalars.multiResolution = options.useMultiResolutionVolumes;
+    inputScalars.storeMultiResolution = options.storeMultiResolution;
     inputScalars.nMultiVolumes = options.nMultiVolumes;
     inputScalars.indexBased = options.useIndexBasedReconstruction;
 
@@ -736,6 +758,29 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
 
     // The type of projector used (Siddon or orthogonal)
     inputScalars.projector_type = options.projector_type;
+
+    // Keep the ray-local ODRT lookup separate from the type-6 rotation CDRF.
+    // Empty lookup tables use a valid one-float device allocation downstream.
+    inputScalars.gFilterData = nullptr;
+    inputScalars.size_gFilter = 1;
+    inputScalars.gFilterNu = inputScalars.gFilterNv = inputScalars.gFilterNd = 0U;
+    inputScalars.gFilterDu = inputScalars.gFilterDv = inputScalars.gFilterDd = 1.f;
+    inputScalars.gFilterCustom = 0U;
+    const bool pureSPECTODRT = inputScalars.SPECT &&
+        (inputScalars.projector_type == 2U || inputScalars.projector_type == 12U ||
+            inputScalars.projector_type == 21U || inputScalars.projector_type == 22U);
+    if (pureSPECTODRT && options.gFilterODRTCustom != 0U) {
+        inputScalars.gFilterData = options.gFilterODRT;
+        inputScalars.gFilterNu = options.gFilterODRTNu;
+        inputScalars.gFilterNv = options.gFilterODRTNv;
+        inputScalars.gFilterNd = options.gFilterODRTNd;
+        inputScalars.gFilterDu = options.gFilterODRTDu;
+        inputScalars.gFilterDv = options.gFilterODRTDv;
+        inputScalars.gFilterDd = options.gFilterODRTDd;
+        inputScalars.gFilterCustom = 1U;
+        inputScalars.size_gFilter = static_cast<size_t>(inputScalars.gFilterNu) *
+            static_cast<size_t>(inputScalars.gFilterNv) * static_cast<size_t>(inputScalars.gFilterNd);
+    }
 
     // Number of rays in Siddon
     inputScalars.n_rays = options.n_rays_transaxial;
@@ -893,6 +938,11 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.NxOrig = options.NxOrig;
     inputScalars.NyOrig = options.NyOrig;
     inputScalars.NzOrig = options.NzOrig;
+    for (int attenuationAxis = 0; attenuationAxis < 6; ++attenuationAxis) {
+        inputScalars.imageAttenuationGridDims[attenuationAxis] = options.imageAttenuationGridDims[attenuationAxis];
+        inputScalars.imageAttenuationGridSpacing[attenuationAxis] = options.imageAttenuationGridSpacing[attenuationAxis];
+        inputScalars.imageAttenuationGridOrigin[attenuationAxis] = options.imageAttenuationGridOrigin[attenuationAxis];
+    }
     inputScalars.NxPrior = options.NxPrior;
     inputScalars.NyPrior = options.NyPrior;
     inputScalars.NzPrior = options.NzPrior;
@@ -1005,13 +1055,19 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
 		w_vec.dPitchX = options.dPitchX;
 		w_vec.dPitchY = options.dPitchY;
 		if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
-			w_vec.rayShiftsDetector = options.rayShiftsDetector;
-			w_vec.rayShiftsSource = options.rayShiftsSource;
-			w_vec.detectorVector = options.detectorVector;
+		w_vec.rayShiftsDetector = options.rayShiftsDetector;
+		w_vec.rayShiftsSource = options.rayShiftsSource;
+		w_vec.detectorVector = options.detectorVector;
+		w_vec.detectorVectorSize = static_cast<size_t>(options.sizeDetectorVector);
 		}
     } else {
         w_vec.dPitchX = options.cr_p; // Detector pitch
         w_vec.dPitchY = options.cr_pz;
+    }
+    if (inputScalars.SPECT && inputScalars.listmode > 0 && options.sizeSensitivityViewWeights > 0) {
+        inputScalars.sensitivityViewWeights.assign(
+            options.sensitivityViewWeights,
+            options.sensitivityViewWeights + options.sizeSensitivityViewWeights);
     }
     if (inputScalars.FPType == 4 || inputScalars.BPType == 4)
         w_vec.kerroin4 = options.kerroin4;
@@ -1467,7 +1523,6 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
 // Transfer the ArrayFire arrays from the device to the host pointers
 void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, float* output, float* FPoutput, const scalarStruct& inputScalars,
     std::vector<std::vector<std::vector<float>>>& FPEstimates) {
-    int64_t oo = 0;
     for (int timestep = 0; timestep < inputScalars.Nt; timestep++) {
         if (inputScalars.storeFP) {
             size_t dim = 0ULL;
@@ -1483,7 +1538,8 @@ void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, float* out
             }
         }
         // Transfer data back to host
-        if (CELL && inputScalars.nMultiVolumes > 0) {
+        if (inputScalars.storeMultiResolution && inputScalars.nMultiVolumes > 0) {
+            size_t volumeOffset = 0ULL;
             for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
                 if (DEBUG) {
                     mexPrintBase("inputScalars.Nx[ii] = %d\n", inputScalars.Nx[ii]);
@@ -1494,30 +1550,31 @@ void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, float* out
                 if (inputScalars.saveIter || inputScalars.saveIterationsMiddle > 0) {
                 }
                 else {
+                    const size_t outputOffset = volumeOffset + static_cast<size_t>(timestep) * inputScalars.im_dim[ii];
                     if (MethodList.FDK)
-                        vec.rhs_os[timestep][ii].host(&output[oo]);
+                        vec.rhs_os[timestep][ii].host(&output[outputOffset]);
                     else
-                        vec.im_os[timestep][ii].host(&output[oo]);
+                        vec.im_os[timestep][ii].host(&output[outputOffset]);
                     if (inputScalars.verbose >= 3)
                         mexPrint("Data transfered to host");
-                    oo += inputScalars.im_dim[ii];
                 }
+                volumeOffset += static_cast<size_t>(inputScalars.Nt) * inputScalars.im_dim[ii];
             }
         }
         else {
             if (inputScalars.saveIter || inputScalars.saveIterationsMiddle > 0) {
             }
             else {
+                const size_t outputOffset = static_cast<size_t>(timestep) * inputScalars.im_dim[0];
                 if (MethodList.FDK && inputScalars.largeDim) {
                 }
                 else if (MethodList.FDK && !inputScalars.largeDim) {
-                    vec.rhs_os[timestep][0].host(&output[oo]);
+                    vec.rhs_os[timestep][0].host(&output[outputOffset]);
                 }
                 else
-                    vec.im_os[timestep][0].host(&output[oo]);
+                    vec.im_os[timestep][0].host(&output[outputOffset]);
                 if (inputScalars.verbose >= 3)
                     mexPrint("Data transfered to host");
-                oo += inputScalars.im_dim[0];
             }
         }
         af::sync();

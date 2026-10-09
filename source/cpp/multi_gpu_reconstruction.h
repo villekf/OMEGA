@@ -1,11 +1,10 @@
 /**************************************************************************
-* This is a hybrid Objective-C++ / C++ function for the device selection,
-* queue creation, program building and kernel creation, as well as the
-* output data and kernel release.
-* The file is pure C++ for OpenCL (implementations 3 and 5) and for
-* CUDA/HIP (implementation 5 only).
-* For Metal (METAL preprocessor directive declared) the file contains
-* Objective-C syntax.
+* This function handles device selection, queue and program creation,
+* kernel creation, and output and kernel release.
+* Backend-neutral buffer and texture operations are delegated to ProjectorClass.
+* Implementations 3 and 5 support OpenCL; implementation 5 also uses the
+* shared compatibility layer for CUDA/HIP and Metal. The Metal path contains
+* Objective-C++ syntax.
 *
 * Copyright(C) 2020-2026 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
@@ -94,8 +93,29 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 		if (inputScalars.normalization_correction && inputScalars.size_norm > 1ULL)
 			checkSize("normalization", inputScalars.size_norm, normalizationIndexedData ? static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD) * static_cast<size_t>(inputScalars.nHeads) : lastMeas);
 		if (inputScalars.attenuation_correction) {
-			if (inputScalars.CTAttenuation)
-				checkSize("attenuation image", inputScalars.size_atten, static_cast<size_t>(inputScalars.im_dim[0]));
+			if (inputScalars.CTAttenuation) {
+				if (inputScalars.multiResolution && inputScalars.SPECT && inputScalars.nMultiVolumes > 0) {
+					const size_t fineSize = static_cast<size_t>(inputScalars.imageAttenuationGridDims[0]) *
+						static_cast<size_t>(inputScalars.imageAttenuationGridDims[1]) *
+						static_cast<size_t>(inputScalars.imageAttenuationGridDims[2]);
+					const size_t coarseSize = static_cast<size_t>(inputScalars.imageAttenuationGridDims[3]) *
+						static_cast<size_t>(inputScalars.imageAttenuationGridDims[4]) *
+						static_cast<size_t>(inputScalars.imageAttenuationGridDims[5]);
+					const size_t attenuationFrameStride = fineSize + coarseSize;
+					const size_t dynamicSize = attenuationFrameStride * static_cast<size_t>(inputScalars.Nt);
+					if (fineSize == 0 || coarseSize == 0 ||
+						(inputScalars.size_atten != attenuationFrameStride && inputScalars.size_atten != dynamicSize)) {
+						mexPrint("Multi-resolution image-domain attenuation must contain one full-FOV fine/coarse map pair or one pair per time frame.\n");
+						bad = true;
+					}
+				}
+				else {
+					const size_t attenuationFrameStride = static_cast<size_t>(inputScalars.im_dim[0]);
+					const size_t dynamicAttenuationSize = attenuationFrameStride * static_cast<size_t>(inputScalars.Nt);
+					if (!(inputScalars.Nt > 1 && inputScalars.size_atten == dynamicAttenuationSize))
+						checkSize("attenuation image", inputScalars.size_atten, attenuationFrameStride);
+				}
+			}
 			else
 				checkSize("attenuation", inputScalars.size_atten, lastMeas);
 		}
@@ -548,10 +568,27 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
                             CHECK(status, "\n", );
                             retVal = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, MethodList, false, ii, ii, uu);
 
-                        } 
+						}
 						else {
-                            retVal = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, m_size, MethodList, false, ii, uu);
-                        }
+                            const bool computeListmodeSensitivity = inputScalars.listmode > 0 && inputScalars.computeSensImag;
+                            uint64_t projectionSize = m_size;
+                            if (computeListmodeSensitivity) {
+                                if (inputScalars.SPECT) {
+                                    projectionSize = static_cast<uint64_t>(inputScalars.nRowsD) *
+									static_cast<uint64_t>(inputScalars.nColsD) *
+									static_cast<uint64_t>(inputScalars.size_of_x / 6);
+                                }
+                                else if (inputScalars.PET) {
+                                    projectionSize = static_cast<uint64_t>(inputScalars.det_per_ring) *
+									static_cast<uint64_t>(inputScalars.det_per_ring) *
+									static_cast<uint64_t>(inputScalars.rings) *
+									static_cast<uint64_t>(inputScalars.rings);
+								if (inputScalars.nLayers > 1)
+									projectionSize *= static_cast<uint64_t>(inputScalars.nLayers);
+                                }
+                            }
+                            retVal = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, projectionSize, MethodList, computeListmodeSensitivity, ii, uu);
+						}
                         if (retVal != 0) {
                             mexPrint("Backprojection failed\n");
                             return;

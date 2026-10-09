@@ -5,8 +5,6 @@ Created on Thu Jul 10 13:25:14 2025
 from __future__ import annotations
 
 import numpy as np
-
-
 class _KernelArgs:
     """Backend-agnostic kernel-argument sequence builder.
 
@@ -222,7 +220,7 @@ def _expected_measurement_length(self, timestep, subset):
     subset types use the raw nMeasSubset LOR count) times the TOF bin factor
     from _tof_output_bins. Single source of truth for both the FP allocation
     size and the BP input-length validation, so they cannot drift apart."""
-    if self.subsetType > 7 or self.subsets == 1:
+    if self.listmode == 0 and (self.subsetType > 7 or self.subsets == 1):
         base = int(self.nRowsD) * int(self.nColsD) * int(self.nProjSubset[timestep, subset].item())
     else:
         base = int(self.nMeasSubset[timestep, subset].item())
@@ -324,6 +322,15 @@ def _append_fp123_args(self, args, timestep, subset, k, f_arg, y_arg):
     args.u64(self.nMeasSubset[timestep, subset].item())
     args.u32(subset)
     args.i32(k)
+    if (getattr(self, 'imageAttenuationIsMultiResolution', False)
+            and self.attenuation_correction and self.CTAttenuation):
+        grid = 0 if int(k) == 0 else 1
+        dims = self.imageAttenuationGridDims[grid]
+        spacing = self.imageAttenuationGridSpacing[grid]
+        origin = self.imageAttenuationGridOrigin[grid]
+        args.u32(dims[0]).u32(dims[1]).u32(dims[2])
+        args.f32(spacing[0]).f32(spacing[1]).f32(spacing[2])
+        args.f32(origin[0]).f32(origin[1]).f32(origin[2])
     return args
 
 
@@ -480,7 +487,14 @@ def _append_bp123_args(self, args, timestep, subset, k, f_arg, y_arg, proj_count
     ALSO pre-resolved by the caller: OpenCL/AF wrap it as cl.cltypes.long
     and CuPy wraps it as cp.int64 -- both match the kernel's
     `const LONG d_nProjections` (projectorType123.cl)."""
-    if self.attenuation_correction and not self.CTAttenuation:
+    if (getattr(self, 'imageAttenuationIsMultiResolution', False)
+            and self.attenuation_correction and self.CTAttenuation):
+        attenuation = self.d_imageAttenuation[timestep][k]
+        if self.useImages:
+            args.img(attenuation)
+        else:
+            args.buf(attenuation)
+    elif self.attenuation_correction and not self.CTAttenuation:
         args.buf(self.d_atten[timestep][subset])
     if self.useMaskFP:
         args.img(_mask_fp_resource(self, subset))
@@ -519,6 +533,15 @@ def _append_bp123_args(self, args, timestep, subset, k, f_arg, y_arg, proj_count
     args.u64(self.nMeasSubset[timestep, subset].item())
     args.u32(subset)
     args.i32(k)
+    if (getattr(self, 'imageAttenuationIsMultiResolution', False)
+            and self.attenuation_correction and self.CTAttenuation):
+        grid = 0 if int(k) == 0 else 1
+        dims = self.imageAttenuationGridDims[grid]
+        spacing = self.imageAttenuationGridSpacing[grid]
+        origin = self.imageAttenuationGridOrigin[grid]
+        args.u32(dims[0]).u32(dims[1]).u32(dims[2])
+        args.f32(spacing[0]).f32(spacing[1]).f32(spacing[2])
+        args.f32(origin[0]).f32(origin[1]).f32(origin[2])
     return args
 
 
@@ -780,7 +803,10 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                         ff = cp.cuda.texture.TextureObject(res, tdes)
                     kIndLoc = self.kIndF
                     if self.FPType == 1 or self.FPType == 2 or self.FPType == 3 or self.FPType == 4:
-                        if (self.attenuation_correction and not self.CTAttenuation):
+                        if (getattr(self, 'imageAttenuationIsMultiResolution', False)
+                                and self.attenuation_correction and self.CTAttenuation):
+                            kIndLoc += (self.d_imageAttenuation[timestep][k],)
+                        elif (self.attenuation_correction and not self.CTAttenuation):
                             kIndLoc += (self.d_atten[timestep][subset],)
                     if self.FPType == 5 or self.FPType == 4:
                         kIndLoc += (cp.uint32(self.Nx[k].item()),)
@@ -1060,7 +1086,12 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                         d_im = cl.MemoryObject.from_int_ptr(fPtr)
                 kIndLoc = self.kIndF
                 if self.FPType == 1 or self.FPType == 2 or self.FPType == 3 or self.FPType == 4:
-                    if (self.attenuation_correction and not self.CTAttenuation):
+                    if (getattr(self, 'imageAttenuationIsMultiResolution', False)
+                            and self.attenuation_correction and self.CTAttenuation):
+                        resource = self.d_imageAttenuation[timestep][k]
+                        self.knlF.set_arg(kIndLoc, resource if self.useImages else resource.data)
+                        kIndLoc += 1
+                    elif (self.attenuation_correction and not self.CTAttenuation):
                         self.knlF.set_arg(kIndLoc, self.d_atten[timestep][subset].data)
                         kIndLoc += 1
                     # elif self.attenuation_correction and self.CTAttenuation:
@@ -1312,7 +1343,15 @@ def backwardProjection(self, y, subset = -1, timestep = -1):
                             kIndLoc += (cp.uint64(self.nMeasSubset[timestep, subset].item()),)
                             kIndLoc += (cp.uint32(subset),)
                         kIndLoc += (cp.int32(k),)
-                    self.knlB((self.globalSizeBP[timestep][subset][k][0] // self.localSizeBP[0], self.globalSizeBP[timestep][subset][k][1] // self.localSizeBP[1], self.globalSizeBP[timestep][subset][k][2]), (self.localSizeBP[0], self.localSizeBP[1], 1), kIndLoc)
+                    self.knlB(
+                        (
+                            self.globalSizeBP[timestep][subset][k][0] // self.localSizeBP[0],
+                            self.globalSizeBP[timestep][subset][k][1] // self.localSizeBP[1],
+                            self.globalSizeBP[timestep][subset][k][2],
+                        ),
+                        (self.localSizeBP[0], self.localSizeBP[1], 1),
+                        kIndLoc,
+                    )
             if self.useTorch:
                 torch.cuda.synchronize()
         else:

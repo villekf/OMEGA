@@ -41,15 +41,35 @@ projType = options.projector_type;
 if projType == 1 || projType == 11
     projType = 1;
 end
-if options.listmode > 0 && options.compute_sensitivity_image && isfield(options,'xSens') && isfield(options,'zSens') && ~isempty(options.xSens) && ~isempty(options.zSens) && ~options.SPECT
+listmodeSPECTSensitivity = options.listmode > 0 && options.compute_sensitivity_image && options.SPECT;
+if listmodeSPECTSensitivity
+	if isfield(options, 'sensitivityViewWeights') && ~isempty(options.sensitivityViewWeights)
+		if isfield(options, 'xSens') && isfield(options, 'zSens') && ...
+				~isempty(options.xSens) && ~isempty(options.zSens)
+			x = options.xSens;
+			z = options.zSens;
+		else
+			[x, z] = get_coordinates_SPECT(options);
+		end
+	else
+		[x, z, options.sensitivityViewWeights] = prepareSPECTListmodeSensitivity(options);
+	end
+elseif options.listmode > 0 && options.compute_sensitivity_image && isfield(options,'xSens') && isfield(options,'zSens') && ~isempty(options.xSens) && ~isempty(options.zSens)
     x = options.xSens;
     z_det = options.zSens;
-	options.det_per_ring = numel(x) / 2;
-	options.rings = numel(z_det);
+	z = z_det;
+	if ~options.SPECT
+		options.det_per_ring = numel(x) / 2;
+		options.rings = numel(z_det);
+	end
 elseif options.listmode > 0 && options.compute_sensitivity_image && ~options.useIndexBasedReconstruction
-    options.use_raw_data = true;
-    [x, ~, z, ~] = get_coordinates(options);
-    options.use_raw_data = false;
+	if options.SPECT
+		[x, z] = get_coordinates_SPECT(options);
+	else
+		options.use_raw_data = true;
+		[x, ~, z, ~] = get_coordinates(options);
+		options.use_raw_data = false;
+	end
 end
 
 function output = backwardProjectionType6(options, input, koko)
@@ -206,19 +226,19 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
                 'Run install_mex to build it. gpuArray input requires a CUDA-enabled installation and the CUDA toolkit.'])
         end
     end
-    if ~isfield(options,'orthTransaxial') && (options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 22 || options.projector_type == 33)
+    if ~isfield(options,'orthTransaxial') && (options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 21 || options.projector_type == 22 || options.projector_type == 33)
         if options.projector_type == 3 || options.projector_type == 33
             options.orthTransaxial = true;
-        elseif (options.projector_type == 2 || options.projector_type == 22) && (isfield(options,'tube_width_xy') && options.tube_width_xy > 0 || options.SPECT)
+        elseif (options.projector_type == 2 || options.projector_type == 21 || options.projector_type == 22) && (isfield(options,'tube_width_xy') && options.tube_width_xy > 0 || options.SPECT)
             options.orthTransaxial = true;
         else
             options.orthTransaxial = false;
         end
     end
-    if ~isfield(options,'orthAxial') && (options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 22 || options.projector_type == 33)
+    if ~isfield(options,'orthAxial') && (options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 21 || options.projector_type == 22 || options.projector_type == 33)
         if options.projector_type == 3 || options.projector_type == 33
             options.orthAxial = true;
-        elseif (options.projector_type == 2 || options.projector_type == 22) && (isfield(obj.param,'tube_width_z') && obj.param.tube_width_z > 0 || options.SPECT)
+        elseif (options.projector_type == 2 || options.projector_type == 21 || options.projector_type == 22) && (isfield(obj.param,'tube_width_z') && obj.param.tube_width_z > 0 || options.SPECT)
             options.orthAxial = true;
         else
             options.orthAxial = false;
@@ -246,7 +266,7 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
         crystal_size_z = (options.tube_width_xy);
     end
     if options.projector_type == 1 || options.projector_type == 11 ...
-            || options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 22 || options.projector_type == 33
+            || options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 21 || options.projector_type == 22 || options.projector_type == 33
         kernel_file = 'projectorType123.cl';
         kernel_path = which(kernel_file);
         kernel_path = strrep(kernel_path, '\', '/');
@@ -279,6 +299,35 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
         header_directory = strrep(kernel_path,'auxKernels','');
     else
         error('Invalid projector for OpenCL')
+    end
+    if listmodeSPECTSensitivity
+        % The sensitivity kernel consumes one weight per full projection view,
+        % with geometry stored independently in x/z. Flatten the per-frame
+        % request to a one-timestep, one-subset MEX call.
+        nSensitivityViews = size(options.sensitivityViewWeights, 1);
+        if isfield(options, 'sensitivityTimestep') && ~isempty(options.sensitivityTimestep)
+            sensitivityTimestep = double(options.sensitivityTimestep) + 1;
+        elseif isfield(options, 'currentTimestep') && ~isempty(options.currentTimestep)
+            sensitivityTimestep = double(options.currentTimestep) + 1;
+        else
+            sensitivityTimestep = 1;
+        end
+        if sensitivityTimestep < 1 || sensitivityTimestep > size(options.sensitivityViewWeights, 2) || ...
+                sensitivityTimestep ~= floor(sensitivityTimestep)
+            error('The requested SPECT sensitivity timestep is outside sensitivityViewWeights.')
+        end
+        input = options.sensitivityViewWeights(:, sensitivityTimestep);
+        options.sensitivityViewWeights = input;
+        options.Nt = 1;
+        options.partitions = 1;
+        options.subsets = 1;
+        options.currentSubset = 0;
+        options.currentTimestep = 0;
+        options.nProjections = nSensitivityViews;
+        options.totMeas = nSensitivityViews;
+        nMeas = int64([0; nSensitivityViews]);
+        subIter = 0;
+        noSensIm = true;
     end
     if numel(nMeas) == 1
         nMeas = [0;nMeas];

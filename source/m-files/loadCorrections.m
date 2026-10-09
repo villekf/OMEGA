@@ -129,7 +129,9 @@ if options.attenuation_correction && ~options.SPECT % PET attenuation
             end
         end
     end
-    if options.CT_attenuation
+    if options.CT_attenuation && options.useMultiResolutionVolumes && options.nMultiVolumes > 0
+        options = prepareMultiResolutionAttenuation(options);
+    elseif options.CT_attenuation
         if size(options.vaimennus,1) ~= options.Nx(1) || size(options.vaimennus,2) ~= options.Ny(1) || size(options.vaimennus,3) ~= options.Nz(1)
             if size(options.vaimennus,1) ~= options.N(1)
                 warning('Error: Attenuation data is of different size than the reconstructed image. Attempting resize.')
@@ -188,23 +190,70 @@ elseif options.attenuation_correction && options.SPECT % SPECT attenuation
         MUvol = HU_to_mu(CTvol, options.keV);
         muAir = HU_to_mu(-1000, options.keV);
 
+        % Use the pre-split full-FOV reference for multi-resolution maps.
+        % Its world center stays at (0,0,0); any tile union beyond it is
+        % padded symmetrically by prepareMultiResolutionAttenuation.
+        if options.useMultiResolutionVolumes && options.nMultiVolumes > 0
+            fineDims = double([options.NxFull, options.NyFull, options.NzFull]);
+            if isfield(options, 'imageAttenuationFineDims')
+                fineDims = double(options.imageAttenuationFineDims(:).');
+            end
+            fineFOV = double([options.FOVa_x(1), options.FOVa_y(1), options.axial_fov(1)]);
+            if isfield(options, 'imageAttenuationFineFOV')
+                fineFOV = double(options.imageAttenuationFineFOV(:).');
+            end
+            attenuationRef = imref3d(fineDims, fineFOV(1) .* [-0.5, 0.5], ...
+                fineFOV(2) .* [-0.5, 0.5], fineFOV(3) .* [-0.5, 0.5]);
+        else
+            attenuationRef = options.refSPECT;
+        end
+
         % Use imwarp to change the CT volume limits
         tform = affinetform3d(eye(4)); % No scaling or rotation
-        [MUvol, ~] = imwarp(MUvol, refCT, tform, OutputView=options.refSPECT, FillValue=muAir, InterpolationMethod='linear');
+        [MUvol, ~] = imwarp(MUvol, refCT, tform, OutputView=attenuationRef, FillValue=muAir, InterpolationMethod='linear');
         options.vaimennus = 1*MUvol;
     end
-    if options.partitions > 1
-        if ~iscell(options.vaimennus)
-            error("With dynamic reconstruction the attenuation map needs to be a cell type");
+    if options.CT_attenuation && options.useMultiResolutionVolumes && options.nMultiVolumes > 0
+        options = prepareMultiResolutionAttenuation(options);
+    end
+    if options.Nt > 1 && iscell(options.vaimennus) && numel(options.vaimennus) == 1 && ...
+            ~options.CT_attenuation && iscell(options.SinM) && ~isempty(options.SinM)
+        projectionCounts = cellfun(@(x) size(x, 3), options.SinM);
+        if all(projectionCounts == projectionCounts(1)) && ...
+                numel(options.vaimennus{1}) == options.nRowsD * options.nColsD * projectionCounts(1)
+            % A single cell can also represent one shared measurement-based
+            % attenuation frame. Expand it so downstream per-frame reordering
+            % can use each timeframe's projection order.
+            options.vaimennus = repmat(options.vaimennus(:), options.Nt, 1);
         end
-        if numel(options.vaimennus) ~= options.partitions
+    end
+    if options.Nt > 1
+        if ~iscell(options.vaimennus)
+            isPreparedImageAttenuation = options.CT_attenuation && ...
+                isfield(options, 'imageAttenuationIsMultiResolution') && options.imageAttenuationIsMultiResolution;
+            isDynamicMeasurementAttenuation = false;
+            isStaticMeasurementAttenuation = false;
+            if ~options.CT_attenuation && iscell(options.SinM) && ~isempty(options.SinM)
+                projectionCounts = cellfun(@(x) size(x, 3), options.SinM);
+                detectorImageSize = options.nRowsD * options.nColsD;
+                isDynamicMeasurementAttenuation = numel(options.vaimennus) == ...
+                    detectorImageSize * sum(projectionCounts);
+                isStaticMeasurementAttenuation = all(projectionCounts == projectionCounts(1)) && ...
+                    numel(options.vaimennus) == detectorImageSize * projectionCounts(1);
+            end
+            if ~isDynamicMeasurementAttenuation && ~isStaticMeasurementAttenuation && ...
+                    ~isPreparedImageAttenuation
+                error("With dynamic reconstruction the attenuation map needs to be a cell type");
+            end
+        elseif numel(options.vaimennus) ~= options.Nt
             error("No attenuation map for each timestep")
         end
     end
 else
     options.vaimennus = 0;
 end
-if options.attenuation_correction && options.attIncm
+if options.attenuation_correction && options.attIncm && ...
+        ~(isfield(options, 'imageAttenuationIsMultiResolution') && options.imageAttenuationIsMultiResolution)
     options.vaimennus = options.vaimennus ./ 10;
 end
 
@@ -216,7 +265,7 @@ if ~iscell(options.vaimennus)
         options.vaimennus = double(options.vaimennus);
     end
 else
-    for kk = 1:options.partitions
+    for kk = 1:numel(options.vaimennus)
         if (options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles)
             options.vaimennus{kk} = single(options.vaimennus{kk}(:));
         else
@@ -246,13 +295,13 @@ if ~options.SPECT
                     options.normalization = data.(variables{1});
                     clear data
 					if iscell(options.SinM)
-                    	if numel(options.normalization) ~= numel(options.SinM{1})
-                        	error('Size mismatch between the current data and the normalization data file')
-                    	end
+						if numel(options.normalization) ~= numel(options.SinM{1})
+							error('Size mismatch between the current data and the normalization data file')
+						end
 					else
-                    	if numel(options.normalization) ~= numel(options.SinM)
-                        	error('Size mismatch between the current data and the normalization data file')
-                    	end
+						if numel(options.normalization) ~= numel(options.SinM)
+							error('Size mismatch between the current data and the normalization data file')
+						end
 					end
                 end
                 options.normalization = options.normalization(:);
@@ -974,7 +1023,7 @@ end
 
 % Other SPECT corrections
 if options.SPECT
-    if options.scatter_correction && numel(options.SinDelayed) <= 1 && options.subtract_scatter% From 10.1371/journal.pone.0269542
+    if options.scatter_correction && numel(options.SinDelayed) <= 1 && options.subtract_scatter % See 10.1088/0031-9155/56/14/R01
         if iscell(options.SinM) % SinM is cell (size = options.partitions)
             if options.corrections_during_reconstruction && ~iscell(options.SinDelayed)
                 options.SinDelayed = cell(options.partitions,1);

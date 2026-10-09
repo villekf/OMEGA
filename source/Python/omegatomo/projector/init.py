@@ -12,6 +12,79 @@ def _kernel_ellipse_power(value):
     return float(np.finfo(np.float32).max) if not np.isfinite(value) else value
 
 
+def _odrt_psf_host_buffer(self):
+    """Return the ODRT lookup table in u-fast device-buffer order.
+
+    A one-element dummy resource keeps the unconditional SPECT+ORTH binding
+    valid when the user has not supplied a filter; the kernel flag then
+    selects the original analytic response.
+    """
+    if bool(getattr(self, 'gFilterCustom', False)):
+        return np.asarray(self.gFilter, dtype=np.float32).ravel(order='F')
+    return np.zeros(1, dtype=np.float32)
+
+
+def _append_odrt_psf_args(args, self):
+    spacing = np.asarray(getattr(self, 'gFilterSpacing', np.empty(0)), dtype=np.float32).reshape(-1)
+    if spacing.size != 3:
+        spacing = np.zeros(3, dtype=np.float32)
+    psf_texture = getattr(self, 'd_gFilterODRTTexture', None)
+    if psf_texture is not None:
+        args.img(psf_texture)
+    else:
+        args.buf(self.d_gFilterODRT)
+    args.u32(int(getattr(self, 'gFilterNu', 0)))
+    args.u32(int(getattr(self, 'gFilterNv', 0)))
+    args.u32(int(getattr(self, 'gFilterNd', 0)))
+    args.f32(float(spacing[0])).f32(float(spacing[1])).f32(float(spacing[2]))
+    args.u32(int(bool(getattr(self, 'gFilterCustom', False))))
+
+
+def _create_odrt_psf_texture(self, cp):
+    """Create the persistent CUDA 3D texture used by the ODRT PSF lookup.
+
+    The PSF is stored as Fortran (u, v, depth), so the corresponding CUDA
+    array dimensions are (u, v, depth), with u contiguous in the source.
+    CUDA array copies consume a C-contiguous (depth, v, u) view.
+    """
+    from cupy.cuda.texture import (
+        ChannelFormatDescriptor,
+        CUDAarray,
+        ResourceDescriptor,
+        TextureDescriptor,
+        TextureObject,
+    )
+
+    if bool(getattr(self, 'gFilterCustom', False)):
+        nu = int(self.gFilterNu)
+        nv = int(self.gFilterNv)
+        nd = int(self.gFilterNd)
+        flat = cp.asarray(_odrt_psf_host_buffer(self), dtype=cp.float32)
+        source = cp.ascontiguousarray(flat.reshape((nd, nv, nu)))
+    else:
+        # The kernel argument is always present; this zero texture is not
+        # sampled when gFilterCustom is false and the analytic path is used.
+        nu = nv = nd = 1
+        source = cp.zeros((1, 1, 1), dtype=cp.float32)
+
+    channel = ChannelFormatDescriptor(
+        32, 0, 0, 0, cp.cuda.runtime.cudaChannelFormatKindFloat
+    )
+    array = CUDAarray(channel, nu, nv, nd)
+    array.copy_from(source)
+    resource = ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=array)
+    border = cp.cuda.runtime.cudaAddressModeBorder
+    descriptor = TextureDescriptor(
+        addressModes=(border, border, border),
+        filterMode=cp.cuda.runtime.cudaFilterModeLinear,
+        normalizedCoords=0,
+    )
+    texture = TextureObject(resource, descriptor)
+    # Keep the backing CUDA array alive for the full projector lifetime.
+    self.d_gFilterODRTArray = array
+    self.d_gFilterODRTTexture = texture
+
+
 def _build_kIndF(self):
     """The constant FP kernel-argument prefix (everything set once at init
     time, before any per-subset geometry/output arguments), shared by the
@@ -25,6 +98,8 @@ def _build_kIndF(self):
         if self.SPECT:
             a.buf(self.d_rayShiftsDetector).buf(self.d_rayShiftsSource)
             a.f32(self.coneOfResponseStdCoeffA).f32(self.coneOfResponseStdCoeffB).f32(self.coneOfResponseStdCoeffC)
+            if self.FPType in (2, 3):
+                _append_odrt_psf_args(a, self)
             a.vec3f(self.ellipseCenterX, self.ellipseCenterY, self.ellipseCenterZ)
             a.vec3f(self.ellipseRadiusX, self.ellipseRadiusY, self.ellipseRadiusZ)
             a.f32(ellipse_power_kernel)
@@ -53,7 +128,9 @@ def _build_kIndF(self):
     if self.FPType == 4 and self.TOF and (self.useCUDA or not self.CT):
         a.buf(self.d_TOFCenter)
         a.f32(self.sigma_x)
-    if self.attenuation_correction and self.CTAttenuation and self.FPType in (1, 2, 3, 4):
+    if (self.attenuation_correction and self.CTAttenuation and self.FPType in (1, 2, 3, 4)
+            and not (getattr(self, 'imageAttenuationIsMultiResolution', False)
+                     and self.attenuation_correction and self.CTAttenuation)):
         if self.useImages or self.useCUDA:
             a.img(self.d_atten)
         else:
@@ -75,6 +152,8 @@ def _build_kIndB(self):
         if self.SPECT:
             a.buf(self.d_rayShiftsDetector).buf(self.d_rayShiftsSource)
             a.f32(self.coneOfResponseStdCoeffA).f32(self.coneOfResponseStdCoeffB).f32(self.coneOfResponseStdCoeffC)
+            if self.BPType in (2, 3):
+                _append_odrt_psf_args(a, self)
             a.vec3f(self.ellipseCenterX, self.ellipseCenterY, self.ellipseCenterZ)
             a.vec3f(self.ellipseRadiusX, self.ellipseRadiusY, self.ellipseRadiusZ)
             a.f32(ellipse_power_kernel)
@@ -94,7 +173,9 @@ def _build_kIndB(self):
     if self.BPType == 4 and not self.CT and self.TOF:
         a.buf(self.d_TOFCenter)
         a.f32(self.sigma_x)
-    if self.attenuation_correction and self.CTAttenuation and self.BPType in (1, 2, 3, 4) and not self.CT:
+    if (self.attenuation_correction and self.CTAttenuation and self.BPType in (1, 2, 3, 4) and not self.CT
+            and not (getattr(self, 'imageAttenuationIsMultiResolution', False)
+                     and self.attenuation_correction and self.CTAttenuation)):
         if self.useImages or self.useCUDA:
             a.img(self.d_atten)
         else:
@@ -143,7 +224,14 @@ def _initialize_coordinate_buffers(self, upload):
         else:
             self.d_x[timestep][0] = upload(_full_coordinate_frame(self, 'x', timestep))
 
-        if subset_geometry or pet_geometry:
+        if self.SPECT and self.listmode > 0 and not self.useIndexBasedReconstruction:
+            z_values = np.asarray(self.z, dtype=np.float32).ravel(order='F')
+            for subset in range(self.subsets):
+                index = timestep * self.subsets + subset
+                start = int(self.nMeas[index]) * 5
+                stop = int(self.nMeas[index + 1]) * 5
+                self.d_z[timestep][subset] = upload(z_values[start:stop])
+        elif subset_geometry or pet_geometry:
             for subset in range(self.subsets):
                 self.d_z[timestep][subset] = upload(
                     _coordinate_slice(self, 'z', timestep, subset, z_stride)
@@ -157,7 +245,7 @@ def _initialize_coordinate_buffers(self, upload):
 def _initialize_detector_vector_buffers(self, upload, empty=None):
     """Create detector-head-index buffers aligned with each frame/subset geometry slice."""
     self.d_detectorVector = [[empty] * self.subsets for _ in range(self.Nt)]
-    if not self.SPECT:
+    if not self.SPECT or self.listmode > 0:
         return
     frames = getattr(self, 'DetectorVectorFrames', None)
     if not isinstance(frames, list) or len(frames) != self.Nt:
@@ -171,6 +259,73 @@ def _initialize_detector_vector_buffers(self, upload, empty=None):
             self.d_detectorVector[timestep][subset] = upload(
                 frame[int(offsets[subset]) : int(offsets[subset + 1])]
             )
+
+
+def _image_attenuation_grid(self, volume):
+    grid = 0 if int(volume) == 0 else 1
+    dims = np.asarray(self.imageAttenuationGridDims[grid], dtype=np.uint32)
+    spacing = np.asarray(self.imageAttenuationGridSpacing[grid], dtype=np.float32)
+    origin = np.asarray(self.imageAttenuationGridOrigin[grid], dtype=np.float32)
+    return grid, dims, spacing, origin
+
+
+def _image_attenuation_host_map(self, timestep, volume):
+    """Return a packed full-FOV image map for a time and MR volume class."""
+    grid, dims, _, _ = _image_attenuation_grid(self, volume)
+    sizes = np.asarray(self.imageAttenuationMapSizes, dtype=np.uint64).reshape(-1)
+    maps_per_frame = int(sizes.size)
+    n_frames = int(getattr(self, 'imageAttenuationFrames', 1))
+    frame = int(timestep) if n_frames > 1 else 0
+    if frame < 0 or frame >= n_frames:
+        raise ValueError(f'Attenuation frame {frame} is outside the prepared {n_frames}-frame map.')
+    if grid >= maps_per_frame:
+        raise ValueError('Multi-resolution image attenuation is missing the coarse full-FOV map.')
+    start = frame * int(np.sum(sizes, dtype=np.uint64)) + int(np.sum(sizes[:grid], dtype=np.uint64))
+    stop = start + int(sizes[grid])
+    values = np.asarray(self.vaimennus, dtype=np.float32).reshape(-1)
+    if stop > values.size or int(sizes[grid]) != int(np.prod(dims, dtype=np.uint64)):
+        raise ValueError('Prepared image attenuation data do not match their full-FOV grid metadata.')
+    return np.ascontiguousarray(values[start:stop]), dims
+
+
+def _initialize_multiresolution_image_attenuation(self, upload_buffer, upload_image=None):
+    """Upload the fine/coarse full-FOV maps once for each attenuation frame."""
+    if not (
+        getattr(self, 'imageAttenuationIsMultiResolution', False)
+        and self.attenuation_correction
+        and self.CTAttenuation
+    ):
+        return
+    self.d_imageAttenuation = [[None] * (self.nMultiVolumes + 1) for _ in range(self.Nt)]
+    self._imageAttenuationArrayOwners = []
+    n_frames = int(getattr(self, 'imageAttenuationFrames', 1))
+    n_grids = int(np.asarray(self.imageAttenuationGridDims).shape[0])
+    uploaded = []
+    for timestep in range(n_frames):
+        frame_maps = []
+        for grid in range(n_grids):
+            host, dims = _image_attenuation_host_map(self, timestep, grid)
+            if self.useImages:
+                if upload_image is None:
+                    raise ValueError('Image-domain attenuation textures are unavailable on this backend.')
+                frame_maps.append(upload_image(host, dims))
+            else:
+                frame_maps.append(upload_buffer(host))
+        uploaded.append(frame_maps)
+    for timestep in range(self.Nt):
+        source_frame = timestep if n_frames > 1 else 0
+        frame_maps = uploaded[source_frame]
+        self.d_imageAttenuation[timestep] = [frame_maps[0]] + [frame_maps[1]] * self.nMultiVolumes
+
+
+def _multiresolution_image_attenuation_args(self, timestep, volume, scalar_type):
+    """Return MRATN grid dimensions, spacing, and origin in kernel ABI order."""
+    _, dims, spacing, origin = _image_attenuation_grid(self, volume)
+    return (
+        scalar_type[0](dims[0]), scalar_type[0](dims[1]), scalar_type[0](dims[2]),
+        scalar_type[1](spacing[0]), scalar_type[1](spacing[1]), scalar_type[1](spacing[2]),
+        scalar_type[1](origin[0]), scalar_type[1](origin[1]), scalar_type[1](origin[2]),
+    )
 
 def computeGeom5(x, uv, nRowsD, nColsD, dPitchY, pitch):
     """
@@ -289,13 +444,14 @@ def initProjector(self):
     # CTAttenuation (the internal mirror of the user-facing CT_attenuation option) is derived once,
     # in addProjector() (proj.py), not here -- see the comment there. addProjector() always runs
     # before initProjector(), so self.CTAttenuation is already set by this point.
+    self.projectorInitialized = False
     if self.useAF:
         try:
             import arrayfire as af
         except (ImportError, OSError, RuntimeError):
+
             print('ArrayFire selected, but not found. Aborting.')
             return
-    self.projectorInitialized = True
     import numpy as np
     from omegatomo.reconstruction.prepass import prepassPhase
     from omegatomo.reconstruction.prepass import parseInputs
@@ -342,8 +498,13 @@ def initProjector(self):
                 return "rocm" in lower or "hip" in lower
             except Exception:
                 return False
+    else:
+        def cupyROCm():
+            return False
     if not self.useCUDA and not self.useMetal:
         import pyopencl as cl
+        import pyopencl.array
+        from pyopencl.version import VERSION
 
         if self.useAF:
             ctx = af.opencl.get_context(retain=True)
@@ -392,6 +553,15 @@ def initProjector(self):
     if self.projector_type not in BPTYPE_TABLE:
         raise ValueError('Invalid backprojector!')
     self.BPType = BPTYPE_TABLE[self.projector_type]
+    if (
+        getattr(self, 'imageAttenuationIsMultiResolution', False)
+        and self.attenuation_correction
+        and self.CTAttenuation
+    ):
+        if self.useMetal:
+            raise ValueError('Multi-resolution image-domain attenuation is not implemented by the Metal/MPS projector.')
+        if not self.SPECT or self.projector_type not in (1, 2, 11, 21, 22):
+            raise ValueError('Multi-resolution image-domain attenuation requires the Python SPECT Siddon or orthogonal projector path (projector types 1, 2, 11, 21, or 22).')
     # CuPy does not support the texture API (cupy.cuda.texture) on ROCm/HIP; creating a CUDA
     # array fails at runtime with hipErrorUnknown. Fall back to buffers where the kernels
     # support them, otherwise raise an error.
@@ -520,6 +690,10 @@ def initProjector(self):
                 bOpt = ('-DHIP','-DPYTHON',)
             else:
                 bOpt = ('-DCUDA','-DPYTHON',)
+                if (self.useCuPy and self.SPECT
+                        and (self.FPType in (2, 3) or self.BPType in (2, 3))
+                        and getattr(self, '_useODRTTexture', True)):
+                    bOpt += ('-DODRT_TEXTURE',)
         else:
             bOpt =('-cl-single-precision-constant -DOPENCL',)
             import pyopencl as cl
@@ -586,6 +760,8 @@ def initProjector(self):
             bOpt += ('-DOFFSET',)
         if self.attenuation_correction and self.CTAttenuation:
             bOpt += ('-DATN',)
+            if self.SPECT and getattr(self, 'imageAttenuationIsMultiResolution', False) and self.attenuation_correction and self.CTAttenuation:
+                bOpt += ('-DMRATN',)
         elif self.attenuation_correction and not self.CTAttenuation:
             bOpt += ('-DATNM',)
         if self.normalization_correction:
@@ -764,6 +940,12 @@ def initProjector(self):
                 # _cl_image/_cupy_texture above instead, since the CuPy and
                 # OpenCL image APIs differ too much to share one call).
                 upload = cp.asarray
+                if self.SPECT and (self.FPType in (2, 3) or self.BPType in (2, 3)):
+                    if (not cupyROCm() and getattr(self, '_useODRTTexture', True)):
+                        self.d_gFilterODRT = None
+                        _create_odrt_psf_texture(self, cp)
+                    else:
+                        self.d_gFilterODRT = upload(_odrt_psf_host_buffer(self))
                 self.d_Sens = cp.empty(shape=(1,1), dtype=cp.float32)
                 _initialize_coordinate_buffers(self, upload)
                 # Precomputed per-projection geometry for the BDD backprojection (see -DGEOM5 in projectorType5.cl)
@@ -782,15 +964,35 @@ def initProjector(self):
                             )
                             self.d_geom5[timestep][subset] = upload(geom)
                 if (self.attenuation_correction and not self.CTAttenuation):
-                    # Measurement-domain attenuation is per-timestep in C++/MATLAB (dynamic data
-                    # can have frame-dependent correction factors); build [Nt][subsets], mirroring
-                    # mps_backend.py's d_attenuation, instead of a flat [subsets] list that only
-                    # ever captured frame 0 via nTotMeas[0:subsets].
                     self.d_atten = [[None] * self.subsets for _ in range(self.Nt)]
                     for timestep in range(self.Nt):
                         for i in range(self.subsets):
                             index = timestep * self.subsets + i
                             self.d_atten[timestep][i] = upload(self.vaimennus[self.nTotMeas[index].item() : self.nTotMeas[index + 1].item()])
+                elif (getattr(self, 'imageAttenuationIsMultiResolution', False)
+                        and self.attenuation_correction and self.CTAttenuation):
+                    upload_image = None
+                    if self.useImages:
+                        def upload_image(host, dims):
+                            nx, ny, nz = (int(v) for v in dims)
+                            channel = cp.cuda.texture.ChannelFormatDescriptor(
+                                32, 0, 0, 0, cp.cuda.runtime.cudaChannelFormatKindFloat,
+                            )
+                            array = cp.cuda.texture.CUDAarray(channel, nx, ny, nz)
+                            array.copy_from(host.reshape((nz, ny, nx)))
+                            self._imageAttenuationArrayOwners.append(array)
+                            resource = cp.cuda.texture.ResourceDescriptor(
+                                cp.cuda.runtime.cudaResourceTypeArray, cuArr=array,
+                            )
+                            texture = cp.cuda.texture.TextureDescriptor(
+                                addressModes=(cp.cuda.runtime.cudaAddressModeClamp,) * 3,
+                                filterMode=cp.cuda.runtime.cudaFilterModePoint,
+                                normalizedCoords=0,
+                            )
+                            return cp.cuda.texture.TextureObject(resource, texture)
+                    _initialize_multiresolution_image_attenuation(
+                        self, lambda host: cp.asarray(host), upload_image,
+                    )
                 elif (self.attenuation_correction and self.CTAttenuation):
                     if not self.useImages:
                         self.d_atten = upload(self.vaimennus)
@@ -968,6 +1170,8 @@ def initProjector(self):
             # Backend upload adapter (see the matching CuPy `upload` above).
             def upload(value):
                 return cl.array.to_device(self.queue, value)
+            if self.SPECT and (self.FPType in (2, 3) or self.BPType in (2, 3)):
+                self.d_gFilterODRT = upload(_odrt_psf_host_buffer(self))
             _initialize_coordinate_buffers(self, upload)
             # Precomputed per-projection geometry for the BDD backprojection (see -DGEOM5 in projectorType5.cl)
             if self.BPType == 5 and self.CT and self.listmode == 0:
@@ -985,15 +1189,36 @@ def initProjector(self):
                         )
                         self.d_geom5[timestep][subset] = upload(geom)
             if (self.attenuation_correction and not self.CTAttenuation):
-                # Measurement-domain attenuation is per-timestep in C++/MATLAB (dynamic data can
-                # have frame-dependent correction factors); build [Nt][subsets], mirroring
-                # mps_backend.py's d_attenuation, instead of a flat [subsets] list that only ever
-                # captured frame 0 via nTotMeas[0:subsets].
                 self.d_atten = [[None] * self.subsets for _ in range(self.Nt)]
                 for timestep in range(self.Nt):
                     for i in range(self.subsets):
                         index = timestep * self.subsets + i
                         self.d_atten[timestep][i] = upload(self.vaimennus[self.nTotMeas[index].item() : self.nTotMeas[index + 1].item()])
+            elif (getattr(self, 'imageAttenuationIsMultiResolution', False)
+                    and self.attenuation_correction and self.CTAttenuation):
+                upload_image = None
+                if self.useImages:
+                    def upload_image(host, dims):
+                        nx, ny, nz = (int(v) for v in dims)
+                        imformat = cl.ImageFormat(cl.channel_order.A, cl.channel_type.FLOAT)
+                        if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
+                            return cl.create_image(
+                                self.clctx,
+                                cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+                                imformat,
+                                hostbuf=host,
+                                shape=(nx, ny, nz),
+                            )
+                        return cl.Image(
+                            self.clctx,
+                            cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+                            imformat,
+                            hostbuf=host,
+                            shape=(nx, ny, nz),
+                        )
+                _initialize_multiresolution_image_attenuation(
+                    self, lambda host: cl.array.to_device(self.queue, host), upload_image,
+                )
             elif (self.attenuation_correction and self.CTAttenuation):
                 if self.useImages:
                     imformat = cl.ImageFormat(cl.channel_order.A, cl.channel_type.FLOAT)
@@ -1119,3 +1344,4 @@ def initProjector(self):
 
             bp_args = _build_kIndB(self)
             self.kIndB = bp_args.apply_opencl(self.knlB, 0)
+    self.projectorInitialized = True

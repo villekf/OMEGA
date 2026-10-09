@@ -122,6 +122,23 @@ if numel(options.partitions) > 1
 else
     partitions = options.partitions;
 end
+if options.useMultiResolutionVolumes && options.attenuation_correction && options.CT_attenuation
+    if ~options.SPECT
+        error('Multi-resolution image-domain attenuation correction is currently supported only for SPECT.')
+    end
+    if ~ismember(options.projector_type, [1, 2, 11, 21, 22])
+        error('Multi-resolution image-domain attenuation requires SPECT Siddon or orthogonal projectors (types 1, 2, 11, 21, or 22).')
+    end
+    if options.implementation == 1 || options.implementation == 4
+        error('Multi-resolution image-domain attenuation is not implemented by the CPU projector backends.')
+    end
+    if options.implementation == 2 && options.use_CPU
+        error('Multi-resolution image-domain attenuation is not implemented by the native C++ CPU backend.')
+    end
+    if ismac && ismember(options.implementation, [2, 3, 5])
+        error('Multi-resolution image-domain attenuation is not implemented by the Metal/MPS projector backend.')
+    end
+end
 if partitions > 1 && options.implementation ~= 2 % TODO dynamic reconstruction for implementation 5 (macOS)
     error('Dynamic reconstruction is supported only with implementation 2.')
 end
@@ -498,8 +515,8 @@ if (options.projector_type == 6)
         error('Subset types 0-7 are not supported with projector type 6!')
     end
 end
-if (~options.use_raw_data && options.SPECT) && options.subsets > 1 && options.subset_type < 8 && options.projector_type ~= 6
-    error('Subset types 0-7 are not supported with SPECT data. Use subset types 8-11.')
+if (~options.use_raw_data && options.SPECT && options.listmode == 0) && ~ismember(options.subset_type, [8,9,10,11])
+    error('Only subset types 8-11 are supported with SPECT sinogram reconstruction')
 end
 if options.FDK && (options.Niter > 1 || options.subsets > 1)
     if options.largeDim

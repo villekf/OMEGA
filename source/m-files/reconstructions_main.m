@@ -36,7 +36,6 @@ end
 
 inputStruct.empty_weight = false;
 
-inputStruct.listmode = false;
 % tStart = 0;
 % tStart_iter = 0;
 
@@ -293,6 +292,8 @@ if ismember(options.param.implementation, [1, 4, 5])
     else
         computeM = false;
     end
+    requestedSensitivityImage = options.param.compute_sensitivity_image;
+    frameSpecificSPECTSensitivity = requestedSensitivityImage && options.param.listmode > 0 && options.param.SPECT;
 
     if (options.param.PDHG || options.param.PDHGKL || options.param.PDHGL1 || options.param.CV || options.param.PDDY)
         options.param.CPType = true;
@@ -308,6 +309,7 @@ if ismember(options.param.implementation, [1, 4, 5])
 
     % Loop through all time steps
     for llo = 1 : partitions
+        options.timestep = llo;
         if iscell(options.param.SinM)
             Sino = options.param.SinM{llo};
         else
@@ -434,8 +436,11 @@ if ismember(options.param.implementation, [1, 4, 5])
         end
 
 
-        if llo == 1
+        if llo == 1 || frameSpecificSPECTSensitivity
             % Compute sensitivity image for the whole measurement domain
+            if frameSpecificSPECTSensitivity
+                options.param.compute_sensitivity_image = true;
+            end
             if (computeD || options.param.compute_sensitivity_image)
                 if (options.param.verbose >= 3)
                     disp("Starting computation of sensitivity image (D)");
@@ -443,14 +448,21 @@ if ismember(options.param.implementation, [1, 4, 5])
                 options.param.D = ones(options.param.N(1), 1, options.param.cType);
                 psf = options.param.use_psf;
                 options.param.use_psf = false;
-                for ll = 1 : options.param.subsets
-                    oneInput = ones(options.nMeasSubset(ll), 1, options.param.cType);
-                    if options.param.implementation == 1 && options.param.nMultiVolumes == 0
-                        A = formMatrix(options, ll);
-                        apu = A * oneInput;
-                        options.param.D = options.param.D + apu;
-                    else
-                        options.param.D = options.param.D + backwardProject(options, oneInput, ll, corrVector);
+                if frameSpecificSPECTSensitivity
+                    % Sensitivity is over full detector views and is already
+                    % weighted for this timeframe; do not repeat it per event subset.
+                    options.param.D = options.param.D + backwardProject(options, ...
+                        ones(1, 1, options.param.cType), 0, corrVector);
+                else
+                    for ll = 1 : options.param.subsets
+                        oneInput = ones(options.nMeasSubset(ll), 1, options.param.cType);
+                        if options.param.implementation == 1 && options.param.nMultiVolumes == 0
+                            A = formMatrix(options, ll);
+                            apu = A * oneInput;
+                            options.param.D = options.param.D + apu;
+                        else
+                            options.param.D = options.param.D + backwardProject(options, oneInput, ll, corrVector);
+                        end
                     end
                 end
                 options.param.use_psf = psf;
@@ -483,7 +495,7 @@ if ismember(options.param.implementation, [1, 4, 5])
                 end
             end
             % Compute the measurement sensitivity image for each subset
-            if (computeM)
+            if (computeM && llo == 1)
                 if (options.param.verbose >= 3)
                     disp("Starting computation of measurement sensitivity image (M)");
                 end
@@ -818,12 +830,13 @@ end
 
 if options.param.useEFOV && ~options.param.useMultiResolutionVolumes
     if options.param.transaxialEFOV
-        nTrans = (options.param.Nx - options.param.NxOrig)/2;
-        pz = pz(1 + nTrans:end-nTrans,1 + nTrans:end-nTrans,:,:,:);
+        nTransX = (options.param.Nx - options.param.NxOrig)/2;
+        nTransY = (options.param.Ny - options.param.NyOrig)/2;
+        pz = pz((1 + nTransX-options.param.eFOVShift_Nx):(end-nTransX-options.param.eFOVShift_Nx), (1 + nTransY-options.param.eFOVShift_Ny):(end-nTransY-options.param.eFOVShift_Ny),:,:,:);
     end
     if options.param.axialEFOV
         nAxial = (options.param.Nz - options.param.NzOrig)/2;
-        pz = pz(:,:,1 + nAxial:end-nAxial,:,:,:);
+        pz = pz(:,:,1 + nAxial+options.param.eFOVShift_Nz:end-nAxial+options.param.eFOVShift_Nz,:,:,:);
     end
 end
 if options.param.storeFP && (options.param.subsets == 1 || options.param.subset_type >= 8) && options.param.implementation == 2 && ~options.param.FDK

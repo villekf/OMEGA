@@ -64,11 +64,13 @@ typedef struct structForScalars {
 		dL = 0.f, flat = 0.f, cylRadiusProj3 = 0.f, DSC = 0.f, helicalRadius = 0.f;//, T = 0.f
 	std::vector<float> dx{ 0.f, 0.f }, dy{ 0.f, 0.f }, dz{ 0.f, 0.f }, bx{ 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f }, by{ 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f }, 
 		bz{ 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f };
+	// Column-major [projection frame, timestep] weights for listmode SPECT sensitivity.
+	std::vector<float> sensitivityViewWeights;
     bool useHalf = false;
 	bool use_psf = false, TOF = false, SPECT = false, pitch = false, PET = false, meanFP = false, meanBP = false,
 		maskFP = false, maskBP = false, orthXY = false, orthZ = false, CT = false, atomic_64bit = false, atomic_32bit = false, loadTOF = true,
 		saveIter = false, enforcePositivity = false, computeSensImag = false, useMAD = true, useImages = false, eFOV = false,
-		useExtendedFOV = false, use64BitIndices = false, TGV2D = false, multiResolution = false, offset = false, relaxScaling = false,
+		useExtendedFOV = false, use64BitIndices = false, TGV2D = false, multiResolution = false, storeMultiResolution = false, offset = false, relaxScaling = false,
 		computeRelaxation = false, storeFP = false, deconvolution = false, CTAttenuation = true, largeDim = false, storeResidual = false,
 		useBuffers = true, useFDKWeights = false, indexBased = false, FISTAAcceleration = false, stochastic = false, useTotLength = true,
 		useParallelBeam = false, useHelical = false;
@@ -89,6 +91,10 @@ typedef struct structForScalars {
 	std::vector<CTYPE3> d_Scale4;
 	std::vector<CTYPE2> dSize;
 	CTYPE2 dSizeBP;
+	// Image attenuation grid metadata, packed as fine/coarse XYZ triples.
+	uint32_t imageAttenuationGridDims[6] = {};
+	float imageAttenuationGridSpacing[6] = {};
+	float imageAttenuationGridOrigin[6] = {};
 	uint8_t raw = 0, fp = 0, listmode = 0;
 	int8_t verbose = 0;
 	uint16_t n_rays = 1, n_rays3D = 1;
@@ -111,6 +117,12 @@ typedef struct structForScalars {
 	float* V = nullptr;
 	float* x_center = nullptr, *y_center = nullptr, *z_center = nullptr;
 	float* gaussian = nullptr;
+	// Optional user-supplied SPECT ODRT lookup table. The table is host-side
+	// (u-fast/Fortran order) until ProjectorClass uploads it to the device.
+	float* gFilterData = nullptr;
+	size_t size_gFilter = 1;
+	uint32_t gFilterNu = 0U, gFilterNv = 0U, gFilterNd = 0U, gFilterCustom = 0U;
+	float gFilterDu = 1.f, gFilterDv = 1.f, gFilterDd = 1.f;
 	float* TOFCenter = nullptr;
 	uint64_t* pituus, length;
 	std::vector<uint32_t> usedDevices;

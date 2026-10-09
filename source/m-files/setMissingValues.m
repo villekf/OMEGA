@@ -954,6 +954,9 @@ end
 if ~isfield(options, 'useEFOV')
     options.useEFOV = false;
 end
+if ~isfield(options, 'eFOVShift')
+    options.eFOVShift = [0 0 0];
+end
 if ~isfield(options, 'useExtrapolation')
     options.useExtrapolation = false;
 end
@@ -992,6 +995,9 @@ if ~isfield(options, 'delta_PKMA')
 end
 if ~isfield(options, 'useMultiResolutionVolumes')
     options.useMultiResolutionVolumes = false;
+end
+if ~isfield(options, 'storeMultiResolution') % TODO: true value stores all multi-resolution volumes as cell array.
+    options.storeMultiResolution = false;
 end
 if ~isfield(options, 'nMultiVolumes')
     options.nMultiVolumes = 0;
