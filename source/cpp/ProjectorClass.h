@@ -4031,15 +4031,26 @@ public:
 					if (inputScalars.size_norm > 1ULL && inputScalars.normalization_correction) {
 						if (inputScalars.SPECT && inputScalars.normZ == inputScalars.nHeads)
 							WRITE_BUFFER(d_norm[timestep][kk], sizeof(float) * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nHeads, norm);
-						else
-							WRITE_BUFFER(d_norm[timestep][kk], sizeof(float) * length[indD] * vecSize, &norm[pituus[indD] * vecSize]);
+						else {
+							const size_t copySize = static_cast<size_t>(length[indD]) * vecSize;
+							size_t correctionOffset = static_cast<size_t>(pituus[indD]) * vecSize;
+							if (inputScalars.Nt > 1U && inputScalars.size_norm ==
+								static_cast<size_t>(pituus[inputScalars.subsets]) * vecSize)
+								correctionOffset = static_cast<size_t>(pituus[kk]) * vecSize;
+							WRITE_BUFFER(d_norm[timestep][kk], sizeof(float) * copySize, &norm[correctionOffset]);
+						}
 						CHECK(status, "\n", (STATUS_t)(-1));
 						memSize += sizeof(float) * ((inputScalars.SPECT && inputScalars.normZ == inputScalars.nHeads)
 							? static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD) * static_cast<size_t>(inputScalars.nHeads)
 							: static_cast<size_t>(length[indD]) * vecSize);
 					}
 					if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-						WRITE_BUFFER(d_atten[timestep][kk], sizeof(float) * length[indD] * vecSize, &atten[pituus[indD] * vecSize]);
+						const size_t copySize = static_cast<size_t>(length[indD]) * vecSize;
+						size_t correctionOffset = static_cast<size_t>(pituus[indD]) * vecSize;
+						if (inputScalars.Nt > 1U && inputScalars.size_atten ==
+							static_cast<size_t>(pituus[inputScalars.subsets]) * vecSize)
+							correctionOffset = static_cast<size_t>(pituus[kk]) * vecSize;
+						WRITE_BUFFER(d_atten[timestep][kk], sizeof(float) * copySize, &atten[correctionOffset]);
 						CHECK(status, "\n", (STATUS_t)(-1));
 						memSize += sizeof(float) * length[indD] * vecSize;
 					}

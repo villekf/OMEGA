@@ -216,17 +216,36 @@ elseif options.attenuation_correction && options.SPECT % SPECT attenuation
     if options.CT_attenuation && options.useMultiResolutionVolumes && options.nMultiVolumes > 0
         options = prepareMultiResolutionAttenuation(options);
     end
-    if options.partitions > 1
+    if options.Nt > 1 && iscell(options.vaimennus) && numel(options.vaimennus) == 1 && ...
+            ~options.CT_attenuation && iscell(options.SinM) && ~isempty(options.SinM)
+        projectionCounts = cellfun(@(x) size(x, 3), options.SinM);
+        if all(projectionCounts == projectionCounts(1)) && ...
+                numel(options.vaimennus{1}) == options.nRowsD * options.nColsD * projectionCounts(1)
+            % A single cell can also represent one shared measurement-based
+            % attenuation frame. Expand it so downstream per-frame reordering
+            % can use each timeframe's projection order.
+            options.vaimennus = repmat(options.vaimennus(:), options.Nt, 1);
+        end
+    end
+    if options.Nt > 1
         if ~iscell(options.vaimennus)
             isPreparedImageAttenuation = options.CT_attenuation && ...
                 isfield(options, 'imageAttenuationIsMultiResolution') && options.imageAttenuationIsMultiResolution;
-            isDynamicMeasurementAttenuation = ~options.CT_attenuation && iscell(options.SinM) && ...
-                numel(options.vaimennus) == options.nRowsD * options.nColsD * ...
-                sum(cellfun(@(x) size(x, 3), options.SinM));
-            if ~isDynamicMeasurementAttenuation && ~isPreparedImageAttenuation
+            isDynamicMeasurementAttenuation = false;
+            isStaticMeasurementAttenuation = false;
+            if ~options.CT_attenuation && iscell(options.SinM) && ~isempty(options.SinM)
+                projectionCounts = cellfun(@(x) size(x, 3), options.SinM);
+                detectorImageSize = options.nRowsD * options.nColsD;
+                isDynamicMeasurementAttenuation = numel(options.vaimennus) == ...
+                    detectorImageSize * sum(projectionCounts);
+                isStaticMeasurementAttenuation = all(projectionCounts == projectionCounts(1)) && ...
+                    numel(options.vaimennus) == detectorImageSize * projectionCounts(1);
+            end
+            if ~isDynamicMeasurementAttenuation && ~isStaticMeasurementAttenuation && ...
+                    ~isPreparedImageAttenuation
                 error("With dynamic reconstruction the attenuation map needs to be a cell type");
             end
-        elseif numel(options.vaimennus) ~= options.partitions
+        elseif numel(options.vaimennus) ~= options.Nt
             error("No attenuation map for each timestep")
         end
     end
@@ -246,7 +265,7 @@ if ~iscell(options.vaimennus)
         options.vaimennus = double(options.vaimennus);
     end
 else
-    for kk = 1:options.partitions
+    for kk = 1:numel(options.vaimennus)
         if (options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles)
             options.vaimennus{kk} = single(options.vaimennus{kk}(:));
         else

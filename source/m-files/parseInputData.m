@@ -157,6 +157,10 @@ if options.subsets > 1 && options.subset_type > 0
             if iscell(index)
                 options.normalization = reorderDynamicProjectionData(options.normalization, index, ...
                     options.Ndist, options.Nang, 'normalization images');
+            elseif partitions > 1
+                dynamicIndex = repmat({index(:)}, partitions, 1);
+                options.normalization = reorderDynamicProjectionData(options.normalization, dynamicIndex, ...
+                    options.Ndist, options.Nang, 'normalization images');
             else
                 options.normalization = reshape(options.normalization, options.Ndist, options.Nang, []);
                 options.normalization = options.normalization(:,:,index,:);
@@ -288,6 +292,10 @@ if options.subsets > 1 && options.subset_type > 0
                 if iscell(index)
                     options.vaimennus = reorderDynamicProjectionData(options.vaimennus, index, ...
                         options.nRowsD, options.nColsD, 'measurement-based attenuation images');
+                elseif partitions > 1
+                    dynamicIndex = repmat({index(:)}, partitions, 1);
+                    options.vaimennus = reorderDynamicProjectionData(options.vaimennus, dynamicIndex, ...
+                        options.nRowsD, options.nColsD, 'measurement-based attenuation images');
                 else
                     options.vaimennus = reshape(options.vaimennus, options.nRowsD, options.nColsD, []);
                     options.vaimennus = options.vaimennus(:,:,index);
@@ -344,27 +352,46 @@ end
 end
 
 function output = reorderDynamicProjectionData(input, index, nRows, nCols, inputName)
-% Apply each timeframe's projection permutation to cell or concatenated data.
+% Apply each timeframe's projection permutation to static or concatenated data.
 projectionCounts = cellfun(@numel, index);
+staticInput = false;
 if iscell(input)
-    if numel(input) ~= numel(index)
+    if numel(input) == numel(index)
+        inputFrames = input(:);
+    elseif numel(input) == 1
+        staticInput = true;
+        inputFrames = input(:);
+    else
         error('Dynamic %s require one value per timeframe!', inputName)
     end
-    inputFrames = input(:);
 else
     input = reshape(input, nRows, nCols, []);
-    if size(input, 3) ~= sum(projectionCounts)
+    if size(input, 3) == sum(projectionCounts)
+        inputFrames = cell(numel(index), 1);
+        projectionOffset = 0;
+        for kk = 1 : numel(index)
+            frameRange = projectionOffset + (1 : projectionCounts(kk));
+            inputFrames{kk} = input(:,:,frameRange);
+            projectionOffset = projectionOffset + projectionCounts(kk);
+        end
+    elseif size(input, 3) == projectionCounts(1)
+        staticInput = true;
+        inputFrames = {input};
+    else
         error('Dynamic %s must contain one image per projection!', inputName)
     end
-    inputFrames = cell(numel(index), 1);
-    projectionOffset = 0;
-    for kk = 1 : numel(index)
-        frameRange = projectionOffset + (1 : projectionCounts(kk));
-        inputFrames{kk} = input(:,:,frameRange);
-        projectionOffset = projectionOffset + projectionCounts(kk);
-    end
 end
-for kk = 1 : numel(index)
+if staticInput
+    if any(projectionCounts ~= projectionCounts(1))
+        error('Static dynamic %s require matching projection counts in every timeframe.', inputName)
+    end
+    % A static source is shared, but the subset permutation can differ by
+    % timeframe (for example, subset type 9 randomizes each frame). Apply
+    % every frame's own indices and materialize a frame-concatenated result
+    % so the C++ side can use its normal cumulative pituus offsets.
+    inputFrames = repmat(inputFrames(1), numel(index), 1);
+end
+for kk = 1 : numel(inputFrames)
     inputFrames{kk} = reshape(inputFrames{kk}, nRows, nCols, []);
     if size(inputFrames{kk}, 3) ~= projectionCounts(kk)
         error('Each timeframe of dynamic %s must contain one image per projection!', inputName)
