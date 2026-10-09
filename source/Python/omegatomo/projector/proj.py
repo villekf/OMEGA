@@ -2458,6 +2458,7 @@ class projectorClass:
             ('PET', ctypes.c_bool),
             ('CT', ctypes.c_bool),
             ('largeDim', ctypes.c_bool),
+            ('usingLinearizedData', ctypes.c_bool),
             ('loadTOF', ctypes.c_bool),
             ('storeResidual', ctypes.c_bool),
             ('FISTA_acceleration', ctypes.c_bool),

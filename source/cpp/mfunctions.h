@@ -69,6 +69,8 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	inputScalars.scatter = static_cast<uint32_t>(getScalarBool(options, 0, "additionalCorrection"));
 	inputScalars.CTAttenuation = getScalarBool(options, 0, "CT_attenuation");
 	inputScalars.largeDim = getScalarBool(options, 0, "largeDim");
+	if (mxGetFieldNumber(options, "usingLinearizedData") >= 0)
+		inputScalars.usingLinearizedData = getScalarBool(options, 0, "usingLinearizedData");
 	inputScalars.loadTOF = getScalarBool(options, 0, "loadTOF");
 	inputScalars.storeResidual = getScalarBool(options, 0, "storeResidual");
 	inputScalars.FISTAAcceleration = getScalarBool(options, 0, "FISTA_acceleration");

@@ -244,6 +244,8 @@ struct inputStruct {
     bool CT = false;
     // Use high-dimensional reconstruction
     bool largeDim = false;
+    // CT data is already linearized (log-transformed) by the user
+    bool usingLinearizedData = false;
     // Load TOF data
     bool loadTOF = true;
     // If true, stores the primal-dual gap values
@@ -824,6 +826,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.scatter = options.additionalCorrection;
     inputScalars.CTAttenuation = options.CTAttenuation;
     inputScalars.largeDim = options.largeDim;
+    inputScalars.usingLinearizedData = options.usingLinearizedData;
     inputScalars.loadTOF = options.loadTOF; 
     inputScalars.storeResidual = options.storeResidual;
     inputScalars.FISTAAcceleration = options.FISTA_acceleration;

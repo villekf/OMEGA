@@ -3080,6 +3080,14 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			}
 		}
 	} else {
+		// Random initial vector, normalized over the whole volume (not per subvolume)
+		double normSq = 0.;
+		for (int ii = 0; ii < inputScalars.subsets; ii++) {
+			vec.im_os[timestep][0] = af::abs(af::randn(inputScalars.lDimStruct.imDim[ii], f32, r));
+			normSq += static_cast<double>(af::dot<float>(vec.im_os[timestep][0], vec.im_os[timestep][0]));
+			vec.im_os[timestep][0].host(&F[inputScalars.lDimStruct.cumDim[ii]]);
+		}
+		float scaleF = static_cast<float>(1. / std::sqrt(normSq));
 		for (int kk = 0; kk < w_vec.powerIterations; kk++) {
 			tauCP[0] = 0.f;
 			af::array outputFP = af::constant(0.f, m_size * inputScalars.nBins);
@@ -3090,13 +3098,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			}
 			for (int ii = 0; ii < inputScalars.subsets; ii++) {
 				largeDimFirst(inputScalars, proj, ii);
-				if (kk == 0) {
-					vec.im_os[timestep][0] = af::abs(af::randn(inputScalars.lDimStruct.imDim[ii], f32, r));
-					vec.im_os[timestep][0] = vec.im_os[timestep][0] / (af::norm(vec.im_os[timestep][0]) * static_cast<float>(inputScalars.subsets));
-					vec.im_os[timestep][0].host(&F[inputScalars.lDimStruct.cumDim[ii]]);
-				}
-				else
-					vec.im_os[timestep][0] = af::array(inputScalars.lDimStruct.imDim[ii], &F[inputScalars.lDimStruct.cumDim[ii]], afHost);
+				vec.im_os[timestep][0] = af::array(inputScalars.lDimStruct.imDim[ii], &F[inputScalars.lDimStruct.cumDim[ii]], afHost) * scaleF;
 				status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, timestep, length, g, m_size, proj, 0, pituus);
 				if (status != 0)
 					return -1;
@@ -3107,9 +3109,10 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			if (status != 0)
 				return -1;
 			float upper = 0.f, lower = 0.f;
+			normSq = 0.;
 			for (int ii = 0; ii < inputScalars.subsets; ii++) {
 				largeDimFirst(inputScalars, proj, ii);
-				vec.im_os[timestep][0] = af::array(inputScalars.lDimStruct.imDim[ii], &F[inputScalars.lDimStruct.cumDim[ii]], afHost);
+				vec.im_os[timestep][0] = af::array(inputScalars.lDimStruct.imDim[ii], &F[inputScalars.lDimStruct.cumDim[ii]], afHost) * scaleF;
 				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, outputFP, 0, timestep, length, m_size, meanBP, g, proj, false, 0, pituus);
 				af::sync();
 				if (status != 0)
@@ -3121,12 +3124,11 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					return -1;
 				upper += af::dot<float>(vec.im_os[timestep][0], vec.rhs_os[timestep][0]);
 				lower += af::dot<float>(vec.im_os[timestep][0], vec.im_os[timestep][0]);
-				vec.im_os[timestep][0] = vec.rhs_os[timestep][0].copy();
-				vec.im_os[timestep][0] /= (af::norm(vec.im_os[timestep][0]) * static_cast<float>(inputScalars.subsets));
-				vec.im_os[timestep][0].host(&F[inputScalars.lDimStruct.cumDim[ii]]);
-				vec.im_os[timestep][0].eval();
-				vec.rhs_os[timestep][0].eval();
+				normSq += static_cast<double>(af::dot<float>(vec.rhs_os[timestep][0], vec.rhs_os[timestep][0]));
+				vec.rhs_os[timestep][0].host(&F[inputScalars.lDimStruct.cumDim[ii]]);
 			}
+			// The stored iterate is unnormalized; it is normalized globally (scaleF) when loaded in the next iteration
+			scaleF = static_cast<float>(1. / std::sqrt(normSq));
 			tauCP[0] = upper * static_cast<float>(inputScalars.subsets) / lower;
 			if (inputScalars.verbose >= 2 || DEBUG) {
 				if (w_vec.filterIter > 0 && (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]))

@@ -95,6 +95,7 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 		mexPrintBase("kokoNonTOF = %u\n", inputScalars.kokoNonTOF);
 		mexPrintBase("size_z = %u\n", inputScalars.size_z);
 		mexPrintBase("inputScalars.largeDim = %u\n", inputScalars.largeDim);
+		mexPrintBase("inputScalars.usingLinearizedData = %u\n", inputScalars.usingLinearizedData);
 		mexPrintBase("inputScalars.maskBP = %u\n", inputScalars.maskBP);
 		mexPrintBase("inputScalars.maskFP = %u\n", inputScalars.maskFP);
 		mexPrintBase("inputScalars.offset = %u\n", inputScalars.offset);

@@ -1092,8 +1092,11 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 				for (int kk = 0; kk < inputScalars.subsets; kk++) {
                     int indD = kk + timestep * inputScalars.subsets;
 					fullMSize = length[indD] * (static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD));
-					mData[0][timestep] = af::log(inputScalars.flat / af::array(inputScalars.nRowsD * inputScalars.nColsD * length[indD], 
-                        &Sin[pituus[indD] * inputScalars.nRowsD * inputScalars.nColsD], AFTYPE).as(f32));
+					mData[0][timestep] = af::array(inputScalars.nRowsD * inputScalars.nColsD * length[indD],
+                        &Sin[pituus[indD] * inputScalars.nRowsD * inputScalars.nColsD], AFTYPE).as(f32);
+					// Linearize the data unless the user input is already linearized
+					if (!inputScalars.usingLinearizedData)
+						mData[0][timestep] = af::log(inputScalars.flat / mData[0][timestep]);
 					if (DEBUG) {
 						mexPrintBase("mData[0][0] = %f\n", af::sum<float>(mData[0][0]));
 						mexPrintBase("mData[0][0] = %f\n", af::max<float>(mData[0][0]));
@@ -1200,22 +1203,27 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
 				// Load TOF/measurement data if it wasn't preloaded
 				if (((osa_iter > inputScalars.osa_iter0 || iter > iter0 || tt > t0) && !inputScalars.loadTOF) || inputScalars.largeDim) {
-					if (inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8))
+					if ((inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8 && inputScalars.subsetType > 0) || inputScalars.listmode > 0)
 						mData[0][0] = af::constant(0, lengthTOF[indD], dType);
 					else
 						mData[0][0] = af::constant(0, inputScalars.nRowsD * inputScalars.nColsD * lengthTOF[indD], dType);
 					if (inputScalars.largeDim) {
-						if (inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8) {
+						if (inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8 && inputScalars.subsetType > 0) {
 							std::vector<F> fptr(length[indD]);
 							for (int64_t ll2 = 0; ll2 < length[indD]; ll2++)
 								fptr[ll2] = Sin[osa_iter + ll2 * inputScalars.subsetsUsed];
 							mData[0][0] = af::array(length[indD], fptr.data(), AFTYPE);
 						}
-						else
+						// Subset type 0: contiguous blocks of whole projections
+						else if (inputScalars.subsetsUsed > 1 && inputScalars.subsetType == 0) {
+							mData[0][0] = af::array(inputScalars.nRowsD * inputScalars.nColsD * length[indD], &Sin[pituus[indD] * inputScalars.nRowsD * inputScalars.nColsD], AFTYPE);
+						}
+						else {
 							for (int ii = 0; ii < length[indD]; ii++)
 								mData[0][0](af::seq(inputScalars.nRowsD* inputScalars.nColsD* ii, inputScalars.nRowsD* inputScalars.nColsD* (ii + 1) - 1)) = af::array(inputScalars.nRowsD * inputScalars.nColsD, 
 									&Sin[osa_iter * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.nRowsD * inputScalars.nColsD * ii * inputScalars.subsetsUsed], afHost);
-						if (inputScalars.CT && MethodList.CPType)
+						}
+						if (inputScalars.CT && MethodList.CPType && !inputScalars.usingLinearizedData)
 							mData[0][0] = af::log(inputScalars.flat / mData[0][0].as(f32));
 					}
 #ifndef CPU
@@ -1474,7 +1482,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     largeDimLast(inputScalars, proj);
                     if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) {
                         if (iter > 0) {
-                            if (inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8))
+                            if (inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8 && inputScalars.subsetType > 0)
                                 vec.pCP[tt][0] = af::array(m_size * nBins, &apuM[pituus[indD] * nBins], afHost);
                             else
                                 vec.pCP[tt][0] = af::array(m_size * nBins, &apuM[inputScalars.nRowsD * inputScalars.nColsD * pituus[indD] * nBins], afHost);
@@ -1490,7 +1498,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     if (status != 0)
                         return -1;
                     if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) {
-                        if (inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8))
+                        if (inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8 && inputScalars.subsetType > 0)
                             vec.pCP[tt][0].host(&apuM[pituus[osa_iter] * nBins]);
                         else
                             vec.pCP[tt][0].host(&apuM[inputScalars.nRowsD * inputScalars.nColsD * pituus[indD] * nBins]);
