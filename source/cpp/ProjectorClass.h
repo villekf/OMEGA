@@ -709,7 +709,8 @@ class ProjectorClass {
 		copy.WidthInBytes = spec.width * spec.elementSize;
 		copy.Height = spec.height;
 		copy.Depth = spec.copyDepth;
-		status = cuMemcpy3D(&copy);
+		// Enqueue on the projector stream so the copy is ordered with the producer of source and the kernels sampling the texture
+		status = cuMemcpy3DAsync(&copy, CLCommandQueue[0]);
 		if (status != CUDA_SUCCESS)
 			return status;
 		return createCudaTextureFromArray(texture, array, spec, true);
@@ -7373,7 +7374,6 @@ public:
 		}
 		encoder->setComputePipelineState(kernelPDHG.get());
 #endif
-		FINISH_QUEUE(status, "\n", -1);
 		SET_LAUNCH_RANGE3(global,
 			inputScalars.Nx[ii] + erotusPDHG[0][ii],
 			inputScalars.Ny[ii] + erotusPDHG[1][ii],
@@ -7546,9 +7546,6 @@ public:
 			CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(d_inputI, imArray, input, inputScalars.Nx[0], inputScalars.Ny[0], Nz,
 				BACKEND_TEXTURE_POINT, BACKEND_TEXTURE_DEFAULT_FLAGS);
 		CHECK(status, "Image copy failed\n", -1);
-		FINISH_QUEUE(status, "Synchronization failed\n", -1);
-		if (DEBUG)
-			mexPrint("Synchronization completed\n");
 		return 0;
 	}
 #endif // END CUDA/METAL

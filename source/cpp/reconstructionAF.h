@@ -1406,11 +1406,6 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 								transferControl(vec, inputScalars, g, w_vec, tt, compute_norm_matrix, proj.no_norm, osa_iter, ii);
 						}
 #ifndef CPU
-						if (inputScalars.fastPDHG) {
-							proj.fastStep = 0;
-						}
-#endif
-#ifndef CPU
 						if (concurrentBP) {
 							// Make sure that the concurrent queues/streams are complete before moving on
 							status = proj.joinSideQueues();
@@ -1420,6 +1415,12 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 								finalizeBackwardProjectionAF(vec, inputScalars, w_vec, MethodList, outputFP, meanBP, g, proj, tt, ii);
 								transferControl(vec, inputScalars, g, w_vec, tt, compute_norm_matrix, proj.no_norm, osa_iter, ii);
 							}
+						}
+#endif
+						// Reset only after the deferred finalization, which still needs to know that fastPDHG bound the estimate
+#ifndef CPU
+						if (inputScalars.fastPDHG) {
+							proj.fastStep = 0;
 						}
 #endif
 						proj.no_norm = savedNoNormTT;
@@ -1465,7 +1466,6 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             vec.im_os[tt][0] = af::constant(1e-4f, inputScalars.lDimStruct.imDim[ii]);
                         else
                             vec.im_os[tt][0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuF[inputScalars.lDimStruct.cumDim[ii]], afHost);
-                        af::sync();
                         status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, tt, length, g, m_size, proj, 0, pituus);
                         if (status != 0) {
                             return -1;
@@ -1493,7 +1493,6 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     if (DEBUG || inputScalars.verbose >= 3) {
                         proj.tStartLocal = std::chrono::steady_clock::now();
                     }
-                    af::sync();
                     status = computeForwardStep(MethodList, mData[0][tt], outputFP, m_size, inputScalars, w_vec, aRand[tt][0], vec, proj, tt, iter, 0);
                     if (status != 0)
                         return -1;
@@ -1504,7 +1503,6 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             vec.pCP[tt][0].host(&apuM[inputScalars.nRowsD * inputScalars.nColsD * pituus[indD] * nBins]);
                     }
 
-                    af::sync();
                     const int multiVol = inputScalars.nMultiVolumes;
                     inputScalars.nMultiVolumes = 0;
                     float* apuPr;
@@ -1536,7 +1534,6 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             vec.uCP[tt][0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuU[inputScalars.lDimStruct.cumDim[ii]], afHost);
                         if (w_vec.computeD)
                             w_vec.D[0][0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuD[inputScalars.lDimStruct.cumDim[ii]], afHost);
-                        af::sync();
                         status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, outputFP, osa_iter, tt, length, m_size, meanBP, g, proj, false, 0, pituus, false, 0, true, true, ii);
                         // Normally this trimming is done in computeOSEstimates, but fastPDHG skips that function completely
                         if (inputScalars.fastPDHG && vec.im_os[tt][0].elements() > inputScalars.lDimStruct.imDim[ii]) {
@@ -1554,7 +1551,6 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                         if (inputScalars.enforcePositivity && inputScalars.subsetsUsed > 1 && !MethodList.CPType) {
                             vec.im_os[tt][0](vec.im_os[tt][0] < inputScalars.epps) = inputScalars.epps;
                         }
-                        af::sync();
                         if (DEBUG) {
                             mexPrintBase("inputScalars.lDimStruct.imDim[ii] = %u\n", inputScalars.lDimStruct.cumDim[ii]);
                             mexPrintBase("vec.rhs_os[tt][0].elements() = %u\n", vec.rhs_os[tt][0].elements());
@@ -1603,7 +1599,6 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             }
                         }
                     }
-                    af::sync();
                 }
 			} // End main timestep loop
 
