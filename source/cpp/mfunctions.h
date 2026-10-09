@@ -367,6 +367,7 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 					inputScalars.gFilterCustom = 1U;
 				}
 		}
+	}
         /*if (inputScalars.FPType == 6 || inputScalars.BPType == 6) {
             inputScalars.FOVa_y = getScalarFloat(getField(options, 0, "FOVa_y"));
             inputScalars.CORtoDetectorSurface = getScalarFloat(getField(options, 0, "CORtoDetectorSurface"));

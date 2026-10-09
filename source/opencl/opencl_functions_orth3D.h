@@ -477,7 +477,7 @@ DEVICE int orthDistance3D(const int tempi,
 		ray = diff * orth_ray_length_inv;
 		FLOAT3 ref = MFLOAT3(FLOAT_ZERO, FLOAT_ZERO, FLOAT_ONE);
 		if (FABS(ray.z) > 0.999f)
-			ref = MFLOAT3(FLOAT_ONE, FLOAT_ZERO, FLOAT_ZERO);
+			ref = CMFLOAT3(FLOAT_ONE, FLOAT_ZERO, FLOAT_ZERO);
 		e1 = NORMALIZE(CROSS(ref, ray));
 		e2 = CROSS(ray, e1);
 	}

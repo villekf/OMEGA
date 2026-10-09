@@ -5175,7 +5175,9 @@ public:
 				KARG(kTemp, kernelFP, kernelIndFPSubIter, d_detectorVector[timestep][osa_iter]);
 				if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 					KARG_METAL_SLOT(kernelIndFPSubIter, 22);
+#if defined(METAL)
 					KARG(kTemp, kernelFP, kernelIndFPSubIter, d_gFilter);
+#endif
 				}
 			}
 			KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, no_norm);
@@ -5576,7 +5578,9 @@ public:
 				KARG(kTemp, kernelBP, kernelIndBPSubIter, d_detectorVector[timestep][osa_iter]);
 				if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 					KARG_METAL_SLOT(kernelIndBPSubIter, 22);
+#if defined(METAL)
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_gFilter);
+#endif
 				}
 			}
 			KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, no_norm);

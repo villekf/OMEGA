@@ -781,7 +781,8 @@ void projectorType123(
 #if defined(MASKBP) && defined(BP)
 						, aa, maskBP, d_Nxyz
 #endif
-						, coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
+						, coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed, rayDepthOffset
+						, gFilter, gFilterNu, gFilterNv, gFilterNd, gFilterDu, gFilterDv, gFilterDd, gFilterCustom
 					);
 				}
 #if defined(FP)
