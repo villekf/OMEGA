@@ -2646,11 +2646,13 @@ inline int applyMeasPreconditioning(const Weighting& w_vec, const scalarStruct& 
 				input = af::moddims(input, inputScalars.nRowsD, inputScalars.nColsD, input.elements() / (inputScalars.nRowsD * inputScalars.nColsD));
 			input.eval();
 			if (input.elements() > 207762000) {
+				const dim_t h = input.dims(2) / 2;
 				for (int uu = 0; uu < 2; uu++) {
-					af::array input1 = input(af::span, af::span, af::seq(uu * input.dims(2) / 2, input.dims(2) / 2 * (uu + 1) - 1)).copy();
+					const dim_t first = uu * h, last = (uu == 0) ? h - 1 : input.dims(2) - 1;
+					af::array input1 = input(af::span, af::span, af::seq(first, last)).copy();
 					status = filtering(w_vec.filter, input1, proj, inputScalars.Nf);
 					input1 = af::moddims(input1, inputScalars.nRowsD, inputScalars.nColsD, input1.elements() / (inputScalars.nRowsD * inputScalars.nColsD));
-					input(af::span, af::span, af::seq(uu * input.dims(2) / 2, input.dims(2) / 2 * (uu + 1) - 1)) = input1.copy();
+					input(af::span, af::span, af::seq(first, last)) = input1.copy();
 				}
 				input = af::flat(input);
 			}

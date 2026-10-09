@@ -2364,6 +2364,8 @@ public:
 	std::vector<FLOAT3_t> b, d, bmax;
 	// Axial extent of the full volume with largeDim, where b/bmax above only cover the current subvolume
 	float bzGlobalFP[2] = { 0.f, 0.f }, bzGlobalBP[2] = { 0.f, 0.f };
+	// FDK projection-angle offset of the current measurement chunk and the total projection count (largeDim chunks)
+	int64_t fdkAngleOffset = 0LL, fdkNProjections = 0LL;
 	std::vector<INT3_t> d_N;
 	UCHAR_t no_norm = 0;
 	size_t memSize = 0ULL;
@@ -5024,7 +5026,7 @@ public:
 		kParams.m_size = m_size;
 		kParams.currentSubset = osa_iter;
 		kParams.aa = ii;
-		if (MethodList.FDK && inputScalars.largeDim && inputScalars.BPType == 4) {
+		if (MethodList.FDK && inputScalars.CT && inputScalars.BPType == 4) {
 			int64_t angleOffset = 0;
 			for (uint32_t subset = 0; subset < osa_iter; subset++)
 				angleOffset += length[subset + timestep * inputScalars.subsets];
@@ -5488,9 +5490,15 @@ public:
 					else
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_inputImage);
 					if (inputScalars.CT && inputScalars.DSC > 0.f) {
+						fdkAngleOffset = 0LL;
+						for (uint32_t subset = 0; subset < osa_iter; subset++)
+							fdkAngleOffset += length[subset + timestep * inputScalars.subsets];
+						fdkNProjections = static_cast<int64_t>(inputScalars.nProjections);
 						KARG_METAL_SLOT(kernelIndBPSubIter, 3);
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_angle);
 						KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, inputScalars.DSC);
+						KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, fdkAngleOffset);
+						KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, fdkNProjections);
 					}
 					KARG_METAL_SLOT(kernelIndBPSubIter, 4);
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, vec_opencl.d_rhs_os[uu]);

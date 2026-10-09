@@ -869,7 +869,8 @@ classdef projectorClass
                 obj.param.det_per_ring = obj.param.det_per_ring * obj.param.sampling_raw;
             end
 
-            if obj.param.offsetCorrection && obj.param.subsets > 1 && obj.param.subset_type > 0
+            % FDK (largeDim) keeps the geometry and data in the original projection order, so the offset limits are not reordered either
+            if obj.param.offsetCorrection && obj.param.subsets > 1 && obj.param.subset_type > 0 && ~obj.param.FDK
                 obj.param.OffsetLimit = obj.param.OffsetLimit(obj.index);
             end
 			if obj.param.SPECT

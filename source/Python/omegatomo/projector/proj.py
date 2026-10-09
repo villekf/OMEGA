@@ -1117,7 +1117,8 @@ class projectorClass:
         computeVoxelVolumes(self)
         if self.projector_type in (4, 5, 14, 41, 15, 45, 54, 51, 42, 43, 24, 34):
             computeProjectorScalingValues(self)
-        if self.offsetCorrection and self.subsets > 1:
+        # FDK (largeDim) keeps the geometry and data in the original projection order, so the offset limits are not reordered either
+        if self.offsetCorrection and self.subsets > 1 and not self.FDK:
             self.OffsetLimit = self.OffsetLimit[self.index]
 
         if self.SPECT:

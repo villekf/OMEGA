@@ -837,6 +837,10 @@ void projectorType4Backward(
     , CONSTANT float* angle BUF3
 #if !defined(METAL) // Scalar
     , const float DSC
+    // Index of the first projection of the current measurement chunk in angle (largeDim, 0 otherwise)
+    , const LONG d_angleOffset
+    // Total number of projections, used by the FDK angular scaling (d_nProjections only covers the current chunk with largeDim)
+    , const LONG d_nProjectionsFDK
 #endif
 #endif
     , CLGLOBAL float* CLRESTRICT d_OSEM BUF4
@@ -932,6 +936,10 @@ void projectorType4Backward(
 ) {
 #if defined(METAL) // Unpack scalar parameters
 	UNPACK_SCALAR_PARAMS_4_BP(scalarParams);
+#ifdef FDK
+	const LONG d_angleOffset = CLONG_rtz(dSize5.x);
+	const LONG d_nProjectionsFDK = CLONG_rtz(dSize5.y);
+#endif
 	int GID0 = temp_i.x;
 	int GID1 = temp_i.y;
 	int GID2 = temp_i.z;
@@ -1184,8 +1192,8 @@ void projectorType4Backward(
 //             }
 // #endif
 #ifdef FDK
-            float weight = (DSC + dV.x * COSF(angle[kk]) - dV.y * SINF(angle[kk]));
-            weight = (DSC * DSC) / (weight * weight) * (M_PI_F / (CFLOAT(d_nProjections) * d_dPitch.x));
+            float weight = (DSC + dV.x * COSF(angle[kk + d_angleOffset]) - dV.y * SINF(angle[kk + d_angleOffset]));
+            weight = (DSC * DSC) / (weight * weight) * (M_PI_F / (CFLOAT(d_nProjectionsFDK) * d_dPitch.x));
 #else
             const float L = DISTANCE(p, s);
             const float weight = (L * L * L) / (l1)*kerroin;
