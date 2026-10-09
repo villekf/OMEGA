@@ -227,6 +227,23 @@ def linearizeData(options):
     """
     options.SinM = np.log(options.flat / options.SinM.astype(dtype=np.float32))
 
+def _sharesCallerMemory(options, array):
+    # Lazy import (recomain imports this module)
+    from .recomain import _sharesCallerMemory as shares
+    return shares(options, array)
+
+
+def _divideInPlaceUnlessShared(options, array, divisor):
+    """
+    array / divisor with the dtype of the in-place division: done in place, or into
+    a new array if `array` is (a view of) the caller's array.
+    """
+    if _sharesCallerMemory(options, array):
+        return np.divide(array, divisor, out=np.empty_like(array))
+    array /= divisor
+    return array
+
+
 def loadCorrections(options):
     """
     This function loads all the corrections related data. It can also perform
@@ -523,9 +540,9 @@ def loadCorrections(options):
                     for timestep, frame in enumerate(options.ScatterC)
                 ]
             else:
-                options.ScatterC /= expand_detector_stack(options.normalization, options.ScatterC.shape)
+                options.ScatterC = _divideInPlaceUnlessShared(options, options.ScatterC, expand_detector_stack(options.normalization, options.ScatterC.shape))
         else:
-            options.ScatterC /= options.normalization
+            options.ScatterC = _divideInPlaceUnlessShared(options, options.ScatterC, options.normalization)
     if options.randoms_correction and options.ordinaryPoisson and options.variance_reduction:
         from omegatomo.util.Randoms_variance_reduction import Randoms_variance_reduction
         options.SinDelayed = Randoms_variance_reduction(options.SinDelayed, options)
@@ -605,7 +622,12 @@ def loadCorrections(options):
         # (non-TOF) scatter estimate.
         if options.TOF_bins > 1:
             options.SinDelayed = options.SinDelayed.astype(np.float32) / options.TOF_bins
-        options.SinDelayed += np.asfortranarray(options.ScatterC.astype(np.float32))
+        scatterTerm = np.asfortranarray(options.ScatterC.astype(np.float32))
+        if _sharesCallerMemory(options, options.SinDelayed):
+            # SinDelayed is the caller's array: out-of-place (same dtype as the in-place add)
+            options.SinDelayed = np.add(options.SinDelayed, scatterTerm, out=np.empty_like(options.SinDelayed))
+        else:
+            options.SinDelayed += scatterTerm
         options.scatter_correction = False
     elif (not options.scatter_correction and options.randoms_correction and options.ordinaryPoisson
             and options.SinDelayed.size > 1 and options.TOF_bins > 1):
@@ -687,6 +709,11 @@ def parseInputs(options, mDataFound = False):
     if options.subsets > 1 and options.subsetType > 0:
         if mDataFound and not options.largeDim:
             if options.Nt > 1:
+                # The loop below writes the reordered frames back into SinM in place: if SinM
+                # is (a view of) the caller's array, reorder a private copy.
+                # (A list SinM only has its own list entries replaced.)
+                if _sharesCallerMemory(options, options.SinM):
+                    options.SinM = options.SinM.copy(order='K')
                 for ff in range(1, options.Nt + 1):
                     if not options.use_raw_data:
                         if isinstance(options.SinM, list):
@@ -881,6 +908,9 @@ def parseInputs(options, mDataFound = False):
                     print('Warning: Randoms correction (SinDelayed) is not supported for dynamic list-mode data! Disabling it.')
                     options.randoms_correction = False
                 elif options.Nt > 1:
+                    # The loop below writes in place: copy if SinDelayed is the caller's array
+                    if _sharesCallerMemory(options, options.SinDelayed):
+                        options.SinDelayed = options.SinDelayed.copy(order='K')
                     for ff in range(1, options.Nt + 1):
                         if not options.use_raw_data:
                             temp = options.SinDelayed[:,:,:,ff - 1]
@@ -931,6 +961,9 @@ def parseInputs(options, mDataFound = False):
                     print('Warning: Scatter correction (ScatterC) is not supported for dynamic list-mode data! Disabling it.')
                     options.scatter_correction = False
                 elif options.Nt > 1: #and isinstance(options.ScatterC, list) and len(options.ScatterC) > 1:
+                    # The loop below writes in place: copy if ScatterC is the caller's array
+                    if _sharesCallerMemory(options, options.ScatterC):
+                        options.ScatterC = options.ScatterC.copy(order='K')
                     for ff in range(1, options.Nt + 1):
                         if not options.use_raw_data:
                             temp = options.ScatterC[:,:,:,:,ff - 1]

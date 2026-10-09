@@ -35,6 +35,32 @@ from .coordinates import computeVoxelVolumes
 from .indices import indexMaker
 from .indices import formSubsetIndices
 
+def _copyValue(value):
+    """
+    Recursively copies containers: ndarray -> copy (memory order kept), list ->
+    new list of copied items, tuple -> tuple of copied items (namedtuples keep
+    their type), dict -> dict of copied values. Anything else is returned as-is
+    (shared).
+    """
+    if isinstance(value, np.ndarray):
+        return value.copy(order='K')
+    if isinstance(value, list):
+        return [_copyValue(v) for v in value]
+    if isinstance(value, tuple):
+        items = [_copyValue(v) for v in value]
+        if hasattr(value, '_fields'):
+            return type(value)(*items)
+        return tuple(items)
+    if isinstance(value, dict):
+        return {k: _copyValue(v) for k, v in value.items()}
+    return value
+
+
+# Class-level read-only lookup tables that are intentionally shared by all instances
+# (never written to, so they are not copied per instance)
+_SHARED_CLASS_CONSTANTS = ('_FILTER_WINDOW_TEXT',)
+
+
 class projectorClass:
     # These parameters are either NumPy arrays or variables that are not needed in the C++ code
     x = np.empty(0, dtype = np.float32)
@@ -559,6 +585,11 @@ class projectorClass:
     useHelical = False
     helicalRadius = 1.
     useParkerWeights = False
+    # When True (default) the built-in reconstruction works on a private copy of the options, so
+    # the same options object can be reused for further reconstructions. When False the options
+    # object is modified in place: host memory use is lower (replaced input arrays can be freed
+    # during the reconstruction) but the object must not be reused for another reconstruction.
+    keepOptionsUnchanged = True
     projectorAdded = False
     projectorInitialized = False
     local_size = -1
@@ -574,6 +605,21 @@ class projectorClass:
     zSens = np.empty(0, dtype = np.float32)
 
     def __init__(self):
+        # The defaults above are class attributes, i.e. the same ndarray/list/dict objects are
+        # shared by every instance until an instance assigns the attribute. An element write such
+        # as options.precondTypeMeas[1] = True would then modify the class default and thus leak
+        # into every options object created later in the session. Give this instance its own copy
+        # of each mutable default (first definition in the MRO wins, like normal attribute lookup).
+        seen = set(vars(self))
+        for klass in type(self).__mro__:
+            if klass is object:
+                continue
+            for name, value in vars(klass).items():
+                if name in seen or name.startswith('__'):
+                    continue
+                seen.add(name)
+                if name not in _SHARED_CLASS_CONSTANTS and isinstance(value, (np.ndarray, list, dict)):
+                    setattr(self, name, _copyValue(value))
         # C-struct
         self.param = self.parameters()
 
@@ -2165,9 +2211,12 @@ class projectorClass:
                     self.NyPrior = self.Ny[0].item()
                     self.NzPrior = self.Nz[0].item()
                 else:
-                    self.NxPrior = self.Nx
-                    self.NyPrior = self.Ny
-                    self.NzPrior = self.Nz
+                    # Plain ints (the C struct fields are uint32). Nx/Ny/Nz may still be Python
+                    # ints here (they are converted to arrays later in addProjector) or already
+                    # arrays (repeated calls), so take the first element in either case.
+                    self.NxPrior = int(np.asarray(self.Nx).ravel()[0])
+                    self.NyPrior = int(np.asarray(self.Ny).ravel()[0])
+                    self.NzPrior = int(np.asarray(self.Nz).ravel()[0])
             else:
                 if self.eFOVIndices.size < 1:
                     self.eFOVIndices = np.zeros((self.Nz,1), dtype=np.uint8)
@@ -2180,9 +2229,10 @@ class projectorClass:
                 if self.useMaskBP:
                     self.maskPrior = self.maskPrior + (1 - self.maskBP)
         else:
-            self.NxPrior = self.Nx
-            self.NyPrior = self.Ny
-            self.NzPrior = self.Nz
+            # Plain ints, see the comment above (Nx/Ny/Nz can be ints or arrays here).
+            self.NxPrior = int(np.asarray(self.Nx).ravel()[0])
+            self.NyPrior = int(np.asarray(self.Ny).ravel()[0])
+            self.NzPrior = int(np.asarray(self.Nz).ravel()[0])
         if self.offsetCorrection:
             self.OffsetLimit = np.zeros((self.nProjections, 1), dtype=np.float32)
             for kk in range(self.nProjections):

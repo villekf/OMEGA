@@ -17,9 +17,11 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 """
+import copy
 import ctypes
 import numpy as np
 import warnings
+from ..projector.proj import _copyValue
 
 # ctypes scalar type -> NumPy dtype, used by _as_ptr() below to validate/coerce
 # the arrays pointed to by POINTER(...) struct fields.
@@ -68,6 +70,120 @@ _POINTER_NAME_OVERRIDES = {
 # type-6/PSF-blurring precomputed geometry), rather than through
 # _POINTER_NAME_OVERRIDES and _as_ptr().
 _POINTER_SPECIAL_FIELDS = {'blurPlanes', 'blurPlanes2', 'gFilter', 'gFSize'}
+
+
+# Large measurement-sized data fields that _privateOptionsCopy() shares with the
+# caller instead of deep-copying (memory): for these only the (nested) list
+# containers are copied, ndarrays are shared. Every write to them in the
+# reconstruction pipeline therefore has to be out-of-place (rebind, never write
+# into the array) or take a private copy first, unless _sharesCallerMemory() says
+# that the array no longer shares memory with the caller's arrays.
+_SHARED_DATA_FIELDS = ('SinM', 'SinDelayed', 'ScatterC', 'normalization', 'corrVector', 'trIndex', 'axIndex', 'TOFIndices')
+# Listmode event coordinate arrays, shared in the same way but only for
+# listmode/index-based data (see _optionsAreListmode()). For sinogram and CT data
+# they are derived/rescaled in place by the coordinate code and are copied.
+_SHARED_LISTMODE_FIELDS = ('x', 'z', 'uV')
+
+
+def _copyContainers(value):
+    """
+    Like _copyValue(), but only the list/tuple/dict containers are copied; the
+    ndarrays inside them are shared with the original.
+    """
+    if isinstance(value, list):
+        return [_copyContainers(v) for v in value]
+    if isinstance(value, tuple):
+        items = [_copyContainers(v) for v in value]
+        if hasattr(value, '_fields'):
+            return type(value)(*items)
+        return tuple(items)
+    if isinstance(value, dict):
+        return {k: _copyContainers(v) for k, v in value.items()}
+    return value
+
+
+def _collectArrays(value, out):
+    """Appends all non-empty ndarrays found in (nested) lists/tuples/dicts to `out`."""
+    if isinstance(value, np.ndarray):
+        if value.size > 0:
+            out.append(value)
+    elif isinstance(value, (list, tuple)):
+        for v in value:
+            _collectArrays(v, out)
+    elif isinstance(value, dict):
+        for v in value.values():
+            _collectArrays(v, out)
+
+
+def _sharesCallerMemory(options, array):
+    """
+    True if `array` may share memory with an array that _privateOptionsCopy()
+    shared with the caller, i.e. if it must not be written in place. Conservative
+    (np.may_share_memory only compares the memory bounds). Always False when the
+    options were not copied (keepOptionsUnchanged = False) or for non-arrays.
+    """
+    if not isinstance(array, np.ndarray):
+        return False
+    return any(np.may_share_memory(array, s) for s in getattr(options, '_callerSharedArrays', ()))
+
+
+def _optionsAreListmode(options):
+    """
+    True if the data in `options` is going to be handled as listmode/index-based
+    data. options.listmode itself is only derived inside addProjector(), i.e. it
+    is not yet set when the options are copied, so the same detection that
+    addProjector() uses is evaluated here. CT and SPECT data never count (their
+    x/z/uV are coordinates that are rescaled in place). Any failure to decide
+    means "not listmode", which just results in the safe full copy.
+    """
+    if options.CT or options.SPECT:
+        return False
+    try:
+        return bool(options.listmode) or bool(options.useIndexBasedReconstruction) or bool(options._isListModeCandidate())
+    except Exception:
+        return False
+
+
+def _privateOptionsCopy(options):
+    """
+    Returns a private working copy of the options object.
+
+    MATLAB passes the options struct by value, so a reconstruction never changes
+    the caller's options. The Python pipeline (addProjector, parseInputs,
+    prepassPhase, loadCorrections, linearizeData, the CT coordinate code, ...)
+    modifies the options object in place and not idempotently (Nx/Ny/Nz become
+    arrays, dL is rescaled, angles are offset, uV is flipped and scaled, the
+    measurement data is linearized and reordered by subset, ...). Calling
+    reconstructions_main twice with the same object would therefore start the
+    second call from the already-modified values. Working on a copy keeps the
+    caller's object exactly as the user set it.
+
+    All instance attributes are copied recursively (see _copyValue()), except
+    the large measurement/index data in _SHARED_DATA_FIELDS (and the listmode
+    coordinates in _SHARED_LISTMODE_FIELDS for listmode data), which are shared
+    with the caller. (The mutable class-level defaults, e.g. precondTypeMeas, are
+    already instance attributes: projectorClass.__init__ gives every object its
+    own copy.) The ctypes parameter struct is created anew. The shared arrays are
+    recorded in _callerSharedArrays.
+    Not used if options.keepOptionsUnchanged is False.
+    """
+    work = copy.copy(options)
+    work.param = type(options.param)()
+    shared = set(_SHARED_DATA_FIELDS)
+    if _optionsAreListmode(options):
+        shared.update(_SHARED_LISTMODE_FIELDS)
+    sharedArrays = []
+    for name, value in list(vars(options).items()):
+        if name == 'param':
+            continue
+        if name in shared:
+            _collectArrays(value, sharedArrays)
+            setattr(work, name, _copyContainers(value))
+        else:
+            setattr(work, name, _copyValue(value))
+    # Used by _sharesCallerMemory(): lets the pipeline write in place to arrays it owns
+    work._callerSharedArrays = tuple(sharedArrays)
+    return work
 
 
 def _as_ptr(options, attr, ctype):
@@ -314,6 +430,11 @@ def reconstructions_main(options):
     from .prepass import parseInputs
     from .prepass import loadCorrections
     tic = time.perf_counter()
+    # Work on a private copy (MATLAB value semantics): the pipeline below changes the
+    # options in place and not idempotently, so repeated calls with the same object
+    # must always start from the user's original values (opt out: keepOptionsUnchanged = False).
+    if getattr(options, 'keepOptionsUnchanged', True):
+        options = _privateOptionsCopy(options)
     options.addProjector()
     print('Preparing for reconstruction...')
     if not options.builtin:
@@ -480,7 +601,13 @@ def reconstructions_main(options):
     if isinstance(options.SinDelayed, list):
         options.SinDelayed = np.concatenate([np.asarray(frame).ravel(order='F') for frame in options.SinDelayed])
     if not options.CT and (not options.LSQR and not options.CGLS):
-        options.SinM[options.SinM < 0] = 0
+        negativeMask = options.SinM < 0
+        if negativeMask.any():
+            if _sharesCallerMemory(options, options.SinM):
+                # SinM can be the caller's array: out-of-place
+                options.SinM = np.where(negativeMask, options.SinM.dtype.type(0), options.SinM)
+            else:
+                options.SinM[negativeMask] = 0
     if options.FDK:
         options.precondTypeMeas[1] = True
     prepassPhase(options)

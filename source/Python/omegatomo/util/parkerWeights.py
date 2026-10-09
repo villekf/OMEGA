@@ -76,7 +76,10 @@ def ParkerWeights(options):
         
     epsilon = max(scanRange - (np.pi + 2 * delta), 0)
     
-    # Compute weights
+    # Compute weights. If options.SinM can be the caller's array (see _privateOptionsCopy())
+    # the weighted data is written to a new array, otherwise in place.
+    from omegatomo.reconstruction.recomain import _sharesCallerMemory
+    weightedSinM = np.empty_like(options.SinM) if _sharesCallerMemory(options, options.SinM) else options.SinM
     for iu in range(nU):
         g = alpha[iu]
         
@@ -95,6 +98,7 @@ def ParkerWeights(options):
         
         w2 = 0.5 * (_S(x1) + _S(x2) - _S(x3) - _S(x4))
         w2 = np.clip(w2, 0, 1)
-        options.SinM[iu, :, :] *= w2.reshape(1, -1)
+        weightedSinM[iu, :, :] = options.SinM[iu, :, :] * w2.reshape(1, -1)
+    options.SinM = weightedSinM
             
     # return options
