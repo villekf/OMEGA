@@ -735,6 +735,26 @@ extern "C" __global__
       Ay = Dy;
       Dy = yA;
     }
+#ifdef FDK
+    // The box sum is the integral of the filtered projection over the voxel footprint, so it is divided by the
+    // full footprint area (in detector pixels) to get the mean value
+    // Parts of the footprint outside the detector count as zero, consistent with the border sampling of 
+    // projector type 4 and with the offset redundancy weighting
+    // The mean is then weighted with the same weight as in projector type 4, i.e.
+    // (DSC^2 / U^2) * pi / (nProjections * dPitch.x), where
+    // U = DSC + x cos - y sin is computed here from the source position: with DSC^2 = s.x^2 + s.y^2,
+    // DSC^2 / U^2 = (DSC^2 / (DSC^2 - dV.x * s.x - dV.y * s.y))^2
+    // U only depends on the transaxial position, so it is shared by all the axial voxels of this thread
+    const float fdkDSC2 = s.x * s.x + s.y * s.y;
+    const float fdkU = fdkDSC2 / (fdkDSC2 - dV.x * s.x - dV.y * s.y);
+    const float fdkW = fdkU * fdkU * M_PI_F * invNProj / d_dPitch.x;
+    // Footprint length in the row direction in detector pixels
+    const float fdkLenX = (Ax - Dx) / d_dPitch.x;
+    // Footprint length in the column direction in detector pixels
+    const float fdkLenY = (Ay - Dy) / d_dPitch.y;
+	// Footprint area
+    const float fdkArea = fdkLenX * fdkLenY;
+#endif
     const float dz = (CFLOAT(kk) + 0.5f) * invNProj;
     const float AxN = Ax * invKoko.x;
     const float DxN = Dx * invKoko.x;
@@ -782,14 +802,16 @@ extern "C" __global__
            CLONG_rtz(d_nRows);
     D *= d_norm[indX + indY + indZ];
 #endif
-    const float3 vd = dV - s;
     float kerroin;
+#ifdef FDK
+    // Avoid the rare zero-case
+    kerroin = fdkArea > 0.f ? fdkW / fdkArea : 0.f;
+#else
+    const float3 vd = dV - s;
     if (sxDim)
       kerroin = d_d.y * LENGTH(vd) / FABS(vd.y);
     else
       kerroin = d_d.x * LENGTH(vd) / FABS(vd.x);
-#ifdef FDK
-    kerroin /= 6.f;
 #endif
 #ifdef OFFSET
     float OffTT;
@@ -872,13 +894,12 @@ extern "C" __global__
       vRD.z += d_d.z;
       vLU.z += d_d.z;
       dV2.z += d_d.z;
+#ifndef FDK
       const float3 vd2 = dV2 - s;
       if (sxDim)
         kerroin = d_d.y * LENGTH(vd2) / FABS(vd2.y);
       else
         kerroin = d_d.x * LENGTH(vd2) / FABS(vd2.x);
-#ifdef FDK
-      kerroin /= 6.f;
 #endif
       tLU = upperPart / (dot(-vLU, crossP));
       tRD = upperPart / (dot(-vRD, crossP));
@@ -927,6 +948,11 @@ extern "C" __global__
         D = read_imagef(d_IImage, sampler2, (float4)(coordD, 0.f)).w;
 #endif
       }
+#ifdef FDK
+      const float fdkLenY = (Ay - Dy) / d_dPitch.y;
+      const float fdkArea = fdkLenX * fdkLenY;
+      kerroin = fdkArea > 0.f ? fdkW / fdkArea : 0.f;
+#endif
       const float AyN2 = Ay * invKoko.y;
       const float DyN2 = Dy * invKoko.y;
 #ifdef OFFSET
