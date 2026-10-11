@@ -127,17 +127,9 @@ DEVICE FLOAT spectOrthSupportRadius(
     return 3.5f * SQRT(fwhm * fwhm + coneOfResponseStdCoeffC * coneOfResponseStdCoeffC) * INV_2SQRT2LN2;
 }
 
-DEVICE bool spectOrthPrimaryIsX(const FLOAT3 diff) {
-    return FABS(diff.x) >= FABS(diff.y);
-}
-
-DEVICE int spectOrthClampedIndex(const FLOAT coord, const FLOAT b0, const FLOAT d0, const uint n0) {
-    const int maxIndex = CINT(n0) - 1;
-    return MIN(MAX(CINT_rtz((coord - b0) / d0), 0), maxIndex);
-}
 #endif
 
-#if defined(ODRT_TEXTURE)
+#if defined(USEIMAGES) && defined(CUDA) && defined(PYTHON)
 #define SPECTPSF_RESOURCE IMAGE3D
 #else
 #define SPECTPSF_RESOURCE const CLGLOBAL float* CLRESTRICT
@@ -145,7 +137,7 @@ DEVICE int spectOrthClampedIndex(const FLOAT coord, const FLOAT b0, const FLOAT 
 
 // Zero-extended read from a Fortran/ArrayFire ordered PSF volume. The first
 // axis is contiguous: u + Nu * (v + Nv * depth).
-#if !defined(ODRT_TEXTURE)
+#if !defined(USEIMAGES) || !defined(CUDA) || !defined(PYTHON)
 DEVICE float readSPECTPSF3DZero(const CLGLOBAL float* psf,
 	const uint Nu, const uint Nv, const uint Nd,
 	const int iu, const int iv, const int id) {
@@ -182,7 +174,7 @@ DEVICE float sampleSPECTPSF3D(SPECTPSF_RESOURCE psf,
 		!(fd >= -1.f && fd < (float)Nd))
 		return 0.f;
 
-#if defined(ODRT_TEXTURE)
+#if defined(USEIMAGES) && defined(CUDA) && defined(PYTHON)
 	// CUDA's unnormalized texture coordinates place texel centers at n+0.5.
 	// Border addressing supplies zero-valued neighbors for edge interpolation.
 	return tex3D<float>(psf, fu + 0.5f, fv + 0.5f, fd + 0.5f);

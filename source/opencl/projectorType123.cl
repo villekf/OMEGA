@@ -173,11 +173,7 @@ void projectorType123(
     const float coneOfResponseStdCoeffB,
     const float coneOfResponseStdCoeffC,
 #if defined(ORTH)
-#if defined(ODRT_TEXTURE)
-    IMAGE3D gFilter,
-#else
-    const CLGLOBAL float* CLRESTRICT gFilter,
-#endif
+    SPECTPSF_RESOURCE gFilter,
     const uint gFilterNu,
     const uint gFilterNv,
     const uint gFilterNd,
@@ -548,6 +544,9 @@ void projectorType123(
 #endif
     }
     s = collimatorOrigin;
+    // The ODRT depth coordinate now starts at the original collimator source;
+    // the ellipse-entry offset is only needed while s remains clipped.
+    rayDepthOffset = FLOAT_ZERO;
 #endif
 #elif defined(LISTMODE) && !defined(SENS) // Listmode data
 #if defined(SPECT)
@@ -657,13 +656,35 @@ void projectorType123(
 #endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #if defined(SPECT) && defined(ORTH) && !defined(VOL) && (!defined(ATN) || defined(MRATN))
-	// SPECT ODRT has finite Gaussian support around the central ray.  Use the
-	// total FOV as the physical admission box, but only traverse voxels in this
-	// local volume so multiresolution subvolumes keep their own indexing.
+	// SPECT ODRT has finite PSF support around the central ray. Use the total
+	// FOV as the physical admission box, but traverse only this local volume so
+	// multiresolution subvolumes keep their own indexing.
 	const FLOAT3 totalFOVmin = ellipseCenter - ellipseRadii;
 	const FLOAT3 totalFOVmax = ellipseCenter + ellipseRadii;
-	const FLOAT supportRadius = spectOrthSupportRadius(s, diff, totalFOVmin, totalFOVmax, coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC);
-	const FLOAT3 supportVec = CMFLOAT3(supportRadius, supportRadius, supportRadius);
+	FLOAT supportRadius = spectOrthSupportRadius(s, diff, totalFOVmin, totalFOVmax, coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC);
+	FLOAT3 supportVec = CMFLOAT3(supportRadius, supportRadius, supportRadius);
+	if (gFilterCustom) {
+		// A user PSF has a finite rectangular support in its ray-local u/v plane. Project that rectangle onto world axes so the multiresolution outer scan includes every voxel the inner PSF lookup can accept.
+		const FLOAT rayLength = LENGTH(diff);
+		if (rayLength > 1.0e-6f) {
+			const FLOAT3 ray = diff / rayLength;
+			FLOAT3 ref = CMFLOAT3(FLOAT_ZERO, FLOAT_ZERO, FLOAT_ONE);
+			if (FABS(ray.z) > 0.999f)
+				ref = CMFLOAT3(FLOAT_ONE, FLOAT_ZERO, FLOAT_ZERO);
+			const FLOAT3 e1 = NORMALIZE(CROSS(ref, ray));
+			const FLOAT3 e2 = CROSS(ray, e1);
+			const FLOAT uLimit = FLOAT_HALF * (CFLOAT(gFilterNu) + FLOAT_ONE) * gFilterDu;
+			const FLOAT vLimit = FLOAT_HALF * (CFLOAT(gFilterNv) + FLOAT_ONE) * gFilterDv;
+			const FLOAT3 absE1 = CMFLOAT3(FABS(e1.x), FABS(e1.y), FABS(e1.z));
+			const FLOAT3 absE2 = CMFLOAT3(FABS(e2.x), FABS(e2.y), FABS(e2.z));
+			supportVec = absE1 * uLimit + absE2 * vLimit;
+			supportRadius = FMAX(supportVec.x, FMAX(supportVec.y, supportVec.z));
+		} else {
+			supportVec = CMFLOAT3(FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO);
+			supportRadius = FLOAT_ZERO;
+		}
+	}
+	const bool localXY = FABS(diff.x) >= FABS(diff.y);
 	FLOAT totalTmin = FLOAT_ZERO;
 	FLOAT totalTmax = FLOAT_ZERO;
 	if (supportRadius > FLOAT_ZERO && spectOrthRayBoxInterval(s, diff, totalFOVmin - supportVec, totalFOVmax + supportVec, &totalTmin, &totalTmax)) {
@@ -690,7 +711,6 @@ void projectorType123(
 #ifdef ATNM
 				temp *= d_atten[idx];
 #endif
-				const bool localXY = spectOrthPrimaryIsX(diff);
 				FLOAT3 localS = s;
 				FLOAT3 localDiff = diff;
 				uint3 localNN = d_Nxyz;
@@ -723,10 +743,12 @@ void projectorType123(
 
 				const FLOAT primary0 = FMAD(localTmin, localDiff.x, localS.x);
 				const FLOAT primary1 = FMAD(localTmax, localDiff.x, localS.x);
-				const FLOAT primaryMin = FMIN(primary0, primary1) - supportRadius;
-				const FLOAT primaryMax = FMAX(primary0, primary1) + supportRadius;
-				const int primaryStart = spectOrthClampedIndex(primaryMin, localB1, localD1, localNN.x);
-				const int primaryEnd = spectOrthClampedIndex(primaryMax, localB1, localD1, localNN.x);
+				const FLOAT primarySupport = localXY ? supportVec.x : supportVec.y;
+				const FLOAT primaryMin = FMIN(primary0, primary1) - primarySupport;
+				const FLOAT primaryMax = FMAX(primary0, primary1) + primarySupport;
+				const int primaryMaxIndex = CINT(localNN.x) - 1;
+				const int primaryStart = MIN(MAX(CINT_rtz((primaryMin - localB1) / localD1), 0), primaryMaxIndex);
+				const int primaryEnd = MIN(MAX(CINT_rtz((primaryMax - localB1) / localD1), 0), primaryMaxIndex);
 				const FLOAT supportMid = (localTmin + localTmax) * FLOAT_HALF;
 #if defined(ATN) && defined(MRATN)
 				FLOAT attenuationPrefix = FLOAT_ZERO;
@@ -756,8 +778,8 @@ void projectorType123(
 					previousT = tSeed;
 					const FLOAT supportAttenuation = EXP(attenuationPrefix);
 #endif
-					const int seed2 = spectOrthClampedIndex(FMAD(tSeed, localDiff.y, localS.y), localB2, localD2, localN1);
-					const int seedZ = spectOrthClampedIndex(FMAD(tSeed, localDiff.z, localS.z), _bz, dz, d_Nxyz.z);
+					const int seed2 = MIN(MAX(CINT_rtz((FMAD(tSeed, localDiff.y, localS.y) - localB2) / localD2), 0), CINT(localN1) - 1);
+					const int seedZ = MIN(MAX(CINT_rtz((FMAD(tSeed, localDiff.z, localS.z) - _bz) / dz), 0), CINT(d_Nxyz.z) - 1);
 					int tempkSupport = seedZ;
 					orthDistance3D(primary,
 						localDiff,
@@ -1663,6 +1685,21 @@ void projectorType123(
             temp /= spectNormalizationLength;
 #endif
             temp *= d_d.x * d_d.y * d_d.z;
+#if defined(FP) && defined(TOTLENGTH)
+            // The geometry-only reset above supplies the final FP scale.
+            // Restore detector factors here: unlike BP, FP applies `temp`
+            // only after the voxel traversal in forwardProjectAF.
+#ifdef NORM
+            temp *= local_norm;
+#endif
+#ifdef SCATTER
+            temp *= local_scat;
+#endif
+            temp *= global_factor;
+#ifdef ATNM
+            temp *= d_atten[idx];
+#endif
+#endif
 #endif
 #if !defined(TOTLENGTH) && !defined(CT) && defined(FP)
 			if (LL == 0.f)

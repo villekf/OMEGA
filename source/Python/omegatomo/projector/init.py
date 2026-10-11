@@ -690,10 +690,6 @@ def initProjector(self):
                 bOpt = ('-DHIP','-DPYTHON',)
             else:
                 bOpt = ('-DCUDA','-DPYTHON',)
-                if (self.useCuPy and self.SPECT
-                        and (self.FPType in (2, 3) or self.BPType in (2, 3))
-                        and getattr(self, '_useODRTTexture', True)):
-                    bOpt += ('-DODRT_TEXTURE',)
         else:
             bOpt =('-cl-single-precision-constant -DOPENCL',)
             import pyopencl as cl
@@ -941,7 +937,7 @@ def initProjector(self):
                 # OpenCL image APIs differ too much to share one call).
                 upload = cp.asarray
                 if self.SPECT and (self.FPType in (2, 3) or self.BPType in (2, 3)):
-                    if (not cupyROCm() and getattr(self, '_useODRTTexture', True)):
+                    if self.useImages and not cupyROCm():
                         self.d_gFilterODRT = None
                         _create_odrt_psf_texture(self, cp)
                     else:
