@@ -471,6 +471,7 @@ class ProjectorClass {
 		bool angle = false;
 		bool rayShifts = false;
 		bool odrtPSF = false;
+		bool odrtPSFImage = false;
 		int zType = -1;
 		int xSteps = -1;
 		int zSteps = -1;
@@ -578,6 +579,7 @@ class ProjectorClass {
 		unsigned int channels = 1;
 		CUresourceViewFormat viewFormat = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
 		CUfilter_mode filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
+		CUaddress_mode addressMode = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
 		unsigned int flags = 0;
 	};
 
@@ -619,10 +621,10 @@ class ProjectorClass {
 
 		resDescLocal.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
 		resDescLocal.res.array.hArray = array;
-		texDescLocal.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-		texDescLocal.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+		texDescLocal.addressMode[0] = spec.addressMode;
+		texDescLocal.addressMode[1] = spec.addressMode;
 		if (is3D)
-			texDescLocal.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+			texDescLocal.addressMode[2] = spec.addressMode;
 		texDescLocal.filterMode = spec.filterMode;
 		texDescLocal.flags = spec.flags;
 		viewDescLocal.height = spec.height;
@@ -981,6 +983,7 @@ class ProjectorClass {
 		if ((inputScalars.useImages && inputScalars.FPType != 4 && inputScalars.FPType != 5 && inputScalars.BPType != 5) || 
 			(inputScalars.FPType == 4 || inputScalars.FPType == 5 || inputScalars.BPType == 5)) {
 			ADD_OPT(options, "-DUSEIMAGES");
+			inputScalars.useImages = true;
 			inputScalars.useBuffers = false;
 			memAlloc.useBuffers = false;
 		}
@@ -2414,6 +2417,8 @@ public:
 	// Device buffers shared across backends
 	DEVBUFF_t d_xcenter, d_ycenter, d_zcenter, d_V, d_TOFCenter, d_eFOVIndices, d_weights, d_angle, d_g, d_uref,
 		d_rayShiftsDetector, d_rayShiftsSource, d_maskPriorB, d_gFilter;
+	TEX3D_t d_gFilterTexture{};
+	TEXARRAY_t d_gFilterArray{};
 	std::vector<std::vector<DEVBUFF_t>> d_maskBPB;
 	std::vector<std::vector<DEVBUFF_t>> d_attenB;
 	AFDEVBUFF_t d_output, d_meanBP, d_meanFP, d_inputB, d_W, d_gaussianNLM;
@@ -2562,8 +2567,15 @@ public:
 		}
 		if (memAlloc.V)
 			getErrorString(cuMemFree(d_V));
-		if (memAlloc.odrtPSF)
-			getErrorString(cuMemFree(d_gFilter));
+		if (memAlloc.odrtPSF) {
+			if (memAlloc.odrtPSFImage) {
+				getErrorString(cuTexObjectDestroy(d_gFilterTexture));
+				getErrorString(cuArrayDestroy(d_gFilterArray));
+			}
+			else {
+				getErrorString(cuMemFree(d_gFilter));
+			}
+		}
 		if (memAlloc.atten) {
 			for (size_t tt = 0; tt < d_attenB.size(); ++tt) {
 				for (size_t resolution = 0; resolution < d_attenB[tt].size(); ++resolution) {
@@ -3492,9 +3504,40 @@ public:
 			}
 			if (inputScalars.SPECT &&
 				(inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3)) {
-				ALLOC_BUFFER(d_gFilter, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_gFilter);
-				CHECK(status, "\n", (STATUS_t)(-1));
-				memAlloc.odrtPSF = true;
+				if (inputScalars.useImages) {
+					const float dummyPSFValue = 0.f;
+					const float* psfValues = inputScalars.gFilterData ? inputScalars.gFilterData : &dummyPSFValue;
+					const size_t nu = inputScalars.gFilterNu ? inputScalars.gFilterNu : 1U;
+					const size_t nv = inputScalars.gFilterNv ? inputScalars.gFilterNv : 1U;
+					const size_t nd = inputScalars.gFilterNd ? inputScalars.gFilterNd : 1U;
+#if defined(CUDA) || defined(HIP)
+					auto psfTextureSpec = cudaFloatTextureSpec(nv, nu, nd, BACKEND_TEXTURE_LINEAR, 0);
+					psfTextureSpec.addressMode = CUaddress_mode::CU_TR_ADDRESS_MODE_BORDER;
+					status = createCudaTexture3DFromHost(d_gFilterTexture, d_gFilterArray, psfValues, psfTextureSpec);
+#else
+					CREATE_FLOAT_TEXTURE3D_FROM_HOST(d_gFilterTexture, d_gFilterArray, psfValues,
+						nu, nv, nd, BACKEND_TEXTURE_LINEAR, 0);
+#endif
+					if (status != SUCCESS_VALUE) {
+#if defined(CUDA) || defined(HIP)
+						if (d_gFilterTexture)
+							getErrorString(cuTexObjectDestroy(d_gFilterTexture));
+						if (d_gFilterArray)
+							getErrorString(cuArrayDestroy(d_gFilterArray));
+						d_gFilterTexture = 0;
+						d_gFilterArray = nullptr;
+#endif
+					}
+					CHECK(status, "Failed to create SPECT ODRT PSF image/texture\n", (STATUS_t)(-1));
+					memAlloc.odrtPSFImage = true;
+					memAlloc.odrtPSF = true;
+					memSize += sizeof(float) * inputScalars.size_gFilter;
+				}
+				else {
+					ALLOC_BUFFER(d_gFilter, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_gFilter);
+					CHECK(status, "\n", (STATUS_t)(-1));
+					memAlloc.odrtPSF = true;
+				}
 			}
 			// Detector coordinates
 			if ((!(inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) || inputScalars.indexBased) {
@@ -3836,7 +3879,7 @@ public:
 				CHECK(status, "\n", (STATUS_t)(-1));
 				memSize += (sizeof(float) * inputScalars.size_V);
 			}
-			if (memAlloc.odrtPSF) {
+			if (memAlloc.odrtPSF && !memAlloc.odrtPSFImage) {
 				// An OpenCL non-blocking upload must not outlive MATLAB-owned option
 				// memory. The lookup is static, so upload it synchronously once.
 				const float dummyPSFValue = 0.f;
@@ -4403,7 +4446,12 @@ public:
 				KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.coneOfResponseStdCoeffB);
 				KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.coneOfResponseStdCoeffC);
 				if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-					KARG(FPArgs, kernelFP, kernelIndFP, d_gFilter);
+					if (inputScalars.useImages) {
+						KARG(FPArgs, kernelFP, kernelIndFP, d_gFilterTexture);
+					}
+					else {
+						KARG(FPArgs, kernelFP, kernelIndFP, d_gFilter);
+					}
 					KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.gFilterNu);
 					KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.gFilterNv);
 					KARG(FPArgs, kernelFP, kernelIndFP, inputScalars.gFilterNd);
@@ -4442,7 +4490,12 @@ public:
 				KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.coneOfResponseStdCoeffB);
 				KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.coneOfResponseStdCoeffC);
 				if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
-					KARG(BPArgs, kernelBP, kernelIndBP, d_gFilter);
+					if (inputScalars.useImages) {
+						KARG(BPArgs, kernelBP, kernelIndBP, d_gFilterTexture);
+					}
+					else {
+						KARG(BPArgs, kernelBP, kernelIndBP, d_gFilter);
+					}
 					KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.gFilterNu);
 					KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.gFilterNv);
 					KARG(BPArgs, kernelBP, kernelIndBP, inputScalars.gFilterNd);
@@ -4480,7 +4533,12 @@ public:
 					KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.coneOfResponseStdCoeffB);
 					KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.coneOfResponseStdCoeffC);
 					if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
-						KARG(SensArgs, kernelSensList, kernelIndSens, d_gFilter);
+						if (inputScalars.useImages) {
+							KARG(SensArgs, kernelSensList, kernelIndSens, d_gFilterTexture);
+						}
+						else {
+							KARG(SensArgs, kernelSensList, kernelIndSens, d_gFilter);
+						}
 						KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.gFilterNu);
 						KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.gFilterNv);
 						KARG(SensArgs, kernelSensList, kernelIndSens, inputScalars.gFilterNd);
@@ -5176,7 +5234,12 @@ public:
 				if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 					KARG_METAL_SLOT(kernelIndFPSubIter, 22);
 #if defined(METAL)
-					KARG(kTemp, kernelFP, kernelIndFPSubIter, d_gFilter);
+					if (inputScalars.useImages) {
+						KARG(kTemp, kernelFP, kernelIndFPSubIter, d_gFilterTexture);
+					}
+					else {
+						KARG(kTemp, kernelFP, kernelIndFPSubIter, d_gFilter);
+					}
 #endif
 				}
 			}
@@ -5579,7 +5642,12 @@ public:
 				if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 					KARG_METAL_SLOT(kernelIndBPSubIter, 22);
 #if defined(METAL)
-					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_gFilter);
+					if (inputScalars.useImages) {
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_gFilterTexture);
+					}
+					else {
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_gFilter);
+					}
 #endif
 				}
 			}

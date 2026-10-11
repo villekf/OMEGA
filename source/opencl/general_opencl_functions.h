@@ -249,6 +249,12 @@ constexpr metal::sampler samplerMask(
     metal::address::clamp_to_edge
 );
 
+constexpr metal::sampler samplerSPECTPSF(
+    metal::coord::normalized,
+    metal::filter::linear,
+    metal::address::clamp_to_zero
+);
+
 using metal::dot;
 
 #ifdef HALF // 16-bit floating point
@@ -522,6 +528,7 @@ inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
 #define KERNEL3 __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE2, LOCAL_SIZE3)))
 #define KERN __kernel
 __constant sampler_t samplerIm = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_LINEAR | CLK_ADDRESS_CLAMP_TO_EDGE;
+__constant sampler_t samplerSPECTPSF = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_LINEAR | CLK_ADDRESS_CLAMP;
 #ifdef PTYPE4
 __constant sampler_t samplerForw = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_LINEAR | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif

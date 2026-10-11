@@ -28,9 +28,11 @@ def _append_odrt_psf_args(args, self):
     spacing = np.asarray(getattr(self, 'gFilterSpacing', np.empty(0)), dtype=np.float32).reshape(-1)
     if spacing.size != 3:
         spacing = np.zeros(3, dtype=np.float32)
-    psf_texture = getattr(self, 'd_gFilterODRTTexture', None)
-    if psf_texture is not None:
-        args.img(psf_texture)
+    if self.useImages:
+        psf_image = getattr(self, 'd_gFilterODRTImage', None)
+        if psf_image is None:
+            raise RuntimeError('useImages is enabled but the SPECT ODRT PSF image was not initialized.')
+        args.img(psf_image)
     else:
         args.buf(self.d_gFilterODRT)
     args.u32(int(getattr(self, 'gFilterNu', 0)))
@@ -83,6 +85,7 @@ def _create_odrt_psf_texture(self, cp):
     # Keep the backing CUDA array alive for the full projector lifetime.
     self.d_gFilterODRTArray = array
     self.d_gFilterODRTTexture = texture
+    self.d_gFilterODRTImage = texture
 
 
 def _build_kIndF(self):
@@ -571,17 +574,12 @@ def initProjector(self):
         if self.useImages:
             print('CuPy does not support textures on ROCm/HIP. Setting useImages to False, buffers will be used instead!')
             self.useImages = False
-    # ProjectorClass.h:979-984 forces -DUSEIMAGES (silently, no message) whenever FPType is 4 or
-    # 5 or BPType is 5 -- those kernels have no non-texture code path -- on every backend. The
-    # CuPy argument builders (_build_kIndF/_build_kIndB, `self.useImages or self.useCUDA`) also
-    # already always hand CUDA a texture for attenuation regardless of useImages. Force
-    # useImages the same way here so every useImages-gated choice (the -DUSEIMAGES compile flag
-    # below, and every image-vs-buffer argument builder) stays in agreement -- otherwise a
-    # user-requested useImages=False could compile a kernel that expects textures while Python
-    # still hands it buffers (or vice versa). Skip CuPy-on-ROCm, which cannot use textures at
-    # all and was already handled (with its own error/fallback) just above.
+    # ProjectorClass.h forces -DUSEIMAGES for FPType 4/5 and BPType 5 because those kernels
+    # have no buffer implementation. Keep that constraint aligned here. For the other CUDA
+    # projector types, useImages remains controlled by the user's setting: the CuPy argument
+    # builder's img() method passes either a texture object or a buffer through unchanged.
     rocm_no_textures = self.useCuPy and self.useCUDA and cupyROCm()
-    if not rocm_no_textures and (self.FPType in (4, 5) or self.BPType == 5 or self.useCUDA):
+    if not rocm_no_textures and (self.FPType in (4, 5) or self.BPType == 5):
         self.useImages = True
     # if self.useAF == False and (self.FPType == 5 or self.BPType == 5):
     #     raise ValueError('Branchless distance-driven (projector type 5) can only be used with Arrayfire!')
@@ -941,6 +939,7 @@ def initProjector(self):
                         self.d_gFilterODRT = None
                         _create_odrt_psf_texture(self, cp)
                     else:
+                        self.d_gFilterODRTImage = None
                         self.d_gFilterODRT = upload(_odrt_psf_host_buffer(self))
                 self.d_Sens = cp.empty(shape=(1,1), dtype=cp.float32)
                 _initialize_coordinate_buffers(self, upload)
@@ -1167,7 +1166,25 @@ def initProjector(self):
             def upload(value):
                 return cl.array.to_device(self.queue, value)
             if self.SPECT and (self.FPType in (2, 3) or self.BPType in (2, 3)):
-                self.d_gFilterODRT = upload(_odrt_psf_host_buffer(self))
+                if self.useImages:
+                    imformat = cl.ImageFormat(cl.channel_order.A, cl.channel_type.FLOAT)
+                    nu = int(getattr(self, 'gFilterNu', 0))
+                    nv = int(getattr(self, 'gFilterNv', 0))
+                    nd = int(getattr(self, 'gFilterNd', 0))
+                    if not (nu and nv and nd):
+                        nu = nv = nd = 1
+                    host_psf = np.ascontiguousarray(_odrt_psf_host_buffer(self))
+                    self.d_gFilterODRTImage = _cl_image(
+                        self.clctx,
+                        cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+                        imformat,
+                        (nu, nv, nd),
+                        host_psf,
+                    )
+                    self.d_gFilterODRT = None
+                else:
+                    self.d_gFilterODRTImage = None
+                    self.d_gFilterODRT = upload(_odrt_psf_host_buffer(self))
             _initialize_coordinate_buffers(self, upload)
             # Precomputed per-projection geometry for the BDD backprojection (see -DGEOM5 in projectorType5.cl)
             if self.BPType == 5 and self.CT and self.listmode == 0:

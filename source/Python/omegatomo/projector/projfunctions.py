@@ -1128,7 +1128,7 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                     kIndLoc = args.apply_opencl(self.knlF, kIndLoc)
                 elif self.FPType in [1, 2, 3]:
                     if not self.useImages and not self.useAF:
-                        f_arg = f.data
+                        f_arg = f[k].data if isinstance(f, list) else f.data
                     else:
                         f_arg = d_im
                     y_arg = yD if self.useAF else y.data

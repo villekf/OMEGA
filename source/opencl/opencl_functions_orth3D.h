@@ -129,15 +129,9 @@ DEVICE FLOAT spectOrthSupportRadius(
 
 #endif
 
-#if defined(USEIMAGES) && defined(CUDA) && defined(PYTHON)
-#define SPECTPSF_RESOURCE IMAGE3D
-#else
-#define SPECTPSF_RESOURCE const CLGLOBAL float* CLRESTRICT
-#endif
-
 // Zero-extended read from a Fortran/ArrayFire ordered PSF volume. The first
 // axis is contiguous: u + Nu * (v + Nv * depth).
-#if !defined(USEIMAGES) || !defined(CUDA) || !defined(PYTHON)
+#ifndef USEIMAGES
 DEVICE float readSPECTPSF3DZero(const CLGLOBAL float* psf,
 	const uint Nu, const uint Nv, const uint Nd,
 	const int iu, const int iv, const int id) {
@@ -156,7 +150,7 @@ DEVICE float readSPECTPSF3DZero(const CLGLOBAL float* psf,
 // pitches in mm. Trilinear interpolation uses zero extension:
 // each out-of-range corner contributes zero, including within one sample pitch
 // of the table boundary. This gives a smooth falloff at finite PSF support.
-DEVICE float sampleSPECTPSF3D(SPECTPSF_RESOURCE psf,
+DEVICE float sampleSPECTPSF3D(IMTYPE psf,
 	const uint Nu, const uint Nv, const uint Nd,
 	const float u_mm, const float v_mm, const float depth_mm,
 	const float du_mm, const float dv_mm, const float dd_mm) {
@@ -174,10 +168,18 @@ DEVICE float sampleSPECTPSF3D(SPECTPSF_RESOURCE psf,
 		!(fd >= -1.f && fd < (float)Nd))
 		return 0.f;
 
-#if defined(USEIMAGES) && defined(CUDA) && defined(PYTHON)
+#ifdef USEIMAGES
+	#if defined(METAL)
+	const float3 texCoord = float3((fu + 0.5f) / (float)Nu,
+		(fv + 0.5f) / (float)Nv, (fd + 0.5f) / (float)Nd);
+	return psf.sample(samplerSPECTPSF, texCoord).r;
+	#elif defined(OPENCL)
+	return read_imagef(psf, samplerSPECTPSF, (float4)(fu + 0.5f, fv + 0.5f, fd + 0.5f, 0.f)).w;
+	#else
 	// CUDA's unnormalized texture coordinates place texel centers at n+0.5.
 	// Border addressing supplies zero-valued neighbors for edge interpolation.
 	return tex3D<float>(psf, fu + 0.5f, fv + 0.5f, fd + 0.5f);
+	#endif
 #else
 
 	const float bu = FLOOR(fu), bv = FLOOR(fv), bd = FLOOR(fd);
@@ -308,7 +310,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 #ifdef SPECT
     , const FLOAT coneOfResponseStdCoeffA, const FLOAT coneOfResponseStdCoeffB, const FLOAT c2, const FLOAT orth_ray_length_inv_signed
 	, const FLOAT rayDepthOffset
-	, SPECTPSF_RESOURCE gFilter, const uint Nu, const uint Nv, const uint Nd
+	, IMTYPE gFilter, const uint Nu, const uint Nv, const uint Nd
 	, const FLOAT du, const FLOAT dv, const FLOAT dd, const bool gFilterCustom
 	, const FLOAT3 ray, const FLOAT3 e1, const FLOAT3 e2
 #endif
@@ -441,7 +443,7 @@ DEVICE int orthDistance3D(const int tempi,
 #ifdef SPECT
     , const FLOAT coneOfResponseStdCoeffA, const FLOAT coneOfResponseStdCoeffB, const FLOAT coneOfResponseStdCoeffC, const FLOAT orth_ray_length_inv_signed
 	, const FLOAT rayDepthOffset
-	, SPECTPSF_RESOURCE gFilter, const uint Nu, const uint Nv, const uint Nd
+	, IMTYPE gFilter, const uint Nu, const uint Nv, const uint Nd
 	, const FLOAT du, const FLOAT dv, const FLOAT dd, const bool gFilterCustom
 #endif
 ) {

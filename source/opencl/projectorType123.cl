@@ -156,7 +156,11 @@ void projectorType123(
 	const CLGLOBAL uint* d_detectorVector [[buffer(21)]],
 #endif
 #if defined(SPECT) && defined(ORTH)
-	const CLGLOBAL float* gFilter [[buffer(22)]],
+#ifdef USEIMAGES
+	IMTYPE gFilter [[texture(22)]],
+#else
+	IMTYPE gFilter [[buffer(22)]],
+#endif
 #endif
 	uint3 temp_i [[thread_position_in_grid]]   // global id
 
@@ -173,7 +177,7 @@ void projectorType123(
     const float coneOfResponseStdCoeffB,
     const float coneOfResponseStdCoeffC,
 #if defined(ORTH)
-    SPECTPSF_RESOURCE gFilter,
+    IMTYPE gFilter,
     const uint gFilterNu,
     const uint gFilterNv,
     const uint gFilterNd,
