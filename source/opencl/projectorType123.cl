@@ -769,17 +769,20 @@ void projectorType123(
 					tSeed = FMIN(FMAX(tSeed, localTmin), localTmax);
 #if defined(ATN) && defined(MRATN)
 					// The ray may miss this active slab while its finite ODRT support
-					// overlaps it. Integrate the selected full-FOV attenuation grid
-					// from the physical ray start to this support plane in either case.
+					// overlaps it. For cells on the ray, use the same attenuation
+					// endpoint as ordinary full-FOV ODRT: the exit of the current
+					// Siddon cell, rather than its center plane.
 					tSeed = FMIN(FMAX(tSeed, FLOAT_ZERO), FLOAT_ONE);
+					const FLOAT tChordExit = multiresolutionSiddonCellExitParameter(
+						s, diff, tSeed, b, d_d, d_Nxyz);
 					const FLOAT segmentLog = integrate_multiresolution_attenuation_segment(
-						d_atten, s, diff, FMIN(previousT, tSeed), FMAX(previousT, tSeed), L,
+						d_atten, s, diff, FMIN(previousT, tChordExit), FMAX(previousT, tChordExit), L,
 						atnNx, atnNy, atnNz, atnDx, atnDy, atnDz, atnBx, atnBy, atnBz);
-					if (tSeed >= previousT)
+					if (tChordExit >= previousT)
 						attenuationPrefix += segmentLog;
 					else
 						attenuationPrefix -= segmentLog;
-					previousT = tSeed;
+					previousT = tChordExit;
 					const FLOAT supportAttenuation = EXP(attenuationPrefix);
 #endif
 					const int seed2 = MIN(MAX(CINT_rtz((FMAD(tSeed, localDiff.y, localS.y) - localB2) / localD2), 0), CINT(localN1) - 1);
