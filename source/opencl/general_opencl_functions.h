@@ -1945,7 +1945,8 @@ DEVICE void d_g_s_precomp(const float tmin, const float t_min, const float tmax,
 		// (2) and (19)
 		const float p_t = s + tmin * (diff);
 		// (12)
-		*v_min = CUINT_rtp((p_t - b) / d);
+		const uint v = CUINT_rtp((p_t - b) / d);
+		*v_min = v < 1u ? 1u : v;
 	}
 	if (tmax == t_max)
 		// (13)
@@ -1957,7 +1958,7 @@ DEVICE void d_g_s_precomp(const float tmin, const float t_min, const float tmax,
 		*v_max = CUINT_sat_rtz((p_t - b) / d);
 	}
 	// (9)
-	*t_0 += ((CFLOAT(*v_min) * d) / (diff));
+	*t_0 = (b + CFLOAT(*v_min) * d - s) / diff;
 	//  (29)
 	*v_u = 1;
 }
@@ -1973,7 +1974,8 @@ DEVICE void s_g_d_precomp(const float tmin, const float t_min, const float tmax,
 		// (2) and (19)
 		const float p_t = s + tmin * (diff);
 		// (16)
-		*v_max = CUINT_sat_rtz((p_t - b) / d);
+		const uint v = CUINT_sat_rtz((p_t - b) / d);
+		*v_max = v > N - 1u ? N - 1u : v;
 	}
 	if (tmax == t_max)
 		// (17)
@@ -1985,7 +1987,7 @@ DEVICE void s_g_d_precomp(const float tmin, const float t_min, const float tmax,
 		*v_min = CUINT_rtp((p_t - b) / d);
 	}
 	// (9)
-	*t_0 += ((CFLOAT(*v_max) * d) / (diff));
+	*t_0 = (b + CFLOAT(*v_max) * d - s) / diff;
 	// (29)
 	*v_u = -1;
 }
@@ -2013,9 +2015,11 @@ DEVICE float compute_element(PTR_THR float* t0, PTR_THR float* tc, const float L
 	return local_ele;
 }
 
-// compute the initial voxel index (beginning of the ray)
-DEVICE int voxel_index(const float pt, const float diff, const float d, const float apu) {
-	return CINT_rtz((pt * diff - apu) / d);
+// initial voxel index (beginning of the ray) from the same plane indices as the first crossing times,
+// so both stay consistent under rounding
+DEVICE int start_voxel(const int u, const uint v_min, const uint v_max, const uint N) {
+	const int v = (u > 0) ? (int)v_min - 1 : (int)v_max;
+	return v < 0 ? 0 : (v > (int)N - 1 ? (int)N - 1 : v);
 }
 
 DEVICE bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1, const float diff2, const float max1, const float max2,
@@ -2069,13 +2073,10 @@ DEVICE bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1
 
 		*Np = imax + 1u + jmax + 1u - imin - jmin;
 
-	// (2) and (19)
-	const float pt = ((FMIN(*t10, *t20) + *tc) / 2.f);
-
 	// (26)
-	*temp1 = voxel_index(pt, diff1, d1, apu_tx);
+	*temp1 = start_voxel(*u1, imin, imax, N1);
 	// (27)
-	*temp2 = voxel_index(pt, diff2, d2, apu_ty);
+	*temp2 = start_voxel(*u2, jmin, jmax, N2);
 
 	// (28)
 	*t1u = d1 / FABS(diff1);
@@ -2139,13 +2140,9 @@ DEVICE bool siddon_pre_loop_3D(const FLOAT3 b, const FLOAT3 diff, const FLOAT3 m
 
 		*Np = (kmax - kmin + 1) + (jmax - jmin + 1) + (imax - imin + 1);
 
-	const float pt = ((FMIN(FMIN(*tz0, *ty0), *tx0) + *tc) / 2.f);
-
-	const float3 tempijkF = CLAMP3(FMAD3(pt, diff, -apuT) / dd, 0.f, CFLOAT3(N - 1));
-	const int3 tempijk = CINT3_rtz(tempijkF);
-	*tempi = tempijk.x;
-	*tempj = tempijk.y;
-	*tempk = tempijk.z;
+	*tempi = start_voxel(*i, imin, imax, N.x);
+	*tempj = start_voxel(*j, jmin, jmax, N.y);
+	*tempk = start_voxel(*k, kmin, kmax, N.z);
 
 	*txu = dd.x / (float)FABS(diff.x);
 	*tyu = dd.y / (float)FABS(diff.y);
