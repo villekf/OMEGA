@@ -107,18 +107,39 @@ def _build_kIndB(self):
     return a
 
 
+def _kernel_ravel(arr, default_order, components=0):
+    """Flatten a coordinate array so that the per-ray components are consecutive.
+
+    The kernels read the components of one ray (4 for PET xy, 6 for CT/SPECT/list-mode, 1-3 for z)
+    as consecutive floats, i.e. the component axis has to vary fastest. PET and CT arrays are
+    stored as (rays, components), SPECT and list-mode arrays as (components, rays). The component
+    axis is the one equal to `components` if given, otherwise the smaller one. Square or otherwise
+    ambiguous arrays use `default_order`.
+    """
+    arr = np.asarray(arr, dtype=np.float32)
+    order = default_order
+    if arr.ndim == 2:
+        if components and (arr.shape[0] == components) != (arr.shape[1] == components):
+            order = 'F' if arr.shape[0] == components else 'C'
+        elif arr.shape[1] < arr.shape[0]:
+            order = 'C'
+        elif arr.shape[0] < arr.shape[1]:
+            order = 'F'
+    return arr.ravel(order=order)
+
+
 def _coordinate_slice(self, name, timestep, subset, stride):
     """Return one frame/subset coordinate slice in kernel order."""
     frames = getattr(self, name + 'Frames', None)
     if isinstance(frames, list) and len(frames) == int(self.Nt):
-        frame = np.asarray(frames[timestep], dtype=np.float32).ravel(order='F')
+        frame = _kernel_ravel(frames[timestep], 'F', stride)
         offsets = np.concatenate(([0], np.cumsum(self.nProjSubset[timestep], dtype=np.int64)))
         start = int(offsets[subset]) * stride
         stop = int(offsets[subset + 1]) * stride
         return frame[start:stop]
     # CT stores one projection per row; SPECT stores one per column.
     order = 'C' if self.CT and self.listmode == 0 else 'F'
-    flat = np.asarray(getattr(self, name), dtype=np.float32).ravel(order=order)
+    flat = _kernel_ravel(getattr(self, name), order, stride)
     q = timestep * int(self.subsets) + subset
     start = int(self.nMeas[q]) * stride
     stop = int(self.nMeas[q + 1]) * stride
@@ -128,8 +149,8 @@ def _coordinate_slice(self, name, timestep, subset, stride):
 def _full_coordinate_frame(self, name, timestep):
     frames = getattr(self, name + 'Frames', None)
     if isinstance(frames, list) and len(frames) == int(self.Nt):
-        return np.asarray(frames[timestep], dtype=np.float32).ravel(order='F')
-    return np.asarray(getattr(self, name), dtype=np.float32).ravel(order='F')
+        return _kernel_ravel(frames[timestep], 'F')
+    return _kernel_ravel(getattr(self, name), 'F')
 
 
 def _initialize_coordinate_buffers(self, upload):
@@ -146,17 +167,13 @@ def _initialize_coordinate_buffers(self, upload):
     for timestep in range(self.Nt):
         if subset_geometry or (self.listmode > 0 and not self.useIndexBasedReconstruction and self.loadTOF):
             for subset in range(self.subsets):
-                self.d_x[timestep][subset] = upload(
-                    _coordinate_slice(self, 'x', timestep, subset, 6)
-                )
+                self.d_x[timestep][subset] = upload(_coordinate_slice(self, 'x', timestep, subset, 6))
         else:
             self.d_x[timestep][0] = upload(_full_coordinate_frame(self, 'x', timestep))
 
         if subset_geometry or pet_geometry:
             for subset in range(self.subsets):
-                self.d_z[timestep][subset] = upload(
-                    _coordinate_slice(self, 'z', timestep, subset, z_stride)
-                )
+                self.d_z[timestep][subset] = upload(_coordinate_slice(self, 'z', timestep, subset, z_stride))
         elif self.listmode == 0 or (self.listmode > 0 and self.useIndexBasedReconstruction):
             self.d_z[timestep][0] = upload(_full_coordinate_frame(self, 'z', timestep))
         else:
