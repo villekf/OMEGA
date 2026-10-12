@@ -339,6 +339,48 @@ end
 function outputVol = multiResReshape(inputVol, options)
     scale = double(options.multiResolutionScale);
     maskInput = islogical(inputVol) || isa(inputVol, 'uint8');
+    if maskInput
+        % Rounded coarse voxel counts do not locate the fine tile. Sample
+        % the original full-FOV mask at each tile's physical voxel centers.
+        tileFOV = double([options.FOVa_x(:), options.FOVa_y(:), options.axial_fov(:)]);
+        tileDims = double([options.Nx(:), options.Ny(:), options.Nz(:)]);
+        tileOffset = zeros(size(tileFOV));
+        if options.nMultiVolumes == 6
+            fullFOV = [sum(tileFOV([4 1 5], 1)), sum(tileFOV([6 1 7], 2)), sum(tileFOV([2 1 3], 3))];
+            mainOffset = [tileFOV(4, 1), tileFOV(6, 2), tileFOV(2, 3)];
+            tileOffset(1, :) = mainOffset;
+            tileOffset(2, :) = [mainOffset(1:2), 0];
+            tileOffset(3, :) = [mainOffset(1:2), mainOffset(3) + tileFOV(1, 3)];
+            tileOffset(5, 1) = mainOffset(1) + tileFOV(1, 1);
+            tileOffset(6, 1) = mainOffset(1);
+            tileOffset(7, 1:2) = [mainOffset(1), mainOffset(2) + tileFOV(1, 2)];
+        elseif options.nMultiVolumes == 4
+            fullFOV = [sum(tileFOV([2 1 3], 1)), sum(tileFOV([4 1 5], 2)), tileFOV(1, 3)];
+            mainOffset = [tileFOV(2, 1), tileFOV(4, 2), 0];
+            tileOffset(1, :) = mainOffset;
+            tileOffset(3, 1) = mainOffset(1) + tileFOV(1, 1);
+            tileOffset(4, 1) = mainOffset(1);
+            tileOffset(5, 1:2) = [mainOffset(1), mainOffset(2) + tileFOV(1, 2)];
+        else
+            fullFOV = [tileFOV(1, 1:2), sum(tileFOV([2 1 3], 3))];
+            tileOffset(1, 3) = tileFOV(2, 3);
+            tileOffset(3, 3) = tileFOV(2, 3) + tileFOV(1, 3);
+        end
+        inputDims = double([size(inputVol, 1), size(inputVol, 2), size(inputVol, 3)]);
+        tiles = cell(size(tileDims, 1), 1);
+        for volume = 1:numel(tiles)
+            index = cell(1, 3);
+            for axis = 1:3
+                centers = tileOffset(volume, axis) + ...
+                    ((0:tileDims(volume, axis)-1) + 0.5) * tileFOV(volume, axis) / tileDims(volume, axis);
+                index{axis} = max(1, min(inputDims(axis), floor(centers * inputDims(axis) / fullFOV(axis)) + 1));
+            end
+            tile = inputVol(index{1}, index{2}, index{3});
+            tiles{volume} = uint8(tile(:) > 0);
+        end
+        outputVol = vertcat(tiles{:});
+        return;
+    end
     resizeMethod = 'linear';
     if maskInput
         resizeMethod = 'nearest';
