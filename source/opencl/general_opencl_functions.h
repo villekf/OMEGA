@@ -1943,41 +1943,6 @@ DEVICE void compute_multiresolution_attenuation(const float val, const typeT ind
 		*jelppi += val * -read_multiresolution_attenuation(d_atten, ix, iy, iz, attenuationNx, attenuationNy);
 }
 
-// Return the exit parameter of the emission-grid Siddon cell containing the
-// requested point on the ray. Ordinary full-FOV ODRT applies its attenuation
-// prefix after accumulating the complete current chord; MR ODRT uses this to
-// retain its support traversal while matching that attenuation endpoint.
-DEVICE float multiresolutionSiddonCellExitParameter(const float3 source, const float3 direction,
-	const float parameter, const float3 volumeOrigin, const float3 volumeSpacing, const uint3 volumeDims) {
-	const float starts[3] = { source.x, source.y, source.z };
-	const float dirs[3] = { direction.x, direction.y, direction.z };
-	const float origins[3] = { volumeOrigin.x, volumeOrigin.y, volumeOrigin.z };
-	const float spacings[3] = { volumeSpacing.x, volumeSpacing.y, volumeSpacing.z };
-	const int dims[3] = { (int)volumeDims.x, (int)volumeDims.y, (int)volumeDims.z };
-#if defined(CUDA) || defined(HIP)
-	const float probe = nextafterf(parameter, 1.f);
-#else
-	const float probe = nextafter(parameter, 1.f);
-#endif
-	float exitParameter = 1.f;
-	for (int axis = 0; axis < 3; ++axis) {
-		if (fabs(dirs[axis]) < 1.0e-12f)
-			continue;
-		const float position = starts[axis] + dirs[axis] * probe;
-		const int voxel = (int)floor((position - origins[axis]) / spacings[axis]);
-		// A support-only ray can lie outside this local MR tile. It has no
-		// local Siddon chord to extend, so retain its current ray parameter.
-		if (voxel < 0 || voxel >= dims[axis])
-			return parameter;
-		const int boundaryVoxel = voxel + (dirs[axis] > 0.f ? 1 : 0);
-		const float boundary = origins[axis] + (float)boundaryVoxel * spacings[axis];
-		const float axisExit = (boundary - starts[axis]) / dirs[axis];
-		if (axisExit > parameter)
-			exitParameter = fmin(exitParameter, axisExit);
-	}
-	return fmin(fmax(exitParameter, parameter), 1.f);
-}
-
 DEVICE float integrate_multiresolution_attenuation_segment(IMTYPE d_atten, const float3 source, const float3 direction,
 	const float startParameter, const float endParameter, const float rayLength,
 	const uint attenuationNx, const uint attenuationNy, const uint attenuationNz,

@@ -272,7 +272,7 @@ void projectorType123(
 	const uint d_Nx, const uint d_Ny, const uint d_Nz, const float d_dx, const float d_dy, const float d_dz,
 	const float bx, const float by, const float bz, const float d_bmaxx, const float d_bmaxy, const float d_bmaxz, 
 #else
-	const uint3 d_Nxyz, const float3 d_d, const float3 b, const float3 d_bmax,
+	uint3 d_Nxyz, const float3 d_d, float3 b, float3 d_bmax,
 #endif
 	///////////////////////// SUBSET TYPES 3, 5 and 6 /////////////////////////
 #if defined(SUBSETS) && !defined(LISTMODE)
@@ -362,10 +362,10 @@ void projectorType123(
 		return;
 #if defined(PYTHON)
 	const FLOAT2 crystalSize = make_float2(crystalSizeX, crystalSizeY);
-	const uint3 d_Nxyz = make_uint3(d_Nx, d_Ny, d_Nz);
+	uint3 d_Nxyz = make_uint3(d_Nx, d_Ny, d_Nz);
 	const FLOAT3 d_d = make_float3(d_dx, d_dy, d_dz);
-	const FLOAT3 b = make_float3(bx, by, bz);
-	const FLOAT3 d_bmax = make_float3(d_bmaxx, d_bmaxy, d_bmaxz);
+	FLOAT3 b = make_float3(bx, by, bz);
+	FLOAT3 d_bmax = make_float3(d_bmaxx, d_bmaxy, d_bmaxz);
 #if defined(SPECT)
     const FLOAT3 ellipseCenter = make_float3(ellipseCenterX, ellipseCenterY, ellipseCenterZ);
     const FLOAT3 ellipseRadii = make_float3(ellipseRadiusX, ellipseRadiusY, ellipseRadiusZ);
@@ -464,6 +464,33 @@ void projectorType123(
 #endif
 	for (int to = 0; to < NBINS; to++)
 		ax[to] = 0.f;
+#endif
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
+	// Traverse the complete image grid with the ordinary full-FOV ODRT code.
+	// Only emission reads/writes are restricted to this tile. Attenuation
+	// therefore includes all material before, inside, and beyond the tile.
+	const uint3 mrVolumeDims = d_Nxyz;
+	const float3 attenuationOrigin = CMFLOAT3(atnBx, atnBy, atnBz);
+	const float3 attenuationMaximum = attenuationOrigin + CMFLOAT3(
+		CFLOAT(atnNx) * atnDx, CFLOAT(atnNy) * atnDy, CFLOAT(atnNz) * atnDz);
+	const int3 mrVolumeOffset = CMINT3(
+		CINT(FLOOR((b.x - atnBx) / d_d.x + FLOAT_HALF)),
+		CINT(FLOOR((b.y - atnBy) / d_d.y + FLOAT_HALF)),
+		CINT(FLOOR((b.z - atnBz) / d_d.z + FLOAT_HALF)));
+	float3 traversalOrigin = b - CMFLOAT3(CFLOAT(mrVolumeOffset.x) * d_d.x,
+		CFLOAT(mrVolumeOffset.y) * d_d.y, CFLOAT(mrVolumeOffset.z) * d_d.z);
+	// Preserve the reference grid exactly for aligned fine-resolution tiles.
+	if (FABS(traversalOrigin.x - atnBx) < d_d.x * 1.e-4f) traversalOrigin.x = atnBx;
+	if (FABS(traversalOrigin.y - atnBy) < d_d.y * 1.e-4f) traversalOrigin.y = atnBy;
+	if (FABS(traversalOrigin.z - atnBz) < d_d.z * 1.e-4f) traversalOrigin.z = atnBz;
+	b = traversalOrigin;
+	const uint3 traversalDims = MUINT3(
+		CUINT(CEIL((attenuationMaximum.x - b.x) / d_d.x - 1.e-4f)),
+		CUINT(CEIL((attenuationMaximum.y - b.y) / d_d.y - 1.e-4f)),
+		CUINT(CEIL((attenuationMaximum.z - b.z) / d_d.z - 1.e-4f)));
+	d_Nxyz = traversalDims;
+	d_bmax = b + CMFLOAT3(CFLOAT(d_Nxyz.x) * d_d.x,
+		CFLOAT(d_Nxyz.y) * d_d.y, CFLOAT(d_Nxyz.z) * d_d.z);
 #endif
 	const uint d_Nxy = d_Nxyz.x * d_Nxyz.y;
 	FLOAT local_norm = FLOAT_ZERO;
@@ -621,7 +648,9 @@ void projectorType123(
 	int tempi = 0, tempj = 0, tempk = 0, ux = 0, uy = 0, uz = 0;
 
 	float L = LENGTH(diff);
-#if defined(MRATN) && !defined(METAL) && !(defined(SPECT) && defined(ORTH) && !defined(VOL))
+#if defined(MRATN) && !defined(METAL)
+	// Seed attenuation before the traversal box. ODRT traverses the full
+	// grid, so its subsequent Siddon steps also include material before the tile.
 	jelppi = integrate_multiresolution_attenuation_prefix(
 		d_atten, s, diff, b, d_bmax, L,
 		atnNx, atnNy, atnNz, atnDx, atnDy, atnDz, atnBx, atnBy, atnBz);
@@ -659,7 +688,7 @@ void projectorType123(
 #endif
 #endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#if defined(SPECT) && defined(ORTH) && !defined(VOL) && (!defined(ATN) || defined(MRATN))
+#if defined(SPECT) && defined(ORTH) && !defined(VOL) && !defined(ATN)
 	// SPECT ODRT has finite PSF support around the central ray. Use the total
 	// FOV as the physical admission box, but traverse only this local volume so
 	// multiresolution subvolumes keep their own indexing.
@@ -754,37 +783,14 @@ void projectorType123(
 				const int primaryStart = MIN(MAX(CINT_rtz((primaryMin - localB1) / localD1), 0), primaryMaxIndex);
 				const int primaryEnd = MIN(MAX(CINT_rtz((primaryMax - localB1) / localD1), 0), primaryMaxIndex);
 				const FLOAT supportMid = (localTmin + localTmax) * FLOAT_HALF;
-#if defined(ATN) && defined(MRATN)
-				FLOAT attenuationPrefix = FLOAT_ZERO;
-				FLOAT previousT = FLOAT_ZERO;
-				// Accumulate the attenuation prefix between support planes. For
-				// negative-going rays the prefix decreases with primary index, so
-				// subtract the intervening segment and preserve traversal order.
-#endif
+
 				for (int primary = primaryStart; primary <= primaryEnd; primary++) {
 					center.x = localB1 + CFLOAT(primary) * localD1 + localD1 * FLOAT_HALF;
 					FLOAT tSeed = supportMid;
 					if (FABS(localDiff.x) >= 1.0e-6f)
 						tSeed = (center.x - localS.x) / localDiff.x;
 					tSeed = FMIN(FMAX(tSeed, localTmin), localTmax);
-#if defined(ATN) && defined(MRATN)
-					// The ray may miss this active slab while its finite ODRT support
-					// overlaps it. For cells on the ray, use the same attenuation
-					// endpoint as ordinary full-FOV ODRT: the exit of the current
-					// Siddon cell, rather than its center plane.
-					tSeed = FMIN(FMAX(tSeed, FLOAT_ZERO), FLOAT_ONE);
-					const FLOAT tChordExit = multiresolutionSiddonCellExitParameter(
-						s, diff, tSeed, b, d_d, d_Nxyz);
-					const FLOAT segmentLog = integrate_multiresolution_attenuation_segment(
-						d_atten, s, diff, FMIN(previousT, tChordExit), FMAX(previousT, tChordExit), L,
-						atnNx, atnNy, atnNz, atnDx, atnDy, atnDz, atnBx, atnBy, atnBz);
-					if (tChordExit >= previousT)
-						attenuationPrefix += segmentLog;
-					else
-						attenuationPrefix -= segmentLog;
-					previousT = tChordExit;
-					const FLOAT supportAttenuation = EXP(attenuationPrefix);
-#endif
+
 					const int seed2 = MIN(MAX(CINT_rtz((FMAD(tSeed, localDiff.y, localS.y) - localB2) / localD2), 0), CINT(localN1) - 1);
 					const int seedZ = MIN(MAX(CINT_rtz((FMAD(tSeed, localDiff.z, localS.z) - _bz) / dz), 0), CINT(d_Nxyz.z) - 1);
 					int tempkSupport = seedZ;
@@ -803,9 +809,6 @@ void projectorType123(
 #if defined(LISTMODE)
 						, TOFid
 #endif
-#endif
-#if defined(SPECT) && defined(ATN)
-						, supportAttenuation
 #endif
 #if defined(MASKBP) && defined(BP)
 						, aa, maskBP, d_Nxyz
@@ -1102,6 +1105,9 @@ void projectorType123(
 #endif
 #if defined(SPECT) && defined(ORTH)
                 , gFilter, gFilterNu, gFilterNv, gFilterNd, gFilterDu, gFilterDv, gFilterDd, gFilterCustom
+#endif
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
+						, mrVolumeDims, mrVolumeOffset
 #endif
 				);
 #else //////////////// SIDDON ////////////////
@@ -1557,6 +1563,9 @@ void projectorType123(
 #if defined(SPECT) && defined(ORTH)
                         , gFilter, gFilterNu, gFilterNv, gFilterNd, gFilterDu, gFilterDv, gFilterDd, gFilterCustom
 #endif
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
+						, mrVolumeDims, mrVolumeOffset
+#endif
 						);
                         if (uu == 0)
                             break;
@@ -1594,6 +1603,9 @@ void projectorType123(
 #if defined(SPECT) && defined(ORTH)
                         , gFilter, gFilterNu, gFilterNv, gFilterNd, gFilterDu, gFilterDv, gFilterDd, gFilterCustom
 #endif
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
+						, mrVolumeDims, mrVolumeOffset
+#endif
 						);
                         if (uu == 0)
                             break;
@@ -1630,6 +1642,9 @@ void projectorType123(
 #endif
 #if defined(SPECT) && defined(ORTH)
                 , gFilter, gFilterNu, gFilterNv, gFilterNd, gFilterDu, gFilterDv, gFilterDd, gFilterCustom
+#endif
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
+						, mrVolumeDims, mrVolumeOffset
 #endif
 				);
 #ifdef ORTH
@@ -1773,6 +1788,9 @@ void projectorType123(
 #if defined(SPECT) && defined(ORTH)
                 , gFilter, gFilterNu, gFilterNv, gFilterNd, gFilterDu, gFilterDv, gFilterDd, gFilterCustom
 #endif
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
+						, mrVolumeDims, mrVolumeOffset
+#endif
 				);
 				if (uu == 0)
 					break;
@@ -1811,6 +1829,9 @@ void projectorType123(
 #endif
 #if defined(SPECT) && defined(ORTH)
                 , gFilter, gFilterNu, gFilterNv, gFilterNd, gFilterDu, gFilterDv, gFilterDd, gFilterCustom
+#endif
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
+						, mrVolumeDims, mrVolumeOffset
 #endif
 				);
 				if (uu == 0)

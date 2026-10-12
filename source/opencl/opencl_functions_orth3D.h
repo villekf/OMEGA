@@ -314,7 +314,21 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	, const FLOAT du, const FLOAT dv, const FLOAT dd, const bool gFilterCustom
 	, const FLOAT3 ray, const FLOAT3 e1, const FLOAT3 e2
 #endif
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
+	, const uint3 mrVolumeDims, const int3 mrVolumeOffset
+#endif
 ) {
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
+	const int3 globalIndex = XY ? CMINT3(tempi, uu, zz) : CMINT3(uu, tempi, zz);
+	const int3 tileIndex = globalIndex - mrVolumeOffset;
+	const bool outsideTile = tileIndex.x < 0 || tileIndex.y < 0 || tileIndex.z < 0 ||
+		tileIndex.x >= CINT(mrVolumeDims.x) || tileIndex.y >= CINT(mrVolumeDims.y) || tileIndex.z >= CINT(mrVolumeDims.z);
+	// The custom-filter branch always returns false after sampling. Skip
+	// samples outside this tile without changing the reference scan schedule.
+	if (gFilterCustom && outsideTile)
+		return false;
+#endif
+
 #ifdef SPECT // Check for voxel behind detector
     float d_parallel = compute_element_parallel_3D(s, diff, center, orth_ray_length_inv_signed);
     if (d_parallel < 0) { 
@@ -366,6 +380,21 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	}
 	local_ele = FLOAT_ONE - SQRT(norm2) * orth_ray_length_inv;
 #endif //////////// END SPECT/VOL/ORTH /////////////
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
+	// A skipped tile voxel must not terminate the reference support scan.
+	if (outsideTile)
+		return false;
+#if (defined(FP) && defined(USEIMAGES)) || (defined(MASKBP) && defined(BP))
+	const int3 ind = tileIndex;
+#endif
+#if defined(BP) || (defined(FP) && !defined(USEIMAGES))
+	const LONG local_ind = (LONG)tileIndex.x + (LONG)tileIndex.y * (LONG)mrVolumeDims.x +
+		(LONG)tileIndex.z * (LONG)mrVolumeDims.x * (LONG)mrVolumeDims.y;
+#endif
+#if defined(FP) && !defined(USEIMAGES)
+	const LONG ind = local_ind;
+#endif
+#else
 #if (defined(FP) && defined(USEIMAGES)) || (defined(MASKBP) && defined(BP)) ///////////////////// 2D/3D indices /////////////////////
 	int3 ind;
     if (XY)
@@ -380,8 +409,13 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 #if (defined(FP) && !defined(USEIMAGES))
 	const LONG ind = CLONG_rtz(local_ind);
 #endif ///////////////////// END 2D/3D indices /////////////////////
+#endif
 #if defined(BP) && defined(MASKBP) ///////////////////// APPLY BP MASK /////////////////////////
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
+    if (readMaskBP(maskBP, ind, mrVolumeDims) == 0) {
+#else
     if (readMaskBP(maskBP, ind, d_N) == 0) {
+#endif
         return false;
     }
 #endif ///////////////////// END BP MASK /////////////////////////
@@ -445,6 +479,9 @@ DEVICE int orthDistance3D(const int tempi,
 	, const FLOAT rayDepthOffset
 	, IMTYPE gFilter, const uint Nu, const uint Nv, const uint Nd
 	, const FLOAT du, const FLOAT dv, const FLOAT dd, const bool gFilterCustom
+#endif
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
+	, const uint3 mrVolumeDims, const int3 mrVolumeOffset
 #endif
 ) {
 	int uu = 0;
@@ -563,6 +600,9 @@ DEVICE int orthDistance3D(const int tempi,
 				, rayDepthOffset, gFilter, Nu, Nv, Nd, du, dv, dd, gFilterCustom
 				, ray, e1, e2
 #endif
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
+				, mrVolumeDims, mrVolumeOffset
+#endif
 			);
 #ifdef CRYSTXY
 #if !defined(SPECT)
@@ -610,6 +650,9 @@ DEVICE int orthDistance3D(const int tempi,
 				, coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, c2, orth_ray_length_inv_signed
 				, rayDepthOffset, gFilter, Nu, Nv, Nd, du, dv, dd, gFilterCustom
 				, ray, e1, e2
+#endif
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
+				, mrVolumeDims, mrVolumeOffset
 #endif
 			);
 			if (breikki) {
@@ -703,6 +746,9 @@ DEVICE int orthDistance3D(const int tempi,
 				, rayDepthOffset, gFilter, Nu, Nv, Nd, du, dv, dd, gFilterCustom
 				, ray, e1, e2
 #endif
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
+				, mrVolumeDims, mrVolumeOffset
+#endif
 			);
 #ifdef CRYSTXY
 #if !defined(SPECT)
@@ -750,6 +796,9 @@ DEVICE int orthDistance3D(const int tempi,
 				, coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, c2, orth_ray_length_inv_signed
 				, rayDepthOffset, gFilter, Nu, Nv, Nd, du, dv, dd, gFilterCustom
 				, ray, e1, e2
+#endif
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
+				, mrVolumeDims, mrVolumeOffset
 #endif
 			);
 			if (breikki) {
