@@ -330,7 +330,8 @@ classdef projectorClass
                 elseif isfield(obj.param, 'cr_p')
                     obj.param.dPitchX = obj.param.cr_p;
                 end
-                if isfield(obj.param,'angles') && max(abs(obj.param.angles(:))) > 6*pi
+                % Helical angles are always radians and may span several rotations, so the degree heuristic is not applied
+                if isfield(obj.param,'angles') && max(abs(obj.param.angles(:))) > 6*pi && ~(isfield(obj.param,'useHelical') && obj.param.useHelical)
                     obj.param.angles = obj.param.angles * (pi / 180);
                 end
                 if isfield(obj.param,'angles') && obj.param.offangle > 0

@@ -1268,6 +1268,8 @@ class ProjectorClass {
 				if (inputScalars.CT) {
 					ADD_OPT(os_options, "-DBP4");
 					ADD_OPT_INT(os_options, "-DNVOXELS", NVOXELS);
+					if (inputScalars.useHelical)
+						ADD_OPT_INT(os_options, "-DNVOXELSHELICAL", NVOXELSHELICAL);
 #ifndef METAL
 					// fastPDHG build options
 					if (inputScalars.fastPDHG) {

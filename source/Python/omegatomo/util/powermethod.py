@@ -62,6 +62,7 @@ class _PowerMethodOps:
         else:
             import numpy as np
             import pyopencl as cl
+            import pyopencl.array
             from pyopencl import clmath
             self.backend = 'cl'
             self._np = np

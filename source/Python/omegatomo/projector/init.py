@@ -36,7 +36,10 @@ def _build_kIndF(self):
                 a.f32(self.tube_radius)
             a.f32(self.bmin).f32(self.bmax).f32(self.Vmax)
     elif self.FPType == 4:
-        a.u32(self.nRowsD).u32(self.nColsD).vec2f(self.dPitchX, self.dPitchY).f32(self.dL).f32(self.global_factor)
+        a.u32(self.nRowsD).u32(self.nColsD).vec2f(self.dPitchX, self.dPitchY)
+        if self.CT and self.useHelical:
+            a.f32(self.helicalRadius)
+        a.f32(self.dL).f32(self.global_factor)
     elif self.FPType == 5:
         a.u32(self.nRowsD).u32(self.nColsD).vec2f(self.dPitchX, self.dPitchY)
     if self.FPType in (1, 2, 3):
@@ -68,6 +71,8 @@ def _build_kIndB(self):
     a = _KernelArgs(self)
     if self.BPType in (4, 5):
         a.u32(self.nRowsD).u32(self.nColsD).vec2f(self.dPitchX, self.dPitchY)
+        if self.BPType == 4 and self.CT and self.useHelical:
+            a.f32(self.helicalRadius)
         if self.BPType == 4 and not self.CT:
             a.f32(self.dL).f32(self.global_factor)
     elif self.BPType in (1, 2, 3):
@@ -131,7 +136,11 @@ def _initialize_coordinate_buffers(self, upload):
     """Create the canonical ``[timestep][subset]`` geometry buffers."""
     self.d_x = [[None] * self.subsets for _ in range(self.Nt)]
     self.d_z = [[None] * self.subsets for _ in range(self.Nt)]
-    z_stride = 6 if self.pitch else (3 if self.PET and getattr(self, 'nLayers', 0) > 1 else 2)
+    # Curved helical CT stores a single value (the projection angle) per projection in z
+    if self.CT and self.useHelical:
+        z_stride = 1
+    else:
+        z_stride = 6 if self.pitch else (3 if self.PET and getattr(self, 'nLayers', 0) > 1 else 2)
     subset_geometry = (self.CT or self.SPECT) and self.listmode == 0
     pet_geometry = self.PET and self.listmode == 0
     for timestep in range(self.Nt):
@@ -344,6 +353,7 @@ def initProjector(self):
                 return False
     if not self.useCUDA and not self.useMetal:
         import pyopencl as cl
+        import pyopencl.array
 
         if self.useAF:
             ctx = af.opencl.get_context(retain=True)
@@ -362,6 +372,8 @@ def initProjector(self):
     self.TH32 = 100000.
     self.NVOXELS5 = 1
     self.NVOXELSFP = 8
+    # Number of z-voxels each thread processes in the curved helical BP (mirrors NVOXELSHELICAL in the C++ headers)
+    self.NVOXELSHELICAL = 1
     if np.size(self.weights) > 0:
         self.empty_weight = False
     if self.TOF_bins_used == 0:
@@ -492,7 +504,8 @@ def initProjector(self):
                 for subset in range(self.subsets):
                     for ii in range(self.nMultiVolumes + 1):
                         if self.BPType == 4:
-                            globalSize[timestep][subset][ii] = (self.Nx[ii].item() + self.erotusBP[ii * 2], self.Ny[ii].item() + self.erotusBP[ii * 2 + 1], (self.Nz[ii].item()  + self.NVOXELS - 1) // self.NVOXELS)
+                            nVoxelsZ = self.NVOXELSHELICAL if self.useHelical else self.NVOXELS
+                            globalSize[timestep][subset][ii] = (self.Nx[ii].item() + self.erotusBP[ii * 2], self.Ny[ii].item() + self.erotusBP[ii * 2 + 1], (self.Nz[ii].item()  + nVoxelsZ - 1) // nVoxelsZ)
                         elif self.BPType == 5:
                             if self.pitch:
                                 globalSize[timestep][subset][ii] = (self.Nx[ii].item() + self.erotusBP[ii * 2], self.Ny[ii].item() + self.erotusBP[ii * 2 + 1], self.Nz[ii].item())
@@ -603,6 +616,9 @@ def initProjector(self):
             bOpt += ('-DTOF',)
         if self.CT:
             bOpt += ('-DCT',)
+            # Curved (helical) detector; the parallel-beam define takes precedence as in the C++ host code
+            if self.useHelical and not self.useParallelBeam:
+                bOpt += ('-DHELICAL',)
         elif self.SPECT:
             if self.useCUDA:
                 if self.useCuPy:
@@ -658,6 +674,8 @@ def initProjector(self):
                 bOptFP += ('-DCAST=float',)
         elif self.FPType == 4:
             bOptFP += ('-DPTYPE4','-DNVOXELS=' + str(self.NVOXELS),)
+            if self.CT and self.useHelical:
+                bOptFP += ('-DNVOXELSHELICAL=' + str(self.NVOXELSHELICAL),)
             if not self.CT:
                 if self.use_64bit_atomics:
                     bOptFP += ('-DCAST=long',)
@@ -691,6 +709,8 @@ def initProjector(self):
         elif self.BPType == 4:
             if self.CT:
                 bOptBP += ('-DBP4','-DNVOXELS=' + str(self.NVOXELS),)
+                if self.useHelical:
+                    bOptBP += ('-DNVOXELSHELICAL=' + str(self.NVOXELSHELICAL),)
             else:
                 bOptBP += ('-DPTYPE4','-DNVOXELS=' + str(self.NVOXELS),)
                 bOptBP += ('-DATOMICF',)

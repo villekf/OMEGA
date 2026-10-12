@@ -137,7 +137,7 @@
     const uint d_size_x = scalarParams.nRowsD; \
     const uint d_sizey = scalarParams.nColsD; \
     const float2 d_dPitch = scalarParams.dPitch; \
-    const float helicalRadius = scalarParams.helicalRadius; \
+    const float r = scalarParams.helicalRadius; \
     const float dL = scalarParams.dL; \
     const float global_factor = scalarParams.global_factor; \
     const float sigma_x = scalarParams.sigma_x; \
@@ -160,7 +160,7 @@
     const uint d_size_x = scalarParams.nRowsD; \
     const uint d_sizey = scalarParams.nColsD; \
     const float2 d_dPitch = scalarParams.dPitch; \
-    const float helicalRadius = scalarParams.helicalRadius; \
+    const float r = scalarParams.helicalRadius; \
     const uint3 d_N = scalarParams.d_N; \
     const float3 b = scalarParams.b; \
     const float3 d_d = scalarParams.d; \
@@ -264,6 +264,7 @@ using metal::dot;
 #endif
 
 #define ACOS metal::acos
+#define ATAN2 metal::atan2
 #define ALL metal::all
 #define ANY metal::any
 #define BUF0 [[buffer(0)]]
@@ -2166,50 +2167,38 @@ DEVICE void forwardProjectAF(CLGLOBAL float* output, PTR_THR float *ax, size_t i
 
 #ifdef HELICAL
 DEVICE int rayArcIntersection(
-    float3 s, 
-    float3 v,
-	float3 d, 
-    float xc, float yc, float r,
-    float zMin, float zMax,
-    float thetaSpan, float thetaCenter, 
-	float* theta, 
+    const float3 s,
+    const float3 v,
+    const float xc, const float yc, const float r,
+    const float cosA, const float sinA,
+    const float zMin, const float zMax,
+    const float thetaSpan,
+	float* theta,
     float3* intersection
 ) {
-	float fx = s.x - xc;
-	float fy = s.y - yc;
-    float a = v.x * v.x + v.y * v.y;
-    float b = 2.f * (v.x * fx + v.y * fy);
-    float c = fx * fx + fy * fy - r * r;
-    float disc = b * b - 4.f * a * c;
-    if (disc < 0) 
+	const float fx = s.x - xc;
+	const float fy = s.y - yc;
+    const float a = v.x * v.x + v.y * v.y;
+    const float b = 2.f * (v.x * fx + v.y * fy);
+    const float c = fx * fx + fy * fy - r * r;
+    const float disc = b * b - 4.f * a * c;
+    if (disc < 0.f || a == 0.f)
 		return 0;
 
     for (int signv = -1; signv <= 1; signv += 2) {
-        float t = (-b + (float)signv * SQRT(disc)) / (2.f*a);
-        if (t < 0.f) 
+        const float t = (-b + (float)signv * SQRT(disc)) / (2.f * a);
+        if (t <= 0.f)
 			continue;
-		float3 xyz = s + v * t;
-
-		const float y = xyz.y - yc;
-		const float x = xyz.x - xc;
-		const float distX = xyz.x - d.x;
-		const float distY = xyz.y - d.y;
-		const float rr = 2.f * r * r;
-		*theta = ACOS((rr - (distX * distX + distY * distY)) / rr);
-        *theta *= -sign(ATAN2(y, x) - thetaCenter);
-		if (*theta > thetaSpan / 2.f || *theta < 0)
-			continue;
-		float dist1 = xyz.x - s.x;
-		float dist2 = xyz.y - s.y;
-		float dist = SQRT(dist1 * dist1 + dist2 * dist2);
-		float distV = SQRT(v.x * v.x + v.y * v.y);
-		float angle = v.z/distV;
-		xyz.z = angle * dist + d.z;
-        if (xyz.z < zMin || xyz.z > zMax) 
+		const float3 xyz = s + v * t;
+		const float wx = xyz.x - xc;
+		const float wy = xyz.y - yc;
+		// Signed arc angle from the detector center, positive towards increasing row index (see getDetectorCoordinatesCT)
+		const float th = ATAN2(-wx * sinA - wy * cosA, wx * cosA - wy * sinA);
+		if (FABS(th) > thetaSpan / 2.f || xyz.z < zMin || xyz.z > zMax)
 			continue;
 
         *intersection = xyz;
-		*theta += thetaSpan / 2.f;
+		*theta = th + thetaSpan / 2.f;
         return 1;
     }
     return 0;

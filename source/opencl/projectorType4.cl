@@ -1028,11 +1028,10 @@ void projectorType4Backward(
 // TODO: Improve helical part
 #ifdef HELICAL
 	    const float angle = d_uv[kk];
-        const float xc = d1.x - r * COSF(angle);
-        const float yc = d1.y + r * SINF(angle);
-		const float y = d1.y - yc;
-		const float x = d1.x - xc;
-        const float thetaCenter = ATAN2(y, x);
+        const float cosA = COSF(angle);
+        const float sinA = SINF(angle);
+        const float xc = d1.x - r * cosA;
+        const float yc = d1.y + r * sinA;
         const float pz = (CFLOAT(kk) + 0.5f) / CFLOAT(d_nProjections);
         float3 v = dV - s;
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
@@ -1053,7 +1052,7 @@ void projectorType4Backward(
 #endif
             float theta = 0.f;
             float3 intersection;
-            int hit = rayArcIntersection(s, v, d1, xc, yc, r, zMin, zMax, thetaSpan, thetaCenter, &theta, &intersection);
+            int hit = rayArcIntersection(s, v, xc, yc, r, cosA, sinA, zMin, zMax, thetaSpan, &theta, &intersection);
             if (hit == 0)
                 continue;
             float px, py;

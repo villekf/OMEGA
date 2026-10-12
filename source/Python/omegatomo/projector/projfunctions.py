@@ -596,6 +596,7 @@ def conv3D(self, f, ii = 0):
             raise ValueError('PyCUDA is no longer supported. Please use CuPy.')
     else:
         import pyopencl as cl
+        import pyopencl.array
     args = _KernelArgs(self)
     if self.useAF:
         import arrayfire as af
@@ -891,6 +892,7 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
             #     af.device.unlock_array(y)
         else:
             import pyopencl as cl
+            import pyopencl.array
             from pyopencl.version import VERSION
             if not self.loadTOF:
                 if self.useIndexBasedReconstruction and self.listmode > 0:
@@ -1317,6 +1319,7 @@ def backwardProjection(self, y, subset = -1, timestep = -1):
                 torch.cuda.synchronize()
         else:
             import pyopencl as cl
+            import pyopencl.array
             from pyopencl.version import VERSION
             if self.useAF:
                 import arrayfire as af

@@ -97,6 +97,7 @@ def _apply_filter_cl(options, var, filterAttr, filterSource, divide):
     pushed back to the same command queue."""
     import numpy as np
     import pyopencl as cl
+    import pyopencl.array
     filterNp = getattr(options, filterSource)
     queue = var.queue
     varNp = var.get()

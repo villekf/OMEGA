@@ -705,7 +705,8 @@ class projectorClass:
                 self.cr_p = self.dPitchX
             elif hasattr(self, 'cr_p'):
                 self.dPitchX = self.cr_p
-            if np.max(np.abs(self.angles.flatten())) > 6. * np.pi:
+            # Helical angles are always radians and may span several rotations, so the degree heuristic is not applied
+            if np.max(np.abs(self.angles.flatten())) > 6. * np.pi and not self.useHelical:
                 self.angles = self.angles * (np.pi / 180.)
             if self.offangle > 0:
                 self.angles = self.angles + self.offangle
@@ -1618,6 +1619,10 @@ class projectorClass:
             raise ValueError('Only projector type 4 is supported with curved helical data!')
         if self.offangle > 0 and self.useHelical:
             print('Rotation is not yet supported with helical CT data')
+        if self.useHelical and self.useCPU:
+            raise ValueError('Helical CT is not supported with the CPU implementation!')
+        if self.useHelical and self.FDK:
+            raise ValueError('FDK/FBP is not supported with curved helical CT!')
             
         varNeg = ['LSQR','CGLS','FDK','SART']
         neg = [name for name in varNeg if getattr(self, name, False)]
