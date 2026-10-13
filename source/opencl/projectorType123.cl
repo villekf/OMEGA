@@ -491,6 +491,13 @@ void projectorType123(
 	d_Nxyz = traversalDims;
 	d_bmax = b + CMFLOAT3(CFLOAT(d_Nxyz.x) * d_d.x,
 		CFLOAT(d_Nxyz.y) * d_d.y, CFLOAT(d_Nxyz.z) * d_d.z);
+	// Rounded coarse tiles need not share the attenuation lattice. Their
+	// chord integral must follow attenuation-cell faces, not emission centers.
+	// Aligned grids retain the ordinary full-FOV accumulation convention.
+	const bool mrExactAttenuation = FABS(d_d.x - atnDx) > atnDx * 1.e-4f ||
+		FABS(d_d.y - atnDy) > atnDy * 1.e-4f || FABS(d_d.z - atnDz) > atnDz * 1.e-4f ||
+		FABS(b.x - atnBx) > atnDx * 1.e-4f || FABS(b.y - atnBy) > atnDy * 1.e-4f ||
+		FABS(b.z - atnBz) > atnDz * 1.e-4f;
 #endif
 	const uint d_Nxy = d_Nxyz.x * d_Nxyz.y;
 	FLOAT local_norm = FLOAT_ZERO;
@@ -648,6 +655,12 @@ void projectorType123(
 	int tempi = 0, tempj = 0, tempk = 0, ux = 0, uy = 0, uz = 0;
 
 	float L = LENGTH(diff);
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
+	// ODRT may transpose its working x/y axes later; attenuation remains in
+	// physical coordinates for both forward and backprojection.
+	const float3 mrAttenuationSource = s;
+	const float3 mrAttenuationDirection = diff;
+#endif
 #if defined(MRATN) && !defined(METAL)
 	// Seed attenuation before the traversal box. ODRT traverses the full
 	// grid, so its subsequent Siddon steps also include material before the tile.
@@ -1041,6 +1054,9 @@ void projectorType123(
 #endif //////////////// END TOF ////////////////
 			const float dFirst = (iiStart == iiEnd) ? FMAX(dT1 + dT2 - d_d2, FLOAT_ZERO) : ((stepDir > 0) ? dT1 : dT2);
 			const float dLast = (stepDir > 0) ? dT2 : dT1;
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
+			float mrAttenuationParameter = FMAX((b1 + CFLOAT((stepDir > 0) ? iiStart : iiStart + 1) * d_d2 - s1) / diff1, FLOAT_ZERO);
+#endif
 			for (int ii = iiStart; ; ii += stepDir) {
 				float d_in = d_d2;
 				if (ii == iiStart)
@@ -1052,6 +1068,15 @@ void projectorType123(
 #endif
 #if defined(ATN) && defined(SPECT)
 #ifdef MRATN
+#if defined(ORTH) && !defined(VOL)
+				if (mrExactAttenuation) {
+					const float nextParameter = mrAttenuationParameter + d_in / L;
+					jelppi += integrate_multiresolution_attenuation_segment(d_atten,
+						mrAttenuationSource, mrAttenuationDirection, mrAttenuationParameter, nextParameter, L,
+						atnNx, atnNy, atnNz, atnDx, atnDy, atnDz, atnBx, atnBy, atnBz);
+					mrAttenuationParameter = nextParameter;
+				} else {
+#endif
 				#ifdef USEIMAGES
 				compute_multiresolution_attenuation(d_in, localInd, d_atten, &jelppi,
 					d_Nxyz, d_d, b, atnNx, atnNy, atnNz,
@@ -1061,6 +1086,9 @@ void projectorType123(
 					d_Nxyz, d_d, b, atnNx, atnNy, atnNz,
 					atnDx, atnDy, atnDz, atnBx, atnBy, atnBz);
 				#endif
+#if defined(ORTH) && !defined(VOL)
+				}
+#endif
 #else
 #ifdef USEIMAGES
 				compute_attenuation(d_in, localInd, d_atten, &jelppi, aa);
@@ -1440,6 +1468,13 @@ void projectorType123(
 		for (uint ii = 0u; ii < Np; ii++) {
 // #if defined(LISTMODE)
 			local_ele = FLOAT_ZERO;
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
+#ifdef FP
+			const float mrAttenuationStart = tc_c;
+#else
+			const float mrAttenuationStart = tc;
+#endif
+#endif
 // #endif
 #ifdef ORTH
 			local_ind = compute_ind(tempj, tempi * d_N2, tempk, d_N3, d_Nxy);
@@ -1512,9 +1547,24 @@ void projectorType123(
 #if defined(ATN) && (defined(FP) || defined(SPECT))
 			if (pass) {
 #ifdef MRATN
+#if defined(SPECT) && defined(ORTH) && !defined(VOL)
+				if (mrExactAttenuation) {
+#ifdef FP
+					const float mrAttenuationEnd = tc_c;
+#else
+					const float mrAttenuationEnd = tc;
+#endif
+					jelppi += integrate_multiresolution_attenuation_segment(d_atten,
+						mrAttenuationSource, mrAttenuationDirection, mrAttenuationStart, mrAttenuationEnd, L,
+						atnNx, atnNy, atnNz, atnDx, atnDy, atnDz, atnBx, atnBy, atnBz);
+				} else {
+#endif
 				compute_multiresolution_attenuation(local_ele2, localInd2, d_atten, &jelppi,
 					d_Nxyz, d_d, b, atnNx, atnNy, atnNz,
 					atnDx, atnDy, atnDz, atnBx, atnBy, atnBz);
+#if defined(SPECT) && defined(ORTH) && !defined(VOL)
+				}
+#endif
 #else
 				compute_attenuation(local_ele2, localInd2, d_atten, &jelppi, aa);
 #endif
@@ -1690,7 +1740,11 @@ void projectorType123(
 #ifndef ORTH
 			local_ind += indStep;
 #endif
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
+			if (tempi < 0 || tempi >= d_NN.x || tempj < 0 || tempj >= d_NN.y || tempk < 0 || tempk >= d_NN.z) {
+#else
 			if (tempi < 0 || tempi >= d_Nxyz.x || tempj < 0 || tempj >= d_Nxyz.y || tempk < 0 || tempk >= d_Nxyz.z) {
+#endif
 				break;
 			}
 // #if (defined(SPECT) && !defined(ORTH)) // Ray length inside BP mask

@@ -445,6 +445,27 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	return false;
 }
  
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL) && defined(CRYSTXY)
+// Clip emission work without changing the reference support-scan count. Custom
+// PSF samples always continue the scan, including samples outside this tile.
+DEVICE int clipSPECTMREmissionInterval(const int primary, const int axial, const bool XY,
+	const uint3 tileDims, const int3 tileOffset, PTR_THR int* lo, PTR_THR int* hi) {
+	const int referenceCount = MAX(0, *hi - *lo);
+	const int primaryLo = XY ? tileOffset.x : tileOffset.y;
+	const int primaryHi = primaryLo + CINT(XY ? tileDims.x : tileDims.y);
+	if (primary < primaryLo || primary >= primaryHi ||
+		axial < tileOffset.z || axial >= tileOffset.z + CINT(tileDims.z)) {
+		*hi = *lo;
+	} else {
+		const int secondaryLo = XY ? tileOffset.y : tileOffset.x;
+		const int secondaryHi = secondaryLo + CINT(XY ? tileDims.y : tileDims.x);
+		*lo = MAX(*lo, secondaryLo);
+		*hi = MAX(*lo, MIN(*hi, secondaryHi));
+	}
+	return referenceCount - (*hi - *lo);
+}
+#endif
+
 // Both the orthogonal and volume of intersection ray tracers loop through all the neighboring voxels of the current voxel
 // Both also proceed through each X or Y slice, depending on the incident direction
 // This function simply loops through each X or Y voxel and Z voxels in the current slice
@@ -557,6 +578,11 @@ DEVICE int orthDistance3D(const int tempi,
 			if (!hasSupport)
 				scanHiXY = scanLoXY;
 		}
+#endif
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL) && defined(CRYSTXY)
+		if (gFilterCustom)
+			uu += clipSPECTMREmissionInterval(tempi, zz, XY, mrVolumeDims, mrVolumeOffset,
+				&scanLoXY, &scanHiXY);
 #endif
 		const FLOAT z0 = center.z - s.z;
 		l.x = diff.x * z0 - apu1;
@@ -704,6 +730,11 @@ DEVICE int orthDistance3D(const int tempi,
 			if (!hasSupport)
 				scanHiXY = scanLoXY;
 		}
+#endif
+#if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL) && defined(CRYSTXY)
+		if (gFilterCustom)
+			uu += clipSPECTMREmissionInterval(tempi, zz, XY, mrVolumeDims, mrVolumeOffset,
+				&scanLoXY, &scanHiXY);
 #endif
 		const FLOAT z0 = center.z - s.z;
 		l.x = diff.x * z0 - apu1;
