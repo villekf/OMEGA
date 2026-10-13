@@ -191,8 +191,8 @@ elseif options.attenuation_correction && options.SPECT % SPECT attenuation
         muAir = HU_to_mu(-1000, options.keV);
 
         % Use the pre-split full-FOV reference for multi-resolution maps.
-        % Its world center stays at (0,0,0); any tile union beyond it is
-        % padded symmetrically by prepareMultiResolutionAttenuation.
+        % Preserve its physical center; any tile union beyond that support
+        % is padded symmetrically by prepareMultiResolutionAttenuation.
         if options.useMultiResolutionVolumes && options.nMultiVolumes > 0
             fineDims = double([options.NxFull, options.NyFull, options.NzFull]);
             if isfield(options, 'imageAttenuationFineDims')
@@ -202,8 +202,13 @@ elseif options.attenuation_correction && options.SPECT % SPECT attenuation
             if isfield(options, 'imageAttenuationFineFOV')
                 fineFOV = double(options.imageAttenuationFineFOV(:).');
             end
-            attenuationRef = imref3d(fineDims, fineFOV(1) .* [-0.5, 0.5], ...
-                fineFOV(2) .* [-0.5, 0.5], fineFOV(3) .* [-0.5, 0.5]);
+            fineCenter = double([options.oOffsetX, options.oOffsetY, options.oOffsetZ]);
+            if options.useEFOV
+                fineCenter = fineCenter + double(options.eFOVShift(:).');
+            end
+            attenuationRef = imref3d(fineDims, fineCenter(1) + fineFOV(1) .* [-0.5, 0.5], ...
+                fineCenter(2) + fineFOV(2) .* [-0.5, 0.5], ...
+                fineCenter(3) + fineFOV(3) .* [-0.5, 0.5]);
         else
             attenuationRef = options.refSPECT;
         end

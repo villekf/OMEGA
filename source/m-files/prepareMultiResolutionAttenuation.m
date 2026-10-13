@@ -1,8 +1,8 @@
 function options = prepareMultiResolutionAttenuation(options)
-%PREPAREMULTIRESOLUTIONATTENUATION Pack centered full-FOV attenuation maps.
+%PREPAREMULTIRESOLUTIONATTENUATION Pack registered full-FOV attenuation maps.
 %   The input remains an image-domain map. For multi-resolution geometry,
 %   the packed layout is [fine; coarse] for each frame, with both grids
-%   centered at the world origin. Shifted emission slabs can enlarge the
+%   centered at the original full-FOV physical center. Slabs can enlarge the
 %   support symmetrically; padding outside the input map is air (mu = 0).
 
 if ~isfield(options, 'useMultiResolutionVolumes') || ~options.useMultiResolutionVolumes || ...
@@ -57,6 +57,23 @@ if any(~isfinite(fineSpacing)) || any(fineSpacing <= 0)
     error('The full-FOV fine attenuation grid spacing must be positive.')
 end
 
+% The input map is aligned to the pre-split reconstruction grid, whose
+% physical center includes both the image offset and any EFOV shift.
+% Re-centering its unchanged samples at world zero moves attenuation
+% relative to emission whenever the requested full FOV is offset.
+fineCenter = double([options.oOffsetX, options.oOffsetY, options.oOffsetZ]);
+if isfield(options, 'useEFOV') && options.useEFOV && ...
+        isfield(options, 'eFOVShift') && ~isempty(options.eFOVShift)
+    shift = double(options.eFOVShift(:).');
+    if numel(shift) ~= 3 || any(~isfinite(shift))
+        error('The full-FOV attenuation EFOV shift must contain three finite values.')
+    end
+    fineCenter = fineCenter + shift;
+end
+if numel(fineCenter) ~= 3 || any(~isfinite(fineCenter))
+    error('The full-FOV attenuation center must contain three finite values.')
+end
+
 nVolumes = double(options.nMultiVolumes) + 1;
 origins = [reshape(double(options.bx(1:nVolumes)), [], 1), reshape(double(options.by(1:nVolumes)), [], 1), reshape(double(options.bz(1:nVolumes)), [], 1)];
 volumeDims = [reshape(double(options.Nx(1:nVolumes)), [], 1), reshape(double(options.Ny(1:nVolumes)), [], 1), reshape(double(options.Nz(1:nVolumes)), [], 1)];
@@ -74,7 +91,7 @@ tileMaximum = max(origins + volumeDims .* volumeSpacing, [], 1);
 % grid only when an offset slab extends beyond that support; matching parity
 % allows the original map to be padded equally on both sides.
 fineDims = baseDims;
-tileExtent = 2 .* max(abs(tileMinimum), abs(tileMaximum));
+tileExtent = 2 .* max(abs(tileMinimum - fineCenter), abs(tileMaximum - fineCenter));
 % The projector stores origins and spacings as single precision. Their
 % multiply/add roundoff can put an otherwise exact FOV boundary a few ulps
 % outside the input map. Discount only that coordinate representation error
@@ -86,7 +103,7 @@ fineDims = max(fineDims, requiredDims);
 oddPadding = mod(fineDims - baseDims, 2) ~= 0;
 fineDims(oddPadding) = fineDims(oddPadding) + 1;
 fineExtent = fineDims .* fineSpacing;
-fineOrigin = -fineExtent ./ 2;
+fineOrigin = fineCenter - fineExtent ./ 2;
 
 coarseNominalSpacing = [double(options.dx(2)), double(options.dy(2)), double(options.dz(2))];
 if any(~isfinite(coarseNominalSpacing)) || any(coarseNominalSpacing <= 0)
@@ -103,7 +120,7 @@ else
     coarseDims = max(1, ceil(fineExtent ./ coarseNominalSpacing - 1e-10));
     coarseSpacing = coarseNominalSpacing;
     coarseExtent = coarseDims .* coarseSpacing;
-    coarseOrigin = -coarseExtent ./ 2;
+    coarseOrigin = fineCenter - coarseExtent ./ 2;
 end
 
 % Normalize frame layout. 3D is static; a 4D map has time in its final axis.

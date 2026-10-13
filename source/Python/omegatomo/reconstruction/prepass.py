@@ -121,8 +121,7 @@ def _prepare_image_domain_attenuation(options):
         input_fine_shape = fine_shape
         if any(size <= 0 for size in input_fine_shape):
             raise ValueError('The full-FOV fine attenuation grid must have positive dimensions.')
-        # The supplied full-FOV attenuation volume is centered at world
-        # (0, 0, 0). Keep the pre-split grid's physical support and spacing,
+        # Keep the pre-split grid's physical center, support and spacing,
         # which can differ slightly from the central slab after EFOV sizes
         # are rounded to integer voxel counts.
         if hasattr(options, 'imageAttenuationFineSpacing'):
@@ -138,6 +137,18 @@ def _prepare_image_domain_attenuation(options):
             fine_spacing = fine_fov / np.asarray(input_fine_shape, dtype=np.float64)
         if np.any(~np.isfinite(fine_spacing)) or np.any(fine_spacing <= 0.0):
             raise ValueError('Fine multi-resolution voxel spacings must be positive.')
+        fine_center = np.asarray([
+            float(np.asarray(getattr(options, axis)).reshape(-1)[0])
+            for axis in ('oOffsetX', 'oOffsetY', 'oOffsetZ')
+        ], dtype=np.float64)
+        if bool(getattr(options, 'useEFOV', False)):
+            shift = np.asarray(getattr(options, 'eFOVShift', (0.0, 0.0, 0.0)),
+                               dtype=np.float64).reshape(-1)
+            if shift.size != 3 or np.any(~np.isfinite(shift)):
+                raise ValueError('The full-FOV attenuation EFOV shift must contain three finite values.')
+            fine_center += shift
+        if np.any(~np.isfinite(fine_center)):
+            raise ValueError('The full-FOV attenuation center must contain three finite values.')
         # At scale 1, float32 geometry calculations can make nominally
         # identical slab spacings differ by a few ulps. Treat these as one
         # grid so the coarse attenuation map does not acquire an extra voxel
@@ -157,7 +168,8 @@ def _prepare_image_domain_attenuation(options):
             raise ValueError('Multi-resolution attenuation requires dimensions and origins for every active volume.')
         tile_minimum = np.min(volume_origins, axis=0)
         tile_maximum = np.max(volume_origins + volume_dims * spacings, axis=0)
-        tile_extent = 2.0 * np.maximum(np.abs(tile_minimum), np.abs(tile_maximum))
+        tile_extent = 2.0 * np.maximum(np.abs(tile_minimum - fine_center),
+                                     np.abs(tile_maximum - fine_center))
         # The projector receives float32 origins and voxel sizes. Their
         # multiply/add rounding can make an extent that is exactly an integer
         # number of fine voxels appear a few ulps larger here; a raw ceil
@@ -171,7 +183,7 @@ def _prepare_image_domain_attenuation(options):
         fine_dims += (fine_dims - np.asarray(input_fine_shape, dtype=np.int64)) % 2
         fine_shape = tuple(int(value) for value in fine_dims)
         fine_extent = fine_dims.astype(np.float64) * fine_spacing
-        fine_origin = -0.5 * fine_extent
+        fine_origin = fine_center - 0.5 * fine_extent
         if same_resolution:
             coarse_shape = fine_shape
             coarse_spacing = fine_spacing
@@ -180,7 +192,7 @@ def _prepare_image_domain_attenuation(options):
             coarse_shape = tuple(max(1, int(np.ceil(fine_extent[axis] / coarse_nominal_spacing[axis] - 1.0e-10)))
                                  for axis in range(3))
             coarse_spacing = coarse_nominal_spacing
-            coarse_origin = -0.5 * np.asarray(coarse_shape, dtype=np.float64) * coarse_spacing
+            coarse_origin = fine_center - 0.5 * np.asarray(coarse_shape, dtype=np.float64) * coarse_spacing
         grid_dims = np.asarray((fine_shape, coarse_shape), dtype=np.uint32)
         grid_spacing = np.asarray((fine_spacing, coarse_spacing), dtype=np.float32)
         grid_origin = np.asarray((fine_origin, coarse_origin), dtype=np.float32)
