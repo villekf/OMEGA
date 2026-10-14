@@ -555,8 +555,9 @@ def reconstructions_main(options):
         if hasattr(options, 'xSens') and np.size(options.xSens) > 0 and hasattr(options, 'zSens') and np.size(options.zSens) > 0:
             options.uV = np.float32(np.asfortranarray(options.xSens))
             options.z = np.float32(np.asfortranarray(options.zSens))
-            options.det_per_ring = options.uV.size // 2
-            options.rings = options.z.size
+            # xSens and zSens contain the coordinates of all layers
+            options.det_per_ring = options.uV.size // 2 // options.nLayers
+            options.rings = options.z.size // options.nLayers
         else:
             from omegatomo.projector.detcoord import getCoordinates
             options.use_raw_data = True

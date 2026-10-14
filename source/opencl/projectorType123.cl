@@ -312,17 +312,27 @@ void projectorType123(
 	indz.y = i.z % rings;
 	size_t idx = i.x + i.y * d_det_per_ring + i.z * d_det_per_ring * d_det_per_ring;
 #if defined(NLAYERS)
-	if (i.z >= rings * rings) {
-		// return;
-		i.z -= rings * rings;
-		i.x += d_det_per_ring;
-		i.y += d_det_per_ring;
-		indz.x = i.z / rings + rings;
-		indz.y = i.z % rings + rings;
-	}
-	if (i.x >= d_det_per_ring * NLAYERS || i.y >= d_det_per_ring * NLAYERS || i.z >= rings * rings * NLAYERS)
+	// The depth enumerates the NLAYERS^2 layer combinations (layer of the first detector, layer of the second detector)
+	// and, within each combination, all ring pairs. The detectors of layer l are located at an offset of
+	// l * d_det_per_ring and the rings at an offset of l * rings in the coordinate arrays
+	const int ringPairs = rings * rings;
+	const int layerPair = i.z / ringPairs;
+	const int layerA = layerPair / NLAYERS;
+	const int layerB = layerPair % NLAYERS;
+	i.z -= layerPair * ringPairs;
+	indz.x = i.z / rings + layerA * rings;
+	indz.y = i.z % rings + layerB * rings;
+	i.x += layerA * d_det_per_ring;
+	i.y += layerB * d_det_per_ring;
+	// The grid enumerates ordered detector pairs, i.e. every LOR {(detector A, ring A), (detector B, ring B)} twice, as (A,B) and (B,A).
+	// Only one orientation is kept so that every LOR contributes exactly once to the sensitivity image
+	// (i.x, i.y and indz hold layer-global detector and ring indices; i.x == i.y can only occur within the same layer)
+	const bool duplicateLOR = (i.x > i.y) || (i.x == i.y && indz.x >= indz.y);
+	if (i.x >= d_det_per_ring * (layerA + 1) || i.y >= d_det_per_ring * (layerB + 1) || layerPair >= NLAYERS * NLAYERS || duplicateLOR)
 #else
-	if (i.x >= d_det_per_ring || i.y >= d_det_per_ring || i.z >= rings * rings)
+	// Only one orientation of every LOR {(detector A, ring A), (detector B, ring B)} is kept (the grid contains both (A,B) and (B,A))
+	const bool duplicateLOR = (i.x > i.y) || (i.x == i.y && indz.x >= indz.y);
+	if (i.x >= d_det_per_ring || i.y >= d_det_per_ring || i.z >= rings * rings || duplicateLOR)
 #endif
 #else
 	size_t idx = GID0;
@@ -444,12 +454,6 @@ void projectorType123(
 #endif
 #endif  //////////////// END MULTIRAY ////////////////
 	FLOAT3 s, d;
-#if defined(NLAYERS) && !defined(LISTMODE)
-	const uint layer = i.z / NLAYERS;
-	// if (layer != 0)
-	// if (layer == 1 || layer == 2)
-		// return;
-#endif
 	// Load the next detector index
 #if defined(CT) && !defined(LISTMODE) && !defined(PET) // CT data
 	getDetectorCoordinatesCT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize
@@ -481,7 +485,7 @@ void projectorType123(
 		, lorXY, lorZ, crystalSize
 #endif
 #if defined(NLAYERS)
-		, d_sizey, layer
+		, d_sizey
 #endif
 	);
 #else // Subset types 3, 6, 7
@@ -592,6 +596,13 @@ void projectorType123(
 				dist1 = (b.x - s.x);
 				dist2 = (b.x + CFLOAT(d_Nxyz.x) * d_d.x - d.x);
 			}
+			// Both endpoints on the same side of the image (e.g. a radial cross-layer pair): the segment does not intersect it
+			if (MAX(s.x, d.x) <= b.x || MIN(s.x, d.x) >= b.x + CFLOAT(d_Nxyz.x) * d_d.x)
+#ifdef N_RAYS //////////////// MULTIRAY ////////////////
+				continue;
+#else
+				return;
+#endif  //////////////// END MULTIRAY ////////////////
 			if (dist1 < FLOAT_ZERO) {
 				const int kk = CINT(CEIL(-dist1 / d_d.x)) - 1;
 				if (kk < CINT(d_Nxyz.x)) {
@@ -642,6 +653,13 @@ void projectorType123(
 				dist1 = (b.y - s.y);
 				dist2 = (b.y + CFLOAT(d_Nxyz.y) * d_d.y - d.y);
 			}
+			// Both endpoints on the same side of the image (e.g. a radial cross-layer pair): the segment does not intersect it
+			if (MAX(s.y, d.y) <= b.y || MIN(s.y, d.y) >= b.y + CFLOAT(d_Nxyz.y) * d_d.y)
+#ifdef N_RAYS //////////////// MULTIRAY ////////////////
+				continue;
+#else
+				return;
+#endif  //////////////// END MULTIRAY ////////////////
 			if (dist1 < FLOAT_ZERO) {
 				const int kk = CINT(CEIL(-dist1 / d_d.y)) - 1;
 				if (kk < CINT(d_Nxyz.y)) {

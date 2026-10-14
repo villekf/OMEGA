@@ -830,7 +830,8 @@ class projectorClass:
         if self.Nang == 1 and self.det_per_ring > 1:
             self.Nang = self.det_per_ring // 2
         if self.span == 1:
-            self.TotSinos = self.rings**2
+            # All layer combinations (rings**2 sinograms each) form the sinogram set
+            self.TotSinos = self.rings**2 * self.nLayers**2
             self.NSinos = self.TotSinos
         elif self.NSinos == 0:
             self.NSinos = np.sum(self.segment_table)

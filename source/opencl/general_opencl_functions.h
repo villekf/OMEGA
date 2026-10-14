@@ -1746,25 +1746,23 @@ DEVICE void getDetectorCoordinates(const CLGLOBAL uint *d_xyindex, const CLGLOBA
 	, const uint d_sizey, const uint d_size_x
 #endif
 ) {
-	const uint ind = d_xyindex[idx] * 4;
+	// With multiple layers z has three values per sinogram, the third one is the layer combination of the sinogram. The
+	// transaxial coordinates are stored as one block (of d_size_x * d_sizey bins) per layer combination while d_xyindex
+	// is local to the block
 #if defined(NLAYERS)
 	const uint indz = d_zindex[idx] * 3;
-	const int layer = CINT(d_z[indz]);
-	(*s).x = d_xy[ind + layer * d_size_x * d_sizey];
-	(*s).y = d_xy[ind + 1 + layer * d_size_x * d_sizey];
-	(*d).x = d_xy[ind + 2 + layer * d_size_x * d_sizey];
-	(*d).y = d_xy[ind + 3 + layer * d_size_x * d_sizey];
-	(*s).z = d_z[indz + 1];
-	(*d).z = d_z[indz + 2];
+	const uint layer = CUINT(d_z[indz + 2]);
+	const uint ind = d_xyindex[idx] * 4 + layer * d_size_x * d_sizey * 4;
 #else
 	const uint indz = d_zindex[idx] * 2;
+	const uint ind = d_xyindex[idx] * 4;
+#endif
 	(*s).x = d_xy[ind];
 	(*s).y = d_xy[ind + 1];
 	(*d).x = d_xy[ind + 2];
 	(*d).y = d_xy[ind + 3];
 	(*s).z = d_z[indz];
 	(*d).z = d_z[indz + 1];
-#endif
 #if defined(N_RAYS)
 	if (N_RAYS3D > 1)
 		multirayCoordinateShiftZ(s, d, lorZ, cr.y);
@@ -1787,15 +1785,19 @@ DEVICE void getDetectorCoordinatesFullSinogram(const uint d_size_x, const int3 i
 	, const int lorXY, const int lorZ, const float2 cr
 #endif
 #if defined(NLAYERS)
-	, const uint d_sizey, const uint layer
+	, const uint d_sizey
 #endif
 ) {
 	const int id = (i.x + i.y * d_size_x) * 4;
-	const int idz = i.z * 2;
 #if defined(NLAYERS)
+	// With multiple layers z has three values per sinogram, the third one is the layer combination of the sinogram
+	// (the transaxial coordinates are stored as one block of d_size_x * d_sizey bins per layer combination)
+	const int idz = i.z * 3;
+	const int layer = CINT(d_z[idz + 2]);
 	*s = CMFLOAT3(d_xy[id + layer * d_size_x * d_sizey * 4], d_xy[id + layer * d_size_x * d_sizey * 4 + 1], d_z[idz]);
 	*d = CMFLOAT3(d_xy[id + layer * d_size_x * d_sizey * 4 + 2], d_xy[id + layer * d_size_x * d_sizey * 4 + 3], d_z[idz + 1]);
 #else
+	const int idz = i.z * 2;
 	*s = CMFLOAT3(d_xy[id], d_xy[id + 1], d_z[idz]);
 	*d = CMFLOAT3(d_xy[id + 2], d_xy[id + 3], d_z[idz + 1]);
 #endif

@@ -254,7 +254,28 @@ void projectorType4Forward(
 	indz.x = i.z / rings;
 	indz.y = i.z % rings;
 	size_t idx = i.x + i.y * d_det_per_ring + i.z * d_det_per_ring * d_det_per_ring;
-	if (i.x >= d_det_per_ring || i.y >= d_det_per_ring || i.z >= rings * rings)
+#if defined(NLAYERS)
+	// The depth enumerates the NLAYERS^2 layer combinations (layer of the first detector, layer of the second detector)
+	// and, within each combination, all ring pairs. The detectors of layer l are located at an offset of
+	// l * d_det_per_ring and the rings at an offset of l * rings in the coordinate arrays
+	const int ringPairs = rings * rings;
+	const int layerPair = i.z / ringPairs;
+	const int layerA = layerPair / NLAYERS;
+	const int layerB = layerPair % NLAYERS;
+	i.z -= layerPair * ringPairs;
+	indz.x = i.z / rings + layerA * rings;
+	indz.y = i.z % rings + layerB * rings;
+	i.x += layerA * d_det_per_ring;
+	i.y += layerB * d_det_per_ring;
+	// Only one orientation of every LOR {(detector A, ring A), (detector B, ring B)} is kept (the grid contains both (A,B) and (B,A))
+	// (i.x, i.y and indz hold layer-global detector and ring indices; i.x == i.y can only occur within the same layer)
+	const bool duplicateLOR = (i.x > i.y) || (i.x == i.y && indz.x >= indz.y);
+	if (i.x >= d_det_per_ring * (layerA + 1) || i.y >= d_det_per_ring * (layerB + 1) || layerPair >= NLAYERS * NLAYERS || duplicateLOR)
+#else
+	// Only one orientation of every LOR {(detector A, ring A), (detector B, ring B)} is kept (the grid contains both (A,B) and (B,A))
+	const bool duplicateLOR = (i.x > i.y) || (i.x == i.y && indz.x >= indz.y);
+	if (i.x >= d_det_per_ring || i.y >= d_det_per_ring || i.z >= rings * rings || duplicateLOR)
+#endif
 #elif defined(LISTMODE)
 	size_t idx = GID0;
 	if (idx >= m_size)
@@ -429,8 +450,14 @@ void projectorType4Forward(
     const float3 tMin = FMIN(tFront, tBack);
     const float3 tMax = FMAX(tFront, tBack);
 
-    const float tStart = FMAX(FMAX(tMin.x, tMin.y), tMin.z);
-    const float tEnd = FMIN(FMIN(tMax.x, tMax.y), tMax.z);
+    // Entry and exit of the infinite line through the image box
+    const float tStartBox = FMAX(FMAX(tMin.x, tMin.y), tMin.z);
+    const float tEndBox = FMIN(FMIN(tMax.x, tMax.y), tMax.z);
+    // Only the source/detector-to-detector segment (0 <= t <= 1) is integrated. For LORs whose endpoints lie
+    // outside the image box this is a no-op, but LORs whose segment never reaches the box (e.g. near-radial
+    // cross-layer pairs) are skipped instead of picking up the line integral beyond their detectors
+    const float tStart = FMAX(tStartBox, FLOAT_ZERO);
+    const float tEnd = FMIN(tEndBox, FLOAT_ONE);
 #ifdef LARGEDIM
 	// Originally, the interpolation always began at the edge of the current subvolume which was also
 	// the ending point of the previous subvolume which lead to uneven and duplicate sampling
@@ -440,7 +467,8 @@ void projectorType4Forward(
 	const float tFrontZG = (bzGlobalMax - s.z) / v.z;
 	const float tStartG = FMAX(FMAX(tMin.x, tMin.y), FMIN(tFrontZG, tBackZG));
 #else
-	const float tStartG = tStart;
+	// The sampling grid is anchored at the box entry so that clamping does not move the sample positions
+	const float tStartG = tStartBox;
 #endif
 #ifdef TOF //////////////// TOF ////////////////
     float TOFSum = FLOAT_ZERO;
@@ -500,12 +528,10 @@ void projectorType4Forward(
         t0 = tStartG + (CEIL(sInd) - sInd) * tStep;
     else
         t0 = tStartG + (sInd - FLOOR(sInd)) * tStep;
-#ifdef LARGEDIM
-	// The above now computes the global entry point
-	// Here we move the starting point to the correct location if necessary
+	// The above computes the sampling grid from the box entry (global entry with LARGEDIM)
+	// Here the starting point is moved to the first grid point at or after tStart if necessary
 	if (tStart > tStartG)
 		t0 += FLOOR((tStart - t0) / tStep + FLOAT_ONE) * tStep;
-#endif
     // Number of steps and the physical length of one step (the interpolation weight)
     uint nSteps = 0U;
     if (t0 <= tEnd)
@@ -519,10 +545,8 @@ void projectorType4Forward(
     const float stepLen = dL;
 	// Same as above
     float t0 = tStartG + tStep / 10.f;
-#ifdef LARGEDIM
 	if (tStart > tStartG)
 		t0 += FLOOR((tStart - t0) / tStep + FLOAT_ONE) * tStep;
-#endif
 	// Compute the total number of steps
     uint nSteps = 0;
     if (t0 <= tEnd)

@@ -129,8 +129,8 @@ end
 if options.listmode > 0 && options.compute_sensitivity_image && isfield(options,'xSens') && isfield(options,'zSens') && ~isempty(options.xSens) && ~isempty(options.zSens) && ~options.SPECT
     x = options.xSens;
     z_det = options.zSens;
-	options.det_per_ring = numel(x) / 2;
-	options.rings = numel(z_det);
+	options.det_per_ring = numel(x) / 2 / options.nLayers; % x and z contain the coordinates of all layers
+	options.rings = numel(z_det) / options.nLayers;
 elseif options.listmode > 0 && options.compute_sensitivity_image && ~options.useIndexBasedReconstruction
     options.use_raw_data = true;
     [x, ~, z_det, ~] = get_coordinates(options);

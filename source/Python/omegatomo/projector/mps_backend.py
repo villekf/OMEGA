@@ -72,6 +72,7 @@ def _empty_value(value: Any) -> bool:
 
 
 def _pack_scalar_kernel_params(self: Any, timestep: int, subset: int, volume: int) -> bytes:
+    from .init import _kernel_crystal_pitch
     blob = bytearray(SCALAR_KERNEL_PARAMS_SIZE)
 
     def u32(name: str, value: int) -> None:
@@ -120,7 +121,7 @@ def _pack_scalar_kernel_params(self: Any, timestep: int, subset: int, volume: in
 
     u32('nRowsD', int(self.nRowsD))
     u32('nColsD', int(self.nColsD))
-    f2('dPitch', (float(self.dPitchX), float(self.dPitchY)))
+    f2('dPitch', _kernel_crystal_pitch(self))
     f32('dL', float(self.dL))
     f32('global_factor', float(self.global_factor))
     f32('epps', float(self.epps))

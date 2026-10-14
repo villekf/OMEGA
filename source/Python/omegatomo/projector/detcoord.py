@@ -268,6 +268,9 @@ def getCoordinates(options):
                 x = np.concatenate(xList, axis=0)
                 y = np.concatenate(yList, axis=0)
                 z = np.concatenate(zList, axis=0)
+                # The layer combination (block index) of each sinogram is stored as the third column of z so that it
+                # follows the sinogram when the subsets are formed
+                z = np.column_stack((z, np.concatenate([np.full(zk.shape[0], kk, dtype=z.dtype) for kk, zk in enumerate(zList)])))
             else:
                 # Single-layer path: kept in its original order (z computed
                 # after arc_correction/sampling below) so single-layer
@@ -296,6 +299,9 @@ def getCoordinates(options):
                 options.offangle = options.offangle / options.det_w_pseudo
                 options.offangle = options.offangle * options.det_per_ring
             x, y = detectorCoordinates(options)
+            if options.nLayers > 1:
+                # Multi-layer: one block of det_w_pseudo detectors per layer (the loader's layerID * det_w_pseudo offset)
+                x, y = _rawLayerDetectors(options, x, y)
             # if options.sampling_raw > 1 and ~options.precompute_lor
             #     [x, y, options] = increaseSampling(options, x, y, interpolateSinogram);
             z_length = float(options.rings + np.sum(options.pseudot)) * options.cr_pz
@@ -304,10 +310,105 @@ def getCoordinates(options):
         
             if np.sum(options.pseudot) > 0:
                 z = np.delete(z, np.where(options.pseudot))
-        
+            # Multi-layer: the rings of layer l are located at an offset of l * rings
+            if options.nLayers > 1:
+                z = _rawLayerRings(options, z)
+
             x = np.asfortranarray(np.vstack((x, y)))
     return x, y, z
-    
+
+def _rawLayerDetectors(options, xp, yp):
+    """
+    Raw/index-based detector coordinates of a multi-layer scanner. The
+    coordinates of layer l are stored in a block of det_w_pseudo entries
+    starting at l * det_w_pseudo, i.e. the same offset the list-mode loader
+    adds to the transaxial detector index of a layer. A block contains the real
+    detectors of the layer in the order of the loader's detector index, any
+    padding (Inf) is moved to the end of the block.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+    xp : NumPy array
+        x-direction detector coordinates of all layers, with the Inf padding
+        of the sinogram layout.
+    yp : NumPy array
+        y-direction detector coordinates of all layers, with the Inf padding
+        of the sinogram layout.
+
+    Returns
+    -------
+    x : NumPy array
+        x-direction coordinates, nLayers * det_w_pseudo entries.
+    y : NumPy array
+        y-direction coordinates, nLayers * det_w_pseudo entries.
+
+    """
+    S = int(np.asarray(options.det_w_pseudo).ravel()[0])
+    nLayers = int(options.nLayers)
+    if xp.size < nLayers * S:
+        raise ValueError('Raw/index-based multi-layer detector coordinates are not supported with pseudo detectors!')
+    x = np.full(nLayers * S, np.inf, dtype=xp.dtype)
+    y = np.full(nLayers * S, np.inf, dtype=yp.dtype)
+    for ll in range(nLayers):
+        if ll < nLayers - 1:
+            ind = slice(ll * S, (ll + 1) * S)
+        else:
+            ind = slice(ll * S, xp.size)
+        xl = xp[ind]
+        yl = yp[ind]
+        valid = np.isfinite(xl)
+        n = int(np.count_nonzero(valid))
+        if n > S:
+            raise ValueError('Too many detectors in layer ' + str(ll + 1) + '!')
+        x[ll * S:ll * S + n] = xl[valid]
+        y[ll * S:ll * S + n] = yl[valid]
+    return x, y
+
+def _rawLayerRings(options, z):
+    """
+    Raw/index-based ring coordinates of a multi-layer scanner. The coordinates
+    of layer l are stored in a block of rings entries starting at l * rings,
+    i.e. the same offset the list-mode loader adds to the ring number of a
+    layer. With layers that have a different number of axial crystals
+    (cryst_per_block_axial) the rings of each layer are obtained from
+    sinogramCoordinates3D (which includes the gaps between the modules) and the
+    real rings are followed by Inf padding up to rings. Otherwise all layers
+    have the same axial positions.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+    z : NumPy array
+        The ring coordinates of one layer (equal layers).
+
+    Returns
+    -------
+    z : NumPy array
+        z-direction coordinates, nLayers * rings entries.
+
+    """
+    import copy
+    nLayers = int(options.nLayers)
+    cpba = np.atleast_1d(np.asarray(options.cryst_per_block_axial)).ravel()
+    if cpba.size > 1 and cpba[0] != cpba[1]:
+        S = int(np.asarray(options.rings).ravel()[0])
+        # The first rings rows of the second column of the span 1 coordinates are the axial positions of the rings
+        # of the second LOR end (the layer given by the second element of layers)
+        opts = copy.copy(options)
+        opts.span = 1
+        zOut = np.full(nLayers * S, np.inf, dtype=np.float32)
+        for ll in range(nLayers):
+            zl = sinogramCoordinates3D(opts, (ll + 1, ll + 1))[:S, 1]
+            zl = zl[np.isfinite(zl)]
+            if zl.size > S:
+                raise ValueError('Too many rings in layer ' + str(ll + 1) + '!')
+            zOut[ll * S:ll * S + zl.size] = zl
+        return zOut
+    return np.tile(z, nLayers)
+
 def getCoordinatesSPECT(options: proj.projectorClass) -> Tuple[np.ndarray, np.ndarray]: # TODO this function
     n1: int = len(options.angles)
     n2: int = len(options.radiusPerProj)
@@ -639,10 +740,13 @@ def computeCoordinates(options, blocks_per_ring, transaxial_multip, cryst_per_bl
                         alkupistey = y[ii]
                     ii += 1
         else:
-            x[ii:ii + ((blocks_per_ring * transaxial_multip) * cryst_per_block) // 4 + cryst_per_block // 2] = -(np.flip(x[:((blocks_per_ring * transaxial_multip) * cryst_per_block) // 4 + cryst_per_block // 2]))
-            y[ii:ii + ((blocks_per_ring * transaxial_multip) * cryst_per_block) // 4 + cryst_per_block // 2] = (np.flip(y[:((blocks_per_ring * transaxial_multip) * cryst_per_block) // 4 + cryst_per_block // 2]))
-            x[ii + ((blocks_per_ring * transaxial_multip) * cryst_per_block) // 4 + cryst_per_block // 2:] = np.flip(x[cryst_per_block:((blocks_per_ring * transaxial_multip) * cryst_per_block) // 2])
-            y[ii + ((blocks_per_ring * transaxial_multip) * cryst_per_block) // 4 + cryst_per_block // 2:] = -(y[cryst_per_block:((blocks_per_ring * transaxial_multip) * cryst_per_block) // 2])
+            # MATLAB evaluates N*cryst_per_block/4 + cryst_per_block/2 in floating point, which is an integer
+            # also for odd cryst_per_block (e.g. 42 blocks, 9 crystals: 94.5 + 4.5 = 99), unlike the sum of the floored terms
+            nHalf = int(math.floor(((blocks_per_ring * transaxial_multip) * cryst_per_block) / 4 + cryst_per_block / 2))
+            x[ii:ii + nHalf] = -(np.flip(x[:nHalf]))
+            y[ii:ii + nHalf] = (np.flip(y[:nHalf]))
+            x[ii + nHalf:] = np.flip(x[cryst_per_block:((blocks_per_ring * transaxial_multip) * cryst_per_block) // 2])
+            y[ii + nHalf:] = -(y[cryst_per_block:((blocks_per_ring * transaxial_multip) * cryst_per_block) // 2])
     return x, y
             
 def formDetectorIndices( det_w_pseudo, nLayers = 1, crystN = 0):
@@ -896,11 +1000,10 @@ def sinogramCoordinates3D(options, layers = (1,1)):
     else:
         z_length = float(options.rings + 1) * cr_pz
     
-    if options.nLayers > 1 and options.cryst_per_block_axial[0] != options.cryst_per_block_axial[1]:
-        maxZ = z_length + cr_pz * (options.linear_multip - 1)
-    else:
-        maxZ = z_length
-    
+    # The unequal-layer extension (maxZ = z_length + cr_pz * (linear_multip - 1)) is disabled in
+    # sinogram_coordinates_3D.m; with it the axial coordinates are shifted by a constant vs. MATLAB/GATE
+    maxZ = z_length
+
     if options.nLayers > 1 and options.cryst_per_block_axial[0] != options.cryst_per_block_axial[1]:
         apu = np.zeros(options.linear_multip)
         for kk in range(options.linear_multip):
@@ -1016,7 +1119,7 @@ def sinogramCoordinates3D(options, layers = (1,1)):
                 ind2 = np.arange(0, cr_pz * r, cr_pz).reshape(-1, 1) + apu
                 ind3 = np.full((loppu, 1), np.inf)
                 insert_indices = np.setdiff1d(np.arange(len(ind3)), np.arange(options.cryst_per_block[-1]-1, len(ind3), options.cryst_per_block[-1]))
-                ind3[insert_indices] = ind2[insert_indices]
+                ind3[insert_indices] = ind2
                 ind2 = ind3
             else:
                 ind2 = np.arange(0, cr_pz * loppu, cr_pz).reshape(-1, 1)
@@ -1029,7 +1132,7 @@ def sinogramCoordinates3D(options, layers = (1,1)):
                 else:
                     apu = np.repeat(gap, options.cryst_per_block_axial[-1]).reshape(-1, 1)
                     insert_indices = np.setdiff1d(np.arange(len(ind1)), np.arange(options.cryst_per_block[0]-1, len(ind1), options.cryst_per_block[0]))
-                apu1[insert_indices] = apu[insert_indices]
+                apu1[insert_indices] = apu
         else:
             ind2 = np.arange(0, cr_pz * loppu, cr_pz).reshape(-1, 1)
         

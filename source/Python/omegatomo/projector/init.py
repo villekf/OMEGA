@@ -12,6 +12,19 @@ def _kernel_ellipse_power(value):
     return float(np.finfo(np.float32).max) if not np.isfinite(value) else value
 
 
+def _kernel_crystal_pitch(self):
+    """The float2 handed to the kernels as crystalSize / dPitch.
+
+    The kernels use .x as the transaxial and .y as the axial extent (multi-ray spread,
+    detector pitch). For PET that is the crystal size (cr_p, cr_pz); dPitchX/dPitchY
+    hold (cr_pz, cr_p) there for historical reasons and must not be passed as such.
+    CT and SPECT use the detector pitch (dPitchX, dPitchY).
+    """
+    if self.CT or self.SPECT:
+        return self.dPitchX, self.dPitchY
+    return self.cr_p, self.cr_pz
+
+
 def _build_kIndF(self):
     """The constant FP kernel-argument prefix (everything set once at init
     time, before any per-subset geometry/output arguments), shared by the
@@ -28,7 +41,7 @@ def _build_kIndF(self):
             a.vec3f(self.ellipseCenterX, self.ellipseCenterY, self.ellipseCenterZ)
             a.vec3f(self.ellipseRadiusX, self.ellipseRadiusY, self.ellipseRadiusZ)
             a.f32(ellipse_power_kernel)
-        a.vec2f(self.dPitchX, self.dPitchY)
+        a.vec2f(*_kernel_crystal_pitch(self))
         if self.FPType in (2, 3):
             if self.FPType == 2:
                 a.f32(self.tube_width_z)
@@ -36,12 +49,12 @@ def _build_kIndF(self):
                 a.f32(self.tube_radius)
             a.f32(self.bmin).f32(self.bmax).f32(self.Vmax)
     elif self.FPType == 4:
-        a.u32(self.nRowsD).u32(self.nColsD).vec2f(self.dPitchX, self.dPitchY)
+        a.u32(self.nRowsD).u32(self.nColsD).vec2f(*_kernel_crystal_pitch(self))
         if self.CT and self.useHelical:
             a.f32(self.helicalRadius)
         a.f32(self.dL).f32(self.global_factor)
     elif self.FPType == 5:
-        a.u32(self.nRowsD).u32(self.nColsD).vec2f(self.dPitchX, self.dPitchY)
+        a.u32(self.nRowsD).u32(self.nColsD).vec2f(*_kernel_crystal_pitch(self))
     if self.FPType in (1, 2, 3):
         if self.TOF:
             a.buf(self.d_TOFCenter)
@@ -70,7 +83,7 @@ def _build_kIndB(self):
     ellipse_power_kernel = _kernel_ellipse_power(self.ellipsePower)
     a = _KernelArgs(self)
     if self.BPType in (4, 5):
-        a.u32(self.nRowsD).u32(self.nColsD).vec2f(self.dPitchX, self.dPitchY)
+        a.u32(self.nRowsD).u32(self.nColsD).vec2f(*_kernel_crystal_pitch(self))
         if self.BPType == 4 and self.CT and self.useHelical:
             a.f32(self.helicalRadius)
         if self.BPType == 4 and not self.CT:
@@ -83,7 +96,7 @@ def _build_kIndB(self):
             a.vec3f(self.ellipseCenterX, self.ellipseCenterY, self.ellipseCenterZ)
             a.vec3f(self.ellipseRadiusX, self.ellipseRadiusY, self.ellipseRadiusZ)
             a.f32(ellipse_power_kernel)
-        a.vec2f(self.dPitchX, self.dPitchY)
+        a.vec2f(*_kernel_crystal_pitch(self))
         if self.BPType in (2, 3):
             if self.BPType == 2:
                 a.f32(self.tube_width_z)
@@ -161,7 +174,8 @@ def _initialize_coordinate_buffers(self, upload):
     if self.CT and self.useHelical:
         z_stride = 1
     else:
-        z_stride = 6 if self.pitch else (3 if self.PET and getattr(self, 'nLayers', 0) > 1 else 2)
+        # PET sinograms of a multi-layer scanner carry the layer combination as the third value of each sinogram
+        z_stride = 6 if self.pitch else (3 if self.PET and self.listmode == 0 and self.nLayers > 1 else 2)
     subset_geometry = (self.CT or self.SPECT) and self.listmode == 0
     pet_geometry = self.PET and self.listmode == 0
     for timestep in range(self.Nt):
@@ -625,10 +639,8 @@ def initProjector(self):
         if self.randoms_correction:
             bOpt += ('-DRANDOMS',)
         if self.nLayers > 1:
-            if self.useIndexBasedReconstruction:
-                bOpt += ('-DNLAYERS=' + str(self.nLayers),)
-            else:
-                bOpt += ('-DNLAYERS=' + str(self.nProjections // (self.nLayers * self.nLayers)),)
+            # The number of layers. For sinograms the layer combination of each sinogram is stored in z
+            bOpt += ('-DNLAYERS=' + str(self.nLayers),)
         if self.TOF:
             bOpt += ('-DTOF',)
         if self.CT:
