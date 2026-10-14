@@ -4,11 +4,16 @@ function im_vectors = init_next_iter(im_vectors, options, iter, varargin)
 if options.save_iter
     iter_n = iter + 1;
 else
-    ind = ismember(options.saveNIter, iter - 1);
-    if any(ind)
-        iter_n = options.saveNIter(ind) + 1;
+    % saveNIter contains zero-based iteration numbers. The output axis is
+    % compact: requested iterations occupy their ordinal slots, followed by
+    % one reserved slot for the final reconstruction.
+    ind = find(options.saveNIter == iter - 1, 1, 'first');
+    if ~isempty(ind)
+        iter_n = ind;
+    elseif iter == options.Niter
+        iter_n = numel(options.saveNIter) + 1;
     else
-        iter_n = 1;
+        iter_n = 0;
     end
 end
 if nargin > 3 && ~isempty(varargin{1})
@@ -26,10 +31,12 @@ if options.BSREM || options.ROSEM_MAP
     im_vectors = MAPiter(im_vectors, options.lambda(iter), options.beta, dU, options.epps);
 end
 
-if iscell(im_vectors.recApu)
-    im_vectors.recImage(:, iter_n, tt) = im_vectors.recApu{1};
-else
-    im_vectors.recImage(:, iter_n, tt) = im_vectors.recApu;
+if iter_n > 0
+    if iscell(im_vectors.recApu)
+        im_vectors.recImage = im_vectors.recApu;
+    else
+        im_vectors.recImage(:, iter_n, tt) = im_vectors.recApu;
+    end
 end
 
 if options.verbose > 0

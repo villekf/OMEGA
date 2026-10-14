@@ -1203,12 +1203,90 @@ def _type6_total_lengths(options: proj.projectorClass) -> np.ndarray:
     return np.asarray(retained * full_dx, dtype=np.float32)
 
 
+def _prepare_odrt_psf(options: proj.projectorClass) -> None:
+    """Validate and canonicalize an optional user-supplied ODRT SPECT PSF.
+
+    The lookup table uses ray-local axes ``(u, v, depth)``. The ``u`` and
+    ``v`` axes are centered at index coordinates ``(N - 1) / 2`` (so even
+    dimensions center between their middle samples); depth index zero is at
+    the original SPECT ray start, before ellipse clipping. The kernel restores
+    the per-ray distance removed by clipping. Its physical sampling pitch is
+    ``gFilterSpacing = (du, dv, dd)`` in millimeters. The kernel's in-plane
+    basis is deterministic: ``e1 = normalize(cross(ref, ray))``, where ``ref``
+    is global z except for near-z rays, which use global x; ``e2 = cross(ray,
+    e1)``. An empty gFilter leaves the existing analytic ODRT response
+    enabled. Both this table and the type-6 filter represent the detector
+    response, but they are not drop-in arrays: type 6 applies a depth-shifted
+    image-grid convolution kernel, while ODRT samples one shared ray-local
+    (u, v, depth) table using explicit mm spacing. ODRT values are applied
+    directly as response weights (use density values in mm^-2 when matching
+    the analytic Gaussian's scale). The public ``options.gFilter`` input is
+    shared in pure modes; hybrid types 26/62 retain type-6 semantics and use
+    the analytic ODRT response because they need both representations.
+    """
+    try:
+        raw_filter = np.asarray(options.gFilter)
+    except (TypeError, ValueError) as exc:
+        raise ValueError('ODRT gFilter must be a 2-D or 3-D numeric array') from exc
+
+    # The class default is a one-dimensional empty array. Keep that as the
+    # explicit disabled state, and clear metadata in case an options object is
+    # reused after a filter was previously prepared.
+    if raw_filter.size == 0:
+        if raw_filter.ndim > 1:
+            raise ValueError('ODRT gFilter must have non-zero dimensions')
+        options.gFilter = np.empty(0, dtype=np.float32)
+        options.gFilterSpacing = np.empty(0, dtype=np.float32)
+        options.gFilterCustom = False
+        options.gFilterNu = 0
+        options.gFilterNv = 0
+        options.gFilterNd = 0
+        return
+
+    if not np.issubdtype(raw_filter.dtype, np.number) or np.iscomplexobj(raw_filter):
+        raise ValueError('ODRT gFilter must be a real numeric array')
+
+    try:
+        with np.errstate(over='ignore', invalid='ignore'):
+            filter_array = np.asarray(options.gFilter, dtype=np.float32)
+    except (TypeError, ValueError) as exc:
+        raise ValueError('ODRT gFilter must be a 2-D or 3-D numeric array') from exc
+    # MATLAB cannot retain a trailing singleton third dimension (ndims reports
+    # 2 for an N-by-M-by-1 array), so treat a 2-D input as a one-slice depth
+    # table in both front ends.
+    if filter_array.ndim == 2:
+        filter_array = filter_array[:, :, np.newaxis]
+    if filter_array.ndim != 3 or min(filter_array.shape) < 1:
+        raise ValueError('ODRT gFilter must be a non-empty 2-D or 3-D array with axes (u, v, depth)')
+    if not np.all(np.isfinite(filter_array)):
+        raise ValueError('ODRT gFilter values must be finite float32 values')
+    if np.any(filter_array < 0.) or not np.any(filter_array > 0.):
+        raise ValueError('ODRT gFilter must contain non-negative weights and at least one positive value')
+
+    try:
+        spacing = np.asarray(options.gFilterSpacing, dtype=np.float64).reshape(-1)
+    except (TypeError, ValueError) as exc:
+        raise ValueError('gFilterSpacing must contain three positive finite values (du, dv, dd)') from exc
+    if spacing.size != 3 or not np.all(np.isfinite(spacing)) or np.any(spacing <= 0.):
+        raise ValueError('gFilterSpacing must contain three positive finite values (du, dv, dd)')
+    with np.errstate(over='ignore', invalid='ignore'):
+        spacing = spacing.astype(np.float32)
+    if not np.all(np.isfinite(spacing)) or np.any(spacing <= 0.):
+        raise ValueError('gFilterSpacing values must be representable as positive float32 values')
+
+    options.gFilter = np.asfortranarray(filter_array)
+    options.gFilterSpacing = np.ascontiguousarray(spacing, dtype=np.float32)
+    options.gFilterCustom = True
+    options.gFilterNu, options.gFilterNv, options.gFilterNd = map(int, filter_array.shape)
+
+
 def SPECTParameters(options: proj.projectorClass):
     from omegatomo.util.matlabRound import matlabRound
     if options.projector_type in [1, 11, 12, 16, 2, 21, 22, 26, 61, 62]: # Ray tracing projectors
         nRays = int(options.n_rays_transaxial * options.n_rays_axial)
+        ray_shift_shape = (2 * nRays, options.nRowsD, options.nColsD, options.nHeads)
         if options.rayShiftsDetector.size == 0: # Collimator modeling
-            options.rayShiftsDetector = np.zeros((2*nRays, options.nRowsD, options.nColsD, options.nHeads), dtype=np.float32)
+            options.rayShiftsDetector = np.zeros(ray_shift_shape, dtype=np.float32)
             
             if options.colFxy == 0 and options.colFz == 0:
                 dx = np.linspace(-(options.nRowsD / 2 - 0.5) * options.dPitchX, (options.nRowsD / 2 - 0.5) * options.dPitchX, options.nRowsD)
@@ -1221,27 +1299,32 @@ def SPECTParameters(options: proj.projectorClass):
                 options.rayShiftsDetector[0::2, :, :, :] = -dx[None, :, None, None]
                 options.rayShiftsDetector[1::2, :, :, :] = -dy[None, None, :, None]
 
-        if options.rayShiftsSource.size == 0:
-            options.rayShiftsSource = np.zeros((2*nRays, options.nRowsD, options.nColsD, options.nHeads), dtype=np.float32)
+        if options.rayShiftsDetector.size:
+            options.rayShiftsDetector = np.asarray(options.rayShiftsDetector, dtype=np.float32).reshape(ray_shift_shape, order='F')
+        generate_source_shifts = options.rayShiftsSource.size == 0
+        if generate_source_shifts:
+            options.rayShiftsSource = np.zeros(ray_shift_shape, dtype=np.float32)
+        else:
+            options.rayShiftsSource = np.asarray(options.rayShiftsSource, dtype=np.float32).reshape(ray_shift_shape, order='F')
             
-            if nRays > 1: # Multiray shifts
-                tmp_x, tmp_y = np.meshgrid(
-                    np.linspace(-0.5, 0.5, options.n_rays_transaxial),
-                    np.linspace(-0.5, 0.5, options.n_rays_axial)
-                )
-                if options.colFxy == 0 and options.colFz == 0: # Pinhole collimator
-                    tmp_x *= options.dPitchX
-                    tmp_y *= options.dPitchY
-                elif np.isinf(options.colFxy) and np.isinf(options.colFz):  # Parallel-hole collimator
-                    tmp_x *= 2 * options.colR
-                    tmp_y *= 2 * options.colR
+        if generate_source_shifts and nRays > 1: # Multiray shifts
+            tmp_x, tmp_y = np.meshgrid(
+                np.linspace(-0.5, 0.5, options.n_rays_transaxial),
+                np.linspace(-0.5, 0.5, options.n_rays_axial)
+            )
+            if options.colFxy == 0 and options.colFz == 0: # Pinhole collimator
+                tmp_x *= options.dPitchX
+                tmp_y *= options.dPitchY
+            elif np.isinf(options.colFxy) and np.isinf(options.colFz):  # Parallel-hole collimator
+                tmp_x *= 2 * options.colR
+                tmp_y *= 2 * options.colR
 
-                tmp_shift = np.column_stack((tmp_x.ravel(), tmp_y.ravel())).T.reshape(-1, 1, order='F')
+            tmp_shift = np.column_stack((tmp_x.ravel(), tmp_y.ravel())).T.reshape(-1, 1, order='F')
 
-                # tmp_shift[idx] is constant over (row, col, head) for every
-                # ray-shift index idx = 0..2*nRays-1, so one broadcast
-                # assignment reproduces the former per-ray loop exactly.
-                options.rayShiftsSource[:, :, :, :] = tmp_shift.reshape(2 * nRays, 1, 1, 1)
+            # tmp_shift[idx] is constant over (row, col, head) for every
+            # ray-shift index idx = 0..2*nRays-1, so one broadcast
+            # assignment reproduces the former per-ray loop exactly.
+            options.rayShiftsSource[:, :, :, :] = tmp_shift.reshape(2 * nRays, 1, 1, 1)
 
         if options.projector_type in [1, 11, 12, 16, 21, 61]:
             # Keep the central detector-normal vector unchanged. Scale each
@@ -1270,6 +1353,25 @@ def SPECTParameters(options: proj.projectorClass):
             options.coneOfResponseStdCoeffB = 2*options.colR/options.colL*(options.colL+options.colD+options.cr_p/2)
         if options.coneOfResponseStdCoeffC < 0:
             options.coneOfResponseStdCoeffC = options.iR
+
+    # Pure ODRT directions use the same public gFilter input field as type 6,
+    # with ODRT's ray-local layout and gFilterSpacing metadata. Hybrid types
+    # 26/62 need both a type-6 image-grid convolution kernel and a ray-local
+    # ODRT table; retain the legacy gFilter interpretation there and leave
+    # ODRT analytic until both representations can be supplied or converted.
+    if options.projector_type in (2, 12, 21, 22):
+        _prepare_odrt_psf(options)
+    elif options.projector_type in (6, 16, 26, 61, 62, 66):
+        # Clear only ODRT metadata; these projectors retain their established
+        # type-6 gFilter value and layout.
+        options.gFilterSpacing = np.empty(0, dtype=np.float32)
+        options.gFilterCustom = False
+        options.gFilterNu = options.gFilterNv = options.gFilterNd = 0
+    elif np.asarray(options.gFilter).size:
+        raise ValueError(
+            'A custom SPECT ODRT gFilter is supported only for projector types 2, 12, 21, and 22; '
+            'type-6 projector families retain their existing gFilter semantics.'
+        )
 
     if options.projector_type in (6, 16, 26, 61, 62, 66): # Rotation-based projector side
         volume_count = max(
