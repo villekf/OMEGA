@@ -114,7 +114,10 @@ def _build_kIndF(self):
                 a.f32(self.tube_radius)
             a.f32(self.bmin).f32(self.bmax).f32(self.Vmax)
     elif self.FPType == 4:
-        a.u32(self.nRowsD).u32(self.nColsD).vec2f(self.dPitchX, self.dPitchY).f32(self.dL).f32(self.global_factor)
+        a.u32(self.nRowsD).u32(self.nColsD).vec2f(self.dPitchX, self.dPitchY)
+        if self.CT and self.useHelical:
+            a.f32(self.helicalRadius)
+        a.f32(self.dL).f32(self.global_factor)
     elif self.FPType == 5:
         a.u32(self.nRowsD).u32(self.nColsD).vec2f(self.dPitchX, self.dPitchY)
     if self.FPType in (1, 2, 3):
@@ -148,6 +151,8 @@ def _build_kIndB(self):
     a = _KernelArgs(self)
     if self.BPType in (4, 5):
         a.u32(self.nRowsD).u32(self.nColsD).vec2f(self.dPitchX, self.dPitchY)
+        if self.BPType == 4 and self.CT and self.useHelical:
+            a.f32(self.helicalRadius)
         if self.BPType == 4 and not self.CT:
             a.f32(self.dL).f32(self.global_factor)
     elif self.BPType in (1, 2, 3):
@@ -186,18 +191,39 @@ def _build_kIndB(self):
     return a
 
 
+def _kernel_ravel(arr, default_order, components=0):
+    """Flatten a coordinate array so that the per-ray components are consecutive.
+
+    The kernels read the components of one ray (4 for PET xy, 6 for CT/SPECT/list-mode, 1-3 for z)
+    as consecutive floats, i.e. the component axis has to vary fastest. PET and CT arrays are
+    stored as (rays, components), SPECT and list-mode arrays as (components, rays). The component
+    axis is the one equal to `components` if given, otherwise the smaller one. Square or otherwise
+    ambiguous arrays use `default_order`.
+    """
+    arr = np.asarray(arr, dtype=np.float32)
+    order = default_order
+    if arr.ndim == 2:
+        if components and (arr.shape[0] == components) != (arr.shape[1] == components):
+            order = 'F' if arr.shape[0] == components else 'C'
+        elif arr.shape[1] < arr.shape[0]:
+            order = 'C'
+        elif arr.shape[0] < arr.shape[1]:
+            order = 'F'
+    return arr.ravel(order=order)
+
+
 def _coordinate_slice(self, name, timestep, subset, stride):
     """Return one frame/subset coordinate slice in kernel order."""
     frames = getattr(self, name + 'Frames', None)
     if isinstance(frames, list) and len(frames) == int(self.Nt):
-        frame = np.asarray(frames[timestep], dtype=np.float32).ravel(order='F')
+        frame = _kernel_ravel(frames[timestep], 'F', stride)
         offsets = np.concatenate(([0], np.cumsum(self.nProjSubset[timestep], dtype=np.int64)))
         start = int(offsets[subset]) * stride
         stop = int(offsets[subset + 1]) * stride
         return frame[start:stop]
     # CT stores one projection per row; SPECT stores one per column.
     order = 'C' if self.CT and self.listmode == 0 else 'F'
-    flat = np.asarray(getattr(self, name), dtype=np.float32).ravel(order=order)
+    flat = _kernel_ravel(getattr(self, name), order, stride)
     q = timestep * int(self.subsets) + subset
     start = int(self.nMeas[q]) * stride
     stop = int(self.nMeas[q + 1]) * stride
@@ -207,23 +233,25 @@ def _coordinate_slice(self, name, timestep, subset, stride):
 def _full_coordinate_frame(self, name, timestep):
     frames = getattr(self, name + 'Frames', None)
     if isinstance(frames, list) and len(frames) == int(self.Nt):
-        return np.asarray(frames[timestep], dtype=np.float32).ravel(order='F')
-    return np.asarray(getattr(self, name), dtype=np.float32).ravel(order='F')
+        return _kernel_ravel(frames[timestep], 'F')
+    return _kernel_ravel(getattr(self, name), 'F')
 
 
 def _initialize_coordinate_buffers(self, upload):
     """Create the canonical ``[timestep][subset]`` geometry buffers."""
     self.d_x = [[None] * self.subsets for _ in range(self.Nt)]
     self.d_z = [[None] * self.subsets for _ in range(self.Nt)]
-    z_stride = 6 if self.pitch else (3 if self.PET and getattr(self, 'nLayers', 0) > 1 else 2)
+    # Curved helical CT stores a single value (the projection angle) per projection in z
+    if self.CT and self.useHelical:
+        z_stride = 1
+    else:
+        z_stride = 6 if self.pitch else (3 if self.PET and getattr(self, 'nLayers', 0) > 1 else 2)
     subset_geometry = (self.CT or self.SPECT) and self.listmode == 0
     pet_geometry = self.PET and self.listmode == 0
     for timestep in range(self.Nt):
         if subset_geometry or (self.listmode > 0 and not self.useIndexBasedReconstruction and self.loadTOF):
             for subset in range(self.subsets):
-                self.d_x[timestep][subset] = upload(
-                    _coordinate_slice(self, 'x', timestep, subset, 6)
-                )
+                self.d_x[timestep][subset] = upload(_coordinate_slice(self, 'x', timestep, subset, 6))
         else:
             self.d_x[timestep][0] = upload(_full_coordinate_frame(self, 'x', timestep))
 
@@ -236,9 +264,7 @@ def _initialize_coordinate_buffers(self, upload):
                 self.d_z[timestep][subset] = upload(z_values[start:stop])
         elif subset_geometry or pet_geometry:
             for subset in range(self.subsets):
-                self.d_z[timestep][subset] = upload(
-                    _coordinate_slice(self, 'z', timestep, subset, z_stride)
-                )
+                self.d_z[timestep][subset] = upload(_coordinate_slice(self, 'z', timestep, subset, z_stride))
         elif self.listmode == 0 or (self.listmode > 0 and self.useIndexBasedReconstruction):
             self.d_z[timestep][0] = upload(_full_coordinate_frame(self, 'z', timestep))
         else:
@@ -526,6 +552,8 @@ def initProjector(self):
     self.TH32 = 100000.
     self.NVOXELS5 = 1
     self.NVOXELSFP = 8
+    # Number of z-voxels each thread processes in the curved helical BP (mirrors NVOXELSHELICAL in the C++ headers)
+    self.NVOXELSHELICAL = 1
     if np.size(self.weights) > 0:
         self.empty_weight = False
     if self.TOF_bins_used == 0:
@@ -660,7 +688,8 @@ def initProjector(self):
                 for subset in range(self.subsets):
                     for ii in range(self.nMultiVolumes + 1):
                         if self.BPType == 4:
-                            globalSize[timestep][subset][ii] = (self.Nx[ii].item() + self.erotusBP[ii * 2], self.Ny[ii].item() + self.erotusBP[ii * 2 + 1], (self.Nz[ii].item()  + self.NVOXELS - 1) // self.NVOXELS)
+                            nVoxelsZ = self.NVOXELSHELICAL if self.useHelical else self.NVOXELS
+                            globalSize[timestep][subset][ii] = (self.Nx[ii].item() + self.erotusBP[ii * 2], self.Ny[ii].item() + self.erotusBP[ii * 2 + 1], (self.Nz[ii].item()  + nVoxelsZ - 1) // nVoxelsZ)
                         elif self.BPType == 5:
                             if self.pitch:
                                 globalSize[timestep][subset][ii] = (self.Nx[ii].item() + self.erotusBP[ii * 2], self.Ny[ii].item() + self.erotusBP[ii * 2 + 1], self.Nz[ii].item())
@@ -773,6 +802,9 @@ def initProjector(self):
             bOpt += ('-DTOF',)
         if self.CT:
             bOpt += ('-DCT',)
+            # Curved (helical) detector; the parallel-beam define takes precedence as in the C++ host code
+            if self.useHelical and not self.useParallelBeam:
+                bOpt += ('-DHELICAL',)
         elif self.SPECT:
             if self.useCUDA:
                 if self.useCuPy:
@@ -828,6 +860,8 @@ def initProjector(self):
                 bOptFP += ('-DCAST=float',)
         elif self.FPType == 4:
             bOptFP += ('-DPTYPE4','-DNVOXELS=' + str(self.NVOXELS),)
+            if self.CT and self.useHelical:
+                bOptFP += ('-DNVOXELSHELICAL=' + str(self.NVOXELSHELICAL),)
             if not self.CT:
                 if self.use_64bit_atomics:
                     bOptFP += ('-DCAST=long',)
@@ -861,6 +895,8 @@ def initProjector(self):
         elif self.BPType == 4:
             if self.CT:
                 bOptBP += ('-DBP4','-DNVOXELS=' + str(self.NVOXELS),)
+                if self.useHelical:
+                    bOptBP += ('-DNVOXELSHELICAL=' + str(self.NVOXELSHELICAL),)
             else:
                 bOptBP += ('-DPTYPE4','-DNVOXELS=' + str(self.NVOXELS),)
                 bOptBP += ('-DATOMICF',)

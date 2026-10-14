@@ -35,6 +35,32 @@ from .coordinates import computeVoxelVolumes
 from .indices import indexMaker
 from .indices import formSubsetIndices
 
+def _copyValue(value):
+    """
+    Recursively copies containers: ndarray -> copy (memory order kept), list ->
+    new list of copied items, tuple -> tuple of copied items (namedtuples keep
+    their type), dict -> dict of copied values. Anything else is returned as-is
+    (shared).
+    """
+    if isinstance(value, np.ndarray):
+        return value.copy(order='K')
+    if isinstance(value, list):
+        return [_copyValue(v) for v in value]
+    if isinstance(value, tuple):
+        items = [_copyValue(v) for v in value]
+        if hasattr(value, '_fields'):
+            return type(value)(*items)
+        return tuple(items)
+    if isinstance(value, dict):
+        return {k: _copyValue(v) for k, v in value.items()}
+    return value
+
+
+# Class-level read-only lookup tables that are intentionally shared by all instances
+# (never written to, so they are not copied per instance)
+_SHARED_CLASS_CONSTANTS = ('_FILTER_WINDOW_TEXT',)
+
+
 class projectorClass:
     # These parameters are either NumPy arrays or variables that are not needed in the C++ code
     x = np.empty(0, dtype = np.float32)
@@ -569,6 +595,11 @@ class projectorClass:
     useHelical = False
     helicalRadius = 1.
     useParkerWeights = False
+    # When True (default) the built-in reconstruction works on a private copy of the options, so
+    # the same options object can be reused for further reconstructions. When False the options
+    # object is modified in place: host memory use is lower (replaced input arrays can be freed
+    # during the reconstruction) but the object must not be reused for another reconstruction.
+    keepOptionsUnchanged = True
     projectorAdded = False
     projectorInitialized = False
     local_size = -1
@@ -585,6 +616,21 @@ class projectorClass:
     sensitivityViewWeights = np.empty(0, dtype = np.float32)
 
     def __init__(self):
+        # The defaults above are class attributes, i.e. the same ndarray/list/dict objects are
+        # shared by every instance until an instance assigns the attribute. An element write such
+        # as options.precondTypeMeas[1] = True would then modify the class default and thus leak
+        # into every options object created later in the session. Give this instance its own copy
+        # of each mutable default (first definition in the MRO wins, like normal attribute lookup).
+        seen = set(vars(self))
+        for klass in type(self).__mro__:
+            if klass is object:
+                continue
+            for name, value in vars(klass).items():
+                if name in seen or name.startswith('__'):
+                    continue
+                seen.add(name)
+                if name not in _SHARED_CLASS_CONSTANTS and isinstance(value, (np.ndarray, list, dict)):
+                    setattr(self, name, _copyValue(value))
         # C-struct
         self.param = self.parameters()
 
@@ -670,7 +716,8 @@ class projectorClass:
                 self.cr_p = self.dPitchX
             elif hasattr(self, 'cr_p'):
                 self.dPitchX = self.cr_p
-            if np.max(np.abs(self.angles.flatten())) > 6. * np.pi:
+            # Helical angles are always radians and may span several rotations, so the degree heuristic is not applied
+            if np.max(np.abs(self.angles.flatten())) > 6. * np.pi and not self.useHelical:
                 self.angles = self.angles * (np.pi / 180.)
             if self.offangle > 0:
                 self.angles = self.angles + self.offangle
@@ -1206,7 +1253,8 @@ class projectorClass:
         computeVoxelVolumes(self)
         if self.projector_type in (4, 5, 14, 41, 15, 45, 54, 51, 42, 43, 24, 34):
             computeProjectorScalingValues(self)
-        if self.offsetCorrection and self.subsets > 1:
+        # FDK (largeDim) keeps the geometry and data in the original projection order, so the offset limits are not reordered either
+        if self.offsetCorrection and self.subsets > 1 and not self.FDK:
             self.OffsetLimit = self.OffsetLimit[self.index]
 
         if self.SPECT:
@@ -1676,6 +1724,10 @@ class projectorClass:
             raise ValueError('Only projector type 4 is supported with curved helical data!')
         if self.offangle > 0 and self.useHelical:
             print('Rotation is not yet supported with helical CT data')
+        if self.useHelical and self.useCPU:
+            raise ValueError('Helical CT is not supported with the CPU implementation!')
+        if self.useHelical and self.FDK:
+            raise ValueError('FDK/FBP is not supported with curved helical CT!')
             
         varNeg = ['LSQR','CGLS','FDK','SART']
         neg = [name for name in varNeg if getattr(self, name, False)]
@@ -2082,7 +2134,9 @@ class projectorClass:
                     self.maskPrior = np.ones((int(self.Nx), int(self.Ny)), dtype=np.uint8)
                     if self.useMaskBP and self.maskBP.size > 1:
                         self.maskPrior += 1 - self.maskBP
-                    self.NxPrior, self.NyPrior, self.NzPrior = self.Nx, self.Ny, self.Nz
+                    self.NxPrior = int(np.asarray(self.Nx).ravel()[0])
+                    self.NyPrior = int(np.asarray(self.Ny).ravel()[0])
+                    self.NzPrior = int(np.asarray(self.Nz).ravel()[0])
                 else:
                     FOVxM0, FOVyM0, FOVzM0 = self.FOVxOrig, self.FOVyOrig, self.axialFOVOrig
                     NxM0, NyM0, NzM0 = self.NxOrig, self.NyOrig, self.NzOrig
@@ -2169,9 +2223,10 @@ class projectorClass:
                     self.maskPrior = self.maskPrior + (1 - self.maskBP)
         else:
             self.eFOVShift = [0, 0, 0]
-            self.NxPrior = self.Nx
-            self.NyPrior = self.Ny
-            self.NzPrior = self.Nz
+            # C struct fields require plain ints, including when dimensions are arrays.
+            self.NxPrior = int(np.asarray(self.Nx).ravel()[0])
+            self.NyPrior = int(np.asarray(self.Ny).ravel()[0])
+            self.NzPrior = int(np.asarray(self.Nz).ravel()[0])
         if self.offsetCorrection:
             self.OffsetLimit = np.zeros((self.nProjections, 1), dtype=np.float32)
             for kk in range(self.nProjections):
@@ -2397,6 +2452,7 @@ class projectorClass:
             ('PET', ctypes.c_bool),
             ('CT', ctypes.c_bool),
             ('largeDim', ctypes.c_bool),
+            ('usingLinearizedData', ctypes.c_bool),
             ('loadTOF', ctypes.c_bool),
             ('storeResidual', ctypes.c_bool),
             ('FISTA_acceleration', ctypes.c_bool),

@@ -6,6 +6,11 @@
 #include "TFile.h"
 #include "saveSinogram.h"
 #include <charconv>
+#include <atomic>
+#include <memory>
+#include <vector>
+#include <algorithm>
+#include <random>
 #ifdef MATLABCPP
 #include "mex.hpp"
 #include "mexAdapter.hpp"
@@ -56,7 +61,7 @@ void formSourceImage(const float bx, const float by, const float bz, const float
 		indX = static_cast<uint64_t>(std::floor((sourcePosX1 - bx) / dx));
 	if (sourcePosY1 >= by && sourcePosY1 <= by + static_cast<float>(Ny) * dy)
 		indY = static_cast<uint64_t>(std::floor((sourcePosY1 - by) / dy));
-	if (sourcePosZ1 >= by && sourcePosZ1 <= bz + static_cast<float>(Nz) * dz)
+	if (sourcePosZ1 >= bz && sourcePosZ1 <= bz + static_cast<float>(Nz) * dz)
 		indZ = static_cast<uint64_t>(std::floor((sourcePosZ1 - bz) / dz));
 	//for (uint64_t xi = 0; xi < Nx; xi++) {
 	//	if (sourcePosX1 >= xa && sourcePosX1 < xa + dx) {
@@ -89,6 +94,158 @@ void formSourceImage(const float bx, const float by, const float bz, const float
 	S[indX + indY * Nx + indZ * Nx * Ny + tPoint * imDim]++;
 }
 
+#ifndef ROOT_IMPORT_MAX_THREADS
+#define ROOT_IMPORT_MAX_THREADS 16
+#endif
+#ifndef ROOT_IMPORT_BLOCK_SIZE
+#define ROOT_IMPORT_BLOCK_SIZE 2097152LL
+#endif
+
+enum RootIntCol : int { cRsector1, cRsector2, cCrystal1, cCrystal2, cModule1, cModule2, cSubmodule1, cSubmodule2, cLayer1, cLayer2, cEvent1, cEvent2,
+	cComptonPhantom1, cComptonPhantom2, cComptonCrystal1, cComptonCrystal2, cRayleighPhantom1, cRayleighPhantom2, cRayleighCrystal1, cRayleighCrystal2, nRootIntCols };
+enum RootFloatCol : int { cSourceX1, cSourceX2, cSourceY1, cSourceY2, cSourceZ1, cSourceZ2, cGlobalX1, cGlobalX2, cGlobalY1, cGlobalY2, cGlobalZ1, cGlobalZ2, nRootFloatCols };
+enum RootDoubleCol : int { cTime1, cTime2, nRootDoubleCols };
+
+static const char* const rootIntNames[nRootIntCols] = { "rsectorID1", "rsectorID2", "crystalID1", "crystalID2", "moduleID1", "moduleID2", "submoduleID1", "submoduleID2",
+	"layerID1", "layerID2", "eventID1", "eventID2", "comptonPhantom1", "comptonPhantom2", "comptonCrystal1", "comptonCrystal2", "RayleighPhantom1", "RayleighPhantom2",
+	"RayleighCrystal1", "RayleighCrystal2" };
+static const char* const rootFloatNames[nRootFloatCols] = { "sourcePosX1", "sourcePosX2", "sourcePosY1", "sourcePosY2", "sourcePosZ1", "sourcePosZ2",
+	"globalPosX1", "globalPosX2", "globalPosY1", "globalPosY2", "globalPosZ1", "globalPosZ2" };
+static const char* const rootDoubleNames[nRootDoubleCols] = { "time1", "time2" };
+
+// Reads a ROOT tree in blocks of entries into column vectors. Only the active branches are enabled (and thus decompressed).
+// Each worker thread owns its own TFile/TTree, since TTree::GetEntry is not thread-safe on a shared tree.
+class RootBlockReader {
+public:
+	bool intActive[nRootIntCols];
+	bool floatActive[nRootFloatCols];
+	bool doubleActive[nRootDoubleCols];
+	std::vector<Int_t> ints[nRootIntCols];
+	std::vector<Float_t> floats[nRootFloatCols];
+	std::vector<Double_t> doubles[nRootDoubleCols];
+	int64_t entries = 0;
+
+	RootBlockReader() {
+		std::fill(intActive, intActive + nRootIntCols, false);
+		std::fill(floatActive, floatActive + nRootFloatCols, false);
+		std::fill(doubleActive, doubleActive + nRootDoubleCols, false);
+	}
+
+	~RootBlockReader() {
+		for (int w = 0; w < nWorkers; w++) {
+			delete workers[w].file;
+			workers[w].file = nullptr;
+		}
+	}
+
+	bool open(const char* fileName, const char* treeName, int nThreads, int64_t blockSize) {
+		nWorkers = std::max(1, nThreads);
+		// Allocated once, branch addresses point into the workers
+		workers.reset(new Worker[nWorkers]);
+		for (int w = 0; w < nWorkers; w++) {
+			Worker& wk = workers[w];
+			wk.file = TFile::Open(fileName, "READ");
+			if (wk.file == nullptr || wk.file->IsZombie())
+				return false;
+			wk.file->GetObject(treeName, wk.tree);
+			if (wk.tree == nullptr)
+				return false;
+			wk.tree->SetBranchStatus("*", 0);
+			for (int c = 0; c < nRootIntCols; c++) {
+				if (!intActive[c])
+					continue;
+				if (wk.tree->GetBranch(rootIntNames[c]) == nullptr) {
+					intActive[c] = false;
+					continue;
+				}
+				wk.tree->SetBranchStatus(rootIntNames[c], 1);
+				if (wk.tree->SetBranchAddress(rootIntNames[c], &wk.iBuf[c]) < 0)
+					return false;
+			}
+			for (int c = 0; c < nRootFloatCols; c++) {
+				if (!floatActive[c])
+					continue;
+				if (wk.tree->GetBranch(rootFloatNames[c]) == nullptr) {
+					floatActive[c] = false;
+					continue;
+				}
+				wk.tree->SetBranchStatus(rootFloatNames[c], 1);
+				if (wk.tree->SetBranchAddress(rootFloatNames[c], &wk.fBuf[c]) < 0)
+					return false;
+			}
+			for (int c = 0; c < nRootDoubleCols; c++) {
+				if (!doubleActive[c])
+					continue;
+				if (wk.tree->GetBranch(rootDoubleNames[c]) == nullptr) {
+					doubleActive[c] = false;
+					continue;
+				}
+				wk.tree->SetBranchStatus(rootDoubleNames[c], 1);
+				if (wk.tree->SetBranchAddress(rootDoubleNames[c], &wk.dBuf[c]) < 0)
+					return false;
+			}
+		}
+		entries = workers[0].tree->GetEntries();
+		for (int c = 0; c < nRootIntCols; c++)
+			if (intActive[c])
+				ints[c].resize(blockSize);
+		for (int c = 0; c < nRootFloatCols; c++)
+			if (floatActive[c])
+				floats[c].resize(blockSize);
+		for (int c = 0; c < nRootDoubleCols; c++)
+			if (doubleActive[c])
+				doubles[c].resize(blockSize);
+		return true;
+	}
+
+	// Reads entries [start, start + n) into the column vectors (index 0 corresponds to entry start)
+	bool readBlock(const int64_t start, const int64_t n) {
+		std::atomic<bool> fail(false);
+		const int64_t chunk = (n + nWorkers - 1) / nWorkers;
+		std::vector<std::thread> threads;
+		for (int w = 1; w < nWorkers; w++) {
+			const int64_t b = std::min<int64_t>(n, chunk * w);
+			const int64_t e = std::min<int64_t>(n, chunk * (w + 1));
+			if (e > b)
+				threads.emplace_back(&RootBlockReader::readChunk, this, w, start, b, e, &fail);
+		}
+		readChunk(0, start, 0, std::min<int64_t>(n, chunk), &fail);
+		for (auto& t : threads)
+			t.join();
+		return !fail.load();
+	}
+
+private:
+	struct Worker {
+		TFile* file = nullptr;
+		TTree* tree = nullptr;
+		Int_t iBuf[nRootIntCols] = {};
+		Float_t fBuf[nRootFloatCols] = {};
+		Double_t dBuf[nRootDoubleCols] = {};
+	};
+	std::unique_ptr<Worker[]> workers;
+	int nWorkers = 0;
+
+	void readChunk(const int w, const int64_t start, const int64_t b, const int64_t e, std::atomic<bool>* fail) {
+		Worker& wk = workers[w];
+		for (int64_t i = b; i < e; i++) {
+			if (wk.tree->GetEntry(start + i) <= 0) {
+				fail->store(true);
+				return;
+			}
+			for (int c = 0; c < nRootIntCols; c++)
+				if (intActive[c])
+					ints[c][i] = wk.iBuf[c];
+			for (int c = 0; c < nRootFloatCols; c++)
+				if (floatActive[c])
+					floats[c][i] = wk.fBuf[c];
+			for (int c = 0; c < nRootDoubleCols; c++)
+				if (doubleActive[c])
+					doubles[c][i] = wk.dBuf[c];
+		}
+	}
+};
+
 template <typename T, typename C, typename K, typename H, typename M, typename D>
 void histogram(const char* rootFile, const C* tPoints, const double alku, const double loppu, bool source, const uint32_t linear_multip, const uint32_t* cryst_per_block, const uint32_t blocks_per_ring,
 	const uint32_t* det_per_ring, T* S, T* SC, T* RA, T* trIndex, T* axIndex, T* DtrIndex, T* DaxIndex, bool obtain_trues, bool store_scatter, bool store_randoms, K* scatter_components,
@@ -99,13 +256,17 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 	const float bx, const float by, const float bz, const int64_t Nx, const int64_t Ny, const int64_t Nz, const bool dualLayerSubmodule, const int64_t imDim, const bool indexBased, T* tIndex, 
 	uint8_t* TOFIndex, const D mPtr) {
 
-	int nthreads = 1;
+	int nThreads = std::max(1, std::min<int>(static_cast<int>(std::thread::hardware_concurrency()), ROOT_IMPORT_MAX_THREADS));
+	if (nThreads > 1)
+		ROOT::EnableThreadSafety();
 	bool scatterTrues[] = {true, true, true, true};
 
 	std::default_random_engine generator;
 	std::normal_distribution<double> distribution(0.0, FWHM + 1e-20);
 	const uint64_t nBins = TOFSize / sinoSize[0];
 	const bool TOF = nBins > 1;
+	// Custom time window in a static (non-dynamic) examination
+	const bool customWindow = alku > 0. || loppu < 1e9;
 
 #ifdef _OPENMP
 	if (omp_get_max_threads() == 1) {
@@ -114,8 +275,7 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 	}
 #endif
 
-	Int_t moduleID1F = 0, moduleID2F = 0, submoduleID1F = 0, submoduleID2F = 0;
-	Char_t testi;
+	Int_t moduleID1F = 0, submoduleID1F = 0;
 
 	TTree* Coincidences;
 	TFile* inFile = new TFile(rootFile, "read");
@@ -125,18 +285,17 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 	int64_t Nentries;
 	Nentries = Coincidences->GetEntries();
 
-	if (Coincidences->GetBranchStatus("moduleID1"))
-		Coincidences->SetBranchAddress("moduleID1", &moduleID1F);
-	if (Coincidences->GetBranchStatus("moduleID2"))
-		Coincidences->SetBranchAddress("moduleID2", &moduleID2F);
-	if (Coincidences->GetBranchStatus("submoduleID1"))
-		Coincidences->SetBranchAddress("submoduleID1", &submoduleID1F);
-	if (Coincidences->GetBranchStatus("submoduleID2"))
-		Coincidences->SetBranchAddress("submoduleID2", &submoduleID2F);
+	TBranch* bMod = nullptr;
+	TBranch* bSub = nullptr;
+	Coincidences->SetBranchAddress("moduleID1", &moduleID1F, &bMod);
+	Coincidences->SetBranchAddress("submoduleID1", &submoduleID1F, &bSub);
 	uint64_t summa = 0ULL;
 	uint64_t summaS = 0ULL;
 	for (uint64_t kk = 0ULL; kk < std::min(static_cast<int64_t>(1000), Nentries); kk++) {
-		Coincidences->GetEntry(kk);
+		if (bMod != nullptr)
+			bMod->GetEntry(kk);
+		if (bSub != nullptr)
+			bSub->GetEntry(kk);
 		if (summa == 0ULL)
 			summa += moduleID1F;
 		if (summaS == 0ULL)
@@ -152,10 +311,12 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 
 	if (!Coincidences->GetBranchStatus("crystalID1")) {
 		disp("No crystal location information was found from file. Aborting.", mPtr);
+		delete inFile;
 		return;
 	}
 	if (!Coincidences->GetBranchStatus("crystalID2")) {
 		disp("No crystal location information was found from file. Aborting.", mPtr);
+		delete inFile;
 		return;
 	}
 	bool no_modules = false;
@@ -203,13 +364,25 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 	}
 	if (!Coincidences->GetBranchStatus("time1") && TOF) {
 		disp("TOF examination selected, but no time information was found from file. Aborting.", mPtr);
+		delete inFile;
 		return;
 	}
 	if (!Coincidences->GetBranchStatus("time2") && (dynamic || TOF)) {
 		disp("Dynamic or TOF examination selected, but no time information was found from file. Aborting.", mPtr);
+		delete inFile;
+		return;
 	}
 	if (!Coincidences->GetBranchStatus("time1") && !Coincidences->GetBranchStatus("time2"))
 		no_time = true;
+	const bool timeWindow = customWindow && !dynamic && Coincidences->GetBranchStatus("time2");
+	if (customWindow && !dynamic) {
+		char windowMsg[256];
+		if (timeWindow)
+			snprintf(windowMsg, sizeof(windowMsg), "Using time window from %g s to %g s", alku, loppu);
+		else
+			snprintf(windowMsg, sizeof(windowMsg), "A custom time window was selected, but no time information was found from file. The time window cannot be applied.");
+		disp(windowMsg, mPtr);
+	}
 	if (store_coordinates) {
 		if (!Coincidences->GetBranchStatus("globalPosX1")) {
 			disp("No X-source coordinates saved for first photon interaction, unable to save interaction coordinates", mPtr);
@@ -353,265 +526,291 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 
 	}
 
-#ifdef _OPENMP
-#pragma omp parallel for schedule(static), num_threads(nthreads), shared(Coincidences)
-#endif
-	for (int64_t kk = 0; kk < Nentries; kk++) {
-
-		Int_t crystalID1 = 0, crystalID2 = 0, moduleID1 = 0, moduleID2 = 0, submoduleID1 = 0, submoduleID2 = 0, rsectorID1, rsectorID2, eventID1, eventID2, comptonPhantom1 = 0, comptonPhantom2 = 0,
-			comptonCrystal1 = 0, comptonCrystal2 = 0, RayleighPhantom1 = 0, RayleighPhantom2 = 0, RayleighCrystal1 = 0, RayleighCrystal2 = 0, layerID1 = 0, layerID2 = 0;
-		Float_t sourcePosX1, sourcePosX2, sourcePosY1, sourcePosY2, sourcePosZ1, sourcePosZ2, globalPosX1, globalPosX2, globalPosY1, globalPosY2, globalPosZ1, globalPosZ2;
-		Double_t time1 = alku, time2 = alku;
-		int64_t tPoint = 0LL;
-#ifdef _OPENMP
-#pragma omp critical 
-		{
-#endif
-			Coincidences->SetBranchAddress("rsectorID1", &rsectorID1);
-			Coincidences->SetBranchAddress("rsectorID2", &rsectorID2);
-			Coincidences->SetBranchAddress("crystalID1", &crystalID1);
-			Coincidences->SetBranchAddress("crystalID2", &crystalID2);
-			if (nLayers > 1) {
-				Coincidences->SetBranchAddress("layerID1", &layerID1);
-				Coincidences->SetBranchAddress("layerID2", &layerID2);
-			}
-			if (!no_modules) {
-				Coincidences->SetBranchAddress("moduleID1", &moduleID1);
-				Coincidences->SetBranchAddress("moduleID2", &moduleID2);
-			}
-			if (!no_submodules) {
-				Coincidences->SetBranchAddress("submoduleID1", &submoduleID1);
-				Coincidences->SetBranchAddress("submoduleID2", &submoduleID2);
-			}
-			else if (layerSubmodule) {
-				Coincidences->SetBranchAddress("submoduleID1", &submoduleID1);
-				Coincidences->SetBranchAddress("submoduleID2", &submoduleID2);
-			}
-			if (source) {
-				Coincidences->SetBranchAddress("sourcePosX1", &sourcePosX1);
-				Coincidences->SetBranchAddress("sourcePosX2", &sourcePosX2);
-				Coincidences->SetBranchAddress("sourcePosY1", &sourcePosY1);
-				Coincidences->SetBranchAddress("sourcePosY2", &sourcePosY2);
-				Coincidences->SetBranchAddress("sourcePosZ1", &sourcePosZ1);
-				Coincidences->SetBranchAddress("sourcePosZ2", &sourcePosZ2);
-			}
-			if (dynamic || TOF) {
-				Coincidences->SetBranchAddress("time1", &time1);
-				Coincidences->SetBranchAddress("time2", &time2);
-			}
-			if (store_coordinates) {
-				Coincidences->SetBranchAddress("globalPosX1", &globalPosX1);
-				Coincidences->SetBranchAddress("globalPosX2", &globalPosX2);
-				Coincidences->SetBranchAddress("globalPosY1", &globalPosY1);
-				Coincidences->SetBranchAddress("globalPosY2", &globalPosY2);
-				Coincidences->SetBranchAddress("globalPosZ1", &globalPosZ1);
-				Coincidences->SetBranchAddress("globalPosZ2", &globalPosZ2);
-			}
-			if (obtain_trues || store_scatter || store_randoms) {
-				Coincidences->SetBranchAddress("eventID1", &eventID1);
-				Coincidences->SetBranchAddress("eventID2", &eventID2);
-				if (scatter_components[0] || scatterTrues[0])
-					Coincidences->SetBranchAddress("comptonPhantom1", &comptonPhantom1);
-				if (scatter_components[0] || scatterTrues[0])
-					Coincidences->SetBranchAddress("comptonPhantom2", &comptonPhantom2);
-				if (scatter_components[1] || scatterTrues[1])
-					Coincidences->SetBranchAddress("comptonCrystal1", &comptonCrystal1);
-				if (scatter_components[1] || scatterTrues[1])
-					Coincidences->SetBranchAddress("comptonCrystal2", &comptonCrystal2);
-				if (scatter_components[2] || scatterTrues[2])
-					Coincidences->SetBranchAddress("RayleighPhantom1", &RayleighPhantom1);
-				if (scatter_components[2] || scatterTrues[2])
-					Coincidences->SetBranchAddress("RayleighPhantom2", &RayleighPhantom2);
-				if (scatter_components[3] || scatterTrues[3])
-					Coincidences->SetBranchAddress("RayleighCrystal1", &RayleighCrystal1);
-				if (scatter_components[3] || scatterTrues[3])
-					Coincidences->SetBranchAddress("RayleighCrystal2", &RayleighCrystal2);
-			}
-			Coincidences->GetEntry(kk);
-#ifdef _OPENMP
-		}
-#endif
-		///*
-		if (!no_time && time2 < alku)
-			continue;
-		else if (!no_time && time2 > loppu) {
-			continue;
-		}
-		if (nLayers > 1 && layerID1 > 0 && layerSubmodule)
-			crystalID1 = submoduleID1;
-		if (nLayers > 1 && layerID2 > 0 && layerSubmodule)
-			crystalID2 = submoduleID2;
-		uint32_t ring_number1 = 0, ring_number2 = 0, ring_pos1 = 0, ring_pos2 = 0;
-		detectorIndices(ring_number1, ring_number2, ring_pos1, ring_pos2, blocks_per_ring, linear_multip, no_modules, no_submodules, moduleID1, moduleID2, submoduleID1,
-			submoduleID2, rsectorID1, rsectorID2, crystalID1, crystalID2, cryst_per_block[layerID1], cryst_per_block[layerID2], cryst_per_block_z[layerID1], cryst_per_block_z[layerID2], transaxial_multip, rings[layerID1]);
-		uint64_t bins = 0;
-		bool event_true = true;
-		bool event_scattered = true;
-		bool store_scatter_event = false;
-		if (obtain_trues || store_scatter || store_randoms) {
-			if (eventID1 != eventID2) {
-				event_true = false;
-				event_scattered = false;
-			}
-			if (event_true) {
-				if (comptonPhantom1 > 0 || comptonPhantom2 > 0) {
-					event_true = false;
-					if (scatter_components[0] > 0 && (scatter_components[0] <= comptonPhantom1 || scatter_components[0] <= comptonPhantom2))
-						store_scatter_event = true;
-				}
-				else if ((comptonCrystal1 > 0 || comptonCrystal2 > 0)) {
-					event_true = false;
-					if (scatter_components[1] > 0 && (scatter_components[1] <= comptonCrystal1 || scatter_components[1] <= comptonCrystal2))
-						store_scatter_event = true;
-				}
-				else if ((RayleighPhantom1 > 0 || RayleighPhantom2 > 0)) {
-					event_true = false;
-					if (scatter_components[2] > 0 && (scatter_components[2] <= RayleighPhantom1 || scatter_components[2] <= RayleighPhantom2))
-						store_scatter_event = true;
-				}
-				else if ((RayleighCrystal1 > 0 || RayleighCrystal2 > 0)) {
-					event_true = false;
-					if (scatter_components[3] > 0 && (scatter_components[3] <= RayleighCrystal1 || scatter_components[3] <= RayleighCrystal2))
-						store_scatter_event = true;
-				}
-				else
-					event_scattered = false;
-			}
-		}
-		if (dynamic) {
-			double time = alku;
-			for (int64_t ll = 0; ll < Nt; ll++) {
-				if (time2 >= time || time2 < tPoints[0]) {
-					tPoint = ll;
-					break;
-				}
-				time += tPoints[ll];
-			}
-		}
-		if (TOFSize > sinoSize[0]) {
-			double timeDif = (time2 - time1);
-			if (ring_pos2 > ring_pos1)
-				timeDif = -timeDif;
-			if (FWHM > 0.)
-				timeDif += distribution(generator);
-			if (std::abs(timeDif) > ((binSize / 2.) * static_cast<double>(nBins)))
-				continue;
-			bins = static_cast<uint64_t>(std::floor((std::abs(timeDif) + binSize / 2.) / binSize));
-			const bool tInd = timeDif > 0;
-			if (tInd)
-				bins *= 2ULL;
-			else if (!tInd && bins > 0ULL)
-				bins = bins * 2ULL - 1ULL;
-		}
-		if (pseudoD) {
-			ring_pos1 += ring_pos1 / cryst_per_block[layerID1];
-			ring_pos2 += ring_pos2 / cryst_per_block[layerID2];
-		}
-		if (pseudoR) {
-			ring_number1 += ring_number1 / gapSize;
-			ring_number2 += ring_number2 / gapSize;
-		}
-		int32_t layer = 0;
+	nThreads = std::max<int64_t>(1, std::min<int64_t>(nThreads, Nentries / 100000));
+	{
+		RootBlockReader reader;
+		reader.intActive[cRsector1] = true;
+		reader.intActive[cRsector2] = true;
+		reader.intActive[cCrystal1] = true;
+		reader.intActive[cCrystal2] = true;
 		if (nLayers > 1) {
-			if (layerID2 == 1 && layerID1 == 1)
-				layer = 3;
-			else if (layerID2 == 1 && layerID1 == 0)
-				layer = 1;
-			else if (layerID2 == 0 && layerID1 == 1)
-				layer = 2;
-			if (nLayers > 2) {
-				if (layerID1 == 2 && layerID2 == 2)
-					layer = 8;
-				else if (layerID1 == 2 && layerID2 == 0)
-					layer = 4;
-				else if (layerID1 == 0 && layerID2 == 2)
-					layer = 5;
-				else if (layerID1 == 2 && layerID2 == 1)
-					layer = 6;
-				else if (layerID1 == 1 && layerID2 == 2)
-					layer = 7;
+			reader.intActive[cLayer1] = true;
+			reader.intActive[cLayer2] = true;
+		}
+		if (!no_modules) {
+			reader.intActive[cModule1] = true;
+			reader.intActive[cModule2] = true;
+		}
+		if (!no_submodules || layerSubmodule) {
+			reader.intActive[cSubmodule1] = true;
+			reader.intActive[cSubmodule2] = true;
+		}
+		if (source) {
+			for (int c = cSourceX1; c <= cSourceZ2; c++)
+				reader.floatActive[c] = true;
+		}
+		if (dynamic || TOF)
+			reader.doubleActive[cTime1] = true;
+		if (dynamic || TOF || timeWindow)
+			reader.doubleActive[cTime2] = true;
+		if (store_coordinates) {
+			for (int c = cGlobalX1; c <= cGlobalZ2; c++)
+				reader.floatActive[c] = true;
+		}
+		if (obtain_trues || store_scatter || store_randoms) {
+			reader.intActive[cEvent1] = true;
+			reader.intActive[cEvent2] = true;
+			if (scatter_components[0] || scatterTrues[0]) {
+				reader.intActive[cComptonPhantom1] = true;
+				reader.intActive[cComptonPhantom2] = true;
+			}
+			if (scatter_components[1] || scatterTrues[1]) {
+				reader.intActive[cComptonCrystal1] = true;
+				reader.intActive[cComptonCrystal2] = true;
+			}
+			if (scatter_components[2] || scatterTrues[2]) {
+				reader.intActive[cRayleighPhantom1] = true;
+				reader.intActive[cRayleighPhantom2] = true;
+			}
+			if (scatter_components[3] || scatterTrues[3]) {
+				reader.intActive[cRayleighCrystal1] = true;
+				reader.intActive[cRayleighCrystal2] = true;
 			}
 		}
-		if (indexBased) {
-			// Index-based TOF indexing also swaps the TOF directions when needed
-			// The behavior should be the same to the sinogram version
-			if (ring_pos2 < ring_pos1) {
-				trIndex[kk * 2] = static_cast<uint16_t>(ring_pos2) + layerID2 * detWPseudo[0];
-				trIndex[kk * 2 + 1] = static_cast<uint16_t>(ring_pos1) + layerID1 * detWPseudo[0];
-				axIndex[kk * 2] = static_cast<uint16_t>(ring_number2) + layerID2 * rings[0];
-				axIndex[kk * 2 + 1] = static_cast<uint16_t>(ring_number1) + layerID1 * rings[0];
-			}
-			else {
-				trIndex[kk * 2] = static_cast<uint16_t>(ring_pos1) + layerID1 * detWPseudo[0];
-				trIndex[kk * 2 + 1] = static_cast<uint16_t>(ring_pos2) + layerID2 * detWPseudo[0];
-				axIndex[kk * 2] = static_cast<uint16_t>(ring_number1) + layerID1 * rings[0];
-				axIndex[kk * 2 + 1] = static_cast<uint16_t>(ring_number2) + layerID2 * rings[0];
-			}
-			if (TOFSize > sinoSize[0])
-				TOFIndex[kk] = static_cast<uint8_t>(bins);
+		const int64_t blockSize = std::max<int64_t>(1, std::min<int64_t>(ROOT_IMPORT_BLOCK_SIZE, Nentries));
+		if (Nentries > 0 && !reader.open(rootFile, "Coincidences", nThreads, blockSize)) {
+			disp("Error opening the ROOT file for reading", mPtr);
+			delete inFile;
+			return;
 		}
-		else {
-			if ((layer == 0 || layer == 1) && nLayers > 1) {
-				ring_pos1 += ring_pos1 / cryst_per_block[layerID1];
-				ring_number1 += moduleID1;
+		for (int64_t blockStart = 0; blockStart < Nentries; blockStart += blockSize) {
+			const int64_t nBlock = std::min<int64_t>(blockSize, Nentries - blockStart);
+			if (!reader.readBlock(blockStart, nBlock)) {
+				disp("Error reading the ROOT file", mPtr);
+				break;
 			}
-			if ((layer == 0 || layer == 2) && nLayers > 1) {
-				ring_pos2 += ring_pos2 / cryst_per_block[layerID2];
-				ring_number2 += moduleID2;
-			}
-			bool swap = false;
-			const int64_t sinoIndex = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize[0], Ndist, Nang[0], ringDifference, span, seg, TOFSize,
-				detWPseudo[0], rings[0], bins, nDistSide, swap, tPoint, layer, nLayers);
-			if (sinoIndex >= 0) {
-#ifdef _OPENMP
-#pragma omp atomic
-#endif
-				Sino[sinoIndex]++;
-				if ((event_true && obtain_trues) || (store_scatter_event && store_scatter)) {
-					if (event_true && obtain_trues)
-#ifdef _OPENMP
-#pragma omp atomic
-#endif
-						SinoT[sinoIndex]++;
-					else if (store_scatter_event && store_scatter)
-#ifdef _OPENMP
-#pragma omp atomic
-#endif
-						SinoC[sinoIndex]++;
+			for (int64_t ll = 0; ll < nBlock; ll++) {
+				const int64_t kk = blockStart + ll;
+				const Int_t rsectorID1 = reader.intActive[cRsector1] ? reader.ints[cRsector1][ll] : 0;
+				const Int_t rsectorID2 = reader.intActive[cRsector2] ? reader.ints[cRsector2][ll] : 0;
+				Int_t crystalID1 = reader.intActive[cCrystal1] ? reader.ints[cCrystal1][ll] : 0;
+				Int_t crystalID2 = reader.intActive[cCrystal2] ? reader.ints[cCrystal2][ll] : 0;
+				const Int_t moduleID1 = reader.intActive[cModule1] ? reader.ints[cModule1][ll] : 0;
+				const Int_t moduleID2 = reader.intActive[cModule2] ? reader.ints[cModule2][ll] : 0;
+				const Int_t submoduleID1 = reader.intActive[cSubmodule1] ? reader.ints[cSubmodule1][ll] : 0;
+				const Int_t submoduleID2 = reader.intActive[cSubmodule2] ? reader.ints[cSubmodule2][ll] : 0;
+				const Int_t layerID1 = reader.intActive[cLayer1] ? reader.ints[cLayer1][ll] : 0;
+				const Int_t layerID2 = reader.intActive[cLayer2] ? reader.ints[cLayer2][ll] : 0;
+				const Int_t eventID1 = reader.intActive[cEvent1] ? reader.ints[cEvent1][ll] : 0;
+				const Int_t eventID2 = reader.intActive[cEvent2] ? reader.ints[cEvent2][ll] : 0;
+				const Int_t comptonPhantom1 = reader.intActive[cComptonPhantom1] ? reader.ints[cComptonPhantom1][ll] : 0;
+				const Int_t comptonPhantom2 = reader.intActive[cComptonPhantom2] ? reader.ints[cComptonPhantom2][ll] : 0;
+				const Int_t comptonCrystal1 = reader.intActive[cComptonCrystal1] ? reader.ints[cComptonCrystal1][ll] : 0;
+				const Int_t comptonCrystal2 = reader.intActive[cComptonCrystal2] ? reader.ints[cComptonCrystal2][ll] : 0;
+				const Int_t RayleighPhantom1 = reader.intActive[cRayleighPhantom1] ? reader.ints[cRayleighPhantom1][ll] : 0;
+				const Int_t RayleighPhantom2 = reader.intActive[cRayleighPhantom2] ? reader.ints[cRayleighPhantom2][ll] : 0;
+				const Int_t RayleighCrystal1 = reader.intActive[cRayleighCrystal1] ? reader.ints[cRayleighCrystal1][ll] : 0;
+				const Int_t RayleighCrystal2 = reader.intActive[cRayleighCrystal2] ? reader.ints[cRayleighCrystal2][ll] : 0;
+				const Float_t sourcePosX1 = reader.floatActive[cSourceX1] ? reader.floats[cSourceX1][ll] : 0.f;
+				const Float_t sourcePosX2 = reader.floatActive[cSourceX2] ? reader.floats[cSourceX2][ll] : 0.f;
+				const Float_t sourcePosY1 = reader.floatActive[cSourceY1] ? reader.floats[cSourceY1][ll] : 0.f;
+				const Float_t sourcePosY2 = reader.floatActive[cSourceY2] ? reader.floats[cSourceY2][ll] : 0.f;
+				const Float_t sourcePosZ1 = reader.floatActive[cSourceZ1] ? reader.floats[cSourceZ1][ll] : 0.f;
+				const Float_t sourcePosZ2 = reader.floatActive[cSourceZ2] ? reader.floats[cSourceZ2][ll] : 0.f;
+				const Float_t globalPosX1 = reader.floatActive[cGlobalX1] ? reader.floats[cGlobalX1][ll] : 0.f;
+				const Float_t globalPosX2 = reader.floatActive[cGlobalX2] ? reader.floats[cGlobalX2][ll] : 0.f;
+				const Float_t globalPosY1 = reader.floatActive[cGlobalY1] ? reader.floats[cGlobalY1][ll] : 0.f;
+				const Float_t globalPosY2 = reader.floatActive[cGlobalY2] ? reader.floats[cGlobalY2][ll] : 0.f;
+				const Float_t globalPosZ1 = reader.floatActive[cGlobalZ1] ? reader.floats[cGlobalZ1][ll] : 0.f;
+				const Float_t globalPosZ2 = reader.floatActive[cGlobalZ2] ? reader.floats[cGlobalZ2][ll] : 0.f;
+				const Double_t time1 = reader.doubleActive[cTime1] ? reader.doubles[cTime1][ll] : alku;
+				const Double_t time2 = reader.doubleActive[cTime2] ? reader.doubles[cTime2][ll] : alku;
+				int64_t tPoint = 0LL;
+				if (!no_time && time2 < alku)
+					continue;
+				else if (!no_time && time2 > loppu) {
+					continue;
 				}
-				else if (!event_true && store_randoms && !event_scattered)
-#ifdef _OPENMP
-#pragma omp atomic
-#endif
-					SinoR[sinoIndex]++;
-			}
-			if (source) {
-				if (event_true && obtain_trues) {
-					formSourceImage(bx, by, bz, dx, dy, dz, Nx, Ny, Nz, imDim, sourcePosX1, sourcePosX2, sourcePosY1, sourcePosY2, sourcePosZ1, sourcePosZ2, tPoint, S);
-				}
-				else if (!obtain_trues) {
-					if (sourcePosX1 == sourcePosX2 && sourcePosY1 == sourcePosY2 && sourcePosZ1 == sourcePosZ2) {
-						formSourceImage(bx, by, bz, dx, dy, dz, Nx, Ny, Nz, imDim, sourcePosX1, sourcePosX2, sourcePosY1, sourcePosY2, sourcePosZ1, sourcePosZ2, tPoint, S);
+				if (nLayers > 1 && layerID1 > 0 && layerSubmodule)
+					crystalID1 = submoduleID1;
+				if (nLayers > 1 && layerID2 > 0 && layerSubmodule)
+					crystalID2 = submoduleID2;
+				uint32_t ring_number1 = 0, ring_number2 = 0, ring_pos1 = 0, ring_pos2 = 0;
+				detectorIndices(ring_number1, ring_number2, ring_pos1, ring_pos2, blocks_per_ring, linear_multip, no_modules, no_submodules, moduleID1, moduleID2, submoduleID1,
+					submoduleID2, rsectorID1, rsectorID2, crystalID1, crystalID2, cryst_per_block[layerID1], cryst_per_block[layerID2], cryst_per_block_z[layerID1], cryst_per_block_z[layerID2], transaxial_multip, rings[layerID1]);
+				uint64_t bins = 0;
+				bool event_true = true;
+				bool event_scattered = true;
+				bool store_scatter_event = false;
+				if (obtain_trues || store_scatter || store_randoms) {
+					if (eventID1 != eventID2) {
+						event_true = false;
+						event_scattered = false;
+					}
+					if (event_true) {
+						if (comptonPhantom1 > 0 || comptonPhantom2 > 0) {
+							event_true = false;
+							if (scatter_components[0] > 0 && (scatter_components[0] <= comptonPhantom1 || scatter_components[0] <= comptonPhantom2))
+								store_scatter_event = true;
+						}
+						else if ((comptonCrystal1 > 0 || comptonCrystal2 > 0)) {
+							event_true = false;
+							if (scatter_components[1] > 0 && (scatter_components[1] <= comptonCrystal1 || scatter_components[1] <= comptonCrystal2))
+								store_scatter_event = true;
+						}
+						else if ((RayleighPhantom1 > 0 || RayleighPhantom2 > 0)) {
+							event_true = false;
+							if (scatter_components[2] > 0 && (scatter_components[2] <= RayleighPhantom1 || scatter_components[2] <= RayleighPhantom2))
+								store_scatter_event = true;
+						}
+						else if ((RayleighCrystal1 > 0 || RayleighCrystal2 > 0)) {
+							event_true = false;
+							if (scatter_components[3] > 0 && (scatter_components[3] <= RayleighCrystal1 || scatter_components[3] <= RayleighCrystal2))
+								store_scatter_event = true;
+						}
+						else
+							event_scattered = false;
 					}
 				}
-				if (store_scatter_event && store_scatter) {
-					formSourceImage(bx, by, bz, dx, dy, dz, Nx, Ny, Nz, imDim, sourcePosX1, sourcePosX2, sourcePosY1, sourcePosY2, sourcePosZ1, sourcePosZ2, tPoint, SC);
+				if (dynamic) {
+					double time = alku;
+					tPoint = Nt - 1;
+					for (int64_t ll = 0; ll < Nt; ll++) {
+						time += tPoints[ll];
+						if (time2 < time) {
+							tPoint = ll;
+							break;
+						}
+					}
 				}
-				if (!event_true && !event_scattered && store_randoms) {
-					formSourceImage(bx, by, bz, dx, dy, dz, Nx, Ny, Nz, imDim, sourcePosX1, sourcePosX2, sourcePosY1, sourcePosY2, sourcePosZ1, sourcePosZ2, tPoint, RA);
+				if (TOFSize > sinoSize[0]) {
+					double timeDif = (time2 - time1);
+					if (ring_pos2 > ring_pos1)
+						timeDif = -timeDif;
+					if (FWHM > 0.)
+						timeDif += distribution(generator);
+					if (std::abs(timeDif) > ((binSize / 2.) * static_cast<double>(nBins)))
+						continue;
+					bins = static_cast<uint64_t>(std::floor((std::abs(timeDif) + binSize / 2.) / binSize));
+					const bool tInd = timeDif > 0;
+					if (tInd)
+						bins *= 2ULL;
+					else if (!tInd && bins > 0ULL)
+						bins = bins * 2ULL - 1ULL;
 				}
-			}
-			if (store_coordinates) {
-				coord[kk * 6] = globalPosX1;
-				coord[kk * 6 + 1] = globalPosY1;
-				coord[kk * 6 + 2] = globalPosZ1;
-				coord[kk * 6 + 3] = globalPosX2;
-				coord[kk * 6 + 4] = globalPosY2;
-				coord[kk * 6 + 5] = globalPosZ2;
-				if (dynamic)
-					tIndex[kk] = static_cast<uint16_t>(tPoint);
-				if (TOFSize > sinoSize[0])
-					TOFIndex[kk] = static_cast<uint8_t>(bins);
+				int32_t layer = 0;
+				if (nLayers > 1) {
+					if (layerID2 == 1 && layerID1 == 1)
+						layer = 3;
+					else if (layerID2 == 1 && layerID1 == 0)
+						layer = 1;
+					else if (layerID2 == 0 && layerID1 == 1)
+						layer = 2;
+					if (nLayers > 2) {
+						if (layerID1 == 2 && layerID2 == 2)
+							layer = 8;
+						else if (layerID1 == 2 && layerID2 == 0)
+							layer = 4;
+						else if (layerID1 == 0 && layerID2 == 2)
+							layer = 5;
+						else if (layerID1 == 2 && layerID2 == 1)
+							layer = 6;
+						else if (layerID1 == 1 && layerID2 == 2)
+							layer = 7;
+					}
+				}
+				if (indexBased) {
+					// Index-based TOF indexing also swaps the TOF directions when needed
+					// The behavior should be the same to the sinogram version
+					if (ring_pos2 < ring_pos1) {
+						trIndex[kk * 2] = static_cast<uint16_t>(ring_pos2) + layerID2 * detWPseudo[0];
+						trIndex[kk * 2 + 1] = static_cast<uint16_t>(ring_pos1) + layerID1 * detWPseudo[0];
+						axIndex[kk * 2] = static_cast<uint16_t>(ring_number2) + layerID2 * rings[0];
+						axIndex[kk * 2 + 1] = static_cast<uint16_t>(ring_number1) + layerID1 * rings[0];
+					}
+					else {
+						trIndex[kk * 2] = static_cast<uint16_t>(ring_pos1) + layerID1 * detWPseudo[0];
+						trIndex[kk * 2 + 1] = static_cast<uint16_t>(ring_pos2) + layerID2 * detWPseudo[0];
+						axIndex[kk * 2] = static_cast<uint16_t>(ring_number1) + layerID1 * rings[0];
+						axIndex[kk * 2 + 1] = static_cast<uint16_t>(ring_number2) + layerID2 * rings[0];
+					}
+					if (dynamic)
+						tIndex[kk] = static_cast<uint16_t>(tPoint);
+					if (TOFSize > sinoSize[0])
+						TOFIndex[kk] = static_cast<uint8_t>(bins);
+				}
+				else {
+					if (pseudoD) {
+						ring_pos1 += ring_pos1 / cryst_per_block[layerID1];
+						ring_pos2 += ring_pos2 / cryst_per_block[layerID2];
+					}
+					if (pseudoR) {
+						ring_number1 += ring_number1 / gapSize;
+						ring_number2 += ring_number2 / gapSize;
+					}
+					if ((layer == 0 || layer == 1) && nLayers > 1) {
+						ring_pos1 += ring_pos1 / cryst_per_block[layerID1];
+						ring_number1 += moduleID1;
+					}
+					if ((layer == 0 || layer == 2) && nLayers > 1) {
+						ring_pos2 += ring_pos2 / cryst_per_block[layerID2];
+						ring_number2 += moduleID2;
+					}
+					bool swap = false;
+					const int64_t sinoIndex = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize[0], Ndist, Nang[0], ringDifference, span, seg, TOFSize,
+						detWPseudo[0], rings[0], bins, nDistSide, swap, tPoint, layer, nLayers);
+					if (sinoIndex >= 0) {
+#ifdef _OPENMP
+#pragma omp atomic
+#endif
+						Sino[sinoIndex]++;
+						if ((event_true && obtain_trues) || (store_scatter_event && store_scatter)) {
+							if (event_true && obtain_trues)
+#ifdef _OPENMP
+#pragma omp atomic
+#endif
+								SinoT[sinoIndex]++;
+							else if (store_scatter_event && store_scatter)
+#ifdef _OPENMP
+#pragma omp atomic
+#endif
+								SinoC[sinoIndex]++;
+						}
+						else if (!event_true && store_randoms && !event_scattered)
+#ifdef _OPENMP
+#pragma omp atomic
+#endif
+							SinoR[sinoIndex]++;
+					}
+					if (source) {
+						if (event_true && obtain_trues) {
+							formSourceImage(bx, by, bz, dx, dy, dz, Nx, Ny, Nz, imDim, sourcePosX1, sourcePosX2, sourcePosY1, sourcePosY2, sourcePosZ1, sourcePosZ2, tPoint, S);
+						}
+						else if (!obtain_trues) {
+							if (sourcePosX1 == sourcePosX2 && sourcePosY1 == sourcePosY2 && sourcePosZ1 == sourcePosZ2) {
+								formSourceImage(bx, by, bz, dx, dy, dz, Nx, Ny, Nz, imDim, sourcePosX1, sourcePosX2, sourcePosY1, sourcePosY2, sourcePosZ1, sourcePosZ2, tPoint, S);
+							}
+						}
+						if (store_scatter_event && store_scatter) {
+							formSourceImage(bx, by, bz, dx, dy, dz, Nx, Ny, Nz, imDim, sourcePosX1, sourcePosX2, sourcePosY1, sourcePosY2, sourcePosZ1, sourcePosZ2, tPoint, SC);
+						}
+						if (!event_true && !event_scattered && store_randoms) {
+							formSourceImage(bx, by, bz, dx, dy, dz, Nx, Ny, Nz, imDim, sourcePosX1, sourcePosX2, sourcePosY1, sourcePosY2, sourcePosZ1, sourcePosZ2, tPoint, RA);
+						}
+					}
+					if (store_coordinates) {
+						coord[kk * 6] = globalPosX1;
+						coord[kk * 6 + 1] = globalPosY1;
+						coord[kk * 6 + 2] = globalPosZ1;
+						coord[kk * 6 + 3] = globalPosX2;
+						coord[kk * 6 + 4] = globalPosY2;
+						coord[kk * 6 + 5] = globalPosZ2;
+						if (dynamic)
+							tIndex[kk] = static_cast<uint16_t>(tPoint);
+						if (TOFSize > sinoSize[0])
+							TOFIndex[kk] = static_cast<uint8_t>(bins);
+					}
+				}
 			}
 		}
 	}
@@ -619,136 +818,153 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 
 	if (randoms_correction) {
 
-		TTree* delay;
-		TFile* inFileD = new TFile(rootFile, "read");
-		inFileD->GetObject("delay", delay);
-
-		int64_t Ndelays = delay->GetEntries();
-
-
-		for (int64_t kk = 0; kk < Ndelays; kk++) {
-			Int_t crystalID1 = 0, crystalID2 = 0, moduleID1 = 0, moduleID2 = 0, submoduleID1 = 0, submoduleID2 = 0, rsectorID1, rsectorID2, layerID1 = 0, layerID2 = 0;
-			Float_t globalPosX1, globalPosX2, globalPosY1, globalPosY2, globalPosZ1, globalPosZ2;
-			Double_t time1 = alku, time2 = alku;
-			int64_t tPoint = 0LL;
-			delay->SetBranchAddress("crystalID1", &crystalID1);
-			delay->SetBranchAddress("crystalID2", &crystalID2);
-			if (!no_modules) {
-				delay->SetBranchAddress("moduleID1", &moduleID1);
-				delay->SetBranchAddress("moduleID2", &moduleID2);
+		RootBlockReader reader;
+		reader.intActive[cCrystal1] = true;
+		reader.intActive[cCrystal2] = true;
+		reader.intActive[cRsector1] = true;
+		reader.intActive[cRsector2] = true;
+		if (!no_modules) {
+			reader.intActive[cModule1] = true;
+			reader.intActive[cModule2] = true;
+		}
+		if (!no_submodules || layerSubmodule) {
+			reader.intActive[cSubmodule1] = true;
+			reader.intActive[cSubmodule2] = true;
+		}
+		TTree* delay = nullptr;
+		inFile->GetObject("delay", delay);
+		const bool delayWindow = (dynamic || customWindow) && delay != nullptr && delay->GetBranch("time2") != nullptr;
+		if (delayWindow)
+			reader.doubleActive[cTime2] = true;
+		if (nLayers > 1) {
+			reader.intActive[cLayer1] = true;
+			reader.intActive[cLayer2] = true;
+		}
+		if (store_coordinates) {
+			for (int c = cGlobalX1; c <= cGlobalZ2; c++)
+				reader.floatActive[c] = true;
+		}
+		const int64_t Ndelays = (delay != nullptr) ? delay->GetEntries() : 0;
+		int nThreadsD = std::max(1, std::min<int>(static_cast<int>(std::thread::hardware_concurrency()), ROOT_IMPORT_MAX_THREADS));
+		nThreadsD = std::max<int64_t>(1, std::min<int64_t>(nThreadsD, Ndelays / 100000));
+		const int64_t blockSizeD = std::max<int64_t>(1, std::min<int64_t>(ROOT_IMPORT_BLOCK_SIZE, Ndelays));
+		if (!reader.open(rootFile, "delay", nThreadsD, blockSizeD)) {
+			disp("Error opening the delayed coincidences from the ROOT file", mPtr);
+			delete inFile;
+			return;
+		}
+		for (int64_t blockStart = 0; blockStart < Ndelays; blockStart += blockSizeD) {
+			const int64_t nBlock = std::min<int64_t>(blockSizeD, Ndelays - blockStart);
+			if (!reader.readBlock(blockStart, nBlock)) {
+				disp("Error reading the delayed coincidences from the ROOT file", mPtr);
+				break;
 			}
-			if (!no_submodules) {
-				delay->SetBranchAddress("submoduleID1", &submoduleID1);
-				delay->SetBranchAddress("submoduleID2", &submoduleID2);
-			}
-			else if (layerSubmodule) {
-				delay->SetBranchAddress("submoduleID1", &submoduleID1);
-				delay->SetBranchAddress("submoduleID2", &submoduleID2);
-			}
-			delay->SetBranchAddress("rsectorID1", &rsectorID1);
-			delay->SetBranchAddress("rsectorID2", &rsectorID2);
-			if (dynamic) {
-				if (delay->GetBranchStatus("time2"))
-					delay->SetBranchAddress("time2", &time2);
-			}
-			if (nLayers > 1) {
-				delay->SetBranchAddress("layerID1", &layerID1);
-				delay->SetBranchAddress("layerID2", &layerID2);
-			}
-			if (store_coordinates) {
-				delay->SetBranchAddress("globalPosX1", &globalPosX1);
-				delay->SetBranchAddress("globalPosX2", &globalPosX2);
-				delay->SetBranchAddress("globalPosY1", &globalPosY1);
-				delay->SetBranchAddress("globalPosY2", &globalPosY2);
-				delay->SetBranchAddress("globalPosZ1", &globalPosZ1);
-				delay->SetBranchAddress("globalPosZ2", &globalPosZ2);
-			}
-			delay->GetEntry(kk);
-
-			uint32_t ring_number1 = 0, ring_number2 = 0, ring_pos1 = 0, ring_pos2 = 0;
-			if (nLayers > 1 && layerID1 > 0 && layerSubmodule)
-				crystalID1 = submoduleID1;
-			if (nLayers > 1 && layerID2 > 0 && layerSubmodule)
-				crystalID2 = submoduleID2;
-			detectorIndices(ring_number1, ring_number2, ring_pos1, ring_pos2, blocks_per_ring, linear_multip, no_modules, no_submodules, moduleID1, moduleID2, submoduleID1,
-				submoduleID2, rsectorID1, rsectorID2, crystalID1, crystalID2, cryst_per_block[layerID1], cryst_per_block[layerID2], cryst_per_block_z[layerID1], cryst_per_block_z[layerID2], transaxial_multip, rings[layerID1]);
-			uint64_t bins = 0;
-			uint64_t L1 = static_cast<uint64_t>(ring_number1) * static_cast<uint64_t>(det_per_ring[layerID1]) + static_cast<uint64_t>(ring_pos1);
-			uint64_t L2 = static_cast<uint64_t>(ring_number2) * static_cast<uint64_t>(det_per_ring[layerID1]) + static_cast<uint64_t>(ring_pos2);
-			if (dynamic) {
-				double time = alku;
-				for (int64_t ll = 0; ll < Nt; ll++) {
-					if (time2 >= time || time2 < tPoints[0]) {
-						tPoint = ll;
-						break;
+			for (int64_t ll = 0; ll < nBlock; ll++) {
+				const int64_t kk = blockStart + ll;
+				Int_t crystalID1 = reader.intActive[cCrystal1] ? reader.ints[cCrystal1][ll] : 0;
+				Int_t crystalID2 = reader.intActive[cCrystal2] ? reader.ints[cCrystal2][ll] : 0;
+				const Int_t moduleID1 = reader.intActive[cModule1] ? reader.ints[cModule1][ll] : 0;
+				const Int_t moduleID2 = reader.intActive[cModule2] ? reader.ints[cModule2][ll] : 0;
+				const Int_t submoduleID1 = reader.intActive[cSubmodule1] ? reader.ints[cSubmodule1][ll] : 0;
+				const Int_t submoduleID2 = reader.intActive[cSubmodule2] ? reader.ints[cSubmodule2][ll] : 0;
+				const Int_t rsectorID1 = reader.intActive[cRsector1] ? reader.ints[cRsector1][ll] : 0;
+				const Int_t rsectorID2 = reader.intActive[cRsector2] ? reader.ints[cRsector2][ll] : 0;
+				const Int_t layerID1 = reader.intActive[cLayer1] ? reader.ints[cLayer1][ll] : 0;
+				const Int_t layerID2 = reader.intActive[cLayer2] ? reader.ints[cLayer2][ll] : 0;
+				const Float_t globalPosX1 = reader.floatActive[cGlobalX1] ? reader.floats[cGlobalX1][ll] : 0.f;
+				const Float_t globalPosX2 = reader.floatActive[cGlobalX2] ? reader.floats[cGlobalX2][ll] : 0.f;
+				const Float_t globalPosY1 = reader.floatActive[cGlobalY1] ? reader.floats[cGlobalY1][ll] : 0.f;
+				const Float_t globalPosY2 = reader.floatActive[cGlobalY2] ? reader.floats[cGlobalY2][ll] : 0.f;
+				const Float_t globalPosZ1 = reader.floatActive[cGlobalZ1] ? reader.floats[cGlobalZ1][ll] : 0.f;
+				const Float_t globalPosZ2 = reader.floatActive[cGlobalZ2] ? reader.floats[cGlobalZ2][ll] : 0.f;
+				const Double_t time1 = alku;
+				const Double_t time2 = reader.doubleActive[cTime2] ? reader.doubles[cTime2][ll] : alku;
+				int64_t tPoint = 0LL;
+				if (delayWindow && (time2 < alku || time2 > loppu))
+					continue;
+				uint32_t ring_number1 = 0, ring_number2 = 0, ring_pos1 = 0, ring_pos2 = 0;
+				if (nLayers > 1 && layerID1 > 0 && layerSubmodule)
+					crystalID1 = submoduleID1;
+				if (nLayers > 1 && layerID2 > 0 && layerSubmodule)
+					crystalID2 = submoduleID2;
+				detectorIndices(ring_number1, ring_number2, ring_pos1, ring_pos2, blocks_per_ring, linear_multip, no_modules, no_submodules, moduleID1, moduleID2, submoduleID1,
+					submoduleID2, rsectorID1, rsectorID2, crystalID1, crystalID2, cryst_per_block[layerID1], cryst_per_block[layerID2], cryst_per_block_z[layerID1], cryst_per_block_z[layerID2], transaxial_multip, rings[layerID1]);
+				uint64_t bins = 0;
+				if (dynamic) {
+					double time = alku;
+					tPoint = Nt - 1;
+					for (int64_t ll = 0; ll < Nt; ll++) {
+						time += tPoints[ll];
+						if (time2 < time) {
+							tPoint = ll;
+							break;
+						}
 					}
-					time += tPoints[ll];
 				}
-			}
-			if (pseudoD) {
-				ring_pos1 += ring_pos1 / cryst_per_block[layerID1];
-				ring_pos2 += ring_pos2 / cryst_per_block[layerID1];
-			}
-			if (pseudoR) {
-				ring_number1 += ring_number1 / gapSize;
-				ring_number2 += ring_number2 / gapSize;
-			}
-			int32_t layer = 0;
-			if (nLayers > 1) {
-				if (layerID2 == 1 && layerID1 == 1)
-					layer = 3;
-				else if (layerID2 == 1 && layerID1 == 0)
-					layer = 1;
-				else if (layerID2 == 0 && layerID1 == 1)
-					layer = 2;
-				if (nLayers > 2) {
-					if (layerID1 == 2 && layerID2 == 2)
-						layer = 8;
-					else if (layerID1 == 2 && layerID2 == 0)
-						layer = 4;
-					else if (layerID1 == 0 && layerID2 == 2)
-						layer = 5;
-					else if (layerID1 == 2 && layerID2 == 1)
-						layer = 6;
-					else if (layerID1 == 1 && layerID2 == 2)
-						layer = 7;
+				int32_t layer = 0;
+				if (nLayers > 1) {
+					if (layerID2 == 1 && layerID1 == 1)
+						layer = 3;
+					else if (layerID2 == 1 && layerID1 == 0)
+						layer = 1;
+					else if (layerID2 == 0 && layerID1 == 1)
+						layer = 2;
+					if (nLayers > 2) {
+						if (layerID1 == 2 && layerID2 == 2)
+							layer = 8;
+						else if (layerID1 == 2 && layerID2 == 0)
+							layer = 4;
+						else if (layerID1 == 0 && layerID2 == 2)
+							layer = 5;
+						else if (layerID1 == 2 && layerID2 == 1)
+							layer = 6;
+						else if (layerID1 == 1 && layerID2 == 2)
+							layer = 7;
+					}
 				}
-			}
-			if (indexBased) {
-				DtrIndex[kk * 2] = static_cast<uint16_t>(ring_pos1) + layerID1 * detWPseudo[0];
-				DtrIndex[kk * 2 + 1] = static_cast<uint16_t>(ring_pos2) + layerID2 * detWPseudo[0];
-				DaxIndex[kk * 2] = static_cast<uint16_t>(ring_number1) + layerID1 * rings[0];
-				DaxIndex[kk * 2 + 1] = static_cast<uint16_t>(ring_number2) + layerID2 * rings[0];
-			}
-			else {
-				if ((layer == 0 || layer == 1) && nLayers > 1) {
-					ring_pos1 += ring_pos1 / cryst_per_block[layerID1];
-					ring_number1 += moduleID1;
+				if (indexBased) {
+					DtrIndex[kk * 2] = static_cast<uint16_t>(ring_pos1) + layerID1 * detWPseudo[0];
+					DtrIndex[kk * 2 + 1] = static_cast<uint16_t>(ring_pos2) + layerID2 * detWPseudo[0];
+					DaxIndex[kk * 2] = static_cast<uint16_t>(ring_number1) + layerID1 * rings[0];
+					DaxIndex[kk * 2 + 1] = static_cast<uint16_t>(ring_number2) + layerID2 * rings[0];
 				}
-				if ((layer == 0 || layer == 2) && nLayers > 1) {
-					ring_pos2 += ring_pos2 / cryst_per_block[layerID2];
-					ring_number2 += moduleID2;
-			}
-				bool swap = false;
-				const int64_t sinoIndex = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize[0], Ndist, Nang[0], ringDifference, span, seg, TOFSize,
-					detWPseudo[0], rings[0], bins, nDistSide, swap, tPoint, layer, nLayers);
-				if (sinoIndex >= 0) {
+				else {
+					if (pseudoD) {
+						ring_pos1 += ring_pos1 / cryst_per_block[layerID1];
+						ring_pos2 += ring_pos2 / cryst_per_block[layerID2];
+					}
+					if (pseudoR) {
+						ring_number1 += ring_number1 / gapSize;
+						ring_number2 += ring_number2 / gapSize;
+					}
+					if ((layer == 0 || layer == 1) && nLayers > 1) {
+						ring_pos1 += ring_pos1 / cryst_per_block[layerID1];
+						ring_number1 += moduleID1;
+					}
+					if ((layer == 0 || layer == 2) && nLayers > 1) {
+						ring_pos2 += ring_pos2 / cryst_per_block[layerID2];
+						ring_number2 += moduleID2;
+				}
+					bool swap = false;
+					const int64_t sinoIndex = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize[0], Ndist, Nang[0], ringDifference, span, seg, sinoSize[0],
+						detWPseudo[0], rings[0], bins, nDistSide, swap, tPoint, layer, nLayers);
+					if (sinoIndex >= 0) {
 #ifdef _OPENMP
 #pragma omp atomic
 #endif
-					SinoD[sinoIndex]++;
-				}
-				if (store_coordinates) {
-					Dcoord[kk * 6] = globalPosX1;
-					Dcoord[kk * 6 + 1] = globalPosY1;
-					Dcoord[kk * 6 + 2] = globalPosZ1;
-					Dcoord[kk * 6 + 3] = globalPosX2;
-					Dcoord[kk * 6 + 4] = globalPosY2;
-					Dcoord[kk * 6 + 5] = globalPosZ2;
+						SinoD[sinoIndex]++;
+					}
+					if (store_coordinates) {
+						Dcoord[kk * 6] = globalPosX1;
+						Dcoord[kk * 6 + 1] = globalPosY1;
+						Dcoord[kk * 6 + 2] = globalPosZ1;
+						Dcoord[kk * 6 + 3] = globalPosX2;
+						Dcoord[kk * 6 + 4] = globalPosY2;
+						Dcoord[kk * 6 + 5] = globalPosZ2;
+					}
 				}
 			}
 		}
-		delete inFileD;
 	}
 	delete inFile;
 	return;

@@ -29,14 +29,15 @@ for kk = 1 : nFiles
     info = dicominfo(fullfile(path, files(kk).name));
     nColsD = info.Width;
     nRowsD = info.Height;
-    r = typecast(info.Private_7031_1003, 'single'); % DetectorFocalCenterRadialDistance
-    deltar = typecast(info.Private_7033_100d, 'single'); % SourceRadialDistanceShift
+    r = double(typecast(info.Private_7031_1003, 'single')); % DetectorFocalCenterRadialDistance
+    deltar = double(typecast(info.Private_7033_100d, 'single')); % SourceRadialDistanceShift
     rho = r + deltar; 
-    angles(kk) = typecast(info.Private_7031_1001, 'single') - pi/2; % DetectorFocalCenterAngularPosition
-    deltaphi = typecast(info.Private_7033_100b, 'single'); % SourceAngularPositionShift
-    phi = angles(kk) + deltaphi;
-    deltaz = typecast(info.Private_7033_100c, 'single'); % SourceAxialPositionShift
-    zs(kk) = typecast(info.Private_7031_1002, 'single') + deltaz; % DetectorFocalCenterAxialPosition
+    a = double(typecast(info.Private_7031_1001, 'single')) - pi/2; % DetectorFocalCenterAngularPosition
+    deltaphi = double(typecast(info.Private_7033_100b, 'single')); % SourceAngularPositionShift
+    phi = a + deltaphi;
+    deltaz = double(typecast(info.Private_7033_100c, 'single')); % SourceAxialPositionShift
+    zf = double(typecast(info.Private_7031_1002, 'single')); % DetectorFocalCenterAxialPosition
+    zs(kk) = zf + deltaz;
     ys(kk) = rho * sin(phi);
     xs(kk) = -rho * cos(phi);
     % nProjections = typecast(info.Private_7033_1013, 'uint16'); % NumberofSourceAngularSteps
@@ -47,16 +48,24 @@ for kk = 1 : nFiles
     proj(:,:,kk) = fliplr(single(data) * info.RescaleSlope + info.RescaleIntercept);
     dPitchX = typecast(info.Private_7029_1002, 'single'); % DetectorElementTransverseSpacing
     dPitchY = typecast(info.Private_7029_1006, 'single'); % DetectorElementAxialSpacing
-    L = double(nRowsD) * dPitchX;
-    theta = L / r;
-    dtheta = theta / double(nRowsD);
-    detElements = typecast(info.Private_7031_1033, 'single'); % DetectorCentralElement
-    rowStart = detElements(1) - double(nRowsD)/2 - .5;
+    d = double(typecast(info.Private_7031_1031, 'single')); % ConstantRadialDistance
+    % The detector is an arc of radius d centered at the focal center
+    % (-r cos(a), r sin(a)), the channels are spaced by dPitchX / d radians
+    dtheta = double(dPitchX) / d;
+    detElements = double(typecast(info.Private_7031_1033, 'single')); % DetectorCentralElement
+    % Central channel offset from the geometric center of the channels
+    deltaCh = detElements(1) - double(nRowsD)/2 - .5;
+    % The central element is not the middle of the detector, so the
+    % detector center is rotated along the arc
+    aD = a - deltaCh * dtheta;
+    % Axial offset of the central row (sign not verified, zero for the AAPM data)
     colStart = detElements(2) - double(nColsD)/2 - .5;
-    d = typecast(info.Private_7031_1031, 'single'); % ConstantRadialDistance
-    yd(kk) = r*sin(angles(kk)) - d * sin(angles(kk) + dtheta * colStart) - sin(rowStart * dtheta) * rowStart * dPitchX;
-    xd(kk) = -r*cos(angles(kk)) + d * cos(angles(kk) + dtheta * rowStart) - cos(rowStart * dtheta) * rowStart * dPitchX;
-    zd(kk) = typecast(info.Private_7031_1002, 'single') + colStart * dPitchY;
+    xd(kk) = -r*cos(a) + d * cos(aD);
+    yd(kk) = r*sin(a) - d * sin(aD);
+    zd(kk) = zf + colStart * double(dPitchY);
+    % The projector derives the arc center from the detector center and the
+    % angle, hence the rotated angle has to be stored
+    angles(kk) = aD;
 end
 nProjections = nFiles;
 vars.xs = xs;
@@ -69,7 +78,7 @@ vars.angles = angles;
 vars.nProjections = nProjections;
 vars.dPitchX = dPitchX;
 vars.dPitchY = dPitchY;
-vars.r = d;
-vars.sourceToCRot = r;
+vars.r = single(d);
+vars.sourceToCRot = single(r);
 
 end

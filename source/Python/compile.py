@@ -613,7 +613,7 @@ def CommandLine(args=None):
         link = '-o' + outputPath + '/inveon.so'
         files = '' + sdir + '/inveonMain.cpp'
         try:
-            result = subprocess.run([compiler, '-shared', '-fPIC', '-I' + sdir, link, files], check=True)
+            result = subprocess.run([compiler, '-shared', '-fPIC', '-O2', '-std=c++17', '-pthread', '-I' + sdir, link, files], check=True)
             print('Inveon list-mode support compiled successfully!')
         except Exception:
             print("Build failed")

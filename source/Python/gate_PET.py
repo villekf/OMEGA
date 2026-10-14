@@ -391,7 +391,7 @@ options.rotateAttImage = 1
 options.flipAttImageXY = False
 
 ### Flip the attenuation image in the axial direction before reconstruction
-optionas.flipAttImageZ = False
+options.flipAttImageZ = False
 
 ### Attenuation image/sinogram data file
 # Specify the path (if not in MATLAB path) and filename.
@@ -1375,13 +1375,26 @@ options.storeFP = False
 if options.use_root:
     from omegatomo.fileio import loadROOT
     if options.useIndexBasedReconstruction:
-        Sino, SinoT, SinoC, SinoR, SinoD, options.trIndices, options.axIndices, DtrIndices, DaxIndices = loadROOT(options)
-        if options.randoms_correction:
-            options.SinM = np.concatenate((np.ones((options.trIndices.shape[0],1,1),dtype=np.float32),-np.ones((options.trIndices.shape[0],1,1),dtype=np.float32)))
-            options.trIndices = np.concatenate((options.trIndices, DtrIndices))
-            options.axIndices = np.concatenate((options.axIndices, DaxIndices))
+        # Index-based reconstruction: the detector indices of each event are saved
+        # Fcoord and FDcoord contain the transaxial and axial detector indices, respectively (2 x N)
+        Sino, SinoT, SinoC, SinoR, SinoD, options.trIndex, options.axIndex, DtrIndices, DaxIndices, TOFIndices = loadROOT(options)
+        if isinstance(options.trIndex, list):
+            # Dynamic data, one array per time step. Delayed coincidences are not supported
+            options.SinM = [np.ones(tr.shape[1], dtype=np.float32) for tr in options.trIndex]
+        elif options.randoms_correction:
+            options.SinM = np.concatenate((np.ones(options.trIndex.shape[1], dtype=np.float32), -np.ones(DtrIndices.shape[1], dtype=np.float32)))
+            options.trIndex = np.concatenate((options.trIndex, DtrIndices), axis=1)
+            options.axIndex = np.concatenate((options.axIndex, DaxIndices), axis=1)
         else:
-            options.SinM = np.ones((options.trIndices.shape[0],1,1),dtype=np.float32)
+            options.SinM = np.ones(options.trIndex.shape[1], dtype=np.float32)
+        if options.TOF_bins > 1:
+            if isinstance(options.trIndex, list):
+                options.TOFIndices = TOFIndices
+            elif options.randoms_correction:
+                # The delayed coincidences have no TOF information, they are all placed in TOF bin 0
+                options.TOFIndices = np.concatenate((TOFIndices, np.zeros(DtrIndices.shape[1], dtype=np.uint8)))
+            else:
+                options.TOFIndices = TOFIndices
     else:
         # Sino = uncorrected sinogram
         # SinoT = Trues sinogram
@@ -1390,7 +1403,7 @@ if options.use_root:
         # SinoD = Delayed coincidences
         # Fcoord = Coordinates for each event
         # FDcoord = Coordinates for each delayed event
-        Sino, SinoT, SinoC, SinoR, SinoD, Fcoord, FDcoord, temp1, temp2 = loadROOT(options)
+        Sino, SinoT, SinoC, SinoR, SinoD, Fcoord, FDcoord, temp1, temp2, temp3 = loadROOT(options)
         if options.reconstruct_trues:
             options.SinM = SinoT
         else:

@@ -122,6 +122,7 @@ def _filter2D_cupy(options, var, Nx, Ny, Nz, Nf):
 def _filter2D_cl(options, var, Nx, Ny, Nz, Nf):
     import numpy as np
     import pyopencl as cl
+    import pyopencl.array
     queue = var.queue
     varNp = var.get()
     im = np.reshape(varNp, (Nx, Ny, Nz), order='F')

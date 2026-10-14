@@ -5,6 +5,10 @@
 
 DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 
+	if (prhs.length() != 51)
+		error("51 inputs required");
+	if (nargout > 16)
+		error("Too many output arguments");
 
 	NDArray tPoints = prhs(1).array_value();
 	const double alku = prhs(2).scalar_value();
@@ -154,8 +158,10 @@ DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 		RA.resize(dim_vector(1, 1));
 		SC.resize(dim_vector(1, 1));
 	}
-	if (store_coordinates)
+	if (dynamic) {
 		tIndex.resize(dim_vector(Nentries, 1));
+		std::fill(tIndex.fortran_vec(), tIndex.fortran_vec() + Nentries, static_cast<uint16_t>(32768));
+	}
 	else
 		tIndex.resize(dim_vector(1, 1));
 

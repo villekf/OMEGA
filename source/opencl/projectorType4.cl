@@ -837,6 +837,10 @@ void projectorType4Backward(
     , CONSTANT float* angle BUF3
 #if !defined(METAL) // Scalar
     , const float DSC
+    // Index of the first projection of the current measurement chunk in angle (largeDim, 0 otherwise)
+    , const LONG d_angleOffset
+    // Total number of projections, used by the FDK angular scaling (d_nProjections only covers the current chunk with largeDim)
+    , const LONG d_nProjectionsFDK
 #endif
 #endif
     , CLGLOBAL float* CLRESTRICT d_OSEM BUF4
@@ -932,6 +936,10 @@ void projectorType4Backward(
 ) {
 #if defined(METAL) // Unpack scalar parameters
 	UNPACK_SCALAR_PARAMS_4_BP(scalarParams);
+#ifdef FDK
+	const LONG d_angleOffset = CLONG_rtz(dSize5.x);
+	const LONG d_nProjectionsFDK = CLONG_rtz(dSize5.y);
+#endif
 	int GID0 = temp_i.x;
 	int GID1 = temp_i.y;
 	int GID2 = temp_i.z;
@@ -1020,11 +1028,10 @@ void projectorType4Backward(
 // TODO: Improve helical part
 #ifdef HELICAL
 	    const float angle = d_uv[kk];
-        const float xc = d1.x - r * COSF(angle);
-        const float yc = d1.y + r * SINF(angle);
-		const float y = d1.y - yc;
-		const float x = d1.x - xc;
-        const float thetaCenter = ATAN2(y, x);
+        const float cosA = COSF(angle);
+        const float sinA = SINF(angle);
+        const float xc = d1.x - r * cosA;
+        const float yc = d1.y + r * sinA;
         const float pz = (CFLOAT(kk) + 0.5f) / CFLOAT(d_nProjections);
         float3 v = dV - s;
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
@@ -1045,7 +1052,7 @@ void projectorType4Backward(
 #endif
             float theta = 0.f;
             float3 intersection;
-            int hit = rayArcIntersection(s, v, d1, xc, yc, r, zMin, zMax, thetaSpan, thetaCenter, &theta, &intersection);
+            int hit = rayArcIntersection(s, v, xc, yc, r, cosA, sinA, zMin, zMax, thetaSpan, &theta, &intersection);
             if (hit == 0)
                 continue;
             float px, py;
@@ -1184,8 +1191,8 @@ void projectorType4Backward(
 //             }
 // #endif
 #ifdef FDK
-            float weight = (DSC + dV.x * COSF(angle[kk]) - dV.y * SINF(angle[kk]));
-            weight = (DSC * DSC) / (weight * weight) * (M_PI_F / (CFLOAT(d_nProjections) * d_dPitch.x));
+            float weight = (DSC + dV.x * COSF(angle[kk + d_angleOffset]) - dV.y * SINF(angle[kk + d_angleOffset]));
+            weight = (DSC * DSC) / (weight * weight) * (M_PI_F / (CFLOAT(d_nProjectionsFDK) * d_dPitch.x));
 #else
             const float L = DISTANCE(p, s);
             const float weight = (L * L * L) / (l1)*kerroin;

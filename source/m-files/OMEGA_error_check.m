@@ -510,6 +510,12 @@ end
 if options.offangle > 0 && options.useHelical
     warning('Rotation is not yet supported with helical CT data')
 end
+if options.useHelical && (options.implementation == 4 || options.use_CPU)
+    error('Helical CT is not supported with the CPU implementation!')
+end
+if options.useHelical && options.FDK
+    error('FDK/FBP is not supported with curved helical CT!')
+end
 if (options.projector_type == 6)
     if options.subsets > 1 && options.subset_type < 8
         error('Subset types 0-7 are not supported with projector type 6!')

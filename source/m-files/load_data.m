@@ -1470,7 +1470,6 @@ elseif options.use_machine == 0
 
     elseif options.use_root
 
-        warning('Loading a single ROOT file can take over 10 minutes depending on the selected options!')
         %% ROOT data
         blocks_per_ring = uint32(blocks_per_ring);
         cryst_per_block = uint32(cryst_per_block);
@@ -1546,6 +1545,12 @@ elseif options.use_machine == 0
             disp('Data load started')
         end
 
+        % Time-step durations for the ROOT import
+        tPointsROOT = double(options.partitions(:));
+        if isempty(tPointsROOT)
+            tPointsROOT = 1;
+        end
+
         % Go through all the files
         for lk=1:length(fnames)
 
@@ -1562,7 +1567,7 @@ elseif options.use_machine == 0
                 %     uint64(options.partitions), sinoSize * uint64(options.TOF_bins), int32(options.ndist_side), options.store_raw_data, raw_SinM, SinTrues, SinScatter, ...
                 %     SinRandoms, SinD, int32(options.det_w_pseudo), int32(sum(options.pseudot)), options.TOF_width, FWHM, options.verbose, options.nLayers);
                 % tic
-                [raw_SinM, SinTrues, SinScatter, SinRandoms, SinD, C, SC, RA, tIndex, coord, Dcoord, trIndex, axIndex, DtrIndex, DaxIndex, TOFIndex] = GATE_root_matlab(nimi, partitions, alku, loppu, detectors, blocks_per_ring, cryst_per_block, det_per_ring, options.linear_multip, source, Nt, options.obtain_trues, ...
+                [raw_SinM, SinTrues, SinScatter, SinRandoms, SinD, C, SC, RA, tIndex, coord, Dcoord, trIndex, axIndex, DtrIndex, DaxIndex, TOFIndex] = GATE_root_matlab(nimi, tPointsROOT, alku, loppu, detectors, blocks_per_ring, cryst_per_block, det_per_ring, options.linear_multip, source, Nt, options.obtain_trues, ...
                     options.store_scatter, options.store_randoms, scatter_components, options.randoms_correction, store_coordinates, transaxial_multip, uint32(cryst_per_block_z), uint32(rings), sinoSize, ...
                     TOF, options.verbose, options.nLayers, options.Ndist, uint32(options.Nang), options.ring_difference, options.span, uint32(cumsum(options.segment_table)), sinoSize(end) * uint64(options.TOF_bins), options.ndist_side, raw_SinM, SinTrues, SinScatter, ...
                     SinRandoms, SinD, uint32(options.det_w_pseudo), pseudot, options.TOF_width, FWHM, dx, dy, dz, bx, by, bz, options.Nx(1), options.Ny(1), options.Nz(1), options.dualLayerSubmodule, options.useIndexBasedReconstruction);
@@ -1575,7 +1580,7 @@ elseif options.use_machine == 0
                 %     uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), uint32(cumsum(options.segment_table)), ...
                 %     uint64(options.partitions), sinoSize * uint64(options.TOF_bins), int32(options.ndist_side), options.store_raw_data, raw_SinM, SinTrues, SinScatter, ...
                 %     SinRandoms, SinD, int32(options.det_w_pseudo), int32(sum(options.pseudot)), options.TOF_width, FWHM, options.verbose, options.nLayers);
-                [raw_SinM, SinTrues, SinScatter, SinRandoms, SinD, C, SC, RA, tIndex, coord, Dcoord, trIndex, axIndex, DtrIndex, DaxIndex, TOFIndex] = GATE_root_matlab_oct(nimi, partitions, alku, loppu, detectors, blocks_per_ring, cryst_per_block, det_per_ring, options.linear_multip, source, Nt, options.obtain_trues, ...
+                [raw_SinM, SinTrues, SinScatter, SinRandoms, SinD, C, SC, RA, tIndex, coord, Dcoord, trIndex, axIndex, DtrIndex, DaxIndex, TOFIndex] = GATE_root_matlab_oct(nimi, tPointsROOT, alku, loppu, detectors, blocks_per_ring, cryst_per_block, det_per_ring, options.linear_multip, source, Nt, options.obtain_trues, ...
                     options.store_scatter, options.store_randoms, scatter_components, options.randoms_correction, store_coordinates, transaxial_multip, uint32(cryst_per_block_z), uint32(rings), sinoSize, ...
                     TOF, options.verbose, options.nLayers, options.Ndist, uint32(options.Nang), options.ring_difference, options.span, uint32(cumsum(options.segment_table)), sinoSize(end) * uint64(options.TOF_bins), options.ndist_side, raw_SinM, SinTrues, SinScatter, ...
                     SinRandoms, SinD, uint32(options.det_w_pseudo), pseudot, options.TOF_width, FWHM, dx, dy, dz, bx, by, bz, options.Nx(1), options.Ny(1), options.Nz(1), options.dualLayerSubmodule, options.useIndexBasedReconstruction);
@@ -1589,7 +1594,7 @@ elseif options.use_machine == 0
                 %     y2, z1, z2, time, timeD, layer1, layer2, layerD1, layerD2] = GATE_root_matlab_MEX(nimi,vali,alku,loppu, detectors, blocks_per_ring, cryst_per_block, det_per_ring, source, partitions, ...
                 %     options, scatter_components, store_coordinates, uint32(transaxial_multip), uint32(cryst_per_block_z), uint32(options.rings), large_case, TOF, ...
                 %     options.verbose, outputUint32);
-                [raw_SinM, SinTrues, SinScatter, SinRandoms, SinD, C, SC, RA, tIndex, coord, Dcoord, trIndex, axIndex, DtrIndex, DaxIndex, TOFIndex] = GATE_root_matlab_MEX(nimi, partitions, alku, loppu, detectors, blocks_per_ring, cryst_per_block, det_per_ring, options.linear_multip, source, Nt, options.obtain_trues, ...
+                [raw_SinM, SinTrues, SinScatter, SinRandoms, SinD, C, SC, RA, tIndex, coord, Dcoord, trIndex, axIndex, DtrIndex, DaxIndex, TOFIndex] = GATE_root_matlab_MEX(nimi, tPointsROOT, alku, loppu, detectors, blocks_per_ring, cryst_per_block, det_per_ring, options.linear_multip, source, Nt, options.obtain_trues, ...
                     options.store_scatter, options.store_randoms, scatter_components, options.randoms_correction, store_coordinates, transaxial_multip, uint32(cryst_per_block_z), uint32(rings), sinoSize, ...
                     TOF, options.verbose, options.nLayers, options.Ndist, uint32(options.Nang), options.ring_difference, options.span, uint32(cumsum(options.segment_table)), sinoSize(end) * uint64(options.TOF_bins), options.ndist_side, raw_SinM, SinTrues, SinScatter, ...
                     SinRandoms, SinD, uint32(options.det_w_pseudo), pseudot, options.TOF_width, FWHM, dx, dy, dz, bx, by, bz, options.Nx(1), options.Ny(1), options.Nz(1), options.dualLayerSubmodule, options.useIndexBasedReconstruction);
@@ -1621,47 +1626,53 @@ elseif options.use_machine == 0
             % end
             % zerosRemoved = false;
             if partitions == 1
+                % Remove the events that were skipped (outside the time
+                % window or the TOF range), they are left as zeros
+                if options.useIndexBasedReconstruction
+                    keep = any(trIndex ~= 0 | axIndex ~= 0, 1);
+                elseif store_coordinates
+                    keep = any(coord ~= 0, 1);
+                end
                 % Save the interaction coordinates if selected
                 if store_coordinates
-                    coordinate = [coordinate, coord];
+                    coordinate = [coordinate, coord(:,keep)];
                     if options.randoms_correction
-                        Rcoordinate = [Rcoordinate, Dcoord];
+                        Rcoordinate = [Rcoordinate, Dcoord(:,any(Dcoord ~= 0, 1))];
                     end
                 end
                 if options.useIndexBasedReconstruction
-                    trIndices = [trIndices,trIndex];
-                    axIndices = [axIndices,axIndex];
+                    trIndices = [trIndices,trIndex(:,keep)];
+                    axIndices = [axIndices,axIndex(:,keep)];
                     if options.randoms_correction
-                        DtrIndices = [DtrIndices,DtrIndex];
-                        DaxIndices = [DaxIndices,DaxIndex];
+                        keepD = any(DtrIndex ~= 0 | DaxIndex ~= 0, 1);
+                        DtrIndices = [DtrIndices,DtrIndex(:,keepD)];
+                        DaxIndices = [DaxIndices,DaxIndex(:,keepD)];
                     end
                 end
                 if options.TOF_bins > 1 && (store_coordinates || options.useIndexBasedReconstruction)
-                    TOFindices = [TOFindices, TOFIndex];
+                    TOFindices = [TOFindices, TOFIndex(keep)];
                 end
             else
                 if store_coordinates
-                    uind = unique(tIndex);
-                    for uu = 1 : numel(uind)
-                        coordinate{uu} = [coordinate{uu}, coord(:,tIndex == uind(uu))];
+                    for uu = 1 : Nt
+                        coordinate{uu} = [coordinate{uu}, coord(:,tIndex == uu - 1)];
                     end
                     if options.randoms_correction
                         warning('Coordinates for delayed coincidences are not supported for list-mode data in dynamic mode!')
                     end
                 end
                 if options.useIndexBasedReconstruction
-                    uind = unique(tIndex);
-                    for uu = 1 : numel(uind)
-                        trIndices{uu} = [trIndices{uu}, trIndex(:,tIndex == uind(uu))];
-                        axIndices{uu} = [axIndices{uu}, axIndex(:,tIndex == uind(uu))];
+                    for uu = 1 : Nt
+                        trIndices{uu} = [trIndices{uu}, trIndex(:,tIndex == uu - 1)];
+                        axIndices{uu} = [axIndices{uu}, axIndex(:,tIndex == uu - 1)];
                     end
                     if options.randoms_correction
                         warning('Indices for delayed coincidences are not supported for list-mode data in dynamic mode!')
                     end
                 end
                 if options.TOF_bins > 1 && (store_coordinates || options.useIndexBasedReconstruction)
-                    for uu = 1 : numel(uind)
-                        TOFindices{uu} = [TOFindices{uu}, TOFindices(tIndex == uind(uu))];
+                    for uu = 1 : Nt
+                        TOFindices{uu} = [TOFindices{uu}, TOFIndex(tIndex == uu - 1)];
                     end
                 end
             end

@@ -29,9 +29,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	/* Check for proper number of arguments */
 
-	if (nrhs != 50) {
+	if (nrhs != 51) {
 		mexErrMsgIdAndTxt("MATLAB:GATE_root_matlab:invalidNumInputs",
-			"50 input arguments required.");
+			"51 input arguments required.");
 	}
 	else if (nlhs > 16) {
 		mexErrMsgIdAndTxt("MATLAB:GATE_root_matlab:maxlhs",
@@ -112,10 +112,17 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	delete Coincidences;
 	if (randoms_correction)
 		delete delay;
+	// Same output allocation as in GATE_root_matlab.cpp (note: the delayed outputs are sized with Nentries)
 	if (source) {
 		plhs[5] = mxCreateNumericMatrix(imDim * Nt, 1, mxUINT16_CLASS, mxREAL);
-		plhs[6] = mxCreateNumericMatrix(imDim * Nt, 1, mxUINT16_CLASS, mxREAL);
-		plhs[7] = mxCreateNumericMatrix(imDim * Nt, 1, mxUINT16_CLASS, mxREAL);
+		if (store_scatter)
+			plhs[6] = mxCreateNumericMatrix(imDim * Nt, 1, mxUINT16_CLASS, mxREAL);
+		else
+			plhs[6] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
+		if (store_randoms)
+			plhs[7] = mxCreateNumericMatrix(imDim * Nt, 1, mxUINT16_CLASS, mxREAL);
+		else
+			plhs[7] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
 	}
 	else {
 		plhs[5] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
@@ -123,16 +130,21 @@ void mexFunction(int nlhs, mxArray *plhs[],
 		plhs[7] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
 	}
 
-	if (store_coordinates) {
+	if (dynamic) {
 		plhs[8] = mxCreateNumericMatrix(Nentries, 1, mxUINT16_CLASS, mxREAL);
+		uint16_t* tIndexInit = (uint16_t*)mxGetData(plhs[8]);
+		std::fill(tIndexInit, tIndexInit + Nentries, static_cast<uint16_t>(32768));
+	}
+	else
+		plhs[8] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
+	if (store_coordinates) {
 		plhs[9] = mxCreateNumericMatrix(6, Nentries, mxSINGLE_CLASS, mxREAL);
 		if (randoms_correction)
-			plhs[10] = mxCreateNumericMatrix(6, Ndelays, mxSINGLE_CLASS, mxREAL);
+			plhs[10] = mxCreateNumericMatrix(6, Nentries, mxSINGLE_CLASS, mxREAL);
 		else
 			plhs[10] = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
 	}
 	else {
-		plhs[8] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
 		plhs[9] = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
 		plhs[10] = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
 	}
@@ -140,8 +152,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
 		plhs[11] = mxCreateNumericMatrix(2, Nentries, mxUINT16_CLASS, mxREAL);
 		plhs[12] = mxCreateNumericMatrix(2, Nentries, mxUINT16_CLASS, mxREAL);
 		if (randoms_correction) {
-			plhs[13] = mxCreateNumericMatrix(2, Ndelays, mxUINT16_CLASS, mxREAL);
-			plhs[14] = mxCreateNumericMatrix(2, Ndelays, mxUINT16_CLASS, mxREAL);
+			plhs[13] = mxCreateNumericMatrix(2, Nentries, mxUINT16_CLASS, mxREAL);
+			plhs[14] = mxCreateNumericMatrix(2, Nentries, mxUINT16_CLASS, mxREAL);
 		}
 		else {
 			plhs[13] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
@@ -155,39 +167,22 @@ void mexFunction(int nlhs, mxArray *plhs[],
 		plhs[14] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
 	}
 	if ((store_coordinates || indexBased) && TOF)
-		plhs[15] = mxCreateNumericMatrix(Nentries, 1, mxUINT8_CLASS, mxREAL);
+		plhs[15] = mxCreateNumericMatrix(1, Nentries, mxUINT8_CLASS, mxREAL);
 	else
 		plhs[15] = mxCreateNumericMatrix(1, 1, mxUINT8_CLASS, mxREAL);
 
 	/* Assign pointers to the various parameters */
 	uint16_t * tIndex = (uint16_t*)mxGetData(plhs[8]);
-	uint16_t* S = nullptr;
-	uint16_t* SC = nullptr;
-	uint16_t* RA = nullptr;
-	uint16_t* trIndex = nullptr;
-	uint16_t* axIndex = nullptr;
-	uint16_t* DtrIndex = nullptr;
-	uint16_t* DaxIndex = nullptr;
-	uint8_t* TOFIndex = nullptr;
-	float* coord = nullptr, * Dcoord = nullptr;
-	if (source) {
-		S = (uint16_t*)mxGetData(plhs[5]);
-		SC = (uint16_t*)mxGetData(plhs[6]);
-		RA = (uint16_t*)mxGetData(plhs[7]);
-	}
-	if (store_coordinates) {
-		coord = (float*)mxGetData(plhs[9]);
-		if (randoms_correction)
-			Dcoord = (float*)mxGetData(plhs[10]);
-	}
-	if (indexBased) {
-		trIndex = (uint16_t*)mxGetData(plhs[11]);
-		axIndex = (uint16_t*)mxGetData(plhs[12]);
-		DtrIndex = (uint16_t*)mxGetData(plhs[13]);
-		DaxIndex = (uint16_t*)mxGetData(plhs[14]);
-	}
-	if ((store_coordinates || indexBased) && TOF)
-		TOFIndex = (uint8_t*)mxGetData(plhs[15]);
+	uint16_t* S = (uint16_t*)mxGetData(plhs[5]);
+	uint16_t* SC = (uint16_t*)mxGetData(plhs[6]);
+	uint16_t* RA = (uint16_t*)mxGetData(plhs[7]);
+	float* coord = (float*)mxGetData(plhs[9]);
+	float* Dcoord = (float*)mxGetData(plhs[10]);
+	uint16_t* trIndex = (uint16_t*)mxGetData(plhs[11]);
+	uint16_t* axIndex = (uint16_t*)mxGetData(plhs[12]);
+	uint16_t* DtrIndex = (uint16_t*)mxGetData(plhs[13]);
+	uint16_t* DaxIndex = (uint16_t*)mxGetData(plhs[14]);
+	uint8_t* TOFIndex = (uint8_t*)mxGetData(plhs[15]);
 	plhs[0] = mxCreateSharedDataCopy(prhs[31]);
 	plhs[1] = mxCreateSharedDataCopy(prhs[32]);
 	plhs[2] = mxCreateSharedDataCopy(prhs[33]);

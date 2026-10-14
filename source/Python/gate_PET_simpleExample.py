@@ -535,7 +535,7 @@ if options.use_root:
     # SinoD = Delayed coincidences
     # Fcoord = Coordinates for each event
     # FDcoord = Coordinates for each delayed event
-    Sino, SinoT, SinoC, SinoR, SinoD, Fcoord, FDcoord = loadROOT(options)
+    Sino, SinoT, SinoC, SinoR, SinoD, Fcoord, FDcoord, temp1, temp2, temp3 = loadROOT(options)
     if options.reconstruct_trues:
         options.SinM = SinoT
     else:

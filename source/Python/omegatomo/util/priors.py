@@ -102,6 +102,7 @@ def _output_array(rType, n, queue):
         fArg = cl.MemoryObject.from_int_ptr(fPtr)
     elif rType == 3:
         import pyopencl as cl
+        import pyopencl.array
         f = cl.array.zeros(queue, n, dtype=cl.cltypes.float)
         fArg = f.data
     elif rType == 2:
@@ -154,6 +155,7 @@ def _to_device_1d(rType, queue, arr_np):
     """Uploads a 1-D NumPy array and returns (deviceArray, kernelArg)."""
     if rType == 0 or rType == 3:
         import pyopencl as cl
+        import pyopencl.array
         d = cl.array.to_device(queue, arr_np)
         return d, d.data
     else:

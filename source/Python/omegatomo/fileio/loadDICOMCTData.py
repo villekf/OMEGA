@@ -11,7 +11,7 @@ def loadDICOMCTPD(path):
     import numpy as np
     import pydicom
     import struct
-    files = [f for f in os.listdir(path) if f.lower().endswith('.dcm')]
+    files = sorted(f for f in os.listdir(path) if f.lower().endswith('.dcm'))
     nFiles = len(files)
     xs = np.zeros(nFiles, dtype=np.float32)
     xd = np.zeros(nFiles, dtype=np.float32)
@@ -31,13 +31,14 @@ def loadDICOMCTPD(path):
         deltar = struct.unpack('f', info[0x7033, 0x100d].value)[0]
         rho = r + deltar
 
-        angles[kk] = struct.unpack('f', info[0x7031, 0x1001].value)[0] - np.pi/2
+        a = struct.unpack('f', info[0x7031, 0x1001].value)[0] - np.pi/2
 
         deltaphi = struct.unpack('f', info[0x7033, 0x100b].value)[0]
-        phi = angles[kk] + deltaphi
+        phi = a + deltaphi
 
         deltaz = struct.unpack('f', info[0x7033, 0x100c].value)[0]
-        zs[kk] = struct.unpack('f', info[0x7031, 0x1002].value)[0] + deltaz
+        zf = struct.unpack('f', info[0x7031, 0x1002].value)[0]
+        zs[kk] = zf + deltaz
 
         ys[kk] = rho * np.sin(phi)
         xs[kk] = -rho * np.cos(phi)
@@ -51,16 +52,24 @@ def loadDICOMCTPD(path):
         
         dPitchX = struct.unpack('f', info[0x7029, 0x1002].value)[0]
         dPitchY = struct.unpack('f', info[0x7029, 0x1006].value)[0]
-        L = float(nRowsD) * dPitchX
-        theta = L / r
-        dtheta = theta / float(nRowsD)
-        detElements = struct.unpack('2f', info[0x7031, 0x1033].value)
-        rowStart = detElements[0] - float(nRowsD)/2 - 0.5
-        colStart = detElements[1] - float(nColsD)/2 - 0.5
         d = struct.unpack('f', info[0x7031, 0x1031].value)[0]
-        yd[kk] = r * np.sin(angles[kk]) - d * np.sin(angles[kk] + dtheta * colStart) - np.sin(rowStart * dtheta) * rowStart * dPitchX
-        xd[kk] = -r * np.cos(angles[kk]) + d * np.cos(angles[kk] + dtheta * rowStart) - np.cos(rowStart * dtheta) * rowStart * dPitchX
-        zd[kk] = struct.unpack('f', info[0x7031, 0x1002].value)[0] + colStart * dPitchY
+        # The detector is an arc of radius d centered at the focal center
+        # (-r cos(a), r sin(a)), the channels are spaced by dPitchX / d radians
+        dtheta = dPitchX / d
+        detElements = struct.unpack('2f', info[0x7031, 0x1033].value)
+        # Central channel offset from the geometric center of the channels
+        deltaCh = detElements[0] - float(nRowsD)/2 - 0.5
+        # The central element is not the middle of the detector, so the
+        # detector center is rotated along the arc
+        aD = a - deltaCh * dtheta
+        # Axial offset of the central row (sign not verified, zero for the AAPM data)
+        colStart = detElements[1] - float(nColsD)/2 - 0.5
+        xd[kk] = -r * np.cos(a) + d * np.cos(aD)
+        yd[kk] = r * np.sin(a) - d * np.sin(aD)
+        zd[kk] = zf + colStart * dPitchY
+        # The projector derives the arc center from the detector center and the
+        # angle, hence the rotated angle has to be stored
+        angles[kk] = aD
 
     nProjections = nFiles
     vars = {

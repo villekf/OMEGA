@@ -650,8 +650,20 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
         % end
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Inveon support %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % Inveon loader is multithreaded (std::thread): needs optimization, C++17 and pthreads
+        if strcmp(cc.Manufacturer, 'Microsoft')
+            inveonFlags = 'COMPFLAGS="$COMPFLAGS /std:c++17 /O2 /EHsc"';
+        elseif strcmp(cc.Manufacturer, 'Intel')
+            if ispc
+                inveonFlags = 'COMPFLAGS="$COMPFLAGS /std:c++17 /O2"';
+            else
+                inveonFlags = 'CXXFLAGS="$CXXFLAGS -std=c++17 -O2"';
+            end
+        else
+            inveonFlags = 'CXXFLAGS="$CXXFLAGS -std=c++17 -O2 -pthread"';
+        end
         try
-            mex(compiler, '-largeArrayDims', '-outdir', folder, ldflags, ['-I ' folder], [folder '/inveon_list2matlab.cpp'])
+            mex(compiler, '-largeArrayDims', '-outdir', folder, inveonFlags, LPLib, ldflags, ['-I ' folder], [folder '/inveon_list2matlab.cpp'])
             disp('Inveon support enabled')
         catch ME
             if verbose
@@ -1231,7 +1243,7 @@ elseif ~ismac
     % disp('LMF support enabled')
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Inveon support %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    mkoctfile('--mex', ['-I ' folder], [folder '/inveon_list2matlab.cpp'])
+    mkoctfile('--mex', '-O2', '-std=c++17', '-pthread', ['-I ' folder], [folder '/inveon_list2matlab.cpp'])
     movefile('inveon_list2matlab.mex', [folder '/inveon_list2matlab.mex'],'f');
     disp('Inveon support enabled')
 

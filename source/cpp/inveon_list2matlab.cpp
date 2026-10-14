@@ -72,7 +72,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
 		plhs[3] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
 		plhs[4] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
 	}
-	if (NT > 1)
+	// tpoints is only used when the coordinates are stored
+	if (NT > 1 && storeCoordinates)
 		plhs[2] = mxCreateNumericMatrix(pituus, 1, mxUINT16_CLASS, mxREAL);
 	else
 		plhs[2] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
@@ -102,8 +103,29 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	/* Pointer to character array */
 	const char* argv = mxArrayToString(prhs[0]);
 
+	uint64_t nPrompts = 0, nDelays = 0;
 	histogram(LL1, LL2, tpoints, argv, vali, alku, loppu, detectors, pituus, randoms_correction, DD1, DD2, Sino, SinoD, saveRawData,
-		Ndist, Nang, ringDifference, span, sinoSize, seg, nDistSide, storeCoordinates, NT);
+		Ndist, Nang, ringDifference, span, sinoSize, seg, nDistSide, storeCoordinates, NT, &nPrompts, &nDelays);
+
+	// Shrink the coordinate arrays to the actual number of stored events
+	if (storeCoordinates) {
+		const size_t nP = std::max(static_cast<size_t>(nPrompts), static_cast<size_t>(1));
+		mxSetData(plhs[0], mxRealloc(LL1, nP * sizeof(uint16_t)));
+		mxSetM(plhs[0], static_cast<size_t>(nPrompts));
+		mxSetData(plhs[1], mxRealloc(LL2, nP * sizeof(uint16_t)));
+		mxSetM(plhs[1], static_cast<size_t>(nPrompts));
+		if (NT > 1) {
+			mxSetData(plhs[2], mxRealloc(tpoints, nP * sizeof(uint16_t)));
+			mxSetM(plhs[2], static_cast<size_t>(nPrompts));
+		}
+		if (randoms_correction) {
+			const size_t nD = std::max(static_cast<size_t>(nDelays), static_cast<size_t>(1));
+			mxSetData(plhs[3], mxRealloc(DD1, nD * sizeof(uint16_t)));
+			mxSetM(plhs[3], static_cast<size_t>(nDelays));
+			mxSetData(plhs[4], mxRealloc(DD2, nD * sizeof(uint16_t)));
+			mxSetM(plhs[4], static_cast<size_t>(nDelays));
+		}
+	}
 	return;
 
 }
