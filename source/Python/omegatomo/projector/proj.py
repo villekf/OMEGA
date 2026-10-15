@@ -978,7 +978,7 @@ class projectorClass:
         if self.listmode and self.subsets > 1 and not(self.subsetType == 0)  and not(self.subsetType == 1) and not(self.subsetType == 3):
             print('Only subset types 0, 1, and 3 are supported with list-mode data! Switching to subset type 0.')
             self.subsetType = 0
-        if self.listmode and self.subsets > 1 and self.subsetType == 0:
+        if not self.listmode and self.subsets > 1 and self.subsetType == 0:
            print('Subset type 0 is recommended only for list-mode data! The reconstruction will most likely not work!')
         # if self.listmode and self.Nt > 1:
         #     self.loadTOF = False
@@ -1208,7 +1208,10 @@ class projectorClass:
 
         if self.subsets > 1:
             self.subset = 0
-        if self.subsetType >= 8 or self.subsets == 1:
+        # Subset types >= 8 and subset type 0 with sinogram/projection-image data
+        # (contiguous blocks of whole sinograms) count their subsets in whole
+        # images, so the number of measurements per subset is images * rows * columns
+        if self.subsetType >= 8 or self.subsets == 1 or (self.subsetType == 0 and self.listmode == 0):
             kerroin = self.nColsD * self.nRowsD
         else:
             kerroin = 1
@@ -1417,7 +1420,20 @@ class projectorClass:
             raise ValueError("ndist_side cannot be 0 when Ndist is even!")
         if self.useIndexBasedReconstruction and self.projector_type not in [1, 2, 3, 4, 11, 14, 12, 13, 21, 22, 23, 24, 31, 32, 33, 34, 41, 42, 43, 44]:
             raise ValueError('Index-based reconstruction only supports projector types 1-4!')
-        
+        if self.useIndexBasedReconstruction:
+            # The indices point to the detector coordinates. Without them the reconstruction
+            # cannot work (the library only reports an empty x and returns an all-zero image).
+            for name, description in (('trIndex', 'the transaxial detector indices'), ('axIndex', 'the axial detector indices'),
+                                      ('x', 'the transaxial detector coordinates (x- and y-coordinates of every detector, 2 x number of detectors)'),
+                                      ('z', 'the axial detector coordinates (z-coordinates of the detector rings)')):
+                value = getattr(self, name)
+                if (all(np.size(v) == 0 for v in value) if isinstance(value, list) else np.size(value) == 0):
+                    raise ValueError(f'Index-based reconstruction requires options.{name}, i.e. {description}, but it is empty! '
+                                      'The indices of the events are in options.trIndex and options.axIndex (2 x number of events) while '
+                                      'options.x and options.z must contain the coordinates of every detector the indices refer to. '
+                                      'The coordinates can be obtained with omegatomo.projector.detcoord.getCoordinates (set options.use_raw_data = True '
+                                      'temporarily), see e.g. gate_PET.py or Inveon_PET_main_listmode_example.py.')
+
         if self.Nt < 1:
             if isinstance(self.partitions, np.ndarray) and self.partitions.size > 0:
                 self.Nt = self.partitions.size
