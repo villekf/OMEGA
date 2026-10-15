@@ -123,7 +123,7 @@ else
             load_string = [options.machine_name '_' options.name '_TOFsinograms_combined_static_' num2str(options.Ndist) ...
                 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' num2str(options.span)];
             load_string_TOF = ['_' num2str(options.TOF_bins) 'bins_' num2str(options.TOF_width*1e12) 'psBinSize_' ...
-                num2str(options.TOF_noise_FWHM*1e12) 'psFWHM'];
+                num2str(getTOFNoiseFWHM(options)*1e12) 'psFWHM'];
             load_string = [load_string load_string_TOF];
         else
             load_string = [options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) ...
@@ -146,7 +146,7 @@ else
                 'timepoints_for_total_of_' num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) ...
                 'x' num2str(options.TotSinos) '_span' num2str(options.span)];
             load_string_TOF = ['_' num2str(options.TOF_bins) 'bins_' num2str(options.TOF_width*1e12) 'psBinSize_' ...
-                num2str(options.TOF_noise_FWHM*1e12) 'psFWHM'];
+                num2str(getTOFNoiseFWHM(options)*1e12) 'psFWHM'];
             load_string = [load_string load_string_TOF];
             load_string2 = load_string;
         else

@@ -525,7 +525,7 @@ class projectorClass:
     eFOVLengthAxial = None
     eFOVLengthTransaxial = None
     NLM_gauss = 2.
-    TOF_noise_FWHM = 0.
+    TOF_noise_FWHM = -1. # Negative = use TOF_FWHM, 0 = no added noise
     TOF_offset = 0.
     gFSize = None
     trans = False

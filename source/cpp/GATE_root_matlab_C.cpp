@@ -71,7 +71,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	const uint32_t* detWPseudo = (uint32_t*)mxGetData(prhs[36]);
 	const int32_t nPseudos = (int32_t)mxGetScalar(prhs[37]);
 	const double binSize = (double)mxGetScalar(prhs[38]);
-	const double FWHM = (double)mxGetScalar(prhs[39]);
+	const double TOFNoiseSigma = (double)mxGetScalar(prhs[39]);
 	const float dx = (float)mxGetScalar(prhs[40]);
 	const float dy = (float)mxGetScalar(prhs[41]);
 	const float dz = (float)mxGetScalar(prhs[42]);
@@ -198,7 +198,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	histogram(argv, tPoints, alku, loppu, source, linear_multp, cryst_per_block, blocks_per_ring, det_per_ring, S, SC, RA, trIndex, axIndex, DtrIndex, DaxIndex, obtain_trues, store_scatter, store_randoms,
 		scatter_components, randoms_correction, coord, Dcoord, store_coordinates, dynamic, cryst_per_block_z, transaxial_multip, rings, sinoSize, Ndist, Nang, ringDifference, span,
-		seg, Nt, TOFSize, nDistSide, Sino, SinoT, SinoC, SinoR, SinoD, detWPseudo, nPseudos, binSize, FWHM, verbose, nLayers, dx, dy, dz, bx, by, bz, Nx, Ny, Nz, dualLayerSubmodule, imDim, indexBased, tIndex, 
+		seg, Nt, TOFSize, nDistSide, Sino, SinoT, SinoC, SinoR, SinoD, detWPseudo, nPseudos, binSize, TOFNoiseSigma, verbose, nLayers, dx, dy, dz, bx, by, bz, Nx, Ny, Nz, dualLayerSubmodule, imDim, indexBased, tIndex, 
 		TOFIndex, matlabPtr);
 
 

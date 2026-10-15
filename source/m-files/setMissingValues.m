@@ -131,6 +131,9 @@ end
 if ~isfield(options, 'TOF_FWHM')
     options.TOF_FWHM = 0;
 end
+if ~isfield(options, 'TOF_noise_FWHM')
+    options.TOF_noise_FWHM = -1; % Negative = use TOF_FWHM, 0 = no added noise
+end
 if ~isfield(options,'TOF_width')
     options.TOF_width = 0;
 end

@@ -962,7 +962,7 @@ if options.use_machine ~= 2
     if partitions == 1
         if options.TOF_bins > 1
             save_string = [machine_name '_' name '_TOFsinograms_combined_static_' num2str(Ndist) 'x' num2str(Nang) 'x' num2str(NSlices) '_span' num2str(span)];
-            save_string_TOF = ['_' num2str(options.TOF_bins) 'bins_' num2str(options.TOF_width*1e12) 'psBinSize_' num2str(options.TOF_noise_FWHM*1e12) 'psFWHM'];
+            save_string_TOF = ['_' num2str(options.TOF_bins) 'bins_' num2str(options.TOF_width*1e12) 'psBinSize_' num2str(getTOFNoiseFWHM(options)*1e12) 'psFWHM'];
         else
             save_string = [machine_name '_' name '_sinograms_combined_static_' num2str(Ndist) 'x' num2str(Nang) 'x' num2str(NSlices) '_span' num2str(span)];
         end
@@ -989,7 +989,7 @@ if options.use_machine ~= 2
         if options.TOF_bins > 1
             save_string = [machine_name '_' name '_TOFsinograms_combined_' num2str(partitions) 'timepoints_for_total_of_' num2str(tot_time) 's_' ...
                     num2str(Ndist) 'x' num2str(Nang) 'x' num2str(NSlices) '_span' num2str(span)];
-            save_string_TOF = ['_' num2str(options.TOF_bins) 'bins_' num2str(options.TOF_width*1e12) 'psBinSize_' num2str(options.TOF_noise_FWHM*1e12) 'psFWHM'];
+            save_string_TOF = ['_' num2str(options.TOF_bins) 'bins_' num2str(options.TOF_width*1e12) 'psBinSize_' num2str(getTOFNoiseFWHM(options)*1e12) 'psFWHM'];
         else
             save_string = [machine_name '_' name '_sinograms_combined_' num2str(partitions) 'timepoints_for_total_of_' num2str(tot_time) 's_' ...
                     num2str(Ndist) 'x' num2str(Nang) 'x' num2str(NSlices) '_span' num2str(span)];

@@ -19,7 +19,7 @@ function [bins, discard] = FormTOFBins(options, TOF_data)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-std_t = (options.TOF_noise_FWHM / (2 * sqrt(2 * log(2)))); %options.TOF_noise_FWHM is the wanted time accuracy
+std_t = (getTOFNoiseFWHM(options) / (2 * sqrt(2 * log(2)))); %options.TOF_noise_FWHM is the FWHM of the added noise (TOF_FWHM if negative)
 TOF_data = TOF_data + std_t * randn(size(TOF_data)); %TOF_data with added error
 discard = abs(TOF_data) > (options.TOF_width / 2 * options.TOF_bins);
 TOF_data(discard) = [];
