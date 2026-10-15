@@ -437,8 +437,8 @@ options.attenuation_correction = True
 ### Image-based attenuation correction
 # Use images (such as CT) for the attenuation. If set to false, then 
 # attenuation correction is performed in the measurement space instead
-# (i.e. using attenuation sinograms)
-# The MuMap of the example data is an image, hence this is set to True
+# (i.e. using attenuation sinograms). The image-based correction is the
+# default and the only mode where the rotation and flip options below apply.
 options.CT_attenuation = True
 
 ### Rotate the attenuation image before correction
@@ -502,7 +502,7 @@ options.global_correction_factor = 1.
 # If you have manually precorrected the data, do not put those corrections
 # to true that have already been applied! Otherwise, the data will be 
 # precorrected twice. This obviously only applies when this is set to false
-options.corrections_during_reconstruction = False
+options.corrections_during_reconstruction = True
  
 ###########################################################################
 ###########################################################################
@@ -1432,6 +1432,23 @@ options.storeFP = False
 # occur, i.e. it only changes the detector coordinates such that the
 # transaxial coordinates are "deeper" in the crystal.
 # options.DOI = 0
+###########################################################################
+
+
+###########################################################################
+############################ INDEX-BASED MODE #############################
+###########################################################################
+### Use index-based (list-mode) reconstruction
+# If True, the detector indices of each coincidence are loaded from the ROOT
+# files instead of forming the sinograms. The transaxial and axial detector
+# indices are saved to options.trIndex and options.axIndex (zero-based, two
+# indices per event) while the coordinates of the detectors they refer to are
+# saved to options.x (transaxial) and options.z (axial) below. The measurement
+# data is all ones (each event is handled individually) and the randoms, if
+# selected, are included as negative measurements. The sensitivity image is
+# computed from all the possible LORs.
+# If False, the sinograms are formed instead.
+options.useIndexBasedReconstruction = False
 ###########################################################################
 
 
