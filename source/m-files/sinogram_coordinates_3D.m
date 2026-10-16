@@ -60,12 +60,14 @@ end
 
 if options.span > 1
     % Ring coordinates
-    z = linspace(cr_pz, z_length + cr_pz, options.rings + 2)';
+    % The ring step is exactly cr_pz, the gaps between the axial blocks are added below
+    z = linspace(cr_pz, double(options.rings + 1) * cr_pz + cr_pz, options.rings + 2)';
     z = z(1 : options.rings);
     if isfield(options, 'ringGaps') && numel(options.ringGaps) > 0 && sum(options.ringGaps) > 0
         gaps = cumsum(options.ringGaps);
-        for kk = 1 : options.rings / options.cryst_per_block_axial - 1
-            z(options.cryst_per_block_axial*kk + 1: options.cryst_per_block_axial * (kk + 1)) = z(options.cryst_per_block_axial*kk + 1: options.cryst_per_block_axial * (kk + 1)) + gaps(kk);
+        cpba = options.cryst_per_block_axial(1);
+        for kk = 1 : options.rings / cpba - 1
+            z(cpba*kk + 1: cpba * (kk + 1)) = z(cpba*kk + 1: cpba * (kk + 1)) + gaps(kk);
         end
     end
     if options.nLayers > 1 && options.cryst_per_block_axial(1) ~= options.cryst_per_block_axial(2)
@@ -176,9 +178,8 @@ else
     end
     uu = 0;
     if isfield(options, 'ringGaps') && sum(options.ringGaps) > 0
-        gaps = repelem([0;cumsum(options.ringGaps)], options.cryst_per_block_axial,1);
+        gaps = repelem([0;cumsum(options.ringGaps(:))], options.cryst_per_block_axial(1), 1);
     end
-    yy = 0;
     for t=1:loppu
         if options.nLayers > 1 && options.cryst_per_block_axial(1) ~= options.cryst_per_block_axial(2) && layer1 == 1
             z((t-1) * loppu + 1 : t * loppu,:) = [ dif * (uu) * ind1 + apu1(t) ind2];
@@ -186,13 +187,8 @@ else
         else
             z((t-1) * loppu + 1 : t * loppu,:) = [ dif * (t-1) * ind1 ind2];
             if isfield(options, 'ringGaps') && sum(options.ringGaps) > 0
-                z((t-1) * loppu + 1 : t * loppu,2) = z((t-1) * loppu + 1 : t * loppu,2) + gaps;
-                if mod(t, options.cryst_per_block_axial + 1) == 0
-                    yy = yy + 1;
-                end
-                if yy > 0
-                    z((t-1) * loppu + 1 : t * loppu,1) = z((t-1) * loppu + 1 : t * loppu,1) + yy * repmat(options.ringGaps(yy), loppu, 1);
-                end
+                z((t-1) * loppu + 1 : t * loppu,2) = z((t-1) * loppu + 1 : t * loppu,2) + gaps(1:loppu);
+                z((t-1) * loppu + 1 : t * loppu,1) = z((t-1) * loppu + 1 : t * loppu,1) + gaps(t);
             end
         end
             if options.nLayers > 1 && ((options.cryst_per_block_axial(1) > options.cryst_per_block_axial(end) && layer1 == 1) || (options.cryst_per_block_axial(end) > options.cryst_per_block_axial(1) && layer1 == 1))

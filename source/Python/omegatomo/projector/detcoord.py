@@ -310,6 +310,11 @@ def getCoordinates(options):
         
             if np.sum(options.pseudot) > 0:
                 z = np.delete(z, np.where(options.pseudot))
+            # Gaps between the axial blocks
+            if len(options.ringGaps) > 0 and np.sum(options.ringGaps) > 0:
+                cpba = np.atleast_1d(options.cryst_per_block_axial)[0]
+                gaps = np.repeat(np.insert(np.cumsum(options.ringGaps), 0, 0), cpba)[:z.size]
+                z = (z + gaps - np.sum(options.ringGaps) / 2).astype(np.float32)
             # Multi-layer: the rings of layer l are located at an offset of l * rings
             if options.nLayers > 1:
                 z = _rawLayerRings(options, z)
@@ -1012,7 +1017,8 @@ def sinogramCoordinates3D(options, layers = (1,1)):
     
     # Compute the 3D coordinates
     if options.span > 1:
-        z = np.linspace(cr_pz, z_length + cr_pz, options.rings + 2)
+        # The ring step is exactly cr_pz, the gaps between the axial blocks are added below
+        z = np.linspace(cr_pz, float(options.rings + 1) * cr_pz + cr_pz, options.rings + 2)
         z = z[:options.rings]
         # if len(options.ringGaps) > 0 and np.sum(options.ringGaps) > 0:
         #     z = np.linspace(cr_pz, z_length + cr_pz, options.rings + 2 + len(options.ringGaps))
@@ -1021,9 +1027,10 @@ def sinogramCoordinates3D(options, layers = (1,1)):
         
         if len(options.ringGaps) > 0 and np.sum(options.ringGaps) > 0:
             gaps = np.cumsum(options.ringGaps)
-            for kk in range(1, int(options.rings / options.cryst_per_block_axial)):
-                start_idx = options.cryst_per_block_axial * kk
-                end_idx = options.cryst_per_block_axial * (kk + 1)
+            cpba = int(np.atleast_1d(options.cryst_per_block_axial)[0])
+            for kk in range(1, int(options.rings / cpba)):
+                start_idx = cpba * kk
+                end_idx = cpba * (kk + 1)
                 z[start_idx:end_idx] = z[start_idx:end_idx] + gaps[kk - 1]
             # z = z[:options.rings + len(options.ringGaps)]
             # z = np.delete(z, options.ringGaps + 1)
@@ -1058,10 +1065,10 @@ def sinogramCoordinates3D(options, layers = (1,1)):
         # Then the detectors on adjacent rings
         for jh in range(0, int(np.floor(options.span / 2))):
             apu = z_ring[((jh + 1) * ringsp)::ringsp + 1, 0]
-            apu2 = z_ring[(jh + 1):((ringsp - jh + 1) * ringsp):ringsp + 1, 0]
+            apu2 = z_ring[(jh + 1):((ringsp - jh - 1) * ringsp):ringsp + 1, 0]
             z[jh + 1:offset2[0] - jh:2, 0] = z[jh + 1:offset2[0] - jh:2, 0] + apu + apu2
             apu = z_ring[((jh + 1) * ringsp)::ringsp + 1, 1]
-            apu2 = z_ring[(jh + 1):(ringsp - jh) * ringsp:ringsp + 1, 1]
+            apu2 = z_ring[(jh + 1):((ringsp - jh - 1) * ringsp):ringsp + 1, 1]
             z[jh + 1:offset2[0] - jh:2, 1] = z[jh + 1:offset2[0] - jh:2, 1] + apu + apu2
             loc2 = np.isin(np.arange(0, Nz), np.arange(jh + 1,offset2[0] - jh, 2))
             loc = np.full(len(mean_jh), False)
@@ -1074,11 +1081,11 @@ def sinogramCoordinates3D(options, layers = (1,1)):
             for jh in range(1, options.span + 1):
                 apu = z_ring[((kkj[ih - 1] + jh - 1) * options.rings)::options.rings + 1, 0]
                 z[offset2[2 * (ih - 1)] + jh - 1:offset2[(2 * ih) - 1] - jh + 1:2, 0] += apu
-                apu2 = z_ring[(kkj[ih - 1] + jh - 1):((options.rings - kkj[ih - 1] - jh + 2) * options.rings):options.rings + 1, 0]
+                apu2 = z_ring[(kkj[ih - 1] + jh - 1):max((options.rings - kkj[ih - 1] - jh + 1) * options.rings, 0):options.rings + 1, 0]
                 z[offset2[(2 * ih - 1)] + jh - 1:offset2[(2 * ih)] - jh + 1:2, 0] += apu2
                 apu = z_ring[((kkj[ih - 1] + jh - 1) * options.rings)::(options.rings + 1), 1]
                 z[offset2[2 * (ih - 1)] + jh - 1:offset2[(2 * ih) - 1] - jh + 1:2, 1] += apu
-                apu2 = z_ring[(kkj[ih - 1] + jh - 1):((options.rings - kkj[ih - 1] - jh + 1) * options.rings):options.rings + 1, 1]
+                apu2 = z_ring[(kkj[ih - 1] + jh - 1):max((options.rings - kkj[ih - 1] - jh + 1) * options.rings, 0):options.rings + 1, 1]
                 z[offset2[(2 * ih - 1)] + jh - 1:offset2[(2 * ih)] - jh + 1:2, 1] += apu2
                 loc = np.isin(np.arange(1, options.TotSinos + 1), np.arange(offset2[(2 * (ih - 1))] + jh, offset2[(2 * ih - 1)] - jh + 2, 2))
                 mean_jh[loc] += 1
@@ -1138,9 +1145,8 @@ def sinogramCoordinates3D(options, layers = (1,1)):
         
         uu = 0
         if hasattr(options, 'ringGaps') and np.sum(options.ringGaps) > 0:
-            gaps = np.repeat(np.insert(np.cumsum(options.ringGaps), 0, 0), options.cryst_per_block_axial).reshape(-1, 1)
+            gaps = np.repeat(np.insert(np.cumsum(options.ringGaps), 0, 0), np.atleast_1d(options.cryst_per_block_axial)[0]).reshape(-1, 1)
         
-        yy = 0
         for t in range(1, loppu + 1):
             idx_start = (t - 1) * loppu
             idx_end = t * loppu
@@ -1151,10 +1157,7 @@ def sinogramCoordinates3D(options, layers = (1,1)):
                 z[idx_start:idx_end, :] = np.hstack([dif * (t - 1) * ind1, ind2])
                 if hasattr(options, 'ringGaps') and np.sum(options.ringGaps) > 0:
                     z[idx_start:idx_end, 1] += np.squeeze(gaps[:loppu])
-                    if (t % (options.cryst_per_block_axial + 1)) == 0:
-                        yy += 1
-                    if yy > 0:
-                        z[idx_start:idx_end, 0] += yy * options.ringGaps[yy - 1]
+                    z[idx_start:idx_end, 0] += gaps[t - 1, 0]
         
             if options.nLayers > 1 and ((options.cryst_per_block_axial[0] > options.cryst_per_block_axial[-1] and layer1 == 1) or (options.cryst_per_block_axial[-1] > options.cryst_per_block_axial[0] and layer1 == 1)):
                 if np.isinf(apu1[t - 1]):

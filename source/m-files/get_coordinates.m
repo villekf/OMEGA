@@ -120,6 +120,11 @@ else
         if sum(pseudot) > 0
             z(pseudot) = [];
         end
+        % Gaps between the axial blocks
+        if isfield(options, 'ringGaps') && numel(options.ringGaps) > 0 && sum(options.ringGaps) > 0
+            gaps = repelem([0;cumsum(options.ringGaps(:))], options.cryst_per_block_axial(1), 1);
+            z = z + gaps(1:numel(z)) - sum(options.ringGaps) / 2;
+        end
         % Multi-layer: the rings of layer l are located at an offset of l * rings
         if options.nLayers > 1
             z = rawLayerRings(options, z, rings);
