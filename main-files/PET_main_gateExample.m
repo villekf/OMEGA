@@ -394,7 +394,10 @@ options.attenuation_correction = true;
 % Rotates the attenuation image N * 90 degrees where N is the number
 % specified below. Positive values are clockwise, negative
 % counter-clockwise.
-options.rotateAttImage = 1;
+% The MuMap of the example data is in the same (GATE) coordinate system as
+% the image when options.offangle = 0, hence no rotation is needed. With
+% options.offangle = options.det_w_pseudo * (3/4) use 1 instead.
+options.rotateAttImage = 0;
 
 %%% Flip the attenuation image in the transaxial (column) direction before reconstruction
 options.flipAttImageXY = false;
