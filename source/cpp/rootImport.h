@@ -691,12 +691,24 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 						timeDif += distribution(generator);
 					if (std::abs(timeDif) > ((binSize / 2.) * static_cast<double>(nBins)))
 						continue;
-					bins = static_cast<uint64_t>(std::floor((std::abs(timeDif) + binSize / 2.) / binSize));
+					// TOF bin index in the center-first order of TOFCenter: b = 0, 1, 2, 3, 4, ... <-> k = 0, 1, -1, 2, -2, ...,
+					// where k is the signed bin number along -timeDif. Odd nBins: the center bin is centered at timeDif = 0.
+					// Even nBins: the bins are centered at half-integer multiples of binSize and the center bin (lower middle
+					// bin, as in TOFCenter) covers timeDif in (0, binSize]
 					const bool tInd = timeDif > 0;
-					if (tInd)
-						bins *= 2ULL;
-					else if (!tInd && bins > 0ULL)
-						bins = bins * 2ULL - 1ULL;
+					if (nBins % 2ULL == 1ULL) {
+						bins = static_cast<uint64_t>(std::floor((std::abs(timeDif) + binSize / 2.) / binSize));
+						bins = std::min<uint64_t>(bins, (nBins - 1ULL) / 2ULL);
+						if (tInd)
+							bins *= 2ULL;
+						else if (bins > 0ULL)
+							bins = bins * 2ULL - 1ULL;
+					}
+					else {
+						bins = static_cast<uint64_t>(std::floor(std::abs(timeDif) / binSize));
+						bins = std::min<uint64_t>(bins, nBins / 2ULL - 1ULL);
+						bins = tInd ? bins * 2ULL : bins * 2ULL + 1ULL;
+					}
 				}
 				int32_t layer = 0;
 				if (nLayers > 1) {

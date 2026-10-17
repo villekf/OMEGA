@@ -78,11 +78,6 @@ if ~isfield(options,'nLayers')
 end
 options = setMissingValues(options);
 
-
-if mod(options.TOF_bins, 2) == 0 && options.TOF_bins > 1
-    error('Number of TOF bins has to be odd')
-end
-
 if numel(options.partitions) > 1
     partitions = numel(options.partitions);
 elseif isempty(options.partitions)

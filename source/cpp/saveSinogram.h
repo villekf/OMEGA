@@ -65,11 +65,16 @@ int64_t saveSinogram(const int32_t ring_pos1, const int32_t ring_pos2, int32_t r
 		// Determine the TOF bin
 		if (TOFSize > sinoSize) {
 			binN = bins;
-			if (swap && binN != 0ULL) {
-				if (binN % 2 == 0)
-					binN--;
-				else
-					binN++;
+			// Reverse the TOF direction of swapped LORs: k -> -k for an odd number of bins, k -> 1 - k for an even number
+			if (swap) {
+				if ((TOFSize / sinoSize) % 2ULL == 0ULL)
+					binN = (binN % 2ULL == 0ULL) ? binN + 1ULL : binN - 1ULL;
+				else if (binN != 0ULL) {
+					if (binN % 2 == 0)
+						binN--;
+					else
+						binN++;
+				}
 			}
 		}
 		j = j / (det_per_ring / 2 / Nang);

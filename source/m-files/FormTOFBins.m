@@ -23,8 +23,20 @@ std_t = (getTOFNoiseFWHM(options) / (2 * sqrt(2 * log(2)))); %options.TOF_noise_
 TOF_data = TOF_data + std_t * randn(size(TOF_data)); %TOF_data with added error
 discard = abs(TOF_data) > (options.TOF_width / 2 * options.TOF_bins);
 TOF_data(discard) = [];
-bins = uint16(floor((abs(TOF_data) + options.TOF_width / 2) / options.TOF_width));
+% Bin index in the center-first order of TOFCenter (b = 0, 1, 2, ... <-> k = 0, 1, -1, 2, -2, ...). Odd TOF_bins: the
+% center bin is centered at zero. Even TOF_bins: the bins are centered at half-integer multiples of TOF_width and the
+% center bin (lower middle bin, as in TOFCenter) covers TOF_data in (0, TOF_width]
 tInd = TOF_data > 0;
-bins(bins > 1 & ~tInd) = bins(bins > 1 & ~tInd) * 2 - 1;
-bins(tInd) = bins(tInd) * 2;
+if mod(options.TOF_bins, 2) == 1
+    bins = floor((abs(TOF_data) + options.TOF_width / 2) / options.TOF_width);
+    bins = min(bins, (options.TOF_bins - 1) / 2);
+    bins(bins > 0 & ~tInd) = bins(bins > 0 & ~tInd) * 2 - 1;
+    bins(tInd) = bins(tInd) * 2;
+else
+    bins = floor(abs(TOF_data) / options.TOF_width);
+    bins = min(bins, options.TOF_bins / 2 - 1);
+    bins(tInd) = bins(tInd) * 2;
+    bins(~tInd) = bins(~tInd) * 2 + 1;
+end
+bins = uint16(bins);
 end
