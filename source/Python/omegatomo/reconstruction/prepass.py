@@ -342,10 +342,9 @@ def loadCorrections(options):
                     try:
                         from SimpleITK import ReadImage as loadMetaImage
                         from SimpleITK import GetArrayFromImage
-                        from SimpleITK import ReadImage as loadMetaImage
-                        from SimpleITK import GetArrayFromImage
                         metaImage = loadMetaImage(nimi)
                         options.vaimennus = GetArrayFromImage(metaImage)
+                        options.vaimennus = np.asfortranarray(np.transpose(options.vaimennus, (2, 1, 0)))
                         apu = np.array(list(metaImage.GetSpacing()))
                         if options.CT_attenuation:
                             if matlabRound(apu[0].item()*100.)/100. > matlabRound(options.FOVa_x[0].item() / (options.Nx[0].item())*100.)/100. or matlabRound(apu[0].item()*100)/100 < matlabRound(options.FOVa_x[0].item() / (options.Nx[0].item())*100.)/100.:
