@@ -165,7 +165,9 @@ options.flip_image = False
 # Positive values perform the rotation in clockwise direction
 # The units are crystals, i.e. if the value is 1, the rotation is done by
 # rotating the coordinates equaling to one crystal pitch
-options.offangle = options.det_w_pseudo * (3/4)
+# With 0 the image is in the GATE coordinate system (the same as the MuMap
+# and the source positions of the example data).
+options.offangle = options.det_w_pseudo * (0/4)
  
 ###########################################################################
 ###########################################################################
@@ -211,6 +213,10 @@ options.segment_table = np.insert(np.repeat(options.segment_table[1:], 2), 0, op
 
 ### Total number of sinograms
 options.TotSinos = np.sum(options.segment_table)
+
+### Number of sinograms used in reconstruction
+# The first NSinos sinograms will be used for the image reconstruction.
+options.NSinos = options.TotSinos
  
 ###########################################################################
 ###########################################################################
@@ -260,13 +266,16 @@ options.attenuation_correction = True
 ### Image-based attenuation correction
 # Use images (such as CT) for the attenuation. If set to false, then 
 # attenuation correction is performed in the measurement space instead
-# (i.e. using attenuation sinograms)
-options.CT_attenuation = False
+# (i.e. using attenuation sinograms). The image-based correction is the
+# default and the only mode where the rotation and flip options below apply.
+options.CT_attenuation = True
 
 ### Rotate the attenuation image before correction
 # Rotates the attenuation image N * 90 degrees where N is the number
 # specified below. Positive values are clockwise, negative
 # counter-clockwise.
+# The MuMap of the example data is in the same (GATE) coordinate system as
+# the image when options.offangle = 0, hence no rotation is needed.
 options.rotateAttImage = 0
 
 ### Flip the attenuation image in the transaxial (column) direction before reconstruction
@@ -406,6 +415,20 @@ options.Niter = 4
 ### Number of subsets
 options.subsets = 8
 
+### Subset type (n = subsets)
+# 1 = Every nth (column) measurement is taken
+# 2 = Every nth (row) measurement is taken (e.g. if subsets = 3, then
+# first subset has measurements 1, 4, 7, etc., second 2, 5, 8, etc.) 
+# 3 = Measurements are selected randomly
+# 4 = (Sinogram only) Take every nth column in the sinogram
+# 5 = (Sinogram only) Take every nth row in the sinogram
+# 8 = Use every nth sinogram
+# 9 = Randomly select the full sinograms
+# 11 = Use prime factor sampling to select the full sinograms
+# Most of the time subsetType 1 or 4 is sufficient.
+# NOTE: The index-based mode supports only subset types 1 and 3.
+options.subsetType = 1
+
 ###########################################################################
  
  
@@ -524,23 +547,66 @@ options.RDP_gamma = 10
 ###########################################################################
 
 
+###########################################################################
+############################ INDEX-BASED MODE #############################
+###########################################################################
+### Use index-based (list-mode) reconstruction
+# If True, the detector indices of each coincidence are loaded from the ROOT
+# files instead of forming the sinograms. The transaxial and axial detector
+# indices are saved to options.trIndex and options.axIndex (zero-based, two
+# indices per event) while the coordinates of the detectors they refer to are
+# saved to options.x (transaxial) and options.z (axial) below. The measurement
+# data is all ones (each event is handled individually) and the randoms, if
+# selected, are included as negative measurements. The sensitivity image is
+# computed from all the possible LORs.
+# If False, the sinograms are formed instead.
+options.useIndexBasedReconstruction = False
+###########################################################################
+
+
 # Load ROOT data
 # The measurement data should always be input to options.SinM
 if options.use_root:
     from omegatomo.fileio import loadROOT
-    # Sino = uncorrected sinogram
-    # SinoT = Trues sinogram
-    # SinoC = Scattered events sinogram
-    # SinoR = Random event sinogram (these are the true randoms)
-    # SinoD = Delayed coincidences
-    # Fcoord = Coordinates for each event
-    # FDcoord = Coordinates for each delayed event
-    Sino, SinoT, SinoC, SinoR, SinoD, Fcoord, FDcoord, temp1, temp2, temp3 = loadROOT(options)
-    if options.reconstruct_trues:
-        options.SinM = SinoT
+    if options.useIndexBasedReconstruction:
+        # Index-based reconstruction: the detector indices of each event are saved
+        # trIndex and axIndex contain the transaxial and axial detector indices, respectively (2 x N)
+        Sino, SinoT, SinoC, SinoR, SinoD, options.trIndex, options.axIndex, DtrIndices, DaxIndices, TOFIndices = loadROOT(options)
+        # The detector coordinates (the indices point to these) and the sensitivity image
+        # computed from all the LORs (the measurements do not contain every possible LOR)
+        from omegatomo.projector.detcoord import getCoordinates
+        options.use_raw_data = True
+        x, y, z = getCoordinates(options)
+        options.use_raw_data = False
+        options.x = np.asfortranarray(x, dtype=np.float32)
+        options.z = np.asarray(z, dtype=np.float32).ravel()
+        options.compute_sensitivity_image = True
+        if isinstance(options.trIndex, list):
+            # Dynamic data, one array per time step. Delayed coincidences are not supported
+            options.SinM = [np.ones(tr.shape[1], dtype=np.float32) for tr in options.trIndex]
+        elif options.randoms_correction:
+            options.SinM = np.concatenate((np.ones(options.trIndex.shape[1], dtype=np.float32), -np.ones(DtrIndices.shape[1], dtype=np.float32)))
+            options.trIndex = np.concatenate((options.trIndex, DtrIndices), axis=1)
+            options.axIndex = np.concatenate((options.axIndex, DaxIndices), axis=1)
+        else:
+            options.SinM = np.ones(options.trIndex.shape[1], dtype=np.float32)
     else:
-        options.SinM = Sino
-    np.save(options.machine_name + options.name +  ' _sinograms_combined_static_' + str(options.Ndist) + str(options.Nang) + '_' + str(options.NSinos) + '_span' + str(options.span), Sino)
+        # Sino = uncorrected sinogram
+        # SinoT = Trues sinogram
+        # SinoC = Scattered events sinogram
+        # SinoR = Random event sinogram (these are the true randoms)
+        # SinoD = Delayed coincidences
+        # Fcoord = Coordinates for each event
+        # FDcoord = Coordinates for each delayed event
+        Sino, SinoT, SinoC, SinoR, SinoD, Fcoord, FDcoord, temp1, temp2, temp3 = loadROOT(options)
+        if options.reconstruct_trues:
+            options.SinM = SinoT
+        else:
+            options.SinM = Sino
+        # The delayed coincidences are needed by the randoms correction
+        if options.randoms_correction:
+            options.SinDelayed = SinoD
+        np.save(options.machine_name + options.name +  ' _sinograms_combined_static_' + str(options.Ndist) + str(options.Nang) + '_' + str(options.NSinos) + '_span' + str(options.span), Sino)
     
 
 # pz, the reconstructed image

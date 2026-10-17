@@ -12,10 +12,11 @@ omitted parameters will thus use default values. For the list of all
 adjustable parameters see main_PET_full.m file.
 You can use https://doi.org/10.5281/zenodo.12743217 as example data
 
-Unlike the other Python examples, this one does NOT load ROOT files by
-default. You will be prompted for the sinogram datafile when running this
-file (MAT or NPY/NPZ file). Alternatively, uncomment the ROOT data load
-around line 1368 and load the data directly from the ROOT files.
+The data is loaded directly from the ROOT files (options.use_root = True),
+either as TOF sinograms or, with options.useIndexBasedReconstruction = True,
+as index-based (list-mode) data with the TOF bin of each event. If
+options.use_root = False, you will be prompted for the precomputed sinogram
+data file instead (MAT or NPY/NPZ file).
 
 This example is based on the GATE 9 PET example scanner from the GATE doc:
 https://opengate.readthedocs.io/en/latest/defining_a_system_scanner_ct_pet_spect_optical.html#id3
@@ -244,7 +245,9 @@ options.flip_image = False
 # Positive values perform the rotation in clockwise direction
 # The units are crystals, i.e. if the value is 1, the rotation is done by
 # rotating the coordinates equaling to one crystal pitch
-options.offangle = options.det_w_pseudo * (3/4)
+# With 0 the image is in the GATE coordinate system (the same as the MuMap
+# and the source positions of the example data).
+options.offangle = options.det_w_pseudo * (0/4)
  
 ###########################################################################
 ###########################################################################
@@ -384,14 +387,17 @@ options.attenuation_correction = True
 ### Image-based attenuation correction
 # Use images (such as CT) for the attenuation. If set to false, then 
 # attenuation correction is performed in the measurement space instead
-# (i.e. using attenuation sinograms)
-options.CT_attenuation = False
+# (i.e. using attenuation sinograms). The image-based correction is the
+# default and the only mode where the rotation and flip options below apply.
+options.CT_attenuation = True
 
 ### Rotate the attenuation image before correction
 # Rotates the attenuation image N * 90 degrees where N is the number
 # specified below. Positive values are clockwise, negative
 # counter-clockwise.
-options.rotateAttImage = 1
+# The MuMap of the example data is in the same (GATE) coordinate system as
+# the image when options.offangle = 0, hence no rotation is needed.
+options.rotateAttImage = 0
 
 ### Flip the attenuation image in the transaxial (column) direction before reconstruction
 options.flipAttImageXY = False
@@ -446,7 +452,7 @@ options.global_correction_factor = 1.
 # If you have manually precorrected the data, do not put those corrections
 # to true that have already been applied! Otherwise, the data will be 
 # precorrected twice. This obviously only applies when this is set to false
-options.corrections_during_reconstruction = False
+options.corrections_during_reconstruction = True
  
 ###########################################################################
 ###########################################################################
@@ -1374,23 +1380,68 @@ options.storeFP = False
 ###########################################################################
 
 
+###########################################################################
+############################ INDEX-BASED MODE #############################
+###########################################################################
+### Use index-based (list-mode) reconstruction
+# If True, the detector indices of each coincidence are loaded from the ROOT
+# files instead of forming the sinograms. The transaxial and axial detector
+# indices are saved to options.trIndex and options.axIndex (zero-based, two
+# indices per event) and the TOF bin of each event to options.TOFIndices,
+# while the coordinates of the detectors they refer to are saved to
+# options.x (transaxial) and options.z (axial) below. The measurement data is
+# all ones (each event is handled individually). The sensitivity image is
+# computed from all the possible LORs.
+# NOTE: Randoms and scatter correction are not supported with TOF
+# index-based data, i.e. set options.randoms_correction = False when using
+# this mode.
+# If False, the TOF sinograms are formed instead.
+options.useIndexBasedReconstruction = False
+###########################################################################
+
+
 # Load ROOT data
-# if options.use_root:
-#     from omegatomo.fileio import loadROOT
-#     # Sino = uncorrected sinogram
-#     # SinoT = Trues sinogram
-#     # SinoC = Scattered events sinogram
-#     # SinoR = Random event sinogram (these are the true randoms)
-#     # SinoD = Delayed coincidences
-#     # Fcoord = Coordinates for each event
-#     # FDcoord = Coordinates for each delayed event
-#     Sino, SinoT, SinoC, SinoR, SinoD, Fcoord, FDcoord = loadROOT(options)
-#     if options.reconstruct_trues:
-#         options.SinM = SinoT
-#     else:
-#         options.SinM = Sino
-#     np.save(options.machine_name + options.name +  ' _TOFsinograms_combined_static_' + str(options.Ndist) + str(options.Nang) + '_' + str(options.NSinos) + '_span' + str(options.span) + '_' + str(options.TOF_bins) + 'bins_' 
-#             + str(options.TOF_width*1e12) + 'psBinSize_' + str(options.TOF_noise_FWHM*1e12) + 'psFWHM', Sino)
+# The measurement data should always be input to options.SinM
+# If options.use_root = False, you will be prompted for the (precomputed)
+# sinogram data file instead
+if options.use_root:
+    from omegatomo.fileio import loadROOT
+    if options.useIndexBasedReconstruction:
+        # Index-based reconstruction: the detector indices of each event are saved
+        # trIndex and axIndex contain the transaxial and axial detector indices, respectively (2 x N)
+        # TOFIndices contains the TOF bin of each event
+        Sino, SinoT, SinoC, SinoR, SinoD, options.trIndex, options.axIndex, DtrIndices, DaxIndices, TOFIndices = loadROOT(options)
+        # The detector coordinates (the indices point to these) and the sensitivity image
+        # computed from all the LORs (the measurements do not contain every possible LOR)
+        from omegatomo.projector.detcoord import getCoordinates
+        options.use_raw_data = True
+        x, y, z = getCoordinates(options)
+        options.use_raw_data = False
+        options.x = np.asfortranarray(x, dtype=np.float32)
+        options.z = np.asarray(z, dtype=np.float32).ravel()
+        options.compute_sensitivity_image = True
+        if isinstance(options.trIndex, list):
+            # Dynamic data, one array per time step
+            options.SinM = [np.ones(tr.shape[1], dtype=np.float32) for tr in options.trIndex]
+        else:
+            options.SinM = np.ones(options.trIndex.shape[1], dtype=np.float32)
+        options.TOFIndices = TOFIndices
+    else:
+        # Sino = uncorrected sinogram
+        # SinoT = Trues sinogram
+        # SinoC = Scattered events sinogram
+        # SinoR = Random event sinogram (these are the true randoms)
+        # SinoD = Delayed coincidences
+        Sino, SinoT, SinoC, SinoR, SinoD, Fcoord, FDcoord, DtrIndices, DaxIndices, TOFIndices = loadROOT(options)
+        if options.reconstruct_trues:
+            options.SinM = SinoT
+        else:
+            options.SinM = Sino
+        # The delayed coincidences are needed by the randoms correction
+        if options.randoms_correction:
+            options.SinDelayed = SinoD
+        np.save(options.machine_name + options.name +  ' _TOFsinograms_combined_static_' + str(options.Ndist) + str(options.Nang) + '_' + str(options.NSinos) + '_span' + str(options.span) + '_' + str(options.TOF_bins) + 'bins_'
+                + str(options.TOF_width*1e12) + 'psBinSize_' + str(options.TOF_noise_FWHM*1e12) + 'psFWHM', Sino)
 
 # pz, the reconstructed image
 # fp, the forward projections (if selected)
