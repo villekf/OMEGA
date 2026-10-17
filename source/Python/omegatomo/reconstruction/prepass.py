@@ -885,8 +885,15 @@ def parseInputs(options, mDataFound = False):
                         options.normalization = options.normalization[normalization_index]
         
         if options.additionalCorrection and hasattr(options, 'corrVector') and options.corrVector.size > 0:
+            # As in C++, a corrVector holding only one frame's worth of data is shared by every
+            # timestep: subset-permute it ONCE with frame 0's index (as for a static
+            # normalization); init.py then slices it with the frame-0 offsets.
+            corr_vector_is_static = False
             if options.Nt > 1:
-                # corrVector is per-timestep in C++/MATLAB for dynamic data (see init.py's
+                _start0, _stop0, _ = _frame_measurement_bounds(options, 1)
+                corr_vector_is_static = int(np.size(options.corrVector)) == _stop0 - _start0
+            if options.Nt > 1 and not corr_vector_is_static:
+                # A frame-concatenated corrVector is per-timestep (see init.py's
                 # [Nt][subsets] d_corr construction, sliced from this same flat array via
                 # options.nTotMeas): mirror the per-frame handling already used for
                 # normalization/vaimennus/SinDelayed/ScatterC above instead of subset-selecting
@@ -917,14 +924,16 @@ def parseInputs(options, mDataFound = False):
                         frame = frame[idx, :]
                     out_frames.append(np.asarray(frame).ravel(order='F'))
                 options.corrVector = np.concatenate(out_frames).astype(dtype=np.float32)
-            elif options.subsetType >= 8:
-                options.corrVector = np.reshape(options.corrVector, (options.Ndist, options.Nang, options.nProjections, -1), order='F')
-                options.corrVector = options.corrVector[:, :, options.index, :]
-                options.corrVector = options.corrVector.ravel(order='F')
             else:
-                options.corrVector = np.reshape(options.corrVector, (options.Ndist * options.Nang * options.nProjections, -1), order='F')
-                options.corrVector = options.corrVector[options.index,:]
-                options.corrVector = options.corrVector.ravel(order='F').astype(dtype=np.float32)
+                corr_vector_index = options.index[0] if (options.Nt > 1 and isinstance(options.index, list)) else options.index
+                if options.subsetType >= 8:
+                    options.corrVector = np.reshape(options.corrVector, (options.Ndist, options.Nang, options.nProjections, -1), order='F')
+                    options.corrVector = options.corrVector[:, :, corr_vector_index, :]
+                    options.corrVector = options.corrVector.ravel(order='F')
+                else:
+                    options.corrVector = np.reshape(options.corrVector, (options.Ndist * options.Nang * options.nProjections, -1), order='F')
+                    options.corrVector = options.corrVector[corr_vector_index,:]
+                    options.corrVector = options.corrVector.ravel(order='F').astype(dtype=np.float32)
         
         if (options.randoms_correction
                 and options.corrections_during_reconstruction 
@@ -1047,10 +1056,18 @@ def parseInputs(options, mDataFound = False):
                 
         
         if options.attenuation_correction and not options.CT_attenuation:
+            # A static (single-frame) measurement-domain attenuation is shared by every
+            # timestep, as in C++ (one d_atten[kk] buffer): it holds exactly frame 0's
+            # measurements, is subset-permuted ONCE with frame 0's index (as for
+            # normalization) and init.py then slices it with the frame-0 offsets.
+            attenuation_is_static = False
             if options.Nt > 1:
-                # Measurement-domain attenuation is per-timestep in C++/MATLAB for dynamic
-                # data (see init.py's [Nt][subsets] d_atten construction, sliced from this
-                # same flat array via options.nTotMeas); mirror the per-frame handling above
+                _start0, _stop0, _ = _frame_measurement_bounds(options, 1)
+                attenuation_is_static = int(np.size(options.vaimennus)) == _stop0 - _start0
+            if options.Nt > 1 and not attenuation_is_static:
+                # Frame-concatenated measurement-domain attenuation (Nt blocks, a superset of
+                # C++): per-timestep (see init.py's [Nt][subsets] d_atten construction, sliced
+                # from this same flat array via options.nTotMeas); mirror the per-frame handling above
                 # (normalization_correction, SinM/SinDelayed/ScatterC) instead of subset-
                 # selecting the whole Nt-frame-concatenated array with a single frame's worth
                 # of indices (pre-existing bug -- see the normalization_correction branch
@@ -1072,13 +1089,15 @@ def parseInputs(options, mDataFound = False):
                         frame = frame[idx]
                     out_frames.append(np.asarray(frame).ravel(order='F'))
                 options.vaimennus = np.concatenate(out_frames)
-            elif options.subsetType >= 8:
-                options.vaimennus = np.reshape(options.vaimennus, (options.Ndist, options.Nang, -1), order='F')
-                options.vaimennus = options.vaimennus[:, :, options.index]
-                options.vaimennus = options.vaimennus.ravel(order='F')
             else:
-                options.vaimennus = options.vaimennus.ravel(order='F')
-                options.vaimennus = options.vaimennus[options.index]
+                attenuation_index = options.index[0] if (options.Nt > 1 and isinstance(options.index, list)) else options.index
+                if options.subsetType >= 8:
+                    options.vaimennus = np.reshape(options.vaimennus, (options.Ndist, options.Nang, -1), order='F')
+                    options.vaimennus = options.vaimennus[:, :, attenuation_index]
+                    options.vaimennus = options.vaimennus.ravel(order='F')
+                else:
+                    options.vaimennus = options.vaimennus.ravel(order='F')
+                    options.vaimennus = options.vaimennus[attenuation_index]
         if options.scatter_correction and not options.corrections_during_reconstruction:
             if not options.precorrect:
                 print('Warning: Scatter correction is disabled. options.corrections_during_reconstruction is False and options.precorrect is False, i.e. the scatter is neither applied during the reconstruction nor subtracted from the measurement data. Set options.corrections_during_reconstruction = True to apply it.')
