@@ -202,6 +202,33 @@ def _geometry_buffer(buffers, timestep, subset):
     return per[subset] if per[subset] is not None else per[0]
 
 
+def _load_listmode_subset(self, timestep, subset):
+    """List-mode data without loadTOF: only one subset at a time is kept on the device (the entry [timestep][0] of d_x and
+    d_TOFIndex, the entry [0] of d_trIndex/d_axIndex). Upload the events of the (timestep, subset) that is about to be
+    projected. With loadTOF all subsets were uploaded in initProjector and nothing is done here. Used by both
+    forwardProjection and backwardProjection (the backprojection needs the same events as the forward projection)."""
+    if self.loadTOF or self.listmode <= 0:
+        return
+    if self.useCUDA:
+        import cupy as cp
+        upload = cp.asarray
+    else:
+        import pyopencl as cl
+        import pyopencl.array
+        def upload(value):
+            return cl.array.to_device(self.queue, value)
+    q = timestep * self.subsets + subset
+    if self.useIndexBasedReconstruction:
+        self.d_trIndex[0] = upload(self.trIndex[self.nMeas[q] * 2 : self.nMeas[q + 1] * 2])
+        self.d_axIndex[0] = upload(self.axIndex[self.nMeas[q] * 2 : self.nMeas[q + 1] * 2])
+    else:
+        apu = self.x.ravel()
+        self.d_x[timestep][0] = upload(apu[self.nMeas[q] * 6 : self.nMeas[q + 1] * 6])
+    if self.TOF:
+        from omegatomo.projector.init import _tof_index_slice
+        self.d_TOFIndex[timestep][0] = upload(_tof_index_slice(self, timestep, subset))
+
+
 def _tof_output_bins(self):
     """Number of TOF bins the FP output measurement vector must be widened by.
 
@@ -316,6 +343,8 @@ def _append_fp123_args(self, args, timestep, subset, k, f_arg, y_arg):
         else:
             args.buf(self.d_trIndex[subset])
             args.buf(self.d_axIndex[subset])
+    if self.listmode > 0 and self.TOF:
+        args.buf(_geometry_buffer(self.d_TOFIndex, timestep, subset))
     args.img(f_arg)
     args.img(y_arg)
     if self.SPECT:
@@ -429,6 +458,22 @@ def _append_bp5_ct_args(self, args, timestep, subset, k, f_arg, y_arg):
     return args
 
 
+def _append_listmode_index_args(self, args, timestep, subset):
+    """The list-mode arguments of the type 4 kernels that follow the optional subset index arguments (xyindex/zindex):
+    the index-based detector indices (INDEXBASED && LISTMODE: trIndex, axIndex) and the TOF bin of each event
+    (LISTMODE && TOF: TOFIndex), in the order of projectorType4.cl. (Types 1-3 append the same arguments inline.)"""
+    if self.useIndexBasedReconstruction and self.listmode > 0:
+        if not self.loadTOF:
+            args.buf(self.d_trIndex[0])
+            args.buf(self.d_axIndex[0])
+        else:
+            args.buf(self.d_trIndex[subset])
+            args.buf(self.d_axIndex[subset])
+    if self.listmode > 0 and self.TOF:
+        args.buf(_geometry_buffer(self.d_TOFIndex, timestep, subset))
+    return args
+
+
 def _append_fp4_args(self, args, timestep, subset, k, f_arg, y_arg):
     """FP type 4 per-call kernel-argument TAIL, shared by every backend.
 
@@ -453,6 +498,7 @@ def _append_fp4_args(self, args, timestep, subset, k, f_arg, y_arg):
     if (self.subsetType == 3 or self.subsetType == 6 or self.subsetType == 7) and self.subsets > 1 and self.listmode == 0:
         args.buf(self.d_xyindex[subset])
         args.buf(self.d_zindex[subset])
+    _append_listmode_index_args(self, args, timestep, subset)
     if self.normalization_correction:
         args.buf(self.d_norm[timestep][subset])
     if self.additionalCorrection:
@@ -511,6 +557,8 @@ def _append_bp123_args(self, args, timestep, subset, k, f_arg, y_arg, proj_count
         else:
             args.buf(self.d_trIndex[subset])
             args.buf(self.d_axIndex[subset])
+    if self.listmode > 0 and self.TOF:
+        args.buf(_geometry_buffer(self.d_TOFIndex, timestep, subset))
     args.img(y_arg)
     args.img(f_arg)
     if self.SPECT:
@@ -575,6 +623,7 @@ def _append_bp4_nonct_args(self, args, timestep, subset, k, f_arg, y_arg, proj_c
     if (self.subsetType == 3 or self.subsetType == 6 or self.subsetType == 7) and self.subsets > 1 and self.listmode == 0:
         args.buf(self.d_xyindex[subset])
         args.buf(self.d_zindex[subset])
+    _append_listmode_index_args(self, args, timestep, subset)
     if self.normalization_correction:
         args.buf(self.d_norm[timestep][subset])
     if self.additionalCorrection:
@@ -714,13 +763,7 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
         if self.useCUDA:
             if self.useCuPy:
                 import cupy as cp
-                if not self.loadTOF:
-                    if self.useIndexBasedReconstruction and self.listmode > 0:
-                        self.d_trIndex[0] = cp.asarray(self.trIndex[self.nMeas[timestep * self.subsets + subset] * 2 : self.nMeas[timestep * self.subsets + subset + 1] * 2])
-                        self.d_axIndex[0] = cp.asarray(self.axIndex[self.nMeas[timestep * self.subsets + subset] * 2 : self.nMeas[timestep * self.subsets + subset + 1] * 2])
-                    elif self.listmode > 0:
-                        apu = self.x.ravel()
-                        self.d_x[timestep][0] = cp.asarray(apu[self.nMeas[timestep * self.subsets + subset] * 6 : self.nMeas[timestep * self.subsets + subset + 1] * 6])
+                _load_listmode_subset(self, timestep, subset)
                 measLen = _expected_measurement_length(self, timestep, subset)
                 if self.useTorch:
                     import torch
@@ -894,13 +937,7 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
             import pyopencl as cl
             import pyopencl.array
             from pyopencl.version import VERSION
-            if not self.loadTOF:
-                if self.useIndexBasedReconstruction and self.listmode > 0:
-                    self.d_trIndex[0] = cl.array.to_device(self.queue, self.trIndex[self.nMeas[timestep * self.subsets + subset] * 2 : self.nMeas[timestep * self.subsets + subset + 1] * 2])
-                    self.d_axIndex[0] = cl.array.to_device(self.queue, self.axIndex[self.nMeas[timestep * self.subsets + subset] * 2 : self.nMeas[timestep * self.subsets + subset + 1] * 2])
-                elif self.listmode > 0:
-                    apu = self.x.ravel()
-                    self.d_x[timestep][0] = cl.array.to_device(self.queue, apu[self.nMeas[timestep * self.subsets + subset] * 6 : self.nMeas[timestep * self.subsets + subset + 1] * 6])
+            _load_listmode_subset(self, timestep, subset)
             measLen = _expected_measurement_length(self, timestep, subset)
             if self.useAF:
                 import arrayfire as af
@@ -1171,6 +1208,7 @@ def backwardProjection(self, y, subset = -1, timestep = -1):
             return outputs[0] if int(self.nMultiVolumes) == 0 else outputs
     else:
         _validate_backward_input(self, y, timestep, subset)
+        _load_listmode_subset(self, timestep, subset)
         if self.nMultiVolumes > 0:
             f = [None] * (self.nMultiVolumes + 1)
         if self.nMultiVolumes > 0 and not(isinstance(f,list)):
