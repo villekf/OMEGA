@@ -399,7 +399,11 @@ classdef projectorClass
                     end
                 end
                 if obj.param.flipImageZ % Flip image by flipping sinograms' z-axis in image space. X and Y are flipped in get_coordinates_SPECT (only for projector_type != 6)
-                    obj.param.SinM = flip(obj.param.SinM, 2);
+                    % Scatter windows (DEW/TEW) must follow the same flip
+                    obj.param.SinM = flipAxialSPECT(obj.param.SinM);
+                    if isfield(obj.param, 'ScatterC')
+                        obj.param.ScatterC = flipAxialSPECT(obj.param.ScatterC);
+                    end
                 end
                 % The following may or may not be required
                 obj.param.Ndist = obj.param.nRowsD;
@@ -1292,5 +1296,14 @@ classdef projectorClass
             obj.trans = true;
         end
     end
+end
+
+function data = flipAxialSPECT(data)
+% Flips the axial (2nd) dimension of SPECT projections. Cells are dynamic timeframes or DEW/TEW scatter windows
+if iscell(data)
+    data = cellfun(@flipAxialSPECT, data, 'UniformOutput', false);
+else
+    data = flip(data, 2);
+end
 end
 

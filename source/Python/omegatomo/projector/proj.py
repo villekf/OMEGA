@@ -870,11 +870,16 @@ class projectorClass:
                     self.vaimennus = np.flip(self.vaimennus, 2)
 
             if self.flipImageZ:
-                if isinstance(self.SinM, list):
-                    self.SinM = [np.flip(frame, axis=1) for frame in self.SinM]
-                else:
-                    self.SinM = np.flip(self.SinM, axis=1)
-            
+                # Flip the axial axis of every projection stack; lists are dynamic frames or DEW/TEW scatter windows
+                def _flipAxial(data):
+                    if isinstance(data, (list, tuple)):
+                        return [_flipAxial(d) for d in data]
+                    if isinstance(data, np.ndarray) and data.ndim >= 2:
+                        return np.flip(data, axis=1)
+                    return data
+                self.SinM = _flipAxial(self.SinM)
+                self.ScatterC = _flipAxial(self.ScatterC)
+
             if 'n_rays_transaxial' not in self.__dict__:
                 self.n_rays_transaxial = int(np.sqrt(self.nRays))
             if 'n_rays_axial' not in self.__dict__:
