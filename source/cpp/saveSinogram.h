@@ -83,7 +83,8 @@ int64_t saveSinogram(const int32_t ring_pos1, const int32_t ring_pos2, int32_t r
 			ring_number1 = ring_number2;
 			ring_number2 = ring_number3;
 		}
-		i = i + Ndist / 2 - std::max(0, nDistSide);
+		// Radial bin: odd Ndist accepts i in [-Ndist/2, Ndist/2] (nDistSide ignored), even Ndist is shifted by nDistSide
+		i = i + Ndist / 2 - (Ndist % 2U == 0 ? std::max(0, nDistSide) : 0);
 		const bool swappi = ring_pos2 > ring_pos1;
 		if (swappi) {
 			const int32_t ring_number3 = ring_number1;
