@@ -822,7 +822,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
             else {
                 for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
                     if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-                        uint64_t m_size = inputScalars.det_per_ring * inputScalars.det_per_ring * inputScalars.rings * inputScalars.rings;
+                        uint64_t m_size = static_cast<uint64_t>(inputScalars.det_per_ring) * inputScalars.det_per_ring * inputScalars.rings * inputScalars.rings;
                         if (inputScalars.nLayers > 1)
                             m_size *= static_cast<uint64_t>(inputScalars.nLayers) * inputScalars.nLayers;
                         if (DEBUG) {
