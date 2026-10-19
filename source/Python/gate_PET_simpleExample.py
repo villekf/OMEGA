@@ -559,6 +559,8 @@ options.RDP_gamma = 10
 # data is all ones (each event is handled individually) and the randoms, if
 # selected, are included as negative measurements. The sensitivity image is
 # computed from all the possible LORs.
+# If options.reconstruct_trues is True, only the true coincidences are loaded
+# as events (and the randoms are not included).
 # If False, the sinograms are formed instead.
 options.useIndexBasedReconstruction = False
 ###########################################################################
@@ -584,7 +586,7 @@ if options.use_root:
         if isinstance(options.trIndex, list):
             # Dynamic data, one array per time step. Delayed coincidences are not supported
             options.SinM = [np.ones(tr.shape[1], dtype=np.float32) for tr in options.trIndex]
-        elif options.randoms_correction:
+        elif options.randoms_correction and not options.reconstruct_trues:
             options.SinM = np.concatenate((np.ones(options.trIndex.shape[1], dtype=np.float32), -np.ones(DtrIndices.shape[1], dtype=np.float32)))
             options.trIndex = np.concatenate((options.trIndex, DtrIndices), axis=1)
             options.axIndex = np.concatenate((options.axIndex, DaxIndices), axis=1)

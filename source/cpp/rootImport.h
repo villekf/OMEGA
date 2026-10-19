@@ -672,6 +672,11 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 							event_scattered = false;
 					}
 				}
+				// Index-based data has no separate trues container (the sinogram version stores them in SinoT), so
+				// obtain_trues means that only the true coincidences are stored. The skipped events are left as zeros
+				// and removed by the front-end like the events outside the time window or the TOF range
+				if (indexBased && obtain_trues && !event_true)
+					continue;
 				if (dynamic) {
 					double time = alku;
 					tPoint = Nt - 1;

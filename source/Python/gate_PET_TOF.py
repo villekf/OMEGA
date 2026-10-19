@@ -1395,6 +1395,8 @@ options.storeFP = False
 # NOTE: Randoms and scatter correction are not supported with TOF
 # index-based data, i.e. set options.randoms_correction = False when using
 # this mode.
+# If options.reconstruct_trues is True, only the true coincidences are loaded
+# as events.
 # If False, the TOF sinograms are formed instead.
 options.useIndexBasedReconstruction = False
 ###########################################################################
