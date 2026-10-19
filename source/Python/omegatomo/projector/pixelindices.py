@@ -344,16 +344,23 @@ def computeVoxelVolumes(options):
         dp = np.max(np.column_stack((options.dx[0].item(),options.dy[0].item(),options.dz[0].item())))
         options.voxel_radius = math.sqrt(2.) * options.voxel_radius * (dp / 2.)
         options.bmax = options.tube_radius + options.voxel_radius
-        b = np.linspace(0, options.bmax, 10000, dtype=np.float32)
-        b = b[(options.tube_radius <= (b + options.voxel_radius))]
-        b = np.unique(matlabRound(b*10**3)/10**3);
-        V = volumeIntersection(options.tube_radius, options.voxel_radius, b)
-        diffis = np.append(np.diff(V), 0)
-        # diffis = np.concatenate((np.diff(V),0))
-        b = b[diffis <= 0]
-        options.V = np.abs(V[diffis <= 0])
+        # Aligned look-up table: a regular grid with the spacing 1/CC = 1e-3 starting at bmin (the kernel reads the index
+        # round((b - bmin) * CC)), long enough for the index of bmax. No entries are dropped, so that the table index always
+        # corresponds to the same distance as in the kernel
+        bmin = max(0., math.floor((options.tube_radius - options.voxel_radius) * 1e3) / 1e3)
+        nV = int(math.ceil((options.bmax - bmin) * 1e3)) + 3
+        b = bmin + np.arange(nV, dtype=np.float64) * 1e-3
+        V = np.zeros(nV, dtype=np.float64)
+        inside = b < options.bmax
+        V[inside] = volumeIntersection(options.tube_radius, options.voxel_radius, b[inside].astype(np.float32))
+        # b == tube radius is a removable singularity of the closed form (NaN), interpolate over it
+        bad = inside & ~np.isfinite(V)
+        if np.any(bad):
+            V[bad] = np.interp(b[bad], b[inside & ~bad], V[inside & ~bad])
+        # The volume cannot increase with the distance
+        V = np.minimum.accumulate(np.abs(V))
+        options.V = V.astype(np.float32)
         options.Vmax = (4 * np.pi) / 3 * options.voxel_radius**3
-        options.bmin = np.min(b)
-        options.V = options.V.astype(dtype=np.float32)
+        options.bmin = bmin
     else:
         options.V = np.zeros(1, dtype=np.float32)
