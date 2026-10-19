@@ -387,6 +387,11 @@ if ~options.CT && ~options.SPECT && (options.useIndexBasedReconstruction || opti
         && options.subsets > 1 && ~ismember(options.subset_type, [0, 1, 3])
     error(['Subset type ' num2str(options.subset_type) ' is not supported with list-mode and index-based data! Only subset types 0 (sequential), 1 (every n-th event) and 3 (random) can be used when subsets > 1. Set options.subset_type to 0, 1 or 3 (or use options.subsets = 1).'])
 end
+% The sinogram plane index of subset types 3, 6 and 7 (z_index) is stored as 16-bit
+if ~options.CT && ~options.SPECT && ~options.listmode && ~isListModeCandidate && ~options.useIndexBasedReconstruction && ~options.use_raw_data ...
+        && options.subsets > 1 && ismember(options.subset_type, [3, 6, 7]) && options.NSinos > 65536
+    error('Subset types 3, 6 and 7 support at most 65536 sinogram planes (the plane index is stored as 16-bit); use another subset type, fewer planes (larger span) or a single subset.')
+end
 if ~options.CT && ~options.SPECT && options.reconstruct_trues && options.reconstruct_scatter
     warning('Both reconstruct trues and scatter selected, reconstructing only trues.')
     options.reconstruct_scatter = false;

@@ -1534,6 +1534,11 @@ class projectorClass:
             raise ValueError(f'Subset type {self.subsetType} is not supported with list-mode and index-based data! '
                              'Only subset types 0 (sequential), 1 (every n-th event) and 3 (random) can be used when subsets > 1. '
                              'Set options.subsetType to 0, 1 or 3 (or use options.subsets = 1).')
+        # The sinogram plane index of subset types 3, 6 and 7 (z_index) is stored as 16-bit
+        if (not self.CT and not self.SPECT and not self.listmode and not self.useIndexBasedReconstruction and not self.use_raw_data
+                and self.subsets > 1 and self.subsetType in (3, 6, 7) and self.NSinos > 65536):
+            raise ValueError('Subset types 3, 6 and 7 support at most 65536 sinogram planes (the plane index is stored as 16-bit); '
+                             'use another subset type, fewer planes (larger span) or a single subset.')
         if self.useIndexBasedReconstruction and self.projector_type not in [1, 2, 3, 4, 11, 14, 12, 13, 21, 22, 23, 24, 31, 32, 33, 34, 41, 42, 43, 44]:
             raise ValueError('Index-based reconstruction only supports projector types 1-4!')
         if self.useIndexBasedReconstruction:
