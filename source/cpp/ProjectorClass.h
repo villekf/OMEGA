@@ -2944,6 +2944,10 @@ public:
 			if (inputScalars.nColsD > 1 && !(inputScalars.BPType == 4 && (!inputScalars.CT && !inputScalars.PET && !inputScalars.SPECT))) {
 				local_size[0] = 16ULL;
 				local_size[1] = 16ULL;
+				// The multi-bin TOF kernels need many registers per thread, smaller blocks (16 x 8 instead of 16 x 16) give a
+				// higher occupancy (measured on an NVIDIA RTX 4090 with CUDA and OpenCL: up to 23 % faster, never slower). Same rule as in the Python operator (init.py)
+				if (inputScalars.TOF && inputScalars.nBins > 1)
+					local_size[1] = 8ULL;
 			}
 		}
 		// Override the above defaults with user-supplied values (per dimension). A negative input value

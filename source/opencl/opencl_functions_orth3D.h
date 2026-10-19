@@ -99,10 +99,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	CLGLOBAL CAST* d_Summ, CLGLOBAL CAST* d_output, const bool no_norm
 #endif
 #ifdef TOF
-	, const float TOFSum, float* TOFWeights
-#ifdef LISTMODE
-	, const int TOFid
-#endif
+	, float* TOFWeights
 #endif
 #if defined(SPECT) && defined(ATN)
 	, FLOAT jelppi
@@ -175,20 +172,14 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
 	denominator(ax, ind, local_ele, d_OSEM
 #ifdef TOF //////////////// TOF ////////////////
-				, TOFSum, TOFWeights
-#ifdef LISTMODE
-				, TOFid
-#endif
+				, TOFWeights
 #endif //////////////// END TOF ////////////////
 	);
 #endif //////////////// END FORWARD PROJECTION ////////////////
 #if defined(BP) //////////////// BACKWARD PROJECTION ////////////////
 	rhs(local_ele * temp, ax, local_ind, d_output, no_norm, d_Summ
 #ifdef TOF
-			, TOFSum, TOFWeights
-#ifdef LISTMODE
-			, TOFid
-#endif
+			, TOFWeights
 #endif
     );
 #endif //////////////// END BACKWARD PROJECTION ////////////////
@@ -213,10 +204,7 @@ DEVICE int orthDistance3D(const int tempi,
 	const bool no_norm, CLGLOBAL CAST* Summ, CLGLOBAL CAST* d_rhs_OSEM 
 #endif
 #ifdef TOF
-	, const float TOFSum, float* TOFWeights
-#ifdef LISTMODE
-	, const int TOFid
-#endif
+	, float* TOFWeights
 #endif
 #if defined(SPECT) && defined(ATN)
 	, FLOAT jelppi
@@ -288,10 +276,7 @@ DEVICE int orthDistance3D(const int tempi,
 				Summ, d_rhs_OSEM, no_norm
 #endif
 #ifdef TOF
-				, TOFSum, TOFWeights
-#ifdef LISTMODE
-				, TOFid
-#endif
+				, TOFWeights
 #endif
 #if defined(SPECT) && defined(ATN)
 				, jelppi
@@ -334,10 +319,7 @@ DEVICE int orthDistance3D(const int tempi,
 				Summ, d_rhs_OSEM, no_norm
 #endif
 #ifdef TOF
-				, TOFSum, TOFWeights
-#ifdef LISTMODE
-				, TOFid
-#endif
+				, TOFWeights
 #endif
 #if defined(SPECT) && defined(ATN)
 				, jelppi
@@ -395,10 +377,7 @@ DEVICE int orthDistance3D(const int tempi,
 				Summ, d_rhs_OSEM, no_norm
 #endif
 #ifdef TOF
-				, TOFSum, TOFWeights
-#ifdef LISTMODE
-				, TOFid
-#endif
+				, TOFWeights
 #endif
 #if defined(SPECT) && defined(ATN)
 				, jelppi
@@ -441,10 +420,7 @@ DEVICE int orthDistance3D(const int tempi,
 				Summ, d_rhs_OSEM, no_norm
 #endif
 #ifdef TOF
-				, TOFSum, TOFWeights
-#ifdef LISTMODE
-				, TOFid
-#endif
+				, TOFWeights
 #endif
 #if defined(SPECT) && defined(ATN)
 				, jelppi

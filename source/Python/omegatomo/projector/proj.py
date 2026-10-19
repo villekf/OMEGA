@@ -641,6 +641,27 @@ class projectorClass:
               (self.x[0].size / 2 == self.SinM[0].size or
                self.x[0].size / 6 == self.SinM[0].size)))
 
+    def _checkTOFCenter(self):
+        """Raise an error if the TOF bin centers (TOFCenter, built here or supplied by the user) do not have the layout the
+        exact-TOF GPU kernels require (general_opencl_functions.h, TOFInit): uniform spacing dw = TOFCenter[1] - TOFCenter[0]
+        in the center-first order TOFCenter[b] = TOFCenter[0] + k_b * dw with k_b = (b + 1) / 2 for odd b and -b / 2 for even b
+        (0-based b, i.e. k = 0, 1, -1, 2, -2, ...). The kernels return NaN for any other layout. Same tolerance as in the kernel."""
+        if self.TOF_bins_used != self.TOF_bins or self.TOF_bins <= 1:
+            return
+        layout = ('TOFCenter must contain TOF_bins (%d) uniformly spaced bin centers (in mm along the LOR) in the center-first order '
+                  'TOFCenter[b] = TOFCenter[0] + k_b * dw, b = 0 ... TOF_bins - 1, where dw = TOFCenter[1] - TOFCenter[0] is non-zero, '
+                  'k_b = (b + 1) / 2 for odd b and k_b = -b / 2 for even b (k = 0, 1, -1, 2, -2, ...).' % self.TOF_bins)
+        tc = np.asarray(self.TOFCenter, dtype=np.float64).ravel()
+        if tc.size != self.TOF_bins:
+            raise ValueError('TOFCenter has %d elements, but TOF_bins is %d. %s' % (tc.size, self.TOF_bins, layout))
+        dw = tc[1] - tc[0]
+        b = np.arange(tc.size)
+        k = np.where(b % 2 == 1, (b + 1) // 2, -(b // 2))
+        bad = np.flatnonzero(~(np.abs(tc - (tc[0] + dw * k)) <= 1e-3 * abs(dw)))
+        if dw == 0 or not np.all(np.isfinite(tc)) or bad.size > 0:
+            first = '' if bad.size == 0 else ' The first bin that deviates is b = %d (TOFCenter[%d] = %g, expected %g).' % (bad[0], bad[0], tc[bad[0]], tc[0] + dw * k[bad[0]])
+            raise ValueError('Invalid TOFCenter.%s %s' % (first, layout))
+
     def addProjector(self):
         self.projectorAdded = True
         # MATLAB/Octave-style option name aliases, accepted for convenience so scripts written
@@ -825,7 +846,7 @@ class projectorClass:
         if self.ring_difference == 0 and self.rings > 0:
             self.ring_difference = self.rings - 1
         if self.segment_table.size == 0 and self.span > 0 and self.rings > 0:
-            self.segment_table = np.concatenate((np.array(self.rings*2-1,ndmin=1), np.arange(self.rings*2-1 - (self.span + 1), max(self.Nz - self.ring_difference*2, self.rings - self.ring_difference), -self.span*2)))
+            self.segment_table = np.concatenate((np.array(self.rings*2-1,ndmin=1), np.arange(self.rings*2-1 - (self.span + 1), max(self.Nz - self.ring_difference*2, self.rings - self.ring_difference) - 1, -self.span*2)))
             self.segment_table = np.insert(np.repeat(self.segment_table[1:], 2), 0, self.segment_table[0])
         if self.Nang == 1 and self.det_per_ring > 1:
             self.Nang = self.det_per_ring // 2
@@ -863,14 +884,17 @@ class projectorClass:
                 edges_user = np.linspace(-self.TOF_width * self.TOF_bins/2, self.TOF_width * self.TOF_bins / 2, self.TOF_bins + 1, dtype=np.float32)
                 edges_user = edges_user[0:-1] + self.TOF_width/2. # the most probable value where annihilation occured
                 self.TOFCenter = np.zeros(np.shape(edges_user),dtype = np.float32, order='F')
-                self.TOFCenter[0] = edges_user[math.floor(np.size(edges_user)/2)]
-                self.TOFCenter[1::2] = edges_user[math.floor(np.size(edges_user)/2) + 1:]
-                self.TOFCenter[2::2] = edges_user[math.floor(np.size(edges_user)/2) - 1:  : -1]
-                if self.TOF_offset > 0:
+                # The center bin is the (lower) middle one for an even number of bins, as in MATLAB (ceil(n/2), 1-based)
+                iCenter = (np.size(edges_user) + 1) // 2 - 1
+                self.TOFCenter[0] = edges_user[iCenter]
+                self.TOFCenter[1::2] = edges_user[iCenter + 1:]
+                self.TOFCenter[2::2] = edges_user[:iCenter][::-1]
+                if self.TOF_offset != 0:
                     self.TOFCenter = self.TOFCenter + self.TOF_offset
                 self.TOFCenter = -self.TOFCenter * c / 2.
             else:
                 self.TOFCenter = np.float32(self.TOFCenter)
+            self._checkTOFCenter()
         else:
             self.sigma_x = 0.
         if self.ordinaryPoisson is None:

@@ -532,10 +532,37 @@ classdef projectorClass
                     TOFCenter(1) = edges_user(ceil(length(edges_user)/2));
                     TOFCenter(2:2:end) = edges_user(ceil(length(edges_user)/2) + 1:end);
                     TOFCenter(3:2:end) = edges_user(ceil(length(edges_user)/2) - 1: -1 : 1);
-                    if isfield(obj.param, 'TOF_offset') && obj.param.TOF_offset > 0
+                    if isfield(obj.param, 'TOF_offset') && obj.param.TOF_offset ~= 0
                         TOFCenter = TOFCenter + obj.param.TOF_offset;
                     end
                     TOFCenter = -TOFCenter * c / 2;
+                else
+                    % User-supplied TOF bin centers
+                    TOFCenter = obj.param.TOFCenter;
+                end
+                if obj.param.TOF_bins_used == obj.param.TOF_bins && obj.param.TOF_bins > 1
+                    % The exact-TOF GPU kernels (general_opencl_functions.h, TOFInit) require uniformly spaced bin centers in the
+                    % center-first order TOFCenter(b) = TOFCenter(1) + k_b * dw, dw = TOFCenter(2) - TOFCenter(1), where
+                    % k_b = b / 2 for even b and k_b = -(b - 1) / 2 for odd b (b is 1-based, i.e. k = 0, 1, -1, 2, -2, ...).
+                    % The kernels return NaN for any other layout. The tolerance is the same as in the kernel.
+                    TOFLayout = ['TOFCenter must contain TOF_bins (' num2str(obj.param.TOF_bins) ') uniformly spaced bin centers (in mm along the LOR) in the center-first order ' ...
+                        'TOFCenter(b) = TOFCenter(1) + k_b * dw, b = 1 ... TOF_bins, where dw = TOFCenter(2) - TOFCenter(1) is non-zero, ' ...
+                        'k_b = b / 2 for even b and k_b = -(b - 1) / 2 for odd b (k = 0, 1, -1, 2, -2, ...).'];
+                    if numel(TOFCenter) ~= obj.param.TOF_bins
+                        error(['TOFCenter has ' num2str(numel(TOFCenter)) ' elements, but TOF_bins is ' num2str(obj.param.TOF_bins) '. ' TOFLayout])
+                    end
+                    tc = double(TOFCenter(:));
+                    dw = tc(2) - tc(1);
+                    bb = (0:numel(tc) - 1)';
+                    kb = (bb + 1) / 2 .* (mod(bb, 2) == 1) - bb / 2 .* (mod(bb, 2) == 0);
+                    badBins = find(~(abs(tc - (tc(1) + dw * kb)) <= 1e-3 * abs(dw)));
+                    if dw == 0 || any(~isfinite(tc)) || ~isempty(badBins)
+                        firstBad = '';
+                        if ~isempty(badBins)
+                            firstBad = [' The first bin that deviates is b = ' num2str(badBins(1)) ' (TOFCenter(' num2str(badBins(1)) ') = ' num2str(tc(badBins(1))) ', expected ' num2str(tc(1) + dw * kb(badBins(1))) ').'];
+                        end
+                        error(['Invalid TOFCenter.' firstBad ' ' TOFLayout])
+                    end
                 end
             else
                 obj.param.sigma_x = 0;
