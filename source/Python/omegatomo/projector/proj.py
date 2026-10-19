@@ -662,6 +662,83 @@ class projectorClass:
             first = '' if bad.size == 0 else ' The first bin that deviates is b = %d (TOFCenter[%d] = %g, expected %g).' % (bad[0], bad[0], tc[bad[0]], tc[0] + dw * k[bad[0]])
             raise ValueError('Invalid TOFCenter.%s %s' % (first, layout))
 
+    def _normalizeDetectorIndices(self, name, value):
+        """Validate one set of index-based detector indices (options.trIndex or options.axIndex) of a single timeframe.
+
+        Accepted layouts: a (2, N) array (the two detector indices of each event in the two rows, the layout returned by the
+        loaders), a (2, N, Nt) array (dynamic data stacked along the third dimension), or a flat array of even length 2N with
+        the layout [det1_ev0, det2_ev0, det1_ev1, det2_ev1, ...], i.e. the (2, N) array flattened in column-major (Fortran)
+        order. Anything else, such as an (N, 2) array, is rejected since it would be silently misread as 2N events. The values
+        must be integers that fit in uint16 (0 ... 65535); they are returned cast to uint16.
+
+        Returns the validated (uint16) array and the number of events it contains."""
+        arr = np.asarray(value)
+        if arr.dtype.kind not in 'ui':
+            raise ValueError(f'options.{name} must contain integer detector indices, but its data type is {arr.dtype}!')
+        if arr.ndim == 1:
+            if arr.size % 2 != 0:
+                raise ValueError(f'options.{name} is a flat array of {arr.size} elements, but it must contain two detector indices per event '
+                                 f'(an even number of elements, layout [det1_ev0, det2_ev0, det1_ev1, ...])! Expected shape is (2, N).')
+            nEvents = arr.size // 2
+        elif arr.ndim == 2 and arr.shape[0] == 2:
+            nEvents = arr.shape[1]
+        elif arr.ndim == 3 and arr.shape[0] == 2:
+            nEvents = arr.shape[1] * arr.shape[2]
+        else:
+            raise ValueError(f'options.{name} has the shape {tuple(arr.shape)}, but the expected shape is (2, N), i.e. the two detector indices of '
+                             f'each of the N events in the two rows (alternatively a flat array of length 2N with the layout '
+                             f'[det1_ev0, det2_ev0, det1_ev1, ...]). Transpose the array if it is (N, 2).')
+        if arr.dtype != np.uint16 and arr.size > 0:
+            if arr.dtype.kind == 'i' and arr.min() < 0:
+                raise ValueError(f'options.{name} contains negative detector indices (minimum {arr.min()})!')
+            if arr.max() > np.iinfo(np.uint16).max:
+                raise ValueError(f'options.{name} contains detector indices that do not fit in uint16 (maximum {arr.max()}, limit 65535)!')
+            arr = arr.astype(np.uint16)
+        return arr, nEvents
+
+    def _checkIndexBasedInputs(self):
+        """Validate the index-based inputs: the shape, data type and number of events of options.trIndex and options.axIndex
+        (and of options.TOFIndices when TOF is used). For dynamic data the indices are lists with one element per timeframe.
+        The (possibly uint16-cast) arrays are stored back to options.trIndex and options.axIndex."""
+        trList = isinstance(self.trIndex, (list, tuple))
+        axList = isinstance(self.axIndex, (list, tuple))
+        if trList != axList:
+            raise ValueError('options.trIndex and options.axIndex must either both be lists (dynamic data, one element per timeframe) or both be arrays!')
+        trFrames = list(self.trIndex) if trList else [self.trIndex]
+        axFrames = list(self.axIndex) if axList else [self.axIndex]
+        if len(trFrames) != len(axFrames):
+            raise ValueError(f'options.trIndex has {len(trFrames)} timeframes, but options.axIndex has {len(axFrames)}!')
+        counts = []
+        for kk in range(len(trFrames)):
+            suffix = f' (timeframe {kk + 1})' if trList else ''
+            trFrames[kk], nTr = self._normalizeDetectorIndices('trIndex', trFrames[kk])
+            axFrames[kk], nAx = self._normalizeDetectorIndices('axIndex', axFrames[kk])
+            if nTr != nAx:
+                raise ValueError(f'options.trIndex and options.axIndex must contain the same number of events, but trIndex has {nTr} and axIndex has {nAx}{suffix}!')
+            counts.append(nTr)
+        if trList:
+            self.trIndex = trFrames
+            self.axIndex = axFrames
+        else:
+            self.trIndex = trFrames[0]
+            self.axIndex = axFrames[0]
+        if self.TOF_bins > 1 and self.projector_type in (1, 11, 3, 33, 13, 31, 4, 14, 41, 44, 34, 43):
+            if isinstance(self.TOFIndices, (list, tuple)):
+                tofCounts = [np.size(t) for t in self.TOFIndices]
+                if len(tofCounts) != len(counts) and len(counts) > 1:
+                    raise ValueError(f'options.TOFIndices has {len(tofCounts)} timeframes, but the index-based data has {len(counts)}!')
+                if len(counts) == 1:
+                    tofCounts = [sum(tofCounts)]
+            elif len(counts) > 1:
+                tofCounts = [np.size(self.TOFIndices)]
+                counts = [sum(counts)]
+            else:
+                tofCounts = [np.size(self.TOFIndices)]
+            for kk in range(len(counts)):
+                if tofCounts[kk] != counts[kk]:
+                    suffix = f' in timeframe {kk + 1}' if len(counts) > 1 else ''
+                    raise ValueError(f'The number of TOF indices (options.TOFIndices, {tofCounts[kk]}) does not correspond to the number of events ({counts[kk]}){suffix}!')
+
     def addProjector(self):
         self.projectorAdded = True
         # MATLAB/Octave-style option name aliases, accepted for convenience so scripts written
@@ -999,9 +1076,6 @@ class projectorClass:
         else:
             self.PET = False
             self.nProjections = self.NSinos
-        if self.listmode and self.subsets > 1 and not(self.subsetType == 0)  and not(self.subsetType == 1) and not(self.subsetType == 3):
-            print('Only subset types 0, 1, and 3 are supported with list-mode data! Switching to subset type 0.')
-            self.subsetType = 0
         if not self.listmode and self.subsets > 1 and self.subsetType == 0:
            print('Subset type 0 is recommended only for list-mode data! The reconstruction will most likely not work!')
         # if self.listmode and self.Nt > 1:
@@ -1045,8 +1119,19 @@ class projectorClass:
                     from .detcoord import getCoordinates
                     x_det, y, z_det = getCoordinates(self)
             else:
-                if self.TOF:
-                    if self.TOFIndices.size != self.SinM.size:
+                # Index-based data is validated against the number of events in _checkIndexBasedInputs (OMEGAErrorCheck)
+                if self.TOF and not self.useIndexBasedReconstruction:
+                    sinList = isinstance(self.SinM, (list, tuple))
+                    tofList = isinstance(self.TOFIndices, (list, tuple))
+                    if sinList != tofList:
+                        raise ValueError('options.SinM and options.TOFIndices must either both be lists (dynamic data, one element per timeframe) or both be arrays!')
+                    if sinList:
+                        if len(self.SinM) != len(self.TOFIndices):
+                            raise ValueError(f'options.TOFIndices has {len(self.TOFIndices)} timeframes, but options.SinM has {len(self.SinM)}!')
+                        for kk in range(len(self.SinM)):
+                            if np.size(self.TOFIndices[kk]) != np.size(self.SinM[kk]):
+                                raise ValueError(f'The number of TOF indices does not correspond to the number of events (timeframe {kk + 1})!')
+                    elif np.size(self.TOFIndices) != np.size(self.SinM):
                         raise ValueError('The number of TOF indices does not correspond to the number of events!')
                 if not self.useIndexBasedReconstruction:
                     if isinstance(self.x, list):
@@ -1442,6 +1527,14 @@ class projectorClass:
         
         if not self.CT and not self.SPECT and self.ndist_side == 0 and self.Ndist % 2 == 0 and not self.use_raw_data:
             raise ValueError("ndist_side cannot be 0 when Ndist is even!")
+        # List-mode data (custom coordinates or index-based) can only be divided into subsets with subset types
+        # 0 (sequential), 1 (every n-th event) and 3 (random). Other types (e.g. the default 8) are sinogram/projection-based
+        # and cannot be used: they are rejected here, before any data is prepared, instead of being silently replaced.
+        # (CT/SPECT are excluded: their projection-image subsets are never list-mode, even if a custom x is supplied.)
+        if self.listmode and not self.CT and not self.SPECT and self.subsets > 1 and self.subsetType not in (0, 1, 3):
+            raise ValueError(f'Subset type {self.subsetType} is not supported with list-mode and index-based data! '
+                             'Only subset types 0 (sequential), 1 (every n-th event) and 3 (random) can be used when subsets > 1. '
+                             'Set options.subsetType to 0, 1 or 3 (or use options.subsets = 1).')
         if self.useIndexBasedReconstruction and self.projector_type not in [1, 2, 3, 4, 11, 14, 12, 13, 21, 22, 23, 24, 31, 32, 33, 34, 41, 42, 43, 44]:
             raise ValueError('Index-based reconstruction only supports projector types 1-4!')
         if self.useIndexBasedReconstruction:
@@ -1457,6 +1550,7 @@ class projectorClass:
                                       'options.x and options.z must contain the coordinates of every detector the indices refer to. '
                                       'The coordinates can be obtained with omegatomo.projector.detcoord.getCoordinates (set options.use_raw_data = True '
                                       'temporarily), see e.g. gate_PET.py or Inveon_PET_main_listmode_example.py.')
+            self._checkIndexBasedInputs()
 
         if self.Nt < 1:
             if isinstance(self.partitions, np.ndarray) and self.partitions.size > 0:
@@ -1919,32 +2013,43 @@ class projectorClass:
             
                 if self.arc_correction and not self.use_raw_data and not self.CT:
                     print('Arc correction ON.')
-                if self.Nt == 1:
-                    if self.CT:
-                        dispi = 'Using STATIC projection data'
-                    else:
-                        dispi = 'Using STATIC sinogram data'
+                # Type of the data: projection images (CT), list-mode events (custom coordinates), index-based list-mode
+                # events (detector indices) or sinograms
+                if self.CT:
+                    dataType = 'projection data'
+                elif self.useIndexBasedReconstruction:
+                    dataType = 'index-based list-mode data'
+                elif self.listmode:
+                    dataType = 'list-mode data'
                 else:
-                    if self.CT:
-                        dispi = 'Using DYNAMIC projection data'
-                    else:
-                        dispi = 'Using DYNAMIC sinogram data'
+                    dataType = 'sinogram data'
+                # self.Nt is only set from SinM/partitions later in addProjector(), i.e. after this check
+                if isinstance(self.SinM, list) and self.SinM:
+                    nTimeSteps = len(self.SinM)
+                elif isinstance(self.partitions, np.ndarray):
+                    nTimeSteps = self.partitions.size if self.partitions.size >= 1 else self.Nt
+                else:
+                    nTimeSteps = self.partitions
+                if nTimeSteps <= 1:
+                    dispi = 'Using STATIC ' + dataType
+                else:
+                    dispi = 'Using DYNAMIC ' + dataType
                 
                 if self.reconstruct_trues:
                     dispi += ' (trues)'
                 elif self.reconstruct_scatter:
-                    dispi += ' (scatter).'
+                    dispi += ' (scatter)'
                 else:
                     dispi += ' (prompts)'
                 
                 if self.sampling > 1:
                     dispi += f' with {self.sampling}x sampling'
                 
-                if self.Nt > 1:
+                if nTimeSteps > 1:
                     if self.sampling > 1:
-                        dispi += f' and {self.Nt} time steps'
+                        dispi += f' and {nTimeSteps} time steps'
                     else:
-                        dispi += f' with {self.Nt} time steps'
+                        dispi += f' with {nTimeSteps} time steps'
                 
                 dispi += '.'
                 print(dispi)

@@ -614,14 +614,19 @@ classdef projectorClass
                 % available. For raw data, three methods are available.
                 obj.param.listmode = false;
             end
+            if obj.param.useIndexBasedReconstruction
+                if ~obj.param.listmode
+                    error('Index-based reconstruction requires options.trIndex and options.axIndex, i.e. the transaxial and axial detector indices of the events (2 x number of events), but they are not set!')
+                end
+                obj.param = checkIndexBasedInputs(obj.param);
+            end
             if (~obj.param.CT && ~obj.param.SPECT) && ((obj.param.subset_type > 7 && obj.param.subsets > 1) || obj.param.subsets == 1 || (obj.param.listmode == 0 && obj.param.subset_type == 0))
                 obj.param.PET = true;
             else
                 obj.param.PET = false;
             end
-            if obj.param.listmode && obj.param.subsets > 1 && obj.param.subset_type ~= 1 && obj.param.subset_type ~= 3 && obj.param.subset_type ~= 0
-                warning('Only subset types 0, 1, and 3 are supported with list-mode/custom detector data! Switching to subset type 0.')
-                obj.param.subset_type = 0;
+            if obj.param.listmode && ~obj.param.CT && ~obj.param.SPECT && obj.param.subsets > 1 && obj.param.subset_type ~= 1 && obj.param.subset_type ~= 3 && obj.param.subset_type ~= 0
+                error(['Subset type ' num2str(obj.param.subset_type) ' is not supported with list-mode and index-based data! Only subset types 0 (sequential), 1 (every n-th event) and 3 (random) can be used when subsets > 1. Set options.subset_type to 0, 1 or 3 (or use options.subsets = 1).'])
             end
             if ~obj.param.listmode && obj.param.subsets > 1 && obj.param.subset_type == 0
                 warning('Subset type 0 is recommended only for list-mode data! The reconstruction will most likely not work!')
