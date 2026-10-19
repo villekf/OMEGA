@@ -132,6 +132,10 @@ else
         x = [x';y'];
     end
 end
+% cType is normally set by projectorClass, default to single when get_coordinates is called without it
+if ~isfield(options, 'cType')
+    options.cType = 'single';
+end
 x = cast(x, options.cType);
 y = cast(y, options.cType);
 z = cast(z, options.cType);
