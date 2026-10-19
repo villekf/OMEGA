@@ -89,7 +89,7 @@ void projectorType123(
 	CONSTANT float* TOFCenter [[buffer(3)]], 
 #endif ///////////////////////// END TOF BINS /////////////////////////
 #ifdef ORTH ///////////////////////// ORTHOGONAL-BASED RAY TRACER /////////////////////////
-	CONSTANT float* V [[buffer(4)]], 
+	const CLGLOBAL float* V [[buffer(4)]], 
 #endif ///////////////////////// END ORTHOGONAL-BASED RAY TRACER /////////////////////////
 #if !defined(CT) && defined(ATN) && !defined(ATNM) ///////////////////////// PET ATTENUATION CORRECTION /////////////////////////
 #ifdef USEIMAGES
@@ -194,7 +194,7 @@ void projectorType123(
 	CONSTANT float* TOFCenter, 
 #endif ///////////////////////// END TOF BINS /////////////////////////
 #ifdef ORTH ///////////////////////// ORTHOGONAL-BASED RAY TRACER /////////////////////////
-	CONSTANT float* V, 
+	const CLGLOBAL float* CLRESTRICT V, 
 #endif ///////////////////////// END ORTHOGONAL-BASED RAY TRACER /////////////////////////
 	const uint d_sizey,
 #if !defined(CT) && defined(ATN) && !defined(ATNM) ///////////////////////// PET ATTENUATION CORRECTION /////////////////////////
@@ -522,6 +522,11 @@ void projectorType123(
 	int tempi = 0, tempj = 0, tempk = 0, ux = 0, uy = 0, uz = 0;
 
 	float L = LENGTH(diff);
+	// Near-parallel-to-an-axis threshold, relative to the ray length. A fixed 1e-6 only catches exactly axis-parallel rays, while
+	// near-axis rays with |diff| of roughly 1e-6 ... 1e-5 times L would otherwise take the general Siddon path, where the grid-line
+	// crossings coincide to within rounding and are tie-broken by the floating-point noise. These rays now use the axis-parallel
+	// branch, whose tieFloor rule is deterministic.
+	const float parTol = FMAX(1e-6f, 4e-7f * L);
 #ifndef TOTLENGTH
 	float LL = FLOAT_ZERO;
 #endif
@@ -557,7 +562,7 @@ void projectorType123(
 #endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	//If the LOR is perpendicular in the y-direction (Siddon cannot be used)
-	if (FABS(diff.z) < 1e-6f && (FABS(diff.y) < 1e-6f || FABS(diff.x) < 1e-6f)) {
+	if (FABS(diff.z) < 1e-6f && (FABS(diff.y) < parTol || FABS(diff.x) < parTol)) {
 
 		//return;
 		tempk = tieFloor((s.z - b.z) / d_d.z);
@@ -577,7 +582,7 @@ void projectorType123(
 // #if defined(LISTMODE)
 		float dT1, dT2;
 // #endif
-		if (FABS(diff.y) < 1e-6f && d.y <= d_bmax.y && d.y >= b.y && s.y <= d_bmax.y && s.y >= b.y) {
+		if (FABS(diff.y) < parTol && d.y <= d_bmax.y && d.y >= b.y && s.y <= d_bmax.y && s.y >= b.y) {
 			apuX1 = 0;
 			apuX2 = d_Nxyz.x - 1;
 			dT1 = d_d.x;
@@ -634,7 +639,7 @@ void projectorType123(
 			XY = true;
 #endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
 		}
-		else if (FABS(diff.x) < 1e-6f && d.x <= d_bmax.x && d.x >= b.x && s.x <= d_bmax.x && s.x >= b.x) {
+		else if (FABS(diff.x) < parTol && d.x <= d_bmax.x && d.x >= b.x && s.x <= d_bmax.x && s.x >= b.x) {
 			apuX1 = 0;
 			apuX2 = d_Nxyz.y - 1;
 			dT1 = d_d.y;
@@ -926,7 +931,7 @@ void projectorType123(
 			skip = siddon_pre_loop_2D(b.x, b.y, diff.x, diff.y, d_bmax.x, d_bmax.y, d_d.x, d_d.y, d_Nxyz.x, d_Nxyz.y, &tempi, &tempj, &txu, &tyu, &Np, TYPE,
 				s.y, s.x, d.y, d.x, &tc, &ux, &uy, &tx0, &ty0, &XY, &tMax);
 		}
-		else if (FABS(diff.y) < 1e-6f) {
+		else if (FABS(diff.y) < parTol) {
 			// return;
 			tempj = perpendicular_start(b.y, d.y, d_d.y, d_Nxyz.y);
 			skip = siddon_pre_loop_2D(b.x, b.z, diff.x, diff.z, d_bmax.x, d_bmax.z, d_d.x, d_d.z, d_Nxyz.x, d_Nxyz.z, &tempi, &tempk, &txu, &tzu, &Np, TYPE,
@@ -935,7 +940,7 @@ void projectorType123(
 			if (d.y > d_bmax.y || d.y < b.y)
 				skip = true;
 		}
-		else if (FABS(diff.x) < 1e-6f) {
+		else if (FABS(diff.x) < parTol) {
 			// return;
 			tempi = perpendicular_start(b.x, d.x, d_d.x, d_Nxyz.x);
 			skip = siddon_pre_loop_2D(b.y, b.z, diff.y, diff.z, d_bmax.y, d_bmax.z, d_d.y, d_d.z, d_Nxyz.y, d_Nxyz.z, &tempj, &tempk, &tyu, &tzu, &Np, TYPE,

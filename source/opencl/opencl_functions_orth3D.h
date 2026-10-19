@@ -92,7 +92,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
     const FLOAT3 s,
     const FLOAT3 l,
 	const FLOAT3 diff, 
-    const FLOAT orth_ray_length, const FLOAT orth_ray_length_inv, const FLOAT3 center, const FLOAT bmin, const FLOAT bmax, const FLOAT Vmax, CONSTANT float* V, const bool XY, PTR_THR float *ax, const FLOAT temp, 
+    const FLOAT orth_ray_length, const FLOAT orth_ray_length_inv, const FLOAT3 center, const FLOAT bmin, const FLOAT bmax, const FLOAT Vmax, const CLGLOBAL float* CLRESTRICT V, const bool XY, PTR_THR float *ax, const FLOAT temp, 
 #if defined(FP)
 	IMTYPE d_OSEM
 #else
@@ -197,7 +197,7 @@ DEVICE int orthDistance3D(const int tempi,
     const FLOAT b2, const FLOAT d2, const FLOAT bz, const FLOAT dz, const FLOAT temp, int temp2, const int tempk, 
 	const uint d_Nxy, const FLOAT orth_ray_length,
 	const uint d_N1, const uint d_N2, const uint d_N3, const uint d_Nz, const FLOAT bmin, 
-	const FLOAT bmax, const FLOAT Vmax, CONSTANT float* V, const bool XY, PTR_THR float *ax, const bool preStep, PTR_THR int *k, const int ku, 
+	const FLOAT bmax, const FLOAT Vmax, const CLGLOBAL float* CLRESTRICT V, const bool XY, PTR_THR float *ax, const bool preStep, PTR_THR int *k, const int ku, 
 #if defined(FP)
 	IMTYPE d_OSEM
 #else
