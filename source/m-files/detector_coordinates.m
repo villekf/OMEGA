@@ -29,6 +29,9 @@ function [varargout] = detector_coordinates(options)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+% offangle for which the pseudo-detector block size warning has been given
+% (the function is called several times per run)
+persistent offangleWarned
 if nargout > 4
     error('Too many output arguments')
 end
@@ -132,6 +135,16 @@ if options.flip_image
 end
 % Rotate the image if desired
 if options.offangle ~= 0
+    if options.det_w_pseudo > options.det_per_ring
+        % The pseudo-inclusive arrays are rotated together with their pseudo
+        % gaps. Unless the shift is a whole number of pseudo-inclusive
+        % blocks, the gaps no longer match the pseudo slots of the data.
+        blockSizePseudo = round(options.det_w_pseudo / blocks_per_ring);
+        if blockSizePseudo > 0 && mod(round(options.offangle), blockSizePseudo) ~= 0 && ~isequal(offangleWarned, options.offangle)
+            offangleWarned = options.offangle;
+            warning('offangle (%g) is not a multiple of the block size including pseudo detectors (%d). The detector coordinates are rotated together with the pseudo-detector gaps, so the gaps no longer align with the measured data and the geometry is distorted. Use a multiple of %d for exact results.', options.offangle, blockSizePseudo, blockSizePseudo)
+        end
+    end
     if options.nLayers > 1
         x1 = xp(1 : koko,:);
         x1 = circshift(x1, round(options.offangle));
