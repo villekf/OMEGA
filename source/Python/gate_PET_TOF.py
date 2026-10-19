@@ -584,7 +584,7 @@ options.TOF_bins_used = options.TOF_bins
 ### Name of current datafile/examination
 # This is used to name the saved measurement data and also load it in
 # future sessions.
-options.name = 'cylpet_example'
+options.name = 'cylpet_example_new'
 
 ### Folder for the data (.root ROOT) files
 # If no files are located in the path provided below, then the current
