@@ -1126,12 +1126,9 @@ class ProjectorClass {
 			ADD_OPT(options, "-DSCATTER");
 		if (inputScalars.randoms_correction == 1u)
 			ADD_OPT(options, "-DRANDOMS");
-		if (inputScalars.nLayers > 1U) {
-			if (inputScalars.listmode > 0 && inputScalars.indexBased)
-				ADD_OPT_INT(options, "-DNLAYERS", inputScalars.nLayers);
-			else
-				ADD_OPT_INT(options, "-DNLAYERS", inputScalars.nProjections / (inputScalars.nLayers * inputScalars.nLayers));
-		}
+		// The number of layers. For sinograms the layer combination of each sinogram is stored in z
+		if (inputScalars.nLayers > 1U)
+			ADD_OPT_INT(options, "-DNLAYERS", inputScalars.nLayers);
 		if (inputScalars.TOF) {
 			ADD_OPT(options, "-DTOF");
 		}
@@ -3763,6 +3760,7 @@ public:
 						const uint32_t zTimestep = inputScalars.listmode > 0 ? 0U : timestep;
 						const uint32_t zSubset = inputScalars.listmode > 0 ? 0U : kk;
 						if (inputScalars.PET && inputScalars.listmode == 0) {
+							// Multiple layers: the layer combination is stored as the third value
 							if (inputScalars.nLayers > 1)
 								ALLOC_BUFFER(d_z[timestep][kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 3);
 							else
@@ -4052,9 +4050,8 @@ public:
 						const uint32_t zTimestep = inputScalars.listmode > 0 ? 0U : timestep;
 						const uint32_t zSubset = inputScalars.listmode > 0 ? 0U : kk;
 						if (inputScalars.PET && inputScalars.listmode == 0) {
-							int64_t kerroin = 2;
-							if (inputScalars.nLayers > 1)
-								kerroin = 3;
+							// Source and detector z per sinogram, with multiple layers also the layer combination as the third "dimension"
+							const int64_t kerroin = inputScalars.nLayers > 1 ? 3 : 2;
 							WRITE_BUFFER(d_z[timestep][kk], sizeof(float) * length[kk] * kerroin, &z_det[pituus[kk] * kerroin]);
 							memSize += (sizeof(float) * length[kk] * kerroin);
 						}
@@ -5469,7 +5466,8 @@ public:
 						inputScalars.nColsD + erotusSens[1], inputScalars.size_of_x / 6, local);
 				}
 				else {
-					const size_t sensitivityDepth = static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.nLayers);
+					// Ring pairs for every layer combination.
+					const size_t sensitivityDepth = static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.nLayers) * static_cast<size_t>(inputScalars.nLayers);
 					SET_LAUNCH_RANGE3(global, static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0],
 						static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], sensitivityDepth, local);
 				}
@@ -6011,7 +6009,7 @@ public:
 					else {
 						SET_LAUNCH_RANGE3(global, static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0],
 							static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1],
-							static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings), localBP);
+							static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.nLayers) * static_cast<size_t>(inputScalars.nLayers), localBP);
 					}
 				}
 				else {

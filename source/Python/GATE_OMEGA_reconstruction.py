@@ -3,11 +3,14 @@
 """
 This example file can be used for seamless GATE --> OMEGA reconstruction
 The GATE simulation is performed first where the output data is stored as
-ROOT files. The offline coincidence sorter is then used to create coincidences.
+ROOT files. GATE's online coincidence sorter (CoincidenceSorterActor) is used
+to create the coincidences during the simulation, i.e. no separate sorting step
+is needed (an offline sorter alternative is included as a comment).
 A sinogram is then created by OMEGA from the simulated coincidences and then 
 reconstructed.
 This example uses the Philips Vereos PET scanner, but any cylindrical PET
 scanner can be used here.
+Requires GATE (opengate) 10.1.1 or newer.
 """
 import opengate as gate
 import opengate.contrib.pet.philipsvereos as pet_vereos
@@ -47,8 +50,8 @@ if __name__ == "__main__":
     world.material = "G4_AIR"
 
     # add a PET VEREOS
-	# You'll need a working material database here, or some other workaround
-    sim.volume_manager.add_material_database("GateMaterials_pet.db")
+    # create_mat=True defines the required materials (LYSO, ABS, etc.), no
+    # external material database is needed
     pet = pet_vereos.add_pet(sim, "pet", create_housing=False, create_mat=True)
             
     crystal = sim.volume_manager.volumes[f"{pet.name}_crystal"]
@@ -74,7 +77,7 @@ if __name__ == "__main__":
     # Add to rod sources, no phantom
     source = sim.add_source('GenericSource', 'mysource')
     source.particle = "back_to_back"
-    source.energy.type == "mono"
+    source.energy.type = "mono"
     source.energy.mono = 511 * keV
     source.activity = 5 * MBq / sim.number_of_threads
     source.position.type = "cylinder"
@@ -85,7 +88,7 @@ if __name__ == "__main__":
 
     source2 = sim.add_source('GenericSource', 'mysource2')
     source2.particle = "back_to_back"
-    source2.energy.type == "mono"
+    source2.energy.type = "mono"
     source2.energy.mono = 511 * keV
     source2.activity = 10 * MBq / sim.number_of_threads
     source2.position.type = "cylinder"
@@ -110,7 +113,11 @@ if __name__ == "__main__":
 
     # singles collection
     sc = sim.add_actor("DigitizerAdderActor", "Singles")
-    sc.input_digi_collection = "Hits"
+    sc.attached_to = hc.attached_to
+    sc.authorize_repeated_volumes = True
+    sc.input_digi_collection = hc.name
+    # Hits are summed separately for each crystal
+    sc.group_volume = crystal.name
     # sc.policy = "EnergyWinnerPosition"
     sc.policy = "EnergyWeightedCentroidPosition"
     sc.root_output.write_to_disk = False
@@ -118,12 +125,32 @@ if __name__ == "__main__":
     # Energy windowing
     ew = sim.add_actor("DigitizerEnergyWindowsActor", "EnergyWindows")
     ew.attached_to = hc.attached_to
-    ew.input_digi_collection = "Singles"
+    ew.input_digi_collection = sc.name
     ew.authorize_repeated_volumes = True
     ew.channels = [{"name": ew.name, "min": 450 * keV, "max": 613 * keV}]
-    ew.attributes = ["EventID", "TotalEnergyDeposit", "PreStepUniqueVolumeID", "GlobalTime"]
+    # PostPosition is needed by the coincidence sorter
+    ew.attributes = ["EventID", "PostPosition", "TotalEnergyDeposit", "PreStepUniqueVolumeID", "GlobalTime"]
     ew.output_filename = sim.output_dir + 'PETVereosOMEGA.root'
     ew.root_output.write_to_disk = True
+    
+    # Coincidence sorter (online)
+    # The coincidences are written to the same ROOT file as the singles
+    # (tree "Coincidences")
+    ns = gate.g4_units.nanosecond
+    cc = sim.add_actor("CoincidenceSorterActor", "Coincidences")
+    cc.input_digi_collection = ew.name
+    # Coincidence window
+    cc.window = 2 * ns
+    # What to do when more than two singles are within the same window
+    # "RemoveMultiples", "TakeAllGoods", "TakeWinnerOfGoods", "TakeIfOnlyOneGood",
+    # "TakeWinnerIfIsGood" or "TakeWinnerIfAllAreGoods"
+    cc.multiples_policy = "TakeWinnerOfGoods"
+    # Minimum transaxial distance between the two singles
+    cc.min_transaxial_distance = 128 * mm
+    cc.transaxial_plane = "XY"
+    # Maximum axial distance between the two singles
+    cc.max_axial_distance = 164 * mm
+    cc.output_filename = ew.output_filename
     
     sim.run_timing_intervals = [[0 * sec, 30 * sec]]
     
@@ -131,41 +158,33 @@ if __name__ == "__main__":
     stats = sim.get_actor("Stats")
     print(stats)
     
-    import os, uproot
+    import uproot
     import numpy as np
-    from opengate.actors.coincidences import coincidences_sorter
-    # Remove old coincidences file if it exists
-    coincidenceFile = sim.output_dir + "coincidences.root"
-    if os.path.exists(coincidenceFile):
-        os.remove(coincidenceFile)
     
-    # Create coincidences using GATE's offline sorter
-    root_file = uproot.open(sim.output_dir + "PETVereosOMEGA.root")
-    singles_tree = root_file["EnergyWindows"]
-    ns = gate.g4_units.nanosecond
-    time_window = 2 * ns
-    # policy = "takeAllGoods"
-    policy = "takeWinnerOfGoods"
-    # policy = "removeMultiples"
-    mm = gate.g4_units.mm
-    transaxial_plane = "xy"
-    min_transaxial_distance = 128 * mm
-    max_axial_distance = 164 * mm
-    
-    # Apply coincidence sorter
-    coincidences = coincidences_sorter(
-        singles_tree,
-        time_window,
-        policy,
-        min_transaxial_distance,
-        transaxial_plane,
-        max_axial_distance,
-        chunk_size=5000000,
-        return_type='dict',
-        output_file_path= sim.output_dir + 'coincidences.root',
-        # output_file_path=None,
-        output_file_format='root'
-    )
+    # Alternative: Create the coincidences with GATE's offline sorter instead of
+    # the online CoincidenceSorterActor above (remove the CoincidenceSorterActor
+    # from the simulation if you use this)
+    # import os
+    # from opengate.actors.coincidences import coincidences_sorter
+    # coincidenceFile = sim.output_dir + "coincidences.root"
+    # # Remove old coincidences file if it exists
+    # if os.path.exists(coincidenceFile):
+    #     os.remove(coincidenceFile)
+    # root_file = uproot.open(sim.output_dir + "PETVereosOMEGA.root")
+    # singles_tree = root_file["EnergyWindows"]
+    # coincidences_sorter(
+    #     singles_tree,
+    #     2 * ns,                  # time window
+    #     "TakeWinnerOfGoods",     # policy
+    #     128 * mm,                # min transaxial distance
+    #     "xy",                    # transaxial plane
+    #     164 * mm,                # max axial distance
+    #     chunk_size=5000000,
+    #     return_type='dict',
+    #     output_file_path=coincidenceFile,
+    #     output_file_format='root'
+    # )
+    # The tree is then root_file["Coincidences"] in coincidences.root
     
     """
     GATE CODE ENDS
@@ -176,9 +195,14 @@ if __name__ == "__main__":
     
     OMEGA CODE BEGINS
     """
-    # Open the coincidence-file
-    root_file = uproot.open(sim.output_dir + "coincidences.root")
+    # Open the coincidence-file (same file as the singles)
+    root_file = uproot.open(sim.output_dir + "PETVereosOMEGA.root")
     coincidences = root_file["Coincidences"]
+    # The tree contains the following attributes for both singles of each
+    # coincidence (suffix 1 and 2): EventID, GlobalTime, PostPosition_X/Y/Z,
+    # TotalEnergyDeposit and PreStepUniqueVolumeID.
+    # EventID1 != EventID2 identifies random coincidences and the difference
+    # GlobalTime1 - GlobalTime2 can be used for time-of-flight (TOF).
     
     # Load necessary submodules
     from omegatomo.projector import proj
@@ -194,7 +218,7 @@ if __name__ == "__main__":
     # modules in axial direction
     options.blocks_per_ring = nBlocks
     # Number of crystals in axial direction
-    options.cryst_per_block_z = nCrystalAx * nDieAx
+    options.cryst_per_block_axial = nCrystalAx * nDieAx
     # Number of stacks in axial direction
     options.linear_multip = nStacksAx
     # number of crystals in transaxial direction
@@ -208,7 +232,7 @@ if __name__ == "__main__":
     # Number of angles (tangential positions) in sinogram
     options.Nang = detPerRing // 2
     # Number of crystal rings
-    options.rings = options.cryst_per_block_z * options.linear_multip
+    options.rings = options.cryst_per_block_axial * options.linear_multip
     # Maximum ring difference
     options.ring_difference = options.rings - 1
     
@@ -286,7 +310,7 @@ if __name__ == "__main__":
     
     ### The size of the gap(s) between stacks (mm)
     gap = np.abs(sim.volume_manager.volumes[f"{pet.name}_stack"].translation[0][2]-sim.volume_manager.volumes[f"{pet.name}_stack"].translation[1][2])
-    options.ringGaps = np.tile(gap - options.cryst_per_block_z * options.cr_pz, options.linear_multip - 1)
+    options.ringGaps = np.tile(gap - options.cryst_per_block_axial * options.cr_pz, options.linear_multip - 1)
     
     ### Transaxial FOV size (mm), this is the length of the x (vertical/row) side
     # of the FOV (same is used for the column direction)
@@ -316,7 +340,14 @@ if __name__ == "__main__":
     # This current setting is for systems whose detector blocks start from the
     # right hand side when viewing the device from front.
     # Positive values perform the rotation in clockwise direction
-    options.offangle = 0
+    # NOTE: In the GATE Philips Vereos model the first module is at 190 degrees,
+    # i.e. with offangle = 0 the image would be rotated by 170 degrees with
+    # respect to the GATE coordinate system. The rotation is given in detector
+    # units, i.e. 170 / 360 * 576 detectors = 272. Positive values rotate in
+    # clockwise direction, so offangle = 272 aligns the image with the GATE
+    # frame (image row direction = GATE x, column direction = GATE y).
+    # For other scanners/geometries this value has to be changed accordingly.
+    options.offangle = 272
     
     ### Show status messages
     # These are e.g. time elapsed on various functions and what steps have been

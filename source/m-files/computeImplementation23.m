@@ -143,8 +143,8 @@ elseif options.listmode > 0 && options.compute_sensitivity_image && isfield(opti
     x = options.xSens;
     z_det = options.zSens;
 	if ~options.SPECT
-		options.det_per_ring = numel(x) / 2;
-		options.rings = numel(z_det);
+		options.det_per_ring = numel(x) / 2 / options.nLayers; % x and z contain the coordinates of all layers
+		options.rings = numel(z_det) / options.nLayers;
 	end
 elseif options.listmode > 0 && options.compute_sensitivity_image && (options.SPECT || ~options.useIndexBasedReconstruction)
 	if ~options.SPECT

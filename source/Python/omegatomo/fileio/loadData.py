@@ -50,7 +50,7 @@ def _loadRootLibrary():
         u32, ctypes.c_uint32, u32, ctypes.POINTER(ctypes.c_uint64), ctypes.c_uint32, u32, ctypes.c_uint32, ctypes.c_uint32, # cryst_per_block_z, transaxial_multip, rings, sinoSize, Ndist, Nang, ringDifference, span
         u32, ctypes.c_int64, ctypes.c_uint64, ctypes.c_int32, # seg, Nt, TOFSize, nDistSide
         u16, u16, u16, u16, u16, # Sino, SinoT, SinoC, SinoR, SinoD
-        u32, ctypes.c_int32, ctypes.c_double, ctypes.c_double, ctypes.c_bool, ctypes.c_int32, # detWPseudo, nPseudos, binSize, FWHM, verbose, nLayers
+        u32, ctypes.c_int32, ctypes.c_double, ctypes.c_double, ctypes.c_bool, ctypes.c_int32, # detWPseudo, nPseudos, binSize, TOFNoiseSigma, verbose, nLayers
         ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float, # dx, dy, dz, bx, by, bz
         ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_bool, ctypes.c_bool, # Nx, Ny, Nz, dualLayerSubmodule, indexBased
         u16, ctypes.POINTER(ctypes.c_uint8)] # tIndex, TOFIndex
@@ -123,9 +123,12 @@ def loadROOT(options, store_coordinates = False):
 
 
     if TOF:
-        FWHM = options.TOF_FWHM / (2. * math.sqrt(2. * math.log(2.)))
+        # Standard deviation (s) of the Gaussian noise added to the time differences. A negative TOF_noise_FWHM (the default)
+        # uses TOF_FWHM, zero means that no noise is added
+        TOFNoiseFWHM = options.TOF_noise_FWHM if options.TOF_noise_FWHM >= 0. else options.TOF_FWHM
+        TOFNoiseSigma = TOFNoiseFWHM / (2. * math.sqrt(2. * math.log(2.)))
     else:
-        FWHM = 0.
+        TOFNoiseSigma = 0.
 
     if isinstance(options.pseudot, np.ndarray):
         if options.pseudot.size == 0:
@@ -291,7 +294,7 @@ def loadROOT(options, store_coordinates = False):
                        int(options.transaxial_multip), _ptr(rings, ctypes.c_uint32), _ptr(sinoSizeArr, ctypes.c_uint64), Ndist, _ptr(Nang, ctypes.c_uint32),
                        int(options.ring_difference), int(options.span), _ptr(seg, ctypes.c_uint32), Nt, TOFSize, int(options.ndist_side),
                        _ptr(Sino, ctypes.c_uint16), _ptr(SinoT, ctypes.c_uint16), _ptr(SinoC, ctypes.c_uint16), _ptr(SinoR, ctypes.c_uint16), _ptr(SinoD, ctypes.c_uint16),
-                       _ptr(det_w_pseudo, ctypes.c_uint32), int(nPseudos), float(options.TOF_width), float(FWHM), bool(options.verbose), nLayers, dx, dy, dz, bx, by, bz,
+                       _ptr(det_w_pseudo, ctypes.c_uint32), int(nPseudos), float(options.TOF_width), float(TOFNoiseSigma), bool(options.verbose), nLayers, dx, dy, dz, bx, by, bz,
                        int(Nx), int(Ny), int(Nz), bool(options.dualLayerSubmodule), indexBased, _ptr(tIndex, ctypes.c_uint16), _ptr(TOFIndex, ctypes.c_uint8))
 
         # Remove the events that were skipped (outside the time window or TOF range), they are left as zeros

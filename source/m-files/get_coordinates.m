@@ -80,6 +80,9 @@ else
             x = [x1;x2;x3;x4];
             y = [y1;y2;y3;y4];
             z = [z1;z2;z3;z4];
+            % The layer combination (block index) of each sinogram is stored as the third value of z so that it follows
+            % the sinogram when the subsets are formed
+            z = [z, [zeros(size(z1,1),1); ones(size(z2,1),1); 2 * ones(size(z3,1),1); 3 * ones(size(z4,1),1)]];
         else
             [x, y] = sinogram_coordinates_2D(options, xp, yp);
             z = sinogram_coordinates_3D(options);
@@ -101,7 +104,13 @@ else
             options.offangle = options.offangle / options.det_w_pseudo;
             options.offangle = options.offangle * options.det_per_ring;
         end
-        [x, y] = detector_coordinates(options);
+        if options.nLayers > 1
+            % Multi-layer: one block of det_w_pseudo detectors per layer (the loader's layerID * det_w_pseudo offset)
+            [~, ~, xp, yp] = detector_coordinates(options);
+            [x, y] = rawLayerDetectors(options, xp, yp);
+        else
+            [x, y] = detector_coordinates(options);
+        end
         if options.sampling_raw > 1 && ~options.precompute_lor
             [x, y, options] = increaseSampling(options, x, y, interpolateSinogram);
         end
@@ -111,9 +120,74 @@ else
         if sum(pseudot) > 0
             z(pseudot) = [];
         end
+        % Gaps between the axial blocks
+        if isfield(options, 'ringGaps') && numel(options.ringGaps) > 0 && sum(options.ringGaps) > 0
+            gaps = repelem([0;cumsum(options.ringGaps(:))], options.cryst_per_block_axial(1), 1);
+            z = z + gaps(1:numel(z)) - sum(options.ringGaps) / 2;
+        end
+        % Multi-layer: the rings of layer l are located at an offset of l * rings
+        if options.nLayers > 1
+            z = rawLayerRings(options, z, rings);
+        end
         x = [x';y'];
     end
 end
 x = cast(x, options.cType);
 y = cast(y, options.cType);
 z = cast(z, options.cType);
+
+function [x, y] = rawLayerDetectors(options, xp, yp)
+% Raw/index-based detector coordinates of a multi-layer scanner. The coordinates of layer l are stored in a block
+% of det_w_pseudo entries starting at l * det_w_pseudo, i.e. the same offset the list-mode loader adds to the
+% transaxial detector index of a layer. A block contains the real detectors of the layer in the order of the
+% loader's detector index, any padding (Inf) is moved to the end of the block
+S = options.det_w_pseudo(1);
+nLayers = options.nLayers;
+if numel(xp) < nLayers * S
+    error('Raw/index-based multi-layer detector coordinates are not supported with pseudo detectors!')
+end
+x = Inf(nLayers * S, 1, class(xp));
+y = Inf(nLayers * S, 1, class(yp));
+for ll = 1 : nLayers
+    if ll < nLayers
+        ind = (ll - 1) * S + 1 : ll * S;
+    else
+        ind = (ll - 1) * S + 1 : numel(xp);
+    end
+    valid = isfinite(xp(ind));
+    xl = xp(ind);
+    yl = yp(ind);
+    n = nnz(valid);
+    if n > S
+        error('Too many detectors in layer %d!', ll)
+    end
+    x((ll - 1) * S + (1 : n)) = xl(valid);
+    y((ll - 1) * S + (1 : n)) = yl(valid);
+end
+
+function zL = rawLayerRings(options, z, rings)
+% Raw/index-based ring coordinates of a multi-layer scanner. The coordinates of layer l are stored in a block of
+% rings(1) entries starting at l * rings(1), i.e. the same offset the list-mode loader adds to the ring number of
+% a layer. With layers that have a different number of axial crystals (cryst_per_block_axial) the rings of each
+% layer are obtained from sinogram_coordinates_3D (which includes the gaps between the modules) and the real
+% rings are followed by Inf padding up to rings(1). Otherwise all layers have the same axial positions
+nLayers = options.nLayers;
+if numel(options.cryst_per_block_axial) > 1 && options.cryst_per_block_axial(1) ~= options.cryst_per_block_axial(2)
+    S = rings(1);
+    % The first loppu rows of the second column of the span 1 coordinates are the axial positions of the rings of
+    % the second LOR end (the layer given by the second element of layer)
+    opts = options;
+    opts.span = 1;
+    zL = Inf(nLayers * S, 1);
+    for ll = 1 : nLayers
+        zl = sinogram_coordinates_3D(opts, [ll, ll]);
+        zl = zl(1 : S, 2);
+        zl = zl(isfinite(zl));
+        if numel(zl) > S
+            error('Too many rings in layer %d!', ll)
+        end
+        zL((ll - 1) * S + (1 : numel(zl))) = zl;
+    end
+else
+    zL = repmat(z, nLayers, 1);
+end

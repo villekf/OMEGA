@@ -908,6 +908,33 @@ def _frame_measurement_bounds(options, ff):
     return start, stop, frame_nProjections
 
 
+def _attenuationIsImage(options):
+    """
+    True if options.vaimennus is an attenuation image although the
+    measurement-domain attenuation (options.CT_attenuation = False) was
+    selected. Port of the fallback in parseInputData.m (the attenuation block
+    of the subset division):
+
+        if numel(options.vaimennus) ~= options.Nx(1) * options.Ny(1) * options.Nz(1) || (options.nRowsD == options.Nx(1) && options.nColsD == options.Ny(1))
+            (the attenuation data is in the measurement space: divide it into the subsets)
+        else
+            options.CT_attenuation = true;
+        end
+
+    i.e. data that has exactly the size of the reconstructed image is an image,
+    unless the measurement data happens to have the same transaxial size as the
+    image (then the size cannot tell the two apart and the measurements win).
+    """
+    if not options.attenuation_correction or options.CT_attenuation or options.CT or options.SPECT:
+        return False
+    nx = int(np.asarray(options.Nx).ravel()[0])
+    ny = int(np.asarray(options.Ny).ravel()[0])
+    nz = int(np.asarray(options.Nz).ravel()[0])
+    if np.size(options.vaimennus) != nx * ny * nz:
+        return False
+    return not (int(options.nRowsD) == nx and int(options.nColsD) == ny)
+
+
 def parseInputs(options, mDataFound = False):
     """
     This function parses the input measurement data such that the elements
@@ -929,6 +956,16 @@ def parseInputs(options, mDataFound = False):
 
     """
     normalization_indexed_stack = bool(options.SPECT and int(options.normZ) == int(options.nHeads))
+    if _attenuationIsImage(options):
+        # MATLAB does this inside its subset branch only (parseInputData.m), here it is done for
+        # every case, otherwise the image would be treated as measurement-domain data (and a
+        # subset division would index it out of bounds). Note that, as in MATLAB, the image has
+        # not been resized or rotated/flipped (rotateAttImage, flipAttImageXY/Z) by loadCorrections,
+        # since that is done only when CT_attenuation is set before the data is loaded.
+        print('The attenuation data has the size of the reconstructed image. Using image-based attenuation correction (CT_attenuation = True).')
+        options.CT_attenuation = True
+        # The internal mirror used by the library interface (see addProjector())
+        options.CTAttenuation = True
     single_frame_list = (
         options.Nt <= 1 and isinstance(options.SinM, list)
     )
@@ -1274,8 +1311,12 @@ def parseInputs(options, mDataFound = False):
                 options.vaimennus = options.vaimennus.ravel(order='F')
                 options.vaimennus = options.vaimennus[options.index]
         if options.scatter_correction and not options.corrections_during_reconstruction:
+            if not options.precorrect:
+                print('Warning: Scatter correction is disabled. options.corrections_during_reconstruction is False and options.precorrect is False, i.e. the scatter is neither applied during the reconstruction nor subtracted from the measurement data. Set options.corrections_during_reconstruction = True to apply it.')
             options.scatter_correction = False
         if options.randoms_correction and not options.corrections_during_reconstruction:
+            if not options.precorrect:
+                print('Warning: Randoms correction is disabled. options.corrections_during_reconstruction is False and options.precorrect is False, i.e. the randoms are neither applied during the reconstruction nor subtracted from the measurement data. Set options.corrections_during_reconstruction = True to apply them.')
             options.randoms_correction = False
         if options.useMaskFP and options.maskFPZ > 1 and options.maskFPZ != options.nHeads and options.subsetType >= 8:
             options.maskFP = options.maskFP[:,:,options.index]

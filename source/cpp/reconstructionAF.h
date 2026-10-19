@@ -868,7 +868,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                         else {
                             m_size = static_cast<uint64_t>(inputScalars.det_per_ring) * inputScalars.det_per_ring * inputScalars.rings * inputScalars.rings;
                             if (inputScalars.nLayers > 1)
-                                m_size *= inputScalars.nLayers;
+                                m_size *= static_cast<uint64_t>(inputScalars.nLayers) * inputScalars.nLayers;
                             oneInput = af::constant(0.f, 1, 1);
                         }
                         if (DEBUG) {

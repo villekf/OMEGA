@@ -400,7 +400,7 @@ options.rotateAttImage = 1;
 options.flipAttImageXY = false;
 
 %%% Flip the attenuation image in the axial direction before reconstruction
-optionas.flipAttImageZ = false;
+options.flipAttImageZ = false;
 
 %%% Attenuation image/sinogram data file
 % Specify the path (if not in MATLAB path) and filename.

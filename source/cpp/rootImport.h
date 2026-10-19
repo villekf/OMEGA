@@ -252,7 +252,7 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 	bool randoms_correction, M* coord, M* Dcoord, bool store_coordinates, const bool dynamic, const uint32_t* cryst_per_block_z,
 	const uint32_t transaxial_multip, const uint32_t* rings, const uint64_t* sinoSize, const uint32_t Ndist, const uint32_t* Nang, const uint32_t ringDifference, const uint32_t span, 
 	const H* seg, const int64_t Nt, const uint64_t TOFSize, const int32_t nDistSide, T* Sino, T* SinoT, T* SinoC, T* SinoR, T* SinoD, 
-	const uint32_t* detWPseudo, const int32_t nPseudos, const double binSize, const double FWHM, const bool verbose, const int32_t nLayers, const float dx, const float dy, const float dz,
+	const uint32_t* detWPseudo, const int32_t nPseudos, const double binSize, const double TOFNoiseSigma, const bool verbose, const int32_t nLayers, const float dx, const float dy, const float dz,
 	const float bx, const float by, const float bz, const int64_t Nx, const int64_t Ny, const int64_t Nz, const bool dualLayerSubmodule, const int64_t imDim, const bool indexBased, T* tIndex, 
 	uint8_t* TOFIndex, const D mPtr) {
 
@@ -262,7 +262,7 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 	bool scatterTrues[] = {true, true, true, true};
 
 	std::default_random_engine generator;
-	std::normal_distribution<double> distribution(0.0, FWHM + 1e-20);
+	std::normal_distribution<double> distribution(0.0, TOFNoiseSigma + 1e-20);
 	const uint64_t nBins = TOFSize / sinoSize[0];
 	const bool TOF = nBins > 1;
 	// Custom time window in a static (non-dynamic) examination
@@ -687,7 +687,7 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 					double timeDif = (time2 - time1);
 					if (ring_pos2 > ring_pos1)
 						timeDif = -timeDif;
-					if (FWHM > 0.)
+					if (TOFNoiseSigma > 0.)
 						timeDif += distribution(generator);
 					if (std::abs(timeDif) > ((binSize / 2.) * static_cast<double>(nBins)))
 						continue;

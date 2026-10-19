@@ -48,7 +48,7 @@ DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 	uint32NDArray detWPseudoP = prhs(36).uint32_array_value();
 	const int32_t nPseudos = prhs(37).int32_scalar_value();
 	const double binSize = prhs(38).scalar_value();
-	const double FWHM = prhs(39).scalar_value();
+	const double TOFNoiseSigma = prhs(39).scalar_value();
 	const float dx = prhs(40).float_value();
 	const float dy = prhs(41).float_value();
 	const float dz = prhs(42).float_value();
@@ -186,7 +186,7 @@ DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 
 	histogram(tmp.c_str(), tPoints_p, alku, loppu, source, linear_multp, cryst_per_block, blocks_per_ring, det_per_ring, S_p, SC_p, RA_p, trIndexP, axIndexP, DtrIndexP, DaxIndexP, obtain_trues, store_scatter, store_randoms,
 		scatter_components_p, randoms_correction, coordP, DcoordP, store_coordinates, dynamic, cryst_per_block_z, transaxial_multip, rings, sinoSize, Ndist, Nang, ringDifference, span,
-		seg_p, Nt, TOFSize, nDistSide, Sino, SinoT, SinoC, SinoR, SinoD, detWPseudo, nPseudos, binSize, FWHM, verbose, nLayers, dx, dy, dz, bx, by, bz, Nx, Ny, Nz, dualLayerSubmodule, imDim, indexBased, tIndex_p, 
+		seg_p, Nt, TOFSize, nDistSide, Sino, SinoT, SinoC, SinoR, SinoD, detWPseudo, nPseudos, binSize, TOFNoiseSigma, verbose, nLayers, dx, dy, dz, bx, by, bz, Nx, Ny, Nz, dualLayerSubmodule, imDim, indexBased, tIndex_p, 
 		TOFIndexP, matlabPtr);
 
 

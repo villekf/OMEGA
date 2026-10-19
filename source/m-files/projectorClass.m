@@ -1144,9 +1144,10 @@ classdef projectorClass
             if obj.param.partitions > 1
                 obj.timestep = 1;
             end
+            % Subset type 0 with sinogram/projection image data consists of contiguous blocks of whole images
             if obj.param.listmode
                 kerroin = 1;
-            elseif obj.param.subset_type >= 8 || obj.param.subsets == 1
+            elseif obj.param.subset_type >= 8 || obj.param.subsets == 1 || obj.param.subset_type == 0
                 kerroin = obj.param.nColsD * obj.param.nRowsD;
             else
                 kerroin = 1;

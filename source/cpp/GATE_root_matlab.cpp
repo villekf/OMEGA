@@ -99,7 +99,7 @@ public:
 		const matlab::data::TypedArray<uint32_t> detWPseudoP = std::move(inputs[ind++]);
 		const int32_t nPseudos = inputs[ind++][0];
 		const double binSize = inputs[ind++][0];
-		const double FWHM = inputs[ind++][0];
+		const double TOFNoiseSigma = inputs[ind++][0];
 		const float dx = inputs[ind++][0];
 		const float dy = inputs[ind++][0];
 		const float dz = inputs[ind++][0];
@@ -225,7 +225,7 @@ public:
 
 		histogram(argv, tPointer, alku, loppu, source, linear_multp, cryst_per_block, blocks_per_ring, det_per_ring, SPointer, SCPointer, RAPointer, trIndexPtr, axIndexPtr, DtrIndexPtr, DaxIndexPtr, obtain_trues, store_scatter, store_randoms,
 			scatterPointer, randoms_correction, coordP, DcoordP, store_coordinates, dynamic, cryst_per_block_z, transaxial_multip, rings, sinoSize, Ndist, Nang, ringDifference, span,
-			segP, Nt, TOFSize, nDistSide, SinoP, SinoTP, SinoCP, SinoRP, SinoDP, detWPseudo, nPseudos, binSize, FWHM, verbose, nLayers, dx, dy, dz, bx, by, bz, Nx, Ny, Nz, dualLayerSubmodule, imDim, indexBased, tIndP, 
+			segP, Nt, TOFSize, nDistSide, SinoP, SinoTP, SinoCP, SinoRP, SinoDP, detWPseudo, nPseudos, binSize, TOFNoiseSigma, verbose, nLayers, dx, dy, dz, bx, by, bz, Nx, Ny, Nz, dualLayerSubmodule, imDim, indexBased, tIndP, 
 			TOFIndexPtr, matlabPtr);
 
 

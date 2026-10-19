@@ -535,7 +535,7 @@ class projectorClass:
     eFOVLengthAxial = None
     eFOVLengthTransaxial = None
     NLM_gauss = 2.
-    TOF_noise_FWHM = 0.
+    TOF_noise_FWHM = -1. # Negative = use TOF_FWHM, 0 = no added noise
     TOF_offset = 0.
     gFSize = None
     trans = False
@@ -874,7 +874,8 @@ class projectorClass:
         if self.Nang == 1 and self.det_per_ring > 1:
             self.Nang = self.det_per_ring // 2
         if self.span == 1:
-            self.TotSinos = self.rings**2
+            # All layer combinations (rings**2 sinograms each) form the sinogram set
+            self.TotSinos = self.rings**2 * self.nLayers**2
             self.NSinos = self.TotSinos
         elif self.NSinos == 0:
             self.NSinos = np.sum(self.segment_table)
@@ -1301,7 +1302,10 @@ class projectorClass:
             # projection-image data, they must not be expanded by detector
             # rows and columns when building per-subset measurement sizes.
             kerroin = 1
-        elif self.subsetType >= 8 or self.subsets == 1:
+        elif self.subsetType >= 8 or self.subsets == 1 or (self.subsetType == 0 and self.listmode == 0):
+            # Subset types >= 8 and subset type 0 with sinogram/projection-image data
+            # (contiguous blocks of whole sinograms) count their subsets in whole
+            # images, so the number of measurements per subset is images * rows * columns
             kerroin = self.nColsD * self.nRowsD
         else:
             kerroin = 1
@@ -1514,7 +1518,20 @@ class projectorClass:
             raise ValueError("ndist_side cannot be 0 when Ndist is even!")
         if self.useIndexBasedReconstruction and self.projector_type not in [1, 2, 3, 4, 11, 14, 12, 13, 21, 22, 23, 24, 31, 32, 33, 34, 41, 42, 43, 44]:
             raise ValueError('Index-based reconstruction only supports projector types 1-4!')
-        
+        if self.useIndexBasedReconstruction:
+            # The indices point to the detector coordinates. Without them the reconstruction
+            # cannot work (the library only reports an empty x and returns an all-zero image).
+            for name, description in (('trIndex', 'the transaxial detector indices'), ('axIndex', 'the axial detector indices'),
+                                      ('x', 'the transaxial detector coordinates (x- and y-coordinates of every detector, 2 x number of detectors)'),
+                                      ('z', 'the axial detector coordinates (z-coordinates of the detector rings)')):
+                value = getattr(self, name)
+                if (all(np.size(v) == 0 for v in value) if isinstance(value, list) else np.size(value) == 0):
+                    raise ValueError(f'Index-based reconstruction requires options.{name}, i.e. {description}, but it is empty! '
+                                      'The indices of the events are in options.trIndex and options.axIndex (2 x number of events) while '
+                                      'options.x and options.z must contain the coordinates of every detector the indices refer to. '
+                                      'The coordinates can be obtained with omegatomo.projector.detcoord.getCoordinates (set options.use_raw_data = True '
+                                      'temporarily), see e.g. gate_PET.py or Inveon_PET_main_listmode_example.py.')
+
         if self.Nt < 1:
             if isinstance(self.partitions, np.ndarray) and self.partitions.size > 0:
                 self.Nt = self.partitions.size

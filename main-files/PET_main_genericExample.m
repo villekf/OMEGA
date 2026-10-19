@@ -340,7 +340,7 @@ options.rotateAttImage = 0;
 options.flipAttImageXY = false;
 
 %%% Flip the attenuation image in the axial direction before reconstruction
-optionas.flipAttImageZ = false;
+options.flipAttImageZ = false;
  
 
 %%%%%%%%%%%%%%%%%%%%%%%% Normalization correction %%%%%%%%%%%%%%%%%%%%%%%%%

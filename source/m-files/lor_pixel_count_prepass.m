@@ -25,6 +25,13 @@ function [varargout] = lor_pixel_count_prepass(options, z, x, detIndices)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+% Detector pitch for CT and SPECT, crystal size (transaxial, axial) for PET (options.dPitchX and options.dPitchY
+% hold (cr_pz, cr_p) for PET)
+if options.CT || options.SPECT
+    dPitchZ = options.dPitchY;
+else
+    dPitchZ = options.cr_pz;
+end
 listmode = false;
 nMeas = options.size_x * options.size_y * options.nProjections;
 folder = fileparts(which('lor_pixel_count_prepass.m'));
@@ -52,7 +59,7 @@ else %% Sinogram data
     end
 end
 lor = projector_mex( options, options.Nx, options.Ny, options.Nz, options.dx, options.dy, options.dz, options.bx, options.by, options.bz, z, x, options.size_x, 0, 0, nMeas, false, false, false, 0, 0, uint32(0), uint16(0), detIndices, options.det_per_ring, ... % 25
-    false, 0, 0, 0, options.verbose, 0, options.use_raw_data, uint32(3), listmode, 1, 0, nMeas, options.dPitchY, options.nProjections);
+    false, 0, 0, 0, options.verbose, 0, options.use_raw_data, uint32(3), listmode, 1, 0, nMeas, dPitchZ, options.nProjections);
 
 if exist('OCTAVE_VERSION', 'builtin') == 0
     save(file_string,'lor','-v7.3')

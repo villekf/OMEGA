@@ -368,14 +368,16 @@ inline void get_detector_coordinates(const T* x, const T* z, const uint32_t size
 	if (subsetType >= 8 || subsets == 1 || subsetType == 1 || subsetType == 2 || subsetType == 4 || subsetType == 5 || subsetType == 0) {
 		const int64_t id = (ix + iy * size_x) * 4LL;
 		if (nLayers) {
+			// With multiple layers z has three values per sinogram, the third one is the layer combination
+			// (the transaxial coordinates are stored as one block of size_x * size_y bins per layer combination)
 			const int64_t idz = iz * 3LL;
-			const int layer = static_cast<int>(z[idz]);
-			detectors.xs = x[id + layer * size_x * size_y];
-			detectors.ys = x[id + 1 + layer * size_x * size_y];
-			detectors.xd = x[id + 2 + layer * size_x * size_y];
-			detectors.yd = x[id + 3 + layer * size_x * size_y];
-			detectors.zs = z[idz + 1];
-			detectors.zd = z[idz + 2];
+			const int64_t layerOffset = static_cast<int64_t>(z[idz + 2]) * static_cast<int64_t>(size_x) * static_cast<int64_t>(size_y) * 4LL;
+			detectors.xs = x[id + layerOffset];
+			detectors.ys = x[id + 1 + layerOffset];
+			detectors.xd = x[id + 2 + layerOffset];
+			detectors.yd = x[id + 3 + layerOffset];
+			detectors.zs = z[idz];
+			detectors.zd = z[idz + 1];
 		}
 		else {
 			const int64_t idz = iz * 2LL;
@@ -391,13 +393,13 @@ inline void get_detector_coordinates(const T* x, const T* z, const uint32_t size
 		const uint32_t ind = xy_index[oo] * 4U;
 		if (nLayers) {
 			const uint32_t indz = (uint32_t)z_index[oo] * 3U;
-			const int layer = static_cast<int>(z[indz]);
-			detectors.xs = x[ind + layer * size_x * size_y];
-			detectors.ys = x[ind + 1 + layer * size_x * size_y];
-			detectors.xd = x[ind + 2 + layer * size_x * size_y];
-			detectors.yd = x[ind + 3 + layer * size_x * size_y];
-			detectors.zs = z[indz + 1];
-			detectors.zd = z[indz + 2];
+			const int64_t layerOffset = static_cast<int64_t>(z[indz + 2]) * static_cast<int64_t>(size_x) * static_cast<int64_t>(size_y) * 4LL;
+			detectors.xs = x[ind + layerOffset];
+			detectors.ys = x[ind + 1 + layerOffset];
+			detectors.xd = x[ind + 2 + layerOffset];
+			detectors.yd = x[ind + 3 + layerOffset];
+			detectors.zs = z[indz];
+			detectors.zd = z[indz + 1];
 		}
 		else {
 			const uint32_t indz = (uint32_t)z_index[oo] * 2U;
@@ -1170,6 +1172,10 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 				iy = (lo / param.det_per_ring) % param.det_per_ring;
 				iz = lo / (param.det_per_ring * param.det_per_ring) % param.rings;
 				izD = lo / (param.det_per_ring * param.det_per_ring) / param.rings;
+				// The enumeration contains ordered detector pairs, i.e. every LOR {(detector ix, ring iz), (detector iy, ring izD)} twice, as (A,B) and (B,A).
+				// Only one orientation is kept so that every LOR contributes exactly once to the sensitivity image
+				if (ix > iy || (ix == iy && iz >= izD))
+					continue;
 			}
 			else {
 				iz = ix / ((int64_t)param.size_x * (int64_t)param.size_y);

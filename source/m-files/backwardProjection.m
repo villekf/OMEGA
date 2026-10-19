@@ -18,6 +18,15 @@ function [output, sensIm] = backwardProjection(options, input, x, z, koko, nMeas
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+% Detector pitch for CT and SPECT, crystal size (transaxial, axial) for PET. The multi-ray shifts in the
+% projectors use these as the transaxial and axial extents, whereas options.dPitchX and options.dPitchY hold (cr_pz, cr_p) for PET
+if options.CT || options.SPECT
+    dPitchXY = options.dPitchX;
+    dPitchZ = options.dPitchY;
+else
+    dPitchXY = options.cr_p;
+    dPitchZ = options.cr_pz;
+end
 if isempty(varargin)
     nCores = 0;
 else
@@ -59,8 +68,8 @@ elseif options.listmode > 0 && options.compute_sensitivity_image && isfield(opti
     z_det = options.zSens;
 	z = z_det;
 	if ~options.SPECT
-		options.det_per_ring = numel(x) / 2;
-		options.rings = numel(z_det);
+		options.det_per_ring = numel(x) / 2 / options.nLayers; % x and z contain the coordinates of all layers
+		options.rings = numel(z_det) / options.nLayers;
 	end
 elseif options.listmode > 0 && options.compute_sensitivity_image && ~options.useIndexBasedReconstruction
 	if options.SPECT
@@ -161,13 +170,13 @@ if (options.implementation == 4 && ~ismac) || (ismac && options.projector_type =
                             options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
                             options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
                             options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, input{ii}, noSensIm, 2, ...
-                            options.dPitchX, options.dPitchY, options.nProjections);
+                            dPitchXY, dPitchZ, options.nProjections);
                     else
                         [output{ii}, sensIm{ii}] = projector_mex( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
                             options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
                             options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
                             options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, input{ii}, noSensIm, 2, ...
-                            options.dPitchX, options.dPitchY, options.nProjections);
+                            dPitchXY, dPitchZ, options.nProjections);
                     end
                 else
                     if options.useSingles
@@ -175,13 +184,13 @@ if (options.implementation == 4 && ~ismac) || (ismac && options.projector_type =
                             options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
                             options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
                             options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, input, noSensIm, 2, ...
-                            options.dPitchX, options.dPitchY, options.nProjections);
+                            dPitchXY, dPitchZ, options.nProjections);
                     else
                         [output{ii}, sensIm{ii}] = projector_mex( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
                             options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
                             options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
                             options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, input, noSensIm, 2, ...
-                            options.dPitchX, options.dPitchY, options.nProjections);
+                            dPitchXY, dPitchZ, options.nProjections);
                     end
                 end
                 if options.use_psf
@@ -196,13 +205,13 @@ if (options.implementation == 4 && ~ismac) || (ismac && options.projector_type =
                         options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
                         options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
                         options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, input, noSensIm, 2, ...
-                        options.dPitchX, options.dPitchY, options.nProjections);
+                        dPitchXY, dPitchZ, options.nProjections);
                 else
                     [output, sensIm] = projector_mex( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
                         options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
                         options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
                         options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, input, noSensIm, 2, ...
-                        options.dPitchX, options.dPitchY, options.nProjections);
+                        dPitchXY, dPitchZ, options.nProjections);
                 end
                 if options.use_psf
                     output = computeConvolution(output, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);

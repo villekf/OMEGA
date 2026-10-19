@@ -2,7 +2,7 @@ function [m_size, xy_index_input, z_index_input, L_input, lor_input, lor2, norm_
 %UNTITLED Summary of this function goes here
 %   Detailed explanation goes here
 
-if (options.subset_type >= 8 || options.subsets == 1) && options.listmode == 0 && options.projector_type ~= 6
+if (options.subset_type >= 8 || options.subsets == 1 || options.subset_type == 0) && options.listmode == 0 && options.projector_type ~= 6
     kerroin = options.nRowsD * options.nColsD;
 else
     kerroin = 1;

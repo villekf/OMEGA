@@ -105,6 +105,20 @@ int64_t saveSinogram(const int32_t ring_pos1, const int32_t ring_pos2, int32_t r
 				}
 			}
 		}
+		// Layer combination: the coordinate builder defines block (l1,l2) with l1 = the layer of the FIRST sinogram detector
+		// (the lower detector index, or the other one in the swapped corners), not the layer of GATE's detector 1.
+		// Detector 1 is the first one when (ring_pos1 < ring_pos2) xor swap, otherwise the layer pair is reversed.
+		if (nLayers > 1 && layer > 0) {
+			const bool firstIsDet1 = (ring_pos1 < ring_pos2) != swap;
+			if (!firstIsDet1) {
+				if (layer == 1) layer = 2;
+				else if (layer == 2) layer = 1;
+				else if (layer == 4) layer = 5;
+				else if (layer == 5) layer = 4;
+				else if (layer == 6) layer = 7;
+				else if (layer == 7) layer = 6;
+			}
+		}
 		// Final index number
 		indeksi = static_cast<int64_t>(i) + static_cast<int64_t>(j) * static_cast<int64_t>(Ndist) +
 			static_cast<int64_t>(sinoIndex) * static_cast<int64_t>(Ndist) * static_cast<int64_t>(Nang) + sinoSize * static_cast<int64_t>(layer)
