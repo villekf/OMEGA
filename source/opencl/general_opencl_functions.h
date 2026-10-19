@@ -2330,17 +2330,18 @@ DEVICE float voxelValue(const float t0, const float tc, const float L) {
 // compute the distance that the ray traverses in the current voxel
 DEVICE float compute_element(PTR_THR float* t0, PTR_THR float* tc, const float L, const float tu, const int u, PTR_THR int* temp_ijk, PTR_THR bool* pass) {
 #ifdef ORTH
-	*pass = (*t0 >= 0.f && *t0 <= 1.f) || (*tc >= 0.f && *tc <= 1.f);
+	// The voxel [tc, t0] overlaps the line segment t = [0, 1] iff t0 >= 0 and tc <= 1 (this includes a segment that is
+	// completely inside the voxel, where neither t0 nor tc is inside [0, 1])
+	*pass = (*t0 >= 0.f && *tc <= 1.f);
 	float local_ele = 0.f;
 	if (*pass)
 		local_ele = voxelValue(FMIN(*t0, 1.f), FMAX(*tc, 0.f), L);
 #else
-	// The part of the voxel segment [tc, t0] that is inside the line segment t = [0, 1], zero if the voxel is outside of it
-	// (also if it contains the whole line segment, tc < 0 and t0 > 1). This is evaluated for every voxel of every ray, so it is
-	// written with min/max/selects only, without the chain of comparisons that decides whether the voxel overlaps the segment
-	float local_ele = FMAX(FMIN(*t0, 1.f) - FMAX(*tc, 0.f), 0.f) * L;
-	if (*tc < 0.f && *t0 > 1.f)
-		local_ele = 0.f;
+	// The part of the voxel segment [tc, t0] that is inside the line segment t = [0, 1], zero if the voxel is outside of it.
+	// The overlap length is clipped to the line segment [0, 1], so a segment that is completely inside one voxel gets its
+	// actual length. This is evaluated for every voxel of every ray, so it is written with min/max/selects only, without
+	// the chain of comparisons that decides whether the voxel overlaps the segment
+	const float local_ele = FMAX(FMIN(*t0, 1.f) - FMAX(*tc, 0.f), 0.f) * L;
 	*pass = local_ele > 0.f;
 #endif
 	*temp_ijk += u;
