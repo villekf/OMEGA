@@ -21,7 +21,7 @@ function options = SPECTParameters(options)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelling, ray tracing projectors
+if ismember(options.projector_type, [1, 11, 12, 16, 2, 21, 22, 26, 61, 62]) % Ray tracing projectors, including the ray tracing side of the hybrid projectors
     % The collimator point of every projection is placed at colD + 0.5 * colL from the detector surface
     % (get_coordinates_SPECT). With a non-positive distance all the rays have zero length and the projection silently
     % becomes zero.
@@ -30,6 +30,8 @@ if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelli
             'colD + 0.5 * colL = ' num2str(options.colD + 0.5 * options.colL) ' would result in zero-length rays. ' ...
             'Set options.colL (and options.colD) to the collimator hole length (and the distance of the collimator from the detector surface).'])
     end
+end
+if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelling, ray tracing projectors
     nRays = options.n_rays_transaxial * options.n_rays_axial;
     if numel(options.rayShiftsDetector) == 0
         options.rayShiftsDetector = [0; 0];
