@@ -542,14 +542,14 @@ options.TOF_offset = 0;
 % use this value to control the accuracy of the TOF data. For example if
 % you want to have TOF data with 500 ps FWHM then set this value to
 % 500e-12. 
-options.TOF_noise_FWHM = 200e-12;
+options.TOF_noise_FWHM = 100e-12;
 
 %%% FWHM of the TOF data (s)
 % Applies to ALL data.
 % This value specifies the TOF accuracy during the reconstruction process
 % and thus can be different from above. If you are using GATE data with
 % temporal blurring, you need to multiply that FWHM with sqrt(2) here.
-options.TOF_FWHM = 210e-12;
+options.TOF_FWHM = 100e-12;
 
 %%% Number of TOF bins used in reconstruction
 % Number of TOF bins used during reconstruction phase.

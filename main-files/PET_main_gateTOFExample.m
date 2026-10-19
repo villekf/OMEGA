@@ -466,7 +466,7 @@ options.normalization_scatter_correction = false;
 % normalization coefficients. I.e. once you have computed the normalization
 % coefficients, turn above compute_normalization to false and set this to
 % true. Alternatively, input your own normalization data (see below)
-options.normalization_correction = true;
+options.normalization_correction = false;
 
 %%% Use user-made normalization
 % Use either a .mat or .nrm file containing the normalization coefficients

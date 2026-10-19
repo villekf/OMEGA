@@ -300,7 +300,7 @@ options.attenuation_datafile = '/path/to/cylpet_example_atn1-MuMap.mhd'
 # formation or in the image reconstruction by using precomputed 
 # normalization coefficients.  See below how to input your own normalization
 # data
-options.normalization_correction = True
+options.normalization_correction = False
 
 ### Use user-made normalization
 # Use either a .mat or .nrm file containing the normalization coefficients
