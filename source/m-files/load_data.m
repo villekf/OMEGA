@@ -479,9 +479,8 @@ elseif options.use_machine == 0
                 Rcoordinate = cell(Nt,1);
             end
         end
-        if options.TOF_bins > 1
-            TOFindices = cell(Nt,1);
-        end
+        % Empty when TOF is not used, so that the output always exists
+        TOFindices = cell(Nt,1);
     else
         % lisays = uint16(1);
         if store_coordinates
@@ -492,9 +491,8 @@ elseif options.use_machine == 0
                 Rcoordinate = [];
             end
         end
-        if options.TOF_bins > 1
-            TOFindices = [];
-        end
+        % Empty when TOF is not used, so that the output always exists
+        TOFindices = [];
     end
     if options.useIndexBasedReconstruction
         if Nt > 1
