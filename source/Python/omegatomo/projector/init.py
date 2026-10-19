@@ -631,6 +631,7 @@ def initProjector(self):
                 self.use_64bit_atomics = False
                 self.use_32bit_atomics = False
                 bOpt += ('-DINTEL',)
+        # Fast math and the projector type 2/3 discontinuities: see the note at DIVIDE in general_opencl_functions.h
         if self.useMAD:
             if self.useMetal:
                 bOpt += ('-DUSEMAD',)

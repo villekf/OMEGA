@@ -450,6 +450,13 @@ inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
 #define UINT_sat(a) convert_uint_sat(a)
 #define RIMAGEF(a, b, c) read_imagef(a, b, c).w
 #define CINT_rtz(a) convert_int_rtz(a)
+// Fast math and the discrete model discontinuities (measured 2026-10-19): projector types 2 and 3 contain discontinuities in the model: whole
+// voxel columns entering or leaving the ray for LORs grazing the corner of the image box (type 2), the ORTH slice TOF weights depending on the
+// Siddon x/y crossing order at exact vertex ties (type 3) and the 0 -> THR step at the ORTH tube boundary (type 3). Fast division (CUDA
+// --use_fast_math/__fdividef, OpenCL native_divide/-cl-fast-relaxed-math) and the implicit FMA contraction flip rays across these steps, so
+// CUDA and OpenCL (and fast and strict builds) can differ by up to ~1e-2 of the maximum in a few elements (median ~5e-7). Precise division
+// in the 6 Siddon pre-loop divisions and the 3 ORTH divisions together with no FMA contraction (FP_CONTRACT OFF, --fmad=false, no
+// -cl-fast-relaxed-math) removes this at ~+3-7 % per FP+BP pair (types 2/3 FP +10-17 %). It is deliberately left as is.
 #define DIVIDE(a,b) native_divide(a,b)
 #define DIVIDE3(a,b) native_divide(a,b)
 #define CFLOAT(a) convert_float(a)
@@ -604,6 +611,7 @@ __constant sampler_t sampler_MASKFP = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_N
 #define CUINT(a) (unsigned int)(a)
 #define UINT_sat(a) (unsigned int)(a)
 #define CINT_rtz(a) __float2int_rz(a)
+// See the note on fast math and the discrete model discontinuities at the OpenCL DIVIDE definition
 #define DIVIDE(a,b) fdividef(a,b)
 #define DIVIDE3(a,b) fdividef3(a,b)
 #define CFLOAT(a) (float)(a)
@@ -1260,8 +1268,10 @@ DEVICE void TOFClipWindow(CONSTANT float* TOFCenter, const float invSigma, const
 
 // H(t) = G(-t) = phi(t) - t * Q(t), t >= 0
 // Computed as phi(t) * g(t), where g(t) = 1 - t * Q(t) / phi(t) = s^2 * (c0 + c1 s + ... + c6 s^6), s = 1 / (1 + 0.3 t), is a
-// minimax-type fit on [0, 6] (maximum absolute error of H 8e-10 in double precision). This needs one exponential and
-// one reciprocal instead of an exponential and a complementary error function
+// minimax-type fit on [0, 6]. The fit itself has a maximum absolute error of H of 8e-10 in double precision, but with the
+// stored nine-digit coefficients it is 3.5e-9 (at t ~ 0.02, mostly from the rounding of the coefficient sum), and the float
+// evaluation error of H is about 2e-7. This needs one exponential and one reciprocal instead of an exponential and a
+// complementary error function
 DEVICE float TOFH(const float t) {
 	const float s = 1.f / (1.f + 0.3f * t);
 	float g = FMAD(s, 0.278036759f, -1.48782828f);

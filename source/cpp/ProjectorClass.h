@@ -966,6 +966,7 @@ class ProjectorClass {
 		cl::string apu2 = "cl_ext_float_atomics";
 		ADD_OPT(options, "-DOPENCL");
 #endif // END CUDA
+		// Fast math and the projector type 2/3 discontinuities: see the note at DIVIDE in general_opencl_functions.h
 		if (inputScalars.useMAD) {
 #if defined(CUDA)
 			options.push_back("--use_fast_math");
