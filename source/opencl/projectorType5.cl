@@ -738,7 +738,7 @@ extern "C" __global__
 #ifdef FDK
     // The box sum is the integral of the filtered projection over the voxel footprint, so it is divided by the
     // full footprint area (in detector pixels) to get the mean value
-    // Parts of the footprint outside the detector count as zero, consistent with the border sampling of 
+    // Parts of the footprint outside the detector count as zero, consistent with the border sampling of
     // projector type 4 and with the offset redundancy weighting
     // The mean is then weighted with the same weight as in projector type 4, i.e.
     // (DSC^2 / U^2) * pi / (nProjections * dPitch.x), where

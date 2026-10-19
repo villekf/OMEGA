@@ -1,8 +1,25 @@
 # Release notes
 
+- SPECT ellipse normalization uses one shared physical region for all resolution volumes, including shifted EFOVs. Explicit radii are preserved.
+- The SPECT Gaussian projector retains its collimator origin for blur calculations and uses the clipped ellipse chord for normalization.
+- Fixed zero-sized peripheral buffers in MATLAB multi-resolution projection operators.
+
+- Dynamic reconstruction improvements
+  - Timeframes can now contain different amount of projection images
+  - Measurement-domain correction data is now correctly indexed in dynamic reconstruction
+  - Dynamic reconstruction output now uses spatial dimensions followed by saved iteration and timeframe dimensions consistently. With `options.storeMultiResolution`, each cell/list item is one volume with this same dimension order.
+- The main FOV in multi-resolution reconstruction can be shifted off-center
+- Multi-resolution reconstruction for implementation 5
+- options.storeMultiResolution replaces the CELL macro
+
+Metal features:
+- ArrayFire support for Metal
+- Projector type 4 supports texture input with Metal
+- `options.useMAD` selects the Metal math mode
+
 New examples:
 - SPECT_main_DIP_PyTorch.py
-  - Deep image prior regularized SPECT reconstruction example 
+  - Deep image prior regularized SPECT reconstruction example
   - Highlights OMEGA interoperability with PyTorch framework
   - Tested with Metal (M4) and CUDA (RTX 4060)
 

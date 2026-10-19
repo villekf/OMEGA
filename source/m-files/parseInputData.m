@@ -148,15 +148,24 @@ if options.subsets > 1 && options.subset_type > 0
     end
     if options.normalization_correction && options.corrections_during_reconstruction
         detectorIndexedNorm = options.SPECT && options.normZ == options.nHeads;
-        if options.use_raw_data == false && options.NSinos ~= options.TotSinos && ~detectorIndexedNorm
+        if options.use_raw_data == false && options.NSinos ~= options.TotSinos && ~iscell(options.normalization) && ~detectorIndexedNorm
             options.normalization = options.normalization(1:options.NSinos*options.Ndist*options.Nang);
         end
         if detectorIndexedNorm
             options.normalization = options.normalization(:);
         elseif options.subset_type >= 8
-            options.normalization = reshape(options.normalization, options.Ndist, options.Nang, []);
-            options.normalization = options.normalization(:,:,index,:);
-            options.normalization = options.normalization(:);
+            if iscell(index)
+                options.normalization = reorderDynamicProjectionData(options.normalization, index, ...
+                    options.Ndist, options.Nang, 'normalization images');
+            elseif partitions > 1
+                dynamicIndex = repmat({index(:)}, partitions, 1);
+                options.normalization = reorderDynamicProjectionData(options.normalization, dynamicIndex, ...
+                    options.Ndist, options.Nang, 'normalization images');
+            else
+                options.normalization = reshape(options.normalization, options.Ndist, options.Nang, []);
+                options.normalization = options.normalization(:,:,index,:);
+                options.normalization = options.normalization(:);
+            end
         else
             options.normalization = options.normalization(index);
         end
@@ -169,7 +178,11 @@ if options.subsets > 1 && options.subset_type > 0
             if options.subset_type >= 8
                 for kk = 1 : numel(options.corrVector)
                     options.corrVector{kk} = reshape(options.corrVector{kk}, options.Ndist, options.Nang, []);
-                    options.corrVector{kk} = options.corrVector{kk}(:,:,index,:);
+                    if iscell(index)
+                        options.corrVector{kk} = options.corrVector{kk}(:,:,index{kk},:);
+                    else
+                        options.corrVector{kk} = options.corrVector{kk}(:,:,index,:);
+                    end
                     options.corrVector{kk} = options.corrVector{kk}(:);
                 end
             else
@@ -236,7 +249,11 @@ if options.subsets > 1 && options.subset_type > 0
                     end
                     if options.subset_type >= 8
                         temp = reshape(temp, options.nRowsD, options.nColsD, []);
-                        temp = temp(:,:,index);
+                        if iscell(index)
+                            temp = temp(:,:,index{ff});
+                        else
+                            temp = temp(:,:,index);
+                        end
                         % temp = temp(:);
                     else
                         temp = temp(index);
@@ -272,9 +289,18 @@ if options.subsets > 1 && options.subset_type > 0
     if options.attenuation_correction && ~options.CT_attenuation
         if numel(options.vaimennus) ~= options.Nx(1) * options.Ny(1) * options.Nz(1) || (options.nRowsD == options.Nx(1) && options.nColsD == options.Ny(1))
             if options.subset_type >= 8
-                options.vaimennus = reshape(options.vaimennus, options.nRowsD, options.nColsD, []);
-                options.vaimennus = options.vaimennus(:,:,index);
-                options.vaimennus = options.vaimennus(:);
+                if iscell(index)
+                    options.vaimennus = reorderDynamicProjectionData(options.vaimennus, index, ...
+                        options.nRowsD, options.nColsD, 'measurement-based attenuation images');
+                elseif partitions > 1
+                    dynamicIndex = repmat({index(:)}, partitions, 1);
+                    options.vaimennus = reorderDynamicProjectionData(options.vaimennus, dynamicIndex, ...
+                        options.nRowsD, options.nColsD, 'measurement-based attenuation images');
+                else
+                    options.vaimennus = reshape(options.vaimennus, options.nRowsD, options.nColsD, []);
+                    options.vaimennus = options.vaimennus(:,:,index);
+                    options.vaimennus = options.vaimennus(:);
+                end
             else
                 options.vaimennus = options.vaimennus(:);
                 options.vaimennus = options.vaimennus(index);
@@ -284,11 +310,94 @@ if options.subsets > 1 && options.subset_type > 0
         end
     end
     if options.SPECT && isfield(options, 'DetectorVector') && options.subset_type >= 8
-        options.DetectorVector = uint32(options.DetectorVector(index));
+        if iscell(index)
+            projectionCounts = double(options.nProjectionsPerFrame(:));
+            detectorOffsets = [0; cumsum(projectionCounts)];
+            detectorVector = uint32(options.DetectorVector(:));
+            selectedVectors = cell(numel(index), 1);
+            hasPerFrameDetectorVector = numel(detectorVector) ~= detectorOffsets(end) ...
+                && all(projectionCounts == numel(detectorVector));
+            if numel(detectorVector) ~= detectorOffsets(end) && ~hasPerFrameDetectorVector
+                error(['Dynamic DetectorVector must contain either one entry per projection across all ' ...
+                    'timeframes or one complete frame''s detector mapping when all frames have equal size.']);
+            end
+            for tt = 1 : numel(index)
+                if hasPerFrameDetectorVector
+                    % OMEGA_error_check/setMissingValues may provide one shared detector
+                    % mapping of length nProjections for every dynamic frame. Dynamic
+                    % subset indices are local to each frame, so apply them directly and
+                    % repeat the selected mapping for each frame. An offset here would
+                    % incorrectly index past the end of that single-frame mapping.
+                    selectedVectors{tt} = detectorVector(index{tt});
+                else
+                    selectedVectors{tt} = detectorVector(detectorOffsets(tt) + index{tt});
+                end
+            end
+            options.DetectorVector = vertcat(selectedVectors{:});
+        else
+            options.DetectorVector = uint32(options.DetectorVector(index));
+        end
     end
     if options.useMaskFP && options.maskFPZ > 1 && options.maskFPZ ~= options.nHeads && options.subset_type >= 8
-        options.maskFP = uint8(options.maskFP(:,:,index));
+        if iscell(index)
+            options.maskFP = uint8(reorderDynamicProjectionData(options.maskFP, index, ...
+                options.nRowsD, options.nColsD, 'forward projection masks'));
+        else
+            options.maskFP = uint8(options.maskFP(:,:,index));
+        end
     elseif options.useMaskFP && options.subset_type == 3
         error('Forward projection mask is not supported with subset type 3!')
     end
+end
+end
+
+function output = reorderDynamicProjectionData(input, index, nRows, nCols, inputName)
+% Apply each timeframe's projection permutation to static or concatenated data.
+projectionCounts = cellfun(@numel, index);
+staticInput = false;
+if iscell(input)
+    if numel(input) == numel(index)
+        inputFrames = input(:);
+    elseif numel(input) == 1
+        staticInput = true;
+        inputFrames = input(:);
+    else
+        error('Dynamic %s require one value per timeframe!', inputName)
+    end
+else
+    input = reshape(input, nRows, nCols, []);
+    if size(input, 3) == sum(projectionCounts)
+        inputFrames = cell(numel(index), 1);
+        projectionOffset = 0;
+        for kk = 1 : numel(index)
+            frameRange = projectionOffset + (1 : projectionCounts(kk));
+            inputFrames{kk} = input(:,:,frameRange);
+            projectionOffset = projectionOffset + projectionCounts(kk);
+        end
+    elseif size(input, 3) == projectionCounts(1)
+        staticInput = true;
+        inputFrames = {input};
+    else
+        error('Dynamic %s must contain one image per projection!', inputName)
+    end
+end
+if staticInput
+    if any(projectionCounts ~= projectionCounts(1))
+        error('Static dynamic %s require matching projection counts in every timeframe.', inputName)
+    end
+    % A static source is shared, but the subset permutation can differ by
+    % timeframe (for example, subset type 9 randomizes each frame). Apply
+    % every frame's own indices and materialize a frame-concatenated result
+    % so the C++ side can use its normal cumulative pituus offsets.
+    inputFrames = repmat(inputFrames(1), numel(index), 1);
+end
+for kk = 1 : numel(inputFrames)
+    inputFrames{kk} = reshape(inputFrames{kk}, nRows, nCols, []);
+    if size(inputFrames{kk}, 3) ~= projectionCounts(kk)
+        error('Each timeframe of dynamic %s must contain one image per projection!', inputName)
+    end
+    inputFrames{kk} = inputFrames{kk}(:,:,index{kk});
+    inputFrames{kk} = inputFrames{kk}(:);
+end
+output = vertcat(inputFrames{:});
 end
