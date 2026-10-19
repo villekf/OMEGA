@@ -64,8 +64,10 @@ if isfield(options, 'TOF') && options.TOF
             error(['options.TOFIndices has ' num2str(numel(tofCounts)) ' time steps, but the index-based data has ' num2str(numel(counts)) '!'])
         end
     else
+        if numel(counts) > 1
+            error('With dynamic index-based data (trIndex/axIndex given as cell arrays, one cell per time step), options.TOFIndices must also be a cell array with one cell per time step.')
+        end
         tofCounts = numel(TOFIndices);
-        counts = sum(counts);
     end
     for kk = 1 : numel(counts)
         if tofCounts(kk) ~= counts(kk)

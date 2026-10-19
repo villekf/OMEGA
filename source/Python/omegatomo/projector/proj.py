@@ -730,8 +730,7 @@ class projectorClass:
                 if len(counts) == 1:
                     tofCounts = [sum(tofCounts)]
             elif len(counts) > 1:
-                tofCounts = [np.size(self.TOFIndices)]
-                counts = [sum(counts)]
+                raise ValueError('With dynamic index-based data (trIndex/axIndex given as lists, one element per time frame), options.TOFIndices must also be a list with one element per time frame.')
             else:
                 tofCounts = [np.size(self.TOFIndices)]
             for kk in range(len(counts)):
