@@ -22,6 +22,14 @@ function options = SPECTParameters(options)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelling, ray tracing projectors
+    % The collimator point of every projection is placed at colD + 0.5 * colL from the detector surface
+    % (get_coordinates_SPECT). With a non-positive distance all the rays have zero length and the projection silently
+    % becomes zero.
+    if options.colD + 0.5 * options.colL <= 0
+        error(['SPECT projector types 1 and 2 require a positive collimator length and/or collimator-to-detector distance: ' ...
+            'colD + 0.5 * colL = ' num2str(options.colD + 0.5 * options.colL) ' would result in zero-length rays. ' ...
+            'Set options.colL (and options.colD) to the collimator hole length (and the distance of the collimator from the detector surface).'])
+    end
     nRays = options.n_rays_transaxial * options.n_rays_axial;
     if numel(options.rayShiftsDetector) == 0
         options.rayShiftsDetector = [0; 0];
@@ -69,15 +77,18 @@ if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelli
         referenceLength = options.colD + 0.5 * options.colL;
         lengthXY = options.colD + 0.5 * options.colLxy;
         lengthZ = options.colD + 0.5 * options.colLz;
-        if referenceLength ~= lengthZ
+        % The first entry of every shift pair moves the ray along the detector panel (transaxial, XY) and the second one along the
+        % rotation axis (axial, Z) (see getDetectorCoordinatesSPECT in general_opencl_functions.h), hence the first entries use
+        % the transaxial septa length and the second ones the axial septa length.
+        if referenceLength ~= lengthXY
             detectorShiftXY = options.rayShiftsDetector(1:2:end,:,:,:);
             options.rayShiftsSource(1:2:end,:,:,:) = detectorShiftXY + ...
-                (options.rayShiftsSource(1:2:end,:,:,:) - detectorShiftXY) * (referenceLength / lengthZ);
+                (options.rayShiftsSource(1:2:end,:,:,:) - detectorShiftXY) * (referenceLength / lengthXY);
         end
-        if referenceLength ~= lengthXY
+        if referenceLength ~= lengthZ
             detectorShiftZ = options.rayShiftsDetector(2:2:end,:,:,:);
             options.rayShiftsSource(2:2:end,:,:,:) = detectorShiftZ + ...
-                (options.rayShiftsSource(2:2:end,:,:,:) - detectorShiftZ) * (referenceLength / lengthXY);
+                (options.rayShiftsSource(2:2:end,:,:,:) - detectorShiftZ) * (referenceLength / lengthZ);
         end
     end
     if ismember(options.implementation, [2, 3, 5])
@@ -127,6 +138,10 @@ if options.projector_type == 6
                 colLz = options.colLz;
             else
                 colLz = options.colL;
+            end
+            if colLxy <= 0 || colLz <= 0
+                error(['SPECT projector type 6 computes the collimator-detector response from the collimator hole length: ' ...
+                    'options.colL (or both options.colLxy and options.colLz) has to be positive, or sigmaZ/sigmaXY/gFilter have to be input.'])
             end
             Rg_z = 2*options.colR*(options.colL+options.colD+(Distances)+options.cr_p/2)/colLz; %Anger, "Scintillation Camera with Multichannel Collimators", J Nucl Med 5:515-531 (1964)
             Rg_xy = 2*options.colR*(options.colL+options.colD+(Distances)+options.cr_p/2)/colLxy;

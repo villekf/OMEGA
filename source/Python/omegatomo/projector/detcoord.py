@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 """
 from __future__ import annotations
 from typing import Tuple
+import warnings
 import numpy as np
 from omegatomo.projector import proj
 
@@ -437,7 +438,7 @@ def getCoordinatesSPECT(options: proj.projectorClass) -> Tuple[np.ndarray, np.nd
     # the *other* operand's own dtype/precision). The original per-ii loop
     # indexed float32 scalars out of options.radiusPerProj/angles/
     # swivelAngles, so every term mixing one of those scalars with a plain
-    # Python float/int (r2, the colD+0.5*colLxy shift, and the "+90" in the
+    # Python float/int (r2, the colD+0.5*colL shift, and the "+90" in the
     # z formula) was silently upcast to float64 -- with the float32
     # trig result widened losslessly to float64 first -- before being
     # stored back into the float32 x/z arrays. That is reproduced here by
@@ -454,7 +455,9 @@ def getCoordinatesSPECT(options: proj.projectorClass) -> Tuple[np.ndarray, np.nd
     x[1, :] = r1 * np.sin(np.deg2rad(alpha1)) + r2 * np.sin(np.deg2rad(alpha2)).astype(np.float64)
     x[2, :] = 0
 
-    colShift = options.colD + 0.5 * options.colLxy
+    # The collimator point is placed with the general collimator length colL, the same reference length that
+    # SPECTParameters uses when scaling the transaxial/axial ray shifts with colLxy/colLz.
+    colShift = options.colD + 0.5 * options.colL
     x[3, :] = x[0, :] + colShift * np.cos(np.deg2rad(alpha2)).astype(np.float64)
     x[4, :] = x[1, :] + colShift * np.sin(np.deg2rad(alpha2)).astype(np.float64)
     x[5, :] = 0
@@ -583,6 +586,13 @@ def detectorCoordinates(options):
         x = np.flip(x)
         y = np.flip(y)
     if not options.offangle == 0:
+        if options.det_w_pseudo > options.det_per_ring:
+            # The pseudo-inclusive array is rolled together with its pseudo
+            # gaps. Unless the roll is a whole number of pseudo-inclusive
+            # blocks, the gaps no longer match the pseudo slots of the data.
+            blockSizePseudo = int(round(float(options.det_w_pseudo) / blocks_per_ring))
+            if blockSizePseudo > 0 and int(matlabRound(options.offangle)) % blockSizePseudo != 0:
+                warnings.warn('offangle (' + str(options.offangle) + ') is not a multiple of the block size including pseudo detectors (' + str(blockSizePseudo) + '). The detector coordinates are rotated together with the pseudo-detector gaps, so the gaps no longer align with the measured data and the geometry is distorted. Use a multiple of ' + str(blockSizePseudo) + ' for exact results.')
         if options.nLayers > 1 and koko is not None:
             x1 = np.roll(x[:koko], int(matlabRound(options.offangle)))
             x2 = np.roll(x[koko:], int(matlabRound(options.offangle)))
@@ -1218,6 +1228,9 @@ def _type6_auto_filter(options: proj.projectorClass, volume: int, depth: int | N
         distances = 0.5 * dx + np.arange(depth, dtype=np.float32) * dx
         col_l_xy = float(options.colLxy) if options.colLxy > 0. else float(options.colL)
         col_l_z = float(options.colLz) if options.colLz > 0. else float(options.colL)
+        if col_l_xy <= 0. or col_l_z <= 0.:
+            raise ValueError('SPECT projector type 6 computes the collimator-detector response from the collimator hole length: ' +
+                             'options.colL (or both options.colLxy and options.colLz) has to be positive, or sigmaZ/sigmaXY/gFilter have to be input.')
         distance_from_exit = distances + float(options.cr_p) / 2.
         rg_z = np.maximum(0., 2. * float(options.colR) * distance_from_exit / col_l_z)
         rg_xy = np.maximum(0., 2. * float(options.colR) * distance_from_exit / col_l_xy)
@@ -1312,6 +1325,13 @@ def _type6_total_lengths(options: proj.projectorClass) -> np.ndarray:
 def SPECTParameters(options: proj.projectorClass):
     from omegatomo.util.matlabRound import matlabRound
     if options.projector_type in [1, 11, 12, 16, 2, 21, 22, 26, 61, 62]: # Ray tracing projectors
+        # The collimator point of every projection is placed at colD + 0.5 * colL from the detector surface
+        # (getCoordinatesSPECT). With a non-positive distance all the rays have zero length and the projection
+        # silently becomes zero.
+        if options.colD + 0.5 * options.colL <= 0:
+            raise ValueError('SPECT projector types 1 and 2 require a positive collimator length and/or collimator-to-detector distance: ' +
+                             'colD + 0.5 * colL = ' + str(options.colD + 0.5 * options.colL) + ' would result in zero-length rays. ' +
+                             'Set options.colL (and options.colD) to the collimator hole length (and the distance of the collimator from the detector surface).')
         nRays = int(options.n_rays_transaxial * options.n_rays_axial)
         if options.rayShiftsDetector.size == 0: # Collimator modeling
             options.rayShiftsDetector = np.zeros((2*nRays, options.nRowsD, options.nColsD, options.nHeads), dtype=np.float32)
@@ -1357,14 +1377,19 @@ def SPECTParameters(options: proj.projectorClass):
             referenceLength = options.colD + 0.5 * options.colL
             lengthXY = options.colD + 0.5 * options.colLxy
             lengthZ = options.colD + 0.5 * options.colLz
-            if referenceLength != lengthZ:
+            # The even entries of the ray shifts move the ray along the detector
+            # panel (transaxial, XY) and the odd ones along the rotation axis
+            # (axial, Z) (getDetectorCoordinatesSPECT in
+            # general_opencl_functions.h), hence the even entries use the
+            # transaxial septa length and the odd ones the axial one.
+            if referenceLength != lengthXY:
                 detectorShiftXY = options.rayShiftsDetector[0::2, :, :, :]
                 options.rayShiftsSource[0::2, :, :, :] = detectorShiftXY + \
-                    (options.rayShiftsSource[0::2, :, :, :] - detectorShiftXY) * (referenceLength / lengthZ)
-            if referenceLength != lengthXY:
+                    (options.rayShiftsSource[0::2, :, :, :] - detectorShiftXY) * (referenceLength / lengthXY)
+            if referenceLength != lengthZ:
                 detectorShiftZ = options.rayShiftsDetector[1::2, :, :, :]
                 options.rayShiftsSource[1::2, :, :, :] = detectorShiftZ + \
-                    (options.rayShiftsSource[1::2, :, :, :] - detectorShiftZ) * (referenceLength / lengthXY)
+                    (options.rayShiftsSource[1::2, :, :, :] - detectorShiftZ) * (referenceLength / lengthZ)
 
         options.rayShiftsDetector = options.rayShiftsDetector.ravel('F')
         options.rayShiftsSource = options.rayShiftsSource.ravel('F')
@@ -1446,6 +1471,9 @@ def SPECTParameters(options: proj.projectorClass):
             if not _type6_sigma_provided(options.sigmaZ):
                 col_l_xy = float(options.colLxy) if options.colLxy > 0. else float(options.colL)
                 col_l_z = float(options.colLz) if options.colLz > 0. else float(options.colL)
+                if col_l_xy <= 0. or col_l_z <= 0.:
+                    raise ValueError('SPECT projector type 6 computes the collimator-detector response from the collimator hole length: ' +
+                                     'options.colL (or both options.colLxy and options.colLz) has to be positive, or sigmaZ/sigmaXY/gFilter have to be input.')
                 distance_from_exit = Distances + options.cr_p / 2.
                 # Anger, "Scintillation Camera with Multichannel Collimators", J Nucl Med 5:515-531 (1964).
                 # Axial and transaxial responses use their respective collimator septa lengths.
