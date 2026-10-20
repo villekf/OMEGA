@@ -122,7 +122,8 @@ else
         end
         % Gaps between the axial blocks
         if isfield(options, 'ringGaps') && numel(options.ringGaps) > 0 && sum(options.ringGaps) > 0
-            gaps = repelem([0;cumsum(options.ringGaps(:))], options.cryst_per_block_axial(1), 1);
+            % With layers that have a different number of axial crystals, the axial blocks have as many ring slots as the largest layer
+            gaps = repelem([0;cumsum(options.ringGaps(:))], max(options.cryst_per_block_axial), 1);
             z = z + gaps(1:numel(z)) - sum(options.ringGaps) / 2;
         end
         % Multi-layer: the rings of layer l are located at an offset of l * rings
@@ -147,7 +148,7 @@ function [x, y] = rawLayerDetectors(options, xp, yp)
 % loader's detector index, any padding (Inf) is moved to the end of the block
 S = options.det_w_pseudo(1);
 nLayers = options.nLayers;
-if numel(xp) < nLayers * S
+if numel(xp) < nLayers * S || S > options.det_per_ring(1)
     error('Raw/index-based multi-layer detector coordinates are not supported with pseudo detectors!')
 end
 x = Inf(nLayers * S, 1, class(xp));

@@ -50,11 +50,9 @@ end
 % end
 
 if options.nLayers > 1 && options.cryst_per_block_axial(1) ~= options.cryst_per_block_axial(2)
-    apu = zeros(options.linear_multip,1);
-    for kk = 0 : options.linear_multip - 1
-        apu(kk + 1) = kk * cr_pz;
-    end
-    apu = repelem(apu, sum(options.cryst_per_block_axial));
+    % Layers with a different number of axial crystals: each layer has its own ring positions
+    z = unequalLayerCoordinates3D(options, layer1, layer2, maxZ);
+    return
 end
 %% Compute the 3D coordinates
 
@@ -70,9 +68,6 @@ if options.span > 1
             z(cpba*kk + 1: cpba * (kk + 1)) = z(cpba*kk + 1: cpba * (kk + 1)) + gaps(kk);
         end
     end
-    if options.nLayers > 1 && options.cryst_per_block_axial(1) ~= options.cryst_per_block_axial(2)
-        z = z + apu;
-    end
     z = z - maxZ / 2;
     ringsp = options.rings;
     z_ring = zeros(options.rings, options.rings, 2);
@@ -80,17 +75,17 @@ if options.span > 1
     z_ring(:,:,1) = repmat(z, 1, options.rings);
     z_ring(:,:,2) = repmat(z', options.rings, 1);
     z_ring = reshape(z_ring, options.rings * options.rings, 2);
-    kkj = zeros(floor((options.ring_difference-ceil(options.span/2))/options.span) + 1, 1);
-    for kk = 1 : floor((options.ring_difference-ceil(options.span/2))/options.span) + 1
-        kkj(kk) = ceil(options.span/2) + options.span*(kk - 1);
-    end
+    % One segment (a pair of the negative and positive ring differences) for every entry pair of the segment table,
+    % i.e. the planes follow the table of the loader also when it extends beyond the ring difference
+    kkj = ceil(options.span/2) + options.span * (0 : floor(length(options.segment_table)/2) - 1)';
     offset2 = cumsum(options.segment_table);
 
     % Perpendicular rings
-    z = zeros(options.TotSinos,2);
+    totSinos = planesPerBlock(options);
+    z = zeros(totSinos,2);
     z(1:2:Nz,1) = z_ring(1:ringsp+1:ringsp^2,1);
     z(1:2:Nz,2) = z_ring(1:ringsp+1:ringsp^2,2);
-    mean_jh = zeros(options.TotSinos,1);
+    mean_jh = zeros(totSinos,1);
     mean_jh(1:2:Nz) = 1;
     % Then the detectors on adjacent rings
     for jh=1:floor(options.span/2)
@@ -107,6 +102,10 @@ if options.span > 1
     % specified with the span value
     for ih=1:floor(length(options.segment_table)/2)
         for jh=1:options.span
+            % Ring differences larger than ring_difference are not stored by the loader
+            if kkj(ih) + jh - 1 > options.ring_difference
+                continue
+            end
             apu = z_ring((kkj(ih)+jh-1)*options.rings+1:options.rings+1:end, 1);
             z(offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1, 1) = z(offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1, 1) + (apu);
             apu2 = z_ring(kkj(ih)+jh:options.rings+1:(options.rings-kkj(ih)-jh+1)*options.rings, 1);
@@ -117,87 +116,119 @@ if options.span > 1
             apu2 = z_ring(kkj(ih)+jh:options.rings+1:(options.rings-kkj(ih)-jh+1)*options.rings, 2);
             z(offset2(2*ih)+jh:2:offset2(2*ih+1)-jh+1, 2) = z(offset2(2*ih)+jh:2:offset2(2*ih + 1)-jh+1, 2) + (apu2);
 
-            loc = ismember(1:options.TotSinos,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1);
+            loc = ismember(1:totSinos,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1);
             mean_jh(loc) = mean_jh(loc) + 1;
-            loc = ismember(1:options.TotSinos,offset2(2*ih)+jh:2:offset2(2*ih+1)-jh+1);
+            loc = ismember(1:totSinos,offset2(2*ih)+jh:2:offset2(2*ih+1)-jh+1);
             mean_jh(loc) = mean_jh(loc) + 1;
         end
     end
-    mean_jh(mean_jh == 0) = 1;
+    % Planes without any ring pairs (segments beyond the ring difference)
+    noPairs = mean_jh == 0;
+    mean_jh(noPairs) = 1;
     % Take the mean value of coordinates
     z(:,1) = z(:,1) ./ mean_jh;
     z(:,2) = z(:,2) ./ mean_jh;
     ind1 = z(:,1)>z(:,2);
     z(z(:,1)<z(:,2),:) = fliplr(z(z(:,1)<z(:,2),:));
     z(ind1,:) = fliplr(z(ind1,:));
+    z(noPairs,:) = Inf;
 
 else
 
     dif = cr_pz;
 
-    if options.nLayers > 1 && options.cryst_per_block_axial(1) ~= options.cryst_per_block_axial(2)
-        gap = ((double(options.rings) * cr_pz) - (options.cryst_per_block_axial(1) * options.linear_multip)*cr_pz) / options.linear_multip / 2;
-        gap = gap : gap * 2 : gap * options.linear_multip * 2;
-    end
     z = zeros(options.rings^2,2);
     loppu = options.rings;
     ind1 = ones(loppu,1);
-    if options.nLayers > 1
-        if options.cryst_per_block_axial(1) > options.cryst_per_block_axial(end) && layer2 == 1
-            r = options.cryst_per_block_axial(end) * options.linear_multip;
-            apu = repelem(gap, options.cryst_per_block_axial(end))';
-            ind2 = (0 : cr_pz : cr_pz * (r - 1))' + apu;
-            insert_indices = setdiff(1:length(ind2), options.cryst_per_block(1):options.cryst_per_block(1):length(ind2));
-            ind3 = Inf(loppu,1);
-            ind3(insert_indices) = ind2;
-            ind2 = ind3;
-        elseif options.cryst_per_block_axial(end) > options.cryst_per_block_axial(1) && layer2 == 1
-            r = options.cryst_per_block_axial(1) * options.linear_multip;
-            apu = repelem(gap, options.cryst_per_block_axial(1))';
-            ind2 = (0 : cr_pz : cr_pz * (r - 1))' + apu;
-            ind3 = Inf(loppu,1);
-            insert_indices = setdiff(1:length(ind3), options.cryst_per_block(end):options.cryst_per_block(end):length(ind3));
-            ind3(insert_indices) = ind2;
-            ind2 = ind3;
-        else
-            ind2 = (0 : cr_pz : cr_pz * (loppu - 1))';
-        end
-        if ((options.cryst_per_block_axial(1) > options.cryst_per_block_axial(end)) || (options.cryst_per_block_axial(end) > options.cryst_per_block_axial(1))) && layer1 == 1
-            apu1 = Inf(loppu,1);
-            if options.cryst_per_block_axial(end) > options.cryst_per_block_axial(1)
-                apu = repelem(gap, options.cryst_per_block_axial(1))';
-                insert_indices = setdiff(1:length(ind1), options.cryst_per_block(end):options.cryst_per_block(end):length(ind1));
-            else
-                apu = repelem(gap, options.cryst_per_block_axial(end))';
-                insert_indices = setdiff(1:length(ind1), options.cryst_per_block(1):options.cryst_per_block(1):length(ind1));
-            end
-            apu1(insert_indices) = apu;
-        end
-    else
-        ind2 = (0 : cr_pz : cr_pz * (loppu - 1))';
-    end
-    uu = 0;
+    ind2 = (0 : cr_pz : cr_pz * (loppu - 1))';
     if isfield(options, 'ringGaps') && sum(options.ringGaps) > 0
         gaps = repelem([0;cumsum(options.ringGaps(:))], options.cryst_per_block_axial(1), 1);
     end
     for t=1:loppu
-        if options.nLayers > 1 && options.cryst_per_block_axial(1) ~= options.cryst_per_block_axial(2) && layer1 == 1
-            z((t-1) * loppu + 1 : t * loppu,:) = [ dif * (uu) * ind1 + apu1(t) ind2];
-            uu = uu + 1;
-        else
-            z((t-1) * loppu + 1 : t * loppu,:) = [ dif * (t-1) * ind1 ind2];
-            if isfield(options, 'ringGaps') && sum(options.ringGaps) > 0
-                z((t-1) * loppu + 1 : t * loppu,2) = z((t-1) * loppu + 1 : t * loppu,2) + gaps(1:loppu);
-                z((t-1) * loppu + 1 : t * loppu,1) = z((t-1) * loppu + 1 : t * loppu,1) + gaps(t);
-            end
+        z((t-1) * loppu + 1 : t * loppu,:) = [ dif * (t-1) * ind1 ind2];
+        if isfield(options, 'ringGaps') && sum(options.ringGaps) > 0
+            z((t-1) * loppu + 1 : t * loppu,2) = z((t-1) * loppu + 1 : t * loppu,2) + gaps(1:loppu);
+            z((t-1) * loppu + 1 : t * loppu,1) = z((t-1) * loppu + 1 : t * loppu,1) + gaps(t);
         end
-            if options.nLayers > 1 && ((options.cryst_per_block_axial(1) > options.cryst_per_block_axial(end) && layer1 == 1) || (options.cryst_per_block_axial(end) > options.cryst_per_block_axial(1) && layer1 == 1))
-                if isinf(apu1(t))
-                    z((t-1) * loppu + 1 : t * loppu,:) = [ inf * ind1 ind2];
-                    uu = uu - 1;
-                end
-            end
     end
     z(isnan(z)) = inf;
     z = z - (maxZ/2 - cr_pz);
+end
+end
+
+function n = planesPerBlock(options)
+% Number of sinogram planes of one layer combination (span > 1). With multiple layers options.TotSinos may include all
+% nLayers^2 layer combinations, the number of planes of one combination is then the sum of the segment table.
+if options.nLayers > 1
+    n = double(sum(options.segment_table));
+else
+    n = double(options.TotSinos);
+end
+end
+
+function zr = unequalLayerRings(options, layer, maxZ)
+% Axial ring positions of one layer of a multi-layer scanner whose layers have a different number of axial crystals
+% (cryst_per_block_axial). The ring slots of every axial block are as many as in the layer with the most crystals, the
+% layers with fewer crystals are centered in the block and have a pseudo ring (Inf) at the end of the block. This is
+% the same ring numbering as the loader uses (the module number is added to the ring number of the layers with fewer
+% axial crystals).
+cr_pz = options.cr_pz;
+rings = double(options.rings);
+cpba = double(options.cryst_per_block_axial(:));
+M = max(cpba);
+n = cpba(layer);
+s = (0 : rings - 1)';
+zr = (s + (M - n) / 2) * cr_pz;
+if isfield(options, 'ringGaps') && numel(options.ringGaps) > 0 && sum(options.ringGaps) > 0
+    % Gaps between the axial blocks
+    gaps = repelem([0;cumsum(options.ringGaps(:))], M, 1);
+    zr = zr + gaps(1 : rings);
+end
+zr(mod(s, M) >= n) = Inf;
+zr = zr - (maxZ / 2 - cr_pz);
+end
+
+function z = unequalLayerCoordinates3D(options, layer1, layer2, maxZ)
+% Axial sinogram coordinates of a multi-layer scanner whose layers have a different number of axial crystals. Every
+% sinogram plane is the mean of the ring pairs (existing rings of the two layers only) that the loader places into the
+% plane: the first ring (first column) is the ring of the first detector of the sinogram and the second ring that of
+% the second detector. The planes that contain no ring pairs are Inf.
+rings = double(options.rings);
+zA = unequalLayerRings(options, layer1, maxZ);
+zB = unequalLayerRings(options, layer2, maxZ);
+[b, a] = meshgrid(0 : rings - 1, 0 : rings - 1);
+a = a(:);
+b = b(:);
+if options.span > 1
+    span = options.span;
+    half = floor(span / 2);
+    seg = cumsum(options.segment_table(:));
+    nPlanes = planesPerBlock(options);
+    % The same plane index as in the loader (saveSinogram.h)
+    erotus = b - a;
+    summa = a + b;
+    ae = abs(erotus);
+    k = floor((ae + half) / span);
+    kk = max(k - 1, 0);
+    valid = ae <= options.ring_difference & 2 * kk + 1 < numel(seg);
+    ind1 = min(2 * kk + 1, numel(seg));
+    ind2 = min(2 * kk + 2, numel(seg));
+    off = seg(ind1);
+    off(erotus >= 0) = seg(ind2(erotus >= 0));
+    P = summa - (half * (2 * k - 1) + k) + off;
+    P(ae <= half) = summa(ae <= half);
+else
+    nPlanes = rings^2;
+    P = a * rings + b;
+    valid = true(size(P));
+end
+valid = valid & isfinite(zA(a + 1)) & isfinite(zB(b + 1)) & P >= 0 & P < nPlanes;
+P = P(valid) + 1;
+count = accumarray(P, 1, [nPlanes 1]);
+populated = count > 0;
+z = Inf(nPlanes, 2);
+sA = accumarray(P, zA(a(valid) + 1), [nPlanes 1]);
+sB = accumarray(P, zB(b(valid) + 1), [nPlanes 1]);
+z(populated, 1) = sA(populated) ./ count(populated);
+z(populated, 2) = sB(populated) ./ count(populated);
 end
