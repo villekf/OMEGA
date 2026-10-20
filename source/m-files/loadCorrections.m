@@ -396,9 +396,9 @@ if ~options.SPECT
                         end
                     elseif ~options.scatter_correction && options.TOF_bins > 1 && r_exist
                         if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.implementation == 4
-                            options.SinDelayed{kk} = single(options.SinDelayed{kk} / options.TOF_bins);
+                            options.SinDelayed{kk} = single(options.SinDelayed{kk}) / options.TOF_bins;
                         else
-                            options.SinDelayed{kk} = double(options.SinDelayed{kk} / options.TOF_bins);
+                            options.SinDelayed{kk} = double(options.SinDelayed{kk}) / options.TOF_bins;
                         end
                     end
                 end
@@ -444,9 +444,9 @@ if ~options.SPECT
                         if options.subtract_scatter
                             if r_exist
                                 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                                    options.SinDelayed = single(options.SinDelayed / options.TOF_bins) + single(options.ScatterC(:));
+                                    options.SinDelayed = single(options.SinDelayed) / options.TOF_bins + single(options.ScatterC(:));
                                 else
-                                    options.SinDelayed = double(options.SinDelayed / options.TOF_bins) + double(options.ScatterC(:));
+                                    options.SinDelayed = double(options.SinDelayed) / options.TOF_bins + double(options.ScatterC(:));
                                 end
                             else
                                 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
@@ -482,9 +482,9 @@ if ~options.SPECT
                             if options.subtract_scatter
                                 if r_exist
                                     if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                                        options.SinDelayed = single(options.SinDelayed / options.TOF_bins) + single(options.ScatterC{kk}(:));
+                                        options.SinDelayed = single(options.SinDelayed) / options.TOF_bins + single(options.ScatterC{kk}(:));
                                     else
-                                        options.SinDelayed = double(options.SinDelayed / options.TOF_bins) + double(options.ScatterC{kk}(:));
+                                        options.SinDelayed = double(options.SinDelayed) / options.TOF_bins + double(options.ScatterC{kk}(:));
                                     end
                                 else
                                     options.SinDelayed = cell(numel(options.ScatterC),1);
@@ -499,9 +499,9 @@ if ~options.SPECT
                     end
                 elseif ~options.scatter_correction && options.TOF_bins > 1 && r_exist
                     if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                        options.SinDelayed = single(options.SinDelayed / options.TOF_bins);
+                        options.SinDelayed = single(options.SinDelayed) / options.TOF_bins;
                     else
-                        options.SinDelayed = double(options.SinDelayed / options.TOF_bins);
+                        options.SinDelayed = double(options.SinDelayed) / options.TOF_bins;
                     end
                 end
             end
@@ -558,9 +558,9 @@ if ~options.SPECT
                         end
                         if options.subtract_scatter
                             if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                                options.SinDelayed{kk} = single(options.SinDelayed{kk} / options.TOF_bins) + single(options.ScatterC{kk}(:));
+                                options.SinDelayed{kk} = single(options.SinDelayed{kk}) / options.TOF_bins + single(options.ScatterC{kk}(:));
                             else
-                                options.SinDelayed{kk} = double(options.SinDelayed{kk} / options.TOF_bins) + double(options.ScatterC{kk}(:));
+                                options.SinDelayed{kk} = double(options.SinDelayed{kk}) / options.TOF_bins + double(options.ScatterC{kk}(:));
                             end
                         end
                     elseif ~options.scatter_correction && options.TOF_bins > 1
@@ -605,9 +605,9 @@ if ~options.SPECT
                         end
                         if options.subtract_scatter
                             if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                                options.SinDelayed = single(options.SinDelayed / options.TOF_bins) + single(options.ScatterC(:));
+                                options.SinDelayed = single(options.SinDelayed) / options.TOF_bins + single(options.ScatterC(:));
                             else
-                                options.SinDelayed = double(options.SinDelayed / options.TOF_bins) + double(options.ScatterC(:));
+                                options.SinDelayed = double(options.SinDelayed) / options.TOF_bins + double(options.ScatterC(:));
                             end
                         end
                     elseif iscell(options.ScatterC)
@@ -635,9 +635,9 @@ if ~options.SPECT
                             end
                             if options.subtract_scatter
                                 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                                    options.SinDelayed = single(options.SinDelayed / options.TOF_bins) + single(options.ScatterC{kk}(:));
+                                    options.SinDelayed = single(options.SinDelayed) / options.TOF_bins + single(options.ScatterC{kk}(:));
                                 else
-                                    options.SinDelayed = double(options.SinDelayed / options.TOF_bins) + double(options.ScatterC{kk}(:));
+                                    options.SinDelayed = double(options.SinDelayed) / options.TOF_bins + double(options.ScatterC{kk}(:));
                                 end
                             end
                         end
@@ -908,6 +908,12 @@ if ~options.SPECT
             for kk = 1 : options.partitions
                 options.SinM{kk} = options.SinM{kk}(:);
                 if options.TOF_bins > 1
+                    % Convert to floating point first, otherwise the TOF bins would be rounded to the integer type of the raw data
+                    if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
+                        options.SinM{kk} = single(full(options.SinM{kk}));
+                    else
+                        options.SinM{kk} = double(full(options.SinM{kk}));
+                    end
                     for uu = 1 : options.TOF_bins
                         if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
                             options.SinM{kk}(NN * (uu - 1) + 1: NN * uu) = single(full(options.SinM{kk}(NN * (uu - 1) + 1: NN * uu))) .* single(options.normalization);
@@ -925,7 +931,12 @@ if ~options.SPECT
             end
         else
             if options.TOF_bins > 1
-                options.SinM = options.SinM(:);
+                % Convert to floating point first, otherwise the TOF bins would be rounded to the integer type of the raw data
+                if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
+                    options.SinM = single(full(options.SinM(:)));
+                else
+                    options.SinM = double(full(options.SinM(:)));
+                end
                 for uu = 1 : options.TOF_bins
                     if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
                         options.SinM(NN * (uu - 1) + 1: NN * uu) = single(full(options.SinM(NN * (uu - 1) + 1: NN * uu))) .* single(options.normalization);

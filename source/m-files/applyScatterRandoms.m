@@ -27,9 +27,9 @@ if isfield(options,ichar)
                     if type == 0
                         if options.TOF_bins > 1
                             NN = options.Ndist * options.Nang * options.NSinos;
-                            options.SinM{kk} = options.SinM{kk}(:);
+                            options.SinM{kk} = single(full(options.SinM{kk}(:)));
                             for uu = 1 : options.TOF_bins
-                                options.SinM{kk}(NN * (uu - 1) + 1: NN * uu) = single(full(options.SinM{kk}(NN * (uu - 1) + 1: NN * uu))) - single(full(input{kk}(:)) / options.TOF_bins);
+                                options.SinM{kk}(NN * (uu - 1) + 1: NN * uu) = single(full(options.SinM{kk}(NN * (uu - 1) + 1: NN * uu))) - single(full(input{kk}(:))) / options.TOF_bins;
                             end
                         else
                             options.SinM{kk} = single(full(options.SinM{kk}(:))) - single(full(input{kk}));
@@ -60,9 +60,9 @@ if isfield(options,ichar)
                 if type == 0
                     if options.TOF_bins > 1
                         NN = options.Ndist * options.Nang * options.NSinos;
-                        options.SinM = options.SinM(:);
+                        options.SinM = single(full(options.SinM(:)));
                         for uu = 1 : options.TOF_bins
-                            options.SinM(NN * (uu - 1) + 1: NN * uu) = single(full(options.SinM(NN * (uu - 1) + 1: NN * uu))) - single(full(input{1}(:)) / options.TOF_bins);
+                            options.SinM(NN * (uu - 1) + 1: NN * uu) = single(full(options.SinM(NN * (uu - 1) + 1: NN * uu))) - single(full(input{1}(:))) / options.TOF_bins;
                         end
                     else
                         options.SinM = single(full(options.SinM(:))) - single(full(input{1}));
@@ -95,18 +95,18 @@ if isfield(options,ichar)
                     if type == 0
                         if options.TOF_bins > 1
                             NN = options.Ndist * options.Nang * options.NSinos;
-                            options.SinM{kk} = options.SinM{kk}(:);
+                            options.SinM{kk} = single(full(options.SinM{kk}(:)));
                             for uu = 1 : options.TOF_bins
-                                options.SinM{kk}(NN * (uu - 1) + 1: NN * uu) = single(full(options.SinM{kk}(NN * (uu - 1) + 1: NN * uu))) - single(full(input(:)) / options.TOF_bins);
+                                options.SinM{kk}(NN * (uu - 1) + 1: NN * uu) = single(full(options.SinM{kk}(NN * (uu - 1) + 1: NN * uu))) - single(full(input(:))) / options.TOF_bins;
                             end
                         else
-                            options.SinM{kk} = single(full(options.SinM{kk}(:))) - single(full(input(:)) / length(options.SinM));
+                            options.SinM{kk} = single(full(options.SinM{kk}(:))) - single(full(input(:))) / length(options.SinM);
                         end
                     elseif type == 1
                         if options.subtract_scatter
-                            options.SinM{kk} = single(full(options.SinM{kk}(:))) - single(full(input(:)) / length(options.SinM));
+                            options.SinM{kk} = single(full(options.SinM{kk}(:))) - single(full(input(:))) / length(options.SinM);
                         else
-                            options.SinM{kk} = single(full(options.SinM{kk}(:))) .* single(full(input(:)) / length(options.SinM));
+                            options.SinM{kk} = single(full(options.SinM{kk}(:))) .* (single(full(input(:))) / length(options.SinM));
                         end
                     end
                     options.SinM{kk}(options.SinM{kk} < 0) = 0;
@@ -128,9 +128,9 @@ if isfield(options,ichar)
                 if type == 0
                     if options.TOF_bins > 1
                         NN = options.Ndist * options.Nang * options.NSinos;
-                        options.SinM = options.SinM(:);
+                        options.SinM = single(full(options.SinM(:)));
                         for uu = 1 : options.TOF_bins
-                            options.SinM(NN * (uu - 1) + 1: NN * uu) = single(full(options.SinM(NN * (uu - 1) + 1: NN * uu))) - single(full(input(:)) / options.TOF_bins);
+                            options.SinM(NN * (uu - 1) + 1: NN * uu) = single(full(options.SinM(NN * (uu - 1) + 1: NN * uu))) - single(full(input(:))) / options.TOF_bins;
                         end
                     else
                         options.SinM = single(full(options.SinM(:))) - single(full(input(:)));
