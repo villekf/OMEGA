@@ -336,6 +336,27 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 	if (pseudoR) {
 		gapSize = rings[0] / (nPseudos + 1);
 	}
+	// Mapping of the layers into a common block structure (sinogram path only). The transaxial index of every layer is mapped
+	// into blocks of blockSize detectors: blockSize is the block size including the pseudo detectors when pseudo detectors are
+	// used (detWPseudo / number of blocks), otherwise the block size of the layer with the most crystals per block. The axial ring
+	// numbers are mapped into modules of as many rings as the layer with the most axial crystals has. The detectors/rings that a
+	// layer does not have are located at the end of each block/module of the layer. Nothing is added to a single layer without
+	// pseudo detectors
+	uint32_t maxCryst = 0U, maxCrystZ = 0U;
+	for (int32_t ll = 0; ll < nLayers; ll++) {
+		maxCryst = std::max(maxCryst, cryst_per_block[ll]);
+		maxCrystZ = std::max(maxCrystZ, cryst_per_block_z[ll]);
+	}
+	const uint32_t nBlocksRing = blocks_per_ring * transaxial_multip;
+	const uint32_t blockSize = (pseudoD && nBlocksRing > 0U) ? detWPseudo[0] / nBlocksRing : maxCryst;
+	std::vector<uint32_t> padTrans(std::max<int32_t>(nLayers, 1), 0U), padAxial(std::max<int32_t>(nLayers, 1), 0U);
+	bool padDetectors = false, padRings = false;
+	for (int32_t ll = 0; ll < nLayers; ll++) {
+		padTrans[ll] = blockSize > cryst_per_block[ll] ? blockSize - cryst_per_block[ll] : 0U;
+		padAxial[ll] = nLayers > 1 ? maxCrystZ - cryst_per_block_z[ll] : 0U;
+		padDetectors = padDetectors || padTrans[ll] > 0U;
+		padRings = padRings || padAxial[ll] > 0U;
+	}
 	if (source) {
 		if (!Coincidences->GetBranchStatus("sourcePosX1")) {
 			disp("No X-source coordinates saved for first photon, unable to save source coordinates", mPtr);
@@ -757,21 +778,22 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 						TOFIndex[kk] = static_cast<uint8_t>(bins);
 				}
 				else {
-					if (pseudoD) {
-						ring_pos1 += ring_pos1 / cryst_per_block[layerID1];
-						ring_pos2 += ring_pos2 / cryst_per_block[layerID2];
+					// The axial module of each end (before the pseudo rings are added)
+					const uint32_t axialBlock1 = padRings ? ring_number1 / cryst_per_block_z[layerID1] : 0U;
+					const uint32_t axialBlock2 = padRings ? ring_number2 / cryst_per_block_z[layerID2] : 0U;
+					// Pseudo detectors and the layer padding
+					if (padDetectors) {
+						ring_pos1 += (ring_pos1 / cryst_per_block[layerID1]) * padTrans[layerID1];
+						ring_pos2 += (ring_pos2 / cryst_per_block[layerID2]) * padTrans[layerID2];
 					}
 					if (pseudoR) {
 						ring_number1 += ring_number1 / gapSize;
 						ring_number2 += ring_number2 / gapSize;
 					}
-					if ((layer == 0 || layer == 1) && nLayers > 1) {
-						ring_pos1 += ring_pos1 / cryst_per_block[layerID1];
-						ring_number1 += moduleID1;
-					}
-					if ((layer == 0 || layer == 2) && nLayers > 1) {
-						ring_pos2 += ring_pos2 / cryst_per_block[layerID2];
-						ring_number2 += moduleID2;
+					// Layer padding axially
+					if (padRings) {
+						ring_number1 += axialBlock1 * padAxial[layerID1];
+						ring_number2 += axialBlock2 * padAxial[layerID2];
 					}
 					bool swap = false;
 					const int64_t sinoIndex = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize[0], Ndist, Nang[0], ringDifference, span, seg, TOFSize,
@@ -946,22 +968,23 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 					DaxIndex[kk * 2 + 1] = static_cast<uint16_t>(ring_number2) + layerID2 * rings[0];
 				}
 				else {
-					if (pseudoD) {
-						ring_pos1 += ring_pos1 / cryst_per_block[layerID1];
-						ring_pos2 += ring_pos2 / cryst_per_block[layerID2];
+					// The axial module of each end (before the pseudo rings are added)
+					const uint32_t axialBlock1 = padRings ? ring_number1 / cryst_per_block_z[layerID1] : 0U;
+					const uint32_t axialBlock2 = padRings ? ring_number2 / cryst_per_block_z[layerID2] : 0U;
+					// Pseudo detectors and the layer padding
+					if (padDetectors) {
+						ring_pos1 += (ring_pos1 / cryst_per_block[layerID1]) * padTrans[layerID1];
+						ring_pos2 += (ring_pos2 / cryst_per_block[layerID2]) * padTrans[layerID2];
 					}
 					if (pseudoR) {
 						ring_number1 += ring_number1 / gapSize;
 						ring_number2 += ring_number2 / gapSize;
 					}
-					if ((layer == 0 || layer == 1) && nLayers > 1) {
-						ring_pos1 += ring_pos1 / cryst_per_block[layerID1];
-						ring_number1 += moduleID1;
+					// Layer padding axially
+					if (padRings) {
+						ring_number1 += axialBlock1 * padAxial[layerID1];
+						ring_number2 += axialBlock2 * padAxial[layerID2];
 					}
-					if ((layer == 0 || layer == 2) && nLayers > 1) {
-						ring_pos2 += ring_pos2 / cryst_per_block[layerID2];
-						ring_number2 += moduleID2;
-				}
 					bool swap = false;
 					const int64_t sinoIndex = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize[0], Ndist, Nang[0], ringDifference, span, seg, sinoSize[0],
 						detWPseudo[0], rings[0], bins, nDistSide, swap, tPoint, layer, nLayers);
