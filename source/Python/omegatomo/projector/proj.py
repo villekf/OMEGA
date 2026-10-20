@@ -935,6 +935,10 @@ class projectorClass:
             # All layer combinations (rings**2 sinograms each) form the sinogram set
             self.TotSinos = self.rings**2 * self.nLayers**2
             self.NSinos = self.TotSinos
+        elif self.nLayers > 1 and self.segment_table.size > 0:
+            # All layer combinations (the planes of the segment table each) form the sinogram set
+            self.TotSinos = int(np.sum(self.segment_table)) * self.nLayers**2
+            self.NSinos = self.TotSinos
         elif self.NSinos == 0:
             self.NSinos = np.sum(self.segment_table)
         if self.TotSinos == 0:

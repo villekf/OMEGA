@@ -436,6 +436,10 @@ classdef projectorClass
             if obj.param.span == 1
                 obj.param.TotSinos = obj.param.rings^2 * obj.param.nLayers^2;
                 obj.param.NSinos = obj.param.TotSinos;
+            elseif obj.param.nLayers > 1 && isfield(obj.param, 'segment_table') && ~isempty(obj.param.segment_table)
+                % All layer combinations (the planes of the segment table each) form the sinogram set
+                obj.param.TotSinos = sum(obj.param.segment_table) * obj.param.nLayers^2;
+                obj.param.NSinos = obj.param.TotSinos;
             end
             if (~obj.param.CT && ~obj.param.SPECT)
                 if isfield(obj.param,'NSinos') && obj.param.NSinos > 0

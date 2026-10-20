@@ -61,6 +61,9 @@ end
 NSlices = options.TotSinos;
 if options.span == 1
     NSlices = options.rings(end)^2;
+elseif options.nLayers > 1
+    % The sinograms of each layer combination contain the planes of the segment table (TotSinos includes all combinations)
+    NSlices = sum(options.segment_table);
 end
 if nargin > 1
     corrections = varargin{1};
@@ -776,7 +779,7 @@ if options.use_machine ~= 2
                     options.ScatterC{llo} = randoms_smoothing(options.ScatterC{llo}, options);
                     ScatterProp.smoothing = true;
                     if options.scatter_variance_reduction
-                        appliedCorrections.scatter = 'and smoothing';
+                        appliedCorrections.scatter = [appliedCorrections.scatter ' and smoothing'];
                     else
                         appliedCorrections.scatter = 'normalized scatter correction with smoothing';
                     end
@@ -809,7 +812,7 @@ if options.use_machine ~= 2
                     options.ScatterC = randoms_smoothing(options.ScatterC, options);
                     ScatterProp.smoothing = true;
                     if options.scatter_variance_reduction
-                        appliedCorrections.scatter = 'and smoothing';
+                        appliedCorrections.scatter = [appliedCorrections.scatter ' and smoothing'];
                     else
                         appliedCorrections.scatter = 'normalized scatter correction with smoothing';
                     end
@@ -1199,7 +1202,7 @@ else
                     options.ScatterC = randoms_smoothing(options.ScatterC, options);
                     ScatterProp.smoothing = true;
                     if options.scatter_variance_reduction
-                        appliedCorrections.scatter = 'and smoothing';
+                        appliedCorrections.scatter = [appliedCorrections.scatter ' and smoothing'];
                     else
                         appliedCorrections.scatter = 'scatter correction with smoothing';
                     end

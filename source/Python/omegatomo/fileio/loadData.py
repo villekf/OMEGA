@@ -100,6 +100,9 @@ def loadROOT(options, store_coordinates = False):
     totSinos = int(_scalar(options.TotSinos))
     if options.span == 1:
         totSinos = int(ringsArr[0]) ** 2
+    elif nLayers > 1:
+        # The sinograms of each layer combination contain the planes of the segment table (TotSinos includes all combinations)
+        totSinos = int(np.sum(options.segment_table))
     sinoSize = Ndist * int(NangArr[0]) * totSinos
     TOF_bins = int(_scalar(options.TOF_bins))
     TOFSize = sinoSize * TOF_bins

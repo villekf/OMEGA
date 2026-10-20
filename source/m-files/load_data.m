@@ -164,6 +164,9 @@ RA = [];
 totSinos = options.TotSinos;
 if options.span == 1
     totSinos = options.rings(end).^2;
+elseif options.nLayers > 1
+    % The sinograms of each layer combination contain the planes of the segment table (TotSinos includes all combinations)
+    totSinos = sum(options.segment_table);
 end
 sinoSize = uint64(options.Ndist * options.Nang(end) * totSinos);
 
