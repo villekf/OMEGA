@@ -126,8 +126,10 @@ options.det_per_ring = int(options.blocks_per_ring * np.max(options.cryst_per_bl
 # If your scanner has a single pseudo detector on each (transaxial) side of
 # the crystal block then simply add +1 inside the parenthesis (or uncomment
 # the one below).
-# With multiple layers, this has to be equal to det_per_ring above, otherwise
-# the pseudo detectors are added twice
+# With multiple layers, the pseudo detectors are added to the detector slots
+# of the largest array: all the layers are mapped into blocks of
+# det_w_pseudo / blocks_per_ring detectors (here 9 + 1), the detectors that a
+# layer does not have are left empty at the end of each block
 options.det_w_pseudo = int(options.blocks_per_ring*np.max(options.cryst_per_block))
 #options.det_w_pseudo = int(options.blocks_per_ring*(np.max(options.cryst_per_block) + 1))
 
