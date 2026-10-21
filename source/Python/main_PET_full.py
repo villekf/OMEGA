@@ -94,6 +94,24 @@ options.pseudot = np.empty(0, dtype=np.float32)
 # If the gap values are the same, you need to repeat the value for each gap
 options.ringGaps = np.empty(0, dtype=np.float32)
 
+### Transaxial gaps inside a block (mm)
+# The detector ring is a regular polygon with blocks_per_ring*transaxial_multip
+# flat blocks, their faces at options.diameter/2 from the center.
+# Optional extra spacing after each crystal of a block (except the last), i.e.
+# cryst_per_block - 1 values, e.g. between the stacks/dies of a module.
+# The block stays centered. If there are no gaps, leave this empty or zero
+options.transaxialGaps = np.empty(0, dtype=np.float32)
+
+### Angle of the first block (degrees)
+# Angle (counter-clockwise from the +x axis) of the normal of the first
+# detector block, i.e. where the first block is in the image coordinate
+# system. +x = direction of the image's first dimension (Nx, row direction);
+# angles are counter-clockwise towards +y (second dimension, Ny). Default 0 =
+# the first block is centered on the +x axis. This is applied before offangle
+# (which only shifts the detector numbering). See computeCoordinates in
+# detcoord.py for the full definition.
+options.firstBlockAngle = 0.
+
 ### Number of detectors per crystal ring (without pseudo detectors)
 options.det_per_ring = options.blocks_per_ring*options.cryst_per_block
 
