@@ -238,6 +238,20 @@ class projectorClass:
     variance_reduction = False
     randoms_smoothing = False
     ringGaps = np.empty(0, dtype=np.int32)
+    # Optional transaxial gaps (mm) inside a block (PET). 1-D array of cryst_per_block - 1 elements, element j is the
+    # extra spacing inserted after crystal j (0-based) of every block, e.g. between coplanar sub-units of a module. The
+    # block stays centered on its facet. Empty (default) or all zeros = no gaps. The detector ring is a regular polygon
+    # with blocks_per_ring * transaxial_multip facets, with the block faces at diameter / 2 from the center.
+    transaxialGaps = np.empty(0, dtype=np.float32)
+    # Angle (degrees, counter-clockwise from the +x axis) of the normal of the first block (PET) of the regular-polygon
+    # detector ring, i.e. where the first block is located in the image coordinate system. 0 (default) = the first block
+    # is centered on the +x axis. Coordinate system: origin at the scanner center, z = scanner axis, +x = direction of
+    # the image's first dimension (Nx, row direction), +y = direction of its second dimension (Ny, column direction);
+    # angles are counter-clockwise, from +x towards +y. With 0 the center of block 0 is at (x, y) = (diameter / 2, 0)
+    # (DOI added to the radius) and its crystals run towards +y. Applied before offangle (which only renumbers/rolls
+    # the detectors) and before flip_image, so for a scanner whose first block is at angle A in the image frame
+    # (e.g. a GATE model) firstBlockAngle = A and offangle = 0 give the exact detector positions in that frame.
+    firstBlockAngle = 0.
     precompute_lor = False
     sigmaZ = -1.
     sigmaXY = -1.

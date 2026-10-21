@@ -49,6 +49,12 @@ cpb = options.cryst_per_block(1);
 % the interpolation (below) works with absolute positions
 geomOptions = options;
 geomOptions.flip_image = false;
+% (+x = direction of the image's first dimension, Nx; angles are counter-clockwise
+% towards +y, the second dimension, Ny.)
+% The geometry below assumes that the first block is on the +x axis (quadrant
+% mirror-fill), so it is built for firstBlockAngle = 0 and the resulting
+% LOR coordinates are rotated to the true first block angle at the end
+geomOptions.firstBlockAngle = 0;
 [~, ~, xp, yp] = detector_coordinates(geomOptions);
 
 new_xp = zeros(size(xp));
@@ -191,6 +197,13 @@ y(:,2) = yy2(:);
 
 x = x - D / 2;
 y = y - D / 2;
+if isfield(options, 'firstBlockAngle') && ~isempty(options.firstBlockAngle) && options.firstBlockAngle ~= 0
+    fbaC = cosd(options.firstBlockAngle);
+    fbaS = sind(options.firstBlockAngle);
+    xRot = fbaC * x - fbaS * y;
+    y = fbaS * x + fbaC * y;
+    x = xRot;
+end
 
 % Equidistance check: the signed distance of each LOR from the origin
 % must change by a constant step within each angular bin (column). This

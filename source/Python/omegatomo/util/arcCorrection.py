@@ -26,6 +26,12 @@ def arc_correction(options, interpolate_sinogram):
     # above (used for interpolation) still use the true options.
     optionsGeom = copy.copy(options)
     optionsGeom.flip_image = False
+    # (+x = direction of the image's first dimension, Nx; angles are counter-clockwise
+    # towards +y, the second dimension, Ny.)
+    # The geometry below assumes that the first block is on the +x axis (quadrant
+    # mirror-fill), so it is built for firstBlockAngle = 0 and the resulting
+    # LOR coordinates are rotated to the true first block angle at the end
+    optionsGeom.firstBlockAngle = 0.
     xp, yp = detectorCoordinates(optionsGeom)
 
     # Detector radius: the ideal circle used for the arc intersection has to
@@ -205,6 +211,13 @@ def arc_correction(options, interpolate_sinogram):
 
     x -= D / 2
     y -= D / 2
+    fba = float(getattr(options, 'firstBlockAngle', 0.))
+    if fba != 0.:
+        fbaC = np.cos(np.radians(fba))
+        fbaS = np.sin(np.radians(fba))
+        xRot = fbaC * x - fbaS * y
+        y = fbaS * x + fbaC * y
+        x = xRot
 
     # Equidistance check: within each angular column, the signed radial
     # distance between adjacent LORs should be (near) constant. A failure

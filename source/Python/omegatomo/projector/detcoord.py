@@ -620,9 +620,46 @@ def _padLayerBlocks(x, y, slots, blockSize, nBlocks):
     yOut[:, :slots] = y.reshape(nBlocks, slots)
     return xOut.ravel(), yOut.ravel()
 
-def computeCoordinates(options, blocks_per_ring, transaxial_multip, cryst_per_block, diameter, cr_p, usePseudo):
+def _transaxialGapsFor(options, cryst_per_block):
+    """
+    Returns the transaxial gaps (options.transaxialGaps) that apply to a block
+    with cryst_per_block crystals, or None if there are no gaps (or the gaps
+    were given for a different number of crystals per block, e.g. the other
+    layer of a multi-layer scanner).
+    """
+    gaps = getattr(options, 'transaxialGaps', None)
+    if gaps is None:
+        return None
+    gaps = np.asarray(gaps, dtype=np.float64).ravel()
+    if gaps.size == 0 or not np.any(gaps):
+        return None
+    if gaps.size != int(cryst_per_block) - 1:
+        if getattr(options, 'nLayers', 1) > 1:
+            return None
+        raise ValueError('options.transaxialGaps has to contain cryst_per_block - 1 = ' + str(int(cryst_per_block) - 1) + ' elements (one gap after each crystal of a block except the last) or be empty, but it has ' + str(gaps.size) + ' elements!')
+    return gaps
+
+def computeCoordinates(options, blocks_per_ring, transaxial_multip, cryst_per_block, diameter, cr_p, usePseudo, transaxialGaps=None, firstBlockAngle=None):
     """
     Transaxial PET coordinates.
+
+    The detector ring is a regular polygon with N = blocks_per_ring *
+    transaxial_multip flat facets (blocks). The front face of each block is at
+    the perpendicular distance diameter / 2 from the center, i.e. diameter is
+    the distance between two opposing (parallel) block faces. The normal of
+    facet 0 is at the angle firstBlockAngle (default 0, i.e. facet 0 is
+    centered on the +x axis) and the facets follow each other counter-clockwise
+    (increasing angle). The crystals of a block are placed at the pitch cr_p
+    along the facet, centered on the facet, with the first crystal of block 0
+    having the smallest y coordinate.
+
+    Coordinate system: the origin is at the scanner center and z is the scanner
+    axis. +x is the direction of the image's first dimension (Nx, the row
+    direction) and +y the direction of its second dimension (Ny, the column
+    direction); angles are counter-clockwise, i.e. from +x towards +y. With
+    firstBlockAngle = 0 the center of block 0 is at (x, y) = (diameter / 2, 0)
+    (the DOI is added to the radius) and its crystals run towards +y. The angle
+    is applied before offangle (detector renumbering) and before flip_image.
 
     Parameters
     ----------
@@ -635,11 +672,21 @@ def computeCoordinates(options, blocks_per_ring, transaxial_multip, cryst_per_bl
     cryst_per_block : int
         The number of crystals per block.
     diameter : float
-        Diameter of the bore.
+        Diameter of the bore, measured between two opposing block faces.
     cr_p : float
         Crystal pitch/size in transaxial direction.
     usePseudo : bool
-        True if pseudo detectors are present, False otherwise.
+        True if pseudo detectors are present, False otherwise. A pseudo
+        detector is placed one cr_p after the last crystal of each block.
+    transaxialGaps : array_like, optional
+        Extra spacing (mm) after crystal j of each block, cryst_per_block - 1
+        elements. The block stays centered on its facet. The default is None,
+        in which case options.transaxialGaps is used (if present).
+    firstBlockAngle : float, optional
+        Angle (degrees, counter-clockwise from the +x axis, i.e. from the
+        direction of the image's first dimension towards its second) of the
+        normal of the first block (facet 0). The default is None, in which case
+        options.firstBlockAngle is used (if present, otherwise 0).
 
     Returns
     -------
@@ -649,136 +696,37 @@ def computeCoordinates(options, blocks_per_ring, transaxial_multip, cryst_per_bl
         y-direction coordinates for detector/detector pairs.
 
     """
-    import math
-    cryst_per_block_orig = cryst_per_block
+    nBlocks = int(blocks_per_ring * transaxial_multip)
+    nCryst = int(cryst_per_block)
+    if firstBlockAngle is None:
+        firstBlockAngle = getattr(options, 'firstBlockAngle', 0.)
+    firstBlockAngle = float(np.asarray(firstBlockAngle).ravel()[0]) if np.size(firstBlockAngle) > 0 else 0.
+    if transaxialGaps is None:
+        gaps = _transaxialGapsFor(options, nCryst)
+    else:
+        gaps = np.asarray(transaxialGaps, dtype=np.float64).ravel()
+        if gaps.size == 0:
+            gaps = None
+        elif gaps.size != nCryst - 1:
+            raise ValueError('transaxialGaps has to contain cryst_per_block - 1 = ' + str(nCryst - 1) + ' elements, but it has ' + str(gaps.size) + ' elements!')
+
+    # Tangential position of each crystal along the facet, centered on the facet
+    t = (np.arange(nCryst, dtype=np.float64) - (nCryst - 1) / 2.) * cr_p
+    if gaps is not None:
+        t = t + np.concatenate((np.zeros(1), np.cumsum(gaps))) - np.sum(gaps) / 2.
     if usePseudo:
-        extraVar = 1
-        cryst_per_block = cryst_per_block + 1
-    else:
-        extraVar = 0
-    
-    angle = np.arange(90, -271, -360 / (blocks_per_ring * transaxial_multip))  # Generate angles
-    
-    widths = (cryst_per_block_orig) * cr_p * np.cos(np.radians(angle[:((blocks_per_ring * transaxial_multip) // 2 + 1)]))
-    widthsy = (cryst_per_block_orig) * cr_p * np.sin(np.radians(angle[:((blocks_per_ring * transaxial_multip) // 2)]))
-    
-    erotus = (diameter - np.sum(np.abs(widths))) / np.sum(np.cos(np.radians(angle[:((blocks_per_ring * transaxial_multip) // 2 + 1)]))) / 2
-    erotusy = (diameter - np.sum(np.abs(widthsy))) / np.sum(np.abs(np.sin(np.radians(angle[:((blocks_per_ring * transaxial_multip) // 2)])))) / 2
-    
-    alkupistex = diameter / 2.
-    alkupistey = -((cryst_per_block_orig) / 2. + 0.5) * cr_p
-    
-    ii = 0
-    x = np.zeros(((blocks_per_ring * transaxial_multip) * (cryst_per_block)), dtype=np.float32)
-    y = np.zeros(((blocks_per_ring * transaxial_multip) * (cryst_per_block)), dtype=np.float32)
-    
-    # Compute the detector coordinates of each detector (crystal) in each block
-    # Only for the 1/4th of the ring
-    for blocks in range(0, math.ceil((blocks_per_ring * transaxial_multip) / 4)):
-        for crystals in range(1, cryst_per_block + 1):
-            if blocks > 0 and crystals == 1:
-                x[ii] = alkupistex - (cr_p * 0.5) * np.cos(np.radians(angle[blocks])) - erotus * np.cos(
-                    np.radians(angle[blocks - 1])) - erotus * np.cos(np.radians(angle[blocks])) - (
-                                cr_p * 0.5) * np.cos(np.radians(angle[blocks - 1]))
-                y[ii] = alkupistey + (cr_p * 0.5) * np.sin(np.radians(angle[blocks])) + erotusy * np.sin(
-                    np.radians(angle[blocks - 1])) + erotusy * np.sin(np.radians(angle[blocks])) + (
-                                cr_p * 0.5) * np.sin(np.radians(angle[blocks - 1]))
-            else:
-                x[ii] = alkupistex - (cr_p) * np.cos(np.radians(angle[blocks]))
-                y[ii] = alkupistey + (cr_p) * np.sin(np.radians(angle[blocks]))
-    
-            if crystals == cryst_per_block:
-                alkupistex = x[ii] + (cr_p) * np.cos(np.radians(angle[blocks])) * extraVar
-                alkupistey = y[ii] - (cr_p) * np.sin(np.radians(angle[blocks])) * extraVar
-            else:
-                alkupistex = x[ii]
-                alkupistey = y[ii]
-            ii += 1
-    
-    # Symmetry of the coordinates
-    if (blocks_per_ring * transaxial_multip) % 4 == 0:
-        blocks += 1
-        x[ii] = alkupistex - (cr_p * 0.5) * np.cos(np.radians(angle[blocks])) - erotus * np.cos(
-            np.radians(angle[blocks - 1])) - erotus * np.cos(np.radians(angle[blocks])) - (cr_p * 0.5) * np.cos(
-            np.radians(angle[blocks - 1]))
-        y[ii] = alkupistey + (cr_p * 0.5) * np.sin(np.radians(angle[blocks])) + erotusy * np.sin(
-            np.radians(angle[blocks - 1])) + erotusy * np.sin(np.radians(angle[blocks])) + (cr_p * 0.5) * np.sin(
-            np.radians(angle[blocks - 1]))
-        alkupistex = x[ii]
-        alkupistey = y[ii]
-        ii += 1
-    
-        for ll in range(2, cryst_per_block + 1):
-            x[ii] = alkupistex - (cr_p) * np.cos(np.radians(angle[blocks]))
-            y[ii] = alkupistey + (cr_p) * np.sin(np.radians(angle[blocks]))
-            alkupistex = x[ii]
-            alkupistey = y[ii]
-            ii += 1
-    
-        if usePseudo:
-            ii -= 1
-            alkupistex = x[ii] + (cr_p) * np.cos(np.radians(angle[blocks])) * extraVar
-            alkupistey = y[ii] - (cr_p) * np.sin(np.radians(angle[blocks])) * extraVar
-            alkublock = blocks + 1
-            ii += 1
-            for blocks in range(alkublock, blocks_per_ring * transaxial_multip):
-                for crystals in range(1, cryst_per_block + 1):
-                    if blocks > 0 and crystals == 1:
-                        x[ii] = alkupistex - (cr_p * 0.5) * np.cos(np.radians(angle[blocks])) - erotus * np.cos(
-                            np.radians(angle[blocks - 1])) - erotus * np.cos(np.radians(angle[blocks])) - (
-                                        cr_p * 0.5) * np.cos(np.radians(angle[blocks - 1]))
-                        y[ii] = alkupistey + (cr_p * 0.5) * np.sin(np.radians(angle[blocks])) + erotusy * np.sin(
-                            np.radians(angle[blocks - 1])) + erotusy * np.sin(np.radians(angle[blocks])) + (
-                                        cr_p * 0.5) * np.sin(np.radians(angle[blocks - 1]))
-                    else:
-                        x[ii] = alkupistex - (cr_p) * np.cos(np.radians(angle[blocks]))
-                        y[ii] = alkupistey + (cr_p) * np.sin(np.radians(angle[blocks]))
-    
-                    if crystals == cryst_per_block:
-                        alkupistex = x[ii] + (cr_p) * np.cos(np.radians(angle[blocks])) * extraVar
-                        alkupistey = y[ii] - (cr_p) * np.sin(np.radians(angle[blocks])) * extraVar
-                    else:
-                        alkupistex = x[ii]
-                        alkupistey = y[ii]
-                    ii += 1
-        else:
-            x[ii:ii + ((blocks_per_ring * transaxial_multip) * cryst_per_block) // 4] = -(np.flip(x[:((blocks_per_ring * transaxial_multip) * cryst_per_block) // 4]))
-            y[ii:ii + ((blocks_per_ring * transaxial_multip) * cryst_per_block) // 4] = (np.flip(y[:((blocks_per_ring * transaxial_multip) * cryst_per_block) // 4]))
-            x[ii + ((blocks_per_ring * transaxial_multip) * cryst_per_block) // 4:] = np.flip(x[cryst_per_block:((blocks_per_ring * transaxial_multip) * cryst_per_block) // 2])
-            y[ii + ((blocks_per_ring * transaxial_multip) * cryst_per_block) // 4:] = -(y[cryst_per_block:((blocks_per_ring * transaxial_multip) * cryst_per_block) // 2])
-    else:
-        if usePseudo:
-            alkublock = blocks + 1
-            for blocks in range(alkublock, blocks_per_ring * transaxial_multip):
-                for crystals in range(1, cryst_per_block + 1):
-                    if blocks > 0 and crystals == 1:
-                        x[ii] = alkupistex - (cr_p * 0.5) * np.cos(np.radians(angle[blocks])) - erotus * np.cos(
-                            np.radians(angle[blocks - 1])) - erotus * np.cos(np.radians(angle[blocks])) - (
-                                        cr_p * 0.5) * np.cos(np.radians(angle[blocks - 1]))
-                        y[ii] = alkupistey + (cr_p * 0.5) * np.sin(np.radians(angle[blocks])) + erotusy * np.sin(
-                            np.radians(angle[blocks - 1])) + erotusy * np.sin(np.radians(angle[blocks])) + (
-                                        cr_p * 0.5) * np.sin(np.radians(angle[blocks - 1]))
-                    else:
-                        x[ii] = alkupistex - (cr_p) * np.cos(np.radians(angle[blocks]))
-                        y[ii] = alkupistey + (cr_p) * np.sin(np.radians(angle[blocks]))
-    
-                    if crystals == cryst_per_block:
-                        alkupistex = x[ii] + (cr_p) * np.cos(np.radians(angle[blocks])) * extraVar
-                        alkupistey = y[ii] - (cr_p) * np.sin(np.radians(angle[blocks])) * extraVar
-                    else:
-                        alkupistex = x[ii]
-                        alkupistey = y[ii]
-                    ii += 1
-        else:
-            # MATLAB evaluates N*cryst_per_block/4 + cryst_per_block/2 in floating point, which is an integer
-            # also for odd cryst_per_block (e.g. 42 blocks, 9 crystals: 94.5 + 4.5 = 99), unlike the sum of the floored terms
-            nHalf = int(math.floor(((blocks_per_ring * transaxial_multip) * cryst_per_block) / 4 + cryst_per_block / 2))
-            x[ii:ii + nHalf] = -(np.flip(x[:nHalf]))
-            y[ii:ii + nHalf] = (np.flip(y[:nHalf]))
-            x[ii + nHalf:] = np.flip(x[cryst_per_block:((blocks_per_ring * transaxial_multip) * cryst_per_block) // 2])
-            y[ii + nHalf:] = -(y[cryst_per_block:((blocks_per_ring * transaxial_multip) * cryst_per_block) // 2])
+        # One pseudo detector, one cr_p after the last crystal
+        t = np.append(t, t[-1] + cr_p)
+
+    # Facet normal angles (facet 0 at firstBlockAngle)
+    theta = 2. * np.pi * np.arange(nBlocks, dtype=np.float64) / nBlocks + np.radians(firstBlockAngle)
+    c = np.cos(theta)[:, None]
+    s = np.sin(theta)[:, None]
+    R = diameter / 2.
+    x = (R * c - t[None, :] * s).ravel().astype(np.float32)
+    y = (R * s + t[None, :] * c).ravel().astype(np.float32)
     return x, y
-            
+
 def formDetectorIndices( det_w_pseudo, nLayers = 1, crystN = 0):
     """
     For raw data only. Note used at the moment.
