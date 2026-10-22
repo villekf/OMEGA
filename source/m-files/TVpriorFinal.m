@@ -21,7 +21,7 @@ function [grad, varargout] = TVpriorFinal(im,aData,Nx, Ny ,Nz,anatomical, option
 %   options = Weights T and C, reference image for APLS (APLS_ref_image),
 %   smoothing parameter for APLS (APLSsmoothing), eta parameter for APLS
 %   (eta), tau parameter for types 1, 2, and APLS, TVsmoothing
-%   TVtype = Type of anatomical weighting to use, 1-3 = Different TVs, 4 =
+%   TVtype = Type of anatomical weighting to use, 1-3 = Different TVs, 5 =
 %   APLS
 %   tr_offsets = Needed ONLY for TVtype = 3, can be omitted otherwise.
 %
@@ -49,17 +49,20 @@ function [grad, varargout] = TVpriorFinal(im,aData,Nx, Ny ,Nz,anatomical, option
 
 if TVtype ~= 3
     
+    % The volume edge is clamped (Neumann boundary), i.e. the image
+    % differences are zero across the boundary. This is identical to the
+    % GPU (image and buffer) and CPU implementations
     im = reshape(im,Nx,Ny,Nz);
     f = (zeros(Nx,Ny,Nz));
     f(1:Nx-1,:,:) = -diff(im);
-    f(end,:,:) = -f(Nx-1,:,:);
+    f(end,:,:) = 0;
     g = (zeros(Nx,Ny,Nz));
     g(:,1:Ny-1,:) = -diff(im,1,2);
-    g(:,end,:) = -g(:,Ny-1,:);
+    g(:,end,:) = 0;
     h = (zeros(Nx,Ny,Nz));
     if Nz > 1
         h(:,:,1:Nz-1) = -diff(im,1,3);
-        h(:,:,end) = -h(:,:,Nz-1);
+        h(:,:,end) = 0;
     end
     
     f = f(:);
@@ -93,19 +96,33 @@ if TVtype ~= 3
                 if Nz > 1
                     apu3 = 0.5 * (2*s9.*h + s8.*g + s6.*g + s7.*f + s3.*f)./pval; % z-direction
                 end
-                apu4 = 0.5 * (2*s1.*f + 2*s5.*g + 2*s9.*h + + s4.*f + s2.*f + s8.*h + s6.*h + s4.*g + s7.*h + s2.*g + s3.*h + s8.*g + s6.*g + s7.*f + s3.*f)./pval;
+                % With the clamped boundary each direction has no contribution on its own last slice (no z component when Nz == 1)
+                mx = true(Nx,Ny,Nz);
+                mx(end,:,:) = false;
+                my = true(Nx,Ny,Nz);
+                my(:,end,:) = false;
+                apu1 = apu1.*mx(:);
+                apu2 = apu2.*my(:);
+                if Nz > 1
+                    mz = true(Nx,Ny,Nz);
+                    mz(:,:,end) = false;
+                    apu3 = apu3.*mz(:);
+                    apu4 = apu1+apu2+apu3;
+                else
+                    apu4 = apu1+apu2;
+                end
             end
             if TVtype == 2
                 fp = (zeros(Nx,Ny,Nz));
                 fp(1:Nx-1,:,:) = -diff(aData.reference_image);
-                fp(end,:,:) = -fp(Nx-1,:,:);
+                fp(end,:,:) = 0;
                 gp = (zeros(Nx,Ny,Nz));
                 gp(:,1:Ny-1,:) = -diff(aData.reference_image,1,2);
-                gp(:,end,:) = -gp(:,Ny-1,:);
+                gp(:,end,:) = 0;
                 hp = (zeros(Nx,Ny,Nz));
                 if Nz > 1
                     hp(:,:,1:Nz-1) = -diff(aData.reference_image,1,3);
-                    hp(:,:,end) = -hp(:,:,Nz-1);
+                    hp(:,:,end) = 0;
                 end
                 
                 fp = fp(:);
@@ -121,21 +138,22 @@ if TVtype ~= 3
                 apu4 = ( f + g + h)./pval;
             end
             if TVtype == 5
+                % Reference image gradient with a zero (Neumann) boundary, i.e. the reference is clamped at the volume edge
                 fp = (zeros(Nx,Ny,Nz));
                 fp(1:Nx-1,:,:) = -diff(options.APLS_ref_image);
-                fp(end,:,:) = -fp(Nx-1,:,:);
+                fp(end,:,:) = 0;
                 gp = (zeros(Nx,Ny,Nz));
                 gp(:,1:Ny-1,:) = -diff(options.APLS_ref_image,1,2);
-                gp(:,end,:) = -gp(:,Ny-1,:);
+                gp(:,end,:) = 0;
                 
-                fp = fp(:) + options.epps;
-                gp = gp(:) + options.epps;
+                fp = fp(:);
+                gp = gp(:);
                 hp = (zeros(Nx,Ny,Nz));
                 if Nz > 1
                     hp(:,:,1:Nz-1) = -diff(options.APLS_ref_image,1,3);
-                    hp(:,:,end) = -hp(:,:,Nz-1);
+                    hp(:,:,end) = 0;
                 end
-                hp = hp(:) + options.epps;
+                hp = hp(:);
                 
 %                 epsilon = [fp,gp,hp]./[sqrt(fp.^2 + options.eta^2)+ sqrt(gp.^2 + options.eta^2)+ sqrt(hp.^2 + options.eta^2)];
                 epsilon = bsxfun(@rdivide,[fp,gp,hp], sqrt(fp.^2 + gp.^2 + hp.^2 + options.eta^2));
@@ -193,6 +211,12 @@ if TVtype ~= 3
         apu2 = circshift(apu2,1,2);
         if Nz > 1
             apu3 = circshift(apu3,1,3);
+        end
+        % Remove the wrapped-around terms, there is no backward neighbor across the volume boundary
+        apu1(1,:,:) = 0;
+        apu2(:,1,:) = 0;
+        if Nz > 1
+            apu3(:,:,1) = 0;
         end
         if Nz > 1
             grad = apu4 - apu1 - apu2 - apu3;
