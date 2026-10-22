@@ -1450,7 +1450,7 @@ inline int TVAF(af::array& grad, const af::array& im, const scalarStruct& inputS
 		type = 3;
 	}
 	else if (data.TVtype == 2) {
-		C = data.C;
+		C = data.T;
 		type = 2;
 	}
 	else if ((data.TVtype == 1 && data.TV_use_anatomical))
