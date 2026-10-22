@@ -941,7 +941,7 @@ class projectorClass:
         if self.ring_difference == 0 and self.rings > 0:
             self.ring_difference = self.rings - 1
         if self.segment_table.size == 0 and self.span > 0 and self.rings > 0:
-            self.segment_table = np.concatenate((np.array(self.rings*2-1,ndmin=1), np.arange(self.rings*2-1 - (self.span + 1), max(self.Nz - self.ring_difference*2, self.rings - self.ring_difference) - 1, -self.span*2)))
+            self.segment_table = np.concatenate((np.array(self.rings*2-1,ndmin=1), np.arange(self.rings*2-1 - (self.span + 1), max(self.rings*2-1 - self.ring_difference*2, self.rings - self.ring_difference) - 1, -self.span*2)))
             self.segment_table = np.insert(np.repeat(self.segment_table[1:], 2), 0, self.segment_table[0])
         if self.Nang == 1 and self.det_per_ring > 1:
             self.Nang = self.det_per_ring // 2
