@@ -265,6 +265,9 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 	std::normal_distribution<double> distribution(0.0, TOFNoiseSigma + 1e-20);
 	const uint64_t nBins = TOFSize / sinoSize[0];
 	const bool TOF = nBins > 1;
+	// Numbers of elements of the sinogram arrays: (Ndist, Nang, NSinos, nLayers^2, TOF bins, Nt) and, for the delayed coincidences, (Ndist, Nang, NSinos, nLayers^2, Nt)
+	const uint64_t sinoBufSize = TOFSize * static_cast<uint64_t>(nLayers) * static_cast<uint64_t>(nLayers) * static_cast<uint64_t>(Nt);
+	const uint64_t sinoDBufSize = sinoSize[0] * static_cast<uint64_t>(nLayers) * static_cast<uint64_t>(nLayers) * static_cast<uint64_t>(Nt);
 	// Custom time window in a static (non-dynamic) examination
 	const bool customWindow = alku > 0. || loppu < 1e9;
 
@@ -798,7 +801,9 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 					bool swap = false;
 					const int64_t sinoIndex = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize[0], Ndist, Nang[0], ringDifference, span, seg, TOFSize,
 						detWPseudo[0], rings[0], bins, nDistSide, swap, tPoint, layer, nLayers);
-					if (sinoIndex >= 0) {
+					if (sinoIndex >= 0 && static_cast<uint64_t>(sinoIndex) >= sinoBufSize)
+						mexPrint("Sinogram index is larger than the maximum possible or outside the sinogram FOV! Skipping!");
+					else if (sinoIndex >= 0) {
 #ifdef _OPENMP
 #pragma omp atomic
 #endif
@@ -988,7 +993,9 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 					bool swap = false;
 					const int64_t sinoIndex = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize[0], Ndist, Nang[0], ringDifference, span, seg, sinoSize[0],
 						detWPseudo[0], rings[0], bins, nDistSide, swap, tPoint, layer, nLayers);
-					if (sinoIndex >= 0) {
+					if (sinoIndex >= 0 && static_cast<uint64_t>(sinoIndex) >= sinoDBufSize)
+						mexPrint("Sinogram index is larger than the maximum possible or outside the sinogram FOV! Skipping!");
+					else if (sinoIndex >= 0) {
 #ifdef _OPENMP
 #pragma omp atomic
 #endif
