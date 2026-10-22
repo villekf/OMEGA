@@ -382,7 +382,6 @@ class projectorClass:
     TV_use_anatomical = False
     TVtype = 1
     tau = 0.
-    B = 0.01
     C = 1.
     SATVPhi = 1.
     FluxType = 1
@@ -1677,7 +1676,7 @@ class projectorClass:
             self.TVtype = 1
         if self.projector_type not in [1, 2, 3, 4, 5, 6, 11, 14, 12, 13, 16, 21, 22, 23, 24, 26, 31, 32, 33, 34, 41, 42, 43, 44, 45, 51, 15, 54, 55, 61, 62, 66]:
             raise ValueError('The selected projector type is not supported!')
-        if self.APLS and not os.path.exists(self.APLS_ref_image) and self.MAP and not isinstance(self.APLS_ref_image, np.ndarray):
+        if self.APLS and self.MAP and not isinstance(self.APLS_ref_image, np.ndarray) and not os.path.exists(self.APLS_ref_image):
             raise FileNotFoundError('APLS selected, but the anatomical reference image was not found on path!')
         if self.epps <= 0:
             print('Epsilon value is zero or less than zero; must be a positive value. Using the default value (1e-6).')
@@ -2481,6 +2480,13 @@ class projectorClass:
     def T(self):
         self.trans = True
         return self
+
+    @property
+    def _TVweight(self):
+        # Anatomical TV weight options.T. The class-level T is the transpose (backprojection) operator method,
+        # so only a numeric value set on the instance (as in the main files) is used; 0.5 otherwise
+        T = self.__dict__.get('T', 0.5)
+        return 0.5 if callable(T) else T
         
     
     def __imul__(self, B):

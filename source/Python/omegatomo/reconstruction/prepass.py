@@ -1233,7 +1233,7 @@ def TVPrepass(options):
         options.TV_referenceImage = options.TV_referenceImage / np.max(options.TV_referenceImage)
         if options.TVtype == 1:
             options.TV_referenceImage = options.TV_referenceImage.reshape((options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()),order='F')
-            S = assembleS(options.TV_referenceImage, options.B, options.Ny[0].item(), options.Nx[0].item(), options.Nz[0].item())
+            S = assembleS(options.TV_referenceImage, options._TVweight, options.Ny[0].item(), options.Nx[0].item(), options.Nz[0].item())
             S = S.astype(dtype=np.float32)
             s1 = S[0::3, 0]
             s2 = S[0::3, 1]
@@ -1276,6 +1276,12 @@ def APLSPrepass(options):
         elseCheckNdim3=True, elseCheckShape0=True, elseResizeGuardNz1=False,
         finalize=True, castBeforeAsfortran=True, doAsfortran=True,
     )
+    Nx0 = options.Nx[0].item()
+    Ny0 = options.Ny[0].item()
+    Nz0 = options.Nz[0].item()
+    if options.APLS_ref_image.size != Nx0 * Ny0 * Nz0:
+        raise ValueError('The APLS reference image has ' + str(options.APLS_ref_image.size) + ' elements, but the reconstruction volume requires ' +
+                         str(Nx0 * Ny0 * Nz0) + ' (' + str(Nx0) + 'x' + str(Ny0) + 'x' + str(Nz0) + '). Resize the reference image to the same size as the reconstruction volume!')
 
 def computeWeights(options, GGMRF):
     """

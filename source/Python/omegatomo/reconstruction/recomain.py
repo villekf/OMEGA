@@ -42,8 +42,8 @@ _CTYPE_TO_NUMPY_DTYPE = {
 # Scalar struct fields whose C-struct name differs from the options attribute
 # name they are sourced from.
 _SCALAR_NAME_OVERRIDES = {
-    'T': 'B',
     'POCS': 'ASD_POCS',
+    'T': '_TVweight',
 }
 
 # Pointer struct fields whose C-struct name differs from the options
