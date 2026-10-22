@@ -248,6 +248,16 @@ def _initialize_detector_vector_buffers(self, upload, empty=None):
                 frame[int(offsets[subset]) : int(offsets[subset + 1])]
             )
 
+def _initialize_offset_sqrt_weights(self, upload):
+    """Create the per-subset square roots of the offset redundancy weights (see offsetSqrtWeights in detcoord.py), flat with the detector row
+    as the fastest index like the measurements, which weight the forward projection when the square root offset weighting is in use."""
+    from omegatomo.projector.detcoord import offsetSqrtWeights
+    self.d_offsetSqrtW = [None] * self.subsets
+    for i in range(self.subsets):
+        T = self.OffsetLimit[self.nMeas[i].item() : self.nMeas[i + 1].item()]
+        self.d_offsetSqrtW[i] = upload(np.ascontiguousarray(offsetSqrtWeights(T, self.nRowsD, self.dPitchX).ravel()))
+
+
 def computeGeom5(x, uv, nRowsD, nColsD, dPitchY, pitch):
     """
     Precompute the per-projection geometry used by the branchless distance-driven
@@ -370,6 +380,18 @@ def _cupy_texture(data_c_order, shape_xyz, *, linear, normalized, uint8=False, a
     return cp.cuda.texture.TextureObject(res, tdes)
 
 
+def _attenuation_image_dims(self):
+    """Dimensions (x, y, z) of the image-domain attenuation map: the main volume, except for the type 6 projector with
+    multi-resolution volumes, whose map covers the union bounding box of all the volumes (options.multiResUnionDims)."""
+    import numpy as np
+    dims = (self.Nx[0].item(), self.Ny[0].item(), self.Nz[0].item())
+    union = getattr(self, 'multiResUnionDims', None)
+    if (union is not None and self.projector_type in (6, 16, 26, 61, 62, 66) and getattr(self, 'useMultiResolutionVolumes', False)
+            and int(getattr(self, 'nMultiVolumes', 0)) > 0 and np.size(self.vaimennus) == int(np.prod(union))):
+        dims = tuple(int(v) for v in np.asarray(union).reshape(-1))
+    return dims
+
+
 def initProjector(self):
     if self.useMetal and not self.useTorch:
         raise ValueError('The Metal/MPS projector requires useTorch=True.')
@@ -482,6 +504,15 @@ def initProjector(self):
     if self.projector_type not in BPTYPE_TABLE:
         raise ValueError('Invalid backprojector!')
     self.BPType = BPTYPE_TABLE[self.projector_type]
+    # The square root of the offset redundancy weights is applied on the backprojection by the kernels (-DOFFSETSQRT) and on the forward
+    # projection by _applyOffsetSqrtFP (projfunctions.py). Both need the offset limits and the backprojector with the offset weighting
+    self._offsetSqrtActive = (bool(self.offsetSqrt) and self.offsetCorrection and self.OffsetLimit.size > 0 and self.CT and
+                              (self.BPType == 4 or self.BPType == 5))
+    if self.offsetCorrection and self.verbose >= 1:
+        if self._offsetSqrtActive:
+            print('Offset correction: square-root redundancy weights applied to the forward projection, backprojection and measurements')
+        else:
+            print('Offset correction: redundancy weights applied in the backprojection only')
     # CuPy does not support the texture API (cupy.cuda.texture) on ROCm/HIP; creating a CUDA
     # array fails at runtime with hipErrorUnknown. Fall back to buffers where the kernels
     # support them, otherwise raise an error.
@@ -678,6 +709,8 @@ def initProjector(self):
             bOpt += ('-DTOTLENGTH',)
         if self.OffsetLimit.size > 0:
             bOpt += ('-DOFFSET',)
+            if self._offsetSqrtActive:
+                bOpt += ('-DOFFSETSQRT',)
         if self.attenuation_correction and self.CTAttenuation:
             bOpt += ('-DATN',)
         elif self.attenuation_correction and not self.CTAttenuation:
@@ -900,8 +933,8 @@ def initProjector(self):
                     else:
                         linear_norm = (self.BPType == 4 and not self.CT)
                         self.d_atten = _cupy_texture(
-                            self.vaimennus.reshape((self.Nz[0].item(), self.Ny[0].item(), self.Nx[0].item())),
-                            (self.Nx[0].item(), self.Ny[0].item(), self.Nz[0].item()),
+                            self.vaimennus.reshape(_attenuation_image_dims(self)[::-1]),
+                            _attenuation_image_dims(self),
                             linear=linear_norm, normalized=linear_norm)
                 if self.useMaskFP:
                     if not self.useImages:
@@ -1003,6 +1036,9 @@ def initProjector(self):
                     self.d_T = [None] * self.subsets
                     for i in range(self.subsets):
                         self.d_T[i] = upload(self.OffsetLimit[self.nMeas[i].item() : self.nMeas[i + 1].item()])
+                if self._offsetSqrtActive:
+                    # The forward projection is a torch tensor with torch, otherwise a CuPy array
+                    _initialize_offset_sqrt_weights(self, (lambda w: torch.tensor(w, device='cuda')) if self.useTorch else upload)
                 mod = cp.RawModule(code=linesFP, options=bOptFP)
                 # import sys
                 # mod.compile(log_stream=sys.stdout)
@@ -1107,7 +1143,7 @@ def initProjector(self):
                 if self.useImages:
                     imformat = cl.ImageFormat(cl.channel_order.A, cl.channel_type.FLOAT)
                     self.d_atten = _cl_image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat,
-                                              (self.Nx[0].item(), self.Ny[0].item(), self.Nz[0].item()), self.vaimennus)
+                                              _attenuation_image_dims(self), self.vaimennus)
                 else:
                     self.d_atten = upload(self.vaimennus)
                 # self.d_atten = cl.image_from_array(self.clctx, np.reshape(self.vaimennus, (self.Nx[0].item(), self.Ny[0].item(), self.Nz[0].item()), order='F'))
@@ -1197,6 +1233,16 @@ def initProjector(self):
                 self.d_T = [None] * self.subsets
                 for i in range(self.subsets):
                     self.d_T[i] = upload(self.OffsetLimit[self.nMeas[i].item() : self.nMeas[i + 1].item()])
+            if self._offsetSqrtActive:
+                if self.useAF:
+                    # The forward projection is an ArrayFire array
+                    _initialize_offset_sqrt_weights(self, af.interop.np_to_af_array)
+                else:
+                    from pyopencl.elementwise import ElementwiseKernel
+                    _initialize_offset_sqrt_weights(self, upload)
+                    # y[row + nRowsD * (col + nColsD * projection)] *= w[row + nRowsD * projection]
+                    self._knlOffsetSqrt = ElementwiseKernel(self.clctx, "float *y, const float *w, unsigned int nR, unsigned int nRC",
+                                                            "y[i] *= w[(i % nR) + nR * (i / nRC)]", "offsetSqrtFP")
             # d_Sens = cl.Buffer(clctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=Sens)
             # d_x = cl.Buffer(self.clctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self.x)
             # z = cl.Buffer(clctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self.z)

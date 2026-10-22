@@ -1194,7 +1194,12 @@ void projectorType123(
 			localInd = CMINT3(tempi, tempj, tempk);
 #if (defined(ATN) && (defined(FP) || defined(SPECT))) || (defined(TOF) && defined(ORTH))//////////////// ATTENUATION ////////////////
 #ifdef USEIMAGES
+#if defined(ORTH)
+			// For y-primary rays (!XY) the traversal has swapped tempi/tempj, the attenuation texture is read in the original (x, y) order
+			int3 localInd2 = CMINT3(XY ? tempi : tempj, XY ? tempj : tempi, tempk);
+#else
 			int3 localInd2 = CMINT3(tempi, tempj, tempk);
+#endif
 #else
 			LONG localInd2 = local_ind;
 #endif

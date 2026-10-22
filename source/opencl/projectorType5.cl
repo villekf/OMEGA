@@ -836,22 +836,30 @@ extern "C" __global__
     float wA = 1.f, wB = 1.f, wC = 1.f, wD = 1.f;
     if (coordA.x <= OffTT && coordA.x >= -OffTT) {
       wA = SINF(M_PI_2_F * ((coordA.x + OffTT) * invOffTT));
+#ifndef OFFSETSQRT
       wA *= wA;
+#endif
     } else if (coordA.x < -OffTT)
       wA = 0.f;
     if (coordB.x <= OffTT && coordB.x >= -OffTT) {
       wB = SINF(M_PI_2_F * ((coordB.x + OffTT) * invOffTT));
+#ifndef OFFSETSQRT
       wB *= wB;
+#endif
     } else if (coordB.x < -OffTT)
       wB = 0.f;
     if (coordC.x <= OffTT && coordC.x >= -OffTT) {
       wC = SINF(M_PI_2_F * ((coordC.x + OffTT) * invOffTT));
+#ifndef OFFSETSQRT
       wC *= wC;
+#endif
     } else if (coordC.x < -OffTT)
       wC = 0.f;
     if (coordD.x <= OffTT && coordD.x >= -OffTT) {
       wD = SINF(M_PI_2_F * ((coordD.x + OffTT) * invOffTT));
+#ifndef OFFSETSQRT
       wD *= wD;
+#endif
     } else if (coordD.x < -OffTT)
       wD = 0.f;
 

@@ -110,6 +110,8 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	else if (type == 2 && inputScalars.FPType > 3)
 		inputScalars.maskFP = false;
 	inputScalars.offset = getScalarBool(options, 0, "offsetCorrection");
+	// Square root of the offset redundancy weights on both the forward and backward projection (decided on the MATLAB side)
+	inputScalars.offsetSqrt = inputScalars.offset && mxGetFieldNumber(options, "offsetSqrt") >= 0 && getScalarBool(options, 0, "offsetSqrt");
 	if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 		inputScalars.orthXY = getScalarBool(options, 0, "orthTransaxial");
 		inputScalars.orthZ = getScalarBool(options, 0, "orthAxial");
@@ -221,10 +223,13 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
             if (!std::isfinite(inputScalars.ellipsePower))
                 inputScalars.ellipsePower = std::numeric_limits<float>::max();
         }
-        /*if (inputScalars.FPType == 6 || inputScalars.BPType == 6) {
-            inputScalars.FOVa_y = getScalarFloat(getField(options, 0, "FOVa_y"));
-            inputScalars.CORtoDetectorSurface = getScalarFloat(getField(options, 0, "CORtoDetectorSurface"));
-        }*/
+        // The rotation-based projector uses a depth-dependent collimator-detector response model
+        // instead of the cone-of-response coefficients above: {Az, Bz, Axy, Bxy, C}, see precomp.h
+        if (inputScalars.FPType == 6 || inputScalars.BPType == 6) {
+            const float* CDRFCoeffs6In = getSingles(options, "CDRFCoeffs6");
+            for (int cc = 0; cc < 5; cc++)
+                inputScalars.CDRFCoeffs6[cc] = CDRFCoeffs6In[cc];
+        }
 	} else {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "Nang"));
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "Ndist"));
@@ -316,6 +321,9 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 			w_vec.rayShiftsDetector = getSingles(options, "rayShiftsDetector");
 			w_vec.rayShiftsSource = getSingles(options, "rayShiftsSource");
 			w_vec.detectorVector = getUint32s(options, "DetectorVector");
+		} else if (inputScalars.FPType == 6 || inputScalars.BPType == 6) {
+			// The projector type 6 applies the detector-head normalization on the host (see type6Weights)
+			w_vec.detectorVector = getUint32s(options, "DetectorVector");
 		}
 	} else {
 		w_vec.nProjections = getScalarInt64(getField(options, 0, "nProjections"));
@@ -328,18 +336,41 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 
 #ifdef AF
 	if (inputScalars.projector_type == 6U) {
-		const mwSize* ind = mxGetDimensions(getField(options, 0, "gFilter"));
-		if (DEBUG) {
-			mexPrintBase("indX = %d\n", ind[0]);
-			mexPrintBase("indY = %d\n", ind[1]);
-			mexEval();
-		}
+		inputScalars.CDRFOnTheFly = getScalarBool(options, 0, "CDRFOnTheFly");
+		// The model of the collimator response (option CDRFModel, mapped to a number by SPECTParameters; older option structs without the field keep the Gaussian)
+		if (mxGetFieldNumber(options, "cdrfModel6") >= 0 && mxGetNumberOfElements(mxGetField(options, 0, "cdrfModel6")) == 1)
+			inputScalars.cdrfModel6 = getScalarUInt32(options, 0, "cdrfModel6");
+		// How the backprojection rotates a view back into the image (option type6BPRotation, mapped to a number by SPECTParameters; older option structs without the field keep the exact adjoint)
+		if (mxGetFieldNumber(options, "bpRot6") >= 0 && mxGetNumberOfElements(mxGetField(options, 0, "bpRot6")) == 1)
+			inputScalars.bpRot6 = getScalarUInt32(options, 0, "bpRot6");
+		// The fraction of the available device memory that the attenuation cache may use (older option structs without the field keep the default)
+		if (mxGetFieldNumber(options, "type6AttenuationCache") >= 0 && mxGetNumberOfElements(mxGetField(options, 0, "type6AttenuationCache")) == 1)
+			inputScalars.type6AttenuationCache = getScalarFloat(getField(options, 0, "type6AttenuationCache"));
 		w_vec.angles = getSingles(options, "angles");
-        w_vec.gFilter = af::array(ind[0], ind[1], ind[2], getSingles(options, "gFilter"));
 		w_vec.distInt = getInt32s(options, "blurPlanes");
         w_vec.distInt2 = getInt32s(options, "blurPlanes2");
+        w_vec.distFloat = getSingles(options, "blurPlanesF");
+        w_vec.distFloat2 = getSingles(options, "blurPlanes2F");
+        w_vec.geomViews6 = static_cast<int64_t>(mxGetNumberOfElements(getField(options, 0, "blurPlanesF")));
+        inputScalars.maxPanelShift6 = 0.f;
+        if (w_vec.distFloat2 != nullptr) {
+            for (int64_t pp = 0; pp < (w_vec.geomViews6 > 0 ? w_vec.geomViews6 : inputScalars.nProjections); pp++)
+                inputScalars.maxPanelShift6 = (std::max)(inputScalars.maxPanelShift6, std::abs(w_vec.distFloat2[pp]) * inputScalars.dx[0]);
+        }
+        // The axial padding of the rotated grids depends on the geometry above and on the CDRF coefficients
+        computePadZType6(inputScalars, w_vec.distFloat, w_vec.geomViews6);
         w_vec.swivelAngles = getSingles(options, "swivelAngles");
         //w_vec.radiusPerProj = getSingles(options, "radiusPerProj");
+		// The precomputed filter bank is not used, or even computed, when the CDRF is computed on-the-fly
+		if (!inputScalars.CDRFOnTheFly) {
+			const mwSize* ind = mxGetDimensions(getField(options, 0, "gFilter"));
+			if (DEBUG) {
+				mexPrintBase("indX = %d\n", ind[0]);
+				mexPrintBase("indY = %d\n", ind[1]);
+				mexEval();
+			}
+			w_vec.gFilter = af::array(ind[0], ind[1], ind[2], getSingles(options, "gFilter"));
+		}
 		if (DEBUG) {
 			mexPrintBase("w_vec.gFilter.dims(0) = %d\n", w_vec.gFilter.dims(0));
 			mexPrintBase("w_vec.gFilter.dims(1) = %d\n", w_vec.gFilter.dims(1));

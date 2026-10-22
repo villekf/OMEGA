@@ -224,6 +224,39 @@ def CTDetectorCoordinates(angles, pitchRoll = np.empty(0, dtype=np.float32)):
     return uV
 
 
+def offsetSqrtWeights(T, nRowsD, dPitchX):
+    """
+    Computes the square root of the offset (redundancy) weights at the detector pixel centers. These match the weights
+    that the projector type 4 and 5 backprojection kernels apply when OFFSETSQRT is defined.
+
+    Parameters
+    ----------
+    T : NumPy array
+        The distance (mm) of the central ray from the row-0 edge of the detector for each projection (OffsetLimit).
+    nRowsD : int
+        The number of detector rows (the pixels along the offset direction).
+    dPitchX : float
+        The detector pixel size (mm) in the offset direction.
+
+    Returns
+    -------
+    w : NumPy array
+        The weights as a (number of projections, nRowsD) float32 array. In C order the detector row is the fastest changing index,
+        as in the measurement data.
+
+    """
+    T = np.asarray(T, dtype=np.float64).ravel()
+    koko = nRowsD * dPitchX
+    px = np.tile((np.arange(nRowsD) + 0.5) / nRowsD, (T.size, 1))
+    # The same flipping as in the kernels when the central ray is on the far half of the detector
+    flip = T > koko / 2.
+    px[flip] = np.abs(px[flip] - 1.)
+    TT = np.where(flip, koko - T, T)[:, None]
+    p = px * koko - TT
+    w = np.where(p > TT, 1., np.where(p < -TT, 0., np.sin(np.pi * (p + TT) / (4. * TT))))
+    return w.astype(np.float32)
+
+
 def getCoordinates(options):   
     """
     Computes PET sinogram coordinates if not already input.
@@ -1207,6 +1240,15 @@ def sinogramCoordinates3D(options, layers = (1,1)):
     return z
 
 
+def _collimatorLengths(options) -> Tuple[float, float]:
+    """Effective transaxial and axial septa lengths; colLxy/colLz fall back to colL when None or not positive."""
+    colLxy = getattr(options, 'colLxy', None)
+    colLz = getattr(options, 'colLz', None)
+    colLxy = float(colLxy) if colLxy is not None and colLxy > 0. else float(options.colL)
+    colLz = float(colLz) if colLz is not None and colLz > 0. else float(options.colL)
+    return colLxy, colLz
+
+
 def _type6_scalar(values, volume: int) -> float:
     """Read a scalar image-geometry value for one type-6 volume."""
     values = np.asarray(values).reshape(-1)
@@ -1254,8 +1296,7 @@ def _type6_auto_filter(options: proj.projectorClass, volume: int, depth: int | N
     depth = max(nx * 4, int(depth or 0))
     if float(sigma_z_input.reshape(-1)[0]) < 0.:
         distances = 0.5 * dx + np.arange(depth, dtype=np.float32) * dx
-        col_l_xy = float(options.colLxy) if options.colLxy > 0. else float(options.colL)
-        col_l_z = float(options.colLz) if options.colLz > 0. else float(options.colL)
+        col_l_xy, col_l_z = _collimatorLengths(options)
         if col_l_xy <= 0. or col_l_z <= 0.:
             raise ValueError('SPECT projector type 6 computes the collimator-detector response from the collimator hole length: ' +
                              'options.colL (or both options.colLxy and options.colLz) has to be positive, or sigmaZ/sigmaXY/gFilter have to be input.')
@@ -1350,8 +1391,64 @@ def _type6_total_lengths(options: proj.projectorClass) -> np.ndarray:
     return np.asarray(retained * full_dx, dtype=np.float32)
 
 
+def _type6_cdrf_resources(options: proj.projectorClass, manualCDRF: bool, multires: bool):
+    explicitOff = options.CDRFOnTheFly is not None and not options.CDRFOnTheFly
+    """Sub-voxel type-6 geometry and analytic CDRF coefficients for the C library path.
+
+    Uses the main volume (index 0). ``blurPlanesF`` includes the collimator length and
+    detector distance so that the depth is the distance from the collimator surface.
+    Expects raveled angles, swivelAngles and radiusPerProj.
+    """
+    panel_tilt = np.deg2rad(np.asarray(options.swivelAngles, dtype=np.float64).reshape(-1) -
+                            np.asarray(options.angles, dtype=np.float64).reshape(-1) + 180.)
+    radius = np.asarray(options.radiusPerProj, dtype=np.float64).reshape(-1)
+    fov_x = _type6_scalar(options.FOVa_x, 0)
+    dx = _type6_scalar(options.dx, 0)
+    if fov_x <= 0. or dx <= 0.:
+        raise ValueError('Type-6 main volume has invalid FOV or voxel pitch')
+    options.blurPlanesF = np.ascontiguousarray(
+        ((fov_x / 2. - (radius * np.cos(panel_tilt) - float(options.CORtoDetectorSurface)) +
+          float(options.colL) + float(options.colD)) / dx).astype(np.float32)[None, :])
+    options.blurPlanes2F = np.ascontiguousarray(
+        (radius * np.sin(panel_tilt) / dx).astype(np.float32)[None, :])
+    col_l_xy, col_l_z = _collimatorLengths(options)
+    # The coefficients need positive septa lengths. Without them they are only placeholders, which is allowed only with a manual
+    # gFilter/sigma, i.e. when the on-the-fly response is not used (checked below)
+    validLengths = col_l_xy > 0. and col_l_z > 0.
+    offset = float(options.colL) + float(options.colD) + float(options.cr_p) / 2.
+    Az = 2. * float(options.colR) / col_l_z if validLengths else 0.
+    Axy = 2. * float(options.colR) / col_l_xy if validLengths else 0.
+    options.CDRFCoeffs6 = np.ascontiguousarray(
+        np.array([Az, Az * offset, Axy, Axy * offset, float(options.iR)], dtype=np.float32))
+    if options.CDRFOnTheFly is None:
+        # The on-the-fly response is faster than the precomputed filter bank (with the fused GPU pipeline
+        # several times so) and more accurate, so it is the default whenever the collimator parameters
+        # are used, i.e. no manual gFilter/sigma is input, not only with varying distances or multires
+        options.CDRFOnTheFly = bool(not manualCDRF)
+    else:
+        options.CDRFOnTheFly = bool(options.CDRFOnTheFly)
+    if options.CDRFOnTheFly and not validLengths:
+        raise ValueError('SPECT projector type 6 computes the collimator-detector response from the collimator hole length: ' +
+                         'options.colL (or both options.colLxy and options.colLz) has to be positive, or sigmaZ/sigmaXY/gFilter have to be input.')
+    if proj.cdrfModelIndex(options.CDRFModel) != 0 and not options.CDRFOnTheFly:
+        raise ValueError("options.CDRFModel = '%s' requires the on-the-fly collimator-detector response (CDRFOnTheFly = True, no manual gFilter/sigma)"
+                         % options.CDRFModel)
+    if multires and not options.CDRFOnTheFly:
+        # A manual gFilter/sigma alone is not an error here: it is still valid for the custom
+        # operators. The C library path rejects it in transferData.
+        if manualCDRF and not explicitOff:
+            return
+        raise ValueError('Multi-resolution projector type 6 requires CDRFOnTheFly = True in the native library')
+
+
 def SPECTParameters(options: proj.projectorClass):
     from omegatomo.util.matlabRound import matlabRound
+    if options.cropProjections:
+        raise NotImplementedError('cropProjections is currently only supported in MATLAB')
+    if options.projector_type == 6 and (options.oOffsetX != 0 or options.oOffsetY != 0 or options.oOffsetZ != 0):
+        # The rotation axis and the axial center of the detector are at the origin, and the library path assumes
+        # that the main volume is centered on them
+        raise NotImplementedError('Off-centre FOV with projector type 6 is currently supported only in MATLAB')
     if options.projector_type in [1, 11, 12, 16, 2, 21, 22, 26, 61, 62]: # Ray tracing projectors
         # The collimator point of every projection is placed at colD + 0.5 * colL from the detector surface
         # (getCoordinatesSPECT). With a non-positive distance all the rays have zero length and the projection
@@ -1403,8 +1500,9 @@ def SPECTParameters(options: proj.projectorClass):
             # response components use their corresponding septa lengths
             # (SPECTParameters.m:67-82).
             referenceLength = options.colD + 0.5 * options.colL
-            lengthXY = options.colD + 0.5 * options.colLxy
-            lengthZ = options.colD + 0.5 * options.colLz
+            col_l_xy, col_l_z = _collimatorLengths(options)
+            lengthXY = options.colD + 0.5 * col_l_xy
+            lengthZ = options.colD + 0.5 * col_l_z
             # The even entries of the ray shifts move the ray along the detector
             # panel (transaxial, XY) and the odd ones along the rotation axis
             # (axial, Z) (getDetectorCoordinatesSPECT in
@@ -1467,8 +1565,13 @@ def SPECTParameters(options: proj.projectorClass):
             # volume's panel geometry, not only its local Nx planes.
             nx = np.asarray(options.Nx, dtype=np.int64).reshape(-1)[:volume_count]
             filter_depth = nx + np.max(np.abs(options.blurPlanes), axis=1)
+            manualCDRF = (
+                (len(options.gFilter) > 0 if isinstance(options.gFilter, (list, tuple)) else np.asarray(options.gFilter).size > 0)
+                or _type6_sigma_provided(options.sigmaZ) or _type6_sigma_provided(options.sigmaXY)
+            )
             options.gFilter = _type6_multires_filter_resources(options, volume_count, filter_depth)
             options.type6TotalLength = _type6_total_lengths(options)
+            _type6_cdrf_resources(options, manualCDRF, True)
             if not options.useTotLength:
                 raise ValueError(
                     'Multi-resolution projector type 6 requires useTotLength=True so one '
@@ -1488,6 +1591,8 @@ def SPECTParameters(options: proj.projectorClass):
             if len(options.gFilter) > 1:
                 raise ValueError('Single-volume projector type 6 accepts exactly one gFilter entry')
             options.gFilter = np.empty(0, dtype=np.float32) if len(options.gFilter) == 0 else np.asarray(options.gFilter[0])
+        # A user-supplied gFilter or sigma cannot be replaced by the on-the-fly analytic CDRF
+        manualCDRF = options.gFilter.size > 0 or _type6_sigma_provided(options.sigmaZ) or _type6_sigma_provided(options.sigmaXY)
         DistanceToFirstRow = 0.5 * options.dx
         # ``addProjector`` normalizes image dimensions to one-element arrays.
         # NumPy 2 no longer accepts such an array as the length for arange.
@@ -1497,8 +1602,7 @@ def SPECTParameters(options: proj.projectorClass):
 
         if options.gFilter.size == 0:
             if not _type6_sigma_provided(options.sigmaZ):
-                col_l_xy = float(options.colLxy) if options.colLxy > 0. else float(options.colL)
-                col_l_z = float(options.colLz) if options.colLz > 0. else float(options.colL)
+                col_l_xy, col_l_z = _collimatorLengths(options)
                 if col_l_xy <= 0. or col_l_z <= 0.:
                     raise ValueError('SPECT projector type 6 computes the collimator-detector response from the collimator hole length: ' +
                                      'options.colL (or both options.colLxy and options.colLz) has to be positive, or sigmaZ/sigmaXY/gFilter have to be input.')
@@ -1574,4 +1678,7 @@ def SPECTParameters(options: proj.projectorClass):
         options.blurPlanes = options.blurPlanes.ravel('F').astype(dtype=np.int32)[None, :]
         options.blurPlanes2Linear = options.blurPlanes2Linear.ravel('F').astype(dtype=np.float32)[None, :]
         options.blurPlanes2 = options.blurPlanes2.ravel('F').astype(dtype=np.int32)[None, :]
+        # The precomputed gFilter is still built above: the custom Python type-6 operators need it
+        # even when the native library computes the CDRF on-the-fly.
+        _type6_cdrf_resources(options, manualCDRF, False)
         options.type6TotalLength = _type6_total_lengths(options)

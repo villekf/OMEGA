@@ -598,6 +598,8 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	else
 #endif
 	{
+		if (mxGetClassID(Sin) != mxSINGLE_CLASS)
+			mexErrMsgTxt("The measurement data (SinM) must be single precision for this MEX file. Convert it to single.");
 		Sino = getSingles(Sin, "solu");
 		inputScalars.size_meas = mxGetNumberOfElements(Sin);
 	}

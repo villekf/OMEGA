@@ -23,6 +23,19 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <memory>
+#include <cstdio>
+#include <cstdint>
+#include <sys/stat.h>
+#if defined(CUDA) || defined(HIP)
+#if defined(_WIN32)
+#include <direct.h>
+#include <process.h>
+#else
+#include <unistd.h>
+#include <sys/types.h>
+#endif
+#endif
 
 // ======== OpenCL / CUDA / Metal compatibility aliases and macros ========
 struct EmptyTextureArray {};
@@ -698,22 +711,54 @@ class ProjectorClass {
 		if (status != CUDA_SUCCESS)
 			return status;
 
+		// Enqueue on the projector stream so the copy is ordered with the producer of source and the kernels sampling the texture
+		status = copyCudaArray3DFromDevice(array, source, spec, 0, 0, 0, 0, CLCommandQueue[0]);
+		if (status != CUDA_SUCCESS)
+			return status;
+		return createCudaTextureFromArray(texture, array, spec, true);
+	}
+
+	// Creates a CUDA array and its texture without filling it
+	inline STATUS_t createCudaTexture3DEmpty(TEX3D_t& texture, TEXARRAY_t& array, const CudaTextureSpec& spec) const {
+		CUDA_ARRAY3D_DESCRIPTOR_st arrDesc;
+		std::memset(&arrDesc, 0, sizeof(arrDesc));
+		arrDesc.Format = spec.arrayFormat;
+		arrDesc.NumChannels = spec.channels;
+		arrDesc.Height = spec.height;
+		arrDesc.Width = spec.width;
+		arrDesc.Depth = spec.arrayDepth;
+		STATUS_t status = cuArray3DCreate(&array, &arrDesc);
+		if (status != CUDA_SUCCESS)
+			return status;
+		return createCudaTextureFromArray(texture, array, spec, true);
+	}
+
+	// Copies device memory into an already created CUDA array. srcHeight/srcDepth give the size of the
+	// source, which may be only a band of the array, and dstX/dstY/dstZ where that band belongs (dstX in
+	// elements, the width of the band is that of spec). When a
+	// stream is given the copy is issued asynchronously on it (cuMemcpy3DAsync), otherwise it uses the
+	// synchronous, legacy-stream cuMemcpy3D
+	inline STATUS_t copyCudaArray3DFromDevice(TEXARRAY_t& array, const CUdeviceptr source, const CudaTextureSpec& spec,
+		const size_t height = 0, const size_t depth = 0, const size_t dstY = 0, const size_t dstZ = 0, CUstream stream = nullptr, const size_t dstX = 0) const {
+		const size_t h = height == 0 ? spec.height : height;
+		const size_t d = depth == 0 ? spec.copyDepth : depth;
 		CUDA_MEMCPY3D copy;
 		std::memset(&copy, 0, sizeof(copy));
 		copy.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_DEVICE;
 		copy.srcDevice = source;
 		copy.srcPitch = spec.width * spec.elementSize;
-		copy.srcHeight = spec.height;
+		copy.srcHeight = h;
 		copy.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
 		copy.dstArray = array;
+		copy.dstXInBytes = dstX * spec.elementSize;
+		copy.dstY = dstY;
+		copy.dstZ = dstZ;
 		copy.WidthInBytes = spec.width * spec.elementSize;
-		copy.Height = spec.height;
-		copy.Depth = spec.copyDepth;
-		// Enqueue on the projector stream so the copy is ordered with the producer of source and the kernels sampling the texture
-		status = cuMemcpy3DAsync(&copy, CLCommandQueue[0]);
-		if (status != CUDA_SUCCESS)
-			return status;
-		return createCudaTextureFromArray(texture, array, spec, true);
+		copy.Height = h;
+		copy.Depth = d;
+		if (stream != nullptr)
+			return cuMemcpy3DAsync(&copy, stream);
+		return cuMemcpy3D(&copy);
 	}
 #elif defined(METAL)
 	struct MetalTextureSpec {
@@ -1110,8 +1155,12 @@ class ProjectorClass {
 			ADD_OPT(options, "-DLARGEDIM");
 		if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights)
 			ADD_OPT(options, "-DFDK");
-		if (inputScalars.offset)
+		if (inputScalars.offset) {
 			ADD_OPT(options, "-DOFFSET");
+			// The square root of the offset redundancy weight is applied in the backprojection (the forward projection is weighted on the host)
+			if (inputScalars.offsetSqrt)
+				ADD_OPT(options, "-DOFFSETSQRT");
+		}
 		if (inputScalars.attenuation_correction == 1u && inputScalars.CTAttenuation)
 			ADD_OPT(options, "-DATN");
 		else if (inputScalars.attenuation_correction == 1u && !inputScalars.CTAttenuation)
@@ -1585,6 +1634,17 @@ class ProjectorClass {
 			else {
 				ADD_OPT_INT(optionsAux, "-DLOCAL_SIZE", local_sizePrior[0]);
 			}
+			ADD_OPT_INT(optionsAux, "-DCDRF_TZPT", cdrfTZPT);
+			ADD_OPT_INT(optionsAux, "-DCDRF_YPT", cdrfYPT);
+			ADD_OPT_INT(optionsAux, "-DCDRF_RMAX", cdrfRMax);
+			// The model of the collimator response of the type-6 kernels (option CDRFModel), see cdrfTap in auxKernels.cl
+			if (inputScalars.projector_type == 6) {
+				ADD_OPT_INT(optionsAux, "-DCDRF_MODEL", static_cast<int>(inputScalars.cdrfModel6));
+				// How the backprojection rotates a view back into the image (option type6BPRotation): the exact adjoint (default) or the fast gather
+				if (inputScalars.bpRot6 == 1U)
+					ADD_OPT(optionsAux, "-DTYPE6_BP_FAST");
+				ADD_OPT_INT(optionsAux, "-DROT_ZPT", rotZPT(inputScalars));
+			}
 			if (MethodList.PKMA)
 				ADD_OPT(optionsAux, "-DPKMA");
 			else if (MethodList.MBSREM || MethodList.MRAMLA)
@@ -1684,6 +1744,167 @@ class ProjectorClass {
 	}
 #else
 #if defined(CUDA) || defined(HIP)
+	// ---- On-disk cache of the compiled CUDA/HIP program (PTX / code object) ----
+	// The key is a 128-bit hash of the full source (including the headers), all compile options (which contain the target
+	// architecture) and the NVRTC/HIPRTC version. KERNEL_CACHE=0 disables the cache, KERNEL_CACHE_DIR selects the folder.
+	// Any problem (missing folder, bad header, size or checksum mismatch, module load failure) falls back to compiling.
+	static uint64_t kcHash1(const void* data, const size_t n, uint64_t h) {
+		const unsigned char* p = static_cast<const unsigned char*>(data);
+		for (size_t i = 0; i < n; i++) {
+			h ^= p[i];
+			h *= 1099511628211ULL;
+		}
+		return h;
+	}
+
+	static uint64_t kcHash2(const void* data, const size_t n, uint64_t h) {
+		const unsigned char* p = static_cast<const unsigned char*>(data);
+		for (size_t i = 0; i < n; i++) {
+			h = (h ^ p[i]) * 0x9E3779B97F4A7C15ULL;
+			h ^= h >> 29;
+		}
+		return h;
+	}
+
+	static std::string kcGetEnv(const char* name, bool& isSet) {
+		std::string value;
+		isSet = false;
+#if defined(_WIN32)
+		char* buf = nullptr;
+		size_t len = 0;
+		if (_dupenv_s(&buf, &len, name) == 0 && buf != nullptr) {
+			value = buf;
+			isSet = true;
+			std::free(buf);
+		}
+#else
+		const char* v = std::getenv(name);
+		if (v != nullptr) {
+			value = v;
+			isSet = true;
+		}
+#endif
+		return value;
+	}
+
+	static std::string kcDirectory() {
+		bool isSet = false;
+		const std::string en = kcGetEnv("KERNEL_CACHE", isSet);
+		if (isSet && (en == "0" || en == "off" || en == "false"))
+			return std::string();
+		std::string dir = kcGetEnv("KERNEL_CACHE_DIR", isSet);
+		if (!isSet || dir.empty()) {
+#if defined(_WIN32)
+			std::string t = kcGetEnv("TEMP", isSet);
+			if (!isSet || t.empty())
+				t = kcGetEnv("TMP", isSet);
+			if (!isSet || t.empty())
+				t = ".";
+			dir = t + "/omega_kernel_cache";
+#else
+			// The user id is part of the name, such that cached code is never taken from a folder of another user
+			std::string t = kcGetEnv("TMPDIR", isSet);
+			if (!isSet || t.empty())
+				t = "/tmp";
+			dir = t + "/omega_kernel_cache_" + std::to_string(static_cast<unsigned long>(getuid()));
+#endif
+		}
+#if defined(_WIN32)
+		_mkdir(dir.c_str());
+#else
+		mkdir(dir.c_str(), 0700);
+#endif
+		return dir;
+	}
+
+	inline std::string kcKey(const std::string& content, const std::vector<std::string>& options) const {
+		uint64_t h1 = 14695981039346656037ULL, h2 = 0x243F6A8885A308D3ULL;
+		auto add = [&](const std::string& s) {
+			const uint64_t n = static_cast<uint64_t>(s.size());
+			h1 = kcHash1(&n, sizeof(n), h1);
+			h1 = kcHash1(s.data(), s.size(), h1);
+			h2 = kcHash2(&n, sizeof(n), h2);
+			h2 = kcHash2(s.data(), s.size(), h2);
+		};
+		add(content);
+		add(nvrtcKernelHeader);
+		add(nvrtcOrthHeader);
+		for (const std::string& opt : options)
+			add(opt);
+		int vMaj = 0, vMin = 0;
+		nvrtcVersion(&vMaj, &vMin);
+		add("rtc" + std::to_string(vMaj) + "." + std::to_string(vMin));
+		char hex[40];
+		std::snprintf(hex, sizeof(hex), "%016llx%016llx", static_cast<unsigned long long>(h1), static_cast<unsigned long long>(h2));
+		return std::string(hex);
+	}
+
+	struct KernelCacheHeader {
+		char magic[8];
+		char key[32];
+		uint64_t size;
+		uint64_t checksum;
+	};
+
+	static bool kcRead(const std::string& path, const std::string& key, std::vector<char>& data) {
+		std::ifstream f(path.c_str(), std::ios::binary);
+		if (!f)
+			return false;
+		KernelCacheHeader hdr;
+		f.read(reinterpret_cast<char*>(&hdr), sizeof(hdr));
+		if (!f || std::memcmp(hdr.magic, "OMGKC001", 8) != 0 || key.size() != 32 || std::memcmp(hdr.key, key.data(), 32) != 0)
+			return false;
+		if (hdr.size == 0ULL || hdr.size > (1ULL << 30))
+			return false;
+		data.resize(static_cast<size_t>(hdr.size));
+		f.read(data.data(), static_cast<std::streamsize>(hdr.size));
+		if (!f || f.gcount() != static_cast<std::streamsize>(hdr.size))
+			return false;
+		char extra;
+		f.read(&extra, 1);
+		if (f.gcount() != 0) // the file is longer than the header says
+			return false;
+		return kcHash1(data.data(), data.size(), 14695981039346656037ULL) == hdr.checksum;
+	}
+
+	static void kcWrite(const std::string& path, const std::string& key, const char* data, const size_t size) {
+		if (key.size() != 32 || size == 0)
+			return;
+		static unsigned int counter = 0;
+#if defined(_WIN32)
+		const unsigned long pid = static_cast<unsigned long>(_getpid());
+#else
+		const unsigned long pid = static_cast<unsigned long>(getpid());
+#endif
+		const std::string tmp = path + ".tmp" + std::to_string(pid) + "_" + std::to_string(counter++);
+		KernelCacheHeader hdr;
+		std::memset(&hdr, 0, sizeof(hdr));
+		std::memcpy(hdr.magic, "OMGKC001", 8);
+		std::memcpy(hdr.key, key.data(), 32);
+		hdr.size = static_cast<uint64_t>(size);
+		hdr.checksum = kcHash1(data, size, 14695981039346656037ULL);
+		{
+			std::ofstream f(tmp.c_str(), std::ios::binary | std::ios::trunc);
+			if (!f)
+				return;
+			f.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));
+			f.write(data, static_cast<std::streamsize>(size));
+			f.flush();
+			if (!f) {
+				f.close();
+				std::remove(tmp.c_str());
+				return;
+			}
+		}
+		// The rename is atomic, a reader sees either the whole file or none
+		if (std::rename(tmp.c_str(), path.c_str()) != 0) {
+			// Windows does not replace an existing file, the content of the existing one is identical (same key)
+			std::remove(path.c_str());
+			if (std::rename(tmp.c_str(), path.c_str()) != 0)
+				std::remove(tmp.c_str());
+		}
+	}
+
 	inline nvrtcResult buildProgram(const int8_t verbose, std::string & content, CUmodule & module, std::vector<std::string>&options) {
 		nvrtcResult status = NVRTC_SUCCESS;
 		STATUS_t status2 = SUCCESS_VALUE;
@@ -1705,6 +1926,25 @@ class ProjectorClass {
 #endif // END CUDA
 		}
 #if defined(CUDA) || defined(HIP)
+		// Try the on-disk cache of the compiled program first
+		const std::string cacheDir = kcDirectory();
+		std::string cacheKey, cachePath;
+		if (!cacheDir.empty()) {
+			cacheKey = kcKey(content, options);
+			cachePath = cacheDir + "/omega_" + cacheKey + ".bin";
+			std::vector<char> cached;
+			if (kcRead(cachePath, cacheKey, cached)) {
+				CUmodule cachedModule = nullptr;
+				if (cuModuleLoadDataEx(&cachedModule, cached.data(), 0, 0, 0) == CUDA_SUCCESS) {
+					module = cachedModule;
+					if (verbose >= 2)
+						mexPrintBase("Kernel cache hit: %s\n", cachePath.c_str());
+					return NVRTC_SUCCESS;
+				}
+			}
+			if (verbose >= 2)
+				mexPrintBase("Kernel cache miss: %s\n", cachePath.c_str());
+		}
 		// Supply the headers as actual headers (resolved by the #include directives in the source) instead
 		// of concatenating them into the source string. opencl_functions_orth3D.h is only passed when it is
 		// used (i.e. for the projector programs; it is empty for the auxiliary kernels).
@@ -1793,6 +2033,8 @@ class ProjectorClass {
 #if defined(CUDA) || defined(HIP)
 				status2 = cuModuleLoadDataEx(&module, ptx, 0, 0, 0);
 				CUDA_CHECK(status2, "\n", NVRTC_ERROR_BUILTIN_OPERATION_FAILURE);
+				if (!cacheDir.empty())
+					kcWrite(cachePath, cacheKey, ptx, ptxSize);
 #elif defined(OPENCL)
 				else if (status != CL_SUCCESS) {
 					mexPrint("Failed to build 64-bit atomics program.\n");
@@ -2083,6 +2325,33 @@ class ProjectorClass {
 			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Bilinear rotation kernel successfully created\n");
 			}
+#ifndef METAL
+			CREATE_KERNEL(kernelConvCDRF, programAux, "convolveCDRF", "Failed to create the collimator response convolution kernel\n");
+			if (DEBUG || inputScalars.verbose >= 3) {
+				mexPrint("Collimator response convolution kernel successfully created\n");
+			}
+			// The fused per-view kernels, see type6FusedAllowed in functions.hpp
+			CREATE_KERNEL(kernelCDRFWeights, programAux, "cdrfWeights", "Failed to create the collimator response weight kernel\n");
+			CREATE_KERNEL(kernelCDRFAxial, programAux, "cdrfAxial", "Failed to create the fused axial collimator response kernel\n");
+			CREATE_KERNEL(kernelCDRFAxialGW, programAux, "cdrfAxialGW", "Failed to create the tiled axial collimator response kernel with global weights\n");
+			CREATE_KERNEL(kernelCDRFAxialDirect, programAux, "cdrfAxialDirect", "Failed to create the untiled axial collimator response kernel\n");
+			CREATE_KERNEL(kernelCDRFTransFP, programAux, "cdrfTransFP", "Failed to create the fused transaxial collimator response kernel (forward projection)\n");
+			CREATE_KERNEL(kernelCDRFTransFPDirect, programAux, "cdrfTransFPDirect", "Failed to create the untiled transaxial collimator response kernel (forward projection)\n");
+			CREATE_KERNEL(kernelCDRFTransBP, programAux, "cdrfTransBP", "Failed to create the fused transaxial collimator response kernel (backprojection)\n");
+			CREATE_KERNEL(kernelCDRFTransBPDirect, programAux, "cdrfTransBPDirect", "Failed to create the untiled transaxial collimator response kernel (backprojection)\n");
+			CREATE_KERNEL(kernelResampleTo, programAux, "resampleToDetector", "Failed to create the detector resampling kernel\n");
+			CREATE_KERNEL(kernelResampleFrom, programAux, "resampleFromDetector", "Failed to create the detector resampling kernel (backprojection)\n");
+			// The batched variants, see TYPE6_BATCH in functions.hpp
+			CREATE_KERNEL(kernelRotateB, programAux, "rotateB", "Failed to create the batched bilinear rotation kernel\n");
+			CREATE_KERNEL(kernelRotateBackB, programAux, "rotateBackB", "Failed to create the batched rotation kernel of the backprojection\n");
+			CREATE_KERNEL(kernelCDRFAxialB, programAux, "cdrfAxialB", "Failed to create the batched axial collimator response kernel\n");
+			CREATE_KERNEL(kernelCDRFTransFPB, programAux, "cdrfTransFPB", "Failed to create the batched transaxial collimator response kernel (forward projection)\n");
+			CREATE_KERNEL(kernelCDRFTransBPB, programAux, "cdrfTransBPB", "Failed to create the batched transaxial collimator response kernel (backprojection)\n");
+			CREATE_KERNEL(kernelResampleToB, programAux, "resampleToDetectorB", "Failed to create the batched detector resampling kernel\n");
+			if (DEBUG || inputScalars.verbose >= 3) {
+				mexPrint("Fused collimator response kernels successfully created\n");
+			}
+#endif
 		}
 		return status;
 	}
@@ -2332,12 +2601,34 @@ public:
 	std::vector<cl::CommandQueue> CLCommandQueue;
 	OpenCL_im_vectors vec_opencl;
 #endif // END CUDA
-	KERNELHANDLE_t kernelMBSREM, kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelProxTVq, kernelProxTVDiv, kernelProxTVGrad, 
-		kernelElementMultiply, kernelElementDivision, kernelTV, kernelProxTGVSymmDeriv, kernelProxTGVDiv, kernelProxTGVq, kernelPoisson, 
-		kernelPDHG, kernelProxRDP, kernelProxq, kernelProxTrans, kernelProxNLM, kernelGGMRF, kernelsumma, kernelEstimate, kernelPSF, 
-		kernelPSFf, kernelDiv, kernelMult, kernelForward, kernelSensList, kernelApu, kernelHyper, kernelRotate;
+	KERNELHANDLE_t kernelMBSREM, kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelProxTVq, kernelProxTVDiv, kernelProxTVGrad,
+		kernelElementMultiply, kernelElementDivision, kernelTV, kernelProxTGVSymmDeriv, kernelProxTGVDiv, kernelProxTGVq, kernelPoisson,
+		kernelPDHG, kernelProxRDP, kernelProxq, kernelProxTrans, kernelProxNLM, kernelGGMRF, kernelsumma, kernelEstimate, kernelPSF,
+		kernelPSFf, kernelDiv, kernelMult, kernelForward, kernelSensList, kernelApu, kernelHyper, kernelRotate, kernelConvCDRF,
+		kernelCDRFWeights, kernelCDRFAxial, kernelCDRFAxialGW, kernelCDRFAxialDirect, kernelCDRFTransFP, kernelCDRFTransFPDirect, kernelCDRFTransBP, kernelCDRFTransBPDirect,
+		kernelResampleTo, kernelResampleFrom, kernelRotateB, kernelRotateBackB, kernelCDRFAxialB, kernelCDRFTransFPB, kernelCDRFTransBPB, kernelResampleToB;
+	// The tiling of the fused type-6 kernels, see the CDRF_ defines of auxKernels.cl (they are passed to the build as
+	// -D options): axial outputs per thread of cdrfAxial, transaxial outputs per thread of cdrfTransFP and cdrfTransBP, and
+	// the largest radius that those three can handle (they make the weights of the response themselves in shared memory,
+	// (cdrfRMax + 1) x 64 floats = 12.5 KB, and cdrfAxial also has a tile of (CDRF_TZ + 2 * cdrfRMax) x 64 floats = 32 KB
+	// with 256 threads). With a larger radius the *Direct kernels are used, with the weights of cdrfWeights. The same
+	// weights are used for the large regions (CDRFParams6::globalW, see type6GlobalWeights in functions.hpp), where the
+	// tiled cdrfAxialGW (32 KB) and the *Direct transaxial kernels (the global weights variants of cdrfTransFP and
+	// cdrfTransBP, 1 KB) read them instead of the kernels making them in shared memory
+	static constexpr int cdrfTZPT = 8, cdrfYPT = 4, cdrfRMax = 48;
+	// The number of slices of the volume that a thread of the rotation back of the backprojection handles (ROT_ZPT in auxKernels.cl, the rotate
+	// kernel with accumulate and rotateBackB). The exact adjoint of the rotation (option type6BPRotation = 'adjoint') makes the weights of a column
+	// of the volume once for all its slices; the fast gather (bpRot6 = 1) has one thread per voxel
+	static constexpr int rotBPZPT = 4;
+	inline int rotZPT(const scalarStruct& inputScalars) const { return inputScalars.bpRot6 == 1U ? 1 : rotBPZPT; }
+	// The threads along the x run and the lanes of the work-groups of those kernels, from the local size of the auxiliary kernels
+	inline size_t cdrfTileX() const {
+		const size_t nT = local_sizePrior[0] * local_sizePrior[1];
+		return (nT % 64ULL == 0ULL) ? 64ULL : ((nT % 32ULL == 0ULL) ? 32ULL : 1ULL);
+	}
+	inline size_t cdrfLanes() const { return local_sizePrior[0] * local_sizePrior[1] / cdrfTileX(); }
 	// Device buffers shared across backends
-	DEVBUFF_t d_xcenter, d_ycenter, d_zcenter, d_V, d_TOFCenter, d_eFOVIndices, d_weights, d_angle, d_g, d_uref, d_maskBPB, 
+	DEVBUFF_t d_xcenter, d_ycenter, d_zcenter, d_V, d_TOFCenter, d_eFOVIndices, d_weights, d_angle, d_g, d_uref, d_maskBPB,
 		d_rayShiftsDetector, d_rayShiftsSource, d_maskPriorB;
 	std::vector<DEVBUFF_t> d_attenB;
 	AFDEVBUFF_t d_output, d_meanBP, d_meanFP, d_inputB, d_W, d_gaussianNLM;
@@ -2349,9 +2640,50 @@ public:
 	// Sensitivity image used by fastPDHG
 	AFDEVBUFF_t d_precond;
 	AFDEVBUFF_t d_outputCT;
+	// Per-plane collimator response filter bank used by convolveCDRF (type-6 SPECT)
+	AFDEVBUFF_t d_convFilter;
+	// Attenuation planes read by the fused cdrfAxial kernel (type-6 SPECT)
+	AFDEVBUFF_t d_cdrfAtt;
+	// Axial and transaxial response weights of one view and volume, made by cdrfWeights (type-6 SPECT), only for the radii
+	// that the tiled kernels cannot handle (radius > cdrfRMax)
+	AFDEVBUFF_t d_cdrfWAx, d_cdrfWTr;
+	// The radius of every plane for the two directions, made by cdrfWeights too
+	AFDEVBUFF_t d_cdrfRAx, d_cdrfRTr;
+	// The per-view parameter blocks of the batched fused type-6 kernels (type6BatchStride floats per view, see precomp.h). One buffer holds the
+	// blocks of all the launches of a projection (beginBatchParams, uploadBatchParams), a launch reads its blocks from the block prmOffBlocks on
+	AFDEVBUFF_t d_cdrfBP;
+	int prmOffBlocks = 0, prmCursor = 0, prmCapBlocks = 0;
+#if defined(CUDA) || defined(HIP)
+	// The device buffer of the parameter blocks, which every projection overwrites: safe, since the copy is in the order of the stream (it is
+	// made after the kernels that read the previous parameters), and two pinned host buffers that the projections use in turn, with an event
+	// for each (recorded after the last copy from it) that is waited for before the buffer is written again, that is, two projections later
+	static constexpr int prmArenas = 2;
+	CUdeviceptr d_prmDev = 0;
+	size_t prmDevCap = 0ULL;
+	float* prmHost[prmArenas] = { nullptr };
+	size_t prmHostCap[prmArenas] = { 0ULL };
+	CUevent prmEv[prmArenas] = { nullptr };
+	bool prmEvSet[prmArenas] = { false };
+	int prmCur = 0;
+#elif defined(OPENCL)
+	// The host copies of the parameter blocks (two, used in turn) and the events of the last writes from them
+	static constexpr int prmArenas = 2;
+	std::vector<float> prmHostCL[prmArenas];
+	cl::Event prmEvCL[prmArenas];
+	bool prmEvSetCL[prmArenas] = { false };
+	int prmCur = 0;
+#endif
 	TEX2D_t d_maskFP, d_maskBP, d_maskPrior;
 	TEX3D_t d_maskBP3, d_maskPrior3;
 	TEX3D_t d_inputImage, d_urefIm, d_inputI, d_RDPrefI;
+	// Persistent rotation-source textures for the type-6 SPECT projector (0 = emission volume, 1 = attenuation volume
+	// for the volume-by-volume projector; the slots from rotSlotEmissionType6 on are the emission volumes and the
+	// attenuation sources of the projector that works on every volume of a view together, see precomp.h)
+	// The type-6 attenuation cache of this projector (an AttCacheType6, see functions.hpp), which lives and dies with it
+	std::shared_ptr<void> type6AttCache;
+	TEX3D_t d_rotI[rotSlotsType6];
+	TEXARRAY_t rotArray[rotSlotsType6];
+	bool rotTexInit[rotSlotsType6] = { false };
 	TEXARRAY_t atArray, uRefArray, maskArrayBP, maskArrayPrior, BPArray, FPArray, integArrayXY, imArray;
 	std::vector<TEX3D_t> d_attenIm;
 #if defined(CUDA) || defined(HIP)
@@ -2636,6 +2968,15 @@ public:
 			getErrorString(cuTexObjectDestroy(d_inputImage));
 			getErrorString(cuArrayDestroy(BPArray));
 		}
+		releaseRotTex();
+		for (int kk = 0; kk < prmArenas; kk++) {
+			if (prmEv[kk] != nullptr)
+				getErrorString(cuEventDestroy(prmEv[kk]));
+			if (prmHost[kk] != nullptr)
+				getErrorString(cuMemFreeHost(prmHost[kk]));
+		}
+		if (d_prmDev != 0)
+			getErrorString(cuMemFree(d_prmDev));
 		for (size_t kk = 0; kk < sideQueues.size(); kk++)
 			getErrorString(cuStreamDestroy(sideQueues[kk]));
 		for (size_t kk = 0; kk < evSide.size(); kk++)
@@ -3342,6 +3683,20 @@ public:
 				CREATE_FLOAT_TEXTURE3D_EMPTY(d_inputI, imArray, region[0], region[1], region[2]);
 				CHECK(status, "Failed to create prior image\n", (STATUS_t)(-1));
 			}
+#ifndef METAL
+			// The rotation-based projector uses its own images so that neither the image being rotated
+			// nor the attenuation map has to be re-uploaded for every projection. They have to hold the
+			// largest volume and the largest rotation grid, which are not the main volume with
+			// multi-resolution
+			if (inputScalars.useImages && !inputScalars.largeDim && inputScalars.projector_type == 6) {
+				int maxNx = 0, maxNy = 0, maxNz = 0;
+				rotGridMaxType6(inputScalars, maxNx, maxNy, maxNz);
+				CREATE_FLOAT_TEXTURE3D_EMPTY(d_rotI[0], rotArray[0], maxNx, maxNy, maxNz);
+				CHECK(status, "Failed to create rotation image\n", (STATUS_t)(-1));
+				CREATE_FLOAT_TEXTURE3D_EMPTY(d_rotI[1], rotArray[1], maxNx, maxNy, maxNz);
+				CHECK(status, "Failed to create rotation image\n", (STATUS_t)(-1));
+			}
+#endif
 		}
 		// RDP reference image
 		if (MethodList.RDP && w_vec.RDPLargeNeighbor && w_vec.RDP_anatomical) {
@@ -7443,20 +7798,14 @@ public:
 		return 0;
 	}
 
-#if defined(CUDA) || defined(HIP)
-	inline int rotateCustom(const scalarStruct & inputScalars, float cosa, float sina, const int ii = 0) {
-#elif defined(OPENCL) || defined(METAL)
+#if defined(METAL)
+	// Metal keeps the previous, plain (non-multires-aware) rotation launcher: type 6 on Metal is
+	// unchanged by this port and still rotates the whole volume in one call with no windows/offsets
 	inline int rotateCustom(const scalarStruct & inputScalars, const float cosa, const float sina, const int ii = 0) {
-#endif // END CUDA
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrint("Starting " BACKEND_STR " bilinear image rotation computation");
 		STATUS_t status = SUCCESS_VALUE;
-#if defined(CUDA) || defined(HIP)
-		std::vector<void*> kArgs;
-#elif defined(OPENCL) || defined(METAL)
 		UINT32_t kernelIndRot = 0U;
-#endif // END CUDA
-#if defined(METAL)
 		if (!queueBP || !kernelRotate) {
 			mexPrint("Unable to create Metal bilinear rotation encoder");
 			return -1;
@@ -7472,7 +7821,6 @@ public:
 			return -1;
 		}
 		encoder->setComputePipelineState(kernelRotate.get());
-#endif
 		SET_LAUNCH_RANGE3(global,
 			inputScalars.Nx[ii] + erotusPrior[0],
 			inputScalars.Ny[ii] + erotusPrior[1],
@@ -7495,34 +7843,10 @@ public:
 		else {
 			KARG(kArgs, kernelRotate, kernelIndRot, d_im);
 		}
-#if defined(METAL)
 		kParams.N_rotate = { static_cast<int>(VEC_X(d_N[ii])), static_cast<int>(VEC_Y(d_N[ii])), static_cast<int>(VEC_Z(d_N[ii])) };
 		kParams.cosa_rotate = cosa;
 		kParams.sina_rotate = sina;
 		KARG(kArgs, kernelRotate, kernelIndRot, kParams);
-#else
-		KARG(kArgs, kernelRotate, kernelIndRot, VEC_X(d_N[ii]));
-		KARG(kArgs, kernelRotate, kernelIndRot, VEC_Y(d_N[ii]));
-		KARG(kArgs, kernelRotate, kernelIndRot, VEC_Z(d_N[ii]));
-		KARG(kArgs, kernelRotate, kernelIndRot, cosa);
-		KARG(kArgs, kernelRotate, kernelIndRot, sina);
-#endif
-		// Compute the kernel
-#if defined(CUDA) || defined(HIP)
-		status = cuLaunchKernel(kernelRotate, global[0], global[1], global[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
-		CUDA_CHECK(status, "Failed to launch the bilinear image rotation kernel\n", -1);
-		//FINISH_QUEUE(status, "Queue finish failed after bilinear image rotation kernel\n", -1);
-		if (inputScalars.useImages) {
-			status = cuTexObjectDestroy(d_inputI);
-			if (status != CUDA_SUCCESS) {
-				getErrorString(status);
-			}
-			status = cuArrayDestroy(imArray);
-			if (status != CUDA_SUCCESS) {
-				getErrorString(status);
-			}
-		}
-#elif defined(METAL)
 		{
 			const MTL::Size threadsPerThreadgroup = MTL::Size::Make(localPrior[0], localPrior[1], localPrior[2]);
 			const MTL::Size threadgroupsPerGrid = MTL::Size::Make(
@@ -7531,8 +7855,828 @@ public:
 			encoder->endEncoding();
 			submitMetalCommandBuffer(commandBuffer.get());
 		}
+		if (inputScalars.verbose >= 3)
+			mexPrint(BACKEND_STR " bilinear image rotation computed");
+		return 0;
+		}
+#else
+	// One pass of the separable collimator-detector response convolution, along dimension 0 when axis
+	// is 0 and along dimension 1 when axis is 1. The input is in d_im, the output in d_rhs and the
+	// per-plane filter bank in d_convFilter
+	inline int convolveCDRF(const scalarStruct & inputScalars, int N0, int N1, int N2, int fRadius, int axis) {
+		STATUS_t status = SUCCESS_VALUE;
+#if defined(CUDA) || defined(HIP)
+		std::vector<void*> kArgs;
 #elif defined(OPENCL)
-		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelRotate, cl::NullRange, globalPrior, localPrior);
+		UINT32_t kernelIndConv = 0U;
+#endif // END CUDA
+		// The global size has to be a multiple of the local size
+		const size_t e0 = (N0 % local_sizePrior[0] == 0ULL) ? 0ULL : local_sizePrior[0] - (N0 % local_sizePrior[0]);
+		const size_t e1 = (N1 % local_sizePrior[1] == 0ULL) ? 0ULL : local_sizePrior[1] - (N1 % local_sizePrior[1]);
+		WORKRANGE_t globalConv;
+		SET_LAUNCH_RANGE3(globalConv, N0 + e0, N1 + e1, N2, localPrior);
+
+		KARG(kArgs, kernelConvCDRF, kernelIndConv, d_rhs);
+		KARG(kArgs, kernelConvCDRF, kernelIndConv, d_im);
+		KARG(kArgs, kernelConvCDRF, kernelIndConv, d_convFilter);
+		KARG(kArgs, kernelConvCDRF, kernelIndConv, N0);
+		KARG(kArgs, kernelConvCDRF, kernelIndConv, N1);
+		KARG(kArgs, kernelConvCDRF, kernelIndConv, N2);
+		KARG(kArgs, kernelConvCDRF, kernelIndConv, fRadius);
+		KARG(kArgs, kernelConvCDRF, kernelIndConv, axis);
+#if defined(CUDA) || defined(HIP)
+		status = cuLaunchKernel(kernelConvCDRF, globalConv[0], globalConv[1], globalConv[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+		CUDA_CHECK(status, "Failed to launch the collimator response convolution kernel\n", -1);
+#elif defined(OPENCL)
+		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelConvCDRF, cl::NullRange, globalConv, localPrior);
+		OCL_CHECK(status, "Failed to launch the collimator response convolution kernel\n", -1);
+#endif // END CUDA
+		// No queue finish here on purpose. CLCommandQueue[0] is ArrayFire's own in-order queue, so the
+		// ordering against the ArrayFire operations before and after is already guaranteed, and blocking
+		// once per projection would drain the pipeline and leave the device idle while the host catches
+		// up. This is the same reason the rotation kernel does not finish the queue either
+		return 0;
+	}
+
+		// The fused type-6 kernels. They read d_im (and d_cdrfAtt for cdrfAxial) and write d_rhs, all of
+		// them are set by the caller. They make the weights of the response themselves, except for the radii that
+		// they cannot handle (> cdrfRMax) and for the large regions (CDRFParams6::globalW), for which the weights of
+		// cdrfWeights are in d_cdrfWAx and d_cdrfWTr. No
+		// queue finish, for the same reason as in convolveCDRF above
+
+		// The per-plane response weights of one view and volume, see the cdrfWeights kernel. The outputs
+		// are d_cdrfWAx and d_cdrfWTr, (2 * radius + 1) x nPlanes elements each, and d_cdrfRAx and
+		// d_cdrfRTr, the radius of each plane, nPlanes elements each
+		inline int cdrfWeights(const scalarStruct & inputScalars, int nPlanes, CDRFParams6 prm) {
+			STATUS_t status = SUCCESS_VALUE;
+#if defined(CUDA) || defined(HIP)
+			std::vector<void*> kArgs;
+#elif defined(OPENCL)
+			UINT32_t kernelIndCDRF = 0U;
+#endif // END CUDA
+			// One thread per plane along the first dimension, the second one selects the direction
+			const size_t e0 = (nPlanes % local_sizePrior[0] == 0ULL) ? 0ULL : local_sizePrior[0] - (nPlanes % local_sizePrior[0]);
+			WORKRANGE_t globalCDRF;
+			SET_LAUNCH_RANGE3(globalCDRF, nPlanes + e0, local_sizePrior[1], 1, localPrior);
+
+			KARG(kArgs, kernelCDRFWeights, kernelIndCDRF, d_cdrfWAx);
+			KARG(kArgs, kernelCDRFWeights, kernelIndCDRF, d_cdrfWTr);
+			KARG(kArgs, kernelCDRFWeights, kernelIndCDRF, d_cdrfRAx);
+			KARG(kArgs, kernelCDRFWeights, kernelIndCDRF, d_cdrfRTr);
+			KARG(kArgs, kernelCDRFWeights, kernelIndCDRF, nPlanes);
+			KARG(kArgs, kernelCDRFWeights, kernelIndCDRF, prm.firstPlane);
+			KARG(kArgs, kernelCDRFWeights, kernelIndCDRF, prm.xOff);
+			KARG(kArgs, kernelCDRFWeights, kernelIndCDRF, prm.radius);
+			KARG(kArgs, kernelCDRFWeights, kernelIndCDRF, prm.dist);
+			KARG(kArgs, kernelCDRFWeights, kernelIndCDRF, prm.dxv);
+			KARG(kArgs, kernelCDRFWeights, kernelIndCDRF, prm.dyv);
+			KARG(kArgs, kernelCDRFWeights, kernelIndCDRF, prm.dzv);
+			KARG(kArgs, kernelCDRFWeights, kernelIndCDRF, prm.Az);
+			KARG(kArgs, kernelCDRFWeights, kernelIndCDRF, prm.Bz);
+			KARG(kArgs, kernelCDRFWeights, kernelIndCDRF, prm.Axy);
+			KARG(kArgs, kernelCDRFWeights, kernelIndCDRF, prm.Bxy);
+			KARG(kArgs, kernelCDRFWeights, kernelIndCDRF, prm.C);
+			KARG(kArgs, kernelCDRFWeights, kernelIndCDRF, prm.sigmaCoeff);
+			KARG(kArgs, kernelCDRFWeights, kernelIndCDRF, prm.comp);
+#if defined(CUDA) || defined(HIP)
+			status = cuLaunchKernel(kernelCDRFWeights, globalCDRF[0], globalCDRF[1], globalCDRF[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+			CUDA_CHECK(status, "Failed to launch the collimator response weight kernel\n", -1);
+#elif defined(OPENCL)
+			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelCDRFWeights, cl::NullRange, globalCDRF, localPrior);
+			OCL_CHECK(status, "Failed to launch the collimator response weight kernel\n", -1);
+#endif // END CUDA
+			return 0;
+		}
+
+		// Axial collimator response pass, see the cdrfAxial kernel. The input is N0 x N1 x N2, the output is N0 x N1 x nZOut (the arrays
+		// may be allocated larger, and the attenuation is read from a larger array at an offset, see CDRFLayout6). attMode: 0 none, 1 attenuate the input (forward
+		// projection), 2 attenuate the output (backprojection). Unless prm.globalW is set the tiled kernel makes the
+		// weights itself; otherwise a kernel is launched that reads the weights in d_cdrfWAx and the radii in
+		// d_cdrfRAx (see cdrfWeights): the tiled cdrfAxialGW with radius <= cdrfRMax, the untiled one with a larger
+		// radius
+		inline int cdrfAxial(const scalarStruct & inputScalars, int N0, int N1, int N2, int zStart, int nZOut, int attMode, CDRFParams6 prm, const CDRFLayout6 & lay) {
+			STATUS_t status = SUCCESS_VALUE;
+#if defined(CUDA) || defined(HIP)
+			std::vector<void*> kArgs;
+#elif defined(OPENCL)
+			UINT32_t kernelIndCDRF = 0U;
+#endif // END CUDA
+			// The tiled kernels when the radius allows it: work-groups of (x run, 1, z block), see the kernels.
+			// Otherwise the untiled one, a thread per output. The weights are in global memory (cdrfAxialGW and the
+			// untiled one) when the host made them, which it always does for a radius that the in-kernel weights cannot handle
+			const bool tiled = prm.radius <= cdrfRMax;
+			const bool globalW = prm.globalW || !tiled;
+			KERNELHANDLE_t& kernelAx = !globalW ? kernelCDRFAxial : (tiled ? kernelCDRFAxialGW : kernelCDRFAxialDirect);
+			WORKRANGE_t globalCDRF;
+			if (tiled) {
+				const size_t tx = cdrfTileX();
+				const size_t tz = static_cast<size_t>(cdrfTZPT) * cdrfLanes();
+				SET_LAUNCH_RANGE3(globalCDRF, ((static_cast<size_t>(N0) + tx - 1ULL) / tx) * local_sizePrior[0], static_cast<size_t>(N1) * local_sizePrior[1],
+					(static_cast<size_t>(nZOut) + tz - 1ULL) / tz, localPrior);
+			}
+			else {
+				const size_t e0 = (N0 % local_sizePrior[0] == 0ULL) ? 0ULL : local_sizePrior[0] - (N0 % local_sizePrior[0]);
+				const size_t e1 = (N1 % local_sizePrior[1] == 0ULL) ? 0ULL : local_sizePrior[1] - (N1 % local_sizePrior[1]);
+				SET_LAUNCH_RANGE3(globalCDRF, N0 + e0, N1 + e1, nZOut, localPrior);
+			}
+
+			KARG(kArgs, kernelAx, kernelIndCDRF, d_rhs);
+			KARG(kArgs, kernelAx, kernelIndCDRF, d_im);
+			KARG(kArgs, kernelAx, kernelIndCDRF, d_cdrfAtt);
+			if (globalW) {
+				KARG(kArgs, kernelAx, kernelIndCDRF, d_cdrfWAx);
+				KARG(kArgs, kernelAx, kernelIndCDRF, d_cdrfRAx);
+			}
+			KARG(kArgs, kernelAx, kernelIndCDRF, N0);
+			KARG(kArgs, kernelAx, kernelIndCDRF, N1);
+			KARG(kArgs, kernelAx, kernelIndCDRF, N2);
+			KARG(kArgs, kernelAx, kernelIndCDRF, zStart);
+			KARG(kArgs, kernelAx, kernelIndCDRF, nZOut);
+			KARG(kArgs, kernelAx, kernelIndCDRF, attMode);
+			int inSx = lay.inSx > 0 ? lay.inSx : N0, inSy = lay.inSy > 0 ? lay.inSy : N1;
+			int outSx = lay.outSx > 0 ? lay.outSx : N0, outSy = lay.outSy > 0 ? lay.outSy : N1;
+			int attSx = lay.attSx > 0 ? lay.attSx : N0, attSy = lay.attSy > 0 ? lay.attSy : N1;
+			int attX0 = lay.attX0, attY0 = lay.attY0, attZ0 = lay.attZ0;
+			float attDx = lay.attDx;
+			int attConv = type6AttConv();
+			KARG(kArgs, kernelAx, kernelIndCDRF, inSx);
+			KARG(kArgs, kernelAx, kernelIndCDRF, inSy);
+			KARG(kArgs, kernelAx, kernelIndCDRF, outSx);
+			KARG(kArgs, kernelAx, kernelIndCDRF, outSy);
+			KARG(kArgs, kernelAx, kernelIndCDRF, attX0);
+			KARG(kArgs, kernelAx, kernelIndCDRF, attY0);
+			KARG(kArgs, kernelAx, kernelIndCDRF, attZ0);
+			KARG(kArgs, kernelAx, kernelIndCDRF, attSx);
+			KARG(kArgs, kernelAx, kernelIndCDRF, attSy);
+			KARG(kArgs, kernelAx, kernelIndCDRF, attDx);
+			KARG(kArgs, kernelAx, kernelIndCDRF, attConv);
+			KARG(kArgs, kernelAx, kernelIndCDRF, prm.xOff);
+			KARG(kArgs, kernelAx, kernelIndCDRF, prm.firstPlane);
+			KARG(kArgs, kernelAx, kernelIndCDRF, prm.radius);
+			if (!globalW) {
+				KARG(kArgs, kernelAx, kernelIndCDRF, prm.dist);
+				KARG(kArgs, kernelAx, kernelIndCDRF, prm.dxv);
+				KARG(kArgs, kernelAx, kernelIndCDRF, prm.dzv);
+				KARG(kArgs, kernelAx, kernelIndCDRF, prm.Az);
+				KARG(kArgs, kernelAx, kernelIndCDRF, prm.Bz);
+				KARG(kArgs, kernelAx, kernelIndCDRF, prm.C);
+				KARG(kArgs, kernelAx, kernelIndCDRF, prm.sigmaCoeff);
+			}
+#if defined(CUDA) || defined(HIP)
+			status = cuLaunchKernel(kernelAx, globalCDRF[0], globalCDRF[1], globalCDRF[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+			CUDA_CHECK(status, "Failed to launch the fused axial collimator response kernel\n", -1);
+#elif defined(OPENCL)
+			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelAx, cl::NullRange, globalCDRF, localPrior);
+			OCL_CHECK(status, "Failed to launch the fused axial collimator response kernel\n", -1);
+#endif // END CUDA
+			return 0;
+		}
+
+		// Transaxial collimator response pass of the forward projection together with the sum over the depth, see the
+		// cdrfTransFP kernel. The input in d_im is N0 x N1 x N2, allocated inSx x inSy x (anything), the output is the nOut x N2 projection of the rows
+		// yStart ... yStart + nOut - 1 of the input, in the view'th nOut x N2 slot of d_rhs, added to what is there
+		// when accumulate is set. Unless prm.globalW is set the kernel makes the weights itself, otherwise the
+		// untiled one is launched, which reads the weights in d_cdrfWTr and the radii in d_cdrfRTr
+		inline int cdrfTransFP(const scalarStruct & inputScalars, int N0, int N1, int N2, int inSx, int inSy, int yStart, int nOut, int view, int accumulate, CDRFParams6 prm) {
+			STATUS_t status = SUCCESS_VALUE;
+#if defined(CUDA) || defined(HIP)
+			std::vector<void*> kArgs;
+#elif defined(OPENCL)
+			UINT32_t kernelIndCDRF = 0U;
+#endif // END CUDA
+			const bool tiled = !(prm.globalW || prm.radius > cdrfRMax);
+			KERNELHANDLE_t& kernelTr = tiled ? kernelCDRFTransFP : kernelCDRFTransFPDirect;
+			// A work-group makes lanes * cdrfYPT outputs of one z (lanes with the untiled kernel): the groups are
+			// (ceil(nOut / outputs), N2)
+			const size_t lanes = cdrfLanes() * (tiled ? static_cast<size_t>(cdrfYPT) : 1ULL);
+			WORKRANGE_t globalCDRF;
+			SET_LAUNCH_RANGE3(globalCDRF, ((static_cast<size_t>(nOut) + lanes - 1ULL) / lanes) * local_sizePrior[0], static_cast<size_t>(N2) * local_sizePrior[1], 1, localPrior);
+
+			KARG(kArgs, kernelTr, kernelIndCDRF, d_rhs);
+			KARG(kArgs, kernelTr, kernelIndCDRF, d_im);
+			if (!tiled) {
+				KARG(kArgs, kernelTr, kernelIndCDRF, d_cdrfWTr);
+				KARG(kArgs, kernelTr, kernelIndCDRF, d_cdrfRTr);
+			}
+			KARG(kArgs, kernelTr, kernelIndCDRF, N0);
+			KARG(kArgs, kernelTr, kernelIndCDRF, N1);
+			KARG(kArgs, kernelTr, kernelIndCDRF, N2);
+			KARG(kArgs, kernelTr, kernelIndCDRF, inSx);
+			KARG(kArgs, kernelTr, kernelIndCDRF, inSy);
+			KARG(kArgs, kernelTr, kernelIndCDRF, yStart);
+			KARG(kArgs, kernelTr, kernelIndCDRF, nOut);
+			KARG(kArgs, kernelTr, kernelIndCDRF, prm.xOff);
+			KARG(kArgs, kernelTr, kernelIndCDRF, prm.firstPlane);
+			KARG(kArgs, kernelTr, kernelIndCDRF, prm.radius);
+			KARG(kArgs, kernelTr, kernelIndCDRF, prm.norm);
+			KARG(kArgs, kernelTr, kernelIndCDRF, view);
+			KARG(kArgs, kernelTr, kernelIndCDRF, accumulate);
+			if (tiled) {
+				KARG(kArgs, kernelTr, kernelIndCDRF, prm.dist);
+				KARG(kArgs, kernelTr, kernelIndCDRF, prm.dxv);
+				KARG(kArgs, kernelTr, kernelIndCDRF, prm.dyv);
+				KARG(kArgs, kernelTr, kernelIndCDRF, prm.Axy);
+				KARG(kArgs, kernelTr, kernelIndCDRF, prm.Bxy);
+				KARG(kArgs, kernelTr, kernelIndCDRF, prm.C);
+				KARG(kArgs, kernelTr, kernelIndCDRF, prm.sigmaCoeff);
+				KARG(kArgs, kernelTr, kernelIndCDRF, prm.comp);
+			}
+#if defined(CUDA) || defined(HIP)
+			status = cuLaunchKernel(kernelTr, globalCDRF[0], globalCDRF[1], globalCDRF[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+			CUDA_CHECK(status, "Failed to launch the fused transaxial collimator response kernel\n", -1);
+#elif defined(OPENCL)
+			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelTr, cl::NullRange, globalCDRF, localPrior);
+			OCL_CHECK(status, "Failed to launch the fused transaxial collimator response kernel\n", -1);
+#endif // END CUDA
+			return 0;
+		}
+
+		// Transaxial collimator response pass of the backprojection, see the cdrfTransBP kernel. The
+		// projection in d_im (the view'th of the pNy x pNz projections stored one after another) sits at
+		// (pY0, pZ0) of the N1 x N2 region, the output is N0 x N1 x N2 (allocated outSx x outSy x (anything)). With resample set (only when the kernel
+		// makes the weights itself, i.e. not with prm.globalW) d_im holds the measurements instead, nRowsD x nColsD each, and the projection
+		// (pNy = N1, pNz = N2, pY0 = pZ0 = 0) is made by the kernel from the view'th one of them with the
+		// map trA, trB, axA, axB of resampleFromDetector. Unless prm.globalW is set the kernel makes the weights
+		// itself, otherwise the untiled one is launched, which reads the weights in d_cdrfWTr and the radii
+		// in d_cdrfRTr
+		inline int cdrfTransBP(const scalarStruct & inputScalars, int N0, int N1, int N2, int outSx, int outSy, int pNy, int pNz, int pY0, int pZ0, int view, CDRFParams6 prm,
+			int resample = 0, int nRowsD = 0, int nColsD = 0, float trA = 1.f, float trB = 0.f, float axA = 1.f, float axB = 0.f) {
+			STATUS_t status = SUCCESS_VALUE;
+#if defined(CUDA) || defined(HIP)
+			std::vector<void*> kArgs;
+#elif defined(OPENCL)
+			UINT32_t kernelIndCDRF = 0U;
+#endif // END CUDA
+			const bool tiled = !(prm.globalW || prm.radius > cdrfRMax);
+			if (resample != 0 && !tiled) {
+				mexPrint("The projection can only be resampled inside the backprojection kernel when the kernel makes the collimator response weights");
+				return -1;
+			}
+			KERNELHANDLE_t& kernelTr = tiled ? kernelCDRFTransBP : kernelCDRFTransBPDirect;
+			// A work-group is a run of tx planes and lanes * cdrfYPT rows of one z: the groups are
+			// (ceil(N0 / tx), ceil(N1 / (lanes * cdrfYPT)), N2)
+			const size_t tx = cdrfTileX();
+			const size_t yRows = cdrfLanes() * static_cast<size_t>(cdrfYPT);
+			WORKRANGE_t globalCDRF;
+			SET_LAUNCH_RANGE3(globalCDRF, ((static_cast<size_t>(N0) + tx - 1ULL) / tx) * local_sizePrior[0],
+				((static_cast<size_t>(N1) + yRows - 1ULL) / yRows) * local_sizePrior[1], N2, localPrior);
+
+			KARG(kArgs, kernelTr, kernelIndCDRF, d_rhs);
+			KARG(kArgs, kernelTr, kernelIndCDRF, d_im);
+			if (!tiled) {
+				KARG(kArgs, kernelTr, kernelIndCDRF, d_cdrfWTr);
+				KARG(kArgs, kernelTr, kernelIndCDRF, d_cdrfRTr);
+			}
+			KARG(kArgs, kernelTr, kernelIndCDRF, N0);
+			KARG(kArgs, kernelTr, kernelIndCDRF, N1);
+			KARG(kArgs, kernelTr, kernelIndCDRF, N2);
+			KARG(kArgs, kernelTr, kernelIndCDRF, outSx);
+			KARG(kArgs, kernelTr, kernelIndCDRF, outSy);
+			KARG(kArgs, kernelTr, kernelIndCDRF, pNy);
+			KARG(kArgs, kernelTr, kernelIndCDRF, pNz);
+			KARG(kArgs, kernelTr, kernelIndCDRF, pY0);
+			KARG(kArgs, kernelTr, kernelIndCDRF, pZ0);
+			KARG(kArgs, kernelTr, kernelIndCDRF, view);
+			KARG(kArgs, kernelTr, kernelIndCDRF, prm.xOff);
+			KARG(kArgs, kernelTr, kernelIndCDRF, prm.firstPlane);
+			KARG(kArgs, kernelTr, kernelIndCDRF, prm.radius);
+			KARG(kArgs, kernelTr, kernelIndCDRF, prm.norm);
+			if (tiled) {
+				KARG(kArgs, kernelTr, kernelIndCDRF, prm.dist);
+				KARG(kArgs, kernelTr, kernelIndCDRF, prm.dxv);
+				KARG(kArgs, kernelTr, kernelIndCDRF, prm.dyv);
+				KARG(kArgs, kernelTr, kernelIndCDRF, prm.Axy);
+				KARG(kArgs, kernelTr, kernelIndCDRF, prm.Bxy);
+				KARG(kArgs, kernelTr, kernelIndCDRF, prm.C);
+				KARG(kArgs, kernelTr, kernelIndCDRF, prm.sigmaCoeff);
+				KARG(kArgs, kernelTr, kernelIndCDRF, prm.comp);
+				KARG(kArgs, kernelTr, kernelIndCDRF, resample);
+				KARG(kArgs, kernelTr, kernelIndCDRF, nRowsD);
+				KARG(kArgs, kernelTr, kernelIndCDRF, nColsD);
+				KARG(kArgs, kernelTr, kernelIndCDRF, trA);
+				KARG(kArgs, kernelTr, kernelIndCDRF, trB);
+				KARG(kArgs, kernelTr, kernelIndCDRF, axA);
+				KARG(kArgs, kernelTr, kernelIndCDRF, axB);
+			}
+#if defined(CUDA) || defined(HIP)
+			status = cuLaunchKernel(kernelTr, globalCDRF[0], globalCDRF[1], globalCDRF[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+			CUDA_CHECK(status, "Failed to launch the fused transaxial collimator response kernel (backprojection)\n", -1);
+#elif defined(OPENCL)
+			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelTr, cl::NullRange, globalCDRF, localPrior);
+			OCL_CHECK(status, "Failed to launch the fused transaxial collimator response kernel (backprojection)\n", -1);
+#endif // END CUDA
+			return 0;
+		}
+
+		// Resamples the nTr x nAx projection in d_im onto the detector, adding it to the view'th
+		// nRowsD x nColsD projection of d_rhs, see the resampleToDetector kernel
+		inline int resampleToDetector(const scalarStruct & inputScalars, int nTr, int nAx, int nRowsD, int nColsD, float trA, float trB, float axA, float axB, int view) {
+			STATUS_t status = SUCCESS_VALUE;
+#if defined(CUDA) || defined(HIP)
+			std::vector<void*> kArgs;
+#elif defined(OPENCL)
+			UINT32_t kernelIndRes = 0U;
+#endif // END CUDA
+			const size_t e0 = (nRowsD % local_sizePrior[0] == 0ULL) ? 0ULL : local_sizePrior[0] - (nRowsD % local_sizePrior[0]);
+			const size_t e1 = (nColsD % local_sizePrior[1] == 0ULL) ? 0ULL : local_sizePrior[1] - (nColsD % local_sizePrior[1]);
+			WORKRANGE_t globalRes;
+			SET_LAUNCH_RANGE3(globalRes, nRowsD + e0, nColsD + e1, 1, localPrior);
+
+			KARG(kArgs, kernelResampleTo, kernelIndRes, d_rhs);
+			KARG(kArgs, kernelResampleTo, kernelIndRes, d_im);
+			KARG(kArgs, kernelResampleTo, kernelIndRes, nTr);
+			KARG(kArgs, kernelResampleTo, kernelIndRes, nAx);
+			KARG(kArgs, kernelResampleTo, kernelIndRes, nRowsD);
+			KARG(kArgs, kernelResampleTo, kernelIndRes, nColsD);
+			KARG(kArgs, kernelResampleTo, kernelIndRes, trA);
+			KARG(kArgs, kernelResampleTo, kernelIndRes, trB);
+			KARG(kArgs, kernelResampleTo, kernelIndRes, axA);
+			KARG(kArgs, kernelResampleTo, kernelIndRes, axB);
+			KARG(kArgs, kernelResampleTo, kernelIndRes, view);
+#if defined(CUDA) || defined(HIP)
+			status = cuLaunchKernel(kernelResampleTo, globalRes[0], globalRes[1], globalRes[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+			CUDA_CHECK(status, "Failed to launch the detector resampling kernel\n", -1);
+#elif defined(OPENCL)
+			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelResampleTo, cl::NullRange, globalRes, localPrior);
+			OCL_CHECK(status, "Failed to launch the detector resampling kernel\n", -1);
+#endif // END CUDA
+			return 0;
+		}
+
+		// The adjoint of the above: resamples the view'th nRowsD x nColsD measurement of d_im onto the
+		// nTr x nAx lattice in d_rhs, see the resampleFromDetector kernel
+		inline int resampleFromDetector(const scalarStruct & inputScalars, int nTr, int nAx, int nRowsD, int nColsD, float trA, float trB, float axA, float axB, int view) {
+			STATUS_t status = SUCCESS_VALUE;
+#if defined(CUDA) || defined(HIP)
+			std::vector<void*> kArgs;
+#elif defined(OPENCL)
+			UINT32_t kernelIndRes = 0U;
+#endif // END CUDA
+			const size_t e0 = (nTr % local_sizePrior[0] == 0ULL) ? 0ULL : local_sizePrior[0] - (nTr % local_sizePrior[0]);
+			const size_t e1 = (nAx % local_sizePrior[1] == 0ULL) ? 0ULL : local_sizePrior[1] - (nAx % local_sizePrior[1]);
+			WORKRANGE_t globalRes;
+			SET_LAUNCH_RANGE3(globalRes, nTr + e0, nAx + e1, 1, localPrior);
+
+			KARG(kArgs, kernelResampleFrom, kernelIndRes, d_rhs);
+			KARG(kArgs, kernelResampleFrom, kernelIndRes, d_im);
+			KARG(kArgs, kernelResampleFrom, kernelIndRes, nTr);
+			KARG(kArgs, kernelResampleFrom, kernelIndRes, nAx);
+			KARG(kArgs, kernelResampleFrom, kernelIndRes, nRowsD);
+			KARG(kArgs, kernelResampleFrom, kernelIndRes, nColsD);
+			KARG(kArgs, kernelResampleFrom, kernelIndRes, trA);
+			KARG(kArgs, kernelResampleFrom, kernelIndRes, trB);
+			KARG(kArgs, kernelResampleFrom, kernelIndRes, axA);
+			KARG(kArgs, kernelResampleFrom, kernelIndRes, axB);
+			KARG(kArgs, kernelResampleFrom, kernelIndRes, view);
+#if defined(CUDA) || defined(HIP)
+			status = cuLaunchKernel(kernelResampleFrom, globalRes[0], globalRes[1], globalRes[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+			CUDA_CHECK(status, "Failed to launch the detector resampling kernel (backprojection)\n", -1);
+#elif defined(OPENCL)
+			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelResampleFrom, cl::NullRange, globalRes, localPrior);
+			OCL_CHECK(status, "Failed to launch the detector resampling kernel (backprojection)\n", -1);
+#endif // END CUDA
+			return 0;
+		}
+
+		// The batched variants of the fused type-6 launchers (TYPE6_BATCH, see functions.hpp): one launch for nb views of one volume. The
+		// per-view parameters are in d_cdrfBP (nb blocks of type6BatchStride floats, see precomp.h), the per-view arrays are stacked, a batch
+		// stride apart. The sizes given are the largest ones of the batch (the views that need less return at once). No queue finish, see
+		// convolveCDRF above
+
+		// The parameter blocks of the launches of a projection (one forward projection or backprojection of the views of a call) are in one
+		// buffer, d_cdrfBP: beginBatchParams makes it (room for maxBlocks blocks of type6BatchStride floats), every uploadBatchParams adds the
+		// blocks of one launch sequence after those of the earlier ones, and sets prmOffBlocks to the block that they start at, which the batched
+		// launchers pass to the kernels. Nothing waits for the device between the uploads, the blocks of different launches are in different places
+		// of the buffer. The uploads do not wait for the queue (the AF host-to-device array constructors do, and that would drain the device once
+		// for every batch). With CUDA/HIP they are asynchronous copies from a pinned buffer, which the projection before the previous one used (it
+		// is waited for here, at the start of a projection, and is long done by then); the device buffer is overwritten by every projection, which is
+		// safe since the queue is in order: the first copy of a projection is made after the kernels of the previous one. With OpenCL the buffer is
+		// a new one for every projection (the runtime releases it when the kernels that use it have run) and the uploads are non-blocking writes
+		// from a host copy of the same kind
+		inline int beginBatchParams(const int maxBlocks) {
+			const int blocks = (std::max)(maxBlocks, 1);
+			const size_t bytes = static_cast<size_t>(blocks) * static_cast<size_t>(type6BatchStride) * sizeof(float);
+			prmCursor = 0;
+			prmCapBlocks = blocks;
+			prmOffBlocks = 0;
+			prmCur = (prmCur + 1) % prmArenas;
+#if defined(CUDA) || defined(HIP)
+			STATUS_t status = SUCCESS_VALUE;
+			if (prmEv[prmCur] == nullptr) {
+				status = cuEventCreate(&prmEv[prmCur], CU_EVENT_DEFAULT);
+				CUDA_CHECK(status, "Failed to create the batch parameter event\n", -1);
+			}
+			// The copies from this host buffer, in the projection before the previous one, have to be done
+			if (prmEvSet[prmCur]) {
+				status = cuEventSynchronize(prmEv[prmCur]);
+				CUDA_CHECK(status, "Failed to wait for the batch parameter copy\n", -1);
+				prmEvSet[prmCur] = false;
+			}
+			if (bytes > prmHostCap[prmCur]) {
+				if (prmHost[prmCur] != nullptr) {
+					status = cuMemFreeHost(prmHost[prmCur]);
+					CUDA_CHECK(status, "Failed to free the pinned batch parameter buffer\n", -1);
+					prmHost[prmCur] = nullptr;
+					prmHostCap[prmCur] = 0ULL;
+				}
+				status = cuMemAllocHost(reinterpret_cast<void**>(&prmHost[prmCur]), bytes);
+				CUDA_CHECK(status, "Failed to allocate the pinned batch parameter buffer\n", -1);
+				prmHostCap[prmCur] = bytes;
+			}
+			if (bytes > prmDevCap) {
+				// Freeing waits for the kernels that use the buffer (rare: only when a projection needs more blocks than any before it)
+				if (d_prmDev != 0) {
+					status = cuMemFree(d_prmDev);
+					CUDA_CHECK(status, "Failed to free the batch parameter buffer\n", -1);
+					d_prmDev = 0;
+					prmDevCap = 0ULL;
+				}
+				status = cuMemAlloc(&d_prmDev, bytes);
+				CUDA_CHECK(status, "Failed to allocate the batch parameter buffer\n", -1);
+				prmDevCap = bytes;
+			}
+			d_cdrfBP = reinterpret_cast<AFDEVBUFF_t>(d_prmDev);
+#elif defined(OPENCL)
+			cl_int status = CL_SUCCESS;
+			if (prmEvSetCL[prmCur]) {
+				status = prmEvCL[prmCur].wait();
+				OCL_CHECK(status, "Failed to wait for the batch parameter write\n", -1);
+				prmEvSetCL[prmCur] = false;
+			}
+			prmHostCL[prmCur].resize(static_cast<size_t>(blocks) * static_cast<size_t>(type6BatchStride));
+			d_cdrfBP = cl::Buffer(CLContext, CL_MEM_READ_ONLY, bytes, nullptr, &status);
+			OCL_CHECK(status, "Failed to allocate the batch parameters\n", -1);
+#endif
+			return 0;
+		}
+
+		// Adds the parameter blocks of a launch sequence (blocks blocks of type6BatchStride floats) to d_cdrfBP, see above
+		inline int uploadBatchParams(const float* host, const int blocks) {
+			const size_t bytes = static_cast<size_t>(blocks) * static_cast<size_t>(type6BatchStride) * sizeof(float);
+			const size_t off = static_cast<size_t>(prmCursor) * static_cast<size_t>(type6BatchStride);
+			if (prmCursor + blocks > prmCapBlocks) {
+				mexPrint("The batch parameter buffer is full");
+				return -1;
+			}
+#if defined(CUDA) || defined(HIP)
+			STATUS_t status = SUCCESS_VALUE;
+			std::memcpy(prmHost[prmCur] + off, host, bytes);
+			const CUdeviceptr dst = reinterpret_cast<CUdeviceptr>(reinterpret_cast<char*>(d_prmDev) + off * sizeof(float));
+			status = cuMemcpyHtoDAsync(dst, prmHost[prmCur] + off, bytes, CLCommandQueue[0]);
+			CUDA_CHECK(status, "Failed to copy the batch parameters\n", -1);
+			status = cuEventRecord(prmEv[prmCur], CLCommandQueue[0]);
+			CUDA_CHECK(status, "Failed to record the batch parameter copy\n", -1);
+			prmEvSet[prmCur] = true;
+#elif defined(OPENCL)
+			cl_int status = CL_SUCCESS;
+			std::memcpy(prmHostCL[prmCur].data() + off, host, bytes);
+			status = CLCommandQueue[0].enqueueWriteBuffer(d_cdrfBP, CL_FALSE, off * sizeof(float), bytes, prmHostCL[prmCur].data() + off, nullptr, &prmEvCL[prmCur]);
+			OCL_CHECK(status, "Failed to upload the batch parameters\n", -1);
+			prmEvSetCL[prmCur] = true;
+#endif
+			prmOffBlocks = prmCursor;
+			prmCursor += blocks;
+			return 0;
+		}
+
+		// Batched rotation of the forward projection (see the rotateB kernel): d_rhs is the stack of the rotated windows, outSx x outSy x
+		// outSz each, the source is the buffer d_im or the image texSlot (as in rotateCustom). maxNxW, maxNy and maxNz are the largest
+		// window of the views
+		inline int rotateBatch(const scalarStruct & inputScalars, int nb, int maxNxW, int maxNy, int maxNz, int outSx, int outSy, int outSz, const int texSlot) {
+			STATUS_t status = SUCCESS_VALUE;
+#if defined(CUDA) || defined(HIP)
+			std::vector<void*> kArgs;
+#elif defined(OPENCL)
+			UINT32_t kernelIndRot = 0U;
+#endif // END CUDA
+			const size_t e0 = (maxNxW % local_sizePrior[0] == 0ULL) ? 0ULL : local_sizePrior[0] - (maxNxW % local_sizePrior[0]);
+			const size_t e1 = (maxNy % local_sizePrior[1] == 0ULL) ? 0ULL : local_sizePrior[1] - (maxNy % local_sizePrior[1]);
+			WORKRANGE_t globalB;
+			SET_LAUNCH_RANGE3(globalB, maxNxW + e0, maxNy + e1, static_cast<size_t>(maxNz) * static_cast<size_t>(nb), localPrior);
+			int nzB = maxNz;
+			KARG(kArgs, kernelRotateB, kernelIndRot, d_rhs);
+			if (!inputScalars.useBuffers) {
+				KARG(kArgs, kernelRotateB, kernelIndRot, d_rotI[texSlot]);
+			}
+			else {
+				KARG(kArgs, kernelRotateB, kernelIndRot, d_im);
+			}
+			int bpOff = prmOffBlocks;
+			KARG(kArgs, kernelRotateB, kernelIndRot, d_cdrfBP);
+			KARG(kArgs, kernelRotateB, kernelIndRot, bpOff);
+			KARG(kArgs, kernelRotateB, kernelIndRot, outSx);
+			KARG(kArgs, kernelRotateB, kernelIndRot, outSy);
+			KARG(kArgs, kernelRotateB, kernelIndRot, outSz);
+			KARG(kArgs, kernelRotateB, kernelIndRot, nzB);
+#if defined(CUDA) || defined(HIP)
+			status = cuLaunchKernel(kernelRotateB, globalB[0], globalB[1], globalB[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+			CUDA_CHECK(status, "Failed to launch the batched bilinear image rotation kernel\n", -1);
+#elif defined(OPENCL)
+			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelRotateB, cl::NullRange, globalB, localPrior);
+			OCL_CHECK(status, "Failed to launch the batched bilinear image rotation kernel\n", -1);
+#endif // END CUDA
+			return 0;
+		}
+
+		// Batched rotation back of the backprojection (see the rotateBackB kernel): the nb regions of the buffer d_im (srcSx x srcSy x any,
+		// srcBS elements apart) are added to the image d_rhs (nvx x nvy x nvz) by one thread per voxel of it, in the order of the views
+		inline int rotateBackBatch(const scalarStruct & inputScalars, int nb, int nvx, int nvy, int nvz, int srcSx, int srcSy, int srcBS) {
+			STATUS_t status = SUCCESS_VALUE;
+#if defined(CUDA) || defined(HIP)
+			std::vector<void*> kArgs;
+#elif defined(OPENCL)
+			UINT32_t kernelIndRot = 0U;
+#endif // END CUDA
+			const size_t e0 = (nvx % local_sizePrior[0] == 0ULL) ? 0ULL : local_sizePrior[0] - (nvx % local_sizePrior[0]);
+			const size_t e1 = (nvy % local_sizePrior[1] == 0ULL) ? 0ULL : local_sizePrior[1] - (nvy % local_sizePrior[1]);
+			WORKRANGE_t globalB;
+			// A thread handles rotZPT slices of the volume (ROT_ZPT in auxKernels.cl)
+			const size_t zptRot = static_cast<size_t>(rotZPT(inputScalars));
+			SET_LAUNCH_RANGE3(globalB, nvx + e0, nvy + e1, (static_cast<size_t>(nvz) + zptRot - 1ULL) / zptRot, localPrior);
+			KARG(kArgs, kernelRotateBackB, kernelIndRot, d_rhs);
+			KARG(kArgs, kernelRotateBackB, kernelIndRot, d_im);
+			int bpOff = prmOffBlocks;
+			KARG(kArgs, kernelRotateBackB, kernelIndRot, d_cdrfBP);
+			KARG(kArgs, kernelRotateBackB, kernelIndRot, bpOff);
+			KARG(kArgs, kernelRotateBackB, kernelIndRot, nb);
+			KARG(kArgs, kernelRotateBackB, kernelIndRot, nvx);
+			KARG(kArgs, kernelRotateBackB, kernelIndRot, nvy);
+			KARG(kArgs, kernelRotateBackB, kernelIndRot, nvz);
+			KARG(kArgs, kernelRotateBackB, kernelIndRot, srcSx);
+			KARG(kArgs, kernelRotateBackB, kernelIndRot, srcSy);
+			KARG(kArgs, kernelRotateBackB, kernelIndRot, srcBS);
+#if defined(CUDA) || defined(HIP)
+			status = cuLaunchKernel(kernelRotateBackB, globalB[0], globalB[1], globalB[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+			CUDA_CHECK(status, "Failed to launch the batched rotation kernel of the backprojection\n", -1);
+#elif defined(OPENCL)
+			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelRotateBackB, cl::NullRange, globalB, localPrior);
+			OCL_CHECK(status, "Failed to launch the batched rotation kernel of the backprojection\n", -1);
+#endif // END CUDA
+			return 0;
+		}
+
+		// Batched axial pass (see the cdrfAxialB kernel, always the tiled one that makes the weights itself): the stack d_im (inSx x inSy x
+		// any, inBS elements apart) to the stack d_rhs (outSx x outSy x any, outBS apart). attMode is that of cdrfAxial, the attenuation is
+		// the array d_cdrfAtt (attSx x attSy x any), read at the offsets of the view (see CDRFLayout6). maxN0, maxN1 and maxNZOut are the
+		// largest region and output rows of the views. prm holds the scalars that are the same for every view
+		inline int cdrfAxialBatch(const scalarStruct & inputScalars, int nb, int maxN0, int maxN1, int maxNZOut, int attMode, CDRFParams6 prm,
+			int inSx, int inSy, int inBS, int outSx, int outSy, int outBS, int attSx, int attSy) {
+			STATUS_t status = SUCCESS_VALUE;
+#if defined(CUDA) || defined(HIP)
+			std::vector<void*> kArgs;
+#elif defined(OPENCL)
+			UINT32_t kernelIndCDRF = 0U;
+#endif // END CUDA
+			const size_t tx = cdrfTileX();
+			const size_t tz = static_cast<size_t>(cdrfTZPT) * cdrfLanes();
+			int nzb = static_cast<int>((static_cast<size_t>(maxNZOut) + tz - 1ULL) / tz);
+			WORKRANGE_t globalCDRF;
+			SET_LAUNCH_RANGE3(globalCDRF, ((static_cast<size_t>(maxN0) + tx - 1ULL) / tx) * local_sizePrior[0], static_cast<size_t>(maxN1) * local_sizePrior[1],
+				static_cast<size_t>(nzb) * static_cast<size_t>(nb), localPrior);
+			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, d_rhs);
+			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, d_im);
+			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, d_cdrfAtt);
+			int bpOff = prmOffBlocks;
+			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, d_cdrfBP);
+			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, bpOff);
+			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, nzb);
+			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, attMode);
+			int attConv = type6AttConv();
+			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, attConv);
+			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, inSx);
+			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, inSy);
+			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, inBS);
+			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, outSx);
+			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, outSy);
+			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, outBS);
+			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, attSx);
+			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, attSy);
+			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, prm.dxv);
+			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, prm.dzv);
+			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, prm.Az);
+			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, prm.Bz);
+			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, prm.C);
+			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, prm.sigmaCoeff);
+#if defined(CUDA) || defined(HIP)
+			status = cuLaunchKernel(kernelCDRFAxialB, globalCDRF[0], globalCDRF[1], globalCDRF[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+			CUDA_CHECK(status, "Failed to launch the batched axial collimator response kernel\n", -1);
+#elif defined(OPENCL)
+			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelCDRFAxialB, cl::NullRange, globalCDRF, localPrior);
+			OCL_CHECK(status, "Failed to launch the batched axial collimator response kernel\n", -1);
+#endif // END CUDA
+			return 0;
+		}
+
+		// Batched transaxial pass of the forward projection (see the cdrfTransFPB kernel, the tiled one that makes the weights itself): the
+		// stack d_im (inSx x inSy x any, inBS apart) to the projections of d_rhs, view slot s at s * outSlotStride, the rows outLd apart,
+		// added to what is there with accumulate. maxNOut and maxN2 are the largest output rows and axial rows of the views
+		inline int cdrfTransFPBatch(const scalarStruct & inputScalars, int nb, int maxNOut, int maxN2, int inSx, int inSy, int inBS, int outSlotStride, int outLd, int accumulate,
+			CDRFParams6 prm) {
+			STATUS_t status = SUCCESS_VALUE;
+#if defined(CUDA) || defined(HIP)
+			std::vector<void*> kArgs;
+#elif defined(OPENCL)
+			UINT32_t kernelIndCDRF = 0U;
+#endif // END CUDA
+			const size_t lanes = cdrfLanes() * static_cast<size_t>(cdrfYPT);
+			WORKRANGE_t globalCDRF;
+			SET_LAUNCH_RANGE3(globalCDRF, ((static_cast<size_t>(maxNOut) + lanes - 1ULL) / lanes) * local_sizePrior[0], static_cast<size_t>(maxN2) * local_sizePrior[1],
+				static_cast<size_t>(nb), localPrior);
+			KARG(kArgs, kernelCDRFTransFPB, kernelIndCDRF, d_rhs);
+			KARG(kArgs, kernelCDRFTransFPB, kernelIndCDRF, d_im);
+			int bpOff = prmOffBlocks;
+			KARG(kArgs, kernelCDRFTransFPB, kernelIndCDRF, d_cdrfBP);
+			KARG(kArgs, kernelCDRFTransFPB, kernelIndCDRF, bpOff);
+			KARG(kArgs, kernelCDRFTransFPB, kernelIndCDRF, inSx);
+			KARG(kArgs, kernelCDRFTransFPB, kernelIndCDRF, inSy);
+			KARG(kArgs, kernelCDRFTransFPB, kernelIndCDRF, inBS);
+			KARG(kArgs, kernelCDRFTransFPB, kernelIndCDRF, outSlotStride);
+			KARG(kArgs, kernelCDRFTransFPB, kernelIndCDRF, outLd);
+			KARG(kArgs, kernelCDRFTransFPB, kernelIndCDRF, accumulate);
+			KARG(kArgs, kernelCDRFTransFPB, kernelIndCDRF, prm.norm);
+			KARG(kArgs, kernelCDRFTransFPB, kernelIndCDRF, prm.dxv);
+			KARG(kArgs, kernelCDRFTransFPB, kernelIndCDRF, prm.dyv);
+			KARG(kArgs, kernelCDRFTransFPB, kernelIndCDRF, prm.Axy);
+			KARG(kArgs, kernelCDRFTransFPB, kernelIndCDRF, prm.Bxy);
+			KARG(kArgs, kernelCDRFTransFPB, kernelIndCDRF, prm.C);
+			KARG(kArgs, kernelCDRFTransFPB, kernelIndCDRF, prm.sigmaCoeff);
+#if defined(CUDA) || defined(HIP)
+			status = cuLaunchKernel(kernelCDRFTransFPB, globalCDRF[0], globalCDRF[1], globalCDRF[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+			CUDA_CHECK(status, "Failed to launch the batched transaxial collimator response kernel\n", -1);
+#elif defined(OPENCL)
+			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelCDRFTransFPB, cl::NullRange, globalCDRF, localPrior);
+			OCL_CHECK(status, "Failed to launch the batched transaxial collimator response kernel\n", -1);
+#endif // END CUDA
+			return 0;
+		}
+
+		// Batched transaxial pass of the backprojection (see the cdrfTransBPB kernel, the tiled one that makes the weights itself): the
+		// projections (or, with resample, the measurements, nRowsD x nColsD each) of d_im to the stack d_rhs (outSx x outSy x any, outBS
+		// apart). maxN0, maxN1 and maxN2 are the largest region of the views
+		inline int cdrfTransBPBatch(const scalarStruct & inputScalars, int nb, int maxN0, int maxN1, int maxN2, int outSx, int outSy, int outBS, CDRFParams6 prm,
+			int resample, int nRowsD, int nColsD) {
+			STATUS_t status = SUCCESS_VALUE;
+#if defined(CUDA) || defined(HIP)
+			std::vector<void*> kArgs;
+#elif defined(OPENCL)
+			UINT32_t kernelIndCDRF = 0U;
+#endif // END CUDA
+			const size_t tx = cdrfTileX();
+			const size_t yRows = cdrfLanes() * static_cast<size_t>(cdrfYPT);
+			int n2b = maxN2;
+			WORKRANGE_t globalCDRF;
+			SET_LAUNCH_RANGE3(globalCDRF, ((static_cast<size_t>(maxN0) + tx - 1ULL) / tx) * local_sizePrior[0],
+				((static_cast<size_t>(maxN1) + yRows - 1ULL) / yRows) * local_sizePrior[1], static_cast<size_t>(maxN2) * static_cast<size_t>(nb), localPrior);
+			KARG(kArgs, kernelCDRFTransBPB, kernelIndCDRF, d_rhs);
+			KARG(kArgs, kernelCDRFTransBPB, kernelIndCDRF, d_im);
+			int bpOff = prmOffBlocks;
+			KARG(kArgs, kernelCDRFTransBPB, kernelIndCDRF, d_cdrfBP);
+			KARG(kArgs, kernelCDRFTransBPB, kernelIndCDRF, bpOff);
+			KARG(kArgs, kernelCDRFTransBPB, kernelIndCDRF, n2b);
+			KARG(kArgs, kernelCDRFTransBPB, kernelIndCDRF, outSx);
+			KARG(kArgs, kernelCDRFTransBPB, kernelIndCDRF, outSy);
+			KARG(kArgs, kernelCDRFTransBPB, kernelIndCDRF, outBS);
+			KARG(kArgs, kernelCDRFTransBPB, kernelIndCDRF, prm.norm);
+			KARG(kArgs, kernelCDRFTransBPB, kernelIndCDRF, prm.dxv);
+			KARG(kArgs, kernelCDRFTransBPB, kernelIndCDRF, prm.dyv);
+			KARG(kArgs, kernelCDRFTransBPB, kernelIndCDRF, prm.Axy);
+			KARG(kArgs, kernelCDRFTransBPB, kernelIndCDRF, prm.Bxy);
+			KARG(kArgs, kernelCDRFTransBPB, kernelIndCDRF, prm.C);
+			KARG(kArgs, kernelCDRFTransBPB, kernelIndCDRF, prm.sigmaCoeff);
+			KARG(kArgs, kernelCDRFTransBPB, kernelIndCDRF, resample);
+			KARG(kArgs, kernelCDRFTransBPB, kernelIndCDRF, nRowsD);
+			KARG(kArgs, kernelCDRFTransBPB, kernelIndCDRF, nColsD);
+#if defined(CUDA) || defined(HIP)
+			status = cuLaunchKernel(kernelCDRFTransBPB, globalCDRF[0], globalCDRF[1], globalCDRF[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+			CUDA_CHECK(status, "Failed to launch the batched transaxial collimator response kernel (backprojection)\n", -1);
+#elif defined(OPENCL)
+			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelCDRFTransBPB, cl::NullRange, globalCDRF, localPrior);
+			OCL_CHECK(status, "Failed to launch the batched transaxial collimator response kernel (backprojection)\n", -1);
+#endif // END CUDA
+			return 0;
+		}
+
+		// Batched resampling of the projections of the stack d_im (pLd rows, pBS elements apart) onto the detector: the result of each
+		// view is added to its projection of d_rhs (nRowsD x nColsD, fSlotStride apart), see the resampleToDetectorB kernel
+		inline int resampleToDetectorBatch(const scalarStruct & inputScalars, int nb, int nRowsD, int nColsD, int pLd, int pBS, int fSlotStride) {
+			STATUS_t status = SUCCESS_VALUE;
+#if defined(CUDA) || defined(HIP)
+			std::vector<void*> kArgs;
+#elif defined(OPENCL)
+			UINT32_t kernelIndRes = 0U;
+#endif // END CUDA
+			const size_t e0 = (nRowsD % local_sizePrior[0] == 0ULL) ? 0ULL : local_sizePrior[0] - (nRowsD % local_sizePrior[0]);
+			const size_t e1 = (nColsD % local_sizePrior[1] == 0ULL) ? 0ULL : local_sizePrior[1] - (nColsD % local_sizePrior[1]);
+			WORKRANGE_t globalRes;
+			SET_LAUNCH_RANGE3(globalRes, nRowsD + e0, nColsD + e1, nb, localPrior);
+			KARG(kArgs, kernelResampleToB, kernelIndRes, d_rhs);
+			KARG(kArgs, kernelResampleToB, kernelIndRes, d_im);
+			int bpOff = prmOffBlocks;
+			KARG(kArgs, kernelResampleToB, kernelIndRes, d_cdrfBP);
+			KARG(kArgs, kernelResampleToB, kernelIndRes, bpOff);
+			KARG(kArgs, kernelResampleToB, kernelIndRes, nRowsD);
+			KARG(kArgs, kernelResampleToB, kernelIndRes, nColsD);
+			KARG(kArgs, kernelResampleToB, kernelIndRes, pLd);
+			KARG(kArgs, kernelResampleToB, kernelIndRes, pBS);
+			KARG(kArgs, kernelResampleToB, kernelIndRes, fSlotStride);
+#if defined(CUDA) || defined(HIP)
+			status = cuLaunchKernel(kernelResampleToB, globalRes[0], globalRes[1], globalRes[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+			CUDA_CHECK(status, "Failed to launch the batched detector resampling kernel\n", -1);
+#elif defined(OPENCL)
+			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelResampleToB, cl::NullRange, globalRes, localPrior);
+			OCL_CHECK(status, "Failed to launch the batched detector resampling kernel\n", -1);
+#endif // END CUDA
+			return 0;
+		}
+
+	// Rotates (and, for multi-resolution volumes, translates and resamples onto the rotation-axis-
+	// centered grid) the source selected by texSlot (0 = emission volume, 1 = attenuation volume; see
+	// transferRotTex) by cosa/sina around its own center, with an additional (offX, offY) voxel shift.
+	// win describes both the source and the output windows -- see RotWindow. No queue finish here (see
+	// convolveCDRF above); the caller is responsible for any synchronization it needs
+	// With accumulate set the rotated image is added to d_rhs instead of replacing it, and the elements
+	// that the rotation does not reach are left as they are
+	inline int rotateCustom(const scalarStruct & inputScalars, float cosa, float sina, float offX, float offY, RotWindow win, const int texSlot = 0, int accumulate = 0) {
+		if (inputScalars.verbose >= 3 || DEBUG)
+			mexPrint("Starting " BACKEND_STR " bilinear image rotation computation");
+		STATUS_t status = SUCCESS_VALUE;
+#if defined(CUDA) || defined(HIP)
+		std::vector<void*> kArgs;
+#elif defined(OPENCL)
+		UINT32_t kernelIndRot = 0U;
+#endif // END CUDA
+		// Only the output window is computed, so the range follows it instead of the whole volume
+		if (win.outNxW <= 0)
+			win.outNxW = win.outNx;
+		if (win.srcNxB <= 0)
+			win.srcNxB = win.srcNx;
+		const size_t eRot0 = (win.outNxW % local_sizePrior[0] == 0ULL) ? 0ULL : local_sizePrior[0] - (win.outNxW % local_sizePrior[0]);
+		const size_t eRot1 = (win.outNy % local_sizePrior[1] == 0ULL) ? 0ULL : local_sizePrior[1] - (win.outNy % local_sizePrior[1]);
+		// The backprojection of the exact adjoint (accumulate) has a thread for rotZPT slices of the volume
+		const int zptRot = accumulate != 0 ? rotZPT(inputScalars) : 1;
+		SET_LAUNCH_RANGE3(global,
+			win.outNxW + eRot0,
+			win.outNy + eRot1,
+			(static_cast<size_t>(win.outNz) + static_cast<size_t>(zptRot) - 1ULL) / static_cast<size_t>(zptRot),
+			localPrior);
+		if (DEBUG) {
+			mexPrintBase("global[0] = %u\n", global[0]);
+			mexPrintBase("global[1] = %u\n", global[1]);
+			mexPrintBase("global[2] = %u\n", global[2]);
+			mexPrintBase("win.srcNx = %d\n", win.srcNx);
+			mexPrintBase("win.srcNyFull = %d\n", win.srcNyFull);
+			mexPrintBase("win.srcNzFull = %d\n", win.srcNzFull);
+			mexPrintBase("win.outNx = %d\n", win.outNx);
+			mexPrintBase("win.outNyFull = %d\n", win.outNyFull);
+			mexPrintBase("win.outX = %d\n", win.outX);
+			mexPrintBase("win.outNxW = %d\n", win.outNxW);
+			mexPrintBase("win.srcX = %d\n", win.srcX);
+			mexPrintBase("win.srcNxB = %d\n", win.srcNxB);
+			mexEval();
+		}
+
+		KARG(kArgs, kernelRotate, kernelIndRot, d_rhs);
+		if (!inputScalars.useBuffers) {
+			KARG(kArgs, kernelRotate, kernelIndRot, d_rotI[texSlot]);
+		}
+		else {
+			KARG(kArgs, kernelRotate, kernelIndRot, d_im);
+		}
+		KARG(kArgs, kernelRotate, kernelIndRot, win.srcNx);
+		KARG(kArgs, kernelRotate, kernelIndRot, win.srcNyFull);
+		KARG(kArgs, kernelRotate, kernelIndRot, win.srcNzFull);
+		KARG(kArgs, kernelRotate, kernelIndRot, win.outNx);
+		KARG(kArgs, kernelRotate, kernelIndRot, win.outNyFull);
+		KARG(kArgs, kernelRotate, kernelIndRot, cosa);
+		KARG(kArgs, kernelRotate, kernelIndRot, sina);
+		KARG(kArgs, kernelRotate, kernelIndRot, offX);
+		KARG(kArgs, kernelRotate, kernelIndRot, offY);
+		KARG(kArgs, kernelRotate, kernelIndRot, win.outY);
+		KARG(kArgs, kernelRotate, kernelIndRot, win.outZ);
+		KARG(kArgs, kernelRotate, kernelIndRot, win.outNy);
+		KARG(kArgs, kernelRotate, kernelIndRot, win.outNz);
+		KARG(kArgs, kernelRotate, kernelIndRot, win.srcY);
+		KARG(kArgs, kernelRotate, kernelIndRot, win.srcZ);
+		KARG(kArgs, kernelRotate, kernelIndRot, win.srcNy);
+		KARG(kArgs, kernelRotate, kernelIndRot, win.srcNz);
+		KARG(kArgs, kernelRotate, kernelIndRot, accumulate);
+		KARG(kArgs, kernelRotate, kernelIndRot, win.outX);
+		KARG(kArgs, kernelRotate, kernelIndRot, win.outNxW);
+		KARG(kArgs, kernelRotate, kernelIndRot, win.srcX);
+		KARG(kArgs, kernelRotate, kernelIndRot, win.srcNxB);
+		// The dimensions that the output is allocated with
+		int outSx = win.outSx > 0 ? win.outSx : win.outNxW;
+		int outSy = win.outSy > 0 ? win.outSy : win.outNy;
+		KARG(kArgs, kernelRotate, kernelIndRot, outSx);
+		KARG(kArgs, kernelRotate, kernelIndRot, outSy);
+		// Compute the kernel
+#if defined(CUDA) || defined(HIP)
+		status = cuLaunchKernel(kernelRotate, global[0], global[1], global[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+		CUDA_CHECK(status, "Failed to launch the bilinear image rotation kernel\n", -1);
+		//FINISH_QUEUE(status, "Queue finish failed after bilinear image rotation kernel\n", -1);
+		// The texture is kept alive and reused by the next projection, see transferRotTex
+#elif defined(OPENCL)
+		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelRotate, cl::NullRange, global, localPrior);
 		OCL_CHECK(status, "Failed to launch the bilinear image rotation kernel\n", -1);
 		//FINISH_QUEUE(status, "Queue finish failed after bilinear image rotation kernel\n", -1);
 #endif // END CUDA
@@ -7540,6 +8684,23 @@ public:
 			mexPrint(BACKEND_STR " bilinear image rotation computed");
 		return 0;
 		}
+#endif // END METAL
+
+#if defined(OPENCL)
+	// Creates the rotation image of a slot of the projector that works on every volume of a view together (the slots from
+	// rotSlotEmissionType6 on, see precomp.h), when it is first used. It holds the whole source of the rotation, win.srcNx x
+	// win.srcNyFull x win.srcNzFull. The two slots of the volume-by-volume projector are made with the other images instead
+	inline int ensureRotImage(const RotWindow& win, const int texSlot) {
+		if (texSlot < rotSlotEmissionType6 || rotTexInit[texSlot])
+			return 0;
+		cl_int status = CL_SUCCESS;
+		d_rotI[texSlot] = TEX3D_t(CLContext, CL_MEM_READ_ONLY, format, static_cast<::size_t>(win.srcNx), static_cast<::size_t>(win.srcNyFull),
+			static_cast<::size_t>(win.srcNzFull), 0, 0, NULL, &status);
+		OCL_CHECK(status, "Failed to create the rotation image\n", -1);
+		rotTexInit[texSlot] = true;
+		return 0;
+	}
+#endif // END OPENCL
 
 #if defined(CUDA) || defined(HIP) || defined(METAL)
 	inline int transferTex(const scalarStruct& inputScalars, AFDEVBUFF_t input, const bool RDP = false, const uint32_t Nz = 1) {
@@ -7554,4 +8715,61 @@ public:
 		return 0;
 	}
 #endif // END CUDA/METAL
+
+#if defined(CUDA) || defined(HIP)
+	// Transfers an image to the texture used by the rotation-based SPECT projector. The array and the
+	// texture object are created only on the first call, since the rotation is performed thousands of
+	// times and creating and destroying a texture for each of them costs far more than the rotation
+	// The array is large enough for every volume and for every rotation grid, so the source is, in
+	// general, smaller than it and is placed in the corner of the array. win.srcY/srcZ/srcNy/srcNz
+	// select the band of it that is uploaded, the rest of the image keeps whatever the previous
+	// projection left there. The rotation kernel is told the same dimensions and band and does not read
+	// outside them.
+	// The copy is issued asynchronously on CLCommandQueue[0], which is ArrayFire's own stream, instead
+	// of the legacy/default stream: a synchronous (legacy-stream) copy is not ordered against
+	// ArrayFire's non-blocking stream, which is a race that can make the rotated source stale
+	inline int transferRotTex(const scalarStruct & inputScalars, CUdeviceptr * input, const RotWindow& win, const int texSlot = 0) {
+		STATUS_t status = SUCCESS_VALUE;
+		if (!rotTexInit[texSlot]) {
+			int maxNx = 0, maxNy = 0, maxNz = 0;
+			if (texSlot < rotSlotEmissionType6) {
+				rotGridMaxType6(inputScalars, maxNx, maxNy, maxNz);
+			}
+			else {
+				// The slots of the projector that works on every volume of a view hold a single image each, which
+				// is the whole source of the rotation
+				maxNx = win.srcNx;
+				maxNy = win.srcNyFull;
+				maxNz = win.srcNzFull;
+			}
+			const auto arraySpec = cudaFloatTextureSpec(maxNy, maxNx, maxNz,
+				BACKEND_TEXTURE_LINEAR, BACKEND_TEXTURE_DEFAULT_FLAGS);
+			// Created empty, since the very first upload may already be a band
+			status = createCudaTexture3DEmpty(d_rotI[texSlot], rotArray[texSlot], arraySpec);
+			CUDA_CHECK(status, "Failed to create the rotation image\n", -1);
+			rotTexInit[texSlot] = true;
+		}
+		// The copy follows the source, not the array, so that only the band is transferred
+		// The band is win.srcNxB planes wide, which is the row length of the source, and goes to x = win.srcX
+		const size_t bandX = win.srcNxB <= 0 ? static_cast<size_t>(win.srcNx) : static_cast<size_t>(win.srcNxB);
+		const auto copySpec = cudaFloatTextureSpec(win.srcNyFull, bandX, win.srcNzFull,
+			BACKEND_TEXTURE_LINEAR, BACKEND_TEXTURE_DEFAULT_FLAGS);
+		const size_t bandY = win.srcNy <= 0 ? static_cast<size_t>(win.srcNyFull) : static_cast<size_t>(win.srcNy);
+		const size_t bandZ = win.srcNz <= 0 ? static_cast<size_t>(win.srcNzFull) : static_cast<size_t>(win.srcNz);
+		status = copyCudaArray3DFromDevice(rotArray[texSlot], reinterpret_cast<CUdeviceptr>(input), copySpec,
+			bandY, bandZ, static_cast<size_t>(win.srcY), static_cast<size_t>(win.srcZ), CLCommandQueue[0], static_cast<size_t>(win.srcX));
+		CUDA_CHECK(status, "Image copy failed\n", -1);
+		return 0;
+	}
+
+	inline void releaseRotTex() {
+		for (int kk = 0; kk < rotSlotsType6; kk++) {
+			if (rotTexInit[kk]) {
+				getErrorString(cuTexObjectDestroy(d_rotI[kk]));
+				getErrorString(cuArrayDestroy(rotArray[kk]));
+				rotTexInit[kk] = false;
+			}
+		}
+	}
+#endif // END CUDA
 	};

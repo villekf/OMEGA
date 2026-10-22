@@ -69,7 +69,8 @@ _POINTER_NAME_OVERRIDES = {
 # Pointer struct fields set through bespoke logic in transferData() (the
 # type-6/PSF-blurring precomputed geometry), rather than through
 # _POINTER_NAME_OVERRIDES and _as_ptr().
-_POINTER_SPECIAL_FIELDS = {'blurPlanes', 'blurPlanes2', 'gFilter', 'gFSize'}
+_POINTER_SPECIAL_FIELDS = {'blurPlanes', 'blurPlanes2', 'gFilter', 'gFSize',
+                           'blurPlanesF', 'blurPlanes2F', 'CDRFCoeffs6', 'CDRFOnTheFly', 'cdrfModel6', 'bpRot6'}
 
 
 # Large measurement-sized data fields that _privateOptionsCopy() shares with the
@@ -309,10 +310,37 @@ def transferData(options):
         # The native type-6 branch uses the volume-0 filter.
         options.param.gFilter = options.gFilter[0].ctypes.data_as(ctypes.POINTER(ctypes.c_float))
         options.gFSize = np.array(options.gFilter[0].shape, dtype=np.uint64)
+        # Sub-voxel geometry and analytic CDRF of the main volume; the arrays are kept on options so they stay alive
+        if np.size(options.Nx) > 1 and not options.CDRFOnTheFly:
+            raise ValueError('The native multi-resolution projector type 6 requires CDRFOnTheFly = True '
+                             '(a manual gFilter/sigma cannot be used)')
+        options.blurPlanesF = np.ascontiguousarray(np.asarray(options.blurPlanesF, dtype=np.float32).reshape(-1, np.asarray(options.blurPlanesF).shape[-1]))
+        options.blurPlanes2F = np.ascontiguousarray(np.asarray(options.blurPlanes2F, dtype=np.float32).reshape(-1, np.asarray(options.blurPlanes2F).shape[-1]))
+        options.CDRFCoeffs6 = np.ascontiguousarray(np.asarray(options.CDRFCoeffs6, dtype=np.float32).reshape(-1))
+        options.param.blurPlanesF = options.blurPlanesF[0].ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+        options.param.blurPlanes2F = options.blurPlanes2F[0].ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+        options.param.CDRFCoeffs6 = options.CDRFCoeffs6.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+        options.param.CDRFOnTheFly = ctypes.c_bool(bool(options.CDRFOnTheFly)).value
+        # The model of the collimator response, 'gaussian' or 'square'; the latter is a property of the on-the-fly CDRF
+        from omegatomo.projector.proj import cdrfModelIndex
+        cdrfModel = cdrfModelIndex(options.CDRFModel)
+        if cdrfModel != 0 and not options.CDRFOnTheFly:
+            raise ValueError("options.CDRFModel = '%s' requires the on-the-fly collimator-detector response (CDRFOnTheFly = True, no manual gFilter/sigma)"
+                             % options.CDRFModel)
+        options.param.cdrfModel6 = ctypes.c_uint32(cdrfModel).value
+        # How the backprojection rotates a view back into the image, 'adjoint' or 'fast'
+        from omegatomo.projector.proj import bpRotationIndex
+        options.param.bpRot6 = ctypes.c_uint32(bpRotationIndex(options.type6BPRotation)).value
     else:
         options.param.blurPlanes = None
         options.param.blurPlanes2 = None
         options.param.gFilter = None
+        options.param.blurPlanesF = None
+        options.param.blurPlanes2F = None
+        options.param.CDRFCoeffs6 = None
+        options.param.CDRFOnTheFly = False
+        options.param.cdrfModel6 = 0
+        options.param.bpRot6 = 0
         options.gFSize = np.zeros(3, dtype=np.uint64)
     options.param.gFSize = options.gFSize.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
     setFields.update(_POINTER_SPECIAL_FIELDS)
@@ -686,156 +714,187 @@ def reconstructions_main(options):
     if options.useParkerWeights:
         from omegatomo.util.parkerWeights import ParkerWeights
         ParkerWeights(options)
-    if not options.listmode:
-        if isinstance(options.SinM, list):
-            # Frames must be contiguous (frame 1, then frame 2, ...), like MATLAB's
-            # cell2mat(cellfun(@(x) x(:), ...)); np.reshape on a list would stack the
-            # frames along a new leading axis and interleave them in F order.
-            options.SinM = np.concatenate([np.asarray(frame).ravel(order='F') for frame in options.SinM])
-        options.SinM = np.reshape(options.SinM, (int(options.nRowsD), int(options.nColsD), options.nProjections, options.TOF_bins, options.Nt), order='F')
-    elif options.listmode and options.compute_sensitivity_image and not(options.SPECT):
-        if hasattr(options, 'xSens') and np.size(options.xSens) > 0 and hasattr(options, 'zSens') and np.size(options.zSens) > 0:
-            options.uV = np.float32(np.asfortranarray(options.xSens))
-            options.z = np.float32(np.asfortranarray(options.zSens))
-            # xSens and zSens contain the coordinates of all layers
-            options.det_per_ring = options.uV.size // 2 // options.nLayers
-            options.rings = options.z.size // options.nLayers
-        else:
-            from omegatomo.projector.detcoord import getCoordinates
-            options.use_raw_data = True
-            x, y, z = getCoordinates(options)
-            options.use_raw_data = False
-            options.uV = np.float32(x)
-            options.z = np.float32(z)
-    if (options.quad or options.FMH or options.L or options.weighted_mean or options.Huber or options.GGMRF) and options.MAP:
-        if hasattr(options, 'weights') and np.size(options.weights) > 0:
-            weights_flat = np.array(options.weights).flatten()
-            expected_length = ((options.Ndx * 2 + 1) * 
-                (options.Ndy * 2 + 1) * 
-                (options.Ndz * 2 + 1))
-            if len(weights_flat) < expected_length:
-                raise ValueError(
-                    f'Weights vector is too short, needs to be {expected_length} in length'
-                )
-            elif len(weights_flat) > expected_length:
-                raise ValueError(
-                    f'Weights vector is too long, needs to be {expected_length} in length'
-                )
-            middle_index = int(np.ceil(expected_length / 2)) - 1
-            if not np.isinf(weights_flat[middle_index]):
-                weights_flat[middle_index] = np.inf
-            options.weights = weights_flat
-        else:
-            options.empty_weight = True
-    parseInputs(options, True)
-    # Each list entry is one timestep's frame, which can still be a multi-dimensional
-    # (Ndist x Nang x NSinos(x TOF_bins)) array here: parseInputs only flattens per-frame
-    # data when subsets > 1 (and subsetType > 0); with subsets == 1 (or largeDim) the
-    # per-partition loop above never runs, so np.concatenate would otherwise join the
-    # frames along axis 0 of their native (row-major-read, Fortran-ordered) shape instead
-    # of stacking whole frames end to end -- interleaving timesteps instead of keeping
-    # each one contiguous (the C++ side offsets into SinM/SinDelayed by that array's
-    # per-timestep element count times the timestep index, i.e. expects frame 1 fully
-    # before frame 2). Raveling each frame with order='F' first (a no-op if already 1-D,
-    # as it is once the subsets > 1 path above already ran) guarantees frame-contiguous
-    # memory order regardless of which path produced the list.
-    if isinstance(options.SinM, list):
-        options.SinM = np.concatenate([np.asarray(frame).ravel(order='F') for frame in options.SinM])
-    if isinstance(options.SinDelayed, list):
-        options.SinDelayed = np.concatenate([np.asarray(frame).ravel(order='F') for frame in options.SinDelayed])
-    if not options.CT and (not options.LSQR and not options.CGLS):
-        negativeMask = options.SinM < 0
-        if negativeMask.any():
-            if _sharesCallerMemory(options, options.SinM):
-                # SinM can be the caller's array: out-of-place
-                options.SinM = np.where(negativeMask, options.SinM.dtype.type(0), options.SinM)
+    # Offset-detector FDK: the redundancy weights are applied before the ramp filtering and the missing side of the detector is completed
+    # with virtual rows (conjugate completion). This changes SinM, the detector centre and nRowsD (and the offset correction is switched off
+    # for the library call), so it has to be done after the geometry is final and before anything that depends on nRowsD. Restored below.
+    offsetFDKState = None
+    if options.CT and options.FDK and options.offsetCorrection:
+        from .offsetfdk import offsetFDKPreprocess
+        offsetFDKState = offsetFDKPreprocess(options)
+    try:
+        if not options.listmode:
+            if isinstance(options.SinM, list):
+                # Frames must be contiguous (frame 1, then frame 2, ...), like MATLAB's
+                # cell2mat(cellfun(@(x) x(:), ...)); np.reshape on a list would stack the
+                # frames along a new leading axis and interleave them in F order.
+                options.SinM = np.concatenate([np.asarray(frame).ravel(order='F') for frame in options.SinM])
+            options.SinM = np.reshape(options.SinM, (int(options.nRowsD), int(options.nColsD), options.nProjections, options.TOF_bins, options.Nt), order='F')
+        elif options.listmode and options.compute_sensitivity_image and not(options.SPECT):
+            if hasattr(options, 'xSens') and np.size(options.xSens) > 0 and hasattr(options, 'zSens') and np.size(options.zSens) > 0:
+                options.uV = np.float32(np.asfortranarray(options.xSens))
+                options.z = np.float32(np.asfortranarray(options.zSens))
+                # xSens and zSens contain the coordinates of all layers
+                options.det_per_ring = options.uV.size // 2 // options.nLayers
+                options.rings = options.z.size // options.nLayers
             else:
-                options.SinM[negativeMask] = 0
-    if options.FDK:
-        options.precondTypeMeas[1] = True
-    prepassPhase(options)
-    options.tau = 2.5
-    if options.use_32bit_atomics and options.use_64bit_atomics:
-        options.use_64bit_atomics = False
-    if options.use_64bit_atomics and (options.useCPU or options.useCUDA):
-        options.use_64bit_atomics = False
-    if options.use_32bit_atomics and (options.useCPU or options.useCUDA):
-        options.use_32bit_atomics = False
-    if options.storeMultiResolution:
-        output = np.zeros(int(np.sum(options.N) * options.Nt), dtype=np.float32, order = 'F')
-    elif options.useMultiResolutionVolumes:
-        output = np.zeros(options.NxOrig * options.NyOrig * options.NzOrig * options.Nt, dtype=np.float32, order = 'F')
-    else:
-        output = np.zeros(options.Nx[0].item() * options.Ny[0].item() * options.Nz[0].item() * options.Nt, dtype=np.float32, order = 'F')
-    if options.saveNIter.size > 0:
-        output = np.tile(output, options.saveNIter.size + 1)
-    elif options.save_iter:
-        output = np.tile(output, options.Niter + 1)
-    if options.storeFP:
-        FPOutput = np.zeros(options.SinM.size * options.Niter, dtype=np.float32, order = 'F')
-    else:
-        FPOutput = np.empty(0, dtype=np.float32)
-    if options.storeResidual:
-        residual = np.zeros(options.Niter * options.subsets, dtype=np.float32)
-    else:
-        residual = np.zeros(1, dtype=np.float32)
-    fPath = os.path.dirname( __file__ )
-    if os.path.exists(os.path.join(fPath, '..', 'util', 'usingPyPi.py')):
-        libdir = os.path.join(os.path.abspath(os.path.join(fPath, '..')), "libs")
-    else:
-        libdir = os.path.abspath(os.path.join(fPath, '..', '..'))
-    from omegatomo.util.paths import opencl_header_dir
-    options.headerDir = opencl_header_dir()
-    # The native code reads one initial value block per (multi-resolution) volume from x0; an
-    # undersized x0 would make it read past the end of the array
-    if not options.largeDim and not options.FDK and options.x0.size < int(np.sum(options.N)):
-        raise ValueError(f'Initial value x0 has {options.x0.size} elements but the reconstruction volume(s) require {int(np.sum(options.N))}!')
-    transferData(options)
-    inStr = options.headerDir.encode('utf-8')
-    # point_ptr = ctypes.pointer(options.param)
-    # Same frame-contiguity concern as the earlier SinM/SinDelayed concatenation above
-    # (this list form can reappear here for the Nt <= 1 case via prepassPhase's
-    # single_frame_list re-wrapping); ravel each frame with order='F' before joining them.
-    if isinstance(options.SinM, list):
-        options.SinM = np.concatenate([np.asarray(frame).ravel(order='F') for frame in options.SinM])
-    keep_int = options.SinM.dtype in (np.uint16, np.uint8) and (options.largeDim or not options.loadTOF)
-    if not keep_int and options.SinM.dtype != np.float32:
-        options.SinM = options.SinM.astype(np.float32)
-    if options.SinM.ndim > 1:
-        options.SinM = options.SinM.ravel('F')
-    if options.useCUDA:
-        if options.SinM.dtype == 'uint16':
-            libN = 'CUDA_matrixfree_uint16_lib'
-        elif options.SinM.dtype == 'uint8':
-            libN = 'CUDA_matrixfree_uint8_lib'
+                from omegatomo.projector.detcoord import getCoordinates
+                options.use_raw_data = True
+                x, y, z = getCoordinates(options)
+                options.use_raw_data = False
+                options.uV = np.float32(x)
+                options.z = np.float32(z)
+        if (options.quad or options.FMH or options.L or options.weighted_mean or options.Huber or options.GGMRF) and options.MAP:
+            if hasattr(options, 'weights') and np.size(options.weights) > 0:
+                weights_flat = np.array(options.weights).flatten()
+                expected_length = ((options.Ndx * 2 + 1) * 
+                    (options.Ndy * 2 + 1) * 
+                    (options.Ndz * 2 + 1))
+                if len(weights_flat) < expected_length:
+                    raise ValueError(
+                        f'Weights vector is too short, needs to be {expected_length} in length'
+                    )
+                elif len(weights_flat) > expected_length:
+                    raise ValueError(
+                        f'Weights vector is too long, needs to be {expected_length} in length'
+                    )
+                middle_index = int(np.ceil(expected_length / 2)) - 1
+                if not np.isinf(weights_flat[middle_index]):
+                    weights_flat[middle_index] = np.inf
+                options.weights = weights_flat
+            else:
+                options.empty_weight = True
+        parseInputs(options, True)
+        # Each list entry is one timestep's frame, which can still be a multi-dimensional
+        # (Ndist x Nang x NSinos(x TOF_bins)) array here: parseInputs only flattens per-frame
+        # data when subsets > 1 (and subsetType > 0); with subsets == 1 (or largeDim) the
+        # per-partition loop above never runs, so np.concatenate would otherwise join the
+        # frames along axis 0 of their native (row-major-read, Fortran-ordered) shape instead
+        # of stacking whole frames end to end -- interleaving timesteps instead of keeping
+        # each one contiguous (the C++ side offsets into SinM/SinDelayed by that array's
+        # per-timestep element count times the timestep index, i.e. expects frame 1 fully
+        # before frame 2). Raveling each frame with order='F' first (a no-op if already 1-D,
+        # as it is once the subsets > 1 path above already ran) guarantees frame-contiguous
+        # memory order regardless of which path produced the list.
+        if isinstance(options.SinM, list):
+            options.SinM = np.concatenate([np.asarray(frame).ravel(order='F') for frame in options.SinM])
+        if isinstance(options.SinDelayed, list):
+            options.SinDelayed = np.concatenate([np.asarray(frame).ravel(order='F') for frame in options.SinDelayed])
+        if not options.CT and (not options.LSQR and not options.CGLS):
+            negativeMask = options.SinM < 0
+            if negativeMask.any():
+                if _sharesCallerMemory(options, options.SinM):
+                    # SinM can be the caller's array: out-of-place
+                    options.SinM = np.where(negativeMask, options.SinM.dtype.type(0), options.SinM)
+                else:
+                    options.SinM[negativeMask] = 0
+        if options.FDK:
+            options.precondTypeMeas[1] = True
+        prepassPhase(options)
+        options.tau = 2.5
+        if options.use_32bit_atomics and options.use_64bit_atomics:
+            options.use_64bit_atomics = False
+        if options.use_64bit_atomics and (options.useCPU or options.useCUDA):
+            options.use_64bit_atomics = False
+        if options.use_32bit_atomics and (options.useCPU or options.useCUDA):
+            options.use_32bit_atomics = False
+        if options.storeMultiResolution:
+            output = np.zeros(int(np.sum(options.N) * options.Nt), dtype=np.float32, order = 'F')
+        elif options.useMultiResolutionVolumes:
+            output = np.zeros(options.NxOrig * options.NyOrig * options.NzOrig * options.Nt, dtype=np.float32, order = 'F')
         else:
-            libN = 'CUDA_matrixfree_lib'
-        libname = _nativeLibPath(libdir, libN)
-    elif options.useCPU:
-        if options.SinM.dtype != np.float32:
+            output = np.zeros(options.Nx[0].item() * options.Ny[0].item() * options.Nz[0].item() * options.Nt, dtype=np.float32, order = 'F')
+        if options.saveNIter.size > 0:
+            output = np.tile(output, options.saveNIter.size + 1)
+        elif options.save_iter:
+            output = np.tile(output, options.Niter + 1)
+        if options.storeFP:
+            FPOutput = np.zeros(options.SinM.size * options.Niter, dtype=np.float32, order = 'F')
+        else:
+            FPOutput = np.empty(0, dtype=np.float32)
+        if options.storeResidual:
+            residual = np.zeros(options.Niter * options.subsets, dtype=np.float32)
+        else:
+            residual = np.zeros(1, dtype=np.float32)
+        fPath = os.path.dirname( __file__ )
+        if os.path.exists(os.path.join(fPath, '..', 'util', 'usingPyPi.py')):
+            libdir = os.path.join(os.path.abspath(os.path.join(fPath, '..')), "libs")
+        else:
+            libdir = os.path.abspath(os.path.join(fPath, '..', '..'))
+        from omegatomo.util.paths import opencl_header_dir
+        options.headerDir = opencl_header_dir()
+        # The native code reads one initial value block per (multi-resolution) volume from x0; an
+        # undersized x0 would make it read past the end of the array
+        if not options.largeDim and not options.FDK and options.x0.size < int(np.sum(options.N)):
+            raise ValueError(f'Initial value x0 has {options.x0.size} elements but the reconstruction volume(s) require {int(np.sum(options.N))}!')
+        # Per-frame (time-varying) normalization or measurement-domain attenuation, i.e. more than one frame of measurements, is not supported
+        # by the library: it builds them (and the sensitivity images) from the first frame only, so every frame would be reconstructed with the
+        # corrections of the first frame. Static (single-frame) arrays are shared by all the frames and image-based attenuation can differ
+        # between the frames. The projector operators (forwardProject/backwardProject) do support per-frame corrections, so this is checked
+        # here and not in OMEGAErrorCheck
+        if options.Nt > 1 and not options.listmode and not options.largeDim:
+            frameMeas = int(options.nTotMeas[options.subsets]) - int(options.nTotMeas[0])
+            headNorm = options.SPECT and int(options.normZ) == int(options.nHeads)
+            if options.normalization_correction and np.size(options.normalization) > frameMeas and not headNorm:
+                raise ValueError('Per-frame (time-varying) normalization is not supported by reconstructions_main with dynamic data: every frame would use '
+                                 'the normalization of the first frame. Supply a single-frame normalization, which is shared by all the frames, or use the '
+                                 'projector operators (forwardProject/backwardProject), which support per-frame corrections.')
+            if options.attenuation_correction and not options.CT_attenuation and np.size(options.vaimennus) > frameMeas:
+                raise ValueError('Per-frame (time-varying) measurement-domain attenuation is not supported by reconstructions_main with dynamic data: every '
+                                 'frame would use the attenuation of the first frame. Supply a single-frame attenuation, which is shared by all the frames, '
+                                 'an image-based attenuation (which can differ between the frames), or use the projector operators '
+                                 '(forwardProject/backwardProject), which support per-frame corrections.')
+        transferData(options)
+        inStr = options.headerDir.encode('utf-8')
+        # point_ptr = ctypes.pointer(options.param)
+        # Same frame-contiguity concern as the earlier SinM/SinDelayed concatenation above
+        # (this list form can reappear here for the Nt <= 1 case via prepassPhase's
+        # single_frame_list re-wrapping); ravel each frame with order='F' before joining them.
+        if isinstance(options.SinM, list):
+            options.SinM = np.concatenate([np.asarray(frame).ravel(order='F') for frame in options.SinM])
+        keep_int = options.SinM.dtype in (np.uint16, np.uint8) and (options.largeDim or not options.loadTOF)
+        if not keep_int and options.SinM.dtype != np.float32:
             options.SinM = options.SinM.astype(np.float32)
-        libname = _nativeLibPath(libdir, 'CPU_matrixfree_lib')
-    else:
-        if options.SinM.dtype == 'uint16':
-            libN = 'OpenCL_matrixfree_uint16_lib'
-        elif options.SinM.dtype == 'uint8':
-            libN = 'OpenCL_matrixfree_uint8_lib'
+        if options.SinM.ndim > 1:
+            options.SinM = options.SinM.ravel('F')
+        if options.useCUDA:
+            if options.SinM.dtype == 'uint16':
+                libN = 'CUDA_matrixfree_uint16_lib'
+            elif options.SinM.dtype == 'uint8':
+                libN = 'CUDA_matrixfree_uint8_lib'
+            else:
+                libN = 'CUDA_matrixfree_lib'
+            libname = _nativeLibPath(libdir, libN)
+        elif options.useCPU:
+            if options.SinM.dtype != np.float32:
+                options.SinM = options.SinM.astype(np.float32)
+            libname = _nativeLibPath(libdir, 'CPU_matrixfree_lib')
         else:
-            libN = 'OpenCL_matrixfree_lib'
-        libname = _nativeLibPath(libdir, libN)
-    residualP = residual.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    if options.SinM.dtype == 'uint16':
-        SinoP = options.SinM.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
-    elif options.SinM.dtype == 'uint8':
-        SinoP = options.SinM.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
-    else:
-        SinoP = options.SinM.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    outputP = output.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    FPOutputP = FPOutput.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    from omegatomo.util.dllpath import addDLLDirectories
-    addDLLDirectories()
-    c_lib = ctypes.CDLL(libname)
-    status = c_lib.omegaMain(options.param, ctypes.c_char_p(inStr), SinoP, outputP, FPOutputP, residualP)
+            if options.SinM.dtype == 'uint16':
+                libN = 'OpenCL_matrixfree_uint16_lib'
+            elif options.SinM.dtype == 'uint8':
+                libN = 'OpenCL_matrixfree_uint8_lib'
+            else:
+                libN = 'OpenCL_matrixfree_lib'
+            libname = _nativeLibPath(libdir, libN)
+        residualP = residual.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+        if options.SinM.dtype == 'uint16':
+            SinoP = options.SinM.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
+        elif options.SinM.dtype == 'uint8':
+            SinoP = options.SinM.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
+        else:
+            SinoP = options.SinM.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+        outputP = output.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+        FPOutputP = FPOutput.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+        from omegatomo.util.dllpath import addDLLDirectories
+        addDLLDirectories()
+        c_lib = ctypes.CDLL(libname)
+        status = c_lib.omegaMain(options.param, ctypes.c_char_p(inStr), SinoP, outputP, FPOutputP, residualP)
+    finally:
+        # Put back the user-visible options (nRowsD, x, SinM, offsetCorrection, ...) that the offset FDK preprocessing changed. This covers
+        # everything from the preprocessing to the end of the library call, also when any of the steps in between raises.
+        if offsetFDKState is not None:
+            from .offsetfdk import offsetFDKRestore
+            offsetFDKRestore(options, offsetFDKState)
     if status != 0:
         raise RuntimeError(f'Native reconstruction failed with status {status}; see the backend diagnostics above.')
     try:

@@ -125,6 +125,26 @@ end
 if partitions > 1 && options.implementation ~= 2 % TODO dynamic reconstruction for implementation 5 (macOS)
     error('Dynamic reconstruction is supported only with implementation 2.')
 end
+if partitions > 1 && options.stochasticSubsetSelection && options.subsets > 1
+    error('Stochastic subset selection (options.stochasticSubsetSelection) is not supported with dynamic reconstruction (more than one time step). Use options.stochasticSubsetSelection = false.')
+end
+% Stochastic subset selection draws one random subset per iteration, but the per-subset sensitivity image of the algorithms below is
+% computed only during the first iteration, i.e. only for the subsets that happened to be drawn then. The other subsets would keep an
+% all-zero sensitivity image and the update diverges. The exception is list-mode data with a precomputed sensitivity image
+% (options.compute_sensitivity_image without a full-data D), where the sensitivity image of every subset is available up front.
+if options.stochasticSubsetSelection && options.subsets > 1
+    sensAlgNames = {'OSEM';'ECOSEM';'ROSEM';'RBI';'OSL_RBI';'DRAMA';'OSL_OSEM';'ROSEM_MAP';'SART';'ASD_POCS'};
+    sensAlgOn = cellfun(@(x) any(options.(x)(:) > 0), sensAlgNames);
+    if any(sensAlgOn)
+        % Algorithms that compute the full-data sensitivity image D
+        computeDAlg = any(cellfun(@(x) any(options.(x)(:) > 0), {'RBI';'OSL_RBI';'COSEM';'ACOSEM';'ECOSEM';'OSL_COSEM'}));
+        if ~(options.listmode > 0 && options.compute_sensitivity_image && ~computeDAlg)
+            error(['Stochastic subset selection (options.stochasticSubsetSelection) is not supported with the algorithm(s) ' strjoin(sensAlgNames(sensAlgOn), ', ') ...
+                ', which need a separate sensitivity image for every subset. Use an algorithm that uses a full-data sensitivity image or ' ...
+                'preconditioner (e.g. BSREM, MBSREM, PKMA, PDHG) or set options.stochasticSubsetSelection = false.'])
+        end
+    end
+end
 if options.SPECT && mod(sqrt(options.nRays), 1) ~= 0
     error('With SPECT, options.nRays has to be a square')
 end
@@ -519,6 +539,14 @@ if (options.projector_type == 6)
     if options.subsets > 1 && options.subset_type < 8
         error('Subset types 0-7 are not supported with projector type 6!')
     end
+    if ~isempty(options.CDRFModel) && (~(ischar(options.CDRFModel) || (isstring(options.CDRFModel) && isscalar(options.CDRFModel))) ...
+            || ~any(strcmpi(strtrim(char(options.CDRFModel)), {'gaussian', 'square'})))
+        error('Unknown options.CDRFModel. The supported models are: ''gaussian'' and ''square''.')
+    end
+    if ~isempty(options.type6BPRotation) && (~(ischar(options.type6BPRotation) || (isstring(options.type6BPRotation) && isscalar(options.type6BPRotation))) ...
+            || ~any(strcmpi(strtrim(char(options.type6BPRotation)), {'adjoint', 'fast'})))
+        error('Unknown options.type6BPRotation. The supported values are: ''adjoint'' and ''fast''.')
+    end
 end
 if (~options.use_raw_data && options.SPECT) && options.subsets > 1 && options.subset_type < 8 && options.projector_type ~= 6
     error('Subset types 0-7 are not supported with SPECT data. Use subset types 8-11.')
@@ -531,6 +559,18 @@ if options.FDK && (options.Niter > 1 || options.subsets > 1)
         options.subsets = 1;
         options.Niter = 1;
     end
+end
+if options.CT && options.offsetCorrection && options.useHelical
+    error('Offset correction is not supported with helical CT!')
+end
+if ~isempty(options.offsetSqrtWeights) && ~((islogical(options.offsetSqrtWeights) || isnumeric(options.offsetSqrtWeights)) && isscalar(options.offsetSqrtWeights))
+    error('options.offsetSqrtWeights must be either empty (automatic), true or false!')
+end
+if options.CT && options.offsetCorrection && options.FDK && ~(isnumeric(options.offsetFDKDelta) && isscalar(options.offsetFDKDelta) && options.offsetFDKDelta > 0)
+    error('options.offsetFDKDelta must be a positive scalar (mm)!')
+end
+if options.CT && options.offsetCorrection && options.subsets > 1 && options.subset_type > 0 && options.subset_type < 8
+    error('Offset correction is not supported with subset types 1-7! Use subset type 0 or the projection-based subset types 8-11.')
 end
 if options.largeDim
     if ~options.PDHG && ~options.FDK && ~options.PKMA && ~options.PDDY && ~options.PDHGL1 && ~options.PDHGKL

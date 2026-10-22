@@ -242,6 +242,14 @@ if options.param.scatter
     options.param.scatter_correction = false;
 end
 
+% Offset-detector FDK: the redundancy weights are applied before the ramp filtering and the missing side of the detector is completed with
+% virtual rows (conjugate completion). This changes SinM, the detector centre and nRowsD (and the offset correction is switched off for the
+% library call), so it is done after the geometry is final and before anything that depends on nRowsD. Restored after the reconstruction.
+offsetFDKState = [];
+if options.param.CT && options.param.FDK && options.param.offsetCorrection
+    [options, offsetFDKState] = offsetFDKPreprocess(options);
+end
+
 options.param = parseInputData(options.param, options.index);
 
 % Remove negative values
@@ -782,7 +790,7 @@ elseif ismember(options.param.implementation, [2, 3])
             % never runs).
             options.param.SinM = cell2mat(cellfun(@(x) x(:), options.param.SinM, 'UniformOutput', false));
         end
-        if ~isa(options.param.SinM, 'single') && options.param.loadTOF
+        if ~isa(options.param.SinM, 'single') && (options.param.loadTOF || ~(isa(options.param.SinM, 'uint16') || isa(options.param.SinM, 'uint8')))
             options.param.SinM = single(options.param.SinM);
         end
         if (options.param.randoms_correction || options.param.scatter_correction) && options.param.corrections_during_reconstruction
@@ -815,6 +823,9 @@ else
     error('Unsupported reconstruction method.');
 end
 
+
+% Put back the user-visible options that the offset FDK preprocessing changed
+options = offsetFDKRestore(options, offsetFDKState);
 
 if options.param.useEFOV && ~options.param.useMultiResolutionVolumes
     if options.param.transaxialEFOV

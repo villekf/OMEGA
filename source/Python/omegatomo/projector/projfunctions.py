@@ -632,6 +632,34 @@ def _append_bp4_nonct_args(self, args, timestep, subset, k, f_arg, y_arg, proj_c
     return args
 
 
+def _applyOffsetSqrtFP(self, y, subset):
+    """Weights a forward projection (or measurement data) y of the given subset with the square root of the offset redundancy weights,
+    sqrt(W), see offsetSqrtWeights in detcoord.py. The backprojection kernels apply the same weights on the other side (-DOFFSETSQRT), so
+    the projector as a whole is the linear sqrt(W) * A. The weights are applied once to the final output, after all the volumes have been
+    projected. Returns y as is unless the square root offset weighting is in use; otherwise returns the weighted array (y itself is not modified)."""
+    if not getattr(self, '_offsetSqrtActive', False):
+        return y
+    w = self.d_offsetSqrtW[subset]
+    nR = int(self.nRowsD)
+    nC = int(self.nColsD)
+    # The data are ordered with the detector row as the fastest index, then the column and then the projection
+    if self.useMetal or (self.useCUDA and self.useTorch):
+        nP = w.numel() // nR
+        return (y.reshape(nP, nC, nR) * w.reshape(nP, 1, nR)).reshape(y.shape)
+    elif self.useCUDA:
+        nP = w.size // nR
+        return (y.reshape(nP, nC, nR) * w.reshape(nP, 1, nR)).reshape(y.shape)
+    elif self.useAF:
+        import arrayfire as af
+        nP = w.elements() // nR
+        return af.flat(af.moddims(y, nR, nC, nP) * af.tile(af.moddims(w, nR, 1, nP), 1, nC, 1))
+    else:
+        nP = w.size // nR
+        yW = y.copy()
+        self._knlOffsetSqrt(yW, w, np.uint32(nR), np.uint32(nR * nC))
+        return yW
+
+
 def conv3D(self, f, ii = 0):
     if getattr(self, "useMetal", False):
         raise NotImplementedError("The separate PSF convolution kernel is not yet wired to the Metal/MPS bridge.")
@@ -711,7 +739,7 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
         f = list(f)
     if self.useMetal:
         from omegatomo.projector.mps_backend import forward_projection_mps
-        return forward_projection_mps(self, f, subset, timestep)
+        return _applyOffsetSqrtFP(self, forward_projection_mps(self, f, subset, timestep), subset)
     if self.useCUDA and not self.useCuPy:
         raise ValueError('PyCUDA is no longer supported. Please use CuPy.')
     volumes = 0
@@ -1157,7 +1185,7 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
             af.device.unlock_array(y)
             if not self.useImages:
                 af.device.unlock_array(f)
-    return y
+    return _applyOffsetSqrtFP(self, y, subset)
 
 def backwardProjection(self, y, subset = -1, timestep = -1):
     if subset == -1:
@@ -1598,9 +1626,9 @@ def _proj6_center_match(value: Any, target_rows: int, target_cols: int, *, torch
     return out
 
 
-def _proj6_resize_numpy(value: Any, source: tuple[int, int], target: tuple[int, int], physical: tuple[int, int], mode: str, direction: str, expected_frames: int | None, strict: bool) -> Any:
+def _proj6_resize_numpy(value: Any, source: tuple[int, int], target: tuple[int, int], physical: tuple[int, int], mode: str, direction: str, expected_frames: int | None, strict: bool, exact: tuple[float | None, float | None] | None = None) -> Any:
     if isinstance(value, (list, tuple)):
-        return type(value)(_proj6_resize_numpy(item, source, target, physical, mode, direction, None, strict) for item in value)
+        return type(value)(_proj6_resize_numpy(item, source, target, physical, mode, direction, None, strict, exact) for item in value)
     arr = np.asarray(value)
     if arr.size == 0 or arr.ndim == 0:
         return value
@@ -1622,6 +1650,23 @@ def _proj6_resize_numpy(value: Any, source: tuple[int, int], target: tuple[int, 
             raise ValueError(f"projection array has detector shape {tuple(arr.shape[:2])}; expected {source}")
         return value
     order = 0 if mode == 'mask' else 1
+    original = arr
+    if exact is not None:
+        # The FOV is not a whole number of detector pixels or the detector and the FOV differ by an odd number of pixels (see
+        # exactAxisRatios): resample these axes directly between the detector and the image lattices. The other axes (if any) are
+        # padded/trimmed and resized as always below, the resampled axes are already at their target size
+        from omegatomo.util.sinogramresample import resampleAxis
+        out = arr
+        for axis in range(2):
+            if exact[axis] is None:
+                continue
+            ratio = exact[axis] / target[axis] if direction == 'measurement_to_image' else source[axis] / exact[axis]
+            out = resampleAxis(out, axis, target[axis], ratio, mode)
+        if all(item is not None for item in exact):
+            out = out.astype(original.dtype, copy=False)
+            return np.asfortranarray(out).ravel(order='F') if flat else out
+        physical = tuple(target[axis] if exact[axis] is not None else physical[axis] for axis in range(2))
+        arr = out
     from skimage.transform import resize
     if direction == 'measurement_to_image':
         out = _proj6_center_match(arr, physical[0], physical[1], torch_mode=False)
@@ -1632,11 +1677,11 @@ def _proj6_resize_numpy(value: Any, source: tuple[int, int], target: tuple[int, 
         if tuple(out.shape[:2]) != physical:
             out = resize(out, physical + tuple(out.shape[2:]), order=order, mode='reflect', anti_aliasing=order != 0, preserve_range=True)
         out = _proj6_center_match(out, target[0], target[1], torch_mode=False)
-    out = out.astype(arr.dtype, copy=False)
+    out = out.astype(original.dtype, copy=False)
     return np.asfortranarray(out).ravel(order='F') if flat else out
 
 
-def _proj6_resize_torch(value: Any, source: tuple[int, int], target: tuple[int, int], physical: tuple[int, int], mode: str, direction: str, expected_frames: int | None, strict: bool) -> Any:
+def _proj6_resize_torch(value: Any, source: tuple[int, int], target: tuple[int, int], physical: tuple[int, int], mode: str, direction: str, expected_frames: int | None, strict: bool, exact: tuple[float | None, float | None] | None = None) -> Any:
     """Resize flat MPS/CPU torch projections without a host round trip."""
     import torch
     import torch.nn.functional as functional
@@ -1662,6 +1707,21 @@ def _proj6_resize_torch(value: Any, source: tuple[int, int], target: tuple[int, 
         if strict:
             raise ValueError(f"projection tensor has detector shape {tuple(out.shape[-2:])}; expected {(source[1], source[0])}")
         return value
+    if exact is not None:
+        # The FOV is not a whole number of detector pixels or the detector and the FOV differ by an odd number of pixels (see
+        # exactAxisRatios): resample these axes directly between the detector and the image lattices. The other axes (if any) are
+        # padded/trimmed and resized as always below, the resampled axes are already at their target size
+        from omegatomo.util.sinogramresample import axisMatrix
+        def matrix(axis: int) -> Any:
+            ratio = exact[axis] / target[axis] if direction == 'measurement_to_image' else source[axis] / exact[axis]
+            return torch.as_tensor(axisMatrix(source[axis], target[axis], ratio, mode), dtype=out.dtype, device=out.device)
+        if exact[1] is not None:
+            out = torch.matmul(matrix(1), out)  # columns (the second to last axis)
+        if exact[0] is not None:
+            out = torch.matmul(out, matrix(0).transpose(0, 1))  # rows (the last axis)
+        if all(item is not None for item in exact):
+            return out.reshape(-1) if flat else out
+        physical = tuple(target[axis] if exact[axis] is not None else physical[axis] for axis in range(2))
     interp = 'nearest' if mode == 'mask' else 'bilinear'
     def interpolate(array: Any, size: tuple[int, int]) -> Any:
         kwargs = {'size': size, 'mode': interp}
@@ -1711,16 +1771,21 @@ def resample_resize_proj6(value: Any, options: Any, volume: int = 0, *, directio
         if min(pitch_x, pitch_y, fov_x, fov_z) <= 0.0:
             raise ValueError
         physical = (max(1, int(round(fov_x / pitch_x))), max(1, int(round(fov_z / pitch_y))))
+        # A FOV that is not a whole number of detector pixels (relative tolerance 1e-9), or that differs from the detector by an odd
+        # number of pixels, is resampled exactly (the symmetric padding/trimming is then impossible), see sinogramresample.py
+        from omegatomo.util.sinogramresample import exactAxisRatios
+        exact = exactAxisRatios((fov_x / pitch_x, fov_z / pitch_y), measurement, physical)
     except (AttributeError, TypeError, ValueError):
         physical = image
+        exact = None
     source, target = (measurement, image) if direction == 'measurement_to_image' else (image, measurement)
     try:
         import torch
     except ImportError:
         torch = None
     if torch is not None and isinstance(value, torch.Tensor):
-        return _proj6_resize_torch(value, source, target, physical, mode, direction, expected_frames, strict)
-    return _proj6_resize_numpy(value, source, target, physical, mode, direction, expected_frames, strict)
+        return _proj6_resize_torch(value, source, target, physical, mode, direction, expected_frames, strict, exact)
+    return _proj6_resize_numpy(value, source, target, physical, mode, direction, expected_frames, strict, exact)
 
 
 def _type6_volume_view_value(self: Any, name: str, volume: int, view: int) -> int | float:
@@ -2133,11 +2198,73 @@ def _type6_arrayfire_ops(self: Any):
         except (AttributeError, TypeError, ValueError):
             return int(self.Nx[volume]), int(self.Nz[volume])
 
+    def exact_grid(volume: int) -> tuple[float | None, float | None] | None:
+        # The FOV in detector pixels (x, z) for the axes that are resampled directly: not a whole number (relative tolerance 1e-9) or
+        # an odd difference to the detector size (None for the other axes, None if there are no such axes), see sinogramresample.py
+        try:
+            def scalar(name: str) -> float:
+                values = np.asarray(getattr(self, name)).reshape(-1)
+                if values.size == 0:
+                    raise ValueError
+                return float(values[min(volume, values.size - 1)])
+
+            pitch_x, pitch_y = scalar('dPitchX'), scalar('dPitchY')
+            fov_x, fov_z = scalar('FOVa_x'), scalar('axial_fov')
+            if min(pitch_x, pitch_y, fov_x, fov_z) <= 0.0:
+                raise ValueError
+            from omegatomo.util.sinogramresample import exactAxisRatios
+            measurement = (int(getattr(self, 'measurement_nRowsD', self.nRowsD)), int(getattr(self, 'measurement_nColsD', self.nColsD)))
+            physical = (max(1, int(round(fov_x / pitch_x))), max(1, int(round(fov_z / pitch_y))))
+            return exactAxisRatios((fov_x / pitch_x, fov_z / pitch_y), measurement, physical)
+        except (AttributeError, TypeError, ValueError):
+            return None
+
+    def apply_axis_matrix(value: Any, matrix: np.ndarray, dim: int) -> Any:
+        # Multiplies the dimension dim (1 = columns, 2 = rows) of the (view, column, row) stack by the (out, in) matrix
+        weights = af.interop.np_to_af_array(np.asfortranarray(matrix.astype(np.float32)))
+        views, current_cols, current_rows = (int(value.shape[0]), int(value.shape[1]), int(value.shape[2]))
+        if dim == 2:
+            moved = af.data.moddims(af.data.reorder(value, 2, 0, 1), current_rows, views * current_cols)
+            moved = af.data.moddims(af.blas.matmul(weights, moved), int(matrix.shape[0]), views, current_cols)
+            return af.data.reorder(moved, 1, 2, 0)
+        moved = af.data.moddims(af.data.reorder(value, 1, 0, 2), current_cols, views * current_rows)
+        moved = af.data.moddims(af.blas.matmul(weights, moved), int(matrix.shape[0]), views, current_rows)
+        return af.data.reorder(moved, 1, 0, 2)
+
+    def exact_resample(value: Any, volume: int, direction: str, exact: tuple[float, float]) -> Any:
+        from omegatomo.util.sinogramresample import axisMatrix
+        rows = int(getattr(self, 'measurement_nRowsD', self.nRowsD))
+        cols = int(getattr(self, 'measurement_nColsD', self.nColsD))
+        nx, nz = int(self.Nx[volume]), int(self.Nz[volume])
+        current_cols, current_rows = int(value.shape[1]), int(value.shape[2])
+        if direction == 'measurement_to_image':
+            if exact[0] is not None:
+                value = apply_axis_matrix(value, axisMatrix(current_rows, nx, exact[0] / nx), 2)
+            if exact[1] is not None:
+                value = apply_axis_matrix(value, axisMatrix(current_cols, nz, exact[1] / nz), 1)
+        else:
+            if exact[0] is not None:
+                value = apply_axis_matrix(value, axisMatrix(current_rows, rows, current_rows / exact[0]), 2)
+            if exact[1] is not None:
+                value = apply_axis_matrix(value, axisMatrix(current_cols, cols, current_cols / exact[1]), 1)
+        return value
+
     def resample(value: Any, volume: int, direction: str) -> Any:
         rows = int(getattr(self, 'measurement_nRowsD', self.nRowsD))
         cols = int(getattr(self, 'measurement_nColsD', self.nColsD))
         nx, nz = int(self.Nx[volume]), int(self.Nz[volume])
+        exact = exact_grid(volume)
         physical_rows, physical_cols = physical_grid(volume)
+        if exact is not None and direction in ('measurement_to_image', 'image_to_measurement'):
+            # The axes in exact are resampled directly and are at their target size afterwards; the others are padded/trimmed and
+            # resized below as always
+            value = exact_resample(value, volume, direction, exact)
+            if all(item is not None for item in exact):
+                return value
+            if exact[0] is not None:
+                physical_rows = nx if direction == 'measurement_to_image' else rows
+            if exact[1] is not None:
+                physical_cols = nz if direction == 'measurement_to_image' else cols
         if direction == 'measurement_to_image':
             value = center_match(value, physical_rows, physical_cols)
             if int(value.shape[1]) != nz or int(value.shape[2]) != nx:

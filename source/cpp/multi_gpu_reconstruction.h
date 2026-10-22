@@ -119,6 +119,9 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 		}
 	}
 
+	// The projector type 6 applies the multiplicative corrections from the host arrays (see type6Weights)
+	w_vec.normHost = norm;
+	w_vec.corrHost = extraCorr;
 	// Create OpenCL buffers, CUDA arrays or OneAPI buffers (in the future)
 	retVal = proj.createBuffers(inputScalars, w_vec, x, z_det, xy_index, z_index, L, pituus, atten, norm, extraCorr, length, MethodList, type);
 	if (retVal != 0)

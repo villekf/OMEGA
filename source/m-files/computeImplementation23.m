@@ -136,7 +136,7 @@ elseif options.listmode > 0 && options.compute_sensitivity_image && ~options.use
     [x, ~, z_det, ~] = get_coordinates(options);
     options.use_raw_data = false;
 end
-if (~options.largeDim && ~(~options.loadTOF && ~isa(options.SinM,'single'))) || (options.largeDim && isa(options.SinM,'uint32')) || options.use_CPU
+if (~options.largeDim && ~(~options.loadTOF && (isa(options.SinM,'uint16') || isa(options.SinM,'uint8')))) || (options.largeDim && isa(options.SinM,'uint32')) || options.use_CPU
     options.SinM = single(options.SinM);
 end
 if options.implementation == 2

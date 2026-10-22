@@ -31,6 +31,14 @@ if ismember(options.projector_type, [1, 11, 12, 16, 2, 21, 22, 26, 61, 62]) % Ra
             'Set options.colL (and options.colD) to the collimator hole length (and the distance of the collimator from the detector surface).'])
     end
 end
+% colLxy/colLz (transaxial/axial septa lengths) are optional, fall back to colL when missing, empty or not positive
+if ~isfield(options, 'colLxy') || isempty(options.colLxy) || options.colLxy <= 0
+    options.colLxy = options.colL;
+end
+if ~isfield(options, 'colLz') || isempty(options.colLz) || options.colLz <= 0
+    options.colLz = options.colL;
+end
+
 if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelling, ray tracing projectors
     nRays = options.n_rays_transaxial * options.n_rays_axial;
     if numel(options.rayShiftsDetector) == 0
@@ -119,11 +127,94 @@ if options.projector_type == 6
     % below are always computed from the main (first) volume's geometry,
     % matching the previous scalar-only behavior bit-for-bit when Nx/dx
     % etc. are scalars.
+    panelTilt = options.swivelAngles - options.angles + 180;
+
+    % Effective septa lengths of the axial and transaxial collimator responses (resolved above)
+    colLxy = options.colLxy;
+    colLz = options.colLz;
+
+    % Sub-voxel accurate geometry of the detector panel in the rotated coordinate system.
+    % blurPlanesF is the distance from the collimator surface to the first image plane and
+    % blurPlanes2F the lateral shift of the panel with respect to the rotation axis, both in
+    % voxels. With detector heads that can swivel, panelTilt is different for every projection
+    % and neither of these is, in general, an integer number of voxels. The geometry is given
+    % with respect to the main volume, which the projector converts to the other volumes.
+    options.blurPlanesF = (options.FOVa_x(1)/2 - (options.radiusPerProj .* cosd(panelTilt) - options.CORtoDetectorSurface) + options.colL + options.colD) / options.dx(1);
+    options.blurPlanes2F = options.radiusPerProj .* sind(panelTilt) / options.dx(1);
+
+    % Coefficients of the collimator-detector response used by the on-the-fly CDRF (and always
+    % passed to the projector): FWHM_axis(z) = sqrt((A_axis*z + B_axis)^2 + C^2), where z is the
+    % distance from the collimator surface in mm
+    Az = 2*options.colR/colLz;
+    Axy = 2*options.colR/colLxy;
+    Bz = Az*(options.colL+options.colD+options.cr_p/2);
+    Bxy = Axy*(options.colL+options.colD+options.cr_p/2);
+    options.CDRFCoeffs6 = single([Az Bz Axy Bxy options.iR]);
+
+    if ~isfield(options, 'CDRFOnTheFly') || numel(options.CDRFOnTheFly) == 0
+        % The on-the-fly response is the default with implementation 2 whenever the collimator
+        % parameters are used, i.e. the CDRF is not input manually (gFilter/sigmaZ). It is
+        % considerably faster than the precomputed filter bank (with the fused GPU pipeline several
+        % times so) and more accurate: the bank can only be shifted by an integer number of voxels,
+        % which is accurate only when the distance from the detector to the FOV is the same for every
+        % projection, and it is sampled at the voxel size of the main volume, which the
+        % multi-resolution volumes do not share, so those always need the on-the-fly response.
+        options.CDRFOnTheFly = (~isfield(options, 'gFilter') || isempty(options.gFilter)) && ~isfield(options, 'sigmaZ') && ...
+            options.implementation == 2;
+    end
+    options.CDRFOnTheFly = logical(options.CDRFOnTheFly);
+    if options.CDRFOnTheFly && options.implementation ~= 2
+        warning('On-the-fly computation of the collimator-detector response is only supported by implementation 2. Using a precomputed filter bank instead.')
+        options.CDRFOnTheFly = false;
+    end
+    % The on-the-fly response uses the coefficients above (Az = 2 * colR / colLz, Axy = 2 * colR / colLxy), which need positive septa lengths
+    if options.CDRFOnTheFly && (colLxy <= 0 || colLz <= 0)
+        error(['SPECT projector type 6 computes the collimator-detector response from the collimator hole length: ' ...
+            'options.colL (or both options.colLxy and options.colLz) has to be positive, or sigmaZ/sigmaXY/gFilter have to be input.'])
+    end
+    if ~options.CDRFOnTheFly && options.nMultiVolumes > 0
+        error(['Multi-resolution reconstruction with projector type 6 requires the collimator-detector response to be computed on-the-fly, ' ...
+            'since a precomputed filter bank only applies to the voxel size of the main volume. Remove the manually input filter bank (gFilter) ' ...
+            'and sigmaZ, or disable multi-resolution volumes.'])
+    end
+
+    % The model of the collimator response: 'gaussian' (0, default) or 'square' (1, square holes). The number is what the projector
+    % reads (cdrfModel6). Only the on-the-fly response has a model, a manual filter bank (gFilter) or sigmaZ is used as it is
+    cdrfModelNames = {'gaussian', 'square'};
+    if isempty(options.CDRFModel)
+        options.CDRFModel = 'gaussian';
+    end
+    if ~(ischar(options.CDRFModel) || (isstring(options.CDRFModel) && isscalar(options.CDRFModel))) || ...
+            ~any(strcmpi(strtrim(char(options.CDRFModel)), cdrfModelNames))
+        error(['Unknown options.CDRFModel. The supported models are: ' strjoin(cellfun(@(x) ['''' x ''''], cdrfModelNames, 'UniformOutput', false), ', ') '.'])
+    end
+    cdrfModelInd = find(strcmpi(strtrim(char(options.CDRFModel)), cdrfModelNames), 1) - 1;
+    if cdrfModelInd > 0 && ~options.CDRFOnTheFly
+        error(['options.CDRFModel = ''' char(options.CDRFModel) ''' requires the on-the-fly collimator-detector response (options.CDRFOnTheFly, implementation 2, ' ...
+            'no manually input gFilter or sigmaZ).'])
+    end
+    options.cdrfModel6 = uint32(cdrfModelInd);
+
+    % How the backprojection rotates a view back into the image: 'adjoint' (0, default) or 'fast' (1). The number is what the projector
+    % reads (bpRot6)
+    bpRotationNames = {'adjoint', 'fast'};
+    if isempty(options.type6BPRotation)
+        options.type6BPRotation = 'adjoint';
+    end
+    if ~(ischar(options.type6BPRotation) || (isstring(options.type6BPRotation) && isscalar(options.type6BPRotation))) || ...
+            ~any(strcmpi(strtrim(char(options.type6BPRotation)), bpRotationNames))
+        error(['Unknown options.type6BPRotation. The supported values are: ' strjoin(cellfun(@(x) ['''' x ''''], bpRotationNames, 'UniformOutput', false), ', ') '.'])
+    end
+    options.bpRot6 = uint32(find(strcmpi(strtrim(char(options.type6BPRotation)), bpRotationNames), 1) - 1);
+
     DistanceToFirstRow = 0.5*options.dx(1);
     Distances = repmat(DistanceToFirstRow,1,options.Nx(1)*4)+repmat((0:double(options.Nx(1)*4)-1)*double(options.dx(1)),length(DistanceToFirstRow),1);
     Distances = Distances-options.colL-options.colD; %these are distances to the actual detector surface
 
-    if (~isfield(options,'gFilter'))
+    if options.CDRFOnTheFly
+        % The filters are computed separately for every projection inside the projector
+        options.gFilter = single([]);
+    elseif (~isfield(options,'gFilter'))
         if ~isfield(options, 'sigmaZ')
             % Axial and transaxial collimator responses use their own septa
             % lengths (colLz/colLxy), each falling back to the uniform-hole
@@ -131,16 +222,6 @@ if options.projector_type == 6
             % behavior (detcoord.py, projector type 6 CDRF computation) so
             % that asymmetric collimator holes (colLxy ~= colLz) are handled
             % identically in MATLAB and Python.
-            if options.colLxy > 0
-                colLxy = options.colLxy;
-            else
-                colLxy = options.colL;
-            end
-            if options.colLz > 0
-                colLz = options.colLz;
-            else
-                colLz = options.colL;
-            end
             if colLxy <= 0 || colLz <= 0
                 error(['SPECT projector type 6 computes the collimator-detector response from the collimator hole length: ' ...
                     'options.colL (or both options.colLxy and options.colLz) has to be positive, or sigmaZ/sigmaXY/gFilter have to be input.'])
@@ -187,7 +268,6 @@ if options.projector_type == 6
         options.gFilter = options.gFilter ./ sum(options.gFilter, [1 2]); % Due to truncation the sum of every slice is not 1. Thus normalize by slice.
     end
 
-    panelTilt = options.swivelAngles - options.angles + 180;
     options.blurPlanes = (options.FOVa_x(1)/2 - (options.radiusPerProj .* cosd(panelTilt) - options.CORtoDetectorSurface)) / options.dx(1); % PSF shift
     options.blurPlanes2 = options.radiusPerProj .* sind(panelTilt) / options.dx(1); % Panel shift
 
@@ -200,6 +280,8 @@ if options.projector_type == 6
     end
     options.uu = 1;
     options.ub = 1;
+    options.blurPlanesF = single(options.blurPlanesF);
+    options.blurPlanes2F = single(options.blurPlanes2F);
     if options.useSingles
         options.gFilter = single(options.gFilter);
         options.angles = single(options.angles);

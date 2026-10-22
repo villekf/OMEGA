@@ -28,6 +28,7 @@ classdef projectorClass
         trans
         x
         z
+        offsetSqrtW % Square root of the offset weights of each projection, used for the forward projection (see offsetSqrtWeights)
     end
 
     methods
@@ -357,23 +358,101 @@ classdef projectorClass
                     % % Resample and resize sinogram to match FOV size and resolution
                     % % For example if FOV size is 256x256x256 (2mm) and sinogram is 128x128 (2mm), pad sinogram to 256x256
 
+                    % The rotation axis of the gantry and the axial center of the detector are at the origin, while
+                    % the FOV is centered at the object offset (and at the eFOV shift, if any). Padding the detector
+                    % symmetrically to the FOV size assumes that the two are the same, so with an off-centre FOV the
+                    % projections are always cropped and the whole detector is kept
+                    offCentreFOV = (isfield(obj.param, 'oOffsetX') && any(obj.param.oOffsetX(:) ~= 0)) ...
+                        || (isfield(obj.param, 'oOffsetY') && any(obj.param.oOffsetY(:) ~= 0)) ...
+                        || (isfield(obj.param, 'oOffsetZ') && any(obj.param.oOffsetZ(:) ~= 0)) ...
+                        || (isfield(obj.param, 'eFOVShift') && any(obj.param.eFOVShift(:) ~= 0));
+                    if offCentreFOV
+                        if isempty(obj.param.cropProjections) || ~obj.param.cropProjections
+                            disp('Off-centre FOV with projector type 6: cropProjections enabled and the whole detector is used')
+                        end
+                        obj.param.cropProjections = true;
+                    end
+                    if isempty(obj.param.cropProjections)
+                        % Automatic: crop when the detector covers less than the FOV in either direction
+                        tolX = 0.5 * obj.param.FOVa_x(1) / double(obj.param.Nx(1));
+                        tolZ = 0.5 * obj.param.axial_fov(1) / double(obj.param.Nz(1));
+                        obj.param.cropProjections = logical(double(obj.param.nRowsD) * obj.param.dPitchX < obj.param.FOVa_x(1) - tolX ...
+                            || double(obj.param.nColsD) * obj.param.dPitchY < obj.param.axial_fov(1) - tolZ);
+                        if obj.param.cropProjections && obj.param.verbose > 0
+                            disp('Detector is smaller than the FOV: cropProjections enabled automatically')
+                        end
+                    end
+                    obj.param.cropProjections = logical(obj.param.cropProjections);
+                    if obj.param.cropProjections
+                        % Number of image voxels covered by the detector. Adjusted to the parity of the image
+                        % size so that the detector window is centered on the image with an integer offset.
+                        % The projector then computes only the detector bins instead of the whole FOV, which is
+                        % both faster and avoids treating the padding as measured zeros in the sensitivity image.
+                        NxD = double(obj.param.Nx(1));
+                        NzD = double(obj.param.Nz(1));
+                        targetRows = double(obj.param.nRowsD) * obj.param.dPitchX / (obj.param.FOVa_x / NxD);
+                        targetCols = double(obj.param.nColsD) * obj.param.dPitchY / (obj.param.axial_fov / NzD);
+                        newRows = round(targetRows);
+                        newCols = round(targetCols);
+                        if mod(newRows - NxD, 2) ~= 0
+                            if targetRows >= newRows
+                                newRows = newRows + 1;
+                            else
+                                newRows = newRows - 1;
+                            end
+                        end
+                        if mod(newCols - NzD, 2) ~= 0
+                            if targetCols >= newCols
+                                newCols = newCols + 1;
+                            else
+                                newCols = newCols - 1;
+                            end
+                        end
+                        if ~offCentreFOV
+                            newRows = min(newRows, NxD);
+                            newCols = min(newCols, NzD);
+                        end
+                        % With an off-centre FOV the detector is not capped at the FOV size. The sinogram is then
+                        % resampled onto a lattice at the voxel pitch that holds both the FOV and the detector,
+                        % the parity of which matches the FOV so that the detector window is on an integer offset
+                        canvasRows = max(NxD, newRows);
+                        canvasCols = max(NzD, newCols);
+                        rowStart = (canvasRows - newRows) / 2 + 1;
+                        colStart = (canvasCols - newCols) / 2 + 1;
+                        rowWindow = rowStart : rowStart + newRows - 1;
+                        colWindow = colStart : colStart + newCols - 1;
+                    end
                     endSinogramRows = obj.param.FOVa_x / obj.param.dPitchX; % Desired amount of sinogram rows
                     endSinogramCols = obj.param.axial_fov / obj.param.dPitchY; % Desired amount of sinogram columns
+                    sinogramSizeRows = obj.param.Nx;
+                    sinogramSizeCols = obj.param.Nz;
+                    if obj.param.cropProjections && (canvasRows ~= NxD || canvasCols ~= NzD)
+                        endSinogramRows = round(canvasRows * (obj.param.FOVa_x / NxD) / obj.param.dPitchX);
+                        endSinogramCols = round(canvasCols * (obj.param.axial_fov / NzD) / obj.param.dPitchY);
+                        sinogramSizeRows = canvasRows;
+                        sinogramSizeCols = canvasCols;
+                    end
                     obj.param.nRowsD = obj.param.Nx; % Set new sinogram size
                     obj.param.nColsD = obj.param.Nz; % Set new sinogram size
-                    
+
+                    % Pad or trim the detector image to the FOV, or resample it, and resample it to the voxel lattice of the image. A FOV
+                    % that is not a whole number of detector pixels is resampled directly (see resizeType6Sinogram)
                     if iscell(obj.param.SinM)
                         for partition = 1:obj.param.partitions
-                            obj.param.SinM{partition} = resize(obj.param.SinM{partition}, endSinogramRows, Dimension=1, FillValue=0, Side="both"); % Pad or trim sinogram rows
-                            obj.param.SinM {partition}= resize(obj.param.SinM{partition}, endSinogramCols, Dimension=2, FillValue=0, Side="both"); % Pad or trim sinogram columns
-                            % Now the sinogram and FOV XZ-plane match in physical dimensions but not in resolution.
-                            obj.param.SinM{partition} = imresize(obj.param.SinM{partition}, [obj.param.Nx, obj.param.Nz]); % Resample the sinogram
+                            obj.param.SinM{partition} = resizeType6Sinogram(obj.param.SinM{partition}, endSinogramRows, endSinogramCols, sinogramSizeRows, sinogramSizeCols);
+                            if obj.param.cropProjections
+                                obj.param.SinM{partition} = obj.param.SinM{partition}(rowWindow, colWindow, :, :); % Keep only the detector window
+                            end
                         end
                     else
-                        obj.param.SinM = resize(obj.param.SinM, endSinogramRows, Dimension=1, FillValue=0, Side="both"); % Pad or trim sinogram rows
-                        obj.param.SinM = resize(obj.param.SinM, endSinogramCols, Dimension=2, FillValue=0, Side="both"); % Pad or trim sinogram columns
-                        % Now the sinogram and FOV XZ-plane match in physical dimensions but not in resolution.
-                        obj.param.SinM = imresize(obj.param.SinM, [obj.param.Nx, obj.param.Nz]); % Resample the sinogram
+                        obj.param.SinM = resizeType6Sinogram(obj.param.SinM, endSinogramRows, endSinogramCols, sinogramSizeRows, sinogramSizeCols);
+                        if obj.param.cropProjections
+                            obj.param.SinM = obj.param.SinM(rowWindow, colWindow, :, :); % Keep only the detector window (all the frames of a 4D array)
+                        end
+                    end
+                    if obj.param.cropProjections
+                        obj.param.nRowsD = newRows; % Set new sinogram size
+                        obj.param.nColsD = newCols; % Set new sinogram size
                     end
                 end
                 %% Other SPECT preprocessing
@@ -422,6 +501,40 @@ classdef projectorClass
                 obj.param.cryst_per_block = obj.param.nColsD * obj.param.nRowsD;
             end
             obj.param = convertOptions(obj.param);
+            % Per-frame (time-varying) corrections. With dynamic sinogram/projection data (more than one time step) a static (single-frame)
+            % normalization or measurement-domain (sinogram/projection image) attenuation is shared by all the frames. One that holds the data of
+            % every frame (one block per frame) is not supported: the library builds its normalization and attenuation (and the sensitivity
+            % images) from the first frame only (and parseInputData keeps only the first frame with subsets), so every frame would silently be
+            % reconstructed with the corrections of the first frame. Checked here, i.e. always and not only with errorChecking. Image-based
+            % attenuation can be given separately for each time step. (The Python projector operators do support per-frame corrections.)
+            if numel(obj.param.partitions) > 1
+                nTimeStepsCorr = numel(obj.param.partitions);
+            else
+                nTimeStepsCorr = obj.param.partitions;
+            end
+            if nTimeStepsCorr > 1 && ~obj.param.listmode && ~obj.param.use_raw_data
+                if obj.param.SPECT || obj.param.CT
+                    nDetectorsCorr = double(obj.param.nRowsD) * double(obj.param.nColsD);
+                    allFramesCorr = nTimeStepsCorr * nDetectorsCorr * double(obj.param.nProjections);
+                    if obj.param.SPECT && iscell(obj.param.SinM) && numel(obj.param.SinM) == nTimeStepsCorr
+                        allFramesCorr = [allFramesCorr, nDetectorsCorr * sum(cellfun(@(x) size(x, 3), obj.param.SinM(:)))];
+                    end
+                else
+                    allFramesCorr = nTimeStepsCorr * double(obj.param.Ndist(end)) * double(obj.param.Nang(end)) * double([obj.param.TotSinos(end), obj.param.NSinos(end)]);
+                end
+                if obj.param.normalization_correction && ((iscell(obj.param.normalization) && numel(obj.param.normalization) > 1) || ...
+                        (~iscell(obj.param.normalization) && any(numel(obj.param.normalization) == allFramesCorr) && ...
+                        ~(obj.param.SPECT && numel(obj.param.normalization) == double(obj.param.nRowsD) * double(obj.param.nColsD) * double(obj.param.nHeads))))
+                    error(['Per-frame (time-varying) normalization is not supported by the reconstruction or the projector operators with dynamic data: every frame would ' ...
+                        'use the normalization of the first frame. Supply a single-frame normalization, which is shared by all the frames.'])
+                end
+                if obj.param.attenuation_correction && ~obj.param.CT_attenuation && ((iscell(obj.param.vaimennus) && numel(obj.param.vaimennus) > 1) || ...
+                        (~iscell(obj.param.vaimennus) && any(numel(obj.param.vaimennus) == allFramesCorr)))
+                    error(['Per-frame (time-varying) measurement-domain attenuation is not supported by the reconstruction or the projector operators with dynamic data: ' ...
+                        'every frame would use the attenuation of the first frame. Supply a single-frame attenuation, which is shared by all the frames, or an ' ...
+                        'image-based attenuation (which can differ between the frames).'])
+                end
+            end
             if ~obj.param.simple && obj.param.errorChecking
                 obj.param = OMEGA_error_check(obj.param);
             end
@@ -911,8 +1024,26 @@ classdef projectorClass
             end
 
             % FDK (largeDim) keeps the geometry and data in the original projection order, so the offset limits are not reordered either
-            if obj.param.offsetCorrection && obj.param.subsets > 1 && obj.param.subset_type > 0 && ~obj.param.FDK
+            if obj.param.offsetCorrection && obj.param.subsets > 1 && obj.param.subset_type >= 8 && ~obj.param.FDK
                 obj.param.OffsetLimit = obj.param.OffsetLimit(obj.index);
+            end
+            % Square root of the offset weights on both the forward and the backward projection (the latter is done by the kernels)
+            obj.param.offsetSqrt = resolveOffsetSqrt(obj.param);
+            if obj.param.offsetSqrt
+                obj.offsetSqrtW = offsetSqrtWeights(obj.param.OffsetLimit, obj.param.nRowsD, obj.param.dPitchX);
+            elseif obj.param.offsetCorrection && ~isempty(obj.param.offsetSqrtWeights) && obj.param.offsetSqrtWeights
+                warning(['options.offsetSqrtWeights is enabled, but the square root offset weighting is not supported with the selected configuration. ' ...
+                    'Only CT data with FDK disabled, no largeDim, implementation 2, 3 or 5, projector type with backprojector 4 or 5, '...
+                    'a single time step and subset types 0 or 8-11 are supported. Using the standard offset weighting in the backprojection only.'])
+            end
+            % Report the offset weighting in use for the custom operator. The built-in reconstructions (reconstructions_main sets empty_weight
+            % before creating this object) report it from the C++ code
+            if obj.param.offsetCorrection && obj.param.verbose >= 1 && ~isfield(obj.param, 'empty_weight')
+                if obj.param.offsetSqrt
+                    disp('Offset correction: square-root redundancy weights applied to the forward projection, backprojection and measurements')
+                else
+                    disp('Offset correction: redundancy weights applied in the backprojection only')
+                end
             end
 			if obj.param.SPECT
                 obj.param = SPECTParameters(obj.param);
@@ -926,6 +1057,8 @@ classdef projectorClass
                     obj.param.radiusPerProj = obj.param.radiusPerProj(obj.index);
                     obj.param.blurPlanes = obj.param.blurPlanes(obj.index);
                     obj.param.blurPlanes2 = obj.param.blurPlanes2(obj.index);
+                    obj.param.blurPlanesF = obj.param.blurPlanesF(obj.index);
+                    obj.param.blurPlanes2F = obj.param.blurPlanes2F(obj.index);
                 end
             end
             %% This part is used when the observation matrix is calculated on-the-fly
@@ -1091,9 +1224,49 @@ classdef projectorClass
                     end
                 end
             end
+            if obj.param.offsetSqrt
+                if obj.param.useSubsets
+                    y = applyOffsetSqrtWeights(obj, y, obj.subset);
+                else
+                    y = applyOffsetSqrtWeights(obj, y);
+                end
+            end
             if obj.param.verbose > 1
                 disp('Forward projection computed')
             end
+        end
+
+        function y = applyOffsetSqrtWeights(obj, y, varargin)
+            %APPLYOFFSETSQRTWEIGHTS Multiplies the input by the square root
+            %of the offset redundancy weights
+            %   When the square root offset weighting is in use
+            %   (options.offsetSqrtWeights), the forward projection is
+            %   weighted with these weights (done automatically by
+            %   forwardProject) and the same must be done for the
+            %   measurement data when using custom algorithms. The
+            %   input is returned as is if the weighting is not in use.
+            % Inputs:
+            %   obj = The projectorClass object created by projectorClass
+            %   y = The measurement data (or forward projection) of the
+            %   subset, or of the entire data if the subset is omitted
+            %   subset_number = The subset of y, omit for all subsets
+            % Outputs:
+            %   y = The weighted data
+
+            if ~obj.param.offsetSqrt
+                return
+            end
+            if nargin >= 3 && ~isempty(varargin{1}) && varargin{1} > 0
+                W = obj.offsetSqrtW(:, double(obj.nMeas(varargin{1})) + 1 : double(obj.nMeas(varargin{1} + 1)));
+            else
+                W = obj.offsetSqrtW;
+            end
+            nProj = size(W, 2);
+            if isa(y, 'gpuArray')
+                W = gpuArray(W);
+            end
+            sz = size(y);
+            y = reshape(reshape(y, obj.param.nRowsD, obj.param.nColsD, nProj) .* reshape(W, obj.param.nRowsD, 1, nProj), sz);
         end
 
 

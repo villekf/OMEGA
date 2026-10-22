@@ -473,6 +473,14 @@ def _upload_static_buffers(self: Any, torch: Any) -> None:
             if raw_data_length.size:
                 self.d_L[timestep][subset] = _mps_tensor_from_numpy(torch, raw_data_length[projection_start:projection_stop], np.uint16)
 
+    # Square roots of the offset redundancy weights of each subset for the forward projection (the backprojection kernel applies them itself)
+    if getattr(self, '_offsetSqrtActive', False):
+        from omegatomo.projector.detcoord import offsetSqrtWeights
+        self.d_offsetSqrtW = [None] * self.subsets
+        for subset in range(self.subsets):
+            weights = offsetSqrtWeights(offset_limit[self.nMeas[subset]:self.nMeas[subset + 1]], self.nRowsD, self.dPitchX)
+            self.d_offsetSqrtW[subset] = _mps_tensor_from_numpy(torch, weights.ravel(), np.float32)
+
     self.d_attenuation_image = self.mps_empty_float32
     if self.attenuation_correction and self.CTAttenuation and attenuation.size:
         self.d_attenuation_image = _mps_tensor_from_numpy(torch, attenuation, np.float32)

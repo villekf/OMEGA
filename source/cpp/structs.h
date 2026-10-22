@@ -89,6 +89,10 @@ typedef struct AF_im_vectors_ {
     std::vector<std::vector<af::array>> gradBB;
     // Arrays of size N_timesteps x N_multivolumes x N_subsets
 	std::vector<std::vector<std::vector<af::array>>> Summ; // sensitivity image
+	// Never-seen voxel mask (see accumulateSeenMask in functions.hpp): [sensitivity slot][volume] boolean images that are true where at least one subset
+	// has a sensitivity above the epps floor, and [slot][volume][subset] flags of the subsets that have been accumulated into it so far
+	std::vector<std::vector<af::array>> seenMask;
+	std::vector<std::vector<std::vector<char>>> seenDone;
     // Other arrays
     af::array C_co, rCGLS, meanFP, meanBP, apu, adapTypeA;
 	std::vector<af::array> im_os_blurred, qProxTGV, vProxTGV, qProxTV, qProx, SAGASum;
@@ -104,6 +108,9 @@ typedef struct Weighting_ {
 	std::vector<af::array> preRef, gradF, RDPref;
     std::vector<std::vector<af::array>> dP, M, D;
 	af::array gaussianNLM, gFilter, filter, filterIm, Ffilter;
+	// Square root of the offset redundancy weights for each subset (nRowsD x 1 x number of projections), used for the forward projection
+	// when inputScalars.offsetSqrt is enabled
+	std::vector<af::array> offsetSqrtW;
 	// The noise-weighted (NW-FBP) ramp filter bank, one filter per noise-weighting level (Nf x nLevelsNW)
 	af::array filterNW;
 	uint32_t nLevelsNW = 10U;
@@ -114,9 +121,24 @@ typedef struct Weighting_ {
 	float *sigma_PKMA = nullptr, * uv = nullptr, * angles = nullptr, * NLM_ref = nullptr, * refImage = nullptr, * alphaPrecond = nullptr, * kerroin4 = nullptr, * weights = nullptr, *listCoord = nullptr, * RDP_ref = nullptr;
 	uint32_t* rekot = nullptr;
     int32_t *distInt = nullptr, *distInt2 = nullptr;
+	// Sub-voxel accurate versions of the above, used by the rotation-based SPECT projector.
+	// distFloat is the distance from the collimator surface to the first image plane, in voxels,
+	// while distFloat2 is the lateral shift of the detector panel, also in voxels
+	float *distFloat = nullptr, *distFloat2 = nullptr;
 	uint8_t* maskFP = nullptr, * maskBP = nullptr, * eFOVIndices = nullptr, *maskPrior = nullptr, *maskOffset = nullptr, *TOFIndices = nullptr;
 	uint16_t* axIndex = nullptr, * trIndex = nullptr;
 	uint32_t* detectorVector = nullptr;
+	// Host arrays of the normalization and the multiplicative scatter/extra correction (corrVector), used by the SPECT projector type 6 (see type6Weights)
+	const float* normHost = nullptr, * corrHost = nullptr;
+	// The projector type 6 reads its per-view arrays (the geometry swivelAngles and blurPlanes*, the DetectorVector, the per-projection normalization) at the view of the
+	// call plus the offset of the frame. frameStart6[tt] is the first view of the frame tt in an array that holds the views of all the frames one frame after the
+	// other (frameStart6[Nt] = the total number of views), geomAllFrames6 and normAllFrames6 tell whether the geometry and the normalization are such arrays (when
+	// they are for one frame, which every frame reuses, the offset is 0), see setFrameViewsType6. geomViews6 is the number of entries of the geometry arrays (0 = unknown)
+	std::vector<int64_t> frameStart6;
+	bool geomAllFrames6 = false, normAllFrames6 = false;
+	int64_t geomViews6 = 0;
+	// The backprojection masks of the SPECT projector type 6 of the volumes of a multi-resolution reconstruction, [frame][volume] (see prepareMaskBPType6)
+	std::vector<std::vector<std::vector<uint8_t>>> maskBPVol;
 	std::vector<float> epsilon_mramla, betaLSQR, alphaLSQR, thetaLSQR, rhoLSQR, phiLSQR, betaFISTA, tFISTA, tNFista;
     std::vector<std::vector<float>> tauCP, tauCP2, LCP, LCP2, alphaCP, sigmaCP, sigma2CP, thetaCP, lambda, lambdaFiltered, alphaM, alphaBB;
     float U = 1000000.f, h_ACOSEM = 1.f, TimeStepAD, KAD, w_sum = 0.f, h2 = 1.f, huber_delta = 0.f, ACOSEM_rhs = 0.f, h_ACOSEM_2 = 1.f, RDP_gamma = 1.f,

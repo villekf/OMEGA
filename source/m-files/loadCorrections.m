@@ -193,6 +193,12 @@ elseif options.attenuation_correction && options.SPECT % SPECT attenuation
         [MUvol, ~] = imwarp(MUvol, refCT, tform, OutputView=options.refSPECT, FillValue=muAir, InterpolationMethod='linear');
         options.vaimennus = 1*MUvol;
     end
+    if isfield(options, 'projector_type') && options.projector_type == 6 && options.useMultiResolutionVolumes && options.nMultiVolumes > 0 && ...
+            isfield(options, 'CT_attenuation') && options.CT_attenuation
+        % The map of the type 6 projector covers the union of the multi-resolution volumes, which is the requested extended FOV and the
+        % enlargement of it by the side volumes (up to one coarse voxel on each outer face, see setUpCorrections)
+        options = padType6Attenuation(options);
+    end
     if options.partitions > 1
         if ~iscell(options.vaimennus)
             error("With dynamic reconstruction the attenuation map needs to be a cell type");

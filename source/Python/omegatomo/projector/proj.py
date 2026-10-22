@@ -60,6 +60,30 @@ def _copyValue(value):
 # (never written to, so they are not copied per instance)
 _SHARED_CLASS_CONSTANTS = ('_FILTER_WINDOW_TEXT',)
 
+# The models of the collimator response of the on-the-fly CDRF of projector type 6 (option CDRFModel) and the numbers that the native library
+# knows them by (cdrfModel6). To add a model, add it here, in the type-6 kernels (cdrfTap in auxKernels.cl) and in the host (psfHelperType6)
+CDRF_MODELS = {'gaussian': 0, 'square': 1}
+
+def cdrfModelIndex(model) -> int:
+    """Returns the number of the collimator response model `model` ('gaussian' or 'square', case-insensitive) for the native library"""
+    if isinstance(model, bytes):
+        model = model.decode()
+    if not isinstance(model, str) or model.strip().lower() not in CDRF_MODELS:
+        raise ValueError("Unknown options.CDRFModel %r. The supported models are: %s" % (model, ", ".join("'%s'" % k for k in CDRF_MODELS)))
+    return CDRF_MODELS[model.strip().lower()]
+
+# How the backprojection of projector type 6 rotates a view back into the image (option type6BPRotation) and the numbers that the native library
+# knows them by (bpRot6): 'adjoint' is the exact transpose of the bilinear rotation of the forward projection, 'fast' a bilinear gather at the
+# position of the inverse rotation (cheaper, but not an exact adjoint)
+BP_ROTATIONS = {'adjoint': 0, 'fast': 1}
+
+def bpRotationIndex(mode) -> int:
+    """Returns the number of the backprojection rotation `mode` ('adjoint' or 'fast', case-insensitive) for the native library"""
+    if isinstance(mode, bytes):
+        mode = mode.decode()
+    if not isinstance(mode, str) or mode.strip().lower() not in BP_ROTATIONS:
+        raise ValueError("Unknown options.type6BPRotation %r. The supported values are: %s" % (mode, ", ".join("'%s'" % k for k in BP_ROTATIONS)))
+    return BP_ROTATIONS[mode.strip().lower()]
 
 class projectorClass:
     # These parameters are either NumPy arrays or variables that are not needed in the C++ code
@@ -94,6 +118,14 @@ class projectorClass:
     blurPlanes: npt.NDArray[np.int32] = np.empty((0, 0), dtype = np.int32)
     blurPlanes2: npt.NDArray[np.int32] = np.empty((0, 0), dtype = np.int32)
     blurPlanes2Linear: npt.NDArray[np.float32] = np.empty((0, 0), dtype = np.float32)
+    blurPlanesF: npt.NDArray[np.float32] = np.empty((0, 0), dtype = np.float32) # Sub-voxel PSF depth (main volume, includes collimator length and detector distance)
+    blurPlanes2F: npt.NDArray[np.float32] = np.empty((0, 0), dtype = np.float32) # Sub-voxel lateral panel shift (main volume)
+    CDRFCoeffs6: npt.NDArray[np.float32] = np.zeros(5, dtype = np.float32) # {Az, Bz, Axy, Bxy, C} for the on-the-fly CDRF
+    CDRFOnTheFly: Optional[bool] = None # Compute the CDRF per projection in the native library (None = automatic)
+    type6BPRotation: str = 'adjoint' # Projector type 6: how the backprojection rotates a view back into the image, 'adjoint' (default, exact transpose of the forward rotation) or 'fast' (cheaper gather, only an approximate transpose)
+    type6AttenuationCache: float = 0.4 # Projector type 6: fraction of the available GPU memory the attenuation cache may use (clamped to [0, 0.9], 0 = keep nothing)
+    CDRFModel: str = 'gaussian' # Projector type 6: the model of the collimator response of the on-the-fly CDRF, 'gaussian' (default) or 'square' (square holes: a triangle convolved with the intrinsic Gaussian)
+    cropProjections: bool = False # Not yet supported in Python
     radiusPerProj: npt.NDArray[np.float32] = np.empty(0, dtype = np.float32)
     gFilter = np.empty(0, dtype = np.float32)
     type6TotalLength: npt.NDArray[np.float32] = np.empty(0, dtype = np.float32)
@@ -309,6 +341,19 @@ class projectorClass:
     useMaskBP = False
     usePriorMask = False
     offsetCorrection = False
+    # Apply the square root of the offset redundancy weights on both the forward and the backward projection (so that the operator is
+    # sqrt(W) * A instead of A^T W). None (default) = automatic: enabled only for the linearised least-squares algorithms (LSQR, CGLS,
+    # FISTA, FISTAL1, PDHG, PDHGL1, PDDY, SART, ASD_POCS, BB), True = force on (also for custom algorithms, in which case the measurement data
+    # have to be weighted with applyOffsetSqrtWeights), False = the weights are applied only in the backprojection
+    offsetSqrtWeights = None
+    # The resolved offsetSqrtWeights, see _resolveOffsetSqrt. Do not set this directly
+    offsetSqrt = False
+    # Offset-detector FDK (offsetCorrection with FDK): half-width (mm, on the detector) of the transition region of the redundancy weights,
+    # which are applied before the filtering together with the conjugate completion of the missing side of the detector. A value smaller than
+    # the physical overlap is raised to it. See omegatomo.reconstruction.offsetfdk
+    offsetFDKDelta = 30.
+    # Internal (testing): the number of detector rows padded on the missing side by the offset FDK preprocessing, None = automatic
+    offsetFDKPad = None
     tube_width_z = 0.
     tube_width_xy = 0.
     use_psf = False
@@ -1045,6 +1090,22 @@ class projectorClass:
             self.Nt = self.partitions
         if self.Nt > 1 and self.subsetType == 3:
             raise ValueError('Subset type 3 is not supported with dynamic data!')
+        if self.Nt > 1 and self.stochasticSubsetSelection and self.subsets > 1:
+            raise ValueError('Stochastic subset selection (stochasticSubsetSelection) is not supported with dynamic data (more than one time step)!')
+        if self.stochasticSubsetSelection and self.subsets > 1:
+            # The per-subset sensitivity image of these algorithms is computed only during the first iteration, i.e. only for the subsets that happen
+            # to be drawn then, so the other subsets would keep an all-zero sensitivity image and the update diverges. The exception is list-mode data
+            # with a precomputed sensitivity image (compute_sensitivity_image without a full-data D), where every subset has its sensitivity image up front.
+            sensAlgs = {'OSEM': self.OSEM, 'ECOSEM': self.ECOSEM, 'ROSEM': self.ROSEM, 'RBI': self.RBI, 'OSL_RBI': self.OSL_RBI, 'DRAMA': self.DRAMA,
+                        'OSL_OSEM': self.OSL_OSEM, 'ROSEM_MAP': self.ROSEM_MAP, 'SART': self.SART, 'ASD_POCS': self.ASD_POCS}
+            sensAlgsOn = [name for name, flag in sensAlgs.items() if flag]
+            if sensAlgsOn:
+                # Algorithms that compute the full-data sensitivity image D
+                computeDAlg = bool(self.RBI or self.OSL_RBI or self.COSEM or self.ACOSEM or self.ECOSEM or self.OSL_COSEM > 0)
+                if not (self.listmode > 0 and self.compute_sensitivity_image and not computeDAlg):
+                    raise ValueError('Stochastic subset selection (stochasticSubsetSelection) is not supported with the algorithm(s) ' + ', '.join(sensAlgsOn) + ', which need a separate '
+                                     'sensitivity image for every subset. Use an algorithm that uses a full-data sensitivity image or preconditioner (e.g. BSREM, MBSREM, PKMA, PDHG) '
+                                     'or set stochasticSubsetSelection = False.')
         temp = self.pseudot
         if isinstance(temp, np.ndarray):
             temp = int(temp.reshape(-1)[0].item()) if temp.size > 0 else 0
@@ -1297,8 +1358,14 @@ class projectorClass:
         if self.projector_type in (4, 5, 14, 41, 15, 45, 54, 51, 42, 43, 24, 34):
             computeProjectorScalingValues(self)
         # FDK (largeDim) keeps the geometry and data in the original projection order, so the offset limits are not reordered either
-        if self.offsetCorrection and self.subsets > 1 and not self.FDK:
-            self.OffsetLimit = self.OffsetLimit[self.index]
+        if self.offsetCorrection and self.subsets > 1 and self.subsetType >= 8 and not self.FDK:
+            offsetIndex = self.index[0] if isinstance(self.index, list) else self.index
+            self.OffsetLimit = self.OffsetLimit[offsetIndex]
+        self.offsetSqrt = self._resolveOffsetSqrt()
+        if self.offsetCorrection and self.offsetSqrtWeights and not self.offsetSqrt:
+            print('Warning: options.offsetSqrtWeights is enabled, but the square root offset weighting is not supported with the selected configuration. '
+                  'Only CT data with FDK disabled, no largeDim, a projector type with backprojector 4 or 5, a single time step and subset types 0 or 8-11 '
+                  'are supported. Using the standard offset weighting in the backprojection only.')
 
         if self.SPECT:
             from .detcoord import SPECTParameters
@@ -1308,6 +1375,7 @@ class projectorClass:
                 geometry_fields = (
                     'angles', 'swivelAngles', 'radiusPerProj',
                     'blurPlanes', 'blurPlanes2', 'blurPlanes2Linear',
+                    'blurPlanesF', 'blurPlanes2F',
                     'type6TotalLength',
                 )
                 if isinstance(self.index, list):
@@ -1387,6 +1455,28 @@ class projectorClass:
             self.z = self.z.astype(dtype=np.float32)
         if self.listmode and self.randoms_correction:
             self.randoms_correction = False
+
+    def _resolveOffsetSqrt(self):
+        """Resolves options.offsetSqrtWeights (None = automatic) to a bool: whether the square root of the offset redundancy weights is
+        applied on both the forward and the backward projection. This makes the projection operator the linear sqrt(W) * A, as needed by the
+        linearised least-squares algorithms. The configuration-dependent parts (the backprojector type, the CPU backend, largeDim) are
+        checked here, in initProjector (_offsetSqrtActive) and in the native library, any of which can only turn the weighting off."""
+        if not self.offsetCorrection or not self.CT or self.FDK or self.largeDim or self.listmode:
+            return False
+        # The backprojector (last digit of the projector type) has to be 4 or 5
+        if self.projector_type % 10 not in (4, 5):
+            return False
+        # The subsets must be formed from whole projections
+        if self.subsets > 1 and not (self.subsetType == 0 or 8 <= self.subsetType <= 11):
+            return False
+        if self.Nt > 1:
+            return False
+        if self.offsetSqrtWeights is not None:
+            return bool(self.offsetSqrtWeights)
+        lsAlgs = ('LSQR', 'CGLS', 'FISTA', 'FISTAL1', 'PDHG', 'PDHGL1', 'PDDY', 'SART', 'ASD_POCS', 'BB')
+        otherAlgs = ('OSEM', 'MRAMLA', 'RAMLA', 'RBI', 'ROSEM', 'DRAMA', 'COSEM', 'ECOSEM', 'ACOSEM', 'OSL_OSEM', 'MBSREM', 'BSREM', 'OSL_RBI',
+                     'OSL_COSEM', 'ROSEM_MAP', 'PKMA', 'SPS', 'SAGA', 'PDHGKL', 'CV')
+        return any(getattr(self, name, False) for name in lsAlgs) and not any(getattr(self, name, False) for name in otherAlgs)
 
     def _sliceSPECTFramesByIndex(self, x_det, z_det, checkFrameCount, checkZShape):
         # Splits the concatenated (all timeframes) SPECT detector coordinate
@@ -1729,6 +1819,14 @@ class projectorClass:
                 print('When using FDK/FBP, the number of iterations and subsets must be set as 1. Setting both to 1.')
                 self.subsets = 1
                 self.Niter = 1
+        if self.CT and self.offsetCorrection and self.useHelical:
+            raise ValueError('Offset correction is not supported with helical CT!')
+        if self.offsetSqrtWeights is not None and not isinstance(self.offsetSqrtWeights, (bool, int, np.bool_, np.integer)):
+            raise ValueError('options.offsetSqrtWeights must be either None (automatic), True or False!')
+        if self.CT and self.offsetCorrection and self.FDK and not (np.isscalar(self.offsetFDKDelta) and self.offsetFDKDelta > 0.):
+            raise ValueError('options.offsetFDKDelta must be a positive scalar (mm)!')
+        if self.CT and self.offsetCorrection and self.subsets > 1 and self.subsetType > 0 and self.subsetType < 8:
+            raise ValueError('Offset correction is not supported with subset types 1-7! Use subset type 0 or the projection-based subset types 8-11.')
         if self.largeDim:
             if not self.PDHG and not self.FDK and not self.PKMA and not self.PDDY and not self.PDHGL1 and not self.PDHGKL:
                 raise ValueError('Large dimension support is only available for PDHG, PKMA, and FDK!')
@@ -2128,6 +2226,7 @@ class projectorClass:
     
     def setUpCorrections(self):
         from omegatomo.util.matlabRound import matlabRound
+        from omegatomo.util.multiresolutionpad import sideVoxels, setMultiResPadding, padMultiResVolume
         nx = self.Nx
         ny = self.Ny
         nz = self.Nz
@@ -2152,7 +2251,7 @@ class projectorClass:
                 if self.axialEFOV:
                     NzMchk = int(matlabRound(self.NzOrig * self.multiResolutionScale))
                     dzMchk = self.axialFOVOrig / NzMchk
-                    NzM2chk = int(matlabRound((self.axial_fov - self.axialFOVOrig) / 2 / dzMchk)) * 2
+                    NzM2chk = sideVoxels((self.axial_fov - self.axialFOVOrig) / 2, dzMchk) * 2
                     if NzM2chk <= 0:
                         warnings.warn('Axial extended FOV is smaller than one multi-resolution voxel, disabling axial EFOV.')
                         self.axialEFOV = False
@@ -2161,10 +2260,10 @@ class projectorClass:
                 if self.transaxialEFOV:
                     NxMchk = int(matlabRound(self.NxOrig * self.multiResolutionScale))
                     dxMchk = self.FOVxOrig / NxMchk
-                    NxM2chk = int(matlabRound((self.FOVa_x - self.FOVxOrig) / 2 / dxMchk)) * 2
+                    NxM2chk = sideVoxels((self.FOVa_x - self.FOVxOrig) / 2, dxMchk) * 2
                     NyMchk = int(matlabRound(self.NyOrig * self.multiResolutionScale))
                     dyMchk = self.FOVyOrig / NyMchk
-                    NyM2chk = int(matlabRound((self.FOVa_y - self.FOVyOrig) / 2 / dyMchk)) * 2
+                    NyM2chk = sideVoxels((self.FOVa_y - self.FOVyOrig) / 2, dyMchk) * 2
                     if NxM2chk <= 0 or NyM2chk <= 0:
                         warnings.warn('Transaxial extended FOV is smaller than one multi-resolution voxel, disabling transaxial EFOV.')
                         self.transaxialEFOV = False
@@ -2172,8 +2271,11 @@ class projectorClass:
                         self.Ny = self.NyOrig
                         self.FOVa_x = self.FOVxOrig
                         self.FOVa_y = self.FOVyOrig
+                # All the side volumes use exactly the coarse voxel size (dxM, dyM, dzM) of the main volume, so that they all have the same
+                # voxel size and lattice. The length of a side volume is therefore rounded UP to a whole number of coarse voxels: the
+                # extended FOV never shrinks and grows by less than one coarse voxel on each side, the side volumes stay adjacent to the
+                # main volume and only their outer faces move
                 if self.axialEFOV and self.transaxialEFOV:
-                    from scipy.ndimage import zoom
                     self.nMultiVolumes = 6
                 
                     NxM = int(matlabRound(self.NxOrig * self.multiResolutionScale))
@@ -2183,12 +2285,15 @@ class projectorClass:
                     NzM = int(matlabRound(self.NzOrig * self.multiResolutionScale))
                     dzM = self.axialFOVOrig / NzM
                 
-                    NxM2 = int(matlabRound((self.FOVa_x - self.FOVxOrig) / 2 / dxM)) * 2
+                    NxM2 = sideVoxels((self.FOVa_x - self.FOVxOrig) / 2, dxM) * 2
                     FOVxM = NxM2 * dxM
-                    NyM2 = int(matlabRound((self.FOVa_y - self.FOVyOrig) / 2 / dyM)) * 2
+                    NyM2 = sideVoxels((self.FOVa_y - self.FOVyOrig) / 2, dyM) * 2
                     FOVyM = NyM2 * dyM
-                    NzM2 = int(matlabRound((self.axial_fov - self.axialFOVOrig) / 2 / dzM)) * 2
+                    NzM2 = sideVoxels((self.axial_fov - self.axialFOVOrig) / 2, dzM) * 2
                     FOVzM = NzM2 * dzM
+                    enlarge = np.asarray([FOVxM, FOVyM, FOVzM], dtype=np.float64) / 2 - np.asarray([(self.FOVa_x - self.FOVxOrig) / 2, (self.FOVa_y - self.FOVyOrig) / 2, (self.axial_fov - self.axialFOVOrig) / 2], dtype=np.float64)
+                    setMultiResPadding(self, enlarge, enlarge, np.asarray([self.FOVa_x, self.FOVa_y, self.axial_fov], dtype=np.float64),
+                                       [self.FOVxOrig / self.NxOrig, self.FOVyOrig / self.NyOrig, self.axialFOVOrig / self.NzOrig], [dxM, dyM, dzM])
                 
                     self.FOVa_x = np.array([
                         self.FOVxOrig, self.FOVxOrig, self.FOVxOrig,
@@ -2229,38 +2334,10 @@ class projectorClass:
                     print(f"Extended FOV is {(FOVxM + self.FOVxOrig) / self.FOVxOrig * 100:.2f} % of the original")
                 
                     if self.x0.shape[0] == nx and np.min(self.x0) != np.max(self.x0):
-                        apu = zoom(self.x0, self.multiResolutionScale, order=1).astype(np.float32)
-                
-                        x1 = apu[
-                            self.Nx[3]:self.Nx[3] + self.Nx[1],
-                            self.Ny[5]:self.Ny[5] + self.Ny[1],
-                            :self.Nz[1]
-                        ]
-                        x2 = apu[self.Nx[4]:self.Nx[4] + self.Nx[2],
-                            self.Ny[6]:self.Ny[6] + self.Ny[2],
-                            apu.shape[2] - self.Nz[2]:]
-                        x3 = apu[:self.Nx[3], :, :]
-                        x4 = apu[apu.shape[0] - self.Nx[4]:, :, :]
-                        x5 = apu[
-                            self.Nx[3]:self.Nx[3] + self.Nx[1],
-                            :self.Ny[5],
-                            :self.Nz[3]
-                        ]
-                        x6 = apu[self.Nx[4]:self.Nx[4] + self.Nx[2], apu.shape[1] - self.Ny[6]:, :self.Nz[4]]
-                
-                        sx0 = self.x0.shape
-                        self.x0 = self.x0[
-                            int((sx0[0] - self.NxOrig) // 2):int((sx0[0] - self.NxOrig) // 2 + self.NxOrig),
-                            int((sx0[1] - self.NyOrig) // 2):int((sx0[1] - self.NyOrig) // 2 + self.NyOrig),
-                            int((sx0[2] - self.NzOrig) // 2):int((sx0[2] - self.NzOrig) // 2 + self.NzOrig)
-                        ].astype(np.float32)
-                
-                        self.x0 = np.concatenate([
-                            self.x0.ravel('F'), x1.ravel('F'), x2.ravel('F'),
-                            x3.ravel('F'), x4.ravel('F'), x5.ravel('F'),
-                            x6.ravel('F')
-                        ])
-                
+                        # The initial value is for the requested extended FOV, which the side volumes extend by up to one coarse voxel. The main
+                        # volume is its central crop at the full resolution and the side volumes are the regions of it resized to their coarse grids
+                        from omegatomo.util.multiresolution import pack_multiresolution
+                        self.x0 = pack_multiresolution(self.x0, self)
                     elif self.x0.shape[0] == self.NxOrig or np.min(self.x0) == np.max(self.x0):
                         val = np.min(self.x0)
                         self.x0 = self.x0[:self.Nx[0].item(), :self.Ny[0].item(),:self.Nz[0].item()]
@@ -2276,7 +2353,6 @@ class projectorClass:
                             x6.ravel('F')])
                 
                 elif self.transaxialEFOV and not self.axialEFOV:
-                    from scipy.ndimage import zoom
                     self.nMultiVolumes = 4
                 
                     NxM = int(matlabRound(self.NxOrig * self.multiResolutionScale))
@@ -2285,10 +2361,14 @@ class projectorClass:
                     dyM = self.FOVyOrig / NyM
                     NzM = int(matlabRound(self.NzOrig * self.multiResolutionScale))
                 
-                    NxM2 = int(matlabRound((self.FOVa_x - self.FOVxOrig) / 2 / dxM)) * 2
+                    NxM2 = sideVoxels((self.FOVa_x - self.FOVxOrig) / 2, dxM) * 2
                     FOVxM = NxM2 * dxM
-                    NyM2 = int(matlabRound((self.FOVa_y - self.FOVyOrig) / 2 / dyM)) * 2
+                    NyM2 = sideVoxels((self.FOVa_y - self.FOVyOrig) / 2, dyM) * 2
                     FOVyM = NyM2 * dyM
+                    dzM = self.axialFOVOrig / NzM
+                    enlarge = np.asarray([FOVxM, FOVyM, 0], dtype=np.float64) / 2 - np.asarray([(self.FOVa_x - self.FOVxOrig) / 2, (self.FOVa_y - self.FOVyOrig) / 2, 0], dtype=np.float64)
+                    setMultiResPadding(self, enlarge, enlarge, np.asarray([self.FOVa_x, self.FOVa_y, self.axial_fov], dtype=np.float64),
+                                       [self.FOVxOrig / self.NxOrig, self.FOVyOrig / self.NyOrig, self.axialFOVOrig / self.NzOrig], [dxM, dyM, dzM])
                 
                     self.FOVa_x = np.array([self.FOVxOrig, FOVxM / 2, FOVxM / 2, self.FOVxOrig, self.FOVxOrig], dtype=np.float32)
                     self.FOVa_y = np.array([self.FOVyOrig, FOVyM + self.FOVyOrig, FOVyM + self.FOVyOrig, FOVyM / 2, FOVyM / 2], dtype=np.float32)
@@ -2301,23 +2381,10 @@ class projectorClass:
                     print(f"Extended FOV is {(FOVxM + self.FOVxOrig) / self.FOVxOrig * 100:.2f} % of the original")
                 
                     if self.x0.shape[0] == nx and np.min(self.x0) != np.max(self.x0):
-                        apu = zoom(self.x0, self.multiResolutionScale, order=1).astype(np.float32)
-                        # Volumes 1 and 2 are the x-direction side strips over the whole extended y-range,
-                        # volumes 3 and 4 the y-direction side strips over the original x-range
-                        x1 = apu[:self.Nx[1], :, :]
-                        x2 = apu[apu.shape[0] - self.Nx[2]:, :, :]
-                        x3 = apu[self.Nx[1]:self.Nx[1] + self.Nx[3], :self.Ny[3], :]
-                        x4 = apu[self.Nx[1]:self.Nx[1] + self.Nx[4], apu.shape[1] - self.Ny[4]:, :]
-                
-                        sx0 = self.x0.shape
-                        self.x0 = self.x0[
-                            int((sx0[0] - self.NxOrig) // 2):int((sx0[0] - self.NxOrig) // 2 + self.NxOrig),
-                            int((sx0[1] - self.NyOrig) // 2):int((sx0[1] - self.NyOrig) // 2 + self.NyOrig),
-                            int((sx0[2] - self.NzOrig) // 2):int((sx0[2] - self.NzOrig) // 2 + self.NzOrig)
-                        ].astype(np.float32)
-                
-                        self.x0 = np.concatenate([self.x0.ravel('F'), x1.ravel('F'), x2.ravel('F'), x3.ravel('F'), x4.ravel('F')])
-                
+                        # The initial value is for the requested extended FOV, which the side volumes extend by up to one coarse voxel. The main
+                        # volume is its central crop at the full resolution and the side volumes are the regions of it resized to their coarse grids
+                        from omegatomo.util.multiresolution import pack_multiresolution
+                        self.x0 = pack_multiresolution(self.x0, self)
                     elif self.x0.shape[0] == self.NxOrig or np.min(self.x0) == np.max(self.x0):
                         val = np.min(self.x0)
                         self.x0 = self.x0[:self.Nx[0].item(), :self.Ny[0].item(),:]
@@ -2327,15 +2394,19 @@ class projectorClass:
                         x4 = np.ones((self.Nx[4], self.Ny[4], self.Nz[4]), dtype=np.float32, order='F') * val
                         self.x0 = np.concatenate([self.x0.ravel('F'), x1.ravel('F'), x2.ravel('F'), x3.ravel('F'), x4.ravel('F')])
                 elif not self.transaxialEFOV and self.axialEFOV:
-                    from scipy.ndimage import zoom
                     self.nMultiVolumes = 2
                 
                     NxM = int(matlabRound(self.NxOrig * self.multiResolutionScale))
                     NyM = int(matlabRound(self.NyOrig * self.multiResolutionScale))
                     NzM = int(matlabRound(self.NzOrig * self.multiResolutionScale))
                     dzM = self.axialFOVOrig / NzM
-                    NzM2 = int(matlabRound((self.axial_fov - self.axialFOVOrig) / 2 / dzM)) * 2
+                    NzM2 = sideVoxels((self.axial_fov - self.axialFOVOrig) / 2, dzM) * 2
                     FOVzM = NzM2 * dzM
+                    dxM = self.FOVxOrig / NxM
+                    dyM = self.FOVyOrig / NyM
+                    enlarge = np.asarray([0, 0, FOVzM], dtype=np.float64) / 2 - np.asarray([0, 0, (self.axial_fov - self.axialFOVOrig) / 2], dtype=np.float64)
+                    setMultiResPadding(self, enlarge, enlarge, np.asarray([self.FOVa_x, self.FOVa_y, self.axial_fov], dtype=np.float64),
+                                       [self.FOVxOrig / self.NxOrig, self.FOVyOrig / self.NyOrig, self.axialFOVOrig / self.NzOrig], [dxM, dyM, dzM])
                 
                     self.FOVa_x = np.array([self.FOVxOrig] * 3, dtype=np.float32)
                     self.FOVa_y = np.array([self.FOVyOrig] * 3, dtype=np.float32)
@@ -2350,19 +2421,10 @@ class projectorClass:
                     print(f"Extended FOV is {(FOVzM + self.axialFOVOrig) / self.axialFOVOrig * 100:.2f} % of the original")
                 
                     if self.x0.shape[0] == nx and np.min(self.x0) != np.max(self.x0):
-                        apu = zoom(self.x0, self.multiResolutionScale, order=1).astype(np.float32)
-                        x1 = apu[:, :, :self.Nz[1]]
-                        x2 = apu[:, :, apu.shape[2] - self.Nz[2]:]
-                
-                        sx0 = self.x0.shape
-                        self.x0 = self.x0[
-                            int((sx0[0] - self.NxOrig) // 2):int((sx0[0] - self.NxOrig) // 2 + self.NxOrig),
-                            int((sx0[1] - self.NyOrig) // 2):int((sx0[1] - self.NyOrig) // 2 + self.NyOrig),
-                            int((sx0[2] - self.NzOrig) // 2):int((sx0[2] - self.NzOrig) // 2 + self.NzOrig)
-                        ].astype(np.float32)
-                
-                        self.x0 = np.concatenate([self.x0.ravel('F'), x1.ravel('F'), x2.ravel('F')])
-                
+                        # The initial value is for the requested extended FOV, which the side volumes extend by up to one coarse voxel. The main
+                        # volume is its central crop at the full resolution and the side volumes are the regions of it resized to their coarse grids
+                        from omegatomo.util.multiresolution import pack_multiresolution
+                        self.x0 = pack_multiresolution(self.x0, self)
                     elif self.x0.shape[0] == self.NxOrig or np.min(self.x0) == np.max(self.x0):
                         val = np.min(self.x0)
                         self.x0 = self.x0[:, :,:self.Nz[0].item()]
@@ -2403,28 +2465,22 @@ class projectorClass:
             self.NyPrior = int(np.asarray(self.Ny).ravel()[0])
             self.NzPrior = int(np.asarray(self.Nz).ravel()[0])
         if self.offsetCorrection:
-            self.OffsetLimit = np.zeros((self.nProjections, 1), dtype=np.float32)
-            for kk in range(self.nProjections):
-                sx = self.x[kk, 0]
-                sy = self.x[kk, 1]
-                dx = self.x[kk, 3]
-                dy = self.x[kk, 4]
-                # Matches MATLAB setUpCorrections.m:381-403: (0:0.25:nRowsD)' includes
-                # the nRowsD endpoint (4*nRowsD + 1 samples), and dPitchX (not
-                # dPitchY) is the pitch used for this transaxial search/limit.
-                ii = np.linspace(0., float(self.nRowsD), 4 * int(self.nRowsD) + 1, dtype=np.float32) - self.nRowsD / 2
-                if self.pitch:
-                    dx = dx + self.z[kk, 0] * ii + self.z[kk, 3] * ii
-                    dy = dy + self.z[kk, 1] * ii + self.z[kk, 4] * ii
-                else:
-                    dx = dx + self.z[kk, 0] * ii
-                    dy = dy + self.z[kk, 1] * ii
-                dist = np.abs((dx - sx) * (sy) - ((sx) * (dy - sy))) / np.sqrt((dx - sx)**2 + (dy - sy)**2)
-                ind = np.argmin(dist)
-                # MATLAB's `[~, ind] = min(dist)` returns a 1-based index; np.argmin
-                # returns 0-based, so +1 is needed to match MATLAB's OffsetLimit(kk)
-                # = (ind) * dPitchX / 4.
-                self.OffsetLimit[kk] = (ind + 1) * self.dPitchX / 4
+            nP = int(self.nProjections)
+            xx = np.asarray(self.x, dtype=np.float64).reshape(-1, 6)[:nP]
+            zz = np.asarray(self.z, dtype=np.float64).reshape(nP, -1)
+            if zz.shape[1] < 2:
+                raise ValueError('Offset correction requires the detector row direction vectors (options.z) for each projection!')
+            s, d, u = xx[:, 0:2], xx[:, 3:5], zz[:, 0:2]
+            # Position t (in detector pixels, from the detector center along the row direction u) at which the line from the source s
+            # to d + t * u passes through the rotation axis (0,0). The central ray is thus computed exactly instead of searched on a grid.
+            t = (s[:, 1] * d[:, 0] - s[:, 0] * d[:, 1]) / (s[:, 0] * u[:, 1] - s[:, 1] * u[:, 0])
+            koko = float(self.nRowsD) * float(self.dPitchX)
+            # Distance (mm) of the central ray from the row-0 edge of the detector
+            T = (t + float(self.nRowsD) / 2.) * float(self.dPitchX)
+            if np.any((T <= 0.) | (T >= koko)):
+                print('Warning: Offset correction: the central ray is outside the detector for some projections, clamping the offset limit.')
+            eps = 1e-3 * float(self.dPitchX)
+            self.OffsetLimit = np.clip(T, eps, koko - eps).astype(np.float32).reshape(-1, 1)
             
             
     def PSFKernel(self):
@@ -2470,6 +2526,18 @@ class projectorClass:
             self.initProj()
         from omegatomo.projector.projfunctions import forwardProjection
         return forwardProjection(self, f, subset, timestep)
+
+    def applyOffsetSqrtWeights(self, y, subset: int = -1):
+        """Multiplies the measurement data y (of the given subset) by the square root of the offset redundancy weights. This is needed
+        with the custom algorithms when the square root offset weighting is used (offsetSqrtWeights = True), since the forward
+        projection is then weighted as well. Returns the weighted data (y itself is not modified); y is returned as is if the square root
+        offset weighting is not in use."""
+        if not(self.projectorInitialized):
+            self.initProj()
+        from omegatomo.projector.projfunctions import _applyOffsetSqrtFP
+        if subset == -1:
+            subset = self.subset
+        return _applyOffsetSqrtFP(self, y, int(subset))
         
     def backwardProject(self, y, subset: int = -1, timestep: int = -1):
         if not(self.projectorInitialized):
@@ -2646,6 +2714,7 @@ class projectorClass:
             ('useEFOV', ctypes.c_bool),
             ('CTAttenuation', ctypes.c_bool),
             ('offsetCorrection', ctypes.c_bool),
+            ('offsetSqrt', ctypes.c_bool),
             ('relaxationScaling', ctypes.c_bool),
             ('computeRelaxationParameters', ctypes.c_bool),
             ('storeFP', ctypes.c_bool),
@@ -2836,4 +2905,11 @@ class projectorClass:
             ('tr_offsets', ctypes.POINTER(ctypes.c_uint32)),
             ('a_L', ctypes.POINTER(ctypes.c_float)),
             ('fmh_weights', ctypes.POINTER(ctypes.c_float)),
+            ('blurPlanesF', ctypes.POINTER(ctypes.c_float)),
+            ('blurPlanes2F', ctypes.POINTER(ctypes.c_float)),
+            ('CDRFCoeffs6', ctypes.POINTER(ctypes.c_float)),
+            ('CDRFOnTheFly', ctypes.c_bool),
+            ('type6AttenuationCache', ctypes.c_float),
+            ('cdrfModel6', ctypes.c_uint32),
+            ('bpRot6', ctypes.c_uint32),
         ]

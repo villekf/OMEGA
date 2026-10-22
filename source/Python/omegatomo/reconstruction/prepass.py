@@ -399,10 +399,25 @@ def loadCorrections(options):
                 else:
                     raise ValueError('Unsupported datatype!')
         if options.CT_attenuation:
-            if options.vaimennus.ndim == 1:
-                size_mismatch = options.vaimennus.shape[0] != options.N[0]
+            # The map of the type 6 projector with multi-resolution volumes covers all the volumes (the requested extended FOV,
+            # NxFull x NyFull x NzFull, plus its enlargement by the side volumes), not the main volume (Nx[0] x Ny[0] x Nz[0])
+            multiResType6 = (options.projector_type in (6, 16, 26, 61, 62, 66) and getattr(options, 'useMultiResolutionVolumes', False)
+                             and int(getattr(options, 'nMultiVolumes', 0)) > 0)
+            if multiResType6:
+                from omegatomo.util.multiresolutionpad import prepareType6Attenuation
+                options.vaimennus = prepareType6Attenuation(options, options.vaimennus)
+                attDims = tuple(int(v) for v in np.asarray(options.multiResUnionDims).reshape(-1))
+                if options.vaimennus.ndim == 1 and options.vaimennus.size != int(np.prod(attDims)):
+                    attDims = tuple(int(np.asarray(getattr(options, axis)).reshape(-1)[0]) for axis in ('NxFull', 'NyFull', 'NzFull'))
+                if options.vaimennus.ndim >= 3:
+                    attDims = tuple(options.vaimennus.shape[:3])
+                size_mismatch = False
             else:
-                size_mismatch = (not options.vaimennus.shape[0] == options.Nx[0] or not options.vaimennus.shape[1] == options.Ny[0].item() or not options.vaimennus.shape[2] == options.Nz[0].item())
+                attDims = (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item())
+                if options.vaimennus.ndim == 1:
+                    size_mismatch = options.vaimennus.shape[0] != options.N[0]
+                else:
+                    size_mismatch = (not options.vaimennus.shape[0] == options.Nx[0] or not options.vaimennus.shape[1] == options.Ny[0].item() or not options.vaimennus.shape[2] == options.Nz[0].item())
             if size_mismatch:
                 if options.vaimennus.shape[0] != options.N[0]:
                     print('Error: Attenuation data is of different size than the reconstructed image. Attempting resize!')
@@ -412,16 +427,21 @@ def loadCorrections(options):
                     options.vaimennus = zoom(options.vaimennus, (options.Nx[0] / options.vaimennus.shape[0], options.Ny[0] / options.vaimennus.shape[1], options.Nz[0] / options.vaimennus.shape[2]))
                     if (not options.vaimennus.shape[0] == options.Nx[0] or not options.vaimennus.shape[1] == options.Ny[0].item() or not options.vaimennus.shape[2] == options.Nz[0].item()) and not options.vaimennus.size == options.N[0]:
                         raise ValueError('Error: Attenuation data is of different size than the reconstructed image. Automatic resize failed.')
+            def attVolume(values):
+                if not multiResType6:
+                    return np.reshape(values, attDims)
+                # The map covers all the volumes: it is a volume of its own size, a flattened one is in the Fortran order (x fastest)
+                return np.reshape(values, attDims, order='F') if values.ndim == 1 else values
             if options.rotateAttImage != 0:
-                atn = np.reshape(options.vaimennus, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()))
+                atn = attVolume(options.vaimennus)
                 atn = np.rot90(atn,options.rotateAttImage)
                 options.vaimennus = atn
             if options.flipAttImageXY:
-                atn = np.reshape(options.vaimennus, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()))
+                atn = attVolume(options.vaimennus)
                 atn = np.fliplr(atn)
                 options.vaimennus = atn
             if options.flipAttImageZ:
-                atn = np.reshape(options.vaimennus, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()))
+                atn = attVolume(options.vaimennus)
                 atn = np.flip(atn,2)
                 options.vaimennus = atn
             if options.attIncm:
@@ -845,7 +865,7 @@ def parseInputs(options, mDataFound = False):
                         options.SinM[ff - 1] = temp
                     else:
                         if options.TOF and options.listmode == 0:
-                            options.SinM[:,:,:,:,ff - 1] = temp.ravel(order='F')
+                            options.SinM[:,:,:,:,ff - 1] = temp
                         else:
                             if options.SinM.ndim == 4:
                                 options.SinM[:,:,:,ff - 1] = temp

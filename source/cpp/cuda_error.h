@@ -56,6 +56,8 @@
 #define cuCtxGetDevice                                hipCtxGetDevice
 #define cuMemAlloc                                    hipMalloc
 #define cuMemFree                                     hipFree
+#define cuMemAllocHost                                hipHostMalloc
+#define cuMemFreeHost                                 hipHostFree
 #define cuMemGetInfo                                  hipMemGetInfo
 #define cuMemcpyHtoD                                  hipMemcpyHtoD
 #define cuMemcpyDtoH                                  hipMemcpyDtoH
@@ -115,6 +117,7 @@
 #define nvrtcGetProgramLogSize                        hiprtcGetProgramLogSize
 #define nvrtcGetPTX                                   hiprtcGetCode
 #define nvrtcGetPTXSize                               hiprtcGetCodeSize
+#define nvrtcVersion                                  hiprtcVersion
 
 #define getErrorString(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(hipError_t code, const char* file, int line)

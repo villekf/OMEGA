@@ -26,6 +26,19 @@ dz = zeros(1,size(FOV,2));
 bx = zeros(1,size(FOV,2));
 by = zeros(1,size(FOV,2));
 bz = zeros(1,size(FOV,2));
+% With multi-resolution volumes the side volumes all have the same coarse voxel size. It is taken as FOV / N (in double precision),
+% not from the first difference of a (possibly single precision) linspace, whose rounding error can give the side volumes voxel sizes
+% that differ in the last digits; the voxel sizes that are the same up to rounding error are made exactly the same
+multiRes = size(FOV,2) > 2;
+if multiRes
+    voxelSpacing = double(FOV) ./ double(N);
+    sideSpacing = voxelSpacing(:, 2);
+    tolerance = max(1e-8, abs(sideSpacing) .* 1e-5);
+    sameSide = abs(voxelSpacing - sideSpacing) <= tolerance;
+    sameSide(:, 1) = false;
+    matchingSpacing = repmat(sideSpacing, 1, size(FOV, 2));
+    voxelSpacing(sameSide) = matchingSpacing(sameSide);
+end
 for kk = size(FOV,2) : - 1 : 1
     % We compute the pixel boundaries for each volume if a multi-resolution
     % volume, otherwise for the main volume only
@@ -39,6 +52,11 @@ for kk = size(FOV,2) : - 1 : 1
     dx(kk) = diff(xx(1:2));
     dy(kk) = diff(yy(1:2));
     dz(kk) = diff(zz(1:2));
+    if multiRes && kk > 1
+        dx(kk) = voxelSpacing(1, kk);
+        dy(kk) = voxelSpacing(2, kk);
+        dz(kk) = voxelSpacing(3, kk);
+    end
 
     % Distance of image from the origin
     % Different cases for different volumes
