@@ -158,6 +158,8 @@ void openMPSino(const T* ringPos1, const T* ringPos2, const T* ringNumber1, cons
 	if (pseudoR) {
 		gapSize = rings / (nPseudos + 1);
 	}
+	// Number of elements of the sinogram array, (Ndist, Nang, NSinos, nLayers^2, TOF bins, Nt), where TOFSize = Ndist * Nang * NSinos * TOF bins
+	const uint64_t sinoBufSize = TOFSize * static_cast<uint64_t>(nLayers) * static_cast<uint64_t>(nLayers) * Nt;
 #ifdef _OPENMP
 #if _OPENMP >= 201511
 #pragma omp parallel for schedule(monotonic:dynamic)
@@ -210,7 +212,10 @@ void openMPSino(const T* ringPos1, const T* ringPos2, const T* ringNumber1, cons
 		bool swap = false;
 		const int64_t indeksi = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize, Ndist, Nang, ring_difference, span, seg, TOFSize,
 			detWPseudo, rings, binN, nDistSide, swap, tPoint, layer, nLayers);
-		if (indeksi >= TOFSize * nLayers * Nt) {
+		// Negative index: the LOR is outside the sinogram FOV (radial FOV or ring difference), skip silently
+		if (indeksi < 0)
+			continue;
+		if (static_cast<uint64_t>(indeksi) >= sinoBufSize) {
 			mexPrint("Sinogram index is larger than the maximum possible or outside the sinogram FOV! Skipping!");
 			continue;
 		}
