@@ -703,6 +703,13 @@ elseif options.use_machine == 0
             error('Index-based reconstruction is not supported with dynamic data yet when using ASCII data! Use ROOT data instead.')
         end
         [ascii_ind, mSize] = get_ascii_indices(options.coincidence_mask);
+        % The sinogram creation MEX file that has been built (see install_mex): createSinogramASCIICPP for MATLAB 9.4 (R2018a)
+        % and later, createSinogramASCII otherwise. Both take the same arguments, with the types used in the calls below
+        if exist('OCTAVE_VERSION','builtin') == 0 && exist('createSinogramASCIICPP','file') == 3
+            createSinoMEX = @createSinogramASCIICPP;
+        else
+            createSinoMEX = @createSinogramASCII;
+        end
         rsector_ind1 = ascii_ind.rsector_ind1;
         rsector_ind2 = ascii_ind.rsector_ind2;
         crs_ind1 = ascii_ind.crs_ind1;
@@ -851,33 +858,31 @@ elseif options.use_machine == 0
                 no_submodules = false;
             end
 
-            tIndex = [];
+            % Remove the events outside the time window, alku <= t <= loppu (the same window as in the ROOT import)
+            outWindow = false(size(M,1),1);
             if alku > 0
                 if time_index == 0
                     error('Starting time is greater than zero, but no time data was found. Aborting!')
                 end
-                tIndex = M(:,time_index) < alku;
+                outWindow = M(:,time_index) < alku;
             end
             if loppu < (1e9-1) && ~isinf(options.end) && options.end < options.tot_time
                 if time_index == 0
                     error('End time is smaller than total time, but no time data was found. Aborting!')
                 end
-                tIndex = logical(tIndex + M(:,time_index) > loppu);
+                outWindow = outWindow | M(:,time_index) > loppu;
             end
-            if ~isempty(tIndex)
-                M(tIndex, :) = [];
+            if any(outWindow)
+                M(outWindow, :) = [];
             end
+            clear outWindow
+            tIndex = uint16([]);
             if Nt > 1
-                timeI = [alku;alku + cumsum(partitions)];
-                tIndex = ones(size(M,1),1,'uint16');
-                for uu = 1 : Nt
-                    test = M(:,time_index) < timeI(uu + 1) & M(:,time_index) >= timeI(uu);
-                    if any(test)
-                        alku = find(M(:,time_index) >= timeI(uu),1,'first');
-                        loppu = find(M(:,time_index) >= timeI(uu),1,'last');
-                        tIndex(alku:loppu) = uu;
-                    end
-                end
+                % Time frame (one-based) of each event from the time of the event, i.e. independent of the order of the events:
+                % timeI(uu) <= t < timeI(uu + 1), the last frame includes also the end time
+                timeI = [alku; alku + cumsum(options.partitions(:))];
+                [~, tIndex] = histc(M(:,time_index), [timeI(1:Nt); inf]);
+                tIndex = uint16(max(tIndex, 1));
                 % if isempty(find(M(:,time_index) > partitions(1),1,'last'))
                 %     int_loc(1) = 0;
                 % elseif isempty(find(M(1,time_index) > partitions,1,'last'))
@@ -1201,21 +1206,27 @@ elseif options.use_machine == 0
                 bins = 0;
             end
 
+            % tIndex is the time frame of each event, one-based (1, ..., Nt). The sinogram creation code (createSinogramASCII*,
+            % saveSinogram.h) uses it as the zero-based index of the frame (0, ..., Nt - 1)
+            tIndexC = tIndex;
+            if Nt > 1
+                tIndexC = tIndex - 1;
+            end
             if options.useIndexBasedReconstruction
                 trIndices = [trIndices,[ring_pos1;ring_pos2]];
                 axIndices = [axIndices,[ring_number1;ring_number2]];
             else
                 if ~options.use_raw_data
                     if exist('OCTAVE_VERSION','builtin') == 0% && verLessThan('matlab','9.4')
-                        [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCII(ring_pos1, ring_pos2, ring_number1, ring_number2, trues_index, scatter_index, ... % 7
-                            randoms_index, sinoSize, (options.Ndist), (options.Nang), (options.ring_difference), (options.span), ... % 13
-                            uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), tIndex, Nt, ... % 17
-                            (options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM, SinTrues, SinScatter, SinRandoms, (options.ndist_side),... % 26
-                            (options.det_w_pseudo), int32(sum(options.pseudot)), (options.cryst_per_block), options.nLayers, layer1, layer2); % 32
+                        [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinoMEX(ring_pos1, ring_pos2, ring_number1, ring_number2, logical(trues_index), logical(scatter_index), ... % 7
+                            logical(randoms_index), sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ... % 13
+                            uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), tIndexC, uint64(Nt), ... % 17
+                            int32(options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM, SinTrues, SinScatter, SinRandoms, int32(options.ndist_side),... % 26
+                            int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block), int32(options.nLayers), layer1, layer2); % 32
                     elseif exist('OCTAVE_VERSION','builtin') == 5
                         [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCIIOct(ring_pos1, ring_pos2, ring_number1, ring_number2, trues_index, scatter_index, ... % 7
                             randoms_index, sinoSize, (options.Ndist), (options.Nang), (options.ring_difference), (options.span), ... % 13
-                            uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), tIndex, Nt, ... % 17
+                            uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), tIndexC, Nt, ... % 17
                             (options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM, SinTrues, SinScatter, SinRandoms, (options.ndist_side),... % 26
                             (options.det_w_pseudo), int32(sum(options.pseudot)), (options.cryst_per_block), options.nLayers, layer1, layer2); % 32
                         % else
@@ -1315,27 +1326,25 @@ elseif options.use_machine == 0
                         end
                     end
                 end
-                tIndex = [];
+                % Remove the events outside the time window, alku <= t <= loppu (the same window as in the ROOT import)
+                outWindow = false(size(M,1),1);
                 if alku > 0
-                    tIndex = M(:,time_index) < alku;
+                    outWindow = M(:,time_index) < alku;
                 end
                 if loppu < (1e9-1) && ~isinf(options.end) && options.end < options.tot_time
-                    tIndex = logical(tIndex + M(:,time_index) > loppu);
+                    outWindow = outWindow | M(:,time_index) > loppu;
                 end
-                if ~isempty(tIndex)
-                    M(tIndex, :) = [];
+                if any(outWindow)
+                    M(outWindow, :) = [];
                 end
+                clear outWindow
+                tIndex = uint16([]);
                 if Nt > 1
-                    timeI = [alku;alku + cumsum(partitions)];
-                    tIndex = ones(size(M,1),1,'uint16');
-                    for uu = 1 : Nt
-                        test = M(:,time_index) < timeI(uu + 1) & M(:,time_index) >= timeI(uu);
-                        if any(test)
-                            alku = find(M(:,time_index) >= timeI(uu),1,'first');
-                            loppu = find(M(:,time_index) >= timeI(uu),1,'last');
-                            tIndex(alku:loppu) = uu;
-                        end
-                    end
+                    % Time frame (one-based) of each event from the time of the event, i.e. independent of the order of the events:
+                    % timeI(uu) <= t < timeI(uu + 1), the last frame includes also the end time
+                    timeI = [alku; alku + cumsum(options.partitions(:))];
+                    [~, tIndex] = histc(M(:,time_index), [timeI(1:Nt); inf]);
+                    tIndex = uint16(max(tIndex, 1));
                 end
 
                 % No modules
@@ -1410,21 +1419,26 @@ elseif options.use_machine == 0
                     layer2 = uint8(0);
                 end
 
+                % The time frame of each event (tIndex) is one-based, the sinogram creation code uses zero-based frames
+                tIndexC = tIndex;
+                if Nt > 1
+                    tIndexC = tIndex - 1;
+                end
                 if options.useIndexBasedReconstruction
                     DtrIndices = [DtrIndices,[ring_pos1;ring_pos2]];
                     DaxIndices = [DaxIndices,[ring_number1;ring_number2]];
                 else
                     if ~options.use_raw_data
                         if exist('OCTAVE_VERSION','builtin') == 0 %&& verLessThan('matlab','9.4')
-                            [SinD, ~, ~, ~] = createSinogramASCII(ring_pos1, ring_pos2, ring_number1, ring_number2, [], [], ...
-                                [], sinoSize, (options.Ndist), (options.Nang), (options.ring_difference), (options.span), ...
-                                uint32(cumsum(options.segment_table)), sinoSize * uint64(1), tIndex, Nt, ...
-                                (options.det_per_ring), (options.rings), uint16([]), SinD, [], [], [], (options.ndist_side),...
-                                (options.det_w_pseudo), int32(sum(options.pseudot)), (options.cryst_per_block), options.nLayers, layer1, layer2);
+                            [SinD, ~, ~, ~] = createSinoMEX(ring_pos1, ring_pos2, ring_number1, ring_number2, logical([]), logical([]), ...
+                                logical([]), sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
+                                uint32(cumsum(options.segment_table)), sinoSize * uint64(1), tIndexC, uint64(Nt), ...
+                                int32(options.det_per_ring), int32(options.rings), uint16([]), SinD, uint16([]), uint16([]), uint16([]), int32(options.ndist_side),...
+                                int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block), int32(options.nLayers), layer1, layer2);
                         elseif exist('OCTAVE_VERSION','builtin') == 5
                             [SinD, ~, ~, ~] = createSinogramASCIIOct(ring_pos1, ring_pos2, ring_number1, ring_number2, [], [], ...
                                 [], sinoSize, (options.Ndist), (options.Nang), (options.ring_difference), (options.span), ...
-                                uint32(cumsum(options.segment_table)), sinoSize * uint64(1), tIndex, Nt, ...
+                                uint32(cumsum(options.segment_table)), sinoSize * uint64(1), tIndexC, Nt, ...
                                 (options.det_per_ring), (options.rings), uint16([]), SinD, [], [], [], (options.ndist_side),...
                                 (options.det_w_pseudo), int32(sum(options.pseudot)), (options.cryst_per_block), options.nLayers, layer1, layer2);
                             % else
