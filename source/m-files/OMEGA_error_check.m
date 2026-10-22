@@ -335,7 +335,8 @@ end
 if sum(options.precondTypeImage) == 0 && (options.PKMA || options.MRAMLA || options.MBSREM)
     warning('No image-based preconditioner selected with PKMA/MRAMLA/MBSREM. EM preconditioner is highly recommended!')
 end
-if options.APLS && exist(options.APLS_reference_image,'file') ~= 2 && MAP
+if options.APLS && MAP && (ischar(options.APLS_reference_image) || isstring(options.APLS_reference_image)) && ...
+        ~isempty(char(options.APLS_reference_image)) && exist(char(options.APLS_reference_image),'file') ~= 2
     error('APLS selected, but the anatomical reference image was not found on path!')
 end
 if options.epps <= 0
