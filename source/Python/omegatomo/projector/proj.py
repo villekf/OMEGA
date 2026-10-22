@@ -1681,6 +1681,11 @@ class projectorClass:
         if self.epps <= 0:
             print('Epsilon value is zero or less than zero; must be a positive value. Using the default value (1e-6).')
             self.epps = 1e-6
+        if 'sigma' in self.__dict__ and 'NLMsigma' not in self.__dict__:
+            # The NLM filter parameter is options.NLMsigma (sigma was used in older examples/MATLAB); use sigma as a fallback
+            self.NLMsigma = self.sigma
+            if self.NLM or self.ProxNLM:
+                print('options.sigma is used as the NLM filter parameter; in the future use options.NLMsigma instead')
         # if self.projector_type in [5, 4, 34, 24, 44, 14, 41, 42, 43, 15, 45, 54, 51, 55] and self.useCPU:
         #     raise ValueError('The selected projector type is not supported with CPU implementation!')
         if np.sum(self.precondTypeImage) == 0 and (self.PKMA or self.MRAMLA or self.MBSREM):
