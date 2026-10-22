@@ -347,10 +347,12 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 				lCacheRef[indX + indY * NLM_TILEX + indZ * NLM_TILEX * NLM_TILEY] = read_imagef(u_ref, samplerNLM, (int4)(xx, yy, zz, 0)).w;
 #endif
 #else
-				if (xx < 0 || yy < 0 || zz < 0 || xx >= N.x || yy >= N.y || zz >= N.z)
-					lCacheRef[indX + indY * NLM_TILEX + indZ * NLM_TILEX * NLM_TILEY] = FLOAT_ZERO;
-				else
-					lCacheRef[indX + indY * NLM_TILEX + indZ * NLM_TILEX * NLM_TILEY] = u_ref[(xx) + (yy) * N.x + (zz) * N.x * N.y];
+				{
+					const LTYPE xc = MAX((LTYPE)0, MIN(xx, (LTYPE)(N.x - 1)));
+					const LTYPE yc = MAX((LTYPE)0, MIN(yy, (LTYPE)(N.y - 1)));
+					const LTYPE zc = MAX((LTYPE)0, MIN(zz, (LTYPE)(N.z - 1)));
+					lCacheRef[indX + indY * NLM_TILEX + indZ * NLM_TILEX * NLM_TILEY] = u_ref[xc + yc * N.x + zc * N.x * N.y];
+				}
 #endif
 #endif // END NLMREF
 #ifdef USEIMAGES
@@ -360,10 +362,12 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 				lCache[indX + indY * NLM_TILEX + indZ * NLM_TILEX * NLM_TILEY] = read_imagef(u, samplerNLM, (int4)(xx, yy, zz, 0)).w;
 #endif
 #else
-				if (xx < 0 || yy < 0 || zz < 0 || xx >= N.x || yy >= N.y || zz >= N.z)
-					lCache[indX + indY * NLM_TILEX + indZ * NLM_TILEX * NLM_TILEY] = FLOAT_ZERO;
-				else
-					lCache[indX + indY * NLM_TILEX + indZ * NLM_TILEX * NLM_TILEY] = u[(xx) + (yy) * N.x + (zz) * N.x * N.y];
+				{
+					const LTYPE xc = MAX((LTYPE)0, MIN(xx, (LTYPE)(N.x - 1)));
+					const LTYPE yc = MAX((LTYPE)0, MIN(yy, (LTYPE)(N.y - 1)));
+					const LTYPE zc = MAX((LTYPE)0, MIN(zz, (LTYPE)(N.z - 1)));
+					lCache[indX + indY * NLM_TILEX + indZ * NLM_TILEX * NLM_TILEY] = u[xc + yc * N.x + zc * N.x * N.y];
+				}
 #endif
 				indX += LSIZE0;
 			}
@@ -619,10 +623,7 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 				lCacheRef[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = read_imagef(u_ref, samplerRDP, (int4)(xx, yy, zz, 0)).w;
 #endif
 #else
-				if (xx < 0 || yy < 0 || zz < 0 || xx >= N.x || yy >= N.y || zz >= N.z)
-					lCacheRef[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = FLOAT_ZERO;
-				else
-					lCacheRef[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = u_ref[(xx) + (yy) * N.x + (zz) * N.x * N.y];
+				lCacheRef[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = SWBufRead(u_ref, (int)xx, (int)yy, (int)zz, N);
 #endif
 #endif // END RDPREF
 #ifdef USEIMAGES
@@ -632,10 +633,7 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 				lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = read_imagef(u, samplerRDP, (int4)(xx, yy, zz, 0)).w;
 #endif
 #else
-				if (xx < 0 || yy < 0 || zz < 0 || xx >= N.x || yy >= N.y || zz >= N.z)
-					lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = FLOAT_ZERO;
-				else
-					lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = u[(xx) + (yy) * N.x + (zz) * N.x * N.y];
+				lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = SWBufRead(u, (int)xx, (int)yy, (int)zz, N);
 #endif
 				indX += LSIZE0;
 			}
@@ -740,10 +738,7 @@ void GGMRFKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRI
 				lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = read_imagef(u, samplerNLM, (int4)(xx, yy, zz, 0)).w;
 #endif
 #else
-				if (xx < 0 || yy < 0 || zz < 0 || xx >= N.x || yy >= N.y || zz >= N.z)
-					lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = FLOAT_ZERO;
-				else
-					lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = u[(xx) + (yy) * N.x + (zz) * N.x * N.y];
+				lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = SWBufRead(u, (int)xx, (int)yy, (int)zz, N);
 #endif
 				indX += LSIZE0;
 			}
@@ -1429,22 +1424,6 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
 #endif
 ) {
 	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
-#if defined(CUDA) || defined(HIP)
-	if (xyz.x >= N.x || xyz.y >= N.y || xyz.z >= N.z)
-#else
-	if (any(xyz >= N))
-#endif
-		return;
-#ifdef EFOVZ
-	if (fovIndices[xyz.z] == 0)
-        return;
-#endif
-#ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, CINT3(xyz), CUINT3(N));
-    if (maskVal == 0)
-        return;
-#endif
-	const LTYPE n = (xyz.x) + (xyz.y) * (N.x) + (xyz.z) * (N.x * N.y);
 	float output = FLOAT_ZERO;
 	LTYPE startX = GRID0 * LSIZE0 - SWINDOWX + LID0;
 	LTYPE startY = GRID1 * LSIZE1 - SWINDOWY + LID1;
@@ -1466,10 +1445,7 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
 				lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = read_imagef(u, samplerTV, (int4)(xx, yy, zz, 0)).w;
 #endif
 #else
-				if (xx < 0 || yy < 0 || zz < 0 || xx >= N.x || yy >= N.y || zz >= N.z)
-					lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = FLOAT_ZERO;
-				else
-					lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = u[(xx) + (yy) * N.x + (zz) * N.x * N.y];
+				lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = SWBufRead(u, (int)xx, (int)yy, (int)zz, N);
 #endif
 				indX += LSIZE0;
 			}
@@ -1478,6 +1454,24 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
 		indZ += LSIZE2;
 	}
 	BARRIER
+	// The bounds/EFOV/mask early returns must come after the cooperative tile load and barrier,
+	// otherwise edge work-groups leave tile entries uninitialised
+#if defined(CUDA) || defined(HIP)
+	if (xyz.x >= N.x || xyz.y >= N.y || xyz.z >= N.z)
+#else
+	if (any(xyz >= N))
+#endif
+		return;
+#ifdef EFOVZ
+	if (fovIndices[xyz.z] == 0)
+        return;
+#endif
+#ifdef MASKPRIOR
+	const int maskVal = readMaskBP(maskBP, CINT3(xyz), CUINT3(N));
+    if (maskVal == 0)
+        return;
+#endif
+	const LTYPE n = (xyz.x) + (xyz.y) * (N.x) + (xyz.z) * (N.x * N.y);
 	const int3 xxyyzz = CMINT3(LID0 + SWINDOWX, LID1 + SWINDOWY, LID2 + SWINDOWZ);
 	// Shared search-window gradient (general_opencl_functions.h)
 	output = priorGradientSW(lCache, w, xxyyzz.x, xxyyzz.y, xxyyzz.z, epps, sigma);

@@ -2799,10 +2799,13 @@ DEVICE float SWTexRead(IMAGE3D uIn, const int x, const int y, const int z) {
     return read_imagef(uIn, samplerSWPrior, (int4)(x, y, z, 0)).w;
 #endif
 }
+// Buffer read with each coordinate clamped to the volume (clamp-to-edge, i.e. Neumann boundary), identical to the
+// texture sampler used in the image version
 DEVICE float SWBufRead(const CLGLOBAL float* CLRESTRICT buf, const int x, const int y, const int z, const int3 N) {
-    if (x < 0 || y < 0 || z < 0 || x >= N.x || y >= N.y || z >= N.z)
-        return FLOAT_ZERO;
-    return buf[(x) + (y) * N.x + (z) * N.x * N.y];
+    const int xc = MAX(0, MIN(x, N.x - 1));
+    const int yc = MAX(0, MIN(y, N.y - 1));
+    const int zc = MAX(0, MIN(z, N.z - 1));
+    return buf[xc + yc * N.x + zc * N.x * N.y];
 }
 
 
@@ -2972,6 +2975,8 @@ DEVICE float priorGradientSW(SW_IN_T uIn, CONSTANT float* weight,
 // Anatomical reference image cases are not supported for fastPDHG
 #if defined(TVGRAD) || defined(FASTTV)
 
+// Buffer reads (SWBufRead) clamp to the volume like the texture sampler used in the image version
+
 // Image/texture version and buffer version
 #if defined(FASTTV) || (defined(TVGRAD) && defined(USEIMAGES))
 #define TVFETCH(U, X, Y, Z) SWTexRead(U, X, Y, Z)
@@ -3005,6 +3010,48 @@ DEVICE float sqrtVal(const float3 input, const float epps
 #endif
 #endif
 }
+
+#ifdef ANATOMICAL3
+// APLS vector q = (g - (xi.g) xi) / sqrt(|g|^2 - (xi.g)^2 + epps), xi = r / sqrt(|r|^2 + eta^2)
+// g = forward differences of the image, r = forward differences of the reference image
+DEVICE float3 APLSq(const float3 g, const float3 r, const float eta, const float epps) {
+    const float rNorm = SQRT(r.x * r.x + r.y * r.y + r.z * r.z + eta * eta);
+    const float xix = r.x / rNorm;
+    const float xiy = r.y / rNorm;
+    const float xiz = r.z / rNorm;
+    const float gxi = g.x * xix + g.y * xiy + g.z * xiz;
+    const float p = SQRT(FMAX(g.x * g.x + g.y * g.y + g.z * g.z - gxi * gxi, 0.f) + epps);
+    return CMFLOAT3((g.x - gxi * xix) / p, (g.y - gxi * xiy) / p, (g.z - gxi * xiz) / p);
+}
+#endif
+
+#ifdef ANATOMICAL1
+// Anatomical TV type 1: q = 0.5 * grad_g Q(g) / sqrt(Q(g) + epps), Q(g) = g^T A g with the 3x3 weight matrix A of the voxel
+// The 9 weights S[n + NN * kk] are read at the (clamped) voxel (x, y, z), g = forward differences of the image at that voxel
+DEVICE float3 TVAnatQ(const CLGLOBAL float* CLRESTRICT S, const int x, const int y, const int z, const int3 N, const float3 g, const float epps) {
+    const int xc = MAX(0, MIN(x, N.x - 1));
+    const int yc = MAX(0, MIN(y, N.y - 1));
+    const int zc = MAX(0, MIN(z, N.z - 1));
+    const int NN = N.x * N.y * N.z;
+    const int nc = xc + yc * N.x + zc * N.x * N.y;
+    const float s0 = S[nc];
+    const float s1 = S[nc + NN];
+    const float s2 = S[nc + NN * 2];
+    const float s3 = S[nc + NN * 3];
+    const float s4 = S[nc + NN * 4];
+    const float s5 = S[nc + NN * 5];
+    const float s6 = S[nc + NN * 6];
+    const float s7 = S[nc + NN * 7];
+    const float s8 = S[nc + NN * 8];
+    const float sxy = s1 + s3;
+    const float sxz = s2 + s6;
+    const float syz = s5 + s7;
+    const float p = SQRT(s0 * g.x * g.x + s4 * g.y * g.y + s8 * g.z * g.z + sxy * g.x * g.y + sxz * g.x * g.z + syz * g.y * g.z + epps);
+    return CMFLOAT3(0.5f * (2.f * s0 * g.x + sxy * g.y + sxz * g.z) / p,
+        0.5f * (2.f * s4 * g.y + sxy * g.x + syz * g.z) / p,
+        0.5f * (2.f * s8 * g.z + sxz * g.x + syz * g.y) / p);
+}
+#endif
 
 // Gradient of the TV prior for one voxel, covering every variant
 DEVICE float TVGradient(TV_IN_T u, const int x, const int y, const int z, const float sigma, const float epps
@@ -3058,51 +3105,61 @@ DEVICE float TVGradient(TV_IN_T u, const int x, const int y, const int z, const 
 #endif
 #else
 #ifdef ANATOMICAL1 // TV type 1
-    const int NN = tvN.x * tvN.y * tvN.z;
-    const int n = x + y * tvN.x + z * tvN.x * tvN.y;
-#if defined(CUDA) || defined(HIP)
-    float s[9];
-#else
-    __private float s[9];
-#endif
-    for (int kk = 0; kk < 9; kk++)
-        s[kk] = S[n + NN * kk];
-    const float3 val = uijkP - uijk;
-    const float pvalijk = SQRT(val.x * val.x * s[0] + val.y * val.y * s[4] + val.z * val.z * s[8] + s[1] * (val.x) * (val.y) + s[3] * (val.x) * (val.y) + s[2] * (val.x) * (val.z) + s[6] * (val.x) * (val.z) +
-        s[5] * (val.y) * (val.z) + s[7] * (val.y) * (val.z) + epps);
-    const float pvalijkX = SQRT(u1.x * u1.x * s[0] + u1.y * u1.y * s[4] + u1.z * u1.z * s[8] + s[1] * (u1.x) * (u1.y) + s[3] * (u1.x) * (u1.y) + s[2] * (u1.x) * (u1.z) + s[6] * (u1.x) * (u1.z) +
-        s[5] * (u1.y) * (u1.z) + s[7] * (u1.y) * (u1.z) + epps);
-    const float pvalijkY = SQRT(u2.x * u2.x * s[0] + u2.y * u2.y * s[4] + u2.z * u2.z * s[8] + s[1] * (u2.x) * (u2.y) + s[3] * (u2.x) * (u2.y) + s[2] * (u2.x) * (u2.z) + s[6] * (u2.x) * (u2.z) +
-        s[5] * (u2.y) * (u2.z) + s[7] * (u2.y) * (u2.z) + epps);
-    const float pvalijkZ = SQRT(u3.x * u3.x * s[0] + u3.y * u3.y * s[4] + u3.z * u3.z * s[8] + s[1] * (u3.x) * (u3.y) + s[3] * (u3.x) * (u3.y) + s[2] * (u3.x) * (u3.z) + s[6] * (u3.x) * (u3.z) +
-        s[5] * (u3.y) * (u3.z) + s[7] * (u3.y) * (u3.z) + epps);
-    const float dx = s[0] * (FLOAT_TWO * (uijk - uijkM.x)) + s[3] * u1.y + s[2] * u1.z + s[6] * u1.z + s[1] * u1.y;
-    const float dy = s[4] * (FLOAT_TWO * (uijk - uijkM.y)) + s[5] * u2.z + s[3] * u2.x + s[1] * u2.x + s[7] * u2.z;
-    const float dz = s[8] * (FLOAT_TWO * (uijk - uijkM.z)) + s[6] * u3.x + s[5] * u3.y + s[7] * u3.y + s[2] * u3.x;
-    const float d = s[1] * val.x + s[2] * val.x + s[3] * val.x + s[6] * val.x + s[1] * val.y + s[3] * val.y + s[5] * val.y + s[7] * val.y + s[2] * val.z + s[5] * val.z + s[6] * val.z + s[7] * val.z + s[0] * FLOAT_TWO * val.x + s[4] * FLOAT_TWO * val.y + s[8] * FLOAT_TWO * val.z;
-    return FLOAT_HALF * (d / pvalijk + dx / pvalijkX + dy / pvalijkY + dz / pvalijkZ);
+    // phi_n = sqrt(Q_n(g_n) + epps) with the weights of voxel n, gradient = -(q_m.x + q_m.y + q_m.z) + q_{m-ex}.x + q_{m-ey}.y + q_{m-ez}.z
+    // The image is clamped at the volume edge, so the differences that cross the edge are zero and do not contribute
+    const float3 q0 = TVAnatQ(S, x, y, z, tvN, uijkP - uijk, epps);
+    const float3 q1 = TVAnatQ(S, x - 1, y, z, tvN, u1, epps);
+    const float3 q2 = TVAnatQ(S, x, y - 1, z, tvN, u2, epps);
+    const float3 q3 = TVAnatQ(S, x, y, z - 1, tvN, u3, epps);
+    float res = 0.f;
+    if (x < tvN.x - 1)
+        res -= q0.x;
+    if (y < tvN.y - 1)
+        res -= q0.y;
+    if (z < tvN.z - 1)
+        res -= q0.z;
+    if (x > 0)
+        res += q1.x;
+    if (y > 0)
+        res += q2.y;
+    if (z > 0)
+        res += q3.z;
+    return res + 1e-7f;
 #elif defined(ANATOMICAL2) // TV type 2
+    // The reference image is clamped at the volume edge (same as the image)
     const float3 uijkR = MFLOAT3(SWBufRead(S, x + 1, y, z, tvN), SWBufRead(S, x, y + 1, z, tvN), SWBufRead(S, x, y, z + 1, tvN));
     const float3 apuS = (uijkR - SWBufRead(S, x, y, z, tvN));
     const float3 apu = uijkP - uijk;
     const float pvalijk = SQRT(apu.x * apu.x + apu.y * apu.y + apu.z * apu.z + C * (apuS.x * apuS.x + apuS.y * apuS.y + apuS.z * apuS.z) + epps);
-    return (3.f * uijk - uijkP.x - uijkP.y - uijkP.z) / pvalijk + (uijk - uijkM.x) / sqrtVal(u1, epps) + (uijk - uijkM.y) / sqrtVal(u2, epps) + (uijk - uijkM.z) / sqrtVal(u3, epps) + 1e-7f;
+    // Reference image differences at the three backward neighbors, needed for their phi = sqrt(|g|^2 + C |r|^2 + epps)
+    const float vC = SWBufRead(S, x, y, z, tvN);
+    const float vX = SWBufRead(S, x - 1, y, z, tvN);
+    const float3 r1 = MFLOAT3(vC - vX, SWBufRead(S, x - 1, y + 1, z, tvN) - vX, SWBufRead(S, x - 1, y, z + 1, tvN) - vX);
+    const float vY = SWBufRead(S, x, y - 1, z, tvN);
+    const float3 r2 = MFLOAT3(SWBufRead(S, x + 1, y - 1, z, tvN) - vY, vC - vY, SWBufRead(S, x, y - 1, z + 1, tvN) - vY);
+    const float vZ = SWBufRead(S, x, y, z - 1, tvN);
+    const float3 r3 = MFLOAT3(SWBufRead(S, x + 1, y, z - 1, tvN) - vZ, SWBufRead(S, x, y + 1, z - 1, tvN) - vZ, vC - vZ);
+    const float p1 = SQRT(u1.x * u1.x + u1.y * u1.y + u1.z * u1.z + C * (r1.x * r1.x + r1.y * r1.y + r1.z * r1.z) + epps);
+    const float p2 = SQRT(u2.x * u2.x + u2.y * u2.y + u2.z * u2.z + C * (r2.x * r2.x + r2.y * r2.y + r2.z * r2.z) + epps);
+    const float p3 = SQRT(u3.x * u3.x + u3.y * u3.y + u3.z * u3.z + C * (r3.x * r3.x + r3.y * r3.y + r3.z * r3.z) + epps);
+    return (3.f * uijk - uijkP.x - uijkP.y - uijkP.z) / pvalijk + (uijk - uijkM.x) / p1 + (uijk - uijkM.y) / p2 + (uijk - uijkM.z) / p3 + 1e-7f;
 #elif defined(ANATOMICAL3) // APLS
-    const float3 uijkR = MFLOAT3(SWBufRead(S, x + 1, y, z, tvN), SWBufRead(S, x, y + 1, z, tvN), SWBufRead(S, x, y, z + 1, tvN));
-    float3 epsilon = (uijkR - SWBufRead(S, x, y, z, tvN));
-    epsilon = epsilon / SQRT(epsilon.x * epsilon.x + epsilon.y * epsilon.y + epsilon.z * epsilon.z + C * C);
-    const float3 apu = uijkP - uijk;
-    const float apuR = uijkR.x * apu.x + uijkR.y * apu.y + uijkR.z * apu.z;
-    const float pvalijk = SQRT(apu.x * apu.x + apu.y * apu.y + apu.z * apu.z - apuR * apuR + epps);
-    float apuRXYZ = uijkR.x * u1.x + uijkR.y * u1.y + uijkR.z * u1.z;
-    const float pvalijkX = SQRT(u1.x * u1.x + u1.y * u1.y + u1.z * u1.z + apuRXYZ * apuRXYZ + epps);
-    apuRXYZ = uijkR.x * u2.x + uijkR.y * u2.y + uijkR.z * u2.z;
-    const float pvalijkY = SQRT(u2.x * u2.x + u2.y * u2.y + u2.z * u2.z + apuRXYZ * apuRXYZ + epps);
-    apuRXYZ = uijkR.x * u3.x + uijkR.y * u3.y + uijkR.z * u3.z;
-    const float pvalijkZ = SQRT(u3.x * u3.x + u3.y * u3.y + u3.z * u3.z + apuRXYZ * apuRXYZ + epps);
-    return FLOAT_HALF * ((6.f * uijk - FLOAT_TWO * uijkP.x - FLOAT_TWO * uijkP.y - FLOAT_TWO * uijkP.z + FLOAT_TWO * (epsilon.x*(uijk - uijkP.x) + epsilon.y*(uijk - uijkP.y) + epsilon.z*(uijk - uijkP.z)) * (epsilon.x + epsilon.y + epsilon.z)) / pvalijk +
-        FLOAT_TWO * (u1.x - epsilon.x * (epsilon.x * u1.x + epsilon.y * u1.y + epsilon.z * u1.z)) / pvalijkX + FLOAT_TWO * (u2.y - epsilon.y * (epsilon.x * u2.x + epsilon.y * u2.y + epsilon.z * u2.z)) / pvalijkY +
-        FLOAT_TWO * (u3.z - epsilon.z * (epsilon.x * u3.x + epsilon.y * u3.y + epsilon.z * u3.z))/ pvalijkZ + 1e-7f);
+    // Asymmetric parallel level sets (Ehrhardt et al. 2016): P(u) = sum sqrt(|g|^2 - (xi.g)^2 + epps), xi = r / sqrt(|r|^2 + eta^2)
+    // The gradient is the sum of the unit-like vectors q of the voxel itself and of its three backward neighbors
+    // The reference image is clamped at the volume edge, so its differences vanish across the boundary
+    const float vC = SWBufRead(S, x, y, z, tvN);
+    const float3 r0 = MFLOAT3(SWBufRead(S, x + 1, y, z, tvN) - vC, SWBufRead(S, x, y + 1, z, tvN) - vC, SWBufRead(S, x, y, z + 1, tvN) - vC);
+    const float vX = SWBufRead(S, x - 1, y, z, tvN);
+    const float3 r1 = MFLOAT3(vC - vX, SWBufRead(S, x - 1, y + 1, z, tvN) - vX, SWBufRead(S, x - 1, y, z + 1, tvN) - vX);
+    const float vY = SWBufRead(S, x, y - 1, z, tvN);
+    const float3 r2 = MFLOAT3(SWBufRead(S, x + 1, y - 1, z, tvN) - vY, vC - vY, SWBufRead(S, x, y - 1, z + 1, tvN) - vY);
+    const float vZ = SWBufRead(S, x, y, z - 1, tvN);
+    const float3 r3 = MFLOAT3(SWBufRead(S, x + 1, y, z - 1, tvN) - vZ, SWBufRead(S, x, y + 1, z - 1, tvN) - vZ, vC - vZ);
+    const float3 q0 = APLSq(uijkP - uijk, r0, C, epps);
+    const float3 q1 = APLSq(u1, r1, C, epps);
+    const float3 q2 = APLSq(u2, r2, C, epps);
+    const float3 q3 = APLSq(u3, r3, C, epps);
+    return -(q0.x + q0.y + q0.z) + q1.x + q2.y + q3.z + 1e-7f;
 #else // Non-reference image TV (standard / JPTV --> identical)
     const float pvalijk = sqrtVal(uijkP - uijk, epps);
     return (3.f * uijk - uijkP.x - uijkP.y - uijkP.z) / pvalijk + (uijk - uijkM.x) / sqrtVal(u1, epps) + (uijk - uijkM.y) / sqrtVal(u2, epps) + (uijk - uijkM.z) / sqrtVal(u3, epps) + 1e-7f;
