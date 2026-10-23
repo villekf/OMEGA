@@ -18,6 +18,14 @@
 ***************************************************************************/
 #pragma once
 #define NOMINMAX
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstddef>
+#include <cstdlib>
+#include <cstring>
+#include <memory>
+#include <vector>
 #if defined(CUDA) || defined(HIP)
 #include "ProjectorClass.h"
 #if defined(HIP)

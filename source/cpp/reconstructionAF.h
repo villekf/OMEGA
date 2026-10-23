@@ -23,7 +23,13 @@
 #include "subiterStep.h"
 #include "computeForwardProject.h"
 #include "iterStep.h"
+#include <algorithm>
+#include <chrono>
+#include <cstdlib>
+#include <cstring>
+#include <numeric>
 #include <random>
+#include <vector>
 
 /// <summary>
 /// The main reconstruction function. This function performs all the image reconstruction duties. First it transfers the

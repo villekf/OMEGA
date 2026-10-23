@@ -7,6 +7,10 @@
 #define DLL_FUNCTION  __attribute__((visibility("default")))
 #endif
 #include "reconstructionAF.h"
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <vector>
 
 struct inputStruct {
     // Is raw data format used (optional)
