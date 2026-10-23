@@ -317,6 +317,29 @@ inline bool type6RotComp() {
 	return on;
 }
 
+// Test switch for the rotation images of the type-6 projector (the environment variable TYPE6_FORCE_TEX_FAIL), so that the paths of a
+// device that cannot make them can be tested on one that can: 1 makes the probe of ProjectorClass::addProjector report that the images
+// are not supported, and the projector falls back to buffers; 2 lets the probe pass but makes the creation of the first rotation image
+// fail, which stops the projection with an error. Anything else (or not set) does nothing. It is read whenever a projector is created,
+// not cached, so that it can be changed between runs in the same MATLAB/Python session
+inline int type6ForceTexFailEnv() {
+	int m = 0;
+#ifdef _WIN32
+	char* val = nullptr;
+	size_t len = 0;
+	if (_dupenv_s(&val, &len, "TYPE6_FORCE_TEX_FAIL") == 0 && val != nullptr) {
+		if (val[0] == '1' || val[0] == '2')
+			m = val[0] - '0';
+		free(val);
+	}
+#else
+	const char* val = std::getenv("TYPE6_FORCE_TEX_FAIL");
+	if (val != nullptr && (val[0] == '1' || val[0] == '2'))
+		m = val[0] - '0';
+#endif
+	return m;
+}
+
 typedef struct structForScalars {
 	uint32_t projector_type = 1, attenuation_correction = 0, randoms_correction = 0, scatter = 0, normalization_correction = 0, 
 		nColsD, nRowsD, nHeads = 1, size_z, subsets = 1, det_per_ring, Niter = 1, Nt = 1, subsetType = 0, nMultiVolumes = 0, nLayers = 1,

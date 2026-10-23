@@ -2111,6 +2111,17 @@ inline int PDHGUpdateAF(af::array& im, const af::array& rhs, const scalarStruct&
 }
 #endif
 
+// The status of the SPECT projector type 6 of proj: -1 once one of its rotation images could not be created or filled, or a rotation could
+// not be launched (ProjectorClass::type6Error), after which it launches no more rotations; 0 otherwise. The type-6 projectors return
+// nothing, so their callers check this after them and stop
+inline int type6Status(const ProjectorClass& proj) {
+#if defined(CPU)
+	return 0;
+#else
+	return proj.type6Error ? -1 : 0;
+#endif
+}
+
 #if !defined(CPU)
 #if defined(METAL)
 inline int rotateCustomAF(af::array& imrot, const af::array& im, const scalarStruct& inputScalars, ProjectorClass& proj, const float angle, const int ii = 0) {
@@ -2180,6 +2191,7 @@ inline int rotateCustomAF(af::array& imrot, const af::array& im, const scalarStr
 			status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*im.device<cl_mem>(), true), proj.d_rotI[texSlot], 0, rotOrigin, rotRegion);
 			im.unlock();
 			if (status != 0) {
+				proj.type6Error = true;
 				getErrorString(status);
 				mexPrint("Failed to copy rotation image\n");
 				return -1;
@@ -4374,6 +4386,9 @@ inline void forwardProjectionType6Raw(af::array& fProj, const Weighting& w_vec, 
                 kuvaRot *= attenuationPlanesType6(attenSrc, w_vec, inputScalars, proj, grid, crop, u1, ii, !uploaded);
         }
         uploaded = true;
+        // A failed rotation image stops the projection (the caller checks type6Status)
+        if (type6Status(proj) != 0)
+            return;
         if (DEBUG || inputScalars.verbose > 2)
             mexPrint("Projector 6 FP step 3 complete");
 #ifndef CPU
@@ -4517,6 +4532,9 @@ inline af::array backProjectionType6Helper(const af::array &fProj, const Weighti
 	bool attenUploaded = false;
 
     for (int kk = 0; kk < length; kk++) {
+        // A failed rotation image stops the projection (the caller checks type6Status)
+        if (type6Status(proj) != 0)
+            return output;
         const GridType6 grid = gridType6(w_vec, inputScalars, u1, ii);
         PSFType6 PSF = getPSFType6(w_vec, inputScalars, grid, u1, ii);
         const CropType6 crop = cropType6(inputScalars, PSF, grid, ii);
@@ -4874,6 +4892,9 @@ inline void forwardProjectionType6AllRaw(af::array& fProj, const Weighting& w_ve
 	std::vector<char> emUploaded(nV, 0);
 	int64_t u1 = uu + geomViewStartType6(w_vec, timestep);
 	for (int kk = 0; kk < length; kk++) {
+		// A failed rotation image stops the projection (the caller checks type6Status)
+		if (type6Status(proj) != 0)
+			return;
 		std::vector<ViewVolumeType6> vv(nV);
 		for (int ii = 0; ii < nV; ii++)
 			vv[ii] = viewVolumeType6(w_vec, inputScalars, u1, ii);
@@ -4893,6 +4914,8 @@ inline void forwardProjectionType6AllRaw(af::array& fProj, const Weighting& w_ve
 			rotWin.allocQ = type6AllocQuantum;
 			af::array kuvaRot = rotateHelperType6(apuArr[ii], inputScalars, proj, -w_vec.swivelAngles[u1], offX, offY, ii, rotSlotEmissionType6 + ii, !emUploaded[ii], rotWin);
 			emUploaded[ii] = 1;
+			if (type6Status(proj) != 0)
+				return;
 			// The remaining steps in a few kernel launches, which add the projection to the view'th one of fProj
 			prepareFusedType6(vv[ii].PSF, vv[ii].grid, inputScalars, proj, ii, vv[ii].dw, vv[ii].crop);
 			forwardViewFusedType6(fProj, kk, kuvaRot, useAtten ? &attRefs[ii] : nullptr, vv[ii].grid, vv[ii].PSF, vv[ii].crop, vv[ii].map, inputScalars, proj, ii, vv[ii].dw,
@@ -4974,6 +4997,9 @@ inline void backprojectionType6All(af::array& fProj, const Weighting& w_vec, AF_
 	const AttRefType6 noAtten;
 	int64_t u1 = uu + geomViewStartType6(w_vec, timestep);
 	for (int kk = 0; kk < length; kk++) {
+		// A failed rotation image stops the projection (the caller checks type6Status)
+		if (type6Status(proj) != 0)
+			return;
 		std::vector<ViewVolumeType6> vv(nV);
 		for (int ii = 0; ii < nV; ii++) {
 			vv[ii] = viewVolumeType6(w_vec, inputScalars, u1, ii);
@@ -5071,6 +5097,7 @@ inline int rotUploadType6(const af::array& im, RotWindow win, const scalarStruct
 	status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*im.device<cl_mem>(), true), proj.d_rotI[texSlot], 0, rotOrigin, rotRegion);
 	im.unlock();
 	if (status != 0) {
+		proj.type6Error = true;
 		getErrorString(status);
 		mexPrint("Failed to copy rotation image\n");
 		return -1;
@@ -5894,8 +5921,11 @@ inline void forwardProjectionType6AllBatched(af::array& fProj, const Weighting& 
 	}
 	// The parameter blocks of all the launches of this call are in one device buffer (see beginBatchParams): at most one block for each view and
 	// volume, and one for each view and attenuation group
-	if (proj.beginBatchParams(static_cast<int>(length) * (nV + static_cast<int>(groups.size()))) != 0)
+	if (proj.beginBatchParams(static_cast<int>(length) * (nV + static_cast<int>(groups.size()))) != 0) {
+		// Stops the projection like a failed rotation image (type6Status)
+		proj.type6Error = true;
 		return;
+	}
 	for (int64_t k0 = 0; k0 < length; k0 += bMax) {
 		const int nb = static_cast<int>((std::min)(static_cast<int64_t>(bMax), length - k0));
 		std::vector<std::vector<ViewVolumeType6>> vvb(nb, std::vector<ViewVolumeType6>(nV));
@@ -5957,12 +5987,18 @@ inline void forwardProjectionType6AllBatched(af::array& fProj, const Weighting& 
 		}
 		int baseOff = 0;
 		if (stage.blocks > 0) {
-			if (proj.uploadBatchParams(stage.host.data(), stage.blocks) != 0)
+			if (proj.uploadBatchParams(stage.host.data(), stage.blocks) != 0) {
+				// Stops the projection like a failed rotation image (type6Status)
+				proj.type6Error = true;
 				return;
+			}
 			baseOff = proj.prmOffBlocks;
 		}
 		attenuationBatchLaunchType6(attBatch, pendingAtt, true, attCache, attBudget, useAtten, baseOff, attenSrc, attUploaded, inputScalars, proj);
 		for (size_t oo = 0; oo < ops.size(); oo++) {
+			// A failed rotation image stops the projection (the caller checks type6Status)
+			if (type6Status(proj) != 0)
+				return;
 			const BatchOpType6& op = ops[oo];
 			const int ii = op.ii;
 			if (op.off >= 0) {
@@ -5975,6 +6011,8 @@ inline void forwardProjectionType6AllBatched(af::array& fProj, const Weighting& 
 			rotWin.allocQ = type6AllocQuantum;
 			af::array kuvaRot = rotateHelperType6(apuArr[ii], inputScalars, proj, -w_vec.swivelAngles[it.u1], it.offX, it.offY, ii, rotSlotEmissionType6 + ii, !emUploaded[ii], rotWin);
 			emUploaded[ii] = 1;
+			if (type6Status(proj) != 0)
+				return;
 			prepareFusedType6(vv.PSF, vv.grid, inputScalars, proj, ii, vv.dw, vv.crop);
 			forwardViewFusedType6(fProj, it.kk, kuvaRot, it.att, vv.grid, vv.PSF, vv.crop, vv.map, inputScalars, proj, ii, vv.dw, type6AllocQuantum);
 		}
@@ -6029,8 +6067,11 @@ inline void backprojectionType6AllBatched(af::array& fProj, const Weighting& w_v
 	const AttRefType6 noAtten;
 	// The parameter blocks of all the launches of this call are in one device buffer (see beginBatchParams): at most one block for each view and
 	// volume (twice with the sensitivity) and one for each view and attenuation group
-	if (proj.beginBatchParams(static_cast<int>(length) * ((compSens ? 2 : 1) * nV + static_cast<int>(groups.size()))) != 0)
+	if (proj.beginBatchParams(static_cast<int>(length) * ((compSens ? 2 : 1) * nV + static_cast<int>(groups.size()))) != 0) {
+		// Stops the projection like a failed rotation image (type6Status)
+		proj.type6Error = true;
 		return;
+	}
 	for (int64_t k0 = 0; k0 < length; k0 += bMax) {
 		const int nb = static_cast<int>((std::min)(static_cast<int64_t>(bMax), length - k0));
 		std::vector<std::vector<ViewVolumeType6>> vvb(nb, std::vector<ViewVolumeType6>(nV));
@@ -6094,12 +6135,18 @@ inline void backprojectionType6AllBatched(af::array& fProj, const Weighting& w_v
 		}
 		int baseOff = 0;
 		if (stage.blocks > 0) {
-			if (proj.uploadBatchParams(stage.host.data(), stage.blocks) != 0)
+			if (proj.uploadBatchParams(stage.host.data(), stage.blocks) != 0) {
+				// Stops the projection like a failed rotation image (type6Status)
+				proj.type6Error = true;
 				return;
+			}
 			baseOff = proj.prmOffBlocks;
 		}
 		attenuationBatchLaunchType6(attBatch, pendingAtt, false, attCache, 0, useAtten, baseOff, attenSrc, attUploaded, inputScalars, proj);
 		for (size_t oo = 0; oo < ops.size(); oo++) {
+			// A failed rotation image stops the projection (the caller checks type6Status)
+			if (type6Status(proj) != 0)
+				return;
 			const BatchOpType6& op = ops[oo];
 			const int ii = op.ii;
 			if (op.off >= 0) {
@@ -6520,8 +6567,11 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				mexPrintBase("w_vec.betaLSQR[timestep] = %f\n", w_vec.betaLSQR[timestep]);
 				mexEval();
 			}
-			if (inputScalars.projector_type == 6)
+			if (inputScalars.projector_type == 6) {
 				backprojectionType6(mData, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, ii, atten);
+				if (type6Status(proj) != 0)
+					return -1;
+			}
 			else {
 				if (inputScalars.BPType == 5) {
 					mDataApu = mData;
@@ -6564,8 +6614,11 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 			mData = mData.as(f32);
 			if (DEBUG || inputScalars.verbose >= 3)
 				mexPrint("Initializing BB");
-			if (inputScalars.projector_type == 6)
+			if (inputScalars.projector_type == 6) {
 				backprojectionType6(mData, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, ii, atten);
+				if (type6Status(proj) != 0)
+					return -1;
+			}
 			else {
 				if (inputScalars.BPType == 5) {
 					computeIntegralImage(inputScalars, w_vec, length[0], mData, meanBP);
@@ -6604,8 +6657,11 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 			mDataApu = mData.copy();
 			vec.fCGLS.emplace_back(vec.im_os[timestep][ii].copy());
 			proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]);
-			if (inputScalars.projector_type == 6)
+			if (inputScalars.projector_type == 6) {
 				backprojectionType6(mDataApu, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, ii, atten);
+				if (type6Status(proj) != 0)
+					return -1;
+			}
 			else {
 				if (inputScalars.BPType == 5) {
 					computeIntegralImage(inputScalars, w_vec, length[0], mDataApu, meanBP);
@@ -6690,6 +6746,8 @@ inline int computeACOSEMWeight(scalarStruct& inputScalars, std::vector<int64_t>&
 	else {
 		outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[osa_iter + inputScalars.subsets * timestep]);
 		forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[osa_iter + inputScalars.subsets * timestep], subSum, proj, 0, nullptr, timestep);
+		if (type6Status(proj) != 0)
+			return -1;
 	}
 	if (inputScalars.CT)
 		w_vec.ACOSEM_rhs = af::sum<float>(af::exp(-outputFP));
@@ -6738,6 +6796,8 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			if (inputScalars.projector_type == 6) {
 				outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[0]);
 				forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, 0, atten, timestep);
+				if (type6Status(proj) != 0)
+					return -1;
 				outputFP.eval();
 				outputFP = af::flat(outputFP);
 			}
@@ -6759,8 +6819,11 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				return -1;
 			computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
 			proj.memSize += (sizeof(float) * inputScalars.im_dim[0]);
-			if (inputScalars.projector_type == 6)
+			if (inputScalars.projector_type == 6) {
 				backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, 0, atten);
+				if (type6Status(proj) != 0)
+					return -1;
+			}
 			else
 				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, outputFP, 0, timestep, length, m_size, meanBP, g, proj, false, 0, pituus);
 			if (status != 0)
@@ -6795,6 +6858,8 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					// Every volume projects into the same measurement, so the result is flattened
 					// only after all of them are done
 					forwardProjectionType6All(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, atten, timestep);
+					if (type6Status(proj) != 0)
+						return -1;
 				}
 				else {
 					for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
@@ -6817,8 +6882,11 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 					proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]);
-					if (inputScalars.projector_type == 6)
+					if (inputScalars.projector_type == 6) {
 						backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, ii, atten);
+						if (type6Status(proj) != 0)
+							return -1;
+					}
 					else
 						status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, outputFP, 0, timestep, length, m_size, meanBP, g, proj, false, ii, pituus);
 					if (status != 0)
@@ -6929,6 +6997,8 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 						// Every volume projects into the same measurement, so the result is flattened
 						// only after all of them are done
 						forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, ii, atten, timestep);
+						if (type6Status(proj) != 0)
+							return -1;
 					}
 					else {
 						status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, timestep, length, g, m_size, proj, ii, pituus);
@@ -6950,8 +7020,11 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
 				for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++) {
 					proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]);
-					if (inputScalars.projector_type == 6)
+					if (inputScalars.projector_type == 6) {
 						backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, ii, atten);
+						if (type6Status(proj) != 0)
+							return -1;
+					}
 					else
 						status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, outputFP, 0, timestep, length, m_size, meanBP, g, proj, false, ii, pituus);
 					if (status != 0)
@@ -7057,6 +7130,8 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				if (inputScalars.projector_type == 6) {
 					outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[0]);
 					forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, 0, atten, timestep);
+					if (type6Status(proj) != 0)
+						return -1;
 					outputFP.eval();
 					outputFP = af::flat(outputFP);
 				}
@@ -7077,8 +7152,11 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				if (status != 0)
 					return -1;
 				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
-				if (inputScalars.projector_type == 6)
+				if (inputScalars.projector_type == 6) {
 					backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, 0, atten);
+					if (type6Status(proj) != 0)
+						return -1;
+				}
 				else
 					status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, outputFP, 0, timestep, length, m_size, meanBP, g, proj, false, 0, pituus);
 				if (status != 0)
@@ -7112,6 +7190,8 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 						// Every volume projects into the same measurement, so the result is flattened
 						// only after all of them are done
 						forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, ii, atten, timestep);
+						if (type6Status(proj) != 0)
+							return -1;
 					}
 					else {
 						status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, timestep, length, g, m_size, proj, ii, pituus);
@@ -7132,8 +7212,11 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					return -1;
 				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-					if (inputScalars.projector_type == 6)
+					if (inputScalars.projector_type == 6) {
 						backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, ii, atten);
+						if (type6Status(proj) != 0)
+							return -1;
+					}
 					else
 						status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, outputFP, 0, timestep, length, m_size, meanBP, g, proj, false, ii, pituus);
 					if (status != 0)

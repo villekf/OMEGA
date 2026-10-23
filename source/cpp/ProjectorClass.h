@@ -730,7 +730,36 @@ class ProjectorClass {
 		STATUS_t status = cuArray3DCreate(&array, &arrDesc);
 		if (status != CUDA_SUCCESS)
 			return status;
-		return createCudaTextureFromArray(texture, array, spec, true);
+		status = createCudaTextureFromArray(texture, array, spec, true);
+		// Nothing is left behind when the texture cannot be made
+		if (status != CUDA_SUCCESS) {
+			cuArrayDestroy(array);
+			array = nullptr;
+		}
+		return status;
+	}
+
+	// Whether the rotation image of the type-6 projector can be made on this device: a 3D float array with a linearly filtered texture
+	// (unnormalized coordinates, clamped), as transferRotTex makes it. HIP refuses the linear filter of a 3D texture on gfx90a (MI200 series)
+	// with hipErrorNotSupported (see the note of hipCreateTextureObject in the HIP texture management reference), while the point filtered
+	// textures of the other projectors work there. The format and the filter decide it, not the size, so a small image is enough. errCode
+	// gets the error of the failed creation
+	inline bool rotTextureSupported(STATUS_t& errCode) const {
+		TEX3D_t tex{};
+		TEXARRAY_t arr{};
+		const auto spec = cudaFloatTextureSpec(8, 8, 8, BACKEND_TEXTURE_LINEAR, BACKEND_TEXTURE_DEFAULT_FLAGS);
+		errCode = createCudaTexture3DEmpty(tex, arr, spec);
+		if (errCode != CUDA_SUCCESS) {
+#if defined(HIP)
+			// Every failed HIP call is also kept as the last error of the thread, which the next check of it (e.g. after a kernel launch) would
+			// report instead
+			(void)hipGetLastError();
+#endif
+			return false;
+		}
+		cuTexObjectDestroy(tex);
+		cuArrayDestroy(arr);
+		return true;
 	}
 
 	// Copies device memory into an already created CUDA array. srcHeight/srcDepth give the size of the
@@ -2684,6 +2713,12 @@ public:
 	TEX3D_t d_rotI[rotSlotsType6];
 	TEXARRAY_t rotArray[rotSlotsType6];
 	bool rotTexInit[rotSlotsType6] = { false };
+	// Set when a rotation image of the type-6 projector could not be created or filled, or a rotation (or the upload of the parameters of a
+	// batch of views) could not be launched. No rotation is launched after that (rotImageReady), and the callers of the projector, which
+	// returns nothing, stop with an error (type6Status in functions.hpp)
+	bool type6Error = false;
+	// TYPE6_FORCE_TEX_FAIL (type6ForceTexFailEnv in precomp.h), read by addProjector
+	int forceTexFail6 = 0;
 	TEXARRAY_t atArray, uRefArray, maskArrayBP, maskArrayPrior, BPArray, FPArray, integArrayXY, imArray;
 	std::vector<TEX3D_t> d_attenIm;
 #if defined(CUDA) || defined(HIP)
@@ -3261,6 +3296,20 @@ public:
 	}
 #endif // END METAL
 
+	// Whether the type-6 (rotation-based SPECT) projector is used
+	static inline bool usesType6(const scalarStruct& inputScalars) {
+		return inputScalars.projector_type == 6 || inputScalars.FPType == 6 || inputScalars.BPType == 6;
+	}
+
+	// The rotation images of the type-6 projector cannot be made on this device (see rotTextureSupported): the projector uses buffers
+	// instead, for both projections and every rotation, which is the same as options.useImages = false. It has to be decided before the
+	// kernels are compiled, since they are compiled for either images or buffers (USEIMAGES)
+	inline void rotImagesFallbackType6(scalarStruct& inputScalars, const char* reason) {
+		inputScalars.useImages = false;
+		mexPrintBase("Warning: %s. The SPECT projector type 6 uses buffers instead of textures for the rotation, the same as useImages = false\n", reason);
+		mexEval();
+	}
+
 	/// <summary>
 	/// This function creates the projector class object
 	/// </summary>
@@ -3360,6 +3409,27 @@ public:
 		// CUDA runtime API
 		CLCommandQueue.push_back(reinterpret_cast<CUstream>(0));
 #endif
+		// The rotation images of the type-6 projector are linearly filtered 3D textures, which HIP does not make on gfx90a (see
+		// rotTextureSupported). Checked here, once, before the kernels are compiled, so that both projections and every rotation use
+		// the same (images or buffers)
+		type6Error = false;
+		forceTexFail6 = type6ForceTexFailEnv();
+		if (usesType6(inputScalars) && inputScalars.useImages) {
+			STATUS_t texStatus = SUCCESS_VALUE;
+			if (forceTexFail6 == 1)
+				rotImagesFallbackType6(inputScalars, "TYPE6_FORCE_TEX_FAIL=1 is set, so the rotation textures are treated as not supported");
+			else if (!rotTextureSupported(texStatus)) {
+#if defined(HIP)
+				const char* texErr = hipGetErrorString(texStatus);
+#else
+				const char* texErr = nullptr;
+				if (cuGetErrorString(texStatus, &texErr) != CUDA_SUCCESS || texErr == nullptr)
+					texErr = "unknown error";
+#endif
+				const std::string reason = std::string("This device cannot create the linearly filtered 3D float texture of the rotation (") + texErr + ")";
+				rotImagesFallbackType6(inputScalars, reason.c_str());
+			}
+		}
 
 		status2 = createProgram(programFP, programBP, programAux, header_directory, inputScalars, MethodList, w_vec, local_size, type);
 		if (status2 != NVRTC_SUCCESS) {
@@ -3386,6 +3456,18 @@ public:
 		const cl_device_type devType = CLDeviceID[0].getInfo<CL_DEVICE_TYPE>(&status);
 		if ((devType & CL_DEVICE_TYPE_CPU) && inputScalars.useImages) {
 			inputScalars.useImages = false;
+		}
+		// The rotation images of the type-6 projector need image support (see the CUDA/HIP check above). Checked before the kernels are
+		// compiled, so that both projections and every rotation use the same (images or buffers)
+		type6Error = false;
+		forceTexFail6 = type6ForceTexFailEnv();
+		if (usesType6(inputScalars) && inputScalars.useImages) {
+			cl_int imStatus = CL_SUCCESS;
+			const cl_bool imageSupport = CLDeviceID[0].getInfo<CL_DEVICE_IMAGE_SUPPORT>(&imStatus);
+			if (forceTexFail6 == 1)
+				rotImagesFallbackType6(inputScalars, "TYPE6_FORCE_TEX_FAIL=1 is set, so the rotation images are treated as not supported");
+			else if (imStatus != CL_SUCCESS || imageSupport != CL_TRUE)
+				rotImagesFallbackType6(inputScalars, "This device does not support images (CL_DEVICE_IMAGE_SUPPORT)");
 		}
 		// For NVIDIA cards, 32 local size seems more optimal with 1D kernelFP (unless the user gave an explicit value)
 		std::string deviceName = CLDeviceID[0].getInfo<CL_DEVICE_VENDOR>(&status);
@@ -3692,8 +3774,17 @@ public:
 				int maxNx = 0, maxNy = 0, maxNz = 0;
 				rotGridMaxType6(inputScalars, maxNx, maxNy, maxNz);
 				CREATE_FLOAT_TEXTURE3D_EMPTY(d_rotI[0], rotArray[0], maxNx, maxNy, maxNz);
+#if defined(OPENCL)
+				// The forced failure of TYPE6_FORCE_TEX_FAIL=2 (CUDA/HIP make these images in transferRotTex, the macro does nothing there)
+				if (forceTexFail6 == 2)
+					status = CL_INVALID_OPERATION;
+#endif
+				if (status != SUCCESS_VALUE)
+					type6Error = true;
 				CHECK(status, "Failed to create rotation image\n", (STATUS_t)(-1));
 				CREATE_FLOAT_TEXTURE3D_EMPTY(d_rotI[1], rotArray[1], maxNx, maxNy, maxNz);
+				if (status != SUCCESS_VALUE)
+					type6Error = true;
 				CHECK(status, "Failed to create rotation image\n", (STATUS_t)(-1));
 			}
 #endif
@@ -8343,6 +8434,8 @@ public:
 		// outSz each, the source is the buffer d_im or the image texSlot (as in rotateCustom). maxNxW, maxNy and maxNz are the largest
 		// window of the views
 		inline int rotateBatch(const scalarStruct & inputScalars, int nb, int maxNxW, int maxNy, int maxNz, int outSx, int outSy, int outSz, const int texSlot) {
+			if (!rotImageReady(inputScalars, texSlot))
+				return -1;
 			STATUS_t status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 			std::vector<void*> kArgs;
@@ -8370,9 +8463,13 @@ public:
 			KARG(kArgs, kernelRotateB, kernelIndRot, nzB);
 #if defined(CUDA) || defined(HIP)
 			status = cuLaunchKernel(kernelRotateB, globalB[0], globalB[1], globalB[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+			if (status != SUCCESS_VALUE)
+				type6Error = true;
 			CUDA_CHECK(status, "Failed to launch the batched bilinear image rotation kernel\n", -1);
 #elif defined(OPENCL)
 			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelRotateB, cl::NullRange, globalB, localPrior);
+			if (status != SUCCESS_VALUE)
+				type6Error = true;
 			OCL_CHECK(status, "Failed to launch the batched bilinear image rotation kernel\n", -1);
 #endif // END CUDA
 			return 0;
@@ -8589,6 +8686,28 @@ public:
 			return 0;
 		}
 
+	// Whether the rotation kernels may read the source of slot texSlot: no rotation image has failed before (type6Error), and with images the
+	// one of the slot has been created (CUDA/HIP: transferRotTex, OpenCL: createBuffers or ensureRotImage). A rotation that samples a texture
+	// that was never created reads an invalid texture object, which is a memory access fault of the GPU and not an error that the launch
+	// would return. Prints the reason the first time
+	inline bool rotImageReady(const scalarStruct& inputScalars, const int texSlot) {
+		if (type6Error)
+			return false;
+		if (inputScalars.useBuffers)
+			return true;
+#if defined(CUDA) || defined(HIP)
+		const bool ready = texSlot >= 0 && texSlot < rotSlotsType6 && rotTexInit[texSlot];
+#elif defined(OPENCL)
+		const bool ready = texSlot >= 0 && texSlot < rotSlotsType6 && d_rotI[texSlot]() != nullptr;
+#endif
+		if (!ready) {
+			mexPrintBase("The rotation image %d of the SPECT projector type 6 has not been created, the projection is stopped\n", texSlot);
+			mexEval();
+			type6Error = true;
+		}
+		return ready;
+	}
+
 	// Rotates (and, for multi-resolution volumes, translates and resamples onto the rotation-axis-
 	// centered grid) the source selected by texSlot (0 = emission volume, 1 = attenuation volume; see
 	// transferRotTex) by cosa/sina around its own center, with an additional (offX, offY) voxel shift.
@@ -8599,6 +8718,8 @@ public:
 	inline int rotateCustom(const scalarStruct & inputScalars, float cosa, float sina, float offX, float offY, RotWindow win, const int texSlot = 0, int accumulate = 0) {
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrint("Starting " BACKEND_STR " bilinear image rotation computation");
+		if (!rotImageReady(inputScalars, texSlot))
+			return -1;
 		STATUS_t status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
@@ -8672,11 +8793,15 @@ public:
 		// Compute the kernel
 #if defined(CUDA) || defined(HIP)
 		status = cuLaunchKernel(kernelRotate, global[0], global[1], global[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+		if (status != SUCCESS_VALUE)
+			type6Error = true;
 		CUDA_CHECK(status, "Failed to launch the bilinear image rotation kernel\n", -1);
 		//FINISH_QUEUE(status, "Queue finish failed after bilinear image rotation kernel\n", -1);
 		// The texture is kept alive and reused by the next projection, see transferRotTex
 #elif defined(OPENCL)
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelRotate, cl::NullRange, global, localPrior);
+		if (status != SUCCESS_VALUE)
+			type6Error = true;
 		OCL_CHECK(status, "Failed to launch the bilinear image rotation kernel\n", -1);
 		//FINISH_QUEUE(status, "Queue finish failed after bilinear image rotation kernel\n", -1);
 #endif // END CUDA
@@ -8691,12 +8816,25 @@ public:
 	// rotSlotEmissionType6 on, see precomp.h), when it is first used. It holds the whole source of the rotation, win.srcNx x
 	// win.srcNyFull x win.srcNzFull. The two slots of the volume-by-volume projector are made with the other images instead
 	inline int ensureRotImage(const RotWindow& win, const int texSlot) {
+		if (type6Error)
+			return -1;
 		if (texSlot < rotSlotEmissionType6 || rotTexInit[texSlot])
 			return 0;
 		cl_int status = CL_SUCCESS;
-		d_rotI[texSlot] = TEX3D_t(CLContext, CL_MEM_READ_ONLY, format, static_cast<::size_t>(win.srcNx), static_cast<::size_t>(win.srcNyFull),
-			static_cast<::size_t>(win.srcNzFull), 0, 0, NULL, &status);
-		OCL_CHECK(status, "Failed to create the rotation image\n", -1);
+		// TYPE6_FORCE_TEX_FAIL=2 makes the creation fail, for testing the error path
+		if (forceTexFail6 == 2)
+			status = CL_INVALID_OPERATION;
+		else
+			d_rotI[texSlot] = TEX3D_t(CLContext, CL_MEM_READ_ONLY, format, static_cast<::size_t>(win.srcNx), static_cast<::size_t>(win.srcNyFull),
+				static_cast<::size_t>(win.srcNzFull), 0, 0, NULL, &status);
+		if (status != CL_SUCCESS) {
+			type6Error = true;
+			d_rotI[texSlot] = TEX3D_t();
+			getErrorString(status);
+			mexPrintBase("Failed to create the rotation image of the SPECT projector type 6 (%d x %d x %d voxels), the projection is stopped. ", win.srcNx, win.srcNyFull, win.srcNzFull);
+			mexPrint("Set options.useImages = false to use buffers instead\n");
+			return -1;
+		}
 		rotTexInit[texSlot] = true;
 		return 0;
 	}
@@ -8730,6 +8868,8 @@ public:
 	// ArrayFire's non-blocking stream, which is a race that can make the rotated source stale
 	inline int transferRotTex(const scalarStruct & inputScalars, CUdeviceptr * input, const RotWindow& win, const int texSlot = 0) {
 		STATUS_t status = SUCCESS_VALUE;
+		if (type6Error)
+			return -1;
 		if (!rotTexInit[texSlot]) {
 			int maxNx = 0, maxNy = 0, maxNz = 0;
 			if (texSlot < rotSlotEmissionType6) {
@@ -8745,8 +8885,26 @@ public:
 			const auto arraySpec = cudaFloatTextureSpec(maxNy, maxNx, maxNz,
 				BACKEND_TEXTURE_LINEAR, BACKEND_TEXTURE_DEFAULT_FLAGS);
 			// Created empty, since the very first upload may already be a band
-			status = createCudaTexture3DEmpty(d_rotI[texSlot], rotArray[texSlot], arraySpec);
-			CUDA_CHECK(status, "Failed to create the rotation image\n", -1);
+			// TYPE6_FORCE_TEX_FAIL=2 makes the creation fail, for testing the error path
+			if (forceTexFail6 == 2)
+#if defined(HIP)
+				status = hipErrorNotSupported;
+#else
+				status = CUDA_ERROR_NOT_SUPPORTED;
+#endif
+			else
+				status = createCudaTexture3DEmpty(d_rotI[texSlot], rotArray[texSlot], arraySpec);
+			if (status != CUDA_SUCCESS) {
+				// Nothing was created (see createCudaTexture3DEmpty), and no rotation reads the slot from now on (rotImageReady)
+				type6Error = true;
+				getErrorString(status);
+#if defined(HIP)
+				(void)hipGetLastError();
+#endif
+				mexPrintBase("Failed to create the rotation image of the SPECT projector type 6 (%d x %d x %d voxels, linear filtering), the projection is stopped. ", maxNx, maxNy, maxNz);
+				mexPrint("Set options.useImages = false to use buffers instead\n");
+				return -1;
+			}
 			rotTexInit[texSlot] = true;
 		}
 		// The copy follows the source, not the array, so that only the band is transferred
@@ -8758,6 +8916,8 @@ public:
 		const size_t bandZ = win.srcNz <= 0 ? static_cast<size_t>(win.srcNzFull) : static_cast<size_t>(win.srcNz);
 		status = copyCudaArray3DFromDevice(rotArray[texSlot], reinterpret_cast<CUdeviceptr>(input), copySpec,
 			bandY, bandZ, static_cast<size_t>(win.srcY), static_cast<size_t>(win.srcZ), CLCommandQueue[0], static_cast<size_t>(win.srcX));
+		if (status != CUDA_SUCCESS)
+			type6Error = true;
 		CUDA_CHECK(status, "Image copy failed\n", -1);
 		return 0;
 	}
