@@ -53,10 +53,16 @@ DEFUN_DLD(createSinogramASCIIOct, prhs, nargout, "ASCII to sinogram help") {
 	const int32_t nDistSide = prhs(23).int32_scalar_value();
 	const int32_t detWPseudo = prhs(24).int32_scalar_value();
 	const int32_t nPseudos = prhs(25).int32_scalar_value();
-	const int32_t crystPerBlock = prhs(26).int32_scalar_value();
+	// Crystals per block transaxially and axially of each layer (nLayers elements each)
+	uint32NDArray crystPerBlockA = prhs(26).uint32_array_value();
 	const int32_t nLayers = prhs(27).int32_scalar_value();
 	uint8NDArray layers1 = prhs(28).uint8_array_value();
 	uint8NDArray layers2 = prhs(29).uint8_array_value();
+	uint32NDArray crystPerBlockZA = prhs(30).uint32_array_value();
+	// Number of blocks transaxially in a ring (blocks_per_ring * transaxial_multip)
+	const uint32_t nBlocksRing = prhs(31).uint32_scalar_value();
+	if (crystPerBlockA.numel() < std::max<int32_t>(nLayers, 1) || crystPerBlockZA.numel() < std::max<int32_t>(nLayers, 1))
+		error("The crystals per block must be input for each layer");
 
 	bool storeTrues = false;
 	bool storeScatter = false;
@@ -78,6 +84,8 @@ DEFUN_DLD(createSinogramASCIIOct, prhs, nargout, "ASCII to sinogram help") {
 	const uint16_t* ring_number2 = reinterpret_cast<uint16_t*>(ringNumber2.fortran_vec());
 	const uint8_t* layer1 = reinterpret_cast<uint8_t*>(layers1.fortran_vec());
 	const uint8_t* layer2 = reinterpret_cast<uint8_t*>(layers2.fortran_vec());
+	const uint32_t* crystPerBlock = reinterpret_cast<uint32_t*>(crystPerBlockA.fortran_vec());
+	const uint32_t* crystPerBlockZ = reinterpret_cast<uint32_t*>(crystPerBlockZA.fortran_vec());
 
 	const uint32_t* seg_p = reinterpret_cast<uint32_t*>(seg.fortran_vec());
 	const uint16_t* bins_p = reinterpret_cast<uint16_t*>(bins.fortran_vec());
@@ -99,7 +107,7 @@ DEFUN_DLD(createSinogramASCIIOct, prhs, nargout, "ASCII to sinogram help") {
 
 	openMPSino(ring_pos1, ring_pos2, ring_number1, ring_number2, tIndex, cIndex, rIndex, sinoSize, Ndist, Nang, ringDifference,
 		span, seg_p, tPoint, NT, TOFSize, Sino, SinoT, SinoC, SinoR, storeTrues, storeScatter, storeRandoms, detPerRing, rings, koko,
-		bins_p, nDistSide, pituus, detWPseudo, nPseudos, crystPerBlock, layer1, layer2, nLayers);
+		bins_p, nDistSide, pituus, detWPseudo, nPseudos, crystPerBlock, crystPerBlockZ, nBlocksRing, layer1, layer2, nLayers);
 
 	octave_value_list retval(nargout);
 

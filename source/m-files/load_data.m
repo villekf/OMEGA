@@ -717,6 +717,18 @@ elseif options.use_machine == 0
         time_index = ascii_ind.time_index;
         source_index1 = ascii_ind.source_index1;
         source_index2 = ascii_ind.source_index2;
+        % Crystals per block transaxially and axially of each layer (one value is used for all the layers if only one is input) and
+        % the number of blocks transaxially in a ring. These are used in the detector indices and in the sinogram creation, where
+        % the layers are mapped to a common block structure (the same as in the ROOT import)
+        asciiCryst = uint32(options.cryst_per_block(:));
+        asciiCrystZ = uint32(options.cryst_per_block_axial(:));
+        if numel(asciiCryst) < options.nLayers
+            asciiCryst = repmat(asciiCryst(1), options.nLayers, 1);
+        end
+        if numel(asciiCrystZ) < options.nLayers
+            asciiCrystZ = repmat(asciiCrystZ(1), options.nLayers, 1);
+        end
+        asciiBlocksRing = uint32(options.blocks_per_ring(1) * transaxial_multip);
         % det_per_ring = options.det_per_ring;
         no_submodules = true;
         truesScatter = [true;true;true;true];
@@ -1019,57 +1031,59 @@ elseif options.use_machine == 0
             % [0 rings - 1]
             % if int_loc(1) > 0
             % No modules
-            if options.nLayers > 1
-                layer1 = uint8(M(:,ascii_ind.layer_ind2));
-                layer2 = uint8(M(:,ascii_ind.layer_ind1));
-            else
-                layer1 = uint8(0);
-                layer2 = uint8(0);
-            end
-            if (ascii_ind.module_ind1 == 0 || ascii_ind.module_ind2 == 0) && options.linear_multip > 1 && no_submodules
-                ring_number1 = uint16(floor(M(:,rsector_ind1) / blocks_per_ring) * cryst_per_block_z + floor(M(:,crs_ind1)/cryst_per_block));
-                ring_number2 = uint16(floor(M(:,rsector_ind2) / blocks_per_ring) * cryst_per_block_z + floor(M(:,crs_ind2)/cryst_per_block));
+            % Crystal ID, crystals per block (transaxially, axially) and the layer of each end of the coincidence. When there are
+            % multiple layers, the crystals per block can be different for each layer and are thus vectors (one value for each
+            % event). The layers are mapped to a common block structure in the sinogram creation (the same as in the ROOT import)
+            [crs1, crs2, cpb1, cpb2, cpbz1, cpbz2, noSub, layerID1, layerID2] = asciiLayerBlocks(M, ascii_ind, options.nLayers, asciiCryst, asciiCrystZ, ...
+                options.dualLayerSubmodule, no_submodules);
+            % The sinogram creation code uses the combination (layer1, layer2) = (layer of the second, layer of the first
+            % detector), the same as the ROOT import, where the combination is formed from (layerID2, layerID1)
+            layer1 = layerID2;
+            layer2 = layerID1;
+            if (ascii_ind.module_ind1 == 0 || ascii_ind.module_ind2 == 0) && options.linear_multip > 1 && noSub
+                ring_number1 = uint16(floor(M(:,rsector_ind1) / blocks_per_ring) .* cpbz1 + floor(crs1 ./ cpb1));
+                ring_number2 = uint16(floor(M(:,rsector_ind2) / blocks_per_ring) .* cpbz2 + floor(crs2 ./ cpb2));
                 % Only a single ring
             elseif options.rings == 1
                 ring_number1 = zeros(size(M,1),1,'uint16');
                 ring_number2 = zeros(size(M,1),1,'uint16');
                 % No modules and no repeated axial rings
-            elseif (ascii_ind.module_ind1 == 0 || ascii_ind.module_ind2 == 0) && options.linear_multip == 1 && no_submodules
+            elseif (ascii_ind.module_ind1 == 0 || ascii_ind.module_ind2 == 0) && options.linear_multip == 1 && noSub
                 ring_number1 = uint16(M(:,rsector_ind1));
                 ring_number2 = uint16(M(:,rsector_ind2));
                 % No repeated axial rings (modules)
-            elseif options.linear_multip == 1 && no_submodules
+            elseif options.linear_multip == 1 && noSub
                 ring_number1 = uint16(M(:,ascii_ind.module_ind1));
                 ring_number2 = uint16(M(:,ascii_ind.module_ind2));
                 % No repeated axial rings (submodules)
-            elseif options.linear_multip == 1 && ~no_submodules
+            elseif options.linear_multip == 1 && ~noSub
                 ring_number1 = uint16(M(:,ascii_ind.submodule_ind1));
                 ring_number2 = uint16(M(:,ascii_ind.submodule_ind2));
-            elseif ~no_submodules
+            elseif ~noSub
                 if transaxial_multip > 1
-                    ring_number1 = uint16(mod(floor(M(:,ascii_ind.submodule_ind1) / transaxial_multip), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind1) / cryst_per_block));
-                    ring_number2 = uint16(mod(floor(M(:,ascii_ind.submodule_ind2) / transaxial_multip), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind2) / cryst_per_block));
+                    ring_number1 = uint16(mod(floor(M(:,ascii_ind.submodule_ind1) / transaxial_multip), options.linear_multip) .* cpbz1 + floor(crs1 ./ cpb1));
+                    ring_number2 = uint16(mod(floor(M(:,ascii_ind.submodule_ind2) / transaxial_multip), options.linear_multip) .* cpbz2 + floor(crs2 ./ cpb2));
                 else
-                    ring_number1 = uint16(mod(M(:,ascii_ind.submodule_ind1), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind1) / cryst_per_block));
-                    ring_number2 = uint16(mod(M(:,ascii_ind.submodule_ind2), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind2) / cryst_per_block));
+                    ring_number1 = uint16(mod(M(:,ascii_ind.submodule_ind1), options.linear_multip) .* cpbz1 + floor(crs1 ./ cpb1));
+                    ring_number2 = uint16(mod(M(:,ascii_ind.submodule_ind2), options.linear_multip) .* cpbz2 + floor(crs2 ./ cpb2));
                 end
                 % "Normal" case
             else
                 if transaxial_multip > 1
                     if options.axial_multip > 1
-                        ring_number1 = uint16(floor(M(:,rsector_ind1) / blocks_per_ring) * cryst_per_block_z * options.axial_multip + ((floor(M(:,ascii_ind.module_ind1) / transaxial_multip)) * cryst_per_block + (floor(M(:,crs_ind1) / cryst_per_block))));
-                        ring_number2 = uint16(floor(M(:,rsector_ind2) / blocks_per_ring) * cryst_per_block_z * options.axial_multip + ((floor(M(:,ascii_ind.module_ind2) / transaxial_multip)) * cryst_per_block + (floor(M(:,crs_ind2) / cryst_per_block))));
+                        ring_number1 = uint16(floor(M(:,rsector_ind1) / blocks_per_ring) .* cpbz1 * options.axial_multip + ((floor(M(:,ascii_ind.module_ind1) / transaxial_multip)) .* cpb1 + (floor(crs1 ./ cpb1))));
+                        ring_number2 = uint16(floor(M(:,rsector_ind2) / blocks_per_ring) .* cpbz2 * options.axial_multip + ((floor(M(:,ascii_ind.module_ind2) / transaxial_multip)) .* cpb2 + (floor(crs2 ./ cpb2))));
                     else
-                        ring_number1 = uint16(mod(floor(M(:,ascii_ind.module_ind1) / transaxial_multip), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind1) / cryst_per_block));
-                        ring_number2 = uint16(mod(floor(M(:,ascii_ind.module_ind2) / transaxial_multip), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind2) / cryst_per_block));
+                        ring_number1 = uint16(mod(floor(M(:,ascii_ind.module_ind1) / transaxial_multip), options.linear_multip) .* cpbz1 + floor(crs1 ./ cpb1));
+                        ring_number2 = uint16(mod(floor(M(:,ascii_ind.module_ind2) / transaxial_multip), options.linear_multip) .* cpbz2 + floor(crs2 ./ cpb2));
                     end
                 else
                     if options.axial_multip > 1
-                        ring_number1 = uint16(floor(M(:,rsector_ind1) / blocks_per_ring) * cryst_per_block_z * options.axial_multip + ((floor(M(:,ascii_ind.module_ind1))) * cryst_per_block + (floor(M(:,crs_ind1) / cryst_per_block))));
-                        ring_number2 = uint16(floor(M(:,rsector_ind2) / blocks_per_ring) * cryst_per_block_z * options.axial_multip + ((floor(M(:,ascii_ind.module_ind2))) * cryst_per_block + (floor(M(:,crs_ind2) / cryst_per_block))));
+                        ring_number1 = uint16(floor(M(:,rsector_ind1) / blocks_per_ring) .* cpbz1 * options.axial_multip + ((floor(M(:,ascii_ind.module_ind1))) .* cpb1 + (floor(crs1 ./ cpb1))));
+                        ring_number2 = uint16(floor(M(:,rsector_ind2) / blocks_per_ring) .* cpbz2 * options.axial_multip + ((floor(M(:,ascii_ind.module_ind2))) .* cpb2 + (floor(crs2 ./ cpb2))));
                     else
-                        ring_number1 = uint16(mod(M(:,ascii_ind.module_ind1), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind1) / cryst_per_block));
-                        ring_number2 = uint16(mod(M(:,ascii_ind.module_ind2), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind2) / cryst_per_block));
+                        ring_number1 = uint16(mod(M(:,ascii_ind.module_ind1), options.linear_multip) .* cpbz1 + floor(crs1 ./ cpb1));
+                        ring_number2 = uint16(mod(M(:,ascii_ind.module_ind2), options.linear_multip) .* cpbz2 + floor(crs2 ./ cpb2));
                     end
                 end
             end
@@ -1078,16 +1092,16 @@ elseif options.use_machine == 0
             % detector number 54 on ring 5)
             % [0 det_per_ring - 1]
             if transaxial_multip > 1
-                if no_submodules
-                    ring_pos1 = uint16(mod(M(:,rsector_ind1), blocks_per_ring) * cryst_per_block * transaxial_multip + mod(M(:,crs_ind1), cryst_per_block) + mod(M(:,ascii_ind.module_ind1), transaxial_multip) * cryst_per_block);
-                    ring_pos2 = uint16(mod(M(:,rsector_ind2), blocks_per_ring) * cryst_per_block * transaxial_multip + mod(M(:,crs_ind2), cryst_per_block) + mod(M(:,ascii_ind.module_ind2), transaxial_multip) * cryst_per_block);
+                if noSub
+                    ring_pos1 = uint16(mod(M(:,rsector_ind1), blocks_per_ring) .* cpb1 * transaxial_multip + mod(crs1, cpb1) + mod(M(:,ascii_ind.module_ind1), transaxial_multip) .* cpb1);
+                    ring_pos2 = uint16(mod(M(:,rsector_ind2), blocks_per_ring) .* cpb2 * transaxial_multip + mod(crs2, cpb2) + mod(M(:,ascii_ind.module_ind2), transaxial_multip) .* cpb2);
                 else
-                    ring_pos1 = uint16(mod(M(:,rsector_ind1), blocks_per_ring) * cryst_per_block * transaxial_multip + mod(M(:,crs_ind1), cryst_per_block) + mod(M(:,ascii_ind.submodule_ind1), transaxial_multip) * cryst_per_block);
-                    ring_pos2 = uint16(mod(M(:,rsector_ind2), blocks_per_ring) * cryst_per_block * transaxial_multip + mod(M(:,crs_ind2), cryst_per_block) + mod(M(:,ascii_ind.submodule_ind2), transaxial_multip) * cryst_per_block);
+                    ring_pos1 = uint16(mod(M(:,rsector_ind1), blocks_per_ring) .* cpb1 * transaxial_multip + mod(crs1, cpb1) + mod(M(:,ascii_ind.submodule_ind1), transaxial_multip) .* cpb1);
+                    ring_pos2 = uint16(mod(M(:,rsector_ind2), blocks_per_ring) .* cpb2 * transaxial_multip + mod(crs2, cpb2) + mod(M(:,ascii_ind.submodule_ind2), transaxial_multip) .* cpb2);
                 end
             else
-                ring_pos1 = uint16(mod(M(:,rsector_ind1), blocks_per_ring) * cryst_per_block + mod(M(:,crs_ind1), cryst_per_block));
-                ring_pos2 = uint16(mod(M(:,rsector_ind2), blocks_per_ring) * cryst_per_block + mod(M(:,crs_ind2), cryst_per_block));
+                ring_pos1 = uint16(mod(M(:,rsector_ind1), blocks_per_ring) .* cpb1 + mod(crs1, cpb1));
+                ring_pos2 = uint16(mod(M(:,rsector_ind2), blocks_per_ring) .* cpb2 + mod(crs2, cpb2));
             end
 
             % if options.store_raw_data
@@ -1222,13 +1236,13 @@ elseif options.use_machine == 0
                             logical(randoms_index), sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ... % 13
                             uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), tIndexC, uint64(Nt), ... % 17
                             int32(options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM, SinTrues, SinScatter, SinRandoms, int32(options.ndist_side),... % 26
-                            int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block), int32(options.nLayers), layer1, layer2); % 32
+                            int32(options.det_w_pseudo), int32(sum(options.pseudot)), asciiCryst, int32(options.nLayers), layer1, layer2, asciiCrystZ, asciiBlocksRing); % 32
                     elseif exist('OCTAVE_VERSION','builtin') == 5
                         [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCIIOct(ring_pos1, ring_pos2, ring_number1, ring_number2, trues_index, scatter_index, ... % 7
                             randoms_index, sinoSize, (options.Ndist), (options.Nang), (options.ring_difference), (options.span), ... % 13
                             uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), tIndexC, Nt, ... % 17
                             (options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM, SinTrues, SinScatter, SinRandoms, (options.ndist_side),... % 26
-                            (options.det_w_pseudo), int32(sum(options.pseudot)), (options.cryst_per_block), options.nLayers, layer1, layer2); % 32
+                            (options.det_w_pseudo), int32(sum(options.pseudot)), asciiCryst, int32(options.nLayers), layer1, layer2, asciiCrystZ, asciiBlocksRing); % 32
                         % else
                         %     [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCIICPP(vali, ring_pos1, ring_pos2, ring_number1, ring_number2, trues_index, scatter_index, ...
                         %         randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
@@ -1348,50 +1362,56 @@ elseif options.use_machine == 0
                 end
 
                 % No modules
-                if (ascii_ind.module_ind1 == 0 || ascii_ind.module_ind2 == 0) && options.linear_multip > 1 && no_submodules
-                    ring_number1 = uint16(floor(M(:,rsector_ind1) / blocks_per_ring) * cryst_per_block_z + floor(M(:,crs_ind1)/cryst_per_block));
-                    ring_number2 = uint16(floor(M(:,rsector_ind2) / blocks_per_ring) * cryst_per_block_z + floor(M(:,crs_ind2)/cryst_per_block));
+                % Crystal ID, crystals per block (transaxially, axially) and the layer of each end of the coincidence, see above
+                [crs1, crs2, cpb1, cpb2, cpbz1, cpbz2, noSub, layerID1, layerID2] = asciiLayerBlocks(M, ascii_ind, options.nLayers, asciiCryst, asciiCrystZ, ...
+                    options.dualLayerSubmodule, no_submodules);
+                % The same combination of the layers as above, (layer of the second, layer of the first detector)
+                layer1 = layerID2;
+                layer2 = layerID1;
+                if (ascii_ind.module_ind1 == 0 || ascii_ind.module_ind2 == 0) && options.linear_multip > 1 && noSub
+                    ring_number1 = uint16(floor(M(:,rsector_ind1) / blocks_per_ring) .* cpbz1 + floor(crs1 ./ cpb1));
+                    ring_number2 = uint16(floor(M(:,rsector_ind2) / blocks_per_ring) .* cpbz2 + floor(crs2 ./ cpb2));
                     % Only a single ring
                 elseif options.rings == 1
                     ring_number1 = zeros(size(M,1),1,'uint16');
                     ring_number2 = zeros(size(M,1),1,'uint16');
                     % No modules and no repeated axial rings
-                elseif (ascii_ind.module_ind1 == 0 || ascii_ind.module_ind2 == 0) && options.linear_multip == 1 && no_submodules
+                elseif (ascii_ind.module_ind1 == 0 || ascii_ind.module_ind2 == 0) && options.linear_multip == 1 && noSub
                     ring_number1 = uint16(M(:,rsector_ind1));
                     ring_number2 = uint16(M(:,rsector_ind2));
                     % No repeated axial rings (modules)
-                elseif options.linear_multip == 1 && no_submodules
+                elseif options.linear_multip == 1 && noSub
                     ring_number1 = uint16(M(:,ascii_ind.module_ind1));
                     ring_number2 = uint16(M(:,ascii_ind.module_ind2));
                     % No repeated axial rings (submodules)
-                elseif options.linear_multip == 1 && ~no_submodules
+                elseif options.linear_multip == 1 && ~noSub
                     ring_number1 = uint16(M(:,ascii_ind.submodule_ind1));
                     ring_number2 = uint16(M(:,ascii_ind.submodule_ind2));
-                elseif ~no_submodules
+                elseif ~noSub
                     if transaxial_multip > 1
-                        ring_number1 = uint16(mod(floor(M(:,ascii_ind.submodule_ind1) / transaxial_multip), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind1) / cryst_per_block));
-                        ring_number2 = uint16(mod(floor(M(:,ascii_ind.submodule_ind2) / transaxial_multip), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind2) / cryst_per_block));
+                        ring_number1 = uint16(mod(floor(M(:,ascii_ind.submodule_ind1) / transaxial_multip), options.linear_multip) .* cpbz1 + floor(crs1 ./ cpb1));
+                        ring_number2 = uint16(mod(floor(M(:,ascii_ind.submodule_ind2) / transaxial_multip), options.linear_multip) .* cpbz2 + floor(crs2 ./ cpb2));
                     else
-                        ring_number1 = uint16(mod(M(:,ascii_ind.submodule_ind1), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind1) / cryst_per_block));
-                        ring_number2 = uint16(mod(M(:,ascii_ind.submodule_ind2), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind2) / cryst_per_block));
+                        ring_number1 = uint16(mod(M(:,ascii_ind.submodule_ind1), options.linear_multip) .* cpbz1 + floor(crs1 ./ cpb1));
+                        ring_number2 = uint16(mod(M(:,ascii_ind.submodule_ind2), options.linear_multip) .* cpbz2 + floor(crs2 ./ cpb2));
                     end
                     % "Normal" case
                 else
                     if transaxial_multip > 1
                         if options.axial_multip > 1
-                            ring_number1 = uint16(floor(M(:,rsector_ind1) / blocks_per_ring) * cryst_per_block_z * options.axial_multip + ((floor(M(:,ascii_ind.module_ind1) / transaxial_multip)) * cryst_per_block + (floor(M(:,crs_ind1) / cryst_per_block))));
-                            ring_number2 = uint16(floor(M(:,rsector_ind2) / blocks_per_ring) * cryst_per_block_z * options.axial_multip + ((floor(M(:,ascii_ind.module_ind2) / transaxial_multip)) * cryst_per_block + (floor(M(:,crs_ind2) / cryst_per_block))));
+                            ring_number1 = uint16(floor(M(:,rsector_ind1) / blocks_per_ring) .* cpbz1 * options.axial_multip + ((floor(M(:,ascii_ind.module_ind1) / transaxial_multip)) .* cpb1 + (floor(crs1 ./ cpb1))));
+                            ring_number2 = uint16(floor(M(:,rsector_ind2) / blocks_per_ring) .* cpbz2 * options.axial_multip + ((floor(M(:,ascii_ind.module_ind2) / transaxial_multip)) .* cpb2 + (floor(crs2 ./ cpb2))));
                         else
-                            ring_number1 = uint16(mod(floor(M(:,ascii_ind.module_ind1) / transaxial_multip), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind1) / cryst_per_block));
-                            ring_number2 = uint16(mod(floor(M(:,ascii_ind.module_ind2) / transaxial_multip), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind2) / cryst_per_block));
+                            ring_number1 = uint16(mod(floor(M(:,ascii_ind.module_ind1) / transaxial_multip), options.linear_multip) .* cpbz1 + floor(crs1 ./ cpb1));
+                            ring_number2 = uint16(mod(floor(M(:,ascii_ind.module_ind2) / transaxial_multip), options.linear_multip) .* cpbz2 + floor(crs2 ./ cpb2));
                         end
                     else
                         if options.axial_multip > 1
-                            ring_number1 = uint16(floor(M(:,rsector_ind1) / blocks_per_ring) * cryst_per_block_z * options.axial_multip + ((floor(M(:,ascii_ind.module_ind1))) * cryst_per_block + (floor(M(:,crs_ind1) / cryst_per_block))));
-                            ring_number2 = uint16(floor(M(:,rsector_ind2) / blocks_per_ring) * cryst_per_block_z * options.axial_multip + ((floor(M(:,ascii_ind.module_ind2))) * cryst_per_block + (floor(M(:,crs_ind2) / cryst_per_block))));
+                            ring_number1 = uint16(floor(M(:,rsector_ind1) / blocks_per_ring) .* cpbz1 * options.axial_multip + ((floor(M(:,ascii_ind.module_ind1))) .* cpb1 + (floor(crs1 ./ cpb1))));
+                            ring_number2 = uint16(floor(M(:,rsector_ind2) / blocks_per_ring) .* cpbz2 * options.axial_multip + ((floor(M(:,ascii_ind.module_ind2))) .* cpb2 + (floor(crs2 ./ cpb2))));
                         else
-                            ring_number1 = uint16(mod(M(:,ascii_ind.module_ind1), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind1) / cryst_per_block));
-                            ring_number2 = uint16(mod(M(:,ascii_ind.module_ind2), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind2) / cryst_per_block));
+                            ring_number1 = uint16(mod(M(:,ascii_ind.module_ind1), options.linear_multip) .* cpbz1 + floor(crs1 ./ cpb1));
+                            ring_number2 = uint16(mod(M(:,ascii_ind.module_ind2), options.linear_multip) .* cpbz2 + floor(crs2 ./ cpb2));
                         end
                     end
                 end
@@ -1400,23 +1420,16 @@ elseif options.use_machine == 0
                 % detector number 54 on ring 5)
                 % [0 det_per_ring - 1]
                 if transaxial_multip > 1
-                    if no_submodules
-                        ring_pos1 = uint16(mod(M(:,rsector_ind1), blocks_per_ring) * cryst_per_block * transaxial_multip + mod(M(:,crs_ind1), cryst_per_block) + mod(M(:,ascii_ind.module_ind1), transaxial_multip) * cryst_per_block);
-                        ring_pos2 = uint16(mod(M(:,rsector_ind2), blocks_per_ring) * cryst_per_block * transaxial_multip + mod(M(:,crs_ind2), cryst_per_block) + mod(M(:,ascii_ind.module_ind2), transaxial_multip) * cryst_per_block);
+                    if noSub
+                        ring_pos1 = uint16(mod(M(:,rsector_ind1), blocks_per_ring) .* cpb1 * transaxial_multip + mod(crs1, cpb1) + mod(M(:,ascii_ind.module_ind1), transaxial_multip) .* cpb1);
+                        ring_pos2 = uint16(mod(M(:,rsector_ind2), blocks_per_ring) .* cpb2 * transaxial_multip + mod(crs2, cpb2) + mod(M(:,ascii_ind.module_ind2), transaxial_multip) .* cpb2);
                     else
-                        ring_pos1 = uint16(mod(M(:,rsector_ind1), blocks_per_ring) * cryst_per_block * transaxial_multip + mod(M(:,crs_ind1), cryst_per_block) + mod(M(:,ascii_ind.submodule_ind1), transaxial_multip) * cryst_per_block);
-                        ring_pos2 = uint16(mod(M(:,rsector_ind2), blocks_per_ring) * cryst_per_block * transaxial_multip + mod(M(:,crs_ind2), cryst_per_block) + mod(M(:,ascii_ind.submodule_ind2), transaxial_multip) * cryst_per_block);
+                        ring_pos1 = uint16(mod(M(:,rsector_ind1), blocks_per_ring) .* cpb1 * transaxial_multip + mod(crs1, cpb1) + mod(M(:,ascii_ind.submodule_ind1), transaxial_multip) .* cpb1);
+                        ring_pos2 = uint16(mod(M(:,rsector_ind2), blocks_per_ring) .* cpb2 * transaxial_multip + mod(crs2, cpb2) + mod(M(:,ascii_ind.submodule_ind2), transaxial_multip) .* cpb2);
                     end
                 else
-                    ring_pos1 = uint16(mod(M(:,rsector_ind1), blocks_per_ring) * cryst_per_block + mod(M(:,crs_ind1), cryst_per_block));
-                    ring_pos2 = uint16(mod(M(:,rsector_ind2), blocks_per_ring) * cryst_per_block + mod(M(:,crs_ind2), cryst_per_block));
-                end
-                if options.nLayers > 1
-                    layer1 = uint8(M(:,ascii_ind.layer_ind1));
-                    layer2 = uint8(M(:,ascii_ind.layer_ind2));
-                else
-                    layer1 = uint8(0);
-                    layer2 = uint8(0);
+                    ring_pos1 = uint16(mod(M(:,rsector_ind1), blocks_per_ring) .* cpb1 + mod(crs1, cpb1));
+                    ring_pos2 = uint16(mod(M(:,rsector_ind2), blocks_per_ring) .* cpb2 + mod(crs2, cpb2));
                 end
 
                 % The time frame of each event (tIndex) is one-based, the sinogram creation code uses zero-based frames
@@ -1434,13 +1447,13 @@ elseif options.use_machine == 0
                                 logical([]), sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
                                 uint32(cumsum(options.segment_table)), sinoSize * uint64(1), tIndexC, uint64(Nt), ...
                                 int32(options.det_per_ring), int32(options.rings), uint16([]), SinD, uint16([]), uint16([]), uint16([]), int32(options.ndist_side),...
-                                int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block), int32(options.nLayers), layer1, layer2);
+                                int32(options.det_w_pseudo), int32(sum(options.pseudot)), asciiCryst, int32(options.nLayers), layer1, layer2, asciiCrystZ, asciiBlocksRing);
                         elseif exist('OCTAVE_VERSION','builtin') == 5
                             [SinD, ~, ~, ~] = createSinogramASCIIOct(ring_pos1, ring_pos2, ring_number1, ring_number2, [], [], ...
                                 [], sinoSize, (options.Ndist), (options.Nang), (options.ring_difference), (options.span), ...
                                 uint32(cumsum(options.segment_table)), sinoSize * uint64(1), tIndexC, Nt, ...
                                 (options.det_per_ring), (options.rings), uint16([]), SinD, [], [], [], (options.ndist_side),...
-                                (options.det_w_pseudo), int32(sum(options.pseudot)), (options.cryst_per_block), options.nLayers, layer1, layer2);
+                                (options.det_w_pseudo), int32(sum(options.pseudot)), asciiCryst, int32(options.nLayers), layer1, layer2, asciiCrystZ, asciiBlocksRing);
                             % else
                             %     [SinD, ~, ~, ~] = createSinogramASCIICPP(vali, ring_pos1, ring_pos2, ring_number1, ring_number2, logical([]), logical([]), ...
                             %         logical([]), sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
@@ -1999,5 +2012,45 @@ end
 if options.verbose
     disp('Measurements loaded and saved')
     toc
+end
+end
+
+function [crs1, crs2, cpb1, cpb2, cpbz1, cpbz2, noSub, layerID1, layerID2] = asciiLayerBlocks(M, ascii_ind, nLayers, cryst, crystZ, dualLayerSubmodule, no_submodules)
+%ASCIILAYERBLOCKS Crystal IDs, block sizes and layers of the ASCII coincidences
+%   Returns the crystal ID (crs), the number of crystals per block transaxially (cpb) and axially (cpbz) and the layer
+%   (layerID, uint8) of both ends of each coincidence. With a single layer the block sizes are scalars, with multiple layers
+%   they are column vectors with the block size of the layer of each event. noSub is true if the submodule IDs are not used
+%   in the detector indices. If the second layer is located in the submodule (dualLayerSubmodule), the crystal ID of the
+%   events in the layers > 0 is the submodule ID, the same as in the ROOT import.
+crs1 = M(:,ascii_ind.crs_ind1);
+crs2 = M(:,ascii_ind.crs_ind2);
+noSub = no_submodules;
+if nLayers > 1
+    if ascii_ind.layer_ind1 == 0 || ascii_ind.layer_ind2 == 0
+        error('Multiple layers selected, but the layer IDs are not included in the coincidence mask')
+    end
+    layerID1 = uint8(M(:,ascii_ind.layer_ind1));
+    layerID2 = uint8(M(:,ascii_ind.layer_ind2));
+    if any(layerID1 >= nLayers) || any(layerID2 >= nLayers)
+        error('The data contains layer IDs that are larger than the number of layers (options.nLayers)')
+    end
+    if dualLayerSubmodule && ~no_submodules
+        ind = layerID1 > 0;
+        crs1(ind) = M(ind,ascii_ind.submodule_ind1);
+        ind = layerID2 > 0;
+        crs2(ind) = M(ind,ascii_ind.submodule_ind2);
+        noSub = true;
+    end
+    cpb1 = double(cryst(double(layerID1) + 1));
+    cpb2 = double(cryst(double(layerID2) + 1));
+    cpbz1 = double(crystZ(double(layerID1) + 1));
+    cpbz2 = double(crystZ(double(layerID2) + 1));
+else
+    layerID1 = uint8(0);
+    layerID2 = uint8(0);
+    cpb1 = double(cryst(1));
+    cpb2 = cpb1;
+    cpbz1 = double(crystZ(1));
+    cpbz2 = cpbz1;
 end
 end

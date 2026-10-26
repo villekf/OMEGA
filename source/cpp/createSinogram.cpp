@@ -23,8 +23,13 @@ int sinoMain(const uint16_t* ringPos1, const uint16_t* ringPos2, const uint16_t*
 		storeRandoms = true;
 	}
 
+	// All the layers have the same block size here (the pseudo detectors are added to each block of crystPerBlock detectors)
+	const std::vector<uint32_t> crystPerBlockL(static_cast<size_t>(std::max<int32_t>(nLayers, 1)), static_cast<uint32_t>(crystPerBlock));
+	const std::vector<uint32_t> crystPerBlockZ(static_cast<size_t>(std::max<int32_t>(nLayers, 1)), 1U);
+	const uint32_t nBlocksRing = crystPerBlock > 0 ? static_cast<uint32_t>(detPerRing / crystPerBlock) : 0U;
+
 	openMPSino(ringPos1, ringPos2, ringNumber1, ringNumber2, truesIndex, scatterIndex, randomsIndex, sinoSize, Ndist, Nang, ringDifference,
 		span, seg, time, NT, TOFSize, Sino, SinoT, SinoC, SinoR, storeTrues, storeScatter, storeRandoms, detPerRing, rings, koko,
-		bins, nDistSide, pituus, detWPseudo, nPseudos, crystPerBlock, layer1, layer2, nLayers);
+		bins, nDistSide, pituus, detWPseudo, nPseudos, crystPerBlockL.data(), crystPerBlockZ.data(), nBlocksRing, layer1, layer2, nLayers);
 	return 0;
 }

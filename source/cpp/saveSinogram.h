@@ -21,6 +21,7 @@
 #pragma once
 #include "dIndices.h"
 #include <thread>
+#include <vector>
 
 inline void mexPrint(const char* str) {
 //#ifdef MATLAB
@@ -137,14 +138,50 @@ int64_t saveSinogram(const int32_t ring_pos1, const int32_t ring_pos2, int32_t r
 }
 
 
+// Mapping of the layers into a common block structure (sinogram path only), the same as in the ROOT import (rootImport.h).
+// The transaxial index of every layer is mapped into blocks of blockSize detectors: blockSize is the block size including the
+// pseudo detectors when pseudo detectors are used (detWPseudo / number of blocks), otherwise the block size of the layer with the
+// most crystals per block. The axial ring numbers are mapped into modules of as many rings as the layer with the most axial
+// crystals has. The detectors/rings that a layer does not have are located at the end of each block/module of the layer. Nothing
+// is added to a single layer without pseudo detectors.
+// cryst_per_block, cryst_per_block_z: crystals per block transaxially/axially of each layer (nLayers elements each),
+// nBlocksRing: number of blocks (transaxially) in a ring, i.e. blocks_per_ring * transaxial_multip (0 = unknown)
+struct LayerBlockMap {
+	std::vector<uint32_t> cryst, crystZ, padTrans, padAxial;
+	bool padDetectors = false;
+	bool padRings = false;
+
+	LayerBlockMap(const int32_t nLayers, const uint32_t* cryst_per_block, const uint32_t* cryst_per_block_z, const uint32_t nBlocksRing,
+		const bool pseudoD, const int32_t detWPseudo) {
+		const size_t nL = static_cast<size_t>(std::max<int32_t>(nLayers, 1));
+		cryst.assign(cryst_per_block, cryst_per_block + nL);
+		crystZ.assign(cryst_per_block_z, cryst_per_block_z + nL);
+		padTrans.assign(nL, 0U);
+		padAxial.assign(nL, 0U);
+		uint32_t maxCryst = 0U, maxCrystZ = 0U;
+		for (size_t ll = 0; ll < nL; ll++) {
+			maxCryst = std::max(maxCryst, cryst[ll]);
+			maxCrystZ = std::max(maxCrystZ, crystZ[ll]);
+		}
+		const uint32_t blockSize = (pseudoD && nBlocksRing > 0U) ? static_cast<uint32_t>(detWPseudo) / nBlocksRing : maxCryst;
+		for (size_t ll = 0; ll < nL; ll++) {
+			padTrans[ll] = blockSize > cryst[ll] ? blockSize - cryst[ll] : 0U;
+			padAxial[ll] = nL > 1 ? maxCrystZ - crystZ[ll] : 0U;
+			padDetectors = padDetectors || padTrans[ll] > 0U;
+			padRings = padRings || padAxial[ll] > 0U;
+		}
+	}
+};
+
 template<typename T, typename K, typename C, typename B>
 void openMPSino(const T* ringPos1, const T* ringPos2, const T* ringNumber1, const T* ringNumber2,
 	const B* trues_index, const B* scatter_index, const B* randoms_index, const uint64_t sinoSize, const uint32_t Ndist,
 	const uint32_t Nang, const uint32_t ring_difference, const uint32_t span, const K* seg, const T* time, const uint64_t Nt,
-	const uint64_t TOFSize, T* Sino, T* SinoT, T* SinoC, T* SinoR, const bool store_trues, const bool store_scatter, 
-	const bool store_randoms, const int32_t det_per_ring, const int32_t rings, const int64_t koko, const T* bins, 
+	const uint64_t TOFSize, T* Sino, T* SinoT, T* SinoC, T* SinoR, const bool store_trues, const bool store_scatter,
+	const bool store_randoms, const int32_t det_per_ring, const int32_t rings, const int64_t koko, const T* bins,
 	const int32_t nDistSide, const size_t pituus, const int32_t detWPseudo, const int32_t nPseudos,
-	const int32_t cryst_per_block, const C* layer1, const C* layer2, const int32_t nLayers) {
+	const uint32_t* cryst_per_block, const uint32_t* cryst_per_block_z, const uint32_t nBlocksRing, const C* layer1, const C* layer2,
+	const int32_t nLayers) {
 
 #ifdef _OPENMP
 	if (omp_get_max_threads() == 1) {
@@ -158,6 +195,8 @@ void openMPSino(const T* ringPos1, const T* ringPos2, const T* ringNumber1, cons
 	if (pseudoR) {
 		gapSize = rings / (nPseudos + 1);
 	}
+	// Pseudo detectors and the padding of the layers into a common block structure
+	const LayerBlockMap lm(nLayers, cryst_per_block, cryst_per_block_z, nBlocksRing, pseudoD, detWPseudo);
 	// Number of elements of the sinogram array, (Ndist, Nang, NSinos, nLayers^2, TOF bins, Nt), where TOFSize = Ndist * Nang * NSinos * TOF bins
 	const uint64_t sinoBufSize = TOFSize * static_cast<uint64_t>(nLayers) * static_cast<uint64_t>(nLayers) * Nt;
 #ifdef _OPENMP
@@ -179,7 +218,12 @@ void openMPSino(const T* ringPos1, const T* ringPos2, const T* ringNumber1, cons
 		int32_t ring_number1 = static_cast<int32_t>(ringNumber1[kk]);
 		int32_t ring_number2 = static_cast<int32_t>(ringNumber2[kk]);
 		int32_t layer = 0;
+		// The layers of the first and the second detector (note that layer1 is the layer of the second and layer2 the layer of the
+		// first detector of the GATE coincidence, see the combination below)
+		size_t layerD1 = 0, layerD2 = 0;
 		if (nLayers > 1) {
+			layerD1 = std::min<size_t>(static_cast<size_t>(layer2[kk]), static_cast<size_t>(nLayers - 1));
+			layerD2 = std::min<size_t>(static_cast<size_t>(layer1[kk]), static_cast<size_t>(nLayers - 1));
 			if (layer1[kk] == 1 && layer2[kk] == 1)
 				layer = 3;
 			else if (layer1[kk] == 1 && layer2[kk] == 0)
@@ -199,15 +243,28 @@ void openMPSino(const T* ringPos1, const T* ringPos2, const T* ringNumber1, cons
 					layer = 7;
 			}
 		}
-		// Pseudo detectors
-		if (pseudoD) {
-			ring_pos1 += ring_pos1 / cryst_per_block;
-			ring_pos2 += ring_pos2 / cryst_per_block;
+		// The axial module of each end (before the pseudo rings are added)
+		int32_t axialBlock1 = 0, axialBlock2 = 0;
+		if (lm.padRings) {
+			axialBlock1 = lm.crystZ[layerD1] > 0U ? ring_number1 / static_cast<int32_t>(lm.crystZ[layerD1]) : 0;
+			axialBlock2 = lm.crystZ[layerD2] > 0U ? ring_number2 / static_cast<int32_t>(lm.crystZ[layerD2]) : 0;
+		}
+		// Pseudo detectors and the layer padding
+		if (lm.padDetectors) {
+			if (lm.cryst[layerD1] > 0U)
+				ring_pos1 += (ring_pos1 / static_cast<int32_t>(lm.cryst[layerD1])) * static_cast<int32_t>(lm.padTrans[layerD1]);
+			if (lm.cryst[layerD2] > 0U)
+				ring_pos2 += (ring_pos2 / static_cast<int32_t>(lm.cryst[layerD2])) * static_cast<int32_t>(lm.padTrans[layerD2]);
 		}
 		// Pseudo rings
 		if (pseudoR) {
 			ring_number1 += ring_number1 / gapSize;
 			ring_number2 += ring_number2 / gapSize;
+		}
+		// Layer padding axially
+		if (lm.padRings) {
+			ring_number1 += axialBlock1 * static_cast<int32_t>(lm.padAxial[layerD1]);
+			ring_number2 += axialBlock2 * static_cast<int32_t>(lm.padAxial[layerD2]);
 		}
 		bool swap = false;
 		const int64_t indeksi = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize, Ndist, Nang, ring_difference, span, seg, TOFSize,
