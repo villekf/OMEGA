@@ -747,7 +747,14 @@ extern "C" __global__
     // U only depends on the transaxial position, so it is shared by all the axial voxels of this thread
     const float fdkDSC2 = s.x * s.x + s.y * s.y;
     const float fdkU = fdkDSC2 / (fdkDSC2 - dV.x * s.x - dV.y * s.y);
-    const float fdkW = fdkU * fdkU * M_PI_F * invNProj / d_dPitch.x;
+    // Magnification SDD_k / SAD_k of this projection: SDD_k = (d1 - s) . (-s) / SAD_k (d1 = detector centre, read from d_xyz
+    // as d3 of the GEOM5 geometry is the detector corner)
+    const float fdkMag = -((d_xyz[kk * 6 + 3] - s.x) * s.x + (d_xyz[kk * 6 + 4] - s.y) * s.y) / fdkDSC2;
+    // The ramp filter of rampFilt() is 2|f| (f in cycles per detector sample, i.e. normalized to 1 at the Nyquist frequency). The
+    // FDK needs |nu| in cycles per mm in the plane of the axis of rotation, |nu| = |f| * magnification / dPitch. Together with the
+    // factor pi / N of the 360 degree angular integration (Parker weights include the actual angular step) this gives the
+    // constant pi / (N * dPitch) * magnification / 2
+    const float fdkW = fdkU * fdkU * M_PI_F * invNProj / d_dPitch.x * (0.5f * fdkMag);
     // Footprint length in the row direction in detector pixels
     const float fdkLenX = (Ax - Dx) / d_dPitch.x;
     // Footprint length in the column direction in detector pixels

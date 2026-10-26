@@ -412,8 +412,20 @@ if options.precondTypeMeas(2)
     else
         options.Nf = 2^nextpow2(options.nRowsD);
     end
+    if options.FDK && options.CT && ~options.useParallelBeam
+        % The FDK ramp filter is applied along the detector rows (nRowsD samples) with an FFT of length Nf. Nf has to be at least
+        % 2 * nRowsD - 1 to zero-pad the rows, otherwise the filter is a circular convolution (for nRowsD = 2^n there is no padding at all)
+        % and the wrapped-around tails/the lost DC bias the low frequencies (several percent error of the reconstructed values)
+        options.Nf = 2^nextpow2(2 * options.nRowsD - 1);
+    end
     options.filter = rampFilt(options.Nf,options.filterWindow, options.cutoffFrequency, options.normalFilterSigma);
     options.filter(1) = 1e-6;
+    if options.FDK && options.CT && ~options.useParallelBeam
+        % DC bin of the discrete Ram-Lak kernel (Kak & Slaney), in the 2|f| normalization of rampFilt(). Setting it to ~0 (1e-6) removes
+        % the mean of the zero-padded projection rows, which biases the reconstruction low by an amount that depends on Nf
+        oddN = 1:2:(options.Nf / 2 - 1);
+        options.filter(1) = 2 * (0.25 - 2 / pi^2 * sum(1 ./ oddN.^2));
+    end
     options.Ffilter = ifft(options.filter) .* options.sigmaCP(1);
     if (options.PDHG || options.PDHGL1 || options.PDHGKL || options.CV || options.PDDY) && options.TGV
         options.Ffilter = options.Ffilter * options.beta;

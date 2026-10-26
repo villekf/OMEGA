@@ -1246,8 +1246,25 @@ void projectorType4Backward(
 //             }
 // #endif
 #ifdef FDK
+#ifdef PARALLEL
+            // Parallel beam: s is the per-detector-pixel source position, so the fan beam weight below is not valid here
             float weight = (DSC + dV.x * COSF(angle[kk + d_angleOffset]) - dV.y * SINF(angle[kk + d_angleOffset]));
             weight = (DSC * DSC) / (weight * weight) * (M_PI_F / (CFLOAT(d_nProjectionsFDK) * d_dPitch.x));
+#else
+            // FDK distance weight (SAD_k / U)^2 from the actual source position s of this projection (not from the projection angle):
+            // SAD_k^2 = s.x^2 + s.y^2 and U, the distance of the voxel from the source along the central ray (the direction from the
+            // source to the axis of rotation through the origin), U = (SAD_k^2 - dV.x * s.x - dV.y * s.y) / SAD_k. This is valid for any
+            // rotation direction, start angle, source orbit radius and detector axis orientation (custom coordinates)
+            float weight = s.x * s.x + s.y * s.y;
+            // Magnification SDD_k / SAD_k of this projection: SDD_k = (d1 - s) . (-s) / SAD_k (d1 = detector centre)
+            const float fdkMag = -((d1.x - s.x) * s.x + (d1.y - s.y) * s.y) / weight;
+            weight = weight / (weight - dV.x * s.x - dV.y * s.y);
+            // The ramp filter of rampFilt() is 2|f| (f in cycles per detector sample, i.e. normalized to 1 at the Nyquist frequency). The
+            // FDK needs |nu| in cycles per mm in the plane of the axis of rotation, |nu| = |f| * magnification / dPitch. Together with the
+            // factor pi / N of the 360 degree angular integration (Parker weights include the actual angular step) this gives the
+            // constant pi / (N * dPitch) * magnification / 2
+            weight = (weight * weight) * (M_PI_F / (CFLOAT(d_nProjectionsFDK) * d_dPitch.x)) * (0.5f * fdkMag);
+#endif
 #else
             const float L = DISTANCE(p, s);
             const float weight = (L * L * L) / (l1)*kerroin;

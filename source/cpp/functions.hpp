@@ -2395,30 +2395,108 @@ inline void backprojectionType6(af::array& fProj, const Weighting& w_vec, AF_im_
 }
 
 
-// 1D filtering
-inline int filtering(const af::array& filter, af::array& input, ProjectorClass& proj, const dim_t dimmi) {
+// Maximum number of complex elements of the zero-padded FFT buffer that is processed in one go by the 1D filtering.
+// ArrayFire indexes with 32-bit integers internally, so arrays with 2^31 or more elements write out-of-bounds on evaluation. In
+// addition, the element-wise complex multiplication/division kernel addresses the interleaved (real, imaginary) data with the
+// index 2 * n + 1, which overflows a 32-bit index when n >= 2^30 (unless 64-bit indices are in use). The filtering is therefore
+// done in chunks of projections such that the FFT buffer never exceeds this number of elements (2^29, i.e. 4 GiB of complex data,
+// also keeps the peak GPU memory in check, since ArrayFire pads and converts the input to complex before the FFT). The limit can be
+// changed at compile time (-DOMEGA_FILTER_CHUNK_ELEMENTS=...), e.g. for testing the chunking with small problems.
+#ifndef OMEGA_FILTER_CHUNK_ELEMENTS
+#define OMEGA_FILTER_CHUNK_ELEMENTS (static_cast<int64_t>(1) << 29)
+#endif
+
+// FFT-based 1D filtering of one block of data: FFT along the first dimension (zero-padded to dimmi), element-wise multiplication
+// (mult = true) or division (mult = false) with the filter, inverse FFT and cropping to the original number of rows.
+// The output is the real part, not flattened
+inline int filterBlock1D(const af::array& filter, const af::array& in, af::array& out, ProjectorClass& proj, const dim_t dimmi, const bool mult) {
 	int status = 0;
-	af::array temp = af::fft(input, dimmi);
+	af::array temp = af::fft(in, dimmi);
 	temp.eval();
-	if (DEBUG) {
+	if (DEBUG && mult) {
 		mexPrintBase("temp = %f\n", af::sum<float>(temp));
 		mexEval();
 	}
 #ifndef CPU
-	status = elementWiseAF(filter, temp, true, proj);
+	status = elementWiseAF(filter, temp, mult, proj);
 	if (status != 0)
 		return -1;
 #else
-	temp *= af::tile(filter, 1, temp.dims(1), temp.dims(2));
+	if (mult)
+		temp *= af::tile(filter, 1, temp.dims(1), temp.dims(2));
+	else {
+		temp /= af::tile(filter, 1, temp.dims(1), temp.dims(2));
+		temp.eval();
+	}
 #endif
-	if (DEBUG) {
+	if (DEBUG && mult) {
 		mexPrintBase("temp = %f\n", af::sum<float>(temp));
 		mexEval();
 	}
 	af::ifftInPlace(temp);
 	temp.eval();
-	input = af::flat(af::real(temp(af::seq(0, input.dims(0) - 1), af::span, af::span)));
+	out = af::real(temp(af::seq(0, in.dims(0) - 1), af::span, af::span));
 	return 0;
+}
+
+// 1D filtering (mult = true) or filtering with division (mult = false) of the measurement data, processed in chunks along the
+// last non-singleton dimension (projections, or dimension 1 for 2D data) so that the FFT buffer has at most
+// OMEGA_FILTER_CHUNK_ELEMENTS elements. If the data fit in one chunk, the whole data are processed at once.
+inline int filterChunked1D(const af::array& filter, af::array& input, ProjectorClass& proj, const dim_t dimmi, const bool mult) {
+	int status = 0;
+	const int64_t limit = static_cast<int64_t>(OMEGA_FILTER_CHUNK_ELEMENTS);
+	const dim_t cd = (input.dims(2) > 1) ? 2 : 1;
+	const dim_t nUnits = input.dims(cd);
+	// Number of FFT buffer elements per projection (padded rows times the other dimensions)
+	int64_t perUnit = static_cast<int64_t>(dimmi);
+	for (dim_t d = 1; d < 4; d++) {
+		if (d != cd)
+			perUnit *= static_cast<int64_t>(input.dims(d));
+	}
+	if (perUnit > limit) {
+		mexPrintBase("Filtering failed: a single projection requires %lld FFT elements, the maximum is %lld\n", static_cast<long long>(perUnit), static_cast<long long>(limit));
+		return -1;
+	}
+	const dim_t chunk = (std::min<dim_t>)(nUnits, static_cast<dim_t>(limit / perUnit));
+	if (chunk >= nUnits) {
+		af::array out;
+		status = filterBlock1D(filter, input, out, proj, dimmi, mult);
+		if (status != 0)
+			return -1;
+		input = af::flat(out);
+		return 0;
+	}
+	if (DEBUG) {
+		mexPrintBase("Filtering in chunks of %lld projections (total %lld)\n", static_cast<long long>(chunk), static_cast<long long>(nUnits));
+		mexEval();
+	}
+	// The filtered chunks are written back to the same array (the chunk being filtered is a copy), which avoids a second full-size array
+	const af::dtype outType = (input.type() == f64) ? f64 : f32;
+	if (input.type() != outType)
+		input = input.as(outType);
+	for (dim_t first = 0; first < nUnits; first += chunk) {
+		const dim_t last = (std::min<dim_t>)(first + chunk, nUnits) - 1;
+		af::array part, res;
+		if (cd == 2)
+			part = input(af::span, af::span, af::seq(first, last)).copy();
+		else
+			part = input(af::span, af::seq(first, last)).copy();
+		status = filterBlock1D(filter, part, res, proj, dimmi, mult);
+		if (status != 0)
+			return -1;
+		if (cd == 2)
+			input(af::span, af::span, af::seq(first, last)) = res;
+		else
+			input(af::span, af::seq(first, last)) = res;
+		input.eval();
+	}
+	input = af::flat(input);
+	return 0;
+}
+
+// 1D filtering
+inline int filtering(const af::array& filter, af::array& input, ProjectorClass& proj, const dim_t dimmi) {
+	return filterChunked1D(filter, input, proj, dimmi, true);
 }
 
 // 2D filtering
@@ -2450,20 +2528,7 @@ inline int filtering2D(const af::array& filter, af::array& input, ProjectorClass
 
 // 1D filtering with division
 inline int filteringInverse(const af::array& filter, af::array& input, ProjectorClass& proj, const dim_t dimmi) {
-	int status = 0;
-	af::array temp = af::fft(input, dimmi);
-	temp.eval();
-#ifndef CPU
-	status = elementWiseAF(filter, temp, false, proj);
-	if (status != 0)
-		return -1;
-#else
-	temp /= af::tile(filter, 1, temp.dims(1), temp.dims(2));
-	temp.eval();
-#endif
-	af::ifftInPlace(temp);
-	input = af::flat(af::real(temp(af::seq(0, input.dims(0) - 1), af::span, af::span)));
-	return 0;
+	return filterChunked1D(filter, input, proj, dimmi, false);
 }
 
 // Image-based preconditioner 2
@@ -2649,19 +2714,8 @@ inline int applyMeasPreconditioning(const Weighting& w_vec, const scalarStruct& 
 			else
 				input = af::moddims(input, inputScalars.nRowsD, inputScalars.nColsD, input.elements() / (inputScalars.nRowsD * inputScalars.nColsD));
 			input.eval();
-			if (input.elements() > 207762000) {
-				const dim_t h = input.dims(2) / 2;
-				for (int uu = 0; uu < 2; uu++) {
-					const dim_t first = uu * h, last = (uu == 0) ? h - 1 : input.dims(2) - 1;
-					af::array input1 = input(af::span, af::span, af::seq(first, last)).copy();
-					status = filtering(w_vec.filter, input1, proj, inputScalars.Nf);
-					input1 = af::moddims(input1, inputScalars.nRowsD, inputScalars.nColsD, input1.elements() / (inputScalars.nRowsD * inputScalars.nColsD));
-					input(af::span, af::span, af::seq(first, last)) = input1.copy();
-				}
-				input = af::flat(input);
-			}
-			else
-				status = filtering(w_vec.filter, input, proj, inputScalars.Nf);
+			// filtering processes large inputs in chunks itself (see OMEGA_FILTER_CHUNK_ELEMENTS)
+			status = filtering(w_vec.filter, input, proj, inputScalars.Nf);
 			if (status != 0)
 				return -1;
 		}
