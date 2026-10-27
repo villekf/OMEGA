@@ -570,10 +570,12 @@ void projectorType123(
 #endif
 #elif defined(VOL) // Volume-based
 	orth_ray_length = L;
+	// V is the absolute volume (mm^3) of the intersection of the spherical voxel (volume Vmax) and the tube: sum_v V_v = L * pi R^2 * Vmax / (dx dy dz),
+	// so the tube volume is scaled by Vmax / (dx dy dz) to make the projector the line integral independent of the voxel size, tube radius and voxel radius
 #if defined(TOTLENGTH)
-	float TotV = L * M_PI_F * orthWidth * orthWidth;
+	float TotV = L * M_PI_F * orthWidth * orthWidth * Vmax / (d_d.x * d_d.y * d_d.z);
 #else
-	float TotV = M_PI_F * orthWidth * orthWidth;
+	float TotV = M_PI_F * orthWidth * orthWidth * Vmax / (d_d.x * d_d.y * d_d.z);
 #endif
 #endif
 #endif
