@@ -174,7 +174,7 @@ temp = options.pseudot;
 if ~isempty(temp) && temp > 0
     pseudot = zeros(sum(options.pseudot),1,'uint16');
     for kk = uint16(1) : temp
-        pseudot(kk) = uint16(options.cryst_per_block + 1) * kk - 1;
+        pseudot(kk) = uint16(max(options.cryst_per_block_axial) + 1) * kk - 1;
     end
 elseif temp == 0
     pseudot = [];

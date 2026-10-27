@@ -60,7 +60,7 @@ rings = options.rings;
 if ~isempty(temp) && sum(temp) > 0
     rings = rings - options.pseudot;
     for kk = 1 : temp
-        pseudot(kk) = (options.cryst_per_block + 1) * kk;
+        pseudot(kk) = (max(options.cryst_per_block_axial) + 1) * kk;
     end
 end
 if options.det_w_pseudo > det_per_ring

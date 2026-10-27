@@ -390,6 +390,24 @@ end
 if ~isfield(options,'nLayers')
     options.nLayers = 1;
 end
+% Per-layer parameters of multi-layer scanners: a scalar value is used for all the layers
+if options.nLayers > 1
+    layerParams = {'cryst_per_block', 'cryst_per_block_axial', 'crystH'};
+    for ll = 1 : numel(layerParams)
+        if isfield(options, layerParams{ll}) && ~isempty(options.(layerParams{ll}))
+            if isscalar(options.(layerParams{ll}))
+                options.(layerParams{ll}) = repmat(options.(layerParams{ll}), 1, options.nLayers);
+            elseif numel(options.(layerParams{ll})) < options.nLayers
+                error(['options.' layerParams{ll} ' has ' num2str(numel(options.(layerParams{ll}))) ' elements, but options.nLayers = ' num2str(options.nLayers) '. Input either a scalar (the same value for all the layers) or one value for each layer.'])
+            end
+        end
+    end
+    % The pseudo rings (number of pseudo rings or the positions of them) are inserted with a common axial block size
+    if isfield(options, 'pseudot') && ~isempty(options.pseudot) && sum(options.pseudot(:)) > 0 && ...
+            isfield(options, 'cryst_per_block_axial') && numel(unique(options.cryst_per_block_axial)) > 1
+        error('Pseudo rings are not supported with layers that have a different number of axial crystals (cryst_per_block_axial).')
+    end
+end
 if ~isfield(options,'tauCP') || (isfield(options,'tauCP') && isempty(options.tauCP))
     options.tauCP = 0;
 end
@@ -720,10 +738,12 @@ if ~isfield(options,'Ndist')
 end
 if ~isfield(options, 'rings')
     if isfield(options, 'cryst_per_block')
+        % The number of rings is the number of axial crystals per block (of the layer with the most of them in multi-layer
+        % scanners, i.e. the common block structure) times the number of axial blocks
         if isfield(options, 'linear_multip') && isfield(options, 'cryst_per_block')
-            options.rings = options.linear_multip * options.cryst_per_block(end);
+            options.rings = options.linear_multip * max(options.cryst_per_block_axial);
         elseif isfield(options, 'cryst_per_block')
-            options.rings = options.cryst_per_block(end);
+            options.rings = max(options.cryst_per_block_axial);
         end
     else
         options.rings = 1;
@@ -737,7 +757,8 @@ if ~isfield(options, 'ring_difference_raw')
 end
 if ~isfield(options, 'det_per_ring')
     if isfield(options, 'blocks_per_ring') && isfield(options, 'cryst_per_block')
-        options.det_per_ring = options.blocks_per_ring*options.cryst_per_block(end);
+        % Common block structure of the layers: the layer with the most crystals per block
+        options.det_per_ring = options.blocks_per_ring*max(options.cryst_per_block)*options.transaxial_multip;
     else
         if ~isfield(options, 'Nang')
             options.Nang = 1;

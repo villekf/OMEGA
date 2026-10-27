@@ -581,10 +581,13 @@ classdef projectorClass
             temp = obj.param.pseudot;
             if ~isempty(temp) && temp > 0
                 for kk = uint32(1) : temp
-                    obj.param.pseudot(kk) = uint32(obj.param.cryst_per_block + 1) * kk;
+                    obj.param.pseudot(kk) = uint32(max(obj.param.cryst_per_block_axial) + 1) * kk;
                 end
+                % pseudot now contains the positions of the pseudo rings instead of the number of them
+                obj.param.pseudotPositions = true;
             elseif temp == 0
                 obj.param.pseudot = [];
+                obj.param.pseudotPositions = false;
             end
 
             if obj.param.implementation == 1
