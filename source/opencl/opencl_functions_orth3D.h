@@ -170,7 +170,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	local_ele *= jelppi;
 #endif
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
-	denominator(ax, ind, local_ele, d_OSEM
+	ORTH_DENOMINATOR(ax, ind, local_ele, d_OSEM
 #ifdef TOF //////////////// TOF ////////////////
 				, TOFWeights
 #endif //////////////// END TOF ////////////////

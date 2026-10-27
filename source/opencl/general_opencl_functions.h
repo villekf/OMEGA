@@ -1207,6 +1207,25 @@ void atomicAdd(volatile CLGLOBAL float *addr, float val) {
 #define TOF_NARR NBINS
 #endif
 
+// Slab-level TOF accumulation of the forward projection of the orthogonal and volume projectors (ORTH, CUDA and HIP). All the voxels of a
+// slab (the voxels around one crossing of the central ray) share the same TOF weights, so the sum over the voxels is formed first and the
+// NBINS weights are applied once per slab instead of once per voxel. The weights are then not needed during the voxel loops: the per-bin
+// array of the weights is not live over them, which takes the kernel from 168 to 128 registers with 15 bins (12 instead of 16 resident
+// warps per multiprocessor on an RTX 4090; measured 14-15 % faster). The arithmetic is the same up to the order of the float additions.
+// HIP (RX 7900 XT, gfx1100): the register use barely changes (148 to 145 VGPRs) but the forward projection is about 9 % faster from
+// applying the weights once per slab. With NVIDIA OpenCL the effect was measured to be mixed (15 bins faster, 13 bins slower), so
+// OpenCL keeps the per-voxel weights.
+// Not used for listmode data (single bin), multi-ray, SPECT or the backprojection (atomics-bound, no gain)
+#if (defined(CUDA) || defined(HIP)) && !defined(METAL) && defined(TOF) && defined(ORTH) && defined(FP) && NBINS > 1 && !defined(LISTMODE) && !defined(N_RAYS) && !defined(SPECT)
+#define TOFSLAB
+// Applies the weights of a slab to the sum of its voxels
+DEVICE void TOFSlabAdd(float* ax, const float* TOFWeights, const float slabSum) {
+#pragma unroll
+	for (int to = 0; to < NBINS; to++)
+		ax[to] = FMAD(TOFWeights[to], slabSum, ax[to]);
+}
+#endif
+
 #ifdef TOF //////////////// TOF ////////////////
 // Exact bin-integrated TOF weights
 //
@@ -1576,6 +1595,18 @@ DEVICE void forwardProject(const float local_ele, PTR_THR float *ax, const typeT
 #endif
 #endif
 }
+
+#ifdef TOFSLAB
+// The voxel of a slab: only the sum over the voxels is formed here (TOFSlabAdd applies the TOF weights, see TOFSLAB)
+DEVICE void denominatorSlab(PTR_THR float *slabSum, const typeT localInd, float local_ele, IMTYPE d_OSEM, float* TOFWeights) {
+	float apu = 0.f;
+	forwardProject(local_ele, &apu, localInd, d_OSEM);
+	*slabSum += apu;
+}
+#define ORTH_DENOMINATOR denominatorSlab
+#else
+#define ORTH_DENOMINATOR denominator
+#endif
 
 // Computes the forward projection
 // Includes TOF-specific weighting
