@@ -32,6 +32,7 @@ from .coordinates import computePixelCenters
 from .coordinates import computePixelSize
 from .coordinates import computeProjectorScalingValues
 from .coordinates import computeVoxelVolumes
+from .coordinates import expandLayerParameters
 from .indices import indexMaker
 from .indices import formSubsetIndices
 
@@ -129,6 +130,8 @@ class projectorClass:
     scatter_components = np.array([True, True, False, False])
     normalization_options = np.array([True, True, True, False])
     pseudot = np.empty(0, dtype = np.uint32)
+    # Set by addProjector: whether pseudot has been converted from the number of the pseudo rings to the positions of them
+    pseudotPositions = False
     weights = np.empty(0, dtype = np.float32)
     weights_huber = np.empty(0, dtype = np.float32)
     tr_offsets = np.empty(0, dtype = np.uint32)
@@ -753,6 +756,8 @@ class projectorClass:
 
     def addProjector(self):
         self.projectorAdded = True
+        # A scalar per-layer parameter (multi-layer PET) is used for all the layers
+        expandLayerParameters(self)
         # MATLAB/Octave-style option name aliases, accepted for convenience so scripts written
         # against the MATLAB API also work here. hasattr() is only True when the user actually
         # assigned the MATLAB-named attribute (these names have no Python-side class default),
@@ -911,8 +916,10 @@ class projectorClass:
         if (isinstance(self.cryst_per_block_axial, np.ndarray) and self.cryst_per_block_axial.size == 0) and ((isinstance(self.cryst_per_block, np.ndarray) and self.cryst_per_block.size > 0)
                                                                                                           or (not isinstance(self.cryst_per_block, np.ndarray) and self.cryst_per_block > 0)):
             self.cryst_per_block_axial = self.cryst_per_block
-        if self.rings == 0 and self.cryst_per_block_axial >= 1 and self.linear_multip >= 1:
-            self.rings = self.cryst_per_block_axial * self.linear_multip
+        # Multi-layer: the layers are mapped to a common block structure with as many rings as the layer with the most axial crystals has
+        cryst_per_block_axial = np.max(self.cryst_per_block_axial) if np.size(self.cryst_per_block_axial) > 0 else 0
+        if self.rings == 0 and cryst_per_block_axial >= 1 and self.linear_multip >= 1:
+            self.rings = int(cryst_per_block_axial) * int(self.linear_multip)
         if self.dPitchX > 0. and self.dPitchY == 0.:
             self.dPitchY = self.dPitchX
         if self.cr_p > 0. and self.cr_pz == 0.:
@@ -927,8 +934,10 @@ class projectorClass:
             else:
                 self.axial_fov = self.cr_pz
         rings = self.rings
-        if self.det_per_ring == 0 and self.blocks_per_ring >= 1 and self.cryst_per_block >= 1:
-            self.det_per_ring = self.blocks_per_ring * self.cryst_per_block
+        # Multi-layer: the block size of the layer with the most crystals per block
+        cryst_per_block = np.max(self.cryst_per_block) if np.size(self.cryst_per_block) > 0 else 0
+        if self.det_per_ring == 0 and self.blocks_per_ring >= 1 and cryst_per_block >= 1:
+            self.det_per_ring = int(self.blocks_per_ring) * int(cryst_per_block) * int(self.transaxial_multip)
         if self.det_w_pseudo == 0:
             self.det_w_pseudo = self.det_per_ring
         if self.use_raw_data and self.x.size > 1:
@@ -1053,13 +1062,15 @@ class projectorClass:
             temp = int(temp)
         if temp > 0:
             self.pseudot = np.zeros(temp, dtype=np.uint32)
+            # The pseudo rings are located between the axial blocks, i.e. after every cryst_per_block_axial rings (the
+            # largest axial block of the layers in multi-layer scanners)
+            axialBlock = int(np.max(np.atleast_1d(self.cryst_per_block_axial)))
             for kk in range(1, temp + 1):
-                if isinstance(self.cryst_per_block, np.ndarray):
-                    self.pseudot[kk - 1] = np.uint32(self.cryst_per_block[0].item() + 1) * kk
-                else:
-                    self.pseudot[kk - 1] = np.uint32(self.cryst_per_block + 1) * kk
+                self.pseudot[kk - 1] = np.uint32(axialBlock + 1) * kk
+            self.pseudotPositions = True
         else:
             self.pseudot = np.empty(0, dtype = np.uint32)
+            self.pseudotPositions = False
         # Whether list-mode or sinogram/raw data is used. self.listmode was already
         # pre-computed (via _isListModeCandidate()/useIndexBasedReconstruction) ahead of
         # OMEGAErrorCheck() above; this recomputes the same condition (now that self.SinM/

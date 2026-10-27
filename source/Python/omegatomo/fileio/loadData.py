@@ -88,7 +88,10 @@ def loadROOT(options, store_coordinates = False):
     import numpy as np
     import math
     from omegatomo.projector import computePixelSize
+    from omegatomo.projector import expandLayerParameters
 
+    # A scalar per-layer parameter is used for all the layers
+    expandLayerParameters(options)
     indexBased = bool(options.useIndexBasedReconstruction)
     if indexBased:
         store_coordinates = False

@@ -20,6 +20,7 @@ from typing import Tuple
 import warnings
 import numpy as np
 from omegatomo.projector import proj
+from omegatomo.projector.coordinates import expandLayerParameters
 
 def CTDetSource(options):
     """
@@ -243,6 +244,7 @@ def getCoordinates(options):
         z-direction coordinates for detector/detector pairs.
 
     """
+    expandLayerParameters(options)
     if isinstance(options.x, np.ndarray) and options.x.size > 1 and options.y.size > 1 and options.listmode == 0:
         if not(options.z.size == options.x.size) and options.z.size < options.nProjections:
             options.z = np.zeros(options.x.shape,dtype=np.float32)
@@ -305,12 +307,15 @@ def getCoordinates(options):
                 x, y = _rawLayerDetectors(options, x, y)
             # if options.sampling_raw > 1 and ~options.precompute_lor
             #     [x, y, options] = increaseSampling(options, x, y, interpolateSinogram);
-            z_length = float(options.rings + np.sum(options.pseudot)) * options.cr_pz
-        
-            z = np.linspace(-(z_length / 2 - options.cr_pz / 2), z_length / 2 - options.cr_pz / 2, options.rings + int(np.sum(options.pseudot)),dtype=np.float32)
-        
-            if np.sum(options.pseudot) > 0:
-                z = np.delete(z, np.where(options.pseudot))
+            # The pseudo ring slots are included in the axial coordinates and then removed (z(pseudot) = [] in MATLAB)
+            pseudoPositions = _pseudoRingPositions(options)
+            nPseudos = pseudoPositions.size
+            z_length = float(options.rings + nPseudos) * options.cr_pz
+
+            z = np.linspace(-(z_length / 2 - options.cr_pz / 2), z_length / 2 - options.cr_pz / 2, options.rings + nPseudos,dtype=np.float32)
+
+            if nPseudos > 0:
+                z = np.delete(z, pseudoPositions - 1)
             # Gaps between the axial blocks
             if len(options.ringGaps) > 0 and np.sum(options.ringGaps) > 0:
                 # With layers that have a different number of axial crystals, the axial blocks have as many ring slots as the largest layer
@@ -323,6 +328,34 @@ def getCoordinates(options):
 
             x = np.asfortranarray(np.vstack((x, y)))
     return x, y, z
+
+def _pseudoRingPositions(options):
+    """
+    The 1-based positions of the pseudo rings among the rings + pseudo rings.
+    options.pseudot is either the number of pseudo rings (as input by the
+    user) or the positions of them (after projectorClass.addProjector has
+    converted it, options.pseudotPositions = True). A pseudo ring is located
+    after every cryst_per_block_axial rings (the largest axial block of the
+    layers in multi-layer scanners).
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Returns
+    -------
+    positions : NumPy array
+        The 1-based pseudo ring positions, empty if there are none.
+
+    """
+    pseudot = np.atleast_1d(np.asarray(options.pseudot)).ravel()
+    if pseudot.size == 0 or np.sum(pseudot) <= 0:
+        return np.empty(0, dtype=np.int64)
+    if pseudot.size > 1 or getattr(options, 'pseudotPositions', False):
+        return pseudot.astype(np.int64)
+    axialBlock = int(np.max(np.atleast_1d(options.cryst_per_block_axial)))
+    return (axialBlock + 1) * np.arange(1, int(pseudot[0]) + 1, dtype=np.int64)
 
 def _rawLayerDetectors(options, xp, yp):
     """
@@ -499,6 +532,7 @@ def detectorCoordinates(options):
 
     """
     from omegatomo.util.matlabRound import matlabRound
+    expandLayerParameters(options)
     cr_p = options.cr_p
     diameter = options.diameter
     if isinstance(options.cryst_per_block, np.ndarray):
@@ -826,6 +860,7 @@ def sinogramCoordinates2D(options, x, y, nLayers = 1, layers = (1, 1)):
         y-direction coordinates for sinogram bins.
 
     """
+    expandLayerParameters(options)
     det_w_pseudo = options.det_w_pseudo
     Nang = options.Nang
     Ndist = options.Ndist
@@ -1076,6 +1111,7 @@ def sinogramCoordinates3D(options, layers = (1,1)):
 
     """
     import math
+    expandLayerParameters(options)
     layer1 = layers[0]
     layer2 = layers[1]
     cr_pz = options.cr_pz
