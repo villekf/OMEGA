@@ -587,8 +587,9 @@ def detectorCoordinates(options):
             blockSize = max(cpb1, cpb2)
         x1,y1 = computeCoordinates(options, blocks_per_ring, transaxial_multip, cpb1, diameter, cr_p, usePseudo)
         x1,y1 = _padLayerBlocks(x1, y1, cpb1 + int(usePseudo), blockSize, nBlocksRing)
-        # orig_diameter = diameter + options.crystH(end) * 2;
-        diameter = diameter + DOI * 2 + options.crystH[0] * 2
+        # The second layer starts at the inner face of the second layer, i.e. the inner diameter of the first layer plus the
+        # thickness of the first layer. The DOI (already included in diameter) is added only once.
+        diameter = diameter + options.crystH[0] * 2
         x2,y2 = computeCoordinates(options, blocks_per_ring, transaxial_multip, cpb2, diameter, cr_p, usePseudo)
         x2,y2 = _padLayerBlocks(x2, y2, cpb2 + int(usePseudo), blockSize, nBlocksRing)
         koko = x1.size
@@ -599,8 +600,16 @@ def detectorCoordinates(options):
         x,y = computeCoordinates(options, blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, False)
 
     if options.flip_image:
-        x = np.flip(x)
-        y = np.flip(y)
+        # The ring is mirrored while the block structure is kept: the real detectors are reversed, but the pseudo detector
+        # and the Inf padding of each block stay at the end of the block. Each layer is flipped separately so that the layer
+        # order is preserved.
+        nBlocksRing = int(blocks_per_ring * transaxial_multip)
+        if options.nLayers > 1 and koko is not None:
+            x = np.concatenate((_flipRing(x[:koko], nBlocksRing, cpb1, usePseudo), _flipRing(x[koko:], nBlocksRing, cpb2, usePseudo)))
+            y = np.concatenate((_flipRing(y[:koko], nBlocksRing, cpb1, usePseudo), _flipRing(y[koko:], nBlocksRing, cpb2, usePseudo)))
+        else:
+            x = _flipRing(x, nBlocksRing, cryst_per_block, usePseudo)
+            y = _flipRing(y, nBlocksRing, cryst_per_block, usePseudo)
     if not options.offangle == 0:
         if options.det_w_pseudo > options.det_per_ring:
             # The pseudo-inclusive array is rolled together with its pseudo
@@ -620,6 +629,42 @@ def detectorCoordinates(options):
             x = np.roll(x, int(matlabRound(options.offangle)))
             y = np.roll(y, int(matlabRound(options.offangle)))
     return x, y
+
+def _flipRing(v, nBlocks, nCryst, usePseudo):
+    """
+    Mirrors the detector ring of one layer (flip_image) while keeping the block
+    structure. v has nBlocks blocks of equal size, each block starting with
+    nCryst real detectors followed by the pseudo detector (if usePseudo) and the
+    Inf padding (if the block is larger). The blocks and the real detectors
+    within them are reversed, while the pseudo detector (a gap coordinate) and
+    the Inf padding stay at the end of each block. Without a pseudo detector
+    and padding this is the plain reversal.
+
+    Parameters
+    ----------
+    v : NumPy array
+        Coordinates of one layer, nBlocks blocks of equal size.
+    nBlocks : int
+        Number of blocks per transaxial ring.
+    nCryst : int
+        The number of real crystals at the start of each block.
+    usePseudo : bool
+        True if each block has a pseudo detector after the real crystals.
+
+    Returns
+    -------
+    v : NumPy array
+        The mirrored coordinates.
+
+    """
+    nPseudo = int(bool(usePseudo))
+    blockSize = v.size // nBlocks
+    nSlots = int(nCryst) + nPseudo
+    if nSlots == blockSize:
+        return np.roll(np.flip(v), -nPseudo)
+    blocks = v.reshape(nBlocks, blockSize).copy()
+    blocks[:, :nSlots] = _flipRing(blocks[:, :nSlots].ravel(), nBlocks, nCryst, usePseudo).reshape(nBlocks, nSlots)
+    return blocks.ravel()
 
 def _padLayerBlocks(x, y, slots, blockSize, nBlocks):
     """
