@@ -738,7 +738,7 @@ class projectorClass:
         else:
             self.trIndex = trFrames[0]
             self.axIndex = axFrames[0]
-        if self.TOF_bins > 1 and self.projector_type in (1, 11, 3, 33, 13, 31, 4, 14, 41, 44, 34, 43):
+        if self.TOF_bins > 1 and self.projector_type in (1, 11, 2, 22, 12, 21, 23, 32, 24, 42, 3, 33, 13, 31, 4, 14, 41, 44, 34, 43):
             if isinstance(self.TOFIndices, (list, tuple)):
                 tofCounts = [np.size(t) for t in self.TOFIndices]
                 if len(tofCounts) != len(counts) and len(counts) > 1:
@@ -977,7 +977,7 @@ class projectorClass:
         # pre-list-mode value) observe, so only self.listmode is set early.
         self.listmode = 1 if (self._isListModeCandidate() or self.useIndexBasedReconstruction) else 0
         self.OMEGAErrorCheck()
-        self.TOF = self.TOF_bins > 1 and self.projector_type in (1, 11, 3, 33, 13, 31, 4, 14, 41, 44, 34, 43)
+        self.TOF = self.TOF_bins > 1 and self.projector_type in (1, 11, 2, 22, 12, 21, 23, 32, 24, 42, 3, 33, 13, 31, 4, 14, 41, 44, 34, 43)
         if self.TOF:
             if self.TOF_bins_used == 0 and self.TOF_bins > 0:
                 self.TOF_bins_used = self.TOF_bins
@@ -1716,8 +1716,9 @@ class projectorClass:
         
         if self.useCPU and self.projector_type not in (1, 11) and self.implementation == 2:
             raise ValueError('Selected projector type is not supported with CPU implementation!')
-        if self.projector_type == 2 and self.CT:
-            raise ValueError('Orthogonal distance-based projector is NOT supported when using CT data!')
+        # Projector type 2 is rejected also as the forward or backward projector of a combined type (e.g. 12, 21, 23, 24, 42)
+        if self.CT and (self.projector_type == 2 or (self.projector_type > 10 and (self.projector_type // 10 == 2 or self.projector_type % 10 == 2))):
+            raise ValueError('Projector type 2 (orthogonal distance) is not supported with CT (also as the forward or backward projector of a combined projector type)!')
         
         if self.projector_type in [5, 15, 51, 45, 54] and not self.CT:
             raise ValueError('Projector type 5 is only supported with CT data!')
@@ -1763,8 +1764,8 @@ class projectorClass:
         if self.useCUDA and self.useCPU:
             raise ValueError('Both CUDA and CPU selected! Select only one!')
         
-        if self.TOF_bins_used > 1 and (self.projector_type not in [1, 11, 3, 33, 31, 13, 4, 41, 14, 43, 34]) and not self.CT and not self.SPECT:
-            raise ValueError('TOF is currently only supported with improved Siddon (projector_type = 1), interpolation-based projector (projector_type = 4) and volume of intersection (projector_type = 3)')
+        if self.TOF_bins_used > 1 and (self.projector_type not in [1, 11, 2, 22, 12, 21, 23, 32, 24, 42, 3, 33, 31, 13, 4, 41, 14, 43, 34]) and not self.CT and not self.SPECT:
+            raise ValueError('TOF is currently only supported with improved Siddon (projector_type = 1), orthogonal distance-based ray tracer (projector_type = 2), volume of intersection (projector_type = 3) and interpolation-based projector (projector_type = 4)')
         
         if self.TOF_bins_used > 1 and self.TOF_width <= 0 and not self.CT and not self.SPECT:
             raise ValueError('TOF width (self.TOF_width) must be greater than zero.')
@@ -1790,6 +1791,8 @@ class projectorClass:
             raise ValueError('Reference image weighting for NLM is not supported with CPU!')
         if self.useIndexBasedReconstruction and self.useCPU:
             raise ValueError('Index-based reconstruction is not supported on CPU!')
+        if self.useCPU and self.useMultiResolutionVolumes:
+            raise ValueError('Multi-resolution reconstruction is not supported with the CPU implementation')
         if self.useCPU:
             print('CPU functionality is limited and might not work correctly in all cases! Use at your own risk!')
         if self.useHelical and not self.projector_type == 4:

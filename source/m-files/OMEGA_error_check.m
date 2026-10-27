@@ -492,8 +492,9 @@ end
 if options.projector_type == 2 && options.implementation == 1 && options.precompute_lor
     warning('Orthogonal distance-based projector is not recommended with implementation 1!')
 end
-if options.projector_type == 2 && options.CT
-    error('Orthogonal distance-based projector is NOT supported when using CT data!')
+% Projector type 2 is rejected also as the forward or backward projector of a combined type (e.g. 12, 21, 23, 24, 42)
+if options.CT && (options.projector_type == 2 || (options.projector_type > 10 && (floor(options.projector_type / 10) == 2 || mod(options.projector_type, 10) == 2)))
+    error('Projector type 2 (orthogonal distance) is not supported with CT (also as the forward or backward projector of a combined projector type)!')
 end
 if (options.projector_type == 5 || options.projector_type == 15 || options.projector_type == 51 || options.projector_type == 45 || options.projector_type == 54) && ~options.CT
     error('Projector type 5 is only supported with CT data!')
@@ -560,9 +561,10 @@ end
 if options.use_CUDA && options.use_CPU && options.implementation == 2
     error('Both CUDA and CPU selected! Select only one!')
 end
-if options.TOF_bins_used > 1 && (options.projector_type ~= 1 && options.projector_type ~= 11 && options.projector_type ~= 3 && options.projector_type ~= 33 && options.projector_type ~= 31 ...
+if options.TOF_bins_used > 1 && (options.projector_type ~= 1 && options.projector_type ~= 11 && options.projector_type ~= 2 && options.projector_type ~= 22 && options.projector_type ~= 12 && options.projector_type ~= 21 ...
+        && options.projector_type ~= 23 && options.projector_type ~= 32 && options.projector_type ~= 24 && options.projector_type ~= 42 && options.projector_type ~= 3 && options.projector_type ~= 33 && options.projector_type ~= 31 ...
         && options.projector_type ~= 13 && options.projector_type ~= 4 && options.projector_type ~= 41 && options.projector_type ~= 14 && options.projector_type ~= 34 && options.projector_type ~= 43) && ~options.CT && ~options.SPECT
-    error('TOF is currently only supported with improved Siddon (projector_type = 1), interpolation-based projector (projector_type = 4) and volume of intersection (projector_type = 3)')
+    error('TOF is currently only supported with improved Siddon (projector_type = 1), orthogonal distance-based ray tracer (projector_type = 2), volume of intersection (projector_type = 3) and interpolation-based projector (projector_type = 4)')
 end
 if options.TOF_bins_used > 1 && options.TOF_width <= 0 && ~options.CT && ~options.SPECT
     error('TOF width (options.TOF_width) must be greater than zero.')

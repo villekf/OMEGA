@@ -11,6 +11,14 @@ int omegaMain(inputStruct options, const char* header_directory, const uint8_t *
 int omegaMain(inputStruct options, const char* header_directory, const float* Sino, float* outputPtr, float* FPptr, float* residual) {
 #endif
 
+#ifdef CPU
+	// Multi-resolution (extended FOV) volumes are not supported by the CPU backend (it crashes while preparing the reconstruction)
+	if (options.nMultiVolumes > 0) {
+		mexPrint("Multi-resolution reconstruction is not supported with the CPU implementation!");
+		return -1;
+	}
+#endif
+
 	scalarStruct inputScalars;
 
 	af::setDevice(options.deviceNum);
