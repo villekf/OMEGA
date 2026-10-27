@@ -232,14 +232,22 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             if (MethodList.OSLOSEM) {
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing OSL-OSEM");
-                if (ii == 0) {
-                    if (inputScalars.CT)
-                        vec.im_os[timestep][ii] = EM(vec.im_os[timestep][ii], *Sens + vec.dU[timestep], inputScalars.flat * vec.rhs_os[timestep][ii]);
+                // The prior is computed only for the main volume, the extra (multi-resolution) volumes use the OSEM update.
+                // The denominator (sensitivity image + prior gradient) is limited to at least 10 % of the sensitivity image (and at least
+                // epps where the sensitivity is ~0, i.e. outside the measured region, where a purely relative floor would allow a 10x
+                // growth per subset), so that the update cannot change sign or divide by zero with a strong prior and a single update
+                // can be at most 10x the OSEM update. Without a prior this is identical to OSEM
+                if (inputScalars.CT) {
+                    if (ii == 0)
+                        vec.im_os[timestep][ii] = EM(vec.im_os[timestep][ii], (af::max)(*Sens + vec.dU[timestep], (af::max)(0.1f * *Sens, static_cast<double>(inputScalars.epps))), inputScalars.flat * vec.rhs_os[timestep][ii]);
                     else
-                        vec.im_os[timestep][ii] = EM(vec.im_os[timestep][ii], *Sens + vec.dU[timestep], vec.rhs_os[timestep][ii]);
+                        vec.im_os[timestep][ii] = EM(vec.im_os[timestep][ii], *Sens, inputScalars.flat * vec.rhs_os[timestep][ii]);
                 }
                 else {
-
+                    if (ii == 0)
+                        vec.im_os[timestep][ii] = EM(vec.im_os[timestep][ii], (af::max)(*Sens + vec.dU[timestep], (af::max)(0.1f * *Sens, static_cast<double>(inputScalars.epps))), vec.rhs_os[timestep][ii] + inputScalars.epps);
+                    else
+                        vec.im_os[timestep][ii] = EM(vec.im_os[timestep][ii], *Sens, vec.rhs_os[timestep][ii] + inputScalars.epps);
                 }
             }
             else if (MethodList.BSREM) {
