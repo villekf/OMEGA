@@ -1584,7 +1584,8 @@ if ~options.only_reconstructions && ~options.no_data_load
     % the coordinates where each coincidence is detected): 
     % [options.SinM, ~, ~, ~, ~, options.x] = load_data(options);
     % Store the transaxial and axial indices for index-based reconstruction
-    % Requires useIndexBasedReconstruction
+    % Requires useIndexBasedReconstruction. With reconstruct_trues only the
+    % true coincidences are stored (ROOT data), otherwise the prompts
     % [options.SinM, ~, ~, ~, ~, options.trIndex, options.axIndex] = load_data(options);
 end
 

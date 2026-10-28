@@ -120,8 +120,8 @@ _CTYPE_TO_NUMPY_DTYPE = {
 # Scalar struct fields whose C-struct name differs from the options attribute
 # name they are sourced from.
 _SCALAR_NAME_OVERRIDES = {
-    'T': 'B',
     'POCS': 'ASD_POCS',
+    'T': '_TVweight',
 }
 
 # Pointer struct fields whose C-struct name differs from the options
@@ -477,20 +477,159 @@ def transferData(options):
         raise RuntimeError('transferData: struct field(s) left unset: %s' % missing)
 
 
-def _selectPrecorrectedMeasurement(options, getKey):
+def _appliedCorrectionsFlag(value):
+    """
+    MATLAB's `if value` for a logical field of the appliedCorrections struct:
+    true only for a non-empty value whose elements are all nonzero.
+    """
+    if value is None:
+        return False
+    value = np.asarray(value)
+    return value.size > 0 and bool(np.all(value))
+
+
+def _appliedCorrectionsText(value):
+    """
+    A char field of the appliedCorrections struct as a str (an empty field,
+    which pymatreader returns as an empty array, gives '').
+    """
+    if value is None:
+        return ''
+    if isinstance(value, str):
+        return value
+    value = np.asarray(value)
+    if value.size == 0 or value.dtype.kind not in ('U', 'S', 'O'):
+        return ''
+    return ''.join(str(v) for v in value.ravel())
+
+
+def _resolveAppliedCorrections(options, appliedCorrections, loadRaw):
+    """
+    Port of the appliedCorrections block of MATLAB's loadInputData.m (corrections
+    not applied during the reconstruction). A measurement file can store the
+    precorrected measurements SinM together with the struct appliedCorrections
+    that tells which corrections SinM has already been precorrected with
+    (.normalization, .randoms and .scatter; the text of the last two names the
+    applied options, e.g. 'randoms correction with variance reduction and
+    smoothing'). From that and the selected corrections this decides whether SinM
+    can be used as it is or the raw measurements (raw_SinM) have to be
+    precorrected here, and which corrections are still left to apply: it updates
+    options.normalization_correction, options.randoms_correction and
+    options.scatter_correction accordingly (a correction that is already in SinM is
+    turned off). The normalization is only re-enabled (when the raw data replaces
+    SinM that was precorrected with it) if the user has selected it. The fields gapFilling, mashing and globalFactor are not used (as in
+    MATLAB's loadInputData.m; gap filling is not available in Python).
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+    appliedCorrections : dict
+        The appliedCorrections struct of the file.
+    loadRaw : bool
+        True if the raw data is already used (SinM was not in the file).
+
+    Returns
+    -------
+    bool
+        True if the raw measurements (raw_SinM) have to be used.
+    """
+    normalizationApplied = _appliedCorrectionsFlag(appliedCorrections.get('normalization'))
+    randomsApplied = _appliedCorrectionsText(appliedCorrections.get('randoms'))
+    scatterApplied = _appliedCorrectionsText(appliedCorrections.get('scatter'))
+    normalization_correction = bool(options.normalization_correction)
+    # The normalization is only (re-)enabled below if the user has selected it
+    normalizationSelected = bool(options.normalization_correction)
+    # Normalization
+    if normalizationApplied and not options.normalization_correction:
+        print('Warning: Normalization correction not selected, but data precorrected with normalization! Precorrecting without normalization.')
+        loadRaw = True
+    if normalizationApplied:
+        normalization_correction = False
+    # Randoms: check if the data is precorrected with something that has not been selected
+    randoms_correction = bool(options.randoms_correction)
+    if 'variance reduction' in randomsApplied and not options.variance_reduction and options.randoms_correction:
+        print('Warning: Randoms variance correction not selected, but data precorrected with randoms with applied variance reduction! Precorrecting without variance reduction.')
+        loadRaw = True
+        if normalizationApplied and not normalization_correction and normalizationSelected:
+            normalization_correction = True
+    elif 'smoothing' in randomsApplied and not options.randoms_smoothing and options.randoms_correction:
+        print('Warning: Randoms smoothing not selected, but data precorrected with randoms with applied smoothing! Precorrecting without smoothing.')
+        loadRaw = True
+        if normalizationApplied and not normalization_correction and normalizationSelected:
+            normalization_correction = True
+    elif 'randoms correction' not in randomsApplied and not loadRaw and randoms_correction:
+        # Randoms not in the precorrected data: precorrect the raw data
+        loadRaw = True
+        if normalizationApplied and not normalization_correction and normalizationSelected:
+            normalization_correction = True
+    elif ('randoms correction' in randomsApplied and randoms_correction
+          and ((options.variance_reduction and 'variance reduction' not in randomsApplied)
+               or (options.randoms_smoothing and 'smoothing' not in randomsApplied))):
+        print('Warning: Randoms corrections selected, but data not precorrected with selected options! Precorrecting with selected options.')
+        loadRaw = True
+        if normalizationApplied and not normalization_correction and normalizationSelected:
+            normalization_correction = True
+    elif 'randoms correction' in randomsApplied and not loadRaw:
+        randoms_correction = False
+    # Same as above, but for scatter
+    if 'variance reduction' in scatterApplied and not options.scatter_variance_reduction and options.scatter_correction:
+        print('Warning: Scatter variance correction not selected, but data precorrected with scatter with applied variance reduction! Precorrecting without variance reduction.')
+        if not randoms_correction and options.randoms_correction:
+            randoms_correction = True
+        if normalizationApplied and not normalization_correction and normalizationSelected:
+            normalization_correction = True
+        loadRaw = True
+    elif 'smoothing' in scatterApplied and not options.scatter_smoothing and options.scatter_correction:
+        print('Warning: Scatter smoothing not selected, but data precorrected with scatter with applied smoothing! Precorrecting without smoothing.')
+        if not randoms_correction and options.randoms_correction:
+            randoms_correction = True
+        if normalizationApplied and not normalization_correction and normalizationSelected:
+            normalization_correction = True
+        loadRaw = True
+    elif 'scatter correction' not in scatterApplied and not loadRaw and options.scatter_correction:
+        if not randoms_correction and options.randoms_correction:
+            randoms_correction = True
+        if normalizationApplied and not normalization_correction and normalizationSelected:
+            normalization_correction = True
+        loadRaw = True
+    elif 'scatter correction' in scatterApplied and not loadRaw:
+        options.scatter_correction = False
+    options.randoms_correction = randoms_correction
+    options.normalization_correction = normalization_correction
+    return loadRaw
+
+
+def _selectPrecorrectedMeasurement(options, getKey, appliedCorrections=None):
     """
     Selects either the corrected ('SinM') or the raw ('raw_SinM') measurement
     data key, matching the precorrection semantics shared by the MAT and NPZ
     measurement-file loaders. `getKey(key)` returns the array for that key,
     or raises KeyError.
+
+    If the measurement file contains the struct appliedCorrections (a dict,
+    as read from a MAT-file) and the data has not been explicitly requested to be
+    precorrected here (options.precorrect), the choice and the corrections that are
+    still applied follow MATLAB's loadInputData.m, see _resolveAppliedCorrections.
+    Without appliedCorrections the stored SinM is assumed to be precorrected with
+    everything that has been selected.
     """
     if (options.randoms_correction or options.scatter_correction or options.normalization_correction) and not options.corrections_during_reconstruction:
         if not options.precorrect:
+            loadRaw = False
             try:
-                return getKey('SinM')
+                sinM = getKey('SinM')
             except KeyError:
                 options.precorrect = True
+                loadRaw = True
+            if isinstance(appliedCorrections, dict):
+                loadRaw = _resolveAppliedCorrections(options, appliedCorrections, loadRaw)
+                if loadRaw or options.randoms_correction or options.scatter_correction or options.normalization_correction:
+                    # OMEGA has to apply the corrections that are not in SinM
+                    options.precorrect = True
+            if loadRaw:
                 return getKey('raw_SinM')
+            return sinM
         else:
             return getKey('raw_SinM')
     else:
@@ -629,12 +768,15 @@ def reconstructions_main(options):
                 raise ValueError('No file selected')
             var = read_mat(options.fpath)
         matGet = lambda key: np.array(var[key], order='F')
-        if options.reconstruct_trues:
-            options.SinM = matGet('SinTrues')
-        elif options.reconstruct_scatter:
-            options.SinM = matGet('SinScatter')
+        if options.reconstruct_trues or options.reconstruct_scatter:
+            options.SinM = matGet('SinTrues') if options.reconstruct_trues else matGet('SinScatter')
+            if options.normalization_correction and not options.corrections_during_reconstruction:
+                # As in MATLAB's loadCorrections.m, the trues/scatter data is precorrected
+                # with the normalization (multiplied by it) instead of applying the
+                # normalization during the reconstruction
+                options.precorrect = True
         else:
-            options.SinM = _selectPrecorrectedMeasurement(options, matGet)
+            options.SinM = _selectPrecorrectedMeasurement(options, matGet, var.get('appliedCorrections'))
         _loadDelayedMeasurement(options, matGet)
     elif sinoSize < 1 and suffix == '.npy':
         options.SinM = np.load(options.fpath)

@@ -432,10 +432,15 @@ def _upload_static_buffers(self: Any, torch: Any) -> None:
     self.d_axIndex = [[self.mps_empty_uint16] * self.subsets for _ in range(self.Nt)]
     self.d_TOFIndex = [[self.mps_empty_uint8] * self.subsets for _ in range(self.Nt)]
     self.d_L = [[self.mps_empty_uint16] * self.subsets for _ in range(self.Nt)]
-    # A static (single-frame) normalization is shared by every timestep, as in C++: slice it with
-    # the frame-0 offsets (recognised by holding exactly frame 0's measurements after prepass
-    # permutation; a frame-concatenated one holds all Nt frames).
-    normalization_static = bool(self.Nt > 1 and normalization.size == int(self.nTotMeas[self.subsets]))
+    # As in C++, a static (single-frame) normalization and measurement-domain attenuation are
+    # shared by every timestep (sliced with the frame-0 offsets), and a corrVector (scatter) holding
+    # only one frame's worth is likewise shared; a frame-concatenated one (Nt blocks) is sliced per
+    # frame. A static array is recognised by holding exactly frame 0's measurements after prepass
+    # permutation.
+    frame0_measurements = int(self.nTotMeas[self.subsets])
+    normalization_static = bool(self.Nt > 1 and normalization.size == frame0_measurements)
+    attenuation_static = bool(self.Nt > 1 and measurement_attenuation.size == frame0_measurements)
+    corr_vector_static = bool(self.Nt > 1 and corr_vector.size == frame0_measurements)
     for timestep in range(self.Nt):
         for subset in range(self.subsets):
             index = timestep * self.subsets + subset
@@ -444,7 +449,13 @@ def _upload_static_buffers(self: Any, torch: Any) -> None:
             projection_start = self.nMeas[index]
             projection_stop = self.nMeas[index + 1]
             if measurement_attenuation.size:
-                self.d_attenuation[timestep][subset] = _mps_tensor_from_numpy(torch, measurement_attenuation[measurement_start:measurement_stop], np.float32)
+                if attenuation_static:
+                    atten_start = self.nTotMeas[subset]
+                    atten_stop = self.nTotMeas[subset + 1]
+                else:
+                    atten_start = measurement_start
+                    atten_stop = measurement_stop
+                self.d_attenuation[timestep][subset] = _mps_tensor_from_numpy(torch, measurement_attenuation[atten_start:atten_stop], np.float32)
             if normalization.size and getattr(self, 'normalization_correction', False):
                 if getattr(self, 'SPECT', False) and int(getattr(self, 'normZ', 1)) == int(getattr(self, 'nHeads', 1)):
                     self.d_norm[timestep][subset] = _mps_tensor_from_numpy(torch, normalization, np.float32)
@@ -457,7 +468,13 @@ def _upload_static_buffers(self: Any, torch: Any) -> None:
                         norm_stop = measurement_stop
                     self.d_norm[timestep][subset] = _mps_tensor_from_numpy(torch, normalization[norm_start:norm_stop], np.float32)
             if corr_vector.size:
-                self.d_scatter[timestep][subset] = _mps_tensor_from_numpy(torch, corr_vector[measurement_start:measurement_stop], np.float32)
+                if corr_vector_static:
+                    corr_start = self.nTotMeas[subset]
+                    corr_stop = self.nTotMeas[subset + 1]
+                else:
+                    corr_start = measurement_start
+                    corr_stop = measurement_stop
+                self.d_scatter[timestep][subset] = _mps_tensor_from_numpy(torch, corr_vector[corr_start:corr_stop], np.float32)
             if offset_limit.size:
                 self.d_T[timestep][subset] = _mps_tensor_from_numpy(torch, offset_limit[projection_start:projection_stop], np.float32)
             if xy_index.size:

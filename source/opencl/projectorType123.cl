@@ -76,7 +76,7 @@ __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_si
 __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, 1, 1)))
 #endif
 #elif (defined(CUDA) || defined(HIP) || defined(METAL))
-	KERNEL
+	KERNEL TOF_BOUNDS
 #endif
 void projectorType123(
 #if defined(METAL) ///////////////////// METAL /////////////////////
@@ -89,7 +89,7 @@ void projectorType123(
 	CONSTANT float* TOFCenter [[buffer(3)]], 
 #endif ///////////////////////// END TOF BINS /////////////////////////
 #ifdef ORTH ///////////////////////// ORTHOGONAL-BASED RAY TRACER /////////////////////////
-	CONSTANT float* V [[buffer(4)]], 
+	const CLGLOBAL float* V [[buffer(4)]],
 #endif ///////////////////////// END ORTHOGONAL-BASED RAY TRACER /////////////////////////
 #if !defined(CT) && defined(ATN) && !defined(ATNM) ///////////////////////// PET ATTENUATION CORRECTION /////////////////////////
 #ifdef USEIMAGES
@@ -216,7 +216,7 @@ void projectorType123(
 	CONSTANT float* TOFCenter, 
 #endif ///////////////////////// END TOF BINS /////////////////////////
 #ifdef ORTH ///////////////////////// ORTHOGONAL-BASED RAY TRACER /////////////////////////
-	CONSTANT float* V, 
+	const CLGLOBAL float* CLRESTRICT V,
 #endif ///////////////////////// END ORTHOGONAL-BASED RAY TRACER /////////////////////////
 	const uint d_sizey,
 #if !defined(CT) && defined(ATN) && !defined(ATNM) ///////////////////////// PET ATTENUATION CORRECTION /////////////////////////
@@ -441,18 +441,16 @@ void projectorType123(
 #if defined(N_RAYS) && defined(FP)
 	// Slightly optimize multi-ray case for TOF
 	// Only store the NBINS per ray rather than all NBINS * NRAYS combinations
-	float ax[NBINS];
-	float axRay[NBINS];
+	float ax[TOF_NARR];
+	float axRay[TOF_NARR];
 	PTR_THR float* const axP = axRay;
 #else
-	float ax[NBINS];
+	float ax[TOF_NARR];
 	PTR_THR float* const axP = ax;
 #endif
 #ifdef BP
 #if defined(LISTMODE) && defined(TOF) && !defined(SENS)
-	for (int to = 0; to < NBINS; to++)
-		ax[to] = 0.f;
-	ax[TOFid] = d_OSEM[idx];
+	ax[0] = d_OSEM[idx];
 #else
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
@@ -472,7 +470,7 @@ void projectorType123(
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
-	for (int to = 0; to < NBINS; to++)
+	for (int to = 0; to < TOF_NARR; to++)
 		ax[to] = 0.f;
 #endif
 #if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
@@ -533,7 +531,6 @@ void projectorType123(
 #endif
 #ifdef TOF // TOF constants
 	const float sigmaInv = 1.f / sigma_x;
-	const float sigmaCoef = _2PI * sigmaInv;
 #endif
 #ifdef ORTH // Orthogonal or volume-based
 	FLOAT b1, b2, d1, d2;
@@ -552,7 +549,7 @@ void projectorType123(
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
-			for (int to = 0; to < NBINS; to++)
+			for (int to = 0; to < TOF_NARR; to++)
 				axRay[to] = 0.f;
 #endif
 #endif  //////////////// END MULTIRAY ////////////////
@@ -672,6 +669,11 @@ void projectorType123(
 		d_atten, s, diff, b, d_bmax, L,
 		atnNx, atnNy, atnNz, atnDx, atnDy, atnDz, atnBx, atnBy, atnBz);
 #endif
+	// Near-parallel-to-an-axis threshold, relative to the ray length. A fixed 1e-6 only catches exactly axis-parallel rays, while
+	// near-axis rays with |diff| of roughly 1e-6 ... 1e-5 times L would otherwise take the general Siddon path, where the grid-line
+	// crossings coincide to within rounding and are tie-broken by the floating-point noise. These rays now use the axis-parallel
+	// branch, whose tieFloor rule is deterministic.
+	const float parTol = FMAX(1e-6f, 4e-7f * L);
 #ifndef TOTLENGTH
 	float LL = FLOAT_ZERO;
 #endif
@@ -680,7 +682,8 @@ void projectorType123(
 #ifdef TOF //////////////// TOF ////////////////
 	FLOAT D = FLOAT_ZERO;
 	FLOAT DD = FLOAT_ZERO;
-	FLOAT TOFWeights[NBINS];
+	FLOAT TOFWeights[TOF_NARR];
+	float TOFF[NBINS + 1];
 #endif //////////////// END TOF ////////////////
 	float local_ele = FLOAT_ZERO;
 
@@ -875,10 +878,10 @@ void projectorType123(
 #endif
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	//If the LOR is perpendicular in the y-direction (Siddon cannot be used)
-	if (FABS(diff.z) < 1e-6f && (FABS(diff.y) < 1e-6f || FABS(diff.x) < 1e-6f)) {
+	if (FABS(diff.z) < 1e-6f && (FABS(diff.y) < parTol || FABS(diff.x) < parTol)) {
 
 		//return;
-		tempk = CINT(FLOOR((s.z - b.z) / d_d.z));
+		tempk = tieFloor((s.z - b.z) / d_d.z);
 		if (tempk < 0 || tempk >= d_Nxyz.z)
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
 			continue;
@@ -895,7 +898,7 @@ void projectorType123(
 // #if defined(LISTMODE)
 		float dT1, dT2;
 // #endif
-		if (FABS(diff.y) < 1e-6f && d.y <= d_bmax.y && d.y >= b.y && s.y <= d_bmax.y && s.y >= b.y) {
+		if (FABS(diff.y) < parTol && d.y <= d_bmax.y && d.y >= b.y && s.y <= d_bmax.y && s.y >= b.y) {
 			apuX1 = 0;
 			apuX2 = d_Nxyz.x - 1;
 			dT1 = d_d.x;
@@ -952,7 +955,7 @@ void projectorType123(
 			XY = true;
 #endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
 		}
-		else if (FABS(diff.x) < 1e-6f && d.x <= d_bmax.x && d.x >= b.x && s.x <= d_bmax.x && s.x >= b.x) {
+		else if (FABS(diff.x) < parTol && d.x <= d_bmax.x && d.x >= b.x && s.x <= d_bmax.x && s.x >= b.x) {
 			apuX1 = 0;
 			apuX2 = d_Nxyz.y - 1;
 			dT1 = d_d.y;
@@ -1069,6 +1072,19 @@ void projectorType123(
 			D = FMAX((entry - s1) * CFLOAT(stepDir), FLOAT_ZERO) - L * FLOAT_HALF;
 			DD = D;
 			const float DDsign = -FLOAT_ONE;
+#ifdef TOF_CLIP
+			// Only the voxels inside the TOF window of the bin of the event are processed (see TOF_CLIP): the voxels before it are stepped
+			// over, the loop ends at the first voxel after it. The TOF terms are initialized at the first voxel inside the window
+			float TOFLo, TOFHi;
+			TOFClipWindow(TOFCenter, sigmaInv, TOFid, &TOFLo, &TOFHi);
+			bool TOFClipInit = true;
+#else
+			TOFInit(D, TOFCenter, sigmaInv, TOFF
+#if defined(LISTMODE) && !defined(SENS)
+				, TOFid
+#endif
+			);
+#endif
 #endif //////////////// END TOF ////////////////
 			const float dFirst = (iiStart == iiEnd) ? FMAX(dT1 + dT2 - d_d2, FLOAT_ZERO) : ((stepDir > 0) ? dT1 : dT2);
 			const float dLast = (stepDir > 0) ? dT2 : dT1;
@@ -1083,6 +1099,15 @@ void projectorType123(
 					d_in = dLast;
 #ifdef TOF
 				const float dTOF = d_in;
+#ifdef TOF_CLIP
+				if (D >= TOFHi)
+					break;
+				const bool TOFInside = (FMAD(-dTOF, DDsign, D) > TOFLo);
+				if (TOFInside && TOFClipInit) {
+					TOFInit(D, TOFCenter, sigmaInv, TOFF, TOFid);
+					TOFClipInit = false;
+				}
+#endif
 #endif
 #if defined(ATN) && defined(SPECT)
 #ifdef MRATN
@@ -1118,8 +1143,15 @@ void projectorType123(
 				d_in *= EXP(jelppi);
 #endif
 #endif
+#ifdef TOF_CLIP
+				if (TOFInside) {
+#endif
 #ifdef TOF //////////////// TOF ////////////////
-				const float TOFSum = TOFLoop(DDsign, dTOF, TOFCenter, sigmaInv, sigmaCoef, &D, d_epps, TOFWeights);
+				TOFLoop(DDsign, dTOF, TOFCenter, sigmaInv, &D, TOFWeights, TOFF
+#if defined(LISTMODE) && !defined(SENS)
+					, TOFid
+#endif
+				);
 #endif //////////////// END TOF ////////////////
 #ifdef ORTH //////////////// ORTH/VOL ////////////////
 				//const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
@@ -1135,10 +1167,7 @@ void projectorType123(
 					no_norm, d_Summ, d_output 
 #endif
 #ifdef TOF
-				, TOFSum, TOFWeights
-#if defined(LISTMODE)
-				, TOFid
-#endif
+				, TOFWeights
 #endif
 #if defined(SPECT) && defined(ATN)
 				, EXP(jelppi)
@@ -1164,10 +1193,7 @@ void projectorType123(
 				denominator(axP, local_ind, d_in, d_OSEM
 #endif
 #ifdef TOF //////////////// TOF ////////////////
-				, TOFSum, TOFWeights
-#ifdef LISTMODE
-				, TOFid
-#endif
+				, TOFWeights
 #endif //////////////// END TOF ////////////////
 				);
 #endif  //////////////// END FORWARD PROJECTION ////////////////
@@ -1179,14 +1205,16 @@ void projectorType123(
 #endif //////////////// END MASKBP ////////////////
 				rhs(temp * d_in, ax, local_ind, d_output, no_norm, d_Summ
 #ifdef TOF //////////////// TOF ////////////////
-				, TOFSum, TOFWeights
-#ifdef LISTMODE
-				, TOFid
-#endif
+				, TOFWeights
 #endif //////////////// END TOF ////////////////
 				);
 #endif //////////////// END BACKWARD PROJECTION ////////////////
 #endif //////////////// END SIDDON/ORTH/VOL ////////////////
+#ifdef TOF_CLIP
+				}
+				else
+					D = FMAD(-dTOF, DDsign, D);
+#endif
 #if (!defined(USEIMAGES) && defined(FP)) || defined(BP) || (defined(ATN) && defined(SPECT) && !defined(USEIMAGES))
 				local_ind += indStep;
 #endif 
@@ -1196,9 +1224,6 @@ void projectorType123(
 				else
 					localInd.y += stepDir;
 #endif
-#if defined(TOF)
-				D += dTOF;
-#endif
 				if (ii == iiEnd)
 					break;
 			}
@@ -1207,7 +1232,7 @@ void projectorType123(
 		ax[0] *= local_norm;
 #endif
 #if defined(TOF) && defined(LISTMODE)
-		size_t to = TOFid;
+		size_t to = 0;
 #else
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
@@ -1224,7 +1249,7 @@ void projectorType123(
 #endif
 #elif defined(FP) && defined(N_RAYS)
 #if defined(TOF) && defined(LISTMODE)
-		ax[TOFid] += axRay[TOFid] * temp;
+		ax[0] += axRay[0] * temp;
 #else
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
@@ -1243,15 +1268,12 @@ void projectorType123(
 		float tx0 = 1e8f, ty0 = 1e8f, tz0 = 1e8f;
 		bool skip = false, XY = true;
 		float tMax = FLOAT_ZERO;
-#ifdef TOF //////////////// TOF ////////////////
-        FLOAT TOFSum = FLOAT_ZERO;
-#endif //////////////// END TOF ////////////////
 
 		// If the measurement is on a same ring
 			// Z-coordinate (ring)
 		if (FABS(diff.z) < 1e-6f) {
 		    	// return;
-			tempk = CINT(FLOOR((s.z - b.z) / d_d.z));
+			tempk = tieFloor((s.z - b.z) / d_d.z);
 			if (tempk < 0 || tempk >= d_Nxyz.z)
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
 		    	continue;
@@ -1261,7 +1283,7 @@ void projectorType123(
 			skip = siddon_pre_loop_2D(b.x, b.y, diff.x, diff.y, d_bmax.x, d_bmax.y, d_d.x, d_d.y, d_Nxyz.x, d_Nxyz.y, &tempi, &tempj, &txu, &tyu, &Np, TYPE,
 				s.y, s.x, d.y, d.x, &tc, &ux, &uy, &tx0, &ty0, &XY, &tMax);
 		}
-		else if (FABS(diff.y) < 1e-6f) {
+		else if (FABS(diff.y) < parTol) {
 			// return;
 			tempj = perpendicular_start(b.y, d.y, d_d.y, d_Nxyz.y);
 			skip = siddon_pre_loop_2D(b.x, b.z, diff.x, diff.z, d_bmax.x, d_bmax.z, d_d.x, d_d.z, d_Nxyz.x, d_Nxyz.z, &tempi, &tempk, &txu, &tzu, &Np, TYPE,
@@ -1270,7 +1292,7 @@ void projectorType123(
 			if (d.y > d_bmax.y || d.y < b.y)
 				skip = true;
 		}
-		else if (FABS(diff.x) < 1e-6f) {
+		else if (FABS(diff.x) < parTol) {
 			// return;
 			tempi = perpendicular_start(b.x, d.x, d_d.x, d_Nxyz.x);
 			skip = siddon_pre_loop_2D(b.y, b.z, diff.y, diff.z, d_bmax.y, d_bmax.z, d_d.y, d_d.z, d_Nxyz.y, d_Nxyz.z, &tempj, &tempk, &tyu, &tzu, &Np, TYPE,
@@ -1292,8 +1314,15 @@ void projectorType123(
 #ifdef TOF
 		TOFDis(FMAX(tc, FLOAT_ZERO), L, &D, &DD);
 		const float DDsign = -FLOAT_ONE;
+#ifndef TOF_CLIP // With the clipped traversal the TOF terms are initialized after the first voxels have been skipped
+		TOFInit(D, TOFCenter, sigmaInv, TOFF
+#if defined(LISTMODE) && !defined(SENS)
+			, TOFid
 #endif
-#if (defined(ATN) && defined(BP)) || defined(ORTH) || (defined(BP) && !defined(TOTLENGTH) && !defined(CT))
+		);
+#endif
+#endif
+#if (defined(ATN) && (defined(BP) || defined(TOF_CLIP))) || defined(ORTH) || (defined(BP) && !defined(TOTLENGTH) && !defined(CT))
 		float tx0_a = tx0, ty0_a = ty0, tz0_a = tz0;
 		int tempi_a = tempi, tempj_a = tempj, tempk_a = tempk;
 #endif
@@ -1306,7 +1335,8 @@ void projectorType123(
 		if (LL < FLOAT_ZERO)
 			LL = FLOAT_ZERO;
 #endif
-#if defined(ATN) && defined(BP) && !defined(SPECT)
+#if defined(ATN) && (defined(BP) || defined(TOF_CLIP)) && !defined(SPECT)
+		// The attenuation of the whole ray. In the clipped forward projection the voxels outside of the TOF window are not visited
 		if (aa == 0) {
 		float tc_a = tc;
 #if !defined(USEIMAGES)
@@ -1468,6 +1498,32 @@ void projectorType123(
 		temp *= local_norm;
 #endif
 
+#ifdef TOF_CLIP
+		// Restrict the traversal to the TOF window of the bin of the event (see TOF_CLIP). The voxels that end before the window are
+		// stepped over without computing any weights (the voxels are not cut), the loop is left at the first voxel that starts after it.
+		// x = L * t - L / 2 (see TOFDis). The TOF terms are initialized at the entry of the first remaining voxel
+		float tClipHi;
+		{
+			float xLo, xHi;
+			TOFClipWindow(TOFCenter, sigmaInv, TOFid, &xLo, &xHi);
+			const float tClipLo = (xLo + 0.5f * L) / L;
+			tClipHi = (xHi + 0.5f * L) / L;
+			uint nSkip = 0u;
+			while (nSkip < Np && FMIN(tx0, FMIN(ty0, tz0)) <= tClipLo) {
+				bool clipPass = false;
+				if (tz0 < ty0 && tz0 < tx0)
+					compute_element(&tz0, &tc, L, tzu, uz, &tempk, &clipPass);
+				else if (ty0 < tx0)
+					compute_element(&ty0, &tc, L, tyu, uy, &tempj, &clipPass);
+				else
+					compute_element(&tx0, &tc, L, txu, ux, &tempi, &clipPass);
+				nSkip++;
+			}
+			Np -= nSkip;
+		}
+		TOFDis(FMAX(tc, FLOAT_ZERO), L, &D, &DD);
+		TOFInit(D, TOFCenter, sigmaInv, TOFF, TOFid);
+#endif
 #ifndef ORTH
 		// The "step lengths" for each dimension
 		// Applies only to the linear index case
@@ -1484,6 +1540,10 @@ void projectorType123(
 		LONG localIndC = compute_ind(tempj_c, tempi_c, tempk_c, d_Nxyz.x, d_Nxy);
 #endif
 		for (uint ii = 0u; ii < Np; ii++) {
+#ifdef TOF_CLIP
+			if (tc >= tClipHi)
+				break;
+#endif
 // #if defined(LISTMODE)
 			local_ele = FLOAT_ZERO;
 #if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
@@ -1562,7 +1622,7 @@ void projectorType123(
 #endif
 			}
 #endif
-#if defined(ATN) && (defined(FP) || defined(SPECT))
+#if defined(ATN) && (defined(FP) || defined(SPECT)) && !defined(TOF_CLIP)
 			if (pass) {
 #ifdef MRATN
 #if defined(SPECT) && defined(ORTH) && !defined(VOL)
@@ -1592,7 +1652,11 @@ void projectorType123(
 			}
 #endif
 #ifdef TOF //////////////// TOF ////////////////
-			TOFSum = TOFLoop(DDsign, local_ele2, TOFCenter, sigmaInv, sigmaCoef, &D, d_epps, TOFWeights);
+			TOFLoop(DDsign, local_ele2, TOFCenter, sigmaInv, &D, TOFWeights, TOFF
+#if defined(LISTMODE) && !defined(SENS)
+				, TOFid
+#endif
+			);
 #endif //////////////// END TOF ////////////////
 #ifdef ORTH //////////////// ORTH/VOL ////////////////
 #if defined(SPECT) && defined(ATN)
@@ -1614,10 +1678,7 @@ void projectorType123(
                             no_norm, d_Summ, d_output 
 #endif //////////////// END FP/BP ////////////////
 #ifdef TOF //////////////// TOF ////////////////
-                        , TOFSum, TOFWeights
-#if defined(LISTMODE)
-						, TOFid
-#endif
+                        , TOFWeights
 #endif //////////////// END TOF ////////////////
 #if defined(SPECT) && defined(ATN)
 						, atnSPECT
@@ -1654,10 +1715,7 @@ void projectorType123(
                             no_norm, d_Summ, d_output 
 #endif //////////////// END FP/BP ////////////////
 #ifdef TOF //////////////// TOF ////////////////
-                        , TOFSum, TOFWeights
-#if defined(LISTMODE)
-						, TOFid
-#endif
+                        , TOFWeights
 #endif //////////////// END TOF ////////////////
 #if defined(SPECT) && defined(ATN)
 						, atnSPECT
@@ -1694,10 +1752,7 @@ void projectorType123(
 					no_norm, d_Summ, d_output 
 #endif //////////////// END FP/BP ////////////////
 #ifdef TOF //////////////// TOF ////////////////
-				, TOFSum, TOFWeights
-#if defined(LISTMODE)
-				, TOFid
-#endif
+				, TOFWeights
 #endif //////////////// END TOF ////////////////
 #if defined(SPECT) && defined(ATN)
 				, atnSPECT
@@ -1728,10 +1783,7 @@ void projectorType123(
 			denominator(axP, local_ind, local_ele, d_OSEM
 #endif
 #ifdef TOF //////////////// TOF ////////////////
-			, TOFSum, TOFWeights
-#ifdef LISTMODE
-			, TOFid
-#endif
+			, TOFWeights
 #endif //////////////// END TOF ////////////////
 			);
 #endif  //////////////// END FORWARD PROJECTION ////////////////
@@ -1743,18 +1795,12 @@ void projectorType123(
 #endif //////////////// END MASKBP ////////////////
 			rhs(local_ele * temp, ax, local_ind, d_output, no_norm, d_Summ
 #ifdef TOF
-			, TOFSum, TOFWeights
-#ifdef LISTMODE
-			, TOFid
-#endif
+			, TOFWeights
 #endif
 			);
 #endif //////////////// END BACKWARD PROJECTION ////////////////
 			}
 #endif //////////////// END ORTH/VOL ////////////////
-#if defined(TOF)
-			D -= (local_ele2 * DDsign);
-#endif
 #ifndef ORTH
 			local_ind += indStep;
 #endif
@@ -1843,10 +1889,7 @@ void projectorType123(
 					no_norm, d_Summ, d_output 
 #endif
 #ifdef TOF
-				, TOFSum, TOFWeights
-#ifdef LISTMODE
-				, TOFid
-#endif
+				, TOFWeights
 #endif
 #if defined(SPECT) && defined(ATN)
 				, atnSPECT2
@@ -1885,10 +1928,7 @@ void projectorType123(
 					no_norm, d_Summ, d_output 
 #endif
 #ifdef TOF
-				, TOFSum, TOFWeights
-#ifdef LISTMODE
-				, TOFid
-#endif
+				, TOFWeights
 #endif
 #if defined(SPECT) && defined(ATN)
 				, atnSPECT2
@@ -1920,7 +1960,7 @@ void projectorType123(
         ax[0] *= local_norm;
 #endif
 #if defined(TOF) && defined(LISTMODE)
-		size_t to = TOFid;
+		size_t to = 0;
 #else
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
@@ -1937,7 +1977,7 @@ void projectorType123(
 #endif
 #elif defined(FP) && defined(N_RAYS)
 #if defined(TOF) && defined(LISTMODE)
-	ax[TOFid] += axRay[TOFid] * temp;
+	ax[0] += axRay[0] * temp;
 #else
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
@@ -1958,7 +1998,7 @@ void projectorType123(
 	ax[0] *= local_norm;
 #endif
 #if defined(TOF) && defined(LISTMODE)
-    size_t to = TOFid;
+    size_t to = 0;
 #else
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS

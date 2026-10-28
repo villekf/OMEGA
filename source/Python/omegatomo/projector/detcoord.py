@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 """
 from __future__ import annotations
 from typing import Tuple
+import warnings
 import numpy as np
 from omegatomo.projector import proj
 
@@ -312,7 +313,8 @@ def getCoordinates(options):
                 z = np.delete(z, np.where(options.pseudot))
             # Gaps between the axial blocks
             if len(options.ringGaps) > 0 and np.sum(options.ringGaps) > 0:
-                cpba = np.atleast_1d(options.cryst_per_block_axial)[0]
+                # With layers that have a different number of axial crystals, the axial blocks have as many ring slots as the largest layer
+                cpba = np.max(np.atleast_1d(options.cryst_per_block_axial))
                 gaps = np.repeat(np.insert(np.cumsum(options.ringGaps), 0, 0), cpba)[:z.size]
                 z = (z + gaps - np.sum(options.ringGaps) / 2).astype(np.float32)
             # Multi-layer: the rings of layer l are located at an offset of l * rings
@@ -352,7 +354,7 @@ def _rawLayerDetectors(options, xp, yp):
     """
     S = int(np.asarray(options.det_w_pseudo).ravel()[0])
     nLayers = int(options.nLayers)
-    if xp.size < nLayers * S:
+    if xp.size < nLayers * S or S > int(np.asarray(options.det_per_ring).ravel()[0]):
         raise ValueError('Raw/index-based multi-layer detector coordinates are not supported with pseudo detectors!')
     x = np.full(nLayers * S, np.inf, dtype=xp.dtype)
     y = np.full(nLayers * S, np.inf, dtype=yp.dtype)
@@ -437,7 +439,7 @@ def getCoordinatesSPECT(options: proj.projectorClass) -> Tuple[np.ndarray, np.nd
     # the *other* operand's own dtype/precision). The original per-ii loop
     # indexed float32 scalars out of options.radiusPerProj/angles/
     # swivelAngles, so every term mixing one of those scalars with a plain
-    # Python float/int (r2, the colD+0.5*colLxy shift, and the "+90" in the
+    # Python float/int (r2, the colD+0.5*colL shift, and the "+90" in the
     # z formula) was silently upcast to float64 -- with the float32
     # trig result widened losslessly to float64 first -- before being
     # stored back into the float32 x/z arrays. That is reproduced here by
@@ -454,7 +456,9 @@ def getCoordinatesSPECT(options: proj.projectorClass) -> Tuple[np.ndarray, np.nd
     x[1, :] = r1 * np.sin(np.deg2rad(alpha1)) + r2 * np.sin(np.deg2rad(alpha2)).astype(np.float64)
     x[2, :] = 0
 
-    colShift = options.colD + 0.5 * options.colLxy
+    # The collimator point is placed with the general collimator length colL, the same reference length that
+    # SPECTParameters uses when scaling the transaxial/axial ray shifts with colLxy/colLz.
+    colShift = options.colD + 0.5 * options.colL
     x[3, :] = x[0, :] + colShift * np.cos(np.deg2rad(alpha2)).astype(np.float64)
     x[4, :] = x[1, :] + colShift * np.sin(np.deg2rad(alpha2)).astype(np.float64)
     x[5, :] = 0
@@ -516,7 +520,8 @@ def detectorCoordinates(options):
     # layers for the offangle circshift (detector_coordinates.m:134-144).
     # Only meaningful when options.nLayers > 1.
     koko = None
-    if options.det_w_pseudo > options.det_per_ring:
+    usePseudo = options.det_w_pseudo > options.det_per_ring
+    if usePseudo and options.nLayers < 2:
 
         xp,yp = computeCoordinates(options, blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, True)
         x = xp
@@ -535,44 +540,24 @@ def detectorCoordinates(options):
             return v[idx].item() if isinstance(v, np.ndarray) else v[idx]
         cpb1 = _cpb(0)
         cpb2 = _cpb(1)
-        nLayersInt = int(options.nLayers)
-        if cpb1 == cpb2:
-            x1,y1 = computeCoordinates(options, blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, False)
-            # orig_diameter = diameter + options.crystH(end) * 2;
-            diameter = diameter + DOI * 2 + options.crystH[0] * 2
-            x2,y2 = computeCoordinates(options, blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, False)
-            koko = x1.size
-        elif cpb1 > cpb2:
-            x1,y1 = computeCoordinates(options, blocks_per_ring, transaxial_multip, cpb1, diameter, cr_p, False)
-            # orig_diameter = diameter + options.crystH(end) * 2;
-            diameter = diameter + DOI * 2 + options.crystH[0] * 2
-            x2,y2 = computeCoordinates(options, blocks_per_ring, transaxial_multip, cpb2, diameter, cr_p, False)
-            n = options.det_w_pseudo * nLayersInt
-            half = n // 2
-            idxAll = np.arange(1, half + 1)
-            insert_indices = np.setdiff1d(idxAll, np.arange(cpb1, half + 1, cpb1))
-            xTmp = np.full(n, np.inf, dtype=np.float32)
-            xTmp[insert_indices - 1] = x2
-            yTmp = np.full(n, np.inf, dtype=np.float32)
-            yTmp[insert_indices - 1] = y2
-            x2 = xTmp
-            y2 = yTmp
-            koko = x2.size
+        # Both layers are mapped into blocks of blockSize detectors as in the loader: the block size including the pseudo
+        # detectors when they are used, otherwise the block size of the layer with the most crystals per block. The detectors
+        # that a layer does not have are located at the end of each block (Inf)
+        nBlocksRing = int(blocks_per_ring * transaxial_multip)
+        if usePseudo:
+            detWPseudo = int(np.asarray(options.det_w_pseudo).ravel()[0])
+            blockSize = detWPseudo // nBlocksRing
+            if blockSize * nBlocksRing != detWPseudo or blockSize < max(cpb1, cpb2) + 1:
+                raise ValueError('det_w_pseudo (' + str(detWPseudo) + ') has to be a multiple of the number of blocks per ring (' + str(nBlocksRing) + ') with at least one pseudo detector per block!')
         else:
-            x1,y1 = computeCoordinates(options, blocks_per_ring, transaxial_multip, cpb1, diameter, cr_p, False)
-            n = (options.det_w_pseudo // 2) * nLayersInt
-            idxAll = np.arange(1, n + 1)
-            insert_indices = np.setdiff1d(idxAll, np.arange(cpb2, n + 1, cpb2))
-            xTmp = np.full(n, np.inf, dtype=np.float32)
-            xTmp[insert_indices - 1] = x1
-            yTmp = np.full(n, np.inf, dtype=np.float32)
-            yTmp[insert_indices - 1] = y1
-            x1 = xTmp
-            y1 = yTmp
-            # orig_diameter = diameter + options.crystH(end) * 2;
-            diameter = diameter + DOI * 2 + options.crystH[0] * 2
-            x2,y2 = computeCoordinates(options, blocks_per_ring, transaxial_multip, cpb2, diameter, cr_p, False)
-            koko = x1.size
+            blockSize = max(cpb1, cpb2)
+        x1,y1 = computeCoordinates(options, blocks_per_ring, transaxial_multip, cpb1, diameter, cr_p, usePseudo)
+        x1,y1 = _padLayerBlocks(x1, y1, cpb1 + int(usePseudo), blockSize, nBlocksRing)
+        # orig_diameter = diameter + options.crystH(end) * 2;
+        diameter = diameter + DOI * 2 + options.crystH[0] * 2
+        x2,y2 = computeCoordinates(options, blocks_per_ring, transaxial_multip, cpb2, diameter, cr_p, usePseudo)
+        x2,y2 = _padLayerBlocks(x2, y2, cpb2 + int(usePseudo), blockSize, nBlocksRing)
+        koko = x1.size
         # xp = [x1;x2]; yp = [y1;y2]; (detector_coordinates.m:110-111)
         x = np.concatenate((x1, x2))
         y = np.concatenate((y1, y2))
@@ -583,6 +568,13 @@ def detectorCoordinates(options):
         x = np.flip(x)
         y = np.flip(y)
     if not options.offangle == 0:
+        if options.det_w_pseudo > options.det_per_ring:
+            # The pseudo-inclusive array is rolled together with its pseudo
+            # gaps. Unless the roll is a whole number of pseudo-inclusive
+            # blocks, the gaps no longer match the pseudo slots of the data.
+            blockSizePseudo = int(round(float(options.det_w_pseudo) / blocks_per_ring))
+            if blockSizePseudo > 0 and int(matlabRound(options.offangle)) % blockSizePseudo != 0:
+                warnings.warn('offangle (' + str(options.offangle) + ') is not a multiple of the block size including pseudo detectors (' + str(blockSizePseudo) + '). The detector coordinates are rotated together with the pseudo-detector gaps, so the gaps no longer align with the measured data and the geometry is distorted. Use a multiple of ' + str(blockSizePseudo) + ' for exact results.')
         if options.nLayers > 1 and koko is not None:
             x1 = np.roll(x[:koko], int(matlabRound(options.offangle)))
             x2 = np.roll(x[koko:], int(matlabRound(options.offangle)))
@@ -595,9 +587,79 @@ def detectorCoordinates(options):
             y = np.roll(y, int(matlabRound(options.offangle)))
     return x, y
 
-def computeCoordinates(options, blocks_per_ring, transaxial_multip, cryst_per_block, diameter, cr_p, usePseudo):
+def _padLayerBlocks(x, y, slots, blockSize, nBlocks):
+    """
+    Maps the detector coordinates of one layer into blocks of blockSize detectors
+    (the same mapping as in the list-mode loader). The slots of each block that
+    the layer does not have are set to Inf and located at the end of the block.
+
+    Parameters
+    ----------
+    x : NumPy array
+        x-direction coordinates of the layer, slots detectors per block.
+    y : NumPy array
+        y-direction coordinates of the layer, slots detectors per block.
+    slots : int
+        The number of detectors (including pseudo detectors) per block in the layer.
+    blockSize : int
+        The common number of detectors per block.
+    nBlocks : int
+        Number of blocks per transaxial ring.
+
+    Returns
+    -------
+    x, y : NumPy arrays
+        Coordinates with nBlocks * blockSize entries. The input is returned as such if the layer has no missing slots.
+
+    """
+    if slots >= blockSize:
+        return x, y
+    xOut = np.full((nBlocks, blockSize), np.inf, dtype=x.dtype)
+    yOut = np.full((nBlocks, blockSize), np.inf, dtype=y.dtype)
+    xOut[:, :slots] = x.reshape(nBlocks, slots)
+    yOut[:, :slots] = y.reshape(nBlocks, slots)
+    return xOut.ravel(), yOut.ravel()
+
+def _transaxialGapsFor(options, cryst_per_block):
+    """
+    Returns the transaxial gaps (options.transaxialGaps) that apply to a block
+    with cryst_per_block crystals, or None if there are no gaps (or the gaps
+    were given for a different number of crystals per block, e.g. the other
+    layer of a multi-layer scanner).
+    """
+    gaps = getattr(options, 'transaxialGaps', None)
+    if gaps is None:
+        return None
+    gaps = np.asarray(gaps, dtype=np.float64).ravel()
+    if gaps.size == 0 or not np.any(gaps):
+        return None
+    if gaps.size != int(cryst_per_block) - 1:
+        if getattr(options, 'nLayers', 1) > 1:
+            return None
+        raise ValueError('options.transaxialGaps has to contain cryst_per_block - 1 = ' + str(int(cryst_per_block) - 1) + ' elements (one gap after each crystal of a block except the last) or be empty, but it has ' + str(gaps.size) + ' elements!')
+    return gaps
+
+def computeCoordinates(options, blocks_per_ring, transaxial_multip, cryst_per_block, diameter, cr_p, usePseudo, transaxialGaps=None, firstBlockAngle=None):
     """
     Transaxial PET coordinates.
+
+    The detector ring is a regular polygon with N = blocks_per_ring *
+    transaxial_multip flat facets (blocks). The front face of each block is at
+    the perpendicular distance diameter / 2 from the center, i.e. diameter is
+    the distance between two opposing (parallel) block faces. The normal of
+    facet 0 is at the angle firstBlockAngle (default 0, i.e. facet 0 is
+    centered on the +x axis) and the facets follow each other counter-clockwise
+    (increasing angle). The crystals of a block are placed at the pitch cr_p
+    along the facet, centered on the facet, with the first crystal of block 0
+    having the smallest y coordinate.
+
+    Coordinate system: the origin is at the scanner center and z is the scanner
+    axis. +x is the direction of the image's first dimension (Nx, the row
+    direction) and +y the direction of its second dimension (Ny, the column
+    direction); angles are counter-clockwise, i.e. from +x towards +y. With
+    firstBlockAngle = 0 the center of block 0 is at (x, y) = (diameter / 2, 0)
+    (the DOI is added to the radius) and its crystals run towards +y. The angle
+    is applied before offangle (detector renumbering) and before flip_image.
 
     Parameters
     ----------
@@ -610,11 +672,21 @@ def computeCoordinates(options, blocks_per_ring, transaxial_multip, cryst_per_bl
     cryst_per_block : int
         The number of crystals per block.
     diameter : float
-        Diameter of the bore.
+        Diameter of the bore, measured between two opposing block faces.
     cr_p : float
         Crystal pitch/size in transaxial direction.
     usePseudo : bool
-        True if pseudo detectors are present, False otherwise.
+        True if pseudo detectors are present, False otherwise. A pseudo
+        detector is placed one cr_p after the last crystal of each block.
+    transaxialGaps : array_like, optional
+        Extra spacing (mm) after crystal j of each block, cryst_per_block - 1
+        elements. The block stays centered on its facet. The default is None,
+        in which case options.transaxialGaps is used (if present).
+    firstBlockAngle : float, optional
+        Angle (degrees, counter-clockwise from the +x axis, i.e. from the
+        direction of the image's first dimension towards its second) of the
+        normal of the first block (facet 0). The default is None, in which case
+        options.firstBlockAngle is used (if present, otherwise 0).
 
     Returns
     -------
@@ -624,136 +696,37 @@ def computeCoordinates(options, blocks_per_ring, transaxial_multip, cryst_per_bl
         y-direction coordinates for detector/detector pairs.
 
     """
-    import math
-    cryst_per_block_orig = cryst_per_block
+    nBlocks = int(blocks_per_ring * transaxial_multip)
+    nCryst = int(cryst_per_block)
+    if firstBlockAngle is None:
+        firstBlockAngle = getattr(options, 'firstBlockAngle', 0.)
+    firstBlockAngle = float(np.asarray(firstBlockAngle).ravel()[0]) if np.size(firstBlockAngle) > 0 else 0.
+    if transaxialGaps is None:
+        gaps = _transaxialGapsFor(options, nCryst)
+    else:
+        gaps = np.asarray(transaxialGaps, dtype=np.float64).ravel()
+        if gaps.size == 0:
+            gaps = None
+        elif gaps.size != nCryst - 1:
+            raise ValueError('transaxialGaps has to contain cryst_per_block - 1 = ' + str(nCryst - 1) + ' elements, but it has ' + str(gaps.size) + ' elements!')
+
+    # Tangential position of each crystal along the facet, centered on the facet
+    t = (np.arange(nCryst, dtype=np.float64) - (nCryst - 1) / 2.) * cr_p
+    if gaps is not None:
+        t = t + np.concatenate((np.zeros(1), np.cumsum(gaps))) - np.sum(gaps) / 2.
     if usePseudo:
-        extraVar = 1
-        cryst_per_block = cryst_per_block + 1
-    else:
-        extraVar = 0
-    
-    angle = np.arange(90, -271, -360 / (blocks_per_ring * transaxial_multip))  # Generate angles
-    
-    widths = (cryst_per_block_orig) * cr_p * np.cos(np.radians(angle[:((blocks_per_ring * transaxial_multip) // 2 + 1)]))
-    widthsy = (cryst_per_block_orig) * cr_p * np.sin(np.radians(angle[:((blocks_per_ring * transaxial_multip) // 2)]))
-    
-    erotus = (diameter - np.sum(np.abs(widths))) / np.sum(np.cos(np.radians(angle[:((blocks_per_ring * transaxial_multip) // 2 + 1)]))) / 2
-    erotusy = (diameter - np.sum(np.abs(widthsy))) / np.sum(np.abs(np.sin(np.radians(angle[:((blocks_per_ring * transaxial_multip) // 2)])))) / 2
-    
-    alkupistex = diameter / 2.
-    alkupistey = -((cryst_per_block_orig) / 2. + 0.5) * cr_p
-    
-    ii = 0
-    x = np.zeros(((blocks_per_ring * transaxial_multip) * (cryst_per_block)), dtype=np.float32)
-    y = np.zeros(((blocks_per_ring * transaxial_multip) * (cryst_per_block)), dtype=np.float32)
-    
-    # Compute the detector coordinates of each detector (crystal) in each block
-    # Only for the 1/4th of the ring
-    for blocks in range(0, math.ceil((blocks_per_ring * transaxial_multip) / 4)):
-        for crystals in range(1, cryst_per_block + 1):
-            if blocks > 0 and crystals == 1:
-                x[ii] = alkupistex - (cr_p * 0.5) * np.cos(np.radians(angle[blocks])) - erotus * np.cos(
-                    np.radians(angle[blocks - 1])) - erotus * np.cos(np.radians(angle[blocks])) - (
-                                cr_p * 0.5) * np.cos(np.radians(angle[blocks - 1]))
-                y[ii] = alkupistey + (cr_p * 0.5) * np.sin(np.radians(angle[blocks])) + erotusy * np.sin(
-                    np.radians(angle[blocks - 1])) + erotusy * np.sin(np.radians(angle[blocks])) + (
-                                cr_p * 0.5) * np.sin(np.radians(angle[blocks - 1]))
-            else:
-                x[ii] = alkupistex - (cr_p) * np.cos(np.radians(angle[blocks]))
-                y[ii] = alkupistey + (cr_p) * np.sin(np.radians(angle[blocks]))
-    
-            if crystals == cryst_per_block:
-                alkupistex = x[ii] + (cr_p) * np.cos(np.radians(angle[blocks])) * extraVar
-                alkupistey = y[ii] - (cr_p) * np.sin(np.radians(angle[blocks])) * extraVar
-            else:
-                alkupistex = x[ii]
-                alkupistey = y[ii]
-            ii += 1
-    
-    # Symmetry of the coordinates
-    if (blocks_per_ring * transaxial_multip) % 4 == 0:
-        blocks += 1
-        x[ii] = alkupistex - (cr_p * 0.5) * np.cos(np.radians(angle[blocks])) - erotus * np.cos(
-            np.radians(angle[blocks - 1])) - erotus * np.cos(np.radians(angle[blocks])) - (cr_p * 0.5) * np.cos(
-            np.radians(angle[blocks - 1]))
-        y[ii] = alkupistey + (cr_p * 0.5) * np.sin(np.radians(angle[blocks])) + erotusy * np.sin(
-            np.radians(angle[blocks - 1])) + erotusy * np.sin(np.radians(angle[blocks])) + (cr_p * 0.5) * np.sin(
-            np.radians(angle[blocks - 1]))
-        alkupistex = x[ii]
-        alkupistey = y[ii]
-        ii += 1
-    
-        for ll in range(2, cryst_per_block + 1):
-            x[ii] = alkupistex - (cr_p) * np.cos(np.radians(angle[blocks]))
-            y[ii] = alkupistey + (cr_p) * np.sin(np.radians(angle[blocks]))
-            alkupistex = x[ii]
-            alkupistey = y[ii]
-            ii += 1
-    
-        if usePseudo:
-            ii -= 1
-            alkupistex = x[ii] + (cr_p) * np.cos(np.radians(angle[blocks])) * extraVar
-            alkupistey = y[ii] - (cr_p) * np.sin(np.radians(angle[blocks])) * extraVar
-            alkublock = blocks + 1
-            ii += 1
-            for blocks in range(alkublock, blocks_per_ring * transaxial_multip):
-                for crystals in range(1, cryst_per_block + 1):
-                    if blocks > 0 and crystals == 1:
-                        x[ii] = alkupistex - (cr_p * 0.5) * np.cos(np.radians(angle[blocks])) - erotus * np.cos(
-                            np.radians(angle[blocks - 1])) - erotus * np.cos(np.radians(angle[blocks])) - (
-                                        cr_p * 0.5) * np.cos(np.radians(angle[blocks - 1]))
-                        y[ii] = alkupistey + (cr_p * 0.5) * np.sin(np.radians(angle[blocks])) + erotusy * np.sin(
-                            np.radians(angle[blocks - 1])) + erotusy * np.sin(np.radians(angle[blocks])) + (
-                                        cr_p * 0.5) * np.sin(np.radians(angle[blocks - 1]))
-                    else:
-                        x[ii] = alkupistex - (cr_p) * np.cos(np.radians(angle[blocks]))
-                        y[ii] = alkupistey + (cr_p) * np.sin(np.radians(angle[blocks]))
-    
-                    if crystals == cryst_per_block:
-                        alkupistex = x[ii] + (cr_p) * np.cos(np.radians(angle[blocks])) * extraVar
-                        alkupistey = y[ii] - (cr_p) * np.sin(np.radians(angle[blocks])) * extraVar
-                    else:
-                        alkupistex = x[ii]
-                        alkupistey = y[ii]
-                    ii += 1
-        else:
-            x[ii:ii + ((blocks_per_ring * transaxial_multip) * cryst_per_block) // 4] = -(np.flip(x[:((blocks_per_ring * transaxial_multip) * cryst_per_block) // 4]))
-            y[ii:ii + ((blocks_per_ring * transaxial_multip) * cryst_per_block) // 4] = (np.flip(y[:((blocks_per_ring * transaxial_multip) * cryst_per_block) // 4]))
-            x[ii + ((blocks_per_ring * transaxial_multip) * cryst_per_block) // 4:] = np.flip(x[cryst_per_block:((blocks_per_ring * transaxial_multip) * cryst_per_block) // 2])
-            y[ii + ((blocks_per_ring * transaxial_multip) * cryst_per_block) // 4:] = -(y[cryst_per_block:((blocks_per_ring * transaxial_multip) * cryst_per_block) // 2])
-    else:
-        if usePseudo:
-            alkublock = blocks + 1
-            for blocks in range(alkublock, blocks_per_ring * transaxial_multip):
-                for crystals in range(1, cryst_per_block + 1):
-                    if blocks > 0 and crystals == 1:
-                        x[ii] = alkupistex - (cr_p * 0.5) * np.cos(np.radians(angle[blocks])) - erotus * np.cos(
-                            np.radians(angle[blocks - 1])) - erotus * np.cos(np.radians(angle[blocks])) - (
-                                        cr_p * 0.5) * np.cos(np.radians(angle[blocks - 1]))
-                        y[ii] = alkupistey + (cr_p * 0.5) * np.sin(np.radians(angle[blocks])) + erotusy * np.sin(
-                            np.radians(angle[blocks - 1])) + erotusy * np.sin(np.radians(angle[blocks])) + (
-                                        cr_p * 0.5) * np.sin(np.radians(angle[blocks - 1]))
-                    else:
-                        x[ii] = alkupistex - (cr_p) * np.cos(np.radians(angle[blocks]))
-                        y[ii] = alkupistey + (cr_p) * np.sin(np.radians(angle[blocks]))
-    
-                    if crystals == cryst_per_block:
-                        alkupistex = x[ii] + (cr_p) * np.cos(np.radians(angle[blocks])) * extraVar
-                        alkupistey = y[ii] - (cr_p) * np.sin(np.radians(angle[blocks])) * extraVar
-                    else:
-                        alkupistex = x[ii]
-                        alkupistey = y[ii]
-                    ii += 1
-        else:
-            # MATLAB evaluates N*cryst_per_block/4 + cryst_per_block/2 in floating point, which is an integer
-            # also for odd cryst_per_block (e.g. 42 blocks, 9 crystals: 94.5 + 4.5 = 99), unlike the sum of the floored terms
-            nHalf = int(math.floor(((blocks_per_ring * transaxial_multip) * cryst_per_block) / 4 + cryst_per_block / 2))
-            x[ii:ii + nHalf] = -(np.flip(x[:nHalf]))
-            y[ii:ii + nHalf] = (np.flip(y[:nHalf]))
-            x[ii + nHalf:] = np.flip(x[cryst_per_block:((blocks_per_ring * transaxial_multip) * cryst_per_block) // 2])
-            y[ii + nHalf:] = -(y[cryst_per_block:((blocks_per_ring * transaxial_multip) * cryst_per_block) // 2])
+        # One pseudo detector, one cr_p after the last crystal
+        t = np.append(t, t[-1] + cr_p)
+
+    # Facet normal angles (facet 0 at firstBlockAngle)
+    theta = 2. * np.pi * np.arange(nBlocks, dtype=np.float64) / nBlocks + np.radians(firstBlockAngle)
+    c = np.cos(theta)[:, None]
+    s = np.sin(theta)[:, None]
+    R = diameter / 2.
+    x = (R * c - t[None, :] * s).ravel().astype(np.float32)
+    y = (R * s + t[None, :] * c).ravel().astype(np.float32)
     return x, y
-            
+
 def formDetectorIndices( det_w_pseudo, nLayers = 1, crystN = 0):
     """
     For raw data only. Note used at the moment.
@@ -977,6 +950,114 @@ def sinogramCoordinates2D(options, x, y, nLayers = 1, layers = (1, 1)):
     y = np.column_stack((y.ravel('F'), y2.ravel('F')))
     return x, y
     
+def _planesPerBlock(options):
+    """
+    Number of sinogram planes of one layer combination (span > 1). With multiple
+    layers options.TotSinos may include all nLayers**2 layer combinations, the
+    number of planes of one combination is then the sum of the segment table.
+    """
+    if options.nLayers > 1:
+        return int(np.sum(options.segment_table))
+    return int(options.TotSinos)
+
+def _unequalLayerRings(options, layer, maxZ):
+    """
+    Axial ring positions of one layer of a multi-layer scanner whose layers have
+    a different number of axial crystals (cryst_per_block_axial). The ring
+    slots of every axial block are as many as in the layer with the most
+    crystals, the layers with fewer crystals are centered in the block and have
+    a pseudo ring (Inf) at the end of the block. This is the same ring numbering
+    as the loader uses (the module number is added to the ring number of the
+    layers with fewer axial crystals).
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+    layer : int
+        The layer (1 or 2).
+    maxZ : float
+        The axial length used for centering the coordinates.
+
+    Returns
+    -------
+    z : Numpy array
+        Axial positions of the rings (options.rings entries).
+
+    """
+    cr_pz = options.cr_pz
+    rings = int(options.rings)
+    cpba = np.atleast_1d(np.asarray(options.cryst_per_block_axial)).ravel().astype(np.int64)
+    M = int(np.max(cpba))
+    n = int(cpba[layer - 1])
+    s = np.arange(rings)
+    z = (s + (M - n) / 2.) * cr_pz
+    if len(options.ringGaps) > 0 and np.sum(options.ringGaps) > 0:
+        # Gaps between the axial blocks
+        gaps = np.repeat(np.insert(np.cumsum(options.ringGaps), 0, 0), M)
+        z = z + gaps[:rings]
+    z[(s % M) >= n] = np.inf
+    return z - (maxZ / 2 - cr_pz)
+
+def _unequalLayerCoordinates3D(options, layer1, layer2, maxZ):
+    """
+    Axial sinogram coordinates of a multi-layer scanner whose layers have a
+    different number of axial crystals. Every sinogram plane is the mean of the
+    ring pairs (existing rings of the two layers only) that the loader places
+    into the plane: the first ring (first column) is the ring of the first
+    detector of the sinogram and the second ring that of the second detector.
+    The planes that contain no ring pairs are Inf.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+    layer1 : int
+        The layer of the first detector.
+    layer2 : int
+        The layer of the second detector.
+    maxZ : float
+        The axial length used for centering the coordinates.
+
+    Returns
+    -------
+    z : Numpy array
+        Axial sinogram coordinates.
+
+    """
+    rings = int(options.rings)
+    zA = _unequalLayerRings(options, layer1, maxZ)
+    zB = _unequalLayerRings(options, layer2, maxZ)
+    a, b = np.meshgrid(np.arange(rings), np.arange(rings), indexing='ij')
+    a = a.ravel()
+    b = b.ravel()
+    if options.span > 1:
+        span = int(options.span)
+        half = span // 2
+        seg = np.cumsum(np.asarray(options.segment_table).ravel()).astype(np.int64)
+        nPlanes = _planesPerBlock(options)
+        # The same plane index as in the loader (saveSinogram.h)
+        erotus = b - a
+        summa = a + b
+        ae = np.abs(erotus)
+        k = (ae + half) // span
+        kk = np.clip(k - 1, 0, None)
+        valid = (ae <= int(options.ring_difference)) & (2 * kk + 1 < seg.size)
+        off = np.where(erotus < 0, seg[np.clip(2 * kk, 0, seg.size - 1)], seg[np.clip(2 * kk + 1, 0, seg.size - 1)])
+        P = np.where(ae <= half, summa, summa - (half * (2 * k - 1) + k) + off)
+    else:
+        nPlanes = rings ** 2
+        P = a * rings + b
+        valid = np.ones(P.shape, dtype=bool)
+    valid = valid & np.isfinite(zA[a]) & np.isfinite(zB[b]) & (P >= 0) & (P < nPlanes)
+    P = P[valid]
+    count = np.bincount(P, minlength=nPlanes)
+    populated = count > 0
+    z = np.full((nPlanes, 2), np.inf)
+    z[populated, 0] = np.bincount(P, weights=zA[a[valid]], minlength=nPlanes)[populated] / count[populated]
+    z[populated, 1] = np.bincount(P, weights=zB[b[valid]], minlength=nPlanes)[populated] / count[populated]
+    return z
+
 def sinogramCoordinates3D(options, layers = (1,1)):
     """
     Same as above, but for axial coordinates.
@@ -1010,11 +1091,9 @@ def sinogramCoordinates3D(options, layers = (1,1)):
     maxZ = z_length
 
     if options.nLayers > 1 and options.cryst_per_block_axial[0] != options.cryst_per_block_axial[1]:
-        apu = np.zeros(options.linear_multip)
-        for kk in range(options.linear_multip):
-            apu[kk] = kk * cr_pz
-        apu = np.repeat(apu, np.sum(options.cryst_per_block_axial))
-    
+        # Layers with a different number of axial crystals: each layer has its own ring positions
+        return _unequalLayerCoordinates3D(options, layer1, layer2, maxZ)
+
     # Compute the 3D coordinates
     if options.span > 1:
         # The ring step is exactly cr_pz, the gaps between the axial blocks are added below
@@ -1037,8 +1116,6 @@ def sinogramCoordinates3D(options, layers = (1,1)):
         # else:
         #     z = z[:options.rings]
         
-        if options.nLayers > 1 and options.cryst_per_block_axial[0] != options.cryst_per_block_axial[1]:
-            z += apu
         z -= maxZ / 2
         ringsp = options.rings
         z_ring = np.zeros((options.rings, options.rings, 2))
@@ -1048,18 +1125,18 @@ def sinogramCoordinates3D(options, layers = (1,1)):
         z_ring[:,:,0] = np.tile(z, (1, options.rings))
         z_ring[:,:,1] = np.tile(z.T, (options.rings, 1))
         z_ring = z_ring.reshape(options.rings * options.rings, 2)
-        kkj = np.zeros(((options.ring_difference - math.ceil(options.span / 2)) // options.span) + 1, dtype=int)
-    
-        for kk in range(1, ((options.ring_difference - math.ceil(options.span / 2)) // options.span) + 2):
-            kkj[kk - 1] = np.ceil(options.span / 2) + options.span * (kk - 1)
+        # One segment (a pair of the negative and positive ring differences) for every entry pair of the segment table,
+        # i.e. the planes follow the table of the loader also when it extends beyond the ring difference
+        kkj = (math.ceil(options.span / 2) + options.span * np.arange(len(options.segment_table) // 2)).astype(int)
         
         offset2 = np.cumsum(options.segment_table)
         
         # Perpendicular rings
-        z = np.zeros((options.TotSinos, 2))
+        totSinos = _planesPerBlock(options)
+        z = np.zeros((totSinos, 2))
         z[:Nz+1:2, 0] = z_ring[::ringsp + 1, 0]
         z[:Nz+1:2, 1] = z_ring[::ringsp + 1, 1]
-        mean_jh = np.zeros(options.TotSinos)
+        mean_jh = np.zeros(totSinos)
         mean_jh[:Nz + 1:2] = 1
         
         # Then the detectors on adjacent rings
@@ -1079,6 +1156,9 @@ def sinogramCoordinates3D(options, layers = (1,1)):
         # specified with the span value
         for ih in range(1, int(len(options.segment_table) / 2) + 1):
             for jh in range(1, options.span + 1):
+                # Ring differences larger than ring_difference are not stored by the loader
+                if kkj[ih - 1] + jh - 1 > options.ring_difference:
+                    continue
                 apu = z_ring[((kkj[ih - 1] + jh - 1) * options.rings)::options.rings + 1, 0]
                 z[offset2[2 * (ih - 1)] + jh - 1:offset2[(2 * ih) - 1] - jh + 1:2, 0] += apu
                 apu2 = z_ring[(kkj[ih - 1] + jh - 1):max((options.rings - kkj[ih - 1] - jh + 1) * options.rings, 0):options.rings + 1, 0]
@@ -1087,15 +1167,18 @@ def sinogramCoordinates3D(options, layers = (1,1)):
                 z[offset2[2 * (ih - 1)] + jh - 1:offset2[(2 * ih) - 1] - jh + 1:2, 1] += apu
                 apu2 = z_ring[(kkj[ih - 1] + jh - 1):max((options.rings - kkj[ih - 1] - jh + 1) * options.rings, 0):options.rings + 1, 1]
                 z[offset2[(2 * ih - 1)] + jh - 1:offset2[(2 * ih)] - jh + 1:2, 1] += apu2
-                loc = np.isin(np.arange(1, options.TotSinos + 1), np.arange(offset2[(2 * (ih - 1))] + jh, offset2[(2 * ih - 1)] - jh + 2, 2))
+                loc = np.isin(np.arange(1, totSinos + 1), np.arange(offset2[(2 * (ih - 1))] + jh, offset2[(2 * ih - 1)] - jh + 2, 2))
                 mean_jh[loc] += 1
-                loc = np.isin(np.arange(1, options.TotSinos + 1), np.arange(offset2[(2 * ih - 1)] + jh, offset2[(2 * ih)] - jh + 2, 2))
+                loc = np.isin(np.arange(1, totSinos + 1), np.arange(offset2[(2 * ih - 1)] + jh, offset2[(2 * ih)] - jh + 2, 2))
                 mean_jh[loc] += 1
         
-        mean_jh[mean_jh == 0] = 1
+        # Planes without any ring pairs (segments beyond the ring difference)
+        noPairs = mean_jh == 0
+        mean_jh[noPairs] = 1
         # Take the mean value of coordinates
         z[:, 0] /= mean_jh
         z[:, 1] /= mean_jh
+        z[noPairs, :] = np.inf
         # z = np.fliplr(z)
         ind1 = z[:, 0] < z[:, 1]
         # z[ind1] = np.fliplr(z[ind1])
@@ -1103,66 +1186,21 @@ def sinogramCoordinates3D(options, layers = (1,1)):
     else:
         dif = cr_pz
 
-        if options.nLayers > 1 and options.cryst_per_block_axial[0] != options.cryst_per_block_axial[1]:
-            gap_start = ((float(options.rings) * cr_pz) - (options.cryst_per_block_axial[0] * options.linear_multip) * cr_pz) / options.linear_multip / 2
-            gap = np.arange(gap_start, gap_start * 2 * options.linear_multip + 1e-6, gap_start * 2)
-
         z = np.zeros((options.rings**2, 2))
         loppu = options.rings
         ind1 = np.ones((loppu, 1))
-        
-        if options.nLayers > 1:
-            if options.cryst_per_block_axial[0] > options.cryst_per_block_axial[-1] and layer2 == 1:
-                r = options.cryst_per_block_axial[-1] * options.linear_multip
-                apu = np.repeat(gap, options.cryst_per_block_axial[-1]).reshape(-1, 1)
-                ind2 = np.arange(0, cr_pz * r, cr_pz).reshape(-1, 1) + apu
-                insert_indices = np.setdiff1d(np.arange(len(ind2)), np.arange(options.cryst_per_block[0]-1, len(ind2), options.cryst_per_block[0]))
-                ind3 = np.full((loppu, 1), np.inf)
-                ind3[insert_indices] = ind2[insert_indices]
-                ind2 = ind3
-            elif options.cryst_per_block_axial[-1] > options.cryst_per_block_axial[0] and layer2 == 1:
-                r = options.cryst_per_block_axial[0] * options.linear_multip
-                apu = np.repeat(gap, options.cryst_per_block_axial[0]).reshape(-1, 1)
-                ind2 = np.arange(0, cr_pz * r, cr_pz).reshape(-1, 1) + apu
-                ind3 = np.full((loppu, 1), np.inf)
-                insert_indices = np.setdiff1d(np.arange(len(ind3)), np.arange(options.cryst_per_block[-1]-1, len(ind3), options.cryst_per_block[-1]))
-                ind3[insert_indices] = ind2
-                ind2 = ind3
-            else:
-                ind2 = np.arange(0, cr_pz * loppu, cr_pz).reshape(-1, 1)
-        
-            if (options.cryst_per_block_axial[0] > options.cryst_per_block_axial[-1] or options.cryst_per_block_axial[-1] > options.cryst_per_block_axial[0]) and layer1 == 1:
-                apu1 = np.full((loppu, 1), np.inf)
-                if options.cryst_per_block_axial[-1] > options.cryst_per_block_axial[0]:
-                    apu = np.repeat(gap, options.cryst_per_block_axial[0]).reshape(-1, 1)
-                    insert_indices = np.setdiff1d(np.arange(len(ind1)), np.arange(options.cryst_per_block[-1]-1, len(ind1), options.cryst_per_block[-1]))
-                else:
-                    apu = np.repeat(gap, options.cryst_per_block_axial[-1]).reshape(-1, 1)
-                    insert_indices = np.setdiff1d(np.arange(len(ind1)), np.arange(options.cryst_per_block[0]-1, len(ind1), options.cryst_per_block[0]))
-                apu1[insert_indices] = apu
-        else:
-            ind2 = np.arange(0, cr_pz * loppu, cr_pz).reshape(-1, 1)
-        
-        uu = 0
+        ind2 = np.arange(0, cr_pz * loppu, cr_pz).reshape(-1, 1)
+
         if hasattr(options, 'ringGaps') and np.sum(options.ringGaps) > 0:
             gaps = np.repeat(np.insert(np.cumsum(options.ringGaps), 0, 0), np.atleast_1d(options.cryst_per_block_axial)[0]).reshape(-1, 1)
-        
+
         for t in range(1, loppu + 1):
             idx_start = (t - 1) * loppu
             idx_end = t * loppu
-            if options.nLayers > 1 and options.cryst_per_block_axial[0] != options.cryst_per_block_axial[1] and layer1 == 1:
-                z[idx_start:idx_end, :] = np.hstack([dif * uu * ind1 + apu1[t - 1], ind2])
-                uu += 1
-            else:
-                z[idx_start:idx_end, :] = np.hstack([dif * (t - 1) * ind1, ind2])
-                if hasattr(options, 'ringGaps') and np.sum(options.ringGaps) > 0:
-                    z[idx_start:idx_end, 1] += np.squeeze(gaps[:loppu])
-                    z[idx_start:idx_end, 0] += gaps[t - 1, 0]
-        
-            if options.nLayers > 1 and ((options.cryst_per_block_axial[0] > options.cryst_per_block_axial[-1] and layer1 == 1) or (options.cryst_per_block_axial[-1] > options.cryst_per_block_axial[0] and layer1 == 1)):
-                if np.isinf(apu1[t - 1]):
-                    z[idx_start:idx_end, :] = np.hstack([np.inf * ind1, ind2])
-                    uu -= 1
+            z[idx_start:idx_end, :] = np.hstack([dif * (t - 1) * ind1, ind2])
+            if hasattr(options, 'ringGaps') and np.sum(options.ringGaps) > 0:
+                z[idx_start:idx_end, 1] += np.squeeze(gaps[:loppu])
+                z[idx_start:idx_end, 0] += gaps[t - 1, 0]
         
         z[np.isnan(z)] = np.inf
         z = z - (maxZ / 2 - cr_pz)
@@ -1218,6 +1256,9 @@ def _type6_auto_filter(options: proj.projectorClass, volume: int, depth: int | N
         distances = 0.5 * dx + np.arange(depth, dtype=np.float32) * dx
         col_l_xy = float(options.colLxy) if options.colLxy > 0. else float(options.colL)
         col_l_z = float(options.colLz) if options.colLz > 0. else float(options.colL)
+        if col_l_xy <= 0. or col_l_z <= 0.:
+            raise ValueError('SPECT projector type 6 computes the collimator-detector response from the collimator hole length: ' +
+                             'options.colL (or both options.colLxy and options.colLz) has to be positive, or sigmaZ/sigmaXY/gFilter have to be input.')
         distance_from_exit = distances + float(options.cr_p) / 2.
         rg_z = np.maximum(0., 2. * float(options.colR) * distance_from_exit / col_l_z)
         rg_xy = np.maximum(0., 2. * float(options.colR) * distance_from_exit / col_l_xy)
@@ -1389,6 +1430,13 @@ def _prepare_odrt_psf(options: proj.projectorClass) -> None:
 def SPECTParameters(options: proj.projectorClass):
     from omegatomo.util.matlabRound import matlabRound
     if options.projector_type in [1, 11, 12, 16, 2, 21, 22, 26, 61, 62]: # Ray tracing projectors
+        # The collimator point of every projection is placed at colD + 0.5 * colL from the detector surface
+        # (getCoordinatesSPECT). With a non-positive distance all the rays have zero length and the projection
+        # silently becomes zero.
+        if options.colD + 0.5 * options.colL <= 0:
+            raise ValueError('SPECT projector types 1 and 2 require a positive collimator length and/or collimator-to-detector distance: ' +
+                             'colD + 0.5 * colL = ' + str(options.colD + 0.5 * options.colL) + ' would result in zero-length rays. ' +
+                             'Set options.colL (and options.colD) to the collimator hole length (and the distance of the collimator from the detector surface).')
         nRays = int(options.n_rays_transaxial * options.n_rays_axial)
         ray_shift_shape = (2 * nRays, options.nRowsD, options.nColsD, options.nHeads)
         if options.rayShiftsDetector.size == 0: # Collimator modeling
@@ -1440,14 +1488,19 @@ def SPECTParameters(options: proj.projectorClass):
             referenceLength = options.colD + 0.5 * options.colL
             lengthXY = options.colD + 0.5 * options.colLxy
             lengthZ = options.colD + 0.5 * options.colLz
-            if referenceLength != lengthZ:
+            # The even entries of the ray shifts move the ray along the detector
+            # panel (transaxial, XY) and the odd ones along the rotation axis
+            # (axial, Z) (getDetectorCoordinatesSPECT in
+            # general_opencl_functions.h), hence the even entries use the
+            # transaxial septa length and the odd ones the axial one.
+            if referenceLength != lengthXY:
                 detectorShiftXY = options.rayShiftsDetector[0::2, :, :, :]
                 options.rayShiftsSource[0::2, :, :, :] = detectorShiftXY + \
-                    (options.rayShiftsSource[0::2, :, :, :] - detectorShiftXY) * (referenceLength / lengthZ)
-            if referenceLength != lengthXY:
+                    (options.rayShiftsSource[0::2, :, :, :] - detectorShiftXY) * (referenceLength / lengthXY)
+            if referenceLength != lengthZ:
                 detectorShiftZ = options.rayShiftsDetector[1::2, :, :, :]
                 options.rayShiftsSource[1::2, :, :, :] = detectorShiftZ + \
-                    (options.rayShiftsSource[1::2, :, :, :] - detectorShiftZ) * (referenceLength / lengthXY)
+                    (options.rayShiftsSource[1::2, :, :, :] - detectorShiftZ) * (referenceLength / lengthZ)
 
         options.rayShiftsDetector = options.rayShiftsDetector.ravel('F')
         options.rayShiftsSource = options.rayShiftsSource.ravel('F')
@@ -1548,6 +1601,9 @@ def SPECTParameters(options: proj.projectorClass):
             if not _type6_sigma_provided(options.sigmaZ):
                 col_l_xy = float(options.colLxy) if options.colLxy > 0. else float(options.colL)
                 col_l_z = float(options.colLz) if options.colLz > 0. else float(options.colL)
+                if col_l_xy <= 0. or col_l_z <= 0.:
+                    raise ValueError('SPECT projector type 6 computes the collimator-detector response from the collimator hole length: ' +
+                                     'options.colL (or both options.colLxy and options.colLz) has to be positive, or sigmaZ/sigmaXY/gFilter have to be input.')
                 distance_from_exit = Distances + options.cr_p / 2.
                 # Anger, "Scintillation Camera with Multichannel Collimators", J Nucl Med 5:515-531 (1964).
                 # Axial and transaxial responses use their respective collimator septa lengths.

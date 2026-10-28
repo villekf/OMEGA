@@ -282,7 +282,7 @@ options.Nang = options.det_per_ring//2
 # (this should total the total number of sinograms).
 # Currently this is computed automatically, but you can also manually
 # specify the segment sizes.
-options.segment_table = np.concatenate((np.array(options.rings*2-1,ndmin=1), np.arange(options.rings*2-1 - (options.span + 1), max(options.Nz - options.ring_difference*2, options.rings - options.ring_difference) - 1, -options.span*2)))
+options.segment_table = np.concatenate((np.array(options.rings*2-1,ndmin=1), np.arange(options.rings*2-1 - (options.span + 1), max(options.rings*2-1 - options.ring_difference*2, options.rings - options.ring_difference) - 1, -options.span*2)))
 options.segment_table = np.insert(np.repeat(options.segment_table[1:], 2), 0, options.segment_table[0])
 
 ### Total number of sinograms
@@ -1260,7 +1260,7 @@ options.alpha1TGV = 2
 ############################## NLM PROPERTIES #############################
 ### Filter parameter
 # Higher values smooth the image, smaller values make it sharper
-options.sigma = 10
+options.NLMsigma = 10
 
 ### Patch radius
 options.Nlx = 1
@@ -1387,6 +1387,8 @@ options.storeFP = False
 # data is all ones (each event is handled individually) and the randoms, if
 # selected, are included as negative measurements. The sensitivity image is
 # computed from all the possible LORs.
+# If options.reconstruct_trues is True, only the true coincidences are loaded
+# as events (and the randoms are not included).
 # If False, the sinograms are formed instead.
 options.useIndexBasedReconstruction = False
 ###########################################################################
@@ -1412,7 +1414,7 @@ if options.use_root:
         if isinstance(options.trIndex, list):
             # Dynamic data, one array per time step. Delayed coincidences are not supported
             options.SinM = [np.ones(tr.shape[1], dtype=np.float32) for tr in options.trIndex]
-        elif options.randoms_correction:
+        elif options.randoms_correction and not options.reconstruct_trues:
             options.SinM = np.concatenate((np.ones(options.trIndex.shape[1], dtype=np.float32), -np.ones(DtrIndices.shape[1], dtype=np.float32)))
             options.trIndex = np.concatenate((options.trIndex, DtrIndices), axis=1)
             options.axIndex = np.concatenate((options.axIndex, DaxIndices), axis=1)
@@ -1421,7 +1423,7 @@ if options.use_root:
         if options.TOF_bins > 1:
             if isinstance(options.trIndex, list):
                 options.TOFIndices = TOFIndices
-            elif options.randoms_correction:
+            elif options.randoms_correction and not options.reconstruct_trues:
                 # The delayed coincidences have no TOF information, they are all placed in TOF bin 0
                 options.TOFIndices = np.concatenate((TOFIndices, np.zeros(DtrIndices.shape[1], dtype=np.uint8)))
             else:

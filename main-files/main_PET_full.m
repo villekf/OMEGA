@@ -81,6 +81,24 @@ options.pseudot = [];
 % If the gap values are the same, you need to repeat the value for each gap
 options.ringGaps = [];
 
+%%% Transaxial gaps inside a block (mm)
+% The detector ring is a regular polygon with blocks_per_ring*transaxial_multip
+% flat blocks, their faces at options.diameter/2 from the center.
+% Optional extra spacing after each crystal of a block (except the last), i.e.
+% cryst_per_block - 1 values, e.g. between the stacks/dies of a module.
+% The block stays centered. If there are no gaps, leave this empty or zero
+options.transaxialGaps = [];
+
+%%% Angle of the first block (degrees)
+% Angle (counter-clockwise from the +x axis) of the normal of the first
+% detector block, i.e. where the first block is in the image coordinate
+% system. +x = direction of the image's first dimension (Nx, row direction);
+% angles are counter-clockwise towards +y (second dimension, Ny). Default 0 =
+% the first block is centered on the +x axis. This is applied before offangle
+% (which only shifts the detector numbering). See computeCoordinates.m for
+% the full definition.
+options.firstBlockAngle = 0;
+
 %%% Number of detectors per crystal ring (without pseudo detectors)
 options.det_per_ring = options.blocks_per_ring * options.cryst_per_block * options.transaxial_multip;
 
@@ -404,7 +422,7 @@ options.nColsD = options.det_per_ring/2;
 % (this should total the total number of sinograms).
 % Currently this is computed automatically, but you can also manually
 % specify the segment sizes.
-options.segment_table = [options.rings*2-1, options.rings*2-1 - (options.span + 1):-options.span*2:max(options.Nz - options.ring_difference*2, options.rings - options.ring_difference)];
+options.segment_table = [options.rings*2-1, options.rings*2-1 - (options.span + 1):-options.span*2:max(options.rings*2-1 - options.ring_difference*2, options.rings - options.ring_difference)];
 if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
     options.segment_table = [options.segment_table(1), repeat_elem(options.segment_table(2:end),2,1)];
 else

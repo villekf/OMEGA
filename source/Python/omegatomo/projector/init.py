@@ -145,8 +145,10 @@ def _build_kIndF(self):
     # is not currently exercised together with CT by any known config and
     # this is not the place to change behaviour.
     if self.FPType == 4 and self.TOF and (self.useCUDA or not self.CT):
+        # The type 4 kernel (projectorType4.cl) takes TOFCenter, sigma_x and d_epps as consecutive arguments (as in ProjectorClass.h)
         a.buf(self.d_TOFCenter)
         a.f32(self.sigma_x)
+        a.f32(self.epps)
     if (self.attenuation_correction and self.CTAttenuation and self.FPType in (1, 2, 3, 4)
             and not (getattr(self, 'imageAttenuationIsMultiResolution', False)
                      and self.attenuation_correction and self.CTAttenuation)):
@@ -194,6 +196,7 @@ def _build_kIndB(self):
     if self.BPType == 4 and not self.CT and self.TOF:
         a.buf(self.d_TOFCenter)
         a.f32(self.sigma_x)
+        a.f32(self.epps)
     if (self.attenuation_correction and self.CTAttenuation and self.BPType in (1, 2, 3, 4) and not self.CT
             and not (getattr(self, 'imageAttenuationIsMultiResolution', False)
                      and self.attenuation_correction and self.CTAttenuation)):
@@ -238,8 +241,13 @@ def _coordinate_slice(self, name, timestep, subset, stride):
     order = 'C' if self.CT and self.listmode == 0 else 'F'
     flat = _kernel_ravel(getattr(self, name), order, stride)
     q = timestep * int(self.subsets) + subset
-    start = int(self.nMeas[q]) * stride
-    stop = int(self.nMeas[q + 1]) * stride
+    # Non-list-mode geometry without per-frame arrays (e.g. PET sinograms) is the same in every frame
+    # and is stored once, i.e. for one frame only, so the subset offsets are counted from the start of
+    # the frame. nMeas holds the cumulative counts over all frames, which is the right offset only for
+    # the geometry that is stored for all frames (list-mode coordinates).
+    frameStart = int(self.nMeas[timestep * int(self.subsets)]) if self.listmode == 0 else 0
+    start = (int(self.nMeas[q]) - frameStart) * stride
+    stop = (int(self.nMeas[q + 1]) - frameStart) * stride
     return flat[start:stop]
 
 
@@ -283,6 +291,34 @@ def _initialize_coordinate_buffers(self, upload):
             self.d_z[timestep][0] = upload(_full_coordinate_frame(self, 'z', timestep))
         else:
             self.d_z[timestep][0] = upload(np.zeros(1, dtype=np.float32))
+
+
+def _tof_index_slice(self, timestep, subset):
+    """The TOF bin indices (uint8, one per event) of one frame/subset of list-mode data. The events are ordered like the event
+    coordinates and the index-based detector indices, i.e. the subset is the range [nMeas[q], nMeas[q + 1]) of the events,
+    q = timestep * subsets + subset."""
+    q = timestep * int(self.subsets) + subset
+    start = int(self.nMeas[q])
+    stop = int(self.nMeas[q + 1])
+    tof = np.asarray(self.TOFIndices).ravel(order='F')
+    if tof.size < stop:
+        raise ValueError('The number of TOF indices (%d) is smaller than the number of events (%d)!' % (tof.size, stop))
+    values = tof[start:stop]
+    if self.TOF_bins_used == self.TOF_bins and values.size > 0 and (int(values.min()) < 0 or int(values.max()) >= self.TOF_bins):
+        raise ValueError('TOF indices must be in the range 0 ... TOF_bins - 1 (%d)!' % (self.TOF_bins - 1))
+    return np.ascontiguousarray(values, dtype=np.uint8)
+
+
+def _initialize_tof_index_buffers(self, upload):
+    """Create the canonical ``[timestep][subset]`` TOF index buffers of list-mode data (the uint8 TOFIndex kernel argument that
+    selects the one TOF bin of each event, present when the kernels are built with both -DLISTMODE and -DTOF). Same layout as
+    the event coordinates: with loadTOF every subset is uploaded here, otherwise only the entry [timestep][0] is used and
+    projfunctions._load_listmode_subset replaces it with the subset that is about to be processed."""
+    self.d_TOFIndex = [[None] * self.subsets for _ in range(self.Nt)]
+    if self.listmode > 0 and self.TOF and self.loadTOF:
+        for timestep in range(self.Nt):
+            for subset in range(self.subsets):
+                self.d_TOFIndex[timestep][subset] = upload(_tof_index_slice(self, timestep, subset))
 
 
 def _initialize_detector_vector_buffers(self, upload, empty=None):
@@ -432,6 +468,17 @@ _BPTYPE_GROUPS = {
 }
 FPTYPE_TABLE = {pt: fp for fp, members in _FPTYPE_GROUPS.items() for pt in members}
 BPTYPE_TABLE = {pt: bp for bp, members in _BPTYPE_GROUPS.items() for pt in members}
+
+
+def _userLocalSize(self, default):
+    """The local (work-group/block) size of the projector kernels: the default overridden per dimension by the positive
+    entries of the user-supplied local_size option (the same semantics as in the C++ library; negative entries keep the default)."""
+    user = np.atleast_1d(np.asarray(self.local_size)).ravel()
+    out = list(default)
+    for k in range(min(3, user.size)):
+        if user[k] > 0:
+            out[k] = int(user[k])
+    return tuple(out)
 
 
 def _read(directory, name, encoding='utf8'):
@@ -659,23 +706,25 @@ def initProjector(self):
                 n_meas = int(self.nMeasSubset[timestep, i])
                 if (self.FPType == 5):
                     globalSize[timestep][i] = (self.nRowsD, (self.nColsD + self.NVOXELSFP - 1) // self.NVOXELSFP, n_proj)
-                    localSize = (16, 16, 1)
+                    localSize = _userLocalSize(self, (16, 16, 1))
                     erotus = (localSize[0] - (globalSize[timestep][i][0] % localSize[0]), localSize[1] - (globalSize[timestep][i][1] % localSize[1]), 0)
                     globalSize[timestep][i] = (self.nRowsD + erotus[0], (self.nColsD + self.NVOXELSFP - 1) // self.NVOXELSFP + erotus[1], n_proj)
                 elif ((self.CT or self.SPECT or self.PET) and self.listmode == 0):
                     globalSize[timestep][i] = (self.nRowsD, self.nColsD, n_proj)
-                    localSize = (16, 16, 1)
+                    # The multi-bin TOF kernels need many registers per thread, smaller blocks (16 x 8 instead of 16 x 16) give
+                    # a higher occupancy (measured on an NVIDIA RTX 4090 with CUDA and OpenCL: up to 23 % faster, never slower). Same rule as in ProjectorClass.h
+                    localSize = _userLocalSize(self, (16, 8, 1) if (self.TOF and self.TOF_bins_used > 1) else (16, 16, 1))
                     erotus = (localSize[0] - (globalSize[timestep][i][0] % localSize[0]), localSize[1] - (globalSize[timestep][i][1] % localSize[1]), 0)
                     globalSize[timestep][i] = (self.nRowsD + erotus[0], self.nColsD + erotus[1], n_proj)
                 else:
                     globalSize[timestep][i] = (n_meas, 1, 1)
-                    localSize = (128, 1, 1)
+                    localSize = _userLocalSize(self, (128, 1, 1))
                     erotus = (localSize[0] - (globalSize[timestep][i][0] % localSize[0]), localSize[1] - (globalSize[timestep][i][1] % localSize[1]), 0)
                     globalSize[timestep][i] = (n_meas + erotus[0], 1, 1)
         self.globalSizeFP = globalSize.copy()
         self.localSizeFP = localSize + tuple()
         self.erotusBP = [0] * (self.nMultiVolumes + 1) * 2
-        localSize = (16, 16, 1)
+        localSize = _userLocalSize(self, (16, 16, 1))
         for ii in range(self.nMultiVolumes + 1):
             apu = [self.Nx[ii].item() % localSize[0], self.Ny[ii].item() % localSize[1], 0]
             if apu[0] > 0:
@@ -749,6 +798,7 @@ def initProjector(self):
                 self.use_64bit_atomics = False
                 self.use_32bit_atomics = False
                 bOpt += ('-DINTEL',)
+        # Fast math and the projector type 2/3 discontinuities: see the note at DIVIDE in general_opencl_functions.h
         if self.useMAD:
             if self.useMetal:
                 bOpt += ('-DUSEMAD',)
@@ -991,6 +1041,7 @@ def initProjector(self):
                         self.d_gFilterODRT = upload(_odrt_psf_host_buffer(self))
                 self.d_Sens = cp.empty(shape=(1,1), dtype=cp.float32)
                 _initialize_coordinate_buffers(self, upload)
+                _initialize_tof_index_buffers(self, upload)
                 # Precomputed per-projection geometry for the BDD backprojection (see -DGEOM5 in projectorType5.cl)
                 if self.BPType == 5 and self.CT and self.listmode == 0:
                     self.d_geom5 = [[None] * self.subsets for _ in range(self.Nt)]
@@ -1007,10 +1058,17 @@ def initProjector(self):
                             )
                             self.d_geom5[timestep][subset] = upload(geom)
                 if (self.attenuation_correction and not self.CTAttenuation):
+                    # Measurement-domain attenuation: build [Nt][subsets], mirroring mps_backend.py's
+                    # d_attenuation. As in C++ (a single d_atten[kk] buffer shared by all timesteps), a
+                    # static (single-frame) attenuation is shared by every timestep and sliced with the
+                    # frame-0 offsets. It is recognised by holding exactly frame 0's measurements (after
+                    # prepass permutation); a frame-concatenated one (Nt blocks, a superset of C++) is
+                    # sliced per frame.
                     self.d_atten = [[None] * self.subsets for _ in range(self.Nt)]
+                    attenStatic = (self.Nt > 1 and np.size(self.vaimennus) == self.nTotMeas[self.subsets].item())
                     for timestep in range(self.Nt):
                         for i in range(self.subsets):
-                            index = timestep * self.subsets + i
+                            index = i if attenStatic else timestep * self.subsets + i
                             self.d_atten[timestep][i] = upload(self.vaimennus[self.nTotMeas[index].item() : self.nTotMeas[index + 1].item()])
                 elif (getattr(self, 'imageAttenuationIsMultiResolution', False)
                         and self.attenuation_correction and self.CTAttenuation):
@@ -1103,9 +1161,7 @@ def initProjector(self):
                 if (self.BPType == 2 or self.BPType == 3 or self.FPType == 2 or self.FPType == 3):
                     self.d_V = upload(self.V)
                 if (self.normalization_correction):
-                    # Normalization is per-timestep in C++/MATLAB for dynamic data; build
-                    # [Nt][subsets] (mirrors mps_backend.py's d_norm) instead of a flat
-                    # [subsets] list that only ever captured frame 0.
+                    # Normalization: build [Nt][subsets] (mirrors mps_backend.py's d_norm).
                     self.d_norm = [[None] * self.subsets for _ in range(self.Nt)]
                     # A static (single-frame) normalization is shared by every timestep, as in C++: slice it
                     # with the frame-0 offsets. It is recognised by holding exactly frame 0's measurements
@@ -1119,12 +1175,16 @@ def initProjector(self):
                             else:
                                 self.d_norm[timestep][i] = upload(self.normalization[self.nTotMeas[index].item() : self.nTotMeas[index + 1].item()])
                 if (self.additionalCorrection):
-                    # Additional corrections (randoms/scatter) are per-timestep in C++/MATLAB
-                    # for dynamic data; build [Nt][subsets] (mirrors mps_backend.py's d_scatter).
+                    # Additional corrections (scatter/corrVector): build [Nt][subsets] (mirrors
+                    # mps_backend.py's d_scatter). As in C++, a corrVector holding more than one frame
+                    # is per-timestep (frame-concatenated, sliced per frame); a single frame's worth
+                    # (exactly frame 0's measurements after prepass permutation) is shared by every
+                    # timestep and sliced with the frame-0 offsets.
                     self.d_corr = [[None] * self.subsets for _ in range(self.Nt)]
+                    corrStatic = (self.Nt > 1 and np.size(self.corrVector) == self.nTotMeas[self.subsets].item())
                     for timestep in range(self.Nt):
                         for i in range(self.subsets):
-                            index = timestep * self.subsets + i
+                            index = i if corrStatic else timestep * self.subsets + i
                             self.d_corr[timestep][i] = upload(self.corrVector[self.nTotMeas[index].item() : self.nTotMeas[index + 1].item()])
                 if (self.listmode != 1 and ((not self.CT and not self.SPECT and not self.PET) and (self.subsets > 1 and (self.subsetType == 3 or self.subsetType == 6 or self.subsetType == 7)))):
                     self.d_zindex = [None] * self.subsets
@@ -1234,6 +1294,7 @@ def initProjector(self):
                     self.d_gFilterODRTImage = None
                     self.d_gFilterODRT = upload(_odrt_psf_host_buffer(self))
             _initialize_coordinate_buffers(self, upload)
+            _initialize_tof_index_buffers(self, upload)
             # Precomputed per-projection geometry for the BDD backprojection (see -DGEOM5 in projectorType5.cl)
             if self.BPType == 5 and self.CT and self.listmode == 0:
                 self.d_geom5 = [[None] * self.subsets for _ in range(self.Nt)]
@@ -1250,10 +1311,17 @@ def initProjector(self):
                         )
                         self.d_geom5[timestep][subset] = upload(geom)
             if (self.attenuation_correction and not self.CTAttenuation):
+                # Measurement-domain attenuation: build [Nt][subsets], mirroring mps_backend.py's
+                # d_attenuation. As in C++ (a single d_atten[kk] buffer shared by all timesteps), a
+                # static (single-frame) attenuation is shared by every timestep and sliced with the
+                # frame-0 offsets. It is recognised by holding exactly frame 0's measurements (after
+                # prepass permutation); a frame-concatenated one (Nt blocks, a superset of C++) is
+                # sliced per frame.
                 self.d_atten = [[None] * self.subsets for _ in range(self.Nt)]
+                attenStatic = (self.Nt > 1 and np.size(self.vaimennus) == self.nTotMeas[self.subsets].item())
                 for timestep in range(self.Nt):
                     for i in range(self.subsets):
-                        index = timestep * self.subsets + i
+                        index = i if attenStatic else timestep * self.subsets + i
                         self.d_atten[timestep][i] = upload(self.vaimennus[self.nTotMeas[index].item() : self.nTotMeas[index + 1].item()])
             elif (getattr(self, 'imageAttenuationIsMultiResolution', False)
                     and self.attenuation_correction and self.CTAttenuation):
@@ -1332,9 +1400,7 @@ def initProjector(self):
             if (self.BPType == 2 or self.BPType == 3 or self.FPType == 2 or self.FPType == 3):
                 self.d_V = upload(self.V)
             if (self.normalization_correction):
-                # Normalization is per-timestep in C++/MATLAB for dynamic data; build
-                # [Nt][subsets] (mirrors mps_backend.py's d_norm) instead of a flat [subsets]
-                # list that only ever captured frame 0.
+                # Normalization: build [Nt][subsets] (mirrors mps_backend.py's d_norm).
                 self.d_norm = [[None] * self.subsets for _ in range(self.Nt)]
                 # A static (single-frame) normalization is shared by every timestep, as in C++: slice it
                 # with the frame-0 offsets. It is recognised by holding exactly frame 0's measurements
@@ -1348,12 +1414,16 @@ def initProjector(self):
                         else:
                             self.d_norm[timestep][i] = upload(self.normalization[self.nTotMeas[index].item() : self.nTotMeas[index + 1].item()])
             if (self.additionalCorrection):
-                # Additional corrections (randoms/scatter) are per-timestep in C++/MATLAB for
-                # dynamic data; build [Nt][subsets] (mirrors mps_backend.py's d_scatter).
+                # Additional corrections (scatter/corrVector): build [Nt][subsets] (mirrors
+                # mps_backend.py's d_scatter). As in C++, a corrVector holding more than one frame
+                # is per-timestep (frame-concatenated, sliced per frame); a single frame's worth
+                # (exactly frame 0's measurements after prepass permutation) is shared by every
+                # timestep and sliced with the frame-0 offsets.
                 self.d_corr = [[None] * self.subsets for _ in range(self.Nt)]
+                corrStatic = (self.Nt > 1 and np.size(self.corrVector) == self.nTotMeas[self.subsets].item())
                 for timestep in range(self.Nt):
                     for i in range(self.subsets):
-                        index = timestep * self.subsets + i
+                        index = i if corrStatic else timestep * self.subsets + i
                         self.d_corr[timestep][i] = upload(self.corrVector[self.nTotMeas[index].item() : self.nTotMeas[index + 1].item()])
             if (self.listmode != 1 and ((not self.CT and not self.SPECT and not self.PET) and (self.subsets > 1 and (self.subsetType == 3 or self.subsetType == 6 or self.subsetType == 7)))):
                 self.d_zindex = [None] * self.subsets

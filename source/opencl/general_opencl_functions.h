@@ -41,7 +41,6 @@
 #ifdef VOL
 #define CC 1e3f
 #endif
-#define TRAPZ_BINS 4.f
 #ifdef PITCH
 #define NA 6
 #else
@@ -463,6 +462,13 @@ inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
 #define UINT_sat(a) convert_uint_sat(a)
 #define RIMAGEF(a, b, c) read_imagef(a, b, c).w
 #define CINT_rtz(a) convert_int_rtz(a)
+// Fast math and the discrete model discontinuities (measured 2026-10-19): projector types 2 and 3 contain discontinuities in the model: whole
+// voxel columns entering or leaving the ray for LORs grazing the corner of the image box (type 2), the ORTH slice TOF weights depending on the
+// Siddon x/y crossing order at exact vertex ties (type 3) and the 0 -> THR step at the ORTH tube boundary (type 3). Fast division (CUDA
+// --use_fast_math/__fdividef, OpenCL native_divide/-cl-fast-relaxed-math) and the implicit FMA contraction flip rays across these steps, so
+// CUDA and OpenCL (and fast and strict builds) can differ by up to ~1e-2 of the maximum in a few elements (median ~5e-7). Precise division
+// in the 6 Siddon pre-loop divisions and the 3 ORTH divisions together with no FMA contraction (FP_CONTRACT OFF, --fmad=false, no
+// -cl-fast-relaxed-math) removes this at ~+3-7 % per FP+BP pair (types 2/3 FP +10-17 %). It is deliberately left as is.
 #define DIVIDE(a,b) native_divide(a,b)
 #define DIVIDE3(a,b) native_divide(a,b)
 #define CFLOAT(a) convert_float(a)
@@ -618,6 +624,7 @@ __constant sampler_t sampler_MASKFP = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_N
 #define CUINT(a) (unsigned int)(a)
 #define UINT_sat(a) (unsigned int)(a)
 #define CINT_rtz(a) __float2int_rz(a)
+// See the note on fast math and the discrete model discontinuities at the OpenCL DIVIDE definition
 #define DIVIDE(a,b) fdividef(a,b)
 #define DIVIDE3(a,b) fdividef3(a,b)
 #define CFLOAT(a) (float)(a)
@@ -1173,48 +1180,354 @@ void atomicAdd(volatile CLGLOBAL float *addr, float val) {
 #endif
 #endif
 
-#ifdef TOF //////////////// TOF ////////////////
-#define _2PI 0.3989423f
+// Register budget of the TOF projector kernels, CUDA only (__launch_bounds__ means something else on AMD and is not used elsewhere):
+// the multi-bin TOF kernels need many registers (up to ~170 with 33 bins) which can limit the occupancy to one block per multiprocessor.
+// TOF_MAXREGS is the budget in registers per thread, the kernels ask for the number of resident blocks that fits into the
+// 65536 registers of a multiprocessor. TOF_MAXREGS 0 disables the bound. Not defined (empty) without TOF
+#if defined(CUDA) && !defined(HIP) && defined(TOF) && NBINS > 1
+#ifndef TOF_MAXREGS
+// Measured (RTX 4090, 256 threads per block, 5-33 bins): the kernels are fastest without a bound except for 23-29 bins, where the
+// unbounded kernel needs 146-168 registers (1 block per multiprocessor) and 128 registers (2 blocks) is 8-25 % faster, even with a
+// small amount of spilling. A bound of 85 registers (3 blocks) spills heavily with more than 15 bins
+#if NBINS >= 23 && NBINS <= 29
+#define TOF_MAXREGS 128
+#else
+#define TOF_MAXREGS 0
+#endif
+#endif
+#if TOF_MAXREGS > 0
+#ifdef LOCAL_SIZE2
+#define TOF_THREADS (LOCAL_SIZE * LOCAL_SIZE2)
+#else
+#define TOF_THREADS (LOCAL_SIZE)
+#endif
+#define TOF_BLOCKS (((65536 / TOF_MAXREGS) / TOF_THREADS) > 1 ? ((65536 / TOF_MAXREGS) / TOF_THREADS) : 1)
+#define TOF_BOUNDS __launch_bounds__(TOF_THREADS, TOF_BLOCKS)
+#else
+#define TOF_BOUNDS
+#endif
+#else
+#define TOF_BOUNDS
+#endif
 
-DEVICE float normPDF(const float x, const float mu, const float invSigma, const float piPerSigma) {
-	const float a = (x - mu) * invSigma;
-	return piPerSigma * EXP(-0.5f * a * a);
-}
+// Number of elements of the per-bin arrays of the projectors (ax and TOFWeights). Listmode data (except for the sensitivity image) has
+// only the bin of the event, so these arrays have a single element (always index 0) instead of NBINS elements indexed with the bin of
+// the event: an array that is indexed with a run-time value is put to the local (stack) memory of the thread, i.e. every voxel would
+// read and write it from there
+#if defined(TOF) && defined(LISTMODE) && !defined(SENS)
+#define TOF_NARR 1
+#else
+#define TOF_NARR NBINS
+#endif
+
+#ifdef TOF //////////////// TOF ////////////////
+// Exact bin-integrated TOF weights
+//
+// For an emission at the TOF coordinate x (signed distance from the LOR center, measured in the same way as the bin centers
+// TOFCenter) the probability of the event being recorded in the bin with the edges [eLo, eHi] is
+//     p(x) = Phi((x - eLo) / sigma) - Phi((x - eHi) / sigma),
+// where Phi is the standard normal CDF. TOFWeights[b] is the mean of p(x) over the ray segment (element) that starts at D and
+// ends at D - element * DDsign, i.e. the exact (not sampled) bin probability averaged over the segment. The weights are NOT
+// normalized over the bins: the sum over the bins is 1 when the TOF window covers the segment and smaller when it does not,
+// since events outside the window are not recorded.
+//
+// With G(u) = u * Phi(u) + phi(u) (G' = Phi) the segment integral is
+//     sigma * [G((x1 - eLo) / sigma) - G((x0 - eLo) / sigma) - G((x1 - eHi) / sigma) + G((x0 - eHi) / sigma)].
+// For float precision G(u) is split into max(u, 0) + H(|u|), where H(t) = phi(t) - t * Q(t) (Q = upper tail) is the exponentially
+// small tail part. The max(u, 0) terms of the four G values sum to the piecewise linear clamp expression (s1 - s0) in
+// TOFEdge, which cancels exactly when both ends of the segment are on the same side of the bin. H is set to zero for
+// t >= TOF_CUTOFF (it is below 2e-10 there), so the bins that are far from the segment get exactly zero weights. The H terms
+// at the start of the segment are the H terms at the end of the previous segment, so they are cached (TOFF, see TOFInit and
+// TOFEdge).
+// The difference of the antiderivatives has an absolute error of about sigma * (float epsilon) whatever the length of the segment,
+// i.e. the error of length * weight is about 1e-6 mm. The weights of very short segments are noisy (they are clamped to [0, 1]), but
+// such segments contribute almost nothing, so there is no special treatment of them (except for the ORTH builds, see TOFSetup).
+//
+// The bin width is the (uniform) spacing of the bin centers, |TOFCenter[1] - TOFCenter[0]|. The centers are always in the
+// center-first order (0, -w, +w, -2w, ...), with the possible TOF offset added to all of them, so the spacing is the same.
+// For NBINS == 1 all events are accepted (weight 1)
+//
+// No erf/erfc is used anywhere (MSL has neither): H is computed with a polynomial fit (TOFH, TOFEdge below)
+#define TOF_CUTOFF 6.f // Distance in sigmas after which the Gaussian is considered to be zero
+#define TOF_MIDPOINT_LIMIT 1e-2f // ORTH builds only: segments shorter than this (in sigmas) use the midpoint value
+#define TOF_INV_SQRT_2PI 0.3989422804f
+
+// Clipped traversal of the listmode rays. A listmode event has a single TOF bin b (TOFIndex) and its weights are exactly zero when the
+// whole voxel segment is farther than TOF_CUTOFF sigmas from the bin (see above), i.e. only the part of the ray inside the window
+//     c_b - w / 2 - TOF_CUTOFF * sigma <= x <= c_b + w / 2 + TOF_CUTOFF * sigma,
+// x the TOF coordinate (TOFDis) and w the bin width, can contribute. With TOF_CLIP the projectors do not visit the voxels outside of
+// this window (the voxels are not cut), the results change only by floating point rounding. Everything that needs the whole ray
+// (the length of the ray, the normalization of the backprojection and the attenuation) is still computed from the whole ray.
+// Not used for the sensitivity image (all bins), the orthogonal and volume projectors (the weights are shared by the voxels of the
+// tube around the ray), the single-bin case and CT/SPECT
+#if defined(LISTMODE) && !defined(SENS) && NBINS > 1 && !defined(ORTH) && !defined(CT) && !defined(SPECT)
+#define TOF_CLIP
+#endif
 
 DEVICE void TOFDis(const float tStart, const float LL, float* D, float* DD) {
 	*D = LL * tStart - LL / 2.f;
 	*DD = *D;
 }
 
-DEVICE float TOFWeight(const float element, const float invSigma, const float piPerSigma, const float D, const float DDsign, const float TOFCenter, float dX) {
-	float output = normPDF(D, TOFCenter, invSigma, piPerSigma);
-	dX *= DDsign;
-#pragma unroll
-	for (int tr = 1; tr < CINT(TRAPZ_BINS) - 1; tr++)
-#ifdef USEMAD
-		output += (normPDF(FMAD(-dX, CFLOAT(tr), D), TOFCenter, invSigma, piPerSigma) * 2.f);
-	output += normPDF(FMAD(-element, DDsign, D), TOFCenter, invSigma, piPerSigma);
-#else
-		output += (normPDF(D - dX * CFLOAT(tr), TOFCenter, invSigma, piPerSigma) * 2.f);
-	output += normPDF(D - element * DDsign, TOFCenter, invSigma, piPerSigma);
+#ifdef TOF_CLIP
+// The window [*xLo, *xHi] of the TOF coordinate of the bin TOFIndex of a listmode event outside of which the TOF weights are zero
+DEVICE void TOFClipWindow(CONSTANT float* TOFCenter, const float invSigma, const int TOFIndex, PTR_THR float* xLo, PTR_THR float* xHi) {
+	const float halfW = 0.5f * FABS(TOFCenter[1] - TOFCenter[0]);
+	const float cut = TOF_CUTOFF / invSigma;
+	*xLo = TOFCenter[TOFIndex] - halfW - cut;
+	*xHi = TOFCenter[TOFIndex] + halfW + cut;
+}
 #endif
-	return output;
+
+// H(t) = G(-t) = phi(t) - t * Q(t), t >= 0
+// Computed as phi(t) * g(t), where g(t) = 1 - t * Q(t) / phi(t) = s^2 * (c0 + c1 s + ... + c6 s^6), s = 1 / (1 + 0.3 t), is a
+// minimax-type fit on [0, 6]. The fit itself has a maximum absolute error of H of 8e-10 in double precision, but with the
+// stored nine-digit coefficients it is 3.5e-9 (at t ~ 0.02, mostly from the rounding of the coefficient sum), and the float
+// evaluation error of H is about 2e-7. This needs one exponential and one reciprocal instead of an exponential and a
+// complementary error function
+DEVICE float TOFH(const float t) {
+	const float s = 1.f / (1.f + 0.3f * t);
+	float g = FMAD(s, 0.278036759f, -1.48782828f);
+	g = FMAD(s, g, 2.71388525f);
+	g = FMAD(s, g, -1.70602154f);
+	g = FMAD(s, g, 1.12047934f);
+	g = FMAD(s, g, -0.029800149f);
+	g = FMAD(s, g, 0.111248612f);
+	// Exactly zero after TOF_CUTOFF sigmas (a select, not a branch)
+	return ((t < TOF_CUTOFF) ? TOF_INV_SQRT_2PI * EXP(-0.5f * t * t) : 0.f) * s * s * g;
 }
 
+// The tail part of the antiderivative at the position x for a bin with the edges eLo and eHi
+DEVICE float TOFTail(const float x, const float eLo, const float eHi, const float invSigma) {
+	return TOFH(FABS((x - eLo) * invSigma)) - TOFH(FABS((x - eHi) * invSigma));
+}
 
-DEVICE float TOFLoop(const float DDsign, const float element, CONSTANT float* TOFCenter, const float invSigma, const float piPerSigma, float* D, const float epps, float* TOFWeights) {
-	float TOFSum = 0.f;
-	const float dX = element / (TRAPZ_BINS - 1.f);
+// Bin layout: the bins are on a uniform grid with the spacing dw = TOFCenter[1] - TOFCenter[0] (signed) in the center-first
+// order produced by the host code, i.e. bin b has the center c0 + k_b * dw with k_b = (b + 1) / 2 for odd b and -b / 2 for even b
+// (0, 1, -1, 2, -2, ...). Adjacent bins share an edge, so the NBINS bins have only NBINS + 1 unique edges
+// P_e = c0 + (e + TOF_KMIN - 0.5) * dw, e = 0 ... NBINS, and the bin with k_b = e + TOF_KMIN lies between the edges e and e + 1.
+// Everything (the H terms, the clamp terms) is evaluated once per edge. Since k_b is known at compile time, the arrays are
+// indexed with compile-time constants after the loops are unrolled (no local memory); a layout that is not known at compile time
+// would need dynamic indexing of per-thread arrays. TOFInit poisons the cache with NaN if TOFCenter does not follow this layout
+// (the weights, and thus the output, become NaN), so a different layout cannot silently give wrong weights.
+// For one edge the quantity a_e = (max(x1, P_e) - max(x0, P_e)) / sigma + H_e(x1) - H_e(x0) is formed, and the bin weight is
+// sgn(dw) * (a_e - a_(e+1)) / ((x1 - x0) / sigma).
+#define TOF_KMIN (-((NBINS - 1) / 2))
+#define TOF_BIN(e) ((((e) + TOF_KMIN) > 0) ? (2 * ((e) + TOF_KMIN) - 1) : (-2 * ((e) + TOF_KMIN)))
+
+#if NBINS > 1
+#if defined(LISTMODE) && !defined(SENS)
+#ifdef ORTH
+// The quantity a_e of the edge at P for the segments shorter than TOF_MIDPOINT_LIMIT sigmas (the 'mid' case of TOFEdge, the same
+// arithmetic): a_e = -Q(u_m), u_m = the middle of the segment in sigmas from the edge. halfdu is half the length of the segment in sigmas
+DEVICE float TOFMidEdge(const float x1, const float P, const float invSigma, const float halfdu) {
+	const float u = (x1 - P) * invSigma;
+	const float t = FABS(u);
+	const float s = 1.f / (1.f + 0.3f * t);
+	const float E = (t < TOF_CUTOFF) ? TOF_INV_SQRT_2PI * EXP(-0.5f * t * t) : 0.f;
+	float pq = FMAD(s, -0.155944471f, 0.384600595f);
+	pq = FMAD(s, pq, 0.21560697f);
+	pq = FMAD(s, pq, 0.153780407f);
+	pq = FMAD(s, pq, 0.366935985f);
+	pq = FMAD(s, pq, 0.288334552f);
+	const float q = E * s * pq;
+	return -(((u >= 0.f) ? q : 1.f - q) + E * halfdu);
+}
+#endif
+
+// Listmode data (except for the sensitivity image) needs only the bin TOFIndex: both its edges are evaluated directly from
+// TOFCenter[TOFIndex], hc is the cached H terms of the bin at x0 and is updated to x1
+// The orthogonal and volume projectors (ORTH) use the same rule for short segments as the multi-bin path (TOFSetup): for segments
+// shorter than TOF_MIDPOINT_LIMIT sigmas (including empty ones) the weight is the probability at the middle of the segment, the bin
+// weight is then a(eLo) - a(eHi) (the same value as sgn(dw) * (a_e - a_(e+1)) of the multi-bin path for either sign of dw)
+DEVICE float TOFSingle(const float x0, const float x1, CONSTANT float* TOFCenter, const int TOFIndex, const float invSigma, float* hc) {
+	const float halfW = 0.5f * FABS(TOFCenter[1] - TOFCenter[0]);
+	const float eLo = TOFCenter[TOFIndex] - halfW;
+	const float eHi = TOFCenter[TOFIndex] + halfW;
+	const float cut = TOF_CUTOFF / invSigma;
+	float wt = 0.f;
+	float F1 = 0.f;
+	if (FMAX(x0, x1) >= eLo - cut && FMIN(x0, x1) <= eHi + cut) {
+		F1 = TOFTail(x1, eLo, eHi, invSigma);
+		const float du = (x1 - x0) * invSigma;
+#ifdef ORTH
+		if (FABS(du) < TOF_MIDPOINT_LIMIT) {
+			const float halfdu = 0.5f * du;
+			wt = TOFMidEdge(x1, eLo, invSigma, halfdu) - TOFMidEdge(x1, eHi, invSigma, halfdu);
+			wt = (wt < 0.f) ? 0.f : ((wt > 1.f) ? 1.f : wt);
+		}
+		else
+#endif
+		if (du != 0.f) {
+			const float s0 = FMIN(FMAX(x0, eLo), eHi);
+			const float s1 = FMIN(FMAX(x1, eLo), eHi);
+			wt = ((s1 - s0) * invSigma + (F1 - *hc)) / du;
+			wt = (wt < 0.f) ? 0.f : ((wt > 1.f) ? 1.f : wt);
+		}
+	}
+	*hc = F1;
+	return wt;
+}
+#else
+// Moves D to the end of the segment and computes the common values of the segment: the start x0, end x1, the first edge P0, the
+// grid spacing dw and the scaling of the weights, sign(dw) / ((x1 - x0) / sigma) (zero for an empty segment: its weights are zero)
+// The orthogonal and volume projectors (ORTH) apply the weights of a segment to all the voxels of the tube around it without
+// scaling them with the length of the segment, so the weights of very short segments must be accurate as well: for segments shorter
+// than TOF_MIDPOINT_LIMIT sigmas those builds use the probability at the middle of the segment (halfdu, mid)
+DEVICE void TOFSetup(const float DDsign, const float element, CONSTANT float* TOFCenter, const float invSigma, float* D,
+	float* x0, float* x1, float* P0, float* dw, float* scale
+#ifdef ORTH
+	, float* halfdu, int* mid
+#endif
+) {
+	*x0 = *D;
+	*x1 = FMAD(-element, DDsign, *x0);
+	*D = *x1;
+	const float c0 = TOFCenter[0];
+	*dw = TOFCenter[1] - c0;
+	*P0 = FMAD(*dw, -0.5f + TOF_KMIN, c0);
+	const float du = (*x1 - *x0) * invSigma;
+	const float sgnw = (*dw > 0.f) ? 1.f : -1.f;
+#ifdef ORTH
+	*halfdu = 0.5f * du;
+	*mid = (FABS(du) < TOF_MIDPOINT_LIMIT) ? 1 : 0;
+	*scale = (*mid) ? sgnw : sgnw / du;
+#else
+	*scale = (du != 0.f) ? sgnw / du : 0.f;
+#endif
+}
+
+// The quantity a_e of the edge at P (see above). hc is the cached H(|x0 - P| / sigma), updated to the value at x1.
+// There is no special case for short segments (except in the ORTH builds, see TOFSetup): the difference of the antiderivatives has an
+// absolute error of about sigma * (float epsilon), independent of the segment length, so the error of length * weight is about
+// 1e-6 mm; the weights of very short segments can be noisy (they are clamped to [0, 1]) but they contribute almost nothing
+DEVICE float TOFEdge(const float x0, const float x1,
+#ifdef ORTH
+	const float halfdu, const int mid,
+#endif
+	const float P, const float invSigma, float* hc) {
+	const float u = (x1 - P) * invSigma;
+	const float t = FABS(u);
+	const float s = 1.f / (1.f + 0.3f * t);
+	float pg = FMAD(s, 0.278036759f, -1.48782828f);
+	pg = FMAD(s, pg, 2.71388525f);
+	pg = FMAD(s, pg, -1.70602154f);
+	pg = FMAD(s, pg, 1.12047934f);
+	pg = FMAD(s, pg, -0.029800149f);
+	pg = FMAD(s, pg, 0.111248612f);
+	// phi(t), exactly zero after TOF_CUTOFF sigmas (a select, not a branch): the bins that are far from the segment get exactly zero
+	// weights and the H terms cancel exactly
+	const float E = (t < TOF_CUTOFF) ? TOF_INV_SQRT_2PI * EXP(-0.5f * t * t) : 0.f;
+	const float h1 = E * s * s * pg;
+	float a;
+#ifdef ORTH
+	if (mid) {
+		// a_e = -Q(u_m), u_m = the middle of the segment in sigmas from the edge, from the quantities of the end point with a first
+		// order Taylor expansion (Q' = -phi, the second order term is below 3e-6 for these segments). Q(t) = phi(t) * s * (q0 + q1 s +
+		// ... + q5 s^5) is a polynomial fit with a maximum absolute error of 4e-8 (double precision), sharing the exponential and s
+		float pq = FMAD(s, -0.155944471f, 0.384600595f);
+		pq = FMAD(s, pq, 0.21560697f);
+		pq = FMAD(s, pq, 0.153780407f);
+		pq = FMAD(s, pq, 0.366935985f);
+		pq = FMAD(s, pq, 0.288334552f);
+		const float q = E * s * pq;
+		a = -(((u >= 0.f) ? q : 1.f - q) + E * halfdu);
+	}
+	else
+#endif
+		a = (FMAX(x1, P) - FMAX(x0, P)) * invSigma + (h1 - *hc);
+	*hc = h1;
+	return a;
+}
+#endif
+#endif
+
+// Initializes the cache of the H terms at the current position D (TOFF, NBINS + 1 values, or one value for the listmode bin
+// TOFIndex). This has to be called every time D is set (the start of each ray) before the first call to the functions below
+DEVICE void TOFInit(const float D, CONSTANT float* TOFCenter, const float invSigma, float* TOFF
+#if defined(LISTMODE) && !defined(SENS)
+	, const int TOFIndex
+#endif
+) {
+#if NBINS > 1
+#if defined(LISTMODE) && !defined(SENS)
+	const float halfW = 0.5f * FABS(TOFCenter[1] - TOFCenter[0]);
+	TOFF[0] = TOFTail(D, TOFCenter[TOFIndex] - halfW, TOFCenter[TOFIndex] + halfW, invSigma);
+#else
+	const float c0 = TOFCenter[0];
+	const float dw = TOFCenter[1] - c0;
+	// Check the layout of the bins
+	float bad = 0.f;
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
+#else
+#pragma unroll
 #endif
-	for (int to = 0; to < NBINS; to++) {
-		TOFWeights[to] = TOFWeight(element, invSigma, piPerSigma, *D, DDsign, TOFCenter[to], dX) * dX;
-		TOFSum += TOFWeights[to];
+	for (int b = 1; b < NBINS; b++)
+		bad += (FABS(TOFCenter[b] - FMAD(dw, CFLOAT((b & 1) ? ((b + 1) / 2) : (-b / 2)), c0)) > 1e-3f * FABS(dw)) ? 1.f : 0.f;
+	// NaN if the layout is wrong, otherwise zero
+	const float poison = SQRT(-bad);
+	const float P0 = FMAD(dw, -0.5f + TOF_KMIN, c0);
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
+#pragma unroll NBINS
+#else
+#pragma unroll
+#endif
+	for (int e = 0; e <= NBINS; e++)
+		TOFF[e] = TOFH(FABS((D - FMAD(dw, CFLOAT(e), P0)) * invSigma)) + poison;
+#endif
+#endif
+}
+
+// Computes the weights of the bins for the segment starting at *D and ending at *D - element * DDsign, adjacent segments share
+// an end point so the cache TOFF is kept up to date. This function also moves D to the end of the segment, i.e. D must not be
+// modified elsewhere (after TOFInit). Listmode data (except for the sensitivity image) needs only the bin TOFIndex.
+// Note that the weights are consumed immediately by denominator/rhs (and reused for several voxels by the orthogonal and volume
+// projectors); the compiler keeps the unrolled arrays in registers, writing the weights and using them directly in the same loop
+// was measured to give the same speed
+DEVICE void TOFLoop(const float DDsign, const float element, CONSTANT float* TOFCenter, const float invSigma, float* D, float* TOFWeights, float* TOFF
+#if defined(LISTMODE) && !defined(SENS)
+	, const int TOFIndex
+#endif
+) {
+#if NBINS == 1
+	*D = FMAD(-element, DDsign, *D);
+	TOFWeights[0] = 1.f;
+#elif defined(LISTMODE) && !defined(SENS)
+	const float x0 = *D;
+	const float x1 = FMAD(-element, DDsign, x0);
+	*D = x1;
+	float hc = TOFF[0];
+	TOFWeights[0] = TOFSingle(x0, x1, TOFCenter, TOFIndex, invSigma, &hc);
+	TOFF[0] = hc;
+#else
+	float x0, x1, P0, dw, scale;
+#ifdef ORTH
+	float halfdu;
+	int mid;
+	TOFSetup(DDsign, element, TOFCenter, invSigma, D, &x0, &x1, &P0, &dw, &scale, &halfdu, &mid);
+	float aPrev = TOFEdge(x0, x1, halfdu, mid, P0, invSigma, &TOFF[0]);
+#else
+	TOFSetup(DDsign, element, TOFCenter, invSigma, D, &x0, &x1, &P0, &dw, &scale);
+	float aPrev = TOFEdge(x0, x1, P0, invSigma, &TOFF[0]);
+#endif
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
+#pragma unroll NBINS
+#else
+#pragma unroll
+#endif
+	for (int e = 0; e < NBINS; e++) {
+#ifdef ORTH
+		const float aNext = TOFEdge(x0, x1, halfdu, mid, FMAD(dw, CFLOAT(e + 1), P0), invSigma, &TOFF[e + 1]);
+#else
+		const float aNext = TOFEdge(x0, x1, FMAD(dw, CFLOAT(e + 1), P0), invSigma, &TOFF[e + 1]);
+#endif
+		// A probability: clamped to [0, 1]. Not FMAX/FMIN: a NaN (wrong bin layout, see TOFInit) must not be turned into a number
+		const float wt = scale * (aPrev - aNext);
+		TOFWeights[TOF_BIN(e)] = (wt < 0.f) ? 0.f : ((wt > 1.f) ? 1.f : wt);
+		aPrev = aNext;
 	}
-	if (TOFSum < epps)
-		TOFSum = epps;
-	return TOFSum;
+#endif
 }
 #endif //////////////// END TOF ////////////////
 
@@ -1281,26 +1594,21 @@ DEVICE void forwardProject(const float local_ele, PTR_THR float *ax, const typeT
 // Includes TOF-specific weighting
 DEVICE void denominator(PTR_THR float *ax, const typeT localInd, float local_ele, IMTYPE d_OSEM
 #ifdef TOF
-	, const float TOFSum, float* TOFWeights
-#ifdef LISTMODE
-	, const int TOFIndex
-#endif
+	, float* TOFWeights
 #endif
 ) {
 	float apu = 0.f;
 	forwardProject(local_ele, &apu, localInd, d_OSEM);
 #ifdef TOF
-	const float dX = apu / TOFSum;
 #if defined(LISTMODE) && !defined(SENS)
-	int to = TOFIndex;
+	const int to = 0;
 #else
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++) {
 #endif
-		const float joku = TOFWeights[to] * dX;
-		ax[to] += joku;
+		ax[to] += TOFWeights[to] * apu;
 #if !defined(LISTMODE) || defined(SENS)
 	}
 #endif
@@ -1314,25 +1622,21 @@ DEVICE void denominator(PTR_THR float *ax, const typeT localInd, float local_ele
 // Compute the backprojection
 DEVICE void rhs(const float local_ele, PTR_THR const float *ax, const LONG local_ind, CLGLOBAL CAST* d_rhs_OSEM, const uchar no_norm, CLGLOBAL CAST* d_Summ
 #ifdef TOF
-	, const FLOAT TOFSum, float* TOFWeights
-#ifdef LISTMODE
-	, const int TOFIndex
-#endif
+	, float* TOFWeights
 #endif
 ) {
 #ifdef TOF
 	FLOAT val = FLOAT_ZERO;
-	const FLOAT dX = local_ele / TOFSum;
 	FLOAT yaxTOF = FLOAT_ZERO;
 #if defined(LISTMODE) && !defined(SENS)
-	int to = TOFIndex;
+	const int to = 0;
 #else
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++) {
 #endif
-		const float apu = dX * TOFWeights[to];
+		const float apu = local_ele * TOFWeights[to];
 		val += apu;
 		yaxTOF += (apu * ax[to]);
 #if !defined(LISTMODE) || defined(SENS)
@@ -2054,9 +2358,27 @@ DEVICE float integrate_multiresolution_attenuation_prefix(IMTYPE d_atten, const 
 #endif
 
 #if !defined(PTYPE4) && !defined(PROJ5)
+// A coordinate that is constant along the ray (axis-parallel rays) is on a voxel boundary if it is closer than this to
+// one (in voxel units). Which of the two neighbouring voxels floor() selects for such a ray is decided by rounding (it differs
+// between the backends and the fast math modes), the upper voxel is thus always used. The error of the coordinate in voxel units is
+// orders of magnitude smaller than this.
+#define BOUNDARY_TOL 1e-4f
+
+// Voxel index of a coordinate that is constant along the ray, u = (coordinate - b) / voxel size is the coordinate in voxel units:
+// floor(u), except that a ray on a boundary between voxels k - 1 and k is in the voxel k. Not used by the orthogonal and volume-based
+// projectors (ORTH), they use floor(u)
+DEVICE int tieFloor(const float u) {
+#ifdef ORTH
+	return CINT(FLOOR(u));
+#else
+	const float r = FLOOR(u + 0.5f);
+	return CINT((FABS(u - r) < BOUNDARY_TOL) ? r : FLOOR(u));
+#endif
+}
+
 // Compute the voxel index where the current perpendicular measurement starts
 DEVICE int perpendicular_start(const float d_b, const float d, const float d_d, const uint d_N) {
-	int tempi = CINT(FLOOR((d - d_b) / d_d));
+	int tempi = tieFloor((d - d_b) / d_d);
 	if (tempi < 0 || tempi >= CINT(d_N))
 		tempi = 0;
 	return tempi;
@@ -2217,10 +2539,21 @@ DEVICE float voxelValue(const float t0, const float tc, const float L) {
 // #ifdef SIDDON
 // compute the distance that the ray traverses in the current voxel
 DEVICE float compute_element(PTR_THR float* t0, PTR_THR float* tc, const float L, const float tu, const int u, PTR_THR int* temp_ijk, PTR_THR bool* pass) {
-	*pass = (*t0 >= 0.f && *t0 <= 1.f) || (*tc >= 0.f && *tc <= 1.f);
+#ifdef ORTH
+	// The voxel [tc, t0] overlaps the line segment t = [0, 1] iff t0 >= 0 and tc <= 1 (this includes a segment that is
+	// completely inside the voxel, where neither t0 nor tc is inside [0, 1])
+	*pass = (*t0 >= 0.f && *tc <= 1.f);
 	float local_ele = 0.f;
 	if (*pass)
 		local_ele = voxelValue(FMIN(*t0, 1.f), FMAX(*tc, 0.f), L);
+#else
+	// The part of the voxel segment [tc, t0] that is inside the line segment t = [0, 1], zero if the voxel is outside of it.
+	// The overlap length is clipped to the line segment [0, 1], so a segment that is completely inside one voxel gets its
+	// actual length. This is evaluated for every voxel of every ray, so it is written with min/max/selects only, without
+	// the chain of comparisons that decides whether the voxel overlaps the segment
+	const float local_ele = FMAX(FMIN(*t0, 1.f) - FMAX(*tc, 0.f), 0.f) * L;
+	*pass = local_ele > 0.f;
+#endif
 	*temp_ijk += u;
 	*tc = *t0;
 	*t0 += tu;
@@ -2676,10 +3009,13 @@ DEVICE float SWTexRead(IMAGE3D uIn, const int x, const int y, const int z) {
     return read_imagef(uIn, samplerSWPrior, (int4)(x, y, z, 0)).w;
 #endif
 }
+// Buffer read with each coordinate clamped to the volume (clamp-to-edge, i.e. Neumann boundary), identical to the
+// texture sampler used in the image version
 DEVICE float SWBufRead(const CLGLOBAL float* CLRESTRICT buf, const int x, const int y, const int z, const int3 N) {
-    if (x < 0 || y < 0 || z < 0 || x >= N.x || y >= N.y || z >= N.z)
-        return FLOAT_ZERO;
-    return buf[(x) + (y) * N.x + (z) * N.x * N.y];
+    const int xc = MAX(0, MIN(x, N.x - 1));
+    const int yc = MAX(0, MIN(y, N.y - 1));
+    const int zc = MAX(0, MIN(z, N.z - 1));
+    return buf[xc + yc * N.x + zc * N.x * N.y];
 }
 
 
@@ -2849,6 +3185,8 @@ DEVICE float priorGradientSW(SW_IN_T uIn, CONSTANT float* weight,
 // Anatomical reference image cases are not supported for fastPDHG
 #if defined(TVGRAD) || defined(FASTTV)
 
+// Buffer reads (SWBufRead) clamp to the volume like the texture sampler used in the image version
+
 // Image/texture version and buffer version
 #if defined(FASTTV) || (defined(TVGRAD) && defined(USEIMAGES))
 #define TVFETCH(U, X, Y, Z) SWTexRead(U, X, Y, Z)
@@ -2882,6 +3220,48 @@ DEVICE float sqrtVal(const float3 input, const float epps
 #endif
 #endif
 }
+
+#ifdef ANATOMICAL3
+// APLS vector q = (g - (xi.g) xi) / sqrt(|g|^2 - (xi.g)^2 + epps), xi = r / sqrt(|r|^2 + eta^2)
+// g = forward differences of the image, r = forward differences of the reference image
+DEVICE float3 APLSq(const float3 g, const float3 r, const float eta, const float epps) {
+    const float rNorm = SQRT(r.x * r.x + r.y * r.y + r.z * r.z + eta * eta);
+    const float xix = r.x / rNorm;
+    const float xiy = r.y / rNorm;
+    const float xiz = r.z / rNorm;
+    const float gxi = g.x * xix + g.y * xiy + g.z * xiz;
+    const float p = SQRT(FMAX(g.x * g.x + g.y * g.y + g.z * g.z - gxi * gxi, 0.f) + epps);
+    return CMFLOAT3((g.x - gxi * xix) / p, (g.y - gxi * xiy) / p, (g.z - gxi * xiz) / p);
+}
+#endif
+
+#ifdef ANATOMICAL1
+// Anatomical TV type 1: q = 0.5 * grad_g Q(g) / sqrt(Q(g) + epps), Q(g) = g^T A g with the 3x3 weight matrix A of the voxel
+// The 9 weights S[n + NN * kk] are read at the (clamped) voxel (x, y, z), g = forward differences of the image at that voxel
+DEVICE float3 TVAnatQ(const CLGLOBAL float* CLRESTRICT S, const int x, const int y, const int z, const int3 N, const float3 g, const float epps) {
+    const int xc = MAX(0, MIN(x, N.x - 1));
+    const int yc = MAX(0, MIN(y, N.y - 1));
+    const int zc = MAX(0, MIN(z, N.z - 1));
+    const int NN = N.x * N.y * N.z;
+    const int nc = xc + yc * N.x + zc * N.x * N.y;
+    const float s0 = S[nc];
+    const float s1 = S[nc + NN];
+    const float s2 = S[nc + NN * 2];
+    const float s3 = S[nc + NN * 3];
+    const float s4 = S[nc + NN * 4];
+    const float s5 = S[nc + NN * 5];
+    const float s6 = S[nc + NN * 6];
+    const float s7 = S[nc + NN * 7];
+    const float s8 = S[nc + NN * 8];
+    const float sxy = s1 + s3;
+    const float sxz = s2 + s6;
+    const float syz = s5 + s7;
+    const float p = SQRT(s0 * g.x * g.x + s4 * g.y * g.y + s8 * g.z * g.z + sxy * g.x * g.y + sxz * g.x * g.z + syz * g.y * g.z + epps);
+    return CMFLOAT3(0.5f * (2.f * s0 * g.x + sxy * g.y + sxz * g.z) / p,
+        0.5f * (2.f * s4 * g.y + sxy * g.x + syz * g.z) / p,
+        0.5f * (2.f * s8 * g.z + sxz * g.x + syz * g.y) / p);
+}
+#endif
 
 // Gradient of the TV prior for one voxel, covering every variant
 DEVICE float TVGradient(TV_IN_T u, const int x, const int y, const int z, const float sigma, const float epps
@@ -2935,51 +3315,61 @@ DEVICE float TVGradient(TV_IN_T u, const int x, const int y, const int z, const 
 #endif
 #else
 #ifdef ANATOMICAL1 // TV type 1
-    const int NN = tvN.x * tvN.y * tvN.z;
-    const int n = x + y * tvN.x + z * tvN.x * tvN.y;
-#if defined(CUDA) || defined(HIP)
-    float s[9];
-#else
-    __private float s[9];
-#endif
-    for (int kk = 0; kk < 9; kk++)
-        s[kk] = S[n + NN * kk];
-    const float3 val = uijkP - uijk;
-    const float pvalijk = SQRT(val.x * val.x * s[0] + val.y * val.y * s[4] + val.z * val.z * s[8] + s[1] * (val.x) * (val.y) + s[3] * (val.x) * (val.y) + s[2] * (val.x) * (val.z) + s[6] * (val.x) * (val.z) +
-        s[5] * (val.y) * (val.z) + s[7] * (val.y) * (val.z) + epps);
-    const float pvalijkX = SQRT(u1.x * u1.x * s[0] + u1.y * u1.y * s[4] + u1.z * u1.z * s[8] + s[1] * (u1.x) * (u1.y) + s[3] * (u1.x) * (u1.y) + s[2] * (u1.x) * (u1.z) + s[6] * (u1.x) * (u1.z) +
-        s[5] * (u1.y) * (u1.z) + s[7] * (u1.y) * (u1.z) + epps);
-    const float pvalijkY = SQRT(u2.x * u2.x * s[0] + u2.y * u2.y * s[4] + u2.z * u2.z * s[8] + s[1] * (u2.x) * (u2.y) + s[3] * (u2.x) * (u2.y) + s[2] * (u2.x) * (u2.z) + s[6] * (u2.x) * (u2.z) +
-        s[5] * (u2.y) * (u2.z) + s[7] * (u2.y) * (u2.z) + epps);
-    const float pvalijkZ = SQRT(u3.x * u3.x * s[0] + u3.y * u3.y * s[4] + u3.z * u3.z * s[8] + s[1] * (u3.x) * (u3.y) + s[3] * (u3.x) * (u3.y) + s[2] * (u3.x) * (u3.z) + s[6] * (u3.x) * (u3.z) +
-        s[5] * (u3.y) * (u3.z) + s[7] * (u3.y) * (u3.z) + epps);
-    const float dx = s[0] * (FLOAT_TWO * (uijk - uijkM.x)) + s[3] * u1.y + s[2] * u1.z + s[6] * u1.z + s[1] * u1.y;
-    const float dy = s[4] * (FLOAT_TWO * (uijk - uijkM.y)) + s[5] * u2.z + s[3] * u2.x + s[1] * u2.x + s[7] * u2.z;
-    const float dz = s[8] * (FLOAT_TWO * (uijk - uijkM.z)) + s[6] * u3.x + s[5] * u3.y + s[7] * u3.y + s[2] * u3.x;
-    const float d = s[1] * val.x + s[2] * val.x + s[3] * val.x + s[6] * val.x + s[1] * val.y + s[3] * val.y + s[5] * val.y + s[7] * val.y + s[2] * val.z + s[5] * val.z + s[6] * val.z + s[7] * val.z + s[0] * FLOAT_TWO * val.x + s[4] * FLOAT_TWO * val.y + s[8] * FLOAT_TWO * val.z;
-    return FLOAT_HALF * (d / pvalijk + dx / pvalijkX + dy / pvalijkY + dz / pvalijkZ);
+    // phi_n = sqrt(Q_n(g_n) + epps) with the weights of voxel n, gradient = -(q_m.x + q_m.y + q_m.z) + q_{m-ex}.x + q_{m-ey}.y + q_{m-ez}.z
+    // The image is clamped at the volume edge, so the differences that cross the edge are zero and do not contribute
+    const float3 q0 = TVAnatQ(S, x, y, z, tvN, uijkP - uijk, epps);
+    const float3 q1 = TVAnatQ(S, x - 1, y, z, tvN, u1, epps);
+    const float3 q2 = TVAnatQ(S, x, y - 1, z, tvN, u2, epps);
+    const float3 q3 = TVAnatQ(S, x, y, z - 1, tvN, u3, epps);
+    float res = 0.f;
+    if (x < tvN.x - 1)
+        res -= q0.x;
+    if (y < tvN.y - 1)
+        res -= q0.y;
+    if (z < tvN.z - 1)
+        res -= q0.z;
+    if (x > 0)
+        res += q1.x;
+    if (y > 0)
+        res += q2.y;
+    if (z > 0)
+        res += q3.z;
+    return res + 1e-7f;
 #elif defined(ANATOMICAL2) // TV type 2
+    // The reference image is clamped at the volume edge (same as the image)
     const float3 uijkR = MFLOAT3(SWBufRead(S, x + 1, y, z, tvN), SWBufRead(S, x, y + 1, z, tvN), SWBufRead(S, x, y, z + 1, tvN));
     const float3 apuS = (uijkR - SWBufRead(S, x, y, z, tvN));
     const float3 apu = uijkP - uijk;
     const float pvalijk = SQRT(apu.x * apu.x + apu.y * apu.y + apu.z * apu.z + C * (apuS.x * apuS.x + apuS.y * apuS.y + apuS.z * apuS.z) + epps);
-    return (3.f * uijk - uijkP.x - uijkP.y - uijkP.z) / pvalijk + (uijk - uijkM.x) / sqrtVal(u1, epps) + (uijk - uijkM.y) / sqrtVal(u2, epps) + (uijk - uijkM.z) / sqrtVal(u3, epps) + 1e-7f;
+    // Reference image differences at the three backward neighbors, needed for their phi = sqrt(|g|^2 + C |r|^2 + epps)
+    const float vC = SWBufRead(S, x, y, z, tvN);
+    const float vX = SWBufRead(S, x - 1, y, z, tvN);
+    const float3 r1 = MFLOAT3(vC - vX, SWBufRead(S, x - 1, y + 1, z, tvN) - vX, SWBufRead(S, x - 1, y, z + 1, tvN) - vX);
+    const float vY = SWBufRead(S, x, y - 1, z, tvN);
+    const float3 r2 = MFLOAT3(SWBufRead(S, x + 1, y - 1, z, tvN) - vY, vC - vY, SWBufRead(S, x, y - 1, z + 1, tvN) - vY);
+    const float vZ = SWBufRead(S, x, y, z - 1, tvN);
+    const float3 r3 = MFLOAT3(SWBufRead(S, x + 1, y, z - 1, tvN) - vZ, SWBufRead(S, x, y + 1, z - 1, tvN) - vZ, vC - vZ);
+    const float p1 = SQRT(u1.x * u1.x + u1.y * u1.y + u1.z * u1.z + C * (r1.x * r1.x + r1.y * r1.y + r1.z * r1.z) + epps);
+    const float p2 = SQRT(u2.x * u2.x + u2.y * u2.y + u2.z * u2.z + C * (r2.x * r2.x + r2.y * r2.y + r2.z * r2.z) + epps);
+    const float p3 = SQRT(u3.x * u3.x + u3.y * u3.y + u3.z * u3.z + C * (r3.x * r3.x + r3.y * r3.y + r3.z * r3.z) + epps);
+    return (3.f * uijk - uijkP.x - uijkP.y - uijkP.z) / pvalijk + (uijk - uijkM.x) / p1 + (uijk - uijkM.y) / p2 + (uijk - uijkM.z) / p3 + 1e-7f;
 #elif defined(ANATOMICAL3) // APLS
-    const float3 uijkR = MFLOAT3(SWBufRead(S, x + 1, y, z, tvN), SWBufRead(S, x, y + 1, z, tvN), SWBufRead(S, x, y, z + 1, tvN));
-    float3 epsilon = (uijkR - SWBufRead(S, x, y, z, tvN));
-    epsilon = epsilon / SQRT(epsilon.x * epsilon.x + epsilon.y * epsilon.y + epsilon.z * epsilon.z + C * C);
-    const float3 apu = uijkP - uijk;
-    const float apuR = uijkR.x * apu.x + uijkR.y * apu.y + uijkR.z * apu.z;
-    const float pvalijk = SQRT(apu.x * apu.x + apu.y * apu.y + apu.z * apu.z - apuR * apuR + epps);
-    float apuRXYZ = uijkR.x * u1.x + uijkR.y * u1.y + uijkR.z * u1.z;
-    const float pvalijkX = SQRT(u1.x * u1.x + u1.y * u1.y + u1.z * u1.z + apuRXYZ * apuRXYZ + epps);
-    apuRXYZ = uijkR.x * u2.x + uijkR.y * u2.y + uijkR.z * u2.z;
-    const float pvalijkY = SQRT(u2.x * u2.x + u2.y * u2.y + u2.z * u2.z + apuRXYZ * apuRXYZ + epps);
-    apuRXYZ = uijkR.x * u3.x + uijkR.y * u3.y + uijkR.z * u3.z;
-    const float pvalijkZ = SQRT(u3.x * u3.x + u3.y * u3.y + u3.z * u3.z + apuRXYZ * apuRXYZ + epps);
-    return FLOAT_HALF * ((6.f * uijk - FLOAT_TWO * uijkP.x - FLOAT_TWO * uijkP.y - FLOAT_TWO * uijkP.z + FLOAT_TWO * (epsilon.x*(uijk - uijkP.x) + epsilon.y*(uijk - uijkP.y) + epsilon.z*(uijk - uijkP.z)) * (epsilon.x + epsilon.y + epsilon.z)) / pvalijk +
-        FLOAT_TWO * (u1.x - epsilon.x * (epsilon.x * u1.x + epsilon.y * u1.y + epsilon.z * u1.z)) / pvalijkX + FLOAT_TWO * (u2.y - epsilon.y * (epsilon.x * u2.x + epsilon.y * u2.y + epsilon.z * u2.z)) / pvalijkY +
-        FLOAT_TWO * (u3.z - epsilon.z * (epsilon.x * u3.x + epsilon.y * u3.y + epsilon.z * u3.z))/ pvalijkZ + 1e-7f);
+    // Asymmetric parallel level sets (Ehrhardt et al. 2016): P(u) = sum sqrt(|g|^2 - (xi.g)^2 + epps), xi = r / sqrt(|r|^2 + eta^2)
+    // The gradient is the sum of the unit-like vectors q of the voxel itself and of its three backward neighbors
+    // The reference image is clamped at the volume edge, so its differences vanish across the boundary
+    const float vC = SWBufRead(S, x, y, z, tvN);
+    const float3 r0 = MFLOAT3(SWBufRead(S, x + 1, y, z, tvN) - vC, SWBufRead(S, x, y + 1, z, tvN) - vC, SWBufRead(S, x, y, z + 1, tvN) - vC);
+    const float vX = SWBufRead(S, x - 1, y, z, tvN);
+    const float3 r1 = MFLOAT3(vC - vX, SWBufRead(S, x - 1, y + 1, z, tvN) - vX, SWBufRead(S, x - 1, y, z + 1, tvN) - vX);
+    const float vY = SWBufRead(S, x, y - 1, z, tvN);
+    const float3 r2 = MFLOAT3(SWBufRead(S, x + 1, y - 1, z, tvN) - vY, vC - vY, SWBufRead(S, x, y - 1, z + 1, tvN) - vY);
+    const float vZ = SWBufRead(S, x, y, z - 1, tvN);
+    const float3 r3 = MFLOAT3(SWBufRead(S, x + 1, y, z - 1, tvN) - vZ, SWBufRead(S, x, y + 1, z - 1, tvN) - vZ, vC - vZ);
+    const float3 q0 = APLSq(uijkP - uijk, r0, C, epps);
+    const float3 q1 = APLSq(u1, r1, C, epps);
+    const float3 q2 = APLSq(u2, r2, C, epps);
+    const float3 q3 = APLSq(u3, r3, C, epps);
+    return -(q0.x + q0.y + q0.z) + q1.x + q2.y + q3.z + 1e-7f;
 #else // Non-reference image TV (standard / JPTV --> identical)
     const float pvalijk = sqrtVal(uijkP - uijk, epps);
     return (3.f * uijk - uijkP.x - uijkP.y - uijkP.z) / pvalijk + (uijk - uijkM.x) / sqrtVal(u1, epps) + (uijk - uijkM.y) / sqrtVal(u2, epps) + (uijk - uijkM.z) / sqrtVal(u3, epps) + 1e-7f;

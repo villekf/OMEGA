@@ -197,7 +197,7 @@ options.Nang = 160;
 % (this should total the total number of sinograms).
 % Currently this is computed automatically, but you can also manually
 % specify the segment sizes.
-options.segment_table = [options.rings*2-1, options.rings*2-1 - (options.span + 1):-options.span*2:max(options.Nz - options.ring_difference*2, options.rings - options.ring_difference)];
+options.segment_table = [options.rings*2-1, options.rings*2-1 - (options.span + 1):-options.span*2:max(options.rings*2-1 - options.ring_difference*2, options.rings - options.ring_difference)];
 if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
     options.segment_table = [options.segment_table(1), repeat_elem(options.segment_table(2:end),2,1)];
 else
@@ -542,14 +542,14 @@ options.TOF_offset = 0;
 % use this value to control the accuracy of the TOF data. For example if
 % you want to have TOF data with 500 ps FWHM then set this value to
 % 500e-12. 
-options.TOF_noise_FWHM = 200e-12;
+options.TOF_noise_FWHM = 100e-12;
 
 %%% FWHM of the TOF data (s)
 % Applies to ALL data.
 % This value specifies the TOF accuracy during the reconstruction process
 % and thus can be different from above. If you are using GATE data with
 % temporal blurring, you need to multiply that FWHM with sqrt(2) here.
-options.TOF_FWHM = 210e-12;
+options.TOF_FWHM = 100e-12;
 
 %%% Number of TOF bins used in reconstruction
 % Number of TOF bins used during reconstruction phase.

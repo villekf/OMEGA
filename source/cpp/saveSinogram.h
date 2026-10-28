@@ -54,8 +54,11 @@ int64_t saveSinogram(const int32_t ring_pos1, const int32_t ring_pos2, int32_t r
 	swap = (j * 2) < -i || i <= ((j - det_per_ring / 2) * 2);
 	// Determine if the index is within the sinogram FOV
 	bool accepted_lors;
+	// The front ends reject nDistSide = 0 for even Ndist (it would accept Ndist + 1 radial bins and wrap into the next angle row),
+	// so treat it as the default value 1
+	const int32_t side = (Ndist % 2U == 0 && nDistSide == 0) ? 1 : nDistSide;
 	if (Ndist % 2U == 0)
-		accepted_lors = (i <= (static_cast<int32_t>(Ndist) / 2 + std::min(0, nDistSide)) && i >= (-static_cast<int32_t>(Ndist) / 2 + std::max(0, nDistSide)));
+		accepted_lors = (i <= (static_cast<int32_t>(Ndist) / 2 + std::min(0, side)) && i >= (-static_cast<int32_t>(Ndist) / 2 + std::max(0, side)));
 	else
 		accepted_lors = (i <= static_cast<int32_t>(Ndist) / 2 && i >= (-static_cast<int32_t>(Ndist) / 2));
 	accepted_lors = accepted_lors && (std::abs(ring_number1 - ring_number2) <= ring_difference);
@@ -65,11 +68,16 @@ int64_t saveSinogram(const int32_t ring_pos1, const int32_t ring_pos2, int32_t r
 		// Determine the TOF bin
 		if (TOFSize > sinoSize) {
 			binN = bins;
-			if (swap && binN != 0ULL) {
-				if (binN % 2 == 0)
-					binN--;
-				else
-					binN++;
+			// Reverse the TOF direction of swapped LORs: k -> -k for an odd number of bins, k -> 1 - k for an even number
+			if (swap) {
+				if ((TOFSize / sinoSize) % 2ULL == 0ULL)
+					binN = (binN % 2ULL == 0ULL) ? binN + 1ULL : binN - 1ULL;
+				else if (binN != 0ULL) {
+					if (binN % 2 == 0)
+						binN--;
+					else
+						binN++;
+				}
 			}
 		}
 		j = j / (det_per_ring / 2 / Nang);
@@ -78,7 +86,8 @@ int64_t saveSinogram(const int32_t ring_pos1, const int32_t ring_pos2, int32_t r
 			ring_number1 = ring_number2;
 			ring_number2 = ring_number3;
 		}
-		i = i + Ndist / 2 - std::max(0, nDistSide);
+		// Radial bin: odd Ndist accepts i in [-Ndist/2, Ndist/2] (nDistSide ignored), even Ndist is shifted by nDistSide
+		i = i + Ndist / 2 - (Ndist % 2U == 0 ? std::max(0, side) : 0);
 		const bool swappi = ring_pos2 > ring_pos1;
 		if (swappi) {
 			const int32_t ring_number3 = ring_number1;
@@ -149,6 +158,8 @@ void openMPSino(const T* ringPos1, const T* ringPos2, const T* ringNumber1, cons
 	if (pseudoR) {
 		gapSize = rings / (nPseudos + 1);
 	}
+	// Number of elements of the sinogram array, (Ndist, Nang, NSinos, nLayers^2, TOF bins, Nt), where TOFSize = Ndist * Nang * NSinos * TOF bins
+	const uint64_t sinoBufSize = TOFSize * static_cast<uint64_t>(nLayers) * static_cast<uint64_t>(nLayers) * Nt;
 #ifdef _OPENMP
 #if _OPENMP >= 201511
 #pragma omp parallel for schedule(monotonic:dynamic)
@@ -201,7 +212,10 @@ void openMPSino(const T* ringPos1, const T* ringPos2, const T* ringNumber1, cons
 		bool swap = false;
 		const int64_t indeksi = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize, Ndist, Nang, ring_difference, span, seg, TOFSize,
 			detWPseudo, rings, binN, nDistSide, swap, tPoint, layer, nLayers);
-		if (indeksi >= TOFSize * nLayers * Nt) {
+		// Negative index: the LOR is outside the sinogram FOV (radial FOV or ring difference), skip silently
+		if (indeksi < 0)
+			continue;
+		if (static_cast<uint64_t>(indeksi) >= sinoBufSize) {
 			mexPrint("Sinogram index is larger than the maximum possible or outside the sinogram FOV! Skipping!");
 			continue;
 		}

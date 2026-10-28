@@ -209,6 +209,8 @@ else
         % Corrections not applied during reconstruction
         if ~options.corrections_during_reconstruction && ~isempty(appliedCorrections)
             normalization_correction = options.normalization_correction;
+            % The normalization is only (re-)enabled below if the user has selected it
+            normalizationSelected = options.normalization_correction;
             % Normalization
             if appliedCorrections.normalization && ~options.normalization_correction
                 warning('Normalization correction not selected, but data precorrected with normalization! Precorrecting without normalization.')
@@ -227,7 +229,7 @@ else
                 warning('Randoms variance correction not selected, but data precorrected with randoms with applied variance reduction! Precorrecting without variance reduction.')
                 [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
                 loadRaw = true;
-                if appliedCorrections.normalization && ~normalization_correction
+                if appliedCorrections.normalization && ~normalization_correction && normalizationSelected
                     normalization_correction = true;
                 end
                 % Randoms smoothing
@@ -235,14 +237,14 @@ else
                 warning('Randoms smoothing not selected, but data precorrected with randoms with applied smoothing! Precorrecting without smoothing.')
                 [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
                 loadRaw = true;
-                if appliedCorrections.normalization && ~normalization_correction
+                if appliedCorrections.normalization && ~normalization_correction && normalizationSelected
                     normalization_correction = true;
                 end
                 % Simple randoms correction
             elseif isempty(strfind(appliedCorrections.randoms,'randoms correction')) && ~loadRaw && randoms_correction
                 [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
                 loadRaw = true;
-                if appliedCorrections.normalization && ~normalization_correction
+                if appliedCorrections.normalization && ~normalization_correction && normalizationSelected
                     normalization_correction = true;
                 end
                 % If data has not been precorrected before, precorrect
@@ -253,7 +255,7 @@ else
                 warning('Randoms corrections selected, but data not precorrected with selected options! Precorrecting with selected options.')
                 [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
                 loadRaw = true;
-                if appliedCorrections.normalization && ~normalization_correction
+                if appliedCorrections.normalization && ~normalization_correction && normalizationSelected
                     normalization_correction = true;
                 end
             elseif ~isempty(strfind(appliedCorrections.randoms,'randoms correction')) && ~loadRaw
@@ -266,7 +268,7 @@ else
                 if ~randoms_correction && options.randoms_correction
                     randoms_correction = true;
                 end
-                if appliedCorrections.normalization && ~normalization_correction
+                if appliedCorrections.normalization && ~normalization_correction && normalizationSelected
                     normalization_correction = true;
                 end
                 loadRaw = true;
@@ -276,7 +278,7 @@ else
                 if ~randoms_correction && options.randoms_correction
                     randoms_correction = true;
                 end
-                if appliedCorrections.normalization && ~normalization_correction
+                if appliedCorrections.normalization && ~normalization_correction && normalizationSelected
                     normalization_correction = true;
                 end
                 loadRaw = true;
@@ -285,7 +287,7 @@ else
                 if ~randoms_correction && options.randoms_correction
                     randoms_correction = true;
                 end
-                if appliedCorrections.normalization && ~normalization_correction
+                if appliedCorrections.normalization && ~normalization_correction && normalizationSelected
                     normalization_correction = true;
                 end
                 loadRaw = true;

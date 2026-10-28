@@ -265,6 +265,9 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 	std::normal_distribution<double> distribution(0.0, TOFNoiseSigma + 1e-20);
 	const uint64_t nBins = TOFSize / sinoSize[0];
 	const bool TOF = nBins > 1;
+	// Numbers of elements of the sinogram arrays: (Ndist, Nang, NSinos, nLayers^2, TOF bins, Nt) and, for the delayed coincidences, (Ndist, Nang, NSinos, nLayers^2, Nt)
+	const uint64_t sinoBufSize = TOFSize * static_cast<uint64_t>(nLayers) * static_cast<uint64_t>(nLayers) * static_cast<uint64_t>(Nt);
+	const uint64_t sinoDBufSize = sinoSize[0] * static_cast<uint64_t>(nLayers) * static_cast<uint64_t>(nLayers) * static_cast<uint64_t>(Nt);
 	// Custom time window in a static (non-dynamic) examination
 	const bool customWindow = alku > 0. || loppu < 1e9;
 
@@ -335,6 +338,27 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 	int32_t gapSize = 0;
 	if (pseudoR) {
 		gapSize = rings[0] / (nPseudos + 1);
+	}
+	// Mapping of the layers into a common block structure (sinogram path only). The transaxial index of every layer is mapped
+	// into blocks of blockSize detectors: blockSize is the block size including the pseudo detectors when pseudo detectors are
+	// used (detWPseudo / number of blocks), otherwise the block size of the layer with the most crystals per block. The axial ring
+	// numbers are mapped into modules of as many rings as the layer with the most axial crystals has. The detectors/rings that a
+	// layer does not have are located at the end of each block/module of the layer. Nothing is added to a single layer without
+	// pseudo detectors
+	uint32_t maxCryst = 0U, maxCrystZ = 0U;
+	for (int32_t ll = 0; ll < nLayers; ll++) {
+		maxCryst = std::max(maxCryst, cryst_per_block[ll]);
+		maxCrystZ = std::max(maxCrystZ, cryst_per_block_z[ll]);
+	}
+	const uint32_t nBlocksRing = blocks_per_ring * transaxial_multip;
+	const uint32_t blockSize = (pseudoD && nBlocksRing > 0U) ? detWPseudo[0] / nBlocksRing : maxCryst;
+	std::vector<uint32_t> padTrans(std::max<int32_t>(nLayers, 1), 0U), padAxial(std::max<int32_t>(nLayers, 1), 0U);
+	bool padDetectors = false, padRings = false;
+	for (int32_t ll = 0; ll < nLayers; ll++) {
+		padTrans[ll] = blockSize > cryst_per_block[ll] ? blockSize - cryst_per_block[ll] : 0U;
+		padAxial[ll] = nLayers > 1 ? maxCrystZ - cryst_per_block_z[ll] : 0U;
+		padDetectors = padDetectors || padTrans[ll] > 0U;
+		padRings = padRings || padAxial[ll] > 0U;
 	}
 	if (source) {
 		if (!Coincidences->GetBranchStatus("sourcePosX1")) {
@@ -672,6 +696,11 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 							event_scattered = false;
 					}
 				}
+				// Index-based data has no separate trues container (the sinogram version stores them in SinoT), so
+				// obtain_trues means that only the true coincidences are stored. The skipped events are left as zeros
+				// and removed by the front-end like the events outside the time window or the TOF range
+				if (indexBased && obtain_trues && !event_true)
+					continue;
 				if (dynamic) {
 					double time = alku;
 					tPoint = Nt - 1;
@@ -691,12 +720,24 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 						timeDif += distribution(generator);
 					if (std::abs(timeDif) > ((binSize / 2.) * static_cast<double>(nBins)))
 						continue;
-					bins = static_cast<uint64_t>(std::floor((std::abs(timeDif) + binSize / 2.) / binSize));
+					// TOF bin index in the center-first order of TOFCenter: b = 0, 1, 2, 3, 4, ... <-> k = 0, 1, -1, 2, -2, ...,
+					// where k is the signed bin number along -timeDif. Odd nBins: the center bin is centered at timeDif = 0.
+					// Even nBins: the bins are centered at half-integer multiples of binSize and the center bin (lower middle
+					// bin, as in TOFCenter) covers timeDif in (0, binSize]
 					const bool tInd = timeDif > 0;
-					if (tInd)
-						bins *= 2ULL;
-					else if (!tInd && bins > 0ULL)
-						bins = bins * 2ULL - 1ULL;
+					if (nBins % 2ULL == 1ULL) {
+						bins = static_cast<uint64_t>(std::floor((std::abs(timeDif) + binSize / 2.) / binSize));
+						bins = std::min<uint64_t>(bins, (nBins - 1ULL) / 2ULL);
+						if (tInd)
+							bins *= 2ULL;
+						else if (bins > 0ULL)
+							bins = bins * 2ULL - 1ULL;
+					}
+					else {
+						bins = static_cast<uint64_t>(std::floor(std::abs(timeDif) / binSize));
+						bins = std::min<uint64_t>(bins, nBins / 2ULL - 1ULL);
+						bins = tInd ? bins * 2ULL : bins * 2ULL + 1ULL;
+					}
 				}
 				int32_t layer = 0;
 				if (nLayers > 1) {
@@ -740,26 +781,29 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 						TOFIndex[kk] = static_cast<uint8_t>(bins);
 				}
 				else {
-					if (pseudoD) {
-						ring_pos1 += ring_pos1 / cryst_per_block[layerID1];
-						ring_pos2 += ring_pos2 / cryst_per_block[layerID2];
+					// The axial module of each end (before the pseudo rings are added)
+					const uint32_t axialBlock1 = padRings ? ring_number1 / cryst_per_block_z[layerID1] : 0U;
+					const uint32_t axialBlock2 = padRings ? ring_number2 / cryst_per_block_z[layerID2] : 0U;
+					// Pseudo detectors and the layer padding
+					if (padDetectors) {
+						ring_pos1 += (ring_pos1 / cryst_per_block[layerID1]) * padTrans[layerID1];
+						ring_pos2 += (ring_pos2 / cryst_per_block[layerID2]) * padTrans[layerID2];
 					}
 					if (pseudoR) {
 						ring_number1 += ring_number1 / gapSize;
 						ring_number2 += ring_number2 / gapSize;
 					}
-					if ((layer == 0 || layer == 1) && nLayers > 1) {
-						ring_pos1 += ring_pos1 / cryst_per_block[layerID1];
-						ring_number1 += moduleID1;
-					}
-					if ((layer == 0 || layer == 2) && nLayers > 1) {
-						ring_pos2 += ring_pos2 / cryst_per_block[layerID2];
-						ring_number2 += moduleID2;
+					// Layer padding axially
+					if (padRings) {
+						ring_number1 += axialBlock1 * padAxial[layerID1];
+						ring_number2 += axialBlock2 * padAxial[layerID2];
 					}
 					bool swap = false;
 					const int64_t sinoIndex = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize[0], Ndist, Nang[0], ringDifference, span, seg, TOFSize,
 						detWPseudo[0], rings[0], bins, nDistSide, swap, tPoint, layer, nLayers);
-					if (sinoIndex >= 0) {
+					if (sinoIndex >= 0 && static_cast<uint64_t>(sinoIndex) >= sinoBufSize)
+						mexPrint("Sinogram index is larger than the maximum possible or outside the sinogram FOV! Skipping!");
+					else if (sinoIndex >= 0) {
 #ifdef _OPENMP
 #pragma omp atomic
 #endif
@@ -929,26 +973,29 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 					DaxIndex[kk * 2 + 1] = static_cast<uint16_t>(ring_number2) + layerID2 * rings[0];
 				}
 				else {
-					if (pseudoD) {
-						ring_pos1 += ring_pos1 / cryst_per_block[layerID1];
-						ring_pos2 += ring_pos2 / cryst_per_block[layerID2];
+					// The axial module of each end (before the pseudo rings are added)
+					const uint32_t axialBlock1 = padRings ? ring_number1 / cryst_per_block_z[layerID1] : 0U;
+					const uint32_t axialBlock2 = padRings ? ring_number2 / cryst_per_block_z[layerID2] : 0U;
+					// Pseudo detectors and the layer padding
+					if (padDetectors) {
+						ring_pos1 += (ring_pos1 / cryst_per_block[layerID1]) * padTrans[layerID1];
+						ring_pos2 += (ring_pos2 / cryst_per_block[layerID2]) * padTrans[layerID2];
 					}
 					if (pseudoR) {
 						ring_number1 += ring_number1 / gapSize;
 						ring_number2 += ring_number2 / gapSize;
 					}
-					if ((layer == 0 || layer == 1) && nLayers > 1) {
-						ring_pos1 += ring_pos1 / cryst_per_block[layerID1];
-						ring_number1 += moduleID1;
+					// Layer padding axially
+					if (padRings) {
+						ring_number1 += axialBlock1 * padAxial[layerID1];
+						ring_number2 += axialBlock2 * padAxial[layerID2];
 					}
-					if ((layer == 0 || layer == 2) && nLayers > 1) {
-						ring_pos2 += ring_pos2 / cryst_per_block[layerID2];
-						ring_number2 += moduleID2;
-				}
 					bool swap = false;
 					const int64_t sinoIndex = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize[0], Ndist, Nang[0], ringDifference, span, seg, sinoSize[0],
 						detWPseudo[0], rings[0], bins, nDistSide, swap, tPoint, layer, nLayers);
-					if (sinoIndex >= 0) {
+					if (sinoIndex >= 0 && static_cast<uint64_t>(sinoIndex) >= sinoDBufSize)
+						mexPrint("Sinogram index is larger than the maximum possible or outside the sinogram FOV! Skipping!");
+					else if (sinoIndex >= 0) {
 #ifdef _OPENMP
 #pragma omp atomic
 #endif

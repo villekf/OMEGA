@@ -762,7 +762,7 @@ if ~isfield(options, 'segment_table') && isfield(options, 'span') && options.spa
     if options.span == 1
         options.segment_table = options.rings^2;
     else
-        options.segment_table = [options.Nz, options.Nz - (options.span + 1):-options.span*2:max(options.Nz - options.ring_difference*2, options.rings - options.ring_difference)];
+        options.segment_table = [options.rings*2-1, options.rings*2-1 - (options.span + 1):-options.span*2:max(options.rings*2-1 - options.ring_difference*2, options.rings - options.ring_difference)];
         if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
             options.segment_table = [options.segment_table(1), repeat_elem(options.segment_table(2:end),2,1)];
         else

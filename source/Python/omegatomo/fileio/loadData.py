@@ -79,6 +79,8 @@ def loadROOT(options, store_coordinates = False):
     Coordinate mode (store_coordinates = True): Fcoord is the (6, N) coordinate array (list of Nt arrays in dynamic mode).
     Index-based mode (options.useIndexBasedReconstruction): Fcoord/FDcoord are the (2, N) transaxial/axial detector
     indices (lists in dynamic mode), DtrIndex/DaxIndex the same for the delayed coincidences (static only).
+    The events are the prompts, or only the true coincidences if options.reconstruct_trues is set (matching the
+    trues sinogram, SinoT, of the sinogram mode). The delayed coincidences are not loaded for trues.
     TOFIndices is the (N,) TOF bin index of each event (list in dynamic mode) when TOF is used with coordinates or indices.
     """
     import os
@@ -98,6 +100,9 @@ def loadROOT(options, store_coordinates = False):
     totSinos = int(_scalar(options.TotSinos))
     if options.span == 1:
         totSinos = int(ringsArr[0]) ** 2
+    elif nLayers > 1:
+        # The sinograms of each layer combination contain the planes of the segment table (TotSinos includes all combinations)
+        totSinos = int(np.sum(options.segment_table))
     sinoSize = Ndist * int(NangArr[0]) * totSinos
     TOF_bins = int(_scalar(options.TOF_bins))
     TOFSize = sinoSize * TOF_bins
@@ -231,7 +236,12 @@ def loadROOT(options, store_coordinates = False):
     sc = np.atleast_1d(np.asarray(options.scatter_components)).ravel()
     scatter_components[:min(4, sc.size)] = sc[:4].astype(np.uint8)
     useTOFInd = TOF and (indexBased or store_coordinates)
-    delays = bool(options.randoms_correction)
+    # Index-based data has no separate trues container: with reconstruct_trues only the true coincidences are
+    # stored as events (the C++ code stores only the trues when obtain_trues is set in the index-based mode).
+    # The randoms are not corrected when reconstructing trues
+    indexTrues = indexBased and bool(options.reconstruct_trues)
+    obtainTrues = indexTrues if indexBased else bool(options.obtain_trues)
+    delays = bool(options.randoms_correction) and not indexTrues
     if dynamic and delays and (indexBased or store_coordinates):
         if store_coordinates:
             print('Coordinates for delayed coincidences are not supported for list-mode data in dynamic mode!')
@@ -289,7 +299,7 @@ def loadROOT(options, store_coordinates = False):
         c_lib.rootMain(rootFile.encode('utf-8'), _ptr(tPoints, ctypes.c_double), alku, loppu, bool(options.source), int(options.linear_multip), _ptr(cryst_per_block, ctypes.c_uint32),
                        int(options.blocks_per_ring), _ptr(det_per_ring, ctypes.c_uint32), _ptr(C, ctypes.c_uint16), _ptr(SC, ctypes.c_uint16), _ptr(RA, ctypes.c_uint16),
                        _ptr(trIndex, ctypes.c_uint16), _ptr(axIndex, ctypes.c_uint16), _ptr(DtrIndex, ctypes.c_uint16), _ptr(DaxIndex, ctypes.c_uint16),
-                       bool(options.obtain_trues), bool(options.store_scatter), bool(options.store_randoms), _ptr(scatter_components, ctypes.c_uint8),
+                       obtainTrues, bool(options.store_scatter), bool(options.store_randoms), _ptr(scatter_components, ctypes.c_uint8),
                        delays, _ptr(coord, ctypes.c_float), _ptr(Dcoord, ctypes.c_float), store_coordinates, _ptr(cryst_per_block_axial, ctypes.c_uint32),
                        int(options.transaxial_multip), _ptr(rings, ctypes.c_uint32), _ptr(sinoSizeArr, ctypes.c_uint64), Ndist, _ptr(Nang, ctypes.c_uint32),
                        int(options.ring_difference), int(options.span), _ptr(seg, ctypes.c_uint32), Nt, TOFSize, int(options.ndist_side),

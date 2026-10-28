@@ -401,7 +401,11 @@ classdef projectorClass
                     end
                 end
                 if obj.param.flipImageZ % Flip image by flipping sinograms' z-axis in image space. X and Y are flipped in get_coordinates_SPECT (only for projector_type != 6)
-                    obj.param.SinM = flip(obj.param.SinM, 2);
+                    % Scatter windows (DEW/TEW) must follow the same flip
+                    obj.param.SinM = flipAxialSPECT(obj.param.SinM);
+                    if isfield(obj.param, 'ScatterC')
+                        obj.param.ScatterC = flipAxialSPECT(obj.param.ScatterC);
+                    end
                 end
                 % The following may or may not be required
                 obj.param.Ndist = obj.param.nRowsD;
@@ -433,6 +437,10 @@ classdef projectorClass
             % Special requirements for span 1 case
             if obj.param.span == 1
                 obj.param.TotSinos = obj.param.rings^2 * obj.param.nLayers^2;
+                obj.param.NSinos = obj.param.TotSinos;
+            elseif obj.param.nLayers > 1 && isfield(obj.param, 'segment_table') && ~isempty(obj.param.segment_table)
+                % All layer combinations (the planes of the segment table each) form the sinogram set
+                obj.param.TotSinos = sum(obj.param.segment_table) * obj.param.nLayers^2;
                 obj.param.NSinos = obj.param.TotSinos;
             end
             if (~obj.param.CT && ~obj.param.SPECT)
@@ -614,10 +622,37 @@ classdef projectorClass
                     TOFCenter(1) = edges_user(ceil(length(edges_user)/2));
                     TOFCenter(2:2:end) = edges_user(ceil(length(edges_user)/2) + 1:end);
                     TOFCenter(3:2:end) = edges_user(ceil(length(edges_user)/2) - 1: -1 : 1);
-                    if isfield(obj.param, 'TOF_offset') && obj.param.TOF_offset > 0
+                    if isfield(obj.param, 'TOF_offset') && obj.param.TOF_offset ~= 0
                         TOFCenter = TOFCenter + obj.param.TOF_offset;
                     end
                     TOFCenter = -TOFCenter * c / 2;
+                else
+                    % User-supplied TOF bin centers
+                    TOFCenter = obj.param.TOFCenter;
+                end
+                if obj.param.TOF_bins_used == obj.param.TOF_bins && obj.param.TOF_bins > 1
+                    % The exact-TOF GPU kernels (general_opencl_functions.h, TOFInit) require uniformly spaced bin centers in the
+                    % center-first order TOFCenter(b) = TOFCenter(1) + k_b * dw, dw = TOFCenter(2) - TOFCenter(1), where
+                    % k_b = b / 2 for even b and k_b = -(b - 1) / 2 for odd b (b is 1-based, i.e. k = 0, 1, -1, 2, -2, ...).
+                    % The kernels return NaN for any other layout. The tolerance is the same as in the kernel.
+                    TOFLayout = ['TOFCenter must contain TOF_bins (' num2str(obj.param.TOF_bins) ') uniformly spaced bin centers (in mm along the LOR) in the center-first order ' ...
+                        'TOFCenter(b) = TOFCenter(1) + k_b * dw, b = 1 ... TOF_bins, where dw = TOFCenter(2) - TOFCenter(1) is non-zero, ' ...
+                        'k_b = b / 2 for even b and k_b = -(b - 1) / 2 for odd b (k = 0, 1, -1, 2, -2, ...).'];
+                    if numel(TOFCenter) ~= obj.param.TOF_bins
+                        error(['TOFCenter has ' num2str(numel(TOFCenter)) ' elements, but TOF_bins is ' num2str(obj.param.TOF_bins) '. ' TOFLayout])
+                    end
+                    tc = double(TOFCenter(:));
+                    dw = tc(2) - tc(1);
+                    bb = (0:numel(tc) - 1)';
+                    kb = (bb + 1) / 2 .* (mod(bb, 2) == 1) - bb / 2 .* (mod(bb, 2) == 0);
+                    badBins = find(~(abs(tc - (tc(1) + dw * kb)) <= 1e-3 * abs(dw)));
+                    if dw == 0 || any(~isfinite(tc)) || ~isempty(badBins)
+                        firstBad = '';
+                        if ~isempty(badBins)
+                            firstBad = [' The first bin that deviates is b = ' num2str(badBins(1)) ' (TOFCenter(' num2str(badBins(1)) ') = ' num2str(tc(badBins(1))) ', expected ' num2str(tc(1) + dw * kb(badBins(1))) ').'];
+                        end
+                        error(['Invalid TOFCenter.' firstBad ' ' TOFLayout])
+                    end
                 end
             else
                 obj.param.sigma_x = 0;
@@ -719,14 +754,19 @@ classdef projectorClass
                     error('SPECT listmode requires six endpoint coordinates and five metadata values per event.')
                 end
             end
+            if obj.param.useIndexBasedReconstruction
+                if ~obj.param.listmode
+                    error('Index-based reconstruction requires options.trIndex and options.axIndex, i.e. the transaxial and axial detector indices of the events (2 x number of events), but they are not set!')
+                end
+                obj.param = checkIndexBasedInputs(obj.param);
+            end
             if (~obj.param.CT && ~obj.param.SPECT) && ((obj.param.subset_type > 7 && obj.param.subsets > 1) || obj.param.subsets == 1 || (obj.param.listmode == 0 && obj.param.subset_type == 0))
                 obj.param.PET = true;
             else
                 obj.param.PET = false;
             end
-            if obj.param.listmode && obj.param.subsets > 1 && obj.param.subset_type ~= 1 && obj.param.subset_type ~= 3 && obj.param.subset_type ~= 0
-                warning('Only subset types 0, 1, and 3 are supported with list-mode/custom detector data! Switching to subset type 0.')
-                obj.param.subset_type = 0;
+            if obj.param.listmode && ~obj.param.CT && ~obj.param.SPECT && obj.param.subsets > 1 && obj.param.subset_type ~= 1 && obj.param.subset_type ~= 3 && obj.param.subset_type ~= 0
+                error(['Subset type ' num2str(obj.param.subset_type) ' is not supported with list-mode and index-based data! Only subset types 0 (sequential), 1 (every n-th event) and 3 (random) can be used when subsets > 1. Set options.subset_type to 0, 1 or 3 (or use options.subsets = 1).'])
             end
             if ~obj.param.listmode && obj.param.subsets > 1 && obj.param.subset_type == 0
                 warning('Subset type 0 is recommended only for list-mode data! The reconstruction will most likely not work!')
@@ -1619,4 +1659,14 @@ classdef projectorClass
             nMeasInput = int64([0; eventCount]);
         end
     end
+end
+
+
+function data = flipAxialSPECT(data)
+% Flips the axial (2nd) dimension of SPECT projections. Cells are dynamic timeframes or DEW/TEW scatter windows
+if iscell(data)
+    data = cellfun(@flipAxialSPECT, data, 'UniformOutput', false);
+else
+    data = flip(data, 2);
+end
 end

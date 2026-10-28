@@ -482,6 +482,40 @@ def _divideInPlaceUnlessShared(options, array, divisor):
     return array
 
 
+def _perLORFactor(sinM, factor, tofBins, divide):
+    """
+    Returns the measurement data sinM multiplied (or, with divide, divided) by a
+    per-LOR factor (e.g. the normalization coefficients). The factor has one value per
+    LOR (non-TOF sinogram size) and is applied to every TOF bin, which is the slowest
+    axis of the data.
+    """
+    sinM = sinM.astype(np.float32)
+    factor = np.asarray(factor)
+    if tofBins > 1 and factor.size * tofBins == sinM.size:
+        shape = sinM.shape
+        data = sinM.reshape((factor.size, tofBins), order='F')
+        factor = factor.reshape((factor.size, 1), order='F')
+        data = data / factor if divide else data * factor
+        return data.reshape(shape, order='F')
+    factor = np.reshape(factor, sinM.shape, order='F')
+    return sinM / factor if divide else sinM * factor
+
+
+def _subtractDelayed(sinM, delayed, tofBins):
+    """
+    Returns the measurement data sinM with the randoms estimate (non-TOF sinogram size)
+    subtracted. With TOF data the estimate is divided equally between the TOF bins
+    (as in MATLAB's applyScatterRandoms.m).
+    """
+    sinM = sinM.astype(np.float32)
+    delayed = delayed.astype(np.float32)
+    if tofBins > 1 and delayed.size * tofBins == sinM.size:
+        shape = sinM.shape
+        data = sinM.reshape((delayed.size, tofBins), order='F') - delayed.reshape((delayed.size, 1), order='F') / np.float32(tofBins)
+        return data.reshape(shape, order='F')
+    return sinM - delayed
+
+
 def loadCorrections(options):
     """
     This function loads all the corrections related data. It can also perform
@@ -538,6 +572,11 @@ def loadCorrections(options):
         # or crash instead of disabling the (unsupported) correction as MATLAB does.
         print('Warning: Normalization correction is not (yet) supported for dynamic list-mode data! Disabling it.')
         options.normalization_correction = False
+    if options.reconstruct_trues or options.reconstruct_scatter:
+        # Mirrors MATLAB's loadCorrections.m: when trues or scatter data is reconstructed,
+        # no randoms/scatter data is loaded or applied (SinDelayed is not read from the file)
+        options.randoms_correction = False
+        options.scatter_correction = False
     normalization_shape = np.asarray(options.normalization).shape
     options.normZ = int(normalization_shape[2]) if options.SPECT and len(normalization_shape) == 3 else 1
     normalization_indexed_stack = bool(options.SPECT and int(options.normZ) == int(options.nHeads))
@@ -621,6 +660,10 @@ def loadCorrections(options):
             _prepare_image_domain_attenuation(options)
         else:
             options.vaimennus = np.asfortranarray(options.vaimennus).ravel('F').astype(dtype=np.float32)
+    # PET normalization precorrection of SinM, applied after the randoms/scatter
+    # precorrection below (as in MATLAB, the randoms are subtracted from the measured
+    # data before it is normalized)
+    deferredNormalization = None
     if options.normalization_correction:
         normalizationFromFile = False
         if options.normalization.size == 0:
@@ -682,15 +725,16 @@ def loadCorrections(options):
                 else:
                     normalization_for_data = expand_detector_stack(options.normalization, options.SinM.shape)
             else:
-                normalization_for_data = np.reshape(options.normalization, options.SinM.shape, order='F')
+                normalization_for_data = options.normalization
             if normalization_for_data is not None:
                 # File-loaded normalization was inverted on load, so dividing multiplies
                 # by the raw coefficients. A prefilled PET normalization is multiplied
                 # directly (as in MATLAB); SPECT divides (as in MATLAB).
-                if not options.SPECT and not normalizationFromFile:
-                    options.SinM = options.SinM.astype(np.float32) * normalization_for_data
+                normalizationDivide = bool(options.SPECT or normalizationFromFile)
+                if options.SPECT:
+                    options.SinM = _perLORFactor(options.SinM, normalization_for_data, options.TOF_bins, normalizationDivide)
                 else:
-                    options.SinM = options.SinM.astype(np.float32) / normalization_for_data
+                    deferredNormalization = (normalization_for_data, normalizationDivide)
             options.normalization_correction = False
         else:
             options.normalization = options.normalization.ravel('F').astype(dtype=np.float32)
@@ -795,11 +839,13 @@ def loadCorrections(options):
             options.ScatterC = randoms_smoothing(options.ScatterC, options)
         if options.precorrect:
             if options.scatter_correction and options.ScatterC.size > 0 and options.SinDelayed.size > 0 and options.randoms_correction and options.subtract_scatter:
-                options.SinM = options.SinM.astype(np.float32) - options.SinDelayed.astype(np.float32) - options.ScatterC.astype(np.float32)
+                options.SinM = _subtractDelayed(options.SinM, options.SinDelayed, options.TOF_bins) - options.ScatterC.astype(np.float32)
             elif options.scatter_correction and options.ScatterC.size > 0 and not options.randoms_correction and options.subtract_scatter:
                 options.SinM = options.SinM.astype(np.float32) - options.ScatterC.astype(np.float32) 
             elif options.SinDelayed.size > 0 and options.randoms_correction:
-                options.SinM = options.SinM.astype(np.float32) - options.SinDelayed.astype(np.float32) 
+                options.SinM = _subtractDelayed(options.SinM, options.SinDelayed, options.TOF_bins)
+    if deferredNormalization is not None:
+        options.SinM = _perLORFactor(options.SinM, deferredNormalization[0], options.TOF_bins, deferredNormalization[1])
     if options.scatter_correction and options.ScatterC.size > 0 and not options.subtract_scatter:
         # options.corrVector is a general multiplicative correction vector (see
         # its per-frame handling in parseInputs below): if the user has already
@@ -1116,8 +1162,15 @@ def parseInputs(options, mDataFound = False):
                         options.normalization = options.normalization[normalization_index]
         
         if options.additionalCorrection and hasattr(options, 'corrVector') and options.corrVector.size > 0:
+            # As in C++, a corrVector holding only one frame's worth of data is shared by every
+            # timestep: subset-permute it ONCE with frame 0's index (as for a static
+            # normalization); init.py then slices it with the frame-0 offsets.
+            corr_vector_is_static = False
             if options.Nt > 1:
-                # corrVector is per-timestep in C++/MATLAB for dynamic data (see init.py's
+                _start0, _stop0, _ = _frame_measurement_bounds(options, 1)
+                corr_vector_is_static = int(np.size(options.corrVector)) == _stop0 - _start0
+            if options.Nt > 1 and not corr_vector_is_static:
+                # A frame-concatenated corrVector is per-timestep (see init.py's
                 # [Nt][subsets] d_corr construction, sliced from this same flat array via
                 # options.nTotMeas): mirror the per-frame handling already used for
                 # normalization/vaimennus/SinDelayed/ScatterC above instead of subset-selecting
@@ -1148,14 +1201,16 @@ def parseInputs(options, mDataFound = False):
                         frame = frame[idx, :]
                     out_frames.append(np.asarray(frame).ravel(order='F'))
                 options.corrVector = np.concatenate(out_frames).astype(dtype=np.float32)
-            elif options.subsetType >= 8:
-                options.corrVector = np.reshape(options.corrVector, (options.Ndist, options.Nang, options.nProjections, -1), order='F')
-                options.corrVector = options.corrVector[:, :, options.index, :]
-                options.corrVector = options.corrVector.ravel(order='F')
             else:
-                options.corrVector = np.reshape(options.corrVector, (options.Ndist * options.Nang * options.nProjections, -1), order='F')
-                options.corrVector = options.corrVector[options.index,:]
-                options.corrVector = options.corrVector.ravel(order='F').astype(dtype=np.float32)
+                corr_vector_index = options.index[0] if (options.Nt > 1 and isinstance(options.index, list)) else options.index
+                if options.subsetType >= 8:
+                    options.corrVector = np.reshape(options.corrVector, (options.Ndist, options.Nang, options.nProjections, -1), order='F')
+                    options.corrVector = options.corrVector[:, :, corr_vector_index, :]
+                    options.corrVector = options.corrVector.ravel(order='F')
+                else:
+                    options.corrVector = np.reshape(options.corrVector, (options.Ndist * options.Nang * options.nProjections, -1), order='F')
+                    options.corrVector = options.corrVector[corr_vector_index,:]
+                    options.corrVector = options.corrVector.ravel(order='F').astype(dtype=np.float32)
         
         if (options.randoms_correction
                 and options.corrections_during_reconstruction 
@@ -1278,10 +1333,18 @@ def parseInputs(options, mDataFound = False):
                 
         
         if options.attenuation_correction and not options.CT_attenuation:
+            # A static (single-frame) measurement-domain attenuation is shared by every
+            # timestep, as in C++ (one d_atten[kk] buffer): it holds exactly frame 0's
+            # measurements, is subset-permuted ONCE with frame 0's index (as for
+            # normalization) and init.py then slices it with the frame-0 offsets.
+            attenuation_is_static = False
             if options.Nt > 1:
-                # Measurement-domain attenuation is per-timestep in C++/MATLAB for dynamic
-                # data (see init.py's [Nt][subsets] d_atten construction, sliced from this
-                # same flat array via options.nTotMeas); mirror the per-frame handling above
+                _start0, _stop0, _ = _frame_measurement_bounds(options, 1)
+                attenuation_is_static = int(np.size(options.vaimennus)) == _stop0 - _start0
+            if options.Nt > 1 and not attenuation_is_static:
+                # Frame-concatenated measurement-domain attenuation (Nt blocks, a superset of
+                # C++): per-timestep (see init.py's [Nt][subsets] d_atten construction, sliced
+                # from this same flat array via options.nTotMeas); mirror the per-frame handling above
                 # (normalization_correction, SinM/SinDelayed/ScatterC) instead of subset-
                 # selecting the whole Nt-frame-concatenated array with a single frame's worth
                 # of indices (pre-existing bug -- see the normalization_correction branch
@@ -1303,13 +1366,15 @@ def parseInputs(options, mDataFound = False):
                         frame = frame[idx]
                     out_frames.append(np.asarray(frame).ravel(order='F'))
                 options.vaimennus = np.concatenate(out_frames)
-            elif options.subsetType >= 8:
-                options.vaimennus = np.reshape(options.vaimennus, (options.Ndist, options.Nang, -1), order='F')
-                options.vaimennus = options.vaimennus[:, :, options.index]
-                options.vaimennus = options.vaimennus.ravel(order='F')
             else:
-                options.vaimennus = options.vaimennus.ravel(order='F')
-                options.vaimennus = options.vaimennus[options.index]
+                attenuation_index = options.index[0] if (options.Nt > 1 and isinstance(options.index, list)) else options.index
+                if options.subsetType >= 8:
+                    options.vaimennus = np.reshape(options.vaimennus, (options.Ndist, options.Nang, -1), order='F')
+                    options.vaimennus = options.vaimennus[:, :, attenuation_index]
+                    options.vaimennus = options.vaimennus.ravel(order='F')
+                else:
+                    options.vaimennus = options.vaimennus.ravel(order='F')
+                    options.vaimennus = options.vaimennus[attenuation_index]
         if options.scatter_correction and not options.corrections_during_reconstruction:
             if not options.precorrect:
                 print('Warning: Scatter correction is disabled. options.corrections_during_reconstruction is False and options.precorrect is False, i.e. the scatter is neither applied during the reconstruction nor subtracted from the measurement data. Set options.corrections_during_reconstruction = True to apply it.')
@@ -1400,7 +1465,7 @@ def TVPrepass(options):
         options.TV_referenceImage = options.TV_referenceImage / np.max(options.TV_referenceImage)
         if options.TVtype == 1:
             options.TV_referenceImage = options.TV_referenceImage.reshape((options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()),order='F')
-            S = assembleS(options.TV_referenceImage, options.B, options.Ny[0].item(), options.Nx[0].item(), options.Nz[0].item())
+            S = assembleS(options.TV_referenceImage, options._TVweight, options.Ny[0].item(), options.Nx[0].item(), options.Nz[0].item())
             S = S.astype(dtype=np.float32)
             s1 = S[0::3, 0]
             s2 = S[0::3, 1]
@@ -1443,6 +1508,12 @@ def APLSPrepass(options):
         elseCheckNdim3=True, elseCheckShape0=True, elseResizeGuardNz1=False,
         finalize=True, castBeforeAsfortran=True, doAsfortran=True,
     )
+    Nx0 = options.Nx[0].item()
+    Ny0 = options.Ny[0].item()
+    Nz0 = options.Nz[0].item()
+    if options.APLS_ref_image.size != Nx0 * Ny0 * Nz0:
+        raise ValueError('The APLS reference image has ' + str(options.APLS_ref_image.size) + ' elements, but the reconstruction volume requires ' +
+                         str(Nx0 * Ny0 * Nz0) + ' (' + str(Nx0) + 'x' + str(Ny0) + 'x' + str(Nz0) + '). Resize the reference image to the same size as the reconstruction volume!')
 
 def computeWeights(options, GGMRF):
     """

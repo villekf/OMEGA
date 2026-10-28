@@ -352,7 +352,8 @@ end
 if sum(options.precondTypeImage) == 0 && (options.PKMA || options.MRAMLA || options.MBSREM)
     warning('No image-based preconditioner selected with PKMA/MRAMLA/MBSREM. EM preconditioner is highly recommended!')
 end
-if options.APLS && exist(options.APLS_reference_image,'file') ~= 2 && MAP
+if options.APLS && MAP && (ischar(options.APLS_reference_image) || isstring(options.APLS_reference_image)) && ...
+        ~isempty(char(options.APLS_reference_image)) && exist(char(options.APLS_reference_image),'file') ~= 2
     error('APLS selected, but the anatomical reference image was not found on path!')
 end
 if options.epps <= 0
@@ -392,6 +393,22 @@ end
 if options.useIndexBasedReconstruction && (options.projector_type == 5 || options.projector_type == 45 || options.projector_type == 54 || options.projector_type == 51 ...
         || options.projector_type == 15 || options.projector_type == 6)
     error('Index-based reconstruction only supports projector types 1-4!')
+end
+% List-mode data (custom coordinates or index-based) can only be divided into
+% subsets with subset types 0 (sequential), 1 (every n-th event) and 3
+% (random). Other types (e.g. the default 8) are sinogram/projection-based
+% and are rejected here, before any data is prepared, instead of being
+% silently replaced. isListModeCandidate only detects the custom coordinates
+% case when options.x and options.SinM have already been set; projectorClass
+% repeats this check once all the data are available.
+if ~options.CT && ~options.SPECT && (options.useIndexBasedReconstruction || options.listmode || isListModeCandidate) ...
+        && options.subsets > 1 && ~ismember(options.subset_type, [0, 1, 3])
+    error(['Subset type ' num2str(options.subset_type) ' is not supported with list-mode and index-based data! Only subset types 0 (sequential), 1 (every n-th event) and 3 (random) can be used when subsets > 1. Set options.subset_type to 0, 1 or 3 (or use options.subsets = 1).'])
+end
+% The sinogram plane index of subset types 3, 6 and 7 (z_index) is stored as 16-bit
+if ~options.CT && ~options.SPECT && ~options.listmode && ~isListModeCandidate && ~options.useIndexBasedReconstruction && ~options.use_raw_data ...
+        && options.subsets > 1 && ismember(options.subset_type, [3, 6, 7]) && options.NSinos > 65536
+    error('Subset types 3, 6 and 7 support at most 65536 sinogram planes (the plane index is stored as 16-bit); use another subset type, fewer planes (larger span) or a single subset.')
 end
 if ~options.CT && ~options.SPECT && options.reconstruct_trues && options.reconstruct_scatter
     warning('Both reconstruct trues and scatter selected, reconstructing only trues.')
@@ -1126,23 +1143,27 @@ if options.verbose > 0
             dispi = strcat(dispi, '.');
             disp(dispi)
         else
-            if isempty(partitions) || partitions == 1
-                if options.CT
-                    dispi = 'Using STATIC projection data';
-                else
-                    dispi = 'Using STATIC sinogram data';
-                end
+            % Type of the data: projection images (CT), list-mode events
+            % (custom coordinates), index-based list-mode events (detector
+            % indices) or sinograms
+            if options.CT
+                dataType = 'projection data';
+            elseif options.useIndexBasedReconstruction
+                dataType = 'index-based list-mode data';
+            elseif options.listmode || isListModeCandidate
+                dataType = 'list-mode data';
             else
-                if options.CT
-                    dispi = 'Using DYNAMIC projection data';
-                else
-                    dispi = 'Using DYNAMIC sinogram data';
-                end
+                dataType = 'sinogram data';
+            end
+            if isempty(partitions) || partitions == 1
+                dispi = ['Using STATIC ' dataType];
+            else
+                dispi = ['Using DYNAMIC ' dataType];
             end
             if options.reconstruct_trues
                 dispi = strcat(dispi, ' (trues)');
             elseif options.reconstruct_scatter
-                dispi = strcat(dispi, ' (scatter).');
+                dispi = strcat(dispi, ' (scatter)');
             else
                 dispi = strcat(dispi, ' (prompts)');
             end

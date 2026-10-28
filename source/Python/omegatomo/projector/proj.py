@@ -248,6 +248,20 @@ class projectorClass:
     variance_reduction = False
     randoms_smoothing = False
     ringGaps = np.empty(0, dtype=np.int32)
+    # Optional transaxial gaps (mm) inside a block (PET). 1-D array of cryst_per_block - 1 elements, element j is the
+    # extra spacing inserted after crystal j (0-based) of every block, e.g. between coplanar sub-units of a module. The
+    # block stays centered on its facet. Empty (default) or all zeros = no gaps. The detector ring is a regular polygon
+    # with blocks_per_ring * transaxial_multip facets, with the block faces at diameter / 2 from the center.
+    transaxialGaps = np.empty(0, dtype=np.float32)
+    # Angle (degrees, counter-clockwise from the +x axis) of the normal of the first block (PET) of the regular-polygon
+    # detector ring, i.e. where the first block is located in the image coordinate system. 0 (default) = the first block
+    # is centered on the +x axis. Coordinate system: origin at the scanner center, z = scanner axis, +x = direction of
+    # the image's first dimension (Nx, row direction), +y = direction of its second dimension (Ny, column direction);
+    # angles are counter-clockwise, from +x towards +y. With 0 the center of block 0 is at (x, y) = (diameter / 2, 0)
+    # (DOI added to the radius) and its crystals run towards +y. Applied before offangle (which only renumbers/rolls
+    # the detectors) and before flip_image, so for a scanner whose first block is at angle A in the image frame
+    # (e.g. a GATE model) firstBlockAngle = A and offangle = 0 give the exact detector positions in that frame.
+    firstBlockAngle = 0.
     precompute_lor = False
     sigmaZ = -1.
     sigmaXY = -1.
@@ -378,7 +392,6 @@ class projectorClass:
     TV_use_anatomical = False
     TVtype = 1
     tau = 0.
-    B = 0.01
     C = 1.
     SATVPhi = 1.
     FluxType = 1
@@ -652,6 +665,103 @@ class projectorClass:
               (self.x[0].size / 2 == self.SinM[0].size or
                self.x[0].size / 6 == self.SinM[0].size)))
 
+    def _checkTOFCenter(self):
+        """Raise an error if the TOF bin centers (TOFCenter, built here or supplied by the user) do not have the layout the
+        exact-TOF GPU kernels require (general_opencl_functions.h, TOFInit): uniform spacing dw = TOFCenter[1] - TOFCenter[0]
+        in the center-first order TOFCenter[b] = TOFCenter[0] + k_b * dw with k_b = (b + 1) / 2 for odd b and -b / 2 for even b
+        (0-based b, i.e. k = 0, 1, -1, 2, -2, ...). The kernels return NaN for any other layout. Same tolerance as in the kernel."""
+        if self.TOF_bins_used != self.TOF_bins or self.TOF_bins <= 1:
+            return
+        layout = ('TOFCenter must contain TOF_bins (%d) uniformly spaced bin centers (in mm along the LOR) in the center-first order '
+                  'TOFCenter[b] = TOFCenter[0] + k_b * dw, b = 0 ... TOF_bins - 1, where dw = TOFCenter[1] - TOFCenter[0] is non-zero, '
+                  'k_b = (b + 1) / 2 for odd b and k_b = -b / 2 for even b (k = 0, 1, -1, 2, -2, ...).' % self.TOF_bins)
+        tc = np.asarray(self.TOFCenter, dtype=np.float64).ravel()
+        if tc.size != self.TOF_bins:
+            raise ValueError('TOFCenter has %d elements, but TOF_bins is %d. %s' % (tc.size, self.TOF_bins, layout))
+        dw = tc[1] - tc[0]
+        b = np.arange(tc.size)
+        k = np.where(b % 2 == 1, (b + 1) // 2, -(b // 2))
+        bad = np.flatnonzero(~(np.abs(tc - (tc[0] + dw * k)) <= 1e-3 * abs(dw)))
+        if dw == 0 or not np.all(np.isfinite(tc)) or bad.size > 0:
+            first = '' if bad.size == 0 else ' The first bin that deviates is b = %d (TOFCenter[%d] = %g, expected %g).' % (bad[0], bad[0], tc[bad[0]], tc[0] + dw * k[bad[0]])
+            raise ValueError('Invalid TOFCenter.%s %s' % (first, layout))
+
+    def _normalizeDetectorIndices(self, name, value):
+        """Validate one set of index-based detector indices (options.trIndex or options.axIndex) of a single timeframe.
+
+        Accepted layouts: a (2, N) array (the two detector indices of each event in the two rows, the layout returned by the
+        loaders), a (2, N, Nt) array (dynamic data stacked along the third dimension), or a flat array of even length 2N with
+        the layout [det1_ev0, det2_ev0, det1_ev1, det2_ev1, ...], i.e. the (2, N) array flattened in column-major (Fortran)
+        order. Anything else, such as an (N, 2) array, is rejected since it would be silently misread as 2N events. The values
+        must be integers that fit in uint16 (0 ... 65535); they are returned cast to uint16.
+
+        Returns the validated (uint16) array and the number of events it contains."""
+        arr = np.asarray(value)
+        if arr.dtype.kind not in 'ui':
+            raise ValueError(f'options.{name} must contain integer detector indices, but its data type is {arr.dtype}!')
+        if arr.ndim == 1:
+            if arr.size % 2 != 0:
+                raise ValueError(f'options.{name} is a flat array of {arr.size} elements, but it must contain two detector indices per event '
+                                 f'(an even number of elements, layout [det1_ev0, det2_ev0, det1_ev1, ...])! Expected shape is (2, N).')
+            nEvents = arr.size // 2
+        elif arr.ndim == 2 and arr.shape[0] == 2:
+            nEvents = arr.shape[1]
+        elif arr.ndim == 3 and arr.shape[0] == 2:
+            nEvents = arr.shape[1] * arr.shape[2]
+        else:
+            raise ValueError(f'options.{name} has the shape {tuple(arr.shape)}, but the expected shape is (2, N), i.e. the two detector indices of '
+                             f'each of the N events in the two rows (alternatively a flat array of length 2N with the layout '
+                             f'[det1_ev0, det2_ev0, det1_ev1, ...]). Transpose the array if it is (N, 2).')
+        if arr.dtype != np.uint16 and arr.size > 0:
+            if arr.dtype.kind == 'i' and arr.min() < 0:
+                raise ValueError(f'options.{name} contains negative detector indices (minimum {arr.min()})!')
+            if arr.max() > np.iinfo(np.uint16).max:
+                raise ValueError(f'options.{name} contains detector indices that do not fit in uint16 (maximum {arr.max()}, limit 65535)!')
+            arr = arr.astype(np.uint16)
+        return arr, nEvents
+
+    def _checkIndexBasedInputs(self):
+        """Validate the index-based inputs: the shape, data type and number of events of options.trIndex and options.axIndex
+        (and of options.TOFIndices when TOF is used). For dynamic data the indices are lists with one element per timeframe.
+        The (possibly uint16-cast) arrays are stored back to options.trIndex and options.axIndex."""
+        trList = isinstance(self.trIndex, (list, tuple))
+        axList = isinstance(self.axIndex, (list, tuple))
+        if trList != axList:
+            raise ValueError('options.trIndex and options.axIndex must either both be lists (dynamic data, one element per timeframe) or both be arrays!')
+        trFrames = list(self.trIndex) if trList else [self.trIndex]
+        axFrames = list(self.axIndex) if axList else [self.axIndex]
+        if len(trFrames) != len(axFrames):
+            raise ValueError(f'options.trIndex has {len(trFrames)} timeframes, but options.axIndex has {len(axFrames)}!')
+        counts = []
+        for kk in range(len(trFrames)):
+            suffix = f' (timeframe {kk + 1})' if trList else ''
+            trFrames[kk], nTr = self._normalizeDetectorIndices('trIndex', trFrames[kk])
+            axFrames[kk], nAx = self._normalizeDetectorIndices('axIndex', axFrames[kk])
+            if nTr != nAx:
+                raise ValueError(f'options.trIndex and options.axIndex must contain the same number of events, but trIndex has {nTr} and axIndex has {nAx}{suffix}!')
+            counts.append(nTr)
+        if trList:
+            self.trIndex = trFrames
+            self.axIndex = axFrames
+        else:
+            self.trIndex = trFrames[0]
+            self.axIndex = axFrames[0]
+        if self.TOF_bins > 1 and self.projector_type in (1, 11, 3, 33, 13, 31, 4, 14, 41, 44, 34, 43):
+            if isinstance(self.TOFIndices, (list, tuple)):
+                tofCounts = [np.size(t) for t in self.TOFIndices]
+                if len(tofCounts) != len(counts) and len(counts) > 1:
+                    raise ValueError(f'options.TOFIndices has {len(tofCounts)} timeframes, but the index-based data has {len(counts)}!')
+                if len(counts) == 1:
+                    tofCounts = [sum(tofCounts)]
+            elif len(counts) > 1:
+                raise ValueError('With dynamic index-based data (trIndex/axIndex given as lists, one element per time frame), options.TOFIndices must also be a list with one element per time frame.')
+            else:
+                tofCounts = [np.size(self.TOFIndices)]
+            for kk in range(len(counts)):
+                if tofCounts[kk] != counts[kk]:
+                    suffix = f' in timeframe {kk + 1}' if len(counts) > 1 else ''
+                    raise ValueError(f'The number of TOF indices (options.TOFIndices, {tofCounts[kk]}) does not correspond to the number of events ({counts[kk]}){suffix}!')
+
     def addProjector(self):
         self.projectorAdded = True
         # MATLAB/Octave-style option name aliases, accepted for convenience so scripts written
@@ -817,11 +927,16 @@ class projectorClass:
                     self.vaimennus = np.flip(self.vaimennus, 2)
 
             if self.flipImageZ:
-                if isinstance(self.SinM, list):
-                    self.SinM = [np.flip(frame, axis=1) for frame in self.SinM]
-                else:
-                    self.SinM = np.flip(self.SinM, axis=1)
-            
+                # Flip the axial axis of every projection stack; lists are dynamic frames or DEW/TEW scatter windows
+                def _flipAxial(data):
+                    if isinstance(data, (list, tuple)):
+                        return [_flipAxial(d) for d in data]
+                    if isinstance(data, np.ndarray) and data.ndim >= 2:
+                        return np.flip(data, axis=1)
+                    return data
+                self.SinM = _flipAxial(self.SinM)
+                self.ScatterC = _flipAxial(self.ScatterC)
+
             if 'n_rays_transaxial' not in self.__dict__:
                 self.n_rays_transaxial = int(np.sqrt(self.nRays))
             if 'n_rays_axial' not in self.__dict__:
@@ -869,13 +984,17 @@ class projectorClass:
         if self.ring_difference == 0 and self.rings > 0:
             self.ring_difference = self.rings - 1
         if self.segment_table.size == 0 and self.span > 0 and self.rings > 0:
-            self.segment_table = np.concatenate((np.array(self.rings*2-1,ndmin=1), np.arange(self.rings*2-1 - (self.span + 1), max(self.Nz - self.ring_difference*2, self.rings - self.ring_difference), -self.span*2)))
+            self.segment_table = np.concatenate((np.array(self.rings*2-1,ndmin=1), np.arange(self.rings*2-1 - (self.span + 1), max(self.rings*2-1 - self.ring_difference*2, self.rings - self.ring_difference) - 1, -self.span*2)))
             self.segment_table = np.insert(np.repeat(self.segment_table[1:], 2), 0, self.segment_table[0])
         if self.Nang == 1 and self.det_per_ring > 1:
             self.Nang = self.det_per_ring // 2
         if self.span == 1:
             # All layer combinations (rings**2 sinograms each) form the sinogram set
             self.TotSinos = self.rings**2 * self.nLayers**2
+            self.NSinos = self.TotSinos
+        elif self.nLayers > 1 and self.segment_table.size > 0:
+            # All layer combinations (the planes of the segment table each) form the sinogram set
+            self.TotSinos = int(np.sum(self.segment_table)) * self.nLayers**2
             self.NSinos = self.TotSinos
         elif self.NSinos == 0:
             self.NSinos = np.sum(self.segment_table)
@@ -907,14 +1026,17 @@ class projectorClass:
                 edges_user = np.linspace(-self.TOF_width * self.TOF_bins/2, self.TOF_width * self.TOF_bins / 2, self.TOF_bins + 1, dtype=np.float32)
                 edges_user = edges_user[0:-1] + self.TOF_width/2. # the most probable value where annihilation occured
                 self.TOFCenter = np.zeros(np.shape(edges_user),dtype = np.float32, order='F')
-                self.TOFCenter[0] = edges_user[math.floor(np.size(edges_user)/2)]
-                self.TOFCenter[1::2] = edges_user[math.floor(np.size(edges_user)/2) + 1:]
-                self.TOFCenter[2::2] = edges_user[math.floor(np.size(edges_user)/2) - 1:  : -1]
-                if self.TOF_offset > 0:
+                # The center bin is the (lower) middle one for an even number of bins, as in MATLAB (ceil(n/2), 1-based)
+                iCenter = (np.size(edges_user) + 1) // 2 - 1
+                self.TOFCenter[0] = edges_user[iCenter]
+                self.TOFCenter[1::2] = edges_user[iCenter + 1:]
+                self.TOFCenter[2::2] = edges_user[:iCenter][::-1]
+                if self.TOF_offset != 0:
                     self.TOFCenter = self.TOFCenter + self.TOF_offset
                 self.TOFCenter = -self.TOFCenter * c / 2.
             else:
                 self.TOFCenter = np.float32(self.TOFCenter)
+            self._checkTOFCenter()
         else:
             self.sigma_x = 0.
         if self.ordinaryPoisson is None:
@@ -1067,8 +1189,19 @@ class projectorClass:
                     from .detcoord import getCoordinates
                     x_det, y, z_det = getCoordinates(self)
             else:
-                if self.TOF:
-                    if self.TOFIndices.size != self.SinM.size:
+                # Index-based data is validated against the number of events in _checkIndexBasedInputs (OMEGAErrorCheck)
+                if self.TOF and not self.useIndexBasedReconstruction:
+                    sinList = isinstance(self.SinM, (list, tuple))
+                    tofList = isinstance(self.TOFIndices, (list, tuple))
+                    if sinList != tofList:
+                        raise ValueError('options.SinM and options.TOFIndices must either both be lists (dynamic data, one element per timeframe) or both be arrays!')
+                    if sinList:
+                        if len(self.SinM) != len(self.TOFIndices):
+                            raise ValueError(f'options.TOFIndices has {len(self.TOFIndices)} timeframes, but options.SinM has {len(self.SinM)}!')
+                        for kk in range(len(self.SinM)):
+                            if np.size(self.TOFIndices[kk]) != np.size(self.SinM[kk]):
+                                raise ValueError(f'The number of TOF indices does not correspond to the number of events (timeframe {kk + 1})!')
+                    elif np.size(self.TOFIndices) != np.size(self.SinM):
                         raise ValueError('The number of TOF indices does not correspond to the number of events!')
                 if not self.useIndexBasedReconstruction:
                     if isinstance(self.x, list):
@@ -1516,6 +1649,19 @@ class projectorClass:
         
         if not self.CT and not self.SPECT and self.ndist_side == 0 and self.Ndist % 2 == 0 and not self.use_raw_data:
             raise ValueError("ndist_side cannot be 0 when Ndist is even!")
+        # List-mode data (custom coordinates or index-based) can only be divided into subsets with subset types
+        # 0 (sequential), 1 (every n-th event) and 3 (random). Other types (e.g. the default 8) are sinogram/projection-based
+        # and cannot be used: they are rejected here, before any data is prepared, instead of being silently replaced.
+        # (CT/SPECT are excluded: their projection-image subsets are never list-mode, even if a custom x is supplied.)
+        if self.listmode and not self.CT and not self.SPECT and self.subsets > 1 and self.subsetType not in (0, 1, 3):
+            raise ValueError(f'Subset type {self.subsetType} is not supported with list-mode and index-based data! '
+                             'Only subset types 0 (sequential), 1 (every n-th event) and 3 (random) can be used when subsets > 1. '
+                             'Set options.subsetType to 0, 1 or 3 (or use options.subsets = 1).')
+        # The sinogram plane index of subset types 3, 6 and 7 (z_index) is stored as 16-bit
+        if (not self.CT and not self.SPECT and not self.listmode and not self.useIndexBasedReconstruction and not self.use_raw_data
+                and self.subsets > 1 and self.subsetType in (3, 6, 7) and self.NSinos > 65536):
+            raise ValueError('Subset types 3, 6 and 7 support at most 65536 sinogram planes (the plane index is stored as 16-bit); '
+                             'use another subset type, fewer planes (larger span) or a single subset.')
         if self.useIndexBasedReconstruction and self.projector_type not in [1, 2, 3, 4, 11, 14, 12, 13, 21, 22, 23, 24, 31, 32, 33, 34, 41, 42, 43, 44]:
             raise ValueError('Index-based reconstruction only supports projector types 1-4!')
         if self.useIndexBasedReconstruction:
@@ -1531,6 +1677,7 @@ class projectorClass:
                                       'options.x and options.z must contain the coordinates of every detector the indices refer to. '
                                       'The coordinates can be obtained with omegatomo.projector.detcoord.getCoordinates (set options.use_raw_data = True '
                                       'temporarily), see e.g. gate_PET.py or Inveon_PET_main_listmode_example.py.')
+            self._checkIndexBasedInputs()
 
         if self.Nt < 1:
             if isinstance(self.partitions, np.ndarray) and self.partitions.size > 0:
@@ -1637,11 +1784,16 @@ class projectorClass:
                 raise ValueError('Multi-resolution image-domain attenuation is not implemented in the native C++ CPU reconstruction path.')
             if self.useMetal:
                 raise ValueError('Multi-resolution image-domain attenuation is not implemented by the Metal/MPS projector backend.')
-        if self.APLS and not os.path.exists(self.APLS_ref_image) and self.MAP and not isinstance(self.APLS_ref_image, np.ndarray):
+        if self.APLS and self.MAP and not isinstance(self.APLS_ref_image, np.ndarray) and not os.path.exists(self.APLS_ref_image):
             raise FileNotFoundError('APLS selected, but the anatomical reference image was not found on path!')
         if self.epps <= 0:
             print('Epsilon value is zero or less than zero; must be a positive value. Using the default value (1e-6).')
             self.epps = 1e-6
+        if 'sigma' in self.__dict__ and 'NLMsigma' not in self.__dict__:
+            # The NLM filter parameter is options.NLMsigma (sigma was used in older examples/MATLAB); use sigma as a fallback
+            self.NLMsigma = self.sigma
+            if self.NLM or self.ProxNLM:
+                print('options.sigma is used as the NLM filter parameter; in the future use options.NLMsigma instead')
         # if self.projector_type in [5, 4, 34, 24, 44, 14, 41, 42, 43, 15, 45, 54, 51, 55] and self.useCPU:
         #     raise ValueError('The selected projector type is not supported with CPU implementation!')
         if np.sum(self.precondTypeImage) == 0 and (self.PKMA or self.MRAMLA or self.MBSREM):
@@ -2000,32 +2152,43 @@ class projectorClass:
             
                 if self.arc_correction and not self.use_raw_data and not self.CT:
                     print('Arc correction ON.')
-                if self.Nt == 1:
-                    if self.CT:
-                        dispi = 'Using STATIC projection data'
-                    else:
-                        dispi = 'Using STATIC sinogram data'
+                # Type of the data: projection images (CT), list-mode events (custom coordinates), index-based list-mode
+                # events (detector indices) or sinograms
+                if self.CT:
+                    dataType = 'projection data'
+                elif self.useIndexBasedReconstruction:
+                    dataType = 'index-based list-mode data'
+                elif self.listmode:
+                    dataType = 'list-mode data'
                 else:
-                    if self.CT:
-                        dispi = 'Using DYNAMIC projection data'
-                    else:
-                        dispi = 'Using DYNAMIC sinogram data'
+                    dataType = 'sinogram data'
+                # self.Nt is only set from SinM/partitions later in addProjector(), i.e. after this check
+                if isinstance(self.SinM, list) and self.SinM:
+                    nTimeSteps = len(self.SinM)
+                elif isinstance(self.partitions, np.ndarray):
+                    nTimeSteps = self.partitions.size if self.partitions.size >= 1 else self.Nt
+                else:
+                    nTimeSteps = self.partitions
+                if nTimeSteps <= 1:
+                    dispi = 'Using STATIC ' + dataType
+                else:
+                    dispi = 'Using DYNAMIC ' + dataType
                 
                 if self.reconstruct_trues:
                     dispi += ' (trues)'
                 elif self.reconstruct_scatter:
-                    dispi += ' (scatter).'
+                    dispi += ' (scatter)'
                 else:
                     dispi += ' (prompts)'
                 
                 if self.sampling > 1:
                     dispi += f' with {self.sampling}x sampling'
                 
-                if self.Nt > 1:
+                if nTimeSteps > 1:
                     if self.sampling > 1:
-                        dispi += f' and {self.Nt} time steps'
+                        dispi += f' and {nTimeSteps} time steps'
                     else:
-                        dispi += f' with {self.Nt} time steps'
+                        dispi += f' with {nTimeSteps} time steps'
                 
                 dispi += '.'
                 print(dispi)
@@ -2323,6 +2486,13 @@ class projectorClass:
     def T(self):
         self.trans = True
         return self
+
+    @property
+    def _TVweight(self):
+        # Anatomical TV weight options.T. The class-level T is the transpose (backprojection) operator method,
+        # so only a numeric value set on the instance (as in the main files) is used; 0.5 otherwise
+        T = self.__dict__.get('T', 0.5)
+        return 0.5 if callable(T) else T
         
     
     def __imul__(self, B):

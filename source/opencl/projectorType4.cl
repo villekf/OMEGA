@@ -80,7 +80,7 @@
 // #define NA 6
 
 // Forward projection
-KERNEL
+KERNEL TOF_BOUNDS
 void projectorType4Forward(
 #if defined(METAL)
     SCALAR_PARAMS(scalarParams) BUF0
@@ -321,18 +321,16 @@ void projectorType4Forward(
 #if defined(N_RAYS) && defined(FP)
 	// Slightly optimize multi-ray case for TOF
 	// Only store the NBINS per ray rather than all NBINS * NRAYS combinations
-	float ax[NBINS];
-	float axRay[NBINS];
+	float ax[TOF_NARR];
+	float axRay[TOF_NARR];
 	PTR_THR float* const axP = axRay;
 #else
-	float ax[NBINS];
+	float ax[TOF_NARR];
 	PTR_THR float* const axP = ax;
 #endif
 #if defined(BP) && !defined(CT)
 #if defined(LISTMODE) && defined(TOF) && !defined(SENS)
-	for (int to = 0; to < NBINS; to++)
-		ax[to] = FLOAT_ZERO;
-	ax[TOFid] = d_OSEM[idx];
+	ax[0] = d_OSEM[idx];
 #else
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
@@ -348,7 +346,7 @@ void projectorType4Forward(
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
-	for (int to = 0; to < NBINS; to++)
+	for (int to = 0; to < TOF_NARR; to++)
 		ax[to] = FLOAT_ZERO;
 #endif
 #ifdef NORM // Normalization included
@@ -364,7 +362,6 @@ void projectorType4Forward(
 #endif
 #ifdef TOF // TOF constants
 	const float sigmaInv = 1.f / sigma_x;
-	const float sigmaCoef = _2PI * sigmaInv;
 #endif
 
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
@@ -378,7 +375,7 @@ void projectorType4Forward(
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
 #endif
-			for (int to = 0; to < NBINS; to++)
+			for (int to = 0; to < TOF_NARR; to++)
 				axRay[to] = FLOAT_ZERO;
 #endif
 #endif  //////////////// END MULTIRAY ////////////////
@@ -470,9 +467,6 @@ void projectorType4Forward(
 	// The sampling grid is anchored at the box entry so that clamping does not move the sample positions
 	const float tStartG = tStartBox;
 #endif
-#ifdef TOF //////////////// TOF ////////////////
-    float TOFSum = FLOAT_ZERO;
-#endif //////////////// END TOF ////////////////
     if (tStart >= tEnd)
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
 		continue;
@@ -491,8 +485,10 @@ void projectorType4Forward(
 	float D = FLOAT_ZERO;
 	float DD = FLOAT_ZERO;
 	TOFDis(tStart, L, &D, &DD);
-	const float DDsign = sign(DD);
-	float TOFWeights[NBINS];
+	// D increases with t (from the source towards the detector), i.e. DDsign is always negative
+	const float DDsign = -FLOAT_ONE;
+	float TOFWeights[TOF_NARR];
+	float TOFF[NBINS + 1];
 #endif //////////////// END TOF ////////////////
 #endif
 #ifdef JOSEPH
@@ -554,6 +550,28 @@ void projectorType4Forward(
 #endif // END JOSEPH
 #ifdef TOF
     D -= ((t0 - tStart) * L * DDsign);
+#ifdef TOF_CLIP
+	// Only the samples whose TOF segment [D + k * stepLen, D + (k + 1) * stepLen] reaches the TOF window of the bin of the event are
+	// processed (see TOF_CLIP), iiStart <= k < iiEnd. The sampling grid is not changed (the samples are those of the whole ray),
+	// the TOF terms start from the first processed sample
+	uint iiStart, iiEnd;
+	{
+		float xLo, xHi;
+		TOFClipWindow(TOFCenter, sigmaInv, TOFid, &xLo, &xHi);
+		const float qLo = FMIN(FMAX((xLo - D) / stepLen, FLOAT_ZERO), CFLOAT(nSteps));
+		const float qHi = FMIN(FMAX((xHi - D) / stepLen, FLOAT_ZERO), CFLOAT(nSteps));
+		iiStart = CUINT(qLo);
+		iiEnd = CUINT(qHi) + 1u;
+		if (iiEnd > nSteps)
+			iiEnd = nSteps;
+		D = FMAD(CFLOAT(iiStart), stepLen, D);
+	}
+#endif
+	TOFInit(D, TOFCenter, sigmaInv, TOFF
+#if defined(LISTMODE) && !defined(SENS)
+		, TOFid
+#endif
+	);
 #endif
     // The position update can be precomputed with the constant parametric step length
     const float3 dp = v * d_scale * tStep;
@@ -561,8 +579,9 @@ void projectorType4Forward(
     float temp = FLOAT_ZERO;
 
 	// Attenuation correction for non-CT cases
-#if (defined(ATN) && defined(BP)) || (defined(BP) && !defined(TOTLENGTH) && !defined(CT))
-#if (defined(ATN) && defined(BP))
+#if (defined(ATN) && (defined(BP) || defined(TOF_CLIP))) || (defined(BP) && !defined(TOTLENGTH) && !defined(CT))
+#if (defined(ATN) && (defined(BP) || defined(TOF_CLIP)))
+    // The attenuation of the whole ray. In the clipped forward projection the samples outside of the TOF window are not processed
     {
         float3 pAtn;
         for (uint ii = 0; ii < nSteps; ii++) {
@@ -631,7 +650,24 @@ void projectorType4Forward(
 	const uint imNvox = imNxy * d_N.z;
 #endif
     float3 p = MFLOAT3(FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO);
+#ifdef TOF_CLIP
+    if ((iiStart & 63u) != 0u) {
+        // The position p of the sample iiStart - 1 as the unclipped loop has it (recomputed at every 64th sample), so that the
+        // samples are at exactly the same positions as without the clipping
+        const float t = t0 + CFLOAT(iiStart & ~63u) * tStep;
+#ifndef USEMAD
+        p = v * t + s;
+#else
+        p = FMAD3(t, v, s);
+#endif
+        p = (p - bmin) * d_scale;
+        for (uint jj = (iiStart & ~63u) + 1u; jj < iiStart; jj++)
+            p += dp;
+    }
+    for (uint ii = iiStart; ii < iiEnd; ii++) {
+#else
     for (uint ii = 0; ii < nSteps; ii++) {
+#endif
         if ((ii & 63u) == 0u) {
             const float t = t0 + CFLOAT(ii) * tStep;
 #ifndef USEMAD
@@ -643,19 +679,20 @@ void projectorType4Forward(
         }
         else
             p += dp;
-#if defined(ATN) && defined(FP)
+#if defined(ATN) && defined(FP) && !defined(TOF_CLIP)
 		compute_attenuation(stepLen, p, d_atten, &jelppi, aa);
 #endif
 #ifdef TOF //////////////// TOF ////////////////
-			TOFSum = TOFLoop(DDsign, stepLen, TOFCenter, sigmaInv, sigmaCoef, &D, d_epps, TOFWeights);
+			TOFLoop(DDsign, stepLen, TOFCenter, sigmaInv, &D, TOFWeights, TOFF
+#if defined(LISTMODE) && !defined(SENS)
+				, TOFid
+#endif
+			);
 #endif //////////////// END TOF ////////////////
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
 			denominator(axP, p, stepLen, d_OSEM
 #ifdef TOF //////////////// TOF ////////////////
-			, TOFSum, TOFWeights
-#ifdef LISTMODE
-			, TOFid
-#endif
+			, TOFWeights
 #endif //////////////// END TOF ////////////////
 			);
 #endif  //////////////// END FORWARD PROJECTION ////////////////
@@ -671,17 +708,11 @@ void projectorType4Forward(
 #endif
 				rhs(stepLen * temp, ax, local_ind, d_output, no_norm, d_Summ
 #ifdef TOF
-				, TOFSum, TOFWeights
-#ifdef LISTMODE
-				, TOFid
-#endif
+				, TOFWeights
 #endif
 				);
             }
 #endif //////////////// END BACKWARD PROJECTION ////////////////
-#if defined(TOF)
-			D -= (stepLen * DDsign);
-#endif
     }
 #if !defined(TOTLENGTH) && defined(FP) && !defined(CT)
 		LL = CFLOAT(nSteps) * stepLen;
@@ -713,7 +744,7 @@ void projectorType4Forward(
         ax[0] *= local_norm;
 #endif
 #if defined(TOF) && defined(LISTMODE)
-		size_t to = TOFid;
+		size_t to = 0;
 #else
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
@@ -730,7 +761,7 @@ void projectorType4Forward(
 #endif
 #elif defined(FP) && defined(N_RAYS)
 #if defined(TOF) && defined(LISTMODE)
-	ax[TOFid] += axRay[TOFid] * temp;
+	ax[0] += axRay[0] * temp;
 #else
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
@@ -747,7 +778,7 @@ void projectorType4Forward(
 	ax[0] *= local_norm;
 #endif
 #if defined(TOF) && defined(LISTMODE)
-		size_t to = TOFid;
+		size_t to = 0;
 #else
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS

@@ -487,7 +487,7 @@ options.alpha1TGV = 0.05
 ############################## NLM PROPERTIES #############################
 ### Filter parameter
 # Higher values smooth the image, smaller values make it sharper
-options.sigma = 1.0e-2
+options.NLMsigma = 1.0e-2
 
 ### Patch radius
 options.Nlx = 1

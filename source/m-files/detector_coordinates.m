@@ -29,6 +29,9 @@ function [varargout] = detector_coordinates(options)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+% offangle for which the pseudo-detector block size warning has been given
+% (the function is called several times per run)
+persistent offangleWarned
 if nargout > 4
     error('Too many output arguments')
 end
@@ -68,46 +71,33 @@ diameter = diameter + DOI * 2;
 % per block per ring)
 
 % determine if pseudo detectors are present
-if options.det_w_pseudo > options.det_per_ring
+usePseudo = options.det_w_pseudo > options.det_per_ring;
+if usePseudo && options.nLayers < 2
     
-    [xp,yp] = computeCoordinates(blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, true);
+    [xp,yp] = computeCoordinates(blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, true, gapsFor(options, cryst_per_block), fbaFor(options));
     x = xp;
     y = yp;
     
 elseif options.nLayers > 1
-    if options.cryst_per_block(1) == options.cryst_per_block(2)
-        [x1,y1] = computeCoordinates(blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, false);
-        % orig_diameter = diameter + options.crystH(end) * 2;
-        diameter = diameter + DOI * 2 + options.crystH(1) * 2;
-        [x2,y2] = computeCoordinates(blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, false);
-        koko = size(x1,1);
-    elseif options.cryst_per_block(1) > options.cryst_per_block(2)
-        [x1,y1] = computeCoordinates(blocks_per_ring, transaxial_multip,options.cryst_per_block(1), diameter, cr_p, false);
-        % orig_diameter = diameter + options.crystH(end) * 2;
-        diameter = diameter + DOI * 2 + options.crystH(1) * 2;
-        [x2,y2] = computeCoordinates(blocks_per_ring, transaxial_multip,options.cryst_per_block(end), diameter, cr_p, false);
-        x = Inf(options.det_w_pseudo * options.nLayers,1);
-        insert_indices = setdiff(1:length(x)/2, options.cryst_per_block(1):options.cryst_per_block(1):length(x)/2);
-        x(insert_indices) = x2;
-        y = Inf(options.det_w_pseudo * options.nLayers,1);
-        y(insert_indices) = y2;
-        x2 = x;
-        y2 = y;
-        koko = size(x2,1);
+    % Both layers are mapped into blocks of blockSize detectors as in the loader: the block size including the pseudo
+    % detectors when they are used, otherwise the block size of the layer with the most crystals per block. The detectors
+    % that a layer does not have are located at the end of each block (Inf)
+    nBlocksRing = blocks_per_ring * transaxial_multip;
+    if usePseudo
+        blockSize = options.det_w_pseudo / nBlocksRing;
+        if blockSize ~= floor(blockSize) || blockSize < max(options.cryst_per_block(1:2)) + 1
+            error(['det_w_pseudo (' num2str(options.det_w_pseudo) ') has to be a multiple of the number of blocks per ring (' num2str(nBlocksRing) ') with at least one pseudo detector per block!'])
+        end
     else
-        [x1,y1] = computeCoordinates(blocks_per_ring, transaxial_multip,options.cryst_per_block(1), diameter, cr_p, false);
-        x = Inf(options.det_w_pseudo / 2 * options.nLayers,1);
-        insert_indices = setdiff(1:length(x), options.cryst_per_block(end):options.cryst_per_block(end):length(x));
-        x(insert_indices) = x1;
-        y = Inf(options.det_w_pseudo / 2 * options.nLayers,1);
-        y(insert_indices) = y1;
-        x1 = x;
-        y1 = y;
-        % orig_diameter = diameter + options.crystH(end) * 2;
-        diameter = diameter + DOI * 2 + options.crystH(1) * 2;
-        [x2,y2] = computeCoordinates(blocks_per_ring, transaxial_multip,options.cryst_per_block(end), diameter, cr_p, false);
-        koko = size(x1,1);
+        blockSize = max(options.cryst_per_block(1:2));
     end
+    [x1,y1] = computeCoordinates(blocks_per_ring, transaxial_multip,options.cryst_per_block(1), diameter, cr_p, usePseudo, gapsFor(options, options.cryst_per_block(1)), fbaFor(options));
+    [x1,y1] = padLayerBlocks(x1, y1, options.cryst_per_block(1) + usePseudo, blockSize, nBlocksRing);
+    % orig_diameter = diameter + options.crystH(end) * 2;
+    diameter = diameter + DOI * 2 + options.crystH(1) * 2;
+    [x2,y2] = computeCoordinates(blocks_per_ring, transaxial_multip,options.cryst_per_block(2), diameter, cr_p, usePseudo, gapsFor(options, options.cryst_per_block(2)), fbaFor(options));
+    [x2,y2] = padLayerBlocks(x2, y2, options.cryst_per_block(2) + usePseudo, blockSize, nBlocksRing);
+    koko = size(x1,1);
     xp = [x1;x2];
     yp = [y1;y2];
     x = xp;
@@ -117,7 +107,7 @@ elseif options.nLayers > 1
 else
     %% Non-pseudo detectors
 
-    [x,y] = computeCoordinates(blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, false);
+    [x,y] = computeCoordinates(blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, false, gapsFor(options, cryst_per_block), fbaFor(options));
     % If pseudo detectors are not present
     xp = x;
     yp = y;
@@ -132,6 +122,16 @@ if options.flip_image
 end
 % Rotate the image if desired
 if options.offangle ~= 0
+    if options.det_w_pseudo > options.det_per_ring
+        % The pseudo-inclusive arrays are rotated together with their pseudo
+        % gaps. Unless the shift is a whole number of pseudo-inclusive
+        % blocks, the gaps no longer match the pseudo slots of the data.
+        blockSizePseudo = round(options.det_w_pseudo / blocks_per_ring);
+        if blockSizePseudo > 0 && mod(round(options.offangle), blockSizePseudo) ~= 0 && ~isequal(offangleWarned, options.offangle)
+            offangleWarned = options.offangle;
+            warning('offangle (%g) is not a multiple of the block size including pseudo detectors (%d). The detector coordinates are rotated together with the pseudo-detector gaps, so the gaps no longer align with the measured data and the geometry is distorted. Use a multiple of %d for exact results.', options.offangle, blockSizePseudo, blockSizePseudo)
+        end
+    end
     if options.nLayers > 1
         x1 = xp(1 : koko,:);
         x1 = circshift(x1, round(options.offangle));
@@ -171,4 +171,39 @@ if nargout == 4
     varargout{4} = yp;
 end
 
+end
+
+function [x, y] = padLayerBlocks(x, y, slots, blockSize, nBlocks)
+% Maps the detector coordinates of one layer into blocks of blockSize detectors (the same mapping as in the list-mode
+% loader). The slots of each block that the layer does not have are set to Inf and located at the end of the block.
+if slots >= blockSize
+    return
+end
+xOut = Inf(blockSize, nBlocks, class(x));
+yOut = Inf(blockSize, nBlocks, class(y));
+xOut(1 : slots, :) = reshape(x, slots, nBlocks);
+yOut(1 : slots, :) = reshape(y, slots, nBlocks);
+x = xOut(:);
+y = yOut(:);
+end
+
+function gaps = gapsFor(options, nCryst)
+% Returns options.transaxialGaps if it applies to a block of nCryst crystals, otherwise [] (no gaps). A layer of a
+% multi-layer scanner with a different number of crystals per block gets no gaps.
+gaps = [];
+if isfield(options, 'transaxialGaps') && ~isempty(options.transaxialGaps) && any(options.transaxialGaps(:))
+    if numel(options.transaxialGaps) == nCryst - 1
+        gaps = options.transaxialGaps;
+    elseif ~isfield(options, 'nLayers') || options.nLayers < 2
+        error(['options.transaxialGaps has to contain cryst_per_block - 1 = ' num2str(nCryst - 1) ' elements (one gap after each crystal of a block except the last) or be empty, but it has ' num2str(numel(options.transaxialGaps)) ' elements!'])
+    end
+end
+end
+
+function fba = fbaFor(options)
+% Angle of the first block (degrees), 0 if not set
+fba = 0;
+if isfield(options, 'firstBlockAngle') && ~isempty(options.firstBlockAngle)
+    fba = options.firstBlockAngle;
+end
 end

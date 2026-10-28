@@ -176,7 +176,7 @@ options.Nang = options.det_per_ring//2
 # (this should total the total number of sinograms).
 # Currently this is computed automatically, but you can also manually
 # specify the segment sizes.
-options.segment_table = np.concatenate((np.array(options.rings*2-1,ndmin=1), np.arange(options.rings*2-1 - (options.span + 1), max(options.Nz - options.ring_difference*2, options.rings - options.ring_difference) - 1, -options.span*2)))
+options.segment_table = np.concatenate((np.array(options.rings*2-1,ndmin=1), np.arange(options.rings*2-1 - (options.span + 1), max(options.rings*2-1 - options.ring_difference*2, options.rings - options.ring_difference) - 1, -options.span*2)))
 options.segment_table = np.insert(np.repeat(options.segment_table[1:], 2), 0, options.segment_table[0])
 
 ### Total number of sinograms
@@ -1147,7 +1147,7 @@ options.alpha1TGV = 2
 ############################## NLM PROPERTIES #############################
 ### Filter parameter
 # Higher values smooth the image, smaller values make it sharper
-options.sigma = 10
+options.NLMsigma = 10
 
 ### Patch radius
 options.Nlx = 1

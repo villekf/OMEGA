@@ -142,6 +142,11 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 
 	// Clear ArrayFire memory
 	af::deviceGC();
+	// Release the cached FFT plans now. ArrayFire keeps them in a thread_local cache whose destructor otherwise runs at process exit;
+	// with a libstdc++ lacking __cxa_thread_atexit_impl (e.g. the conda one pulled in by PyTorch) that happens after clFFT's static
+	// plan repository is destroyed -> double free/segfault at exit with the OpenCL library. 5 is ArrayFire's default cache size
+	af::setFFTPlanCacheSize(0);
+	af::setFFTPlanCacheSize(5);
 	if (status != 0)
 		mexPrint("Reconstruction failed!");
 

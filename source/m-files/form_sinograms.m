@@ -61,6 +61,9 @@ end
 NSlices = options.TotSinos;
 if options.span == 1
     NSlices = options.rings(end)^2;
+elseif options.nLayers > 1
+    % The sinograms of each layer combination contain the planes of the segment table (TotSinos includes all combinations)
+    NSlices = sum(options.segment_table);
 end
 if nargin > 1
     corrections = varargin{1};
@@ -566,7 +569,8 @@ if options.use_machine ~= 2
                     end
                 end
                 if ~options.corrections_during_reconstruction
-                    Sin = bsxfun(@minus, single(Sin), single(SinD));
+                    % SinD is a non-TOF sinogram, divide it evenly between the TOF bins
+                    Sin = bsxfun(@minus, single(Sin), single(SinD) / options.TOF_bins);
                 end
                 if ~corrections
                     if partitions > 1
@@ -576,7 +580,9 @@ if options.use_machine ~= 2
                     end
                 end
             elseif ~options.corrections_during_reconstruction
-                Sin = bsxfun(@minus, single(Sin), single(SinD));
+                % SinD is a non-TOF sinogram, divide it evenly between the TOF bins
+                Sin = bsxfun(@minus, single(Sin), single(SinD) / options.TOF_bins);
+                appliedCorrections.randoms = 'randoms correction';
             end
             if ~corrections
                 varargout{3} = SinD;
@@ -603,6 +609,10 @@ if options.use_machine ~= 2
                     else
                         appliedCorrections.randoms = 'randoms correction with smoothing';
                     end
+                else
+                    if ~options.variance_reduction && ~options.randoms_smoothing
+                        appliedCorrections.randoms = 'randoms correction';
+                    end
                 end
                 Sin = bsxfun(@minus, Sin, single(options.SinDelayed{llo}) / options.TOF_bins);
             else
@@ -624,8 +634,12 @@ if options.use_machine ~= 2
                     else
                         appliedCorrections.randoms = 'randoms correction with smoothing';
                     end
+                else
+                    if ~options.variance_reduction && ~options.randoms_smoothing
+                        appliedCorrections.randoms = 'randoms correction';
+                    end
                 end
-                Sin = bsxfun(@minus, single(Sin), single(options.SinD) / options.TOF_bins);
+                Sin = bsxfun(@minus, single(Sin), single(options.SinDelayed) / options.TOF_bins);
             end
             if options.verbose
                 disp('Randoms correction applied to sinogram')
@@ -673,7 +687,7 @@ if options.use_machine ~= 2
                 elseif size(options.ScatterC,1)*size(options.ScatterC,2)*size(options.ScatterC,3) ~= Ndist*Nang*NSlices
                     error('Size mismatch between scatter sinogram and specified sinogram')
                 end
-                if options.variance_reduction && ~ScatterProp.variance_reduction
+                if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
                     options.ScatterC = Randoms_variance_reduction(single(options.ScatterC), options);
                     ScatterProp.variance_reduction = true;
                     appliedCorrections.scatter = 'scatter correction with variance reduction';
@@ -776,7 +790,7 @@ if options.use_machine ~= 2
                     options.ScatterC{llo} = randoms_smoothing(options.ScatterC{llo}, options);
                     ScatterProp.smoothing = true;
                     if options.scatter_variance_reduction
-                        appliedCorrections.scatter = 'and smoothing';
+                        appliedCorrections.scatter = [appliedCorrections.scatter ' and smoothing'];
                     else
                         appliedCorrections.scatter = 'normalized scatter correction with smoothing';
                     end
@@ -809,7 +823,7 @@ if options.use_machine ~= 2
                     options.ScatterC = randoms_smoothing(options.ScatterC, options);
                     ScatterProp.smoothing = true;
                     if options.scatter_variance_reduction
-                        appliedCorrections.scatter = 'and smoothing';
+                        appliedCorrections.scatter = [appliedCorrections.scatter ' and smoothing'];
                     else
                         appliedCorrections.scatter = 'normalized scatter correction with smoothing';
                     end
@@ -1199,7 +1213,7 @@ else
                     options.ScatterC = randoms_smoothing(options.ScatterC, options);
                     ScatterProp.smoothing = true;
                     if options.scatter_variance_reduction
-                        appliedCorrections.scatter = 'and smoothing';
+                        appliedCorrections.scatter = [appliedCorrections.scatter ' and smoothing'];
                     else
                         appliedCorrections.scatter = 'scatter correction with smoothing';
                     end

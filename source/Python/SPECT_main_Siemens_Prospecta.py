@@ -790,7 +790,7 @@ options.alpha1TGV = 2
  
 ############################## NLM PROPERTIES #############################
 ### Filter parameter
-options.sigma = 10
+options.NLMsigma = 10
 
 ### Patch radius
 options.Nlx = 1

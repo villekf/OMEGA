@@ -33,8 +33,11 @@ void saveSinogram(uint16_t L1, uint16_t L2, uint16_t* Sino, const uint32_t Ndist
 		i = -i;
 	const bool swap = (j * 2) < -i || i <= ((j - DET_PER_RING / 2) * 2);
 	bool accepted_lors;
+	// The front ends reject nDistSide = 0 for even Ndist (it would accept Ndist + 1 radial bins and wrap into the next angle row),
+	// so treat it as the default value 1
+	const int32_t side = (Ndist % 2U == 0 && nDistSide == 0) ? 1 : nDistSide;
 	if (Ndist % 2U == 0)
-		accepted_lors = (i <= (static_cast<int32_t>(Ndist) / 2 + std::min(0, nDistSide)) && i >= (-static_cast<int32_t>(Ndist) / 2 + std::max(0, nDistSide)));
+		accepted_lors = (i <= (static_cast<int32_t>(Ndist) / 2 + std::min(0, side)) && i >= (-static_cast<int32_t>(Ndist) / 2 + std::max(0, side)));
 	else
 		accepted_lors = (i <= static_cast<int32_t>(Ndist) / 2 && i >= (-static_cast<int32_t>(Ndist) / 2));
 	accepted_lors = accepted_lors && (std::abs(ring_number1 - ring_number2) <= ring_difference);
@@ -46,7 +49,8 @@ void saveSinogram(uint16_t L1, uint16_t L2, uint16_t* Sino, const uint32_t Ndist
 			ring_number1 = ring_number2;
 			ring_number2 = ring_number3;
 		}
-		i = i + Ndist / 2 - std::max(0, nDistSide);
+		// Radial bin: odd Ndist accepts i in [-Ndist/2, Ndist/2] (nDistSide ignored), even Ndist is shifted by nDistSide
+		i = i + Ndist / 2 - (Ndist % 2U == 0 ? std::max(0, side) : 0);
 		const bool swappi = ring_pos2 > ring_pos1;
 		if (swappi) {
 			const int32_t ring_number3 = ring_number1;

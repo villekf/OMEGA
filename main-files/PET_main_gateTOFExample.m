@@ -296,7 +296,7 @@ options.Nang = options.det_per_ring/2;
 % (this should total the total number of sinograms).
 % Currently this is computed automatically, but you can also manually
 % specify the segment sizes.
-options.segment_table = [options.rings*2-1, options.rings*2-1 - (options.span + 1):-options.span*2:max(options.Nz - options.ring_difference*2, options.rings - options.ring_difference)];
+options.segment_table = [options.rings*2-1, options.rings*2-1 - (options.span + 1):-options.span*2:max(options.rings*2-1 - options.ring_difference*2, options.rings - options.ring_difference)];
 if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
     options.segment_table = [options.segment_table(1), repeat_elem(options.segment_table(2:end),2,1)];
 else
@@ -466,7 +466,7 @@ options.normalization_scatter_correction = false;
 % normalization coefficients. I.e. once you have computed the normalization
 % coefficients, turn above compute_normalization to false and set this to
 % true. Alternatively, input your own normalization data (see below)
-options.normalization_correction = true;
+options.normalization_correction = false;
 
 %%% Use user-made normalization
 % Use either a .mat or .nrm file containing the normalization coefficients
@@ -1594,7 +1594,8 @@ if ~options.only_reconstructions && ~options.no_data_load
     % the coordinates where each coincidence is detected): 
     % [options.SinM, ~, ~, ~, ~, options.x] = load_data(options);
     % Store the transaxial and axial indices for index-based reconstruction
-    % Requires useIndexBasedReconstruction
+    % Requires useIndexBasedReconstruction. With reconstruct_trues only the
+    % true coincidences are stored (ROOT data), otherwise the prompts
     % [options.SinM, ~, ~, ~, ~, options.trIndex, options.axIndex] = load_data(options);
 end
 
