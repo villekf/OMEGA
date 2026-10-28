@@ -32,6 +32,7 @@ int computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethod
 		if (inputScalars.verbose >= 3)
 			mexPrint("Regularization for BSREM/ROSEMMAP computed");
 	}
+	const bool storeMultiResolution = inputScalars.storeMultiResolution && inputScalars.nMultiVolumes > 0;
 	if (doSave) {
 		if (inputScalars.verbose >= 3)
 			mexPrintVar("Saving intermediate result at iteration ", iter);
@@ -40,32 +41,55 @@ int computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethod
 			mexPrintBase("slot = %d\n", slot);
 			mexEval();
 		}
+		const size_t savedFrameCount = inputScalars.saveIter ? static_cast<size_t>(inputScalars.Niter) + 1ULL : inputScalars.saveIterationsMiddle + 1ULL;
+		if (storeMultiResolution) {
+			size_t x0Offset = 0ULL;
+#ifndef MATLAB
+			size_t volumeOffset = 0ULL;
+#endif
+			for (uint32_t ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+#ifdef MATLAB
+				float* outputVolume = getSingles(output, "", static_cast<mwIndex>(ii));
+				const size_t timestepOffset = static_cast<size_t>(timestep) * inputScalars.im_dim[ii];
+#else
+				float* outputVolume = output;
+				const size_t timestepOffset = volumeOffset + static_cast<size_t>(timestep) * inputScalars.im_dim[ii];
+#endif
+				if (inputScalars.saveIter && iter == 0)
+					std::memcpy(&outputVolume[timestepOffset], &x0[x0Offset], inputScalars.im_dim[ii] * sizeof(float));
+				const size_t outputOffset = timestepOffset + static_cast<size_t>(slot) * static_cast<size_t>(inputScalars.Nt) * inputScalars.im_dim[ii];
+				if (ii == 0 && inputScalars.use_psf && inputScalars.deconvolution) {
+					af::array apu = vec.im_os[timestep][ii].copy();
+					deblur(apu, g, inputScalars, w_vec);
+					apu.host(&outputVolume[outputOffset]);
+				} else {
+					vec.im_os[timestep][ii].host(&outputVolume[outputOffset]);
+				}
+				x0Offset += inputScalars.im_dim[ii];
+#ifndef MATLAB
+				volumeOffset += savedFrameCount * static_cast<size_t>(inputScalars.Nt) * inputScalars.im_dim[ii];
+#endif
+			}
+			return 0;
+		}
 #ifdef MATLAB
 		float* jelppi = getSingles(output, "solu");
 #else
 		float* jelppi = output;
 #endif
-		// Output memory layout is [Nx,Ny,Nz,Nt,saves], i.e. voxel fastest, then timestep, then
-		// save slot: the offset for a given (slot, timestep) pair is (slot * Nt + timestep) * im_dim[0].
-		// This is computed explicitly here (rather than via a running write offset) so that it is
-		// correct regardless of the order in which timesteps are processed, and identical to the
-		// pre-existing single-timestep (Nt == 1) layout when Nt == 1.
+		// Output memory layout is [Nx,Ny,Nz,Nt,saves]: voxel, timestep, then save slot.
 		const size_t timestepOffset = static_cast<size_t>(timestep) * static_cast<size_t>(inputScalars.im_dim[0]);
 		const size_t slotStride = static_cast<size_t>(inputScalars.Nt) * static_cast<size_t>(inputScalars.im_dim[0]);
-		if (inputScalars.saveIter && iter == 0) {
-			// Slot 0 always holds the initial value x0. x0 holds a single initial image shared by
-			// all timesteps (see the Nt-loop initialization above that (re)reads x0 from offset 0
-			// for every timestep), so the same source data is copied into each timestep's slot-0 region.
+		if (inputScalars.saveIter && iter == 0)
 			std::memcpy(&jelppi[timestepOffset], &x0[0], inputScalars.im_dim[0] * sizeof(float));
-		}
-		const size_t offset = static_cast<size_t>(slot) * slotStride + timestepOffset;
+		const size_t outputOffset = static_cast<size_t>(slot) * slotStride + timestepOffset;
 		if (inputScalars.use_psf && inputScalars.deconvolution) {
 			af::array apu = vec.im_os[timestep][0].copy();
 			deblur(apu, g, inputScalars, w_vec);
-			apu.host(&jelppi[offset]);
+			apu.host(&jelppi[outputOffset]);
+		} else {
+			vec.im_os[timestep][0].host(&jelppi[outputOffset]);
 		}
-		else
-			vec.im_os[timestep][0].host(&jelppi[offset]);
 	}
 	return 0;
 }

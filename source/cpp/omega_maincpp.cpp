@@ -80,6 +80,13 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 		else {
 			w_vec.listCoord = options.x;
 			x = options.uV;
+			if (inputScalars.SPECT) {
+				w_vec.listCoordZ = options.z;
+			}
+			if (inputScalars.SPECT && inputScalars.computeSensImag) {
+				z_det = options.zSens;
+				inputScalars.size_z = options.sizeZSens;
+			}
 		}
 		if (inputScalars.TOF)
 			w_vec.TOFIndices = options.TOFIndices;

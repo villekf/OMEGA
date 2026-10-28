@@ -95,6 +95,11 @@ end
 if ~isfield(options,'SPECT')
     options.SPECT = false;
 end
+spectListmodeEvents = options.SPECT && options.listmode > 0 && ~options.useIndexBasedReconstruction && ...
+    isfield(options, 'z') && ((ismatrix(options.x) && size(options.x, 2) == 6 && ...
+    ismatrix(options.z) && size(options.z, 2) == 5) || ...
+    (iscell(options.x) && iscell(options.z) && all(cellfun(@(value) size(value, 2) == 6, options.x)) && ...
+    all(cellfun(@(value) size(value, 2) == 5, options.z))));
 if ~options.precompute_lor
     if options.NSinos ~= options.TotSinos && options.listmode == 0
         index = index(1:options.Ndist*options.Nang*options.NSinos);
@@ -147,7 +152,17 @@ if options.listmode > 0 && options.subset_type < 8 && options.subsets > 1
                 options.axIndex = options.axIndex(:,index);
             end
         else
-            if partitions > 1
+            if spectListmodeEvents
+                if iscell(index)
+                    for kk = 1 : options.Nt
+                        options.x{kk} = options.x{kk}(index{kk}, :);
+                        options.z{kk} = options.z{kk}(index{kk}, :);
+                    end
+                else
+                    options.x = options.x(index, :);
+                    options.z = options.z(index, :);
+                end
+            elseif partitions > 1
                 if iscell(options.x)
                     for kk = 1 : options.Nt
                         if size(options.x{kk}, 1) ~= 6
@@ -185,7 +200,7 @@ if options.listmode > 0 && options.subset_type < 8 && options.subsets > 1
             end
         end
     end
-    if ~iscell(options.x)
+    if ~iscell(options.x) && ~spectListmodeEvents
         options.x = options.x(:);
     end
     if options.useIndexBasedReconstruction && options.listmode > 0 && iscell(options.trIndex)
@@ -200,9 +215,17 @@ if options.listmode > 0 && options.subset_type < 8 && options.subsets > 1
         end
     elseif ~options.useIndexBasedReconstruction && options.listmode > 0 && iscell(options.x)
         for kk = 1 : options.Nt
-            options.x{kk} = options.x{kk}(:);
+            if spectListmodeEvents
+                options.x{kk} = reshape(options.x{kk}.', [], 1);
+                options.z{kk} = reshape(options.z{kk}.', [], 1);
+            else
+                options.x{kk} = options.x{kk}(:);
+            end
         end
         options.x = cell2mat(options.x);
+        if spectListmodeEvents
+            options.z = cell2mat(options.z);
+        end
         if options.TOF_bins > 1 && iscell(options.TOFIndices)
             options.TOFIndices = cell2mat(options.TOFIndices);
         end
@@ -227,25 +250,30 @@ elseif options.listmode > 0 && (options.subset_type == 8 || options.subset_type 
     xy_index = uint32(0);
     z_index = uint16(0);
 elseif ~options.use_raw_data && ((options.subsets > 1 && (options.subset_type == 3 || options.subset_type == 6 || options.subset_type == 7)))
-    xy_index = uint32(1:options.Nang * options.Ndist)';
-    if options.span > 1
-        xy_index2 = repmat(uint32(1:options.Nang * options.Ndist)', options.NSinos - (options.rings * 2 - 1), 1);
-        xy_index = [repmat(xy_index,  options.rings * 2 - 1, 1); xy_index2];
+    if spectListmodeEvents
+        xy_index = uint32(0);
+        z_index = uint16(0);
     else
-        xy_index2 = repmat(uint32(1:options.Nang * options.Ndist)', options.NSinos - options.rings, 1);
-        xy_index = [repmat(xy_index, options.rings, 1); xy_index2];
-    end
-    z_index = uint16(1:options.NSinos)';
-    if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
-        z_index = repeat_elem(z_index, options.Nang * options.Ndist);
-    else
-        z_index = repelem(z_index, options.Nang * options.Ndist);
-    end
-    z_index = z_index(index);
-    z_index = z_index - 1;
+        xy_index = uint32(1:options.Nang * options.Ndist)';
+        if options.span > 1
+            xy_index2 = repmat(uint32(1:options.Nang * options.Ndist)', options.NSinos - (options.rings * 2 - 1), 1);
+            xy_index = [repmat(xy_index,  options.rings * 2 - 1, 1); xy_index2];
+        else
+            xy_index2 = repmat(uint32(1:options.Nang * options.Ndist)', options.NSinos - options.rings, 1);
+            xy_index = [repmat(xy_index, options.rings, 1); xy_index2];
+        end
+        z_index = uint16(1:options.NSinos)';
+        if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
+            z_index = repeat_elem(z_index, options.Nang * options.Ndist);
+        else
+            z_index = repelem(z_index, options.Nang * options.Ndist);
+        end
+        z_index = z_index(index);
+        z_index = z_index - 1;
 
-    xy_index = xy_index(index);
-    xy_index = xy_index - 1;
+        xy_index = xy_index(index);
+        xy_index = xy_index - 1;
+    end
 else
     xy_index = uint32(0);
     z_index = uint16(0);

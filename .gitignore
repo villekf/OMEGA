@@ -56,6 +56,10 @@ toolbox.ignore
 /resources
 .gitattributes
 /doc/*.png
+
+# Local validation scripts and datasets
+/tests/
+
 # Autosave files
 *.asv
 *.m~
@@ -111,6 +115,3 @@ codegen/
 
 toolbox.ignore
 *.prj
-/resources
-.gitattributes
-/doc/*.png
