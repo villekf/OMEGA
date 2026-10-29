@@ -1098,10 +1098,10 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
             end
             try
                 mex(compiler, '-largeArrayDims', '-outdir', folder, ldflags, cxxflags, cxxlib, ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
-                    ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_device_info.cpp'])
+                    ['-I ' folder], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_device_info.cpp'])
 
                 mex(compiler, complexFlag, '-outdir', folder, ldflags, cxxflags, '-DMATLAB', '-DOPENCL', cxxlib, ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
-                    ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
+                    ['-I ' folder], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
                 disp('Implementations 3 and 5 built')
             catch ME
                 if verbose
@@ -1512,10 +1512,10 @@ elseif ~ismac
         end
         try
             mkoctfile('--mex', '-DOPENCL', cxxflags, '-lOpenCL', ['-L' cuda_path '/lib64'], ['-L' opencl_lib_path], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
-                ['-I' cuda_path '/include'], ['-I' opencl_include_path ''], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_device_info.cpp'])
+                ['-I' folder], ['-I' cuda_path '/include'], ['-I' opencl_include_path ''], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_device_info.cpp'])
 
             mkoctfile('--mex', '-DMATLAB', '-DOPENCL', cxxflags, '-lOpenCL', ['-L' cuda_path '/lib64'], ['-L' opencl_lib_path], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
-                ['-I' cuda_path '/include'], ['-I' opencl_include_path], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
+                ['-I' folder], ['-I' cuda_path '/include'], ['-I' opencl_include_path], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
             movefile('OpenCL_device_info.mex', [folder '/OpenCL_device_info.mex'],'f');
             movefile('OpenCL_matrixfree_multi_gpu.mex', [folder '/OpenCL_matrixfree_multi_gpu.mex'],'f');
             disp('Implementation 3 and 5 built')

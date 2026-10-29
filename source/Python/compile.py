@@ -113,6 +113,8 @@ def CommandLine(args=None):
         elif 'OCL_ROOT' in os.environ:
             openclpath = os.path.join(os.environ['OCL_ROOT'], 'include')
             opencllib = os.path.join(os.environ['OCL_ROOT'], 'lib', 'x86_64')
+            if not os.path.exists(opencllib):
+                opencllib = os.path.join(os.environ['OCL_ROOT'], 'lib')
         elif 'INTELOCLSDKROOT' in os.environ:
             openclpath = os.path.join(os.environ['INTELOCLSDKROOT'], 'include')
             opencllib = os.path.join(os.environ['INTELOCLSDKROOT'], 'lib', 'x64')
