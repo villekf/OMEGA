@@ -323,6 +323,83 @@ def _userLocalSize(self, default):
     return tuple(out)
 
 
+def _orth_clip_needed(self):
+    """Whether the projector type 2/3 kernels are built with the end point check of the tube (-DORTHCLIP, see orthogonalHelper3D in
+    opencl_functions_orth3D.h). The tube of a ray ends at its end points, which only matters when a voxel beyond an end point can be
+    reached by the tube, i.e. when a detector/source is inside the image.
+
+    Rule (same as orthClipNeeded in precomp.h): enabled if and only if any detector/source coordinate point has its x and y inside the image box
+    widened by m, and the z range of the coordinates overlaps the box widened by m in z. m is the tube reach (type 2: tube_width_z,
+    type 3: max(bmax, tube_radius)) plus the largest voxel dimension, the box is the union of the volumes. Voxel centers are inside the
+    box, so a voxel in the tube is closer than the reach to the line; for detectors around the image the line beyond an end point is
+    outside the (convex) widened box and no voxel there is in the tube. The rule is conservative (it errs on the side of enabling the
+    check), non-finite coordinates (multi-layer padding) are ignored. CT always enables it, SPECT never (the kernel skips it)."""
+    if self.SPECT:
+        return False
+    if self.CT:
+        return True
+    reach = 0.0
+    if self.FPType == 2 or self.BPType == 2:
+        reach = max(reach, float(self.tube_width_z))
+    if self.FPType == 3 or self.BPType == 3:
+        reach = max(reach, float(self.tube_radius), float(self.bmax))
+    nVol = int(self.nMultiVolumes) + 1
+    lo = [np.inf] * 3
+    hi = [-np.inf] * 3
+    voxel = 0.0
+    for k in range(nVol):
+        for a, (b, d, n) in enumerate(((self.bx, self.dx, self.Nx), (self.by, self.dy, self.Ny), (self.bz, self.dz, self.Nz))):
+            bk, dk, nk = float(np.ravel(b)[k]), float(np.ravel(d)[k]), float(np.ravel(n)[k])
+            lo[a] = min(lo[a], bk)
+            hi[a] = max(hi[a], bk + nk * dk)
+            voxel = max(voxel, dk)
+    m = reach + voxel
+    lo = [v - m for v in lo]
+    hi = [v + m for v in hi]
+
+    def frames(name):
+        f = getattr(self, name + 'Frames', None)
+        if isinstance(f, list) and len(f) > 0:
+            return f
+        return [getattr(self, name)]
+
+    xy = []
+    z = []
+    if self.listmode > 0 and not self.useIndexBasedReconstruction:
+        # List-mode events: x, y, z of both end points of each event
+        for f in frames('x'):
+            p = _kernel_ravel(f, 'F', 6)
+            p = p[:p.size // 6 * 6].reshape(-1, 6)
+            xy += [p[:, 0:2], p[:, 3:5]]
+            z += [p[:, 2], p[:, 5]]
+    else:
+        for f in frames('x'):
+            p = _kernel_ravel(f, 'F')
+            xy.append(p[:p.size // 2 * 2].reshape(-1, 2))
+        for f in frames('z'):
+            if self.listmode == 0 and not self.use_raw_data:
+                # PET sinograms: source and detector z of each sinogram, with multiple layers the third value is the layer combination
+                stride = 3 if self.nLayers > 1 else 2
+                p = _kernel_ravel(f, 'F', stride)
+                z.append(p[:p.size // stride * stride].reshape(-1, stride)[:, 0:2].ravel())
+            else:
+                z.append(_kernel_ravel(f, 'F'))
+    xy = np.concatenate(xy) if len(xy) > 0 else np.empty((0, 2), dtype=np.float32)
+    xy = xy[np.isfinite(xy).all(axis=1)]
+    if xy.shape[0] == 0:
+        # No coordinates available: nothing can be excluded
+        return True
+    inside = bool(np.any((xy[:, 0] >= lo[0]) & (xy[:, 0] <= hi[0]) & (xy[:, 1] >= lo[1]) & (xy[:, 1] <= hi[1])))
+    if not inside:
+        return False
+    z = np.concatenate(z) if len(z) > 0 else np.empty(0, dtype=np.float32)
+    z = z[np.isfinite(z)]
+    if z.size == 0:
+        # No z coordinates: the z range cannot exclude anything
+        return True
+    return bool(z.min() <= hi[2] and z.max() >= lo[2])
+
+
 def _read(directory, name, encoding='utf8'):
     """Read one OpenCL/CUDA/HIP kernel header/source file out of
     `directory` (as returned by omegatomo.util.paths.opencl_header_dir(),
@@ -643,7 +720,10 @@ def initProjector(self):
                 bOpt += (' -cl-fast-relaxed-math -DUSEMAD',)
         if self.useImages:
             bOpt += ('-DUSEIMAGES',)
+        orthClip = False
         if (self.FPType == 2 or self.BPType == 2 or self.FPType == 3 or self.BPType == 3):
+            # End point check of the tube, only needed when a detector is inside the image (see _orth_clip_needed)
+            orthClip = _orth_clip_needed(self)
             if self.orthTransaxial:
                 bOpt += ('-DCRYSTXY',)
             if self.orthAxial:
@@ -743,6 +823,8 @@ def initProjector(self):
             bOptFP += ('-DATOMICF',)
             if self.FPType in [2, 3]:
                 bOptFP += ('-DORTH',)
+                if orthClip:
+                    bOptFP += ('-DORTHCLIP',)
             if self.FPType == 3:
                 bOptFP += ('-DVOL',)
             if self.use_64bit_atomics:
@@ -776,6 +858,8 @@ def initProjector(self):
             bOptBP += ('-DSIDDON',)
             if self.BPType in [2, 3]:
                 bOptBP += ('-DORTH',)
+                if orthClip:
+                    bOptBP += ('-DORTHCLIP',)
             if self.BPType == 3:
                 bOptBP += ('-DVOL',)
             bOptBP += ('-DATOMICF',)

@@ -315,6 +315,9 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 	checkFastPDHG(inputScalars, w_vec, MethodList);
 
 	// Create the projector class that handles the projectors and all OpenCL/CUDA/Metal related functions
+	// Projector types 2 and 3: the end point check of the tube is built into the kernels only when a detector is inside the image
+	if (inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 2 || inputScalars.BPType == 3)
+		inputScalars.orthClip = orthClipNeeded(inputScalars, x, z_det, w_vec.listCoord, pituus);
 	ProjectorClass proj;
 	status = proj.addProjector(inputScalars, w_vec, MethodList, header_directory);
 	if (status != 0)

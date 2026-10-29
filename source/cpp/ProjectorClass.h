@@ -1198,8 +1198,12 @@ class ProjectorClass {
 			ADD_OPT(os_optionsFP, FP_FLAG);
 			if (inputScalars.FPType == 3)
 				ADD_OPT(os_optionsFP, "-DVOL");
-			if (inputScalars.FPType == 2 || inputScalars.FPType == 3)
+			if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 				ADD_OPT(os_optionsFP, "-DORTH");
+				// End point check of the tube, only needed when a detector is inside the image (see orthClipNeeded)
+				if (inputScalars.orthClip)
+					ADD_OPT(os_optionsFP, "-DORTHCLIP");
+			}
 			if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 				if (DEBUG) {
 					mexPrint("Trying to build FP 1-3 program\n");
@@ -1220,8 +1224,11 @@ class ProjectorClass {
 				ADD_OPT(os_options, "-DBP");
 				if (inputScalars.BPType == 3)
 					ADD_OPT(os_options, "-DVOL");
-				if (inputScalars.BPType == 2 || inputScalars.BPType == 3)
+				if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 					ADD_OPT(os_options, "-DORTH");
+					if (inputScalars.orthClip)
+						ADD_OPT(os_options, "-DORTHCLIP");
+				}
 				status = buildBackendProgram(contentBP, programBP, os_options);
 				if (status == BUILD_SUCCESS_VALUE && DEBUG) {
 					mexPrint("BP 1-3 program built\n");
@@ -1356,8 +1363,11 @@ class ProjectorClass {
 			ADD_OPT(os_options, "-DSENS");
 			if (inputScalars.BPType == 3)
 				ADD_OPT(os_options, "-DVOL");
-			if (inputScalars.BPType == 2 || inputScalars.BPType == 3)
+			if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 				ADD_OPT(os_options, "-DORTH");
+				if (inputScalars.orthClip)
+					ADD_OPT(os_options, "-DORTHCLIP");
+			}
 			if (inputScalars.BPType == 4) {
 				ADD_OPT(os_options, "-DPTYPE4");
 				ADD_OPT_INT(os_options, "-DNVOXELS", NVOXELS);
