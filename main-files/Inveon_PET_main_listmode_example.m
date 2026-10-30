@@ -173,8 +173,10 @@ options.firstBlockAngle = 10.79;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % List-mode reconstruction only supports automatic attenuation correction.
-% Randoms and/or scatter has to be done manually. Normalization is not
-% supported.
+% Randoms and/or scatter has to be done manually. Normalization is supported
+% only with index-based reconstruction (options.useIndexBasedReconstruction),
+% where options.normalization is either a sinogram (Ndist x Nang x NSinos) or
+% one value for each event.
 
 %%%%%%%%%%%%%%%%%%%%%%%%% Attenuation correction %%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Image-based attenuation correction
