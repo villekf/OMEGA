@@ -4,9 +4,24 @@ function attenuation_factors = create_atten_matrix_CT(options, varargin)
 % trilinear interpolation to scale the HU-values to 511 keV attenuation
 % coefficients. Supports X-ray tube potentials of 80, 100, 120 and 140 kVp.
 % The user will be prompted for the location (folder) of the CT images. It
-% is assumed that the PET FOV will be centered in the center of the (larger)
-% CT FOV. The calculated attenuation coefficients are also saved on disk if
-% a name for the examination is provided.
+% is assumed that the PET FOV will be centered in the center of the CT FOV.
+% The CT images are resampled to the PET image grid (Nx x Ny, FOVa_x x
+% FOVa_y) with exact area weighting. If the PET FOV is larger than the CT
+% FOV, the part outside the CT is filled with air. The calculated
+% attenuation coefficients are also saved on disk if a name for the
+% examination is provided.
+%
+% If options.scatter_correction is true, the narrow-beam water attenuation
+% coefficient 0.096 cm^-1 is used in the conversion (the scattered events
+% are modelled separately). Otherwise the effective value 0.093 cm^-1 is
+% used, which partly compensates for the scatter remaining in the data. See
+% attenuationCT_to_511 for details.
+%
+% The stored pixel values are converted to HU slice by slice with the
+% DICOM RescaleSlope and RescaleIntercept (HU = slope * value + intercept).
+% If a file contains no rescale information, the fixed offset 1000 is
+% subtracted instead (HU = value - 1000) and a warning is shown once. HU
+% values below -1000 (air) are set to -1000.
 %
 % This code requires that the image width information in the DICOM image
 % is named as Width, image height as Height, pixel spacing as PixelSpacing
@@ -14,13 +29,19 @@ function attenuation_factors = create_atten_matrix_CT(options, varargin)
 % EXPERIMENTAL CODE.
 %
 % Example:
-%   attenuation_factors = attenuationCT_to_511(options, KVP, name)
+%   attenuation_factors = create_atten_matrix_CT(options, KVP, name)
 % INPUTS:
+%   options = The options struct (Nx, Ny, Nz, axial_fov, FOVa_x, FOVa_y,
+%   attenuation_datafile and, optionally, scatter_correction and verbose
+%   are used)
 %   Nx = Image dimension in x-axis
 %   Ny = y-axis
 %   Nz = z-axis
 %   axial_fov = FOV size (side length) in axial direction
-%   FOV = FOV size (side length) in transaxial direction
+%   FOVa_x = FOV size (side length) in transaxial direction (x-axis, i.e.
+%   the first dimension of the CT image)
+%   FOVa_y = FOV size in y-axis (optional field in options, FOVa_x is used if
+%   not present or empty)
 %   KVP = The CT kVp value (e.g. 100). This parameter is optional. If the
 %   DICOM image contains info named as KVP this can be left empty.
 %   name = Examination name (optional). If specified, will be used to name
@@ -54,11 +75,16 @@ Ny = options.Ny;
 Nz = options.Nz;
 axial_fov = options.axial_fov;
 FOVa_x = options.FOVa_x;
+if isfield(options, 'FOVa_y') && ~isempty(options.FOVa_y)
+    FOVa_y = options.FOVa_y;
+else
+    FOVa_y = FOVa_x;
+end
 optargs = {[], []};
 optargs(1:length(varargin)) = varargin;
 KVP = optargs{1};
 name = optargs{2};
-if isempty(options.attenuation_datafile) || exist(options.attenuation_datafile,'folder') ~= 7
+if isempty(options.attenuation_datafile) || exist(options.attenuation_datafile,'dir') ~= 7
     fpath = uigetdir([], 'Select folder with .ima CT-images');
     if isequal(fpath, 0)
         error('No folder was selected')
@@ -75,37 +101,64 @@ H = info.Height;    %height of image
 if isempty(KVP)
     KVP = info.KVP;
 end
-atten_image = zeros(H,W,length(numfids));
+atten_image = zeros(H,W,numfids);
+noRescale = false;
 for k = 1:1:numfids
-  atten_image(:,:,k) = dicomread([fnames(k).folder '/' fnames(k).name]);
+  [atten_image(:,:,k), hasRescale] = readCTSliceHU([fnames(k).folder '/' fnames(k).name]);
+  if ~hasRescale && ~noRescale
+      noRescale = true;
+      warning('create_atten_matrix_CT:noRescale', ...
+          ['DICOM RescaleSlope/RescaleIntercept not found, using the offset -1000 to convert the CT values to HU (file ' fnames(k).name ')'])
+  end
 end
 pix_space = info.PixelSpacing;
 slice_thick = info.SliceThickness;
-Pet_pixels = Nx;
 Nslices = Nz;
 slice_lkm_alku = floor(((numfids * slice_thick - axial_fov) / 2) / slice_thick);
 % atten_image = atten_image(:,:,slice_lkm_ct+1:end-slice_lkm_ct)-1000;
-atten_image = atten_image(:,:,1 + slice_lkm_alku: end - slice_lkm_alku)-1000;
+atten_image = atten_image(:,:,1 + slice_lkm_alku: end - slice_lkm_alku);
 slice_lkm_ct = size(atten_image,3);
 % atten_image = atten_image(:,:,1:slice_lkm_ct)-1000;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Scale the CT images
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Axial scaling to Nz slices
 resized = zeros(H,W,Nslices);
 for i=1:W
-    resized(:,i,:) = reshape(imresize(reshape(atten_image(:,i,:),W,slice_lkm_ct),[W Nslices]),W,1,Nslices);
+    resized(:,i,:) = reshape(imresize(reshape(atten_image(:,i,:),H,slice_lkm_ct),[H Nslices]),H,1,Nslices);
 end
-pixel_lkm_ct = ceil(double(W) - ((double(W)*pix_space(1)) - FOVa_x) / pix_space(1));
-dd = floor((double(W)-pixel_lkm_ct)/2);
-resized = resized(dd+2:end-dd,dd+2:end-dd,:);
-reresized = zeros(Pet_pixels,Pet_pixels,Nslices);
+% Transaxial resampling to the PET image grid by exact area weighting. The
+% first dimension of the CT image is mapped to Nx pixels covering FOVa_x,
+% the second to Ny pixels covering FOVa_y. Both grids are centered at the
+% image center. The parts of the PET FOV outside the CT image are filled
+% with air (-1000 HU).
+if isscalar(pix_space)
+    pix_space = [pix_space; pix_space];
+end
+Mx = overlapMatrix(H, pix_space(1), Nx, FOVa_x / Nx);
+My = overlapMatrix(W, pix_space(2), Ny, FOVa_y / Ny);
+coverage = min(max(full(Mx * ones(H,1)) * full(My * ones(W,1))', 0), 1);
+airPart = (1 - coverage) * (-1000);
+reresized = zeros(Nx,Ny,Nslices);
 for i=1:Nslices
-    reresized(:,:,i) = reshape(imresize(reshape(resized(:,:,i),pixel_lkm_ct,pixel_lkm_ct),[Pet_pixels Pet_pixels]),Pet_pixels,Pet_pixels,1);
+    reresized(:,:,i) = Mx * resized(:,:,i) * My' + airPart;
 end
+% The axial interpolation may undershoot slightly below air
+reresized = max(reresized, -1000);
 % reresized = flip(reresized,3);
 %%
 
-attenuation_factors = attenuationCT_to_511(Nx, Ny, Nz, KVP, reresized, name);
+% Narrow-beam water attenuation (0.096 cm^-1) with scatter correction,
+% effective value (0.093 cm^-1) otherwise
+if isfield(options, 'scatter_correction') && options.scatter_correction
+    waterMu = 0.096;
+    if isfield(options, 'verbose') && options.verbose > 0
+        disp('Scatter correction selected: using narrow-beam water attenuation 0.096 cm^-1 for the CT conversion')
+    end
+else
+    waterMu = 0.093;
+end
+attenuation_factors = attenuationCT_to_511(Nx, Ny, Nz, KVP, reresized, name, waterMu);
 attenuation_factors = attenuation_factors / 10;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Scale the attenuation coefficients %%%
@@ -154,3 +207,47 @@ attenuation_factors = attenuation_factors / 10;
 % end
 % % imagesc(attenuation_factors(:,:,55))
 % save(['attenuation_coefficients_for_' name '.mat'], attenuation_factors)
+
+function [hu, hasRescale] = readCTSliceHU(fname)
+%READCTSLICEHU Reads a DICOM CT slice and converts it to HU
+% HU = RescaleSlope * value + RescaleIntercept. If either field is missing
+% or empty, HU = value - 1000 is used and hasRescale is false.
+inf0 = dicominfo(fname);
+hasRescale = isfield(inf0, 'RescaleSlope') && isfield(inf0, 'RescaleIntercept') ...
+    && ~isempty(inf0.RescaleSlope) && ~isempty(inf0.RescaleIntercept);
+if hasRescale
+    hu = double(dicomread(fname)) * double(inf0.RescaleSlope) + double(inf0.RescaleIntercept);
+else
+    hu = double(dicomread(fname)) - 1000;
+end
+% Values below air (e.g. -1024 HU outside the reconstruction circle in
+% Siemens CT) are not physical and would give negative attenuation
+% coefficients in attenuationCT_to_511, which extrapolates linearly
+hu = max(hu, -1000);
+
+function M = overlapMatrix(nIn, psIn, nOut, psOut)
+%OVERLAPMATRIX Area-weighting matrix for 1D resampling
+% Returns a sparse nOut x nIn matrix M, where M(j,k) is the length of the
+% overlap between output pixel j and input pixel k divided by psOut. Both
+% grids are centered at the same point. The rows sum to the fraction of the
+% output pixel covered by the input grid (1 inside, less than 1 at the
+% edges, 0 outside).
+nIn = double(nIn);
+nOut = double(nOut);
+edgesIn = (2 * (0:nIn) - nIn) * psIn / 2;
+edgesOut = (2 * (0:nOut) - nOut) * psOut / 2;
+ii = cell(nOut,1);
+jj = cell(nOut,1);
+vv = cell(nOut,1);
+for j = 1:nOut
+    % Candidate input pixels (one extra on both sides, the overlap is
+    % clipped to zero below)
+    kLo = max(1, floor((edgesOut(j) - edgesIn(1)) / psIn));
+    kHi = min(nIn, ceil((edgesOut(j+1) - edgesIn(1)) / psIn) + 1);
+    k = kLo:kHi;
+    ov = max(0, min(edgesOut(j+1), edgesIn(k+1)) - max(edgesOut(j), edgesIn(k)));
+    ii{j} = j * ones(1, numel(k));
+    jj{j} = k;
+    vv{j} = ov / psOut;
+end
+M = sparse([ii{:}], [jj{:}], [vv{:}], nOut, nIn);

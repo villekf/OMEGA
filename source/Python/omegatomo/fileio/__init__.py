@@ -15,5 +15,7 @@ from .loadProjectionImages import loadProjectionImages
 from .loadData import loadROOT
 from .loadInveon import loadInveonData
 from .loadDICOMCTData import loadDICOMCTPD
+from .loadNormalizationBiograph import loadNormalizationBiograph
+from .quantificationFactorBiograph import quantificationFactorBiograph
 
-__all__ = ["loadGATESPECTData", "loadInterfile", "loadProjectionData", "loadProjectionImages", "loadROOT", "loadNikonData", "loadSkyscanData", "loadSPECTInterfile", "loadInveonData", "loadDICOMCTPD"]
+__all__ = ["loadGATESPECTData", "loadInterfile", "loadProjectionData", "loadProjectionImages", "loadROOT", "loadNikonData", "loadSkyscanData", "loadSPECTInterfile", "loadInveonData", "loadDICOMCTPD", "loadNormalizationBiograph", "quantificationFactorBiograph"]
