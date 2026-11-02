@@ -423,6 +423,24 @@ void projectorType123(
 		ax[to] = d_OSEM[idx + to * m_size];
 #endif
 #endif
+#ifndef SENS
+	// An exactly zero input adds nothing to the backprojection, so the ray can be skipped unless the sensitivity image is computed
+#if defined(TOF) && !defined(LISTMODE)
+	if (no_norm == 1u) {
+		bool zeroInput = true;
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
+#pragma unroll NBINS
+#endif
+		for (int to = 0; to < NBINS; to++)
+			zeroInput = zeroInput && (ax[to] == 0.f);
+		if (zeroInput)
+			return;
+	}
+#else
+	if (no_norm == 1u && ax[0] == 0.f)
+		return;
+#endif
+#endif
 #else
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #pragma unroll NBINS
