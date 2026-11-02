@@ -257,6 +257,12 @@ def transferData(options):
 
     if options.SinDelayed.dtype != np.float32:
         options.SinDelayed = options.SinDelayed.astype(np.float32)
+    # A TOF-resolved randoms/scatter term has the size of the TOF measurements (the native library checks this as well)
+    if not options.randoms_correction:
+        options.randomsTOF = False
+    if options.randomsTOF and options.SinDelayed.size != options.SinM.size:
+        raise ValueError('The TOF-resolved randoms/scatter term (randomsTOF) has {} elements, but the TOF measurements have {}'.format(
+            options.SinDelayed.size, options.SinM.size))
 
     # Scalar struct fields with bespoke values (array sizes, conditional
     # selection, explicit type coercion, etc.) rather than a plain
@@ -270,11 +276,13 @@ def transferData(options):
         'mDim': options.SinM.size // options.Nt,
         'nIterSaved': options.saveNIter.size,
         'sizeScat': options.corrVector.size,
+        'sizeRandoms': options.SinDelayed.size,
         'eFOV': options.eFOVIndices.size,
         'sizeX': sizeXVal,
         'sizeZ': options.z.size,
         'sizeAtten': options.vaimennus.size,
         'sizeNorm': options.normalization.size,
+        'sizeNormSens': options.normSens.size,
         'sizePSF': options.gaussK.size,
         'sizeXYind': options.xy_index.size,
         'sizeZind': options.z_index.size,

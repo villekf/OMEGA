@@ -18,6 +18,7 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 """
 import os
+import copy
 import math
 import numpy as np
 
@@ -233,14 +234,24 @@ def _sharesCallerMemory(options, array):
     return shares(options, array)
 
 
-def _divideInPlaceUnlessShared(options, array, divisor):
+def _nonzeroDivisor(divisor):
     """
-    array / divisor with the dtype of the in-place division: done in place, or into
-    a new array if `array` is (a view of) the caller's array.
+    The divisor with the zero elements replaced by one, so that dividing by it leaves the values at the zero elements as
+    they are.
     """
+    divisor = np.asarray(divisor)
+    return np.where(divisor != 0, divisor, divisor.dtype.type(1))
+
+
+def _divideUnlessZero(options, array, divisor):
+    """
+    array / divisor with the dtype of the in-place division: done in place, or into a new array if `array` is (a view of)
+    the caller's array. The elements where the divisor is zero are not divided: they keep their value.
+    """
+    divisor = np.asarray(divisor)
     if _sharesCallerMemory(options, array):
-        return np.divide(array, divisor, out=np.empty_like(array))
-    array /= divisor
+        array = array.copy(order='K')
+    np.divide(array, divisor, out=array, where=divisor != 0)
     return array
 
 
@@ -276,6 +287,242 @@ def _subtractDelayed(sinM, delayed, tofBins):
         data = sinM.reshape((delayed.size, tofBins), order='F') - delayed.reshape((delayed.size, 1), order='F') / np.float32(tofBins)
         return data.reshape(shape, order='F')
     return sinM - delayed
+
+
+def _scatterTOFSize(options, scatter):
+    """
+    Classifies the size of the scatter data in a TOF reconstruction (PET sinograms; raw data, list-mode, index-based
+    and SPECT data keep their behaviour). Returns 'none' if the TOF size rules do not apply, 'nonTOF' for a non-TOF
+    sinogram (Ndist * Nang * NSinos or TotSinos elements, times the number of time frames) and 'TOF' for a
+    TOF-resolved sinogram (the same times TOF_bins). Any other size is an error.
+    """
+    if (options.TOF_bins <= 1 or options.use_raw_data or options.useIndexBasedReconstruction or options.listmode
+            or options.SPECT or np.size(scatter) <= 1):
+        return 'none'
+    frames = (1, int(options.Nt)) if options.Nt > 1 else (1,)
+    nonTOFSizes = {int(options.Ndist) * int(options.Nang) * int(nSinos) * frame
+                   for nSinos in (options.NSinos, options.TotSinos) for frame in frames}
+    nScatter = int(np.size(scatter))
+    if nScatter in nonTOFSizes:
+        return 'nonTOF'
+    if nScatter in {size * int(options.TOF_bins) for size in nonTOFSizes}:
+        return 'TOF'
+    raise ValueError('The scatter data has {} elements, which does not match the TOF data. With TOF the scatter data has to be a '
+                     'non-TOF sinogram of {} elements (Ndist * Nang * NSinos), or a TOF-resolved sinogram with '
+                     'precorrection'.format(nScatter, int(options.Ndist) * int(options.Nang) * int(options.NSinos)))
+
+
+def _scatterPerTOFBin(options, scatter):
+    """
+    Returns the scatter data (float32 copy) as it is added to the additive term of each TOF bin when the scatter is
+    subtracted during the reconstruction: a non-TOF scatter sinogram is divided evenly among the TOF bins (a message is
+    printed), TOF-resolved scatter data is used as it is (options.randomsTOF is set, the TOF bin is the slowest index as
+    with the TOF measurements; only the NSinos first sinograms of each bin are kept). TOF-resolved scatter data is
+    supported with a single time frame and without increased sampling, scatter smoothing, scatter variance reduction and
+    largeDim. The scatter data itself is not modified. List-mode and index-based data ('none' below) has one value for each event,
+    in the TOF bin of the event, which is used as it is: no division by the TOF bins.
+    """
+    kind = _scatterTOFSize(options, scatter)
+    options.randomsTOF = False
+    if kind == 'TOF':
+        if (options.Nt > 1 or isinstance(options.ScatterC, list) or options.sampling > 1 or options.scatter_smoothing
+                or options.scatter_variance_reduction or options.largeDim):
+            raise ValueError('TOF-resolved scatter data with corrections during reconstruction is supported only with static data (one '
+                             'time frame), without increased sampling (options.sampling > 1), scatter smoothing, scatter variance '
+                             'reduction and largeDim; use precorrection or a non-TOF scatter sinogram')
+        nSinograms = int(options.Ndist) * int(options.Nang)
+        if np.size(scatter) == nSinograms * int(options.TotSinos) * int(options.TOF_bins):
+            # Keep the NSinos first sinograms of each TOF bin
+            scatter = np.reshape(scatter, (nSinograms * int(options.TotSinos), int(options.TOF_bins)), order='F')
+            scatter = scatter[:nSinograms * int(options.NSinos), :]
+        options.randomsTOF = True
+        print('The scatter data is TOF-resolved and is used as it is in each of the ' + str(int(options.TOF_bins)) + ' TOF bins (the randoms are divided evenly among the TOF bins)')
+        return np.ravel(scatter, order='F').astype(np.float32)
+    scatter = scatter.astype(np.float32)
+    if kind == 'nonTOF':
+        print('The scatter data has no TOF bins and is divided evenly among the ' + str(int(options.TOF_bins)) + ' TOF bins')
+        scatter /= np.float32(options.TOF_bins)
+    return scatter
+
+
+def _subtractScatter(options, sinM, scatter):
+    """
+    Returns the measurement data sinM with the scatter estimate subtracted (precorrection). With TOF data the scatter
+    estimate is either TOF-resolved (subtracted as it is) or a non-TOF sinogram, which is divided evenly among the TOF
+    bins and subtracted from each bin (a message is printed), as in MATLAB's applyScatterRandoms.m.
+    """
+    kind = _scatterTOFSize(options, scatter)
+    sinM = sinM.astype(np.float32)
+    scatter = scatter.astype(np.float32)
+    if kind == 'none':
+        return sinM - scatter
+    if kind == 'TOF':
+        if scatter.size != sinM.size:
+            raise ValueError('Size mismatch between scatter correction data and measurement data')
+        return sinM - np.reshape(scatter, sinM.shape, order='F')
+    if scatter.size * options.TOF_bins != sinM.size:
+        raise ValueError('Size mismatch between scatter correction data and measurement data')
+    print('The scatter data has no TOF bins and is divided evenly among the ' + str(int(options.TOF_bins)) + ' TOF bins')
+    if sinM.ndim == 5 and sinM.shape[3] == options.TOF_bins:
+        # Dynamic data: (Ndist, Nang, NSinos, TOF, Nt), the TOF bins are not the slowest dimension
+        scatter = np.reshape(scatter, sinM.shape[:3] + (1, sinM.shape[4]), order='F')
+        return sinM - scatter / np.float32(options.TOF_bins)
+    return _subtractDelayed(sinM, scatter, options.TOF_bins)
+
+
+def _normalizationDims(options):
+    """
+    Returns the sinogram dimensions (Ndist, Nang, NSinos, TotSinos) that the normalization data are given in. Index-based
+    data has these collapsed (see addProjector()), so the values saved before the collapse are used for it.
+    """
+    dims = getattr(options, '_sinoDims', None)
+    if options.useIndexBasedReconstruction and dims is not None:
+        return dims
+    return (options.Ndist, options.Nang, options.NSinos, options.TotSinos)
+
+
+def _hasPairTable(options):
+    """
+    True if a pair normalization table was input (options.normSens without the lookup tables options.sensXY, which the
+    conversion of a sinogram normalization stores together with the sinogram), see _checkNormSensTable in proj.py.
+    """
+    return np.size(getattr(options, 'normSens', np.empty(0))) > 0 and np.size(getattr(options, 'sensXY', np.empty(0))) == 0
+
+
+def _convertIndexBasedNormalization(options, forSensitivity, isCorrectionFactor=False):
+    """
+    Converts the normalization of index-based list-mode data into the form used by the reconstruction: one value for each
+    event (options.normalization). The normalization can be given either as a sinogram (Ndist * Nang * NSinos elements, or
+    Ndist * Nang * TotSinos elements of which the first NSinos planes are used) or as one value for each event. The sinogram
+    value of an event is found with the lookup tables of sinogramPairLookup, i.e. the event is placed to the same sinogram
+    element as the loaders would place it. Events that are outside the sinogram (radial FOV, ring difference) get the
+    value zero.
+
+    A sinogram bin is the sum of all the LORs (detector pair and ring pair) that are placed to it (span > 1, mashing), but
+    an index-based event is a single LOR. A sinogram normalization is therefore divided by the number of LORs in its bin
+    (or multiplied by it, if it is a correction factor) before it is used. A normalization with one value for each event
+    is used as it is, so it has to be given for a single LOR.
+
+    With the sinogram form and forSensitivity set, the sinogram and the lookup tables are also stored in options.normSens,
+    options.sensXY, options.sensZ and options.sensBins, which are used to apply the normalization in the sensitivity image
+    (all detector pairs, not only the measured events).
+
+    If a pair normalization table was input (options.normSens without options.sensXY, see _checkNormSensTable), the normalization
+    must already be given as one value for each event. It is then used as it is and the table is not touched.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data. The normalization has to be already inverted, if it
+        was loaded from a file.
+    forSensitivity : bool
+        If True, the normalization is also used in the sensitivity image if it is computed
+        (options.compute_sensitivity_image).
+    isCorrectionFactor : bool, optional
+        If True, a sinogram normalization is a correction factor that multiplies the data (prefilled normalization in
+        the precorrection), so it is multiplied by the number of LORs in the bin instead of dividing by it. The default is
+        False (the normalization is a multiplier in the reconstruction).
+
+    Raises
+    ------
+    ValueError
+        If the size of the normalization is incorrect or the sinogram form cannot be used with the current scanner
+        settings.
+
+    Returns
+    -------
+    None.
+
+    """
+    from omegatomo.projector.detcoord import sinogramPairLookup
+    Ndist, Nang, NSinos, TotSinos = (int(v) for v in _normalizationDims(options))
+    nSino = Ndist * Nang * NSinos
+    nTot = Ndist * Nang * TotSinos
+    if isinstance(options.trIndex, list):
+        if len(options.trIndex) > 1:
+            raise ValueError('Normalization correction is not supported for dynamic index-based data!')
+        trIndex = options.trIndex[0]
+        axIndex = options.axIndex[0]
+    else:
+        trIndex = options.trIndex
+        axIndex = options.axIndex
+    nEvents = np.size(trIndex) // 2
+    normalization = np.asarray(options.normalization).ravel(order='F')
+    if _hasPairTable(options):
+        # A pair table (options.normSens, see _checkNormSensTable) is used in the sensitivity image, the normalization has to be
+        # given for the events and is used as it is: a sinogram is not converted, since that would replace the pair table
+        if normalization.size != nEvents:
+            raise ValueError('With a pair normalization table (options.normSens) options.normalization has to contain one value for each '
+                             'event (%d elements), but it has %d elements! The table is used only in the sensitivity image, a sinogram '
+                             'normalization is not converted to the events.' % (nEvents, normalization.size))
+        options.normalization = normalization.astype(np.float32)
+        return
+    if normalization.size == nSino or normalization.size == nTot:
+        if options.nLayers > 1:
+            raise ValueError('Index-based reconstruction supports a sinogram normalization only with a single layer! Input the normalization '
+                             'as one value for each event (%d elements) instead.' % nEvents)
+        if options.det_w_pseudo != options.det_per_ring or np.size(options.pseudot) > 0:
+            raise ValueError('Index-based reconstruction supports a sinogram normalization only without pseudo detectors and pseudo rings! '
+                             'Input the normalization as one value for each event (%d elements) instead.' % nEvents)
+        detPerRing = int(options.det_per_ring)
+        rings = int(options.rings)
+        if (detPerRing // 2) % Nang != 0:
+            raise ValueError('The number of sinogram angles (%d) has to divide the number of detectors per ring divided by two (%d) in '
+                             'order to use a sinogram normalization!' % (Nang, detPerRing // 2))
+        tr = np.asarray(trIndex).reshape(2, -1, order='F').astype(np.int64)
+        ax = np.asarray(axIndex).reshape(2, -1, order='F').astype(np.int64)
+        if tr.size > 0 and tr.max() >= detPerRing:
+            raise ValueError('options.trIndex contains detector indices (maximum %d) that are beyond the number of detectors per ring (%d)!' % (tr.max(), detPerRing))
+        if ax.size > 0 and ax.max() >= rings:
+            raise ValueError('options.axIndex contains ring indices (maximum %d) that are beyond the number of rings (%d)!' % (ax.max(), rings))
+        sinogram = np.ascontiguousarray(normalization[:nSino], dtype=np.float32)
+        xyLookup, zLookup = sinogramPairLookup(detPerRing, rings, Ndist, Nang, options.ring_difference, options.span,
+                                               options.segment_table, NSinos, options.ndist_side)
+        # A sinogram bin is the sum of its LORs (span > 1, mashing) but each event is a single LOR, so the number of
+        # LORs in the bin (detector pairs a < b in the radial/angular bin times ordered ring pairs in the plane) is used
+        outside = np.uint32(0xFFFFFFFF)
+        nz = np.bincount(zLookup[zLookup != outside], minlength=NSinos)
+        xyPairs = xyLookup.reshape((detPerRing, detPerRing), order='F')[np.triu_indices(detPerRing, 1)]
+        nt = np.bincount((xyPairs[xyPairs != outside] & np.uint32(0x7FFFFFFF)).astype(np.int64), minlength=Ndist * Nang)
+        del xyPairs
+        sinogram = sinogram.reshape((NSinos, Ndist * Nang))
+        for k in range(NSinos):
+            count = (nt * nz[k]).astype(np.float32)
+            reachable = count > 0
+            if isCorrectionFactor:
+                sinogram[k, reachable] *= count[reachable]
+            else:
+                sinogram[k, reachable] /= count[reachable]
+        sinogram = sinogram.ravel()
+        xy = xyLookup[tr[0] + tr[1] * detPerRing]
+        # The rings are exchanged for the events whose detectors are swapped in the sinogram
+        flip = (xy & np.uint32(0x80000000)) != 0
+        ring1 = np.where(flip, ax[1], ax[0])
+        ring2 = np.where(flip, ax[0], ax[1])
+        plane = zLookup[ring1 + ring2 * rings]
+        inside = (xy != np.uint32(0xFFFFFFFF)) & (plane != np.uint32(0xFFFFFFFF))
+        index = (xy & np.uint32(0x7FFFFFFF)).astype(np.int64) + plane.astype(np.int64) * (Ndist * Nang)
+        eventNormalization = np.zeros(nEvents, dtype=np.float32)
+        eventNormalization[inside] = sinogram[index[inside]]
+        options.normalization = eventNormalization
+        if options.compute_sensitivity_image and forSensitivity:
+            options.normSens = sinogram
+            options.sensXY = xyLookup
+            options.sensZ = zLookup
+            options.sizeNormSens = sinogram.size
+            options.sensBins = Ndist * Nang
+    elif normalization.size == nEvents:
+        # The normalization has been converted by an earlier call with the same options (the sinogram is stored in
+        # options.normSens), it is used as it is
+        if options.compute_sensitivity_image and forSensitivity and np.size(getattr(options, 'normSens', np.empty(0))) == 0:
+            raise ValueError('The sensitivity image of index-based data needs the normalization as a sinogram (%d elements%s) in order to '
+                             'apply it to all detector pairs, but one value for each event (%d elements) was input!'
+                             % (nSino, '' if nTot == nSino else ', or %d elements of which the first %d are used' % (nTot, nSino), nEvents))
+        options.normalization = normalization.astype(np.float32)
+    else:
+        raise ValueError('The size of the normalization (%d elements) does not match index-based data! It has to be either a sinogram '
+                         '(Ndist * Nang * NSinos = %d elements%s) or one value for each event (%d elements).'
+                         % (normalization.size, nSino, '' if nTot == nSino else ', or Ndist * Nang * TotSinos = %d elements of which the first %d are used' % (nTot, nSino), nEvents))
 
 
 def loadCorrections(options):
@@ -317,6 +564,15 @@ def loadCorrections(options):
         # no randoms/scatter data is loaded or applied (SinDelayed is not read from the file)
         options.randoms_correction = False
         options.scatter_correction = False
+    if options.listmode and not options.CT and not options.SPECT and options.scatter_correction and options.subtract_scatter:
+        # List-mode and index-based PET data: options.ScatterC is the additive term of each event (measured counts for the LOR and,
+        # with TOF data, the TOF bin of the event; validated in OMEGAErrorCheck), used as it is: no TOF_bins division and no sinogram
+        # operations (see _scatterTOFSize). It reaches the reconstruction through SinDelayed below. Randoms are not used with
+        # list-mode data (the randoms_correction gate in addProjector), a randoms estimate is added into ScatterC by the user
+        if options.SinDelayed.size > 1:
+            print('Warning: Randoms (options.SinDelayed) are not used with list-mode and index-based data! Add the randoms into options.ScatterC. Ignoring options.SinDelayed.')
+            options.SinDelayed = np.empty(0, dtype=np.float32)
+        options.ScatterC = np.ravel(options.ScatterC, order='F').astype(np.float32)
     normalization_shape = np.asarray(options.normalization).shape
     options.normZ = int(normalization_shape[2]) if options.SPECT and len(normalization_shape) == 3 else 1
     normalization_indexed_stack = bool(options.SPECT and int(options.normZ) == int(options.nHeads))
@@ -434,18 +690,21 @@ def loadCorrections(options):
     deferredNormalization = None
     if options.normalization_correction:
         normalizationFromFile = False
+        # Biograph (Vision) coefficients can be zero (bins without efficiency): these map to zero efficiency
+        normalizationZeroSafe = False
+        # The sinogram dimensions of the normalization data (index-based data has the dimensions collapsed)
+        normNdist, normNang, normNSinos, normTotSinos = _normalizationDims(options)
         if options.normalization.size == 0:
             normalizationFromFile = True
-            normdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', '..', '..', 'mat-files')) + "/" +  options.machine_name + '_normalization_' + str(options.Ndist) + 'x' + str(options.Nang) + '_span' + str(options.span) + '.mat'
-            if os.path.exists(normdir):
-                try:
-                    from pymatreader import read_mat
-                    var = read_mat(normdir)
-                    options.normalization = np.array(var["normalization"],order='F')
-                except ModuleNotFoundError:
-                    print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
+            nimi = ''
+            normDataFile = getattr(options, 'normalization_datafile', '')
+            if normDataFile is not None and len(str(normDataFile)) > 0:
+                # The user normalization file is given in options.normalization_datafile, no default file lookup or dialog
+                nimi = str(normDataFile)
+                if not os.path.isfile(nimi):
+                    raise FileNotFoundError('The normalization data file ' + nimi + ' does not exist')
             else:
-                normdir = os.path.join(os.path.dirname(options.fpath), options.machine_name + '_normalization_' + str(options.Ndist) + 'x' + str(options.Nang) + '_span' + str(options.span) + '.mat')
+                normdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', '..', '..', 'mat-files')) + "/" +  options.machine_name + '_normalization_' + str(normNdist) + 'x' + str(normNang) + '_span' + str(options.span) + '.mat'
                 if os.path.exists(normdir):
                     try:
                         from pymatreader import read_mat
@@ -454,32 +713,85 @@ def loadCorrections(options):
                     except ModuleNotFoundError:
                         print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
                 else:
-                    import tkinter as tk
-                    from tkinter.filedialog import askopenfilename
-                    root = tk.Tk()
-                    root.withdraw()
-                    nimi = askopenfilename(title='Select normalization datafile',filetypes=(('NRM, NPY, NPZ and MAT files','*.nrm *.mat *.npy *.npz'),('All','*.*')))
-                    if len(nimi) == 0:
-                        raise ValueError("No file selected!")
-                    nimiExt = os.path.splitext(nimi)[1].lower()
-                    if nimiExt == '.nrm':
-                        options.normalization = np.fromfile(nimi, dtype=np.float32)
-                        if options.normalization.size != options.Ndist * options.Nang * options.TotSinos and not options.use_raw_data:
-                            raise ValueError('Size mismatch between the current data and the normalization data file')
-                    elif nimiExt == '.mat':
-                        from pymatreader import read_mat
-                        var = read_mat(nimi)
-                        options.normalization = np.array(var["normalization"])
-                    elif nimiExt in ('.npy', '.npz'):
-                        options.normalization = _load_array_file(nimi)
+                    normdir = os.path.join(os.path.dirname(options.fpath), options.machine_name + '_normalization_' + str(normNdist) + 'x' + str(normNang) + '_span' + str(options.span) + '.mat')
+                    if os.path.exists(normdir):
+                        try:
+                            from pymatreader import read_mat
+                            var = read_mat(normdir)
+                            options.normalization = np.array(var["normalization"],order='F')
+                        except ModuleNotFoundError:
+                            print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
                     else:
-                        raise ValueError('Unsupported datatype!')
+                        import tkinter as tk
+                        from tkinter.filedialog import askopenfilename
+                        root = tk.Tk()
+                        root.withdraw()
+                        nimi = askopenfilename(title='Select normalization datafile',filetypes=(('NRM, N, PTD, NPY, NPZ and MAT files','*.nrm *.n *.ptd *.mat *.npy *.npz'),('All','*.*')))
+                        if len(nimi) == 0:
+                            raise ValueError("No file selected!")
+            if len(nimi) > 0:
+                nimiExt = os.path.splitext(nimi)[1].lower()
+                if nimiExt == '.nrm':
+                    options.normalization = np.fromfile(nimi, dtype=np.float32)
+                    # The size of index-based data is checked when the normalization is converted below
+                    if options.normalization.size != normNdist * normNang * normTotSinos and not options.use_raw_data and not options.useIndexBasedReconstruction:
+                        raise ValueError('Size mismatch between the current data and the normalization data file')
+                elif nimiExt in ('.n', '.ptd'):
+                    # Biograph normalization component file, the coefficients multiply the data
+                    from omegatomo.fileio.loadNormalizationBiograph import loadNormalizationBiograph
+                    normOptions = options
+                    if options.useIndexBasedReconstruction:
+                        # The coefficients are sinograms, the loader needs the sinogram dimensions that index-based data has collapsed
+                        normOptions = copy.copy(options)
+                        normOptions.Ndist, normOptions.Nang, normOptions.NSinos, normOptions.TotSinos = normNdist, normNang, normNSinos, normTotSinos
+                    options.normalization = loadNormalizationBiograph(nimi, normOptions)
+                    # No TOF dimension, all sinograms (TotSinos); cropped to NSinos below
+                    if options.normalization.size != normNdist * normNang * normTotSinos and not options.use_raw_data:
+                        raise ValueError('Size mismatch between the current data and the normalization data file')
+                    normalizationZeroSafe = True
+                elif nimiExt == '.mat':
+                    from pymatreader import read_mat
+                    var = read_mat(nimi)
+                    options.normalization = np.array(var["normalization"])
+                elif nimiExt in ('.npy', '.npz'):
+                    options.normalization = _load_array_file(nimi)
+                else:
+                    raise ValueError('Unsupported datatype!')
             normalization_shape = np.asarray(options.normalization).shape
             options.normZ = int(normalization_shape[2]) if options.SPECT and len(normalization_shape) == 3 else 1
             normalization_indexed_stack = bool(options.SPECT and int(options.normZ) == int(options.nHeads))
-            options.normalization = 1. / options.normalization.ravel('F').astype(dtype=np.float32)
+            if normalizationZeroSafe or not options.SPECT:
+                # PET coefficients are inverted to efficiencies; zero coefficients (bins without efficiency) stay zero.
+                # SPECT coefficients are inverted as they are
+                normalizationCoef = options.normalization.ravel('F').astype(dtype=np.float32)
+                options.normalization = np.zeros_like(normalizationCoef)
+                np.divide(np.float32(1.), normalizationCoef, out=options.normalization, where=normalizationCoef != 0)
+                del normalizationCoef
+            else:
+                options.normalization = 1. / options.normalization.ravel('F').astype(dtype=np.float32)
             if not options.use_raw_data and options.NSinos != options.TotSinos and not normalization_indexed_stack:
                 options.normalization = options.normalization[0 : options.Ndist * options.Nang * options.NSinos]
+        if options.useIndexBasedReconstruction:
+            # One value for each event instead of a sinogram. The file-loaded normalization has been inverted above, as it is
+            # used in the reconstruction, so the conversion keeps the convention. The sinogram is also used in the
+            # sensitivity image if the normalization stays in the reconstruction.
+            # A prefilled normalization in the precorrection multiplies the data (correction factor), the other cases are multipliers
+            # in the reconstruction (a file-loaded normalization has been inverted above)
+            forSensitivity = options.corrections_during_reconstruction or not options.precorrect
+            _convertIndexBasedNormalization(options, forSensitivity, not forSensitivity and not normalizationFromFile)
+            if normalizationFromFile:
+                # The events outside the sinogram have zero normalization, so the precorrection must not divide by it
+                normalizationZeroSafe = True
+        if options.listmode and _hasPairTable(options):
+            # Pair normalization table of the sensitivity image (user input): one value for each ordered detector/ring pair, flattened
+            # to the order of the sensitivity image kernel (column-major, see _checkNormSensTable)
+            options.normSens = np.ravel(options.normSens, order='F').astype(np.float32)
+            options.sizeNormSens = options.normSens.size
+            options.sensBins = 0
+            if not options.useIndexBasedReconstruction and options.normalization.size != options._listModeEventCount():
+                raise ValueError('With a pair normalization table (options.normSens) options.normalization has to contain one value for each '
+                                 'event (%d elements), but it has %d elements! The table is used only in the sensitivity image, a sinogram '
+                                 'normalization is not converted to the events.' % (options._listModeEventCount(), options.normalization.size))
         if normalization_indexed_stack and options.normalization.size != int(options.nRowsD) * int(options.nColsD) * int(options.nHeads):
             raise ValueError('Detector-indexed normalization must contain one detector image for each detector head.')
         if not options.corrections_during_reconstruction and options.precorrect:
@@ -499,6 +811,18 @@ def loadCorrections(options):
                 # by the raw coefficients. A prefilled PET normalization is multiplied
                 # directly (as in MATLAB); SPECT divides (as in MATLAB).
                 normalizationDivide = bool(options.SPECT or normalizationFromFile)
+                if normalizationFromFile and not options.SPECT and not normalizationZeroSafe and np.any(normalization_for_data == 0):
+                    # The bins without efficiency (zero) give zero: the data is divided by infinity there. The other bins are
+                    # divided as without zero coefficients
+                    normalization_for_data = np.where(normalization_for_data != 0, normalization_for_data,
+                                                      normalization_for_data.dtype.type(np.inf))
+                if normalizationZeroSafe and not options.SPECT:
+                    # The coefficients of the file are applied directly (multiplied), so that bins
+                    # without efficiency (zero coefficient) give zero instead of a division by zero
+                    normalizationCoef = np.zeros_like(normalization_for_data)
+                    np.divide(np.float32(1.), normalization_for_data, out=normalizationCoef, where=normalization_for_data != 0)
+                    normalization_for_data = normalizationCoef
+                    normalizationDivide = False
                 if options.SPECT:
                     options.SinM = _perLORFactor(options.SinM, normalization_for_data, options.TOF_bins, normalizationDivide)
                 else:
@@ -575,17 +899,31 @@ def loadCorrections(options):
         # it is reset to an empty array to avoid the generic (plain-array)
         # scatter-correction handling below re-processing it.
         options.ScatterC = np.empty(0, dtype=np.float32)
-    if options.scatter_correction and options.normalization_correction and options.normalize_scatter and options.corrections_during_reconstruction:
+    if (options.scatter_correction and options.normalization_correction and options.normalize_scatter and options.corrections_during_reconstruction
+            and not getattr(options, 'scatterNormalized', False)):
+        # The elements without normalization (zero) are not divided, the scatter keeps its value there
+        if (normalizationFromFile and not options.SPECT and not options.use_raw_data and not options.useIndexBasedReconstruction
+                and options.NSinos != options.TotSinos and np.ndim(options.ScatterC) == 1
+                and np.size(options.ScatterC) == options.Ndist * options.Nang * options.TotSinos
+                and np.size(options.ScatterC) > np.size(options.normalization)):
+            # A scatter of all the sinograms (TotSinos) is cut to the NSinos sinograms of the normalization loaded from a file
+            options.ScatterC = options.ScatterC[: np.size(options.normalization)]
+        if options.useIndexBasedReconstruction and np.size(options.ScatterC) != np.size(options.normalization):
+            # The normalization is already one value for each event
+            raise ValueError('Index-based reconstruction with normalize_scatter needs the scatter (options.ScatterC) as one value for each '
+                             'event (%d elements), but %d elements were input!' % (np.size(options.normalization), np.size(options.ScatterC)))
         if normalization_indexed_stack:
             if isinstance(options.ScatterC, list):
                 options.ScatterC = [
-                    frame / expand_detector_stack(options.normalization, frame.shape, timestep)
+                    frame / _nonzeroDivisor(expand_detector_stack(options.normalization, frame.shape, timestep))
                     for timestep, frame in enumerate(options.ScatterC)
                 ]
             else:
-                options.ScatterC = _divideInPlaceUnlessShared(options, options.ScatterC, expand_detector_stack(options.normalization, options.ScatterC.shape))
+                options.ScatterC = _divideUnlessZero(options, options.ScatterC, expand_detector_stack(options.normalization, options.ScatterC.shape))
         else:
-            options.ScatterC = _divideInPlaceUnlessShared(options, options.ScatterC, options.normalization)
+            options.ScatterC = _divideUnlessZero(options, options.ScatterC, options.normalization)
+        # Another call with the returned options must not normalize the scatter again
+        options.scatterNormalized = True
     if options.randoms_correction and options.ordinaryPoisson and options.variance_reduction:
         from omegatomo.util.Randoms_variance_reduction import Randoms_variance_reduction
         options.SinDelayed = Randoms_variance_reduction(options.SinDelayed, options)
@@ -593,6 +931,10 @@ def loadCorrections(options):
         from omegatomo.util.smoothing import randoms_smoothing
         options.SinDelayed = randoms_smoothing(options.SinDelayed, options)
     if options.scatter_correction and options.ordinaryPoisson and options.scatter_smoothing:
+        if options.subtract_scatter and _scatterTOFSize(options, options.ScatterC) == 'TOF':
+            # Checked in _scatterPerTOFBin too, but the smoothing below works on a non-TOF sinogram
+            raise ValueError('TOF-resolved scatter data with corrections during reconstruction is not supported with scatter smoothing; '
+                             'disable it or use a non-TOF scatter sinogram')
         from omegatomo.util.smoothing import randoms_smoothing
         options.ScatterC = randoms_smoothing(options.ScatterC, options)
     if (options.randoms_correction or options.scatter_correction) and not options.ordinaryPoisson:
@@ -607,9 +949,9 @@ def loadCorrections(options):
             options.ScatterC = randoms_smoothing(options.ScatterC, options)
         if options.precorrect:
             if options.scatter_correction and options.ScatterC.size > 0 and options.SinDelayed.size > 0 and options.randoms_correction and options.subtract_scatter:
-                options.SinM = _subtractDelayed(options.SinM, options.SinDelayed, options.TOF_bins) - options.ScatterC.astype(np.float32)
+                options.SinM = _subtractScatter(options, _subtractDelayed(options.SinM, options.SinDelayed, options.TOF_bins), options.ScatterC)
             elif options.scatter_correction and options.ScatterC.size > 0 and not options.randoms_correction and options.subtract_scatter:
-                options.SinM = options.SinM.astype(np.float32) - options.ScatterC.astype(np.float32) 
+                options.SinM = _subtractScatter(options, options.SinM, options.ScatterC)
             elif options.SinDelayed.size > 0 and options.randoms_correction:
                 options.SinM = _subtractDelayed(options.SinM, options.SinDelayed, options.TOF_bins) 
     if deferredNormalization is not None:
@@ -646,13 +988,16 @@ def loadCorrections(options):
         # pattern for absorbed scatter in the sibling branch just below (options.SinDelayed
         # = ...; options.scatter_correction = False).
         options.scatter_correction = False
+        if options.randoms_correction and options.ordinaryPoisson and options.SinDelayed.size > 1 and options.TOF_bins > 1:
+            # The randoms estimate is not combined with the scatter here, so it is
+            # divided by TOF_bins on its own, as in the last branch below.
+            options.SinDelayed = options.SinDelayed.astype(np.float32) / options.TOF_bins
     elif options.scatter_correction and options.ScatterC.size > 0 and options.SinDelayed.size <= 1 and options.subtract_scatter and options.ordinaryPoisson:
         # No pre-existing randoms estimate (r_exist false in MATLAB terms): the
-        # scatter estimate becomes SinDelayed as-is. Matches MATLAB
-        # loadCorrections.m's "else" branches paired with the TOF_bins division
-        # below (e.g. lines 389-395/451-457): scatter is NOT divided by TOF_bins
-        # when there is no randoms estimate to divide.
-        options.SinDelayed = np.asfortranarray(options.ScatterC.astype(np.float32))
+        # scatter estimate becomes SinDelayed. Matches MATLAB loadCorrections.m's
+        # scatter-only branches: with TOF data a non-TOF scatter sinogram is divided
+        # evenly among the TOF bins (see _scatterPerTOFBin).
+        options.SinDelayed = np.asfortranarray(_scatterPerTOFBin(options, options.ScatterC))
         options.scatter_correction = False
         # Matches MATLAB loadCorrections.m's final flag-normalization (~line 1078): during-
         # reconstruction randoms_correction is only enabled when SinDelayed ends up with more
@@ -661,14 +1006,20 @@ def loadCorrections(options):
     elif options.scatter_correction and options.ScatterC.size > 0 and options.SinDelayed.size > 1 and options.subtract_scatter and options.ordinaryPoisson:
         # A real (r_exist true) randoms estimate exists and is being combined
         # with scatter. Matches MATLAB loadCorrections.m's `SinDelayed = SinDelayed
-        # / TOF_bins + ScatterC` pattern (e.g. lines 385-387/447-449/485-487/561-
-        # 563/608-610/638-640, both the dynamic-cell and static branches): the
-        # non-TOF randoms estimate is divided by TOF_bins before adding the
-        # (non-TOF) scatter estimate.
+        # / TOF_bins + scatterPerTOFBin(ScatterC)` pattern (both the dynamic-cell and
+        # static branches): the non-TOF randoms estimate and a non-TOF scatter
+        # sinogram are both divided by TOF_bins before adding them.
         if options.TOF_bins > 1:
             options.SinDelayed = options.SinDelayed.astype(np.float32) / options.TOF_bins
-        scatterTerm = np.asfortranarray(options.ScatterC.astype(np.float32))
-        if _sharesCallerMemory(options, options.SinDelayed):
+        scatterTerm = np.asfortranarray(_scatterPerTOFBin(options, options.ScatterC))
+        if options.Nt > 1 and scatterTerm.size * options.Nt == options.SinDelayed.size:
+            # A single scatter sinogram is shared by all the frames
+            scatterTerm = np.reshape(scatterTerm, options.SinDelayed.shape[:-1] + (1,), order='F')
+        if scatterTerm.size > options.SinDelayed.size and options.SinDelayed.size > 0 and scatterTerm.size % options.SinDelayed.size == 0:
+            # TOF-resolved scatter: the randoms (already divided among the TOF bins) are repeated for all the TOF bins, the TOF bin
+            # is the slowest index as with the TOF measurements. A new array, the caller's array is not modified
+            options.SinDelayed = np.tile(np.ravel(options.SinDelayed, order='F'), scatterTerm.size // options.SinDelayed.size) + np.ravel(scatterTerm, order='F')
+        elif _sharesCallerMemory(options, options.SinDelayed):
             # SinDelayed is the caller's array: out-of-place (same dtype as the in-place add)
             options.SinDelayed = np.add(options.SinDelayed, scatterTerm, out=np.empty_like(options.SinDelayed))
         else:
@@ -998,6 +1349,17 @@ def parseInputs(options, mDataFound = False):
                     # misindex instead of failing gracefully.
                     print('Warning: Randoms correction (SinDelayed) is not supported for dynamic list-mode data! Disabling it.')
                     options.randoms_correction = False
+                elif options.randomsTOF:
+                    # TOF-resolved randoms/scatter (static data): the data of each TOF bin is reordered as the TOF measurements (the TOF
+                    # bin is the slowest index). ravel/astype make a new array, the caller's array is not modified
+                    options.SinDelayed = np.ravel(options.SinDelayed, order='F').astype(np.float32)
+                    if options.subsetType >= 8:
+                        options.SinDelayed = np.reshape(options.SinDelayed, (options.nRowsD, options.nColsD, -1, options.TOF_bins), order='F')
+                        options.SinDelayed = options.SinDelayed[:, :, options.index, :]
+                    else:
+                        options.SinDelayed = np.reshape(options.SinDelayed, (-1, options.TOF_bins), order='F')
+                        options.SinDelayed = options.SinDelayed[options.index, :]
+                    options.SinDelayed = options.SinDelayed.ravel(order='F')
                 elif options.Nt > 1:
                     # The loop below writes in place: copy if SinDelayed is the caller's array
                     if _sharesCallerMemory(options, options.SinDelayed):

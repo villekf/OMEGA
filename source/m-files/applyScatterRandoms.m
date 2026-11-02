@@ -35,7 +35,10 @@ if isfield(options,ichar)
                             options.SinM{kk} = single(full(options.SinM{kk}(:))) - single(full(input{kk}));
                         end
                     elseif type == 1
-                        if options.subtract_scatter
+                        if options.subtract_scatter && options.TOF_bins > 1 && numel(input{kk}) * options.TOF_bins == numel(options.SinM{kk})
+                            % Non-TOF scatter data with TOF data
+                            options.SinM{kk} = subtractScatterTOF(options.SinM{kk}, input{kk}, options.TOF_bins, kk == 1);
+                        elseif options.subtract_scatter
                             options.SinM{kk} = single(full(options.SinM{kk}(:))) - single(full(input{kk}(:)));
                         else
                             options.SinM{kk} = single(full(options.SinM{kk}(:))) .* single(full(input{kk}(:)));
@@ -68,7 +71,10 @@ if isfield(options,ichar)
                         options.SinM = single(full(options.SinM(:))) - single(full(input{1}));
                     end
                 elseif type == 1
-                    if options.subtract_scatter
+                    if options.subtract_scatter && options.TOF_bins > 1 && numel(input{1}) * options.TOF_bins == numel(options.SinM)
+                        % Non-TOF scatter data with TOF data
+                        options.SinM = subtractScatterTOF(options.SinM, input{1}, options.TOF_bins, true);
+                    elseif options.subtract_scatter
                         options.SinM = single(full(options.SinM(:))) - single(full(input{1}(:)));
                     else
                         options.SinM = single(full(options.SinM(:))) .* single(full(input{1}(:)));
@@ -103,7 +109,10 @@ if isfield(options,ichar)
                             options.SinM{kk} = single(full(options.SinM{kk}(:))) - single(full(input(:))) / length(options.SinM);
                         end
                     elseif type == 1
-                        if options.subtract_scatter
+                        if options.subtract_scatter && options.TOF_bins > 1 && numel(input) * options.TOF_bins == numel(options.SinM{kk})
+                            % Non-TOF scatter data with TOF data
+                            options.SinM{kk} = subtractScatterTOF(options.SinM{kk}, single(full(input(:))) / length(options.SinM), options.TOF_bins, kk == 1);
+                        elseif options.subtract_scatter
                             options.SinM{kk} = single(full(options.SinM{kk}(:))) - single(full(input(:))) / length(options.SinM);
                         else
                             options.SinM{kk} = single(full(options.SinM{kk}(:))) .* (single(full(input(:))) / length(options.SinM));
@@ -136,7 +145,10 @@ if isfield(options,ichar)
                         options.SinM = single(full(options.SinM(:))) - single(full(input(:)));
                     end
                 elseif type == 1
-                    if options.subtract_scatter
+                    if options.subtract_scatter && options.TOF_bins > 1 && numel(input) * options.TOF_bins == numel(options.SinM)
+                        % Non-TOF scatter data with TOF data
+                        options.SinM = subtractScatterTOF(options.SinM, input, options.TOF_bins, true);
+                    elseif options.subtract_scatter
                         options.SinM = single(full(options.SinM(:))) - single(full(input(:)));
                     else
                         options.SinM = single(full(options.SinM(:))) .* single(full(input(:)));
@@ -153,3 +165,16 @@ else
 end
 end
 
+function sinM = subtractScatterTOF(sinM, scatter, tofBins, showMessage)
+% Subtracts the non-TOF scatter data from the TOF measurement data: the scatter data is divided evenly among the TOF bins
+% (TOF is the slowest dimension of the measurement data). Randoms are handled the same way above.
+if showMessage
+    disp(['The scatter data has no TOF bins and is divided evenly among the ' num2str(tofBins) ' TOF bins'])
+end
+sinM = single(full(sinM(:)));
+scatter = single(full(scatter(:)));
+NN = numel(scatter);
+for uu = 1 : tofBins
+    sinM(NN * (uu - 1) + 1: NN * uu) = sinM(NN * (uu - 1) + 1: NN * uu) - scatter / tofBins;
+end
+end

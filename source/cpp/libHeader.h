@@ -248,6 +248,8 @@ struct inputStruct {
     bool usingLinearizedData = false;
     // Load TOF data
     bool loadTOF = true;
+    // If true, the additive term (randoms/scatter) is TOF-resolved, i.e. it has the same size and layout as the TOF measurements
+    bool randomsTOF = false;
     // If true, stores the primal-dual gap values
     bool storeResidual = false;
     // If true, uses FISTA acceleration for the selected algorithm
@@ -396,6 +398,8 @@ struct inputStruct {
     uint64_t mDim;
     uint64_t nIterSaved;
     uint64_t sizeScat;
+    // Number of elements in the randoms/scatter (additive term) array
+    uint64_t sizeRandoms;
     uint64_t eFOV;
     uint64_t sizeX;
     uint64_t sizeZ;
@@ -553,6 +557,14 @@ struct inputStruct {
     uint32_t* tr_offsets;
     float* a_L;
     float* fmh_weights;
+    // Sinogram normalization of the list-mode sensitivity image (index-based data) and the lookup tables from the detector pair
+    // (det_per_ring^2 elements) and the ring pair (rings^2 elements) to its sinogram bin/plane, sensBins = bins per plane.
+    // If sensXY is null, normSens is a full pair table (det_per_ring^2 * rings^2 * nLayers^2 elements, one value for each ordered pair)
+    float* normSens;
+    uint32_t* sensXY;
+    uint32_t* sensZ;
+    uint64_t sizeNormSens;
+    uint32_t sensBins;
 };
 
 void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting& w_vec, RecMethods& MethodList) {
@@ -827,7 +839,8 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.CTAttenuation = options.CTAttenuation;
     inputScalars.largeDim = options.largeDim;
     inputScalars.usingLinearizedData = options.usingLinearizedData;
-    inputScalars.loadTOF = options.loadTOF; 
+    inputScalars.loadTOF = options.loadTOF;
+    inputScalars.randomsTOF = options.randomsTOF;
     inputScalars.storeResidual = options.storeResidual;
     inputScalars.FISTAAcceleration = options.FISTA_acceleration;
     inputScalars.stochastic = options.stochasticSubsetSelection;

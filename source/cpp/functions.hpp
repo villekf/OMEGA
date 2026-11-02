@@ -1939,7 +1939,7 @@ inline af::array batchNotEqual(const af::array& lhs, const af::array& rhs) {
 
 // Compute the epsilon value for the MBSREM/MRAMLA
 inline float MBSREM_epsilon(const af::array& Sino, const af::array& D, const float epps = 1e-5f, const uint32_t randoms_correction = false, const af::array& rand = af::constant(0.1, 1, 1),
-	const bool TOF = false, const int64_t nBins = 1, const bool CT = false) {
+	const bool TOF = false, const int64_t nBins = 1, const bool CT = false, const bool randomsTOF = false) {
 	float eps;
 	if (CT) {
 		af::array hk_summa = -af::exp(-Sino) / Sino - Sino;
@@ -1970,11 +1970,17 @@ inline float MBSREM_epsilon(const af::array& Sino, const af::array& D, const flo
 		hk_summa(af::isNaN(hk_summa)) = 0.f;
 		af::array P_Sino, apu, Iind;
 		if (TOF && randoms_correction) {
+			// With a TOF-resolved additive term (randomsTOF) the randoms/scatter has the size of the TOF data and is not repeated for the bins
 			af::array rInd = rand == 0.f;
-			P_Sino = Sino(Sino > 0.f & af::tile(rInd, nBins));
-			apu = D + af::tile(rand, nBins);
+			if (!randomsTOF)
+				rInd = af::tile(rInd, nBins);
+			const af::array Iind2 = Sino > 0.f & rInd;
+			if (af::sum<float>(Iind2) == 0.f)
+				return 1e8f;
+			P_Sino = Sino(Iind2);
+			apu = D + (randomsTOF ? rand : af::tile(rand, nBins));
 			apu = af::sum(Sino * af::log(apu) - apu);
-			hk_summa = af::batchFunc(af::sum(hk_summa), hk_summa(Sino > 0.f & af::tile(rInd, nBins)), batchMinus);
+			hk_summa = af::batchFunc(af::sum(hk_summa), hk_summa(Iind2), batchMinus);
 		}
 		else {
 			if (randoms_correction == 1u) {

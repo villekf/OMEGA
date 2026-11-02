@@ -72,6 +72,9 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	if (mxGetFieldNumber(options, "usingLinearizedData") >= 0)
 		inputScalars.usingLinearizedData = getScalarBool(options, 0, "usingLinearizedData");
 	inputScalars.loadTOF = getScalarBool(options, 0, "loadTOF");
+	// TOF-resolved randoms/scatter (optional field, set by loadCorrections), the default is a non-TOF additive term
+	if (mxGetFieldNumber(options, "randomsTOF") >= 0)
+		inputScalars.randomsTOF = getScalarBool(options, 0, "randomsTOF");
 	inputScalars.storeResidual = getScalarBool(options, 0, "storeResidual");
 	inputScalars.FISTAAcceleration = getScalarBool(options, 0, "FISTA_acceleration");
 	inputScalars.stochastic = getScalarBool(options, 0, "stochasticSubsetSelection");

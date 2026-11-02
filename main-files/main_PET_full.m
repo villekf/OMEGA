@@ -531,6 +531,14 @@ options.randoms_smoothing = false;
 % NOTE: Scatter data is not created by this software and as such must be
 % provided by the user. Previously created scatter sinogram/raw data matrix
 % obtained from GATE data can be used though.
+% With TOF data the scatter data is either a TOF sinogram (Ndist x Nang x
+% NSinos x TOF_bins), which is used as it is in each TOF bin, or a non-TOF
+% sinogram, which is divided evenly among the TOF bins (a message is
+% printed). A TOF sinogram can be used with precorrection and with
+% corrections during reconstruction, in the latter case only with
+% implementation 2, static data, no increased sampling, and no scatter
+% smoothing or variance reduction. The additive term of the reconstruction
+% is then TOF-sized and needs as much memory as the TOF data itself.
 options.scatter_correction = false;
 
 %%% Variance reduction

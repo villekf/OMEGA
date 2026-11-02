@@ -114,6 +114,11 @@ class projectorClass:
     TOFCenter = np.empty(0, dtype = np.float32)
     precondTypeImage = np.full((7, 1), False)
     precondTypeMeas = np.full((2, 1), False)
+    # PET scatter estimate. Sinogram data: a sinogram (non-TOF sinograms are divided evenly among the TOF bins). List-mode and
+    # index-based data (scatter_correction and subtract_scatter): the additive term of each event, one value per event in the order of
+    # the events (options.trIndex/axIndex, or the custom coordinates), before the subsets. Unit: measured counts expected for the
+    # LOR of the event, in the TOF bin of the event (with TOF data), over the frame; model: ybar = n * (A x) + s, with no division
+    # by the normalization, attenuation, TOF bins or the number of LORs in a bin. Randoms can be added into the same vector
     ScatterC = np.empty(0, dtype = np.float32)
     # Main/lower/upper energy windows ([lowerLimit, upperLimit]) for SPECT
     # DEW/TEW scatter correction (see loadCorrections' SPECT scatter branch).
@@ -127,6 +132,27 @@ class projectorClass:
     SinDelayed = np.empty(0, dtype = np.float32)
     corrVector = np.empty(0, dtype = np.float32)
     normalization = np.empty(0, dtype = np.float32)
+    # Normalization of the sensitivity image of list-mode data. Index-based data with a sinogram normalization: loadCorrections
+    # stores the sinogram here and the lookup tables from the detector/ring pairs to its bins/planes in sensXY and sensZ (see
+    # sinogramPairLookup in detcoord.py). Pair table (user input, sensXY empty): one value (a multiplier, like
+    # options.normalization) for each ordered pair of the sensitivity image grid, det_per_ring^2 * rings^2 * nLayers^2 elements,
+    # where det_per_ring = xSens.size / 2 / nLayers and rings = zSens.size / nLayers if options.xSens and options.zSens are given
+    # and the scanner values otherwise. Index = a + b * det_per_ring + (ringA * rings + ringB) * det_per_ring^2 (an array of
+    # shape [det_per_ring, det_per_ring, rings, rings] indexed (a, b, ringB, ringA), column-major order; with layers the layer pair (layerA * nLayers +
+    # layerB) is the slowest dimension). Only the pairs of one orientation are read (a < b, or a == b and ringA < ringB), the
+    # others are ignored. Pairs that must not count (e.g. both detectors on the same panel) are set to zero. A pair table is
+    # needed to normalize the sensitivity image with xSens/zSens or custom detector coordinates, options.normalization has to
+    # contain one value for each event then. Not supported with dynamic data or the CPU implementation
+    normSens = np.empty(0, dtype = np.float32)
+    sensXY = np.empty(0, dtype = np.uint32)
+    sensZ = np.empty(0, dtype = np.uint32)
+    sizeNormSens = 0
+    sensBins = 0
+    # Set by loadCorrections when the scatter has been normalized (normalize_scatter), so that another call with the same
+    # options does not normalize it again
+    scatterNormalized = False
+    # Sinogram dimensions (Ndist, Nang, NSinos, TotSinos) of index-based data, saved by addProjector before they are collapsed
+    _sinoDims = None
     scatter_components = np.array([True, True, False, False])
     normalization_options = np.array([True, True, True, False])
     pseudot = np.empty(0, dtype = np.uint32)
@@ -229,6 +255,15 @@ class projectorClass:
     normalization_attenuation = 0.
     normalization_scatter_correction = False
     use_user_normalization = False
+    # Path of the user normalization data file (.nrm, .n, .ptd, .mat, .npy or .npz) used when the normalization is not
+    # given in options.normalization. If empty, the default normalization .mat file is searched and otherwise the user is
+    # prompted for the file.
+    normalization_datafile = ''
+    # Exponent n of the transaxial LOR length factor D^(-n) of the Siemens Biograph Vision normalization
+    # (omegatomo.fileio.loadNormalizationBiograph), where D is the transaxial distance between the two detectors of the
+    # LOR. The factor is empirical; it was validated against the Siemens reconstruction of measured Vision data. 0 = no
+    # length factor. Requires the detector geometry (diameter, DOI, cr_p, blocks_per_ring, cryst_per_block, ...) to be set.
+    visionLORLengthExponent = 2.
     arc_correction = False
     corrections_during_reconstruction = True
     ordinaryPoisson = None
@@ -549,6 +584,9 @@ class projectorClass:
     timestep = 0
     largeDim = False
     loadTOF = True
+    # True if the randoms/scatter term (SinDelayed) is TOF-resolved, i.e. it has the size and order of the TOF measurements.
+    # Set automatically when TOF-resolved scatter data is input with corrections during reconstruction (see loadCorrections)
+    randomsTOF = False
     useAF = False
     useTorch = False
     useCuPy = False
@@ -617,6 +655,12 @@ class projectorClass:
     # functions.hpp); set this to False to explicitly disable fastPDHG, mirroring MATLAB/Octave's
     # options.fastPDHG = false.
     fastPDHG = True
+    # Detector coordinates of the sensitivity image of list-mode data, for systems that the scanner settings (cylindrical rings)
+    # cannot describe. xSens: x and y of all detectors of one transaxial ring (layers one after another, two values per detector,
+    # det_per_ring = xSens.size / 2 / nLayers), zSens: axial coordinates (z) of the rings (rings = zSens.size / nLayers).
+    # The sensitivity image is computed for all pairs of the product grid (every transaxial detector x every ring) with
+    # every other. Pairs that are not measured are removed with options.normSens (the pair table), which is also needed for
+    # the normalization correction of the sensitivity image with xSens and zSens
     xSens = np.empty(0, dtype = np.float32)
     zSens = np.empty(0, dtype = np.float32)
 
@@ -656,6 +700,15 @@ class projectorClass:
              (isinstance(self.x, list) and
               (self.x[0].size / 2 == self.SinM[0].size or
                self.x[0].size / 6 == self.SinM[0].size)))
+
+    def _earlyFrameCount(self):
+        """The number of timeframes, derived in the same way as self.Nt in addProjector(), for the checks that are done before
+        self.Nt is set."""
+        if isinstance(self.SinM, list) and self.SinM:
+            return len(self.SinM)
+        if isinstance(self.partitions, np.ndarray):
+            return max(int(self.partitions.size), 1)
+        return int(self.partitions)
 
     def _checkTOFCenter(self):
         """Raise an error if the TOF bin centers (TOFCenter, built here or supplied by the user) do not have the layout the
@@ -753,6 +806,126 @@ class projectorClass:
                 if tofCounts[kk] != counts[kk]:
                     suffix = f' in timeframe {kk + 1}' if len(counts) > 1 else ''
                     raise ValueError(f'The number of TOF indices (options.TOFIndices, {tofCounts[kk]}) does not correspond to the number of events ({counts[kk]}){suffix}!')
+
+    def _checkListModeScatter(self):
+        """Validate the scatter (options.ScatterC) of list-mode and index-based PET data with scatter_correction and subtract_scatter,
+        which is used as the additive term of each event: one finite, non-negative value per event, in the order of the events
+        (options.trIndex/axIndex, or the custom coordinates) before the subsets, in measured counts expected for the LOR of the event
+        (in the TOF bin of the event with TOF data). Called once, from OMEGAErrorCheck, after the index-based inputs have been checked."""
+        if (not self.listmode or self.CT or self.SPECT or not self.scatter_correction or not self.subtract_scatter
+                or self.reconstruct_trues or self.reconstruct_scatter):
+            return
+        if (self.Nt > 1 or self._earlyFrameCount() > 1 or (isinstance(self.trIndex, (list, tuple)) and len(self.trIndex) > 1)
+                or (isinstance(self.SinM, (list, tuple)) and len(self.SinM) > 1)):
+            raise ValueError('Scatter correction (options.ScatterC) is not supported with dynamic list-mode and index-based data! '
+                             'Use a single time frame or disable the scatter correction.')
+        if not self.corrections_during_reconstruction or not (self.corrections_during_reconstruction if self.ordinaryPoisson is None else self.ordinaryPoisson):
+            raise ValueError('Scatter correction of list-mode and index-based data is the additive term of each event and needs corrections '
+                             'during the reconstruction (options.corrections_during_reconstruction = True and ordinary Poisson algorithm, '
+                             'i.e. not PDHG, FISTA, LSQR, CGLS, ...); subtracting the scatter from the events (precorrection) is not possible!')
+        if self.largeDim:
+            raise ValueError('Scatter correction of list-mode and index-based data is not supported with largeDim!')
+        if self.scatter_smoothing:
+            raise ValueError('Scatter smoothing is a sinogram operation and cannot be used with list-mode and index-based data! '
+                             'Smooth the scatter before inputting it as a value for each event.')
+        if self.useIndexBasedReconstruction:
+            frames = list(self.trIndex) if isinstance(self.trIndex, (list, tuple)) else [self.trIndex]
+            nEvents = sum(np.size(t) // 2 for t in frames)
+        else:
+            frames = list(self.SinM) if isinstance(self.SinM, (list, tuple)) else [self.SinM]
+            nEvents = sum(np.size(t) for t in frames)
+        tofBins = self.TOF_bins > 1
+        units = ('one value per event, in the order of the events (options.trIndex and options.axIndex, or the custom coordinates), '
+                 'as the measured counts expected for the LOR of the event%s over the frame, i.e. the additive term s of the model '
+                 'n * (A x) + s, with no division by the normalization, the attenuation%s' %
+                 (' in the TOF bin of the event' if tofBins else '', ', the number of TOF bins or the number of LORs in a bin' if tofBins else ' or the number of LORs in a bin'))
+        if isinstance(self.ScatterC, (list, tuple)):
+            raise ValueError('For list-mode and index-based data options.ScatterC must be a single array of %d elements: %s!' % (nEvents, units))
+        scatter = np.asarray(self.ScatterC)
+        if scatter.size != nEvents:
+            raise ValueError('The scatter (options.ScatterC) has %d elements, but the number of events is %d! It must contain %s!' %
+                             (scatter.size, nEvents, units))
+        if scatter.dtype.kind not in 'fiu':
+            raise ValueError('The scatter (options.ScatterC) must be a numeric array, but its data type is %s!' % scatter.dtype)
+        lo = scatter.min()
+        hi = scatter.max()
+        if not (np.isfinite(lo) and np.isfinite(hi)):
+            raise ValueError('The scatter (options.ScatterC) contains NaN or infinite values! It must contain %s!' % units)
+        if lo < 0:
+            raise ValueError('The scatter (options.ScatterC) contains negative values (minimum %g)! It must contain %s!' % (lo, units))
+
+    def _pairTableUser(self):
+        """True when a pair table was input (options.normSens without the lookup tables options.sensXY, which loadCorrections stores
+        together with the normalization sinogram of index-based data), i.e. the sensitivity image uses the full pair table mode."""
+        return np.size(self.normSens) > 0 and np.size(self.sensXY) == 0
+
+    def _listModeEventCount(self):
+        """The number of events of list-mode (custom coordinates) or index-based data, all time frames."""
+        if self.useIndexBasedReconstruction:
+            frames = list(self.trIndex) if isinstance(self.trIndex, (list, tuple)) else [self.trIndex]
+            return sum(np.size(t) // 2 for t in frames)
+        frames = list(self.SinM) if isinstance(self.SinM, (list, tuple)) else [self.SinM]
+        nEvents = sum(np.size(t) for t in frames)
+        if nEvents == 0:
+            xFrames = list(self.x) if isinstance(self.x, (list, tuple)) else [self.x]
+            nEvents = sum(np.size(t) // 6 for t in xFrames)
+        return nEvents
+
+    def _checkNormSensTable(self):
+        """Check the normalization of the sensitivity image of list-mode data (called when normalization_correction and
+        compute_sensitivity_image are used). The normalization of all detector pairs is either the normalization sinogram of
+        index-based data, which is looked up for each pair (loadCorrections), or a pair table, options.normSens: one value (a
+        multiplier, like options.normalization) for each ordered pair of the sensitivity image grid, det_per_ring^2 * rings^2 *
+        nLayers^2 elements. The counts are taken from options.xSens and options.zSens, if they are given (they replace the scanner
+        coordinates, det_per_ring = xSens.size / 2 / nLayers and rings = zSens.size / nLayers), and otherwise from the scanner
+        (options.det_per_ring and options.rings). A pair table is needed with custom detector coordinates and with xSens and zSens,
+        since the detector pairs of a sinogram are not known then. With a pair table options.normalization has to be one value
+        for each event (the table is not used to derive it)."""
+        nLayers = int(self.nLayers)
+        userCoord = np.size(self.xSens) > 0 and np.size(self.zSens) > 0
+        if userCoord:
+            nX = np.size(self.xSens)
+            nZ = np.size(self.zSens)
+            if nX % (2 * nLayers) != 0 or nZ % nLayers != 0:
+                raise ValueError('options.xSens (%d elements) has to contain two values (x and y) for each detector of all %d layer(s) and '
+                                 'options.zSens (%d elements) one value for each ring of all layers!' % (nX, nLayers, nZ))
+            detPerRing = nX // 2 // nLayers
+            rings = nZ // nLayers
+            origin = 'from options.xSens and options.zSens'
+        else:
+            detPerRing = int(self.det_per_ring)
+            rings = int(self.rings)
+            origin = 'of the scanner (set options.xSens and options.zSens for a system that is not described by the scanner settings)'
+        expected = detPerRing * detPerRing * rings * rings * nLayers * nLayers
+        formula = ('det_per_ring^2 * rings^2 * nLayers^2 = %d^2 * %d^2 * %d^2 = %d elements (%s)' %
+                   (detPerRing, rings, nLayers, expected, origin))
+        layout = ('with the index a + b * det_per_ring + (ringA * rings + ringB) * det_per_ring^2 for the detectors a, b and the rings ringA, '
+                  'ringB (column-major order, i.e. an array [det_per_ring, det_per_ring, rings, rings] indexed (a, b, ringB, ringA); with several layers the layer '
+                  'combinations (layerA * nLayers + layerB) follow as the slowest dimension)')
+        if not self._pairTableUser():
+            if userCoord or not self.useIndexBasedReconstruction:
+                raise ValueError('Normalization correction in the sensitivity image of list-mode data with custom detector coordinates or user-input '
+                                 'sensitivity image coordinates (options.xSens and options.zSens) needs options.normSens, the normalization of '
+                                 'all ordered detector/ring pairs: %s %s. Only the pairs of one orientation are read (detector a < b, or '
+                                 'a == b and ringA < ringB). Alternatively disable the normalization correction.' % (formula, layout))
+            return
+        table = np.asarray(self.normSens)
+        if table.dtype.kind not in 'fiu':
+            raise ValueError('options.normSens must be a numeric array, but its data type is %s!' % table.dtype)
+        if table.size != expected:
+            raise ValueError('options.normSens has %d elements, but the pair normalization table must have %s %s!' % (table.size, formula, layout))
+        lo = table.min()
+        hi = table.max()
+        if not (np.isfinite(lo) and np.isfinite(hi)):
+            raise ValueError('options.normSens (the pair normalization table) contains NaN or infinite values!')
+        if lo < 0:
+            raise ValueError('options.normSens (the pair normalization table) contains negative values (minimum %g)!' % lo)
+        if np.size(self.normalization) > 0:
+            nEvents = self._listModeEventCount()
+            if np.size(self.normalization) != nEvents:
+                raise ValueError('With a pair normalization table (options.normSens) options.normalization has to contain one value for each '
+                                 'event (%d elements), but it has %d elements! The table is used only in the sensitivity image, a sinogram '
+                                 'normalization is not converted to the events.' % (nEvents, np.size(self.normalization)))
 
     def addProjector(self):
         self.projectorAdded = True
@@ -1091,6 +1264,8 @@ class projectorClass:
                 det_per_ring = self.trIndex[0].size // 2
             else:
                 det_per_ring = self.trIndex.size // 2
+            # The sinogram dimensions are needed for the sinogram normalization
+            self._sinoDims = (int(self.Ndist), int(self.Nang), int(self.NSinos), int(self.TotSinos))
             self.Nang = 1
             self.Ndist = 1
             self.NSinos = det_per_ring
@@ -1778,8 +1953,10 @@ class projectorClass:
             self.ordinaryPoisson = False
             # self.scatter_correction = False
             # self.randoms_correction = False     
-        if self.useIndexBasedReconstruction and (self.randoms_correction or self.scatter_correction) and self.TOF_bins > 1:
-            raise ValueError('Randoms and/or scatter correction cannot be used with index-based reconstruction with TOF data!')
+        if self.useIndexBasedReconstruction and (self.randoms_correction or (self.scatter_correction and not self.subtract_scatter)) and self.TOF_bins > 1:
+            # Subtracted scatter is the per-event additive term, which is allowed with TOF (the value of the TOF bin of the event)
+            raise ValueError('Randoms and/or multiplicative scatter correction cannot be used with index-based reconstruction with TOF data!')
+        self._checkListModeScatter()
         if self.subsetType == 3 and self.maskFP.size > 1:
             raise ValueError('Forward projection mask is not supported with subset type 3!')
         
@@ -1791,6 +1968,20 @@ class projectorClass:
             raise ValueError('Reference image weighting for NLM is not supported with CPU!')
         if self.useIndexBasedReconstruction and self.useCPU:
             raise ValueError('Index-based reconstruction is not supported on CPU!')
+        # The sensitivity image of list-mode data has to include the same corrections as the measured events. The normalization
+        # is applied to all detector pairs either with the normalization sinogram that is looked up for each pair (index-based
+        # data without options.xSens and options.zSens, see loadCorrections) or with a pair table (options.normSens, any list-mode
+        # data). Dynamic data has the normalization disabled (loadCorrections).
+        if self.listmode and not self.CT and not self.SPECT and self.compute_sensitivity_image:
+            if self.normalization_correction and self._earlyFrameCount() <= 1:
+                if self.useCPU:
+                    raise ValueError('Normalization correction in the sensitivity image of list-mode data is not supported with the CPU implementation! '
+                                     'Disable the normalization correction or use GPU.')
+                self._checkNormSensTable()
+            if self.additionalCorrection or (self.scatter_correction and not self.subtract_scatter):
+                raise ValueError('Multiplicative scatter correction (options.scatter_correction with options.subtract_scatter = False) or a '
+                                  'correction vector (options.additionalCorrection) is not supported in the sensitivity image of list-mode data! '
+                                  'Disable the correction or the sensitivity image.')
         if self.useCPU and self.useMultiResolutionVolumes:
             raise ValueError('Multi-resolution reconstruction is not supported with the CPU implementation')
         if self.useCPU:
@@ -2654,6 +2845,7 @@ class projectorClass:
             ('largeDim', ctypes.c_bool),
             ('usingLinearizedData', ctypes.c_bool),
             ('loadTOF', ctypes.c_bool),
+            ('randomsTOF', ctypes.c_bool),
             ('storeResidual', ctypes.c_bool),
             ('FISTA_acceleration', ctypes.c_bool),
             ('meanFP', ctypes.c_bool),
@@ -2755,6 +2947,7 @@ class projectorClass:
             ('mDim', ctypes.c_uint64),
             ('nIterSaved', ctypes.c_uint64),
             ('sizeScat', ctypes.c_uint64),
+            ('sizeRandoms', ctypes.c_uint64),
             ('eFOV', ctypes.c_uint64),
             ('sizeX', ctypes.c_uint64),
             ('sizeZ', ctypes.c_uint64),
@@ -2861,4 +3054,9 @@ class projectorClass:
             ('tr_offsets', ctypes.POINTER(ctypes.c_uint32)),
             ('a_L', ctypes.POINTER(ctypes.c_float)),
             ('fmh_weights', ctypes.POINTER(ctypes.c_float)),
+            ('normSens', ctypes.POINTER(ctypes.c_float)),
+            ('sensXY', ctypes.POINTER(ctypes.c_uint32)),
+            ('sensZ', ctypes.POINTER(ctypes.c_uint32)),
+            ('sizeNormSens', ctypes.c_uint64),
+            ('sensBins', ctypes.c_uint32),
         ]

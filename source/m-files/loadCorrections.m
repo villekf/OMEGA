@@ -46,10 +46,20 @@ end
 if ~isfield(options,'Nt')
     options.Nt = 1;
 end
+% The scatter data is checked with TOF data below (checkTOFScatter), which sets options.randomsTOF if the scatter data is TOF-resolved
+options.randomsTOF = false;
 
 if options.listmode && options.normalization_correction && options.Nt > 1
     warning('Normalization correction is not (yet) supported for dynamic list-mode data! Disabling it.')
     options.normalization_correction = false;
+end
+
+% The sinogram dimensions of the normalization data. Index-based data has the dimensions collapsed (see projectorClass), so
+% the values saved before the collapse are used for it
+if options.useIndexBasedReconstruction && isfield(options, 'indexSinogramDims')
+    normDims = options.indexSinogramDims;
+else
+    normDims = [options.Ndist, options.Nang, options.NSinos, options.TotSinos];
 end
 
 if ~options.use_raw_data && options.randoms_correction
@@ -228,56 +238,141 @@ end
 
 
 if ~options.SPECT
-    if options.scatter_correction && options.normalize_scatter && options.normalization_correction
-        if ~isfield(options,'normalization')
-            if options.use_user_normalization
-                [file, fpath] = uigetfile({'*.nrm;*.mat'},'Select normalization datafile');
-                if isequal(file, 0)
-                    error('No file was selected')
-                end
-                if any(strfind(file, '.nrm'))
-                    fid = fopen(fullfile(fpath, file));
-                    options.normalization = fread(fid, inf, 'single=>single',0,'l');
-                    fclose(fid);
-                    options.InveonNorm = true;
-                else
-                    data = load(fullfile(fpath, file));
-                    variables = fieldnames(data);
-                    options.normalization = data.(variables{1});
-                    clear data
-					if iscell(options.SinM)
-                    	if numel(options.normalization) ~= numel(options.SinM{1})
-                        	error('Size mismatch between the current data and the normalization data file')
-                    	end
-					else
-                    	if numel(options.normalization) ~= numel(options.SinM)
-                        	error('Size mismatch between the current data and the normalization data file')
-                    	end
-					end
-                end
-                options.normalization = options.normalization(:);
-            else
-                if options.use_raw_data
-                    norm_file = [folder options.machine_name '_normalization_listmode.mat'];
-                else
-                    norm_file = [folder options.machine_name '_normalization_' num2str(options.Ndist) 'x' num2str(options.Nang) '_span' num2str(options.span) '.mat'];
-                end
+    % Load (or compute) normalization correction coefficients. This is done before the scatter is normalized (normalize_scatter),
+    % which needs the coefficients. A normalization that is already input (options.normalization) is used as it is.
+    % normalizationInverted is true if and only if the normalization was loaded from a file and inverted in this call
+    normalizationInverted = false;
+    if (options.normalization_correction && options.corrections_during_reconstruction) && ~options.use_user_normalization
+        if ~isfield(options,'normalization') || isempty(options.normalization)
+            if options.use_raw_data
+                norm_file = [folder options.machine_name '_normalization_listmode.mat'];
                 if exist(norm_file, 'file') == 2
                     options.normalization = loadStructFromFile(norm_file,'normalization');
                 else
                     error('Normalization correction selected, but no normalization data found')
                 end
-                options.normalization = options.normalization(:);
+            else
+                norm_file = [folder options.machine_name '_normalization_' num2str(normDims(1)) 'x' num2str(normDims(2)) '_span' num2str(options.span) '.mat'];
+                if exist(norm_file, 'file') == 2
+                    options.normalization = loadStructFromFile(norm_file,'normalization');
+                else
+                    error('Normalization correction selected, but no normalization data found')
+                end
             end
-            if ~options.use_raw_data && options.NSinos ~= options.TotSinos
-                options.normalization = options.normalization(1 : options.Ndist * options.Nang *options.NSinos);
+            % Coefficients are inverted to efficiencies; zero coefficients (bins without efficiency) stay zero
+            options.normalization(options.normalization < 0) = 1;
+            normCoef = options.normalization(:);
+            options.normalization = zeros(size(normCoef), 'like', normCoef);
+            normNz = normCoef ~= 0;
+            options.normalization(normNz) = 1 ./ normCoef(normNz);
+            clear normCoef normNz
+            if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
+                options.normalization = single(options.normalization);
             end
-            if options.sampling > 1 && options.corrections_during_reconstruction
-                options.normalization = reshape(options.normalization, options.Ndist, options.Nang, options.NSinos);
-                options.normalization = interpolateSinog(options.normalization, options.sampling, options.Ndist, options.partitions, options.sampling_interpolation_method);
-                options.normalization = options.normalization(:);
-            end
+            normalizationInverted = true;
         end
+        if options.useIndexBasedReconstruction
+            % One value for each event instead of a sinogram, see indexBasedNormalization
+            options = indexBasedNormalization(options, true);
+        end
+    elseif options.normalization_correction && options.use_user_normalization && options.corrections_during_reconstruction
+        if ~isfield(options,'normalization') || isempty(options.normalization)
+            [file, fpath] = selectNormalizationFile(options);
+            [~, ~, normExt] = fileparts(file);
+            if any(strfind(file, '.nrm'))
+                if options.use_raw_data
+                    error('Inveon normalization data cannot be used with raw list-mode data')
+                end
+                fid = fopen(fullfile(fpath, file));
+                options.normalization = fread(fid, inf, 'single=>single',0,'l');
+                fclose(fid);
+                % The size of index-based data is checked when the normalization is converted
+                if numel(options.normalization) ~= normDims(1) * normDims(2) * normDims(4) && ~options.use_raw_data && ~options.useIndexBasedReconstruction
+                    error('Size mismatch between the current data and the normalization datafile')
+                end
+                options.InveonNorm = true;
+            elseif any(strcmpi(normExt, {'.n', '.ptd'}))
+                % Biograph (mCT/Vision) normalization component file, the coefficients multiply the data
+                if options.use_raw_data
+                    error('Biograph normalization data cannot be used with raw list-mode data')
+                end
+                options.normalization = loadNormalizationBiograph(fullfile(fpath, file), normalizationOptions(options, normDims));
+                if numel(options.normalization) ~= normDims(1) * normDims(2) * normDims(4)
+                    error('Size mismatch between the current data and the normalization datafile')
+                end
+            else
+                data = load(fullfile(fpath, file));
+                variables = fieldnames(data);
+                if any(strcmp(variables,'normalization'))
+                    options.normalization = data.(variables{strcmp(variables,'normalization')});
+                else
+                    options.normalization = data.(variables{1});
+                end
+                clear data
+                % The size of index-based data is checked when the normalization is converted
+                if numel(options.normalization) ~= normDims(1) * normDims(2) * normDims(4) && ~options.use_raw_data && ~options.useIndexBasedReconstruction
+                    error('Size mismatch between the current data and the normalization datafile')
+                elseif numel(options.normalization) ~= sum(1:options.detectors) && options.use_raw_data
+                    error('Size mismatch between the current data and the normalization datafile')
+                end
+            end
+            if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
+                options.normalization = single(options.normalization);
+            else
+                options.normalization = double(options.normalization);
+            end
+            % Coefficients are inverted to efficiencies; zero coefficients (bins without efficiency) stay zero
+            normCoef = options.normalization(:);
+            options.normalization = zeros(size(normCoef), 'like', normCoef);
+            normNz = normCoef ~= 0;
+            options.normalization(normNz) = 1 ./ normCoef(normNz);
+            clear normCoef normNz
+            normalizationInverted = true;
+        end
+        if options.useIndexBasedReconstruction
+            % One value for each event instead of a sinogram, see indexBasedNormalization
+            options = indexBasedNormalization(options, true);
+        end
+    end
+
+    % Pair normalization table of the sensitivity image of list-mode data with custom coordinates (user input, see OMEGA_error_check and
+    % indexBasedNormalization for index-based data): single precision vector, in the order of the sensitivity image kernel. The
+    % normalization has to be given for the events
+    if options.listmode && ~options.CT && options.normalization_correction && options.compute_sensitivity_image && ~options.useIndexBasedReconstruction ...
+            && isfield(options, 'normSens') && ~isempty(options.normSens) && ~(isfield(options, 'sensXY') && ~isempty(options.sensXY))
+        if iscell(options.SinM)
+            nEventsPair = numel(options.SinM{1});
+        else
+            nEventsPair = numel(options.SinM);
+        end
+        if nEventsPair == 0
+            nEventsPair = numel(options.x) / 6;
+        end
+        if numel(options.normalization) ~= nEventsPair
+            error(['With a pair normalization table (options.normSens) options.normalization has to contain one value for each event (' ...
+                num2str(nEventsPair) ' elements), but it has ' num2str(numel(options.normalization)) ' elements! The table is used only in ' ...
+                'the sensitivity image, a sinogram normalization is not converted to the events.'])
+        end
+        options.normSens = single(options.normSens(:));
+    end
+
+    % List-mode and index-based PET data: options.ScatterC is the additive term of each event (validated in projectorClass, see
+    % checkListModeScatter), used as it is: no division by the TOF bins (see scatterTOFApplies) and no sinogram operations. The
+    % randoms are not used with list-mode data (the randoms are added into options.ScatterC by the user or input as minus one measurements)
+    if options.listmode && ~options.CT && ~options.SPECT && options.scatter_correction && options.subtract_scatter ...
+            && ~options.reconstruct_trues && ~options.reconstruct_scatter
+        % A SinDelayed that is left from an earlier call with the returned options (randoms_correction is then set) is formed again below
+        if isfield(options,'SinDelayed') && numel(options.SinDelayed) > 1
+            if ~options.randoms_correction
+                warning('Randoms (options.SinDelayed) are not used with list-mode and index-based data! Add the randoms into options.ScatterC. Ignoring options.SinDelayed.')
+            end
+            options.SinDelayed = [];
+        end
+        options.randoms_correction = false;
+        if iscell(options.ScatterC) || numel(options.ScatterC) <= 1
+            error('Scatter correction of list-mode and index-based data needs options.ScatterC as a single array with one value for each event!')
+        end
+        options.ScatterC = options.ScatterC(:);
     end
 
     % Apply randoms and scatter (if available) correction
@@ -300,6 +395,29 @@ if ~options.SPECT
             ScatterProp.smoothing = false;
             ScatterProp.variance_reduction = false;
             ScatterProp.normalization = false;
+        end
+        % The scatter has been normalized by an earlier call with the same options (the normalization is then a prefilled one)
+        scatterAlreadyNormalized = isfield(options,'scatterNormalized') && options.scatterNormalized;
+        if options.scatter_correction && options.normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
+            if ~options.corrections_during_reconstruction
+                % The normalization is loaded in the precorrection after the scatter has been normalized
+                if ~isfield(options,'normalization') || isempty(options.normalization)
+                    error('normalize_scatter with a normalization that is loaded from a file needs corrections during reconstruction (options.corrections_during_reconstruction = true)!')
+                elseif options.useIndexBasedReconstruction
+                    error('Index-based reconstruction with normalize_scatter needs corrections during reconstruction (options.corrections_during_reconstruction = true)!')
+                end
+            elseif options.useIndexBasedReconstruction && isfield(options,'ScatterC')
+                % The normalization is one value for each event (indexBasedNormalization above)
+                if iscell(options.ScatterC)
+                    nScatter = numel(options.ScatterC{1});
+                else
+                    nScatter = numel(options.ScatterC);
+                end
+                if nScatter > 1 && nScatter ~= numel(options.normalization)
+                    error(['Index-based reconstruction with normalize_scatter needs the scatter (options.ScatterC) as one value for each event (' ...
+                        num2str(numel(options.normalization)) ' elements), but ' num2str(nScatter) ' elements were input!'])
+                end
+            end
         end
         if r_exist && randoms_correction
             if (~options.variance_reduction && RandProp.variance_reduction) || (~options.randoms_smoothing && RandProp.smoothing)
@@ -326,6 +444,8 @@ if ~options.SPECT
             options = loadScatterData(options);
             s_exist = true;
         end
+        % Check the size of the scatter data with TOF data (also prints the message that the scatter data is divided among the TOF bins)
+        options = checkTOFScatter(options);
         if r_exist || s_exist
             if r_exist && iscell(options.SinDelayed)
                 for kk = 1 : options.partitions
@@ -342,16 +462,13 @@ if ~options.SPECT
                         end
                     end
                     if options.scatter_correction
-                        if sum(size(options.ScatterC)) > 1 && ~iscell(options.ScatterC)
-                            if size(options.ScatterC,1) ~= options.Ndist && ~options.use_raw_data
-                                options.ScatterC = permute(options.ScatterC,[2 1 3]);
+                        % A numeric ScatterC is a single scatter sinogram shared by all the frames, it is processed only once
+                        if sum(size(options.ScatterC)) > 1 && ~iscell(options.ScatterC) && kk == 1
+                            if size(options.ScatterC,1) ~= options.Ndist && ~options.use_raw_data && ~options.listmode
+                                options.ScatterC = permute(options.ScatterC,[2 1 3 4]);
                             end
-                            if options.normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
-                                if isfield(options,'InveonScatter') && isfield(options,'InveonNorm')
-                                    options.ScatterC = single(options.ScatterC) .* reshape(options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
-                                else
-                                    options.ScatterC = single(options.ScatterC) .* reshape(1 ./ options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
-                                end
+                            if options.normalization_correction && options.normalize_scatter && ~ScatterProp.normalization && ~scatterAlreadyNormalized
+                                options.ScatterC = normalizeScatter(options.ScatterC, options, normalizationInverted);
                             end
                             if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
                                 options.ScatterC = Randoms_variance_reduction(single(options.ScatterC), options);
@@ -359,18 +476,17 @@ if ~options.SPECT
                             if options.scatter_smoothing && ~ScatterProp.smoothing
                                 options.ScatterC = randoms_smoothing(single(options.ScatterC), options);
                             end
+                            if options.use_raw_data == false && options.NSinos ~= options.TotSinos
+                                options.ScatterC = cropScatterSinograms(options.ScatterC, options);
+                            end
                         elseif iscell(options.ScatterC)
                             if sum(size(options.ScatterC{1})) > 1
-                                if size(options.ScatterC{kk},1) ~= options.Ndist && ~options.use_raw_data
-                                    options.ScatterC{kk} = permute(options.ScatterC{kk},[2 1 3]);
+                                if size(options.ScatterC{kk},1) ~= options.Ndist && ~options.use_raw_data && ~options.listmode
+                                    options.ScatterC{kk} = permute(options.ScatterC{kk},[2 1 3 4]);
                                 end
                             end
-                            if options.normalization_correction && options.normalize_scatter
-                                if isfield(options,'InveonScatter') && isfield(options,'InveonNorm')
-                                    options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
-                                else
-                                    options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(1 ./ options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
-                                end
+                            if options.normalization_correction && options.normalize_scatter && ~ScatterProp.normalization && ~scatterAlreadyNormalized
+                                options.ScatterC{kk} = normalizeScatter(options.ScatterC{kk}, options, normalizationInverted);
                             end
                             if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
                                 options.ScatterC{kk} = Randoms_variance_reduction(single(options.ScatterC{kk}), options);
@@ -378,23 +494,32 @@ if ~options.SPECT
                             if options.scatter_smoothing && ~ScatterProp.smoothing
                                 options.ScatterC{kk} = randoms_smoothing(single(options.ScatterC{kk}), options);
                             end
+                            if options.use_raw_data == false && options.NSinos ~= options.TotSinos
+                                options.ScatterC{kk} = cropScatterSinograms(options.ScatterC{kk}, options);
+                            end
                         end
                         if options.subtract_scatter
+                            if iscell(options.ScatterC)
+                                scatterFrame = options.ScatterC{kk};
+                            else
+                                scatterFrame = options.ScatterC;
+                            end
                             if r_exist
                                 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.implementation == 4
-                                    options.SinDelayed{kk} = single(options.SinDelayed{kk}) / options.TOF_bins + single(options.ScatterC{kk}(:));
+                                    options.SinDelayed{kk} = addScatterPerTOFBin(single(options.SinDelayed{kk}) / options.TOF_bins, single(scatterPerTOFBin(scatterFrame(:), options)));
                                 else
-                                    options.SinDelayed{kk} = double(options.SinDelayed{kk}) / options.TOF_bins + double(options.ScatterC{kk}(:));
+                                    options.SinDelayed{kk} = addScatterPerTOFBin(double(options.SinDelayed{kk}) / options.TOF_bins, double(scatterPerTOFBin(scatterFrame(:), options)));
                                 end
                             else
                                 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.implementation == 4
-                                    options.SinDelayed{kk} = single(options.ScatterC{kk}(:));
+                                    options.SinDelayed{kk} = single(scatterPerTOFBin(scatterFrame(:), options));
                                 else
-                                    options.SinDelayed{kk} = double(options.ScatterC{kk}(:));
+                                    options.SinDelayed{kk} = double(scatterPerTOFBin(scatterFrame(:), options));
                                 end
                             end
                         end
-                    elseif ~options.scatter_correction && options.TOF_bins > 1 && r_exist
+                    end
+                    if (~options.scatter_correction || ~options.subtract_scatter) && options.TOF_bins > 1 && r_exist
                         if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.implementation == 4
                             options.SinDelayed{kk} = single(options.SinDelayed{kk}) / options.TOF_bins;
                         else
@@ -422,15 +547,11 @@ if ~options.SPECT
                         ScatterProp.normalization = false;
                     end
                     if sum(size(options.ScatterC)) > 1 && ~iscell(options.ScatterC)
-                        if size(options.ScatterC,1) ~= options.Ndist && ~options.use_raw_data
-                            options.ScatterC = permute(options.ScatterC,[2 1 3]);
+                        if size(options.ScatterC,1) ~= options.Ndist && ~options.use_raw_data && ~options.listmode
+                            options.ScatterC = permute(options.ScatterC,[2 1 3 4]);
                         end
-                        if options.normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
-                            if isfield(options,'InveonScatter') && isfield(options,'InveonNorm')
-                                options.ScatterC = single(options.ScatterC) .* reshape(options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
-                            else
-                                options.ScatterC = single(options.ScatterC) .* reshape(1 ./ options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
-                            end
+                        if options.normalization_correction && options.normalize_scatter && ~ScatterProp.normalization && ~scatterAlreadyNormalized
+                            options.ScatterC = normalizeScatter(options.ScatterC, options, normalizationInverted);
                         end
                         if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
                             options.ScatterC = Randoms_variance_reduction(single(options.ScatterC), options);
@@ -439,36 +560,39 @@ if ~options.SPECT
                             options.ScatterC = randoms_smoothing(single(options.ScatterC), options);
                         end
                         if options.use_raw_data == false && options.NSinos ~= options.TotSinos
-                            options.ScatterC = options.ScatterC(1:options.NSinos*options.Ndist*options.Nang);
+                            options.ScatterC = cropScatterSinograms(options.ScatterC, options);
                         end
                         if options.subtract_scatter
                             if r_exist
                                 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                                    options.SinDelayed = single(options.SinDelayed) / options.TOF_bins + single(options.ScatterC(:));
+                                    options.SinDelayed = addScatterPerTOFBin(single(options.SinDelayed) / options.TOF_bins, single(scatterPerTOFBin(options.ScatterC(:), options)));
                                 else
-                                    options.SinDelayed = double(options.SinDelayed) / options.TOF_bins + double(options.ScatterC(:));
+                                    options.SinDelayed = addScatterPerTOFBin(double(options.SinDelayed) / options.TOF_bins, double(scatterPerTOFBin(options.ScatterC(:), options)));
                                 end
                             else
                                 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                                    options.SinDelayed = single(options.ScatterC(:));
+                                    options.SinDelayed = single(scatterPerTOFBin(options.ScatterC(:), options));
                                 else
-                                    options.SinDelayed = double(options.ScatterC(:));
+                                    options.SinDelayed = double(scatterPerTOFBin(options.ScatterC(:), options));
                                 end
                             end
                         end
                     elseif iscell(options.ScatterC)
+                        if options.subtract_scatter
+                            if r_exist
+                                % The numeric randoms are a single sinogram shared by all the frames of the scatter data
+                                randomsData = options.SinDelayed;
+                            end
+                            options.SinDelayed = cell(numel(options.ScatterC),1);
+                        end
                         for kk = 1 : options.partitions
                             if sum(size(options.ScatterC{kk})) > 1
-                                if size(options.ScatterC{kk},1) ~= options.Ndist && ~options.use_raw_data
-                                    options.ScatterC{kk} = permute(options.ScatterC{kk},[2 1 3]);
+                                if size(options.ScatterC{kk},1) ~= options.Ndist && ~options.use_raw_data && ~options.listmode
+                                    options.ScatterC{kk} = permute(options.ScatterC{kk},[2 1 3 4]);
                                 end
                             end
-                            if options.normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
-                                if isfield(options,'InveonScatter') && isfield(options,'InveonNorm')
-                                    options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
-                                else
-                                    options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(1 ./ options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
-                                end
+                            if options.normalization_correction && options.normalize_scatter && ~ScatterProp.normalization && ~scatterAlreadyNormalized
+                                options.ScatterC{kk} = normalizeScatter(options.ScatterC{kk}, options, normalizationInverted);
                             end
                             if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
                                 options.ScatterC{kk} = Randoms_variance_reduction(single(options.ScatterC{kk}), options);
@@ -477,27 +601,30 @@ if ~options.SPECT
                                 options.ScatterC{kk} = randoms_smoothing(single(options.ScatterC{kk}), options);
                             end
                             if options.use_raw_data == false && options.NSinos ~= options.TotSinos
-                                options.ScatterC{kk} = options.ScatterC{kk}(1:options.NSinos*options.Ndist*options.Nang);
+                                options.ScatterC{kk} = cropScatterSinograms(options.ScatterC{kk}, options);
                             end
                             if options.subtract_scatter
                                 if r_exist
                                     if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                                        options.SinDelayed = single(options.SinDelayed) / options.TOF_bins + single(options.ScatterC{kk}(:));
+                                        options.SinDelayed{kk} = addScatterPerTOFBin(single(randomsData) / options.TOF_bins, single(scatterPerTOFBin(options.ScatterC{kk}(:), options)));
                                     else
-                                        options.SinDelayed = double(options.SinDelayed) / options.TOF_bins + double(options.ScatterC{kk}(:));
+                                        options.SinDelayed{kk} = addScatterPerTOFBin(double(randomsData) / options.TOF_bins, double(scatterPerTOFBin(options.ScatterC{kk}(:), options)));
                                     end
                                 else
-                                    options.SinDelayed = cell(numel(options.ScatterC),1);
                                     if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                                        options.SinDelayed{kk} = single(options.ScatterC{kk}(:));
+                                        options.SinDelayed{kk} = single(scatterPerTOFBin(options.ScatterC{kk}(:), options));
                                     else
-                                        options.SinDelayed{kk} = double(options.ScatterC{kk}(:));
+                                        options.SinDelayed{kk} = double(scatterPerTOFBin(options.ScatterC{kk}(:), options));
                                     end
                                 end
                             end
                         end
+                        if options.subtract_scatter && r_exist && options.partitions == 1
+                            options.SinDelayed = options.SinDelayed{1};
+                        end
                     end
-                elseif ~options.scatter_correction && options.TOF_bins > 1 && r_exist
+                end
+                if (~options.scatter_correction || ~options.subtract_scatter) && options.TOF_bins > 1 && r_exist
                     if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
                         options.SinDelayed = single(options.SinDelayed) / options.TOF_bins;
                     else
@@ -520,15 +647,11 @@ if ~options.SPECT
                     end
                     if options.scatter_correction
                         if sum(size(options.ScatterC)) > 1 && ~iscell(options.ScatterC)
-                            if size(options.ScatterC,1) ~= options.Ndist && ~options.use_raw_data
-                                options.ScatterC = permute(options.ScatterC,[2 1 3]);
+                            if size(options.ScatterC,1) ~= options.Ndist && ~options.use_raw_data && ~options.listmode
+                                options.ScatterC = permute(options.ScatterC,[2 1 3 4]);
                             end
-                            if options.normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
-                                if isfield(options,'InveonScatter') && isfield(options,'InveonNorm')
-                                    options.ScatterC = single(options.ScatterC) .* reshape(options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
-                                else
-                                    options.ScatterC = single(options.ScatterC) .* reshape(1 ./ options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
-                                end
+                            if options.normalization_correction && options.normalize_scatter && ~ScatterProp.normalization && ~scatterAlreadyNormalized
+                                options.ScatterC = normalizeScatter(options.ScatterC, options, normalizationInverted);
                             end
                             if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
                                 options.ScatterC = Randoms_variance_reduction(single(options.ScatterC), options);
@@ -538,16 +661,12 @@ if ~options.SPECT
                             end
                         elseif iscell(options.ScatterC)
                             if sum(size(options.ScatterC{1})) > 1
-                                if size(options.ScatterC{kk},1) ~= options.Ndist && ~options.use_raw_data
-                                    options.ScatterC{kk} = permute(options.ScatterC{kk},[2 1 3]);
+                                if size(options.ScatterC{kk},1) ~= options.Ndist && ~options.use_raw_data && ~options.listmode
+                                    options.ScatterC{kk} = permute(options.ScatterC{kk},[2 1 3 4]);
                                 end
                             end
-                            if options.normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
-                                if isfield(options,'InveonScatter') && isfield(options,'InveonNorm')
-                                    options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
-                                else
-                                    options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(1 ./ options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
-                                end
+                            if options.normalization_correction && options.normalize_scatter && ~ScatterProp.normalization && ~scatterAlreadyNormalized
+                                options.ScatterC{kk} = normalizeScatter(options.ScatterC{kk}, options, normalizationInverted);
                             end
                             if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
                                 options.ScatterC{kk} = Randoms_variance_reduction(single(options.ScatterC{kk}), options);
@@ -558,9 +677,9 @@ if ~options.SPECT
                         end
                         if options.subtract_scatter
                             if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                                options.SinDelayed{kk} = single(options.SinDelayed{kk}) / options.TOF_bins + single(options.ScatterC{kk}(:));
+                                options.SinDelayed{kk} = addScatterPerTOFBin(single(options.SinDelayed{kk}) / options.TOF_bins, single(scatterPerTOFBin(options.ScatterC{kk}(:), options)));
                             else
-                                options.SinDelayed{kk} = double(options.SinDelayed{kk}) / options.TOF_bins + double(options.ScatterC{kk}(:));
+                                options.SinDelayed{kk} = addScatterPerTOFBin(double(options.SinDelayed{kk}) / options.TOF_bins, double(scatterPerTOFBin(options.ScatterC{kk}(:), options)));
                             end
                         end
                     elseif ~options.scatter_correction && options.TOF_bins > 1
@@ -584,15 +703,11 @@ if ~options.SPECT
                 end
                 if options.scatter_correction && isfield(options,'ScatterC')
                     if sum(size(options.ScatterC)) > 1 && ~iscell(options.ScatterC)
-                        if size(options.ScatterC,1) ~= options.Ndist && ~options.use_raw_data
-                            options.ScatterC = permute(options.ScatterC,[2 1 3]);
+                        if size(options.ScatterC,1) ~= options.Ndist && ~options.use_raw_data && ~options.listmode
+                            options.ScatterC = permute(options.ScatterC,[2 1 3 4]);
                         end
-                        if options.normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
-                            if isfield(options,'InveonScatter') && isfield(options,'InveonNorm')
-                                options.ScatterC = single(options.ScatterC) .* reshape(options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
-                            else
-                                options.ScatterC = single(options.ScatterC) .* reshape(1 ./ options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
-                            end
+                        if options.normalization_correction && options.normalize_scatter && ~ScatterProp.normalization && ~scatterAlreadyNormalized
+                            options.ScatterC = normalizeScatter(options.ScatterC, options, normalizationInverted);
                         end
                         if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
                             options.ScatterC = Randoms_variance_reduction(single(options.ScatterC), options);
@@ -601,28 +716,24 @@ if ~options.SPECT
                             options.ScatterC = randoms_smoothing(single(options.ScatterC), options);
                         end
                         if options.use_raw_data == false && options.NSinos ~= options.TotSinos
-                            options.ScatterC = options.ScatterC(1:options.NSinos*options.Ndist*options.Nang);
+                            options.ScatterC = cropScatterSinograms(options.ScatterC, options);
                         end
                         if options.subtract_scatter
                             if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                                options.SinDelayed = single(options.SinDelayed) / options.TOF_bins + single(options.ScatterC(:));
+                                options.SinDelayed = addScatterPerTOFBin(single(options.SinDelayed) / options.TOF_bins, single(scatterPerTOFBin(options.ScatterC(:), options)));
                             else
-                                options.SinDelayed = double(options.SinDelayed) / options.TOF_bins + double(options.ScatterC(:));
+                                options.SinDelayed = addScatterPerTOFBin(double(options.SinDelayed) / options.TOF_bins, double(scatterPerTOFBin(options.ScatterC(:), options)));
                             end
                         end
                     elseif iscell(options.ScatterC)
                         for kk = 1 : options.partitions
                             if sum(size(options.ScatterC{kk})) > 1
-                                if size(options.ScatterC{kk},1) ~= options.Ndist && ~options.use_raw_data
-                                    options.ScatterC{kk} = permute(options.ScatterC{kk},[2 1 3]);
+                                if size(options.ScatterC{kk},1) ~= options.Ndist && ~options.use_raw_data && ~options.listmode
+                                    options.ScatterC{kk} = permute(options.ScatterC{kk},[2 1 3 4]);
                                 end
                             end
-                            if options.normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
-                                if isfield(options,'InveonScatter') && isfield(options,'InveonNorm')
-                                    options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
-                                else
-                                    options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(1 ./ options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
-                                end
+                            if options.normalization_correction && options.normalize_scatter && ~ScatterProp.normalization && ~scatterAlreadyNormalized
+                                options.ScatterC{kk} = normalizeScatter(options.ScatterC{kk}, options, normalizationInverted);
                             end
                             if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
                                 options.ScatterC{kk} = Randoms_variance_reduction(single(options.ScatterC{kk}), options);
@@ -631,13 +742,13 @@ if ~options.SPECT
                                 options.ScatterC{kk} = randoms_smoothing(single(options.ScatterC{kk}), options);
                             end
                             if options.use_raw_data == false && options.NSinos ~= options.TotSinos
-                                options.ScatterC{kk} = options.ScatterC{kk}(1:options.NSinos*options.Ndist*options.Nang);
+                                options.ScatterC{kk} = cropScatterSinograms(options.ScatterC{kk}, options);
                             end
                             if options.subtract_scatter
                                 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                                    options.SinDelayed = single(options.SinDelayed) / options.TOF_bins + single(options.ScatterC{kk}(:));
+                                    options.SinDelayed = addScatterPerTOFBin(single(options.SinDelayed) / options.TOF_bins, single(scatterPerTOFBin(options.ScatterC{kk}(:), options)));
                                 else
-                                    options.SinDelayed = double(options.SinDelayed) / options.TOF_bins + double(options.ScatterC{kk}(:));
+                                    options.SinDelayed = addScatterPerTOFBin(double(options.SinDelayed) / options.TOF_bins, double(scatterPerTOFBin(options.ScatterC{kk}(:), options)));
                                 end
                             end
                         end
@@ -651,15 +762,11 @@ if ~options.SPECT
                 end
             elseif options.scatter_correction
                 if sum(size(options.ScatterC)) > 1 && ~iscell(options.ScatterC)
-                    if size(options.ScatterC,1) ~= options.Ndist && ~options.use_raw_data
-                        options.ScatterC = permute(options.ScatterC,[2 1 3]);
+                    if size(options.ScatterC,1) ~= options.Ndist && ~options.use_raw_data && ~options.listmode
+                        options.ScatterC = permute(options.ScatterC,[2 1 3 4]);
                     end
-                    if options.normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
-                        if isfield(options,'InveonScatter') && isfield(options,'InveonNorm')
-                            options.ScatterC = single(options.ScatterC) .* reshape(options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
-                        else
-                            options.ScatterC = single(options.ScatterC) .* reshape(1 ./ options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
-                        end
+                    if options.normalization_correction && options.normalize_scatter && ~ScatterProp.normalization && ~scatterAlreadyNormalized
+                        options.ScatterC = normalizeScatter(options.ScatterC, options, normalizationInverted);
                     end
                     if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
                         options.ScatterC = Randoms_variance_reduction(single(options.ScatterC), options);
@@ -669,25 +776,21 @@ if ~options.SPECT
                     end
                     if options.subtract_scatter
                         if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                            options.SinDelayed = single(options.ScatterC(:));
+                            options.SinDelayed = single(scatterPerTOFBin(options.ScatterC(:), options));
                         else
-                            options.SinDelayed = double(options.ScatterC(:));
+                            options.SinDelayed = double(scatterPerTOFBin(options.ScatterC(:), options));
                         end
                     end
                 elseif iscell(options.ScatterC)
                     options.SinDelayed = cell(length(options.ScatterC),1);
                     for kk = 1 : options.partitions
                         if sum(size(options.ScatterC{1})) > 1
-                            if size(options.ScatterC{kk},1) ~= options.Ndist && ~options.use_raw_data
-                                options.ScatterC{kk} = permute(options.ScatterC{kk},[2 1 3]);
+                            if size(options.ScatterC{kk},1) ~= options.Ndist && ~options.use_raw_data && ~options.listmode
+                                options.ScatterC{kk} = permute(options.ScatterC{kk},[2 1 3 4]);
                             end
                         end
-                        if options.normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
-                            if isfield(options,'InveonScatter') && isfield(options,'InveonNorm')
-                                options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
-                            else
-                                options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(1 ./ options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
-                            end
+                        if options.normalization_correction && options.normalize_scatter && ~ScatterProp.normalization && ~scatterAlreadyNormalized
+                            options.ScatterC{kk} = normalizeScatter(options.ScatterC{kk}, options, normalizationInverted);
                         end
                         if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
                             options.ScatterC{kk} = Randoms_variance_reduction(single(options.ScatterC{kk}), options);
@@ -697,9 +800,9 @@ if ~options.SPECT
                         end
                         if options.subtract_scatter
                             if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                                options.SinDelayed{kk} = single(options.ScatterC{kk}(:));
+                                options.SinDelayed{kk} = single(scatterPerTOFBin(options.ScatterC{kk}(:), options));
                             else
-                                options.SinDelayed{kk} = double(options.ScatterC{kk}(:));
+                                options.SinDelayed{kk} = double(scatterPerTOFBin(options.ScatterC{kk}(:), options));
                             end
                         end
                     end
@@ -710,6 +813,18 @@ if ~options.SPECT
             options.SinDelayed = reshape(options.SinDelayed, options.Ndist, options.Nang, options.NSinos);
             options.SinDelayed = interpolateSinog(options.SinDelayed, options.sampling, options.Ndist, options.partitions, options.sampling_interpolation_method);
             options.SinDelayed = options.SinDelayed(:);
+        end
+        % Mark the scatter as normalized, so that another call with the returned options does not normalize it again
+        if options.scatter_correction && options.normalization_correction && options.normalize_scatter && ~ScatterProp.normalization ...
+                && ~scatterAlreadyNormalized && isfield(options,'ScatterC')
+            if iscell(options.ScatterC)
+                nScatter = numel(options.ScatterC{1});
+            else
+                nScatter = numel(options.ScatterC);
+            end
+            if nScatter > 1
+                options.scatterNormalized = true;
+            end
         end
     elseif (options.randoms_correction || options.scatter_correction) && ~options.reconstruct_trues && ~options.reconstruct_scatter
         r_exist = isfield(options,'SinDelayed');
@@ -775,97 +890,38 @@ if ~options.SPECT
             options.SinDelayed = {0};
         end
     end
-    % Load (or compute) normalization correction coefficients
-    if (options.normalization_correction && options.corrections_during_reconstruction) && ~options.use_user_normalization
-        if ~isfield(options,'normalization') || isempty(options.normalization)
-            if options.use_raw_data
-                norm_file = [folder options.machine_name '_normalization_listmode.mat'];
-                if exist(norm_file, 'file') == 2
-                    options.normalization = loadStructFromFile(norm_file,'normalization');
-                else
-                    error('Normalization correction selected, but no normalization data found')
-                end
-            else
-                norm_file = [folder options.machine_name '_normalization_' num2str(options.Ndist) 'x' num2str(options.Nang) '_span' num2str(options.span) '.mat'];
-                if exist(norm_file, 'file') == 2
-                    options.normalization = loadStructFromFile(norm_file,'normalization');
-                else
-                    error('Normalization correction selected, but no normalization data found')
-                end
-            end
-            options.normalization(options.normalization <= 0) = 1;
-            options.normalization = 1./options.normalization(:);
-            if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                options.normalization = single(options.normalization);
-            end
-            if ~options.use_raw_data && options.NSinos ~= options.TotSinos
-                options.normalization = options.normalization(1 : options.Ndist * options.Nang *options.NSinos);
-            end
-            if options.sampling > 1 && options.corrections_during_reconstruction
-                options.normalization = reshape(options.normalization, options.Ndist, options.Nang, options.NSinos);
-                options.normalization = interpolateSinog(options.normalization, options.sampling, options.Ndist, options.partitions, options.sampling_interpolation_method);
-                options.normalization = options.normalization(:);
-            end
+    % The normalization (options.normalization) is loaded and inverted before the randoms and scatter correction above, see
+    % normalizationInverted. A file-loaded normalization of sinogram data is cut and interpolated here, after the scatter has been
+    % normalized with it, as the scatter has not been cut or interpolated at that stage. Index-based data has been converted
+    % to one value for each event already
+    if normalizationInverted && ~options.useIndexBasedReconstruction
+        if ~options.use_raw_data && options.NSinos ~= options.TotSinos
+            options.normalization = options.normalization(1 : options.Ndist * options.Nang *options.NSinos);
         end
-    elseif options.normalization_correction && options.use_user_normalization && options.corrections_during_reconstruction
-        if ~isfield(options,'normalization') || isempty(options.normalization)
-            [file, fpath] = uigetfile({'*.nrm;*.mat'},'Select normalization datafile');
-            if isequal(file, 0)
-                error('No file was selected')
-            end
-            if any(strfind(file, '.nrm'))
-                if options.use_raw_data
-                    error('Inveon normalization data cannot be used with raw list-mode data')
-                end
-                fid = fopen(fullfile(fpath, file));
-                options.normalization = fread(fid, inf, 'single=>single',0,'l');
-                fclose(fid);
-                if numel(options.normalization) ~= options.Ndist * options.Nang * options.TotSinos && ~options.use_raw_data
-                    error('Size mismatch between the current data and the normalization data file')
-                end
-                options.InveonNorm = true;
-            else
-                data = load(fullfile(fpath, file));
-                variables = fieldnames(data);
-                if any(strcmp(variables,'normalization'))
-                    options.normalization = data.(variables{strcmp(variables,'normalization')});
-                else
-                    options.normalization = data.(variables{1});
-                end
-                clear data
-                if numel(options.normalization) ~= options.Ndist * options.Nang * options.TotSinos && ~options.use_raw_data
-                    error('Size mismatch between the current data and the normalization data file')
-                elseif numel(options.normalization) ~= sum(1:options.detectors) && options.use_raw_data
-                    error('Size mismatch between the current data and the normalization data file')
-                end
-            end
-            if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                options.normalization = single(options.normalization);
-            else
-                options.normalization = double(options.normalization);
-            end
-            options.normalization = 1./options.normalization(:);
-            if ~options.use_raw_data && options.NSinos ~= options.TotSinos
-                options.normalization = options.normalization(1 : options.Ndist * options.Nang *options.NSinos);
-            end
-            if options.sampling > 1 && options.corrections_during_reconstruction
-                options.normalization = reshape(options.normalization, options.Ndist, options.Nang, options.NSinos);
-                options.normalization = interpolateSinog(options.normalization, options.sampling, options.Ndist, options.partitions, options.sampling_interpolation_method);
-                options.normalization = options.normalization(:);
-            end
+        if options.sampling > 1 && options.corrections_during_reconstruction
+            options.normalization = reshape(options.normalization, options.Ndist, options.Nang, options.NSinos);
+            options.normalization = interpolateSinog(options.normalization, options.sampling, options.Ndist, options.partitions, options.sampling_interpolation_method);
+            options.normalization = options.normalization(:);
         end
-    elseif options.normalization_correction && ~options.corrections_during_reconstruction
+    end
+    if options.normalization_correction && ~options.corrections_during_reconstruction
         if ~isfield(options,'normalization') || isempty(options.normalization)
             if options.use_user_normalization
-                [file, fpath] = uigetfile({'*.nrm;*.mat'},'Select normalization datafile');
-                if isequal(file, 0)
-                    error('No file was selected')
-                end
+                [file, fpath] = selectNormalizationFile(options);
+                [~, ~, normExt] = fileparts(file);
                 if any(strfind(file, '.nrm'))
                     fid = fopen(fullfile(fpath, file));
                     options.normalization = fread(fid, inf, 'single=>single',0,'l');
                     fclose(fid);
                     options.InveonNorm = true;
+                elseif any(strcmpi(normExt, {'.n', '.ptd'}))
+                    % Biograph (mCT/Vision) normalization component file, the coefficients multiply the data
+                    options.normalization = loadNormalizationBiograph(fullfile(fpath, file), normalizationOptions(options, normDims));
+                    % The coefficients cover all sinograms (TotSinos) and have no TOF dimension. They are cropped
+                    % to NSinos below and applied to every TOF bin
+                    if numel(options.normalization) ~= normDims(1) * normDims(2) * normDims(4)
+                        error('Size mismatch between the current data and the normalization datafile')
+                    end
                 else
                     data = load(fullfile(fpath, file));
                     variables = fieldnames(data);
@@ -875,13 +931,16 @@ if ~options.SPECT
                         options.normalization = data.(variables{1});
                     end
                     clear data
-                    if iscell(options.SinM)
-                        if numel(options.normalization) ~= numel(options.SinM{1})
-                            error('Size mismatch between the current data and the normalization data file')
-                        end
-                    else
-                        if numel(options.normalization) ~= numel(options.SinM)
-                            error('Size mismatch between the current data and the normalization data file')
+                    % The size of index-based data is checked when the normalization is converted
+                    if ~options.useIndexBasedReconstruction
+                        if iscell(options.SinM)
+                            if numel(options.normalization) ~= numel(options.SinM{1})
+                                error('Size mismatch between the current data and the normalization datafile')
+                            end
+                        else
+                            if numel(options.normalization) ~= numel(options.SinM)
+                                error('Size mismatch between the current data and the normalization datafile')
+                            end
                         end
                     end
                 end
@@ -890,7 +949,7 @@ if ~options.SPECT
                 if options.use_raw_data
                     norm_file = [folder options.machine_name '_normalization_listmode.mat'];
                 else
-                    norm_file = [folder options.machine_name '_normalization_' num2str(options.Ndist) 'x' num2str(options.Nang) '_span' num2str(options.span) '.mat'];
+                    norm_file = [folder options.machine_name '_normalization_' num2str(normDims(1)) 'x' num2str(normDims(2)) '_span' num2str(options.span) '.mat'];
                 end
                 if exist(norm_file, 'file') == 2
                     options.normalization = loadStructFromFile(norm_file,'normalization');
@@ -902,6 +961,11 @@ if ~options.SPECT
             if ~options.use_raw_data && options.NSinos ~= options.TotSinos
                 options.normalization = options.normalization(1 : options.Ndist * options.Nang *options.NSinos);
             end
+        end
+        if options.useIndexBasedReconstruction
+            % One value for each event instead of a sinogram, see indexBasedNormalization. The precorrected data does not
+            % use the normalization in the sensitivity image. The normalization multiplies the data, i.e. it is a correction factor
+            options = indexBasedNormalization(options, false, true);
         end
         NN = options.Ndist * options.Nang * options.NSinos;
         if iscell(options.SinM)
@@ -958,7 +1022,7 @@ if ~options.SPECT
         else
             options.normalization = 0;
         end
-    else
+    elseif ~options.normalization_correction
         if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
             options.normalization = single(0);
         else
@@ -1099,3 +1163,172 @@ else
     options.scatter_correction = false;
     options.normalization_correction = false;
 end
+if ~options.randoms_correction
+    options.randomsTOF = false;
+end
+
+function [file, fpath] = selectNormalizationFile(options)
+% Returns the user normalization file: options.normalization_datafile if it is set, otherwise the user
+% is prompted for the file
+if isfield(options, 'normalization_datafile') && ~isempty(options.normalization_datafile)
+    normFile = options.normalization_datafile;
+    if exist(normFile, 'file') ~= 2
+        error(['The normalization datafile ' normFile ' does not exist'])
+    end
+    [fpath, name, ext] = fileparts(normFile);
+    file = [name ext];
+    if isempty(fpath)
+        % Relative file name, the file is in the current folder or on the MATLAB path
+        fullName = which(normFile);
+        if isempty(fullName)
+            fullName = fullfile(pwd, normFile);
+        end
+        fpath = fileparts(fullName);
+    end
+else
+    [file, fpath] = uigetfile({'*.nrm;*.n;*.ptd;*.mat'},'Select normalization datafile');
+    if isequal(file, 0)
+        error('No file was selected')
+    end
+end
+
+function options = normalizationOptions(options, normDims)
+% Returns the options with the sinogram dimensions of the normalization data (normDims = [Ndist, Nang, NSinos, TotSinos]),
+% which index-based data has collapsed, for the functions that read the sinogram normalization
+options.Ndist = normDims(1);
+options.Nang = normDims(2);
+options.NSinos = normDims(3);
+options.TotSinos = normDims(4);
+
+function tf = scatterTOFApplies(options)
+% True if the size rules of the scatter data with TOF data apply, i.e. the data is a PET sinogram with TOF bins. Raw data,
+% index-based reconstruction, list-mode data and SPECT keep their behavior
+tf = options.TOF_bins > 1 && ~options.use_raw_data && ~options.useIndexBasedReconstruction && ~options.listmode && ~options.SPECT;
+
+function options = checkTOFScatter(options)
+% Checks the size of the scatter data with TOF data when the scatter is subtracted during the reconstruction (ordinary
+% Poisson). A non-TOF scatter sinogram (Ndist * Nang * NSinos elements) is repeated for all the TOF bins and divided evenly
+% among them (see scatterPerTOFBin), a message about this is printed here, once for all the time frames. TOF-resolved scatter data
+% (Ndist * Nang * (NSinos or TotSinos) * TOF_bins elements, the TOF bin is the slow index as with the measurements) is used as it
+% is in each TOF bin and options.randomsTOF is set (the randoms are divided evenly among the TOF bins and added to it, see
+% addScatterPerTOFBin). It is supported only with implementation 2, one time frame, no increased sampling, and no scatter smoothing
+% or variance reduction. The non-subtracted scatter (corrVector) is not affected.
+options.randomsTOF = false;
+if ~scatterTOFApplies(options) || ~options.scatter_correction || ~options.subtract_scatter || ~isfield(options, 'ScatterC')
+    return
+end
+if iscell(options.ScatterC)
+    scatterData = options.ScatterC;
+else
+    scatterData = {options.ScatterC};
+end
+sinogramSizes = options.Ndist * options.Nang * unique([options.NSinos, options.TotSinos]);
+noTOF = false;
+tofSized = false;
+for kk = 1 : numel(scatterData)
+    nScatter = numel(scatterData{kk});
+    if nScatter <= 1
+        continue
+    end
+    if any(nScatter == sinogramSizes)
+        noTOF = true;
+    elseif any(nScatter == sinogramSizes * options.TOF_bins)
+        tofSized = true;
+    else
+        error(['The scatter data has ' num2str(nScatter) ' elements, which does not match the TOF data. With TOF the scatter data has to be a non-TOF sinogram of ' ...
+            num2str(options.Ndist * options.Nang * options.NSinos) ' elements (Ndist * Nang * NSinos), or a TOF-resolved sinogram of ' ...
+            num2str(options.Ndist * options.Nang * options.NSinos * options.TOF_bins) ' elements (Ndist * Nang * NSinos * TOF_bins)'])
+    end
+end
+if tofSized && noTOF
+    error('The scatter data must be either TOF-resolved or non-TOF in all the time frames')
+end
+if tofSized
+    if numel(scatterData) > 1 || any(options.partitions(:) > 1) || options.Nt > 1
+        error('TOF-resolved scatter data with corrections during reconstruction is supported only with static data (one time frame); use precorrection for dynamic data')
+    end
+    if options.implementation ~= 2
+        error('TOF-resolved scatter data with corrections during reconstruction is supported only with implementation 2; use precorrection or a non-TOF scatter sinogram')
+    end
+    if options.sampling > 1
+        error('TOF-resolved scatter data with corrections during reconstruction is not supported with increased sampling (options.sampling > 1)')
+    end
+    if options.scatter_smoothing || options.scatter_variance_reduction
+        error('Scatter smoothing and scatter variance reduction are not supported with TOF-resolved scatter data; disable them or use a non-TOF scatter sinogram')
+    end
+    if options.largeDim
+        error('TOF-resolved scatter data with corrections during reconstruction is not supported with largeDim')
+    end
+    options.randomsTOF = true;
+    disp(['The scatter data is TOF-resolved and is used as it is in each of the ' num2str(options.TOF_bins) ' TOF bins (the randoms are divided evenly among the TOF bins)'])
+elseif noTOF
+    disp(['The scatter data has no TOF bins and is divided evenly among the ' num2str(options.TOF_bins) ' TOF bins'])
+end
+
+function scatterData = scatterPerTOFBin(scatterData, options)
+% Returns the scatter data as it is added to the additive term of each TOF bin: the non-TOF scatter sinogram is divided evenly
+% among the TOF bins (the size has been checked in checkTOFScatter), TOF-resolved scatter data (options.randomsTOF) is used as it is.
+% options.ScatterC itself is not modified.
+if scatterTOFApplies(options) && numel(scatterData) > 1 && ~options.randomsTOF
+    scatterData = scatterData / options.TOF_bins;
+end
+
+function randoms = addScatterPerTOFBin(randoms, scatterData)
+% Adds the scatter data of scatterPerTOFBin to the randoms that have already been divided among the TOF bins. With TOF-resolved
+% scatter data the randoms are repeated for all the TOF bins first (TOF bin is the slow index, as with the TOF measurements)
+nRandoms = numel(randoms);
+nScatter = numel(scatterData);
+if nScatter > nRandoms && nRandoms > 0 && mod(nScatter, nRandoms) == 0
+    randoms = repmat(randoms(:), nScatter / nRandoms, 1);
+end
+randoms = randoms + scatterData;
+
+function scatterData = normalizeScatter(scatterData, options, normalizationInverted)
+% Multiplies the scatter data with the normalization factor (see normalizationScatterFactor). The normalization applies to the
+% LORs, so TOF-resolved scatter data (options.randomsTOF) is multiplied with it in each TOF bin
+nBins = 1;
+if scatterTOFApplies(options) && options.randomsTOF
+    nBins = options.TOF_bins;
+end
+factor = normalizationScatterFactor(options, normalizationInverted, numel(scatterData) / nBins);
+if nBins > 1
+    scatterData = reshape(reshape(single(scatterData), numel(factor), nBins) .* factor(:), size(scatterData));
+else
+    scatterData = single(scatterData) .* reshape(factor, size(scatterData, 1), size(scatterData, 2), size(scatterData, 3));
+end
+
+function scatterData = cropScatterSinograms(scatterData, options)
+% Keeps the first NSinos sinograms of the scatter data that has TotSinos sinograms. TOF-resolved scatter data (options.randomsTOF)
+% is cropped in each TOF bin, or left as it is if it has NSinos sinograms already
+nCrop = options.Ndist * options.Nang * options.NSinos;
+if scatterTOFApplies(options) && options.randomsTOF
+    nTotal = options.Ndist * options.Nang * options.TotSinos;
+    if numel(scatterData) == nTotal * options.TOF_bins
+        scatterData = reshape(scatterData, nTotal, options.TOF_bins);
+        scatterData = reshape(scatterData(1 : nCrop, :), [], 1);
+    end
+else
+    scatterData = scatterData(1 : nCrop);
+end
+
+function factor = normalizationScatterFactor(options, normalizationInverted, nScatter)
+% Returns the factor that the scatter is multiplied with when it is normalized. The normalization is a multiplier in the
+% reconstruction (it has been inverted if it was loaded from a file in this call), so the scatter is multiplied with its
+% reciprocal. Only a prefilled Inveon normalization (raw coefficients) with Inveon scatter is used as it is. A normalization
+% loaded from a file has all the sinograms (TotSinos), as it is cut to NSinos only after the scatter has been normalized, so
+% the first nScatter factors are used with a scatter that has NSinos sinograms.
+if ~normalizationInverted && isfield(options,'InveonScatter') && isfield(options,'InveonNorm')
+    factor = options.normalization;
+else
+    factor = reciprocalOrOne(options.normalization);
+end
+if normalizationInverted && nScatter < numel(factor)
+    factor = factor(1 : nScatter);
+end
+
+function r = reciprocalOrOne(x)
+% Returns 1 ./ x, except that the elements where x is zero are one. The scatter is multiplied with this reciprocal, so the
+% scatter keeps its value where the normalization is zero (the zero normalization does not divide the scatter).
+r = ones(size(x), 'like', x);
+nz = x ~= 0;
+r(nz) = 1 ./ x(nz);

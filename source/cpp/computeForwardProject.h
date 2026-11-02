@@ -45,8 +45,10 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 	}
 	if (inputScalars.randoms_correction) {
 		if ((MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS) && !inputScalars.CT && !af::allTrue<bool>(randomsData > 0.f)) {
-			if (inputScalars.TOF) {
-				const af::array indR = af::tile(randomsData == 0.f, inputScalars.nBins);
+			if (inputScalars.TOF && inputScalars.listmode == 0) {
+				// A TOF-resolved additive term (randomsTOF) has a value for each TOF bin, otherwise it is repeated for the bins
+				// (list-mode data has one value per event, in the TOF bin of the event, for both the data and the additive term)
+				const af::array indR = inputScalars.randomsTOF ? (randomsData == 0.f) : af::tile(randomsData == 0.f, inputScalars.nBins);
 				indeksit = y > 0 && indR && input <= w_vec.epsilon_mramla[timestep];
 			}
 			else
@@ -63,7 +65,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			}
 			if (inputScalars.verbose >= 3)
 				mexPrint("Adding randoms/scatter data to forward projection");
-			if (inputScalars.TOF)
+			if (inputScalars.TOF && !inputScalars.randomsTOF && inputScalars.listmode == 0)
 				input += af::tile(randomsData, inputScalars.nBins);
 			else
 				input += randomsData;

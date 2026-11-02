@@ -73,6 +73,9 @@ typedef struct structForScalars {
 		computeRelaxation = false, storeFP = false, deconvolution = false, CTAttenuation = true, largeDim = false, usingLinearizedData = false, storeResidual = false,
 		useBuffers = true, useFDKWeights = false, indexBased = false, FISTAAcceleration = false, stochastic = false, useTotLength = true,
 		useParallelBeam = false, useHelical = false;
+	// True if the additive term (randoms/scatter, sc_ra) is TOF-resolved, i.e. has the same layout and size as the TOF measurements (bin is the slow index).
+	// If false, the additive term is a non-TOF vector that is repeated for all the TOF bins
+	bool randomsTOF = false;
 	// Set this to false to explicitly disable fastPDHG
 	// On MATLAB/Octave, you can do this just with options.fastPDHG = false;
 	bool fastPDHG = true;
@@ -110,6 +113,15 @@ typedef struct structForScalars {
 		sizeL, sizeXY, sizeZ, saveIterationsMiddle = 0ULL;
 	// Variables to check for correct size
 	size_t size_maskFP = 0ULL, size_maskBP = 0ULL, size_meas = 0ULL;
+	// Sinogram normalization for the sensitivity image of index-based list-mode data. The sinogram (size_normSens elements) is
+	// read through two lookup tables (see sensXY and sensZ in Weighting) and sensBins is the number of bins of one plane
+	bool normSensLookup = false;
+	// Full pair table normalization for the sensitivity image of list-mode data (no lookup tables, sensXY is not given): normSens
+	// (size_normSens elements) has one value for each ordered detector/ring pair, indexed like the sensitivity image kernel, i.e.
+	// det_per_ring^2 * rings^2 * nLayers^2 elements. Used for systems without a sinogram (options.xSens and options.zSens)
+	bool normSensFull = false;
+	size_t size_normSens = 0;
+	uint32_t sensBins = 0;
 	uint32_t* saveNIter = nullptr;
 	float* T = nullptr;
 	float* V = nullptr;
@@ -342,4 +354,35 @@ inline void mexWarning(const char* str) {
 #ifdef MATLAB
 	mexWarnMsgTxt(str);
 #endif
+}
+
+// Validates the TOF-resolved additive term (inputScalars.randomsTOF, randoms/scatter with the layout of the TOF measurements).
+// nRandoms is the number of elements in the additive array and nMeas the number of elements in the measurement array. Prints the reason and
+// returns false if the combination is not supported, in which case the reconstruction must not be started
+inline bool checkRandomsTOF(scalarStruct& inputScalars, const size_t nRandoms, const size_t nMeas) {
+	if (!inputScalars.randomsTOF)
+		return true;
+	if (!inputScalars.randoms_correction) {
+		// No additive term, the flag has no meaning
+		inputScalars.randomsTOF = false;
+		return true;
+	}
+	if (!inputScalars.TOF || inputScalars.nBins <= 1 || inputScalars.listmode > 0 || inputScalars.CT) {
+		mexPrint("A TOF-resolved randoms/scatter term (randomsTOF) requires sinogram-based TOF data (more than one TOF bin, no list-mode data or CT)");
+		return false;
+	}
+	if (inputScalars.Nt > 1U) {
+		mexPrint("A TOF-resolved randoms/scatter term (randomsTOF) is not supported with dynamic data (more than one time step)");
+		return false;
+	}
+	if (inputScalars.largeDim) {
+		mexPrint("A TOF-resolved randoms/scatter term (randomsTOF) is not supported with largeDim");
+		return false;
+	}
+	if (nRandoms != nMeas) {
+		mexPrintBase("A TOF-resolved randoms/scatter term (randomsTOF) must have as many elements as the TOF measurements (%llu), but %llu were input\n",
+			static_cast<unsigned long long>(nMeas), static_cast<unsigned long long>(nRandoms));
+		return false;
+	}
+	return true;
 }

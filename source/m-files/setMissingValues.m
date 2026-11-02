@@ -30,6 +30,11 @@ end
 if ~isfield(options, 'loadTOF')
     options.loadTOF = true;
 end
+% True if the randoms/scatter term (options.SinDelayed) is TOF-resolved, i.e. it has the same size and order as the TOF measurements.
+% Set automatically by loadCorrections when TOF-resolved scatter data is input with corrections during reconstruction
+if ~isfield(options, 'randomsTOF')
+    options.randomsTOF = false;
+end
 if ~isfield(options, 'saveSens')
     options.saveSens = true;
 end
@@ -487,6 +492,22 @@ end
 if ~isfield(options,'compute_sensitivity_image')
     options.compute_sensitivity_image = false;
 end
+% Optional (not set here) options of the sensitivity image of list-mode data:
+% options.xSens, options.zSens = detector coordinates for systems that the scanner settings (cylindrical rings) cannot
+%   describe. xSens: x and y of all detectors of one transaxial ring, two values for each detector (layers one after another,
+%   det_per_ring = numel(xSens) / 2 / nLayers). zSens: axial coordinates (z) of the rings (rings = numel(zSens) / nLayers). The
+%   sensitivity image is computed for all pairs of the product grid (every transaxial detector x every ring) with every other.
+%   Pairs that are not measured are removed with options.normSens (see below), which the normalization correction needs here.
+% options.normSens = pair normalization table of the sensitivity image: one value (a multiplier, like options.normalization)
+%   for each ordered pair of the sensitivity image grid, det_per_ring^2 * rings^2 * nLayers^2 elements, where det_per_ring and
+%   rings are from xSens and zSens if they are given and the scanner values otherwise. Index = a + b * det_per_ring +
+%   (ringA * rings + ringB) * det_per_ring^2 (an array of size [det_per_ring, det_per_ring, rings, rings] indexed (a, b, ringB, ringA); with layers the
+%   layer pair (layerA * nLayers + layerB) is the slowest dimension). Only the pairs of one orientation are read (a < b, or
+%   a == b and ringA < ringB), the others are ignored. Pairs that must not count (e.g. both detectors on the same panel) are set
+%   to zero. Needed to normalize the sensitivity image with xSens/zSens or custom detector coordinates, options.normalization
+%   has to contain one value for each event then. Not supported with dynamic data or the CPU implementation. Index-based data
+%   with a sinogram normalization and without xSens/zSens does not need it (loadCorrections stores the sinogram and the lookup
+%   tables in options.normSens, options.sensXY, options.sensZ and options.sensBins).
 if ~isfield(options,'listmode')
     options.listmode = false;
 end
@@ -522,7 +543,11 @@ if ~isfield(options, 'Nz')
     options.Nz = 1;
 end
 if ~isfield(options, 'x0')
-    options.x0 = ones(options.Nx, options.Ny, options.Nz) * 1e-5;
+    if options.CT
+        options.x0 = ones(options.Nx, options.Ny, options.Nz) * 1e-4;
+    else
+        options.x0 = ones(options.Nx, options.Ny, options.Nz);
+    end
 end
 if ~isfield(options, 'dL')
     options.dL = 0;
@@ -623,6 +648,11 @@ end
 if ~isfield(options, 'additionalCorrection')
     options.additionalCorrection = false;
 end
+% PET scatter estimate. Sinogram data: a sinogram (non-TOF sinograms are divided evenly among the TOF bins). List-mode and index-based
+% data (scatter_correction and subtract_scatter): the additive term of each event, one value per event in the order of the events
+% (options.trIndex/axIndex, or the custom coordinates), before the subsets. Unit: measured counts expected for the LOR of the event,
+% in the TOF bin of the event (with TOF data), over the frame; model: ybar = n * (A x) + s, with no division by the normalization,
+% attenuation, TOF bins or the number of LORs in a bin. Randoms can be added into the same vector
 if ~isfield(options, 'ScatterC')
     options.ScatterC = [];
 end
@@ -674,6 +704,9 @@ if ~isfield(options, 'normalization_correction')
 end
 if ~isfield(options, 'use_user_normalization')
     options.use_user_normalization = false;
+end
+if ~isfield(options, 'normalization_datafile')
+    options.normalization_datafile = '';
 end
 if ~isfield(options, 'normalization')
     if options.useSingles

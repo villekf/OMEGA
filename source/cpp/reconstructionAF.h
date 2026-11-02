@@ -26,6 +26,24 @@
 #include <random>
 
 /// <summary>
+/// Loads one subset of a TOF-resolved randoms/scatter term to the device. The layout is the same as with the TOF measurements, i.e. the TOF bin is
+/// the slow index and each bin has the data of the subset in the same order as the measurements
+/// </summary>
+/// <param name="sc_ra the TOF-resolved randoms/scatter data (all bins)"></param>
+/// <param name="n number of elements of the subset in one TOF bin"></param>
+/// <param name="start offset of the subset in the first TOF bin"></param>
+/// <param name="binStride number of elements in one TOF bin of the whole data (kokoNonTOF)"></param>
+/// <param name="nBins number of TOF bins"></param>
+/// <returns>The subset data (n * nBins elements, bin is the slow index)</returns>
+template <typename R>
+inline af::array loadTOFAdditive(const R* sc_ra, const int64_t n, const size_t start, const size_t binStride, const int64_t nBins) {
+	af::array out = af::constant(0.f, static_cast<dim_t>(n) * static_cast<dim_t>(nBins), f32);
+	for (int64_t to = 0; to < nBins; to++)
+		out(af::seq(static_cast<double>(n * to), static_cast<double>(n * (to + 1) - 1))) = af::array(n, &sc_ra[start + binStride * to], AFTYPE).as(f32);
+	return out;
+}
+
+/// <summary>
 /// The main reconstruction function. This function performs all the image reconstruction duties. First it transfers the
 /// necessary variables and builds the necessary kernels. After this, it performs any necessary precomputations and then
 /// performs the image reconstruction with all the selected features. All the image reconstruction procedures are 
@@ -314,6 +332,14 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 	// This computes all image domain components in one go, except for BSREM
 	checkFastPDHG(inputScalars, w_vec, MethodList);
 
+	// The sensitivity image of list-mode data is computed over all detector pairs, so the normalization has to be either a sinogram that is looked up
+	// with the detector and ring pair (normSens with its lookup tables) or a full pair table (normSens). A multiplicative scatter/corrVector has no such lookup
+	if (inputScalars.listmode > 0 && inputScalars.computeSensImag &&
+		((inputScalars.normalization_correction && !inputScalars.normSensLookup && !inputScalars.normSensFull) || inputScalars.scatter)) {
+		mexPrint("The sensitivity image of list-mode data needs a sinogram normalization (normSens with its lookup tables, index-based data) or a pair normalization table (normSens), and multiplicative scatter/corrVector is not supported with it\n");
+		return -1;
+	}
+
 	// Create the projector class that handles the projectors and all OpenCL/CUDA/Metal related functions
 	// Projector types 2 and 3: the end point check of the tube is built into the kernels only when a detector is inside the image
 	if (inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 2 || inputScalars.BPType == 3)
@@ -458,9 +484,11 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 #ifndef CPU
 	// Is there sufficient memory to load TOF data to the GPU memory?
 	if (inputScalars.loadTOF && inputScalars.listmode == 0) {
-		if (static_cast<double>(mem) * 0.7 < static_cast<double>(inputScalars.kokoTOF * sizeof(float)) && inputScalars.TOF)
+		// A TOF-resolved randoms/scatter term is loaded to the device as well, i.e. the TOF data takes twice the memory
+		const double tofDataBytes = static_cast<double>(inputScalars.kokoTOF * sizeof(float)) * ((inputScalars.randoms_correction && inputScalars.randomsTOF) ? 2. : 1.);
+		if (static_cast<double>(mem) * 0.7 < tofDataBytes && inputScalars.TOF)
 			inputScalars.loadTOF = false;
-		else if (MethodList.CPType && static_cast<double>(mem) * 0.4 < static_cast<double>(inputScalars.kokoTOF * sizeof(float)) && inputScalars.TOF)
+		else if (MethodList.CPType && static_cast<double>(mem) * 0.4 < tofDataBytes && inputScalars.TOF)
 			inputScalars.loadTOF = false;
 	}
 #else
@@ -501,7 +529,18 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
         aRand[timestep].resize(inputScalars.TOFsubsets);
         if (inputScalars.randoms_correction) {
             for (int kk = inputScalars.osa_iter0; kk < inputScalars.TOFsubsets; kk++) {
-                if ((inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8 && inputScalars.subsetType > 0)) || inputScalars.listmode > 0) {
+                if (inputScalars.randomsTOF) {
+                    // TOF-resolved additive term, same layout as the TOF measurements (see the loading of Sin below)
+                    const int nInd = kk + timestep * inputScalars.subsets;
+                    if (inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8 && inputScalars.subsetType > 0)) {
+                        aRand[timestep][kk] = loadTOFAdditive(sc_ra, length[nInd], pituus[nInd] + inputScalars.kokoTOF * timestep, inputScalars.kokoNonTOF, inputScalars.nBins);
+                        proj.memSize += (sizeof(float) * length[nInd] * inputScalars.nBins);
+                    } else {
+                        aRand[timestep][kk] = loadTOFAdditive(sc_ra, inputScalars.nRowsD * inputScalars.nColsD * length[nInd],
+                            pituus[nInd] * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.kokoTOF * timestep, inputScalars.kokoNonTOF, inputScalars.nBins);
+                        proj.memSize += (sizeof(float) * inputScalars.nRowsD * inputScalars.nColsD * length[nInd] * inputScalars.nBins);
+                    }
+                } else if ((inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8 && inputScalars.subsetType > 0)) || inputScalars.listmode > 0) {
                     aRand[timestep][kk] = af::array(length[kk + timestep * inputScalars.subsets], &sc_ra[pituus[kk + timestep * inputScalars.subsets]], AFTYPE);
                     proj.memSize += (sizeof(float) * length[kk + timestep * inputScalars.subsets]);
                 } else {
@@ -614,8 +653,11 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
         for (uint32_t tt = t0; tt < inputScalars.Nt; tt++) {
             af::array Sino = af::array(inputScalars.kokoTOF, &Sin[inputScalars.kokoTOF * tt], AFTYPE).as(f32);
             af::array rand;
-            if (inputScalars.randoms_correction)
-                rand = af::array(inputScalars.kokoNonTOF, &sc_ra[inputScalars.kokoNonTOF * tt], AFTYPE);
+            if (inputScalars.randoms_correction) {
+                // The TOF-resolved additive term has as many elements as the measurements
+                const size_t randSize = inputScalars.randomsTOF ? inputScalars.kokoTOF : inputScalars.kokoNonTOF;
+                rand = af::array(randSize, &sc_ra[randSize * tt], AFTYPE);
+            }
             if ((w_vec.precondTypeIm[6] || MethodList.SPS) || (!inputScalars.CT && ((inputScalars.randoms_correction && 
                 !af::allTrue<bool>(rand > 0)) || inputScalars.randoms_correction == 0))) {
                 int64_t uu = 0;
@@ -657,7 +699,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     (MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS)) {
                     if (inputScalars.verbose >= 3 || DEBUG)
                         mexPrint("Computing epsilon value for MBSREM/MRAMLA");
-                    w_vec.epsilon_mramla[tt] = MBSREM_epsilon(Sino, E, inputScalars.epps, inputScalars.randoms_correction, rand, inputScalars.TOF, nBins, inputScalars.CT);
+                    w_vec.epsilon_mramla[tt] = MBSREM_epsilon(Sino, E, inputScalars.epps, inputScalars.randoms_correction, rand, inputScalars.TOF, nBins, inputScalars.CT, inputScalars.randomsTOF);
                     if (inputScalars.verbose >= 3 || DEBUG)
                         mexPrint("Epsilon value for MBSREM/MRAMLA computed");
                 }
@@ -1258,7 +1300,15 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 						}
 					}
 					if (inputScalars.randoms_correction) {
-						if (inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8 && inputScalars.subsetType > 0))
+						// TOF-resolved additive term: one bin at a time, same as the measurements above
+						if (inputScalars.randomsTOF) {
+							if (inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8 && inputScalars.subsetType > 0))
+								aRand[0][0] = loadTOFAdditive(sc_ra, length[indD], pituus[indD], inputScalars.kokoNonTOF, inputScalars.nBins);
+							else
+								aRand[0][0] = loadTOFAdditive(sc_ra, inputScalars.nRowsD * inputScalars.nColsD * length[indD],
+									pituus[indD] * inputScalars.nRowsD * inputScalars.nColsD, inputScalars.kokoNonTOF, inputScalars.nBins);
+						}
+						else if ((inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8 && inputScalars.subsetType > 0)) || inputScalars.listmode > 0)
 							aRand[0][0] = af::array(length[indD], &sc_ra[pituus[indD]], AFTYPE).as(f32);
 						else
 							aRand[0][0] = af::array(inputScalars.nRowsD * inputScalars.nColsD * length[indD], &sc_ra[pituus[indD] * inputScalars.nRowsD * inputScalars.nColsD], AFTYPE).as(f32);
