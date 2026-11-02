@@ -458,6 +458,79 @@ end
 if options.useIndexBasedReconstruction && options.implementation == 2 && options.use_CPU
     error('Index-based reconstruction is not supported on CPU!')
 end
+% The sensitivity image of list-mode data has to include the same corrections as the measured events. The normalization is
+% applied to all detector pairs either with the normalization sinogram that is looked up for each pair (index-based data without
+% options.xSens and options.zSens, see loadCorrections) or with a pair table (options.normSens, any list-mode data). Dynamic
+% data has the normalization disabled (loadCorrections). The list-mode data does not use options.additionalCorrection, the
+% multiplicative correction is the non-subtracted scatter.
+if ~options.CT && ~options.SPECT && (options.useIndexBasedReconstruction || options.listmode || isListModeCandidate) ...
+        && isfield(options, 'compute_sensitivity_image') && options.compute_sensitivity_image
+    if numel(options.partitions) > 1
+        nFramesEarly = numel(options.partitions);
+    elseif isempty(options.partitions)
+        nFramesEarly = 1;
+    else
+        nFramesEarly = options.partitions;
+    end
+    if options.normalization_correction && nFramesEarly <= 1
+        if options.implementation == 4 || (options.implementation == 2 && options.use_CPU)
+            error('Normalization correction in the sensitivity image of list-mode data is not supported with the CPU implementation! Disable the normalization correction or use GPU.')
+        end
+        % The counts of the pair table are taken from options.xSens and options.zSens, if they are given (they replace the scanner
+        % coordinates: det_per_ring = numel(xSens) / 2 / nLayers and rings = numel(zSens) / nLayers), and otherwise from the scanner
+        userCoord = isfield(options, 'xSens') && isfield(options, 'zSens') && ~isempty(options.xSens) && ~isempty(options.zSens);
+        pairTable = isfield(options, 'normSens') && ~isempty(options.normSens) && ~(isfield(options, 'sensXY') && ~isempty(options.sensXY));
+        if userCoord || ~options.useIndexBasedReconstruction || pairTable
+            nLayersPair = 1;
+            if isfield(options, 'nLayers')
+                nLayersPair = double(options.nLayers);
+            end
+            if userCoord
+                if mod(numel(options.xSens), 2 * nLayersPair) ~= 0 || mod(numel(options.zSens), nLayersPair) ~= 0
+                    error(['options.xSens (' num2str(numel(options.xSens)) ' elements) has to contain two values (x and y) for each detector of all ' ...
+                        num2str(nLayersPair) ' layer(s) and options.zSens (' num2str(numel(options.zSens)) ' elements) one value for each ring of all layers!'])
+                end
+                detPairs = numel(options.xSens) / 2 / nLayersPair;
+                ringsPair = numel(options.zSens) / nLayersPair;
+                originPair = 'from options.xSens and options.zSens';
+            else
+                detPairs = double(options.det_per_ring(1));
+                ringsPair = double(options.rings(1));
+                originPair = 'of the scanner (set options.xSens and options.zSens for a system that is not described by the scanner settings)';
+            end
+            expectedPairs = detPairs^2 * ringsPair^2 * nLayersPair^2;
+            formulaPair = ['det_per_ring^2 * rings^2 * nLayers^2 = ' num2str(detPairs) '^2 * ' num2str(ringsPair) '^2 * ' num2str(nLayersPair) ...
+                '^2 = ' num2str(expectedPairs) ' elements (' originPair ')'];
+            layoutPair = ['with the index a + b * det_per_ring + (ringA * rings + ringB) * det_per_ring^2 for the detectors a, b and the rings ringA, ' ...
+                'ringB (an array of size [det_per_ring, det_per_ring, rings, rings] indexed (a, b, ringB, ringA); with several layers the layer pairs ' ...
+                '(layerA * nLayers + layerB) follow as the slowest dimension)'];
+            if ~pairTable
+                error(['Normalization correction in the sensitivity image of list-mode data with custom detector coordinates or user-input ' ...
+                    'sensitivity image coordinates (options.xSens and options.zSens) needs options.normSens, the normalization of all ordered ' ...
+                    'detector/ring pairs: ' formulaPair ' ' layoutPair '. Only the pairs of one orientation are read (detector a < b, or ' ...
+                    'a == b and ringA < ringB). Alternatively disable the normalization correction.'])
+            end
+            if ~isnumeric(options.normSens)
+                error('options.normSens must be a numeric array!')
+            end
+            if numel(options.normSens) ~= expectedPairs
+                error(['options.normSens has ' num2str(numel(options.normSens)) ' elements, but the pair normalization table must have ' ...
+                    formulaPair ' ' layoutPair '!'])
+            end
+            if ~all(isfinite(options.normSens(:)))
+                error('options.normSens (the pair normalization table) contains NaN or infinite values!')
+            end
+            if any(options.normSens(:) < 0)
+                error(['options.normSens (the pair normalization table) contains negative values (minimum ' num2str(min(options.normSens(:))) ')!'])
+            end
+            options.normSens = single(options.normSens(:));
+        end
+    end
+    if options.scatter_correction && ~options.subtract_scatter
+        error(['Multiplicative scatter correction (options.scatter_correction with options.subtract_scatter = false) is not supported in the ' ...
+            'sensitivity image of list-mode data! Disable the correction or the sensitivity image.'])
+    end
+end
 if OS_I4_summa > 1
     dispi = [];
     reko = recNames(0);
@@ -581,8 +654,9 @@ if options.corrections_during_reconstruction && (options.scatter_correction || o
     % options.randoms_correction = false;
     % options.scatter_correction = false;
 end
-if options.useIndexBasedReconstruction && (options.randoms_correction || options.scatter_correction) && options.TOF_bins > 1
-    error('Randoms and/or scatter correction cannot be used with index-based reconstruction with TOF data!')
+if options.useIndexBasedReconstruction && (options.randoms_correction || (options.scatter_correction && ~options.subtract_scatter)) && options.TOF_bins > 1
+    % Subtracted scatter is the additive term of each event, which is allowed with TOF (the value of the TOF bin of the event)
+    error('Randoms and/or multiplicative scatter correction cannot be used with index-based reconstruction with TOF data!')
 end
 if isfield(options,'maskFP') && options.subset_type == 3 && numel(options.maskFP) > 1
     error('Forward projection mask is not supported with subset type 3!')
@@ -983,7 +1057,8 @@ if options.verbose > 0
             dispi = [dispi, '.'];
             disp(dispi)
         end
-        if options.scatter_correction
+        % The non-subtracted scatter correction is disabled with list-mode data (see projectorClass)
+        if options.scatter_correction && ~((options.useIndexBasedReconstruction || options.listmode || isListModeCandidate) && ~options.CT && ~options.SPECT && ~options.subtract_scatter)
             dispi = 'Scatter correction ON';
             if options.scatter_smoothing
                 dispi = [dispi, ' with smoothing'];

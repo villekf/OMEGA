@@ -614,6 +614,8 @@ classdef projectorClass
                 else
                     det_per_ring = numel(obj.param.trIndex) / 2;
                 end
+                % The sinogram dimensions are needed for the sinogram normalization
+                obj.param.indexSinogramDims = [obj.param.Ndist, obj.param.Nang, obj.param.NSinos, obj.param.TotSinos];
                 obj.param.Nang = 1;
                 obj.param.Ndist = 1;
                 obj.param.NSinos = det_per_ring;
@@ -643,6 +645,8 @@ classdef projectorClass
             if ~obj.param.listmode && obj.param.subsets > 1 && obj.param.subset_type == 0
                 warning('Subset type 0 is recommended only for list-mode data! The reconstruction will most likely not work!')
             end
+            % The scatter of list-mode data is the additive term of each event: one value per event
+            checkListModeScatter(obj.param);
             if obj.param.listmode && (numel(partitions) > 1 || partitions > 1)
                 % obj.param.loadTOF = false;
                 obj.param.listmodeIndices = zeros(partitions,1,'uint64');
@@ -962,8 +966,16 @@ classdef projectorClass
                 if ~isa(obj.param.x, obj.param.cType)
                     obj.param.x = cast(obj.param.x, obj.param.cType);
                 end
+                % The randoms are not used with list-mode data (the randoms are added into options.ScatterC). The scatter is the
+                % additive term of each event (options.ScatterC, see checkListModeScatter) if it is subtracted
                 obj.param.randoms_correction = false;
-                obj.param.scatter_correction = false;
+                if obj.param.scatter_correction && ~obj.param.subtract_scatter && ~obj.param.CT && ~obj.param.SPECT
+                    warning(['Non-subtracted (multiplicative) scatter correction is not applied to list-mode and index-based data! Scatter correction is disabled. ' ...
+                        'Use options.subtract_scatter = true and input the scatter as the additive term of each event (options.ScatterC).'])
+                end
+                if ~obj.param.scatter_correction || ~obj.param.subtract_scatter || obj.param.CT || obj.param.SPECT
+                    obj.param.scatter_correction = false;
+                end
             end
             if ~isfield(obj.param, 'ScatterC')
                 obj.param.ScatterC = zeros(1,1, obj.param.cType);

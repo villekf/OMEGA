@@ -45,7 +45,8 @@
 * d_xy/zindex = Subset index values for subset type 3,
 * tr/axIndex = Transaxial and axial indices for index-based reconstruction,
 * TOFindex = TOF indices for list-mode TOF,
-* d_norm = normalization coefficients,
+* d_norm = normalization coefficients (a sinogram with NORMSENS, see d_sensXY/Z),
+* d_sensXY/Z = lookup tables from the detector pair/ring pair to the bin/plane of the d_norm sinogram (NORMSENS only, listmode sensitivity image),
 * d_scat = scatter coefficients when using the system matrix method (multiplication), 
 * d_Summ = buffer for d_Summ (sensitivity image),
 * no_norm = If 1, sensitivity image is not computed,
@@ -139,6 +140,10 @@ void projectorType4Forward(
 #endif
 #ifdef NORM ///////////////////////// NORMALIZATION DATA /////////////////////////
     , const CLGLOBAL float* CLRESTRICT d_norm BUF13
+#if defined(SENS) && defined(NORMSENS)
+    , const CLGLOBAL uint* CLRESTRICT d_sensXY BUF16
+    , const CLGLOBAL uint* CLRESTRICT d_sensZ BUF17
+#endif
 #endif ///////////////////////// END NORMALIZATION DATA /////////////////////////
 #ifdef SCATTER ///////////////////////// EXTRA CORRECTION DATA /////////////////////////
     , const CLGLOBAL float* CLRESTRICT d_scat BUF14
@@ -222,6 +227,9 @@ void projectorType4Forward(
 	///////////////////////// NORMALIZATION DATA /////////////////////////
 #ifdef NORM
     const CLGLOBAL float* CLRESTRICT d_norm,
+#if defined(SENS) && defined(NORMSENS)
+    const CLGLOBAL uint* CLRESTRICT d_sensXY, const CLGLOBAL uint* CLRESTRICT d_sensZ,
+#endif
 #endif
 	///////////////////////// END NORMALIZATION DATA /////////////////////////
 	///////////////////////// EXTRA CORRECTION DATA /////////////////////////
@@ -351,7 +359,15 @@ void projectorType4Forward(
 #endif
 #ifdef NORM // Normalization included
 	float local_norm = FLOAT_ZERO;
+#if defined(SENS) && defined(NORMSENS)
+	// List-mode sensitivity image with a sinogram normalization: the normalization is looked up from the sinogram
+	// with the detector and ring pair. Pairs outside the sinogram, or with zero normalization, do not contribute
+	local_norm = getNormSens(d_norm, d_sensXY, d_sensZ, i.x, i.y, indz, d_det_per_ring, rings);
+	if (local_norm == FLOAT_ZERO)
+		return;
+#else
 	local_norm = d_norm[idx];
+#endif
 #endif
 #ifndef CT
 

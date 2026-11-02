@@ -463,6 +463,8 @@ class ProjectorClass {
 		bool SensMod = false;
 		bool xFull = false;
 		bool zFull = false;
+		bool normSens = false;
+		bool normSensLookup = false;
 		bool offsetT = false;
 		bool geom5 = false;
 		bool indexBased = false;
@@ -1361,6 +1363,10 @@ class ProjectorClass {
 			ADD_OPT(os_options, "-DBP");
 			ADD_OPT(os_options, "-DATOMICF");
 			ADD_OPT(os_options, "-DSENS");
+			if (inputScalars.normSensLookup) {
+				ADD_OPT(os_options, "-DNORMSENS");
+				ADD_OPT_INT(os_options, "-DSENSBINS", inputScalars.sensBins);
+			}
 			if (inputScalars.BPType == 3)
 				ADD_OPT(os_options, "-DVOL");
 			if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
@@ -2401,7 +2407,8 @@ public:
 	// Vector device buffers common to both backends
 	std::vector<DEVBUFF_t> d_maskFPB;
 	std::vector<std::vector<DEVBUFF_t>> d_detectorVector;
-	std::vector<DEVBUFF_t> d_normFull, d_scatFull, d_xFull, d_zFull;
+	// d_normFull = sinogram normalization of the list-mode sensitivity image, d_sensXY/d_sensZ = lookup tables from the detector/ring pair to its bin/plane
+	std::vector<DEVBUFF_t> d_normFull, d_sensXY, d_sensZ, d_xFull, d_zFull;
 	std::vector<DEVBUFF_t> d_L;
 	std::vector<DEVBUFF_t> d_zindex, d_xyindex, d_norm, d_atten, d_T;
 	std::vector<std::vector<DEVBUFF_t>> d_scat, d_x, d_z, d_trIndex, d_axIndex, d_TOFIndex;
@@ -2580,6 +2587,13 @@ public:
 			getErrorString(cuMemFree(d_xFull[0]));
 		if (memAlloc.zFull)
 			getErrorString(cuMemFree(d_zFull[0]));
+		if (memAlloc.normSens) {
+			getErrorString(cuMemFree(d_normFull[0]));
+			if (memAlloc.normSensLookup) {
+				getErrorString(cuMemFree(d_sensXY[0]));
+				getErrorString(cuMemFree(d_sensZ[0]));
+			}
+		}
 		if (memAlloc.maskFP) {
 			if (memAlloc.useBuffers) {
 				for (int ll = 0; ll < d_maskFPB.size(); ll++)
@@ -3255,6 +3269,9 @@ public:
 				erotusSens[0] = (local_size[0] - erotusSens[0]);
 			d_xFull.resize(1);
 			d_zFull.resize(1);
+			d_normFull.resize(1);
+			d_sensXY.resize(1);
+			d_sensZ.resize(1);
 		}
 		if (d_Summ.size() < 1)
 			d_Summ.resize(1);
@@ -3311,6 +3328,23 @@ public:
 				if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 					needNonEmpty("x (full detector coordinates, required for the sensitivity image)", inputScalars.size_of_x);
 					needNonEmpty("z (full detector coordinates, required for the sensitivity image)", inputScalars.size_z);
+					if (inputScalars.normSensLookup) {
+						needNonEmpty("normSens (sinogram normalization, required for the sensitivity image)", inputScalars.size_normSens);
+						needNonEmpty("sensBins (bins per plane of the normalization sinogram)", inputScalars.sensBins);
+						needNonEmpty("sensXY (normalization lookup table)", w_vec.sensXY == nullptr ? 0ULL : 1ULL);
+						needNonEmpty("sensZ (normalization lookup table)", w_vec.sensZ == nullptr ? 0ULL : 1ULL);
+					}
+					else if (inputScalars.normSensFull) {
+						needNonEmpty("normSens (pair normalization table, required for the sensitivity image)", inputScalars.size_normSens);
+						needNonEmpty("normSens (pair normalization table)", w_vec.normSens == nullptr ? 0ULL : 1ULL);
+						// The kernel computes the table index with 32-bit arithmetic
+						if (inputScalars.size_normSens > 0xFFFFFFFFULL) {
+							mexPrintBase("The pair normalization table normSens has %llu elements, but at most 4294967295 elements are supported\n",
+								static_cast<unsigned long long>(inputScalars.size_normSens));
+							mexEval();
+							missing = true;
+						}
+					}
 				}
 			}
 			for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++)
@@ -3482,6 +3516,38 @@ public:
 				ALLOC_BUFFER(d_zFull[0], CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z);
 				CHECK(status, "\n", (STATUS_t)(-1));
 				memAlloc.zFull = true;
+			}
+			// Sinogram normalization and its lookup tables, or the full pair table, for the list-mode sensitivity image
+			if (inputScalars.listmode > 0 && inputScalars.computeSensImag && (inputScalars.normSensLookup || inputScalars.normSensFull)) {
+#if defined(OPENCL)
+				{
+					// A single OpenCL buffer cannot be larger than CL_DEVICE_MAX_MEM_ALLOC_SIZE
+					cl_int statusMax = CL_SUCCESS;
+					const UINT64_t maxAlloc = CLDeviceID[0].getInfo<CL_DEVICE_MAX_MEM_ALLOC_SIZE>(&statusMax);
+					if (statusMax == CL_SUCCESS && static_cast<UINT64_t>(sizeof(float)) * static_cast<UINT64_t>(inputScalars.size_normSens) > maxAlloc) {
+						mexPrintBase("The normalization of the sensitivity image (options.normSens, %llu MB) is larger than the maximum size of a single buffer of the device (%llu MB)\n",
+							static_cast<unsigned long long>((sizeof(float) * static_cast<UINT64_t>(inputScalars.size_normSens)) >> 20),
+							static_cast<unsigned long long>(maxAlloc >> 20));
+						mexEval();
+						return (STATUS_t)(-1);
+					}
+				}
+#endif // END OPENCL
+				ALLOC_BUFFER(d_normFull[0], CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_normSens);
+				if (status != SUCCESS_VALUE) {
+					mexPrintBase("Allocating the normalization of the sensitivity image (options.normSens, %llu MB) failed\n",
+						static_cast<unsigned long long>((sizeof(float) * inputScalars.size_normSens) >> 20));
+					mexEval();
+				}
+				CHECK(status, "\n", (STATUS_t)(-1));
+				memAlloc.normSens = true;
+				if (inputScalars.normSensLookup) {
+					ALLOC_BUFFER(d_sensXY[0], CL_MEM_READ_ONLY, sizeof(uint32_t) * static_cast<size_t>(inputScalars.det_per_ring) * static_cast<size_t>(inputScalars.det_per_ring));
+					CHECK(status, "\n", (STATUS_t)(-1));
+					ALLOC_BUFFER(d_sensZ[0], CL_MEM_READ_ONLY, sizeof(uint32_t) * static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings));
+					CHECK(status, "\n", (STATUS_t)(-1));
+					memAlloc.normSensLookup = true;
+				}
 			}
 			if (inputScalars.SPECT) {
 				ALLOC_BUFFER(d_rayShiftsDetector, CL_MEM_READ_ONLY, sizeof(float) * 2 * inputScalars.n_rays * inputScalars.n_rays3D * inputScalars.nRowsD *
@@ -3697,6 +3763,23 @@ public:
 				WRITE_BUFFER(d_zFull[0], sizeof(float) * inputScalars.size_z, z_det);
 				CHECK(status, "\n", (STATUS_t)(-1));
 				memSize += (sizeof(float) * inputScalars.size_of_x + sizeof(float) * inputScalars.size_z);
+			}
+			if (inputScalars.listmode > 0 && inputScalars.computeSensImag && inputScalars.normSensLookup) {
+				const size_t sizeSensXY = sizeof(uint32_t) * static_cast<size_t>(inputScalars.det_per_ring) * static_cast<size_t>(inputScalars.det_per_ring);
+				const size_t sizeSensZ = sizeof(uint32_t) * static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings);
+				WRITE_BUFFER(d_normFull[0], sizeof(float) * inputScalars.size_normSens, w_vec.normSens);
+				CHECK(status, "\n", (STATUS_t)(-1));
+				WRITE_BUFFER(d_sensXY[0], sizeSensXY, w_vec.sensXY);
+				CHECK(status, "\n", (STATUS_t)(-1));
+				WRITE_BUFFER(d_sensZ[0], sizeSensZ, w_vec.sensZ);
+				CHECK(status, "\n", (STATUS_t)(-1));
+				memSize += (sizeof(float) * inputScalars.size_normSens + sizeSensXY + sizeSensZ);
+			}
+			else if (inputScalars.listmode > 0 && inputScalars.computeSensImag && inputScalars.normSensFull) {
+				// Full pair table
+				WRITE_BUFFER(d_normFull[0], sizeof(float) * inputScalars.size_normSens, w_vec.normSens);
+				CHECK(status, "\n", (STATUS_t)(-1));
+				memSize += (sizeof(float) * inputScalars.size_normSens);
 			}
 			if (inputScalars.eFOV && !inputScalars.multiResolution) {
 				WRITE_BUFFER(d_eFOVIndices, sizeof(uint8_t) * inputScalars.Nz[0], w_vec.eFOVIndices);
@@ -5188,13 +5271,17 @@ public:
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_z[timestep][inputScalars.osa_iter0]);
 			}
 			if (compSens) {
+				// List-mode sensitivity image: the normalization is either a sinogram that is read through the two lookup tables
+				// or a full pair table (d_norm[idx] in the kernel, no lookup tables)
+				// (multiplicative scatter/corrVector is rejected in this case)
 				if (inputScalars.normalization_correction) {
 					KARG_METAL_SLOT(kernelIndBPSubIter, 10);
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_normFull[0]);
-				}
-				if (inputScalars.scatter) {
-					KARG_METAL_SLOT(kernelIndBPSubIter, 11);
-					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_scatFull[0]);
+					if (inputScalars.normSensLookup) {
+						KARG_METAL_SLOT(kernelIndBPSubIter, 22);
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_sensXY[0]);
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_sensZ[0]);
+					}
 				}
 			}
 			else {
@@ -5738,10 +5825,22 @@ public:
 				}
 				if (inputScalars.normalization_correction) {
 					KARG_METAL_SLOT(kernelIndBPSubIter, 13);
-					//if (inputScalars.listmode > 0 && inputScalars.indexBased)
-					//	status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[0]);
-					//else
-					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_norm[osa_iter]);
+					if (compSens) {
+						// List-mode sensitivity image: the normalization is either a sinogram that is read through the two lookup tables
+						// or a full pair table (d_norm[idx] in the kernel, no lookup tables)
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_normFull[0]);
+						if (inputScalars.normSensLookup) {
+							KARG_METAL_SLOT(kernelIndBPSubIter, 16);
+							KARG(kTemp, kernelBP, kernelIndBPSubIter, d_sensXY[0]);
+							KARG(kTemp, kernelBP, kernelIndBPSubIter, d_sensZ[0]);
+						}
+					}
+					else {
+						//if (inputScalars.listmode > 0 && inputScalars.indexBased)
+						//	status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[0]);
+						//else
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_norm[osa_iter]);
+					}
 				}
 				if (inputScalars.scatter) {
 					KARG_METAL_SLOT(kernelIndBPSubIter, 14);
@@ -5964,12 +6063,9 @@ public:
 	inline void releaseBuffer(const scalarStruct & inputScalars) {
 		d_xFull.clear();
 		d_zFull.clear();
-		if (inputScalars.size_norm > 1 && inputScalars.normalization_correction) {
-			d_normFull.clear();
-		}
-		if (inputScalars.size_scat > 1 && inputScalars.scatter == 1U) {
-			d_scatFull.clear();
-		}
+		d_normFull.clear();
+		d_sensXY.clear();
+		d_sensZ.clear();
 	}
 
 	/// <summary>

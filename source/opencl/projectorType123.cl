@@ -36,7 +36,8 @@
 * d_nProjections = Number of projections/sinograms,
 * d_xy/z = detector x/y/z-coordinates,
 * rings = Number of detector rings, PET only and only when computing listmode sensitivity image,
-* d_norm = normalization coefficients,
+* d_norm = normalization coefficients (a sinogram with NORMSENS, see d_sensXY/Z),
+* d_sensXY/Z = lookup tables from the detector pair/ring pair to the bin/plane of the d_norm sinogram (NORMSENS only, listmode sensitivity image),
 * d_scat = scatter coefficients when using the system matrix method (multiplication), 
 * d_Summ = buffer for d_Summ (sensitivity image),
 * d_Nxyz = image size in x/y/z- dimension, float3 or three floats (if PYTHON is defined),
@@ -117,7 +118,13 @@ void projectorType123(
 	CONSTANT float* d_xy [[buffer(8)]],
 	CONSTANT float* d_z [[buffer(9)]],
 #ifdef NORM ///////////////////////// PET NORMALIZATION DATA /////////////////////////
+#if defined(SENS) && defined(NORMSENS) // Sinogram normalization of the list-mode sensitivity image with the lookup tables
+	const CLGLOBAL float* d_norm [[buffer(10)]],
+	const CLGLOBAL uint* d_sensXY [[buffer(22)]],
+	const CLGLOBAL uint* d_sensZ [[buffer(23)]],
+#else
 	CONSTANT float* d_norm [[buffer(10)]],
+#endif
 #endif
 #ifdef SCATTER ///////////////////////// EXTRA CORRECTION DATA /////////////////////////
 	CONSTANT float* d_scat [[buffer(11)]], 
@@ -237,7 +244,10 @@ void projectorType123(
 	///////////////////////// END LISTMODE DATA /////////////////////////
 	///////////////////////// PET NORMALIZATION DATA /////////////////////////
 #ifdef NORM
-	const CLGLOBAL float* CLRESTRICT d_norm, 
+	const CLGLOBAL float* CLRESTRICT d_norm,
+#if defined(SENS) && defined(NORMSENS)
+	const CLGLOBAL uint* CLRESTRICT d_sensXY, const CLGLOBAL uint* CLRESTRICT d_sensZ,
+#endif
 #endif
 	///////////////////////// END PET NORMALIZATION DATA /////////////////////////
 	///////////////////////// EXTRA CORRECTION DATA /////////////////////////
@@ -425,7 +435,13 @@ void projectorType123(
 	FLOAT local_scat = FLOAT_ZERO;
 
 #ifdef NORM // Normalization included
-	#ifdef NORMBYDETECTOR
+	#if defined(SENS) && defined(NORMSENS)
+		// List-mode sensitivity image with a sinogram normalization: the normalization is looked up from the sinogram
+		// with the detector and ring pair. Pairs outside the sinogram, or with zero normalization, do not contribute
+		local_norm = getNormSens(d_norm, d_sensXY, d_sensZ, i.x, i.y, indz, d_det_per_ring, rings);
+		if (local_norm == FLOAT_ZERO)
+			return;
+	#elif defined(NORMBYDETECTOR)
 		local_norm = d_norm[i.x + i.y * d_size_x + detectorHead * d_size_x * d_sizey];
 	#else
 		local_norm = d_norm[idx];

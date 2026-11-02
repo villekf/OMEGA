@@ -89,6 +89,33 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 			w_vec.listCoord = options.x;
 			x = options.uV;
 		}
+		// Optional normalization for the list-mode sensitivity image (index-based and custom coordinate data). Either a sinogram that
+		// is read through the two lookup tables sensXY and sensZ (index-based data), or, without the lookup tables, a full pair table
+		// with one value for each ordered detector/ring pair (det_per_ring^2 * rings^2 * nLayers^2 elements, the kernel index)
+		if (inputScalars.computeSensImag && inputScalars.normalization_correction && options.normSens != nullptr && options.sizeNormSens > 0ULL) {
+			w_vec.normSens = options.normSens;
+			inputScalars.size_normSens = static_cast<size_t>(options.sizeNormSens);
+			if (options.sensXY != nullptr && options.sensZ != nullptr && options.sensBins > 0U) {
+				if (!inputScalars.indexBased) {
+					mexPrint("The normalization lookup tables sensXY and sensZ are supported only with index-based data\n");
+					return -1;
+				}
+				w_vec.sensXY = options.sensXY;
+				w_vec.sensZ = options.sensZ;
+				inputScalars.sensBins = options.sensBins;
+				inputScalars.normSensLookup = true;
+			}
+			else {
+				// Full pair table, no lookup tables (sensBins = 0)
+				const size_t expectedPairs = static_cast<size_t>(inputScalars.det_per_ring) * static_cast<size_t>(inputScalars.det_per_ring) *
+					static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.nLayers) * static_cast<size_t>(inputScalars.nLayers);
+				if (inputScalars.size_normSens != expectedPairs) {
+					mexPrint("The pair normalization table normSens must have det_per_ring^2 * rings^2 * nLayers^2 elements\n");
+					return -1;
+				}
+				inputScalars.normSensFull = true;
+			}
+		}
 		if (inputScalars.TOF)
 			w_vec.TOFIndices = options.TOFIndices;
 		inputScalars.kokoNonTOF = mDim;
@@ -96,8 +123,11 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 	else
 		inputScalars.kokoNonTOF = mDim / inputScalars.nBins;
 	inputScalars.kokoTOF = mDim;
-	
-	
+
+	// TOF-resolved randoms/scatter (randomsTOF) has the layout and size of the TOF measurements
+	if (!checkRandomsTOF(inputScalars, static_cast<size_t>(options.sizeRandoms), static_cast<size_t>(options.measElem)))
+		return -1;
+
 	if (DEBUG) {
 		mexPrintBase("kokoTOF = %u\n", inputScalars.kokoTOF);
 		mexPrintBase("kokoNonTOF = %u\n", inputScalars.kokoNonTOF);
@@ -153,5 +183,5 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 
 	fflush(stdout);
 
-	return 0;
+	return status;
 }

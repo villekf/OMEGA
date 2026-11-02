@@ -282,6 +282,8 @@ using metal::dot;
 #define BUF13 [[buffer(13)]]
 #define BUF14 [[buffer(14)]]
 #define BUF15 [[buffer(15)]]
+#define BUF16 [[buffer(16)]]
+#define BUF17 [[buffer(17)]]
 #define CEIL metal::ceil
 #define CINT(a)   static_cast<int>(a)
 #define CINT_rtz(a) static_cast<int>(metal::trunc((a)))
@@ -2108,6 +2110,25 @@ DEVICE void getDetectorCoordinates(const CLGLOBAL uint *d_xyindex, const CLGLOBA
 #endif
 #endif
 
+#if defined(SENS) && defined(NORMSENS)
+// Get the sinogram normalization of the detector pair (detA, detB) and the ring pair indz in the list-mode sensitivity image.
+// d_sensXY maps the detector pair to the sinogram bin (bits 0..30) and to a flag (bit 31) telling that the rings have to be exchanged,
+// d_sensZ maps the (possibly exchanged) ring pair to the sinogram plane. 0xFFFFFFFF in either table = the pair is outside the sinogram,
+// in which case zero is returned
+DEVICE float getNormSens(const CLGLOBAL float* d_norm, const CLGLOBAL uint* d_sensXY, const CLGLOBAL uint* d_sensZ, const int detA, const int detB,
+	const int2 indz, const uint d_det_per_ring, const uint rings) {
+	const uint xy = d_sensXY[(size_t)detA + (size_t)detB * (size_t)d_det_per_ring];
+	if (xy == 0xFFFFFFFFu)
+		return 0.f;
+	const int ringA = (xy & 0x80000000u) ? indz.y : indz.x;
+	const int ringB = (xy & 0x80000000u) ? indz.x : indz.y;
+	const uint plane = d_sensZ[(size_t)ringA + (size_t)ringB * (size_t)rings];
+	if (plane == 0xFFFFFFFFu)
+		return 0.f;
+	return d_norm[(size_t)(xy & 0x7FFFFFFFu) + (size_t)plane * (size_t)SENSBINS];
+}
+#endif
+
 #if !defined(SUBSETS) && !defined(CT)
 // Get the detector coordinates for the current measurement (no subsets or using full sinogram subsets)
 DEVICE void getDetectorCoordinatesFullSinogram(const uint d_size_x, const int3 i, PTR_THR FLOAT3* s, PTR_THR FLOAT3* d, 
@@ -2361,7 +2382,7 @@ DEVICE float voxelValue(const float t0, const float tc, const float L) {
 // compute the distance that the ray traverses in the current voxel
 DEVICE float compute_element(PTR_THR float* t0, PTR_THR float* tc, const float L, const float tu, const int u, PTR_THR int* temp_ijk, PTR_THR bool* pass) {
 #ifdef ORTH
-	// The voxel [tc, t0] overlaps the line segment t = [0, 1] iff t0 >= 0 and tc <= 1 (this includes a segment that is
+	// The voxel [tc, t0] overlaps the line segment t = [0, 1] if and only if t0 >= 0 and tc <= 1 (this includes a segment that is
 	// completely inside the voxel, where neither t0 nor tc is inside [0, 1])
 	*pass = (*t0 >= 0.f && *tc <= 1.f);
 	float local_ele = 0.f;

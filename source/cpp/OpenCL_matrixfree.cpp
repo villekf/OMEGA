@@ -372,6 +372,9 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 			inputScalars.kokoNonTOF = mDim;
 	}
 	inputScalars.kokoTOF = mDim;
+	// TOF-resolved randoms/scatter (randomsTOF) has the layout and size of the TOF measurements
+	if (!checkRandomsTOF(inputScalars, mxGetNumberOfElements(sc_ra), mxGetNumberOfElements(Sin)))
+		mexErrMsgTxt("Invalid TOF-resolved randoms/scatter data (options.randomsTOF)!");
 	if (inputScalars.storeFP) {
 		FPptr = mxCreateCellMatrix(static_cast<mwSize>(inputScalars.subsets * inputScalars.Niter), 1);
 	}
@@ -403,6 +406,42 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		else {
 			w_vec.listCoord = getSingles(options, "x", 0);
 			//inputScalars.size_of_x = mxGetNumberOfElements(getField(options, 0, "x"));
+		}
+		// Optional normalization for the list-mode sensitivity image (index-based and custom coordinate data). Either a sinogram that
+		// is read through the two lookup tables sensXY and sensZ (index-based data), or, without the lookup tables, a full pair table
+		// with one value for each ordered detector/ring pair (det_per_ring^2 * rings^2 * nLayers^2 elements, the kernel index)
+		if (inputScalars.computeSensImag && inputScalars.normalization_correction && mxGetFieldNumber(options, "normSens") >= 0 && mxGetNumberOfElements(mxGetField(options, 0, "normSens")) > 0) {
+			const mxArray* normSensArr = mxGetField(options, 0, "normSens");
+			if (!mxIsSingle(normSensArr))
+				mexErrMsgTxt("normSens must be of type single.");
+			const bool hasSensXY = mxGetFieldNumber(options, "sensXY") >= 0 && mxGetNumberOfElements(mxGetField(options, 0, "sensXY")) > 0;
+			if (hasSensXY) {
+				if (!inputScalars.indexBased)
+					mexErrMsgTxt("The normalization lookup tables sensXY and sensZ are supported only with index-based data.");
+				if (mxGetFieldNumber(options, "sensZ") < 0 || mxGetFieldNumber(options, "sensBins") < 0)
+					mexErrMsgTxt("normSens requires the fields sensXY, sensZ and sensBins.");
+				const mxArray* sensXYArr = mxGetField(options, 0, "sensXY");
+				const mxArray* sensZArr = mxGetField(options, 0, "sensZ");
+				if (!mxIsUint32(sensXYArr) || !mxIsUint32(sensZArr))
+					mexErrMsgTxt("sensXY and sensZ must be of type uint32.");
+				if (mxGetNumberOfElements(sensXYArr) != static_cast<size_t>(inputScalars.det_per_ring) * static_cast<size_t>(inputScalars.det_per_ring) ||
+					mxGetNumberOfElements(sensZArr) != static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings))
+					mexErrMsgTxt("sensXY must have det_per_ring^2 elements and sensZ rings^2 elements.");
+				w_vec.sensXY = getUint32s(options, "sensXY", 0);
+				w_vec.sensZ = getUint32s(options, "sensZ", 0);
+				inputScalars.sensBins = getScalarUInt32(options, 0, "sensBins");
+				inputScalars.normSensLookup = true;
+			}
+			else {
+				// Full pair table, no lookup tables. det_per_ring and rings are the values of one layer (xSens and zSens applied by the caller)
+				const size_t expectedPairs = static_cast<size_t>(inputScalars.det_per_ring) * static_cast<size_t>(inputScalars.det_per_ring) *
+					static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.nLayers) * static_cast<size_t>(inputScalars.nLayers);
+				if (mxGetNumberOfElements(normSensArr) != expectedPairs)
+					mexErrMsgTxt("The pair normalization table normSens must have det_per_ring^2 * rings^2 * nLayers^2 elements.");
+				inputScalars.normSensFull = true;
+			}
+			w_vec.normSens = getSingles(options, "normSens", 0);
+			inputScalars.size_normSens = mxGetNumberOfElements(normSensArr);
 		}
 		if (inputScalars.TOF)
 			w_vec.TOFIndices = getUint8s(options, "TOFIndices", 0);

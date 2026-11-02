@@ -1656,3 +1656,108 @@ def SPECTParameters(options: proj.projectorClass):
         options.blurPlanes2Linear = options.blurPlanes2Linear.ravel('F').astype(dtype=np.float32)[None, :]
         options.blurPlanes2 = options.blurPlanes2.ravel('F').astype(dtype=np.int32)[None, :]
         options.type6TotalLength = _type6_total_lengths(options)
+
+
+def _sinogramPairLookupTransaxial(det_per_ring, Ndist, Nang, ndist_side):
+    """Transaxial part of sinogramPairLookup (the sinogram bin of every detector pair), see saveSinogram.h."""
+    d = int(det_per_ring)
+    half = d // 2
+    Ndist = int(Ndist)
+    Nang = int(Nang)
+    if half // Nang < 1:
+        raise ValueError('The number of sinogram angles (%d) can be at most the number of detectors per ring divided by two (%d)!' % (Nang, half))
+    pos = np.arange(d, dtype=np.int64)
+    ringPos1 = pos[:, None]
+    ringPos2 = pos[None, :]
+    xa = np.maximum(ringPos1, ringPos2)
+    ya = np.minimum(ringPos1, ringPos2)
+    j = ((xa + ya + half + 1) % d) // 2
+    i = np.abs(xa - ya - half)
+    i = np.where((ya < j) | (j + half < xa), -i, i)
+    # The "swap corners" of the sinogram
+    swap = ((j * 2) < -i) | (i <= (j - half) * 2)
+    # The default value for an even Ndist is the same as in saveSinogram
+    side = 1 if (Ndist % 2 == 0 and ndist_side == 0) else int(ndist_side)
+    if Ndist % 2 == 0:
+        accepted = (i <= Ndist // 2 + min(0, side)) & (i >= -(Ndist // 2) + max(0, side))
+        i = i + Ndist // 2 - max(0, side)
+    else:
+        accepted = (i <= Ndist // 2) & (i >= -(Ndist // 2))
+        i = i + Ndist // 2
+    j = j // (half // Nang)
+    # The sinogram bin, with the bit 31 set when the rings of the event have to be exchanged
+    flip = swap ^ (ringPos2 > ringPos1)
+    xyLookup = (i + j * Ndist).astype(np.uint32)
+    xyLookup[flip] |= np.uint32(0x80000000)
+    xyLookup[~accepted] = np.uint32(0xFFFFFFFF)
+    return xyLookup.ravel(order='F')
+
+
+def _sinogramPairLookupAxial(rings, ring_difference, span, segment_table, NSinos):
+    """Axial part of sinogramPairLookup (the sinogram plane of every ring pair), see saveSinogram.h."""
+    rings = int(rings)
+    span = int(span)
+    ring = np.arange(rings, dtype=np.int64)
+    ring1 = ring[:, None]
+    ring2 = ring[None, :]
+    if span <= 1:
+        plane = ring2 * rings + ring1
+    else:
+        seg = np.cumsum(np.asarray(segment_table, dtype=np.int64).ravel())
+        erotus = ring1 - ring2
+        summa = ring1 + ring2
+        absErotus = np.abs(erotus)
+        segment = (absErotus + span // 2) // span
+        outsideSegment0 = (absErotus > span // 2) & (absErotus <= int(ring_difference))
+        if np.any(outsideSegment0) and seg.size < segment[outsideSegment0].max() * 2:
+            raise ValueError('The segment table has too few elements for the ring difference (%d)!' % int(ring_difference))
+        segmentIndex = np.minimum(np.maximum(segment - 1, 0) * 2 + (erotus >= 0), seg.size - 1)
+        plane = np.where(absErotus <= span // 2, summa, summa - ((span // 2) * (segment * 2 - 1) + segment) + seg[segmentIndex])
+    valid = (np.abs(ring1 - ring2) <= int(ring_difference)) & (plane >= 0) & (plane < int(NSinos))
+    zLookup = plane.astype(np.uint32)
+    zLookup[~valid] = np.uint32(0xFFFFFFFF)
+    return zLookup.ravel(order='F')
+
+
+def sinogramPairLookup(det_per_ring, rings, Ndist, Nang, ring_difference, span, segment_table, NSinos, ndist_side=1):
+    """
+    Lookup tables from the detector pairs and the ring pairs to the sinogram bins and planes. Reproduces the sinogram
+    indexing of saveSinogram (source/cpp/saveSinogram.h) for the raw detector order, i.e. the table entries give the sinogram
+    element that the loaders would store an event with the given detector and ring indices to.
+
+    Parameters
+    ----------
+    det_per_ring : int
+        Number of detectors per ring.
+    rings : int
+        Number of rings.
+    Ndist : int
+        Number of radial bins of the sinogram.
+    Nang : int
+        Number of angles of the sinogram.
+    ring_difference : int
+        Maximum ring difference.
+    span : int
+        Span (axial mashing).
+    segment_table : array_like
+        Number of planes in each segment (options.segment_table, not cumulative). Not used with span <= 1.
+    NSinos : int
+        Number of sinogram planes.
+    ndist_side : int, optional
+        Which side the extra radial bin of an even Ndist is on (1 or -1). The default is 1.
+
+    Returns
+    -------
+    xyLookup : ndarray, uint32
+        det_per_ring**2 elements, the element of the detector pair (a, b) is xyLookup[a + b * det_per_ring]. The bits 0 - 30
+        contain the radial bin plus the angle times Ndist, the bit 31 is set if the rings of the event have to be exchanged
+        before using zLookup. 0xFFFFFFFF if the pair is outside the sinogram.
+    zLookup : ndarray, uint32
+        rings**2 elements, the element of the ring pair (r1, r2) (exchanged if xyLookup says so) is zLookup[r1 + r2 * rings].
+        The sinogram plane or 0xFFFFFFFF if the pair is outside the sinogram (ring difference).
+
+    The sinogram element of an event is xyLookup (bits 0 - 30) + zLookup * Ndist * Nang.
+    """
+    xyLookup = _sinogramPairLookupTransaxial(det_per_ring, Ndist, Nang, ndist_side)
+    zLookup = _sinogramPairLookupAxial(rings, ring_difference, span, segment_table, NSinos)
+    return xyLookup, zLookup

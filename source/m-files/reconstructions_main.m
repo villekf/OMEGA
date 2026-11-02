@@ -162,7 +162,9 @@ if ~options.param.listmode
     % Load correction data
     [options.param] = loadCorrections(options.param, RandProp, ScatterProp);
 else
-    % list-mode does not support corrections
+    % list-mode does not support separate randoms (they are added into options.ScatterC or input as minus ones) or multiplicative 
+	% corrections. The subtracted scatter (options.scatter_correction) is the additive term of each event, see loadCorrections. 
+	% The internal randoms_correction flag is set again by loadCorrections once the additive term (options.SinDelayed) has been formed
     % options.param.normalization_correction = false;
     options.param.randoms_correction = false;
     options.param.additionalCorrection = false;
