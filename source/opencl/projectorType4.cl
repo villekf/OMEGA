@@ -922,6 +922,9 @@ void projectorType4Backward(
     , CONSTANT float* d_xyz BUF5
     , CONSTANT float* d_uv BUF6
 #endif
+#ifdef PROJWINDOW
+    , const CLGLOBAL int* CLRESTRICT d_projWindow
+#endif
     , CLGLOBAL float* CLRESTRICT d_Summ BUF7
 #ifdef NORM
     , const CLGLOBAL float* CLRESTRICT d_norm BUF8
@@ -1079,7 +1082,11 @@ void projectorType4Backward(
 #ifdef HELICAL
 	const float thetaSpan = koko.x / r;
 #endif
-#if STYPE == 12
+#ifdef PROJWINDOW
+    // Only the projections in this range can reach the detector from this axial block
+    const int kkEnd = d_projWindow[GID2 * 2 + 1];
+    for (int kk = d_projWindow[GID2 * 2]; kk < kkEnd; kk++) {
+#elif STYPE == 12
     for (int kk = 0; kk < d_nProjections; kk += 2) {
 #else
     for (int kk = 0; kk < d_nProjections; kk++) {

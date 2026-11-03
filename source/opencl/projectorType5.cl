@@ -71,6 +71,9 @@ void projectorType5Forward(
 #else
     , const float2 d_dPitch
 #endif
+#ifdef HELICAL
+    , const float r
+#endif
 #ifdef PYTHON
     , const uint d_Nx, const uint d_Ny, const uint d_Nz
     , const float bx, const float by, const float bz
@@ -165,7 +168,11 @@ void projectorType5Forward(
   const int maxZZ = MIN(NVOXELSFP, CINT(d_nCols) - i.y);
 #ifdef CT
   // Get source and detector coordinates
-  getDetectorCoordinatesCT(d_xyz, d_uv, &s, &d, i, d_nRows, d_nCols, d_dPitch,
+  getDetectorCoordinatesCT(d_xyz,
+#ifdef HELICAL
+                           r,
+#endif
+                           d_uv, &s, &d, i, d_nRows, d_nCols, d_dPitch,
                            &dL, &dR, &dU, &dD);
   // Weight values
   const float3 uVector = FABS(NORMALIZE(d - s));
@@ -457,6 +464,9 @@ extern "C" __global__
 #else
                            const float2 d_dPitch,
 #endif
+#ifdef HELICAL
+                           const float r,
+#endif
 #ifdef OFFSET
                            CONSTANT float *T,
 #endif
@@ -473,12 +483,16 @@ extern "C" __global__
 #endif
 #if defined(USEGLOBAL)
                            const CLGLOBAL float *CLRESTRICT d_xyz,
+                           const CLGLOBAL float *CLRESTRICT d_uv,
 #else
                            CONSTANT float *d_xyz,
-#endif
                            CONSTANT float *d_uv,
+#endif
 #ifdef GEOM5
                            const CLGLOBAL float *CLRESTRICT d_geom5,
+#endif
+#ifdef PROJWINDOW
+                           const CLGLOBAL int *CLRESTRICT d_projWindow,
 #endif
                            IMAGE3D d_IImage,
                            CLGLOBAL float *d_forw, CLGLOBAL float *d_Summ,
@@ -649,11 +663,22 @@ extern "C" __global__
 #ifndef GEOM5
   const float2 indeksi = MFLOAT2(CFLOAT(d_nRows) / 2.f, CFLOAT(d_nCols) / 2.f);
 #endif
-#ifdef MEANDISTANCEBP
+#if defined(MEANDISTANCEBP) || defined(HELICAL)
   const float texWidthRow = CFLOAT(d_nRows + 1);
   const float texWidthCol = CFLOAT(d_nCols + 1);
 #endif
+#ifdef HELICAL
+  const float arcOffset = (CFLOAT(d_nRows) + 1.f) * d_dPitch.x / 2.f;
+  const float zLow = dV.z - d_d.z / 2.f;
+  const float zHigh = dV.z + (CFLOAT(maxZZ5) - .5f) * d_d.z;
+#endif
+#ifdef PROJWINDOW
+  // Only the projections in this range can reach the detector from this axial block
+  const int kkEnd = d_projWindow[GID2 * 2 + 1];
+  for (int kk = d_projWindow[GID2 * 2]; kk < kkEnd; kk++) {
+#else
   for (int kk = 0; kk < d_nProjections; kk++) {
+#endif
     float3 vLU, vRD;
 #ifdef GEOM5
     // Per-projection geometry precomputed on the host
@@ -673,6 +698,16 @@ extern "C" __global__
     const int id = kk * 6;
     const float3 s = CMFLOAT3(d_xyz[id], d_xyz[id + 1], d_xyz[id + 2]);
     const float3 d = CMFLOAT3(d_xyz[id + 3], d_xyz[id + 4], d_xyz[id + 5]);
+#ifdef HELICAL
+    // Curved detector, the arc centre and the axial extent of the detector
+    const float cosA = COSF(d_uv[kk]);
+    const float sinA = SINF(d_uv[kk]);
+    const float xc = d.x - r * cosA;
+    const float yc = d.y + r * sinA;
+    const float zMin = d.z - indeksi.y * d_dPitch.y;
+    const float zMax = d.z + indeksi.y * d_dPitch.y;
+    const float arcC = (s.x - xc) * (s.x - xc) + (s.y - yc) * (s.y - yc) - r * r;
+#else
 #if defined(PITCH)
     const float3 apuX =
         CMFLOAT3(d_uv[kk * NA], d_uv[kk * NA + 1], d_uv[kk * NA + 2]) *
@@ -692,6 +727,13 @@ extern "C" __global__
     const float3 crossP = CROSS(d2, d3 - d);
     const float upperPart = dot(crossP, s - d);
 #endif
+#endif
+#ifdef HELICAL
+    // A ray hits the cylinder beyond the voxel, i.e. further away from the source height. A voxel above (below) both the
+    // source and the detector can thus be skipped without computing the hit point
+    if ((zLow > zMax && s.z <= zMax) || (zHigh < zMin && s.z >= zMin))
+      continue;
+#endif
     const bool sxDim = FABS(s.x) <= FABS(s.y);
     if (sxDim) {
       if (s.y > 0.f) {
@@ -710,6 +752,21 @@ extern "C" __global__
         vRD = CMFLOAT3(dV.x, dV.y + d_d.y / 2.f, dV.z + d_d.z / 2.f) - s;
       }
     }
+#ifdef HELICAL
+    // Hit points on the cylinder. Height and arc length are converted to the same detector coordinates as with the flat panel
+    float tLU = rayArcDistance(s, vLU, xc, yc, arcC);
+    float tRD = rayArcDistance(s, vRD, xc, yc, arcC);
+    const float zOffset = s.z - zMin + d_dPitch.y / 2.f;
+    float Ay = tLU * vLU.z + zOffset;
+    float Dy = tRD * vRD.z + zOffset;
+    // Skip the projection if all the voxels of this thread are outside the detector in the axial direction
+    const float zSpan = CFLOAT(maxZZ5 - 1) * d_d.z;
+    if (FMAX(Ay + tLU * zSpan, Dy + tRD * zSpan) < d_dPitch.y / 2.f ||
+        FMIN(Ay, Dy) > CFLOAT(d_nCols) * d_dPitch.y + d_dPitch.y / 2.f)
+      continue;
+    float Ax = rayArcAngle(s, vLU, tLU, xc, yc, cosA, sinA) * r + arcOffset;
+    float Dx = rayArcAngle(s, vRD, tRD, xc, yc, cosA, sinA) * r + arcOffset;
+#else
     float tLU = upperPart / (dot(-vLU, crossP));
     float tRD = upperPart / (dot(-vRD, crossP));
 #ifdef USEMAD
@@ -725,6 +782,7 @@ extern "C" __global__
     float Ay = dot(pLU, normY) + d_dPitch.y / 2.f;
     float Dx = dot(pRD, normX) + d_dPitch.x / 2.f;
     float Dy = dot(pRD, normY) + d_dPitch.y / 2.f;
+#endif
     if (Dx > Ax) {
       const float xA = Ax;
       Ax = Dx;
@@ -867,7 +925,7 @@ extern "C" __global__
 #else
     float apu = (A + D - C - B);
 #endif
-#ifdef MEANDISTANCEBP
+#if defined(MEANDISTANCEBP) || defined(HELICAL)
     // Add-back area clipped to the valid SAT range [0, N] per axis, so
     // that footprints extending past the detector (including rays that
     // miss the detector entirely) do not pick up spurious out-of-range
@@ -878,6 +936,8 @@ extern "C" __global__
     const float colLenClip =
         FMIN(FMAX(AyN * texWidthCol - 0.5f, 0.f), CFLOAT(d_nCols)) -
         FMIN(FMAX(DyN * texWidthCol - 0.5f, 0.f), CFLOAT(d_nCols));
+#endif
+#ifdef MEANDISTANCEBP
     const float clippedArea = FABS(rowLenClip) * FABS(colLenClip);
     if (clippedArea > 0.f) {
 #ifdef OFFSET
@@ -895,7 +955,13 @@ extern "C" __global__
       temp[0] += apu * kerroin;
     }
     if (no_norm == 0u)
+#ifdef HELICAL
+      // Most projections see only a part of the voxel or none of it, so the sensitivity is the backprojection of ones, i.e.
+      // the footprint area clipped to the detector
+      wSum[0] += kerroin * FABS(rowLenClip) * FABS(colLenClip);
+#else
       wSum[0] += kerroin;
+#endif
     dV2.z = dV.z;
     for (int zz = 1; zz < maxZZ5; zz++) {
       vRD.z += d_d.z;
@@ -908,6 +974,11 @@ extern "C" __global__
       else
         kerroin = d_d.x * LENGTH(vd2) / FABS(vd2.x);
 #endif
+#ifdef HELICAL
+      // Only the height changes in the axial direction
+      Ay = tLU * vLU.z + zOffset;
+      Dy = tRD * vRD.z + zOffset;
+#else
       tLU = upperPart / (dot(-vLU, crossP));
       tRD = upperPart / (dot(-vRD, crossP));
 #ifdef USEMAD
@@ -921,6 +992,7 @@ extern "C" __global__
       pLU -= d3;
       Ay = dot(pLU, normY) + d_dPitch.y / 2.f;
       Dy = dot(pRD, normY) + d_dPitch.y / 2.f;
+#endif
       if (Dy > Ay) {
         const float yA = Ay;
         Ay = Dy;
@@ -967,13 +1039,15 @@ extern "C" __global__
 #else
       apu = (A + D - C - B);
 #endif
-#ifdef MEANDISTANCEBP
+#if defined(MEANDISTANCEBP) || defined(HELICAL)
       // AxN/DxN (row axis) are unchanged within this zz loop -- only the
       // column-axis (y) bounds move per z-step -- so rowLenClip (computed
       // above) is reused and only the column length is recomputed here.
       const float colLenClip2 =
           FMIN(FMAX(AyN2 * texWidthCol - 0.5f, 0.f), CFLOAT(d_nCols)) -
           FMIN(FMAX(DyN2 * texWidthCol - 0.5f, 0.f), CFLOAT(d_nCols));
+#endif
+#ifdef MEANDISTANCEBP
       const float clippedArea2 = FABS(rowLenClip) * FABS(colLenClip2);
       if (clippedArea2 > 0.f) {
 #ifdef OFFSET
@@ -987,7 +1061,11 @@ extern "C" __global__
         temp[zz] += apu * kerroin;
       }
       if (no_norm == 0u)
+#ifdef HELICAL
+        wSum[zz] += kerroin * FABS(rowLenClip) * FABS(colLenClip2);
+#else
         wSum[zz] += kerroin;
+#endif
     }
   }
   // Start fastPDHG computations

@@ -502,6 +502,7 @@ class ProjectorClass {
 		bool normSensLookup = false;
 		bool offsetT = false;
 		bool geom5 = false;
+		bool projWindow = false;
 		bool indexBased = false;
 		bool TOFIndex = false;
 		bool angle = false;
@@ -517,6 +518,7 @@ class ProjectorClass {
 		int aSteps = 0;
 		int oSteps = 0;
 		int g5Steps = 0;
+		int pwSteps = 0;
 		int tSteps = 1;
 		int attenSize = 0;
 	};
@@ -1313,6 +1315,9 @@ class ProjectorClass {
 					if (inputScalars.useHelical)
 						ADD_OPT_INT(os_options, "-DNVOXELSHELICAL", NVOXELSHELICAL);
 #ifndef METAL
+					// The helical backprojection only visits the projections in the window of its axial block
+					if (useProjWindow)
+						ADD_OPT(os_options, "-DPROJWINDOW");
 					// fastPDHG build options
 					if (inputScalars.fastPDHG) {
 						addFastPDHGOptions(os_options, inputScalars, w_vec, MethodList, inputScalars.useHelical ? NVOXELSHELICAL : NVOXELS);
@@ -1353,9 +1358,13 @@ class ProjectorClass {
 				ADD_OPT(os_options, "-DBP");
 			// BDD uses precomputed values, but you can also use it with the original on the fly calculations
 			// If GEOM5 is not defined, the kernel uses the old format, otherwise it assumes precomputed values
+			// The helical geometry has no detector plane, so it is always computed in the kernel
 #if !defined(METAL)
-			if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0)
+			if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0 && !inputScalars.useHelical)
 				ADD_OPT(os_options, "-DGEOM5");
+			// The helical backprojection only visits the projections in the window of its axial block
+			if (useProjWindow && inputScalars.BPType == 5)
+				ADD_OPT(os_options, "-DPROJWINDOW");
 			// Same as above, but for BPType 5
 			if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.fastPDHG) {
 				addFastPDHGOptions(os_options, inputScalars, w_vec, MethodList, inputScalars.pitch ? 1ULL : NVOXELS5);
@@ -2137,6 +2146,72 @@ class ProjectorClass {
 		}
 		return status;
 	}
+
+	// Number of voxels in the axial direction handled by one thread of the helical type 4 or 5 backprojection
+	inline int64_t projectionWindowVoxels(const scalarStruct& inputScalars) const {
+		return inputScalars.BPType == 5 ? (inputScalars.pitch ? 1 : static_cast<int64_t>(NVOXELS5)) : static_cast<int64_t>(NVOXELSHELICAL);
+	}
+
+	// Number of axial voxel blocks of volume ii
+	inline int64_t projectionWindowBlocks(const scalarStruct& inputScalars, const int ii) const {
+		const int64_t nv = projectionWindowVoxels(inputScalars);
+		return (static_cast<int64_t>(inputScalars.Nz[ii]) + nv - 1) / nv;
+	}
+
+	// For each axial voxel block of volume ii, the range of projections that can reach the detector. Every projection is tested, so
+	// the range is correct for any projection order, though it only stays narrow when the source height is monotonic
+	inline void computeProjectionWindow(std::vector<int32_t>& window, const float* xs, const float* angles, const int64_t nProj,
+		const scalarStruct& inputScalars, const float dPitchY, const int ii) const {
+		const int64_t nv = projectionWindowVoxels(inputScalars);
+		const int64_t nBlocks = projectionWindowBlocks(inputScalars, ii);
+		const double rr = static_cast<double>(inputScalars.helicalRadius);
+		const double dz = static_cast<double>(inputScalars.dz[ii]);
+		const double bz = static_cast<double>(inputScalars.bz[ii]);
+		const double zEnd = bz + static_cast<double>(inputScalars.Nz[ii]) * dz;
+		// Corners of the image box in the transaxial plane
+		const double cornerX[2] = { static_cast<double>(inputScalars.bx[ii]),
+			static_cast<double>(inputScalars.bx[ii]) + static_cast<double>(inputScalars.Nx[ii]) * static_cast<double>(inputScalars.dx[ii]) };
+		const double cornerY[2] = { static_cast<double>(inputScalars.by[ii]),
+			static_cast<double>(inputScalars.by[ii]) + static_cast<double>(inputScalars.Ny[ii]) * static_cast<double>(inputScalars.dy[ii]) };
+		// Axial half extent of the detector with one row of margin on each side
+		const double halfWidth = (static_cast<double>(inputScalars.nColsD) / 2. + 1.) * static_cast<double>(dPitchY);
+		std::vector<int32_t> first(nBlocks, std::numeric_limits<int32_t>::max());
+		std::vector<int32_t> last(nBlocks, 0);
+		for (int64_t k = 0; k < nProj; k++) {
+			const double sX = static_cast<double>(xs[k * 6]), sY = static_cast<double>(xs[k * 6 + 1]), sZ = static_cast<double>(xs[k * 6 + 2]);
+			const double dX = static_cast<double>(xs[k * 6 + 3]), dY = static_cast<double>(xs[k * 6 + 4]), dZ = static_cast<double>(xs[k * 6 + 5]);
+			const double a = static_cast<double>(angles[k]);
+			// Arc center. The source is inside the detector cylinder, so the ray from the source to a point of the image box has
+			// to travel at least r - |s - C| in the transaxial plane, relative to the largest transaxial distance to the box
+			const double cX = dX - rr * std::cos(a);
+			const double cY = dY + rr * std::sin(a);
+			const double dSC = std::sqrt((sX - cX) * (sX - cX) + (sY - cY) * (sY - cY));
+			double maxDist = 0.;
+			for (int cx = 0; cx < 2; cx++)
+				for (int cy = 0; cy < 2; cy++)
+					maxDist = std::max(maxDist, std::sqrt((cornerX[cx] - sX) * (cornerX[cx] - sX) + (cornerY[cy] - sY) * (cornerY[cy] - sY)));
+			const double tMin = maxDist > 0. ? (rr - dSC) / maxDist : 0.;
+			const double zMin = dZ - halfWidth;
+			const double zMax = dZ + halfWidth;
+			for (int64_t b = 0; b < nBlocks; b++) {
+				const double zLow = bz + static_cast<double>(b * nv) * dz;
+				const double zHigh = std::min(zLow + static_cast<double>(nv) * dz, zEnd);
+				const bool invisible = (zLow > sZ && sZ + tMin * (zLow - sZ) > zMax) || (zHigh < sZ && sZ + tMin * (zHigh - sZ) < zMin);
+				if (!invisible) {
+					first[b] = std::min(first[b], static_cast<int32_t>(k));
+					last[b] = std::max(last[b], static_cast<int32_t>(k + 1));
+				}
+			}
+		}
+		window.assign(static_cast<size_t>(2 * nBlocks), 0);
+		for (int64_t b = 0; b < nBlocks; b++) {
+			// A block with no visible projection gets an empty range
+			if (first[b] != std::numeric_limits<int32_t>::max()) {
+				window[2 * b] = first[b];
+				window[2 * b + 1] = last[b];
+			}
+		}
+	}
 public:
 	ProjectorClass()
 #if defined(METAL)
@@ -2451,6 +2526,11 @@ public:
 	std::vector<DEVBUFF_t> d_geomProj5;
 	// Host-side storage for the above geometry
 	std::vector<std::vector<float>> geomProj5Host;
+	// First and one past the last projection of each axial voxel block in helical backprojection, one buffer per subset and volume
+	std::vector<std::vector<DEVBUFF_t>> d_projWindow;
+	// Host-side storage for the above
+	std::vector<std::vector<std::vector<int32_t>>> projWindowHost;
+	bool useProjWindow = false;
 	std::vector<std::vector<size_t>> erotusBP, erotusPDHG;
 #if defined(CUDA) || defined(HIP)
 	// Buffers allocated by makeDeviceBuffer and owned by this object; released in the destructor.
@@ -2594,6 +2674,13 @@ public:
 			for (int kk = 0; kk < memAlloc.g5Steps; kk++) {
 				getErrorString(cuMemFree(d_geomProj5[kk]));
 			}
+		}
+		if (memAlloc.projWindow) {
+			// One buffer per subset and volume, the unallocated ones are zero
+			for (auto& perSubset : d_projWindow)
+				for (auto& buffer : perSubset)
+					if (buffer)
+						getErrorString(cuMemFree(buffer));
 		}
 		if (memAlloc.TOF) {
 			getErrorString(cuMemFree(d_TOFCenter));
@@ -2988,6 +3075,11 @@ public:
 	/// <param name="header_directory the location of the kernel and header files"></param>
 	/// <returns></returns>
 	inline int addProjector(scalarStruct & inputScalars, Weighting & w_vec, const RecMethods & MethodList, const char* header_directory, const int type = -1) {
+		// Decided once here, before the kernels are built and the buffers allocated
+#if !defined(METAL)
+		useProjWindow = inputScalars.CT && inputScalars.useHelical && !inputScalars.useParallelBeam && !inputScalars.largeDim &&
+			inputScalars.listmode == 0 && inputScalars.subsetType != 12 && (inputScalars.BPType == 4 || inputScalars.BPType == 5);
+#endif
 		// Set-up the local group size
 #if defined(CUDA)
 		local_size[0] = 32ULL;
@@ -3739,13 +3831,24 @@ public:
 					memAlloc.oSteps++;
 				}
 #if !defined(METAL)
-				if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0) {
+				if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0 && !inputScalars.useHelical) {
 					ALLOC_BUFFER(d_geomProj5[kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 16);
 					CHECK(status, "\n", (STATUS_t)-1);
 #if defined(CUDA) || defined(HIP)
 					memAlloc.geom5 = true;
 					memAlloc.g5Steps++;
 #endif // END CUDA
+				}
+				// First and one past the last projection of each axial voxel block, for each volume
+				if (useProjWindow) {
+					for (uint32_t ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+						ALLOC_BUFFER(d_projWindow[kk][ii], CL_MEM_READ_ONLY, sizeof(int32_t) * 2 * projectionWindowBlocks(inputScalars, ii));
+						CHECK(status, "\n", (STATUS_t)-1);
+#if defined(CUDA) || defined(HIP)
+						memAlloc.projWindow = true;
+						memAlloc.pwSteps++;
+#endif // END CUDA
+					}
 				}
 #endif
 					// Normalization weighting
@@ -4029,7 +4132,7 @@ public:
 				// Per projection: s (3), d3 (3), normX (3), normY (3), crossP (3), upperPart (1), i.e. 16 floats.
 				// Previously computed in the kernel itself
 #if !defined(METAL)
-				if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0) {
+				if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0 && !inputScalars.useHelical) {
 					const float indX = static_cast<float>(inputScalars.nRowsD) / 2.f;
 					const float indY = static_cast<float>(inputScalars.nColsD) / 2.f;
 					const size_t uvStride = inputScalars.pitch ? 6 : 2;
@@ -4073,6 +4176,17 @@ public:
 					WRITE_BUFFER(d_geomProj5[kk], sizeof(float) * length[kk] * 16, geomProj5Host[kk].data());
 					CHECK(status, "\n", (STATUS_t)-1);
 					memSize += (sizeof(float) * length[kk] * 16);
+				}
+				// Projection window of the helical backprojection. The host vector has to stay alive until the (possibly non-blocking)
+				// write has finished
+				if (useProjWindow) {
+					for (uint32_t ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+						computeProjectionWindow(projWindowHost[kk][ii], &x[pituus[kk] * 6], &z_det[pituus[kk]], length[kk], inputScalars,
+							w_vec.dPitchY, ii);
+						WRITE_BUFFER(d_projWindow[kk][ii], sizeof(int32_t) * projWindowHost[kk][ii].size(), projWindowHost[kk][ii].data());
+						CHECK(status, "\n", (STATUS_t)-1);
+						memSize += (sizeof(int32_t) * projWindowHost[kk][ii].size());
+					}
 				}
 #endif
 				if (inputScalars.raw && inputScalars.listmode != 1) {
@@ -4205,9 +4319,17 @@ public:
 		if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5))
 			d_T.resize(inputScalars.subsetsUsed);
 #if !defined(METAL)
-		if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0) {
+		if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0 && !inputScalars.useHelical) {
 			d_geomProj5.resize(inputScalars.subsetsUsed);
 			geomProj5Host.resize(inputScalars.subsetsUsed);
+		}
+		if (useProjWindow) {
+			d_projWindow.resize(inputScalars.subsetsUsed);
+			projWindowHost.resize(inputScalars.subsetsUsed);
+			for (uint32_t kk = 0; kk < inputScalars.subsetsUsed; kk++) {
+				d_projWindow[kk].resize(inputScalars.nMultiVolumes + 1);
+				projWindowHost[kk].resize(inputScalars.nMultiVolumes + 1);
+			}
 		}
 #endif
 
@@ -5677,6 +5799,12 @@ public:
 					}
 					else
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_z[timestep][osa_iter]);
+					// Only when the kernel was built with -DPROJWINDOW
+#if !defined(METAL)
+					if (useProjWindow) {
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_projWindow[osa_iter][ii]);
+					}
+#endif
 					KARG_METAL_SLOT(kernelIndBPSubIter, 7);
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_Summ[ee]);
 				}
@@ -5699,8 +5827,12 @@ public:
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_z[timestep][osa_iter]);
 					// Only when the kernel was built with -DGEOM5
 #if !defined(METAL)
-					if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0)
+					if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0 && !inputScalars.useHelical)
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_geomProj5[osa_iter]);
+					// Only when the kernel was built with -DPROJWINDOW
+					if (useProjWindow) {
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_projWindow[osa_iter][ii]);
+					}
 #endif
 					KARG_METAL_SLOT(kernelIndBPSubIter, 2);
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_inputImage);

@@ -450,8 +450,11 @@ def _append_bp5_ct_args(self, args, timestep, subset, k, f_arg, y_arg):
     here as-is exactly like before."""
     args.buf(_geometry_buffer(self.d_x, timestep, subset))
     args.buf(_geometry_buffer(self.d_z, timestep, subset))
-    if self.listmode == 0:
+    if self.listmode == 0 and not self.useHelical:
         args.buf(self.d_geom5[timestep][subset])
+    from omegatomo.projector.init import _uses_projection_window
+    if _uses_projection_window(self):
+        args.buf(self.d_projWindow[timestep][subset][k])
     args.img(y_arg)
     args.img(f_arg)
     args.buf(self.d_Sens)
@@ -590,6 +593,9 @@ def _append_bp4_ct_args(self, args, timestep, subset, k, f_arg, y_arg):
     args.img(f_arg)
     args.buf(_geometry_buffer(self.d_x, timestep, subset))
     args.buf(_geometry_buffer(self.d_z, timestep, subset))
+    from omegatomo.projector.init import _uses_projection_window
+    if _uses_projection_window(self):
+        args.buf(self.d_projWindow[timestep][subset][k])
     args.buf(self.d_Sens)
     return args
 

@@ -1986,8 +1986,12 @@ class projectorClass:
             raise ValueError('Multi-resolution reconstruction is not supported with the CPU implementation')
         if self.useCPU:
             print('CPU functionality is limited and might not work correctly in all cases! Use at your own risk!')
-        if self.useHelical and not self.projector_type == 4:
-            raise ValueError('Only projector type 4 is supported with curved helical data!')
+        if self.useHelical and self.projector_type not in (4, 5, 44, 45, 54, 55):
+            raise ValueError('Only projector types 4, 5, 45 and 54 are supported with curved helical data!')
+        if self.useHelical and self.useParallelBeam:
+            raise ValueError('Parallel beam is not supported with curved helical data!')
+        if self.useHelical and self.offsetCorrection:
+            raise ValueError('Offset correction is not supported with curved helical data!')
         if self.offangle > 0 and self.useHelical:
             print('Rotation is not yet supported with helical CT data')
         if self.useHelical and self.useCPU:

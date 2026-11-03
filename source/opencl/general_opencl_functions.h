@@ -176,6 +176,7 @@
     const uint d_nRows = scalarParams.nRowsD; \
     const uint d_nCols = scalarParams.nColsD; \
     const float2 d_dPitch = scalarParams.dPitch; \
+    const float r = scalarParams.helicalRadius; \
     const uint3 d_N = scalarParams.d_N; \
     const float3 b = scalarParams.b; \
     const float2 d_Size = scalarParams.dSize5; \
@@ -187,6 +188,7 @@
     const uint d_nRows = scalarParams.nRowsD; \
     const uint d_nCols = scalarParams.nColsD; \
     const float2 d_dPitch = scalarParams.dPitch; \
+    const float r = scalarParams.helicalRadius; \
     const uint3 d_N = scalarParams.d_N; \
     const float3 b = scalarParams.b; \
     const float3 d_d = scalarParams.d; \
@@ -1792,6 +1794,19 @@ DEVICE void getDetectorCoordinatesCT(const CLGLOBAL float* CLRESTRICT d_xyz,
 	(*d).x += r * (COSF(angle + dtheta) - COSF(angle));
 	(*d).y -= r * (SINF(angle + dtheta) - SINF(angle));
 	(*d).z += indeksi.y * d_dPitch.y;
+#if defined(PROJ5) && defined(FP)
+	// Midpoints of the pixel edges. The edges in the row direction are half a pixel away along the arc, computed by rotating the
+	// pixel centre around the arc centre so that the accuracy does not depend on the magnitude of the angle
+	const float halfPixel = d_dPitch.x / (2.f * r);
+	const float cosH1 = COSF(halfPixel) - 1.f;
+	const float sinH = SINF(halfPixel);
+	const float wx = r * COSF(angle + dtheta);
+	const float wy = -r * SINF(angle + dtheta);
+	*dR = CMFLOAT3((*d).x + wx * cosH1 - wy * sinH, (*d).y + wy * cosH1 + wx * sinH, (*d).z);
+	*dL = CMFLOAT3((*d).x + wx * cosH1 + wy * sinH, (*d).y + wy * cosH1 - wx * sinH, (*d).z);
+	*dU = CMFLOAT3((*d).x, (*d).y, (*d).z + d_dPitch.y * 0.5f);
+	*dD = CMFLOAT3((*d).x, (*d).y, (*d).z - d_dPitch.y * 0.5f);
+#endif
 #else
 	id = i.z * NA;
 #if defined(PITCH)
@@ -2550,6 +2565,21 @@ DEVICE void forwardProjectAF(CLGLOBAL float* output, PTR_THR float *ax, size_t i
 #endif
 
 #ifdef HELICAL
+// The ray parameter t where the ray s + t * v leaves the detector cylinder around (xc, yc), c = |s - (xc, yc)|^2 - r^2. The source
+// is inside the cylinder, so this is the only positive root. t only depends on the transaxial direction of v
+DEVICE float rayArcDistance(const float3 s, const float3 v, const float xc, const float yc, const float c) {
+	const float a = v.x * v.x + v.y * v.y;
+	const float b = 2.f * (v.x * (s.x - xc) + v.y * (s.y - yc));
+	return (-b + SQRT(b * b - 4.f * a * c)) / (2.f * a);
+}
+
+// Signed arc angle of the point s + t * v from the detector center, positive towards increasing row index
+DEVICE float rayArcAngle(const float3 s, const float3 v, const float t, const float xc, const float yc, const float cosA, const float sinA) {
+	const float wx = s.x + v.x * t - xc;
+	const float wy = s.y + v.y * t - yc;
+	return ATAN2(-wx * sinA - wy * cosA, wx * cosA - wy * sinA);
+}
+
 DEVICE int rayArcIntersection(
     const float3 s,
     const float3 v,
@@ -2557,8 +2587,8 @@ DEVICE int rayArcIntersection(
     const float cosA, const float sinA,
     const float zMin, const float zMax,
     const float thetaSpan,
-	float* theta,
-    float3* intersection
+	PTR_THR float* theta,
+    PTR_THR float3* intersection
 ) {
 	const float fx = s.x - xc;
 	const float fy = s.y - yc;
@@ -2592,7 +2622,7 @@ DEVICE void normalizeCurvedCoordinates(float3 xyz,
 	float zMin, float zMax,
     float thetaSpan,
 	float theta, 
-	float* u, float* v) {
+	PTR_THR float* u, PTR_THR float* v) {
 
     *u = theta / thetaSpan;
 

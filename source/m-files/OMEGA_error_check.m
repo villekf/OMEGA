@@ -578,8 +578,14 @@ end
 if ~ismember(options.projector_type, [1 2 6 11 16 21 22 26 61 62 66]) && options.SPECT
     error('SPECT only supports projector types 1, 2 and 6, plus supported hybrid variants!')
 end
-if options.projector_type ~= 4 && options.useHelical
-    error('Helical CT only supports projector type 4 at the moment!')
+if ~ismember(options.projector_type, [4 5 44 45 54 55]) && options.useHelical
+    error('Helical CT only supports projector types 4, 5, 45 and 54!')
+end
+if options.useParallelBeam && options.useHelical
+    error('Parallel beam is not supported with helical CT!')
+end
+if options.offsetCorrection && options.useHelical
+    error('Offset correction is not supported with helical CT!')
 end
 if options.offangle > 0 && options.useHelical
     warning('Rotation is not yet supported with helical CT data')

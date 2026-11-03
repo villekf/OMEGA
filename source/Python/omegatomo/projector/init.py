@@ -56,6 +56,8 @@ def _build_kIndF(self):
         a.f32(self.dL).f32(self.global_factor)
     elif self.FPType == 5:
         a.u32(self.nRowsD).u32(self.nColsD).vec2f(*_kernel_crystal_pitch(self))
+        if self.CT and self.useHelical:
+            a.f32(self.helicalRadius)
     if self.FPType in (1, 2, 3):
         if self.TOF:
             a.buf(self.d_TOFCenter)
@@ -87,7 +89,7 @@ def _build_kIndB(self):
     a = _KernelArgs(self)
     if self.BPType in (4, 5):
         a.u32(self.nRowsD).u32(self.nColsD).vec2f(*_kernel_crystal_pitch(self))
-        if self.BPType == 4 and self.CT and self.useHelical:
+        if self.CT and self.useHelical:
             a.f32(self.helicalRadius)
         if self.BPType == 4 and not self.CT:
             a.f32(self.dL).f32(self.global_factor)
@@ -281,6 +283,86 @@ def computeGeom5(x, uv, nRowsD, nColsD, dPitchY, pitch):
     upperPart = np.sum(crossP * (s - d), axis=1, keepdims=True)
     geom = np.hstack((s, d3, normX, normY, crossP, upperPart)).astype(np.float32)
     return np.ascontiguousarray(geom).ravel()
+
+
+def computeProjectionWindow(x, angles, r, nColsD, dPitchY, bx, by, bz, dx, dy, dz, Nx, Ny, Nz, nVoxels):
+    """
+    For each axial voxel block (nVoxels voxels in the axial direction) of a volume, the range of projections that can reach the
+    curved helical detector (-DPROJWINDOW in projectorType4.cl and projectorType5.cl). Every projection is tested, so the range is
+    correct for any projection order, though it only stays narrow when the source height is monotonic. Returns 2 int32 values per
+    block: the first projection and one past the last projection (both 0 if no projection sees the block).
+    """
+    nProj = x.size // 6
+    xs = np.reshape(x, (nProj, 6)).astype(np.float64, copy=False)
+    a = np.asarray(angles, dtype=np.float64).ravel()
+    r = float(r)
+    sX = xs[:, 0]
+    sY = xs[:, 1]
+    sZ = xs[:, 2]
+    # Arc centre. The source is inside the detector cylinder, so a ray from the source to a point of the image box has to travel at
+    # least r - |s - C| in the transaxial plane, relative to the largest transaxial distance from the source to the box
+    cX = xs[:, 3] - r * np.cos(a)
+    cY = xs[:, 4] + r * np.sin(a)
+    dSC = np.hypot(sX - cX, sY - cY)
+    maxDist = np.zeros(nProj, dtype=np.float64)
+    for cornerX in (bx, bx + Nx * dx):
+        for cornerY in (by, by + Ny * dy):
+            maxDist = np.maximum(maxDist, np.hypot(cornerX - sX, cornerY - sY))
+    tMin = np.zeros(nProj, dtype=np.float64)
+    np.divide(r - dSC, maxDist, out=tMin, where=maxDist > 0)
+    # Axial extent of the detector with one row of margin on each side
+    halfWidth = (nColsD / 2. + 1.) * dPitchY
+    zMin = xs[:, 5] - halfWidth
+    zMax = xs[:, 5] + halfWidth
+    nBlocks = (int(Nz) + int(nVoxels) - 1) // int(nVoxels)
+    zEnd = bz + Nz * dz
+    window = np.zeros(2 * nBlocks, dtype=np.int32)
+    for b in range(nBlocks):
+        zLow = bz + b * nVoxels * dz
+        zHigh = min(zLow + nVoxels * dz, zEnd)
+        # A ray hits the cylinder at least tMin of the way (in the axial direction) from the source to the block
+        invisible = (((zLow > sZ) & (sZ + tMin * (zLow - sZ) > zMax))
+                     | ((zHigh < sZ) & (sZ + tMin * (zHigh - sZ) < zMin)))
+        visible = np.flatnonzero(~invisible)
+        if visible.size > 0:
+            window[2 * b] = visible[0]
+            window[2 * b + 1] = visible[-1] + 1
+    return window
+
+
+def _uses_projection_window(self):
+    """True if and only if the curved helical BP of type 4 or 5 only visits the projections in the window of each axial voxel block."""
+    return bool(self.CT and self.useHelical and not self.useParallelBeam and not self.useMetal and self.listmode == 0
+                and self.subsetType != 12 and self.BPType in (4, 5))
+
+
+def _initialize_projection_window_buffers(self, upload):
+    """Create the ``[timestep][subset][volume]`` projection window buffers (see computeProjectionWindow)."""
+    self.d_projWindow = [[[None] * (self.nMultiVolumes + 1) for _ in range(self.subsets)] for _ in range(self.Nt)]
+    nVoxels = self.NVOXELS5 if self.BPType == 5 else self.NVOXELSHELICAL
+    for timestep in range(self.Nt):
+        for subset in range(self.subsets):
+            xs = _coordinate_slice(self, 'x', timestep, subset, 6)
+            angles = _coordinate_slice(self, 'z', timestep, subset, 1)
+            for ii in range(self.nMultiVolumes + 1):
+                window = computeProjectionWindow(
+                    xs,
+                    angles,
+                    self.helicalRadius,
+                    self.nColsD,
+                    self.dPitchY,
+                    self.bx[ii].item(),
+                    self.by[ii].item(),
+                    self.bz[ii].item(),
+                    self.dx[ii].item(),
+                    self.dy[ii].item(),
+                    self.dz[ii].item(),
+                    self.Nx[ii].item(),
+                    self.Ny[ii].item(),
+                    self.Nz[ii].item(),
+                    nVoxels,
+                )
+                self.d_projWindow[timestep][subset][ii] = upload(window)
 
 # ---------------------------------------------------------------------------
 # FPType/BPType table
@@ -938,6 +1020,9 @@ def initProjector(self):
                 bOptBP += ('-DBP4','-DNVOXELS=' + str(self.NVOXELS),)
                 if self.useHelical:
                     bOptBP += ('-DNVOXELSHELICAL=' + str(self.NVOXELSHELICAL),)
+                # The helical backprojection only visits the projections in the window of its axial block
+                if _uses_projection_window(self):
+                    bOptBP += ('-DPROJWINDOW',)
             else:
                 bOptBP += ('-DPTYPE4','-DNVOXELS=' + str(self.NVOXELS),)
                 bOptBP += ('-DATOMICF',)
@@ -950,8 +1035,11 @@ def initProjector(self):
         elif self.BPType == 5:
             bOptBP += ('-DPROJ5','-DNVOXELS5=' + str(self.NVOXELS5),)
             # Use the per-projection geometry precomputed with computeGeom5 (stored in self.d_geom5)
-            if self.CT and self.listmode == 0:
+            if self.CT and self.listmode == 0 and not self.useHelical:
                 bOptBP += ('-DGEOM5',)
+            # The helical backprojection only visits the projections in the window of its axial block
+            if _uses_projection_window(self):
+                bOptBP += ('-DPROJWINDOW',)
             if self.meanBP:
                 bOptBP += ('-DMEANDISTANCEBP',)
     else:
@@ -1015,7 +1103,7 @@ def initProjector(self):
                 _initialize_coordinate_buffers(self, upload)
                 _initialize_tof_index_buffers(self, upload)
                 # Precomputed per-projection geometry for the BDD backprojection (see -DGEOM5 in projectorType5.cl)
-                if self.BPType == 5 and self.CT and self.listmode == 0:
+                if self.BPType == 5 and self.CT and self.listmode == 0 and not self.useHelical:
                     self.d_geom5 = [[None] * self.subsets for _ in range(self.Nt)]
                     kerroin = 6 if self.pitch else 2
                     for timestep in range(self.Nt):
@@ -1029,6 +1117,9 @@ def initProjector(self):
                                 self.pitch,
                             )
                             self.d_geom5[timestep][subset] = upload(geom)
+                # Projection windows of the helical backprojection (see -DPROJWINDOW in projectorType4.cl and projectorType5.cl)
+                if _uses_projection_window(self):
+                    _initialize_projection_window_buffers(self, upload)
                 if (self.attenuation_correction and not self.CTAttenuation):
                     # Measurement-domain attenuation: build [Nt][subsets], mirroring mps_backend.py's
                     # d_attenuation. As in C++ (a single d_atten[kk] buffer shared by all timesteps), a
@@ -1224,7 +1315,7 @@ def initProjector(self):
             _initialize_coordinate_buffers(self, upload)
             _initialize_tof_index_buffers(self, upload)
             # Precomputed per-projection geometry for the BDD backprojection (see -DGEOM5 in projectorType5.cl)
-            if self.BPType == 5 and self.CT and self.listmode == 0:
+            if self.BPType == 5 and self.CT and self.listmode == 0 and not self.useHelical:
                 self.d_geom5 = [[None] * self.subsets for _ in range(self.Nt)]
                 kerroin = 6 if self.pitch else 2
                 for timestep in range(self.Nt):
@@ -1238,6 +1329,9 @@ def initProjector(self):
                             self.pitch,
                         )
                         self.d_geom5[timestep][subset] = upload(geom)
+            # Projection windows of the helical backprojection (see -DPROJWINDOW in projectorType4.cl and projectorType5.cl)
+            if _uses_projection_window(self):
+                _initialize_projection_window_buffers(self, upload)
             if (self.attenuation_correction and not self.CTAttenuation):
                 # Measurement-domain attenuation: build [Nt][subsets], mirroring mps_backend.py's
                 # d_attenuation. As in C++ (a single d_atten[kk] buffer shared by all timesteps), a
