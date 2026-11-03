@@ -18,9 +18,50 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 """
 import os
+import sys
 import copy
 import math
 import numpy as np
+
+def _hasDisplay():
+    """Returns False when a file dialog cannot be shown: no X/Wayland display on Linux, or a non-interactive Windows session
+    (session 0: ssh and services, where a dialog would be invisible and wait forever)."""
+    if sys.platform == 'win32':
+        try:
+            import ctypes
+            sessionId = ctypes.c_ulong()
+            if ctypes.windll.kernel32.ProcessIdToSessionId(ctypes.windll.kernel32.GetCurrentProcessId(), ctypes.byref(sessionId)):
+                return sessionId.value != 0
+        except (AttributeError, OSError):
+            pass
+        return True
+    if sys.platform == 'darwin':
+        return True
+    return bool(os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY'))
+
+
+def _askOpenFile(title, filetypes, optionName):
+    """Asks for a file with a dialog. optionName is the option that gives the file without a dialog; it is named in the error
+    when the dialog cannot be shown."""
+    message = 'Cannot show the file dialog "%s" because no display is available! Set %s instead.' % (title, optionName)
+    if not _hasDisplay():
+        raise ValueError(message)
+    try:
+        import tkinter as tk
+        from tkinter.filedialog import askopenfilename
+    except ImportError:
+        raise ValueError(message) from None
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        raise ValueError(message) from None
+    root.withdraw()
+    nimi = askopenfilename(title=title, filetypes=filetypes)
+    root.destroy()
+    if len(nimi) == 0:
+        raise ValueError("No file selected!")
+    return nimi
+
 
 def _load_array_file(path, mat_key_index='auto'):
     """
@@ -625,13 +666,7 @@ def loadCorrections(options):
             elif len(options.attenuation_datafile) > 0 and os.path.splitext(options.attenuation_datafile)[1].lower() in ('.npy', '.npz'):
                 options.vaimennus = _load_array_file(options.attenuation_datafile)
             else:
-                import tkinter as tk
-                from tkinter.filedialog import askopenfilename
-                root = tk.Tk()
-                root.withdraw()
-                nimi = askopenfilename(title='Select attenuation datafile',filetypes=(('MHD, NPY, NPZ and MAT files','*.mhd *.mat *.npy *.npz'),('All','*.*')))
-                if len(nimi) == 0:
-                    raise ValueError("No file selected!")
+                nimi = _askOpenFile('Select attenuation datafile', (('MHD, NPY, NPZ and MAT files','*.mhd *.mat *.npy *.npz'),('All','*.*')), 'options.attenuation_datafile')
                 nimiExt = os.path.splitext(nimi)[1].lower()
                 if nimiExt == '.mhd':
                     try:
@@ -698,11 +733,18 @@ def loadCorrections(options):
             normalizationFromFile = True
             nimi = ''
             normDataFile = getattr(options, 'normalization_datafile', '')
-            if normDataFile is not None and len(str(normDataFile)) > 0:
+            hasNormDataFile = normDataFile is not None and len(str(normDataFile)) > 0
+            userNormalization = options.use_user_normalization and not options.SPECT
+            if hasNormDataFile and not (options.use_user_normalization or options.SPECT):
+                raise ValueError('options.normalization_datafile is set, but options.use_user_normalization is False! Set options.use_user_normalization = True to use the file, or empty options.normalization_datafile to use the default normalization file.')
+            if hasNormDataFile:
                 # The user normalization file is given in options.normalization_datafile, no default file lookup or dialog
                 nimi = str(normDataFile)
                 if not os.path.isfile(nimi):
                     raise FileNotFoundError('The normalization data file ' + nimi + ' does not exist')
+            elif userNormalization:
+                # As in MATLAB, a user normalization skips the default normalization file
+                nimi = _askOpenFile('Select normalization datafile', (('NRM, N, PTD, NPY, NPZ and MAT files','*.nrm *.n *.ptd *.mat *.npy *.npz'),('All','*.*')), 'options.use_user_normalization = True and options.normalization_datafile')
             else:
                 normdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', '..', '..', 'mat-files')) + "/" +  options.machine_name + '_normalization_' + str(normNdist) + 'x' + str(normNang) + '_span' + str(options.span) + '.mat'
                 if os.path.exists(normdir):
@@ -722,13 +764,10 @@ def loadCorrections(options):
                         except ModuleNotFoundError:
                             print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
                     else:
-                        import tkinter as tk
-                        from tkinter.filedialog import askopenfilename
-                        root = tk.Tk()
-                        root.withdraw()
-                        nimi = askopenfilename(title='Select normalization datafile',filetypes=(('NRM, N, PTD, NPY, NPZ and MAT files','*.nrm *.n *.ptd *.mat *.npy *.npz'),('All','*.*')))
-                        if len(nimi) == 0:
-                            raise ValueError("No file selected!")
+                        if options.SPECT:
+                            nimi = _askOpenFile('Select normalization datafile', (('NRM, N, PTD, NPY, NPZ and MAT files','*.nrm *.n *.ptd *.mat *.npy *.npz'),('All','*.*')), 'options.normalization_datafile')
+                        else:
+                            raise FileNotFoundError('Normalization correction selected, but no normalization data found! Input the coefficients in options.normalization, or set options.use_user_normalization = True and give the file in options.normalization_datafile.')
             if len(nimi) > 0:
                 nimiExt = os.path.splitext(nimi)[1].lower()
                 if nimiExt == '.nrm':
