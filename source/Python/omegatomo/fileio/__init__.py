@@ -17,5 +17,6 @@ from .loadInveon import loadInveonData
 from .loadDICOMCTData import loadDICOMCTPD
 from .loadNormalizationBiograph import loadNormalizationBiograph
 from .quantificationFactorBiograph import quantificationFactorBiograph
+from .createAttenMatrixCT import createAttenMatrixCT, attenuationCTTo511
 
-__all__ = ["loadGATESPECTData", "loadInterfile", "loadProjectionData", "loadProjectionImages", "loadROOT", "loadNikonData", "loadSkyscanData", "loadSPECTInterfile", "loadInveonData", "loadDICOMCTPD", "loadNormalizationBiograph", "quantificationFactorBiograph"]
+__all__ = ["loadGATESPECTData", "loadInterfile", "loadProjectionData", "loadProjectionImages", "loadROOT", "loadNikonData", "loadSkyscanData", "loadSPECTInterfile", "loadInveonData", "loadDICOMCTPD", "loadNormalizationBiograph", "quantificationFactorBiograph", "createAttenMatrixCT", "attenuationCTTo511"]

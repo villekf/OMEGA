@@ -254,10 +254,13 @@ class projectorClass:
     normalization_phantom_radius = float("inf")
     normalization_attenuation = 0.
     normalization_scatter_correction = False
+    # PET: if True, the user normalization file is used (options.normalization_datafile, or a file dialog if it is empty) and the
+    # default normalization .mat file is not searched. If False, the default normalization .mat file is used and an error is
+    # raised if it is not found; no dialog is shown. A prefilled options.normalization is used in either case.
     use_user_normalization = False
     # Path of the user normalization data file (.nrm, .n, .ptd, .mat, .npy or .npz) used when the normalization is not
-    # given in options.normalization. If empty, the default normalization .mat file is searched and otherwise the user is
-    # prompted for the file.
+    # given in options.normalization. Setting it while use_user_normalization is False is an error (SPECT excluded: there the
+    # file is used regardless of the flag). If empty and use_user_normalization is True, the user is prompted for the file.
     normalization_datafile = ''
     # Exponent n of the transaxial LOR length factor D^(-n) of the Siemens Biograph Vision normalization
     # (omegatomo.fileio.loadNormalizationBiograph), where D is the transaxial distance between the two detectors of the
@@ -588,6 +591,8 @@ class projectorClass:
     # Set automatically when TOF-resolved scatter data is input with corrections during reconstruction (see loadCorrections)
     randomsTOF = False
     useAF = False
+    # Use single precision for the SPECT scatter-window (DEW/TEW) data; the MATLAB default is True
+    useSingles = True
     useTorch = False
     useCuPy = False
     useMetal = False
