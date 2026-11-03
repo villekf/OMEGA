@@ -1473,9 +1473,16 @@ void projectorType123(
 #ifndef ORTH
 			local_ind += indStep;
 #endif
+#ifndef ORTH
+			// Three unsigned comparisons (a negative index is a large unsigned number)
+			if ((uint)tempi >= d_Nxyz.x || (uint)tempj >= d_Nxyz.y || (uint)tempk >= d_Nxyz.z) {
+				break;
+			}
+#else
 			if (tempi < 0 || tempi >= d_Nxyz.x || tempj < 0 || tempj >= d_Nxyz.y || tempk < 0 || tempk >= d_Nxyz.z) {
 				break;
 			}
+#endif
 // #if (defined(SPECT) && !defined(ORTH)) // Ray length inside BP mask
 // 		L_SPECT += local_ele;
 // #endif
