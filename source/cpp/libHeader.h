@@ -362,7 +362,7 @@ struct inputStruct {
     bool BSREM = false;
     bool ROSEM_MAP = false;
     bool OSL_RBI = false;
-    bool OSL_COSEM = false;
+    uint32_t OSL_COSEM = 0;
     bool PKMA = false;
     bool SPS = false;
     bool PDHG = false;
@@ -731,7 +731,8 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     }
 
 
-    inputScalars.tube_width = options.tube_width_z;
+    // Same selection as the MATLAB route (computeImplementation23.m): the axial width for axial tubes, otherwise the transaxial one
+    inputScalars.tube_width = options.orthAxial ? options.tube_width_z : options.tube_width_xy;
 
     // Center coordinates of voxels in the X-dimension
     inputScalars.x_center = options.x_center;
@@ -925,22 +926,25 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         if (inputScalars.useHelical)
             inputScalars.helicalRadius = options.helicalRadius;
     }
-	else if (inputScalars.SPECT && (inputScalars.projector_type == 1 || inputScalars.projector_type == 2 || inputScalars.projector_type == 3 || inputScalars.projector_type == 22 || inputScalars.projector_type == 11 || inputScalars.projector_type == 13 || inputScalars.projector_type == 23 || inputScalars.projector_type == 33 || inputScalars.projector_type == 31 || inputScalars.projector_type == 32)) {
+    else if (inputScalars.SPECT) {
         inputScalars.nColsD = options.nColsD;
         inputScalars.nRowsD = options.nRowsD;
-        inputScalars.coneOfResponseStdCoeffA = options.coneOfResponseStdCoeffA;
-        inputScalars.coneOfResponseStdCoeffB = options.coneOfResponseStdCoeffB;
-        inputScalars.coneOfResponseStdCoeffC = options.coneOfResponseStdCoeffC;
-        inputScalars.ellipseCenterX = options.ellipseCenterX;
-        inputScalars.ellipseCenterY = options.ellipseCenterY;
-        inputScalars.ellipseCenterZ = options.ellipseCenterZ;
-        inputScalars.ellipseRadiusX = options.ellipseRadiusX;
-        inputScalars.ellipseRadiusY = options.ellipseRadiusY;
-        inputScalars.ellipseRadiusZ = options.ellipseRadiusZ;
-        inputScalars.ellipsePower = options.ellipsePower;
-        // Kernels test for box support with a finite threshold, as isinf() is unreliable under fast-math
-        if (!std::isfinite(inputScalars.ellipsePower))
-            inputScalars.ellipsePower = std::numeric_limits<float>::max();
+        inputScalars.nHeads = options.nHeads;
+        if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
+            inputScalars.coneOfResponseStdCoeffA = options.coneOfResponseStdCoeffA;
+            inputScalars.coneOfResponseStdCoeffB = options.coneOfResponseStdCoeffB;
+            inputScalars.coneOfResponseStdCoeffC = options.coneOfResponseStdCoeffC;
+            inputScalars.ellipseCenterX = options.ellipseCenterX;
+            inputScalars.ellipseCenterY = options.ellipseCenterY;
+            inputScalars.ellipseCenterZ = options.ellipseCenterZ;
+            inputScalars.ellipseRadiusX = options.ellipseRadiusX;
+            inputScalars.ellipseRadiusY = options.ellipseRadiusY;
+            inputScalars.ellipseRadiusZ = options.ellipseRadiusZ;
+            inputScalars.ellipsePower = options.ellipsePower;
+            // Kernels test for box support with a finite threshold, as isinf() is unreliable under fast-math
+            if (!std::isfinite(inputScalars.ellipsePower))
+                inputScalars.ellipsePower = std::numeric_limits<float>::max();
+        }
     } else {
         inputScalars.nColsD = options.Nang;
         inputScalars.nRowsD = options.Ndist;

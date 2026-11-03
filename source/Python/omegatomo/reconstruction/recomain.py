@@ -583,6 +583,11 @@ def reconstructions_main(options):
     if getattr(options, 'keepOptionsUnchanged', True):
         options = _privateOptionsCopy(options)
     options.addProjector()
+    # These projector types are accepted by the projector class (custom operators), but the native library has no
+    # forward/backward projector mapping for them and would silently fall back to Siddon (MATLAB errors)
+    if int(options.projector_type) in (44, 55, 16, 26, 61, 62, 66):
+        raise ValueError('Projector type ' + str(options.projector_type) + ' is only available through the projector operators, '
+                         'not the built-in reconstruction (reconstructions_main)!')
     print('Preparing for reconstruction...')
     if not options.builtin:
         raise ValueError('No reconstruction method selected, aborting.')
@@ -798,6 +803,12 @@ def reconstructions_main(options):
     # undersized x0 would make it read past the end of the array
     if not options.largeDim and not options.FDK and options.x0.size < int(np.sum(options.N)):
         raise ValueError(f'Initial value x0 has {options.x0.size} elements but the reconstruction volume(s) require {int(np.sum(options.N))}!')
+    # The native code reads the detector-head indices per (timeframe, subset) from the concatenation of the per-frame
+    # vectors in subset order (as MATLAB's DetectorVector(index) replicated for each frame), not from the original order.
+    # Rebinding only: the caller's array is never written to. This is after loadCorrections, which uses the original order.
+    detectorVectorFrames = getattr(options, 'DetectorVectorFrames', None)
+    if options.SPECT and detectorVectorFrames is not None and len(detectorVectorFrames) > 0:
+        options.DetectorVector = np.ascontiguousarray(np.concatenate(detectorVectorFrames), dtype=np.uint32)
     transferData(options)
     inStr = options.headerDir.encode('utf-8')
     # point_ptr = ctypes.pointer(options.param)

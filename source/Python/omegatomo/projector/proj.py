@@ -435,7 +435,7 @@ class projectorClass:
     TOF = False
     TOF_bins = 1
     NiterAD = 1
-    sigma_x = 1
+    sigma_x = 0
     w_sum = 1.
     RDP_gamma = 1.
     ## Scaling value of the Geman-McClure potential, i.e. the delta of NLGM. Differences much larger
@@ -941,9 +941,18 @@ class projectorClass:
         # assigned the MATLAB-named attribute (these names have no Python-side class default),
         # so a canonical Python attribute the user set directly is never clobbered by a default.
         for matlabName, pyName in (('subset_type', 'subsetType'), ('use_CUDA', 'useCUDA'),
-                                    ('use_CPU', 'useCPU'), ('use_device', 'deviceNum')):
+                                    ('use_CPU', 'useCPU'), ('use_device', 'deviceNum'),
+                                    ('TV_reference_image', 'TV_referenceImage'), ('NLM_reference_image', 'NLM_referenceImage'),
+                                    ('RDP_reference_image', 'RDP_referenceImage'), ('APLS_reference_image', 'APLS_ref_image'),
+                                    ('h', 'h_ACOSEM')):
             if hasattr(self, matlabName):
                 setattr(self, pyName, getattr(self, matlabName))
+        # MATLAB's global_correction_factor (empty or <= 0 means 1) is the user-facing name, the native
+        # library receives global_factor. Both exist as class attributes, so a user-set value
+        # (anything other than the default 1) is copied to global_factor.
+        gcf = np.asarray(self.global_correction_factor).ravel()
+        if gcf.size > 0 and float(gcf[0]) > 0. and float(gcf[0]) != 1.:
+            self.global_factor = float(gcf[0])
         # CT_attenuation is the sole user-facing option (matches MATLAB's options.CT_attenuation).
         # CTAttenuation is an internal, derived mirror consumed by the ctypes struct (field name is
         # fixed by libHeader.h) and by the rest of the Python codebase; it is set here, in exactly
@@ -952,7 +961,7 @@ class projectorClass:
         # projector's forward/backward helpers) that call addProjector() directly without going
         # through initProj()/initProjector() -- and so the two names can never disagree.
         self.CTAttenuation = self.CT_attenuation
-        if self.OSL_OSEM or self.MBSREM or self.ROSEM_MAP or self.OSL_RBI or self.OSL_COSEM > 0 or self.PKMA or self.SPS or self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.CV or self.SAGA or self.BB or self.SART or self.ASD_POCS:
+        if self.OSL_OSEM or self.BSREM or self.MBSREM or self.ROSEM_MAP or self.OSL_RBI or self.OSL_COSEM > 0 or self.PKMA or self.SPS or self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.CV or self.SAGA or self.BB or self.SART or self.ASD_POCS:
             self.MAP = True
         if hasattr(self, 'dPitch') and self.dPitch > 0 and self.dPitchX == 0.:
             self.dPitchX = self.dPitch
@@ -1179,6 +1188,13 @@ class projectorClass:
                 self.TOFCenter = -self.TOFCenter * c / 2.
             else:
                 self.TOFCenter = np.float32(self.TOFCenter)
+                # User-supplied TOF bin centers: the Gaussian sigma is still needed. As in MATLAB, it is computed
+                # from TOF_FWHM when sigma_x was not given (sigma_x <= 0), the user's TOFCenter is kept as is
+                if self.sigma_x <= 0:
+                    if self.TOF_FWHM <= 0:
+                        raise ValueError('TOF with user-supplied TOFCenter requires either a positive TOF_FWHM or sigma_x (TOF Gaussian sigma in mm)!')
+                    c = 2.99792458e11 # speed of light in mm/s
+                    self.sigma_x = (c*self.TOF_FWHM/2.) / (2. * math.sqrt(2. * math.log(2.)))
             self._checkTOFCenter()
         else:
             self.sigma_x = 0.
@@ -1205,7 +1221,8 @@ class projectorClass:
         if self.maskBP.size > 1 and not(self.maskBP.size == self.Nx * self.Ny) and not(self.maskBP.size == self.Nx * self.Ny * self.Nz):
             raise ValueError('Incorrect size for the backward projection mask! Must be the size of a single image [' + str(self.Nx) + ' ' + str(self.Ny) + '] or 3D stack [' + str(self.Nx) + ' ' + str(self.Ny) + ' ' + str(self.Nz) + ']')
         elif self.maskBP.size == self.Nx * self.Ny or self.maskBP.size == self.Nx * self.Ny * self.Nz:
-            self.useMaskBP = True
+            # With usePriorMask the mask is not applied in the backprojection, as in MATLAB (projectorClass.m)
+            self.useMaskBP = not self.usePriorMask
             if (self.maskBP.ndim == 3):
                 self.maskBPZ = self.maskBP.shape[2]
             self.maskBP = np.asfortranarray(self.maskBP)
@@ -2605,16 +2622,32 @@ class projectorClass:
                     self.NyPrior = int(np.asarray(self.Ny).ravel()[0])
                     self.NzPrior = int(np.asarray(self.Nz).ravel()[0])
             else:
+                # The regularization is not computed in the extended region: the number of padded voxels per side
+                # is (N - NOrig) // 2 and the prior region is [pad, N - pad) (0-based), as in MATLAB setUpCorrections.m
+                NxE = int(np.asarray(self.Nx).ravel()[0])
+                NyE = int(np.asarray(self.Ny).ravel()[0])
+                NzE = int(np.asarray(self.Nz).ravel()[0])
+                padX = (NxE - int(self.NxOrig)) // 2
+                padY = (NyE - int(self.NyOrig)) // 2
+                padZ = (NzE - int(self.NzOrig)) // 2
                 if self.eFOVIndices.size < 1:
-                    self.eFOVIndices = np.zeros((self.Nz,1), dtype=np.uint8)
-                    self.eFOVIndices[(self.Nz - self.NzOrig)//2 : -(self.Nz - self.NzOrig)//2 - 1] = 1
+                    self.eFOVIndices = np.zeros((NzE,1), dtype=np.uint8)
+                    self.eFOVIndices[padZ : NzE - padZ] = 1
                 self.NzPrior = np.sum(self.eFOVIndices, dtype=np.uint32)
-                self.maskPrior = np.zeros((self.Nx, self.Ny), dtype=np.uint8)
-                self.maskPrior[(self.Nx - self.NxOrig)//2 : -(self.Nx - self.NxOrig)//2 - 1, (self.Ny - self.NyOrig)//2 : -(self.Ny - self.NyOrig)//2 - 1] = 1
+                self.maskPrior = np.zeros((NxE, NyE), dtype=np.uint8)
+                self.maskPrior[padX : NxE - padX, padY : NyE - padY] = 1
                 self.NxPrior = np.sum(self.maskPrior[:,int(matlabRound(self.maskPrior.shape[1]/2))], dtype=np.uint32)
                 self.NyPrior = np.sum(self.maskPrior[int(matlabRound(self.maskPrior.shape[0]/2)),:], dtype=np.uint32)
                 if self.useMaskBP:
-                    self.maskPrior = self.maskPrior + (1 - self.maskBP)
+                    # MATLAB: maskPrior - uint8(~maskBP), saturating at 0. A 3D maskBP expands the 2D maskPrior along z
+                    maskBPE = np.asarray(self.maskBP)
+                    if maskBPE.ndim < 2:
+                        maskBPE = maskBPE.reshape((NxE, NyE) if maskBPE.size == NxE * NyE else (NxE, NyE, NzE), order='F')
+                    notMaskBP = (maskBPE == 0).astype(np.int32)
+                    maskPriorE = self.maskPrior.astype(np.int32)
+                    if notMaskBP.ndim == 3:
+                        maskPriorE = maskPriorE[:, :, None]
+                    self.maskPrior = np.asfortranarray(np.clip(maskPriorE - notMaskBP, 0, 1).astype(np.uint8))
         else:
             # Plain ints, see the comment above (Nx/Ny/Nz can be ints or arrays here).
             self.NxPrior = int(np.asarray(self.Nx).ravel()[0])
@@ -2920,7 +2953,7 @@ class projectorClass:
             ('BSREM', ctypes.c_bool),
             ('ROSEM_MAP', ctypes.c_bool),
             ('OSL_RBI', ctypes.c_bool),
-            ('OSL_COSEM', ctypes.c_bool),
+            ('OSL_COSEM', ctypes.c_uint32),
             ('PKMA', ctypes.c_bool),
             ('SPS', ctypes.c_bool),
             ('PDHG', ctypes.c_bool),

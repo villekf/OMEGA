@@ -19,24 +19,11 @@ def increaseSampling(options, x=None, y=None, interpolate_sinogram=False):
     yy1 = y[:, 0].reshape((options.Ndist, options.Nang), order='F')
     yy2 = y[:, 1].reshape((options.Ndist, options.Nang), order='F')
 
-    x_vals = np.arange(1, options.Nang + 1)
-    y_vals = np.arange(1, options.Ndist * options.sampling + 1, options.sampling)
-    points = (y_vals, x_vals)
-    
-    yq_vals = np.arange(1, options.Ndist * options.sampling + 1)
-    xq_vals = np.arange(1, options.Nang + 1)
-    Yq, Xq = np.meshgrid(yq_vals, xq_vals, indexing='ij')
-    query_points = np.stack([Yq.ravel(), Xq.ravel()], axis=-1)
-    
-    # Interpolation
-    def interp_surface(data):
-        from scipy.interpolate import interpn
-        return np.asfortranarray((interpn(points, data.astype(np.float64), query_points, method=options.sampling_interpolation_method, bounds_error=False).reshape(Yq.shape)))
-    
-    x1 = interp_surface(xx1)
-    x2 = interp_surface(xx2)
-    y1 = interp_surface(yy1)
-    y2 = interp_surface(yy2)
+    # MATLAB's interp2 based interpolation, see _interpolateRows
+    x1 = _interpolateRows(xx1, options.sampling, options.sampling_interpolation_method)
+    x2 = _interpolateRows(xx2, options.sampling, options.sampling_interpolation_method)
+    y1 = _interpolateRows(yy1, options.sampling, options.sampling_interpolation_method)
+    y2 = _interpolateRows(yy2, options.sampling, options.sampling_interpolation_method)
     
     x = np.asfortranarray(np.column_stack((x1.ravel('F'), x2.ravel('F'))))
     y = np.asfortranarray(np.column_stack((y1.ravel('F'), y2.ravel('F'))))
@@ -55,23 +42,38 @@ def increaseSampling(options, x=None, y=None, interpolate_sinogram=False):
     return x, y, options
 
 
-def interpolateSinog(SinM, sampling, Ndist, Nang, sampling_interpolation_method):
+def _interpolateRows(data, sampling, method):
+    """Interpolates a 2D (Ndist, Nang) array to Ndist * sampling rows, following MATLAB's interpolateSinog."""
     from scipy.interpolate import interpn
-    if SinM.ndim == 1 or SinM.shape[2] == 1:
+    if method == 'makima':
+        raise ValueError("Sampling interpolation method 'makima' is not available in Python. Use 'pchip' or 'spline' instead.")
+    spline = method == 'spline'
+    # MATLAB's spline is a cubic spline
+    scipyMethod = 'cubic' if spline else method
+    data = np.asarray(data, dtype=np.float64)
+    Ndist, Nang = data.shape
+    xGrid = np.arange(1, Nang + 1)
+    yq = np.arange(1, Ndist * sampling + 1)
+    if spline:
+        # No mirrored row, the last sampling - 1 query rows are extrapolated
+        yGrid = np.arange(1, Ndist * sampling + 1, sampling)
+        fillValue = None
+    else:
+        # Append a mirrored row and extend the grid by one sample. The extra last query row is not requested.
+        data = np.concatenate((data, data[-2:-1, :]), axis=0)
+        yGrid = np.arange(1, Ndist * sampling + 2, sampling)
+        fillValue = np.nan
+    Yq, Xq = np.meshgrid(yq, xGrid, indexing='ij')
+    query_points = np.stack([Yq.ravel(), Xq.ravel()], axis=-1)
+    out = interpn((yGrid, xGrid), data, query_points, method=scipyMethod, bounds_error=False, fill_value=fillValue)
+    return np.asfortranarray(out.reshape(Yq.shape))
+
+
+def interpolateSinog(SinM, sampling, Ndist, Nang, sampling_interpolation_method):
+    if SinM.ndim < 3 or SinM.shape[2] == 1:
         SinM = np.reshape(SinM, (Ndist, Nang, -1), order='F')
     if SinM.ndim == 3:
         SinM = np.reshape(SinM, (SinM.shape[0], SinM.shape[1], SinM.shape[2], 1), order='F')
-    
-    y = np.arange(1, Ndist * sampling + 1, sampling)
-    x = np.arange(1, Nang + 1)
-    grid = (np.asfortranarray(y), np.asfortranarray(x))
-
-    yq = np.arange(1, Ndist * sampling + 1)
-    xq = np.arange(1, Nang + 1)
-    Xq, Yq = np.meshgrid(xq, yq, indexing='xy')
-    Xq = Xq.T
-    Yq = Yq.T
-    query_points = np.asfortranarray(np.column_stack((Yq.ravel(), Xq.ravel())))
     
     SinM_uus = np.zeros((SinM.shape[0] * sampling, Nang, SinM.shape[2], SinM.shape[3]), dtype=np.float32, order='F')
 
@@ -79,15 +81,8 @@ def interpolateSinog(SinM, sampling, Ndist, Nang, sampling_interpolation_method)
         for kk in range(SinM.shape[2]):
             sinogram_slice = SinM[:, :, kk, uu].astype(np.float64)
 
-            interpolated = interpn(
-                grid,
-                sinogram_slice,
-                query_points,
-                method=sampling_interpolation_method,
-                bounds_error=False
-            )
-            interpolated = interpolated.reshape(Ndist * sampling, Nang, order='F')
+            interpolated = _interpolateRows(sinogram_slice, sampling, sampling_interpolation_method)
 
-            SinM_uus[:, :, kk, uu] = np.asfortranarray(interpolated)
+            SinM_uus[:, :, kk, uu] = interpolated
 
     return SinM_uus.astype(np.float32).ravel('F')

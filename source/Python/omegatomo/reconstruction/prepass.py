@@ -386,6 +386,34 @@ def _scatterPerTOFBin(options, scatter):
     return scatter
 
 
+def _scatterVarianceReduction(options, scatter):
+    """
+    Returns the scatter data with the 3D fan-sum variance reduction of the randoms (Randoms_variance_reduction) applied, as
+    MATLAB's loadCorrections.m does when options.scatter_variance_reduction is set. The scatter data (a list holds the time
+    frames) has to be a non-TOF PET sinogram of Ndist * Nang * TotSinos elements for each time frame, in the shape that was
+    input; the input is not modified.
+    """
+    from omegatomo.util.Randoms_variance_reduction import Randoms_variance_reduction
+    if isinstance(scatter, list):
+        return [_scatterVarianceReduction(options, frame) for frame in scatter]
+    scatter = np.asarray(scatter)
+    if scatter.size == 0:
+        return scatter
+    nFrame = int(options.Ndist) * int(options.Nang) * int(options.TotSinos)
+    nFrames = scatter.size // nFrame if nFrame > 0 else 0
+    if (options.CT or options.SPECT or options.listmode or options.useIndexBasedReconstruction or options.use_raw_data
+            or nFrames < 1 or scatter.size != nFrame * nFrames or nFrames > max(int(options.Nt), 1)):
+        raise ValueError('Scatter variance reduction is supported only for non-TOF PET sinogram scatter data with Ndist * Nang * TotSinos '
+                         '(%d) elements for each time frame, but the scatter data has %d elements! Use a scatter sinogram of that size '
+                         'or disable options.scatter_variance_reduction.' % (nFrame, scatter.size))
+    flat = np.ravel(scatter, order='F').astype(np.float32)
+    reduced = np.empty_like(flat)
+    for frame in range(nFrames):
+        sinogram = flat[frame * nFrame:(frame + 1) * nFrame].reshape((int(options.Ndist), int(options.Nang), int(options.TotSinos)), order='F')
+        reduced[frame * nFrame:(frame + 1) * nFrame] = np.ravel(Randoms_variance_reduction(sinogram, options), order='F')
+    return reduced.reshape(scatter.shape, order='F')
+
+
 def _subtractScatter(options, sinM, scatter):
     """
     Returns the measurement data sinM with the scatter estimate subtracted (precorrection). With TOF data the scatter
@@ -516,7 +544,8 @@ def _convertIndexBasedNormalization(options, forSensitivity, isCorrectionFactor=
             raise ValueError('options.trIndex contains detector indices (maximum %d) that are beyond the number of detectors per ring (%d)!' % (tr.max(), detPerRing))
         if ax.size > 0 and ax.max() >= rings:
             raise ValueError('options.axIndex contains ring indices (maximum %d) that are beyond the number of rings (%d)!' % (ax.max(), rings))
-        sinogram = np.ascontiguousarray(normalization[:nSino], dtype=np.float32)
+        # A copy: the sinogram is modified in place below and the normalization can be the caller's array
+        sinogram = np.array(normalization[:nSino], dtype=np.float32, order='C')
         xyLookup, zLookup = sinogramPairLookup(detPerRing, rings, Ndist, Nang, options.ring_difference, options.span,
                                                options.segment_table, NSinos, options.ndist_side)
         # A sinogram bin is the sum of its LORs (span > 1, mashing) but each event is a single LOR, so the number of
@@ -704,15 +733,15 @@ def loadCorrections(options):
                     if (not options.vaimennus.shape[0] == options.Nx[0] or not options.vaimennus.shape[1] == options.Ny[0].item() or not options.vaimennus.shape[2] == options.Nz[0].item()) and not options.vaimennus.size == options.N[0]:
                         raise ValueError('Error: Attenuation data is of different size than the reconstructed image. Automatic resize failed.')
             if options.rotateAttImage != 0:
-                atn = np.reshape(options.vaimennus, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()))
+                atn = np.reshape(options.vaimennus, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()), order='F')
                 atn = np.rot90(atn,options.rotateAttImage)
                 options.vaimennus = atn
             if options.flipAttImageXY:
-                atn = np.reshape(options.vaimennus, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()))
+                atn = np.reshape(options.vaimennus, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()), order='F')
                 atn = np.fliplr(atn)
                 options.vaimennus = atn
             if options.flipAttImageZ:
-                atn = np.reshape(options.vaimennus, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()))
+                atn = np.reshape(options.vaimennus, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()), order='F')
                 atn = np.flip(atn,2)
                 options.vaimennus = atn
             if options.attIncm:
@@ -723,6 +752,7 @@ def loadCorrections(options):
     # precorrection below (as in MATLAB, the randoms are subtracted from the measured
     # data before it is normalized)
     deferredNormalization = None
+    deferredSPECTNormalization = None
     if options.normalization_correction:
         normalizationFromFile = False
         # Biograph (Vision) coefficients can be zero (bins without efficiency): these map to zero efficiency
@@ -834,12 +864,21 @@ def loadCorrections(options):
         if normalization_indexed_stack and options.normalization.size != int(options.nRowsD) * int(options.nColsD) * int(options.nHeads):
             raise ValueError('Detector-indexed normalization must contain one detector image for each detector head.')
         if not options.corrections_during_reconstruction and options.precorrect:
+            # SPECT: the DEW/TEW scatter estimate is subtracted from the (not normalized) counts first, as in MATLAB's
+            # loadCorrections.m ((SinM - scatter) ./ normalization), so the normalization is applied after the scatter block below
+            spectScatterFirst = bool(options.SPECT and options.scatter_correction and isinstance(options.ScatterC, list)
+                                     and options.SinDelayed.size <= 1 and options.subtract_scatter)
             if normalization_indexed_stack:
                 if isinstance(options.SinM, list):
-                    options.SinM = [
-                        frame.astype(np.float32) / expand_detector_stack(options.normalization, frame.shape, timestep)
-                        for timestep, frame in enumerate(options.SinM)
-                    ]
+                    def _normalizeFrames(normalizationStack=options.normalization):
+                        options.SinM = [
+                            frame.astype(np.float32) / expand_detector_stack(normalizationStack, frame.shape, timestep)
+                            for timestep, frame in enumerate(options.SinM)
+                        ]
+                    if spectScatterFirst:
+                        deferredSPECTNormalization = _normalizeFrames
+                    else:
+                        _normalizeFrames()
                     normalization_for_data = None
                 else:
                     normalization_for_data = expand_detector_stack(options.normalization, options.SinM.shape)
@@ -863,7 +902,12 @@ def loadCorrections(options):
                     normalization_for_data = normalizationCoef
                     normalizationDivide = False
                 if options.SPECT:
-                    options.SinM = _perLORFactor(options.SinM, normalization_for_data, options.TOF_bins, normalizationDivide)
+                    def _normalizeSinM(factor=normalization_for_data, divide=normalizationDivide):
+                        options.SinM = _perLORFactor(options.SinM, factor, options.TOF_bins, divide)
+                    if spectScatterFirst:
+                        deferredSPECTNormalization = _normalizeSinM
+                    else:
+                        _normalizeSinM()
                 else:
                     deferredNormalization = (normalization_for_data, normalizationDivide)
             options.normalization_correction = False
@@ -938,6 +982,8 @@ def loadCorrections(options):
         # it is reset to an empty array to avoid the generic (plain-array)
         # scatter-correction handling below re-processing it.
         options.ScatterC = np.empty(0, dtype=np.float32)
+    if deferredSPECTNormalization is not None:
+        deferredSPECTNormalization()
     if (options.scatter_correction and options.normalization_correction and options.normalize_scatter and options.corrections_during_reconstruction
             and not getattr(options, 'scatterNormalized', False)):
         # The elements without normalization (zero) are not divided, the scatter keeps its value there
@@ -969,6 +1015,8 @@ def loadCorrections(options):
     if options.randoms_correction and options.ordinaryPoisson and options.randoms_smoothing:
         from omegatomo.util.smoothing import randoms_smoothing
         options.SinDelayed = randoms_smoothing(options.SinDelayed, options)
+    if options.scatter_correction and options.ordinaryPoisson and options.scatter_variance_reduction:
+        options.ScatterC = _scatterVarianceReduction(options, options.ScatterC)
     if options.scatter_correction and options.ordinaryPoisson and options.scatter_smoothing:
         if options.subtract_scatter and _scatterTOFSize(options, options.ScatterC) == 'TOF':
             # Checked in _scatterPerTOFBin too, but the smoothing below works on a non-TOF sinogram
@@ -977,12 +1025,15 @@ def loadCorrections(options):
         from omegatomo.util.smoothing import randoms_smoothing
         options.ScatterC = randoms_smoothing(options.ScatterC, options)
     if (options.randoms_correction or options.scatter_correction) and not options.ordinaryPoisson:
-        if options.randoms_correction and options.SinDelayed.size > 0 and options.randoms_smoothing:
-            from omegatomo.util.smoothing import randoms_smoothing
-            options.SinDelayed = randoms_smoothing(options.SinDelayed, options)
+        # Variance reduction first, then smoothing (as in MATLAB's loadCorrections.m)
         if options.randoms_correction and options.SinDelayed.size > 0 and options.variance_reduction:
             from omegatomo.util.Randoms_variance_reduction import Randoms_variance_reduction
             options.SinDelayed = Randoms_variance_reduction(options.SinDelayed, options)
+        if options.randoms_correction and options.SinDelayed.size > 0 and options.randoms_smoothing:
+            from omegatomo.util.smoothing import randoms_smoothing
+            options.SinDelayed = randoms_smoothing(options.SinDelayed, options)
+        if options.scatter_correction and options.ScatterC.size > 0 and options.scatter_variance_reduction:
+            options.ScatterC = _scatterVarianceReduction(options, options.ScatterC)
         if options.scatter_correction and options.ScatterC.size > 0 and options.scatter_smoothing:
             from omegatomo.util.smoothing import randoms_smoothing
             options.ScatterC = randoms_smoothing(options.ScatterC, options)
@@ -1431,7 +1482,7 @@ def parseInputs(options, mDataFound = False):
                     #         options.SinDelayed[0] = options.SinDelayed[0][options.index]
                     # else:
                     if options.subsetType >= 8:
-                        options.SinDelayed = np.reshape(options.SinDelayed, (options.Ndist, options.Nang, -1))
+                        options.SinDelayed = np.reshape(options.SinDelayed, (options.Ndist, options.Nang, -1), order='F')
                         options.SinDelayed = options.SinDelayed[:, :, options.index]
                         options.SinDelayed = options.SinDelayed.ravel(order='F').astype(dtype=np.float32)
                     else:
@@ -1544,17 +1595,24 @@ def parseInputs(options, mDataFound = False):
                 else:
                     options.vaimennus = options.vaimennus.ravel(order='F')
                     options.vaimennus = options.vaimennus[attenuation_index]
-        if options.scatter_correction and not options.corrections_during_reconstruction:
-            if not options.precorrect:
-                print('Warning: Scatter correction is disabled. options.corrections_during_reconstruction is False and options.precorrect is False, i.e. the scatter is neither applied during the reconstruction nor subtracted from the measurement data. Set options.corrections_during_reconstruction = True to apply it.')
-            options.scatter_correction = False
-        if options.randoms_correction and not options.corrections_during_reconstruction:
-            if not options.precorrect:
-                print('Warning: Randoms correction is disabled. options.corrections_during_reconstruction is False and options.precorrect is False, i.e. the randoms are neither applied during the reconstruction nor subtracted from the measurement data. Set options.corrections_during_reconstruction = True to apply them.')
-            options.randoms_correction = False
         if options.useMaskFP and options.maskFPZ > 1 and options.maskFPZ != options.nHeads and options.subsetType >= 8:
             options.maskFP = options.maskFP[:,:,options.index]
             
+    # The corrections that are not applied during the reconstruction are not sent to the projector for any subset configuration
+    # (the precorrected data has already been subtracted, as in MATLAB's loadCorrections.m)
+    if (options.normalization_correction and not options.corrections_during_reconstruction and not options.precorrect
+            and not options.listmode and not options.useIndexBasedReconstruction):
+        # List-mode and index-based data keep the flag: their normalization is used in the sensitivity image (see _convertIndexBasedNormalization)
+        print('Warning: Normalization correction is disabled. options.corrections_during_reconstruction is False and options.precorrect is False, i.e. the normalization is neither applied during the reconstruction nor applied to the measurement data. Set options.corrections_during_reconstruction = True to apply it.')
+        options.normalization_correction = False
+    if options.scatter_correction and not options.corrections_during_reconstruction:
+        if not options.precorrect:
+            print('Warning: Scatter correction is disabled. options.corrections_during_reconstruction is False and options.precorrect is False, i.e. the scatter is neither applied during the reconstruction nor subtracted from the measurement data. Set options.corrections_during_reconstruction = True to apply it.')
+        options.scatter_correction = False
+    if options.randoms_correction and not options.corrections_during_reconstruction:
+        if not options.precorrect:
+            print('Warning: Randoms correction is disabled. options.corrections_during_reconstruction is False and options.precorrect is False, i.e. the randoms are neither applied during the reconstruction nor subtracted from the measurement data. Set options.corrections_during_reconstruction = True to apply them.')
+        options.randoms_correction = False
     
     if options.Nt <= 1 and mDataFound and not options.largeDim and options.loadTOF:
         if single_frame_list:
@@ -1759,6 +1817,45 @@ def quadWeights(options, isEmpty):
     options.weights_quad = options.weights_quad[~np.isinf(options.weights_quad)]
     options.weights_quad = options.weights_quad.astype(dtype=np.float32)
         
+def _checkPriorWeights(options):
+    """
+    Validates the lengths of the user-input prior weights (a_L, weights_huber, fmh_weights, weighted_weights) as MATLAB's
+    reconstructions_main.m does. A full-length weights_huber gets its center element set to Inf (on a copy), which
+    huberWeights() removes. Raises a ValueError if a length is wrong.
+    """
+    nWeights = (int(options.Ndx) * 2 + 1) * (int(options.Ndy) * 2 + 1) * (int(options.Ndz) * 2 + 1)
+    if options.L and options.MAP and np.size(options.a_L) > 0:
+        if np.size(options.a_L) < nWeights:
+            raise ValueError('Weights vector options.a_L is too short, needs to be ' + str(nWeights) + ' in length')
+        elif np.size(options.a_L) > nWeights:
+            raise ValueError('Weights vector options.a_L is too large, needs to be ' + str(nWeights) + ' in length')
+    if options.Huber and options.MAP and np.size(options.weights_huber) > 0:
+        if np.size(options.weights_huber) < nWeights:
+            raise ValueError('Huber weights vector is too short, needs to be ' + str(nWeights) + ' in length')
+        elif np.size(options.weights_huber) > nWeights:
+            raise ValueError('Huber weights vector is too long, needs to be ' + str(nWeights) + ' in length')
+        centre = int(np.ceil(nWeights / 2.)) - 1
+        weightsHuber = np.ravel(options.weights_huber, order='F')
+        if not np.isinf(weightsHuber[centre]):
+            # A copy, the input array can be the caller's
+            weightsHuber = weightsHuber.astype(np.float64)
+            weightsHuber[centre] = np.inf
+            options.weights_huber = weightsHuber
+    if options.FMH and options.MAP and np.size(options.fmh_weights) > 0:
+        nColumns = 4 if (np.ravel(options.Nz)[0] == 1 or int(options.Ndz) == 0) else 13
+        nFMH = nColumns * (int(options.Ndx) * 2 + 1)
+        if np.size(options.fmh_weights) < nFMH:
+            raise ValueError('Weights vector options.fmh_weights is too short, needs to be [' + str(int(options.Ndx) * 2 + 1) + ', ' + str(nColumns) + '] in size')
+        elif np.size(options.fmh_weights) > nFMH:
+            raise ValueError('Weights vector options.fmh_weights is too ' + ('large' if nColumns == 4 else 'long') + ', needs to be [' + str(int(options.Ndx) * 2 + 1) + ', ' + str(nColumns) + '] in size')
+    if options.weighted_mean and options.MAP and np.size(options.weighted_weights) > 0:
+        # MATLAB also sets the center element to Inf here, which is not done in Python (it would make the sum of the weights Inf)
+        if np.size(options.weighted_weights) < nWeights:
+            raise ValueError('Weights vector options.weighted_weights is too short, needs to be ' + str(nWeights) + ' in length')
+        elif np.size(options.weighted_weights) > nWeights:
+            raise ValueError('Weights vector options.weighted_weights is too long, needs to be ' + str(nWeights) + ' in length')
+
+
 def huberWeights(options):
     """
     Normalizes Huber prior weights.
@@ -2368,6 +2465,16 @@ def prepassPhase(options):
             options.lambdaN = _compute_lambda_vals(options.Niter, options.subsets, options.stochasticSubsetSelection).astype(np.float32)
             if options.CT and not options.SART and not options.ASD_POCS:
                 options.lambdaN = options.lambdaN / 10000.
+        elif (options.BSREM or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM_MAP or options.ROSEM or options.PKMA or options.SPS or options.SART or options.ASD_POCS or options.SAGA) and np.size(options.lambdaN) == 1 and options.Niter > 1:
+            # A scalar relaxation value is the starting value of the decaying relaxation schedule (prepass_phase.m)
+            iterations = np.arange(1, options.Niter + 1, dtype=np.float64)
+            if options.stochasticSubsetSelection:
+                lambdaT = np.ravel(options.lambdaN)[0] / (0.4 / options.subsets * iterations + 1.)
+            else:
+                lambdaT = np.ravel(options.lambdaN)[0] / ((iterations - 1.) / 20. + 1.)
+            if options.CT and not options.SART and not options.ASD_POCS:
+                lambdaT = lambdaT / 10000.
+            options.lambdaN = lambdaT.astype(np.float32)
         elif (options.BSREM or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM_MAP or options.ROSEM or options.PKMA or options.SPS or options.SART or options.ASD_POCS or options.SAGA):
             if np.size(options.lambdaN) < options.Niter:
                 print('Warning: The number of relaxation values must be at least the number of iterations times the number of subsets! Computing custom relaxation values.')
@@ -2396,6 +2503,7 @@ def prepassPhase(options):
     
         # Compute the weights
         if (options.quad or options.L or options.FMH or options.weighted_mean or options.MRP or (options.TV and options.TVtype == 3 and options.TV_use_anatomical) or options.Huber or options.RDP or options.GGMRF or options.hyperbolic) and options.MAP:
+            _checkPriorWeights(options)
             if options.quad or options.L or options.FMH or options.weighted_mean or (options.TV and options.TVtype == 3 and options.TV_use_anatomical) or options.Huber or options.RDP or options.GGMRF or options.hyperbolic:
                 if options.GGMRF:
                     computeWeights(options, True)
@@ -2483,10 +2591,22 @@ def prepassPhase(options):
         options.filterIm = options.filterIm.astype(dtype=np.float32)
 
     if options.precondTypeImage[3]:
+        alphaPrecondEmpty = np.size(options.alphaPrecond) == 0
+        if alphaPrecondEmpty and np.size(options.alpha_PKMA) == options.Niter * options.subsets:
+            # The PKMA momentum values are reused (prepass_phase.m)
+            options.alphaPrecond = np.array(options.alpha_PKMA, dtype=np.float32, copy=True)
         if np.size(options.alphaPrecond) < options.Niter * options.subsets:
-            print('Warning: The number of alpha (momentum) values must be at least the number of iterations times the number of subsets! Computing custom alpha values.')
+            if not alphaPrecondEmpty:
+                print('Warning: The number of alpha (momentum) values must be at least the number of iterations times the number of subsets! Computing custom alpha values.')
+            # rhoPrecond and delta1Precond have no default value, zero (or missing) means the PKMA values
+            rhoPrecond = getattr(options, 'rhoPrecond', 0)
+            if rhoPrecond is None or np.size(rhoPrecond) == 0 or np.ravel(rhoPrecond)[0] == 0:
+                rhoPrecond = options.rho_PKMA
+            delta1Precond = getattr(options, 'delta1Precond', 0)
+            if delta1Precond is None or np.size(delta1Precond) == 0 or np.ravel(delta1Precond)[0] == 0:
+                delta1Precond = options.delta_PKMA
             options.alphaPrecond = np.zeros(options.Niter * options.subsets, dtype=np.float32)
-            options.alphaPrecond[:] = _pkma_relaxation_values(options.Niter, options.subsets, options.rho_PKMA, options.delta_PKMA)
+            options.alphaPrecond[:] = _pkma_relaxation_values(options.Niter, options.subsets, np.ravel(rhoPrecond)[0], np.ravel(delta1Precond)[0])
     
     if options.precondTypeMeas[1]:
         if options.subsets > 1 and options.subsetType == 5:

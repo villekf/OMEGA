@@ -884,26 +884,15 @@ classdef projectorClass
             [obj.param.V,obj.param.Vmax,obj.param.bmin,obj.param.bmax] = computeVoxelVolumes(obj.param.dx,obj.param.dy,obj.param.dz,obj.param);
 
 
-            if (obj.param.projector_type == 2 || obj.param.projector_type == 3 || obj.param.projector_type == 22 || obj.param.projector_type == 33)
-                if obj.param.projector_type == 3 || obj.param.projector_type == 33
-                    obj.param.orthTransaxial = true;
-                elseif (obj.param.projector_type == 2 || obj.param.projector_type == 22) && (isfield(options,'tube_width_xy') && options.tube_width_xy > 0 || options.SPECT)
-                    obj.param.orthTransaxial = true;
-                else
-                    obj.param.orthTransaxial = false;
-                end
+            % Orthogonal-distance/volume-of-intersection tube flags (also for the hybrid types, same selection as Python)
+            if any(obj.param.projector_type == [3, 33, 13, 31, 32, 23, 43, 34])
+                obj.param.orthTransaxial = true;
+                obj.param.orthAxial = true;
+            elseif any(obj.param.projector_type == [2, 22, 12, 21, 24, 42])
+                obj.param.orthTransaxial = (isfield(options,'tube_width_xy') && options.tube_width_xy > 0) || options.SPECT;
+                obj.param.orthAxial = (isfield(obj.param,'tube_width_z') && obj.param.tube_width_z > 0) || options.SPECT;
             else
                 obj.param.orthTransaxial = false;
-            end
-            if (obj.param.projector_type == 2 || obj.param.projector_type == 3 || obj.param.projector_type == 22 || obj.param.projector_type == 33)
-                if obj.param.projector_type == 3 || obj.param.projector_type == 33
-                    obj.param.orthAxial = true;
-                elseif (obj.param.projector_type == 2 || obj.param.projector_type == 22) && (isfield(obj.param,'tube_width_z') && obj.param.tube_width_z > 0 || options.SPECT)
-                    obj.param.orthAxial = true;
-                else
-                    obj.param.orthAxial = false;
-                end
-            else
                 obj.param.orthAxial = false;
             end
 

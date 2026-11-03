@@ -477,7 +477,7 @@ def formSubsetIndices(options):
                         options.x = options.x[:, options.index, :]
                 else:
                     if not options.x.shape[0] == 6:
-                        options.x = np.reshape(options.x, (6, options.x.size // 6))
+                        options.x = np.reshape(options.x, (6, options.x.size // 6), order='F')
                     options.x = options.x[:,options.index]
             if options.TOF_bins_used > 1:
                 if options.Nt > 1:
