@@ -219,7 +219,12 @@ elseif options.attenuation_correction && options.SPECT % SPECT attenuation
         options.vaimennus = 1*MUvol;
     end
     if options.CT_attenuation && options.useMultiResolutionVolumes && options.nMultiVolumes > 0
-        options = prepareMultiResolutionAttenuation(options);
+        if isfield(options, 'projector_type') && options.projector_type == 6
+            % Type 6 consumes the voxel-grid map directly; its union padding differs from the packed fine/coarse map.
+            options = padType6Attenuation(options);
+        else
+            options = prepareMultiResolutionAttenuation(options);
+        end
     end
     if options.Nt > 1 && iscell(options.vaimennus) && numel(options.vaimennus) == 1 && ...
             ~options.CT_attenuation && iscell(options.SinM) && ~isempty(options.SinM)
@@ -235,7 +240,9 @@ elseif options.attenuation_correction && options.SPECT % SPECT attenuation
     if options.Nt > 1
         if ~iscell(options.vaimennus)
             isPreparedImageAttenuation = options.CT_attenuation && ...
-                isfield(options, 'imageAttenuationIsMultiResolution') && options.imageAttenuationIsMultiResolution;
+                ((isfield(options, 'imageAttenuationIsMultiResolution') && options.imageAttenuationIsMultiResolution) || ...
+                (isfield(options, 'projector_type') && options.projector_type == 6 && ...
+                isfield(options, 'multiResAttenuationPadded') && options.multiResAttenuationPadded));
             isDynamicMeasurementAttenuation = false;
             isStaticMeasurementAttenuation = false;
             if ~options.CT_attenuation && iscell(options.SinM) && ~isempty(options.SinM)

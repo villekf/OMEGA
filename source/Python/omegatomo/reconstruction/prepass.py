@@ -657,7 +657,41 @@ def loadCorrections(options):
                 else:
                     raise ValueError('Unsupported datatype!')
         if options.CT_attenuation:
-            _prepare_image_domain_attenuation(options)
+            multiResType6 = (
+                options.projector_type in (6, 16, 26, 61, 62, 66)
+                and getattr(options, 'useMultiResolutionVolumes', False)
+                and int(getattr(options, 'nMultiVolumes', 0)) > 0
+            )
+            if multiResType6:
+                # Type 6 uses one attenuation volume covering the union of all
+                # resolution grids; pad the requested extended-FOV map to that
+                # union with air transaxially and replicated end slices axially.
+                from omegatomo.util.multiresolutionpad import prepareType6Attenuation
+                options.vaimennus = prepareType6Attenuation(options, options.vaimennus)
+                attDims = tuple(int(v) for v in np.asarray(options.multiResUnionDims).reshape(-1))
+                if options.vaimennus.ndim == 1 and options.vaimennus.size != int(np.prod(attDims)):
+                    attDims = tuple(int(np.asarray(getattr(options, axis)).reshape(-1)[0])
+                                    for axis in ('NxFull', 'NyFull', 'NzFull'))
+                elif options.vaimennus.ndim >= 3:
+                    attDims = tuple(options.vaimennus.shape[:3])
+
+                def attVolume(values):
+                    if values.ndim == 1:
+                        return np.reshape(values, attDims, order='F')
+                    return values
+
+                if options.rotateAttImage != 0:
+                    options.vaimennus = np.rot90(attVolume(options.vaimennus), options.rotateAttImage)
+                if options.flipAttImageXY:
+                    options.vaimennus = np.fliplr(attVolume(options.vaimennus))
+                if options.flipAttImageZ:
+                    options.vaimennus = np.flip(attVolume(options.vaimennus), 2)
+                if options.attIncm:
+                    options.vaimennus = options.vaimennus / 10.
+            else:
+                # The Python SPECT Siddon/ODRT path prepares full-FOV fine and
+                # coarse maps, including dynamic frames and shifted origins.
+                _prepare_image_domain_attenuation(options)
         else:
             options.vaimennus = np.asfortranarray(options.vaimennus).ravel('F').astype(dtype=np.float32)
     # PET normalization precorrection of SinM, applied after the randoms/scatter
@@ -1077,7 +1111,7 @@ def parseInputs(options, mDataFound = False):
                         options.SinM[ff - 1] = temp
                     else:
                         if options.TOF and options.listmode == 0:
-                            options.SinM[:,:,:,:,ff - 1] = temp.ravel(order='F')
+                            options.SinM[:,:,:,:,ff - 1] = temp
                         else:
                             if options.SinM.ndim == 4:
                                 options.SinM[:,:,:,ff - 1] = temp

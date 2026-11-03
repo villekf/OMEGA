@@ -31,12 +31,17 @@ bz = zeros(1,size(FOV,2));
 % different spacings for two slabs that are intended to share the same
 % lattice (for example, one 64-slice grid and two 32-slice grids).
 voxelSpacing = double(FOV) ./ double(N);
-if useMultiResolution && size(FOV, 2) > 1
-    fineSpacing = voxelSpacing(:, 1);
-    tolerance = max(1e-8, abs(fineSpacing) .* 1e-5);
-    sameResolution = abs(voxelSpacing - fineSpacing) <= tolerance;
-    matchingSpacing = repmat(fineSpacing, 1, size(FOV, 2));
-    voxelSpacing(sameResolution) = matchingSpacing(sameResolution);
+multiRes = useMultiResolution && size(FOV, 2) > 2;
+if multiRes
+    % All coarse side volumes use the spacing of the first side volume.
+    % Keep the fine volume's spacing independent, while making equal coarse
+    % grids exactly share a lattice despite floating-point representation.
+    sideSpacing = voxelSpacing(:, 2);
+    tolerance = max(1e-8, abs(sideSpacing) .* 1e-5);
+    sameSide = abs(voxelSpacing - sideSpacing) <= tolerance;
+    sameSide(:, 1) = false;
+    matchingSpacing = repmat(sideSpacing, 1, size(FOV, 2));
+    voxelSpacing(sameSide) = matchingSpacing(sameSide);
 end
 for kk = size(FOV,2) : - 1 : 1
     % We compute the pixel boundaries for each volume if a multi-resolution

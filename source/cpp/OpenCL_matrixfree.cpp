@@ -16,6 +16,7 @@
 *
 * You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 *************************************************************************************************************************************************/
+#include <exception>
 #include "reconstructionAF.h"
 
 /// <summary>
@@ -475,6 +476,8 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 
 	const float* randoms = getSingles(sc_ra, "solu");
 #if !defined MTYPE && !defined(MTYPE2)
+	if (mxGetClassID(Sin) != mxSINGLE_CLASS)
+		mexErrMsgTxt("The measurement data (SinM) must be single precision for this MEX file. Convert it to single, or pass uint16/uint8 data to the corresponding _uint16/_uint8 MEX variant.");
 	const float* Sino = getSingles(Sin, "solu");
 	//const float* randoms = getSingles(sc_ra, "solu");
 #elif defined(MTYPE) && !defined(MTYPE2)

@@ -112,19 +112,24 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             } else if (compute_norm_matrix == 2u) {
                 Sens = &vec.Summ[sIdx][ii][osa_iter];
             }
+            // Collect the voxels that some subset sees, the others are zeroed in the output (see seenMaskUsed)
+            if (Sens != nullptr && !largeDim && seenMaskUsed(MethodList, inputScalars))
+                accumulateSeenMask(vec, inputScalars, *Sens, sIdx, ii, osa_iter);
 
             // Compute the (matrix free) algorithms
             // Ordered Subsets Expectation Maximization (OSEM)
+            // The sensitivity and rhs are floored at epps and epps is added to both, so a voxel that a subset does not see (both at the floor)
+            // is left unchanged, voxels just above the floor are damped rather than amplified, and the update is exactly 1 at the fixed point
             if (MethodList.OSEM || MethodList.ECOSEM) {
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing OSEM/ECOSEM");
                 if (MethodList.ECOSEM)
-                    OSEMApu = EM(vec.im_os[timestep][ii], *Sens, vec.rhs_os[timestep][ii] + inputScalars.epps);
+                    OSEMApu = EM(vec.im_os[timestep][ii], af::max(*Sens, static_cast<double>(inputScalars.epps)) + inputScalars.epps, af::max(vec.rhs_os[timestep][ii], static_cast<double>(inputScalars.epps)) + inputScalars.epps);
                 else
                     if (inputScalars.CT)
                         vec.im_os[timestep][ii] = EM(vec.im_os[timestep][ii], *Sens, inputScalars.flat * vec.rhs_os[timestep][ii]);
                     else
-                        vec.im_os[timestep][ii] = EM(vec.im_os[timestep][ii], *Sens, vec.rhs_os[timestep][ii] + inputScalars.epps);
+                        vec.im_os[timestep][ii] = EM(vec.im_os[timestep][ii], af::max(*Sens, static_cast<double>(inputScalars.epps)) + inputScalars.epps, af::max(vec.rhs_os[timestep][ii], static_cast<double>(inputScalars.epps)) + inputScalars.epps);
             }
 
             // Modfied Row-action Maximum Likelihood (MRAMLA)

@@ -86,9 +86,13 @@ int computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethod
 		if (inputScalars.use_psf && inputScalars.deconvolution) {
 			af::array apu = vec.im_os[timestep][0].copy();
 			deblur(apu, g, inputScalars, w_vec);
+			applySeenMask(apu, vec, inputScalars, timestep, 0);
 			apu.host(&jelppi[outputOffset]);
 		} else {
-			vec.im_os[timestep][0].host(&jelppi[outputOffset]);
+			// The never-seen voxels are zeroed in the saved estimate only (see seenMaskUsed), the iterate itself stays unchanged
+			af::array apu = vec.im_os[timestep][0];
+			applySeenMask(apu, vec, inputScalars, timestep, 0);
+			apu.host(&jelppi[outputOffset]);
 		}
 	}
 	return 0;

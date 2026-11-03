@@ -7,6 +7,10 @@
 #define DLL_FUNCTION  __attribute__((visibility("default")))
 #endif
 #include "reconstructionAF.h"
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <vector>
 
 struct inputStruct {
     // Is raw data format used (optional)
@@ -284,6 +288,8 @@ struct inputStruct {
     bool CTAttenuation = true;
     // Use offset correction
     bool offsetCorrection = false;
+    // Apply the square root of the offset redundancy weights on both the forward and backward projection (linearised least-squares algorithms)
+    bool offsetSqrt = false;
     // Scale the relaxation parameters
     bool relaxationScaling = false;
     // Compute the relaxation parameters
@@ -574,6 +580,19 @@ struct inputStruct {
     uint32_t* tr_offsets = nullptr;
     float* a_L = nullptr;
     float* fmh_weights = nullptr;
+    // Sub-voxel accurate PSF depth and lateral FOV shifts for the rotation-based SPECT projector
+    float* blurPlanesF = nullptr;
+    float* blurPlanes2F = nullptr;
+    // Depth-dependent collimator-detector response coefficients for projector type 6: {Az, Bz, Axy, Bxy, C}
+    float* CDRFCoeffs6 = nullptr;
+    // Compute the collimator-detector response separately for every projection
+    bool CDRFOnTheFly = false;
+    // The fraction of the available device memory that the attenuation cache of projector type 6 may use
+    float type6AttenuationCache = 0.f;
+    // The model of the collimator response of the on-the-fly CDRF of projector type 6: 0 = Gaussian, 1 = square holes
+    uint32_t cdrfModel6 = 0U;
+    // How the backprojection of projector type 6 rotates a view back into the image: 0 = exact adjoint of the forward rotation, 1 = fast gather
+    uint32_t bpRot6 = 0U;
 };
 
 void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting& w_vec, RecMethods& MethodList) {
@@ -886,6 +905,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.maskBP = options.useMaskBP;
     inputScalars.maskFP = options.useMaskFP;
     inputScalars.offset = options.offsetCorrection;
+    inputScalars.offsetSqrt = options.offsetCorrection && options.offsetSqrt;
     if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
         inputScalars.orthXY = options.orthTransaxial;
         inputScalars.orthZ = options.orthAxial;
@@ -978,6 +998,9 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         // Kernels test for box support with a finite threshold, as isinf() is unreliable under fast-math
         if (!std::isfinite(inputScalars.ellipsePower))
             inputScalars.ellipsePower = std::numeric_limits<float>::max();
+    } else if (inputScalars.SPECT && inputScalars.projector_type == 6) {
+        inputScalars.nColsD = options.nColsD;
+        inputScalars.nRowsD = options.nRowsD;
     } else {
         inputScalars.nColsD = options.Nang;
         inputScalars.nRowsD = options.Ndist;
@@ -1058,10 +1081,13 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
 		w_vec.dPitchX = options.dPitchX;
 		w_vec.dPitchY = options.dPitchY;
 		if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
-		w_vec.rayShiftsDetector = options.rayShiftsDetector;
-		w_vec.rayShiftsSource = options.rayShiftsSource;
-		w_vec.detectorVector = options.detectorVector;
-		w_vec.detectorVectorSize = static_cast<size_t>(options.sizeDetectorVector);
+			w_vec.rayShiftsDetector = options.rayShiftsDetector;
+			w_vec.rayShiftsSource = options.rayShiftsSource;
+			w_vec.detectorVector = options.detectorVector;
+			w_vec.detectorVectorSize = static_cast<size_t>(options.sizeDetectorVector);
+		} else if (inputScalars.FPType == 6 || inputScalars.BPType == 6) {
+			// The projector type 6 applies the detector-head normalization on the host (see type6Weights)
+			w_vec.detectorVector = options.detectorVector;
 		}
     } else {
         w_vec.dPitchX = options.cr_p; // Detector pitch
@@ -1077,17 +1103,37 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
 
 #ifdef AF
     if (inputScalars.projector_type == 6U) {
-        const uint64_t* ind = options.gFSize;
-        if (DEBUG) {
-            mexPrintBase("indX = %d\n", ind[0]);
-            mexPrintBase("indY = %d\n", ind[1]);
-            mexEval();
-        }
+        inputScalars.CDRFOnTheFly = options.CDRFOnTheFly;
+        inputScalars.cdrfModel6 = options.cdrfModel6;
+        inputScalars.bpRot6 = options.bpRot6;
+        inputScalars.type6AttenuationCache = options.type6AttenuationCache;
         w_vec.angles = options.angles;
         w_vec.swivelAngles = options.swivelAngles;
-        w_vec.gFilter = af::array(ind[0], ind[1], ind[2], options.gFilter);
         w_vec.distInt = options.blurPlanes;
         w_vec.distInt2 = options.blurPlanes2;
+        w_vec.distFloat = options.blurPlanesF;
+        w_vec.distFloat2 = options.blurPlanes2F;
+        inputScalars.maxPanelShift6 = 0.f;
+        if (w_vec.distFloat2 != nullptr) {
+            for (int64_t pp = 0; pp < inputScalars.nProjections; pp++)
+                inputScalars.maxPanelShift6 = (std::max)(inputScalars.maxPanelShift6, std::abs(w_vec.distFloat2[pp]) * inputScalars.dx[0]);
+        }
+        if (options.CDRFCoeffs6 != nullptr) {
+            for (int cc = 0; cc < 5; cc++)
+                inputScalars.CDRFCoeffs6[cc] = options.CDRFCoeffs6[cc];
+        }
+        // The axial padding of the rotated grids depends on the geometry above and on the CDRF coefficients
+        computePadZType6(inputScalars, w_vec.distFloat);
+        // The precomputed filter bank is not used, or even computed, when the CDRF is computed on-the-fly
+        if (!inputScalars.CDRFOnTheFly) {
+            const uint64_t* ind = options.gFSize;
+            if (DEBUG) {
+                mexPrintBase("indX = %d\n", ind[0]);
+                mexPrintBase("indY = %d\n", ind[1]);
+                mexEval();
+            }
+            w_vec.gFilter = af::array(ind[0], ind[1], ind[2], options.gFilter);
+        }
         if (DEBUG) {
             mexPrintBase("w_vec.gFilter.dims(0) = %d\n", w_vec.gFilter.dims(0));
             mexPrintBase("w_vec.gFilter.dims(1) = %d\n", w_vec.gFilter.dims(1));

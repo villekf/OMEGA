@@ -63,6 +63,9 @@ def pack_multiresolution(image, options, mask=False):
         image = np.repeat(image[:, :, None], int(options.NzFull), axis=2)
     if image.ndim != 3:
         raise ValueError('Multi-resolution input must be a full-FOV 3D image.')
+    # The side volumes extend the requested extended FOV by up to one coarse voxel on their outer faces
+    from omegatomo.util.multiresolutionpad import padMultiResVolume
+    image = padMultiResVolume(image, options)
     def resized(size):
         if mask:
             return zoom(image.astype(np.float32), size / np.asarray(image.shape),

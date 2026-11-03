@@ -1384,7 +1384,12 @@ void projectorType4Backward(
                 }
 #endif
                 if (px <= TT && px >= -TT) {
+#ifdef OFFSETSQRT
+                    // Square root of the redundancy weight: sqrt(.5f * (1 + sin(a))) = sin(a / 2 + pi / 4)
+                    w = SINF(M_PI_F * (px + TT) / (TT * 4.f));
+#else
                     w = .5f * (1.f + SINF(M_PI_F * px / (TT * 2.f)));
+#endif
                     // w = (.5f * (SINF((M_PI_F * atan2(px, R)) / (2.f * atan2(TT, R))) + 1.f));
                 }
                 else if (px < -TT) {

@@ -79,6 +79,8 @@ if options.useEFOV
         dxM = options.FOVxOrig / NxM; % Multiresolution voxel sizes
         dyM = options.FOVyOrig / NyM;
         dzM = options.axialFOVOrig / NzM;
+        type6MultiRes = isfield(options, 'projector_type') && options.projector_type == 6;
+        sideVoxels = @(len, d) max(0, ceil(double(len) / double(d) - 1e-6));
 
         % A shifted EFOV can leave one side with zero or negative thickness
         % at the active coarse resolution. Disable that EFOV direction before
@@ -87,7 +89,12 @@ if options.useEFOV
         if options.axialEFOV
             zLow = (options.axial_fov - options.axialFOVOrig) / 2 - options.eFOVShift(3);
             zHigh = (options.axial_fov - options.axialFOVOrig) / 2 + options.eFOVShift(3);
-            if min(round(zLow / dzM), round(zHigh / dzM)) <= 0
+            if type6MultiRes
+                sideCounts = [sideVoxels(zLow, dzM), sideVoxels(zHigh, dzM)];
+            else
+                sideCounts = [round(zLow / dzM), round(zHigh / dzM)];
+            end
+            if min(sideCounts) <= 0
                 warning('Axial extended FOV is smaller than one multi-resolution voxel on a shifted side; disabling axial EFOV.')
                 options.axialEFOV = false;
                 options.Nz = options.NzOrig;
@@ -99,7 +106,14 @@ if options.useEFOV
             xHigh = (options.FOVa_x - options.FOVxOrig) / 2 + options.eFOVShift(1);
             yLow = (options.FOVa_y - options.FOVyOrig) / 2 - options.eFOVShift(2);
             yHigh = (options.FOVa_y - options.FOVyOrig) / 2 + options.eFOVShift(2);
-            if min([round(xLow / dxM), round(xHigh / dxM), round(yLow / dyM), round(yHigh / dyM)]) <= 0
+            if type6MultiRes
+                sideCounts = [sideVoxels(xLow, dxM), sideVoxels(xHigh, dxM), ...
+                    sideVoxels(yLow, dyM), sideVoxels(yHigh, dyM)];
+            else
+                sideCounts = [round(xLow / dxM), round(xHigh / dxM), ...
+                    round(yLow / dyM), round(yHigh / dyM)];
+            end
+            if min(sideCounts) <= 0
                 warning('Transaxial extended FOV is smaller than one multi-resolution voxel on a shifted side; disabling transaxial EFOV.')
                 options.transaxialEFOV = false;
                 options.Nx = options.NxOrig;
@@ -130,32 +144,57 @@ if options.useEFOV
             NyM1 = round(FOVyM1 / dyM);
             NyM2 = round(FOVyM2 / dyM);
 
-            FOVzM1 = (options.axial_fov - options.axialFOVOrig) / 2 - options.eFOVShift(3);
-            FOVzM2 = (options.axial_fov - options.axialFOVOrig) / 2 + options.eFOVShift(3);
-            NzM1 = round(FOVzM1 / dzM);
-            NzM2 = round(FOVzM2 / dzM);
+            requestedZLow = (options.axial_fov - options.axialFOVOrig) / 2 - options.eFOVShift(3);
+            requestedZHigh = (options.axial_fov - options.axialFOVOrig) / 2 + options.eFOVShift(3);
+            if type6MultiRes
+                NzM1 = sideVoxels(requestedZLow, dzM);
+                NzM2 = sideVoxels(requestedZHigh, dzM);
+                FOVzM1 = NzM1 * dzM;
+                FOVzM2 = NzM2 * dzM;
+            else
+                FOVzM1 = requestedZLow;
+                FOVzM2 = requestedZHigh;
+                NzM1 = round(FOVzM1 / dzM);
+                NzM2 = round(FOVzM2 / dzM);
+            end
         end
 
         if options.transaxialEFOV
-            FOVxM3 = (options.FOVa_x - options.FOVxOrig) / 2 - options.eFOVShift(1); % Multiresolution FOV size x-direction (volume 3)
-            FOVxM4 = (options.FOVa_x - options.FOVxOrig) / 2 + options.eFOVShift(1); % Multiresolution FOV size x-direction (volume 4)
+            requestedXLow = (options.FOVa_x - options.FOVxOrig) / 2 - options.eFOVShift(1);
+            requestedXHigh = (options.FOVa_x - options.FOVxOrig) / 2 + options.eFOVShift(1);
+            requestedYLow = (options.FOVa_y - options.FOVyOrig) / 2 - options.eFOVShift(2);
+            requestedYHigh = (options.FOVa_y - options.FOVyOrig) / 2 + options.eFOVShift(2);
             FOVxM5 = options.FOVxOrig;
             FOVxM6 = options.FOVxOrig;
-
-            NxM3 = round(FOVxM3 / dxM); % Multiresolution amount of voxels x-direction (volume 3)
-            NxM4 = round(FOVxM4 / dxM); % Multiresolution amount of voxels x-direction (volume 4)
             NxM5 = NxM;
             NxM6 = NxM;
-
-            FOVyM3 = options.FOVa_y;
-            FOVyM4 = options.FOVa_y;
-            FOVyM5 = (options.FOVa_y - options.FOVyOrig) / 2 - options.eFOVShift(2);
-            FOVyM6 = (options.FOVa_y - options.FOVyOrig) / 2 + options.eFOVShift(2);
-
-            NyM3 = round(FOVyM3 / dyM);
-            NyM4 = round(FOVyM4 / dyM);
-            NyM5 = round(FOVyM5 / dyM);
-            NyM6 = round(FOVyM6 / dyM);
+            if type6MultiRes
+                NxM3 = sideVoxels(requestedXLow, dxM);
+                NxM4 = sideVoxels(requestedXHigh, dxM);
+                FOVxM3 = NxM3 * dxM;
+                FOVxM4 = NxM4 * dxM;
+                NyM5 = sideVoxels(requestedYLow, dyM);
+                NyM6 = sideVoxels(requestedYHigh, dyM);
+                FOVyM5 = NyM5 * dyM;
+                FOVyM6 = NyM6 * dyM;
+                NyM3 = NyM + NyM5 + NyM6;
+                NyM4 = NyM3;
+                FOVyM3 = NyM3 * dyM;
+                FOVyM4 = FOVyM3;
+            else
+                FOVxM3 = requestedXLow;
+                FOVxM4 = requestedXHigh;
+                NxM3 = round(FOVxM3 / dxM);
+                NxM4 = round(FOVxM4 / dxM);
+                FOVyM3 = options.FOVa_y;
+                FOVyM4 = options.FOVa_y;
+                FOVyM5 = requestedYLow;
+                FOVyM6 = requestedYHigh;
+                NyM3 = round(FOVyM3 / dyM);
+                NyM4 = round(FOVyM4 / dyM);
+                NyM5 = round(FOVyM5 / dyM);
+                NyM6 = round(FOVyM6 / dyM);
+            end
         end
 
         if options.axialEFOV && options.transaxialEFOV % Both transaxial and axial FOVs are extended.
@@ -167,15 +206,20 @@ if options.useEFOV
             options.FOVa_y = [FOVyM0, FOVyM1, FOVyM2, FOVyM3, FOVyM4, FOVyM5, FOVyM6];
             options.Ny = uint32([NyM0, NyM1, NyM2, NyM3, NyM4, NyM5, NyM6]);
 
-            FOVzM3 = options.axial_fov;
-            FOVzM4 = options.axial_fov;
-            FOVzM5 = options.axial_fov;
-            FOVzM6 = options.axial_fov;
+            if type6MultiRes
+                NzM3 = NzM + NzM1 + NzM2;
+                FOVzM3 = NzM3 * dzM;
+            else
+                FOVzM3 = options.axial_fov;
+                NzM3 = round(FOVzM3 / dzM);
+            end
+            FOVzM4 = FOVzM3;
+            FOVzM5 = FOVzM3;
+            FOVzM6 = FOVzM3;
             options.axial_fov = [FOVzM0, FOVzM1, FOVzM2, FOVzM3, FOVzM4, FOVzM5, FOVzM6];
-            NzM3 = round(FOVzM3 / dzM);
-            NzM4 = round(FOVzM4 / dzM);
-            NzM5 = round(FOVzM5 / dzM);
-            NzM6 = round(FOVzM6 / dzM);
+            NzM4 = NzM3;
+            NzM5 = NzM3;
+            NzM6 = NzM3;
             options.Nz = uint32([NzM0, NzM1, NzM2, NzM3, NzM4, NzM5, NzM6]);
         elseif options.transaxialEFOV && ~options.axialEFOV % Only the transaxial FOV is extended
             options.nMultiVolumes = 4;
@@ -200,6 +244,28 @@ if options.useEFOV
 
             options.axial_fov = [FOVzM0, FOVzM1, FOVzM2];
             options.Nz = uint32([NzM0, NzM1, NzM2]);
+        end
+
+        if type6MultiRes
+            fineSpacing = double(options.imageAttenuationFineSpacing(:).');
+            padLowMm = [0, 0, 0];
+            padHighMm = [0, 0, 0];
+            if options.transaxialEFOV
+                padLowMm(1) = max(FOVxM3 - requestedXLow, 0);
+                padHighMm(1) = max(FOVxM4 - requestedXHigh, 0);
+                padLowMm(2) = max(FOVyM5 - requestedYLow, 0);
+                padHighMm(2) = max(FOVyM6 - requestedYHigh, 0);
+            end
+            if options.axialEFOV
+                padLowMm(3) = max(FOVzM1 - requestedZLow, 0);
+                padHighMm(3) = max(FOVzM2 - requestedZHigh, 0);
+            end
+            options.multiResPadLow = padLowMm ./ fineSpacing;
+            options.multiResPadHigh = padHighMm ./ fineSpacing;
+            fullDims = double([options.NxFull, options.NyFull, options.NzFull]);
+            options.multiResUnionDims = round(fullDims + options.multiResPadLow + options.multiResPadHigh);
+            options.multiResPadExact = all(abs(options.multiResPadLow - round(options.multiResPadLow)) < 1e-3) && ...
+                all(abs(options.multiResPadHigh - round(options.multiResPadHigh)) < 1e-3);
         end
 
         if options.axialEFOV
@@ -311,34 +377,28 @@ else
     options.NzFull = options.Nz;
 end
 if options.offsetCorrection
-    options.OffsetLimit = zeros(options.nProjections, 1, options.cType);
-    for kk = 1 : options.nProjections
-        sx = options.x(1,kk);
-        sy = options.x(2,kk);
-        sz = options.x(3,kk);
-        s = [sx;sy;sz];
-        dx = options.x(4,kk);
-        dy = options.x(5,kk);
-        dz = options.x(6,kk);
-        d = [dx;dy;dz];
-        ii = (0 : 0.25 : options.nRowsD)' - options.nRowsD / 2;
-        if options.pitch
-            dx = dx + options.z(1,kk) * ii + options.z(4,kk) * ii;
-            dy = dy + options.z(2,kk) * ii + options.z(5,kk) * ii;
-        else
-            dx = dx + options.z(1,kk) * ii;
-            dy = dy + options.z(2,kk) * ii;
-        end
-        dist = abs((dx - sx) .* (sy) - ((sx) .* (dy - sy))) ./ sqrt((dx - sx).^2 + (dy - sy).^2);
-        [~, ind] = min(dist);
-        options.OffsetLimit(kk) = (ind) * options.dPitchX/4;
+    nP = options.nProjections;
+    s = double(options.x([1 2], 1:nP));
+    d = double(options.x([4 5], 1:nP));
+    u = double(options.z([1 2], 1:nP));
+    % Position along the detector row direction where the central ray crosses the rotation axis.
+    t = (s(2,:) .* d(1,:) - s(1,:) .* d(2,:)) ./ (s(1,:) .* u(2,:) - s(2,:) .* u(1,:));
+    detectorWidth = double(options.nRowsD) * double(options.dPitchX);
+    T = (t(:) + double(options.nRowsD) / 2) * double(options.dPitchX);
+    if any(T <= 0 | T >= detectorWidth)
+        warning('Offset correction: the central ray is outside the detector for some projections, clamping the offset limit.')
     end
+    options.OffsetLimit = cast(min(max(T, 1e-3 * double(options.dPitchX)), ...
+        detectorWidth - 1e-3 * double(options.dPitchX)), options.cType);
 end
 end
 
 function outputVol = multiResReshape(inputVol, options)
     scale = double(options.multiResolutionScale);
     maskInput = islogical(inputVol) || isa(inputVol, 'uint8');
+    if ~maskInput && isfield(options, 'multiResPadExact') && options.multiResPadExact
+        inputVol = padMultiResVolume(inputVol, options, false);
+    end
     if maskInput
         % Rounded coarse voxel counts do not locate the fine tile. Sample
         % the original full-FOV mask at each tile's physical voxel centers.
@@ -367,13 +427,22 @@ function outputVol = multiResReshape(inputVol, options)
             tileOffset(3, 3) = tileFOV(2, 3) + tileFOV(1, 3);
         end
         inputDims = double([size(inputVol, 1), size(inputVol, 2), size(inputVol, 3)]);
+        inputFOV = fullFOV;
+        inputPadLow = [0, 0, 0];
+        if isfield(options, 'imageAttenuationFineFOV')
+            inputFOV = double(options.imageAttenuationFineFOV(:).');
+        end
+        if isfield(options, 'multiResPadLow')
+            inputPadLow = double(options.multiResPadLow(:).') .* double(options.imageAttenuationFineSpacing(:).');
+        end
         tiles = cell(size(tileDims, 1), 1);
         for volume = 1:numel(tiles)
             index = cell(1, 3);
             for axis = 1:3
                 centers = tileOffset(volume, axis) + ...
                     ((0:tileDims(volume, axis)-1) + 0.5) * tileFOV(volume, axis) / tileDims(volume, axis);
-                index{axis} = max(1, min(inputDims(axis), floor(centers * inputDims(axis) / fullFOV(axis)) + 1));
+                centers = centers - inputPadLow(axis);
+                index{axis} = max(1, min(inputDims(axis), floor(centers * inputDims(axis) / inputFOV(axis)) + 1));
             end
             tile = inputVol(index{1}, index{2}, index{3});
             tiles{volume} = uint8(tile(:) > 0);
