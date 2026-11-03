@@ -19,10 +19,12 @@
 #endif
 #include "structs.h"
 #include <array>
+#include <cctype>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <string>
 
 // ======== OpenCL / CUDA / Metal compatibility aliases and macros ========
 struct EmptyTextureArray {};
@@ -394,6 +396,39 @@ inline NS::SharedPtr<NS::Dictionary> makeMetalPreprocessorMacros(const std::vect
 }
 
 #endif
+
+// Default work-group size of the list-mode (and index-based) projectors. The events are unsorted, so 128 is a poor size. 32 is the best on
+// wave32 devices (NVIDIA, Intel, RDNA, Apple), the wave64 AMD GPUs (GCN/CDNA) are fastest with 512. A user-supplied local_size always wins.
+// Same rule as in the Python operator (_listmodeLocalSize in init.py)
+// HIP: gcnArchName without the feature suffixes (e.g. gfx90a:sramecc+:xnack-): gfx + 3 characters (gfx803, gfx90a, gfx942) is wave64,
+// gfx + 4 characters (gfx1030, gfx1100) is wave32. Anything unparsable is wave32
+inline bool isWave64HipArch(const char* archName) {
+	if (archName == nullptr)
+		return false;
+	std::string arch(archName);
+	arch = arch.substr(0, arch.find(':'));
+	if (arch.size() < 3 || arch.compare(0, 3, "gfx") != 0)
+		return false;
+	const std::string code = arch.substr(3);
+	for (size_t ii = 0; ii < code.size(); ii++)
+		if (!std::isxdigit(static_cast<unsigned char>(code[ii])))
+			return false;
+	return code.size() == 3;
+}
+
+// OpenCL: AMD with CL_DEVICE_GFXIP_MAJOR_AMD (cl_amd_device_attribute_query) below 10 is wave64. 0 means that the query failed
+inline bool isWave64OpenCL(const std::string& vendor, const std::string& extensions, const unsigned int gfxipMajor) {
+	return vendor == "Advanced Micro Devices, Inc." && extensions.find("cl_amd_device_attribute_query") != std::string::npos
+		&& gfxipMajor > 0U && gfxipMajor < 10U;
+}
+
+// The device limit (maximum work-group size, 0 if unknown) caps the size, the OpenCL kernels have a fixed reqd_work_group_size
+inline size_t listmodeLocalSize(const bool wave64, const size_t deviceLimit) {
+	size_t localSize = wave64 ? 512ULL : 32ULL;
+	if (deviceLimit > 0ULL && localSize > deviceLimit)
+		localSize = deviceLimit;
+	return localSize;
+}
 
 /// <summary>
 /// Class object for forward and backward projections. Combined OpenCL, CUDA/HIP, and Metal version
@@ -2957,7 +2992,7 @@ public:
 #if defined(CUDA)
 		local_size[0] = 32ULL;
 #elif defined(METAL) || defined(OPENCL) || defined(HIP)
-		// HIP needs to use 64 since CDNA is wave64, not 32 like RDNA
+		// HIP needs to use 64 since CDNA is wave64, not 32 like RDNA (list-mode data has its own default below)
 		local_size[0] = 64ULL;
 #endif // END CUDA
 		local_size[1] = 1ULL;
@@ -2975,6 +3010,9 @@ public:
 					local_size[1] = 8ULL;
 			}
 		}
+		// List-mode (and index-based) data: 32 instead of 128/64, see listmodeLocalSize. The wave64 AMD GPUs get 512 once the device is known
+		if (inputScalars.localSize[0] <= 0 && inputScalars.listmode > 0 && local_size[1] == 1ULL)
+			local_size[0] = listmodeLocalSize(false, 0ULL);
 		// Override the above defaults with user-supplied values (per dimension). A negative input value
 		// keeps the corresponding default computed above.
 		for (int ls = 0; ls < 3; ls++)
@@ -3044,6 +3082,14 @@ public:
 		CLCommandQueue.push_back(reinterpret_cast<CUstream>(0));
 #endif
 
+#if defined(HIP)
+		// List-mode data: 512 on the wave64 AMD GPUs (the 32 set above is for the wave32 ones)
+		if (inputScalars.localSize[0] <= 0 && inputScalars.listmode > 0 && local_size[1] == 1ULL) {
+			hipDeviceProp_t hipPropLS;
+			if (hipGetDeviceProperties(&hipPropLS, CUDeviceID[0]) == hipSuccess)
+				local_size[0] = listmodeLocalSize(isWave64HipArch(hipPropLS.gcnArchName), static_cast<size_t>(hipPropLS.maxThreadsPerBlock));
+		}
+#endif
 		status2 = createProgram(programFP, programBP, programAux, header_directory, inputScalars, MethodList, w_vec, local_size, type);
 		if (status2 != NVRTC_SUCCESS) {
 			std::cerr << "Error while creating program" << std::endl;
@@ -3076,6 +3122,16 @@ public:
 		if (inputScalars.localSize[0] <= 0 && NV.compare(deviceName) == 0 && (inputScalars.projector_type == 1 || inputScalars.projector_type == 11) 
 			&& local_size[1] == 1ULL)
 			local_size[0] = 32ULL;
+		// List-mode data: 512 on the wave64 AMD GPUs (the 32 set above is for the wave32 ones), capped to the device limit
+		if (inputScalars.localSize[0] <= 0 && inputScalars.listmode > 0 && local_size[1] == 1ULL) {
+			cl_uint gfxipMajor = 0;
+			const std::string deviceExt = CLDeviceID[0].getInfo<CL_DEVICE_EXTENSIONS>(&status);
+			if (deviceExt.find("cl_amd_device_attribute_query") != std::string::npos
+				&& clGetDeviceInfo(CLDeviceID[0](), CL_DEVICE_GFXIP_MAJOR_AMD, sizeof(cl_uint), &gfxipMajor, nullptr) != CL_SUCCESS)
+				gfxipMajor = 0;
+			const size_t maxWorkGroup = static_cast<size_t>(CLDeviceID[0].getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>(&status));
+			local_size[0] = listmodeLocalSize(isWave64OpenCL(deviceName, deviceExt, static_cast<unsigned int>(gfxipMajor)), maxWorkGroup);
+		}
 		if (DEBUG) {
 			std::string deviceName2 = CLDeviceID[0].getInfo<CL_DEVICE_NAME>(&status);
 			UINT64_t apu = CLDeviceID[0].getInfo<CL_DEVICE_MAX_MEM_ALLOC_SIZE>(&status);

@@ -2,6 +2,7 @@
 """
 Created on Thu Jul 10 13:17:22 2025
 """
+import re
 import numpy as np
 
 
@@ -323,6 +324,64 @@ def _userLocalSize(self, default):
     return tuple(out)
 
 
+def _isWave64(vendor=None, gfxipMajor=None, archName=None):
+    """Whether the GPU is a wave64 AMD GPU (GCN/CDNA). Same rule as isWave64HipArch/isWave64OpenCL in ProjectorClass.h.
+
+    HIP/ROCm (archName, the gcnArchName of the device): the part before the first ':' (the rest are feature suffixes such as
+    gfx90a:sramecc+:xnack-) is gfx + 3 characters (gfx803, gfx90a, gfx942) for wave64 and gfx + 4 characters (gfx1030, gfx1100) for wave32.
+    Anything unparsable is wave32.
+    OpenCL (vendor and gfxipMajor, CL_DEVICE_GFXIP_MAJOR_AMD, None if the query is not available): AMD with a major version below 10.
+    Everything else (CUDA, Metal, NVIDIA/Intel OpenCL, CPUs) is wave32."""
+    if archName is not None:
+        if isinstance(archName, bytes):
+            archName = archName.decode('ascii', 'ignore')
+        match = re.fullmatch(r'gfx([0-9a-fA-F]+)', str(archName).split(':')[0].rstrip('\0'))
+        return match is not None and len(match.group(1)) == 3
+    if vendor == 'Advanced Micro Devices, Inc.' and gfxipMajor is not None:
+        try:
+            return 0 < int(gfxipMajor) < 10
+        except (TypeError, ValueError):
+            return False
+    return False
+
+
+def _listmodeLocalSize(vendor=None, gfxipMajor=None, archName=None, deviceLimit=None):
+    """The default 1D local (work-group/block) size of list-mode (and index-based) data. The events are unsorted, so 128 is a poor size:
+    32 is the best on wave32 devices and 512 on the wave64 AMD GPUs (see _isWave64). Capped to the device limit (the maximum work-group size,
+    None if unknown). Same rule as listmodeLocalSize in ProjectorClass.h."""
+    size = 512 if _isWave64(vendor, gfxipMajor, archName) else 32
+    try:
+        if deviceLimit is not None and 0 < int(deviceLimit) < size:
+            size = int(deviceLimit)
+    except (TypeError, ValueError):
+        pass
+    return size
+
+
+def _deviceListmodeLocalSize(self, rocm=False, cp=None):
+    """_listmodeLocalSize for the device in use: the CuPy device on ROCm/HIP (rocm and the cupy module cp), the PyOpenCL device in
+    self.clctx, 32 for everything else (CUDA, Metal/MPS, PyTorch) or if the device properties cannot be read."""
+    if self.useMetal:
+        return _listmodeLocalSize()
+    try:
+        if self.useCUDA:
+            if not rocm or cp is None:
+                return _listmodeLocalSize()
+            props = cp.cuda.runtime.getDeviceProperties(cp.cuda.runtime.getDevice())
+            return _listmodeLocalSize(archName=props.get('gcnArchName'), deviceLimit=props.get('maxThreadsPerBlock'))
+        import pyopencl as cl
+        device = self.clctx.get_info(cl.context_info.DEVICES)[0]
+        vendor = device.get_info(cl.device_info.VENDOR)
+        gfxipMajor = None
+        # The query is an AMD extension, not every PyOpenCL version has the attribute
+        if vendor == 'Advanced Micro Devices, Inc.' and 'cl_amd_device_attribute_query' in device.get_info(cl.device_info.EXTENSIONS) \
+                and hasattr(cl.device_info, 'GFXIP_MAJOR_AMD'):
+            gfxipMajor = device.get_info(cl.device_info.GFXIP_MAJOR_AMD)
+        return _listmodeLocalSize(vendor=vendor, gfxipMajor=gfxipMajor, deviceLimit=device.max_work_group_size)
+    except Exception:
+        return _listmodeLocalSize()
+
+
 def _orth_clip_needed(self):
     """Whether the projector type 2/3 kernels are built with the end point check of the tube (-DORTHCLIP, see orthogonalHelper3D in
     opencl_functions_orth3D.h). The tube of a ray ends at its end points, which only matters when a voxel beyond an end point can be
@@ -608,6 +667,11 @@ def initProjector(self):
         elif self.BPType in [5]:
             linesBP = _read(headerDir, 'projectorType5.cl')
         frame_count = int(getattr(self, 'Nt', 1))
+        # List-mode (and index-based) data: 32, or 512 on wave64 AMD GPUs, instead of 128. Other data using the 1D launch keeps 128
+        defaultLocalSize1D = 128
+        if self.listmode > 0:
+            cupyOnCUDA = self.useCuPy and self.useCUDA
+            defaultLocalSize1D = _deviceListmodeLocalSize(self, cupyOnCUDA and cupyROCm(), cp if cupyOnCUDA else None)
         globalSize = [[None] * self.subsets for _ in range(frame_count)]
         # self.mSize = [None] * self.subsets
         for timestep in range(frame_count):
@@ -628,7 +692,7 @@ def initProjector(self):
                     globalSize[timestep][i] = (self.nRowsD + erotus[0], self.nColsD + erotus[1], n_proj)
                 else:
                     globalSize[timestep][i] = (n_meas, 1, 1)
-                    localSize = _userLocalSize(self, (128, 1, 1))
+                    localSize = _userLocalSize(self, (defaultLocalSize1D, 1, 1))
                     erotus = (localSize[0] - (globalSize[timestep][i][0] % localSize[0]), localSize[1] - (globalSize[timestep][i][1] % localSize[1]), 0)
                     globalSize[timestep][i] = (n_meas + erotus[0], 1, 1)
         self.globalSizeFP = globalSize.copy()
