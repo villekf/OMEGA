@@ -1779,7 +1779,7 @@ def _proj6_resize_torch(value: Any, source: tuple[int, int], target: tuple[int, 
 
 
 # Resize, resample, pad and/or crop measurement-domain arrays to match resolution and size of image domain for SPECT rotation projector.
-def resample_resize_proj6(value: Any, options: Any, volume: int = 0, *, direction: str = 'measurement_to_image', mode: str = 'continuous', expected_frames: int | None = None, strict: bool = False) -> Any:
+def resample_resize_proj6(value: Any, options: Any, volume: int = 0, *, direction: str = 'measurement_to_image', mode: str = 'continuous', expected_frames: int | None = None, strict: bool = False, grid: tuple[int, int] | None = None) -> Any:
     """Transform a type-6 projection between its public and internal grids.
 
     The projector options are the metadata: public detector dimensions remain
@@ -1797,7 +1797,9 @@ def resample_resize_proj6(value: Any, options: Any, volume: int = 0, *, directio
         values = np.asarray(getattr(options, name)).reshape(-1)
         return int(values[min(volume, values.size - 1)])
 
-    image = (dimension('Nx'), dimension('Nz'))
+    # Type-6 sums the depth axis Nx and projects onto the transaxial Ny by
+    # axial Nz grid. The old Nx usage only happened to work for square volumes.
+    image = (dimension('Ny'), dimension('Nz')) if grid is None else tuple(map(int, grid))
     try:
         def scalar(name: str) -> float:
             values = np.asarray(getattr(options, name)).reshape(-1)
@@ -1806,14 +1808,21 @@ def resample_resize_proj6(value: Any, options: Any, volume: int = 0, *, directio
             return float(values[min(volume, values.size - 1)])
 
         pitch_x, pitch_y = scalar('dPitchX'), scalar('dPitchY')
-        fov_x, fov_z = scalar('FOVa_x'), scalar('axial_fov')
-        if min(pitch_x, pitch_y, fov_x, fov_z) <= 0.0:
+        fov_y, fov_z = scalar('FOVa_y'), scalar('axial_fov')
+        dy = scalar('dy')
+        dz = scalar('dz')
+        if min(pitch_x, pitch_y, fov_y, fov_z, dy, dz) <= 0.0:
             raise ValueError
-        physical = (max(1, int(round(fov_x / pitch_x))), max(1, int(round(fov_z / pitch_y))))
+        if grid is None:
+            physical = (max(1, int(round(fov_y / pitch_x))), max(1, int(round(fov_z / pitch_y))))
+            exact_fov = (fov_y / pitch_x, fov_z / pitch_y)
+        else:
+            exact_fov = (image[0] * dy / pitch_x, image[1] * dz / pitch_y)
+            physical = (max(1, int(round(exact_fov[0]))), max(1, int(round(exact_fov[1]))))
         # A FOV that is not a whole number of detector pixels (relative tolerance 1e-9), or that differs from the detector by an odd
         # number of pixels, is resampled exactly (the symmetric padding/trimming is then impossible), see sinogramresample.py
         from omegatomo.util.sinogramresample import exactAxisRatios
-        exact = exactAxisRatios((fov_x / pitch_x, fov_z / pitch_y), measurement, physical)
+        exact = exactAxisRatios(exact_fov, measurement, physical)
     except (AttributeError, TypeError, ValueError):
         physical = image
         exact = None
@@ -1851,25 +1860,248 @@ def _type6_volume_kernel(self: Any, volume: int) -> Any:
 
 
 def _type6_path_weight(self: Any, volume: int, view: int, nx: int) -> float:
-    """Physical x-segment weight for one type-6 volume/view contribution."""
-    dx = float(np.asarray(self.dx).reshape(-1)[volume])
-    if getattr(self, 'useTotLength', True):
-        lengths = np.asarray(getattr(self, 'type6TotalLength', np.empty(0))).reshape(-1)
-        if view >= lengths.size or lengths[view] <= 0.:
-            raise ValueError(f'Type-6 total ray length is missing or invalid for view {view}')
-        return dx / float(lengths[view])
-    # Preserve the legacy, local-FOV normalization when explicitly requested.
-    retained = max(1, nx - max(int(_type6_volume_view_value(self, 'blurPlanes', volume, view)), 0))
-    return 1. / retained
+    """Type-6 ray normalization, shared with the native rotation projector."""
+    del view, nx
+    dx = np.asarray(self.dx, dtype=np.float64).reshape(-1)
+    dy = np.asarray(self.dy, dtype=np.float64).reshape(-1)
+    dz = np.asarray(self.dz, dtype=np.float64).reshape(-1)
+    return float((dx[volume] / dx[0]) / (dy[0] * dz[0]))
 
 
-# NOTE: multi-resolution volumes (nMultiVolumes > 0) are not yet supported/validated for
-# projector type 6 on this branch, independent of the attenuation resampling below -- type 6's
-# rotation step rotates each volume about its own local grid centre and never reads bx/by, so
-# laterally-offset (transaxial) side volumes are misplaced, and the side-volume normalization
-# (~(1/multiResolutionScale)^2) is not accounted for; the full fix lives in a separate branch.
-# Keep this attenuation resampling regardless (it works in physical coordinates, so it becomes
-# correct once volume placement is), but do not treat multi-volume type-6 results as validated.
+def _type6_axis_offset(self: Any, volume: int) -> tuple[float, float]:
+    """Gantry-axis location in pixel coordinates relative to a volume's centre."""
+    n = int(self.Nx[volume]), int(self.Ny[volume])
+    spacing = np.asarray(self.dx, dtype=np.float64).reshape(-1), np.asarray(self.dy, dtype=np.float64).reshape(-1)
+    bx = np.asarray(self.bx, dtype=np.float64).reshape(-1)
+    by = np.asarray(self.by, dtype=np.float64).reshape(-1)
+    return (-float(bx[volume]) / spacing[0][volume] - n[0] / 2.,
+            -float(by[volume]) / spacing[1][volume] - n[1] / 2.)
+
+
+def _type6_panel_shift(self: Any, volume: int, view: int, grid_ny: int) -> float:
+    """Native type-6 detector-panel shift in the requested volume's voxels."""
+    values = np.asarray(getattr(self, 'blurPlanes2F', np.empty(0)), dtype=np.float64).reshape(-1)
+    if not values.size:
+        return 0.
+    dx = np.asarray(self.dx, dtype=np.float64).reshape(-1)
+    shift = float(values[view]) * float(dx[0]) / float(dx[volume])
+
+    # Native gridType6 adds half a row only when its detector placement is on
+    # the unresampled lattice and the centered detector window starts halfway
+    # between rows. Keep the same parity correction for single-resolution grids.
+    pad_lo, pad_hi = _type6_padding_z(self, volume)
+    ox, oy = _type6_axis_offset(self, 0)
+    dz = np.asarray(self.dz, dtype=np.float64).reshape(-1)
+    bz = np.asarray(self.bz, dtype=np.float64).reshape(-1)
+    centered = (abs(ox) < 1e-3 and abs(oy) < 1e-3 and
+                abs(float(bz[0] + int(self.Nz[0]) * dz[0] * .5)) < 1e-3 * float(dz[0]))
+    grid_nz = int(self.Nz[volume]) + pad_lo + pad_hi
+    resample = (volume > 0 or not centered or pad_lo != pad_hi or
+                int(self.nRowsD) > grid_ny or int(self.nColsD) > grid_nz)
+    if not resample and (grid_ny - int(self.nRowsD)) % 2:
+        shift += .5
+    return shift
+
+
+def _type6_rotation_grid(self: Any, volume: int) -> tuple[int, int]:
+    """Native type-6 axis-centred grid dimensions (depth Nx, transverse Ny)."""
+    nx, ny = int(self.Nx[volume]), int(self.Ny[volume])
+    if volume == 0 and int(getattr(self, 'nMultiVolumes', 0)) == 0 and np.allclose(
+        np.asarray(self.bx).reshape(-1)[0] + nx * float(np.asarray(self.dx).reshape(-1)[0]) / 2., 0., atol=1e-3 * float(np.asarray(self.dx).reshape(-1)[0])
+    ) and np.allclose(
+        np.asarray(self.by).reshape(-1)[0] + ny * float(np.asarray(self.dy).reshape(-1)[0]) / 2., 0., atol=1e-3 * float(np.asarray(self.dy).reshape(-1)[0])
+    ):
+        return nx, ny
+    dx = np.asarray(self.dx, dtype=np.float64).reshape(-1)
+    dy = np.asarray(self.dy, dtype=np.float64).reshape(-1)
+    bx = np.asarray(self.bx, dtype=np.float64).reshape(-1)
+    by = np.asarray(self.by, dtype=np.float64).reshape(-1)
+    x0, x1 = bx[volume], bx[volume] + nx * dx[volume]
+    y0, y1 = by[volume], by[volume] + ny * dy[volume]
+    radius = float(np.sqrt(max(x0 * x0, x1 * x1) + max(y0 * y0, y1 * y1)))
+    radius_y = radius
+    dx0 = float(dx[0])
+    dy0 = float(dy[0])
+    if .5 * float(getattr(self, 'nRowsD', 0)) * dy0 > radius:
+        shifts = np.asarray(getattr(self, 'blurPlanes2F', np.empty(0)), dtype=np.float64)
+        if shifts.size:
+            radius_y += float(np.max(np.abs(shifts))) * dx0
+
+    def fit(r: float, spacing: float, parity: int) -> int:
+        size = int(np.ceil(2. * r / spacing))
+        if size % 2 != parity:
+            size += 1
+        return max(size, 1)
+
+    return fit(radius, float(dx[volume]), nx % 2 if volume == 0 else 0), fit(
+        radius_y, float(dy[volume]), ny % 2 if volume == 0 else 0
+    )
+
+
+def _type6_padding_z(self: Any, volume: int) -> tuple[int, int]:
+    """Native CDRF spill padding beyond a multi-resolution volume's axial ends."""
+    if int(getattr(self, 'nMultiVolumes', 0)) <= 0:
+        return 0, 0
+    nx_grid, _ = _type6_rotation_grid(self, volume)
+    dx = np.asarray(self.dx, dtype=np.float64).reshape(-1)
+    dz = np.asarray(self.dz, dtype=np.float64).reshape(-1)
+    bz = np.asarray(self.bz, dtype=np.float64).reshape(-1)
+    dist_values = np.asarray(self.blurPlanesF, dtype=np.float64).reshape(-1)
+    min_dist = float(np.min(dist_values))
+    collimator = (min_dist - .5 * float(self.Nx[0])) * dx[0]
+    dist = (collimator + .5 * nx_grid * dx[volume]) / dx[volume]
+    z_max = max((nx_grid - .5 - dist) * dx[volume], 0.)
+    coeff = np.asarray(self.CDRFCoeffs6, dtype=np.float64).reshape(-1)
+    az, bz_cdrf, intrinsic = map(float, (coeff[0], coeff[1], coeff[4]))
+    sigma_coeff = 1. / (2. * np.sqrt(2. * np.log(2.)))
+    extent = 0.
+    for zmm in (0., z_max):
+        rg = max(az * zmm + bz_cdrf, 0.)
+        if str(getattr(self, 'CDRFModel', 'gaussian')).lower() == 'square':
+            value = rg / dz[volume] + 5.2565 * intrinsic / dz[volume] * sigma_coeff
+        else:
+            value = 5.2565 * np.sqrt(rg * rg + intrinsic * intrinsic) / dz[volume] * sigma_coeff
+        extent = max(extent, value)
+    radius = int(np.ceil(extent))
+    pad_max = ((radius + 7) // 8) * 8
+    cols = int(getattr(self, 'measurement_nColsD', self.nColsD))
+    z_col_lo = -.5 * cols * dz[0] + .5 * dz[0]
+    z_col_hi = .5 * cols * dz[0] - .5 * dz[0]
+    pos_lo = (z_col_lo - bz[volume]) / dz[volume] - .5
+    pos_hi = (z_col_hi - bz[volume]) / dz[volume] - .5
+    need_lo = -int(np.floor(pos_lo + 1e-4))
+    need_hi = int(np.ceil(pos_hi - 1e-4)) - (int(self.Nz[volume]) - 1)
+    return max(min(pad_max, need_lo), 0), max(min(pad_max, need_hi), 0)
+
+
+def _type6_rotation_variance(self: Any, volume: int, view: int, grid: tuple[int, int]) -> float:
+    """Native rotVarType6 tent-interpolation variance for one view and volume."""
+    nx, ny = int(self.Nx[volume]), int(self.Ny[volume])
+    out_nx, out_ny = grid
+    angle = np.deg2rad(float(self.swivelAngles[view]))
+    cosa, sina = float(np.cos(angle)), float(np.sin(angle))
+    panel = np.asarray(getattr(self, 'blurPlanes2F', np.zeros(1)), dtype=np.float64).reshape(-1)
+    panel_shift = (float(panel[min(view, panel.size - 1)]) if panel.size else 0.)
+    dx = np.asarray(self.dx, dtype=np.float64).reshape(-1)
+    dy = np.asarray(self.dy, dtype=np.float64).reshape(-1)
+    panel_shift *= dx[0] / dx[volume]
+    axis_x, axis_y = _type6_axis_offset(self, volume)
+    off_x, off_y = -sina * panel_shift + axis_x, cosa * panel_shift + axis_y
+    hh = abs(cosa) + abs(sina)
+    csx, csy = .5 * nx - .5, .5 * ny - .5
+    cox, coy = .5 * out_nx - .5, .5 * out_ny - .5
+    aligned = abs(sina) < 1e-6 or abs(cosa) < 1e-6
+    n_voxels = nx * ny
+    if aligned:
+        samples = [(nx // 2, ny // 2)]
+    elif n_voxels <= 1024:
+        samples = [(i % nx, i // nx) for i in range(n_voxels)]
+    else:
+        def halton(index: int, base: int) -> float:
+            factor, result = 1., 0.
+            while index:
+                factor /= base
+                result += factor * (index % base)
+                index //= base
+            return result
+        samples = [(min(int(halton(i + 1, 2) * nx), nx - 1),
+                    min(int(halton(i + 1, 3) * ny), ny - 1)) for i in range(1024)]
+    numerator = denominator = 0.
+    for ix, iy in samples:
+        ux, uy = ix - csx, iy - csy
+        qx = cosa * (ux - off_x) + sina * (uy - off_y)
+        qy = -sina * (ux - off_x) + cosa * (uy - off_y)
+        jx0, jx1 = int(np.ceil(qx + cox - hh)), int(np.floor(qx + cox + hh))
+        jy0, jy1 = int(np.ceil(qy + coy - hh)), int(np.floor(qy + coy + hh))
+        for jy in range(jy0, jy1 + 1):
+            ay = jy - coy
+            for jx in range(jx0, jx1 + 1):
+                ax = jx - cox
+                sx = cosa * ax - sina * ay + off_x
+                sy = sina * ax + cosa * ay + off_y
+                weight = max(1. - abs(sx - ux), 0.) * max(1. - abs(sy - uy), 0.)
+                numerator += weight * (ay - qy) ** 2
+                denominator += weight
+    variance = numerator / denominator if denominator else 1. / 6.
+    if volume > 0:
+        n_det = int(getattr(self, 'nRowsD', 0))
+        a = float(dy[0] / dy[volume])
+        b = .5 * out_ny + (.5 - .5 * n_det) * a - .5
+        num = den = 0.
+        for row in range(n_det):
+            t = a * row + b
+            low = np.floor(t)
+            for offset in (0., 1.):
+                d = t - (low + offset)
+                weight = max(1. - abs(d), 0.)
+                num += weight * d * d
+                den += weight
+        if den:
+            variance += num / den
+    return float(variance)
+
+
+def _type6_on_the_fly_cdrf(self: Any, volume: int, view: int) -> np.ndarray:
+    """Native type-6 per-view Gaussian CDRF sampled on the rotated grid."""
+    model = str(getattr(self, 'CDRFModel', 'gaussian')).strip().lower()
+    if model != 'gaussian':
+        raise NotImplementedError(
+            f"The Python type-6 on-the-fly CDRF currently supports CDRFModel='gaussian'; got {model!r}."
+        )
+    grid_nx, grid_ny = _type6_rotation_grid(self, volume)
+    grid_nz = int(self.Nz[volume]) + sum(_type6_padding_z(self, volume))
+    dx = np.asarray(self.dx, dtype=np.float64).reshape(-1)
+    dy = np.asarray(self.dy, dtype=np.float64).reshape(-1)
+    dz = np.asarray(self.dz, dtype=np.float64).reshape(-1)
+    dist_float = np.asarray(self.blurPlanesF, dtype=np.float64).reshape(-1)
+    collimator = (dist_float[view] - .5 * float(self.Nx[0])) * dx[0]
+    distance = (collimator + .5 * grid_nx * dx[volume]) / dx[volume]
+    first_plane = int(np.clip(np.ceil(distance - .5), 0, grid_nx - 1))
+    first_plane = (first_plane // 16) * 16
+    coeff = np.asarray(self.CDRFCoeffs6, dtype=np.float64).reshape(-1)
+    az, bz, axy, bxy, intrinsic = map(float, coeff[:5])
+    sigma_coeff = 1. / (2. * np.sqrt(2. * np.log(2.)))
+    import os
+    if os.environ.get('TYPE6_ROTCOMP', '1') != '0':
+        comp = _type6_rotation_variance(self, volume, view, (grid_nx, grid_ny))
+    else:
+        comp = sigma_coeff * sigma_coeff
+    planes = np.arange(grid_nx, dtype=np.float64)
+    depth_mm = (planes + .5 - distance) * dx[volume]
+    rg_z = np.maximum(az * depth_mm + bz, 0.)
+    rg_xy = np.maximum(axy * depth_mm + bxy, 0.)
+    fwhm_z = np.sqrt(rg_z * rg_z + intrinsic * intrinsic) / dz[volume]
+    fwhm_xy = np.sqrt(rg_xy * rg_xy + intrinsic * intrinsic) / dy[volume]
+    sigma_z = fwhm_z * sigma_coeff
+    sigma_xy = np.sqrt(np.maximum((fwhm_xy * sigma_coeff) ** 2 - comp,
+                                  1e-16 * sigma_coeff * sigma_coeff))
+    # psfHelperType6 chooses a common radius from the two depth endpoints,
+    # rounds it up for stable work sizes, and clamps it to the rotated grid.
+    endpoint_depths = ((first_plane + .5 - distance) * dx[volume],
+                       (grid_nx - .5 - distance) * dx[volume])
+    extent = 0.
+    for zmm in endpoint_depths:
+        rz = max(az * zmm + bz, 0.)
+        rxy = max(axy * zmm + bxy, 0.)
+        sz = np.sqrt(rz * rz + intrinsic * intrinsic) / dz[volume] * sigma_coeff
+        sxy = np.sqrt(rxy * rxy + intrinsic * intrinsic) / dy[volume] * sigma_coeff
+        extent = max(extent, 5.2565 * sz, 5.2565 * sxy)
+    radius = int(np.ceil(extent))
+    radius = ((radius + 7) // 8) * 8
+    radius = min(radius, max(grid_ny, grid_nz))
+    taps = np.arange(-radius, radius + 1, dtype=np.float64)
+    visible = (planes >= first_plane) & (depth_mm > 0.)
+    rz = np.minimum(np.ceil(5.2565 * sigma_z).astype(np.int64), radius)
+    rxy = np.minimum(np.ceil(5.2565 * sigma_xy).astype(np.int64), radius)
+    axial = np.exp(-(taps[:, None] ** 2) / (2. * sigma_z[None, :] ** 2))
+    trans = np.exp(-(taps[:, None] ** 2) / (2. * sigma_xy[None, :] ** 2))
+    axial *= (np.abs(taps[:, None]) <= rz[None, :]) & visible[None, :]
+    trans *= (np.abs(taps[:, None]) <= rxy[None, :]) & visible[None, :]
+    axial /= np.maximum(axial.sum(axis=0, keepdims=True), 1e-30)
+    trans /= np.maximum(trans.sum(axis=0, keepdims=True), 1e-30)
+    # Torch's (z,y,x) array is convolved as (x,y,z): row taps are
+    # transaxial and column taps are axial.
+    return np.asfortranarray(trans[:, None, :] * axial[None, :, :], dtype=np.float32)
 
 
 def _type6_attenuation_map_extent(self: Any) -> tuple[float, float, float, int, int, int]:
@@ -1921,7 +2153,9 @@ def _type6_resample_attenuation_numpy(attenMap: np.ndarray, self: Any, volume: i
     source/cpp/functions.hpp's resampleAttenuationType6Volume exactly, in pure NumPy so the
     identical algorithm can be shared by every Python backend (Torch, ArrayFire)."""
     nx, ny, nz = int(self.Nx[volume]), int(self.Ny[volume]), int(self.Nz[volume])
-    if volume == 0 and nx == NxMap and ny == NyMap and nz == NzMap:
+    if (volume == 0 and nx == NxMap and ny == NyMap and nz == NzMap
+            and np.isclose(float(self.bx[0]), bxMap) and np.isclose(float(self.by[0]), byMap)
+            and np.isclose(float(self.bz[0]), bzMap)):
         return attenMap  # Identity: no multi-resolution split, the map already IS volume 0's own grid
 
     sat = np.cumsum(np.cumsum(np.cumsum(attenMap.astype(np.float64), axis=0), axis=1), axis=2)
@@ -1963,8 +2197,124 @@ def _type6_resample_attenuation_numpy(attenMap: np.ndarray, self: Any, volume: i
     dZe = np.diff(zEdges).reshape(-1, 1, 1)
     dYe = np.diff(yEdges).reshape(1, -1, 1)
     dXe = np.diff(xEdges).reshape(1, 1, -1)
-    volu = np.maximum(dZe * dYe * dXe, 1e-6)
+    # Native `resampleAttenuationType6Host(..., clampedVolu=false)` divides by the
+    # full target voxel volume even when a target box extends beyond the union map.
+    # The out-of-map part therefore contributes zero attenuation. Dividing by the
+    # clipped overlap volume incorrectly extends boundary attenuation into those
+    # uncovered regions, especially for the larger side-volume source lattices.
+    volu_nominal = max((float(dxV) / dx0) * (float(dyV) / dy0) * (float(dzV) / dz0), 1e-6)
+    volu = volu_nominal
     return (boxSum / volu).astype(np.float32)
+
+
+def _type6_attenuation_source_numpy(self: Any, attenMap: np.ndarray, volume: int, *,
+                                   bz_override: float | None = None,
+                                   nz_override: int | None = None) -> tuple[np.ndarray, int]:
+    """Resample the union attenuation map onto native type-6's axis-centred source lattice.
+
+    The returned source is `(Nz, srcNy, srcNx)` and `attNx` is the x extent after rotation.
+    Keeping the source lattice separate from the emission volume is essential: attenuation
+    from every volume along the detector ray contributes before the emission volume is cropped.
+    """
+    from types import SimpleNamespace
+
+    bxMap, byMap, bzMap, NxMap, NyMap, NzMap = _type6_attenuation_map_extent(self)
+    expected = (NzMap, NyMap, NxMap)
+    attenMap = np.asarray(attenMap, dtype=np.float32)
+    if attenMap.shape != expected:
+        raise ValueError(f'Expected type-6 union attenuation map shape {expected}, got {attenMap.shape}')
+
+    gridNx, gridNy = _type6_rotation_grid(self, volume)
+    axisX = axisY = 0.0  # Native axisType6 currently returns the origin.
+    runion = 0.0
+    for v in range(int(self.nMultiVolumes) + 1):
+        x0 = float(self.bx[v]) - axisX
+        x1 = x0 + int(self.Nx[v]) * float(self.dx[v])
+        y0 = float(self.by[v]) - axisY
+        y1 = y0 + int(self.Ny[v]) * float(self.dy[v])
+        runion = max(runion, float(np.sqrt(max(x0*x0, x1*x1) + max(y0*y0, y1*y1))))
+    minNx = int(np.ceil(2.0 * runion / float(self.dx[volume])))
+    minNy = int(np.ceil(2.0 * runion / float(self.dy[volume])))
+    attNx = minNx + ((minNx - gridNx) % 2)
+    srcNx = attNx
+    srcNy = minNy + ((minNy - gridNy) % 2)
+
+    # Reuse the shared SAT box-average resampler with an axis-centred target lattice.
+    source_bz = float(self.bz[volume]) if bz_override is None else float(bz_override)
+    source_nz = int(self.Nz[volume]) if nz_override is None else int(nz_override)
+    # The resampler reads index 0 as the map lattice and `volume` as the target.
+    # Keep those separate: using a single target entry made coarse side volumes
+    # silently reinterpret the union map at their coarse voxel spacing.
+    proxy = SimpleNamespace(
+        Nx=[NxMap, srcNx], Ny=[NyMap, srcNy], Nz=[NzMap, source_nz],
+        dx=[float(self.dx[0]), float(self.dx[volume])],
+        dy=[float(self.dy[0]), float(self.dy[volume])],
+        dz=[float(self.dz[0]), float(self.dz[volume])],
+        bx=[bxMap, axisX - .5 * srcNx * float(self.dx[volume])],
+        by=[byMap, axisY - .5 * srcNy * float(self.dy[volume])],
+        bz=[bzMap, source_bz],
+    )
+    source = _type6_resample_attenuation_numpy(
+        attenMap, proxy, 1, bxMap, byMap, bzMap, NxMap, NyMap, NzMap)
+    return source, attNx
+
+
+def _type6_attenuation_group(self: Any, volume: int) -> tuple[list[int], int, float, int, int, list[int]]:
+    """Return the native attenuation group and its shared rotation/source grid."""
+    nvol = int(self.nMultiVolumes) + 1
+    grids = [_type6_rotation_grid(self, v) for v in range(nvol)]
+    bx = np.asarray(self.bx, dtype=np.float64).reshape(-1)
+    by = np.asarray(self.by, dtype=np.float64).reshape(-1)
+    bz = np.asarray(self.bz, dtype=np.float64).reshape(-1)
+    dx = np.asarray(self.dx, dtype=np.float64).reshape(-1)
+    dy = np.asarray(self.dy, dtype=np.float64).reshape(-1)
+    dz = np.asarray(self.dz, dtype=np.float64).reshape(-1)
+    nx = np.asarray(self.Nx, dtype=np.int64).reshape(-1)
+    ny = np.asarray(self.Ny, dtype=np.int64).reshape(-1)
+    nz = np.asarray(self.Nz, dtype=np.int64).reshape(-1)
+    runion = 0.0
+    for v in range(nvol):
+        x0, x1 = float(bx[v]), float(bx[v] + nx[v] * dx[v])
+        y0, y1 = float(by[v]), float(by[v] + ny[v] * dy[v])
+        runion = max(runion, np.sqrt(max(x0*x0, x1*x1) + max(y0*y0, y1*y1)))
+
+    specs = []
+    for v, (grid_x, grid_y) in enumerate(grids):
+        min_nx = int(np.ceil(2.0 * runion / dx[v]))
+        min_ny = int(np.ceil(2.0 * runion / dy[v]))
+        att_nx = min_nx + ((min_nx - grid_x) % 2)
+        src_ny = min_ny + ((min_ny - grid_y) % 2)
+        specs.append((int(att_nx), int(att_nx), int(src_ny)))
+
+    groups: list[list[int]] = []
+    for v in range(nvol):
+        found = None
+        for members in groups:
+            first = members[0]
+            if (dx[v] != dx[first] or dy[v] != dy[first] or dz[v] != dz[first]
+                    or specs[v] != specs[first]
+                    or (grids[v][0] - grids[first][0]) % 2
+                    or (grids[v][1] - grids[first][1]) % 2):
+                continue
+            offset = (bz[v] - bz[first]) / dz[v]
+            if abs(offset - np.round(offset)) < 1e-3:
+                found = members
+                break
+        if found is None:
+            found = []
+            groups.append(found)
+        found.append(v)
+
+    members = next(group for group in groups if volume in group)
+    group_bz = float(min(bz[v] for v in members))
+    z_offsets = [0] * nvol
+    group_nz = 0
+    rows = 0
+    for v in members:
+        z_offsets[v] = int(np.rint((bz[v] - group_bz) / dz[v]))
+        group_nz = max(group_nz, z_offsets[v] + int(nz[v]))
+        rows = max(rows, grids[v][1])
+    return members, rows, group_bz, group_nz, specs[members[0]][0], z_offsets
 
 
 def _type6_torch_resource(self: Any, name: str, timestep: int, subset: int, *, fallback: Any, dtype: Any, device: Any) -> Any:
@@ -2007,6 +2357,62 @@ def _type6_torch_detector_vector(self: Any, timestep: int, subset: int, device: 
     )
 
 
+def _type6_numpy_central_ray_weights(self: Any, projections: int, timestep: int, subset: int) -> np.ndarray:
+    """Central-ray voxel-volume/chord diagonal in (view, detector-column, row) order."""
+    rows = int(getattr(self, 'measurement_nRowsD', self.nRowsD))
+    cols = int(getattr(self, 'measurement_nColsD', self.nColsD))
+    row_grid = (np.arange(rows, dtype=np.float64) - .5 * (rows - 1))[:, None] * float(self.dPitchX)
+    col_grid = (np.arange(cols, dtype=np.float64) - .5 * (cols - 1))[None, :] * float(self.dPitchY)
+    dx0, dy0, dz0 = (float(np.asarray(getattr(self, key)).reshape(-1)[0]) for key in ('dx', 'dy', 'dz'))
+    voxel_volume = dx0 * dy0 * dz0
+    centers = (float(self.ellipseCenterX), float(self.ellipseCenterY), float(self.ellipseCenterZ))
+    radii = (float(self.ellipseRadiusX), float(self.ellipseRadiusY), float(self.ellipseRadiusZ))
+    swivel = np.asarray(self.swivelAngles, dtype=np.float64).reshape(-1)
+    angles = np.asarray(self.angles, dtype=np.float64).reshape(-1)
+    radii_view = np.asarray(self.radiusPerProj, dtype=np.float64).reshape(-1)
+    # `distFloat2` is the native C++ Weighting name. Python options expose the
+    # same per-view detector-panel shift as `blurPlanes2F` (in main-volume voxels).
+    panel_values = np.asarray(getattr(self, 'blurPlanes2F', np.zeros_like(swivel)), dtype=np.float64)
+    start = int(np.sum(self.nProjSubset[:timestep, :]) + np.sum(self.nProjSubset[timestep, :subset]))
+    result = np.zeros((projections, cols, rows), dtype=np.float32)
+    for local in range(projections):
+        view = start + local
+        theta = np.deg2rad(swivel[view])
+        nx, ny = np.cos(theta), np.sin(theta)
+        if panel_values.ndim == 2:
+            offset_voxels = panel_values[0, view]
+        else:
+            offset_voxels = panel_values.reshape(-1)[view]
+        offset = float(offset_voxels) * dx0
+        qx, qy = -ny * (row_grid + offset), nx * (row_grid + offset)
+        valid = np.broadcast_to(np.abs(col_grid - centers[2]) <= radii[2], (rows, cols)).copy()
+        source_n = radii_view[view] * np.cos(np.deg2rad(angles[view] - swivel[view])) + float(self.CORtoDetectorSurface)
+        if np.isinf(float(self.ellipsePower)):
+            lo, hi = np.full((rows, cols), -np.inf), np.full((rows, cols), np.inf)
+            for direction, coord, center, extent in ((nx, qx, centers[0], radii[0]), (ny, qy, centers[1], radii[1])):
+                if abs(direction) < 1e-8:
+                    valid &= (coord >= center - extent) & (coord <= center + extent)
+                else:
+                    t0, t1 = (center - extent - coord) / direction, (center + extent - coord) / direction
+                    lo, hi = np.maximum(lo, np.minimum(t0, t1)), np.minimum(hi, np.maximum(t0, t1))
+            chord = np.maximum(hi - np.maximum(lo, source_n), 0.)
+        elif float(self.ellipsePower) == 2.:
+            inv_x2, inv_y2 = 1. / radii[0] ** 2, 1. / radii[1] ** 2
+            aa = nx * nx * inv_x2 + ny * ny * inv_y2
+            px, py = qx - centers[0], qy - centers[1]
+            bb = 2. * (px * nx * inv_x2 + py * ny * inv_y2)
+            cc = px * px * inv_x2 + py * py * inv_y2 - 1.
+            disc = bb * bb - 4. * aa * cc
+            root = np.sqrt(np.maximum(disc, 0.))
+            exit_t, entry_t = (-bb + root) / (2. * aa), (-bb - root) / (2. * aa)
+            chord = np.maximum(exit_t - np.maximum(entry_t, source_n), 0.)
+            valid &= disc > 1e-12
+        else:
+            raise ValueError('Type-6 path normalization requires box or elliptical SPECT support')
+        result[local] = np.where(valid & (chord > 1e-6), voxel_volume / np.maximum(chord, 1e-6), 0.).T
+    return result
+
+
 def _type6_torch_measurement_weights(self: Any, data: Any, projections: int, timestep: int, subset: int) -> Any:
     """Apply type-6 measurement-domain corrections on any Torch device."""
     import torch
@@ -2017,6 +2423,11 @@ def _type6_torch_measurement_weights(self: Any, data: Any, projections: int, tim
     device = data.device
     detector = _type6_torch_detector_vector(self, timestep, subset, device)
     weights = torch.ones_like(data)
+
+    weights *= torch.as_tensor(
+        _type6_numpy_central_ray_weights(self, projections, timestep, subset),
+        dtype=data.dtype, device=device,
+    )
 
     def expand(values: Any) -> Any | None:
         if values.numel() == 0:
@@ -2052,6 +2463,17 @@ def _type6_torch_measurement_weights(self: Any, data: Any, projections: int, tim
         value = expand(value)
         if value is not None:
             weights *= value
+    if int(getattr(self, 'scatter_correction', 0)) == 1:
+        value = _type6_torch_resource(
+            self, 'd_scatter', timestep, subset,
+            fallback=getattr(self, 'corrVector', np.empty(0)), dtype=torch.float32, device=device,
+        )
+        value = expand(value)
+        if value is not None:
+            weights *= value
+    global_factor = float(getattr(self, 'global_factor', 1.))
+    if global_factor != 1.:
+        weights *= global_factor
     return weights
 
 
@@ -2083,6 +2505,9 @@ def _type6_arrayfire_ops(self: Any):
         return af.data.reorder(from_vector(flat, nx, ny, nz), 2, 1, 0)
 
     _weights_unset = object()  # sentinel distinguishing "attribute missing" from any real id()
+    # Ops are constructed once per FP/BP call; cache the host-side SAT resample
+    # for every view in that call without risking stale attenuation across calls.
+    attenuation_source_cache: dict[tuple, tuple[np.ndarray, int]] = {}
 
     def _weights_cache_validity(timestep: int, subset: int) -> tuple:
         # measurement_weights only ever reads self.maskFP / self.vaimennus /
@@ -2097,6 +2522,8 @@ def _type6_arrayfire_ops(self: Any):
             id(getattr(self, 'maskFP', _weights_unset)),
             id(getattr(self, 'vaimennus', _weights_unset)),
             id(getattr(self, 'normalization', _weights_unset)),
+            id(getattr(self, 'corrVector', _weights_unset)),
+            float(getattr(self, 'global_factor', 1.)),
         )
 
     def measurement_weights(data: Any, projections: int, timestep: int, subset: int) -> Any:
@@ -2151,6 +2578,15 @@ def _type6_arrayfire_ops(self: Any):
             value = expand('d_norm', getattr(self, 'normalization', np.empty(0)))
             if value is not None:
                 weights *= value
+        if int(getattr(self, 'scatter_correction', 0)) == 1:
+            value = expand('d_scatter', getattr(self, 'corrVector', np.empty(0)))
+            if value is not None:
+                weights *= value
+        weights *= float(getattr(self, 'global_factor', 1.))
+        # The native type-6 projector applies the central-ray diagonal in
+        # addition to the user supplied normalization array.  Keep the AF
+        # path on the same detector/view grid as the native and Torch paths.
+        weights *= _type6_numpy_central_ray_weights(self, projections, timestep, subset)
         result = from_vector(weights.ravel(order='F'), projections, cols, rows)
         cache[cache_key] = (validity, result)
         return result
@@ -2192,13 +2628,15 @@ def _type6_arrayfire_ops(self: Any):
         return shifted
 
     def resize(value: Any, shape: tuple[int, int]) -> Any:
-        return af.image.resize(value, int(shape[0]), int(shape[1]), method=af.INTERP.BILINEAR)
+        if int(value.shape[0]) == 1 and len(value.shape) > 2:
+            value = af.data.moddims(value, int(value.shape[1]), int(value.shape[2]))
+        return af.image.resize(value, scale=None, odim0=int(shape[0]), odim1=int(shape[1]), method=af.INTERP.BILINEAR)
 
     def resize_stack(value: Any, shape: tuple[int, int]) -> Any:
         # AF resize acts on dimensions zero and one.  Present the detector
         # stack as (x, z, view), then restore the shared (view, z, x) form.
         resized = af.image.resize(
-            af.data.reorder(value, 2, 1, 0), int(shape[1]), int(shape[0]),
+            af.data.reorder(value, 2, 1, 0), scale=None, odim0=int(shape[1]), odim1=int(shape[0]),
             method=af.INTERP.BILINEAR,
         )
         return af.data.reorder(resized, 2, 1, 0)
@@ -2221,7 +2659,16 @@ def _type6_arrayfire_ops(self: Any):
             value = matched
         return value
 
-    def physical_grid(volume: int) -> tuple[int, int]:
+    def physical_grid(volume: int, grid: tuple[int, int] | None = None) -> tuple[int, int]:
+        if grid is not None:
+            try:
+                pitch_x = float(np.asarray(self.dPitchX).reshape(-1)[0])
+                pitch_y = float(np.asarray(self.dPitchY).reshape(-1)[0])
+                dy = float(np.asarray(self.dy).reshape(-1)[min(volume, np.asarray(self.dy).size - 1)])
+                dz = float(np.asarray(self.dz).reshape(-1)[min(volume, np.asarray(self.dz).size - 1)])
+                return max(1, int(round(int(grid[0]) * dy / pitch_x))), max(1, int(round(int(grid[1]) * dz / pitch_y)))
+            except (AttributeError, TypeError, ValueError, IndexError, ZeroDivisionError):
+                return int(grid[0]), int(grid[1])
         try:
             def scalar(name: str) -> float:
                 values = np.asarray(getattr(self, name)).reshape(-1)
@@ -2230,14 +2677,14 @@ def _type6_arrayfire_ops(self: Any):
                 return float(values[min(volume, values.size - 1)])
 
             pitch_x, pitch_y = scalar('dPitchX'), scalar('dPitchY')
-            fov_x, fov_z = scalar('FOVa_x'), scalar('axial_fov')
-            if min(pitch_x, pitch_y, fov_x, fov_z) <= 0.0:
+            fov_y, fov_z = scalar('FOVa_y'), scalar('axial_fov')
+            if min(pitch_x, pitch_y, fov_y, fov_z) <= 0.0:
                 raise ValueError
-            return max(1, int(round(fov_x / pitch_x))), max(1, int(round(fov_z / pitch_y)))
+            return max(1, int(round(fov_y / pitch_x))), max(1, int(round(fov_z / pitch_y)))
         except (AttributeError, TypeError, ValueError):
-            return int(self.Nx[volume]), int(self.Nz[volume])
+            return int(self.Ny[volume]), int(self.Nz[volume])
 
-    def exact_grid(volume: int) -> tuple[float | None, float | None] | None:
+    def exact_grid(volume: int, grid: tuple[int, int] | None = None) -> tuple[float | None, float | None] | None:
         # The FOV in detector pixels (x, z) for the axes that are resampled directly: not a whole number (relative tolerance 1e-9) or
         # an odd difference to the detector size (None for the other axes, None if there are no such axes), see sinogramresample.py
         try:
@@ -2248,13 +2695,18 @@ def _type6_arrayfire_ops(self: Any):
                 return float(values[min(volume, values.size - 1)])
 
             pitch_x, pitch_y = scalar('dPitchX'), scalar('dPitchY')
-            fov_x, fov_z = scalar('FOVa_x'), scalar('axial_fov')
-            if min(pitch_x, pitch_y, fov_x, fov_z) <= 0.0:
+            fov_y, fov_z = scalar('FOVa_y'), scalar('axial_fov')
+            if min(pitch_x, pitch_y, fov_y, fov_z) <= 0.0:
                 raise ValueError
             from omegatomo.util.sinogramresample import exactAxisRatios
             measurement = (int(getattr(self, 'measurement_nRowsD', self.nRowsD)), int(getattr(self, 'measurement_nColsD', self.nColsD)))
-            physical = (max(1, int(round(fov_x / pitch_x))), max(1, int(round(fov_z / pitch_y))))
-            return exactAxisRatios((fov_x / pitch_x, fov_z / pitch_y), measurement, physical)
+            physical = physical_grid(volume, grid)
+            if grid is None:
+                exact_fov = (fov_y / pitch_x, fov_z / pitch_y)
+            else:
+                dy, dz = scalar('dy'), scalar('dz')
+                exact_fov = (int(grid[0]) * dy / pitch_x, int(grid[1]) * dz / pitch_y)
+            return exactAxisRatios(exact_fov, measurement, physical)
         except (AttributeError, TypeError, ValueError):
             return None
 
@@ -2270,11 +2722,32 @@ def _type6_arrayfire_ops(self: Any):
         moved = af.data.moddims(af.blas.matmul(weights, moved), int(matrix.shape[0]), views, current_rows)
         return af.data.reorder(moved, 1, 0, 2)
 
-    def exact_resample(value: Any, volume: int, direction: str, exact: tuple[float, float]) -> Any:
+    def detector_axis_matrices(volume: int, grid: tuple[int, int]) -> tuple[np.ndarray, np.ndarray]:
+        """Native tent-sampling maps from rotated image grid (Ny,Nz) to detector."""
+        rows = int(getattr(self, 'measurement_nRowsD', self.nRowsD))
+        cols = int(getattr(self, 'measurement_nColsD', self.nColsD))
+        dy = np.asarray(self.dy, dtype=np.float64).reshape(-1)
+        dz = np.asarray(self.dz, dtype=np.float64).reshape(-1)
+        bz = np.asarray(self.bz, dtype=np.float64).reshape(-1)
+        pad_lo, _ = _type6_padding_z(self, volume)
+        trans_a = float(dy[0] / dy[volume])
+        trans_b = .5 * int(grid[0]) + (.5 - .5 * rows) * trans_a - .5
+        axial_a = float(dz[0] / dz[volume])
+        axial_b = (-float(bz[volume]) / dz[volume]
+                   + (.5 - .5 * cols) * axial_a - .5 + pad_lo)
+        det_rows = np.arange(rows, dtype=np.float64)[:, None]
+        src_rows = np.arange(int(grid[0]), dtype=np.float64)[None, :]
+        det_cols = np.arange(cols, dtype=np.float64)[:, None]
+        src_cols = np.arange(int(grid[1]), dtype=np.float64)[None, :]
+        trans = np.maximum(1. - np.abs(det_rows * trans_a + trans_b - src_rows), 0.).astype(np.float32)
+        axial = np.maximum(1. - np.abs(det_cols * axial_a + axial_b - src_cols), 0.).astype(np.float32)
+        return trans, axial
+
+    def exact_resample(value: Any, volume: int, direction: str, exact: tuple[float, float], grid: tuple[int, int] | None = None) -> Any:
         from omegatomo.util.sinogramresample import axisMatrix
         rows = int(getattr(self, 'measurement_nRowsD', self.nRowsD))
         cols = int(getattr(self, 'measurement_nColsD', self.nColsD))
-        nx, nz = int(self.Nx[volume]), int(self.Nz[volume])
+        nx, nz = physical_grid(volume, grid)
         current_cols, current_rows = int(value.shape[1]), int(value.shape[2])
         if direction == 'measurement_to_image':
             if exact[0] is not None:
@@ -2288,16 +2761,25 @@ def _type6_arrayfire_ops(self: Any):
                 value = apply_axis_matrix(value, axisMatrix(current_cols, cols, current_cols / exact[1]), 1)
         return value
 
-    def resample(value: Any, volume: int, direction: str) -> Any:
+    def resample(value: Any, volume: int, direction: str, grid: tuple[int, int] | None = None) -> Any:
+        if grid is not None:
+            trans, axial = detector_axis_matrices(volume, grid)
+            if direction == 'image_to_measurement':
+                value = apply_axis_matrix(value, trans, 2)
+                return apply_axis_matrix(value, axial, 1)
+            if direction == 'measurement_to_image':
+                value = apply_axis_matrix(value, axial.T, 1)
+                return apply_axis_matrix(value, trans.T, 2)
+            raise ValueError(f'Unknown type-6 resampling direction: {direction}')
         rows = int(getattr(self, 'measurement_nRowsD', self.nRowsD))
         cols = int(getattr(self, 'measurement_nColsD', self.nColsD))
-        nx, nz = int(self.Nx[volume]), int(self.Nz[volume])
-        exact = exact_grid(volume)
-        physical_rows, physical_cols = physical_grid(volume)
+        nx, nz = physical_grid(volume, grid)
+        exact = exact_grid(volume, grid)
+        physical_rows, physical_cols = physical_grid(volume, grid)
         if exact is not None and direction in ('measurement_to_image', 'image_to_measurement'):
             # The axes in exact are resampled directly and are at their target size afterwards; the others are padded/trimmed and
             # resized below as always
-            value = exact_resample(value, volume, direction, exact)
+            value = exact_resample(value, volume, direction, exact, grid)
             if all(item is not None for item in exact):
                 return value
             if exact[0] is not None:
@@ -2314,6 +2796,53 @@ def _type6_arrayfire_ops(self: Any):
                 value = resize_stack(value, (physical_cols, physical_rows))
             return center_match(value, rows, cols)
         raise ValueError(f'Unknown type-6 resampling direction: {direction}')
+
+    def resize_axis_matrix(source: int, target: int) -> np.ndarray:
+        """Return ArrayFire resize's exact 1D linear map (target x source)."""
+        basis = af.interop.np_to_af_array(np.asfortranarray(np.eye(source, dtype=np.float32)))
+        resized = af.image.resize(basis, scale=None, odim0=target, odim1=source, method=af.INTERP.BILINEAR)
+        return np.asarray(resized.to_ndarray(), dtype=np.float32)
+
+    def center_matrix(source: int, target: int) -> np.ndarray:
+        matrix = np.zeros((target, source), dtype=np.float32)
+        length = min(source, target)
+        src = (source - length) // 2
+        dst = (target - length) // 2
+        matrix[dst:dst + length, src:src + length] = np.eye(length, dtype=np.float32)
+        return matrix
+
+    def resample_adjoint(value: Any, volume: int, grid: tuple[int, int] | None = None) -> Any:
+        """Transpose the actual image-to-measurement map used by FP."""
+        if grid is not None:
+            trans, axial = detector_axis_matrices(volume, grid)
+            value = apply_axis_matrix(value, axial.T, 1)
+            return apply_axis_matrix(value, trans.T, 2)
+        from omegatomo.util.sinogramresample import axisMatrix
+
+        rows = int(getattr(self, 'measurement_nRowsD', self.nRowsD))
+        cols = int(getattr(self, 'measurement_nColsD', self.nColsD))
+        physical_rows, physical_cols = physical_grid(volume, grid)
+        image_rows, image_cols = (
+            (int(grid[0]), int(grid[1])) if grid is not None
+            else (int(self.Ny[volume]), int(self.Nz[volume]))
+        )
+        exact = exact_grid(volume, grid)
+        if exact is not None:
+            if exact[0] is None:
+                row_map = center_matrix(physical_rows, rows) @ resize_axis_matrix(image_rows, physical_rows)
+            else:
+                row_map = axisMatrix(image_rows, rows, image_rows / exact[0]).astype(np.float32)
+            if exact[1] is None:
+                col_map = center_matrix(physical_cols, cols) @ resize_axis_matrix(image_cols, physical_cols)
+            else:
+                col_map = axisMatrix(image_cols, cols, image_cols / exact[1]).astype(np.float32)
+        else:
+            row_map = center_matrix(physical_rows, rows) @ resize_axis_matrix(image_rows, physical_rows)
+            col_map = center_matrix(physical_cols, cols) @ resize_axis_matrix(image_cols, physical_cols)
+        # axisMatrix in exact_grid is (transverse rows, axial columns).
+        value = apply_axis_matrix(value, row_map.T, 2)
+        value = apply_axis_matrix(value, col_map.T, 1)
+        return value
 
     def attenuation(value: Any, mu: Any, dx: float) -> Any:
         accumulate = getattr(af, 'accum', None)
@@ -2354,18 +2883,261 @@ def _type6_arrayfire_ops(self: Any):
         return canonical_image(
             resampled.ravel(order='C'), (int(self.Nz[volume]), int(self.Ny[volume]), int(self.Nx[volume])))
 
+    def attenuation_factors(volume: int, timestep: int, subset: int, view: int, like: Any) -> Any:
+        """Build the native axis-centred attenuation ray factor for one view.
+
+        The union attenuation source can be wider than any emission volume. Rotate it
+        onto the volume's padded detector grid, shift it by the native panel offset,
+        then integrate along x before cropping to the emission rotation grid.
+        """
+        bxMap, byMap, bzMap, NxMap, NyMap, NzMap = _type6_attenuation_map_extent(self)
+        flat = host_resource('d_attenuation_image', timestep, subset,
+                             getattr(self, 'vaimennus', np.empty(0)))
+        if flat.size != NxMap * NyMap * NzMap:
+            raise ValueError(
+                f'Expected the type-6 attenuation map to cover the union of every multi-resolution '
+                f'volume ({NxMap}x{NyMap}x{NzMap} = {NxMap * NyMap * NzMap} elements), got {flat.size}')
+        atten_map = flat.reshape((NzMap, NyMap, NxMap), order='C')
+        members, group_rows, group_bz, group_nz, att_nx, z_offsets = _type6_attenuation_group(self, volume)
+        representative = members[0]
+        source_key = (timestep, subset, id(getattr(self, 'vaimennus', None)),
+                      tuple(members), group_bz, group_nz)
+        cached_source = attenuation_source_cache.get(source_key)
+        if cached_source is None:
+            source, source_att_nx = _type6_attenuation_source_numpy(
+                self, atten_map, representative, bz_override=group_bz, nz_override=group_nz)
+            if source_att_nx != att_nx:
+                raise RuntimeError('Type-6 attenuation group grid changed while building its source lattice')
+            attenuation_source_cache[source_key] = (source, source_att_nx)
+        else:
+            source, source_att_nx = cached_source
+        src_nz, src_ny, src_nx = source.shape
+        grid_nx, grid_ny = _type6_rotation_grid(self, volume)
+        dx = float(np.asarray(self.dx).reshape(-1)[volume])
+        dy = float(np.asarray(self.dy).reshape(-1)[volume])
+        angle = float(np.asarray(self.swivelAngles).reshape(-1)[view])
+        radians = np.deg2rad(angle)
+        cosine, sine = np.cos(radians), np.sin(radians)
+
+        panel_values = np.asarray(getattr(self, 'blurPlanes2F', np.empty(0)))
+        panel_shift_vox = (float(_type6_volume_view_value(self, 'blurPlanes2F', 0, view))
+                           if panel_values.size else 0.)
+        panel_shift = panel_shift_vox * float(np.asarray(self.dx).reshape(-1)[0]) / dx
+        offset_x, offset_y = -sine * panel_shift, cosine * panel_shift
+
+        # Match native/Torch affine_grid sampling with align_corners=False.
+        # All members of an attenuation group share a source z lattice and
+        # row count; each volume crops its own centered detector-grid rows.
+        yy, xx = np.mgrid[:group_rows, :att_nx].astype(np.float64)
+        xxn = 2. * (xx + .5) / att_nx - 1.
+        yyn = 2. * (yy + .5) / group_rows - 1.
+        sx = ((cosine * att_nx / src_nx) * xxn
+              - (sine * dy * group_rows / (dx * src_nx)) * yyn
+              + 2. * offset_x / src_nx + 1.) * src_nx * .5 - .5
+        sy = ((sine * dx * att_nx / (dy * src_ny)) * xxn
+              + (cosine * group_rows / src_ny) * yyn
+              + 2. * offset_y / src_ny + 1.) * src_ny * .5 - .5
+        x0, y0 = np.floor(sx).astype(np.int64), np.floor(sy).astype(np.int64)
+        fx, fy = sx - x0, sy - y0
+        rotated = np.zeros((src_nz, group_rows, att_nx), dtype=np.float32)
+        for oy, wy in ((0, 1. - fy), (1, fy)):
+            iy = y0 + oy
+            for ox, wx in ((0, 1. - fx), (1, fx)):
+                ix = x0 + ox
+                valid = (iy >= 0) & (iy < src_ny) & (ix >= 0) & (ix < src_nx)
+                if np.any(valid):
+                    rotated += (source[:, np.clip(iy, 0, src_ny - 1),
+                                        np.clip(ix, 0, src_nx - 1)]
+                                * (wy * wx * valid).astype(np.float32)[None, :, :])
+        cumulative = np.cumsum(rotated, axis=2, dtype=np.float32)
+        import os
+        try:
+            attenuation_mode = int(os.environ.get('TYPE6_ATTCONV', '2')[:1])
+        except (TypeError, ValueError):
+            attenuation_mode = 2
+        if attenuation_mode not in (0, 1, 2):
+            attenuation_mode = 2
+        if attenuation_mode == 0:
+            factors_group = np.exp(-cumulative * dx)
+        else:
+            previous = np.zeros_like(cumulative)
+            previous[:, :, 1:] = cumulative[:, :, :-1]
+            if attenuation_mode == 1:
+                factors_group = np.exp(-dx * (cumulative + previous) * .5)
+            else:
+                interval = dx * (cumulative - previous)
+                average = np.ones_like(interval)
+                nonzero = np.abs(interval) > 1e-6
+                average[nonzero] = -np.expm1(-interval[nonzero]) / interval[nonzero]
+                small = ~nonzero
+                average[small] = 1. - interval[small] * .5 + interval[small] ** 2 / 6.
+                factors_group = np.exp(-dx * previous) * average
+        pad_lo, _ = _type6_padding_z(self, volume)
+        row_off = (group_rows - grid_ny) // 2
+        xoff = (att_nx - grid_nx) // 2
+        z_group = z_offsets[volume] + np.arange(_type6_padding_z(self, volume)[0] +
+                                                  int(self.Nz[volume]) +
+                                                  _type6_padding_z(self, volume)[1]) - pad_lo
+        y_group = row_off + np.arange(grid_ny)
+        x_group = xoff + np.arange(grid_nx)
+        valid_z = (z_group >= 0) & (z_group < src_nz)
+        valid_y = (y_group >= 0) & (y_group < group_rows)
+        valid_x = (x_group >= 0) & (x_group < att_nx)
+        factors = np.ones((z_group.size, grid_ny, grid_nx), dtype=np.float32)
+        if np.any(valid_z) and np.any(valid_y) and np.any(valid_x):
+            factors[np.ix_(valid_z, valid_y, valid_x)] = factors_group[
+                np.ix_(z_group[valid_z], y_group[valid_y], x_group[valid_x])]
+        return canonical_image(factors.ravel(order='C'), factors.shape)
+
+    def rotation_matrix(volume: int, angle: float, view: int):
+        """Sparse bilinear forward rotation for one volume and view.
+
+        This host sparse matrix is deliberately shared by FP and BP: BP uses
+        its transpose, which preserves the exact zero-padded bilinear weights
+        at clipped boundaries. ArrayFire's gather-only rotate cannot provide
+        that transpose. The fallback is CPU-bound but remains exact.
+        """
+        from scipy.sparse import coo_matrix
+
+        nx, ny = int(self.Nx[volume]), int(self.Ny[volume])
+        out_nx, out_ny = _type6_rotation_grid(self, volume)
+        dx = float(np.asarray(self.dx).reshape(-1)[volume])
+        dy = float(np.asarray(self.dy).reshape(-1)[volume])
+        ox, oy = _type6_axis_offset(self, volume)
+        if np.asarray(getattr(self, 'blurPlanes2F', np.empty(0))).size:
+            panel_shift = _type6_panel_shift(self, volume, view, out_ny)
+            panel_angle = np.deg2rad(float(angle))
+            ox += -float(np.sin(panel_angle)) * panel_shift
+            oy += float(np.cos(panel_angle)) * panel_shift
+        key = (volume, float(angle), nx, ny, out_nx, out_ny, dx, dy, ox, oy)
+        cache = getattr(self, '_type6_af_rotation_cache', None)
+        if cache is None:
+            cache = {}
+            self._type6_af_rotation_cache = cache
+        if key in cache:
+            matrix = cache.pop(key)
+            cache[key] = matrix
+            return matrix
+
+        yy, xx = np.mgrid[:out_ny, :out_nx].astype(np.float64)
+        xxn = (2. * (xx + .5) / out_nx) - 1.
+        yyn = (2. * (yy + .5) / out_ny) - 1.
+        # Native rotateHelperType6 receives -swivelAngles and samples
+        # src_x = cos(a)*x - sin(a)*y, src_y = sin(a)*x + cos(a)*y.
+        # This sparse matrix is the output-to-input sampling map, so its
+        # angle must have the same sign as that native sampling map.
+        rad = np.deg2rad(-float(angle))
+        c, s = np.cos(rad), np.sin(rad)
+        sx = ((c * out_nx / nx) * xxn + (s * dy * out_ny / (dx * nx)) * yyn + 2. * ox / nx + 1.) * nx * .5 - .5
+        sy = ((-s * dx * out_nx / (dy * ny)) * xxn + (c * out_ny / ny) * yyn + 2. * oy / ny + 1.) * ny * .5 - .5
+        x0, y0 = np.floor(sx).astype(np.int64), np.floor(sy).astype(np.int64)
+        fx, fy = sx - x0, sy - y0
+        out_row = (yy.astype(np.int64) * out_nx + xx.astype(np.int64)).ravel()
+        rows, cols, vals = [], [], []
+        for oy_i, wy in ((0, 1. - fy), (1, fy)):
+            iy = y0 + oy_i
+            for ox_i, wx in ((0, 1. - fx), (1, fx)):
+                ix = x0 + ox_i
+                weight = (wy * wx).ravel()
+                valid = (iy >= 0) & (iy < ny) & (ix >= 0) & (ix < nx) & (weight.reshape(out_ny, out_nx) != 0.)
+                if np.any(valid):
+                    rows.append(out_row[valid.ravel()])
+                    cols.append((iy * nx + ix).ravel()[valid.ravel()])
+                    vals.append(weight[valid.ravel()].astype(np.float32, copy=False))
+        if vals:
+            matrix = coo_matrix((np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))),
+                                shape=(out_ny * out_nx, ny * nx), dtype=np.float32).tocsr()
+        else:
+            # A shifted volume can lie wholly outside this view's rotation grid.
+            matrix = coo_matrix((out_ny * out_nx, ny * nx), dtype=np.float32).tocsr()
+        cache[key] = matrix
+        while len(cache) > 4:
+            cache.pop(next(iter(cache)))
+        return matrix
+
+    def apply_rotation(value: Any, volume: int, angle: float, view: int, *, adjoint: bool) -> Any:
+        nx, ny, nz = (int(self.Nx[volume]), int(self.Ny[volume]), int(self.Nz[volume]))
+        out_nx, out_ny = _type6_rotation_grid(self, volume)
+        pad_lo, pad_hi = _type6_padding_z(self, volume)
+        out_nz = nz + pad_lo + pad_hi
+        canonical = af.data.reorder(value, 2, 1, 0).to_ndarray()
+        matrix = rotation_matrix(volume, angle, view)
+        if adjoint:
+            matrix = matrix.transpose().tocsr()
+            src_x, src_y, dst_x, dst_y = out_nx, out_ny, nx, ny
+            depth_offset = pad_lo
+            output_z = nz
+        else:
+            src_x, src_y, dst_x, dst_y = nx, ny, out_nx, out_ny
+            depth_offset = 0
+            output_z = out_nz
+        result = np.zeros((dst_x, dst_y, output_z), dtype=np.float32, order='F')
+        for z in range(nz):
+            plane = np.asarray(canonical[:, :, z + depth_offset]).T.reshape(-1, order='C') if adjoint else np.asarray(canonical[:, :, z]).T.reshape(-1, order='C')
+            projected = matrix @ plane
+            result[:, :, z + (0 if adjoint else pad_lo)] = projected.reshape((dst_y, dst_x), order='C').T
+        af_value = af.interop.np_to_af_array(np.asfortranarray(result))
+        return af.data.reorder(af_value, 2, 1, 0)
+
+    def expand_kernel(kernel: Any, volume: int, nx: int) -> Any:
+        local_nx = int(self.Nx[volume])
+        if nx == local_nx:
+            return kernel
+        dx = float(np.asarray(self.dx).reshape(-1)[volume])
+        bx = float(np.asarray(self.bx).reshape(-1)[volume])
+        start = int(round((bx + .5 * nx * dx) / dx))
+        values = kernel.to_ndarray()
+        expanded = np.zeros((values.shape[0], values.shape[1], nx), dtype=np.float32, order='F')
+        lo, hi = max(start, 0), min(start + values.shape[2], nx)
+        if hi > lo:
+            expanded[:, :, lo:hi] = values[:, :, lo - start:hi - start]
+        return af.interop.np_to_af_array(np.asfortranarray(expanded))
+
+    def blur(value: Any, kernel: Any, *, adjoint: bool = False) -> Any:
+        # ArrayFire's convolve2 is mathematical convolution, while the common
+        # type-6 forward operator uses cross-correlation. Flip for FP and use
+        # the unflipped kernel for its exact transpose.
+        if not adjoint:
+            kernel = af.flip(af.flip(kernel, 0), 1)
+        return af.data.reorder(
+            af.signal.convolve2(af.data.reorder(value, 1, 0, 2), kernel), 1, 0, 2)
+
+    def stack_views(values: list[Any]) -> Any:
+        if not values:
+            raise ValueError('Cannot stack an empty type-6 view list')
+        if len(values) == 1:
+            joined = af.data.moddims(values[0], int(values[0].shape[0]), int(values[0].shape[1]), 1)
+        else:
+            joined = values[0]
+            for value in values[1:]:
+                joined = af.join(2, joined, value)
+        return af.data.reorder(joined, 2, 0, 1)
+
+    def kernel(volume: int, timestep: int, subset: int, view: int, like: Any) -> Any:
+        if bool(getattr(self, 'CDRFOnTheFly', False)):
+            return af.interop.np_to_af_array(np.asfortranarray(_type6_on_the_fly_cdrf(self, volume, view)))
+        filters = getattr(self, 'd_gFilter', None)
+        if isinstance(filters, list) and volume < len(filters):
+            return filters[volume]
+        return af.interop.np_to_af_array(np.asfortranarray(_type6_volume_kernel(self, volume)))
+
     return SimpleNamespace(
         zeros=lambda shape, like: af.data.constant(0., *shape),
         reshape_image=lambda value, shape: af.data.reorder(af.data.moddims(value, shape[2], shape[1], shape[0]), 2, 1, 0),
         reshape_measurement=lambda value, shape: af.data.reorder(af.data.moddims(value, shape[2], shape[1], shape[0]), 2, 1, 0),
         flatten_image=lambda value: af.flat(af.data.reorder(value, 2, 1, 0)),
         flatten_measurement=lambda value: af.flat(af.data.reorder(value, 2, 1, 0)),
+        stack_views=stack_views,
+        rotation_grid=lambda volume: _type6_rotation_grid(self, volume),
+        axial_grid=lambda volume: (int(self.Nz[volume]) + sum(_type6_padding_z(self, volume)[:2]), *_type6_padding_z(self, volume)),
+        expand_kernel=expand_kernel,
+        rotate_volume=lambda value, angle, volume, view: apply_rotation(value, volume, angle, view, adjoint=False),
+        rotate_volume_adjoint=lambda value, angle, volume, view: apply_rotation(value, volume, angle, view, adjoint=True),
         rotate=lambda value, angle: af.data.reorder(
             af.image.rotate(af.data.reorder(value, 2, 1, 0), -angle * np.pi / 180.0, method=af.INTERP.BILINEAR), 2, 1, 0),
         attenuation=attenuation,
         shift_kernel=shift_kernel,
-        blur=lambda value, kernel: af.data.reorder(
-            af.signal.convolve2(af.data.reorder(value, 1, 0, 2), kernel), 1, 0, 2),
+        blur=blur,
         resize=resize,
         shift_projection=shift_projection,
         shift_image_y=shift_image_y,
@@ -2374,14 +3146,11 @@ def _type6_arrayfire_ops(self: Any):
         set_view=lambda stack, index, value: stack.__setitem__((index, slice(None), slice(None)), value),
         add_to=lambda target, value: target.__setitem__(slice(None), target + value),
         multiply=lambda left, right: left * right,
-        resample=resample,
+        resample=lambda value, volume, direction, grid=None: resample(value, volume, direction, grid=grid),
+        resample_adjoint=lambda value, volume, grid=None: resample_adjoint(value, volume, grid=grid),
         attenuation_image=attenuation_image,
-        kernel=lambda volume, timestep, subset, like: (
-            getattr(self, 'd_gFilter', [])[volume]
-            if isinstance(getattr(self, 'd_gFilter', None), list)
-            and volume < len(getattr(self, 'd_gFilter', []))
-            else getattr(self, 'd_gFilter', af.interop.np_to_af_array(_type6_volume_kernel(self, volume)))
-        ),
+        attenuation_factors=attenuation_factors,
+        kernel=kernel,
         weights=measurement_weights,
         apply_bp_mask=apply_bp_mask,
         device=lambda value: None,
@@ -2400,6 +3169,7 @@ def _type6_torch_ops(self: Any):
     from types import SimpleNamespace
     from torchvision.transforms import InterpolationMode
     from torchvision.transforms.functional import affine, rotate
+    attenuation_source_cache = {}
 
     def shift_kernel(kernel: Any, plane: int, nx: int) -> Any:
         shifted = torch.zeros_like(kernel)
@@ -2411,8 +3181,24 @@ def _type6_torch_ops(self: Any):
             shifted[:, :, :depth + plane] = kernel[:, :, -plane:]
         return shifted[:, :, :nx]
 
-    def blur(value: Any, kernel: Any) -> Any:
-        kernel = kernel.permute(2, 0, 1).contiguous().unsqueeze(1)
+    def expand_kernel(kernel: Any, volume: int, nx: int) -> Any:
+        local_nx = int(self.Nx[volume])
+        if nx == local_nx:
+            return kernel
+        dx = float(np.asarray(self.dx).reshape(-1)[volume])
+        bx = float(np.asarray(self.bx).reshape(-1)[volume])
+        start = int(round((bx + .5 * nx * dx) / dx))
+        result = torch.zeros((*kernel.shape[:2], nx), dtype=kernel.dtype, device=kernel.device)
+        lo, hi = max(start, 0), min(start + int(kernel.shape[2]), nx)
+        if hi > lo:
+            result[:, :, lo:hi] = kernel[:, :, lo - start:hi - start]
+        return result
+
+    def blur(value: Any, kernel: Any, *, adjoint: bool = False) -> Any:
+        kernel = kernel.permute(2, 0, 1).contiguous()
+        if adjoint:
+            kernel = kernel.flip((-2, -1))
+        kernel = kernel.unsqueeze(1)
         return functional.conv2d(
             value.permute(2, 1, 0).unsqueeze(0),
             kernel,
@@ -2437,6 +3223,81 @@ def _type6_torch_ops(self: Any):
         elif -pixels < width:
             shifted[:, :width + pixels, :] = value[:, -pixels:, :]
         return shifted
+
+    def rotate_volume(value: Any, angle: float, volume: int, view: int) -> Any:
+        grid_nx, grid_ny = _type6_rotation_grid(self, volume)
+        nz, in_ny, in_nx = (int(v) for v in value.shape)
+        dx = float(np.asarray(self.dx).reshape(-1)[volume])
+        dy = float(np.asarray(self.dy).reshape(-1)[volume])
+        ox, oy = _type6_axis_offset(self, volume)
+        if np.asarray(getattr(self, 'blurPlanes2F', np.empty(0))).size:
+            panel_shift = _type6_panel_shift(self, volume, view, grid_ny)
+            panel_angle = float(angle) * np.pi / 180.
+            ox += -np.sin(panel_angle) * panel_shift
+            oy += np.cos(panel_angle) * panel_shift
+        # affine_grid maps output coordinates back to the source. Match the
+        # native type-6 sampler's src_x = c*x - s*y, src_y = s*x + c*y.
+        radians = -float(angle) * np.pi / 180.
+        cosine, sine = float(np.cos(radians)), float(np.sin(radians))
+        theta = torch.tensor([[[
+            cosine * grid_nx / in_nx, sine * dy * grid_ny / (dx * in_nx), ox * 2. / in_nx,
+        ], [
+            -sine * dx * grid_nx / (dy * in_ny), cosine * grid_ny / in_ny, oy * 2. / in_ny,
+        ]]], dtype=value.dtype, device=value.device)
+        grid = functional.affine_grid(theta.expand(nz, -1, -1), (nz, 1, grid_ny, grid_nx), align_corners=False)
+        rotated = functional.grid_sample(value.unsqueeze(1), grid, mode='bilinear', padding_mode='zeros', align_corners=False).squeeze(1)
+        pad_lo, pad_hi = _type6_padding_z(self, volume)
+        return functional.pad(rotated, (0, 0, 0, 0, pad_lo, pad_hi))
+
+    def rotate_volume_adjoint(value: Any, angle: float, volume: int, view: int) -> Any:
+        # The inverse angle is not the transpose of bilinear sampling at clipped
+        # boundaries. Autograd computes the exact scatter transpose of this affine.
+        with torch.enable_grad():
+            source = torch.zeros(
+                (int(self.Nz[volume]), int(self.Ny[volume]), int(self.Nx[volume])),
+                dtype=value.dtype, device=value.device, requires_grad=True,
+            )
+            transformed = rotate_volume(source, angle, volume, view)
+            return torch.autograd.grad(transformed, source, grad_outputs=value,
+                                       create_graph=False, retain_graph=False)[0]
+
+    def resample_adjoint(value: Any, volume: int, grid: tuple[int, int]) -> Any:
+        axial, trans = detector_matrices(value, volume, grid)
+        return torch.matmul(torch.matmul(axial.transpose(0, 1), value), trans)
+
+    def detector_matrices(like: Any, volume: int, grid: tuple[int, int]) -> tuple[Any, Any]:
+        # Native mapType6/detectorWeightsType6: detector bin d samples lattice
+        # coordinate A*d+B with linear tent weights and zero support outside.
+        rows = int(getattr(self, 'measurement_nRowsD', self.nRowsD))
+        cols = int(getattr(self, 'measurement_nColsD', self.nColsD))
+        dx = np.asarray(self.dx, dtype=np.float64).reshape(-1)
+        dy = np.asarray(self.dy, dtype=np.float64).reshape(-1)
+        dz = np.asarray(self.dz, dtype=np.float64).reshape(-1)
+        bz = np.asarray(self.bz, dtype=np.float64).reshape(-1)
+        pad_lo, _ = _type6_padding_z(self, volume)
+        axial_a = float(dz[0] / dz[volume])
+        axial_b = -float(bz[volume]) / dz[volume] + (.5 - .5 * cols) * axial_a - .5 + pad_lo
+        trans_a = float(dy[0] / dy[volume])
+        trans_b = .5 * grid[0] + (.5 - .5 * rows) * trans_a - .5
+        det_z = torch.arange(cols, dtype=like.dtype, device=like.device)[:, None]
+        src_z = torch.arange(grid[1], dtype=like.dtype, device=like.device)[None, :]
+        det_y = torch.arange(rows, dtype=like.dtype, device=like.device)[:, None]
+        src_y = torch.arange(grid[0], dtype=like.dtype, device=like.device)[None, :]
+        axial = torch.clamp(1. - torch.abs(det_z * axial_a + axial_b - src_z), min=0.)
+        trans = torch.clamp(1. - torch.abs(det_y * trans_a + trans_b - src_y), min=0.)
+        return axial, trans
+
+    def resample_grid(value: Any, volume: int, direction: str, grid: tuple[int, int]) -> Any:
+        axial, trans = detector_matrices(value, volume, grid)
+        if direction == 'image_to_measurement':
+            return torch.matmul(torch.matmul(axial, value), trans.transpose(0, 1))
+        if direction == 'measurement_to_image':
+            return torch.matmul(torch.matmul(axial.transpose(0, 1), value), trans)
+        raise ValueError(f'Unknown type-6 resampling direction: {direction}')
+
+    def axial_grid(volume: int) -> tuple[int, int, int]:
+        lo, hi = _type6_padding_z(self, volume)
+        return int(self.Nz[volume]) + lo + hi, lo, hi
 
     def apply_bp_mask(image: Any, volume: int, timestep: int, subset: int) -> Any:
         if not self.useMaskBP:
@@ -2492,13 +3353,118 @@ def _type6_torch_ops(self: Any):
             mapTensor.detach().to('cpu', dtype=torch.float64).numpy(), self, volume, bxMap, byMap, bzMap, NxMap, NyMap, NzMap)
         return torch.as_tensor(resampled, dtype=like.dtype, device=like.device)
 
+    def attenuation_factors(volume: int, timestep: int, subset: int, view: int, like: Any) -> Any:
+        bxMap, byMap, bzMap, NxMap, NyMap, NzMap = _type6_attenuation_map_extent(self)
+        raw = _type6_torch_resource(
+            self, 'd_attenuation_image', timestep, subset,
+            fallback=getattr(self, 'vaimennus', np.empty(0)), dtype=like.dtype, device=like.device,
+        )
+        if raw.numel() != NxMap * NyMap * NzMap:
+            raise ValueError(
+                f'Expected the type-6 attenuation map to cover the union of every multi-resolution '
+                f'volume ({NxMap}x{NyMap}x{NzMap} = {NxMap * NyMap * NzMap} elements), got {raw.numel()}')
+        if raw.dim() >= 3:
+            attenMap = raw.reshape(NxMap, NyMap, NzMap).permute(2, 1, 0).contiguous()
+        else:
+            attenMap = raw.reshape(NzMap, NyMap, NxMap)
+        members, group_rows, group_bz, group_nz, attNx, z_offsets = _type6_attenuation_group(self, volume)
+        representative = members[0]
+        cache_key = (int(timestep), int(subset), representative, str(like.device), like.dtype)
+        source = attenuation_source_cache.get(cache_key)
+        if source is None:
+            source_np, source_attNx = _type6_attenuation_source_numpy(
+                self, attenMap.detach().to('cpu', dtype=torch.float64).numpy(), representative,
+                bz_override=group_bz, nz_override=group_nz)
+            if source_attNx != attNx:
+                raise RuntimeError('Type-6 attenuation group grid changed while building its source lattice')
+            source = torch.as_tensor(source_np, dtype=like.dtype, device=like.device)
+            attenuation_source_cache[cache_key] = source
+        gridNx, gridNy = _type6_rotation_grid(self, volume)
+        gridNz, _, _ = axial_grid(volume)
+        srcNz, srcNy, srcNx = (int(v) for v in source.shape)
+        dx, dy = float(self.dx[volume]), float(self.dy[volume])
+        radians = float(self.swivelAngles[view]) * np.pi / 180.
+        cosine, sine = float(np.cos(radians)), float(np.sin(radians))
+        panel_values = np.asarray(getattr(self, 'blurPlanes2F', np.empty(0)))
+        panel_shift_vox = (float(_type6_volume_view_value(self, 'blurPlanes2F', 0, view))
+                           if panel_values.size else 0.)
+        panel_shift = panel_shift_vox * float(self.dx[0]) / dx
+        offset_x, offset_y = -sine * panel_shift, cosine * panel_shift
+        theta = torch.tensor([[[(cosine * attNx / srcNx),
+                               (-sine * dy * group_rows / (dx * srcNx)), 2. * offset_x / srcNx],
+                              [(sine * dx * attNx / (dy * srcNy)),
+                               (cosine * group_rows / srcNy), 2. * offset_y / srcNy]]], dtype=source.dtype, device=source.device)
+        sample_grid = functional.affine_grid(
+            theta.expand(srcNz, -1, -1), (srcNz, 1, group_rows, attNx), align_corners=False)
+        rotated = functional.grid_sample(
+            source.unsqueeze(1), sample_grid, mode='bilinear', padding_mode='zeros', align_corners=False
+        ).squeeze(1)
+        accumulated = torch.cumsum(rotated, dim=2)
+        previous = torch.cat((torch.zeros_like(accumulated[:, :, :1]), accumulated[:, :, :-1]), dim=2)
+        dx_path = float(self.dx[volume])
+        import os
+        try:
+            attenuation_mode = int(os.environ.get('TYPE6_ATTCONV', '2')[:1])
+        except (TypeError, ValueError):
+            attenuation_mode = 2
+        if attenuation_mode == 0:
+            factors_group = torch.exp(-dx_path * accumulated)
+        elif attenuation_mode == 1:
+            factors_group = torch.exp(-0.5 * dx_path * (previous + accumulated))
+        else:
+            optical_depth = dx_path * (accumulated - previous)
+            safe_depth = torch.where(torch.abs(optical_depth) < 1e-4, torch.ones_like(optical_depth), optical_depth)
+            voxel_average = -torch.expm1(-safe_depth) / safe_depth
+            small = torch.abs(optical_depth) < 1e-4
+            voxel_average = torch.where(
+                small, 1. - optical_depth * (0.5 - optical_depth * (1. / 6. - optical_depth / 24.)),
+                voxel_average,
+            )
+            factors_group = torch.exp(-dx_path * previous) * voxel_average
+        pad_lo, _ = _type6_padding_z(self, volume)
+        row_off = (group_rows - gridNy) // 2
+        xoff = (attNx - gridNx) // 2
+        z_group = z_offsets[volume] + torch.arange(gridNz, device=like.device) - pad_lo
+        y_group = row_off + torch.arange(gridNy, device=like.device)
+        x_group = xoff + torch.arange(gridNx, device=like.device)
+        valid_z = (z_group >= 0) & (z_group < srcNz)
+        z_safe = z_group.clamp(0, max(srcNz - 1, 0))
+        y_safe = y_group.clamp(0, max(group_rows - 1, 0))
+        x_safe = x_group.clamp(0, max(attNx - 1, 0))
+        factors = factors_group[z_safe[:, None, None], y_safe[None, :, None], x_safe[None, None, :]]
+        valid = (valid_z[:, None, None]
+                 & (y_group[None, :, None] >= 0) & (y_group[None, :, None] < group_rows)
+                 & (x_group[None, None, :] >= 0) & (x_group[None, None, :] < attNx))
+        return torch.where(valid, factors, torch.ones_like(factors))
+
+    def kernel(volume: int, timestep: int, subset: int, view: int, like: Any) -> Any:
+        if bool(getattr(self, 'CDRFOnTheFly', False)):
+            return torch.as_tensor(_type6_on_the_fly_cdrf(self, volume, view),
+                                   dtype=like.dtype, device=like.device)
+        return (
+            getattr(self, 'd_gFilter', [])[volume].to(device=like.device, dtype=like.dtype)
+            if isinstance(getattr(self, 'd_gFilter', None), list)
+            and volume < len(getattr(self, 'd_gFilter', []))
+            else _type6_torch_resource(
+                self, 'd_gFilter', timestep, subset,
+                fallback=_type6_volume_kernel(self, volume), dtype=like.dtype, device=like.device,
+            )
+        )
+
     return SimpleNamespace(
         zeros=lambda shape, like: torch.zeros(shape, dtype=like.dtype, device=like.device),
         reshape_image=lambda value, shape: value.reshape(shape),
         reshape_measurement=lambda value, shape: value.reshape(shape),
         flatten_image=lambda value: value.reshape(-1),
         flatten_measurement=lambda value: value.reshape(-1),
+        stack_views=lambda values: torch.stack(values, dim=0),
+        rotation_grid=lambda volume: _type6_rotation_grid(self, volume),
+        axial_grid=axial_grid,
+        expand_kernel=expand_kernel,
         rotate=lambda value, angle: rotate(value, angle, interpolation=InterpolationMode.BILINEAR, fill=0.0),
+        rotate_volume=rotate_volume,
+        rotate_volume_adjoint=rotate_volume_adjoint,
+        resample_adjoint=resample_adjoint,
         attenuation=lambda value, mu, dx: value * torch.exp(-torch.cumsum(mu, dim=2) * dx),
         shift_kernel=shift_kernel,
         blur=blur,
@@ -2512,17 +3478,13 @@ def _type6_torch_ops(self: Any):
         set_view=lambda stack, index, value: stack.__setitem__(index, value),
         add_to=lambda target, value: target.add_(value),
         multiply=lambda left, right: left * right,
-        resample=lambda value, volume, direction: resample_resize_proj6(value, self, volume, direction=direction),
-        attenuation_image=attenuation_image,
-        kernel=lambda volume, timestep, subset, like: (
-            getattr(self, 'd_gFilter', [])[volume].to(device=like.device, dtype=like.dtype)
-            if isinstance(getattr(self, 'd_gFilter', None), list)
-            and volume < len(getattr(self, 'd_gFilter', []))
-            else _type6_torch_resource(
-                self, 'd_gFilter', timestep, subset,
-                fallback=_type6_volume_kernel(self, volume), dtype=like.dtype, device=like.device,
-            )
+        resample=lambda value, volume, direction, grid=None: (
+            resample_grid(value, volume, direction, grid) if grid is not None
+            else resample_resize_proj6(value, self, volume, direction=direction)
         ),
+        attenuation_image=attenuation_image,
+        attenuation_factors=attenuation_factors,
+        kernel=kernel,
         weights=lambda data, projections, timestep, subset: _type6_torch_measurement_weights(
             self, data, projections, timestep, subset,
         ),
@@ -2538,74 +3500,76 @@ def type6_forward(self: Any, image: Any, output: Any, volume: int, subset: int, 
     projections = int(self.nProjSubset[timestep][subset])
     start = int(np.sum(self.nProjSubset[:timestep, :]) + np.sum(self.nProjSubset[timestep, :subset]))
     nx, ny, nz = int(self.Nx[volume]), int(self.Ny[volume]), int(self.Nz[volume])
+    grid_nx, grid_ny = ops.rotation_grid(volume)
+    grid_nz, _, _ = ops.axial_grid(volume)
     source = ops.reshape_image(image, (nz, ny, nx))
-    attenuation = None
-    if self.attenuation_correction and self.CTAttenuation:
-        attenuation = ops.reshape_image(ops.attenuation_image(volume, timestep, subset, image), (nz, ny, nx))
-    kernel = ops.kernel(volume, timestep, subset, image)
-    image_views = ops.zeros((projections, nz, nx), image)
+    use_attenuation = bool(self.attenuation_correction and self.CTAttenuation)
+    image_views = []
     for local_view in range(projections):
         view = start + local_view
         angle = float(self.swivelAngles[view])
-        rotated = ops.rotate(source, angle)
-        rotated = ops.shift_image_y(rotated, -int(_type6_volume_view_value(self, 'blurPlanes2', volume, view)))
-        if attenuation is not None:
-            attenuation_rotated = ops.rotate(attenuation, angle)
-            attenuation_rotated = ops.shift_image_y(
-                attenuation_rotated, -int(_type6_volume_view_value(self, 'blurPlanes2', volume, view))
-            )
-            rotated = ops.attenuation(rotated, attenuation_rotated, float(self.dx[volume]))
+        # Match native type-6: the continuous panel translation is folded into
+        # the rotation sampling coordinates, scaled from the main-volume grid.
+        rotated = ops.rotate_volume(source, angle, volume, view)
+        if use_attenuation:
+            rotated = rotated * ops.attenuation_factors(volume, timestep, subset, view, image)
         depth_shift = int(_type6_volume_view_value(self, 'blurPlanes', volume, view))
-        shifted_kernel = ops.shift_kernel(kernel, depth_shift, nx)
+        kernel = ops.kernel(volume, timestep, subset, view, image)
+        shifted_kernel = (ops.shift_kernel(kernel, 0, grid_nx)
+                          if bool(getattr(self, 'CDRFOnTheFly', False))
+                          else ops.expand_kernel(ops.shift_kernel(kernel, depth_shift, nx), volume, grid_nx))
         blurred = ops.blur(rotated, shifted_kernel)
         projection = ops.sum_x(blurred) * _type6_path_weight(self, volume, view, nx)
-        if int(projection.shape[0]) != nz or int(projection.shape[1]) != nx:
-            projection = ops.resize(projection, (nz, nx))
-        ops.set_view(image_views, local_view, projection)
+        if int(projection.shape[0]) != grid_nz or int(projection.shape[1]) != grid_ny:
+            projection = ops.resize(projection, (grid_nz, grid_ny))
+        image_views.append(projection)
         if (local_view + 1) % 16 == 0:
             ops.synchronize(ops.device(image))
-    measurement = ops.resample(image_views, volume, 'image_to_measurement')
+    measurement = ops.resample(ops.stack_views(image_views), volume, 'image_to_measurement', grid=(grid_ny, grid_nz))
     measurement = ops.multiply(measurement, ops.weights(measurement, projections, timestep, subset))
     ops.add_to(output, ops.flatten_measurement(measurement))
 
 
 def type6_backward(self: Any, y: Any, output: Any, volume: int, subset: int, timestep: int, *, ops: Any | None = None) -> None:
     """SPECT rotation projector shared logic."""
+    if str(getattr(self, 'type6BPRotation', 'adjoint')).lower() != 'adjoint':
+        raise ValueError(
+            "The Python type-6 operator currently supports type6BPRotation='adjoint' only; "
+            "the 'fast' gather is not implemented by this backend."
+        )
     ops = _type6_torch_ops(self) if ops is None else ops
     projections = int(self.nProjSubset[timestep][subset])
     rows = int(getattr(self, 'measurement_nRowsD', self.nRowsD))
     cols = int(getattr(self, 'measurement_nColsD', self.nColsD))
     data = ops.reshape_measurement(y, (projections, cols, rows))
     data = ops.multiply(data, ops.weights(data, projections, timestep, subset))
-    data = ops.resample(data, volume, 'measurement_to_image')
     start = int(np.sum(self.nProjSubset[:timestep, :]) + np.sum(self.nProjSubset[timestep, :subset]))
     nx, ny, nz = int(self.Nx[volume]), int(self.Ny[volume]), int(self.Nz[volume])
-    attenuation = None
-    if self.attenuation_correction and self.CTAttenuation:
-        attenuation = ops.reshape_image(ops.attenuation_image(volume, timestep, subset, y), (nz, ny, nx))
-    kernel = ops.kernel(volume, timestep, subset, y)
+    grid_nx, grid_ny = ops.rotation_grid(volume)
+    grid_nz, _, _ = ops.axial_grid(volume)
+    data = ops.resample_adjoint(data, volume, grid=(grid_ny, grid_nz))
+    use_attenuation = bool(self.attenuation_correction and self.CTAttenuation)
     image = ops.zeros((nz, ny, nx), y)
     for local_view in range(projections):
         view = start + local_view
         angle = float(self.swivelAngles[view])
         projection = data[local_view]
-        if int(projection.shape[0]) != nz or int(projection.shape[1]) != ny:
-            projection = ops.resize(projection, (nz, ny))
+        if int(projection.shape[0]) != grid_nz or int(projection.shape[1]) != grid_ny:
+            projection = ops.resize(projection, (grid_nz, grid_ny))
         depth_shift = int(_type6_volume_view_value(self, 'blurPlanes', volume, view))
-        smeared = ops.smear(projection, nx) * _type6_path_weight(self, volume, view, nx)
+        kernel = ops.kernel(volume, timestep, subset, view, y)
+        smeared = ops.smear(projection, grid_nx) * _type6_path_weight(self, volume, view, nx)
         # The forward projection attenuates before blurring (see type6_forward and the C++
         # reference backProjectionType6Angle in functions.hpp), and the two steps do not
         # commute, so the adjoint has to blur first and attenuate second, using the same
         # rotated/shifted attenuation map as before.
-        blurred = ops.blur(smeared, ops.shift_kernel(kernel, depth_shift, nx))
-        if attenuation is not None:
-            attenuation_rotated = ops.rotate(attenuation, angle)
-            attenuation_rotated = ops.shift_image_y(
-                attenuation_rotated, -int(_type6_volume_view_value(self, 'blurPlanes2', volume, view))
-            )
-            blurred = ops.attenuation(blurred, attenuation_rotated, float(self.dx[volume]))
-        rotated = ops.shift_image_y(blurred, int(_type6_volume_view_value(self, 'blurPlanes2', volume, view)))
-        ops.add_to(image, ops.rotate(rotated, -angle))
+        shifted_kernel = (ops.shift_kernel(kernel, 0, grid_nx)
+                          if bool(getattr(self, 'CDRFOnTheFly', False))
+                          else ops.expand_kernel(ops.shift_kernel(kernel, depth_shift, nx), volume, grid_nx))
+        blurred = ops.blur(smeared, shifted_kernel, adjoint=True)
+        if use_attenuation:
+            blurred = blurred * ops.attenuation_factors(volume, timestep, subset, view, y)
+        ops.add_to(image, ops.rotate_volume_adjoint(blurred, angle, volume, view))
         if (local_view + 1) % 16 == 0:
             ops.synchronize(ops.device(y))
     if self.useMaskBP:

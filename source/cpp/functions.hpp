@@ -24,6 +24,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <vector>
 #if defined(CUDA) || defined(HIP)
@@ -4261,14 +4262,91 @@ inline af::array backViewFusedType6(const af::array& fp, const int view, const A
 // such kernel, so w = n .* s .* g is built here for the views uu ... uu + length - 1 (nRowsD x nColsD x length, the layout of the
 // measurements of the subset) from the host arrays that the device buffers d_norm / d_scat are filled from (see
 // ProjectorClass::createBuffers). The forward projection is multiplied by w, and the backprojection by w too (data is multiplied by w,
-// and the sensitivity image backprojects w instead of ones), which keeps the two adjoint. Returns an empty array when no correction is
-// enabled
+// and the sensitivity image backprojects w instead of ones), which keeps the two adjoint.
+// The type-1/TOTLENGTH central-ray normalization is another diagonal measurement weight. It is evaluated with ArrayFire expressions on
+// every call (no persistent map/cache). The type-1 ray is clipped by extendRayToEllipse: an xy ellipse (or box) intersected with the axial
+// z slab. Multiplying the existing type-6 factor dx[i]/(dx[0]*dy[0]*dz[0]) by voxelVolume/chord gives dx[i]/chord. This factor is common
+// to all volumes, so it can be applied after their FP sum and before their BP sum, including fused/batched paths.
+inline af::array type6CentralRayPathWeights(const Weighting& w_vec, const scalarStruct& inputScalars,
+	const int64_t uu, const int64_t length, const int timestep) {
+	const dim_t rows = static_cast<dim_t>(inputScalars.nRowsD), cols = static_cast<dim_t>(inputScalars.nColsD);
+	const int64_t geomStart = geomViewStartType6(w_vec, static_cast<int64_t>(timestep));
+	const float voxelVolume = inputScalars.dx[0] * inputScalars.dy[0] * inputScalars.dz[0];
+	const float cx = inputScalars.ellipseCenterX, cy = inputScalars.ellipseCenterY, cz = inputScalars.ellipseCenterZ;
+	const float rx = inputScalars.ellipseRadiusX, ry = inputScalars.ellipseRadiusY, rz = inputScalars.ellipseRadiusZ;
+	const bool box = inputScalars.ellipsePower > 1.0e20f;
+	const bool ellipse = inputScalars.ellipsePower == 2.f;
+	const af::array rowIndex = af::tile(af::range(af::dim4(rows, 1), 0), 1, cols);
+	const af::array colIndex = af::tile(af::range(af::dim4(1, cols), 1), rows, 1);
+	const af::array rowOffset = (rowIndex - .5f * static_cast<float>(rows - 1)) * w_vec.dPitchX;
+	const af::array axialOffset = (colIndex - .5f * static_cast<float>(cols - 1)) * w_vec.dPitchY;
+	af::array stacked;
+	for (int64_t kk = 0; kk < length; ++kk) {
+		const int64_t u1 = uu + geomStart + kk;
+		const float angle = w_vec.swivelAngles[u1] * static_cast<float>(M_PI) / 180.f;
+		const float nx = std::cos(angle), ny = std::sin(angle);
+		// blurPlanes (distInt) is the type-1 source-to-axis geometry before the
+		// collimator depth is added: s_n = (blurPlanes - Nx/2) * dx[0].
+		// extendRayToEllipse keeps this source point when it is inside support,
+		// and clips it to the entry point when it is outside.
+		const float sourceN = w_vec.radiusPerProj != nullptr && w_vec.angles != nullptr
+			? w_vec.radiusPerProj[u1] * std::cos((w_vec.angles[u1] - w_vec.swivelAngles[u1]) * static_cast<float>(M_PI) / 180.f) + w_vec.CORtoDetectorSurface
+			: (w_vec.distInt != nullptr
+				? (static_cast<float>(w_vec.distInt[u1]) - .5f * static_cast<float>(inputScalars.Nx[0])) * inputScalars.dx[0]
+				: -std::numeric_limits<float>::infinity());
+		const float panelShift = w_vec.distFloat2 != nullptr ? w_vec.distFloat2[u1] * inputScalars.dx[0] : 0.f;
+		const af::array qx = -ny * (rowOffset + panelShift);
+		const af::array qy = nx * (rowOffset + panelShift);
+		af::array valid = (af::abs(axialOffset - cz) <= rz);
+		af::array chord;
+		if (box) {
+			af::array lo = af::constant(-1.0e20f, rows, cols);
+			af::array hi = af::constant(1.0e20f, rows, cols);
+			if (std::abs(nx) < 1.0e-8f)
+				valid = valid & (qx >= cx - rx) & (qx <= cx + rx);
+			else {
+				const af::array tx0 = (cx - rx - qx) / nx, tx1 = (cx + rx - qx) / nx;
+				lo = af::max(lo, af::min(tx0, tx1));
+				hi = af::min(hi, af::max(tx0, tx1));
+			}
+			if (std::abs(ny) < 1.0e-8f)
+				valid = valid & (qy >= cy - ry) & (qy <= cy + ry);
+			else {
+				const af::array ty0 = (cy - ry - qy) / ny, ty1 = (cy + ry - qy) / ny;
+				lo = af::max(lo, af::min(ty0, ty1));
+				hi = af::min(hi, af::max(ty0, ty1));
+			}
+			chord = af::max(hi - af::max(lo, sourceN), 0.f);
+			valid = valid & (chord > 1.0e-6f);
+		} else if (ellipse) {
+			const float invRx2 = 1.f / (rx * rx), invRy2 = 1.f / (ry * ry);
+			const float A = nx * nx * invRx2 + ny * ny * invRy2;
+			const af::array px = qx - cx, py = qy - cy;
+			const af::array B = 2.f * (px * (nx * invRx2) + py * (ny * invRy2));
+			const af::array C = px * px * invRx2 + py * py * invRy2 - 1.f;
+			const af::array disc = B * B - 4.f * A * C;
+			const af::array root = af::sqrt(af::max(disc, 0.f));
+			const af::array tExit = (-B + root) / (2.f * A);
+			const af::array tEntry = (-B - root) / (2.f * A);
+			chord = af::max(tExit - af::max(tEntry, sourceN), 0.f);
+			valid = valid & (disc > 1.0e-12f) & (chord > 1.0e-6f);
+		} else {
+			mexPrint("Projector type 6 path normalization requires box or elliptical SPECT support");
+			return af::constant(0.f, rows, cols, length);
+		}
+		const af::array plane = af::select(valid, voxelVolume / af::max(chord, 1.0e-6f), 0.f);
+		stacked = kk == 0 ? plane : af::join(2, stacked, plane);
+	}
+	return stacked;
+}
+
 inline af::array type6Weights(const scalarStruct& inputScalars, const Weighting& w_vec, const int64_t uu, const int64_t length, const int timestep) {
 	const bool useNorm = inputScalars.normalization_correction && inputScalars.size_norm > 1ULL && w_vec.normHost != nullptr;
 	const bool useScat = inputScalars.scatter == 1U && inputScalars.size_scat > 1ULL && w_vec.corrHost != nullptr;
 	const bool useGlobal = inputScalars.global_factor != 1.f;
+	const af::array pathWeight = type6CentralRayPathWeights(w_vec, inputScalars, uu, length, timestep);
 	if (!useNorm && !useScat && !useGlobal)
-		return af::array();
+		return pathWeight;
 	const size_t nDet = static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD);
 	std::vector<float> wh(nDet * static_cast<size_t>(length), inputScalars.global_factor);
 	if (useNorm) {
@@ -4296,7 +4374,7 @@ inline af::array type6Weights(const scalarStruct& inputScalars, const Weighting&
 		for (size_t dd = 0; dd < wh.size(); dd++)
 			wh[dd] *= src[dd];
 	}
-	return af::array(static_cast<dim_t>(inputScalars.nRowsD), static_cast<dim_t>(inputScalars.nColsD), static_cast<dim_t>(length), wh.data());
+	return pathWeight * af::array(static_cast<dim_t>(inputScalars.nRowsD), static_cast<dim_t>(inputScalars.nColsD), static_cast<dim_t>(length), wh.data());
 }
 
 #ifndef CPU

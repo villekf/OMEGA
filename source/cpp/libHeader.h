@@ -593,6 +593,8 @@ struct inputStruct {
     uint32_t cdrfModel6 = 0U;
     // How the backprojection of projector type 6 rotates a view back into the image: 0 = exact adjoint of the forward rotation, 1 = fast gather
     uint32_t bpRot6 = 0U;
+    float* radiusPerProj = nullptr;
+    float CORtoDetectorSurface = 0.f;
 };
 
 void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting& w_vec, RecMethods& MethodList) {
@@ -1001,6 +1003,13 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     } else if (inputScalars.SPECT && inputScalars.projector_type == 6) {
         inputScalars.nColsD = options.nColsD;
         inputScalars.nRowsD = options.nRowsD;
+        inputScalars.ellipseCenterX = options.ellipseCenterX;
+        inputScalars.ellipseCenterY = options.ellipseCenterY;
+        inputScalars.ellipseCenterZ = options.ellipseCenterZ;
+        inputScalars.ellipseRadiusX = options.ellipseRadiusX;
+        inputScalars.ellipseRadiusY = options.ellipseRadiusY;
+        inputScalars.ellipseRadiusZ = options.ellipseRadiusZ;
+        inputScalars.ellipsePower = std::isfinite(options.ellipsePower) ? options.ellipsePower : std::numeric_limits<float>::max();
     } else {
         inputScalars.nColsD = options.Nang;
         inputScalars.nRowsD = options.Ndist;
@@ -1113,6 +1122,8 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.distInt2 = options.blurPlanes2;
         w_vec.distFloat = options.blurPlanesF;
         w_vec.distFloat2 = options.blurPlanes2F;
+        w_vec.radiusPerProj = options.radiusPerProj;
+        w_vec.CORtoDetectorSurface = options.CORtoDetectorSurface;
         inputScalars.maxPanelShift6 = 0.f;
         if (w_vec.distFloat2 != nullptr) {
             for (int64_t pp = 0; pp < inputScalars.nProjections; pp++)

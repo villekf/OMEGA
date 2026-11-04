@@ -688,6 +688,14 @@ def loadCorrections(options):
                     options.vaimennus = np.flip(attVolume(options.vaimennus), 2)
                 if options.attIncm:
                     options.vaimennus = options.vaimennus / 10.
+                # Native type-6 reads attenuation images as an x-fastest
+                # (Fortran-order) voxel buffer. prepareType6Attenuation can
+                # return a C-contiguous 3D array (for example after scipy.zoom),
+                # and _as_ptr intentionally preserves the memory order of
+                # contiguous arrays. Flatten here so the native pointer keeps
+                # the logical x/y/z layout without changing _as_ptr's behavior
+                # for other inputs.
+                options.vaimennus = np.asfortranarray(options.vaimennus, dtype=np.float32).ravel(order='F')
             else:
                 # The Python SPECT Siddon/ODRT path prepares full-FOV fine and
                 # coarse maps, including dynamic frames and shifted origins.

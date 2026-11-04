@@ -61,65 +61,90 @@ end
 outputFP = [];
 A = [];
 
-function outputFP = forwardProjectionType6(options, recApu, loopVar, koko)
+function outputFP = forwardProjectionType6(options, recApu, loopVar, koko, nMeas, subIter)
+    % Some implementations keep the full measurement table and identify the
+    % requested subset through nMeas/subIter instead of calling splitInput.
+    if numel(nMeas) > 1 && subIter >= 0 && subIter + 2 <= numel(nMeas)
+        firstView = double(nMeas(subIter + 1));
+        lastView = double(nMeas(subIter + 2));
+        subsetViews = lastView - firstView;
+        if ~isscalar(koko) || koko ~= subsetViews
+            koko = subsetViews;
+        end
+        if numel(norm_input) == options.nRowsD * options.nColsD * double(nMeas(end))
+            norm_input = norm_input(firstView * options.nRowsD * options.nColsD + 1:lastView * options.nRowsD * options.nColsD);
+        end
+        if numel(corr_input) == options.nRowsD * options.nColsD * double(nMeas(end))
+            corr_input = corr_input(firstView * options.nRowsD * options.nColsD + 1:lastView * options.nRowsD * options.nColsD);
+        end
+    end
     outputFP = zeros(options.nRowsD, options.nColsD, koko, options.cType);
+    if isempty(recApu)
+        return
+    end
+    viewIndices = options.uu:(options.uu + koko - 1);
     for ii = loopVar
-        voxelSize = options.FOVa_x / single(options.Nx(ii));
         u1 = options.uu;
-        apuArr = reshape(recApu, options.Nx(ii), options.Ny(ii), options.Nz(ii));
+        if iscell(recApu)
+            if ii > numel(recApu) || isempty(recApu{ii}), continue, end
+            apuArr = reshape(recApu{ii}, options.Nx(ii), options.Ny(ii), options.Nz(ii));
+        else
+            apuArr = reshape(recApu, options.Nx(ii), options.Ny(ii), options.Nz(ii));
+        end
+        [geom, gridSize] = type6NativeOperator('volume-geometry', options, ii);
+        gridNx = gridSize(1);
+        gridNy = gridSize(2);
+        [gridNz, padLo, padHi] = type6NativeOperator('axial-geometry', options, ii);
+        transA = double(options.dy(1)) / double(options.dy(ii));
+        transB = 0.5 * gridNy + (0.5 - 0.5 * options.nRowsD) * transA - 0.5;
+        axialA = double(options.dz(1)) / double(options.dz(ii));
+        axialB = -double(options.bz(ii)) / double(options.dz(ii)) + ...
+            (0.5 - 0.5 * options.nColsD) * axialA - 0.5 + padLo;
 
-        for kk = 1:koko % todo add support for non-square fov
+        for kk = 1:koko
             kuvaRot = apuArr;
-            panelTilt = options.swivelAngles(u1) - options.angles(u1) + 180;
-            panelShift = options.radiusPerProj(u1) * sind(panelTilt) / voxelSize;
+            [offX, offY] = type6NativeOperator('rotation-parameters', options, ii, u1, ...
+                gridSize, gridNz, padLo, padHi);
+            kuvaRot = type6NativeOperator('type6-rotate', kuvaRot, ...
+                -options.swivelAngles(u1), offX, offY, geom);
+            kuvaRot = cat(3, zeros(gridNx, gridNy, padLo, 'like', kuvaRot), kuvaRot, ...
+                zeros(gridNx, gridNy, padHi, 'like', kuvaRot));
 
-            % 1. Rotate the image
-            kuvaRot = imrotate(kuvaRot, -options.swivelAngles(u1), 'bilinear','crop');
-            
-            % 2. Translate the image
-            kuvaRot = imtranslate(kuvaRot, [-panelShift, 0, 0]);
-
-            % 3. Attenuation correction
+            % 3. Attenuation correction on the same expanded, rotated grid.
             if options.attenuation_correction
-                attenuationImage = options.vaimennus;
-
-                % 3.1. rotate attenuation map
-                attenuationImage = imrotate(attenuationImage, -options.swivelAngles(u1), 'bilinear','crop');
-
-                % 3.2 translate attenuation map
-                % attenuationImage = imtranslate(attenuationImage, [-panelShift, 0,0], FillValues=0);
-
-                % 3.3 accumulate attenuation
-                attenuationImage = cumsum(attenuationImage, 1);
-
-                % 3.4 multiply each accumulated element by voxel size and exponentiate attenuation
-                attenuationImage = exp(-options.dx * attenuationImage);
-
-                % 3.5 normalize attenuation map
-                %attenuationImageSum = sum(attenuationImage, 1) / double(options.Nx(1));
-                %attenuationImageSum(attenuationImageSum == 0) = 1;
-                %attenuationImage = attenuationImage ./ attenuationImageSum;
-
-                % 3.6 pointwise multiply with image volume
+                attenuationImage = type6NativeOperator('attenuation-factors', options, ii, u1);
                 kuvaRot = kuvaRot .* attenuationImage;
             end
 
-            % 4. Convolve with detector PSF
-            PSF = imtranslate(options.gFilter, [0, 0, options.blurPlanes(u1)], FillValues=0);
-            PSF = PSF(:, :, 1:options.Nx(1));
-            PSF = permute(PSF, [3 2 1]);
-            for jj = 1 : options.Ny(1)
-                kuvaRot(jj, :, :) = conv2(squeeze(kuvaRot(jj, :, :)), squeeze(PSF(jj,:,:)), 'same');
+            % 4. Convolve each depth plane with the detector PSF when a
+            % precomputed bank is available. The on-the-fly CDRF is handled
+            % by the shared type-6 native kernel helper.
+            if isfield(options, 'CDRFOnTheFly') && options.CDRFOnTheFly
+                PSF = type6NativeOperator('cdrf', options, ii, u1);
+            elseif ~isempty(options.gFilter)
+                PSF = imtranslate(options.gFilter, [0, 0, options.blurPlanes(u1)], FillValues=0);
+                PSF = PSF(:, :, 1:gridNx);
+                PSF = permute(PSF, [3 2 1]);
+            else
+                PSF = [];
+            end
+            if ~isempty(PSF)
+                for jj = 1 : gridNx
+                    kuvaRot(jj, :, :) = conv2(squeeze(kuvaRot(jj, :, :)), squeeze(PSF(jj,:,:)), 'same');
+                end
             end
             
-            % 5. Sum
-            kuvaRot = sum(kuvaRot, 1);
-            kuvaRot = squeeze(kuvaRot);
-            kuvaRot = kuvaRot / double(options.Nx(1));
+            % 5. Sum depth and apply the exact native detector resampling.
+            kuvaRot = reshape(sum(kuvaRot, 1), gridNy, gridNz);
+            kuvaRot = type6NativeOperator('grid-to-detector', kuvaRot, options.nRowsD, transA, transB);
+            kuvaRot = type6NativeOperator('grid-to-detector', kuvaRot.', options.nColsD, axialA, axialB).';
+            kuvaRot = kuvaRot * (options.dx(ii) / options.dx(1)) / (options.dy(1) * options.dz(1));
             outputFP(:, :, kk) = outputFP(:, :, kk) + kuvaRot;
             u1 = u1 + 1;
         end
     end
+    outputFP = outputFP .* type6CentralRayWeights(options, viewIndices);
+    outputFP = outputFP .* type6MeasurementWeights(options, norm_input, corr_input, viewIndices);
 end
 
 if iscell(recApu)
@@ -131,13 +156,13 @@ else
         error('Input image has incorrect dimensions! Must equal to Nx*Ny*Nz!')
     end
 end
-if (~ismac && (options.implementation == 4 || options.implementation == 1)) || (ismac && options.projector_type == 6)
-    if options.projector_type == 6
-        outputFP = forwardProjectionType6(options, recApu, loopVar, koko);
-        A = [];
-        outputFP = outputFP(:);
-        outputFP(outputFP < options.epps) = options.epps;
-    else
+if options.projector_type == 6
+    outputFP = forwardProjectionType6(options, recApu, loopVar, koko, nMeas, subIter);
+    A = [];
+    outputFP = outputFP(:);
+    return
+end
+if (~ismac && (options.implementation == 4 || options.implementation == 1))
         % The CPU MEX files read the attenuation image without type conversion
         if isfield(options, 'vaimennus') && isnumeric(options.vaimennus)
             if options.implementation == 4 && options.useSingles
@@ -250,7 +275,6 @@ if (~ismac && (options.implementation == 4 || options.implementation == 1)) || (
                 outputFP = outputFP + apu;
             end
         end
-    end
 elseif options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || ismac
     A = [];
     % Determined here, before recApu is reshaped/converted below, so that

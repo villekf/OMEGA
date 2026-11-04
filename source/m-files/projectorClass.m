@@ -1354,7 +1354,11 @@ classdef projectorClass
             obj.param.use_device = uint32(obj.param.use_device);
             if obj.param.useMultiResolutionVolumes && obj.param.attenuation_correction && obj.param.CT_attenuation && ...
                     isfield(obj.param, 'vaimennus') && ~isempty(obj.param.vaimennus)
-                obj.param = prepareMultiResolutionAttenuation(obj.param);
+                if obj.param.projector_type == 6
+                    obj.param = padType6Attenuation(obj.param);
+                else
+                    obj.param = prepareMultiResolutionAttenuation(obj.param);
+                end
             end
         end
 

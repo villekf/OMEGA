@@ -1868,8 +1868,8 @@ class projectorClass:
         if self.projector_type not in [1, 2, 3, 4, 5, 6, 11, 14, 12, 13, 16, 21, 22, 23, 24, 26, 31, 32, 33, 34, 41, 42, 43, 44, 45, 51, 15, 54, 55, 61, 62, 66]:
             raise ValueError('The selected projector type is not supported!')
         if (self.attenuation_correction and self.CT_attenuation and self.useMultiResolutionVolumes and self.SPECT):
-            if self.projector_type not in (1, 2, 11, 21, 22):
-                raise ValueError('Multi-resolution image-domain attenuation requires native SPECT Siddon or orthogonal projectors for both forward and backward projection.')
+            if self.projector_type not in (1, 2, 6, 11, 21, 22, 66):
+                raise ValueError('Multi-resolution image-domain attenuation requires SPECT projector type 1, 2, or 6 for both forward and backward projection.')
             if self.implementation == 2 and self.useCPU:
                 raise ValueError('Multi-resolution image-domain attenuation is not implemented in the native C++ CPU reconstruction path.')
             if self.useMetal:
@@ -3018,4 +3018,6 @@ class projectorClass:
             ('type6AttenuationCache', ctypes.c_float),
             ('cdrfModel6', ctypes.c_uint32),
             ('bpRot6', ctypes.c_uint32),
+            ('radiusPerProj', ctypes.POINTER(ctypes.c_float)),
+            ('CORtoDetectorSurface', ctypes.c_float),
         ]

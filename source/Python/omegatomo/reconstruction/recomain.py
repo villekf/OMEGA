@@ -148,7 +148,7 @@ _POINTER_NAME_OVERRIDES = {
 # type-6 and ODRT PSF lookup buffers), rather than through
 # _POINTER_NAME_OVERRIDES and _as_ptr().
 _POINTER_SPECIAL_FIELDS = {'blurPlanes', 'blurPlanes2', 'gFilter', 'gFSize', 'gFilterODRT',
-                           'blurPlanesF', 'blurPlanes2F', 'CDRFCoeffs6', 'CDRFOnTheFly', 'cdrfModel6', 'bpRot6'}
+                           'blurPlanesF', 'blurPlanes2F', 'CDRFCoeffs6', 'CDRFOnTheFly', 'cdrfModel6', 'bpRot6', 'radiusPerProj', 'CORtoDetectorSurface'}
 
 
 # Large measurement-sized data fields that _privateOptionsCopy() shares with the
@@ -471,6 +471,9 @@ def transferData(options):
         options.param.blurPlanesF = options.blurPlanesF[0].ctypes.data_as(ctypes.POINTER(ctypes.c_float))
         options.param.blurPlanes2F = options.blurPlanes2F[0].ctypes.data_as(ctypes.POINTER(ctypes.c_float))
         options.param.CDRFCoeffs6 = options.CDRFCoeffs6.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+        options.radiusPerProj = np.ascontiguousarray(options.radiusPerProj, dtype=np.float32).reshape(-1)
+        options.param.radiusPerProj = options.radiusPerProj.ctypes.data_as(ctypes.POINTER(ctypes.c_float)) if options.radiusPerProj.size else None
+        options.param.CORtoDetectorSurface = float(options.CORtoDetectorSurface)
         options.param.CDRFOnTheFly = ctypes.c_bool(bool(options.CDRFOnTheFly)).value
         # The model of the collimator response, 'gaussian' or 'square'; the latter is a property of the on-the-fly CDRF
         from omegatomo.projector.proj import cdrfModelIndex

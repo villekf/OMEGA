@@ -133,15 +133,19 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	inputScalars.nMultiVolumes = getScalarUInt32(options, 0, "nMultiVolumes");
 	if (inputScalars.attenuation_correction && inputScalars.multiResolution && inputScalars.nMultiVolumes > 0 &&
 		inputScalars.SPECT && inputScalars.CTAttenuation) {
-		if (inputScalars.projector_type != 1 && inputScalars.projector_type != 2 && inputScalars.projector_type != 11 &&
+		if (inputScalars.projector_type != 1 && inputScalars.projector_type != 2 && inputScalars.projector_type != 6 && inputScalars.projector_type != 11 &&
 			inputScalars.projector_type != 21 && inputScalars.projector_type != 22)
-			mexErrMsgTxt("Multi-resolution image-domain attenuation requires SPECT Siddon or orthogonal projectors (types 1, 2, 11, 21, or 22).");
+			mexErrMsgTxt("Multi-resolution image-domain attenuation requires SPECT Siddon, orthogonal, or rotation-based projectors (types 1, 2, 6, 11, 21, or 22).");
 #if defined(CPU)
 		mexErrMsgTxt("Multi-resolution image-domain attenuation is not implemented by the native C++ CPU projector.");
 #endif
 #if defined(METAL)
 		mexErrMsgTxt("Multi-resolution image-domain attenuation is not implemented by the Metal/MPS projector backend.");
 #endif
+		// The Siddon and orthogonal paths consume a packed fine/coarse attenuation map
+		// described by explicit grid metadata. Type 6 instead consumes one dense map
+		// covering the union of the image volumes and resamples it per volume.
+		if (inputScalars.projector_type != 6) {
 		const char* metadataFields[] = {
 			"imageAttenuationGridDims", "imageAttenuationGridSpacing", "imageAttenuationGridOrigin"
 		};
@@ -186,6 +190,7 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 			inputScalars.size_atten == frameStride * static_cast<uint64_t>(inputScalars.Nt);
 		if (!staticMapSize && !dynamicMapSize)
 			mexErrMsgTxt("The packed multi-resolution attenuation data do not match the fine/coarse grids and timeframe count.");
+		}
 	}
 	if (inputScalars.FPType == 5 || inputScalars.BPType == 5) {
 		inputScalars.meanFP = getScalarBool(options, 0, "meanFP");
@@ -296,7 +301,7 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "nColsD"));
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "nRowsD"));
 		inputScalars.nHeads = getScalarUInt32(getField(options, 0, "nHeads"));
-		if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
+		if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.projector_type == 6U) {
             inputScalars.coneOfResponseStdCoeffA = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffA"));
             inputScalars.coneOfResponseStdCoeffB = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffB"));
             inputScalars.coneOfResponseStdCoeffC = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffC"));
@@ -510,7 +515,8 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
         // The axial padding of the rotated grids depends on the geometry above and on the CDRF coefficients
         computePadZType6(inputScalars, w_vec.distFloat, w_vec.geomViews6);
         w_vec.swivelAngles = getSingles(options, "swivelAngles");
-        //w_vec.radiusPerProj = getSingles(options, "radiusPerProj");
+		w_vec.radiusPerProj = getSingles(options, "radiusPerProj");
+		w_vec.CORtoDetectorSurface = getScalarFloat(options, 0, "CORtoDetectorSurface");
 		// The precomputed filter bank is not used, or even computed, when the CDRF is computed on-the-fly
 		if (!inputScalars.CDRFOnTheFly) {
 			const mwSize* ind = mxGetDimensions(getField(options, 0, "gFilter"));

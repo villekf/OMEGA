@@ -81,72 +81,112 @@ elseif options.listmode > 0 && options.compute_sensitivity_image && ~options.use
 	end
 end
 
-function output = backwardProjectionType6(options, input, koko)
+function output = backwardProjectionType6(options, input, koko, norm_input, corr_input, nMeas, subIter)
+    % Implementations that do not split subsets in projectorClass pass the full
+    % measurement boundaries here. Restrict the input and view weights to the
+    % requested subset; options.ub already points at its first view.
+    nRowsProj = options.nRowsD * options.nColsD;
+    if numel(nMeas) > 1 && subIter >= 0 && subIter + 2 <= numel(nMeas)
+        firstView = double(nMeas(subIter + 1));
+        lastView = double(nMeas(subIter + 2));
+        subsetViews = lastView - firstView;
+        totalViews = double(nMeas(end));
+        if numel(input) == nRowsProj * totalViews
+            firstElement = firstView * nRowsProj + 1;
+            lastElement = lastView * nRowsProj;
+            input = input(firstElement:lastElement);
+            if numel(norm_input) == nRowsProj * totalViews
+                norm_input = norm_input(firstElement:lastElement);
+            end
+            if numel(corr_input) == nRowsProj * totalViews
+                corr_input = corr_input(firstElement:lastElement);
+            end
+        end
+        if numel(input) == nRowsProj * subsetViews
+            koko = subsetViews;
+        end
+    end
     fProj = reshape(input, options.nRowsD, options.nColsD, koko);
-    output = zeros(options.Nx(1) * options.Ny(1) * options.Nz(1), 1, options.cType);
-    voxelSize = options.FOVa_x / single(options.Nx(1));
-    u1 = options.ub;
-    for kk = 1 : koko
-        panelTilt = options.swivelAngles(u1) - options.angles(u1) + 180;
-        panelShift = options.radiusPerProj(u1) * sind(panelTilt) / voxelSize;
+    viewIndices = options.ub:(options.ub + koko - 1);
+    fProj = fProj .* type6CentralRayWeights(options, viewIndices);
+    fProj = fProj .* type6MeasurementWeights(options, norm_input, corr_input, viewIndices);
+    nVolumes = double(options.nMultiVolumes) + 1;
+    if options.nMultiVolumes > 0
+        output = cell(nVolumes, 1);
+    else
+        output = zeros(prod(double([options.Nx(1), options.Ny(1), options.Nz(1)])), 1, options.cType);
+    end
+    for volume = 1:nVolumes
+        [geom, gridSize] = type6NativeOperator('volume-geometry', options, volume);
+        gridNx = gridSize(1); gridNy = gridSize(2);
+        [gridNz, padLo, padHi] = type6NativeOperator('axial-geometry', options, volume);
+        transA = double(options.dy(1)) / double(options.dy(volume));
+        transB = 0.5 * gridNy + (0.5 - 0.5 * options.nRowsD) * transA - 0.5;
+        axialA = double(options.dz(1)) / double(options.dz(volume));
+        axialB = -double(options.bz(volume)) / double(options.dz(volume)) + ...
+            (0.5 - 0.5 * options.nColsD) * axialA - 0.5 + padLo;
+        volumeOutput = zeros(prod(double([options.Nx(volume), options.Ny(volume), options.Nz(volume)])), 1, options.cType);
+        u1 = options.ub;
+        for kk = 1:koko
+            panelShift = double(options.blurPlanes2F(u1)) * double(options.dx(1)) / double(options.dx(volume));
+            detector = fProj(:, :, kk);
+            detector = type6NativeOperator('detector-to-grid-adjoint', detector, gridNy, transA, transB);
+            detector = type6NativeOperator('detector-to-grid-adjoint', detector.', gridNz, axialA, axialB).';
+            kuvaRot = repmat(reshape(detector, 1, gridNy, gridNz), gridNx, 1, 1);
+            kuvaRot = kuvaRot * (options.dx(volume) / options.dx(1)) / (options.dy(1) * options.dz(1));
 
-        % 1. Smear the input FP across the image volume
-        kuvaRot = fProj(:, :, kk);
-        kuvaRot = permute(kuvaRot, [2 1 3]);
-        kuvaRot = repmat(kuvaRot, 1, 1, options.Nx(1));
-        kuvaRot = permute(kuvaRot, [3, 2, 1]);
-        kuvaRot = kuvaRot / double(options.Nx(1));
+            if isfield(options, 'CDRFOnTheFly') && options.CDRFOnTheFly
+                PSF = type6NativeOperator('cdrf', options, volume, u1);
+            elseif ~isempty(options.gFilter)
+                PSF = imtranslate(options.gFilter, [0, 0, options.blurPlanes(u1)], FillValues=0);
+                PSF = PSF(:, :, 1:gridNx);
+                PSF = permute(PSF, [3 2 1]);
+            else
+                PSF = [];
+            end
+            if ~isempty(PSF)
+                for depth = 1:gridNx
+                    kuvaRot(depth, :, :) = type6NativeOperator('conv-adjoint', ...
+                        squeeze(kuvaRot(depth, :, :)), squeeze(PSF(depth,:,:)));
+                end
+            end
 
-        % 2. Attenuation correction
-        if options.attenuation_correction
-            attenuationImage = options.vaimennus;
-            % 2.1. rotate attenuation map
-            attenuationImage = imrotate(attenuationImage, -options.swivelAngles(u1), 'bilinear','crop');
+            if options.attenuation_correction
+                attenuationImage = type6NativeOperator('attenuation-factors', options, volume, u1, gridSize, gridNz, panelShift);
+                kuvaRot = kuvaRot .* attenuationImage;
+            end
 
-            % 2.2 translate attenuation map
-            % attenuationImage = imtranslate(attenuationImage, [-panelShift, 0,0], FillValues=0);
-
-            % 2.3 accumulate attenuation
-            attenuationImage = cumsum(attenuationImage, 1);
-
-            % 2.4 multiply each accumulated element by voxel size and exponentiate attenuation
-            attenuationImage = exp(-options.dx * attenuationImage);
-            
-            % 2.5 normalize attenuation map
-            %attenuationImageSum = sum(attenuationImage, 1) / double(options.Nx(1));
-            %attenuationImageSum(attenuationImageSum == 0) = 1;
-            %attenuationImage = attenuationImage ./ attenuationImageSum;
-
-            % 2.6 pointwise multiply with image volume
-            kuvaRot = kuvaRot .* attenuationImage;
+            [offX, offY] = type6NativeOperator('rotation-parameters', options, volume, u1, ...
+                gridSize, gridNz, padLo, padHi);
+            kuvaRot = type6NativeOperator('type6-rotate-adjoint', kuvaRot, ...
+                -options.swivelAngles(u1), offX, offY, geom);
+            kuvaRot = kuvaRot(:, :, padLo + (1:double(options.Nz(volume))));
+            volumeOutput = volumeOutput + kuvaRot(:);
+            u1 = u1 + 1;
         end
-
-        % 3. Convolve with detector PSF
-        PSF = imtranslate(options.gFilter, [0, 0, options.blurPlanes(u1)], FillValues=0);
-        PSF = PSF(:, :, 1:options.Nx(1));
-        PSF = permute(PSF, [3 2 1]);
-        for ii = 1 : options.Nx(1)
-            kuvaRot(ii, :, :) = conv2(squeeze(kuvaRot(ii, :, :)), squeeze(PSF(ii,:,:)), 'same');
+        if options.nMultiVolumes > 0
+            output{volume} = volumeOutput;
+        else
+            output = volumeOutput;
         end
-        
-        % 4. Translate the image
-        kuvaRot = imtranslate(kuvaRot, [0, -panelShift, 0]);
-        
-        % 5. Rotate the image
-        kuvaRot = imrotate(kuvaRot, options.swivelAngles(u1), 'bilinear','crop');
-
-        output = output + kuvaRot(:);
-        u1 = u1 + 1;
     end
 end
 
-if (options.implementation == 4 && ~ismac) || (ismac && options.projector_type == 6)
+if options.projector_type == 6 || (options.implementation == 4 && ~ismac)
     if options.projector_type == 6
-        output = backwardProjectionType6(options, input, koko);
-        output(output < options.epps & output >= 0) = options.epps;
+        if isa(input, 'gpuArray')
+            error('Projector type 6 MATLAB implementation does not support gpuArray input.')
+        end
+        output = backwardProjectionType6(options, input, koko, norm_input, corr_input, nMeas, subIter);
         if noSensIm == 0
-            sensIm = backwardProjectionType6(options, ones(size(input)), koko);
-            sensIm(sensIm < options.epps) = 1;
+            sensIm = backwardProjectionType6(options, ones(size(input), 'like', input), koko, norm_input, corr_input, nMeas, subIter);
+            if iscell(sensIm)
+                for volume = 1:numel(sensIm)
+                    sensIm{volume}(sensIm{volume} < options.epps) = 1;
+                end
+            else
+                sensIm(sensIm < options.epps) = 1;
+            end
         else
             sensIm = 0;
         end

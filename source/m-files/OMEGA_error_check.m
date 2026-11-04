@@ -126,8 +126,8 @@ if options.useMultiResolutionVolumes && options.attenuation_correction && option
     if ~options.SPECT
         error('Multi-resolution image-domain attenuation correction is currently supported only for SPECT.')
     end
-    if ~ismember(options.projector_type, [1, 2, 11, 21, 22])
-        error('Multi-resolution image-domain attenuation requires SPECT Siddon or orthogonal projectors (types 1, 2, 11, 21, or 22).')
+    if ~ismember(options.projector_type, [1, 2, 6, 11, 21, 22])
+        error('Multi-resolution image-domain attenuation requires SPECT projector type 1, 2, 6, 11, 21, or 22.')
     end
     if options.implementation == 1 || options.implementation == 4
         error('Multi-resolution image-domain attenuation is not implemented by the CPU projector backends.')

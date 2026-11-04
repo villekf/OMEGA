@@ -130,7 +130,11 @@ if options.attenuation_correction && ~options.SPECT % PET attenuation
         end
     end
     if options.CT_attenuation && options.useMultiResolutionVolumes && options.nMultiVolumes > 0
-        options = prepareMultiResolutionAttenuation(options);
+        if options.projector_type == 6
+            options = padType6Attenuation(options);
+        else
+            options = prepareMultiResolutionAttenuation(options);
+        end
     elseif options.CT_attenuation
         if size(options.vaimennus,1) ~= options.Nx(1) || size(options.vaimennus,2) ~= options.Ny(1) || size(options.vaimennus,3) ~= options.Nz(1)
             if size(options.vaimennus,1) ~= options.N(1)

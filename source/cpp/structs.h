@@ -124,7 +124,8 @@ typedef struct Weighting_ {
 	// Sub-voxel accurate versions of the above, used by the rotation-based SPECT projector.
 	// distFloat is the distance from the collimator surface to the first image plane, in voxels,
 	// while distFloat2 is the lateral shift of the detector panel, also in voxels
-	float *distFloat = nullptr, *distFloat2 = nullptr;
+	float *distFloat = nullptr, *distFloat2 = nullptr, *radiusPerProj = nullptr;
+	float CORtoDetectorSurface = 0.f;
 	uint8_t* maskFP = nullptr, * maskBP = nullptr, * eFOVIndices = nullptr, *maskPrior = nullptr, *maskOffset = nullptr, *TOFIndices = nullptr;
 	uint16_t* axIndex = nullptr, * trIndex = nullptr;
 	uint32_t* detectorVector = nullptr;
