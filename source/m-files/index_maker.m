@@ -349,7 +349,24 @@ elseif (subsets > 1 && (options.subset_type == 8 || options.subset_type == 9 || 
             if options.useIndexBasedReconstruction
                 pituus(1) = numel(options.trIndex) / 2;
             else
-                pituus(1) = numel(options.x) / 6;
+                % The number of events. x can be a cell array with one cell for each time step. (N,2) and (2,N) x only contains
+                % the x-coordinates of the two detectors (the y- and z-coordinates are in separate variables), otherwise
+                % there are six coordinates for each event (6xN or a flat vector)
+                if iscell(options.x)
+                    xFirst = options.x{1};
+                else
+                    xFirst = options.x;
+                end
+                if size(xFirst,2) == 2 || size(xFirst,1) == 2
+                    listSize = 2;
+                else
+                    listSize = 6;
+                end
+                if iscell(options.x)
+                    pituus(1) = sum(cellfun(@numel, options.x(:))) / listSize;
+                else
+                    pituus(1) = numel(options.x) / listSize;
+                end
             end
             index = {0};
         else
