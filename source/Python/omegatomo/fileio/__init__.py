@@ -18,5 +18,9 @@ from .loadDICOMCTData import loadDICOMCTPD
 from .loadNormalizationBiograph import loadNormalizationBiograph
 from .quantificationFactorBiograph import quantificationFactorBiograph
 from .createAttenMatrixCT import createAttenMatrixCT, attenuationCTTo511
+from .saveImage import saveImage
+from .saveInterfile import saveInterfile
+from .saveMetaImage import saveMetaImage
+from .scaleImages import scaleImages
 
-__all__ = ["loadGATESPECTData", "loadInterfile", "loadProjectionData", "loadProjectionImages", "loadROOT", "loadNikonData", "loadSkyscanData", "loadSPECTInterfile", "loadInveonData", "loadDICOMCTPD", "loadNormalizationBiograph", "quantificationFactorBiograph", "createAttenMatrixCT", "attenuationCTTo511"]
+__all__ = ["loadGATESPECTData", "loadInterfile", "loadProjectionData", "loadProjectionImages", "loadROOT", "loadNikonData", "loadSkyscanData", "loadSPECTInterfile", "loadInveonData", "loadDICOMCTPD", "loadNormalizationBiograph", "quantificationFactorBiograph", "createAttenMatrixCT", "attenuationCTTo511", "saveImage", "saveInterfile", "saveMetaImage", "scaleImages"]

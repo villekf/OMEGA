@@ -40,16 +40,23 @@ def CTDetSource(options):
     None.
 
     """
-    if options.angles.size == options.nProjections:
-        options.angles = options.angles.reshape(1, 1, -1)
+    bedOffset = np.asarray(options.bedOffset).ravel()
+    nBed = bedOffset.size
+    if nBed > 1 and options.nProjections % nBed != 0:
+        raise ValueError('The number of projections (' + str(options.nProjections) + ') has to be divisible by the number of bed positions (' + str(nBed) + ')!')
+    angles = np.asarray(options.angles)
+    if angles.size == options.nProjections:
+        angles = angles.reshape(1, 1, -1)
     else:
-        if options.angles.shape[0] == options.nProjections:
-            options.angles = options.angles[:, 0]
+        if angles.shape[0] == options.nProjections:
+            angles = angles[:, 0].reshape(1, 1, -1)
+        elif nBed > 1 and angles.shape[0] * nBed == options.nProjections:
+            # The angles of one bed position are repeated for every bed position
+            angles = np.tile(angles.reshape(1, 1, -1, order='F'), (1, 1, nBed))
         else:
-            options.angles = options.angles[0, :]
-            options.angles = options.angles.ravel()
-    
-    R = np.concatenate((np.concatenate((np.cos(options.angles), -np.sin(options.angles)), axis=1), np.concatenate((np.sin(options.angles), np.cos(options.angles)), axis=1)))
+            angles = angles[0, :].reshape(1, 1, -1)
+
+    R = np.concatenate((np.concatenate((np.cos(angles), -np.sin(angles)), axis=1), np.concatenate((np.sin(angles), np.cos(angles)), axis=1)))
     
     if isinstance(options.sourceToCRot, np.ndarray):
         sourceCoordX = -options.sourceToCRot
@@ -116,12 +123,11 @@ def CTDetSource(options):
         options.z = np.column_stack((np.reshape(sourceCoordZ, (-1, 1)), np.tile(detCoordZ, sourceCoordZ.size)))
     else:
         options.z = np.column_stack((sourceCoordZ, np.reshape(detCoordZ, (-1, 1))))
-    if options.bedOffset.size > 0:
-        options.x = np.tile(options.x, (options.bedOffset.size, 1))
-        options.y = np.tile(options.y, (options.bedOffset.size, 1))
-        options.z = np.add(np.tile(options.z, (options.bedOffset.size, 1)), np.tile((options.bedOffset - options.bedOffset[-1] / 2), (options.nProjections, 1)))
-    if options.angles.size == options.nProjections:
-        options.angles = options.angles.reshape(-1, 1)
+    if nBed > 1:
+        # Step-and-shoot: the bed offset of each bed position is added to the z-coordinates of the projections of that bed
+        options.z = options.z + np.repeat(bedOffset - bedOffset[-1] / 2, options.nProjections // nBed).reshape(-1, 1)
+    if angles.size == options.nProjections:
+        options.angles = angles.reshape(-1, 1)
 
 def setCTCoordinates(options):
     """
@@ -152,8 +158,8 @@ def setCTCoordinates(options):
         options.coord = True
         if np.size(options.z) / 2 > np.size(options.angles):
             if options.angles.shape[0] == 1:
-                options.angles = np.reshape(options.angles, (-1, 1, 1))
-            options.angles = np.tile(options.angles, (len(options.z) // 2 // np.size(options.angles), 1, 1))
+                options.angles = np.reshape(options.angles, (-1, 1))
+            options.angles = np.tile(options.angles, (options.z.shape[0] // options.angles.shape[0], 1))
     elif abs(options.offangle) > 0:
         R = np.array([[np.cos(options.offangle), -np.sin(options.offangle)],
                       [np.sin(options.offangle), np.cos(options.offangle)]])

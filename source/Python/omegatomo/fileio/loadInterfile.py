@@ -69,8 +69,8 @@ def loadInterfile(filename):
                 machinefmt = 'b'
         elif 'name of data file' in line:
             f_name = line.split('=')[1].strip()
-            if '/' in f_name:
-                f_name = f_name.split('/')[-1]
+            # Only the name of the data file is used (the file is looked for in the folder of the header file)
+            f_name = re.split(r'[\\/]', f_name)[-1]
 
     if n_dim3 == 1:
         for line in lines:
@@ -83,9 +83,12 @@ def loadInterfile(filename):
                     n_dim3 = int(re.findall(r'\d+', line)[0])
                     break
 
-    if filename.endswith('.hdr') or filename.endswith('.h33'):
+    # Folder of the header file (the current folder if the file name has no folder)
+    path = os.path.dirname(filename)
+    if filename.endswith('.hdr'):
         filename = filename[:-3] + 'img'
-    path = os.path.split(filename)[0] + '/'
+    elif filename.endswith('.h33'):
+        filename = filename[:-3] + 'i33'
 
     # Apply the byte order parsed from the "imagedata byte order" header tag
     # (machinefmt: 'l' little-endian, 'b' big-endian), matching loadInterfile.m's
@@ -94,7 +97,7 @@ def loadInterfile(filename):
     readDtype = np.dtype(type).newbyteorder(byteorder)
 
     try:
-        with open(path + f_name, 'rb') as f:
+        with open(os.path.join(path, f_name), 'rb') as f:
             output = np.fromfile(f, dtype=readDtype, count=-1)
     except FileNotFoundError:
         with open(filename, 'rb') as f:

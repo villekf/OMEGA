@@ -370,8 +370,9 @@ def _resolveAppliedCorrections(options, appliedCorrections, loadRaw):
     options.normalization_correction, options.randoms_correction and
     options.scatter_correction accordingly (a correction that is already in SinM is
     turned off). The normalization is only re-enabled (when the raw data replaces
-    SinM that was precorrected with it) if the user has selected it. The fields gapFilling, mashing and globalFactor are not used (as in
-    MATLAB's loadInputData.m; gap filling is not available in Python).
+    SinM that was precorrected with it) if the user has selected it. The fields mashing and globalFactor are not used (as in
+    MATLAB's loadInputData.m). The field gapFilling is not used here either, the sinogram gap filling that follows from it is done
+    in _selectPrecorrectedMeasurement.
 
     Parameters
     ----------
@@ -453,6 +454,45 @@ def _resolveAppliedCorrections(options, appliedCorrections, loadRaw):
     return loadRaw
 
 
+def _gapFillingSelected(options):
+    """
+    True if sinogram gap filling is selected and applicable: options.fill_sinogram_gaps is set and the scanner has pseudo
+    detectors (det_per_ring < det_w_pseudo), as in MATLAB's loadInputData.m. Not applicable to CT and SPECT.
+    """
+    if not options.fill_sinogram_gaps or options.CT or options.SPECT:
+        return False
+    return int(np.asarray(options.det_per_ring).ravel()[0]) < int(np.asarray(options.det_w_pseudo).ravel()[0])
+
+
+def _gapFillMeasurement(options, sinM):
+    """
+    Sinogram gap filling (omegatomo.util.gapFilling) of a measurement array (or a list with one array per time frame) that was
+    loaded from a file. The filled data are new arrays (float32), the input, which can be shared with the caller, is not modified.
+    A flat array is treated as (Ndist, Nang, remaining dimensions) in Fortran order.
+    """
+    from omegatomo.util.gapFilling import gapFilling
+    if isinstance(sinM, (list, tuple)):
+        filled = list()
+        gaps = None
+        for llo, frame in enumerate(sinM):
+            frame, gaps = gapFilling(options, _gapFillInput(options, frame), llo + 1, gaps)
+            filled.append(frame)
+        return filled
+    sinM, _ = gapFilling(options, _gapFillInput(options, sinM))
+    return sinM
+
+
+def _gapFillInput(options, sinM):
+    # A flat measurement array as (Ndist, Nang, remaining dimensions), the layout that gapFilling needs
+    sinM = np.asarray(sinM)
+    if sinM.ndim == 1:
+        nSinogram = int(options.Ndist) * int(options.Nang)
+        if nSinogram == 0 or sinM.size % nSinogram != 0:
+            raise ValueError('The number of elements of the measurement data (%d) is not divisible by Ndist * Nang (%d), gap filling is not possible!' % (sinM.size, nSinogram))
+        sinM = np.reshape(sinM, (int(options.Ndist), int(options.Nang), -1), order='F')
+    return sinM
+
+
 def _selectPrecorrectedMeasurement(options, getKey, appliedCorrections=None):
     """
     Selects either the corrected ('SinM') or the raw ('raw_SinM') measurement
@@ -466,7 +506,14 @@ def _selectPrecorrectedMeasurement(options, getKey, appliedCorrections=None):
     still applied follow MATLAB's loadInputData.m, see _resolveAppliedCorrections.
     Without appliedCorrections the stored SinM is assumed to be precorrected with
     everything that has been selected.
+
+    Sinogram gap filling (options.fill_sinogram_gaps with pseudo detectors, as in loadInputData.m): the raw measurements are
+    never gap filled in the file and are always filled here. The corrected SinM is filled here only if appliedCorrections is
+    available and says that it has not been gap filled (appliedCorrections.gapFilling is false). Without appliedCorrections the
+    stored SinM is used as it is.
     """
+    useRaw = True
+    sinM = None
     if (options.randoms_correction or options.scatter_correction or options.normalization_correction) and not options.corrections_during_reconstruction:
         if not options.precorrect:
             loadRaw = False
@@ -480,13 +527,14 @@ def _selectPrecorrectedMeasurement(options, getKey, appliedCorrections=None):
                 if loadRaw or options.randoms_correction or options.scatter_correction or options.normalization_correction:
                     # OMEGA has to apply the corrections that are not in SinM
                     options.precorrect = True
-            if loadRaw:
-                return getKey('raw_SinM')
-            return sinM
-        else:
-            return getKey('raw_SinM')
-    else:
-        return getKey('raw_SinM')
+            useRaw = loadRaw
+    if useRaw:
+        sinM = getKey('raw_SinM')
+    if _gapFillingSelected(options):
+        if useRaw or (isinstance(appliedCorrections, dict) and not _appliedCorrectionsFlag(appliedCorrections.get('gapFilling'))):
+            # New arrays are created: the measurement arrays can be shared with the caller
+            sinM = _gapFillMeasurement(options, sinM)
+    return sinM
 
 
 def _nativeLibPath(libdir, name):
@@ -500,18 +548,133 @@ def _nativeLibPath(libdir, name):
     return str(os.path.join(libdir, name + ext))
 
 
-def _loadDelayedMeasurement(options, getKey):
+def _delayedVariableName(options, names, allowFirst):
     """
-    Loads the randoms ('SinDelayed') data from an already-open measurement
-    file, matching the semantics shared by the MAT and NPZ measurement-file
-    loaders. `getKey(key)` returns the array for that key, or raises
-    KeyError.
+    Selects the variable that holds the randoms (delayed coincidences) from the variable names `names` of a file, as in MATLAB's
+    loadDelayedData.m: raw_SinDelayed, then SinDelayed (sinogram data), then delayed_coincidences (raw data), then, if allowFirst is
+    set, the first variable. Returns None if no variable is selected.
+    """
+    names = list(names)
+    if 'raw_SinDelayed' in names and not options.use_raw_data:
+        return 'raw_SinDelayed'
+    if 'SinDelayed' in names and not options.use_raw_data:
+        return 'SinDelayed'
+    if 'delayed_coincidences' in names and options.use_raw_data:
+        return 'delayed_coincidences'
+    if allowFirst and len(names) > 0:
+        return names[0]
+    return None
+
+
+def _loadDelayedMeasurement(options, getKey, names):
+    """
+    Loads the randoms data from an already-open measurement file, matching the
+    semantics shared by the MAT and NPZ measurement-file loaders. `getKey(key)`
+    returns the array for that key and `names` are the variable names of the
+    file. The first variable is not used as a fallback here since it is the
+    measurement data itself (see _delayedVariableName for the used variables).
     """
     if options.randoms_correction and not options.reconstruct_scatter and not options.reconstruct_trues and options.SinDelayed.size < 1:
-        try:
-            options.SinDelayed = getKey('SinDelayed')
-        except KeyError:
+        name = _delayedVariableName(options, names, False)
+        if name is None:
             print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed')
+        else:
+            options.SinDelayed = getKey(name)
+
+
+def _frameArray(options, frame, nDims):
+    """
+    A frame of the randoms/scatter data of a dynamic reconstruction as an array with nDims dimensions (Ndist, Nang, planes[, TOF
+    bins]). A flat frame is reshaped to (Ndist, Nang, planes) and missing trailing dimensions are added as singleton dimensions.
+    """
+    frame = np.asarray(frame)
+    if frame.ndim == 1:
+        nSinogram = int(options.Ndist) * int(options.Nang)
+        if nSinogram == 0 or frame.size % nSinogram != 0:
+            raise ValueError('The number of elements of a randoms/scatter frame (%d) is not divisible by Ndist * Nang (%d)!' % (frame.size, nSinogram))
+        frame = np.reshape(frame, (int(options.Ndist), int(options.Nang), -1), order='F')
+    if frame.ndim > nDims:
+        raise ValueError('A randoms/scatter frame has %d dimensions, but at most %d are supported!' % (frame.ndim, nDims))
+    while frame.ndim < nDims:
+        frame = frame[..., np.newaxis]
+    return frame
+
+
+def _expandFrameCorrections(options):
+    """
+    Dynamic data (Nt > 1): converts the randoms (options.SinDelayed) and the scatter (options.ScatterC) to the layouts of the
+    reconstruction, the time frame is the last dimension: SinDelayed (Ndist, Nang, planes, Nt) and ScatterC (Ndist, Nang, planes,
+    TOF bins, Nt). A list with one array for each frame is stacked, while a single-frame array (one sinogram for all the frames) is
+    used for every frame, as in MATLAB's loadInputData.m and loadCorrections.m. If there are fewer randoms frames than time frames,
+    the first one is used for all (with a warning). The data are rebound, never written in place, since the arrays can be the
+    caller's arrays. A list of SPECT scatter data (ScatterC) holds the energy windows, not the frames, and is not touched. Dynamic
+    list-mode and index-based data are not touched either.
+    """
+    nFrames = int(options.Nt)
+    if nFrames <= 1 or options.listmode or options.useIndexBasedReconstruction or options.reconstruct_scatter or options.reconstruct_trues:
+        return
+    nSinogram = int(options.Ndist) * int(options.Nang)
+    if options.randoms_correction and not options.randomsTOF:
+        delayed = options.SinDelayed
+        if isinstance(delayed, (list, tuple)):
+            if len(delayed) > nFrames:
+                raise ValueError('The number of delayed coincidence sinograms (%d) is larger than the number of time points (%d)!' % (len(delayed), nFrames))
+            if len(delayed) > 0 and np.size(delayed[0]) > 1:
+                frames = list(delayed)
+                if len(frames) < nFrames:
+                    print('Warning: The number of delayed coincidence sinograms is less than the number of time points. Using the first one')
+                    frames = [frames[0]] * nFrames
+                options.SinDelayed = np.stack([_frameArray(options, frame, 3) for frame in frames], axis=3)
+        elif np.size(delayed) > 1:
+            delayed = np.asarray(delayed)
+            single = False
+            if delayed.ndim == 1:
+                single = delayed.size in (nSinogram * int(options.NSinos), nSinogram * int(options.TotSinos))
+            elif delayed.ndim <= 3:
+                single = True
+            elif delayed.ndim == 4:
+                single = delayed.shape[3] != nFrames
+            if single:
+                print('Warning: The number of delayed coincidence sinograms is less than the number of time points. Using the first one')
+                if delayed.ndim == 4:
+                    delayed = delayed[..., 0]
+                frame = _frameArray(options, delayed, 3)
+                options.SinDelayed = np.stack([frame] * nFrames, axis=3)
+    if options.scatter_correction and not options.SPECT:
+        scatter = options.ScatterC
+        if isinstance(scatter, (list, tuple)):
+            if len(scatter) > 0 and np.size(scatter[0]) > 1:
+                if len(scatter) != nFrames:
+                    raise ValueError('The number of scatter sinograms (%d) is different from the number of time points (%d)!' % (len(scatter), nFrames))
+                options.ScatterC = np.stack([_frameArray(options, frame, 4) for frame in scatter], axis=4)
+        elif np.size(scatter) > 1:
+            scatter = np.asarray(scatter)
+            tofBins = max(int(options.TOF_bins_used), 1)
+            single = False
+            if scatter.ndim == 1:
+                single = scatter.size in {nSinogram * int(nSinos) * bins for nSinos in (options.NSinos, options.TotSinos) for bins in {1, tofBins}}
+                if single:
+                    # A flat single-frame scatter sinogram: TOF bins are the slowest dimension if there are any
+                    if scatter.size == nSinogram * int(options.NSinos) * tofBins or scatter.size == nSinogram * int(options.TotSinos) * tofBins:
+                        scatter = np.reshape(scatter, (int(options.Ndist), int(options.Nang), -1, tofBins), order='F')
+                    else:
+                        scatter = np.reshape(scatter, (int(options.Ndist), int(options.Nang), -1, 1), order='F')
+            elif scatter.ndim <= 3:
+                single = True
+            elif scatter.ndim == 4:
+                if scatter.shape[3] == nFrames and nFrames != tofBins:
+                    # Non-TOF frames (Ndist, Nang, planes, Nt)
+                    options.ScatterC = scatter[:, :, :, np.newaxis, :]
+                else:
+                    single = True
+            elif scatter.ndim == 5:
+                single = scatter.shape[4] != nFrames
+                if single:
+                    scatter = scatter[..., 0]
+            if single:
+                # One scatter sinogram shared by all the frames
+                frame = _frameArray(options, scatter, 4)
+                options.ScatterC = np.stack([frame] * nFrames, axis=4)
 
 
 def reconstructions_mainCT(options):
@@ -582,7 +745,17 @@ def reconstructions_main(options):
     # must always start from the user's original values (opt out: keepOptionsUnchanged = False).
     if getattr(options, 'keepOptionsUnchanged', True):
         options = _privateOptionsCopy(options)
+    if options.CT and np.size(options.flat) > 1:
+        # An array-valued flat field (e.g. one value for each projection or detector pixel) is reduced to its maximum, as in MATLAB
+        options.flat = np.max(np.asarray(options.flat))
+    if options.SPECT and int(options.projector_type) == 6:
+        # As in MATLAB's projectorClass: pad/crop and resample the SPECT measurements to the Nx x Nz grid of the rotation-based projector.
+        # Done before addProjector(), which derives the detector-size dependent values and flips the projections.
+        from omegatomo.util.measurementResampling import _resampleType6Measurements
+        _resampleType6Measurements(options)
     options.addProjector()
+    # A7: per-frame lists / one frame of the randoms and scatter data to the layouts of the dynamic reconstruction
+    _expandFrameCorrections(options)
     # These projector types are accepted by the projector class (custom operators), but the native library has no
     # forward/backward projector mapping for them and would silently fall back to Siddon (MATLAB errors)
     if int(options.projector_type) in (44, 55, 16, 26, 61, 62, 66):
@@ -632,16 +805,20 @@ def reconstructions_main(options):
                 # with the normalization (multiplied by it) instead of applying the
                 # normalization during the reconstruction
                 options.precorrect = True
+            if _gapFillingSelected(options):
+                if options.verbose:
+                    print('Performing sinogram gap filling on ' + ('trues' if options.reconstruct_trues else 'scatter') + ' data')
+                options.SinM = _gapFillMeasurement(options, options.SinM)
         else:
             options.SinM = _selectPrecorrectedMeasurement(options, matGet, var.get('appliedCorrections'))
-        _loadDelayedMeasurement(options, matGet)
+        _loadDelayedMeasurement(options, matGet, var.keys())
     elif sinoSize < 1 and suffix == '.npy':
         options.SinM = np.load(options.fpath)
     elif sinoSize < 1 and suffix == '.npz':
         varList = np.load(options.fpath)
         npzGet = lambda key: varList[key]
         options.SinM = _selectPrecorrectedMeasurement(options, npzGet)
-        _loadDelayedMeasurement(options, npzGet)
+        _loadDelayedMeasurement(options, npzGet, varList.files)
     elif not options.corrections_during_reconstruction and not options.precorrect and (options.randoms_correction or options.scatter_correction or options.normalization_correction):
         print('Corrections selected and measurement data found. The input measurement data WILL NOT BE PRECORRECTED!!!!!! If you wish to have OMEGA-based precorrection, make sure options.precorrect = True')
     if options.randoms_correction and not options.reconstruct_scatter and not options.reconstruct_trues and options.SinDelayed.size < 1:
@@ -658,19 +835,24 @@ def reconstructions_main(options):
             if fsuffix == '.mat' and options.randoms_correction:
                 from pymatreader import read_mat
                 var = read_mat(fpath)
-                try:
-                    options.SinDelayed = np.array(var["SinDelayed"],order='F')
-                except KeyError:
+                # As in MATLAB's loadDelayedData.m: raw_SinDelayed, SinDelayed, delayed_coincidences or otherwise the first variable
+                name = _delayedVariableName(options, var.keys(), True)
+                if name is None:
                     print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed. Disabling randoms correction')
                     options.randoms_correction = False
+                else:
+                    options.SinDelayed = np.array(var[name],order='F')
             elif fsuffix == '.npy':
                 options.SinDelayed = np.load(fpath)
             elif fsuffix == '.npz':
                 varList = np.load(fpath)
-                try:
-                    options.SinDelayed = varList['SinDelayed']
-                except KeyError:
+                name = _delayedVariableName(options, varList.files, True)
+                if name is None:
                     print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed. Disabling randoms correction')
+                else:
+                    options.SinDelayed = varList[name]
+    # The randoms/scatter data that were loaded from the files above
+    _expandFrameCorrections(options)
     if options.TOF and options.TOF_bins_used == 1:
         options.TOF_bins = options.TOF_bins_used
         if isinstance(options.SinM, list):
@@ -770,7 +952,7 @@ def reconstructions_main(options):
     options.tau = 2.5
     if options.use_32bit_atomics and options.use_64bit_atomics:
         options.use_64bit_atomics = False
-    if options.use_64bit_atomics and (options.useCPU or options.useCUDA):
+    if options.use_64bit_atomics and (options.useCPU or options.useCUDA or options.projector_type == 6):
         options.use_64bit_atomics = False
     if options.use_32bit_atomics and (options.useCPU or options.useCUDA):
         options.use_32bit_atomics = False

@@ -278,6 +278,8 @@ struct inputStruct {
     bool useMAD = false;
     // Use OpenCL images/CUDA textures
     bool useImages = false;
+    // Use FP16 (half-precision) computations
+    bool useHalf = false;
     // Use extended FOV
     bool useEFOV = false;
     // Use CT-based attenuation images
@@ -830,6 +832,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.flat = options.flat;
     inputScalars.useMAD = options.useMAD;
     inputScalars.useImages = options.useImages;
+    inputScalars.useHalf = options.useHalf;
     inputScalars.listmode = options.listmode;
     inputScalars.relaxScaling = options.relaxationScaling;
     inputScalars.computeRelaxation = options.computeRelaxationParameters;

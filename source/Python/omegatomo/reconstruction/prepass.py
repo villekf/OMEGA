@@ -116,6 +116,79 @@ def _load_array_file(path, mat_key_index='auto'):
     else:
         raise ValueError('Unsupported datatype!')
 
+def _matVariables(var):
+    """Returns the variables of a loaded mat-file as a dict (the header entries, such as __header__, are left out)."""
+    return {key: value for key, value in var.items() if not str(key).startswith('__')}
+
+def _normalizationFromMat(var):
+    """
+    Selects the normalization coefficients from the variables of a loaded mat-file. As in MATLAB's loadCorrections.m, the variable
+    "normalization" is used if the file has it and otherwise the first variable.
+    """
+    variables = _matVariables(var)
+    if 'normalization' in variables:
+        return variables['normalization']
+    if len(variables) == 0:
+        raise ValueError('The normalization data file does not contain any variables!')
+    return next(iter(variables.values()))
+
+def _scatterIsEmpty(scatter):
+    """True if no scatter data has been input (None, an empty array or an empty list of arrays)."""
+    if scatter is None:
+        return True
+    if isinstance(scatter, (list, tuple)):
+        return len(scatter) == 0
+    return np.size(scatter) == 0
+
+def _loadScatterData(options):
+    """
+    Loads the scatter correction data from a file selected with a file dialog and stores it into options.ScatterC. Mirrors
+    MATLAB's loadScatterData.m: in a mat-file the variable SinScatter (sinogram data) or, with raw data,
+    scattered_coincidences is used if it exists, otherwise the first variable. The same names are used in npz files, an npy
+    file contains the data itself. The Inveon .scn format is not supported.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Raises
+    ------
+    ValueError
+        If no file can be selected (no display or no file selected) or the file cannot be read.
+
+    Returns
+    -------
+    None.
+
+    """
+    nimi = _askOpenFile('Select scatter correction data', (('MAT, NPY and NPZ files','*.mat *.npy *.npz'),('All','*.*')), 'options.ScatterC')
+    nimiExt = os.path.splitext(nimi)[1].lower()
+    if nimiExt == '.mat':
+        try:
+            from pymatreader import read_mat
+        except ModuleNotFoundError:
+            raise ValueError('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".') from None
+        variables = _matVariables(read_mat(nimi))
+    elif nimiExt == '.npz':
+        with np.load(nimi, allow_pickle=True) as apu:
+            variables = {key: apu[key] for key in apu.files}
+    elif nimiExt == '.npy':
+        variables = {'ScatterC': np.load(nimi, allow_pickle=True)}
+    else:
+        raise ValueError('Unsupported datatype! The scatter data has to be in a .mat, .npy or .npz file.')
+    if len(variables) == 0:
+        raise ValueError('The scatter data file ' + nimi + ' does not contain any variables!')
+    wanted = 'scattered_coincidences' if options.use_raw_data else 'SinScatter'
+    if wanted in variables:
+        scatter = variables[wanted]
+    else:
+        scatter = next(iter(variables.values()))
+        if len(variables) > 1:
+            print('Warning: The scatter data file contains more than one variable! The first one is used')
+    options.ScatterC = scatter if isinstance(scatter, list) else np.asarray(scatter)
+    print('Scatter data successfully loaded')
+
 def _load_reference_image(options, value, resize=True, emptyMessage=None,
                            squareCheck=None, squareOrder='C',
                            squareErrorMsg='Reference image has to be square',
@@ -634,6 +707,11 @@ def loadCorrections(options):
         # no randoms/scatter data is loaded or applied (SinDelayed is not read from the file)
         options.randoms_correction = False
         options.scatter_correction = False
+    if (options.scatter_correction and not options.CT and not options.SPECT and not (options.listmode and options.subtract_scatter)
+            and _scatterIsEmpty(options.ScatterC)):
+        # Mirrors MATLAB's loadCorrections.m: the scatter data is loaded from a file if it has not been input. The scatter data of
+        # list-mode and index-based data is always input (validated in OMEGAErrorCheck), SPECT scatter is input as the energy windows
+        _loadScatterData(options)
     if options.listmode and not options.CT and not options.SPECT and options.scatter_correction and options.subtract_scatter:
         # List-mode and index-based PET data: options.ScatterC is the additive term of each event (measured counts for the LOR and,
         # with TOF data, the TOF bin of the event; validated in OMEGAErrorCheck), used as it is: no TOF_bins division and no sinogram
@@ -781,7 +859,7 @@ def loadCorrections(options):
                     try:
                         from pymatreader import read_mat
                         var = read_mat(normdir)
-                        options.normalization = np.array(var["normalization"],order='F')
+                        options.normalization = np.array(_normalizationFromMat(var),order='F')
                     except ModuleNotFoundError:
                         print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
                 else:
@@ -790,7 +868,7 @@ def loadCorrections(options):
                         try:
                             from pymatreader import read_mat
                             var = read_mat(normdir)
-                            options.normalization = np.array(var["normalization"],order='F')
+                            options.normalization = np.array(_normalizationFromMat(var),order='F')
                         except ModuleNotFoundError:
                             print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
                     else:
@@ -821,7 +899,7 @@ def loadCorrections(options):
                 elif nimiExt == '.mat':
                     from pymatreader import read_mat
                     var = read_mat(nimi)
-                    options.normalization = np.array(var["normalization"])
+                    options.normalization = np.array(_normalizationFromMat(var))
                 elif nimiExt in ('.npy', '.npz'):
                     options.normalization = _load_array_file(nimi)
                 else:
@@ -1286,7 +1364,7 @@ def parseInputs(options, mDataFound = False):
                         options.SinM[ff - 1] = temp
                     else:
                         if options.TOF and options.listmode == 0:
-                            options.SinM[:,:,:,:,ff - 1] = temp.ravel(order='F')
+                            options.SinM[:,:,:,:,ff - 1] = temp
                         else:
                             if options.SinM.ndim == 4:
                                 options.SinM[:,:,:,ff - 1] = temp
@@ -2299,6 +2377,66 @@ def weightedWeights(options):
     options.w_sum = float(np.sum(options.weighted_weights))
     options.weighted_weights = np.reshape(options.weighted_weights, (options.Ndx * 2 + 1, options.Ndy * 2 + 1, options.Ndz * 2 + 1),order='F').astype(dtype=np.float32)
 
+def _splitMultiVolumeReference(options, full, small):
+    """
+    Splits the reference image of the multi-volume (extended FOV and multi-resolution) reconstruction into the volumes. Mirrors
+    MATLAB's prepass_phase.m: the central (original resolution) volume is cut from the full size image and the other volumes
+    from the image that has been scaled with options.multiResolutionScale. Every volume is flattened in column-major order
+    (MATLAB's (:)) and the volumes are concatenated in the order of options.Nx/Ny/Nz.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data (nMultiVolumes, Nx, Ny, Nz, NxOrig, NyOrig and NzOrig).
+    full : NumPy array
+        The full-size 3D reference image.
+    small : NumPy array
+        The 3D reference image scaled with options.multiResolutionScale.
+
+    Returns
+    -------
+    NumPy array
+        The 1D reference image (float32).
+
+    """
+    Nx = [int(v) for v in np.ravel(options.Nx)]
+    Ny = [int(v) for v in np.ravel(options.Ny)]
+    Nz = [int(v) for v in np.ravel(options.Nz)]
+    NxOrig = int(np.ravel(options.NxOrig)[0])
+    NyOrig = int(np.ravel(options.NyOrig)[0])
+    NzOrig = int(np.ravel(options.NzOrig)[0])
+    px = (full.shape[0] - NxOrig) // 2
+    py = (full.shape[1] - NyOrig) // 2
+    pz = (full.shape[2] - NzOrig) // 2
+    apu = small
+    if options.nMultiVolumes == 6:
+        parts = [
+            full[px : px + NxOrig, py : py + NyOrig, pz : pz + NzOrig],
+            apu[Nx[3] : Nx[3] + Nx[1], Ny[5] : Ny[5] + Ny[1], : Nz[1]],
+            apu[Nx[4] : Nx[4] + Nx[2], Ny[6] : Ny[6] + Ny[2], -Nz[1] : ],
+            apu[ : Nx[3], :, :],
+            apu[Nx[4] + Nx[2] :, :, :],
+            apu[Nx[3] : Nx[3] + Nx[1], : Ny[5], : Nz[3]],
+            apu[Nx[4] : Nx[4] + Nx[2], Ny[6] + Ny[2] :, : Nz[4]],
+        ]
+    elif options.nMultiVolumes == 4:
+        parts = [
+            full[px : px + NxOrig, py : py + NyOrig, :],
+            apu[ : Nx[1], :, :],
+            apu[Nx[1] + Nx[0] :, :, :],
+            apu[Nx[1] : Nx[1] + Nx[3], : Ny[3], :],
+            apu[Nx[1] : Nx[1] + Nx[4], Ny[3] + Ny[0] :, :],
+        ]
+    elif options.nMultiVolumes == 2:
+        parts = [
+            full[:, :, pz : pz + NzOrig],
+            apu[:, :, : Nz[1]],
+            apu[:, :, -Nz[2] :],
+        ]
+    else:
+        raise ValueError('The number of multi-volumes has to be 2, 4 or 6 in order to split the reference image!')
+    return np.concatenate([part.ravel(order='F') for part in parts]).astype(np.float32)
+
 def NLMPrepass(options):
     """
     Computes the Gaussian weights for NLM and loads the reference image if
@@ -2374,71 +2512,37 @@ def prepassPhase(options):
     if not isinstance(options.alpha_PKMA, np.ndarray):
         options.alpha_PKMA = np.array(options.alpha_PKMA, dtype=np.float32, ndmin=1)
     if options.precondTypeImage[2]:
-        options.referenceImage = _load_reference_image(
+        # As in MATLAB (prepass_phase.m): the reference image is the whole (full-size) volume. It is loaded without a resize,
+        # resized to the full size if needed and only then split into the volumes of the multi-volume reconstruction.
+        referenceImage = np.asarray(_load_reference_image(
             options, options.referenceImage,
-            emptyMessage=None,
-            squareCheck=None,
-            elseCheckNdim3=True, elseCheckShape0=True, elseResizeGuardNz1=False,
-            finalize=True, castBeforeAsfortran=False, doAsfortran=True,
-        )
-        if np.size(options.referenceImage) == int(matlabRound((options.NxFull - options.NxOrig) * options.multiResolutionScale)) * \
-            int(matlabRound((options.NyFull - options.NyOrig) * options.multiResolutionScale)) * \
-            int(matlabRound((options.NzFull - options.NzOrig) * options.multiResolutionScale)):
+            resize=False,
+            finalize=False,
+        ))
+        NxFull = int(np.ravel(options.NxFull)[0])
+        NyFull = int(np.ravel(options.NyFull)[0])
+        NzFull = int(np.ravel(options.NzFull)[0])
+        if referenceImage.size == int(matlabRound((NxFull - int(np.ravel(options.NxOrig)[0])) * options.multiResolutionScale)) *             int(matlabRound((NyFull - int(np.ravel(options.NyOrig)[0])) * options.multiResolutionScale)) *             int(matlabRound((NzFull - int(np.ravel(options.NzOrig)[0])) * options.multiResolutionScale)):
             skip = True
         else:
             skip = False
         
-        if not skip and np.size(options.referenceImage) != options.NxFull * options.NyFull * options.NzFull:
-            raise ValueError('The size of the reference image does not match the reconstructed image!')
+        if not skip and (referenceImage.size != NxFull * NyFull * NzFull or (referenceImage.ndim == 3 and referenceImage.shape != (NxFull, NyFull, NzFull))):
+            if referenceImage.ndim != 3:
+                raise ValueError('The size of the reference image does not match the reconstructed image!')
+            from skimage.transform import resize as resizeImage
+            print('Warning: The size of the reference image does not match the reconstructed image! Attempting resize.')
+            referenceImage = resizeImage(referenceImage, (NxFull, NyFull, NzFull))
+        referenceImage = referenceImage.astype(np.float32)
         
         if not skip and options.nMultiVolumes > 0:
-            options.referenceImage = options.referenceImage.reshape(options.NxFull, options.NyFull, options.NzFull, order = 'F')
-            from scipy.ndimage import zoom
-            apu = zoom(options.referenceImage, options.multiResolutionScale, order=1).astype(np.float32)
-
-        if not skip:
-            if options.nMultiVolumes == 6:
-                options.referenceImage = options.referenceImage[
-                    (options.referenceImage.shape[0] - options.NxOrig) // 2 :
-                    (options.referenceImage.shape[0] - options.NxOrig) // 2 + options.NxOrig,
-                    (options.referenceImage.shape[1] - options.NyOrig) // 2 :
-                    (options.referenceImage.shape[1] - options.NyOrig) // 2 + options.NyOrig,
-                    (options.referenceImage.shape[2] - options.NzOrig) // 2 :
-                    (options.referenceImage.shape[2] - options.NzOrig) // 2 + options.NzOrig
-                ]
-                apu1 = apu[options.Nx[3].item() : options.Nx[3].item() + options.Nx[1].item(), options.Ny[5].item() : options.Ny[5].item() + options.Ny[1].item(),  : options.Nz[1].item()]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
-                apu1 = apu[options.Nx[4].item() : options.Nx[4].item() + options.Nx[2].item(),options.Ny[6].item() : options.Ny[6].item() + options.Ny[2].item(),-options.Nz[1].item() : ]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
-                apu1 = apu[ : options.Nx[3].item(),:,:]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
-                apu1 = apu[options.Nx[4].item() + options.Nx[2].item() :, :, : ]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
-                apu1 = apu[options.Nx[3].item() : options.Nx[3].item() + options.Nx[1].item(), : options.Ny[5].item(), : options.Nz[3].item() ]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
-                apu1 = apu[ options.Nx[4].item() : options.Nx[4].item() + options.Nx[2].item(), options.Ny[6].item() + options.Ny[2].item() :, : options.Nz[4].item() ]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
-            elif options.nMultiVolumes == 4:
-                options.referenceImage = options.referenceImage[
-                    (options.referenceImage.shape[0] - options.NxOrig) // 2 :
-                    (options.referenceImage.shape[0] - options.NxOrig) // 2 + options.NxOrig,
-                    (options.referenceImage.shape[1] - options.NyOrig) // 2 :
-                    (options.referenceImage.shape[1] - options.NyOrig) // 2 + options.NyOrig,
-                    : ]
-                apu1 = apu[ : options.Nx[1].item(), :, :]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
-                apu1 = apu[ options.Nx[1].item() + options.Nx[0].item() :, :,:                ]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
-                apu1 = apu[ options.Nx[1].item() : options.Nx[1].item() + options.Nx[3].item(), : options.Ny[3].item(), : ]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
-                apu1 = apu[ options.Nx[1].item() : options.Nx[1].item() + options.Nx[4].item(), options.Ny[3].item() + options.Ny[0].item() :, : ]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
-            elif options.nMultiVolumes == 2:
-                options.referenceImage = options.referenceImage[ :, :, (options.referenceImage.shape[2] - options.NzOrig) // 2 : (options.referenceImage.shape[2] - options.NzOrig) // 2 + options.NzOrig ]
-                apu1 = apu[:, :,  : options.Nz[1].item()]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
-                apu1 = apu[:, :, -options.Nz[2].item():]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
+            referenceImage = referenceImage.reshape(NxFull, NyFull, NzFull, order = 'F')
+            if options.nMultiVolumes in (2, 4, 6):
+                from scipy.ndimage import zoom
+                apu = zoom(referenceImage, options.multiResolutionScale, order=1).astype(np.float32)
+                referenceImage = _splitMultiVolumeReference(options, referenceImage, apu)
+        # Column-major order, as in MATLAB's (:)
+        options.referenceImage = np.asfortranarray(referenceImage).ravel('F').astype(dtype=np.float32)
         
     # Check if any of the regularization options are selected
     if (options.MRP or options.quad or options.Huber or options.TV or options.FMH or options.L or options.weighted_mean or options.APLS or options.BSREM
@@ -2550,7 +2654,7 @@ def prepassPhase(options):
                 )
             if options.verbose:
                 print('Prepass phase for MRP, quadratic prior, L-filter, FMH, RDP and weighted mean completed')
-        if (options.NLM and options.MAP):
+        if (options.NLM and options.MAP) or options.ProxNLM:
             NLMPrepass(options)
     if options.PDHG or options.PDHGKL or options.PDHGL1 or options.PDDY:
         if not isinstance(options.thetaCP, np.ndarray):
@@ -2560,7 +2664,7 @@ def prepassPhase(options):
                 raise ValueError('The number of elements in options.thetaCP has to be either one or options.subsets * options.Niter!')
             options.thetaCP = np.tile(options.thetaCP, (options.subsets * options.Niter, 1)).astype(dtype=np.float32)
     
-    if (options.PKMA or options.MBSREM or options.SPS) and (options.ProxTV or options.TGV):
+    if (options.PKMA or options.MBSREM or options.SPS) and (options.ProxTV or options.TGV or options.ProxRDP):
         if not isinstance(options.thetaCP, np.ndarray):
             options.thetaCP = np.array(options.thetaCP, dtype=np.float32, ndmin=1)
         if np.size(options.thetaCP) != options.subsets * options.Niter and np.size(options.alpha_PKMA) != options.subsets * options.Niter:
@@ -2570,7 +2674,7 @@ def prepassPhase(options):
             options.thetaCP = options.alpha_PKMA.astype(dtype=np.float32)
         
     
-    if options.PDHG or options.PDHGKL or options.PDHGL1 or options.ProxTV or options.TGV or options.FISTA or options.FISTAL1 or options.PDDY:
+    if options.PDHG or options.PDHGKL or options.PDHGL1 or options.ProxTV or options.TGV or options.FISTA or options.FISTAL1 or options.ProxRDP or options.PDDY:
         if np.size(options.tauCP) < options.nMultiVolumes + 1:
             options.tauCP = np.repeat(options.tauCP, options.nMultiVolumes + 1).astype(dtype=np.float32)
         if np.size(options.sigmaCP) < options.nMultiVolumes + 1:

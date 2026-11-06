@@ -211,6 +211,13 @@ class projectorClass:
     errorChecking = False
     no_data_load = False
     fill_sinogram_gaps = False
+    # Gap filling (pseudo detectors) method: 'fillmissing' (interpolation along the radial and angular dimensions, averaged).
+    # 'inpaint_nans' (MATLAB File Exchange) and 'fillmissing2' are not available in Python
+    gap_filling_method = 'fillmissing'
+    # Interpolation method used with fillmissing: 'linear', 'nearest', 'previous', 'next', 'pchip', 'spline' or 'makima'
+    interpolation_method_fillmissing = 'linear'
+    # Only used by inpaint_nans (not available in Python)
+    interpolation_method_inpaint = 0
     ndist_side = 1
     store_raw_data = False
     sampling_raw = 1
@@ -465,6 +472,7 @@ class projectorClass:
     useL2Ball = True
     useMAD = True
     useImages = True
+    useHalf = False # When true, computations are performed with FP16 precision instead of FP32
     useEFOV = False
     useExtrapolation = False
     useInpaint = False  # MATLAB-only, experimental (unofficial) feature; not supported in Python, see CTEFOVCorrection
@@ -705,6 +713,59 @@ class projectorClass:
              (isinstance(self.x, list) and
               (self.x[0].size / 2 == self.SinM[0].size or
                self.x[0].size / 6 == self.SinM[0].size)))
+
+    @staticmethod
+    def _listModeValuesPerEvent(x):
+        """The number of values per event of custom list-mode coordinates: 2 when x contains only the x-coordinates of the two
+        detectors, as (N,2) or (2,N), with the y- and z-coordinates in options.y and options.z, and 6 otherwise (flattened or
+        (6,N) [x1; y1; z1; x2; y2; z2])."""
+        x = np.asarray(x)
+        if x.ndim == 2 and (x.shape[1] == 2 or x.shape[0] == 2):
+            return 2
+        return 6
+
+    def _listModeFrameCoordinates(self, uu):
+        """The custom list-mode coordinates of time frame uu (self.x[uu], self.y[uu], self.z[uu]) as a (6,N) Fortran-ordered array
+        [x1; y1; z1; x2; y2; z2]. Coordinates that are already in the 6 values per event layout are returned as such."""
+        x = np.asarray(self.x[uu])
+        if x.ndim == 2 and x.shape[1] == 2:
+            y = np.asarray(self.y[uu])
+            z = np.asarray(self.z[uu])
+            return np.asfortranarray(np.vstack([x[:, 0], y[:, 0], z[:, 0], x[:, 1], y[:, 1], z[:, 1]]))
+        if x.ndim == 2 and x.shape[0] == 2:
+            y = np.asarray(self.y[uu])
+            z = np.asarray(self.z[uu])
+            return np.asfortranarray(np.vstack([x[0, :], y[0, :], z[0, :], x[1, :], y[1, :], z[1, :]]))
+        return x
+
+    def _flattenListModeYZ(self):
+        """Concatenates per-frame lists of the y- and z-coordinates (custom list-mode coordinates) to arrays."""
+        for name in ('y', 'z'):
+            value = getattr(self, name)
+            if isinstance(value, (list, tuple)):
+                if len(value) > 0:
+                    setattr(self, name, np.concatenate([np.asarray(t).flatten(order='F') for t in value]))
+                else:
+                    setattr(self, name, np.empty(0, dtype=np.float32))
+
+    def _concatenateListModeFrames(self):
+        """With one subset, per-frame lists of the list-mode coordinates (options.x, or options.trIndex and options.axIndex with
+        index-based reconstruction) are concatenated to one array so that the rest of the setup sees arrays. This mirrors what
+        formSubsetIndices does with multiple subsets. The number of events of each frame is stored in options.listmodeIndices
+        before this is called. The TOF indices are concatenated later, after they have been validated."""
+        if not self.listmode or self.subsets != 1:
+            return
+        if self.useIndexBasedReconstruction:
+            for name in ('trIndex', 'axIndex'):
+                value = getattr(self, name)
+                if isinstance(value, (list, tuple)):
+                    setattr(self, name, np.concatenate([np.asarray(t).flatten(order='F') for t in value]))
+        elif isinstance(self.x, (list, tuple)):
+            self.x = list(self.x)
+            for uu in range(len(self.x)):
+                self.x[uu] = self._listModeFrameCoordinates(uu)
+            self.x = np.concatenate([t.flatten(order='F') for t in self.x])
+            self._flattenListModeYZ()
 
     def _earlyFrameCount(self):
         """The number of timeframes, derived in the same way as self.Nt in addProjector(), for the checks that are done before
@@ -1007,12 +1068,15 @@ class projectorClass:
                 self.cr_p = self.dPitchX
             elif hasattr(self, 'cr_p'):
                 self.dPitchX = self.cr_p
+            # Custom detector/source coordinates do not require angles
             # Helical angles are always radians and may span several rotations, so the degree heuristic is not applied
-            if np.max(np.abs(self.angles.flatten())) > 6. * np.pi and not self.useHelical:
+            if self.angles.size > 0 and np.max(np.abs(self.angles.flatten())) > 6. * np.pi and not self.useHelical:
                 self.angles = self.angles * (np.pi / 180.)
-            if self.offangle > 0:
+            if self.angles.size > 0 and self.offangle > 0:
                 self.angles = self.angles + self.offangle
-            setCTCoordinates(self)
+            # Fully custom coordinates are used as such; only missing or per-projection (source + detector) coordinates are (re)computed
+            if self.x.size == 0 or self.x.size == 2 * self.nProjections or hasattr(self, 'coord'):
+                setCTCoordinates(self)
         if self.SPECT:
             # Dynamic SPECT projection images are represented as one list entry
             # per timeframe.  A four-dimensional input keeps the same temporal
@@ -1319,19 +1383,19 @@ class projectorClass:
                     self.listmodeIndices[:] = np.uint64(self.trIndex.size // 2 // len(self.listmodeIndices))
             else:
                 if isinstance(self.x, list):
-                    if self.x[0].shape[1] == 2 or self.x[0].shape[0] == 2:
-                        listSize  = 2
-                    else:
-                        listSize  = 6
+                    listSize = self._listModeValuesPerEvent(self.x[0])
                     for kk in range(len(self.listmodeIndices)):
                         self.listmodeIndices[kk] = np.uint64(self.x[kk].size // listSize )
                 else:
-                    if self.x.shape[1] == 2 or self.x.shape[0] == 2:
-                        listSize  = 2
-                    else:
-                        listSize  = 6
+                    listSize = self._listModeValuesPerEvent(self.x)
                     self.listmodeIndices[:] = np.uint64(self.x.size // listSize  // len(self.listmodeIndices))
+        # Per-frame lists of list-mode data are concatenated here if there is only one subset (the subset indexing in indexMaker/formSubsetIndices
+        # handles the lists with multiple subsets); listmodeIndices above keeps the number of events of each frame
+        self._concatenateListModeFrames()
         indexMaker(self)
+        if self.listmode and self.Nt > 1 and self.subsets == 1 and np.size(self.nMeasPerFrameSubset) == 1:
+            # One subset and several frames: the number of events of each frame is needed
+            self.nMeasPerFrameSubset = np.asarray(self.listmodeIndices, dtype=np.int64).reshape((self.Nt, 1))
         self.setUpCorrections()
         self.x0 = self.x0.ravel('F')
         if self.CT and self.projector_type == 11 and not self.useCPU:
@@ -1362,27 +1426,14 @@ class projectorClass:
                                 raise ValueError(f'The number of TOF indices does not correspond to the number of events (timeframe {kk + 1})!')
                     elif np.size(self.TOFIndices) != np.size(self.SinM):
                         raise ValueError('The number of TOF indices does not correspond to the number of events!')
+                if self.subsets == 1 and isinstance(self.TOFIndices, (list, tuple)):
+                    self.TOFIndices = np.concatenate([np.asarray(t).flatten(order='F') for t in self.TOFIndices])
                 if not self.useIndexBasedReconstruction:
                     if isinstance(self.x, list):
                         for uu in range(self.Nt):
-                            if self.x[uu].shape[1] == 2:
-                                self.x[uu] = np.asfortranarray(np.vstack([
-                                    self.x[uu][:, 0].reshape(1, -1),
-                                    self.y[uu][:, 0].reshape(1, -1),
-                                    self.z[uu][:, 0].reshape(1, -1),
-                                    self.x[uu][:, 1].reshape(1, -1),
-                                    self.y[uu][:, 1].reshape(1, -1),
-                                    self.z[uu][:, 1].reshape(1, -1),
-                                ]))
-                            elif self.x[uu].shape[0] == 2:
-                                self.x[uu] = np.asfortranarray(np.concatenate([
-                                    self.x[uu][:, 0],
-                                    self.y[uu][:, 0],
-                                    self.z[uu][:, 0],
-                                    self.x[uu][:, 1],
-                                    self.y[uu][:, 1],
-                                    self.z[uu][:, 1],
-                                ]))
+                            self.x[uu] = self._listModeFrameCoordinates(uu)
+                        # The separate y/z coordinates are not used after this, but arrays are expected
+                        self._flattenListModeYZ()
                     else:
                         if self.x.shape[0] == 2:
                             if self.x.flags.f_contiguous:
@@ -1511,7 +1562,7 @@ class projectorClass:
             from .detcoord import SPECTParameters
             SPECTParameters(self)
         if self.projector_type in (6, 16, 26, 61, 62, 66):
-            if self.subsets > 1 and (self.subsetType == 8 or self.subsetType == 9 or self.subsetType == 10 or self.subsetType == 11):
+            if self.subsets > 1 and (self.subsetType == 8 or self.subsetType == 9 or self.subsetType == 10 or self.subsetType == 11 or self.subsetType == 12):
                 geometry_fields = (
                     'angles', 'swivelAngles', 'radiusPerProj',
                     'blurPlanes', 'blurPlanes2', 'blurPlanes2Linear',
@@ -1979,8 +2030,13 @@ class projectorClass:
             # Subtracted scatter is the per-event additive term, which is allowed with TOF (the value of the TOF bin of the event)
             raise ValueError('Randoms and/or multiplicative scatter correction cannot be used with index-based reconstruction with TOF data!')
         self._checkListModeScatter()
-        if self.subsetType == 3 and self.maskFP.size > 1:
-            raise ValueError('Forward projection mask is not supported with subset type 3!')
+        if self.maskFP.size > 1 and self.subsetType in (3, 6, 7):
+            raise ValueError('Forward projection mask is only available with subset types 1, 2, 4, 5, and >= 8')
+        if not self.CT and not self.SPECT:
+            if not self.use_raw_data and ((self.sampling % 2 > 0 and self.sampling != 1) or self.sampling < 0):
+                raise ValueError('Sampling rate has to be divisible by two and positive or one!')
+            if self.use_raw_data and ((self.sampling_raw % 2 > 0 and self.sampling_raw != 1) or self.sampling_raw < 0):
+                raise ValueError('Sampling rate has to be divisible by two and positive or one!')
         
         if self.precondTypeMeas[1] and (self.subsetType < 8 and not(self.subsetType == 4) and not(self.subsetType == 0)):
             raise ValueError('Filtering-based preconditioner only works with subset types 0, 4 and 8-11!')
@@ -2100,6 +2156,12 @@ class projectorClass:
                             loc = info.find('-' + str(self.deviceNum) + '-')
                         loc2 = info[loc:].find('MB')
                         dispaus += info[loc + 4 : loc + loc2 + 2]
+                    # Atomics are not used with NVIDIA, AMD or POCL OpenCL devices
+                    if not self.useCUDA and loc != -1:
+                        platformName = info[loc + 4:]
+                        if platformName.startswith('NVIDIA') or platformName.startswith('AMD') or platformName.startswith('POCL'):
+                            self.use_64bit_atomics = False
+                            self.use_32bit_atomics = False
                     print(dispaus)
                 elif self.useCPU:
                     print('Using CPU-based reconstruction')
@@ -2108,7 +2170,7 @@ class projectorClass:
                     
                 algorithms = [
                     "OSEM", "MRAMLA", "RAMLA", "RBI", "ROSEM", "DRAMA", "COSEM", "ECOSEM", "ACOSEM", "LSQR", "CGLS", "FDK", "FISTA", "FISTAL1",
-                    "OSL_OSEM", "MBSREM", "BSREM", "OSL_RBI", "OSL_COSEM", "ROSEM_MAP", "PKMA", "SART", "ASD_POCS", "SAGA", "BB",
+                    "OSL_OSEM", "MBSREM", "BSREM", "OSL_RBI", "OSL_COSEM", "ROSEM_MAP", "PKMA", "SPS", "SART", "ASD_POCS", "SAGA", "BB",
                     "PDHG", "PDHGL1", "PDDY", "PDHGKL", "CV" ]
                 
                 
@@ -2902,6 +2964,7 @@ class projectorClass:
             ('deblurring', ctypes.c_bool),
             ('useMAD', ctypes.c_bool),
             ('useImages', ctypes.c_bool),
+            ('useHalf', ctypes.c_bool),
             ('useEFOV', ctypes.c_bool),
             ('CTAttenuation', ctypes.c_bool),
             ('offsetCorrection', ctypes.c_bool),

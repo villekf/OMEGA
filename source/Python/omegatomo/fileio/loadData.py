@@ -378,4 +378,15 @@ def loadROOT(options, store_coordinates = False):
                     FDcoord.append(np.asfortranarray(second[ind, :].T))
                 if useTOFInd:
                     TOFIndices.append(TOFall[ind])
+
+    # Sinogram gap filling (as in form_sinograms.m): fill the gaps caused by the pseudo detectors in the measured sinograms.
+    # The prompts, and the trues and scattered coincidences that can be reconstructed instead of the prompts, are filled
+    # (they become float32). The randoms (SinoR, SinoD) are not filled, the same as in MATLAB
+    if not indexBased and not store_coordinates and options.fill_sinogram_gaps and int(_scalar(options.det_per_ring)) < int(_scalar(options.det_w_pseudo)):
+        from omegatomo.util.gapFilling import gapFilling
+        Sino, gaps = gapFilling(options, Sino)
+        if options.obtain_trues:
+            SinoT, gaps = gapFilling(options, SinoT, 1, gaps)
+        if options.store_scatter:
+            SinoC, gaps = gapFilling(options, SinoC, 1, gaps)
     return Sino, SinoT, SinoC, SinoR, SinoD, Fcoord, FDcoord, DtrIndex, DaxIndex, TOFIndices
