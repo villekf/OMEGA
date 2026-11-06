@@ -702,14 +702,14 @@ classdef projectorClass
                                 if size(obj.param.x{uu},2) == 2
                                     obj.param.x{uu} = [obj.param.x{uu}(:,1)'; obj.param.y{uu}(:,1)'; obj.param.z{uu}(:,1)';obj.param.x{uu}(:,2)'; obj.param.y{uu}(:,2)'; obj.param.z{uu}(:,2)'];
                                 elseif size(obj.param.x{uu},1) == 2
-                                    obj.param.x{uu} = [obj.param.x{uu}(:,1); obj.param.y{uu}(:,1); obj.param.z{uu}(:,1);obj.param.x{uu}(:,2); obj.param.y{uu}(:,2); obj.param.z{uu}(:,2)];
+                                    obj.param.x{uu} = [obj.param.x{uu}(1,:); obj.param.y{uu}(1,:); obj.param.z{uu}(1,:);obj.param.x{uu}(2,:); obj.param.y{uu}(2,:); obj.param.z{uu}(2,:)];
                                 end
                             end
                         else
                             if size(obj.param.x,2) == 2
                                 obj.param.x = [obj.param.x(:,1)'; obj.param.y(:,1)'; obj.param.z(:,1)';obj.param.x(:,2)'; obj.param.y(:,2)'; obj.param.z(:,2)'];
                             elseif size(obj.param.x,1) == 2
-                                obj.param.x = [obj.param.x(:,1); obj.param.y(:,1); obj.param.z(:,1);obj.param.x(:,2); obj.param.y(:,2); obj.param.z(:,2)];
+                                obj.param.x = [obj.param.x(1,:); obj.param.y(1,:); obj.param.z(1,:);obj.param.x(2,:); obj.param.y(2,:); obj.param.z(2,:)];
                             end
                         end
                     end
@@ -917,7 +917,7 @@ classdef projectorClass
 
             if obj.param.projector_type == 6
                 %obj.param = SPECTParameters(obj.param);
-                if obj.param.subsets > 1 && (obj.param.subset_type == 8 || obj.param.subset_type == 9 || obj.param.subset_type == 10 || obj.param.subset_type == 11)
+                if obj.param.subsets > 1 && (obj.param.subset_type == 8 || obj.param.subset_type == 9 || obj.param.subset_type == 10 || obj.param.subset_type == 11 || obj.param.subset_type == 12)
                     obj.param.angles = obj.param.angles(obj.index);
                     obj.param.swivelAngles = obj.param.swivelAngles(obj.index);
                     obj.param.radiusPerProj = obj.param.radiusPerProj(obj.index);
