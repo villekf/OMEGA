@@ -86,7 +86,7 @@ if nargin >= 3 && ~isempty(varargin{2})
     orig_filename = varargin{2};
 else
     if iscell(img)
-        orig_filename = [prop.machine_name '_' prop.name];
+        orig_filename = [prop.scannerName '_' prop.name];
     else
         if nargin >= 4 && ~isempty(varargin{3})
             orig_filename = [varargin{3}.machine_name '_' varargin{3}.name];
@@ -115,22 +115,23 @@ for kk = 1 : pituus
             continue
         end
         % Dynamic case
-        if prop.n_time_steps > 1
+        if prop.nTimeSteps > 1
             kuva = img(kk,:);
-            kuva = reshape(kuva, 1, 1, 1, 1, prop.n_time_steps);
+            kuva = reshape(kuva, 1, 1, 1, 1, prop.nTimeSteps);
             kuva = cell2mat(kuva);
         else
             kuva = img{kk};
         end
         % Last iteration
         kuva = squeeze(kuva(:,:,:,end,:));
-        voxel_size = [prop.FOV_x/prop.Nx prop.FOV_y/prop.Ny prop.axial_FOV/prop.Ny];
+        voxel_size = [prop.FOVx/prop.Nx prop.FOVy/prop.Ny prop.axialFOV/prop.Nz];
         reko = algorithms_char();
         reko = reko{kk};
         description = [description ' with ' reko];
         filename = [orig_filename '_' reko];
     else
         kuva = img;
+        reko = [];
         % Last iteration
         if size(kuva,5) > 1
             kuva = squeeze(kuva(:,:,:,end,:));
@@ -140,9 +141,9 @@ for kk = 1 : pituus
             error('The size of the input image has to be at least XxYxZ')
         end
         if nargin >= 4 && ~isempty(varargin{3})
-            voxel_size = [varargin{3}.FOVa_x/varargin{3}.Nx varargin{3}.FOVa_y/varargin{3}.Ny varargin{3}.axial_fov/varargin{3}.Ny];
+            voxel_size = [varargin{3}.FOVa_x/varargin{3}.Nx varargin{3}.FOVa_y/varargin{3}.Ny varargin{3}.axial_fov/varargin{3}.Nz];
         else
-            voxel_size = [0 0 0];
+            voxel_size = [1 1 1];
         end
         if nargin >= 4 && ~isempty(varargin{3})
             if isfield(varargin{3}, 'simple')
@@ -153,18 +154,19 @@ for kk = 1 : pituus
             end
         else
             filename = orig_filename;
-            reko = [];
         end
     end
     % NIfTI
     if strcmp(type, 'nifti')
         filename = [filename '.nii'];
         kuva = rot90(kuva,1);
+        % The first two dimensions were swapped by the rotation
+        voxel_size = voxel_size([2 1 3]);
         if exist('niftiwrite', 'file') == 2
             niftiwrite(kuva,filename);
             info = niftiinfo(filename);
             info.Description = description;
-            info.PixelDimensions = voxel_size;
+            info.PixelDimensions = [voxel_size ones(1, ndims(kuva) - 3)];
             niftiwrite(kuva,filename,info);
         elseif exist('make_nii', 'file') == 2
             nii = make_nii(kuva, voxel_size, origin, [], description);
@@ -201,11 +203,17 @@ for kk = 1 : pituus
         end
         % MetaImage
     elseif strcmp(type, 'metaimage')
-        saveMetaImage(filename,kuva);
+        if iscell(img)
+            saveMetaImage(filename, kuva, [], prop);
+        elseif nargin >= 4 && ~isempty(varargin{3})
+            saveMetaImage(filename, kuva, [], varargin{3});
+        else
+            saveMetaImage(filename, kuva);
+        end
         % Binary
     elseif strcmp(type, 'raw')
         filename = [filename '.raw'];
-        fid = fopen(filename);
+        fid = fopen(filename, 'w');
         fwrite(fid, kuva(:),class(kuva));
         fclose(fid);
     else
