@@ -266,6 +266,43 @@ def _element_count(x):
     return int(x.size)
 
 
+def _flatFOrder(x):
+    """Flat, float32, Fortran-ordered (x fastest) version of an operator input (image or measurement array).
+
+    The kernels and the native library address images as x + Nx * (y + Ny * z) and sinograms/projections as
+    i + nRows * (j + nCols * k). A flat vector is therefore already correct, but a multidimensional array (for example
+    an (Nx, Ny, Nz) image or an (Ndist, Nang, TotSinos) sinogram) has to be flattened in F order, never with a C-order
+    reshape (which silently gives a wrong operator output, correlation ~0.2 with the correct one for PET). Arrays that
+    are already flat float32 vectors are returned as they are, without a copy. Lists (one entry per multi-resolution
+    volume) are handled entry by entry."""
+    if isinstance(x, (list, tuple)):
+        return [_flatFOrder(v) for v in x]
+    if hasattr(x, 'elements'):
+        # ArrayFire is column-major, so af.flat is the F-order flattening
+        if sum(1 for n in x.dims() if n > 1) > 1:
+            import arrayfire as af
+            x = af.flat(x)
+        return x
+    if getattr(x, 'ndim', 1) > 1:
+        if hasattr(x, 'numel'):
+            # PyTorch: F order is the C order of the transposed tensor
+            x = x.permute(*reversed(range(x.ndim))).reshape(-1)
+        elif hasattr(x, 'queue') and hasattr(x, 'get'):
+            # PyOpenCL array
+            import pyopencl.array as cla
+            x = cla.to_device(x.queue, np.ascontiguousarray(x.get().ravel('F')))
+        else:
+            # NumPy and CuPy
+            x = x.ravel(order='F')
+    if hasattr(x, 'astype') and hasattr(x, 'dtype'):
+        try:
+            if np.dtype(x.dtype) != np.float32:
+                x = x.astype(np.float32)
+        except TypeError:
+            pass
+    return x
+
+
 def _validate_forward_input(self, f):
     """Validate the FP input image element count(s) against N[k] before any
     device work happens, so a caller-side size mistake raises a clear
@@ -704,7 +741,105 @@ def conv3D(self, f, ii = 0):
         af.device.unlock_array(output)
     return output
 
+def _rowMajorOutput(self):
+    """True if the operator output is returned row-major (C-ordered) as multidimensional arrays (useRowMajor).
+    useRowMajor = None (the default) means automatic: True with PyTorch, False otherwise. Not available with ArrayFire
+    or Metal/MPS, which always return flat vectors."""
+    rowMajor = getattr(self, 'useRowMajor', None)
+    if rowMajor is None:
+        rowMajor = bool(self.useTorch)
+    return bool(rowMajor) and not self.useMetal and not self.useAF
+
+
+_clPermuteKernels = {}
+
+
+def _clFToRowMajor(x, fShape, queue=None):
+    """Flat F-ordered PyOpenCL array -> C-contiguous PyOpenCL array of shape fShape (on the device, up to 4 dimensions).
+    PyOpenCL cannot assign between arrays with different strides, so the permutation is done with an elementwise kernel."""
+    import pyopencl as cl
+    import pyopencl.array as clarray
+    import pyopencl.elementwise as clelementwise
+    import pyopencl.tools as cltools
+    if queue is None:
+        queue = x.queue if x.queue is not None else cl.CommandQueue(x.context)
+    ctype = cltools.dtype_to_ctype(x.dtype)
+    key = (x.context.int_ptr, ctype)
+    knl = _clPermuteKernels.get(key)
+    if knl is None:
+        knl = clelementwise.ElementwiseKernel(
+            x.context,
+            ctype + " *dst, const " + ctype + " *src, const long s0, const long s1, const long s2, const long s3",
+            "long r = i; long i3 = r % s3; r /= s3; long i2 = r % s2; r /= s2; long i1 = r % s1; long i0 = r / s1;"
+            "dst[i] = src[i0 + s0 * (i1 + s1 * (i2 + s2 * i3))];",
+            "fToRowMajor")
+        _clPermuteKernels[key] = knl
+    s = tuple(int(v) for v in fShape) + (1,) * (4 - len(fShape))
+    out = clarray.empty(queue, tuple(int(v) for v in fShape), x.dtype)
+    knl(out, x, s[0], s[1], s[2], s[3], queue=queue)
+    return out
+
+
+def _fToRowMajor(x, fShape, queue=None):
+    """Flat F-ordered vector (first index fastest) -> C-contiguous (row-major) array of shape fShape, such that
+    out[i, j, ...] is the element with F-order flat index i + fShape[0] * (j + fShape[1] * ...). Works for PyTorch
+    tensors, CuPy arrays and PyOpenCL arrays. Anything else (other array types, other element count) is returned as it is."""
+    fShape = tuple(int(v) for v in fShape)
+    n = len(fShape)
+    count = int(np.prod(fShape))
+    module = type(x).__module__
+    if hasattr(x, 'permute'):
+        if x.numel() != count:
+            return x
+        return x.reshape(tuple(reversed(fShape))).permute(*reversed(range(n))).contiguous()
+    if module.startswith('cupy'):
+        if x.size != count:
+            return x
+        import cupy as cp
+        return cp.ascontiguousarray(x.reshape(tuple(reversed(fShape))).transpose())
+    if module.startswith('pyopencl') and n <= 4:
+        if x.size != count:
+            return x
+        return _clFToRowMajor(x, fShape, queue)
+    return x
+
+
 def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
+    """Forward projection. The output is a flat, F-ordered measurement vector, or, with useRowMajor (the default with
+    PyTorch), a row-major (C-ordered) (nRowsD, nColsD, projections[, TOF bins]) array when the data is a full
+    sinogram/projection set."""
+    y = _forwardProjectionFlat(self, f, subset, timestep)
+    if _rowMajorOutput(self) and self.listmode == 0:
+        t = self.timestep if timestep == -1 else int(timestep)
+        s = self.subset if subset == -1 else int(subset)
+        if self.projector_type in (6, 66) or self.subsetType > 7 or self.subsets == 1:
+            if self.projector_type in (6, 66):
+                rows = int(getattr(self, 'measurement_nRowsD', self.nRowsD))
+                cols = int(getattr(self, 'measurement_nColsD', self.nColsD))
+            else:
+                rows, cols = int(self.nRowsD), int(self.nColsD)
+            shape = (rows, cols, int(self.nProjSubset[t, s]))
+            bins = _tof_output_bins(self)
+            if bins > 1 and self.projector_type not in (6, 66):
+                shape += (bins,)
+            y = _fToRowMajor(y, shape, getattr(self, 'queue', None))
+    return y
+
+
+def backwardProjection(self, y, subset = -1, timestep = -1):
+    """Backprojection. The output is a flat, F-ordered image vector, or, with useRowMajor (the default with PyTorch), a
+    row-major (C-ordered) (Nx, Ny, Nz) array (a list of them for multi-volume images)."""
+    f = _backwardProjectionFlat(self, y, subset, timestep)
+    if _rowMajorOutput(self):
+        queue = getattr(self, 'queue', None)
+        if isinstance(f, (list, tuple)):
+            f = [_fToRowMajor(v, (int(self.Nx[k]), int(self.Ny[k]), int(self.Nz[k])), queue) for k, v in enumerate(f)]
+        else:
+            f = _fToRowMajor(f, (int(self.Nx[0]), int(self.Ny[0]), int(self.Nz[0])), queue)
+    return f
+
+
+def _forwardProjectionFlat(self, f, subset: int = -1, timestep: int = -1):
     if subset == -1:
         subset = self.subset
     if timestep == -1:
@@ -723,6 +858,7 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
     volumes = 0
     if self.projector_type in (6, 66):
         volume_count = int(self.nMultiVolumes) + 1
+        f = _flatFOrder(f)
         inputs = list(f) if isinstance(f, (list, tuple)) else [f] * volume_count
         if len(inputs) != volume_count:
             raise ValueError(f'Expected {volume_count} volume inputs, got {len(inputs)}')
@@ -762,6 +898,7 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                 output += partial
             return output
     else:
+        f = _flatFOrder(f)
         _validate_forward_input(self, f)
         if self.nMultiVolumes > 0 and not(isinstance(f,list)):
             volumes = self.nMultiVolumes
@@ -1165,7 +1302,7 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                 af.device.unlock_array(f)
     return y
 
-def backwardProjection(self, y, subset = -1, timestep = -1):
+def _backwardProjectionFlat(self, y, subset = -1, timestep = -1):
     if subset == -1:
         subset = self.subset
     if timestep == -1:
@@ -1182,6 +1319,7 @@ def backwardProjection(self, y, subset = -1, timestep = -1):
         rows = int(getattr(self, 'measurement_nRowsD', self.nRowsD))
         cols = int(getattr(self, 'measurement_nColsD', self.nColsD))
         expected = rows * cols * int(self.nProjSubset[timestep, subset])
+        y = _flatFOrder(y)
         if not self.useCUDA:
             import arrayfire as af
             ops = _type6_arrayfire_ops(self)
@@ -1213,6 +1351,7 @@ def backwardProjection(self, y, subset = -1, timestep = -1):
                 outputs.append(output)
             return outputs[0] if int(self.nMultiVolumes) == 0 else outputs
     else:
+        y = _flatFOrder(y)
         _validate_backward_input(self, y, timestep, subset)
         _load_listmode_subset(self, timestep, subset)
         if self.nMultiVolumes > 0:

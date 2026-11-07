@@ -108,6 +108,17 @@ class _PowerMethodOps:
 
 
 def powerMethod(A, seed=None):
+    # The power method (and the preconditioners it applies) work on flat vectors, not on the row-major arrays that
+    # the operator returns with useRowMajor
+    rowMajor = getattr(A, 'useRowMajor', None)
+    A.useRowMajor = False
+    try:
+        return _powerMethodFlat(A, seed)
+    finally:
+        A.useRowMajor = rowMajor
+
+
+def _powerMethodFlat(A, seed=None):
     """
     Power method for estimating the largest eigenvalue of A^T * A (used to
     derive a step-size normalization constant for several algorithms).

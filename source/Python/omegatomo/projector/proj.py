@@ -602,6 +602,16 @@ class projectorClass:
     # Use single precision for the SPECT scatter-window (DEW/TEW) data; the MATLAB default is True
     useSingles = True
     useTorch = False
+    # Row-major (C-ordered) operator output, available with PyTorch (CUDA), CuPy and PyOpenCL (not ArrayFire or Metal/MPS).
+    # If True, forwardProject/backwardProject (and options * f, options.T() * y) return row-major arrays, the
+    # sinogram/projection data as an (nRowsD, nColsD, number of projections[, TOF bins]) array and the image as an
+    # (Nx, Ny, Nz) array, indexed y[i, j, k] and f[x, y, z]. Multi-volume images are a list. Row-major is also the format
+    # that PyTorch itself uses. Measurements that are not a full sinogram/projection set (list-mode data, subsets > 1
+    # with subsetType < 8) stay flat vectors.
+    # If False, the output is a flat, Fortran-ordered vector (x/rows varying fastest).
+    # None (default) is automatic: True when useTorch is True, False otherwise.
+    # Input can always be either such a flat vector or a multidimensional tensor/array
+    useRowMajor = None
     useCuPy = False
     useMetal = False
     dualLayerSubmodule = False

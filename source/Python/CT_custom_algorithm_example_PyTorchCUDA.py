@@ -287,6 +287,11 @@ options.useCUDA = True
 # For details, see https://en.wikipedia.org/wiki/Row-_and_column-major_order
 # The above means that if column-major 3D array has dimensions (dim1, dim2, dim3), in PyTorch you would need this to be (dim3, dim2, dim1) to preserve the data structure
 options.useTorch = True
+# With PyTorch, row-major (C-ordered) output is the default (useRowMajor = True), the same format that PyTorch itself uses:
+# the forward projection returns an (nRowsD, nColsD, projections) tensor and the backprojection an (Nx, Ny, Nz) tensor, indexed
+# as y[i, j, k] and f[x, y, z]. Without PyTorch the default is False, i.e. flat, Fortran-ordered vectors (x/rows varying fastest).
+# This example works on such flat vectors, so row-major output is turned off here.
+options.useRowMajor = False
 
 # If True, assumes that CuPy arrays are the input for forward and backward projections, unless useTorch = True
 # Requires useCUDA = True

@@ -625,28 +625,36 @@ def initProjector(self):
             self.useCuPy = True
     if self.useTorch and not self.useCUDA and not self.useMetal:
         raise ValueError('PyTorch with the OMEGA OpenCL backend would require host staging. Select CUDA or the native Metal/MPS backend.')
+    if self.useCUDA and not self.useCuPy and not self.useMetal:
+        # The operator interface (forwardProject/backwardProject) has no PyCUDA path, CuPy is the CUDA array library
+        print('The CUDA operator interface requires CuPy. Setting useCuPy to True!')
+        self.useCuPy = True
+    if getattr(self, 'useRowMajor', None) and (self.useAF or self.useMetal):
+        print('useRowMajor is not supported with ArrayFire or Metal/MPS, the operator output stays flat and Fortran-ordered.')
     if self.useCuPy and self.useCUDA:
         import cupy as cp
     elif self.useCuPy and not self.useCUDA:
         print('CuPy can only be used when useCUDA is True. Setting useCUDA to True!')
         self.useCUDA = True
         import cupy as cp
-    if self.useCuPy and self.useCUDA:
-        def cupyROCm():
-            try:
-                return bool(cp.cuda.runtime.is_hip)
-            except AttributeError:
-                pass
-            try:
-                import io
-                import contextlib
-                buf = io.StringIO()
-                with contextlib.redirect_stdout(buf):
-                    cp.show_config()
-                lower = buf.getvalue().lower()
-                return "rocm" in lower or "hip" in lower
-            except Exception:
-                return False
+    # Always defined (also when CuPy is off), it is called unconditionally further below on the CUDA path
+    def cupyROCm():
+        if not (self.useCuPy and self.useCUDA):
+            return False
+        try:
+            return bool(cp.cuda.runtime.is_hip)
+        except AttributeError:
+            pass
+        try:
+            import io
+            import contextlib
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                cp.show_config()
+            lower = buf.getvalue().lower()
+            return "rocm" in lower or "hip" in lower
+        except Exception:
+            return False
     if not self.useCUDA and not self.useMetal:
         import pyopencl as cl
         import pyopencl.array
