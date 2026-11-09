@@ -185,7 +185,7 @@ class projectorClass:
     tauCPFilt = 0.
     sigmaCP = 1.
     tauCP = 0.
-    sigma2CP = 1.
+    sigma2CP = None # Default (None): sigmaCP, resolved in addProjector
     thetaCP = 1.
     machine_name = ""
     fpath = ""
@@ -303,14 +303,14 @@ class projectorClass:
     precompute_lor = False
     sigmaZ = -1.
     sigmaXY = -1.
-    colL: float = 0. # Collimator hole length
+    colL: float = 1. # Collimator hole length
     colLxy: Optional[float] = None # Collimator hole length in the transaxial plane
     colLz: Optional[float] = None # Collimator hole length in the axial plane
-    colR: float = 0. # Collimator hole radius
-    colD: float = 0. # Distance from collimator hole centre to detector surface
+    colR: float = 1. # Collimator hole radius
+    colD: float = 1. # Distance from collimator hole centre to detector surface
     colFxy: float = np.inf # Collimator focal distance, XY plane
     colFz: float = np.inf # Collimator focal distance, Z direction
-    iR: float = 0. # Detector intrinsic resolution
+    iR: float = 1. # Detector intrinsic resolution
     implementation = 2
     rotateAttImage = 0.
     flipAttImageXY = False
@@ -385,8 +385,8 @@ class projectorClass:
     enforcePositivity = True
     gradV1 = 0.5
     gradV2 = 2.5
-    gradInitIter = subsets
-    gradLastIter = gradInitIter
+    gradInitIter = None # Default (None): the number of subsets, resolved in addProjector
+    gradLastIter = None # Default (None): gradInitIter, resolved in addProjector
     pitch = False
     compute_sensitivity_image = False
     listmode = 0
@@ -425,13 +425,13 @@ class projectorClass:
     Ndy = 1
     Ndz = 1
     mean_type = 4
-    TVsmoothing = 1e-4
-    temporalTVsmoothing = 1e-4
+    TVsmoothing = 1e-2
+    temporalTVsmoothing = 1e-2
     TV_use_anatomical = False
     TVtype = 1
     tau = 0.
     C = 1.
-    SATVPhi = 1.
+    SATVPhi = None # Default (None): 0 for TV types 4 and 6, 1 otherwise, resolved in addProjector
     FluxType = 1
     DiffusionType = 2
     eta = 1e-5
@@ -450,7 +450,7 @@ class projectorClass:
     # differences is 2 / GM_delta^2
     GM_delta = 1.
     NLMsigma = 1.
-    NLAdaptiveConstant = 1.
+    NLAdaptiveConstant = 1e-5
     TimeStepAD = 1.
     KAD = 1.
     huber_delta = 1.
@@ -490,7 +490,7 @@ class projectorClass:
     nRowsD = Ndist
     nColsD = Nang
     Nf = 0
-    tube_radius = 1.
+    tube_radius = None # Default (None): sqrt(2) * (cr_pz / 2), resolved in addProjector
     OSEM = False
     LSQR = False
     CGLS = False
@@ -660,7 +660,7 @@ class projectorClass:
     precorrect = False
     seed = -1
     useHelical = False
-    helicalRadius = 1.
+    helicalRadius = 0.
     useParkerWeights = False
     # When True (default) the built-in reconstruction works on a private copy of the options, so
     # the same options object can be reused for further reconstructions. When False the options
@@ -1238,6 +1238,21 @@ class projectorClass:
         # pre-list-mode value) observe, so only self.listmode is set early.
         self.listmode = 1 if (self._isListModeCandidate() or self.useIndexBasedReconstruction) else 0
         self.OMEGAErrorCheck()
+        # Defaults that depend on other options (setMissingValues.m). Resolved here, after cr_pz, dPitchX/Y and
+        # the number of subsets are final and before any of the values is read (coordinates, projector
+        # initialization, prepass, ctypes struct). The arrays are rebound, never written in place.
+        if self.tube_radius is None:
+            self.tube_radius = math.sqrt(2.) * (self.cr_pz / 2.)
+        if self.gradInitIter is None:
+            self.gradInitIter = self.subsets
+        if self.gradLastIter is None:
+            self.gradLastIter = self.gradInitIter
+        if self.sigma2CP is None:
+            self.sigma2CP = _copyValue(self.sigmaCP)
+        if self.SATVPhi is None:
+            self.SATVPhi = 0. if (self.TV and self.TVtype in (4, 6)) else 1.
+        if not np.any(self.FWHM):
+            self.FWHM = np.array([self.dPitchX, self.dPitchX, self.dPitchY], dtype=np.float32)
         self.TOF = self.TOF_bins > 1 and self.projector_type in (1, 11, 2, 22, 12, 21, 23, 32, 24, 42, 3, 33, 13, 31, 4, 14, 41, 44, 34, 43)
         if self.TOF:
             if self.TOF_bins_used == 0 and self.TOF_bins > 0:
@@ -1899,7 +1914,7 @@ class projectorClass:
             
         if not self.CT and not self.SPECT and self.det_per_ring == self.det_w_pseudo and self.fill_sinogram_gaps:
             raise ValueError('Gap filling is only supported with pseudo detectors!')
-        if not self.largeDim and not self.x0.any():
+        if not self.largeDim and self.x0.size == 0:
             if not self.CT:
                 print('Initial value is an empty array, using the default values (1)')
                 self.x0 = np.ones((self.Nx, self.Ny, self.Nz), dtype=np.float32, order='F')
