@@ -44,7 +44,6 @@ if isfield(options,ichar)
                             options.SinM{kk} = single(full(options.SinM{kk}(:))) .* single(full(input{kk}(:)));
                         end
                     end
-                    options.SinM{kk}(options.SinM{kk} < 0) = 0;
                 end
             end
         else
@@ -80,7 +79,6 @@ if isfield(options,ichar)
                         options.SinM = single(full(options.SinM(:))) .* single(full(input{1}(:)));
                     end
                 end
-                options.SinM(options.SinM < 0) = 0;
             end
         end
     else
@@ -118,7 +116,6 @@ if isfield(options,ichar)
                             options.SinM{kk} = single(full(options.SinM{kk}(:))) .* (single(full(input(:))) / length(options.SinM));
                         end
                     end
-                    options.SinM{kk}(options.SinM{kk} < 0) = 0;
                 end
             end
         else
@@ -154,7 +151,6 @@ if isfield(options,ichar)
                         options.SinM = single(full(options.SinM(:))) .* single(full(input(:)));
                     end
                 end
-                options.SinM(options.SinM < 0) = 0;
             end
         end
     end
