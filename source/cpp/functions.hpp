@@ -83,6 +83,9 @@ inline void checkFastPDHG(scalarStruct& inputScalars, const Weighting& w_vec, co
 	// All BPType 4/5 combinations are allowed
 	if ((inputScalars.BPType != 4 && inputScalars.BPType != 5) || !inputScalars.CT)
 		reason = "only backprojection types 4 and 5 (projector_type 4, 5, 14, 15, 24, 34, 45, 54, 74, 75) with CT data are supported";
+	// The fused kernel has no mask handling and the type 4 backprojection skips the masked z-planes of a voxel block only in its regular write
+	else if (inputScalars.BPType == 4 && inputScalars.maskBP && inputScalars.maskBPZ > 1)
+		reason = "a 3D backprojection mask with backprojection type 4 is not supported";
 	else if (!fastPDHGAlgorithm && !fastPoissonAlgorithm)
 		reason = "only PDHG, PDHGKL, PDHGL1, CV, PKMA, MBSREM and BSREM are supported (PDDY is not)";
 	// The experimental relaxation parameter computations are not supported
