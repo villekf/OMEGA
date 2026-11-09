@@ -214,8 +214,16 @@ elseif options.attenuation_correction && options.SPECT % SPECT attenuation
 else
     options.vaimennus = 0;
 end
-if options.attenuation_correction && options.attIncm
-    options.vaimennus = options.vaimennus ./ 10;
+% attIncm (1/cm to 1/mm) applies only to attenuation images. A measurement-domain (sinogram) attenuation correction is
+% unitless and is never scaled. SPECT attenuation is always an image
+if options.attenuation_correction && options.attIncm && (options.SPECT || options.CT_attenuation)
+    if iscell(options.vaimennus)
+        for kk = 1 : numel(options.vaimennus)
+            options.vaimennus{kk} = options.vaimennus{kk} ./ 10;
+        end
+    else
+        options.vaimennus = options.vaimennus ./ 10;
+    end
 end
 
 
