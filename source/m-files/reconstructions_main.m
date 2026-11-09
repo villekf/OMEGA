@@ -145,17 +145,8 @@ end
 
 linAlg = recNames(5);
 
-if ~options.param.usingLinearizedData
-    for kk = 1 : numel(linAlg)
-        if options.param.CT && options.param.(linAlg{kk}) && ~options.param.largeDim
-            options.param = linearizeData(options.param);
-            break
-        end
-    end
-end
-if options.param.useParkerWeights
-    options.param = ParkerWeights(options.param);
-    % options.param.SinM = options.param.SinM .* w;
+if options.param.CT && ~iscell(options.param.SinM)
+    sinMSizeCT = size(options.param.SinM);
 end
 
 if ~options.param.listmode
@@ -169,6 +160,25 @@ else
     options.param.randoms_correction = false;
     options.param.additionalCorrection = false;
     [options.param] = loadCorrections(options.param, RandProp, ScatterProp);
+end
+
+% CT corrections (e.g. scatter subtraction, normalization) are applied to the intensity data above, i.e. before the
+% logarithm. Linearization and Parker weighting thus come after loadCorrections (same order as in Python).
+if ~options.param.usingLinearizedData
+    for kk = 1 : numel(linAlg)
+        if options.param.CT && options.param.(linAlg{kk}) && ~options.param.largeDim
+            options.param = linearizeData(options.param);
+            break
+        end
+    end
+end
+if options.param.useParkerWeights
+    % loadCorrections can vectorize SinM (file-loaded normalization), Parker weighting needs the original shape
+    if exist('sinMSizeCT', 'var') && ~iscell(options.param.SinM) && prod(sinMSizeCT) == numel(options.param.SinM)
+        options.param.SinM = reshape(options.param.SinM, sinMSizeCT);
+    end
+    options.param = ParkerWeights(options.param);
+    % options.param.SinM = options.param.SinM .* w;
 end
 
 % Non-subtracted (multiplicative) scatter correction is applied through the general
