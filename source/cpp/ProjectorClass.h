@@ -398,8 +398,9 @@ inline NS::SharedPtr<NS::Dictionary> makeMetalPreprocessorMacros(const std::vect
 #endif
 
 // Default work-group size of the list-mode (and index-based) projectors. The events are unsorted, so 128 is a poor size. 32 is the best on
-// wave32 devices (NVIDIA, Intel, RDNA, Apple), the wave64 AMD GPUs (GCN/CDNA) are fastest with 512. A user-supplied local_size always wins.
-// Same rule as in the Python operator (_listmodeLocalSize in init.py)
+// wave32 devices (NVIDIA, Intel, RDNA, Apple). The wave64 AMD GPUs (GCN/CDNA) are fastest with 512 for projector type 1 (FPType and BPType 1),
+// the other projector types keep the defaults they had before: 128 for types 2 and 3 (BPType 1-3) and 64 for type 4.
+// A user-supplied local_size always wins. Same rule as in the Python operator (_listmodeLocalSize in init.py)
 // HIP: gcnArchName without the feature suffixes (e.g. gfx90a:sramecc+:xnack-): gfx + 3 characters (gfx803, gfx90a, gfx942) is wave64,
 // gfx + 4 characters (gfx1030, gfx1100) is wave32. Anything unparsable is wave32
 inline bool isWave64HipArch(const char* archName) {
@@ -423,8 +424,14 @@ inline bool isWave64OpenCL(const std::string& vendor, const std::string& extensi
 }
 
 // The device limit (maximum work-group size, 0 if unknown) caps the size, the OpenCL kernels have a fixed reqd_work_group_size
-inline size_t listmodeLocalSize(const bool wave64, const size_t deviceLimit) {
-	size_t localSize = wave64 ? 512ULL : 32ULL;
+inline size_t listmodeLocalSize(const bool wave64, const size_t deviceLimit, const int FPType, const int BPType) {
+	size_t localSize = 32ULL;
+	if (wave64) {
+		if (FPType == 1 && BPType == 1)
+			localSize = 512ULL;
+		else
+			localSize = (BPType >= 1 && BPType <= 3) ? 128ULL : 64ULL;
+	}
 	if (deviceLimit > 0ULL && localSize > deviceLimit)
 		localSize = deviceLimit;
 	return localSize;
@@ -3087,9 +3094,22 @@ public:
 					local_size[1] = 8ULL;
 			}
 		}
-		// List-mode (and index-based) data: 32 instead of 128/64, see listmodeLocalSize. The wave64 AMD GPUs get 512 once the device is known
+		// PET sinogram data (1D launch, subset types 1-5) with projector type 1 (both FP and BP): 256 instead of 128. Measured on an RTX 4090,
+		// RTX 3090, TITAN RTX and RX 7900 XT: 256 was never more than 3.4 % slower than 128 for type 1 and up to 32 % faster, types 2 and 3
+		// were best at 128 (kept). Capped to the device limit below for OpenCL and HIP (1024 on all NVIDIA GPUs, no cap needed with CUDA).
+		// Same rule as in the Python operator (init.py). Not applied to Metal (not measured)
+		bool sinogramType1LocalSize = false;
+#if !defined(METAL)
+		// (PET is false for the subset types 1-5, so PET data is identified here as neither CT nor SPECT)
+		if (inputScalars.localSize[0] <= 0 && !inputScalars.CT && !inputScalars.SPECT && inputScalars.listmode == 0 && local_size[1] == 1ULL
+			&& inputScalars.FPType == 1 && inputScalars.BPType == 1) {
+			local_size[0] = 256ULL;
+			sinogramType1LocalSize = true;
+		}
+#endif
+		// List-mode (and index-based) data: 32 instead of 128/64, see listmodeLocalSize. The wave64 AMD GPUs get 512 (type 1) or 128/64 once the device is known
 		if (inputScalars.localSize[0] <= 0 && inputScalars.listmode > 0 && local_size[1] == 1ULL)
-			local_size[0] = listmodeLocalSize(false, 0ULL);
+			local_size[0] = listmodeLocalSize(false, 0ULL, inputScalars.FPType, inputScalars.BPType);
 		// Override the above defaults with user-supplied values (per dimension). A negative input value
 		// keeps the corresponding default computed above.
 		for (int ls = 0; ls < 3; ls++)
@@ -3160,11 +3180,19 @@ public:
 #endif
 
 #if defined(HIP)
-		// List-mode data: 512 on the wave64 AMD GPUs (the 32 set above is for the wave32 ones)
+		// List-mode data: 512 (type 1) or 128/64 on the wave64 AMD GPUs (the 32 set above is for the wave32 ones)
 		if (inputScalars.localSize[0] <= 0 && inputScalars.listmode > 0 && local_size[1] == 1ULL) {
 			hipDeviceProp_t hipPropLS;
 			if (hipGetDeviceProperties(&hipPropLS, CUDeviceID[0]) == hipSuccess)
-				local_size[0] = listmodeLocalSize(isWave64HipArch(hipPropLS.gcnArchName), static_cast<size_t>(hipPropLS.maxThreadsPerBlock));
+				local_size[0] = listmodeLocalSize(isWave64HipArch(hipPropLS.gcnArchName), static_cast<size_t>(hipPropLS.maxThreadsPerBlock),
+					inputScalars.FPType, inputScalars.BPType);
+		}
+		// Sinogram type 1 default (256) capped to the device limit
+		if (sinogramType1LocalSize) {
+			hipDeviceProp_t hipPropLS2;
+			if (hipGetDeviceProperties(&hipPropLS2, CUDeviceID[0]) == hipSuccess && hipPropLS2.maxThreadsPerBlock > 0
+				&& local_size[0] > static_cast<size_t>(hipPropLS2.maxThreadsPerBlock))
+				local_size[0] = static_cast<size_t>(hipPropLS2.maxThreadsPerBlock);
 		}
 #endif
 		status2 = createProgram(programFP, programBP, programAux, header_directory, inputScalars, MethodList, w_vec, local_size, type);
@@ -3193,13 +3221,15 @@ public:
 		if ((devType & CL_DEVICE_TYPE_CPU) && inputScalars.useImages) {
 			inputScalars.useImages = false;
 		}
-		// For NVIDIA cards, 32 local size seems more optimal with 1D kernelFP (unless the user gave an explicit value)
+		// The former NVIDIA rule (32 for the 1D type 1 launches) was removed: PET sinogram type 1 now defaults to 256, list-mode data has its own default
 		std::string deviceName = CLDeviceID[0].getInfo<CL_DEVICE_VENDOR>(&status);
-		std::string NV("NVIDIA Corporation");
-		if (inputScalars.localSize[0] <= 0 && NV.compare(deviceName) == 0 && (inputScalars.projector_type == 1 || inputScalars.projector_type == 11) 
-			&& local_size[1] == 1ULL)
-			local_size[0] = 32ULL;
-		// List-mode data: 512 on the wave64 AMD GPUs (the 32 set above is for the wave32 ones), capped to the device limit
+		// Sinogram type 1 default (256) capped to the device limit (CL_DEVICE_MAX_WORK_GROUP_SIZE)
+		if (sinogramType1LocalSize) {
+			const size_t maxWorkGroupSino = static_cast<size_t>(CLDeviceID[0].getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>(&status));
+			if (maxWorkGroupSino > 0ULL && local_size[0] > maxWorkGroupSino)
+				local_size[0] = maxWorkGroupSino;
+		}
+		// List-mode data: 512 (type 1) or 128/64 on the wave64 AMD GPUs (the 32 set above is for the wave32 ones), capped to the device limit
 		if (inputScalars.localSize[0] <= 0 && inputScalars.listmode > 0 && local_size[1] == 1ULL) {
 			cl_uint gfxipMajor = 0;
 			const std::string deviceExt = CLDeviceID[0].getInfo<CL_DEVICE_EXTENSIONS>(&status);
@@ -3207,7 +3237,8 @@ public:
 				&& clGetDeviceInfo(CLDeviceID[0](), CL_DEVICE_GFXIP_MAJOR_AMD, sizeof(cl_uint), &gfxipMajor, nullptr) != CL_SUCCESS)
 				gfxipMajor = 0;
 			const size_t maxWorkGroup = static_cast<size_t>(CLDeviceID[0].getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>(&status));
-			local_size[0] = listmodeLocalSize(isWave64OpenCL(deviceName, deviceExt, static_cast<unsigned int>(gfxipMajor)), maxWorkGroup);
+			local_size[0] = listmodeLocalSize(isWave64OpenCL(deviceName, deviceExt, static_cast<unsigned int>(gfxipMajor)), maxWorkGroup,
+				inputScalars.FPType, inputScalars.BPType);
 		}
 		if (DEBUG) {
 			std::string deviceName2 = CLDeviceID[0].getInfo<CL_DEVICE_NAME>(&status);

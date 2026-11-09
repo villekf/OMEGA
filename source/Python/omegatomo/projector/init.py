@@ -427,11 +427,17 @@ def _isWave64(vendor=None, gfxipMajor=None, archName=None):
     return False
 
 
-def _listmodeLocalSize(vendor=None, gfxipMajor=None, archName=None, deviceLimit=None):
+def _listmodeLocalSize(vendor=None, gfxipMajor=None, archName=None, deviceLimit=None, FPType=None, BPType=None):
     """The default 1D local (work-group/block) size of list-mode (and index-based) data. The events are unsorted, so 128 is a poor size:
-    32 is the best on wave32 devices and 512 on the wave64 AMD GPUs (see _isWave64). Capped to the device limit (the maximum work-group size,
-    None if unknown). Same rule as listmodeLocalSize in ProjectorClass.h."""
-    size = 512 if _isWave64(vendor, gfxipMajor, archName) else 32
+    32 is the best on wave32 devices. On the wave64 AMD GPUs (see _isWave64) 512 is the best for projector type 1 (FPType and BPType 1), the
+    other projector types keep the defaults they had before: 128 for types 2 and 3 (BPType 1-3) and 64 for type 4. Capped to the device limit
+    (the maximum work-group size, None if unknown). Same rule as listmodeLocalSize in ProjectorClass.h."""
+    size = 32
+    if _isWave64(vendor, gfxipMajor, archName):
+        if FPType == 1 and BPType == 1:
+            size = 512
+        else:
+            size = 128 if BPType in (1, 2, 3) else 64
     try:
         if deviceLimit is not None and 0 < int(deviceLimit) < size:
             size = int(deviceLimit)
@@ -443,14 +449,16 @@ def _listmodeLocalSize(vendor=None, gfxipMajor=None, archName=None, deviceLimit=
 def _deviceListmodeLocalSize(self, rocm=False, cp=None):
     """_listmodeLocalSize for the device in use: the CuPy device on ROCm/HIP (rocm and the cupy module cp), the PyOpenCL device in
     self.clctx, 32 for everything else (CUDA, Metal/MPS, PyTorch) or if the device properties cannot be read."""
+    FPType = self.FPType
+    BPType = self.BPType
     if self.useMetal:
-        return _listmodeLocalSize()
+        return _listmodeLocalSize(FPType=FPType, BPType=BPType)
     try:
         if self.useCUDA:
             if not rocm or cp is None:
-                return _listmodeLocalSize()
+                return _listmodeLocalSize(FPType=FPType, BPType=BPType)
             props = cp.cuda.runtime.getDeviceProperties(cp.cuda.runtime.getDevice())
-            return _listmodeLocalSize(archName=props.get('gcnArchName'), deviceLimit=props.get('maxThreadsPerBlock'))
+            return _listmodeLocalSize(archName=props.get('gcnArchName'), deviceLimit=props.get('maxThreadsPerBlock'), FPType=FPType, BPType=BPType)
         import pyopencl as cl
         device = self.clctx.get_info(cl.context_info.DEVICES)[0]
         vendor = device.get_info(cl.device_info.VENDOR)
@@ -459,9 +467,23 @@ def _deviceListmodeLocalSize(self, rocm=False, cp=None):
         if vendor == 'Advanced Micro Devices, Inc.' and 'cl_amd_device_attribute_query' in device.get_info(cl.device_info.EXTENSIONS) \
                 and hasattr(cl.device_info, 'GFXIP_MAJOR_AMD'):
             gfxipMajor = device.get_info(cl.device_info.GFXIP_MAJOR_AMD)
-        return _listmodeLocalSize(vendor=vendor, gfxipMajor=gfxipMajor, deviceLimit=device.max_work_group_size)
+        return _listmodeLocalSize(vendor=vendor, gfxipMajor=gfxipMajor, deviceLimit=device.max_work_group_size, FPType=FPType, BPType=BPType)
     except Exception:
-        return _listmodeLocalSize()
+        return _listmodeLocalSize(FPType=FPType, BPType=BPType)
+
+
+def _deviceMaxWorkGroupSize(self, rocm=False, cp=None):
+    """The maximum work-group size of the device in use (the CuPy device on CUDA/ROCm, the PyOpenCL device in self.clctx), None if it
+    cannot be read (the caller then does not cap)."""
+    try:
+        if self.useCUDA:
+            if cp is None:
+                return None
+            return int(cp.cuda.runtime.getDeviceProperties(cp.cuda.runtime.getDevice())['maxThreadsPerBlock'])
+        import pyopencl as cl
+        return int(self.clctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size)
+    except Exception:
+        return None
 
 
 def _orth_clip_needed(self):
@@ -757,11 +779,19 @@ def initProjector(self):
         elif self.BPType in [5]:
             linesBP = _read(headerDir, 'projectorType5.cl')
         frame_count = int(getattr(self, 'Nt', 1))
-        # List-mode (and index-based) data: 32, or 512 on wave64 AMD GPUs, instead of 128. Other data using the 1D launch keeps 128
+        # List-mode (and index-based) data: 32, or on wave64 AMD GPUs 512 (type 1) / 128 / 64, instead of 128. Other data using the 1D launch keeps 128,
+        # except PET sinogram data with projector type 1 (both FP and BP): 256 (measured on an RTX 4090, RTX 3090, TITAN RTX and RX 7900 XT:
+        # 256 was never more than 3.4 % slower than 128 for type 1 and up to 32 % faster, types 2 and 3 were best at 128), capped to the device
+        # limit if it can be read (not on Metal, not measured). Same rule as in ProjectorClass.h
         defaultLocalSize1D = 128
+        cupyOnCUDA = self.useCuPy and self.useCUDA
         if self.listmode > 0:
-            cupyOnCUDA = self.useCuPy and self.useCUDA
             defaultLocalSize1D = _deviceListmodeLocalSize(self, cupyOnCUDA and cupyROCm(), cp if cupyOnCUDA else None)
+        elif not self.CT and not self.SPECT and self.FPType == 1 and self.BPType == 1 and not self.useMetal:
+            defaultLocalSize1D = 256
+            deviceLimit = _deviceMaxWorkGroupSize(self, cupyOnCUDA and cupyROCm(), cp if cupyOnCUDA else None)
+            if deviceLimit is not None and 0 < deviceLimit < defaultLocalSize1D:
+                defaultLocalSize1D = deviceLimit
         globalSize = [[None] * self.subsets for _ in range(frame_count)]
         # self.mSize = [None] * self.subsets
         for timestep in range(frame_count):
