@@ -44,6 +44,16 @@ inline af::array loadTOFAdditive(const R* sc_ra, const int64_t n, const size_t s
 }
 
 /// <summary>
+/// Start (in elements, TOF bin 0) of subset nInd of timestep t in TOF sinogram data ordered as
+/// [non-TOF measurements, TOF bins, timesteps]. pituus is cumulative over all timesteps, i.e. it already
+/// contains the start of the timestep in non-TOF units, so the frame-local offset is used and the frame
+/// start is kokoTOF * t.
+/// </summary>
+inline size_t tofSubsetStart(const int64_t* pituus, const int64_t nInd, const uint32_t t, const uint32_t subsets, const int64_t scale, const size_t kokoTOF) {
+	return static_cast<size_t>((pituus[nInd] - pituus[static_cast<int64_t>(t) * subsets]) * scale) + kokoTOF * static_cast<size_t>(t);
+}
+
+/// <summary>
 /// The main reconstruction function. This function performs all the image reconstruction duties. First it transfers the
 /// necessary variables and builds the necessary kernels. After this, it performs any necessary precomputations and then
 /// performs the image reconstruction with all the selected features. All the image reconstruction procedures are 
@@ -541,11 +551,12 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     // TOF-resolved additive term, same layout as the TOF measurements (see the loading of Sin below)
                     const int nInd = kk + timestep * inputScalars.subsets;
                     if (inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8 && inputScalars.subsetType > 0)) {
-                        aRand[timestep][kk] = loadTOFAdditive(sc_ra, length[nInd], pituus[nInd] + inputScalars.kokoTOF * timestep, inputScalars.kokoNonTOF, inputScalars.nBins);
+                        aRand[timestep][kk] = loadTOFAdditive(sc_ra, length[nInd],
+                            tofSubsetStart(pituus, nInd, timestep, inputScalars.subsets, 1, inputScalars.kokoTOF), inputScalars.kokoNonTOF, inputScalars.nBins); // pituus is cumulative over timesteps; tofSubsetStart gives the frame-local offset + kokoTOF * timestep
                         proj.memSize += (sizeof(float) * length[nInd] * inputScalars.nBins);
                     } else {
                         aRand[timestep][kk] = loadTOFAdditive(sc_ra, inputScalars.nRowsD * inputScalars.nColsD * length[nInd],
-                            pituus[nInd] * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.kokoTOF * timestep, inputScalars.kokoNonTOF, inputScalars.nBins);
+                            tofSubsetStart(pituus, nInd, timestep, inputScalars.subsets, static_cast<int64_t>(inputScalars.nRowsD) * inputScalars.nColsD, inputScalars.kokoTOF), inputScalars.kokoNonTOF, inputScalars.nBins);
                         proj.memSize += (sizeof(float) * inputScalars.nRowsD * inputScalars.nColsD * length[nInd] * inputScalars.nBins);
                     }
                 } else if ((inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8 && inputScalars.subsetType > 0)) || inputScalars.listmode > 0) {
@@ -583,7 +594,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     if (inputScalars.TOF && inputScalars.listmode == 0) {
                         for (int64_t to = 0; to < inputScalars.nBins; to++) {
                             mData[kk][timestep](af::seq(length[nInd] * to, length[nInd] * (to + 1) - 1)) = af::array(length[nInd], 
-                                &Sin[pituus[nInd] + inputScalars.kokoNonTOF * to + inputScalars.kokoTOF * timestep], AFTYPE);
+                                &Sin[tofSubsetStart(pituus, nInd, timestep, inputScalars.subsets, 1, inputScalars.kokoTOF) + inputScalars.kokoNonTOF * to], AFTYPE); // pituus is cumulative over timesteps; tofSubsetStart gives the frame-local offset + kokoTOF * timestep
                         }
                         proj.memSize += (sizeof(float) * length[nInd] * inputScalars.nBins);
                     } else {
@@ -596,7 +607,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             mData[kk][timestep](af::seq(inputScalars.nRowsD* inputScalars.nColsD* length[nInd] * to, 
                                 inputScalars.nRowsD * inputScalars.nColsD* length[nInd] * (to + 1) - 1)) =
                             af::array(length[nInd] * inputScalars.nRowsD * inputScalars.nColsD, 
-                                &Sin[pituus[nInd] * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.kokoNonTOF * to + inputScalars.kokoTOF * timestep], AFTYPE);
+                                &Sin[tofSubsetStart(pituus, nInd, timestep, inputScalars.subsets, static_cast<int64_t>(inputScalars.nRowsD) * inputScalars.nColsD, inputScalars.kokoTOF) + inputScalars.kokoNonTOF * to], AFTYPE);
                         proj.memSize += (sizeof(float) * length[nInd] * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nBins);
                     } else {
                         mData[kk][timestep] = af::array(inputScalars.nRowsD * inputScalars.nColsD * length[nInd], 
@@ -1051,15 +1062,16 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 				}
 				// Load the subset's measurements exactly as the main data loader does (CT/SPECT/sinogram data have nRowsD * nColsD
 				// elements per projection/sinogram index); before, apuData had only length elements per bin, so CT failed with a size mismatch
+				// pituus is cumulative over timesteps: sinogram data uses the frame-local offset + kokoTOF * timestep (tofSubsetStart), list-mode data the cumulative event offset
 				af::array apuData = af::constant(0.f, lengthFull[indD] * nBins);
 				if ((inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8 && inputScalars.subsetType > 0) || inputScalars.listmode > 0)
 					for (int64_t to = 0; to < nBins; to++)
 						apuData(af::seq(length[indD] * to, length[indD] * (to + 1) - 1)) = af::array(length[indD],
-							&Sin[pituus[indD] + inputScalars.kokoNonTOF * to + inputScalars.kokoTOF * timestep], AFTYPE).as(f32);
+							&Sin[(inputScalars.listmode > 0 ? static_cast<size_t>(pituus[indD]) : tofSubsetStart(pituus, indD, timestep, inputScalars.subsets, 1, inputScalars.kokoTOF)) + inputScalars.kokoNonTOF * to], AFTYPE).as(f32);
 				else
 					for (int64_t to = 0; to < nBins; to++)
 						apuData(af::seq(lengthFull[indD] * to, lengthFull[indD] * (to + 1) - 1)) = af::array(lengthFull[indD],
-							&Sin[pituus[indD] * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.kokoNonTOF * to + inputScalars.kokoTOF * timestep], AFTYPE).as(f32);
+							&Sin[tofSubsetStart(pituus, indD, timestep, inputScalars.subsets, static_cast<int64_t>(inputScalars.nRowsD) * inputScalars.nColsD, inputScalars.kokoTOF) + inputScalars.kokoNonTOF * to], AFTYPE).as(f32);
 				oneInput1 = (apuData / (oneInput2 * oneInput2)) * oneInput1;
 				af::eval(oneInput1);
 				if (inputScalars.projector_type == 6)
@@ -1332,23 +1344,29 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 #endif
 					else {
 						if (inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8 && inputScalars.subsetType > 0) {
+							// pituus is cumulative over timesteps; for TOF data tofSubsetStart gives the frame-local offset + kokoTOF * tt (non-TOF data keeps pituus[indD])
+							const size_t startM = inputScalars.TOF ? tofSubsetStart(pituus, indD, tt, inputScalars.subsets, 1, inputScalars.kokoTOF) : static_cast<size_t>(pituus[indD]);
 							for (int64_t to = 0; to < inputScalars.nBins; to++)
-								mData[0][0](af::seq(length[indD] * to, length[indD] * (to + 1) - 1)) = af::array(length[indD], &Sin[pituus[indD] + inputScalars.kokoNonTOF * to], AFTYPE);
+								mData[0][0](af::seq(length[indD] * to, length[indD] * (to + 1) - 1)) = af::array(length[indD], &Sin[startM + inputScalars.kokoNonTOF * to], AFTYPE);
 						}
 						else {
+							// pituus is cumulative over timesteps; for TOF data tofSubsetStart gives the frame-local offset + kokoTOF * tt (non-TOF data keeps pituus[indD] * scale)
+							const int64_t scaleM = static_cast<int64_t>(inputScalars.nRowsD) * inputScalars.nColsD;
+							const size_t startM = inputScalars.TOF ? tofSubsetStart(pituus, indD, tt, inputScalars.subsets, scaleM, inputScalars.kokoTOF) : static_cast<size_t>(pituus[indD] * scaleM);
 							for (int64_t to = 0; to < inputScalars.nBins; to++)
 								mData[0][0](af::seq(inputScalars.nRowsD* inputScalars.nColsD* length[indD] * to, inputScalars.nRowsD* inputScalars.nColsD* length[indD] * (to + 1) - 1)) =
-								af::array(length[indD] * inputScalars.nRowsD * inputScalars.nColsD, &Sin[pituus[indD] * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.kokoNonTOF * to], AFTYPE);
+								af::array(length[indD] * inputScalars.nRowsD * inputScalars.nColsD, &Sin[startM + inputScalars.kokoNonTOF * to], AFTYPE);
 						}
 					}
 					if (inputScalars.randoms_correction) {
 						// TOF-resolved additive term: one bin at a time, same as the measurements above
 						if (inputScalars.randomsTOF) {
 							if (inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8 && inputScalars.subsetType > 0))
-								aRand[0][0] = loadTOFAdditive(sc_ra, length[indD], pituus[indD], inputScalars.kokoNonTOF, inputScalars.nBins);
+								aRand[0][0] = loadTOFAdditive(sc_ra, length[indD],
+									tofSubsetStart(pituus, indD, tt, inputScalars.subsets, 1, inputScalars.kokoTOF), inputScalars.kokoNonTOF, inputScalars.nBins); // frame-local offset + kokoTOF * tt
 							else
 								aRand[0][0] = loadTOFAdditive(sc_ra, inputScalars.nRowsD * inputScalars.nColsD * length[indD],
-									pituus[indD] * inputScalars.nRowsD * inputScalars.nColsD, inputScalars.kokoNonTOF, inputScalars.nBins);
+									tofSubsetStart(pituus, indD, tt, inputScalars.subsets, static_cast<int64_t>(inputScalars.nRowsD) * inputScalars.nColsD, inputScalars.kokoTOF), inputScalars.kokoNonTOF, inputScalars.nBins);
 						}
 						else if ((inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8 && inputScalars.subsetType > 0)) || inputScalars.listmode > 0)
 							aRand[0][0] = af::array(length[indD], &sc_ra[pituus[indD]], AFTYPE).as(f32);
