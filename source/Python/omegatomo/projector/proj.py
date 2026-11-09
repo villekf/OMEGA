@@ -2101,6 +2101,8 @@ class projectorClass:
             raise ValueError('Helical CT is not supported with the CPU implementation!')
         if self.useHelical and self.FDK:
             raise ValueError('FDK/FBP is not supported with curved helical CT!')
+        if self.CT and self.useHelical and self.helicalRadius <= 0:
+            raise ValueError('Helical reconstruction requires options.helicalRadius (the radius of the circle formed by the curved detector array, in mm) to be set!')
             
         varNeg = ['LSQR','CGLS','FDK','SART']
         neg = [name for name in varNeg if getattr(self, name, False)]

@@ -596,6 +596,9 @@ end
 if options.useHelical && options.FDK
     error('FDK/FBP is not supported with curved helical CT!')
 end
+if options.CT && options.useHelical && options.helicalRadius <= 0
+    error('Helical reconstruction requires options.helicalRadius (the radius of the circle formed by the curved detector array, in mm) to be set!')
+end
 if (options.projector_type == 6)
     if options.subsets > 1 && options.subset_type < 8
         error('Subset types 0-7 are not supported with projector type 6!')
