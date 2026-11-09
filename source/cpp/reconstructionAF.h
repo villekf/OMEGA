@@ -414,7 +414,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
 	if (compute_norm_matrix == 0)
 		proj.no_norm = 1;
-	else if (compute_norm_matrix > 0 && (inputScalars.CT && (MethodList.OSEM || MethodList.ROSEM || MethodList.OSLOSEM || MethodList.ROSEMMAP || MethodList.ECOSEM))) {
+	else if (compute_norm_matrix > 0 && (inputScalars.CT && (MethodList.OSEM || MethodList.ROSEM || MethodList.OSLOSEM || MethodList.ROSEMMAP))) {
 		proj.no_norm = 1;
 		if (inputScalars.randoms_correction)
 			compute_norm_matrix = 1U;

@@ -673,6 +673,9 @@ end
 if isfield(options,'maskFP') && options.subset_type == 3 && numel(options.maskFP) > 1
     error('Forward projection mask is not supported with subset type 3!')
 end
+if options.CT && (options.COSEM || options.ECOSEM || options.ACOSEM || options.OSL_COSEM > 0)
+    error('COSEM, ECOSEM, ACOSEM and OSL-COSEM are not supported with CT data (no transmission tomography formulation).')
+end
 if options.implementation == 2 && options.use_CPU && options.ECOSEM
     error('ECOSEM is not supported with implementation 2 when using CPU!')
 end

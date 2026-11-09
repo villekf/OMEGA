@@ -2065,6 +2065,8 @@ class projectorClass:
         
         if self.precondTypeMeas[1] and (self.subsetType < 8 and not(self.subsetType == 4) and not(self.subsetType == 0)):
             raise ValueError('Filtering-based preconditioner only works with subset types 0, 4 and 8-11!')
+        if self.CT and (self.COSEM or self.ECOSEM or self.ACOSEM or self.OSL_COSEM > 0):
+            raise ValueError('COSEM, ECOSEM, ACOSEM and OSL-COSEM are not supported with CT data (no transmission tomography formulation).')
         if self.useCPU and self.ECOSEM:
             raise ValueError('ECOSEM is not supported with CPU!')
         if self.NLM_use_anatomical and self.useCPU and self.NLM:
