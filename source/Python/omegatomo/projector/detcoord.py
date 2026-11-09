@@ -184,12 +184,11 @@ def setCTCoordinates(options):
         options.z = options.uV
     if options.pitchRoll.size > 0:
         options.pitch = True
-        # Scale by physical axis, not by vector: the in-plane (x,y)
-        # components of both the u- and v-direction vectors use the
-        # transaxial pitch, while the axial (z) component of both vectors
-        # uses the axial pitch (setCTCoordinates.m:61-71 pattern [X,X,Y,X,X,Y]).
-        options.z[:, [0, 1, 3, 4]] *= options.dPitchX
-        options.z[:, [2, 5]] *= options.dPitchY
+        # Scale by vector: the detector-row direction u (columns 0-2) by the
+        # row pitch dPitchX and the detector-column direction v (columns 3-5)
+        # by the column pitch dPitchY (setCTCoordinates.m).
+        options.z[:, 0:3] *= options.dPitchX
+        options.z[:, 3:6] *= options.dPitchY
     elif options.uV.size > 0:
         options.z[:,0] = options.z[:,0] * options.dPitchX
         options.z[:,1] = options.z[:,1] * options.dPitchX
