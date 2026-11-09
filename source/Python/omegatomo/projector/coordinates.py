@@ -232,7 +232,7 @@ def computeProjectorScalingValues(options):
     options.dScaleX4 = 1. / (options.dx * options.Nx)
     options.dScaleY4 = 1. / (options.dy * options.Ny)
     options.dScaleZ4 = 1. / (options.dz * options.Nz)
-    if options.projector_type in [5, 15, 45, 54, 51]:
+    if options.projector_type in [5, 15, 45, 54, 51, 55]:
         options.dSizeY = 1. / (options.dy * options.Ny)
         options.dSizeX = 1. / (options.dx * options.Nx)
         options.dScaleX = 1. / (options.dx * (options.Nx + 1))
@@ -270,7 +270,7 @@ def computeProjectorScalingValues(options):
                 options.dL = options.dL * (options.FOVa_x / options.Nx)
     else:
         options.kerroin = np.zeros(1,dtype=np.float32)
-    if options.projector_type in [4, 5, 14, 15, 45, 54] and options.CT:
+    if options.projector_type in [4, 5, 14, 15, 24, 25, 34, 35, 44, 45, 54, 55] and options.CT:
         options.use_64bit_atomics = False
         options.use_32bit_atomics = False
     options.dScaleX4 = options.dScaleX4.astype(dtype=np.float32)

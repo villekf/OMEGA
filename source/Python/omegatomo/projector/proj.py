@@ -1575,7 +1575,7 @@ class projectorClass:
                 self.z = z_det
         computePixelCenters(self, xx, yy, zz)
         computeVoxelVolumes(self)
-        if self.projector_type in (4, 5, 14, 41, 15, 45, 54, 51, 42, 43, 24, 34):
+        if self.projector_type in (4, 5, 14, 41, 15, 45, 54, 51, 42, 43, 24, 34, 44, 55):
             computeProjectorScalingValues(self)
         # FDK (largeDim) keeps the geometry and data in the original projection order, so the offset limits are not reordered either
         if self.offsetCorrection and self.subsets > 1 and not self.FDK:

@@ -6,7 +6,7 @@ function [options] = computeProjectorScalingValues(options)
 options.dScaleX4 = 1 ./ (options.dx .* cast(options.Nx, options.cType));
 options.dScaleY4 = 1 ./ (options.dy .* cast(options.Ny, options.cType));
 options.dScaleZ4 = 1 ./ (options.dz .* cast(options.Nz, options.cType));
-if options.projector_type == 5 || options.projector_type == 15 || options.projector_type == 45 || options.projector_type == 54 || options.projector_type == 51
+if options.projector_type == 5 || options.projector_type == 15 || options.projector_type == 45 || options.projector_type == 54 || options.projector_type == 51 || options.projector_type == 55
     options.dSizeY = 1 ./ (options.dy .* cast(options.Ny, options.cType));
     options.dSizeX = 1 ./ (options.dx .* cast(options.Nx, options.cType));
     options.dScaleX = 1 ./ (options.dx .* cast(options.Nx + 1, options.cType));
@@ -16,7 +16,7 @@ if options.projector_type == 5 || options.projector_type == 15 || options.projec
     options.dSizeXBP = (options.nRowsD + 1) * options.dPitchY;
 end
 if options.projector_type == 4 || options.projector_type == 41 || options.projector_type == 14 || options.projector_type == 54 || options.projector_type == 45 ...
-         || options.projector_type == 42 || options.projector_type == 43 || options.projector_type == 24 || options.projector_type == 34
+         || options.projector_type == 42 || options.projector_type == 43 || options.projector_type == 24 || options.projector_type == 34 || options.projector_type == 44
     options.kerroin = cast((options.dx .* options.dy .* options.dz) ./ (options.dPitchX * options.dPitchY * options.sourceToDetector), options.cType);
     if options.dL == 0
         options.dL = options.FOVa_x(1) / double(options.Nx(1));
@@ -26,8 +26,7 @@ if options.projector_type == 4 || options.projector_type == 41 || options.projec
 else
     options.kerroin = 0;
 end
-if (options.projector_type == 4 || options.projector_type == 5 || options.projector_type == 14 || options.projector_type == 15 || options.projector_type == 45 ...
-        || options.projector_type == 54) && options.CT
+if any(options.projector_type == [4, 5, 14, 15, 24, 25, 34, 35, 44, 45, 54, 55]) && options.CT
     options.use_64bit_atomics = false;
     options.use_32bit_atomics = false;
 end
