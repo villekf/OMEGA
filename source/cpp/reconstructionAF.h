@@ -1181,7 +1181,8 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                         &Sin[pituus[indD] * inputScalars.nRowsD * inputScalars.nColsD], AFTYPE).as(f32);
 					// Linearize the data unless the user input is already linearized
 					if (!inputScalars.usingLinearizedData)
-						mData[0][timestep] = af::log(inputScalars.flat / mData[0][timestep]);
+						// Floor the measurement at flat * 1e-6 so zero/negative intensities cannot give Inf/NaN
+						mData[0][timestep] = af::log(inputScalars.flat / af::max(mData[0][timestep], inputScalars.flat * 1e-6f));
 					if (DEBUG) {
 						mexPrintBase("mData[0][0] = %f\n", af::sum<float>(mData[0][0]));
 						mexPrintBase("mData[0][0] = %f\n", af::max<float>(mData[0][0]));
@@ -1309,7 +1310,8 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 									&Sin[osa_iter * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.nRowsD * inputScalars.nColsD * ii * inputScalars.subsetsUsed], afHost);
 						}
 						if (inputScalars.CT && MethodList.CPType && !inputScalars.usingLinearizedData)
-							mData[0][0] = af::log(inputScalars.flat / mData[0][0].as(f32));
+							// Floor the measurement at flat * 1e-6 so zero/negative intensities cannot give Inf/NaN
+							mData[0][0] = af::log(inputScalars.flat / af::max(mData[0][0].as(f32), inputScalars.flat * 1e-6f));
 					}
 #ifndef CPU
 					else if (inputScalars.listmode > 0) {

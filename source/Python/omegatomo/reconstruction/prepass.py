@@ -340,7 +340,16 @@ def linearizeData(options):
     None.
 
     """
-    options.SinM = np.log(options.flat / options.SinM.astype(dtype=np.float32))
+    # The measurement is floored at flat * 1e-6 so that zero or negative (corrected) intensities do not give Inf/NaN.
+    # New arrays are created (no in-place operations), the input arrays can belong to the caller
+    flat = np.asarray(options.flat, dtype=np.float32)
+    def _lin(sino):
+        sino = np.asarray(sino).astype(np.float32)
+        return np.log(flat / np.maximum(sino, flat * np.float32(1e-6)))
+    if isinstance(options.SinM, list):
+        options.SinM = [_lin(frame) for frame in options.SinM]
+    else:
+        options.SinM = _lin(options.SinM)
 
 def _sharesCallerMemory(options, array):
     # Lazy import (recomain imports this module)
@@ -822,8 +831,10 @@ def loadCorrections(options):
                 atn = np.reshape(options.vaimennus, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()), order='F')
                 atn = np.flip(atn,2)
                 options.vaimennus = atn
-            if options.attIncm:
-                options.vaimennus /= 10.
+        # attIncm (1/cm to 1/mm) applies only to attenuation images. A measurement-domain (sinogram) attenuation
+        # correction is unitless and is never scaled. SPECT attenuation is always an image. Rebind, the array can be the caller's
+        if options.attIncm and (options.CT_attenuation or options.SPECT):
+            options.vaimennus = options.vaimennus / 10.
         options.vaimennus = np.asfortranarray(options.vaimennus)
         options.vaimennus = options.vaimennus.ravel('F').astype(dtype=np.float32)
     # PET normalization precorrection of SinM, applied after the randoms/scatter
