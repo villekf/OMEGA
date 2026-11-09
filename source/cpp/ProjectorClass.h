@@ -2478,7 +2478,7 @@ public:
 	TEX2D_t d_maskFP, d_maskBP, d_maskPrior;
 	TEX3D_t d_maskBP3, d_maskPrior3;
 	TEX3D_t d_inputImage, d_urefIm, d_inputI, d_RDPrefI;
-	TEXARRAY_t atArray, uRefArray, maskArrayBP, maskArrayPrior, BPArray, FPArray, integArrayXY, imArray;
+	TEXARRAY_t atArray, uRefArray, maskArrayBP, maskArrayPrior, BPArray, FPArray, integArrayXY, imArray, RDPrefArray;
 	std::vector<TEX3D_t> d_attenIm;
 #if defined(CUDA) || defined(HIP)
 	CUmodule programFP, programBP, programAux, programSens;
@@ -2598,6 +2598,8 @@ public:
 	// Only for largeDim cases
 	int64_t fastImOffset = 0;
 	int fastPriorZOffset = 0;
+	// The RDP reference texture uploaded once for fastPDHG (CUDA/HIP), freed in the destructor
+	bool RDPRefPersistent = false;
 #if defined(CUDA) || defined(HIP)
 	~ProjectorClass() {
 		if (memAlloc.FPMod)
@@ -2757,6 +2759,10 @@ public:
 		}
 		else if (memAlloc.NLMRef == 2) {
 			getErrorString(cuMemFree(d_uref));
+		}
+		if (RDPRefPersistent) {
+			getErrorString(cuTexObjectDestroy(d_RDPrefI));
+			getErrorString(cuArrayDestroy(RDPrefArray));
 		}
 		for (size_t kk = 0; kk < FPTexCache.size(); kk++) {
 			if (imageCacheDims[kk * 3 + 2] != 0) {
@@ -3027,9 +3033,10 @@ public:
 				ADD_OPT_INT(os_options, "-DSWINDOWY", w_vec.Ndy);
 				ADD_OPT_INT(os_options, "-DSWINDOWZ", w_vec.Ndz);
 				addFastSWLocalCache(w_vec.RDP_anatomical);
+				// The reference is only precomputed and only read with corners
+				if (w_vec.RDP_anatomical)
+					ADD_OPT(os_options, "-DPRIORREF");
 			}
-			if (w_vec.RDP_anatomical)
-				ADD_OPT(os_options, "-DPRIORREF");
 		}
 		// Same as above with corners
 		else if (MethodList.GGMRF) {
@@ -3538,7 +3545,7 @@ public:
 		// RDP reference image
 		if (MethodList.RDP && w_vec.RDPLargeNeighbor && w_vec.RDP_anatomical) {
 			if (inputScalars.useImages) {
-				CREATE_FLOAT_TEXTURE3D_EMPTY(d_RDPrefI, imArray, region[0], region[1], region[2]);
+				CREATE_FLOAT_TEXTURE3D_EMPTY(d_RDPrefI, RDPrefArray, region[0], region[1], region[2]);
 				CHECK(status, "Failed to create RDP reference image\n", (STATUS_t)(-1));
 			}
 		}
@@ -6105,7 +6112,7 @@ public:
 						if (w_vec.RDPLargeNeighbor)
 							KARG(kTemp, kernelBP, kernelIndBPSubIter, d_weights);
 						KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, w_vec.RDP_gamma);
-						if (w_vec.RDP_anatomical)
+						if (w_vec.RDPLargeNeighbor && w_vec.RDP_anatomical)
 							// Anatomical reference image for RDP
 							KARG(kTemp, kernelBP, kernelIndBPSubIter, d_RDPrefI);
 					}
@@ -6447,15 +6454,16 @@ public:
 		}
 		KARG(kArgs, kernelNLM, kernelIndNLM, d_W);
 		if (inputScalars.useImages) {
-			// FPType == 5 caches integral images rather than the estimate, so the prior uses its own copy
-			if (inputScalars.FPType == 5) {
+			// FPType == 5 caches integral images rather than the estimate and largeDim caches the unpadded chunk, so the prior uses its
+			// own copy. Otherwise the wrapper refreshed the forward projection image cache with the prior's input
+			if (inputScalars.FPType == 5 || inputScalars.largeDim) {
 				KARG(kArgs, kernelNLM, kernelIndNLM, d_inputI);
 			}
 			else {
 #if defined(CUDA) || defined(HIP)
-				KARG(kArgs, kernelNLM, kernelIndNLM, FPTexCachePrior[kk]);
+				KARG(kArgs, kernelNLM, kernelIndNLM, FPTexCachePrior[0]);
 #else
-				KARG(kArgs, kernelNLM, kernelIndNLM, d_imageCache[kk]);
+				KARG(kArgs, kernelNLM, kernelIndNLM, d_imageCache[0]);
 #endif
 			}
 		}
@@ -6511,7 +6519,7 @@ public:
 		status = cuLaunchKernel(kernelNLM, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the NLM kernel\n", status);
 
-		if (inputScalars.useImages && inputScalars.FPType == 5) {
+		if (inputScalars.useImages && (inputScalars.FPType == 5 || inputScalars.largeDim)) {
 			status = cuTexObjectDestroy(d_inputI);
 			if (status != CUDA_SUCCESS) {
 				getErrorString(status);
@@ -6597,15 +6605,16 @@ public:
 		}
 		KARG(kArgs, kernelRDP, kernelIndRDP, d_W);
 		if (inputScalars.useImages) {
-			// FPType == 5 caches integral images rather than the estimate, so the prior uses its own copy
-			if (inputScalars.FPType == 5) {
+			// FPType == 5 caches integral images rather than the estimate and largeDim caches the unpadded chunk, so the prior uses its
+			// own copy. Otherwise the wrapper refreshed the forward projection image cache with the prior's input
+			if (inputScalars.FPType == 5 || inputScalars.largeDim) {
 				KARG(kArgs, kernelRDP, kernelIndRDP, d_inputI);
 			}
 			else {
 #if defined(CUDA) || defined(HIP)
-				KARG(kArgs, kernelRDP, kernelIndRDP, FPTexCachePrior[kk]);
+				KARG(kArgs, kernelRDP, kernelIndRDP, FPTexCachePrior[0]);
 #else
-				KARG(kArgs, kernelRDP, kernelIndRDP, d_imageCache[kk]);
+				KARG(kArgs, kernelRDP, kernelIndRDP, d_imageCache[0]);
 #endif
 			}
 		}
@@ -6655,7 +6664,7 @@ public:
 		CUDA_CHECK(status, "Failed to launch the RDP kernel\n", -1);
 
 		if (inputScalars.useImages) {
-			if (inputScalars.FPType == 5) {
+			if (inputScalars.FPType == 5 || inputScalars.largeDim) {
 				status = cuTexObjectDestroy(d_inputI);
 				if (status != CUDA_SUCCESS) {
 					getErrorString(status);
@@ -6665,8 +6674,13 @@ public:
 					getErrorString(status);
 				}
 			}
-			if (RDPLargeNeighbor && useRDPRef) {
+			// The persistent fastPDHG reference is freed in the destructor
+			if (RDPLargeNeighbor && useRDPRef && !RDPRefPersistent) {
 				status = cuTexObjectDestroy(d_RDPrefI);
+				if (status != CUDA_SUCCESS) {
+					getErrorString(status);
+				}
+				status = cuArrayDestroy(RDPrefArray);
 				if (status != CUDA_SUCCESS) {
 					getErrorString(status);
 				}
@@ -6750,15 +6764,16 @@ public:
 		}
 		KARG(kArgs, kernelGGMRF, kernelIndGGMRF, d_W);
 		if (inputScalars.useImages) {
-			// FPType == 5 caches integral images rather than the estimate, so the prior uses its own copy
-			if (inputScalars.FPType == 5) {
+			// FPType == 5 caches integral images rather than the estimate and largeDim caches the unpadded chunk, so the prior uses its
+			// own copy. Otherwise the wrapper refreshed the forward projection image cache with the prior's input
+			if (inputScalars.FPType == 5 || inputScalars.largeDim) {
 				KARG(kArgs, kernelGGMRF, kernelIndGGMRF, d_inputI);
 			}
 			else {
 #if defined(CUDA) || defined(HIP)
-				KARG(kArgs, kernelGGMRF, kernelIndGGMRF, FPTexCachePrior[kk]);
+				KARG(kArgs, kernelGGMRF, kernelIndGGMRF, FPTexCachePrior[0]);
 #else
-				KARG(kArgs, kernelGGMRF, kernelIndGGMRF, d_imageCache[kk]);
+				KARG(kArgs, kernelGGMRF, kernelIndGGMRF, d_imageCache[0]);
 #endif
 			}
 		}
@@ -6793,7 +6808,7 @@ public:
 		status = cuLaunchKernel(kernelGGMRF, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the GGMRF kernel\n", -1);
 
-		if (inputScalars.useImages && inputScalars.FPType == 5) {
+		if (inputScalars.useImages && (inputScalars.FPType == 5 || inputScalars.largeDim)) {
 			status = cuTexObjectDestroy(d_inputI);
 			if (status != CUDA_SUCCESS) {
 				getErrorString(status);
@@ -7370,15 +7385,16 @@ public:
 		//FINISH_QUEUE(status, "\n", -1);
 		KARG(kArgs, kernelHyper, kernelIndHyper, d_W);
 		if (inputScalars.useImages) {
-			// FPType == 5 caches integral images rather than the estimate, so the prior uses its own copy
-			if (inputScalars.FPType == 5) {
+			// FPType == 5 caches integral images rather than the estimate and largeDim caches the unpadded chunk, so the prior uses its
+			// own copy. Otherwise the wrapper refreshed the forward projection image cache with the prior's input
+			if (inputScalars.FPType == 5 || inputScalars.largeDim) {
 				KARG(kArgs, kernelHyper, kernelIndHyper, d_inputI);
 			}
 			else {
 #if defined(CUDA) || defined(HIP)
-				KARG(kArgs, kernelHyper, kernelIndHyper, FPTexCachePrior[kk]);
+				KARG(kArgs, kernelHyper, kernelIndHyper, FPTexCachePrior[0]);
 #else
-				KARG(kArgs, kernelHyper, kernelIndHyper, d_imageCache[kk]);
+				KARG(kArgs, kernelHyper, kernelIndHyper, d_imageCache[0]);
 #endif
 			}
 		}
@@ -7422,7 +7438,7 @@ public:
 		CUDA_CHECK(status, "Failed to launch the hyperbolic prior gradient kernel\n", -1);
 
 		//FINISH_QUEUE(status, "Queue finish failed after hyperbolic prior gradient kernel\n", -1);
-		if (inputScalars.useImages && inputScalars.FPType == 5) {
+		if (inputScalars.useImages && (inputScalars.FPType == 5 || inputScalars.largeDim)) {
 			status = cuTexObjectDestroy(d_inputI);
 			if (status != CUDA_SUCCESS) {
 				getErrorString(status);
@@ -7504,15 +7520,16 @@ public:
 #endif // END CUDA
 		KARG(kArgs, kernelTV, kernelIndTV, d_W);
 		if (inputScalars.useImages) {
-			// FPType == 5 caches integral images rather than the estimate, so the prior uses its own copy
-			if (inputScalars.FPType == 5) {
+			// FPType == 5 caches integral images rather than the estimate and largeDim caches the unpadded chunk, so the prior uses its
+			// own copy. Otherwise the wrapper refreshed the forward projection image cache with the prior's input
+			if (inputScalars.FPType == 5 || inputScalars.largeDim) {
 				KARG(kArgs, kernelTV, kernelIndTV, d_inputI);
 			}
 			else {
 #if defined(CUDA) || defined(HIP)
-				KARG(kArgs, kernelTV, kernelIndTV, FPTexCachePrior[kk]);
+				KARG(kArgs, kernelTV, kernelIndTV, FPTexCachePrior[0]);
 #else
-				KARG(kArgs, kernelTV, kernelIndTV, d_imageCache[kk]);
+				KARG(kArgs, kernelTV, kernelIndTV, d_imageCache[0]);
 #endif
 			}
 		}
@@ -7551,7 +7568,7 @@ public:
 		status = cuLaunchKernel(kernelTV, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the TV gradient kernel\n", -1);
 		//FINISH_QUEUE(status, "Queue finish failed after TV gradient kernel\n", -1);
-		if (inputScalars.useImages && inputScalars.FPType == 5) {
+		if (inputScalars.useImages && (inputScalars.FPType == 5 || inputScalars.largeDim)) {
 			status = cuTexObjectDestroy(d_inputI);
 			if (status != CUDA_SUCCESS) {
 				getErrorString(status);
@@ -7839,7 +7856,7 @@ public:
 	inline int transferTex(const scalarStruct& inputScalars, AFDEVBUFF_t input, const bool RDP = false, const uint32_t Nz = 1) {
 		STATUS_t status = SUCCESS_VALUE;
 		if (RDP)
-			CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(d_RDPrefI, imArray, input, inputScalars.Nx[0], inputScalars.Ny[0], Nz,
+			CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(d_RDPrefI, RDPrefArray, input, inputScalars.Nx[0], inputScalars.Ny[0], Nz,
 				BACKEND_TEXTURE_POINT, BACKEND_TEXTURE_DEFAULT_FLAGS);
 		else
 			CREATE_FLOAT_TEXTURE3D_FROM_DEVICE(d_inputI, imArray, input, inputScalars.Nx[0], inputScalars.Ny[0], Nz,

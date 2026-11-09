@@ -432,6 +432,77 @@ inline int transferRHS(af::array& rhs_os, ProjectorClass& proj) {
 	return 0;
 }
 
+// Copies the given image into the forward projection image cache of volume ii. With useImages (and FPType != 5) the
+// NLM/RDP/GGMRF/hyperbolic/TV priors read this cache (d_imageCache / FPTexCachePrior) instead of a copy of their input
+// array. updateInputs fills the cache on each forward projection with the image of that timestep (the PSF-blurred one
+// with use_psf), so without this copy the priors would see the last forward projected image: the last timestep of
+// dynamic data, the blurred image with PSF, or the pre-update image (e.g. BSREM/ROSEMMAP, SART/POCS, PDDY).
+// The next forward projection overwrites the cache again. No-op when the priors make their own copy (FPType == 5, no
+// images, buffers) and on CPU/Metal. When no cache of matching size exists, returns -1 if strict, otherwise 0.
+inline int refreshPriorImageCache(const af::array& im, const scalarStruct& inputScalars, ProjectorClass& proj, const int ii = 0, const bool strict = false) {
+#if defined(CUDA) || defined(HIP) || defined(OPENCL)
+	if (!inputScalars.useImages || inputScalars.FPType == 5 || inputScalars.useBuffers)
+		return 0;
+	if (proj.imageCacheDims.size() < static_cast<size_t>(ii + 1) * 3 || proj.imageCacheDims[ii * 3 + 2] == 0 ||
+		proj.imageCacheDims[ii * 3] * proj.imageCacheDims[ii * 3 + 1] * proj.imageCacheDims[ii * 3 + 2] != static_cast<size_t>(im.elements())) {
+		if (strict) {
+			mexPrint("The prior image does not match the forward projection image cache\n");
+			return -1;
+		}
+		return 0;
+	}
+	const size_t nx = proj.imageCacheDims[ii * 3], ny = proj.imageCacheDims[ii * 3 + 1], nz = proj.imageCacheDims[ii * 3 + 2];
+	im.eval();
+#if defined(CUDA) || defined(HIP)
+	if (proj.FPArrayCache.size() <= static_cast<size_t>(ii)) {
+		if (strict) {
+			mexPrint("The forward projection image cache does not exist\n");
+			return -1;
+		}
+		return 0;
+	}
+	CUdeviceptr* d_im = transferAF(im);
+	CUDA_MEMCPY3D cpy3d;
+	std::memset(&cpy3d, 0, sizeof(cpy3d));
+	cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_DEVICE;
+	cpy3d.srcDevice = reinterpret_cast<CUdeviceptr>(d_im);
+	cpy3d.srcPitch = nx * sizeof(float);
+	cpy3d.srcHeight = ny;
+	cpy3d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
+	cpy3d.dstArray = proj.FPArrayCache[ii];
+	cpy3d.WidthInBytes = nx * sizeof(float);
+	cpy3d.Height = ny;
+	cpy3d.Depth = nz;
+	const CUresult status = cuMemcpy3DAsync(&cpy3d, proj.CLCommandQueue[0]);
+	im.unlock();
+	if (status != CUDA_SUCCESS) {
+		getErrorString(status);
+		mexPrint("Failed to copy the prior image into the image cache\n");
+		return -1;
+	}
+#else
+	if (proj.d_imageCache.size() <= static_cast<size_t>(ii)) {
+		if (strict) {
+			mexPrint("The forward projection image cache does not exist\n");
+			return -1;
+		}
+		return 0;
+	}
+	cl::detail::size_t_array region = { nx, ny, nz };
+	cl_mem* d_im = im.device<cl_mem>();
+	const cl_int status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*d_im, true), proj.d_imageCache[ii], 0, proj.origin, region);
+	im.unlock();
+	delete d_im;
+	if (status != CL_SUCCESS) {
+		getErrorString(status);
+		mexPrint("Failed to copy the prior image into the image cache\n");
+		return -1;
+	}
+#endif
+#endif
+	return 0;
+}
+
 /// <summary>
 /// Copy the current estimates from an ArrayFire array to an OpenCL image/CUDA texture. For branchless distance-driven, compute the integral images before copy
 /// </summary>
@@ -1230,8 +1301,9 @@ inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& input
 	if (!inputScalars.useImages) {
 		proj.d_inputB = transferAF(im);
 	}
-	// FPType == 5 caches integral images, not the estimate, so the prior still needs its own copy
-	else if (inputScalars.FPType == 5) {
+	// FPType == 5 caches integral images, not the estimate, and largeDim caches the unpadded chunk, so the prior needs its
+	// own (padded) copy. Otherwise the prior reads the forward projection image cache, refreshed here with the prior input
+	else if (inputScalars.FPType == 5 || inputScalars.largeDim) {
 #if defined(CUDA) || defined(HIP)
 		uint32_t Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim)
@@ -1265,9 +1337,17 @@ inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& input
 			proj.region[2] = inputScalars.Nz[0];
 #endif
 	}
+	else {
+		status = refreshPriorImageCache(im, inputScalars, proj, 0, true);
+		if (status != 0) {
+			grad.unlock();
+			w_vec.gaussianNLM.unlock();
+			return -1;
+		}
+	}
 	status = proj.computeNLM(inputScalars, w_vec, beta, kk);
 	grad.unlock();
-	if (!inputScalars.useImages || inputScalars.FPType == 5)
+	if (!inputScalars.useImages || inputScalars.FPType == 5 || inputScalars.largeDim)
 		im.unlock();
 	w_vec.gaussianNLM.unlock();
 	if (status != 0) {
@@ -1299,26 +1379,49 @@ inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& input
 	int status = 0;
 	proj.d_W = transferAF(grad);
 #ifndef CPU
+	// True when RDPref was locked (device pointer requested) and must be unlocked
+	bool refLocked = false;
 	if (inputScalars.useImages) {
 #if defined(CUDA) || defined(HIP)
-		// FPType == 5 caches integral images, not the estimate, so the prior still needs its own copy
-		if (inputScalars.FPType == 5) {
+		// FPType == 5 caches integral images, not the estimate, and largeDim caches the unpadded chunk, so the prior needs its
+		// own (padded) copy. Otherwise the prior reads the forward projection image cache, refreshed here with the prior input
+		if (inputScalars.FPType == 5 || inputScalars.largeDim) {
 			uint32_t Nz = inputScalars.Nz[0];
 			if (inputScalars.largeDim)
 				Nz = inputScalars.lDimStruct.NzPr[kk];
 			CUdeviceptr* input = transferAF(im);
 			status = proj.transferTex(inputScalars, input, false, Nz);
 		}
-		if (RDPLargeNeighbor && useRDPRef) {
+		else {
+			status = refreshPriorImageCache(im, inputScalars, proj, 0, true);
+			if (status != 0) {
+				grad.unlock();
+				return -1;
+			}
+		}
+		// With fastPDHG the reference texture was already uploaded once (RDPRefPersistent)
+		if (RDPLargeNeighbor && useRDPRef && !proj.RDPRefPersistent) {
+			refLocked = true;
 			CUdeviceptr* inputRef = transferAF(RDPref);
-			status = proj.transferTex(inputScalars, inputRef, true);
+			// The reference image is a full volume (it was created with depth 1 before, so every slice read the reference's first
+			// slice) and has its own array so it does not overwrite imArray of the FPType 5 copy
+			status = proj.transferTex(inputScalars, inputRef, true, inputScalars.Nz[0]);
+			if (status != 0) {
+				if (inputScalars.FPType == 5 || inputScalars.largeDim)
+					im.unlock();
+				grad.unlock();
+				RDPref.unlock();
+				mexPrint("Failed to copy the RDP reference image\n");
+				return -1;
+			}
 		}
 #else
 		// The largeDim subvolume must match the predetermined (padded) size
 		if (inputScalars.largeDim)
 			proj.region[2] = inputScalars.lDimStruct.NzPr[kk];
-		// FPType == 5 caches integral images, not the estimate, so the prior still needs its own copy
-		if (inputScalars.FPType == 5) {
+		// FPType == 5 caches integral images, not the estimate, and largeDim caches the unpadded chunk, so the prior needs its
+		// own (padded) copy. Otherwise the prior reads the forward projection image cache, refreshed here with the prior input
+		if (inputScalars.FPType == 5 || inputScalars.largeDim) {
 			if (inputScalars.largeDim) {
 				proj.d_inputI = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, proj.region[0], proj.region[1], proj.region[2], 0, 0, NULL, &status);
 				OCL_CHECK(status, "Failed to create prior image\n", -1);
@@ -1332,13 +1435,22 @@ inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& input
 				return -1;
 			}
 		}
+		else {
+			status = refreshPriorImageCache(im, inputScalars, proj, 0, true);
+			if (status != 0) {
+				grad.unlock();
+				return -1;
+			}
+		}
 		if (RDPLargeNeighbor && useRDPRef) {
+			refLocked = true;
 			status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*RDPref.device<cl_mem>(), true), proj.d_RDPrefI, 0, proj.origin, proj.region);
 			if (status != 0) {
 				getErrorString(status);
-				if (inputScalars.FPType == 5)
+				if (inputScalars.FPType == 5 || inputScalars.largeDim)
 					im.unlock();
 				grad.unlock();
+				RDPref.unlock();
 				mexPrint("Failed to copy RDP image\n");
 				return -1;
 			}
@@ -1347,8 +1459,10 @@ inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& input
 	}
 	else {
 		proj.d_inputB = transferAF(im);
-		if (RDPLargeNeighbor && useRDPRef)
+		if (RDPLargeNeighbor && useRDPRef) {
+			refLocked = true;
 			proj.d_RDPref = transferAF(RDPref);
+		}
 	}
 	if (DEBUG) {
 		mexPrintBase("im.elements() = %u\n", im.elements());
@@ -1357,9 +1471,9 @@ inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& input
 	}
 	status = proj.computeRDP(inputScalars, gamma, w_vec, beta, kk, RDPLargeNeighbor, useRDPRef);
 	grad.unlock();
-	if (!inputScalars.useImages || inputScalars.FPType == 5)
+	if (!inputScalars.useImages || inputScalars.FPType == 5 || inputScalars.largeDim)
 		im.unlock();
-	if (RDPLargeNeighbor && useRDPRef)
+	if (refLocked)
 		RDPref.unlock();
 	if (status != 0) {
 		return -1;
@@ -1387,8 +1501,9 @@ inline int GGMRFAF(af::array& grad, const af::array& im, const scalarStruct& inp
 	if (!inputScalars.useImages) {
 		proj.d_inputB = transferAF(im);
 	}
-	// FPType == 5 caches integral images, not the estimate, so the prior still needs its own copy
-	else if (inputScalars.FPType == 5) {
+	// FPType == 5 caches integral images, not the estimate, and largeDim caches the unpadded chunk, so the prior needs its
+	// own (padded) copy. Otherwise the prior reads the forward projection image cache, refreshed here with the prior input
+	else if (inputScalars.FPType == 5 || inputScalars.largeDim) {
 #if defined(CUDA) || defined(HIP)
 		uint32_t Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim)
@@ -1411,6 +1526,13 @@ inline int GGMRFAF(af::array& grad, const af::array& im, const scalarStruct& inp
 		}
 #endif
 	}
+	else {
+		status = refreshPriorImageCache(im, inputScalars, proj, 0, true);
+		if (status != 0) {
+			grad.unlock();
+			return -1;
+		}
+	}
 	if (DEBUG) {
 		mexPrintBase("im.elements() = %u\n", im.elements());
 		mexPrintBase("sum(isnan(im)) = %f\n", af::sum<float>(isNaN(im)));
@@ -1418,7 +1540,7 @@ inline int GGMRFAF(af::array& grad, const af::array& im, const scalarStruct& inp
 	}
 	status = proj.computeGGMRF(inputScalars, p, q, c, pqc, w_vec, beta, kk);
 	grad.unlock();
-	if (!inputScalars.useImages || inputScalars.FPType == 5)
+	if (!inputScalars.useImages || inputScalars.FPType == 5 || inputScalars.largeDim)
 		im.unlock();
 	if (status != 0) {
 		return -1;
@@ -1459,8 +1581,9 @@ inline int TVAF(af::array& grad, const af::array& im, const scalarStruct& inputS
 	if (!inputScalars.useImages) {
 		proj.d_inputB = transferAF(im);
 	}
-	// FPType == 5 caches integral images, not the estimate, so the prior still needs its own copy
-	else if (inputScalars.FPType == 5) {
+	// FPType == 5 caches integral images, not the estimate, and largeDim caches the unpadded chunk, so the prior needs its
+	// own (padded) copy. Otherwise the prior reads the forward projection image cache, refreshed here with the prior input
+	else if (inputScalars.FPType == 5 || inputScalars.largeDim) {
 #if defined(CUDA) || defined(HIP)
 		uint32_t Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim)
@@ -1483,6 +1606,15 @@ inline int TVAF(af::array& grad, const af::array& im, const scalarStruct& inputS
 		}
 #endif
 	}
+	else {
+		status = refreshPriorImageCache(im, inputScalars, proj, 0, true);
+		if (status != 0) {
+			grad.unlock();
+			if (data.TV_use_anatomical)
+				data.refIm.unlock();
+			return -1;
+		}
+	}
 	if (DEBUG) {
 		mexPrintBase("im.elements() = %u\n", im.elements());
 		mexPrintBase("sum(isnan(im)) = %f\n", af::sum<float>(isNaN(im)));
@@ -1491,7 +1623,7 @@ inline int TVAF(af::array& grad, const af::array& im, const scalarStruct& inputS
 	const float smooth = data.TVsmoothing;
 	status = proj.TVGradient(inputScalars, sigma, smooth, w_vec, beta, kk, C, type);
 	grad.unlock();
-	if (!inputScalars.useImages || inputScalars.FPType == 5)
+	if (!inputScalars.useImages || inputScalars.FPType == 5 || inputScalars.largeDim)
 		im.unlock();
 	if (data.TV_use_anatomical)
 		data.refIm.unlock();
@@ -1523,8 +1655,9 @@ inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inp
 	if (!inputScalars.useImages) {
 		proj.d_inputB = transferAF(im);
 	}
-	// FPType == 5 caches integral images, not the estimate, so the prior still needs its own copy
-	else if (inputScalars.FPType == 5) {
+	// FPType == 5 caches integral images, not the estimate, and largeDim caches the unpadded chunk, so the prior needs its
+	// own (padded) copy. Otherwise the prior reads the forward projection image cache, refreshed here with the prior input
+	else if (inputScalars.FPType == 5 || inputScalars.largeDim) {
 #if defined(CUDA) || defined(HIP)
 		uint32_t Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim)
@@ -1547,6 +1680,13 @@ inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inp
 		}
 #endif
 	}
+	else {
+		status = refreshPriorImageCache(im, inputScalars, proj, 0, true);
+		if (status != 0) {
+			grad.unlock();
+			return -1;
+		}
+	}
 	if (DEBUG) {
 		mexPrintBase("im.elements() = %u\n", im.elements());
 		mexPrintBase("sum(isnan(im)) = %f\n", af::sum<float>(isNaN(im)));
@@ -1554,7 +1694,7 @@ inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inp
 	}
 	status = proj.hyperGradient(inputScalars, sigma, w_vec, beta, kk);
 	grad.unlock();
-	if (!inputScalars.useImages || inputScalars.FPType == 5)
+	if (!inputScalars.useImages || inputScalars.FPType == 5 || inputScalars.largeDim)
 		im.unlock();
 	if (status != 0) {
 		return -1;
@@ -2962,7 +3102,12 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				mexEval();
 			}
 			if (inputScalars.currentSubset == 0 && !inputScalars.largeDim) {
-				vec.uCP[timestep].emplace_back(vec.im_os[timestep][ii].copy());
+				// With subsets uCP is the backprojected dual accumulator A^T p (p starts at zero), so it starts at zero;
+				// without subsets it is the primal iterate and starts at the initial image.
+				if (inputScalars.subsetsUsed > 1)
+					vec.uCP[timestep].emplace_back(af::constant(0.f, vec.im_os[timestep][ii].elements()));
+				else
+					vec.uCP[timestep].emplace_back(vec.im_os[timestep][ii].copy());
 				proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]);
 			}
 			else if (inputScalars.currentSubset == 0 && inputScalars.largeDim)

@@ -340,6 +340,14 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		return -1;
 	}
 
+	// The RDP reference weights are precomputed and stored for the full volume, while largeDim computes the prior per subvolume
+	// (chunk), so the chunks would read the wrong slices of the reference. Only the regular RDP is supported with largeDim. Python
+	// rejects this already in OMEGAErrorCheck, MATLAB only when options.errorChecking is true
+	if (inputScalars.largeDim && MethodList.RDP && w_vec.RDP_anatomical) {
+		mexPrint("Anatomical weighting for RDP (RDP_use_anatomical) is not supported with largeDim! Only the regular RDP can be used with largeDim\n");
+		return -1;
+	}
+
 	// Create the projector class that handles the projectors and all OpenCL/CUDA/Metal related functions
 	// Projector types 2 and 3: the end point check of the tube is built into the kernels only when a detector is inside the image
 	if (inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 2 || inputScalars.BPType == 3)
@@ -1004,6 +1012,11 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
     // Compute the necessary precomputations for the RDP reference image method: https://doi.org/10.1109/TMI.2019.2913889
     if (MethodList.RDP && w_vec.RDPLargeNeighbor && w_vec.RDP_anatomical) {
         w_vec.RDPref.resize(inputScalars.Nt);
+        // The forward/backprojections of this precomputation must not accumulate the sensitivity image: with no_norm == 0 the BP
+        // kernels add to d_Summ, which is not yet bound here (illegal address on CUDA, and on OpenCL the result changed by 13 %
+        // even with beta = 0)
+        const uint8_t noNormRDPRef = proj.no_norm;
+        proj.no_norm = 1;
         for (uint32_t timestep = t0; timestep < inputScalars.Nt; timestep++) {
 			int64_t uu = 0;
 			w_vec.RDPref[timestep] = af::constant(0.f, inputScalars.im_dim[0]);
@@ -1036,14 +1049,16 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 						return -1;
 					}
 				}
-				af::array apuData = af::constant(0.f, length[indD] * nBins);
-				if (inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8)
+				// Load the subset's measurements exactly as the main data loader does (CT/SPECT/sinogram data have nRowsD * nColsD
+				// elements per projection/sinogram index); before, apuData had only length elements per bin, so CT failed with a size mismatch
+				af::array apuData = af::constant(0.f, lengthFull[indD] * nBins);
+				if ((inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8 && inputScalars.subsetType > 0) || inputScalars.listmode > 0)
 					for (int64_t to = 0; to < nBins; to++)
-						apuData(af::seq(length[indD] * to, length[indD] * (to + 1) - 1)) = af::array(length[indD], 
-                            &Sin[pituus[indD] + inputScalars.kokoNonTOF * to + inputScalars.kokoTOF * timestep], AFTYPE).as(f32);
+						apuData(af::seq(length[indD] * to, length[indD] * (to + 1) - 1)) = af::array(length[indD],
+							&Sin[pituus[indD] + inputScalars.kokoNonTOF * to + inputScalars.kokoTOF * timestep], AFTYPE).as(f32);
 				else
 					for (int64_t to = 0; to < nBins; to++)
-						apuData(af::seq(length[indD] * to, length[indD] * (to + 1) - 1)) = af::array(length[indD] * inputScalars.nRowsD * inputScalars.nColsD,
+						apuData(af::seq(lengthFull[indD] * to, lengthFull[indD] * (to + 1) - 1)) = af::array(lengthFull[indD],
 							&Sin[pituus[indD] * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.kokoNonTOF * to + inputScalars.kokoTOF * timestep], AFTYPE).as(f32);
 				oneInput1 = (apuData / (oneInput2 * oneInput2)) * oneInput1;
 				af::eval(oneInput1);
@@ -1069,6 +1084,31 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 					return -1;
 			}
 		}
+		proj.no_norm = noNormRDPRef;
+#ifndef CPU
+		// fastPDHG fuses the prior into the backprojection kernel and never calls RDPAF, so the (constant, Nt == 1) reference
+		// must be uploaded here once. Before, the kernel read an uninitialised image (OpenCL) or a nonexistent texture (CUDA/HIP)
+		if (inputScalars.fastPDHG && proj.fastNLMUsed && inputScalars.useImages && !inputScalars.largeDim) {
+#if defined(CUDA) || defined(HIP)
+			CUdeviceptr* d_ref = transferAF(w_vec.RDPref[0]);
+			status = proj.transferTex(inputScalars, d_ref, true, inputScalars.Nz[0]);
+			w_vec.RDPref[0].unlock();
+			if (status != 0) {
+				mexPrint("Failed to upload the RDP reference image for fastPDHG\n");
+				return -1;
+			}
+			proj.RDPRefPersistent = true;
+#elif defined(OPENCL)
+			status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*w_vec.RDPref[0].device<cl_mem>(), true), proj.d_RDPrefI, 0, proj.origin, proj.region);
+			w_vec.RDPref[0].unlock();
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				mexPrint("Failed to upload the RDP reference image for fastPDHG\n");
+				return -1;
+			}
+#endif
+		}
+#endif
     }
 #ifndef CPU
 	if (inputScalars.fastPDHG) {
@@ -1581,8 +1621,14 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             }
                             else
                                 vec.im_os[tt][0] = af::array(inputScalars.lDimStruct.imDimPr[ii], &apuF[inputScalars.lDimStruct.cumDimPr[ii]], afHost);
-                        if (iter == 0 && osa_iter == 0 && (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY))
-                            vec.uCP[tt][0] = vec.im_os[tt][0](af::seq(0, inputScalars.lDimStruct.imDim[ii] - 1)).copy();
+                        if (iter == 0 && osa_iter == 0 && (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY)) {
+                            // With subsets uCP is the dual accumulator A^T p and starts at zero (largeDim chunks reuse the
+                            // subset count, so subsetsUsed > 1 is the subset PDHG path); without subsets it is the primal iterate.
+                            if (inputScalars.subsetsUsed > 1)
+                                vec.uCP[tt][0] = af::constant(0.f, inputScalars.lDimStruct.imDim[ii]);
+                            else
+                                vec.uCP[tt][0] = vec.im_os[tt][0](af::seq(0, inputScalars.lDimStruct.imDim[ii] - 1)).copy();
+                        }
                         else if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY)
                             vec.uCP[tt][0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuU[inputScalars.lDimStruct.cumDim[ii]], afHost);
                         if (w_vec.computeD)
@@ -1632,8 +1678,13 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     inputScalars.nMultiVolumes = multiVol;
                     if (inputScalars.nMultiVolumes > 0) {
                         for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++) {
-                            if (iter == 0 && osa_iter == 0 && (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY))
-                                vec.uCP[tt].emplace_back(vec.im_os[tt][ii].copy());
+                            if (iter == 0 && osa_iter == 0 && (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY)) {
+                                // Zero start for the dual accumulator A^T p with subsets, initial image otherwise
+                                if (inputScalars.subsetsUsed > 1)
+                                    vec.uCP[tt].emplace_back(af::constant(0.f, vec.im_os[tt][ii].elements()));
+                                else
+                                    vec.uCP[tt].emplace_back(vec.im_os[tt][ii].copy());
+                            }
                             status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, outputFP, osa_iter, tt, length, m_size, meanBP, g, proj, false, ii, pituus);
                             if (status != 0)
                                 return -1;

@@ -2,6 +2,19 @@
 #include "functions.hpp"
 #include "algorithms.h"
 #include "priors.h"
+#include <utility>
+#include <vector>
+
+// Swaps the main-volume estimate with the PDHG primal iterate (uCP) of the given timestep, see computeOSEstimates.
+// Only swaps when both hold the same number of elements; returns whether the swap was made.
+inline bool swapPDHGPrimal(AF_im_vectors& vec, const uint32_t timestep) {
+    if (vec.uCP.size() <= timestep || vec.uCP[timestep].empty() || vec.im_os[timestep].empty())
+        return false;
+    if (vec.uCP[timestep][0].elements() != vec.im_os[timestep][0].elements())
+        return false;
+    std::swap(vec.im_os[timestep][0], vec.uCP[timestep][0]);
+    return true;
+}
 
 inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const uint32_t iter, uint32_t osa_iter, scalarStruct& inputScalars, std::vector<int64_t>& length, bool& break_iter, const int64_t* pituus, const af::array& g, ProjectorClass& proj, const std::vector<af::array> &mData, uint64_t m_size, const int64_t subSum, const uint8_t compute_norm_matrix, const int kk = 0, const bool largeDim = false, const int vv = 0) {
     // Ignore this function if using fastPDHG
@@ -22,6 +35,13 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
     bool MAP = false;
     if (MethodList.MRP || MethodList.Quad || MethodList.Huber || MethodList.L || MethodList.FMH || MethodList.TV || MethodList.WeightedMean || MethodList.AD || MethodList.APLS || MethodList.TGV || MethodList.NLM || MethodList.RDP || MethodList.ProxTGV || MethodList.ProxTV || MethodList.ProxRDP || MethodList.ProxNLM || MethodList.GGMRF || MethodList.TemporalSmoothness || MethodList.TemporalTV)
         MAP = true;
+
+    // PDHG without subsets: the forward projection uses the extrapolated image (im_os), but a smooth
+    // (gradient-type) prior belongs to the primal step and must be evaluated at the primal iterate u (uCP).
+    // The proximal/dual-split TV/TGV priors take their dual step at the extrapolated image and are excluded,
+    // as is PDDY, which has its own evaluation point.
+    const bool priorAtPrimalU = (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV) && !MethodList.PDDY
+        && inputScalars.subsetsUsed == 1 && !MethodList.ProxTV && !MethodList.ProxTGV && !MethodList.TGV && kk == 0;
 
     for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
         for (int ii = kk; ii <= inputScalars.nMultiVolumes; ii++) {
@@ -77,14 +97,28 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
         const bool computeReg = inputScalars.regEveryIter <= 1 || regCounter == 0 || regCounter == regCounterMax
             || (regCounter % static_cast<int64_t>(inputScalars.regEveryIter)) == 0;
         if (!MethodList.BSREM && !MethodList.ROSEMMAP && !MethodList.POCS && !MethodList.SART && kk == 0 && computeReg) {
-            status = applySpatialPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, timestep, osa_iter + inputScalars.subsets * iter, compute_norm_matrix, false, vv);
+            const bool swapped = priorAtPrimalU && swapPDHGPrimal(vec, timestep);
+            // The image-based priors read the forward projection image cache, so give them u as well
+            if (swapped)
+                status = refreshPriorImageCache(vec.im_os[timestep][0], inputScalars, proj, 0);
+            if (status == 0)
+                status = applySpatialPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, timestep, osa_iter + inputScalars.subsets * iter, compute_norm_matrix, false, vv);
+            if (swapped)
+                std::swap(vec.im_os[timestep][0], vec.uCP[timestep][0]);
             if (status != 0) return -1;
         }
     }
 
     if (MethodList.TemporalSmoothness || MethodList.TemporalTV) {
         if (!MethodList.BSREM && !MethodList.ROSEMMAP && !MethodList.POCS && !MethodList.SART && kk == 0) {
+            std::vector<uint8_t> swappedT(inputScalars.Nt, 0);
+            if (priorAtPrimalU)
+                for (uint32_t t = 0; t < inputScalars.Nt; t++)
+                    swappedT[t] = swapPDHGPrimal(vec, t) ? 1 : 0;
             status = applyTemporalPrior(vec, w_vec, MethodList, inputScalars, proj);
+            for (uint32_t t = 0; t < inputScalars.Nt; t++)
+                if (swappedT[t] != 0)
+                    std::swap(vec.im_os[t][0], vec.uCP[t][0]);
             if (status != 0) return -1;
         }
     }
