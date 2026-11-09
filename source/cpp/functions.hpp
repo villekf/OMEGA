@@ -2386,7 +2386,7 @@ inline void forwardProjectionType6(af::array& fProj, const Weighting& w_vec, AF_
 	if (DEBUG || inputScalars.verbose >= 3) {
 		proj.tEndLocal = std::chrono::steady_clock::now();
 		const std::chrono::duration<double> tDiff = proj.tEndLocal - proj.tStartLocal;
-		mexPrintBase("SPECT forward projection completed in %f seconds\n", tDiff);
+		mexPrintBase("SPECT forward projection completed in %f seconds\n", tDiff.count());
 		mexEval();
 	}
 }

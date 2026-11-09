@@ -1746,7 +1746,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     af::sync();
                     proj.tEndGlobal = std::chrono::steady_clock::now();
                     const std::chrono::duration<double> tDiff = proj.tEndGlobal - proj.tStartGlobal;
-                    mexPrintBase("Sub-iteration %d complete in %f seconds\n", osa_iter + 1u, tDiff);
+                    mexPrintBase("Sub-iteration %d complete in %f seconds\n", osa_iter + 1u, tDiff.count());
                     totTime += tDiff.count();
                 }
                 else

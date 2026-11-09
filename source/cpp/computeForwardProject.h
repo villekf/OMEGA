@@ -389,7 +389,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		af::sync();
 		proj.tEndLocal = std::chrono::steady_clock::now();
 		const std::chrono::duration<double> tDiff = proj.tEndLocal - proj.tStartLocal;
-		mexPrintBase("Computations required for backprojection completed in %f seconds\n", tDiff);
+		mexPrintBase("Computations required for backprojection completed in %f seconds\n", tDiff.count());
 	}
 	return 0;
 }

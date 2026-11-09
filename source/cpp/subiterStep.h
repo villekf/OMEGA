@@ -448,7 +448,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             af::sync();
             proj.tEndLocal = std::chrono::steady_clock::now();
             const std::chrono::duration<double> tDiff = proj.tEndLocal - proj.tStartLocal;
-            mexPrintBase("Iterative algorithm computed in %f seconds\n", tDiff);
+            mexPrintBase("Iterative algorithm computed in %f seconds\n", tDiff.count());
         }
         
     }
