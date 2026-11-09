@@ -157,6 +157,7 @@ Changed behaviour:
 - More input checks with list-mode and index-based data: the index-based inputs are checked for presence and format, subset types other than 0, 1 and 3 are rejected, and dynamic TOF index-based data needs dynamic TOF indices
 - ```Inveon_PET_main_listmode_example``` (MATLAB and Python) uses the geometry of the Siemens header (```options.cr_p = 1.63```, ```options.cr_pz = 1.592```, ```options.diameter = 161.08```, ```options.firstBlockAngle = 10.79```, ```options.DOI = 4.584```); results differ slightly from earlier versions
 - ```GATE_OMEGA_reconstruction.py``` now requires GATE (opengate) 10.1.1 or newer (online coincidence sorter)
+- ```options.ProxRDP``` and ```options.ProxNLM``` have been removed (MATLAB and Python). They never worked: the proximal kernels did not exist, so the reconstruction ran without regularization. Setting either option now gives an error; use ```options.RDP``` or ```options.NLM``` instead
 
 Other changes:
 - Unified SPECT rotation projector logic for all three Python operator backends
@@ -183,6 +184,7 @@ Other changes:
 - ```compile.py``` locates Visual Studio with vswhere (Visual Studio 2017-2026, including Build Tools), finds the OpenCL library also in ```OCL_ROOT/lib``` and no longer fails when the OpenCL path is not set; ```install_mex``` uses the included OpenCL headers for implementations 3 and 5 on Linux
 - Python ```volume3Dviewer```: arrow buttons step the slice and time sliders one step at a time, as in the MATLAB viewer
 - ```SPECT_custom_algorithm_example_PyTorchCUDA.py``` was renamed to ```SPECT_custom_algorithm_example_PyTorch.py``` (also runs with Metal)
+- ```install_mex``` also looks for the OpenCL library in ```OCL_ROOT/lib``` when ```OCL_ROOT/lib/x86_64``` does not exist (as ```compile.py```)
 
 Bug fixes:
 - OSL-OSEM denominator (sensitivity image + prior gradient) is now limited to at least 10 % of the sensitivity image (and at least ```epps```), preventing sign changes, division by zero and blow-up with strong priors (implementation 2 and Python implementation 4)
@@ -391,6 +393,7 @@ Bug fixes:
   - Custom list-mode detector coordinates given as two rows were ordered incorrectly, and ```index_maker``` accepts dynamic data with a cell ```options.x```
   - The automatic axial extended FOV length can no longer become negative, and an extended FOV smaller than one multi-resolution voxel is disabled with a warning instead of crashing (also in Python)
   - ```saveImage```, ```saveInterfile```, ```saveMetaImage``` and ```scaleImages``` work with the current ```image_properties``` fields (```saveImage``` used ```Ny``` for the axial voxel size and ```saveMetaImage``` opened its output file read-only); ```saveInterfile``` and ```saveMetaImage``` handle dynamic (4D) data
+- MATLAB: ```install_mex``` built the OpenCL implementations 2 and 3 on Linux against the system OpenCL headers instead of the included ones (the source folder was never added to the include path), which failed when the system headers are older than the included ```opencl.hpp``` (e.g. ```CL_MAKE_VERSION``` errors)
 
 ## OMEGA v2.2.0
 
