@@ -1,19 +1,101 @@
 # Release notes
 
+## OMEGA v2.3.0 (unreleased, still subject to change)
+
 New examples:
 - SPECT_main_DIP_PyTorch.py
   - Deep image prior regularized SPECT reconstruction example 
   - Highlights OMEGA interoperability with PyTorch framework
   - Tested with Metal (M4) and CUDA (RTX 4060)
+- PET_main_gateDualLayerExample.m and gate_PET_dualLayer.py
+  - Dual-layer PET GATE example (ROOT import, sinogram and index-based reconstruction)
 
 New features:
-- CUDA support for MATLAB projection operators
-  - `options.use_CUDA` controls the backend as with implementation 2
 - Initial Metal support for PyTorch projection operators
-  - SPECT only
+  - SPECT and CBCT
   - See PyTorch examples
 - Metal support for reconstructions with ArrayFire backend (both Python and MATLAB)
-- ```options.useMAD``` controls HIP unsafe atomics in Python custom operators; notable performance improvement with backprojection
+- ```options.useMAD``` controls HIP unsafe atomics in Python custom operators; notable performance improvement with backprojection (gfx90a only!)
+- PET: ```options.transaxialGaps``` adds extra spacing (mm) between crystals inside a block (cryst_per_block - 1 values, e.g. between the stacks of a module)
+- PET: ```options.firstBlockAngle``` sets the angle (degrees, counter-clockwise from +x, the direction of the image's first dimension (Nx), default 0) of the first detector block; applied before ```options.offangle```, which only shifts the detector numbering
+- PET: Siemens Biograph Vision normalization files (the component-based ```.n```/```.ptd``` calibration file) can now be used with any sinogram size (Ndist, Nang, span, ring difference, segment table, ```ndist_side```, 760 or 798 detectors per ring) in both MATLAB (```loadNormalizationBiograph```) and Python (```omegatomo.fileio.loadNormalizationBiograph```, also selectable in the normalization file dialog)
+  - The efficiency of every LOR (crystal efficiencies, crystal interference, geometric and axial effects of the span-1 plane) is summed into the bins of the OMEGA sinogram with the same binning as in ```saveSinogram```, so the span and mashing multiplicity is included; the mean LOR efficiency is one. The coefficients multiply the measured data, ```1 ./ coefficients``` is the efficiency (zero coefficients, e.g. bins with only pseudo detector LORs, give zero efficiency, not Inf)
+  - The dead-time component is ignored (count rate dependent), use ```options.global_correction_factor``` for a global dead-time factor. LORs outside of the 520 radial bins of the scanner (large ```Ndist``` with 760 crystals) use the nearest edge bin and a warning is shown
+  - The efficiency of every LOR is also multiplied by D^(-n), D being the transaxial distance between the two detectors of the LOR (from the OMEGA detector coordinates) and n = ```options.visionLORLengthExponent``` (default 2, 0 = off). The factor is empirical and was validated against the Siemens reconstruction of measured Vision data, where the radial RMS error decreased from 4.66 to 2.15 % (both MATLAB and Python)
+  - ```quantificationFactorBiograph``` (MATLAB; ```omegatomo.fileio.quantificationFactorBiograph``` in Python) returns the factor that converts a Vision image reconstructed with this normalization to Bq/mL, computed from the PET_CALIBRATION and PET_EM_SINO ```.ptd``` files: the quantification and cross calibration factors, the decay during the frame and the branching factor of the isotope, the frame duration, the dead-time factor (from the block singles rates and the dead-time table of the normalization file) and the mean efficiency of the normalization, which ```loadNormalizationBiograph``` now returns as a third output (```returnScale=True``` in Python; the normalization coefficients are unchanged). The result multiplies the final image and uses the Siemens decay reference of the start of the frame. A wrong isotope in the Siemens header can be replaced with ```halfLife```, ```branchingFactor``` and ```frameDuration```; the usage is shown in ```Biograph_Vision_main.m``` (```quantificationFile```)
+  - The factor contains an empirical constant (2.19e-3) that was fitted to the Siemens reconstructions in Bq/mL of three measured datasets (a Derenzo phantom, a torso phantom and a pig); it has only been validated for non-TOF reconstructions (the factor is the same for the projector types 1, 2 and 3) and only for the Biograph Vision
+  - The old mCT code path is unchanged; the previous Vision code path and the debug file ```normalization_test.n``` written by the MATLAB loader have been removed
+  - ```Biograph_Vision_main.m``` now uses the measured-data detector geometry with Vision data (```options.diameter``` 820 mm, the physical face-to-face diameter, ```options.DOI``` 8.6 mm, the fitted mean interaction depth, i.e. an effective ring diameter of 837.2 mm, and ```options.firstBlockAngle``` 5.17 degrees), with which OMEGA reconstructions of measured Vision data match the Siemens reconstructions in size and orientation (previously about 7 % too small transaxially and rotated by 5 degrees)
+  - ```options.normalization_datafile``` (both MATLAB and Python) selects the user normalization file (with ```options.use_user_normalization``` in MATLAB, or when ```options.normalization``` is empty in Python) without a file dialog; if empty, the previous behaviour (default file lookup and/or dialog) is used. A missing file gives an error
+  - ```Biograph_Vision_main.m``` uses no attenuation image rotation (```options.rotateAttImage = 0```) for measured Vision data with the Siemens CT images (1 is kept for the GATE data)
+- Added HIP support, and widened Metal support
+  - HIP support includes both implementation 2 and CuPy/PyTorch support
+  - Implementation 2 requires ArrayFire to be built for HIP, for which you need at the moment this specific branch: https://github.com/arrayfire/arrayfire/tree/experimental/hip
+  - CuPy and PyTorch support in custom reconstruction only projector types 1, 2, 3, and 4, and for 4 only the backprojection, i.e. 14
+  - ```install_mex``` (MATLAB) and ```compile.py``` (Python) try to build HIP first (```HIP_PATH```/```ROCM_PATH```) and fall back to CUDA if ROCm is not found or the HIP build fails; OpenCL is always built
+- Added support for custom sensitivity image coordinates
+  - You can now add both transaxial (`options.xSens`) and axial (`options.zSens`) coordinates specifically for sensitivity image computation
+  - All possible combinations are computed
+  - xSens should thus be 2xM, where M is the total number of (valid) detectors, and zSens 1xM
+- Custom reconstructions in Python no longer require addProjector or initProj
+  - You can now ignore both and go straight to calling the operators
+  - It's still recommended to at least initialize the projector with initProj
+- Added Python ports of ```create_atten_matrix_CT``` and ```attenuationCT_to_511```: ```omegatomo.fileio.createAttenMatrixCT``` and ```omegatomo.fileio.attenuationCTTo511```
+  - ```createAttenMatrixCT(options)``` reads a DICOM CT folder (```options.attenuation_datafile```) and returns the attenuation image in 1/mm that can be input to ```options.vaimennus```
+  - The water attenuation value follows ```options.scatter_correction```: 0.096 1/cm with scatter correction and 0.093 1/cm without, as in MATLAB
+  - Requires the pydicom package
+- The workgroup/block size can now be specified by the user with `options.local_size`. The values can, and should be, defined for all three dimensions
+- Regularization can now be applied at every Nth iteration with `options.regEveryIter`. For example `options.regEveryIter = 2` computes regularization every second iteration (the first and last iterations are always regularized)
+- Add support for hyperbolic prior for CPU (implementation 2 CPU)
+- Projector type 2 (orthogonal distance) now supports TOF, both with sinograms and list-mode data, also as the forward or backward projector of a combined projector type (2, 12, 21, 22, 23, 32, 24 and 42)
+- Index-based (list-mode) reconstruction now works with the normalization correction (```options.normalization_correction```) in MATLAB and Python
+  - The normalization can be input either as a sinogram (```Ndist * Nang * NSinos``` elements, or ```Ndist * Nang * TotSinos``` elements of which the first ```NSinos``` planes are used) or as one value for each event. A sinogram is converted to one value for each event with the same detector pair/ring pair to sinogram element mapping as in the sinogram loaders (new function ```sinogramPairLookup```); events outside the sinogram (radial FOV, ring difference) get zero normalization. Normalization files (```.nrm```, ```.n```/```.ptd``` and mat-files) are read and checked with the sinogram dimensions
+  - A sinogram normalization is divided by the number of LORs in each bin (span > 1, mashing), since a sinogram bin is the sum of its LORs and each event is a single LOR. A normalization with one value for each event is used as it is, so it has to be given for a single LOR
+  - The sensitivity image (```options.compute_sensitivity_image```) uses the normalization through lookup tables from the detector pair/ring pair to the sinogram element, so all detector pairs are normalized; this requires the sinogram form. LORs outside the sinogram (radial FOV, ring difference) are not counted in the sensitivity image when a sinogram normalization is used
+  - Not supported (an error is raised): a sinogram normalization with multiple layers or with pseudo detectors/rings (use one value for each event), a normalization with one value for each event together with the sensitivity image (index-based data without a pair table), and, when the sensitivity image of list-mode data is computed, the normalization with custom (not index-based) detector coordinates or with user-input ```options.xSens```/```options.zSens``` without a pair table (see below), with the CPU implementation, as well as a multiplicative scatter correction/correction vector. Dynamic list-mode data still has the normalization disabled
+  - New: the sensitivity image of list-mode data (index-based and custom detector coordinates, with or without ```options.xSens```/```options.zSens```) can be normalized with a pair table, ```options.normSens```: one single-precision multiplier for each ordered detector/ring pair of the sensitivity image grid, ```det_per_ring^2 * rings^2 * nLayers^2``` elements (```det_per_ring = numel(xSens)/2/nLayers``` and ```rings = numel(zSens)/nLayers``` with ```xSens```/```zSens```, the scanner values otherwise; index ```a + b*det_per_ring + (ringA*rings + ringB)*det_per_ring^2```, an array of size ```[det_per_ring, det_per_ring, rings, rings]``` indexed ```(a, b, ringB, ringA)```, layer pairs slowest). This is meant for systems that the cylindrical scanner settings cannot describe, where no sinogram exists. Only the pairs of one orientation are read (```a < b```, or ```a == b``` and ```ringA < ringB```); a zero removes a pair (e.g. both detectors on the same panel). The table must be finite and non-negative, and ```options.normalization``` must then be one value for each event (the table is not used to derive it; a sinogram normalization is an error). No kernel changes, the table is read as the per-event normalization is (no sinogram lookup); the sinogram form with lookup tables is unchanged. Not supported with dynamic data or the CPU implementation; the table is a single device buffer (4 bytes per pair), so it is limited by the maximum buffer size of the device (checked, with an error message)
+- Index-based and list-mode PET: the scatter (```options.ScatterC``` with ```options.scatter_correction = true``` and ```options.subtract_scatter = true```) is now used as the additive term of each event, in MATLAB (previously ignored) and Python, with and without TOF
+  - ```options.ScatterC``` is one value for each event, in the order of the events (```trIndex```/```axIndex```, or the custom coordinates) before the subsets; the unit is the measured counts expected for the LOR of the event, in the TOF bin of the event with TOF data, over the frame (the model is ```n * (A x) + s```), with no division by the normalization, the attenuation, the number of TOF bins or the number of LORs in a bin. The values must be finite and non-negative, and their number must equal the number of events (an error is raised otherwise)
+  - Randoms are still not used with list-mode data (```options.randoms_correction``` is switched off): add them into the same vector. The scatter is not part of the sensitivity image. Not supported (an error is raised): dynamic data, precorrection (```corrections_during_reconstruction = false``` or algorithms without ordinary Poisson such as PDHG), largeDim and scatter smoothing. Non-subtracted (multiplicative) scatter is still rejected with TOF and with the sensitivity image, and in MATLAB it is disabled with a warning (the ```Scatter correction ON``` message is no longer printed in this case)
+  - With a sinogram scatter estimate the event value has to be formed by the user: the value of the bin of the event, divided by the number of LORs in the bin with span > 1 or mashing (without the division the scatter is too large by that factor, about 12 % in the image sum in the cylindrical PET example at span 3), and with TOF the value of the TOF bin of the event, with the TOF bin of the LORs that are swapped in the sinogram binning reversed as in ```saveSinogram``` (without the reversal about 1.3 % image difference in the tested case); there is no division by the number of TOF bins for a TOF-resolved estimate
+  - Validation (cylindrical PET example, 1.85 million events): the same image as a sinogram reconstruction with the same additive term to float noise (relative RMS difference 4e-6 at span 1, CUDA and OpenCL, with and without normalization and TOF, projector type 1; the projector types 2-4 show the same differences between the sinogram and index-based reconstructions as without scatter), the same result in MATLAB and Python (3e-5), and the same result for subset types 0, 1 and 3 with the events permuted by the library or by the user
+  - The GPU backends now add the additive term of list-mode TOF data to the single value of each event (previously it was tiled by the number of TOF bins, which does not match list-mode data and stopped the reconstruction)
+- Multi-layer PET
+  - GATE ROOT and ASCII sinogram import now map every layer into a common block structure: layers with a different number of crystals (transaxially and axially) and pseudo detectors with layers are supported; the detectors/rings that a layer does not have are left empty at the end of each block
+  - MATLAB GATE ASCII import now supports multi-layer data (```options.dualLayerSubmodule``` is supported as in the ROOT import)
+  - Span > 1: the projector setup and the loaders now use the same number of sinograms (```TotSinos``` = sum of the segment table times the number of layer combinations), so multi-layer span > 1 data can be reconstructed end to end
+  - A scalar ```options.cryst_per_block```, ```options.cryst_per_block_axial``` or ```options.crystH``` is now expanded to all layers; a length between 1 and the number of layers raises an error (previously out-of-bounds reads)
+- Python sinogram creation (```omegatomo.util.saveSinogram```)
+  - Trues, scatter and randoms sinograms can now be created (```trueIndex```, ```scatterIndex``` and ```randomIndex``` arguments)
+- Projector type 4 now supports Joseph-style interpolation: set ```options.dL``` to a negative value to sample the ray once per voxel plane along its dominant direction (implementation 2, all GPU backends, MATLAB and Python)
+- Non-local Geman-McClure prior: ```options.NLM = true``` together with ```options.NLGM = true```, scaling parameter ```options.GM_delta``` (default 1) (MATLAB and Python, all implementations)
+- ```options.NLMaxWeight``` (default false) includes the voxel itself in the non-local neighbourhood with the largest neighbourhood weight, as in the original NLM; works with all non-local variants
+- gpuArray inputs for the MATLAB projection operators (implementation 5, ```A * x``` and ```A' * y```)
+  - gpuArray inputs are used directly on the GPU with the CUDA build of implementation 5 (```CUDA_matrixfree_multi_gpu```, built by ```install_mex``` when the CUDA toolkit is found); no extra options are needed
+  - Without the CUDA build implementation 5 works with OpenCL as before, but gpuArray inputs give an error
+- SPECT: the collimator hole length can differ transaxially and axially with ```options.colLxy``` and ```options.colLz``` (MATLAB and Python, ray tracing and rotation projectors); both default to ```options.colL```, so existing scripts are unchanged
+- Multi-ray projection (```options.n_rays_transaxial```/```options.n_rays_axial```) now also works with CT (not recommended: slower with little benefit)
+- Index-based data can now be used with the MATLAB projection operators and custom reconstructions (implementation 5)
+- Helical CT
+  - Projector type 5 (BDD) and the hybrid types 45 and 54 are now supported (MATLAB and Python, all GPU backends); see ```helical_CT_mainExample```
+  - Helical CT now works with the Python projector operators
+  - The backprojection of types 4 and 5 only processes the projections that can reach each axial block of voxels, which speeds up helical reconstructions (not used with list-mode data, subset type 12 or parallel beam)
+- Python
+  - The same options object can be used for several reconstructions in the same session: ```options.keepOptionsUnchanged``` (default True) makes the reconstruction work on a private copy of the options. Set it to False to save host memory, in which case the options object should not be reused
+  - The projector operators accept multi-dimensional C-ordered arrays; with ```options.useRowMajor``` (True by default only with PyTorch) multi-dimensional PyTorch tensors are returned in the same C ordering without manual reordering. Flattened inputs are still assumed to be in Fortran order
+  - The projector operators now support list-mode and index-based data with TOF
+  - Dynamic and static attenuation data, both image- and measurement-based, now work with the operators and the reconstructions; attenuation data with the size of the image is treated as an image also when ```options.CT_attenuation = False``` (as in MATLAB)
+  - L-filter (```options.L```) and FMH (```options.FMH```) priors (implementation 2)
+  - Subset types 6, 7, 10 and 12, as in MATLAB
+  - Sinogram gap filling (```options.fill_sinogram_gaps```) with the ```fillmissing``` method (```options.gap_filling_method = 'fillmissing'```, interpolation method from ```options.interpolation_method_fillmissing```); ```inpaint_nans``` and ```fillmissing2``` remain MATLAB only
+  - Ports of the MATLAB save functions: ```omegatomo.fileio.saveImage```, ```saveInterfile```, ```saveMetaImage``` and ```scaleImages```
+  - ```omegatomo.util.powerMethod``` applies the image-based preconditioners (```options.precondTypeImage```; the gradient- and curvature-based ones are not yet available in Python)
+  - The filtering-based measurement preconditioner now works with CuPy custom reconstructions (see ```CBCT_custom_algorithm_example_CuPy.py```)
+  - Further MATLAB parity: ```options.OSL_COSEM = 2``` (OSL-ACOSEM), ```options.global_correction_factor```, ```options.useHalf```, scatter variance reduction, a scalar ```options.lambda```, ```options.rhoPrecond```/```options.delta1Precond```, and ```options.sigma_x``` computed from ```options.TOF_FWHM``` when not given
+  - The MATLAB option names ```subset_type```, ```use_CUDA```, ```use_CPU``` and ```use_device``` are accepted as aliases of ```subsetType```, ```useCUDA```, ```useCPU``` and ```deviceNum```
+  - Normalization, randoms and scatter files are read as in MATLAB (e.g. the ```normalization``` variable of a mat-file, randoms from ```raw_SinDelayed```, ```SinDelayed``` or ```delayed_coincidences```)
+  - Multi-bed (step-and-shoot) CT: ```options.bedOffset``` is added to each bed position (the number of projections must be divisible by the number of bed positions)
+- ```attenuation_correction_factors(options, file)``` (MATLAB) accepts the Inveon attenuation file as a second input, so no file dialog is needed
 
 Changed behaviour:
 - SPECT ray tracer projectors now normalize emission probability based on a pre-determined superellipse
@@ -33,143 +115,282 @@ Changed behaviour:
   - The old ```options.nRays``` is still supported, but not recommended to use.
   - ```options.nRays=n^2``` converts silently into values of ```options.n_rays_transaxial=n``` and ```options.n_rays_axial=n```
 - SPECT rotation projector with Python custom operators now has better emission probability normalization when detectors are inside FOV
+- PET transaxial detector coordinates (both MATLAB and Python) now form an exact regular polygon of ```blocks_per_ring * transaxial_multip``` blocks for any block count, with the block faces at ```options.diameter / 2```
+  - Previously a quarter of the ring was mirrored with separate x/y gap corrections, which was a regular polygon only when the number of blocks was divisible by 4
+  - Results change for scanners where ```blocks_per_ring * transaxial_multip``` is not divisible by 4 (e.g. the Biograph Vision example, 38 blocks, crystals move up to ~1.3 mm; 42 blocks up to ~0.4 mm); unchanged (< 0.001 mm) otherwise
+  - ```options.diameter``` is the distance between opposite block faces
+- TV-type priors (TV, weighted TV, SATV, anatomical TV types 1-2, APLS) now use the same clamp-to-edge (Neumann) boundary in all cases
+  - Previously buffer mode (```options.useImages = false```), the CPU implementation and the MATLAB-based implementations (1, 4 and 5) zero-padded or mirrored the image at the volume boundary, giving different results than the default GPU image mode
+  - Results change only at the volume boundary and only for those cases; the default GPU (image) mode is unchanged
+- NLM, RDP, GGMRF and hyperbolic priors now clamp the image (and reference image) at the volume boundary also when ```options.useImages = false```, matching the default image mode (previously zero-padded)
+- With ```options.scatter_correction = true```, ```create_atten_matrix_CT``` and ```attenuationCT_to_511``` now use the narrow-beam water attenuation 0.096 cm^-1 instead of 0.093 cm^-1
+  - CT-based attenuation coefficients are 3.2 % larger and attenuation-corrected images increase by a few percent, more at the center of large objects
+  - Without scatter correction nothing changes (0.093 cm^-1); ```attenuationCT_to_511``` has a new optional ```waterMu``` input
+- The default workgroup/block size of list-mode and index-based data is now 32 instead of 128 (512 on wave64 AMD GPUs, i.e. GCN/CDNA, limited by the device maximum), as 128 was a poor size for unsorted events. A user-supplied `options.local_size` is used as before, and the sinogram, projection and other defaults are unchanged
+- OpenCL CPUs now default to useImages = false
+- PSF padding now uses af::pad and requires AF 3.8 or newer, so OMEGA now requires AF 3.8 minimum
+- PET: Projector type 2 is now normalised to the line integral: the forward projection of a constant image is the same as with Siddon (type 1) (median ratio 0.9996 in the NEMA example), independent of the tube width and the voxel size
+  - The weights 1 - d/R (R = tube width, ```options.tube_width_z```/```options.tube_width_xy```) are divided by the integral of the cone, pi R^2 / 3 per unit length, expressed in voxels (divided by the voxel volume); previously the weights were unnormalised (sums of "voxel counts")
+  - Type 2 reconstructed images are now larger by the factor 3 dx dy dz / (pi R^2) per unit LOR length, i.e. about three orders of magnitude (about 900 times in the NEMA example, 128 x 128 x 63 voxels, R = 2.4 mm) compared with earlier versions; the type 2 image scale no longer changes with the tube width or the number of voxels
+  - Regularization parameters (beta) tuned for projector type 2 with earlier versions need to be retuned (the images are now on the same scale as with types 1 and 3)
+  - Fixes the +2-3 % excess of the total number of counts of the OSEM-type reconstructions with type 2 (caused by the absolute positivity floor ```options.epps``` on the small image values); now the same as with types 1 and 3 (+0.5 %)
+- Projector type 3 (volume of intersection): the scale no longer depends on the voxel size, tube radius or voxel radius, the forward projection of a constant image is now the same as with Siddon (type 1)
+  - The tube volume is now scaled by Vmax / (dx dy dz), where Vmax is the volume of the voxel sphere (previously the forward projection of a constant image was too large by the factor Vmax / (dx dy dz), e.g. 1.55 in the NEMA example with 128 x 128 voxels and 2.9 with 64 x 64 voxels)
+  - Type 3 images are larger by Vmax / (dx dy dz) (for example 1.55 times with 128 x 128 voxels and 2.9 times with 64 x 64 voxels in the NEMA example; compared with v2.2.1, which also had the pi^2 error, about 15 times larger with 128 x 128 voxels), regularization parameters tuned for type 3 may need retuning
+- TOF weights (projector types 1-4, GPU backends) are now the exact probability that an emission in the voxel crossing is recorded in each TOF bin (the Gaussian integrated over the bin and averaged over the crossing), replacing the sampling of the Gaussian at the bin centre
+  - The weights are no longer renormalised to sum to one: the sum over the bins is the fraction of the TOF kernel inside the TOF window. This fixes the edge-bin artefacts when the TOF window does not cover the object, the TOF direction of projector type 4 for rays entering past the LOR midpoint, and the TOF bin sums of projector type 3 (now equal to the non-TOF value; list-mode and sinogram TOF agree)
+  - Validated against a float64 reference (per-weight error ```<= 2e-5```) and against v2.2.1, whose TOF forward projection of type 1 had 15-22 % errors at the 99th percentile in three of the four tested cases (now ```< 1e-6```)
+  - TOF images change slightly (typically < 1 % in the forward projections when the TOF window covers the object); with a TOF window narrower than the object the change is larger (reconstructed activity +11 % in the GATE TOF example)
+  - Speed with sinograms is about the same as before; list-mode TOF is considerably faster (one accumulator per event and clipping of the ray to the event's TOF window): without attenuation at 50-100 ps the forward projection is 3.3-6.4 times and the backprojection 1.8-3.1 times faster (about 2.1 and 1.4 times with attenuation)
+  - Even numbers of TOF bins now work when loading GATE data (previously a crash or every event shifted by half a bin), a negative ```options.TOF_offset``` is now applied and user-supplied ```TOFCenter``` values are checked to be uniformly spaced
+  - The CPU backend (implementation 4) still uses the old TOF model
+- Index-based and list-mode reconstructions: image values are about 2 times those of v2.2.1. The sensitivity image previously counted every LOR twice (once in each detector order) and now counts it once (GPU and CPU implementations)
+- Axial coordinates and segment table
+  - The default ```options.segment_table``` now uses 2 x rings - 1 instead of ```options.Nz``` (MATLAB and Python); unchanged when ```options.Nz``` = 2 x rings - 1
+  - The lower limit of the default segment table also uses 2 x rings - 1 instead of ```options.Nz``` (affects only ```options.ring_difference``` < rings - 1)
+  - When ```options.rings``` / ```options.det_per_ring``` are not set, they are now derived from the largest axial / transaxial crystal count (and ```options.transaxial_multip```) in both languages; Python no longer fails with ```options.rings = 0```
+- The CPU backend (implementation 4, and the implementation 1 MEX-files) now supports only the improved Siddon projector (projector types 1/11) and the SPECT rotation projector (6); projector types 2 and 3 and their hybrids raise an error with implementation 4
+- Dynamic reconstructions with saved intermediate images (```options.save_iter```/```options.saveNIter```): the output is now ordered Nx x Ny x Nz x Nt x saved images in MATLAB and Python (previously the last two dimensions were swapped, and the images of the time steps after the first were saved in the wrong place)
+- ```options.TOF_noise_FWHM``` is now the FWHM of the noise added to the time differences when loading GATE ROOT data (previously ```options.TOF_FWHM``` was used); the default -1 uses ```options.TOF_FWHM``` and 0 adds no noise (MATLAB and Python)
+- Python extended FOV and extrapolation (```CTEFOVCorrection```) now follow MATLAB: the axial extended FOV length is derived from the cone-beam geometry unless ```options.eFOVLengthAxial``` is set (never negative), the default transaxial extrapolation length is 0.25 (was 0.3), ```options.extrapLengthAxial```/```options.extrapLengthTransaxial``` and ```options.eFOVLengthAxial```/```options.eFOVLengthTransaxial``` can be set separately, and ```options.useInpaint``` is MATLAB only
+- largeDim now gives an error in unsupported cases: APLS, anatomical reference images with RDP, TV and NLM, and 3D backprojection/prior masks (use a 2D transaxial mask)
+- More input checks with list-mode and index-based data: the index-based inputs are checked for presence and format, subset types other than 0, 1 and 3 are rejected, and dynamic TOF index-based data needs dynamic TOF indices
+- ```Inveon_PET_main_listmode_example``` (MATLAB and Python) uses the geometry of the Siemens header (```options.cr_p = 1.63```, ```options.cr_pz = 1.592```, ```options.diameter = 161.08```, ```options.firstBlockAngle = 10.79```, ```options.DOI = 4.584```); results differ slightly from earlier versions
+- ```GATE_OMEGA_reconstruction.py``` now requires GATE (opengate) 10.1.1 or newer (online coincidence sorter)
 
 Other changes:
 - Unified SPECT rotation projector logic for all three Python operator backends
-
-Bug fixes:
-- Fixed texture input for standalone Metal projector calls
-- Fixed the missing Metal definition for projector type 4
-
-
-## OMEGA v2.3.0
-
-### New features
-- Added HIP support, and widened Metal support
-  - HIP support includes both implementation 2 and CuPy/PyTorch support
-  - Implementation 2 requires ArrayFire to be built for HIP, for which you need at the moment this PR: https://github.com/arrayfire/arrayfire/pull/3708
-  - CuPy and PyTorch support in custom reconstruction only projector types 1, 2, 3, and 4, and for 4 only the backprojection, i.e. 14
-	
+- The voxel bounds check in the Siddon projector (projector types 1-3) is now cheaper, which makes the forward projection about 7 % faster on full ordered sinograms. The results are unchanged
 - Combined OpenCL, CUDA, Metal, and HIP code into one
   - Functionality between the three should now be identical
   - Doesn't require anything from the user
-  
 - Optimized the code in general
   - Projector type 5 and the hybrid x5 should see 10-20% improvement in speeds
   - Otherwise the improvement should be 5-10%
   - Biggest effect for (CB)CT, less so for emission tomography
-  
 - Reduced memory usage of implementation 2
   - PDHG (and its variants L1 and KL), PKMA, MBSREM, and BSREM now use less memory as the backprojection is never saved to global memory
   - The above is automatic and doesn't work with all possible combinations, such as when using anatomical references images with priors
   - All other methods should also see a reduction of one volume in memory usage
-  
-- Added support for custom sensitivity image coordinates
-  - You can now add both transaxial (`options.xSens`) and axial (`options.zSens`) coordinates specifically for sensitivity image computation
-  - All possible combinations are computed
-  - xSens should thus be 2xM, where M is the total number of (valid) detectors, and zSens 1xM
-  
-- Custom reconstructions in Python no longer require addProjector or initProj
-  - You can now ignore both and go straight to calling the operators
-  - It's still recommended to at least initialize the projector with initProj
-  
-### Bug fixes and enhancements
-
-- Proximal TV gradient is now correctly computed when using CUDA (previously it used Z/X/Y gradient order instead of the correct X/Y/Z)
-
-- The workgroup/block size can now be specified by the user with `options.local_size`. The values can, and should be, defined for all three dimensions
-
-- Regularization can now be applied at every Nth iteration with `options.regEveryIter`. For example `options.regEveryIter = 2` computes regularization every second iteration (the first and last iterations are always regularized)
-
-- GGMRF now works with masking
-
-- GGMRF works correctly when using largeDim
-
-- RDP works correctly in OpenCL when using largeDim
-
-- Projector type 4 is now closer to a "normal" case when using largeDim
-
-- Dynamic listmode (coordinate-based) should now work
-
-- Offset correction can now be used with subset type 0
-
-- Masks should work more reliably across different setups
-
-- Fix for offset correction when using non-square detector pixels
-
-- Correct NLM for CPU, previously the results weren't correctly saved (implementation 2 CPU)
-
-- Add support for hyperbolic prior for CPU (implementation 2 CPU)
-
-- GGMRF previously could have used wrong weight values in very rare cases (implementation 2 CPU)
-
-- NL type 6 (NLGGMRF) now works on the CPU side as well (implementation 2 CPU)
-
-- Small loop fix to the CPU projector type 1 when computing perpendicular rays, one index was previously omitted (implementations 1, 2 CPU, and 4)
-
+  - ```options.fastPDHG = false``` disables this for the PDHG variants (MATLAB and Python)
 - Commented unused code in CPU RDP (implementation 2 CPU)
-
-- Arc correction in MATLAB should now work for dynamic cases
-
-- MBSREM, MRAMLA and SPS now work in MATLAB when using randoms correction (implementations 1 and 4)
-
-- Gradient computation for the gradient-based preconditioner was previously wrong in MATLAB (implementations 1 and 4)
-
-- DRAMA should now work in MATLAB (implementations 1 and 4)
-
-- Image-based filtering preconditioner should now work in MATLAB (implementations 1 and 4)
-
-- FISTA with L1 regularization now works in MATLAB  (implementations 1 and 4)
-
-- BSREM and ROSEM MAP should correctly regularize now in MATLAB  (implementations 1 and 4)
-
-- Median filter should properly work when using rectangular (non-square) neighborhoods  (implementations 1 and 4)
-
-- Cell measurement inputs should work more reliably (MATLAB)
-
-- Power method should work now if the input image is a cell, and use the input number of iterations and filtering if selected (implementations 1 and 4)
-
-- Weight error now works correctly if the weights vector is too long (MATLAB)
-
-- TV prior should now work with reference image (implementations 1 and 4)
-
-- Fix small indexing bug in arc correction in Python
-
-- TOF indices are now correctly imported when loading ROOT files (GATE 9 and earlier)
-
-- Fixed compilation when platform included several different devices
-
-- Correctly release memory with CUDA when using index-based reconstruction
-
-- Fix RDP with corners when using largeDim, previously one slice was always missing
-
-- Fix TOF indices when computing sensitivity image, previously there was a risk for out of bounds case
-
 - ArrayFire is no longer mandatory with the custom reconstruction in Python
+- Projector types 2 and 3: TOF forward projection is faster with CUDA (12-18 %, fewer registers) and HIP (about 9 %); OpenCL is unchanged
+- GATE ROOT loading is much faster (only the needed branches are read, multithreaded; MATLAB, Octave and Python), and Inveon list-mode loading is faster and uses less memory in sinogram mode
+- Implementation 2: the backprojections of multi-resolution reconstructions run concurrently, and unnecessary synchronizations were removed
+- Projector type 3: the volume table is now in global memory instead of constant memory
+- Python: the power method computes the Lipschitz values of multi-resolution reconstructions separately for the main and the extra volumes
+- ```compile.py``` locates Visual Studio with vswhere (Visual Studio 2017-2026, including Build Tools), finds the OpenCL library also in ```OCL_ROOT/lib``` and no longer fails when the OpenCL path is not set; ```install_mex``` uses the included OpenCL headers for implementations 3 and 5 on Linux
+- Python ```volume3Dviewer```: arrow buttons step the slice and time sliders one step at a time, as in the MATLAB viewer
+- ```SPECT_custom_algorithm_example_PyTorchCUDA.py``` was renamed to ```SPECT_custom_algorithm_example_PyTorch.py``` (also runs with Metal)
 
+Bug fixes:
+- OSL-OSEM denominator (sensitivity image + prior gradient) is now limited to at least 10 % of the sensitivity image (and at least ```epps```), preventing sign changes, division by zero and blow-up with strong priors (implementation 2 and Python implementation 4)
+- Multi-resolution reconstruction now gives an error with the Python CPU implementation instead of crashing
+- OSL-OSEM (implementations 2 and 4 in Python, implementation 2 in MATLAB) without a prior now equals OSEM: the backprojection term was missing ```epps```, which set voxels outside the measured region to zero, and the extra volumes of multi-resolution reconstructions were never updated
+- Python: the NLM filter parameter set in the examples (```options.sigma```) was ignored; the examples now use ```options.NLMsigma```, and ```options.sigma``` is used as a fallback when ```options.NLMsigma``` is not set
+- Python: the anatomical TV weight now uses ```options.T``` as documented (previously the undocumented ```options.B```, default 0.01, was used and ```options.T``` was ignored)
+- Fixed texture input for standalone Metal projector calls
+- Fixed the missing Metal definition for projector type 4
+- APLS prior gradient was incorrect with implementations 2 and 4 (GPU and CPU); it now matches the original article (Ehrhardt et al. 2016) and no longer produces NaN values
+  - The reference image is now clamped at the volume boundary and ```epps``` is no longer added to the reference image gradient (also in MATLAB implementation 1/4/5 path)
+- APLS reference image can now be input as a variable in MATLAB (previously only mat-files worked) and as a NumPy array in Python on Windows
+- APLS reference image size is now checked (wrong size could previously cause out-of-bounds reads)
+- MATLAB-based TV type 1 (anatomical weights) gradient was incorrect on the last slices and everywhere in 2D (implementations 1, 4 and 5)
+- Anatomical TV type 1 gradient was incorrect with implementations 2 and 4 (GPU and CPU): wrong sign of the voxel's own term and the neighbor terms used the weights of the wrong voxel
+- Anatomical TV type 2 gradient was incorrect with implementations 2 and 4: the neighbor terms were missing the reference image term
+- Anatomical TV type 2 now uses ```options.T``` as the reference image weight with implementations 2 and 4, as with the MATLAB-based implementations (previously ```options.C```)
+- Hyperbolic prior gradient was incorrect with implementation 2 when the image size in x or y was not a multiple of the local work size (16)
+- Projector type 3 (volume of intersection) normalized the tube volume incorrectly with the GPU backends (OpenCL, CUDA, HIP, Metal) in versions 2.0–2.2.1: the volume was computed as L·R²/π instead of π·L·R² (the CPU backend was correct)
+  - Forward projections were π² (about 9.9) times too large and reconstructed and sensitivity images π² times too small compared with the other projectors and the CPU backend
+  - Type 3 reconstructions now have about 9.9 times larger absolute values than with version 2.2.1; regularization parameters (beta) tuned for type 3 with version 2.2.1 may need retuning, and calibration factors derived with version 2.2.1 type 3 must be rescaled by π²
+- The Khronos OpenCL C headers (```CL/cl.h```, ```cl_ext.h``` etc.) matching the included C++ bindings (```opencl.hpp```) are now included in ```source/cpp/CL```, and they are used instead of the headers of the installed OpenCL SDK
+  - Fixes OpenCL build failures when the system OpenCL headers are older or newer than the included ```opencl.hpp```, e.g. with the OpenCL headers of CUDA 12.x or Ubuntu 22.04 (errors about ```CL_KHR_COMMAND_BUFFER_EXTENSION_VERSION``` or ```cl_command_buffer_update_type_khr```)
+  - Only the OpenCL library (```OpenCL.lib```/```libOpenCL.so```) is now needed from the OpenCL SDK
+- ```create_atten_matrix_CT``` failed or cropped the CT incorrectly depending on the CT width and the transaxial FOV (the cropped image was one pixel short for some FOVs, the window was off-center and the scale was rounded). It now uses exact area-weighted resampling onto the image grid, supports a FOV larger than the CT (padded with air) and non-square ```options.FOVa_x```/```options.FOVa_y``` with ```options.Nx```/```options.Ny```
+  - The CT values are now converted to HU with the DICOM ```RescaleSlope```/```RescaleIntercept```. Previously a fixed offset of 1000 was subtracted, so for e.g. Siemens CT (intercept -1024) all values were 24 HU too high, i.e. the soft tissue/water attenuation coefficients were about 1 % too high at 100-120 kVp
+- ```create_atten_matrix_CT``` used ```exist(..., 'folder')```, which older MATLAB releases reject; it now uses ```'dir'```
+- Python now raises a ```RuntimeError``` when the native reconstruction fails (the native library previously always returned success, so a failed reconstruction only printed "Reconstruction failed!" and returned a zero image)
+- The default MATLAB initial value ```options.x0``` is now 1 (1e-4 for CT), as documented and as in Python, instead of 1e-5; the old value could put the OSEM/MLEM forward projections below ```epps``` and scale the image incorrectly
+- The backprojection of the projector types 1-3 again skips the measurements whose input is exactly zero (when the sensitivity image is not being computed), which speeds up reconstructions of low-count sinograms. This check was lost in v2.0
+- PDHG, PDHG-KL, PDHG-L1, PDDY and CV with subsets converged to a biased image in versions 2.0–2.2.1: the backprojected dual variable was initialized to the initial image ```options.x0``` instead of zero. This also affected the CT fast PDHG and all largeDim PDHG reconstructions (implementation 2 and the MATLAB-based implementations)
+  - The reconstruction effectively had an extra hidden penalty (the sum of ```options.x0``` times the image), which pulled the image towards zero, most in low-sensitivity regions. The bias did not decrease with more iterations and the result depended on ```options.x0```
+  - In a PET test (```options.x0 = 1```, RDP prior) the relative distance to the true solution after 100 iterations dropped from 36 % to 12 %
+- PDHG, PDHG-KL, PDHG-L1 and CV without subsets evaluated the prior gradient at the extrapolated image, which can be negative, and could diverge (e.g. NaN values with RDP). The prior gradient is now evaluated at the primal image. ProxTV, ProxTGV and TGV, whose dual updates use the extrapolated image, are unchanged
+- With ```options.useImages = true``` (default) and other forward projectors than type 5, the NLM, RDP, GGMRF, hyperbolic and TV priors with the GPU backends (OpenCL, CUDA, HIP) used the last forward projected image instead of the current estimate
+  - Dynamic reconstructions: the priors of every time step used the image of the last time step
+  - With PSF (```options.use_psf```): the priors used the PSF-blurred image
+  - BSREM, ROSEM-MAP, SART/POCS and PDDY: the priors used the image from before the update
+  - With largeDim, these priors crashed
+  - The results now match ```options.useImages = false```
+- RDP with a reference image (```options.RDP_use_anatomical```) fixes
+  - The precomputation of the reference weights overwrote the sensitivity image (OpenCL, wrong results even with zero beta) or crashed (CUDA/HIP)
+  - CUDA/HIP used only one slice of the reference image
+  - CT reconstructions with a reference image always failed
+  - The fast PDHG ignored the reference image (the prior was zero)
+  - largeDim with a reference image now gives an error (it was never supported)
+- Fixed a GPU memory leak with largeDim and the CUDA backend
+- Proximal TV gradient is now correctly computed when using CUDA (previously it used Z/X/Y gradient order instead of the correct X/Y/Z)
+- GGMRF now works with masking
+- GGMRF works correctly when using largeDim
+- RDP works correctly in OpenCL when using largeDim
+- Projector type 4 is now closer to a "normal" case when using largeDim
+- Dynamic listmode (coordinate-based) should now work
+- Offset correction can now be used with subset type 0
+- Masks should work more reliably across different setups
+- Fix for offset correction when using non-square detector pixels
+- Correct NLM for CPU, previously the results weren't correctly saved (implementation 2 CPU)
+- GGMRF previously could have used wrong weight values in very rare cases (implementation 2 CPU)
+- NL type 6 (NLGGMRF) now works on the CPU side as well (implementation 2 CPU)
+- Small loop fix to the CPU projector type 1 when computing perpendicular rays, one index was previously omitted (implementations 1, 2 CPU, and 4)
+- Arc correction in MATLAB should now work for dynamic cases
+- MBSREM, MRAMLA and SPS now work in MATLAB when using randoms correction (implementations 1 and 4)
+- Gradient computation for the gradient-based preconditioner was previously wrong in MATLAB (implementations 1 and 4)
+- DRAMA should now work in MATLAB (implementations 1 and 4)
+- Image-based filtering preconditioner should now work in MATLAB (implementations 1 and 4)
+- FISTA with L1 regularization now works in MATLAB  (implementations 1 and 4)
+- BSREM and ROSEM MAP should correctly regularize now in MATLAB  (implementations 1 and 4)
+- Median filter should properly work when using rectangular (non-square) neighborhoods  (implementations 1 and 4)
+- Cell measurement inputs should work more reliably (MATLAB)
+- Power method should work now if the input image is a cell, and use the input number of iterations and filtering if selected (implementations 1 and 4)
+- Weight error now works correctly if the weights vector is too long (MATLAB)
+- TV prior should now work with reference image (implementations 1 and 4)
+- Fix small indexing bug in arc correction in Python
+- TOF indices are now correctly imported when loading ROOT files (GATE 9 and earlier)
+- Fixed compilation when platform included several different devices
+- Correctly release memory with CUDA when using index-based reconstruction
+- Fix RDP with corners when using largeDim, previously one slice was always missing
+- Fix TOF indices when computing sensitivity image, previously there was a risk for out of bounds case
 - Fixed PSF padding. Now the padding is properly reflected in the boundary
-
 - Fix parallel beam reconstruction when using CUDA
-
 - Inveon SCN-files can be loaded again
-
+  - ```options.fpath``` pointing to an existing .scn file is used without a file dialog
+  - With dynamic SCN files ```options.partitions``` must match the number of frames in the file (an error is raised otherwise)
 - Multi-ray TOF should now work, though in general it's not recommended
-
 - TGV works when using masks and not using images i.e. useImages = false
-
-- OpenCL CPUs now default to useImages = false
-
 - Implementation 2 with CPU no longer gives errors in MATLAB with projector type 11
-
 - Any algorithm that didn't use sensitivity image now works when useImages = false
-
 - Fixed forward projection masks when useImages = false
-
 - Fixed MRP (implementation 2 CPU)
-
 - PET attenuation now works when useImages = false
-
-- PSF padding now uses af::pad and requires AF 3.8 or newer, so OMEGA now requires AF 3.8 minimum
+- With TOF, non-TOF scatter data (```options.ScatterC```) was added to every TOF bin at full value in the reconstruction (corrections during reconstruction) and was not accepted by the precorrection (MATLAB); it is now divided evenly among the TOF bins (as the randoms are) and a message is printed (MATLAB and Python). TOF-resolved scatter data (```Ndist x Nang x NSinos x TOF_bins```) can be used with the precorrection, and now also with corrections during reconstruction (MATLAB and Python): the randoms are divided evenly among the TOF bins and added to the TOF-resolved scatter, which is used as it is in each bin (```options.randomsTOF```, set automatically). It is supported with implementation 2 (the Python library), static data, no increased sampling, and no scatter smoothing or scatter variance reduction; other combinations raise an error, as does any scatter data size that is neither a non-TOF nor a TOF sinogram. The additive term is then TOF-sized, i.e. it needs as much (host and device) memory as the TOF measurements (twice the TOF data memory in total). Non-TOF reconstructions, non-subtracted scatter (```options.subtract_scatter = false```), raw data, list-mode and index-based data are unchanged
+- Fixed randoms and scatter loading with dynamic or TOF data. The randoms are divided by the TOF bins also when the scatter is not subtracted (MATLAB and Python; the non-subtracted scatter itself is unchanged), scatter-only data in a cell array keeps all time frames, and a single scatter sinogram can be shared by all the time frames (MATLAB and Python) and is normalized and smoothed only once, and a single randoms sinogram can be combined with scatter data that has its own time frames (MATLAB). TOF-resolved scatter data is still supported only with one time frame
+- Added the missing ```useSingles``` default (True, as in MATLAB) to the Python options. The SPECT DEW/TEW scatter correction no longer raises an AttributeError
+- ```options.use_user_normalization``` now works as in MATLAB in Python (PET). If it is False, the default normalization file is used and an error is raised if it is not found, no file dialog is shown. If it is True, ```options.normalization_datafile``` is used, or a file dialog is shown if it is empty. A ```normalization_datafile``` set while ```use_user_normalization``` is False is an error instead of being silently ignored
+- The normalization and attenuation file dialogs now give a clear error naming the option to set if no display is available (e.g. over ssh) instead of failing or waiting forever
+- Projector types 2 and 3: the tube of the ray now ends at the detectors; previously voxels beyond the end points were included when the image was larger than the detector ring (e.g. forward projection of a constant image 5 % too large with a 226 mm and 36 % with a 302 mm field of view on a 260 mm ring, and sensitivity/backprojection images with the same excess). Images within the ring are unchanged
+  - The tube was an infinite cylinder around the line through the two detectors, limited only by the image box, so it extended past the end points whenever the image box (side larger than the ring diameter / sqrt(2), 184 mm for a 260 mm ring) contained them; the foot point of each voxel on the ray is now required to lie between the end points (not applied to SPECT, which has its own rule; projector types 1, 4 and 5 are unaffected)
+  - Forward projection of a constant image divided by the Siddon one is now 0.998 (type 2) and 0.999 (type 3) for every field of view tested (151-302 mm)
+  - The end-point check is enabled automatically (kernel define ORTHCLIP, MATLAB/Python/C++ alike) only when a detector lies inside the image box widened by the tube reach, so images inside the detector ring are unchanged (bitwise identical to before on CUDA and OpenCL) and not slower. On a 260 mm ring it is off for fields of view up to about 151 mm and on from about 184 mm (CT: always on)
+  - With TOF the excess was partly hidden by the TOF window, but it is removed in the same way (e.g. a window covering the whole ring and a 226 mm field of view: TOF bin sum 4.6 % above type 1 before, 0.1-0.2 % below after)
+  - When the check is on (a detector inside the image), forward projection of types 2 and 3 on CUDA is about 8-22 % slower and backprojection 0-3 % slower (one case, type 3 backprojection with the narrow TOF window, 45 %), because of the extra test per voxel
+- CT: projector type 2 is now rejected also as the forward or backward projector of a combined projector type (e.g. 12, 21, 23, 24, 42) in both MATLAB and Python (previously only plain type 2 was rejected)
+- Normalization correction (sinogram and index-based data)
+  - With ```options.normalize_scatter```, a zero normalization no longer divides the scatter, the scatter keeps its value where the normalization is zero (sinogram data in MATLAB and Python, index-based data in Python). Index-based data needs the scatter as one value for each event, otherwise an error is raised
+  - Zero coefficients in a normalization that is loaded from a file (```.nrm```, mat-files, including the default mat-file) are handled the same way in MATLAB and Python: a zero coefficient is a bin without efficiency, so the inverted normalization is zero there (no Inf; the default mat-file previously gave one in MATLAB and Inf in Python), the scatter keeps its value and the precorrection gives zero. SPECT normalization files are unchanged
+  - ```options.normalize_scatter``` now works with a normalization that is loaded from a file in MATLAB (in the reconstruction): the normalization is loaded before the scatter is normalized, as in Python. With ```NSinos``` < ```TotSinos```, the scatter can have either ```NSinos``` or ```TotSinos``` sinograms in both languages (the first ```NSinos``` are used)
+- Multi-layer PET
+  - Fixed: delayed coincidences of mixed-layer events in the MATLAB ASCII import were placed in the wrong layer block
+  - Pseudo rings now work with multiple layers (positions from the axial block size, previously the transaxial one); an error is raised for pseudo rings with layers that have a different number of axial crystals
+  - Fixed: with multiple layers, ```options.offangle``` is now applied to each layer separately (with pseudo detectors or layers of unequal size the layer split was wrong and the other layer was not rotated correctly)
+  - Fixed: the second layer was placed 2 x ```options.DOI``` too far out (the DOI was added twice); it is now at the inner diameter plus 2 x ```options.crystH(1)``` plus the DOI, as the first layer (MATLAB and Python)
+  - Fixed: ```options.flip_image``` reversed the whole detector array, which swapped the layers; each layer is now flipped separately
+  - MATLAB: with multiple layers the first two outputs of ```detector_coordinates``` (Inf padding removed) are now also flipped/rotated (previously only the padded outputs were rotated with ```options.offangle```)
+- Fixed: ```options.flip_image``` with pseudo detectors (or with layers of unequal size) moved the pseudo detectors/padding from the end of each block to its start, so that real detectors got the coordinates of the gaps; the ring is now mirrored with the block structure kept (MATLAB and Python). Without pseudo detectors the coordinates are unchanged
+- MATLAB GATE ASCII data import now follows the ROOT import, and dynamic ASCII data works
+  - The time window (```options.start```/```options.end```) is applied as in the ROOT import (events with ```start <= t <= end```); previously the upper limit was applied incorrectly
+  - The time frame of each event is now determined from the time of the event, independent of the order of the events (previously from the first/last event of each frame), and is passed to the sinogram creation as a zero-based index
+  - The sinogram creation uses ```createSinogramASCIICPP``` when it has been built (MATLAB R2018a and later), otherwise ```createSinogramASCII```; the input types are now explicit
+- Axial coordinates and segment table
+  - Fixed a crash in the span > 1 axial coordinates when ```options.ring_difference``` < rings - 1: the planes beyond the ring difference get no coordinates (Inf) and the boundary segment uses only the accepted ring pairs
+  - Fixed the raw-data axial coordinates with pseudo rings (MATLAB counted the pseudo-ring positions instead of their number, Python deleted the wrong rings)
+- Precorrection (MATLAB sinogram formation)
+  - Fixed TOF randoms precorrection subtracting the full delayed sinogram from every TOF bin; the randoms are now divided evenly between the TOF bins
+  - Scatter variance reduction now uses ```options.scatter_variance_reduction``` (previously ```options.variance_reduction```)
+  - Plain randoms precorrection is now recorded in ```appliedCorrections```; fixed an undefined variable with user-supplied randoms
+  - ```appliedCorrections``` no longer loses the scatter variance reduction entry when scatter smoothing is applied
+- Precorrection and corrections (Python)
+  - TOF randoms precorrection now divides the randoms evenly between the TOF bins (as in MATLAB)
+  - The PET normalization precorrection is now applied after the randoms and scatter subtraction (as in MATLAB), and is applied per LOR to every TOF bin
+  - Trues and scatter reconstructions no longer load or apply randoms/scatter, but do apply the normalization correction if selected
+  - Measurement files with an ```appliedCorrections``` struct (data stored by OMEGA) are now handled as in MATLAB: the stored precorrected sinogram is used only if it has been precorrected with the selected corrections and options (normalization, randoms and scatter, variance reduction, smoothing); otherwise the raw sinogram is used and precorrected again, and the corrections already in the stored sinogram are not applied twice
+- Python sinogram creation (```omegatomo.util.saveSinogram```)
+  - Fixed the segment table input: the cumulative segment table (```np.cumsum(options.segment_table)```) is now used, also in the default table; a non-cumulative table raises an error
+  - The size variables are converted to integers and the time frames are passed as integers (zero-based), which fixes dynamic sinogram creation; the input sizes, time frames, TOF bins and layers are now checked
+- FDK and Parker weights (CT, MATLAB and Python, all GPU backends)
+  - The FDK weights now include the magnification of each projection, in the same way for projector types 4 and 5; absolute values of FDK images change, especially with large magnification
+  - The FDK distance weight is computed from the actual source position of each projection instead of the projection angle, so custom geometries, clockwise scans, arbitrary start angles and other orbit radii work
+  - The FDK ramp filter is zero-padded (FFT length at least 2 x ```options.nRowsD``` - 1) and keeps the DC term; previously detectors with 2^n rows had no padding, which biased the low frequencies by several percent
+  - Parker weights (```options.useParkerWeights```) use the actual source and detector coordinates of each projection, work with clockwise scans and angle jumps (e.g. 360 to 0 degrees), include the angular quadrature, and support negative and per-projection ```options.detOffsetRow``` (MATLAB previously ignored ```options.detOffsetRow``` because of a typo)
+  - FDK with largeDim uses the total number of projections and the global projection angle of each chunk, the offset correction works with largeDim, and the last projection is also filtered
+  - FDK is now correctly weighted with the BDD backprojection (projector type 5)
+  - The FDK filtering is done in chunks of projections when the FFT buffer would exceed the ArrayFire limit of 2^31 elements
+- Arc correction (sinogram data, MATLAB and Python) was rewritten: the interpolated sinogram is no longer rotated relative to the arc-corrected coordinates, the detector radius includes ```options.DOI```, ```options.flip_image``` is handled, and the normalization, randoms/scatter and ```corrVector``` applied during the reconstruction are interpolated with the same weights. ```options.arc_interpolation``` 'linear' and 'nearest' use fast sparse interpolation weights
+- Helical CT: the backprojection used only about half of the projection data (curved detector, MATLAB and Python); the DICOM CT-PD loaders (```loadDICOMCTPD```, MATLAB and Python) now use the correct detector geometry (arc centre and channel offsets); helical CT with the CPU implementation and FDK with helical CT now give an error
+- The additive term (scatter and/or randoms) used wrong values from the second subset on with projection data (CT/SPECT) and subsets (implementation 2)
+- Projector type 5 (BDD)
+  - The normalization weighting (e.g. detector uniformity/normalization images) was wrong in the forward and backprojection (all GPU backends)
+  - With ```options.meanFP```/```options.meanBP``` the mean add-back used an unclipped footprint area, giving errors where the footprints extend past the volume or the detector
+  - MATLAB projection operators (implementation 5): ```options.meanFP```/```options.meanBP``` were not passed to the kernels, the multi-volume forward projection read wrong offsets and the multi-volume backprojection with 3 or more volumes split the output at wrong offsets
+- Projector types 1-3
+  - Perpendicular rays were indexed off by one, and TOF did not work, when the source/detector is inside the FOV
+  - The multi-ray coordinate division was correct only for perpendicular rays; the ray angle is now taken into account
+  - The first voxel and the crossing times of a ray are computed from the same (integer) plane indices and nearly axis-parallel rays use the axis-parallel branch, which removes round-off errors in edge cases
+  - Projector type 3: the volume table could contain NaN values at the boundary (MATLAB and Python), giving slightly wrong values and differences between OpenCL and CUDA
+- Proximal TV and TGV (ProxTV, ProxTGV, TGV) with CUDA and HIP did not update the last voxels of the image when the number of voxels was not a multiple of 64
+- CUDA and HIP kernels now use 64-bit global indices as OpenCL already did; very large volumes could previously overflow silently
+- Projector type 6 (SPECT): the attenuation image is now correctly translated and rotated
+- Multi-resolution/extended FOV initial values: Python could give non-deterministic or too small values for the extra volumes and MATLAB too large volumes with a user-input ```options.x0```; an undersized ```options.x0``` now raises an error in Python
+- largeDim: CT data was linearized a second time with ```options.usingLinearizedData```, and the power method now normalizes over the whole volume instead of each subvolume
+- Dynamic reconstructions (Nt > 1)
+  - The sensitivity image now follows the time step when the attenuation image or the multiplicative ```corrVector``` differs between time steps (previously the first time step was used for all; implementation 2)
+  - Measurement, randoms, attenuation and ```corrVector``` data given per time frame are stacked frame by frame (MATLAB and Python); with one subset or largeDim the frames were previously interleaved
+  - A per-frame ```corrVector``` is ordered into subsets frame by frame, and the scatter data of time steps > 0 no longer reads past the end when only one frame was given
+  - Python: static normalization, attenuation, ```corrVector``` and sinogram corrections are sliced per frame correctly; dynamic list-mode data with normalization, randoms or scatter correction disables the correction with a warning (as in MATLAB)
+  - Dynamic SPECT: the attenuation image of each time step is used with the rotation projector, the detector head vector covers all time frames (MATLAB, previously frames after the first read past the end of the array) and a single normalization is shared by all frames (Python)
+- MATLAB implementations 2 and 3: non-subtracted scatter (```options.subtract_scatter = false```) was silently ignored or crashed; it is now merged into ```options.corrVector``` and applied as a multiplicative correction
+- Subsets
+  - Subset type 4 gave wrong sinogram indices when the number of angles was not divisible by the number of subsets (MATLAB and Python)
+  - Python: subset type 3 dropped the last measurement of the last subset
+  - Subset type 0 now works with sinogram and projection data (MATLAB and Python)
+- SPECT
+  - MATLAB TEW scatter precorrection (```options.corrections_during_reconstruction = false```) used the wrong sign for the upper window term
+  - With axial flipping the scatter projections (DEW/TEW windows, ```options.ScatterC```) are flipped together with the measurements
+- PET geometry and data loading
+  - ```options.ringGaps``` were too small with span 1 and too large with span > 1 (MATLAB and Python); index-based data now includes the ring gaps
+  - Python: the segment table was one segment short and some spans failed in ```sinogramCoordinates3D```
+  - Odd numbers of radial bins (```options.Ndist```) are loaded correctly with Inveon and GATE data, and ```options.ndist_side = 0``` is treated as 1
+  - GATE ROOT import: dynamic data (also dynamic TOF with delayed coincidences and index-based dynamic data) loads correctly, the start/end time window is applied also to the delayed coincidences, missing delayed coincidences no longer crash, and the default MATLAB ROOT loader, the legacy loader and the Octave dynamic load work again
+  - GATE ROOT sinogram import: events whose sinogram index is outside the sinogram are skipped with a message instead of writing past the end of the sinogram (including the multi-layer bound)
+  - ```options.reconstruct_trues``` now works with index-based reconstruction (GATE ROOT data): only the true coincidences are stored and no randoms are used
+  - Multi-layer sinograms: the layer pair of each sinogram is stored with the coordinates and ```saveSinogram``` maps it to the correct block
+  - Multi-ray PET used the transaxial and axial crystal sizes the wrong way round (MATLAB and Python)
+  - Inveon ```.atn```/CT UMAP attenuation (```attenuation_correction_factors```): the attenuation coefficients were half of the correct ones (extra factor 1/2), so attenuation-corrected Inveon images change
+- Precorrection
+  - Normalization is no longer switched on when precorrected data is used without the normalization correction
+  - Randoms/scatter stored as integers are converted to single/double correctly
+  - Python: a user-supplied PET normalization (```options.normalization```) is now multiplied with the measurements in the precorrection, as in MATLAB (previously divided); normalization from a file and SPECT are unchanged
+- Python
+  - ```options.flipImageX/Y/Z``` flipped the attenuation image and the measurement data along the wrong axes (and crashed for Z)
+  - Per-projection forward projection masks (```options.maskFP```) with subsets were read at wrong offsets with CuPy/PyOpenCL
+  - Saved intermediate images (```options.saveNIter```/```options.save_iter```) and stored forward projections are reshaped correctly (also with several subsets and ```subsetType >= 8```); if a reshape still fails a warning is given and the flat arrays are returned
+  - C-ordered coordinate arrays are no longer flattened in Fortran order in the projector (fixes 2D data)
+  - TV type 2 without an anatomical reference did not fall back to type 1
+  - The 2.5D orthogonal projector used the 3D tube width, and the extended FOV prior region was off by one voxel; the prior mask (```options.usePriorMask```) is no longer applied in the backprojection
+  - BSREM is treated as a MAP algorithm in the prior setup
+  - SPECT: the DEW/TEW scatter is subtracted before the normalization and the detector head order of ```DetectorVector``` was fixed
+  - The randoms file dialog failed (```options.fpath```), ```pitchRoll``` used the wrong detector pitch with non-square pixels, and the offset correction limit was off by one
+  - On Windows the native libraries are found also with newer Python versions, which no longer use PATH for DLLs; OMEGA registers the DLL directories from ```AF_PATH```, ```CUDA_PATH``` and ```HIP_PATH```/```ROCM_PATH``` itself
+  - Fixed a crash/heap corruption at exit when PyTorch is imported before an implementation 2 reconstruction with OpenCL (the ArrayFire FFT plan cache is now released after the reconstruction)
+- MATLAB
+  - The orthogonal and volume-of-intersection tube flags of the hybrid projector types (12, 21, 13, 31, 23, 32, 24, 42, 34, 43) are set as in Python, and type 41 is scaled as type 4
+  - ```options.gradV2``` never got its default value 2.5 (affects the gradient-based image preconditioner)
+  - The maximum number of sinogram angles error is no longer raised for list-mode data with custom coordinates or index-based data
+  - SPECT sinogram reconstruction with one subset no longer requires subset types 8-11, and the orthogonal ray tracer with several rays now gives an error (previously the multi-ray branch was silently used)
+  - The CPU MEX-files convert ```options.vaimennus``` to the expected type (previously garbage attenuation values could be read); implementation 1 forward projection with several subsets and ```forwardProjection``` with an empty input work
+  - Custom list-mode detector coordinates given as two rows were ordered incorrectly, and ```index_maker``` accepts dynamic data with a cell ```options.x```
+  - The automatic axial extended FOV length can no longer become negative, and an extended FOV smaller than one multi-resolution voxel is disabled with a warning instead of crashing (also in Python)
+  - ```saveImage```, ```saveInterfile```, ```saveMetaImage``` and ```scaleImages``` work with the current ```image_properties``` fields (```saveImage``` used ```Ny``` for the axial voxel size and ```saveMetaImage``` opened its output file read-only); ```saveInterfile``` and ```saveMetaImage``` handle dynamic (4D) data
 
 ## OMEGA v2.2.0
 
