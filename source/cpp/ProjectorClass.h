@@ -5786,7 +5786,8 @@ public:
 					}
 					else
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_inputImage);
-					if (inputScalars.CT && inputScalars.DSC > 0.f) {
+					// Must match the condition that adds -DFDK to the kernel build options
+					if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) {
 						fdkAngleOffset = 0LL;
 						for (uint32_t subset = 0; subset < osa_iter; subset++)
 							fdkAngleOffset += length[subset + timestep * inputScalars.subsets];
