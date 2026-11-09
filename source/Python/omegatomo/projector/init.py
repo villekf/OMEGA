@@ -1019,6 +1019,9 @@ def initProjector(self):
                 bOptFP += ('-DCAST=float',)
         elif self.FPType == 4:
             bOptFP += ('-DPTYPE4','-DNVOXELS=' + str(self.NVOXELS),)
+            # Non-positive interpolation length selects the Joseph-type projector (mirrors ProjectorClass.h)
+            if float(np.asarray(self.dL).ravel()[0]) <= 0.:
+                bOptFP += ('-DJOSEPH',)
             if self.CT and self.useHelical:
                 bOptFP += ('-DNVOXELSHELICAL=' + str(self.NVOXELSHELICAL),)
             if not self.CT:
@@ -1056,6 +1059,8 @@ def initProjector(self):
         elif self.BPType == 4:
             if self.CT:
                 bOptBP += ('-DBP4','-DNVOXELS=' + str(self.NVOXELS),)
+                if float(np.asarray(self.dL).ravel()[0]) <= 0.:
+                    bOptBP += ('-DJOSEPH',)
                 if self.useHelical:
                     bOptBP += ('-DNVOXELSHELICAL=' + str(self.NVOXELSHELICAL),)
                 # The helical backprojection only visits the projections in the window of its axial block
@@ -1063,6 +1068,8 @@ def initProjector(self):
                     bOptBP += ('-DPROJWINDOW',)
             else:
                 bOptBP += ('-DPTYPE4','-DNVOXELS=' + str(self.NVOXELS),)
+                if float(np.asarray(self.dL).ravel()[0]) <= 0.:
+                    bOptBP += ('-DJOSEPH',)
                 bOptBP += ('-DATOMICF',)
                 if self.use_64bit_atomics:
                     bOptBP += ('-DATOMIC','-DCAST=long','-DTH=' + str(self.TH),)

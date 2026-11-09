@@ -634,6 +634,9 @@ def _append_bp4_ct_args(self, args, timestep, subset, k, f_arg, y_arg):
     if _uses_projection_window(self):
         args.buf(self.d_projWindow[timestep][subset][k])
     args.buf(self.d_Sens)
+    # Normalization coefficients (macro NORM) come right after d_Summ in the kernel
+    if self.normalization_correction:
+        args.buf(self.d_norm[timestep][subset])
     return args
 
 
@@ -648,6 +651,9 @@ def _append_bp4_nonct_args(self, args, timestep, subset, k, f_arg, y_arg, proj_c
     OpenCL/AF wrap the SAME value as cl.cltypes.ulong (a signed/unsigned
     mismatch -- preserved verbatim rather than unified, since this file
     must not change kernel-argument types)."""
+    # Measurement-domain attenuation factors (macro ATNM) come before the image dimensions, as in the FP4 call
+    if self.attenuation_correction and not self.CTAttenuation:
+        args.buf(self.d_atten[timestep][subset])
     args.vec3u(self.Nx[k].item(), self.Ny[k].item(), self.Nz[k].item())
     args.vec3f(self.bx[k].item(), self.by[k].item(), self.bz[k].item())
     args.vec3f(self.bx[k].item() + self.Nx[k].item() * self.dx[k].item(),
