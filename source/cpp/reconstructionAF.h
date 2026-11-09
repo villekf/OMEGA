@@ -335,7 +335,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
 	// TODO: Add proper support for 64-bit indices
 	if (MethodList.NLM || MethodList.MRP || MethodList.ProxTV || MethodList.RDP || (MethodList.TV && !w_vec.data.TV_use_anatomical) || 
-        MethodList.ProxTGV || MethodList.ProxRDP || MethodList.GGMRF)
+        MethodList.ProxTGV || MethodList.GGMRF)
 		inputScalars.use64BitIndices = inputScalars.im_dim[0] > 2147483647LL;
 
 	// Check whether fastPDHG can be used
@@ -422,7 +422,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 			compute_norm_matrix = 2U;
 	}
 
-	if (MethodList.NLM || MethodList.MRP || MethodList.ProxTV || MethodList.RDP || MethodList.TV || MethodList.ProxTGV || MethodList.ProxRDP || 
+	if (MethodList.NLM || MethodList.MRP || MethodList.ProxTV || MethodList.RDP || MethodList.TV || MethodList.ProxTGV || 
         MethodList.GGMRF || MethodList.Quad || MethodList.APLS || MethodList.FMH || MethodList.Huber || MethodList.hyperbolic || MethodList.L || 
         MethodList.WeightedMean || MethodList.TGV || MethodList.TemporalSmoothness || MethodList.TemporalTV)
 		MethodList.prior = true;

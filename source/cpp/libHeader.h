@@ -391,8 +391,6 @@ struct inputStruct {
     bool RDP = false;
     bool GGMRF = false;
     bool ProxTV = false;
-    bool ProxRDP = false;
-    bool ProxNLM = false;
 	bool temporalTV = false;
 	bool temporal_smoothness = false;
     bool MAP = false;
@@ -604,8 +602,6 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     MethodList.GGMRF = options.GGMRF;
     MethodList.ProxTV = options.ProxTV;
     MethodList.ProxTGV = options.TGV;
-    MethodList.ProxRDP = options.ProxRDP;
-    MethodList.ProxNLM = options.ProxNLM;
 
     // Temporal priors
     MethodList.TemporalSmoothness = options.temporal_smoothness;
@@ -1191,7 +1187,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         }
     }
     // General variables for neighborhood-based methods
-    if ((MethodList.L || MethodList.FMH || MethodList.WeightedMean || MethodList.Quad || MethodList.Huber || MethodList.MRP || MethodList.NLM || MethodList.ProxNLM || MethodList.hyperbolic || MethodList.RDP
+    if ((MethodList.L || MethodList.FMH || MethodList.WeightedMean || MethodList.Quad || MethodList.Huber || MethodList.MRP || MethodList.NLM || MethodList.hyperbolic || MethodList.RDP
         || MethodList.GGMRF) && MethodList.MAP) {
         // Neighborhood size
         w_vec.Ndx = options.Ndx;
@@ -1232,7 +1228,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.data.SATVPhi = options.hyperbolicDelta;
     }
 #endif
-    if ((MethodList.RDP && MethodList.MAP) || MethodList.ProxRDP) {
+    if (MethodList.RDP && MethodList.MAP) {
         w_vec.RDP_gamma = options.RDP_gamma;
         w_vec.RDPLargeNeighbor = options.RDPIncludeCorners;
         w_vec.RDP_anatomical = options.RDP_use_anatomical;
@@ -1340,7 +1336,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.h_ACOSEM = options.h_ACOSEM;
         w_vec.h_ACOSEM_2 = 1.f / w_vec.h_ACOSEM;
     }
-    if ((MethodList.NLM && MethodList.MAP) || MethodList.ProxNLM) {
+    if (MethodList.NLM && MethodList.MAP) {
         w_vec.NLM_anatomical = options.NLM_use_anatomical;
         w_vec.NLTV = options.NLTV;
         w_vec.NLRD = options.NLRD;

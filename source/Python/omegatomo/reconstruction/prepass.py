@@ -2559,7 +2559,7 @@ def prepassPhase(options):
     if (options.MRP or options.quad or options.Huber or options.TV or options.FMH or options.L or options.weighted_mean or options.APLS or options.BSREM
         or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM or options.DRAMA or options.ROSEM_MAP or options.ECOSEM or options.SART or options.ASD_POCS 
         or options.COSEM or options.ACOSEM or options.AD or np.any(options.OSL_COSEM) or options.NLM or options.OSL_RBI or options.RBI or options.PKMA or options.SAGA
-        or options.RDP or options.SPS or options.ProxNLM or options.GGMRF or options.hyperbolic):
+        or options.RDP or options.SPS or options.GGMRF or options.hyperbolic):
     
         # Compute and/or load necessary variables for the TV regularization
         if options.TV and options.MAP:
@@ -2665,7 +2665,7 @@ def prepassPhase(options):
                 )
             if options.verbose:
                 print('Prepass phase for MRP, quadratic prior, L-filter, FMH, RDP and weighted mean completed')
-        if (options.NLM and options.MAP) or options.ProxNLM:
+        if options.NLM and options.MAP:
             NLMPrepass(options)
     if options.PDHG or options.PDHGKL or options.PDHGL1 or options.PDDY:
         if not isinstance(options.thetaCP, np.ndarray):
@@ -2675,7 +2675,7 @@ def prepassPhase(options):
                 raise ValueError('The number of elements in options.thetaCP has to be either one or options.subsets * options.Niter!')
             options.thetaCP = np.tile(options.thetaCP, (options.subsets * options.Niter, 1)).astype(dtype=np.float32)
     
-    if (options.PKMA or options.MBSREM or options.SPS) and (options.ProxTV or options.TGV or options.ProxRDP):
+    if (options.PKMA or options.MBSREM or options.SPS) and (options.ProxTV or options.TGV):
         if not isinstance(options.thetaCP, np.ndarray):
             options.thetaCP = np.array(options.thetaCP, dtype=np.float32, ndmin=1)
         if np.size(options.thetaCP) != options.subsets * options.Niter and np.size(options.alpha_PKMA) != options.subsets * options.Niter:
@@ -2685,7 +2685,7 @@ def prepassPhase(options):
             options.thetaCP = options.alpha_PKMA.astype(dtype=np.float32)
         
     
-    if options.PDHG or options.PDHGKL or options.PDHGL1 or options.ProxTV or options.TGV or options.FISTA or options.FISTAL1 or options.ProxRDP or options.PDDY:
+    if options.PDHG or options.PDHGKL or options.PDHGL1 or options.ProxTV or options.TGV or options.FISTA or options.FISTAL1 or options.PDDY:
         if np.size(options.tauCP) < options.nMultiVolumes + 1:
             options.tauCP = np.repeat(options.tauCP, options.nMultiVolumes + 1).astype(dtype=np.float32)
         if np.size(options.sigmaCP) < options.nMultiVolumes + 1:

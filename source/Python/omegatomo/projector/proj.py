@@ -537,8 +537,6 @@ class projectorClass:
     RDP = False
     GGMRF = False
     ProxTV = False
-    ProxRDP = False
-    ProxNLM = False
     temporalTV = False
     temporal_smoothness = False
     MAP = False
@@ -1968,10 +1966,12 @@ class projectorClass:
         if 'sigma' in self.__dict__ and 'NLMsigma' not in self.__dict__:
             # The NLM filter parameter is options.NLMsigma (sigma was used in older examples/MATLAB); use sigma as a fallback
             self.NLMsigma = self.sigma
-            if self.NLM or self.ProxNLM:
+            if self.NLM:
                 print('options.sigma is used as the NLM filter parameter; in the future use options.NLMsigma instead')
         # if self.projector_type in [5, 4, 34, 24, 44, 14, 41, 42, 43, 15, 45, 54, 51, 55] and self.useCPU:
         #     raise ValueError('The selected projector type is not supported with CPU implementation!')
+        if getattr(self, 'ProxRDP', False) or getattr(self, 'ProxNLM', False):
+            raise ValueError('ProxRDP and ProxNLM have been removed. Use RDP or NLM instead.')
         if np.sum(self.precondTypeImage) == 0 and (self.PKMA or self.MRAMLA or self.MBSREM):
             print('No image-based preconditioner selected with PKMA/MRAMLA/MBSREM. EM preconditioner is highly recommended!')
         if not self.CT and not self.SPECT and self.reconstruct_trues and self.reconstruct_scatter:
@@ -2201,7 +2201,7 @@ class projectorClass:
                     "PDHG", "PDHGL1", "PDDY", "PDHGKL", "CV" ]
                 
                 
-                varPrior = ['MRP','quad','Huber','L','FMH','weighted_mean','TV','hyperbolic','AD','APLS','TGV','NLM','RDP','GGMRF','ProxTV','ProxRDP','ProxNLM','custom']
+                varPrior = ['MRP','quad','Huber','L','FMH','weighted_mean','TV','hyperbolic','AD','APLS','TGV','NLM','RDP','GGMRF','ProxTV','custom']
                 priors = [name for name in varPrior if getattr(self, name, False)]
                 
                 enabled_algorithms = [name for name in algorithms if getattr(self, name, False)]
@@ -3070,8 +3070,6 @@ class projectorClass:
             ('RDP', ctypes.c_bool),
             ('GGMRF', ctypes.c_bool),
             ('ProxTV', ctypes.c_bool),
-            ('ProxRDP', ctypes.c_bool),
-            ('ProxNLM', ctypes.c_bool),
             ('temporalTV', ctypes.c_bool),
             ('temporal_smoothness', ctypes.c_bool),
             ('MAP', ctypes.c_bool),

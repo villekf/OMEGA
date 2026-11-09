@@ -27,7 +27,7 @@
 #endif
 
 // The total size of the local/shared memory region
-#if defined(NLM_) || defined(PROXNLM) || defined(NLM4_)
+#if defined(NLM_) || defined(NLM4_)
 #define SIZEX LOCAL_SIZE + SWINDOWX * 2 + PWINDOWX * 2
 #define SIZEY LOCAL_SIZE2 + SWINDOWY * 2 + PWINDOWY * 2
 #define SIZEZ LOCAL_SIZE3 + SWINDOWZ * 2 + PWINDOWZ * 2

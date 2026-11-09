@@ -108,7 +108,7 @@ end
 if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH || options.L || options.weighted_mean || options.APLS || options.BSREM ...
         || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM || options.DRAMA || options.ROSEM_MAP || options.ECOSEM || options.SART || options.ASD_POCS ...
         || options.COSEM || options.ACOSEM || options.AD || any(options.OSL_COSEM) || options.NLM || options.OSL_RBI || options.RBI || options.PKMA || options.SAGA ...
-        || options.RDP || options.SPS || options.ProxNLM || options.GGMRF ||options.hyperbolic)
+        || options.RDP || options.SPS || options.GGMRF ||options.hyperbolic)
 
     % Compute and/or load necessary variables for the TV regularization
     if options.TV && options.MAP
@@ -313,7 +313,7 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
             end
         end
     end
-    if (options.NLM && options.MAP) || options.ProxNLM
+    if options.NLM && options.MAP
         options = NLMPrepass(options);
     end
 end
@@ -362,7 +362,7 @@ if options.PDHG || options.PDHGKL || options.PDHGL1 || options.PDDY
         end
     end
 end
-if (options.PKMA || options.MBSREM || options.SPS) && (options.ProxTV || options.TGV || options.ProxRDP)
+if (options.PKMA || options.MBSREM || options.SPS) && (options.ProxTV || options.TGV)
     if ~isfield(options,'alpha_PKMA') && (~isfield(options,'thetaCP') || numel(options.thetaCP) < options.subsets * options.Niter)
         options.thetaCP = zeros(options.Niter * options.subsets,1);
         oo = 1;
@@ -376,7 +376,7 @@ if (options.PKMA || options.MBSREM || options.SPS) && (options.ProxTV || options
         options.thetaCP = single(options.alpha_PKMA);
     end
 end
-if options.PDHG || options.PDHGKL || options.PDHGL1 || options.ProxTV || options.TGV || options.FISTA || options.FISTAL1 || options.ProxRDP || options.PDDY
+if options.PDHG || options.PDHGKL || options.PDHGL1 || options.ProxTV || options.TGV || options.FISTA || options.FISTAL1 || options.PDDY
     if numel(options.tauCP) < options.nMultiVolumes + 1
         options.tauCP = repelem(options.tauCP, options.nMultiVolumes + 1);
     end

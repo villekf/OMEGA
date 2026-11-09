@@ -84,16 +84,6 @@ elseif (options.GGMRF)
     %         disp("Computing GGMRF prior gradient");
     %     end
     %     status = GGMRF(vec.im_os[0], options, w_vec.GGMRF_p, w_vec.GGMRF_q, w_vec.GGMRF_c, w_vec.GGMRF_pqc, proj, dU, beta);
-    % elseif (options.ProxRDP)
-    %     if (options.verbose >= 3)
-    %         disp("Computing proximal RDP prior");
-    %     end
-    %     status = proxRDP(vec.im_os[0], options, vec, proj, dU, beta, w_vec.RDP_gamma);
-    % elseif (options.ProxNLM)
-    %     if (options.verbose >= 3)
-    %         disp("Computing proximal NLM prior");
-    %     end
-    %     status = proxNLM(vec.im_os[0], options, vec, proj, dU, w_vec, beta);
 end
 if isempty(dU)
     dU = zeros(size(recApu(:)), options.cType);

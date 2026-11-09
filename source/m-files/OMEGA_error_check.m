@@ -332,6 +332,9 @@ end
 if options.implementation == 4 && ~ismember(options.projector_type, [1 11 6 16 61 66])
     error('Selected projector type is not supported with CPU implementation!')
 end
+if (isfield(options,'ProxRDP') && options.ProxRDP) || (isfield(options,'ProxNLM') && options.ProxNLM)
+    error('ProxRDP and ProxNLM have been removed. Use RDP or NLM instead.')
+end
 if sum(options.precondTypeImage) == 0 && (options.PKMA || options.MRAMLA || options.MBSREM)
     warning('No image-based preconditioner selected with PKMA/MRAMLA/MBSREM. EM preconditioner is highly recommended!')
 end

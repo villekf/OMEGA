@@ -114,7 +114,7 @@ inline void checkFastPDHG(scalarStruct& inputScalars, const Weighting& w_vec, co
 	// Proximal TV/TGV are not included due to the more complicated structure despite having separate kernels
 	else if (MethodList.MRP || MethodList.Quad || MethodList.Huber || MethodList.L || MethodList.FMH || MethodList.AD ||
 		MethodList.APLS || MethodList.TGV || MethodList.WeightedMean ||
-		MethodList.ProxTV || MethodList.ProxTGV || MethodList.ProxRDP || MethodList.ProxNLM)
+		MethodList.ProxTV || MethodList.ProxTGV)
 		reason = "the only supported priors are NLM, RDP, GGMRF, hyperbolic and TV";
 	// Anatomical reference images are not supported in any case
 	// TODO: Add anatomical reference support? Not that relevant in CT
@@ -1249,7 +1249,6 @@ inline int GGMRFAF(af::array&, const af::array&, const scalarStruct&, const floa
 	const float, const Weighting&, const int = 0) { return -1; }
 inline int TVAF(af::array&, const af::array&, const scalarStruct&, const float, const TVdata&, ProjectorClass&, const float, const Weighting&, const int = 0) { return -1; }
 inline int hyperAF(af::array&, const af::array&, const scalarStruct&, const float, ProjectorClass&, const float, const Weighting&, const int = 0) { return -1; }
-inline int proxQAF(std::vector<af::array>&, const float, ProjectorClass&) { return -1; }
 inline int proxTVQAF(std::vector<af::array>&, const float, ProjectorClass&) { return -1; }
 inline int proxTGVQAF(std::vector<af::array>&, const scalarStruct&, const float, ProjectorClass&) { return -1; }
 inline int proxTVDivAF(const std::vector<af::array>&, af::array&, const scalarStruct&, ProjectorClass&, const uint32_t) { return -1; }
@@ -1715,24 +1714,6 @@ inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inp
 
 
 #ifndef CPU
-// Proximal TV
-inline int proxQAF(std::vector<af::array>& q, const float alpha, ProjectorClass& proj) {
-	int status = 0;
-	uint64_t globalQ = q[0].elements();
-	if (DEBUG) {
-		mexPrintBase("globalQ = %u\n", globalQ);
-		mexPrintBase("q.elements() = %u\n", q[0].elements());
-		mexEval();
-	}
-	proj.d_qX = transferAF(q[0]);
-	status = proj.ProxHelperQ(alpha, globalQ);
-	q[0].unlock();
-	if (status != 0) {
-		return -1;
-	}
-	return status;
-}
-
 // Proximal TV
 inline int proxTVQAF(std::vector<af::array>& q, const float alpha, ProjectorClass& proj) {
 	int status = 0;
@@ -3642,13 +3623,6 @@ inline void initializeProxPriors(const RecMethods& MethodList, const scalarStruc
 		std::fill(vec.qProxTV.begin(), vec.qProxTV.end(), af::constant(0.f, static_cast<dim_t>(inputScalars.NxPrior) * static_cast<dim_t>(inputScalars.NyPrior) * static_cast<dim_t>(inputScalars.NzPrior)));
 		for (int kk = 0; kk < vec.qProxTV.size(); kk++) {
 			vec.qProxTV[kk].eval();
-		}
-	}
-	if (MethodList.ProxRDP || MethodList.ProxNLM) {
-		vec.qProx.resize(1);
-		std::fill(vec.qProx.begin(), vec.qProx.end(), af::constant(0.f, static_cast<dim_t>(inputScalars.NxPrior) * static_cast<dim_t>(inputScalars.NyPrior) * static_cast<dim_t>(inputScalars.NzPrior)));
-		for (int kk = 0; kk < vec.qProx.size(); kk++) {
-			vec.qProx[kk].eval();
 		}
 	}
 	if (MethodList.ProxTGV) {

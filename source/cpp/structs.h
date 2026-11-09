@@ -91,7 +91,7 @@ typedef struct AF_im_vectors_ {
 	std::vector<std::vector<std::vector<af::array>>> Summ; // sensitivity image
     // Other arrays
     af::array C_co, rCGLS, meanFP, meanBP, apu, adapTypeA;
-	std::vector<af::array> im_os_blurred, qProxTGV, vProxTGV, qProxTV, qProx, SAGASum;
+	std::vector<af::array> im_os_blurred, qProxTGV, vProxTGV, qProxTV, SAGASum;
 	std::vector<af::array> fCGLS;
 	std::vector<std::vector<af::array>> stochasticHelper;
 } AF_im_vectors;
@@ -146,7 +146,7 @@ typedef struct RecMethods_ {
 	bool OSEM = false, MRAMLA = false, RAMLA = false, ROSEM = false, RBI = false, DRAMA = false, COSEM = false, ECOSEM = false,
 		ACOSEM = false, LSQR = false, CGLS = false, SART = false;
 	bool MRP = false, Quad = false, Huber = false, L = false, FMH = false, WeightedMean = false, TV = false, AD = false, APLS = false, TGV = false, NLM = false, RDP = false, GGMRF = false, 
-		ProxTV = false, ProxTGV = false, ProxRDP = false, ProxNLM = false, hyperbolic = false;
+		ProxTV = false, ProxTGV = false, hyperbolic = false;
 	bool OSLOSEM = false, MAPOSEM = false, MBSREM = false, BSREM = false, ROSEMMAP = false, ROSEMOSL = false, RBIMAP = false, RBIOSL = false,
 		PKMA = false, FISTAL1 = false, SPS = false, PDHG = false, PDHGKL = false, FISTA = false, PDHGL1 = false, CV = false, PDDY = false, POCS = false, SAGA = false;
 	bool MAP = false;

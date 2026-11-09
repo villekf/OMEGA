@@ -488,7 +488,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		}
 	}
 	// General variables for neighborhood-based methods
-	if ((MethodList.L || MethodList.FMH || MethodList.WeightedMean || MethodList.Quad || MethodList.Huber || MethodList.MRP || MethodList.NLM || MethodList.ProxNLM || MethodList.hyperbolic || MethodList.RDP
+	if ((MethodList.L || MethodList.FMH || MethodList.WeightedMean || MethodList.Quad || MethodList.Huber || MethodList.MRP || MethodList.NLM || MethodList.hyperbolic || MethodList.RDP
 		|| MethodList.GGMRF) && MethodList.MAP) {
 		// Neighborhood size
 		w_vec.Ndx = getScalarUInt32(getField(options, 0, "Ndx"), -24);
@@ -529,7 +529,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		w_vec.data.SATVPhi = getScalarFloat(getField(options, 0, "hyperbolicDelta"), -23);
 	}
 #endif
-	if ((MethodList.RDP && MethodList.MAP) || MethodList.ProxRDP) {
+	if (MethodList.RDP && MethodList.MAP) {
 		w_vec.RDP_gamma = getScalarFloat(getField(options, 0, "RDP_gamma"), -29);
 		w_vec.RDPLargeNeighbor = getScalarBool(getField(options, 0, "RDPIncludeCorners"), -29);
 		w_vec.RDP_anatomical = getScalarBool(getField(options, 0, "RDP_use_anatomical"), -29);
@@ -635,7 +635,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		w_vec.h_ACOSEM = getScalarFloat(getField(options, 0, "h"), -43);
 		w_vec.h_ACOSEM_2 = 1.f / w_vec.h_ACOSEM;
 	}
-	if ((MethodList.NLM && MethodList.MAP) || MethodList.ProxNLM) {
+	if (MethodList.NLM && MethodList.MAP) {
 		w_vec.NLM_anatomical = getScalarBool(getField(options, 0, "NLM_use_anatomical"), -47);
 		w_vec.NLTV = getScalarBool(getField(options, 0, "NLTV"), -48);
 		w_vec.NLRD = getScalarBool(getField(options, 0, "NLRD"), -48);
@@ -816,8 +816,6 @@ inline void get_rec_methods(const mxArray* options, RecMethods& MethodList) {
 	MethodList.GGMRF = getScalarBool(getField(options, 0, "GGMRF"), -61);
 	MethodList.ProxTV = getScalarBool(getField(options, 0, "ProxTV"), -61);
 	MethodList.ProxTGV = getScalarBool(getField(options, 0, "TGV"), -61);
-	MethodList.ProxRDP = getScalarBool(getField(options, 0, "ProxRDP"), -61);
-	MethodList.ProxNLM = getScalarBool(getField(options, 0, "ProxNLM"), -61);
 
     // Temporal priors
     MethodList.TemporalSmoothness = getScalarBool(getField(options, 0, "temporal_smoothness"), -61);

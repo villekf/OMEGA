@@ -1435,8 +1435,8 @@ class ProjectorClass {
 		// Build prior programs
 		if (MethodList.NLM || MethodList.MRP || MethodList.RDP || w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]
 			|| MethodList.TV || MethodList.APLS || MethodList.hyperbolic || MethodList.ProxTV || MethodList.ProxTGV || MethodList.PKMA || 
-			MethodList.BSREM || MethodList.RAMLA || MethodList.MRAMLA || MethodList.MBSREM || MethodList.CPType || MethodList.ProxRDP || 
-			MethodList.ProxNLM || MethodList.GGMRF || inputScalars.projector_type == 6 || type == 0) {
+			MethodList.BSREM || MethodList.RAMLA || MethodList.MRAMLA || MethodList.MBSREM || MethodList.CPType || 
+			MethodList.GGMRF || inputScalars.projector_type == 6 || type == 0) {
 			if (DEBUG) {
 				mexPrint("Building aux programs\n");
 			}
@@ -1590,8 +1590,6 @@ class ProjectorClass {
 				if (w_vec.RDP_anatomical)
 					ADD_OPT(optionsAux, "-DRDPREF");
 			}
-			if (MethodList.ProxRDP && w_vec.RDPLargeNeighbor)
-				ADD_OPT(optionsAux, "-DRDPCORNERS");
 			if (MethodList.TV && !w_vec.data.TV_use_anatomical) {
 				ADD_OPT(optionsAux, "-DTVGRAD");
 				if (w_vec.data.TVtype == 6)
@@ -1635,8 +1633,6 @@ class ProjectorClass {
 				if (!inputScalars.TGV2D)
 					ADD_OPT(optionsAux, "-DTGVZ");
 			}
-			if (MethodList.ProxRDP)
-				ADD_OPT(optionsAux, "-DPROXRDP");
 			if (local_sizePrior[1] > 0ULL) {
 				ADD_OPT_INT(optionsAux, "-DLOCAL_SIZE", local_sizePrior[0]);
 				ADD_OPT_INT(optionsAux, "-DLOCAL_SIZE2", local_sizePrior[1]);
@@ -2074,24 +2070,6 @@ class ProjectorClass {
 				mexPrint("Proximal TV kernel successfully created\n");
 			}
 		}
-		if (MethodList.ProxRDP) {
-			GET_KERNEL(kernelProxq, programAux, "Proxq");
-			GET_KERNEL(kernelProxRDP, programAux, "ProxRDP");
-			GET_KERNEL(kernelProxTrans, programAux, "ProxTrans");
-			KCHECK("Failed to create proximal RDP kernel\n");
-			if (DEBUG || inputScalars.verbose >= 3) {
-				mexPrint("Proximal RDP kernel successfully created\n");
-			}
-		}
-		if (MethodList.ProxNLM) {
-			GET_KERNEL(kernelProxq, programAux, "Proxq");
-			GET_KERNEL(kernelProxNLM, programAux, "ProxNLM");
-			GET_KERNEL(kernelProxTrans, programAux, "ProxTrans");
-			KCHECK("Failed to create proximal NLM kernel\n");
-			if (DEBUG || inputScalars.verbose >= 3) {
-				mexPrint("Proximal NLM kernel successfully created\n");
-			}
-		}
 		if (MethodList.ProxTGV) {
 			GET_KERNEL(kernelProxTVq, programAux, "ProxTVq");
 			GET_KERNEL(kernelProxTGVq, programAux, "ProxTGVq");
@@ -2460,7 +2438,7 @@ public:
 #endif // END CUDA
 	KERNELHANDLE_t kernelMBSREM, kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelProxTVq, kernelProxTVDiv, kernelProxTVGrad, 
 		kernelElementMultiply, kernelElementDivision, kernelTV, kernelProxTGVSymmDeriv, kernelProxTGVDiv, kernelProxTGVq, kernelPoisson, 
-		kernelPDHG, kernelProxRDP, kernelProxq, kernelProxTrans, kernelProxNLM, kernelGGMRF, kernelsumma, kernelEstimate, kernelPSF, 
+		kernelPDHG, kernelGGMRF, kernelsumma, kernelEstimate, kernelPSF, 
 		kernelPSFf, kernelDiv, kernelMult, kernelForward, kernelSensList, kernelApu, kernelHyper, kernelRotate;
 	// Device buffers shared across backends
 	DEVBUFF_t d_xcenter, d_ycenter, d_zcenter, d_V, d_TOFCenter, d_eFOVIndices, d_weights, d_angle, d_g, d_uref, d_maskBPB, 
@@ -3343,7 +3321,7 @@ public:
 				erotus[0] = (local_size[0] - erotus[0]);
 		}
 
-		if ((MethodList.ProxTGV || MethodList.ProxTV || MethodList.ProxRDP)) {
+		if ((MethodList.ProxTGV || MethodList.ProxTV)) {
 			erotusPriorEFOV[0] = inputScalars.NxPrior % local_sizePrior[0];
 			erotusPriorEFOV[1] = inputScalars.NyPrior % local_sizePrior[1];
 			erotusPriorEFOV[2] = inputScalars.NzPrior % local_sizePrior[2];
@@ -3523,7 +3501,7 @@ public:
 				return (STATUS_t)(-1);
 		}
 		// NLM anatomical reference image
-		if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM)) {
+		if (w_vec.NLM_anatomical && MethodList.NLM) {
 			if (inputScalars.useImages) {
 				CREATE_FLOAT_TEXTURE3D_FROM_HOST(d_urefIm, uRefArray, w_vec.NLM_ref, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0],
 					BACKEND_TEXTURE_POINT, BACKEND_TEXTURE_DEFAULT_FLAGS);
@@ -3905,7 +3883,7 @@ public:
 			memSize += (sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1));
 			CHECK(status, "\n", (STATUS_t)(-1));
 		}
-		if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM)) {
+		if (w_vec.NLM_anatomical && MethodList.NLM) {
 			if (!inputScalars.useImages) {
 				WRITE_BUFFER(d_uref, sizeof(float) * inputScalars.im_dim[0], w_vec.NLM_ref);
 				CHECK(status, "\n", (STATUS_t)(-1));
@@ -6832,31 +6810,6 @@ public:
 		return 0;
 	}
 
-
-#if defined(CUDA) || defined(HIP)
-	inline int ProxHelperQ(float alpha, const uint64_t globalQ) {
-		std::vector<void*> kArgs;
-		UINT32_t kernelIndProxRDP = 0U;
-#elif defined(OPENCL)
-	inline int ProxHelperQ(const float alpha, const uint64_t gQ) {
-		cl::NDRange globalQ = { static_cast<cl::size_type>(gQ) };
-		UINT32_t kernelIndProxRDP = 0U;
-#endif // END CUDA
-		STATUS_t status = SUCCESS_VALUE;
-		//FINISH_QUEUE(status, "Queue finish failed before proximal RDP helper kernel\n", -1);
-		KARG(kArgs, kernelProxq, kernelIndProxRDP, d_qX);
-		KARG(kArgs, kernelProxq, kernelIndProxRDP, alpha);
-		// Compute the kernel
-#if defined(CUDA) || defined(HIP)
-		status = cuLaunchKernel(kernelProxq, globalQ / 64ULL, 1, 1, 64, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
-		CUDA_CHECK(status, "Failed to launch the Proximal RDP helper kernel\n", -1);
-#elif defined(OPENCL)
-		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxq, cl::NullRange, globalQ, cl::NullRange);
-		OCL_CHECK(status, "Failed to launch the Proximal RDP helper kernel\n", -1);
-#endif // END CUDA
-		//FINISH_QUEUE(status, "Queue finish failed after proximal RDP helper kernel\n", -1);
-		return status;
-	}
 
 	/// <summary>
 	/// Compute either the projection from an L1 or L2 ball for the TV prior

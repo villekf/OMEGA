@@ -34,12 +34,12 @@ varPreCondMeas = {'MRAMLA'; 'MBSREM';'FISTA';'PKMA';'SPS'; 'PDHG';'PDHGKL';'PDHG
 % Algorithms that require linearized data
 varLin = {'LSQR';'CGLS'; 'FISTA'; 'FISTAL1';'PDHG';'PDHGL1';'PDDY';'FDK';'SART';'ASD_POCS';'BB'};
 % Add your new prior to this list (before 'custom')
-varPrior = {'MRP';'quad';'Huber';'L';'FMH';'weighted_mean';'TV';'hyperbolic';'AD';'APLS';'TGV';'NLM';'RDP';'GGMRF';'ProxTV';'ProxRDP';'ProxNLM';'custom'};
+varPrior = {'MRP';'quad';'Huber';'L';'FMH';'weighted_mean';'TV';'hyperbolic';'AD';'APLS';'TGV';'NLM';'RDP';'GGMRF';'ProxTV';'custom'};
 % Add your prior to this list also (this is used for display purposes only
 % and can be unabbreviated and contain any characters):
 varPriorFull = {'Median Root';'Quadratic';'Huber';'L-filter';'FIR Median Hybrid';'Weighted mean';'Total Variation';'Hyperbolic function';'Anisotropic Diffusion';...
     'Asymmetric Parallel Level Sets';'Total Generalized Variation';'Non-Local Means';'Relative Difference';'General Gaussian Markov Random Field';...
-    'Proximal Total variation';'Proximal Relative Difference';'Proximal Non-Local Means';'Custom'};
+    'Proximal Total variation';'Custom'};
 % Add your algorithm to this list also (this is used for display purposes only
 % and can be unabbreviated and contain any characters):
 varAlgoFull = {'Ordered Subsets Expectation Maximization (OSEM)'; 'Modified Row-action Maximum-Likelihood Algorithm (MRAMLA)'; 'Row-action Maximum-Likelihood Algorithm (RAMLA)'; ...
