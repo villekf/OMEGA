@@ -192,6 +192,9 @@ if ispc
             opencl_include_path = strrep(opencl_include_path, proggis2_orig, proggis2);
             opencl_include_path = strrep(opencl_include_path, proggis1_orig, proggis1);
             opencl_lib_path = [opencl_include_path '/lib/x86_64'];
+            if exist(opencl_lib_path, 'dir') ~= 7
+                opencl_lib_path = [opencl_include_path '/lib'];
+            end
             opencl_include_path = [opencl_include_path '/include'];
         elseif ~isempty(getenv('AMDAPPSDKROOT')) && isempty(opencl_lib_path)
             opencl_include_path = getenv('AMDAPPSDKROOT');
@@ -229,6 +232,9 @@ if ispc
         elseif ~isempty(getenv('OCL_ROOT')) && isempty(opencl_lib_path)
             opencl_include_path = getenv('OCL_ROOT');
             opencl_lib_path = [opencl_include_path '/lib/x86_64'];
+            if exist(opencl_lib_path, 'dir') ~= 7
+                opencl_lib_path = [opencl_include_path '/lib'];
+            end
             opencl_include_path = [opencl_include_path '/include'];
         elseif ~isempty(getenv('AMDAPPSDKROOT')) && isempty(opencl_lib_path)
             opencl_include_path = getenv('AMDAPPSDKROOT');
@@ -967,20 +973,20 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
                 cxxflags = 'CXXFLAGS="$CXXFLAGS -w"';
 				try
 					disp('Building HIP code for float data type.')
-					mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree', ldflags, compflags, cxxflags, '-DMATLAB', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', ['-I ' folder], ['-I"' hip_path '/include"'], '-lafcuda', '-lamdhip64', ...
+					mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree', ldflags, compflags, cxxflags, '-DMATLAB', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', ['-I"' folder '"'], ['-I"' hip_path '/include"'], '-lafcuda', '-lamdhip64', ...
 						'-lhiprtc', ['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'], ['-L"' hip_path '/lib"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
 
 					disp('Building HIP code for uint16 data type.')
-					mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint16', ldflags, compflags, cxxflags, '-DMATLAB', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', '-DMTYPE', ['-I ' folder], ['-I"' hip_path '/include"'], '-lafcuda', '-lamdhip64', ...
+					mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint16', ldflags, compflags, cxxflags, '-DMATLAB', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', '-DMTYPE', ['-I"' folder '"'], ['-I"' hip_path '/include"'], '-lafcuda', '-lamdhip64', ...
 						'-lhiprtc', ['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'], ['-L"' hip_path '/lib"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
 
 					disp('Building HIP code for uint8 data type.')
-					mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint8', ldflags, compflags, cxxflags, '-DMATLAB', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', '-DMTYPE2', ['-I ' folder], ['-I"' hip_path '/include"'], '-lafcuda', '-lamdhip64', ...
+					mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_uint8', ldflags, compflags, cxxflags, '-DMATLAB', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', '-DMTYPE2', ['-I"' folder '"'], ['-I"' hip_path '/include"'], '-lafcuda', '-lamdhip64', ...
 						'-lhiprtc', ['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'], ['-L"' hip_path '/lib"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'])
 
 					disp('Building ArrayFire_HIP_device_info.cpp')
 					mex(compiler, '-largeArrayDims', '-outdir', folder, '-output', 'ArrayFire_HIP_device_info', '-lafcuda', '-lamdhip64', ['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'],['-L"' hip_path '/lib"'], ...
-						['-I ' folder], ['-I"' hip_path '/include"'], ['-I"' af_path '/include"'], [folder '/ArrayFire_OpenCL_device_info.cpp'])
+						['-I"' folder '"'], ['-I"' hip_path '/include"'], ['-I"' af_path '/include"'], [folder '/ArrayFire_OpenCL_device_info.cpp'])
 
 					disp('HIP support enabled')
 				catch
@@ -1026,24 +1032,24 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
             try
                 disp('Building ArrayFire_OpenCL_device_info.cpp')
                 mex(compiler, '-largeArrayDims', '-outdir', folder, ldflags, '-lafopencl', cxxlib, ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib64"'], ...
-                    ['-L"' opencl_lib_path '"'], '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64' ,['-I ' folder], ['-I' af_path_include], ...
+                    ['-L"' opencl_lib_path '"'], '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64' ,['-I"' folder '"'], ['-I' af_path_include], ...
                     ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', [folder '/ArrayFire_OpenCL_device_info.cpp'])
                 
                 disp('Building OpenCL code for float data type.')
                 mex(compiler, complexFlag, '-outdir', folder, ldflags, compflags, cxxflags, '-DMATLAB', '-DOPENCL', '-DAF', '-lafopencl', cxxlib, ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ...
-                    ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64', ['-I ' folder], ...
+                    ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64', ['-I"' folder '"'], ...
                     ['-I' af_path_include], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', ...
                     [folder '/OpenCL_matrixfree.cpp'])
 
                 disp('Building OpenCL code for uint16 data type.')
                 mex(compiler, complexFlag, '-outdir', folder, '-output', 'OpenCL_matrixfree_uint16', ldflags, compflags, cxxflags, '-DMATLAB', '-DOPENCL', '-DAF', '-DMTYPE', '-lafopencl', cxxlib, ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ...
-                    ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64', ['-I ' folder], ...
+                    ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64', ['-I"' folder '"'], ...
                     ['-I' af_path_include], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', ...
                     [folder '/OpenCL_matrixfree.cpp'])
 
                 disp('Building OpenCL code for uint8 data type.')
                 mex(compiler, complexFlag, '-outdir', folder, '-output', 'OpenCL_matrixfree_uint8', ldflags, compflags, cxxflags, '-DMATLAB', '-DOPENCL', '-DAF', '-DMTYPE2', '-lafopencl', cxxlib, ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ...
-                    ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64', ['-I ' folder], ...
+                    ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64', ['-I"' folder '"'], ...
                     ['-I' af_path_include], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', ...
                     [folder '/OpenCL_matrixfree.cpp'])
                 disp('OpenCL support enabled')
@@ -1074,8 +1080,8 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
                 cxxflags = 'CXXFLAGS="$CXXFLAGS -fopenmp -DCPU -Wno-ignored-attributes"';
             end
             try
-                mex(compiler, complexFlag, '-outdir', folder, '-output', 'CPU_matrixfree', ['-L' OMPPath], OMPh, OMPLib, LPLib, ['-I ' folder], ldflags, compflags, cxxflags, '-DMATLAB', '-DCPU', '-DAF', '-lafcpu', ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ...
-                    ['-I ' folder], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp'])
+                mex(compiler, complexFlag, '-outdir', folder, '-output', 'CPU_matrixfree', ['-L' OMPPath], OMPh, OMPLib, LPLib, ['-I"' folder '"'], ldflags, compflags, cxxflags, '-DMATLAB', '-DCPU', '-DAF', '-lafcpu', ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ...
+                    ['-I"' folder '"'], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp'])
                 disp('Implementation 2 built with CPU support')
             catch ME
                 if verbose
@@ -1098,10 +1104,10 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
             end
             try
                 mex(compiler, '-largeArrayDims', '-outdir', folder, ldflags, cxxflags, cxxlib, ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
-                    ['-I ' folder], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_device_info.cpp'])
+                    ['-I"' folder '"'], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_device_info.cpp'])
 
                 mex(compiler, complexFlag, '-outdir', folder, ldflags, cxxflags, '-DMATLAB', '-DOPENCL', cxxlib, ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
-                    ['-I ' folder], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
+                    ['-I"' folder '"'], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_matrixfree_multi_gpu.cpp'])
                 disp('Implementations 3 and 5 built')
             catch ME
                 if verbose
@@ -1129,7 +1135,7 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
                         gpuLib = '-lmwgpu';
                     end
                     mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree_multi_gpu', ldflags, cxxflags, ...
-                        '-DMATLAB', '-DCUDA', '-DMATLABGPU', ['-I ' folder], ['-I"' cuda_path '/include"'], ...
+                        '-DMATLAB', '-DCUDA', '-DMATLABGPU', ['-I"' folder '"'], ['-I"' cuda_path '/include"'], ...
                         ['-I"' fullfile(matlabroot,'toolbox','parallel','gpu','extern','include') '"'], ...
                         '-lcuda', '-lnvrtc', '-lcudart', gpuLib, ['-L"' cuda_path '/lib64"'], ...
                         ['-L"' fullfile(matlabroot,'bin',computer('arch')) '"'], ...
