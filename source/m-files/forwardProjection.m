@@ -302,7 +302,7 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
                 recApu{kk} = computeConvolution(recApu{kk}, options, options.Nx(kk), options.Ny(kk), options.Nz(kk), options.gaussK);
             end
         end
-        if options.projector_type == 5 || options.projector_type == 51 || options.projector_type == 54
+        if options.projector_type == 5 || options.projector_type == 55 || options.projector_type == 51 || options.projector_type == 54
             kopio = recApu;
             meanFPX = cell(size(recApu,1), 1);
             meanFPY = cell(size(recApu,1), 1);
@@ -328,7 +328,7 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
         % meanFPBlocks{kk} is built with (:) below), and it works for both
         % plain double/single arrays and gpuArray.
         options.x0 = vertcat(recApu{:});
-        if options.projector_type == 5 || options.projector_type == 51 || options.projector_type == 54
+        if options.projector_type == 5 || options.projector_type == 55 || options.projector_type == 51 || options.projector_type == 54
             options.x0 = [options.x0;vertcat(kopio{:})];
             if options.meanFP
                 % Per volume: [Nx(kk) means of the YZ integral image; Ny(kk) means of the XZ integral image],
@@ -348,7 +348,7 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
         if options.use_psf
             recApu = computeConvolution(recApu, options, options.Nx(1), options.Ny(1), options.Nz(1), options.gaussK);
         end
-        if options.projector_type == 5 || options.projector_type == 51 || options.projector_type == 54
+        if options.projector_type == 5 || options.projector_type == 55 || options.projector_type == 51 || options.projector_type == 54
             recApu = reshape(recApu, options.Nx(1), options.Ny(1), options.Nz(1));
             kopio = permute(recApu, [1 3 2]);
             recApu = permute(recApu, [2 3 1]);
@@ -379,13 +379,13 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
         kernel_path = strrep(kernel_path, '\', '/');
         kernel_path = strrep(kernel_path, '.cl', '');
         header_directory = strrep(kernel_path,'projectorType123','');
-    elseif options.projector_type == 4 || options.projector_type == 41 || options.projector_type == 14 || options.projector_type == 45
+    elseif options.projector_type == 4 || options.projector_type == 44 || options.projector_type == 41 || options.projector_type == 14 || options.projector_type == 45
         kernel_file = 'projectorType4.cl';
         kernel_path = which(kernel_file);
         kernel_path = strrep(kernel_path, '\', '/');
         kernel_path = strrep(kernel_path, '.cl', '');
         header_directory = strrep(kernel_path,'projectorType4','');
-    elseif options.projector_type == 5 || options.projector_type == 51 || options.projector_type == 15 || options.projector_type == 54
+    elseif options.projector_type == 5 || options.projector_type == 55 || options.projector_type == 51 || options.projector_type == 15 || options.projector_type == 54
         kernel_file = 'projectorType5.cl';
         kernel_path = which(kernel_file);
         kernel_path = strrep(kernel_path, '\', '/');

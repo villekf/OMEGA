@@ -82,7 +82,7 @@ inline void checkFastPDHG(scalarStruct& inputScalars, const Weighting& w_vec, co
 	// makes the image-domain update possible in the first place
 	// All BPType 4/5 combinations are allowed
 	if ((inputScalars.BPType != 4 && inputScalars.BPType != 5) || !inputScalars.CT)
-		reason = "only backprojection types 4 and 5 (projector_type 4, 5, 14, 15, 24, 34, 45, 54, 74, 75) with CT data are supported";
+		reason = "only backprojection types 4 and 5 (projector_type 4, 5, 14, 15, 24, 34, 44, 45, 54, 55, 74, 75) with CT data are supported";
 	// The fused kernel has no mask handling and the type 4 backprojection skips the masked z-planes of a voxel block only in its regular write
 	else if (inputScalars.BPType == 4 && inputScalars.maskBP && inputScalars.maskBPZ > 1)
 		reason = "a 3D backprojection mask with backprojection type 4 is not supported";
