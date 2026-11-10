@@ -615,6 +615,7 @@ class projectorClass:
     dualLayerSubmodule = False
     storeResidual = False
     useFDKWeights = True
+    useLayeredBP = True
     useIndexBasedReconstruction = False
     trIndex = np.empty(0, dtype = np.uint16)
     axIndex = np.empty(0, dtype = np.uint16)
@@ -3051,6 +3052,7 @@ class projectorClass:
             ('use_32bit_atomics', ctypes.c_bool),
             ('compute_sensitivity_image', ctypes.c_bool),
             ('useFDKWeights', ctypes.c_bool),
+            ('useLayeredBP', ctypes.c_bool),
             ('useIndexBasedReconstruction', ctypes.c_bool),
             ('stochasticSubsetSelection', ctypes.c_bool),
             ('useTotLength', ctypes.c_bool),

@@ -87,6 +87,7 @@
 #define CU_EVENT_DEFAULT                              hipEventDefault
 #define CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR  hipDeviceAttributeComputeCapabilityMajor
 #define CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR  hipDeviceAttributeComputeCapabilityMinor
+#define CUDA_ARRAY3D_LAYERED                          hipArrayLayered
 #define CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK hipDeviceAttributeMaxSharedMemoryPerBlock
 #define CU_MEMORYTYPE_ARRAY                           hipMemoryTypeArray
 #define CU_MEMORYTYPE_DEVICE                          hipMemoryTypeDevice

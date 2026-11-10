@@ -71,7 +71,7 @@ typedef struct structForScalars {
 		saveIter = false, enforcePositivity = false, computeSensImag = false, useMAD = true, useImages = false, eFOV = false,
 		useExtendedFOV = false, use64BitIndices = false, TGV2D = false, multiResolution = false, offset = false, relaxScaling = false,
 		computeRelaxation = false, storeFP = false, deconvolution = false, CTAttenuation = true, largeDim = false, usingLinearizedData = false, storeResidual = false,
-		useBuffers = true, useFDKWeights = false, indexBased = false, FISTAAcceleration = false, stochastic = false, useTotLength = true,
+		useBuffers = true, useFDKWeights = false, useLayeredBP = false, layeredBP = false, indexBased = false, FISTAAcceleration = false, stochastic = false, useTotLength = true,
 		useParallelBeam = false, useHelical = false;
 	// True if the additive term (randoms/scatter, sc_ra) is TOF-resolved, i.e. has the same layout and size as the TOF measurements (bin is the slow index).
 	// If false, the additive term is a non-TOF vector that is repeated for all the TOF bins
@@ -108,6 +108,8 @@ typedef struct structForScalars {
 	// computed. See subiterStep.h and iterStep.h.
 	int32_t regEveryIter = 1;
 	int64_t nBins = 1, nProjections = 0, numelY = 0, numelZ = 0, TOFSize = 0, seed = -1;
+	// Largest number of projections in any subset (over all time steps), used to decide whether the layered measurement texture can be used
+	int64_t maxProjPerCall = 0;
 	std::vector<int64_t> im_dim{ 1 };
 	size_t size_of_x, size_atten = 1, size_norm = 1, size_center_x, size_center_y, size_center_z, size_V = 1, size_scat = 1, kokoTOF = 0, kokoNonTOF = 0, sizeLOR,
 		sizeL, sizeXY, sizeZ, saveIterationsMiddle = 0ULL;

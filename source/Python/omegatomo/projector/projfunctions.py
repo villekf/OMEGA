@@ -1441,7 +1441,11 @@ def _backwardProjectionFlat(self, y, subset = -1, timestep = -1):
                             if self.BPType == 4:
                                 if self.useImages:
                                     chl = cp.cuda.texture.ChannelFormatDescriptor(32,0,0,0, cp.cuda.runtime.cudaChannelFormatKindFloat)
-                                    array = cp.cuda.texture.CUDAarray(chl, self.nRowsD, self.nColsD, self.nProjSubset[timestep, subset].item())
+                                    if _layered_bp(self):
+                                        # 2D layered texture (cudaArrayLayered, 1 if not exported by CuPy): exact bilinear filtering within one projection
+                                        array = cp.cuda.texture.CUDAarray(chl, self.nRowsD, self.nColsD, self.nProjSubset[timestep, subset].item(), getattr(cp.cuda.runtime, 'cudaArrayLayered', 1))
+                                    else:
+                                        array = cp.cuda.texture.CUDAarray(chl, self.nRowsD, self.nColsD, self.nProjSubset[timestep, subset].item())
                                     if self.useTorch:
                                         array.copy_from(yD.reshape((self.nProjSubset[timestep, subset].item(), self.nColsD, self.nRowsD)))
                                     else:
@@ -1528,10 +1532,11 @@ def _backwardProjectionFlat(self, y, subset = -1, timestep = -1):
             if self.CT and self.BPType in [4,5]:
                 imformat = cl.ImageFormat(cl.channel_order.A, cl.channel_type.FLOAT)
                 if self.BPType < 5:
+                    _lay = _layered_bp(self)
                     if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
-                        d_im = cl.create_image(self.clctx, cl.mem_flags.READ_ONLY, imformat, shape=(self.nRowsD, self.nColsD, self.nProjSubset[timestep, subset].item()))
+                        d_im = cl.create_image(self.clctx, cl.mem_flags.READ_ONLY, imformat, shape=(self.nRowsD, self.nColsD, self.nProjSubset[timestep, subset].item()), is_array=_lay)
                     else:
-                        d_im = cl.Image(self.clctx, cl.mem_flags.READ_ONLY, imformat, shape=(self.nRowsD, self.nColsD, self.nProjSubset[timestep, subset].item()))
+                        d_im = cl.Image(self.clctx, cl.mem_flags.READ_ONLY, imformat, shape=(self.nRowsD, self.nColsD, self.nProjSubset[timestep, subset].item()), is_array=_lay)
                     if self.useAF:
                         cl.enqueue_copy(self.queue, d_im, yD, offset=(0), origin=(0,0,0), region=(self.nRowsD, self.nColsD, self.nProjSubset[timestep, subset].item()));
                     else:
@@ -1701,6 +1706,10 @@ def _backwardProjectionFlat(self, y, subset = -1, timestep = -1):
                 f = self.computeConvolution(f)
     return f
 
+
+def _layered_bp(self):
+    """True if the CT type-4 backprojection measurements are held in a 2D layered texture / image2d_array (decided in init.py)."""
+    return bool(getattr(self, '_layeredBP', False))
 
 from typing import Any
 

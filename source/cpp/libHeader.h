@@ -336,6 +336,8 @@ struct inputStruct {
     bool compute_sensitivity_image = false;
     // Whether FDK weights are used or not
     bool useFDKWeights = true;
+    // If true, the CT projector type 4 backprojection reads the measurements from a 2D layered texture (when possible)
+    bool useLayeredBP = true;
     // If true, index-based listmode reconstruction is used
     bool useIndexBasedReconstruction = false;
     // Use stochastic subset selection
@@ -1462,6 +1464,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         }
     }
     inputScalars.useFDKWeights = options.useFDKWeights;
+    inputScalars.useLayeredBP = options.useLayeredBP;
     if (MethodList.FDK && inputScalars.CT && inputScalars.useFDKWeights) {
         w_vec.angles = options.angles;
         inputScalars.DSC = options.sourceToCRot;

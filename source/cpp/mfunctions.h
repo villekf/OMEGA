@@ -765,6 +765,9 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		}
 	}
 	inputScalars.useFDKWeights = getScalarBool(getField(options, 0, "useFDKWeights"), -49);
+	// Optional (off when the field is missing): layered 2D texture for the CT projector type 4 backprojection measurements
+	if (mxGetFieldNumber(options, "useLayeredBP") >= 0)
+		inputScalars.useLayeredBP = getScalarBool(getField(options, 0, "useLayeredBP"), -49);
 	if (MethodList.FDK && inputScalars.CT && inputScalars.useFDKWeights) {
 		w_vec.angles = getSingles(options, "angles");
 		inputScalars.DSC = getScalarFloat(getField(options, 0, "sourceToCRot"), -63);

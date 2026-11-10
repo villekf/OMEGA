@@ -330,6 +330,39 @@ def computeProjectionWindow(x, angles, r, nColsD, dPitchY, bx, by, bz, dx, dy, d
     return window
 
 
+def _decide_layered_bp(self):
+    """Decide (and store in self._layeredBP) whether the CT type-4 backprojection reads the measurements from a 2D layered texture
+    (one layer per projection) instead of a 3D texture. Requires useLayeredBP, a texture (useImages), no helical CT, no Metal and at most
+    2048 projections (or the device layered texture limit, if lower) in every subset of every time step."""
+    self._layeredBP = False
+    if not (bool(getattr(self, 'useLayeredBP', False)) and self.CT and self.BPType == 4 and self.listmode == 0 and self.useImages
+            and not self.useHelical and not self.useMetal):
+        return False
+    limit = 2048
+    try:
+        if self.useCUDA:
+            import cupy as cp
+            lay = int(cp.cuda.runtime.getDeviceProperties(cp.cuda.runtime.getDevice())['maxTexture2DLayered'][2])
+        else:
+            import pyopencl as cl
+            lay = int(self.clctx.get_info(cl.context_info.DEVICES)[0].image_max_array_size)
+        if lay > 0:
+            limit = min(limit, lay)
+    except Exception:
+        pass
+    maxProj = int(np.max(self.nProjSubset))
+    if maxProj <= limit:
+        self._layeredBP = True
+        if self.verbose >= 2:
+            print('Using a layered 2D texture for the CT backprojection measurements')
+    else:
+        if self.verbose >= 1:
+            print('useLayeredBP was switched off: ' + str(maxProj) + ' projections in a subset exceeds the layered texture limit of ' + str(limit))
+        if self.verbose >= 2:
+            print('Using a 3D texture for the CT backprojection measurements')
+    return self._layeredBP
+
+
 def _uses_projection_window(self):
     """True if and only if the curved helical BP of type 4 or 5 only visits the projections in the window of each axial voxel block."""
     return bool(self.CT and self.useHelical and not self.useParallelBeam and not self.useMetal and self.listmode == 0
@@ -1059,6 +1092,9 @@ def initProjector(self):
         elif self.BPType == 4:
             if self.CT:
                 bOptBP += ('-DBP4','-DNVOXELS=' + str(self.NVOXELS),)
+                # Measurements read from a 2D layered texture (one layer per projection) instead of a 3D texture
+                if _decide_layered_bp(self):
+                    bOptBP += ('-DLAYEREDBP',)
                 if float(np.asarray(self.dL).ravel()[0]) <= 0.:
                     bOptBP += ('-DJOSEPH',)
                 if self.useHelical:

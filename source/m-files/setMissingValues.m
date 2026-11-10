@@ -369,6 +369,9 @@ end
 if ~isfield(options,'useFDKWeights')
     options.useFDKWeights = true;
 end
+if ~isfield(options,'useLayeredBP')
+    options.useLayeredBP = true;
+end
 if ~isfield(options, 'Niter')
     options.Niter = 4;
 end

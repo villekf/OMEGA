@@ -370,6 +370,8 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		MethodList.RBIOSL || MethodList.DRAMA || MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS || MethodList.PKMA || MethodList.SAGA);
 	if (ctHostNorm)
 		inputScalars.normalization_correction = 0;
+	// Largest number of projections in any subset/time step (decides whether the layered CT BP texture can be used)
+	inputScalars.maxProjPerCall = length.empty() ? 0 : *std::max_element(length.begin(), length.end());
 	ProjectorClass proj;
 	status = proj.addProjector(inputScalars, w_vec, MethodList, header_directory);
 	if (status != 0)

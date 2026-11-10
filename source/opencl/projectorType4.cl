@@ -880,12 +880,30 @@ void projectorType4Forward(
 
 #if defined(BP) && defined(CT)// START BP
 
+#ifdef LAYEREDBP
+#if defined(HELICAL)
+#error LAYEREDBP does not support HELICAL
+#endif
+#if defined(METAL)
+#error LAYEREDBP does not support METAL
+#endif
+#if defined(CUDA) || defined(HIP)
+#define BPFORWTYPE IMAGE3D
+#define LAYFETCH(img, u, v, k) tex2DLayered<float>(img, u, v, k)
+#else
+#define BPFORWTYPE __read_only image2d_array_t
+#define LAYFETCH(img, u, v, k) read_imagef(img, samplerIm, (float4)(u, v, CFLOAT(k), 0.f)).w
+#endif
+#else
+#define BPFORWTYPE IMTYPE
+#endif
+
 #if defined(BP) && defined(CT) && defined(NORM) && defined(USEIMAGES)
 // Bilinear interpolation of the normalization-weighted detector data n * y at the normalized detector coordinates (px, py) of the projection
 // plane pz. This makes the voxel-driven backprojection the counterpart of the forward projection that multiplies its output by n, i.e. A^T(n y)
 // instead of n_nearest * interp(y). Clamp-to-edge semantics, same as the hardware texture sampler. y is fetched at the exact texel centres,
 // where the linear filter returns the texel value.
-DEVICE float interpNormWeighted(IMTYPE d_forw, const CLGLOBAL float* CLRESTRICT d_norm, const float px, const float py, const float pz,
+DEVICE float interpNormWeighted(BPFORWTYPE d_forw, const int kLay, const CLGLOBAL float* CLRESTRICT d_norm, const float px, const float py, const float pz,
     const uint d_size_x, const uint d_sizey, const LONG d_nProjections) {
     const int sx = CINT(d_size_x);
     const int sy = CINT(d_sizey);
@@ -909,7 +927,9 @@ DEVICE float interpNormWeighted(IMTYPE d_forw, const CLGLOBAL float* CLRESTRICT 
             const float u = (CFLOAT(xi) + 0.5f) / CFLOAT(d_size_x);
             const float v = (CFLOAT(yi) + 0.5f) / CFLOAT(d_sizey);
             float yk;
-#if defined(CUDA) || defined(HIP)
+#ifdef LAYEREDBP
+            yk = LAYFETCH(d_forw, u, v, kLay);
+#elif defined(CUDA) || defined(HIP)
             yk = tex3D<float>(d_forw, u, v, pz);
 #elif defined(METAL)
             yk = d_forw.sample(samplerForw, float3(u, v, pz)).r;
@@ -954,7 +974,7 @@ void projectorType4Backward(
 #endif
     , const float kerroin
 #endif
-    , IMTYPE d_forw TEX2
+    , BPFORWTYPE d_forw TEX2
 #ifdef FDK 
     , CONSTANT float* angle BUF3
 #if !defined(METAL) // Scalar
@@ -1212,7 +1232,7 @@ void projectorType4Backward(
             if (px > 1.f || py > 1.f || pz > 1.f || px < 0.f || py < 0.f || pz < 0.f)
                 continue;
 #if defined(USEIMAGES) && defined(NORM)
-            yVar = interpNormWeighted(d_forw, d_norm, px, py, pz, d_size_x, d_sizey, d_nProjections);
+            yVar = interpNormWeighted(d_forw, kk, d_norm, px, py, pz, d_size_x, d_sizey, d_nProjections);
 #elif defined(USEIMAGES)
 #if defined(CUDA) || defined(HIP)
             yVar = tex3D<float>(d_forw, px, py, pz);
@@ -1395,9 +1415,12 @@ void projectorType4Backward(
 #endif
 #if defined(USEIMAGES) && defined(NORM)
             if (onDet)
-                yVar = interpNormWeighted(d_forw, d_norm, px, py, pz, d_size_x, d_sizey, d_nProjections);
+                yVar = interpNormWeighted(d_forw, kk, d_norm, px, py, pz, d_size_x, d_sizey, d_nProjections);
 #elif defined(USEIMAGES)
-#if defined(CUDA) || defined(HIP)
+#ifdef LAYEREDBP
+            if (onDet)
+                yVar = LAYFETCH(d_forw, px, py, kk);
+#elif defined(CUDA) || defined(HIP)
             if (onDet)
                 yVar = tex3D<float>(d_forw, px, py, pz);
 #elif defined(METAL)
@@ -1451,9 +1474,12 @@ void projectorType4Backward(
 #endif
 #if defined(USEIMAGES) && defined(NORM)
             if (onDet_2)
-                yVar_2 = interpNormWeighted(d_forw, d_norm, px_2, py_2, pz_2, d_size_x, d_sizey, d_nProjections);
+                yVar_2 = interpNormWeighted(d_forw, uu, d_norm, px_2, py_2, pz_2, d_size_x, d_sizey, d_nProjections);
 #elif defined(USEIMAGES)
-#if defined(CUDA) || defined(HIP)
+#ifdef LAYEREDBP
+            if (onDet_2)
+                yVar_2 = LAYFETCH(d_forw, px_2, py_2, uu);
+#elif defined(CUDA) || defined(HIP)
             if (onDet_2)
                 yVar_2 = tex3D<float>(d_forw, px_2, py_2, pz_2);
 #elif defined(METAL)
