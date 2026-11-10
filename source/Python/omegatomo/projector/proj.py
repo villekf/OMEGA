@@ -1001,6 +1001,28 @@ class projectorClass:
                                  'event (%d elements), but it has %d elements! The table is used only in the sensitivity image, a sinogram '
                                  'normalization is not converted to the events.' % (nEvents, np.size(self.normalization)))
 
+    def _tileCTNormalization(self):
+        """Checks the size of the CT normalization and tiles it to all projections. The CT normalization is a multiplicative
+        factor of each measurement: one map of the detector (nRowsD * nColsD elements, used for every projection) or one value
+        for each measurement (nRowsD * nColsD * nProjections elements, x fastest). The result is a flat float32 vector with
+        one value for each measurement. Any other size (also an empty array) is an error: the CT normalization is not loaded
+        from a file."""
+        normalization = np.asarray(self.normalization)
+        nDet = int(self.nRowsD) * int(self.nColsD)
+        nProj = int(self.nProjections)
+        if normalization.size <= 1:
+            raise ValueError('CT normalization correction is selected (options.normalization_correction = True), but options.normalization '
+                             'is empty. The CT normalization is not loaded from a file, input it as an array of the detector size '
+                             f'[{self.nRowsD} {self.nColsD}] or the size of all projections [{self.nRowsD} {self.nColsD} {self.nProjections}].')
+        if normalization.size == nDet * nProj:
+            self.normalization = np.ascontiguousarray(normalization.ravel('F'), dtype=np.float32)
+        elif normalization.size == nDet:
+            self.normalization = np.ascontiguousarray(np.tile(normalization.ravel('F'), nProj), dtype=np.float32)
+        else:
+            raise ValueError(f'Incorrect size for the CT normalization (options.normalization)! Must be the size of the detector '
+                             f'[{self.nRowsD} {self.nColsD}] (used for every projection) or the size of all projections '
+                             f'[{self.nRowsD} {self.nColsD} {self.nProjections}], but it has {normalization.size} elements.')
+
     def addProjector(self):
         self.projectorAdded = True
         # A scalar per-layer parameter (multi-layer PET) is used for all the layers
@@ -1057,7 +1079,9 @@ class projectorClass:
             self.Nang = self.nColsD
             self.use_raw_data = 0
             self.attenuation_correction = 0
-            self.normalization_correction = 0
+            # The CT normalization is a per-measurement factor (see loadCorrections), the detector map is tiled to all projections
+            if self.normalization_correction:
+                self._tileCTNormalization()
             self.compute_normalization = False
             self.rings = self.nColsD * self.nBed
             self.det_per_ring = self.nRowsD * self.nProjections
@@ -1719,6 +1743,10 @@ class projectorClass:
         return prefix + self._FILTER_WINDOW_TEXT.get(self.filterWindow, ' (no windowing).')
 
     def OMEGAErrorCheck(self):
+        if self.CT and self.normalization_correction:
+            # CT normalization: one map of the detector or one value for each measurement (the rest of the CT normalization
+            # checks are in loadCorrections)
+            self._tileCTNormalization()
         if self.SPECT:
             normalization = np.asarray(self.normalization)
             if self.normalization_correction and normalization.size > 1:
@@ -1993,7 +2021,7 @@ class projectorClass:
         if self.CT and (self.projector_type == 2 or (self.projector_type > 10 and (self.projector_type // 10 == 2 or self.projector_type % 10 == 2))):
             raise ValueError('Projector type 2 (orthogonal distance) is not supported with CT (also as the forward or backward projector of a combined projector type)!')
         
-        if self.projector_type in [5, 15, 51, 45, 54] and not self.CT:
+        if self.projector_type in [5, 55, 15, 51, 45, 54] and not self.CT:
             raise ValueError('Projector type 5 is only supported with CT data!')
         
         if self.projector_type in (6, 16, 26, 61, 62, 66) and not self.SPECT:
@@ -2023,7 +2051,7 @@ class projectorClass:
                 raise ValueError('Large dimension support is only available for PDHG, PKMA, and FDK!')
             if self.MRP or self.quad or self.Huber or self.weighted_mean or self.FMH or self.ProxTV or self.TGV or self.L or self.AD or self.APLS:
                 raise ValueError('Large dimension support is only available for non-local methods, RDP, GGMRF, hyperbolic prior and TV!')
-            if self.projector_type in [45, 15, 5, 54, 51, 2, 3]:
+            if self.projector_type in [45, 15, 5, 55, 54, 51, 2, 3]:
                 raise ValueError('Large dimension support is only for projector types 4 and 14!')
             # Anatomical weighting is not supported by largeDim
             if self.RDP and self.RDP_use_anatomical:
@@ -2037,7 +2065,7 @@ class projectorClass:
         if self.useCUDA and self.useCPU:
             raise ValueError('Both CUDA and CPU selected! Select only one!')
         
-        if self.TOF_bins_used > 1 and (self.projector_type not in [1, 11, 2, 22, 12, 21, 23, 32, 24, 42, 3, 33, 31, 13, 4, 41, 14, 43, 34]) and not self.CT and not self.SPECT:
+        if self.TOF_bins_used > 1 and (self.projector_type not in [1, 11, 2, 22, 12, 21, 23, 32, 24, 42, 3, 33, 31, 13, 4, 44, 41, 14, 43, 34]) and not self.CT and not self.SPECT:
             raise ValueError('TOF is currently only supported with improved Siddon (projector_type = 1), orthogonal distance-based ray tracer (projector_type = 2), volume of intersection (projector_type = 3) and interpolation-based projector (projector_type = 4)')
         
         if self.TOF_bins_used > 1 and self.TOF_width <= 0 and not self.CT and not self.SPECT:
@@ -2092,9 +2120,11 @@ class projectorClass:
         if self.useCPU:
             print('CPU functionality is limited and might not work correctly in all cases! Use at your own risk!')
         if self.useHelical and self.projector_type not in (4, 5, 44, 45, 54, 55):
-            raise ValueError('Only projector types 4, 5, 45 and 54 are supported with curved helical data!')
+            raise ValueError('Only projector types 4, 5, 44, 45, 54 and 55 are supported with curved helical data!')
         if self.useHelical and self.useParallelBeam:
             raise ValueError('Parallel beam is not supported with curved helical data!')
+        if self.subsetType == 12 and not self.offsetCorrection:
+            raise ValueError('Subset type 12 can only be used with offset correction (options.offsetCorrection = true).')
         if self.useHelical and self.offsetCorrection:
             raise ValueError('Offset correction is not supported with curved helical data!')
         if self.offangle > 0 and self.useHelical:
@@ -2260,9 +2290,9 @@ class projectorClass:
                     print(dispi)
                 elif self.projector_type == 3 or self.projector_type == 33:
                     print('Volume of intersection based ray tracer selected.')
-                elif self.projector_type == 4:
+                elif self.projector_type == 4 or self.projector_type == 44:
                     print('Interpolation-based projector selected.')
-                elif self.projector_type == 5:
+                elif self.projector_type == 5 or self.projector_type == 55:
                     print('Branchless distance-driven based projector selected.')
                 elif self.projector_type == 6:
                     print('Rotation-based projector selected (SPECT).')

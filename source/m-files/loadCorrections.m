@@ -49,7 +49,7 @@ end
 % The scatter data is checked with TOF data below (checkTOFScatter), which sets options.randomsTOF if the scatter data is TOF-resolved
 options.randomsTOF = false;
 
-if options.listmode && options.normalization_correction && options.Nt > 1
+if options.listmode && options.normalization_correction && options.Nt > 1 && ~options.CT
     warning('Normalization correction is not (yet) supported for dynamic list-mode data! Disabling it.')
     options.normalization_correction = false;
 end
@@ -250,7 +250,13 @@ if ~options.SPECT
     % which needs the coefficients. A normalization that is already input (options.normalization) is used as it is.
     % normalizationInverted is true if and only if the normalization was loaded from a file and inverted in this call
     normalizationInverted = false;
-    if (options.normalization_correction && options.corrections_during_reconstruction) && ~options.use_user_normalization
+    % CT normalization is always the user input array options.normalization (no file lookup or dialog), a multiplicative factor of
+    % each measurement. ctNormMode selects how it is applied, see ctNormalizationSetup (0 = no CT normalization)
+    ctNormMode = 0;
+    if options.CT && options.normalization_correction
+        [options, ctNormMode] = ctNormalizationSetup(options);
+    end
+    if (options.normalization_correction && options.corrections_during_reconstruction) && ~options.use_user_normalization && ~options.CT
         if ~isfield(options,'normalization') || isempty(options.normalization)
             if options.use_raw_data
                 norm_file = [folder options.machine_name '_normalization_listmode.mat'];
@@ -283,7 +289,7 @@ if ~options.SPECT
             % One value for each event instead of a sinogram, see indexBasedNormalization
             options = indexBasedNormalization(options, true);
         end
-    elseif options.normalization_correction && options.use_user_normalization && options.corrections_during_reconstruction
+    elseif options.normalization_correction && options.use_user_normalization && options.corrections_during_reconstruction && ~options.CT
         if ~isfield(options,'normalization') || isempty(options.normalization)
             [file, fpath] = selectNormalizationFile(options);
             [~, ~, normExt] = fileparts(file);
@@ -912,6 +918,11 @@ if ~options.SPECT
             options.normalization = options.normalization(:);
         end
     end
+    if ctNormMode == 2
+        % CT precorrection: the measurements are divided by the normalization (before the linearization in reconstructions_main).
+        % The normalization correction is disabled afterwards, i.e. the normalization is not used by the projectors
+        options = ctNormalizationPrecorrect(options);
+    end
     if options.normalization_correction && ~options.corrections_during_reconstruction
         if ~isfield(options,'normalization') || isempty(options.normalization)
             if options.use_user_normalization
@@ -1174,6 +1185,103 @@ end
 if ~options.randoms_correction
     options.randomsTOF = false;
 end
+
+function [options, ctNormMode] = ctNormalizationSetup(options)
+% Checks the CT normalization (options.normalization_correction is true) and selects how it is applied. The CT normalization is a
+% multiplicative factor of each measurement, input only as the array options.normalization: one map of the detector or one value for
+% each measurement (the map is tiled to all projections here, before the subset permutation).
+% The output ctNormMode is
+%   1 (host gain): intensity data, a count-based algorithm (OSEM, etc.) and corrections during reconstruction. The normalization is a
+%     detector gain of the blank scan, ybar = flat * n * exp(-l), and it is used by the native library (permuted to the subset order
+%     like the measurements)
+%   2 (precorrection): FDK, corrections applied to the data or a linear algorithm (LSQR, PDHG, etc.) with intensity data. The
+%     measurements are divided by the normalization before the linearization, the normalization is not used by the projectors
+%   3 (kernel): pre-linearized data with a linear algorithm (also a projection operator without an algorithm). The normalization
+%     is used in the projector kernels, y = n * (A x)
+% The randoms/scatter convention of CT is unchanged: the randoms and scatter estimates are in units of the flat value.
+if ~isfield(options, 'normalization') || numel(options.normalization) <= 1
+    error(['CT normalization correction is selected (options.normalization_correction = true), but options.normalization is empty. The CT normalization is ' ...
+        'not loaded from a file, input it as an array of the detector size [' num2str(options.nRowsD) ' ' num2str(options.nColsD) '] or the size of all projections [' ...
+        num2str(options.nRowsD) ' ' num2str(options.nColsD) ' ' num2str(options.nProjections) ']'])
+end
+options = tileCTNormalization(options);
+if options.Nt > 1
+    error('CT normalization is supported only with static data (one time frame)')
+end
+if options.largeDim
+    error('CT normalization is not supported with largeDim')
+end
+if options.useEFOV
+    error('CT normalization is not supported with extended FOV (options.useEFOV)')
+end
+if options.normalize_scatter
+    error('CT normalization is not supported with options.normalize_scatter')
+end
+% Selected algorithms
+algNames = recNames();
+active = {};
+for kk = 1 : numel(algNames)
+    if isfield(options, algNames{kk}) && any(options.(algNames{kk})(:))
+        active{end + 1} = algNames{kk};
+    end
+end
+% Algorithms that use the exponential (intensity) model exp(-FP) * flat. All other algorithms are treated as linear
+countNames = {'OSEM';'ROSEM';'OSL_OSEM';'ROSEM_MAP';'RAMLA';'BSREM';'RBI';'OSL_RBI';'DRAMA';'MBSREM';'MRAMLA';'SPS';'PKMA';'SAGA'};
+isCount = ismember(active, countNames);
+anyCount = any(isCount);
+anyLinear = any(~isCount);
+countData = ~options.usingLinearizedData;
+if ~isempty(active)
+    if options.implementation ~= 2 || options.use_CPU
+        error('CT normalization is supported only with implementation 2 (OpenCL/CUDA/HIP), not with implementation 1, 3 or 4 or with options.use_CPU')
+    end
+    if anyCount && anyLinear
+        error('CT normalization supports only one algorithm at a time, but both count-based and linear algorithms are selected')
+    end
+    if anyCount && ~countData
+        error('CT normalization with count-based algorithms needs intensity data (options.usingLinearizedData = false), the linearized data cannot be used')
+    end
+end
+useFDK = any(strcmp(active, 'FDK'));
+if ~options.corrections_during_reconstruction || useFDK || (anyLinear && countData)
+    ctNormMode = 2;
+    normMeas = double(options.normalization(:));
+    if any(~isfinite(normMeas)) || any(normMeas <= 0)
+        error(['CT normalization has non-positive or non-finite values, but the data is divided by the normalization. Set the normalization of ' ...
+            'dead or missing detector pixels to a positive value and exclude the pixels with the forward projection mask (options.maskFP)'])
+    end
+elseif anyCount
+    ctNormMode = 1;
+else
+    ctNormMode = 3;
+    if mod(options.projector_type, 10) == 5
+        error('CT normalization with linearized data is not supported with backprojection type 5')
+    end
+end
+
+function options = ctNormalizationPrecorrect(options)
+% CT precorrection: divides the measurements by the normalization and disables the normalization correction (the normalization
+% is not used by the projectors afterwards)
+if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
+    normMeas = single(options.normalization(:));
+else
+    normMeas = double(options.normalization(:));
+end
+if iscell(options.SinM)
+    for kk = 1 : numel(options.SinM)
+        if numel(options.SinM{kk}) ~= numel(normMeas)
+            error('Size mismatch between the CT measurements and the CT normalization')
+        end
+        options.SinM{kk} = reshape(cast(full(options.SinM{kk}(:)), 'like', normMeas) ./ normMeas, size(options.SinM{kk}));
+    end
+else
+    if numel(options.SinM) ~= numel(normMeas)
+        error('Size mismatch between the CT measurements and the CT normalization')
+    end
+    options.SinM = reshape(cast(full(options.SinM(:)), 'like', normMeas) ./ normMeas, size(options.SinM));
+end
+options.normalization_correction = false;
+options.normalization = zeros(1, 1, 'like', normMeas);
 
 function [file, fpath] = selectNormalizationFile(options)
 % Returns the user normalization file: options.normalization_datafile if it is set, otherwise the user

@@ -758,7 +758,7 @@ def reconstructions_main(options):
     _expandFrameCorrections(options)
     # These projector types are accepted by the projector class (custom operators), but the native library has no
     # forward/backward projector mapping for them and would silently fall back to Siddon (MATLAB errors)
-    if int(options.projector_type) in (44, 55, 16, 26, 61, 62, 66):
+    if int(options.projector_type) in (16, 26, 61, 62, 66):
         raise ValueError('Projector type ' + str(options.projector_type) + ' is only available through the projector operators, '
                          'not the built-in reconstruction (reconstructions_main)!')
     print('Preparing for reconstruction...')
@@ -870,8 +870,19 @@ def reconstructions_main(options):
     #     if os.path.exists(normdir):
     #         var = read_mat(options.fpath)
     if options.CT and options.flat <= 0 and not options.usingLinearizedData:
-        print('No flat value input! Using the maximum value as the flat value. Alternatively, input the flat value into options.flat')
-        options.flat = np.max(options.SinM).astype(dtype=np.float32)
+        if (options.normalization_correction and isinstance(options.SinM, np.ndarray) and options.normalization.size > 1
+                and options.normalization.size == options.SinM.size):
+            # CT normalization kept for the reconstruction (a gain of each measurement): the flat is the maximum of the normalized
+            # raw data. If the data has been divided by the normalization (precorrection), the maximum of the data is the same value
+            print('No flat value input! Using the maximum value of the normalized data, max(y / n), as the flat value. Alternatively, input the flat value into options.flat')
+            ctNormalization = options.normalization.ravel('F').astype(np.float64)
+            ctNormalizationValid = ctNormalization > 0
+            if not np.any(ctNormalizationValid):
+                raise ValueError('CT normalization has no positive values')
+            options.flat = np.max(options.SinM.ravel('F').astype(np.float64)[ctNormalizationValid] / ctNormalization[ctNormalizationValid]).astype(dtype=np.float32)
+        else:
+            print('No flat value input! Using the maximum value as the flat value. Alternatively, input the flat value into options.flat')
+            options.flat = np.max(options.SinM).astype(dtype=np.float32)
     if options.Nt <= 1 and not options.CT and not options.SPECT and not options.SinM.size == options.Ndist * options.Nang * options.TotSinos * options.Nt * options.TOF_bins_used and options.listmode == 0:
         raise ValueError('The number of elements in the input data does not match the input number of angles, radial distances and total number of sinograms multiplied together!')
     if not options.usingLinearizedData and (options.LSQR or options.CGLS or options.FISTA or options.FISTAL1 or options.PDHG or options.PDHGL1 or options.PDDY or options.FDK or options.SART or options.ASD_POCS or options.BB) and not options.largeDim and options.CT:

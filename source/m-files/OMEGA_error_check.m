@@ -26,6 +26,12 @@ function options = OMEGA_error_check(options)
 options = setMissingValues(options);
 options = convertOptions(options);
 
+% CT normalization: one map of the detector or one value for each measurement (the rest of the CT normalization checks are
+% in loadCorrections, which always runs)
+if options.CT && options.normalization_correction && isfield(options, 'normalization') && numel(options.normalization) > 1
+    tileCTNormalization(options);
+end
+
 % SPECT collimator ray shifts are stored once per detector head and detector
 % element.
 if options.SPECT
@@ -376,7 +382,7 @@ if ~options.CT && ~options.SPECT && options.use_machine == 2 && options.use_raw_
     warning('Sinogram data cannot be used when raw data is set to true, using list-mode data instead')
     options.use_machine = 1;
 end
-if options.useIndexBasedReconstruction && (options.projector_type == 5 || options.projector_type == 45 || options.projector_type == 54 || options.projector_type == 51 ...
+if options.useIndexBasedReconstruction && (options.projector_type == 5 || options.projector_type == 55 || options.projector_type == 45 || options.projector_type == 54 || options.projector_type == 51 ...
         || options.projector_type == 15 || options.projector_type == 6)
     error('Index-based reconstruction only supports projector types 1-4!')
 end
@@ -572,7 +578,7 @@ end
 if options.CT && (options.projector_type == 2 || (options.projector_type > 10 && (floor(options.projector_type / 10) == 2 || mod(options.projector_type, 10) == 2)))
     error('Projector type 2 (orthogonal distance) is not supported with CT (also as the forward or backward projector of a combined projector type)!')
 end
-if (options.projector_type == 5 || options.projector_type == 15 || options.projector_type == 51 || options.projector_type == 45 || options.projector_type == 54) && ~options.CT
+if (options.projector_type == 5 || options.projector_type == 55 || options.projector_type == 15 || options.projector_type == 51 || options.projector_type == 45 || options.projector_type == 54) && ~options.CT
     error('Projector type 5 is only supported with CT data!')
 end
 if (options.projector_type == 6) && ~options.SPECT
@@ -582,10 +588,13 @@ if ~ismember(options.projector_type, [1 2 6 11 16 21 22 26 61 62 66]) && options
     error('SPECT only supports projector types 1, 2 and 6, plus supported hybrid variants!')
 end
 if ~ismember(options.projector_type, [4 5 44 45 54 55]) && options.useHelical
-    error('Helical CT only supports projector types 4, 5, 45 and 54!')
+    error('Helical CT only supports projector types 4, 5, 44, 45, 54 and 55!')
 end
 if options.useParallelBeam && options.useHelical
     error('Parallel beam is not supported with helical CT!')
+end
+if options.subset_type == 12 && ~options.offsetCorrection
+    error('Subset type 12 can only be used with offset correction (options.offsetCorrection = true).')
 end
 if options.offsetCorrection && options.useHelical
     error('Offset correction is not supported with helical CT!')
@@ -626,7 +635,7 @@ if options.largeDim
     if options.MRP || options.quad || options.Huber || options.weighted_mean || options.FMH || options.ProxTV || options.TGV || options.L || options.AD || options.APLS
         error('Large dimension support is only available for non-local methods, RDP, GGMRF, hyperbolic prior and TV!')
     end
-    if ismember(options.projector_type,[15 51 45 5 54 2 3])
+    if ismember(options.projector_type,[15 51 45 5 54 55 2 3])
         error('Large dimension support currently supports only projector types 14 and 4!')
     end
     % Anatomical weighting is not supported by largeDim
@@ -648,7 +657,7 @@ if options.use_CUDA && options.use_CPU && options.implementation == 2
 end
 if options.TOF_bins_used > 1 && (options.projector_type ~= 1 && options.projector_type ~= 11 && options.projector_type ~= 2 && options.projector_type ~= 22 && options.projector_type ~= 12 && options.projector_type ~= 21 ...
         && options.projector_type ~= 23 && options.projector_type ~= 32 && options.projector_type ~= 24 && options.projector_type ~= 42 && options.projector_type ~= 3 && options.projector_type ~= 33 && options.projector_type ~= 31 ...
-        && options.projector_type ~= 13 && options.projector_type ~= 4 && options.projector_type ~= 41 && options.projector_type ~= 14 && options.projector_type ~= 34 && options.projector_type ~= 43) && ~options.CT && ~options.SPECT
+        && options.projector_type ~= 13 && options.projector_type ~= 4 && options.projector_type ~= 44 && options.projector_type ~= 41 && options.projector_type ~= 14 && options.projector_type ~= 34 && options.projector_type ~= 43) && ~options.CT && ~options.SPECT
     error('TOF is currently only supported with improved Siddon (projector_type = 1), orthogonal distance-based ray tracer (projector_type = 2), volume of intersection (projector_type = 3) and interpolation-based projector (projector_type = 4)')
 end
 if options.TOF_bins_used > 1 && options.TOF_width <= 0 && ~options.CT && ~options.SPECT

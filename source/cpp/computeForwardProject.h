@@ -2,7 +2,7 @@
 #include "functions.hpp"
 
 // Computes all computations using the forward projection and outputting a measurement-domain vector
-inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::array& input, const int64_t length, const scalarStruct& inputScalars, Weighting& w_vec, const af::array& randomsData, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t timestep, const uint32_t iter = 0, const uint32_t subIter = 0, const int ii = 0, float* residual = nullptr) {
+inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::array& input, const int64_t length, const scalarStruct& inputScalars, Weighting& w_vec, const af::array& randomsData, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t timestep, const uint32_t iter = 0, const uint32_t subIter = 0, const int ii = 0, float* residual = nullptr, const af::array& aNorm = af::array()) {
 	if (DEBUG || inputScalars.verbose >= 3) {
 		proj.tStartLocal = std::chrono::steady_clock::now();
 	}
@@ -10,6 +10,8 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 	int status = 0;
 	af::array indeksit;
 	bool indS = false;
+	// CT host-side normalization (detector gain): exp(-FP) becomes n * exp(-FP). aNorm is empty when not used
+	const bool hostGain = inputScalars.CT && !aNorm.isempty();
 	uint32_t kk = inputScalars.currentSubset + iter * inputScalars.subsets;
 	if (DEBUG) {
 		mexPrintBase("length = %d\n", length);
@@ -84,8 +86,12 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				mexPrint("CT mode");
 			if (inputScalars.verbose >= 3 && inputScalars.randoms_correction)
 				mexPrint("Adding scatter data to forward projection");
-			if (MethodList.OSEM || MethodList.ROSEM || MethodList.OSLOSEM || MethodList.ROSEMMAP)
-				input = af::exp(-input);
+			if (MethodList.OSEM || MethodList.ROSEM || MethodList.OSLOSEM || MethodList.ROSEMMAP) {
+				if (hostGain)
+					input = aNorm * af::exp(-input);
+				else
+					input = af::exp(-input);
+			}
 			else
 				input = af::exp(-input) / y.as(f32);
 		}
@@ -105,11 +111,11 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			if (inputScalars.verbose >= 3 && inputScalars.randoms_correction)
 				mexPrint("Adding scatter data to forward projection");
 			if (inputScalars.randoms_correction) {
-				const af::array expInput = af::exp(-input);
+				const af::array expInput = (hostGain ? af::array(aNorm * af::exp(-input)) : af::array(af::exp(-input)));
 				input = expInput * inputScalars.flat - (y.as(f32) * expInput) / (expInput + randomsData);
 			}
 			else
-				input = af::exp(-input) * inputScalars.flat - y.as(f32);
+				input = (hostGain ? af::array(aNorm * af::exp(-input)) : af::array(af::exp(-input))) * inputScalars.flat - y.as(f32);
 		}
 		else {
 			if (inputScalars.verbose >= 3)
@@ -130,11 +136,11 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			if (inputScalars.verbose >= 3 && inputScalars.randoms_correction)
 				mexPrint("Adding scatter data to forward projection");
 			if (inputScalars.randoms_correction) {
-				const af::array expInput = af::exp(-input);
+				const af::array expInput = (hostGain ? af::array(aNorm * af::exp(-input)) : af::array(af::exp(-input)));
 				input = (y.as(f32) * expInput) / (expInput + randomsData) - expInput * inputScalars.flat;
 			}
 			else
-				input = y.as(f32) - af::exp(-input) * inputScalars.flat;
+				input = y.as(f32) - (hostGain ? af::array(aNorm * af::exp(-input)) : af::array(af::exp(-input))) * inputScalars.flat;
 		}
 		else {
 			if (inputScalars.verbose >= 3)
@@ -158,11 +164,11 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			if (inputScalars.verbose >= 3 && inputScalars.randoms_correction)
 				mexPrint("Adding scatter data to forward projection");
 			if (inputScalars.randoms_correction) {
-				const af::array expInput = af::exp(-input);
+				const af::array expInput = (hostGain ? af::array(aNorm * af::exp(-input)) : af::array(af::exp(-input)));
 				input = expInput * inputScalars.flat - (y.as(f32) * expInput) / (expInput + randomsData);
 			}
 			else
-				input = af::exp(-input) * inputScalars.flat - y.as(f32);
+				input = (hostGain ? af::array(aNorm * af::exp(-input)) : af::array(af::exp(-input))) * inputScalars.flat - y.as(f32);
 		}
 		else {
 			if (inputScalars.verbose >= 3)
@@ -350,11 +356,11 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			if (inputScalars.verbose >= 3 && inputScalars.randoms_correction)
 				mexPrint("Adding scatter data to forward projection");
 			if (inputScalars.randoms_correction) {
-				const af::array expInput = af::exp(-input);
+				const af::array expInput = (hostGain ? af::array(aNorm * af::exp(-input)) : af::array(af::exp(-input)));
 				input = expInput * inputScalars.flat - (y.as(f32) * expInput) / (expInput + randomsData);
 			}
 			else
-				input = af::exp(-input) * inputScalars.flat - y.as(f32);
+				input = (hostGain ? af::array(aNorm * af::exp(-input)) : af::array(af::exp(-input))) * inputScalars.flat - y.as(f32);
 		}
 		else {
 			if (inputScalars.verbose >= 3)

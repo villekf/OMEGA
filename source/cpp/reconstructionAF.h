@@ -191,7 +191,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		mexPrintBase("flat = %f\n", inputScalars.flat);
 		mexPrintBase("dL = %f\n", inputScalars.dL);
 		mexPrintBase("epps = %f\n", inputScalars.epps);
-		if (inputScalars.projector_type == 4) {
+		if (inputScalars.projector_type == 4 || inputScalars.projector_type == 44) {
 			mexPrintBase("d_Scale4x = %f\n", inputScalars.d_Scale4[0].x);
 			mexPrintBase("d_Scale4y = %f\n", inputScalars.d_Scale4[0].y);
 			mexPrintBase("d_Scale4z = %f\n", inputScalars.d_Scale4[0].z);
@@ -362,6 +362,14 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 	// Projector types 2 and 3: the end point check of the tube is built into the kernels only when a detector is inside the image
 	if (inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 2 || inputScalars.BPType == 3)
 		inputScalars.orthClip = orthClipNeeded(inputScalars, x, z_det, w_vec.listCoord, pituus);
+	// CT normalization with count-based algorithms (host gain): the normalization is a detector gain on the blank scan,
+	// ybar = flat * n * exp(-FP) (+ randoms), so it is applied on the host to the exp(-FP) term in computeForwardStep and the kernels
+	// are compiled without -DNORM and without the normalization buffer
+	const bool ctHostNorm = inputScalars.CT && inputScalars.normalization_correction && inputScalars.size_norm > 1ULL && inputScalars.listmode == 0 &&
+		(MethodList.OSEM || MethodList.ROSEM || MethodList.OSLOSEM || MethodList.ROSEMMAP || MethodList.RAMLA || MethodList.BSREM || MethodList.RBI ||
+		MethodList.RBIOSL || MethodList.DRAMA || MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS || MethodList.PKMA || MethodList.SAGA);
+	if (ctHostNorm)
+		inputScalars.normalization_correction = 0;
 	ProjectorClass proj;
 	status = proj.addProjector(inputScalars, w_vec, MethodList, header_directory);
 	if (status != 0)
@@ -570,6 +578,18 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
             }
         }
     }
+
+	// Host-side normalization (gain) of CT with count-based algorithms, one array per subset (static over the time steps),
+	// same layout as the device normalization buffer: length[kk] * nRowsD * nColsD values starting at pituus[kk] * nRowsD * nColsD
+	std::vector<af::array> aNorm;
+	if (ctHostNorm) {
+		const size_t normVec = static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD);
+		aNorm.resize(inputScalars.subsets);
+		for (uint32_t kk = 0; kk < inputScalars.subsets; kk++) {
+			aNorm[kk] = af::array(static_cast<dim_t>(length[kk] * normVec), &norm[pituus[kk] * normVec]);
+			proj.memSize += (sizeof(float) * length[kk] * normVec);
+		}
+	}
 
 	// Create OpenCL buffers, CUDA/HIP arrays or Metal buffers
 	status = proj.createBuffers(inputScalars, w_vec, x, z_det, xy_index, z_index, L, pituus, atten, norm, extraCorr, length, MethodList);
@@ -1442,7 +1462,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 						//	residual[iter * inputScalars.subsets + osa_iter] = af::norm(outputFP - mData[subIter]);
 						//	residual[iter * inputScalars.subsets + osa_iter] = residual[iter * inputScalars.subsets + osa_iter] * residual[iter * inputScalars.subsets + osa_iter] * .5f;
 						//}
-						status = computeForwardStep(MethodList, mData[subIter][timestepData], outputFP, m_size, inputScalars, w_vec, aRand[timestepData][subIter], vec, proj, tt, iter, osa_iter, 0, residual);
+						status = computeForwardStep(MethodList, mData[subIter][timestepData], outputFP, m_size, inputScalars, w_vec, aRand[timestepData][subIter], vec, proj, tt, iter, osa_iter, 0, residual, aNorm.empty() ? af::array() : aNorm[osa_iter]);
 						if (status != 0)
 							return -1;
 						if (DEBUG) {
@@ -1560,7 +1580,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             }
                             fProj.host(FPapu);
                         }
-                        status = computeForwardStep(MethodList, mData[subIter][timestepData], fProj, m_size, inputScalars, w_vec, aRand[timestepData][subIter], vec, proj, tt, iter, osa_iter);
+                        status = computeForwardStep(MethodList, mData[subIter][timestepData], fProj, m_size, inputScalars, w_vec, aRand[timestepData][subIter], vec, proj, tt, iter, osa_iter, 0, nullptr, aNorm.empty() ? af::array() : aNorm[osa_iter]);
                         if (status != 0)
                             return -1;
                         for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)

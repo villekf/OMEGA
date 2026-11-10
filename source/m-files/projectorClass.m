@@ -309,7 +309,10 @@ classdef projectorClass
                 end
                 obj.param.use_raw_data = false;
                 obj.param.attenuation_correction = false;
-                obj.param.normalization_correction = false;
+                % The CT normalization is a per-measurement factor (see loadCorrections), the detector map is tiled to all projections
+                if obj.param.normalization_correction && numel(obj.param.normalization) > 1
+                    obj.param = tileCTNormalization(obj.param);
+                end
                 obj.param.compute_normalization = false;
                 obj.param.rings = obj.param.nColsD * obj.param.nBed;
                 obj.param.det_per_ring = obj.param.nRowsD * obj.param.nProjections;
@@ -897,7 +900,7 @@ classdef projectorClass
             end
 
 
-            if obj.param.projector_type == 4 || obj.param.projector_type == 5 || obj.param.projector_type == 14 || obj.param.projector_type == 41 ...
+            if obj.param.projector_type == 4 || obj.param.projector_type == 44 || obj.param.projector_type == 5 || obj.param.projector_type == 55 || obj.param.projector_type == 14 || obj.param.projector_type == 41 ...
                     || obj.param.projector_type == 15 || obj.param.projector_type == 45 || obj.param.projector_type == 54 || obj.param.projector_type == 51 ...
                     || obj.param.projector_type == 42 || obj.param.projector_type == 43 || obj.param.projector_type == 24 || obj.param.projector_type == 34
                 obj.param = computeProjectorScalingValues(obj.param);

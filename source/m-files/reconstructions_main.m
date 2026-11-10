@@ -61,11 +61,25 @@ if tyyppi < 2
 end
 
 if ~options.param.usingLinearizedData && ((options.param.CT && isfield(options.param,'flat') && options.param.flat == 0) || (options.param.CT && ~isfield(options.param,'flat')))
-    warning('No flat value input! Using the maximum value as the flat value. Alternatively, input the flat value into options.flat')
-    if options.param.useSingles
-        options.param.flat = single(max(options.param.SinM(:)));
+    if options.param.normalization_correction && ~iscell(options.param.SinM) && numel(options.param.normalization) > 1 ...
+            && numel(options.param.normalization) == numel(options.param.SinM)
+        % CT normalization (a gain of each measurement, the data is divided by it): the flat is the maximum of the normalized raw data
+        warning('No flat value input! Using the maximum value of the normalized data, max(y ./ n), as the flat value. Alternatively, input the flat value into options.flat')
+        normValid = options.param.normalization(:) > 0;
+        if ~any(normValid)
+            error('CT normalization has no positive values')
+        end
+        flatY = double(options.param.SinM(:));
+        flatN = double(options.param.normalization(:));
+        flatValue = max(flatY(normValid) ./ flatN(normValid));
     else
-        options.param.flat = double(max(options.param.SinM(:)));
+        warning('No flat value input! Using the maximum value as the flat value. Alternatively, input the flat value into options.flat')
+        flatValue = max(options.param.SinM(:));
+    end
+    if options.param.useSingles
+        options.param.flat = single(flatValue);
+    else
+        options.param.flat = double(flatValue);
     end
 elseif options.param.CT && isfield(options.param,'flat') && numel(options.param.flat) > 1
     options.param.flat = max(options.param.flat(:));

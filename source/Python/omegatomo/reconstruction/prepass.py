@@ -397,6 +397,71 @@ def _perLORFactor(sinM, factor, tofBins, divide):
     return sinM / factor if divide else sinM * factor
 
 
+# Algorithms that use the exponential (intensity) model exp(-FP) * flat with CT data. All other algorithms are treated as linear
+_CT_COUNT_ALGORITHMS = ('OSEM', 'ROSEM', 'OSL_OSEM', 'ROSEM_MAP', 'RAMLA', 'BSREM', 'RBI', 'OSL_RBI', 'DRAMA', 'MBSREM', 'MRAMLA', 'SPS', 'PKMA', 'SAGA')
+_CT_ALGORITHMS = ('OSEM', 'MRAMLA', 'RAMLA', 'RBI', 'ROSEM', 'DRAMA', 'COSEM', 'ECOSEM', 'ACOSEM', 'LSQR', 'CGLS', 'FDK', 'FISTA', 'FISTAL1',
+                  'OSL_OSEM', 'MBSREM', 'BSREM', 'OSL_RBI', 'OSL_COSEM', 'ROSEM_MAP', 'PKMA', 'SPS', 'SART', 'ASD_POCS', 'SAGA', 'BB',
+                  'PDHG', 'PDHGL1', 'PDDY', 'PDHGKL', 'CV')
+
+
+def _ctNormalizationSetup(options):
+    """
+    Checks the CT normalization (options.normalization_correction is True) and selects how it is applied. The CT normalization
+    is a multiplicative factor of each measurement, input only as the array options.normalization: one map of the detector or
+    one value for each measurement (the map is tiled to all projections here, before the subset permutation in parseInputs).
+    Returns the mode
+      0: the data is assumed to be normalized already (options.corrections_during_reconstruction and options.precorrect are
+         both False, as with the other corrections), the normalization is not used
+      1 (host gain): intensity data, a count-based algorithm (OSEM, etc.) and corrections during reconstruction. The
+         normalization is a detector gain of the blank scan, ybar = flat * n * exp(-l), and it is used by the native library
+         (permuted to the subset order like the measurements)
+      2 (precorrection): options.precorrect, FDK or a linear algorithm (LSQR, PDHG, etc.) with intensity data. The measurements
+         are divided by the normalization before the linearization, the normalization is not used by the projectors
+      3 (kernel): pre-linearized data with a linear algorithm (also a projection operator without an algorithm). The
+         normalization is used in the projector kernels, y = n * (A x)
+    The randoms/scatter convention of CT is unchanged: the randoms and scatter estimates are in units of the flat value.
+    """
+    options._tileCTNormalization()
+    if options.Nt > 1:
+        raise ValueError('CT normalization is supported only with static data (one time frame)')
+    if options.largeDim:
+        raise ValueError('CT normalization is not supported with largeDim')
+    if options.useEFOV:
+        raise ValueError('CT normalization is not supported with extended FOV (options.useEFOV)')
+    if options.normalize_scatter:
+        raise ValueError('CT normalization is not supported with options.normalize_scatter')
+    active = [name for name in _CT_ALGORITHMS if getattr(options, name, False)]
+    anyCount = any(name in _CT_COUNT_ALGORITHMS for name in active)
+    anyLinear = any(name not in _CT_COUNT_ALGORITHMS for name in active)
+    countData = not options.usingLinearizedData
+    if len(active) > 0:
+        if options.implementation != 2 or options.useCPU:
+            raise ValueError('CT normalization is supported only with implementation 2 (OpenCL/CUDA/HIP), not with implementation 4 or with options.useCPU')
+        if anyCount and anyLinear:
+            raise ValueError('CT normalization supports only one algorithm at a time, but both count-based and linear algorithms are selected')
+        if anyCount and not countData:
+            raise ValueError('CT normalization with count-based algorithms needs intensity data (options.usingLinearizedData = False), '
+                             'the linearized data cannot be used')
+    if not options.corrections_during_reconstruction and not options.precorrect:
+        return 0
+    if options.precorrect or getattr(options, 'FDK', False) or (anyLinear and countData):
+        normalization = options.normalization
+        if not np.all(np.isfinite(normalization)) or np.any(normalization <= 0):
+            raise ValueError('CT normalization has non-positive or non-finite values, but the data is divided by the normalization. Set the '
+                             'normalization of dead or missing detector pixels to a positive value and exclude the pixels with the '
+                             'forward projection mask (options.maskFP)')
+        sinM = options.SinM
+        sinMSizes = [np.size(frame) for frame in sinM] if isinstance(sinM, list) else [np.size(sinM)]
+        if any(sinMSize != normalization.size for sinMSize in sinMSizes):
+            raise ValueError('Size mismatch between the CT measurements and the CT normalization')
+        return 2
+    if anyCount:
+        return 1
+    if int(options.projector_type) % 10 == 5:
+        raise ValueError('CT normalization with linearized data is not supported with backprojection type 5')
+    return 3
+
+
 def _subtractDelayed(sinM, delayed, tofBins):
     """
     Returns the measurement data sinM with the randoms estimate (non-TOF sinogram size)
@@ -842,6 +907,15 @@ def loadCorrections(options):
     # data before it is normalized)
     deferredNormalization = None
     deferredSPECTNormalization = None
+    if options.CT and options.normalization_correction:
+        # CT normalization is always the user input array options.normalization (no file lookup or dialog), a multiplicative factor
+        # of each measurement. Mode 2: the measurements are divided by it (after the randoms/scatter precorrection below, before the
+        # linearization in recomain) and the normalization correction is disabled afterwards, i.e. the normalization is not used by the
+        # projectors. Modes 1 and 3 keep it for the native library (permuted to the subset order in parseInputs)
+        if _ctNormalizationSetup(options) == 2:
+            deferredNormalization = (options.normalization, True)
+            options.normalization_correction = False
+            options.normalization = np.empty(0, dtype=np.float32)
     if options.normalization_correction:
         normalizationFromFile = False
         # Biograph (Vision) coefficients can be zero (bins without efficiency): these map to zero efficiency
