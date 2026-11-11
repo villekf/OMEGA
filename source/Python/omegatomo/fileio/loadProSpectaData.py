@@ -20,8 +20,10 @@ def loadProSpectaData(options):
                         'ZWorldLimits': (-0.5 * axial_fov + cZ, 0.5 * axial_fov + cZ)}
 
     # Load projection images
-    options.SinM = dcm.pixel_array
-    options.SinM = options.SinM.transpose((2, 1, 0))
+    # The frames are stored as (frame, row, column). The image is arranged to (column, reversed row, frame) (the same as
+    # rot90(squeeze(dicomread(fpath)), 3) in MATLAB): the DICOM rows run from the head to the feet, the reversed rows run along the
+    # axial coordinate of the SPECT image and the CT attenuation image
+    options.SinM = np.asfortranarray(dcm.pixel_array.transpose((2, 1, 0))[:, ::-1, :])
     
     # Number of rows in a projection image
     options.nRowsD = options.SinM.shape[0]
@@ -42,10 +44,17 @@ def loadProSpectaData(options):
     # Increment between adjacent projection angles
     angleIncrement = (float)(dcm.RotationInformationSequence[0].AngularStep)
 
-    # Rotation angles
-    options.angles = np.concatenate((np.arange(startAngle2, startAngle2 + angleIncrement * (options.nProjections / options.nHeads), angleIncrement),np.arange(startAngle1, startAngle1 + angleIncrement * (options.nProjections / options.nHeads - 1), angleIncrement)))
+    # Additional offangle for CT (registration of the SPECT and CT images, determined with a Jaszczak phantom)
+    additionalOffAngleCT = -5.
 
-    # Radial distance of the detector panel from the COR
-    options.radiusPerProj = np.concatenate((dcm.DetectorInformationSequence[0].RadialPosition, dcm.DetectorInformationSequence[1].RadialPosition))
+    # Rotation angles. The frames of the file are ordered by the detector head (all the frames of head 1 followed by all the
+    # frames of head 2) and the angles are in the opposite direction of the DICOM start angles (same as in MATLAB)
+    nProjectionsPerHead = options.nProjections // options.nHeads
+    options.angles = -np.concatenate((startAngle1 + angleIncrement * np.arange(nProjectionsPerHead),
+                                      startAngle2 + angleIncrement * np.arange(nProjectionsPerHead))) + additionalOffAngleCT
+
+    # Radial distance of the detector panel from the COR (the same frame order as the angles)
+    options.radiusPerProj = np.concatenate((np.asarray(dcm.DetectorInformationSequence[0].RadialPosition, dtype=np.float64),
+                                            np.asarray(dcm.DetectorInformationSequence[1].RadialPosition, dtype=np.float64)))
     
     return 0
