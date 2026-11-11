@@ -25,6 +25,14 @@
 #ifndef LTYPE3
 #define LTYPE3 int3
 #endif
+// 64-bit integer type, used for the element counts that the host always passes as 64-bit integers
+#ifndef LTYPE64
+#if defined(CUDA) || defined(HIP)
+#define LTYPE64 long long
+#else
+#define LTYPE64 long
+#endif
+#endif
 
 // The total size of the local/shared memory region
 #if defined(NLM_) || defined(NLM4_)
@@ -482,9 +490,11 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 #elif NLTYPE == 6
 				// NLGGMRF
 				const float delta = uj - uk;
-				const float dcpq = POWR(fabs(delta / c), p - q);
-				const float deltapqc = FLOAT_ONE + dcpq;
-				output += weight * (POWR(fabs(delta), p - FLOAT_ONE) / deltapqc) * (p - gamma * ((dcpq * cpq) / deltapqc)) * sign(delta);
+				if (delta != FLOAT_ZERO) {
+					const float dcpq = POWR(fabs(delta / c), p - q);
+					const float deltapqc = FLOAT_ONE + dcpq;
+					output += weight * (POWR(fabs(delta), p - FLOAT_ONE) / deltapqc) * (p - gamma * ((dcpq * cpq) / deltapqc)) * sign(delta);
+				}
 #elif NLTYPE == 7
 				const float delta = uj - uk;
 				const float apu = (delta * delta + gamma * gamma);
@@ -952,21 +962,23 @@ DEVICE void forwardDiffZ2(float* apuVal, const LTYPE3 xyz, const int3 N, const C
 #endif
 // Computing q of proximal TV (see http://dx.doi.org/10.1088/0031-9155/57/10/3065)
 KERN
-void ProxTVq(CLGLOBAL float* inputX, CLGLOBAL float* inputY, CLGLOBAL float* inputZ, const float alpha, const LTYPE N) {
-	LTYPE idx = GID0;
+void ProxTVq(CLGLOBAL float* inputX, CLGLOBAL float* inputY, CLGLOBAL float* inputZ, const float alpha, const LTYPE64 N) {
+	LTYPE64 idx = GID0;
 	if (idx >= N)
 		return;
 	const float3 apu = MFLOAT3(inputX[idx], inputY[idx], inputZ[idx]);
 #ifdef L2 // START L2
 // L2 norm
 	const float scale = fmax(FLOAT_ONE, length(apu) / alpha);
-#else
-// L1 norm
-	const float scale = fmax(fmax(fabs(apu.z), fmax(fabs(apu.x), fabs(apu.y))) / alpha, FLOAT_ONE);
-#endif // END L2
 	inputX[idx] = apu.x / scale;
 	inputY[idx] = apu.y / scale;
 	inputZ[idx] = apu.z / scale;
+#else
+// L1 norm (anisotropic): the projection is a separate clamp of each component to [-alpha, alpha]
+	inputX[idx] = apu.x / fmax(FLOAT_ONE, fabs(apu.x) / alpha);
+	inputY[idx] = apu.y / fmax(FLOAT_ONE, fabs(apu.y) / alpha);
+	inputZ[idx] = apu.z / fmax(FLOAT_ONE, fabs(apu.z) / alpha);
+#endif // END L2
 }
 
 #ifdef PROXTGV // START PROXTGV
@@ -974,11 +986,11 @@ KERN
 // Same as above, but for TGV
 // TGVZ refers to full 3D TGV, i.e. it takes into account x-, y- and z-axis voxels
 #ifdef TGVZ
-void ProxTGVq(CLGLOBAL float* inputX, CLGLOBAL float* inputY, CLGLOBAL float* inputZ, CLGLOBAL float* input2XY, CLGLOBAL float* input2XZ, CLGLOBAL float* input2YZ, const float alpha, const LTYPE N) {
+void ProxTGVq(CLGLOBAL float* inputX, CLGLOBAL float* inputY, CLGLOBAL float* inputZ, CLGLOBAL float* input2XY, CLGLOBAL float* input2XZ, CLGLOBAL float* input2YZ, const float alpha, const LTYPE64 N) {
 #else
-void ProxTGVq(CLGLOBAL float* inputX, CLGLOBAL float* inputY, CLGLOBAL float* input2XY, const float alpha, const LTYPE N) {
+void ProxTGVq(CLGLOBAL float* inputX, CLGLOBAL float* inputY, CLGLOBAL float* input2XY, const float alpha, const LTYPE64 N) {
 #endif
-	LTYPE idx = GID0;
+	LTYPE64 idx = GID0;
 	if (idx >= N)
 		return;
 #ifdef TGVZ
@@ -990,9 +1002,6 @@ void ProxTGVq(CLGLOBAL float* inputX, CLGLOBAL float* inputY, CLGLOBAL float* in
 #endif
 #ifdef L2 // START L2
 	const float scale = fmax(FLOAT_ONE, SQRT(apu.x * apu.x + apu.y * apu.y + apu.z * apu.z + (apu2.x * apu2.x) * FLOAT_TWO + (apu2.y * apu2.y) * FLOAT_TWO + (apu2.z * apu2.z) * FLOAT_TWO) / alpha);
-#else
-	const float scale = fmax(fmax(fabs(apu2.z),fmax(fabs(apu2.y), fmax(fabs(apu2.x), fmax(fabs(apu.z), fmax(fabs(apu.x), fabs(apu.y)))))) / alpha, FLOAT_ONE);
-#endif // END L2
 	inputX[idx] = apu.x / scale;
 	inputY[idx] = apu.y / scale;
 	input2XY[idx] = apu2.x / scale;
@@ -1001,6 +1010,17 @@ void ProxTGVq(CLGLOBAL float* inputX, CLGLOBAL float* inputY, CLGLOBAL float* in
 	input2XZ[idx] = apu2.y / scale;
 	input2YZ[idx] = apu2.z / scale;
 #endif
+#else
+// L1 norm (anisotropic): the projection is a separate clamp of each component to [-alpha, alpha]
+	inputX[idx] = apu.x / fmax(FLOAT_ONE, fabs(apu.x) / alpha);
+	inputY[idx] = apu.y / fmax(FLOAT_ONE, fabs(apu.y) / alpha);
+	input2XY[idx] = apu2.x / fmax(FLOAT_ONE, fabs(apu2.x) / alpha);
+#ifdef TGVZ
+	inputZ[idx] = apu.z / fmax(FLOAT_ONE, fabs(apu.z) / alpha);
+	input2XZ[idx] = apu2.y / fmax(FLOAT_ONE, fabs(apu2.y) / alpha);
+	input2YZ[idx] = apu2.z / fmax(FLOAT_ONE, fabs(apu2.z) / alpha);
+#endif
+#endif // END L2
 }
 #endif // END PROXTGV
 
