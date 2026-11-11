@@ -2817,10 +2817,13 @@ DEVICE float NLMGradient(NLM_IN_T uIn,
                 output += weight * (uabs - uabs / (fabs(u) / gamma + FLOAT_ONE));
 #elif NLTYPE == 6
                 // NLGGMRF
+                // powr(0, 0) is NaN in OpenCL, so skip identical voxels (their contribution is zero)
                 const float delta = uj - uk;
-                const float dcpq = POWR(fabs(delta / c), p - q);
-                const float deltapqc = FLOAT_ONE + dcpq;
-                output += weight * (POWR(fabs(delta), p - FLOAT_ONE) / deltapqc) * (p - gamma * ((dcpq * cpq) / deltapqc)) * sign(delta);
+                if (delta != FLOAT_ZERO) {
+                    const float dcpq = POWR(fabs(delta / c), p - q);
+                    const float deltapqc = FLOAT_ONE + dcpq;
+                    output += weight * (POWR(fabs(delta), p - FLOAT_ONE) / deltapqc) * (p - gamma * ((dcpq * cpq) / deltapqc)) * sign(delta);
+                }
 #elif NLTYPE == 7
 				// NLGM (Non-local Geman-McClure)
                 const float delta = uj - uk;
