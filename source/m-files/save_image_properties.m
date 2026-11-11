@@ -163,9 +163,9 @@ if ~options.useMultiResolutionVolumes
     else
         image_properties.axialFOV = options.axial_fov;
     end
-    image_properties.voxelSizeX = image_properties.FOVx / image_properties.Nx;
-    image_properties.voxelSizeY = image_properties.FOVy / image_properties.Ny;
-    image_properties.voxelSizeZ = image_properties.axialFOV / image_properties.Nz;
+    image_properties.voxelSizeX = image_properties.FOVx / double(image_properties.Nx);
+    image_properties.voxelSizeY = image_properties.FOVy / double(image_properties.Ny);
+    image_properties.voxelSizeZ = image_properties.axialFOV / double(image_properties.Nz);
 else
     image_properties.Nx = options.Nx(1);
     image_properties.Ny = options.Ny(1);
