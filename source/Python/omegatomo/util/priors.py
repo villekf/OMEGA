@@ -52,8 +52,36 @@ def _backend_setup(rType, clctx, queue):
     return clctx, queue, bOpt, isHip
 
 
-def _global_size(Nx, Ny, Nz):
-    localSize = (16, 16, 1)
+def _prior_local_size(rType, clctx, halo, nTiles):
+    """Returns the work-group size for the prior kernels that cache the
+    neighborhood in local memory (NLM, RDP with corners). The default 16 x 16
+    is halved until the local memory tile fits the local/shared memory of
+    the device. halo is the number of voxels needed around the work-group in
+    each dimension and nTiles the number of tiles (2 with a reference image);
+    nTiles = 0 means that no local memory tile is used."""
+    localSize = [16, 16, 1]
+    if nTiles == 0:
+        return tuple(localSize)
+    if rType == 0 or rType == 3:
+        memLoc = min(int(dev.local_mem_size) for dev in clctx.devices)
+    else:
+        # Default limit of the static shared memory of CUDA
+        memLoc = 48 * 1024
+    def tileBytes():
+        return ((localSize[0] + 2 * halo[0]) * (localSize[1] + 2 * halo[1])
+                * (localSize[2] + 2 * halo[2]) * 4 * nTiles)
+    # Same 1024 byte margin as in the C++ code
+    while tileBytes() + 1024 >= memLoc and (localSize[0] > 1 or localSize[1] > 1):
+        if localSize[0] > 1:
+            localSize[0] //= 2
+        if localSize[1] > 1:
+            localSize[1] //= 2
+    if tileBytes() + 1024 >= memLoc:
+        raise ValueError('The neighborhood (and patch) of the selected prior needs %d bytes of local memory per work-group, but the device only has %d bytes. Use a smaller neighborhood/patch size.' % (tileBytes(), memLoc))
+    return tuple(localSize)
+
+
+def _global_size(Nx, Ny, Nz, localSize=(16, 16, 1)):
     apu = [Nx % localSize[0], Ny % localSize[1], 0]
     erotus = [0] * 2
     if apu[0] > 0:
@@ -306,12 +334,13 @@ def RDP(im, Nx, Ny, Nz, gamma, beta, rType = 0, clctx = -1, queue = -1, includeC
     if isHip:
         raise ValueError('RDP standalone function requires CUDA texture support, which CuPy does not provide on ROCm/HIP. Use forward/backward projector types 1-4 with the full OMEGA reconstruction pipeline instead, or use a non-ROCm CuPy build.')
 
-    bOpt += ('-DRDP', '-DUSEIMAGES', '-DLOCAL_SIZE=16', '-DLOCAL_SIZE2=16',)
+    localSize = _prior_local_size(rType, clctx, (int(Ndx), int(Ndy), int(Ndz)), 1 if includeCorners else 0)
+    bOpt += ('-DRDP', '-DUSEIMAGES', '-DLOCAL_SIZE=' + str(localSize[0]), '-DLOCAL_SIZE2=' + str(localSize[1]),)
     if includeCorners:
         bOpt += ('-DRDPCORNERS', '-DSWINDOWX=' + str(Ndx), '-DSWINDOWY=' + str(Ndy), '-DSWINDOWZ=' + str(Ndz),)
 
     epps = 1e-8
-    globalSize, localSize = _global_size(Nx, Ny, Nz)
+    globalSize, localSize = _global_size(Nx, Ny, Nz, localSize)
 
     if rType == 0 or rType == 3:
         queue.finish()
@@ -415,17 +444,19 @@ def NLReg(im, Nx, Ny, Nz, h, beta, SW = (1, 1, 1), PW = (1, 1, 1), rType = 0, cl
     if isHip:
         raise ValueError('NLReg standalone function requires CUDA texture support, which CuPy does not provide on ROCm/HIP. Use forward/backward projector types 1-4 with the full OMEGA reconstruction pipeline instead, or use a non-ROCm CuPy build.')
 
-    bOpt += ('-DNLM_', '-DUSEIMAGES', '-DLOCAL_SIZE=16', '-DLOCAL_SIZE2=16', '-DNLTYPE=' + str(NLType), '-DSWINDOWX=' + str(SW[0]),
+    useRef = type(im) == type(refIm)
+    localSize = _prior_local_size(rType, clctx, (int(SW[0]) + int(PW[0]), int(SW[1]) + int(PW[1]), int(SW[2]) + int(PW[2])),
+                                  2 if useRef else 1)
+    bOpt += ('-DNLM_', '-DUSEIMAGES', '-DLOCAL_SIZE=' + str(localSize[0]), '-DLOCAL_SIZE2=' + str(localSize[1]), '-DNLTYPE=' + str(NLType), '-DSWINDOWX=' + str(SW[0]),
              '-DSWINDOWY=' + str(SW[1]), '-DSWINDOWZ=' + str(SW[2]), '-DPWINDOWX=' + str(PW[0]), '-DPWINDOWY=' + str(PW[1]),
              '-DPWINDOWZ=' + str(PW[2]),)
     if (useAdaptive):
         bOpt += ('-DNLMADAPTIVE',)
-    useRef = type(im) == type(refIm)
     if useRef:
         bOpt += ('-DNLMREF',)
 
     epps = 1e-8
-    globalSize, localSize = _global_size(Nx, Ny, Nz)
+    globalSize, localSize = _global_size(Nx, Ny, Nz, localSize)
 
     x = np.linspace(-PW[0], PW[0], 2 * PW[0] + 1, dtype=np.float32)
     y = np.linspace(-PW[1], PW[1], 2 * PW[1] + 1, dtype=np.float32)
