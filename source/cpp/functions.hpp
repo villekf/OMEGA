@@ -3585,6 +3585,15 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			w_vec.precondTypeIm[5] = apuI;
 		}
 	}
+	// The proximal TV and TGV priors are a part of the linear operator of PDHG, with their own dual step size (sigma2CP)
+	// The primal step size thus has to fulfill tau * (sigma * ||A||^2 + sigma2 * ||D||^2) <= 1, where D is the operator of the prior
+	// ||D||^2 <= 12 for the 3D gradient (4 per dimension) and <= 16 for the TGV operator [grad, -I; 0, symmetrized derivative]
+	// The priors are computed only for the main volume
+	float proxPriorNorm = 0.f;
+	if (MethodList.CPType && (MethodList.ProxTGV || MethodList.TGV))
+		proxPriorNorm = 16.f;
+	else if (MethodList.CPType && MethodList.ProxTV)
+		proxPriorNorm = 12.f;
 	for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 		proj.memSize -= (sizeof(float) * inputScalars.im_dim[ii]);
 		w_vec.sigmaCP[timestep][ii] = 1.f;
@@ -3610,10 +3619,11 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			mexEval();
 		}
 		w_vec.LCP[timestep].emplace_back(w_vec.tauCP[timestep][ii]);
-		w_vec.tauCP[timestep][ii] = 1.f / w_vec.tauCP[timestep][ii];
+		const float priorTerm = (ii == 0) ? w_vec.sigma2CP[timestep][ii] * proxPriorNorm : 0.f;
+		w_vec.tauCP[timestep][ii] = 1.f / (w_vec.sigmaCP[timestep][ii] * w_vec.tauCP[timestep][ii] + priorTerm);
 		if (w_vec.filterIter > 0 && (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5])) {
 			w_vec.LCP2[timestep].emplace_back(w_vec.tauCP2[timestep][ii]);
-			w_vec.tauCP2[timestep][ii] = 1.f / w_vec.tauCP2[timestep][ii];
+			w_vec.tauCP2[timestep][ii] = 1.f / (w_vec.sigmaCP[timestep][ii] * w_vec.tauCP2[timestep][ii] + priorTerm);
 		}
 	}
 	return 0;
