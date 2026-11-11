@@ -96,6 +96,15 @@ New features:
   - Normalization, randoms and scatter files are read as in MATLAB (e.g. the ```normalization``` variable of a mat-file, randoms from ```raw_SinDelayed```, ```SinDelayed``` or ```delayed_coincidences```)
   - Multi-bed (step-and-shoot) CT: ```options.bedOffset``` is added to each bed position (the number of projections must be divisible by the number of bed positions)
 - ```attenuation_correction_factors(options, file)``` (MATLAB) accepts the Inveon attenuation file as a second input, so no file dialog is needed
+- CT: normalization correction (```options.normalization_correction``` with ```options.normalization```) is now supported (MATLAB and Python, implementation 2 and the projection operators; previously it was always switched off for CT)
+  - The normalization is input as an array, either one value for each detector pixel (```nRowsD x nColsD```, used for every projection) or one value for each measurement (```nRowsD x nColsD x nProjections```); it is not loaded from a file for CT
+  - With intensity data (```options.usingLinearizedData = false```) the normalization is a detector gain on the blank: the expected measurement is ```flat * n * exp(-A x)```. Count-based algorithms (OSEM, ROSEM, OSL-OSEM, ROSEM-MAP, RAMLA, BSREM, RBI, OSL-RBI, DRAMA, MBSREM, MRAMLA, SPS, PKMA, SAGA) with corrections during reconstruction apply the gain in the reconstruction. With precorrection, FDK, or algorithms for which OMEGA linearizes the data (e.g. LSQR, CGLS, PDHG), the measurements are divided by the normalization before the linearization, so all values must then be positive (exclude dead pixels with ```options.maskFP```)
+  - With linearized data (```options.usingLinearizedData = true```) and the projection operators the model is ```n * (A x)```
+  - When ```options.flat``` is not given, it defaults to the maximum of the normalized data, ```max(y ./ n)```
+  - Not supported (an error is raised): largeDim, extended FOV, implementations other than 2 (and ```options.useCPU```), dynamic data, ```options.normalize_scatter```, count-based algorithms with linearized data, and backprojection type 5 (projector types 5, 15, 25, 35, 45 and 55) with linearized data
+  - Validation: precorrected reconstructions (LSQR, OSEM, FDK) equal the reconstructions of the same data without the gain to 2-5e-7; with the gain applied in the reconstruction, OSEM and PKMA keep the true image as a fixed point and equal the gain-free reconstruction for a constant normalization (1.2e-6)
+- CT: ```options.useLayeredBP``` (default true) stores the projections read by the backprojection of projector type 4 in a layered 2D texture instead of a 3D texture (CUDA, HIP and OpenCL; MATLAB and Python). The result is identical and the backprojection is about 2-5 % faster
+  - It is switched off automatically when a subset (or, without subsets, the whole data) has more than 2048 projections, or more than the layer limit of the device, and with helical CT, largeDim and Metal
 
 Changed behaviour:
 - SPECT ray tracer projectors now normalize emission probability based on a pre-determined superellipse
@@ -159,6 +168,15 @@ Changed behaviour:
 - ```Inveon_PET_main_listmode_example``` (MATLAB and Python) uses the geometry of the Siemens header (```options.cr_p = 1.63```, ```options.cr_pz = 1.592```, ```options.diameter = 161.08```, ```options.firstBlockAngle = 10.79```, ```options.DOI = 4.584```); results differ slightly from earlier versions
 - ```GATE_OMEGA_reconstruction.py``` now requires GATE (opengate) 10.1.1 or newer (online coincidence sorter)
 - ```options.ProxRDP``` and ```options.ProxNLM``` have been removed (MATLAB and Python). They never worked: the proximal kernels did not exist, so the reconstruction ran without regularization. Setting either option now gives an error; use ```options.RDP``` or ```options.NLM``` instead
+- Projector type 4 (all GPU backends): the samples along the ray are now at the midpoints of the sampling intervals (previously one tenth of a step after the ray entered the image), which removes a bias of about +0.4 times the interpolation length in the forward projection (CT and PET). The CT forward projection and the voxel-based CT backprojection are now adjoint to about 1e-5 (previously 4.5e-3)
+- Projector type 4 TOF: the TOF weight of each sample is now centred on the sample. Previously it was shifted by half a step towards the second detector of the LOR (e.g. 0.75 mm with a 1.5 mm interpolation length, about 1.7 mm with Joseph interpolation)
+- CT with tilted detector panels (```options.pitchRoll``` or a six-row ```options.uV```) and non-square pixels: the detector direction vectors are now scaled as vectors (the row direction by ```options.dPitchX```, the column direction by ```options.dPitchY```) instead of per x/y/z component, which made the pixel grid skewed with wrong pixel sizes (MATLAB and Python, including ```CTDetectorCoordinatesFull```)
+  - Results change only for tilted panels with ```dPitchX ~= dPitchY```; e.g. with a 20 degree roll and 1.5 x 1.0 mm pixels the forward projection error of projector type 1 against the exact line integrals dropped from 6 % to 1.5e-6
+- COSEM, ECOSEM, ACOSEM and OSL-COSEM now give an error with CT data (MATLAB and Python), as they have no transmission tomography formulation
+- The fast PDHG (```options.fastPDHG```) is not used with a 3D backprojection mask and backprojection type 4; the regular path is used instead
+- Subset type 12 now gives an error without offset correction (```options.offsetCorrection = true```), MATLAB and Python
+- Parallel beam CT (```options.useParallelBeam```) now gives an error with projector type 5 (also as the forward or backward projector of a combined type, e.g. 15, 45, 51 or 54) and with the CPU implementation (implementation 4 and ```options.useCPU```/```options.use_CPU```), MATLAB and Python. Neither had parallel beam support and both silently used the cone beam geometry
+- Parallel beam FDK/FBP now uses the same zero-padded ramp filter and DC correction as cone beam FDK (MATLAB and Python)
 
 Other changes:
 - Unified SPECT rotation projector logic for all three Python operator backends
@@ -186,6 +204,8 @@ Other changes:
 - Python ```volume3Dviewer```: arrow buttons step the slice and time sliders one step at a time, as in the MATLAB viewer
 - ```SPECT_custom_algorithm_example_PyTorchCUDA.py``` was renamed to ```SPECT_custom_algorithm_example_PyTorch.py``` (also runs with Metal)
 - ```install_mex``` also looks for the OpenCL library in ```OCL_ROOT/lib``` when ```OCL_ROOT/lib/x86_64``` does not exist (as ```compile.py```)
+- CT backprojection type 4 with a normalization now interpolates the normalized measurements, making it the adjoint of the normalized forward projection (adjointness 2.6e-4 to the 7e-5 level of the unnormalized pair in the tested case). The MATLAB and Python front ends still disable the normalization correction for CT
+- The projector type 4 documentation now states that the ray-based backprojection of non-CT data deposits each sample to the nearest voxel and is therefore not the exact adjoint of the trilinear forward projection (the row sums match)
 
 Bug fixes:
 - OSL-OSEM denominator (sensitivity image + prior gradient) is now limited to at least 10 % of the sensitivity image (and at least ```epps```), preventing sign changes, division by zero and blow-up with strong priors (implementation 2 and Python implementation 4)
@@ -395,6 +415,18 @@ Bug fixes:
   - The automatic axial extended FOV length can no longer become negative, and an extended FOV smaller than one multi-resolution voxel is disabled with a warning instead of crashing (also in Python)
   - ```saveImage```, ```saveInterfile```, ```saveMetaImage``` and ```scaleImages``` work with the current ```image_properties``` fields (```saveImage``` used ```Ny``` for the axial voxel size and ```saveMetaImage``` opened its output file read-only); ```saveInterfile``` and ```saveMetaImage``` handle dynamic (4D) data
 - MATLAB: ```install_mex``` built the OpenCL implementations 2 and 3 on Linux against the system OpenCL headers instead of the included ones (the source folder was never added to the include path), which failed when the system headers are older than the included ```opencl.hpp``` (e.g. ```CL_MAKE_VERSION``` errors)
+- Projector type 4
+  - PET/SPECT backprojection with attenuation and ```options.useTotLength = false``` was normalized by the full LOR length instead of the length of the ray inside the image, unlike the forward projection (factors of 0.23-0.89 per LOR in the tested case)
+  - CT backprojection with a 3D backprojection mask: each block of 8 z-planes used the mask value of its first plane
+  - CT backprojection: the sensitivity image (used e.g. by SART/POCS, RBI and DRAMA) only counted the rays with non-zero measurements; it now counts every ray that hits the detector
+  - CT backprojection now computes its scaling from the actual pixel area and source-to-detector distance of each projection (from the detector vectors), which fixes the scale with custom or tilted detector panels and with a varying source-to-detector distance (adjointness 0.42 to 2e-4 in a tilted test). Standard flat-panel geometries are unchanged
+  - The FDK arguments of the CT backprojection were passed based on ```options.sourceToCRot > 0``` instead of the FDK settings that compile them in
+  - Projector types 44 and 55 (aliases of 4 and 5) silently used projector type 1 in MATLAB and with the Python library, were rejected by the Python reconstructions, failed with the Python projector operators and were not handled by the MATLAB projection operators; they now work everywhere as 4 and 5. Atomics are now also disabled for all CT backprojection types 4 and 5 (also 24, 25, 34, 35, 44 and 55)
+  - Python projector operators: Joseph interpolation (negative ```options.dL```) was never selected, so negative values gave invalid projections
+  - Python projector operators: the PET/SPECT backprojection with measurement-based attenuation (```options.CT_attenuation = False```) crashed with CuPy and failed with PyOpenCL (missing attenuation argument)
+  - Python projector operators: the CT backprojection with a normalization was missing the normalization argument
+  - Parallel beam CT backprojection was rewritten. It did not compile without FDK, and with FDK it looped over every detector pixel for every voxel and used the cone beam distance weight (an FDK reconstruction of a cylinder was 1.92 times too high). Each voxel is now projected along the ray direction of the projection onto the detector, with the weight voxel volume / pixel area perpendicular to the ray. FDK reconstructs a cylinder to within 0.2 % for 180 and 360 degree scans, the backprojection is adjoint to the forward projection at the same level as cone beam, and it is about 15 % faster than the cone beam backprojection. Offset correction, subset type 12, the CT normalization and ```options.useLayeredBP``` work as with cone beam
+  - Python projector operators: parallel beam (```options.useParallelBeam```) was ignored, so the operators silently used the cone beam geometry
 
 ## OMEGA v2.2.0
 
