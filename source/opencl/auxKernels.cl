@@ -1227,22 +1227,22 @@ void ProxTGVSymmDeriv(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 // Backward difference //
 /////////////////////////
 #elif DIFFTYPE == 1 // START DIFFTYPE == 1
-	backwardDiffX2(&apuValX, xyz, NOrig, vX, imApuX);
-	apuValX *=  sigma2;
-	qX[x] += apuValX;
+	backwardDiffX2(&apuVal, xyz, NOrig, vX, imApuX);
+	apuVal *= sigma2;
+	qX[x] += apuVal;
 /////////////// Y ///////////////
 	apuVal = FLOAT_ZERO;
 	float imApuY = vY[x];
-	backwardDiffY2(&apuValY, xyz, NOrig, vY, imApuY);
-	apuValY *=  sigma2;
-	qY[x] += apuValY;
+	backwardDiffY2(&apuVal, xyz, NOrig, vY, imApuY);
+	apuVal *= sigma2;
+	qY[x] += apuVal;
 #ifdef TGVZ
 /////////////// Z ///////////////
 	apuVal = FLOAT_ZERO;
 	float imApuZ = vZ[x];
-	backwardDiffZ2(&apuValZ, xyz, NOrig, vZ, imApuZ);
-	apuValZ *=  sigma2;
-	qZ[x] += apuValZ;
+	backwardDiffZ2(&apuVal, xyz, NOrig, vZ, imApuZ);
+	apuVal *= sigma2;
+	qZ[x] += apuVal;
 #endif
 /////////////// XY/YX ///////////////
 	apuVal = FLOAT_ZERO;
