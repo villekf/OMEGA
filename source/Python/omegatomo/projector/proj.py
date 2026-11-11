@@ -1879,6 +1879,11 @@ class projectorClass:
                 and self.subsets > 1 and self.subsetType in (3, 6, 7) and self.NSinos > 65536):
             raise ValueError('Subset types 3, 6 and 7 support at most 65536 sinogram planes (the plane index is stored as 16-bit); '
                              'use another subset type, fewer planes (larger span) or a single subset.')
+        # Subset type 6 groups n_angles degrees per subset (180 / n_angles subsets for 2D and 360 / n_angles for 3D data)
+        if (not self.CT and not self.SPECT and not self.listmode and not self.useIndexBasedReconstruction and not self.use_raw_data
+                and self.subsets > 1 and self.subsetType == 6
+                and (not hasattr(self, 'n_angles') or np.size(self.n_angles) != 1 or self.n_angles < 1 or 180 % self.n_angles != 0)):
+            raise ValueError('Subset type 6 requires options.n_angles to be a positive number that divides 180 evenly!')
         if self.useIndexBasedReconstruction and self.projector_type not in [1, 2, 3, 4, 11, 14, 12, 13, 21, 22, 23, 24, 31, 32, 33, 34, 41, 42, 43, 44]:
             raise ValueError('Index-based reconstruction only supports projector types 1-4!')
         if self.useIndexBasedReconstruction:

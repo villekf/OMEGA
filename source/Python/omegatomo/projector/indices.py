@@ -144,8 +144,17 @@ def _sinogramLORAngles(options):
     jokuy = np.abs(y[:, 0] - y[:, 1])
     # Indices on the other side of the circle (angle over 90 degrees)
     ind = ((x[:, 0] > x[:, 1]) & (y[:, 0] > y[:, 1])) | ((x[:, 1] > x[:, 0]) & (y[:, 1] > y[:, 0]))
+    # LORs that are vertical (or horizontal) up to numerical precision are
+    # treated as exactly vertical (0 degrees) or horizontal (90 degrees), so
+    # that rounding errors (e.g. single vs. double precision) cannot move them
+    # to the other side of the circle
+    vertical = jokux <= 1e-6 * np.max(jokuy)
+    horizontal = jokuy <= 1e-6 * np.max(jokux)
+    ind = ind & ~(vertical | horizontal)
     with np.errstate(divide='ignore', invalid='ignore'):
         kulma = np.degrees(np.arctan(jokux / jokuy))
+    kulma[horizontal] = 90
+    kulma[vertical] = 0
     kulma[ind] = kulma[ind] + 90
     return kulma
 
@@ -154,16 +163,30 @@ def _subsetAngles(options, tyyppi):
     """
     Angle-based subsets for sinogram data (subsetType 6). Port of the non-raw
     branch of subset_angles.m. The sinogram bins are grouped by the angle of
-    their LOR, n_angles degrees per subset (180 / n_angles subsets for the
-    direct planes, followed by 360 / n_angles subsets for each of the oblique
-    segment pairs, visited in a constant increment order).
+    their LOR, n_angles degrees per subset.
+
+    2D data (only the direct planes are used: no oblique segments or
+    NSinos < TotSinos): 180 / n_angles subsets, the subset j contains the bins
+    with a (rounded) angle in [j * n_angles, (j + 1) * n_angles) of all
+    (direct) planes.
+
+    3D data: 360 / n_angles subsets. The oblique segments of all segment pairs
+    belong to the subset that contains their full angle (the angle of the first
+    member of a pair, angle + 180 for the second member). The direct planes are
+    split by the plane parity: the bins with the angle range j of the even
+    planes (0, 2, ...) go to the subset j and those of the odd planes to the
+    subset j + 180 / n_angles, i.e. every subset spans the whole axial range.
+
+    Order inside a subset: the direct planes first, then the oblique segments
+    in increasing segment order; every block is plane-major (a plane after the
+    other), the bins of a plane in ascending sinogram order.
 
     Parameters
     ----------
     options : class object
         OMEGA class object used to contain all the necessary data. Requires
-        n_angles and segment_table. options.Ndist must already include the
-        possible sampling increase.
+        n_angles, segment_table, NSinos and TotSinos. options.Ndist must
+        already include the possible sampling increase.
     tyyppi : NumPy dtype
         Integer dtype used for the returned index array.
 
@@ -180,49 +203,42 @@ def _subsetAngles(options, tyyppi):
     maara = int(round(180 / nAngles))
     if maara < 1 or abs(180 / nAngles - maara) > 1e-9:
         raise ValueError('options.n_angles has to divide 180 evenly!')
-    maara2 = maara * 2
     segmentTable = np.asarray(options.segment_table).ravel().astype(np.int64)
     sinoLength = int(options.Nang) * int(options.Ndist)
     from omegatomo.util.matlabRound import matlabRound
-    kulma = matlabRound(_sinogramLORAngles(options))
+    # The angles are first snapped to 0.001 degrees, so that LORs with an angle that is an exact half
+    # degree (up to numerical precision) are rounded identically in single and double precision
+    kulma = matlabRound(matlabRound(_sinogramLORAngles(options).astype(np.float64) * 1e3) / 1e3)
     # Combine similar angles together
     kulma[kulma == 180] = 179
-    I = np.argsort(kulma, kind='stable')
-    kulma = kulma[I]
-    # 2D case
-    index0 = []
-    index1 = []
+    nPairs = segmentTable.size // 2
+    use3D = nPairs > 0 and not (int(options.NSinos) < int(options.TotSinos))
+    if use3D:
+        nSubsets = 2 * maara
+        nDirect = int(segmentTable[0])
+        # First plane and number of planes of the first member of each segment pair
+        firstPlane = [int(np.sum(segmentTable[:(rd + 1) * 2 - 1])) for rd in range(nPairs)]
+        nPlanes = [int(segmentTable[1 + rd * 2]) for rd in range(nPairs)]
+    else:
+        nSubsets = maara
+        nDirect = int(options.NSinos)
+    index = []
     pituus = []
-    for ii in range(maara):
-        # Take the indices of angles that are between the defined number of angles
-        index0.append(I[(kulma >= ii * nAngles) & (kulma < (ii + 1) * nAngles)].astype(np.int64))
-        index1.append(np.tile(index0[ii], segmentTable[0]) + np.repeat(np.arange(segmentTable[0]) * sinoLength, index0[ii].size))
-        pituus.append(index1[ii].size)
-    # 3D case
-    nSegments = segmentTable.size // 2
-    ringDiff = np.zeros(int(np.ceil(segmentTable.size / 2)), dtype=np.int64)
-    index2 = []
-    for kk in range(nSegments):
-        ringDiff[kk + 1] = (ringDiff[kk] + int(matlabRound(0.7 * segmentTable.size / 2))) % (nSegments + 1)
-        while np.any(ringDiff[kk + 1] == ringDiff[:kk + 1]):
-            ringDiff[kk + 1] += 1
-        ll = 0
-        alku = int(np.sum(segmentTable[:ringDiff[kk + 1] * 2 - 1])) * sinoLength
-        kerroin = 0
-        nPlanes = int(segmentTable[1 + (ringDiff[kk + 1] - 1) * 2])
-        for ii in range(maara2):
-            planes = np.arange(nPlanes * kerroin, nPlanes * (kerroin + 1)) * sinoLength + alku
-            index2.append(np.tile(index0[ll], nPlanes) + np.repeat(planes, index0[ll].size))
-            pituus.append(index2[-1].size)
-            # If the "other" segment (segment tables have two 3D components
-            # of identical sizes) is reached, the angle is increased from
-            # 180 to 360
-            if (ll + 1) % maara == 0:
-                ll = 0
-                kerroin = 1
-            else:
-                ll += 1
-    index = np.concatenate(index1 + index2).astype(tyyppi)
+    for kk in range(nSubsets):
+        j = kk % maara
+        par = kk // maara
+        bins = np.flatnonzero((kulma >= j * nAngles) & (kulma < (j + 1) * nAngles)).astype(np.int64)
+        if use3D:
+            planes = [np.arange(par, nDirect, 2, dtype=np.int64)]
+            for rd in range(nPairs):
+                planes.append(firstPlane[rd] + nPlanes[rd] * par + np.arange(nPlanes[rd], dtype=np.int64))
+            planes = np.concatenate(planes)
+        else:
+            planes = np.arange(nDirect, dtype=np.int64)
+        ind = (planes[:, None] * sinoLength + bins[None, :]).ravel()
+        index.append(ind)
+        pituus.append(ind.size)
+    index = np.concatenate(index).astype(tyyppi)
     return index, np.asarray(pituus, dtype=np.int64)
 
 
@@ -393,8 +409,8 @@ def indexMaker(options):
     This function is used to generate the subset indices for the selected 
     subsetType. Subset types 6 and 7 are supported only for sinogram
     data (not raw/list-mode data) and type 6 can change options.subsets (the
-    number of subsets is then 180 / n_angles for the direct planes or the
-    total number of angle groups).
+    number of subsets is then 180 / n_angles for 2D data or 360 / n_angles for
+    3D data).
 
     Parameters
     ----------
@@ -529,12 +545,8 @@ def indexMaker(options):
             options.index, lengths = _subsetAngles(options, tyyppi)
             subsets = lengths.size
             if options.NSinos < options.TotSinos:
-                if options.NSinos == int(np.asarray(options.Nz).ravel()[0]):
-                    subsets = int(180 / options.n_angles)
-                    # Only the direct planes are used, i.e. the first subsets groups
-                    lengths = lengths[:subsets]
-                    options.index = options.index[:Ndist * Nang * NSinos]
-                else:
+                # Only the direct planes are used (180 / n_angles subsets)
+                if options.NSinos != int(np.asarray(options.Nz).ravel()[0]):
                     raise ValueError('Number of sinograms with subset type 6 has to be either ' + str(int(np.asarray(options.Nz).ravel()[0])) + ' or ' + str(options.TotSinos))
             options.nMeas = lengths.astype(np.int64).reshape((subsets, 1))
             # Use golden angle sampling

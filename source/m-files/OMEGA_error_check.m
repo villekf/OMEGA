@@ -402,6 +402,12 @@ if ~options.CT && ~options.SPECT && ~options.listmode && ~isListModeCandidate &&
         && options.subsets > 1 && ismember(options.subset_type, [3, 6, 7]) && options.NSinos > 65536
     error('Subset types 3, 6 and 7 support at most 65536 sinogram planes (the plane index is stored as 16-bit); use another subset type, fewer planes (larger span) or a single subset.')
 end
+% Subset type 6 groups n_angles degrees per subset (180/n_angles subsets for 2D and 360/n_angles for 3D data)
+if ~options.CT && ~options.SPECT && ~options.listmode && ~isListModeCandidate && ~options.useIndexBasedReconstruction && ~options.use_raw_data ...
+        && options.subsets > 1 && options.subset_type == 6 && (~isfield(options, 'n_angles') || ~isscalar(options.n_angles) ...
+        || options.n_angles < 1 || mod(180, options.n_angles) ~= 0)
+    error('Subset type 6 requires options.n_angles to be a positive number that divides 180 evenly!')
+end
 if ~options.CT && ~options.SPECT && options.reconstruct_trues && options.reconstruct_scatter
     warning('Both reconstruct trues and scatter selected, reconstructing only trues.')
     options.reconstruct_scatter = false;
