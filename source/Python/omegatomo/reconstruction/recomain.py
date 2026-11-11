@@ -820,7 +820,13 @@ def reconstructions_main(options):
         options.SinM = _selectPrecorrectedMeasurement(options, npzGet)
         _loadDelayedMeasurement(options, npzGet, varList.files)
     elif not options.corrections_during_reconstruction and not options.precorrect and (options.randoms_correction or options.scatter_correction or options.normalization_correction):
-        print('Corrections selected and measurement data found. The input measurement data WILL NOT BE PRECORRECTED!!!!!! If you wish to have OMEGA-based precorrection, make sure options.precorrect = True')
+        if options.precorrect is None:
+            options.precorrect = True
+            print('Corrections selected and options.corrections_during_reconstruction = False: the input measurement data is precorrected (as in MATLAB). Set options.precorrect = False if the data has already been corrected.')
+        else:
+            print('Corrections selected and measurement data found, but options.precorrect = False was set explicitly. The input measurement data WILL NOT BE PRECORRECTED!!!!!! If you wish to have OMEGA-based precorrection, make sure options.precorrect = True')
+    if options.precorrect is None:
+        options.precorrect = False
     if options.randoms_correction and not options.reconstruct_scatter and not options.reconstruct_trues and options.SinDelayed.size < 1:
         import tkinter as tk
         from tkinter.filedialog import askopenfilename
@@ -967,9 +973,7 @@ def reconstructions_main(options):
         options.use_64bit_atomics = False
     if options.use_32bit_atomics and (options.useCPU or options.useCUDA):
         options.use_32bit_atomics = False
-    if options.storeMultiResolution:
-        output = np.zeros(int(np.sum(options.N) * options.Nt), dtype=np.float32, order = 'F')
-    elif options.useMultiResolutionVolumes:
+    if options.useMultiResolutionVolumes:
         output = np.zeros(options.NxOrig * options.NyOrig * options.NzOrig * options.Nt, dtype=np.float32, order = 'F')
     else:
         output = np.zeros(options.Nx[0].item() * options.Ny[0].item() * options.Nz[0].item() * options.Nt, dtype=np.float32, order = 'F')
@@ -1060,9 +1064,9 @@ def reconstructions_main(options):
             numSaves = int(options.Niter) + 1
         else:
             numSaves = 1
-        if options.useMultiResolutionVolumes and not options.storeMultiResolution:
+        if options.useMultiResolutionVolumes:
             output = output.reshape((options.NxOrig, options.NyOrig, options.NzOrig, -1), order = 'F')
-        elif not options.storeMultiResolution and options.Nt == 1:
+        elif options.Nt == 1:
             output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], -1), order = 'F')
         elif numSaves > 1:
             # Memory layout (fastest to slowest): spatial voxels, timestep, save index

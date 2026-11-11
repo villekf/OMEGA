@@ -565,7 +565,6 @@ class projectorClass:
     RDP_referenceImage = ''
     useMultiResolutionVolumes = False
     nMultiVolumes = 0
-    storeMultiResolution = False
     extrapLength = None
     # Per-direction override of extrapLength, used by CTEFOVCorrection. None
     # means "not specified", i.e. fall back to extrapLength (and, failing
@@ -656,7 +655,9 @@ class projectorClass:
     TOFIndices = np.empty(0, dtype = np.uint8)
     useParallelBeam = False
     builtin = True
-    precorrect = False
+    # None: not set by the user, the measurement data is precorrected when corrections_during_reconstruction is False
+    # (as in MATLAB). An explicit False keeps the input data uncorrected (for data that has already been corrected)
+    precorrect = None
     seed = -1
     useHelical = False
     helicalRadius = 0.
