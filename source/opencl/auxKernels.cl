@@ -25,14 +25,6 @@
 #ifndef LTYPE3
 #define LTYPE3 int3
 #endif
-// 64-bit integer type, used for the element counts that the host always passes as 64-bit integers
-#ifndef LTYPE64
-#if defined(CUDA) || defined(HIP)
-#define LTYPE64 long long
-#else
-#define LTYPE64 long
-#endif
-#endif
 
 // The total size of the local/shared memory region
 #if defined(NLM_) || defined(NLM4_)
@@ -960,70 +952,6 @@ DEVICE void forwardDiffZ2(float* apuVal, const LTYPE3 xyz, const int3 N, const C
 #ifndef DIFFTYPE 
 #define DIFFTYPE 0
 #endif
-// Computing q of proximal TV (see http://dx.doi.org/10.1088/0031-9155/57/10/3065)
-KERN
-void ProxTVq(CLGLOBAL float* inputX, CLGLOBAL float* inputY, CLGLOBAL float* inputZ, const float alpha, const LTYPE64 N) {
-	LTYPE64 idx = GID0;
-	if (idx >= N)
-		return;
-	const float3 apu = MFLOAT3(inputX[idx], inputY[idx], inputZ[idx]);
-#ifdef L2 // START L2
-// L2 norm
-	const float scale = fmax(FLOAT_ONE, length(apu) / alpha);
-	inputX[idx] = apu.x / scale;
-	inputY[idx] = apu.y / scale;
-	inputZ[idx] = apu.z / scale;
-#else
-// L1 norm (anisotropic): the projection is a separate clamp of each component to [-alpha, alpha]
-	inputX[idx] = apu.x / fmax(FLOAT_ONE, fabs(apu.x) / alpha);
-	inputY[idx] = apu.y / fmax(FLOAT_ONE, fabs(apu.y) / alpha);
-	inputZ[idx] = apu.z / fmax(FLOAT_ONE, fabs(apu.z) / alpha);
-#endif // END L2
-}
-
-#ifdef PROXTGV // START PROXTGV
-KERN
-// Same as above, but for TGV
-// TGVZ refers to full 3D TGV, i.e. it takes into account x-, y- and z-axis voxels
-#ifdef TGVZ
-void ProxTGVq(CLGLOBAL float* inputX, CLGLOBAL float* inputY, CLGLOBAL float* inputZ, CLGLOBAL float* input2XY, CLGLOBAL float* input2XZ, CLGLOBAL float* input2YZ, const float alpha, const LTYPE64 N) {
-#else
-void ProxTGVq(CLGLOBAL float* inputX, CLGLOBAL float* inputY, CLGLOBAL float* input2XY, const float alpha, const LTYPE64 N) {
-#endif
-	LTYPE64 idx = GID0;
-	if (idx >= N)
-		return;
-#ifdef TGVZ
-	const float3 apu = MFLOAT3(inputX[idx], inputY[idx], inputZ[idx]);
-	const float3 apu2 = MFLOAT3(input2XY[idx], input2XZ[idx], input2YZ[idx]);
-#else
-	const float3 apu = MFLOAT3(inputX[idx], inputY[idx], FLOAT_ZERO);
-	const float3 apu2 = MFLOAT3(input2XY[idx], FLOAT_ZERO, FLOAT_ZERO);
-#endif
-#ifdef L2 // START L2
-	const float scale = fmax(FLOAT_ONE, SQRT(apu.x * apu.x + apu.y * apu.y + apu.z * apu.z + (apu2.x * apu2.x) * FLOAT_TWO + (apu2.y * apu2.y) * FLOAT_TWO + (apu2.z * apu2.z) * FLOAT_TWO) / alpha);
-	inputX[idx] = apu.x / scale;
-	inputY[idx] = apu.y / scale;
-	input2XY[idx] = apu2.x / scale;
-#ifdef TGVZ
-	inputZ[idx] = apu.z / scale;
-	input2XZ[idx] = apu2.y / scale;
-	input2YZ[idx] = apu2.z / scale;
-#endif
-#else
-// L1 norm (anisotropic): the projection is a separate clamp of each component to [-alpha, alpha]
-	inputX[idx] = apu.x / fmax(FLOAT_ONE, fabs(apu.x) / alpha);
-	inputY[idx] = apu.y / fmax(FLOAT_ONE, fabs(apu.y) / alpha);
-	input2XY[idx] = apu2.x / fmax(FLOAT_ONE, fabs(apu2.x) / alpha);
-#ifdef TGVZ
-	inputZ[idx] = apu.z / fmax(FLOAT_ONE, fabs(apu.z) / alpha);
-	input2XZ[idx] = apu2.y / fmax(FLOAT_ONE, fabs(apu2.y) / alpha);
-	input2YZ[idx] = apu2.z / fmax(FLOAT_ONE, fabs(apu2.z) / alpha);
-#endif
-#endif // END L2
-}
-#endif // END PROXTGV
-
 // Proximal TV divergence
 KERNEL3
 void ProxTVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRESTRICT gradX, const CLGLOBAL float* CLRESTRICT gradY, const CLGLOBAL float* CLRESTRICT gradZ, CLGLOBAL float* output
@@ -1076,9 +1004,9 @@ void ProxTVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 	output[x] -= apuVal;
 }
 
-// Proximal TV or TGV gradient computation
+// Proximal TV or TGV gradient computation, i.e. the dual update with the projection
 KERNEL3
-void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRESTRICT im, CLGLOBAL float* outputX, CLGLOBAL float* outputY, CLGLOBAL float* outputZ, const float sigma2
+void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRESTRICT im, CLGLOBAL float* outputX, CLGLOBAL float* outputY, CLGLOBAL float* outputZ, const float sigma2, const float alpha
 #ifdef PROXTGV
 #ifdef TGVZ
 	, const CLGLOBAL float* CLRESTRICT vX, const CLGLOBAL float* CLRESTRICT vY, const CLGLOBAL float* CLRESTRICT vZ
@@ -1111,7 +1039,6 @@ void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLREST
 #endif
 		
 	const LTYPE x = xyz.x + xyz.y * N.x + xyz.z * N.x * N.y;
-	float apuVal = FLOAT_ZERO;
 	float imApu = im[x];
 #if defined(EFOVZ)
 	const LTYPE3 NDiff = (N - NOrig) / 2;
@@ -1119,69 +1046,58 @@ void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLREST
 #else
 	const LTYPE y = x;
 #endif
-////////////////////////
-// Forward difference //
-////////////////////////
+	// Differences of the image
+	float dX = FLOAT_ZERO;
+	float dY = FLOAT_ZERO;
+	float dZ = FLOAT_ZERO;
 #if DIFFTYPE == 0 // START DIFFTYPE == 0
-	forwardDiffX2(&apuVal, xyz, N, im, imApu);
-#ifdef PROXTGV
-	apuVal -= vX[y];
-#endif
-	apuVal *=  sigma2;
-	outputX[y] += apuVal;
-	apuVal = FLOAT_ZERO;
-	forwardDiffY2(&apuVal, xyz, N, im, imApu);
-#ifdef PROXTGV
-	apuVal -= vY[y];
-#endif
-	apuVal *=  sigma2;
-	outputY[y] += apuVal;
-	apuVal = FLOAT_ZERO;
-	forwardDiffZ2(&apuVal, xyz, N, im, imApu);
-#if defined(PROXTGV) && defined(TGVZ)
-	apuVal -= vZ[y];
-#endif
-	apuVal *=  sigma2;
-	outputZ[y] += apuVal;
-/////////////////////////
-// Backward difference //
-/////////////////////////
+	// Forward difference
+	forwardDiffX2(&dX, xyz, N, im, imApu);
+	forwardDiffY2(&dY, xyz, N, im, imApu);
+	forwardDiffZ2(&dZ, xyz, N, im, imApu);
 #elif DIFFTYPE == 1 // START DIFFTYPE == 1
-	backwardDiffX2(&apuVal, xyz, N, im, imApu);
-#ifdef PROXTGV
-	apuVal -= vX[y];
-#endif
-	apuVal *=  sigma2;
-	outputX[y] += apuVal;
-	apuVal = FLOAT_ZERO;
-	backwardDiffY2(&apuVal, xyz, N, im, imApu);
-#ifdef PROXTGV
-	apuVal -= vY[y];
-#endif
-	apuVal *=  sigma2;
-	outputY[y] += apuVal;
-	apuVal = FLOAT_ZERO;
-	backwardDiffZ2(&apuVal, xyz, N, im, imApu);
-#if defined(PROXTGV) && defined(TGVZ)
-	apuVal -= vZ[y];
-#endif
-	apuVal *=  sigma2;
-	outputZ[y] += apuVal;
+	// Backward difference
+	backwardDiffX2(&dX, xyz, N, im, imApu);
+	backwardDiffY2(&dY, xyz, N, im, imApu);
+	backwardDiffZ2(&dZ, xyz, N, im, imApu);
 #else
 #endif // END DIFFTYPE
+#ifdef PROXTGV
+	dX -= vX[y];
+	dY -= vY[y];
+#ifdef TGVZ
+	dZ -= vZ[y];
+#endif
+#endif
+	// Dual update
+	const float3 apu = MFLOAT3(outputX[y] + dX * sigma2, outputY[y] + dY * sigma2, outputZ[y] + dZ * sigma2);
+	// Projection to the L2 or L1 ball (see http://dx.doi.org/10.1088/0031-9155/57/10/3065)
+	// Voxels skipped above keep their previous, already projected, values
+#ifdef L2 // START L2
+// L2 norm
+	const float scale = fmax(FLOAT_ONE, length(apu) / alpha);
+	outputX[y] = apu.x / scale;
+	outputY[y] = apu.y / scale;
+	outputZ[y] = apu.z / scale;
+#else
+// L1 norm (anisotropic): the projection is a separate clamp of each component to [-alpha, alpha]
+	outputX[y] = apu.x / fmax(FLOAT_ONE, fabs(apu.x) / alpha);
+	outputY[y] = apu.y / fmax(FLOAT_ONE, fabs(apu.y) / alpha);
+	outputZ[y] = apu.z / fmax(FLOAT_ONE, fabs(apu.z) / alpha);
+#endif // END L2
 }
 #endif // END PROXTV
 
 #ifdef PROXTGV // START PROXTGV
 KERNEL3
-// Symmetric derivative for TGV
+// Symmetric derivative for TGV, i.e. the dual update with the projection
 void ProxTGVSymmDeriv(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRESTRICT vX, const CLGLOBAL float* CLRESTRICT vY, 
 #ifdef TGVZ
 	const CLGLOBAL float* CLRESTRICT vZ, CLGLOBAL float* qX, CLGLOBAL float* qY, CLGLOBAL float* qZ, CLGLOBAL float* q2XY, CLGLOBAL float* q2XZ, CLGLOBAL float* q2YZ, 
 #else
 	CLGLOBAL float* qX, CLGLOBAL float* qY, CLGLOBAL float* q2XY, 
 #endif
-	const float sigma2
+	const float sigma2, const float alpha
 #ifdef MASKPRIOR
 	, MASKBPTYPE maskBP
 #endif
@@ -1201,92 +1117,83 @@ void ProxTGVSymmDeriv(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 #endif
 		
 	const LTYPE x = xyz.x + xyz.y * NOrig.x + xyz.z * NOrig.x * NOrig.y;
-/////////////// X ///////////////
-	float apuVal = FLOAT_ZERO;
-	float imApuX = vX[x];
-// Forward difference
+	const float imApuX = vX[x];
+	const float imApuY = vY[x];
+	float dXX = FLOAT_ZERO;
+	float dYY = FLOAT_ZERO;
+	float dXY = FLOAT_ZERO;
+#ifdef TGVZ
+	const float imApuZ = vZ[x];
+	float dZZ = FLOAT_ZERO;
+	float dXZ = FLOAT_ZERO;
+	float dYZ = FLOAT_ZERO;
+#endif
 #if DIFFTYPE == 0 // START DIFFTYPE == 0
-	forwardDiffX2(&apuVal, xyz, NOrig, vX, imApuX);
-	apuVal *= sigma2;
-	qX[x] += apuVal;
-/////////////// Y ///////////////
-	apuVal = FLOAT_ZERO;
-	float imApuY = vY[x];
-	forwardDiffY2(&apuVal, xyz, NOrig, vY, imApuY);
-	apuVal *= sigma2;
-	qY[x] += apuVal;
+	// Forward difference
+	forwardDiffX2(&dXX, xyz, NOrig, vX, imApuX);
+	forwardDiffY2(&dYY, xyz, NOrig, vY, imApuY);
+	// XY/YX
+	forwardDiffY2(&dXY, xyz, NOrig, vX, imApuX);
+	forwardDiffX2(&dXY, xyz, NOrig, vY, imApuY);
 #ifdef TGVZ
-/////////////// Z ///////////////
-	apuVal = FLOAT_ZERO;
-	float imApuZ = vZ[x];
-	forwardDiffZ2(&apuVal, xyz, NOrig, vZ, imApuZ);
-	apuVal *= sigma2;
-	qZ[x] += apuVal;
+	forwardDiffZ2(&dZZ, xyz, NOrig, vZ, imApuZ);
+	// XZ/ZX
+	forwardDiffZ2(&dXZ, xyz, NOrig, vX, imApuX);
+	forwardDiffX2(&dXZ, xyz, NOrig, vZ, imApuZ);
+	// YZ/ZY
+	forwardDiffZ2(&dYZ, xyz, NOrig, vY, imApuY);
+	forwardDiffY2(&dYZ, xyz, NOrig, vZ, imApuZ);
 #endif
-/////////////// XY/YX ///////////////
-	apuVal = FLOAT_ZERO;
-	forwardDiffY2(&apuVal, xyz, NOrig, vX, imApuX);
-	forwardDiffX2(&apuVal, xyz, NOrig, vY, imApuY);
-	apuVal *= sigma2 * FLOAT_HALF;
-	q2XY[x] += apuVal;
-#ifdef TGVZ
-/////////////// XZ/ZX ///////////////
-	apuVal = FLOAT_ZERO;
-	forwardDiffZ2(&apuVal, xyz, NOrig, vX, imApuX);
-	forwardDiffX2(&apuVal, xyz, NOrig, vZ, imApuZ);
-	apuVal *= sigma2 * FLOAT_HALF;
-	q2XZ[x] += apuVal;
-/////////////// YZ/ZY ///////////////
-	apuVal = FLOAT_ZERO;
-	forwardDiffZ2(&apuVal, xyz, NOrig, vY, imApuY);
-	forwardDiffY2(&apuVal, xyz, NOrig, vZ, imApuZ);
-	apuVal *= sigma2 * FLOAT_HALF;
-	q2YZ[x] += apuVal;
-#endif
-/////////////////////////
-// Backward difference //
-/////////////////////////
 #elif DIFFTYPE == 1 // START DIFFTYPE == 1
-	backwardDiffX2(&apuVal, xyz, NOrig, vX, imApuX);
-	apuVal *= sigma2;
-	qX[x] += apuVal;
-/////////////// Y ///////////////
-	apuVal = FLOAT_ZERO;
-	float imApuY = vY[x];
-	backwardDiffY2(&apuVal, xyz, NOrig, vY, imApuY);
-	apuVal *= sigma2;
-	qY[x] += apuVal;
+	// Backward difference
+	backwardDiffX2(&dXX, xyz, NOrig, vX, imApuX);
+	backwardDiffY2(&dYY, xyz, NOrig, vY, imApuY);
+	// XY/YX
+	backwardDiffY2(&dXY, xyz, NOrig, vX, imApuX);
+	backwardDiffX2(&dXY, xyz, NOrig, vY, imApuY);
 #ifdef TGVZ
-/////////////// Z ///////////////
-	apuVal = FLOAT_ZERO;
-	float imApuZ = vZ[x];
-	backwardDiffZ2(&apuVal, xyz, NOrig, vZ, imApuZ);
-	apuVal *= sigma2;
-	qZ[x] += apuVal;
+	backwardDiffZ2(&dZZ, xyz, NOrig, vZ, imApuZ);
+	// XZ/ZX
+	backwardDiffZ2(&dXZ, xyz, NOrig, vX, imApuX);
+	backwardDiffX2(&dXZ, xyz, NOrig, vZ, imApuZ);
+	// YZ/ZY
+	backwardDiffZ2(&dYZ, xyz, NOrig, vY, imApuY);
+	backwardDiffY2(&dYZ, xyz, NOrig, vZ, imApuZ);
 #endif
-/////////////// XY/YX ///////////////
-	apuVal = FLOAT_ZERO;
-	backwardDiffY2(&apuVal, xyz, NOrig, vX, imApuX);
-	backwardDiffX2(&apuVal, xyz, NOrig, vY, imApuY);
-	apuVal *=  sigma2 * FLOAT_HALF;
-	q2XY[x] += apuVal;
-#ifdef TGVZ
-/////////////// XZ/ZX ///////////////
-	apuVal = FLOAT_ZERO;
-	backwardDiffZ2(&apuVal, xyz, NOrig, vX, imApuX);
-	backwardDiffX2(&apuVal, xyz, NOrig, vZ, imApuZ);
-	apuVal *=  sigma2 * FLOAT_HALF;
-	q2XZ[x] += apuVal;
-/////////////// YZ/ZY ///////////////
-	apuVal = FLOAT_ZERO;
-	backwardDiffZ2(&apuVal, xyz, NOrig, vY, imApuY);
-	backwardDiffY2(&apuVal, xyz, NOrig, vZ, imApuZ);
-	apuVal *=  sigma2 * FLOAT_HALF;
-	q2YZ[x] += apuVal;
-#endif
-// Central difference?
 #else
 #endif // END DIFFTYPE
+	// Dual update
+	const float sigmaHalf = sigma2 * FLOAT_HALF;
+#ifdef TGVZ
+	const float3 apu = MFLOAT3(qX[x] + dXX * sigma2, qY[x] + dYY * sigma2, qZ[x] + dZZ * sigma2);
+	const float3 apu2 = MFLOAT3(q2XY[x] + dXY * sigmaHalf, q2XZ[x] + dXZ * sigmaHalf, q2YZ[x] + dYZ * sigmaHalf);
+#else
+	const float3 apu = MFLOAT3(qX[x] + dXX * sigma2, qY[x] + dYY * sigma2, FLOAT_ZERO);
+	const float3 apu2 = MFLOAT3(q2XY[x] + dXY * sigmaHalf, FLOAT_ZERO, FLOAT_ZERO);
+#endif
+	// Projection to the L2 or L1 ball
+	// Voxels skipped above keep their previous, already projected, values
+#ifdef L2 // START L2
+	const float scale = fmax(FLOAT_ONE, SQRT(apu.x * apu.x + apu.y * apu.y + apu.z * apu.z + (apu2.x * apu2.x) * FLOAT_TWO + (apu2.y * apu2.y) * FLOAT_TWO + (apu2.z * apu2.z) * FLOAT_TWO) / alpha);
+	qX[x] = apu.x / scale;
+	qY[x] = apu.y / scale;
+	q2XY[x] = apu2.x / scale;
+#ifdef TGVZ
+	qZ[x] = apu.z / scale;
+	q2XZ[x] = apu2.y / scale;
+	q2YZ[x] = apu2.z / scale;
+#endif
+#else
+// L1 norm (anisotropic): the projection is a separate clamp of each component to [-alpha, alpha]
+	qX[x] = apu.x / fmax(FLOAT_ONE, fabs(apu.x) / alpha);
+	qY[x] = apu.y / fmax(FLOAT_ONE, fabs(apu.y) / alpha);
+	q2XY[x] = apu2.x / fmax(FLOAT_ONE, fabs(apu2.x) / alpha);
+#ifdef TGVZ
+	qZ[x] = apu.z / fmax(FLOAT_ONE, fabs(apu.z) / alpha);
+	q2XZ[x] = apu2.y / fmax(FLOAT_ONE, fabs(apu2.y) / alpha);
+	q2YZ[x] = apu2.z / fmax(FLOAT_ONE, fabs(apu2.z) / alpha);
+#endif
+#endif // END L2
 }
 
 // TGV divergence

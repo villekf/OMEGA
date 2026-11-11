@@ -1252,11 +1252,9 @@ inline int GGMRFAF(af::array&, const af::array&, const scalarStruct&, const floa
 	const float, const Weighting&, const int = 0) { return -1; }
 inline int TVAF(af::array&, const af::array&, const scalarStruct&, const float, const TVdata&, ProjectorClass&, const float, const Weighting&, const int = 0) { return -1; }
 inline int hyperAF(af::array&, const af::array&, const scalarStruct&, const float, ProjectorClass&, const float, const Weighting&, const int = 0) { return -1; }
-inline int proxTVQAF(std::vector<af::array>&, const float, ProjectorClass&) { return -1; }
-inline int proxTGVQAF(std::vector<af::array>&, const scalarStruct&, const float, ProjectorClass&) { return -1; }
 inline int proxTVDivAF(const std::vector<af::array>&, af::array&, const scalarStruct&, ProjectorClass&, const uint32_t) { return -1; }
-inline int proxTVGradAF(const af::array&, std::vector<af::array>&, const scalarStruct&, const float, const std::vector<af::array>&, ProjectorClass&) { return -1; }
-inline int proxTGVSymmDerivAF(const std::vector<af::array>&, std::vector<af::array>&, const scalarStruct&, const float, ProjectorClass&) { return -1; }
+inline int proxTVGradAF(const af::array&, std::vector<af::array>&, const scalarStruct&, const float, const float, const std::vector<af::array>&, ProjectorClass&) { return -1; }
+inline int proxTGVSymmDerivAF(const std::vector<af::array>&, std::vector<af::array>&, const scalarStruct&, const float, const float, ProjectorClass&) { return -1; }
 inline int proxTGVDivAF(const std::vector<af::array>&, std::vector<af::array>&, std::vector<af::array>&, const scalarStruct&,
 	const float, const float, ProjectorClass&) { return -1; }
 inline int poissonUpdateAF(af::array&, const af::array&, const scalarStruct&, const float, const float, const float, ProjectorClass&, const int = 0) { return -1; }
@@ -1717,63 +1715,6 @@ inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inp
 
 
 #ifndef CPU
-// Proximal TV
-inline int proxTVQAF(std::vector<af::array>& q, const float alpha, ProjectorClass& proj) {
-	int status = 0;
-	uint64_t globalQ = q[0].elements();
-	if (DEBUG) {
-		mexPrintBase("globalQ = %u\n", globalQ);
-		mexPrintBase("q.elements() = %u\n", q[0].elements());
-		mexEval();
-	}
-	proj.d_qX = transferAF(q[0]);
-	proj.d_qY = transferAF(q[1]);
-	proj.d_qZ = transferAF(q[2]);
-	status = proj.ProxTVHelperQ(alpha, globalQ);
-	q[0].unlock();
-	q[1].unlock();
-	q[2].unlock();
-	if (status != 0) {
-		return -1;
-	}
-	return status;
-}
-
-// Proximal TGV
-inline int proxTGVQAF(std::vector<af::array>& r, const scalarStruct& inputScalars, const float alpha, ProjectorClass& proj) {
-	int status = 0;
-	uint64_t globalQ = r[0].elements();
-	if (DEBUG) {
-		mexPrintBase("globalQ = %u\n", globalQ);
-		mexPrintBase("q.elements() = %u\n", r[0].elements());
-		mexEval();
-	}
-	proj.d_rX = transferAF(r[0]);
-	proj.d_rY = transferAF(r[1]);
-	if (!inputScalars.TGV2D) {
-		proj.d_rZ = transferAF(r[2]);
-		proj.d_rXY = transferAF(r[3]);
-		proj.d_rXZ = transferAF(r[4]);
-		proj.d_rYZ = transferAF(r[5]);
-	}
-	else {
-		proj.d_rXY = transferAF(r[2]);
-	}
-	status = proj.ProxTGVHelperQ(inputScalars, alpha, globalQ);
-	r[0].unlock();
-	r[1].unlock();
-	r[2].unlock();
-	if (!inputScalars.TGV2D) {
-		r[3].unlock();
-		r[4].unlock();
-		r[5].unlock();
-	}
-	if (status != 0) {
-		return -1;
-	}
-	return status;
-}
-
 // Proximal TV divergence
 inline int proxTVDivAF(const std::vector<af::array>& grad, af::array& input, const scalarStruct& inputScalars, ProjectorClass& proj, const uint32_t timestep) {
 	int status = 0;
@@ -1800,7 +1741,7 @@ inline int proxTVDivAF(const std::vector<af::array>& grad, af::array& input, con
 }
 
 // Proximal TV gradient
-inline int proxTVGradAF(const af::array& im, std::vector<af::array>& grad, const scalarStruct& inputScalars, const float sigma2, const std::vector<af::array>& v, ProjectorClass& proj) {
+inline int proxTVGradAF(const af::array& im, std::vector<af::array>& grad, const scalarStruct& inputScalars, const float sigma2, const float alpha, const std::vector<af::array>& v, ProjectorClass& proj) {
 	int status = 0;
 	if (DEBUG) {
 		mexPrintBase("output.dims(0) = %u\n", grad[0].dims(0));
@@ -1828,7 +1769,7 @@ inline int proxTVGradAF(const af::array& im, std::vector<af::array>& grad, const
 		if (!inputScalars.TGV2D)
 			proj.d_vZ = transferAF(v[2]);
 	}
-	status = proj.ProxTVGrad(inputScalars, sigma2, vSize);
+	status = proj.ProxTVGrad(inputScalars, sigma2, alpha, vSize);
 	grad[0].unlock();
 	grad[1].unlock();
 	grad[2].unlock();
@@ -1847,7 +1788,7 @@ inline int proxTVGradAF(const af::array& im, std::vector<af::array>& grad, const
 }
 
 // Proximal TGV symmetric derivative
-inline int proxTGVSymmDerivAF(const std::vector<af::array>& v, std::vector<af::array>& q, const scalarStruct& inputScalars, const float sigma2, ProjectorClass& proj) {
+inline int proxTGVSymmDerivAF(const std::vector<af::array>& v, std::vector<af::array>& q, const scalarStruct& inputScalars, const float sigma2, const float alpha, ProjectorClass& proj) {
 	int status = 0;
 	if (DEBUG) {
 		mexPrintBase("input.dims(0) = %u\n", v[0].dims(0));
@@ -1880,7 +1821,7 @@ inline int proxTGVSymmDerivAF(const std::vector<af::array>& v, std::vector<af::a
 	proj.d_vY = transferAF(v[1]);
 	if (!inputScalars.TGV2D)
 		proj.d_vZ = transferAF(v[2]);
-	status = proj.ProxTGVSymmDeriv(inputScalars, sigma2);
+	status = proj.ProxTGVSymmDeriv(inputScalars, sigma2, alpha);
 	v[0].unlock();
 	v[1].unlock();
 	if (!inputScalars.TGV2D)

@@ -2098,7 +2098,6 @@ class ProjectorClass {
 		}
 #if !defined(METAL)
 		if (MethodList.ProxTV) {
-			GET_KERNEL(kernelProxTVq, programAux, "ProxTVq");
 			GET_KERNEL(kernelProxTVDiv, programAux, "ProxTVDivergence");
 			GET_KERNEL(kernelProxTVGrad, programAux, "ProxTVGradient");
 			CHECK(status, "Failed to create proximal TV kernel\n", status);
@@ -2107,8 +2106,6 @@ class ProjectorClass {
 			}
 		}
 		if (MethodList.ProxTGV) {
-			GET_KERNEL(kernelProxTVq, programAux, "ProxTVq");
-			GET_KERNEL(kernelProxTGVq, programAux, "ProxTGVq");
 			GET_KERNEL(kernelProxTVDiv, programAux, "ProxTVDivergence");
 			GET_KERNEL(kernelProxTVGrad, programAux, "ProxTVGradient");
 			GET_KERNEL(kernelProxTGVDiv, programAux, "ProxTGVDivergence");
@@ -2472,8 +2469,8 @@ public:
 	std::vector<cl::CommandQueue> CLCommandQueue;
 	OpenCL_im_vectors vec_opencl;
 #endif // END CUDA
-	KERNELHANDLE_t kernelMBSREM, kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelProxTVq, kernelProxTVDiv, kernelProxTVGrad, 
-		kernelElementMultiply, kernelElementDivision, kernelTV, kernelProxTGVSymmDeriv, kernelProxTGVDiv, kernelProxTGVq, kernelPoisson, 
+	KERNELHANDLE_t kernelMBSREM, kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelProxTVDiv, kernelProxTVGrad, 
+		kernelElementMultiply, kernelElementDivision, kernelTV, kernelProxTGVSymmDeriv, kernelProxTGVDiv, kernelPoisson, 
 		kernelPDHG, kernelGGMRF, kernelsumma, kernelEstimate, kernelPSF, 
 		kernelPSFf, kernelDiv, kernelMult, kernelForward, kernelSensList, kernelApu, kernelHyper, kernelRotate;
 	// Device buffers shared across backends
@@ -6995,83 +6992,6 @@ public:
 
 
 	/// <summary>
-	/// Compute either the projection from an L1 or L2 ball for the TV prior
-	/// </summary>
-	/// <param name="q the input TV array"></param>
-	/// <param name="alpha the regularization parameter"></param>
-	/// <param name="L2Ball if true, computes the projection from an L2 ball, otherwise from the L1 ball"></param>
-	/// <returns></returns>
-#if defined(CUDA) || defined(HIP)
-	inline int ProxTVHelperQ(float alpha, const uint64_t globalQ) {
-		std::vector<void*> kArgs;
-		int64_t nQ = static_cast<int64_t>(globalQ);
-#elif defined(OPENCL)
-	inline int ProxTVHelperQ(const float alpha, const uint64_t gQ) {
-		cl::NDRange globalQ = { static_cast<cl::size_type>(gQ) };
-		UINT32_t kernelIndCPTV = 0U;
-		int64_t nQ = static_cast<int64_t>(gQ);
-#endif // END CUDA
-		STATUS_t status = SUCCESS_VALUE;
-		//FINISH_QUEUE(status, "Queue finish failed before proximal TV kernel\n", -1);
-		KARG(kArgs, kernelProxTVq, kernelIndCPTV, d_qX);
-		KARG(kArgs, kernelProxTVq, kernelIndCPTV, d_qY);
-		KARG(kArgs, kernelProxTVq, kernelIndCPTV, d_qZ);
-		KARG(kArgs, kernelProxTVq, kernelIndCPTV, alpha);
-		KARG(kArgs, kernelProxTVq, kernelIndCPTV, nQ);
-		// Compute the kernel
-#if defined(CUDA) || defined(HIP)
-		status = cuLaunchKernel(kernelProxTVq, (globalQ + 63ULL) / 64ULL, 1, 1, 64, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
-		CUDA_CHECK(status, "Failed to launch the Proximal TV kernel\n", -1);
-#elif defined(OPENCL)
-		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTVq, cl::NullRange, globalQ, cl::NullRange);
-		OCL_CHECK(status, "Failed to launch the Proximal TV kernel\n", -1);
-#endif // END CUDA
-		//FINISH_QUEUE(status, "Queue finish failed after proximal TV kernel\n", -1);
-		return status;
-	}
-
-	/// <summary>
-	/// Compute either the projection from an L1 or L2 ball for the TGV prior
-	/// </summary>
-	/// <param name="q first half of the input TGV array"></param>
-	/// <param name="q2 second half of the input TGV array"></param>
-	/// <param name="alpha the regularization parameter"></param>
-	/// <returns></returns>
-#if defined(CUDA) || defined(HIP)
-	inline int ProxTGVHelperQ(const scalarStruct & inputScalars, float alpha, const uint64_t globalQ) {
-		std::vector<void*> kArgs;
-		int64_t nQ = static_cast<int64_t>(globalQ);
-#elif defined(OPENCL)
-	inline int ProxTGVHelperQ(const scalarStruct & inputScalars, const float alpha, const uint64_t globalQ) {
-		UINT32_t kernelIndCPTV = 0U;
-		int64_t nQ = static_cast<int64_t>(globalQ);
-#endif // END CUDA
-		STATUS_t status = SUCCESS_VALUE;
-		//FINISH_QUEUE(status, "Queue finish failed before proximal TGV kernel\n", -1);
-		KARG(kArgs, kernelProxTGVq, kernelIndCPTV, d_rX);
-		KARG(kArgs, kernelProxTGVq, kernelIndCPTV, d_rY);
-		if (!inputScalars.TGV2D)
-			KARG(kArgs, kernelProxTGVq, kernelIndCPTV, d_rZ);
-		KARG(kArgs, kernelProxTGVq, kernelIndCPTV, d_rXY);
-		if (!inputScalars.TGV2D) {
-			KARG(kArgs, kernelProxTGVq, kernelIndCPTV, d_rXZ);
-			KARG(kArgs, kernelProxTGVq, kernelIndCPTV, d_rYZ);
-		}
-		KARG(kArgs, kernelProxTGVq, kernelIndCPTV, alpha);
-		KARG(kArgs, kernelProxTGVq, kernelIndCPTV, nQ);
-		// Compute the kernel
-#if defined(CUDA) || defined(HIP)
-		status = cuLaunchKernel(kernelProxTGVq, (globalQ + 63ULL) / 64ULL, 1, 1, 64, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
-		CUDA_CHECK(status, "Failed to launch the Proximal TGV kernel\n", -1);
-#elif defined(OPENCL)
-		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTGVq, cl::NullRange, globalQ, cl::NullRange);
-		OCL_CHECK(status, "Failed to launch the Proximal TGV kernel\n", -1);
-#endif // END CUDA
-		//FINISH_QUEUE(status, "Queue finish failed after TGV kernel\n", -1);
-		return status;
-	}
-
-	/// <summary>
 	/// Divergence of the TV prior
 	/// </summary>
 	/// <param name="im the input array from where the divergence is computed"></param>
@@ -7149,12 +7069,13 @@ public:
 	/// <param name="input the output TV"></param>
 	/// <param name="L2Ball if true, computes the projection from an L2 ball, otherwise from the L1 ball"></param>
 	/// <param name="sigma adjustable constant for some of the priors"></param>
+	/// <param name="alpha the radius of the ball of the projection, i.e. the regularization parameter"></param>
 	/// <param name="v divergence of the symmetric derivative for TGV"></param>
 	/// <returns></returns>
 #if defined(CUDA) || defined(HIP)
-	inline int ProxTVGrad(const scalarStruct & inputScalars, float sigma2, const size_t vSize) {
+	inline int ProxTVGrad(const scalarStruct & inputScalars, float sigma2, float alpha, const size_t vSize) {
 #elif defined(OPENCL)
-	inline int ProxTVGrad(const scalarStruct & inputScalars, const float sigma2, const size_t vSize) {
+	inline int ProxTVGrad(const scalarStruct & inputScalars, const float sigma2, const float alpha, const size_t vSize) {
 #endif // END CUDA
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrint("Starting Proximal TV gradient");
@@ -7190,6 +7111,7 @@ public:
 		KARG(kArgs, kernelProxTVGrad, kernelIndCPTV, d_qY);
 		KARG(kArgs, kernelProxTVGrad, kernelIndCPTV, d_qZ);
 		KARG(kArgs, kernelProxTVGrad, kernelIndCPTV, sigma2);
+		KARG(kArgs, kernelProxTVGrad, kernelIndCPTV, alpha);
 		if (vSize > 0) {
 			KARG(kArgs, kernelProxTVGrad, kernelIndCPTV, d_vX);
 			KARG(kArgs, kernelProxTVGrad, kernelIndCPTV, d_vY);
@@ -7234,11 +7156,12 @@ public:
 	/// <param name="q the output symmetric derivative array"></param>
 	/// <param name="inputScalars various scalar parameters defining the build parameters and what features to use"></param>
 	/// <param name="sigma2 the sigma value of CP/PDHG (1 for PKMA)"></param>
+	/// <param name="alpha the radius of the ball of the projection, i.e. the regularization parameter"></param>
 	/// <returns></returns>
 #if defined(CUDA) || defined(HIP)
-	inline int ProxTGVSymmDeriv(const scalarStruct & inputScalars, float sigma2) {
+	inline int ProxTGVSymmDeriv(const scalarStruct & inputScalars, float sigma2, float alpha) {
 #elif defined(OPENCL)
-	inline int ProxTGVSymmDeriv(const scalarStruct & inputScalars, const float sigma2) {
+	inline int ProxTGVSymmDeriv(const scalarStruct & inputScalars, const float sigma2, const float alpha) {
 #endif // END CUDA
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrint("Starting Proximal TGV symmetric derivative");
@@ -7278,6 +7201,7 @@ public:
 		else
 			KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, d_rXY);
 		KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, sigma2);
+		KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, alpha);
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
 			if (inputScalars.useBuffers) {
 				KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, d_maskPriorB);
