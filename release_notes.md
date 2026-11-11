@@ -9,6 +9,10 @@ New examples:
   - Tested with Metal (M4) and CUDA (RTX 4060)
 - PET_main_gateDualLayerExample.m and gate_PET_dualLayer.py
   - Dual-layer PET GATE example (ROOT import, sinogram and index-based reconstruction)
+- Elekta_XVI_CBCT_main.m and Elekta_XVI_CBCT_main.py
+  - Elekta XVI CBCT example using the exported projection images (```.his``` files with ```_Frames.xml```)
+  - PDHG with RDP as default, FDK with Parker weights for the short scan as alternative
+  - Uses the nominal XVI geometry
 
 New features:
 - Initial Metal support for PyTorch projection operators
@@ -105,6 +109,7 @@ New features:
   - Validation: precorrected reconstructions (LSQR, OSEM, FDK) equal the reconstructions of the same data without the gain to 2-5e-7; with the gain applied in the reconstruction, OSEM and PKMA keep the true image as a fixed point and equal the gain-free reconstruction for a constant normalization (1.2e-6)
 - CT: ```options.useLayeredBP``` (default true) stores the projections read by the backprojection of projector type 4 in a layered 2D texture instead of a 3D texture (CUDA, HIP and OpenCL; MATLAB and Python). The result is identical and the backprojection is about 2-5 % faster
   - It is switched off automatically when a subset (or, without subsets, the whole data) has more than 2048 projections, or more than the layer limit of the device, and with helical CT, largeDim and Metal
+- Elekta XVI CBCT data loader ```loadElektaXVIData``` (MATLAB and Python ```omegatomo.fileio```): reads the ```.his``` projection images and ```_Frames.xml``` (gantry angles and detector offsets of each projection, exposed frames only), supports binning and sets the nominal XVI geometry and a global flat (air) value (```options.elektaFlatPercentile```, default 99.9th percentile of the data). ```options.elektaUCentreScale``` and ```options.elektaVCentreScale``` (default 1) scale the detector offsets of the XML file
 
 Changed behaviour:
 - SPECT ray tracer projectors now normalize emission probability based on a pre-determined superellipse
@@ -427,6 +432,7 @@ Bug fixes:
   - Python projector operators: the CT backprojection with a normalization was missing the normalization argument
   - Parallel beam CT backprojection was rewritten. It did not compile without FDK, and with FDK it looped over every detector pixel for every voxel and used the cone beam distance weight (an FDK reconstruction of a cylinder was 1.92 times too high). Each voxel is now projected along the ray direction of the projection onto the detector, with the weight voxel volume / pixel area perpendicular to the ray. FDK reconstructs a cylinder to within 0.2 % for 180 and 360 degree scans, the backprojection is adjoint to the forward projection at the same level as cone beam, and it is about 15 % faster than the cone beam backprojection. Offset correction, subset type 12, the CT normalization and ```options.useLayeredBP``` work as with cone beam
   - Python projector operators: parallel beam (```options.useParallelBeam```) was ignored, so the operators silently used the cone beam geometry
+- Python: CT with one detector offset per projection (```options.detOffsetRow``` as a vector) failed when the coordinates were computed (```CTDetSource```); MATLAB was not affected
 
 ## OMEGA v2.2.0
 
