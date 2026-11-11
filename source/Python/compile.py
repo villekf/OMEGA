@@ -122,11 +122,11 @@ def CommandLine(args=None):
             openclpath = 'C:\\Program Files (x86)\\OCL_SDK_Light\\include'
             opencllib = 'C:\\Program Files (x86)\\OCL_SDK_Light\\lib\\x86_64'
         elif os.path.exists(homedir + '\\Documents\\OCL_SDK_Light'):
-            openclpath = os.path.join(homedir, '\\Documents\\OCL_SDK_Light\\include')
-            opencllib = os.path.join(homedir ,'\\Documents\\OCL_SDK_Light\\lib\\x86_64')
+            openclpath = os.path.join(homedir, 'Documents', 'OCL_SDK_Light', 'include')
+            opencllib = os.path.join(homedir, 'Documents', 'OCL_SDK_Light', 'lib', 'x86_64')
         elif os.path.exists(homedir + '\\Downloads\\OCL_SDK_Light'):
-            openclpath = os.path.join(homedir, '\\Downloads\\OCL_SDK_Light\\include')
-            opencllib = os.path.join(homedir, '\\Downloads\\OCL_SDK_Light\\lib\\x86_64')
+            openclpath = os.path.join(homedir, 'Downloads', 'OCL_SDK_Light', 'include')
+            opencllib = os.path.join(homedir, 'Downloads', 'OCL_SDK_Light', 'lib', 'x86_64')
         else:
             print('OpenCL not found! Install OpenCL library and headers, for example https://github.com/GPUOpen-LibrariesAndSDKs/OCL-SDK/releases and make sure that OCL_ROOT is set.')
         compiler = "cl.exe"
@@ -386,6 +386,7 @@ def CommandLine(args=None):
         try:
             result = subprocess.run([
                 compiler,
+                '-O2',
                 '-std=c++17',
                 '-dynamiclib',
                 '-fPIC',
@@ -411,6 +412,7 @@ def CommandLine(args=None):
         try:
             result = subprocess.run([
                 compiler,
+                '-O2',
                 '-shared',
                 '-std=c++17',
                 '-dynamiclib',
@@ -437,6 +439,7 @@ def CommandLine(args=None):
         try:
             result = subprocess.run([
                 compiler,
+                '-O2',
                 '-std=c++17',
                 '-dynamiclib',
                 '-fPIC',
@@ -464,8 +467,8 @@ def CommandLine(args=None):
         compiler = 'g++'
         opencllib = ''
         if len(openclpath) > 0:
-            opencllib = os.path.join(openclpath, '/lib')
-            openclpath = os.path.join(openclpath, '/include')
+            opencllib = os.path.join(openclpath, 'lib')
+            openclpath = os.path.join(openclpath, 'include')
         elif os.path.exists('/opt/intel/opencl/'):
             openclpath = '/opt/intel/opencl/include'
             opencllib = '/opt/intel/opencl/lib/x64'
@@ -510,15 +513,15 @@ def CommandLine(args=None):
         # compile_command = [compiler, options, files, link]
         # print(compile_command)
         try:
-            result = subprocess.run([compiler, '-shared', '-fPIC', '-DOPENCL', '-DAF', '-DAF_OPENCL', '-I' + sdir, '-I' + afpath, '-I' + openclpath,
+            result = subprocess.run([compiler, '-shared', '-O2', '-fPIC', '-DOPENCL', '-DAF', '-DAF_OPENCL', '-I' + sdir, '-I' + afpath, '-I' + openclpath,
                                                 link1, link, files, lib1, lib2, lib3, lib4], check=True)
             if result.stderr is None:
                     link = '-o' + outputPath + '/OpenCL_matrixfree_uint16_lib.so'
-                    result = subprocess.run([compiler, '-shared', '-fPIC', '-DOPENCL', '-DAF', '-DAF_OPENCL', '-DMTYPE', '-I' + sdir, '-I' + afpath, '-I' + openclpath,
+                    result = subprocess.run([compiler, '-shared', '-O2', '-fPIC', '-DOPENCL', '-DAF', '-DAF_OPENCL', '-DMTYPE', '-I' + sdir, '-I' + afpath, '-I' + openclpath,
                                                     link1, link, files, lib1, lib2, lib3, lib4], check=True)
                     if result.stderr is None:
                         link = '-o' + outputPath + '/OpenCL_matrixfree_uint8_lib.so'
-                        result = subprocess.run([compiler, '-shared', '-fPIC', '-DOPENCL', '-DAF', '-DAF_OPENCL', '-DMTYPE2', '-I' + sdir, '-I' + afpath, '-I' + openclpath,
+                        result = subprocess.run([compiler, '-shared', '-O2', '-fPIC', '-DOPENCL', '-DAF', '-DAF_OPENCL', '-DMTYPE2', '-I' + sdir, '-I' + afpath, '-I' + openclpath,
                                                         link1, link, files, lib1, lib2, lib3, lib4], check=True)
                     print('OpenCL support compiled successfully!')
         except Exception:
@@ -547,13 +550,13 @@ def CommandLine(args=None):
             link = '-o' + outputPath + '/CUDA_matrixfree_lib.so'
             files = '' + sdir + '/omega_maincpp.cpp'
             try:
-                    result = subprocess.run([compiler, '-shared', '-fPIC', '-std=c++17', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', '-I' + sdir, '-I' + afpath, '-I' + hippath,
+                    result = subprocess.run([compiler, '-shared', '-O2', '-fPIC', '-std=c++17', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', '-I' + sdir, '-I' + afpath, '-I' + hippath,
                                                     link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
                     link = '-o' + outputPath + '/CUDA_matrixfree_uint16_lib.so'
-                    result = subprocess.run([compiler, '-shared', '-fPIC', '-std=c++17', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', '-DMTYPE', '-I' + sdir, '-I' + afpath, '-I' + hippath,
+                    result = subprocess.run([compiler, '-shared', '-O2', '-fPIC', '-std=c++17', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', '-DMTYPE', '-I' + sdir, '-I' + afpath, '-I' + hippath,
                                                     link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
                     link = '-o' + outputPath + '/CUDA_matrixfree_uint8_lib.so'
-                    result = subprocess.run([compiler, '-shared', '-fPIC', '-std=c++17', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', '-DMTYPE2', '-I' + sdir, '-I' + afpath, '-I' + hippath,
+                    result = subprocess.run([compiler, '-shared', '-O2', '-fPIC', '-std=c++17', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', '-DMTYPE2', '-I' + sdir, '-I' + afpath, '-I' + hippath,
                                                     link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
                     hipBuilt = True
                     print('HIP support compiled successfully!')
@@ -579,15 +582,15 @@ def CommandLine(args=None):
             link = '-o' + outputPath + '/CUDA_matrixfree_lib.so'
             files = '' + sdir + '/omega_maincpp.cpp'
             try:
-                    result = subprocess.run([compiler, '-shared', '-fPIC', '-DCUDA', '-DAF', '-DAF_CUDA', '-I' + sdir, '-I' + afpath, '-I' + cudapath,
+                    result = subprocess.run([compiler, '-shared', '-O2', '-fPIC', '-DCUDA', '-DAF', '-DAF_CUDA', '-I' + sdir, '-I' + afpath, '-I' + cudapath,
                                                     link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
                     if result.stderr is None:
                         link = '-o' + outputPath + '/CUDA_matrixfree_uint16_lib.so'
-                        result = subprocess.run([compiler, '-shared', '-fPIC', '-DCUDA', '-DAF', '-DAF_CUDA', '-DMTYPE', '-I' + sdir, '-I' + afpath, '-I' + cudapath,
+                        result = subprocess.run([compiler, '-shared', '-O2', '-fPIC', '-DCUDA', '-DAF', '-DAF_CUDA', '-DMTYPE', '-I' + sdir, '-I' + afpath, '-I' + cudapath,
                                                         link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
                         if result.stderr is None:
                             link = '-o' + outputPath + '/CUDA_matrixfree_uint8_lib.so'
-                            result = subprocess.run([compiler, '-shared', '-fPIC', '-DCUDA', '-DAF', '-DAF_CUDA', '-DMTYPE2', '-I' + sdir, '-I' + afpath, '-I' + cudapath,
+                            result = subprocess.run([compiler, '-shared', '-O2', '-fPIC', '-DCUDA', '-DAF', '-DAF_CUDA', '-DMTYPE2', '-I' + sdir, '-I' + afpath, '-I' + cudapath,
                                                                 link1, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
                         print('CUDA support compiled successfully!')
             except Exception:
@@ -598,7 +601,7 @@ def CommandLine(args=None):
         link = '-o' + outputPath + '/CPU_matrixfree_lib.so'
         files = '' + sdir + '/omega_maincpp.cpp'
         try:
-            result = subprocess.run([compiler, '-shared','-fopenmp', '-fPIC', '-DCPU', '-DAF', '-DAF_CPU', '-I' + sdir, '-I' + afpath,
+            result = subprocess.run([compiler, '-shared', '-O2','-fopenmp', '-fPIC', '-DCPU', '-DAF', '-DAF_CPU', '-I' + sdir, '-I' + afpath,
                                                 link1, link, files, lib2, lib4], check=True)
             if result.stderr is None:
                     print('CPU support compiled successfully!')
@@ -608,7 +611,7 @@ def CommandLine(args=None):
         link = '-o' + outputPath + '/createSinogram.so'
         files = '' + sdir + '/createSinogram.cpp'
         try:
-            result = subprocess.run([compiler, '-shared', '-fPIC', '-I' + sdir, link, files], check=True)
+            result = subprocess.run([compiler, '-shared', '-O2', '-fPIC', '-I' + sdir, link, files], check=True)
         except Exception:
             print("Build failed")
 
@@ -637,7 +640,7 @@ def CommandLine(args=None):
         link = '-o' + outputPath + '/libRoot.so'
         files = '' + sdir + '/loadRootData.cpp'
         try:
-            result = subprocess.run([compiler, '-shared', '-fPIC', '-pthread', '-std=c++17', '-m64', '-I' + rpath, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
+            result = subprocess.run([compiler, '-shared', '-O2', '-fPIC', '-pthread', '-std=c++17', '-m64', '-I' + rpath, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
             print('ROOT support compiled successfully!')
         except Exception:
             print("ROOT support build failed")
