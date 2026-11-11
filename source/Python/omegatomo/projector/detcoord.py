@@ -182,7 +182,7 @@ def setCTCoordinates(options):
     if options.uV.size > 0:
         options.x = np.column_stack((options.x[:,0], options.y[:,0], options.z[:,0], options.x[:,1], options.y[:,1], options.z[:,1]))
         options.z = options.uV
-    if options.pitchRoll.size > 0:
+    if options.pitchRoll.size > 0 or (options.uV.ndim == 2 and options.uV.shape[1] == 6):
         options.pitch = True
         # Scale by vector: the detector-row direction u (columns 0-2) by the
         # row pitch dPitchX and the detector-column direction v (columns 3-5)
