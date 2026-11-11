@@ -178,20 +178,25 @@ elseif options.attenuation_correction && options.SPECT % SPECT attenuation
         CTvol = double(CTvol);
         CTvol = squeeze(CTvol);
 
-        dx = spatial.PixelSpacings(1, 1);
-        dy = spatial.PixelSpacings(1, 2);
+        % DICOM PixelSpacing is [row spacing, column spacing] and ImageSize is [rows, columns, slices]. Columns run along x
+        % and rows along y (as in imref3d)
+        dx = spatial.PixelSpacings(1, 2); % Column spacing
+        dy = spatial.PixelSpacings(1, 1); % Row spacing
+        if size(spatial.PatientPositions, 1) < 2
+            error('The CT DICOM series needs at least two slices!');
+        end
         dz = abs(spatial.PatientPositions(2, 3) - spatial.PatientPositions(1, 3));
-        Nx = spatial.ImageSize(1);
-        Ny = spatial.ImageSize(2);
+        nColsCT = spatial.ImageSize(2);
+        nRowsCT = spatial.ImageSize(1);
 
-        xLimits = spatial.PatientPositions(1,1) + [0, dx * (Nx)] - 0.5 * dx;
-        yLimits = spatial.PatientPositions(1,2) + [0, dy * (Ny)] - 0.5 * dy;
+        xLimits = spatial.PatientPositions(1,1) + [0, dx * nColsCT] - 0.5 * dx;
+        yLimits = spatial.PatientPositions(1,2) + [0, dy * nRowsCT] - 0.5 * dy;
         zLimits = [min(spatial.PatientPositions(:,3)) max(spatial.PatientPositions(:,3))] + dz * [-0.5, 0.5];
 
         refCT = imref3d(size(CTvol), xLimits, yLimits, zLimits);
 
-        % Apply DICOM Rescale slope and intercept
-        [HU_a, HU_b] = HU_rescale_coeff(options.fpathCT);
+        % Apply DICOM Rescale slope and intercept (of each slice, in the slice order of dicomreadVolume)
+        [HU_a, HU_b] = HU_rescale_coeff(options.fpathCT, spatial.PatientPositions);
         CTvol = HU_a .* CTvol + HU_b;
         CTvol(CTvol < -1000) = -1000;
         % Convert to linear attenuation coefficients
