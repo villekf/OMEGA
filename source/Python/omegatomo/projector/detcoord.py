@@ -104,8 +104,9 @@ def CTDetSource(options):
             detCoordY = options.detOffsetRow
     else:
         detCoordY = np.array(options.detOffsetRow, dtype=np.float32)
-    detCoordX = np.reshape(detCoordX, (-1, 1, 1))
-    detCoordY = np.reshape(detCoordY, (-1, 1, 1))
+    # Projection index on the last axis (as R and the tiling below expect), so that per-projection offsets work
+    detCoordX = np.reshape(detCoordX, (1, 1, -1))
+    detCoordY = np.reshape(detCoordY, (1, 1, -1))
     if detCoordX.size != sourceCoordX.size:
         detCoordX = np.tile(detCoordX, sourceCoordX.size // detCoordX.size)
     if detCoordY.size != sourceCoordY.size:
