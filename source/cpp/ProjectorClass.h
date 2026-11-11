@@ -3370,7 +3370,7 @@ public:
 			if (erotusPriorEFOV[1] > 0)
 				erotusPriorEFOV[1] = (local_sizePrior[1] - erotusPriorEFOV[1]);
 			if (erotusPriorEFOV[2] > 0)
-				erotusPriorEFOV[2] = (local_sizePrior[1] - erotusPriorEFOV[2]);
+				erotusPriorEFOV[2] = (local_sizePrior[2] - erotusPriorEFOV[2]);
 			SET_LAUNCH_RANGE3(globalPriorEFOV,
 				inputScalars.NxPrior + erotusPriorEFOV[0],
 				inputScalars.NyPrior + erotusPriorEFOV[1],
@@ -3408,7 +3408,7 @@ public:
 		if (erotusPrior[1] > 0)
 			erotusPrior[1] = (local_sizePrior[1] - erotusPrior[1]);
 		if (erotusPrior[2] > 0)
-			erotusPrior[2] = (local_sizePrior[1] - erotusPrior[2]);
+			erotusPrior[2] = (local_sizePrior[2] - erotusPrior[2]);
 		SET_LAUNCH_RANGE3(globalPrior,
 			inputScalars.Nx[0] + erotusPrior[0],
 			inputScalars.Ny[0] + erotusPrior[1],
@@ -6470,8 +6470,8 @@ public:
 #elif defined(OPENCL)
 	inline int computeMRP(const scalarStruct & inputScalars, const uint64_t gSize[]) {
 		UINT32_t kernelIndMed = 0U;
-		uint64_t erotus[2] = { gSize[0] % localPrior[0], gSize[1] % localPrior[1] };
-		cl::NDRange global_size(gSize[0] + (localPrior[0] - erotus[0]), gSize[1] + (localPrior[1] - erotus[1]), gSize[2]);
+		uint64_t erotus[2] = { (localPrior[0] - gSize[0] % localPrior[0]) % localPrior[0], (localPrior[1] - gSize[1] % localPrior[1]) % localPrior[1] };
+		cl::NDRange global_size(gSize[0] + erotus[0], gSize[1] + erotus[1], gSize[2]);
 #endif // END CUDA
 		TimerPoint tStart, tEnd;
 		STATUS_t status = SUCCESS_VALUE;
@@ -6483,8 +6483,8 @@ public:
 #if defined(CUDA) || defined(HIP)
 		unsigned int gSize[3];
 		unsigned int erotus[2];
-		erotus[0] = localPrior[0] - (global_size[0] % localPrior[0]);
-		erotus[1] = localPrior[1] - (global_size[1] % localPrior[1]);
+		erotus[0] = (localPrior[0] - (global_size[0] % localPrior[0])) % localPrior[0];
+		erotus[1] = (localPrior[1] - (global_size[1] % localPrior[1])) % localPrior[1];
 		gSize[0] = (global_size[0] + erotus[0]) / localPrior[0];
 		gSize[1] = (global_size[1] + erotus[1]) / localPrior[1];
 		gSize[2] = global_size[2];
@@ -7014,14 +7014,14 @@ public:
 		std::vector<void*> kArgs;
 #endif // END CUDA
 		if (inputScalars.largeDim)
-			SET_RANGE_Z(globalPriorEFOV, inputScalars.Nz[0]);
+			SET_RANGE_Z(globalPrior, inputScalars.Nz[0]);
 		if (DEBUG) {
 			mexPrintBase("erotusPrior[0] = %u\n", erotusPrior[0]);
 			mexPrintBase("erotusPrior[1] = %u\n", erotusPrior[1]);
 			mexPrintBase("erotusPrior[2] = %u\n", erotusPrior[2]);
-			mexPrintBase("globalPriorEFOV[0] = %u\n", globalPriorEFOV[0]);
-			mexPrintBase("globalPriorEFOV[1] = %u\n", globalPriorEFOV[1]);
-			mexPrintBase("globalPriorEFOV[2] = %u\n", globalPriorEFOV[2]);
+			mexPrintBase("globalPrior[0] = %u\n", globalPrior[0]);
+			mexPrintBase("globalPrior[1] = %u\n", globalPrior[1]);
+			mexPrintBase("globalPrior[2] = %u\n", globalPrior[2]);
 			mexPrintBase("d_N.s[0] = %u\n", VEC_X(d_N[0]));
 			mexPrintBase("d_N.s[1] = %u\n", VEC_Y(d_N[0]));
 			mexPrintBase("d_N.s[2] = %u\n", VEC_Z(d_N[0]));
@@ -7049,11 +7049,13 @@ public:
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			KARG(kArgs, kernelProxTVDiv, kernelIndCPTV, d_eFOVIndices);
 		// Compute the kernel
+		// The kernel uses the coordinates of the full volume and skips the extended FOV itself. The work range
+		// thus has to be that of the full volume, not of the prior (original FOV) volume
 #if defined(CUDA) || defined(HIP)
-		status = cuLaunchKernel(kernelProxTVDiv, globalPriorEFOV[0], globalPriorEFOV[1], globalPriorEFOV[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+		status = cuLaunchKernel(kernelProxTVDiv, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the Proximal TV divergence kernel\n", -1);
 #elif defined(OPENCL)
-		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTVDiv, cl::NullRange, globalPriorEFOV, localPrior);
+		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTVDiv, cl::NullRange, globalPrior, localPrior);
 		OCL_CHECK(status, "Failed to launch the Proximal TV divergence kernel\n", -1);
 #endif // END CUDA
 		//FINISH_QUEUE(status, "Queue finish failed after divergence kernel\n", -1);
@@ -7087,7 +7089,7 @@ public:
 		std::vector<void*> kArgs;
 #endif // END CUDA
 		if (inputScalars.largeDim)
-			SET_RANGE_Z(globalPriorEFOV, inputScalars.Nz[0]);
+			SET_RANGE_Z(globalPrior, inputScalars.Nz[0]);
 		if (DEBUG) {
 			mexPrintBase("global[0] = %u\n", globalPrior[0]);
 			mexPrintBase("global[1] = %u\n", globalPrior[1]);
@@ -7095,9 +7097,6 @@ public:
 			mexPrintBase("erotusPrior[0] = %u\n", erotusPrior[0]);
 			mexPrintBase("erotusPrior[1] = %u\n", erotusPrior[1]);
 			mexPrintBase("erotusPrior[2] = %u\n", erotusPrior[2]);
-			mexPrintBase("globalPriorEFOV[0] = %u\n", globalPriorEFOV[0]);
-			mexPrintBase("globalPriorEFOV[1] = %u\n", globalPriorEFOV[1]);
-			mexPrintBase("globalPriorEFOV[2] = %u\n", globalPriorEFOV[2]);
 			mexPrintBase("d_N.s[0] = %u\n", VEC_X(d_N[0]));
 			mexPrintBase("d_N.s[1] = %u\n", VEC_Y(d_N[0]));
 			mexPrintBase("d_N.s[2] = %u\n", VEC_Z(d_N[0]));
@@ -7133,10 +7132,12 @@ public:
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			KARG(kArgs, kernelProxTVGrad, kernelIndCPTV, d_eFOVIndices);
 		// Compute the kernel
+		// The kernel uses the coordinates of the full volume and skips the extended FOV itself. The work range
+		// thus has to be that of the full volume, not of the prior (original FOV) volume
 #if defined(CUDA) || defined(HIP)
-		status = cuLaunchKernel(kernelProxTVGrad, globalPriorEFOV[0], globalPriorEFOV[1], globalPriorEFOV[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+		status = cuLaunchKernel(kernelProxTVGrad, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
 #elif defined(OPENCL)
-		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTVGrad, cl::NullRange, globalPriorEFOV, localPrior);
+		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTVGrad, cl::NullRange, globalPrior, localPrior);
 #endif // END CUDA
 		CHECK(status, "Failed to launch the Proximal TV gradient kernel\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
