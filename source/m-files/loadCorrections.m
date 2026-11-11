@@ -107,6 +107,7 @@ if ~options.use_raw_data && options.randoms_correction
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%% Attenuation correction %%%%%%%%%%%%%%%%%%%%%%%%%%
+attenuationInmm = false; % True if the attenuation map was generated here (CT DICOM) and is already in 1/mm
 if options.attenuation_correction && ~options.SPECT % PET attenuation
     if ~isfield(options,'vaimennus') || isempty(options.vaimennus)
         if ~isempty(options.attenuation_datafile) && strcmp(options.attenuation_datafile(end-2:end), 'mhd')
@@ -207,6 +208,8 @@ elseif options.attenuation_correction && options.SPECT % SPECT attenuation
         tform = affinetform3d(eye(4)); % No scaling or rotation
         [MUvol, ~] = imwarp(MUvol, refCT, tform, OutputView=options.refSPECT, FillValue=muAir, InterpolationMethod='linear');
         options.vaimennus = 1*MUvol;
+        % The CT-derived attenuation map (HU_to_mu) is already in 1/mm
+        attenuationInmm = true;
     end
     if options.partitions > 1
         if ~iscell(options.vaimennus)
@@ -220,8 +223,20 @@ else
     options.vaimennus = 0;
 end
 % attIncm (1/cm to 1/mm) applies only to attenuation images. A measurement-domain (sinogram) attenuation correction is
-% unitless and is never scaled. SPECT attenuation is always an image
-if options.attenuation_correction && options.attIncm && (options.SPECT || options.CT_attenuation)
+% unitless and is never scaled. SPECT attenuation is always an image. Data of the size of the reconstructed image is an image
+% as well even if CT_attenuation is false (same test as in parseInputData, which switches CT_attenuation to true for it).
+% The attenuation map generated here from the CT DICOM series is already in 1/mm and is never scaled
+if options.attenuation_correction && options.attIncm && attenuationInmm
+    disp('The attenuation map generated from the CT DICOM series is already in 1/mm. attIncm is ignored for it.')
+end
+if iscell(options.vaimennus) && ~isempty(options.vaimennus)
+    attenuationFirst = options.vaimennus{1};
+else
+    attenuationFirst = options.vaimennus;
+end
+attenuationIsImage = options.attenuation_correction && (options.SPECT || options.CT_attenuation || (numel(attenuationFirst) == options.Nx(1) * options.Ny(1) * options.Nz(1) ...
+    && ~(options.nRowsD == options.Nx(1) && options.nColsD == options.Ny(1))));
+if options.attenuation_correction && options.attIncm && attenuationIsImage && ~attenuationInmm
     if iscell(options.vaimennus)
         for kk = 1 : numel(options.vaimennus)
             options.vaimennus{kk} = options.vaimennus{kk} ./ 10;

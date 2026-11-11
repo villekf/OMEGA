@@ -826,11 +826,14 @@ def loadCorrections(options):
         return expanded
 
     if options.attenuation_correction == 1:
+        attenuationInmm = False  # True if the attenuation map was generated here (CT DICOM) and is already in 1/mm
         if options.vaimennus.size == 0:
             if options.SPECT and len(options.attenuation_datafile) == 0:
                 # SPECT attenuation image from a CT DICOM series (options.fpathCT, options.keV, options.refSPECT)
                 from ..fileio.spectCTAttenuation import loadSPECTCTAttenuation
                 options.vaimennus = loadSPECTCTAttenuation(options)
+                # The CT-derived attenuation map (HU_to_mu) is already in 1/mm
+                attenuationInmm = True
             elif len(options.attenuation_datafile) > 0 and os.path.splitext(options.attenuation_datafile)[1].lower() == '.mhd':
                 try:
                     from SimpleITK import ReadImage as loadMetaImage
@@ -901,8 +904,20 @@ def loadCorrections(options):
                 atn = np.flip(atn,2)
                 options.vaimennus = atn
         # attIncm (1/cm to 1/mm) applies only to attenuation images. A measurement-domain (sinogram) attenuation
-        # correction is unitless and is never scaled. SPECT attenuation is always an image. Rebind, the array can be the caller's
-        if options.attIncm and (options.CT_attenuation or options.SPECT):
+        # correction is unitless and is never scaled. SPECT attenuation is always an image. Data of the size of the reconstructed
+        # image is an image as well even if CT_attenuation is False (same test as in parseInputData.m and parseInputs, which switch
+        # CT_attenuation to True for it). The attenuation map generated here from the CT DICOM series is already in 1/mm and is
+        # never scaled. Rebind, the array can be the caller's
+        if options.attIncm and attenuationInmm:
+            print('The attenuation map generated from the CT DICOM series is already in 1/mm. attIncm is ignored for it.')
+        if isinstance(options.vaimennus, (list, tuple)):
+            attenuationFirst = options.vaimennus[0] if len(options.vaimennus) > 0 else np.empty(0)
+        else:
+            attenuationFirst = options.vaimennus
+        attenuationIsImage = (options.CT_attenuation or options.SPECT or
+            (np.size(attenuationFirst) == int(np.asarray(options.Nx).ravel()[0]) * int(np.asarray(options.Ny).ravel()[0]) * int(np.asarray(options.Nz).ravel()[0])
+             and not (int(options.nRowsD) == int(np.asarray(options.Nx).ravel()[0]) and int(options.nColsD) == int(np.asarray(options.Ny).ravel()[0]))))
+        if options.attIncm and attenuationIsImage and not attenuationInmm:
             options.vaimennus = options.vaimennus / 10.
         options.vaimennus = np.asfortranarray(options.vaimennus)
         options.vaimennus = options.vaimennus.ravel('F').astype(dtype=np.float32)
