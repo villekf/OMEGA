@@ -1714,7 +1714,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     }
 #endif
                     if (MethodList.NLM || MethodList.RDP || MethodList.hyperbolic || MethodList.GGMRF || MethodList.TV) {
-                        delete apuPr;
+                        delete[] apuPr;
                     }
                     largeDimLast(inputScalars, proj);
                     inputScalars.nMultiVolumes = multiVol;
