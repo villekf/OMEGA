@@ -827,7 +827,11 @@ def loadCorrections(options):
 
     if options.attenuation_correction == 1:
         if options.vaimennus.size == 0:
-            if len(options.attenuation_datafile) > 0 and os.path.splitext(options.attenuation_datafile)[1].lower() == '.mhd':
+            if options.SPECT and len(options.attenuation_datafile) == 0:
+                # SPECT attenuation image from a CT DICOM series (options.fpathCT, options.keV, options.refSPECT)
+                from ..fileio.spectCTAttenuation import loadSPECTCTAttenuation
+                options.vaimennus = loadSPECTCTAttenuation(options)
+            elif len(options.attenuation_datafile) > 0 and os.path.splitext(options.attenuation_datafile)[1].lower() == '.mhd':
                 try:
                     from SimpleITK import ReadImage as loadMetaImage
                     from SimpleITK import GetArrayFromImage

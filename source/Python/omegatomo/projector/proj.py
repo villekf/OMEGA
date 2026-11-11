@@ -409,6 +409,12 @@ class projectorClass:
     global_correction_factor = 1.
     attenuation_datafile = ''
     attIncm = False
+    # Folder of the CT DICOM series used to form the SPECT attenuation image (dialog if empty and no attenuation_datafile)
+    fpathCT = ''
+    # Photon energy (keV) used to convert the SPECT CT (HU) to attenuation coefficients
+    keV = None
+    # SPECT image grid for the CT resampling: dict with ImageSize, XWorldLimits, YWorldLimits and ZWorldLimits (set by loadProSpectaData)
+    refSPECT = None
     rings = 0
     linear_multip = 0
     detectors = 0
