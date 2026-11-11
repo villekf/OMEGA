@@ -43,7 +43,7 @@ if options.flip_image && isfield(options,'x')
     options.y = -options.y;
     if isfield(options, 'uV')
         options.uV(2,:) = -options.uV(2,:);
-        if (isfield(options,'pitchRoll') && ~isempty(options.pitchRoll))
+        if (isfield(options,'pitchRoll') && ~isempty(options.pitchRoll)) || size(options.uV, 1) == 6
             options.uV(5,:) = -options.uV(5,:);
         end
     end

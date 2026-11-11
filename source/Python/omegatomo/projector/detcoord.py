@@ -178,7 +178,7 @@ def setCTCoordinates(options):
         options.y = -options.y
         if options.uV.size > 0:
             options.uV[:,1] = -options.uV[:,1]
-            if options.pitchRoll.size > 0:
+            if options.pitchRoll.size > 0 or (options.uV.ndim == 2 and options.uV.shape[1] == 6):
                 options.uV[:,4] = -options.uV[:,4]
     if options.uV.size > 0:
         options.x = np.column_stack((options.x[:,0], options.y[:,0], options.z[:,0], options.x[:,1], options.y[:,1], options.z[:,1]))
