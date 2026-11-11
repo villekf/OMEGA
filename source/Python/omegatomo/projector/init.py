@@ -993,7 +993,9 @@ def initProjector(self):
         if self.CT:
             bOpt += ('-DCT',)
             # Curved (helical) detector; the parallel-beam define takes precedence as in the C++ host code
-            if self.useHelical and not self.useParallelBeam:
+            if self.useParallelBeam:
+                bOpt += ('-DPARALLEL',)
+            elif self.useHelical:
                 bOpt += ('-DHELICAL',)
         elif self.SPECT:
             if self.useCUDA:

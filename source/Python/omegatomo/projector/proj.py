@@ -2124,6 +2124,10 @@ class projectorClass:
             raise ValueError('Only projector types 4, 5, 44, 45, 54 and 55 are supported with curved helical data!')
         if self.useHelical and self.useParallelBeam:
             raise ValueError('Parallel beam is not supported with curved helical data!')
+        if self.CT and self.useParallelBeam and (self.projector_type % 10 == 5 or (self.projector_type >= 10 and self.projector_type // 10 == 5)):
+            raise ValueError('Parallel beam is not supported with projector type 5!')
+        if self.CT and self.useParallelBeam and (self.useCPU or self.implementation == 4):
+            raise ValueError('Parallel beam is not supported with the CPU implementation!')
         if self.subsetType == 12 and not self.offsetCorrection:
             raise ValueError('Subset type 12 can only be used with offset correction (options.offsetCorrection = true).')
         if self.useHelical and self.offsetCorrection:

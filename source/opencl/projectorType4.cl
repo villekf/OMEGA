@@ -1193,9 +1193,7 @@ void projectorType4Backward(
         if (dV.z + d_d.z * (NVOXELSHELICAL - 1) > zMax || dV.z + d_d.z * (NVOXELSHELICAL - 1) < zMin)
             continue;
 #endif
-#ifndef PARALLEL
         s = CMFLOAT3(d_xyz[kk * 6], d_xyz[kk * 6 + 1], d_xyz[kk * 6 + 2]);
-#endif
 // TODO: Improve helical part
 #ifdef HELICAL
 	    const float angle = d_uv[kk];
@@ -1278,46 +1276,35 @@ void projectorType4Backward(
         const float pz = (CFLOAT(kk) + 0.5f) / CFLOAT(d_nProjections);
         const float dApu = d_d.z * cP.z;
 #ifdef PARALLEL
-        const float apuXP = d_uv[kk * NA];
-        const float apuYP = d_uv[kk * NA + 1];
-        const float3 ss = CMFLOAT3(d_xyz[kk * 6], d_xyz[kk * 6 + 1], d_xyz[kk * 6 + 2]);
-        for (int xx = 0; xx < d_size_x; xx++) {
-            for (int yy = 0; yy < d_sizey; yy++) {
-                s = ss;
-	            const float2 indeksiP = MFLOAT2(CFLOAT(xx) - CFLOAT(d_size_x) / 2.f + .5f, CFLOAT(yy) - CFLOAT(d_sizey) / 2.f + .5f);
-                (s).x += indeksiP.x * apuXP;
-                (s).y += indeksiP.x * apuYP;
-                (s).z += indeksiP.y * d_dPitch.y;
-                float3 d4 = d1, d5 = d1;
-                (d4).x += (indeksiP.x + .5f) * apuXP;
-                (d4).y += (indeksiP.x + .5f) * apuYP;
-                (d4).z += (indeksiP.y + .5f) * d_dPitch.y;
-                (d5).x += (indeksiP.x - .5f) * apuXP;
-                (d5).y += (indeksiP.x - .5f) * apuYP;
-                (d5).z += (indeksiP.y - .5f) * d_dPitch.y;
-                const float3 d44 = d4 - d3;
-                const float3 d55 = d5 - d3;
-                const float d4x = dot(d44, normX);
-                const float d4y = dot(d44, normY);
-                const float d5x = dot(d55, normX);
-                const float d5y = dot(d55, normY);
-                float2 scale = MFLOAT2(1.f / CFLOAT(d_size_x), 1.f / CFLOAT(d_sizey));
-                scale /= 2.f;
+        // Parallel beam: all rays of projection kk are parallel to dirP = (detector centre - source centre) (the source is shifted with
+        // the detector pixel, see getDetectorCoordinatesCT). The ray through a voxel is therefore dV + dirP * t. The ray origin s is
+        // moved to the voxel of the first z-plane of this block and shifted by d_d.z per z-plane, so no loop over the detector pixels is needed
+        const float3 dirP = NORMALIZE(d1 - s);
+        s = dV;
 #endif
-        const float upperPart = dot(cP, s - d1);
-#if !defined(PARALLEL) && !defined(FDK)
+        float upperPart = dot(cP, s - d1);
+#if defined(PARALLEL) && !defined(FDK)
+        // Constant per projection. |cP| = 2 * indeksi.x * indeksi.y * pixelArea, and |dot(cP, dirP)| / (2 * indeksi.x * indeksi.y) is the area of the
+        // detector pixel perpendicular to the ray, so the weight is voxelVolume / (pixelArea perpendicular to the ray)
+        const float kerroinP = (d_d.x * d_d.y * d_d.z) * (2.f * indeksi.x * indeksi.y) / FABS(dot(cP, dirP));
+#elif !defined(PARALLEL) && !defined(FDK)
         // Exact per-projection scaling. cP = CROSS(d2, d3 - d1) = -2 * CROSS(apuX, apuY), so |cP| = 2 * indeksi.x * indeksi.y * pixelArea
         // and |upperPart| / |cP| is the perpendicular distance from the source to the detector plane. Hence
         // voxelVolume / (pixelArea * sourceToDetector) = (d_d.x * d_d.y * d_d.z) * (2 * indeksi.x * indeksi.y) / |upperPart|
         // This is valid for custom detector vectors (PITCH), tilted detectors and per-projection source-detector distances
         const float kerroinP = (d_d.x * d_d.y * d_d.z) * (2.f * indeksi.x * indeksi.y) / FABS(upperPart);
 #endif
+#ifdef PARALLEL
+        const float3 v = dirP;
+        const float lowerPart = -dot(v, cP);
+#else
         float3 v = dV - s;
         float lowerPart = -dot(v, cP);
 #ifndef USEMAD
         const float vApu = v.x * v.x + v.y * v.y;
 #else
         const float vApu = FMAD(v.x, v.x, v.y * v.y);
+#endif
 #endif
 #if STYPE == 12
         float3 d1_2, d2_2, d3_2;
@@ -1339,16 +1326,27 @@ void projectorType4Backward(
         const float3 cP_2 = CROSS(d2_2, d3_2 - d1_2);
         const float pz_2 = (CFLOAT(uu) + 0.5f) / CFLOAT(d_nProjections);
         const float dApu_2 = d_d.z * cP_2.z;
-        const float upperPart_2 = dot(cP_2, s_2 - d1_2);
-#if !defined(PARALLEL) && !defined(FDK)
+#ifdef PARALLEL
+        const float3 dirP_2 = NORMALIZE(d1_2 - s_2);
+        s_2 = dV;
+#endif
+        float upperPart_2 = dot(cP_2, s_2 - d1_2);
+#if defined(PARALLEL) && !defined(FDK)
+        const float kerroinP_2 = (d_d.x * d_d.y * d_d.z) * (2.f * indeksi.x * indeksi.y) / FABS(dot(cP_2, dirP_2));
+#elif !defined(PARALLEL) && !defined(FDK)
         const float kerroinP_2 = (d_d.x * d_d.y * d_d.z) * (2.f * indeksi.x * indeksi.y) / FABS(upperPart_2);
 #endif
+#ifdef PARALLEL
+        const float3 v_2 = dirP_2;
+        const float lowerPart_2 = -dot(v_2, cP_2);
+#else
         float3 v_2 = dV - s_2;
         float lowerPart_2 = -dot(v_2, cP_2);
 #ifndef USEMAD
         const float vApu_2 = v_2.x * v_2.x + v_2.y * v_2.y;
 #else
         const float vApu_2 = FMAD(v_2.x, v_2.x, v_2.y * v_2.y);
+#endif
 #endif
 #endif
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
@@ -1361,23 +1359,21 @@ void projectorType4Backward(
             const float t = DIVIDE(upperPart, lowerPart);
 #ifndef USEMAD
             float3 p = s + v * t;
-            const float l1 = vApu + v.z * v.z;
 #else
             float3 p = FMAD3(t, v, s);
+#endif
+#ifndef PARALLEL
+#ifndef USEMAD
+            const float l1 = vApu + v.z * v.z;
+#else
             const float l1 = FMAD(v.z, v.z, vApu);
 #endif
-// #ifdef PARALLEL
-//             if (p.x > d4.x || p.x < d5.x || p.y > d4.y || p.y < d5.y || p.z > d4.z || p.z < d5.z) {
-//                 v.z += d_d.z;
-//                 lowerPart -= dApu;
-//                 continue;
-//             }
-// #endif
+#endif
 #ifdef FDK
 #ifdef PARALLEL
-            // Parallel beam: s is the per-detector-pixel source position, so the fan beam weight below is not valid here
-            float weight = (DSC + dV.x * COSF(angle[kk + d_angleOffset]) - dV.y * SINF(angle[kk + d_angleOffset]));
-            weight = (DSC * DSC) / (weight * weight) * (M_PI_F / (CFLOAT(d_nProjectionsFDK) * d_dPitch.x));
+            // Parallel beam: no distance weighting (magnification 1). Valid for 180 and 360 degree parallel scans, the 0.5 is the same
+            // ramp filter normalisation as in the cone beam branch below with fdkMag = 1
+            const float weight = (M_PI_F / (CFLOAT(d_nProjectionsFDK) * d_dPitch.x)) * 0.5f;
 #else
             // FDK distance weight (SAD_k / U)^2 from the actual source position s of this projection (not from the projection angle):
             // SAD_k^2 = s.x^2 + s.y^2 and U, the distance of the voxel from the source along the central ray (the direction from the
@@ -1393,6 +1389,8 @@ void projectorType4Backward(
             // constant pi / (N * dPitch) * magnification / 2
             weight = (weight * weight) * (M_PI_F / (CFLOAT(d_nProjectionsFDK) * d_dPitch.x)) * (0.5f * fdkMag);
 #endif
+#elif defined(PARALLEL)
+            const float weight = kerroinP;
 #else
             const float L = DISTANCE(p, s);
             const float weight = (L * L * L) / (l1)*kerroinP;
@@ -1400,13 +1398,6 @@ void projectorType4Backward(
             p -= d3;
             float px = dot(p, normX);
             float py = dot(p, normY);
-#ifdef PARALLEL
-            if (px > d4x + scale.x || px < d5x - scale.x || py > d4y + scale.y || py < d5y - scale.y) {
-                v.z += d_d.z;
-                lowerPart -= dApu;
-                continue;
-            }
-#endif
             float yVar = 0.f;
 #ifdef USEIMAGES
             const bool onDet = px <= 1.f && py <= 1.f && pz <= 1.f && px >= 0.f && py >= 0.f && pz >= 0.f;
@@ -1452,16 +1443,27 @@ void projectorType4Backward(
             const float t_2 = DIVIDE(upperPart_2, lowerPart_2);
 #ifndef USEMAD
             float3 p_2 = s_2 + v_2 * t_2;
-            const float l1_2 = vApu_2 + v_2.z * v_2.z;
 #else
             float3 p_2 = FMAD3(t_2, v_2, s_2);
+#endif
+#ifdef PARALLEL
+#ifdef FDK
+            const float weight_2 = weight;
+#else
+            const float weight_2 = kerroinP_2;
+#endif
+#else
+#ifndef USEMAD
+            const float l1_2 = vApu_2 + v_2.z * v_2.z;
+#else
             const float l1_2 = FMAD(v_2.z, v_2.z, vApu_2);
 #endif
             const float L_2 = DISTANCE(p_2, s_2);
-#if !defined(PARALLEL) && !defined(FDK)
+#ifndef FDK
             const float weight_2 = (L_2 * L_2 * L_2) / (l1_2)*kerroinP_2;
 #else
             const float weight_2 = (L_2 * L_2 * L_2) / (l1_2)*kerroin;
+#endif
 #endif
             p_2 -= d3_2;
             float px_2 = dot(p_2, normX_2);
@@ -1572,17 +1574,24 @@ void projectorType4Backward(
                     wSum[zz] += w * weight;
 #endif
             }
+#ifdef PARALLEL
+            // The ray direction is constant, the ray origin moves one voxel up in z
+            s.z += d_d.z;
+            upperPart += dApu;
+#else
             v.z += d_d.z;
             lowerPart -= dApu;
+#endif
 #if STYPE == 12
+#ifdef PARALLEL
+            s_2.z += d_d.z;
+            upperPart_2 += dApu_2;
+#else
             v_2.z += d_d.z;
             lowerPart_2 -= dApu_2;
 #endif
-        }
-#ifdef PARALLEL
-        }
-    }
 #endif
+        }
 #endif
     }
 	// Start the fastPDHG computations

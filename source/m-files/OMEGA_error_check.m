@@ -593,6 +593,12 @@ end
 if options.useParallelBeam && options.useHelical
     error('Parallel beam is not supported with helical CT!')
 end
+if options.CT && options.useParallelBeam && (mod(options.projector_type, 10) == 5 || (options.projector_type >= 10 && floor(options.projector_type / 10) == 5))
+    error('Parallel beam is not supported with projector type 5!')
+end
+if options.CT && options.useParallelBeam && (options.implementation == 4 || options.use_CPU)
+    error('Parallel beam is not supported with the CPU implementation!')
+end
 if options.subset_type == 12 && ~options.offsetCorrection
     error('Subset type 12 can only be used with offset correction (options.offsetCorrection = true).')
 end

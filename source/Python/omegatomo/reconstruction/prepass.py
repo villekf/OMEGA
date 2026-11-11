@@ -2803,14 +2803,14 @@ def prepassPhase(options):
         else:
             options.Nf = 2 ** np.ceil(np.log2(options.nRowsD))
         options.Nf = options.Nf.astype(dtype=np.uint32).item()
-        if options.FDK and options.CT and not options.useParallelBeam:
+        if options.FDK and options.CT:
             # The FDK ramp filter is applied along the detector rows (nRowsD samples) with an FFT of length Nf. Nf has to be at least
             # 2 * nRowsD - 1 to zero-pad the rows, otherwise the filter is a circular convolution (for nRowsD = 2^n there is no padding at all)
             # and the wrapped-around tails/the lost DC bias the low frequencies (several percent error of the reconstructed values)
             options.Nf = int(2 ** np.ceil(np.log2(2 * options.nRowsD - 1)))
         options.filter0 = rampFilt(options.Nf, options.filterWindow, options.cutoffFrequency, options.normalFilterSigma)
         options.filter0[0] = 1e-6
-        if options.FDK and options.CT and not options.useParallelBeam:
+        if options.FDK and options.CT:
             # DC bin of the discrete Ram-Lak kernel (Kak & Slaney), in the 2|f| normalization of rampFilt(). Setting it to ~0 (1e-6) removes
             # the mean of the zero-padded projection rows, which biases the reconstruction low by an amount that depends on Nf
             oddN = np.arange(1, options.Nf // 2, 2, dtype=np.float64)
