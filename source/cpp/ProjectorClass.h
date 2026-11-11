@@ -3228,6 +3228,11 @@ public:
 				local_size[0] = static_cast<size_t>(hipPropLS2.maxThreadsPerBlock);
 		}
 #endif
+		// Make sure the local memory tile of the tiled priors fits the shared memory of the device
+		if (limitPriorLocalSize(MethodList, w_vec, inputScalars) != 0)
+			return -1;
+		// Has to be done before the programs are built, as the fastPDHG build options depend on these
+		setupFastPDHGLocalSize(inputScalars, MethodList, w_vec);
 		status2 = createProgram(programFP, programBP, programAux, header_directory, inputScalars, MethodList, w_vec, local_size, type);
 		if (status2 != NVRTC_SUCCESS) {
 			std::cerr << "Error while creating program" << std::endl;
@@ -3283,41 +3288,15 @@ public:
 			mexPrint(deviceName2.c_str());
 			mexEval();
 		}
+		// Make sure the local memory tile of the tiled priors fits the local memory of the device
+		if (limitPriorLocalSize(MethodList, w_vec, inputScalars) != 0)
+			return -1;
 #endif // END CUDA
-		// Use the prior local sizes
+		// Use the prior local sizes with fastPDHG and check whether the prior neighborhood fits in local memory
+		// CUDA and HIP do this before the programs are built (see above)
 		// TODO: Make the prior local size adjustable
-#ifndef METAL
-		if (inputScalars.fastPDHG && (inputScalars.BPType == 4 || inputScalars.BPType == 5) && inputScalars.CT && inputScalars.listmode == 0) {
-			local_size[0] = local_sizePrior[0];
-			local_size[1] = local_sizePrior[1];
-			local_size[2] = 1ULL;
-		}
-		// Check whether the prior local neighborhood can be cached in local memory
-		// If not, disable fastPDHG
-		if (inputScalars.fastPDHG && FASTNLMLOCALCACHE && inputScalars.CT && inputScalars.listmode == 0 && (inputScalars.BPType == 4 || inputScalars.BPType == 5)) {
-			const size_t nVoxZ = (inputScalars.BPType == 5) ? (inputScalars.pitch ? 1ULL : static_cast<size_t>(NVOXELS5))
-				: (inputScalars.useHelical ? static_cast<size_t>(NVOXELSHELICAL) : static_cast<size_t>(NVOXELS));
-			size_t cacheSize = 0ULL;
-			int memLoc = 0;
-#if defined(CUDA) || defined(HIP)
-			cuDeviceGetAttribute(&memLoc, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK, CUDeviceID[0]);
-#elif defined(OPENCL)
-			memLoc = static_cast<int>(CLDeviceID[0].getInfo<CL_DEVICE_LOCAL_MEM_SIZE>(&status));
-#endif // END CUDA
-			if (MethodList.NLM)
-				cacheSize = (local_size[0] + 2ULL * (w_vec.Ndx + w_vec.Nlx)) * (local_size[1] + 2ULL * (w_vec.Ndy + w_vec.Nly))
-					* (nVoxZ + 2ULL * (w_vec.Ndz + w_vec.Nlz)) * sizeof(float) * (w_vec.NLM_anatomical ? 2ULL : 1ULL);
-			else if ((MethodList.RDP && w_vec.RDPLargeNeighbor && !w_vec.RDP_anatomical) || MethodList.GGMRF || MethodList.hyperbolic)
-				cacheSize = (local_size[0] + 2ULL * w_vec.Ndx) * (local_size[1] + 2ULL * w_vec.Ndy)
-					* (nVoxZ + 2ULL * w_vec.Ndz) * sizeof(float);
-			if (cacheSize >= memLoc - 1024ULL) {
-				inputScalars.fastPDHG = false;
-				if (DEBUG) {
-					mexPrintBase("fastPDHG disabled: the fused prior's local-memory tile needs %u bytes per work-group, which exceeds the limit. Using the regular (multi-step) path.\n", static_cast<uint32_t>(cacheSize));
-					mexEval();
-				}
-			}
-		}
+#if defined(OPENCL)
+		setupFastPDHGLocalSize(inputScalars, MethodList, w_vec);
 #endif
 #if defined(CUDA) || defined(HIP)
 		if (DEBUG || inputScalars.verbose >= 3) {
@@ -6329,6 +6308,118 @@ public:
 		d_normFull.clear();
 		d_sensXY.clear();
 		d_sensZ.clear();
+	}
+
+	/// <summary>
+	/// Sets the fastPDHG work-group size to that of the priors and disables fastPDHG if the local memory tile of the fused prior does not
+	/// fit the local/shared memory of the device. Has to be called after the device is known and before the programs are built
+	/// </summary>
+	/// <param name="inputScalars various scalar parameters defining the build parameters and what features to use"></param>
+	/// <param name="MethodList the reconstruction algorithms and priors selected"></param>
+	/// <param name="w_vec specifies some of the special options/parameters used"></param>
+	inline void setupFastPDHGLocalSize(scalarStruct& inputScalars, const RecMethods& MethodList, const Weighting& w_vec) {
+#ifndef METAL
+#if defined(OPENCL)
+		STATUS_t status = SUCCESS_VALUE;
+#endif
+		// Use the prior local sizes
+		// TODO: Make the prior local size adjustable
+		if (inputScalars.fastPDHG && (inputScalars.BPType == 4 || inputScalars.BPType == 5) && inputScalars.CT && inputScalars.listmode == 0) {
+			local_size[0] = local_sizePrior[0];
+			local_size[1] = local_sizePrior[1];
+			local_size[2] = 1ULL;
+		}
+		// Check whether the prior local neighborhood can be cached in local memory
+		// If not, disable fastPDHG
+		if (inputScalars.fastPDHG && FASTNLMLOCALCACHE && inputScalars.CT && inputScalars.listmode == 0 && (inputScalars.BPType == 4 || inputScalars.BPType == 5)) {
+			const size_t nVoxZ = (inputScalars.BPType == 5) ? (inputScalars.pitch ? 1ULL : static_cast<size_t>(NVOXELS5))
+				: (inputScalars.useHelical ? static_cast<size_t>(NVOXELSHELICAL) : static_cast<size_t>(NVOXELS));
+			size_t cacheSize = 0ULL;
+			int memLoc = 0;
+#if defined(CUDA) || defined(HIP)
+			cuDeviceGetAttribute(&memLoc, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK, CUDeviceID[0]);
+#elif defined(OPENCL)
+			memLoc = static_cast<int>(CLDeviceID[0].getInfo<CL_DEVICE_LOCAL_MEM_SIZE>(&status));
+#endif // END CUDA
+			if (MethodList.NLM)
+				cacheSize = (local_size[0] + 2ULL * (w_vec.Ndx + w_vec.Nlx)) * (local_size[1] + 2ULL * (w_vec.Ndy + w_vec.Nly))
+					* (nVoxZ + 2ULL * (w_vec.Ndz + w_vec.Nlz)) * sizeof(float) * (w_vec.NLM_anatomical ? 2ULL : 1ULL);
+			else if ((MethodList.RDP && w_vec.RDPLargeNeighbor && !w_vec.RDP_anatomical) || MethodList.GGMRF || MethodList.hyperbolic)
+				cacheSize = (local_size[0] + 2ULL * w_vec.Ndx) * (local_size[1] + 2ULL * w_vec.Ndy)
+					* (nVoxZ + 2ULL * w_vec.Ndz) * sizeof(float);
+			if (cacheSize >= memLoc - 1024ULL) {
+				inputScalars.fastPDHG = false;
+				if (DEBUG) {
+					mexPrintBase("fastPDHG disabled: the fused prior's local-memory tile needs %u bytes per work-group, which exceeds the limit. Using the regular (multi-step) path.\n", static_cast<uint32_t>(cacheSize));
+					mexEval();
+				}
+			}
+		}
+#endif
+	}
+
+	/// <summary>
+	/// Shrinks the work-group of the prior kernels until the local memory tile of the tiled priors (NLM, RDP with large neighborhood, GGMRF, hyperbolic)
+	/// fits the local/shared memory of the device. Has to be called after the device is known and before the programs are built
+	/// </summary>
+	/// <param name="MethodList the reconstruction algorithms and priors selected"></param>
+	/// <param name="w_vec specifies some of the special options/parameters used"></param>
+	/// <param name="inputScalars various scalar parameters defining the build parameters and what features to use"></param>
+	/// <returns>0 on success, -1 if the tile cannot fit even with a work-group of 1 x 1</returns>
+	inline int limitPriorLocalSize(const RecMethods& MethodList, const Weighting& w_vec, const scalarStruct& inputScalars) {
+#if defined(METAL)
+		return 0;
+#else
+		size_t halo[3] = { 0ULL, 0ULL, 0ULL };
+		size_t nTiles = 0ULL;
+		if (MethodList.NLM) {
+			halo[0] = static_cast<size_t>(w_vec.Ndx) + static_cast<size_t>(w_vec.Nlx);
+			halo[1] = static_cast<size_t>(w_vec.Ndy) + static_cast<size_t>(w_vec.Nly);
+			halo[2] = static_cast<size_t>(w_vec.Ndz) + static_cast<size_t>(w_vec.Nlz);
+			nTiles = w_vec.NLM_anatomical ? 2ULL : 1ULL;
+		}
+		else if ((MethodList.RDP && w_vec.RDPLargeNeighbor) || MethodList.GGMRF || MethodList.hyperbolic) {
+			halo[0] = static_cast<size_t>(w_vec.Ndx);
+			halo[1] = static_cast<size_t>(w_vec.Ndy);
+			halo[2] = static_cast<size_t>(w_vec.Ndz);
+			nTiles = (MethodList.RDP && w_vec.RDP_anatomical) ? 2ULL : 1ULL;
+		}
+		if (nTiles == 0ULL)
+			return 0;
+		int memLoc = 0;
+#if defined(CUDA) || defined(HIP)
+		cuDeviceGetAttribute(&memLoc, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK, CUDeviceID[0]);
+#elif defined(OPENCL)
+		STATUS_t status = SUCCESS_VALUE;
+		memLoc = static_cast<int>(CLDeviceID[0].getInfo<CL_DEVICE_LOCAL_MEM_SIZE>(&status));
+#endif // END CUDA
+		// The limit could not be queried
+		if (memLoc <= 0)
+			return 0;
+		const size_t memLimit = static_cast<size_t>(memLoc);
+		const size_t origSize[2] = { local_sizePrior[0], local_sizePrior[1] };
+		size_t tileBytes = (local_sizePrior[0] + 2ULL * halo[0]) * (local_sizePrior[1] + 2ULL * halo[1]) * (local_sizePrior[2] + 2ULL * halo[2]) * sizeof(float) * nTiles;
+		// Same 1024 byte margin as in the fastPDHG check
+		while (tileBytes + 1024ULL >= memLimit && (local_sizePrior[0] > 1ULL || local_sizePrior[1] > 1ULL)) {
+			if (local_sizePrior[0] > 1ULL)
+				local_sizePrior[0] /= 2ULL;
+			if (local_sizePrior[1] > 1ULL)
+				local_sizePrior[1] /= 2ULL;
+			tileBytes = (local_sizePrior[0] + 2ULL * halo[0]) * (local_sizePrior[1] + 2ULL * halo[1]) * (local_sizePrior[2] + 2ULL * halo[2]) * sizeof(float) * nTiles;
+		}
+		if (tileBytes + 1024ULL >= memLimit) {
+			mexPrintBase("The neighborhood (and patch) of the selected prior needs %u bytes of local memory per work-group, but the device only has %u bytes. Use a smaller neighborhood/patch size.\n",
+				static_cast<uint32_t>(tileBytes), static_cast<uint32_t>(memLimit));
+			mexEval();
+			return -1;
+		}
+		if ((DEBUG || inputScalars.verbose >= 2) && (local_sizePrior[0] != origSize[0] || local_sizePrior[1] != origSize[1])) {
+			mexPrintBase("Prior work-group size reduced from %u x %u ", static_cast<uint32_t>(origSize[0]), static_cast<uint32_t>(origSize[1]));
+			mexPrintBase("to %u x %u to fit the neighborhood in the local memory of the device\n", static_cast<uint32_t>(local_sizePrior[0]), static_cast<uint32_t>(local_sizePrior[1]));
+			mexEval();
+		}
+		return 0;
+#endif
 	}
 
 	/// <summary>
