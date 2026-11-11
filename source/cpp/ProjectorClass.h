@@ -6867,6 +6867,8 @@ public:
 				else
 #endif // END CUDA
 					KARG(kArgs, kernelGGMRF, kernelIndGGMRF, d_maskPrior);
+		if (inputScalars.eFOV && !inputScalars.multiResolution)
+			KARG(kArgs, kernelGGMRF, kernelIndGGMRF, d_eFOVIndices);
 		if (inputScalars.largeDim)
 			KARG(kArgs, kernelGGMRF, kernelIndGGMRF, nOffset);
 		// Compute the kernel
