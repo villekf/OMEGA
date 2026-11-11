@@ -733,6 +733,13 @@ def reconstructions_main(options):
         The (optional) forward projections.
     residual : NumPy Array
         the (optional) residual/primal-dual gap.
+
+    Notes
+    -----
+    After the reconstruction the settings used are stored as the dictionary options.image_properties (the equivalent of the
+    second output of MATLAB's reconstructions_main), see imageProperties(). The dictionary is stored in the object that was given
+    to this function (and in the private working copy, if options.keepOptionsUnchanged is True). It can be given as the options
+    input of saveInterfile/saveMetaImage/saveImage.
     """
     import time
     import os
@@ -743,6 +750,7 @@ def reconstructions_main(options):
     # Work on a private copy (MATLAB value semantics): the pipeline below changes the
     # options in place and not idempotently, so repeated calls with the same object
     # must always start from the user's original values (opt out: keepOptionsUnchanged = False).
+    callerOptions = options
     if getattr(options, 'keepOptionsUnchanged', True):
         options = _privateOptionsCopy(options)
     if options.CT and np.size(options.flat) > 1:
@@ -1115,6 +1123,12 @@ def reconstructions_main(options):
     except Exception as e:
         # Keep the reconstruction even if the output dimensions do not match
         warnings.warn(f'Could not reshape the reconstruction output ({e}); returning the unreshaped (flat) arrays instead.')
+    try:
+        from .imageProperties import imageProperties
+        options.image_properties = imageProperties(options)
+        callerOptions.image_properties = options.image_properties
+    except Exception as e:
+        warnings.warn(f'Could not create options.image_properties ({e}).')
     toc = time.perf_counter()
     if options.verbose > 0:
         print(f"Reconstruction took {toc - tic:0.4f} seconds")
