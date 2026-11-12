@@ -203,7 +203,7 @@ if ~options.CT && ~options.SPECT && options.Nang(end) > options.det_w_pseudo(end
     error(['Number of sinogram angles can be at most the number of detectors per ring divided by two(' num2str(options.det_w_pseudo(1)/2) ')!'])
 end
 if ~options.CT && ~options.SPECT && options.TotSinos < options.NSinos && ~options.use_raw_data
-    error(['The numnber of sinograms used (' num2str(options.NSinos) ') is larger than the total number of sinograms (' num2str(options.TotSinos) ')!'])
+    error(['The number of sinograms used (' num2str(options.NSinos) ') is larger than the total number of sinograms (' num2str(options.TotSinos) ')!'])
 end
 if ~options.CT && ~options.SPECT && (options.ndist_side > 1 && mod(options.Ndist,2) == 0 || options.ndist_side < -1 && mod(options.Ndist,2) == 0) && ~options.use_raw_data
     error('ndist_side can be either 1 or -1!')
@@ -306,19 +306,19 @@ if ~options.CT && ~options.SPECT && options.use_LMF && options.randoms_correctio
     warning('Randoms correction is set to true although LMF input is selected. No randoms correction will be performed.')
     options.randoms_correction = false;
 end
-if options.TV_use_anatomical && options.TV && exist(options.TV_reference_image,'file') ~= 2 && MAP && exist(options.TV_reference_image,'var') ~= 1
+if options.TV_use_anatomical && options.TV && MAP && (ischar(options.TV_reference_image) || isstring(options.TV_reference_image)) && exist(options.TV_reference_image,'file') ~= 2
     error('Anatomical reference image for TV was not found on the specified path!')
 end
-if options.NLM_use_anatomical && options.NLM && MAP && exist(options.NLM_reference_image,'file') ~= 2 && exist(options.NLM_reference_image,'var') ~= 1
+if options.NLM_use_anatomical && options.NLM && MAP && (ischar(options.NLM_reference_image) || isstring(options.NLM_reference_image)) && exist(options.NLM_reference_image,'file') ~= 2
     error('Anatomical reference image for NLM was not found on the specified path!')
 end
-if options.RDP_use_anatomical && options.RDP && options.RDPIncludeCorners && options.implementation == 2 && exist(options.RDP_reference_image,'file') ~= 2 && MAP && exist(options.RDP_reference_image,'var') ~= 1
+if options.RDP_use_anatomical && options.RDP && options.RDPIncludeCorners && options.implementation == 2 && MAP && (ischar(options.RDP_reference_image) || isstring(options.RDP_reference_image)) && exist(options.RDP_reference_image,'file') ~= 2
     error('Reference image for RDP was not found on the specified path!')
 end
 if options.RDP_use_anatomical && options.RDP && ~options.RDPIncludeCorners
     warning('Reference image for RDP is only supported with options.RDPIncludeCorners = true')
 end
-if options.precondTypeImage(3) && exist(options.referenceImage,'file') ~= 2 && exist(options.referenceImage,'var') ~= 1
+if options.precondTypeImage(3) && (ischar(options.referenceImage) || isstring(options.referenceImage)) && exist(options.referenceImage,'file') ~= 2
     error('Reference image for precondititiong was not found on the specified path!')
 end
 if options.TV && options.TVtype == 2 && ~options.TV_use_anatomical
@@ -382,8 +382,9 @@ if ~options.CT && ~options.SPECT && options.use_machine == 2 && options.use_raw_
     warning('Sinogram data cannot be used when raw data is set to true, using list-mode data instead')
     options.use_machine = 1;
 end
-if options.useIndexBasedReconstruction && (options.projector_type == 5 || options.projector_type == 55 || options.projector_type == 45 || options.projector_type == 54 || options.projector_type == 51 ...
-        || options.projector_type == 15 || options.projector_type == 6)
+% Forward and backward projector type of the (possibly combined) projector type
+ptDigits = [floor(options.projector_type / 10), mod(options.projector_type, 10)];
+if options.useIndexBasedReconstruction && any(ismember(ptDigits, [5 6]))
     error('Index-based reconstruction only supports projector types 1-4!')
 end
 % List-mode data (custom coordinates or index-based) can only be divided into
@@ -584,10 +585,10 @@ end
 if options.CT && (options.projector_type == 2 || (options.projector_type > 10 && (floor(options.projector_type / 10) == 2 || mod(options.projector_type, 10) == 2)))
     error('Projector type 2 (orthogonal distance) is not supported with CT (also as the forward or backward projector of a combined projector type)!')
 end
-if (options.projector_type == 5 || options.projector_type == 55 || options.projector_type == 15 || options.projector_type == 51 || options.projector_type == 45 || options.projector_type == 54) && ~options.CT
+if any(ptDigits == 5) && ~options.CT
     error('Projector type 5 is only supported with CT data!')
 end
-if (options.projector_type == 6) && ~options.SPECT
+if any(ptDigits == 6) && ~options.SPECT
     error('Projector type 6 is only supported with SPECT data!')
 end
 if ~ismember(options.projector_type, [1 2 6 11 16 21 22 26 61 62 66]) && options.SPECT
@@ -690,9 +691,6 @@ end
 if options.useIndexBasedReconstruction && (options.randoms_correction || (options.scatter_correction && ~options.subtract_scatter)) && options.TOF_bins > 1
     % Subtracted scatter is the additive term of each event, which is allowed with TOF (the value of the TOF bin of the event)
     error('Randoms and/or multiplicative scatter correction cannot be used with index-based reconstruction with TOF data!')
-end
-if isfield(options,'maskFP') && options.subset_type == 3 && numel(options.maskFP) > 1
-    error('Forward projection mask is not supported with subset type 3!')
 end
 if options.CT && (options.COSEM || options.ECOSEM || options.ACOSEM || options.OSL_COSEM > 0)
     error('COSEM, ECOSEM, ACOSEM and OSL-COSEM are not supported with CT data (no transmission tomography formulation).')
@@ -838,9 +836,9 @@ if options.verbose > 0
         end
         varMAP = recNames(2);
         for kk = 1 : numel(varMAP)
-            if options.OSL_OSEM && PRIOR && options.subsets == 1
+            if options.(varMAP{kk}) && strcmp(varMAP{kk},'OSL_OSEM') && PRIOR && options.subsets == 1
                 reko = [reko;{'MLEM-OSL'}];
-            elseif options.(varMAP{kk}) && strcmp(options.(varMAP{kk}),'OSL_COSEM')
+            elseif options.(varMAP{kk}) && strcmp(varMAP{kk},'OSL_COSEM')
                 if options.OSL_COSEM == 1 && PRIOR
                     reko = [reko;{'ACOSEM-OSL'}];
                 elseif options.OSL_COSEM == 1 && ~PRIOR
@@ -884,7 +882,7 @@ if options.verbose > 0
         varPriorName = recNames(10);
         for kk = 1 : numel(varPrior)
             if options.(varPrior{kk}) && MAP
-                if strcmp(options.(varPrior{kk}),'TV')
+                if strcmp(varPrior{kk},'TV')
                     if options.TV_use_anatomical
                         if options.TVtype == 1
                             priori = [priori;{'Anatomically weighted TV'}];
@@ -906,7 +904,7 @@ if options.verbose > 0
                             error('Unsupported TV type selected.')
                         end
                     end
-                elseif strcmp(options.(varPrior{kk}),'weighted_mean')
+                elseif strcmp(varPrior{kk},'weighted_mean')
                     if options.mean_type == 1 || options.mean_type == 4
                         priori = [priori;{'Weighted (arithmetic) mean'}];
                     elseif options.mean_type == 2 || options.mean_type == 5
@@ -916,7 +914,7 @@ if options.verbose > 0
                     else
                         error('Unsupported mean type selected.')
                     end
-                elseif strcmp(options.(varPrior{kk}),'AD')
+                elseif strcmp(varPrior{kk},'AD')
                     if options.FluxType > 2 || options.FluxType < 1
                         error('FluxType has to be either 1 or 2.')
                     end
