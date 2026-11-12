@@ -30,7 +30,13 @@ elseif options.implementation == 3
 elseif options.implementation == 4
     image_properties.Implementation = 'CPU matrix-free (4)';
 elseif options.implementation == 2
-    image_properties.Implementation = 'Matrix-free ArrayFire OpenCL (2)';
+    if isfield(options,'use_CUDA') && options.use_CUDA
+        image_properties.Implementation = 'Matrix-free ArrayFire CUDA (2)';
+    elseif isfield(options,'use_CPU') && options.use_CPU
+        image_properties.Implementation = 'Matrix-free ArrayFire CPU (2)';
+    else
+        image_properties.Implementation = 'Matrix-free ArrayFire OpenCL (2)';
+    end
     image_properties.deviceNumber = options.use_device;
 end
 if options.projector_type == 0
@@ -239,6 +245,7 @@ else
     image_properties.nSinograms = options.NSinos;
     image_properties.rawDataUsed = options.use_raw_data;
     image_properties.startTime = options.start;
+    image_properties.endTime = options.end;
     image_properties.nRings = options.rings;
     if options.use_raw_data
         image_properties.ringDifference = options.ring_difference_raw;
