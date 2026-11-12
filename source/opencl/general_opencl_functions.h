@@ -2634,6 +2634,34 @@ DEVICE void normalizeCurvedCoordinates(float3 xyz,
 ///////////////// COMMON PRIOR AND ALGORITHM FUNCTIONS ////////////////
 ///////////////////////////////////////////////////////////////////////
 // These were added to share as much code with fastPDHG as possible
+
+// Derivative of the (q-)GGMRF potential function, used by both GGMRF and the non-local GGMRF
+#if (defined(NLTYPE) && NLTYPE == 6) || (defined(SWPRIORTYPE) && SWPRIORTYPE == 1)
+// Computes |delta|^(p - 1) / (1 + |delta / c|^(p - q)) * (p - pqc * c^(p - q) * |delta / c|^(p - q) / (1 + |delta / c|^(p - q))) * sign(delta)
+// Both powers are computed from a single logarithm, |delta|^a = exp(a * log(|delta|)), instead of two separate power functions
+// delta must not be zero. logC = log(c) and cpq = c^(p - q) are constants that are computed only once per voxel
+// The host defines GGMRFPEQQ when p == q (|delta / c|^(p - q) is then one) and GGMRFP2 when p == 2 (|delta|^(p - 1) is then |delta|)
+// These are compile-time selections on purpose: branches on p and q inside the neighborhood loops were measurably slower
+DEVICE float GGMRFDerivative(const float delta, const float p, const float q, const float logC, const float cpq, const float pqc) {
+    const float absDelta = fabs(delta);
+#if !defined(GGMRFPEQQ) || !defined(GGMRFP2)
+    const float logDelta = LOG(absDelta);
+#endif
+#ifdef GGMRFPEQQ
+    const float dcpq = FLOAT_ONE;
+#else
+    const float dcpq = EXP((p - q) * (logDelta - logC));
+#endif
+    const float deltapqc = FLOAT_ONE + dcpq;
+#ifdef GGMRFP2
+    const float dp = absDelta;
+#else
+    const float dp = EXP((p - FLOAT_ONE) * logDelta);
+#endif
+    return (dp / deltapqc) * (p - pqc * ((dcpq * cpq) / deltapqc)) * sign(delta);
+}
+#endif
+
 #if defined(NLM_) || defined(FASTNLM) // START SHARED NLM
 
 #ifndef NLTYPE
@@ -2715,6 +2743,7 @@ DEVICE float NLMGradient(NLM_IN_T uIn,
 #if NLTYPE == 6
     // Precompute for NLGGMRF
     const float cpq = POWR(c, p - q);
+    const float logC = LOG(c);
 #endif
 #ifdef NLMADAPTIVE
     const float pSize = CFLOAT((PWINDOWX * 2 + 1) * (PWINDOWY * 2 + 1) * (PWINDOWZ * 2 + 1));
@@ -2817,13 +2846,10 @@ DEVICE float NLMGradient(NLM_IN_T uIn,
                 output += weight * (uabs - uabs / (fabs(u) / gamma + FLOAT_ONE));
 #elif NLTYPE == 6
                 // NLGGMRF
-                // powr(0, 0) is NaN in OpenCL, so skip identical voxels (their contribution is zero)
+                // Identical voxels are skipped: their contribution is zero and the logarithm of zero is not finite
                 const float delta = uj - uk;
-                if (delta != FLOAT_ZERO) {
-                    const float dcpq = POWR(fabs(delta / c), p - q);
-                    const float deltapqc = FLOAT_ONE + dcpq;
-                    output += weight * (POWR(fabs(delta), p - FLOAT_ONE) / deltapqc) * (p - gamma * ((dcpq * cpq) / deltapqc)) * sign(delta);
-                }
+                if (delta != FLOAT_ZERO)
+                    output += weight * GGMRFDerivative(delta, p, q, logC, cpq, gamma);
 #elif NLTYPE == 7
 				// NLGM (Non-local Geman-McClure)
                 const float delta = uj - uk;
@@ -2998,6 +3024,7 @@ DEVICE float priorGradientSW(SW_IN_T uIn, CONSTANT float* weight,
 #endif
 #if SWPRIORTYPE == 1
     const float cpq = POWR(c, p - q);
+    const float logC = LOG(c);
 #endif
 #if SWPRIORTYPE == 2
     const float invSigma = FLOAT_ONE / sigma;
@@ -3035,12 +3062,10 @@ DEVICE float priorGradientSW(SW_IN_T uIn, CONSTANT float* weight,
 #endif
 #endif
 #if SWPRIORTYPE == 1 // GGMRF
+                // Identical voxels are skipped: their contribution is zero and the logarithm of zero is not finite
                 const float delta = uj - uk;
-                if (delta != FLOAT_ZERO) {
-                    const float dcpq = POWR(fabs(delta / c), p - q);
-                    const float deltapqc = FLOAT_ONE + dcpq;
-                    output += weight[uu] * (POWR(fabs(delta), p - FLOAT_ONE) / deltapqc) * (p - pqc * ((dcpq * cpq) / deltapqc)) * sign(delta);
-                }
+                if (delta != FLOAT_ZERO)
+                    output += weight[uu] * GGMRFDerivative(delta, p, q, logC, cpq, pqc);
 #endif
                 uu++;
             }
