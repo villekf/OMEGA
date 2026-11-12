@@ -23,7 +23,7 @@ if isfield(options,ichar)
                     input{kk} = randoms_smoothing(double(input{kk}), options);
                     Prop.smoothing = true;
                 end
-                if ~options.corrections_during_reconstruction
+                if (~options.corrections_during_reconstruction || ~options.ordinaryPoisson)
                     if type == 0
                         if options.TOF_bins > 1
                             NN = options.Ndist * options.Nang * options.NSinos;
@@ -58,7 +58,7 @@ if isfield(options,ichar)
                 input{1} = randoms_smoothing(double(input{1}), options);
                 Prop.smoothing = true;
             end
-            if isfield(options,'SinM') && ~options.corrections_during_reconstruction
+            if isfield(options,'SinM') && (~options.corrections_during_reconstruction || ~options.ordinaryPoisson)
                 if type == 0
                     if options.TOF_bins > 1
                         NN = options.Ndist * options.Nang * options.NSinos;
@@ -95,7 +95,7 @@ if isfield(options,ichar)
                 if numel(input) ~= numel(options.SinM{kk}) && numel(input) * options.TOF_bins ~= numel(options.SinM{kk})
                     error(['Size mismatch between ' corr ' correction data and measurement data'])
                 end
-                if ~options.corrections_during_reconstruction
+                if (~options.corrections_during_reconstruction || ~options.ordinaryPoisson)
                     if type == 0
                         if options.TOF_bins > 1
                             NN = options.Ndist * options.Nang * options.NSinos;
@@ -130,7 +130,7 @@ if isfield(options,ichar)
                 input = randoms_smoothing(input, options);
                 Prop.smoothing = true;
             end
-            if isfield(options,'SinM') && ~options.corrections_during_reconstruction
+            if isfield(options,'SinM') && (~options.corrections_during_reconstruction || ~options.ordinaryPoisson)
                 if type == 0
                     if options.TOF_bins > 1
                         NN = options.Ndist * options.Nang * options.NSinos;

@@ -1220,12 +1220,27 @@ def loadCorrections(options):
             from omegatomo.util.smoothing import randoms_smoothing
             options.ScatterC = randoms_smoothing(options.ScatterC, options)
         if options.precorrect:
+            subtractedRandoms = False
+            subtractedScatter = False
             if options.scatter_correction and options.ScatterC.size > 0 and options.SinDelayed.size > 0 and options.randoms_correction and options.subtract_scatter:
                 options.SinM = _subtractScatter(options, _subtractDelayed(options.SinM, options.SinDelayed, options.TOF_bins), options.ScatterC)
+                subtractedRandoms = True
+                subtractedScatter = True
             elif options.scatter_correction and options.ScatterC.size > 0 and not options.randoms_correction and options.subtract_scatter:
                 options.SinM = _subtractScatter(options, options.SinM, options.ScatterC)
+                subtractedScatter = True
             elif options.SinDelayed.size > 0 and options.randoms_correction:
                 options.SinM = _subtractDelayed(options.SinM, options.SinDelayed, options.TOF_bins) 
+                subtractedRandoms = True
+            if options.corrections_during_reconstruction:
+                # The subtracted terms are already in SinM: clear their flags so they are not also added in the forward projection.
+                # The markers let imageProperties still report them as applied.
+                if subtractedRandoms:
+                    options._randomsPrecorrected = True
+                    options.randoms_correction = False
+                if subtractedScatter:
+                    options._scatterPrecorrected = True
+                    options.scatter_correction = False
     if deferredNormalization is not None:
         options.SinM = _perLORFactor(options.SinM, deferredNormalization[0], options.TOF_bins, deferredNormalization[1])
     if options.scatter_correction and options.ScatterC.size > 0 and not options.subtract_scatter:
@@ -1790,10 +1805,14 @@ def parseInputs(options, mDataFound = False):
     if options.scatter_correction and not options.corrections_during_reconstruction:
         if not options.precorrect:
             print('Warning: Scatter correction is disabled. options.corrections_during_reconstruction is False and options.precorrect is False, i.e. the scatter is neither applied during the reconstruction nor subtracted from the measurement data. Set options.corrections_during_reconstruction = True to apply it.')
+        else:
+            options._scatterPrecorrected = True
         options.scatter_correction = False
     if options.randoms_correction and not options.corrections_during_reconstruction:
         if not options.precorrect:
             print('Warning: Randoms correction is disabled. options.corrections_during_reconstruction is False and options.precorrect is False, i.e. the randoms are neither applied during the reconstruction nor subtracted from the measurement data. Set options.corrections_during_reconstruction = True to apply them.')
+        else:
+            options._randomsPrecorrected = True
         options.randoms_correction = False
     
     if options.Nt <= 1 and mDataFound and not options.largeDim and options.loadTOF:

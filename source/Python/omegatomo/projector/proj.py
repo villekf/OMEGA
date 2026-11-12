@@ -1985,7 +1985,7 @@ class projectorClass:
         if self.hyperbolic and self.implementation != 2:
             raise ValueError('Hyperbolic prior is only available when using implementation 2!')
         elif self.implementation == 2 and self.TV and self.TVtype == 3:
-            # Port of OMEGA_error_check.m:361-370: TV type 3 is really the
+            # Port of the TV type 3 handling in OMEGA_error_check.m: TV type 3 is really the
             # hyperbolic prior when using implementation 2, so switch the
             # active prior over before prepass.py computes any prior weights
             # (TVPrepass/etc., called later from prepassPhase) and before the
@@ -2089,10 +2089,13 @@ class projectorClass:
             raise ValueError('TOF enabled, but the TOF FWHM (self.TOF_FWHM) is zero. FWHM must be nonzero.')
         
         if self.corrections_during_reconstruction and (self.scatter_correction or self.randoms_correction) and (self.PDHG or self.PDHGL1 or self.FISTA or self.LSQR or self.CGLS or self.FISTAL1 or self.PDDY):
-            print('Randoms/scatter correction cannot be applied during the reconstruction with the selected algorithm! Attempting precorrection!')
+            if self.precorrect is not None and not self.precorrect:
+                raise ValueError('Randoms/scatter correction cannot be applied during the reconstruction with the selected algorithm and the measurement data has to be precorrected! '
+                                 'Set precorrect = True (or leave it unset) or disable the randoms/scatter correction.')
+            if self.precorrect is None:
+                self.precorrect = True
             self.ordinaryPoisson = False
-            # self.scatter_correction = False
-            # self.randoms_correction = False     
+            print('Randoms/scatter correction cannot be applied during the reconstruction with the selected algorithm! The measurement data will be precorrected instead.')
         if self.useIndexBasedReconstruction and (self.randoms_correction or (self.scatter_correction and not self.subtract_scatter)) and self.TOF_bins > 1:
             # Subtracted scatter is the per-event additive term, which is allowed with TOF (the value of the TOF bin of the event)
             raise ValueError('Randoms and/or multiplicative scatter correction cannot be used with index-based reconstruction with TOF data!')
@@ -2158,6 +2161,23 @@ class projectorClass:
         neg = [name for name in varNeg if getattr(self, name, False)]
         if len(neg) > 0:
             self.enforcePositivity = False
+            
+        # Only one algorithm and one prior can be selected at a time (also checked when the settings are not printed)
+        if not (self.compute_normalization or self.only_sinos):
+            algorithms = [
+                "OSEM", "MRAMLA", "RAMLA", "RBI", "ROSEM", "DRAMA", "COSEM", "ECOSEM", "ACOSEM", "LSQR", "CGLS", "FDK", "FISTA", "FISTAL1",
+                "OSL_OSEM", "MBSREM", "BSREM", "OSL_RBI", "OSL_COSEM", "ROSEM_MAP", "PKMA", "SPS", "SART", "ASD_POCS", "SAGA", "BB",
+                "PDHG", "PDHGL1", "PDDY", "PDHGKL", "CV" ]
+            
+            varPrior = ['MRP','quad','Huber','L','FMH','weighted_mean','TV','hyperbolic','AD','APLS','TGV','NLM','RDP','GGMRF','ProxTV','custom']
+            priors = [name for name in varPrior if getattr(self, name, False)]
+            
+            enabled_algorithms = [name for name in algorithms if getattr(self, name, False)]
+            
+            if len(enabled_algorithms) > 1:
+                raise ValueError(f"Multiple reconstruction algorithms selected: {enabled_algorithms}")
+            if len(priors) > 1:
+                raise ValueError(f"Multiple priors selected: {priors}")
             
         if self.verbose > 0:
             if self.use_ASCII and self.use_machine == 0:
@@ -2245,29 +2265,13 @@ class projectorClass:
                 else:
                     print('Selected device number is ' + str(self.deviceNum))
                     
-                algorithms = [
-                    "OSEM", "MRAMLA", "RAMLA", "RBI", "ROSEM", "DRAMA", "COSEM", "ECOSEM", "ACOSEM", "LSQR", "CGLS", "FDK", "FISTA", "FISTAL1",
-                    "OSL_OSEM", "MBSREM", "BSREM", "OSL_RBI", "OSL_COSEM", "ROSEM_MAP", "PKMA", "SPS", "SART", "ASD_POCS", "SAGA", "BB",
-                    "PDHG", "PDHGL1", "PDDY", "PDHGKL", "CV" ]
-                
-                
-                varPrior = ['MRP','quad','Huber','L','FMH','weighted_mean','TV','hyperbolic','AD','APLS','TGV','NLM','RDP','GGMRF','ProxTV','custom']
-                priors = [name for name in varPrior if getattr(self, name, False)]
-                
-                enabled_algorithms = [name for name in algorithms if getattr(self, name, False)]
-                
                 # Check how many are True
                 if len(enabled_algorithms) == 0:
                     print("No reconstruction method selected! If you are using custom reconstruction, ignore this warning")
                     self.builtin = False
-                elif len(enabled_algorithms) > 1:
-                    raise ValueError(f"Multiple reconstruction algorithms selected: {enabled_algorithms}")
                 else:
                     print(f"{enabled_algorithms[0]} reconstruction method selected.")
                     
-                if len(priors) > 1:
-                    raise ValueError(f"Multiple priors selected: {priors}")
-                
                 if len(priors) > 0:
                     if not self.NLM:
                         print(f"{priors[0]} prior selected.")
