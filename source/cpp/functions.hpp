@@ -22,6 +22,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -2124,45 +2125,10 @@ inline int PDHGUpdateAF(af::array& im, const af::array& rhs, const scalarStruct&
 // not be launched (ProjectorClass::type6Error), after which it launches no more rotations; 0 otherwise. The type-6 projectors return
 // nothing, so their callers check this after them and stop
 inline int type6Status(const ProjectorClass& proj) {
-#if defined(CPU)
-	return 0;
-#else
 	return proj.type6Error ? -1 : 0;
-#endif
 }
 
 #if !defined(CPU)
-#if defined(METAL)
-inline int rotateCustomAF(af::array& imrot, const af::array& im, const scalarStruct& inputScalars, ProjectorClass& proj, const float angle, const int ii = 0) {
-	int status = 0;
-	if (!inputScalars.useBuffers) {
-#if defined(CUDA) || defined(HIP) || defined(METAL)
-		AFDEVBUFF_t input = transferAF(im);
-		status = proj.transferTex(inputScalars, input, false, inputScalars.Nz[0]);
-#elif defined(OPENCL)
-        status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*im.device<cl_mem>(), true), proj.d_inputI, 0, proj.origin, proj.region);
-        if (status != 0) {
-			getErrorString(status);
-			im.unlock();
-			mexPrint("Failed to copy rotation image\n");
-			return -1;
-		}
-#endif
-    } else {
-        proj.d_im = transferAF(im);
-    }
-	proj.d_rhs = transferAF(imrot);
-	const float cosa = std::cos(-angle);
-	const float sina = std::sin(-angle);
-	status = proj.rotateCustom(inputScalars, cosa, sina, ii);
-	imrot.unlock();
-	im.unlock();
-	if (status != 0) {
-		return -1;
-	}
-	return status;
-}
-#else
 // Rotates the input image and, at the same time, shifts it by (offX, offY) voxels
 // The output is obtained as imrot(q) = im(R * q + off), where q is the (centered) output coordinate
 // and R the rotation matrix. Combining the rotation and the translation means that the image is
@@ -2186,7 +2152,7 @@ inline int rotateCustomAF(af::array& imrot, const af::array& im, const scalarStr
 		if (upload) {
 			// Only the part of the image that holds data is uploaded, the rest of the image is not read
 			// HIP does not define CUDA, so it has to be listed separately or the image is never uploaded
-#if defined(CUDA) || defined(HIP)
+#if defined(CUDA) || defined(HIP) || defined(METAL)
 			AFDEVBUFF_t input = transferAF(im);
 			status = proj.transferRotTex(inputScalars, input, win, texSlot);
 			im.unlock();
@@ -2218,6 +2184,7 @@ inline int rotateCustomAF(af::array& imrot, const af::array& im, const scalarStr
 	if (inputScalars.useBuffers)
 		im.unlock();
 	if (status != 0) {
+		proj.type6Error = true;
 		return -1;
 	}
 	return status;
@@ -2225,18 +2192,17 @@ inline int rotateCustomAF(af::array& imrot, const af::array& im, const scalarStr
 
 // One pass of the separable collimator-detector response convolution. The filter bank holds one 1D
 // filter for each slice of the input along its third dimension
-inline int convolveCDRFAF(af::array& output, const af::array& input, const af::array& filter, const scalarStruct& inputScalars, ProjectorClass& proj, const int axis) {
+inline int convolveCDRFAF(af::array& output, const af::array& input, const af::array& filter, ProjectorClass& proj, const int axis) {
 	proj.d_im = transferAF(input);
 	proj.d_rhs = transferAF(output);
 	proj.d_convFilter = transferAF(filter);
 	const int fRadius = static_cast<int>((filter.dims(0) * filter.dims(1) - 1) / 2);
-	const int status = proj.convolveCDRF(inputScalars, static_cast<int>(input.dims(0)), static_cast<int>(input.dims(1)), static_cast<int>(input.dims(2)), fRadius, axis);
+	const int status = proj.convolveCDRF(static_cast<int>(input.dims(0)), static_cast<int>(input.dims(1)), static_cast<int>(input.dims(2)), fRadius, axis);
 	input.unlock();
 	output.unlock();
 	filter.unlock();
 	return status;
 }
-#endif // END METAL
 #endif
 
 // Various batch functions
@@ -2350,19 +2316,6 @@ inline int roundUpType6(const int n, const int q) {
 // The multiple that the arrays of the projector that works on every volume of a view together are rounded up to
 static const int type6AllocQuantum = 16;
 
-#if defined(METAL)
-inline af::array rotateHelperType6(const af::array& im, const scalarStruct& inputScalars, ProjectorClass& proj, const float angleDeg, const int ii = 0) {
-    af::array imrot;
-    const float angleRad = angleDeg * static_cast<float>(M_PI) / 180.f;
-#ifndef CPU
-    imrot = af::constant(0.f, inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii]);
-    rotateCustomAF(imrot, im, inputScalars, proj, angleRad, ii);
-#else
-    imrot = af::rotate(im, angleRad, true, AF_INTERP_BILINEAR);
-#endif
-    return imrot;
-}
-#else
 // Rotates the image by angleDeg degrees and simultaneously shifts it such that
 // imrot(q) = im(R * q + (offX, offY)), where R is the rotation matrix corresponding to angleDeg
 // and q the (centered) output coordinate. The offsets are given in voxels and may be non-integer,
@@ -2446,7 +2399,6 @@ inline void rotateAccumulateType6(af::array& output, const af::array& im, const 
     }
     rotateCustomAF(output, im, inputScalars, proj, angleRad, offX, offY, win, ii, 0, true, true);
 }
-#endif
 #endif
 
 inline af::array translateHelperType6(const af::array im, const int shift0, const int shift1, const int shift2) { // TODO: custom translation kernel
@@ -2669,6 +2621,11 @@ inline bool geometryDiffersBetweenFramesType6(const Weighting& w_vec) {
 	return false;
 }
 
+// Include a partial last voxel while ignoring float roundoff at integer boundaries.
+inline double type6AttenuationDimension(const float low, const float high, const float spacing) {
+	return std::ceil(static_cast<double>((high - low) / spacing) - 1e-5);
+}
+
 // The attenuation map of frame timestep of the host attenuation array of the type-6 projector. A dynamic scan can have a map for every frame (the vaimennus
 // cell of Nt maps is concatenated by the host code into one array), each as large as the map of a static scan: the image of the main volume or, with
 // multi-resolution volumes, the whole grid (the union bounding box of the volumes, see buildType6AttenuationVolume). A shorter array (a single map) is
@@ -2698,8 +2655,8 @@ inline AttFrameType6 attenuationFrameType6(const scalarStruct& inputScalars, con
 			byHi = (std::max)(byHi, inputScalars.by[jj] + inputScalars.Ny[jj] * inputScalars.dy[jj]);
 			bzHi = (std::max)(bzHi, inputScalars.bz[jj] + inputScalars.Nz[jj] * inputScalars.dz[jj]);
 		}
-		frameElems = static_cast<size_t>(std::lround((bxHi - bxMap) / inputScalars.dx[0])) * static_cast<size_t>(std::lround((byHi - byMap) / inputScalars.dy[0])) *
-			static_cast<size_t>(std::lround((bzHi - bzMap) / inputScalars.dz[0]));
+		frameElems = static_cast<size_t>(type6AttenuationDimension(bxMap, bxHi, inputScalars.dx[0])) * static_cast<size_t>(type6AttenuationDimension(byMap, byHi, inputScalars.dy[0])) *
+			static_cast<size_t>(type6AttenuationDimension(bzMap, bzHi, inputScalars.dz[0]));
 	}
 	if (frameElems == 0ULL || inputScalars.size_atten < frameElems * static_cast<size_t>(inputScalars.Nt))
 		return out;
@@ -2708,285 +2665,6 @@ inline AttFrameType6 attenuationFrameType6(const scalarStruct& inputScalars, con
 	return out;
 }
 
-#if defined(METAL)
-// NOTE: multi-resolution volumes (nMultiVolumes > 0) are not yet supported/validated
-// Builds multi-resolution volume ii's own attenuation image from the host-provided attenuation map.
-// The map is expected to cover the union bounding box of every multi-resolution volume (0..
-// nMultiVolumes), at volume 0's own (finest) voxel size -- i.e. exactly the same "single dense array
-// covering the full, pre-split FOV" convention already used for options.x0 / options.referenceImage
-// with multi-resolution volumes. With nMultiVolumes == 0 the map IS volume 0's own grid and this is
-// a plain, unchanged reinterpretation of the host buffer (bit-identical to the pre-existing
-// behavior). CTAttenuation must be true: type 6's rotate-and-integrate attenuation model needs a full
-// image-domain map, unlike the precomputed LOR/sinogram-domain attenuation factors used elsewhere
-// when CTAttenuation is false, which this projector cannot consume.
-inline af::array buildType6AttenuationVolume(const scalarStruct& inputScalars, const int ii, const float* atten) {
-	if (!(inputScalars.attenuation_correction && inputScalars.CTAttenuation && (atten != nullptr)))
-		return af::array();
-	if (inputScalars.nMultiVolumes == 0)
-		return af::array(inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], atten);
-
-	float bxMap = inputScalars.bx[0], byMap = inputScalars.by[0], bzMap = inputScalars.bz[0];
-	float bxHi = inputScalars.bx[0] + inputScalars.Nx[0] * inputScalars.dx[0];
-	float byHi = inputScalars.by[0] + inputScalars.Ny[0] * inputScalars.dy[0];
-	float bzHi = inputScalars.bz[0] + inputScalars.Nz[0] * inputScalars.dz[0];
-	for (int jj = 1; jj <= inputScalars.nMultiVolumes; jj++) {
-		bxMap = (std::min)(bxMap, inputScalars.bx[jj]);
-		byMap = (std::min)(byMap, inputScalars.by[jj]);
-		bzMap = (std::min)(bzMap, inputScalars.bz[jj]);
-		bxHi = (std::max)(bxHi, inputScalars.bx[jj] + inputScalars.Nx[jj] * inputScalars.dx[jj]);
-		byHi = (std::max)(byHi, inputScalars.by[jj] + inputScalars.Ny[jj] * inputScalars.dy[jj]);
-		bzHi = (std::max)(bzHi, inputScalars.bz[jj] + inputScalars.Nz[jj] * inputScalars.dz[jj]);
-	}
-	const int NxMap = static_cast<int>(std::lround((bxHi - bxMap) / inputScalars.dx[0]));
-	const int NyMap = static_cast<int>(std::lround((byHi - byMap) / inputScalars.dy[0]));
-	const int NzMap = static_cast<int>(std::lround((bzHi - bzMap) / inputScalars.dz[0]));
-	const int nx = inputScalars.Nx[ii], ny = inputScalars.Ny[ii], nz = inputScalars.Nz[ii];
-	// Identity: no multi-resolution split, the map already IS volume 0's own grid
-	if (ii == 0 && inputScalars.Nx[0] == static_cast<uint32_t>(NxMap) && inputScalars.Ny[0] == static_cast<uint32_t>(NyMap) &&
-		inputScalars.Nz[0] == static_cast<uint32_t>(NzMap))
-		return af::array(NxMap, NyMap, NzMap, atten);
-	// Summed-area table and box averages in double on the host (see resampleAttenuationType6Host), the float result uploaded once
-	const std::vector<float> res = resampleAttenuationType6Host(atten, bxMap, byMap, bzMap, inputScalars.dx[0], inputScalars.dy[0], inputScalars.dz[0],
-		NxMap, NyMap, NzMap, inputScalars.bx[ii], inputScalars.by[ii], inputScalars.bz[ii], inputScalars.dx[ii], inputScalars.dy[ii], inputScalars.dz[ii],
-		nx, ny, nz, true);
-	return af::array(nx, ny, nz, res.data());
-}
-
-// SPECT forward projection (projector type 6)
-inline void forwardProjectionType6(af::array& fProj, const Weighting& w_vec, AF_im_vectors& vec, const scalarStruct& inputScalars,
-	const int64_t length, const int64_t uu, ProjectorClass& proj, const int ii = 0, const float* atten = nullptr, const int timestep = 0) {
-	if (!mainCenteredType6(inputScalars)) {
-		mexPrint("An off-centre FOV is not supported with the SPECT projector type 6 on the Metal backend");
-		return;
-	}
-	if (DEBUG || inputScalars.verbose >= 3) {
-		af::sync();
-		proj.tStartLocal = std::chrono::steady_clock::now();
-	}
-	if (DEBUG || inputScalars.verbose >= 3)
-		mexPrint("Starting SPECT forward projection");
-	int64_t u1 = uu + geomViewStartType6(w_vec, timestep);
-	const af::array apuArr = ownedType6(af::moddims(vec.im_os[timestep][ii], inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii]));
-
-	// Pre-transfer/resample the attenuation volume if it doesn't yet exist (once per call, not
-	// per projection angle below)
-	af::array attenBase = buildType6AttenuationVolume(inputScalars, ii, attenuationFrameType6(inputScalars, atten, timestep).atten);
-	const bool useAtten = (inputScalars.attenuation_correction && inputScalars.CTAttenuation && (atten != nullptr));
-
-	for (int kk = 0; kk < length; kk++) {
-		af::array kuvaRot;
-
-        // 1. Rotate the image
-        kuvaRot = rotateHelperType6(apuArr, inputScalars, proj, -w_vec.swivelAngles[u1], ii);
-        if (DEBUG || inputScalars.verbose > 2)
-            mexPrint("Projector 6 FP step 1 complete");
-
-        // 2. Translate the image
-        if (w_vec.distInt2[u1] != 0)
-            kuvaRot = translateHelperType6(kuvaRot, 0, -w_vec.distInt2[u1], 0);
-        if (DEBUG || inputScalars.verbose > 2)
-            mexPrint("Projector 6 FP step 2 complete");
-
-        // 3. Process and apply attenuation image
-        if (useAtten) {
-            // 3.1. rotate attenuation map
-            af::array attenuationImage = rotateHelperType6(attenBase, inputScalars, proj, -w_vec.swivelAngles[u1], ii);
-
-            // 3.2 translate attenuation map, with the same shift as the emission volume above so that the
-            // two stay aligned
-            if (w_vec.distInt2[u1] != 0)
-                attenuationImage = translateHelperType6(attenuationImage, 0, -w_vec.distInt2[u1], 0);
-
-            // 3.3 accumulate attenuation
-            attenuationImage = af::accum(attenuationImage, 0);
-
-            // 3.4 multiply each accumulated element by voxel size and exponentiate attenuation
-			attenuationImage = af::exp(-inputScalars.dx[ii] * attenuationImage);
-
-            // 3.5 normalize attenuation map
-            //af::array attenuationImageSum = af::sum(attenuationImage, 0) / inputScalars.Nx[0];
-            //af::array ones = af::constant(1.0, attenuationImageSum.dims(), attenuationImageSum.type());
-            //attenuationImageSum = af::select(attenuationImageSum == 0, ones, attenuationImageSum);
-            //attenuationImage /= attenuationImageSum;
-
-            // 3.6 pointwise multiply with image volume
-            kuvaRot *= attenuationImage;
-            af::eval(kuvaRot);
-        }
-        if (DEBUG || inputScalars.verbose > 2)
-            mexPrint("Projector 6 FP step 3 complete");
-
-        // 4. Convolve with detector PSF
-        /* w_vec.distInt[u1] interpretation
-            * A positive value indicates that the detector is inside the FOV
-            * * After shift, set first w_vec.distInt[u1] elements through z-axis to zero
-            * A negative value indicates that the detector is outside the FOV
-            * * After shift, set last w_vec.distInt[u1] elements through z-axis to zero
-        */
-        af::array PSF = translateHelperType6(w_vec.gFilter, 0, 0, w_vec.distInt[u1]);
-        PSF = PSF(af::span, af::span, af::seq(0, inputScalars.Nx[ii]-1));
-        kuvaRot = af::reorder(kuvaRot, 2, 1, 0);
-        kuvaRot = af::convolve2(kuvaRot, PSF);
-        kuvaRot = af::reorder(kuvaRot, 2, 1, 0);
-        //af::eval(kuvaRot);
-        if (DEBUG || inputScalars.verbose > 2)
-            mexPrint("Projector 6 FP step 4 complete");
-
-        // 5. Sum
-		//kuvaRot = af::reorder(kuvaRot, 2, 1, 0);
-        kuvaRot = af::sum(kuvaRot, 0);
-		kuvaRot = af::reorder(kuvaRot, 1, 2, 0);
-        kuvaRot /= inputScalars.Nx[ii];
-        if (DEBUG || inputScalars.verbose > 2)
-            mexPrint("Projector 6 FP step 5 complete");
-
-		fProj(af::span, af::span, kk) += kuvaRot.copy();
-		u1++;
-	}
-	if (DEBUG || inputScalars.verbose >= 3) {
-		proj.tEndLocal = std::chrono::steady_clock::now();
-		const std::chrono::duration<double> tDiff = proj.tEndLocal - proj.tStartLocal;
-		mexPrintBase("SPECT forward projection completed in %f seconds\n", tDiff);
-		mexEval();
-	}
-}
-
-// Backprojects a single projection angle. The PSF slice and the attenuation map depend only on the angle,
-// so the caller builds them once and shares them between the measurement and the sensitivity image
-inline af::array backProjectionType6Angle(const af::array& proj2D, const af::array& PSF, const af::array& attenuationImage,
-    const bool useAtten, const Weighting& w_vec, const scalarStruct& inputScalars, ProjectorClass& proj, const int64_t u1, const int ii) {
-    af::array kuvaRot = af::reorder(proj2D, 1, 0, 2); // Transpose the projection image
-
-    // 1. Smear the input FP across the image volume
-    kuvaRot = af::tile(kuvaRot, 1, 1, inputScalars.Nx[ii]); // Repeat through z-axis
-    kuvaRot /= inputScalars.Nx[ii];
-
-    // 2. Convolve with detector PSF. The forward projection applies the attenuation before the
-    // convolution, so the adjoint has to apply the convolution first; the two do not commute
-    kuvaRot = af::convolve2(kuvaRot, PSF);
-    // Into the image volume layout, once, instead of transposing around each step below
-    kuvaRot = reorder(kuvaRot, 2, 1, 0);
-
-    // 3. Attenuation correction. Not evaluated here, the translation below forces evaluation on its own
-    // through the indexed assignment, so an eval would only break the JIT fusion with the reorder above
-    if (useAtten)
-        kuvaRot *= attenuationImage;
-
-    // 4. Translate the image
-    if (w_vec.distInt2[u1] != 0)
-        kuvaRot = translateHelperType6(kuvaRot, 0, w_vec.distInt2[u1], 0);
-    af::eval(kuvaRot);
-
-    // 5. Rotate the image
-    kuvaRot = rotateHelperType6(kuvaRot, inputScalars, proj, w_vec.swivelAngles[u1], ii);
-    af::eval(kuvaRot);
-    return kuvaRot;
-}
-
-// Computes the rotation-based projector backprojection
-// Currently this computes both the backprojection itself as well as the (optional) sensitivity image at the same time
-inline af::array backProjectionType6Helper(const af::array &fProj, const Weighting& w_vec, const scalarStruct &inputScalars, ProjectorClass& proj, const int64_t length, uint32_t timestep, int64_t u1, const int ii, const float* atten = nullptr,
-    const af::array* fProjSens = nullptr, af::array* outputSens = nullptr) {
-    const af::array fp = ownedType6(af::moddims(fProj, inputScalars.nRowsD, inputScalars.nColsD, length));
-    const bool compSens = (fProjSens != nullptr && outputSens != nullptr);
-    af::array fpSens;
-    if (compSens)
-        fpSens = ownedType6(af::moddims(*fProjSens, inputScalars.nRowsD, inputScalars.nColsD, length));
-	af::array output = af::constant(0.f, inputScalars.Nx[ii] * inputScalars.Ny[ii] * inputScalars.Nz[ii], 1);
-    if (compSens)
-        *outputSens = af::constant(0.f, inputScalars.Nx[ii] * inputScalars.Ny[ii] * inputScalars.Nz[ii], 1);
-
-    const bool useAtten = (inputScalars.attenuation_correction && inputScalars.CTAttenuation && (atten != nullptr));
-	// Pre-transfer/resample the attenuation image (once per call, not per projection angle below)
-	af::array attenBase;
-	if (useAtten)
-		attenBase = buildType6AttenuationVolume(inputScalars, ii, attenuationFrameType6(inputScalars, atten, static_cast<int>(timestep)).atten);
-
-    for (int kk = 0; kk < length; kk++) {
-        /* N:=w_vec.distInt[u1] interpretation
-            * A positive value indicates that the detector is inside the FOV
-            * * After shift, set first N elements through z-axis to zero
-            * A negative value indicates that the detector is outside the FOV
-            * * After shift, set last N elements through z-axis to zero
-        */
-        af::array PSF = translateHelperType6(w_vec.gFilter, 0, 0, w_vec.distInt[u1]);
-        PSF = PSF(af::span, af::span, af::seq(0, inputScalars.Nx[ii]-1));
-
-        af::array attenuationImage;
-        if (useAtten) {
-            // Rotate the attenuation map, translate it with the same shift the forward projection applies,
-            // accumulate along the projection direction and exponentiate
-            attenuationImage = rotateHelperType6(attenBase, inputScalars, proj, -w_vec.swivelAngles[u1], ii);
-            if (w_vec.distInt2[u1] != 0)
-                attenuationImage = translateHelperType6(attenuationImage, 0, -w_vec.distInt2[u1], 0);
-            attenuationImage = af::accum(attenuationImage, 0);
-            attenuationImage = af::exp(-inputScalars.dx[ii] * attenuationImage);
-        }
-
-        const af::array slice = fp(af::span, af::span, kk);
-        output += af::flat(backProjectionType6Angle(slice, PSF, attenuationImage, useAtten, w_vec, inputScalars, proj, u1, ii));
-        if (compSens) {
-            const af::array sliceSens = fpSens(af::span, af::span, kk);
-            *outputSens += af::flat(backProjectionType6Angle(sliceSens, PSF, attenuationImage, useAtten, w_vec, inputScalars, proj, u1, ii));
-        }
-		u1++;
-    }
-
-    if (w_vec.maskBP != nullptr) { // Apply BP mask
-        if (!applyMaskBP(output, compSens ? outputSens : nullptr, inputScalars, w_vec, ii, static_cast<int>(timestep)))
-            return af::array();
-    }
-
-    return output;
-}
-
-// SPECT backprojection (projector type 6)
-// sensIdx is the vec.Summ timestep slot to use (0 for a shared sensitivity image, or the real timestep
-// when inputScalars.sensPerTimestep is set -- see reconstructionAF.h). allowSensCompute additionally
-// gates the sensitivity computation itself: with a shared sensitivity image and Nt > 1, only the first
-// timestep processed for a given subset (tt == t0) should (re)compute/finalize it; the caller passes
-// false for every later timestep so it reuses the already-finalized image untouched instead of
-// overwriting it with its own (otherwise identical) computation.
-inline void backprojectionType6(af::array& fProj, const Weighting& w_vec, AF_im_vectors& vec,
-	const scalarStruct& inputScalars, const int64_t length, const int64_t uu, ProjectorClass& proj, uint32_t timestep, const uint32_t osa_iter = 0, const uint32_t iter = 0,
-	const uint8_t compute_norm_matrix = 0, const uint32_t iter0 = 0, const int ii = 0, const float* atten = nullptr, const uint32_t sensIdx = 0, const bool allowSensCompute = true) {
-	if (!mainCenteredType6(inputScalars)) {
-		mexPrint("An off-centre FOV is not supported with the SPECT projector type 6 on the Metal backend");
-		return;
-	}
-	if (DEBUG || inputScalars.verbose >= 3)
-		mexPrint("Starting SPECT backprojection");
-	const bool compSens = allowSensCompute && ((iter == iter0 && compute_norm_matrix == 2) || compute_norm_matrix == 1);
-	af::array sensProj, sensOut;
-	if (compSens) {
-		if (DEBUG || inputScalars.verbose >= 3)
-			mexPrint("Computing sensitivity image");
-		sensProj = af::constant(1.f, inputScalars.nRowsD, inputScalars.nColsD, length);
-	}
-
-    vec.rhs_os[timestep][ii] = backProjectionType6Helper(fProj, w_vec, inputScalars, proj, length, timestep, uu + geomViewStartType6(w_vec, static_cast<int64_t>(timestep)), ii, atten,
-		compSens ? &sensProj : nullptr, compSens ? &sensOut : nullptr);
-	vec.rhs_os[timestep][ii](vec.rhs_os[timestep][ii] < inputScalars.epps && vec.rhs_os[timestep][ii] >= 0.f) = inputScalars.epps;
-
-	if (compSens) {
-		if (compute_norm_matrix == 2) {
-			vec.Summ[sensIdx][ii][osa_iter] = sensOut;
-			vec.Summ[sensIdx][ii][osa_iter](vec.Summ[sensIdx][ii][osa_iter] < inputScalars.epps) = inputScalars.epps;
-		} else {
-			vec.Summ[sensIdx][ii][0] = sensOut;
-			vec.Summ[sensIdx][ii][0](vec.Summ[sensIdx][ii][0] < inputScalars.epps) = inputScalars.epps;
-		}
-		if (DEBUG || inputScalars.verbose >= 3)
-			mexPrint("Sensitivity image computed");
-	}
-	if (w_vec.maskBP != nullptr) {
-		if (!resetMaskedBP(vec.rhs_os[timestep][ii], compSens ? &vec.Summ[sensIdx][ii][compute_norm_matrix == 2 ? osa_iter : 0] : nullptr, inputScalars, w_vec, ii, static_cast<int>(timestep)))
-			return;
-	}
-	if (DEBUG || inputScalars.verbose >= 3)
-		mexPrint("SPECT backprojection complete");
-}
-#else
 // The depth-dependent collimator-detector response for a single projection, one filter per image plane
 // The Gaussian CDRF is separable, so it is stored as an axial (fSize x 1 x Nx) and a transaxial
 // (1 x fSize x Nx) filter bank. Convolving with the two of them in turn is both considerably faster
@@ -3284,7 +2962,6 @@ inline GridType6 gridType6(const Weighting& w_vec, const scalarStruct& inputScal
         grid.axisX = (cx - (inputScalars.bx[ii] + .5f * static_cast<float>(inputScalars.Nx[ii]) * inputScalars.dx[ii])) / inputScalars.dx[ii];
         grid.axisY = (cy - (inputScalars.by[ii] + .5f * static_cast<float>(inputScalars.Ny[ii]) * inputScalars.dy[ii])) / inputScalars.dy[ii];
     }
-#ifndef METAL
     if (type6RotComp()) {
         // The transaxial variance of the interpolation of the rotation of this view (see rotVarType6), with the very values that the rotation
         // kernel is given (type6PutRotation, rotateCustomAF): the rotation by -swivel, the offsets of offsetsFPType6, the volume rotated
@@ -3305,7 +2982,6 @@ inline GridType6 gridType6(const Weighting& w_vec, const scalarStruct& inputScal
         }
         grid.rotVar = static_cast<float>(var);
     }
-#endif
     return grid;
 }
 
@@ -3333,14 +3009,11 @@ inline CropType6 cropType6(const scalarStruct& inputScalars, const PSFType6& psf
     const int nRows = static_cast<int>(inputScalars.nRowsD); // Transaxial detector bins
     const int nCols = static_cast<int>(inputScalars.nColsD); // Axial detector bins
     CropType6 crop;
-    // The axial margin of the window is the axial radius of the response, which the padding of the grid
-    // (padZType6, the bound of the padding) is made for, so with multi-resolution it is at most that. The margin is the same at both
-    // ends and is clamped to the grid, which is padded only as far as the detector extends past the volume, so the window stays
-    // valid: where the grid has less padding the window just ends at the edge of the grid. The radius of the response is
-    // shared by both directions and can be larger because of the transaxial one
-    const int padZ = padZType6(inputScalars, ii);
+    // The axial crop must include every grid plane within the PSF radius of the detector footprint.
+    // padZ controls only how far the grid extends beyond the image-volume edge; it does not limit the
+    // margin inside the volume. Clamp the window to the actual grid below.
     const int padLo = padZLoType6(inputScalars, ii);
-    const int marginZ = usesPadZType6(inputScalars) ? (std::min)(psf.radius, padZ) : psf.radius;
+    const int marginZ = psf.radius;
     if (!grid.resample) {
         crop.axialLength = Nz;
         crop.transLength = Ny;
@@ -3481,7 +3154,23 @@ inline af::array toDetectorType6(const af::array& proj, const CropType6& crop, c
 inline af::array fromDetectorType6(const af::array& meas, const CropType6& crop, const MapType6& map, const scalarStruct& inputScalars) {
     const af::array Wax = detectorWeightsType6(static_cast<int>(inputScalars.nColsD), crop.axialLength, map.axA, map.axB);
     const af::array Wtr = detectorWeightsType6(static_cast<int>(inputScalars.nRowsD), crop.transLength, map.trA, map.trB);
-    return af::matmul(af::matmul(Wax, meas, AF_MAT_TRANS, AF_MAT_NONE), Wtr);
+	const int nAxD = static_cast<int>(inputScalars.nColsD);
+	const int nTrD = static_cast<int>(inputScalars.nRowsD);
+	const int nAx = crop.axialLength;
+	const int nTr = crop.transLength;
+	af::array axial = af::constant(0.f, nAx, nTrD);
+	for (int dd = 0; dd < nAxD; ++dd) {
+		const af::array wa = af::tile(af::reorder(Wax(dd, af::span), 1, 0), 1, nTrD);
+		const af::array m = af::tile(meas(dd, af::span), nAx, 1);
+		axial += wa * m;
+	}
+	af::array output = af::constant(0.f, nAx, nTr);
+	for (int dd = 0; dd < nTrD; ++dd) {
+		const af::array wt = af::tile(Wtr(dd, af::span), nAx, 1);
+		const af::array m = af::tile(axial(af::span, dd), 1, nTr);
+		output += m * wt;
+	}
+	return output;
 }
 
 // The (not yet normalized) response of the square model (CDRFModel = 'square') of the planes, for the ArrayFire pipeline (the CPU backend, the
@@ -3489,43 +3178,42 @@ inline af::array fromDetectorType6(const af::array& meas, const CropType6& crop,
 // triangle of FWHM (half base) Rg, convolved with the intrinsic Gaussian of FWHM C, point sampled at the taps -r ... r. Rg (mm) is
 // 1 x 1 x nPlanes, dd the voxel size of the direction (mm), trans whether the rotation blur is taken out of the response. The result is
 // (2 r + 1) x 1 x nPlanes, float
-inline af::array squareBankType6(const af::array& Rg, const float C, const float dd, const float sigmaCoeff, const bool trans, const int r, const int nPlanes) {
-    const double sMin = 1e-3;
-    const double si = static_cast<double>(C) / dd * sigmaCoeff;
-    const double comp = trans ? static_cast<double>(sigmaCoeff) * sigmaCoeff : 0.;
-    const double v = si * si - comp;
-    const af::array Rv = Rg.as(f64) / static_cast<double>(dd);
-    af::array R, s;
-    if (v >= sMin * sMin) {
-        R = Rv;
-        s = af::constant(std::sqrt(v), Rv.dims(), f64);
-    }
-    else {
-        // The intrinsic Gaussian cannot take out the variance of the rotation blur, so the rest is taken out of the triangle (variance R^2 / 6)
-        R = af::sqrt((af::max)(Rv * Rv - 6. * (sMin * sMin - v), 0.));
-        s = af::constant(sMin, Rv.dims(), f64);
-    }
-    const int fSize = 2 * r + 1;
-    const af::array u = af::tile(af::abs(af::range(af::dim4(fSize), 0, f64) - static_cast<double>(r)), 1, 1, nPlanes);
-    const af::array Rt = af::tile(R, fSize, 1, 1);
-    const af::array St = af::tile(s, fSize, 1, 1);
-    // P(x) = E[(S - x)+], S ~ N(0, s^2)
-    auto P = [&](const af::array& x) {
-        const af::array z = x / St;
-        return St * af::exp(-0.5 * z * z) * 0.3989422804014327 - x * 0.5 * af::erfc(z * 0.7071067811865476);
-    };
-    const af::array closed = (P(u + Rt) - 2. * P(u) + P(af::abs(u - Rt)) + af::select(u < Rt, Rt - u, af::constant(0., u.dims(), f64))) / (Rt * Rt);
-    // R small with respect to s: the series in the even moments of the triangle, as in cdrfSquareTap
-    const af::array a = Rt / St;
-    const af::array z2 = (u / St) * (u / St);
-    const af::array a2 = a * a;
-    const af::array he2 = z2 - 1.;
-    const af::array he4 = (z2 - 6.) * z2 + 3.;
-    const af::array he6 = ((z2 - 15.) * z2 + 45.) * z2 - 15.;
-    const af::array he8 = (((z2 - 28.) * z2 + 210.) * z2 - 420.) * z2 + 105.;
-    const af::array f = 1. + a2 * (he2 / 12. + a2 * (he4 / 360. + a2 * (he6 / 20160. + a2 * he8 / 1814400.)));
-    const af::array series = af::exp(-0.5 * z2) * 0.3989422804014327 / St * f;
-    return af::select(a < 0.5, series, closed).as(f32);
+inline af::array squareBankType6(const af::array& Rg, const float C, const float dd, const float sigmaCoeff, const bool trans, const int r, const int nPlanes, const float rotationVariance = -1.f) {
+	// The closed form needs double precision, which is not available on every device.
+	std::vector<float> radii(nPlanes), taps(static_cast<size_t>(2 * r + 1) * nPlanes);
+	Rg.host(radii.data());
+	const double minimumSigma = 1e-3;
+	const double intrinsic = static_cast<double>(C) / dd * sigmaCoeff;
+	const double compensation = trans ? (rotationVariance >= 0.f ? rotationVariance : sigmaCoeff * sigmaCoeff) : 0.;
+	const double variance = intrinsic * intrinsic - compensation;
+	for (int plane = 0; plane < nPlanes; ++plane) {
+		const double rv = static_cast<double>(radii[plane]) / dd;
+		const double sigma = variance >= minimumSigma * minimumSigma ? std::sqrt(variance) : minimumSigma;
+		const double radius = variance >= minimumSigma * minimumSigma ? rv : std::sqrt((std::max)(rv * rv - 6. * (minimumSigma * minimumSigma - variance), 0.));
+		const double a = radius / sigma;
+		const auto p = [sigma](double x) {
+			const double z = x / sigma;
+			return sigma * 0.3989422804014327 * std::exp(-0.5 * z * z) - x * 0.5 * std::erfc(z * 0.7071067811865476);
+		};
+		for (int k = -r; k <= r; ++k) {
+			const double u = std::abs(k);
+			double value = 0.;
+			if (a < 0.5) {
+				const double z2 = (u / sigma) * (u / sigma);
+				if (z2 <= 100.) {
+					const double a2 = a * a;
+					const double h2 = z2 - 1., h4 = (z2 - 6.) * z2 + 3.;
+					const double h6 = ((z2 - 15.) * z2 + 45.) * z2 - 15.;
+					const double h8 = (((z2 - 28.) * z2 + 210.) * z2 - 420.) * z2 + 105.;
+					value = 0.3989422804014327 / sigma * std::exp(-0.5 * z2) * (1. + a2 * (h2 / 12. + a2 * (h4 / 360. + a2 * (h6 / 20160. + a2 * h8 / 1814400.))));
+				}
+			} else {
+				value = (p(u + radius) - 2. * p(u) + p(std::abs(u - radius)) + (std::max)(radius - u, 0.)) / (radius * radius);
+			}
+			taps[static_cast<size_t>(plane) * (2 * r + 1) + k + r] = static_cast<float>((std::max)(value, 0.));
+		}
+	}
+	return af::array(af::dim4(2 * r + 1, 1, nPlanes), taps.data(), afHost);
 }
 
 // The filters are computed on-the-fly, instead of using a precomputed bank, because with swivelling
@@ -3602,16 +3290,18 @@ inline PSFType6 psfHelperType6(const Weighting& w_vec, const scalarStruct& input
     const af::array FWHMXY = af::sqrt(RgXY * RgXY + C * C) / dy;
     const af::array sigmaZ = FWHMZ * sigmaCoeff;
     // The rotation of the image blurs it by roughly one voxel in the transaxial direction, which is
-    // compensated for here. The axial direction is not rotated. This bank (the ArrayFire pipeline of the CPU backend) keeps the constant
-    // variance sigmaCoeff^2, the GPU kernels use the one of the view (GridType6::rotVar, CDRFParams6::comp)
-    const af::array sigmaXY = af::sqrt((af::max)(FWHMXY * FWHMXY - 1.f, 1e-16f)) * sigmaCoeff;
+    // compensated for here. The axial direction is not rotated. Use the view's rotation variance when available.
+	af::array sigmaXY = af::sqrt((af::max)(FWHMXY * FWHMXY - 1.f, 1e-16f)) * sigmaCoeff;
+	if (grid.rotVar >= 0.f)
+		sigmaXY = af::sqrt((af::max)(FWHMXY * FWHMXY * (sigmaCoeff * sigmaCoeff) - grid.rotVar, 1e-16f));
+
 
     const af::array xx = af::range(af::dim4(fSize), 0) - static_cast<float>(r);
     const af::array xx2 = af::tile(xx * xx, 1, 1, nPlanes);
     af::array gZ, gXY;
     if (inputScalars.cdrfModel6 == 1U) {
         gZ = squareBankType6(RgZ, C, dz, sigmaCoeff, false, r, nPlanes);
-        gXY = squareBankType6(RgXY, C, dy, sigmaCoeff, true, r, nPlanes);
+        gXY = squareBankType6(RgXY, C, dy, sigmaCoeff, true, r, nPlanes, grid.rotVar);
     }
     else {
         gZ = af::exp(-xx2 / af::tile(2.f * sigmaZ * sigmaZ, fSize, 1, 1));
@@ -3664,17 +3354,27 @@ inline af::array applyPSFType6(const af::array& im, const PSFType6& psf, const s
     if (!psf.separable)
         return af::convolve2(im, psf.full);
     af::array visible = psf.firstPlane == 0 ? im : im(af::span, af::span, af::seq(psf.firstPlane, static_cast<int>(im.dims(2)) - 1));
-#ifndef CPU
+#if !defined(CPU)
     // The custom kernel is several times faster than the ArrayFire convolution, which does not
-    // handle a separate filter for every slice particularly well
+    // handle a separate filter for every slice particularly well. Its scalar accumulation is shared
+    // across the OpenCL, CUDA, and Metal launchers.
     visible.eval();
     af::array tmp(visible.dims(), f32);
     af::array output(visible.dims(), f32);
-    if (convolveCDRFAF(tmp, visible, psf.axial, inputScalars, proj, 0) == 0
-        && convolveCDRFAF(output, tmp, psf.transaxial, inputScalars, proj, 1) == 0)
+    if (convolveCDRFAF(tmp, visible, psf.axial, proj, 0) == 0
+        && convolveCDRFAF(output, tmp, psf.transaxial, proj, 1) == 0)
         return output;
 #endif
-    return af::convolve2(af::convolve2(visible, psf.axial), psf.transaxial);
+	// Convolve each plane with its own filter if the custom kernel is unavailable.
+	af::array fallbackOutput;
+	for (int pp = 0; pp < static_cast<int>(visible.dims(2)); ++pp) {
+		const af::array plane = visible(af::span, af::span, pp);
+		const af::array axial = psf.axial(af::span, af::span, pp);
+		const af::array trans = psf.transaxial(af::span, af::span, pp);
+		af::array filtered = af::convolve2(af::convolve2(plane, axial), trans);
+		fallbackOutput = pp == 0 ? filtered : af::join(2, fallbackOutput, filtered);
+	}
+	return fallbackOutput;
 }
 
 // Restores the planes that applyPSFType6 skipped. Needed by the backprojection, which has to give an
@@ -3959,9 +3659,9 @@ inline af::array attenuationSourceLatticeType6(const float* atten, const scalarS
 		byHi = (std::max)(byHi, inputScalars.by[jj] + inputScalars.Ny[jj] * inputScalars.dy[jj]);
 		bzHi = (std::max)(bzHi, inputScalars.bz[jj] + inputScalars.Nz[jj] * inputScalars.dz[jj]);
 	}
-	const int NxMap = static_cast<int>(std::lround((bxHi - bxMap) / inputScalars.dx[0]));
-	const int NyMap = static_cast<int>(std::lround((byHi - byMap) / inputScalars.dy[0]));
-	const int NzMap = static_cast<int>(std::lround((bzHi - bzMap) / inputScalars.dz[0]));
+	const int NxMap = static_cast<int>(type6AttenuationDimension(bxMap, bxHi, inputScalars.dx[0]));
+	const int NyMap = static_cast<int>(type6AttenuationDimension(byMap, byHi, inputScalars.dy[0]));
+	const int NzMap = static_cast<int>(type6AttenuationDimension(bzMap, bzHi, inputScalars.dz[0]));
 
 	int gridNx = 0, gridNy = 0;
 	rotGridType6(inputScalars, ii, gridNx, gridNy);
@@ -3991,11 +3691,65 @@ inline af::array attenuationSourceType6(const float* atten, const scalarStruct& 
 	return attenuationSourceLatticeType6(atten, inputScalars, ii, inputScalars.bz[ii], static_cast<int>(inputScalars.Nz[ii]));
 }
 
+#ifndef CPU
+// Check the host map before either the per-volume or fused path reads it.
+inline bool validateType6Attenuation(ProjectorClass& proj, const scalarStruct& inputScalars) {
+	if (inputScalars.SPECT && inputScalars.CTAttenuation && inputScalars.projector_type == 6 && inputScalars.nMultiVolumes > 0) {
+		float bxMap = inputScalars.bx[0], byMap = inputScalars.by[0], bzMap = inputScalars.bz[0];
+		float bxHi = bxMap + inputScalars.Nx[0] * inputScalars.dx[0];
+		float byHi = byMap + inputScalars.Ny[0] * inputScalars.dy[0];
+		float bzHi = bzMap + inputScalars.Nz[0] * inputScalars.dz[0];
+		for (int jj = 1; jj <= static_cast<int>(inputScalars.nMultiVolumes); jj++) {
+			bxMap = (std::min)(bxMap, inputScalars.bx[jj]);
+			byMap = (std::min)(byMap, inputScalars.by[jj]);
+			bzMap = (std::min)(bzMap, inputScalars.bz[jj]);
+			bxHi = (std::max)(bxHi, inputScalars.bx[jj] + inputScalars.Nx[jj] * inputScalars.dx[jj]);
+			byHi = (std::max)(byHi, inputScalars.by[jj] + inputScalars.Ny[jj] * inputScalars.dy[jj]);
+			bzHi = (std::max)(bzHi, inputScalars.bz[jj] + inputScalars.Nz[jj] * inputScalars.dz[jj]);
+		}
+		const double nxD = type6AttenuationDimension(bxMap, bxHi, inputScalars.dx[0]);
+		const double nyD = type6AttenuationDimension(byMap, byHi, inputScalars.dy[0]);
+		const double nzD = type6AttenuationDimension(bzMap, bzHi, inputScalars.dz[0]);
+		const bool validDims = std::isfinite(nxD) && std::isfinite(nyD) && std::isfinite(nzD) && nxD >= 1.0 && nyD >= 1.0 && nzD >= 1.0 &&
+			nxD <= static_cast<double>((std::numeric_limits<int>::max)()) && nyD <= static_cast<double>((std::numeric_limits<int>::max)()) &&
+			nzD <= static_cast<double>((std::numeric_limits<int>::max)());
+		uint64_t frameElems = 0ULL;
+		if (validDims) {
+			const uint64_t nx = static_cast<uint64_t>(nxD), ny = static_cast<uint64_t>(nyD), nz = static_cast<uint64_t>(nzD);
+			if (nx <= (std::numeric_limits<uint64_t>::max)() / ny && nx * ny <= (std::numeric_limits<uint64_t>::max)() / nz)
+				frameElems = nx * ny * nz;
+		}
+		const uint64_t inputElems = static_cast<uint64_t>(inputScalars.size_atten);
+		const bool frameCountFits = frameElems == 0ULL || static_cast<uint64_t>(inputScalars.Nt) <=
+			(std::numeric_limits<uint64_t>::max)() / frameElems;
+		const uint64_t expectedAllFrames = frameCountFits ? frameElems * static_cast<uint64_t>(inputScalars.Nt) : 0ULL;
+		const bool validSize = frameElems > 0ULL && (inputElems == frameElems ||
+			(inputScalars.Nt > 1U && frameCountFits && inputElems == expectedAllFrames));
+		if (!validSize) {
+			std::fprintf(stderr,
+				"Projector 6 attenuation map size mismatch: expected %llu voxels for one frame or %llu for %u frames from the volume union, got %llu.\n",
+				static_cast<unsigned long long>(frameElems),
+				static_cast<unsigned long long>(expectedAllFrames),
+				static_cast<unsigned>(inputScalars.Nt), static_cast<unsigned long long>(inputElems));
+			proj.type6Error = true;
+			return false;
+		}
+	}
+	return true;
+}
+#endif
+
 // attenuationSourceType6 of volume ii, kept in the cache of the projector while the map and the lattice are the same, instead of being built
 // from the host map at every call. With the CPU backend there is no cache: the source is built into local, which is returned
 // The map of the frame timestep is the one used (see attenuationFrameType6)
 inline const af::array& attenuationSourceCachedType6(af::array& local, ProjectorClass& proj, const float* atten, const scalarStruct& inputScalars, const int ii,
 	const int timestep = 0) {
+#ifndef CPU
+	if (!validateType6Attenuation(proj, inputScalars)) {
+		local = af::array();
+		return local;
+	}
+#endif
 	const AttFrameType6 map = attenuationFrameType6(inputScalars, atten, timestep);
 #ifdef CPU
 	// No cache with the CPU backend
@@ -4256,8 +4010,8 @@ inline af::array backViewFusedType6(const af::array& fp, const int view, const A
 }
 #endif
 
-// The multiplicative in-reconstruction corrections of the SPECT projector type 6: the normalization n, the multiplicative scatter /
-// extra correction s (corrVector) and the global correction factor g. The projector types 1-3 multiply every ray by them (local_norm,
+// The multiplicative in-reconstruction corrections of the SPECT projector type 6: the detector mask, normalization n, multiplicative
+// scatter / extra correction s (corrVector), and global correction factor g. The projector types 1-3 multiply every ray by them (local_norm,
 // local_scat, global_factor) in both the forward and the backprojection, so the model is y ~ n*s*g*(A x). The type 6 projector has no
 // such kernel, so w = n .* s .* g is built here for the views uu ... uu + length - 1 (nRowsD x nColsD x length, the layout of the
 // measurements of the subset) from the host arrays that the device buffers d_norm / d_scat are filled from (see
@@ -4340,15 +4094,45 @@ inline af::array type6CentralRayPathWeights(const Weighting& w_vec, const scalar
 	return stacked;
 }
 
-inline af::array type6Weights(const scalarStruct& inputScalars, const Weighting& w_vec, const int64_t uu, const int64_t length, const int timestep) {
+inline af::array type6Weights(const scalarStruct& inputScalars, const Weighting& w_vec, const int64_t uu, const int64_t length, const int timestep, ProjectorClass& proj) {
 	const bool useNorm = inputScalars.normalization_correction && inputScalars.size_norm > 1ULL && w_vec.normHost != nullptr;
 	const bool useScat = inputScalars.scatter == 1U && inputScalars.size_scat > 1ULL && w_vec.corrHost != nullptr;
 	const bool useGlobal = inputScalars.global_factor != 1.f;
+	if (inputScalars.maskFP && (w_vec.maskFP == nullptr || inputScalars.maskFPZ == 0)) {
+		mexPrint("Projector 6 forward mask is missing or has no detector planes");
+		proj.type6Error = true;
+		return af::array();
+	}
+	const bool useMask = inputScalars.maskFP;
 	const af::array pathWeight = type6CentralRayPathWeights(w_vec, inputScalars, uu, length, timestep);
-	if (!useNorm && !useScat && !useGlobal)
+	if (!useNorm && !useScat && !useGlobal && !useMask)
 		return pathWeight;
 	const size_t nDet = static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD);
 	std::vector<float> wh(nDet * static_cast<size_t>(length), inputScalars.global_factor);
+	if (useMask) {
+		const bool byHead = inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads;
+		for (int64_t kk = 0; kk < length; ++kk) {
+			size_t plane = 0;
+			if (byHead && w_vec.detectorVector != nullptr)
+				plane = static_cast<size_t>(w_vec.detectorVector[geomViewStartType6(w_vec, timestep) + uu + kk]);
+			else if (!byHead && inputScalars.maskFPZ > 1) {
+				// Projection masks may hold one frame reused over time, or every frame.
+				const bool allFrames = timestep > 0 && w_vec.frameStart6.size() > static_cast<size_t>(timestep) + 1 &&
+					w_vec.frameStart6.back() > w_vec.frameStart6[1] &&
+					static_cast<uint64_t>(w_vec.frameStart6.back()) <= inputScalars.maskFPZ;
+				plane = static_cast<size_t>((allFrames ? w_vec.frameStart6[static_cast<size_t>(timestep)] : 0) + uu + kk);
+			}
+			if (plane >= inputScalars.maskFPZ) {
+				mexPrint("Projector 6 forward mask does not cover the requested detector or view");
+				proj.type6Error = true;
+				return af::array();
+			}
+			const uint8_t* mask = w_vec.maskFP + plane * nDet;
+			float* dst = wh.data() + static_cast<size_t>(kk) * nDet;
+			for (size_t dd = 0; dd < nDet; ++dd)
+				dst[dd] *= mask[dd] != 0 ? 1.f : 0.f;
+		}
+	}
 	if (useNorm) {
 		if (inputScalars.SPECT && inputScalars.normZ == inputScalars.nHeads) {
 			// One normalization image per detector head: the head of each view (the same indexing as in the kernels of the projector types 1-3)
@@ -4419,6 +4203,8 @@ inline void forwardProjectionType6Raw(af::array& fProj, const Weighting& w_vec, 
 	// The attenuation source does not depend on the projection, so it is built once for all of them
 	af::array attenSrcLocal;
 	const af::array& attenSrc = useAtten ? attenuationSourceCachedType6(attenSrcLocal, proj, atten, inputScalars, ii, static_cast<int>(timestep)) : attenSrcLocal;
+	if (type6Status(proj) != 0)
+		return;
 	// Neither the image nor the attenuation source changes between the projections, so both are uploaded
 	// only once. The first projections may be skipped entirely, so this is not simply the first one
 	bool uploaded = false;
@@ -4525,7 +4311,9 @@ inline void forwardProjectionType6Raw(af::array& fProj, const Weighting& w_vec, 
 // (fProj may already hold the other volumes) and is applied exactly once
 inline void forwardProjectionType6(af::array& fProj, const Weighting& w_vec, AF_im_vectors& vec, const scalarStruct& inputScalars,
 	const int64_t length, const int64_t uu, ProjectorClass& proj, const int ii = 0, const float* atten = nullptr, const int timestep = 0) {
-	const af::array wgt = type6Weights(inputScalars, w_vec, uu, length, timestep);
+	const af::array wgt = type6Weights(inputScalars, w_vec, uu, length, timestep, proj);
+	if (type6Status(proj) != 0)
+		return;
 	if (wgt.isempty()) {
 		forwardProjectionType6Raw(fProj, w_vec, vec, inputScalars, length, uu, proj, ii, atten, timestep);
 		return;
@@ -4593,7 +4381,13 @@ inline void backProjectionType6Angle(af::array& output, const af::array& fp, con
     // 4. and 5. Translate and rotate the image back, i.e. invert the transformation applied by the FP
     // The rotation reads the cropped region and writes the whole image, so the region does not have
     // to be placed into a zeroed volume first
+#ifndef CPU
+    // Apply the transpose of the forward interpolation.
+    rotateAccumulateType6(output, kuvaRot, inputScalars, proj, w_vec.swivelAngles[u1], offX, offY, ii,
+        rotWindowIn(crop, grid, inputScalars, ii));
+#else
     output += af::flat(rotateHelperType6(kuvaRot, inputScalars, proj, w_vec.swivelAngles[u1], offX, offY, ii, 0, true, rotWindowIn(crop, grid, inputScalars, ii)));
+#endif
 }
 
 // Computes the rotation-based projector backprojection
@@ -4606,13 +4400,22 @@ inline af::array backProjectionType6Helper(const af::array &fProj, const Weighti
     if (compSens)
         fpSens = ownedType6(af::moddims(*fProjSens, inputScalars.nRowsD, inputScalars.nColsD, length));
 	af::array output = af::constant(0.f, inputScalars.Nx[ii] * inputScalars.Ny[ii] * inputScalars.Nz[ii], 1);
+#ifndef CPU
+	output = ownedType6(output);
+#endif
     if (compSens)
         *outputSens = af::constant(0.f, inputScalars.Nx[ii] * inputScalars.Ny[ii] * inputScalars.Nz[ii], 1);
+#ifndef CPU
+	if (compSens)
+		*outputSens = ownedType6(*outputSens);
+#endif
 
     const bool useAtten = (inputScalars.attenuation_correction && inputScalars.CTAttenuation && (atten != nullptr));
 	// Build the attenuation source once per call, not per projection angle below
 	af::array attenSrcLocal;
 	const af::array& attenSrc = useAtten ? attenuationSourceCachedType6(attenSrcLocal, proj, atten, inputScalars, ii, static_cast<int>(timestep)) : attenSrcLocal;
+	if (type6Status(proj) != 0)
+		return output;
 	// The attenuation source does not change between the projections, so it is uploaded only once. The
 	// first projections may be skipped entirely, so this is not simply the first one
 	bool attenUploaded = false;
@@ -4655,6 +4458,7 @@ inline af::array backProjectionType6Helper(const af::array &fProj, const Weighti
                 attRef.arr = &attenuationImage;
             }
             attenUploaded = true;
+
         }
         backProjectionType6Angle(output, fp, kk, grid, PSF, crop, map, attRef, useAtten, w_vec, inputScalars, proj, u1, ii, dw);
         if (compSens)
@@ -4703,7 +4507,9 @@ inline void backprojectionType6(af::array& fProj, const Weighting& w_vec, AF_im_
 	const bool compSens = allowSensCompute && ((iter == iter0 && compute_norm_matrix == 2) || compute_norm_matrix == 1);
 	af::array sensProj, sensOut;
 	// The adjoint of the forward projection of the model y ~ n*s*g*(A x): A^T (w .* data), and the sensitivity A^T w (see type6Weights)
-	const af::array wgt = type6Weights(inputScalars, w_vec, uu, length, static_cast<int>(timestep));
+	const af::array wgt = type6Weights(inputScalars, w_vec, uu, length, static_cast<int>(timestep), proj);
+	if (type6Status(proj) != 0)
+		return;
 	const af::array fIn = wgt.isempty() ? fProj : af::array(af::flat(fProj) * af::flat(wgt));
 	if (compSens) {
 		if (DEBUG || inputScalars.verbose >= 3)
@@ -4733,28 +4539,14 @@ inline void backprojectionType6(af::array& fProj, const Weighting& w_vec, AF_im_
 	if (DEBUG || inputScalars.verbose >= 3)
 		mexPrint("SPECT backprojection complete");
 }
-#endif
 
 // The SPECT projectors (projector type 6) for every volume of the multi-resolution reconstruction at once. They give the
 // same result as calling forwardProjectionType6 / backprojectionType6 for the volumes 0 ... nMultiVolumes in turn, and do that
-// when the fused pipeline is not used (the CPU and Metal backends, the precomputed filter bank, and
+// when the fused pipeline is not used (the CPU backend, the precomputed filter bank, and
 // without multi-resolution, where there is just the one volume). The fused pipeline goes through the views in the outer
 // loop and the volumes in the inner one, which lets the volumes that have the same attenuation source lattice share one
 // rotation and accumulation of the attenuation per view (see attGroupsType6)
-#if defined(METAL) || defined(CPU)
-inline void forwardProjectionType6All(af::array& fProj, const Weighting& w_vec, AF_im_vectors& vec, const scalarStruct& inputScalars,
-	const int64_t length, const int64_t uu, ProjectorClass& proj, const float* atten = nullptr, const int timestep = 0) {
-	for (int ii = 0; ii <= static_cast<int>(inputScalars.nMultiVolumes); ii++)
-		forwardProjectionType6(fProj, w_vec, vec, inputScalars, length, uu, proj, ii, atten, timestep);
-}
-
-inline void backprojectionType6All(af::array& fProj, const Weighting& w_vec, AF_im_vectors& vec,
-	const scalarStruct& inputScalars, const int64_t length, const int64_t uu, ProjectorClass& proj, uint32_t timestep, const uint32_t osa_iter = 0, const uint32_t iter = 0,
-	const uint8_t compute_norm_matrix = 0, const uint32_t iter0 = 0, const float* atten = nullptr, const uint32_t sensIdx = 0, const bool allowSensCompute = true) {
-	for (int ii = 0; ii <= static_cast<int>(inputScalars.nMultiVolumes); ii++)
-		backprojectionType6(fProj, w_vec, vec, inputScalars, length, uu, proj, timestep, osa_iter, iter, compute_norm_matrix, iter0, ii, atten, sensIdx, allowSensCompute);
-}
-#else
+#ifndef CPU
 // Everything that a view needs of one volume: the grid, the response, the window and the mapping onto the detector
 // (fused pipeline). active is false when the volume does not contribute to the view
 typedef struct ViewVolumeType6_ {
@@ -4905,7 +4697,7 @@ inline void attenuationSourcesCachedType6(AttSourcesType6& out, ProjectorClass& 
 	out.localUploaded.assign(groups.size(), 0);
 	out.src = &out.localSrc;
 	out.uploaded = &out.localUploaded;
-	if (!useAtten)
+	if (!useAtten || !validateType6Attenuation(proj, inputScalars))
 		return;
 	const AttFrameType6 map = attenuationFrameType6(inputScalars, atten, timestep);
 	AttCacheType6& cache = attCacheType6(proj);
@@ -5019,25 +4811,10 @@ inline void forwardProjectionType6AllRaw(af::array& fProj, const Weighting& w_ve
 	}
 }
 
-// SPECT forward projection (projector type 6) of every volume, added to fProj
-// Applies the multiplicative corrections like the projector types 1-3 (y ~ n*s*g*(A x)): the sum over the volumes is computed to a zeroed
-// array and multiplied by w once (see type6Weights)
-inline void forwardProjectionType6All(af::array& fProj, const Weighting& w_vec, AF_im_vectors& vec, const scalarStruct& inputScalars,
-	const int64_t length, const int64_t uu, ProjectorClass& proj, const float* atten = nullptr, const int timestep = 0) {
-	const af::array wgt = type6Weights(inputScalars, w_vec, uu, length, timestep);
-	if (wgt.isempty()) {
-		forwardProjectionType6AllRaw(fProj, w_vec, vec, inputScalars, length, uu, proj, atten, timestep);
-		return;
-	}
-	af::array contrib = af::constant(0.f, fProj.dims());
-	forwardProjectionType6AllRaw(contrib, w_vec, vec, inputScalars, length, uu, proj, atten, timestep);
-	fProj += af::moddims(af::flat(wgt) * af::flat(contrib), fProj.dims());
-}
-
 // SPECT backprojection (projector type 6) of every volume. The arguments are those of backprojectionType6 (see there for sensIdx
 // and allowSensCompute), without the volume. Every volume gets its own vec.rhs_os[timestep][ii], and, when the sensitivity image
 // is computed, vec.Summ[sensIdx][ii][...]
-inline void backprojectionType6All(af::array& fProj, const Weighting& w_vec, AF_im_vectors& vec,
+inline void backprojectionType6AllOptimized(af::array& fProj, const Weighting& w_vec, AF_im_vectors& vec,
 	const scalarStruct& inputScalars, const int64_t length, const int64_t uu, ProjectorClass& proj, uint32_t timestep, const uint32_t osa_iter = 0, const uint32_t iter = 0,
 	const uint8_t compute_norm_matrix = 0, const uint32_t iter0 = 0, const float* atten = nullptr, const uint32_t sensIdx = 0, const bool allowSensCompute = true) {
 	// Several views per launch (TYPE6_BATCH)
@@ -5056,7 +4833,9 @@ inline void backprojectionType6All(af::array& fProj, const Weighting& w_vec, AF_
 	const bool compSens = allowSensCompute && ((iter == iter0 && compute_norm_matrix == 2) || compute_norm_matrix == 1);
 	af::array sensProj;
 	// The adjoint of the forward projection of the model y ~ n*s*g*(A x): A^T (w .* data), and the sensitivity A^T w (see type6Weights)
-	const af::array wgt = type6Weights(inputScalars, w_vec, uu, length, static_cast<int>(timestep));
+	const af::array wgt = type6Weights(inputScalars, w_vec, uu, length, static_cast<int>(timestep), proj);
+	if (type6Status(proj) != 0)
+		return;
 	const af::array fIn = wgt.isempty() ? fProj : af::array(af::flat(fProj) * af::flat(wgt));
 	if (compSens) {
 		if (DEBUG || inputScalars.verbose >= 3)
@@ -5169,7 +4948,7 @@ inline int rotUploadType6(const af::array& im, RotWindow win, const scalarStruct
 		win.outNxW = win.outNx;
 	if (win.srcNxB <= 0)
 		win.srcNxB = win.srcNx;
-#if defined(CUDA) || defined(HIP)
+#if defined(CUDA) || defined(HIP) || defined(METAL)
 	AFDEVBUFF_t input = transferAF(im);
 	status = proj.transferRotTex(inputScalars, input, win, texSlot);
 	im.unlock();
@@ -6125,7 +5904,9 @@ inline void backprojectionType6AllBatched(af::array& fProj, const Weighting& w_v
 	const bool compSens = allowSensCompute && ((iter == iter0 && compute_norm_matrix == 2) || compute_norm_matrix == 1);
 	af::array sensProj;
 	// The adjoint of the forward projection of the model y ~ n*s*g*(A x): A^T (w .* data), and the sensitivity A^T w (see type6Weights)
-	const af::array wgt = type6Weights(inputScalars, w_vec, uu, length, static_cast<int>(timestep));
+	const af::array wgt = type6Weights(inputScalars, w_vec, uu, length, static_cast<int>(timestep), proj);
+	if (type6Status(proj) != 0)
+		return;
 	const af::array fIn = wgt.isempty() ? fProj : af::array(af::flat(fProj) * af::flat(wgt));
 	if (compSens) {
 		if (DEBUG || inputScalars.verbose >= 3)
@@ -6282,6 +6063,37 @@ inline void backprojectionType6AllBatched(af::array& fProj, const Weighting& w_v
 		mexPrint("SPECT backprojection of all volumes complete");
 }
 #endif
+
+// Project all volumes through the same weighting and fallback path on every backend.
+inline void forwardProjectionType6All(af::array& fProj, const Weighting& w_vec, AF_im_vectors& vec, const scalarStruct& inputScalars,
+	const int64_t length, const int64_t uu, ProjectorClass& proj, const float* atten = nullptr, const int timestep = 0) {
+	const af::array wgt = type6Weights(inputScalars, w_vec, uu, length, timestep, proj);
+	if (type6Status(proj) != 0)
+		return;
+	af::array contrib = wgt.isempty() ? fProj : af::constant(0.f, fProj.dims());
+#ifndef CPU
+	forwardProjectionType6AllRaw(contrib, w_vec, vec, inputScalars, length, uu, proj, atten, timestep);
+#else
+	for (int ii = 0; ii <= static_cast<int>(inputScalars.nMultiVolumes); ii++)
+		forwardProjectionType6Raw(contrib, w_vec, vec, inputScalars, length, uu, proj, ii, atten, timestep);
+#endif
+	if (wgt.isempty())
+		fProj = contrib;
+	else
+		fProj += af::moddims(af::flat(wgt) * af::flat(contrib), fProj.dims());
+}
+
+inline void backprojectionType6All(af::array& fProj, const Weighting& w_vec, AF_im_vectors& vec,
+	const scalarStruct& inputScalars, const int64_t length, const int64_t uu, ProjectorClass& proj, uint32_t timestep, const uint32_t osa_iter = 0, const uint32_t iter = 0,
+	const uint8_t compute_norm_matrix = 0, const uint32_t iter0 = 0, const float* atten = nullptr, const uint32_t sensIdx = 0, const bool allowSensCompute = true) {
+#ifndef CPU
+	backprojectionType6AllOptimized(fProj, w_vec, vec, inputScalars, length, uu, proj, timestep, osa_iter, iter, compute_norm_matrix, iter0, atten, sensIdx, allowSensCompute);
+#else
+	for (int ii = 0; ii <= static_cast<int>(inputScalars.nMultiVolumes); ii++)
+		backprojectionType6(fProj, w_vec, vec, inputScalars, length, uu, proj, timestep, osa_iter, iter, compute_norm_matrix, iter0, ii, atten, sensIdx, allowSensCompute);
+#endif
+}
+
 
 
 // 1D filtering

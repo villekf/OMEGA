@@ -89,19 +89,154 @@ def _simpleitk_attenuation_array(meta_image, get_array_from_image):
     return np.asfortranarray(np.transpose(array, axes))
 
 
+def _grid_overlap_weights(source_n, source_origin, source_step, target_n, target_origin, target_step,
+                          extend_edges):
+    """Build separable weights for averaging one voxel grid onto another."""
+    from scipy.sparse import csr_matrix
+
+    rows, columns, values = [], [], []
+    for target_index in range(target_n):
+        left = (target_origin + target_index * target_step - source_origin) / source_step
+        right = (target_origin + (target_index + 1) * target_step - source_origin) / source_step
+        if extend_edges and left < 0.0:
+            rows.append(target_index)
+            columns.append(0)
+            values.append(min(right, 0.0) - left)
+        first = max(0, int(np.floor(left)))
+        last = min(source_n - 1, int(np.ceil(right)) - 1)
+        for source_index in range(first, last + 1):
+            overlap = min(right, source_index + 1.0) - max(left, float(source_index))
+            if overlap > 0.0:
+                rows.append(target_index)
+                columns.append(source_index)
+                values.append(overlap)
+        if extend_edges and right > source_n:
+            rows.append(target_index)
+            columns.append(source_n - 1)
+            values.append(right - max(left, float(source_n)))
+    values = np.asarray(values, dtype=np.float64) * source_step / target_step
+    return csr_matrix((values, (rows, columns)), shape=(target_n, source_n))
+
+
+def _resample_image_grid(values, source_shape, source_origin, source_spacing,
+                         target_shape, target_origin, target_spacing):
+    """Average a 3D or 4D image map onto a centered physical grid."""
+    frames = values.reshape(tuple(source_shape) + (-1,), order='F')
+    for axis in range(3):
+        weights = _grid_overlap_weights(
+            source_shape[axis], source_origin[axis], source_spacing[axis],
+            target_shape[axis], target_origin[axis], target_spacing[axis], axis == 2,
+        )
+        moved = np.moveaxis(frames, axis, 0)
+        frames = np.moveaxis(np.asarray(weights @ moved.reshape(source_shape[axis], -1)).reshape(
+            (target_shape[axis],) + moved.shape[1:]), 0, axis)
+    return np.asarray(frames, dtype=values.dtype, order='F')
+
+
 def _prepare_image_domain_attenuation(options):
     """Normalize image-domain attenuation to full-FOV, time-contiguous maps.
 
     A 3D input is static and is stored once. A 4D input uses spatial axes
-    ``(x, y, z)`` and a final time axis. For multi-resolution reconstruction
-    the packed order is, for each stored frame, the full-FOV fine map followed
-    by its full-FOV coarse resampling. The map is never partitioned into the
-    emission-volume tiles.
+    ``(x, y, z)`` and a final time axis. Type 6 uses the physical union grid;
+    other multi-resolution projectors use packed full-FOV fine and coarse maps.
     """
     attenuation = np.asarray(options.vaimennus, dtype=np.float32)
     multi_resolution = bool(getattr(options, 'useMultiResolutionVolumes', False) and
                             int(getattr(options, 'nMultiVolumes', 0)) > 0)
     same_resolution = False
+    type6_projectors = (6, 16, 26, 61, 62, 66)
+    if multi_resolution and int(getattr(options, 'projector_type', 0)) in type6_projectors:
+        requested_shape = tuple(int(np.asarray(getattr(options, axis)).reshape(-1)[0])
+                                for axis in ('NxFull', 'NyFull', 'NzFull'))
+        target_shape = tuple(int(v) for v in np.asarray(options.multiResUnionDims).reshape(-1))
+        bounds = np.asarray(options.multiResUnionBounds, dtype=np.float64).reshape(3, 2)
+        target_origin = bounds[:, 0]
+        target_spacing = np.asarray([np.asarray(getattr(options, axis)).reshape(-1)[0]
+                                     for axis in ('dx', 'dy', 'dz')], dtype=np.float64)
+        source_fov = np.asarray(options.imageAttenuationFineFOV, dtype=np.float64).reshape(3)
+        source_spacing = np.asarray(
+            getattr(options, 'imageAttenuationFineSpacing', source_fov / np.asarray(requested_shape)),
+            dtype=np.float64,
+        ).reshape(3)
+        shift = np.asarray(getattr(options, 'eFOVShift', (0.0, 0.0, 0.0)), dtype=np.float64).reshape(3).copy()
+        if not getattr(options, 'transaxialEFOV', True):
+            shift[:2] = 0.0
+        if not getattr(options, 'axialEFOV', True):
+            shift[2] = 0.0
+        offsets = np.asarray([getattr(options, axis, 0.0)
+                              for axis in ('oOffsetX', 'oOffsetY', 'oOffsetZ')], dtype=np.float64)
+        source_origin = offsets + shift - source_fov / 2.0
+        grid = (target_shape, tuple(target_origin), tuple(target_spacing))
+        prior = getattr(options, '_type6PreparedAttenuation', None)
+        if prior is not None and np.shares_memory(attenuation, prior[0]):
+            if prior[1] != grid:
+                raise ValueError('Previously prepared attenuation belongs to a different union grid.')
+            options.vaimennus = np.asfortranarray(attenuation, dtype=np.float32).ravel(order='F')
+            return
+
+        if attenuation.ndim >= 3 and tuple(attenuation.shape[:3]) not in (requested_shape, target_shape):
+            from scipy.ndimage import zoom
+            factors = tuple(size / source for size, source in zip(requested_shape, attenuation.shape[:3]))
+            attenuation = zoom(attenuation, factors + (1.0,) * (attenuation.ndim - 3)).astype(
+                attenuation.dtype, copy=False
+            )
+        if attenuation.ndim in (3, 4):
+            map_shape = tuple(attenuation.shape[:3])
+            n_frames = attenuation.shape[3] if attenuation.ndim == 4 else 1
+            if n_frames not in (1, int(options.Nt)):
+                raise ValueError(f'Attenuation must contain one frame or Nt={options.Nt} frames.')
+            if map_shape == target_shape and target_shape != requested_shape:
+                map_origin = target_origin
+                map_spacing = target_spacing
+            elif map_shape == requested_shape:
+                map_origin = source_origin
+                map_spacing = source_spacing
+            else:
+                raise ValueError('Attenuation dimensions do not match the requested FOV or volume union.')
+        elif attenuation.ndim == 1:
+            candidates = []
+            for shape in (requested_shape, target_shape):
+                size = int(np.prod(shape))
+                if attenuation.size % size == 0 and attenuation.size // size in (1, int(options.Nt)):
+                    candidates.append((shape, attenuation.size // size))
+            if not candidates:
+                raise ValueError('Flattened attenuation size does not match the requested FOV or volume union.')
+            if len(candidates) == 2 and requested_shape != target_shape:
+                raise ValueError('Flattened attenuation dimensions are ambiguous; supply a 3D or 4D array.')
+            map_shape, n_frames = candidates[0]
+            if map_shape == target_shape and target_shape != requested_shape:
+                map_origin = target_origin
+                map_spacing = target_spacing
+            else:
+                map_origin = source_origin
+                map_spacing = source_spacing
+        else:
+            raise ValueError('Image-domain attenuation must be a flattened, 3D or 4D map.')
+
+        if (map_shape == target_shape and np.array_equal(map_origin, target_origin)
+                and np.array_equal(map_spacing, target_spacing)):
+            prepared = attenuation.reshape(tuple(map_shape) + (n_frames,), order='F')
+        else:
+            prepared = _resample_image_grid(
+                attenuation, map_shape, map_origin, map_spacing,
+                target_shape, target_origin, target_spacing,
+            )
+        if attenuation.ndim in (1, 3):
+            prepared = prepared[..., 0]
+        if prepared.ndim == 1:
+            prepared = np.reshape(prepared, target_shape, order='F')
+        if getattr(options, 'rotateAttImage', 0) != 0:
+            prepared = np.rot90(prepared, int(options.rotateAttImage))
+        if getattr(options, 'flipAttImageXY', False):
+            prepared = np.fliplr(prepared)
+        if getattr(options, 'flipAttImageZ', False):
+            prepared = np.flip(prepared, 2)
+        if getattr(options, 'attIncm', False):
+            prepared = prepared / np.float32(10.0)
+        options.vaimennus = np.asfortranarray(prepared, dtype=np.float32).ravel(order='F')
+        options._type6PreparedAttenuation = (options.vaimennus, grid)
+        return
+
     if multi_resolution:
         if not options.SPECT:
             raise ValueError('Image-domain attenuation for multi-resolution is currently supported only for SPECT.')
@@ -657,49 +792,7 @@ def loadCorrections(options):
                 else:
                     raise ValueError('Unsupported datatype!')
         if options.CT_attenuation:
-            multiResType6 = (
-                options.projector_type in (6, 16, 26, 61, 62, 66)
-                and getattr(options, 'useMultiResolutionVolumes', False)
-                and int(getattr(options, 'nMultiVolumes', 0)) > 0
-            )
-            if multiResType6:
-                # Type 6 uses one attenuation volume covering the union of all
-                # resolution grids; pad the requested extended-FOV map to that
-                # union with air transaxially and replicated end slices axially.
-                from omegatomo.util.multiresolutionpad import prepareType6Attenuation
-                options.vaimennus = prepareType6Attenuation(options, options.vaimennus)
-                attDims = tuple(int(v) for v in np.asarray(options.multiResUnionDims).reshape(-1))
-                if options.vaimennus.ndim == 1 and options.vaimennus.size != int(np.prod(attDims)):
-                    attDims = tuple(int(np.asarray(getattr(options, axis)).reshape(-1)[0])
-                                    for axis in ('NxFull', 'NyFull', 'NzFull'))
-                elif options.vaimennus.ndim >= 3:
-                    attDims = tuple(options.vaimennus.shape[:3])
-
-                def attVolume(values):
-                    if values.ndim == 1:
-                        return np.reshape(values, attDims, order='F')
-                    return values
-
-                if options.rotateAttImage != 0:
-                    options.vaimennus = np.rot90(attVolume(options.vaimennus), options.rotateAttImage)
-                if options.flipAttImageXY:
-                    options.vaimennus = np.fliplr(attVolume(options.vaimennus))
-                if options.flipAttImageZ:
-                    options.vaimennus = np.flip(attVolume(options.vaimennus), 2)
-                if options.attIncm:
-                    options.vaimennus = options.vaimennus / 10.
-                # Native type-6 reads attenuation images as an x-fastest
-                # (Fortran-order) voxel buffer. prepareType6Attenuation can
-                # return a C-contiguous 3D array (for example after scipy.zoom),
-                # and _as_ptr intentionally preserves the memory order of
-                # contiguous arrays. Flatten here so the native pointer keeps
-                # the logical x/y/z layout without changing _as_ptr's behavior
-                # for other inputs.
-                options.vaimennus = np.asfortranarray(options.vaimennus, dtype=np.float32).ravel(order='F')
-            else:
-                # The Python SPECT Siddon/ODRT path prepares full-FOV fine and
-                # coarse maps, including dynamic frames and shifted origins.
-                _prepare_image_domain_attenuation(options)
+            _prepare_image_domain_attenuation(options)
         else:
             options.vaimennus = np.asfortranarray(options.vaimennus).ravel('F').astype(dtype=np.float32)
     # PET normalization precorrection of SinM, applied after the randoms/scatter

@@ -100,6 +100,15 @@ struct ScalarKernelParams { // Kernel scalar values that do not change with time
     float gFilterDv;
     float gFilterDd;
     CL_UINT32 gFilterCustom;
+    // Window and translation parameters for the type-6 Metal rotation kernel.
+    CL_INT32 rotSrcNyFull, rotSrcNzFull, rotOutNx, rotOutNyFull;
+    CL_INT32 rotOutY, rotOutZ, rotOutNy, rotOutNz;
+    CL_INT32 rotSrcY, rotSrcZ, rotSrcNy, rotSrcNz;
+    CL_INT32 rotAccumulate, rotOutX, rotOutNxW, rotSrcX, rotSrcNxB;
+    CL_INT32 rotOutSx, rotOutSy;
+    float rotOffX, rotOffY;
+    CL_UINT32 atnNx, atnNy, atnNz;
+    float atnDx, atnDy, atnDz, atnBx, atnBy, atnBz;
 };
 
 #undef CL_FLOAT2

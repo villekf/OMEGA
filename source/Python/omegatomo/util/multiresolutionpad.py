@@ -17,9 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 The side volumes of the multi-resolution reconstruction have exactly the coarse voxel size, so their lengths are
 rounded up to a whole number of coarse voxels: the extended FOV never shrinks and grows by less than one coarse voxel on
-each outer face (see setUpCorrections of the projector class). The whole-grid inputs (initial image, BP mask, type 6
-attenuation map) are given for the requested extended FOV, NxFull x NyFull x NzFull voxels of the main volume, and are
-padded here with the enlargement (options.multiResPadLow/High, in voxels of the main volume).
+each outer face (see setUpCorrections of the projector class). The whole-grid inputs (initial image and BP mask) are
+given for the requested extended FOV, NxFull x NyFull x NzFull voxels of the main volume, and are padded here with the
+enlargement (options.multiResPadLow/High, in voxels of the main volume). Image-domain attenuation is prepared by the
+shared attenuation routine in reconstruction/prepass.py.
 """
 import numpy as np
 
@@ -68,55 +69,3 @@ def padMultiResVolume(image, options, fillZero=False):
     if fillZero:
         return np.pad(image, pad, mode='constant', constant_values=0)
     return np.pad(image, pad, mode='edge')
-
-
-def padType6Attenuation(options, attenuation):
-    """Pads the type 6 attenuation map (x, y, z[, frame]) of the requested extended FOV by the enlargement of the extended FOV:
-    the type 6 projector takes the map on the union bounding box of the volumes. A map that already is of the size of the union
-    is returned as it is.
-
-    The padding is air (mu = 0) transaxially (x and y), since the body is inside the transaxial FOV, but axially (z) the edge
-    slice of the map is replicated: the body continues beyond the axial FOV, and an air layer would make the lowest coarse slice
-    of the side volume an average of air and tissue, i.e. the activity near the axial edge would be under-attenuated (up to a
-    few percent 20 mm from the edge and far more at the edge itself). With no axial enlargement the map is not changed."""
-    dims = getattr(options, 'multiResUnionDims', None)
-    if dims is None:
-        return attenuation
-    oldDims = tuple(int(np.asarray(getattr(options, axis)).reshape(-1)[0]) for axis in ('NxFull', 'NyFull', 'NzFull'))
-    newDims = tuple(int(v) for v in np.asarray(dims).reshape(-1))
-    if oldDims == newDims:
-        return attenuation
-    lo = np.maximum(np.floor(np.asarray(options.multiResPadLow) + 0.5).astype(np.int64), 0)
-    hi = np.maximum(np.asarray(newDims) - np.asarray(oldDims) - lo, 0)
-    attenuation = np.asarray(attenuation)
-    nOld = int(np.prod(oldDims))
-    if attenuation.size == 0 or attenuation.size % nOld != 0:
-        return attenuation
-    nFrames = attenuation.size // nOld
-    isFlat = attenuation.ndim == 1
-    volume = attenuation.reshape(oldDims + (nFrames,), order='F')
-    # Air in x and y, the nearest edge slice in z (the identity index when there is no axial padding)
-    padded = np.pad(volume, [(int(lo[0]), int(hi[0])), (int(lo[1]), int(hi[1])), (0, 0), (0, 0)], mode='constant', constant_values=0)
-    padded = np.take(padded, np.clip(np.arange(newDims[2]) - int(lo[2]), 0, oldDims[2] - 1), axis=2)
-    if isFlat:
-        return padded.ravel(order='F')
-    return padded.reshape(newDims + (nFrames,), order='F') if nFrames > 1 or attenuation.ndim == 4 else padded[..., 0]
-
-
-def prepareType6Attenuation(options, attenuation):
-    """The type 6 attenuation map of the multi-resolution reconstruction for the union bounding box of the volumes. A map that
-    is of the size of the union, or of the requested extended FOV (NxFull x NyFull x NzFull, padded with air by the enlargement,
-    see padType6Attenuation), is used as it is; a 3D or 4D (x, y, z[, frame]) map of any other size is first resized to the
-    requested extended FOV (the whole grid, not the main volume). A flattened map cannot be resized and is used as it is."""
-    attenuation = np.asarray(attenuation)
-    dims = getattr(options, 'multiResUnionDims', None)
-    if dims is None:
-        return attenuation
-    wholeGrid = tuple(int(np.asarray(getattr(options, axis)).reshape(-1)[0]) for axis in ('NxFull', 'NyFull', 'NzFull'))
-    unionGrid = tuple(int(v) for v in np.asarray(dims).reshape(-1))
-    if attenuation.ndim >= 3 and tuple(attenuation.shape[:3]) not in (wholeGrid, unionGrid):
-        from scipy.ndimage import zoom
-        print('Error: Attenuation data is of different size than the extended FOV (all the volumes). Attempting resize!')
-        factors = tuple(w / s for w, s in zip(wholeGrid, attenuation.shape[:3])) + (1.,) * (attenuation.ndim - 3)
-        attenuation = zoom(attenuation, factors).astype(attenuation.dtype, copy=False)
-    return padType6Attenuation(options, attenuation)

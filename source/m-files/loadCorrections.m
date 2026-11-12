@@ -130,11 +130,7 @@ if options.attenuation_correction && ~options.SPECT % PET attenuation
         end
     end
     if options.CT_attenuation && options.useMultiResolutionVolumes && options.nMultiVolumes > 0
-        if options.projector_type == 6
-            options = padType6Attenuation(options);
-        else
-            options = prepareMultiResolutionAttenuation(options);
-        end
+        options = prepareMultiResolutionAttenuation(options);
     elseif options.CT_attenuation
         if size(options.vaimennus,1) ~= options.Nx(1) || size(options.vaimennus,2) ~= options.Ny(1) || size(options.vaimennus,3) ~= options.Nz(1)
             if size(options.vaimennus,1) ~= options.N(1)
@@ -195,8 +191,7 @@ elseif options.attenuation_correction && options.SPECT % SPECT attenuation
         muAir = HU_to_mu(-1000, options.keV);
 
         % Use the pre-split full-FOV reference for multi-resolution maps.
-        % Preserve its physical center; any tile union beyond that support
-        % is padded symmetrically by prepareMultiResolutionAttenuation.
+        % Shared attenuation preparation aligns maps to the active volume grids.
         if options.useMultiResolutionVolumes && options.nMultiVolumes > 0
             fineDims = double([options.NxFull, options.NyFull, options.NzFull]);
             if isfield(options, 'imageAttenuationFineDims')
@@ -223,12 +218,7 @@ elseif options.attenuation_correction && options.SPECT % SPECT attenuation
         options.vaimennus = 1*MUvol;
     end
     if options.CT_attenuation && options.useMultiResolutionVolumes && options.nMultiVolumes > 0
-        if isfield(options, 'projector_type') && options.projector_type == 6
-            % Type 6 consumes the voxel-grid map directly; its union padding differs from the packed fine/coarse map.
-            options = padType6Attenuation(options);
-        else
-            options = prepareMultiResolutionAttenuation(options);
-        end
+        options = prepareMultiResolutionAttenuation(options);
     end
     if options.Nt > 1 && iscell(options.vaimennus) && numel(options.vaimennus) == 1 && ...
             ~options.CT_attenuation && iscell(options.SinM) && ~isempty(options.SinM)

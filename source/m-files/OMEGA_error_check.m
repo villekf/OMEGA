@@ -135,9 +135,6 @@ if options.useMultiResolutionVolumes && options.attenuation_correction && option
     if options.implementation == 2 && options.use_CPU
         error('Multi-resolution image-domain attenuation is not implemented by the native C++ CPU backend.')
     end
-    if ismac && ismember(options.implementation, [2, 3, 5])
-        error('Multi-resolution image-domain attenuation is not implemented by the Metal/MPS projector backend.')
-    end
 end
 if partitions > 1 && options.implementation ~= 2 % TODO dynamic reconstruction for implementation 5 (macOS)
     error('Dynamic reconstruction is supported only with implementation 2.')

@@ -684,8 +684,21 @@ def _applyOffsetSqrtFP(self, y, subset):
 
 
 def conv3D(self, f, ii = 0):
-    if getattr(self, "useMetal", False):
-        raise NotImplementedError("The separate PSF convolution kernel is not yet wired to the Metal/MPS bridge.")
+    if self.useTorch:
+        import torch
+        import torch.nn.functional as functional
+        nx, ny, nz = (int(self.Nx[ii]), int(self.Ny[ii]), int(self.Nz[ii]))
+        rx, ry, rz = (int(self.g_dim_x), int(self.g_dim_y), int(self.g_dim_z))
+        image = f.reshape(1, 1, nz, ny, nx)
+        # The native convolution reflects at the voxel boundary, including the edge voxel.
+        for axis, size, radius in ((2, nz, rz), (3, ny, ry), (4, nx, rx)):
+            if radius:
+                indices = torch.arange(-radius, size + radius, device=f.device) % (2 * size)
+                indices = torch.where(indices < size, indices, 2 * size - indices - 1).long()
+                image = image.index_select(axis, indices)
+        kernel = np.asarray(self.gaussK, dtype=np.float32).ravel(order='F').copy()
+        kernel = torch.as_tensor(kernel, device=f.device).reshape(1, 1, 2 * rz + 1, 2 * ry + 1, 2 * rx + 1)
+        return functional.conv3d(image, kernel).reshape(-1)
     globalSize = (self.Nx[ii].item() + self.erotusBP[ii * 2], self.Ny[ii].item() + self.erotusBP[ii * 2 + 1], self.Nz[ii].item())
     if self.useCUDA:
         if self.useTorch:
@@ -795,7 +808,7 @@ def forwardProjection(self, f, subset: int = -1, timestep: int = -1):
                 count = image.numel()
                 if count != int(np.asarray(self.N).reshape(-1)[volume]):
                     raise ValueError(f'Volume {volume} has {count} elements; expected {self.N[volume]}')
-                inputs[volume] = image
+                inputs[volume] = self.computeConvolution(image, volume) if self.use_psf else image
             output = torch.zeros(
                 rows * cols * int(self.nProjSubset[timestep, subset]),
                 dtype=torch.float32,
@@ -1263,7 +1276,7 @@ def backwardProjection(self, y, subset = -1, timestep = -1):
                     device=y.device,
                 )
                 type6_backward(self, y, output, volume, subset, timestep, ops=ops)
-                outputs.append(output)
+                outputs.append(self.computeConvolution(output, volume) if self.use_psf else output)
             return outputs[0] if int(self.nMultiVolumes) == 0 else outputs
     else:
         _validate_backward_input(self, y, timestep, subset)
@@ -2042,12 +2055,10 @@ def _type6_rotation_variance(self: Any, volume: int, view: int, grid: tuple[int,
 
 
 def _type6_on_the_fly_cdrf(self: Any, volume: int, view: int) -> np.ndarray:
-    """Native type-6 per-view Gaussian CDRF sampled on the rotated grid."""
+    """Native type-6 per-view CDRF sampled on the rotated grid."""
     model = str(getattr(self, 'CDRFModel', 'gaussian')).strip().lower()
-    if model != 'gaussian':
-        raise NotImplementedError(
-            f"The Python type-6 on-the-fly CDRF currently supports CDRFModel='gaussian'; got {model!r}."
-        )
+    if model not in ('gaussian', 'square'):
+        raise ValueError(f"Unknown type-6 CDRF model: {model!r}.")
     grid_nx, grid_ny = _type6_rotation_grid(self, volume)
     grid_nz = int(self.Nz[volume]) + sum(_type6_padding_z(self, volume))
     dx = np.asarray(self.dx, dtype=np.float64).reshape(-1)
@@ -2083,18 +2094,62 @@ def _type6_on_the_fly_cdrf(self: Any, volume: int, view: int) -> np.ndarray:
     for zmm in endpoint_depths:
         rz = max(az * zmm + bz, 0.)
         rxy = max(axy * zmm + bxy, 0.)
-        sz = np.sqrt(rz * rz + intrinsic * intrinsic) / dz[volume] * sigma_coeff
-        sxy = np.sqrt(rxy * rxy + intrinsic * intrinsic) / dy[volume] * sigma_coeff
-        extent = max(extent, 5.2565 * sz, 5.2565 * sxy)
+        if model == 'square':
+            extent_z = (rz + 5.2565 * intrinsic * sigma_coeff) / dz[volume]
+            extent_xy = (rxy + 5.2565 * intrinsic * sigma_coeff) / dy[volume]
+        else:
+            extent_z = 5.2565 * np.hypot(rz, intrinsic) / dz[volume] * sigma_coeff
+            extent_xy = 5.2565 * np.hypot(rxy, intrinsic) / dy[volume] * sigma_coeff
+        extent = max(extent, extent_z, extent_xy)
     radius = int(np.ceil(extent))
     radius = ((radius + 7) // 8) * 8
     radius = min(radius, max(grid_ny, grid_nz))
     taps = np.arange(-radius, radius + 1, dtype=np.float64)
     visible = (planes >= first_plane) & (depth_mm > 0.)
-    rz = np.minimum(np.ceil(5.2565 * sigma_z).astype(np.int64), radius)
-    rxy = np.minimum(np.ceil(5.2565 * sigma_xy).astype(np.int64), radius)
-    axial = np.exp(-(taps[:, None] ** 2) / (2. * sigma_z[None, :] ** 2))
-    trans = np.exp(-(taps[:, None] ** 2) / (2. * sigma_xy[None, :] ** 2))
+    if model == 'square':
+        from scipy.special import erfc
+
+        def square_response(rg, spacing, compensation):
+            variance = (intrinsic / spacing * sigma_coeff) ** 2 - compensation
+            sigma = np.sqrt(max(variance, 1e-6))
+            half_base = np.sqrt(np.maximum((rg / spacing) ** 2 - 6. * max(1e-6 - variance, 0.), 0.))
+            u = np.abs(taps[:, None])
+            r = half_base[None, :]
+            a = r / sigma
+            z2 = np.minimum((u / sigma) ** 2, 100.)
+            a2 = a * a
+            he2 = z2 - 1.
+            he4 = (z2 - 6.) * z2 + 3.
+            he6 = ((z2 - 15.) * z2 + 45.) * z2 - 15.
+            he8 = (((z2 - 28.) * z2 + 210.) * z2 - 420.) * z2 + 105.
+            series = np.exp(-.5 * z2) / (np.sqrt(2. * np.pi) * sigma) * (
+                1. + a2 * (he2 / 12. + a2 * (he4 / 360. + a2 * (he6 / 20160. + a2 * he8 / 1814400.))))
+            series = np.where((u / sigma) ** 2 <= 100., series, 0.)
+
+            def tail(x):
+                z = x / sigma
+                return sigma * np.exp(-.5 * z * z) / np.sqrt(2. * np.pi) - .5 * x * erfc(z / np.sqrt(2.))
+
+            closed = (tail(u + r) - 2. * tail(u) + tail(np.abs(u - r)) + np.maximum(r - u, 0.))
+            closed /= np.maximum(r * r, 1e-30)
+            response = np.maximum(np.where(a < .5, series, closed), 0.)
+            cutoff = np.minimum(np.ceil(half_base + 5.2565 * sigma).astype(np.int64), radius)
+            return response, cutoff
+
+        axial, rz = square_response(rg_z, dz[volume], 0.)
+        trans, rxy = square_response(rg_xy, dy[volume], comp)
+    else:
+        rz = np.minimum(np.ceil(5.2565 * sigma_z).astype(np.int64), radius)
+        rxy = np.minimum(np.ceil(5.2565 * sigma_xy).astype(np.int64), radius)
+        positive_sigma_z = sigma_z > 0.
+        axial = np.empty((taps.size, sigma_z.size), dtype=np.float64)
+        axial[:, positive_sigma_z] = np.exp(
+            -(taps[:, None] ** 2) / (2. * sigma_z[None, positive_sigma_z] ** 2)
+        )
+        # A zero Gaussian width is the delta response: all weight belongs at
+        # the center tap. Evaluating 0 / 0 first would leave NaNs after masking.
+        axial[:, ~positive_sigma_z] = (taps[:, None] == 0.)
+        trans = np.exp(-(taps[:, None] ** 2) / (2. * sigma_xy[None, :] ** 2))
     axial *= (np.abs(taps[:, None]) <= rz[None, :]) & visible[None, :]
     trans *= (np.abs(taps[:, None]) <= rxy[None, :]) & visible[None, :]
     axial /= np.maximum(axial.sum(axis=0, keepdims=True), 1e-30)
@@ -2105,30 +2160,18 @@ def _type6_on_the_fly_cdrf(self: Any, volume: int, view: int) -> np.ndarray:
 
 
 def _type6_attenuation_map_extent(self: Any) -> tuple[float, float, float, int, int, int]:
-    """Union bounding box, at volume 0's own (finest) voxel size, of every type-6
-    multi-resolution volume (0..nMultiVolumes) -- the grid the host-provided attenuation
-    map ('vaimennus') is expected to cover, exactly like source/cpp/functions.hpp's
-    buildType6AttenuationVolume. Positions come from bx/by/bz as already stored (NOT
-    assumed centred on the origin), so this keeps working once a shifted main volume is
-    supported. With nMultiVolumes == 0 this reduces to volume 0's own grid exactly."""
-    nVol = int(self.nMultiVolumes) + 1
-    bx = np.asarray(self.bx, dtype=np.float64).reshape(-1)[:nVol]
-    by = np.asarray(self.by, dtype=np.float64).reshape(-1)[:nVol]
-    bz = np.asarray(self.bz, dtype=np.float64).reshape(-1)[:nVol]
-    dx = np.asarray(self.dx, dtype=np.float64).reshape(-1)[:nVol]
-    dy = np.asarray(self.dy, dtype=np.float64).reshape(-1)[:nVol]
-    dz = np.asarray(self.dz, dtype=np.float64).reshape(-1)[:nVol]
-    Nx = np.asarray(self.Nx, dtype=np.float64).reshape(-1)[:nVol]
-    Ny = np.asarray(self.Ny, dtype=np.float64).reshape(-1)[:nVol]
-    Nz = np.asarray(self.Nz, dtype=np.float64).reshape(-1)[:nVol]
-    bxMap, byMap, bzMap = float(np.min(bx)), float(np.min(by)), float(np.min(bz))
-    bxHi = float(np.max(bx + Nx * dx))
-    byHi = float(np.max(by + Ny * dy))
-    bzHi = float(np.max(bz + Nz * dz))
-    NxMap = int(round((bxHi - bxMap) / float(dx[0])))
-    NyMap = int(round((byHi - byMap) / float(dy[0])))
-    NzMap = int(round((bzHi - bzMap) / float(dz[0])))
-    return bxMap, byMap, bzMap, NxMap, NyMap, NzMap
+    """Union grid of the type-6 attenuation map, at the main voxel spacing."""
+    nvol = int(self.nMultiVolumes) + 1
+    origins = np.column_stack([np.asarray(getattr(self, name), dtype=np.float32).reshape(-1)[:nvol]
+                               for name in ('bx', 'by', 'bz')])
+    counts = np.column_stack([np.asarray(getattr(self, name), dtype=np.float32).reshape(-1)[:nvol]
+                              for name in ('Nx', 'Ny', 'Nz')])
+    spacing = np.column_stack([np.asarray(getattr(self, name), dtype=np.float32).reshape(-1)[:nvol]
+                               for name in ('dx', 'dy', 'dz')])
+    low = np.min(origins, axis=0)
+    high = np.max(origins + counts * spacing, axis=0)
+    dims = np.ceil(((high - low) / spacing[0]).astype(np.float64) - 1e-5).astype(np.int64)
+    return float(low[0]), float(low[1]), float(low[2]), int(dims[0]), int(dims[1]), int(dims[2])
 
 
 def _type6_resample_attenuation_numpy(attenMap: np.ndarray, self: Any, volume: int,
@@ -2373,6 +2416,8 @@ def _type6_numpy_central_ray_weights(self: Any, projections: int, timestep: int,
     # `distFloat2` is the native C++ Weighting name. Python options expose the
     # same per-view detector-panel shift as `blurPlanes2F` (in main-volume voxels).
     panel_values = np.asarray(getattr(self, 'blurPlanes2F', np.zeros_like(swivel)), dtype=np.float64)
+    if panel_values.size == 0:
+        panel_values = np.zeros_like(swivel)
     start = int(np.sum(self.nProjSubset[:timestep, :]) + np.sum(self.nProjSubset[timestep, :subset]))
     result = np.zeros((projections, cols, rows), dtype=np.float32)
     for local in range(projections):
@@ -3320,60 +3365,42 @@ def _type6_torch_ops(self: Any):
                 ).squeeze(0).squeeze(0)
         return image * mask
 
-    def attenuation_image(volume: int, timestep: int, subset: int, like: Any) -> Any:
-        # 'vaimennus'/'d_attenuation_image' covers the union bounding box of every
-        # multi-resolution volume (see _type6_attenuation_map_extent); resample it onto
-        # `volume`'s own grid (identity when nMultiVolumes == 0, and bit-identical to the
-        # pre-existing single-reshape behavior in that case) before returning, so the outer
-        # reshape_image(..., (nz, ny, nx)) call downstream is left a no-op as before.
-        bxMap, byMap, bzMap, NxMap, NyMap, NzMap = _type6_attenuation_map_extent(self)
+    def attenuation_map(timestep: int, subset: int, like: Any) -> tuple[Any, tuple[float, float, float, int, int, int]]:
+        extent = _type6_attenuation_map_extent(self)
+        _, _, _, nx, ny, nz = extent
         raw = _type6_torch_resource(
             self, 'd_attenuation_image', timestep, subset,
             fallback=getattr(self, 'vaimennus', np.empty(0)), dtype=like.dtype, device=like.device,
         )
-        if raw.numel() != NxMap * NyMap * NzMap:
-            raise ValueError(
-                f'Expected the type-6 attenuation map to cover the union of every multi-resolution '
-                f'volume ({NxMap}x{NyMap}x{NzMap} = {NxMap * NyMap * NzMap} elements), got {raw.numel()}')
-        if raw.dim() >= 3:
-            # A plain, not-pre-flattened (Nx, Ny, Nz)-shaped array (this codebase's usual
-            # convention for a directly-assigned vaimennus, e.g. np.asfortranarray(mu) with
-            # mu.shape == (Nx, Ny, Nz)): permute into (Nz, Ny, Nx) explicitly. A same-total
-            # reshape() alone would silently mis-interpret the axes whenever the map is not
-            # cubic (NxMap != NzMap), which the union bounding box normally is not.
-            mapTensor = raw.reshape(NxMap, NyMap, NzMap).permute(2, 1, 0).contiguous()
-        else:
-            # Flat (1-D): x fastest-varying, matching this file's other host_resource /
-            # canonical_image Fortran-ravel convention, so a plain C-order reshape into
-            # (Nz, Ny, Nx) makes Nx (the last axis) the fastest-varying, as required.
-            mapTensor = raw.reshape(NzMap, NyMap, NxMap)
+        frame_size = nx * ny * nz
+        frames = int(getattr(self, 'Nt', 1))
+        if raw.numel() == frame_size * frames and frames > 1:
+            raw = raw[..., timestep] if raw.ndim == 4 else raw.reshape(-1)[timestep * frame_size:(timestep + 1) * frame_size]
+        elif raw.numel() != frame_size:
+            raise ValueError(f'Expected one or {frames} type-6 attenuation frames of {frame_size} elements, got {raw.numel()}')
+        if raw.ndim >= 3:
+            return raw.reshape(nx, ny, nz).permute(2, 1, 0).contiguous(), extent
+        return raw.reshape(nz, ny, nx), extent
+
+    def attenuation_image(volume: int, timestep: int, subset: int, like: Any) -> Any:
+        mapTensor, (bxMap, byMap, bzMap, NxMap, NyMap, NzMap) = attenuation_map(timestep, subset, like)
         if volume == 0 and NxMap == int(self.Nx[0]) and NyMap == int(self.Ny[0]) and NzMap == int(self.Nz[0]):
             return mapTensor
+        host_map = mapTensor.detach().to(device='cpu').to(dtype=torch.float64)
         resampled = _type6_resample_attenuation_numpy(
-            mapTensor.detach().to('cpu', dtype=torch.float64).numpy(), self, volume, bxMap, byMap, bzMap, NxMap, NyMap, NzMap)
+            host_map.numpy(), self, volume, bxMap, byMap, bzMap, NxMap, NyMap, NzMap)
         return torch.as_tensor(resampled, dtype=like.dtype, device=like.device)
 
     def attenuation_factors(volume: int, timestep: int, subset: int, view: int, like: Any) -> Any:
-        bxMap, byMap, bzMap, NxMap, NyMap, NzMap = _type6_attenuation_map_extent(self)
-        raw = _type6_torch_resource(
-            self, 'd_attenuation_image', timestep, subset,
-            fallback=getattr(self, 'vaimennus', np.empty(0)), dtype=like.dtype, device=like.device,
-        )
-        if raw.numel() != NxMap * NyMap * NzMap:
-            raise ValueError(
-                f'Expected the type-6 attenuation map to cover the union of every multi-resolution '
-                f'volume ({NxMap}x{NyMap}x{NzMap} = {NxMap * NyMap * NzMap} elements), got {raw.numel()}')
-        if raw.dim() >= 3:
-            attenMap = raw.reshape(NxMap, NyMap, NzMap).permute(2, 1, 0).contiguous()
-        else:
-            attenMap = raw.reshape(NzMap, NyMap, NxMap)
+        attenMap, (bxMap, byMap, bzMap, NxMap, NyMap, NzMap) = attenuation_map(timestep, subset, like)
         members, group_rows, group_bz, group_nz, attNx, z_offsets = _type6_attenuation_group(self, volume)
         representative = members[0]
         cache_key = (int(timestep), int(subset), representative, str(like.device), like.dtype)
         source = attenuation_source_cache.get(cache_key)
         if source is None:
+            host_map = attenMap.detach().to(device='cpu').to(dtype=torch.float64)
             source_np, source_attNx = _type6_attenuation_source_numpy(
-                self, attenMap.detach().to('cpu', dtype=torch.float64).numpy(), representative,
+                self, host_map.numpy(), representative,
                 bz_override=group_bz, nz_override=group_nz)
             if source_attNx != attNx:
                 raise RuntimeError('Type-6 attenuation group grid changed while building its source lattice')

@@ -139,9 +139,6 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 #if defined(CPU)
 		mexErrMsgTxt("Multi-resolution image-domain attenuation is not implemented by the native C++ CPU projector.");
 #endif
-#if defined(METAL)
-		mexErrMsgTxt("Multi-resolution image-domain attenuation is not implemented by the Metal/MPS projector backend.");
-#endif
 		// The Siddon and orthogonal paths consume a packed fine/coarse attenuation map
 		// described by explicit grid metadata. Type 6 instead consumes one dense map
 		// covering the union of the image volumes and resamples it per volume.

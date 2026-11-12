@@ -14,7 +14,7 @@ from typing import Any, Iterable
 import numpy as np
 
 
-SCALAR_KERNEL_PARAMS_SIZE = 384
+SCALAR_KERNEL_PARAMS_SIZE = 496
 
 _OFFSETS = {
     "nRowsD": 0,
@@ -61,13 +61,21 @@ _OFFSETS = {
     "N_rotate": 320,
     "cosa_rotate": 336,
     "sina_rotate": 340,
-    "gFilterNu": 352,
-    "gFilterNv": 356,
-    "gFilterNd": 360,
-    "gFilterDu": 364,
-    "gFilterDv": 368,
-    "gFilterDd": 372,
-    "gFilterCustom": 376,
+    "gFilterNu": 344,
+    "gFilterNv": 348,
+    "gFilterNd": 352,
+    "gFilterDu": 356,
+    "gFilterDv": 360,
+    "gFilterDd": 364,
+    "gFilterCustom": 368,
+    "rotSrcNyFull": 372, "rotSrcNzFull": 376, "rotOutNx": 380, "rotOutNyFull": 384,
+    "rotOutY": 388, "rotOutZ": 392, "rotOutNy": 396, "rotOutNz": 400,
+    "rotSrcY": 404, "rotSrcZ": 408, "rotSrcNy": 412, "rotSrcNz": 416,
+    "rotAccumulate": 420, "rotOutX": 424, "rotOutNxW": 428, "rotSrcX": 432,
+    "rotSrcNxB": 436, "rotOutSx": 440, "rotOutSy": 444, "rotOffX": 448, "rotOffY": 452,
+    "atnNx": 456, "atnNy": 460, "atnNz": 464,
+    "atnDx": 468, "atnDy": 472, "atnDz": 476,
+    "atnBx": 480, "atnBy": 484, "atnBz": 488,
 }
 
 
@@ -201,6 +209,21 @@ def _pack_scalar_kernel_params(self: Any, timestep: int, subset: int, volume: in
     f32('gFilterDv', float(spacing[1]))
     f32('gFilterDd', float(spacing[2]))
     u32('gFilterCustom', int(bool(getattr(self, 'gFilterCustom', False))))
+    for name in ('rotSrcNyFull', 'rotSrcNzFull', 'rotOutNx', 'rotOutNyFull', 'rotOutY', 'rotOutZ',
+                 'rotOutNy', 'rotOutNz', 'rotSrcY', 'rotSrcZ', 'rotSrcNy', 'rotSrcNz', 'rotAccumulate',
+                 'rotOutX', 'rotOutNxW', 'rotSrcX', 'rotSrcNxB', 'rotOutSx', 'rotOutSy'):
+        i32(name, 0)
+    f32('rotOffX', 0.0)
+    f32('rotOffY', 0.0)
+    if getattr(self, 'imageAttenuationIsMultiResolution', False) and self.attenuation_correction and self.CTAttenuation:
+        from .init import _image_attenuation_grid
+        _, dims, spacing, origin = _image_attenuation_grid(self, volume)
+        for name, value in zip(('atnNx', 'atnNy', 'atnNz'), dims):
+            u32(name, value)
+        for name, value in zip(('atnDx', 'atnDy', 'atnDz'), spacing):
+            f32(name, value)
+        for name, value in zip(('atnBx', 'atnBy', 'atnBz'), origin):
+            f32(name, value)
     return bytes(blob)
 
 
@@ -219,8 +242,6 @@ def _validate_configuration(self: Any) -> None:
         errors.append('projector type 6 is only supported with SPECT data')
     if self.use_32bit_atomics or self.use_64bit_atomics:
         errors.append('integer accumulation is unsupported by the Metal/MPS custom-operator path')
-    if self.use_psf:
-        errors.append('PSF convolution is unsupported by the Metal/MPS custom-operator path')
     if getattr(self, 'FDK', False):
         errors.append('FDK filtering and weighting are not implemented by the Metal/MPS custom-operator path')
     if errors:
@@ -500,7 +521,11 @@ def _upload_static_buffers(self: Any, torch: Any) -> None:
 
     self.d_attenuation_image = self.mps_empty_float32
     if self.attenuation_correction and self.CTAttenuation and attenuation.size:
-        self.d_attenuation_image = _mps_tensor_from_numpy(torch, attenuation, np.float32)
+        if getattr(self, 'imageAttenuationIsMultiResolution', False):
+            from .init import _initialize_multiresolution_image_attenuation
+            _initialize_multiresolution_image_attenuation(self, lambda values: _mps_tensor_from_numpy(torch, values, np.float32))
+        else:
+            self.d_attenuation_image = _mps_tensor_from_numpy(torch, attenuation, np.float32)
 
     mask_fp = getattr(self, 'maskFP', np.empty(0))
     self.d_maskFP = [[self.mps_empty_uint8] * self.subsets for _ in range(self.Nt)]
@@ -641,7 +666,12 @@ def _kernel_args(
 ) -> list[Any]:
     """Bind every Metal resource slot, using typed empty buffers when inactive."""
     empty_f = self.mps_empty_float32
-    atten = self.d_attenuation_image if self.CTAttenuation else self.d_attenuation[timestep][subset]
+    if self.CTAttenuation:
+        atten = (self.d_imageAttenuation[timestep][volume]
+                 if getattr(self, 'imageAttenuationIsMultiResolution', False) and self.attenuation_correction
+                 else self.d_attenuation_image)
+    else:
+        atten = self.d_attenuation[timestep][subset]
     if (direction == 'forward' and self.FPType in (1, 2, 3)) or (direction == 'backward' and self.BPType in (1, 2, 3)):
         args = [empty_f] * 22
         args[0] = scalar_params
@@ -721,6 +751,8 @@ def forward_projection_mps(self: Any, f: Any, subset: int, timestep: int) -> Any
         inputs[volume] = image
     output = torch.zeros(_projection_size(self, timestep, subset), dtype=torch.float32, device='mps')
     for volume, image in enumerate(inputs):
+        if self.use_psf:
+            image = self.computeConvolution(image, volume)
         partial = torch.zeros_like(output)
         if self.FPType == 6:
             from .projfunctions import _type6_torch_ops, type6_forward
@@ -762,5 +794,5 @@ def backward_projection_mps(self: Any, y: Any, subset: int, timestep: int) -> An
                 threads=tuple(int(value) for value in self.globalSizeBP[timestep][subset][volume]),
                 group_size=tuple(int(value) for value in self.localSizeBP),
             )
-        outputs.append(output)
+        outputs.append(self.computeConvolution(output, volume) if self.use_psf else output)
     return outputs[0] if self.nMultiVolumes == 0 else outputs

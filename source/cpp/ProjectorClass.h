@@ -907,6 +907,43 @@ class ProjectorClass {
 		return SUCCESS_VALUE;
 	}
 
+	inline STATUS_t copyMetalBufferRegionToTexture(const DEVBUFF_t& source, const TEX3D_t& texture,
+		const RotWindow& win) const {
+		const size_t width = static_cast<size_t>(win.srcNxB > 0 ? win.srcNxB : win.srcNx);
+		const size_t height = static_cast<size_t>(win.srcNy > 0 ? win.srcNy : win.srcNyFull);
+		const size_t depth = static_cast<size_t>(win.srcNz > 0 ? win.srcNz : win.srcNzFull);
+		const size_t bytesPerRow = width * sizeof(float);
+		const size_t bytesPerImage = bytesPerRow * height;
+		if (!source || !texture || width == 0 || height == 0 || depth == 0 || source->length() < bytesPerImage * depth
+			|| static_cast<size_t>(win.srcX) + width > texture->width()
+			|| static_cast<size_t>(win.srcY) + height > texture->height()
+			|| static_cast<size_t>(win.srcZ) + depth > texture->depth())
+			return -1;
+#ifdef AF
+		auto commandBuffer = NS::RetainPtr(afmtl::getQueue()->commandBuffer());
+#else
+		if (!queueFP)
+			return -1;
+		auto commandBuffer = NS::RetainPtr(queueFP->commandBuffer());
+#endif
+		if (!commandBuffer)
+			return -1;
+		auto encoder = NS::RetainPtr(commandBuffer->blitCommandEncoder());
+		if (!encoder)
+			return -1;
+		encoder->copyFromBuffer(source.get(), 0, bytesPerRow, bytesPerImage,
+			MTL::Size::Make(width, height, depth), texture.get(), 0, 0,
+			MTL::Origin::Make(static_cast<NS::UInteger>(win.srcX), static_cast<NS::UInteger>(win.srcY), static_cast<NS::UInteger>(win.srcZ)));
+		encoder->endEncoding();
+		submitMetalCommandBuffer(commandBuffer.get());
+#ifndef AF
+		commandBuffer->waitUntilCompleted();
+		if (commandBuffer->status() == MTL::CommandBufferStatusError)
+			return -1;
+#endif
+		return SUCCESS_VALUE;
+	}
+
 	inline TEX3D_t createMetalFloatTextureFromBuffer(const DEVBUFF_t& source, const MetalTextureSpec& spec) const {
 		TEX3D_t texture = createMetalTexture(spec);
 		if (copyMetalBufferToTexture(source, texture, spec) != SUCCESS_VALUE)
@@ -1281,10 +1318,8 @@ class ProjectorClass {
 			std::string os_optionsFP = os_options;
 #endif // END CUDA
 			ADD_OPT(os_optionsFP, FP_FLAG);
-#if defined(CUDA) || defined(HIP) || defined(OPENCL)
 			if (multiResolutionImageAttenuation)
 				ADD_OPT(os_optionsFP, "-DMRATN");
-#endif
 			if (inputScalars.FPType == 3)
 				ADD_OPT(os_optionsFP, "-DVOL");
 			if (inputScalars.FPType == 2 || inputScalars.FPType == 3)
@@ -1307,10 +1342,8 @@ class ProjectorClass {
 					mexPrint("Trying to build BP 1-3 program\n");
 				}
 				ADD_OPT(os_options, "-DBP");
-#if defined(CUDA) || defined(HIP) || defined(OPENCL)
 				if (multiResolutionImageAttenuation)
 					ADD_OPT(os_options, "-DMRATN");
-#endif
 				if (inputScalars.BPType == 3)
 					ADD_OPT(os_options, "-DVOL");
 				if (inputScalars.BPType == 2 || inputScalars.BPType == 3)
@@ -2394,7 +2427,6 @@ class ProjectorClass {
 			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Bilinear rotation kernel successfully created\n");
 			}
-#ifndef METAL
 			CREATE_KERNEL(kernelConvCDRF, programAux, "convolveCDRF", "Failed to create the collimator response convolution kernel\n");
 			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Collimator response convolution kernel successfully created\n");
@@ -2420,7 +2452,6 @@ class ProjectorClass {
 			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Fused collimator response kernels successfully created\n");
 			}
-#endif
 		}
 		return status;
 	}
@@ -2723,7 +2754,12 @@ public:
 	// weights are used for the large regions (CDRFParams6::globalW, see type6GlobalWeights in functions.hpp), where the
 	// tiled cdrfAxialGW (32 KB) and the *Direct transaxial kernels (the global weights variants of cdrfTransFP and
 	// cdrfTransBP, 1 KB) read them instead of the kernels making them in shared memory
-	static constexpr int cdrfTZPT = 8, cdrfYPT = 4, cdrfRMax = 48;
+	static constexpr int cdrfTZPT = 8, cdrfYPT = 4;
+#ifdef METAL
+	static constexpr int cdrfRMax = 24; // Keep the axial tile within Metal's threadgroup memory limit.
+#else
+	static constexpr int cdrfRMax = 48;
+#endif
 	// The number of slices of the volume that a thread of the rotation back of the backprojection handles (ROT_ZPT in auxKernels.cl, the rotate
 	// kernel with accumulate and rotateBackB). The exact adjoint of the rotation (option type6BPRotation = 'adjoint') makes the weights of a column
 	// of the volume once for all its slices; the fast gather (bpRot6 = 1) has one thread per voxel
@@ -3865,7 +3901,6 @@ public:
 				CREATE_FLOAT_TEXTURE3D_EMPTY(d_inputI, imArray, region[0], region[1], region[2]);
 				CHECK(status, "Failed to create prior image\n", (STATUS_t)(-1));
 			}
-#ifndef METAL
 			// The rotation-based projector uses its own images so that neither the image being rotated
 			// nor the attenuation map has to be re-uploaded for every projection. They have to hold the
 			// largest volume and the largest rotation grid, which are not the main volume with
@@ -3887,7 +3922,6 @@ public:
 					type6Error = true;
 				CHECK(status, "Failed to create rotation image\n", (STATUS_t)(-1));
 			}
-#endif
 		}
 		// RDP reference image
 		if (MethodList.RDP && w_vec.RDPLargeNeighbor && w_vec.RDP_anatomical) {
@@ -5296,6 +5330,13 @@ public:
 		kParams.m_size = m_size;
 		kParams.currentSubset = osa_iter;
 		kParams.aa = ii;
+		if (inputScalars.attenuation_correction && inputScalars.CTAttenuation && inputScalars.multiResolution &&
+			inputScalars.SPECT && inputScalars.nMultiVolumes > 0) {
+			const ImageAttenuationGrid grid = imageAttenuationGrid(inputScalars, ii > 0);
+			kParams.atnNx = grid.Nx; kParams.atnNy = grid.Ny; kParams.atnNz = grid.Nz;
+			kParams.atnDx = grid.dx; kParams.atnDy = grid.dy; kParams.atnDz = grid.dz;
+			kParams.atnBx = grid.bx; kParams.atnBy = grid.by; kParams.atnBz = grid.bz;
+		}
 		if (inputScalars.FPType == 2)
 			kParams.orthWidth = inputScalars.tube_width;
 		if (inputScalars.FPType == 3)
@@ -5836,6 +5877,13 @@ public:
 		kParams.m_size = m_size;
 		kParams.currentSubset = osa_iter;
 		kParams.aa = ii;
+		if (inputScalars.attenuation_correction && inputScalars.CTAttenuation && inputScalars.multiResolution &&
+			inputScalars.SPECT && inputScalars.nMultiVolumes > 0) {
+			const ImageAttenuationGrid grid = imageAttenuationGrid(inputScalars, ii > 0);
+			kParams.atnNx = grid.Nx; kParams.atnNy = grid.Ny; kParams.atnNz = grid.Nz;
+			kParams.atnDx = grid.dx; kParams.atnDy = grid.dy; kParams.atnDz = grid.dz;
+			kParams.atnBx = grid.bx; kParams.atnBy = grid.by; kParams.atnBz = grid.bz;
+		}
 		if (MethodList.FDK && inputScalars.CT && inputScalars.BPType == 4) {
 			int64_t angleOffset = 0;
 			for (uint32_t subset = 0; subset < osa_iter; subset++)
@@ -8300,77 +8348,52 @@ public:
 	}
 
 #if defined(METAL)
-	// Metal keeps the previous, plain (non-multires-aware) rotation launcher: type 6 on Metal is
-	// unchanged by this port and still rotates the whole volume in one call with no windows/offsets
-	inline int rotateCustom(const scalarStruct & inputScalars, const float cosa, const float sina, const int ii = 0) {
-		if (inputScalars.verbose >= 3 || DEBUG)
-			mexPrint("Starting " BACKEND_STR " bilinear image rotation computation");
-		STATUS_t status = SUCCESS_VALUE;
-		UINT32_t kernelIndRot = 0U;
-		if (!queueBP || !kernelRotate) {
-			mexPrint("Unable to create Metal bilinear rotation encoder");
-			return -1;
-		}
-		NS::SharedPtr<MTL::CommandBuffer> commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
-		if (!commandBuffer) {
-			mexPrint("Unable to create Metal bilinear rotation encoder");
-			return -1;
-		}
-		NS::SharedPtr<MTL::ComputeCommandEncoder> encoder = NS::RetainPtr(commandBuffer->computeCommandEncoder());
-		if (!encoder) {
-			mexPrint("Unable to create Metal bilinear rotation encoder");
-			return -1;
-		}
-		encoder->setComputePipelineState(kernelRotate.get());
-		SET_LAUNCH_RANGE3(global,
-			inputScalars.Nx[ii] + erotusPrior[0],
-			inputScalars.Ny[ii] + erotusPrior[1],
-			inputScalars.Nz[ii],
-			localPrior);
-		if (DEBUG) {
-			mexPrintBase("global[0] = %u\n", global[0]);
-			mexPrintBase("global[1] = %u\n", global[1]);
-			mexPrintBase("global[2] = %u\n", global[2]);
-			mexPrintBase("d_N.s[0] = %u\n", VEC_X(d_N[ii]));
-			mexPrintBase("d_N.s[1] = %u\n", VEC_Y(d_N[ii]));
-			mexPrintBase("d_N.s[2] = %u\n", VEC_Z(d_N[ii]));
-			mexEval();
-		}
 
-		KARG(kArgs, kernelRotate, kernelIndRot, d_rhs);
-		if (!inputScalars.useBuffers) {
-			KARG(kArgs, kernelRotate, kernelIndRot, d_inputI);
+	inline int transferRotTex(const scalarStruct& inputScalars, const DEVBUFF_t& input, const RotWindow& win, const int texSlot = 0) {
+		if (type6Error || texSlot < 0 || texSlot >= rotSlotsType6 || !input)
+			return -1;
+		if (!d_rotI[texSlot]) {
+			int maxNx = 0, maxNy = 0, maxNz = 0;
+			if (texSlot < rotSlotEmissionType6)
+				rotGridMaxType6(inputScalars, maxNx, maxNy, maxNz);
+			else {
+				maxNx = win.srcNx;
+				maxNy = win.srcNyFull;
+				maxNz = win.srcNzFull;
+			}
+			d_rotI[texSlot] = createMetalFloatTextureEmpty(metalTextureSpec(maxNx, maxNy, maxNz, true));
+			if (!d_rotI[texSlot]) {
+				type6Error = true;
+				return -1;
+			}
 		}
-		else {
-			KARG(kArgs, kernelRotate, kernelIndRot, d_im);
-		}
-		kParams.N_rotate = { static_cast<int>(VEC_X(d_N[ii])), static_cast<int>(VEC_Y(d_N[ii])), static_cast<int>(VEC_Z(d_N[ii])) };
-		kParams.cosa_rotate = cosa;
-		kParams.sina_rotate = sina;
-		KARG(kArgs, kernelRotate, kernelIndRot, kParams);
-		{
-			const MTL::Size threadsPerThreadgroup = MTL::Size::Make(localPrior[0], localPrior[1], localPrior[2]);
-			const MTL::Size threadgroupsPerGrid = MTL::Size::Make(
-				global[0] / localPrior[0], global[1] / localPrior[1], global[2] / localPrior[2]);
-			encoder->dispatchThreadgroups(threadgroupsPerGrid, threadsPerThreadgroup);
-			encoder->endEncoding();
-			submitMetalCommandBuffer(commandBuffer.get());
-		}
-		if (inputScalars.verbose >= 3)
-			mexPrint(BACKEND_STR " bilinear image rotation computed");
-		return 0;
-		}
-#else
+		const STATUS_t status = copyMetalBufferRegionToTexture(input, d_rotI[texSlot], win);
+		if (status != SUCCESS_VALUE)
+			type6Error = true;
+		return status == SUCCESS_VALUE ? 0 : -1;
+	}
+
+#endif
+
 	// One pass of the separable collimator-detector response convolution, along dimension 0 when axis
 	// is 0 and along dimension 1 when axis is 1. The input is in d_im, the output in d_rhs and the
 	// per-plane filter bank in d_convFilter
-	inline int convolveCDRF(const scalarStruct & inputScalars, int N0, int N1, int N2, int fRadius, int axis) {
+	inline int convolveCDRF(int N0, int N1, int N2, int fRadius, int axis) {
 		STATUS_t status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
-#elif defined(OPENCL)
+#elif defined(OPENCL) || defined(METAL)
 		UINT32_t kernelIndConv = 0U;
-#endif // END CUDA
+#endif
+#ifdef METAL
+		if (!queueBP || !kernelConvCDRF)
+			return -1;
+		auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+		auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+		if (!commandBuffer || !encoder)
+			return -1;
+		encoder->setComputePipelineState(kernelConvCDRF.get());
+#endif
 		// The global size has to be a multiple of the local size
 		const size_t e0 = (N0 % local_sizePrior[0] == 0ULL) ? 0ULL : local_sizePrior[0] - (N0 % local_sizePrior[0]);
 		const size_t e1 = (N1 % local_sizePrior[1] == 0ULL) ? 0ULL : local_sizePrior[1] - (N1 % local_sizePrior[1]);
@@ -8391,7 +8414,12 @@ public:
 #elif defined(OPENCL)
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelConvCDRF, cl::NullRange, globalConv, localPrior);
 		OCL_CHECK(status, "Failed to launch the collimator response convolution kernel\n", -1);
-#endif // END CUDA
+#elif defined(METAL)
+		encoder->dispatchThreadgroups(MTL::Size::Make(globalConv[0] / localPrior[0], globalConv[1] / localPrior[1], globalConv[2] / localPrior[2]),
+			MTL::Size::Make(localPrior[0], localPrior[1], localPrior[2]));
+		encoder->endEncoding();
+		submitMetalCommandBuffer(commandBuffer.get());
+#endif
 		// No queue finish here on purpose. CLCommandQueue[0] is ArrayFire's own in-order queue, so the
 		// ordering against the ArrayFire operations before and after is already guaranteed, and blocking
 		// once per projection would drain the pipeline and leave the device idle while the host catches
@@ -8412,7 +8440,7 @@ public:
 			STATUS_t status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 			std::vector<void*> kArgs;
-#elif defined(OPENCL)
+#elif defined(OPENCL) || defined(METAL)
 			UINT32_t kernelIndCDRF = 0U;
 #endif // END CUDA
 			// One thread per plane along the first dimension, the second one selects the direction
@@ -8420,6 +8448,13 @@ public:
 			WORKRANGE_t globalCDRF;
 			SET_LAUNCH_RANGE3(globalCDRF, nPlanes + e0, local_sizePrior[1], 1, localPrior);
 
+#ifdef METAL
+			if (!queueBP || !kernelCDRFWeights) return -1;
+			auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+			auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+			if (!encoder) return -1;
+			encoder->setComputePipelineState(kernelCDRFWeights.get());
+#endif
 			KARG(kArgs, kernelCDRFWeights, kernelIndCDRF, d_cdrfWAx);
 			KARG(kArgs, kernelCDRFWeights, kernelIndCDRF, d_cdrfWTr);
 			KARG(kArgs, kernelCDRFWeights, kernelIndCDRF, d_cdrfRAx);
@@ -8445,6 +8480,11 @@ public:
 #elif defined(OPENCL)
 			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelCDRFWeights, cl::NullRange, globalCDRF, localPrior);
 			OCL_CHECK(status, "Failed to launch the collimator response weight kernel\n", -1);
+#elif defined(METAL)
+			encoder->dispatchThreadgroups(MTL::Size::Make(globalCDRF[0] / localPrior[0], globalCDRF[1] / localPrior[1], globalCDRF[2] / localPrior[2]),
+				MTL::Size::Make(localPrior[0], localPrior[1], localPrior[2]));
+			encoder->endEncoding();
+			submitMetalCommandBuffer(commandBuffer.get());
 #endif // END CUDA
 			return 0;
 		}
@@ -8459,7 +8499,7 @@ public:
 			STATUS_t status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 			std::vector<void*> kArgs;
-#elif defined(OPENCL)
+#elif defined(OPENCL) || defined(METAL)
 			UINT32_t kernelIndCDRF = 0U;
 #endif // END CUDA
 			// The tiled kernels when the radius allows it: work-groups of (x run, 1, z block), see the kernels.
@@ -8481,6 +8521,13 @@ public:
 				SET_LAUNCH_RANGE3(globalCDRF, N0 + e0, N1 + e1, nZOut, localPrior);
 			}
 
+#ifdef METAL
+			if (!queueBP || !kernelAx) return -1;
+			auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+			auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+			if (!encoder) return -1;
+			encoder->setComputePipelineState(kernelAx.get());
+#endif
 			KARG(kArgs, kernelAx, kernelIndCDRF, d_rhs);
 			KARG(kArgs, kernelAx, kernelIndCDRF, d_im);
 			KARG(kArgs, kernelAx, kernelIndCDRF, d_cdrfAtt);
@@ -8529,6 +8576,11 @@ public:
 #elif defined(OPENCL)
 			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelAx, cl::NullRange, globalCDRF, localPrior);
 			OCL_CHECK(status, "Failed to launch the fused axial collimator response kernel\n", -1);
+#elif defined(METAL)
+			encoder->dispatchThreadgroups(MTL::Size::Make(globalCDRF[0] / localPrior[0], globalCDRF[1] / localPrior[1], globalCDRF[2] / localPrior[2]),
+				MTL::Size::Make(localPrior[0], localPrior[1], localPrior[2]));
+			encoder->endEncoding();
+			submitMetalCommandBuffer(commandBuffer.get());
 #endif // END CUDA
 			return 0;
 		}
@@ -8542,7 +8594,7 @@ public:
 			STATUS_t status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 			std::vector<void*> kArgs;
-#elif defined(OPENCL)
+#elif defined(OPENCL) || defined(METAL)
 			UINT32_t kernelIndCDRF = 0U;
 #endif // END CUDA
 			const bool tiled = !(prm.globalW || prm.radius > cdrfRMax);
@@ -8553,6 +8605,13 @@ public:
 			WORKRANGE_t globalCDRF;
 			SET_LAUNCH_RANGE3(globalCDRF, ((static_cast<size_t>(nOut) + lanes - 1ULL) / lanes) * local_sizePrior[0], static_cast<size_t>(N2) * local_sizePrior[1], 1, localPrior);
 
+#ifdef METAL
+			if (!queueBP || !kernelTr) return -1;
+			auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+			auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+			if (!encoder) return -1;
+			encoder->setComputePipelineState(kernelTr.get());
+#endif
 			KARG(kArgs, kernelTr, kernelIndCDRF, d_rhs);
 			KARG(kArgs, kernelTr, kernelIndCDRF, d_im);
 			if (!tiled) {
@@ -8588,6 +8647,11 @@ public:
 #elif defined(OPENCL)
 			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelTr, cl::NullRange, globalCDRF, localPrior);
 			OCL_CHECK(status, "Failed to launch the fused transaxial collimator response kernel\n", -1);
+#elif defined(METAL)
+			encoder->dispatchThreadgroups(MTL::Size::Make(globalCDRF[0] / localPrior[0], globalCDRF[1] / localPrior[1], globalCDRF[2] / localPrior[2]),
+				MTL::Size::Make(localPrior[0], localPrior[1], localPrior[2]));
+			encoder->endEncoding();
+			submitMetalCommandBuffer(commandBuffer.get());
 #endif // END CUDA
 			return 0;
 		}
@@ -8605,7 +8669,7 @@ public:
 			STATUS_t status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 			std::vector<void*> kArgs;
-#elif defined(OPENCL)
+#elif defined(OPENCL) || defined(METAL)
 			UINT32_t kernelIndCDRF = 0U;
 #endif // END CUDA
 			const bool tiled = !(prm.globalW || prm.radius > cdrfRMax);
@@ -8622,6 +8686,13 @@ public:
 			SET_LAUNCH_RANGE3(globalCDRF, ((static_cast<size_t>(N0) + tx - 1ULL) / tx) * local_sizePrior[0],
 				((static_cast<size_t>(N1) + yRows - 1ULL) / yRows) * local_sizePrior[1], N2, localPrior);
 
+#ifdef METAL
+			if (!queueBP || !kernelTr) return -1;
+			auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+			auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+			if (!encoder) return -1;
+			encoder->setComputePipelineState(kernelTr.get());
+#endif
 			KARG(kArgs, kernelTr, kernelIndCDRF, d_rhs);
 			KARG(kArgs, kernelTr, kernelIndCDRF, d_im);
 			if (!tiled) {
@@ -8665,6 +8736,11 @@ public:
 #elif defined(OPENCL)
 			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelTr, cl::NullRange, globalCDRF, localPrior);
 			OCL_CHECK(status, "Failed to launch the fused transaxial collimator response kernel (backprojection)\n", -1);
+#elif defined(METAL)
+			encoder->dispatchThreadgroups(MTL::Size::Make(globalCDRF[0] / localPrior[0], globalCDRF[1] / localPrior[1], globalCDRF[2] / localPrior[2]),
+				MTL::Size::Make(localPrior[0], localPrior[1], localPrior[2]));
+			encoder->endEncoding();
+			submitMetalCommandBuffer(commandBuffer.get());
 #endif // END CUDA
 			return 0;
 		}
@@ -8675,7 +8751,7 @@ public:
 			STATUS_t status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 			std::vector<void*> kArgs;
-#elif defined(OPENCL)
+#elif defined(OPENCL) || defined(METAL)
 			UINT32_t kernelIndRes = 0U;
 #endif // END CUDA
 			const size_t e0 = (nRowsD % local_sizePrior[0] == 0ULL) ? 0ULL : local_sizePrior[0] - (nRowsD % local_sizePrior[0]);
@@ -8683,6 +8759,13 @@ public:
 			WORKRANGE_t globalRes;
 			SET_LAUNCH_RANGE3(globalRes, nRowsD + e0, nColsD + e1, 1, localPrior);
 
+#ifdef METAL
+			if (!queueBP || !kernelResampleTo) return -1;
+			auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+			auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+			if (!encoder) return -1;
+			encoder->setComputePipelineState(kernelResampleTo.get());
+#endif
 			KARG(kArgs, kernelResampleTo, kernelIndRes, d_rhs);
 			KARG(kArgs, kernelResampleTo, kernelIndRes, d_im);
 			KARG(kArgs, kernelResampleTo, kernelIndRes, nTr);
@@ -8700,6 +8783,11 @@ public:
 #elif defined(OPENCL)
 			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelResampleTo, cl::NullRange, globalRes, localPrior);
 			OCL_CHECK(status, "Failed to launch the detector resampling kernel\n", -1);
+#elif defined(METAL)
+			encoder->dispatchThreadgroups(MTL::Size::Make(globalRes[0] / localPrior[0], globalRes[1] / localPrior[1], globalRes[2] / localPrior[2]),
+				MTL::Size::Make(localPrior[0], localPrior[1], localPrior[2]));
+			encoder->endEncoding();
+			submitMetalCommandBuffer(commandBuffer.get());
 #endif // END CUDA
 			return 0;
 		}
@@ -8710,7 +8798,7 @@ public:
 			STATUS_t status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 			std::vector<void*> kArgs;
-#elif defined(OPENCL)
+#elif defined(OPENCL) || defined(METAL)
 			UINT32_t kernelIndRes = 0U;
 #endif // END CUDA
 			const size_t e0 = (nTr % local_sizePrior[0] == 0ULL) ? 0ULL : local_sizePrior[0] - (nTr % local_sizePrior[0]);
@@ -8718,6 +8806,13 @@ public:
 			WORKRANGE_t globalRes;
 			SET_LAUNCH_RANGE3(globalRes, nTr + e0, nAx + e1, 1, localPrior);
 
+#ifdef METAL
+			if (!queueBP || !kernelResampleFrom) return -1;
+			auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+			auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+			if (!encoder) return -1;
+			encoder->setComputePipelineState(kernelResampleFrom.get());
+#endif
 			KARG(kArgs, kernelResampleFrom, kernelIndRes, d_rhs);
 			KARG(kArgs, kernelResampleFrom, kernelIndRes, d_im);
 			KARG(kArgs, kernelResampleFrom, kernelIndRes, nTr);
@@ -8735,6 +8830,11 @@ public:
 #elif defined(OPENCL)
 			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelResampleFrom, cl::NullRange, globalRes, localPrior);
 			OCL_CHECK(status, "Failed to launch the detector resampling kernel (backprojection)\n", -1);
+#elif defined(METAL)
+			encoder->dispatchThreadgroups(MTL::Size::Make(globalRes[0] / localPrior[0], globalRes[1] / localPrior[1], globalRes[2] / localPrior[2]),
+				MTL::Size::Make(localPrior[0], localPrior[1], localPrior[2]));
+			encoder->endEncoding();
+			submitMetalCommandBuffer(commandBuffer.get());
 #endif // END CUDA
 			return 0;
 		}
@@ -8760,7 +8860,9 @@ public:
 			prmCursor = 0;
 			prmCapBlocks = blocks;
 			prmOffBlocks = 0;
+#if !defined(METAL)
 			prmCur = (prmCur + 1) % prmArenas;
+#endif
 #if defined(CUDA) || defined(HIP)
 			STATUS_t status = SUCCESS_VALUE;
 			if (prmEv[prmCur] == nullptr) {
@@ -8807,6 +8909,9 @@ public:
 			prmHostCL[prmCur].resize(static_cast<size_t>(blocks) * static_cast<size_t>(type6BatchStride));
 			d_cdrfBP = cl::Buffer(CLContext, CL_MEM_READ_ONLY, bytes, nullptr, &status);
 			OCL_CHECK(status, "Failed to allocate the batch parameters\n", -1);
+#elif defined(METAL)
+			d_cdrfBP = NS::TransferPtr(mtlDevice->newBuffer(bytes, MTL::ResourceStorageModeShared));
+			if (!d_cdrfBP) return -1;
 #endif
 			return 0;
 		}
@@ -8834,6 +8939,8 @@ public:
 			status = CLCommandQueue[0].enqueueWriteBuffer(d_cdrfBP, CL_FALSE, off * sizeof(float), bytes, prmHostCL[prmCur].data() + off, nullptr, &prmEvCL[prmCur]);
 			OCL_CHECK(status, "Failed to upload the batch parameters\n", -1);
 			prmEvSetCL[prmCur] = true;
+#elif defined(METAL)
+			std::memcpy(static_cast<char*>(d_cdrfBP->contents()) + off * sizeof(float), host, bytes);
 #endif
 			prmOffBlocks = prmCursor;
 			prmCursor += blocks;
@@ -8849,7 +8956,7 @@ public:
 			STATUS_t status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 			std::vector<void*> kArgs;
-#elif defined(OPENCL)
+#elif defined(OPENCL) || defined(METAL)
 			UINT32_t kernelIndRot = 0U;
 #endif // END CUDA
 			const size_t e0 = (maxNxW % local_sizePrior[0] == 0ULL) ? 0ULL : local_sizePrior[0] - (maxNxW % local_sizePrior[0]);
@@ -8857,6 +8964,13 @@ public:
 			WORKRANGE_t globalB;
 			SET_LAUNCH_RANGE3(globalB, maxNxW + e0, maxNy + e1, static_cast<size_t>(maxNz) * static_cast<size_t>(nb), localPrior);
 			int nzB = maxNz;
+#ifdef METAL
+			if (!queueBP || !kernelRotateB) return -1;
+			auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+			auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+			if (!encoder) return -1;
+			encoder->setComputePipelineState(kernelRotateB.get());
+#endif
 			KARG(kArgs, kernelRotateB, kernelIndRot, d_rhs);
 			if (!inputScalars.useBuffers) {
 				KARG(kArgs, kernelRotateB, kernelIndRot, d_rotI[texSlot]);
@@ -8881,6 +8995,11 @@ public:
 			if (status != SUCCESS_VALUE)
 				type6Error = true;
 			OCL_CHECK(status, "Failed to launch the batched bilinear image rotation kernel\n", -1);
+#elif defined(METAL)
+			encoder->dispatchThreadgroups(MTL::Size::Make(globalB[0] / localPrior[0], globalB[1] / localPrior[1], globalB[2] / localPrior[2]),
+				MTL::Size::Make(localPrior[0], localPrior[1], localPrior[2]));
+			encoder->endEncoding();
+			submitMetalCommandBuffer(commandBuffer.get());
 #endif // END CUDA
 			return 0;
 		}
@@ -8891,7 +9010,7 @@ public:
 			STATUS_t status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 			std::vector<void*> kArgs;
-#elif defined(OPENCL)
+#elif defined(OPENCL) || defined(METAL)
 			UINT32_t kernelIndRot = 0U;
 #endif // END CUDA
 			const size_t e0 = (nvx % local_sizePrior[0] == 0ULL) ? 0ULL : local_sizePrior[0] - (nvx % local_sizePrior[0]);
@@ -8900,6 +9019,13 @@ public:
 			// A thread handles rotZPT slices of the volume (ROT_ZPT in auxKernels.cl)
 			const size_t zptRot = static_cast<size_t>(rotZPT(inputScalars));
 			SET_LAUNCH_RANGE3(globalB, nvx + e0, nvy + e1, (static_cast<size_t>(nvz) + zptRot - 1ULL) / zptRot, localPrior);
+#ifdef METAL
+			if (!queueBP || !kernelRotateBackB) return -1;
+			auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+			auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+			if (!encoder) return -1;
+			encoder->setComputePipelineState(kernelRotateBackB.get());
+#endif
 			KARG(kArgs, kernelRotateBackB, kernelIndRot, d_rhs);
 			KARG(kArgs, kernelRotateBackB, kernelIndRot, d_im);
 			int bpOff = prmOffBlocks;
@@ -8918,6 +9044,11 @@ public:
 #elif defined(OPENCL)
 			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelRotateBackB, cl::NullRange, globalB, localPrior);
 			OCL_CHECK(status, "Failed to launch the batched rotation kernel of the backprojection\n", -1);
+#elif defined(METAL)
+			encoder->dispatchThreadgroups(MTL::Size::Make(globalB[0] / localPrior[0], globalB[1] / localPrior[1], globalB[2] / localPrior[2]),
+				MTL::Size::Make(localPrior[0], localPrior[1], localPrior[2]));
+			encoder->endEncoding();
+			submitMetalCommandBuffer(commandBuffer.get());
 #endif // END CUDA
 			return 0;
 		}
@@ -8931,7 +9062,7 @@ public:
 			STATUS_t status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 			std::vector<void*> kArgs;
-#elif defined(OPENCL)
+#elif defined(OPENCL) || defined(METAL)
 			UINT32_t kernelIndCDRF = 0U;
 #endif // END CUDA
 			const size_t tx = cdrfTileX();
@@ -8940,6 +9071,13 @@ public:
 			WORKRANGE_t globalCDRF;
 			SET_LAUNCH_RANGE3(globalCDRF, ((static_cast<size_t>(maxN0) + tx - 1ULL) / tx) * local_sizePrior[0], static_cast<size_t>(maxN1) * local_sizePrior[1],
 				static_cast<size_t>(nzb) * static_cast<size_t>(nb), localPrior);
+#ifdef METAL
+			if (!queueBP || !kernelCDRFAxialB) return -1;
+			auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+			auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+			if (!encoder) return -1;
+			encoder->setComputePipelineState(kernelCDRFAxialB.get());
+#endif
 			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, d_rhs);
 			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, d_im);
 			KARG(kArgs, kernelCDRFAxialB, kernelIndCDRF, d_cdrfAtt);
@@ -8970,6 +9108,11 @@ public:
 #elif defined(OPENCL)
 			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelCDRFAxialB, cl::NullRange, globalCDRF, localPrior);
 			OCL_CHECK(status, "Failed to launch the batched axial collimator response kernel\n", -1);
+#elif defined(METAL)
+			encoder->dispatchThreadgroups(MTL::Size::Make(globalCDRF[0] / localPrior[0], globalCDRF[1] / localPrior[1], globalCDRF[2] / localPrior[2]),
+				MTL::Size::Make(localPrior[0], localPrior[1], localPrior[2]));
+			encoder->endEncoding();
+			submitMetalCommandBuffer(commandBuffer.get());
 #endif // END CUDA
 			return 0;
 		}
@@ -8982,13 +9125,20 @@ public:
 			STATUS_t status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 			std::vector<void*> kArgs;
-#elif defined(OPENCL)
+#elif defined(OPENCL) || defined(METAL)
 			UINT32_t kernelIndCDRF = 0U;
 #endif // END CUDA
 			const size_t lanes = cdrfLanes() * static_cast<size_t>(cdrfYPT);
 			WORKRANGE_t globalCDRF;
 			SET_LAUNCH_RANGE3(globalCDRF, ((static_cast<size_t>(maxNOut) + lanes - 1ULL) / lanes) * local_sizePrior[0], static_cast<size_t>(maxN2) * local_sizePrior[1],
 				static_cast<size_t>(nb), localPrior);
+#ifdef METAL
+			if (!queueBP || !kernelCDRFTransFPB) return -1;
+			auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+			auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+			if (!encoder) return -1;
+			encoder->setComputePipelineState(kernelCDRFTransFPB.get());
+#endif
 			KARG(kArgs, kernelCDRFTransFPB, kernelIndCDRF, d_rhs);
 			KARG(kArgs, kernelCDRFTransFPB, kernelIndCDRF, d_im);
 			int bpOff = prmOffBlocks;
@@ -9013,6 +9163,11 @@ public:
 #elif defined(OPENCL)
 			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelCDRFTransFPB, cl::NullRange, globalCDRF, localPrior);
 			OCL_CHECK(status, "Failed to launch the batched transaxial collimator response kernel\n", -1);
+#elif defined(METAL)
+			encoder->dispatchThreadgroups(MTL::Size::Make(globalCDRF[0] / localPrior[0], globalCDRF[1] / localPrior[1], globalCDRF[2] / localPrior[2]),
+				MTL::Size::Make(localPrior[0], localPrior[1], localPrior[2]));
+			encoder->endEncoding();
+			submitMetalCommandBuffer(commandBuffer.get());
 #endif // END CUDA
 			return 0;
 		}
@@ -9025,7 +9180,7 @@ public:
 			STATUS_t status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 			std::vector<void*> kArgs;
-#elif defined(OPENCL)
+#elif defined(OPENCL) || defined(METAL)
 			UINT32_t kernelIndCDRF = 0U;
 #endif // END CUDA
 			const size_t tx = cdrfTileX();
@@ -9034,6 +9189,13 @@ public:
 			WORKRANGE_t globalCDRF;
 			SET_LAUNCH_RANGE3(globalCDRF, ((static_cast<size_t>(maxN0) + tx - 1ULL) / tx) * local_sizePrior[0],
 				((static_cast<size_t>(maxN1) + yRows - 1ULL) / yRows) * local_sizePrior[1], static_cast<size_t>(maxN2) * static_cast<size_t>(nb), localPrior);
+#ifdef METAL
+			if (!queueBP || !kernelCDRFTransBPB) return -1;
+			auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+			auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+			if (!encoder) return -1;
+			encoder->setComputePipelineState(kernelCDRFTransBPB.get());
+#endif
 			KARG(kArgs, kernelCDRFTransBPB, kernelIndCDRF, d_rhs);
 			KARG(kArgs, kernelCDRFTransBPB, kernelIndCDRF, d_im);
 			int bpOff = prmOffBlocks;
@@ -9059,6 +9221,11 @@ public:
 #elif defined(OPENCL)
 			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelCDRFTransBPB, cl::NullRange, globalCDRF, localPrior);
 			OCL_CHECK(status, "Failed to launch the batched transaxial collimator response kernel (backprojection)\n", -1);
+#elif defined(METAL)
+			encoder->dispatchThreadgroups(MTL::Size::Make(globalCDRF[0] / localPrior[0], globalCDRF[1] / localPrior[1], globalCDRF[2] / localPrior[2]),
+				MTL::Size::Make(localPrior[0], localPrior[1], localPrior[2]));
+			encoder->endEncoding();
+			submitMetalCommandBuffer(commandBuffer.get());
 #endif // END CUDA
 			return 0;
 		}
@@ -9069,13 +9236,20 @@ public:
 			STATUS_t status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 			std::vector<void*> kArgs;
-#elif defined(OPENCL)
+#elif defined(OPENCL) || defined(METAL)
 			UINT32_t kernelIndRes = 0U;
 #endif // END CUDA
 			const size_t e0 = (nRowsD % local_sizePrior[0] == 0ULL) ? 0ULL : local_sizePrior[0] - (nRowsD % local_sizePrior[0]);
 			const size_t e1 = (nColsD % local_sizePrior[1] == 0ULL) ? 0ULL : local_sizePrior[1] - (nColsD % local_sizePrior[1]);
 			WORKRANGE_t globalRes;
 			SET_LAUNCH_RANGE3(globalRes, nRowsD + e0, nColsD + e1, nb, localPrior);
+#ifdef METAL
+			if (!queueBP || !kernelResampleToB) return -1;
+			auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+			auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+			if (!encoder) return -1;
+			encoder->setComputePipelineState(kernelResampleToB.get());
+#endif
 			KARG(kArgs, kernelResampleToB, kernelIndRes, d_rhs);
 			KARG(kArgs, kernelResampleToB, kernelIndRes, d_im);
 			int bpOff = prmOffBlocks;
@@ -9092,9 +9266,15 @@ public:
 #elif defined(OPENCL)
 			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelResampleToB, cl::NullRange, globalRes, localPrior);
 			OCL_CHECK(status, "Failed to launch the batched detector resampling kernel\n", -1);
+#elif defined(METAL)
+			encoder->dispatchThreadgroups(MTL::Size::Make(globalRes[0] / localPrior[0], globalRes[1] / localPrior[1], globalRes[2] / localPrior[2]),
+				MTL::Size::Make(localPrior[0], localPrior[1], localPrior[2]));
+			encoder->endEncoding();
+			submitMetalCommandBuffer(commandBuffer.get());
 #endif // END CUDA
 			return 0;
 		}
+
 
 	// Whether the rotation kernels may read the source of slot texSlot: no rotation image has failed before (type6Error), and with images the
 	// one of the slot has been created (CUDA/HIP: transferRotTex, OpenCL: createBuffers or ensureRotImage). A rotation that samples a texture
@@ -9109,6 +9289,8 @@ public:
 		const bool ready = texSlot >= 0 && texSlot < rotSlotsType6 && rotTexInit[texSlot];
 #elif defined(OPENCL)
 		const bool ready = texSlot >= 0 && texSlot < rotSlotsType6 && d_rotI[texSlot]() != nullptr;
+#elif defined(METAL)
+		const bool ready = texSlot >= 0 && texSlot < rotSlotsType6 && d_rotI[texSlot].get() != nullptr;
 #endif
 		if (!ready) {
 			mexPrintBase("The rotation image %d of the SPECT projector type 6 has not been created, the projection is stopped\n", texSlot);
@@ -9133,9 +9315,18 @@ public:
 		STATUS_t status = SUCCESS_VALUE;
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
-#elif defined(OPENCL)
+#elif defined(OPENCL) || defined(METAL)
 		UINT32_t kernelIndRot = 0U;
-#endif // END CUDA
+#endif
+#ifdef METAL
+		if (!queueBP || !kernelRotate)
+			return -1;
+		auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+		auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+		if (!commandBuffer || !encoder)
+			return -1;
+		encoder->setComputePipelineState(kernelRotate.get());
+#endif
 		// Only the output window is computed, so the range follows it instead of the whole volume
 		if (win.outNxW <= 0)
 			win.outNxW = win.outNx;
@@ -9144,7 +9335,7 @@ public:
 		const size_t eRot0 = (win.outNxW % local_sizePrior[0] == 0ULL) ? 0ULL : local_sizePrior[0] - (win.outNxW % local_sizePrior[0]);
 		const size_t eRot1 = (win.outNy % local_sizePrior[1] == 0ULL) ? 0ULL : local_sizePrior[1] - (win.outNy % local_sizePrior[1]);
 		// The backprojection of the exact adjoint (accumulate) has a thread for rotZPT slices of the volume
-		const int zptRot = accumulate != 0 ? rotZPT(inputScalars) : 1;
+		const int zptRot = (accumulate && inputScalars.bpRot6 == 0U) ? rotZPT(inputScalars) : 1;
 		SET_LAUNCH_RANGE3(global,
 			win.outNxW + eRot0,
 			win.outNy + eRot1,
@@ -9173,6 +9364,27 @@ public:
 		else {
 			KARG(kArgs, kernelRotate, kernelIndRot, d_im);
 		}
+		const int outSx = win.outSx > 0 ? win.outSx : win.outNxW;
+		const int outSy = win.outSy > 0 ? win.outSy : win.outNy;
+#ifdef METAL
+		kParams.N_rotate = { win.srcNx, win.srcNyFull, win.srcNzFull };
+		kParams.cosa_rotate = cosa;
+		kParams.sina_rotate = sina;
+		kParams.rotSrcNyFull = win.srcNyFull;
+		kParams.rotSrcNzFull = win.srcNzFull;
+		kParams.rotOutNx = win.outNx;
+		kParams.rotOutNyFull = win.outNyFull;
+		kParams.rotOutY = win.outY; kParams.rotOutZ = win.outZ;
+		kParams.rotOutNy = win.outNy; kParams.rotOutNz = win.outNz;
+		kParams.rotSrcY = win.srcY; kParams.rotSrcZ = win.srcZ;
+		kParams.rotSrcNy = win.srcNy; kParams.rotSrcNz = win.srcNz;
+		kParams.rotAccumulate = accumulate;
+		kParams.rotOutX = win.outX; kParams.rotOutNxW = win.outNxW;
+		kParams.rotSrcX = win.srcX; kParams.rotSrcNxB = win.srcNxB;
+		kParams.rotOutSx = outSx; kParams.rotOutSy = outSy;
+		kParams.rotOffX = offX; kParams.rotOffY = offY;
+		KARG(kArgs, kernelRotate, kernelIndRot, kParams);
+#else
 		KARG(kArgs, kernelRotate, kernelIndRot, win.srcNx);
 		KARG(kArgs, kernelRotate, kernelIndRot, win.srcNyFull);
 		KARG(kArgs, kernelRotate, kernelIndRot, win.srcNzFull);
@@ -9196,10 +9408,9 @@ public:
 		KARG(kArgs, kernelRotate, kernelIndRot, win.srcX);
 		KARG(kArgs, kernelRotate, kernelIndRot, win.srcNxB);
 		// The dimensions that the output is allocated with
-		int outSx = win.outSx > 0 ? win.outSx : win.outNxW;
-		int outSy = win.outSy > 0 ? win.outSy : win.outNy;
 		KARG(kArgs, kernelRotate, kernelIndRot, outSx);
 		KARG(kArgs, kernelRotate, kernelIndRot, outSy);
+#endif
 		// Compute the kernel
 #if defined(CUDA) || defined(HIP)
 		status = cuLaunchKernel(kernelRotate, global[0], global[1], global[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
@@ -9214,12 +9425,16 @@ public:
 			type6Error = true;
 		OCL_CHECK(status, "Failed to launch the bilinear image rotation kernel\n", -1);
 		//FINISH_QUEUE(status, "Queue finish failed after bilinear image rotation kernel\n", -1);
-#endif // END CUDA
+#elif defined(METAL)
+		encoder->dispatchThreadgroups(MTL::Size::Make(global[0] / localPrior[0], global[1] / localPrior[1], global[2] / localPrior[2]),
+			MTL::Size::Make(localPrior[0], localPrior[1], localPrior[2]));
+		encoder->endEncoding();
+		submitMetalCommandBuffer(commandBuffer.get());
+#endif
 		if (inputScalars.verbose >= 3)
 			mexPrint(BACKEND_STR " bilinear image rotation computed");
 		return 0;
 		}
-#endif // END METAL
 
 #if defined(OPENCL)
 	// Creates the rotation image of a slot of the projector that works on every volume of a view together (the slots from

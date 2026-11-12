@@ -137,7 +137,10 @@
 	unsigned long m_size = scalarParams.m_size; \
 	uint currentSubset = scalarParams.currentSubset; \
 	int aa = scalarParams.aa; \
-    float orthWidth = scalarParams.orthWidth;
+    float orthWidth = scalarParams.orthWidth; \
+    const uint atnNx = scalarParams.atnNx, atnNy = scalarParams.atnNy, atnNz = scalarParams.atnNz; \
+    const float atnDx = scalarParams.atnDx, atnDy = scalarParams.atnDy, atnDz = scalarParams.atnDz; \
+    const float atnBx = scalarParams.atnBx, atnBy = scalarParams.atnBy, atnBz = scalarParams.atnBz;
 
 #define UNPACK_SCALAR_PARAMS_4_FP(scalarParams) \
     const uint d_size_x = scalarParams.nRowsD; \
@@ -218,6 +221,29 @@
     const float cosa = scalarParams.cosa_rotate; \
     const float sina = scalarParams.sina_rotate;
 
+#define UNPACK_SCALAR_PARAMS_ROTATE_WINDOW(scalarParams) \
+    const int srcNyFull = scalarParams.rotSrcNyFull; \
+    const int srcNzFull = scalarParams.rotSrcNzFull; \
+    const int outNx = scalarParams.rotOutNx; \
+    const int outNyF = scalarParams.rotOutNyFull; \
+    const int outY = scalarParams.rotOutY; \
+    const int outZ = scalarParams.rotOutZ; \
+    const int outNy = scalarParams.rotOutNy; \
+    const int outNz = scalarParams.rotOutNz; \
+    const int srcY = scalarParams.rotSrcY; \
+    const int srcZ = scalarParams.rotSrcZ; \
+    const int srcNy = scalarParams.rotSrcNy; \
+    const int srcNz = scalarParams.rotSrcNz; \
+    const int accumulate = scalarParams.rotAccumulate; \
+    const int outX = scalarParams.rotOutX; \
+    const int outNxW = scalarParams.rotOutNxW; \
+    const int srcX = scalarParams.rotSrcX; \
+    const int srcNxB = scalarParams.rotSrcNxB; \
+    const int outSx = scalarParams.rotOutSx; \
+    const int outSy = scalarParams.rotOutSy; \
+    const float offX = scalarParams.rotOffX; \
+    const float offY = scalarParams.rotOffY;
+
 
 #ifdef METAL
 
@@ -295,6 +321,21 @@ using metal::dot;
 #define BUF13 [[buffer(13)]]
 #define BUF14 [[buffer(14)]]
 #define BUF15 [[buffer(15)]]
+#define BUF16 [[buffer(16)]]
+#define BUF17 [[buffer(17)]]
+#define BUF18 [[buffer(18)]]
+#define BUF19 [[buffer(19)]]
+#define BUF20 [[buffer(20)]]
+#define BUF21 [[buffer(21)]]
+#define BUF22 [[buffer(22)]]
+#define BUF23 [[buffer(23)]]
+#define BUF24 [[buffer(24)]]
+#define BUF25 [[buffer(25)]]
+#define BUF26 [[buffer(26)]]
+#define BUF27 [[buffer(27)]]
+#define BUF28 [[buffer(28)]]
+#define BUF29 [[buffer(29)]]
+#define BUF30 [[buffer(30)]]
 #define CEIL metal::ceil
 #define CINT(a)   static_cast<int>(a)
 #define CINT_rtz(a) static_cast<int>(metal::trunc((a)))
@@ -414,6 +455,16 @@ inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
 #define BUF18
 #define BUF19
 #define BUF20
+#define BUF21
+#define BUF22
+#define BUF23
+#define BUF24
+#define BUF25
+#define BUF26
+#define BUF27
+#define BUF28
+#define BUF29
+#define BUF30
 #define TEX0
 #define TEX1
 #define TEX2
@@ -574,6 +625,16 @@ __constant sampler_t sampler_MASKFP = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_N
 #define BUF18
 #define BUF19
 #define BUF20
+#define BUF21
+#define BUF22
+#define BUF23
+#define BUF24
+#define BUF25
+#define BUF26
+#define BUF27
+#define BUF28
+#define BUF29
+#define BUF30
 #define TEX0
 #define TEX1
 #define TEX2
@@ -2220,6 +2281,12 @@ DEVICE float read_multiresolution_attenuation(IMTYPE d_atten, const int x, const
 #else
 	return d_atten[(LONG)x + (LONG)y * (LONG)nx + (LONG)z * (LONG)nx * (LONG)ny];
 #endif
+#elif defined(METAL)
+#ifdef USEIMAGES
+	return d_atten.read(uint3(x, y, z)).r;
+#else
+	return d_atten[(LONG)x + (LONG)y * (LONG)nx + (LONG)z * (LONG)nx * (LONG)ny];
+#endif
 #else
 #ifdef USEIMAGES
 	return read_imagef(d_atten, samplerSiddon, (int4)(x, y, z, 0)).w;
@@ -2243,9 +2310,9 @@ DEVICE void compute_multiresolution_attenuation(const float val, const typeT ind
 	y = (int)((localIndex / (LONG)volumeDims.x) % (LONG)volumeDims.y);
 	z = (int)(localIndex / ((LONG)volumeDims.x * (LONG)volumeDims.y));
 #endif
-	const int ix = (int)floor((volumeOrigin.x + ((float)x + 0.5f) * volumeSpacing.x - attenuationBx) / attenuationDx);
-	const int iy = (int)floor((volumeOrigin.y + ((float)y + 0.5f) * volumeSpacing.y - attenuationBy) / attenuationDy);
-	const int iz = (int)floor((volumeOrigin.z + ((float)z + 0.5f) * volumeSpacing.z - attenuationBz) / attenuationDz);
+	const int ix = (int)FLOOR((volumeOrigin.x + ((float)x + 0.5f) * volumeSpacing.x - attenuationBx) / attenuationDx);
+	const int iy = (int)FLOOR((volumeOrigin.y + ((float)y + 0.5f) * volumeSpacing.y - attenuationBy) / attenuationDy);
+	const int iz = (int)FLOOR((volumeOrigin.z + ((float)z + 0.5f) * volumeSpacing.z - attenuationBz) / attenuationDz);
 	if (ix >= 0 && ix < (int)attenuationNx && iy >= 0 && iy < (int)attenuationNy && iz >= 0 && iz < (int)attenuationNz)
 		*jelppi += val * -read_multiresolution_attenuation(d_atten, ix, iy, iz, attenuationNx, attenuationNy);
 }
@@ -2255,8 +2322,8 @@ DEVICE float integrate_multiresolution_attenuation_segment(IMTYPE d_atten, const
 	const uint attenuationNx, const uint attenuationNy, const uint attenuationNz,
 	const float attenuationDx, const float attenuationDy, const float attenuationDz,
 	const float attenuationBx, const float attenuationBy, const float attenuationBz) {
-	float t = fmin(fmax(startParameter, 0.f), 1.f);
-	float end = fmin(fmax(endParameter, 0.f), 1.f);
+	float t = FMIN(FMAX(startParameter, 0.f), 1.f);
+	float end = FMIN(FMAX(endParameter, 0.f), 1.f);
 	if (end <= t) return 0.f;
 	const float starts[3] = { source.x, source.y, source.z };
 	const float dirs[3] = { direction.x, direction.y, direction.z };
@@ -2265,18 +2332,20 @@ DEVICE float integrate_multiresolution_attenuation_segment(IMTYPE d_atten, const
 	const int an[3] = { (int)attenuationNx, (int)attenuationNy, (int)attenuationNz };
 	for (int axis = 0; axis < 3; ++axis) {
 		const float maximum = amin[axis] + (float)an[axis] * ad[axis];
-		if (fabs(dirs[axis]) < 1.0e-12f) {
+		if (FABS(dirs[axis]) < 1.0e-12f) {
 			if (starts[axis] < amin[axis] || starts[axis] >= maximum) return 0.f;
 			continue;
 		}
 		const float a = (amin[axis] - starts[axis]) / dirs[axis];
 		const float b = (maximum - starts[axis]) / dirs[axis];
-		t = fmax(t, fmin(a, b));
-		end = fmin(end, fmax(a, b));
+		t = FMAX(t, FMIN(a, b));
+		end = FMIN(end, FMAX(a, b));
 	}
 	if (end <= t) return 0.f;
 	#if defined(CUDA) || defined(HIP)
 	const float probe = nextafterf(t, end);
+	#elif defined(METAL)
+	const float probe = metal::nextafter(t, end);
 	#else
 	const float probe = nextafter(t, end);
 	#endif
@@ -2286,14 +2355,14 @@ DEVICE float integrate_multiresolution_attenuation_segment(IMTYPE d_atten, const
 		const float position = starts[axis] + dirs[axis] * probe;
 		step[axis] = dirs[axis] > 0.f ? 1 : (dirs[axis] < 0.f ? -1 : 0);
 		const float coordinate = (position - amin[axis]) / ad[axis];
-		index[axis] = (int)floor(coordinate);
+		index[axis] = (int)FLOOR(coordinate);
 		if (step[axis] < 0) {
-			const float nearestBoundary = floor(coordinate + 0.5f);
-			const float boundaryTolerance = 4.f * 1.1920928955078125e-7f * fmax(1.f, fabs(coordinate));
-			if (fabs(coordinate - nearestBoundary) <= boundaryTolerance)
+			const float nearestBoundary = FLOOR(coordinate + 0.5f);
+			const float boundaryTolerance = 4.f * 1.1920928955078125e-7f * FMAX(1.f, FABS(coordinate));
+			if (FABS(coordinate - nearestBoundary) <= boundaryTolerance)
 				index[axis] = (int)nearestBoundary - 1;
 		}
-		index[axis] = max(0, min(index[axis], an[axis] - 1));
+		index[axis] = MAX(0, MIN(index[axis], an[axis] - 1));
 		if (step[axis] == 0) {
 			nextBoundary[axis] = 3.402823466e+38f;
 			deltaT[axis] = 3.402823466e+38f;
@@ -2301,7 +2370,7 @@ DEVICE float integrate_multiresolution_attenuation_segment(IMTYPE d_atten, const
 		else {
 			const float plane = amin[axis] + (float)(index[axis] + (step[axis] > 0 ? 1 : 0)) * ad[axis];
 			nextBoundary[axis] = (plane - starts[axis]) / dirs[axis];
-			deltaT[axis] = ad[axis] / fabs(dirs[axis]);
+			deltaT[axis] = ad[axis] / FABS(dirs[axis]);
 			while (nextBoundary[axis] <= t) nextBoundary[axis] += deltaT[axis];
 		}
 	}
@@ -2310,7 +2379,7 @@ DEVICE float integrate_multiresolution_attenuation_segment(IMTYPE d_atten, const
 	for (uint count = 0u; count < maxSteps && t < end; ++count) {
 		if (index[0] < 0 || index[0] >= an[0] || index[1] < 0 || index[1] >= an[1] || index[2] < 0 || index[2] >= an[2])
 			break;
-		const float next = fmin(end, fmin(nextBoundary[0], fmin(nextBoundary[1], nextBoundary[2])));
+		const float next = FMIN(end, FMIN(nextBoundary[0], FMIN(nextBoundary[1], nextBoundary[2])));
 		if (next > t)
 			integral += (next - t) * rayLength * read_multiresolution_attenuation(d_atten, index[0], index[1], index[2], attenuationNx, attenuationNy);
 		if (next >= end) break;
@@ -2339,18 +2408,18 @@ DEVICE float integrate_multiresolution_attenuation_prefix(IMTYPE d_atten, const 
 	const float vmin[3] = { volumeOrigin.x, volumeOrigin.y, volumeOrigin.z };
 	const float vmax[3] = { volumeMaximum.x, volumeMaximum.y, volumeMaximum.z };
 	for (int axis = 0; axis < 3; ++axis) {
-		if (fabs(dirs[axis]) < 1.0e-12f) {
+		if (FABS(dirs[axis]) < 1.0e-12f) {
 			if (starts[axis] < vmin[axis] || starts[axis] >= vmax[axis]) return 0.f;
 			continue;
 		}
 		const float a = (vmin[axis] - starts[axis]) / dirs[axis];
 		const float b = (vmax[axis] - starts[axis]) / dirs[axis];
-		entry = fmax(entry, fmin(a, b));
-		volumeExit = fmin(volumeExit, fmax(a, b));
+		entry = FMAX(entry, FMIN(a, b));
+		volumeExit = FMIN(volumeExit, FMAX(a, b));
 	}
 	if (volumeExit <= entry || entry <= 0.f) return 0.f;
 	return integrate_multiresolution_attenuation_segment(
-		d_atten, source, direction, 0.f, fmin(entry, 1.f), rayLength,
+		d_atten, source, direction, 0.f, FMIN(entry, 1.f), rayLength,
 		attenuationNx, attenuationNy, attenuationNz,
 		attenuationDx, attenuationDy, attenuationDz,
 		attenuationBx, attenuationBy, attenuationBz);

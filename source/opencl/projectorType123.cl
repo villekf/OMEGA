@@ -662,7 +662,7 @@ void projectorType123(
 	const float3 mrAttenuationSource = s;
 	const float3 mrAttenuationDirection = diff;
 #endif
-#if defined(MRATN) && !defined(METAL)
+#if defined(MRATN)
 	// Seed attenuation before the traversal box. ODRT traverses the full
 	// grid, so its subsequent Siddon steps also include material before the tile.
 	jelppi = integrate_multiresolution_attenuation_prefix(

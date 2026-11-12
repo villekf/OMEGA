@@ -385,6 +385,7 @@ def CommandLine(args=None):
             result = subprocess.run([
                 compiler,
                 '-std=c++17',
+                '-O2',
                 '-dynamiclib',
                 '-fPIC',
                 '-DMETAL',
@@ -411,6 +412,7 @@ def CommandLine(args=None):
                 compiler,
                 '-shared',
                 '-std=c++17',
+                '-O2',
                 '-dynamiclib',
                 '-fPIC',
                 '-DMETAL',
@@ -436,6 +438,7 @@ def CommandLine(args=None):
             result = subprocess.run([
                 compiler,
                 '-std=c++17',
+                '-O2',
                 '-dynamiclib',
                 '-fPIC',
                 '-DMETAL',

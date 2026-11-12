@@ -1,9 +1,7 @@
 function options = prepareMultiResolutionAttenuation(options)
-%PREPAREMULTIRESOLUTIONATTENUATION Pack registered full-FOV attenuation maps.
-%   The input remains an image-domain map. For multi-resolution geometry,
-%   the packed layout is [fine; coarse] for each frame, with both grids
-%   centered at the original full-FOV physical center. Slabs can enlarge the
-%   support symmetrically; padding outside the input map is air (mu = 0).
+%PREPAREMULTIRESOLUTIONATTENUATION Prepare image-domain attenuation maps.
+%   Type 6 maps cover the physical union of active volumes. Other supported
+%   projectors use packed fine/coarse maps centered on the original full FOV.
 
 if ~isfield(options, 'useMultiResolutionVolumes') || ~options.useMultiResolutionVolumes || ...
         ~isfield(options, 'nMultiVolumes') || options.nMultiVolumes < 1 || ...
@@ -13,21 +11,26 @@ if ~isfield(options, 'useMultiResolutionVolumes') || ~options.useMultiResolution
     return
 end
 
+% Type 6 consumes one attenuation map on the physical union of its volume
+% grids. Keep that layout inside this shared preparation entry point.
+if isfield(options, 'projector_type') && options.projector_type == 6
+    options = regridAttenuationToUnionGrid(options);
+    return
+end
+
 if ~isfield(options, 'SPECT') || ~options.SPECT
     error('Multi-resolution image-domain attenuation is currently supported only for SPECT.')
 end
 if ~isfield(options, 'projector_type') || ~ismember(options.projector_type, [1, 2, 11, 21, 22])
     error('Multi-resolution image-domain attenuation requires SPECT Siddon or orthogonal projectors (types 1, 2, 11, 21, or 22).')
 end
+
 if isfield(options, 'implementation') && (options.implementation == 1 || options.implementation == 4)
     error('Multi-resolution image-domain attenuation is not implemented by the CPU projector backends.')
 end
 if isfield(options, 'implementation') && options.implementation == 2 && ...
         isfield(options, 'use_CPU') && options.use_CPU
     error('Multi-resolution image-domain attenuation is not implemented by the native C++ CPU backend.')
-end
-if ismac && isfield(options, 'implementation') && ismember(options.implementation, [2, 3, 5])
-    error('Multi-resolution image-domain attenuation is not implemented by the Metal/MPS projector backend.')
 end
 
 if isfield(options, 'imageAttenuationIsMultiResolution') && options.imageAttenuationIsMultiResolution && ...
@@ -283,4 +286,120 @@ for axis = 1:3
 end
 [xq, yq, zq] = ndgrid(query{1}, query{2}, query{3});
 output = interpn(input, xq, yq, zq, 'linear', 0);
+end
+
+function options = regridAttenuationToUnionGrid(options)
+% Resample a requested-FOV map onto the physical union of active volumes.
+% Outside the input x/y FOV the attenuation is zero; axial end slices extend.
+if ~isfield(options, 'multiResUnionDims') || ~isfield(options, 'multiResUnionOrigin')
+    return
+end
+targetDims = double(options.multiResUnionDims(:).');
+targetOrigin = double(options.multiResUnionOrigin(:).');
+targetSpacing = double(single([options.dx(1), options.dy(1), options.dz(1)]));
+requestedDims = double([options.NxFull, options.NyFull, options.NzFull]);
+requestedFOV = double(options.imageAttenuationFineFOV(:).');
+requestedSpacing = double(options.imageAttenuationFineSpacing(:).');
+shift = double(options.eFOVShift(:).');
+if ~options.transaxialEFOV, shift(1 : 2) = 0; end
+if ~options.axialEFOV, shift(3) = 0; end
+requestedOrigin = double([options.oOffsetX, options.oOffsetY, options.oOffsetZ]) + shift - requestedFOV / 2;
+
+prepared = isfield(options, 'multiResAttenuationPadded') && options.multiResAttenuationPadded;
+if prepared
+    if ~isfield(options, 'type6AttenuationGridOrigin') || ~isfield(options, 'type6AttenuationGridSpacing') || ...
+            ~isfield(options, 'type6AttenuationGridDims')
+        error('A prepared type-6 attenuation map must include its grid origin, spacing and dimensions.');
+    end
+    sourceOrigin = double(options.type6AttenuationGridOrigin(:).');
+    sourceSpacing = double(options.type6AttenuationGridSpacing(:).');
+    sourceDims = double(options.type6AttenuationGridDims(:).');
+else
+    sourceOrigin = requestedOrigin;
+    sourceSpacing = requestedSpacing;
+    sourceDims = requestedDims;
+    sample = options.vaimennus;
+    if iscell(sample) && ~isempty(sample), sample = sample{1}; end
+    if ~isvector(sample) && ndims(sample) >= 3 && ...
+            isequal(double([size(sample, 1), size(sample, 2), size(sample, 3)]), targetDims) && ...
+            ~isequal(targetDims, requestedDims)
+        sourceOrigin = targetOrigin;
+        sourceSpacing = targetSpacing;
+        sourceDims = targetDims;
+    elseif isvector(sample) && isMapSize(numel(sample), prod(targetDims), options.Nt) && ...
+            ~isMapSize(numel(sample), prod(requestedDims), options.Nt)
+        sourceOrigin = targetOrigin;
+        sourceSpacing = targetSpacing;
+        sourceDims = targetDims;
+    end
+end
+if any(~isfinite([sourceOrigin, sourceSpacing, targetOrigin, targetSpacing])) || ...
+        any(sourceSpacing <= 0) || any(targetSpacing <= 0) || any(sourceDims < 1) || any(targetDims < 1)
+    error('Invalid multi-resolution attenuation grid geometry.');
+end
+if prepared && (~isequal(sourceDims, targetDims) || ~isequal(sourceOrigin, targetOrigin) || ~isequal(sourceSpacing, targetSpacing))
+    error('The prepared multi-resolution attenuation grid has changed; supply the original requested-FOV map.');
+end
+if iscell(options.vaimennus)
+    for kk = 1 : numel(options.vaimennus)
+        options.vaimennus{kk} = regridAttenuationGrid(options.vaimennus{kk}, sourceDims, sourceOrigin, sourceSpacing, ...
+            targetDims, targetOrigin, targetSpacing, 1);
+    end
+else
+    options.vaimennus = regridAttenuationGrid(options.vaimennus, sourceDims, sourceOrigin, sourceSpacing, ...
+        targetDims, targetOrigin, targetSpacing, options.Nt);
+end
+options.multiResAttenuationPadded = true;
+options.type6AttenuationGridOrigin = targetOrigin;
+options.type6AttenuationGridSpacing = targetSpacing;
+options.type6AttenuationGridDims = targetDims;
+end
+
+function valid = isMapSize(count, frameSize, nt)
+valid = count == frameSize || (nt > 1 && count == frameSize * nt);
+end
+
+function out = regridAttenuationGrid(vol, sourceDims, sourceOrigin, sourceSpacing, targetDims, targetOrigin, targetSpacing, nt)
+if isempty(vol), out = vol; return; end
+if ~isMapSize(numel(vol), prod(sourceDims), nt) || ...
+        (~isvector(vol) && ~isequal(double([size(vol, 1), size(vol, 2), size(vol, 3)]), sourceDims))
+    error('The attenuation map does not match its source grid or frame count.');
+end
+if isequal(sourceDims, targetDims) && isequal(sourceOrigin, targetOrigin) && isequal(sourceSpacing, targetSpacing)
+    out = vol;
+    return
+end
+isVec = isvector(vol);
+nFrames = numel(vol) / prod(sourceDims);
+out = reshape(vol, [sourceDims, nFrames]);
+for axis = 1 : 3
+    weights = overlapWeights(sourceDims(axis), sourceOrigin(axis), sourceSpacing(axis), ...
+        targetDims(axis), targetOrigin(axis), targetSpacing(axis), axis == 3);
+    order = [axis, 1 : axis - 1, axis + 1 : 4];
+    values = permute(out, order);
+    dims = size(values);
+    dims(end + 1 : 4) = 1;
+    values = reshape(full(weights * reshape(double(values), sourceDims(axis), [])), [targetDims(axis), dims(2 : 4)]);
+    out = ipermute(values, order);
+end
+out = cast(out, 'like', vol);
+if isVec, out = out(:); end
+end
+
+function weights = overlapWeights(nSource, sourceOrigin, sourceSpacing, nTarget, targetOrigin, targetSpacing, extendEdge)
+weights = sparse(nTarget, nSource);
+for t = 1 : nTarget
+    lo = (targetOrigin + (t - 1) * targetSpacing - sourceOrigin) / sourceSpacing;
+    hi = lo + targetSpacing / sourceSpacing;
+    first = max(0, floor(lo));
+    last = min(nSource - 1, ceil(hi) - 1);
+    for k = first : last
+        overlap = max(0, min(hi, k + 1) - max(lo, k));
+        weights(t, k + 1) = weights(t, k + 1) + overlap * sourceSpacing / targetSpacing;
+    end
+    if extendEdge
+        weights(t, 1) = weights(t, 1) + max(0, min(hi, 0) - lo) * sourceSpacing / targetSpacing;
+        weights(t, nSource) = weights(t, nSource) + max(0, hi - max(lo, nSource)) * sourceSpacing / targetSpacing;
+    end
+end
 end

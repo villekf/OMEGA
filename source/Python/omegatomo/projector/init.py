@@ -672,8 +672,6 @@ def initProjector(self):
         and self.attenuation_correction
         and self.CTAttenuation
     ):
-        if self.useMetal:
-            raise ValueError('Multi-resolution image-domain attenuation is not implemented by the Metal/MPS projector.')
         if not self.SPECT or self.projector_type not in (1, 2, 6, 11, 21, 22, 66):
             raise ValueError('Multi-resolution image-domain attenuation requires SPECT projector type 1, 2, or 6 for both forward and backward projection.')
     # The square root of the offset redundancy weights is applied on the backprojection by the kernels (-DOFFSETSQRT) and on the forward
@@ -1040,6 +1038,7 @@ def initProjector(self):
             options_fp=bOptFP,
             options_bp=bOptBP,
         )
+        self.projectorInitialized = True
         return
 
     if (self.useMAD and self.useCUDA and self.useCuPy and cupyROCm()

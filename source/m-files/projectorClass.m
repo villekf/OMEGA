@@ -1036,6 +1036,31 @@ classdef projectorClass
             obj.param.Ny = uint32(obj.param.Ny);
             obj.param.Nz = uint32(obj.param.Nz);
 
+            % The type-6 native projector defines the attenuation grid by the
+            % actual union of the volume bounds at the main voxel spacing.
+            if obj.param.projector_type == 6 && ...
+                    obj.param.useMultiResolutionVolumes && obj.param.nMultiVolumes > 0 && ...
+                    obj.param.attenuation_correction && obj.param.CT_attenuation
+                b = {obj.param.bx, obj.param.by, obj.param.bz};
+                n = {obj.param.Nx, obj.param.Ny, obj.param.Nz};
+                d = {obj.param.dx, obj.param.dy, obj.param.dz};
+                unionOrigin = zeros(1, 3);
+                unionDims = zeros(1, 3);
+                for axis = 1 : 3
+                    origins = single(b{axis}(1 : obj.param.nMultiVolumes + 1));
+                    spacing = single(d{axis}(1 : obj.param.nMultiVolumes + 1));
+                    low = min(origins);
+                    high = max(origins + single(n{axis}(1 : obj.param.nMultiVolumes + 1)) .* spacing);
+                    unionOrigin(axis) = double(low);
+                    unionDims(axis) = ceil(double((high - low) ./ spacing(1)) - 1e-5);
+                end
+                if any(~isfinite(unionDims)) || any(unionDims < 1)
+                    error('Invalid type-6 attenuation union geometry.');
+                end
+                obj.param.multiResUnionOrigin = unionOrigin;
+                obj.param.multiResUnionDims = unionDims;
+            end
+
             % Multiresolution total FOV size
             if numel(obj.param.FOVa_x) == 1 % No eFOV
                 FOV = [obj.param.FOVa_x; obj.param.FOVa_y; obj.param.axial_fov];
@@ -1354,11 +1379,7 @@ classdef projectorClass
             obj.param.use_device = uint32(obj.param.use_device);
             if obj.param.useMultiResolutionVolumes && obj.param.attenuation_correction && obj.param.CT_attenuation && ...
                     isfield(obj.param, 'vaimennus') && ~isempty(obj.param.vaimennus)
-                if obj.param.projector_type == 6
-                    obj.param = padType6Attenuation(obj.param);
-                else
-                    obj.param = prepareMultiResolutionAttenuation(obj.param);
-                end
+                obj.param = prepareMultiResolutionAttenuation(obj.param);
             end
         end
 
@@ -1443,7 +1464,7 @@ classdef projectorClass
             obj.param.currentSubset = obj.subset - 1;
             obj.param.currentTimestep = obj.timestep - 1;
             if obj.param.projector_type == 6
-                obj.param.uu = obj.param.uu + obj.nMeas(obj.subset);
+                obj.param.uu = obj.nMeas(obj.subset) + 1;
             end
             if obj.param.useSubsets
                 if obj.param.implementation == 1 || obj.param.implementation == 4 || (obj.param.projector_type == 6 && ismac)
@@ -1614,7 +1635,7 @@ classdef projectorClass
             obj.param.currentSubset = obj.subset - 1;
             obj.param.currentTimestep = obj.timestep - 1;
             if obj.param.projector_type == 6
-                obj.param.ub = obj.param.ub + obj.nMeas(obj.subset);
+                obj.param.ub = obj.nMeas(obj.subset) + 1;
             end
             if obj.param.implementation == 3 || obj.param.implementation == 2 || obj.param.implementation == 5 || ismac
                 if ~isa(input,'single')

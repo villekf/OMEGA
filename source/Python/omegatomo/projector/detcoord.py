@@ -1520,9 +1520,10 @@ def SPECTParameters(options: proj.projectorClass):
     from omegatomo.util.matlabRound import matlabRound
     if options.cropProjections:
         raise NotImplementedError('cropProjections is currently only supported in MATLAB')
-    if options.projector_type == 6 and (options.oOffsetX != 0 or options.oOffsetY != 0 or options.oOffsetZ != 0):
+    if (options.projector_type == 6 and (options.oOffsetX != 0 or options.oOffsetY != 0 or options.oOffsetZ != 0)
+            and not (options.useMultiResolutionVolumes and options.useEFOV)):
         # The rotation axis and the axial center of the detector are at the origin, and the library path assumes
-        # that the main volume is centered on them
+        # that a single volume is centered on them. Multi-resolution volumes carry explicit per-volume origins.
         raise NotImplementedError('Off-centre FOV with projector type 6 is currently supported only in MATLAB')
     if options.projector_type in [1, 11, 12, 16, 2, 21, 22, 26, 61, 62]: # Ray tracing projectors
         # The collimator point of every projection is placed at colD + 0.5 * colL from the detector surface

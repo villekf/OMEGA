@@ -1653,25 +1653,42 @@ CONSTANT sampler_t samplerRotate = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_LINE
 constexpr metal::sampler samplerRotate(metal::coord::pixel, metal::filter::linear, metal::address::clamp_to_edge);
 #endif
 
-#ifndef METAL
 // Convolves a volume of N0 x N1 x N2 with a separate 1D filter for each slice along dimension 2,
 // along dimension 0 when axis is 0 and along dimension 1 when axis is 1. filt stores 2 * fRadius + 1
 // taps for each of the N2 slices. The filters are symmetric, so correlation and convolution are the same.
 // This is used by the SPECT rotation-based projector, where the collimator-detector response is a
 // separable Gaussian whose width is different for every image plane. Splitting the response into two
 // 1D passes, instead of one 2D convolution, is what makes a depth-dependent response affordable.
-KERNEL void convolveCDRF(CLGLOBAL float* CLRESTRICT out, const CLGLOBAL float* CLRESTRICT in, const CLGLOBAL float* CLRESTRICT filt,
-	const int N0, const int N1, const int N2, const int fRadius, const int axis) {
+#ifdef METAL
+#define KERNEL_VALUE(type) constant type&
+#else
+#define KERNEL_VALUE(type) const type
+#endif
+KERNEL void convolveCDRF(
+	CLGLOBAL float* CLRESTRICT out BUF0,
+	const CLGLOBAL float* CLRESTRICT in BUF1,
+	const CLGLOBAL float* CLRESTRICT filt BUF2,
+	KERNEL_VALUE(int) N0 BUF3, KERNEL_VALUE(int) N1 BUF4, KERNEL_VALUE(int) N2 BUF5,
+	KERNEL_VALUE(int) fRadius BUF6, KERNEL_VALUE(int) axis BUF7
+#ifdef METAL
+	, uint3 gid [[thread_position_in_grid]]
+#endif
+	) {
+#ifdef METAL
+	const int x = static_cast<int>(gid.x);
+	const int y = static_cast<int>(gid.y);
+	const int z = static_cast<int>(gid.z);
+#else
 	const int x = GID0;
 	const int y = GID1;
 	const int z = GID2;
+#endif
 	if (x >= N0 || y >= N1 || z >= N2)
 		return;
 	const LTYPE ind = (LTYPE)x + (LTYPE)y * (LTYPE)N0 + (LTYPE)z * (LTYPE)N0 * (LTYPE)N1;
 	const LTYPE fInd = (LTYPE)z * (LTYPE)(2 * fRadius + 1) + (LTYPE)fRadius;
 	float summa = FLOAT_ZERO;
 	if (axis == 0) {
-		// The taps outside the volume are simply left out, which is the same as zero padding
 		const int lo = MAX(-fRadius, -x);
 		const int hi = MIN(fRadius, N0 - 1 - x);
 		for (int kk = lo; kk <= hi; kk++)
@@ -1685,6 +1702,19 @@ KERNEL void convolveCDRF(CLGLOBAL float* CLRESTRICT out, const CLGLOBAL float* C
 	}
 	out[ind] = summa;
 }
+
+#ifdef METAL
+#define GID0 t6Global.x
+#define GID1 t6Global.y
+#define GID2 t6Global.z
+#define LID0 t6Local.x
+#define LID1 t6Local.y
+#define GRID0 t6Group.x
+#define GRID1 t6Group.y
+#define GRID2 t6Group.z
+#define BARRIER metal::threadgroup_barrier(metal::mem_flags::mem_threadgroup);
+
+#endif
 
 // The fused type-6 kernels below replace the per-view chain of ArrayFire operations (filter
 // construction, reorders, slicing, convolutions, depth sum, detector resampling) by a few launches. They
@@ -1727,7 +1757,17 @@ DEVICE float cdrfDepth(const int p, const int firstPlane, const float dist, cons
 #ifndef CDRF_MODEL
 #define CDRF_MODEL 0
 #endif
-#if defined(CUDA) || defined(HIP)
+#if defined(METAL)
+#define CDRF_EXPF metal::exp
+// Metal has no erfc intrinsic. This approximation has an absolute error below 1.5e-7.
+DEVICE float cdrfErfc(float x) {
+	const float z = metal::fabs(x);
+	const float t = 1.f / (1.f + 0.5f * z);
+	const float r = t * metal::exp(-z * z - 1.26551223f + t * (1.00002368f + t * (0.37409196f + t * (0.09678418f + t * (-0.18628806f + t * (0.27886807f + t * (-1.13520398f + t * (1.48851587f + t * (-0.82215223f + t * 0.17087277f)))))))));
+	return x >= 0.f ? r : 2.f - r;
+}
+#define CDRF_ERFCF cdrfErfc
+#elif defined(CUDA) || defined(HIP)
 #define CDRF_EXPF expf
 #define CDRF_ERFCF erfcf
 #else
@@ -1868,11 +1908,18 @@ DEVICE int cdrfRadius(const float sigma, const float hb, const int r) {
 // cdrfTransBPDirect, which are also the "global weights" variants of the transaxial passes), and always for the radii
 // that the kernels below cannot handle on their own (r > CDRF_RMAX, the *Direct kernels). The other kernels
 // (cdrfAxial, cdrfTransFP, cdrfTransBP) make the weights of their planes in shared memory, with the same formulas
-KERNEL void cdrfWeights(CLGLOBAL float* CLRESTRICT wAx, CLGLOBAL float* CLRESTRICT wTr,
-	CLGLOBAL int* CLRESTRICT rAx, CLGLOBAL int* CLRESTRICT rTr,
-	const int nPlanes, const int firstPlane, const int xOff, const int r,
-	const float dist, const float dxv, const float dyv, const float dzv,
-	const float Az, const float Bz, const float Axy, const float Bxy, const float C, const float sigmaCoeff, const float comp) {
+KERNEL void cdrfWeights(
+	CLGLOBAL float* CLRESTRICT wAx BUF0, CLGLOBAL float* CLRESTRICT wTr BUF1, CLGLOBAL int* CLRESTRICT rAx BUF2,
+	CLGLOBAL int* CLRESTRICT rTr BUF3, KERNEL_VALUE(int) nPlanes BUF4, KERNEL_VALUE(int) firstPlane BUF5,
+	KERNEL_VALUE(int) xOff BUF6, KERNEL_VALUE(int) r BUF7, KERNEL_VALUE(float) dist BUF8, KERNEL_VALUE(float) dxv BUF9,
+	KERNEL_VALUE(float) dyv BUF10, KERNEL_VALUE(float) dzv BUF11, KERNEL_VALUE(float) Az BUF12,
+	KERNEL_VALUE(float) Bz BUF13, KERNEL_VALUE(float) Axy BUF14, KERNEL_VALUE(float) Bxy BUF15,
+	KERNEL_VALUE(float) C BUF16, KERNEL_VALUE(float) sigmaCoeff BUF17,
+	KERNEL_VALUE(float) comp BUF18
+#ifdef METAL
+	, uint3 t6Global [[thread_position_in_grid]]
+#endif
+) {
 	const int x = GID0;
 	const int dir = GID1;
 	if (x >= nPlanes || dir >= 2)
@@ -1977,12 +2024,23 @@ DEVICE float cdrfAttAt(const CLGLOBAL float* CLRESTRICT att, const int x, const 
 // CDRF_TZPT consecutive outputs from there. The rows outside of the input are zero, which is the zero
 // padding. Needs r <= CDRF_RMAX. The shared memory is (CDRF_TZ + 3 * CDRF_RMAX + 1) * CDRF_TX floats (the
 // rows, the weights) and the radii, 44.5 KB with 256 threads
-KERNEL void cdrfAxial(CLGLOBAL float* CLRESTRICT out, const CLGLOBAL float* CLRESTRICT in, const CLGLOBAL float* CLRESTRICT att,
-	const int N0, const int N1, const int N2, const int zStart, const int nZOut, const int attMode,
-	const int inSx, const int inSy, const int outSx, const int outSy,
-	const int attX0, const int attY0, const int attZ0, const int attSx, const int attSy, const float attDx, const int attConv,
-	const int xOff, const int firstPlane, const int r,
-	const float dist, const float dxv, const float dzv, const float Az, const float Bz, const float C, const float sigmaCoeff) {
+KERNEL void cdrfAxial(
+	CLGLOBAL float* CLRESTRICT out BUF0, const CLGLOBAL float* CLRESTRICT in BUF1,
+	const CLGLOBAL float* CLRESTRICT att BUF2, KERNEL_VALUE(int) N0 BUF3, KERNEL_VALUE(int) N1 BUF4,
+	KERNEL_VALUE(int) N2 BUF5, KERNEL_VALUE(int) zStart BUF6, KERNEL_VALUE(int) nZOut BUF7, KERNEL_VALUE(int) attMode BUF8,
+	KERNEL_VALUE(int) inSx BUF9, KERNEL_VALUE(int) inSy BUF10, KERNEL_VALUE(int) outSx BUF11,
+	KERNEL_VALUE(int) outSy BUF12, KERNEL_VALUE(int) attX0 BUF13, KERNEL_VALUE(int) attY0 BUF14,
+	KERNEL_VALUE(int) attZ0 BUF15, KERNEL_VALUE(int) attSx BUF16, KERNEL_VALUE(int) attSy BUF17,
+	KERNEL_VALUE(float) attDx BUF18, KERNEL_VALUE(int) attConv BUF19, KERNEL_VALUE(int) xOff BUF20,
+	KERNEL_VALUE(int) firstPlane BUF21, KERNEL_VALUE(int) r BUF22, KERNEL_VALUE(float) dist BUF23,
+	KERNEL_VALUE(float) dxv BUF24, KERNEL_VALUE(float) dzv BUF25, KERNEL_VALUE(float) Az BUF26,
+	KERNEL_VALUE(float) Bz BUF27, KERNEL_VALUE(float) C BUF28,
+	KERNEL_VALUE(float) sigmaCoeff BUF29
+#ifdef METAL
+	, uint3 t6Local [[thread_position_in_threadgroup]]
+	, uint3 t6Group [[threadgroup_position_in_grid]]
+#endif
+) {
 	LOCAL float lIn[CDRF_ROWS * CDRF_TX];
 	LOCAL float lW[(CDRF_RMAX + 1) * CDRF_TX];
 	LOCAL int lR[CDRF_TX];
@@ -2076,12 +2134,22 @@ KERNEL void cdrfAxial(CLGLOBAL float* CLRESTRICT out, const CLGLOBAL float* CLRE
 // functions.hpp). The arguments and the launch are those of cdrfAxialDirect, the groups those of cdrfAxial.
 // The shared memory is (CDRF_TZ + 2 * CDRF_RMAX) * CDRF_TX floats (the rows) and the radii, 32.3 KB with 256
 // threads. Needs r <= CDRF_RMAX. The result is that of cdrfAxial (to the order of the sums)
-KERNEL void cdrfAxialGW(CLGLOBAL float* CLRESTRICT out, const CLGLOBAL float* CLRESTRICT in, const CLGLOBAL float* CLRESTRICT att,
-	const CLGLOBAL float* CLRESTRICT wAx, const CLGLOBAL int* CLRESTRICT rAx,
-	const int N0, const int N1, const int N2, const int zStart, const int nZOut, const int attMode,
-	const int inSx, const int inSy, const int outSx, const int outSy,
-	const int attX0, const int attY0, const int attZ0, const int attSx, const int attSy, const float attDx, const int attConv,
-	const int xOff, const int firstPlane, const int r) {
+KERNEL void cdrfAxialGW(
+	CLGLOBAL float* CLRESTRICT out BUF0, const CLGLOBAL float* CLRESTRICT in BUF1,
+	const CLGLOBAL float* CLRESTRICT att BUF2, const CLGLOBAL float* CLRESTRICT wAx BUF3,
+	const CLGLOBAL int* CLRESTRICT rAx BUF4, KERNEL_VALUE(int) N0 BUF5, KERNEL_VALUE(int) N1 BUF6,
+	KERNEL_VALUE(int) N2 BUF7, KERNEL_VALUE(int) zStart BUF8, KERNEL_VALUE(int) nZOut BUF9,
+	KERNEL_VALUE(int) attMode BUF10, KERNEL_VALUE(int) inSx BUF11, KERNEL_VALUE(int) inSy BUF12,
+	KERNEL_VALUE(int) outSx BUF13, KERNEL_VALUE(int) outSy BUF14, KERNEL_VALUE(int) attX0 BUF15,
+	KERNEL_VALUE(int) attY0 BUF16, KERNEL_VALUE(int) attZ0 BUF17, KERNEL_VALUE(int) attSx BUF18,
+	KERNEL_VALUE(int) attSy BUF19, KERNEL_VALUE(float) attDx BUF20, KERNEL_VALUE(int) attConv BUF21,
+	KERNEL_VALUE(int) xOff BUF22, KERNEL_VALUE(int) firstPlane BUF23,
+	KERNEL_VALUE(int) r BUF24
+#ifdef METAL
+	, uint3 t6Local [[thread_position_in_threadgroup]]
+	, uint3 t6Group [[threadgroup_position_in_grid]]
+#endif
+) {
 	LOCAL float lIn[CDRF_ROWS * CDRF_TX];
 	LOCAL int lR[CDRF_TX];
 	const int tid = (int)LID0 + LOCAL_SIZE * (int)LID1;
@@ -2148,12 +2216,21 @@ KERNEL void cdrfAxialGW(CLGLOBAL float* CLRESTRICT out, const CLGLOBAL float* CL
 // The same pass without the tiling, one thread per output, for the radii that cdrfAxial cannot tile
 // (r > CDRF_RMAX, where cdrfAxialGW cannot either). It reads the weights and the radii that cdrfWeights made (wAx are the weights of
 // cdrfWeights with nPlanes = N0). Launched with (N0, N1, nZOut) threads rounded up to the local size
-KERNEL void cdrfAxialDirect(CLGLOBAL float* CLRESTRICT out, const CLGLOBAL float* CLRESTRICT in, const CLGLOBAL float* CLRESTRICT att,
-	const CLGLOBAL float* CLRESTRICT wAx, const CLGLOBAL int* CLRESTRICT rAx,
-	const int N0, const int N1, const int N2, const int zStart, const int nZOut, const int attMode,
-	const int inSx, const int inSy, const int outSx, const int outSy,
-	const int attX0, const int attY0, const int attZ0, const int attSx, const int attSy, const float attDx, const int attConv,
-	const int xOff, const int firstPlane, const int r) {
+KERNEL void cdrfAxialDirect(
+	CLGLOBAL float* CLRESTRICT out BUF0, const CLGLOBAL float* CLRESTRICT in BUF1,
+	const CLGLOBAL float* CLRESTRICT att BUF2, const CLGLOBAL float* CLRESTRICT wAx BUF3,
+	const CLGLOBAL int* CLRESTRICT rAx BUF4, KERNEL_VALUE(int) N0 BUF5, KERNEL_VALUE(int) N1 BUF6,
+	KERNEL_VALUE(int) N2 BUF7, KERNEL_VALUE(int) zStart BUF8, KERNEL_VALUE(int) nZOut BUF9,
+	KERNEL_VALUE(int) attMode BUF10, KERNEL_VALUE(int) inSx BUF11, KERNEL_VALUE(int) inSy BUF12,
+	KERNEL_VALUE(int) outSx BUF13, KERNEL_VALUE(int) outSy BUF14, KERNEL_VALUE(int) attX0 BUF15,
+	KERNEL_VALUE(int) attY0 BUF16, KERNEL_VALUE(int) attZ0 BUF17, KERNEL_VALUE(int) attSx BUF18,
+	KERNEL_VALUE(int) attSy BUF19, KERNEL_VALUE(float) attDx BUF20, KERNEL_VALUE(int) attConv BUF21,
+	KERNEL_VALUE(int) xOff BUF22, KERNEL_VALUE(int) firstPlane BUF23,
+	KERNEL_VALUE(int) r BUF24
+#ifdef METAL
+	, uint3 t6Global [[thread_position_in_grid]]
+#endif
+) {
 	const int x = GID0;
 	const int y = GID1;
 	const int zo = GID2;
@@ -2195,10 +2272,20 @@ KERNEL void cdrfAxialDirect(CLGLOBAL float* CLRESTRICT out, const CLGLOBAL float
 // CDRF_TX, each adds up its own planes and the partial sums are reduced in shared memory. The weights of the
 // transaxial response of the planes of a chunk are made by the group itself into shared memory, in the
 // way that cdrfAxial does, and are used for all of the CDRF_YPT outputs of a thread. Needs r <= CDRF_RMAX
-KERNEL void cdrfTransFP(CLGLOBAL float* CLRESTRICT out, const CLGLOBAL float* CLRESTRICT in,
-	const int N0, const int N1, const int N2, const int inSx, const int inSy, const int yStart, const int nOut,
-	const int xOff, const int firstPlane, const int r, const float norm, const int view, const int accumulate,
-	const float dist, const float dxv, const float dyv, const float Axy, const float Bxy, const float C, const float sigmaCoeff, const float comp) {
+KERNEL void cdrfTransFP(
+	CLGLOBAL float* CLRESTRICT out BUF0, const CLGLOBAL float* CLRESTRICT in BUF1, KERNEL_VALUE(int) N0 BUF2,
+	KERNEL_VALUE(int) N1 BUF3, KERNEL_VALUE(int) N2 BUF4, KERNEL_VALUE(int) inSx BUF5, KERNEL_VALUE(int) inSy BUF6,
+	KERNEL_VALUE(int) yStart BUF7, KERNEL_VALUE(int) nOut BUF8, KERNEL_VALUE(int) xOff BUF9,
+	KERNEL_VALUE(int) firstPlane BUF10, KERNEL_VALUE(int) r BUF11, KERNEL_VALUE(float) norm BUF12,
+	KERNEL_VALUE(int) view BUF13, KERNEL_VALUE(int) accumulate BUF14, KERNEL_VALUE(float) dist BUF15,
+	KERNEL_VALUE(float) dxv BUF16, KERNEL_VALUE(float) dyv BUF17, KERNEL_VALUE(float) Axy BUF18,
+	KERNEL_VALUE(float) Bxy BUF19, KERNEL_VALUE(float) C BUF20, KERNEL_VALUE(float) sigmaCoeff BUF21,
+	KERNEL_VALUE(float) comp BUF22
+#ifdef METAL
+	, uint3 t6Local [[thread_position_in_threadgroup]]
+	, uint3 t6Group [[threadgroup_position_in_grid]]
+#endif
+) {
 	LOCAL float lRed[CDRF_YPT * CDRF_NT];
 	LOCAL float lW[(CDRF_RMAX + 1) * CDRF_TX];
 	const int tid = (int)LID0 + LOCAL_SIZE * (int)LID1;
@@ -2286,10 +2373,19 @@ KERNEL void cdrfTransFP(CLGLOBAL float* CLRESTRICT out, const CLGLOBAL float* CL
 // weights variant of it for the large regions (see type6GlobalWeights in functions.hpp), where reading the weights
 // is cheaper than making them in every group. A work-group makes CDRF_NL outputs (one per lane) of one z, the
 // group index is (ceil(nOut / CDRF_NL), N2)
-KERNEL void cdrfTransFPDirect(CLGLOBAL float* CLRESTRICT out, const CLGLOBAL float* CLRESTRICT in, const CLGLOBAL float* CLRESTRICT wTr,
-	const CLGLOBAL int* CLRESTRICT rTr,
-	const int N0, const int N1, const int N2, const int inSx, const int inSy, const int yStart, const int nOut,
-	const int xOff, const int firstPlane, const int r, const float norm, const int view, const int accumulate) {
+KERNEL void cdrfTransFPDirect(
+	CLGLOBAL float* CLRESTRICT out BUF0, const CLGLOBAL float* CLRESTRICT in BUF1,
+	const CLGLOBAL float* CLRESTRICT wTr BUF2, const CLGLOBAL int* CLRESTRICT rTr BUF3, KERNEL_VALUE(int) N0 BUF4,
+	KERNEL_VALUE(int) N1 BUF5, KERNEL_VALUE(int) N2 BUF6, KERNEL_VALUE(int) inSx BUF7, KERNEL_VALUE(int) inSy BUF8,
+	KERNEL_VALUE(int) yStart BUF9, KERNEL_VALUE(int) nOut BUF10, KERNEL_VALUE(int) xOff BUF11,
+	KERNEL_VALUE(int) firstPlane BUF12, KERNEL_VALUE(int) r BUF13, KERNEL_VALUE(float) norm BUF14,
+	KERNEL_VALUE(int) view BUF15,
+	KERNEL_VALUE(int) accumulate BUF16
+#ifdef METAL
+	, uint3 t6Local [[thread_position_in_threadgroup]]
+	, uint3 t6Group [[threadgroup_position_in_grid]]
+#endif
+) {
 	LOCAL float lRed[CDRF_NT];
 	const int tid = (int)LID0 + LOCAL_SIZE * (int)LID1;
 	const int tx = tid % CDRF_TX;
@@ -2370,11 +2466,23 @@ DEVICE float cdrfFromDetectorAt(const CLGLOBAL float* CLRESTRICT M, const LTYPE 
 // on both sides, are read (or made) once into shared memory too (the projection does not depend on the
 // plane, so all the threads of a warp read the same element of it). Every thread makes CDRF_YPT consecutive
 // rows to read each of its weights once for all of them. Needs r <= CDRF_RMAX
-KERNEL void cdrfTransBP(CLGLOBAL float* CLRESTRICT out, const CLGLOBAL float* CLRESTRICT P,
-	const int N0, const int N1, const int N2, const int outSx, const int outSy, const int pNy, const int pNz, const int pY0, const int pZ0, const int view,
-	const int xOff, const int firstPlane, const int r, const float norm,
-	const float dist, const float dxv, const float dyv, const float Axy, const float Bxy, const float C, const float sigmaCoeff, const float comp,
-	const int resample, const int nRowsD, const int nColsD, const float trA, const float trB, const float axA, const float axB) {
+KERNEL void cdrfTransBP(
+	CLGLOBAL float* CLRESTRICT out BUF0, const CLGLOBAL float* CLRESTRICT P BUF1, KERNEL_VALUE(int) N0 BUF2,
+	KERNEL_VALUE(int) N1 BUF3, KERNEL_VALUE(int) N2 BUF4, KERNEL_VALUE(int) outSx BUF5, KERNEL_VALUE(int) outSy BUF6,
+	KERNEL_VALUE(int) pNy BUF7, KERNEL_VALUE(int) pNz BUF8, KERNEL_VALUE(int) pY0 BUF9, KERNEL_VALUE(int) pZ0 BUF10,
+	KERNEL_VALUE(int) view BUF11, KERNEL_VALUE(int) xOff BUF12, KERNEL_VALUE(int) firstPlane BUF13,
+	KERNEL_VALUE(int) r BUF14, KERNEL_VALUE(float) norm BUF15, KERNEL_VALUE(float) dist BUF16,
+	KERNEL_VALUE(float) dxv BUF17, KERNEL_VALUE(float) dyv BUF18, KERNEL_VALUE(float) Axy BUF19,
+	KERNEL_VALUE(float) Bxy BUF20, KERNEL_VALUE(float) C BUF21, KERNEL_VALUE(float) sigmaCoeff BUF22,
+	KERNEL_VALUE(float) comp BUF23, KERNEL_VALUE(int) resample BUF24, KERNEL_VALUE(int) nRowsD BUF25,
+	KERNEL_VALUE(int) nColsD BUF26, KERNEL_VALUE(float) trA BUF27, KERNEL_VALUE(float) trB BUF28,
+	KERNEL_VALUE(float) axA BUF29,
+	KERNEL_VALUE(float) axB BUF30
+#ifdef METAL
+	, uint3 t6Local [[thread_position_in_threadgroup]]
+	, uint3 t6Group [[threadgroup_position_in_grid]]
+#endif
+) {
 	LOCAL float lW[(CDRF_RMAX + 1) * CDRF_TX];
 	LOCAL float lP[CDRF_NL * CDRF_YPT + 2 * CDRF_RMAX];
 	LOCAL int lR[CDRF_TX];
@@ -2474,10 +2582,19 @@ KERNEL void cdrfTransBP(CLGLOBAL float* CLRESTRICT out, const CLGLOBAL float* CL
 // used for the radii that cdrfTransBP cannot handle (r > CDRF_RMAX) and as the global weights variant of it for the
 // large regions (see type6GlobalWeights in functions.hpp). A work-group is a run of CDRF_TX planes of one z
 // and CDRF_NL * CDRF_YPT rows y, the group index is (ceil(N0 / CDRF_TX), ceil(N1 / (CDRF_NL * CDRF_YPT)), N2)
-KERNEL void cdrfTransBPDirect(CLGLOBAL float* CLRESTRICT out, const CLGLOBAL float* CLRESTRICT P, const CLGLOBAL float* CLRESTRICT wTr,
-	const CLGLOBAL int* CLRESTRICT rTr,
-	const int N0, const int N1, const int N2, const int outSx, const int outSy, const int pNy, const int pNz, const int pY0, const int pZ0, const int view,
-	const int xOff, const int firstPlane, const int r, const float norm) {
+KERNEL void cdrfTransBPDirect(
+	CLGLOBAL float* CLRESTRICT out BUF0, const CLGLOBAL float* CLRESTRICT P BUF1,
+	const CLGLOBAL float* CLRESTRICT wTr BUF2, const CLGLOBAL int* CLRESTRICT rTr BUF3, KERNEL_VALUE(int) N0 BUF4,
+	KERNEL_VALUE(int) N1 BUF5, KERNEL_VALUE(int) N2 BUF6, KERNEL_VALUE(int) outSx BUF7, KERNEL_VALUE(int) outSy BUF8,
+	KERNEL_VALUE(int) pNy BUF9, KERNEL_VALUE(int) pNz BUF10, KERNEL_VALUE(int) pY0 BUF11, KERNEL_VALUE(int) pZ0 BUF12,
+	KERNEL_VALUE(int) view BUF13, KERNEL_VALUE(int) xOff BUF14, KERNEL_VALUE(int) firstPlane BUF15,
+	KERNEL_VALUE(int) r BUF16,
+	KERNEL_VALUE(float) norm BUF17
+#ifdef METAL
+	, uint3 t6Local [[thread_position_in_threadgroup]]
+	, uint3 t6Group [[threadgroup_position_in_grid]]
+#endif
+) {
 	const int tid = (int)LID0 + LOCAL_SIZE * (int)LID1;
 	const int tx = tid % CDRF_TX;
 	const int yl = tid / CDRF_TX;
@@ -2516,9 +2633,15 @@ KERNEL void cdrfTransBPDirect(CLGLOBAL float* CLRESTRICT out, const CLGLOBAL flo
 //   fProj(r, c, view) += sum_i sum_j tent(trA * r + trB - i) * tent(axA * c + axB - j) * P(i, j)
 // with tent(t) = max(0, 1 - |t|), so only the 2 x 2 neighbours of the sampling position have a weight.
 // Samples that are outside of P have no weight, i.e. read as zero. One thread per detector bin
-KERNEL void resampleToDetector(CLGLOBAL float* CLRESTRICT fProj, const CLGLOBAL float* CLRESTRICT P,
-	const int nTr, const int nAx, const int nRowsD, const int nColsD,
-	const float trA, const float trB, const float axA, const float axB, const int view) {
+KERNEL void resampleToDetector(
+	CLGLOBAL float* CLRESTRICT fProj BUF0, const CLGLOBAL float* CLRESTRICT P BUF1, KERNEL_VALUE(int) nTr BUF2,
+	KERNEL_VALUE(int) nAx BUF3, KERNEL_VALUE(int) nRowsD BUF4, KERNEL_VALUE(int) nColsD BUF5, KERNEL_VALUE(float) trA BUF6,
+	KERNEL_VALUE(float) trB BUF7, KERNEL_VALUE(float) axA BUF8, KERNEL_VALUE(float) axB BUF9,
+	KERNEL_VALUE(int) view BUF10
+#ifdef METAL
+	, uint3 t6Global [[thread_position_in_grid]]
+#endif
+) {
 	const int r = GID0;
 	const int c = GID1;
 	if (r >= nRowsD || c >= nColsD)
@@ -2551,9 +2674,15 @@ KERNEL void resampleToDetector(CLGLOBAL float* CLRESTRICT fProj, const CLGLOBAL 
 // (i - 1 - trB) / trA and (i + 1 - trB) / trA (trA > 0), and likewise for c, so only those are visited.
 // The ends of the ranges are rounded outwards, a bin that is there but has no weight adds exactly zero.
 // One thread per element of P, every one of them is written
-KERNEL void resampleFromDetector(CLGLOBAL float* CLRESTRICT P, const CLGLOBAL float* CLRESTRICT M,
-	const int nTr, const int nAx, const int nRowsD, const int nColsD,
-	const float trA, const float trB, const float axA, const float axB, const int view) {
+KERNEL void resampleFromDetector(
+	CLGLOBAL float* CLRESTRICT P BUF0, const CLGLOBAL float* CLRESTRICT M BUF1, KERNEL_VALUE(int) nTr BUF2,
+	KERNEL_VALUE(int) nAx BUF3, KERNEL_VALUE(int) nRowsD BUF4, KERNEL_VALUE(int) nColsD BUF5, KERNEL_VALUE(float) trA BUF6,
+	KERNEL_VALUE(float) trB BUF7, KERNEL_VALUE(float) axA BUF8, KERNEL_VALUE(float) axB BUF9,
+	KERNEL_VALUE(int) view BUF10
+#ifdef METAL
+	, uint3 t6Global [[thread_position_in_grid]]
+#endif
+) {
 	const int i = GID0;
 	const int j = GID1;
 	if (i >= nTr || j >= nAx)
@@ -2581,6 +2710,8 @@ KERNEL void resampleFromDetector(CLGLOBAL float* CLRESTRICT P, const CLGLOBAL fl
 #define T6FMA(a, b, c) fmaf((a), (b), (c))
 #elif defined(OPENCL)
 #define T6FMA(a, b, c) fma((a), (b), (c))
+#elif defined(METAL)
+#define T6FMA(a, b, c) metal::fma((a), (b), (c))
 #endif
 // The number of slices (z) of the volume that a thread of the rotation back of the backprojection handles (rotate with accumulate,
 // rotateBackB), ROT_ZPT, a build option of the host that also makes the launch ranges of those kernels ROT_ZPT times shorter in z.
@@ -2662,10 +2793,13 @@ KERNEL void resampleFromDetector(CLGLOBAL float* CLRESTRICT P, const CLGLOBAL fl
 // threads, nzB the largest outNz of the views: thread z is the slice z % nzB of the view z / nzB. Always a plain rotation
 // (the elements that the rotation does not reach are zero), never accumulates
 KERNEL void rotateB(
-	CLGLOBAL float* CLRESTRICT rotim BUF0,
-	IMTYPE im TEX1,
-	const CLGLOBAL float* CLRESTRICT bp, const int bpOff,
-	const int outSx, const int outSy, const int outSz, const int nzB) {
+	CLGLOBAL float* CLRESTRICT rotim BUF0, IMTYPE im TEX1, const CLGLOBAL float* CLRESTRICT bp BUF2,
+	KERNEL_VALUE(int) bpOff BUF3, KERNEL_VALUE(int) outSx BUF4, KERNEL_VALUE(int) outSy BUF5, KERNEL_VALUE(int) outSz BUF6,
+	KERNEL_VALUE(int) nzB BUF7
+#ifdef METAL
+	, uint3 t6Global [[thread_position_in_grid]]
+#endif
+) {
 	const int ix = (int)GID0;
 	const int iy = (int)GID1;
 	const int gz = (int)GID2;
@@ -2725,6 +2859,8 @@ KERNEL void rotateB(
 			val = tex3D<float>(im, src_x + FLOAT_HALF, src_y + FLOAT_HALF, CFLOAT(z) + FLOAT_HALF);
 #elif defined(OPENCL)
 			val = read_imagef(im, samplerRotate, (float4)(src_x + FLOAT_HALF, src_y + FLOAT_HALF, CFLOAT(z) + FLOAT_HALF, FLOAT_ZERO)).w;
+#elif defined(METAL)
+			val = im.sample(samplerRotate, float3(src_x + FLOAT_HALF, src_y + FLOAT_HALF, CFLOAT(z) + FLOAT_HALF)).r;
 #endif
 		}
 		else {
@@ -2747,6 +2883,8 @@ KERNEL void rotateB(
 					val += w * tex3D<float>(im, CFLOAT(xx) + FLOAT_HALF, CFLOAT(yy) + FLOAT_HALF, zc);
 #elif defined(OPENCL)
 					val += w * read_imagef(im, samplerRotate, (float4)(CFLOAT(xx) + FLOAT_HALF, CFLOAT(yy) + FLOAT_HALF, zc, FLOAT_ZERO)).w;
+#elif defined(METAL)
+					val += w * im.sample(samplerRotate, float3(CFLOAT(xx) + FLOAT_HALF, CFLOAT(yy) + FLOAT_HALF, zc)).r;
 #endif
 				}
 			}
@@ -2784,11 +2922,15 @@ KERNEL void rotateB(
 // voxel and writes it once, so there is no conflict between the views and the result is that of rotating the views one after the
 // other with accumulate (the elements that no view reaches are not written). The source is always read from a buffer
 KERNEL void rotateBackB(
-	CLGLOBAL float* CLRESTRICT out,
-	const CLGLOBAL float* CLRESTRICT src,
-	const CLGLOBAL float* CLRESTRICT bp, const int bpOff,
-	const int nb, const int outNxD, const int outNyD, const int outNzD,
-	const int srcSx, const int srcSy, const int srcBS) {
+	CLGLOBAL float* CLRESTRICT out BUF0, const CLGLOBAL float* CLRESTRICT src BUF1,
+	const CLGLOBAL float* CLRESTRICT bp BUF2, KERNEL_VALUE(int) bpOff BUF3, KERNEL_VALUE(int) nb BUF4,
+	KERNEL_VALUE(int) outNxD BUF5, KERNEL_VALUE(int) outNyD BUF6, KERNEL_VALUE(int) outNzD BUF7,
+	KERNEL_VALUE(int) srcSx BUF8, KERNEL_VALUE(int) srcSy BUF9,
+	KERNEL_VALUE(int) srcBS BUF10
+#ifdef METAL
+	, uint3 t6Global [[thread_position_in_grid]]
+#endif
+) {
 #ifdef TYPE6_BP_FAST
 	const int ix = (int)GID0;
 	const int iy = (int)GID1;
@@ -2957,10 +3099,20 @@ KERNEL void rotateBackB(
 // view, see T6P_ATTZ0). The groups are (ceil(max N0 / CDRF_TX), max N1, nzb * nb), nzb the number of the z blocks of a view that the
 // largest view needs: group z is the z block z % nzb of the view z / nzb. The groups that are outside of the region of their view
 // return before the first barrier, which they can since the test is on the group index only
-KERNEL void cdrfAxialB(CLGLOBAL float* CLRESTRICT out, const CLGLOBAL float* CLRESTRICT in, const CLGLOBAL float* CLRESTRICT att,
-	const CLGLOBAL float* CLRESTRICT bp, const int bpOff, const int nzb, const int attMode, const int attConv,
-	const int inSx, const int inSy, const int inBS, const int outSx, const int outSy, const int outBS, const int attSx, const int attSy,
-	const float dxv, const float dzv, const float Az, const float Bz, const float C, const float sigmaCoeff) {
+KERNEL void cdrfAxialB(
+	CLGLOBAL float* CLRESTRICT out BUF0, const CLGLOBAL float* CLRESTRICT in BUF1,
+	const CLGLOBAL float* CLRESTRICT att BUF2, const CLGLOBAL float* CLRESTRICT bp BUF3, KERNEL_VALUE(int) bpOff BUF4,
+	KERNEL_VALUE(int) nzb BUF5, KERNEL_VALUE(int) attMode BUF6, KERNEL_VALUE(int) attConv BUF7,
+	KERNEL_VALUE(int) inSx BUF8, KERNEL_VALUE(int) inSy BUF9, KERNEL_VALUE(int) inBS BUF10, KERNEL_VALUE(int) outSx BUF11,
+	KERNEL_VALUE(int) outSy BUF12, KERNEL_VALUE(int) outBS BUF13, KERNEL_VALUE(int) attSx BUF14,
+	KERNEL_VALUE(int) attSy BUF15, KERNEL_VALUE(float) dxv BUF16, KERNEL_VALUE(float) dzv BUF17,
+	KERNEL_VALUE(float) Az BUF18, KERNEL_VALUE(float) Bz BUF19, KERNEL_VALUE(float) C BUF20,
+	KERNEL_VALUE(float) sigmaCoeff BUF21
+#ifdef METAL
+	, uint3 t6Local [[thread_position_in_threadgroup]]
+	, uint3 t6Group [[threadgroup_position_in_grid]]
+#endif
+) {
 	LOCAL float lIn[CDRF_ROWS * CDRF_TX];
 	LOCAL float lW[(CDRF_RMAX + 1) * CDRF_TX];
 	LOCAL int lR[CDRF_TX];
@@ -3072,9 +3224,19 @@ KERNEL void cdrfAxialB(CLGLOBAL float* CLRESTRICT out, const CLGLOBAL float* CLR
 // The output is the nOut x N2 projection of the view in the slot T6P_OUTSLOT (view slots of the projections, or the slices of the array
 // of the projections that resampleToDetectorB resamples), slot s at s * outSlotStride, the rows of the projection outLd apart
 // (outLd = nOut for the projections of the measurements). The groups are (ceil(max nOut / (CDRF_NL * CDRF_YPT)), max N2, nb)
-KERNEL void cdrfTransFPB(CLGLOBAL float* CLRESTRICT out, const CLGLOBAL float* CLRESTRICT in, const CLGLOBAL float* CLRESTRICT bp, const int bpOff,
-	const int inSx, const int inSy, const int inBS, const int outSlotStride, const int outLd, const int accumulate, const float norm,
-	const float dxv, const float dyv, const float Axy, const float Bxy, const float C, const float sigmaCoeff) {
+KERNEL void cdrfTransFPB(
+	CLGLOBAL float* CLRESTRICT out BUF0, const CLGLOBAL float* CLRESTRICT in BUF1,
+	const CLGLOBAL float* CLRESTRICT bp BUF2, KERNEL_VALUE(int) bpOff BUF3, KERNEL_VALUE(int) inSx BUF4,
+	KERNEL_VALUE(int) inSy BUF5, KERNEL_VALUE(int) inBS BUF6, KERNEL_VALUE(int) outSlotStride BUF7,
+	KERNEL_VALUE(int) outLd BUF8, KERNEL_VALUE(int) accumulate BUF9, KERNEL_VALUE(float) norm BUF10,
+	KERNEL_VALUE(float) dxv BUF11, KERNEL_VALUE(float) dyv BUF12, KERNEL_VALUE(float) Axy BUF13,
+	KERNEL_VALUE(float) Bxy BUF14, KERNEL_VALUE(float) C BUF15,
+	KERNEL_VALUE(float) sigmaCoeff BUF16
+#ifdef METAL
+	, uint3 t6Local [[thread_position_in_threadgroup]]
+	, uint3 t6Group [[threadgroup_position_in_grid]]
+#endif
+) {
 	LOCAL float lRed[CDRF_YPT * CDRF_NT];
 	LOCAL float lW[(CDRF_RMAX + 1) * CDRF_TX];
 	const int b = (int)GRID2;
@@ -3178,10 +3340,19 @@ KERNEL void cdrfTransFPB(CLGLOBAL float* CLRESTRICT out, const CLGLOBAL float* C
 // the measurements, nRowsD x nColsD each, with the map of the view. The output is nb slices, slice b at b * outBS (outSx x outSy x
 // any). The groups are (ceil(max N0 / CDRF_TX), ceil(max N1 / (CDRF_NL * CDRF_YPT)), n2b * nb), n2b the largest N2 of the views: group
 // z is the slice z % n2b of the view z / n2b
-KERNEL void cdrfTransBPB(CLGLOBAL float* CLRESTRICT out, const CLGLOBAL float* CLRESTRICT P, const CLGLOBAL float* CLRESTRICT bp, const int bpOff,
-	const int n2b, const int outSx, const int outSy, const int outBS, const float norm,
-	const float dxv, const float dyv, const float Axy, const float Bxy, const float C, const float sigmaCoeff,
-	const int resample, const int nRowsD, const int nColsD) {
+KERNEL void cdrfTransBPB(
+	CLGLOBAL float* CLRESTRICT out BUF0, const CLGLOBAL float* CLRESTRICT P BUF1, const CLGLOBAL float* CLRESTRICT bp BUF2,
+	KERNEL_VALUE(int) bpOff BUF3, KERNEL_VALUE(int) n2b BUF4, KERNEL_VALUE(int) outSx BUF5, KERNEL_VALUE(int) outSy BUF6,
+	KERNEL_VALUE(int) outBS BUF7, KERNEL_VALUE(float) norm BUF8, KERNEL_VALUE(float) dxv BUF9,
+	KERNEL_VALUE(float) dyv BUF10, KERNEL_VALUE(float) Axy BUF11, KERNEL_VALUE(float) Bxy BUF12,
+	KERNEL_VALUE(float) C BUF13, KERNEL_VALUE(float) sigmaCoeff BUF14, KERNEL_VALUE(int) resample BUF15,
+	KERNEL_VALUE(int) nRowsD BUF16,
+	KERNEL_VALUE(int) nColsD BUF17
+#ifdef METAL
+	, uint3 t6Local [[thread_position_in_threadgroup]]
+	, uint3 t6Group [[threadgroup_position_in_grid]]
+#endif
+) {
 	LOCAL float lW[(CDRF_RMAX + 1) * CDRF_TX];
 	LOCAL float lP[CDRF_NL * CDRF_YPT + 2 * CDRF_RMAX];
 	LOCAL int lR[CDRF_TX];
@@ -3304,8 +3475,15 @@ KERNEL void cdrfTransBPB(CLGLOBAL float* CLRESTRICT out, const CLGLOBAL float* C
 // Batched resampling of the projections onto the detector, see resampleToDetector. P is nb slices, slice b (nTr x nAx of them used,
 // the rows pLd apart) at b * pBS; the result of the view is added to its T6P_VIEW'th projection of fProj (slots of fSlotStride
 // elements, nRowsD x nColsD). The launch is (nRowsD, nColsD, nb) threads
-KERNEL void resampleToDetectorB(CLGLOBAL float* CLRESTRICT fProj, const CLGLOBAL float* CLRESTRICT P, const CLGLOBAL float* CLRESTRICT bp, const int bpOff,
-	const int nRowsD, const int nColsD, const int pLd, const int pBS, const int fSlotStride) {
+KERNEL void resampleToDetectorB(
+	CLGLOBAL float* CLRESTRICT fProj BUF0, const CLGLOBAL float* CLRESTRICT P BUF1,
+	const CLGLOBAL float* CLRESTRICT bp BUF2, KERNEL_VALUE(int) bpOff BUF3, KERNEL_VALUE(int) nRowsD BUF4,
+	KERNEL_VALUE(int) nColsD BUF5, KERNEL_VALUE(int) pLd BUF6, KERNEL_VALUE(int) pBS BUF7,
+	KERNEL_VALUE(int) fSlotStride BUF8
+#ifdef METAL
+	, uint3 t6Global [[thread_position_in_grid]]
+#endif
+) {
 	const int r = GID0;
 	const int c = GID1;
 	const int b = (int)GID2;
@@ -3342,6 +3520,17 @@ KERNEL void resampleToDetectorB(CLGLOBAL float* CLRESTRICT fProj, const CLGLOBAL
 	}
 	fProj[view * (LTYPE)fSlotStride + (LTYPE)r + (LTYPE)c * (LTYPE)nRowsD] += summa;
 }
+#undef KERNEL_VALUE
+#ifdef METAL
+#undef GID0
+#undef GID1
+#undef GID2
+#undef LID0
+#undef LID1
+#undef GRID0
+#undef GRID1
+#undef GRID2
+#undef BARRIER
 #endif
 
 // Initial version from: https://stackoverflow.com/questions/9833316/cuda-image-rotation/10008412#10008412
@@ -3373,8 +3562,8 @@ KERNEL void resampleToDetectorB(CLGLOBAL float* CLRESTRICT fProj, const CLGLOBAL
 //                 the source array holds only the band (srcNxB wide, indexed relative to srcX)
 // With accumulate set the result is added to rotim instead of replacing it, and the elements that the
 // rotation does not reach (outside of the source) are neither read nor written, i.e. they keep their value.
-// This is what the backprojection uses to add a rotated view directly into the image. It is not available
-// on METAL. Every element is handled by a single thread, so no atomics are needed
+// This is what the backprojection uses to add a rotated view directly into the image.
+// Every element is handled by a single thread, so no atomics are needed
 // With accumulate set the rotation is, by default, not a gather at the position of the inverse rotation but the exact transpose (adjoint)
 // of the rotation that the forward projection applies (the same bilinear weights, summed over the elements that sample the voxel), so
 // that the forward and the backprojection of the projector are an adjoint pair (the dot test <A x, y> = <x, A^T y> holds to the float
@@ -3385,10 +3574,7 @@ KERNEL void resampleToDetectorB(CLGLOBAL float* CLRESTRICT fProj, const CLGLOBAL
 // every thread handles one voxel
 // outSx and outSy are the dimensions that the output array is allocated with (its row and slice strides), outNxW and outNy when it is
 // not allocated larger than the window; the elements outside of the window are not written
-// Setting both windows to the whole volume gives a plain rotation of the entire image. On METAL, which
-// keeps the previous, plain (non-multires-aware) rotation, the extra parameters are simply given their
-// values for that case: outNx=Nx, outNyF=Ny, offX=offY=0, outY=outZ=0, outNy=Ny, outNz=Nz, srcY=srcZ=0,
-// srcNy=Ny, srcNz=Nz, outX=0, outNxW=Nx, srcX=0, srcNxB=Nx
+// Setting both windows to the whole volume gives a plain rotation of the entire image.
 KERNEL void rotate(
 	CLGLOBAL float* CLRESTRICT rotim BUF0,
 	IMTYPE im TEX1,
@@ -3405,30 +3591,13 @@ KERNEL void rotate(
 #endif
 ) {
 #ifdef METAL
-	UNPACK_SCALAR_PARAMS_ROTATE(scalarParams)
-	const int outNx = Nx;
-	const int outNyF = Ny;
-	const float offX = FLOAT_ZERO;
-	const float offY = FLOAT_ZERO;
-	const int outY = 0;
-	const int outZ = 0;
-	const int outNy = Ny;
-	const int outNz = Nz;
-	const int srcY = 0;
-	const int srcZ = 0;
-	const int srcNy = Ny;
-	const int srcNz = Nz;
-	const int outX = 0;
-	const int outNxW = Nx;
-	const int srcX = 0;
-	const int srcNxB = Nx;
-	const int outSx = Nx;
-	const int outSy = Ny;
-	LTYPE3 xyz = MINT3(metalGlobalId.x, metalGlobalId.y, metalGlobalId.z);
+    UNPACK_SCALAR_PARAMS_ROTATE(scalarParams)
+    UNPACK_SCALAR_PARAMS_ROTATE_WINDOW(scalarParams)
+    LTYPE3 xyz = MINT3(metalGlobalId.x, metalGlobalId.y, metalGlobalId.z);
 #else
 	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
 #endif
-#if defined(METAL) || defined(TYPE6_BP_FAST)
+#if defined(TYPE6_BP_FAST)
 	if (xyz.x >= outNxW || xyz.y >= outNy || xyz.z >= outNz)
 		return;
 #else
@@ -3448,62 +3617,9 @@ KERNEL void rotate(
     const float xA = (float)(2 * x + 1 - outNx) * FLOAT_HALF;
     const float yA = (float)(2 * y + 1 - outNyF) * FLOAT_HALF;
 
-#ifdef METAL
-    const float src_x = (xA * cosa - yA * sina + offX + (float)Nx * FLOAT_HALF) - FLOAT_HALF;
-    const float src_y = (xA * sina + yA * cosa + offY + (float)Ny * FLOAT_HALF) - FLOAT_HALF;
-#else
     const float src_x = (T6FMA(xA, cosa, -(yA * sina)) + offX + (float)Nx * FLOAT_HALF) - FLOAT_HALF;
     const float src_y = (T6FMA(yA, cosa, xA * sina) + offY + (float)Ny * FLOAT_HALF) - FLOAT_HALF;
-#endif
 
-#ifdef METAL
-	// Metal keeps the previous, plain rotation
-	// The interpolation reads one row past src_y, so with a partial source the last row is left out.
-	// There the values are below the truncation level of the collimator response anyway
-	const float srcYlo = CFLOAT(srcY);
-	const float srcYhi = (srcY + srcNy >= Ny) ? CFLOAT(Ny) : CFLOAT(srcY + srcNy - 1);
-
-    if (src_x >= 0.0f && src_x < Nx && src_y >= srcYlo && src_y < srcYhi && z >= srcZ && z < srcZ + srcNz) {
-		float val = FLOAT_ZERO;
-		// The interpolation reads one element past the sampling position, which in the outermost row
-		// and column of the source is outside it. Clamping the position there repeats the outermost
-		// value, which is what an image with the dimensions of the source would do on its own. The
-		// image is shared by every volume and is therefore larger than the source, so without this the
-		// read would return whatever the previous, larger, upload left in it. With buffers the read
-		// would wrap around to the next row
-		const float sampX = (src_x > CFLOAT(Nx - 1)) ? CFLOAT(Nx - 1) : src_x;
-		const float sampY = (src_y > CFLOAT(srcY + srcNy - 1)) ? CFLOAT(srcY + srcNy - 1) : src_y;
-#ifdef USEIMAGES
-		val = im.sample(samplerRotate, float3(sampX + FLOAT_HALF, sampY + FLOAT_HALF, CFLOAT(z) + FLOAT_HALF)).r;
-#else
-        // BILINEAR INTERPOLATION
-        // The buffer holds only the band, so the source is indexed relative to its origin
-        const float src_yL = sampY - CFLOAT(srcY);
-        const int src_x0 = (int)(sampX);
-        const int src_x1 = (src_x0 + 1);
-        const int src_y0 = (int)(src_yL);
-        const int src_y1 = (src_y0 + 1);
-
-        const float sx = (sampX - src_x0);
-        const float sy = (src_yL - src_y0);
-
-        const int idx_src00 = MIN(MAX(0, src_x0 + src_y0 * Nx), (Nx * srcNy) - 1);
-        const int idx_src10 = MIN(MAX(0, src_x1 + src_y0 * Nx), (Nx * srcNy) - 1);
-        const int idx_src01 = MIN(MAX(0, src_x0 + src_y1 * Nx), (Nx * srcNy) - 1);
-        const int idx_src11 = MIN(MAX(0, src_x1 + src_y1 * Nx), (Nx * srcNy) - 1);
-        const LTYPE plane = (LTYPE)(z - srcZ) * (LTYPE)Nx * (LTYPE)srcNy;
-
-        val  = (FLOAT_ONE - sx) * (FLOAT_ONE - sy) * im[plane + idx_src00];
-        val += (       sx) * (FLOAT_ONE - sy) * im[plane + idx_src10];
-        val += (FLOAT_ONE - sx) * (       sy) * im[plane + idx_src01];
-        val += (       sx) * (       sy) * im[plane + idx_src11];
-#endif
-		rotim[n] = val;
-    }
-	else {
-        rotim[n] = 0.0f;
-    }
-#else
 #ifndef TYPE6_BP_FAST
 	if (accumulate != 0) {
 		// The backprojection (the rotation back of a view into the image): the exact transpose of the bilinear rotation of the forward
@@ -3562,6 +3678,8 @@ KERNEL void rotate(
 							val[j] += w * tex3D<float>(im, xc, yc, zcT);
 #elif defined(OPENCL)
 							val[j] += w * read_imagef(im, samplerRotate, (float4)(xc, yc, zcT, FLOAT_ZERO)).w;
+#elif defined(METAL)
+							val[j] += w * im.sample(samplerRotate, float3(xc, yc, zcT)).r;
 #endif
 						}
 					}
@@ -3606,6 +3724,8 @@ KERNEL void rotate(
 			val = tex3D<float>(im, src_x + FLOAT_HALF, src_y + FLOAT_HALF, CFLOAT(z) + FLOAT_HALF);
 #elif defined(OPENCL)
 			val = read_imagef(im, samplerRotate, (float4)(src_x + FLOAT_HALF, src_y + FLOAT_HALF, CFLOAT(z) + FLOAT_HALF, FLOAT_ZERO)).w;
+#elif defined(METAL)
+			val = im.sample(samplerRotate, float3(src_x + FLOAT_HALF, src_y + FLOAT_HALF, CFLOAT(z) + FLOAT_HALF)).r;
 #endif
 		}
 		else {
@@ -3630,6 +3750,8 @@ KERNEL void rotate(
 					val += w * tex3D<float>(im, CFLOAT(xx) + FLOAT_HALF, CFLOAT(yy) + FLOAT_HALF, zc);
 #elif defined(OPENCL)
 					val += w * read_imagef(im, samplerRotate, (float4)(CFLOAT(xx) + FLOAT_HALF, CFLOAT(yy) + FLOAT_HALF, zc, FLOAT_ZERO)).w;
+#elif defined(METAL)
+					val += w * im.sample(samplerRotate, float3(CFLOAT(xx) + FLOAT_HALF, CFLOAT(yy) + FLOAT_HALF, zc)).r;
 #endif
 				}
 			}
@@ -3669,4 +3791,3 @@ KERNEL void rotate(
 #endif
 
 }
-#endif

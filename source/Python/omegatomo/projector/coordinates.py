@@ -148,6 +148,21 @@ def computePixelSize(options):
                     options.bz[kk] = options.oOffsetZ + FOV[0,2] / 2
                 else:
                     options.bz[kk] = options.oOffsetZ - FOV[0][2] / 2 - FOV[kk,2]
+    if (getattr(options, 'projector_type', 0) == 6
+            and getattr(options, 'useMultiResolutionVolumes', False) and getattr(options, 'useEFOV', False)
+            and getattr(options, 'nMultiVolumes', 0) > 0):
+        # Match the float arithmetic used by the native projector for its union grid.
+        origins = np.column_stack((options.bx, options.by, options.bz)).astype(np.float32)
+        counts = np.column_stack((options.Nx, options.Ny, options.Nz)).astype(np.float32)
+        steps = np.column_stack((options.dx, options.dy, options.dz)).astype(np.float32)
+        low = np.min(origins, axis=0)
+        high = np.max(origins + counts * steps, axis=0)
+        dims = np.ceil(((high - low) / steps[0]).astype(np.float64) - 1e-5).astype(np.int64)
+        if np.any(dims <= 0):
+            raise ValueError('Invalid type-6 multi-resolution union bounds.')
+        options.multiResUnionBounds = np.column_stack((low, high))
+        options.multiResUnionDims = dims
+
     return xx, yy, zz
 
 

@@ -1872,8 +1872,6 @@ class projectorClass:
                 raise ValueError('Multi-resolution image-domain attenuation requires SPECT projector type 1, 2, or 6 for both forward and backward projection.')
             if self.implementation == 2 and self.useCPU:
                 raise ValueError('Multi-resolution image-domain attenuation is not implemented in the native C++ CPU reconstruction path.')
-            if self.useMetal:
-                raise ValueError('Multi-resolution image-domain attenuation is not implemented by the Metal/MPS projector backend.')
         if self.APLS and self.MAP and not isinstance(self.APLS_ref_image, np.ndarray) and not os.path.exists(self.APLS_ref_image):
             raise FileNotFoundError('APLS selected, but the anatomical reference image was not found on path!')
         if self.epps <= 0:
@@ -2472,7 +2470,14 @@ class projectorClass:
                         NxM3, NxM4 = sideCounts[0], sideCounts[1]
                         FOVxM5 = FOVxM6 = self.FOVxOrig
                         NxM5 = NxM6 = NxM
-                        NyM3 = NyM4 = sideVoxels(self.FOVa_y, dyM)
+                        # The full-y transaxial slabs must use the same union of
+                        # the coarse central slab and the two shifted side slabs
+                        # as MATLAB type 6. Rounding FOVa_y/dyM directly can
+                        # lose one voxel when the shifted sides each round up.
+                        if self.projector_type == 6:
+                            NyM3 = NyM4 = NyM + sideCounts[2] + sideCounts[3]
+                        else:
+                            NyM3 = NyM4 = sideVoxels(self.FOVa_y, dyM)
                         FOVyM3 = FOVyM4 = NyM3 * dyM
                         FOVyM5, FOVyM6 = yLowFOV, yHighFOV
                         NyM5, NyM6 = sideCounts[2], sideCounts[3]
