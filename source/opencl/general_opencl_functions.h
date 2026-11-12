@@ -2993,6 +2993,7 @@ DEVICE float priorGradientSW(SW_IN_T uIn, CONSTANT float* weight,
     float output = FLOAT_ZERO;
     const float uj = SWFETCH(uIn, x, y, z);
 #if SWPRIORTYPE == 0 && defined(PRIORREF)
+    // The reference values are stored as square roots by the host, see below
     const float kj = SWFETCH(uRefIn, x, y, z);
 #endif
 #if SWPRIORTYPE == 1
@@ -3027,7 +3028,8 @@ DEVICE float priorGradientSW(SW_IN_T uIn, CONSTANT float* weight,
                 const float divPow2 = FMAD(gamma, fabs(delta), uj + uk);
 #ifdef PRIORREF
                 const float kk = SWFETCH(uRefIn, x + i, y + j, z + k);
-                output += weight[uu] * SQRT(kk * kj) * delta * (gamma * fabs(delta) + uj + 3.f * uk + epps * epps) / (divPow2 * divPow2 + epps);
+                // Geometric mean of the reference values: the stored values are already the square roots
+                output += weight[uu] * (kk * kj) * delta * (gamma * fabs(delta) + uj + 3.f * uk + epps * epps) / (divPow2 * divPow2 + epps);
 #else
                 output += weight[uu] * delta * (gamma * fabs(delta) + uj + 3.f * uk + epps * epps) / (divPow2 * divPow2 + epps);
 #endif

@@ -1108,6 +1108,10 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 				w_vec.RDPref[timestep] += af::sqrt(vec.rhs_os[timestep][0] + inputScalars.epps);
 				af::eval(w_vec.RDPref[timestep]);
 			}
+			// The kernels weight each voxel pair with the geometric mean of the reference values of the two voxels,
+			// sqrt(k_j * k_k) = sqrt(k_j) * sqrt(k_k). Store the square root, so that the kernels only need to multiply
+			w_vec.RDPref[timestep] = af::sqrt(w_vec.RDPref[timestep]);
+			af::eval(w_vec.RDPref[timestep]);
             proj.memSize += (sizeof(float) * inputScalars.im_dim[0]);
 			if (DEBUG) {
 				mexPrintBase("w_vec.RDPref[timestep] = %f\n", af::sum<float>(w_vec.RDPref[timestep]));
