@@ -363,17 +363,24 @@ if options.PDHG || options.PDHGKL || options.PDHGL1 || options.PDDY
     end
 end
 if (options.PKMA || options.MBSREM || options.SPS) && (options.ProxTV || options.TGV)
-    if ~isfield(options,'alpha_PKMA') && (~isfield(options,'thetaCP') || numel(options.thetaCP) < options.subsets * options.Niter)
-        options.thetaCP = zeros(options.Niter * options.subsets,1);
-        oo = 1;
-        for kk = 1 : options.Niter
-            for ll = 0 : options.subsets - 1
-                options.thetaCP(oo) = 1 + (options.rho_PKMA *((kk - 1) * options.subsets + ll)) / ((kk - 1) * options.subsets + ll + options.delta_PKMA);
-                oo = oo + 1;
+    % The native code reads options.thetaCP for each iteration and subset (Niter * subsets elements). A user-input thetaCP of
+    % this length is kept, otherwise alpha_PKMA is used if it has enough elements (not the scalar default), or else the PKMA values
+    if ~isfield(options,'thetaCP') || numel(options.thetaCP) < options.subsets * options.Niter
+        if isfield(options,'alpha_PKMA') && numel(options.alpha_PKMA) >= options.subsets * options.Niter
+            options.thetaCP = options.alpha_PKMA(1 : options.subsets * options.Niter);
+        else
+            options.thetaCP = zeros(options.Niter * options.subsets,1);
+            oo = 1;
+            for kk = 1 : options.Niter
+                for ll = 0 : options.subsets - 1
+                    options.thetaCP(oo) = 1 + (options.rho_PKMA *((kk - 1) * options.subsets + ll)) / ((kk - 1) * options.subsets + ll + options.delta_PKMA);
+                    oo = oo + 1;
+                end
             end
         end
-    elseif isfield(options,'alpha_PKMA') && (~isfield(options,'thetaCP') || numel(options.thetaCP) < options.subsets * options.Niter)
-        options.thetaCP = single(options.alpha_PKMA);
+        if options.implementation == 2 || options.useSingles || options.implementation == 5
+            options.thetaCP = single(options.thetaCP);
+        end
     end
 end
 if options.PDHG || options.PDHGKL || options.PDHGL1 || options.ProxTV || options.TGV || options.FISTA || options.FISTAL1 || options.PDDY
