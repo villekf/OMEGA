@@ -119,9 +119,7 @@ if options.param.weighted_mean && options.param.MAP
         elseif length(options.param.weighted_weights(:)) > ((options.param.Ndx*2+1) * (options.param.Ndy*2+1) * (options.param.Ndz*2+1))
             error(['Weights vector options.param.weighted_weights is too long, needs to be ' num2str(((options.param.Ndx*2+1) * (options.param.Ndy*2+1) * (options.param.Ndz*2+1))) ' in length'])
         end
-        if ~isinf(options.param.weighted_weights(ceil(((options.param.Ndx*2+1) * (options.param.Ndy*2+1) * (options.param.Ndz*2+1)/2))))
-            options.param.weighted_weights(ceil(((options.param.Ndx*2+1) * (options.param.Ndy*2+1) * (options.param.Ndz*2+1)/2))) = Inf;
-        end
+        % The center element is not set to Inf (unlike weights/weights_huber): the weighted mean uses the user weights as such, including the center, and w_sum would become Inf
     end
 end
 
