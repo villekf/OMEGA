@@ -83,10 +83,16 @@ public:
 		const int32_t nDistSide = inputs[23][0];
 		const int32_t detWPseudo = inputs[24][0];
 		const int32_t nPseudos = inputs[25][0];
-		const int32_t crystPerBlock = inputs[26][0];
+		// Crystals per block transaxially and axially of each layer (nLayers elements each)
+		const matlab::data::TypedArray<uint32_t> crystPerBlock = inputs[26];
 		const int32_t nLayers = inputs[27][0];
 		const matlab::data::TypedArray<uint8_t> layer1 = inputs[28];
 		const matlab::data::TypedArray<uint8_t> layer2 = inputs[29];
+		const matlab::data::TypedArray<uint32_t> crystPerBlockZ = inputs[30];
+		// Number of blocks transaxially in a ring (blocks_per_ring * transaxial_multip)
+		const uint32_t nBlocksRing = inputs[31][0];
+		if (crystPerBlock.getNumberOfElements() < static_cast<size_t>(std::max<int32_t>(nLayers, 1)) || crystPerBlockZ.getNumberOfElements() < static_cast<size_t>(std::max<int32_t>(nLayers, 1)))
+			matlabPtr->feval(u"error", 0, std::vector<matlab::data::Array>({ factory.createScalar("The crystals per block must be input for each layer") }));
 
 		bool storeTrues = false;
 		bool storeScatter = false;
@@ -126,10 +132,12 @@ public:
 		const bool* randomsIndexP = getPointer(randomsIndex);
 		const uint8_t* layer1P = getPointer(layer1);
 		const uint8_t* layer2P = getPointer(layer2);
+		const uint32_t* crystPerBlockP = getPointer(crystPerBlock);
+		const uint32_t* crystPerBlockZP = getPointer(crystPerBlockZ);
 
 		openMPSino(ringPos1P, ringPos2P, ringNumber1P, ringNumber2P, truesIndexP, scatterIndexP, randomsIndexP, sinoSize, Ndist, Nang, ringDifference,
 			span, segP, tIndP, NT, TOFSize, SinoP, SinoTP, SinoCP, SinoRP, storeTrues, storeScatter, storeRandoms, detPerRing, rings, koko,
-			binsP, nDistSide, pituus, detWPseudo, nPseudos, crystPerBlock, layer1P, layer2P, nLayers);
+			binsP, nDistSide, pituus, detWPseudo, nPseudos, crystPerBlockP, crystPerBlockZP, nBlocksRing, layer1P, layer2P, nLayers);
 
 		outputs[0] = Sino;
 		outputs[1] = SinoT;
@@ -139,8 +147,8 @@ public:
 	}
 
 	void checkArguments(matlab::mex::ArgumentList& outputs, matlab::mex::ArgumentList& inputs) {
-		if (inputs.size() != 30) {
-			matlabPtr->feval(u"error", 0, std::vector<matlab::data::Array>({ factory.createScalar("30 inputs required") }));
+		if (inputs.size() != 32) {
+			matlabPtr->feval(u"error", 0, std::vector<matlab::data::Array>({ factory.createScalar("32 inputs required") }));
 		}
 
 		if (outputs.size() > 4) {

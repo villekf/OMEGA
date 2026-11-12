@@ -252,6 +252,8 @@ struct inputStruct {
     bool usingLinearizedData = false;
     // Load TOF data
     bool loadTOF = true;
+    // If true, the additive term (randoms/scatter) is TOF-resolved, i.e. it has the same size and layout as the TOF measurements
+    bool randomsTOF = false;
     // If true, stores the primal-dual gap values
     bool storeResidual = false;
     // If true, uses FISTA acceleration for the selected algorithm
@@ -282,6 +284,8 @@ struct inputStruct {
     bool useMAD = false;
     // Use OpenCL images/CUDA textures
     bool useImages = false;
+    // Use FP16 (half-precision) computations
+    bool useHalf = false;
     // Use extended FOV
     bool useEFOV = false;
     // Use CT-based attenuation images
@@ -340,6 +344,8 @@ struct inputStruct {
     bool compute_sensitivity_image = false;
     // Whether FDK weights are used or not
     bool useFDKWeights = true;
+    // If true, the CT projector type 4 backprojection reads the measurements from a 2D layered texture (when possible)
+    bool useLayeredBP = true;
     // If true, index-based listmode reconstruction is used
     bool useIndexBasedReconstruction = false;
     // Use stochastic subset selection
@@ -368,7 +374,7 @@ struct inputStruct {
     bool BSREM = false;
     bool ROSEM_MAP = false;
     bool OSL_RBI = false;
-    bool OSL_COSEM = false;
+    uint32_t OSL_COSEM = 0;
     bool PKMA = false;
     bool SPS = false;
     bool PDHG = false;
@@ -395,8 +401,6 @@ struct inputStruct {
     bool RDP = false;
     bool GGMRF = false;
     bool ProxTV = false;
-    bool ProxRDP = false;
-    bool ProxNLM = false;
 	bool temporalTV = false;
 	bool temporal_smoothness = false;
     bool MAP = false;
@@ -404,6 +408,8 @@ struct inputStruct {
     uint64_t mDim;
     uint64_t nIterSaved;
     uint64_t sizeScat;
+    // Number of elements in the randoms/scatter (additive term) array
+    uint64_t sizeRandoms;
     uint64_t eFOV;
     uint64_t sizeX;
     uint64_t sizeZ;
@@ -577,6 +583,7 @@ struct inputStruct {
     float imageAttenuationGridSpacing[6] = {};
     float imageAttenuationGridOrigin[6] = {};
     // Neighborhood index/weight data for the L-filter and FMH priors
+
     uint32_t* tr_offsets = nullptr;
     float* a_L = nullptr;
     float* fmh_weights = nullptr;
@@ -595,6 +602,16 @@ struct inputStruct {
     uint32_t bpRot6 = 0U;
     float* radiusPerProj = nullptr;
     float CORtoDetectorSurface = 0.f;
+
+    // Sinogram normalization of the list-mode sensitivity image (index-based data) and the lookup tables from the detector pair
+    // (det_per_ring^2 elements) and the ring pair (rings^2 elements) to its sinogram bin/plane, sensBins = bins per plane.
+    // If sensXY is null, normSens is a full pair table (det_per_ring^2 * rings^2 * nLayers^2 elements, one value for each ordered pair)
+    float* normSens;
+    uint32_t* sensXY;
+    uint32_t* sensZ;
+    uint64_t sizeNormSens;
+    uint32_t sensBins;
+
 };
 
 void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting& w_vec, RecMethods& MethodList) {
@@ -632,8 +649,6 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     MethodList.GGMRF = options.GGMRF;
     MethodList.ProxTV = options.ProxTV;
     MethodList.ProxTGV = options.TGV;
-    MethodList.ProxRDP = options.ProxRDP;
-    MethodList.ProxNLM = options.ProxNLM;
 
     // Temporal priors
     MethodList.TemporalSmoothness = options.temporal_smoothness;
@@ -762,7 +777,8 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     }
 
 
-    inputScalars.tube_width = options.tube_width_z;
+    // Same selection as the MATLAB route (computeImplementation23.m): the axial width for axial tubes, otherwise the transaxial one
+    inputScalars.tube_width = options.orthAxial ? options.tube_width_z : options.tube_width_xy;
 
     // Center coordinates of voxels in the X-dimension
     inputScalars.x_center = options.x_center;
@@ -852,9 +868,9 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         inputScalars.FPType = 2;
     else if (inputScalars.projector_type == 3 || inputScalars.projector_type == 31 || inputScalars.projector_type == 34 || inputScalars.projector_type == 32 || inputScalars.projector_type == 33)
         inputScalars.FPType = 3;
-    else if (inputScalars.projector_type == 41 || inputScalars.projector_type == 4 || inputScalars.projector_type == 42 || inputScalars.projector_type == 43 || inputScalars.projector_type == 45 || inputScalars.projector_type == 47)
+    else if (inputScalars.projector_type == 41 || inputScalars.projector_type == 4 || inputScalars.projector_type == 42 || inputScalars.projector_type == 43 || inputScalars.projector_type == 45 || inputScalars.projector_type == 44 || inputScalars.projector_type == 47)
         inputScalars.FPType = 4;
-    else if (inputScalars.projector_type == 51 || inputScalars.projector_type == 5 || inputScalars.projector_type == 54 || inputScalars.projector_type == 57)
+    else if (inputScalars.projector_type == 51 || inputScalars.projector_type == 5 || inputScalars.projector_type == 54 || inputScalars.projector_type == 55 || inputScalars.projector_type == 57)
         inputScalars.FPType = 5;
     else if (inputScalars.projector_type == 6)
         inputScalars.FPType = 6;
@@ -867,9 +883,9 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         inputScalars.BPType = 2;
     else if (inputScalars.projector_type == 13 || inputScalars.projector_type == 43 || inputScalars.projector_type == 23 || inputScalars.projector_type == 33 || inputScalars.projector_type == 3)
         inputScalars.BPType = 3;
-    else if (inputScalars.projector_type == 14 || inputScalars.projector_type == 4 || inputScalars.projector_type == 24 || inputScalars.projector_type == 34 || inputScalars.projector_type == 54 || inputScalars.projector_type == 74)
+    else if (inputScalars.projector_type == 14 || inputScalars.projector_type == 4 || inputScalars.projector_type == 24 || inputScalars.projector_type == 34 || inputScalars.projector_type == 54 || inputScalars.projector_type == 44 || inputScalars.projector_type == 74)
         inputScalars.BPType = 4;
-    else if (inputScalars.projector_type == 15 || inputScalars.projector_type == 5 || inputScalars.projector_type == 45 || inputScalars.projector_type == 75)
+    else if (inputScalars.projector_type == 15 || inputScalars.projector_type == 5 || inputScalars.projector_type == 45 || inputScalars.projector_type == 55 || inputScalars.projector_type == 75)
         inputScalars.BPType = 5;
     else if (inputScalars.projector_type == 6)
         inputScalars.BPType = 6;
@@ -883,6 +899,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.flat = options.flat;
     inputScalars.useMAD = options.useMAD;
     inputScalars.useImages = options.useImages;
+    inputScalars.useHalf = options.useHalf;
     inputScalars.listmode = options.listmode;
     inputScalars.relaxScaling = options.relaxationScaling;
     inputScalars.computeRelaxation = options.computeRelaxationParameters;
@@ -893,7 +910,8 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.CTAttenuation = options.CTAttenuation;
     inputScalars.largeDim = options.largeDim;
     inputScalars.usingLinearizedData = options.usingLinearizedData;
-    inputScalars.loadTOF = options.loadTOF; 
+    inputScalars.loadTOF = options.loadTOF;
+    inputScalars.randomsTOF = options.randomsTOF;
     inputScalars.storeResidual = options.storeResidual;
     inputScalars.FISTAAcceleration = options.FISTA_acceleration;
     inputScalars.stochastic = options.stochasticSubsetSelection;
@@ -984,9 +1002,10 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         if (inputScalars.useHelical)
             inputScalars.helicalRadius = options.helicalRadius;
     }
-	else if (inputScalars.SPECT && (inputScalars.projector_type == 1 || inputScalars.projector_type == 2 || inputScalars.projector_type == 3 || inputScalars.projector_type == 22 || inputScalars.projector_type == 11 || inputScalars.projector_type == 13 || inputScalars.projector_type == 23 || inputScalars.projector_type == 33 || inputScalars.projector_type == 31 || inputScalars.projector_type == 32)) {
+    else if (inputScalars.SPECT) {
         inputScalars.nColsD = options.nColsD;
         inputScalars.nRowsD = options.nRowsD;
+
         inputScalars.coneOfResponseStdCoeffA = options.coneOfResponseStdCoeffA;
         inputScalars.coneOfResponseStdCoeffB = options.coneOfResponseStdCoeffB;
         inputScalars.coneOfResponseStdCoeffC = options.coneOfResponseStdCoeffC;
@@ -1010,6 +1029,25 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         inputScalars.ellipseRadiusY = options.ellipseRadiusY;
         inputScalars.ellipseRadiusZ = options.ellipseRadiusZ;
         inputScalars.ellipsePower = std::isfinite(options.ellipsePower) ? options.ellipsePower : std::numeric_limits<float>::max();
+
+
+        inputScalars.nHeads = options.nHeads;
+        if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
+            inputScalars.coneOfResponseStdCoeffA = options.coneOfResponseStdCoeffA;
+            inputScalars.coneOfResponseStdCoeffB = options.coneOfResponseStdCoeffB;
+            inputScalars.coneOfResponseStdCoeffC = options.coneOfResponseStdCoeffC;
+            inputScalars.ellipseCenterX = options.ellipseCenterX;
+            inputScalars.ellipseCenterY = options.ellipseCenterY;
+            inputScalars.ellipseCenterZ = options.ellipseCenterZ;
+            inputScalars.ellipseRadiusX = options.ellipseRadiusX;
+            inputScalars.ellipseRadiusY = options.ellipseRadiusY;
+            inputScalars.ellipseRadiusZ = options.ellipseRadiusZ;
+            inputScalars.ellipsePower = options.ellipsePower;
+            // Kernels test for box support with a finite threshold, as isinf() is unreliable under fast-math
+            if (!std::isfinite(inputScalars.ellipsePower))
+                inputScalars.ellipsePower = std::numeric_limits<float>::max();
+        }
+
     } else {
         inputScalars.nColsD = options.Nang;
         inputScalars.nRowsD = options.Ndist;
@@ -1284,7 +1322,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         }
     }
     // General variables for neighborhood-based methods
-    if ((MethodList.L || MethodList.FMH || MethodList.WeightedMean || MethodList.Quad || MethodList.Huber || MethodList.MRP || MethodList.NLM || MethodList.ProxNLM || MethodList.hyperbolic || MethodList.RDP
+    if ((MethodList.L || MethodList.FMH || MethodList.WeightedMean || MethodList.Quad || MethodList.Huber || MethodList.MRP || MethodList.NLM || MethodList.hyperbolic || MethodList.RDP
         || MethodList.GGMRF) && MethodList.MAP) {
         // Neighborhood size
         w_vec.Ndx = options.Ndx;
@@ -1325,7 +1363,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.data.SATVPhi = options.hyperbolicDelta;
     }
 #endif
-    if ((MethodList.RDP && MethodList.MAP) || MethodList.ProxRDP) {
+    if (MethodList.RDP && MethodList.MAP) {
         w_vec.RDP_gamma = options.RDP_gamma;
         w_vec.RDPLargeNeighbor = options.RDPIncludeCorners;
         w_vec.RDP_anatomical = options.RDP_use_anatomical;
@@ -1433,7 +1471,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.h_ACOSEM = options.h_ACOSEM;
         w_vec.h_ACOSEM_2 = 1.f / w_vec.h_ACOSEM;
     }
-    if ((MethodList.NLM && MethodList.MAP) || MethodList.ProxNLM) {
+    if (MethodList.NLM && MethodList.MAP) {
         w_vec.NLM_anatomical = options.NLM_use_anatomical;
         w_vec.NLTV = options.NLTV;
         w_vec.NLRD = options.NLRD;
@@ -1559,6 +1597,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         }
     }
     inputScalars.useFDKWeights = options.useFDKWeights;
+    inputScalars.useLayeredBP = options.useLayeredBP;
     if (MethodList.FDK && inputScalars.CT && inputScalars.useFDKWeights) {
         w_vec.angles = options.angles;
         inputScalars.DSC = options.sourceToCRot;

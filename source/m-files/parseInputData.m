@@ -266,7 +266,14 @@ if options.subsets > 1 && options.subset_type > 0
                 end
                 clear temp
             else
-                if iscell(options.SinDelayed)
+                if isfield(options, 'randomsTOF') && options.randomsTOF
+                    % TOF-resolved additive term, reordered in each TOF bin as the TOF measurements
+                    if iscell(options.SinDelayed)
+                        options.SinDelayed{1} = reorderTOFAdditive(options.SinDelayed{1}, options, index);
+                    else
+                        options.SinDelayed = reorderTOFAdditive(options.SinDelayed, options, index);
+                    end
+                elseif iscell(options.SinDelayed)
                     if options.subset_type >= 8
                         options.SinDelayed{1} = reshape(options.SinDelayed{1}, options.nRowsD, options.nColsD, []);
                         options.SinDelayed{1} = options.SinDelayed{1}(:,:,index);
@@ -401,3 +408,17 @@ for kk = 1 : numel(inputFrames)
 end
 output = vertcat(inputFrames{:});
 end
+
+
+function additive = reorderTOFAdditive(additive, options, index)
+% Reorders a TOF-resolved additive term (randoms/scatter with the size and order of the TOF measurements, the TOF bin is the slow
+% index) to the subset order. Each TOF bin is reordered the same way as the non-TOF additive term and the TOF measurements
+additive = additive(:);
+if options.subset_type >= 8
+    additive = reshape(additive, options.nRowsD, options.nColsD, [], options.TOF_bins);
+    additive = additive(:,:,index,:);
+else
+    additive = reshape(additive, [], options.TOF_bins);
+    additive = additive(index,:);
+end
+additive = additive(:);

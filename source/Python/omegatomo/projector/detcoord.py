@@ -20,6 +20,7 @@ from typing import Tuple
 import warnings
 import numpy as np
 from omegatomo.projector import proj
+from omegatomo.projector.coordinates import expandLayerParameters
 
 def CTDetSource(options):
     """
@@ -39,16 +40,23 @@ def CTDetSource(options):
     None.
 
     """
-    if options.angles.size == options.nProjections:
-        options.angles = options.angles.reshape(1, 1, -1)
+    bedOffset = np.asarray(options.bedOffset).ravel()
+    nBed = bedOffset.size
+    if nBed > 1 and options.nProjections % nBed != 0:
+        raise ValueError('The number of projections (' + str(options.nProjections) + ') has to be divisible by the number of bed positions (' + str(nBed) + ')!')
+    angles = np.asarray(options.angles)
+    if angles.size == options.nProjections:
+        angles = angles.reshape(1, 1, -1)
     else:
-        if options.angles.shape[0] == options.nProjections:
-            options.angles = options.angles[:, 0]
+        if angles.shape[0] == options.nProjections:
+            angles = angles[:, 0].reshape(1, 1, -1)
+        elif nBed > 1 and angles.shape[0] * nBed == options.nProjections:
+            # The angles of one bed position are repeated for every bed position
+            angles = np.tile(angles.reshape(1, 1, -1, order='F'), (1, 1, nBed))
         else:
-            options.angles = options.angles[0, :]
-            options.angles = options.angles.ravel()
-    
-    R = np.concatenate((np.concatenate((np.cos(options.angles), -np.sin(options.angles)), axis=1), np.concatenate((np.sin(options.angles), np.cos(options.angles)), axis=1)))
+            angles = angles[0, :].reshape(1, 1, -1)
+
+    R = np.concatenate((np.concatenate((np.cos(angles), -np.sin(angles)), axis=1), np.concatenate((np.sin(angles), np.cos(angles)), axis=1)))
     
     if isinstance(options.sourceToCRot, np.ndarray):
         sourceCoordX = -options.sourceToCRot
@@ -96,8 +104,9 @@ def CTDetSource(options):
             detCoordY = options.detOffsetRow
     else:
         detCoordY = np.array(options.detOffsetRow, dtype=np.float32)
-    detCoordX = np.reshape(detCoordX, (-1, 1, 1))
-    detCoordY = np.reshape(detCoordY, (-1, 1, 1))
+    # Projection index on the last axis (as R and the tiling below expect), so that per-projection offsets work
+    detCoordX = np.reshape(detCoordX, (1, 1, -1))
+    detCoordY = np.reshape(detCoordY, (1, 1, -1))
     if detCoordX.size != sourceCoordX.size:
         detCoordX = np.tile(detCoordX, sourceCoordX.size // detCoordX.size)
     if detCoordY.size != sourceCoordY.size:
@@ -115,12 +124,11 @@ def CTDetSource(options):
         options.z = np.column_stack((np.reshape(sourceCoordZ, (-1, 1)), np.tile(detCoordZ, sourceCoordZ.size)))
     else:
         options.z = np.column_stack((sourceCoordZ, np.reshape(detCoordZ, (-1, 1))))
-    if options.bedOffset.size > 0:
-        options.x = np.tile(options.x, (options.bedOffset.size, 1))
-        options.y = np.tile(options.y, (options.bedOffset.size, 1))
-        options.z = np.add(np.tile(options.z, (options.bedOffset.size, 1)), np.tile((options.bedOffset - options.bedOffset[-1] / 2), (options.nProjections, 1)))
-    if options.angles.size == options.nProjections:
-        options.angles = options.angles.reshape(-1, 1)
+    if nBed > 1:
+        # Step-and-shoot: the bed offset of each bed position is added to the z-coordinates of the projections of that bed
+        options.z = options.z + np.repeat(bedOffset - bedOffset[-1] / 2, options.nProjections // nBed).reshape(-1, 1)
+    if angles.size == options.nProjections:
+        options.angles = angles.reshape(-1, 1)
 
 def setCTCoordinates(options):
     """
@@ -151,8 +159,8 @@ def setCTCoordinates(options):
         options.coord = True
         if np.size(options.z) / 2 > np.size(options.angles):
             if options.angles.shape[0] == 1:
-                options.angles = np.reshape(options.angles, (-1, 1, 1))
-            options.angles = np.tile(options.angles, (len(options.z) // 2 // np.size(options.angles), 1, 1))
+                options.angles = np.reshape(options.angles, (-1, 1))
+            options.angles = np.tile(options.angles, (options.z.shape[0] // options.angles.shape[0], 1))
     elif abs(options.offangle) > 0:
         R = np.array([[np.cos(options.offangle), -np.sin(options.offangle)],
                       [np.sin(options.offangle), np.cos(options.offangle)]])
@@ -170,19 +178,18 @@ def setCTCoordinates(options):
         options.y = -options.y
         if options.uV.size > 0:
             options.uV[:,1] = -options.uV[:,1]
-            if options.pitchRoll.size > 0:
+            if options.pitchRoll.size > 0 or (options.uV.ndim == 2 and options.uV.shape[1] == 6):
                 options.uV[:,4] = -options.uV[:,4]
     if options.uV.size > 0:
         options.x = np.column_stack((options.x[:,0], options.y[:,0], options.z[:,0], options.x[:,1], options.y[:,1], options.z[:,1]))
         options.z = options.uV
-    if options.pitchRoll.size > 0:
+    if options.pitchRoll.size > 0 or (options.uV.ndim == 2 and options.uV.shape[1] == 6):
         options.pitch = True
-        # Scale by physical axis, not by vector: the in-plane (x,y)
-        # components of both the u- and v-direction vectors use the
-        # transaxial pitch, while the axial (z) component of both vectors
-        # uses the axial pitch (setCTCoordinates.m:61-71 pattern [X,X,Y,X,X,Y]).
-        options.z[:, [0, 1, 3, 4]] *= options.dPitchX
-        options.z[:, [2, 5]] *= options.dPitchY
+        # Scale by vector: the detector-row direction u (columns 0-2) by the
+        # row pitch dPitchX and the detector-column direction v (columns 3-5)
+        # by the column pitch dPitchY (setCTCoordinates.m).
+        options.z[:, 0:3] *= options.dPitchX
+        options.z[:, 3:6] *= options.dPitchY
     elif options.uV.size > 0:
         options.z[:,0] = options.z[:,0] * options.dPitchX
         options.z[:,1] = options.z[:,1] * options.dPitchX
@@ -276,6 +283,7 @@ def getCoordinates(options):
         z-direction coordinates for detector/detector pairs.
 
     """
+    expandLayerParameters(options)
     if isinstance(options.x, np.ndarray) and options.x.size > 1 and options.y.size > 1 and options.listmode == 0:
         if not(options.z.size == options.x.size) and options.z.size < options.nProjections:
             options.z = np.zeros(options.x.shape,dtype=np.float32)
@@ -338,12 +346,15 @@ def getCoordinates(options):
                 x, y = _rawLayerDetectors(options, x, y)
             # if options.sampling_raw > 1 and ~options.precompute_lor
             #     [x, y, options] = increaseSampling(options, x, y, interpolateSinogram);
-            z_length = float(options.rings + np.sum(options.pseudot)) * options.cr_pz
-        
-            z = np.linspace(-(z_length / 2 - options.cr_pz / 2), z_length / 2 - options.cr_pz / 2, options.rings + int(np.sum(options.pseudot)),dtype=np.float32)
-        
-            if np.sum(options.pseudot) > 0:
-                z = np.delete(z, np.where(options.pseudot))
+            # The pseudo ring slots are included in the axial coordinates and then removed (z(pseudot) = [] in MATLAB)
+            pseudoPositions = _pseudoRingPositions(options)
+            nPseudos = pseudoPositions.size
+            z_length = float(options.rings + nPseudos) * options.cr_pz
+
+            z = np.linspace(-(z_length / 2 - options.cr_pz / 2), z_length / 2 - options.cr_pz / 2, options.rings + nPseudos,dtype=np.float32)
+
+            if nPseudos > 0:
+                z = np.delete(z, pseudoPositions - 1)
             # Gaps between the axial blocks
             if len(options.ringGaps) > 0 and np.sum(options.ringGaps) > 0:
                 # With layers that have a different number of axial crystals, the axial blocks have as many ring slots as the largest layer
@@ -356,6 +367,34 @@ def getCoordinates(options):
 
             x = np.asfortranarray(np.vstack((x, y)))
     return x, y, z
+
+def _pseudoRingPositions(options):
+    """
+    The 1-based positions of the pseudo rings among the rings + pseudo rings.
+    options.pseudot is either the number of pseudo rings (as input by the
+    user) or the positions of them (after projectorClass.addProjector has
+    converted it, options.pseudotPositions = True). A pseudo ring is located
+    after every cryst_per_block_axial rings (the largest axial block of the
+    layers in multi-layer scanners).
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Returns
+    -------
+    positions : NumPy array
+        The 1-based pseudo ring positions, empty if there are none.
+
+    """
+    pseudot = np.atleast_1d(np.asarray(options.pseudot)).ravel()
+    if pseudot.size == 0 or np.sum(pseudot) <= 0:
+        return np.empty(0, dtype=np.int64)
+    if pseudot.size > 1 or getattr(options, 'pseudotPositions', False):
+        return pseudot.astype(np.int64)
+    axialBlock = int(np.max(np.atleast_1d(options.cryst_per_block_axial)))
+    return (axialBlock + 1) * np.arange(1, int(pseudot[0]) + 1, dtype=np.int64)
 
 def _rawLayerDetectors(options, xp, yp):
     """
@@ -532,6 +571,7 @@ def detectorCoordinates(options):
 
     """
     from omegatomo.util.matlabRound import matlabRound
+    expandLayerParameters(options)
     cr_p = options.cr_p
     diameter = options.diameter
     if isinstance(options.cryst_per_block, np.ndarray):
@@ -586,8 +626,9 @@ def detectorCoordinates(options):
             blockSize = max(cpb1, cpb2)
         x1,y1 = computeCoordinates(options, blocks_per_ring, transaxial_multip, cpb1, diameter, cr_p, usePseudo)
         x1,y1 = _padLayerBlocks(x1, y1, cpb1 + int(usePseudo), blockSize, nBlocksRing)
-        # orig_diameter = diameter + options.crystH(end) * 2;
-        diameter = diameter + DOI * 2 + options.crystH[0] * 2
+        # The second layer starts at the inner face of the second layer, i.e. the inner diameter of the first layer plus the
+        # thickness of the first layer. The DOI (already included in diameter) is added only once.
+        diameter = diameter + options.crystH[0] * 2
         x2,y2 = computeCoordinates(options, blocks_per_ring, transaxial_multip, cpb2, diameter, cr_p, usePseudo)
         x2,y2 = _padLayerBlocks(x2, y2, cpb2 + int(usePseudo), blockSize, nBlocksRing)
         koko = x1.size
@@ -598,8 +639,16 @@ def detectorCoordinates(options):
         x,y = computeCoordinates(options, blocks_per_ring, transaxial_multip,cryst_per_block, diameter, cr_p, False)
 
     if options.flip_image:
-        x = np.flip(x)
-        y = np.flip(y)
+        # The ring is mirrored while the block structure is kept: the real detectors are reversed, but the pseudo detector
+        # and the Inf padding of each block stay at the end of the block. Each layer is flipped separately so that the layer
+        # order is preserved.
+        nBlocksRing = int(blocks_per_ring * transaxial_multip)
+        if options.nLayers > 1 and koko is not None:
+            x = np.concatenate((_flipRing(x[:koko], nBlocksRing, cpb1, usePseudo), _flipRing(x[koko:], nBlocksRing, cpb2, usePseudo)))
+            y = np.concatenate((_flipRing(y[:koko], nBlocksRing, cpb1, usePseudo), _flipRing(y[koko:], nBlocksRing, cpb2, usePseudo)))
+        else:
+            x = _flipRing(x, nBlocksRing, cryst_per_block, usePseudo)
+            y = _flipRing(y, nBlocksRing, cryst_per_block, usePseudo)
     if not options.offangle == 0:
         if options.det_w_pseudo > options.det_per_ring:
             # The pseudo-inclusive array is rolled together with its pseudo
@@ -619,6 +668,42 @@ def detectorCoordinates(options):
             x = np.roll(x, int(matlabRound(options.offangle)))
             y = np.roll(y, int(matlabRound(options.offangle)))
     return x, y
+
+def _flipRing(v, nBlocks, nCryst, usePseudo):
+    """
+    Mirrors the detector ring of one layer (flip_image) while keeping the block
+    structure. v has nBlocks blocks of equal size, each block starting with
+    nCryst real detectors followed by the pseudo detector (if usePseudo) and the
+    Inf padding (if the block is larger). The blocks and the real detectors
+    within them are reversed, while the pseudo detector (a gap coordinate) and
+    the Inf padding stay at the end of each block. Without a pseudo detector
+    and padding this is the plain reversal.
+
+    Parameters
+    ----------
+    v : NumPy array
+        Coordinates of one layer, nBlocks blocks of equal size.
+    nBlocks : int
+        Number of blocks per transaxial ring.
+    nCryst : int
+        The number of real crystals at the start of each block.
+    usePseudo : bool
+        True if each block has a pseudo detector after the real crystals.
+
+    Returns
+    -------
+    v : NumPy array
+        The mirrored coordinates.
+
+    """
+    nPseudo = int(bool(usePseudo))
+    blockSize = v.size // nBlocks
+    nSlots = int(nCryst) + nPseudo
+    if nSlots == blockSize:
+        return np.roll(np.flip(v), -nPseudo)
+    blocks = v.reshape(nBlocks, blockSize).copy()
+    blocks[:, :nSlots] = _flipRing(blocks[:, :nSlots].ravel(), nBlocks, nCryst, usePseudo).reshape(nBlocks, nSlots)
+    return blocks.ravel()
 
 def _padLayerBlocks(x, y, slots, blockSize, nBlocks):
     """
@@ -859,6 +944,7 @@ def sinogramCoordinates2D(options, x, y, nLayers = 1, layers = (1, 1)):
         y-direction coordinates for sinogram bins.
 
     """
+    expandLayerParameters(options)
     det_w_pseudo = options.det_w_pseudo
     Nang = options.Nang
     Ndist = options.Ndist
@@ -1109,6 +1195,7 @@ def sinogramCoordinates3D(options, layers = (1,1)):
 
     """
     import math
+    expandLayerParameters(options)
     layer1 = layers[0]
     layer2 = layers[1]
     cr_pz = options.cr_pz
@@ -1783,3 +1870,108 @@ def SPECTParameters(options: proj.projectorClass):
         # even when the native library computes the CDRF on-the-fly.
         _type6_cdrf_resources(options, manualCDRF, False)
         options.type6TotalLength = _type6_total_lengths(options)
+
+
+def _sinogramPairLookupTransaxial(det_per_ring, Ndist, Nang, ndist_side):
+    """Transaxial part of sinogramPairLookup (the sinogram bin of every detector pair), see saveSinogram.h."""
+    d = int(det_per_ring)
+    half = d // 2
+    Ndist = int(Ndist)
+    Nang = int(Nang)
+    if half // Nang < 1:
+        raise ValueError('The number of sinogram angles (%d) can be at most the number of detectors per ring divided by two (%d)!' % (Nang, half))
+    pos = np.arange(d, dtype=np.int64)
+    ringPos1 = pos[:, None]
+    ringPos2 = pos[None, :]
+    xa = np.maximum(ringPos1, ringPos2)
+    ya = np.minimum(ringPos1, ringPos2)
+    j = ((xa + ya + half + 1) % d) // 2
+    i = np.abs(xa - ya - half)
+    i = np.where((ya < j) | (j + half < xa), -i, i)
+    # The "swap corners" of the sinogram
+    swap = ((j * 2) < -i) | (i <= (j - half) * 2)
+    # The default value for an even Ndist is the same as in saveSinogram
+    side = 1 if (Ndist % 2 == 0 and ndist_side == 0) else int(ndist_side)
+    if Ndist % 2 == 0:
+        accepted = (i <= Ndist // 2 + min(0, side)) & (i >= -(Ndist // 2) + max(0, side))
+        i = i + Ndist // 2 - max(0, side)
+    else:
+        accepted = (i <= Ndist // 2) & (i >= -(Ndist // 2))
+        i = i + Ndist // 2
+    j = j // (half // Nang)
+    # The sinogram bin, with the bit 31 set when the rings of the event have to be exchanged
+    flip = swap ^ (ringPos2 > ringPos1)
+    xyLookup = (i + j * Ndist).astype(np.uint32)
+    xyLookup[flip] |= np.uint32(0x80000000)
+    xyLookup[~accepted] = np.uint32(0xFFFFFFFF)
+    return xyLookup.ravel(order='F')
+
+
+def _sinogramPairLookupAxial(rings, ring_difference, span, segment_table, NSinos):
+    """Axial part of sinogramPairLookup (the sinogram plane of every ring pair), see saveSinogram.h."""
+    rings = int(rings)
+    span = int(span)
+    ring = np.arange(rings, dtype=np.int64)
+    ring1 = ring[:, None]
+    ring2 = ring[None, :]
+    if span <= 1:
+        plane = ring2 * rings + ring1
+    else:
+        seg = np.cumsum(np.asarray(segment_table, dtype=np.int64).ravel())
+        erotus = ring1 - ring2
+        summa = ring1 + ring2
+        absErotus = np.abs(erotus)
+        segment = (absErotus + span // 2) // span
+        outsideSegment0 = (absErotus > span // 2) & (absErotus <= int(ring_difference))
+        if np.any(outsideSegment0) and seg.size < segment[outsideSegment0].max() * 2:
+            raise ValueError('The segment table has too few elements for the ring difference (%d)!' % int(ring_difference))
+        segmentIndex = np.minimum(np.maximum(segment - 1, 0) * 2 + (erotus >= 0), seg.size - 1)
+        plane = np.where(absErotus <= span // 2, summa, summa - ((span // 2) * (segment * 2 - 1) + segment) + seg[segmentIndex])
+    valid = (np.abs(ring1 - ring2) <= int(ring_difference)) & (plane >= 0) & (plane < int(NSinos))
+    zLookup = plane.astype(np.uint32)
+    zLookup[~valid] = np.uint32(0xFFFFFFFF)
+    return zLookup.ravel(order='F')
+
+
+def sinogramPairLookup(det_per_ring, rings, Ndist, Nang, ring_difference, span, segment_table, NSinos, ndist_side=1):
+    """
+    Lookup tables from the detector pairs and the ring pairs to the sinogram bins and planes. Reproduces the sinogram
+    indexing of saveSinogram (source/cpp/saveSinogram.h) for the raw detector order, i.e. the table entries give the sinogram
+    element that the loaders would store an event with the given detector and ring indices to.
+
+    Parameters
+    ----------
+    det_per_ring : int
+        Number of detectors per ring.
+    rings : int
+        Number of rings.
+    Ndist : int
+        Number of radial bins of the sinogram.
+    Nang : int
+        Number of angles of the sinogram.
+    ring_difference : int
+        Maximum ring difference.
+    span : int
+        Span (axial mashing).
+    segment_table : array_like
+        Number of planes in each segment (options.segment_table, not cumulative). Not used with span <= 1.
+    NSinos : int
+        Number of sinogram planes.
+    ndist_side : int, optional
+        Which side the extra radial bin of an even Ndist is on (1 or -1). The default is 1.
+
+    Returns
+    -------
+    xyLookup : ndarray, uint32
+        det_per_ring**2 elements, the element of the detector pair (a, b) is xyLookup[a + b * det_per_ring]. The bits 0 - 30
+        contain the radial bin plus the angle times Ndist, the bit 31 is set if the rings of the event have to be exchanged
+        before using zLookup. 0xFFFFFFFF if the pair is outside the sinogram.
+    zLookup : ndarray, uint32
+        rings**2 elements, the element of the ring pair (r1, r2) (exchanged if xyLookup says so) is zLookup[r1 + r2 * rings].
+        The sinogram plane or 0xFFFFFFFF if the pair is outside the sinogram (ring difference).
+
+    The sinogram element of an event is xyLookup (bits 0 - 30) + zLookup * Ndist * Nang.
+    """
+    xyLookup = _sinogramPairLookupTransaxial(det_per_ring, Ndist, Nang, ndist_side)
+    zLookup = _sinogramPairLookupAxial(rings, ring_difference, span, segment_table, NSinos)
+    return xyLookup, zLookup

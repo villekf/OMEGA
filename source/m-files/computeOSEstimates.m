@@ -40,10 +40,18 @@ for ii = 1 : options.param.nMultiVolumes + 1
     end
 end
 
-if iscell(im_vectors.recApu)
-    dU = applyPrior(im_vectors.recApu{1}, options.param, options.param.beta, osa_iter);
+% Prior gradient of 1-subset PDHG is evaluated at the primal iterate uCP, not at the extrapolated image
+% (MATLAB has no dual-split prox priors here, ProxTV errors in applyPrior)
+priorAtU = (options.param.PDHG || options.param.PDHGKL || options.param.PDHGL1 || options.param.CV) && ~options.param.PDDY && options.param.subsets == 1 && isfield(im_vectors, 'uCP');
+if priorAtU
+    priorIm = im_vectors.uCP;
 else
-    dU = applyPrior(im_vectors.recApu, options.param, options.param.beta, osa_iter);
+    priorIm = im_vectors.recApu;
+end
+if iscell(priorIm)
+    dU = applyPrior(priorIm{1}, options.param, options.param.beta, osa_iter);
+else
+    dU = applyPrior(priorIm, options.param, options.param.beta, osa_iter);
 end
 if (options.param.PDDY)
     if iscell(im_vectors.recApu)

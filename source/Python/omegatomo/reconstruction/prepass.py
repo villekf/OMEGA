@@ -18,8 +18,50 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 """
 import os
+import sys
+import copy
 import math
 import numpy as np
+
+def _hasDisplay():
+    """Returns False when a file dialog cannot be shown: no X/Wayland display on Linux, or a non-interactive Windows session
+    (session 0: ssh and services, where a dialog would be invisible and wait forever)."""
+    if sys.platform == 'win32':
+        try:
+            import ctypes
+            sessionId = ctypes.c_ulong()
+            if ctypes.windll.kernel32.ProcessIdToSessionId(ctypes.windll.kernel32.GetCurrentProcessId(), ctypes.byref(sessionId)):
+                return sessionId.value != 0
+        except (AttributeError, OSError):
+            pass
+        return True
+    if sys.platform == 'darwin':
+        return True
+    return bool(os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY'))
+
+
+def _askOpenFile(title, filetypes, optionName):
+    """Asks for a file with a dialog. optionName is the option that gives the file without a dialog; it is named in the error
+    when the dialog cannot be shown."""
+    message = 'Cannot show the file dialog "%s" because no display is available! Set %s instead.' % (title, optionName)
+    if not _hasDisplay():
+        raise ValueError(message)
+    try:
+        import tkinter as tk
+        from tkinter.filedialog import askopenfilename
+    except ImportError:
+        raise ValueError(message) from None
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        raise ValueError(message) from None
+    root.withdraw()
+    nimi = askopenfilename(title=title, filetypes=filetypes)
+    root.destroy()
+    if len(nimi) == 0:
+        raise ValueError("No file selected!")
+    return nimi
+
 
 def _load_array_file(path, mat_key_index='auto'):
     """
@@ -598,7 +640,16 @@ def linearizeData(options):
     None.
 
     """
-    options.SinM = np.log(options.flat / options.SinM.astype(dtype=np.float32))
+    # The measurement is floored at flat * 1e-6 so that zero or negative (corrected) intensities do not give Inf/NaN.
+    # New arrays are created (no in-place operations), the input arrays can belong to the caller
+    flat = np.asarray(options.flat, dtype=np.float32)
+    def _lin(sino):
+        sino = np.asarray(sino).astype(np.float32)
+        return np.log(flat / np.maximum(sino, flat * np.float32(1e-6)))
+    if isinstance(options.SinM, list):
+        options.SinM = [_lin(frame) for frame in options.SinM]
+    else:
+        options.SinM = _lin(options.SinM)
 
 def _sharesCallerMemory(options, array):
     # Lazy import (recomain imports this module)
@@ -606,14 +657,24 @@ def _sharesCallerMemory(options, array):
     return shares(options, array)
 
 
-def _divideInPlaceUnlessShared(options, array, divisor):
+def _nonzeroDivisor(divisor):
     """
-    array / divisor with the dtype of the in-place division: done in place, or into
-    a new array if `array` is (a view of) the caller's array.
+    The divisor with the zero elements replaced by one, so that dividing by it leaves the values at the zero elements as
+    they are.
     """
+    divisor = np.asarray(divisor)
+    return np.where(divisor != 0, divisor, divisor.dtype.type(1))
+
+
+def _divideUnlessZero(options, array, divisor):
+    """
+    array / divisor with the dtype of the in-place division: done in place, or into a new array if `array` is (a view of)
+    the caller's array. The elements where the divisor is zero are not divided: they keep their value.
+    """
+    divisor = np.asarray(divisor)
     if _sharesCallerMemory(options, array):
-        return np.divide(array, divisor, out=np.empty_like(array))
-    array /= divisor
+        array = array.copy(order='K')
+    np.divide(array, divisor, out=array, where=divisor != 0)
     return array
 
 
@@ -636,6 +697,71 @@ def _perLORFactor(sinM, factor, tofBins, divide):
     return sinM / factor if divide else sinM * factor
 
 
+# Algorithms that use the exponential (intensity) model exp(-FP) * flat with CT data. All other algorithms are treated as linear
+_CT_COUNT_ALGORITHMS = ('OSEM', 'ROSEM', 'OSL_OSEM', 'ROSEM_MAP', 'RAMLA', 'BSREM', 'RBI', 'OSL_RBI', 'DRAMA', 'MBSREM', 'MRAMLA', 'SPS', 'PKMA', 'SAGA')
+_CT_ALGORITHMS = ('OSEM', 'MRAMLA', 'RAMLA', 'RBI', 'ROSEM', 'DRAMA', 'COSEM', 'ECOSEM', 'ACOSEM', 'LSQR', 'CGLS', 'FDK', 'FISTA', 'FISTAL1',
+                  'OSL_OSEM', 'MBSREM', 'BSREM', 'OSL_RBI', 'OSL_COSEM', 'ROSEM_MAP', 'PKMA', 'SPS', 'SART', 'ASD_POCS', 'SAGA', 'BB',
+                  'PDHG', 'PDHGL1', 'PDDY', 'PDHGKL', 'CV')
+
+
+def _ctNormalizationSetup(options):
+    """
+    Checks the CT normalization (options.normalization_correction is True) and selects how it is applied. The CT normalization
+    is a multiplicative factor of each measurement, input only as the array options.normalization: one map of the detector or
+    one value for each measurement (the map is tiled to all projections here, before the subset permutation in parseInputs).
+    Returns the mode
+      0: the data is assumed to be normalized already (options.corrections_during_reconstruction and options.precorrect are
+         both False, as with the other corrections), the normalization is not used
+      1 (host gain): intensity data, a count-based algorithm (OSEM, etc.) and corrections during reconstruction. The
+         normalization is a detector gain of the blank scan, ybar = flat * n * exp(-l), and it is used by the native library
+         (permuted to the subset order like the measurements)
+      2 (precorrection): options.precorrect, FDK or a linear algorithm (LSQR, PDHG, etc.) with intensity data. The measurements
+         are divided by the normalization before the linearization, the normalization is not used by the projectors
+      3 (kernel): pre-linearized data with a linear algorithm (also a projection operator without an algorithm). The
+         normalization is used in the projector kernels, y = n * (A x)
+    The randoms/scatter convention of CT is unchanged: the randoms and scatter estimates are in units of the flat value.
+    """
+    options._tileCTNormalization()
+    if options.Nt > 1:
+        raise ValueError('CT normalization is supported only with static data (one time frame)')
+    if options.largeDim:
+        raise ValueError('CT normalization is not supported with largeDim')
+    if options.useEFOV:
+        raise ValueError('CT normalization is not supported with extended FOV (options.useEFOV)')
+    if options.normalize_scatter:
+        raise ValueError('CT normalization is not supported with options.normalize_scatter')
+    active = [name for name in _CT_ALGORITHMS if getattr(options, name, False)]
+    anyCount = any(name in _CT_COUNT_ALGORITHMS for name in active)
+    anyLinear = any(name not in _CT_COUNT_ALGORITHMS for name in active)
+    countData = not options.usingLinearizedData
+    if len(active) > 0:
+        if options.implementation != 2 or options.useCPU:
+            raise ValueError('CT normalization is supported only with implementation 2 (OpenCL/CUDA/HIP), not with implementation 4 or with options.useCPU')
+        if anyCount and anyLinear:
+            raise ValueError('CT normalization supports only one algorithm at a time, but both count-based and linear algorithms are selected')
+        if anyCount and not countData:
+            raise ValueError('CT normalization with count-based algorithms needs intensity data (options.usingLinearizedData = False), '
+                             'the linearized data cannot be used')
+    if not options.corrections_during_reconstruction and not options.precorrect:
+        return 0
+    if options.precorrect or getattr(options, 'FDK', False) or (anyLinear and countData):
+        normalization = options.normalization
+        if not np.all(np.isfinite(normalization)) or np.any(normalization <= 0):
+            raise ValueError('CT normalization has non-positive or non-finite values, but the data is divided by the normalization. Set the '
+                             'normalization of dead or missing detector pixels to a positive value and exclude the pixels with the '
+                             'forward projection mask (options.maskFP)')
+        sinM = options.SinM
+        sinMSizes = [np.size(frame) for frame in sinM] if isinstance(sinM, list) else [np.size(sinM)]
+        if any(sinMSize != normalization.size for sinMSize in sinMSizes):
+            raise ValueError('Size mismatch between the CT measurements and the CT normalization')
+        return 2
+    if anyCount:
+        return 1
+    if int(options.projector_type) % 10 == 5:
+        raise ValueError('CT normalization with linearized data is not supported with backprojection type 5')
+    return 3
+
+
 def _subtractDelayed(sinM, delayed, tofBins):
     """
     Returns the measurement data sinM with the randoms estimate (non-TOF sinogram size)
@@ -649,6 +775,271 @@ def _subtractDelayed(sinM, delayed, tofBins):
         data = sinM.reshape((delayed.size, tofBins), order='F') - delayed.reshape((delayed.size, 1), order='F') / np.float32(tofBins)
         return data.reshape(shape, order='F')
     return sinM - delayed
+
+
+def _scatterTOFSize(options, scatter):
+    """
+    Classifies the size of the scatter data in a TOF reconstruction (PET sinograms; raw data, list-mode, index-based
+    and SPECT data keep their behaviour). Returns 'none' if the TOF size rules do not apply, 'nonTOF' for a non-TOF
+    sinogram (Ndist * Nang * NSinos or TotSinos elements, times the number of time frames) and 'TOF' for a
+    TOF-resolved sinogram (the same times TOF_bins). Any other size is an error.
+    """
+    if (options.TOF_bins <= 1 or options.use_raw_data or options.useIndexBasedReconstruction or options.listmode
+            or options.SPECT or np.size(scatter) <= 1):
+        return 'none'
+    frames = (1, int(options.Nt)) if options.Nt > 1 else (1,)
+    nonTOFSizes = {int(options.Ndist) * int(options.Nang) * int(nSinos) * frame
+                   for nSinos in (options.NSinos, options.TotSinos) for frame in frames}
+    nScatter = int(np.size(scatter))
+    if nScatter in nonTOFSizes:
+        return 'nonTOF'
+    if nScatter in {size * int(options.TOF_bins) for size in nonTOFSizes}:
+        return 'TOF'
+    raise ValueError('The scatter data has {} elements, which does not match the TOF data. With TOF the scatter data has to be a '
+                     'non-TOF sinogram of {} elements (Ndist * Nang * NSinos), or a TOF-resolved sinogram with '
+                     'precorrection'.format(nScatter, int(options.Ndist) * int(options.Nang) * int(options.NSinos)))
+
+
+def _scatterPerTOFBin(options, scatter):
+    """
+    Returns the scatter data (float32 copy) as it is added to the additive term of each TOF bin when the scatter is
+    subtracted during the reconstruction: a non-TOF scatter sinogram is divided evenly among the TOF bins (a message is
+    printed), TOF-resolved scatter data is used as it is (options.randomsTOF is set, the TOF bin is the slowest index as
+    with the TOF measurements; only the NSinos first sinograms of each bin are kept). TOF-resolved scatter data is
+    supported with a single time frame and without increased sampling, scatter smoothing, scatter variance reduction and
+    largeDim. The scatter data itself is not modified. List-mode and index-based data ('none' below) has one value for each event,
+    in the TOF bin of the event, which is used as it is: no division by the TOF bins.
+    """
+    kind = _scatterTOFSize(options, scatter)
+    options.randomsTOF = False
+    if kind == 'TOF':
+        if (options.Nt > 1 or isinstance(options.ScatterC, list) or options.sampling > 1 or options.scatter_smoothing
+                or options.scatter_variance_reduction or options.largeDim):
+            raise ValueError('TOF-resolved scatter data with corrections during reconstruction is supported only with static data (one '
+                             'time frame), without increased sampling (options.sampling > 1), scatter smoothing, scatter variance '
+                             'reduction and largeDim; use precorrection or a non-TOF scatter sinogram')
+        nSinograms = int(options.Ndist) * int(options.Nang)
+        if np.size(scatter) == nSinograms * int(options.TotSinos) * int(options.TOF_bins):
+            # Keep the NSinos first sinograms of each TOF bin
+            scatter = np.reshape(scatter, (nSinograms * int(options.TotSinos), int(options.TOF_bins)), order='F')
+            scatter = scatter[:nSinograms * int(options.NSinos), :]
+        options.randomsTOF = True
+        print('The scatter data is TOF-resolved and is used as it is in each of the ' + str(int(options.TOF_bins)) + ' TOF bins (the randoms are divided evenly among the TOF bins)')
+        return np.ravel(scatter, order='F').astype(np.float32)
+    scatter = scatter.astype(np.float32)
+    if kind == 'nonTOF':
+        print('The scatter data has no TOF bins and is divided evenly among the ' + str(int(options.TOF_bins)) + ' TOF bins')
+        scatter /= np.float32(options.TOF_bins)
+    return scatter
+
+
+def _scatterVarianceReduction(options, scatter):
+    """
+    Returns the scatter data with the 3D fan-sum variance reduction of the randoms (Randoms_variance_reduction) applied, as
+    MATLAB's loadCorrections.m does when options.scatter_variance_reduction is set. The scatter data (a list holds the time
+    frames) has to be a non-TOF PET sinogram of Ndist * Nang * TotSinos elements for each time frame, in the shape that was
+    input; the input is not modified.
+    """
+    from omegatomo.util.Randoms_variance_reduction import Randoms_variance_reduction
+    if isinstance(scatter, list):
+        return [_scatterVarianceReduction(options, frame) for frame in scatter]
+    scatter = np.asarray(scatter)
+    if scatter.size == 0:
+        return scatter
+    nFrame = int(options.Ndist) * int(options.Nang) * int(options.TotSinos)
+    nFrames = scatter.size // nFrame if nFrame > 0 else 0
+    if (options.CT or options.SPECT or options.listmode or options.useIndexBasedReconstruction or options.use_raw_data
+            or nFrames < 1 or scatter.size != nFrame * nFrames or nFrames > max(int(options.Nt), 1)):
+        raise ValueError('Scatter variance reduction is supported only for non-TOF PET sinogram scatter data with Ndist * Nang * TotSinos '
+                         '(%d) elements for each time frame, but the scatter data has %d elements! Use a scatter sinogram of that size '
+                         'or disable options.scatter_variance_reduction.' % (nFrame, scatter.size))
+    flat = np.ravel(scatter, order='F').astype(np.float32)
+    reduced = np.empty_like(flat)
+    for frame in range(nFrames):
+        sinogram = flat[frame * nFrame:(frame + 1) * nFrame].reshape((int(options.Ndist), int(options.Nang), int(options.TotSinos)), order='F')
+        reduced[frame * nFrame:(frame + 1) * nFrame] = np.ravel(Randoms_variance_reduction(sinogram, options), order='F')
+    return reduced.reshape(scatter.shape, order='F')
+
+
+def _subtractScatter(options, sinM, scatter):
+    """
+    Returns the measurement data sinM with the scatter estimate subtracted (precorrection). With TOF data the scatter
+    estimate is either TOF-resolved (subtracted as it is) or a non-TOF sinogram, which is divided evenly among the TOF
+    bins and subtracted from each bin (a message is printed), as in MATLAB's applyScatterRandoms.m.
+    """
+    kind = _scatterTOFSize(options, scatter)
+    sinM = sinM.astype(np.float32)
+    scatter = scatter.astype(np.float32)
+    if kind == 'none':
+        return sinM - scatter
+    if kind == 'TOF':
+        if scatter.size != sinM.size:
+            raise ValueError('Size mismatch between scatter correction data and measurement data')
+        return sinM - np.reshape(scatter, sinM.shape, order='F')
+    if scatter.size * options.TOF_bins != sinM.size:
+        raise ValueError('Size mismatch between scatter correction data and measurement data')
+    print('The scatter data has no TOF bins and is divided evenly among the ' + str(int(options.TOF_bins)) + ' TOF bins')
+    if sinM.ndim == 5 and sinM.shape[3] == options.TOF_bins:
+        # Dynamic data: (Ndist, Nang, NSinos, TOF, Nt), the TOF bins are not the slowest dimension
+        scatter = np.reshape(scatter, sinM.shape[:3] + (1, sinM.shape[4]), order='F')
+        return sinM - scatter / np.float32(options.TOF_bins)
+    return _subtractDelayed(sinM, scatter, options.TOF_bins)
+
+
+def _normalizationDims(options):
+    """
+    Returns the sinogram dimensions (Ndist, Nang, NSinos, TotSinos) that the normalization data are given in. Index-based
+    data has these collapsed (see addProjector()), so the values saved before the collapse are used for it.
+    """
+    dims = getattr(options, '_sinoDims', None)
+    if options.useIndexBasedReconstruction and dims is not None:
+        return dims
+    return (options.Ndist, options.Nang, options.NSinos, options.TotSinos)
+
+
+def _hasPairTable(options):
+    """
+    True if a pair normalization table was input (options.normSens without the lookup tables options.sensXY, which the
+    conversion of a sinogram normalization stores together with the sinogram), see _checkNormSensTable in proj.py.
+    """
+    return np.size(getattr(options, 'normSens', np.empty(0))) > 0 and np.size(getattr(options, 'sensXY', np.empty(0))) == 0
+
+
+def _convertIndexBasedNormalization(options, forSensitivity, isCorrectionFactor=False):
+    """
+    Converts the normalization of index-based list-mode data into the form used by the reconstruction: one value for each
+    event (options.normalization). The normalization can be given either as a sinogram (Ndist * Nang * NSinos elements, or
+    Ndist * Nang * TotSinos elements of which the first NSinos planes are used) or as one value for each event. The sinogram
+    value of an event is found with the lookup tables of sinogramPairLookup, i.e. the event is placed to the same sinogram
+    element as the loaders would place it. Events that are outside the sinogram (radial FOV, ring difference) get the
+    value zero.
+
+    A sinogram bin is the sum of all the LORs (detector pair and ring pair) that are placed to it (span > 1, mashing), but
+    an index-based event is a single LOR. A sinogram normalization is therefore divided by the number of LORs in its bin
+    (or multiplied by it, if it is a correction factor) before it is used. A normalization with one value for each event
+    is used as it is, so it has to be given for a single LOR.
+
+    With the sinogram form and forSensitivity set, the sinogram and the lookup tables are also stored in options.normSens,
+    options.sensXY, options.sensZ and options.sensBins, which are used to apply the normalization in the sensitivity image
+    (all detector pairs, not only the measured events).
+
+    If a pair normalization table was input (options.normSens without options.sensXY, see _checkNormSensTable), the normalization
+    must already be given as one value for each event. It is then used as it is and the table is not touched.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data. The normalization has to be already inverted, if it
+        was loaded from a file.
+    forSensitivity : bool
+        If True, the normalization is also used in the sensitivity image if it is computed
+        (options.compute_sensitivity_image).
+    isCorrectionFactor : bool, optional
+        If True, a sinogram normalization is a correction factor that multiplies the data (prefilled normalization in
+        the precorrection), so it is multiplied by the number of LORs in the bin instead of dividing by it. The default is
+        False (the normalization is a multiplier in the reconstruction).
+
+    Raises
+    ------
+    ValueError
+        If the size of the normalization is incorrect or the sinogram form cannot be used with the current scanner
+        settings.
+
+    Returns
+    -------
+    None.
+
+    """
+    from omegatomo.projector.detcoord import sinogramPairLookup
+    Ndist, Nang, NSinos, TotSinos = (int(v) for v in _normalizationDims(options))
+    nSino = Ndist * Nang * NSinos
+    nTot = Ndist * Nang * TotSinos
+    if isinstance(options.trIndex, list):
+        if len(options.trIndex) > 1:
+            raise ValueError('Normalization correction is not supported for dynamic index-based data!')
+        trIndex = options.trIndex[0]
+        axIndex = options.axIndex[0]
+    else:
+        trIndex = options.trIndex
+        axIndex = options.axIndex
+    nEvents = np.size(trIndex) // 2
+    normalization = np.asarray(options.normalization).ravel(order='F')
+    if _hasPairTable(options):
+        # A pair table (options.normSens, see _checkNormSensTable) is used in the sensitivity image, the normalization has to be
+        # given for the events and is used as it is: a sinogram is not converted, since that would replace the pair table
+        if normalization.size != nEvents:
+            raise ValueError('With a pair normalization table (options.normSens) options.normalization has to contain one value for each '
+                             'event (%d elements), but it has %d elements! The table is used only in the sensitivity image, a sinogram '
+                             'normalization is not converted to the events.' % (nEvents, normalization.size))
+        options.normalization = normalization.astype(np.float32)
+        return
+    if normalization.size == nSino or normalization.size == nTot:
+        if options.nLayers > 1:
+            raise ValueError('Index-based reconstruction supports a sinogram normalization only with a single layer! Input the normalization '
+                             'as one value for each event (%d elements) instead.' % nEvents)
+        if options.det_w_pseudo != options.det_per_ring or np.size(options.pseudot) > 0:
+            raise ValueError('Index-based reconstruction supports a sinogram normalization only without pseudo detectors and pseudo rings! '
+                             'Input the normalization as one value for each event (%d elements) instead.' % nEvents)
+        detPerRing = int(options.det_per_ring)
+        rings = int(options.rings)
+        if (detPerRing // 2) % Nang != 0:
+            raise ValueError('The number of sinogram angles (%d) has to divide the number of detectors per ring divided by two (%d) in '
+                             'order to use a sinogram normalization!' % (Nang, detPerRing // 2))
+        tr = np.asarray(trIndex).reshape(2, -1, order='F').astype(np.int64)
+        ax = np.asarray(axIndex).reshape(2, -1, order='F').astype(np.int64)
+        if tr.size > 0 and tr.max() >= detPerRing:
+            raise ValueError('options.trIndex contains detector indices (maximum %d) that are beyond the number of detectors per ring (%d)!' % (tr.max(), detPerRing))
+        if ax.size > 0 and ax.max() >= rings:
+            raise ValueError('options.axIndex contains ring indices (maximum %d) that are beyond the number of rings (%d)!' % (ax.max(), rings))
+        # A copy: the sinogram is modified in place below and the normalization can be the caller's array
+        sinogram = np.array(normalization[:nSino], dtype=np.float32, order='C')
+        xyLookup, zLookup = sinogramPairLookup(detPerRing, rings, Ndist, Nang, options.ring_difference, options.span,
+                                               options.segment_table, NSinos, options.ndist_side)
+        # A sinogram bin is the sum of its LORs (span > 1, mashing) but each event is a single LOR, so the number of
+        # LORs in the bin (detector pairs a < b in the radial/angular bin times ordered ring pairs in the plane) is used
+        outside = np.uint32(0xFFFFFFFF)
+        nz = np.bincount(zLookup[zLookup != outside], minlength=NSinos)
+        xyPairs = xyLookup.reshape((detPerRing, detPerRing), order='F')[np.triu_indices(detPerRing, 1)]
+        nt = np.bincount((xyPairs[xyPairs != outside] & np.uint32(0x7FFFFFFF)).astype(np.int64), minlength=Ndist * Nang)
+        del xyPairs
+        sinogram = sinogram.reshape((NSinos, Ndist * Nang))
+        for k in range(NSinos):
+            count = (nt * nz[k]).astype(np.float32)
+            reachable = count > 0
+            if isCorrectionFactor:
+                sinogram[k, reachable] *= count[reachable]
+            else:
+                sinogram[k, reachable] /= count[reachable]
+        sinogram = sinogram.ravel()
+        xy = xyLookup[tr[0] + tr[1] * detPerRing]
+        # The rings are exchanged for the events whose detectors are swapped in the sinogram
+        flip = (xy & np.uint32(0x80000000)) != 0
+        ring1 = np.where(flip, ax[1], ax[0])
+        ring2 = np.where(flip, ax[0], ax[1])
+        plane = zLookup[ring1 + ring2 * rings]
+        inside = (xy != np.uint32(0xFFFFFFFF)) & (plane != np.uint32(0xFFFFFFFF))
+        index = (xy & np.uint32(0x7FFFFFFF)).astype(np.int64) + plane.astype(np.int64) * (Ndist * Nang)
+        eventNormalization = np.zeros(nEvents, dtype=np.float32)
+        eventNormalization[inside] = sinogram[index[inside]]
+        options.normalization = eventNormalization
+        if options.compute_sensitivity_image and forSensitivity:
+            options.normSens = sinogram
+            options.sensXY = xyLookup
+            options.sensZ = zLookup
+            options.sizeNormSens = sinogram.size
+            options.sensBins = Ndist * Nang
+    elif normalization.size == nEvents:
+        # The normalization has been converted by an earlier call with the same options (the sinogram is stored in
+        # options.normSens), it is used as it is
+        if options.compute_sensitivity_image and forSensitivity and np.size(getattr(options, 'normSens', np.empty(0))) == 0:
+            raise ValueError('The sensitivity image of index-based data needs the normalization as a sinogram (%d elements%s) in order to '
+                             'apply it to all detector pairs, but one value for each event (%d elements) was input!'
+                             % (nSino, '' if nTot == nSino else ', or %d elements of which the first %d are used' % (nTot, nSino), nEvents))
+        options.normalization = normalization.astype(np.float32)
+    else:
+        raise ValueError('The size of the normalization (%d elements) does not match index-based data! It has to be either a sinogram '
+                         '(Ndist * Nang * NSinos = %d elements%s) or one value for each event (%d elements).'
+                         % (normalization.size, nSino, '' if nTot == nSino else ', or Ndist * Nang * TotSinos = %d elements of which the first %d are used' % (nTot, nSino), nEvents))
 
 
 def loadCorrections(options):
@@ -712,6 +1103,20 @@ def loadCorrections(options):
         # no randoms/scatter data is loaded or applied (SinDelayed is not read from the file)
         options.randoms_correction = False
         options.scatter_correction = False
+    if (options.scatter_correction and not options.CT and not options.SPECT and not (options.listmode and options.subtract_scatter)
+            and _scatterIsEmpty(options.ScatterC)):
+        # Mirrors MATLAB's loadCorrections.m: the scatter data is loaded from a file if it has not been input. The scatter data of
+        # list-mode and index-based data is always input (validated in OMEGAErrorCheck), SPECT scatter is input as the energy windows
+        _loadScatterData(options)
+    if options.listmode and not options.CT and not options.SPECT and options.scatter_correction and options.subtract_scatter:
+        # List-mode and index-based PET data: options.ScatterC is the additive term of each event (measured counts for the LOR and,
+        # with TOF data, the TOF bin of the event; validated in OMEGAErrorCheck), used as it is: no TOF_bins division and no sinogram
+        # operations (see _scatterTOFSize). It reaches the reconstruction through SinDelayed below. Randoms are not used with
+        # list-mode data (the randoms_correction gate in addProjector), a randoms estimate is added into ScatterC by the user
+        if options.SinDelayed.size > 1:
+            print('Warning: Randoms (options.SinDelayed) are not used with list-mode and index-based data! Add the randoms into options.ScatterC. Ignoring options.SinDelayed.')
+            options.SinDelayed = np.empty(0, dtype=np.float32)
+        options.ScatterC = np.ravel(options.ScatterC, order='F').astype(np.float32)
     normalization_shape = np.asarray(options.normalization).shape
     options.normZ = int(normalization_shape[2]) if options.SPECT and len(normalization_shape) == 3 else 1
     normalization_indexed_stack = bool(options.SPECT and int(options.normZ) == int(options.nHeads))
@@ -743,8 +1148,15 @@ def loadCorrections(options):
         return expanded
 
     if options.attenuation_correction == 1:
+        attenuationInmm = False  # True if the attenuation map was generated here (CT DICOM) and is already in 1/mm
         if options.vaimennus.size == 0:
-            if len(options.attenuation_datafile) > 0 and os.path.splitext(options.attenuation_datafile)[1].lower() == '.mhd':
+            if options.SPECT and len(options.attenuation_datafile) == 0:
+                # SPECT attenuation image from a CT DICOM series (options.fpathCT, options.keV, options.refSPECT)
+                from ..fileio.spectCTAttenuation import loadSPECTCTAttenuation
+                options.vaimennus = loadSPECTCTAttenuation(options)
+                # The CT-derived attenuation map (HU_to_mu) is already in 1/mm
+                attenuationInmm = True
+            elif len(options.attenuation_datafile) > 0 and os.path.splitext(options.attenuation_datafile)[1].lower() == '.mhd':
                 try:
                     from SimpleITK import ReadImage as loadMetaImage
                     from SimpleITK import GetArrayFromImage
@@ -763,13 +1175,7 @@ def loadCorrections(options):
             elif len(options.attenuation_datafile) > 0 and os.path.splitext(options.attenuation_datafile)[1].lower() in ('.npy', '.npz'):
                 options.vaimennus = _load_array_file(options.attenuation_datafile)
             else:
-                import tkinter as tk
-                from tkinter.filedialog import askopenfilename
-                root = tk.Tk()
-                root.withdraw()
-                nimi = askopenfilename(title='Select attenuation datafile',filetypes=(('MHD, NPY, NPZ and MAT files','*.mhd *.mat *.npy *.npz'),('All','*.*')))
-                if len(nimi) == 0:
-                    raise ValueError("No file selected!")
+                nimi = _askOpenFile('Select attenuation datafile', (('MHD, NPY, NPZ and MAT files','*.mhd *.mat *.npy *.npz'),('All','*.*')), 'options.attenuation_datafile')
                 nimiExt = os.path.splitext(nimi)[1].lower()
                 if nimiExt == '.mhd':
                     try:
@@ -792,70 +1198,189 @@ def loadCorrections(options):
                 else:
                     raise ValueError('Unsupported datatype!')
         if options.CT_attenuation:
-            _prepare_image_domain_attenuation(options)
+            if options.vaimennus.ndim == 1:
+                size_mismatch = options.vaimennus.shape[0] != options.N[0]
+            else:
+                size_mismatch = (not options.vaimennus.shape[0] == options.Nx[0] or not options.vaimennus.shape[1] == options.Ny[0].item() or not options.vaimennus.shape[2] == options.Nz[0].item())
+            if size_mismatch:
+                if options.vaimennus.shape[0] != options.N[0]:
+                    print('Error: Attenuation data is of different size than the reconstructed image. Attempting resize!')
+                    if options.vaimennus.ndim == 1:
+                        raise ValueError('The attenuation image should be a 3D volume in order for the resize to work properly!')
+                    from scipy.ndimage import zoom
+                    options.vaimennus = zoom(options.vaimennus, (options.Nx[0] / options.vaimennus.shape[0], options.Ny[0] / options.vaimennus.shape[1], options.Nz[0] / options.vaimennus.shape[2]))
+                    if (not options.vaimennus.shape[0] == options.Nx[0] or not options.vaimennus.shape[1] == options.Ny[0].item() or not options.vaimennus.shape[2] == options.Nz[0].item()) and not options.vaimennus.size == options.N[0]:
+                        raise ValueError('Error: Attenuation data is of different size than the reconstructed image. Automatic resize failed.')
+            if options.rotateAttImage != 0:
+                atn = np.reshape(options.vaimennus, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()), order='F')
+                atn = np.rot90(atn,options.rotateAttImage)
+                options.vaimennus = atn
+            if options.flipAttImageXY:
+                atn = np.reshape(options.vaimennus, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()), order='F')
+                atn = np.fliplr(atn)
+                options.vaimennus = atn
+            if options.flipAttImageZ:
+                atn = np.reshape(options.vaimennus, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()), order='F')
+                atn = np.flip(atn,2)
+                options.vaimennus = atn
+        # attIncm (1/cm to 1/mm) applies only to attenuation images. A measurement-domain (sinogram) attenuation
+        # correction is unitless and is never scaled. SPECT attenuation is always an image. Data of the size of the reconstructed
+        # image is an image as well even if CT_attenuation is False (same test as in parseInputData.m and parseInputs, which switch
+        # CT_attenuation to True for it). The attenuation map generated here from the CT DICOM series is already in 1/mm and is
+        # never scaled. Rebind, the array can be the caller's
+        if options.attIncm and attenuationInmm:
+            print('The attenuation map generated from the CT DICOM series is already in 1/mm. attIncm is ignored for it.')
+        if isinstance(options.vaimennus, (list, tuple)):
+            attenuationFirst = options.vaimennus[0] if len(options.vaimennus) > 0 else np.empty(0)
         else:
-            options.vaimennus = np.asfortranarray(options.vaimennus).ravel('F').astype(dtype=np.float32)
+            attenuationFirst = options.vaimennus
+        attenuationIsImage = (options.CT_attenuation or options.SPECT or
+            (np.size(attenuationFirst) == int(np.asarray(options.Nx).ravel()[0]) * int(np.asarray(options.Ny).ravel()[0]) * int(np.asarray(options.Nz).ravel()[0])
+             and not (int(options.nRowsD) == int(np.asarray(options.Nx).ravel()[0]) and int(options.nColsD) == int(np.asarray(options.Ny).ravel()[0]))))
+        if options.attIncm and attenuationIsImage and not attenuationInmm:
+            options.vaimennus = options.vaimennus / 10.
+        options.vaimennus = np.asfortranarray(options.vaimennus)
+        options.vaimennus = options.vaimennus.ravel('F').astype(dtype=np.float32)
     # PET normalization precorrection of SinM, applied after the randoms/scatter
     # precorrection below (as in MATLAB, the randoms are subtracted from the measured
     # data before it is normalized)
     deferredNormalization = None
+    deferredSPECTNormalization = None
+    if options.CT and options.normalization_correction:
+        # CT normalization is always the user input array options.normalization (no file lookup or dialog), a multiplicative factor
+        # of each measurement. Mode 2: the measurements are divided by it (after the randoms/scatter precorrection below, before the
+        # linearization in recomain) and the normalization correction is disabled afterwards, i.e. the normalization is not used by the
+        # projectors. Modes 1 and 3 keep it for the native library (permuted to the subset order in parseInputs)
+        if _ctNormalizationSetup(options) == 2:
+            deferredNormalization = (options.normalization, True)
+            options.normalization_correction = False
+            options.normalization = np.empty(0, dtype=np.float32)
     if options.normalization_correction:
         normalizationFromFile = False
+        # Biograph (Vision) coefficients can be zero (bins without efficiency): these map to zero efficiency
+        normalizationZeroSafe = False
+        # The sinogram dimensions of the normalization data (index-based data has the dimensions collapsed)
+        normNdist, normNang, normNSinos, normTotSinos = _normalizationDims(options)
         if options.normalization.size == 0:
             normalizationFromFile = True
-            normdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', '..', '..', 'mat-files')) + "/" +  options.machine_name + '_normalization_' + str(options.Ndist) + 'x' + str(options.Nang) + '_span' + str(options.span) + '.mat'
-            if os.path.exists(normdir):
-                try:
-                    from pymatreader import read_mat
-                    var = read_mat(normdir)
-                    options.normalization = np.array(var["normalization"],order='F')
-                except ModuleNotFoundError:
-                    print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
+            nimi = ''
+            normDataFile = getattr(options, 'normalization_datafile', '')
+            hasNormDataFile = normDataFile is not None and len(str(normDataFile)) > 0
+            userNormalization = options.use_user_normalization and not options.SPECT
+            if hasNormDataFile and not (options.use_user_normalization or options.SPECT):
+                raise ValueError('options.normalization_datafile is set, but options.use_user_normalization is False! Set options.use_user_normalization = True to use the file, or empty options.normalization_datafile to use the default normalization file.')
+            if hasNormDataFile:
+                # The user normalization file is given in options.normalization_datafile, no default file lookup or dialog
+                nimi = str(normDataFile)
+                if not os.path.isfile(nimi):
+                    raise FileNotFoundError('The normalization data file ' + nimi + ' does not exist')
+            elif userNormalization:
+                # As in MATLAB, a user normalization skips the default normalization file
+                nimi = _askOpenFile('Select normalization datafile', (('NRM, N, PTD, NPY, NPZ and MAT files','*.nrm *.n *.ptd *.mat *.npy *.npz'),('All','*.*')), 'options.use_user_normalization = True and options.normalization_datafile')
             else:
-                normdir = os.path.join(os.path.dirname(options.fpath), options.machine_name + '_normalization_' + str(options.Ndist) + 'x' + str(options.Nang) + '_span' + str(options.span) + '.mat')
+                normdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', '..', '..', 'mat-files')) + "/" +  options.machine_name + '_normalization_' + str(normNdist) + 'x' + str(normNang) + '_span' + str(options.span) + '.mat'
                 if os.path.exists(normdir):
                     try:
                         from pymatreader import read_mat
                         var = read_mat(normdir)
-                        options.normalization = np.array(var["normalization"],order='F')
+                        options.normalization = np.array(_normalizationFromMat(var),order='F')
                     except ModuleNotFoundError:
                         print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
                 else:
-                    import tkinter as tk
-                    from tkinter.filedialog import askopenfilename
-                    root = tk.Tk()
-                    root.withdraw()
-                    nimi = askopenfilename(title='Select normalization datafile',filetypes=(('NRM, NPY, NPZ and MAT files','*.nrm *.mat *.npy *.npz'),('All','*.*')))
-                    if len(nimi) == 0:
-                        raise ValueError("No file selected!")
-                    nimiExt = os.path.splitext(nimi)[1].lower()
-                    if nimiExt == '.nrm':
-                        options.normalization = np.fromfile(nimi, dtype=np.float32)
-                        if options.normalization.size != options.Ndist * options.Nang * options.TotSinos and not options.use_raw_data:
-                            raise ValueError('Size mismatch between the current data and the normalization data file')
-                    elif nimiExt == '.mat':
-                        from pymatreader import read_mat
-                        var = read_mat(nimi)
-                        options.normalization = np.array(var["normalization"])
-                    elif nimiExt in ('.npy', '.npz'):
-                        options.normalization = _load_array_file(nimi)
+                    normdir = os.path.join(os.path.dirname(options.fpath), options.machine_name + '_normalization_' + str(normNdist) + 'x' + str(normNang) + '_span' + str(options.span) + '.mat')
+                    if os.path.exists(normdir):
+                        try:
+                            from pymatreader import read_mat
+                            var = read_mat(normdir)
+                            options.normalization = np.array(_normalizationFromMat(var),order='F')
+                        except ModuleNotFoundError:
+                            print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
                     else:
-                        raise ValueError('Unsupported datatype!')
+                        if options.SPECT:
+                            nimi = _askOpenFile('Select normalization datafile', (('NRM, N, PTD, NPY, NPZ and MAT files','*.nrm *.n *.ptd *.mat *.npy *.npz'),('All','*.*')), 'options.normalization_datafile')
+                        else:
+                            raise FileNotFoundError('Normalization correction selected, but no normalization data found! Input the coefficients in options.normalization, or set options.use_user_normalization = True and give the file in options.normalization_datafile.')
+            if len(nimi) > 0:
+                nimiExt = os.path.splitext(nimi)[1].lower()
+                if nimiExt == '.nrm':
+                    options.normalization = np.fromfile(nimi, dtype=np.float32)
+                    # The size of index-based data is checked when the normalization is converted below
+                    if options.normalization.size != normNdist * normNang * normTotSinos and not options.use_raw_data and not options.useIndexBasedReconstruction:
+                        raise ValueError('Size mismatch between the current data and the normalization data file')
+                elif nimiExt in ('.n', '.ptd'):
+                    # Biograph normalization component file, the coefficients multiply the data
+                    from omegatomo.fileio.loadNormalizationBiograph import loadNormalizationBiograph
+                    normOptions = options
+                    if options.useIndexBasedReconstruction:
+                        # The coefficients are sinograms, the loader needs the sinogram dimensions that index-based data has collapsed
+                        normOptions = copy.copy(options)
+                        normOptions.Ndist, normOptions.Nang, normOptions.NSinos, normOptions.TotSinos = normNdist, normNang, normNSinos, normTotSinos
+                    options.normalization = loadNormalizationBiograph(nimi, normOptions)
+                    # No TOF dimension, all sinograms (TotSinos); cropped to NSinos below
+                    if options.normalization.size != normNdist * normNang * normTotSinos and not options.use_raw_data:
+                        raise ValueError('Size mismatch between the current data and the normalization data file')
+                    normalizationZeroSafe = True
+                elif nimiExt == '.mat':
+                    from pymatreader import read_mat
+                    var = read_mat(nimi)
+                    options.normalization = np.array(_normalizationFromMat(var))
+                elif nimiExt in ('.npy', '.npz'):
+                    options.normalization = _load_array_file(nimi)
+                else:
+                    raise ValueError('Unsupported datatype!')
             normalization_shape = np.asarray(options.normalization).shape
             options.normZ = int(normalization_shape[2]) if options.SPECT and len(normalization_shape) == 3 else 1
             normalization_indexed_stack = bool(options.SPECT and int(options.normZ) == int(options.nHeads))
-            options.normalization = 1. / options.normalization.ravel('F').astype(dtype=np.float32)
+            if normalizationZeroSafe or not options.SPECT:
+                # PET coefficients are inverted to efficiencies; zero coefficients (bins without efficiency) stay zero.
+                # SPECT coefficients are inverted as they are
+                normalizationCoef = options.normalization.ravel('F').astype(dtype=np.float32)
+                options.normalization = np.zeros_like(normalizationCoef)
+                np.divide(np.float32(1.), normalizationCoef, out=options.normalization, where=normalizationCoef != 0)
+                del normalizationCoef
+            else:
+                options.normalization = 1. / options.normalization.ravel('F').astype(dtype=np.float32)
             if not options.use_raw_data and options.NSinos != options.TotSinos and not normalization_indexed_stack:
                 options.normalization = options.normalization[0 : options.Ndist * options.Nang * options.NSinos]
+        if options.useIndexBasedReconstruction:
+            # One value for each event instead of a sinogram. The file-loaded normalization has been inverted above, as it is
+            # used in the reconstruction, so the conversion keeps the convention. The sinogram is also used in the
+            # sensitivity image if the normalization stays in the reconstruction.
+            # A prefilled normalization in the precorrection multiplies the data (correction factor), the other cases are multipliers
+            # in the reconstruction (a file-loaded normalization has been inverted above)
+            forSensitivity = options.corrections_during_reconstruction or not options.precorrect
+            _convertIndexBasedNormalization(options, forSensitivity, not forSensitivity and not normalizationFromFile)
+            if normalizationFromFile:
+                # The events outside the sinogram have zero normalization, so the precorrection must not divide by it
+                normalizationZeroSafe = True
+        if options.listmode and _hasPairTable(options):
+            # Pair normalization table of the sensitivity image (user input): one value for each ordered detector/ring pair, flattened
+            # to the order of the sensitivity image kernel (column-major, see _checkNormSensTable)
+            options.normSens = np.ravel(options.normSens, order='F').astype(np.float32)
+            options.sizeNormSens = options.normSens.size
+            options.sensBins = 0
+            if not options.useIndexBasedReconstruction and options.normalization.size != options._listModeEventCount():
+                raise ValueError('With a pair normalization table (options.normSens) options.normalization has to contain one value for each '
+                                 'event (%d elements), but it has %d elements! The table is used only in the sensitivity image, a sinogram '
+                                 'normalization is not converted to the events.' % (options._listModeEventCount(), options.normalization.size))
         if normalization_indexed_stack and options.normalization.size != int(options.nRowsD) * int(options.nColsD) * int(options.nHeads):
             raise ValueError('Detector-indexed normalization must contain one detector image for each detector head.')
         if not options.corrections_during_reconstruction and options.precorrect:
+            # SPECT: the DEW/TEW scatter estimate is subtracted from the (not normalized) counts first, as in MATLAB's
+            # loadCorrections.m ((SinM - scatter) ./ normalization), so the normalization is applied after the scatter block below
+            spectScatterFirst = bool(options.SPECT and options.scatter_correction and isinstance(options.ScatterC, list)
+                                     and options.SinDelayed.size <= 1 and options.subtract_scatter)
             if normalization_indexed_stack:
                 if isinstance(options.SinM, list):
-                    options.SinM = [
-                        frame.astype(np.float32) / expand_detector_stack(options.normalization, frame.shape, timestep)
-                        for timestep, frame in enumerate(options.SinM)
-                    ]
+                    def _normalizeFrames(normalizationStack=options.normalization):
+                        options.SinM = [
+                            frame.astype(np.float32) / expand_detector_stack(normalizationStack, frame.shape, timestep)
+                            for timestep, frame in enumerate(options.SinM)
+                        ]
+                    if spectScatterFirst:
+                        deferredSPECTNormalization = _normalizeFrames
+                    else:
+                        _normalizeFrames()
                     normalization_for_data = None
                 else:
                     normalization_for_data = expand_detector_stack(options.normalization, options.SinM.shape)
@@ -866,8 +1391,25 @@ def loadCorrections(options):
                 # by the raw coefficients. A prefilled PET normalization is multiplied
                 # directly (as in MATLAB); SPECT divides (as in MATLAB).
                 normalizationDivide = bool(options.SPECT or normalizationFromFile)
+                if normalizationFromFile and not options.SPECT and not normalizationZeroSafe and np.any(normalization_for_data == 0):
+                    # The bins without efficiency (zero) give zero: the data is divided by infinity there. The other bins are
+                    # divided as without zero coefficients
+                    normalization_for_data = np.where(normalization_for_data != 0, normalization_for_data,
+                                                      normalization_for_data.dtype.type(np.inf))
+                if normalizationZeroSafe and not options.SPECT:
+                    # The coefficients of the file are applied directly (multiplied), so that bins
+                    # without efficiency (zero coefficient) give zero instead of a division by zero
+                    normalizationCoef = np.zeros_like(normalization_for_data)
+                    np.divide(np.float32(1.), normalization_for_data, out=normalizationCoef, where=normalization_for_data != 0)
+                    normalization_for_data = normalizationCoef
+                    normalizationDivide = False
                 if options.SPECT:
-                    options.SinM = _perLORFactor(options.SinM, normalization_for_data, options.TOF_bins, normalizationDivide)
+                    def _normalizeSinM(factor=normalization_for_data, divide=normalizationDivide):
+                        options.SinM = _perLORFactor(options.SinM, factor, options.TOF_bins, divide)
+                    if spectScatterFirst:
+                        deferredSPECTNormalization = _normalizeSinM
+                    else:
+                        _normalizeSinM()
                 else:
                     deferredNormalization = (normalization_for_data, normalizationDivide)
             options.normalization_correction = False
@@ -942,41 +1484,66 @@ def loadCorrections(options):
         # it is reset to an empty array to avoid the generic (plain-array)
         # scatter-correction handling below re-processing it.
         options.ScatterC = np.empty(0, dtype=np.float32)
-    if options.scatter_correction and options.normalization_correction and options.normalize_scatter and options.corrections_during_reconstruction:
+    if deferredSPECTNormalization is not None:
+        deferredSPECTNormalization()
+    if (options.scatter_correction and options.normalization_correction and options.normalize_scatter and options.corrections_during_reconstruction
+            and not getattr(options, 'scatterNormalized', False)):
+        # The elements without normalization (zero) are not divided, the scatter keeps its value there
+        if (normalizationFromFile and not options.SPECT and not options.use_raw_data and not options.useIndexBasedReconstruction
+                and options.NSinos != options.TotSinos and np.ndim(options.ScatterC) == 1
+                and np.size(options.ScatterC) == options.Ndist * options.Nang * options.TotSinos
+                and np.size(options.ScatterC) > np.size(options.normalization)):
+            # A scatter of all the sinograms (TotSinos) is cut to the NSinos sinograms of the normalization loaded from a file
+            options.ScatterC = options.ScatterC[: np.size(options.normalization)]
+        if options.useIndexBasedReconstruction and np.size(options.ScatterC) != np.size(options.normalization):
+            # The normalization is already one value for each event
+            raise ValueError('Index-based reconstruction with normalize_scatter needs the scatter (options.ScatterC) as one value for each '
+                             'event (%d elements), but %d elements were input!' % (np.size(options.normalization), np.size(options.ScatterC)))
         if normalization_indexed_stack:
             if isinstance(options.ScatterC, list):
                 options.ScatterC = [
-                    frame / expand_detector_stack(options.normalization, frame.shape, timestep)
+                    frame / _nonzeroDivisor(expand_detector_stack(options.normalization, frame.shape, timestep))
                     for timestep, frame in enumerate(options.ScatterC)
                 ]
             else:
-                options.ScatterC = _divideInPlaceUnlessShared(options, options.ScatterC, expand_detector_stack(options.normalization, options.ScatterC.shape))
+                options.ScatterC = _divideUnlessZero(options, options.ScatterC, expand_detector_stack(options.normalization, options.ScatterC.shape))
         else:
-            options.ScatterC = _divideInPlaceUnlessShared(options, options.ScatterC, options.normalization)
+            options.ScatterC = _divideUnlessZero(options, options.ScatterC, options.normalization)
+        # Another call with the returned options must not normalize the scatter again
+        options.scatterNormalized = True
     if options.randoms_correction and options.ordinaryPoisson and options.variance_reduction:
         from omegatomo.util.Randoms_variance_reduction import Randoms_variance_reduction
         options.SinDelayed = Randoms_variance_reduction(options.SinDelayed, options)
     if options.randoms_correction and options.ordinaryPoisson and options.randoms_smoothing:
         from omegatomo.util.smoothing import randoms_smoothing
         options.SinDelayed = randoms_smoothing(options.SinDelayed, options)
+    if options.scatter_correction and options.ordinaryPoisson and options.scatter_variance_reduction:
+        options.ScatterC = _scatterVarianceReduction(options, options.ScatterC)
     if options.scatter_correction and options.ordinaryPoisson and options.scatter_smoothing:
+        if options.subtract_scatter and _scatterTOFSize(options, options.ScatterC) == 'TOF':
+            # Checked in _scatterPerTOFBin too, but the smoothing below works on a non-TOF sinogram
+            raise ValueError('TOF-resolved scatter data with corrections during reconstruction is not supported with scatter smoothing; '
+                             'disable it or use a non-TOF scatter sinogram')
         from omegatomo.util.smoothing import randoms_smoothing
         options.ScatterC = randoms_smoothing(options.ScatterC, options)
     if (options.randoms_correction or options.scatter_correction) and not options.ordinaryPoisson:
-        if options.randoms_correction and options.SinDelayed.size > 0 and options.randoms_smoothing:
-            from omegatomo.util.smoothing import randoms_smoothing
-            options.SinDelayed = randoms_smoothing(options.SinDelayed, options)
+        # Variance reduction first, then smoothing (as in MATLAB's loadCorrections.m)
         if options.randoms_correction and options.SinDelayed.size > 0 and options.variance_reduction:
             from omegatomo.util.Randoms_variance_reduction import Randoms_variance_reduction
             options.SinDelayed = Randoms_variance_reduction(options.SinDelayed, options)
+        if options.randoms_correction and options.SinDelayed.size > 0 and options.randoms_smoothing:
+            from omegatomo.util.smoothing import randoms_smoothing
+            options.SinDelayed = randoms_smoothing(options.SinDelayed, options)
+        if options.scatter_correction and options.ScatterC.size > 0 and options.scatter_variance_reduction:
+            options.ScatterC = _scatterVarianceReduction(options, options.ScatterC)
         if options.scatter_correction and options.ScatterC.size > 0 and options.scatter_smoothing:
             from omegatomo.util.smoothing import randoms_smoothing
             options.ScatterC = randoms_smoothing(options.ScatterC, options)
         if options.precorrect:
             if options.scatter_correction and options.ScatterC.size > 0 and options.SinDelayed.size > 0 and options.randoms_correction and options.subtract_scatter:
-                options.SinM = _subtractDelayed(options.SinM, options.SinDelayed, options.TOF_bins) - options.ScatterC.astype(np.float32)
+                options.SinM = _subtractScatter(options, _subtractDelayed(options.SinM, options.SinDelayed, options.TOF_bins), options.ScatterC)
             elif options.scatter_correction and options.ScatterC.size > 0 and not options.randoms_correction and options.subtract_scatter:
-                options.SinM = options.SinM.astype(np.float32) - options.ScatterC.astype(np.float32) 
+                options.SinM = _subtractScatter(options, options.SinM, options.ScatterC)
             elif options.SinDelayed.size > 0 and options.randoms_correction:
                 options.SinM = _subtractDelayed(options.SinM, options.SinDelayed, options.TOF_bins)
     if deferredNormalization is not None:
@@ -1013,13 +1580,16 @@ def loadCorrections(options):
         # pattern for absorbed scatter in the sibling branch just below (options.SinDelayed
         # = ...; options.scatter_correction = False).
         options.scatter_correction = False
+        if options.randoms_correction and options.ordinaryPoisson and options.SinDelayed.size > 1 and options.TOF_bins > 1:
+            # The randoms estimate is not combined with the scatter here, so it is
+            # divided by TOF_bins on its own, as in the last branch below.
+            options.SinDelayed = options.SinDelayed.astype(np.float32) / options.TOF_bins
     elif options.scatter_correction and options.ScatterC.size > 0 and options.SinDelayed.size <= 1 and options.subtract_scatter and options.ordinaryPoisson:
         # No pre-existing randoms estimate (r_exist false in MATLAB terms): the
-        # scatter estimate becomes SinDelayed as-is. Matches MATLAB
-        # loadCorrections.m's "else" branches paired with the TOF_bins division
-        # below (e.g. lines 389-395/451-457): scatter is NOT divided by TOF_bins
-        # when there is no randoms estimate to divide.
-        options.SinDelayed = np.asfortranarray(options.ScatterC.astype(np.float32))
+        # scatter estimate becomes SinDelayed. Matches MATLAB loadCorrections.m's
+        # scatter-only branches: with TOF data a non-TOF scatter sinogram is divided
+        # evenly among the TOF bins (see _scatterPerTOFBin).
+        options.SinDelayed = np.asfortranarray(_scatterPerTOFBin(options, options.ScatterC))
         options.scatter_correction = False
         # Matches MATLAB loadCorrections.m's final flag-normalization (~line 1078): during-
         # reconstruction randoms_correction is only enabled when SinDelayed ends up with more
@@ -1028,14 +1598,20 @@ def loadCorrections(options):
     elif options.scatter_correction and options.ScatterC.size > 0 and options.SinDelayed.size > 1 and options.subtract_scatter and options.ordinaryPoisson:
         # A real (r_exist true) randoms estimate exists and is being combined
         # with scatter. Matches MATLAB loadCorrections.m's `SinDelayed = SinDelayed
-        # / TOF_bins + ScatterC` pattern (e.g. lines 385-387/447-449/485-487/561-
-        # 563/608-610/638-640, both the dynamic-cell and static branches): the
-        # non-TOF randoms estimate is divided by TOF_bins before adding the
-        # (non-TOF) scatter estimate.
+        # / TOF_bins + scatterPerTOFBin(ScatterC)` pattern (both the dynamic-cell and
+        # static branches): the non-TOF randoms estimate and a non-TOF scatter
+        # sinogram are both divided by TOF_bins before adding them.
         if options.TOF_bins > 1:
             options.SinDelayed = options.SinDelayed.astype(np.float32) / options.TOF_bins
-        scatterTerm = np.asfortranarray(options.ScatterC.astype(np.float32))
-        if _sharesCallerMemory(options, options.SinDelayed):
+        scatterTerm = np.asfortranarray(_scatterPerTOFBin(options, options.ScatterC))
+        if options.Nt > 1 and scatterTerm.size * options.Nt == options.SinDelayed.size:
+            # A single scatter sinogram is shared by all the frames
+            scatterTerm = np.reshape(scatterTerm, options.SinDelayed.shape[:-1] + (1,), order='F')
+        if scatterTerm.size > options.SinDelayed.size and options.SinDelayed.size > 0 and scatterTerm.size % options.SinDelayed.size == 0:
+            # TOF-resolved scatter: the randoms (already divided among the TOF bins) are repeated for all the TOF bins, the TOF bin
+            # is the slowest index as with the TOF measurements. A new array, the caller's array is not modified
+            options.SinDelayed = np.tile(np.ravel(options.SinDelayed, order='F'), scatterTerm.size // options.SinDelayed.size) + np.ravel(scatterTerm, order='F')
+        elif _sharesCallerMemory(options, options.SinDelayed):
             # SinDelayed is the caller's array: out-of-place (same dtype as the in-place add)
             options.SinDelayed = np.add(options.SinDelayed, scatterTerm, out=np.empty_like(options.SinDelayed))
         else:
@@ -1365,6 +1941,17 @@ def parseInputs(options, mDataFound = False):
                     # misindex instead of failing gracefully.
                     print('Warning: Randoms correction (SinDelayed) is not supported for dynamic list-mode data! Disabling it.')
                     options.randoms_correction = False
+                elif options.randomsTOF:
+                    # TOF-resolved randoms/scatter (static data): the data of each TOF bin is reordered as the TOF measurements (the TOF
+                    # bin is the slowest index). ravel/astype make a new array, the caller's array is not modified
+                    options.SinDelayed = np.ravel(options.SinDelayed, order='F').astype(np.float32)
+                    if options.subsetType >= 8:
+                        options.SinDelayed = np.reshape(options.SinDelayed, (options.nRowsD, options.nColsD, -1, options.TOF_bins), order='F')
+                        options.SinDelayed = options.SinDelayed[:, :, options.index, :]
+                    else:
+                        options.SinDelayed = np.reshape(options.SinDelayed, (-1, options.TOF_bins), order='F')
+                        options.SinDelayed = options.SinDelayed[options.index, :]
+                    options.SinDelayed = options.SinDelayed.ravel(order='F')
                 elif options.Nt > 1:
                     # The loop below writes in place: copy if SinDelayed is the caller's array
                     if _sharesCallerMemory(options, options.SinDelayed):
@@ -1510,17 +2097,24 @@ def parseInputs(options, mDataFound = False):
                 else:
                     options.vaimennus = options.vaimennus.ravel(order='F')
                     options.vaimennus = options.vaimennus[attenuation_index]
-        if options.scatter_correction and not options.corrections_during_reconstruction:
-            if not options.precorrect:
-                print('Warning: Scatter correction is disabled. options.corrections_during_reconstruction is False and options.precorrect is False, i.e. the scatter is neither applied during the reconstruction nor subtracted from the measurement data. Set options.corrections_during_reconstruction = True to apply it.')
-            options.scatter_correction = False
-        if options.randoms_correction and not options.corrections_during_reconstruction:
-            if not options.precorrect:
-                print('Warning: Randoms correction is disabled. options.corrections_during_reconstruction is False and options.precorrect is False, i.e. the randoms are neither applied during the reconstruction nor subtracted from the measurement data. Set options.corrections_during_reconstruction = True to apply them.')
-            options.randoms_correction = False
         if options.useMaskFP and options.maskFPZ > 1 and options.maskFPZ != options.nHeads and options.subsetType >= 8:
             options.maskFP = options.maskFP[:,:,options.index]
             
+    # The corrections that are not applied during the reconstruction are not sent to the projector for any subset configuration
+    # (the precorrected data has already been subtracted, as in MATLAB's loadCorrections.m)
+    if (options.normalization_correction and not options.corrections_during_reconstruction and not options.precorrect
+            and not options.listmode and not options.useIndexBasedReconstruction):
+        # List-mode and index-based data keep the flag: their normalization is used in the sensitivity image (see _convertIndexBasedNormalization)
+        print('Warning: Normalization correction is disabled. options.corrections_during_reconstruction is False and options.precorrect is False, i.e. the normalization is neither applied during the reconstruction nor applied to the measurement data. Set options.corrections_during_reconstruction = True to apply it.')
+        options.normalization_correction = False
+    if options.scatter_correction and not options.corrections_during_reconstruction:
+        if not options.precorrect:
+            print('Warning: Scatter correction is disabled. options.corrections_during_reconstruction is False and options.precorrect is False, i.e. the scatter is neither applied during the reconstruction nor subtracted from the measurement data. Set options.corrections_during_reconstruction = True to apply it.')
+        options.scatter_correction = False
+    if options.randoms_correction and not options.corrections_during_reconstruction:
+        if not options.precorrect:
+            print('Warning: Randoms correction is disabled. options.corrections_during_reconstruction is False and options.precorrect is False, i.e. the randoms are neither applied during the reconstruction nor subtracted from the measurement data. Set options.corrections_during_reconstruction = True to apply them.')
+        options.randoms_correction = False
     
     if options.Nt <= 1 and mDataFound and not options.largeDim and options.loadTOF:
         if single_frame_list:
@@ -1725,6 +2319,45 @@ def quadWeights(options, isEmpty):
     options.weights_quad = options.weights_quad[~np.isinf(options.weights_quad)]
     options.weights_quad = options.weights_quad.astype(dtype=np.float32)
         
+def _checkPriorWeights(options):
+    """
+    Validates the lengths of the user-input prior weights (a_L, weights_huber, fmh_weights, weighted_weights) as MATLAB's
+    reconstructions_main.m does. A full-length weights_huber gets its center element set to Inf (on a copy), which
+    huberWeights() removes. Raises a ValueError if a length is wrong.
+    """
+    nWeights = (int(options.Ndx) * 2 + 1) * (int(options.Ndy) * 2 + 1) * (int(options.Ndz) * 2 + 1)
+    if options.L and options.MAP and np.size(options.a_L) > 0:
+        if np.size(options.a_L) < nWeights:
+            raise ValueError('Weights vector options.a_L is too short, needs to be ' + str(nWeights) + ' in length')
+        elif np.size(options.a_L) > nWeights:
+            raise ValueError('Weights vector options.a_L is too large, needs to be ' + str(nWeights) + ' in length')
+    if options.Huber and options.MAP and np.size(options.weights_huber) > 0:
+        if np.size(options.weights_huber) < nWeights:
+            raise ValueError('Huber weights vector is too short, needs to be ' + str(nWeights) + ' in length')
+        elif np.size(options.weights_huber) > nWeights:
+            raise ValueError('Huber weights vector is too long, needs to be ' + str(nWeights) + ' in length')
+        centre = int(np.ceil(nWeights / 2.)) - 1
+        weightsHuber = np.ravel(options.weights_huber, order='F')
+        if not np.isinf(weightsHuber[centre]):
+            # A copy, the input array can be the caller's
+            weightsHuber = weightsHuber.astype(np.float64)
+            weightsHuber[centre] = np.inf
+            options.weights_huber = weightsHuber
+    if options.FMH and options.MAP and np.size(options.fmh_weights) > 0:
+        nColumns = 4 if (np.ravel(options.Nz)[0] == 1 or int(options.Ndz) == 0) else 13
+        nFMH = nColumns * (int(options.Ndx) * 2 + 1)
+        if np.size(options.fmh_weights) < nFMH:
+            raise ValueError('Weights vector options.fmh_weights is too short, needs to be [' + str(int(options.Ndx) * 2 + 1) + ', ' + str(nColumns) + '] in size')
+        elif np.size(options.fmh_weights) > nFMH:
+            raise ValueError('Weights vector options.fmh_weights is too ' + ('large' if nColumns == 4 else 'long') + ', needs to be [' + str(int(options.Ndx) * 2 + 1) + ', ' + str(nColumns) + '] in size')
+    if options.weighted_mean and options.MAP and np.size(options.weighted_weights) > 0:
+        # MATLAB also sets the center element to Inf here, which is not done in Python (it would make the sum of the weights Inf)
+        if np.size(options.weighted_weights) < nWeights:
+            raise ValueError('Weights vector options.weighted_weights is too short, needs to be ' + str(nWeights) + ' in length')
+        elif np.size(options.weighted_weights) > nWeights:
+            raise ValueError('Weights vector options.weighted_weights is too long, needs to be ' + str(nWeights) + ' in length')
+
+
 def huberWeights(options):
     """
     Normalizes Huber prior weights.
@@ -2168,6 +2801,66 @@ def weightedWeights(options):
     options.w_sum = float(np.sum(options.weighted_weights))
     options.weighted_weights = np.reshape(options.weighted_weights, (options.Ndx * 2 + 1, options.Ndy * 2 + 1, options.Ndz * 2 + 1),order='F').astype(dtype=np.float32)
 
+def _splitMultiVolumeReference(options, full, small):
+    """
+    Splits the reference image of the multi-volume (extended FOV and multi-resolution) reconstruction into the volumes. Mirrors
+    MATLAB's prepass_phase.m: the central (original resolution) volume is cut from the full size image and the other volumes
+    from the image that has been scaled with options.multiResolutionScale. Every volume is flattened in column-major order
+    (MATLAB's (:)) and the volumes are concatenated in the order of options.Nx/Ny/Nz.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data (nMultiVolumes, Nx, Ny, Nz, NxOrig, NyOrig and NzOrig).
+    full : NumPy array
+        The full-size 3D reference image.
+    small : NumPy array
+        The 3D reference image scaled with options.multiResolutionScale.
+
+    Returns
+    -------
+    NumPy array
+        The 1D reference image (float32).
+
+    """
+    Nx = [int(v) for v in np.ravel(options.Nx)]
+    Ny = [int(v) for v in np.ravel(options.Ny)]
+    Nz = [int(v) for v in np.ravel(options.Nz)]
+    NxOrig = int(np.ravel(options.NxOrig)[0])
+    NyOrig = int(np.ravel(options.NyOrig)[0])
+    NzOrig = int(np.ravel(options.NzOrig)[0])
+    px = (full.shape[0] - NxOrig) // 2
+    py = (full.shape[1] - NyOrig) // 2
+    pz = (full.shape[2] - NzOrig) // 2
+    apu = small
+    if options.nMultiVolumes == 6:
+        parts = [
+            full[px : px + NxOrig, py : py + NyOrig, pz : pz + NzOrig],
+            apu[Nx[3] : Nx[3] + Nx[1], Ny[5] : Ny[5] + Ny[1], : Nz[1]],
+            apu[Nx[4] : Nx[4] + Nx[2], Ny[6] : Ny[6] + Ny[2], -Nz[1] : ],
+            apu[ : Nx[3], :, :],
+            apu[Nx[4] + Nx[2] :, :, :],
+            apu[Nx[3] : Nx[3] + Nx[1], : Ny[5], : Nz[3]],
+            apu[Nx[4] : Nx[4] + Nx[2], Ny[6] + Ny[2] :, : Nz[4]],
+        ]
+    elif options.nMultiVolumes == 4:
+        parts = [
+            full[px : px + NxOrig, py : py + NyOrig, :],
+            apu[ : Nx[1], :, :],
+            apu[Nx[1] + Nx[0] :, :, :],
+            apu[Nx[1] : Nx[1] + Nx[3], : Ny[3], :],
+            apu[Nx[1] : Nx[1] + Nx[4], Ny[3] + Ny[0] :, :],
+        ]
+    elif options.nMultiVolumes == 2:
+        parts = [
+            full[:, :, pz : pz + NzOrig],
+            apu[:, :, : Nz[1]],
+            apu[:, :, -Nz[2] :],
+        ]
+    else:
+        raise ValueError('The number of multi-volumes has to be 2, 4 or 6 in order to split the reference image!')
+    return np.concatenate([part.ravel(order='F') for part in parts]).astype(np.float32)
+
 def NLMPrepass(options):
     """
     Computes the Gaussian weights for NLM and loads the reference image if
@@ -2243,77 +2936,43 @@ def prepassPhase(options):
     if not isinstance(options.alpha_PKMA, np.ndarray):
         options.alpha_PKMA = np.array(options.alpha_PKMA, dtype=np.float32, ndmin=1)
     if options.precondTypeImage[2]:
-        options.referenceImage = _load_reference_image(
+        # As in MATLAB (prepass_phase.m): the reference image is the whole (full-size) volume. It is loaded without a resize,
+        # resized to the full size if needed and only then split into the volumes of the multi-volume reconstruction.
+        referenceImage = np.asarray(_load_reference_image(
             options, options.referenceImage,
-            emptyMessage=None,
-            squareCheck=None,
-            elseCheckNdim3=True, elseCheckShape0=True, elseResizeGuardNz1=False,
-            finalize=True, castBeforeAsfortran=False, doAsfortran=True,
-        )
-        if np.size(options.referenceImage) == int(matlabRound((options.NxFull - options.NxOrig) * options.multiResolutionScale)) * \
-            int(matlabRound((options.NyFull - options.NyOrig) * options.multiResolutionScale)) * \
-            int(matlabRound((options.NzFull - options.NzOrig) * options.multiResolutionScale)):
+            resize=False,
+            finalize=False,
+        ))
+        NxFull = int(np.ravel(options.NxFull)[0])
+        NyFull = int(np.ravel(options.NyFull)[0])
+        NzFull = int(np.ravel(options.NzFull)[0])
+        if referenceImage.size == int(matlabRound((NxFull - int(np.ravel(options.NxOrig)[0])) * options.multiResolutionScale)) *             int(matlabRound((NyFull - int(np.ravel(options.NyOrig)[0])) * options.multiResolutionScale)) *             int(matlabRound((NzFull - int(np.ravel(options.NzOrig)[0])) * options.multiResolutionScale)):
             skip = True
         else:
             skip = False
         
-        if not skip and np.size(options.referenceImage) != options.NxFull * options.NyFull * options.NzFull:
-            raise ValueError('The size of the reference image does not match the reconstructed image!')
+        if not skip and (referenceImage.size != NxFull * NyFull * NzFull or (referenceImage.ndim == 3 and referenceImage.shape != (NxFull, NyFull, NzFull))):
+            if referenceImage.ndim != 3:
+                raise ValueError('The size of the reference image does not match the reconstructed image!')
+            from skimage.transform import resize as resizeImage
+            print('Warning: The size of the reference image does not match the reconstructed image! Attempting resize.')
+            referenceImage = resizeImage(referenceImage, (NxFull, NyFull, NzFull))
+        referenceImage = referenceImage.astype(np.float32)
         
         if not skip and options.nMultiVolumes > 0:
-            options.referenceImage = options.referenceImage.reshape(options.NxFull, options.NyFull, options.NzFull, order = 'F')
-            from scipy.ndimage import zoom
-            apu = zoom(options.referenceImage, options.multiResolutionScale, order=1).astype(np.float32)
-
-        if not skip:
-            if options.nMultiVolumes == 6:
-                options.referenceImage = options.referenceImage[
-                    (options.referenceImage.shape[0] - options.NxOrig) // 2 :
-                    (options.referenceImage.shape[0] - options.NxOrig) // 2 + options.NxOrig,
-                    (options.referenceImage.shape[1] - options.NyOrig) // 2 :
-                    (options.referenceImage.shape[1] - options.NyOrig) // 2 + options.NyOrig,
-                    (options.referenceImage.shape[2] - options.NzOrig) // 2 :
-                    (options.referenceImage.shape[2] - options.NzOrig) // 2 + options.NzOrig
-                ]
-                apu1 = apu[options.Nx[3].item() : options.Nx[3].item() + options.Nx[1].item(), options.Ny[5].item() : options.Ny[5].item() + options.Ny[1].item(),  : options.Nz[1].item()]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
-                apu1 = apu[options.Nx[4].item() : options.Nx[4].item() + options.Nx[2].item(),options.Ny[6].item() : options.Ny[6].item() + options.Ny[2].item(),-options.Nz[1].item() : ]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
-                apu1 = apu[ : options.Nx[3].item(),:,:]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
-                apu1 = apu[options.Nx[4].item() + options.Nx[2].item() :, :, : ]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
-                apu1 = apu[options.Nx[3].item() : options.Nx[3].item() + options.Nx[1].item(), : options.Ny[5].item(), : options.Nz[3].item() ]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
-                apu1 = apu[ options.Nx[4].item() : options.Nx[4].item() + options.Nx[2].item(), options.Ny[6].item() + options.Ny[2].item() :, : options.Nz[4].item() ]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
-            elif options.nMultiVolumes == 4:
-                options.referenceImage = options.referenceImage[
-                    (options.referenceImage.shape[0] - options.NxOrig) // 2 :
-                    (options.referenceImage.shape[0] - options.NxOrig) // 2 + options.NxOrig,
-                    (options.referenceImage.shape[1] - options.NyOrig) // 2 :
-                    (options.referenceImage.shape[1] - options.NyOrig) // 2 + options.NyOrig,
-                    : ]
-                apu1 = apu[ : options.Nx[1].item(), :, :]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
-                apu1 = apu[ options.Nx[1].item() + options.Nx[0].item() :, :,:                ]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
-                apu1 = apu[ options.Nx[1].item() : options.Nx[1].item() + options.Nx[3].item(), : options.Ny[3].item(), : ]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
-                apu1 = apu[ options.Nx[1].item() : options.Nx[1].item() + options.Nx[4].item(), options.Ny[3].item() + options.Ny[0].item() :, : ]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
-            elif options.nMultiVolumes == 2:
-                options.referenceImage = options.referenceImage[ :, :, (options.referenceImage.shape[2] - options.NzOrig) // 2 : (options.referenceImage.shape[2] - options.NzOrig) // 2 + options.NzOrig ]
-                apu1 = apu[:, :,  : options.Nz[1].item()]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
-                apu1 = apu[:, :, -options.Nz[2].item():]
-                options.referenceImage = np.concatenate((options.referenceImage.ravel(), apu1.ravel()))
+            referenceImage = referenceImage.reshape(NxFull, NyFull, NzFull, order = 'F')
+            if options.nMultiVolumes in (2, 4, 6):
+                from scipy.ndimage import zoom
+                apu = zoom(referenceImage, options.multiResolutionScale, order=1).astype(np.float32)
+                referenceImage = _splitMultiVolumeReference(options, referenceImage, apu)
+        # Column-major order, as in MATLAB's (:)
+        options.referenceImage = np.asfortranarray(referenceImage).ravel('F').astype(dtype=np.float32)
         
     # Check if any of the regularization options are selected
     if (options.MRP or options.quad or options.Huber or options.TV or options.FMH or options.L or options.weighted_mean or options.APLS or options.BSREM
         or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM or options.DRAMA or options.ROSEM_MAP or options.ECOSEM or options.SART or options.ASD_POCS 
         or options.COSEM or options.ACOSEM or options.AD or np.any(options.OSL_COSEM) or options.NLM or options.OSL_RBI or options.RBI or options.PKMA or options.SAGA
-        or options.RDP or options.SPS or options.ProxNLM or options.GGMRF or options.hyperbolic):
+        or options.RDP or options.SPS or options.GGMRF or options.hyperbolic):
     
         # Compute and/or load necessary variables for the TV regularization
         if options.TV and options.MAP:
@@ -2334,6 +2993,16 @@ def prepassPhase(options):
             options.lambdaN = _compute_lambda_vals(options.Niter, options.subsets, options.stochasticSubsetSelection).astype(np.float32)
             if options.CT and not options.SART and not options.ASD_POCS:
                 options.lambdaN = options.lambdaN / 10000.
+        elif (options.BSREM or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM_MAP or options.ROSEM or options.PKMA or options.SPS or options.SART or options.ASD_POCS or options.SAGA) and np.size(options.lambdaN) == 1 and options.Niter > 1:
+            # A scalar relaxation value is the starting value of the decaying relaxation schedule (prepass_phase.m)
+            iterations = np.arange(1, options.Niter + 1, dtype=np.float64)
+            if options.stochasticSubsetSelection:
+                lambdaT = np.ravel(options.lambdaN)[0] / (0.4 / options.subsets * iterations + 1.)
+            else:
+                lambdaT = np.ravel(options.lambdaN)[0] / ((iterations - 1.) / 20. + 1.)
+            if options.CT and not options.SART and not options.ASD_POCS:
+                lambdaT = lambdaT / 10000.
+            options.lambdaN = lambdaT.astype(np.float32)
         elif (options.BSREM or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM_MAP or options.ROSEM or options.PKMA or options.SPS or options.SART or options.ASD_POCS or options.SAGA):
             if np.size(options.lambdaN) < options.Niter:
                 print('Warning: The number of relaxation values must be at least the number of iterations times the number of subsets! Computing custom relaxation values.')
@@ -2362,6 +3031,7 @@ def prepassPhase(options):
     
         # Compute the weights
         if (options.quad or options.L or options.FMH or options.weighted_mean or options.MRP or (options.TV and options.TVtype == 3 and options.TV_use_anatomical) or options.Huber or options.RDP or options.GGMRF or options.hyperbolic) and options.MAP:
+            _checkPriorWeights(options)
             if options.quad or options.L or options.FMH or options.weighted_mean or (options.TV and options.TVtype == 3 and options.TV_use_anatomical) or options.Huber or options.RDP or options.GGMRF or options.hyperbolic:
                 if options.GGMRF:
                     computeWeights(options, True)
@@ -2408,7 +3078,7 @@ def prepassPhase(options):
                 )
             if options.verbose:
                 print('Prepass phase for MRP, quadratic prior, L-filter, FMH, RDP and weighted mean completed')
-        if (options.NLM and options.MAP):
+        if options.NLM and options.MAP:
             NLMPrepass(options)
     if options.PDHG or options.PDHGKL or options.PDHGL1 or options.PDDY:
         if not isinstance(options.thetaCP, np.ndarray):
@@ -2449,10 +3119,22 @@ def prepassPhase(options):
         options.filterIm = options.filterIm.astype(dtype=np.float32)
 
     if options.precondTypeImage[3]:
+        alphaPrecondEmpty = np.size(options.alphaPrecond) == 0
+        if alphaPrecondEmpty and np.size(options.alpha_PKMA) == options.Niter * options.subsets:
+            # The PKMA momentum values are reused (prepass_phase.m)
+            options.alphaPrecond = np.array(options.alpha_PKMA, dtype=np.float32, copy=True)
         if np.size(options.alphaPrecond) < options.Niter * options.subsets:
-            print('Warning: The number of alpha (momentum) values must be at least the number of iterations times the number of subsets! Computing custom alpha values.')
+            if not alphaPrecondEmpty:
+                print('Warning: The number of alpha (momentum) values must be at least the number of iterations times the number of subsets! Computing custom alpha values.')
+            # rhoPrecond and delta1Precond have no default value, zero (or missing) means the PKMA values
+            rhoPrecond = getattr(options, 'rhoPrecond', 0)
+            if rhoPrecond is None or np.size(rhoPrecond) == 0 or np.ravel(rhoPrecond)[0] == 0:
+                rhoPrecond = options.rho_PKMA
+            delta1Precond = getattr(options, 'delta1Precond', 0)
+            if delta1Precond is None or np.size(delta1Precond) == 0 or np.ravel(delta1Precond)[0] == 0:
+                delta1Precond = options.delta_PKMA
             options.alphaPrecond = np.zeros(options.Niter * options.subsets, dtype=np.float32)
-            options.alphaPrecond[:] = _pkma_relaxation_values(options.Niter, options.subsets, options.rho_PKMA, options.delta_PKMA)
+            options.alphaPrecond[:] = _pkma_relaxation_values(options.Niter, options.subsets, np.ravel(rhoPrecond)[0], np.ravel(delta1Precond)[0])
     
     if options.precondTypeMeas[1]:
         if options.subsets > 1 and options.subsetType == 5:
@@ -2460,8 +3142,18 @@ def prepassPhase(options):
         else:
             options.Nf = 2 ** np.ceil(np.log2(options.nRowsD))
         options.Nf = options.Nf.astype(dtype=np.uint32).item()
+        if options.FDK and options.CT:
+            # The FDK ramp filter is applied along the detector rows (nRowsD samples) with an FFT of length Nf. Nf has to be at least
+            # 2 * nRowsD - 1 to zero-pad the rows, otherwise the filter is a circular convolution (for nRowsD = 2^n there is no padding at all)
+            # and the wrapped-around tails/the lost DC bias the low frequencies (several percent error of the reconstructed values)
+            options.Nf = int(2 ** np.ceil(np.log2(2 * options.nRowsD - 1)))
         options.filter0 = rampFilt(options.Nf, options.filterWindow, options.cutoffFrequency, options.normalFilterSigma)
         options.filter0[0] = 1e-6
+        if options.FDK and options.CT:
+            # DC bin of the discrete Ram-Lak kernel (Kak & Slaney), in the 2|f| normalization of rampFilt(). Setting it to ~0 (1e-6) removes
+            # the mean of the zero-padded projection rows, which biases the reconstruction low by an amount that depends on Nf
+            oddN = np.arange(1, options.Nf // 2, 2, dtype=np.float64)
+            options.filter0[0] = 2. * (0.25 - 2. / np.pi ** 2 * np.sum(1. / oddN ** 2))
         options.filter0 = options.filter0.astype(dtype=np.float32)
         if isinstance(options.sigmaCP, np.ndarray):
             options.Ffilter = np.fft.ifft(options.filter0) * options.sigmaCP[0].item()

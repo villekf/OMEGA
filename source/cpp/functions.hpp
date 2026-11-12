@@ -92,7 +92,10 @@ inline void checkFastPDHG(scalarStruct& inputScalars, const Weighting& w_vec, co
 	// makes the image-domain update possible in the first place
 	// All BPType 4/5 combinations are allowed
 	if ((inputScalars.BPType != 4 && inputScalars.BPType != 5) || !inputScalars.CT)
-		reason = "only backprojection types 4 and 5 (projector_type 4, 5, 14, 15, 24, 34, 45, 54, 74, 75) with CT data are supported";
+		reason = "only backprojection types 4 and 5 (projector_type 4, 5, 14, 15, 24, 34, 44, 45, 54, 55, 74, 75) with CT data are supported";
+	// The fused kernel has no mask handling and the type 4 backprojection skips the masked z-planes of a voxel block only in its regular write
+	else if (inputScalars.BPType == 4 && inputScalars.maskBP && inputScalars.maskBPZ > 1)
+		reason = "a 3D backprojection mask with backprojection type 4 is not supported";
 	else if (!fastPDHGAlgorithm && !fastPoissonAlgorithm)
 		reason = "only PDHG, PDHGKL, PDHGL1, CV, PKMA, MBSREM and BSREM are supported (PDDY is not)";
 	// The experimental relaxation parameter computations are not supported
@@ -124,7 +127,7 @@ inline void checkFastPDHG(scalarStruct& inputScalars, const Weighting& w_vec, co
 	// Proximal TV/TGV are not included due to the more complicated structure despite having separate kernels
 	else if (MethodList.MRP || MethodList.Quad || MethodList.Huber || MethodList.L || MethodList.FMH || MethodList.AD ||
 		MethodList.APLS || MethodList.TGV || MethodList.WeightedMean ||
-		MethodList.ProxTV || MethodList.ProxTGV || MethodList.ProxRDP || MethodList.ProxNLM)
+		MethodList.ProxTV || MethodList.ProxTGV)
 		reason = "the only supported priors are NLM, RDP, GGMRF, hyperbolic and TV";
 	// Anatomical reference images are not supported in any case
 	// TODO: Add anatomical reference support? Not that relevant in CT
@@ -602,6 +605,77 @@ inline int transferRHS(af::array& rhs_os, ProjectorClass& proj) {
 		mexPrintBase("proj.vec_opencl.d_rhs_os.size() = %u\n", proj.vec_opencl.d_rhs_os.size());
 		mexEval();
 	}
+	return 0;
+}
+
+// Copies the given image into the forward projection image cache of volume ii. With useImages (and FPType != 5) the
+// NLM/RDP/GGMRF/hyperbolic/TV priors read this cache (d_imageCache / FPTexCachePrior) instead of a copy of their input
+// array. updateInputs fills the cache on each forward projection with the image of that timestep (the PSF-blurred one
+// with use_psf), so without this copy the priors would see the last forward projected image: the last timestep of
+// dynamic data, the blurred image with PSF, or the pre-update image (e.g. BSREM/ROSEMMAP, SART/POCS, PDDY).
+// The next forward projection overwrites the cache again. No-op when the priors make their own copy (FPType == 5, no
+// images, buffers) and on CPU/Metal. When no cache of matching size exists, returns -1 if strict, otherwise 0.
+inline int refreshPriorImageCache(const af::array& im, const scalarStruct& inputScalars, ProjectorClass& proj, const int ii = 0, const bool strict = false) {
+#if defined(CUDA) || defined(HIP) || defined(OPENCL)
+	if (!inputScalars.useImages || inputScalars.FPType == 5 || inputScalars.useBuffers)
+		return 0;
+	if (proj.imageCacheDims.size() < static_cast<size_t>(ii + 1) * 3 || proj.imageCacheDims[ii * 3 + 2] == 0 ||
+		proj.imageCacheDims[ii * 3] * proj.imageCacheDims[ii * 3 + 1] * proj.imageCacheDims[ii * 3 + 2] != static_cast<size_t>(im.elements())) {
+		if (strict) {
+			mexPrint("The prior image does not match the forward projection image cache\n");
+			return -1;
+		}
+		return 0;
+	}
+	const size_t nx = proj.imageCacheDims[ii * 3], ny = proj.imageCacheDims[ii * 3 + 1], nz = proj.imageCacheDims[ii * 3 + 2];
+	im.eval();
+#if defined(CUDA) || defined(HIP)
+	if (proj.FPArrayCache.size() <= static_cast<size_t>(ii)) {
+		if (strict) {
+			mexPrint("The forward projection image cache does not exist\n");
+			return -1;
+		}
+		return 0;
+	}
+	CUdeviceptr* d_im = transferAF(im);
+	CUDA_MEMCPY3D cpy3d;
+	std::memset(&cpy3d, 0, sizeof(cpy3d));
+	cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_DEVICE;
+	cpy3d.srcDevice = reinterpret_cast<CUdeviceptr>(d_im);
+	cpy3d.srcPitch = nx * sizeof(float);
+	cpy3d.srcHeight = ny;
+	cpy3d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
+	cpy3d.dstArray = proj.FPArrayCache[ii];
+	cpy3d.WidthInBytes = nx * sizeof(float);
+	cpy3d.Height = ny;
+	cpy3d.Depth = nz;
+	const CUresult status = cuMemcpy3DAsync(&cpy3d, proj.CLCommandQueue[0]);
+	im.unlock();
+	if (status != CUDA_SUCCESS) {
+		getErrorString(status);
+		mexPrint("Failed to copy the prior image into the image cache\n");
+		return -1;
+	}
+#else
+	if (proj.d_imageCache.size() <= static_cast<size_t>(ii)) {
+		if (strict) {
+			mexPrint("The forward projection image cache does not exist\n");
+			return -1;
+		}
+		return 0;
+	}
+	cl::detail::size_t_array region = { nx, ny, nz };
+	cl_mem* d_im = im.device<cl_mem>();
+	const cl_int status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*d_im, true), proj.d_imageCache[ii], 0, proj.origin, region);
+	im.unlock();
+	delete d_im;
+	if (status != CL_SUCCESS) {
+		getErrorString(status);
+		mexPrint("Failed to copy the prior image into the image cache\n");
+		return -1;
+	}
+#endif
+#endif
 	return 0;
 }
 
@@ -1415,12 +1489,9 @@ inline int GGMRFAF(af::array&, const af::array&, const scalarStruct&, const floa
 	const float, const Weighting&, const int = 0) { return -1; }
 inline int TVAF(af::array&, const af::array&, const scalarStruct&, const float, const TVdata&, ProjectorClass&, const float, const Weighting&, const int = 0) { return -1; }
 inline int hyperAF(af::array&, const af::array&, const scalarStruct&, const float, ProjectorClass&, const float, const Weighting&, const int = 0) { return -1; }
-inline int proxQAF(std::vector<af::array>&, const float, ProjectorClass&) { return -1; }
-inline int proxTVQAF(std::vector<af::array>&, const float, ProjectorClass&) { return -1; }
-inline int proxTGVQAF(std::vector<af::array>&, const scalarStruct&, const float, ProjectorClass&) { return -1; }
 inline int proxTVDivAF(const std::vector<af::array>&, af::array&, const scalarStruct&, ProjectorClass&, const uint32_t) { return -1; }
-inline int proxTVGradAF(const af::array&, std::vector<af::array>&, const scalarStruct&, const float, const std::vector<af::array>&, ProjectorClass&) { return -1; }
-inline int proxTGVSymmDerivAF(const std::vector<af::array>&, std::vector<af::array>&, const scalarStruct&, const float, ProjectorClass&) { return -1; }
+inline int proxTVGradAF(const af::array&, std::vector<af::array>&, const scalarStruct&, const float, const float, const std::vector<af::array>&, ProjectorClass&) { return -1; }
+inline int proxTGVSymmDerivAF(const std::vector<af::array>&, std::vector<af::array>&, const scalarStruct&, const float, const float, ProjectorClass&) { return -1; }
 inline int proxTGVDivAF(const std::vector<af::array>&, std::vector<af::array>&, std::vector<af::array>&, const scalarStruct&,
 	const float, const float, ProjectorClass&) { return -1; }
 inline int poissonUpdateAF(af::array&, const af::array&, const scalarStruct&, const float, const float, const float, ProjectorClass&, const int = 0) { return -1; }
@@ -1467,8 +1538,9 @@ inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& input
 	if (!inputScalars.useImages) {
 		proj.d_inputB = transferAF(im);
 	}
-	// FPType == 5 caches integral images, not the estimate, so the prior still needs its own copy
-	else if (inputScalars.FPType == 5) {
+	// FPType == 5 caches integral images, not the estimate, and largeDim caches the unpadded chunk, so the prior needs its
+	// own (padded) copy. Otherwise the prior reads the forward projection image cache, refreshed here with the prior input
+	else if (inputScalars.FPType == 5 || inputScalars.largeDim) {
 #if defined(CUDA) || defined(HIP)
 		uint32_t Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim)
@@ -1502,9 +1574,17 @@ inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& input
 			proj.region[2] = inputScalars.Nz[0];
 #endif
 	}
+	else {
+		status = refreshPriorImageCache(im, inputScalars, proj, 0, true);
+		if (status != 0) {
+			grad.unlock();
+			w_vec.gaussianNLM.unlock();
+			return -1;
+		}
+	}
 	status = proj.computeNLM(inputScalars, w_vec, beta, kk);
 	grad.unlock();
-	if (!inputScalars.useImages || inputScalars.FPType == 5)
+	if (!inputScalars.useImages || inputScalars.FPType == 5 || inputScalars.largeDim)
 		im.unlock();
 	w_vec.gaussianNLM.unlock();
 	if (status != 0) {
@@ -1536,26 +1616,49 @@ inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& input
 	int status = 0;
 	proj.d_W = transferAF(grad);
 #ifndef CPU
+	// True when RDPref was locked (device pointer requested) and must be unlocked
+	bool refLocked = false;
 	if (inputScalars.useImages) {
 #if defined(CUDA) || defined(HIP)
-		// FPType == 5 caches integral images, not the estimate, so the prior still needs its own copy
-		if (inputScalars.FPType == 5) {
+		// FPType == 5 caches integral images, not the estimate, and largeDim caches the unpadded chunk, so the prior needs its
+		// own (padded) copy. Otherwise the prior reads the forward projection image cache, refreshed here with the prior input
+		if (inputScalars.FPType == 5 || inputScalars.largeDim) {
 			uint32_t Nz = inputScalars.Nz[0];
 			if (inputScalars.largeDim)
 				Nz = inputScalars.lDimStruct.NzPr[kk];
 			CUdeviceptr* input = transferAF(im);
 			status = proj.transferTex(inputScalars, input, false, Nz);
 		}
-		if (RDPLargeNeighbor && useRDPRef) {
+		else {
+			status = refreshPriorImageCache(im, inputScalars, proj, 0, true);
+			if (status != 0) {
+				grad.unlock();
+				return -1;
+			}
+		}
+		// With fastPDHG the reference texture was already uploaded once (RDPRefPersistent)
+		if (RDPLargeNeighbor && useRDPRef && !proj.RDPRefPersistent) {
+			refLocked = true;
 			CUdeviceptr* inputRef = transferAF(RDPref);
-			status = proj.transferTex(inputScalars, inputRef, true);
+			// The reference image is a full volume (it was created with depth 1 before, so every slice read the reference's first
+			// slice) and has its own array so it does not overwrite imArray of the FPType 5 copy
+			status = proj.transferTex(inputScalars, inputRef, true, inputScalars.Nz[0]);
+			if (status != 0) {
+				if (inputScalars.FPType == 5 || inputScalars.largeDim)
+					im.unlock();
+				grad.unlock();
+				RDPref.unlock();
+				mexPrint("Failed to copy the RDP reference image\n");
+				return -1;
+			}
 		}
 #else
 		// The largeDim subvolume must match the predetermined (padded) size
 		if (inputScalars.largeDim)
 			proj.region[2] = inputScalars.lDimStruct.NzPr[kk];
-		// FPType == 5 caches integral images, not the estimate, so the prior still needs its own copy
-		if (inputScalars.FPType == 5) {
+		// FPType == 5 caches integral images, not the estimate, and largeDim caches the unpadded chunk, so the prior needs its
+		// own (padded) copy. Otherwise the prior reads the forward projection image cache, refreshed here with the prior input
+		if (inputScalars.FPType == 5 || inputScalars.largeDim) {
 			if (inputScalars.largeDim) {
 				proj.d_inputI = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, proj.region[0], proj.region[1], proj.region[2], 0, 0, NULL, &status);
 				OCL_CHECK(status, "Failed to create prior image\n", -1);
@@ -1569,13 +1672,22 @@ inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& input
 				return -1;
 			}
 		}
+		else {
+			status = refreshPriorImageCache(im, inputScalars, proj, 0, true);
+			if (status != 0) {
+				grad.unlock();
+				return -1;
+			}
+		}
 		if (RDPLargeNeighbor && useRDPRef) {
+			refLocked = true;
 			status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*RDPref.device<cl_mem>(), true), proj.d_RDPrefI, 0, proj.origin, proj.region);
 			if (status != 0) {
 				getErrorString(status);
-				if (inputScalars.FPType == 5)
+				if (inputScalars.FPType == 5 || inputScalars.largeDim)
 					im.unlock();
 				grad.unlock();
+				RDPref.unlock();
 				mexPrint("Failed to copy RDP image\n");
 				return -1;
 			}
@@ -1584,8 +1696,10 @@ inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& input
 	}
 	else {
 		proj.d_inputB = transferAF(im);
-		if (RDPLargeNeighbor && useRDPRef)
+		if (RDPLargeNeighbor && useRDPRef) {
+			refLocked = true;
 			proj.d_RDPref = transferAF(RDPref);
+		}
 	}
 	if (DEBUG) {
 		mexPrintBase("im.elements() = %u\n", im.elements());
@@ -1594,9 +1708,9 @@ inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& input
 	}
 	status = proj.computeRDP(inputScalars, gamma, w_vec, beta, kk, RDPLargeNeighbor, useRDPRef);
 	grad.unlock();
-	if (!inputScalars.useImages || inputScalars.FPType == 5)
+	if (!inputScalars.useImages || inputScalars.FPType == 5 || inputScalars.largeDim)
 		im.unlock();
-	if (RDPLargeNeighbor && useRDPRef)
+	if (refLocked)
 		RDPref.unlock();
 	if (status != 0) {
 		return -1;
@@ -1624,8 +1738,9 @@ inline int GGMRFAF(af::array& grad, const af::array& im, const scalarStruct& inp
 	if (!inputScalars.useImages) {
 		proj.d_inputB = transferAF(im);
 	}
-	// FPType == 5 caches integral images, not the estimate, so the prior still needs its own copy
-	else if (inputScalars.FPType == 5) {
+	// FPType == 5 caches integral images, not the estimate, and largeDim caches the unpadded chunk, so the prior needs its
+	// own (padded) copy. Otherwise the prior reads the forward projection image cache, refreshed here with the prior input
+	else if (inputScalars.FPType == 5 || inputScalars.largeDim) {
 #if defined(CUDA) || defined(HIP)
 		uint32_t Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim)
@@ -1648,6 +1763,13 @@ inline int GGMRFAF(af::array& grad, const af::array& im, const scalarStruct& inp
 		}
 #endif
 	}
+	else {
+		status = refreshPriorImageCache(im, inputScalars, proj, 0, true);
+		if (status != 0) {
+			grad.unlock();
+			return -1;
+		}
+	}
 	if (DEBUG) {
 		mexPrintBase("im.elements() = %u\n", im.elements());
 		mexPrintBase("sum(isnan(im)) = %f\n", af::sum<float>(isNaN(im)));
@@ -1655,7 +1777,7 @@ inline int GGMRFAF(af::array& grad, const af::array& im, const scalarStruct& inp
 	}
 	status = proj.computeGGMRF(inputScalars, p, q, c, pqc, w_vec, beta, kk);
 	grad.unlock();
-	if (!inputScalars.useImages || inputScalars.FPType == 5)
+	if (!inputScalars.useImages || inputScalars.FPType == 5 || inputScalars.largeDim)
 		im.unlock();
 	if (status != 0) {
 		return -1;
@@ -1696,8 +1818,9 @@ inline int TVAF(af::array& grad, const af::array& im, const scalarStruct& inputS
 	if (!inputScalars.useImages) {
 		proj.d_inputB = transferAF(im);
 	}
-	// FPType == 5 caches integral images, not the estimate, so the prior still needs its own copy
-	else if (inputScalars.FPType == 5) {
+	// FPType == 5 caches integral images, not the estimate, and largeDim caches the unpadded chunk, so the prior needs its
+	// own (padded) copy. Otherwise the prior reads the forward projection image cache, refreshed here with the prior input
+	else if (inputScalars.FPType == 5 || inputScalars.largeDim) {
 #if defined(CUDA) || defined(HIP)
 		uint32_t Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim)
@@ -1720,6 +1843,15 @@ inline int TVAF(af::array& grad, const af::array& im, const scalarStruct& inputS
 		}
 #endif
 	}
+	else {
+		status = refreshPriorImageCache(im, inputScalars, proj, 0, true);
+		if (status != 0) {
+			grad.unlock();
+			if (data.TV_use_anatomical)
+				data.refIm.unlock();
+			return -1;
+		}
+	}
 	if (DEBUG) {
 		mexPrintBase("im.elements() = %u\n", im.elements());
 		mexPrintBase("sum(isnan(im)) = %f\n", af::sum<float>(isNaN(im)));
@@ -1728,7 +1860,7 @@ inline int TVAF(af::array& grad, const af::array& im, const scalarStruct& inputS
 	const float smooth = data.TVsmoothing;
 	status = proj.TVGradient(inputScalars, sigma, smooth, w_vec, beta, kk, C, type);
 	grad.unlock();
-	if (!inputScalars.useImages || inputScalars.FPType == 5)
+	if (!inputScalars.useImages || inputScalars.FPType == 5 || inputScalars.largeDim)
 		im.unlock();
 	if (data.TV_use_anatomical)
 		data.refIm.unlock();
@@ -1760,8 +1892,9 @@ inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inp
 	if (!inputScalars.useImages) {
 		proj.d_inputB = transferAF(im);
 	}
-	// FPType == 5 caches integral images, not the estimate, so the prior still needs its own copy
-	else if (inputScalars.FPType == 5) {
+	// FPType == 5 caches integral images, not the estimate, and largeDim caches the unpadded chunk, so the prior needs its
+	// own (padded) copy. Otherwise the prior reads the forward projection image cache, refreshed here with the prior input
+	else if (inputScalars.FPType == 5 || inputScalars.largeDim) {
 #if defined(CUDA) || defined(HIP)
 		uint32_t Nz = inputScalars.Nz[0];
 		if (inputScalars.largeDim)
@@ -1784,6 +1917,13 @@ inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inp
 		}
 #endif
 	}
+	else {
+		status = refreshPriorImageCache(im, inputScalars, proj, 0, true);
+		if (status != 0) {
+			grad.unlock();
+			return -1;
+		}
+	}
 	if (DEBUG) {
 		mexPrintBase("im.elements() = %u\n", im.elements());
 		mexPrintBase("sum(isnan(im)) = %f\n", af::sum<float>(isNaN(im)));
@@ -1791,7 +1931,7 @@ inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inp
 	}
 	status = proj.hyperGradient(inputScalars, sigma, w_vec, beta, kk);
 	grad.unlock();
-	if (!inputScalars.useImages || inputScalars.FPType == 5)
+	if (!inputScalars.useImages || inputScalars.FPType == 5 || inputScalars.largeDim)
 		im.unlock();
 	if (status != 0) {
 		return -1;
@@ -1812,81 +1952,6 @@ inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inp
 
 
 #ifndef CPU
-// Proximal TV
-inline int proxQAF(std::vector<af::array>& q, const float alpha, ProjectorClass& proj) {
-	int status = 0;
-	uint64_t globalQ = q[0].elements();
-	if (DEBUG) {
-		mexPrintBase("globalQ = %u\n", globalQ);
-		mexPrintBase("q.elements() = %u\n", q[0].elements());
-		mexEval();
-	}
-	proj.d_qX = transferAF(q[0]);
-	status = proj.ProxHelperQ(alpha, globalQ);
-	q[0].unlock();
-	if (status != 0) {
-		return -1;
-	}
-	return status;
-}
-
-// Proximal TV
-inline int proxTVQAF(std::vector<af::array>& q, const float alpha, ProjectorClass& proj) {
-	int status = 0;
-	uint64_t globalQ = q[0].elements();
-	if (DEBUG) {
-		mexPrintBase("globalQ = %u\n", globalQ);
-		mexPrintBase("q.elements() = %u\n", q[0].elements());
-		mexEval();
-	}
-	proj.d_qX = transferAF(q[0]);
-	proj.d_qY = transferAF(q[1]);
-	proj.d_qZ = transferAF(q[2]);
-	status = proj.ProxTVHelperQ(alpha, globalQ);
-	q[0].unlock();
-	q[1].unlock();
-	q[2].unlock();
-	if (status != 0) {
-		return -1;
-	}
-	return status;
-}
-
-// Proximal TGV
-inline int proxTGVQAF(std::vector<af::array>& r, const scalarStruct& inputScalars, const float alpha, ProjectorClass& proj) {
-	int status = 0;
-	uint64_t globalQ = r[0].elements();
-	if (DEBUG) {
-		mexPrintBase("globalQ = %u\n", globalQ);
-		mexPrintBase("q.elements() = %u\n", r[0].elements());
-		mexEval();
-	}
-	proj.d_rX = transferAF(r[0]);
-	proj.d_rY = transferAF(r[1]);
-	if (!inputScalars.TGV2D) {
-		proj.d_rZ = transferAF(r[2]);
-		proj.d_rXY = transferAF(r[3]);
-		proj.d_rXZ = transferAF(r[4]);
-		proj.d_rYZ = transferAF(r[5]);
-	}
-	else {
-		proj.d_rXY = transferAF(r[2]);
-	}
-	status = proj.ProxTGVHelperQ(inputScalars, alpha, globalQ);
-	r[0].unlock();
-	r[1].unlock();
-	r[2].unlock();
-	if (!inputScalars.TGV2D) {
-		r[3].unlock();
-		r[4].unlock();
-		r[5].unlock();
-	}
-	if (status != 0) {
-		return -1;
-	}
-	return status;
-}
-
 // Proximal TV divergence
 inline int proxTVDivAF(const std::vector<af::array>& grad, af::array& input, const scalarStruct& inputScalars, ProjectorClass& proj, const uint32_t timestep) {
 	int status = 0;
@@ -1913,7 +1978,7 @@ inline int proxTVDivAF(const std::vector<af::array>& grad, af::array& input, con
 }
 
 // Proximal TV gradient
-inline int proxTVGradAF(const af::array& im, std::vector<af::array>& grad, const scalarStruct& inputScalars, const float sigma2, const std::vector<af::array>& v, ProjectorClass& proj) {
+inline int proxTVGradAF(const af::array& im, std::vector<af::array>& grad, const scalarStruct& inputScalars, const float sigma2, const float alpha, const std::vector<af::array>& v, ProjectorClass& proj) {
 	int status = 0;
 	if (DEBUG) {
 		mexPrintBase("output.dims(0) = %u\n", grad[0].dims(0));
@@ -1941,7 +2006,7 @@ inline int proxTVGradAF(const af::array& im, std::vector<af::array>& grad, const
 		if (!inputScalars.TGV2D)
 			proj.d_vZ = transferAF(v[2]);
 	}
-	status = proj.ProxTVGrad(inputScalars, sigma2, vSize);
+	status = proj.ProxTVGrad(inputScalars, sigma2, alpha, vSize);
 	grad[0].unlock();
 	grad[1].unlock();
 	grad[2].unlock();
@@ -1960,7 +2025,7 @@ inline int proxTVGradAF(const af::array& im, std::vector<af::array>& grad, const
 }
 
 // Proximal TGV symmetric derivative
-inline int proxTGVSymmDerivAF(const std::vector<af::array>& v, std::vector<af::array>& q, const scalarStruct& inputScalars, const float sigma2, ProjectorClass& proj) {
+inline int proxTGVSymmDerivAF(const std::vector<af::array>& v, std::vector<af::array>& q, const scalarStruct& inputScalars, const float sigma2, const float alpha, ProjectorClass& proj) {
 	int status = 0;
 	if (DEBUG) {
 		mexPrintBase("input.dims(0) = %u\n", v[0].dims(0));
@@ -1993,7 +2058,7 @@ inline int proxTGVSymmDerivAF(const std::vector<af::array>& v, std::vector<af::a
 	proj.d_vY = transferAF(v[1]);
 	if (!inputScalars.TGV2D)
 		proj.d_vZ = transferAF(v[2]);
-	status = proj.ProxTGVSymmDeriv(inputScalars, sigma2);
+	status = proj.ProxTGVSymmDeriv(inputScalars, sigma2, alpha);
 	v[0].unlock();
 	v[1].unlock();
 	if (!inputScalars.TGV2D)
@@ -2228,7 +2293,7 @@ inline af::array batchNotEqual(const af::array& lhs, const af::array& rhs) {
 
 // Compute the epsilon value for the MBSREM/MRAMLA
 inline float MBSREM_epsilon(const af::array& Sino, const af::array& D, const float epps = 1e-5f, const uint32_t randoms_correction = false, const af::array& rand = af::constant(0.1, 1, 1),
-	const bool TOF = false, const int64_t nBins = 1, const bool CT = false) {
+	const bool TOF = false, const int64_t nBins = 1, const bool CT = false, const bool randomsTOF = false) {
 	float eps;
 	if (CT) {
 		af::array hk_summa = -af::exp(-Sino) / Sino - Sino;
@@ -2259,11 +2324,17 @@ inline float MBSREM_epsilon(const af::array& Sino, const af::array& D, const flo
 		hk_summa(af::isNaN(hk_summa)) = 0.f;
 		af::array P_Sino, apu, Iind;
 		if (TOF && randoms_correction) {
+			// With a TOF-resolved additive term (randomsTOF) the randoms/scatter has the size of the TOF data and is not repeated for the bins
 			af::array rInd = rand == 0.f;
-			P_Sino = Sino(Sino > 0.f & af::tile(rInd, nBins));
-			apu = D + af::tile(rand, nBins);
+			if (!randomsTOF)
+				rInd = af::tile(rInd, nBins);
+			const af::array Iind2 = Sino > 0.f & rInd;
+			if (af::sum<float>(Iind2) == 0.f)
+				return 1e8f;
+			P_Sino = Sino(Iind2);
+			apu = D + (randomsTOF ? rand : af::tile(rand, nBins));
 			apu = af::sum(Sino * af::log(apu) - apu);
-			hk_summa = af::batchFunc(af::sum(hk_summa), hk_summa(Sino > 0.f & af::tile(rInd, nBins)), batchMinus);
+			hk_summa = af::batchFunc(af::sum(hk_summa), hk_summa(Iind2), batchMinus);
 		}
 		else {
 			if (randoms_correction == 1u) {
@@ -4300,7 +4371,7 @@ inline void forwardProjectionType6Raw(af::array& fProj, const Weighting& w_vec, 
 	if (DEBUG || inputScalars.verbose >= 3) {
 		proj.tEndLocal = std::chrono::steady_clock::now();
 		const std::chrono::duration<double> tDiff = proj.tEndLocal - proj.tStartLocal;
-		mexPrintBase("SPECT forward projection completed in %f seconds\n", tDiff);
+		mexPrintBase("SPECT forward projection completed in %f seconds\n", tDiff.count());
 		mexEval();
 	}
 }
@@ -6096,30 +6167,108 @@ inline void backprojectionType6All(af::array& fProj, const Weighting& w_vec, AF_
 
 
 
-// 1D filtering
-inline int filtering(const af::array& filter, af::array& input, ProjectorClass& proj, const dim_t dimmi) {
+// Maximum number of complex elements of the zero-padded FFT buffer that is processed in one go by the 1D filtering.
+// ArrayFire indexes with 32-bit integers internally, so arrays with 2^31 or more elements write out-of-bounds on evaluation. In
+// addition, the element-wise complex multiplication/division kernel addresses the interleaved (real, imaginary) data with the
+// index 2 * n + 1, which overflows a 32-bit index when n >= 2^30 (unless 64-bit indices are in use). The filtering is therefore
+// done in chunks of projections such that the FFT buffer never exceeds this number of elements (2^29, i.e. 4 GiB of complex data,
+// also keeps the peak GPU memory in check, since ArrayFire pads and converts the input to complex before the FFT). The limit can be
+// changed at compile time (-DOMEGA_FILTER_CHUNK_ELEMENTS=...), e.g. for testing the chunking with small problems.
+#ifndef OMEGA_FILTER_CHUNK_ELEMENTS
+#define OMEGA_FILTER_CHUNK_ELEMENTS (static_cast<int64_t>(1) << 29)
+#endif
+
+// FFT-based 1D filtering of one block of data: FFT along the first dimension (zero-padded to dimmi), element-wise multiplication
+// (mult = true) or division (mult = false) with the filter, inverse FFT and cropping to the original number of rows.
+// The output is the real part, not flattened
+inline int filterBlock1D(const af::array& filter, const af::array& in, af::array& out, ProjectorClass& proj, const dim_t dimmi, const bool mult) {
 	int status = 0;
-	af::array temp = af::fft(input, dimmi);
+	af::array temp = af::fft(in, dimmi);
 	temp.eval();
-	if (DEBUG) {
+	if (DEBUG && mult) {
 		mexPrintBase("temp = %f\n", af::sum<float>(temp));
 		mexEval();
 	}
 #ifndef CPU
-	status = elementWiseAF(filter, temp, true, proj);
+	status = elementWiseAF(filter, temp, mult, proj);
 	if (status != 0)
 		return -1;
 #else
-	temp *= af::tile(filter, 1, temp.dims(1), temp.dims(2));
+	if (mult)
+		temp *= af::tile(filter, 1, temp.dims(1), temp.dims(2));
+	else {
+		temp /= af::tile(filter, 1, temp.dims(1), temp.dims(2));
+		temp.eval();
+	}
 #endif
-	if (DEBUG) {
+	if (DEBUG && mult) {
 		mexPrintBase("temp = %f\n", af::sum<float>(temp));
 		mexEval();
 	}
 	af::ifftInPlace(temp);
 	temp.eval();
-	input = af::flat(af::real(temp(af::seq(0, input.dims(0) - 1), af::span, af::span)));
+	out = af::real(temp(af::seq(0, in.dims(0) - 1), af::span, af::span));
 	return 0;
+}
+
+// 1D filtering (mult = true) or filtering with division (mult = false) of the measurement data, processed in chunks along the
+// last non-singleton dimension (projections, or dimension 1 for 2D data) so that the FFT buffer has at most
+// OMEGA_FILTER_CHUNK_ELEMENTS elements. If the data fit in one chunk, the whole data are processed at once.
+inline int filterChunked1D(const af::array& filter, af::array& input, ProjectorClass& proj, const dim_t dimmi, const bool mult) {
+	int status = 0;
+	const int64_t limit = static_cast<int64_t>(OMEGA_FILTER_CHUNK_ELEMENTS);
+	const dim_t cd = (input.dims(2) > 1) ? 2 : 1;
+	const dim_t nUnits = input.dims(cd);
+	// Number of FFT buffer elements per projection (padded rows times the other dimensions)
+	int64_t perUnit = static_cast<int64_t>(dimmi);
+	for (dim_t d = 1; d < 4; d++) {
+		if (d != cd)
+			perUnit *= static_cast<int64_t>(input.dims(d));
+	}
+	if (perUnit > limit) {
+		mexPrintBase("Filtering failed: a single projection requires %lld FFT elements, the maximum is %lld\n", static_cast<long long>(perUnit), static_cast<long long>(limit));
+		return -1;
+	}
+	const dim_t chunk = (std::min<dim_t>)(nUnits, static_cast<dim_t>(limit / perUnit));
+	if (chunk >= nUnits) {
+		af::array out;
+		status = filterBlock1D(filter, input, out, proj, dimmi, mult);
+		if (status != 0)
+			return -1;
+		input = af::flat(out);
+		return 0;
+	}
+	if (DEBUG) {
+		mexPrintBase("Filtering in chunks of %lld projections (total %lld)\n", static_cast<long long>(chunk), static_cast<long long>(nUnits));
+		mexEval();
+	}
+	// The filtered chunks are written back to the same array (the chunk being filtered is a copy), which avoids a second full-size array
+	const af::dtype outType = (input.type() == f64) ? f64 : f32;
+	if (input.type() != outType)
+		input = input.as(outType);
+	for (dim_t first = 0; first < nUnits; first += chunk) {
+		const dim_t last = (std::min<dim_t>)(first + chunk, nUnits) - 1;
+		af::array part, res;
+		if (cd == 2)
+			part = input(af::span, af::span, af::seq(first, last)).copy();
+		else
+			part = input(af::span, af::seq(first, last)).copy();
+		status = filterBlock1D(filter, part, res, proj, dimmi, mult);
+		if (status != 0)
+			return -1;
+		if (cd == 2)
+			input(af::span, af::span, af::seq(first, last)) = res;
+		else
+			input(af::span, af::seq(first, last)) = res;
+		input.eval();
+	}
+	input = af::flat(input);
+	return 0;
+}
+
+// 1D filtering
+inline int filtering(const af::array& filter, af::array& input, ProjectorClass& proj, const dim_t dimmi) {
+	return filterChunked1D(filter, input, proj, dimmi, true);
 }
 
 // 2D filtering
@@ -6151,20 +6300,7 @@ inline int filtering2D(const af::array& filter, af::array& input, ProjectorClass
 
 // 1D filtering with division
 inline int filteringInverse(const af::array& filter, af::array& input, ProjectorClass& proj, const dim_t dimmi) {
-	int status = 0;
-	af::array temp = af::fft(input, dimmi);
-	temp.eval();
-#ifndef CPU
-	status = elementWiseAF(filter, temp, false, proj);
-	if (status != 0)
-		return -1;
-#else
-	temp /= af::tile(filter, 1, temp.dims(1), temp.dims(2));
-	temp.eval();
-#endif
-	af::ifftInPlace(temp);
-	input = af::flat(af::real(temp(af::seq(0, input.dims(0) - 1), af::span, af::span)));
-	return 0;
+	return filterChunked1D(filter, input, proj, dimmi, false);
 }
 
 // Image-based preconditioner 2
@@ -6350,19 +6486,8 @@ inline int applyMeasPreconditioning(const Weighting& w_vec, const scalarStruct& 
 			else
 				input = af::moddims(input, inputScalars.nRowsD, inputScalars.nColsD, input.elements() / (inputScalars.nRowsD * inputScalars.nColsD));
 			input.eval();
-			if (input.elements() > 207762000) {
-				const dim_t h = input.dims(2) / 2;
-				for (int uu = 0; uu < 2; uu++) {
-					const dim_t first = uu * h, last = (uu == 0) ? h - 1 : input.dims(2) - 1;
-					af::array input1 = input(af::span, af::span, af::seq(first, last)).copy();
-					status = filtering(w_vec.filter, input1, proj, inputScalars.Nf);
-					input1 = af::moddims(input1, inputScalars.nRowsD, inputScalars.nColsD, input1.elements() / (inputScalars.nRowsD * inputScalars.nColsD));
-					input(af::span, af::span, af::seq(first, last)) = input1.copy();
-				}
-				input = af::flat(input);
-			}
-			else
-				status = filtering(w_vec.filter, input, proj, inputScalars.Nf);
+			// filtering processes large inputs in chunks itself (see OMEGA_FILTER_CHUNK_ELEMENTS)
+			status = filtering(w_vec.filter, input, proj, inputScalars.Nf);
 			if (status != 0)
 				return -1;
 		}
@@ -6612,7 +6737,12 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				mexEval();
 			}
 			if (inputScalars.currentSubset == 0 && !inputScalars.largeDim) {
-				vec.uCP[timestep].emplace_back(vec.im_os[timestep][ii].copy());
+				// With subsets uCP is the backprojected dual accumulator A^T p (p starts at zero), so it starts at zero;
+				// without subsets it is the primal iterate and starts at the initial image.
+				if (inputScalars.subsetsUsed > 1)
+					vec.uCP[timestep].emplace_back(af::constant(0.f, vec.im_os[timestep][ii].elements()));
+				else
+					vec.uCP[timestep].emplace_back(vec.im_os[timestep][ii].copy());
 				proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]);
 			}
 			else if (inputScalars.currentSubset == 0 && inputScalars.largeDim)
@@ -7145,6 +7275,15 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			w_vec.precondTypeIm[5] = apuI;
 		}
 	}
+	// The proximal TV and TGV priors are a part of the linear operator of PDHG, with their own dual step size (sigma2CP)
+	// The primal step size thus has to fulfill tau * (sigma * ||A||^2 + sigma2 * ||D||^2) <= 1, where D is the operator of the prior
+	// ||D||^2 <= 12 for the 3D gradient (4 per dimension) and <= 16 for the TGV operator [grad, -I; 0, symmetrized derivative]
+	// The priors are computed only for the main volume
+	float proxPriorNorm = 0.f;
+	if (MethodList.CPType && (MethodList.ProxTGV || MethodList.TGV))
+		proxPriorNorm = 16.f;
+	else if (MethodList.CPType && MethodList.ProxTV)
+		proxPriorNorm = 12.f;
 	for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 		proj.memSize -= (sizeof(float) * inputScalars.im_dim[ii]);
 		w_vec.sigmaCP[timestep][ii] = 1.f;
@@ -7170,10 +7309,11 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			mexEval();
 		}
 		w_vec.LCP[timestep].emplace_back(w_vec.tauCP[timestep][ii]);
-		w_vec.tauCP[timestep][ii] = 1.f / w_vec.tauCP[timestep][ii];
+		const float priorTerm = (ii == 0) ? w_vec.sigma2CP[timestep][ii] * proxPriorNorm : 0.f;
+		w_vec.tauCP[timestep][ii] = 1.f / (w_vec.sigmaCP[timestep][ii] * w_vec.tauCP[timestep][ii] + priorTerm);
 		if (w_vec.filterIter > 0 && (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5])) {
 			w_vec.LCP2[timestep].emplace_back(w_vec.tauCP2[timestep][ii]);
-			w_vec.tauCP2[timestep][ii] = 1.f / w_vec.tauCP2[timestep][ii];
+			w_vec.tauCP2[timestep][ii] = 1.f / (w_vec.sigmaCP[timestep][ii] * w_vec.tauCP2[timestep][ii] + priorTerm);
 		}
 	}
 	return 0;
@@ -7186,13 +7326,6 @@ inline void initializeProxPriors(const RecMethods& MethodList, const scalarStruc
 		std::fill(vec.qProxTV.begin(), vec.qProxTV.end(), af::constant(0.f, static_cast<dim_t>(inputScalars.NxPrior) * static_cast<dim_t>(inputScalars.NyPrior) * static_cast<dim_t>(inputScalars.NzPrior)));
 		for (int kk = 0; kk < vec.qProxTV.size(); kk++) {
 			vec.qProxTV[kk].eval();
-		}
-	}
-	if (MethodList.ProxRDP || MethodList.ProxNLM) {
-		vec.qProx.resize(1);
-		std::fill(vec.qProx.begin(), vec.qProx.end(), af::constant(0.f, static_cast<dim_t>(inputScalars.NxPrior) * static_cast<dim_t>(inputScalars.NyPrior) * static_cast<dim_t>(inputScalars.NzPrior)));
-		for (int kk = 0; kk < vec.qProx.size(); kk++) {
-			vec.qProx[kk].eval();
 		}
 	}
 	if (MethodList.ProxTGV) {

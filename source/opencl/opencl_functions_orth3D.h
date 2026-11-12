@@ -377,6 +377,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	}
 	local_ele = FLOAT_ONE - SQRT(norm2) * orth_ray_length_inv;
 #endif //////////// END SPECT/VOL/ORTH /////////////
+
 #if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
 	// A skipped tile voxel must not terminate the reference support scan.
 	if (outsideTile)
@@ -392,6 +393,22 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	const LONG ind = local_ind;
 #endif
 #else
+
+
+#if !defined(SPECT) && defined(ORTHCLIP)
+	// The tube ends at the end points of the ray (a flat cap): a voxel whose foot point on the ray lies before the first or after the last end
+	// point (t < 0 or t > 1, t = dot(diff, center - s) / dot(diff, diff)) is not part of the ray. Without this the tube continues beyond the end
+	// points until the ray leaves the image, which matters when an end point is inside the image (image larger than the detector ring).
+	// The host defines ORTHCLIP only when a detector/source lies inside the image box widened by the tube reach (otherwise no voxel beyond an end
+	// point can be in the image and the check is skipped for speed).
+	// The voxel is skipped but still counted as visited (return false) so that the slice traversal is not changed
+	{
+		const FLOAT tpar = FMAD(diff.x, center.x - s.x, FMAD(diff.y, x0, diff.z * (center.z - s.z)));
+		if (tpar < FLOAT_ZERO || tpar > FMAD(diff.x, diff.x, FMAD(diff.y, diff.y, diff.z * diff.z)))
+			return false;
+	}
+#endif
+
 #if (defined(FP) && defined(USEIMAGES)) || (defined(MASKBP) && defined(BP)) ///////////////////// 2D/3D indices /////////////////////
 	int3 ind;
     if (XY)
@@ -420,7 +437,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	local_ele *= jelppi;
 #endif
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
-	denominator(ax, ind, local_ele, d_OSEM
+	ORTH_DENOMINATOR(ax, ind, local_ele, d_OSEM
 #ifdef TOF //////////////// TOF ////////////////
 				, TOFWeights
 #endif //////////////// END TOF ////////////////

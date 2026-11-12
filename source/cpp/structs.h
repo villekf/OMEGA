@@ -95,7 +95,7 @@ typedef struct AF_im_vectors_ {
 	std::vector<std::vector<std::vector<char>>> seenDone;
     // Other arrays
     af::array C_co, rCGLS, meanFP, meanBP, apu, adapTypeA;
-	std::vector<af::array> im_os_blurred, qProxTGV, vProxTGV, qProxTV, qProx, SAGASum;
+	std::vector<af::array> im_os_blurred, qProxTGV, vProxTGV, qProxTV, SAGASum;
 	std::vector<af::array> fCGLS;
 	std::vector<std::vector<af::array>> stochasticHelper;
 } AF_im_vectors;
@@ -128,6 +128,12 @@ typedef struct Weighting_ {
 	float CORtoDetectorSurface = 0.f;
 	uint8_t* maskFP = nullptr, * maskBP = nullptr, * eFOVIndices = nullptr, *maskPrior = nullptr, *maskOffset = nullptr, *TOFIndices = nullptr;
 	uint16_t* axIndex = nullptr, * trIndex = nullptr;
+	// Sinogram normalization of the list-mode sensitivity image (index-based data) and the two lookup tables mapping a detector pair to it:
+	// sensXY (det_per_ring^2): sinogram bin (bits 0..30) and swap flag (bit 31), sensZ (rings^2): sinogram plane. 0xFFFFFFFF = outside the sinogram
+	// Without the lookup tables (sensXY == nullptr) normSens is a full pair table with one value for every ordered detector/ring pair
+	// (det_per_ring^2 * rings^2 * nLayers^2 elements), read with the index of the sensitivity image kernel
+	const float* normSens = nullptr;
+	const uint32_t* sensXY = nullptr, * sensZ = nullptr;
 	uint32_t* detectorVector = nullptr;
 	size_t detectorVectorSize = 0;
 	// Host arrays of the normalization and the multiplicative scatter/extra correction (corrVector), used by the SPECT projector type 6 (see type6Weights)
@@ -164,7 +170,7 @@ typedef struct RecMethods_ {
 	bool OSEM = false, MRAMLA = false, RAMLA = false, ROSEM = false, RBI = false, DRAMA = false, COSEM = false, ECOSEM = false,
 		ACOSEM = false, LSQR = false, CGLS = false, SART = false;
 	bool MRP = false, Quad = false, Huber = false, L = false, FMH = false, WeightedMean = false, TV = false, AD = false, APLS = false, TGV = false, NLM = false, RDP = false, GGMRF = false, 
-		ProxTV = false, ProxTGV = false, ProxRDP = false, ProxNLM = false, hyperbolic = false;
+		ProxTV = false, ProxTGV = false, hyperbolic = false;
 	bool OSLOSEM = false, MAPOSEM = false, MBSREM = false, BSREM = false, ROSEMMAP = false, ROSEMOSL = false, RBIMAP = false, RBIOSL = false,
 		PKMA = false, FISTAL1 = false, SPS = false, PDHG = false, PDHGKL = false, FISTA = false, PDHGL1 = false, CV = false, PDDY = false, POCS = false, SAGA = false;
 	bool MAP = false;

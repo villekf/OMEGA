@@ -170,7 +170,8 @@ def CTEFOVCorrection(options, extrapLengthTransaxial = None, extrapLengthAxial =
     if eFOVLengthAxial is None:
         eFOVLengthAxial = _getOpt(options, 'eFOVLengthAxial')
         if eFOVLengthAxial is None:
-            eFOVLengthAxial = eFOVLengthBase
+            # As in MATLAB (CTEFOVCorrection.m): eFOVLength if given, otherwise 0.3 (the transaxial base stays 0.4)
+            eFOVLengthAxial = eFOVLengthBase if _getOpt(options, 'eFOVLength') is not None else .3
 
     weighting = options.useExtrapolationWeighting
     offset = options.offsetCorrection

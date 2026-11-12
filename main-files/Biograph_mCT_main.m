@@ -482,13 +482,20 @@ options.normalization_correction = false;
 % for normalization correction, or input the normalization data into 
 % options.normalization if normalization_correction is also set to true
 % User will be prompted for the location of the file either during sinogram
-% formation or before image reconstruction (see below).
+% formation or before image reconstruction (see below), unless
+% options.normalization_datafile is set below.
 % NOTE: If you have previously computed normalization coefficients with
 % OMEGA, you do not need to set this to true. The normalization
 % coefficients for the specified scanner will be automatically loaded. Use
 % this only if you want to use normalization coefficients computed outside
 % of OMEGA.
 options.use_user_normalization = false;
+
+%%% User normalization data file
+% Specify the path and filename of the normalization data file for the
+% above user-made normalization (e.g. the Siemens PET_CALIBRATION .ptd or
+% .n file). If empty, the user will be prompted to select the file.
+options.normalization_datafile = '';
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%% Global corrections %%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Global correction factor

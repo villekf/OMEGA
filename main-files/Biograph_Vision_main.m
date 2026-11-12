@@ -43,7 +43,7 @@ options.cr_p = 3.2;
 options.cr_pz = 3.2;
 
 %%% Ring diameter (distance between perpendicular detectors) (mm)
-options.diameter = 780;
+options.diameter = 820;
 
 %%% Transaxial FOV size (mm), this is the length of the x (vertical/row) side
 % of the FOV
@@ -98,6 +98,15 @@ options.machine_name = 'Siemens_Vision';
 % 1 = Use list-mode data (.ptd/.l/.lst)
 % 2 = Use (uncompressed) sinogram data (.s/.ptd)
 options.use_machine = 1;
+
+%%% Detector geometry
+% The diameter above is the physical face-to-face diameter of the crystal
+% ring (82 cm ring). A fitted mean interaction depth of 8.6 mm gives an
+% effective ring diameter of 837.2 mm (820 mm + 2 * 8.6 mm), which, with the
+% first block rotated by 5.17 degrees (with the offangle and flip_image
+% values below), matches the Siemens reconstructions.
+options.DOI = 8.6;
+options.firstBlockAngle = 5.17;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -359,6 +368,14 @@ options.randoms_smoothing = false;
 % NOTE: Scatter data is not created by this software and as such must be
 % provided by the user. Previously created scatter sinogram/raw data matrix
 % obtained from GATE data can be used though.
+% With TOF data the scatter data is either a TOF sinogram (Ndist x Nang x
+% NSinos x TOF_bins), which is used as it is in each TOF bin, or a non-TOF
+% sinogram, which is divided evenly among the TOF bins (a message is
+% printed). A TOF sinogram can be used with precorrection and with
+% corrections during reconstruction, in the latter case only with
+% implementation 2, static data, no increased sampling, and no scatter
+% smoothing or variance reduction. The additive term of the reconstruction
+% is then TOF-sized and needs as much memory as the TOF data itself.
 options.scatter_correction = false;
 
 %%% Variance reduction
@@ -395,8 +412,14 @@ options.attenuation_correction = true;
 %%% Rotate the attenuation image before correction
 % Rotates the attenuation image N * 90 degrees where N is the number
 % specified below. Positive values are clockwise, negative
-% counter-clockwise.
+% counter-clockwise. 1 is for the GATE data; measured Vision data is handled
+% below.
 options.rotateAttImage = 1;
+% Measured Vision data with the Siemens CT images (create_atten_matrix_CT
+% below) needs no rotation with the measured-data geometry above
+if options.use_machine > 0
+    options.rotateAttImage = 0;
+end
 
 %%% Flip the attenuation image in the transaxial (column) direction before reconstruction
 options.flipAttImageXY = false;
@@ -471,13 +494,45 @@ options.normalization_correction = true;
 % for normalization correction, or input the normalization data into 
 % options.normalization if normalization_correction is also set to true
 % User will be prompted for the location of the file either during sinogram
-% formation or before image reconstruction (see below).
+% formation or before image reconstruction (see below), unless
+% options.normalization_datafile is set below.
 % NOTE: If you have previously computed normalization coefficients with
 % OMEGA, you do not need to set this to true. The normalization
 % coefficients for the specified scanner will be automatically loaded. Use
 % this only if you want to use normalization coefficients computed outside
 % of OMEGA.
+% For measured Vision data, the Siemens normalization file (the
+% PET_CALIBRATION .ptd file or a .n file) can be selected here; the
+% normalization coefficients are then computed for the sinogram size used
+% here (see loadNormalizationBiograph).
 options.use_user_normalization = false;
+
+%%% User normalization data file
+% Specify the path and filename of the normalization data file for the
+% above user-made normalization (e.g. the Siemens PET_CALIBRATION .ptd or
+% .n file). If empty, the user will be prompted to select the file.
+options.normalization_datafile = '';
+
+%%% Quantification file (Bq/mL) for measured Vision data
+% Path of the PET_EM_SINO .ptd file of the measurement (it contains the
+% isotope, the frame duration and the block singles rates). If set, the
+% reconstructed image is also converted to Bq/mL after the reconstruction
+% (see "Convert the images to Bq/mL" at the end of this file). The
+% quantification factor and the dead-time factor are read from this file and
+% from the PET_CALIBRATION .ptd file given in options.normalization_datafile
+% above (required, with options.use_user_normalization = true). Leave empty
+% to skip the conversion. See quantificationFactorBiograph for the details
+% (e.g. how to correct a wrong isotope in the header).
+quantificationFile = '';
+
+%%% Vision normalization LOR length factor
+% The efficiency of each LOR of the Siemens Vision normalization file is
+% multiplied by D^(-n), where D is the transaxial distance between the two
+% detectors of the LOR and n is the value here. The factor is empirical: it
+% was validated against the Siemens reconstruction of measured Vision data
+% (2 = default), 0 = no length factor. Needs the detector geometry above
+% (diameter, DOI, cr_p, etc.).
+options.visionLORLengthExponent = 2;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%% Global corrections %%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Global correction factor
@@ -1568,8 +1623,9 @@ options = OMEGA_error_check(options);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%% DEPTH OF INTERACTION %%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Uncomment the below value to set a depth of interaction (mm)
-% NOTE: By default this is set to 0, i.e. it is assumed that all the
+% Uncomment the below value to change the depth of interaction (mm)
+% NOTE: This example sets the value to 8.6 in the detector geometry section
+% above (see VISION DATA). 0 means that it is assumed that all the
 % interactions occur at the surface of the detector crystals. What this
 % value changes is the depth of where the interactions are assumed to
 % occur, i.e. it only changes the detector coordinates such that the
@@ -1628,6 +1684,29 @@ if ~options.only_sinos
 	% save([options.name '_reconstruction_' num2str(options.subsets) 'subsets_' num2str(options.Niter) 'iterations_' ...
 	%     num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '.mat'], 'pz');
     
+end
+
+%% Convert the images to Bq/mL
+
+% For measured Vision data: multiplies the image with the factor of
+% quantificationFactorBiograph (quantification and cross calibration factors
+% of the PET_CALIBRATION file, the decay and branching factor of the isotope,
+% the frame duration, the dead time and the scale of the normalization).
+% Needs quantificationFile (above) and the same options as in the
+% reconstruction. For an isotope that is wrongly labelled in the header of
+% the PET_EM_SINO file, give the correct values, e.g. for Ga-68
+% quantificationFactorBiograph(..., 'halfLife', 4062.6, 'branchingFactor', 0.8891)
+if ~isempty(quantificationFile) && ~options.only_sinos
+    if isempty(options.normalization_datafile)
+        error('The Bq/mL conversion requires options.normalization_datafile (the PET_CALIBRATION .ptd file)')
+    end
+    [quantificationFactor, quantificationComponents] = quantificationFactorBiograph(options.normalization_datafile, quantificationFile, options);
+    if iscell(pz)
+        pzBqmL = cellfun(@(x) x * quantificationFactor, pz, 'UniformOutput', false);
+    else
+        pzBqmL = pz * quantificationFactor;
+    end
+    disp(['The images were multiplied with ' num2str(quantificationFactor) ' to get Bq/mL (isotope ' quantificationComponents.isotope ')'])
 end
 
 %% Scale the images

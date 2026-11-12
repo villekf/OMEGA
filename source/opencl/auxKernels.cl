@@ -27,7 +27,7 @@
 #endif
 
 // The total size of the local/shared memory region
-#if defined(NLM_) || defined(PROXNLM) || defined(NLM4_)
+#if defined(NLM_) || defined(NLM4_)
 #define SIZEX LOCAL_SIZE + SWINDOWX * 2 + PWINDOWX * 2
 #define SIZEY LOCAL_SIZE2 + SWINDOWY * 2 + PWINDOWY * 2
 #define SIZEZ LOCAL_SIZE3 + SWINDOWZ * 2 + PWINDOWZ * 2
@@ -391,163 +391,30 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 	if (any(ii >= N))
 #endif
 		return;
+#ifdef EFOVZ
+	if (fovIndices[ii.z] == 0)
+        return;
+#endif
 #ifdef MASKPRIOR
 	const int maskVal = readMaskBP(maskBP, CINT3(ii), CUINT3(N));
-#ifndef MASKSCALE
     if (maskVal == 0)
         return;
 #endif
-#endif
-	const int3 xxyyzz = CMINT3(LID0 + SWINDOWX + PWINDOWX, LID1 + SWINDOWY + PWINDOWY, LID2 + SWINDOWZ + PWINDOWZ);
-#ifdef MASKSCALE
-	const float uj = NLMFETCH(lCache, xxyyzz.x, xxyyzz.y, xxyyzz.z);
-#endif
-#if NLTYPE == 6
-	// Precompute for NLGGMRF
-	const float cpq = POWR(c, p - q);
-#endif
-	float output;
-#ifdef MASKSCALE
-	if (maskVal == 0) {
-		float weight_sum = epps;
-		output = FLOAT_ZERO;
-#if NLTYPE == 1
-		float outputAla = epps;
-#endif
-#ifdef NLMAXWEIGHT
-		float maxWeight = FLOAT_ZERO;
-#endif
-#if defined(NLMADAPTIVE)
-		float hh = FLOAT_ZERO;
-		const float pSize = CFLOAT((PWINDOWX * 2 + 1) * (PWINDOWY * 2 + 1) * (PWINDOWZ * 2 + 1));
-#endif
-#pragma unroll
-		for (int i = -1; i <= 1; i++) {
-#pragma unroll
-			for (int j = -1; j <= 1; j++) {
-				int k = 0;
-				if (i == 0 && j == 0)
-					continue;
-				float weight = FLOAT_ZERO;
-				float distance = FLOAT_ZERO;
-				int pz = 0;
-#pragma unroll
-					for (int py = -1; py <= 1; py++) {
-						int dim_g = (pz + PWINDOWZ) * (PWINDOWX * 2 + 1) * (PWINDOWY * 2 + 1) + (py + PWINDOWY) * (PWINDOWX * 2 + 1) + (PWINDOWX - 1);
-#pragma unroll
-						for (int px = -1; px <= 1; px++) {
-							const float gg = gaussian[dim_g++];
-#ifdef NLMREF
-							const float Pk = NLMFETCH(lCacheRef, xxyyzz.x + i + px, xxyyzz.y + j + py, xxyyzz.z);
-							const float Pj = NLMFETCH(lCacheRef, xxyyzz.x + px, xxyyzz.y + py, xxyyzz.z);
-#else
-							const float Pk = NLMFETCH(lCache, xxyyzz.x + i + px, xxyyzz.y + j + py, xxyyzz.z);
-							const float Pj = NLMFETCH(lCache, xxyyzz.x + px, xxyyzz.y + py, xxyyzz.z);
-#endif
-							const float PP = Pj - Pk;
-							distance += gg * PP * PP;
-						}
-					}
-#if defined(NLMADAPTIVE)
-				hh = distance / pSize;
-				weight = EXP(-distance / (hh * h + s));
-#else
- 				weight = EXP(-distance / h);
-#endif
- 				weight_sum += weight;
-#ifdef NLMAXWEIGHT
-				maxWeight = FMAX(maxWeight, weight);
-#endif
-				const float uk = NLMFETCH(lCache, xxyyzz.x + i, xxyyzz.y + j, xxyyzz.z);
- 				// Different NLM regularization methods
-				// NLTYPE 0 = MRF NLM
-				// NLTYPE 1 = NLTV
-				// NLTYPE 2 = NLM filtered (i.e. similar to MRP)
-				// NLTYPE 3 = NLRD
-				// NLTYPE 4 = NL Lange
-				// NLTYPE 5 = NLM filtered with Lange
-				// NLTYPE 6 = NLGGMRF
-				// NLTYPE 7 = NLGM
-#if NLTYPE == 2 || NLTYPE == 5 // START NLM NLTYPE
-				// NLMRP
- 				output += weight * uk;
-#elif NLTYPE == 0
- 				output += (weight * (uj - uk));
-#elif NLTYPE == 3
-				// NLRD
-				const float u = (uj - uk);
-#ifndef USEMAD // START FMAD
-				const float divPow = (uj + uk + gamma * fabs(u) + epps);
-				output += weight * u * (gamma * fabs(u) + uj + 3.f * uk + epps * epps) / (divPow * divPow); 
-#else
-				const float divPow = FMAD(gamma, fabs(u), uj + uk + epps);
-				output += weight * u * (FMAD(gamma, fabs(u), uj + 3.f * uk + epps * epps)) / (divPow * divPow); 
-#endif // END FMAD
-#elif NLTYPE == 4
-				// Lange
-				const float u = (uj - uk);
-				const float uabs = sign(u);
-				output += weight * (uabs - uabs / (fabs(u) / gamma + FLOAT_ONE));
-#elif NLTYPE == 6
-				// NLGGMRF
-				const float delta = uj - uk;
-				const float dcpq = POWR(fabs(delta / c), p - q);
-				const float deltapqc = FLOAT_ONE + dcpq;
-				output += weight * (POWR(fabs(delta), p - FLOAT_ONE) / deltapqc) * (p - gamma * ((dcpq * cpq) / deltapqc)) * sign(delta);
-#elif NLTYPE == 7
-				const float delta = uj - uk;
-				const float apu = (delta * delta + gamma * gamma);
-				output += weight * (FLOAT_TWO * gamma * gamma * delta) / (apu * apu);
-#else
- 				//NLTV
-				const float apuU = uj - uk;
- 				output += (weight * apuU);
- 				outputAla += weight * apuU * apuU;
-#endif // END NLM NLTYPE
-				}
-			}
-#ifdef NLMAXWEIGHT
-#if NLTYPE == 2 || NLTYPE == 5
-		output += maxWeight * uj;
-#endif
-		weight_sum += maxWeight;
-#endif
-		weight_sum = FLOAT_ONE / weight_sum;
-		output *= weight_sum;
-#if NLTYPE == 2 // START NLM NLTYPE
-		output = uj - output;
-#elif NLTYPE == 5
-		// Lange with NLMRP
-		output = uj - output;
-		const float uabs = sign(output);
-		output = (uabs - uabs / (fabs(output) / gamma + FLOAT_ONE));
-#elif NLTYPE == 1
-#ifndef USEMAD // START FMAD
-		output /= SQRT(outputAla * weight_sum + epps);
-#else
-		output /= SQRT(FMAD(outputAla, weight_sum, epps));
-#endif // END FMAD
-#endif // END NLM NLTYPE
-		}
-	else {
-#endif
-		output = NLMGradient(lCache, gaussian, xxyyzz.x, xxyyzz.y, xxyyzz.z, h, epps
+	const int3 xxyyzz = CMINT3(LID0 + SWINDOWX + PWINDOWX,LID1 + SWINDOWY + PWINDOWY, LID2 + SWINDOWZ + PWINDOWZ);
+	const float output = NLMGradient(lCache, gaussian, xxyyzz.x, xxyyzz.y, xxyyzz.z, h, epps
 #if NLTYPE >= 3
-			, gamma
+		, gamma
 #endif
 #if NLTYPE == 6
-			, p, q, c
+		, p, q, c
 #endif
 #if defined(NLMADAPTIVE)
-			, s
+		, s
 #endif
 #ifdef NLMREF
-			, lCacheRef
+		, lCacheRef
 #endif
-			);
-#ifdef MASKSCALE
-	}
-#endif
+		);
 #ifdef LARGEDIM
 	if (ii.z >= nOffset.x && ii.z < nOffset.y)
 		grad[n - N.x * N.y * nOffset.x] += beta * output;
@@ -959,59 +826,13 @@ DEVICE void forwardDiffZ2(float* apuVal, const LTYPE3 xyz, const int3 N, const C
 #ifndef DIFFTYPE 
 #define DIFFTYPE 0
 #endif
-// Computing q of proximal TV (see http://dx.doi.org/10.1088/0031-9155/57/10/3065)
-KERN
-void ProxTVq(CLGLOBAL float* inputX, CLGLOBAL float* inputY, CLGLOBAL float* inputZ, const float alpha, const LTYPE N) {
-	LTYPE idx = GID0;
-	if (idx >= N)
-		return;
-	const float3 apu = MFLOAT3(inputX[idx], inputY[idx], inputZ[idx]);
-#ifdef L2 // START L2
-// L2 norm
-	const float scale = fmax(FLOAT_ONE, length(apu) / alpha);
-#else
-// L1 norm
-	const float scale = fmax(fmax(fabs(apu.z), fmax(fabs(apu.x), fabs(apu.y))) / alpha, FLOAT_ONE);
-#endif // END L2
-	inputX[idx] = apu.x / scale;
-	inputY[idx] = apu.y / scale;
-	inputZ[idx] = apu.z / scale;
+// Reads the dual variable of the proximal TV/TGV. The dual variable exists only in the volume where the prior is computed
+// (the original FOV) and is zero elsewhere
+DEVICE float proxQRead(const CLGLOBAL float* CLRESTRICT q, const LTYPE x, const LTYPE y, const LTYPE z, const int3 N) {
+	if (x < 0 || y < 0 || z < 0 || x >= N.x || y >= N.y || z >= N.z)
+		return FLOAT_ZERO;
+	return q[x + y * N.x + z * N.x * N.y];
 }
-
-#ifdef PROXTGV // START PROXTGV
-KERN
-// Same as above, but for TGV
-// TGVZ refers to full 3D TGV, i.e. it takes into account x-, y- and z-axis voxels
-#ifdef TGVZ
-void ProxTGVq(CLGLOBAL float* inputX, CLGLOBAL float* inputY, CLGLOBAL float* inputZ, CLGLOBAL float* input2XY, CLGLOBAL float* input2XZ, CLGLOBAL float* input2YZ, const float alpha, const LTYPE N) {
-#else
-void ProxTGVq(CLGLOBAL float* inputX, CLGLOBAL float* inputY, CLGLOBAL float* input2XY, const float alpha, const LTYPE N) {
-#endif
-	LTYPE idx = GID0;
-	if (idx >= N)
-		return;
-#ifdef TGVZ
-	const float3 apu = MFLOAT3(inputX[idx], inputY[idx], inputZ[idx]);
-	const float3 apu2 = MFLOAT3(input2XY[idx], input2XZ[idx], input2YZ[idx]);
-#else
-	const float3 apu = MFLOAT3(inputX[idx], inputY[idx], FLOAT_ZERO);
-	const float3 apu2 = MFLOAT3(input2XY[idx], FLOAT_ZERO, FLOAT_ZERO);
-#endif
-#ifdef L2 // START L2
-	const float scale = fmax(FLOAT_ONE, SQRT(apu.x * apu.x + apu.y * apu.y + apu.z * apu.z + (apu2.x * apu2.x) * FLOAT_TWO + (apu2.y * apu2.y) * FLOAT_TWO + (apu2.z * apu2.z) * FLOAT_TWO) / alpha);
-#else
-	const float scale = fmax(fmax(fabs(apu2.z),fmax(fabs(apu2.y), fmax(fabs(apu2.x), fmax(fabs(apu.z), fmax(fabs(apu.x), fabs(apu.y)))))) / alpha, FLOAT_ONE);
-#endif // END L2
-	inputX[idx] = apu.x / scale;
-	inputY[idx] = apu.y / scale;
-	input2XY[idx] = apu2.x / scale;
-#ifdef TGVZ
-	inputZ[idx] = apu.z / scale;
-	input2XZ[idx] = apu2.y / scale;
-	input2YZ[idx] = apu2.z / scale;
-#endif
-}
-#endif // END PROXTGV
 
 // Proximal TV divergence
 KERNEL3
@@ -1032,42 +853,48 @@ void ProxTVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 	if (any(xyz >= N))
 #endif
 		return;
+	const LTYPE x = xyz.x + xyz.y * N.x + xyz.z * N.x * N.y;
+#if defined(EFOVZ)
+	// Coordinates in the original FOV, i.e. in the volume where the prior is computed
+	const LTYPE3 NDiff = (N - NOrig) / 2;
+	const LTYPE3 xyzF = xyz - NDiff;
+#else
+	const LTYPE3 xyzF = xyz;
+#endif
+	// The prior is computed only in the original FOV: voxels of the extended FOV are skipped
+	// Note that the gradient of the voxels at the edge of the original FOV uses the neighboring voxel of the extended FOV, but
+	// the divergence does not include that voxel. An exact adjoint, which would include it, was tested and removes the anchoring
+	// effect of the extended FOV on the edge of the original FOV, degrading the edge slices with a strong regularization
+	if (xyzF.x < 0 || xyzF.y < 0 || xyzF.z < 0 || xyzF.x >= NOrig.x || xyzF.y >= NOrig.y || xyzF.z >= NOrig.z)
+		return;
 #ifdef EFOVZ
 	if (fovIndices[xyz.z] == 0)
-        return;
+		return;
 #endif
 #ifdef MASKPRIOR
 	const int maskVal = readMaskBP(maskBP, CINT3(xyz), CUINT3(N));
-    if (maskVal == 0)
-        return;
-#endif
-	const LTYPE x = xyz.x + xyz.y * N.x + xyz.z * N.x * N.y;
-#if defined(EFOVZ)
-	const LTYPE3 NDiff = (N - NOrig) / 2;
-	xyz = xyz - NDiff;
-	const LTYPE y = (xyz.x) + (xyz.y) * NOrig.x + (xyz.z) * NOrig.x * NOrig.y;
-#else
-	const LTYPE y = x;
+	if (maskVal == 0)
+		return;
 #endif
 	float apuVal = FLOAT_ZERO;
 // Transpose of forward difference (backward difference)
 #if DIFFTYPE == 0 // START DIFFTYPE == 0
-		backwardDiffX(&apuVal, xyz, NOrig, y, gradX);
-		backwardDiffY(&apuVal, xyz, NOrig, y, gradY);
-		backwardDiffZ(&apuVal, xyz, NOrig, y, gradZ);
+	apuVal += (proxQRead(gradX, xyzF.x, xyzF.y, xyzF.z, NOrig) - proxQRead(gradX, xyzF.x - 1, xyzF.y, xyzF.z, NOrig));
+	apuVal += (proxQRead(gradY, xyzF.x, xyzF.y, xyzF.z, NOrig) - proxQRead(gradY, xyzF.x, xyzF.y - 1, xyzF.z, NOrig));
+	apuVal += (proxQRead(gradZ, xyzF.x, xyzF.y, xyzF.z, NOrig) - proxQRead(gradZ, xyzF.x, xyzF.y, xyzF.z - 1, NOrig));
 // Transpose of backward difference (forward difference)
 #elif DIFFTYPE == 1  // START DIFFTYPE == 1
-		forwardDiffX(&apuVal, xyz, NOrig, y, gradX);
-		forwardDiffY(&apuVal, xyz, NOrig, y, gradY);
-		forwardDiffZ(&apuVal, xyz, NOrig, y, gradZ);
+	apuVal += (proxQRead(gradX, xyzF.x + 1, xyzF.y, xyzF.z, NOrig) - proxQRead(gradX, xyzF.x, xyzF.y, xyzF.z, NOrig));
+	apuVal += (proxQRead(gradY, xyzF.x, xyzF.y + 1, xyzF.z, NOrig) - proxQRead(gradY, xyzF.x, xyzF.y, xyzF.z, NOrig));
+	apuVal += (proxQRead(gradZ, xyzF.x, xyzF.y, xyzF.z + 1, NOrig) - proxQRead(gradZ, xyzF.x, xyzF.y, xyzF.z, NOrig));
 #else
 #endif // END DIFFTYPE
 	output[x] -= apuVal;
 }
 
-// Proximal TV or TGV gradient computation
+// Proximal TV or TGV gradient computation, i.e. the dual update with the projection
 KERNEL3
-void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRESTRICT im, CLGLOBAL float* outputX, CLGLOBAL float* outputY, CLGLOBAL float* outputZ, const float sigma2
+void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRESTRICT im, CLGLOBAL float* outputX, CLGLOBAL float* outputY, CLGLOBAL float* outputZ, const float sigma2, const float alpha
 #ifdef PROXTGV
 #ifdef TGVZ
 	, const CLGLOBAL float* CLRESTRICT vX, const CLGLOBAL float* CLRESTRICT vY, const CLGLOBAL float* CLRESTRICT vZ
@@ -1100,7 +927,6 @@ void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLREST
 #endif
 		
 	const LTYPE x = xyz.x + xyz.y * N.x + xyz.z * N.x * N.y;
-	float apuVal = FLOAT_ZERO;
 	float imApu = im[x];
 #if defined(EFOVZ)
 	const LTYPE3 NDiff = (N - NOrig) / 2;
@@ -1108,69 +934,58 @@ void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLREST
 #else
 	const LTYPE y = x;
 #endif
-////////////////////////
-// Forward difference //
-////////////////////////
+	// Differences of the image
+	float dX = FLOAT_ZERO;
+	float dY = FLOAT_ZERO;
+	float dZ = FLOAT_ZERO;
 #if DIFFTYPE == 0 // START DIFFTYPE == 0
-	forwardDiffX2(&apuVal, xyz, N, im, imApu);
-#ifdef PROXTGV
-	apuVal -= vX[y];
-#endif
-	apuVal *=  sigma2;
-	outputX[y] += apuVal;
-	apuVal = FLOAT_ZERO;
-	forwardDiffY2(&apuVal, xyz, N, im, imApu);
-#ifdef PROXTGV
-	apuVal -= vY[y];
-#endif
-	apuVal *=  sigma2;
-	outputY[y] += apuVal;
-	apuVal = FLOAT_ZERO;
-	forwardDiffZ2(&apuVal, xyz, N, im, imApu);
-#if defined(PROXTGV) && defined(TGVZ)
-	apuVal -= vZ[y];
-#endif
-	apuVal *=  sigma2;
-	outputZ[y] += apuVal;
-/////////////////////////
-// Backward difference //
-/////////////////////////
+	// Forward difference
+	forwardDiffX2(&dX, xyz, N, im, imApu);
+	forwardDiffY2(&dY, xyz, N, im, imApu);
+	forwardDiffZ2(&dZ, xyz, N, im, imApu);
 #elif DIFFTYPE == 1 // START DIFFTYPE == 1
-	backwardDiffX2(&apuVal, xyz, N, im, imApu);
-#ifdef PROXTGV
-	apuVal -= vX[y];
-#endif
-	apuVal *=  sigma2;
-	outputX[y] += apuVal;
-	apuVal = FLOAT_ZERO;
-	backwardDiffY2(&apuVal, xyz, N, im, imApu);
-#ifdef PROXTGV
-	apuVal -= vY[y];
-#endif
-	apuVal *=  sigma2;
-	outputY[y] += apuVal;
-	apuVal = FLOAT_ZERO;
-	backwardDiffZ2(&apuVal, xyz, N, im, imApu);
-#if defined(PROXTGV) && defined(TGVZ)
-	apuVal -= vZ[y];
-#endif
-	apuVal *=  sigma2;
-	outputZ[y] += apuVal;
+	// Backward difference
+	backwardDiffX2(&dX, xyz, N, im, imApu);
+	backwardDiffY2(&dY, xyz, N, im, imApu);
+	backwardDiffZ2(&dZ, xyz, N, im, imApu);
 #else
 #endif // END DIFFTYPE
+#ifdef PROXTGV
+	dX -= vX[y];
+	dY -= vY[y];
+#ifdef TGVZ
+	dZ -= vZ[y];
+#endif
+#endif
+	// Dual update
+	const float3 apu = MFLOAT3(outputX[y] + dX * sigma2, outputY[y] + dY * sigma2, outputZ[y] + dZ * sigma2);
+	// Projection to the L2 or L1 ball (see http://dx.doi.org/10.1088/0031-9155/57/10/3065)
+	// Voxels skipped above keep their previous, already projected, values
+#ifdef L2 // START L2
+// L2 norm
+	const float scale = fmax(FLOAT_ONE, length(apu) / alpha);
+	outputX[y] = apu.x / scale;
+	outputY[y] = apu.y / scale;
+	outputZ[y] = apu.z / scale;
+#else
+// L1 norm (anisotropic): the projection is a separate clamp of each component to [-alpha, alpha]
+	outputX[y] = apu.x / fmax(FLOAT_ONE, fabs(apu.x) / alpha);
+	outputY[y] = apu.y / fmax(FLOAT_ONE, fabs(apu.y) / alpha);
+	outputZ[y] = apu.z / fmax(FLOAT_ONE, fabs(apu.z) / alpha);
+#endif // END L2
 }
 #endif // END PROXTV
 
 #ifdef PROXTGV // START PROXTGV
 KERNEL3
-// Symmetric derivative for TGV
+// Symmetric derivative for TGV, i.e. the dual update with the projection
 void ProxTGVSymmDeriv(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRESTRICT vX, const CLGLOBAL float* CLRESTRICT vY, 
 #ifdef TGVZ
 	const CLGLOBAL float* CLRESTRICT vZ, CLGLOBAL float* qX, CLGLOBAL float* qY, CLGLOBAL float* qZ, CLGLOBAL float* q2XY, CLGLOBAL float* q2XZ, CLGLOBAL float* q2YZ, 
 #else
 	CLGLOBAL float* qX, CLGLOBAL float* qY, CLGLOBAL float* q2XY, 
 #endif
-	const float sigma2
+	const float sigma2, const float alpha
 #ifdef MASKPRIOR
 	, MASKBPTYPE maskBP
 #endif
@@ -1190,92 +1005,83 @@ void ProxTGVSymmDeriv(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 #endif
 		
 	const LTYPE x = xyz.x + xyz.y * NOrig.x + xyz.z * NOrig.x * NOrig.y;
-/////////////// X ///////////////
-	float apuVal = FLOAT_ZERO;
-	float imApuX = vX[x];
-// Forward difference
+	const float imApuX = vX[x];
+	const float imApuY = vY[x];
+	float dXX = FLOAT_ZERO;
+	float dYY = FLOAT_ZERO;
+	float dXY = FLOAT_ZERO;
+#ifdef TGVZ
+	const float imApuZ = vZ[x];
+	float dZZ = FLOAT_ZERO;
+	float dXZ = FLOAT_ZERO;
+	float dYZ = FLOAT_ZERO;
+#endif
 #if DIFFTYPE == 0 // START DIFFTYPE == 0
-	forwardDiffX2(&apuVal, xyz, NOrig, vX, imApuX);
-	apuVal *= sigma2;
-	qX[x] += apuVal;
-/////////////// Y ///////////////
-	apuVal = FLOAT_ZERO;
-	float imApuY = vY[x];
-	forwardDiffY2(&apuVal, xyz, NOrig, vY, imApuY);
-	apuVal *= sigma2;
-	qY[x] += apuVal;
+	// Forward difference
+	forwardDiffX2(&dXX, xyz, NOrig, vX, imApuX);
+	forwardDiffY2(&dYY, xyz, NOrig, vY, imApuY);
+	// XY/YX
+	forwardDiffY2(&dXY, xyz, NOrig, vX, imApuX);
+	forwardDiffX2(&dXY, xyz, NOrig, vY, imApuY);
 #ifdef TGVZ
-/////////////// Z ///////////////
-	apuVal = FLOAT_ZERO;
-	float imApuZ = vZ[x];
-	forwardDiffZ2(&apuVal, xyz, NOrig, vZ, imApuZ);
-	apuVal *= sigma2;
-	qZ[x] += apuVal;
+	forwardDiffZ2(&dZZ, xyz, NOrig, vZ, imApuZ);
+	// XZ/ZX
+	forwardDiffZ2(&dXZ, xyz, NOrig, vX, imApuX);
+	forwardDiffX2(&dXZ, xyz, NOrig, vZ, imApuZ);
+	// YZ/ZY
+	forwardDiffZ2(&dYZ, xyz, NOrig, vY, imApuY);
+	forwardDiffY2(&dYZ, xyz, NOrig, vZ, imApuZ);
 #endif
-/////////////// XY/YX ///////////////
-	apuVal = FLOAT_ZERO;
-	forwardDiffY2(&apuVal, xyz, NOrig, vX, imApuX);
-	forwardDiffX2(&apuVal, xyz, NOrig, vY, imApuY);
-	apuVal *= sigma2 * FLOAT_HALF;
-	q2XY[x] += apuVal;
-#ifdef TGVZ
-/////////////// XZ/ZX ///////////////
-	apuVal = FLOAT_ZERO;
-	forwardDiffZ2(&apuVal, xyz, NOrig, vX, imApuX);
-	forwardDiffX2(&apuVal, xyz, NOrig, vZ, imApuZ);
-	apuVal *= sigma2 * FLOAT_HALF;
-	q2XZ[x] += apuVal;
-/////////////// YZ/ZY ///////////////
-	apuVal = FLOAT_ZERO;
-	forwardDiffZ2(&apuVal, xyz, NOrig, vY, imApuY);
-	forwardDiffY2(&apuVal, xyz, NOrig, vZ, imApuZ);
-	apuVal *= sigma2 * FLOAT_HALF;
-	q2YZ[x] += apuVal;
-#endif
-/////////////////////////
-// Backward difference //
-/////////////////////////
 #elif DIFFTYPE == 1 // START DIFFTYPE == 1
-	backwardDiffX2(&apuValX, xyz, NOrig, vX, imApuX);
-	apuValX *=  sigma2;
-	qX[x] += apuValX;
-/////////////// Y ///////////////
-	apuVal = FLOAT_ZERO;
-	float imApuY = vY[x];
-	backwardDiffY2(&apuValY, xyz, NOrig, vY, imApuY);
-	apuValY *=  sigma2;
-	qY[x] += apuValY;
+	// Backward difference
+	backwardDiffX2(&dXX, xyz, NOrig, vX, imApuX);
+	backwardDiffY2(&dYY, xyz, NOrig, vY, imApuY);
+	// XY/YX
+	backwardDiffY2(&dXY, xyz, NOrig, vX, imApuX);
+	backwardDiffX2(&dXY, xyz, NOrig, vY, imApuY);
 #ifdef TGVZ
-/////////////// Z ///////////////
-	apuVal = FLOAT_ZERO;
-	float imApuZ = vZ[x];
-	backwardDiffZ2(&apuValZ, xyz, NOrig, vZ, imApuZ);
-	apuValZ *=  sigma2;
-	qZ[x] += apuValZ;
+	backwardDiffZ2(&dZZ, xyz, NOrig, vZ, imApuZ);
+	// XZ/ZX
+	backwardDiffZ2(&dXZ, xyz, NOrig, vX, imApuX);
+	backwardDiffX2(&dXZ, xyz, NOrig, vZ, imApuZ);
+	// YZ/ZY
+	backwardDiffZ2(&dYZ, xyz, NOrig, vY, imApuY);
+	backwardDiffY2(&dYZ, xyz, NOrig, vZ, imApuZ);
 #endif
-/////////////// XY/YX ///////////////
-	apuVal = FLOAT_ZERO;
-	backwardDiffY2(&apuVal, xyz, NOrig, vX, imApuX);
-	backwardDiffX2(&apuVal, xyz, NOrig, vY, imApuY);
-	apuVal *=  sigma2 * FLOAT_HALF;
-	q2XY[x] += apuVal;
-#ifdef TGVZ
-/////////////// XZ/ZX ///////////////
-	apuVal = FLOAT_ZERO;
-	backwardDiffZ2(&apuVal, xyz, NOrig, vX, imApuX);
-	backwardDiffX2(&apuVal, xyz, NOrig, vZ, imApuZ);
-	apuVal *=  sigma2 * FLOAT_HALF;
-	q2XZ[x] += apuVal;
-/////////////// YZ/ZY ///////////////
-	apuVal = FLOAT_ZERO;
-	backwardDiffZ2(&apuVal, xyz, NOrig, vY, imApuY);
-	backwardDiffY2(&apuVal, xyz, NOrig, vZ, imApuZ);
-	apuVal *=  sigma2 * FLOAT_HALF;
-	q2YZ[x] += apuVal;
-#endif
-// Central difference?
 #else
 #endif // END DIFFTYPE
+	// Dual update
+	const float sigmaHalf = sigma2 * FLOAT_HALF;
+#ifdef TGVZ
+	const float3 apu = MFLOAT3(qX[x] + dXX * sigma2, qY[x] + dYY * sigma2, qZ[x] + dZZ * sigma2);
+	const float3 apu2 = MFLOAT3(q2XY[x] + dXY * sigmaHalf, q2XZ[x] + dXZ * sigmaHalf, q2YZ[x] + dYZ * sigmaHalf);
+#else
+	const float3 apu = MFLOAT3(qX[x] + dXX * sigma2, qY[x] + dYY * sigma2, FLOAT_ZERO);
+	const float3 apu2 = MFLOAT3(q2XY[x] + dXY * sigmaHalf, FLOAT_ZERO, FLOAT_ZERO);
+#endif
+	// Projection to the L2 or L1 ball
+	// Voxels skipped above keep their previous, already projected, values
+#ifdef L2 // START L2
+	const float scale = fmax(FLOAT_ONE, SQRT(apu.x * apu.x + apu.y * apu.y + apu.z * apu.z + (apu2.x * apu2.x) * FLOAT_TWO + (apu2.y * apu2.y) * FLOAT_TWO + (apu2.z * apu2.z) * FLOAT_TWO) / alpha);
+	qX[x] = apu.x / scale;
+	qY[x] = apu.y / scale;
+	q2XY[x] = apu2.x / scale;
+#ifdef TGVZ
+	qZ[x] = apu.z / scale;
+	q2XZ[x] = apu2.y / scale;
+	q2YZ[x] = apu2.z / scale;
+#endif
+#else
+// L1 norm (anisotropic): the projection is a separate clamp of each component to [-alpha, alpha]
+	qX[x] = apu.x / fmax(FLOAT_ONE, fabs(apu.x) / alpha);
+	qY[x] = apu.y / fmax(FLOAT_ONE, fabs(apu.y) / alpha);
+	q2XY[x] = apu2.x / fmax(FLOAT_ONE, fabs(apu2.x) / alpha);
+#ifdef TGVZ
+	qZ[x] = apu.z / fmax(FLOAT_ONE, fabs(apu.z) / alpha);
+	q2XZ[x] = apu2.y / fmax(FLOAT_ONE, fabs(apu2.y) / alpha);
+	q2YZ[x] = apu2.z / fmax(FLOAT_ONE, fabs(apu2.z) / alpha);
+#endif
+#endif // END L2
 }
 
 // TGV divergence

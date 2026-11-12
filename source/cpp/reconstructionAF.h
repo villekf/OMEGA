@@ -32,6 +32,34 @@
 #include <vector>
 
 /// <summary>
+/// Loads one subset of a TOF-resolved randoms/scatter term to the device. The layout is the same as with the TOF measurements, i.e. the TOF bin is
+/// the slow index and each bin has the data of the subset in the same order as the measurements
+/// </summary>
+/// <param name="sc_ra the TOF-resolved randoms/scatter data (all bins)"></param>
+/// <param name="n number of elements of the subset in one TOF bin"></param>
+/// <param name="start offset of the subset in the first TOF bin"></param>
+/// <param name="binStride number of elements in one TOF bin of the whole data (kokoNonTOF)"></param>
+/// <param name="nBins number of TOF bins"></param>
+/// <returns>The subset data (n * nBins elements, bin is the slow index)</returns>
+template <typename R>
+inline af::array loadTOFAdditive(const R* sc_ra, const int64_t n, const size_t start, const size_t binStride, const int64_t nBins) {
+	af::array out = af::constant(0.f, static_cast<dim_t>(n) * static_cast<dim_t>(nBins), f32);
+	for (int64_t to = 0; to < nBins; to++)
+		out(af::seq(static_cast<double>(n * to), static_cast<double>(n * (to + 1) - 1))) = af::array(n, &sc_ra[start + binStride * to], AFTYPE).as(f32);
+	return out;
+}
+
+/// <summary>
+/// Start (in elements, TOF bin 0) of subset nInd of timestep t in TOF sinogram data ordered as
+/// [non-TOF measurements, TOF bins, timesteps]. pituus is cumulative over all timesteps, i.e. it already
+/// contains the start of the timestep in non-TOF units, so the frame-local offset is used and the frame
+/// start is kokoTOF * t.
+/// </summary>
+inline size_t tofSubsetStart(const int64_t* pituus, const int64_t nInd, const uint32_t t, const uint32_t subsets, const int64_t scale, const size_t kokoTOF) {
+	return static_cast<size_t>((pituus[nInd] - pituus[static_cast<int64_t>(t) * subsets]) * scale) + kokoTOF * static_cast<size_t>(t);
+}
+
+/// <summary>
 /// The main reconstruction function. This function performs all the image reconstruction duties. First it transfers the
 /// necessary variables and builds the necessary kernels. After this, it performs any necessary precomputations and then
 /// performs the image reconstruction with all the selected features. All the image reconstruction procedures are 
@@ -197,7 +225,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		mexPrintBase("flat = %f\n", inputScalars.flat);
 		mexPrintBase("dL = %f\n", inputScalars.dL);
 		mexPrintBase("epps = %f\n", inputScalars.epps);
-		if (inputScalars.projector_type == 4) {
+		if (inputScalars.projector_type == 4 || inputScalars.projector_type == 44) {
 			mexPrintBase("d_Scale4x = %f\n", inputScalars.d_Scale4[0].x);
 			mexPrintBase("d_Scale4y = %f\n", inputScalars.d_Scale4[0].y);
 			mexPrintBase("d_Scale4z = %f\n", inputScalars.d_Scale4[0].z);
@@ -341,39 +369,43 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
 	// TODO: Add proper support for 64-bit indices
 	if (MethodList.NLM || MethodList.MRP || MethodList.ProxTV || MethodList.RDP || (MethodList.TV && !w_vec.data.TV_use_anatomical) || 
-        MethodList.ProxTGV || MethodList.ProxRDP || MethodList.GGMRF)
+        MethodList.ProxTGV || MethodList.GGMRF)
 		inputScalars.use64BitIndices = inputScalars.im_dim[0] > 2147483647LL;
 
 	// Check whether fastPDHG can be used
 	// This computes all image domain components in one go, except for BSREM
 	checkFastPDHG(inputScalars, w_vec, MethodList);
 
+
 #ifdef CPU
-	// The rotation-based SPECT projector rotates every volume with ArrayFire on the CPU, which always rotates
-	// the volume into itself, so the multi-resolution volumes, which need a grid of their own, are not supported
+	// CPU rotation cannot represent the separate grids required by multi-resolution type 6.
 	if (inputScalars.projector_type == 6 && inputScalars.nMultiVolumes > 0) {
 		mexPrint("Multi-resolution volumes are not supported with the SPECT projector type 6 on the CPU backend");
 		return -1;
 	}
 #endif
-
-	// Stochastic subset selection sets inputScalars.subsets = 1 for the main loop, which breaks the (subset + timestep * subsets) indexing
-	// of the per-frame arrays (length, pituus, per-frame buffers) when there are several time steps
+	// Stochastic subset selection rewrites subsets to one, invalidating the per-frame subset indexing.
 	if (inputScalars.stochastic && inputScalars.Nt > 1u && inputScalars.subsets > 1u) {
 		mexPrint("Stochastic subset selection is not supported with dynamic data (more than one time step)");
 		return -1;
 	}
 
-	// Stochastic subset selection draws one random subset per iteration, but the per-subset sensitivity image (vec.Summ) of the algorithms below
-	// is computed only during the first iteration, i.e. only for the subsets that happened to be drawn then. The other subsets would keep an all-zero
-	// sensitivity image and the update diverges. The exception is list-mode data with a precomputed sensitivity image (computeSensImag, not computeD),
-	// where the sensitivity image of every subset is filled in up front. Algorithms with a full-data D (BSREM, PKMA, MBSREM, ...) are not affected.
-	if (inputScalars.stochastic && inputScalars.subsets > 1u && (MethodList.OSEM || MethodList.ECOSEM || MethodList.ROSEM || MethodList.RBI || MethodList.RBIOSL ||
-		MethodList.DRAMA || MethodList.OSLOSEM || MethodList.ROSEMMAP || MethodList.SART || MethodList.POCS) &&
-		!(inputScalars.listmode > 0 && inputScalars.computeSensImag && !w_vec.computeD)) {
-		mexPrint("Stochastic subset selection is not supported with OSEM, ECOSEM, ROSEM, RBI, OSL-RBI, DRAMA, OSL-OSEM, ROSEM-MAP, SART or ASD-POCS, which need a separate sensitivity image for every subset. Use an algorithm with a full-data sensitivity image or preconditioner (e.g. BSREM, MBSREM, PKMA, PDHG)");
+	// The sensitivity image of list-mode data is computed over all detector pairs, so the normalization has to be either a sinogram that is looked up
+	// with the detector and ring pair (normSens with its lookup tables) or a full pair table (normSens). A multiplicative scatter/corrVector has no such lookup
+	if (inputScalars.listmode > 0 && inputScalars.computeSensImag &&
+		((inputScalars.normalization_correction && !inputScalars.normSensLookup && !inputScalars.normSensFull) || inputScalars.scatter)) {
+		mexPrint("The sensitivity image of list-mode data needs a sinogram normalization (normSens with its lookup tables, index-based data) or a pair normalization table (normSens), and multiplicative scatter/corrVector is not supported with it\n");
 		return -1;
 	}
+
+	// The RDP reference weights are precomputed and stored for the full volume, while largeDim computes the prior per subvolume
+	// (chunk), so the chunks would read the wrong slices of the reference. Only the regular RDP is supported with largeDim. Python
+	// rejects this already in OMEGAErrorCheck, MATLAB only when options.errorChecking is true
+	if (inputScalars.largeDim && MethodList.RDP && w_vec.RDP_anatomical) {
+		mexPrint("Anatomical weighting for RDP (RDP_use_anatomical) is not supported with largeDim! Only the regular RDP can be used with largeDim\n");
+		return -1;
+	}
+
 
 	// Per-frame (time-varying) corrections. With dynamic sinogram/projection data (more than one time step) a static (single-frame) normalization or
 	// measurement-domain attenuation is shared by all the frames. One that holds the data of every frame (more than one frame of measurements,
@@ -427,7 +459,21 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 			mexPrint("Offset correction: redundancy weights applied in the backprojection only");
 	}
 
+
 	// Create the projector class that handles the projectors and all OpenCL/CUDA/Metal related functions
+	// Projector types 2 and 3: the end point check of the tube is built into the kernels only when a detector is inside the image
+	if (inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 2 || inputScalars.BPType == 3)
+		inputScalars.orthClip = orthClipNeeded(inputScalars, x, z_det, w_vec.listCoord, pituus);
+	// CT normalization with count-based algorithms (host gain): the normalization is a detector gain on the blank scan,
+	// ybar = flat * n * exp(-FP) (+ randoms), so it is applied on the host to the exp(-FP) term in computeForwardStep and the kernels
+	// are compiled without -DNORM and without the normalization buffer
+	const bool ctHostNorm = inputScalars.CT && inputScalars.normalization_correction && inputScalars.size_norm > 1ULL && inputScalars.listmode == 0 &&
+		(MethodList.OSEM || MethodList.ROSEM || MethodList.OSLOSEM || MethodList.ROSEMMAP || MethodList.RAMLA || MethodList.BSREM || MethodList.RBI ||
+		MethodList.RBIOSL || MethodList.DRAMA || MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS || MethodList.PKMA || MethodList.SAGA);
+	if (ctHostNorm)
+		inputScalars.normalization_correction = 0;
+	// Largest number of projections in any subset/time step (decides whether the layered CT BP texture can be used)
+	inputScalars.maxProjPerCall = length.empty() ? 0 : *std::max_element(length.begin(), length.end());
 	ProjectorClass proj;
 	status = proj.addProjector(inputScalars, w_vec, MethodList, header_directory);
 	if (status != 0)
@@ -488,7 +534,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 			compute_norm_matrix = 2U;
 	}
 
-	if (MethodList.NLM || MethodList.MRP || MethodList.ProxTV || MethodList.RDP || MethodList.TV || MethodList.ProxTGV || MethodList.ProxRDP || 
+	if (MethodList.NLM || MethodList.MRP || MethodList.ProxTV || MethodList.RDP || MethodList.TV || MethodList.ProxTGV ||
         MethodList.GGMRF || MethodList.Quad || MethodList.APLS || MethodList.FMH || MethodList.Huber || MethodList.hyperbolic || MethodList.L || 
         MethodList.WeightedMean || MethodList.TGV || MethodList.TemporalSmoothness || MethodList.TemporalTV)
 		MethodList.prior = true;
@@ -568,9 +614,11 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 #ifndef CPU
 	// Is there sufficient memory to load TOF data to the GPU memory?
 	if (inputScalars.loadTOF && inputScalars.listmode == 0) {
-		if (static_cast<double>(mem) * 0.7 < static_cast<double>(inputScalars.kokoTOF * sizeof(float)) && inputScalars.TOF)
+		// A TOF-resolved randoms/scatter term is loaded to the device as well, i.e. the TOF data takes twice the memory
+		const double tofDataBytes = static_cast<double>(inputScalars.kokoTOF * sizeof(float)) * ((inputScalars.randoms_correction && inputScalars.randomsTOF) ? 2. : 1.);
+		if (static_cast<double>(mem) * 0.7 < tofDataBytes && inputScalars.TOF)
 			inputScalars.loadTOF = false;
-		else if (MethodList.CPType && static_cast<double>(mem) * 0.4 < static_cast<double>(inputScalars.kokoTOF * sizeof(float)) && inputScalars.TOF)
+		else if (MethodList.CPType && static_cast<double>(mem) * 0.4 < tofDataBytes && inputScalars.TOF)
 			inputScalars.loadTOF = false;
 	}
 #else
@@ -611,7 +659,19 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
         aRand[timestep].resize(inputScalars.TOFsubsets);
         if (inputScalars.randoms_correction) {
             for (int kk = inputScalars.osa_iter0; kk < inputScalars.TOFsubsets; kk++) {
-                if ((inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8 && inputScalars.subsetType > 0)) || inputScalars.listmode > 0) {
+                if (inputScalars.randomsTOF) {
+                    // TOF-resolved additive term, same layout as the TOF measurements (see the loading of Sin below)
+                    const int nInd = kk + timestep * inputScalars.subsets;
+                    if (inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8 && inputScalars.subsetType > 0)) {
+                        aRand[timestep][kk] = loadTOFAdditive(sc_ra, length[nInd],
+                            tofSubsetStart(pituus, nInd, timestep, inputScalars.subsets, 1, inputScalars.kokoTOF), inputScalars.kokoNonTOF, inputScalars.nBins); // pituus is cumulative over timesteps; tofSubsetStart gives the frame-local offset + kokoTOF * timestep
+                        proj.memSize += (sizeof(float) * length[nInd] * inputScalars.nBins);
+                    } else {
+                        aRand[timestep][kk] = loadTOFAdditive(sc_ra, inputScalars.nRowsD * inputScalars.nColsD * length[nInd],
+                            tofSubsetStart(pituus, nInd, timestep, inputScalars.subsets, static_cast<int64_t>(inputScalars.nRowsD) * inputScalars.nColsD, inputScalars.kokoTOF), inputScalars.kokoNonTOF, inputScalars.nBins);
+                        proj.memSize += (sizeof(float) * inputScalars.nRowsD * inputScalars.nColsD * length[nInd] * inputScalars.nBins);
+                    }
+                } else if ((inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8 && inputScalars.subsetType > 0)) || inputScalars.listmode > 0) {
                     aRand[timestep][kk] = af::array(length[kk + timestep * inputScalars.subsets], &sc_ra[pituus[kk + timestep * inputScalars.subsets]], AFTYPE);
                     proj.memSize += (sizeof(float) * length[kk + timestep * inputScalars.subsets]);
                 } else {
@@ -623,6 +683,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
         }
     }
 
+
 	// The projector type 6 applies the multiplicative corrections from the host arrays (see type6Weights)
 	w_vec.normHost = norm;
 	w_vec.corrHost = extraCorr;
@@ -631,6 +692,21 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		if (!prepareMaskBPType6(inputScalars, w_vec))
 			return -1;
 	}
+
+
+	// Host-side normalization (gain) of CT with count-based algorithms, one array per subset (static over the time steps),
+	// same layout as the device normalization buffer: length[kk] * nRowsD * nColsD values starting at pituus[kk] * nRowsD * nColsD
+	std::vector<af::array> aNorm;
+	if (ctHostNorm) {
+		const size_t normVec = static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD);
+		aNorm.resize(inputScalars.subsets);
+		for (uint32_t kk = 0; kk < inputScalars.subsets; kk++) {
+			aNorm[kk] = af::array(static_cast<dim_t>(length[kk] * normVec), &norm[pituus[kk] * normVec]);
+			proj.memSize += (sizeof(float) * length[kk] * normVec);
+		}
+	}
+
+
 	// Create OpenCL buffers, CUDA/HIP arrays or Metal buffers
 	if (inputScalars.SPECT && inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 		if (inputScalars.size_of_x % 6 != 0 || inputScalars.size_z % 2 != 0 ||
@@ -693,7 +769,9 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     if (inputScalars.TOF && inputScalars.listmode == 0) {
                         for (int64_t to = 0; to < inputScalars.nBins; to++) {
                             mData[kk][timestep](af::seq(length[nInd] * to, length[nInd] * (to + 1) - 1)) = af::array(length[nInd], 
-                                &Sin[pituus[nInd] + inputScalars.kokoNonTOF * to + (inputScalars.kokoTOF - inputScalars.kokoNonTOF) * timestep], AFTYPE);
+
+                                &Sin[tofSubsetStart(pituus, nInd, timestep, inputScalars.subsets, 1, inputScalars.kokoTOF) + inputScalars.kokoNonTOF * to], AFTYPE); // pituus is cumulative over timesteps; tofSubsetStart gives the frame-local offset + kokoTOF * timestep
+
                         }
                         proj.memSize += (sizeof(float) * length[nInd] * inputScalars.nBins);
                     } else {
@@ -706,7 +784,9 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             mData[kk][timestep](af::seq(inputScalars.nRowsD* inputScalars.nColsD* length[nInd] * to, 
                                 inputScalars.nRowsD * inputScalars.nColsD* length[nInd] * (to + 1) - 1)) =
                             af::array(length[nInd] * inputScalars.nRowsD * inputScalars.nColsD, 
-                                &Sin[pituus[nInd] * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.kokoNonTOF * to + (inputScalars.kokoTOF - inputScalars.kokoNonTOF) * timestep], AFTYPE);
+
+                                &Sin[tofSubsetStart(pituus, nInd, timestep, inputScalars.subsets, static_cast<int64_t>(inputScalars.nRowsD) * inputScalars.nColsD, inputScalars.kokoTOF) + inputScalars.kokoNonTOF * to], AFTYPE);
+
                         proj.memSize += (sizeof(float) * length[nInd] * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nBins);
                     } else {
                         mData[kk][timestep] = af::array(inputScalars.nRowsD * inputScalars.nColsD * length[nInd], 
@@ -773,8 +853,11 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
         for (uint32_t tt = t0; tt < inputScalars.Nt; tt++) {
             af::array Sino = af::array(inputScalars.kokoTOF, &Sin[inputScalars.kokoTOF * tt], AFTYPE).as(f32);
             af::array rand;
-            if (inputScalars.randoms_correction)
-                rand = af::array(inputScalars.kokoNonTOF, &sc_ra[inputScalars.kokoNonTOF * tt], AFTYPE);
+            if (inputScalars.randoms_correction) {
+                // The TOF-resolved additive term has as many elements as the measurements
+                const size_t randSize = inputScalars.randomsTOF ? inputScalars.kokoTOF : inputScalars.kokoNonTOF;
+                rand = af::array(randSize, &sc_ra[randSize * tt], AFTYPE);
+            }
             if ((w_vec.precondTypeIm[6] || MethodList.SPS) || (!inputScalars.CT && ((inputScalars.randoms_correction && 
                 !af::allTrue<bool>(rand > 0)) || inputScalars.randoms_correction == 0))) {
                 int64_t uu = 0;
@@ -821,7 +904,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     (MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS)) {
                     if (inputScalars.verbose >= 3 || DEBUG)
                         mexPrint("Computing epsilon value for MBSREM/MRAMLA");
-                    w_vec.epsilon_mramla[tt] = MBSREM_epsilon(Sino, E, inputScalars.epps, inputScalars.randoms_correction, rand, inputScalars.TOF, nBins, inputScalars.CT);
+                    w_vec.epsilon_mramla[tt] = MBSREM_epsilon(Sino, E, inputScalars.epps, inputScalars.randoms_correction, rand, inputScalars.TOF, nBins, inputScalars.CT, inputScalars.randomsTOF);
                     if (inputScalars.verbose >= 3 || DEBUG)
                         mexPrint("Epsilon value for MBSREM/MRAMLA computed");
                 }
@@ -1157,6 +1240,11 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
     // Compute the necessary precomputations for the RDP reference image method: https://doi.org/10.1109/TMI.2019.2913889
     if (MethodList.RDP && w_vec.RDPLargeNeighbor && w_vec.RDP_anatomical) {
         w_vec.RDPref.resize(inputScalars.Nt);
+        // The forward/backprojections of this precomputation must not accumulate the sensitivity image: with no_norm == 0 the BP
+        // kernels add to d_Summ, which is not yet bound here (illegal address on CUDA, and on OpenCL the result changed by 13 %
+        // even with beta = 0)
+        const uint8_t noNormRDPRef = proj.no_norm;
+        proj.no_norm = 1;
         for (uint32_t timestep = t0; timestep < inputScalars.Nt; timestep++) {
 			int64_t uu = 0;
 			w_vec.RDPref[timestep] = af::constant(0.f, inputScalars.im_dim[0]);
@@ -1192,15 +1280,20 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 						return -1;
 					}
 				}
-				af::array apuData = af::constant(0.f, length[indD] * nBins);
-				if (inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8)
+				// Load the subset's measurements exactly as the main data loader does (CT/SPECT/sinogram data have nRowsD * nColsD
+				// elements per projection/sinogram index); before, apuData had only length elements per bin, so CT failed with a size mismatch
+				// pituus is cumulative over timesteps: sinogram data uses the frame-local offset + kokoTOF * timestep (tofSubsetStart), list-mode data the cumulative event offset
+				af::array apuData = af::constant(0.f, lengthFull[indD] * nBins);
+				if ((inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8 && inputScalars.subsetType > 0) || inputScalars.listmode > 0)
 					for (int64_t to = 0; to < nBins; to++)
-						apuData(af::seq(length[indD] * to, length[indD] * (to + 1) - 1)) = af::array(length[indD], 
-                            &Sin[pituus[indD] + inputScalars.kokoNonTOF * to + (inputScalars.kokoTOF - inputScalars.kokoNonTOF) * timestep], AFTYPE).as(f32);
+
+						apuData(af::seq(length[indD] * to, length[indD] * (to + 1) - 1)) = af::array(length[indD],
+							&Sin[(inputScalars.listmode > 0 ? static_cast<size_t>(pituus[indD]) : tofSubsetStart(pituus, indD, timestep, inputScalars.subsets, 1, inputScalars.kokoTOF)) + inputScalars.kokoNonTOF * to], AFTYPE).as(f32);
 				else
 					for (int64_t to = 0; to < nBins; to++)
-						apuData(af::seq(length[indD] * to, length[indD] * (to + 1) - 1)) = af::array(length[indD] * inputScalars.nRowsD * inputScalars.nColsD,
-							&Sin[pituus[indD] * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.kokoNonTOF * to + (inputScalars.kokoTOF - inputScalars.kokoNonTOF) * timestep], AFTYPE).as(f32);
+						apuData(af::seq(lengthFull[indD] * to, lengthFull[indD] * (to + 1) - 1)) = af::array(lengthFull[indD],
+							&Sin[tofSubsetStart(pituus, indD, timestep, inputScalars.subsets, static_cast<int64_t>(inputScalars.nRowsD) * inputScalars.nColsD, inputScalars.kokoTOF) + inputScalars.kokoNonTOF * to], AFTYPE).as(f32);
+
 				oneInput1 = (apuData / (oneInput2 * oneInput2)) * oneInput1;
 				af::eval(oneInput1);
 				if (inputScalars.projector_type == 6) {
@@ -1230,6 +1323,31 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 					return -1;
 			}
 		}
+		proj.no_norm = noNormRDPRef;
+#ifndef CPU
+		// fastPDHG fuses the prior into the backprojection kernel and never calls RDPAF, so the (constant, Nt == 1) reference
+		// must be uploaded here once. Before, the kernel read an uninitialised image (OpenCL) or a nonexistent texture (CUDA/HIP)
+		if (inputScalars.fastPDHG && proj.fastNLMUsed && inputScalars.useImages && !inputScalars.largeDim) {
+#if defined(CUDA) || defined(HIP)
+			CUdeviceptr* d_ref = transferAF(w_vec.RDPref[0]);
+			status = proj.transferTex(inputScalars, d_ref, true, inputScalars.Nz[0]);
+			w_vec.RDPref[0].unlock();
+			if (status != 0) {
+				mexPrint("Failed to upload the RDP reference image for fastPDHG\n");
+				return -1;
+			}
+			proj.RDPRefPersistent = true;
+#elif defined(OPENCL)
+			status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*w_vec.RDPref[0].device<cl_mem>(), true), proj.d_RDPrefI, 0, proj.origin, proj.region);
+			w_vec.RDPref[0].unlock();
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				mexPrint("Failed to upload the RDP reference image for fastPDHG\n");
+				return -1;
+			}
+#endif
+		}
+#endif
     }
 #ifndef CPU
 	if (inputScalars.fastPDHG) {
@@ -1311,7 +1429,8 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                         &Sin[pituus[indD] * inputScalars.nRowsD * inputScalars.nColsD], AFTYPE).as(f32);
 					// Linearize the data unless the user input is already linearized
 					if (!inputScalars.usingLinearizedData)
-						mData[0][timestep] = af::log(inputScalars.flat / mData[0][timestep]);
+						// Floor the measurement at flat * 1e-6 so zero/negative intensities cannot give Inf/NaN
+						mData[0][timestep] = af::log(inputScalars.flat / af::max(mData[0][timestep], inputScalars.flat * 1e-6f));
 					if (DEBUG) {
 						mexPrintBase("mData[0][0] = %f\n", af::sum<float>(mData[0][0]));
 						mexPrintBase("mData[0][0] = %f\n", af::max<float>(mData[0][0]));
@@ -1444,7 +1563,8 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 									&Sin[osa_iter * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.nRowsD * inputScalars.nColsD * ii * inputScalars.subsetsUsed], afHost);
 						}
 						if (inputScalars.CT && MethodList.CPType && !inputScalars.usingLinearizedData)
-							mData[0][0] = af::log(inputScalars.flat / mData[0][0].as(f32));
+							// Floor the measurement at flat * 1e-6 so zero/negative intensities cannot give Inf/NaN
+							mData[0][0] = af::log(inputScalars.flat / af::max(mData[0][0].as(f32), inputScalars.flat * 1e-6f));
 					}
 #ifndef CPU
 					else if (inputScalars.listmode > 0) {
@@ -1465,17 +1585,35 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 #endif
 					else {
 						if (inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8 && inputScalars.subsetType > 0) {
+							// pituus is cumulative over timesteps; for TOF data tofSubsetStart gives the frame-local offset + kokoTOF * tt (non-TOF data keeps pituus[indD])
+							const size_t startM = inputScalars.TOF ? tofSubsetStart(pituus, indD, tt, inputScalars.subsets, 1, inputScalars.kokoTOF) : static_cast<size_t>(pituus[indD]);
 							for (int64_t to = 0; to < inputScalars.nBins; to++)
-								mData[0][0](af::seq(length[indD] * to, length[indD] * (to + 1) - 1)) = af::array(length[indD], &Sin[pituus[indD] + inputScalars.kokoNonTOF * to + (inputScalars.kokoTOF - inputScalars.kokoNonTOF) * tt], AFTYPE);
+
+								mData[0][0](af::seq(length[indD] * to, length[indD] * (to + 1) - 1)) = af::array(length[indD], &Sin[startM + inputScalars.kokoNonTOF * to], AFTYPE);
+
 						}
 						else {
+							// pituus is cumulative over timesteps; for TOF data tofSubsetStart gives the frame-local offset + kokoTOF * tt (non-TOF data keeps pituus[indD] * scale)
+							const int64_t scaleM = static_cast<int64_t>(inputScalars.nRowsD) * inputScalars.nColsD;
+							const size_t startM = inputScalars.TOF ? tofSubsetStart(pituus, indD, tt, inputScalars.subsets, scaleM, inputScalars.kokoTOF) : static_cast<size_t>(pituus[indD] * scaleM);
 							for (int64_t to = 0; to < inputScalars.nBins; to++)
 								mData[0][0](af::seq(inputScalars.nRowsD* inputScalars.nColsD* length[indD] * to, inputScalars.nRowsD* inputScalars.nColsD* length[indD] * (to + 1) - 1)) =
-								af::array(length[indD] * inputScalars.nRowsD * inputScalars.nColsD, &Sin[pituus[indD] * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.kokoNonTOF * to + (inputScalars.kokoTOF - inputScalars.kokoNonTOF) * tt], AFTYPE);
+
+								af::array(length[indD] * inputScalars.nRowsD * inputScalars.nColsD, &Sin[startM + inputScalars.kokoNonTOF * to], AFTYPE);
+
 						}
 					}
 					if (inputScalars.randoms_correction) {
-						if (inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8 && inputScalars.subsetType > 0))
+						// TOF-resolved additive term: one bin at a time, same as the measurements above
+						if (inputScalars.randomsTOF) {
+							if (inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8 && inputScalars.subsetType > 0))
+								aRand[0][0] = loadTOFAdditive(sc_ra, length[indD],
+									tofSubsetStart(pituus, indD, tt, inputScalars.subsets, 1, inputScalars.kokoTOF), inputScalars.kokoNonTOF, inputScalars.nBins); // frame-local offset + kokoTOF * tt
+							else
+								aRand[0][0] = loadTOFAdditive(sc_ra, inputScalars.nRowsD * inputScalars.nColsD * length[indD],
+									tofSubsetStart(pituus, indD, tt, inputScalars.subsets, static_cast<int64_t>(inputScalars.nRowsD) * inputScalars.nColsD, inputScalars.kokoTOF), inputScalars.kokoNonTOF, inputScalars.nBins);
+						}
+						else if ((inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8 && inputScalars.subsetType > 0)) || inputScalars.listmode > 0)
 							aRand[0][0] = af::array(length[indD], &sc_ra[pituus[indD]], AFTYPE).as(f32);
 						else
 							aRand[0][0] = af::array(inputScalars.nRowsD * inputScalars.nColsD * length[indD], &sc_ra[pituus[indD] * inputScalars.nRowsD * inputScalars.nColsD], AFTYPE).as(f32);
@@ -1557,7 +1695,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 						//	residual[iter * inputScalars.subsets + osa_iter] = af::norm(outputFP - mData[subIter]);
 						//	residual[iter * inputScalars.subsets + osa_iter] = residual[iter * inputScalars.subsets + osa_iter] * residual[iter * inputScalars.subsets + osa_iter] * .5f;
 						//}
-						status = computeForwardStep(MethodList, mData[subIter][timestepData], outputFP, m_size, inputScalars, w_vec, aRand[timestepData][subIter], vec, proj, tt, iter, osa_iter, 0, residual);
+						status = computeForwardStep(MethodList, mData[subIter][timestepData], outputFP, m_size, inputScalars, w_vec, aRand[timestepData][subIter], vec, proj, tt, iter, osa_iter, 0, residual, aNorm.empty() ? af::array() : aNorm[osa_iter]);
 						if (status != 0)
 							return -1;
 						if (DEBUG) {
@@ -1676,7 +1814,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             }
                             fProj.host(FPapu);
                         }
-                        status = computeForwardStep(MethodList, mData[subIter][timestepData], fProj, m_size, inputScalars, w_vec, aRand[timestepData][subIter], vec, proj, tt, iter, osa_iter);
+                        status = computeForwardStep(MethodList, mData[subIter][timestepData], fProj, m_size, inputScalars, w_vec, aRand[timestepData][subIter], vec, proj, tt, iter, osa_iter, 0, nullptr, aNorm.empty() ? af::array() : aNorm[osa_iter]);
                         if (status != 0)
                             return -1;
                         backprojectionType6All(fProj, w_vec, vec, inputScalars, length[indD], uu, proj, tt, osa_iter, iter, compute_norm_matrix, iter0, atten, sIdx, computeSensThisTimestep);
@@ -1758,8 +1896,14 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             }
                             else
                                 vec.im_os[tt][0] = af::array(inputScalars.lDimStruct.imDimPr[ii], &apuF[inputScalars.lDimStruct.cumDimPr[ii]], afHost);
-                        if (iter == 0 && osa_iter == 0 && (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY))
-                            vec.uCP[tt][0] = vec.im_os[tt][0](af::seq(0, inputScalars.lDimStruct.imDim[ii] - 1)).copy();
+                        if (iter == 0 && osa_iter == 0 && (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY)) {
+                            // With subsets uCP is the dual accumulator A^T p and starts at zero (largeDim chunks reuse the
+                            // subset count, so subsetsUsed > 1 is the subset PDHG path); without subsets it is the primal iterate.
+                            if (inputScalars.subsetsUsed > 1)
+                                vec.uCP[tt][0] = af::constant(0.f, inputScalars.lDimStruct.imDim[ii]);
+                            else
+                                vec.uCP[tt][0] = vec.im_os[tt][0](af::seq(0, inputScalars.lDimStruct.imDim[ii] - 1)).copy();
+                        }
                         else if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY)
                             vec.uCP[tt][0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuU[inputScalars.lDimStruct.cumDim[ii]], afHost);
                         if (w_vec.computeD)
@@ -1803,14 +1947,19 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     }
 #endif
                     if (MethodList.NLM || MethodList.RDP || MethodList.hyperbolic || MethodList.GGMRF || MethodList.TV) {
-                        delete apuPr;
+                        delete[] apuPr;
                     }
                     largeDimLast(inputScalars, proj);
                     inputScalars.nMultiVolumes = multiVol;
                     if (inputScalars.nMultiVolumes > 0) {
                         for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++) {
-                            if (iter == 0 && osa_iter == 0 && (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY))
-                                vec.uCP[tt].emplace_back(vec.im_os[tt][ii].copy());
+                            if (iter == 0 && osa_iter == 0 && (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY)) {
+                                // Zero start for the dual accumulator A^T p with subsets, initial image otherwise
+                                if (inputScalars.subsetsUsed > 1)
+                                    vec.uCP[tt].emplace_back(af::constant(0.f, vec.im_os[tt][ii].elements()));
+                                else
+                                    vec.uCP[tt].emplace_back(vec.im_os[tt][ii].copy());
+                            }
                             status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, outputFP, osa_iter, tt, length, m_size, meanBP, g, proj, false, ii, pituus);
                             if (status != 0)
                                 return -1;
@@ -1852,7 +2001,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     af::sync();
                     proj.tEndGlobal = std::chrono::steady_clock::now();
                     const std::chrono::duration<double> tDiff = proj.tEndGlobal - proj.tStartGlobal;
-                    mexPrintBase("Sub-iteration %d complete in %f seconds\n", osa_iter + 1u, tDiff);
+                    mexPrintBase("Sub-iteration %d complete in %f seconds\n", osa_iter + 1u, tDiff.count());
                     totTime += tDiff.count();
                 }
                 else

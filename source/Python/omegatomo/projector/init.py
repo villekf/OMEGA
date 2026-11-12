@@ -2,6 +2,7 @@
 """
 Created on Thu Jul 10 13:17:22 2025
 """
+import re
 import numpy as np
 
 
@@ -133,6 +134,8 @@ def _build_kIndF(self):
         a.f32(self.dL).f32(self.global_factor)
     elif self.FPType == 5:
         a.u32(self.nRowsD).u32(self.nColsD).vec2f(*_kernel_crystal_pitch(self))
+        if self.CT and self.useHelical:
+            a.f32(self.helicalRadius)
     if self.FPType in (1, 2, 3):
         if self.TOF:
             a.buf(self.d_TOFCenter)
@@ -166,7 +169,7 @@ def _build_kIndB(self):
     a = _KernelArgs(self)
     if self.BPType in (4, 5):
         a.u32(self.nRowsD).u32(self.nColsD).vec2f(*_kernel_crystal_pitch(self))
-        if self.BPType == 4 and self.CT and self.useHelical:
+        if self.CT and self.useHelical:
             a.f32(self.helicalRadius)
         if self.BPType == 4 and not self.CT:
             a.f32(self.dL).f32(self.global_factor)
@@ -449,6 +452,119 @@ def computeGeom5(x, uv, nRowsD, nColsD, dPitchY, pitch):
     geom = np.hstack((s, d3, normX, normY, crossP, upperPart)).astype(np.float32)
     return np.ascontiguousarray(geom).ravel()
 
+
+def computeProjectionWindow(x, angles, r, nColsD, dPitchY, bx, by, bz, dx, dy, dz, Nx, Ny, Nz, nVoxels):
+    """
+    For each axial voxel block (nVoxels voxels in the axial direction) of a volume, the range of projections that can reach the
+    curved helical detector (-DPROJWINDOW in projectorType4.cl and projectorType5.cl). Every projection is tested, so the range is
+    correct for any projection order, though it only stays narrow when the source height is monotonic. Returns 2 int32 values per
+    block: the first projection and one past the last projection (both 0 if no projection sees the block).
+    """
+    nProj = x.size // 6
+    xs = np.reshape(x, (nProj, 6)).astype(np.float64, copy=False)
+    a = np.asarray(angles, dtype=np.float64).ravel()
+    r = float(r)
+    sX = xs[:, 0]
+    sY = xs[:, 1]
+    sZ = xs[:, 2]
+    # Arc centre. The source is inside the detector cylinder, so a ray from the source to a point of the image box has to travel at
+    # least r - |s - C| in the transaxial plane, relative to the largest transaxial distance from the source to the box
+    cX = xs[:, 3] - r * np.cos(a)
+    cY = xs[:, 4] + r * np.sin(a)
+    dSC = np.hypot(sX - cX, sY - cY)
+    maxDist = np.zeros(nProj, dtype=np.float64)
+    for cornerX in (bx, bx + Nx * dx):
+        for cornerY in (by, by + Ny * dy):
+            maxDist = np.maximum(maxDist, np.hypot(cornerX - sX, cornerY - sY))
+    tMin = np.zeros(nProj, dtype=np.float64)
+    np.divide(r - dSC, maxDist, out=tMin, where=maxDist > 0)
+    # Axial extent of the detector with one row of margin on each side
+    halfWidth = (nColsD / 2. + 1.) * dPitchY
+    zMin = xs[:, 5] - halfWidth
+    zMax = xs[:, 5] + halfWidth
+    nBlocks = (int(Nz) + int(nVoxels) - 1) // int(nVoxels)
+    zEnd = bz + Nz * dz
+    window = np.zeros(2 * nBlocks, dtype=np.int32)
+    for b in range(nBlocks):
+        zLow = bz + b * nVoxels * dz
+        zHigh = min(zLow + nVoxels * dz, zEnd)
+        # A ray hits the cylinder at least tMin of the way (in the axial direction) from the source to the block
+        invisible = (((zLow > sZ) & (sZ + tMin * (zLow - sZ) > zMax))
+                     | ((zHigh < sZ) & (sZ + tMin * (zHigh - sZ) < zMin)))
+        visible = np.flatnonzero(~invisible)
+        if visible.size > 0:
+            window[2 * b] = visible[0]
+            window[2 * b + 1] = visible[-1] + 1
+    return window
+
+
+def _decide_layered_bp(self):
+    """Decide (and store in self._layeredBP) whether the CT type-4 backprojection reads the measurements from a 2D layered texture
+    (one layer per projection) instead of a 3D texture. Requires useLayeredBP, a texture (useImages), no helical CT, no Metal and at most
+    2048 projections (or the device layered texture limit, if lower) in every subset of every time step."""
+    self._layeredBP = False
+    if not (bool(getattr(self, 'useLayeredBP', False)) and self.CT and self.BPType == 4 and self.listmode == 0 and self.useImages
+            and not self.useHelical and not self.useMetal):
+        return False
+    limit = 2048
+    try:
+        if self.useCUDA:
+            import cupy as cp
+            lay = int(cp.cuda.runtime.getDeviceProperties(cp.cuda.runtime.getDevice())['maxTexture2DLayered'][2])
+        else:
+            import pyopencl as cl
+            lay = int(self.clctx.get_info(cl.context_info.DEVICES)[0].image_max_array_size)
+        if lay > 0:
+            limit = min(limit, lay)
+    except Exception:
+        pass
+    maxProj = int(np.max(self.nProjSubset))
+    if maxProj <= limit:
+        self._layeredBP = True
+        if self.verbose >= 2:
+            print('Using a layered 2D texture for the CT backprojection measurements')
+    else:
+        if self.verbose >= 1:
+            print('useLayeredBP was switched off: ' + str(maxProj) + ' projections in a subset exceeds the layered texture limit of ' + str(limit))
+        if self.verbose >= 2:
+            print('Using a 3D texture for the CT backprojection measurements')
+    return self._layeredBP
+
+
+def _uses_projection_window(self):
+    """True if and only if the curved helical BP of type 4 or 5 only visits the projections in the window of each axial voxel block."""
+    return bool(self.CT and self.useHelical and not self.useParallelBeam and not self.useMetal and self.listmode == 0
+                and self.subsetType != 12 and self.BPType in (4, 5))
+
+
+def _initialize_projection_window_buffers(self, upload):
+    """Create the ``[timestep][subset][volume]`` projection window buffers (see computeProjectionWindow)."""
+    self.d_projWindow = [[[None] * (self.nMultiVolumes + 1) for _ in range(self.subsets)] for _ in range(self.Nt)]
+    nVoxels = self.NVOXELS5 if self.BPType == 5 else self.NVOXELSHELICAL
+    for timestep in range(self.Nt):
+        for subset in range(self.subsets):
+            xs = _coordinate_slice(self, 'x', timestep, subset, 6)
+            angles = _coordinate_slice(self, 'z', timestep, subset, 1)
+            for ii in range(self.nMultiVolumes + 1):
+                window = computeProjectionWindow(
+                    xs,
+                    angles,
+                    self.helicalRadius,
+                    self.nColsD,
+                    self.dPitchY,
+                    self.bx[ii].item(),
+                    self.by[ii].item(),
+                    self.bz[ii].item(),
+                    self.dx[ii].item(),
+                    self.dy[ii].item(),
+                    self.dz[ii].item(),
+                    self.Nx[ii].item(),
+                    self.Ny[ii].item(),
+                    self.Nz[ii].item(),
+                    nVoxels,
+                )
+                self.d_projWindow[timestep][subset][ii] = upload(window)
+
 # ---------------------------------------------------------------------------
 # FPType/BPType table
 #
@@ -489,6 +605,163 @@ def _userLocalSize(self, default):
         if user[k] > 0:
             out[k] = int(user[k])
     return tuple(out)
+
+
+def _isWave64(vendor=None, gfxipMajor=None, archName=None):
+    """Whether the GPU is a wave64 AMD GPU (GCN/CDNA). Same rule as isWave64HipArch/isWave64OpenCL in ProjectorClass.h.
+
+    HIP/ROCm (archName, the gcnArchName of the device): the part before the first ':' (the rest are feature suffixes such as
+    gfx90a:sramecc+:xnack-) is gfx + 3 characters (gfx803, gfx90a, gfx942) for wave64 and gfx + 4 characters (gfx1030, gfx1100) for wave32.
+    Anything unparsable is wave32.
+    OpenCL (vendor and gfxipMajor, CL_DEVICE_GFXIP_MAJOR_AMD, None if the query is not available): AMD with a major version below 10.
+    Everything else (CUDA, Metal, NVIDIA/Intel OpenCL, CPUs) is wave32."""
+    if archName is not None:
+        if isinstance(archName, bytes):
+            archName = archName.decode('ascii', 'ignore')
+        match = re.fullmatch(r'gfx([0-9a-fA-F]+)', str(archName).split(':')[0].rstrip('\0'))
+        return match is not None and len(match.group(1)) == 3
+    if vendor == 'Advanced Micro Devices, Inc.' and gfxipMajor is not None:
+        try:
+            return 0 < int(gfxipMajor) < 10
+        except (TypeError, ValueError):
+            return False
+    return False
+
+
+def _listmodeLocalSize(vendor=None, gfxipMajor=None, archName=None, deviceLimit=None, FPType=None, BPType=None):
+    """The default 1D local (work-group/block) size of list-mode (and index-based) data. The events are unsorted, so 128 is a poor size:
+    32 is the best on wave32 devices. On the wave64 AMD GPUs (see _isWave64) 512 is the best for projector type 1 (FPType and BPType 1), the
+    other projector types keep the defaults they had before: 128 for types 2 and 3 (BPType 1-3) and 64 for type 4. Capped to the device limit
+    (the maximum work-group size, None if unknown). Same rule as listmodeLocalSize in ProjectorClass.h."""
+    size = 32
+    if _isWave64(vendor, gfxipMajor, archName):
+        if FPType == 1 and BPType == 1:
+            size = 512
+        else:
+            size = 128 if BPType in (1, 2, 3) else 64
+    try:
+        if deviceLimit is not None and 0 < int(deviceLimit) < size:
+            size = int(deviceLimit)
+    except (TypeError, ValueError):
+        pass
+    return size
+
+
+def _deviceListmodeLocalSize(self, rocm=False, cp=None):
+    """_listmodeLocalSize for the device in use: the CuPy device on ROCm/HIP (rocm and the cupy module cp), the PyOpenCL device in
+    self.clctx, 32 for everything else (CUDA, Metal/MPS, PyTorch) or if the device properties cannot be read."""
+    FPType = self.FPType
+    BPType = self.BPType
+    if self.useMetal:
+        return _listmodeLocalSize(FPType=FPType, BPType=BPType)
+    try:
+        if self.useCUDA:
+            if not rocm or cp is None:
+                return _listmodeLocalSize(FPType=FPType, BPType=BPType)
+            props = cp.cuda.runtime.getDeviceProperties(cp.cuda.runtime.getDevice())
+            return _listmodeLocalSize(archName=props.get('gcnArchName'), deviceLimit=props.get('maxThreadsPerBlock'), FPType=FPType, BPType=BPType)
+        import pyopencl as cl
+        device = self.clctx.get_info(cl.context_info.DEVICES)[0]
+        vendor = device.get_info(cl.device_info.VENDOR)
+        gfxipMajor = None
+        # The query is an AMD extension, not every PyOpenCL version has the attribute
+        if vendor == 'Advanced Micro Devices, Inc.' and 'cl_amd_device_attribute_query' in device.get_info(cl.device_info.EXTENSIONS) \
+                and hasattr(cl.device_info, 'GFXIP_MAJOR_AMD'):
+            gfxipMajor = device.get_info(cl.device_info.GFXIP_MAJOR_AMD)
+        return _listmodeLocalSize(vendor=vendor, gfxipMajor=gfxipMajor, deviceLimit=device.max_work_group_size, FPType=FPType, BPType=BPType)
+    except Exception:
+        return _listmodeLocalSize(FPType=FPType, BPType=BPType)
+
+
+def _deviceMaxWorkGroupSize(self, rocm=False, cp=None):
+    """The maximum work-group size of the device in use (the CuPy device on CUDA/ROCm, the PyOpenCL device in self.clctx), None if it
+    cannot be read (the caller then does not cap)."""
+    try:
+        if self.useCUDA:
+            if cp is None:
+                return None
+            return int(cp.cuda.runtime.getDeviceProperties(cp.cuda.runtime.getDevice())['maxThreadsPerBlock'])
+        import pyopencl as cl
+        return int(self.clctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size)
+    except Exception:
+        return None
+
+
+def _orth_clip_needed(self):
+    """Whether the projector type 2/3 kernels are built with the end point check of the tube (-DORTHCLIP, see orthogonalHelper3D in
+    opencl_functions_orth3D.h). The tube of a ray ends at its end points, which only matters when a voxel beyond an end point can be
+    reached by the tube, i.e. when a detector/source is inside the image.
+
+    Rule (same as orthClipNeeded in precomp.h): enabled if and only if any detector/source coordinate point has its x and y inside the image box
+    widened by m, and the z range of the coordinates overlaps the box widened by m in z. m is the tube reach (type 2: tube_width_z,
+    type 3: max(bmax, tube_radius)) plus the largest voxel dimension, the box is the union of the volumes. Voxel centers are inside the
+    box, so a voxel in the tube is closer than the reach to the line; for detectors around the image the line beyond an end point is
+    outside the (convex) widened box and no voxel there is in the tube. The rule is conservative (it errs on the side of enabling the
+    check), non-finite coordinates (multi-layer padding) are ignored. CT always enables it, SPECT never (the kernel skips it)."""
+    if self.SPECT:
+        return False
+    if self.CT:
+        return True
+    reach = 0.0
+    if self.FPType == 2 or self.BPType == 2:
+        reach = max(reach, float(self.tube_width_z))
+    if self.FPType == 3 or self.BPType == 3:
+        reach = max(reach, float(self.tube_radius), float(self.bmax))
+    nVol = int(self.nMultiVolumes) + 1
+    lo = [np.inf] * 3
+    hi = [-np.inf] * 3
+    voxel = 0.0
+    for k in range(nVol):
+        for a, (b, d, n) in enumerate(((self.bx, self.dx, self.Nx), (self.by, self.dy, self.Ny), (self.bz, self.dz, self.Nz))):
+            bk, dk, nk = float(np.ravel(b)[k]), float(np.ravel(d)[k]), float(np.ravel(n)[k])
+            lo[a] = min(lo[a], bk)
+            hi[a] = max(hi[a], bk + nk * dk)
+            voxel = max(voxel, dk)
+    m = reach + voxel
+    lo = [v - m for v in lo]
+    hi = [v + m for v in hi]
+
+    def frames(name):
+        f = getattr(self, name + 'Frames', None)
+        if isinstance(f, list) and len(f) > 0:
+            return f
+        return [getattr(self, name)]
+
+    xy = []
+    z = []
+    if self.listmode > 0 and not self.useIndexBasedReconstruction:
+        # List-mode events: x, y, z of both end points of each event
+        for f in frames('x'):
+            p = _kernel_ravel(f, 'F', 6)
+            p = p[:p.size // 6 * 6].reshape(-1, 6)
+            xy += [p[:, 0:2], p[:, 3:5]]
+            z += [p[:, 2], p[:, 5]]
+    else:
+        for f in frames('x'):
+            p = _kernel_ravel(f, 'F')
+            xy.append(p[:p.size // 2 * 2].reshape(-1, 2))
+        for f in frames('z'):
+            if self.listmode == 0 and not self.use_raw_data:
+                # PET sinograms: source and detector z of each sinogram, with multiple layers the third value is the layer combination
+                stride = 3 if self.nLayers > 1 else 2
+                p = _kernel_ravel(f, 'F', stride)
+                z.append(p[:p.size // stride * stride].reshape(-1, stride)[:, 0:2].ravel())
+            else:
+                z.append(_kernel_ravel(f, 'F'))
+    xy = np.concatenate(xy) if len(xy) > 0 else np.empty((0, 2), dtype=np.float32)
+    xy = xy[np.isfinite(xy).all(axis=1)]
+    if xy.shape[0] == 0:
+        # No coordinates available: nothing can be excluded
+        return True
+    inside = bool(np.any((xy[:, 0] >= lo[0]) & (xy[:, 0] <= hi[0]) & (xy[:, 1] >= lo[1]) & (xy[:, 1] <= hi[1])))
+    if not inside:
+        return False
+    z = np.concatenate(z) if len(z) > 0 else np.empty(0, dtype=np.float32)
+    z = z[np.isfinite(z)]
+    if z.size == 0:
+        # No z coordinates: the z range cannot exclude anything
+        return True
+    return bool(z.min() <= hi[2] and z.max() >= lo[2])
 
 
 def _read(directory, name, encoding='utf8'):
@@ -588,30 +861,35 @@ def initProjector(self):
             self.useCuPy = True
     if self.useTorch and not self.useCUDA and not self.useMetal:
         raise ValueError('PyTorch with the OMEGA OpenCL backend would require host staging. Select CUDA or the native Metal/MPS backend.')
+    if self.useCUDA and not self.useCuPy and not self.useMetal:
+        # The operator interface (forwardProject/backwardProject) has no PyCUDA path, CuPy is the CUDA array library
+        print('The CUDA operator interface requires CuPy. Setting useCuPy to True!')
+        self.useCuPy = True
+    if getattr(self, 'useRowMajor', None) and (self.useAF or self.useMetal):
+        print('useRowMajor is not supported with ArrayFire or Metal/MPS, the operator output stays flat and Fortran-ordered.')
     if self.useCuPy and self.useCUDA:
         import cupy as cp
     elif self.useCuPy and not self.useCUDA:
         print('CuPy can only be used when useCUDA is True. Setting useCUDA to True!')
         self.useCUDA = True
         import cupy as cp
-    if self.useCuPy and self.useCUDA:
-        def cupyROCm():
-            try:
-                return bool(cp.cuda.runtime.is_hip)
-            except AttributeError:
-                pass
-            try:
-                import io
-                import contextlib
-                buf = io.StringIO()
-                with contextlib.redirect_stdout(buf):
-                    cp.show_config()
-                lower = buf.getvalue().lower()
-                return "rocm" in lower or "hip" in lower
-            except Exception:
-                return False
-    else:
-        def cupyROCm():
+    # Always defined (also when CuPy is off), it is called unconditionally further below on the CUDA path
+    def cupyROCm():
+        if not (self.useCuPy and self.useCUDA):
+            return False
+        try:
+            return bool(cp.cuda.runtime.is_hip)
+        except AttributeError:
+            pass
+        try:
+            import io
+            import contextlib
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                cp.show_config()
+            lower = buf.getvalue().lower()
+            return "rocm" in lower or "hip" in lower
+        except Exception:
             return False
     if not self.useCUDA and not self.useMetal:
         import pyopencl as cl
@@ -727,6 +1005,19 @@ def initProjector(self):
         elif self.BPType in [5]:
             linesBP = _read(headerDir, 'projectorType5.cl')
         frame_count = int(getattr(self, 'Nt', 1))
+        # List-mode (and index-based) data: 32, or on wave64 AMD GPUs 512 (type 1) / 128 / 64, instead of 128. Other data using the 1D launch keeps 128,
+        # except PET sinogram data with projector type 1 (both FP and BP): 256 (measured on an RTX 4090, RTX 3090, TITAN RTX and RX 7900 XT:
+        # 256 was never more than 3.4 % slower than 128 for type 1 and up to 32 % faster, types 2 and 3 were best at 128), capped to the device
+        # limit if it can be read (not on Metal, not measured). Same rule as in ProjectorClass.h
+        defaultLocalSize1D = 128
+        cupyOnCUDA = self.useCuPy and self.useCUDA
+        if self.listmode > 0:
+            defaultLocalSize1D = _deviceListmodeLocalSize(self, cupyOnCUDA and cupyROCm(), cp if cupyOnCUDA else None)
+        elif not self.CT and not self.SPECT and self.FPType == 1 and self.BPType == 1 and not self.useMetal:
+            defaultLocalSize1D = 256
+            deviceLimit = _deviceMaxWorkGroupSize(self, cupyOnCUDA and cupyROCm(), cp if cupyOnCUDA else None)
+            if deviceLimit is not None and 0 < deviceLimit < defaultLocalSize1D:
+                defaultLocalSize1D = deviceLimit
         globalSize = [[None] * self.subsets for _ in range(frame_count)]
         # self.mSize = [None] * self.subsets
         for timestep in range(frame_count):
@@ -747,7 +1038,7 @@ def initProjector(self):
                     globalSize[timestep][i] = (self.nRowsD + erotus[0], self.nColsD + erotus[1], n_proj)
                 else:
                     globalSize[timestep][i] = (n_meas, 1, 1)
-                    localSize = _userLocalSize(self, (128, 1, 1))
+                    localSize = _userLocalSize(self, (defaultLocalSize1D, 1, 1))
                     erotus = (localSize[0] - (globalSize[timestep][i][0] % localSize[0]), localSize[1] - (globalSize[timestep][i][1] % localSize[1]), 0)
                     globalSize[timestep][i] = (n_meas + erotus[0], 1, 1)
         self.globalSizeFP = globalSize.copy()
@@ -839,7 +1130,10 @@ def initProjector(self):
                 bOpt += (' -cl-fast-relaxed-math -DUSEMAD',)
         if self.useImages:
             bOpt += ('-DUSEIMAGES',)
+        orthClip = False
         if (self.FPType == 2 or self.BPType == 2 or self.FPType == 3 or self.BPType == 3):
+            # End point check of the tube, only needed when a detector is inside the image (see _orth_clip_needed)
+            orthClip = _orth_clip_needed(self)
             if self.orthTransaxial:
                 bOpt += ('-DCRYSTXY',)
             if self.orthAxial:
@@ -896,7 +1190,9 @@ def initProjector(self):
         if self.CT:
             bOpt += ('-DCT',)
             # Curved (helical) detector; the parallel-beam define takes precedence as in the C++ host code
-            if self.useHelical and not self.useParallelBeam:
+            if self.useParallelBeam:
+                bOpt += ('-DPARALLEL',)
+            elif self.useHelical:
                 bOpt += ('-DHELICAL',)
         elif self.SPECT:
             if self.useCUDA:
@@ -943,6 +1239,8 @@ def initProjector(self):
             bOptFP += ('-DATOMICF',)
             if self.FPType in [2, 3]:
                 bOptFP += ('-DORTH',)
+                if orthClip:
+                    bOptFP += ('-DORTHCLIP',)
             if self.FPType == 3:
                 bOptFP += ('-DVOL',)
             if self.use_64bit_atomics:
@@ -953,6 +1251,9 @@ def initProjector(self):
                 bOptFP += ('-DCAST=float',)
         elif self.FPType == 4:
             bOptFP += ('-DPTYPE4','-DNVOXELS=' + str(self.NVOXELS),)
+            # Non-positive interpolation length selects the Joseph-type projector (mirrors ProjectorClass.h)
+            if float(np.asarray(self.dL).ravel()[0]) <= 0.:
+                bOptFP += ('-DJOSEPH',)
             if self.CT and self.useHelical:
                 bOptFP += ('-DNVOXELSHELICAL=' + str(self.NVOXELSHELICAL),)
             if not self.CT:
@@ -976,6 +1277,8 @@ def initProjector(self):
             bOptBP += ('-DSIDDON',)
             if self.BPType in [2, 3]:
                 bOptBP += ('-DORTH',)
+                if orthClip:
+                    bOptBP += ('-DORTHCLIP',)
             if self.BPType == 3:
                 bOptBP += ('-DVOL',)
             bOptBP += ('-DATOMICF',)
@@ -988,10 +1291,20 @@ def initProjector(self):
         elif self.BPType == 4:
             if self.CT:
                 bOptBP += ('-DBP4','-DNVOXELS=' + str(self.NVOXELS),)
+                # Measurements read from a 2D layered texture (one layer per projection) instead of a 3D texture
+                if _decide_layered_bp(self):
+                    bOptBP += ('-DLAYEREDBP',)
+                if float(np.asarray(self.dL).ravel()[0]) <= 0.:
+                    bOptBP += ('-DJOSEPH',)
                 if self.useHelical:
                     bOptBP += ('-DNVOXELSHELICAL=' + str(self.NVOXELSHELICAL),)
+                # The helical backprojection only visits the projections in the window of its axial block
+                if _uses_projection_window(self):
+                    bOptBP += ('-DPROJWINDOW',)
             else:
                 bOptBP += ('-DPTYPE4','-DNVOXELS=' + str(self.NVOXELS),)
+                if float(np.asarray(self.dL).ravel()[0]) <= 0.:
+                    bOptBP += ('-DJOSEPH',)
                 bOptBP += ('-DATOMICF',)
                 if self.use_64bit_atomics:
                     bOptBP += ('-DATOMIC','-DCAST=long','-DTH=' + str(self.TH),)
@@ -1002,8 +1315,11 @@ def initProjector(self):
         elif self.BPType == 5:
             bOptBP += ('-DPROJ5','-DNVOXELS5=' + str(self.NVOXELS5),)
             # Use the per-projection geometry precomputed with computeGeom5 (stored in self.d_geom5)
-            if self.CT and self.listmode == 0:
+            if self.CT and self.listmode == 0 and not self.useHelical:
                 bOptBP += ('-DGEOM5',)
+            # The helical backprojection only visits the projections in the window of its axial block
+            if _uses_projection_window(self):
+                bOptBP += ('-DPROJWINDOW',)
             if self.meanBP:
                 bOptBP += ('-DMEANDISTANCEBP',)
     else:
@@ -1075,7 +1391,7 @@ def initProjector(self):
                 _initialize_coordinate_buffers(self, upload)
                 _initialize_tof_index_buffers(self, upload)
                 # Precomputed per-projection geometry for the BDD backprojection (see -DGEOM5 in projectorType5.cl)
-                if self.BPType == 5 and self.CT and self.listmode == 0:
+                if self.BPType == 5 and self.CT and self.listmode == 0 and not self.useHelical:
                     self.d_geom5 = [[None] * self.subsets for _ in range(self.Nt)]
                     kerroin = 6 if self.pitch else 2
                     for timestep in range(self.Nt):
@@ -1089,6 +1405,9 @@ def initProjector(self):
                                 self.pitch,
                             )
                             self.d_geom5[timestep][subset] = upload(geom)
+                # Projection windows of the helical backprojection (see -DPROJWINDOW in projectorType4.cl and projectorType5.cl)
+                if _uses_projection_window(self):
+                    _initialize_projection_window_buffers(self, upload)
                 if (self.attenuation_correction and not self.CTAttenuation):
                     # Measurement-domain attenuation: build [Nt][subsets], mirroring mps_backend.py's
                     # d_attenuation. As in C++ (a single d_atten[kk] buffer shared by all timesteps), a
@@ -1331,7 +1650,7 @@ def initProjector(self):
             _initialize_coordinate_buffers(self, upload)
             _initialize_tof_index_buffers(self, upload)
             # Precomputed per-projection geometry for the BDD backprojection (see -DGEOM5 in projectorType5.cl)
-            if self.BPType == 5 and self.CT and self.listmode == 0:
+            if self.BPType == 5 and self.CT and self.listmode == 0 and not self.useHelical:
                 self.d_geom5 = [[None] * self.subsets for _ in range(self.Nt)]
                 kerroin = 6 if self.pitch else 2
                 for timestep in range(self.Nt):
@@ -1345,6 +1664,9 @@ def initProjector(self):
                             self.pitch,
                         )
                         self.d_geom5[timestep][subset] = upload(geom)
+            # Projection windows of the helical backprojection (see -DPROJWINDOW in projectorType4.cl and projectorType5.cl)
+            if _uses_projection_window(self):
+                _initialize_projection_window_buffers(self, upload)
             if (self.attenuation_correction and not self.CTAttenuation):
                 # Measurement-domain attenuation: build [Nt][subsets], mirroring mps_backend.py's
                 # d_attenuation. As in C++ (a single d_atten[kk] buffer shared by all timesteps), a

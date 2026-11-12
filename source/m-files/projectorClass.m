@@ -310,7 +310,10 @@ classdef projectorClass
                 end
                 obj.param.use_raw_data = false;
                 obj.param.attenuation_correction = false;
-                obj.param.normalization_correction = false;
+                % The CT normalization is a per-measurement factor (see loadCorrections), the detector map is tiled to all projections
+                if obj.param.normalization_correction && numel(obj.param.normalization) > 1
+                    obj.param = tileCTNormalization(obj.param);
+                end
                 obj.param.compute_normalization = false;
                 obj.param.rings = obj.param.nColsD * obj.param.nBed;
                 obj.param.det_per_ring = obj.param.nRowsD * obj.param.nProjections;
@@ -541,7 +544,8 @@ classdef projectorClass
                 obj.param = OMEGA_error_check(obj.param);
             end
             % Is TOF enabled?
-            obj.param.TOF = obj.param.TOF_bins > 1 && (obj.param.projector_type == 1 || obj.param.projector_type == 11 || obj.param.projector_type == 3 || obj.param.projector_type == 33 ...
+            obj.param.TOF = obj.param.TOF_bins > 1 && (obj.param.projector_type == 1 || obj.param.projector_type == 11 || obj.param.projector_type == 2 || obj.param.projector_type == 22 || obj.param.projector_type == 12 || obj.param.projector_type == 21 ...
+                || obj.param.projector_type == 23 || obj.param.projector_type == 32 || obj.param.projector_type == 24 || obj.param.projector_type == 42 || obj.param.projector_type == 3 || obj.param.projector_type == 33 ...
                 || obj.param.projector_type == 13 || obj.param.projector_type == 31 || obj.param.projector_type == 4 || obj.param.projector_type == 14 || obj.param.projector_type == 41 ...
                 || obj.param.projector_type == 44|| obj.param.projector_type == 43 || obj.param.projector_type == 34);
             if ~obj.param.TOF && obj.param.TOF_bins_used > 1
@@ -776,10 +780,13 @@ classdef projectorClass
             temp = obj.param.pseudot;
             if ~isempty(temp) && temp > 0
                 for kk = uint32(1) : temp
-                    obj.param.pseudot(kk) = uint32(obj.param.cryst_per_block + 1) * kk;
+                    obj.param.pseudot(kk) = uint32(max(obj.param.cryst_per_block_axial) + 1) * kk;
                 end
+                % pseudot now contains the positions of the pseudo rings instead of the number of them
+                obj.param.pseudotPositions = true;
             elseif temp == 0
                 obj.param.pseudot = [];
+                obj.param.pseudotPositions = false;
             end
 
             if obj.param.implementation == 1
@@ -834,6 +841,8 @@ classdef projectorClass
                 else
                     det_per_ring = numel(obj.param.trIndex) / 2;
                 end
+                % The sinogram dimensions are needed for the sinogram normalization
+                obj.param.indexSinogramDims = [obj.param.Ndist, obj.param.Nang, obj.param.NSinos, obj.param.TotSinos];
                 obj.param.Nang = 1;
                 obj.param.Ndist = 1;
                 obj.param.NSinos = det_per_ring;
@@ -884,6 +893,8 @@ classdef projectorClass
             if ~obj.param.listmode && obj.param.subsets > 1 && obj.param.subset_type == 0
                 warning('Subset type 0 is recommended only for list-mode data! The reconstruction will most likely not work!')
             end
+            % The scatter of list-mode data is the additive term of each event: one value per event
+            checkListModeScatter(obj.param);
             if obj.param.listmode && (numel(partitions) > 1 || partitions > 1)
                 % obj.param.loadTOF = false;
                 obj.param.listmodeIndices = zeros(partitions,1,'uint64');
@@ -939,14 +950,14 @@ classdef projectorClass
                                 if size(obj.param.x{uu},2) == 2
                                     obj.param.x{uu} = [obj.param.x{uu}(:,1)'; obj.param.y{uu}(:,1)'; obj.param.z{uu}(:,1)';obj.param.x{uu}(:,2)'; obj.param.y{uu}(:,2)'; obj.param.z{uu}(:,2)'];
                                 elseif size(obj.param.x{uu},1) == 2
-                                    obj.param.x{uu} = [obj.param.x{uu}(:,1); obj.param.y{uu}(:,1); obj.param.z{uu}(:,1);obj.param.x{uu}(:,2); obj.param.y{uu}(:,2); obj.param.z{uu}(:,2)];
+                                    obj.param.x{uu} = [obj.param.x{uu}(1,:); obj.param.y{uu}(1,:); obj.param.z{uu}(1,:);obj.param.x{uu}(2,:); obj.param.y{uu}(2,:); obj.param.z{uu}(2,:)];
                                 end
                             end
                         else
                             if size(obj.param.x,2) == 2
                                 obj.param.x = [obj.param.x(:,1)'; obj.param.y(:,1)'; obj.param.z(:,1)';obj.param.x(:,2)'; obj.param.y(:,2)'; obj.param.z(:,2)'];
                             elseif size(obj.param.x,1) == 2
-                                obj.param.x = [obj.param.x(:,1); obj.param.y(:,1); obj.param.z(:,1);obj.param.x(:,2); obj.param.y(:,2); obj.param.z(:,2)];
+                                obj.param.x = [obj.param.x(1,:); obj.param.y(1,:); obj.param.z(1,:);obj.param.x(2,:); obj.param.y(2,:); obj.param.z(2,:)];
                             end
                         end
                     end
@@ -1239,31 +1250,19 @@ classdef projectorClass
             [obj.param.V,obj.param.Vmax,obj.param.bmin,obj.param.bmax] = computeVoxelVolumes(obj.param.dx,obj.param.dy,obj.param.dz,obj.param);
 
 
-            if (obj.param.projector_type == 2 || obj.param.projector_type == 3 || obj.param.projector_type == 21 || obj.param.projector_type == 22 || obj.param.projector_type == 33)
-                if obj.param.projector_type == 3 || obj.param.projector_type == 33
-                    obj.param.orthTransaxial = true;
-                elseif (obj.param.projector_type == 2 || obj.param.projector_type == 21 || obj.param.projector_type == 22) && (isfield(options,'tube_width_xy') && options.tube_width_xy > 0 || options.SPECT)
-                    obj.param.orthTransaxial = true;
-                else
-                    obj.param.orthTransaxial = false;
-                end
+            % Orthogonal-distance/volume-of-intersection tube flags (also for hybrid types)
+            if any(obj.param.projector_type == [3, 33, 13, 31, 32, 23, 43, 34])
+                obj.param.orthTransaxial = true;
+                obj.param.orthAxial = true;
+            elseif any(obj.param.projector_type == [2, 22, 12, 21, 24, 42])
+                obj.param.orthTransaxial = (isfield(options,'tube_width_xy') && options.tube_width_xy > 0) || options.SPECT;
+                obj.param.orthAxial = (isfield(obj.param,'tube_width_z') && obj.param.tube_width_z > 0) || options.SPECT;
             else
                 obj.param.orthTransaxial = false;
-            end
-            if (obj.param.projector_type == 2 || obj.param.projector_type == 3 || obj.param.projector_type == 21 || obj.param.projector_type == 22 || obj.param.projector_type == 33)
-                if obj.param.projector_type == 3 || obj.param.projector_type == 33
-                    obj.param.orthAxial = true;
-                elseif (obj.param.projector_type == 2 || obj.param.projector_type == 21 || obj.param.projector_type == 22) && (isfield(obj.param,'tube_width_z') && obj.param.tube_width_z > 0 || options.SPECT)
-                    obj.param.orthAxial = true;
-                else
-                    obj.param.orthAxial = false;
-                end
-            else
                 obj.param.orthAxial = false;
             end
 
-
-            if obj.param.projector_type == 4 || obj.param.projector_type == 5 || obj.param.projector_type == 14 || obj.param.projector_type == 41 ...
+            if obj.param.projector_type == 4 || obj.param.projector_type == 44 || obj.param.projector_type == 5 || obj.param.projector_type == 55 || obj.param.projector_type == 14 || obj.param.projector_type == 41 ...
                     || obj.param.projector_type == 15 || obj.param.projector_type == 45 || obj.param.projector_type == 54 || obj.param.projector_type == 51 ...
                     || obj.param.projector_type == 42 || obj.param.projector_type == 43 || obj.param.projector_type == 24 || obj.param.projector_type == 34
                 obj.param = computeProjectorScalingValues(obj.param);
@@ -1301,7 +1300,7 @@ classdef projectorClass
 
             if obj.param.projector_type == 6
                 %obj.param = SPECTParameters(obj.param);
-                if obj.param.subsets > 1 && (obj.param.subset_type == 8 || obj.param.subset_type == 9 || obj.param.subset_type == 10 || obj.param.subset_type == 11)
+                if obj.param.subsets > 1 && (obj.param.subset_type == 8 || obj.param.subset_type == 9 || obj.param.subset_type == 10 || obj.param.subset_type == 11 || obj.param.subset_type == 12)
                     geometryFields = {'angles', 'swivelAngles', 'radiusPerProj', 'blurPlanes', 'blurPlanes2', ...
                         'blurPlanesF', 'blurPlanes2F'};
                     if iscell(obj.index)
@@ -1367,8 +1366,16 @@ classdef projectorClass
                 elseif ~isa(obj.param.x, obj.param.cType)
                     obj.param.x = cast(obj.param.x, obj.param.cType);
                 end
+                % The randoms are not used with list-mode data (the randoms are added into options.ScatterC). The scatter is the
+                % additive term of each event (options.ScatterC, see checkListModeScatter) if it is subtracted
                 obj.param.randoms_correction = false;
-                obj.param.scatter_correction = false;
+                if obj.param.scatter_correction && ~obj.param.subtract_scatter && ~obj.param.CT && ~obj.param.SPECT
+                    warning(['Non-subtracted (multiplicative) scatter correction is not applied to list-mode and index-based data! Scatter correction is disabled. ' ...
+                        'Use options.subtract_scatter = true and input the scatter as the additive term of each event (options.ScatterC).'])
+                end
+                if ~obj.param.scatter_correction || ~obj.param.subtract_scatter || obj.param.CT || obj.param.SPECT
+                    obj.param.scatter_correction = false;
+                end
             end
             if ~isfield(obj.param, 'ScatterC')
                 obj.param.ScatterC = zeros(1,1, obj.param.cType);

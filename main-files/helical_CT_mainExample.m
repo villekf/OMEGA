@@ -226,7 +226,7 @@ options.use_CPU = false;
 % as the other projector is the corresponding projector.
 % See the doc for more information:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
-% NOTE 3: Helical CT currently only supports projector_type 4!
+% NOTE 3: Helical CT currently only supports projector types 4, 5, 45 and 54!
 options.projector_type = 4;
 
 %%% Mean subtraction for projector type 5 (FP and BP separately)

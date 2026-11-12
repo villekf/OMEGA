@@ -306,7 +306,7 @@ def computeProjectorScalingValues(options):
     options.dScaleX4 = 1. / (options.dx * options.Nx)
     options.dScaleY4 = 1. / (options.dy * options.Ny)
     options.dScaleZ4 = 1. / (options.dz * options.Nz)
-    if options.projector_type in [5, 15, 45, 54, 51]:
+    if options.projector_type in [5, 15, 45, 54, 51, 55]:
         options.dSizeY = 1. / (options.dy * options.Ny)
         options.dSizeX = 1. / (options.dx * options.Nx)
         options.dScaleX = 1. / (options.dx * (options.Nx + 1))
@@ -320,7 +320,7 @@ def computeProjectorScalingValues(options):
         options.dScaleY = options.dScaleY.astype(dtype=np.float32)
         options.dScaleZ = options.dScaleZ.astype(dtype=np.float32)
     # if options.projector_type == 4 or options.projector_type == 14 or options.projector_type == 54:
-    if options.projector_type in [4, 14, 41, 42, 43, 44, 45, 54]:
+    if options.projector_type in [4, 14, 24, 34, 41, 42, 43, 44, 45, 54]:
         options.kerroin = (options.dx * options.dy * options.dz) / (options.dPitchX * options.dPitchY * options.sourceToDetector)
         if options.dL == 0:
             if isinstance(options.FOVa_x, np.ndarray):
@@ -344,9 +344,60 @@ def computeProjectorScalingValues(options):
                 options.dL = options.dL * (options.FOVa_x / options.Nx)
     else:
         options.kerroin = np.zeros(1,dtype=np.float32)
-    if options.projector_type in [4, 5, 14, 15, 45, 54] and options.CT:
+    if options.projector_type in [4, 5, 14, 15, 24, 25, 34, 35, 44, 45, 54, 55] and options.CT:
         options.use_64bit_atomics = False
         options.use_32bit_atomics = False
     options.dScaleX4 = options.dScaleX4.astype(dtype=np.float32)
     options.dScaleY4 = options.dScaleY4.astype(dtype=np.float32)
     options.dScaleZ4 = options.dScaleZ4.astype(dtype=np.float32)
+
+
+def expandLayerParameters(options):
+    """
+    Expands the per-layer parameters of multi-layer PET (cryst_per_block,
+    cryst_per_block_axial and crystH) to one value for each layer. A scalar
+    (or a single element array) value is used for all the layers, i.e. the
+    layers are equal. Does nothing with a single layer. Safe to call
+    repeatedly.
+
+    Parameters
+    ----------
+    options : class object
+        OMEGA class object used to contain all the necessary data.
+
+    Raises
+    ------
+    ValueError
+        If a parameter has more than one but fewer than nLayers elements, or
+        if pseudo rings are used with layers that have a different number of
+        axial crystals.
+
+    Returns
+    -------
+    None.
+
+    """
+    nLayers = int(np.asarray(getattr(options, 'nLayers', 1)).ravel()[0])
+    if nLayers <= 1:
+        return
+    for name in ('cryst_per_block', 'cryst_per_block_axial', 'crystH'):
+        value = getattr(options, name, None)
+        if value is None:
+            continue
+        arr = np.asarray(value)
+        if arr.size == 0 or arr.size >= nLayers:
+            continue
+        if arr.size > 1:
+            raise ValueError('options.' + name + ' has ' + str(arr.size) + ' elements, but options.nLayers = ' + str(nLayers) + '. Input either a scalar (the same value for all the layers) or one value for each layer.')
+        if isinstance(value, np.ndarray):
+            dtype = value.dtype
+        elif name == 'crystH':
+            dtype = np.float64
+        else:
+            dtype = np.uint32
+        setattr(options, name, np.full(nLayers, arr.ravel()[0], dtype=dtype))
+    # The pseudo rings (number of pseudo rings or the positions of them) are inserted with a common axial block size
+    pseudot = getattr(options, 'pseudot', None)
+    axial = np.asarray(getattr(options, 'cryst_per_block_axial', 0)).ravel()
+    if pseudot is not None and np.sum(np.asarray(pseudot)) > 0 and np.unique(axial).size > 1:
+        raise ValueError('Pseudo rings are not supported with layers that have a different number of axial crystals (cryst_per_block_axial).')

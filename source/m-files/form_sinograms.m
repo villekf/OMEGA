@@ -151,7 +151,7 @@ if options.use_machine ~= 2
     temp = pseudot;
     if ~isempty(temp) && temp > 0
         for kk = uint32(1) : temp
-            pseudot(kk) = uint32(options.cryst_per_block + 1) * kk;
+            pseudot(kk) = uint32(max(options.cryst_per_block_axial) + 1) * kk;
         end
     elseif temp == 0
         pseudot = [];

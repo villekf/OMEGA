@@ -93,8 +93,9 @@ elseif options.nLayers > 1
     end
     [x1,y1] = computeCoordinates(blocks_per_ring, transaxial_multip,options.cryst_per_block(1), diameter, cr_p, usePseudo, gapsFor(options, options.cryst_per_block(1)), fbaFor(options));
     [x1,y1] = padLayerBlocks(x1, y1, options.cryst_per_block(1) + usePseudo, blockSize, nBlocksRing);
-    % orig_diameter = diameter + options.crystH(end) * 2;
-    diameter = diameter + DOI * 2 + options.crystH(1) * 2;
+    % The second layer starts at the inner face of the second layer, i.e. the inner diameter of the first layer plus the
+    % thickness of the first layer. The DOI (already included in diameter) is added only once.
+    diameter = diameter + options.crystH(1) * 2;
     [x2,y2] = computeCoordinates(blocks_per_ring, transaxial_multip,options.cryst_per_block(2), diameter, cr_p, usePseudo, gapsFor(options, options.cryst_per_block(2)), fbaFor(options));
     [x2,y2] = padLayerBlocks(x2, y2, options.cryst_per_block(2) + usePseudo, blockSize, nBlocksRing);
     koko = size(x1,1);
@@ -115,10 +116,19 @@ end
 
 % flip the image if so desired
 if options.flip_image
-    x = flip(x);
-    xp = flip(xp);
-    y = flip(y);
-    yp = flip(yp);
+    % The ring is mirrored while the block structure is kept: the real detectors are reversed, but the pseudo detector and
+    % the Inf padding of each block stay at the end of the block. Each layer is flipped separately so that the layer order is
+    % preserved.
+    nBlocksRing = blocks_per_ring * transaxial_multip;
+    if options.nLayers > 1
+        xp = [flipRing(xp(1 : koko), nBlocksRing, options.cryst_per_block(1), usePseudo); flipRing(xp(koko + 1 : end), nBlocksRing, options.cryst_per_block(2), usePseudo)];
+        yp = [flipRing(yp(1 : koko), nBlocksRing, options.cryst_per_block(1), usePseudo); flipRing(yp(koko + 1 : end), nBlocksRing, options.cryst_per_block(2), usePseudo)];
+    else
+        x = flipRing(x, nBlocksRing, cryst_per_block, usePseudo);
+        xp = flipRing(xp, nBlocksRing, cryst_per_block, usePseudo);
+        y = flipRing(y, nBlocksRing, cryst_per_block, usePseudo);
+        yp = flipRing(yp, nBlocksRing, cryst_per_block, usePseudo);
+    end
 end
 % Rotate the image if desired
 if options.offangle ~= 0
@@ -151,6 +161,15 @@ if options.offangle ~= 0
     end
 end
 
+% With layers the trimmed x and y (Inf rows removed) are formed from the final xp and yp so that they are consistent with the
+% flipped and rotated detectors
+if options.nLayers > 1
+    x = xp;
+    x(any(isinf(x),2),:) = [];
+    y = yp;
+    y(any(isinf(y),2),:) = [];
+end
+
 if (options.implementation == 2 || options.implementation == 3 || options.implementation == 5) && options.listmode > 0
     x = single(x);
     y = single(y);
@@ -171,6 +190,22 @@ if nargout == 4
     varargout{4} = yp;
 end
 
+end
+
+function v = flipRing(v, nBlocks, nCryst, usePseudo)
+% Mirrors the detector ring of one layer (flip_image) while keeping the block structure. v has nBlocks blocks of equal size,
+% each block starting with nCryst real detectors followed by the pseudo detector (if usePseudo) and the Inf padding (if the
+% block is larger). The blocks and the real detectors within them are reversed, while the pseudo detector (a gap coordinate)
+% and the Inf padding stay at the end of each block. Without a pseudo detector and padding this is the plain reversal.
+blockSize = numel(v) / nBlocks;
+nSlots = nCryst + usePseudo;
+if nSlots == blockSize
+    v = circshift(flip(v), -double(usePseudo));
+else
+    blocks = reshape(v, blockSize, nBlocks);
+    blocks(1 : nSlots, :) = reshape(flipRing(reshape(blocks(1 : nSlots, :), [], 1), nBlocks, nCryst, usePseudo), nSlots, nBlocks);
+    v = blocks(:);
+end
 end
 
 function [x, y] = padLayerBlocks(x, y, slots, blockSize, nBlocks)

@@ -350,6 +350,11 @@ options.addProjector()
 
 # Assumes that PyTorch tensors are used as input to either forward or backward projections
 options.useTorch = True
+# With PyTorch, row-major (C-ordered) output is the default (useRowMajor = True), the same format that PyTorch itself uses:
+# the forward projection returns an (nRowsD, nColsD, projections) tensor and the backprojection an (Nx, Ny, Nz) tensor, indexed
+# as y[i, j, k] and f[x, y, z]. Without PyTorch the default is False, i.e. flat, Fortran-ordered vectors (x/rows varying fastest).
+# This example works on such flat vectors, so row-major output is turned off here.
+options.useRowMajor = False
 
 # Required for PyTorch
 options.useCUDA = True

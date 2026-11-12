@@ -62,6 +62,11 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 	// ProjectorClass methods that return a plain 0/-1 int rather than a backend STATUS_t
 	int retVal = 0;
 
+	// Projector types 2 and 3: the end point check of the tube is built into the kernels only when a detector is inside the image
+	if (inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 2 || inputScalars.BPType == 3)
+		inputScalars.orthClip = orthClipNeeded(inputScalars, x, z_det, w_vec.listCoord, pituus);
+	// Largest number of projections in any subset/time step (decides whether the layered CT BP texture can be used)
+	inputScalars.maxProjPerCall = length.empty() ? 0 : *std::max_element(length.begin(), length.end());
 	ProjectorClass proj;
 	retVal = proj.addProjector(inputScalars, w_vec, MethodList, header_directory, type);
 

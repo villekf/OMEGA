@@ -3,8 +3,10 @@
 * Matrix free projectors for forward and backward projections. This is the interpolation-based projector and contains a ray-based forward
 * projector and a voxel-based backprojector. The ray-based forward projector can be used with any data while the backprojector should be
 * used for CT-like data only (i.e. projection-type data). The ray-based forward projector does support backprojection as well but as with
-* projector types 1-3, it is not efficient backprojector, though it is completely adjoint. The voxel-based backprojector is not exactly
-* adjoint with the forward projection, but the difference is less than 1%. Note that Joseph (10.1109/TMI.1982.4307572) method can now
+* projector types 1-3, it is not efficient backprojector. The ray-based backprojection deposits each sample to the nearest voxel, whereas the
+* forward projection interpolates trilinearly, so it is not exactly the adjoint of the forward projection (the row sums match). The
+* voxel-based (CT) backprojector is adjoint with the forward projection up to the discretization of the voxel-driven interpolation (measured
+* relative adjoint gap ~1e-5). Note that Joseph (10.1109/TMI.1982.4307572) method can now
 * also be selected by setting the interpolation length (dL) as negative.
 *
 * Used by implementations 2, 3 and 5.
@@ -45,7 +47,8 @@
 * d_xy/zindex = Subset index values for subset type 3,
 * tr/axIndex = Transaxial and axial indices for index-based reconstruction,
 * TOFindex = TOF indices for list-mode TOF,
-* d_norm = normalization coefficients,
+* d_norm = normalization coefficients (a sinogram with NORMSENS, see d_sensXY/Z),
+* d_sensXY/Z = lookup tables from the detector pair/ring pair to the bin/plane of the d_norm sinogram (NORMSENS only, listmode sensitivity image),
 * d_scat = scatter coefficients when using the system matrix method (multiplication), 
 * d_Summ = buffer for d_Summ (sensitivity image),
 * no_norm = If 1, sensitivity image is not computed,
@@ -139,6 +142,10 @@ void projectorType4Forward(
 #endif
 #ifdef NORM ///////////////////////// NORMALIZATION DATA /////////////////////////
     , const CLGLOBAL float* CLRESTRICT d_norm BUF13
+#if defined(SENS) && defined(NORMSENS)
+    , const CLGLOBAL uint* CLRESTRICT d_sensXY BUF16
+    , const CLGLOBAL uint* CLRESTRICT d_sensZ BUF17
+#endif
 #endif ///////////////////////// END NORMALIZATION DATA /////////////////////////
 #ifdef SCATTER ///////////////////////// EXTRA CORRECTION DATA /////////////////////////
     , const CLGLOBAL float* CLRESTRICT d_scat BUF14
@@ -222,6 +229,9 @@ void projectorType4Forward(
 	///////////////////////// NORMALIZATION DATA /////////////////////////
 #ifdef NORM
     const CLGLOBAL float* CLRESTRICT d_norm,
+#if defined(SENS) && defined(NORMSENS)
+    const CLGLOBAL uint* CLRESTRICT d_sensXY, const CLGLOBAL uint* CLRESTRICT d_sensZ,
+#endif
 #endif
 	///////////////////////// END NORMALIZATION DATA /////////////////////////
 	///////////////////////// EXTRA CORRECTION DATA /////////////////////////
@@ -351,7 +361,15 @@ void projectorType4Forward(
 #endif
 #ifdef NORM // Normalization included
 	float local_norm = FLOAT_ZERO;
+#if defined(SENS) && defined(NORMSENS)
+	// List-mode sensitivity image with a sinogram normalization: the normalization is looked up from the sinogram
+	// with the detector and ring pair. Pairs outside the sinogram, or with zero normalization, do not contribute
+	local_norm = getNormSens(d_norm, d_sensXY, d_sensZ, i.x, i.y, indz, d_det_per_ring, rings);
+	if (local_norm == FLOAT_ZERO)
+		return;
+#else
 	local_norm = d_norm[idx];
+#endif
 #endif
 #ifndef CT
 
@@ -540,7 +558,7 @@ void projectorType4Forward(
     // The interpolation weight is the fixed input dL
     const float stepLen = dL;
 	// Same as above
-    float t0 = tStartG + tStep / 10.f;
+    float t0 = tStartG + tStep * FLOAT_HALF;
 	if (tStart > tStartG)
 		t0 += FLOOR((tStart - t0) / tStep + FLOAT_ONE) * tStep;
 	// Compute the total number of steps
@@ -550,6 +568,8 @@ void projectorType4Forward(
 #endif // END JOSEPH
 #ifdef TOF
     D -= ((t0 - tStart) * L * DDsign);
+	// Each sample k represents the ray segment [x_k - stepLen / 2, x_k + stepLen / 2], i.e. its TOF element is centred on the sample
+	D -= FLOAT_HALF * stepLen;
 #ifdef TOF_CLIP
 	// Only the samples whose TOF segment [D + k * stepLen, D + (k + 1) * stepLen] reaches the TOF window of the bin of the event are
 	// processed (see TOF_CLIP), iiStart <= k < iiEnd. The sampling grid is not changed (the samples are those of the whole ray),
@@ -601,6 +621,10 @@ void projectorType4Forward(
             compute_attenuation(stepLen, pAtn, d_atten, &jelppi, aa);
         }
     }
+#if defined(BP) && !defined(TOTLENGTH)
+    // The length of the ray within the FOV, used to normalize the backprojection (same as without attenuation below)
+    LL = CFLOAT(nSteps) * stepLen;
+#endif
 #else
     // With a counted loop the total traversed length is known without marching the ray
     LL = CFLOAT(nSteps) * stepLen;
@@ -856,6 +880,69 @@ void projectorType4Forward(
 
 #if defined(BP) && defined(CT)// START BP
 
+#ifdef LAYEREDBP
+#if defined(HELICAL)
+#error LAYEREDBP does not support HELICAL
+#endif
+#if defined(METAL)
+#error LAYEREDBP does not support METAL
+#endif
+#if defined(CUDA) || defined(HIP)
+#define BPFORWTYPE IMAGE3D
+#define LAYFETCH(img, u, v, k) tex2DLayered<float>(img, u, v, k)
+#else
+#define BPFORWTYPE __read_only image2d_array_t
+#define LAYFETCH(img, u, v, k) read_imagef(img, samplerIm, (float4)(u, v, CFLOAT(k), 0.f)).w
+#endif
+#else
+#define BPFORWTYPE IMTYPE
+#endif
+
+#if defined(BP) && defined(CT) && defined(NORM) && defined(USEIMAGES)
+// Bilinear interpolation of the normalization-weighted detector data n * y at the normalized detector coordinates (px, py) of the projection
+// plane pz. This makes the voxel-driven backprojection the counterpart of the forward projection that multiplies its output by n, i.e. A^T(n y)
+// instead of n_nearest * interp(y). Clamp-to-edge semantics, same as the hardware texture sampler. y is fetched at the exact texel centres,
+// where the linear filter returns the texel value.
+DEVICE float interpNormWeighted(BPFORWTYPE d_forw, const int kLay, const CLGLOBAL float* CLRESTRICT d_norm, const float px, const float py, const float pz,
+    const uint d_size_x, const uint d_sizey, const LONG d_nProjections) {
+    const int sx = CINT(d_size_x);
+    const int sy = CINT(d_sizey);
+    const float cx = px * CFLOAT(d_size_x) - 0.5f;
+    const float cy = py * CFLOAT(d_sizey) - 0.5f;
+    const int xf = CINT(FLOOR(cx));
+    const int yf = CINT(FLOOR(cy));
+    const float wx1 = cx - CFLOAT(xf);
+    const float wy1 = cy - CFLOAT(yf);
+    const float wx[2] = { 1.f - wx1, wx1 };
+    const float wy[2] = { 1.f - wy1, wy1 };
+    const LONG indZ = CLONG_rtz(pz * CFLOAT(d_nProjections)) * CLONG_rtz(d_sizey) * CLONG_rtz(d_size_x);
+    float result = 0.f;
+    for (int jy = 0; jy < 2; jy++) {
+        int yi = yf + jy;
+        yi = yi < 0 ? 0 : (yi > sy - 1 ? sy - 1 : yi);
+        for (int jx = 0; jx < 2; jx++) {
+            int xi = xf + jx;
+            xi = xi < 0 ? 0 : (xi > sx - 1 ? sx - 1 : xi);
+            const float w = wx[jx] * wy[jy];
+            const float u = (CFLOAT(xi) + 0.5f) / CFLOAT(d_size_x);
+            const float v = (CFLOAT(yi) + 0.5f) / CFLOAT(d_sizey);
+            float yk;
+#ifdef LAYEREDBP
+            yk = LAYFETCH(d_forw, u, v, kLay);
+#elif defined(CUDA) || defined(HIP)
+            yk = tex3D<float>(d_forw, u, v, pz);
+#elif defined(METAL)
+            yk = d_forw.sample(samplerForw, float3(u, v, pz)).r;
+#else
+            yk = read_imagef(d_forw, samplerIm, CFLOAT4(u, v, pz, 0.f)).w;
+#endif
+            result += w * d_norm[CLONG_rtz(xi) + CLONG_rtz(yi) * CLONG_rtz(d_size_x) + indZ] * yk;
+        }
+    }
+    return result;
+}
+#endif
+
 KERNEL2
 void projectorType4Backward(
 #if defined(METAL)
@@ -887,7 +974,7 @@ void projectorType4Backward(
 #endif
     , const float kerroin
 #endif
-    , IMTYPE d_forw TEX2
+    , BPFORWTYPE d_forw TEX2
 #ifdef FDK 
     , CONSTANT float* angle BUF3
 #if !defined(METAL) // Scalar
@@ -905,6 +992,9 @@ void projectorType4Backward(
 #else
     , CONSTANT float* d_xyz BUF5
     , CONSTANT float* d_uv BUF6
+#endif
+#ifdef PROJWINDOW
+    , const CLGLOBAL int* CLRESTRICT d_projWindow
 #endif
     , CLGLOBAL float* CLRESTRICT d_Summ BUF7
 #ifdef NORM
@@ -1038,10 +1128,32 @@ void projectorType4Backward(
     if (i.x >= d_N.x || i.y >= d_N.y || i.z >= d_N.z)
         return;
     size_t idx = GID0 + GID1 * d_N.x + GID2 * nVoxels * d_N.y * d_N.x;
-#ifdef MASKBP
+#if defined(MASKBP) && !defined(MASKBP3D)
     if (ii == 0) {
 		const int maskVal = readMaskBP(maskBP, i, d_N);
         if (maskVal == 0)
+            return;
+    }
+#endif
+#ifdef MASKBP3D
+    // 3D mask: each z-plane of the voxel block has its own mask value, the block returns only if all of them are zero
+    int maskZ[nVoxels];
+    {
+        bool anyMask = (ii != 0);
+        for (int zz = 0; zz < nVoxels; zz++) {
+            maskZ[zz] = 1;
+            if (ii == 0) {
+                if (i.z + zz < CINT(d_N.z)) {
+                    const int3 iMask = MINT3(i.x, i.y, i.z + zz);
+                    maskZ[zz] = readMaskBP(maskBP, iMask, d_N);
+                }
+                else
+                    maskZ[zz] = 0;
+                if (maskZ[zz] != 0)
+                    anyMask = true;
+            }
+        }
+        if (!anyMask)
             return;
     }
 #endif
@@ -1063,7 +1175,11 @@ void projectorType4Backward(
 #ifdef HELICAL
 	const float thetaSpan = koko.x / r;
 #endif
-#if STYPE == 12
+#ifdef PROJWINDOW
+    // Only the projections in this range can reach the detector from this axial block
+    const int kkEnd = d_projWindow[GID2 * 2 + 1];
+    for (int kk = d_projWindow[GID2 * 2]; kk < kkEnd; kk++) {
+#elif STYPE == 12
     for (int kk = 0; kk < d_nProjections; kk += 2) {
 #else
     for (int kk = 0; kk < d_nProjections; kk++) {
@@ -1077,9 +1193,7 @@ void projectorType4Backward(
         if (dV.z + d_d.z * (NVOXELSHELICAL - 1) > zMax || dV.z + d_d.z * (NVOXELSHELICAL - 1) < zMin)
             continue;
 #endif
-#ifndef PARALLEL
         s = CMFLOAT3(d_xyz[kk * 6], d_xyz[kk * 6 + 1], d_xyz[kk * 6 + 2]);
-#endif
 // TODO: Improve helical part
 #ifdef HELICAL
 	    const float angle = d_uv[kk];
@@ -1115,7 +1229,9 @@ void projectorType4Backward(
             float yVar = 0.f;
             if (px > 1.f || py > 1.f || pz > 1.f || px < 0.f || py < 0.f || pz < 0.f)
                 continue;
-#ifdef USEIMAGES
+#if defined(USEIMAGES) && defined(NORM)
+            yVar = interpNormWeighted(d_forw, kk, d_norm, px, py, pz, d_size_x, d_sizey, d_nProjections);
+#elif defined(USEIMAGES)
 #if defined(CUDA) || defined(HIP)
             yVar = tex3D<float>(d_forw, px, py, pz);
 #elif defined(METAL)
@@ -1129,7 +1245,7 @@ void projectorType4Backward(
             const LONG indZ = CLONG_rtz(pz * CFLOAT(d_nProjections)) * CLONG_rtz(d_sizey) * CLONG_rtz(d_size_x);
             yVar = d_forw[indX + indY + indZ];
 #endif
-#ifdef NORM
+#if defined(NORM) && !defined(USEIMAGES)
             const LONG indX = CLONG_rtz(px * CFLOAT(d_size_x));
             const LONG indY = CLONG_rtz(py * CFLOAT(d_sizey)) * CLONG_rtz(d_size_x);
             const LONG indZ = CLONG_rtz(pz * CFLOAT(d_nProjections)) * CLONG_rtz(d_sizey) * CLONG_rtz(d_size_x);
@@ -1160,39 +1276,35 @@ void projectorType4Backward(
         const float pz = (CFLOAT(kk) + 0.5f) / CFLOAT(d_nProjections);
         const float dApu = d_d.z * cP.z;
 #ifdef PARALLEL
-        const float apuXP = d_uv[kk * NA];
-        const float apuYP = d_uv[kk * NA + 1];
-        const float3 ss = CMFLOAT3(d_xyz[kk * 6], d_xyz[kk * 6 + 1], d_xyz[kk * 6 + 2]);
-        for (int xx = 0; xx < d_size_x; xx++) {
-            for (int yy = 0; yy < d_sizey; yy++) {
-                s = ss;
-	            const float2 indeksiP = MFLOAT2(CFLOAT(xx) - CFLOAT(d_size_x) / 2.f + .5f, CFLOAT(yy) - CFLOAT(d_sizey) / 2.f + .5f);
-                (s).x += indeksiP.x * apuXP;
-                (s).y += indeksiP.x * apuYP;
-                (s).z += indeksiP.y * d_dPitch.y;
-                float3 d4 = d1, d5 = d1;
-                (d4).x += (indeksiP.x + .5f) * apuXP;
-                (d4).y += (indeksiP.x + .5f) * apuYP;
-                (d4).z += (indeksiP.y + .5f) * d_dPitch.y;
-                (d5).x += (indeksiP.x - .5f) * apuXP;
-                (d5).y += (indeksiP.x - .5f) * apuYP;
-                (d5).z += (indeksiP.y - .5f) * d_dPitch.y;
-                const float3 d44 = d4 - d3;
-                const float3 d55 = d5 - d3;
-                const float d4x = dot(d44, normX);
-                const float d4y = dot(d44, normY);
-                const float d5x = dot(d55, normX);
-                const float d5y = dot(d55, normY);
-                float2 scale = MFLOAT2(1.f / CFLOAT(d_size_x), 1.f / CFLOAT(d_sizey));
-                scale /= 2.f;
+        // Parallel beam: all rays of projection kk are parallel to dirP = (detector centre - source centre) (the source is shifted with
+        // the detector pixel, see getDetectorCoordinatesCT). The ray through a voxel is therefore dV + dirP * t. The ray origin s is
+        // moved to the voxel of the first z-plane of this block and shifted by d_d.z per z-plane, so no loop over the detector pixels is needed
+        const float3 dirP = NORMALIZE(d1 - s);
+        s = dV;
 #endif
-        const float upperPart = dot(cP, s - d1);
+        float upperPart = dot(cP, s - d1);
+#if defined(PARALLEL) && !defined(FDK)
+        // Constant per projection. |cP| = 2 * indeksi.x * indeksi.y * pixelArea, and |dot(cP, dirP)| / (2 * indeksi.x * indeksi.y) is the area of the
+        // detector pixel perpendicular to the ray, so the weight is voxelVolume / (pixelArea perpendicular to the ray)
+        const float kerroinP = (d_d.x * d_d.y * d_d.z) * (2.f * indeksi.x * indeksi.y) / FABS(dot(cP, dirP));
+#elif !defined(PARALLEL) && !defined(FDK)
+        // Exact per-projection scaling. cP = CROSS(d2, d3 - d1) = -2 * CROSS(apuX, apuY), so |cP| = 2 * indeksi.x * indeksi.y * pixelArea
+        // and |upperPart| / |cP| is the perpendicular distance from the source to the detector plane. Hence
+        // voxelVolume / (pixelArea * sourceToDetector) = (d_d.x * d_d.y * d_d.z) * (2 * indeksi.x * indeksi.y) / |upperPart|
+        // This is valid for custom detector vectors (PITCH), tilted detectors and per-projection source-detector distances
+        const float kerroinP = (d_d.x * d_d.y * d_d.z) * (2.f * indeksi.x * indeksi.y) / FABS(upperPart);
+#endif
+#ifdef PARALLEL
+        const float3 v = dirP;
+        const float lowerPart = -dot(v, cP);
+#else
         float3 v = dV - s;
         float lowerPart = -dot(v, cP);
 #ifndef USEMAD
         const float vApu = v.x * v.x + v.y * v.y;
 #else
         const float vApu = FMAD(v.x, v.x, v.y * v.y);
+#endif
 #endif
 #if STYPE == 12
         float3 d1_2, d2_2, d3_2;
@@ -1214,13 +1326,27 @@ void projectorType4Backward(
         const float3 cP_2 = CROSS(d2_2, d3_2 - d1_2);
         const float pz_2 = (CFLOAT(uu) + 0.5f) / CFLOAT(d_nProjections);
         const float dApu_2 = d_d.z * cP_2.z;
-        const float upperPart_2 = dot(cP_2, s_2 - d1_2);
+#ifdef PARALLEL
+        const float3 dirP_2 = NORMALIZE(d1_2 - s_2);
+        s_2 = dV;
+#endif
+        float upperPart_2 = dot(cP_2, s_2 - d1_2);
+#if defined(PARALLEL) && !defined(FDK)
+        const float kerroinP_2 = (d_d.x * d_d.y * d_d.z) * (2.f * indeksi.x * indeksi.y) / FABS(dot(cP_2, dirP_2));
+#elif !defined(PARALLEL) && !defined(FDK)
+        const float kerroinP_2 = (d_d.x * d_d.y * d_d.z) * (2.f * indeksi.x * indeksi.y) / FABS(upperPart_2);
+#endif
+#ifdef PARALLEL
+        const float3 v_2 = dirP_2;
+        const float lowerPart_2 = -dot(v_2, cP_2);
+#else
         float3 v_2 = dV - s_2;
         float lowerPart_2 = -dot(v_2, cP_2);
 #ifndef USEMAD
         const float vApu_2 = v_2.x * v_2.x + v_2.y * v_2.y;
 #else
         const float vApu_2 = FMAD(v_2.x, v_2.x, v_2.y * v_2.y);
+#endif
 #endif
 #endif
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
@@ -1233,56 +1359,77 @@ void projectorType4Backward(
             const float t = DIVIDE(upperPart, lowerPart);
 #ifndef USEMAD
             float3 p = s + v * t;
-            const float l1 = vApu + v.z * v.z;
 #else
             float3 p = FMAD3(t, v, s);
+#endif
+#ifndef PARALLEL
+#ifndef USEMAD
+            const float l1 = vApu + v.z * v.z;
+#else
             const float l1 = FMAD(v.z, v.z, vApu);
 #endif
-// #ifdef PARALLEL
-//             if (p.x > d4.x || p.x < d5.x || p.y > d4.y || p.y < d5.y || p.z > d4.z || p.z < d5.z) {
-//                 v.z += d_d.z;
-//                 lowerPart -= dApu;
-//                 continue;
-//             }
-// #endif
+#endif
 #ifdef FDK
-            float weight = (DSC + dV.x * COSF(angle[kk + d_angleOffset]) - dV.y * SINF(angle[kk + d_angleOffset]));
-            weight = (DSC * DSC) / (weight * weight) * (M_PI_F / (CFLOAT(d_nProjectionsFDK) * d_dPitch.x));
+#ifdef PARALLEL
+            // Parallel beam: no distance weighting (magnification 1). Valid for 180 and 360 degree parallel scans, the 0.5 is the same
+            // ramp filter normalisation as in the cone beam branch below with fdkMag = 1
+            const float weight = (M_PI_F / (CFLOAT(d_nProjectionsFDK) * d_dPitch.x)) * 0.5f;
+#else
+            // FDK distance weight (SAD_k / U)^2 from the actual source position s of this projection (not from the projection angle):
+            // SAD_k^2 = s.x^2 + s.y^2 and U, the distance of the voxel from the source along the central ray (the direction from the
+            // source to the axis of rotation through the origin), U = (SAD_k^2 - dV.x * s.x - dV.y * s.y) / SAD_k. This is valid for any
+            // rotation direction, start angle, source orbit radius and detector axis orientation (custom coordinates)
+            float weight = s.x * s.x + s.y * s.y;
+            // Magnification SDD_k / SAD_k of this projection: SDD_k = (d1 - s) . (-s) / SAD_k (d1 = detector centre)
+            const float fdkMag = -((d1.x - s.x) * s.x + (d1.y - s.y) * s.y) / weight;
+            weight = weight / (weight - dV.x * s.x - dV.y * s.y);
+            // The ramp filter of rampFilt() is 2|f| (f in cycles per detector sample, i.e. normalized to 1 at the Nyquist frequency). The
+            // FDK needs |nu| in cycles per mm in the plane of the axis of rotation, |nu| = |f| * magnification / dPitch. Together with the
+            // factor pi / N of the 360 degree angular integration (Parker weights include the actual angular step) this gives the
+            // constant pi / (N * dPitch) * magnification / 2
+            weight = (weight * weight) * (M_PI_F / (CFLOAT(d_nProjectionsFDK) * d_dPitch.x)) * (0.5f * fdkMag);
+#endif
+#elif defined(PARALLEL)
+            const float weight = kerroinP;
 #else
             const float L = DISTANCE(p, s);
-            const float weight = (L * L * L) / (l1)*kerroin;
+            const float weight = (L * L * L) / (l1)*kerroinP;
 #endif
             p -= d3;
             float px = dot(p, normX);
             float py = dot(p, normY);
-#ifdef PARALLEL
-            if (px > d4x + scale.x || px < d5x - scale.x || py > d4y + scale.y || py < d5y - scale.y) {
-                v.z += d_d.z;
-                lowerPart -= dApu;
-                continue;
-            }
-#endif
             float yVar = 0.f;
 #ifdef USEIMAGES
-#if defined(CUDA) || defined(HIP)
-            if (px <= 1.f && py <= 1.f && pz <= 1.f && px >= 0.f && py >= 0.f && pz >= 0.f)
+            const bool onDet = px <= 1.f && py <= 1.f && pz <= 1.f && px >= 0.f && py >= 0.f && pz >= 0.f;
+#else
+            const bool onDet = px < 1.f && py < 1.f && pz < 1.f && px >= 0.f && py >= 0.f && pz >= 0.f;
+#endif
+#if defined(USEIMAGES) && defined(NORM)
+            if (onDet)
+                yVar = interpNormWeighted(d_forw, kk, d_norm, px, py, pz, d_size_x, d_sizey, d_nProjections);
+#elif defined(USEIMAGES)
+#ifdef LAYEREDBP
+            if (onDet)
+                yVar = LAYFETCH(d_forw, px, py, kk);
+#elif defined(CUDA) || defined(HIP)
+            if (onDet)
                 yVar = tex3D<float>(d_forw, px, py, pz);
 #elif defined(METAL)
-            if (px <= 1.f && py <= 1.f && pz <= 1.f && px >= 0.f && py >= 0.f && pz >= 0.f)
+            if (onDet)
                 yVar = d_forw.sample(samplerForw, float3(px, py, pz)).r;
 #else
-            if (px <= 1.f && py <= 1.f && pz <= 1.f && px >= 0.f && py >= 0.f && pz >= 0.f)
+            if (onDet)
                 yVar = read_imagef(d_forw, samplerIm, CFLOAT4(px, py, pz, 0.f)).w;
 #endif
 #else
-            if (px < 1.f && py < 1.f && pz < 1.f && px >= 0.f && py >= 0.f && pz >= 0.f) {
+            if (onDet) {
                 const LONG indX = CLONG_rtz(px * CFLOAT(d_size_x));
                 const LONG indY = CLONG_rtz(py * CFLOAT(d_sizey)) * CLONG_rtz(d_size_x);
                 const LONG indZ = CLONG_rtz(pz * CFLOAT(d_nProjections)) * CLONG_rtz(d_sizey) * CLONG_rtz(d_size_x);
                 yVar = d_forw[indX + indY + indZ];
             }
 #endif
-#ifdef NORM
+#if defined(NORM) && !defined(USEIMAGES)
             if (px < 1.f && py < 1.f && pz < 1.f && px >= 0.f && py >= 0.f && pz >= 0.f) {
 				const LONG indX = CLONG_rtz(px * CFLOAT(d_size_x));
 				const LONG indY = CLONG_rtz(py * CFLOAT(d_sizey)) * CLONG_rtz(d_size_x);
@@ -1296,37 +1443,63 @@ void projectorType4Backward(
             const float t_2 = DIVIDE(upperPart_2, lowerPart_2);
 #ifndef USEMAD
             float3 p_2 = s_2 + v_2 * t_2;
-            const float l1_2 = vApu_2 + v_2.z * v_2.z;
 #else
             float3 p_2 = FMAD3(t_2, v_2, s_2);
+#endif
+#ifdef PARALLEL
+#ifdef FDK
+            const float weight_2 = weight;
+#else
+            const float weight_2 = kerroinP_2;
+#endif
+#else
+#ifndef USEMAD
+            const float l1_2 = vApu_2 + v_2.z * v_2.z;
+#else
             const float l1_2 = FMAD(v_2.z, v_2.z, vApu_2);
 #endif
             const float L_2 = DISTANCE(p_2, s_2);
+#ifndef FDK
+            const float weight_2 = (L_2 * L_2 * L_2) / (l1_2)*kerroinP_2;
+#else
             const float weight_2 = (L_2 * L_2 * L_2) / (l1_2)*kerroin;
+#endif
+#endif
             p_2 -= d3_2;
             float px_2 = dot(p_2, normX_2);
             float py_2 = dot(p_2, normY_2);
             float yVar_2 = 0.f;
 #ifdef USEIMAGES
-#if defined(CUDA) || defined(HIP)
-            if (px_2 <= 1.f && py_2 <= 1.f && pz_2 <= 1.f && px_2 >= 0.f && py_2 >= 0.f && pz_2 >= 0.f)
+            const bool onDet_2 = px_2 <= 1.f && py_2 <= 1.f && pz_2 <= 1.f && px_2 >= 0.f && py_2 >= 0.f && pz_2 >= 0.f;
+#else
+            const bool onDet_2 = px_2 < 1.f && py_2 < 1.f && pz_2 < 1.f && px_2 >= 0.f && py_2 >= 0.f && pz_2 >= 0.f;
+#endif
+#if defined(USEIMAGES) && defined(NORM)
+            if (onDet_2)
+                yVar_2 = interpNormWeighted(d_forw, uu, d_norm, px_2, py_2, pz_2, d_size_x, d_sizey, d_nProjections);
+#elif defined(USEIMAGES)
+#ifdef LAYEREDBP
+            if (onDet_2)
+                yVar_2 = LAYFETCH(d_forw, px_2, py_2, uu);
+#elif defined(CUDA) || defined(HIP)
+            if (onDet_2)
                 yVar_2 = tex3D<float>(d_forw, px_2, py_2, pz_2);
 #elif defined(METAL)
-            if (px_2 <= 1.f && py_2 <= 1.f && pz_2 <= 1.f && px_2 >= 0.f && py_2 >= 0.f && pz_2 >= 0.f)
+            if (onDet_2)
                 yVar_2 = d_forw.sample(samplerForw, float3(px_2, py_2, pz_2)).r;
 #else
-            if (px_2 <= 1.f && py_2 <= 1.f && pz_2 <= 1.f && px_2 >= 0.f && py_2 >= 0.f && pz_2 >= 0.f)
+            if (onDet_2)
                 yVar_2 = read_imagef(d_forw, samplerIm, CFLOAT4(px_2, py_2, pz_2, 0.f)).w;
 #endif
 #else
-            if (px_2 < 1.f && py_2 < 1.f && pz_2 < 1.f && px_2 >= 0.f && py_2 >= 0.f && pz_2 >= 0.f) {
+            if (onDet_2) {
                 const LONG indX = CLONG_rtz(px_2 * CFLOAT(d_size_x));
                 const LONG indY = CLONG_rtz(py_2 * CFLOAT(d_sizey)) * CLONG_rtz(d_size_x);
                 const LONG indZ = CLONG_rtz(pz_2 * CFLOAT(d_nProjections)) * CLONG_rtz(d_sizey) * CLONG_rtz(d_size_x);
                 yVar_2 = d_forw[indX + indY + indZ];
             }
 #endif
-#ifdef NORM
+#if defined(NORM) && !defined(USEIMAGES)
             if (px_2 < 1.f && py_2 < 1.f && pz_2 < 1.f && px_2 >= 0.f && py_2 >= 0.f && pz_2 >= 0.f) {
                 const LONG indX_2 = CLONG_rtz(px_2 * CFLOAT(d_size_x));
                 const LONG indY_2 = CLONG_rtz(py_2 * CFLOAT(d_sizey)) * CLONG_rtz(d_size_x);
@@ -1370,9 +1543,9 @@ void projectorType4Backward(
             float w = 1.f;
 #if STYPE == 12
             float w_2 = 1.f;
-            if (yVar != 0.f || yVar_2 != 0.f) {
+            if (onDet || onDet_2) {
 #else
-            if (yVar != 0.f) {
+            if (onDet) {
 #endif
 #ifdef OFFSET
 #if STYPE == 12
@@ -1399,24 +1572,31 @@ void projectorType4Backward(
 #if STYPE == 12
                 temp[zz] += ((w * yVar * weight + w_2 * yVar_2 * weight_2) / (w + w_2));
                 if (no_norm == 0u)
-                    wSum[zz] += (w * weight + w_2 * weight_2) / (w + w_2);
+                    wSum[zz] += (w * weight * (onDet ? 1.f : 0.f) + w_2 * weight_2 * (onDet_2 ? 1.f : 0.f)) / (w + w_2);
 #else
                 temp[zz] += w * yVar * weight;
                 if (no_norm == 0u)
                     wSum[zz] += w * weight;
 #endif
             }
+#ifdef PARALLEL
+            // The ray direction is constant, the ray origin moves one voxel up in z
+            s.z += d_d.z;
+            upperPart += dApu;
+#else
             v.z += d_d.z;
             lowerPart -= dApu;
+#endif
 #if STYPE == 12
+#ifdef PARALLEL
+            s_2.z += d_d.z;
+            upperPart_2 += dApu_2;
+#else
             v_2.z += d_d.z;
             lowerPart_2 -= dApu_2;
 #endif
-        }
-#ifdef PARALLEL
-        }
-    }
 #endif
+        }
 #endif
     }
 	// Start the fastPDHG computations
@@ -1495,10 +1675,16 @@ void projectorType4Backward(
         const uint ind = i.z + zz;
         if (ind >= d_N.z)
             break;
+#ifdef MASKBP3D
+        if (maskZ[zz] != 0) {
+#endif
             d_OSEM[idx] += temp[zz];
 
             if (no_norm == 0u)
                 d_Summ[idx] = wSum[zz];
+#ifdef MASKBP3D
+        }
+#endif
         idx += d_N.y * d_N.x;
     }
 }

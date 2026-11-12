@@ -32,9 +32,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	/* Check for proper number of arguments */
 
-	if (nrhs != 30) {
+	if (nrhs != 32) {
 		mexErrMsgIdAndTxt("MATLAB:list2matlab_aivi:invalidNumInputs",
-			"30 input arguments required.");
+			"32 input arguments required.");
 	}
 	else if (nlhs > 4) {
 		mexErrMsgIdAndTxt("MATLAB:list2matlab_aivi:maxlhs",
@@ -87,7 +87,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	ind++;
 	const int32_t nPseudos = getScalarInt32(prhs[ind], ind);
 	ind++;
-	const int32_t crystPerBlock = getScalarInt32(prhs[ind], ind);
+	// Crystals per block transaxially of each layer (nLayers elements)
+	const uint32_t* crystPerBlock = getUint32s(prhs[ind], "solu");
+	const size_t nCrystPerBlock = mxGetNumberOfElements(prhs[ind]);
 	ind++;
 	const int32_t nLayers = getScalarInt32(prhs[ind], ind);
 	ind++;
@@ -95,6 +97,15 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	ind++;
 	const uint8_t* layer2 = getUint8s(prhs[ind], "solu");
 	ind++;
+	// Crystals per block axially of each layer (nLayers elements)
+	const uint32_t* crystPerBlockZ = getUint32s(prhs[ind], "solu");
+	const size_t nCrystPerBlockZ = mxGetNumberOfElements(prhs[ind]);
+	ind++;
+	// Number of blocks transaxially in a ring (blocks_per_ring * transaxial_multip)
+	const uint32_t nBlocksRing = getScalarUInt32(prhs[ind], ind);
+	ind++;
+	if (nCrystPerBlock < static_cast<size_t>(std::max<int32_t>(nLayers, 1)) || nCrystPerBlockZ < static_cast<size_t>(std::max<int32_t>(nLayers, 1)))
+		mexErrMsgTxt("The crystals per block must be input for each layer.\n");
 
 	bool storeTrues = false;
 	bool storeScatter = false;
@@ -123,7 +134,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	openMPSino(ringPos1, ringPos2, ringNumber1, ringNumber2, truesIndex, scatterIndex, randomsIndex, sinoSize, Ndist, Nang, ringDifference,
 		span, seg, time, Nt, TOFSize, Sino, SinoT, SinoC, SinoR, storeTrues, storeScatter, storeRandoms, detPerRing, rings, koko, 
-		bins, nDistSide, pituus, detWPseudo, nPseudos, crystPerBlock, layer1, layer2, nLayers);
+		bins, nDistSide, pituus, detWPseudo, nPseudos, crystPerBlock, crystPerBlockZ, nBlocksRing, layer1, layer2, nLayers);
 
 	return;
 

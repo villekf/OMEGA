@@ -383,12 +383,28 @@ else
         elseif options.useIndexBasedReconstruction
             pituus(1) = numel(options.trIndex) / 2;
         else
-            pituus(1) = numel(options.x) / 6;
+            if iscell(options.x)
+                xFirst = options.x{1};
+            else
+                xFirst = options.x;
+            end
+            if size(xFirst, 2) == 2 || size(xFirst, 1) == 2
+                listSize = 2;
+            else
+                listSize = 6;
+            end
+            if iscell(options.x)
+                pituus(1) = sum(cellfun(@numel, options.x(:))) / listSize;
+            else
+                pituus(1) = numel(options.x) / listSize;
+            end
         end
         subsetIndex = {0};
     else
         subsetIndex{1} = (1 : options.nProjections)';
-        if subsets == 1 && ~(options.CT || options.PET || options.SPECT)
+        if subsets == 1 && (options.CT || options.PET || options.SPECT) && ~options.listmode
+            pituus(1) = options.NSinos;
+        elseif subsets == 1 && ~(options.CT || options.PET || options.SPECT)
             pituus(1) = options.Nang * options.Ndist * options.NSinos;
         else
             pituus(1) = numel(subsetIndex{1});

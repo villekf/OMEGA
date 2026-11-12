@@ -373,6 +373,8 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	const mwSize dim[4] = { static_cast<mwSize>(inputScalars.Nx[0]), static_cast<mwSize>(inputScalars.Ny[0]), static_cast<mwSize>(inputScalars.Nz[0]), static_cast<mwSize>(outSize2) };
 
 	loadInput(inputScalars, options, type);
+	if (inputScalars.randomsTOF && inputScalars.randoms_correction)
+		mexErrMsgTxt("A TOF-resolved randoms/scatter term (options.randomsTOF) is supported only with implementation 2!");
 	inputScalars.subsetsUsed = getScalarUInt32(getField(options, 0, "subsets"));
 	inputScalars.timestepsUsed = inputScalars.Nt;
 	if (type > 0) {

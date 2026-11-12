@@ -115,9 +115,12 @@ else
             [x, y, options] = increaseSampling(options, x, y, interpolateSinogram);
         end
 
-        z_length = double(rings + sum(options.pseudot)) * options.cr_pz;
-        z = linspace(-(z_length / 2 - options.cr_pz/2), z_length / 2 - options.cr_pz/2, rings + sum(options.pseudot))';
-        if sum(pseudot) > 0
+        % The pseudo ring slots are included in the axial coordinates and then removed
+        pseudot = pseudoRingPositions(options, pseudot);
+        nPseudos = numel(pseudot);
+        z_length = double(rings + nPseudos) * options.cr_pz;
+        z = linspace(-(z_length / 2 - options.cr_pz/2), z_length / 2 - options.cr_pz/2, rings + nPseudos)';
+        if nPseudos > 0
             z(pseudot) = [];
         end
         % Gaps between the axial blocks
@@ -140,6 +143,22 @@ end
 x = cast(x, options.cType);
 y = cast(y, options.cType);
 z = cast(z, options.cType);
+
+function pseudot = pseudoRingPositions(options, pseudotInput)
+% The positions (1-based) of the pseudo rings among the rings + pseudo rings. options.pseudot is either the number of the
+% pseudo rings (as input by the user) or the positions of them (after projectorClass has converted it,
+% options.pseudotPositions = true). A pseudo ring is located after every cryst_per_block_axial rings (the largest axial block
+% of the layers in multi-layer scanners). If options.pseudot is empty, the input argument pseudot is used as the positions.
+pseudot = [];
+if isfield(options, 'pseudot') && ~isempty(options.pseudot) && sum(options.pseudot(:)) > 0
+    if numel(options.pseudot) > 1 || (isfield(options, 'pseudotPositions') && options.pseudotPositions)
+        pseudot = double(options.pseudot(:));
+    else
+        pseudot = (double(max(options.cryst_per_block_axial)) + 1) * (1 : double(options.pseudot))';
+    end
+elseif ~isempty(pseudotInput) && sum(pseudotInput(:)) > 0
+    pseudot = double(pseudotInput(:));
+end
 
 function [x, y] = rawLayerDetectors(options, xp, yp)
 % Raw/index-based detector coordinates of a multi-layer scanner. The coordinates of layer l are stored in a block

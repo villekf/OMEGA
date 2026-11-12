@@ -82,7 +82,16 @@ if (iter == 1)
             end
         end
         if subIter == 1
-            im_vectors.uCP = im_vectors.recApu;
+            % With subsets uCP is the A^T p accumulator (p starts at zero); without subsets it is the primal iterate
+            if options.param.subsets > 1
+                if iscell(im_vectors.recApu)
+                    im_vectors.uCP = cellfun(@(x) zeros(size(x), 'like', x), im_vectors.recApu, 'UniformOutput', false);
+                else
+                    im_vectors.uCP = zeros(size(im_vectors.recApu), 'like', im_vectors.recApu);
+                end
+            else
+                im_vectors.uCP = im_vectors.recApu;
+            end
         end
         im_vectors.pCP{subIter} = zeros(m_size, 1, options.param.cType);
         if (options.param.subsets > 1)

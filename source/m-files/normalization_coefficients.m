@@ -116,7 +116,7 @@ else
     temp = options.pseudot;
     if ~isempty(temp) && sum(temp) > 0
         for kk = uint32(1) : temp
-            pseudot(kk) = uint32(options.cryst_per_block + 1) * kk;
+            pseudot(kk) = uint32(max(options.cryst_per_block_axial) + 1) * kk;
         end
     elseif temp == 0
         pseudot = [];

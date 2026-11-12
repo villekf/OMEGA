@@ -32,6 +32,7 @@ from .coordinates import computePixelCenters
 from .coordinates import computePixelSize
 from .coordinates import computeProjectorScalingValues
 from .coordinates import computeVoxelVolumes
+from .coordinates import expandLayerParameters
 from .indices import indexMaker
 from .indices import formSubsetIndices
 
@@ -153,6 +154,11 @@ class projectorClass:
     TOFCenter = np.empty(0, dtype = np.float32)
     precondTypeImage = np.full((7, 1), False)
     precondTypeMeas = np.full((2, 1), False)
+    # PET scatter estimate. Sinogram data: a sinogram (non-TOF sinograms are divided evenly among the TOF bins). List-mode and
+    # index-based data (scatter_correction and subtract_scatter): the additive term of each event, one value per event in the order of
+    # the events (options.trIndex/axIndex, or the custom coordinates), before the subsets. Unit: measured counts expected for the
+    # LOR of the event, in the TOF bin of the event (with TOF data), over the frame; model: ybar = n * (A x) + s, with no division
+    # by the normalization, attenuation, TOF bins or the number of LORs in a bin. Randoms can be added into the same vector
     ScatterC = np.empty(0, dtype = np.float32)
     # Main/lower/upper energy windows ([lowerLimit, upperLimit]) for SPECT
     # DEW/TEW scatter correction (see loadCorrections' SPECT scatter branch).
@@ -166,9 +172,32 @@ class projectorClass:
     SinDelayed = np.empty(0, dtype = np.float32)
     corrVector = np.empty(0, dtype = np.float32)
     normalization = np.empty(0, dtype = np.float32)
+    # Normalization of the sensitivity image of list-mode data. Index-based data with a sinogram normalization: loadCorrections
+    # stores the sinogram here and the lookup tables from the detector/ring pairs to its bins/planes in sensXY and sensZ (see
+    # sinogramPairLookup in detcoord.py). Pair table (user input, sensXY empty): one value (a multiplier, like
+    # options.normalization) for each ordered pair of the sensitivity image grid, det_per_ring^2 * rings^2 * nLayers^2 elements,
+    # where det_per_ring = xSens.size / 2 / nLayers and rings = zSens.size / nLayers if options.xSens and options.zSens are given
+    # and the scanner values otherwise. Index = a + b * det_per_ring + (ringA * rings + ringB) * det_per_ring^2 (an array of
+    # shape [det_per_ring, det_per_ring, rings, rings] indexed (a, b, ringB, ringA), column-major order; with layers the layer pair (layerA * nLayers +
+    # layerB) is the slowest dimension). Only the pairs of one orientation are read (a < b, or a == b and ringA < ringB), the
+    # others are ignored. Pairs that must not count (e.g. both detectors on the same panel) are set to zero. A pair table is
+    # needed to normalize the sensitivity image with xSens/zSens or custom detector coordinates, options.normalization has to
+    # contain one value for each event then. Not supported with dynamic data or the CPU implementation
+    normSens = np.empty(0, dtype = np.float32)
+    sensXY = np.empty(0, dtype = np.uint32)
+    sensZ = np.empty(0, dtype = np.uint32)
+    sizeNormSens = 0
+    sensBins = 0
+    # Set by loadCorrections when the scatter has been normalized (normalize_scatter), so that another call with the same
+    # options does not normalize it again
+    scatterNormalized = False
+    # Sinogram dimensions (Ndist, Nang, NSinos, TotSinos) of index-based data, saved by addProjector before they are collapsed
+    _sinoDims = None
     scatter_components = np.array([True, True, False, False])
     normalization_options = np.array([True, True, True, False])
     pseudot = np.empty(0, dtype = np.uint32)
+    # Set by addProjector: whether pseudot has been converted from the number of the pseudo rings to the positions of them
+    pseudotPositions = False
     weights = np.empty(0, dtype = np.float32)
     weights_huber = np.empty(0, dtype = np.float32)
     tr_offsets = np.empty(0, dtype = np.uint32)
@@ -196,7 +225,7 @@ class projectorClass:
     tauCPFilt = 0.
     sigmaCP = 1.
     tauCP = 0.
-    sigma2CP = 1.
+    sigma2CP = None # Default (None): sigmaCP, resolved in addProjector
     thetaCP = 1.
     machine_name = ""
     fpath = ""
@@ -222,6 +251,13 @@ class projectorClass:
     errorChecking = False
     no_data_load = False
     fill_sinogram_gaps = False
+    # Gap filling (pseudo detectors) method: 'fillmissing' (interpolation along the radial and angular dimensions, averaged).
+    # 'inpaint_nans' (MATLAB File Exchange) and 'fillmissing2' are not available in Python
+    gap_filling_method = 'fillmissing'
+    # Interpolation method used with fillmissing: 'linear', 'nearest', 'previous', 'next', 'pchip', 'spline' or 'makima'
+    interpolation_method_fillmissing = 'linear'
+    # Only used by inpaint_nans (not available in Python)
+    interpolation_method_inpaint = 0
     ndist_side = 1
     store_raw_data = False
     sampling_raw = 1
@@ -265,7 +301,19 @@ class projectorClass:
     normalization_phantom_radius = float("inf")
     normalization_attenuation = 0.
     normalization_scatter_correction = False
+    # PET: if True, the user normalization file is used (options.normalization_datafile, or a file dialog if it is empty) and the
+    # default normalization .mat file is not searched. If False, the default normalization .mat file is used and an error is
+    # raised if it is not found; no dialog is shown. A prefilled options.normalization is used in either case.
     use_user_normalization = False
+    # Path of the user normalization data file (.nrm, .n, .ptd, .mat, .npy or .npz) used when the normalization is not
+    # given in options.normalization. Setting it while use_user_normalization is False is an error (SPECT excluded: there the
+    # file is used regardless of the flag). If empty and use_user_normalization is True, the user is prompted for the file.
+    normalization_datafile = ''
+    # Exponent n of the transaxial LOR length factor D^(-n) of the Siemens Biograph Vision normalization
+    # (omegatomo.fileio.loadNormalizationBiograph), where D is the transaxial distance between the two detectors of the
+    # LOR. The factor is empirical; it was validated against the Siemens reconstruction of measured Vision data. 0 = no
+    # length factor. Requires the detector geometry (diameter, DOI, cr_p, blocks_per_ring, cryst_per_block, ...) to be set.
+    visionLORLengthExponent = 2.
     arc_correction = False
     corrections_during_reconstruction = True
     ordinaryPoisson = None
@@ -297,14 +345,14 @@ class projectorClass:
     precompute_lor = False
     sigmaZ = -1.
     sigmaXY = -1.
-    colL: float = 0. # Collimator hole length
+    colL: float = 1. # Collimator hole length
     colLxy: Optional[float] = None # Collimator hole length in the transaxial plane
     colLz: Optional[float] = None # Collimator hole length in the axial plane
-    colR: float = 0. # Collimator hole radius
-    colD: float = 0. # Distance from collimator hole centre to detector surface
+    colR: float = 1. # Collimator hole radius
+    colD: float = 1. # Distance from collimator hole centre to detector surface
     colFxy: float = np.inf # Collimator focal distance, XY plane
     colFz: float = np.inf # Collimator focal distance, Z direction
-    iR: float = 0. # Detector intrinsic resolution
+    iR: float = 1. # Detector intrinsic resolution
     implementation = 2
     rotateAttImage = 0.
     flipAttImageXY = False
@@ -392,8 +440,8 @@ class projectorClass:
     enforcePositivity = True
     gradV1 = 0.5
     gradV2 = 2.5
-    gradInitIter = subsets
-    gradLastIter = gradInitIter
+    gradInitIter = None # Default (None): the number of subsets, resolved in addProjector
+    gradLastIter = None # Default (None): gradInitIter, resolved in addProjector
     pitch = False
     compute_sensitivity_image = False
     listmode = 0
@@ -416,6 +464,12 @@ class projectorClass:
     global_correction_factor = 1.
     attenuation_datafile = ''
     attIncm = False
+    # Folder of the CT DICOM series used to form the SPECT attenuation image (dialog if empty and no attenuation_datafile)
+    fpathCT = ''
+    # Photon energy (keV) used to convert the SPECT CT (HU) to attenuation coefficients
+    keV = None
+    # SPECT image grid for the CT resampling: dict with ImageSize, XWorldLimits, YWorldLimits and ZWorldLimits (set by loadProSpectaData)
+    refSPECT = None
     rings = 0
     linear_multip = 0
     detectors = 0
@@ -432,13 +486,13 @@ class projectorClass:
     Ndy = 1
     Ndz = 1
     mean_type = 4
-    TVsmoothing = 1e-4
-    temporalTVsmoothing = 1e-4
+    TVsmoothing = 1e-2
+    temporalTVsmoothing = 1e-2
     TV_use_anatomical = False
     TVtype = 1
     tau = 0.
     C = 1.
-    SATVPhi = 1.
+    SATVPhi = None # Default (None): 0 for TV types 4 and 6, 1 otherwise, resolved in addProjector
     FluxType = 1
     DiffusionType = 2
     eta = 1e-5
@@ -449,7 +503,7 @@ class projectorClass:
     TOF = False
     TOF_bins = 1
     NiterAD = 1
-    sigma_x = 1
+    sigma_x = 0
     w_sum = 1.
     RDP_gamma = 1.
     ## Scaling value of the Geman-McClure potential, i.e. the delta of NLGM. Differences much larger
@@ -457,7 +511,7 @@ class projectorClass:
     # differences is 2 / GM_delta^2
     GM_delta = 1.
     NLMsigma = 1.
-    NLAdaptiveConstant = 1.
+    NLAdaptiveConstant = 1e-5
     TimeStepAD = 1.
     KAD = 1.
     huber_delta = 1.
@@ -479,6 +533,7 @@ class projectorClass:
     useL2Ball = True
     useMAD = True
     useImages = True
+    useHalf = False # When true, computations are performed with FP16 precision instead of FP32
     useEFOV = False
     useExtrapolation = False
     useInpaint = False  # MATLAB-only, experimental (unofficial) feature; not supported in Python, see CTEFOVCorrection
@@ -496,7 +551,7 @@ class projectorClass:
     nRowsD = Ndist
     nColsD = Nang
     Nf = 0
-    tube_radius = 1.
+    tube_radius = None # Default (None): sqrt(2) * (cr_pz / 2), resolved in addProjector
     OSEM = False
     LSQR = False
     CGLS = False
@@ -543,8 +598,6 @@ class projectorClass:
     RDP = False
     GGMRF = False
     ProxTV = False
-    ProxRDP = False
-    ProxNLM = False
     temporalTV = False
     temporal_smoothness = False
     MAP = False
@@ -573,7 +626,6 @@ class projectorClass:
     RDP_referenceImage = ''
     useMultiResolutionVolumes = False
     nMultiVolumes = 0
-    storeMultiResolution = False
     extrapLength = None
     # Per-direction override of extrapLength, used by CTEFOVCorrection. None
     # means "not specified", i.e. fall back to extrapLength (and, failing
@@ -601,13 +653,29 @@ class projectorClass:
     timestep = 0
     largeDim = False
     loadTOF = True
+    # True if the randoms/scatter term (SinDelayed) is TOF-resolved, i.e. it has the size and order of the TOF measurements.
+    # Set automatically when TOF-resolved scatter data is input with corrections during reconstruction (see loadCorrections)
+    randomsTOF = False
     useAF = False
+    # Use single precision for the SPECT scatter-window (DEW/TEW) data; the MATLAB default is True
+    useSingles = True
     useTorch = False
+    # Row-major (C-ordered) operator output, available with PyTorch (CUDA), CuPy and PyOpenCL (not ArrayFire or Metal/MPS).
+    # If True, forwardProject/backwardProject (and options * f, options.T() * y) return row-major arrays, the
+    # sinogram/projection data as an (nRowsD, nColsD, number of projections[, TOF bins]) array and the image as an
+    # (Nx, Ny, Nz) array, indexed y[i, j, k] and f[x, y, z]. Multi-volume images are a list. Row-major is also the format
+    # that PyTorch itself uses. Measurements that are not a full sinogram/projection set (list-mode data, subsets > 1
+    # with subsetType < 8) stay flat vectors.
+    # If False, the output is a flat, Fortran-ordered vector (x/rows varying fastest).
+    # None (default) is automatic: True when useTorch is True, False otherwise.
+    # Input can always be either such a flat vector or a multidimensional tensor/array
+    useRowMajor = None
     useCuPy = False
     useMetal = False
     dualLayerSubmodule = False
     storeResidual = False
     useFDKWeights = True
+    useLayeredBP = True
     useIndexBasedReconstruction = False
     trIndex = np.empty(0, dtype = np.uint16)
     axIndex = np.empty(0, dtype = np.uint16)
@@ -648,10 +716,12 @@ class projectorClass:
     TOFIndices = np.empty(0, dtype = np.uint8)
     useParallelBeam = False
     builtin = True
-    precorrect = False
+    # None: not set by the user, the measurement data is precorrected when corrections_during_reconstruction is False
+    # (as in MATLAB). An explicit False keeps the input data uncorrected (for data that has already been corrected)
+    precorrect = None
     seed = -1
     useHelical = False
-    helicalRadius = 1.
+    helicalRadius = 0.
     useParkerWeights = False
     # When True (default) the built-in reconstruction works on a private copy of the options, so
     # the same options object can be reused for further reconstructions. When False the options
@@ -669,6 +739,12 @@ class projectorClass:
     # functions.hpp); set this to False to explicitly disable fastPDHG, mirroring MATLAB/Octave's
     # options.fastPDHG = false.
     fastPDHG = True
+    # Detector coordinates of the sensitivity image of list-mode data, for systems that the scanner settings (cylindrical rings)
+    # cannot describe. xSens: x and y of all detectors of one transaxial ring (layers one after another, two values per detector,
+    # det_per_ring = xSens.size / 2 / nLayers), zSens: axial coordinates (z) of the rings (rings = zSens.size / nLayers).
+    # The sensitivity image is computed for all pairs of the product grid (every transaxial detector x every ring) with
+    # every other. Pairs that are not measured are removed with options.normSens (the pair table), which is also needed for
+    # the normalization correction of the sensitivity image with xSens and zSens
     xSens = np.empty(0, dtype = np.float32)
     zSens = np.empty(0, dtype = np.float32)
     sensitivityViewWeights = np.empty(0, dtype = np.float32)
@@ -709,6 +785,68 @@ class projectorClass:
              (isinstance(self.x, list) and
               (self.x[0].size / 2 == self.SinM[0].size or
                self.x[0].size / 6 == self.SinM[0].size)))
+
+    @staticmethod
+    def _listModeValuesPerEvent(x):
+        """The number of values per event of custom list-mode coordinates: 2 when x contains only the x-coordinates of the two
+        detectors, as (N,2) or (2,N), with the y- and z-coordinates in options.y and options.z, and 6 otherwise (flattened or
+        (6,N) [x1; y1; z1; x2; y2; z2])."""
+        x = np.asarray(x)
+        if x.ndim == 2 and (x.shape[1] == 2 or x.shape[0] == 2):
+            return 2
+        return 6
+
+    def _listModeFrameCoordinates(self, uu):
+        """The custom list-mode coordinates of time frame uu (self.x[uu], self.y[uu], self.z[uu]) as a (6,N) Fortran-ordered array
+        [x1; y1; z1; x2; y2; z2]. Coordinates that are already in the 6 values per event layout are returned as such."""
+        x = np.asarray(self.x[uu])
+        if x.ndim == 2 and x.shape[1] == 2:
+            y = np.asarray(self.y[uu])
+            z = np.asarray(self.z[uu])
+            return np.asfortranarray(np.vstack([x[:, 0], y[:, 0], z[:, 0], x[:, 1], y[:, 1], z[:, 1]]))
+        if x.ndim == 2 and x.shape[0] == 2:
+            y = np.asarray(self.y[uu])
+            z = np.asarray(self.z[uu])
+            return np.asfortranarray(np.vstack([x[0, :], y[0, :], z[0, :], x[1, :], y[1, :], z[1, :]]))
+        return x
+
+    def _flattenListModeYZ(self):
+        """Concatenates per-frame lists of the y- and z-coordinates (custom list-mode coordinates) to arrays."""
+        for name in ('y', 'z'):
+            value = getattr(self, name)
+            if isinstance(value, (list, tuple)):
+                if len(value) > 0:
+                    setattr(self, name, np.concatenate([np.asarray(t).flatten(order='F') for t in value]))
+                else:
+                    setattr(self, name, np.empty(0, dtype=np.float32))
+
+    def _concatenateListModeFrames(self):
+        """With one subset, per-frame lists of the list-mode coordinates (options.x, or options.trIndex and options.axIndex with
+        index-based reconstruction) are concatenated to one array so that the rest of the setup sees arrays. This mirrors what
+        formSubsetIndices does with multiple subsets. The number of events of each frame is stored in options.listmodeIndices
+        before this is called. The TOF indices are concatenated later, after they have been validated."""
+        if not self.listmode or self.subsets != 1:
+            return
+        if self.useIndexBasedReconstruction:
+            for name in ('trIndex', 'axIndex'):
+                value = getattr(self, name)
+                if isinstance(value, (list, tuple)):
+                    setattr(self, name, np.concatenate([np.asarray(t).flatten(order='F') for t in value]))
+        elif isinstance(self.x, (list, tuple)):
+            self.x = list(self.x)
+            for uu in range(len(self.x)):
+                self.x[uu] = self._listModeFrameCoordinates(uu)
+            self.x = np.concatenate([t.flatten(order='F') for t in self.x])
+            self._flattenListModeYZ()
+
+    def _earlyFrameCount(self):
+        """The number of timeframes, derived in the same way as self.Nt in addProjector(), for the checks that are done before
+        self.Nt is set."""
+        if isinstance(self.SinM, list) and self.SinM:
+            return len(self.SinM)
+        if isinstance(self.partitions, np.ndarray):
+            return max(int(self.partitions.size), 1)
+        return int(self.partitions)
 
     def _checkTOFCenter(self):
         """Raise an error if the TOF bin centers (TOFCenter, built here or supplied by the user) do not have the layout the
@@ -791,7 +929,7 @@ class projectorClass:
         else:
             self.trIndex = trFrames[0]
             self.axIndex = axFrames[0]
-        if self.TOF_bins > 1 and self.projector_type in (1, 11, 3, 33, 13, 31, 4, 14, 41, 44, 34, 43):
+        if self.TOF_bins > 1 and self.projector_type in (1, 11, 2, 22, 12, 21, 23, 32, 24, 42, 3, 33, 13, 31, 4, 14, 41, 44, 34, 43):
             if isinstance(self.TOFIndices, (list, tuple)):
                 tofCounts = [np.size(t) for t in self.TOFIndices]
                 if len(tofCounts) != len(counts) and len(counts) > 1:
@@ -807,16 +945,169 @@ class projectorClass:
                     suffix = f' in timeframe {kk + 1}' if len(counts) > 1 else ''
                     raise ValueError(f'The number of TOF indices (options.TOFIndices, {tofCounts[kk]}) does not correspond to the number of events ({counts[kk]}){suffix}!')
 
+    def _checkListModeScatter(self):
+        """Validate the scatter (options.ScatterC) of list-mode and index-based PET data with scatter_correction and subtract_scatter,
+        which is used as the additive term of each event: one finite, non-negative value per event, in the order of the events
+        (options.trIndex/axIndex, or the custom coordinates) before the subsets, in measured counts expected for the LOR of the event
+        (in the TOF bin of the event with TOF data). Called once, from OMEGAErrorCheck, after the index-based inputs have been checked."""
+        if (not self.listmode or self.CT or self.SPECT or not self.scatter_correction or not self.subtract_scatter
+                or self.reconstruct_trues or self.reconstruct_scatter):
+            return
+        if (self.Nt > 1 or self._earlyFrameCount() > 1 or (isinstance(self.trIndex, (list, tuple)) and len(self.trIndex) > 1)
+                or (isinstance(self.SinM, (list, tuple)) and len(self.SinM) > 1)):
+            raise ValueError('Scatter correction (options.ScatterC) is not supported with dynamic list-mode and index-based data! '
+                             'Use a single time frame or disable the scatter correction.')
+        if not self.corrections_during_reconstruction or not (self.corrections_during_reconstruction if self.ordinaryPoisson is None else self.ordinaryPoisson):
+            raise ValueError('Scatter correction of list-mode and index-based data is the additive term of each event and needs corrections '
+                             'during the reconstruction (options.corrections_during_reconstruction = True and ordinary Poisson algorithm, '
+                             'i.e. not PDHG, FISTA, LSQR, CGLS, ...); subtracting the scatter from the events (precorrection) is not possible!')
+        if self.largeDim:
+            raise ValueError('Scatter correction of list-mode and index-based data is not supported with largeDim!')
+        if self.scatter_smoothing:
+            raise ValueError('Scatter smoothing is a sinogram operation and cannot be used with list-mode and index-based data! '
+                             'Smooth the scatter before inputting it as a value for each event.')
+        if self.useIndexBasedReconstruction:
+            frames = list(self.trIndex) if isinstance(self.trIndex, (list, tuple)) else [self.trIndex]
+            nEvents = sum(np.size(t) // 2 for t in frames)
+        else:
+            frames = list(self.SinM) if isinstance(self.SinM, (list, tuple)) else [self.SinM]
+            nEvents = sum(np.size(t) for t in frames)
+        tofBins = self.TOF_bins > 1
+        units = ('one value per event, in the order of the events (options.trIndex and options.axIndex, or the custom coordinates), '
+                 'as the measured counts expected for the LOR of the event%s over the frame, i.e. the additive term s of the model '
+                 'n * (A x) + s, with no division by the normalization, the attenuation%s' %
+                 (' in the TOF bin of the event' if tofBins else '', ', the number of TOF bins or the number of LORs in a bin' if tofBins else ' or the number of LORs in a bin'))
+        if isinstance(self.ScatterC, (list, tuple)):
+            raise ValueError('For list-mode and index-based data options.ScatterC must be a single array of %d elements: %s!' % (nEvents, units))
+        scatter = np.asarray(self.ScatterC)
+        if scatter.size != nEvents:
+            raise ValueError('The scatter (options.ScatterC) has %d elements, but the number of events is %d! It must contain %s!' %
+                             (scatter.size, nEvents, units))
+        if scatter.dtype.kind not in 'fiu':
+            raise ValueError('The scatter (options.ScatterC) must be a numeric array, but its data type is %s!' % scatter.dtype)
+        lo = scatter.min()
+        hi = scatter.max()
+        if not (np.isfinite(lo) and np.isfinite(hi)):
+            raise ValueError('The scatter (options.ScatterC) contains NaN or infinite values! It must contain %s!' % units)
+        if lo < 0:
+            raise ValueError('The scatter (options.ScatterC) contains negative values (minimum %g)! It must contain %s!' % (lo, units))
+
+    def _pairTableUser(self):
+        """True when a pair table was input (options.normSens without the lookup tables options.sensXY, which loadCorrections stores
+        together with the normalization sinogram of index-based data), i.e. the sensitivity image uses the full pair table mode."""
+        return np.size(self.normSens) > 0 and np.size(self.sensXY) == 0
+
+    def _listModeEventCount(self):
+        """The number of events of list-mode (custom coordinates) or index-based data, all time frames."""
+        if self.useIndexBasedReconstruction:
+            frames = list(self.trIndex) if isinstance(self.trIndex, (list, tuple)) else [self.trIndex]
+            return sum(np.size(t) // 2 for t in frames)
+        frames = list(self.SinM) if isinstance(self.SinM, (list, tuple)) else [self.SinM]
+        nEvents = sum(np.size(t) for t in frames)
+        if nEvents == 0:
+            xFrames = list(self.x) if isinstance(self.x, (list, tuple)) else [self.x]
+            nEvents = sum(np.size(t) // 6 for t in xFrames)
+        return nEvents
+
+    def _checkNormSensTable(self):
+        """Check the normalization of the sensitivity image of list-mode data (called when normalization_correction and
+        compute_sensitivity_image are used). The normalization of all detector pairs is either the normalization sinogram of
+        index-based data, which is looked up for each pair (loadCorrections), or a pair table, options.normSens: one value (a
+        multiplier, like options.normalization) for each ordered pair of the sensitivity image grid, det_per_ring^2 * rings^2 *
+        nLayers^2 elements. The counts are taken from options.xSens and options.zSens, if they are given (they replace the scanner
+        coordinates, det_per_ring = xSens.size / 2 / nLayers and rings = zSens.size / nLayers), and otherwise from the scanner
+        (options.det_per_ring and options.rings). A pair table is needed with custom detector coordinates and with xSens and zSens,
+        since the detector pairs of a sinogram are not known then. With a pair table options.normalization has to be one value
+        for each event (the table is not used to derive it)."""
+        nLayers = int(self.nLayers)
+        userCoord = np.size(self.xSens) > 0 and np.size(self.zSens) > 0
+        if userCoord:
+            nX = np.size(self.xSens)
+            nZ = np.size(self.zSens)
+            if nX % (2 * nLayers) != 0 or nZ % nLayers != 0:
+                raise ValueError('options.xSens (%d elements) has to contain two values (x and y) for each detector of all %d layer(s) and '
+                                 'options.zSens (%d elements) one value for each ring of all layers!' % (nX, nLayers, nZ))
+            detPerRing = nX // 2 // nLayers
+            rings = nZ // nLayers
+            origin = 'from options.xSens and options.zSens'
+        else:
+            detPerRing = int(self.det_per_ring)
+            rings = int(self.rings)
+            origin = 'of the scanner (set options.xSens and options.zSens for a system that is not described by the scanner settings)'
+        expected = detPerRing * detPerRing * rings * rings * nLayers * nLayers
+        formula = ('det_per_ring^2 * rings^2 * nLayers^2 = %d^2 * %d^2 * %d^2 = %d elements (%s)' %
+                   (detPerRing, rings, nLayers, expected, origin))
+        layout = ('with the index a + b * det_per_ring + (ringA * rings + ringB) * det_per_ring^2 for the detectors a, b and the rings ringA, '
+                  'ringB (column-major order, i.e. an array [det_per_ring, det_per_ring, rings, rings] indexed (a, b, ringB, ringA); with several layers the layer '
+                  'combinations (layerA * nLayers + layerB) follow as the slowest dimension)')
+        if not self._pairTableUser():
+            if userCoord or not self.useIndexBasedReconstruction:
+                raise ValueError('Normalization correction in the sensitivity image of list-mode data with custom detector coordinates or user-input '
+                                 'sensitivity image coordinates (options.xSens and options.zSens) needs options.normSens, the normalization of '
+                                 'all ordered detector/ring pairs: %s %s. Only the pairs of one orientation are read (detector a < b, or '
+                                 'a == b and ringA < ringB). Alternatively disable the normalization correction.' % (formula, layout))
+            return
+        table = np.asarray(self.normSens)
+        if table.dtype.kind not in 'fiu':
+            raise ValueError('options.normSens must be a numeric array, but its data type is %s!' % table.dtype)
+        if table.size != expected:
+            raise ValueError('options.normSens has %d elements, but the pair normalization table must have %s %s!' % (table.size, formula, layout))
+        lo = table.min()
+        hi = table.max()
+        if not (np.isfinite(lo) and np.isfinite(hi)):
+            raise ValueError('options.normSens (the pair normalization table) contains NaN or infinite values!')
+        if lo < 0:
+            raise ValueError('options.normSens (the pair normalization table) contains negative values (minimum %g)!' % lo)
+        if np.size(self.normalization) > 0:
+            nEvents = self._listModeEventCount()
+            if np.size(self.normalization) != nEvents:
+                raise ValueError('With a pair normalization table (options.normSens) options.normalization has to contain one value for each '
+                                 'event (%d elements), but it has %d elements! The table is used only in the sensitivity image, a sinogram '
+                                 'normalization is not converted to the events.' % (nEvents, np.size(self.normalization)))
+
+    def _tileCTNormalization(self):
+        """Checks the size of the CT normalization and tiles it to all projections. The CT normalization is a multiplicative
+        factor of each measurement: one map of the detector (nRowsD * nColsD elements, used for every projection) or one value
+        for each measurement (nRowsD * nColsD * nProjections elements, x fastest). The result is a flat float32 vector with
+        one value for each measurement. Any other size (also an empty array) is an error: the CT normalization is not loaded
+        from a file."""
+        normalization = np.asarray(self.normalization)
+        nDet = int(self.nRowsD) * int(self.nColsD)
+        nProj = int(self.nProjections)
+        if normalization.size <= 1:
+            raise ValueError('CT normalization correction is selected (options.normalization_correction = True), but options.normalization '
+                             'is empty. The CT normalization is not loaded from a file, input it as an array of the detector size '
+                             f'[{self.nRowsD} {self.nColsD}] or the size of all projections [{self.nRowsD} {self.nColsD} {self.nProjections}].')
+        if normalization.size == nDet * nProj:
+            self.normalization = np.ascontiguousarray(normalization.ravel('F'), dtype=np.float32)
+        elif normalization.size == nDet:
+            self.normalization = np.ascontiguousarray(np.tile(normalization.ravel('F'), nProj), dtype=np.float32)
+        else:
+            raise ValueError(f'Incorrect size for the CT normalization (options.normalization)! Must be the size of the detector '
+                             f'[{self.nRowsD} {self.nColsD}] (used for every projection) or the size of all projections '
+                             f'[{self.nRowsD} {self.nColsD} {self.nProjections}], but it has {normalization.size} elements.')
+
     def addProjector(self):
         self.projectorAdded = True
+        # A scalar per-layer parameter (multi-layer PET) is used for all the layers
+        expandLayerParameters(self)
         # MATLAB/Octave-style option name aliases, accepted for convenience so scripts written
         # against the MATLAB API also work here. hasattr() is only True when the user actually
         # assigned the MATLAB-named attribute (these names have no Python-side class default),
         # so a canonical Python attribute the user set directly is never clobbered by a default.
         for matlabName, pyName in (('subset_type', 'subsetType'), ('use_CUDA', 'useCUDA'),
-                                    ('use_CPU', 'useCPU'), ('use_device', 'deviceNum')):
+                                    ('use_CPU', 'useCPU'), ('use_device', 'deviceNum'),
+                                    ('TV_reference_image', 'TV_referenceImage'), ('NLM_reference_image', 'NLM_referenceImage'),
+                                    ('RDP_reference_image', 'RDP_referenceImage'), ('APLS_reference_image', 'APLS_ref_image'),
+                                    ('h', 'h_ACOSEM')):
             if hasattr(self, matlabName):
                 setattr(self, pyName, getattr(self, matlabName))
+        # MATLAB's global_correction_factor (empty or <= 0 means 1) is the user-facing name, the native
+        # library receives global_factor. Both exist as class attributes, so a user-set value
+        # (anything other than the default 1) is copied to global_factor.
+        gcf = np.asarray(self.global_correction_factor).ravel()
+        if gcf.size > 0 and float(gcf[0]) > 0. and float(gcf[0]) != 1.:
+            self.global_factor = float(gcf[0])
         # CT_attenuation is the sole user-facing option (matches MATLAB's options.CT_attenuation).
         # CTAttenuation is an internal, derived mirror consumed by the ctypes struct (field name is
         # fixed by libHeader.h) and by the rest of the Python codebase; it is set here, in exactly
@@ -825,7 +1116,7 @@ class projectorClass:
         # projector's forward/backward helpers) that call addProjector() directly without going
         # through initProj()/initProjector() -- and so the two names can never disagree.
         self.CTAttenuation = self.CT_attenuation
-        if self.OSL_OSEM or self.MBSREM or self.ROSEM_MAP or self.OSL_RBI or self.OSL_COSEM > 0 or self.PKMA or self.SPS or self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.CV or self.SAGA or self.BB or self.SART or self.ASD_POCS:
+        if self.OSL_OSEM or self.BSREM or self.MBSREM or self.ROSEM_MAP or self.OSL_RBI or self.OSL_COSEM > 0 or self.PKMA or self.SPS or self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.CV or self.SAGA or self.BB or self.SART or self.ASD_POCS:
             self.MAP = True
         if hasattr(self, 'dPitch') and self.dPitch > 0 and self.dPitchX == 0.:
             self.dPitchX = self.dPitch
@@ -852,7 +1143,9 @@ class projectorClass:
             self.Nang = self.nColsD
             self.use_raw_data = 0
             self.attenuation_correction = 0
-            self.normalization_correction = 0
+            # The CT normalization is a per-measurement factor (see loadCorrections), the detector map is tiled to all projections
+            if self.normalization_correction:
+                self._tileCTNormalization()
             self.compute_normalization = False
             self.rings = self.nColsD * self.nBed
             self.det_per_ring = self.nRowsD * self.nProjections
@@ -871,13 +1164,15 @@ class projectorClass:
                 self.cr_p = self.dPitchX
             elif hasattr(self, 'cr_p'):
                 self.dPitchX = self.cr_p
+            # Custom detector/source coordinates do not require angles
             # Helical angles are always radians and may span several rotations, so the degree heuristic is not applied
-            if np.max(np.abs(self.angles.flatten())) > 6. * np.pi and not self.useHelical:
+            if self.angles.size > 0 and np.max(np.abs(self.angles.flatten())) > 6. * np.pi and not self.useHelical:
                 self.angles = self.angles * (np.pi / 180.)
-            if self.offangle > 0:
+            if self.angles.size > 0 and self.offangle > 0:
                 self.angles = self.angles + self.offangle
-            setCTCoordinates(self)
-        spect_event_listmode = False
+            # Fully custom coordinates are used as such; only missing or per-projection (source + detector) coordinates are (re)computed
+            if self.x.size == 0 or self.x.size == 2 * self.nProjections or hasattr(self, 'coord'):
+                setCTCoordinates(self)
         if self.SPECT:
             # Listmode SPECT stores one vector of events per timeframe rather
             # than a 3-D detector image stack. Detect that layout before the
@@ -1000,8 +1295,10 @@ class projectorClass:
         if (isinstance(self.cryst_per_block_axial, np.ndarray) and self.cryst_per_block_axial.size == 0) and ((isinstance(self.cryst_per_block, np.ndarray) and self.cryst_per_block.size > 0)
                                                                                                           or (not isinstance(self.cryst_per_block, np.ndarray) and self.cryst_per_block > 0)):
             self.cryst_per_block_axial = self.cryst_per_block
-        if self.rings == 0 and self.cryst_per_block_axial >= 1 and self.linear_multip >= 1:
-            self.rings = self.cryst_per_block_axial * self.linear_multip
+        # Multi-layer: the layers are mapped to a common block structure with as many rings as the layer with the most axial crystals has
+        cryst_per_block_axial = np.max(self.cryst_per_block_axial) if np.size(self.cryst_per_block_axial) > 0 else 0
+        if self.rings == 0 and cryst_per_block_axial >= 1 and self.linear_multip >= 1:
+            self.rings = int(cryst_per_block_axial) * int(self.linear_multip)
         if self.dPitchX > 0. and self.dPitchY == 0.:
             self.dPitchY = self.dPitchX
         if self.cr_p > 0. and self.cr_pz == 0.:
@@ -1016,8 +1313,10 @@ class projectorClass:
             else:
                 self.axial_fov = self.cr_pz
         rings = self.rings
-        if self.det_per_ring == 0 and self.blocks_per_ring >= 1 and self.cryst_per_block >= 1:
-            self.det_per_ring = self.blocks_per_ring * self.cryst_per_block
+        # Multi-layer: the block size of the layer with the most crystals per block
+        cryst_per_block = np.max(self.cryst_per_block) if np.size(self.cryst_per_block) > 0 else 0
+        if self.det_per_ring == 0 and self.blocks_per_ring >= 1 and cryst_per_block >= 1:
+            self.det_per_ring = int(self.blocks_per_ring) * int(cryst_per_block) * int(self.transaxial_multip)
         if self.det_w_pseudo == 0:
             self.det_w_pseudo = self.det_per_ring
         if self.use_raw_data and self.x.size > 1:
@@ -1057,7 +1356,22 @@ class projectorClass:
         # pre-list-mode value) observe, so only self.listmode is set early.
         self.listmode = 1 if (self._isListModeCandidate() or self.useIndexBasedReconstruction) else 0
         self.OMEGAErrorCheck()
-        self.TOF = self.TOF_bins > 1 and self.projector_type in (1, 11, 3, 33, 13, 31, 4, 14, 41, 44, 34, 43)
+        # Defaults that depend on other options (setMissingValues.m). Resolved here, after cr_pz, dPitchX/Y and
+        # the number of subsets are final and before any of the values is read (coordinates, projector
+        # initialization, prepass, ctypes struct). The arrays are rebound, never written in place.
+        if self.tube_radius is None:
+            self.tube_radius = math.sqrt(2.) * (self.cr_pz / 2.)
+        if self.gradInitIter is None:
+            self.gradInitIter = self.subsets
+        if self.gradLastIter is None:
+            self.gradLastIter = self.gradInitIter
+        if self.sigma2CP is None:
+            self.sigma2CP = _copyValue(self.sigmaCP)
+        if self.SATVPhi is None:
+            self.SATVPhi = 0. if (self.TV and self.TVtype in (4, 6)) else 1.
+        if not np.any(self.FWHM):
+            self.FWHM = np.array([self.dPitchX, self.dPitchX, self.dPitchY], dtype=np.float32)
+        self.TOF = self.TOF_bins > 1 and self.projector_type in (1, 11, 2, 22, 12, 21, 23, 32, 24, 42, 3, 33, 13, 31, 4, 14, 41, 44, 34, 43)
         if self.TOF:
             if self.TOF_bins_used == 0 and self.TOF_bins > 0:
                 self.TOF_bins_used = self.TOF_bins
@@ -1081,6 +1395,13 @@ class projectorClass:
                 self.TOFCenter = -self.TOFCenter * c / 2.
             else:
                 self.TOFCenter = np.float32(self.TOFCenter)
+                # User-supplied TOF bin centers: the Gaussian sigma is still needed. As in MATLAB, it is computed
+                # from TOF_FWHM when sigma_x was not given (sigma_x <= 0), the user's TOFCenter is kept as is
+                if self.sigma_x <= 0:
+                    if self.TOF_FWHM <= 0:
+                        raise ValueError('TOF with user-supplied TOFCenter requires either a positive TOF_FWHM or sigma_x (TOF Gaussian sigma in mm)!')
+                    c = 2.99792458e11 # speed of light in mm/s
+                    self.sigma_x = (c*self.TOF_FWHM/2.) / (2. * math.sqrt(2. * math.log(2.)))
             self._checkTOFCenter()
         else:
             self.sigma_x = 0.
@@ -1107,7 +1428,8 @@ class projectorClass:
         if self.maskBP.size > 1 and not(self.maskBP.size == self.Nx * self.Ny) and not(self.maskBP.size == self.Nx * self.Ny * self.Nz):
             raise ValueError('Incorrect size for the backward projection mask! Must be the size of a single image [' + str(self.Nx) + ' ' + str(self.Ny) + '] or 3D stack [' + str(self.Nx) + ' ' + str(self.Ny) + ' ' + str(self.Nz) + ']')
         elif self.maskBP.size == self.Nx * self.Ny or self.maskBP.size == self.Nx * self.Ny * self.Nz:
-            self.useMaskBP = True
+            # With usePriorMask the mask is not applied in the backprojection, as in MATLAB (projectorClass.m)
+            self.useMaskBP = not self.usePriorMask
             if (self.maskBP.ndim == 3):
                 self.maskBPZ = self.maskBP.shape[2]
             self.maskBP = np.asfortranarray(self.maskBP)
@@ -1158,13 +1480,15 @@ class projectorClass:
             temp = int(temp)
         if temp > 0:
             self.pseudot = np.zeros(temp, dtype=np.uint32)
+            # The pseudo rings are located between the axial blocks, i.e. after every cryst_per_block_axial rings (the
+            # largest axial block of the layers in multi-layer scanners)
+            axialBlock = int(np.max(np.atleast_1d(self.cryst_per_block_axial)))
             for kk in range(1, temp + 1):
-                if isinstance(self.cryst_per_block, np.ndarray):
-                    self.pseudot[kk - 1] = np.uint32(self.cryst_per_block[0].item() + 1) * kk
-                else:
-                    self.pseudot[kk - 1] = np.uint32(self.cryst_per_block + 1) * kk
+                self.pseudot[kk - 1] = np.uint32(axialBlock + 1) * kk
+            self.pseudotPositions = True
         else:
             self.pseudot = np.empty(0, dtype = np.uint32)
+            self.pseudotPositions = False
         # Whether list-mode or sinogram/raw data is used. self.listmode was already
         # pre-computed (via _isListModeCandidate()/useIndexBasedReconstruction) ahead of
         # OMEGAErrorCheck() above; this recomputes the same condition (now that self.SinM/
@@ -1186,6 +1510,8 @@ class projectorClass:
                 det_per_ring = self.trIndex[0].size // 2
             else:
                 det_per_ring = self.trIndex.size // 2
+            # The sinogram dimensions are needed for the sinogram normalization
+            self._sinoDims = (int(self.Ndist), int(self.Nang), int(self.NSinos), int(self.TotSinos))
             self.Nang = 1
             self.Ndist = 1
             self.NSinos = det_per_ring
@@ -1221,19 +1547,19 @@ class projectorClass:
                     self.listmodeIndices[:] = np.uint64(self.trIndex.size // 2 // len(self.listmodeIndices))
             else:
                 if isinstance(self.x, list):
-                    if self.x[0].shape[1] == 2 or self.x[0].shape[0] == 2:
-                        listSize  = 2
-                    else:
-                        listSize  = 6
+                    listSize = self._listModeValuesPerEvent(self.x[0])
                     for kk in range(len(self.listmodeIndices)):
                         self.listmodeIndices[kk] = np.uint64(self.x[kk].size // listSize )
                 else:
-                    if self.x.shape[1] == 2 or self.x.shape[0] == 2:
-                        listSize  = 2
-                    else:
-                        listSize  = 6
+                    listSize = self._listModeValuesPerEvent(self.x)
                     self.listmodeIndices[:] = np.uint64(self.x.size // listSize  // len(self.listmodeIndices))
+        # Per-frame lists of list-mode data are concatenated here if there is only one subset (the subset indexing in indexMaker/formSubsetIndices
+        # handles the lists with multiple subsets); listmodeIndices above keeps the number of events of each frame
+        self._concatenateListModeFrames()
         indexMaker(self)
+        if self.listmode and self.Nt > 1 and self.subsets == 1 and np.size(self.nMeasPerFrameSubset) == 1:
+            # One subset and several frames: the number of events of each frame is needed
+            self.nMeasPerFrameSubset = np.asarray(self.listmodeIndices, dtype=np.int64).reshape((self.Nt, 1))
         self.setUpCorrections()
         self.x0 = self.x0.ravel('F')
         if self.CT and self.projector_type == 11 and not self.useCPU:
@@ -1264,27 +1590,14 @@ class projectorClass:
                                 raise ValueError(f'The number of TOF indices does not correspond to the number of events (timeframe {kk + 1})!')
                     elif np.size(self.TOFIndices) != np.size(self.SinM):
                         raise ValueError('The number of TOF indices does not correspond to the number of events!')
+                if self.subsets == 1 and isinstance(self.TOFIndices, (list, tuple)):
+                    self.TOFIndices = np.concatenate([np.asarray(t).flatten(order='F') for t in self.TOFIndices])
                 if not self.useIndexBasedReconstruction:
                     if isinstance(self.x, list):
                         for uu in range(self.Nt):
-                            if self.x[uu].shape[1] == 2:
-                                self.x[uu] = np.asfortranarray(np.vstack([
-                                    self.x[uu][:, 0].reshape(1, -1),
-                                    self.y[uu][:, 0].reshape(1, -1),
-                                    self.z[uu][:, 0].reshape(1, -1),
-                                    self.x[uu][:, 1].reshape(1, -1),
-                                    self.y[uu][:, 1].reshape(1, -1),
-                                    self.z[uu][:, 1].reshape(1, -1),
-                                ]))
-                            elif self.x[uu].shape[0] == 2:
-                                self.x[uu] = np.asfortranarray(np.concatenate([
-                                    self.x[uu][:, 0],
-                                    self.y[uu][:, 0],
-                                    self.z[uu][:, 0],
-                                    self.x[uu][:, 1],
-                                    self.y[uu][:, 1],
-                                    self.z[uu][:, 1],
-                                ]))
+                            self.x[uu] = self._listModeFrameCoordinates(uu)
+                        # The separate y/z coordinates are not used after this, but arrays are expected
+                        self._flattenListModeYZ()
                     else:
                         if self.x.shape[0] == 2:
                             if self.x.flags.f_contiguous:
@@ -1446,7 +1759,7 @@ class projectorClass:
                 self.z = z_det
         computePixelCenters(self, xx, yy, zz)
         computeVoxelVolumes(self)
-        if self.projector_type in (4, 5, 14, 41, 15, 45, 54, 51, 42, 43, 24, 34):
+        if self.projector_type in (4, 5, 14, 41, 15, 45, 54, 51, 42, 43, 24, 34, 44, 55):
             computeProjectorScalingValues(self)
         # FDK (largeDim) keeps the geometry and data in the original projection order, so the offset limits are not reordered either
         if self.offsetCorrection and self.subsets > 1 and self.subsetType >= 8 and not self.FDK:
@@ -1462,7 +1775,7 @@ class projectorClass:
             from .detcoord import SPECTParameters
             SPECTParameters(self)
         if self.projector_type in (6, 16, 26, 61, 62, 66):
-            if self.subsets > 1 and (self.subsetType == 8 or self.subsetType == 9 or self.subsetType == 10 or self.subsetType == 11):
+            if self.subsets > 1 and (self.subsetType == 8 or self.subsetType == 9 or self.subsetType == 10 or self.subsetType == 11 or self.subsetType == 12):
                 geometry_fields = (
                     'angles', 'swivelAngles', 'radiusPerProj',
                     'blurPlanes', 'blurPlanes2', 'blurPlanes2Linear',
@@ -1628,6 +1941,10 @@ class projectorClass:
         return prefix + self._FILTER_WINDOW_TEXT.get(self.filterWindow, ' (no windowing).')
 
     def OMEGAErrorCheck(self):
+        if self.CT and self.normalization_correction:
+            # CT normalization: one map of the detector or one value for each measurement (the rest of the CT normalization
+            # checks are in loadCorrections)
+            self._tileCTNormalization()
         if self.SPECT:
             normalization = np.asarray(self.normalization)
             if self.normalization_correction and normalization.size > 1:
@@ -1752,6 +2069,11 @@ class projectorClass:
                 and self.subsets > 1 and self.subsetType in (3, 6, 7) and self.NSinos > 65536):
             raise ValueError('Subset types 3, 6 and 7 support at most 65536 sinogram planes (the plane index is stored as 16-bit); '
                              'use another subset type, fewer planes (larger span) or a single subset.')
+        # Subset type 6 groups n_angles degrees per subset (180 / n_angles subsets for 2D and 360 / n_angles for 3D data)
+        if (not self.CT and not self.SPECT and not self.listmode and not self.useIndexBasedReconstruction and not self.use_raw_data
+                and self.subsets > 1 and self.subsetType == 6
+                and (not hasattr(self, 'n_angles') or np.size(self.n_angles) != 1 or self.n_angles < 1 or 180 % self.n_angles != 0)):
+            raise ValueError('Subset type 6 requires options.n_angles to be a positive number that divides 180 evenly!')
         if self.useIndexBasedReconstruction and self.projector_type not in [1, 2, 3, 4, 11, 14, 12, 13, 21, 22, 23, 24, 31, 32, 33, 34, 41, 42, 43, 44]:
             raise ValueError('Index-based reconstruction only supports projector types 1-4!')
         if self.useIndexBasedReconstruction:
@@ -1821,7 +2143,7 @@ class projectorClass:
             
         if not self.CT and not self.SPECT and self.det_per_ring == self.det_w_pseudo and self.fill_sinogram_gaps:
             raise ValueError('Gap filling is only supported with pseudo detectors!')
-        if not self.largeDim and not self.x0.any():
+        if not self.largeDim and self.x0.size == 0:
             if not self.CT:
                 print('Initial value is an empty array, using the default values (1)')
                 self.x0 = np.ones((self.Nx, self.Ny, self.Nz), dtype=np.float32, order='F')
@@ -1880,10 +2202,12 @@ class projectorClass:
         if 'sigma' in self.__dict__ and 'NLMsigma' not in self.__dict__:
             # The NLM filter parameter is options.NLMsigma (sigma was used in older examples/MATLAB); use sigma as a fallback
             self.NLMsigma = self.sigma
-            if self.NLM or self.ProxNLM:
+            if self.NLM:
                 print('options.sigma is used as the NLM filter parameter; in the future use options.NLMsigma instead')
         # if self.projector_type in [5, 4, 34, 24, 44, 14, 41, 42, 43, 15, 45, 54, 51, 55] and self.useCPU:
         #     raise ValueError('The selected projector type is not supported with CPU implementation!')
+        if getattr(self, 'ProxRDP', False) or getattr(self, 'ProxNLM', False):
+            raise ValueError('ProxRDP and ProxNLM have been removed. Use RDP or NLM instead.')
         if np.sum(self.precondTypeImage) == 0 and (self.PKMA or self.MRAMLA or self.MBSREM):
             print('No image-based preconditioner selected with PKMA/MRAMLA/MBSREM. EM preconditioner is highly recommended!')
         if not self.CT and not self.SPECT and self.reconstruct_trues and self.reconstruct_scatter:
@@ -1901,10 +2225,11 @@ class projectorClass:
         
         if self.useCPU and self.projector_type not in (1, 11) and self.implementation == 2:
             raise ValueError('Selected projector type is not supported with CPU implementation!')
-        if self.projector_type == 2 and self.CT:
-            raise ValueError('Orthogonal distance-based projector is NOT supported when using CT data!')
+        # Projector type 2 is rejected also as the forward or backward projector of a combined type (e.g. 12, 21, 23, 24, 42)
+        if self.CT and (self.projector_type == 2 or (self.projector_type > 10 and (self.projector_type // 10 == 2 or self.projector_type % 10 == 2))):
+            raise ValueError('Projector type 2 (orthogonal distance) is not supported with CT (also as the forward or backward projector of a combined projector type)!')
         
-        if self.projector_type in [5, 15, 51, 45, 54] and not self.CT:
+        if self.projector_type in [5, 55, 15, 51, 45, 54] and not self.CT:
             raise ValueError('Projector type 5 is only supported with CT data!')
         
         if self.projector_type in (6, 16, 26, 61, 62, 66) and not self.SPECT:
@@ -1942,7 +2267,7 @@ class projectorClass:
                 raise ValueError('Large dimension support is only available for PDHG, PKMA, and FDK!')
             if self.MRP or self.quad or self.Huber or self.weighted_mean or self.FMH or self.ProxTV or self.TGV or self.L or self.AD or self.APLS:
                 raise ValueError('Large dimension support is only available for non-local methods, RDP, GGMRF, hyperbolic prior and TV!')
-            if self.projector_type in [45, 15, 5, 54, 51, 2, 3]:
+            if self.projector_type in [45, 15, 5, 55, 54, 51, 2, 3]:
                 raise ValueError('Large dimension support is only for projector types 4 and 14!')
             # Anatomical weighting is not supported by largeDim
             if self.RDP and self.RDP_use_anatomical:
@@ -1956,8 +2281,8 @@ class projectorClass:
         if self.useCUDA and self.useCPU:
             raise ValueError('Both CUDA and CPU selected! Select only one!')
         
-        if self.TOF_bins_used > 1 and (self.projector_type not in [1, 11, 3, 33, 31, 13, 4, 41, 14, 43, 34]) and not self.CT and not self.SPECT:
-            raise ValueError('TOF is currently only supported with improved Siddon (projector_type = 1), interpolation-based projector (projector_type = 4) and volume of intersection (projector_type = 3)')
+        if self.TOF_bins_used > 1 and (self.projector_type not in [1, 11, 2, 22, 12, 21, 23, 32, 24, 42, 3, 33, 31, 13, 4, 44, 41, 14, 43, 34]) and not self.CT and not self.SPECT:
+            raise ValueError('TOF is currently only supported with improved Siddon (projector_type = 1), orthogonal distance-based ray tracer (projector_type = 2), volume of intersection (projector_type = 3) and interpolation-based projector (projector_type = 4)')
         
         if self.TOF_bins_used > 1 and self.TOF_width <= 0 and not self.CT and not self.SPECT:
             raise ValueError('TOF width (self.TOF_width) must be greater than zero.')
@@ -1970,29 +2295,66 @@ class projectorClass:
             self.ordinaryPoisson = False
             # self.scatter_correction = False
             # self.randoms_correction = False     
-        if self.useIndexBasedReconstruction and (self.randoms_correction or self.scatter_correction) and self.TOF_bins > 1:
-            raise ValueError('Randoms and/or scatter correction cannot be used with index-based reconstruction with TOF data!')
-        if self.subsetType == 3 and self.maskFP.size > 1:
-            raise ValueError('Forward projection mask is not supported with subset type 3!')
+        if self.useIndexBasedReconstruction and (self.randoms_correction or (self.scatter_correction and not self.subtract_scatter)) and self.TOF_bins > 1:
+            # Subtracted scatter is the per-event additive term, which is allowed with TOF (the value of the TOF bin of the event)
+            raise ValueError('Randoms and/or multiplicative scatter correction cannot be used with index-based reconstruction with TOF data!')
+        self._checkListModeScatter()
+        if self.maskFP.size > 1 and self.subsetType in (3, 6, 7):
+            raise ValueError('Forward projection mask is only available with subset types 1, 2, 4, 5, and >= 8')
+        if not self.CT and not self.SPECT:
+            if not self.use_raw_data and ((self.sampling % 2 > 0 and self.sampling != 1) or self.sampling < 0):
+                raise ValueError('Sampling rate has to be divisible by two and positive or one!')
+            if self.use_raw_data and ((self.sampling_raw % 2 > 0 and self.sampling_raw != 1) or self.sampling_raw < 0):
+                raise ValueError('Sampling rate has to be divisible by two and positive or one!')
         
         if self.precondTypeMeas[1] and (self.subsetType < 8 and not(self.subsetType == 4) and not(self.subsetType == 0)):
             raise ValueError('Filtering-based preconditioner only works with subset types 0, 4 and 8-11!')
+        if self.CT and (self.COSEM or self.ECOSEM or self.ACOSEM or self.OSL_COSEM > 0):
+            raise ValueError('COSEM, ECOSEM, ACOSEM and OSL-COSEM are not supported with CT data (no transmission tomography formulation).')
         if self.useCPU and self.ECOSEM:
             raise ValueError('ECOSEM is not supported with CPU!')
         if self.NLM_use_anatomical and self.useCPU and self.NLM:
             raise ValueError('Reference image weighting for NLM is not supported with CPU!')
         if self.useIndexBasedReconstruction and self.useCPU:
             raise ValueError('Index-based reconstruction is not supported on CPU!')
+        # The sensitivity image of list-mode data has to include the same corrections as the measured events. The normalization
+        # is applied to all detector pairs either with the normalization sinogram that is looked up for each pair (index-based
+        # data without options.xSens and options.zSens, see loadCorrections) or with a pair table (options.normSens, any list-mode
+        # data). Dynamic data has the normalization disabled (loadCorrections).
+        if self.listmode and not self.CT and not self.SPECT and self.compute_sensitivity_image:
+            if self.normalization_correction and self._earlyFrameCount() <= 1:
+                if self.useCPU:
+                    raise ValueError('Normalization correction in the sensitivity image of list-mode data is not supported with the CPU implementation! '
+                                     'Disable the normalization correction or use GPU.')
+                self._checkNormSensTable()
+            if self.additionalCorrection or (self.scatter_correction and not self.subtract_scatter):
+                raise ValueError('Multiplicative scatter correction (options.scatter_correction with options.subtract_scatter = False) or a '
+                                  'correction vector (options.additionalCorrection) is not supported in the sensitivity image of list-mode data! '
+                                  'Disable the correction or the sensitivity image.')
+        if self.useCPU and self.useMultiResolutionVolumes:
+            raise ValueError('Multi-resolution reconstruction is not supported with the CPU implementation')
         if self.useCPU:
             print('CPU functionality is limited and might not work correctly in all cases! Use at your own risk!')
-        if self.useHelical and not self.projector_type == 4:
-            raise ValueError('Only projector type 4 is supported with curved helical data!')
+        if self.useHelical and self.projector_type not in (4, 5, 44, 45, 54, 55):
+            raise ValueError('Only projector types 4, 5, 44, 45, 54 and 55 are supported with curved helical data!')
+        if self.useHelical and self.useParallelBeam:
+            raise ValueError('Parallel beam is not supported with curved helical data!')
+        if self.CT and self.useParallelBeam and (self.projector_type % 10 == 5 or (self.projector_type >= 10 and self.projector_type // 10 == 5)):
+            raise ValueError('Parallel beam is not supported with projector type 5!')
+        if self.CT and self.useParallelBeam and (self.useCPU or self.implementation == 4):
+            raise ValueError('Parallel beam is not supported with the CPU implementation!')
+        if self.subsetType == 12 and not self.offsetCorrection:
+            raise ValueError('Subset type 12 can only be used with offset correction (options.offsetCorrection = true).')
+        if self.useHelical and self.offsetCorrection:
+            raise ValueError('Offset correction is not supported with curved helical data!')
         if self.offangle > 0 and self.useHelical:
             print('Rotation is not yet supported with helical CT data')
         if self.useHelical and self.useCPU:
             raise ValueError('Helical CT is not supported with the CPU implementation!')
         if self.useHelical and self.FDK:
             raise ValueError('FDK/FBP is not supported with curved helical CT!')
+        if self.CT and self.useHelical and self.helicalRadius <= 0:
+            raise ValueError('Helical reconstruction requires options.helicalRadius (the radius of the circle formed by the curved detector array, in mm) to be set!')
             
         varNeg = ['LSQR','CGLS','FDK','SART']
         neg = [name for name in varNeg if getattr(self, name, False)]
@@ -2073,6 +2435,12 @@ class projectorClass:
                             loc = info.find('-' + str(self.deviceNum) + '-')
                         loc2 = info[loc:].find('MB')
                         dispaus += info[loc + 4 : loc + loc2 + 2]
+                    # Atomics are not used with NVIDIA, AMD or POCL OpenCL devices
+                    if not self.useCUDA and loc != -1:
+                        platformName = info[loc + 4:]
+                        if platformName.startswith('NVIDIA') or platformName.startswith('AMD') or platformName.startswith('POCL'):
+                            self.use_64bit_atomics = False
+                            self.use_32bit_atomics = False
                     print(dispaus)
                 elif self.useCPU:
                     print('Using CPU-based reconstruction')
@@ -2081,11 +2449,11 @@ class projectorClass:
                     
                 algorithms = [
                     "OSEM", "MRAMLA", "RAMLA", "RBI", "ROSEM", "DRAMA", "COSEM", "ECOSEM", "ACOSEM", "LSQR", "CGLS", "FDK", "FISTA", "FISTAL1",
-                    "OSL_OSEM", "MBSREM", "BSREM", "OSL_RBI", "OSL_COSEM", "ROSEM_MAP", "PKMA", "SART", "ASD_POCS", "SAGA", "BB",
+                    "OSL_OSEM", "MBSREM", "BSREM", "OSL_RBI", "OSL_COSEM", "ROSEM_MAP", "PKMA", "SPS", "SART", "ASD_POCS", "SAGA", "BB",
                     "PDHG", "PDHGL1", "PDDY", "PDHGKL", "CV" ]
                 
                 
-                varPrior = ['MRP','quad','Huber','L','FMH','weighted_mean','TV','hyperbolic','AD','APLS','TGV','NLM','RDP','GGMRF','ProxTV','ProxRDP','ProxNLM','custom']
+                varPrior = ['MRP','quad','Huber','L','FMH','weighted_mean','TV','hyperbolic','AD','APLS','TGV','NLM','RDP','GGMRF','ProxTV','custom']
                 priors = [name for name in varPrior if getattr(self, name, False)]
                 
                 enabled_algorithms = [name for name in algorithms if getattr(self, name, False)]
@@ -2142,9 +2510,9 @@ class projectorClass:
                     print(dispi)
                 elif self.projector_type == 3 or self.projector_type == 33:
                     print('Volume of intersection based ray tracer selected.')
-                elif self.projector_type == 4:
+                elif self.projector_type == 4 or self.projector_type == 44:
                     print('Interpolation-based projector selected.')
-                elif self.projector_type == 5:
+                elif self.projector_type == 5 or self.projector_type == 55:
                     print('Branchless distance-driven based projector selected.')
                 elif self.projector_type == 6:
                     print('Rotation-based projector selected (SPECT).')
@@ -2535,16 +2903,32 @@ class projectorClass:
                     self.NyPrior = self.Ny[0].item()
                     self.NzPrior = self.Nz[0].item()
             else:
+                # The regularization is not computed in the extended region: the number of padded voxels per side
+                # is (N - NOrig) // 2 and the prior region is [pad, N - pad) (0-based), as in MATLAB setUpCorrections.m
+                NxE = int(np.asarray(self.Nx).ravel()[0])
+                NyE = int(np.asarray(self.Ny).ravel()[0])
+                NzE = int(np.asarray(self.Nz).ravel()[0])
+                padX = (NxE - int(self.NxOrig)) // 2
+                padY = (NyE - int(self.NyOrig)) // 2
+                padZ = (NzE - int(self.NzOrig)) // 2
                 if self.eFOVIndices.size < 1:
-                    self.eFOVIndices = np.zeros((self.Nz,1), dtype=np.uint8)
-                    self.eFOVIndices[(self.Nz - self.NzOrig)//2 + self.eFOVShift_Nz : -(self.Nz - self.NzOrig)//2 + self.eFOVShift_Nz - 1] = 1
+                    self.eFOVIndices = np.zeros((NzE,1), dtype=np.uint8)
+                    self.eFOVIndices[padZ : NzE - padZ] = 1
                 self.NzPrior = np.sum(self.eFOVIndices, dtype=np.uint32)
-                self.maskPrior = np.zeros((self.Nx, self.Ny), dtype=np.uint8)
-                self.maskPrior[(self.Nx - self.NxOrig)//2 - self.eFOVShift_Nx : -(self.Nx - self.NxOrig)//2 - self.eFOVShift_Nx - 1, (self.Ny - self.NyOrig)//2 - self.eFOVShift_Ny : -(self.Ny - self.NyOrig)//2 - self.eFOVShift_Ny - 1] = 1
+                self.maskPrior = np.zeros((NxE, NyE), dtype=np.uint8)
+                self.maskPrior[padX : NxE - padX, padY : NyE - padY] = 1
                 self.NxPrior = np.sum(self.maskPrior[:,int(matlabRound(self.maskPrior.shape[1]/2))], dtype=np.uint32)
                 self.NyPrior = np.sum(self.maskPrior[int(matlabRound(self.maskPrior.shape[0]/2)),:], dtype=np.uint32)
                 if self.useMaskBP:
-                    self.maskPrior = self.maskPrior + (1 - self.maskBP)
+                    # MATLAB: maskPrior - uint8(~maskBP), saturating at 0. A 3D maskBP expands the 2D maskPrior along z
+                    maskBPE = np.asarray(self.maskBP)
+                    if maskBPE.ndim < 2:
+                        maskBPE = maskBPE.reshape((NxE, NyE) if maskBPE.size == NxE * NyE else (NxE, NyE, NzE), order='F')
+                    notMaskBP = (maskBPE == 0).astype(np.int32)
+                    maskPriorE = self.maskPrior.astype(np.int32)
+                    if notMaskBP.ndim == 3:
+                        maskPriorE = maskPriorE[:, :, None]
+                    self.maskPrior = np.asfortranarray(np.clip(maskPriorE - notMaskBP, 0, 1).astype(np.uint8))
         else:
             self.eFOVShift = [0, 0, 0]
             # C struct fields require plain ints, including when dimensions are arrays.
@@ -2791,6 +3175,7 @@ class projectorClass:
             ('largeDim', ctypes.c_bool),
             ('usingLinearizedData', ctypes.c_bool),
             ('loadTOF', ctypes.c_bool),
+            ('randomsTOF', ctypes.c_bool),
             ('storeResidual', ctypes.c_bool),
             ('FISTA_acceleration', ctypes.c_bool),
             ('meanFP', ctypes.c_bool),
@@ -2806,6 +3191,7 @@ class projectorClass:
             ('deblurring', ctypes.c_bool),
             ('useMAD', ctypes.c_bool),
             ('useImages', ctypes.c_bool),
+            ('useHalf', ctypes.c_bool),
             ('useEFOV', ctypes.c_bool),
             ('CTAttenuation', ctypes.c_bool),
             ('offsetCorrection', ctypes.c_bool),
@@ -2834,6 +3220,7 @@ class projectorClass:
             ('use_32bit_atomics', ctypes.c_bool),
             ('compute_sensitivity_image', ctypes.c_bool),
             ('useFDKWeights', ctypes.c_bool),
+            ('useLayeredBP', ctypes.c_bool),
             ('useIndexBasedReconstruction', ctypes.c_bool),
             ('stochasticSubsetSelection', ctypes.c_bool),
             ('useTotLength', ctypes.c_bool),
@@ -2858,7 +3245,7 @@ class projectorClass:
             ('BSREM', ctypes.c_bool),
             ('ROSEM_MAP', ctypes.c_bool),
             ('OSL_RBI', ctypes.c_bool),
-            ('OSL_COSEM', ctypes.c_bool),
+            ('OSL_COSEM', ctypes.c_uint32),
             ('PKMA', ctypes.c_bool),
             ('SPS', ctypes.c_bool),
             ('PDHG', ctypes.c_bool),
@@ -2885,8 +3272,6 @@ class projectorClass:
             ('RDP', ctypes.c_bool),
             ('GGMRF', ctypes.c_bool),
             ('ProxTV', ctypes.c_bool),
-            ('ProxRDP', ctypes.c_bool),
-            ('ProxNLM', ctypes.c_bool),
             ('temporalTV', ctypes.c_bool),
             ('temporal_smoothness', ctypes.c_bool),
             ('MAP', ctypes.c_bool),
@@ -2894,6 +3279,7 @@ class projectorClass:
             ('mDim', ctypes.c_uint64),
             ('nIterSaved', ctypes.c_uint64),
             ('sizeScat', ctypes.c_uint64),
+            ('sizeRandoms', ctypes.c_uint64),
             ('eFOV', ctypes.c_uint64),
             ('sizeX', ctypes.c_uint64),
             ('sizeZ', ctypes.c_uint64),
@@ -3016,6 +3402,7 @@ class projectorClass:
             ('tr_offsets', ctypes.POINTER(ctypes.c_uint32)),
             ('a_L', ctypes.POINTER(ctypes.c_float)),
             ('fmh_weights', ctypes.POINTER(ctypes.c_float)),
+            # Keep this sequence in sync with scalarStruct in libHeader.h.
             ('blurPlanesF', ctypes.POINTER(ctypes.c_float)),
             ('blurPlanes2F', ctypes.POINTER(ctypes.c_float)),
             ('CDRFCoeffs6', ctypes.POINTER(ctypes.c_float)),
@@ -3025,4 +3412,9 @@ class projectorClass:
             ('bpRot6', ctypes.c_uint32),
             ('radiusPerProj', ctypes.POINTER(ctypes.c_float)),
             ('CORtoDetectorSurface', ctypes.c_float),
+            ('normSens', ctypes.POINTER(ctypes.c_float)),
+            ('sensXY', ctypes.POINTER(ctypes.c_uint32)),
+            ('sensZ', ctypes.POINTER(ctypes.c_uint32)),
+            ('sizeNormSens', ctypes.c_uint64),
+            ('sensBins', ctypes.c_uint32),
         ]

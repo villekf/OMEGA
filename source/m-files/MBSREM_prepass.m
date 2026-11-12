@@ -43,7 +43,7 @@ block1=int32(1);
 temp = pseudot;
 if ~isempty(temp) && temp > 0
     for kk = int32(1) : temp
-        pseudot(kk) = int32(options.cryst_per_block + 1) * kk;
+        pseudot(kk) = int32(max(options.cryst_per_block_axial) + 1) * kk;
     end
 end
 

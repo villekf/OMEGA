@@ -186,6 +186,7 @@
     const uint d_nRows = scalarParams.nRowsD; \
     const uint d_nCols = scalarParams.nColsD; \
     const float2 d_dPitch = scalarParams.dPitch; \
+    const float r = scalarParams.helicalRadius; \
     const uint3 d_N = scalarParams.d_N; \
     const float3 b = scalarParams.b; \
     const float2 d_Size = scalarParams.dSize5; \
@@ -197,6 +198,7 @@
     const uint d_nRows = scalarParams.nRowsD; \
     const uint d_nCols = scalarParams.nColsD; \
     const float2 d_dPitch = scalarParams.dPitch; \
+    const float r = scalarParams.helicalRadius; \
     const uint3 d_N = scalarParams.d_N; \
     const float3 b = scalarParams.b; \
     const float3 d_d = scalarParams.d; \
@@ -323,6 +325,7 @@ using metal::dot;
 #define BUF15 [[buffer(15)]]
 #define BUF16 [[buffer(16)]]
 #define BUF17 [[buffer(17)]]
+
 #define BUF18 [[buffer(18)]]
 #define BUF19 [[buffer(19)]]
 #define BUF20 [[buffer(20)]]
@@ -336,6 +339,7 @@ using metal::dot;
 #define BUF28 [[buffer(28)]]
 #define BUF29 [[buffer(29)]]
 #define BUF30 [[buffer(30)]]
+
 #define CEIL metal::ceil
 #define CINT(a)   static_cast<int>(a)
 #define CINT_rtz(a) static_cast<int>(metal::trunc((a)))
@@ -1281,6 +1285,25 @@ void atomicAdd(volatile CLGLOBAL float *addr, float val) {
 #define TOF_NARR NBINS
 #endif
 
+// Slab-level TOF accumulation of the forward projection of the orthogonal and volume projectors (ORTH, CUDA and HIP). All the voxels of a
+// slab (the voxels around one crossing of the central ray) share the same TOF weights, so the sum over the voxels is formed first and the
+// NBINS weights are applied once per slab instead of once per voxel. The weights are then not needed during the voxel loops: the per-bin
+// array of the weights is not live over them, which takes the kernel from 168 to 128 registers with 15 bins (12 instead of 16 resident
+// warps per multiprocessor on an RTX 4090; measured 14-15 % faster). The arithmetic is the same up to the order of the float additions.
+// HIP (RX 7900 XT, gfx1100): the register use barely changes (148 to 145 VGPRs) but the forward projection is about 9 % faster from
+// applying the weights once per slab. With NVIDIA OpenCL the effect was measured to be mixed (15 bins faster, 13 bins slower), so
+// OpenCL keeps the per-voxel weights.
+// Not used for listmode data (single bin), multi-ray, SPECT or the backprojection (atomics-bound, no gain)
+#if (defined(CUDA) || defined(HIP)) && !defined(METAL) && defined(TOF) && defined(ORTH) && defined(FP) && NBINS > 1 && !defined(LISTMODE) && !defined(N_RAYS) && !defined(SPECT)
+#define TOFSLAB
+// Applies the weights of a slab to the sum of its voxels
+DEVICE void TOFSlabAdd(float* ax, const float* TOFWeights, const float slabSum) {
+#pragma unroll
+	for (int to = 0; to < NBINS; to++)
+		ax[to] = FMAD(TOFWeights[to], slabSum, ax[to]);
+}
+#endif
+
 #ifdef TOF //////////////// TOF ////////////////
 // Exact bin-integrated TOF weights
 //
@@ -1651,6 +1674,18 @@ DEVICE void forwardProject(const float local_ele, PTR_THR float *ax, const typeT
 #endif
 }
 
+#ifdef TOFSLAB
+// The voxel of a slab: only the sum over the voxels is formed here (TOFSlabAdd applies the TOF weights, see TOFSLAB)
+DEVICE void denominatorSlab(PTR_THR float *slabSum, const typeT localInd, float local_ele, IMTYPE d_OSEM, float* TOFWeights) {
+	float apu = 0.f;
+	forwardProject(local_ele, &apu, localInd, d_OSEM);
+	*slabSum += apu;
+}
+#define ORTH_DENOMINATOR denominatorSlab
+#else
+#define ORTH_DENOMINATOR denominator
+#endif
+
 // Computes the forward projection
 // Includes TOF-specific weighting
 DEVICE void denominator(PTR_THR float *ax, const typeT localInd, float local_ele, IMTYPE d_OSEM
@@ -1875,6 +1910,19 @@ DEVICE void getDetectorCoordinatesCT(const CLGLOBAL float* CLRESTRICT d_xyz,
 	(*d).x += r * (COSF(angle + dtheta) - COSF(angle));
 	(*d).y -= r * (SINF(angle + dtheta) - SINF(angle));
 	(*d).z += indeksi.y * d_dPitch.y;
+#if defined(PROJ5) && defined(FP)
+	// Midpoints of the pixel edges. The edges in the row direction are half a pixel away along the arc, computed by rotating the
+	// pixel centre around the arc centre so that the accuracy does not depend on the magnitude of the angle
+	const float halfPixel = d_dPitch.x / (2.f * r);
+	const float cosH1 = COSF(halfPixel) - 1.f;
+	const float sinH = SINF(halfPixel);
+	const float wx = r * COSF(angle + dtheta);
+	const float wy = -r * SINF(angle + dtheta);
+	*dR = CMFLOAT3((*d).x + wx * cosH1 - wy * sinH, (*d).y + wy * cosH1 + wx * sinH, (*d).z);
+	*dL = CMFLOAT3((*d).x + wx * cosH1 + wy * sinH, (*d).y + wy * cosH1 - wx * sinH, (*d).z);
+	*dU = CMFLOAT3((*d).x, (*d).y, (*d).z + d_dPitch.y * 0.5f);
+	*dD = CMFLOAT3((*d).x, (*d).y, (*d).z - d_dPitch.y * 0.5f);
+#endif
 #else
 	id = i.z * NA;
 #if defined(PITCH)
@@ -2200,6 +2248,25 @@ DEVICE void getDetectorCoordinates(const CLGLOBAL uint *d_xyindex, const CLGLOBA
 #endif
 }
 #endif
+#endif
+
+#if defined(SENS) && defined(NORMSENS)
+// Get the sinogram normalization of the detector pair (detA, detB) and the ring pair indz in the list-mode sensitivity image.
+// d_sensXY maps the detector pair to the sinogram bin (bits 0..30) and to a flag (bit 31) telling that the rings have to be exchanged,
+// d_sensZ maps the (possibly exchanged) ring pair to the sinogram plane. 0xFFFFFFFF in either table = the pair is outside the sinogram,
+// in which case zero is returned
+DEVICE float getNormSens(const CLGLOBAL float* d_norm, const CLGLOBAL uint* d_sensXY, const CLGLOBAL uint* d_sensZ, const int detA, const int detB,
+	const int2 indz, const uint d_det_per_ring, const uint rings) {
+	const uint xy = d_sensXY[(size_t)detA + (size_t)detB * (size_t)d_det_per_ring];
+	if (xy == 0xFFFFFFFFu)
+		return 0.f;
+	const int ringA = (xy & 0x80000000u) ? indz.y : indz.x;
+	const int ringB = (xy & 0x80000000u) ? indz.x : indz.y;
+	const uint plane = d_sensZ[(size_t)ringA + (size_t)ringB * (size_t)rings];
+	if (plane == 0xFFFFFFFFu)
+		return 0.f;
+	return d_norm[(size_t)(xy & 0x7FFFFFFFu) + (size_t)plane * (size_t)SENSBINS];
+}
 #endif
 
 #if !defined(SUBSETS) && !defined(CT)
@@ -2609,7 +2676,7 @@ DEVICE float voxelValue(const float t0, const float tc, const float L) {
 // compute the distance that the ray traverses in the current voxel
 DEVICE float compute_element(PTR_THR float* t0, PTR_THR float* tc, const float L, const float tu, const int u, PTR_THR int* temp_ijk, PTR_THR bool* pass) {
 #ifdef ORTH
-	// The voxel [tc, t0] overlaps the line segment t = [0, 1] iff t0 >= 0 and tc <= 1 (this includes a segment that is
+	// The voxel [tc, t0] overlaps the line segment t = [0, 1] if and only if t0 >= 0 and tc <= 1 (this includes a segment that is
 	// completely inside the voxel, where neither t0 nor tc is inside [0, 1])
 	*pass = (*t0 >= 0.f && *tc <= 1.f);
 	float local_ele = 0.f;
@@ -2777,6 +2844,21 @@ DEVICE void forwardProjectAF(CLGLOBAL float* output, PTR_THR float *ax, size_t i
 #endif
 
 #ifdef HELICAL
+// The ray parameter t where the ray s + t * v leaves the detector cylinder around (xc, yc), c = |s - (xc, yc)|^2 - r^2. The source
+// is inside the cylinder, so this is the only positive root. t only depends on the transaxial direction of v
+DEVICE float rayArcDistance(const float3 s, const float3 v, const float xc, const float yc, const float c) {
+	const float a = v.x * v.x + v.y * v.y;
+	const float b = 2.f * (v.x * (s.x - xc) + v.y * (s.y - yc));
+	return (-b + SQRT(b * b - 4.f * a * c)) / (2.f * a);
+}
+
+// Signed arc angle of the point s + t * v from the detector center, positive towards increasing row index
+DEVICE float rayArcAngle(const float3 s, const float3 v, const float t, const float xc, const float yc, const float cosA, const float sinA) {
+	const float wx = s.x + v.x * t - xc;
+	const float wy = s.y + v.y * t - yc;
+	return ATAN2(-wx * sinA - wy * cosA, wx * cosA - wy * sinA);
+}
+
 DEVICE int rayArcIntersection(
     const float3 s,
     const float3 v,
@@ -2784,8 +2866,8 @@ DEVICE int rayArcIntersection(
     const float cosA, const float sinA,
     const float zMin, const float zMax,
     const float thetaSpan,
-	float* theta,
-    float3* intersection
+	PTR_THR float* theta,
+    PTR_THR float3* intersection
 ) {
 	const float fx = s.x - xc;
 	const float fy = s.y - yc;
@@ -2819,7 +2901,7 @@ DEVICE void normalizeCurvedCoordinates(float3 xyz,
 	float zMin, float zMax,
     float thetaSpan,
 	float theta, 
-	float* u, float* v) {
+	PTR_THR float* u, PTR_THR float* v) {
 
     *u = theta / thetaSpan;
 
@@ -3014,10 +3096,13 @@ DEVICE float NLMGradient(NLM_IN_T uIn,
                 output += weight * (uabs - uabs / (fabs(u) / gamma + FLOAT_ONE));
 #elif NLTYPE == 6
                 // NLGGMRF
+                // powr(0, 0) is NaN in OpenCL, so skip identical voxels (their contribution is zero)
                 const float delta = uj - uk;
-                const float dcpq = POWR(fabs(delta / c), p - q);
-                const float deltapqc = FLOAT_ONE + dcpq;
-                output += weight * (POWR(fabs(delta), p - FLOAT_ONE) / deltapqc) * (p - gamma * ((dcpq * cpq) / deltapqc)) * sign(delta);
+                if (delta != FLOAT_ZERO) {
+                    const float dcpq = POWR(fabs(delta / c), p - q);
+                    const float deltapqc = FLOAT_ONE + dcpq;
+                    output += weight * (POWR(fabs(delta), p - FLOAT_ONE) / deltapqc) * (p - gamma * ((dcpq * cpq) / deltapqc)) * sign(delta);
+                }
 #elif NLTYPE == 7
 				// NLGM (Non-local Geman-McClure)
                 const float delta = uj - uk;
@@ -3378,9 +3463,9 @@ DEVICE float TVGradient(TV_IN_T u, const int x, const int y, const int z, const 
     float3 w3 = (u3) / sigma;
     w3 = EXP3(-w3 * w3);
 #ifdef USEMAD
-    return -(FMAD(w4.x, u4.x, FMAD(w4.y, u4.y, w4.z * u4.z))) / pvalijk + (w1.x * (uijk - uijkM.x)) / sqrtVal(u1, epps, w1) + (w2.y * (uijk - uijkM.y)) / sqrtVal(u2, epps, w2) + (w3.y * (uijk - uijkM.z)) / sqrtVal(u3, epps, w3);
+    return -(FMAD(w4.x, u4.x, FMAD(w4.y, u4.y, w4.z * u4.z))) / pvalijk + (w1.x * (uijk - uijkM.x)) / sqrtVal(u1, epps, w1) + (w2.y * (uijk - uijkM.y)) / sqrtVal(u2, epps, w2) + (w3.z * (uijk - uijkM.z)) / sqrtVal(u3, epps, w3);
 #else
-    return -(w4.x * u4.x + w4.y * u4.y + w4.z * u4.z) / pvalijk + (w1.x * (uijk - uijkM.x)) / sqrtVal(u1, epps, w1) + (w2.y * (uijk - uijkM.y)) / sqrtVal(u2, epps, w2) + (w3.y * (uijk - uijkM.z)) / sqrtVal(u3, epps, w3);
+    return -(w4.x * u4.x + w4.y * u4.y + w4.z * u4.z) / pvalijk + (w1.x * (uijk - uijkM.x)) / sqrtVal(u1, epps, w1) + (w2.y * (uijk - uijkM.y)) / sqrtVal(u2, epps, w2) + (w3.z * (uijk - uijkM.z)) / sqrtVal(u3, epps, w3);
 #endif
 #else
 #ifdef ANATOMICAL1 // TV type 1

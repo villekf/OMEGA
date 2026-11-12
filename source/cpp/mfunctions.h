@@ -24,9 +24,9 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 		inputScalars.FPType = 2;
 	else if (inputScalars.projector_type == 3 || inputScalars.projector_type == 31 || inputScalars.projector_type == 34 || inputScalars.projector_type == 32 || inputScalars.projector_type == 33)
 		inputScalars.FPType = 3;
-	else if (inputScalars.projector_type == 41 || inputScalars.projector_type == 4 || inputScalars.projector_type == 42 || inputScalars.projector_type == 43 || inputScalars.projector_type == 45 || inputScalars.projector_type == 47)
+	else if (inputScalars.projector_type == 41 || inputScalars.projector_type == 4 || inputScalars.projector_type == 42 || inputScalars.projector_type == 43 || inputScalars.projector_type == 45 || inputScalars.projector_type == 44 || inputScalars.projector_type == 47)
 		inputScalars.FPType = 4;
-	else if (inputScalars.projector_type == 51 || inputScalars.projector_type == 5 || inputScalars.projector_type == 54 || inputScalars.projector_type == 57)
+	else if (inputScalars.projector_type == 51 || inputScalars.projector_type == 5 || inputScalars.projector_type == 54 || inputScalars.projector_type == 55 || inputScalars.projector_type == 57)
 		inputScalars.FPType = 5;
 	else if (inputScalars.projector_type == 6)
 		inputScalars.FPType = 6;
@@ -39,9 +39,9 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 		inputScalars.BPType = 2;
 	else if (inputScalars.projector_type == 13 || inputScalars.projector_type == 43 || inputScalars.projector_type == 23 || inputScalars.projector_type == 33 || inputScalars.projector_type == 3)
 		inputScalars.BPType = 3;
-	else if (inputScalars.projector_type == 14 || inputScalars.projector_type == 4 || inputScalars.projector_type == 24 || inputScalars.projector_type == 34 || inputScalars.projector_type == 54 || inputScalars.projector_type == 74)
+	else if (inputScalars.projector_type == 14 || inputScalars.projector_type == 4 || inputScalars.projector_type == 24 || inputScalars.projector_type == 34 || inputScalars.projector_type == 54 || inputScalars.projector_type == 44 || inputScalars.projector_type == 74)
 		inputScalars.BPType = 4;
-	else if (inputScalars.projector_type == 15 || inputScalars.projector_type == 5 || inputScalars.projector_type == 45 || inputScalars.projector_type == 75)
+	else if (inputScalars.projector_type == 15 || inputScalars.projector_type == 5 || inputScalars.projector_type == 45 || inputScalars.projector_type == 55 || inputScalars.projector_type == 75)
 		inputScalars.BPType = 5;
 	else if (inputScalars.projector_type == 6)
 		inputScalars.BPType = 6;
@@ -84,6 +84,9 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	if (mxGetFieldNumber(options, "usingLinearizedData") >= 0)
 		inputScalars.usingLinearizedData = getScalarBool(options, 0, "usingLinearizedData");
 	inputScalars.loadTOF = getScalarBool(options, 0, "loadTOF");
+	// TOF-resolved randoms/scatter (optional field, set by loadCorrections), the default is a non-TOF additive term
+	if (mxGetFieldNumber(options, "randomsTOF") >= 0)
+		inputScalars.randomsTOF = getScalarBool(options, 0, "randomsTOF");
 	inputScalars.storeResidual = getScalarBool(options, 0, "storeResidual");
 	inputScalars.FISTAAcceleration = getScalarBool(options, 0, "FISTA_acceleration");
 	inputScalars.stochastic = getScalarBool(options, 0, "stochasticSubsetSelection");
@@ -669,7 +672,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		}
 	}
 	// General variables for neighborhood-based methods
-	if ((MethodList.L || MethodList.FMH || MethodList.WeightedMean || MethodList.Quad || MethodList.Huber || MethodList.MRP || MethodList.NLM || MethodList.ProxNLM || MethodList.hyperbolic || MethodList.RDP
+	if ((MethodList.L || MethodList.FMH || MethodList.WeightedMean || MethodList.Quad || MethodList.Huber || MethodList.MRP || MethodList.NLM || MethodList.hyperbolic || MethodList.RDP
 		|| MethodList.GGMRF) && MethodList.MAP) {
 		// Neighborhood size
 		w_vec.Ndx = getScalarUInt32(getField(options, 0, "Ndx"), -24);
@@ -710,7 +713,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		w_vec.data.SATVPhi = getScalarFloat(getField(options, 0, "hyperbolicDelta"), -23);
 	}
 #endif
-	if ((MethodList.RDP && MethodList.MAP) || MethodList.ProxRDP) {
+	if (MethodList.RDP && MethodList.MAP) {
 		w_vec.RDP_gamma = getScalarFloat(getField(options, 0, "RDP_gamma"), -29);
 		w_vec.RDPLargeNeighbor = getScalarBool(getField(options, 0, "RDPIncludeCorners"), -29);
 		w_vec.RDP_anatomical = getScalarBool(getField(options, 0, "RDP_use_anatomical"), -29);
@@ -816,7 +819,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		w_vec.h_ACOSEM = getScalarFloat(getField(options, 0, "h"), -43);
 		w_vec.h_ACOSEM_2 = 1.f / w_vec.h_ACOSEM;
 	}
-	if ((MethodList.NLM && MethodList.MAP) || MethodList.ProxNLM) {
+	if (MethodList.NLM && MethodList.MAP) {
 		w_vec.NLM_anatomical = getScalarBool(getField(options, 0, "NLM_use_anatomical"), -47);
 		w_vec.NLTV = getScalarBool(getField(options, 0, "NLTV"), -48);
 		w_vec.NLRD = getScalarBool(getField(options, 0, "NLRD"), -48);
@@ -946,6 +949,9 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		}
 	}
 	inputScalars.useFDKWeights = getScalarBool(getField(options, 0, "useFDKWeights"), -49);
+	// Optional (off when the field is missing): layered 2D texture for the CT projector type 4 backprojection measurements
+	if (mxGetFieldNumber(options, "useLayeredBP") >= 0)
+		inputScalars.useLayeredBP = getScalarBool(getField(options, 0, "useLayeredBP"), -49);
 	if (MethodList.FDK && inputScalars.CT && inputScalars.useFDKWeights) {
 		w_vec.angles = getSingles(options, "angles");
 		inputScalars.DSC = getScalarFloat(getField(options, 0, "sourceToCRot"), -63);
@@ -997,8 +1003,6 @@ inline void get_rec_methods(const mxArray* options, RecMethods& MethodList) {
 	MethodList.GGMRF = getScalarBool(getField(options, 0, "GGMRF"), -61);
 	MethodList.ProxTV = getScalarBool(getField(options, 0, "ProxTV"), -61);
 	MethodList.ProxTGV = getScalarBool(getField(options, 0, "TGV"), -61);
-	MethodList.ProxRDP = getScalarBool(getField(options, 0, "ProxRDP"), -61);
-	MethodList.ProxNLM = getScalarBool(getField(options, 0, "ProxNLM"), -61);
 
     // Temporal priors
     MethodList.TemporalSmoothness = getScalarBool(getField(options, 0, "temporal_smoothness"), -61);

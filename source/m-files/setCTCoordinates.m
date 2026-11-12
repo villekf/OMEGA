@@ -43,7 +43,7 @@ if options.flip_image && isfield(options,'x')
     options.y = -options.y;
     if isfield(options, 'uV')
         options.uV(2,:) = -options.uV(2,:);
-        if (isfield(options,'pitchRoll') && ~isempty(options.pitchRoll))
+        if (isfield(options,'pitchRoll') && ~isempty(options.pitchRoll)) || size(options.uV, 1) == 6
             options.uV(5,:) = -options.uV(5,:);
         end
     end
@@ -58,18 +58,10 @@ if isfield(options, 'uV')
 end
 if ((isfield(options,'pitchRoll') && ~isempty(options.pitchRoll)) && isfield(options, 'uV')) || (isfield(options, 'uV') && size(options.uV, 1) == 6)
     options.pitch = true;
-    options.z(1,:) = options.z(1,:) * options.dPitchX;
-    options.z(2,:) = options.z(2,:) * options.dPitchX;
-    options.z(3,:) = options.z(3,:) * options.dPitchY;
-    %     if options.projector_type == 5
-    %         options.z(4,:) = 0;
-    %         options.z(5,:) = 0;
-    %         options.z(3,:) = 0;
-    %     else
-    options.z(4,:) = options.z(4,:) * options.dPitchX;
-    options.z(5,:) = options.z(5,:) * options.dPitchX;
-    options.z(6,:) = options.z(6,:) * options.dPitchY;
-%     end
+    % Scale by vector: the detector-row direction u (rows 1-3) by dPitchX and
+    % the detector-column direction v (rows 4-6) by dPitchY
+    options.z(1:3,:) = options.z(1:3,:) * options.dPitchX;
+    options.z(4:6,:) = options.z(4:6,:) * options.dPitchY;
 elseif isfield(options, 'uV')
     options.z(1,:) = options.z(1,:) * options.dPitchX;
     options.z(2,:) = options.z(2,:) * options.dPitchX;

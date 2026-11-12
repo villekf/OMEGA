@@ -83,7 +83,7 @@ elseif options.projector_type == 34
     image_properties.Projector = 'Volume-based ray tracer for forward projection, interpolation-based ray tracer for backprojection';
 elseif options.projector_type == 24
     image_properties.Projector = 'Orthogonal distance-based ray tracer for forward projection, interpolation-based ray tracerfor backprojection';
-elseif options.projector_type == 4
+elseif options.projector_type == 4 || options.projector_type == 44
     image_properties.Projector = 'Interpolation-based ray tracer';
 elseif options.projector_type == 14
     image_properties.Projector = 'Improved Siddon for forward projection, interpolation-based for backprojection';
@@ -97,7 +97,7 @@ elseif options.projector_type == 54
     image_properties.Projector = 'Branchless distance-driven for forward projection, interpolation-based for backprojection';
 elseif options.projector_type == 51
     image_properties.Projector = 'Branchless distance-driven for forward projection, improved Siddon for backprojection';
-elseif options.projector_type == 5
+elseif options.projector_type == 5 || options.projector_type == 55
     image_properties.Projector = 'Branchless distance-driven projector';
 elseif options.projector_type == 6
     image_properties.Projector = 'SPECT rotation-based projector';
@@ -163,9 +163,9 @@ if ~options.useMultiResolutionVolumes
     else
         image_properties.axialFOV = options.axial_fov;
     end
-    image_properties.voxelSizeX = image_properties.FOVx / image_properties.Nx;
-    image_properties.voxelSizeY = image_properties.FOVy / image_properties.Ny;
-    image_properties.voxelSizeZ = image_properties.axialFOV / image_properties.Nz;
+    image_properties.voxelSizeX = image_properties.FOVx / double(image_properties.Nx);
+    image_properties.voxelSizeY = image_properties.FOVy / double(image_properties.Ny);
+    image_properties.voxelSizeZ = image_properties.axialFOV / double(image_properties.Nz);
 else
     image_properties.Nx = options.Nx(1);
     image_properties.Ny = options.Ny(1);
@@ -499,7 +499,7 @@ if options.implementation == 2
     image_properties.ImagesWereUsed = options.useImages;
     image_properties.MADWasUsed = options.useMAD;
 end
-if options.projector_type == 4 || options.projector_type == 45
+if options.projector_type == 4 || options.projector_type == 44 || options.projector_type == 45
     image_properties.interpolationLength = options.dL;
 end
 % pz{end,1} = image_properties;

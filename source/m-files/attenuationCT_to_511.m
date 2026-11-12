@@ -6,9 +6,19 @@ function attenuation_factors = attenuationCT_to_511(Nx, Ny, Nz, KVP, varargin)
 %interpolated. The calculated attenuation coefficients can also be saved on
 %disk.
 %
+% By default water (0 HU) is mapped to 0.093 cm^-1. This is an effective
+% (broad-beam) value that partly compensates for the scattered events that
+% remain in the data when no scatter correction is applied. When scatter
+% correction is used, the scattered events are modelled separately and the
+% narrow-beam value of about 0.096 cm^-1 should be used instead (otherwise
+% the center of large objects is under-corrected, by about 6.5 % for a 21 cm
+% water chord). The value can be changed with the optional waterMu input,
+% which scales the whole converted curve by waterMu / 0.093 (air stays at 0).
+%
 % Examples:
 %   attenuation_factors = attenuationCT_to_511(Nx, Ny, Nz, KVP)
 %   attenuation_factors = attenuationCT_to_511(Nx, Ny, Nz, KVP, attenuation_data, name)
+%   attenuation_factors = attenuationCT_to_511(Nx, Ny, Nz, KVP, attenuation_data, name, 0.096)
 % INPUTS:
 %   Nx = Image dimension in x-axis
 %   Ny = Image dimension in y-axis
@@ -20,6 +30,10 @@ function attenuation_factors = attenuationCT_to_511(Nx, Ny, Nz, KVP, varargin)
 %   name = Examination name (optional). If specified, will be used to name
 %   the MAT-file containing the attenuation images. If omitted or left
 %   empty, no file will be saved.
+%   waterMu = The 511 keV attenuation coefficient of water in cm^-1
+%   (optional). The default is 0.093 (effective value, no scatter
+%   correction). Use 0.096 (narrow-beam value) when scatter correction is
+%   applied. If omitted or left empty, 0.093 is used.
 %
 % OUTPUTS:
 %   attenuation_factors = 511 keV attenuation coefficients
@@ -48,10 +62,16 @@ function attenuation_factors = attenuationCT_to_511(Nx, Ny, Nz, KVP, varargin)
 %%% Scale the attenuation coefficients %%%
 %%% trilinear interpolation            %%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-optargs = {[], []};
+optargs = {[], [], []};
 optargs(1:length(varargin)) = varargin;
 reresized = optargs{1};
 name = optargs{2};
+waterMu = optargs{3};
+if isempty(waterMu)
+    waterMu = 0.093;
+elseif ~isnumeric(waterMu) || ~isscalar(waterMu) || ~isfinite(waterMu) || waterMu <= 0
+    error('waterMu must be a positive scalar (attenuation coefficient of water in cm^-1)')
+end
 % Values from: Accuracy of CT-based attenuation correction in PET/CT bone imaging
 if KVP == 100
     a = [9.3 4 0.5]*10^(-5);
@@ -112,6 +132,11 @@ vali = -1000:tarkkuus:3000;
 % plot(vali,inter)
 %asetetaan sopivasti
 attenuation_factors = interp1(vali',inter',reresized(:),'linear','extrap');
+% Scale the whole curve to the requested water attenuation (the tabulated
+% values above correspond to 0.093 cm^-1 for water)
+if waterMu ~= 0.093
+    attenuation_factors = attenuation_factors * (waterMu / 0.093);
+end
 attenuation_factors = reshape(attenuation_factors,Nx,Ny,Nz);  
 if ~isempty(name)
     save(['511keV_attenuation_coefficients_for_' name '.mat'], 'attenuation_factors')

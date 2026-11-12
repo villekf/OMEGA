@@ -263,10 +263,7 @@ inline int hyperbolic(const scalarStruct& inputScalars, const af::array& ima, co
 inline int proxTV(const af::array& im, const scalarStruct& inputScalars, AF_im_vectors& vec, ProjectorClass& proj, const Weighting& w_vec, af::array& dU, const float beta, const uint32_t timestep) {
 	int status = 0;
 #ifndef CPU
-	status = proxTVGradAF(im, vec.qProxTV, inputScalars, w_vec.sigma2CP[timestep][0], vec.vProxTGV, proj);
-	if (status != 0)
-		return -1;
-	status = proxTVQAF(vec.qProxTV, beta, proj);
+	status = proxTVGradAF(im, vec.qProxTV, inputScalars, w_vec.sigma2CP[timestep][0], beta, vec.vProxTGV, proj);
 	if (status != 0)
 		return -1;
 	status = proxTVDivAF(vec.qProxTV, dU, inputScalars, proj, timestep);
@@ -296,10 +293,7 @@ inline int proxTGV(const af::array& im, const scalarStruct& inputScalars, AF_im_
 		mexPrintBase("vec.qProxTGV = %f\n", af::sum<float>(vec.qProxTGV[0]));
 		mexEval();
 	}
-	status = proxTGVSymmDerivAF(vec.vProxTGV, vec.qProxTGV, inputScalars, w_vec.sigma2CP[timestep][0], proj);
-	if (status != 0)
-		return -1;
-	status = proxTGVQAF(vec.qProxTGV, inputScalars, w_vec.alpha1CPTGV, proj);
+	status = proxTGVSymmDerivAF(vec.vProxTGV, vec.qProxTGV, inputScalars, w_vec.sigma2CP[timestep][0], w_vec.alpha1CPTGV, proj);
 	if (status != 0)
 		return -1;
 	if (DEBUG) {
@@ -483,7 +477,7 @@ inline int applySpatialPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMeth
 	}
 	if (inputScalars.verbose >= 3 && (MethodList.MRP || MethodList.Quad || MethodList.Huber || MethodList.L || MethodList.FMH || MethodList.TV 
 		|| MethodList.WeightedMean || MethodList.AD || MethodList.APLS || MethodList.TGV || MethodList.NLM || MethodList.RDP || MethodList.ProxTGV 
-		|| MethodList.ProxTV || MethodList.ProxRDP || MethodList.ProxNLM || MethodList.GGMRF))
+		|| MethodList.ProxTV ||  MethodList.GGMRF))
 		mexPrint("Spatial prior computed");
 	af::eval(*dU);
 	return status;

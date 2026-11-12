@@ -36,7 +36,8 @@
 * d_nProjections = Number of projections/sinograms,
 * d_xy/z = detector x/y/z-coordinates,
 * rings = Number of detector rings, PET only and only when computing listmode sensitivity image,
-* d_norm = normalization coefficients,
+* d_norm = normalization coefficients (a sinogram with NORMSENS, see d_sensXY/Z),
+* d_sensXY/Z = lookup tables from the detector pair/ring pair to the bin/plane of the d_norm sinogram (NORMSENS only, listmode sensitivity image),
 * d_scat = scatter coefficients when using the system matrix method (multiplication), 
 * d_Summ = buffer for d_Summ (sensitivity image),
 * d_Nxyz = image size in x/y/z- dimension, float3 or three floats (if PYTHON is defined),
@@ -122,7 +123,13 @@ void projectorType123(
 	CONSTANT float* d_z [[buffer(9)]],
 #endif
 #ifdef NORM ///////////////////////// PET NORMALIZATION DATA /////////////////////////
+#if defined(SENS) && defined(NORMSENS) // Sinogram normalization of the list-mode sensitivity image with the lookup tables
+	const CLGLOBAL float* d_norm [[buffer(10)]],
+	const CLGLOBAL uint* d_sensXY [[buffer(22)]],
+	const CLGLOBAL uint* d_sensZ [[buffer(23)]],
+#else
 	CONSTANT float* d_norm [[buffer(10)]],
+#endif
 #endif
 #ifdef SCATTER ///////////////////////// EXTRA CORRECTION DATA /////////////////////////
 	CONSTANT float* d_scat [[buffer(11)]], 
@@ -259,7 +266,10 @@ void projectorType123(
 	///////////////////////// END LISTMODE DATA /////////////////////////
 	///////////////////////// PET NORMALIZATION DATA /////////////////////////
 #ifdef NORM
-	const CLGLOBAL float* CLRESTRICT d_norm, 
+	const CLGLOBAL float* CLRESTRICT d_norm,
+#if defined(SENS) && defined(NORMSENS)
+	const CLGLOBAL uint* CLRESTRICT d_sensXY, const CLGLOBAL uint* CLRESTRICT d_sensZ,
+#endif
 #endif
 	///////////////////////// END PET NORMALIZATION DATA /////////////////////////
 	///////////////////////// EXTRA CORRECTION DATA /////////////////////////
@@ -448,6 +458,14 @@ void projectorType123(
 	float ax[TOF_NARR];
 	PTR_THR float* const axP = ax;
 #endif
+#ifdef TOFSLAB
+	// The voxel sum of a slab, the TOF weights are applied to it once per slab (see TOFSLAB)
+	float slabSum = 0.f;
+	PTR_THR float* const axOrth = &slabSum;
+#define AX_ORTH axOrth
+#else
+#define AX_ORTH axP
+#endif
 #ifdef BP
 #if defined(LISTMODE) && defined(TOF) && !defined(SENS)
 	ax[0] = d_OSEM[idx];
@@ -464,6 +482,24 @@ void projectorType123(
 #endif
 #else
 		ax[to] = d_OSEM[idx + to * m_size];
+#endif
+#endif
+#ifndef SENS
+	// An exactly zero input adds nothing to the backprojection, so the ray can be skipped unless the sensitivity image is computed
+#if defined(TOF) && !defined(LISTMODE)
+	if (no_norm == 1u) {
+		bool zeroInput = true;
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
+#pragma unroll NBINS
+#endif
+		for (int to = 0; to < NBINS; to++)
+			zeroInput = zeroInput && (ax[to] == 0.f);
+		if (zeroInput)
+			return;
+	}
+#else
+	if (no_norm == 1u && ax[0] == 0.f)
+		return;
 #endif
 #endif
 #else
@@ -512,19 +548,24 @@ void projectorType123(
 	FLOAT local_scat = FLOAT_ZERO;
 
 #ifdef NORM // Normalization included
-	#ifdef NORMBYDETECTOR
+#if defined(SENS) && defined(NORMSENS)
+	// Lookup normalization for the list-mode sensitivity image using detector and ring-pair tables.
+	local_norm = getNormSens(d_norm, d_sensXY, d_sensZ, i.x, i.y, indz, d_det_per_ring, rings);
+	if (local_norm == FLOAT_ZERO)
+		return;
+#elif defined(NORMBYDETECTOR)
 #if defined(SPECT) && defined(LISTMODE) && !defined(SENS)
-		local_norm = d_norm[(uint)d_z[idx * 5 + 2] + (uint)d_z[idx * 5 + 3] * d_size_x * d_sizey];
+	local_norm = d_norm[(uint)d_z[idx * 5 + 2] + (uint)d_z[idx * 5 + 3] * d_size_x * d_sizey];
 #else
-		local_norm = d_norm[i.x + i.y * d_size_x + detectorHead * d_size_x * d_sizey];
+	local_norm = d_norm[i.x + i.y * d_size_x + detectorHead * d_size_x * d_sizey];
 #endif
-	#else
+#else
 #if defined(SPECT) && defined(LISTMODE) && !defined(SENS)
-		local_norm = d_norm[(uint)d_z[idx * 5 + 2] + (uint)d_z[idx * 5 + 4] * d_size_x * d_sizey];
+	local_norm = d_norm[(uint)d_z[idx * 5 + 2] + (uint)d_z[idx * 5 + 4] * d_size_x * d_sizey];
 #else
-		local_norm = d_norm[idx];
+	local_norm = d_norm[idx];
 #endif
-	#endif
+#endif
 #endif
 #ifdef SCATTER // Scatter data included
 	local_scat = d_scat[idx];
@@ -697,12 +738,24 @@ void projectorType123(
 #else
 #if !defined(VOL) // Orthogonal
 	orth_ray_length = L * orthWidth;
+#if !defined(CT)
+	// The orthogonal weights 1 - d/R are normalized by the integral of the cone, PI * R^2 / 3 per unit length, expressed in
+	// voxels (divided by the voxel volume). This makes the forward projection of a constant image comparable to the line
+	// integral of the Siddon (type 1) and volume (type 3) projectors, independent of the tube radius and the voxel size
+#if defined(TOTLENGTH)
+	float TotV = L * M_PI_F * orthWidth * orthWidth / (3.f * d_d.x * d_d.y * d_d.z);
+#else
+	float TotV = M_PI_F * orthWidth * orthWidth / (3.f * d_d.x * d_d.y * d_d.z);
+#endif
+#endif
 #elif defined(VOL) // Volume-based
 	orth_ray_length = L;
+	// V is the absolute volume (mm^3) of the intersection of the spherical voxel (volume Vmax) and the tube: sum_v V_v = L * pi R^2 * Vmax / (dx dy dz),
+	// so the tube volume is scaled by Vmax / (dx dy dz) to make the projector the line integral independent of the voxel size, tube radius and voxel radius
 #if defined(TOTLENGTH)
-	float TotV = L * M_PI_F * orthWidth * orthWidth;
+	float TotV = L * M_PI_F * orthWidth * orthWidth * Vmax / (d_d.x * d_d.y * d_d.z);
 #else
-	float TotV = M_PI_F * orthWidth * orthWidth;
+	float TotV = M_PI_F * orthWidth * orthWidth * Vmax / (d_d.x * d_d.y * d_d.z);
 #endif
 #endif
 #endif
@@ -1034,7 +1087,7 @@ void projectorType123(
 		temp *= local_norm;
 #endif
 #if defined(ORTH)
-#if defined(VOL)
+#if defined(VOL) || (defined(ORTH) && !defined(SPECT) && !defined(CT))
 #if defined(TOTLENGTH)
 		temp *= (FLOAT_ONE / TotV);
 #else
@@ -1146,13 +1199,16 @@ void projectorType123(
 #ifdef TOF_CLIP
 				if (TOFInside) {
 #endif
-#ifdef TOF //////////////// TOF ////////////////
+#if defined(TOF) && !defined(TOFSLAB) //////////////// TOF ////////////////
 				TOFLoop(DDsign, dTOF, TOFCenter, sigmaInv, &D, TOFWeights, TOFF
 #if defined(LISTMODE) && !defined(SENS)
 					, TOFid
 #endif
 				);
 #endif //////////////// END TOF ////////////////
+#ifdef TOFSLAB
+				slabSum = 0.f;
+#endif
 #ifdef ORTH //////////////// ORTH/VOL ////////////////
 				//const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
                 center.x = b1 + d1 * CFLOAT(ii) + d1 / FLOAT_TWO;
@@ -1160,7 +1216,7 @@ void projectorType123(
                     diff, //diff.y, diff.x, diff.z, 
                     center, //xcenter, 
                     s, // s.x, s.y, s.z, 
-                    b2, d2, _bz, dz, temp, indO, localInd.z, d_Nxy, orth_ray_length, d_N0, d_N3, d_N2, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, false, &tempk_b, uz,
+                    b2, d2, _bz, dz, temp, indO, localInd.z, d_Nxy, orth_ray_length, d_N0, d_N3, d_N2, d_Nxyz.z, bmin, bmax, Vmax, V, XY, AX_ORTH, false, &tempk_b, uz,
 #if defined(FP)
 					d_OSEM
 #else
@@ -1185,6 +1241,10 @@ void projectorType123(
 						, mrVolumeDims, mrVolumeOffset
 #endif
 				);
+#ifdef TOFSLAB
+				TOFLoop(DDsign, dTOF, TOFCenter, sigmaInv, &D, TOFWeights, TOFF);
+				TOFSlabAdd(ax, TOFWeights, slabSum);
+#endif
 #else //////////////// SIDDON ////////////////
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
 #ifdef USEIMAGES
@@ -1443,6 +1503,7 @@ void projectorType123(
 
 #if !defined(CT) //////////////// PET/SPECT ////////////////
 #ifdef ORTH //////////////// ORTH/VOL ////////////////
+
 #if defined(SPECT) && !defined(VOL)
         temp = FLOAT_ONE;
 #if defined(TOTLENGTH)
@@ -1450,9 +1511,10 @@ void projectorType123(
 #endif
         temp *= d_d.x * d_d.y * d_d.z;
 #endif
-#if defined(VOL) && defined(TOTLENGTH) //////////////// VOL+TOTLENGTH ////////////////
+#if (defined(VOL) || !defined(SPECT)) && defined(TOTLENGTH) //////////////// VOL+TOTLENGTH ////////////////
+
 		temp = 1.f / TotV;
-#elif defined(VOL) && !defined(TOTLENGTH) && defined(BP)
+#elif (defined(VOL) || !defined(SPECT)) && !defined(TOTLENGTH) && defined(BP)
 		if (LL == 0.f)
 			LL = L;
 		temp = 1.f / (TotV * LL);
@@ -1656,13 +1718,19 @@ void projectorType123(
 #endif
 			}
 #endif
-#ifdef TOF //////////////// TOF ////////////////
+#if defined(TOF) && !defined(TOFSLAB) //////////////// TOF ////////////////
 			TOFLoop(DDsign, local_ele2, TOFCenter, sigmaInv, &D, TOFWeights, TOFF
 #if defined(LISTMODE) && !defined(SENS)
 				, TOFid
 #endif
 			);
 #endif //////////////// END TOF ////////////////
+#ifdef TOFSLAB
+			// The voxels of the slab are processed before the TOF weights of the step are computed. The slab is processed in the steps where
+			// the ray crosses the slab (the pre-step loops at the first step, the slab of the central ray crossing)
+			const bool slabStep = (ii == 0) || (tz0_a >= tx0_a && ty0_a >= tx0_a);
+			slabSum = 0.f;
+#endif
 #ifdef ORTH //////////////// ORTH/VOL ////////////////
 #if defined(SPECT) && defined(ATN)
 			const float atnSPECT = EXP(jelppi);
@@ -1676,7 +1744,7 @@ void projectorType123(
                             diff, //diff.y, diff.x, diff.z, 
                             center, //xcenter, 
                             s, // s.x, s.y, s.z,
-                            b2, d2, _bz, dz, temp, tempj_a, tempk_b, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, true, &tempk_b, uz,
+                            b2, d2, _bz, dz, temp, tempj_a, tempk_b, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, AX_ORTH, true, &tempk_b, uz,
 #if defined(FP) //////////////// FP ////////////////
                             d_OSEM
 #else //////////////// BP ////////////////
@@ -1713,7 +1781,7 @@ void projectorType123(
                             diff, //diff.y, diff.x, diff.z, 
                             center, //xcenter, 
                             s, // s.x, s.y, s.z,
-                            b2, d2, _bz, dz, temp, tempj_a, tempk_b, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, true, &tempk_b, uz,
+                            b2, d2, _bz, dz, temp, tempj_a, tempk_b, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, AX_ORTH, true, &tempk_b, uz,
 #if defined(FP) //////////////// FP ////////////////
                             d_OSEM
 #else //////////////// BP ////////////////
@@ -1750,7 +1818,7 @@ void projectorType123(
                     diff, //diff.y, diff.x, diff.z, 
                     center, //xcenter, 
                     s, // s.x, s.y, s.z,
-                    b2, d2, _bz, dz, temp, localInd.y, localInd.z, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, false, &tempk_b, uz,
+                    b2, d2, _bz, dz, temp, localInd.y, localInd.z, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, AX_ORTH, false, &tempk_b, uz,
 #if defined(FP) //////////////// FP ////////////////
 					d_OSEM
 #else //////////////// BP ////////////////
@@ -1779,6 +1847,11 @@ void projectorType123(
 				tempiOld = tempi_a;
 #endif
 			}
+#ifdef TOFSLAB
+			TOFLoop(DDsign, local_ele2, TOFCenter, sigmaInv, &D, TOFWeights, TOFF);
+			if (slabStep)
+				TOFSlabAdd(ax, TOFWeights, slabSum);
+#endif
 #else //////////////// SIDDON ////////////////
 			if (local_ele > FLOAT_ZERO) {
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
@@ -1809,13 +1882,20 @@ void projectorType123(
 #ifndef ORTH
 			local_ind += indStep;
 #endif
+
 #if defined(SPECT) && defined(ORTH) && defined(MRATN) && !defined(VOL)
-			if (tempi < 0 || tempi >= d_NN.x || tempj < 0 || tempj >= d_NN.y || tempk < 0 || tempk >= d_NN.z) {
-#else
-			if (tempi < 0 || tempi >= d_Nxyz.x || tempj < 0 || tempj >= d_Nxyz.y || tempk < 0 || tempk >= d_Nxyz.z) {
-#endif
+			if (tempi < 0 || tempi >= d_NN.x || tempj < 0 || tempj >= d_NN.y || tempk < 0 || tempk >= d_NN.z)
 				break;
-			}
+#else
+#ifndef ORTH
+			// Three unsigned comparisons (a negative index is a large unsigned number)
+			if ((uint)tempi >= d_Nxyz.x || (uint)tempj >= d_Nxyz.y || (uint)tempk >= d_Nxyz.z)
+				break;
+#else
+			if (tempi < 0 || tempi >= d_Nxyz.x || tempj < 0 || tempj >= d_Nxyz.y || tempk < 0 || tempk >= d_Nxyz.z)
+				break;
+#endif
+#endif
 // #if (defined(SPECT) && !defined(ORTH)) // Ray length inside BP mask
 // 		L_SPECT += local_ele;
 // #endif
@@ -1854,7 +1934,7 @@ void projectorType123(
 #elif !defined(ORTH)
 			temp = 1.f / LL;
 #endif
-#if defined(VOL)
+#if defined(VOL) || (defined(ORTH) && !defined(SPECT))
 			temp = 1.f / (TotV * LL);
 #endif
 #if defined(ATN) && defined(BP) && !defined(SPECT)
@@ -1876,6 +1956,9 @@ void projectorType123(
 #if defined(SPECT) && defined(ATN)
 		const float atnSPECT2 = EXP(jelppi);
 #endif
+#ifdef TOFSLAB
+		slabSum = 0.f;
+#endif
 		if (ux < 0) {
 			if (tempiOld != tempi_a)
 				tempi_a++;
@@ -1887,7 +1970,7 @@ void projectorType123(
                     diff, //diff.y, diff.x, diff.z, 
                     center, //xcenter, 
                     s, // s.x, s.y, s.z,
-                    b2, d2, _bz, dz, temp, tempj_a, tempk_a, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, false, &tempk_b, uz,
+                    b2, d2, _bz, dz, temp, tempj_a, tempk_a, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, AX_ORTH, false, &tempk_b, uz,
 #if defined(FP)
 					d_OSEM
 #else
@@ -1926,7 +2009,7 @@ void projectorType123(
                     diff, //diff.y, diff.x, diff.z, 
                     center, //xcenter, 
                     s, // s.x, s.y, s.z,
-                    b2, d2, _bz, dz, temp, tempj_a, tempk_a, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, axP, false, &tempk_b, uz,
+                    b2, d2, _bz, dz, temp, tempj_a, tempk_a, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, AX_ORTH, false, &tempk_b, uz,
 #if defined(FP)
 					d_OSEM
 #else
@@ -1956,6 +2039,9 @@ void projectorType123(
 				center.x += d1;
 			}
 		}
+#ifdef TOFSLAB
+		TOFSlabAdd(ax, TOFWeights, slabSum);
+#endif
 #endif
 #if defined(ATN) && defined(FP) && !defined(SPECT)
 		temp *= EXP(jelppi);

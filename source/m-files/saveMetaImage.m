@@ -88,84 +88,104 @@ fwrite(fid, img(:), type, 0, endian);
 fclose(fid);
 hdrFile = [filename '.mhd'];
 
-if nargin > 3
-    writeMetaImageHeader(hdrFile, koko, type, windows_format, endian, prop);
-else
-    writeMetaImageHeader(hdrFile, koko, type, windows_format, endian);
-end
+writeMetaImageHeader(hdrFile, koko, type, windows_format, endian, prop);
 end
 
-function writeMetaImageHeader(hdrFile, koko, type, windows_format, endian, varargin)
-if nargin >= 5 && ~isempty(varargin) && ~isempty(varargin{1})
-    prop = varargin{1};
-else
-    prop = [];
-end
+function writeMetaImageHeader(hdrFile, koko, type, windows_format, endian, prop)
+% The data file is referred to by its name only (no path)
+[~, dataName] = fileparts(hdrFile);
+dataFile = [dataName '.raw'];
 fid = fopen(hdrFile,'w');
 element_types=struct('double','MET_DOUBLE','single','MET_FLOAT','int8','MET_CHAR','uint8','MET_UCHAR','int16','MET_SHORT','uint16','MET_USHORT','int32','MET_INT','uint32','MET_UINT',...
-    'int64','MET_LONG', 'uint64', 'MET_ULONG');
+    'int64','MET_LONG_LONG', 'uint64', 'MET_ULONG_LONG');
+
+% Number of dimensions (the time dimension of 4D images has a spacing of 1)
+nd = length(koko);
 
 %write header file information
 fprintf(fid,'ObjectType = Image\r\n');
-fprintf(fid,['NDims = ' num2str(length(koko)) '\r\n']);
-s = 'DimSize =';
-for kk = 1 : length(koko)
-    s = [s, ' ' num2str(koko(kk))];
-end
-fprintf(fid,[s '\r\n']);
-fprintf(fid,'BinaryData = true\n');
+fprintf(fid,'NDims = %d\r\n', nd);
+fprintf(fid,'DimSize = %s\r\n', strtrim(sprintf('%d ', koko(1:nd))));
+fprintf(fid,'BinaryData = true\r\n');
 if endian == 'b'
-    fprintf(fid,'BinaryDataByteOrderMSB = true\n');
+    fprintf(fid,'BinaryDataByteOrderMSB = true\r\n');
 else
-    fprintf(fid,'BinaryDataByteOrderMSB = false\n');
+    fprintf(fid,'BinaryDataByteOrderMSB = false\r\n');
 end
-fprintf(fid,'CompressedData = false\n');
-fprintf(fid,'TransformMatrix = 1 0 0 0 1 0 0 0 1\n');
-fprintf(fid,'CenterOfRotation = 0 0 0\n');
-fprintf(fid,['ElementType = ' element_types.(type) '\r\n']);
+fprintf(fid,'CompressedData = false\r\n');
+fprintf(fid,'TransformMatrix = %s\r\n', strtrim(sprintf('%d ', reshape(eye(nd), 1, []))));
+fprintf(fid,'CenterOfRotation = %s\r\n', strtrim(sprintf('%d ', zeros(1, nd))));
+fprintf(fid,'ElementType = %s\r\n', element_types.(type));
 fprintf(fid,'HeaderSize = 0\r\n');
-if nargin >= 4
-    if isfield(prop,'FOV_x')
-        fprintf(fid,['ElementSpacing = ' num2str(prop.FOV_x/koko(1)) ' ' num2str(prop.FOV_y/koko(2)) ' ' num2str(prop.axial_FOV/koko(3)) '\r\n']);
-    elseif isfield(prop,'FOVa_x')
-        fprintf(fid,['ElementSpacing = ' num2str(prop.FOVa_x/koko(1)) ' ' num2str(prop.FOVa_y/koko(2)) ' ' num2str(prop.axial_fov/koko(3)) '\r\n']);
-    elseif isfield(prop,'FOVx')
-        fprintf(fid,['ElementSpacing = ' num2str(prop.FOVx(1)/koko(1)) ' ' num2str(prop.FOVy(1)/koko(2)) ' ' num2str(prop.axialFOV(1)/koko(3)) '\r\n']);
-    elseif numel(prop) == numel(koko)
-        fprintf(fid,['ElementSpacing = ' num2str(prop(1)) ' ' num2str(prop(2)) ' ' num2str(prop(3)) '\r\n']);
-    elseif isfield(prop,'voxelSiceX')
-        fprintf(fid,['ElementSpacing = ' num2str(prop.voxelSiceX) ' ' num2str(prop.voxelSiceY) ' ' num2str(prop.voxelSiceZ) '\r\n']);
+% Voxel size (mm): either from the field of view of the options/image_properties or from the pixel size vector
+voxel = [];
+if isstruct(prop)
+    % Field of view: FOVa_x/FOVa_y/axial_fov (options), FOVx/FOVy/axialFOV (image_properties) or FOV_x/FOV_y/axial_FOV (old image_properties)
+    FOV_x = firstValue(getField(prop, {'FOVa_x', 'FOVx', 'FOV_x'}));
+    FOV_y = firstValue(getField(prop, {'FOVa_y', 'FOVy', 'FOV_y'}));
+    axial_FOV = firstValue(getField(prop, {'axial_fov', 'axialFOV', 'axial_FOV'}));
+    if ~isempty(FOV_x) && ~isempty(FOV_y) && ~isempty(axial_FOV) && FOV_x > 0 && FOV_y > 0 && axial_FOV > 0
+        voxel = [FOV_x / koko(1), FOV_y / koko(2), axial_FOV / koko(3)];
     else
-        fprintf(fid,['ElementSpacing = 1 1 1\r\n']);
+        % The voxel sizes saved in image_properties
+        voxelX = firstValue(getField(prop, {'voxelSizeX'}));
+        voxelY = firstValue(getField(prop, {'voxelSizeY'}));
+        voxelZ = firstValue(getField(prop, {'voxelSizeZ'}));
+        if ~isempty(voxelX) && ~isempty(voxelY) && ~isempty(voxelZ)
+            voxel = [voxelX, voxelY, voxelZ];
+        end
     end
-else
-    fprintf(fid,['ElementSpacing = 1 1 1\r\n']);
+elseif isnumeric(prop) && numel(prop) >= 3
+    voxel = double(prop(1:3));
 end
-fprintf(fid,'ElementNumberOfChannels = 1\n');
+if isempty(voxel)
+    voxel = [1 1 1];
+end
+voxel = [voxel, ones(1, nd - numel(voxel))];
+fprintf(fid,'ElementSpacing = %s\r\n', strtrim(sprintf('%.15g ', voxel(1:nd))));
+fprintf(fid,'ElementNumberOfChannels = 1\r\n');
 if endian == 'b'
     fprintf(fid,'ElementByteOrderMSB = True\r\n');
 else
     fprintf(fid,'ElementByteOrderMSB = False\r\n');
 end
 
-fprintf(fid,['ElementDataFile = ' hdrFile(1:end-3) 'raw\r\n']);
+fprintf(fid,'ElementDataFile = %s\r\n', dataFile);
 fclose(fid);
-if (ispc && ~windows_format) || ((isunix || ismac) && windows_format)
-    fid = fopen(hdrFile,'r');
-    % This part of code is from: https://www.mathworks.com/matlabcentral/fileexchange/13651-unix2dos
-    fcontent = fread(fid,'uint8');
-    fclose(fid);
-    if ispc && ~windows_format
-        CR = char(13);
-        fcontent(fcontent==CR) = [];
-    elseif (isunix || ismac) && windows_format
-        CR = char(13);
-        LF = char(10);
-        fcontent = strrep(char(row(fcontent)),LF,[CR LF]);
-    end
-    fid=fopen(hdrFile,'w');
-    fwrite(fid,fcontent,'uint8');
-    fclose(fid);
+
+% The header was written with CR LF line endings. Convert to the requested format (LF by default)
+fid = fopen(hdrFile,'r');
+fcontent = fread(fid,'uint8');
+fclose(fid);
+fcontent(fcontent == 13) = [];
+if windows_format
+    fcontent = uint8(strrep(char(fcontent(:)'), newline, [char(13) newline]))';
+end
+fid = fopen(hdrFile,'w');
+fwrite(fid,fcontent,'uint8');
+fclose(fid);
+
 end
 
+function val = getField(prop, names)
+%GETFIELD Returns the value of the first of the fields in names that exists in the struct prop, [] if none exist
+val = [];
+if ~isstruct(prop)
+    return
+end
+for kk = 1 : numel(names)
+    if isfield(prop, names{kk})
+        val = prop.(names{kk});
+        return
+    end
+end
+end
+
+function val = firstValue(x)
+%FIRSTVALUE Returns the first element of x as a double (empty if x is empty)
+if isempty(x) || (~isnumeric(x) && ~islogical(x))
+    val = [];
+else
+    val = double(x(1));
+end
 end

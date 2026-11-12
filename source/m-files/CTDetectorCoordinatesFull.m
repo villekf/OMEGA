@@ -142,15 +142,18 @@ if size(uV,1) == 2
     yy = yy(:);
     zz = single(repelem(repelem(zz(:,1), xSize, 1) + indeksiZ * dPitchY, ySize, 1));
 else
-    uV = [repelem(uV(1,:)' * dPitchX, ySize, 1) .* indeksiX, repelem(uV(2,:)' * dPitchX, ySize, 1) .* indeksiX, repelem(uV(3,:)' * dPitchY, xSize, 1) .* indeksiZ,...
-        repelem(uV(4,:)' * dPitchX, ySize, 1) .* indeksiX, repelem(uV(5,:)' * dPitchX, ySize, 1) .* indeksiX, repelem(uV(6,:)' * dPitchY, xSize, 1) .* indeksiZ];
-    xx = repelem(xx, ySize, 1) + uV(:,1) + uV(:,4);
-    yy = repelem(yy, ySize, 1) + uV(:,2) + uV(:,5);
-    xx = single(repmat(reshape(xx, ySize, []), xSize, 1));
+    % Tilted detector: position = centre + u * dPitchX * rowIndex + v * dPitchY * colIndex,
+    % for each of the x, y and z components. Within a projection the row
+    % index (ySize values) runs fastest and the column index (xSize values) slowest.
+    rowIdx = repmat((-ySize / 2 + .5 : ySize / 2 - .5)', xSize, 1) * dPitchX;
+    colIdx = repelem((-xSize / 2 + .5 : xSize / 2 - .5)', ySize, 1) * dPitchY;
+    uV = double(uV);
+    xx = single(rowIdx * uV(1,:) + colIdx * uV(4,:) + repmat(xx(:,1)', xSize * ySize, 1));
     xx = xx(:);
-    yy = single(repmat(reshape(yy, ySize, []), xSize, 1));
+    yy = single(rowIdx * uV(2,:) + colIdx * uV(5,:) + repmat(yy(:,1)', xSize * ySize, 1));
     yy = yy(:);
-    zz = single(repelem(repelem(zz(:,1), xSize, 1) + uV(:,3) + uV(:,6), ySize, 1));
+    zz = single(rowIdx * uV(3,:) + colIdx * uV(6,:) + repmat(zz(:,1)', xSize * ySize, 1));
+    zz = zz(:);
 end
 if exist('x','var')
     x = [repelem(x(:,1), xSize * ySize, 1) xx];

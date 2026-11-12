@@ -404,13 +404,13 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
         kernel_path = strrep(kernel_path, '\', '/');
         kernel_path = strrep(kernel_path, '.cl', '');
         header_directory = strrep(kernel_path,'projectorType123','');
-    elseif options.projector_type == 4 || options.projector_type == 41 || options.projector_type == 14 || options.projector_type == 45
+    elseif options.projector_type == 4 || options.projector_type == 44 || options.projector_type == 41 || options.projector_type == 14 || options.projector_type == 45
         kernel_file = 'projectorType4.cl';
         kernel_path = which(kernel_file);
         kernel_path = strrep(kernel_path, '\', '/');
         kernel_path = strrep(kernel_path, '.cl', '');
         header_directory = strrep(kernel_path,'projectorType4','');
-    elseif options.projector_type == 5 || options.projector_type == 51 || options.projector_type == 15 || options.projector_type == 54 || options.projector_type == 45
+    elseif options.projector_type == 5 || options.projector_type == 55 || options.projector_type == 51 || options.projector_type == 15 || options.projector_type == 54 || options.projector_type == 45
         kernel_file = 'projectorType5.cl';
         kernel_path = which(kernel_file);
         kernel_path = strrep(kernel_path, '\', '/');
@@ -464,7 +464,7 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
     if numel(nMeas) == 1
         nMeas = [0;nMeas];
     end
-    if options.projector_type == 5 || options.projector_type == 15 || options.projector_type == 45
+    if options.projector_type == 5 || options.projector_type == 55 || options.projector_type == 15 || options.projector_type == 45
         input = reshape(input, options.nRowsD, options.nColsD, nMeas(subIter + 2) - nMeas(subIter + 1));
         [input, meanBP] = computeIntegralImage(input, options.meanBP);
         if options.meanBP

@@ -43,16 +43,17 @@ function pz = scaleImages(pz, varargin)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 if iscell(pz)
-    totTime = pz{end}.total_time;
-    FOVx = pz{end}.FOV_x;
-    FOVy = pz{end}.FOV_y;
-    FOVz = pz{end}.axial_FOV;
+    totTime = pz{end}.totalTime;
+    FOVx = pz{end}.FOVx;
+    FOVy = pz{end}.FOVy;
+    FOVz = pz{end}.axialFOV;
     Nx = pz{end}.Nx;
     Ny = pz{end}.Ny;
     Nz = pz{end}.Nz;
 end
 if nargin >= 2
     if isstruct(varargin{1})
+        options = varargin{1};
         totTime = options.tot_time;
         FOVx = options.FOVa_x;
         FOVy = options.FOVa_y;
@@ -67,7 +68,7 @@ end
 if isinf(totTime)
     error('Total time is infinite, input finite total time with pz = scaleImages(pz, total_time)');
 end
-if nargin >= 3
+if nargin >= 5
     dx = varargin{2};
     dy = varargin{3};
     dz = varargin{4};

@@ -108,7 +108,7 @@ end
 if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH || options.L || options.weighted_mean || options.APLS || options.BSREM ...
         || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM || options.DRAMA || options.ROSEM_MAP || options.ECOSEM || options.SART || options.ASD_POCS ...
         || options.COSEM || options.ACOSEM || options.AD || any(options.OSL_COSEM) || options.NLM || options.OSL_RBI || options.RBI || options.PKMA || options.SAGA ...
-        || options.RDP || options.SPS || options.ProxNLM || options.GGMRF ||options.hyperbolic)
+        || options.RDP || options.SPS || options.GGMRF ||options.hyperbolic)
 
     % Compute and/or load necessary variables for the TV regularization
     if options.TV && options.MAP
@@ -313,7 +313,7 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
             end
         end
     end
-    if (options.NLM && options.MAP) || options.ProxNLM
+    if options.NLM && options.MAP
         options = NLMPrepass(options);
     end
 end
@@ -362,7 +362,7 @@ if options.PDHG || options.PDHGKL || options.PDHGL1 || options.PDDY
         end
     end
 end
-if (options.PKMA || options.MBSREM || options.SPS) && (options.ProxTV || options.TGV || options.ProxRDP)
+if (options.PKMA || options.MBSREM || options.SPS) && (options.ProxTV || options.TGV)
     if ~isfield(options,'alpha_PKMA') && (~isfield(options,'thetaCP') || numel(options.thetaCP) < options.subsets * options.Niter)
         options.thetaCP = zeros(options.Niter * options.subsets,1);
         oo = 1;
@@ -376,7 +376,7 @@ if (options.PKMA || options.MBSREM || options.SPS) && (options.ProxTV || options
         options.thetaCP = single(options.alpha_PKMA);
     end
 end
-if options.PDHG || options.PDHGKL || options.PDHGL1 || options.ProxTV || options.TGV || options.FISTA || options.FISTAL1 || options.ProxRDP || options.PDDY
+if options.PDHG || options.PDHGKL || options.PDHGL1 || options.ProxTV || options.TGV || options.FISTA || options.FISTAL1 || options.PDDY
     if numel(options.tauCP) < options.nMultiVolumes + 1
         options.tauCP = repelem(options.tauCP, options.nMultiVolumes + 1);
     end
@@ -412,8 +412,20 @@ if options.precondTypeMeas(2)
     else
         options.Nf = 2^nextpow2(options.nRowsD);
     end
+    if options.FDK && options.CT
+        % The FDK ramp filter is applied along the detector rows (nRowsD samples) with an FFT of length Nf. Nf has to be at least
+        % 2 * nRowsD - 1 to zero-pad the rows, otherwise the filter is a circular convolution (for nRowsD = 2^n there is no padding at all)
+        % and the wrapped-around tails/the lost DC bias the low frequencies (several percent error of the reconstructed values)
+        options.Nf = 2^nextpow2(2 * options.nRowsD - 1);
+    end
     options.filter = rampFilt(options.Nf,options.filterWindow, options.cutoffFrequency, options.normalFilterSigma);
     options.filter(1) = 1e-6;
+    if options.FDK && options.CT
+        % DC bin of the discrete Ram-Lak kernel (Kak & Slaney), in the 2|f| normalization of rampFilt(). Setting it to ~0 (1e-6) removes
+        % the mean of the zero-padded projection rows, which biases the reconstruction low by an amount that depends on Nf
+        oddN = 1:2:(options.Nf / 2 - 1);
+        options.filter(1) = 2 * (0.25 - 2 / pi^2 * sum(1 ./ oddN.^2));
+    end
     options.Ffilter = ifft(options.filter) .* options.sigmaCP(1);
     if (options.PDHG || options.PDHGL1 || options.PDHGKL || options.CV || options.PDDY) && options.TGV
         options.Ffilter = options.Ffilter * options.beta;

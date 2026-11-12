@@ -25,7 +25,11 @@ struct float2a {
 #define CTYPE2 float2a
 #endif
 #include <algorithm>
+
 #include <array>
+
+
+
 #include <chrono>
 #include <cstdio>
 #include <cstdint>
@@ -359,11 +363,17 @@ typedef struct structForScalars {
 		saveIter = false, enforcePositivity = false, computeSensImag = false, useMAD = true, useImages = false, eFOV = false,
 		useExtendedFOV = false, use64BitIndices = false, TGV2D = false, multiResolution = false, storeMultiResolution = false, offset = false, offsetSqrt = false, relaxScaling = false,
 		computeRelaxation = false, storeFP = false, deconvolution = false, CTAttenuation = true, largeDim = false, usingLinearizedData = false, storeResidual = false,
-		useBuffers = true, useFDKWeights = false, indexBased = false, FISTAAcceleration = false, stochastic = false, useTotLength = true,
+		useBuffers = true, useFDKWeights = false, useLayeredBP = false, layeredBP = false, indexBased = false, FISTAAcceleration = false, stochastic = false, useTotLength = true,
 		useParallelBeam = false, useHelical = false;
+	// True if the additive term (randoms/scatter, sc_ra) is TOF-resolved, i.e. has the same layout and size as the TOF measurements (bin is the slow index).
+	// If false, the additive term is a non-TOF vector that is repeated for all the TOF bins
+	bool randomsTOF = false;
 	// Set this to false to explicitly disable fastPDHG
 	// On MATLAB/Octave, you can do this just with options.fastPDHG = false;
 	bool fastPDHG = true;
+	// Build the projector type 2/3 kernels with the end point check of the tube (-DORTHCLIP), see orthClipNeeded below.
+	// The default (true) is the conservative one, reconstructionAF()/reconstruction_multigpu() set it from the geometry
+	bool orthClip = true;
 	// True only when Nt > 1 AND some sensitivity-affecting input (image-based attenuation or the
 	// multiplicative corrVector/extraCorr) genuinely differs per timestep. Computed once, early, in
 	// reconstructionAF() and consumed there plus in functions.hpp (transferControl, backprojectionType6)
@@ -394,11 +404,22 @@ typedef struct structForScalars {
 	// computed. See subiterStep.h and iterStep.h.
 	int32_t regEveryIter = 1;
 	int64_t nBins = 1, nProjections = 0, numelY = 0, numelZ = 0, TOFSize = 0, seed = -1;
+	// Largest number of projections in any subset (over all time steps), used to decide whether the layered measurement texture can be used
+	int64_t maxProjPerCall = 0;
 	std::vector<int64_t> im_dim{ 1 };
 	size_t size_of_x, size_atten = 1, size_norm = 1, size_center_x, size_center_y, size_center_z, size_V = 1, size_scat = 1, kokoTOF = 0, kokoNonTOF = 0, sizeLOR,
 		sizeL, sizeXY, sizeZ, saveIterationsMiddle = 0ULL;
 	// Variables to check for correct size
 	size_t size_maskFP = 0ULL, size_maskBP = 0ULL, size_meas = 0ULL;
+	// Sinogram normalization for the sensitivity image of index-based list-mode data. The sinogram (size_normSens elements) is
+	// read through two lookup tables (see sensXY and sensZ in Weighting) and sensBins is the number of bins of one plane
+	bool normSensLookup = false;
+	// Full pair table normalization for the sensitivity image of list-mode data (no lookup tables, sensXY is not given): normSens
+	// (size_normSens elements) has one value for each ordered detector/ring pair, indexed like the sensitivity image kernel, i.e.
+	// det_per_ring^2 * rings^2 * nLayers^2 elements. Used for systems without a sinogram (options.xSens and options.zSens)
+	bool normSensFull = false;
+	size_t size_normSens = 0;
+	uint32_t sensBins = 0;
 	uint32_t* saveNIter = nullptr;
 	float* T = nullptr;
 	float* V = nullptr;
@@ -443,6 +464,7 @@ typedef struct structForScalars {
 	// at most padZ6: only as many as the detector extends past that edge of the volume, see computePadZType6
 	std::vector<int> padZLo6, padZHi6;
 } scalarStruct;
+
 
 // The position of the rotation axis of the gantry (x, y) and of the axial center of the detector (z) in
 // the coordinates of the volumes. The volumes are placed with respect to the absolute origin (the center
@@ -791,6 +813,118 @@ inline std::vector<AttGroupType6> attGroupsType6(const scalarStruct& inputScalar
 		}
 	}
 	return groups;
+
+
+/// <summary>
+/// Decides whether the projector types 2 and 3 are built with the end point check of the tube (-DORTHCLIP, see
+/// orthogonalHelper3D in opencl_functions_orth3D.h). The tube of a ray ends at its end points, which only matters when a
+/// voxel beyond an end point can be reached by the tube, i.e. when a detector/source is inside the image. Rule: the check is
+/// enabled if and only if any detector/source coordinate point has its x and y inside the image box widened by m, and the z range of the
+/// coordinates overlaps the box widened by m in z, where m is the tube reach (ORTH: tube_width, VOL: max(bmax, cylRadiusProj3))
+/// plus the largest voxel dimension. The box is the union of the bounding boxes of all volumes (multi-resolution).
+/// Reasoning: voxel centers are inside the box, so a voxel in the tube is closer than the reach to the line. For detectors
+/// around the image (a ring) the line beyond an end point is outside the widened box (convex) and no voxel there is in the tube
+/// With all coordinates outside the widened box the check is therefore skipped, which keeps the kernel (and its speed) unchanged.
+/// The rule is conservative: it errs on the side of enabling the check. Non-finite coordinates (multi-layer padding) are ignored.
+/// CT always enables it and SPECT never (the kernel does not use the check for SPECT).
+/// </summary>
+/// <param name="s various scalar parameters (geometry, volumes, projector types, tube parameters)"></param>
+/// <param name="x detector coordinates (PET sinogram: 4 floats per bin, index-based/sensitivity: 2 floats per detector)"></param>
+/// <param name="z_det z coordinates (PET sinogram: 2 floats per sinogram, 3 with multiple layers, otherwise one per ring)"></param>
+/// <param name="listCoord list-mode event coordinates, 6 floats per event (non-index-based list-mode only)"></param>
+/// <param name="pituus cumulative sum of the number of measurements per subset/timestep"></param>
+inline bool orthClipNeeded(const scalarStruct& s, const float* x, const float* z_det, const float* listCoord, const int64_t* pituus) {
+	if (s.SPECT)
+		return false;
+	if (s.CT)
+		return true;
+	// The reach of the tube
+	float reach = 0.f;
+	if (s.FPType == 2 || s.BPType == 2)
+		reach = (std::max)(reach, s.tube_width);
+	if (s.FPType == 3 || s.BPType == 3)
+		reach = (std::max)(reach, (std::max)(s.bmax, s.cylRadiusProj3));
+	// Union of the volumes
+	const size_t nVol = (std::min)({ static_cast<size_t>(s.nMultiVolumes) + 1, s.Nx.size(), s.Ny.size(), s.Nz.size(), s.dx.size(), s.dy.size(), s.dz.size(),
+		s.bx.size(), s.by.size(), s.bz.size() });
+	if (nVol == 0ULL)
+		return true;
+	float boxLo[3] = { std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max() };
+	float boxHi[3] = { std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest() };
+	float voxel = 0.f;
+	for (size_t ii = 0; ii < nVol; ii++) {
+		const float b[3] = { s.bx[ii], s.by[ii], s.bz[ii] };
+		const float d[3] = { s.dx[ii], s.dy[ii], s.dz[ii] };
+		const float N[3] = { static_cast<float>(s.Nx[ii]), static_cast<float>(s.Ny[ii]), static_cast<float>(s.Nz[ii]) };
+		for (int k = 0; k < 3; k++) {
+			boxLo[k] = (std::min)(boxLo[k], b[k]);
+			boxHi[k] = (std::max)(boxHi[k], b[k] + N[k] * d[k]);
+			voxel = (std::max)(voxel, d[k]);
+		}
+	}
+	const float m = reach + voxel;
+	for (int k = 0; k < 3; k++) {
+		boxLo[k] -= m;
+		boxHi[k] += m;
+	}
+	// Coordinate points. xyInside: a point is inside the widened box in x and y, [zLo, zHi]: the z range of the coordinates
+	bool anyXY = false, xyInside = false;
+	float zLo = std::numeric_limits<float>::max(), zHi = std::numeric_limits<float>::lowest();
+	auto addXY = [&](const float px, const float py) {
+		if (!std::isfinite(px) || !std::isfinite(py))
+			return;
+		anyXY = true;
+		if (px >= boxLo[0] && px <= boxHi[0] && py >= boxLo[1] && py <= boxHi[1])
+			xyInside = true;
+	};
+	auto addZ = [&](const float pz) {
+		if (!std::isfinite(pz))
+			return;
+		zLo = (std::min)(zLo, pz);
+		zHi = (std::max)(zHi, pz);
+	};
+	auto decided = [&]() { return xyInside && zLo <= boxHi[2] && zHi >= boxLo[2]; };
+	const bool listNonIndex = s.listmode > 0 && !s.indexBased;
+	// Detector coordinates: xy pairs (the sinogram bins are two consecutive pairs), z per sinogram or per ring
+	// In non-index-based list-mode these are the full detectors, which exist only for the sensitivity image
+	if (x != nullptr && (!listNonIndex || s.computeSensImag))
+		for (size_t k = 0; k + 1 < s.size_of_x; k += 2)
+			addXY(x[k], x[k + 1]);
+	if (z_det != nullptr && (!listNonIndex || s.computeSensImag)) {
+		// PET sinograms: source and detector z of each sinogram, with multiple layers the third value is the layer combination
+		const size_t stride = (s.listmode == 0 && !s.raw) ? (s.nLayers > 1 ? 3ULL : 2ULL) : 1ULL;
+		const size_t cnt = stride == 1ULL ? 1ULL : 2ULL;
+		for (size_t k = 0; k + cnt <= s.size_z; k += stride)
+			for (size_t c = 0; c < cnt; c++)
+				addZ(z_det[k + c]);
+	}
+	if (decided())
+		return true;
+	// List-mode events: the same range of events as is uploaded to the device
+	if (listNonIndex && listCoord != nullptr && pituus != nullptr) {
+		for (uint32_t tt = 0; tt < s.Nt; tt++) {
+			for (uint32_t kk = s.osa_iter0; kk < s.subsetsUsed; kk++) {
+				const size_t idx = static_cast<size_t>(kk) + static_cast<size_t>(tt) * static_cast<size_t>(s.subsets);
+				for (int64_t ev = pituus[idx]; ev < pituus[idx + 1]; ev++) {
+					const float* p = &listCoord[static_cast<size_t>(ev) * 6ULL];
+					addXY(p[0], p[1]);
+					addZ(p[2]);
+					addXY(p[3], p[4]);
+					addZ(p[5]);
+					if (decided())
+						return true;
+				}
+			}
+		}
+	}
+	// No coordinates available: nothing can be excluded
+	if (!anyXY)
+		return true;
+	// No z coordinates: the z range cannot exclude anything
+	if (zLo > zHi)
+		return xyInside;
+	return decided();
+
 }
 
 #ifdef OPENCL
@@ -900,4 +1034,35 @@ inline void mexWarning(const char* str) {
 #ifdef MATLAB
 	mexWarnMsgTxt(str);
 #endif
+}
+
+// Validates the TOF-resolved additive term (inputScalars.randomsTOF, randoms/scatter with the layout of the TOF measurements).
+// nRandoms is the number of elements in the additive array and nMeas the number of elements in the measurement array. Prints the reason and
+// returns false if the combination is not supported, in which case the reconstruction must not be started
+inline bool checkRandomsTOF(scalarStruct& inputScalars, const size_t nRandoms, const size_t nMeas) {
+	if (!inputScalars.randomsTOF)
+		return true;
+	if (!inputScalars.randoms_correction) {
+		// No additive term, the flag has no meaning
+		inputScalars.randomsTOF = false;
+		return true;
+	}
+	if (!inputScalars.TOF || inputScalars.nBins <= 1 || inputScalars.listmode > 0 || inputScalars.CT) {
+		mexPrint("A TOF-resolved randoms/scatter term (randomsTOF) requires sinogram-based TOF data (more than one TOF bin, no list-mode data or CT)");
+		return false;
+	}
+	if (inputScalars.Nt > 1U) {
+		mexPrint("A TOF-resolved randoms/scatter term (randomsTOF) is not supported with dynamic data (more than one time step)");
+		return false;
+	}
+	if (inputScalars.largeDim) {
+		mexPrint("A TOF-resolved randoms/scatter term (randomsTOF) is not supported with largeDim");
+		return false;
+	}
+	if (nRandoms != nMeas) {
+		mexPrintBase("A TOF-resolved randoms/scatter term (randomsTOF) must have as many elements as the TOF measurements (%llu), but %llu were input\n",
+			static_cast<unsigned long long>(nMeas), static_cast<unsigned long long>(nRandoms));
+		return false;
+	}
+	return true;
 }

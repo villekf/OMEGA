@@ -59,18 +59,6 @@ if tyyppi < 2
     [options.param, RandProp, ScatterProp] = loadInputData(options.param);
 end
 
-if ~options.param.usingLinearizedData && ((options.param.CT && isfield(options.param,'flat') && options.param.flat == 0) || (options.param.CT && ~isfield(options.param,'flat')))
-    warning('No flat value input! Using the maximum value as the flat value. Alternatively, input the flat value into options.flat')
-    if options.param.useSingles
-        options.param.flat = single(max(options.param.SinM(:)));
-    else
-        options.param.flat = double(max(options.param.SinM(:)));
-    end
-elseif options.param.CT && isfield(options.param,'flat') && numel(options.param.flat) > 1
-    options.param.flat = max(options.param.flat(:));
-end
-
-
 if options.param.L && options.param.MAP
     if ~isempty(options.param.a_L)
         if length(options.param.a_L(:)) < ((options.param.Ndx*2+1) * (options.param.Ndy*2+1) * (options.param.Ndz*2+1))
@@ -144,6 +132,53 @@ end
 
 linAlg = recNames(5);
 
+if options.param.CT && ~iscell(options.param.SinM)
+    sinMSizeCT = size(options.param.SinM);
+end
+
+if ~options.param.listmode
+    % Load correction data
+    [options.param] = loadCorrections(options.param, RandProp, ScatterProp);
+else
+    % list-mode does not support separate randoms (they are added into options.ScatterC or input as minus ones) or multiplicative
+	% corrections. The subtracted scatter (options.scatter_correction) is the additive term of each event, see loadCorrections.
+	% The internal randoms_correction flag is set again by loadCorrections once the additive term (options.SinDelayed) has been formed
+    % options.param.normalization_correction = false;
+    options.param.randoms_correction = false;
+    options.param.additionalCorrection = false;
+    [options.param] = loadCorrections(options.param, RandProp, ScatterProp);
+end
+
+% The default flat value is the maximum of the corrected data (after loadCorrections, as in Python): the scatter/randoms
+% subtraction and the CT normalization precorrection are applied to the intensity data above
+if options.param.CT && isfield(options.param,'flat') && numel(options.param.flat) > 1
+    options.param.flat = max(options.param.flat(:));
+end
+if ~options.param.usingLinearizedData && options.param.CT && (~isfield(options.param,'flat') || isempty(options.param.flat) || options.param.flat == 0)
+    if options.param.normalization_correction && ~iscell(options.param.SinM) && numel(options.param.normalization) > 1 ...
+            && numel(options.param.normalization) == numel(options.param.SinM)
+        % CT normalization (a gain of each measurement, the data is divided by it): the flat is the maximum of the normalized raw data
+        warning('No flat value input! Using the maximum value of the normalized data, max(y ./ n), as the flat value. Alternatively, input the flat value into options.flat')
+        normValid = options.param.normalization(:) > 0;
+        if ~any(normValid)
+            error('CT normalization has no positive values')
+        end
+        flatY = double(options.param.SinM(:));
+        flatN = double(options.param.normalization(:));
+        flatValue = max(flatY(normValid) ./ flatN(normValid));
+    else
+        warning('No flat value input! Using the maximum value as the flat value. Alternatively, input the flat value into options.flat')
+        flatValue = max(options.param.SinM(:));
+    end
+    if options.param.useSingles
+        options.param.flat = single(flatValue);
+    else
+        options.param.flat = double(flatValue);
+    end
+end
+
+% CT corrections (e.g. scatter subtraction, normalization) are applied to the intensity data above, i.e. before the
+% logarithm. Linearization and Parker weighting thus come after loadCorrections (same order as in Python).
 if ~options.param.usingLinearizedData
     for kk = 1 : numel(linAlg)
         if options.param.CT && options.param.(linAlg{kk}) && ~options.param.largeDim
@@ -153,19 +188,12 @@ if ~options.param.usingLinearizedData
     end
 end
 if options.param.useParkerWeights
+    % loadCorrections can vectorize SinM (file-loaded normalization), Parker weighting needs the original shape
+    if exist('sinMSizeCT', 'var') && ~iscell(options.param.SinM) && prod(sinMSizeCT) == numel(options.param.SinM)
+        options.param.SinM = reshape(options.param.SinM, sinMSizeCT);
+    end
     options.param = ParkerWeights(options.param);
     % options.param.SinM = options.param.SinM .* w;
-end
-
-if ~options.param.listmode
-    % Load correction data
-    [options.param] = loadCorrections(options.param, RandProp, ScatterProp);
-else
-    % list-mode does not support corrections
-    % options.param.normalization_correction = false;
-    options.param.randoms_correction = false;
-    options.param.additionalCorrection = false;
-    [options.param] = loadCorrections(options.param, RandProp, ScatterProp);
 end
 
 % Non-subtracted (multiplicative) scatter correction is applied through the general

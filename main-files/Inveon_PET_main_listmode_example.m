@@ -40,13 +40,16 @@ options.cryst_per_block = (20);
 options.cryst_per_block_axial = 20;
 
 %%% Crystal pitch/size in x- and y-directions (transaxial) (mm)
-options.cr_p = 1.59;
+% Transaxial crystal pitch from the Siemens Inveon header (1.63 mm)
+options.cr_p = 1.63;
 
 %%% Crystal pitch/size in z-direction (axial) (mm)
-options.cr_pz = 1.59;
+% Axial crystal pitch from the Siemens Inveon header (1.592 mm)
+options.cr_pz = 1.592;
 
 %%% Ring diameter (distance between perpendicular detectors) (mm)
-options.diameter = 161;
+% 2 x radius 80.54 mm from the Siemens Inveon header
+options.diameter = 161.08;
 
 %%% Transaxial FOV size (mm), this is the length of the x (vertical/row) side
 % of the FOV
@@ -142,6 +145,17 @@ options.flip_image = false;
 % The units are crystals, i.e. if the value is 1, the rotation is done by
 % rotating the coordinates equaling to one crystal pitch
 options.offangle = options.det_w_pseudo * (2/4);
+
+%%% Angle of the first detector block (degrees)
+% Angle (degrees, counter-clockwise) of the first detector block. Rotates the
+% whole block ring continuously, keeping each crystal on its own block face
+% (unlike offangle, which shifts the crystal indices). 10.79 aligns the
+% reconstruction with the Siemens Inveon images (measured on real rat data:
+% half a block, 11.25 degrees, minus a 0.46 degree residual).
+% NOTE: the scale of this geometry was checked with a NEMA NU 4 image quality
+% phantom against CT: OMEGA and Siemens images agree to 1-2 %, and both are
+% within about 2 % of the CT.
+options.firstBlockAngle = 10.79;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -159,8 +173,10 @@ options.offangle = options.det_w_pseudo * (2/4);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % List-mode reconstruction only supports automatic attenuation correction.
-% Randoms and/or scatter has to be done manually. Normalization is not
-% supported.
+% Randoms and/or scatter has to be done manually. Normalization is supported
+% only with index-based reconstruction (options.useIndexBasedReconstruction),
+% where options.normalization is either a sinogram (Ndist x Nang x NSinos) or
+% one value for each event.
 
 %%%%%%%%%%%%%%%%%%%%%%%%% Attenuation correction %%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Image-based attenuation correction
@@ -1067,13 +1083,14 @@ options = OMEGA_error_check(options);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%% DEPTH OF INTERACTION %%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Uncomment the below value to set a depth of interaction (mm)
-% NOTE: By default this is set to 0, i.e. it is assumed that all the
-% interactions occur at the surface of the detector crystals. What this
+% Depth of interaction (mm)
+% NOTE: Here the Siemens Inveon header value 4.584 mm is used. Setting this
+% to 0 assumes that all the interactions occur at the surface of the
+% detector crystals. What this
 % value changes is the depth of where the interactions are assumed to
 % occur, i.e. it only changes the detector coordinates such that the
 % transaxial coordinates are "deeper" in the crystal.
-% options.DOI = 4.584;
+options.DOI = 4.584;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% Load the ASCII/ROOT/LST coincidence data

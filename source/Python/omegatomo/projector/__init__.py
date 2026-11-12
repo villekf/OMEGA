@@ -9,8 +9,9 @@ from .coordinates import computePixelSize
 from .coordinates import computePixelCenters
 from .coordinates import computeVoxelVolumes
 from .coordinates import computeProjectorScalingValues
+from .coordinates import expandLayerParameters
 from .indices import indexMaker
 from .indices import formSubsetIndices
 from .projfunctions import resample_resize_proj6
 
-__all__ = ["projectorClass", "computePixelSize", "computePixelCenters", "computeVoxelVolumes", "computeProjectorScalingValues", "indexMaker", "formSubsetIndices", "resample_resize_proj6"]
+__all__ = ["projectorClass", "computePixelSize", "computePixelCenters", "computeVoxelVolumes", "computeProjectorScalingValues", "expandLayerParameters", "indexMaker", "formSubsetIndices", "resample_resize_proj6"]

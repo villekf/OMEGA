@@ -2,7 +2,6 @@
 #define DLL_FUNCTION __declspec(dllexport)
 #endif
 #include "libHeader.h"
-
 #if defined(MTYPE) && !defined(MTYPE2)
 int omegaMain(inputStruct options, const char* header_directory, const uint16_t* Sino, float* outputPtr, float* FPptr, float* residual) {
 #elif !defined(MTYPE) && defined(MTYPE2)
@@ -11,9 +10,15 @@ int omegaMain(inputStruct options, const char* header_directory, const uint8_t *
 int omegaMain(inputStruct options, const char* header_directory, const float* Sino, float* outputPtr, float* FPptr, float* residual) {
 #endif
 
-	scalarStruct inputScalars;
+#ifdef CPU
+	// Multi-resolution (extended FOV) volumes are not supported by the CPU backend (it crashes while preparing the reconstruction)
+	if (options.nMultiVolumes > 0) {
+		mexPrint("Multi-resolution reconstruction is not supported with the CPU implementation!");
+		return -1;
+	}
+#endif
 
-	af::setDevice(options.deviceNum);
+	scalarStruct inputScalars;
 
 	// Create a struct containing the reconstruction methods used
 	RecMethods MethodList;
@@ -21,6 +26,12 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 	// Struct containing the necessary variables for the priors
 	Weighting w_vec;
 
+	int status = 0;
+
+	// C++ exceptions must not cross the extern "C"/ctypes boundary, they are caught here and reported as a failed reconstruction
+	try {
+
+	af::setDevice(options.deviceNum);
 
 	if (DEBUG) {
 		mexPrint("Copying data\n");
@@ -88,6 +99,33 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 				inputScalars.size_z = options.sizeZSens;
 			}
 		}
+		// Optional normalization for the list-mode sensitivity image (index-based and custom coordinate data). Either a sinogram that
+		// is read through the two lookup tables sensXY and sensZ (index-based data), or, without the lookup tables, a full pair table
+		// with one value for each ordered detector/ring pair (det_per_ring^2 * rings^2 * nLayers^2 elements, the kernel index)
+		if (inputScalars.computeSensImag && inputScalars.normalization_correction && options.normSens != nullptr && options.sizeNormSens > 0ULL) {
+			w_vec.normSens = options.normSens;
+			inputScalars.size_normSens = static_cast<size_t>(options.sizeNormSens);
+			if (options.sensXY != nullptr && options.sensZ != nullptr && options.sensBins > 0U) {
+				if (!inputScalars.indexBased) {
+					mexPrint("The normalization lookup tables sensXY and sensZ are supported only with index-based data\n");
+					return -1;
+				}
+				w_vec.sensXY = options.sensXY;
+				w_vec.sensZ = options.sensZ;
+				inputScalars.sensBins = options.sensBins;
+				inputScalars.normSensLookup = true;
+			}
+			else {
+				// Full pair table, no lookup tables (sensBins = 0)
+				const size_t expectedPairs = static_cast<size_t>(inputScalars.det_per_ring) * static_cast<size_t>(inputScalars.det_per_ring) *
+					static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.nLayers) * static_cast<size_t>(inputScalars.nLayers);
+				if (inputScalars.size_normSens != expectedPairs) {
+					mexPrint("The pair normalization table normSens must have det_per_ring^2 * rings^2 * nLayers^2 elements\n");
+					return -1;
+				}
+				inputScalars.normSensFull = true;
+			}
+		}
 		if (inputScalars.TOF)
 			w_vec.TOFIndices = options.TOFIndices;
 		inputScalars.kokoNonTOF = mDim;
@@ -95,8 +133,11 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 	else
 		inputScalars.kokoNonTOF = mDim / inputScalars.nBins;
 	inputScalars.kokoTOF = mDim;
-	
-	
+
+	// TOF-resolved randoms/scatter (randomsTOF) has the layout and size of the TOF measurements
+	if (!checkRandomsTOF(inputScalars, static_cast<size_t>(options.sizeRandoms), static_cast<size_t>(options.measElem)))
+		return -1;
+
 	if (DEBUG) {
 		mexPrintBase("kokoTOF = %u\n", inputScalars.kokoTOF);
 		mexPrintBase("kokoNonTOF = %u\n", inputScalars.kokoNonTOF);
@@ -137,20 +178,40 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 	if (inputScalars.verbose >= 3) {
 		mexPrint("Loaded struct values. Starting reconstruction itself...");
 	}
-	int status = reconstructionAF(z_det, x, Sino, randoms, inputScalars, device, pituus, w_vec, MethodList, header_directory, x0,
+	status = reconstructionAF(z_det, x, Sino, randoms, inputScalars, device, pituus, w_vec, MethodList, header_directory, x0,
 		outputPtr, FPptr, atten, norm, extraCorr, size_gauss, xy_index, z_index, residual);
 
-	// Clear ArrayFire memory
-	af::deviceGC();
-	// Release the cached FFT plans now. ArrayFire keeps them in a thread_local cache whose destructor otherwise runs at process exit;
-	// with a libstdc++ lacking __cxa_thread_atexit_impl (e.g. the conda one pulled in by PyTorch) that happens after clFFT's static
-	// plan repository is destroyed -> double free/segfault at exit with the OpenCL library. 5 is ArrayFire's default cache size
-	af::setFFTPlanCacheSize(0);
-	af::setFFTPlanCacheSize(5);
+	}
+	catch (const af::exception& e) {
+		mexPrintBase("ArrayFire exception: %s\n", e.what());
+		status = -1;
+	}
+	catch (const std::exception& e) {
+		mexPrintBase("Exception: %s\n", e.what());
+		status = -1;
+	}
+	catch (...) {
+		mexPrint("Unknown exception during reconstruction");
+		status = -1;
+	}
+
+	// Clear ArrayFire memory. This is also done after an exception, the cleanup itself must not throw out of the library
+	try {
+		af::deviceGC();
+		// Release the cached FFT plans now. ArrayFire keeps them in a thread_local cache whose destructor otherwise runs at process exit;
+		// with a libstdc++ lacking __cxa_thread_atexit_impl (e.g. the conda one pulled in by PyTorch) that happens after clFFT's static
+		// plan repository is destroyed -> double free/segfault at exit with the OpenCL library. 5 is ArrayFire's default cache size
+		af::setFFTPlanCacheSize(0);
+		af::setFFTPlanCacheSize(5);
+	}
+	catch (...) {
+		mexPrint("ArrayFire cleanup failed");
+	}
 	if (status != 0)
 		mexPrint("Reconstruction failed!");
 
 	fflush(stdout);
 
-	return 0;
+
+	return status;
 }

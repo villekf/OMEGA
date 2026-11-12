@@ -46,17 +46,32 @@ jokux = abs(x(:,1)-x(:,2));
 jokuy = abs(y(:,1)-y(:,2));
 % Indices on the other side of the circle (angle over 90 degrees)
 ind = x(:,1) > x(:,2) & y(:,1) > y(:,2) | x(:,2) > x(:,1) & y(:,2) > y(:,1);
+% LORs that are vertical (or horizontal) up to numerical precision are
+% treated as exactly vertical (0 degrees) or horizontal (90 degrees), so that
+% rounding errors (e.g. single vs. double precision) cannot move them to the
+% other side of the circle
+vertical = jokux <= 1e-6 * max(jokuy);
+horizontal = jokuy <= 1e-6 * max(jokux);
+ind(vertical | horizontal) = false;
 % Angle
 kulma = atand(jokux./jokuy);
+kulma(horizontal) = 90;
+kulma(vertical) = 0;
 kulma(ind) = kulma(ind) + 90;
 if nargout >= 3
     varargout{1} = kulma;
 end
-% Combine similar angles together
-kulma = round(kulma);
+% Combine similar angles together. The angles are first snapped to 0.001
+% degrees, so that LORs with an angle that is an exact half degree (up to
+% numerical precision) are rounded identically in single and double precision
+kulma = round(round(kulma * 1e3) / 1e3);
 kulma(kulma==180) = 179;
+kulmaOrig = kulma;
 [kulma, I] = sort(kulma);
 n_angles = options.n_angles;
+if mod(180, n_angles) ~= 0
+    error('options.n_angles has to divide 180 evenly!')
+end
 maara = 180/n_angles;
 
 if options.use_raw_data
@@ -71,19 +86,55 @@ if options.use_raw_data
         pituus(ii) = length(index1{ii});
     end
 else
-    maara2 = maara * 2;
-    index1 = cell(maara,1);
-    pituus = zeros(maara*floor(length(options.segment_table)/2)*2 + maara,1,'uint32');
-    index0 = cell(maara,1);
-    % 2D case
-    for ii = 1 : maara
-        % Take the indices of angles that are between the defined number of
-        % angles
-        index0{ii} = uint32(I(kulma >= (ii-1)*n_angles & kulma < ii*n_angles));
-        index1{ii} = repmat(index0{ii},options.segment_table(1),1) + uint32(repelem((0:options.segment_table(1)-1)*sino_length,length(index0{ii}))');
-        pituus(ii) = length(index1{ii});
+    % Sinogram data. 2D data (only the direct planes are used): 180/n_angles
+    % subsets, the subset j contains the bins with a (rounded) angle in
+    % [j*n_angles, (j+1)*n_angles) of all (direct) planes.
+    % 3D data: 360/n_angles subsets. The oblique segments of all segment
+    % pairs belong to the subset that contains their full angle (the angle of
+    % the first member of a pair, angle + 180 for the second member). The
+    % direct planes are split by the plane parity: the bins with the angle
+    % range j of the even planes (0, 2, ...) go to the subset j and those of
+    % the odd planes to the subset j + 180/n_angles, i.e. every subset spans
+    % the whole axial range. Order inside a subset: the direct planes first,
+    % then the oblique segments in increasing segment order; every block is
+    % plane-major (a plane after the other), the bins of a plane in
+    % ascending sinogram order. The indices are 1-based.
+    segment_table = options.segment_table(:);
+    nPairs = floor(length(segment_table)/2);
+    use3D = nPairs > 0 && ~(options.NSinos < options.TotSinos);
+    if use3D
+        nSubsets = 2 * maara;
+        nDirect = segment_table(1);
+        % First plane of the first member of each segment pair
+        firstPlane = zeros(nPairs,1);
+        nPlanes = zeros(nPairs,1);
+        for rd = 1 : nPairs
+            firstPlane(rd) = sum(segment_table(1:rd*2-1));
+            nPlanes(rd) = segment_table(2+(rd-1)*2);
+        end
+    else
+        nSubsets = maara;
+        nDirect = options.NSinos;
     end
-    index1 = cell2mat(index1);
+    index1 = cell(nSubsets,1);
+    pituus = zeros(nSubsets,1,'uint32');
+    for kk = 1 : nSubsets
+        j = mod(kk-1, maara);
+        par = floor((kk-1) / maara);
+        bins = find(kulmaOrig >= j*n_angles & kulmaOrig < (j+1)*n_angles);
+        if use3D
+            planes = par : 2 : nDirect - 1;
+            for rd = 1 : nPairs
+                planes = [planes, firstPlane(rd) + nPlanes(rd)*par + (0 : nPlanes(rd) - 1)]; %#ok<AGROW>
+            end
+        else
+            planes = 0 : nDirect - 1;
+        end
+        ind1 = double(bins(:)) + double(planes(:))' * sino_length;
+        index1{kk} = uint32(ind1(:));
+        pituus(kk) = length(index1{kk});
+    end
+    index = cell2mat(index1);
 end
 
 % 3D case
@@ -123,32 +174,4 @@ if options.use_raw_data
         end
     end
     index = cell2mat(index1);
-else
-    ring_diff = zeros(ceil(length(options.segment_table)/2),1);
-    index2 = cell(maara*2*floor(length(options.segment_table)/2),1);
-    for kk = 1 : floor(length(options.segment_table)/2)
-        ring_diff(kk+1) = mod(ring_diff(kk) + round(0.7*length(options.segment_table)/2), floor(length(options.segment_table)/2) + 1);
-        while any(ismember(ring_diff(kk+1), ring_diff(1:kk)))
-            ring_diff(kk+1) = ring_diff(kk+1) + 1;
-        end
-        ll = 1;
-        alku = sum(options.segment_table(1:ring_diff(kk+1)*2-1)) * sino_length;
-        kerroin = 0;
-        for ii = 1 : maara2
-            index2{maara2*(kk-1) + ii} = repmat(index0{ll},options.segment_table(2+(ring_diff(kk+1)-1)*2),1) + ...
-                uint32(repelem((options.segment_table(2+(ring_diff(kk+1)-1)*2)*kerroin:options.segment_table(2+(ring_diff(kk+1)-1)*2)...
-                *(kerroin+1)-1)*sino_length + alku,length(index0{ll}))');
-            pituus(maara2*(kk-1) + ii + maara) = length(index2{maara2*(kk-1) + ii});
-            % If the "other" segment (segment tables have two 3D components
-            % of identical sizes) is reached, the angle is increased from
-            % 180 to 360 
-            if mod(ll,maara) == 0
-                ll = 1;
-                kerroin = 1;
-            else
-                ll = ll + 1;
-            end
-        end
-    end
-    index = [index1;cell2mat(index2)];
 end

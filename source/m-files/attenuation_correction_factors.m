@@ -1,4 +1,4 @@
-function attenuation_datafile = attenuation_correction_factors(options)
+function attenuation_datafile = attenuation_correction_factors(options, varargin)
 %% ATTENUATION CORRECTION IMAGE
 % This function creates an attenuation image from the Siemens Inveon
 % .atn-file. First the data is reconstructed in a smaller size than the
@@ -6,6 +6,19 @@ function attenuation_datafile = attenuation_correction_factors(options)
 % within the 122 keV tissue range. After that, the values are interpolated
 % for 511 keV values. Lastly, the attenuation image is scaled to the actual
 % image size. Outputs the name of the attenuation image datafile.
+% The output attenuation image is in 1/cm at 511 keV, so options.attIncm
+% must be true (as in the Inveon examples).
+%
+% The optional second input is the full path of the Inveon CT UMAP .img-file
+% (if options.CT_attenuation is true) or of the Inveon attenuation .atn-file
+% (if options.CT_attenuation is false). If it is omitted or empty, the user
+% is prompted to select the file. Giving the path allows the function to be
+% run non-interactively.
+%
+% Examples:
+%   options.attenuation_datafile = attenuation_correction_factors(options);
+%   options.attenuation_datafile = attenuation_correction_factors(options, ...
+%       '/path/to/inveon_attenuation.atn');
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Copyright (C) 2020 Ville-Veikko Wettenhovi
@@ -34,12 +47,19 @@ options.partitions = 1;
 options.root_source = false;
 options.source_index1 = [];
 if options.CT_attenuation
-    [options.file, options.fpath] = uigetfile('*.img','Select Inveon CT UMAP file');
-    if isequal(options.file, 0)
-        error('No file was selected')
+    if nargin >= 2 && ~isempty(varargin{1})
+        nimi = varargin{1};
+    else
+        [options.file, options.fpath] = uigetfile('*.img','Select Inveon CT UMAP file');
+        if isequal(options.file, 0)
+            error('No file was selected')
+        end
+        nimi = [options.fpath options.file];
     end
-    nimi = [options.fpath options.file];
     fid = fopen(nimi);
+    if fid == -1
+        error(['Could not open the file ' nimi])
+    end
     attenuation_factors = fread(fid, inf, 'single',0,'l');
     if numel(attenuation_factors) < options.Nx*options.Ny*options.Nz
         val = sqrt(numel(attenuation_factors) / options.Nz);
@@ -57,12 +77,19 @@ if options.CT_attenuation
     attenuation_factors = rot90(reshape(attenuation_factors, options.Nx, options.Ny, options.Nz),-1);
     fclose(fid);
 else
-    [options.file, options.fpath] = uigetfile('*.atn','Select Inveon attenuation file');
-    if isequal(options.file, 0)
-        error('No file was selected')
+    if nargin >= 2 && ~isempty(varargin{1})
+        nimi = varargin{1};
+    else
+        [options.file, options.fpath] = uigetfile('*.atn','Select Inveon attenuation file');
+        if isequal(options.file, 0)
+            error('No file was selected')
+        end
+        nimi = [options.fpath options.file];
     end
-    nimi = [options.fpath options.file];
     fid = fopen(nimi);
+    if fid == -1
+        error(['Could not open the file ' nimi])
+    end
     attenuation_factors = fread(fid, inf, 'single',0,'l');
     aSize = numel(attenuation_factors) / (options.Ndist * options.Nang);
     attenuation_factors = log(reshape(attenuation_factors, options.Ndist, options.Nang, aSize));
@@ -98,7 +125,9 @@ else
     pz = reconstructions_main(options);
     img = pz(:,:,:,end);
 %     img = median_filter3d(img) / 10;
-    attenuation_factors = attenuation122_to_511(img) / 2;
+    % mu at 511 keV in 1/cm (options.attIncm = true converts it to 1/mm in loadCorrections). An earlier extra "/ 2" here halved
+    % the coefficients, so that their line integrals were about 2.2 times smaller than the measured log(ACF) of the .atn file.
+    attenuation_factors = attenuation122_to_511(img);
 %     attenuation_factors = ones(options.Nx * 2, options.Ny * 2, options.Nz);
 %     for kk = 1 : options.Nz
 %         attenuation_factors(:,:,kk) = imresize(attenuation_factors_(:,:,kk), [options.Nx * 2 options.Ny * 2]);
