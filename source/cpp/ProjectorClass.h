@@ -496,6 +496,9 @@ class ProjectorClass {
 		bool raw = false;
 		bool subInd = false;
 		bool priorMask = false;
+		// The prior kernels are built from useImages alone, while the ray-based projector kernels are forced to textures
+		// (useBuffers is false there even with useImages = false), so the prior mask has its own flag
+		bool priorMaskBuffer = false;
 		int NLMRef = 0;
 		bool BPIm = false;
 		bool proj5Im = false;
@@ -2760,7 +2763,7 @@ public:
 			}
 		}
 		if (memAlloc.priorMask) {
-			if (memAlloc.useBuffers) {
+			if (memAlloc.priorMaskBuffer) {
 				getErrorString(cuMemFree(d_maskPriorB));
 			}
 			else {
@@ -3576,7 +3579,9 @@ public:
 		}
 		memAlloc.tSteps = inputScalars.Nt;
 		if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
-			if (inputScalars.useBuffers) {
+			// Must match the -DUSEIMAGES option of the prior kernels (useImages), not the projector kernels (useBuffers)
+			memAlloc.priorMaskBuffer = !inputScalars.useImages;
+			if (memAlloc.priorMaskBuffer) {
 				ALLOC_BUFFER(d_maskPriorB, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ);
 			}
 			else {
@@ -4016,7 +4021,13 @@ public:
 							static_cast<size_t>(inputScalars.maskBPZ));
 					}
 					if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
-						memSize += (sizeof(uint8_t) * static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) * 
+						// Ray-based projector kernels use textures even with useImages = false, but the prior kernels then use a buffer
+						// (the prior texture is created at allocation)
+						if (memAlloc.priorMaskBuffer) {
+							WRITE_BUFFER(d_maskPriorB, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ, w_vec.maskPrior);
+							CHECK(status, "\n", (STATUS_t)(-1));
+						}
+						memSize += (sizeof(uint8_t) * static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) *
 							static_cast<size_t>(inputScalars.maskBPZ));
 					}
 				}
@@ -6505,7 +6516,7 @@ public:
 		KARG(kArgs, kernelMed, kernelIndMed, d_N[0]);
 		KARG(kArgs, kernelMed, kernelIndMed, d_NOrig);
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			if (inputScalars.useBuffers) {
+			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelMed, kernelIndMed, d_maskPriorB);
 			}
 			else
@@ -6653,7 +6664,7 @@ public:
 				KARG(kArgs, kernelNLM, kernelIndNLM, d_uref);
 			}
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			if (inputScalars.useBuffers) {
+			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelNLM, kernelIndNLM, d_maskPriorB);
 			}
 			else
@@ -6787,7 +6798,7 @@ public:
 #endif // END CUDA
 		KARG(kArgs, kernelRDP, kernelIndRDP, beta);
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			if (inputScalars.useBuffers) {
+			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelRDP, kernelIndRDP, d_maskPriorB);
 			}
 			else
@@ -6944,7 +6955,7 @@ public:
 		KARG(kArgs, kernelGGMRF, kernelIndGGMRF, pqc);
 		KARG(kArgs, kernelGGMRF, kernelIndGGMRF, beta);
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			if (inputScalars.useBuffers) {
+			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelGGMRF, kernelIndGGMRF, d_maskPriorB);
 			}
 			else
@@ -7035,7 +7046,7 @@ public:
 		KARG(kArgs, kernelProxTVDiv, kernelIndCPTV, d_qZ);
 		KARG(kArgs, kernelProxTVDiv, kernelIndCPTV, vec_opencl.d_rhs_os[0]);
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			if (inputScalars.useBuffers) {
+			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelProxTVDiv, kernelIndCPTV, d_maskPriorB);
 			}
 			else
@@ -7118,7 +7129,7 @@ public:
 				KARG(kArgs, kernelProxTVGrad, kernelIndCPTV, d_vZ);
 		}
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			if (inputScalars.useBuffers) {
+			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelProxTVGrad, kernelIndCPTV, d_maskPriorB);
 			}
 			else
@@ -7204,7 +7215,7 @@ public:
 		KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, sigma2);
 		KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, alpha);
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			if (inputScalars.useBuffers) {
+			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, d_maskPriorB);
 			}
 			else
@@ -7294,7 +7305,7 @@ public:
 		KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, theta);
 		KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, tau);
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			if (inputScalars.useBuffers) {
+			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_maskPriorB);
 			}
 			else
@@ -7476,7 +7487,7 @@ public:
 		KARG(kArgs, kernelHyper, kernelIndHyper, beta);
 		KARG(kArgs, kernelHyper, kernelIndHyper, d_weights);
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			if (inputScalars.useBuffers) {
+			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelHyper, kernelIndHyper, d_maskPriorB);
 			}
 			else
@@ -7603,7 +7614,7 @@ public:
 		KARG(kArgs, kernelTV, kernelIndTV, smooth);
 		KARG(kArgs, kernelTV, kernelIndTV, beta);
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			if (inputScalars.useBuffers) {
+			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelTV, kernelIndTV, d_maskPriorB);
 			}
 			else
