@@ -568,7 +568,8 @@ if ~isfield(options, 'med_no_norm')
     options.med_no_norm = false;
 end
 if ~isfield(options, 'errorChecking')
-    options.errorChecking = false;
+    % Set to false to skip the error checking (OMEGA_error_check)
+    options.errorChecking = true;
 end
 if ~isfield(options, 'blocks_per_ring')
     options.blocks_per_ring = 1;

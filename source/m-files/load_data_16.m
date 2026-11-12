@@ -46,6 +46,9 @@ function [varargout] = load_data_16(options)
 if nargout > 4
     error('Too many output arguments')
 end
+% Default values and the sinogram parameter checks (local to this function)
+options = setMissingValues(options);
+options = checkSinogramOptions(options);
 if nargout >= 3
     store_coordinates = true;
 else

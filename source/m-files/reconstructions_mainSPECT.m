@@ -22,7 +22,6 @@ function [pz,varargout] = reconstructions_mainSPECT(options)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 options.SPECT = true;
-options.errorChecking = true;
 if nargout > 1
     if nargout == 3
         [pz,varargout{1},varargout{2}] = reconstructions_main(options);

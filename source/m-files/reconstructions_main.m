@@ -47,6 +47,13 @@ end
 
 % Create the class object
 options = projectorClass(inputStruct);
+% Check the algorithm/prior selection and print the selected settings (not done when only the operator is needed)
+if tyyppi == 0 && options.param.errorChecking
+    options.param = checkAlgorithmSelection(options.param);
+end
+if tyyppi == 0 && options.param.verbose > 0
+    options.param = printReconstructionSettings(options.param);
+end
 
 if numel(options.param.partitions) > 1
     partitions = numel(options.param.partitions);
