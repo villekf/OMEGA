@@ -593,13 +593,25 @@ void projectorType123(
 #if !defined(VOL) // Orthogonal
 	orth_ray_length = L * orthWidth;
 #if !defined(CT)
-	// The orthogonal weights 1 - d/R are normalized by the integral of the cone, PI * R^2 / 3 per unit length, expressed in
-	// voxels (divided by the voxel volume). This makes the forward projection of a constant image comparable to the line
-	// integral of the Siddon (type 1) and volume (type 3) projectors, independent of the tube radius and the voxel size
+	// The orthogonal weights 1 - d/R are normalized so that the forward projection of a constant image is comparable to the line
+	// integral of the Siddon (type 1) and volume (type 3) projectors, independent of the tube radius and the voxel size.
+	// 3D case: by the integral of the cone, PI * R^2 / 3 per unit length, expressed in voxels (divided by the voxel volume).
+	// 2.5D case: by the transaxial triangle, i.e. the integral R per unit transaxial length, divided by the voxel area dx * dy
+#if defined(CRYSTZ)
 #if defined(TOTLENGTH)
 	float TotV = L * M_PI_F * orthWidth * orthWidth / (3.f * d_d.x * d_d.y * d_d.z);
 #else
 	float TotV = M_PI_F * orthWidth * orthWidth / (3.f * d_d.x * d_d.y * d_d.z);
+#endif
+#else
+	// 2.5D: transaxial distance only (see orthDistance3D); LXY is the length of the transaxial projection of the ray
+	const float LXY = SQRT(diff.x * diff.x + diff.y * diff.y);
+	orth_ray_length = LXY * orthWidth;
+#if defined(TOTLENGTH)
+	float TotV = LXY * orthWidth / (d_d.x * d_d.y);
+#else
+	float TotV = (LXY / L) * orthWidth / (d_d.x * d_d.y);
+#endif
 #endif
 #endif
 #elif defined(VOL) // Volume-based
