@@ -96,7 +96,10 @@ if ~isfield(options,'SPECT')
     options.SPECT = false;
 end
 if ~options.precompute_lor
-    if options.NSinos ~= options.TotSinos && options.listmode == 0
+    % Only the per-sinogram-bin subset types (1-7) can have an index that is longer than the used sinograms. With one subset or
+    % subset_type >= 8 the index lists projections (or is a placeholder), not sinogram bins
+    if options.NSinos ~= options.TotSinos && options.listmode == 0 && options.subsets > 1 && options.subset_type < 8 && ...
+            ~options.use_raw_data && numel(index) > options.Ndist*options.Nang*options.NSinos
         index = index(1:options.Ndist*options.Nang*options.NSinos);
     end
 end
