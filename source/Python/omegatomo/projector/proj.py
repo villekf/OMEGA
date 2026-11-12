@@ -1347,6 +1347,7 @@ class projectorClass:
             self.maskBP = np.asfortranarray(self.maskBP)
         else:
             self.useMaskBP = False
+            self.usePriorMask = False  # no valid maskBP: nothing to use as a prior mask
         if self.maskBP.dtype != np.uint8:
             self.maskBP = self.maskBP.astype(np.uint8)
         # list_mode_format = False
@@ -2776,7 +2777,7 @@ class projectorClass:
                 self.maskPrior[padX : NxE - padX, padY : NyE - padY] = 1
                 self.NxPrior = np.sum(self.maskPrior[:,int(matlabRound(self.maskPrior.shape[1]/2))], dtype=np.uint32)
                 self.NyPrior = np.sum(self.maskPrior[int(matlabRound(self.maskPrior.shape[0]/2)),:], dtype=np.uint32)
-                if self.useMaskBP:
+                if self.useMaskBP or self.usePriorMask:
                     # MATLAB: maskPrior - uint8(~maskBP), saturating at 0. A 3D maskBP expands the 2D maskPrior along z
                     maskBPE = np.asarray(self.maskBP)
                     if maskBPE.ndim < 2:
@@ -3032,6 +3033,7 @@ class projectorClass:
             ('meanBP', ctypes.c_bool),
             ('useMaskFP', ctypes.c_bool),
             ('useMaskBP', ctypes.c_bool),
+            ('usePriorMask', ctypes.c_bool),
             ('orthTransaxial', ctypes.c_bool),
             ('orthAxial', ctypes.c_bool),
             ('enforcePositivity', ctypes.c_bool),

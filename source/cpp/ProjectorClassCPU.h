@@ -79,7 +79,7 @@ public:
 			param.maskFP = w_vec.maskFP;
 		if (param.useMaskBP)
 			param.maskBP = w_vec.maskBP;
-		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution)) {
+		if (inputScalars.priorMask) {
 			d_maskPrior = w_vec.maskPrior;
 			maskPriorZ = inputScalars.maskBPZ;
 		}

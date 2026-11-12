@@ -376,6 +376,10 @@ options.projector_type = 4
 # centerY = options.Ny / 2
 # radius = options.Nx / 2
 # options.maskBP = ((rows_in_image - centerY)**2 + (columns_in_image - centerX)**2 <= radius**2).astype(np.uint8)
+# Use the backprojection mask only as a prior mask, i.e. the mask is not
+# applied in the backprojection but the prior is computed only inside the
+# mask (requires options.maskBP)
+# options.usePriorMask = True
 
 ### Interpolation length (projector type = 4 only)
 # This specifies the length after which the interpolation takes place. This

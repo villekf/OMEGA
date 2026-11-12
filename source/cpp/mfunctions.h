@@ -112,6 +112,7 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 		inputScalars.maskBP = false;
 	else if (type == 2 && inputScalars.FPType > 3)
 		inputScalars.maskFP = false;
+	inputScalars.maskPriorOnly = !inputScalars.maskBP && mxGetFieldNumber(options, "usePriorMask") >= 0 && getScalarBool(options, 0, "usePriorMask");
 	inputScalars.offset = getScalarBool(options, 0, "offsetCorrection");
 	if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 		inputScalars.orthXY = getScalarBool(options, 0, "orthTransaxial");
@@ -298,14 +299,19 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 			mexEval();
 		}
 	}
+	else if (inputScalars.maskPriorOnly) {
+		inputScalars.maskBPZ = getScalarUInt32(getField(options, 0, "maskBPZ"));
+		inputScalars.size_maskBP = mxGetNumberOfElements(getField(options, 0, "maskBP"));
+	}
 	//if (inputScalars.offset)
 	//	w_vec.maskOffset = getUint8s(options, "maskOffset");
 	if (inputScalars.eFOV && inputScalars.useExtendedFOV && !inputScalars.multiResolution)
 		w_vec.eFOVIndices = getUint8s(options, "eFOVIndices");
 	if (inputScalars.useExtendedFOV && !inputScalars.multiResolution)
 		w_vec.maskPrior = getUint8s(options, "maskPrior");
-	else if (inputScalars.maskBP)
+	else if (inputScalars.maskBP || inputScalars.maskPriorOnly)
 		w_vec.maskPrior = getUint8s(options, "maskBP");
+	inputScalars.priorMask = inputScalars.maskBP || inputScalars.maskPriorOnly || (inputScalars.useExtendedFOV && !inputScalars.multiResolution);
 	// CT-related variables such as number of projection images
 	if (inputScalars.CT) {
 		w_vec.nProjections = getScalarInt64(getField(options, 0, "nProjections"), -11);

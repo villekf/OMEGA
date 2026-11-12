@@ -262,6 +262,8 @@ struct inputStruct {
     bool useMaskFP = false;
     // Use backward projection mask
     bool useMaskBP = false;
+    // Use maskBP only as the prior mask (not as a backprojection mask)
+    bool usePriorMask = false;
     // Use transaxial orthogonal distance-based ray tracer
     bool orthTransaxial = false;
     // Use axial orthogonal distance-based ray tracer
@@ -854,6 +856,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         inputScalars.meanBP = options.meanBP;
     }
     inputScalars.maskBP = options.useMaskBP;
+    inputScalars.maskPriorOnly = options.usePriorMask && !inputScalars.maskBP;
     inputScalars.maskFP = options.useMaskFP;
     inputScalars.offset = options.offsetCorrection;
     if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
@@ -1011,12 +1014,15 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.maskBP = options.maskBP;
         inputScalars.maskBPZ = options.maskBPZ;
     }
+    else if (inputScalars.maskPriorOnly)
+        inputScalars.maskBPZ = options.maskBPZ;
     if (inputScalars.eFOV && inputScalars.useExtendedFOV && !inputScalars.multiResolution)
         w_vec.eFOVIndices = options.eFOVIndices;
     if (inputScalars.useExtendedFOV && !inputScalars.multiResolution)
         w_vec.maskPrior = options.maskPrior;
-    else if (inputScalars.maskBP)
+    else if (inputScalars.maskBP || inputScalars.maskPriorOnly)
         w_vec.maskPrior = options.maskBP;
+    inputScalars.priorMask = inputScalars.maskBP || inputScalars.maskPriorOnly || (inputScalars.useExtendedFOV && !inputScalars.multiResolution);
     // CT-related variables such as number of projection images
     w_vec.nProjections = options.nProjections;
     if (inputScalars.CT) {

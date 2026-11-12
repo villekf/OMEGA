@@ -353,7 +353,7 @@ if options.useEFOV
         options.maskPrior((options.Nx - options.NxOrig)/2 + 1 : end - (options.Nx - options.NxOrig)/2, (options.Ny - options.NyOrig)/2 + 1 : end - (options.Ny - options.NyOrig)/2) = uint8(1);
         options.NxPrior = sum(options.maskPrior(:,round(end/2)));
         options.NyPrior = sum(options.maskPrior(round(end/2),:));
-        if options.useMaskBP
+        if options.useMaskBP || options.usePriorMask
             options.maskPrior = options.maskPrior - uint8(~options.maskBP);
         end
     end

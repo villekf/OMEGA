@@ -93,7 +93,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 		if (inputScalars.maskFP)
 			checkSize("maskFP", inputScalars.size_maskFP, static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD) *
 				(inputScalars.maskFPZ > 1 ? static_cast<size_t>(inputScalars.maskFPZ) : 1ULL));
-		if (inputScalars.maskBP)
+		if (inputScalars.maskBP || inputScalars.maskPriorOnly)
 			checkSize("maskBP", inputScalars.size_maskBP, static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) *
 				static_cast<size_t>(inputScalars.maskBPZ));
 		if (inputScalars.normalization_correction && inputScalars.size_norm > 1ULL)

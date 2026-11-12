@@ -989,6 +989,10 @@ options.projector_type = 1;
 % radius = options.Nx/2;
 % options.maskBP = uint8((rowsInImage - centerY).^2 ...
 %     + (columnsInImage - centerX).^2 <= radius.^2);
+% Use the backprojection mask only as a prior mask, i.e. the mask is not
+% applied in the backprojection but the prior is computed only inside the
+% mask (requires options.maskBP)
+% options.usePriorMask = true;
 
 %%% Interpolation length (projector type = 4 only)
 % This specifies the length after which the interpolation takes place. This
