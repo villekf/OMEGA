@@ -201,6 +201,18 @@ def computePixelSize(options):
     options.bx = np.zeros((FOV.shape[0],1),dtype=np.float32);
     options.by = np.zeros((FOV.shape[0],1),dtype=np.float32);
     options.bz = np.zeros((FOV.shape[0],1),dtype=np.float32);
+    # With multi-resolution volumes the side volumes all have the same coarse voxel size. It is FOV / N in double precision, not
+    # the first difference of a float32 linspace, whose rounding error can give the side volumes voxel sizes that differ in the
+    # last digits; the voxel sizes that are the same up to rounding error are made exactly the same
+    multiRes = FOV.shape[0] > 2
+    if multiRes:
+        voxelSpacing = np.column_stack((np.asarray(options.FOVa_x, dtype=np.float64).ravel() / np.asarray(options.Nx, dtype=np.float64).ravel(),
+                                        np.asarray(options.FOVa_y, dtype=np.float64).ravel() / np.asarray(options.Ny, dtype=np.float64).ravel(),
+                                        np.asarray(options.axial_fov, dtype=np.float64).ravel() / np.asarray(options.Nz, dtype=np.float64).ravel()))
+        sideSpacing = voxelSpacing[1].copy()
+        tolerance = np.maximum(1.0e-8, np.abs(sideSpacing) * 1.0e-5)
+        sameSide = np.abs(voxelSpacing[1:] - sideSpacing) <= tolerance
+        voxelSpacing[1:] = np.where(sameSide, sideSpacing, voxelSpacing[1:])
     for kk in range(FOV.shape[0] - 1, -1, -1):
         xx = np.linspace(etaisyys[kk,0] + options.oOffsetX, -etaisyys[kk,0] + options.oOffsetX, options.Nx[kk].item() + 1, dtype=np.float32)
         yy = np.linspace(etaisyys[kk,1] + options.oOffsetY, -etaisyys[kk,1] + options.oOffsetY, options.Ny[kk].item() + 1, dtype=np.float32)
@@ -209,6 +221,8 @@ def computePixelSize(options):
         options.dx[kk] = xx[1] - xx[0]
         options.dy[kk] = yy[1] - yy[0]
         options.dz[kk] = zz[1] - zz[0]
+        if multiRes and kk > 0:
+            options.dx[kk], options.dy[kk], options.dz[kk] = voxelSpacing[kk].astype(np.float32)
     
         # Distance of image from the origin
         if kk == 0:

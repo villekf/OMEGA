@@ -796,7 +796,7 @@ extern "C" __global__
 #ifdef FDK
     // The box sum is the integral of the filtered projection over the voxel footprint, so it is divided by the
     // full footprint area (in detector pixels) to get the mean value
-    // Parts of the footprint outside the detector count as zero, consistent with the border sampling of 
+    // Parts of the footprint outside the detector count as zero, consistent with the border sampling of
     // projector type 4 and with the offset redundancy weighting
     // The mean is then weighted with the same weight as in projector type 4, i.e.
     // (DSC^2 / U^2) * pi / (nProjections * dPitch.x), where
@@ -901,22 +901,30 @@ extern "C" __global__
     float wA = 1.f, wB = 1.f, wC = 1.f, wD = 1.f;
     if (coordA.x <= OffTT && coordA.x >= -OffTT) {
       wA = SINF(M_PI_2_F * ((coordA.x + OffTT) * invOffTT));
+#ifndef OFFSETSQRT
       wA *= wA;
+#endif
     } else if (coordA.x < -OffTT)
       wA = 0.f;
     if (coordB.x <= OffTT && coordB.x >= -OffTT) {
       wB = SINF(M_PI_2_F * ((coordB.x + OffTT) * invOffTT));
+#ifndef OFFSETSQRT
       wB *= wB;
+#endif
     } else if (coordB.x < -OffTT)
       wB = 0.f;
     if (coordC.x <= OffTT && coordC.x >= -OffTT) {
       wC = SINF(M_PI_2_F * ((coordC.x + OffTT) * invOffTT));
+#ifndef OFFSETSQRT
       wC *= wC;
+#endif
     } else if (coordC.x < -OffTT)
       wC = 0.f;
     if (coordD.x <= OffTT && coordD.x >= -OffTT) {
       wD = SINF(M_PI_2_F * ((coordD.x + OffTT) * invOffTT));
+#ifndef OFFSETSQRT
       wD *= wD;
+#endif
     } else if (coordD.x < -OffTT)
       wD = 0.f;
 

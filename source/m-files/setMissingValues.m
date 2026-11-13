@@ -221,6 +221,15 @@ end
 if ~isfield(options, 'offsetCorrection')
     options.offsetCorrection = false;
 end
+if ~isfield(options, 'offsetSqrtWeights')
+    options.offsetSqrtWeights = [];
+end
+if ~isfield(options, 'offsetFDKDelta')
+    options.offsetFDKDelta = 30;
+end
+if ~isfield(options, 'offsetFDKPad')
+    options.offsetFDKPad = [];
+end
 if ~isfield(options,'bedOffset')
     if ~options.SPECT
         options.bedOffset = [];
@@ -1014,6 +1023,9 @@ end
 if ~isfield(options, 'useEFOV')
     options.useEFOV = false;
 end
+if ~isfield(options, 'eFOVShift')
+    options.eFOVShift = [0 0 0];
+end
 if ~isfield(options, 'useExtrapolation')
     options.useExtrapolation = false;
 end
@@ -1052,6 +1064,9 @@ if ~isfield(options, 'delta_PKMA')
 end
 if ~isfield(options, 'useMultiResolutionVolumes')
     options.useMultiResolutionVolumes = false;
+end
+if ~isfield(options, 'storeMultiResolution') % TODO: true value stores all multi-resolution volumes as cell array.
+    options.storeMultiResolution = false;
 end
 if ~isfield(options, 'nMultiVolumes')
     options.nMultiVolumes = 0;
@@ -1155,13 +1170,14 @@ end
 if ~isfield(options, 'coneOfResponseStdCoeffC')
     options.coneOfResponseStdCoeffC = -1;
 end
-if ~isfield(options, 'colL') % SPECT collimator hole length
+if ~isfield(options, 'colL') % Legacy uniform SPECT collimator hole length
     options.colL = 1;
 end
-if ~isfield(options, 'colLxy') % SPECT transaxial collimator hole length
+% Resolve the legacy uniform value at the input boundary. Internal SPECT code uses colLxy/colLz only.
+if ~isfield(options, 'colLxy') || isempty(options.colLxy) || options.colLxy <= 0 % SPECT transaxial collimator hole length
     options.colLxy = options.colL;
 end
-if ~isfield(options, 'colLz') % SPECT axial collimator hole length
+if ~isfield(options, 'colLz') || isempty(options.colLz) || options.colLz <= 0 % SPECT axial collimator hole length
     options.colLz = options.colL;
 end
 if ~isfield(options, 'colD') % SPECT collimator distance from detector surface
@@ -1196,6 +1212,37 @@ if ~isfield(options, 'CORtoDetectorSurface') % SPECT detector surface distance f
 end
 if ~isfield(options, 'swivelAngles')
     options.swivelAngles = [];
+end
+% Compute the collimator-detector response of the rotation-based projector separately for every
+% projection instead of shifting a precomputed filter bank. Left empty, this is determined
+% automatically based on whether the detector-to-FOV distance varies between projections.
+if ~isfield(options, 'CDRFOnTheFly')
+    options.CDRFOnTheFly = [];
+end
+% Compute only the detector bins with the rotation-based projector instead of padding the projections
+% to cover the whole FOV. Faster when the detector is small compared to the FOV, and the sensitivity
+% image then only includes rays that were actually measured. Left empty, this is enabled automatically when
+% the detector covers less than the FOV in either direction and disabled otherwise.
+if ~isfield(options, 'cropProjections')
+    options.cropProjections = [];
+end
+% Projector type 6: the model of the collimator response of the on-the-fly CDRF (options.CDRFOnTheFly). 'gaussian' (default) is one
+% Gaussian for the geometric collimator response and the intrinsic resolution, 'square' is for square holes: the geometric response is a
+% triangle with the same FWHM, convolved with the Gaussian of the intrinsic resolution. Case-insensitive.
+if ~isfield(options, 'CDRFModel')
+    options.CDRFModel = 'gaussian';
+end
+% Projector type 6: how the backprojection rotates a view back into the image (GPU backends). 'adjoint' (default) is the exact transpose of
+% the bilinear rotation of the forward projection, so that the forward and the backprojection are an adjoint pair (the dot test holds to the
+% float precision); 'fast' is a bilinear gather at the position of the inverse rotation, which is cheaper but only an approximate transpose.
+% Case-insensitive.
+if ~isfield(options, 'type6BPRotation')
+    options.type6BPRotation = 'adjoint';
+end
+% Projector type 6: the fraction of the available GPU memory that the attenuation cache may use to keep the attenuation of the
+% forward projection of a subset for its backprojection (clamped to [0, 0.9]). 0 keeps nothing, i.e. the backprojection recomputes it.
+if ~isfield(options, 'type6AttenuationCache')
+    options.type6AttenuationCache = 0.4;
 end
 if ~isfield(options, 'useHalf') % When true, computations are performed with FP16 precision instead of FP32
     options.useHalf = 0;

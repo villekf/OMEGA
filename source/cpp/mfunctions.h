@@ -14,6 +14,7 @@
 *************************************************************************************************************************************************/
 #pragma once
 #include "structs.h"
+#include <cmath>
 
 inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const int type = -1) {
 
@@ -64,6 +65,17 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	inputScalars.relaxScaling = getScalarBool(options, 0, "relaxationScaling");
 	inputScalars.computeRelaxation = getScalarBool(options, 0, "computeRelaxationParameters");
 	inputScalars.computeSensImag = getScalarBool(options, 0, "compute_sensitivity_image");
+	const int sensitivityWeightsField = mxGetFieldNumber(options, "sensitivityViewWeights");
+	if (sensitivityWeightsField >= 0) {
+		const mxArray* sensitivityWeights = mxGetField(options, 0, "sensitivityViewWeights");
+		if (sensitivityWeights && !mxIsEmpty(sensitivityWeights)) {
+			if (!mxIsSingle(sensitivityWeights) || mxIsComplex(sensitivityWeights))
+				mexErrMsgTxt("sensitivityViewWeights must be a real single-precision matrix.");
+			const size_t count = mxGetNumberOfElements(sensitivityWeights);
+			const float* values = getSingles(options, "sensitivityViewWeights");
+			inputScalars.sensitivityViewWeights.assign(values, values + count);
+		}
+	}
 	inputScalars.CT = getScalarBool(options, 0, "CT");
 	inputScalars.atomic_32bit = getScalarBool(options, 0, "use_32bit_atomics");
 	inputScalars.scatter = static_cast<uint32_t>(getScalarBool(options, 0, "additionalCorrection"));
@@ -98,10 +110,88 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	inputScalars.PET = getScalarBool(options, 0, "PET");
 	inputScalars.CT = getScalarBool(options, 0, "CT");
 	inputScalars.SPECT = getScalarBool(options, 0, "SPECT");
+	if (inputScalars.SPECT) {
+		const int gFilterFieldNumber = mxGetFieldNumber(options, "gFilter");
+		const mxArray* gFilterField = gFilterFieldNumber >= 0 ? mxGetField(options, 0, "gFilter") : nullptr;
+		const bool hasProvidedFilter = gFilterField && !mxIsEmpty(gFilterField);
+		const bool pureODRTProjector = inputScalars.projector_type == 2U ||
+			inputScalars.projector_type == 12U || inputScalars.projector_type == 21U ||
+			inputScalars.projector_type == 22U;
+		// `gFilter` is the public input for either pure projector family, but
+		// the stored representations differ: type 6 applies a depth-shifted
+		// image-grid convolution kernel, while ODRT samples ray-local
+		// (u, v, depth) values using explicit mm spacing and direct weights.
+		// A hybrid needs both representations; keep its legacy type-6 filter
+		// interpretation and leave the ODRT direction on its analytic path.
+		if (hasProvidedFilter && !pureODRTProjector && inputScalars.projector_type != 6U &&
+			inputScalars.projector_type != 16U && inputScalars.projector_type != 26U &&
+			inputScalars.projector_type != 61U && inputScalars.projector_type != 62U &&
+			inputScalars.projector_type != 66U)
+			mexErrMsgTxt("A custom SPECT ODRT gFilter is supported only for projector types 2, 12, 21, and 22.");
+	}
 	inputScalars.pitch = getScalarBool(options, 0, "pitch");
 	inputScalars.enforcePositivity = getScalarBool(options, 0, "enforcePositivity");
 	inputScalars.multiResolution = getScalarBool(options, 0, "useMultiResolutionVolumes");
+    inputScalars.storeMultiResolution = getScalarBool(options, 0, "storeMultiResolution");
 	inputScalars.nMultiVolumes = getScalarUInt32(options, 0, "nMultiVolumes");
+	if (inputScalars.attenuation_correction && inputScalars.multiResolution && inputScalars.nMultiVolumes > 0 &&
+		inputScalars.SPECT && inputScalars.CTAttenuation) {
+		if (inputScalars.projector_type != 1 && inputScalars.projector_type != 2 && inputScalars.projector_type != 6 && inputScalars.projector_type != 11 &&
+			inputScalars.projector_type != 21 && inputScalars.projector_type != 22)
+			mexErrMsgTxt("Multi-resolution image-domain attenuation requires SPECT Siddon, orthogonal, or rotation-based projectors (types 1, 2, 6, 11, 21, or 22).");
+#if defined(CPU)
+		mexErrMsgTxt("Multi-resolution image-domain attenuation is not implemented by the native C++ CPU projector.");
+#endif
+		// The Siddon and orthogonal paths consume a packed fine/coarse attenuation map
+		// described by explicit grid metadata. Type 6 instead consumes one dense map
+		// covering the union of the image volumes and resamples it per volume.
+		if (inputScalars.projector_type != 6) {
+		const char* metadataFields[] = {
+			"imageAttenuationGridDims", "imageAttenuationGridSpacing", "imageAttenuationGridOrigin"
+		};
+		const int dimsField = mxGetFieldNumber(options, metadataFields[0]);
+		const int spacingField = mxGetFieldNumber(options, metadataFields[1]);
+		const int originField = mxGetFieldNumber(options, metadataFields[2]);
+		if (dimsField < 0 || spacingField < 0 || originField < 0)
+			mexErrMsgTxt("Multi-resolution image-domain attenuation requires full-FOV attenuation grid metadata.");
+
+		const mxArray* dimsArray = mxGetField(options, 0, metadataFields[0]);
+		const mxArray* spacingArray = mxGetField(options, 0, metadataFields[1]);
+		const mxArray* originArray = mxGetField(options, 0, metadataFields[2]);
+		if (!dimsArray || !mxIsUint32(dimsArray) || mxIsComplex(dimsArray) || mxGetM(dimsArray) != 2 || mxGetN(dimsArray) != 3 ||
+			!spacingArray || !mxIsSingle(spacingArray) || mxIsComplex(spacingArray) || mxGetM(spacingArray) != 2 || mxGetN(spacingArray) != 3 ||
+			!originArray || !mxIsSingle(originArray) || mxIsComplex(originArray) || mxGetM(originArray) != 2 || mxGetN(originArray) != 3)
+			mexErrMsgTxt("Image attenuation grid dimensions must be 2x3 uint32 arrays; spacing and origin must be 2x3 single arrays.");
+
+		// MATLAB stores 2x3 arrays column-major (fineX, coarseX, fineY, ...).
+		// The projector ABI stores each grid as a consecutive x/y/z triplet.
+		const uint32_t* dimsValues = static_cast<const uint32_t*>(mxGetData(dimsArray));
+		const float* spacingValues = static_cast<const float*>(mxGetData(spacingArray));
+		const float* originValues = static_cast<const float*>(mxGetData(originArray));
+		for (uint32_t grid = 0; grid < 2; ++grid) {
+			for (uint32_t axis = 0; axis < 3; ++axis) {
+				const uint32_t sourceIndex = grid + 2U * axis;
+				const uint32_t targetIndex = grid * 3U + axis;
+				inputScalars.imageAttenuationGridDims[targetIndex] = dimsValues[sourceIndex];
+				inputScalars.imageAttenuationGridSpacing[targetIndex] = spacingValues[sourceIndex];
+				inputScalars.imageAttenuationGridOrigin[targetIndex] = originValues[sourceIndex];
+				if (dimsValues[sourceIndex] == 0U || !(spacingValues[sourceIndex] > 0.f) ||
+					!std::isfinite(spacingValues[sourceIndex]) || !std::isfinite(originValues[sourceIndex]))
+					mexErrMsgTxt("Image attenuation grid dimensions, spacing, or origin are invalid.");
+			}
+		}
+		const uint64_t fineSize = static_cast<uint64_t>(inputScalars.imageAttenuationGridDims[0]) *
+			inputScalars.imageAttenuationGridDims[1] * inputScalars.imageAttenuationGridDims[2];
+		const uint64_t coarseSize = static_cast<uint64_t>(inputScalars.imageAttenuationGridDims[3]) *
+			inputScalars.imageAttenuationGridDims[4] * inputScalars.imageAttenuationGridDims[5];
+		const uint64_t frameStride = fineSize + coarseSize;
+		const bool staticMapSize = inputScalars.size_atten == frameStride;
+		const bool dynamicMapSize = inputScalars.Nt > 1 &&
+			inputScalars.size_atten == frameStride * static_cast<uint64_t>(inputScalars.Nt);
+		if (!staticMapSize && !dynamicMapSize)
+			mexErrMsgTxt("The packed multi-resolution attenuation data do not match the fine/coarse grids and timeframe count.");
+		}
+	}
 	if (inputScalars.FPType == 5 || inputScalars.BPType == 5) {
 		inputScalars.meanFP = getScalarBool(options, 0, "meanFP");
 		inputScalars.meanBP = getScalarBool(options, 0, "meanBP");
@@ -113,6 +203,8 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	else if (type == 2 && inputScalars.FPType > 3)
 		inputScalars.maskFP = false;
 	inputScalars.offset = getScalarBool(options, 0, "offsetCorrection");
+	// Square root of the offset redundancy weights on both the forward and backward projection (decided on the MATLAB side)
+	inputScalars.offsetSqrt = inputScalars.offset && mxGetFieldNumber(options, "offsetSqrt") >= 0 && getScalarBool(options, 0, "offsetSqrt");
 	if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 		inputScalars.orthXY = getScalarBool(options, 0, "orthTransaxial");
 		inputScalars.orthZ = getScalarBool(options, 0, "orthAxial");
@@ -209,7 +301,7 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "nColsD"));
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "nRowsD"));
 		inputScalars.nHeads = getScalarUInt32(getField(options, 0, "nHeads"));
-        if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
+		if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.projector_type == 6U) {
             inputScalars.coneOfResponseStdCoeffA = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffA"));
             inputScalars.coneOfResponseStdCoeffB = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffB"));
             inputScalars.coneOfResponseStdCoeffC = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffC"));
@@ -219,15 +311,79 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
             inputScalars.ellipseRadiusX = getScalarFloat(getField(options, 0, "ellipseRadiusX"));
             inputScalars.ellipseRadiusY = getScalarFloat(getField(options, 0, "ellipseRadiusY"));
             inputScalars.ellipseRadiusZ = getScalarFloat(getField(options, 0, "ellipseRadiusZ"));
-            inputScalars.ellipsePower = getScalarFloat(getField(options, 0, "ellipsePower"));
-            // Kernels test for box support with a finite threshold, as isinf() is unreliable under fast-math
-            if (!std::isfinite(inputScalars.ellipsePower))
-                inputScalars.ellipsePower = std::numeric_limits<float>::max();
-        }
-        /*if (inputScalars.FPType == 6 || inputScalars.BPType == 6) {
-            inputScalars.FOVa_y = getScalarFloat(getField(options, 0, "FOVa_y"));
-            inputScalars.CORtoDetectorSurface = getScalarFloat(getField(options, 0, "CORtoDetectorSurface"));
-        }*/
+		}
+			inputScalars.ellipsePower = getScalarFloat(getField(options, 0, "ellipsePower"));
+			// Kernels test for box support with a finite threshold, as isinf() is unreliable under fast-math
+			if (!std::isfinite(inputScalars.ellipsePower))
+				inputScalars.ellipsePower = std::numeric_limits<float>::max();
+			const bool hasSPECTOrthogonalDirection =
+				inputScalars.FPType == 2 || inputScalars.FPType == 3 ||
+				inputScalars.BPType == 2 || inputScalars.BPType == 3;
+			if (hasSPECTOrthogonalDirection) {
+				// Always initialize the ODRT signature fields. The device buffer is
+				// allocated with one dummy float when custom lookup is disabled.
+				inputScalars.gFilterData = nullptr;
+				inputScalars.size_gFilter = 1;
+				inputScalars.gFilterNu = inputScalars.gFilterNv = inputScalars.gFilterNd = 0U;
+				inputScalars.gFilterDu = inputScalars.gFilterDv = inputScalars.gFilterDd = 1.f;
+				inputScalars.gFilterCustom = 0U;
+
+				const bool pureODRTProjector = inputScalars.projector_type == 2U ||
+					inputScalars.projector_type == 12U || inputScalars.projector_type == 21U ||
+					inputScalars.projector_type == 22U;
+				const int gFilterFieldNumber = mxGetFieldNumber(options, "gFilter");
+				const mxArray* gFilterField = gFilterFieldNumber >= 0 ? mxGetField(options, 0, "gFilter") : nullptr;
+				const bool hasProvidedFilter = gFilterField && !mxIsEmpty(gFilterField);
+				if (pureODRTProjector && hasProvidedFilter) {
+					if (!mxIsSingle(gFilterField) || mxIsComplex(gFilterField) || mxGetNumberOfDimensions(gFilterField) > 3)
+						mexErrMsgTxt("ODRT gFilter must be a real single-precision 2-D or 3-D array with axes (u, v, depth).");
+					const mwSize* filterDims = mxGetDimensions(gFilterField);
+					const mwSize filterNumDims = mxGetNumberOfDimensions(gFilterField);
+					const mwSize nu = filterDims[0];
+					const mwSize nv = filterDims[1];
+					const mwSize nd = filterNumDims >= 3 ? filterDims[2] : 1;
+					const mwSize maxDim = static_cast<mwSize>(std::numeric_limits<uint32_t>::max());
+					if (nu == 0 || nv == 0 || nd == 0 || nu > maxDim || nv > maxDim || nd > maxDim)
+						mexErrMsgTxt("ODRT gFilter dimensions must be positive and fit in uint32.");
+					const size_t filterCount = mxGetNumberOfElements(gFilterField);
+					const float* filterValues = static_cast<const float*>(mxGetData(gFilterField));
+					bool hasPositiveWeight = false;
+					for (size_t jj = 0; jj < filterCount; ++jj) {
+						if (!std::isfinite(filterValues[jj]) || filterValues[jj] < 0.f)
+							mexErrMsgTxt("ODRT gFilter must contain finite, non-negative weights.");
+						hasPositiveWeight = hasPositiveWeight || filterValues[jj] > 0.f;
+					}
+					if (!hasPositiveWeight)
+						mexErrMsgTxt("ODRT gFilter must contain at least one positive weight.");
+
+					const int spacingFieldNumber = mxGetFieldNumber(options, "gFilterSpacing");
+					const mxArray* spacingField = spacingFieldNumber >= 0 ? mxGetField(options, 0, "gFilterSpacing") : nullptr;
+					if (!spacingField || !mxIsSingle(spacingField) || mxIsComplex(spacingField) ||
+						mxGetNumberOfElements(spacingField) != 3)
+						mexErrMsgTxt("gFilterSpacing must contain three positive finite single-precision values (du, dv, dd) in mm.");
+					const float* spacing = static_cast<const float*>(mxGetData(spacingField));
+					if (!std::isfinite(spacing[0]) || !std::isfinite(spacing[1]) || !std::isfinite(spacing[2]) ||
+						spacing[0] <= 0.f || spacing[1] <= 0.f || spacing[2] <= 0.f)
+						mexErrMsgTxt("gFilterSpacing must contain three positive finite values (du, dv, dd) in mm.");
+
+					inputScalars.gFilterData = const_cast<float*>(filterValues);
+					inputScalars.size_gFilter = filterCount;
+					inputScalars.gFilterNu = static_cast<uint32_t>(nu);
+					inputScalars.gFilterNv = static_cast<uint32_t>(nv);
+					inputScalars.gFilterNd = static_cast<uint32_t>(nd);
+					inputScalars.gFilterDu = spacing[0];
+					inputScalars.gFilterDv = spacing[1];
+					inputScalars.gFilterDd = spacing[2];
+					inputScalars.gFilterCustom = 1U;
+				}
+		}
+        // The rotation-based projector uses a depth-dependent collimator-detector response model
+        // instead of the cone-of-response coefficients above: {Az, Bz, Axy, Bxy, C}, see precomp.h
+        if (inputScalars.FPType == 6 || inputScalars.BPType == 6) {
+            const float* CDRFCoeffs6In = getSingles(options, "CDRFCoeffs6");
+            for (int cc = 0; cc < 5; cc++)
+                inputScalars.CDRFCoeffs6[cc] = CDRFCoeffs6In[cc];
+		}
 	} else {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "Nang"));
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "Ndist"));
@@ -319,6 +475,10 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 			w_vec.rayShiftsDetector = getSingles(options, "rayShiftsDetector");
 			w_vec.rayShiftsSource = getSingles(options, "rayShiftsSource");
 			w_vec.detectorVector = getUint32s(options, "DetectorVector");
+			w_vec.detectorVectorSize = mxGetNumberOfElements(getField(options, 0, "DetectorVector"));
+		} else if (inputScalars.FPType == 6 || inputScalars.BPType == 6) {
+			// The projector type 6 applies the detector-head normalization on the host (see type6Weights)
+			w_vec.detectorVector = getUint32s(options, "DetectorVector");
 		}
 	} else {
 		w_vec.nProjections = getScalarInt64(getField(options, 0, "nProjections"));
@@ -331,18 +491,42 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 
 #ifdef AF
 	if (inputScalars.projector_type == 6U) {
-		const mwSize* ind = mxGetDimensions(getField(options, 0, "gFilter"));
-		if (DEBUG) {
-			mexPrintBase("indX = %d\n", ind[0]);
-			mexPrintBase("indY = %d\n", ind[1]);
-			mexEval();
-		}
+		inputScalars.CDRFOnTheFly = getScalarBool(options, 0, "CDRFOnTheFly");
+		// The model of the collimator response (option CDRFModel, mapped to a number by SPECTParameters; older option structs without the field keep the Gaussian)
+		if (mxGetFieldNumber(options, "cdrfModel6") >= 0 && mxGetNumberOfElements(mxGetField(options, 0, "cdrfModel6")) == 1)
+			inputScalars.cdrfModel6 = getScalarUInt32(options, 0, "cdrfModel6");
+		// How the backprojection rotates a view back into the image (option type6BPRotation, mapped to a number by SPECTParameters; older option structs without the field keep the exact adjoint)
+		if (mxGetFieldNumber(options, "bpRot6") >= 0 && mxGetNumberOfElements(mxGetField(options, 0, "bpRot6")) == 1)
+			inputScalars.bpRot6 = getScalarUInt32(options, 0, "bpRot6");
+		// The fraction of the available device memory that the attenuation cache may use (older option structs without the field keep the default)
+		if (mxGetFieldNumber(options, "type6AttenuationCache") >= 0 && mxGetNumberOfElements(mxGetField(options, 0, "type6AttenuationCache")) == 1)
+			inputScalars.type6AttenuationCache = getScalarFloat(getField(options, 0, "type6AttenuationCache"));
 		w_vec.angles = getSingles(options, "angles");
-        w_vec.gFilter = af::array(ind[0], ind[1], ind[2], getSingles(options, "gFilter"));
 		w_vec.distInt = getInt32s(options, "blurPlanes");
         w_vec.distInt2 = getInt32s(options, "blurPlanes2");
+        w_vec.distFloat = getSingles(options, "blurPlanesF");
+        w_vec.distFloat2 = getSingles(options, "blurPlanes2F");
+        w_vec.geomViews6 = static_cast<int64_t>(mxGetNumberOfElements(getField(options, 0, "blurPlanesF")));
+        inputScalars.maxPanelShift6 = 0.f;
+        if (w_vec.distFloat2 != nullptr) {
+            for (int64_t pp = 0; pp < (w_vec.geomViews6 > 0 ? w_vec.geomViews6 : inputScalars.nProjections); pp++)
+                inputScalars.maxPanelShift6 = (std::max)(inputScalars.maxPanelShift6, std::abs(w_vec.distFloat2[pp]) * inputScalars.dx[0]);
+        }
+        // The axial padding of the rotated grids depends on the geometry above and on the CDRF coefficients
+        computePadZType6(inputScalars, w_vec.distFloat, w_vec.geomViews6);
         w_vec.swivelAngles = getSingles(options, "swivelAngles");
-        //w_vec.radiusPerProj = getSingles(options, "radiusPerProj");
+		w_vec.radiusPerProj = getSingles(options, "radiusPerProj");
+		w_vec.CORtoDetectorSurface = getScalarFloat(options, 0, "CORtoDetectorSurface");
+		// The precomputed filter bank is not used, or even computed, when the CDRF is computed on-the-fly
+		if (!inputScalars.CDRFOnTheFly) {
+			const mwSize* ind = mxGetDimensions(getField(options, 0, "gFilter"));
+			if (DEBUG) {
+				mexPrintBase("indX = %d\n", ind[0]);
+				mexPrintBase("indY = %d\n", ind[1]);
+				mexEval();
+			}
+			w_vec.gFilter = af::array(ind[0], ind[1], ind[2], getSingles(options, "gFilter"));
+		}
 		if (DEBUG) {
 			mexPrintBase("w_vec.gFilter.dims(0) = %d\n", w_vec.gFilter.dims(0));
 			mexPrintBase("w_vec.gFilter.dims(1) = %d\n", w_vec.gFilter.dims(1));
@@ -885,19 +1069,15 @@ inline void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, mxA
             }
         }
         // Transfer data back to host
-        if (CELL && inputScalars.nMultiVolumes > 0) {
-            // TODO: Multi-resolution store for dynamic case
-            if (inputScalars.Nt > 1)
-                mexErrMsgTxt("Storing the separate multi-resolution volumes is not supported with dynamic (multiple time step) data!");
+        if (inputScalars.storeMultiResolution && inputScalars.nMultiVolumes > 0) {
             for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-                const mwSize dim[3] = { static_cast<mwSize>(inputScalars.Nx[ii]), static_cast<mwSize>(inputScalars.Ny[ii]), static_cast<mwSize>(inputScalars.Nz[ii]) };
                 if (DEBUG) {
                     mexPrintBase("inputScalars.Nx[ii] = %d\n", inputScalars.Nx[ii]);
                     mexPrintBase("inputScalars.Ny[ii] = %d\n", inputScalars.Ny[ii]);
                     mexPrintBase("inputScalars.Nz[ii] = %d\n", inputScalars.Nz[ii]);
                     mexEval();
                 }
-                mxArray* apu = mxCreateNumericArray(3, dim, mxSINGLE_CLASS, mxREAL);
+                mxArray* apu = mxGetCell(cell, static_cast<mwIndex>(ii));
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
                 float* apuF = (float*)mxGetSingles(apu);
 #else
@@ -907,13 +1087,12 @@ inline void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, mxA
                 }
                 else {
                     if (MethodList.FDK)
-                        vec.rhs_os[timestep][ii].host(&apuF[oo]);
+                        vec.rhs_os[timestep][ii].host(&apuF[static_cast<size_t>(timestep) * inputScalars.im_dim[ii]]);
                     else
-                        vec.im_os[timestep][ii].host(&apuF[oo]);
+                        vec.im_os[timestep][ii].host(&apuF[static_cast<size_t>(timestep) * inputScalars.im_dim[ii]]);
                     if (inputScalars.verbose >= 3)
                         mexPrint("Data transfered to host");
                 }
-                mxSetCell(cell, static_cast<mwIndex>(ii), mxDuplicateArray(apu));
             }
         }
         else {

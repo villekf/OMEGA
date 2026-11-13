@@ -12187,7 +12187,7 @@ public:
 #undef __GET_KERNEL_ARG_INFO_ERR           
 #undef __GET_KERNEL_SUB_GROUP_INFO_ERR     
 #undef __GET_KERNEL_WORK_GROUP_INFO_ERR    
-#undef __GET_KERNEL_SUGGESTED_LWS_ERR      
+#undef __GET_KERNEL_SUGGESTED_LWS_ERR
 #undef __GET_PROGRAM_INFO_ERR              
 #undef __GET_PROGRAM_BUILD_INFO_ERR        
 #undef __GET_COMMAND_QUEUE_INFO_ERR        

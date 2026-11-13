@@ -34,8 +34,8 @@ options = proj.projectorClass()
 options.fpath = ''
 
 ### Binning
-# The projections are binned (mean) from both dimensions if this is > 1. 
-# Binning of 2 turns the 512x512 projections into 256x256 projections 
+# The projections are binned (mean) from both dimensions if this is > 1.
+# Binning of 2 turns the 512x512 projections into 256x256 projections
 # (1.6 mm pixels).
 options.binning = 1
 

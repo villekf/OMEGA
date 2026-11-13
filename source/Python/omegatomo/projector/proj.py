@@ -61,6 +61,30 @@ def _copyValue(value):
 # (never written to, so they are not copied per instance)
 _SHARED_CLASS_CONSTANTS = ('_FILTER_WINDOW_TEXT',)
 
+# The models of the collimator response of the on-the-fly CDRF of projector type 6 (option CDRFModel) and the numbers that the native library
+# knows them by (cdrfModel6). To add a model, add it here, in the type-6 kernels (cdrfTap in auxKernels.cl) and in the host (psfHelperType6)
+CDRF_MODELS = {'gaussian': 0, 'square': 1}
+
+def cdrfModelIndex(model) -> int:
+    """Returns the number of the collimator response model `model` ('gaussian' or 'square', case-insensitive) for the native library"""
+    if isinstance(model, bytes):
+        model = model.decode()
+    if not isinstance(model, str) or model.strip().lower() not in CDRF_MODELS:
+        raise ValueError("Unknown options.CDRFModel %r. The supported models are: %s" % (model, ", ".join("'%s'" % k for k in CDRF_MODELS)))
+    return CDRF_MODELS[model.strip().lower()]
+
+# How the backprojection of projector type 6 rotates a view back into the image (option type6BPRotation) and the numbers that the native library
+# knows them by (bpRot6): 'adjoint' is the exact transpose of the bilinear rotation of the forward projection, 'fast' a bilinear gather at the
+# position of the inverse rotation (cheaper, but not an exact adjoint)
+BP_ROTATIONS = {'adjoint': 0, 'fast': 1}
+
+def bpRotationIndex(mode) -> int:
+    """Returns the number of the backprojection rotation `mode` ('adjoint' or 'fast', case-insensitive) for the native library"""
+    if isinstance(mode, bytes):
+        mode = mode.decode()
+    if not isinstance(mode, str) or mode.strip().lower() not in BP_ROTATIONS:
+        raise ValueError("Unknown options.type6BPRotation %r. The supported values are: %s" % (mode, ", ".join("'%s'" % k for k in BP_ROTATIONS)))
+    return BP_ROTATIONS[mode.strip().lower()]
 
 class projectorClass:
     # These parameters are either NumPy arrays or variables that are not needed in the C++ code
@@ -95,8 +119,24 @@ class projectorClass:
     blurPlanes: npt.NDArray[np.int32] = np.empty((0, 0), dtype = np.int32)
     blurPlanes2: npt.NDArray[np.int32] = np.empty((0, 0), dtype = np.int32)
     blurPlanes2Linear: npt.NDArray[np.float32] = np.empty((0, 0), dtype = np.float32)
+    blurPlanesF: npt.NDArray[np.float32] = np.empty((0, 0), dtype = np.float32) # Sub-voxel PSF depth (main volume, includes collimator length and detector distance)
+    blurPlanes2F: npt.NDArray[np.float32] = np.empty((0, 0), dtype = np.float32) # Sub-voxel lateral panel shift (main volume)
+    CDRFCoeffs6: npt.NDArray[np.float32] = np.zeros(5, dtype = np.float32) # {Az, Bz, Axy, Bxy, C} for the on-the-fly CDRF
+    CDRFOnTheFly: Optional[bool] = None # Compute the CDRF per projection in the native library (None = automatic)
+    type6BPRotation: str = 'adjoint' # Projector type 6: how the backprojection rotates a view back into the image, 'adjoint' (default, exact transpose of the forward rotation) or 'fast' (cheaper gather, only an approximate transpose)
+    type6AttenuationCache: float = 0.4 # Projector type 6: fraction of the available GPU memory the attenuation cache may use (clamped to [0, 0.9], 0 = keep nothing)
+    CDRFModel: str = 'gaussian' # Projector type 6: the model of the collimator response of the on-the-fly CDRF, 'gaussian' (default) or 'square' (square holes: a triangle convolved with the intrinsic Gaussian)
+    cropProjections: bool = False # Not yet supported in Python
     radiusPerProj: npt.NDArray[np.float32] = np.empty(0, dtype = np.float32)
     gFilter = np.empty(0, dtype = np.float32)
+    # User-supplied ODRT SPECT gFilter sampling pitch in the filter's
+    # ray-local (u, v, depth) axes. Empty means no ODRT lookup filter.
+    gFilterODRTData: npt.NDArray[np.float32] = np.empty(0, dtype = np.float32)
+    gFilterSpacing: npt.NDArray[np.float32] = np.empty(0, dtype = np.float32)
+    gFilterCustom = False
+    gFilterNu = 0
+    gFilterNv = 0
+    gFilterNd = 0
     type6TotalLength: npt.NDArray[np.float32] = np.empty(0, dtype = np.float32)
     filterIm = np.empty(0, dtype = np.float32)
     filter0 = np.empty(0, dtype = np.float32)
@@ -278,6 +318,8 @@ class projectorClass:
     corrections_during_reconstruction = True
     ordinaryPoisson = None
     multiResolutionScale = .25
+    eFOVSize: np.ndarray = np.zeros(3, dtype=np.float32)
+    eFOVShift: np.ndarray = np.zeros(3, dtype=np.float32)
     name = ""
     voxel_radius = 1.
     scatter_variance_reduction = False
@@ -303,7 +345,7 @@ class projectorClass:
     precompute_lor = False
     sigmaZ = -1.
     sigmaXY = -1.
-    colL: float = 1. # Collimator hole length
+    colL: float = 1. # Legacy uniform collimator hole length; used only to initialize colLxy/colLz
     colLxy: Optional[float] = None # Collimator hole length in the transaxial plane
     colLz: Optional[float] = None # Collimator hole length in the axial plane
     colR: float = 1. # Collimator hole radius
@@ -357,6 +399,19 @@ class projectorClass:
     useMaskBP = False
     usePriorMask = False
     offsetCorrection = False
+    # Apply the square root of the offset redundancy weights on both the forward and the backward projection (so that the operator is
+    # sqrt(W) * A instead of A^T W). None (default) = automatic: enabled only for the linearised least-squares algorithms (LSQR, CGLS,
+    # FISTA, FISTAL1, PDHG, PDHGL1, PDDY, SART, ASD_POCS, BB), True = force on (also for custom algorithms, in which case the measurement data
+    # have to be weighted with applyOffsetSqrtWeights), False = the weights are applied only in the backprojection
+    offsetSqrtWeights = None
+    # The resolved offsetSqrtWeights, see _resolveOffsetSqrt. Do not set this directly
+    offsetSqrt = False
+    # Offset-detector FDK (offsetCorrection with FDK): half-width (mm, on the detector) of the transition region of the redundancy weights,
+    # which are applied before the filtering together with the conjugate completion of the missing side of the detector. A value smaller than
+    # the physical overlap is raised to it. See omegatomo.reconstruction.offsetfdk
+    offsetFDKDelta = 30.
+    # Internal (testing): the number of detector rows padded on the missing side by the offset FDK preprocessing, None = automatic
+    offsetFDKPad = None
     tube_width_z = 0.
     tube_width_xy = 0.
     use_psf = False
@@ -692,6 +747,7 @@ class projectorClass:
     # the normalization correction of the sensitivity image with xSens and zSens
     xSens = np.empty(0, dtype = np.float32)
     zSens = np.empty(0, dtype = np.float32)
+    sensitivityViewWeights = np.empty(0, dtype = np.float32)
 
     def __init__(self):
         # The defaults above are class attributes, i.e. the same ndarray/list/dict objects are
@@ -1118,15 +1174,44 @@ class projectorClass:
             if self.x.size == 0 or self.x.size == 2 * self.nProjections or hasattr(self, 'coord'):
                 setCTCoordinates(self)
         if self.SPECT:
-            # Dynamic SPECT projection images are represented as one list entry
-            # per timeframe.  A four-dimensional input keeps the same temporal
-            # ordering when normalized here.
+            # Listmode SPECT stores one vector of events per timeframe rather
+            # than a 3-D detector image stack. Detect that layout before the
+            # sinogram normalization below inspects shape[2].
+            if isinstance(self.SinM, list) and self.SinM and isinstance(self.x, list) and len(self.x) == len(self.SinM):
+                spect_event_listmode = all(
+                    np.asarray(coords).size % 6 == 0 and
+                    np.asarray(coords).size // 6 == np.asarray(events).size
+                    for coords, events in zip(self.x, self.SinM)
+                )
+            elif isinstance(self.SinM, np.ndarray) and self.SinM.size and np.asarray(self.x).size % 6 == 0:
+                spect_event_listmode = np.asarray(self.x).size // 6 == self.SinM.size
+            if spect_event_listmode:
+                self.listmode = 1
+                if self.subsets == 1 and self.subsetType not in (0, 1, 3):
+                    self.subsetType = 1
+                if isinstance(self.SinM, list):
+                    self.Nt = len(self.SinM)
+                projection_counts = np.asarray(
+                    getattr(self, 'nProjectionsPerFrame', getattr(self, 'nProjectionsPerPartition', [self.nProjections])),
+                    dtype=np.int64,
+                ).reshape(-1)
+                if projection_counts.size == 0 or np.any(projection_counts < 1):
+                    raise ValueError('Listmode SPECT needs a positive projection-frame count for every timeframe.')
+                self.nProjectionsPerFrame = projection_counts
+                total_projections = int(np.sum(projection_counts))
+                if self.angles.size != total_projections or self.radiusPerProj.size != total_projections:
+                    raise ValueError('Listmode SPECT angles and radii must contain one value for every projection frame.')
+                if self.swivelAngles.size not in (0, total_projections):
+                    raise ValueError('Listmode SPECT swivelAngles must contain one value for every projection frame.')
+                self.nProjections = int(np.max(projection_counts))
+            # Dynamic sinogram SPECT data are represented as one list entry per
+            # timeframe. A 4-D input keeps the same temporal ordering.
             if isinstance(self.SinM, np.ndarray) and self.SinM.size > 0:
-                if self.SinM.ndim == 4:
+                if self.SinM.ndim == 4 and not spect_event_listmode:
                     self.SinM = [self.SinM[:, :, :, tt] for tt in range(self.SinM.shape[3])]
                 #else:
                 #    self.SinM = [self.SinM]
-            if isinstance(self.SinM, list) and self.SinM:
+            if isinstance(self.SinM, list) and self.SinM and not spect_event_listmode:
                 self.Nt = len(self.SinM)
                 self.nProjectionsPerFrame = np.asarray(
                     [np.asarray(frame).shape[2] for frame in self.SinM],
@@ -1140,7 +1225,7 @@ class projectorClass:
                 if self.swivelAngles.size not in (0, total_projections):
                     raise ValueError('Dynamic SPECT swivelAngles must contain one value for every projection image across all timeframes.')
                 self.nProjections = int(np.max(self.nProjectionsPerFrame))
-            elif isinstance(self.SinM, np.ndarray) and self.SinM.size > 0:
+            elif isinstance(self.SinM, np.ndarray) and self.SinM.size > 0 and not spect_event_listmode:
                 self.nProjectionsPerFrame = np.asarray([self.nProjections], dtype=np.int64)
             if self.ellipseRadiusX == 0 or self.ellipseRadiusY == 0 or self.ellipseRadiusZ == 0:
                 self.ellipseRadiusX = self.FOVa_x / 2
@@ -1162,7 +1247,10 @@ class projectorClass:
                 self.angles += self.offangle
                 self.swivelAngles += self.offangle
             
-            if self.vaimennus.size > 0:
+            if self.vaimennus.size > 0 and not (
+                self.useMultiResolutionVolumes and self.SPECT and self.attenuation_correction and
+                self.CT_attenuation
+            ):
                 if self.offangle != 0:
                     from skimage.transform import rotate
                     self.vaimennus = rotate(self.vaimennus, self.offangle)
@@ -1215,7 +1303,7 @@ class projectorClass:
             self.dPitchY = self.dPitchX
         if self.cr_p > 0. and self.cr_pz == 0.:
             self.cr_pz = self.cr_p
-        if self.cr_p == 0. and self.dPitchX > 0.:
+        if not self.SPECT and self.cr_p == 0. and self.dPitchX > 0.:
             self.cr_p = self.dPitchX
         if self.cr_pz == 0. and self.dPitchY > 0.:
             self.cr_pz = self.dPitchY
@@ -1367,6 +1455,22 @@ class projectorClass:
             self.Nt = self.partitions
         if self.Nt > 1 and self.subsetType == 3:
             raise ValueError('Subset type 3 is not supported with dynamic data!')
+        if self.Nt > 1 and self.stochasticSubsetSelection and self.subsets > 1:
+            raise ValueError('Stochastic subset selection (stochasticSubsetSelection) is not supported with dynamic data (more than one time step)!')
+        if self.stochasticSubsetSelection and self.subsets > 1:
+            # The per-subset sensitivity image of these algorithms is computed only during the first iteration, i.e. only for the subsets that happen
+            # to be drawn then, so the other subsets would keep an all-zero sensitivity image and the update diverges. The exception is list-mode data
+            # with a precomputed sensitivity image (compute_sensitivity_image without a full-data D), where every subset has its sensitivity image up front.
+            sensAlgs = {'OSEM': self.OSEM, 'ECOSEM': self.ECOSEM, 'ROSEM': self.ROSEM, 'RBI': self.RBI, 'OSL_RBI': self.OSL_RBI, 'DRAMA': self.DRAMA,
+                        'OSL_OSEM': self.OSL_OSEM, 'ROSEM_MAP': self.ROSEM_MAP, 'SART': self.SART, 'ASD_POCS': self.ASD_POCS}
+            sensAlgsOn = [name for name, flag in sensAlgs.items() if flag]
+            if sensAlgsOn:
+                # Algorithms that compute the full-data sensitivity image D
+                computeDAlg = bool(self.RBI or self.OSL_RBI or self.COSEM or self.ACOSEM or self.ECOSEM or self.OSL_COSEM > 0)
+                if not (self.listmode > 0 and self.compute_sensitivity_image and not computeDAlg):
+                    raise ValueError('Stochastic subset selection (stochasticSubsetSelection) is not supported with the algorithm(s) ' + ', '.join(sensAlgsOn) + ', which need a separate '
+                                     'sensitivity image for every subset. Use an algorithm that uses a full-data sensitivity image or preconditioner (e.g. BSREM, MBSREM, PKMA, PDHG) '
+                                     'or set stochasticSubsetSelection = False.')
         temp = self.pseudot
         if isinstance(temp, np.ndarray):
             temp = int(temp.reshape(-1)[0].item()) if temp.size > 0 else 0
@@ -1389,9 +1493,10 @@ class projectorClass:
         # pre-computed (via _isListModeCandidate()/useIndexBasedReconstruction) ahead of
         # OMEGAErrorCheck() above; this recomputes the same condition (now that self.SinM/
         # self.trIndex are fully final) to also collapse Nang/Ndist/NSinos/TotSinos.
-        if self._isListModeCandidate():
+        # SPECT event-list layouts need the separate frame-aware detection above.
+        if spect_event_listmode or self._isListModeCandidate():
             if isinstance(self.SinM, list):
-                det_per_ring = self.SinM[0].size
+                det_per_ring = max(np.asarray(frame).size for frame in self.SinM)
             else:
                 det_per_ring = self.SinM.size
             self.Nang = 1
@@ -1423,7 +1528,11 @@ class projectorClass:
             self.PET = True
         else:
             self.PET = False
-            self.nProjections = self.NSinos
+            if not (self.SPECT and self.listmode):
+                self.nProjections = self.NSinos
+        if self.listmode and self.subsets > 1 and not(self.subsetType == 0)  and not(self.subsetType == 1) and not(self.subsetType == 3):
+            print('Only subset types 0, 1, and 3 are supported with list-mode data! Switching to subset type 0.')
+            self.subsetType = 0
         if not self.listmode and self.subsets > 1 and self.subsetType == 0:
            print('Subset type 0 is recommended only for list-mode data! The reconstruction will most likely not work!')
         # if self.listmode and self.Nt > 1:
@@ -1536,9 +1645,10 @@ class projectorClass:
                 self.dPitch = self.cr_p
                 self.dPitchY = self.cr_p
                 self.dPitchX = self.cr_pz
-            self.nProjections = self.NSinos
-            self.nRowsD = self.Ndist
-            self.nColsD = self.Nang
+            if not (self.SPECT and self.listmode):
+                self.nProjections = self.NSinos
+                self.nRowsD = self.Ndist
+                self.nColsD = self.Nang
 
         # self.size_x = size_x
         # self.totMeas = self.nColsD * self.nRowsD * self.nProjections
@@ -1551,6 +1661,48 @@ class projectorClass:
         if not isinstance(self.Nz, np.ndarray):
             self.Nz = np.array(self.Nz, dtype=np.uint32, ndmin=1)
         xx, yy, zz = computePixelSize(self)
+        
+        if np.size(self.FOVa_x) == 1:  # No eFOV
+            FOV = np.array([
+                self.FOVa_x,
+                self.FOVa_y,
+                self.axial_fov
+            ], dtype=np.float32)
+        elif np.size(self.FOVa_x) == 3:  # Axial eFOV only
+            FOV = np.array([
+                self.FOVa_x[0],
+                self.FOVa_y[0],
+                np.sum(self.axial_fov)
+            ], dtype=np.float32)
+        elif np.size(self.FOVa_x) == 5:  # Transaxial eFOV only
+            FOV = np.array([
+                self.FOVa_x[0] + self.FOVa_x[1] + self.FOVa_x[2],
+                self.FOVa_y[0] + self.FOVa_y[3] + self.FOVa_y[4],
+                self.axial_fov[0]
+            ], dtype=np.float32)
+        elif np.size(self.FOVa_x) == 7:  # Axial + transaxial eFOV
+            FOV = np.array([
+                self.FOVa_x[0] + self.FOVa_x[3] + self.FOVa_x[4],
+                self.FOVa_y[0] + self.FOVa_y[5] + self.FOVa_y[6],
+                self.axial_fov[0] + self.axial_fov[1] + self.axial_fov[2]
+            ], dtype=np.float32)
+        else:
+            raise ValueError("Unexpected size for FOVa_x")
+
+        if self.SPECT:
+            # One physical normalization region for every resolution volume.
+            if self.ellipseParametersDerived:
+                self.ellipseRadiusX, self.ellipseRadiusY, self.ellipseRadiusZ = FOV.reshape(-1) / 2
+                previous_shift = getattr(self, '_ellipseEFOVShift', np.zeros(3))
+                self.ellipseCenterX += self.eFOVShift[0] - previous_shift[0]
+                self.ellipseCenterY += self.eFOVShift[1] - previous_shift[1]
+                self.ellipseCenterZ += self.eFOVShift[2] - previous_shift[2]
+                self._ellipseEFOVShift = np.array(self.eFOVShift, copy=True)
+            if self.ellipsePower != 2 and self.ellipsePower != np.inf:
+                raise ValueError('ellipsePower must be 2 or positive infinity.')
+            if not np.all(np.isfinite([self.ellipseRadiusX, self.ellipseRadiusY, self.ellipseRadiusZ])) or min(self.ellipseRadiusX, self.ellipseRadiusY, self.ellipseRadiusZ) <= 0:
+                raise ValueError('Ellipse radii must be finite and positive.')
+
         formSubsetIndices(self)
         if self.SPECT and self.listmode == 0:
             projection_counts = np.asarray(self.nProjectionsPerFrame, dtype=np.int64).reshape(-1)
@@ -1610,8 +1762,14 @@ class projectorClass:
         if self.projector_type in (4, 5, 14, 41, 15, 45, 54, 51, 42, 43, 24, 34, 44, 55):
             computeProjectorScalingValues(self)
         # FDK (largeDim) keeps the geometry and data in the original projection order, so the offset limits are not reordered either
-        if self.offsetCorrection and self.subsets > 1 and not self.FDK:
-            self.OffsetLimit = self.OffsetLimit[self.index]
+        if self.offsetCorrection and self.subsets > 1 and self.subsetType >= 8 and not self.FDK:
+            offsetIndex = self.index[0] if isinstance(self.index, list) else self.index
+            self.OffsetLimit = self.OffsetLimit[offsetIndex]
+        self.offsetSqrt = self._resolveOffsetSqrt()
+        if self.offsetCorrection and self.offsetSqrtWeights and not self.offsetSqrt:
+            print('Warning: options.offsetSqrtWeights is enabled, but the square root offset weighting is not supported with the selected configuration. '
+                  'Only CT data with FDK disabled, no largeDim, a projector type with backprojector 4 or 5, a single time step and subset types 0 or 8-11 '
+                  'are supported. Using the standard offset weighting in the backprojection only.')
 
         if self.SPECT:
             from .detcoord import SPECTParameters
@@ -1621,6 +1779,7 @@ class projectorClass:
                 geometry_fields = (
                     'angles', 'swivelAngles', 'radiusPerProj',
                     'blurPlanes', 'blurPlanes2', 'blurPlanes2Linear',
+                    'blurPlanesF', 'blurPlanes2F',
                     'type6TotalLength',
                 )
                 if isinstance(self.index, list):
@@ -1652,10 +1811,15 @@ class projectorClass:
 
         if self.subsets > 1:
             self.subset = 0
-        # Subset types >= 8 and subset type 0 with sinogram/projection-image data
-        # (contiguous blocks of whole sinograms) count their subsets in whole
-        # images, so the number of measurements per subset is images * rows * columns
-        if self.subsetType >= 8 or self.subsets == 1 or (self.subsetType == 0 and self.listmode == 0):
+        if self.listmode > 0:
+            # Listmode measurements already count individual events. Unlike
+            # projection-image data, they must not be expanded by detector
+            # rows and columns when building per-subset measurement sizes.
+            kerroin = 1
+        elif self.subsetType >= 8 or self.subsets == 1 or (self.subsetType == 0 and self.listmode == 0):
+            # Subset types >= 8 and subset type 0 with sinogram/projection-image data
+            # (contiguous blocks of whole sinograms) count their subsets in whole
+            # images, so the number of measurements per subset is images * rows * columns
             kerroin = self.nColsD * self.nRowsD
         else:
             kerroin = 1
@@ -1665,7 +1829,8 @@ class projectorClass:
         self.nMeasSubset[:, :] = self.nMeasPerFrameSubset * kerroin
         self.nProjSubset[:, :] = self.nMeasPerFrameSubset
         if self.listmode == 1:
-            self.x = self.x.astype(dtype=np.float32)
+            self.x = np.asarray(self.x, dtype=np.float32)
+            self.z = np.asarray(self.z, dtype=np.float32)
             if self.x.flags.f_contiguous:
                 self.x = self.x.ravel('F')
             else:
@@ -1695,11 +1860,36 @@ class projectorClass:
         if isinstance(self.x, int):
             self.x = np.zeros(1, dtype=np.float32)
             self.z = np.zeros(1, dtype=np.float32)
+        elif isinstance(self.x, list):
+            self.x = np.concatenate([np.asarray(value, dtype=np.float32).ravel(order='F') for value in self.x])
+            self.z = np.concatenate([np.asarray(value, dtype=np.float32).ravel(order='F') for value in self.z])
         else:
             self.x = self.x.astype(dtype=np.float32)
             self.z = self.z.astype(dtype=np.float32)
         if self.listmode and self.randoms_correction:
             self.randoms_correction = False
+
+    def _resolveOffsetSqrt(self):
+        """Resolves options.offsetSqrtWeights (None = automatic) to a bool: whether the square root of the offset redundancy weights is
+        applied on both the forward and the backward projection. This makes the projection operator the linear sqrt(W) * A, as needed by the
+        linearised least-squares algorithms. The configuration-dependent parts (the backprojector type, the CPU backend, largeDim) are
+        checked here, in initProjector (_offsetSqrtActive) and in the native library, any of which can only turn the weighting off."""
+        if not self.offsetCorrection or not self.CT or self.FDK or self.largeDim or self.listmode:
+            return False
+        # The backprojector (last digit of the projector type) has to be 4 or 5
+        if self.projector_type % 10 not in (4, 5):
+            return False
+        # The subsets must be formed from whole projections
+        if self.subsets > 1 and not (self.subsetType == 0 or 8 <= self.subsetType <= 11):
+            return False
+        if self.Nt > 1:
+            return False
+        if self.offsetSqrtWeights is not None:
+            return bool(self.offsetSqrtWeights)
+        lsAlgs = ('LSQR', 'CGLS', 'FISTA', 'FISTAL1', 'PDHG', 'PDHGL1', 'PDDY', 'SART', 'ASD_POCS', 'BB')
+        otherAlgs = ('OSEM', 'MRAMLA', 'RAMLA', 'RBI', 'ROSEM', 'DRAMA', 'COSEM', 'ECOSEM', 'ACOSEM', 'OSL_OSEM', 'MBSREM', 'BSREM', 'OSL_RBI',
+                     'OSL_COSEM', 'ROSEM_MAP', 'PKMA', 'SPS', 'SAGA', 'PDHGKL', 'CV')
+        return any(getattr(self, name, False) for name in lsAlgs) and not any(getattr(self, name, False) for name in otherAlgs)
 
     def _sliceSPECTFramesByIndex(self, x_det, z_det, checkFrameCount, checkZShape):
         # Splits the concatenated (all timeframes) SPECT detector coordinate
@@ -1764,9 +1954,10 @@ class projectorClass:
                                       f'projection [{self.nRowsD} {self.nColsD} {self.nProjections}] or one image '
                                       f'per detector head [{self.nRowsD} {self.nColsD} {self.nHeads}].')
                 self.normZ = int(normZ)
-            if self.colLxy is None:
+            # Backward compatibility for callers that only provide the legacy uniform length.
+            if self.colLxy is None or self.colLxy <= 0.:
                 self.colLxy = self.colL
-            if self.colLz is None:
+            if self.colLz is None or self.colLz <= 0.:
                 self.colLz = self.colL
 
             projection_counts = np.asarray(
@@ -1999,6 +2190,11 @@ class projectorClass:
             self.TVtype = 1
         if self.projector_type not in [1, 2, 3, 4, 5, 6, 11, 14, 12, 13, 16, 21, 22, 23, 24, 26, 31, 32, 33, 34, 41, 42, 43, 44, 45, 51, 15, 54, 55, 61, 62, 66]:
             raise ValueError('The selected projector type is not supported!')
+        if (self.attenuation_correction and self.CT_attenuation and self.useMultiResolutionVolumes and self.SPECT):
+            if self.projector_type not in (1, 2, 6, 11, 21, 22, 66):
+                raise ValueError('Multi-resolution image-domain attenuation requires SPECT projector type 1, 2, or 6 for both forward and backward projection.')
+            if self.implementation == 2 and self.useCPU:
+                raise ValueError('Multi-resolution image-domain attenuation is not implemented in the native C++ CPU reconstruction path.')
         if self.APLS and self.MAP and not isinstance(self.APLS_ref_image, np.ndarray) and not os.path.exists(self.APLS_ref_image):
             raise FileNotFoundError('APLS selected, but the anatomical reference image was not found on path!')
         if self.epps <= 0:
@@ -2059,6 +2255,14 @@ class projectorClass:
                 print('When using FDK/FBP, the number of iterations and subsets must be set as 1. Setting both to 1.')
                 self.subsets = 1
                 self.Niter = 1
+        if self.CT and self.offsetCorrection and self.useHelical:
+            raise ValueError('Offset correction is not supported with helical CT!')
+        if self.offsetSqrtWeights is not None and not isinstance(self.offsetSqrtWeights, (bool, int, np.bool_, np.integer)):
+            raise ValueError('options.offsetSqrtWeights must be either None (automatic), True or False!')
+        if self.CT and self.offsetCorrection and self.FDK and not (np.isscalar(self.offsetFDKDelta) and self.offsetFDKDelta > 0.):
+            raise ValueError('options.offsetFDKDelta must be a positive scalar (mm)!')
+        if self.CT and self.offsetCorrection and self.subsets > 1 and self.subsetType > 0 and self.subsetType < 8:
+            raise ValueError('Offset correction is not supported with subset types 1-7! Use subset type 0 or the projection-based subset types 8-11.')
         if self.largeDim:
             if not self.PDHG and not self.FDK and not self.PKMA and not self.PDDY and not self.PDHGL1 and not self.PDHGKL:
                 raise ValueError('Large dimension support is only available for PDHG, PKMA, and FDK!')
@@ -2501,6 +2705,7 @@ class projectorClass:
     
     def setUpCorrections(self):
         from omegatomo.util.matlabRound import matlabRound
+        from omegatomo.util.multiresolutionpad import sideVoxels, setMultiResPadding, padMultiResVolume
         nx = self.Nx
         ny = self.Ny
         nz = self.Nz
@@ -2513,252 +2718,191 @@ class projectorClass:
         self.NxFull = nx
         self.NyFull = ny
         self.NzFull = nz
+        if self.useMultiResolutionVolumes:
+            self.imageAttenuationFineDims = np.asarray([nx, ny, nz], dtype=np.float64)
+            self.imageAttenuationFineFOV = np.asarray([
+                float(np.asarray(self.FOVa_x).reshape(-1)[0]),
+                float(np.asarray(self.FOVa_y).reshape(-1)[0]),
+                float(np.asarray(self.axial_fov).reshape(-1)[0]),
+            ], dtype=np.float64)
+            self.imageAttenuationFineSpacing = self.imageAttenuationFineFOV / self.imageAttenuationFineDims
         if self.useEFOV:
             if self.useMultiResolutionVolumes:
-                # If the axial (or transaxial) extended FOV is smaller than
-                # one multi-resolution voxel, the corresponding side
-                # volume(s) would end up with zero thickness (NzM2/NxM2/
-                # NyM2 = 0), which crashes later on. In that case disable
-                # the EFOV direction in question and fall back to the other
-                # direction's multi-resolution branch (or to no multi-
-                # resolution volumes at all if neither direction remains).
+                # Derive the coarse voxel spacing from the rounded coarse-grid
+                # dimensions. Keep shifted low/high slabs asymmetric so their
+                # shared boundary remains aligned with the centered fine slab.
+                NxM = max(1, int(matlabRound(self.NxOrig * self.multiResolutionScale)))
+                NyM = max(1, int(matlabRound(self.NyOrig * self.multiResolutionScale)))
+                NzM = max(1, int(matlabRound(self.NzOrig * self.multiResolutionScale)))
+                dxM = self.FOVxOrig / NxM
+                dyM = self.FOVyOrig / NyM
+                dzM = self.axialFOVOrig / NzM
+                sideLowFOV = np.zeros(3, dtype=np.float64)
+                sideHighFOV = np.zeros(3, dtype=np.float64)
+                requestedSideLow = np.zeros(3, dtype=np.float64)
+                requestedSideHigh = np.zeros(3, dtype=np.float64)
+
                 if self.axialEFOV:
-                    NzMchk = int(matlabRound(self.NzOrig * self.multiResolutionScale))
-                    dzMchk = self.axialFOVOrig / NzMchk
-                    NzM2chk = int(matlabRound((self.axial_fov - self.axialFOVOrig) / 2 / dzMchk)) * 2
-                    if NzM2chk <= 0:
-                        warnings.warn('Axial extended FOV is smaller than one multi-resolution voxel, disabling axial EFOV.')
+                    zLowFOV = (self.axial_fov - self.axialFOVOrig) / 2 - self.eFOVShift[2]
+                    zHighFOV = (self.axial_fov - self.axialFOVOrig) / 2 + self.eFOVShift[2]
+                    requestedSideLow[2], requestedSideHigh[2] = zLowFOV, zHighFOV
+                    zSideCounts = [sideVoxels(zLowFOV, dzM), sideVoxels(zHighFOV, dzM)]
+                    if min(zSideCounts) <= 0:
+                        warnings.warn('Axial extended FOV is smaller than one multi-resolution voxel on a shifted side; disabling axial EFOV.')
+                        requestedSideLow[2] = requestedSideHigh[2] = 0.
                         self.axialEFOV = False
-                        self.Nz = self.NzOrig
                         self.axial_fov = self.axialFOVOrig
+                        self.Nz = self.NzOrig
+                    else:
+                        zLowFOV, zHighFOV = (count * dzM for count in zSideCounts)
+                        sideLowFOV[2], sideHighFOV[2] = zLowFOV, zHighFOV
                 if self.transaxialEFOV:
-                    NxMchk = int(matlabRound(self.NxOrig * self.multiResolutionScale))
-                    dxMchk = self.FOVxOrig / NxMchk
-                    NxM2chk = int(matlabRound((self.FOVa_x - self.FOVxOrig) / 2 / dxMchk)) * 2
-                    NyMchk = int(matlabRound(self.NyOrig * self.multiResolutionScale))
-                    dyMchk = self.FOVyOrig / NyMchk
-                    NyM2chk = int(matlabRound((self.FOVa_y - self.FOVyOrig) / 2 / dyMchk)) * 2
-                    if NxM2chk <= 0 or NyM2chk <= 0:
-                        warnings.warn('Transaxial extended FOV is smaller than one multi-resolution voxel, disabling transaxial EFOV.')
+                    xLowFOV = (self.FOVa_x - self.FOVxOrig) / 2 - self.eFOVShift[0]
+                    xHighFOV = (self.FOVa_x - self.FOVxOrig) / 2 + self.eFOVShift[0]
+                    yLowFOV = (self.FOVa_y - self.FOVyOrig) / 2 - self.eFOVShift[1]
+                    yHighFOV = (self.FOVa_y - self.FOVyOrig) / 2 + self.eFOVShift[1]
+                    requestedSideLow[:2] = (xLowFOV, yLowFOV)
+                    requestedSideHigh[:2] = (xHighFOV, yHighFOV)
+                    sideCounts = [sideVoxels(v, d) for v, d in
+                                  ((xLowFOV, dxM), (xHighFOV, dxM),
+                                   (yLowFOV, dyM), (yHighFOV, dyM))]
+                    if min(sideCounts) <= 0:
+                        warnings.warn('Transaxial extended FOV is smaller than one multi-resolution voxel on a shifted side; disabling transaxial EFOV.')
+                        requestedSideLow[:2] = requestedSideHigh[:2] = 0.
                         self.transaxialEFOV = False
                         self.Nx = self.NxOrig
                         self.Ny = self.NyOrig
                         self.FOVa_x = self.FOVxOrig
                         self.FOVa_y = self.FOVyOrig
-                if self.axialEFOV and self.transaxialEFOV:
-                    from scipy.ndimage import zoom
-                    self.nMultiVolumes = 6
-                
-                    NxM = int(matlabRound(self.NxOrig * self.multiResolutionScale))
-                    dxM = self.FOVxOrig / NxM
-                    NyM = int(matlabRound(self.NyOrig * self.multiResolutionScale))
-                    dyM = self.FOVyOrig / NyM
-                    NzM = int(matlabRound(self.NzOrig * self.multiResolutionScale))
-                    dzM = self.axialFOVOrig / NzM
-                
-                    NxM2 = int(matlabRound((self.FOVa_x - self.FOVxOrig) / 2 / dxM)) * 2
-                    FOVxM = NxM2 * dxM
-                    NyM2 = int(matlabRound((self.FOVa_y - self.FOVyOrig) / 2 / dyM)) * 2
-                    FOVyM = NyM2 * dyM
-                    NzM2 = int(matlabRound((self.axial_fov - self.axialFOVOrig) / 2 / dzM)) * 2
-                    FOVzM = NzM2 * dzM
-                
-                    self.FOVa_x = np.array([
-                        self.FOVxOrig, self.FOVxOrig, self.FOVxOrig,
-                        FOVxM / 2, FOVxM / 2,
-                        self.FOVxOrig, self.FOVxOrig
-                    ], dtype=np.float32)
-                
-                    self.FOVa_y = np.array([
-                        self.FOVyOrig, self.FOVyOrig, self.FOVyOrig,
-                        FOVyM + self.FOVyOrig, FOVyM + self.FOVyOrig,
-                        FOVyM / 2, FOVyM / 2
-                    ], dtype=np.float32)
-                
-                    self.axial_fov = np.array([
-                        self.axialFOVOrig, FOVzM / 2, FOVzM / 2,
-                        FOVzM + self.axialFOVOrig, FOVzM + self.axialFOVOrig,
-                        FOVzM + self.axialFOVOrig, FOVzM + self.axialFOVOrig
-                    ], dtype=np.float32)
-                
-                    self.Nx = np.array([
-                        self.NxOrig, NxM, NxM,
-                        NxM2 // 2, NxM2 // 2,
-                        NxM, NxM
-                    ], dtype=np.uint32)
-                
-                    self.Ny = np.array([
-                        self.NyOrig, NyM, NyM,
-                        NyM + NyM2, NyM + NyM2,
-                        NyM2 // 2, NyM2 // 2
-                    ], dtype=np.uint32)
-                
-                    self.Nz = np.array([
-                        self.NzOrig, NzM2 // 2, NzM2 // 2,
-                        NzM + NzM2, NzM + NzM2,
-                        NzM + NzM2, NzM + NzM2
-                    ], dtype=np.uint32)
-                
-                    print(f"Extended FOV is {(FOVxM + self.FOVxOrig) / self.FOVxOrig * 100:.2f} % of the original")
-                
-                    if self.x0.shape[0] == nx and np.min(self.x0) != np.max(self.x0):
-                        apu = zoom(self.x0, self.multiResolutionScale, order=1).astype(np.float32)
-                
-                        x1 = apu[
-                            self.Nx[3]:self.Nx[3] + self.Nx[1],
-                            self.Ny[5]:self.Ny[5] + self.Ny[1],
-                            :self.Nz[1]
-                        ]
-                        x2 = apu[self.Nx[4]:self.Nx[4] + self.Nx[2],
-                            self.Ny[6]:self.Ny[6] + self.Ny[2],
-                            apu.shape[2] - self.Nz[2]:]
-                        x3 = apu[:self.Nx[3], :, :]
-                        x4 = apu[apu.shape[0] - self.Nx[4]:, :, :]
-                        x5 = apu[
-                            self.Nx[3]:self.Nx[3] + self.Nx[1],
-                            :self.Ny[5],
-                            :self.Nz[3]
-                        ]
-                        x6 = apu[self.Nx[4]:self.Nx[4] + self.Nx[2], apu.shape[1] - self.Ny[6]:, :self.Nz[4]]
-                
-                        sx0 = self.x0.shape
-                        self.x0 = self.x0[
-                            int((sx0[0] - self.NxOrig) // 2):int((sx0[0] - self.NxOrig) // 2 + self.NxOrig),
-                            int((sx0[1] - self.NyOrig) // 2):int((sx0[1] - self.NyOrig) // 2 + self.NyOrig),
-                            int((sx0[2] - self.NzOrig) // 2):int((sx0[2] - self.NzOrig) // 2 + self.NzOrig)
-                        ].astype(np.float32)
-                
-                        self.x0 = np.concatenate([
-                            self.x0.ravel('F'), x1.ravel('F'), x2.ravel('F'),
-                            x3.ravel('F'), x4.ravel('F'), x5.ravel('F'),
-                            x6.ravel('F')
-                        ])
-                
-                    elif self.x0.shape[0] == self.NxOrig or np.min(self.x0) == np.max(self.x0):
-                        val = np.min(self.x0)
-                        self.x0 = self.x0[:self.Nx[0].item(), :self.Ny[0].item(),:self.Nz[0].item()]
-                        x1 = np.ones((self.Nx[1], self.Ny[1], self.Nz[1]), dtype=np.float32, order='F') * val
-                        x2 = np.ones((self.Nx[2], self.Ny[2], self.Nz[2]), dtype=np.float32, order='F') * val
-                        x3 = np.ones((self.Nx[3], self.Ny[3], self.Nz[3]), dtype=np.float32, order='F') * val
-                        x4 = np.ones((self.Nx[4], self.Ny[4], self.Nz[4]), dtype=np.float32, order='F') * val
-                        x5 = np.ones((self.Nx[5], self.Ny[5], self.Nz[5]), dtype=np.float32, order='F') * val
-                        x6 = np.ones((self.Nx[6], self.Ny[6], self.Nz[6]), dtype=np.float32, order='F') * val
-                        self.x0 = np.concatenate([
-                            self.x0.ravel('F'), x1.ravel('F'), x2.ravel('F'),
-                            x3.ravel('F'), x4.ravel('F'), x5.ravel('F'),
-                            x6.ravel('F')])
-                
-                elif self.transaxialEFOV and not self.axialEFOV:
-                    from scipy.ndimage import zoom
-                    self.nMultiVolumes = 4
-                
-                    NxM = int(matlabRound(self.NxOrig * self.multiResolutionScale))
-                    dxM = self.FOVxOrig / NxM
-                    NyM = int(matlabRound(self.NyOrig * self.multiResolutionScale))
-                    dyM = self.FOVyOrig / NyM
-                    NzM = int(matlabRound(self.NzOrig * self.multiResolutionScale))
-                
-                    NxM2 = int(matlabRound((self.FOVa_x - self.FOVxOrig) / 2 / dxM)) * 2
-                    FOVxM = NxM2 * dxM
-                    NyM2 = int(matlabRound((self.FOVa_y - self.FOVyOrig) / 2 / dyM)) * 2
-                    FOVyM = NyM2 * dyM
-                
-                    self.FOVa_x = np.array([self.FOVxOrig, FOVxM / 2, FOVxM / 2, self.FOVxOrig, self.FOVxOrig], dtype=np.float32)
-                    self.FOVa_y = np.array([self.FOVyOrig, FOVyM + self.FOVyOrig, FOVyM + self.FOVyOrig, FOVyM / 2, FOVyM / 2], dtype=np.float32)
-                    self.axial_fov = np.array([self.axialFOVOrig] * 5, dtype=np.float32)
-                
-                    self.Nx = np.array([self.NxOrig, NxM2 // 2, NxM2 // 2, NxM, NxM], dtype=np.uint32)
-                    self.Ny = np.array([self.NyOrig, NyM + NyM2, NyM + NyM2, NyM2 // 2, NyM2 // 2], dtype=np.uint32)
-                    self.Nz = np.array([self.NzOrig, NzM, NzM, NzM, NzM], dtype=np.uint32)
-                
-                    print(f"Extended FOV is {(FOVxM + self.FOVxOrig) / self.FOVxOrig * 100:.2f} % of the original")
-                
-                    if self.x0.shape[0] == nx and np.min(self.x0) != np.max(self.x0):
-                        apu = zoom(self.x0, self.multiResolutionScale, order=1).astype(np.float32)
-                        # Volumes 1 and 2 are the x-direction side strips over the whole extended y-range,
-                        # volumes 3 and 4 the y-direction side strips over the original x-range
-                        x1 = apu[:self.Nx[1], :, :]
-                        x2 = apu[apu.shape[0] - self.Nx[2]:, :, :]
-                        x3 = apu[self.Nx[1]:self.Nx[1] + self.Nx[3], :self.Ny[3], :]
-                        x4 = apu[self.Nx[1]:self.Nx[1] + self.Nx[4], apu.shape[1] - self.Ny[4]:, :]
-                
-                        sx0 = self.x0.shape
-                        self.x0 = self.x0[
-                            int((sx0[0] - self.NxOrig) // 2):int((sx0[0] - self.NxOrig) // 2 + self.NxOrig),
-                            int((sx0[1] - self.NyOrig) // 2):int((sx0[1] - self.NyOrig) // 2 + self.NyOrig),
-                            int((sx0[2] - self.NzOrig) // 2):int((sx0[2] - self.NzOrig) // 2 + self.NzOrig)
-                        ].astype(np.float32)
-                
-                        self.x0 = np.concatenate([self.x0.ravel('F'), x1.ravel('F'), x2.ravel('F'), x3.ravel('F'), x4.ravel('F')])
-                
-                    elif self.x0.shape[0] == self.NxOrig or np.min(self.x0) == np.max(self.x0):
-                        val = np.min(self.x0)
-                        self.x0 = self.x0[:self.Nx[0].item(), :self.Ny[0].item(),:]
-                        x1 = np.ones((self.Nx[1], self.Ny[1], self.Nz[1]), dtype=np.float32, order='F') * val
-                        x2 = np.ones((self.Nx[2], self.Ny[2], self.Nz[2]), dtype=np.float32, order='F') * val
-                        x3 = np.ones((self.Nx[3], self.Ny[3], self.Nz[3]), dtype=np.float32, order='F') * val
-                        x4 = np.ones((self.Nx[4], self.Ny[4], self.Nz[4]), dtype=np.float32, order='F') * val
-                        self.x0 = np.concatenate([self.x0.ravel('F'), x1.ravel('F'), x2.ravel('F'), x3.ravel('F'), x4.ravel('F')])
-                elif not self.transaxialEFOV and self.axialEFOV:
-                    from scipy.ndimage import zoom
-                    self.nMultiVolumes = 2
-                
-                    NxM = int(matlabRound(self.NxOrig * self.multiResolutionScale))
-                    NyM = int(matlabRound(self.NyOrig * self.multiResolutionScale))
-                    NzM = int(matlabRound(self.NzOrig * self.multiResolutionScale))
-                    dzM = self.axialFOVOrig / NzM
-                    NzM2 = int(matlabRound((self.axial_fov - self.axialFOVOrig) / 2 / dzM)) * 2
-                    FOVzM = NzM2 * dzM
-                
-                    self.FOVa_x = np.array([self.FOVxOrig] * 3, dtype=np.float32)
-                    self.FOVa_y = np.array([self.FOVyOrig] * 3, dtype=np.float32)
-                    self.axial_fov = np.array([
-                        self.axialFOVOrig, FOVzM / 2, FOVzM / 2
-                    ], dtype=np.float32)
-                
-                    self.Nx = np.array([self.NxOrig, NxM, NxM], dtype=np.uint32)
-                    self.Ny = np.array([self.NyOrig, NyM, NyM], dtype=np.uint32)
-                    self.Nz = np.array([self.NzOrig, NzM2 // 2, NzM2 // 2], dtype=np.uint32)
-                
-                    print(f"Extended FOV is {(FOVzM + self.axialFOVOrig) / self.axialFOVOrig * 100:.2f} % of the original")
-                
-                    if self.x0.shape[0] == nx and np.min(self.x0) != np.max(self.x0):
-                        apu = zoom(self.x0, self.multiResolutionScale, order=1).astype(np.float32)
-                        x1 = apu[:, :, :self.Nz[1]]
-                        x2 = apu[:, :, apu.shape[2] - self.Nz[2]:]
-                
-                        sx0 = self.x0.shape
-                        self.x0 = self.x0[
-                            int((sx0[0] - self.NxOrig) // 2):int((sx0[0] - self.NxOrig) // 2 + self.NxOrig),
-                            int((sx0[1] - self.NyOrig) // 2):int((sx0[1] - self.NyOrig) // 2 + self.NyOrig),
-                            int((sx0[2] - self.NzOrig) // 2):int((sx0[2] - self.NzOrig) // 2 + self.NzOrig)
-                        ].astype(np.float32)
-                
-                        self.x0 = np.concatenate([self.x0.ravel('F'), x1.ravel('F'), x2.ravel('F')])
-                
-                    elif self.x0.shape[0] == self.NxOrig or np.min(self.x0) == np.max(self.x0):
-                        val = np.min(self.x0)
-                        self.x0 = self.x0[:, :,:self.Nz[0].item()]
-                        x1 = np.ones((self.Nx[1], self.Ny[1], self.Nz[1]), dtype=np.float32, order='F') * val
-                        x2 = np.ones((self.Nx[2], self.Ny[2], self.Nz[2]), dtype=np.float32, order='F') * val
-                        self.x0 = np.concatenate([self.x0.ravel('F'), x1.ravel('F'), x2.ravel('F')])
-                elif not self.axialEFOV and not self.transaxialEFOV:
-                    # Neither direction has a usable extension left: skip
-                    # multi-resolution volume creation entirely.
-                    self.useMultiResolutionVolumes = False
-                    self.nMultiVolumes = 0
+                    else:
+                        xLowFOV, xHighFOV, yLowFOV, yHighFOV = (
+                            sideCounts[0] * dxM, sideCounts[1] * dxM,
+                            sideCounts[2] * dyM, sideCounts[3] * dyM,
+                        )
+                        sideLowFOV[:2] = (xLowFOV, yLowFOV)
+                        sideHighFOV[:2] = (xHighFOV, yHighFOV)
 
-                if self.useMultiResolutionVolumes:
-                    self.NxPrior = self.Nx[0].item()
-                    self.NyPrior = self.Ny[0].item()
-                    self.NzPrior = self.Nz[0].item()
-                else:
-                    # Plain ints (the C struct fields are uint32). Nx/Ny/Nz may still be Python
-                    # ints here (they are converted to arrays later in addProjector) or already
-                    # arrays (repeated calls), so take the first element in either case.
+                if self.axialEFOV or self.transaxialEFOV:
+                    # Extend each requested outer edge only by the amount
+                    # needed to finish a coarse voxel; retain the independent
+                    # low/high SPECT shifts in the packed volume origins.
+                    requestedFOV = np.asarray([self.FOVa_x, self.FOVa_y, self.axial_fov], dtype=np.float64)
+                    mainSpacing = np.asarray([
+                        self.FOVxOrig / self.NxOrig,
+                        self.FOVyOrig / self.NyOrig,
+                        self.axialFOVOrig / self.NzOrig,
+                    ], dtype=np.float64)
+                    coarseSpacing = np.asarray([dxM, dyM, dzM], dtype=np.float64)
+                    setMultiResPadding(
+                        self,
+                        sideLowFOV - requestedSideLow,
+                        sideHighFOV - requestedSideHigh,
+                        requestedFOV,
+                        mainSpacing,
+                        coarseSpacing,
+                    )
+
+                if not self.axialEFOV and not self.transaxialEFOV:
+                    # No usable extension remains, so retain the original
+                    # centered image grid and bypass volume packing.
+                    self.useMultiResolutionVolumes = False
+                    self.useEFOV = False
+                    self.nMultiVolumes = 0
+                    self.Nx = self.NxOrig
+                    self.Ny = self.NyOrig
+                    self.Nz = self.NzOrig
+                    self.FOVa_x = self.FOVxOrig
+                    self.FOVa_y = self.FOVyOrig
+                    self.axial_fov = self.axialFOVOrig
+                    self.eFOVShift = [0, 0, 0]
+                    self.eFOVShift_Nx = self.eFOVShift_Ny = self.eFOVShift_Nz = 0
+                    self.eFOVIndices = np.ones((int(self.Nz), 1), dtype=np.uint8)
+                    self.maskPrior = np.ones((int(self.Nx), int(self.Ny)), dtype=np.uint8)
+                    if self.useMaskBP and self.maskBP.size > 1:
+                        self.maskPrior += 1 - self.maskBP
                     self.NxPrior = int(np.asarray(self.Nx).ravel()[0])
                     self.NyPrior = int(np.asarray(self.Ny).ravel()[0])
                     self.NzPrior = int(np.asarray(self.Nz).ravel()[0])
+                else:
+                    FOVxM0, FOVyM0, FOVzM0 = self.FOVxOrig, self.FOVyOrig, self.axialFOVOrig
+                    NxM0, NyM0, NzM0 = self.NxOrig, self.NyOrig, self.NzOrig
+                    if self.axialEFOV:
+                        FOVzM1, FOVzM2 = zLowFOV, zHighFOV
+                        NzM1 = int(matlabRound(FOVzM1 / dzM))
+                        NzM2 = int(matlabRound(FOVzM2 / dzM))
+                        FOVxM1 = FOVxM2 = self.FOVxOrig
+                        FOVyM1 = FOVyM2 = self.FOVyOrig
+                        NxM1 = NxM2 = NxM
+                        NyM1 = NyM2 = NyM
+                    if self.transaxialEFOV:
+                        FOVxM3, FOVxM4 = xLowFOV, xHighFOV
+                        NxM3, NxM4 = sideCounts[0], sideCounts[1]
+                        FOVxM5 = FOVxM6 = self.FOVxOrig
+                        NxM5 = NxM6 = NxM
+                        # The full-y transaxial slabs must use the same union of
+                        # the coarse central slab and the two shifted side slabs
+                        # as MATLAB type 6. Rounding FOVa_y/dyM directly can
+                        # lose one voxel when the shifted sides each round up.
+                        if self.projector_type == 6:
+                            NyM3 = NyM4 = NyM + sideCounts[2] + sideCounts[3]
+                        else:
+                            NyM3 = NyM4 = sideVoxels(self.FOVa_y, dyM)
+                        FOVyM3 = FOVyM4 = NyM3 * dyM
+                        FOVyM5, FOVyM6 = yLowFOV, yHighFOV
+                        NyM5, NyM6 = sideCounts[2], sideCounts[3]
+
+                    if self.axialEFOV and self.transaxialEFOV:
+                        self.nMultiVolumes = 6
+                        self.FOVa_x = np.asarray([FOVxM0, FOVxM1, FOVxM2,
+                                                  FOVxM3, FOVxM4, FOVxM5, FOVxM6], dtype=np.float32)
+                        self.Nx = np.asarray([NxM0, NxM1, NxM2,
+                                              NxM3, NxM4, NxM5, NxM6], dtype=np.uint32)
+                        self.FOVa_y = np.asarray([FOVyM0, FOVyM1, FOVyM2,
+                                                  FOVyM3, FOVyM4, FOVyM5, FOVyM6], dtype=np.float32)
+                        self.Ny = np.asarray([NyM0, NyM1, NyM2,
+                                              NyM3, NyM4, NyM5, NyM6], dtype=np.uint32)
+                        self.axial_fov = np.asarray([FOVzM0, FOVzM1, FOVzM2] + [self.axialFOVOrig + FOVzM1 + FOVzM2] * 4, dtype=np.float32)
+                        # The four transverse slabs cover the complete axial FOV.
+                        self.axial_fov[3:] = np.float32(self.axial_fov[0] + self.axial_fov[1] + self.axial_fov[2])
+                        NzMFull = int(matlabRound(self.axial_fov[3] / dzM))
+                        self.Nz = np.asarray([NzM0, NzM1, NzM2] + [NzMFull] * 4, dtype=np.uint32)
+                    elif self.transaxialEFOV:
+                        self.nMultiVolumes = 4
+                        self.FOVa_x = np.asarray([FOVxM0, FOVxM3, FOVxM4, FOVxM5, FOVxM6], dtype=np.float32)
+                        self.Nx = np.asarray([NxM0, NxM3, NxM4, NxM5, NxM6], dtype=np.uint32)
+                        self.FOVa_y = np.asarray([FOVyM0, FOVyM3, FOVyM4, FOVyM5, FOVyM6], dtype=np.float32)
+                        self.Ny = np.asarray([NyM0, NyM3, NyM4, NyM5, NyM6], dtype=np.uint32)
+                        self.axial_fov = np.full(5, self.axialFOVOrig, dtype=np.float32)
+                        self.Nz = np.asarray([NzM0] + [NzM] * 4, dtype=np.uint32)
+                    else:
+                        self.nMultiVolumes = 2
+                        self.FOVa_x = np.full(3, self.FOVxOrig, dtype=np.float32)
+                        self.FOVa_y = np.full(3, self.FOVyOrig, dtype=np.float32)
+                        self.axial_fov = np.asarray([self.axialFOVOrig, FOVzM1, FOVzM2], dtype=np.float32)
+                        self.Nx = np.asarray([NxM0, NxM, NxM], dtype=np.uint32)
+                        self.Ny = np.asarray([NyM0, NyM, NyM], dtype=np.uint32)
+                        self.Nz = np.asarray([NzM0, NzM1, NzM2], dtype=np.uint32)
+
+                    axialExtension = (np.sum(self.axial_fov[:3]) / self.axialFOVOrig * 100
+                                      if self.axialEFOV else 100.)
+                    if self.transaxialEFOV:
+                        xSides, ySides = ((3, 4), (5, 6)) if self.nMultiVolumes == 6 else ((1, 2), (3, 4))
+                        transaxialExtensionX = np.sum(self.FOVa_x[[0, *xSides]]) / self.FOVxOrig * 100
+                        transaxialExtensionY = np.sum(self.FOVa_y[[0, *ySides]]) / self.FOVyOrig * 100
+                    else:
+                        transaxialExtensionX = transaxialExtensionY = 100.
+                    print(f"Axial FOV extension is {axialExtension:.2f} % (z) of the original")
+                    print(f"Transaxial FOV extension is {transaxialExtensionX:.2f} % (x), "
+                          f"{transaxialExtensionY:.2f} % (y) of the original")
+
+                    from omegatomo.util.multiresolution import pack_multiresolution
+                    self.x0 = pack_multiresolution(self.x0, self)
+                    if self.useMaskBP and self.maskBP.size > 1:
+                        self.maskBP = pack_multiresolution(self.maskBP, self, mask=True)
+                        self.maskBPZ = int(np.max(self.Nz))
+                    self.NxPrior = self.Nx[0].item()
+                    self.NyPrior = self.Ny[0].item()
+                    self.NzPrior = self.Nz[0].item()
             else:
                 # The regularization is not computed in the extended region: the number of padded voxels per side
                 # is (N - NOrig) // 2 and the prior region is [pad, N - pad) (0-based), as in MATLAB setUpCorrections.m
@@ -2787,33 +2931,28 @@ class projectorClass:
                         maskPriorE = maskPriorE[:, :, None]
                     self.maskPrior = np.asfortranarray(np.clip(maskPriorE - notMaskBP, 0, 1).astype(np.uint8))
         else:
-            # Plain ints, see the comment above (Nx/Ny/Nz can be ints or arrays here).
+            self.eFOVShift = [0, 0, 0]
+            # C struct fields require plain ints, including when dimensions are arrays.
             self.NxPrior = int(np.asarray(self.Nx).ravel()[0])
             self.NyPrior = int(np.asarray(self.Ny).ravel()[0])
             self.NzPrior = int(np.asarray(self.Nz).ravel()[0])
         if self.offsetCorrection:
-            self.OffsetLimit = np.zeros((self.nProjections, 1), dtype=np.float32)
-            for kk in range(self.nProjections):
-                sx = self.x[kk, 0]
-                sy = self.x[kk, 1]
-                dx = self.x[kk, 3]
-                dy = self.x[kk, 4]
-                # Matches MATLAB setUpCorrections.m:381-403: (0:0.25:nRowsD)' includes
-                # the nRowsD endpoint (4*nRowsD + 1 samples), and dPitchX (not
-                # dPitchY) is the pitch used for this transaxial search/limit.
-                ii = np.linspace(0., float(self.nRowsD), 4 * int(self.nRowsD) + 1, dtype=np.float32) - self.nRowsD / 2
-                if self.pitch:
-                    dx = dx + self.z[kk, 0] * ii + self.z[kk, 3] * ii
-                    dy = dy + self.z[kk, 1] * ii + self.z[kk, 4] * ii
-                else:
-                    dx = dx + self.z[kk, 0] * ii
-                    dy = dy + self.z[kk, 1] * ii
-                dist = np.abs((dx - sx) * (sy) - ((sx) * (dy - sy))) / np.sqrt((dx - sx)**2 + (dy - sy)**2)
-                ind = np.argmin(dist)
-                # MATLAB's `[~, ind] = min(dist)` returns a 1-based index; np.argmin
-                # returns 0-based, so +1 is needed to match MATLAB's OffsetLimit(kk)
-                # = (ind) * dPitchX / 4.
-                self.OffsetLimit[kk] = (ind + 1) * self.dPitchX / 4
+            nP = int(self.nProjections)
+            xx = np.asarray(self.x, dtype=np.float64).reshape(-1, 6)[:nP]
+            zz = np.asarray(self.z, dtype=np.float64).reshape(nP, -1)
+            if zz.shape[1] < 2:
+                raise ValueError('Offset correction requires the detector row direction vectors (options.z) for each projection!')
+            s, d, u = xx[:, 0:2], xx[:, 3:5], zz[:, 0:2]
+            # Position t (in detector pixels, from the detector center along the row direction u) at which the line from the source s
+            # to d + t * u passes through the rotation axis (0,0). The central ray is thus computed exactly instead of searched on a grid.
+            t = (s[:, 1] * d[:, 0] - s[:, 0] * d[:, 1]) / (s[:, 0] * u[:, 1] - s[:, 1] * u[:, 0])
+            koko = float(self.nRowsD) * float(self.dPitchX)
+            # Distance (mm) of the central ray from the row-0 edge of the detector
+            T = (t + float(self.nRowsD) / 2.) * float(self.dPitchX)
+            if np.any((T <= 0.) | (T >= koko)):
+                print('Warning: Offset correction: the central ray is outside the detector for some projections, clamping the offset limit.')
+            eps = 1e-3 * float(self.dPitchX)
+            self.OffsetLimit = np.clip(T, eps, koko - eps).astype(np.float32).reshape(-1, 1)
             
             
     def PSFKernel(self):
@@ -2859,6 +2998,18 @@ class projectorClass:
             self.initProj()
         from omegatomo.projector.projfunctions import forwardProjection
         return forwardProjection(self, f, subset, timestep)
+
+    def applyOffsetSqrtWeights(self, y, subset: int = -1):
+        """Multiplies the measurement data y (of the given subset) by the square root of the offset redundancy weights. This is needed
+        with the custom algorithms when the square root offset weighting is used (offsetSqrtWeights = True), since the forward
+        projection is then weighted as well. Returns the weighted data (y itself is not modified); y is returned as is if the square root
+        offset weighting is not in use."""
+        if not(self.projectorInitialized):
+            self.initProj()
+        from omegatomo.projector.projfunctions import _applyOffsetSqrtFP
+        if subset == -1:
+            subset = self.subset
+        return _applyOffsetSqrtFP(self, y, int(subset))
         
     def backwardProject(self, y, subset: int = -1, timestep: int = -1):
         if not(self.projectorInitialized):
@@ -3036,6 +3187,7 @@ class projectorClass:
             ('orthAxial', ctypes.c_bool),
             ('enforcePositivity', ctypes.c_bool),
             ('useMultiResolutionVolumes', ctypes.c_bool),
+            ('storeMultiResolution', ctypes.c_bool),
             ('save_iter', ctypes.c_bool),
             ('deblurring', ctypes.c_bool),
             ('useMAD', ctypes.c_bool),
@@ -3044,6 +3196,7 @@ class projectorClass:
             ('useEFOV', ctypes.c_bool),
             ('CTAttenuation', ctypes.c_bool),
             ('offsetCorrection', ctypes.c_bool),
+            ('offsetSqrt', ctypes.c_bool),
             ('relaxationScaling', ctypes.c_bool),
             ('computeRelaxationParameters', ctypes.c_bool),
             ('storeFP', ctypes.c_bool),
@@ -3191,6 +3344,14 @@ class projectorClass:
             ('blurPlanes2', ctypes.POINTER(ctypes.c_int32)),
             ('gFilter', ctypes.POINTER(ctypes.c_float)),
             ('gFSize', ctypes.POINTER(ctypes.c_uint64)),
+            ('gFilterODRT', ctypes.POINTER(ctypes.c_float)),
+            ('gFilterODRTNu', ctypes.c_uint32),
+            ('gFilterODRTNv', ctypes.c_uint32),
+            ('gFilterODRTNd', ctypes.c_uint32),
+            ('gFilterODRTDu', ctypes.c_float),
+            ('gFilterODRTDv', ctypes.c_float),
+            ('gFilterODRTDd', ctypes.c_float),
+            ('gFilterODRTCustom', ctypes.c_uint32),
             ('precondTypeImage', ctypes.POINTER(ctypes.c_bool)),
             ('precondTypeMeas', ctypes.POINTER(ctypes.c_bool)),
             ('referenceImage', ctypes.POINTER(ctypes.c_float)),
@@ -3231,9 +3392,27 @@ class projectorClass:
             ('ellipsePower',ctypes.c_float),
             ('NLM_ref', ctypes.POINTER(ctypes.c_float)),
             ('RDP_ref', ctypes.POINTER(ctypes.c_float)),
+            ('zSens', ctypes.POINTER(ctypes.c_float)),
+            ('sizeZSens', ctypes.c_uint64),
+            ('sizeDetectorVector', ctypes.c_uint64),
+            ('sensitivityViewWeights', ctypes.POINTER(ctypes.c_float)),
+            ('sizeSensitivityViewWeights', ctypes.c_uint64),
+            ('imageAttenuationGridDims', ctypes.c_uint32 * 6),
+            ('imageAttenuationGridSpacing', ctypes.c_float * 6),
+            ('imageAttenuationGridOrigin', ctypes.c_float * 6),
             ('tr_offsets', ctypes.POINTER(ctypes.c_uint32)),
             ('a_L', ctypes.POINTER(ctypes.c_float)),
             ('fmh_weights', ctypes.POINTER(ctypes.c_float)),
+            # Keep this sequence in sync with scalarStruct in libHeader.h.
+            ('blurPlanesF', ctypes.POINTER(ctypes.c_float)),
+            ('blurPlanes2F', ctypes.POINTER(ctypes.c_float)),
+            ('CDRFCoeffs6', ctypes.POINTER(ctypes.c_float)),
+            ('CDRFOnTheFly', ctypes.c_bool),
+            ('type6AttenuationCache', ctypes.c_float),
+            ('cdrfModel6', ctypes.c_uint32),
+            ('bpRot6', ctypes.c_uint32),
+            ('radiusPerProj', ctypes.POINTER(ctypes.c_float)),
+            ('CORtoDetectorSurface', ctypes.c_float),
             ('normSens', ctypes.POINTER(ctypes.c_float)),
             ('sensXY', ctypes.POINTER(ctypes.c_uint32)),
             ('sensZ', ctypes.POINTER(ctypes.c_uint32)),

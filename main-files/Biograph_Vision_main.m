@@ -1625,7 +1625,7 @@ options = OMEGA_error_check(options);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Uncomment the below value to change the depth of interaction (mm)
 % NOTE: This example sets the value to 8.6 in the detector geometry section
-% above (see VISION DATA). 0 means that it is assumed that all the 
+% above (see VISION DATA). 0 means that it is assumed that all the
 % interactions occur at the surface of the detector crystals. What this
 % value changes is the depth of where the interactions are assumed to
 % occur, i.e. it only changes the detector coordinates such that the
