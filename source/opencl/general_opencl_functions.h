@@ -694,7 +694,9 @@ __constant sampler_t sampler_MASKFP = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_N
 #define ATAN2 atan2f
 #define ACOS acosf
 #define SQRT sqrtf
-#define RSQRT(x) __frsqrt_rn(x)
+// rsqrtf is a single approximate reciprocal square root instruction, the same as native_rsqrt in OpenCL. The correctly rounded
+// __frsqrt_rn adds a range test and several Newton correction steps to every call, which made the hyperbolic prior about two times slower
+#define RSQRT(x) rsqrtf(x)
 #define LOG logf
 #define CROSS cross
 #define DISTANCE distance
@@ -2710,9 +2712,28 @@ DEVICE float NLMTexRead(IMAGE3D uIn, const int x, const int y, const int z) {
 #define NLMFETCH(BUF, X, Y, Z) NLMTexRead(BUF, X, Y, Z)
 #endif
 
-// Limit loop unrolling to 128 to avoid too large (machine) code and compilation times
-#define NLM_ITER ((SWINDOWX * 2 + 1) * (SWINDOWY * 2 + 1) * (SWINDOWZ * 2 + 1) * (PWINDOWX * 2 + 1) * (PWINDOWY * 2 + 1) * (PWINDOWZ * 2 + 1))
-#define NLM_UNROLL (NLM_ITER <= 128)
+// Unrolling of the search window loops. Each loop is unrolled only when the code it produces stays small enough: the size is
+// measured as the number of patch distance terms in the unrolled body, i.e. the number of search window iterations at that loop
+// level and inside it times the number of voxels in the patch. The limit is from benchmarks at 256^3 with 14-21 different windows:
+// on NVIDIA (CUDA and OpenCL) unrolling was 1.5-2 times faster than the plain loops up to about 2200 terms and 1.1-1.6 times
+// slower from about 3000 terms on, but on AMD (HIP) it was already 1.2-1.3 times slower at 1125 terms and faster only up to
+// about 900 terms. The innermost loop (z) is thus unrolled the most often and the outermost loop (x) the least often
+#define NLM_PATCH ((PWINDOWX * 2 + 1) * (PWINDOWY * 2 + 1) * (PWINDOWZ * 2 + 1))
+#define NLM_ITER ((SWINDOWX * 2 + 1) * (SWINDOWY * 2 + 1) * (SWINDOWZ * 2 + 1) * NLM_PATCH)
+#define NLM_UNROLL_LIMIT 1024
+#define NLM_UNROLL_K ((SWINDOWZ * 2 + 1) * NLM_PATCH <= NLM_UNROLL_LIMIT)
+#define NLM_UNROLL_J ((SWINDOWY * 2 + 1) * (SWINDOWZ * 2 + 1) * NLM_PATCH <= NLM_UNROLL_LIMIT)
+#define NLM_UNROLL_I (NLM_ITER <= NLM_UNROLL_LIMIT)
+
+// The Gaussian weights of the patch. With CUDA, the host can copy them to the constant memory of the module (NLMCONSTWEIGHTS),
+// which is much faster to read in the innermost loop than the global memory of the kernel argument. OpenCL already uses the
+// constant address space for the kernel argument
+#if defined(CUDA) && defined(NLMCONSTWEIGHTS)
+__constant__ float cGaussianNLM[(PWINDOWX * 2 + 1) * (PWINDOWY * 2 + 1) * (PWINDOWZ * 2 + 1)];
+#define NLMGAUSS(IND) cGaussianNLM[IND]
+#else
+#define NLMGAUSS(IND) gaussian[IND]
+#endif
 
 // Gradient of the NLM prior (and its variants) for a single voxel
 DEVICE float NLMGradient(NLM_IN_T uIn,
@@ -2769,15 +2790,15 @@ DEVICE float NLMGradient(NLM_IN_T uIn,
             }
         }
     }
-#if NLM_UNROLL
+#if NLM_UNROLL_I
 #pragma unroll
 #endif
     for (int i = -SWINDOWX; i <= SWINDOWX; i++) {
-#if NLM_UNROLL
+#if NLM_UNROLL_J
 #pragma unroll
 #endif
         for (int j = -SWINDOWY; j <= SWINDOWY; j++) {
-#if NLM_UNROLL
+#if NLM_UNROLL_K
 #pragma unroll
 #endif
             for (int k = -SWINDOWZ; k <= SWINDOWZ; k++) {
@@ -2793,7 +2814,7 @@ DEVICE float NLMGradient(NLM_IN_T uIn,
                         int dim_g = (pz + PWINDOWZ) * (PWINDOWX * 2 + 1) * (PWINDOWY * 2 + 1) + (py + PWINDOWY) * (PWINDOWX * 2 + 1);
 #pragma unroll
                         for (int px = -PWINDOWX; px <= PWINDOWX; px++) {
-                            const float gg = gaussian[dim_g++];
+                            const float gg = NLMGAUSS(dim_g++);
 #ifdef NLMREF
                             const float Pk = NLMFETCH(uRefIn, x + i + px, y + j + py, z + k + pz);
 #else

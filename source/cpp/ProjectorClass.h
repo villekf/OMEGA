@@ -1567,6 +1567,10 @@ class ProjectorClass {
 			}
 			if (MethodList.NLM) {
 				ADD_OPT(optionsAux, "-DNLM_");
+#if defined(CUDA) && defined(AF)
+				// The Gaussian weights are read from the constant memory of the module, see fillNLMConstWeights
+				ADD_OPT(optionsAux, "-DNLMCONSTWEIGHTS");
+#endif
 				if (w_vec.NLM_MRP) {
 					ADD_OPT_INT(optionsAux, "-DNLTYPE", 2);
 				}
@@ -2998,6 +3002,10 @@ public:
 		if (MethodList.NLM) {
 			fastNLMUsed = true;
 			ADD_OPT(os_options, "-DFASTNLM");
+#if defined(CUDA) && defined(AF)
+			// The Gaussian weights are read from the constant memory of the module, see fillNLMConstWeights
+			ADD_OPT(os_options, "-DNLMCONSTWEIGHTS");
+#endif
 			if (w_vec.NLM_MRP) {
 				ADD_OPT_INT(os_options, "-DNLTYPE", 2);
 			}
@@ -3258,6 +3266,21 @@ public:
 			std::cerr << "Error while creating program" << std::endl;
 			return -1;
 		}
+#if defined(CUDA) && defined(AF)
+		// The NLM kernels read the Gaussian weights of the patch from the constant memory of their module
+		if (MethodList.NLM) {
+			// The auxiliary program contains the NLM kernel whenever NLM is selected
+			if (memAlloc.auxMod) {
+				if (fillNLMConstWeights(programAux, w_vec, true) != 0)
+					return -1;
+			}
+			// The backprojection program contains the NLM gradient only with fastPDHG
+			if (memAlloc.BPMod) {
+				if (fillNLMConstWeights(programBP, w_vec, false) != 0)
+					return -1;
+			}
+		}
+#endif
 #elif defined(METAL)
 		PROGRAMHANDLE_t programFP, programBP, programAux, programSens;
 		status = createProgram(programFP, programBP, programAux, programSens, header_directory, inputScalars, MethodList, w_vec, local_size, type);
@@ -3593,7 +3616,7 @@ public:
 		// Create the necessary buffers
 		// Distance-based weighting for GGMRF, RDP and hyperbolic prior
 		if (MethodList.GGMRF || (MethodList.RDP && w_vec.RDPLargeNeighbor) || MethodList.hyperbolic) {
-			ALLOC_BUFFER(d_weights, CL_MEM_READ_ONLY, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1);
+			ALLOC_BUFFER(d_weights, CL_MEM_READ_ONLY, sizeof(float) * ((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1));
 			CHECK(status, "\n", (STATUS_t)(-1));
 			memAlloc.GGMRF = true;
 		}
@@ -3944,7 +3967,7 @@ public:
 
 		// assign values to the buffers
 		if (MethodList.GGMRF || (MethodList.RDP && w_vec.RDPLargeNeighbor) || MethodList.hyperbolic) {
-			WRITE_BUFFER(d_weights, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1, w_vec.weights);
+			WRITE_BUFFER(d_weights, sizeof(float) * ((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1), w_vec.weights);
 			memSize += (sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1));
 			CHECK(status, "\n", (STATUS_t)(-1));
 		}
@@ -6337,6 +6360,43 @@ public:
 		d_sensXY.clear();
 		d_sensZ.clear();
 	}
+
+#if defined(CUDA) && defined(AF)
+	/// <summary>
+	/// Copies the Gaussian weights of the NLM patch to the constant memory of a CUDA module (the cGaussianNLM array of the kernels,
+	/// built with -DNLMCONSTWEIGHTS). Has to be called once after the module has been loaded
+	/// </summary>
+	/// <param name="module the CUDA module"></param>
+	/// <param name="w_vec specifies some of the special options/parameters used"></param>
+	/// <param name="required if true, a module without the constant array is an error; if false, such a module is skipped"></param>
+	/// <returns>0 on success, -1 on failure</returns>
+	inline int fillNLMConstWeights(CUmodule& module, const Weighting& w_vec, const bool required) {
+		CUdeviceptr dConst = 0;
+		size_t bytes = 0ULL;
+		CUresult status = cuModuleGetGlobal(&dConst, &bytes, module, "cGaussianNLM");
+		if (status == CUDA_ERROR_NOT_FOUND && !required)
+			return 0;
+		if (status != CUDA_SUCCESS) {
+			getErrorString(status);
+			mexPrint("Failed to find the constant memory array of the NLM weights in the CUDA module\n");
+			return -1;
+		}
+		const size_t nWeights = static_cast<size_t>(w_vec.gaussianNLM.elements());
+		if (bytes != nWeights * sizeof(float)) {
+			mexPrint("The size of the constant memory array of the NLM weights does not match the number of weights\n");
+			return -1;
+		}
+		std::vector<float> hostWeights(nWeights);
+		w_vec.gaussianNLM.host(hostWeights.data());
+		status = cuMemcpyHtoD(dConst, hostWeights.data(), bytes);
+		if (status != CUDA_SUCCESS) {
+			getErrorString(status);
+			mexPrint("Failed to copy the NLM weights to the constant memory of the CUDA module\n");
+			return -1;
+		}
+		return 0;
+	}
+#endif
 
 	/// <summary>
 	/// Sets the fastPDHG work-group size to that of the priors and disables fastPDHG if the local memory tile of the fused prior does not
