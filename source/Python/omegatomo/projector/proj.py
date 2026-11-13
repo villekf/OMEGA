@@ -345,7 +345,7 @@ class projectorClass:
     precompute_lor = False
     sigmaZ = -1.
     sigmaXY = -1.
-    colL: float = 1. # Collimator hole length
+    colL: float = 1. # Legacy uniform collimator hole length; used only to initialize colLxy/colLz
     colLxy: Optional[float] = None # Collimator hole length in the transaxial plane
     colLz: Optional[float] = None # Collimator hole length in the axial plane
     colR: float = 1. # Collimator hole radius
@@ -1954,9 +1954,10 @@ class projectorClass:
                                       f'projection [{self.nRowsD} {self.nColsD} {self.nProjections}] or one image '
                                       f'per detector head [{self.nRowsD} {self.nColsD} {self.nHeads}].')
                 self.normZ = int(normZ)
-            if self.colLxy is None:
+            # Backward compatibility for callers that only provide the legacy uniform length.
+            if self.colLxy is None or self.colLxy <= 0.:
                 self.colLxy = self.colL
-            if self.colLz is None:
+            if self.colLz is None or self.colLz <= 0.:
                 self.colLz = self.colL
 
             projection_counts = np.asarray(

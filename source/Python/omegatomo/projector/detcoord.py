@@ -511,7 +511,7 @@ def getCoordinatesSPECT(options: proj.projectorClass) -> Tuple[np.ndarray, np.nd
     # the *other* operand's own dtype/precision). The original per-ii loop
     # indexed float32 scalars out of options.radiusPerProj/angles/
     # swivelAngles, so every term mixing one of those scalars with a plain
-    # Python float/int (r2, the colD+0.5*colL shift, and the "+90" in the
+    # Python float/int (r2, the colD+0.5*colLxy shift, and the "+90" in the
     # z formula) was silently upcast to float64 -- with the float32
     # trig result widened losslessly to float64 first -- before being
     # stored back into the float32 x/z arrays. That is reproduced here by
@@ -528,9 +528,8 @@ def getCoordinatesSPECT(options: proj.projectorClass) -> Tuple[np.ndarray, np.nd
     x[1, :] = r1 * np.sin(np.deg2rad(alpha1)) + r2 * np.sin(np.deg2rad(alpha2)).astype(np.float64)
     x[2, :] = 0
 
-    # The collimator point is placed with the general collimator length colL, the same reference length that
-    # SPECTParameters uses when scaling the transaxial/axial ray shifts with colLxy/colLz.
-    colShift = options.colD + 0.5 * options.colL
+    # Match MATLAB: the central collimator point lies at the transaxial hole's midpoint.
+    colShift = options.colD + 0.5 * options.colLxy
     x[3, :] = x[0, :] + colShift * np.cos(np.deg2rad(alpha2)).astype(np.float64)
     x[4, :] = x[1, :] + colShift * np.sin(np.deg2rad(alpha2)).astype(np.float64)
     x[5, :] = 0
@@ -1328,12 +1327,8 @@ def sinogramCoordinates3D(options, layers = (1,1)):
 
 
 def _collimatorLengths(options) -> Tuple[float, float]:
-    """Effective transaxial and axial septa lengths; colLxy/colLz fall back to colL when None or not positive."""
-    colLxy = getattr(options, 'colLxy', None)
-    colLz = getattr(options, 'colLz', None)
-    colLxy = float(colLxy) if colLxy is not None and colLxy > 0. else float(options.colL)
-    colLz = float(colLz) if colLz is not None and colLz > 0. else float(options.colL)
-    return colLxy, colLz
+    """Resolved transaxial and axial collimator hole lengths."""
+    return float(options.colLxy), float(options.colLz)
 
 
 def _type6_scalar(values, volume: int) -> float:
@@ -1385,8 +1380,8 @@ def _type6_auto_filter(options: proj.projectorClass, volume: int, depth: int | N
         distances = 0.5 * dx + np.arange(depth, dtype=np.float32) * dx
         col_l_xy, col_l_z = _collimatorLengths(options)
         if col_l_xy <= 0. or col_l_z <= 0.:
-            raise ValueError('SPECT projector type 6 computes the collimator-detector response from the collimator hole length: ' +
-                             'options.colL (or both options.colLxy and options.colLz) has to be positive, or sigmaZ/sigmaXY/gFilter have to be input.')
+            raise ValueError('SPECT projector type 6 computes the collimator-detector response from the collimator hole lengths: ' +
+                             'options.colLxy and options.colLz have to be positive, or sigmaZ/sigmaXY/gFilter have to be input.')
         distance_from_exit = distances + float(options.cr_p) / 2.
         rg_z = np.maximum(0., 2. * float(options.colR) * distance_from_exit / col_l_z)
         rg_xy = np.maximum(0., 2. * float(options.colR) * distance_from_exit / col_l_xy)
@@ -1570,18 +1565,19 @@ def _type6_cdrf_resources(options: proj.projectorClass, manualCDRF: bool, multir
         raise ValueError('Type-6 main volume has invalid FOV or voxel pitch')
     options.blurPlanesF = np.ascontiguousarray(
         ((fov_x / 2. - (radius * np.cos(panel_tilt) - float(options.CORtoDetectorSurface)) +
-          float(options.colL) + float(options.colD)) / dx).astype(np.float32)[None, :])
+          float(options.colLxy) + float(options.colD)) / dx).astype(np.float32)[None, :])
     options.blurPlanes2F = np.ascontiguousarray(
         (radius * np.sin(panel_tilt) / dx).astype(np.float32)[None, :])
     col_l_xy, col_l_z = _collimatorLengths(options)
     # The coefficients need positive septa lengths. Without them they are only placeholders, which is allowed only with a manual
     # gFilter/sigma, i.e. when the on-the-fly response is not used (checked below)
     validLengths = col_l_xy > 0. and col_l_z > 0.
-    offset = float(options.colL) + float(options.colD) + float(options.cr_p) / 2.
+    offset_z = float(options.colLz) + float(options.colD) + float(options.cr_p) / 2.
+    offset_xy = float(options.colLxy) + float(options.colD) + float(options.cr_p) / 2.
     Az = 2. * float(options.colR) / col_l_z if validLengths else 0.
     Axy = 2. * float(options.colR) / col_l_xy if validLengths else 0.
     options.CDRFCoeffs6 = np.ascontiguousarray(
-        np.array([Az, Az * offset, Axy, Axy * offset, float(options.iR)], dtype=np.float32))
+        np.array([Az, Az * offset_z, Axy, Axy * offset_xy, float(options.iR)], dtype=np.float32))
     if options.CDRFOnTheFly is None:
         # The on-the-fly response is faster than the precomputed filter bank (with the fused GPU pipeline
         # several times so) and more accurate, so it is the default whenever the collimator parameters
@@ -1590,8 +1586,8 @@ def _type6_cdrf_resources(options: proj.projectorClass, manualCDRF: bool, multir
     else:
         options.CDRFOnTheFly = bool(options.CDRFOnTheFly)
     if options.CDRFOnTheFly and not validLengths:
-        raise ValueError('SPECT projector type 6 computes the collimator-detector response from the collimator hole length: ' +
-                         'options.colL (or both options.colLxy and options.colLz) has to be positive, or sigmaZ/sigmaXY/gFilter have to be input.')
+        raise ValueError('SPECT projector type 6 computes the collimator-detector response from the collimator hole lengths: ' +
+                         'options.colLxy and options.colLz have to be positive, or sigmaZ/sigmaXY/gFilter have to be input.')
     if proj.cdrfModelIndex(options.CDRFModel) != 0 and not options.CDRFOnTheFly:
         raise ValueError("options.CDRFModel = '%s' requires the on-the-fly collimator-detector response (CDRFOnTheFly = True, no manual gFilter/sigma)"
                          % options.CDRFModel)
@@ -1613,13 +1609,12 @@ def SPECTParameters(options: proj.projectorClass):
         # that a single volume is centered on them. Multi-resolution volumes carry explicit per-volume origins.
         raise NotImplementedError('Off-centre FOV with projector type 6 is currently supported only in MATLAB')
     if options.projector_type in [1, 11, 12, 16, 2, 21, 22, 26, 61, 62]: # Ray tracing projectors
-        # The collimator point of every projection is placed at colD + 0.5 * colL from the detector surface
-        # (getCoordinatesSPECT). With a non-positive distance all the rays have zero length and the projection
-        # silently becomes zero.
-        if options.colD + 0.5 * options.colL <= 0:
+        # The source point and axial ray shifts use their corresponding directional collimator lengths.
+        if (options.colD + 0.5 * options.colLxy <= 0 or
+                options.colD + 0.5 * options.colLz <= 0):
             raise ValueError('SPECT projector types 1 and 2 require a positive collimator length and/or collimator-to-detector distance: ' +
-                             'colD + 0.5 * colL = ' + str(options.colD + 0.5 * options.colL) + ' would result in zero-length rays. ' +
-                             'Set options.colL (and options.colD) to the collimator hole length (and the distance of the collimator from the detector surface).')
+                             'colD + 0.5 * colLxy and/or colD + 0.5 * colLz would result in zero-length rays. ' +
+                             'Set options.colLxy, options.colLz, and options.colD to positive collimator geometry values.')
         nRays = int(options.n_rays_transaxial * options.n_rays_axial)
         ray_shift_shape = (2 * nRays, options.nRowsD, options.nColsD, options.nHeads)
         if options.rayShiftsDetector.size == 0: # Collimator modeling
@@ -1668,7 +1663,8 @@ def SPECTParameters(options: proj.projectorClass):
             # source-detector shift difference so that the two angular
             # response components use their corresponding septa lengths
             # (SPECTParameters.m:67-82).
-            referenceLength = options.colD + 0.5 * options.colL
+            # getCoordinatesSPECT places the central source point at the XY midpoint.
+            referenceLength = options.colD + 0.5 * options.colLxy
             col_l_xy, col_l_z = _collimatorLengths(options)
             lengthXY = options.colD + 0.5 * col_l_xy
             lengthZ = options.colD + 0.5 * col_l_z
@@ -1690,10 +1686,11 @@ def SPECTParameters(options: proj.projectorClass):
         options.rayShiftsSource = options.rayShiftsSource.ravel('F')
 
     if options.projector_type in [2, 12, 21, 26, 22, 62]: # Orthogonal distance ray tracer
+        # ODRT currently models an isotropic scalar response; use the transaxial length until the kernel supports both axes.
         if options.coneOfResponseStdCoeffA < 0:
-            options.coneOfResponseStdCoeffA = 2*options.colR/options.colL
+            options.coneOfResponseStdCoeffA = 2*options.colR/options.colLxy
         if options.coneOfResponseStdCoeffB < 0:
-            options.coneOfResponseStdCoeffB = 2*options.colR/options.colL*(options.colL+options.colD+options.cr_p/2)
+            options.coneOfResponseStdCoeffB = 2*options.colR/options.colLxy*(options.colLxy+options.colD+options.cr_p/2)
         if options.coneOfResponseStdCoeffC < 0:
             options.coneOfResponseStdCoeffC = options.iR
 
@@ -1792,8 +1789,8 @@ def SPECTParameters(options: proj.projectorClass):
             if not _type6_sigma_provided(options.sigmaZ):
                 col_l_xy, col_l_z = _collimatorLengths(options)
                 if col_l_xy <= 0. or col_l_z <= 0.:
-                    raise ValueError('SPECT projector type 6 computes the collimator-detector response from the collimator hole length: ' +
-                                     'options.colL (or both options.colLxy and options.colLz) has to be positive, or sigmaZ/sigmaXY/gFilter have to be input.')
+                    raise ValueError('SPECT projector type 6 computes the collimator-detector response from the collimator hole lengths: ' +
+                                     'options.colLxy and options.colLz have to be positive, or sigmaZ/sigmaXY/gFilter have to be input.')
                 distance_from_exit = Distances + options.cr_p / 2.
                 # Anger, "Scintillation Camera with Multichannel Collimators", J Nucl Med 5:515-531 (1964).
                 # Axial and transaxial responses use their respective collimator septa lengths.

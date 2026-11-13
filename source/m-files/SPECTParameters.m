@@ -22,21 +22,12 @@ function options = SPECTParameters(options)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 if ismember(options.projector_type, [1, 11, 12, 16, 2, 21, 22, 26, 61, 62]) % Ray tracing projectors, including the ray tracing side of the hybrid projectors
-    % The collimator point of every projection is placed at colD + 0.5 * colL from the detector surface
-    % (get_coordinates_SPECT). With a non-positive distance all the rays have zero length and the projection silently
-    % becomes zero.
-    if options.colD + 0.5 * options.colL <= 0
+    % The central source point is placed at the transaxial midpoint, while axial ray shifts use the axial midpoint.
+    if options.colD + 0.5 * options.colLxy <= 0 || options.colD + 0.5 * options.colLz <= 0
         error(['SPECT projector types 1 and 2 require a positive collimator length and/or collimator-to-detector distance: ' ...
-            'colD + 0.5 * colL = ' num2str(options.colD + 0.5 * options.colL) ' would result in zero-length rays. ' ...
-            'Set options.colL (and options.colD) to the collimator hole length (and the distance of the collimator from the detector surface).'])
+            'colD + 0.5 * colLxy and/or colD + 0.5 * colLz would result in zero-length rays. ' ...
+            'Set options.colLxy, options.colLz, and options.colD to positive collimator geometry values.'])
     end
-end
-% colLxy/colLz (transaxial/axial septa lengths) are optional, fall back to colL when missing, empty or not positive
-if ~isfield(options, 'colLxy') || isempty(options.colLxy) || options.colLxy <= 0
-    options.colLxy = options.colL;
-end
-if ~isfield(options, 'colLz') || isempty(options.colLz) || options.colLz <= 0
-    options.colLz = options.colL;
 end
 
 if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelling, ray tracing projectors
@@ -83,8 +74,8 @@ if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelli
         end
     end
     if ismember(options.projector_type, [1, 11, 12, 21])
-        % Keep the central detector-normal vector unchanged while scaling source shifts by each septa length.
-        referenceLength = options.colD + 0.5 * options.colL;
+        % Use the XY source point as the shared reference; axial source shifts scale against colLz below.
+        referenceLength = options.colD + 0.5 * options.colLxy;
         lengthXY = options.colD + 0.5 * options.colLxy;
         lengthZ = options.colD + 0.5 * options.colLz;
         % The first entry of every shift pair moves the ray along the detector panel (transaxial, XY) and the second one along the
@@ -108,11 +99,12 @@ if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelli
 end
 if ismember(options.projector_type, [12, 2, 21, 22]) % Orthogonal distance ray tracer
     % Frey, E. C., & Tsui, B. M. W. (n.d.). Collimator-Detector Response Compensation in SPECT. Quantitative Analysis in Nuclear Medicine Imaging, 141–166. doi:10.1007/0-387-25444-7_5 
+    % ODRT currently models an isotropic scalar response; use the transaxial length until the kernel supports both axes.
     if (~isfield(options,'coneOfResponseStdCoeffA') || options.coneOfResponseStdCoeffA < 0)
-        options.coneOfResponseStdCoeffA = 2*options.colR/options.colL; % See equation (6) of book chapter
+        options.coneOfResponseStdCoeffA = 2*options.colR/options.colLxy; % See equation (6) of book chapter
     end
     if (~isfield(options,'coneOfResponseStdCoeffB') || options.coneOfResponseStdCoeffB < 0)
-        options.coneOfResponseStdCoeffB = 2*options.colR/options.colL*(options.colL+options.colD+options.cr_p/2);
+        options.coneOfResponseStdCoeffB = 2*options.colR/options.colLxy*(options.colLxy+options.colD+options.cr_p/2);
     end
     if (~isfield(options,'coneOfResponseStdCoeffC') || options.coneOfResponseStdCoeffC < 0)
         options.coneOfResponseStdCoeffC = options.iR;
@@ -197,7 +189,7 @@ if options.projector_type == 6
     % voxels. With detector heads that can swivel, panelTilt is different for every projection
     % and neither of these is, in general, an integer number of voxels. The geometry is given
     % with respect to the main volume, which the projector converts to the other volumes.
-    options.blurPlanesF = (options.FOVa_x(1)/2 - (options.radiusPerProj .* cosd(panelTilt) - options.CORtoDetectorSurface) + options.colL + options.colD) / options.dx(1);
+    options.blurPlanesF = (options.FOVa_x(1)/2 - (options.radiusPerProj .* cosd(panelTilt) - options.CORtoDetectorSurface) + options.colLxy + options.colD) / options.dx(1);
     options.blurPlanes2F = options.radiusPerProj .* sind(panelTilt) / options.dx(1);
 
     % Coefficients of the collimator-detector response used by the on-the-fly CDRF (and always
@@ -205,8 +197,8 @@ if options.projector_type == 6
     % distance from the collimator surface in mm
     Az = 2*options.colR/colLz;
     Axy = 2*options.colR/colLxy;
-    Bz = Az*(options.colL+options.colD+options.cr_p/2);
-    Bxy = Axy*(options.colL+options.colD+options.cr_p/2);
+    Bz = Az*(colLz+options.colD+options.cr_p/2);
+    Bxy = Axy*(colLxy+options.colD+options.cr_p/2);
     options.CDRFCoeffs6 = single([Az Bz Axy Bxy options.iR]);
 
     if ~isfield(options, 'CDRFOnTheFly') || numel(options.CDRFOnTheFly) == 0
@@ -227,8 +219,8 @@ if options.projector_type == 6
     end
     % The on-the-fly response uses the coefficients above (Az = 2 * colR / colLz, Axy = 2 * colR / colLxy), which need positive septa lengths
     if options.CDRFOnTheFly && (colLxy <= 0 || colLz <= 0)
-        error(['SPECT projector type 6 computes the collimator-detector response from the collimator hole length: ' ...
-            'options.colL (or both options.colLxy and options.colLz) has to be positive, or sigmaZ/sigmaXY/gFilter have to be input.'])
+        error(['SPECT projector type 6 computes the collimator-detector response from the collimator hole lengths: ' ...
+            'options.colLxy and options.colLz have to be positive, or sigmaZ/sigmaXY/gFilter have to be input.'])
     end
     if ~options.CDRFOnTheFly && options.nMultiVolumes > 0
         error(['Multi-resolution reconstruction with projector type 6 requires the collimator-detector response to be computed on-the-fly, ' ...
@@ -267,25 +259,19 @@ if options.projector_type == 6
 
     DistanceToFirstRow = 0.5*options.dx(1);
     Distances = repmat(DistanceToFirstRow,1,options.Nx(1)*4)+repmat((0:double(options.Nx(1)*4)-1)*double(options.dx(1)),length(DistanceToFirstRow),1);
-    Distances = Distances-options.colL-options.colD; %these are distances to the actual detector surface
-
     if options.CDRFOnTheFly
         % The filters are computed separately for every projection inside the projector
         options.gFilter = single([]);
     elseif (~isfield(options,'gFilter'))
         if ~isfield(options, 'sigmaZ')
             % Axial and transaxial collimator responses use their own septa
-            % lengths (colLz/colLxy), each falling back to the uniform-hole
-            % length colL when not positive. Ported from the newer Python
-            % behavior (detcoord.py, projector type 6 CDRF computation) so
-            % that asymmetric collimator holes (colLxy ~= colLz) are handled
-            % identically in MATLAB and Python.
+            % lengths (colLz/colLxy), matching the Python projector type 6 CDRF computation.
             if colLxy <= 0 || colLz <= 0
-                error(['SPECT projector type 6 computes the collimator-detector response from the collimator hole length: ' ...
-                    'options.colL (or both options.colLxy and options.colLz) has to be positive, or sigmaZ/sigmaXY/gFilter have to be input.'])
+                error(['SPECT projector type 6 computes the collimator-detector response from the collimator hole lengths: ' ...
+                    'options.colLxy and options.colLz have to be positive, or sigmaZ/sigmaXY/gFilter have to be input.'])
             end
-            Rg_z = 2*options.colR*(options.colL+options.colD+(Distances)+options.cr_p/2)/colLz; %Anger, "Scintillation Camera with Multichannel Collimators", J Nucl Med 5:515-531 (1964)
-            Rg_xy = 2*options.colR*(options.colL+options.colD+(Distances)+options.cr_p/2)/colLxy;
+            Rg_z = 2*options.colR*(Distances+options.cr_p/2)/colLz; %Anger, "Scintillation Camera with Multichannel Collimators", J Nucl Med 5:515-531 (1964)
+            Rg_xy = 2*options.colR*(Distances+options.cr_p/2)/colLxy;
             Rg_z(Rg_z<0) = 0;
             Rg_xy(Rg_xy<0) = 0;
             FWHMrot = 1;

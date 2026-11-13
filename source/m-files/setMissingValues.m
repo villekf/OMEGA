@@ -1170,13 +1170,14 @@ end
 if ~isfield(options, 'coneOfResponseStdCoeffC')
     options.coneOfResponseStdCoeffC = -1;
 end
-if ~isfield(options, 'colL') % SPECT collimator hole length
+if ~isfield(options, 'colL') % Legacy uniform SPECT collimator hole length
     options.colL = 1;
 end
-if ~isfield(options, 'colLxy') % SPECT transaxial collimator hole length
+% Resolve the legacy uniform value at the input boundary. Internal SPECT code uses colLxy/colLz only.
+if ~isfield(options, 'colLxy') || isempty(options.colLxy) || options.colLxy <= 0 % SPECT transaxial collimator hole length
     options.colLxy = options.colL;
 end
-if ~isfield(options, 'colLz') % SPECT axial collimator hole length
+if ~isfield(options, 'colLz') || isempty(options.colLz) || options.colLz <= 0 % SPECT axial collimator hole length
     options.colLz = options.colL;
 end
 if ~isfield(options, 'colD') % SPECT collimator distance from detector surface

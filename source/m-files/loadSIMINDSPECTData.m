@@ -55,7 +55,11 @@ function options = loadSIMINDSPECTData(options)
 
     % Collimator hole length (mm)
     ind = find(contains(hdr, ';# Collimator thickness')) + 1;
-    options.colL = str2double(hdr{ind});
+    collimatorThickness = str2double(hdr{ind});
+    options.colL = collimatorThickness; % Keep the legacy field populated for callers that inspect it.
+    % SIMIND provides one uniform thickness; initialize both directional lengths from it.
+    options.colLxy = collimatorThickness;
+    options.colLz = collimatorThickness;
 
     % Collimator hole radius (mm), larger inner radius
     ind = find(contains(hdr, ';# Collimator hole diameter')) + 1;
@@ -150,5 +154,5 @@ function options = loadSIMINDSPECTData(options)
     options.CORtoDetectorSurface = 0;
 
     % SIMIND measures radius to top of collimator
-    options.radiusPerProj = options.radiusPerProj + options.colD + options.colL;
+    options.radiusPerProj = options.radiusPerProj + options.colD + options.colLxy;
 end

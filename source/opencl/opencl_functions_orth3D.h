@@ -104,6 +104,8 @@ DEVICE FLOAT spectOrthSupportRadius(
     const FLOAT coneOfResponseStdCoeffB,
     const FLOAT coneOfResponseStdCoeffC
 ) {
+    // TODO: coneOfResponseStdCoeffA/B are scalar and currently use colLxy;
+    // extend this ODRT response to distinct colLxy and colLz values.
     const FLOAT rayLength = LENGTH(diff);
     if (rayLength <= 1.0e-6f)
         return FLOAT_ZERO;
