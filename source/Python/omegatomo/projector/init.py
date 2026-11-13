@@ -841,6 +841,7 @@ def initProjector(self):
     from omegatomo.reconstruction.prepass import prepassPhase
     from omegatomo.reconstruction.prepass import parseInputs
     from omegatomo.reconstruction.prepass import loadCorrections
+    from omegatomo.reconstruction.prepass import _prepare_image_domain_attenuation
     if self.useAF:
         if af.get_active_backend() != 'opencl' and not self.useCUDA:
             af.set_backend('opencl')
@@ -926,6 +927,9 @@ def initProjector(self):
     )
     loadCorrections(self)
     parseInputs(self, mDataFound)
+    if (self.SPECT and self.attenuation_correction and self.CT_attenuation
+            and self.useMultiResolutionVolumes and self.nMultiVolumes > 0):
+        _prepare_image_domain_attenuation(self)
     prepassPhase(self)
     # if self.listmode > 0 and self.subsets > 1 and self.subsetType > 0:
     #     if self.useIndexBasedReconstruction:

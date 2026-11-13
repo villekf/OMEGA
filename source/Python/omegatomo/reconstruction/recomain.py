@@ -933,6 +933,7 @@ def reconstructions_main(options):
     from .prepass import prepassPhase
     from .prepass import parseInputs
     from .prepass import loadCorrections
+    from .prepass import _prepare_image_domain_attenuation
     tic = time.perf_counter()
     # Work on a private copy (MATLAB value semantics): the pipeline below changes the
     # options in place and not idempotently, so repeated calls with the same object
@@ -1152,6 +1153,9 @@ def reconstructions_main(options):
             else:
                 options.empty_weight = True
         parseInputs(options, True)
+        if (options.SPECT and options.attenuation_correction and options.CT_attenuation
+                and options.useMultiResolutionVolumes and options.nMultiVolumes > 0):
+            _prepare_image_domain_attenuation(options)
         # Each list entry is one timestep's frame, which can still be a multi-dimensional
         # (Ndist x Nang x NSinos(x TOF_bins)) array here: parseInputs only flattens per-frame
         # data when subsets > 1 (and subsetType > 0); with subsets == 1 (or largeDim) the

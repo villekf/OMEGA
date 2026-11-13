@@ -267,16 +267,29 @@ def _prepare_image_domain_attenuation(options):
             prepared = prepared[..., 0]
         if prepared.ndim == 1:
             prepared = np.reshape(prepared, target_shape, order='F')
-        if getattr(options, 'rotateAttImage', 0) != 0:
-            prepared = np.rot90(prepared, int(options.rotateAttImage))
-        if getattr(options, 'flipAttImageXY', False):
-            prepared = np.fliplr(prepared)
-        if getattr(options, 'flipAttImageZ', False):
-            prepared = np.flip(prepared, 2)
-        if getattr(options, 'attIncm', False):
+        if getattr(options, 'offangle', 0) != 0:
+            from skimage.transform import rotate
+            if prepared.ndim == 4:
+                prepared = np.stack(
+                    [rotate(prepared[..., tt], float(options.offangle))
+                     for tt in range(prepared.shape[3])],
+                    axis=3,
+                )
+            else:
+                prepared = rotate(prepared, float(options.offangle))
+        if getattr(options, 'flipImageX', False):
+            prepared = np.flip(prepared, axis=1)
+        if getattr(options, 'flipImageY', False):
+            prepared = np.flip(prepared, axis=0)
+        if getattr(options, 'flipImageZ', False):
+            prepared = np.flip(prepared, axis=2)
+        if (getattr(options, 'attIncm', False)
+                and not getattr(options, '_attenuationAlreadyInmm', False)):
             prepared = prepared / np.float32(10.0)
         options.vaimennus = np.asfortranarray(prepared, dtype=np.float32).ravel(order='F')
         options._type6PreparedAttenuation = (options.vaimennus, grid)
+        if hasattr(options, '_attenuationAlreadyInmm'):
+            del options._attenuationAlreadyInmm
         return
 
     if multi_resolution:
@@ -452,7 +465,7 @@ def _prepare_image_domain_attenuation(options):
         frames = np.flip(frames, axis=1)
     if not multi_resolution and options.flipAttImageZ:
         frames = np.flip(frames, axis=2)
-    if options.attIncm:
+    if options.attIncm and not getattr(options, '_attenuationAlreadyInmm', False):
         frames = frames / np.float32(10.0)
 
     map_frames = []
@@ -488,6 +501,8 @@ def _prepare_image_domain_attenuation(options):
     options.imageAttenuationFrames = int(options.Nt) if dynamic else 1
     options.imageAttenuationIsMultiResolution = multi_resolution
     options.vaimennus = np.concatenate(map_frames).astype(np.float32, copy=False)
+    if hasattr(options, '_attenuationAlreadyInmm'):
+        del options._attenuationAlreadyInmm
 
 def _load_reference_image(options, value, resize=True, emptyMessage=None,
                            squareCheck=None, squareOrder='C',
@@ -1197,7 +1212,10 @@ def loadCorrections(options):
                     options.vaimennus = _load_array_file(nimi)
                 else:
                     raise ValueError('Unsupported datatype!')
-        if options.CT_attenuation:
+        defer_multires_attenuation = bool(options.SPECT and options.CT_attenuation and
+                                         getattr(options, 'useMultiResolutionVolumes', False) and
+                                         int(getattr(options, 'nMultiVolumes', 0)) > 0)
+        if options.CT_attenuation and not defer_multires_attenuation:
             if options.vaimennus.ndim == 1:
                 size_mismatch = options.vaimennus.shape[0] != options.N[0]
             else:
@@ -1237,10 +1255,17 @@ def loadCorrections(options):
         attenuationIsImage = (options.CT_attenuation or options.SPECT or
             (np.size(attenuationFirst) == int(np.asarray(options.Nx).ravel()[0]) * int(np.asarray(options.Ny).ravel()[0]) * int(np.asarray(options.Nz).ravel()[0])
              and not (int(options.nRowsD) == int(np.asarray(options.Nx).ravel()[0]) and int(options.nColsD) == int(np.asarray(options.Ny).ravel()[0]))))
-        if options.attIncm and attenuationIsImage and not attenuationInmm:
+        if defer_multires_attenuation:
+            # Keep the source grid intact until projector geometry has been
+            # split. _prepare_image_domain_attenuation then registers it on
+            # the physical multi-resolution grids.
+            if attenuationInmm:
+                options._attenuationAlreadyInmm = True
+        elif options.attIncm and attenuationIsImage and not attenuationInmm:
             options.vaimennus = options.vaimennus / 10.
         options.vaimennus = np.asfortranarray(options.vaimennus)
-        options.vaimennus = options.vaimennus.ravel('F').astype(dtype=np.float32)
+        if not defer_multires_attenuation:
+            options.vaimennus = options.vaimennus.ravel('F').astype(dtype=np.float32)
     # PET normalization precorrection of SinM, applied after the randoms/scatter
     # precorrection below (as in MATLAB, the randoms are subtracted from the measured
     # data before it is normalized)
