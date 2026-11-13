@@ -15,6 +15,7 @@ if isfield(options,ichar)
                 if numel(input{kk}) ~= numel(options.SinM{kk}) && numel(input{kk}) * options.TOF_bins ~= numel(options.SinM{kk})
                     error(['Size mismatch between ' corr ' correction data and measurement data'])
                 end
+                checkTOFRandomsFilter(input{kk}, options, Prop, type);
                 if options.variance_reduction && ~Prop.variance_reduction
                     input{kk} = Randoms_variance_reduction(single(input{kk}), options);
                     Prop.variance_reduction = true;
@@ -25,7 +26,7 @@ if isfield(options,ichar)
                 end
                 if (~options.corrections_during_reconstruction || ~options.ordinaryPoisson)
                     if type == 0
-                        if options.TOF_bins > 1
+                        if options.TOF_bins > 1 && numel(input{kk}) ~= numel(options.SinM{kk})
                             NN = options.Ndist * options.Nang * options.NSinos;
                             options.SinM{kk} = single(full(options.SinM{kk}(:)));
                             for uu = 1 : options.TOF_bins
@@ -50,6 +51,7 @@ if isfield(options,ichar)
             if isfield(options,'SinM') && numel(input{1}) ~= numel(options.SinM) && numel(input{1}) * options.TOF_bins ~= numel(options.SinM)
                 error(['Size mismatch between ' corr ' correction data and measurement data'])
             end
+            checkTOFRandomsFilter(input{1}, options, Prop, type);
             if options.variance_reduction && ~Prop.variance_reduction
                 input{1} = Randoms_variance_reduction(single(input{1}), options);
                 Prop.variance_reduction = true;
@@ -60,7 +62,7 @@ if isfield(options,ichar)
             end
             if isfield(options,'SinM') && (~options.corrections_during_reconstruction || ~options.ordinaryPoisson)
                 if type == 0
-                    if options.TOF_bins > 1
+                    if options.TOF_bins > 1 && numel(input{1}) ~= numel(options.SinM)
                         NN = options.Ndist * options.Nang * options.NSinos;
                         options.SinM = single(full(options.SinM(:)));
                         for uu = 1 : options.TOF_bins
@@ -83,6 +85,7 @@ if isfield(options,ichar)
         end
     else
         if isfield(options,'SinM') && iscell(options.SinM)
+            checkTOFRandomsFilter(input, options, Prop, type);
             if options.variance_reduction && ~Prop.variance_reduction
                 input = Randoms_variance_reduction(single(input), options);
                 Prop.variance_reduction = true;
@@ -97,7 +100,7 @@ if isfield(options,ichar)
                 end
                 if (~options.corrections_during_reconstruction || ~options.ordinaryPoisson)
                     if type == 0
-                        if options.TOF_bins > 1
+                        if options.TOF_bins > 1 && numel(input) ~= numel(options.SinM{kk})
                             NN = options.Ndist * options.Nang * options.NSinos;
                             options.SinM{kk} = single(full(options.SinM{kk}(:)));
                             for uu = 1 : options.TOF_bins
@@ -122,6 +125,7 @@ if isfield(options,ichar)
             if isfield(options,'SinM') && numel(input) ~= numel(options.SinM) && numel(input) * options.TOF_bins ~= numel(options.SinM)
                 error(['Size mismatch between ' corr ' correction data and measurement data'])
             end
+            checkTOFRandomsFilter(input, options, Prop, type);
             if options.variance_reduction && ~Prop.variance_reduction
                 input = Randoms_variance_reduction(single(input), options);
                 Prop.variance_reduction = true;
@@ -132,7 +136,7 @@ if isfield(options,ichar)
             end
             if isfield(options,'SinM') && (~options.corrections_during_reconstruction || ~options.ordinaryPoisson)
                 if type == 0
-                    if options.TOF_bins > 1
+                    if options.TOF_bins > 1 && numel(input) ~= numel(options.SinM)
                         NN = options.Ndist * options.Nang * options.NSinos;
                         options.SinM = single(full(options.SinM(:)));
                         for uu = 1 : options.TOF_bins
@@ -172,5 +176,20 @@ scatter = single(full(scatter(:)));
 NN = numel(scatter);
 for uu = 1 : tofBins
     sinM(NN * (uu - 1) + 1: NN * uu) = sinM(NN * (uu - 1) + 1: NN * uu) - scatter / tofBins;
+end
+end
+
+function checkTOFRandomsFilter(randoms, options, Prop, type)
+% TOF-resolved randoms (one value for each TOF bin, as many elements as the TOF measurements) are subtracted as they are in each TOF
+% bin. The variance reduction and the smoothing of the randoms work on a non-TOF sinogram, so they are not supported with them
+if type == 0 && options.TOF_bins > 1 && isfield(options,'SinM') && ...
+        ((options.variance_reduction && ~Prop.variance_reduction) || (options.randoms_smoothing && ~Prop.smoothing))
+    sinM = options.SinM;
+    if iscell(sinM)
+        sinM = sinM{1};
+    end
+    if numel(randoms) == numel(sinM)
+        error('Randoms variance reduction and randoms smoothing are not supported with TOF-resolved randoms data; disable them or use a non-TOF randoms sinogram')
+    end
 end
 end

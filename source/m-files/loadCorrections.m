@@ -478,8 +478,8 @@ if ~options.SPECT
             options = loadScatterData(options);
             s_exist = true;
         end
-        % Check the size of the scatter data with TOF data (also prints the message that the scatter data is divided among the TOF bins)
-        options = checkTOFScatter(options);
+        % Check the size of the randoms and the scatter data with TOF data (also prints the message that non-TOF data is divided among the TOF bins)
+        options = checkTOFScatter(options, r_exist, RandProp);
         if r_exist || s_exist
             if r_exist && iscell(options.SinDelayed)
                 for kk = 1 : options.partitions
@@ -492,7 +492,7 @@ if ~options.SPECT
                         end
                         options.SinDelayed{kk} = options.SinDelayed{kk}(:);
                         if options.use_raw_data == false && options.NSinos ~= options.TotSinos
-                            options.SinDelayed{kk} = options.SinDelayed{kk}(1:options.NSinos*options.Ndist*options.Nang);
+                            options.SinDelayed{kk} = cropScatterSinograms(options.SinDelayed{kk}, options);
                         end
                     end
                     if options.scatter_correction
@@ -540,9 +540,9 @@ if ~options.SPECT
                             end
                             if r_exist
                                 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.implementation == 4
-                                    options.SinDelayed{kk} = addScatterPerTOFBin(single(options.SinDelayed{kk}) / options.TOF_bins, single(scatterPerTOFBin(scatterFrame(:), options)));
+                                    options.SinDelayed{kk} = addScatterPerTOFBin(randomsPerTOFBin(single(options.SinDelayed{kk}), options), single(scatterPerTOFBin(scatterFrame(:), options)));
                                 else
-                                    options.SinDelayed{kk} = addScatterPerTOFBin(double(options.SinDelayed{kk}) / options.TOF_bins, double(scatterPerTOFBin(scatterFrame(:), options)));
+                                    options.SinDelayed{kk} = addScatterPerTOFBin(randomsPerTOFBin(double(options.SinDelayed{kk}), options), double(scatterPerTOFBin(scatterFrame(:), options)));
                                 end
                             else
                                 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.implementation == 4
@@ -555,9 +555,9 @@ if ~options.SPECT
                     end
                     if (~options.scatter_correction || ~options.subtract_scatter) && options.TOF_bins > 1 && r_exist
                         if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.implementation == 4
-                            options.SinDelayed{kk} = single(options.SinDelayed{kk}) / options.TOF_bins;
+                            options.SinDelayed{kk} = randomsPerTOFBin(single(options.SinDelayed{kk}), options);
                         else
-                            options.SinDelayed{kk} = double(options.SinDelayed{kk}) / options.TOF_bins;
+                            options.SinDelayed{kk} = randomsPerTOFBin(double(options.SinDelayed{kk}), options);
                         end
                     end
                 end
@@ -571,7 +571,7 @@ if ~options.SPECT
                     end
                     options.SinDelayed = options.SinDelayed(:);
                     if options.use_raw_data == false && options.NSinos ~= options.TotSinos
-                        options.SinDelayed = options.SinDelayed(1:options.NSinos*options.Ndist*options.Nang);
+                        options.SinDelayed = cropScatterSinograms(options.SinDelayed, options);
                     end
                 end
                 if options.scatter_correction && isfield(options,'ScatterC')
@@ -599,9 +599,9 @@ if ~options.SPECT
                         if options.subtract_scatter
                             if r_exist
                                 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                                    options.SinDelayed = addScatterPerTOFBin(single(options.SinDelayed) / options.TOF_bins, single(scatterPerTOFBin(options.ScatterC(:), options)));
+                                    options.SinDelayed = addScatterPerTOFBin(randomsPerTOFBin(single(options.SinDelayed), options), single(scatterPerTOFBin(options.ScatterC(:), options)));
                                 else
-                                    options.SinDelayed = addScatterPerTOFBin(double(options.SinDelayed) / options.TOF_bins, double(scatterPerTOFBin(options.ScatterC(:), options)));
+                                    options.SinDelayed = addScatterPerTOFBin(randomsPerTOFBin(double(options.SinDelayed), options), double(scatterPerTOFBin(options.ScatterC(:), options)));
                                 end
                             else
                                 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
@@ -640,9 +640,9 @@ if ~options.SPECT
                             if options.subtract_scatter
                                 if r_exist
                                     if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                                        options.SinDelayed{kk} = addScatterPerTOFBin(single(randomsData) / options.TOF_bins, single(scatterPerTOFBin(options.ScatterC{kk}(:), options)));
+                                        options.SinDelayed{kk} = addScatterPerTOFBin(randomsPerTOFBin(single(randomsData), options), single(scatterPerTOFBin(options.ScatterC{kk}(:), options)));
                                     else
-                                        options.SinDelayed{kk} = addScatterPerTOFBin(double(randomsData) / options.TOF_bins, double(scatterPerTOFBin(options.ScatterC{kk}(:), options)));
+                                        options.SinDelayed{kk} = addScatterPerTOFBin(randomsPerTOFBin(double(randomsData), options), double(scatterPerTOFBin(options.ScatterC{kk}(:), options)));
                                     end
                                 else
                                     if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
@@ -660,9 +660,9 @@ if ~options.SPECT
                 end
                 if (~options.scatter_correction || ~options.subtract_scatter) && options.TOF_bins > 1 && r_exist
                     if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                        options.SinDelayed = single(options.SinDelayed) / options.TOF_bins;
+                        options.SinDelayed = randomsPerTOFBin(single(options.SinDelayed), options);
                     else
-                        options.SinDelayed = double(options.SinDelayed) / options.TOF_bins;
+                        options.SinDelayed = randomsPerTOFBin(double(options.SinDelayed), options);
                     end
                 end
             end
@@ -677,7 +677,7 @@ if ~options.SPECT
                     end
                     options.SinDelayed{kk} = options.SinDelayed{kk}(:);
                     if options.use_raw_data == false && options.NSinos ~= options.TotSinos
-                        options.SinDelayed{kk} = options.SinDelayed{kk}(1:options.NSinos*options.Ndist*options.Nang);
+                        options.SinDelayed{kk} = cropScatterSinograms(options.SinDelayed{kk}, options);
                     end
                     if options.scatter_correction
                         if sum(size(options.ScatterC)) > 1 && ~iscell(options.ScatterC)
@@ -711,16 +711,16 @@ if ~options.SPECT
                         end
                         if options.subtract_scatter
                             if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                                options.SinDelayed{kk} = addScatterPerTOFBin(single(options.SinDelayed{kk}) / options.TOF_bins, single(scatterPerTOFBin(options.ScatterC{kk}(:), options)));
+                                options.SinDelayed{kk} = addScatterPerTOFBin(randomsPerTOFBin(single(options.SinDelayed{kk}), options), single(scatterPerTOFBin(options.ScatterC{kk}(:), options)));
                             else
-                                options.SinDelayed{kk} = addScatterPerTOFBin(double(options.SinDelayed{kk}) / options.TOF_bins, double(scatterPerTOFBin(options.ScatterC{kk}(:), options)));
+                                options.SinDelayed{kk} = addScatterPerTOFBin(randomsPerTOFBin(double(options.SinDelayed{kk}), options), double(scatterPerTOFBin(options.ScatterC{kk}(:), options)));
                             end
                         end
                     elseif ~options.scatter_correction && options.TOF_bins > 1
                         if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                            options.SinDelayed{kk} = single(options.SinDelayed{kk}) / single(options.TOF_bins);
+                            options.SinDelayed{kk} = randomsPerTOFBin(single(options.SinDelayed{kk}), options);
                         else
-                            options.SinDelayed{kk} = double(options.SinDelayed{kk}) / options.TOF_bins;
+                            options.SinDelayed{kk} = randomsPerTOFBin(double(options.SinDelayed{kk}), options);
                         end
                     end
                 end
@@ -733,7 +733,7 @@ if ~options.SPECT
                 end
                 options.SinDelayed = options.SinDelayed(:);
                 if options.use_raw_data == false && options.NSinos ~= options.TotSinos
-                    options.SinDelayed = options.SinDelayed(1:options.NSinos*options.Ndist*options.Nang);
+                    options.SinDelayed = cropScatterSinograms(options.SinDelayed, options);
                 end
                 if options.scatter_correction && isfield(options,'ScatterC')
                     if sum(size(options.ScatterC)) > 1 && ~iscell(options.ScatterC)
@@ -754,9 +754,9 @@ if ~options.SPECT
                         end
                         if options.subtract_scatter
                             if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                                options.SinDelayed = addScatterPerTOFBin(single(options.SinDelayed) / options.TOF_bins, single(scatterPerTOFBin(options.ScatterC(:), options)));
+                                options.SinDelayed = addScatterPerTOFBin(randomsPerTOFBin(single(options.SinDelayed), options), single(scatterPerTOFBin(options.ScatterC(:), options)));
                             else
-                                options.SinDelayed = addScatterPerTOFBin(double(options.SinDelayed) / options.TOF_bins, double(scatterPerTOFBin(options.ScatterC(:), options)));
+                                options.SinDelayed = addScatterPerTOFBin(randomsPerTOFBin(double(options.SinDelayed), options), double(scatterPerTOFBin(options.ScatterC(:), options)));
                             end
                         end
                     elseif iscell(options.ScatterC)
@@ -780,18 +780,18 @@ if ~options.SPECT
                             end
                             if options.subtract_scatter
                                 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                                    options.SinDelayed = addScatterPerTOFBin(single(options.SinDelayed) / options.TOF_bins, single(scatterPerTOFBin(options.ScatterC{kk}(:), options)));
+                                    options.SinDelayed = addScatterPerTOFBin(randomsPerTOFBin(single(options.SinDelayed), options), single(scatterPerTOFBin(options.ScatterC{kk}(:), options)));
                                 else
-                                    options.SinDelayed = addScatterPerTOFBin(double(options.SinDelayed) / options.TOF_bins, double(scatterPerTOFBin(options.ScatterC{kk}(:), options)));
+                                    options.SinDelayed = addScatterPerTOFBin(randomsPerTOFBin(double(options.SinDelayed), options), double(scatterPerTOFBin(options.ScatterC{kk}(:), options)));
                                 end
                             end
                         end
                     end
                 elseif ~options.scatter_correction && options.TOF_bins > 1
                     if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
-                        options.SinDelayed = single(options.SinDelayed) / single(options.TOF_bins);
+                        options.SinDelayed = randomsPerTOFBin(single(options.SinDelayed), options);
                     else
-                        options.SinDelayed = double(options.SinDelayed) / options.TOF_bins;
+                        options.SinDelayed = randomsPerTOFBin(double(options.SinDelayed), options);
                     end
                 end
             elseif options.scatter_correction
@@ -1367,15 +1367,64 @@ function tf = scatterTOFApplies(options)
 % index-based reconstruction, list-mode data and SPECT keep their behavior
 tf = options.TOF_bins > 1 && ~options.use_raw_data && ~options.useIndexBasedReconstruction && ~options.listmode && ~options.SPECT;
 
-function options = checkTOFScatter(options)
-% Checks the size of the scatter data with TOF data when the scatter is subtracted during the reconstruction (ordinary
-% Poisson). A non-TOF scatter sinogram (Ndist * Nang * NSinos elements) is repeated for all the TOF bins and divided evenly
+function options = checkTOFScatter(options, r_exist, RandProp)
+% Checks the size of the randoms and the scatter data with TOF data when they are subtracted during the reconstruction (ordinary
+% Poisson). Randoms that are TOF-resolved (one value for each TOF bin, as many elements as the TOF measurements, the TOF bin is the
+% slow index) are used as they are in each TOF bin, as TOF-resolved scatter data below, and options.randomsTOF is set. Non-TOF randoms
+% are divided evenly among the TOF bins (randomsPerTOFBin). A non-TOF scatter sinogram (Ndist * Nang * NSinos elements) is repeated for all the TOF bins and divided evenly
 % among them (see scatterPerTOFBin), a message about this is printed here, once for all the time frames. TOF-resolved scatter data
 % (Ndist * Nang * (NSinos or TotSinos) * TOF_bins elements, the TOF bin is the slow index as with the measurements) is used as it
-% is in each TOF bin and options.randomsTOF is set (the randoms are divided evenly among the TOF bins and added to it, see
-% addScatterPerTOFBin). It is supported only with implementation 2, one time frame, no increased sampling, and no scatter smoothing
+% is in each TOF bin and options.randomsTOF is set (non-TOF randoms are divided evenly among the TOF bins and added to it, see
+% addScatterPerTOFBin). Non-TOF scatter data combined with TOF-resolved randoms is divided among the TOF bins and added to the
+% randoms in the same way. Both are supported only with implementation 2, one time frame, no increased sampling, and no scatter smoothing
 % or variance reduction. The non-subtracted scatter (corrVector) is not affected.
 options.randomsTOF = false;
+if scatterTOFApplies(options) && r_exist && isfield(options, 'SinDelayed')
+    if iscell(options.SinDelayed)
+        randomsData = options.SinDelayed;
+    else
+        randomsData = {options.SinDelayed};
+    end
+    randomsTOFSized = false;
+    randomsNoTOF = false;
+    for kk = 1 : numel(randomsData)
+        nRandoms = numel(randomsData{kk});
+        if nRandoms <= 1
+            continue
+        end
+        if tofSizedData(randomsData{kk}, options)
+            randomsTOFSized = true;
+        elseif any(nRandoms == options.Ndist * options.Nang * unique([options.NSinos, options.TotSinos]))
+            randomsNoTOF = true;
+        else
+            error(['The randoms data has ' num2str(nRandoms) ' elements, which does not match the TOF data. With TOF the randoms data has to be a non-TOF sinogram of ' ...
+                num2str(options.Ndist * options.Nang * options.NSinos) ' elements (Ndist * Nang * NSinos), or a TOF-resolved sinogram of ' ...
+                num2str(options.Ndist * options.Nang * options.NSinos * options.TOF_bins) ' elements (Ndist * Nang * NSinos * TOF_bins)'])
+        end
+    end
+    if randomsTOFSized && randomsNoTOF
+        error('The randoms data must be either TOF-resolved or non-TOF in all the time frames')
+    end
+    if randomsTOFSized
+        if numel(randomsData) > 1 || any(options.partitions(:) > 1) || options.Nt > 1
+            error('TOF-resolved randoms data with corrections during reconstruction is supported only with static data (one time frame); use precorrection for dynamic data')
+        end
+        if options.implementation ~= 2
+            error('TOF-resolved randoms data with corrections during reconstruction is supported only with implementation 2; use precorrection or a non-TOF randoms sinogram')
+        end
+        if options.sampling > 1
+            error('TOF-resolved randoms data with corrections during reconstruction is not supported with increased sampling (options.sampling > 1)')
+        end
+        if (options.variance_reduction && ~RandProp.variance_reduction) || (options.randoms_smoothing && ~RandProp.smoothing)
+            error('Randoms variance reduction and randoms smoothing are not supported with TOF-resolved randoms data; disable them or use a non-TOF randoms sinogram')
+        end
+        if options.largeDim
+            error('TOF-resolved randoms data with corrections during reconstruction is not supported with largeDim')
+        end
+        options.randomsTOF = true;
+        disp(['The randoms data is TOF-resolved and is used as it is in each of the ' num2str(options.TOF_bins) ' TOF bins'])
+    end
+end
 if ~scatterTOFApplies(options) || ~options.scatter_correction || ~options.subtract_scatter || ~isfield(options, 'ScatterC')
     return
 end
@@ -1422,34 +1471,49 @@ if tofSized
         error('TOF-resolved scatter data with corrections during reconstruction is not supported with largeDim')
     end
     options.randomsTOF = true;
-    disp(['The scatter data is TOF-resolved and is used as it is in each of the ' num2str(options.TOF_bins) ' TOF bins (the randoms are divided evenly among the TOF bins)'])
+    disp(['The scatter data is TOF-resolved and is used as it is in each of the ' num2str(options.TOF_bins) ' TOF bins (non-TOF randoms are divided evenly among the TOF bins)'])
 elseif noTOF
     disp(['The scatter data has no TOF bins and is divided evenly among the ' num2str(options.TOF_bins) ' TOF bins'])
 end
 
+function tf = tofSizedData(data, options)
+% True if the randoms/scatter data is TOF-resolved, i.e. it has one value for each TOF bin (Ndist * Nang * (NSinos or TotSinos) *
+% TOF_bins elements, the TOF bin is the slow index as with the TOF measurements). Non-TOF sinograms and the data types where
+% scatterTOFApplies is false are not TOF-resolved
+tf = scatterTOFApplies(options) && numel(data) > 1 && any(numel(data) == options.Ndist * options.Nang * unique([options.NSinos, options.TotSinos]) * options.TOF_bins);
+
+function randoms = randomsPerTOFBin(randoms, options)
+% Returns the randoms as they are added to the additive term of each TOF bin: non-TOF randoms are divided evenly among the TOF bins,
+% TOF-resolved randoms (options.randomsTOF, see checkTOFScatter) are used as they are. Other data types are divided as before
+if options.TOF_bins > 1 && ~tofSizedData(randoms, options)
+    randoms = randoms / options.TOF_bins;
+end
+
 function scatterData = scatterPerTOFBin(scatterData, options)
 % Returns the scatter data as it is added to the additive term of each TOF bin: the non-TOF scatter sinogram is divided evenly
-% among the TOF bins (the size has been checked in checkTOFScatter), TOF-resolved scatter data (options.randomsTOF) is used as it is.
+% among the TOF bins (the size has been checked in checkTOFScatter), TOF-resolved scatter data is used as it is.
 % options.ScatterC itself is not modified.
-if scatterTOFApplies(options) && numel(scatterData) > 1 && ~options.randomsTOF
+if scatterTOFApplies(options) && numel(scatterData) > 1 && ~tofSizedData(scatterData, options)
     scatterData = scatterData / options.TOF_bins;
 end
 
 function randoms = addScatterPerTOFBin(randoms, scatterData)
-% Adds the scatter data of scatterPerTOFBin to the randoms that have already been divided among the TOF bins. With TOF-resolved
-% scatter data the randoms are repeated for all the TOF bins first (TOF bin is the slow index, as with the TOF measurements)
+% Adds the scatter data of scatterPerTOFBin to the randoms of randomsPerTOFBin. If one of them is TOF-resolved and the other is
+% not, the non-TOF one is repeated for all the TOF bins first (TOF bin is the slow index, as with the TOF measurements)
 nRandoms = numel(randoms);
 nScatter = numel(scatterData);
 if nScatter > nRandoms && nRandoms > 0 && mod(nScatter, nRandoms) == 0
     randoms = repmat(randoms(:), nScatter / nRandoms, 1);
+elseif nRandoms > nScatter && nScatter > 0 && mod(nRandoms, nScatter) == 0
+    scatterData = repmat(scatterData(:), nRandoms / nScatter, 1);
 end
 randoms = randoms + scatterData;
 
 function scatterData = normalizeScatter(scatterData, options, normalizationInverted)
 % Multiplies the scatter data with the normalization factor (see normalizationScatterFactor). The normalization applies to the
-% LORs, so TOF-resolved scatter data (options.randomsTOF) is multiplied with it in each TOF bin
+% LORs, so TOF-resolved scatter data is multiplied with it in each TOF bin
 nBins = 1;
-if scatterTOFApplies(options) && options.randomsTOF
+if tofSizedData(scatterData, options)
     nBins = options.TOF_bins;
 end
 factor = normalizationScatterFactor(options, normalizationInverted, numel(scatterData) / nBins);
@@ -1460,10 +1524,10 @@ else
 end
 
 function scatterData = cropScatterSinograms(scatterData, options)
-% Keeps the first NSinos sinograms of the scatter data that has TotSinos sinograms. TOF-resolved scatter data (options.randomsTOF)
+% Keeps the first NSinos sinograms of the randoms/scatter data that has TotSinos sinograms. TOF-resolved data
 % is cropped in each TOF bin, or left as it is if it has NSinos sinograms already
 nCrop = options.Ndist * options.Nang * options.NSinos;
-if scatterTOFApplies(options) && options.randomsTOF
+if tofSizedData(scatterData, options)
     nTotal = options.Ndist * options.Nang * options.TotSinos;
     if numel(scatterData) == nTotal * options.TOF_bins
         scatterData = reshape(scatterData, nTotal, options.TOF_bins);
