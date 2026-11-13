@@ -208,7 +208,9 @@ class projectorClass:
     only_sinos = False
     only_reconstructions = False
     usingLinearizedData = False
-    errorChecking = False
+    # As in MATLAB, False skips the algorithm/prior selection checks of reconstructions_main. OMEGAErrorCheck always runs
+    # because it also derives values that the reconstruction needs.
+    errorChecking = True
     no_data_load = False
     fill_sinogram_gaps = False
     # Gap filling (pseudo detectors) method: 'fillmissing' (interpolation along the radial and angular dimensions, averaged).
@@ -1329,8 +1331,11 @@ class projectorClass:
                 raise ValueError('Incorrect size for the forward projection mask! Must be the size of a single sinogram image [' + str(self.Nang) + ' ' + str(self.Ndist) + '] or 3D stack [' + str(self.Nang) + ' ' + str(self.Ndist) + ' ' + str(self.NSinos) + ']')
         elif self.maskFP.size > 1 and ((self.CT or self.SPECT) and self.maskFP.size in valid_projection_mask_sizes or (not self.CT and not self.SPECT) and (self.maskFP.size == self.Nang * self.Ndist or self.maskFP.size == self.Nang * self.Ndist * self.NSinos)):
             self.useMaskFP = True
-            if (self.maskFP.ndim == 3):
-                self.maskFPZ = self.maskFP.shape[2]
+            # Number of mask images from the element count, so flat (1D) masks are handled too
+            if self.CT or self.SPECT:
+                self.maskFPZ = int(self.maskFP.size // (self.nRowsD * self.nColsD))
+            else:
+                self.maskFPZ = int(self.maskFP.size // (self.Nang * self.Ndist))
             if self.SPECT and self.maskFPZ == self.nHeads and self.maskFP.size != self.nRowsD * self.nColsD * self.nHeads:
                 raise ValueError('Detector-indexed forward mask must contain one image for each detector head.')
             # The mask half of the CPU check is here (not in OMEGAErrorCheck) because maskFPZ is only known now
@@ -1349,8 +1354,7 @@ class projectorClass:
         elif self.maskBP.size == self.Nx * self.Ny or self.maskBP.size == self.Nx * self.Ny * self.Nz:
             # With usePriorMask the mask is not applied in the backprojection, as in MATLAB (projectorClass.m)
             self.useMaskBP = not self.usePriorMask
-            if (self.maskBP.ndim == 3):
-                self.maskBPZ = self.maskBP.shape[2]
+            self.maskBPZ = int(self.maskBP.size // (int(np.asarray(self.Nx).flat[0]) * int(np.asarray(self.Ny).flat[0])))
             self.maskBP = np.asfortranarray(self.maskBP)
         else:
             self.useMaskBP = False
@@ -1821,6 +1825,37 @@ class projectorClass:
                 print(f'Warning: {name} selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
                 setattr(self, name, False)
 
+    def _afDeviceInfo(self):
+        """Return (description, platformName) of the selected ArrayFire device.
+
+        description is the device text shown in the verbose printout and platformName is the device string that
+        starts with the OpenCL platform name ('' when the device was not found). The caller handles the
+        ImportError/OSError/RuntimeError of importing arrayfire.
+        """
+        import arrayfire as af
+        description = ''
+        try:
+            if not self.useCUDA and af.get_active_backend() != 'opencl':
+                af.set_backend('opencl')
+            info = af.device.info_str()
+            loc = info.find('[' + str(self.deviceNum) + ']')
+            if loc == -1:
+                loc = info.find('-' + str(self.deviceNum) + '-')
+            loc2 = info[loc:].find('(Compute')
+            description = info[loc + 4 : loc + loc2 - 1]
+        except Exception:
+            af.set_backend(af.BackendType.opencl)
+            info = af.info_string()
+            loc = info.find('[' + str(self.deviceNum) + ']')
+            if loc == -1:
+                loc = info.find('-' + str(self.deviceNum) + '-')
+            loc2 = info[loc:].find('MB')
+            description = info[loc + 4 : loc + loc2 + 2]
+        platformName = ''
+        if not self.useCUDA and loc != -1:
+            platformName = info[loc + 4:]
+        return description, platformName
+
     def OMEGAErrorCheck(self):
         if self.CT and self.normalization_correction:
             # CT normalization: one map of the detector or one value for each measurement (the rest of the CT normalization
@@ -2253,7 +2288,10 @@ class projectorClass:
             
             if len(enabled_algorithms) > 1:
                 raise ValueError(f"Multiple reconstruction algorithms selected: {enabled_algorithms}")
-            if len(priors) > 1:
+            if len(enabled_algorithms) == 0:
+                self.builtin = False
+            # Without a MAP algorithm the priors are disabled (with a warning) by _checkAlgorithmSelection, as in MATLAB
+            if len(priors) > 1 and self.MAP:
                 raise ValueError(f"Multiple priors selected: {priors}")
             
         if self.verbose > 0:
@@ -2311,29 +2349,8 @@ class projectorClass:
                         AFinstalled = False
                 if AFinstalled and not self.useCPU:
                     dispaus = f"Using implementation {self.implementation} with "
-                    try:
-                        if not self.useCUDA and af.get_active_backend() != 'opencl':
-                            af.set_backend('opencl')
-                        info = af.device.info_str()
-                        loc = info.find('[' + str(self.deviceNum) + ']')
-                        if loc == -1:
-                            loc = info.find('-' + str(self.deviceNum) + '-')
-                        loc2 = info[loc:].find('(Compute')
-                        dispaus += info[loc + 4 : loc + loc2 - 1]
-                    except Exception:
-                        af.set_backend(af.BackendType.opencl)
-                        info = af.info_string()
-                        loc = info.find('[' + str(self.deviceNum) + ']')
-                        if loc == -1:
-                            loc = info.find('-' + str(self.deviceNum) + '-')
-                        loc2 = info[loc:].find('MB')
-                        dispaus += info[loc + 4 : loc + loc2 + 2]
-                    # Atomics are not used with NVIDIA, AMD or POCL OpenCL devices
-                    if not self.useCUDA and loc != -1:
-                        platformName = info[loc + 4:]
-                        if platformName.startswith('NVIDIA') or platformName.startswith('AMD') or platformName.startswith('POCL'):
-                            self.use_64bit_atomics = False
-                            self.use_32bit_atomics = False
+                    description, _platformName = self._afDeviceInfo()
+                    dispaus += description
                     print(dispaus)
                 elif self.useCPU:
                     print('Using CPU-based reconstruction')
@@ -2343,7 +2360,6 @@ class projectorClass:
                 # Check how many are True
                 if len(enabled_algorithms) == 0:
                     print("No reconstruction method selected! If you are using custom reconstruction, ignore this warning")
-                    self.builtin = False
                 else:
                     print(f"{enabled_algorithms[0]} reconstruction method selected.")
                     

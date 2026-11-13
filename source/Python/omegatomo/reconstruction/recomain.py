@@ -762,7 +762,8 @@ def reconstructions_main(options):
         from omegatomo.util.measurementResampling import _resampleType6Measurements
         _resampleType6Measurements(options)
     options.addProjector()
-    options._checkAlgorithmSelection()
+    if options.errorChecking:
+        options._checkAlgorithmSelection()
     # A7: per-frame lists / one frame of the randoms and scatter data to the layouts of the dynamic reconstruction
     _expandFrameCorrections(options)
     # These projector types are accepted by the projector class (custom operators), but the native library has no
@@ -976,6 +977,17 @@ def reconstructions_main(options):
         options.precondTypeMeas[1] = True
     prepassPhase(options)
     options.tau = 2.5
+    # 32/64-bit atomics are not used with NVIDIA, AMD or POCL OpenCL devices (same as MATLAB's computeImplementation23)
+    if (options.use_64bit_atomics or options.use_32bit_atomics) and options.useAF and not options.useCPU and not options.useCUDA and not getattr(options, 'useMetal', False):
+        try:
+            import arrayfire
+        except (ImportError, OSError, RuntimeError):
+            arrayfire = None
+        if arrayfire is not None:
+            _platformName = options._afDeviceInfo()[1]
+            if _platformName.startswith(('NVIDIA', 'AMD', 'POCL')):
+                options.use_64bit_atomics = False
+                options.use_32bit_atomics = False
     if options.use_32bit_atomics and options.use_64bit_atomics:
         options.use_64bit_atomics = False
     if options.use_64bit_atomics and (options.useCPU or options.useCUDA or options.projector_type == 6):
