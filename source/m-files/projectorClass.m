@@ -479,7 +479,7 @@ classdef projectorClass
                 end
             elseif isfield(obj.param, 'maskFP') && numel(obj.param.maskFP) > 1 && (numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD || numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD * obj.param.nProjections || (obj.param.SPECT && numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD * obj.param.nHeads))
                 obj.param.useMaskFP = true;
-                obj.param.maskFPZ = size(obj.param.maskFP,3);
+                obj.param.maskFPZ = numel(obj.param.maskFP) / (obj.param.nRowsD * obj.param.nColsD); % number of images, also for flat masks
             else
                 obj.param.useMaskFP = false;
             end
@@ -488,14 +488,10 @@ classdef projectorClass
             end
             if isfield(obj.param, 'maskBP') && numel(obj.param.maskBP) > 1 && (numel(obj.param.maskBP) ~= obj.param.Nx(1) * obj.param.Ny(1) && numel(obj.param.maskBP) ~= obj.param.Nx(1) * obj.param.Ny(1) * obj.param.Nz(1))
                 error(['Incorrect size for the backward projection mask! Must be the size of a single image [' num2str(obj.param.Nx(1)) ' ' num2str(obj.param.Ny(1)) '] or 3D stack [' num2str(obj.param.Nx(1)) ' ' num2str(obj.param.Ny(1)) ' ' num2str(obj.param.Nz(1)) ']'])
-            elseif isfield(obj.param, 'maskBP') && (numel(obj.param.maskBP) ~= obj.param.Nx(1) * obj.param.Ny(1) || numel(obj.param.maskBP) ~= obj.param.Nx(1) * obj.param.Ny(1) * obj.param.Nz(1))
-                if obj.param.usePriorMask
-                    obj.param.useMaskBP = false;
-                    obj.param.maskBPZ = size(obj.param.maskBP,3);
-                else
-                    obj.param.useMaskBP = true;
-                    obj.param.maskBPZ = size(obj.param.maskBP,3);
-                end
+            elseif isfield(obj.param, 'maskBP') && numel(obj.param.maskBP) > 1
+                % With usePriorMask the mask is used only by the prior, not in the backprojection
+                obj.param.useMaskBP = ~obj.param.usePriorMask;
+                obj.param.maskBPZ = numel(obj.param.maskBP) / (obj.param.Nx(1) * obj.param.Ny(1)); % number of images, also for flat masks
             elseif ~(obj.param.attenuation_correction && obj.param.SPECT)
                 obj.param.useMaskBP = false;
             end
