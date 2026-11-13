@@ -55,7 +55,7 @@ else
     store_coordinates = false;
 end
 
-folder = fileparts(which('load_data_mCT.m'));
+folder = fileparts(mfilename('fullpath'));
 folder = [folder(1:end-14), 'mat-files/'];
 folder = strrep(folder, '\','/');
 %
