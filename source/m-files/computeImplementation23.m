@@ -20,6 +20,22 @@ end
 % if options.use_32bit_atomics && (options.use_CPU || options.use_CUDA || options.projector_type == 6)
 %     options.use_32bit_atomics = false;
 % end
+% 32/64-bit atomics are not used with NVIDIA, AMD or POCL OpenCL devices
+if options.implementation == 2 && ~options.use_CUDA && ~options.use_CPU && (options.use_64bit_atomics || options.use_32bit_atomics)
+    inffo = ArrayFire_OpenCL_device_info();
+    if options.use_device == 0
+        k1 = strfind(inffo, '[0]');
+    else
+        k1 = strfind(inffo, ['-' num2str(options.use_device) '-']);
+        if isempty(k1)
+            k1 = strfind(inffo, ['[' num2str(options.use_device) ']']);
+        end
+    end
+    if strcmp(inffo(k1+4:k1+9), 'NVIDIA') || strcmp(inffo(k1+4:k1+6), 'AMD') || strcmp(inffo(k1+4:k1+7), 'POCL')
+        options.use_64bit_atomics = false;
+        options.use_32bit_atomics = false;
+    end
+end
 options.use_device = uint32(options.use_device);
 if options.use_raw_data
     TOFSize = int64(size(options.LL,1));
