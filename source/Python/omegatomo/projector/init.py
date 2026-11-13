@@ -45,7 +45,7 @@ def _build_kIndF(self):
         a.vec2f(*_kernel_crystal_pitch(self))
         if self.FPType in (2, 3):
             if self.FPType == 2:
-                a.f32(self.tube_width_z)
+                a.f32(_orthTubeWidth(self))
             else:
                 a.f32(self.tube_radius)
             a.f32(self.bmin).f32(self.bmax).f32(self.Vmax)
@@ -104,7 +104,7 @@ def _build_kIndB(self):
         a.vec2f(*_kernel_crystal_pitch(self))
         if self.BPType in (2, 3):
             if self.BPType == 2:
-                a.f32(self.tube_width_z)
+                a.f32(_orthTubeWidth(self))
             else:
                 a.f32(self.tube_radius)
             a.f32(self.bmin).f32(self.bmax).f32(self.Vmax)
@@ -519,6 +519,11 @@ def _deviceMaxWorkGroupSize(self, rocm=False, cp=None):
         return None
 
 
+def _orthTubeWidth(self):
+    """Width of the type 2 tube, chosen as in libHeader.h: tube_width_z in the 3D mode (orthAxial), tube_width_xy in the 2.5D mode."""
+    return float(self.tube_width_z) if self.orthAxial else float(self.tube_width_xy)
+
+
 def _orth_clip_needed(self):
     """Whether the projector type 2/3 kernels are built with the end point check of the tube (-DORTHCLIP, see orthogonalHelper3D in
     opencl_functions_orth3D.h). The tube of a ray ends at its end points, which only matters when a voxel beyond an end point can be
@@ -536,7 +541,7 @@ def _orth_clip_needed(self):
         return True
     reach = 0.0
     if self.FPType == 2 or self.BPType == 2:
-        reach = max(reach, float(self.tube_width_z))
+        reach = max(reach, _orthTubeWidth(self))
     if self.FPType == 3 or self.BPType == 3:
         reach = max(reach, float(self.tube_radius), float(self.bmax))
     nVol = int(self.nMultiVolumes) + 1

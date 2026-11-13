@@ -72,7 +72,7 @@ def _empty_value(value: Any) -> bool:
 
 
 def _pack_scalar_kernel_params(self: Any, timestep: int, subset: int, volume: int) -> bytes:
-    from .init import _kernel_crystal_pitch
+    from .init import _kernel_crystal_pitch, _orthTubeWidth
     blob = bytearray(SCALAR_KERNEL_PARAMS_SIZE)
 
     def u32(name: str, value: int) -> None:
@@ -130,7 +130,7 @@ def _pack_scalar_kernel_params(self: Any, timestep: int, subset: int, volume: in
     f32('coneOfResponseStdCoeffA', float(self.coneOfResponseStdCoeffA))
     f32('coneOfResponseStdCoeffB', float(self.coneOfResponseStdCoeffB))
     f32('coneOfResponseStdCoeffC', float(self.coneOfResponseStdCoeffC))
-    f32('tube_width', float(self.tube_width_z))
+    f32('tube_width', _orthTubeWidth(self))
     f32('cylRadiusProj3', float(self.tube_radius))
     f32('bmin', float(self.bmin))
     f32('bmax', float(self.bmax))
@@ -170,7 +170,11 @@ def _pack_scalar_kernel_params(self: Any, timestep: int, subset: int, volume: in
         by + ny * dy,
         bz + nz * dz,
     ))
-    f32('orthWidth', float(self.tube_width_z))
+    # As in ProjectorClass.h: the tube width for type 2, the tube radius for type 3 (a mixed type 2/3 combination keeps the width)
+    if 3 in (self.FPType, self.BPType) and 2 not in (self.FPType, self.BPType):
+        f32('orthWidth', float(self.tube_radius))
+    else:
+        f32('orthWidth', _orthTubeWidth(self))
     i64('nProjections', int(self.nProjSubset[timestep, subset]))
     u8('no_norm', int(self.no_norm))
     u64('m_size', int(self.nMeasSubset[timestep, subset]))
