@@ -3,7 +3,7 @@ function image_properties = save_image_properties(options)
 %in a struct variable
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019-2022 Ville-Veikko Wettenhovi
+% Copyright (C) 2019-2026 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -182,19 +182,19 @@ else
     if isfield(options,'FOVxOrig') && options.FOVxOrig < options.FOVa_x(1)
         image_properties.FOVx = options.FOVxOrig;
     else
-        image_properties.FOVx = options.FOVa_x;
+        image_properties.FOVx = options.FOVa_x(1);
     end
     image_properties.FOVxExtended = options.FOVa_x(2:end);
     if isfield(options,'FOVyOrig') && options.FOVyOrig < options.FOVa_y(1)
         image_properties.FOVy = options.FOVyOrig;
     else
-        image_properties.FOVy = options.FOVa_y;
+        image_properties.FOVy = options.FOVa_y(1);
     end
     image_properties.FOVyExtended = options.FOVa_y(2:end);
     if isfield(options,'axialFOVOrig') && options.axialFOVOrig < options.axial_fov(1)
         image_properties.axialFOV = options.axialFOVOrig;
     else
-        image_properties.axialFOV = options.axial_fov;
+        image_properties.axialFOV = options.axial_fov(1);
     end
     image_properties.axialFOVExtended = options.axial_fov(2:end);
     image_properties.voxelSizeX = image_properties.FOVx / double(image_properties.Nx(1));
