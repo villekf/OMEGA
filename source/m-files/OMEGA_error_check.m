@@ -205,6 +205,9 @@ end
 if options.implementation == 1 && options.useMultiResolutionVolumes
     error('Multi-resolution reconstruction is not supported with implementation 1!')
 end
+if options.implementation == 2 && options.use_CPU && options.useMultiResolutionVolumes
+    error('Multi-resolution reconstruction is not supported with the CPU implementation!')
+end
 if options.useMultiResolutionVolumes && ~options.useEFOV
     warning('Multi-resolution reconstruction selected, but extended FOV is not selected! Disabling multi-resolution volumes.')
     options.useMultiResolutionVolumes = false;
@@ -248,7 +251,7 @@ if options.RDP_use_anatomical && options.RDP && options.RDPIncludeCorners && opt
     error('Reference image for RDP was not found on the specified path!')
 end
 if options.RDP_use_anatomical && options.RDP && ~options.RDPIncludeCorners
-    warning('Reference image for RDP is only supported with options.RDPIncludeCorners = true')
+    error('Reference image for RDP is only supported with options.RDPIncludeCorners = true')
 end
 if options.precondTypeImage(3) && (ischar(options.referenceImage) || isstring(options.referenceImage)) && exist(options.referenceImage,'file') ~= 2
     error('Reference image for precondititiong was not found on the specified path!')
@@ -266,6 +269,9 @@ if options.projector_type > 6 && ~ismember(options.projector_type, ...
 end
 if options.use_CPU && ~ismember(options.projector_type, [11 1]) && options.implementation == 2
     error('Selected projector type is not supported with CPU implementation!')
+end
+if options.use_device < 0
+    error('Device number (options.use_device) has to be zero or positive!')
 end
 if options.implementation == 4 && ~ismember(options.projector_type, [1 11 6 16 61 66])
     error('Selected projector type is not supported with CPU implementation!')
