@@ -1331,6 +1331,13 @@ class projectorClass:
             self.useMaskFP = True
             if (self.maskFP.ndim == 3):
                 self.maskFPZ = self.maskFP.shape[2]
+            if self.SPECT and self.maskFPZ == self.nHeads and self.maskFP.size != self.nRowsD * self.nColsD * self.nHeads:
+                raise ValueError('Detector-indexed forward mask must contain one image for each detector head.')
+            # The mask half of the CPU check is here (not in OMEGAErrorCheck) because maskFPZ is only known now
+            if self.SPECT and self.implementation == 2 and self.useCPU and self.maskFPZ > 1 and self.maskFPZ == self.nHeads and self.maskFPZ != self.nProjections:
+                raise ValueError('Detector-head indexed normalization/forward projection mask (nRowsD x nColsD x '
+                                  'nHeads) is not supported by the CPU implementation. Use a GPU implementation or '
+                                  'supply one image per projection.')
             self.maskFP = np.asfortranarray(self.maskFP)
         else:
             self.useMaskFP = False
@@ -1751,6 +1758,69 @@ class projectorClass:
     def _filterWindowMessage(self, prefix):
         return prefix + self._FILTER_WINDOW_TEXT.get(self.filterWindow, ' (no windowing).')
 
+    def _checkAlgorithmSelection(self):
+        """
+        Port of checkAlgorithmSelection.m: checks that the selected algorithm(s) and prior(s) form an allowed
+        combination (a MAP algorithm without a prior sets beta to zero with a warning, a prior without a MAP
+        algorithm is disabled with a warning). Called only from reconstructions_main; custom algorithms that use
+        the projector as an operator select no algorithm.
+        """
+        if self.compute_normalization or self.only_sinos:
+            return
+        mapAlgorithms = ['OSL_OSEM', 'BSREM', 'MBSREM', 'ROSEM_MAP', 'OSL_RBI', 'OSL_COSEM', 'PKMA', 'SPS', 'PDHG', 'PDHGKL',
+                         'PDHGL1', 'PDDY', 'CV', 'SAGA', 'BB', 'SART', 'ASD_POCS']
+        nonMapAlgorithms = ['OSEM', 'MRAMLA', 'RAMLA', 'ROSEM', 'RBI', 'DRAMA', 'COSEM', 'ECOSEM', 'ACOSEM', 'LSQR', 'CGLS',
+                            'FISTA', 'FISTAL1', 'FDK']
+        varPrior = ['MRP','quad','Huber','L','FMH','weighted_mean','TV','hyperbolic','AD','APLS','TGV','NLM','RDP','GGMRF','ProxTV','custom']
+        selectedMAP = [name for name in mapAlgorithms if (self.OSL_COSEM > 0 if name == 'OSL_COSEM' else getattr(self, name, False))]
+        selectedPriors = [name for name in varPrior if getattr(self, name, False)]
+        MAP = len(selectedMAP) > 0
+        PRIOR = len(selectedPriors) > 0
+        reko = []
+        for name in nonMapAlgorithms:
+            if getattr(self, name, False):
+                reko.append(name)
+                break
+        for name in mapAlgorithms:
+            if name == 'OSL_COSEM':
+                if self.OSL_COSEM > 2 or self.OSL_COSEM < 0:
+                    raise ValueError('Unsupported COSEM-OSL method selected!')
+                if self.OSL_COSEM == 0:
+                    continue
+                if self.OSL_COSEM == 1 and not PRIOR:
+                    raise ValueError('ACOSEM-OSL selected, but no prior has been selected.')
+                if self.OSL_COSEM == 2 and not PRIOR:
+                    raise ValueError('COSEM-OSL selected, but no prior has been selected.')
+                if len(selectedPriors) > 1:
+                    raise ValueError('Only one prior can be used at a time with COSEM-OSL')
+                reko.append(name)
+            elif getattr(self, name, False):
+                ch = name.replace('_', '-')
+                if not PRIOR:
+                    print(f'Warning: {ch} selected, but no prior has been selected.')
+                    self.beta = 0
+                reko.append(ch)
+        if len(reko) == 0:
+            raise ValueError('No reconstruction method selected!')
+        if MAP:
+            if self.TV:
+                if self.TV_use_anatomical:
+                    if self.TVtype not in (1, 2, 3):
+                        raise ValueError('Unsupported TV type selected.')
+                elif self.TVtype not in (1, 2, 3, 4):
+                    raise ValueError('Unsupported TV type selected.')
+            if self.weighted_mean and self.mean_type not in (1, 2, 3, 4, 5, 6):
+                raise ValueError('Unsupported mean type selected.')
+            if self.AD:
+                if self.FluxType not in (1, 2):
+                    raise ValueError('FluxType has to be either 1 or 2.')
+                if self.DiffusionType not in (1, 2) and self.implementation == 2:
+                    raise ValueError('DiffusionType has to be either 1 or 2.')
+        else:
+            for name in selectedPriors:
+                print(f'Warning: {name} selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
+                setattr(self, name, False)
+
     def OMEGAErrorCheck(self):
         if self.CT and self.normalization_correction:
             # CT normalization: one map of the detector or one value for each measurement (the rest of the CT normalization
@@ -1793,8 +1863,7 @@ class projectorClass:
             # functions.hpp's #elif defined(CPU) branch), a separate plain C++ projector with no
             # DetectorVector/per-head indexing at all.
             if self.implementation == 2 and self.useCPU and (
-                (self.normalization_correction and self.normZ == self.nHeads and self.normZ != self.nProjections) or
-                (self.useMaskFP and self.maskFPZ > 1 and self.maskFPZ == self.nHeads and self.maskFPZ != self.nProjections)
+                (self.normalization_correction and self.normZ == self.nHeads and self.normZ != self.nProjections)
             ):
                 raise ValueError('Detector-head indexed normalization/forward projection mask (nRowsD x nColsD x '
                                   'nHeads) is not supported by the CPU implementation. Use a GPU implementation or '
@@ -2002,6 +2071,9 @@ class projectorClass:
             raise ValueError('The selected projector type is not supported!')
         if self.APLS and self.MAP and not isinstance(self.APLS_ref_image, np.ndarray) and not os.path.exists(self.APLS_ref_image):
             raise FileNotFoundError('APLS selected, but the anatomical reference image was not found on path!')
+        if np.size(self.epps) > 1:
+            print('Epsilon has to be a scalar value! Using the default value (1e-6).')
+            self.epps = 1e-6
         if self.epps <= 0:
             print('Epsilon value is zero or less than zero; must be a positive value. Using the default value (1e-6).')
             self.epps = 1e-6
@@ -2078,7 +2150,12 @@ class projectorClass:
                 raise ValueError('A 3D backprojection/prior mask is not supported with largeDim! Use a 2D (transaxial) mask instead.')
         if self.useCUDA and self.useCPU:
             raise ValueError('Both CUDA and CPU selected! Select only one!')
-        
+        if self.deviceNum < 0:
+            raise ValueError('Device number (options.use_device) has to be zero or positive!')
+
+        if self.TOF_bins_used > 1 and self.use_raw_data and not self.CT and not self.SPECT:
+            raise ValueError('TOF data is only available with sinogram data. Disable raw data (options.use_raw_data = False).')
+
         if self.TOF_bins_used > 1 and (self.projector_type not in [1, 11, 2, 22, 12, 21, 23, 32, 24, 42, 3, 33, 31, 13, 4, 44, 41, 14, 43, 34]) and not self.CT and not self.SPECT:
             raise ValueError('TOF is currently only supported with improved Siddon (projector_type = 1), orthogonal distance-based ray tracer (projector_type = 2), volume of intersection (projector_type = 3) and interpolation-based projector (projector_type = 4)')
         
@@ -2224,8 +2301,6 @@ class projectorClass:
                 Nz = self.Nz
             
             if not (self.compute_normalization or self.only_sinos):
-                if self.deviceNum < 0:
-                    raise ValueError('Device number has to be positive!')
                 AFinstalled = False
                 if self.useAF:
                     try:

@@ -762,6 +762,7 @@ def reconstructions_main(options):
         from omegatomo.util.measurementResampling import _resampleType6Measurements
         _resampleType6Measurements(options)
     options.addProjector()
+    options._checkAlgorithmSelection()
     # A7: per-frame lists / one frame of the randoms and scatter data to the layouts of the dynamic reconstruction
     _expandFrameCorrections(options)
     # These projector types are accepted by the projector class (custom operators), but the native library has no
