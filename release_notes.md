@@ -93,6 +93,8 @@ New features:
   - Subset types 6, 7, 10 and 12, as in MATLAB
   - Sinogram gap filling (```options.fill_sinogram_gaps```) with the ```fillmissing``` method (```options.gap_filling_method = 'fillmissing'```, interpolation method from ```options.interpolation_method_fillmissing```); ```inpaint_nans``` and ```fillmissing2``` remain MATLAB only
   - Ports of the MATLAB save functions: ```omegatomo.fileio.saveImage```, ```saveInterfile```, ```saveMetaImage``` and ```scaleImages```
+  - ```options.image_properties``` is a dictionary of the image properties (as ```image_properties``` in MATLAB), also containing ```endTime```
+  - SPECT attenuation map from a CT DICOM folder: ```omegatomo.fileio.spectCTAttenuation``` (options ```fpathCT```, ```keV``` and ```refSPECT```)
   - ```omegatomo.util.powerMethod``` applies the image-based preconditioners (```options.precondTypeImage```; the gradient- and curvature-based ones are not yet available in Python)
   - The filtering-based measurement preconditioner now works with CuPy custom reconstructions (see ```CBCT_custom_algorithm_example_CuPy.py```)
   - Further MATLAB parity: ```options.OSL_COSEM = 2``` (OSL-ACOSEM), ```options.global_correction_factor```, ```options.useHalf```, scatter variance reduction, a scalar ```options.lambda```, ```options.rhoPrecond```/```options.delta1Precond```, and ```options.sigma_x``` computed from ```options.TOF_FWHM``` when not given
@@ -182,6 +184,25 @@ Changed behaviour:
 - Subset type 12 now gives an error without offset correction (```options.offsetCorrection = true```), MATLAB and Python
 - Parallel beam CT (```options.useParallelBeam```) now gives an error with projector type 5 (also as the forward or backward projector of a combined type, e.g. 15, 45, 51 or 54) and with the CPU implementation (implementation 4 and ```options.useCPU```/```options.use_CPU```), MATLAB and Python. Neither had parallel beam support and both silently used the cone beam geometry
 - Parallel beam FDK/FBP now uses the same zero-padded ramp filter and DC correction as cone beam FDK (MATLAB and Python)
+- ```scaleImages``` (scaling of the images to activity concentration, MATLAB and Python): the scaled images are now in Bq/mL (previously Bq/mm^3, i.e. a factor 1000 smaller), and dynamic data is scaled with the duration of each frame (from ```options.partitions``` when it is a vector of frame durations, otherwise the total time split evenly) instead of the total measurement time
+- Subset type 6 (angle-based subsets, ```options.n_angles```) is regrouped (MATLAB and Python)
+  - 2D data: 180 / ```options.n_angles``` subsets; 3D data: 360 / ```options.n_angles``` subsets, each one an angle range over all segments (the direct planes are split between two subsets by plane parity, the two members of an oblique segment pair go to the subsets of their full angle). Previously each subset was an angle range of a single segment (180 / n + (360 / n) x the number of oblique segment pairs subsets, with very uneven subset sizes)
+  - ```options.n_angles``` must divide 180 evenly. Near-vertical and near-horizontal LORs are now classified identically in MATLAB and Python
+  - Angle-based subsets still converge slower with OSEM than e.g. subset type 1
+- Projector type 2 (orthogonal distance) in the 2.5D mode (only ```options.tube_width_xy``` set, ```options.tube_width_z = 0```): the forward and backprojection were about 2.2 times too large, since the 3D cone volume normalisation was used with a transaxial-only distance. The 2.5D projector now matches the scale of the improved Siddon projector
+- MATLAB error checking: ```options.errorChecking``` now defaults to true for all modalities (previously it was forced only for CT and SPECT), and ```OMEGA_error_check``` no longer needs to be called in the main-files; it runs automatically in the projector class (existing scripts that call it still work)
+  - The data-loading specific checks moved into the loading functions (```load_data```, ```form_sinograms```, ```load_data_Vision```, ```load_data_mCT``` and ```load_data_16``` via the new ```checkSinogramOptions```), the algorithm and prior selection checks (new ```checkAlgorithmSelection```) run in ```reconstructions_main``` also when ```options.verbose = 0```, and the settings printout is in ```printReconstructionSettings```
+  - ```options.errorChecking = false``` skips the checks, but the randoms/scatter precorrection decision (see below) is still applied
+  - New errors: a negative ```options.use_device``` (previously silently device 0), multi-resolution reconstruction with the CPU implementation, and an RDP reference image without ```options.RDPIncludeCorners``` (previously a warning)
+- Precorrection with ```options.corrections_during_reconstruction``` and randoms and/or scatter correction: PDHG, PDHGL1, FISTA, FISTAL1, LSQR, CGLS and PDDY cannot model them in the forward model and now really precorrect the measurement data (the randoms/scatter are subtracted from the data). Previously the correction was not applied consistently (the MATLAB LSQR result differed by about a factor of 2 from the reference)
+  - Python: ```options.precorrect``` defaults to ```None``` (precorrect when needed); setting it explicitly to ```False``` with these algorithms now gives an error
+  - The image properties still report the randoms/scatter correction as applied
+- Python error checks now match MATLAB: the OSL-COSEM selection, prior types (TV, weighted mean, AD flux/diffusion types), a scalar ```options.epps```, TOF with raw data and the per-detector-head SPECT forward mask size are checked, and an error is raised if no reconstruction algorithm is selected (also with ```options.verbose = 0```; previously only with ```options.verbose > 0```)
+  - A MAP algorithm without a prior sets ```beta``` to 0 with a warning, and a prior without a MAP algorithm is disabled with a warning (as in MATLAB); multiple priors are an error only with a MAP algorithm
+  - Python ```options.errorChecking``` now defaults to True and skips the algorithm selection checks when False
+- The automatic disabling of user-enabled 32/64-bit atomics on NVIDIA, AMD and POCL OpenCL devices no longer depends on ```options.verbose``` (MATLAB and Python)
+- Attenuation image conversion from 1/cm to 1/mm (division by 10): an attenuation map derived from DICOM for SPECT is not divided, and image-sized PET attenuation with ```options.CT_attenuation = false``` is divided
+- ```options.flip_image``` now also negates the y component of the second detector direction vector (v) for a user-supplied six-component ```options.uV``` without ```options.pitchRoll```
 
 Other changes:
 - Unified SPECT rotation projector logic for all three Python operator backends
@@ -433,6 +454,15 @@ Bug fixes:
   - Parallel beam CT backprojection was rewritten. It did not compile without FDK, and with FDK it looped over every detector pixel for every voxel and used the cone beam distance weight (an FDK reconstruction of a cylinder was 1.92 times too high). Each voxel is now projected along the ray direction of the projection onto the detector, with the weight voxel volume / pixel area perpendicular to the ray. FDK reconstructs a cylinder to within 0.2 % for 180 and 360 degree scans, the backprojection is adjoint to the forward projection at the same level as cone beam, and it is about 15 % faster than the cone beam backprojection. Offset correction, subset type 12, the CT normalization and ```options.useLayeredBP``` work as with cone beam
   - Python projector operators: parallel beam (```options.useParallelBeam```) was ignored, so the operators silently used the cone beam geometry
 - Python: CT with one detector offset per projection (```options.detOffsetRow``` as a vector) failed when the coordinates were computed (```CTDetSource```); MATLAB was not affected
+- The 2.5D orthogonal projector (projector type 2 with only ```options.tube_width_xy```) used a zero tube width in the Python custom operators (CuPy, PyTorch, pyopencl) and the Metal backend, which gave NaN projections; the Metal backend also used ```options.tube_width_z``` instead of the tube radius with projector type 3
+- ```options.usePriorMask``` (use ```options.maskBP``` only as a prior mask, not in the backprojection) never worked, as the mask was ignored; fixed (MATLAB and Python)
+  - Python: the native libraries must be rebuilt (```compile.py```) because of a new library struct field
+  - Not available with the Metal backend or the pyopencl/CuPy custom operators
+- Backprojection and forward projection masks: in MATLAB a valid 2D ```options.maskBP``` was ignored when ```options.Nz = 1```, and a 3D ```options.maskBP``` or a forward projection mask stack given as a flat vector was used as a 2D mask (MATLAB and Python)
+- ```HU_rescale_coeff``` now matches the files to the slices by ```ImagePositionPatient```
+- SPECT DICOM data: the x limits are now computed from the number of columns times the column spacing
+- Python ```loadProSpectaData```: the orientation and projection angles now match MATLAB (previously the data was flipped in z)
+- MATLAB CT: the default ```options.flat``` is now computed after ```loadCorrections```, so a vector ```options.flat``` no longer gives an error
 
 ## OMEGA v2.2.0
 
