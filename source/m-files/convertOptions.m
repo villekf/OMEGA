@@ -84,6 +84,9 @@ for kk = 1 : numel(varNeg)
         break;
     end
 end
+% ordinaryPoisson is an internal flag that is always derived here (a value cached by an earlier setMissingValues/
+% OMEGA_error_check call must not survive a change of corrections_during_reconstruction)
+options.ordinaryPoisson = options.corrections_during_reconstruction;
 % Randoms and/or scatter correction cannot be applied during the reconstruction with these algorithms, the
 % measurement data are precorrected instead (the warning is printed by OMEGA_error_check). This has to be
 % done here as well so that the precorrection also works with errorChecking = false

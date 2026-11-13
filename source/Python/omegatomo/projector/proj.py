@@ -1269,6 +1269,10 @@ class projectorClass:
         # checks (e.g. span vs. ring_difference, which relies on seeing NSinos still at its
         # pre-list-mode value) observe, so only self.listmode is set early.
         self.listmode = 1 if (self._isListModeCandidate() or self.useIndexBasedReconstruction) else 0
+        # ordinaryPoisson is an internal flag that is always derived here (a value cached by an earlier
+        # addProjector() call must not survive a change of corrections_during_reconstruction).
+        # OMEGAErrorCheck() may set it to False for the algorithms that precorrect the data
+        self.ordinaryPoisson = self.corrections_during_reconstruction
         self.OMEGAErrorCheck()
         # Defaults that depend on other options (setMissingValues.m). Resolved here, after cr_pz, dPitchX/Y and
         # the number of subsets are final and before any of the values is read (coordinates, projector
@@ -1319,8 +1323,6 @@ class projectorClass:
             self._checkTOFCenter()
         else:
             self.sigma_x = 0.
-        if self.ordinaryPoisson is None:
-            self.ordinaryPoisson = self.corrections_during_reconstruction
         compact_mask_size = self.nRowsD * self.nColsD * self.nHeads if self.SPECT else -1
         valid_projection_mask_sizes = (self.nRowsD * self.nColsD, self.nRowsD * self.nColsD * self.nProjections, compact_mask_size)
         if self.maskFP.size > 1 and ((not(self.maskFP.size in valid_projection_mask_sizes)
