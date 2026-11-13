@@ -1986,9 +1986,19 @@ class projectorClass:
                              'use another subset type, fewer planes (larger span) or a single subset.')
         # Subset type 6 groups n_angles degrees per subset (180 / n_angles subsets for 2D and 360 / n_angles for 3D data)
         if (not self.CT and not self.SPECT and not self.listmode and not self.useIndexBasedReconstruction and not self.use_raw_data
-                and self.subsets > 1 and self.subsetType == 6
-                and (not hasattr(self, 'n_angles') or np.size(self.n_angles) != 1 or self.n_angles < 1 or 180 % self.n_angles != 0)):
-            raise ValueError('Subset type 6 requires options.n_angles to be a positive number that divides 180 evenly!')
+                and self.subsets > 1 and self.subsetType == 6):
+            try:
+                # Numeric scalars only (same as MATLAB): None, strings and lists are rejected
+                if not isinstance(self.n_angles, (int, float, np.number, np.bool_, np.ndarray)):
+                    raise TypeError('n_angles is not numeric')
+                nAng = np.asarray(self.n_angles, dtype=float)
+                nAngOk = nAng.size == 1 and bool(np.isfinite(nAng.item())) and nAng.item() >= 1 and 180 % nAng.item() == 0
+            except (TypeError, ValueError, AttributeError):
+                nAngOk = False
+            if not nAngOk:
+                raise ValueError('Subset type 6 requires options.n_angles to be a positive number that divides 180 evenly!')
+            if not isinstance(self.n_angles, (int, float)):
+                self.n_angles = nAng.item()
         if self.useIndexBasedReconstruction and self.projector_type not in [1, 2, 3, 4, 11, 14, 12, 13, 21, 22, 23, 24, 31, 32, 33, 34, 41, 42, 43, 44]:
             raise ValueError('Index-based reconstruction only supports projector types 1-4!')
         if self.useIndexBasedReconstruction:
