@@ -44,21 +44,9 @@ end
 if ~options.CT && ~options.SPECT && options.ring_difference < 0 && ~options.use_raw_data
     error('Ring difference has to be at least 0!')
 end
-% List-mode data with custom detector coordinates (options.x/y/z(_det) sized
-% to match options.SinM) or index-based reconstruction (options.useIndexBasedReconstruction)
-% collapses Nang/Ndist to 1 with no matching scanner geometry (det_w_pseudo can be 0), so it
-% must never be validated against the sinogram angle-count limit below. This mirrors
-% projectorClass.m's own list-mode/index-based detection (~line 561-582), replicated here
-% (rather than relying on options.listmode) because THIS function is called, both directly
-% from main-files and from projectorClass.m (~line 421), BEFORE that detection runs -- at
-% that point options.listmode still only reflects whatever the caller explicitly set (default
-% false), not the auto-detected custom-coordinates case.
-isListModeCandidate = (isfield(options,'x') || isfield(options,'y') || (isfield(options,'z') || isfield(options,'z_det'))) && ...
-    (((numel(options.x) / 2 == numel(options.SinM) || numel(options.x) / 6 == numel(options.SinM))) || ...
-    (numel(options.SinM) == 0 && numel(options.x) >= 6) || ...
-    (iscell(options.x) && (numel(options.x{1}) / 2 == numel(options.SinM{1}) || numel(options.x{1}) / 6 == numel(options.SinM{1}))));
+listModeCandidate = isListModeCandidate(options);
 if ~options.CT && ~options.SPECT && options.Nang(end) > options.det_w_pseudo(end)/2 && ~options.use_raw_data ...
-        && ~isListModeCandidate && ~options.listmode && ~options.useIndexBasedReconstruction
+        && ~listModeCandidate && ~options.listmode && ~options.useIndexBasedReconstruction
     error(['Number of sinogram angles can be at most the number of detectors per ring divided by two(' num2str(options.det_w_pseudo(1)/2) ')!'])
 end
 if ~options.CT && ~options.SPECT && options.TotSinos < options.NSinos && ~options.use_raw_data

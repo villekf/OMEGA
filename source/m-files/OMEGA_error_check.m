@@ -155,19 +155,7 @@ if ~preCondMeasAlg && any(options.precondTypeMeas)
     options.precondTypeMeas = [false;false];
 end
 options = checkSinogramOptions(options);
-% List-mode data with custom detector coordinates (options.x/y/z(_det) sized
-% to match options.SinM) or index-based reconstruction (options.useIndexBasedReconstruction)
-% collapses Nang/Ndist to 1 with no matching scanner geometry (det_w_pseudo can be 0), so it
-% must never be validated against the sinogram angle-count limit below. This mirrors
-% projectorClass.m's own list-mode/index-based detection (~line 561-582), replicated here
-% (rather than relying on options.listmode) because THIS function is called, both directly
-% from main-files and from projectorClass.m (~line 421), BEFORE that detection runs -- at
-% that point options.listmode still only reflects whatever the caller explicitly set (default
-% false), not the auto-detected custom-coordinates case.
-isListModeCandidate = (isfield(options,'x') || isfield(options,'y') || (isfield(options,'z') || isfield(options,'z_det'))) && ...
-    (((numel(options.x) / 2 == numel(options.SinM) || numel(options.x) / 6 == numel(options.SinM))) || ...
-    (numel(options.SinM) == 0 && numel(options.x) >= 6) || ...
-    (iscell(options.x) && (numel(options.x{1}) / 2 == numel(options.SinM{1}) || numel(options.x{1}) / 6 == numel(options.SinM{1}))));
+listModeCandidate = isListModeCandidate(options);
 if options.SPECT && options.implementation == 1
     error('Implementation 1 is not supported with SPECT data.')
 end
@@ -326,20 +314,20 @@ end
 % subsets with subset types 0 (sequential), 1 (every n-th event) and 3
 % (random). Other types (e.g. the default 8) are sinogram/projection-based
 % and are rejected here, before any data is prepared, instead of being
-% silently replaced. isListModeCandidate only detects the custom coordinates
+% silently replaced. listModeCandidate only detects the custom coordinates
 % case when options.x and options.SinM have already been set; projectorClass
 % repeats this check once all the data are available.
-if ~options.CT && ~options.SPECT && (options.useIndexBasedReconstruction || options.listmode || isListModeCandidate) ...
+if ~options.CT && ~options.SPECT && (options.useIndexBasedReconstruction || options.listmode || listModeCandidate) ...
         && options.subsets > 1 && ~ismember(options.subset_type, [0, 1, 3])
     error(['Subset type ' num2str(options.subset_type) ' is not supported with list-mode and index-based data! Only subset types 0 (sequential), 1 (every n-th event) and 3 (random) can be used when subsets > 1. Set options.subset_type to 0, 1 or 3 (or use options.subsets = 1).'])
 end
 % The sinogram plane index of subset types 3, 6 and 7 (z_index) is stored as 16-bit
-if ~options.CT && ~options.SPECT && ~options.listmode && ~isListModeCandidate && ~options.useIndexBasedReconstruction && ~options.use_raw_data ...
+if ~options.CT && ~options.SPECT && ~options.listmode && ~listModeCandidate && ~options.useIndexBasedReconstruction && ~options.use_raw_data ...
         && options.subsets > 1 && ismember(options.subset_type, [3, 6, 7]) && options.NSinos > 65536
     error('Subset types 3, 6 and 7 support at most 65536 sinogram planes (the plane index is stored as 16-bit); use another subset type, fewer planes (larger span) or a single subset.')
 end
 % Subset type 6 groups n_angles degrees per subset (180/n_angles subsets for 2D and 360/n_angles for 3D data)
-if ~options.CT && ~options.SPECT && ~options.listmode && ~isListModeCandidate && ~options.useIndexBasedReconstruction && ~options.use_raw_data ...
+if ~options.CT && ~options.SPECT && ~options.listmode && ~listModeCandidate && ~options.useIndexBasedReconstruction && ~options.use_raw_data ...
         && options.subsets > 1 && options.subset_type == 6 && (~isfield(options, 'n_angles') || ~isscalar(options.n_angles) ...
         || options.n_angles < 1 || mod(180, options.n_angles) ~= 0)
     error('Subset type 6 requires options.n_angles to be a positive number that divides 180 evenly!')
@@ -402,7 +390,7 @@ end
 % options.xSens and options.zSens, see loadCorrections) or with a pair table (options.normSens, any list-mode data). Dynamic
 % data has the normalization disabled (loadCorrections). The list-mode data does not use options.additionalCorrection, the
 % multiplicative correction is the non-subtracted scatter.
-if ~options.CT && ~options.SPECT && (options.useIndexBasedReconstruction || options.listmode || isListModeCandidate) ...
+if ~options.CT && ~options.SPECT && (options.useIndexBasedReconstruction || options.listmode || listModeCandidate) ...
         && isfield(options, 'compute_sensitivity_image') && options.compute_sensitivity_image
     if numel(options.partitions) > 1
         nFramesEarly = numel(options.partitions);

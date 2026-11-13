@@ -11,9 +11,7 @@ function options = printReconstructionSettings(options)
 %   setMissingValues)
 %
 % OUTPUT:
-%   options = The options-struct. The atomics selection
-%   (options.use_64bit_atomics and options.use_32bit_atomics) can be
-%   changed when printing the OpenCL device.
+%   options = The options-struct (returned unchanged).
 %
 % See also OMEGA_error_check, checkAlgorithmSelection
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -42,19 +40,7 @@ if numel(options.partitions) > 1
 else
     partitions = options.partitions;
 end
-% List-mode data with custom detector coordinates (options.x/y/z(_det) sized
-% to match options.SinM) or index-based reconstruction (options.useIndexBasedReconstruction)
-% collapses Nang/Ndist to 1 with no matching scanner geometry (det_w_pseudo can be 0), so it
-% must never be validated against the sinogram angle-count limit below. This mirrors
-% projectorClass.m's own list-mode/index-based detection (~line 561-582), replicated here
-% (rather than relying on options.listmode) because THIS function is called, both directly
-% from main-files and from projectorClass.m (~line 421), BEFORE that detection runs -- at
-% that point options.listmode still only reflects whatever the caller explicitly set (default
-% false), not the auto-detected custom-coordinates case.
-isListModeCandidate = (isfield(options,'x') || isfield(options,'y') || (isfield(options,'z') || isfield(options,'z_det'))) && ...
-    (((numel(options.x) / 2 == numel(options.SinM) || numel(options.x) / 6 == numel(options.SinM))) || ...
-    (numel(options.SinM) == 0 && numel(options.x) >= 6) || ...
-    (iscell(options.x) && (numel(options.x{1}) / 2 == numel(options.SinM{1}) || numel(options.x{1}) / 6 == numel(options.SinM{1}))));
+listModeCandidate = isListModeCandidate(options);
 % Print various options that were selected if verbosity has been enabled
 if options.verbose > 0
     if options.use_ASCII && options.use_machine == 0
@@ -102,11 +88,6 @@ if options.verbose > 0
                         k1 = strfind(inffo, ['[' num2str(options.use_device) ']']);
                     end
                     dispaus = [dispaus, ' with ', inffo(k1 + 4:k2(options.use_device + 1)+1)];
-                end
-                % The atomics are disabled here only when verbose > 0 (the device info is queried only for the printout)
-                if strcmp(inffo(k1+4:k1+9), 'NVIDIA') || strcmp(inffo(k1+4:k1+6), 'AMD') || strcmp(inffo(k1+4:k1+7), 'POCL')
-                    options.use_64bit_atomics = false;
-                    options.use_32bit_atomics = false;
                 end
             end
         elseif options.implementation == 3
@@ -412,7 +393,7 @@ if options.verbose > 0
             disp(dispi)
         end
         % The non-subtracted scatter correction is disabled with list-mode data (see projectorClass)
-        if options.scatter_correction && ~((options.useIndexBasedReconstruction || options.listmode || isListModeCandidate) && ~options.CT && ~options.SPECT && ~options.subtract_scatter)
+        if options.scatter_correction && ~((options.useIndexBasedReconstruction || options.listmode || listModeCandidate) && ~options.CT && ~options.SPECT && ~options.subtract_scatter)
             dispi = 'Scatter correction ON';
             if options.scatter_smoothing
                 dispi = [dispi, ' with smoothing'];
@@ -558,7 +539,7 @@ if options.verbose > 0
                 dataType = 'projection data';
             elseif options.useIndexBasedReconstruction
                 dataType = 'index-based list-mode data';
-            elseif options.listmode || isListModeCandidate
+            elseif options.listmode || listModeCandidate
                 dataType = 'list-mode data';
             else
                 dataType = 'sinogram data';
