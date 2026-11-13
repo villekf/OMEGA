@@ -906,6 +906,28 @@ if ~options.SPECT
             options.SinDelayed = {0};
         end
         if options.scatter_correction
+            % The scatter is normalized as with the ordinary Poisson algorithms (the normalization stays in the projector
+            % with corrections during reconstruction), before it is subtracted
+            if options.normalization_correction && options.normalize_scatter && options.corrections_during_reconstruction ...
+                    && ~ScatterProp.normalization && ~(isfield(options,'scatterNormalized') && options.scatterNormalized) ...
+                    && isfield(options,'ScatterC')
+                nScatter = 0;
+                if iscell(options.ScatterC)
+                    for kk = 1 : numel(options.ScatterC)
+                        if numel(options.ScatterC{kk}) > 1
+                            options.ScatterC{kk} = normalizeScatter(options.ScatterC{kk}, options, normalizationInverted);
+                            nScatter = nScatter + 1;
+                        end
+                    end
+                elseif numel(options.ScatterC) > 1
+                    options.ScatterC = normalizeScatter(options.ScatterC, options, normalizationInverted);
+                    nScatter = 1;
+                end
+                if nScatter > 0
+                    % Mark the scatter as normalized, so that another call with the returned options does not normalize it again
+                    options.scatterNormalized = true;
+                end
+            end
             [options,~, ~] = applyScatterRandoms(options,ScatterProp, options.ScatterC, 1);
             options = rmfield(options,'ScatterC');
             options.scatter_correction = false;
@@ -1089,14 +1111,18 @@ end
 % Other SPECT corrections
 if options.SPECT
     if options.scatter_correction && numel(options.SinDelayed) <= 1 && options.subtract_scatter% From 10.1371/journal.pone.0269542
+        % The algorithms that do not use the ordinary Poisson model (PDHG, LSQR, etc.) cannot have an additive term in the
+        % projector, so the estimate is subtracted from the measurements also with corrections during reconstruction. The
+        % normalization stays in the projector then (it is not applied to the measurements, unlike with precorrection)
+        subtractScatterNow = ~options.corrections_during_reconstruction || ~options.ordinaryPoisson;
         if iscell(options.SinM) % SinM is cell (size = options.partitions)
-            if options.corrections_during_reconstruction && ~iscell(options.SinDelayed)
+            if ~subtractScatterNow && ~iscell(options.SinDelayed)
                 options.SinDelayed = cell(options.partitions,1);
             end
             for timestep = 1:options.partitions
                 if numel(options.ScatterC) == 1 % DEW
                     k = 1;
-                    if ~options.corrections_during_reconstruction
+                    if subtractScatterNow
                         options.SinM{timestep} = options.SinM{timestep} - k * options.ScatterC{1}{timestep};
                         options.scatter_correction = false;
                     else
@@ -1108,7 +1134,7 @@ if options.SPECT
                 elseif numel(options.ScatterC) == 2 % TEW
                     kLower = diff(options.eWin) / diff(options.eWinL);
                     kUpper = diff(options.eWin) / diff(options.eWinU);
-                    if ~options.corrections_during_reconstruction
+                    if subtractScatterNow
                         options.SinM{timestep} = options.SinM{timestep} - 0.5 * (kLower * squeeze(options.ScatterC{1}{timestep}) + kUpper * squeeze(options.ScatterC{2}{timestep}));
                         options.scatter_correction = false;
                     else
@@ -1122,7 +1148,7 @@ if options.SPECT
         else % SinM is not cell
             if numel(options.ScatterC) == 1 % DEW
                 k = 1;
-                if ~options.corrections_during_reconstruction
+                if subtractScatterNow
                     options.SinM = options.SinM - k * squeeze(options.ScatterC{1});
                     options.scatter_correction = false;
                 else
@@ -1135,7 +1161,7 @@ if options.SPECT
             elseif numel(options.ScatterC) == 2 % TEW
                 kLower = diff(options.eWin) / diff(options.eWinL);
                 kUpper = diff(options.eWin) / diff(options.eWinU);
-                if ~options.corrections_during_reconstruction
+                if subtractScatterNow
                     options.SinM = options.SinM - 0.5 * (kLower * squeeze(options.ScatterC{1}) + kUpper * squeeze(options.ScatterC{2}));
                     options.scatter_correction = false;
                 else
