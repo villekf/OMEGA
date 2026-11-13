@@ -32,7 +32,7 @@ if isfield(options,ichar)
                                 options.SinM{kk}(NN * (uu - 1) + 1: NN * uu) = single(full(options.SinM{kk}(NN * (uu - 1) + 1: NN * uu))) - single(full(input{kk}(:))) / options.TOF_bins;
                             end
                         else
-                            options.SinM{kk} = single(full(options.SinM{kk}(:))) - single(full(input{kk}));
+                            options.SinM{kk} = single(full(options.SinM{kk}(:))) - single(full(input{kk}(:)));
                         end
                     elseif type == 1
                         if options.subtract_scatter && options.TOF_bins > 1 && numel(input{kk}) * options.TOF_bins == numel(options.SinM{kk})
@@ -67,7 +67,7 @@ if isfield(options,ichar)
                             options.SinM(NN * (uu - 1) + 1: NN * uu) = single(full(options.SinM(NN * (uu - 1) + 1: NN * uu))) - single(full(input{1}(:))) / options.TOF_bins;
                         end
                     else
-                        options.SinM = single(full(options.SinM(:))) - single(full(input{1}));
+                        options.SinM = single(full(options.SinM(:))) - single(full(input{1}(:)));
                     end
                 elseif type == 1
                     if options.subtract_scatter && options.TOF_bins > 1 && numel(input{1}) * options.TOF_bins == numel(options.SinM)
