@@ -363,6 +363,13 @@ def _decide_layered_bp(self):
     return self._layeredBP
 
 
+def _backprojectionVoxelsType5(self):
+    """Number of axial voxels computed by each thread in the type 5 backprojection: the option NVOXELS5 (at least 1), or 1 with curved helical data (its z-loop is not validated with several voxels) and with Metal."""
+    if self.useHelical or self.useMetal:
+        return 1
+    return max(1, int(self.NVOXELS5))
+
+
 def _uses_projection_window(self):
     """True if and only if the curved helical BP of type 4 or 5 only visits the projections in the window of each axial voxel block."""
     return bool(self.CT and self.useHelical and not self.useParallelBeam and not self.useMetal and self.listmode == 0
@@ -372,7 +379,7 @@ def _uses_projection_window(self):
 def _initialize_projection_window_buffers(self, upload):
     """Create the ``[timestep][subset][volume]`` projection window buffers (see computeProjectionWindow)."""
     self.d_projWindow = [[[None] * (self.nMultiVolumes + 1) for _ in range(self.subsets)] for _ in range(self.Nt)]
-    nVoxels = self.NVOXELS5 if self.BPType == 5 else self.NVOXELSHELICAL
+    nVoxels = _backprojectionVoxelsType5(self) if self.BPType == 5 else self.NVOXELSHELICAL
     for timestep in range(self.Nt):
         for subset in range(self.subsets):
             xs = _coordinate_slice(self, 'x', timestep, subset, 6)
@@ -734,8 +741,6 @@ def initProjector(self):
     self.NVOXELS = 8
     self.TH = 100000000000.
     self.TH32 = 100000.
-    self.NVOXELS5 = 1
-    self.NVOXELSFP = 8
     # Number of z-voxels each thread processes in the curved helical BP (mirrors NVOXELSHELICAL in the C++ headers)
     self.NVOXELSHELICAL = 1
     if np.size(self.weights) > 0:
@@ -886,10 +891,8 @@ def initProjector(self):
                             nVoxelsZ = self.NVOXELSHELICAL if self.useHelical else self.NVOXELS
                             globalSize[timestep][subset][ii] = (self.Nx[ii].item() + self.erotusBP[ii * 2], self.Ny[ii].item() + self.erotusBP[ii * 2 + 1], (self.Nz[ii].item()  + nVoxelsZ - 1) // nVoxelsZ)
                         elif self.BPType == 5:
-                            if self.pitch:
-                                globalSize[timestep][subset][ii] = (self.Nx[ii].item() + self.erotusBP[ii * 2], self.Ny[ii].item() + self.erotusBP[ii * 2 + 1], self.Nz[ii].item())
-                            else:
-                                globalSize[timestep][subset][ii] = (self.Nx[ii].item() + self.erotusBP[ii * 2], self.Ny[ii].item() + self.erotusBP[ii * 2 + 1], (self.Nz[ii].item()  + self.NVOXELS5 - 1) // self.NVOXELS5)
+                            nVoxelsZ = _backprojectionVoxelsType5(self)
+                            globalSize[timestep][subset][ii] = (self.Nx[ii].item() + self.erotusBP[ii * 2], self.Ny[ii].item() + self.erotusBP[ii * 2 + 1], (self.Nz[ii].item() + nVoxelsZ - 1) // nVoxelsZ)
                         else:
                             globalSize[timestep][subset][ii] = (self.Nx[ii].item() + self.erotusBP[ii * 2], self.Ny[ii].item() + self.erotusBP[ii * 2 + 1], self.Nz[ii].item())
             self.localSizeBP = localSize + tuple()
@@ -1121,7 +1124,7 @@ def initProjector(self):
                 else:
                     bOptBP += ('-DCAST=float',)
         elif self.BPType == 5:
-            bOptBP += ('-DPROJ5','-DNVOXELS5=' + str(self.NVOXELS5),)
+            bOptBP += ('-DPROJ5','-DNVOXELS5=' + str(_backprojectionVoxelsType5(self)),)
             # Use the per-projection geometry precomputed with computeGeom5 (stored in self.d_geom5)
             if self.CT and self.listmode == 0 and not self.useHelical:
                 bOptBP += ('-DGEOM5',)

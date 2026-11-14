@@ -237,7 +237,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
         }
         totLength[tt] = pituus[inputScalars.subsets + inputScalars.subsets * tt];
     }
-	af::array apu_sum, E, indices, rowInd, values, meanBP, meanFP, OSEMapu;
+	af::array apu_sum, E, indices, rowInd, values, meanBP, meanBPOSEM, meanFP, OSEMapu;
 
 	if ((MethodList.MRAMLA || MethodList.MBSREM) && inputScalars.Nt > 1U)
 		E = af::constant(1.f, inputScalars.kokoTOF, 1);
@@ -768,7 +768,6 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                         noNorm = true;
                     }
                     E.eval();
-                    computeIntegralImage(inputScalars, w_vec, inputScalars.nProjections, E, meanBP);
                     for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
                         int64_t alku = 0;
                         for (uint32_t subIter = 0; subIter < inputScalars.subsetsUsed; subIter++) {
@@ -1476,15 +1475,20 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 							mexPrintBase("max(outputFP) = %f\n", af::max<float>(outputFP));
 							mexEval();
 						}
+						// OSEMapu has to be formed before outputFP is replaced with its integral image
+						if (CTOSEMBranch && inputScalars.randoms_correction)
+							OSEMapu = (mData[subIter][timestepData].as(f32) * outputFP) / (outputFP + aRand[timestepData][subIter]);
+						// adapTypeA must hold the projection-domain data, so copy it before outputFP is replaced with its integral image
+						if (inputScalars.adaptiveType == 2 && MethodList.CPType)
+							vec.adapTypeA = outputFP.copy();
 						computeIntegralImage(inputScalars, w_vec, length[indD], outputFP, meanBP);
 						if (CTOSEMBranch) {
 							if (inputScalars.randoms_correction) {
-								OSEMapu = (mData[subIter][timestepData].as(f32) * outputFP) / (outputFP + aRand[timestepData][subIter]);
-								computeIntegralImage(inputScalars, w_vec, length[indD], OSEMapu, meanBP);
+								computeIntegralImage(inputScalars, w_vec, length[indD], OSEMapu, meanBPOSEM);
 							}
 							else if (iter == 0) {
 								OSEMapu = mData[subIter][timestepData].as(f32);
-								computeIntegralImage(inputScalars, w_vec, length[indD], OSEMapu, meanBP);
+								computeIntegralImage(inputScalars, w_vec, length[indD], OSEMapu, meanBPOSEM);
 							}
 						}
 						// Setup the fastPDHG to account for also everything after backprojection itself
@@ -1507,12 +1511,9 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 						if (!computeSensThisTimestep)
 							proj.no_norm = 1u;
 						for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-							if (ii == 0 && inputScalars.adaptiveType == 2 && MethodList.CPType)
-								vec.adapTypeA = outputFP.copy();
-
 							if (CTOSEMBranch && computeSensThisTimestep) {
 								if (inputScalars.randoms_correction || iter == 0 || (compute_norm_matrix == 1u && proj.no_norm == 0)) {
-									status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, OSEMapu, osa_iter,tt,  length, m_size, meanBP, g, proj, false, ii, pituus);
+									status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, OSEMapu, osa_iter,tt,  length, m_size, meanBPOSEM, g, proj, false, ii, pituus);
 									if (compute_norm_matrix == 1u) {
 										vec.Summ[sIdx][ii][0] = vec.rhs_os[tt][ii];
 										vec.Summ[sIdx][ii][0](vec.Summ[sIdx][ii][0] < inputScalars.epps) = inputScalars.epps;

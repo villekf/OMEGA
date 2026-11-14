@@ -82,6 +82,14 @@ typedef struct structForScalars {
 	// Build the projector type 2/3 kernels with the end point check of the tube (-DORTHCLIP), see orthClipNeeded below.
 	// The default (true) is the conservative one, reconstructionAF()/reconstruction_multigpu() set it from the geometry
 	bool orthClip = true;
+	// Number of detector columns computed by each thread in the type 5 forward projection (the user option NVOXELSFP, at least 1 is used). The
+	// footprint of the first column is reused for the others, which is exact only if the detector columns are parallel to the z-axis and the
+	// detector rows are perpendicular to it, see forwardProjectionColumns. It decides the FP kernel define and the launch size
+	uint32_t NVOXELSFP = NVOXELSFP_DEFAULT;
+	// Number of voxels in the axial direction computed by each thread in the type 5 backprojection (the user option NVOXELS5, at least 1 is
+	// used). Two of the four integral image values of the previous voxel are reused, which is exact only if the detector panel is not tilted
+	// or rotated in its plane, see backprojectionVoxelsType5. It decides the BP kernel define and the launch size
+	uint32_t NVOXELS5 = NVOXELS5_DEFAULT;
 	// True only when Nt > 1 AND some sensitivity-affecting input (image-based attenuation or the
 	// multiplicative corrVector/extraCorr) genuinely differs per timestep. Computed once, early, in
 	// reconstructionAF() and consumed there plus in functions.hpp (transferControl, backprojectionType6)

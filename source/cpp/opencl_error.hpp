@@ -34,10 +34,10 @@
 // How many voxels are computed per thread
 #define NVOXELS 8
 #define NVOXELSHELICAL 1
-// How many voxels are computed per thread for BDD backprojection
-#define NVOXELS5 1
+// How many voxels are computed per thread for BDD backprojection by default (the user option NVOXELS5)
+#define NVOXELS5_DEFAULT 8
 // How many slices are computed in the same thread for BDD forward projection
-#define NVOXELSFP 8
+#define NVOXELSFP_DEFAULT 8
 
 // Source: https://stackoverflow.com/questions/14038589/what-is-the-canonical-way-to-check-for-errors-using-the-cuda-runtime-api
 #define getErrorString(ans) { gpuAssert((ans), __FILE__, __LINE__); }

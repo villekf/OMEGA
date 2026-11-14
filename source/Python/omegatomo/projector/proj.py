@@ -623,6 +623,21 @@ class projectorClass:
     storeResidual = False
     useFDKWeights = True
     useLayeredBP = True
+    # Number of detector columns computed by each thread in the forward projection of projector type 5. The footprint of the first
+    # column is reused for the others, which makes the forward projection faster. This is exact only when the detector columns are
+    # parallel to the z-axis and the detector rows are perpendicular to it, i.e. when the detector panel is not tilted or rotated in
+    # its plane. With such panels (for example a non-zero pitchRoll or custom direction vectors) values larger than 1 are
+    # approximate: the error is about 0.1 % for rotations of a few milliradians and about 2 % at 10 degrees. Use 1 in such cases,
+    # the forward projection is then about 1.6 times slower. A flipped column direction is handled exactly with any value.
+    # Default is 8.
+    NVOXELSFP = 8
+    # Number of voxels in the axial (z) direction computed by each thread in the backprojection of projector type 5. Two of the four
+    # integral image values of the previous voxel are reused, which makes the backprojection about two times faster. This is exact when
+    # the detector panel is not tilted or rotated in its plane. With such panels (for example a non-zero pitchRoll or custom direction
+    # vectors) values larger than 1 are approximate: for rotations of a few milliradians the effect on the reconstruction is below 0.1 %,
+    # but the error grows linearly with the rotation and with this value. Use 1 if the panel is rotated by more than about half a degree.
+    # The curved detector of helical CT always uses 1. Default is 8.
+    NVOXELS5 = 8
     useIndexBasedReconstruction = False
     trIndex = np.empty(0, dtype = np.uint16)
     axIndex = np.empty(0, dtype = np.uint16)
@@ -2266,6 +2281,21 @@ class projectorClass:
             raise ValueError('Parallel beam is not supported with curved helical data!')
         if self.CT and self.useParallelBeam and (self.projector_type % 10 == 5 or (self.projector_type >= 10 and self.projector_type // 10 == 5)):
             raise ValueError('Parallel beam is not supported with projector type 5!')
+        if (self.projector_type if self.projector_type < 10 else self.projector_type // 10) == 5:
+            nColsFP = self.NVOXELSFP
+            if isinstance(nColsFP, (float, np.floating)) and np.isfinite(nColsFP) and float(nColsFP).is_integer():
+                nColsFP = int(nColsFP)
+            if isinstance(nColsFP, (bool, np.bool_)) or not isinstance(nColsFP, (int, np.integer)) or nColsFP < 1:
+                raise ValueError('NVOXELSFP must be an integer >= 1 (the number of detector columns computed by each thread in the type 5 forward projection)!')
+            self.NVOXELSFP = int(nColsFP)
+        # The backprojector is the second digit of a two-digit projector type
+        if self.projector_type == 5 or (self.projector_type >= 10 and self.projector_type % 10 == 5):
+            nVoxZ5 = self.NVOXELS5
+            if isinstance(nVoxZ5, (float, np.floating)) and np.isfinite(nVoxZ5) and float(nVoxZ5).is_integer():
+                nVoxZ5 = int(nVoxZ5)
+            if isinstance(nVoxZ5, (bool, np.bool_)) or not isinstance(nVoxZ5, (int, np.integer)) or nVoxZ5 < 1:
+                raise ValueError('NVOXELS5 must be an integer >= 1 (the number of voxels in the axial direction computed by each thread in the type 5 backprojection)!')
+            self.NVOXELS5 = int(nVoxZ5)
         if self.CT and self.useParallelBeam and (self.useCPU or self.implementation == 4):
             raise ValueError('Parallel beam is not supported with the CPU implementation!')
         if self.subsetType == 12 and not self.offsetCorrection:
@@ -3178,6 +3208,8 @@ class projectorClass:
             ('compute_sensitivity_image', ctypes.c_bool),
             ('useFDKWeights', ctypes.c_bool),
             ('useLayeredBP', ctypes.c_bool),
+            ('NVOXELSFP', ctypes.c_uint32),
+            ('NVOXELS5', ctypes.c_uint32),
             ('useIndexBasedReconstruction', ctypes.c_bool),
             ('stochasticSubsetSelection', ctypes.c_bool),
             ('useTotLength', ctypes.c_bool),

@@ -111,6 +111,8 @@ New features:
   - Validation: precorrected reconstructions (LSQR, OSEM, FDK) equal the reconstructions of the same data without the gain to 2-5e-7; with the gain applied in the reconstruction, OSEM and PKMA keep the true image as a fixed point and equal the gain-free reconstruction for a constant normalization (1.2e-6)
 - CT: ```options.useLayeredBP``` (default true) stores the projections read by the backprojection of projector type 4 in a layered 2D texture instead of a 3D texture (CUDA, HIP and OpenCL; MATLAB and Python). The result is identical and the backprojection is about 2-5 % faster
   - It is switched off automatically when a subset (or, without subsets, the whole data) has more than 2048 projections, or more than the layer limit of the device, and with helical CT, largeDim and Metal
+- CT: ```options.NVOXELSFP``` (default 8) sets the number of detector columns computed by each thread in the forward projection of projector type 5. The footprint of the first column is reused for the others, which makes the forward projection faster, but this is exact only for detector panels that are not tilted or rotated in their plane. With tilted or rotated panels values larger than 1 are approximate, use 1 in such cases (MATLAB and Python)
+- CT: ```options.NVOXELS5``` (default 8) sets the number of voxels in the axial direction computed by each thread in the backprojection of projector type 5. Part of the integral image values of the previous voxel are reused, which makes the backprojection about two times faster. This is exact only for detector panels that are not tilted or rotated in their plane. With such panels values larger than 1 are approximate, use 1 if the rotation is more than about half a degree. Helical CT always uses 1 (MATLAB and Python)
 - Elekta XVI CBCT data loader ```loadElektaXVIData``` (MATLAB and Python ```omegatomo.fileio```): reads the ```.his``` projection images and ```_Frames.xml``` (gantry angles and detector offsets of each projection, exposed frames only), supports binning and sets the nominal XVI geometry and a global flat (air) value (```options.elektaFlatPercentile```, default 99.9th percentile of the data). ```options.elektaUCentreScale``` and ```options.elektaVCentreScale``` (default 1) scale the detector offsets of the XML file
 
 Changed behaviour:
@@ -381,6 +383,14 @@ Bug fixes:
   - The normalization weighting (e.g. detector uniformity/normalization images) was wrong in the forward and backprojection (all GPU backends)
   - With ```options.meanFP```/```options.meanBP``` the mean add-back used an unclipped footprint area, giving errors where the footprints extend past the volume or the detector
   - MATLAB projection operators (implementation 5): ```options.meanFP```/```options.meanBP``` were not passed to the kernels, the multi-volume forward projection read wrong offsets and the multi-volume backprojection with 3 or more volumes split the output at wrong offsets
+  - The sensitivity image now equals the backprojection of ones, which fixes the algorithms that use the sensitivity image with CT (e.g. SART)
+  - The forward projection mask and weights are now handled per detector pixel
+  - Tilted, rotated and flipped detectors: a flipped column direction is now exact and the backprojection footprint of rotated panels was fixed
+  - The weights of offset detectors were shifted by half a pixel
+  - The backprojection footprint of the standard detector now takes the axial extent of a voxel at the voxel centre, which makes the multi-voxel backprojection (```options.NVOXELS5```) exact. This changes type 5 backprojections slightly (below 0.1 % for smooth data)
+  - The 3D backprojection mask is now read for every voxel
+  - Values outside the detector and the volume are now exact zeros, which fixes the divergence of CT OSEM with CUDA
+  - Fixes for BB, the dP preconditioner and SPS, ```options.meanBP``` with CT OSEM, CT OSEM with randoms correction and adaptive PDHG (```PDAdaptiveType``` 2) with projector type 5
 - Projector types 1-3
   - Perpendicular rays were indexed off by one, and TOF did not work, when the source/detector is inside the FOV
   - The multi-ray coordinate division was correct only for perpendicular rays; the ray angle is now taken into account

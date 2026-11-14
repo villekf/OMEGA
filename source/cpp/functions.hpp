@@ -2937,12 +2937,15 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				backprojectionType6(mData, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, ii);
 			else {
 				if (inputScalars.BPType == 5) {
+					mDataApu = mData;
 					computeIntegralImage(inputScalars, w_vec, length[0], mData, meanBP);
 				}
 				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, mData, 0, timestep, length, m_size, meanBP, g, proj, false, ii, pituus);
 				if (status != 0) {
 					return -1;
 				}
+				if (inputScalars.BPType == 5)
+					mData = mDataApu;
 			}
 			if (vec.gradBB[timestep].size() < ii + 1) {
 				vec.gradBB[timestep].emplace_back(-vec.rhs_os[timestep][ii].copy());

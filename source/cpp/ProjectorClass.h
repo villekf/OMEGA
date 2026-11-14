@@ -1406,16 +1406,17 @@ class ProjectorClass {
 				ADD_OPT(os_options, "-DPROJWINDOW");
 			// Same as above, but for BPType 5
 			if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.fastPDHG) {
-				addFastPDHGOptions(os_options, inputScalars, w_vec, MethodList, inputScalars.pitch ? 1ULL : NVOXELS5);
+				addFastPDHGOptions(os_options, inputScalars, w_vec, MethodList, backprojectionVoxelsType5(inputScalars));
 			}
 #endif
-			if (inputScalars.pitch) {
-				ADD_OPT_INT(os_options, "-DNVOXELS5", 1);
+			ADD_OPT_INT(os_options, "-DNVOXELS5", static_cast<int>(backprojectionVoxelsType5(inputScalars)));
+			if (inputScalars.BPType == 5 && (DEBUG || inputScalars.verbose >= 3)) {
+				mexPrintBase("Type 5 backprojection: %u voxels per thread\n", static_cast<uint32_t>(backprojectionVoxelsType5(inputScalars)));
 			}
-			else {
-				ADD_OPT_INT(os_options, "-DNVOXELS5", NVOXELS5);
+			ADD_OPT_INT(os_options, "-DNVOXELSFP", forwardProjectionColumns(inputScalars));
+			if (inputScalars.FPType == 5 && (DEBUG || inputScalars.verbose >= 3)) {
+				mexPrintBase("Type 5 forward projection: %u detector columns per thread\n", forwardProjectionColumns(inputScalars));
 			}
-			ADD_OPT_INT(os_options, "-DNVOXELSFP", NVOXELSFP);
 			if (inputScalars.FPType == 5) {
 				status = buildBackendProgram(contentFP, programFP, os_options);
 				if (status == BUILD_SUCCESS_VALUE && DEBUG) {
@@ -2175,9 +2176,30 @@ class ProjectorClass {
 		return status;
 	}
 
+	// Number of detector columns handled by one thread of the type 5 forward projection, the user option NVOXELSFP (at least 1). The footprint
+	// of the first column is reused for the others, which is exact only when the detector columns are parallel to the z-axis and the detector
+	// rows are perpendicular to it. With a tilted or in-plane rotated detector values larger than 1 are approximate
+	inline uint32_t forwardProjectionColumns(const scalarStruct& inputScalars) const {
+		return inputScalars.NVOXELSFP > 0U ? inputScalars.NVOXELSFP : 1U;
+	}
+
+	// Number of voxels in the axial direction handled by one thread of the type 5 backprojection, the user option NVOXELS5 (at least 1). Two of
+	// the four integral image values of the previous voxel are reused, which is exact only when the detector panel is not tilted or rotated in
+	// its plane. The curved detector of helical CT always uses 1 because its z-loop has not been validated with several voxels. Metal is not
+	// tested with several voxels either and always uses 1
+	inline uint64_t backprojectionVoxelsType5(const scalarStruct& inputScalars) const {
+#if defined(METAL)
+		return 1ULL;
+#else
+		if (inputScalars.useHelical)
+			return 1ULL;
+		return inputScalars.NVOXELS5 > 0U ? static_cast<uint64_t>(inputScalars.NVOXELS5) : 1ULL;
+#endif
+	}
+
 	// Number of voxels in the axial direction handled by one thread of the helical type 4 or 5 backprojection
 	inline int64_t projectionWindowVoxels(const scalarStruct& inputScalars) const {
-		return inputScalars.BPType == 5 ? (inputScalars.pitch ? 1 : static_cast<int64_t>(NVOXELS5)) : static_cast<int64_t>(NVOXELSHELICAL);
+		return inputScalars.BPType == 5 ? static_cast<int64_t>(backprojectionVoxelsType5(inputScalars)) : static_cast<int64_t>(NVOXELSHELICAL);
 	}
 
 	// Number of axial voxel blocks of volume ii
@@ -3398,7 +3420,7 @@ public:
 		if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
 			erotus[0] = inputScalars.nRowsD % local_size[0];
 			if (inputScalars.FPType == 5)
-				erotus[1] = ((inputScalars.nColsD + NVOXELSFP - 1) / NVOXELSFP) % local_size[1];
+				erotus[1] = ((inputScalars.nColsD + forwardProjectionColumns(inputScalars) - 1) / forwardProjectionColumns(inputScalars)) % local_size[1];
 			else
 				erotus[1] = inputScalars.nColsD % local_size[1];
 			if (erotus[1] > 0)
@@ -4833,7 +4855,7 @@ public:
 		// member shared with the backprojection and with the other, multidimensional launches here.
 		WORKRANGE_t localFP = local;
 		if (inputScalars.FPType == 5) {
-			SET_LAUNCH_RANGE3(global, inputScalars.nRowsD + erotus[0], (inputScalars.nColsD + NVOXELSFP - 1) / NVOXELSFP + erotus[1],
+			SET_LAUNCH_RANGE3(global, inputScalars.nRowsD + erotus[0], (inputScalars.nColsD + forwardProjectionColumns(inputScalars) - 1) / forwardProjectionColumns(inputScalars) + erotus[1],
 				length[osa_iter + timestep * inputScalars.subsets], localFP);
 		}
 		else if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
@@ -4915,7 +4937,7 @@ public:
 			mexPrintBase("no_norm = %u\n", no_norm);
 			mexPrintBase("ii = %u\n", ii);
 			mexPrintBase("NVOXELS = %u\n", NVOXELS);
-			mexPrintBase("NVOXELS5 = %u\n", NVOXELS5);
+			mexPrintBase("NVOXELS5 = %u\n", static_cast<uint32_t>(backprojectionVoxelsType5(inputScalars)));
 			mexPrintBase("osa_iter = %u\n", osa_iter);
 			mexPrintBase("timestep = %u\n", timestep);
 			mexPrintBase("memSize = %u\n", memSize);
@@ -5781,25 +5803,16 @@ public:
 						SET_RANGE3(global, inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], inputScalars.Nz[ii]);
 #endif // END CUDA
 				else if (inputScalars.BPType == 5) {
+					const uint64_t nVoxelsZ5 = backprojectionVoxelsType5(inputScalars);
 #if defined(CUDA) || defined(HIP)
-					if (inputScalars.pitch) {
-						global[0] = (inputScalars.Nx[ii] + erotusBP[0][ii]) / localBP[0];
-						global[1] = (inputScalars.Ny[ii] + erotusBP[1][ii]) / localBP[1];
-						global[2] = inputScalars.Nz[ii];
-#elif defined(OPENCL) || defined(METAL)
-					if (inputScalars.pitch)
-						SET_RANGE3(global, inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], inputScalars.Nz[ii]);
-					else
-						SET_RANGE3(global, inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], (inputScalars.Nz[ii] + NVOXELS5 - 1) / NVOXELS5);
-#endif // END CUDA
-					}
-#if defined(CUDA) || defined(HIP)
-				else {
 					global[0] = (inputScalars.Nx[ii] + erotusBP[0][ii]) / localBP[0];
 					global[1] = (inputScalars.Ny[ii] + erotusBP[1][ii]) / localBP[1];
-					global[2] = (inputScalars.Nz[ii] + NVOXELS5 - 1) / NVOXELS5;
+					global[2] = (inputScalars.Nz[ii] + nVoxelsZ5 - 1) / nVoxelsZ5;
+#elif defined(OPENCL) || defined(METAL)
+					SET_RANGE3(global, inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], (inputScalars.Nz[ii] + nVoxelsZ5 - 1) / nVoxelsZ5);
+#endif // END CUDA
 				}
-				}
+#if defined(CUDA) || defined(HIP)
 			else {
 				global[0] = (inputScalars.Nx[ii] + erotusBP[0][ii]) / localBP[0];
 				global[1] = (inputScalars.Ny[ii] + erotusBP[1][ii]) / localBP[1];
@@ -6420,7 +6433,7 @@ public:
 		// Check whether the prior local neighborhood can be cached in local memory
 		// If not, disable fastPDHG
 		if (inputScalars.fastPDHG && FASTNLMLOCALCACHE && inputScalars.CT && inputScalars.listmode == 0 && (inputScalars.BPType == 4 || inputScalars.BPType == 5)) {
-			const size_t nVoxZ = (inputScalars.BPType == 5) ? (inputScalars.pitch ? 1ULL : static_cast<size_t>(NVOXELS5))
+			const size_t nVoxZ = (inputScalars.BPType == 5) ? static_cast<size_t>(backprojectionVoxelsType5(inputScalars))
 				: (inputScalars.useHelical ? static_cast<size_t>(NVOXELSHELICAL) : static_cast<size_t>(NVOXELS));
 			size_t cacheSize = 0ULL;
 			int memLoc = 0;

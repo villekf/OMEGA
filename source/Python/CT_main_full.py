@@ -398,6 +398,27 @@ options.dL = 0.5
 # integral image reduces these errors, at a small extra cost.
 options.meanFP = False
 options.meanBP = False
+# Number of detector columns computed by each thread in the forward
+# projection of projector type 5. The footprint of the first column is
+# reused for the others, which makes the forward projection faster. This
+# is exact only when the detector panel is not tilted or rotated in its
+# plane. With such panels (for example a non-zero pitchRoll or custom
+# direction vectors) values larger than 1 are approximate: the error is
+# about 0.1 % for rotations of a few milliradians and about 2 % at 10
+# degrees. Use 1 in such cases, the forward projection is then about 1.6
+# times slower. Default is 8.
+options.NVOXELSFP = 8
+# Number of voxels in the axial (z) direction computed by each thread in the
+# backprojection of projector type 5. Part of the integral image values of the
+# previous voxel are reused, which makes the backprojection about two times
+# faster. This is exact when the detector panel is not tilted or rotated in its
+# plane. With such panels (for example a non-zero pitchRoll or custom direction
+# vectors) values larger than 1 are approximate: for rotations of a few
+# milliradians the effect on the reconstruction is below 0.1 %, but the error
+# grows with the rotation and with this value. Use 1 if the panel is rotated by
+# more than about half a degree. The curved detector of helical CT always uses
+# 1. Default is 8.
+options.NVOXELS5 = 8
 
 ### Use point spread function (PSF) blurring
 # Applies PSF blurring through convolution to the image space. This is the

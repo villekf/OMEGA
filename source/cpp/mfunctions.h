@@ -774,6 +774,12 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 	// Optional (off when the field is missing): layered 2D texture for the CT projector type 4 backprojection measurements
 	if (mxGetFieldNumber(options, "useLayeredBP") >= 0)
 		inputScalars.useLayeredBP = getScalarBool(getField(options, 0, "useLayeredBP"), -49);
+	// Optional (default 8 when the field is missing): number of detector columns computed by each thread in the type 5 forward projection
+	if (mxGetFieldNumber(options, "NVOXELSFP") >= 0)
+		inputScalars.NVOXELSFP = getScalarUInt32(options, 0, "NVOXELSFP");
+	// Optional (default 8 when the field is missing): number of voxels in the axial direction computed by each thread in the type 5 backprojection
+	if (mxGetFieldNumber(options, "NVOXELS5") >= 0)
+		inputScalars.NVOXELS5 = getScalarUInt32(options, 0, "NVOXELS5");
 	if (MethodList.FDK && inputScalars.CT && inputScalars.useFDKWeights) {
 		w_vec.angles = getSingles(options, "angles");
 		inputScalars.DSC = getScalarFloat(getField(options, 0, "sourceToCRot"), -63);

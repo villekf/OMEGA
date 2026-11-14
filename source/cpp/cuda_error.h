@@ -160,5 +160,6 @@ inline void gpuAssert(CUresult code, const char* file, int line)
 #define TH32 100000.f
 #define NVOXELS 8
 #define NVOXELSHELICAL 1
-#define NVOXELS5 1
-#define NVOXELSFP 8
+// Default number of voxels in the axial direction computed by each thread in the type 5 backprojection (the user option NVOXELS5)
+#define NVOXELS5_DEFAULT 8
+#define NVOXELSFP_DEFAULT 8

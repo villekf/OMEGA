@@ -340,6 +340,10 @@ struct inputStruct {
     bool useFDKWeights = true;
     // If true, the CT projector type 4 backprojection reads the measurements from a 2D layered texture (when possible)
     bool useLayeredBP = true;
+    // Number of detector columns computed by each thread in the type 5 forward projection
+    uint32_t NVOXELSFP = 8;
+    // Number of voxels in the axial direction computed by each thread in the type 5 backprojection
+    uint32_t NVOXELS5 = 8;
     // If true, index-based listmode reconstruction is used
     bool useIndexBasedReconstruction = false;
     // Use stochastic subset selection
@@ -1471,6 +1475,8 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     }
     inputScalars.useFDKWeights = options.useFDKWeights;
     inputScalars.useLayeredBP = options.useLayeredBP;
+    inputScalars.NVOXELSFP = options.NVOXELSFP;
+    inputScalars.NVOXELS5 = options.NVOXELS5;
     if (MethodList.FDK && inputScalars.CT && inputScalars.useFDKWeights) {
         w_vec.angles = options.angles;
         inputScalars.DSC = options.sourceToCRot;

@@ -514,6 +514,17 @@ end
 if options.CT && options.useParallelBeam && (mod(options.projector_type, 10) == 5 || (options.projector_type >= 10 && floor(options.projector_type / 10) == 5))
     error('Parallel beam is not supported with projector type 5!')
 end
+if (options.projector_type < 10 && options.projector_type == 5) || (options.projector_type >= 10 && floor(options.projector_type / 10) == 5)
+    if ~isnumeric(options.NVOXELSFP) || ~isscalar(options.NVOXELSFP) || ~isfinite(options.NVOXELSFP) || options.NVOXELSFP < 1 || options.NVOXELSFP ~= floor(options.NVOXELSFP)
+        error('options.NVOXELSFP must be an integer >= 1 (the number of detector columns computed by each thread in the type 5 forward projection)!')
+    end
+end
+% The backprojector is the second digit of a two-digit projector type
+if options.projector_type == 5 || (options.projector_type >= 10 && mod(options.projector_type, 10) == 5)
+    if ~isnumeric(options.NVOXELS5) || ~isscalar(options.NVOXELS5) || ~isfinite(options.NVOXELS5) || options.NVOXELS5 < 1 || options.NVOXELS5 ~= floor(options.NVOXELS5)
+        error('options.NVOXELS5 must be an integer >= 1 (the number of voxels in the axial direction computed by each thread in the type 5 backprojection)!')
+    end
+end
 if options.CT && options.useParallelBeam && (options.implementation == 4 || options.use_CPU)
     error('Parallel beam is not supported with the CPU implementation!')
 end

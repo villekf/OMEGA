@@ -129,28 +129,37 @@ void projectorType5Forward(
     return;
   size_t idx = GID0 + GID1 * NVOXELSFP * d_nRows + GID2 * d_nCols * d_nRows;
 
+  // Number of valid columns for this thread
+  const int maxZZ = MIN(NVOXELSFP, CINT(d_nCols) - i.y);
 #ifdef MASKFP
+  // The mask is read for every pixel of the column group of this thread. The thread is skipped only if all of them are masked
+  bool maskOn[NVOXELSFP];
+  bool anyMaskOn = false;
+  for (int zz = 0; zz < maxZZ; zz++) {
 #if defined(METAL)
 #ifdef MASKFP3D
-  const int maskVal = static_cast<int>(metal::round(maskFP.read(uint3(i.x, i.y, i.z)).r));
+    const int maskVal = static_cast<int>(metal::round(maskFP.read(uint3(i.x, i.y + zz, i.z)).r));
 #else
-  const int maskVal = static_cast<int>(metal::round(maskFP.read(uint2(i.x, i.y)).r));
+    const int maskVal = static_cast<int>(metal::round(maskFP.read(uint2(i.x, i.y + zz)).r));
 #endif
 #elif defined(CUDA) || defined(HIP)
 #ifdef MASKFP3D
-  const int maskVal = tex3D<unsigned char>(maskFP, i.x, i.y, i.z);
+    const int maskVal = tex3D<unsigned char>(maskFP, i.x, i.y + zz, i.z);
 #else
-  const int maskVal = tex2D<unsigned char>(maskFP, i.x, i.y);
+    const int maskVal = tex2D<unsigned char>(maskFP, i.x, i.y + zz);
 #endif
 #else
 #ifdef MASKFP3D
-  const int maskVal =
-      read_imageui(maskFP, sampler_MASK, (int4)(i.x, i.y, i.z, 0)).w;
+    const int maskVal =
+        read_imageui(maskFP, sampler_MASK, (int4)(i.x, i.y + zz, i.z, 0)).w;
 #else
-  const int maskVal = read_imageui(maskFP, sampler_MASK, (int2)(i.x, i.y)).w;
+    const int maskVal = read_imageui(maskFP, sampler_MASK, (int2)(i.x, i.y + zz)).w;
 #endif
 #endif
-  if (maskVal == 0)
+    maskOn[zz] = maskVal != 0;
+    anyMaskOn = anyMaskOn || maskOn[zz];
+  }
+  if (!anyMaskOn)
     return;
 #endif
 #ifdef PYTHON
@@ -165,7 +174,6 @@ void projectorType5Forward(
   float temp[NVOXELSFP];
   for (int zz = 0; zz < NVOXELSFP; zz++)
     temp[zz] = 0.f;
-  const int maxZZ = MIN(NVOXELSFP, CINT(d_nCols) - i.y);
 #ifdef CT
   // Get source and detector coordinates
   getDetectorCoordinatesCT(d_xyz,
@@ -174,9 +182,8 @@ void projectorType5Forward(
 #endif
                            d_uv, &s, &d, i, d_nRows, d_nCols, d_dPitch,
                            &dL, &dR, &dU, &dD);
-  // Weight values
-  const float3 uVector = FABS(NORMALIZE(d - s));
-  float kerroin = d_d.x * d_d.y * d_d.z;
+  // Weight values, the division by the ray direction component is done per pixel when the results are written
+  const float kerroin = d_d.x * d_d.y * d_d.z;
   const float apuZ = (b.z - s.z - d_d.z / 2.f);
   if (FABS(s.x) <= FABS(s.y)) {
     // Coordinates of the corners
@@ -184,7 +191,6 @@ void projectorType5Forward(
         MFLOAT2((dL.x - s.x) / (dL.y - s.y), (dR.x - s.x) / (dR.y - s.y));
     const float2 Z =
         MFLOAT2((dU.z - s.z) / (dU.y - s.y), (dD.z - s.z) / (dD.y - s.y));
-    kerroin /= uVector.y;
     const float apuX = (b.x - s.x - d_d.x / 2.f);
     const float apuV = b.y - s.y;
 #ifdef MEANDISTANCEFP
@@ -196,15 +202,20 @@ void projectorType5Forward(
     const float texWidthZ = CFLOAT(d_N.z + 1);
 #endif
 #endif
-    float dyDiv2 = d_d.y / 2.f;
     for (uint jj = 0; jj < d_N.y; jj++) {
+      // Compute the slice position directly: a running sum accumulates rounding error over the slices
+      // and moves the texture coordinate off the texel centre
+      const float dyDiv2 = CFLOAT(jj) * d_d.y + d_d.y / 2.f;
       const float v = dyDiv2 + apuV;
       const float dy = dyDiv2 * d_Size.y;
-      dyDiv2 += d_d.y;
       // Shift the origin to the corner of the slice
       const float2 xLR0 = v * X - apuX;
       const float2 zUD0 = v * Z - apuZ;
       float2 xLR = MFLOAT2(FMIN(xLR0.x, xLR0.y), FMAX(xLR0.x, xLR0.y));
+      // zUD0.x is the footprint edge of the +column-vector side of the pixel. The next column lies on that side, so the
+      // footprint of the next column continues upwards from the high edge when that edge is the higher one and downwards
+      // from the low edge otherwise
+      const bool stepUp = zUD0.x > zUD0.y;
       float2 zUD = MFLOAT2(FMIN(zUD0.x, zUD0.y), FMAX(zUD0.x, zUD0.y));
       const float area = FABS((xLR.x - xLR.y) * (zUD.x - zUD.y));
       const float invArea = FLOAT_ONE / area;
@@ -231,7 +242,11 @@ void projectorType5Forward(
       float C = d_IImageY.sample(sampler2, float3(xLR.y, zUD.y, dy)).r;
       float D = d_IImageY.sample(sampler2, float3(xLR.x, zUD.x, dy)).r;
 #endif
-      float apu = C + D - A - B;
+      // Differences along z at the same in-plane coordinate are formed first. When the
+      // footprint lies outside the volume the two fetches of each pair are equal, so
+      // the result is exactly zero. The pairwise differences also reduce the rounding
+      // error of the float32 integral image.
+      float apu = (C - A) - (B - D);
 #ifdef MEANDISTANCEFP
       // Add back mean * (footprint area in texel units), clipped to the
       // valid SAT range [0, N] per axis so that footprints extending past
@@ -248,30 +263,64 @@ void projectorType5Forward(
       temp[0] += apu * invArea;
       const float xInterval = FABS(zUD.x - zUD.y);
       for (int zz = 1; zz < maxZZ; zz++) {
-        D = B;
-        A = C;
 #ifdef MEANDISTANCEFP
-        const float zLoPrev = zUD.y;
+        float zEdgePrev;
 #endif
-        zUD.y += xInterval;
+        if (stepUp) {
+          // The footprint moves up, the two fetches at the old upper edge become the lower ones
+          D = B;
+          A = C;
+#ifdef MEANDISTANCEFP
+          zEdgePrev = zUD.y;
+#endif
+          zUD.y += xInterval;
 #if defined(CUDA) || defined(HIP)
-        B = tex3D<float>(d_IImageY, xLR.x, zUD.y, dy);
-        C = tex3D<float>(d_IImageY, xLR.y, zUD.y, dy);
+          B = tex3D<float>(d_IImageY, xLR.x, zUD.y, dy);
+          C = tex3D<float>(d_IImageY, xLR.y, zUD.y, dy);
 #elif defined(OPENCL)
-        B = read_imagef(d_IImageY, sampler2, (float4)(xLR.x, zUD.y, dy, 0.f)).w;
-        C = read_imagef(d_IImageY, sampler2, (float4)(xLR.y, zUD.y, dy, 0.f)).w;
+          B = read_imagef(d_IImageY, sampler2, (float4)(xLR.x, zUD.y, dy, 0.f)).w;
+          C = read_imagef(d_IImageY, sampler2, (float4)(xLR.y, zUD.y, dy, 0.f)).w;
 #elif defined(METAL)
-        B = d_IImageY.sample(sampler2, float3(xLR.x, zUD.y, dy)).r;
-        C = d_IImageY.sample(sampler2, float3(xLR.y, zUD.y, dy)).r;
+          B = d_IImageY.sample(sampler2, float3(xLR.x, zUD.y, dy)).r;
+          C = d_IImageY.sample(sampler2, float3(xLR.y, zUD.y, dy)).r;
 #endif
-        apu = C + D - A - B;
+        }
+        else {
+          // The footprint moves down, the two fetches at the old lower edge become the upper ones
+          B = D;
+          C = A;
 #ifdef MEANDISTANCEFP
-        // The z-window advances by xInterval each step, so its clipped
-        // length (and hence the add-back area) must be recomputed here
-        // rather than reusing the zz=0 value.
-        zLenClip =
-            FMIN(FMAX(zUD.y * texWidthZ - 0.5f, 0.f), CFLOAT(d_N.z)) -
-            FMIN(FMAX(zLoPrev * texWidthZ - 0.5f, 0.f), CFLOAT(d_N.z));
+          zEdgePrev = zUD.x;
+#endif
+          zUD.x -= xInterval;
+#if defined(CUDA) || defined(HIP)
+          D = tex3D<float>(d_IImageY, xLR.x, zUD.x, dy);
+          A = tex3D<float>(d_IImageY, xLR.y, zUD.x, dy);
+#elif defined(OPENCL)
+          D = read_imagef(d_IImageY, sampler2, (float4)(xLR.x, zUD.x, dy, 0.f)).w;
+          A = read_imagef(d_IImageY, sampler2, (float4)(xLR.y, zUD.x, dy, 0.f)).w;
+#elif defined(METAL)
+          D = d_IImageY.sample(sampler2, float3(xLR.x, zUD.x, dy)).r;
+          A = d_IImageY.sample(sampler2, float3(xLR.y, zUD.x, dy)).r;
+#endif
+        }
+        // Differences along z at the same in-plane coordinate are formed first. When the
+        // footprint lies outside the volume the two fetches of each pair are equal, so
+        // the result is exactly zero. The pairwise differences also reduce the rounding
+        // error of the float32 integral image.
+        apu = (C - A) - (B - D);
+#ifdef MEANDISTANCEFP
+        // The z-window moves by xInterval each step, so its clipped length (and hence the
+        // add-back area) must be recomputed here rather than reusing the zz=0 value. The
+        // new window is [zEdgePrev, zUD.y] when stepping up and [zUD.x, zEdgePrev] when stepping down.
+        if (stepUp)
+          zLenClip =
+              FMIN(FMAX(zUD.y * texWidthZ - 0.5f, 0.f), CFLOAT(d_N.z)) -
+              FMIN(FMAX(zEdgePrev * texWidthZ - 0.5f, 0.f), CFLOAT(d_N.z));
+        else
+          zLenClip =
+              FMIN(FMAX(zEdgePrev * texWidthZ - 0.5f, 0.f), CFLOAT(d_N.z)) -
+              FMIN(FMAX(zUD.x * texWidthZ - 0.5f, 0.f), CFLOAT(d_N.z));
         area2 = d_meanV[jj + d_N.x] * xLenClip * zLenClip;
         apu += area2;
 #endif
@@ -283,7 +332,6 @@ void projectorType5Forward(
         MFLOAT2((dL.y - s.y) / (dL.x - s.x), (dR.y - s.y) / (dR.x - s.x));
     const float2 Z =
         MFLOAT2((dU.z - s.z) / (dU.x - s.x), (dD.z - s.z) / (dD.x - s.x));
-    kerroin /= uVector.x;
     const float apuY = (b.y - s.y - d_d.y / 2.f);
     const float apuV = b.x - s.x;
 #ifdef MEANDISTANCEFP
@@ -295,14 +343,17 @@ void projectorType5Forward(
     const float texWidthZ = CFLOAT(d_N.z + 1);
 #endif
 #endif
-    float dxBase = d_d.x / 2.f;
     for (uint ii = 0; ii < d_N.x; ii++) {
+      const float dxBase = CFLOAT(ii) * d_d.x + d_d.x / 2.f;
       const float v = dxBase + apuV;
       const float dx = dxBase * d_Size.x;
-      dxBase += d_d.x;
       const float2 yLR0 = v * Y - apuY;
       const float2 zUD0 = v * Z - apuZ;
       float2 yLR = MFLOAT2(FMIN(yLR0.x, yLR0.y), FMAX(yLR0.x, yLR0.y));
+      // zUD0.x is the footprint edge of the +column-vector side of the pixel. The next column lies on that side, so the
+      // footprint of the next column continues upwards from the high edge when that edge is the higher one and downwards
+      // from the low edge otherwise
+      const bool stepUp = zUD0.x > zUD0.y;
       float2 zUD = MFLOAT2(FMIN(zUD0.x, zUD0.y), FMAX(zUD0.x, zUD0.y));
       const float area = FABS((yLR.x - yLR.y) * (zUD.x - zUD.y));
       const float invArea = 1.f / area;
@@ -328,7 +379,11 @@ void projectorType5Forward(
       float C = d_IImageX.sample(sampler2, float3(yLR.y, zUD.y, dx)).r;
       float D = d_IImageX.sample(sampler2, float3(yLR.x, zUD.x, dx)).r;
 #endif
-      float apu = C + D - A - B;
+      // Differences along z at the same in-plane coordinate are formed first. When the
+      // footprint lies outside the volume the two fetches of each pair are equal, so
+      // the result is exactly zero. The pairwise differences also reduce the rounding
+      // error of the float32 integral image.
+      float apu = (C - A) - (B - D);
 #ifdef MEANDISTANCEFP
       // Add back mean * (footprint area in texel units), clipped to the
       // valid SAT range [0, N] per axis so that footprints extending past
@@ -345,42 +400,90 @@ void projectorType5Forward(
       temp[0] += apu * invArea;
       const float yInterval = FABS(zUD.x - zUD.y);
       for (int zz = 1; zz < maxZZ; zz++) {
-        D = B;
-        A = C;
 #ifdef MEANDISTANCEFP
-        const float zLoPrev = zUD.y;
+        float zEdgePrev;
 #endif
-        zUD.y += yInterval;
+        if (stepUp) {
+          // The footprint moves up, the two fetches at the old upper edge become the lower ones
+          D = B;
+          A = C;
+#ifdef MEANDISTANCEFP
+          zEdgePrev = zUD.y;
+#endif
+          zUD.y += yInterval;
 #if defined(CUDA) || defined(HIP)
-        B = tex3D<float>(d_IImageX, yLR.x, zUD.y, dx);
-        C = tex3D<float>(d_IImageX, yLR.y, zUD.y, dx);
+          B = tex3D<float>(d_IImageX, yLR.x, zUD.y, dx);
+          C = tex3D<float>(d_IImageX, yLR.y, zUD.y, dx);
 #elif defined(OPENCL)
-        B = read_imagef(d_IImageX, sampler2, (float4)(yLR.x, zUD.y, dx, 0.f)).w;
-        C = read_imagef(d_IImageX, sampler2, (float4)(yLR.y, zUD.y, dx, 0.f)).w;
+          B = read_imagef(d_IImageX, sampler2, (float4)(yLR.x, zUD.y, dx, 0.f)).w;
+          C = read_imagef(d_IImageX, sampler2, (float4)(yLR.y, zUD.y, dx, 0.f)).w;
 #elif defined(METAL)
-        B = d_IImageX.sample(sampler2, float3(yLR.x, zUD.y, dx)).r;
-        C = d_IImageX.sample(sampler2, float3(yLR.y, zUD.y, dx)).r;
+          B = d_IImageX.sample(sampler2, float3(yLR.x, zUD.y, dx)).r;
+          C = d_IImageX.sample(sampler2, float3(yLR.y, zUD.y, dx)).r;
 #endif
-        apu = C + D - A - B;
+        }
+        else {
+          // The footprint moves down, the two fetches at the old lower edge become the upper ones
+          B = D;
+          C = A;
 #ifdef MEANDISTANCEFP
-        // The z-window advances by yInterval each step, so its clipped
-        // length (and hence the add-back area) must be recomputed here
-        // rather than reusing the zz=0 value.
-        zLenClip =
-            FMIN(FMAX(zUD.y * texWidthZ - 0.5f, 0.f), CFLOAT(d_N.z)) -
-            FMIN(FMAX(zLoPrev * texWidthZ - 0.5f, 0.f), CFLOAT(d_N.z));
+          zEdgePrev = zUD.x;
+#endif
+          zUD.x -= yInterval;
+#if defined(CUDA) || defined(HIP)
+          D = tex3D<float>(d_IImageX, yLR.x, zUD.x, dx);
+          A = tex3D<float>(d_IImageX, yLR.y, zUD.x, dx);
+#elif defined(OPENCL)
+          D = read_imagef(d_IImageX, sampler2, (float4)(yLR.x, zUD.x, dx, 0.f)).w;
+          A = read_imagef(d_IImageX, sampler2, (float4)(yLR.y, zUD.x, dx, 0.f)).w;
+#elif defined(METAL)
+          D = d_IImageX.sample(sampler2, float3(yLR.x, zUD.x, dx)).r;
+          A = d_IImageX.sample(sampler2, float3(yLR.y, zUD.x, dx)).r;
+#endif
+        }
+        // Differences along z at the same in-plane coordinate are formed first. When the
+        // footprint lies outside the volume the two fetches of each pair are equal, so
+        // the result is exactly zero. The pairwise differences also reduce the rounding
+        // error of the float32 integral image.
+        apu = (C - A) - (B - D);
+#ifdef MEANDISTANCEFP
+        // The z-window moves by yInterval each step, so its clipped length (and hence the
+        // add-back area) must be recomputed here rather than reusing the zz=0 value. The
+        // new window is [zEdgePrev, zUD.y] when stepping up and [zUD.x, zEdgePrev] when stepping down.
+        if (stepUp)
+          zLenClip =
+              FMIN(FMAX(zUD.y * texWidthZ - 0.5f, 0.f), CFLOAT(d_N.z)) -
+              FMIN(FMAX(zEdgePrev * texWidthZ - 0.5f, 0.f), CFLOAT(d_N.z));
+        else
+          zLenClip =
+              FMIN(FMAX(zEdgePrev * texWidthZ - 0.5f, 0.f), CFLOAT(d_N.z)) -
+              FMIN(FMAX(zUD.x * texWidthZ - 0.5f, 0.f), CFLOAT(d_N.z));
         area2 = d_meanV[ii] * yLenClip * zLenClip;
-        apu += (area2);
+        apu += area2;
 #endif
         temp[zz] += apu * invArea;
       }
     }
   }
   for (int zz = 0; zz < maxZZ; zz++) {
+#ifdef MASKFP
+    if (!maskOn[zz]) {
+      idx += d_nRows;
+      continue;
+    }
+#endif
+    // The ray direction is different for every pixel. Pixels one column apart are separated by (dU - dD)
+    const float3 uVector =
+        FABS(NORMALIZE(d + (dU - dD) * CFLOAT(zz) - s));
+    float kerroinZ = kerroin;
+    if (FABS(s.x) <= FABS(s.y))
+      kerroinZ /= uVector.y;
+    else
+      kerroinZ /= uVector.x;
 #if defined(NORM)
     temp[zz] *= d_norm[idx];
 #endif
-    d_forw[idx] += temp[zz] * kerroin;
+    d_forw[idx] += temp[zz] * kerroinZ;
     idx += d_nRows;
   }
 #else
@@ -390,8 +493,42 @@ void projectorType5Forward(
 #endif
 
 #ifdef BP
+// Number of voxels in the axial (z) direction computed by each thread in the backprojection of projector type 5. The value is set
+// with the build option -DNVOXELS5 (the user option NVOXELS5). The voxels of a thread share the fetches of the integral image: two of
+// the four values of the previous voxel are reused, so every further voxel needs two new fetches per projection instead of four
 #ifndef NVOXELS5
 #define NVOXELS5 1
+#endif
+
+// The z-loop of the curved detector of helical CT has not been validated with several voxels per thread, the hosts always use a
+// single voxel per thread in that case
+#if defined(HELICAL) && NVOXELS5 != 1
+#error "NVOXELS5 must be 1 when HELICAL is used with projector type 5"
+#endif
+
+// A detector with an arbitrary orientation (PITCH) can be rotated in its plane, so the footprint of a voxel is a parallelogram
+// instead of an axis-aligned rectangle. The footprint is then built from the projections of four edge midpoints of the voxel.
+// With several axial voxels per thread the row range, the offset weight and the area factor are those of the middle of the voxel
+// group of the thread, while the column edges are exact for every voxel. This is exact if the detector panel is not tilted or
+// rotated in its plane and approximate otherwise
+#if defined(PITCH) && defined(CT) && !defined(HELICAL)
+#define PITCHFOOTPRINT
+// Projects a point to the detector plane along the ray from the source and returns the point relative to the detector corner d3
+DEVICE float3 projectToDetectorPlane(const float3 m, const float3 s,
+                                     const float3 d3, const float3 crossP,
+                                     const float upperPart) {
+  const float3 v = m - s;
+  const float t = upperPart / dot(-v, crossP);
+  return v * t + s - d3;
+}
+#endif
+
+// With the standard detector (no PITCH, no HELICAL) the column extent of the footprint is taken with the projection parameter of the
+// transaxial position of the voxel centre. The column edges of the voxels of a thread are then linear in z and consecutive axial
+// voxels share an edge exactly, so the fetches of the shared edge are reused without any error. The per-voxel 3D mask is
+// applied to every voxel of the thread
+#if defined(CT) && !defined(PITCHFOOTPRINT) && !defined(HELICAL)
+#define CENTERFOOTPRINT
 #endif
 
 /******************************************************************************
@@ -420,6 +557,8 @@ void projectorType5Forward(
  *
  * OUTPUTS:
  * d_forw = backprojection,
+ *
+ * Each thread computes NVOXELS5 voxels in the axial (z) direction. See the definition of NVOXELS5 above.
  ******************************************************************************/
 
 #if defined(METAL)
@@ -608,30 +747,46 @@ extern "C" __global__
     return;
   size_t idx = GID0 + GID1 * d_N.x + GID2 * NVOXELS5 * d_N.y * d_N.x;
 #ifdef MASKBP
+#ifdef MASKBP3D
+  // 3D mask: each axial voxel of the thread has its own mask value, the thread returns only if all of them are masked
+  bool maskOn5[NVOXELS5];
+  {
+    bool anyOn = (ii != 0);
+    for (int zz = 0; zz < NVOXELS5; zz++) {
+      maskOn5[zz] = true;
+      if (ii == 0) {
+        if (i.z + zz < CINT(d_N.z)) {
+#if defined(METAL)
+          const int maskVal = static_cast<int>(metal::round(maskBP.read(uint3(i.x, i.y, i.z + zz)).r));
+#elif defined(CUDA) || defined(HIP)
+          const int maskVal = tex3D<unsigned char>(maskBP, i.x, i.y, i.z + zz);
+#else
+          const int maskVal =
+              read_imageui(maskBP, sampler_MASK, (int4)(i.x, i.y, i.z + zz, 0)).w;
+#endif
+          maskOn5[zz] = maskVal != 0;
+        } else {
+          maskOn5[zz] = false;
+        }
+        anyOn = anyOn || maskOn5[zz];
+      }
+    }
+    if (!anyOn)
+      return;
+  }
+#else
   if (ii == 0) {
 #if defined(METAL)
-#ifdef MASKBP3D
-    const int maskVal = static_cast<int>(metal::round(maskBP.read(uint3(i.x, i.y, i.z)).r));
-#else
     const int maskVal = static_cast<int>(metal::round(maskBP.read(uint2(i.x, i.y)).r));
-#endif
 #elif defined(CUDA) || defined(HIP)
-#ifdef MASKBP3D
-    const int maskVal = tex3D<unsigned char>(maskBP, i.x, i.y, i.z);
-#else
     const int maskVal = tex2D<unsigned char>(maskBP, i.x, i.y);
-#endif
-#else
-#ifdef MASKBP3D
-    const int maskVal =
-        read_imageui(maskBP, sampler_MASK, (int4)(i.x, i.y, i.z, 0)).w;
 #else
     const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(i.x, i.y)).w;
-#endif
 #endif
     if (maskVal == 0)
       return;
   }
+#endif
 #endif
 #ifdef PYTHON
   const float2 d_dPitch = make_float2(d_dPitchX, d_dPitchY);
@@ -663,10 +818,10 @@ extern "C" __global__
 #ifndef GEOM5
   const float2 indeksi = MFLOAT2(CFLOAT(d_nRows) / 2.f, CFLOAT(d_nCols) / 2.f);
 #endif
-#if defined(MEANDISTANCEBP) || defined(HELICAL)
+  // Size of the integral image of the projections. Needed for the clipped footprint area, i.e. the add-back of the mean
+  // value and the sensitivity image
   const float texWidthRow = CFLOAT(d_nRows + 1);
   const float texWidthCol = CFLOAT(d_nCols + 1);
-#endif
 #ifdef HELICAL
   const float arcOffset = (CFLOAT(d_nRows) + 1.f) * d_dPitch.x / 2.f;
   const float zLow = dV.z - d_d.z / 2.f;
@@ -679,7 +834,9 @@ extern "C" __global__
 #else
   for (int kk = 0; kk < d_nProjections; kk++) {
 #endif
+#ifndef PITCHFOOTPRINT
     float3 vLU, vRD;
+#endif
 #ifdef GEOM5
     // Per-projection geometry precomputed on the host
     const int id = kk * 16;
@@ -735,6 +892,7 @@ extern "C" __global__
       continue;
 #endif
     const bool sxDim = FABS(s.x) <= FABS(s.y);
+#ifndef PITCHFOOTPRINT
     if (sxDim) {
       if (s.y > 0.f) {
         vLU = CMFLOAT3(dV.x - d_d.x / 2.f, dV.y, dV.z - d_d.z / 2.f) - s; // A
@@ -752,6 +910,7 @@ extern "C" __global__
         vRD = CMFLOAT3(dV.x, dV.y + d_d.y / 2.f, dV.z + d_d.z / 2.f) - s;
       }
     }
+#endif
 #ifdef HELICAL
     // Hit points on the cylinder. Height and arc length are converted to the same detector coordinates as with the flat panel
     float tLU = rayArcDistance(s, vLU, xc, yc, arcC);
@@ -766,6 +925,86 @@ extern "C" __global__
       continue;
     float Ax = rayArcAngle(s, vLU, tLU, xc, yc, cosA, sinA) * r + arcOffset;
     float Dx = rayArcAngle(s, vRD, tRD, xc, yc, cosA, sinA) * r + arcOffset;
+#elif defined(PITCHFOOTPRINT)
+    // Midpoints of the edges of the central plane of the voxel, in the transaxial direction (T0, T1) and in the axial direction
+    // (Z0, Z1), projected to the detector. The row range of the footprint is given by the transaxial and the column range by the
+    // axial midpoints. The area of the parallelogram spanned by the two projected edge vectors is the true footprint area, the
+    // box sum of the enclosing rectangle is scaled with the ratio of the two
+    // The row range and the area factor are those of the middle of the axial voxel group of this thread, which is the voxel itself
+    // if the thread has a single voxel
+    const float zRef5 = dV.z + .5f * CFLOAT(maxZZ5 - 1) * d_d.z;
+    float3 mT0, mT1;
+    if (sxDim) {
+      mT0 = CMFLOAT3(dV.x - d_d.x / 2.f, dV.y, zRef5);
+      mT1 = CMFLOAT3(dV.x + d_d.x / 2.f, dV.y, zRef5);
+    } else {
+      mT0 = CMFLOAT3(dV.x, dV.y - d_d.y / 2.f, zRef5);
+      mT1 = CMFLOAT3(dV.x, dV.y + d_d.y / 2.f, zRef5);
+    }
+    const float3 mZ0 = CMFLOAT3(dV.x, dV.y, zRef5 - d_d.z / 2.f);
+    const float3 mZ1 = CMFLOAT3(dV.x, dV.y, zRef5 + d_d.z / 2.f);
+    const float3 pT0 = projectToDetectorPlane(mT0, s, d3, crossP, upperPart);
+    const float3 pT1 = projectToDetectorPlane(mT1, s, d3, crossP, upperPart);
+    const float3 pZ0 = projectToDetectorPlane(mZ0, s, d3, crossP, upperPart);
+    const float3 pZ1 = projectToDetectorPlane(mZ1, s, d3, crossP, upperPart);
+    const float rowT0 = dot(pT0, normX);
+    const float colT0 = dot(pT0, normY);
+    const float rowT1 = dot(pT1, normX);
+    const float colT1 = dot(pT1, normY);
+    const float rowZ0 = dot(pZ0, normX);
+    const float colZ0 = dot(pZ0, normY);
+    const float rowZ1 = dot(pZ1, normX);
+    const float colZ1 = dot(pZ1, normY);
+    float Ax = rowT0 + d_dPitch.x / 2.f;
+    float Dx = rowT1 + d_dPitch.x / 2.f;
+    // The column edges are those of the first voxel of the group, whose axial midpoints are not the reference ones
+    const float3 pF0 = projectToDetectorPlane(CMFLOAT3(dV.x, dV.y, dV.z - d_d.z / 2.f), s, d3, crossP, upperPart);
+    const float3 pF1 = projectToDetectorPlane(CMFLOAT3(dV.x, dV.y, dV.z + d_d.z / 2.f), s, d3, crossP, upperPart);
+    float Ay = dot(pF0, normY) + d_dPitch.y / 2.f;
+    float Dy = dot(pF1, normY) + d_dPitch.y / 2.f;
+    const float footBox = FABS(rowT1 - rowT0) * FABS(colZ1 - colZ0);
+    const float footCross = FABS((rowT1 - rowT0) * (colZ1 - colZ0) -
+                                 (colT1 - colT0) * (rowZ1 - rowZ0));
+    const float areaFactor = footBox > 0.f ? footCross / footBox : 1.f;
+    // Whether the upper axial edge of the first voxel is the larger column coordinate (before the sorting below)
+    const bool yFlip = Dy > Ay;
+#elif defined(CENTERFOOTPRINT)
+    // The row extent is given by the two transaxial corners of the voxel
+    const float tLU = upperPart / (dot(-vLU, crossP));
+    const float tRD = upperPart / (dot(-vRD, crossP));
+#ifdef USEMAD
+    float3 pLU = FMAD3(vLU, tLU, s);
+    float3 pRD = FMAD3(vRD, tRD, s);
+#else
+    float3 pLU = vLU * tLU + s;
+    float3 pRD = vRD * tRD + s;
+#endif
+    pLU -= d3;
+    pRD -= d3;
+    float Ax = dot(pLU, normX) + d_dPitch.x / 2.f;
+    float Dx = dot(pRD, normX) + d_dPitch.x / 2.f;
+    // The column extent is given by the lower and upper axial edge of the voxel, both projected with the projection parameter of the
+    // voxel centre. The projection parameter does not depend on z for this detector, so the edges of the axial voxels are linear in z
+    const float tC = upperPart / (dot(-(dV - s), crossP));
+    const float3 vZ0 = CMFLOAT3(dV.x, dV.y, dV.z - d_d.z / 2.f) - s;
+    const float3 vZ1 = CMFLOAT3(dV.x, dV.y, dV.z + d_d.z / 2.f) - s;
+#ifdef USEMAD
+    float3 pZ0 = FMAD3(vZ0, tC, s);
+    float3 pZ1 = FMAD3(vZ1, tC, s);
+#else
+    float3 pZ0 = vZ0 * tC + s;
+    float3 pZ1 = vZ1 * tC + s;
+#endif
+    pZ0 -= d3;
+    pZ1 -= d3;
+    float Ay = dot(pZ0, normY) + d_dPitch.y / 2.f;
+    float Dy = dot(pZ1, normY) + d_dPitch.y / 2.f;
+    // Change of the column edges when moving one voxel up in z
+    const float yStep = tC * d_d.z * dot(CMFLOAT3(0.f, 0.f, 1.f), normY);
+    // The edge on the side of increasing z of the first voxel. The edge of voxel zz is yHi0 + zz * yStep
+    const float yHi0 = Dy;
+    // Whether the upper edge in z is the larger column coordinate
+    const bool yFlip = Dy > Ay;
 #else
     float tLU = upperPart / (dot(-vLU, crossP));
     float tRD = upperPart / (dot(-vRD, crossP));
@@ -818,7 +1057,11 @@ extern "C" __global__
     // Footprint length in the column direction in detector pixels
     const float fdkLenY = (Ay - Dy) / d_dPitch.y;
 	// Footprint area
+#ifdef PITCHFOOTPRINT
+    const float fdkArea = fdkLenX * fdkLenY * areaFactor;
+#else
     const float fdkArea = fdkLenX * fdkLenY;
+#endif
 #endif
     const float dz = (CFLOAT(kk) + 0.5f) * invNProj;
     const float AxN = Ax * invKoko.x;
@@ -879,51 +1122,48 @@ extern "C" __global__
       kerroin = d_d.x * LENGTH(vd) / FABS(vd.x);
 #endif
 #ifdef OFFSET
+    // The offset weight is a function of the physical position along the row direction, measured from the detector edge
+    // (the same convention as in projector type 4). The texture coordinates used for the fetches are not modified.
+    // Ax and Dx are shifted by half a pixel in the texture coordinates
+    const float offWidth = CFLOAT(d_nRows) * d_dPitch.x;
     float OffTT;
-    float OffT = T[kk];
-    if (OffT > koko.x / 2.f) {
-      coordA.x = FABS(coordA.x - 1.f);
-      coordB.x = FABS(coordB.x - 1.f);
-      coordC.x = FABS(coordC.x - 1.f);
-      coordD.x = FABS(coordD.x - 1.f);
-      OffTT = koko.x - OffT;
+    const float OffT = T[kk];
+    float posA = Ax - d_dPitch.x / 2.f;
+    float posD = Dx - d_dPitch.x / 2.f;
+    if (OffT > offWidth / 2.f) {
+      posA = offWidth - posA;
+      posD = offWidth - posD;
+      OffTT = offWidth - OffT;
     } else
       OffTT = OffT;
-    coordA.x *= koko.x;
-    coordB.x *= koko.x;
-    coordC.x *= koko.x;
-    coordD.x *= koko.x;
-    coordA.x -= OffTT;
-    coordB.x -= OffTT;
-    coordC.x -= OffTT;
-    coordD.x -= OffTT;
+    posA -= OffTT;
+    posD -= OffTT;
     const float invOffTT = 1.f / (2.f * OffTT);
-    float wA = 1.f, wB = 1.f, wC = 1.f, wD = 1.f;
-    if (coordA.x <= OffTT && coordA.x >= -OffTT) {
-      wA = SINF(M_PI_2_F * ((coordA.x + OffTT) * invOffTT));
-      wA *= wA;
-    } else if (coordA.x < -OffTT)
+    // The box sum has two corners at Ax and two at Dx, so the weight is the average of the two
+    float wA = 1.f, wD = 1.f;
+    if (posA <= OffTT && posA >= -OffTT)
+      wA = .5f * (1.f + SINF(M_PI_F * posA * invOffTT));
+    else if (posA < -OffTT)
       wA = 0.f;
-    if (coordB.x <= OffTT && coordB.x >= -OffTT) {
-      wB = SINF(M_PI_2_F * ((coordB.x + OffTT) * invOffTT));
-      wB *= wB;
-    } else if (coordB.x < -OffTT)
-      wB = 0.f;
-    if (coordC.x <= OffTT && coordC.x >= -OffTT) {
-      wC = SINF(M_PI_2_F * ((coordC.x + OffTT) * invOffTT));
-      wC *= wC;
-    } else if (coordC.x < -OffTT)
-      wC = 0.f;
-    if (coordD.x <= OffTT && coordD.x >= -OffTT) {
-      wD = SINF(M_PI_2_F * ((coordD.x + OffTT) * invOffTT));
-      wD *= wD;
-    } else if (coordD.x < -OffTT)
+    if (posD <= OffTT && posD >= -OffTT)
+      wD = .5f * (1.f + SINF(M_PI_F * posD * invOffTT));
+    else if (posD < -OffTT)
       wD = 0.f;
-
-    const float w = (wA + wB + wC + wD) / 4.f;
-    float apu = (A + D - C - B) * w;
+    const float w = (wA + wD) / 2.f;
+    // Differences along the column direction at the same row coordinate are formed
+    // first. When the footprint lies outside the detector the two fetches of each
+    // pair are equal, so the result is exactly zero. The pairwise differences also
+    // reduce the rounding error of the float32 integral image.
+    float apu = ((A - B) - (C - D)) * w;
 #else
-    float apu = (A + D - C - B);
+    // Differences along the column direction at the same row coordinate are formed
+    // first. When the footprint lies outside the detector the two fetches of each
+    // pair are equal, so the result is exactly zero. The pairwise differences also
+    // reduce the rounding error of the float32 integral image.
+    float apu = ((A - B) - (C - D));
+#endif
+#ifdef PITCHFOOTPRINT
+    apu *= areaFactor;
 #endif
 #if defined(MEANDISTANCEBP) || defined(HELICAL)
     // Add-back area clipped to the valid SAT range [0, N] per axis, so
@@ -938,13 +1178,17 @@ extern "C" __global__
         FMIN(FMAX(DyN * texWidthCol - 0.5f, 0.f), CFLOAT(d_nCols));
 #endif
 #ifdef MEANDISTANCEBP
+#ifdef PITCHFOOTPRINT
+    const float clippedArea = FABS(rowLenClip) * FABS(colLenClip) * areaFactor;
+#else
     const float clippedArea = FABS(rowLenClip) * FABS(colLenClip);
+#endif
     if (clippedArea > 0.f) {
 #ifdef OFFSET
-      // wA==wB and wC==wD (both pairs share the same x-coordinate), so w
-      // (their average) is the same weight already applied to the whole
-      // box-sum above; reuse it here for consistency. w does not depend
-      // on z, so it is also valid for the zz-loop's add-back below.
+      // w is the average of the offset weights wA and wD at the two row
+      // coordinates of the footprint. It already multiplies the box sum
+      // above, so the add-back uses the same weight. w does not depend on
+      // z, so it is also valid for the zz-loop's add-back below.
       apu += d_meanV[kk] * clippedArea * w;
 #else
       apu += d_meanV[kk] * clippedArea;
@@ -954,18 +1198,37 @@ extern "C" __global__
     if (apu != 0.f) {
       temp[0] += apu * kerroin;
     }
-    if (no_norm == 0u)
-#ifdef HELICAL
-      // Most projections see only a part of the voxel or none of it, so the sensitivity is the backprojection of ones, i.e.
-      // the footprint area clipped to the detector
-      wSum[0] += kerroin * FABS(rowLenClip) * FABS(colLenClip);
-#else
-      wSum[0] += kerroin;
+#if !defined(MEANDISTANCEBP) && !defined(HELICAL)
+    // Clipped footprint lengths, computed below only if the sensitivity image is needed
+    float rowLenClip = 0.f;
+    float colLenClip = 0.f;
 #endif
+    if (no_norm == 0u) {
+      // The sensitivity is the backprojection of ones, i.e. the footprint area clipped to the detector (many projections see only
+      // a part of the voxel or none of it), with the same offset weight and footprint scaling as the backprojected values
+#if !defined(MEANDISTANCEBP) && !defined(HELICAL)
+      rowLenClip =
+          FMIN(FMAX(AxN * texWidthRow - 0.5f, 0.f), CFLOAT(d_nRows)) -
+          FMIN(FMAX(DxN * texWidthRow - 0.5f, 0.f), CFLOAT(d_nRows));
+      colLenClip =
+          FMIN(FMAX(AyN * texWidthCol - 0.5f, 0.f), CFLOAT(d_nCols)) -
+          FMIN(FMAX(DyN * texWidthCol - 0.5f, 0.f), CFLOAT(d_nCols));
+#endif
+      float wS = kerroin * FABS(rowLenClip) * FABS(colLenClip);
+#ifdef OFFSET
+      wS *= w;
+#endif
+#ifdef PITCHFOOTPRINT
+      wS *= areaFactor;
+#endif
+      wSum[0] += wS;
+    }
     dV2.z = dV.z;
     for (int zz = 1; zz < maxZZ5; zz++) {
+#if !defined(CENTERFOOTPRINT) && !defined(PITCHFOOTPRINT)
       vRD.z += d_d.z;
       vLU.z += d_d.z;
+#endif
       dV2.z += d_d.z;
 #ifndef FDK
       const float3 vd2 = dV2 - s;
@@ -974,6 +1237,53 @@ extern "C" __global__
       else
         kerroin = d_d.x * LENGTH(vd2) / FABS(vd2.x);
 #endif
+#if defined(CENTERFOOTPRINT) || defined(PITCHFOOTPRINT)
+      // One of the column edges of this voxel is the edge of the previous voxel, so its coordinate and the fetched values are carried
+      // over. The other edge is a constant step further in z and needs a new fetch of the two rows
+#ifdef PITCHFOOTPRINT
+      // The new outer edge is the projection of the axial midpoint of the upper face of this voxel. The row coordinates of the
+      // fetches stay those of the reference voxel
+      const float3 pNew = projectToDetectorPlane(CMFLOAT3(dV.x, dV.y, dV.z + (CFLOAT(zz) + .5f) * d_d.z), s, d3, crossP, upperPart);
+      const float yNew = dot(pNew, normY) + d_dPitch.y / 2.f;
+#else
+      const float yNew = yHi0 + CFLOAT(zz) * yStep;
+#endif
+      if (yFlip) {
+        Dy = Ay;
+        Ay = yNew;
+        B = A;
+        D = C;
+        coordA = CMFLOAT3(AxN, Ay * invKoko.y, dz);
+        coordC = CMFLOAT3(DxN, Ay * invKoko.y, dz);
+#if defined(METAL)
+        A = d_IImage.sample(sampler2, coordA).r;
+        C = d_IImage.sample(sampler2, coordC).r;
+#elif defined(CUDA) || defined(HIP)
+        A = tex3D<float>(d_IImage, coordA.x, coordA.y, coordA.z);
+        C = tex3D<float>(d_IImage, coordC.x, coordC.y, coordC.z);
+#else
+        A = read_imagef(d_IImage, sampler2, (float4)(coordA, 0.f)).w;
+        C = read_imagef(d_IImage, sampler2, (float4)(coordC, 0.f)).w;
+#endif
+      } else {
+        Ay = Dy;
+        Dy = yNew;
+        A = B;
+        C = D;
+        coordB = CMFLOAT3(AxN, Dy * invKoko.y, dz);
+        coordD = CMFLOAT3(DxN, Dy * invKoko.y, dz);
+#if defined(METAL)
+        B = d_IImage.sample(sampler2, coordB).r;
+        D = d_IImage.sample(sampler2, coordD).r;
+#elif defined(CUDA) || defined(HIP)
+        B = tex3D<float>(d_IImage, coordB.x, coordB.y, coordB.z);
+        D = tex3D<float>(d_IImage, coordD.x, coordD.y, coordD.z);
+#else
+        B = read_imagef(d_IImage, sampler2, (float4)(coordB, 0.f)).w;
+        D = read_imagef(d_IImage, sampler2, (float4)(coordD, 0.f)).w;
+#endif
+      }
+#else
 #ifdef HELICAL
       // Only the height changes in the axial direction
       Ay = tLU * vLU.z + zOffset;
@@ -1027,17 +1337,33 @@ extern "C" __global__
         D = read_imagef(d_IImage, sampler2, (float4)(coordD, 0.f)).w;
 #endif
       }
-#ifdef FDK
+#endif
+#if defined(FDK) && !defined(CENTERFOOTPRINT)
       const float fdkLenY = (Ay - Dy) / d_dPitch.y;
+#ifdef PITCHFOOTPRINT
+      const float fdkArea = fdkLenX * fdkLenY * areaFactor;
+#else
       const float fdkArea = fdkLenX * fdkLenY;
+#endif
       kerroin = fdkArea > 0.f ? fdkW / fdkArea : 0.f;
 #endif
       const float AyN2 = Ay * invKoko.y;
       const float DyN2 = Dy * invKoko.y;
 #ifdef OFFSET
-      apu = (A * wA + D * wD - C * wC - B * wB);
+      // Differences along the column direction at the same row coordinate are formed
+      // first. When the footprint lies outside the detector the two fetches of each
+      // pair are equal, so the result is exactly zero. The pairwise differences also
+      // reduce the rounding error of the float32 integral image.
+      apu = ((A - B) - (C - D)) * w;
 #else
-      apu = (A + D - C - B);
+      // Differences along the column direction at the same row coordinate are formed
+      // first. When the footprint lies outside the detector the two fetches of each
+      // pair are equal, so the result is exactly zero. The pairwise differences also
+      // reduce the rounding error of the float32 integral image.
+      apu = ((A - B) - (C - D));
+#endif
+#ifdef PITCHFOOTPRINT
+      apu *= areaFactor;
 #endif
 #if defined(MEANDISTANCEBP) || defined(HELICAL)
       // AxN/DxN (row axis) are unchanged within this zz loop -- only the
@@ -1048,7 +1374,11 @@ extern "C" __global__
           FMIN(FMAX(DyN2 * texWidthCol - 0.5f, 0.f), CFLOAT(d_nCols));
 #endif
 #ifdef MEANDISTANCEBP
+#ifdef PITCHFOOTPRINT
+      const float clippedArea2 = FABS(rowLenClip) * FABS(colLenClip2) * areaFactor;
+#else
       const float clippedArea2 = FABS(rowLenClip) * FABS(colLenClip2);
+#endif
       if (clippedArea2 > 0.f) {
 #ifdef OFFSET
         apu += d_meanV[kk] * clippedArea2 * w;
@@ -1060,17 +1390,48 @@ extern "C" __global__
       if (apu != 0.f) {
         temp[zz] += apu * kerroin;
       }
-      if (no_norm == 0u)
-#ifdef HELICAL
-        wSum[zz] += kerroin * FABS(rowLenClip) * FABS(colLenClip2);
-#else
-        wSum[zz] += kerroin;
+      if (no_norm == 0u) {
+#if !defined(MEANDISTANCEBP) && !defined(HELICAL)
+        const float colLenClip2 =
+            FMIN(FMAX(AyN2 * texWidthCol - 0.5f, 0.f), CFLOAT(d_nCols)) -
+            FMIN(FMAX(DyN2 * texWidthCol - 0.5f, 0.f), CFLOAT(d_nCols));
 #endif
+        float wS = kerroin * FABS(rowLenClip) * FABS(colLenClip2);
+#ifdef OFFSET
+        wS *= w;
+#endif
+#ifdef PITCHFOOTPRINT
+        wS *= areaFactor;
+#endif
+        wSum[zz] += wS;
+      }
     }
   }
   // Start fastPDHG computations
 #ifdef FASTPDHG // START FASTPDHG
     if (fastStep != 0u) {
+#if defined(MASKBP) && defined(MASKBP3D) && NVOXELS5 > 1
+        // The fused update has no mask, so the values of the masked voxels of this thread are stored here and restored after the update
+        float keepOSEM[NVOXELS5];
+#if FASTALG == 0
+        float keepU[NVOXELS5];
+#endif
+        float keepSumm[NVOXELS5];
+        {
+            size_t idxK = idx;
+            for (int zz = 0; zz < maxZZ5; zz++) {
+                if (!maskOn5[zz]) {
+                    keepOSEM[zz] = d_forw[idxK + fastImOffset];
+#if FASTALG == 0
+                    keepU[zz] = d_U[idxK];
+#endif
+                    if (no_norm == 0u)
+                        keepSumm[zz] = d_Summ[idxK];
+                }
+                idxK += d_N.y * d_N.x;
+            }
+        }
+#endif
         fastPDHGUpdate(temp, wSum, i, idx, d_N, NVOXELS5, no_norm, ii,
             fastImOffset, fastPriorZOffset,
 #if FASTALG == 0
@@ -1137,13 +1498,36 @@ extern "C" __global__
             fastLambda, fastAlpha,
 #endif
             fastBeta, fastEpps, fastPositivity);
+#if defined(MASKBP) && defined(MASKBP3D) && NVOXELS5 > 1
+        {
+            size_t idxK = idx;
+            for (int zz = 0; zz < maxZZ5; zz++) {
+                if (!maskOn5[zz]) {
+                    d_forw[idxK + fastImOffset] = keepOSEM[zz];
+#if FASTALG == 0
+                    d_U[idxK] = keepU[zz];
+#endif
+                    if (no_norm == 0u)
+                        d_Summ[idxK] = keepSumm[zz];
+                }
+                idxK += d_N.y * d_N.x;
+            }
+        }
+#endif
         return;
     }
 #endif // END FASTPDHG
   for (int zz = 0; zz < maxZZ5; zz++) {
+#if defined(MASKBP) && defined(MASKBP3D)
+    // Masked voxels are left as they are
+    if (maskOn5[zz]) {
+#endif
     d_forw[idx] = temp[zz];
     if (no_norm == 0u)
       d_Summ[idx] = wSum[zz];
+#if defined(MASKBP) && defined(MASKBP3D)
+    }
+#endif
     idx += d_N.y * d_N.x;
   }
 #endif
