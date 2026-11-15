@@ -52,6 +52,50 @@ CONSTANT sampler_t sampler2 =
     CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_LINEAR | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif
 
+// The integral images can be held in 2D layered textures (CUDA/HIP cudaArrayLayered, OpenCL image2d_array_t) instead of 3D textures.
+// The third coordinate of every fetch is the centre of one slice, so the slice index is used directly as the layer index (no interpolation
+// between slices). LAYEREDFP5: d_IImageY (layer = y slice) and d_IImageX (layer = x slice). LAYEREDBP5: d_IImage (layer = projection).
+#if (defined(LAYEREDFP5) || defined(LAYEREDBP5)) && defined(METAL)
+#error LAYEREDFP5 and LAYEREDBP5 do not support METAL
+#endif
+#if defined(LAYEREDBP5) && defined(HELICAL)
+#error LAYEREDBP5 does not support HELICAL
+#endif
+#if defined(CUDA) || defined(HIP)
+#ifdef LAYEREDFP5
+#define FP5IMG IMAGE3D
+#define FP5FETCH(img, a, b, dl, l) tex2DLayered<float>(img, a, b, CINT(l))
+#else
+#define FP5IMG IMAGE3D
+#define FP5FETCH(img, a, b, dl, l) tex3D<float>(img, a, b, dl)
+#endif
+#ifdef LAYEREDBP5
+#define BP5IMG IMAGE3D
+#define BP5FETCH(img, c, l) tex2DLayered<float>(img, (c).x, (c).y, CINT(l))
+#else
+#define BP5IMG IMAGE3D
+#define BP5FETCH(img, c, l) tex3D<float>(img, (c).x, (c).y, (c).z)
+#endif
+#elif defined(OPENCL)
+#ifdef LAYEREDFP5
+#define FP5IMG __read_only image2d_array_t
+#define FP5FETCH(img, a, b, dl, l) read_imagef(img, sampler2, (float4)(a, b, CFLOAT(l), 0.f)).w
+#else
+#define FP5IMG IMAGE3D
+#define FP5FETCH(img, a, b, dl, l) read_imagef(img, sampler2, (float4)(a, b, dl, 0.f)).w
+#endif
+#ifdef LAYEREDBP5
+#define BP5IMG __read_only image2d_array_t
+#define BP5FETCH(img, c, l) read_imagef(img, sampler2, (float4)((c).x, (c).y, CFLOAT(l), 0.f)).w
+#else
+#define BP5IMG IMAGE3D
+#define BP5FETCH(img, c, l) read_imagef(img, sampler2, (float4)(c, 0.f)).w
+#endif
+#else
+#define FP5IMG IMAGE3D
+#define BP5IMG IMAGE3D
+#endif
+
 // Forward projection for the branchless distance-driven ray tracer
 #ifdef FP
 #ifdef OPENCL
@@ -95,8 +139,8 @@ void projectorType5Forward(
     , CONSTANT float *d_xyz BUF1
     , CONSTANT float *d_uv BUF2
 #endif
-    , IMAGE3D d_IImageY TEX3
-    , IMAGE3D d_IImageX TEX4
+    , FP5IMG d_IImageY TEX3
+    , FP5IMG d_IImageX TEX4
     , CLGLOBAL float *d_forw BUF5
 #ifdef MEANDISTANCEFP
     , CONSTANT float *d_meanV BUF6
@@ -207,7 +251,9 @@ void projectorType5Forward(
       // and moves the texture coordinate off the texel centre
       const float dyDiv2 = CFLOAT(jj) * d_d.y + d_d.y / 2.f;
       const float v = dyDiv2 + apuV;
+#ifndef LAYEREDFP5
       const float dy = dyDiv2 * d_Size.y;
+#endif
       // Shift the origin to the corner of the slice
       const float2 xLR0 = v * X - apuX;
       const float2 zUD0 = v * Z - apuZ;
@@ -223,19 +269,19 @@ void projectorType5Forward(
       xLR *= d_scale.x;
       zUD *= d_scale.z;
 #if defined(CUDA) || defined(HIP)
-      float A = tex3D<float>(d_IImageY, xLR.y, zUD.x, dy);
-      float B = tex3D<float>(d_IImageY, xLR.x, zUD.y, dy);
-      float C = tex3D<float>(d_IImageY, xLR.y, zUD.y, dy);
-      float D = tex3D<float>(d_IImageY, xLR.x, zUD.x, dy);
+      float A = FP5FETCH(d_IImageY, xLR.y, zUD.x, dy, jj);
+      float B = FP5FETCH(d_IImageY, xLR.x, zUD.y, dy, jj);
+      float C = FP5FETCH(d_IImageY, xLR.y, zUD.y, dy, jj);
+      float D = FP5FETCH(d_IImageY, xLR.x, zUD.x, dy, jj);
 #elif defined(OPENCL)
       float A =
-          read_imagef(d_IImageY, sampler2, (float4)(xLR.y, zUD.x, dy, 0.f)).w;
+          FP5FETCH(d_IImageY, xLR.y, zUD.x, dy, jj);
       float B =
-          read_imagef(d_IImageY, sampler2, (float4)(xLR.x, zUD.y, dy, 0.f)).w;
+          FP5FETCH(d_IImageY, xLR.x, zUD.y, dy, jj);
       float C =
-          read_imagef(d_IImageY, sampler2, (float4)(xLR.y, zUD.y, dy, 0.f)).w;
+          FP5FETCH(d_IImageY, xLR.y, zUD.y, dy, jj);
       float D =
-          read_imagef(d_IImageY, sampler2, (float4)(xLR.x, zUD.x, dy, 0.f)).w;
+          FP5FETCH(d_IImageY, xLR.x, zUD.x, dy, jj);
 #elif defined(METAL)
       float A = d_IImageY.sample(sampler2, float3(xLR.y, zUD.x, dy)).r;
       float B = d_IImageY.sample(sampler2, float3(xLR.x, zUD.y, dy)).r;
@@ -275,11 +321,11 @@ void projectorType5Forward(
 #endif
           zUD.y += xInterval;
 #if defined(CUDA) || defined(HIP)
-          B = tex3D<float>(d_IImageY, xLR.x, zUD.y, dy);
-          C = tex3D<float>(d_IImageY, xLR.y, zUD.y, dy);
+          B = FP5FETCH(d_IImageY, xLR.x, zUD.y, dy, jj);
+          C = FP5FETCH(d_IImageY, xLR.y, zUD.y, dy, jj);
 #elif defined(OPENCL)
-          B = read_imagef(d_IImageY, sampler2, (float4)(xLR.x, zUD.y, dy, 0.f)).w;
-          C = read_imagef(d_IImageY, sampler2, (float4)(xLR.y, zUD.y, dy, 0.f)).w;
+          B = FP5FETCH(d_IImageY, xLR.x, zUD.y, dy, jj);
+          C = FP5FETCH(d_IImageY, xLR.y, zUD.y, dy, jj);
 #elif defined(METAL)
           B = d_IImageY.sample(sampler2, float3(xLR.x, zUD.y, dy)).r;
           C = d_IImageY.sample(sampler2, float3(xLR.y, zUD.y, dy)).r;
@@ -294,11 +340,11 @@ void projectorType5Forward(
 #endif
           zUD.x -= xInterval;
 #if defined(CUDA) || defined(HIP)
-          D = tex3D<float>(d_IImageY, xLR.x, zUD.x, dy);
-          A = tex3D<float>(d_IImageY, xLR.y, zUD.x, dy);
+          D = FP5FETCH(d_IImageY, xLR.x, zUD.x, dy, jj);
+          A = FP5FETCH(d_IImageY, xLR.y, zUD.x, dy, jj);
 #elif defined(OPENCL)
-          D = read_imagef(d_IImageY, sampler2, (float4)(xLR.x, zUD.x, dy, 0.f)).w;
-          A = read_imagef(d_IImageY, sampler2, (float4)(xLR.y, zUD.x, dy, 0.f)).w;
+          D = FP5FETCH(d_IImageY, xLR.x, zUD.x, dy, jj);
+          A = FP5FETCH(d_IImageY, xLR.y, zUD.x, dy, jj);
 #elif defined(METAL)
           D = d_IImageY.sample(sampler2, float3(xLR.x, zUD.x, dy)).r;
           A = d_IImageY.sample(sampler2, float3(xLR.y, zUD.x, dy)).r;
@@ -346,7 +392,9 @@ void projectorType5Forward(
     for (uint ii = 0; ii < d_N.x; ii++) {
       const float dxBase = CFLOAT(ii) * d_d.x + d_d.x / 2.f;
       const float v = dxBase + apuV;
+#ifndef LAYEREDFP5
       const float dx = dxBase * d_Size.x;
+#endif
       const float2 yLR0 = v * Y - apuY;
       const float2 zUD0 = v * Z - apuZ;
       float2 yLR = MFLOAT2(FMIN(yLR0.x, yLR0.y), FMAX(yLR0.x, yLR0.y));
@@ -360,19 +408,19 @@ void projectorType5Forward(
       yLR *= d_scale.y;
       zUD *= d_scale.z;
 #if defined(CUDA) || defined(HIP)
-      float A = tex3D<float>(d_IImageX, yLR.y, zUD.x, dx);
-      float B = tex3D<float>(d_IImageX, yLR.x, zUD.y, dx);
-      float C = tex3D<float>(d_IImageX, yLR.y, zUD.y, dx);
-      float D = tex3D<float>(d_IImageX, yLR.x, zUD.x, dx);
+      float A = FP5FETCH(d_IImageX, yLR.y, zUD.x, dx, ii);
+      float B = FP5FETCH(d_IImageX, yLR.x, zUD.y, dx, ii);
+      float C = FP5FETCH(d_IImageX, yLR.y, zUD.y, dx, ii);
+      float D = FP5FETCH(d_IImageX, yLR.x, zUD.x, dx, ii);
 #elif defined(OPENCL)
       float A =
-          read_imagef(d_IImageX, sampler2, (float4)(yLR.y, zUD.x, dx, 0.f)).w;
+          FP5FETCH(d_IImageX, yLR.y, zUD.x, dx, ii);
       float B =
-          read_imagef(d_IImageX, sampler2, (float4)(yLR.x, zUD.y, dx, 0.f)).w;
+          FP5FETCH(d_IImageX, yLR.x, zUD.y, dx, ii);
       float C =
-          read_imagef(d_IImageX, sampler2, (float4)(yLR.y, zUD.y, dx, 0.f)).w;
+          FP5FETCH(d_IImageX, yLR.y, zUD.y, dx, ii);
       float D =
-          read_imagef(d_IImageX, sampler2, (float4)(yLR.x, zUD.x, dx, 0.f)).w;
+          FP5FETCH(d_IImageX, yLR.x, zUD.x, dx, ii);
 #elif defined(METAL)
       float A = d_IImageX.sample(sampler2, float3(yLR.y, zUD.x, dx)).r;
       float B = d_IImageX.sample(sampler2, float3(yLR.x, zUD.y, dx)).r;
@@ -412,11 +460,11 @@ void projectorType5Forward(
 #endif
           zUD.y += yInterval;
 #if defined(CUDA) || defined(HIP)
-          B = tex3D<float>(d_IImageX, yLR.x, zUD.y, dx);
-          C = tex3D<float>(d_IImageX, yLR.y, zUD.y, dx);
+          B = FP5FETCH(d_IImageX, yLR.x, zUD.y, dx, ii);
+          C = FP5FETCH(d_IImageX, yLR.y, zUD.y, dx, ii);
 #elif defined(OPENCL)
-          B = read_imagef(d_IImageX, sampler2, (float4)(yLR.x, zUD.y, dx, 0.f)).w;
-          C = read_imagef(d_IImageX, sampler2, (float4)(yLR.y, zUD.y, dx, 0.f)).w;
+          B = FP5FETCH(d_IImageX, yLR.x, zUD.y, dx, ii);
+          C = FP5FETCH(d_IImageX, yLR.y, zUD.y, dx, ii);
 #elif defined(METAL)
           B = d_IImageX.sample(sampler2, float3(yLR.x, zUD.y, dx)).r;
           C = d_IImageX.sample(sampler2, float3(yLR.y, zUD.y, dx)).r;
@@ -431,11 +479,11 @@ void projectorType5Forward(
 #endif
           zUD.x -= yInterval;
 #if defined(CUDA) || defined(HIP)
-          D = tex3D<float>(d_IImageX, yLR.x, zUD.x, dx);
-          A = tex3D<float>(d_IImageX, yLR.y, zUD.x, dx);
+          D = FP5FETCH(d_IImageX, yLR.x, zUD.x, dx, ii);
+          A = FP5FETCH(d_IImageX, yLR.y, zUD.x, dx, ii);
 #elif defined(OPENCL)
-          D = read_imagef(d_IImageX, sampler2, (float4)(yLR.x, zUD.x, dx, 0.f)).w;
-          A = read_imagef(d_IImageX, sampler2, (float4)(yLR.y, zUD.x, dx, 0.f)).w;
+          D = FP5FETCH(d_IImageX, yLR.x, zUD.x, dx, ii);
+          A = FP5FETCH(d_IImageX, yLR.y, zUD.x, dx, ii);
 #elif defined(METAL)
           D = d_IImageX.sample(sampler2, float3(yLR.x, zUD.x, dx)).r;
           A = d_IImageX.sample(sampler2, float3(yLR.y, zUD.x, dx)).r;
@@ -579,7 +627,7 @@ extern "C" __global__
 #endif
         , const CLGLOBAL float* d_xyz BUF5
         , const CLGLOBAL float* d_uv BUF6
-        , IMAGE3D d_IImage TEX2
+        , BP5IMG d_IImage TEX2
         , CLGLOBAL float* d_forw BUF4
         , CLGLOBAL float* d_Summ BUF7
 #ifdef MEANDISTANCEBP
@@ -633,7 +681,7 @@ extern "C" __global__
 #ifdef PROJWINDOW
                            const CLGLOBAL int *CLRESTRICT d_projWindow,
 #endif
-                           IMAGE3D d_IImage,
+                           BP5IMG d_IImage,
                            CLGLOBAL float *d_forw, CLGLOBAL float *d_Summ,
 #ifdef MEANDISTANCEBP
                            CONSTANT float *d_meanV,
@@ -1078,15 +1126,15 @@ extern "C" __global__
     float C = d_IImage.sample(sampler2, coordC).r;
     float D = d_IImage.sample(sampler2, coordD).r;
 #elif defined(CUDA) || defined(HIP)
-    float A = tex3D<float>(d_IImage, coordA.x, coordA.y, coordA.z);
-    float B = tex3D<float>(d_IImage, coordB.x, coordB.y, coordB.z);
-    float C = tex3D<float>(d_IImage, coordC.x, coordC.y, coordC.z);
-    float D = tex3D<float>(d_IImage, coordD.x, coordD.y, coordD.z);
+    float A = BP5FETCH(d_IImage, coordA, kk);
+    float B = BP5FETCH(d_IImage, coordB, kk);
+    float C = BP5FETCH(d_IImage, coordC, kk);
+    float D = BP5FETCH(d_IImage, coordD, kk);
 #else
-    float A = read_imagef(d_IImage, sampler2, (float4)(coordA, 0.f)).w;
-    float B = read_imagef(d_IImage, sampler2, (float4)(coordB, 0.f)).w;
-    float C = read_imagef(d_IImage, sampler2, (float4)(coordC, 0.f)).w;
-    float D = read_imagef(d_IImage, sampler2, (float4)(coordD, 0.f)).w;
+    float A = BP5FETCH(d_IImage, coordA, kk);
+    float B = BP5FETCH(d_IImage, coordB, kk);
+    float C = BP5FETCH(d_IImage, coordC, kk);
+    float D = BP5FETCH(d_IImage, coordD, kk);
 #endif
 #ifdef NORM
     LONG indX = CLONG_rtz(coordA.x * CFLOAT(d_nRows));
@@ -1259,11 +1307,11 @@ extern "C" __global__
         A = d_IImage.sample(sampler2, coordA).r;
         C = d_IImage.sample(sampler2, coordC).r;
 #elif defined(CUDA) || defined(HIP)
-        A = tex3D<float>(d_IImage, coordA.x, coordA.y, coordA.z);
-        C = tex3D<float>(d_IImage, coordC.x, coordC.y, coordC.z);
+        A = BP5FETCH(d_IImage, coordA, kk);
+        C = BP5FETCH(d_IImage, coordC, kk);
 #else
-        A = read_imagef(d_IImage, sampler2, (float4)(coordA, 0.f)).w;
-        C = read_imagef(d_IImage, sampler2, (float4)(coordC, 0.f)).w;
+        A = BP5FETCH(d_IImage, coordA, kk);
+        C = BP5FETCH(d_IImage, coordC, kk);
 #endif
       } else {
         Ay = Dy;
@@ -1276,11 +1324,11 @@ extern "C" __global__
         B = d_IImage.sample(sampler2, coordB).r;
         D = d_IImage.sample(sampler2, coordD).r;
 #elif defined(CUDA) || defined(HIP)
-        B = tex3D<float>(d_IImage, coordB.x, coordB.y, coordB.z);
-        D = tex3D<float>(d_IImage, coordD.x, coordD.y, coordD.z);
+        B = BP5FETCH(d_IImage, coordB, kk);
+        D = BP5FETCH(d_IImage, coordD, kk);
 #else
-        B = read_imagef(d_IImage, sampler2, (float4)(coordB, 0.f)).w;
-        D = read_imagef(d_IImage, sampler2, (float4)(coordD, 0.f)).w;
+        B = BP5FETCH(d_IImage, coordB, kk);
+        D = BP5FETCH(d_IImage, coordD, kk);
 #endif
       }
 #else
@@ -1315,11 +1363,11 @@ extern "C" __global__
         A = d_IImage.sample(sampler2, coordA).r;
         C = d_IImage.sample(sampler2, coordC).r;
 #elif defined(CUDA) || defined(HIP)
-        A = tex3D<float>(d_IImage, coordA.x, coordA.y, coordA.z);
-        C = tex3D<float>(d_IImage, coordC.x, coordC.y, coordC.z);
+        A = BP5FETCH(d_IImage, coordA, kk);
+        C = BP5FETCH(d_IImage, coordC, kk);
 #else
-        A = read_imagef(d_IImage, sampler2, (float4)(coordA, 0.f)).w;
-        C = read_imagef(d_IImage, sampler2, (float4)(coordC, 0.f)).w;
+        A = BP5FETCH(d_IImage, coordA, kk);
+        C = BP5FETCH(d_IImage, coordC, kk);
 #endif
       } else {
         A = B;
@@ -1330,11 +1378,11 @@ extern "C" __global__
         B = d_IImage.sample(sampler2, coordB).r;
         D = d_IImage.sample(sampler2, coordD).r;
 #elif defined(CUDA) || defined(HIP)
-        B = tex3D<float>(d_IImage, coordB.x, coordB.y, coordB.z);
-        D = tex3D<float>(d_IImage, coordD.x, coordD.y, coordD.z);
+        B = BP5FETCH(d_IImage, coordB, kk);
+        D = BP5FETCH(d_IImage, coordD, kk);
 #else
-        B = read_imagef(d_IImage, sampler2, (float4)(coordB, 0.f)).w;
-        D = read_imagef(d_IImage, sampler2, (float4)(coordD, 0.f)).w;
+        B = BP5FETCH(d_IImage, coordB, kk);
+        D = BP5FETCH(d_IImage, coordD, kk);
 #endif
       }
 #endif

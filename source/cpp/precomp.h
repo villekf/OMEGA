@@ -71,7 +71,7 @@ typedef struct structForScalars {
 		saveIter = false, enforcePositivity = false, computeSensImag = false, useMAD = true, useImages = false, eFOV = false,
 		useExtendedFOV = false, use64BitIndices = false, TGV2D = false, multiResolution = false, offset = false, relaxScaling = false,
 		computeRelaxation = false, storeFP = false, deconvolution = false, CTAttenuation = true, largeDim = false, usingLinearizedData = false, storeResidual = false,
-		useBuffers = true, useFDKWeights = false, useLayeredBP = false, layeredBP = false, indexBased = false, FISTAAcceleration = false, stochastic = false, useTotLength = true,
+		useBuffers = true, useFDKWeights = false, useLayeredBP = false, layeredBP = false, useLayeredFP = false, layeredFP5 = false, layeredBP5 = false, indexBased = false, FISTAAcceleration = false, stochastic = false, useTotLength = true,
 		useParallelBeam = false, useHelical = false;
 	// True if the additive term (randoms/scatter, sc_ra) is TOF-resolved, i.e. has the same layout and size as the TOF measurements (bin is the slow index).
 	// If false, the additive term is a non-TOF vector that is repeated for all the TOF bins

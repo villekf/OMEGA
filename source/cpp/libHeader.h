@@ -338,8 +338,11 @@ struct inputStruct {
     bool compute_sensitivity_image = false;
     // Whether FDK weights are used or not
     bool useFDKWeights = true;
-    // If true, the CT projector type 4 backprojection reads the measurements from a 2D layered texture (when possible)
+    // If true, the CT projector type 4 backprojection reads the measurements from a 2D layered texture (when possible). With projector
+    // type 5 the integral image of the projections is read from a 2D layered texture (one layer per projection) in the same way
     bool useLayeredBP = true;
+    // If true, the integral images of the CT projector type 5 forward projection are read from 2D layered textures (when possible)
+    bool useLayeredFP = true;
     // Number of detector columns computed by each thread in the type 5 forward projection
     uint32_t NVOXELSFP = 8;
     // Number of voxels in the axial direction computed by each thread in the type 5 backprojection
@@ -1475,6 +1478,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     }
     inputScalars.useFDKWeights = options.useFDKWeights;
     inputScalars.useLayeredBP = options.useLayeredBP;
+    inputScalars.useLayeredFP = options.useLayeredFP;
     inputScalars.NVOXELSFP = options.NVOXELSFP;
     inputScalars.NVOXELS5 = options.NVOXELS5;
     if (MethodList.FDK && inputScalars.CT && inputScalars.useFDKWeights) {

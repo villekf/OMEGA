@@ -622,7 +622,17 @@ class projectorClass:
     dualLayerSubmodule = False
     storeResidual = False
     useFDKWeights = True
+    # If true, the measurements of the backprojection of projector type 4 (CT) are stored as a 2D layered texture (one layer per
+    # projection) instead of a 3D texture. The results are identical, but the backprojection is faster. With projector type 5 the
+    # integral image of the projections is stored the same way (one layer per projection); not used with the curved detector of
+    # helical CT. Switched off automatically if a subset has more projections than the device supports layers (usually 2048),
+    # with Metal and when buffers are used instead of textures. Default is true.
     useLayeredBP = True
+    # If true, the integral images of the forward projection of projector type 5 are stored as 2D layered textures (one layer per
+    # image slice) instead of 3D textures. The results are identical, but the forward projection is faster. Switched off
+    # automatically if the volume has more slices in the x- or y-direction than the device supports layers (usually 2048), with
+    # Metal and when buffers are used instead of textures. Default is true.
+    useLayeredFP = True
     # Number of detector columns computed by each thread in the forward projection of projector type 5. The footprint of the first
     # column is reused for the others, which makes the forward projection faster. This is exact only when the detector columns are
     # parallel to the z-axis and the detector rows are perpendicular to it, i.e. when the detector panel is not tilted or rotated in
@@ -3208,6 +3218,7 @@ class projectorClass:
             ('compute_sensitivity_image', ctypes.c_bool),
             ('useFDKWeights', ctypes.c_bool),
             ('useLayeredBP', ctypes.c_bool),
+            ('useLayeredFP', ctypes.c_bool),
             ('NVOXELSFP', ctypes.c_uint32),
             ('NVOXELS5', ctypes.c_uint32),
             ('useIndexBasedReconstruction', ctypes.c_bool),

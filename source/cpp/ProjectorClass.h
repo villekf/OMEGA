@@ -1033,12 +1033,9 @@ class ProjectorClass {
 			inputScalars.useBuffers = false;
 			memAlloc.useBuffers = false;
 		}
-		// CT backprojection type 4: read the measurements from a 2D layered texture (one layer per projection) instead of a 3D texture.
-		// Only possible when the projections of every subset fit into the layers of the texture (at most 2048 and the device limit)
-		inputScalars.layeredBP = false;
+		// Largest number of layers of a 2D layered texture: 2048 or the device limit, if lower
 #if !defined(METAL)
-		if (inputScalars.useLayeredBP && inputScalars.CT && inputScalars.BPType == 4 && inputScalars.listmode == 0 && !inputScalars.useBuffers &&
-			!inputScalars.useHelical && !inputScalars.largeDim) {
+		auto layeredTextureLimit = [&]() -> int64_t {
 			int64_t layerLimit = 2048;
 #if defined(CUDA)
 			int maxLayers = 0;
@@ -1050,6 +1047,16 @@ class ProjectorClass {
 			if (statusLayer == CL_SUCCESS && maxLayers > 0)
 				layerLimit = (std::min)(layerLimit, static_cast<int64_t>(maxLayers));
 #endif
+			return layerLimit;
+		};
+#endif
+		// CT backprojection type 4: read the measurements from a 2D layered texture (one layer per projection) instead of a 3D texture.
+		// Only possible when the projections of every subset fit into the layers of the texture (at most 2048 and the device limit)
+		inputScalars.layeredBP = false;
+#if !defined(METAL)
+		if (inputScalars.useLayeredBP && inputScalars.CT && inputScalars.BPType == 4 && inputScalars.listmode == 0 && !inputScalars.useBuffers &&
+			!inputScalars.useHelical && !inputScalars.largeDim) {
+			const int64_t layerLimit = layeredTextureLimit();
 			if (inputScalars.maxProjPerCall > 0 && inputScalars.maxProjPerCall <= layerLimit)
 				inputScalars.layeredBP = true;
 			else if (inputScalars.verbose >= 1)
@@ -1059,6 +1066,62 @@ class ProjectorClass {
 		if (inputScalars.verbose >= 2 && inputScalars.CT && inputScalars.BPType == 4)
 			mexPrint(inputScalars.layeredBP ? "Using a layered 2D texture for the CT backprojection measurements\n" :
 				"Using a 3D texture for the CT backprojection measurements\n");
+		// CT projector type 5: the integral images of the forward projection (one layer per x or y slice of the volume) and the integral
+		// image of the projections in the backprojection (one layer per projection) are read from 2D layered textures instead of 3D
+		// textures. The curved helical geometry does not use it in the backprojection
+		inputScalars.layeredFP5 = false;
+		inputScalars.layeredBP5 = false;
+		if (inputScalars.CT && inputScalars.listmode == 0) {
+			if (inputScalars.useLayeredFP && inputScalars.FPType == 5) {
+				const int64_t layerLimit = layeredTextureLimit();
+				int64_t maxSlices = 0;
+				for (int kk = 0; kk <= inputScalars.nMultiVolumes; kk++)
+					maxSlices = (std::max)(maxSlices, static_cast<int64_t>((std::max)(inputScalars.Nx[kk], inputScalars.Ny[kk])));
+				if (inputScalars.useBuffers) {
+					if (inputScalars.verbose >= 1)
+						mexPrint("useLayeredFP was switched off: buffers are used instead of textures\n");
+				}
+				else if (inputScalars.largeDim) {
+					if (inputScalars.verbose >= 1)
+						mexPrint("useLayeredFP was switched off: largeDim is used\n");
+				}
+				else if (maxSlices > layerLimit) {
+					if (inputScalars.verbose >= 1)
+						mexPrintBase("useLayeredFP was switched off: %lld voxels in the x- or y-direction exceeds the layered texture limit of %lld\n",
+							static_cast<long long>(maxSlices), static_cast<long long>(layerLimit));
+				}
+				else
+					inputScalars.layeredFP5 = true;
+				if (inputScalars.verbose >= 2)
+					mexPrint(inputScalars.layeredFP5 ? "Using layered 2D textures for the integral images of the type 5 forward projection\n" :
+						"Using 3D textures for the integral images of the type 5 forward projection\n");
+			}
+			if (inputScalars.useLayeredBP && inputScalars.BPType == 5) {
+				const int64_t layerLimit = layeredTextureLimit();
+				if (inputScalars.useBuffers) {
+					if (inputScalars.verbose >= 1)
+						mexPrint("useLayeredBP was switched off for projector type 5: buffers are used instead of textures\n");
+				}
+				else if (inputScalars.largeDim) {
+					if (inputScalars.verbose >= 1)
+						mexPrint("useLayeredBP was switched off for projector type 5: largeDim is used\n");
+				}
+				else if (inputScalars.useHelical) {
+					if (inputScalars.verbose >= 1)
+						mexPrint("useLayeredBP was switched off for projector type 5: the curved helical geometry does not support it\n");
+				}
+				else if (inputScalars.maxProjPerCall <= 0 || inputScalars.maxProjPerCall > layerLimit) {
+					if (inputScalars.verbose >= 1)
+						mexPrintBase("useLayeredBP was switched off for projector type 5: %lld projections in a subset exceeds the layered texture limit of %lld\n",
+							static_cast<long long>(inputScalars.maxProjPerCall), static_cast<long long>(layerLimit));
+				}
+				else
+					inputScalars.layeredBP5 = true;
+				if (inputScalars.verbose >= 2)
+					mexPrint(inputScalars.layeredBP5 ? "Using a layered 2D texture for the integral image of the type 5 backprojection\n" :
+						"Using a 3D texture for the integral image of the type 5 backprojection\n");
+			}
+		}
 #endif
 		if (inputScalars.useHalf)
 			ADD_OPT(options, "-DHALF");
@@ -1395,6 +1458,11 @@ class ProjectorClass {
 				ADD_OPT(os_options, FP_FLAG);
 			if (inputScalars.BPType == 5)
 				ADD_OPT(os_options, "-DBP");
+			// Integral images read from 2D layered textures instead of 3D textures (never set with Metal)
+			if (inputScalars.FPType == 5 && inputScalars.layeredFP5)
+				ADD_OPT(os_options, "-DLAYEREDFP5");
+			if (inputScalars.BPType == 5 && inputScalars.layeredBP5)
+				ADD_OPT(os_options, "-DLAYEREDBP5");
 			// BDD uses precomputed values, but you can also use it with the original on the fly calculations
 			// If GEOM5 is not defined, the kernel uses the old format, otherwise it assumes precomputed values
 			// The helical geometry has no detector plane, so it is always computed in the kernel
@@ -2176,6 +2244,11 @@ class ProjectorClass {
 		return status;
 	}
 
+	// True if the backprojection input image (measurements of type 4, integral image of the projections of type 5) is a 2D layered texture
+	inline bool backprojectionImageLayered(const scalarStruct& inputScalars) const {
+		return inputScalars.BPType == 5 ? inputScalars.layeredBP5 : inputScalars.layeredBP;
+	}
+
 	// Number of detector columns handled by one thread of the type 5 forward projection, the user option NVOXELSFP (at least 1). The footprint
 	// of the first column is reused for the others, which is exact only when the detector columns are parallel to the z-axis and the detector
 	// rows are perpendicular to it. With a tilted or in-plane rotated detector values larger than 1 are approximate
@@ -2632,6 +2705,10 @@ public:
 	std::vector<size_t> imageCacheDims, intImageCacheDimsXY, intImageCacheDimsYZ;
 	// Cached dimensions of the persistent BP input image/texture (third entry 0 = not yet created)
 	size_t BPImageDims[3] = { 0, 0, 0 };
+	// True if the persistent BP input image/texture is a 2D layered one
+	bool BPImageLayered = false;
+	// True (per volume) if the cached integral images of the type 5 forward projection are 2D layered ones
+	std::vector<char> intImageLayeredXY, intImageLayeredYZ;
 	// ==== End Mod additions ====
 	// fastPDHG requirements
 	// Set to 1 only for the backprojections of the actual reconstruction loop
@@ -5630,6 +5707,7 @@ public:
 				// Projector type 7 always reads the projection data from a buffer, no image/texture is needed
 				if (!inputScalars.useBuffers && inputScalars.BPType != 7) {
 #if defined(CUDA) || defined(HIP)
+					const bool layeredInput = backprojectionImageLayered(inputScalars);
 					CUDA_ARRAY3D_DESCRIPTOR_st arr3DDesc;
 					std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
 					arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_FLOAT;
@@ -5638,7 +5716,7 @@ public:
 					arr3DDesc.Width = inputScalars.nRowsD;
 					arr3DDesc.Depth = length[indD];
 					// 2D layered texture, one layer per projection
-					if (inputScalars.layeredBP)
+					if (layeredInput)
 						arr3DDesc.Flags = CUDA_ARRAY3D_LAYERED;
 					if (inputScalars.BPType == 5) {
 						arr3DDesc.Height++;
@@ -5651,7 +5729,7 @@ public:
 						mexEval();
 					}
 					if (newInput) {
-						if (BPImageDims[0] != arr3DDesc.Width || BPImageDims[1] != arr3DDesc.Height || BPImageDims[2] != arr3DDesc.Depth) {
+						if (BPImageDims[0] != arr3DDesc.Width || BPImageDims[1] != arr3DDesc.Height || BPImageDims[2] != arr3DDesc.Depth || BPImageLayered != layeredInput) {
 							if (BPImageDims[2] != 0) {
 								getErrorString(cuTexObjectDestroy(d_inputImage));
 								getErrorString(cuArrayDestroy(BPArray));
@@ -5680,8 +5758,9 @@ public:
 								viewDesc.width++;
 							}
 							// The resource view is not used with the layered texture
-							status = cuTexObjectCreate(&d_inputImage, &resDescIm, &texDesc, inputScalars.layeredBP ? nullptr : &viewDesc);
+							status = cuTexObjectCreate(&d_inputImage, &resDescIm, &texDesc, layeredInput ? nullptr : &viewDesc);
 							CUDA_CHECK(status, "Image creation failed\n", -1);
+							BPImageLayered = layeredInput;
 							BPImageDims[0] = arr3DDesc.Width;
 							BPImageDims[1] = arr3DDesc.Height;
 							BPImageDims[2] = arr3DDesc.Depth;
@@ -5707,6 +5786,7 @@ public:
 						CUDA_CHECK(status, "Array mem copy failed\n", -1);
 					}
 #elif defined(OPENCL)
+					const bool layeredInput = backprojectionImageLayered(inputScalars);
 					cl::size_type imX = inputScalars.nRowsD;
 					cl::size_type imY = inputScalars.nColsD;
 					cl::size_type imZ = length[indD];
@@ -5723,8 +5803,8 @@ public:
 					cl::detail::size_t_array region = { imX, imY, imZ };
 					// Make the inputs persistent such that they are only created when required
 					if (newInput) {
-						if (BPImageDims[0] != imX || BPImageDims[1] != imY || BPImageDims[2] != imZ) {
-							if (inputScalars.layeredBP) {
+						if (BPImageDims[0] != imX || BPImageDims[1] != imY || BPImageDims[2] != imZ || BPImageLayered != layeredInput) {
+							if (layeredInput) {
 								// 2D image array, one layer per projection (held as a generic image handle in d_inputImage)
 								cl::Image2DArray layeredImage(CLContext, CL_MEM_READ_ONLY, format, imZ, imX, imY, 0, 0, NULL, &status);
 								OCL_CHECK(status, "Image creation failed\n", -1);
@@ -5734,6 +5814,7 @@ public:
 								d_inputImage = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
 								OCL_CHECK(status, "Image creation failed\n", -1);
 							}
+							BPImageLayered = layeredInput;
 							BPImageDims[0] = imX;
 							BPImageDims[1] = imY;
 							BPImageDims[2] = imZ;
@@ -6187,7 +6268,7 @@ public:
 					// Use either the same cached image texture as with FPTypes 1-4
 					if (fastStep == 0) {
 #if defined(OPENCL)
-						if (inputScalars.layeredBP) {
+						if (backprojectionImageLayered(inputScalars)) {
 							// d_inputImage is an image2d_array here, which cannot be passed as image3d_t. The kernel does not read
 							// this argument when fastStep == 0, so a tiny valid 3D image is used as the placeholder
 							if (!d_dummyImage3D()) {

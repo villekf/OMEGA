@@ -557,7 +557,12 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			proj.intArrayCacheXY.resize(ii + 1);
 			proj.intImageCacheDimsXY.resize((ii + 1) * 3, 0);
 		}
-		if (proj.intImageCacheDimsXY[ii * 3] != static_cast<size_t>(dim0) || proj.intImageCacheDimsXY[ii * 3 + 1] != static_cast<size_t>(dim1) || proj.intImageCacheDimsXY[ii * 3 + 2] != static_cast<size_t>(dim2)) {
+		if (proj.intImageLayeredXY.size() <= static_cast<size_t>(ii))
+			proj.intImageLayeredXY.resize(ii + 1, 0);
+		// 2D layered textures (one layer per slice) instead of 3D textures
+		const bool layeredImXY = inputScalars.layeredFP5;
+		if (proj.intImageCacheDimsXY[ii * 3] != static_cast<size_t>(dim0) || proj.intImageCacheDimsXY[ii * 3 + 1] != static_cast<size_t>(dim1) || proj.intImageCacheDimsXY[ii * 3 + 2] != static_cast<size_t>(dim2) ||
+			(proj.intImageLayeredXY[ii] != 0) != layeredImXY) {
 			if (proj.intImageCacheDimsXY[ii * 3 + 2] != 0) {
 				getErrorString(cuTexObjectDestroy(proj.intTexCacheXY[ii]));
 				getErrorString(cuArrayDestroy(proj.intArrayCacheXY[ii]));
@@ -575,6 +580,8 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			arr3DDesc.Height = dim1;
 			arr3DDesc.Width = dim0;
 			arr3DDesc.Depth = dim2;
+			if (layeredImXY)
+				arr3DDesc.Flags = CUDA_ARRAY3D_LAYERED;
 			status = cuArray3DCreate(&proj.intArrayCacheXY[ii], &arr3DDesc);
 			if (status != CUDA_SUCCESS) {
 				getErrorString(status);
@@ -594,7 +601,8 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			viewDesc.width = dim0;
 			viewDesc.depth = dim2;
 			viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
-			status = cuTexObjectCreate(&proj.intTexCacheXY[ii], &resDesc, &texDesc, &viewDesc);
+			// The resource view is not used with the layered texture
+			status = cuTexObjectCreate(&proj.intTexCacheXY[ii], &resDesc, &texDesc, layeredImXY ? nullptr : &viewDesc);
 			if (status != CUDA_SUCCESS) {
 				getErrorString(status);
 				mexPrint("Integral image xz copy failed\n");
@@ -602,6 +610,7 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			}
 			else if (DEBUG)
 				mexPrint("Texture creation completed\n");
+			proj.intImageLayeredXY[ii] = layeredImXY ? 1 : 0;
 			proj.intImageCacheDimsXY[ii * 3] = static_cast<size_t>(dim0);
 			proj.intImageCacheDimsXY[ii * 3 + 1] = static_cast<size_t>(dim1);
 			proj.intImageCacheDimsXY[ii * 3 + 2] = static_cast<size_t>(dim2);
@@ -632,13 +641,26 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			proj.d_intImageCacheXY.resize(ii + 1);
 			proj.intImageCacheDimsXY.resize((ii + 1) * 3, 0);
 		}
-		if (proj.intImageCacheDimsXY[ii * 3] != region[0] || proj.intImageCacheDimsXY[ii * 3 + 1] != region[1] || proj.intImageCacheDimsXY[ii * 3 + 2] != region[2]) {
-			proj.d_intImageCacheXY[ii] = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
+		if (proj.intImageLayeredXY.size() <= static_cast<size_t>(ii))
+			proj.intImageLayeredXY.resize(ii + 1, 0);
+		// 2D image arrays (one layer per slice) instead of 3D images
+		const bool layeredImXY = inputScalars.layeredFP5;
+		if (proj.intImageCacheDimsXY[ii * 3] != region[0] || proj.intImageCacheDimsXY[ii * 3 + 1] != region[1] || proj.intImageCacheDimsXY[ii * 3 + 2] != region[2] ||
+			(proj.intImageLayeredXY[ii] != 0) != layeredImXY) {
+			if (layeredImXY) {
+				// The image array is held as a generic image handle (the kernel argument is set from the cl::Image3D object)
+				cl::Image2DArray layeredImage(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[2], region[0], region[1], 0, 0, NULL, &status);
+				if (status == CL_SUCCESS)
+					proj.d_intImageCacheXY[ii] = cl::Image3D(layeredImage(), true);
+			}
+			else
+				proj.d_intImageCacheXY[ii] = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				mexPrint("Failed to create integral image\n");
 				return -1;
 			}
+			proj.intImageLayeredXY[ii] = layeredImXY ? 1 : 0;
 			proj.intImageCacheDimsXY[ii * 3] = region[0];
 			proj.intImageCacheDimsXY[ii * 3 + 1] = region[1];
 			proj.intImageCacheDimsXY[ii * 3 + 2] = region[2];
@@ -684,7 +706,12 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			proj.intArrayCacheYZ.resize(ii + 1);
 			proj.intImageCacheDimsYZ.resize((ii + 1) * 3, 0);
 		}
-		if (proj.intImageCacheDimsYZ[ii * 3] != static_cast<size_t>(dim0) || proj.intImageCacheDimsYZ[ii * 3 + 1] != static_cast<size_t>(dim1) || proj.intImageCacheDimsYZ[ii * 3 + 2] != static_cast<size_t>(dim2)) {
+		if (proj.intImageLayeredYZ.size() <= static_cast<size_t>(ii))
+			proj.intImageLayeredYZ.resize(ii + 1, 0);
+		// 2D layered textures (one layer per slice) instead of 3D textures
+		const bool layeredImYZ = inputScalars.layeredFP5;
+		if (proj.intImageCacheDimsYZ[ii * 3] != static_cast<size_t>(dim0) || proj.intImageCacheDimsYZ[ii * 3 + 1] != static_cast<size_t>(dim1) || proj.intImageCacheDimsYZ[ii * 3 + 2] != static_cast<size_t>(dim2) ||
+			(proj.intImageLayeredYZ[ii] != 0) != layeredImYZ) {
 			if (proj.intImageCacheDimsYZ[ii * 3 + 2] != 0) {
 				getErrorString(cuTexObjectDestroy(proj.intTexCacheYZ[ii]));
 				getErrorString(cuArrayDestroy(proj.intArrayCacheYZ[ii]));
@@ -702,6 +729,8 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			arr3DDesc.Height = dim1;
 			arr3DDesc.Width = dim0;
 			arr3DDesc.Depth = dim2;
+			if (layeredImYZ)
+				arr3DDesc.Flags = CUDA_ARRAY3D_LAYERED;
 			status = cuArray3DCreate(&proj.intArrayCacheYZ[ii], &arr3DDesc);
 			if (status != CUDA_SUCCESS) {
 				getErrorString(status);
@@ -721,7 +750,8 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			viewDesc.width = dim0;
 			viewDesc.depth = dim2;
 			viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
-			status = cuTexObjectCreate(&proj.intTexCacheYZ[ii], &resDesc, &texDesc, &viewDesc);
+			// The resource view is not used with the layered texture
+			status = cuTexObjectCreate(&proj.intTexCacheYZ[ii], &resDesc, &texDesc, layeredImYZ ? nullptr : &viewDesc);
 			if (status != CUDA_SUCCESS) {
 				getErrorString(status);
 				mexPrint("Integral image yz copy failed\n");
@@ -729,6 +759,7 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			}
 			else if (DEBUG)
 				mexPrint("Texture creation completed\n");
+			proj.intImageLayeredYZ[ii] = layeredImYZ ? 1 : 0;
 			proj.intImageCacheDimsYZ[ii * 3] = static_cast<size_t>(dim0);
 			proj.intImageCacheDimsYZ[ii * 3 + 1] = static_cast<size_t>(dim1);
 			proj.intImageCacheDimsYZ[ii * 3 + 2] = static_cast<size_t>(dim2);
@@ -759,13 +790,26 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			proj.d_intImageCacheYZ.resize(ii + 1);
 			proj.intImageCacheDimsYZ.resize((ii + 1) * 3, 0);
 		}
-		if (proj.intImageCacheDimsYZ[ii * 3] != region[0] || proj.intImageCacheDimsYZ[ii * 3 + 1] != region[1] || proj.intImageCacheDimsYZ[ii * 3 + 2] != region[2]) {
-			proj.d_intImageCacheYZ[ii] = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
+		if (proj.intImageLayeredYZ.size() <= static_cast<size_t>(ii))
+			proj.intImageLayeredYZ.resize(ii + 1, 0);
+		// 2D image arrays (one layer per slice) instead of 3D images
+		const bool layeredImYZ = inputScalars.layeredFP5;
+		if (proj.intImageCacheDimsYZ[ii * 3] != region[0] || proj.intImageCacheDimsYZ[ii * 3 + 1] != region[1] || proj.intImageCacheDimsYZ[ii * 3 + 2] != region[2] ||
+			(proj.intImageLayeredYZ[ii] != 0) != layeredImYZ) {
+			if (layeredImYZ) {
+				// The image array is held as a generic image handle (the kernel argument is set from the cl::Image3D object)
+				cl::Image2DArray layeredImage(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[2], region[0], region[1], 0, 0, NULL, &status);
+				if (status == CL_SUCCESS)
+					proj.d_intImageCacheYZ[ii] = cl::Image3D(layeredImage(), true);
+			}
+			else
+				proj.d_intImageCacheYZ[ii] = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				mexPrint("Failed to create integral image\n");
 				return -1;
 			}
+			proj.intImageLayeredYZ[ii] = layeredImYZ ? 1 : 0;
 			proj.intImageCacheDimsYZ[ii * 3] = region[0];
 			proj.intImageCacheDimsYZ[ii * 3 + 1] = region[1];
 			proj.intImageCacheDimsYZ[ii * 3 + 2] = region[2];

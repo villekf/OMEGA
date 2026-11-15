@@ -950,7 +950,9 @@ def _forwardProjectionFlat(self, f, subset: int = -1, timestep: int = -1):
                         intIm = intIm.cumsum(1)
                         intIm = intIm.ravel('F')
                         chl = cp.cuda.texture.ChannelFormatDescriptor(32,0,0,0, cp.cuda.runtime.cudaChannelFormatKindFloat)
-                        array = cp.cuda.texture.CUDAarray(chl, self.Ny[k].item() + 1, self.Nz[k].item() + 1, self.Nx[k].item())
+                        # 2D layered textures (cudaArrayLayered, 1 if not exported by CuPy): one layer per slice
+                        _flFP = (getattr(cp.cuda.runtime, 'cudaArrayLayered', 1),) if _layered_fp5(self) else ()
+                        array = cp.cuda.texture.CUDAarray(chl, self.Ny[k].item() + 1, self.Nz[k].item() + 1, self.Nx[k].item(), *_flFP)
                         array.copy_from(intIm.reshape((self.Nx[k].item(), self.Nz[k].item() + 1, self.Ny[k].item() + 1)))
                         res = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=array)
                         tdes= cp.cuda.texture.TextureDescriptor(addressModes=(cp.cuda.runtime.cudaAddressModeClamp, cp.cuda.runtime.cudaAddressModeClamp,cp.cuda.runtime.cudaAddressModeClamp),
@@ -965,7 +967,7 @@ def _forwardProjectionFlat(self, f, subset: int = -1, timestep: int = -1):
                         intIm = intIm.cumsum(0)
                         intIm = intIm.cumsum(1)
                         intIm = intIm.ravel('F')
-                        array2 = cp.cuda.texture.CUDAarray(chl, self.Nx[k].item() + 1, self.Nz[k].item() + 1, self.Ny[k].item())
+                        array2 = cp.cuda.texture.CUDAarray(chl, self.Nx[k].item() + 1, self.Nz[k].item() + 1, self.Ny[k].item(), *_flFP)
                         array2.copy_from(intIm.reshape((self.Ny[k].item(), self.Nz[k].item() + 1, self.Nx[k].item() + 1)))
                         res = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=array2)
                         tdes= cp.cuda.texture.TextureDescriptor(addressModes=(cp.cuda.runtime.cudaAddressModeClamp, cp.cuda.runtime.cudaAddressModeClamp,cp.cuda.runtime.cudaAddressModeClamp),
@@ -1109,12 +1111,13 @@ def _forwardProjectionFlat(self, f, subset: int = -1, timestep: int = -1):
                         else:
                             d_im = cl.Image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Nx[k].item(), self.Ny[k].item(), self.Nz[k].item()))
                     else:
+                        _layFP = _layered_fp5(self)
                         if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
-                            d_imInt = cl.create_image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Ny[k].item() + 1, self.Nz[k].item() + 1, self.Nx[k].item()))
-                            d_im = cl.create_image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Nx[k].item() + 1, self.Nz[k].item() + 1, self.Ny[k].item()))
+                            d_imInt = cl.create_image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Ny[k].item() + 1, self.Nz[k].item() + 1, self.Nx[k].item()), is_array=_layFP)
+                            d_im = cl.create_image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Nx[k].item() + 1, self.Nz[k].item() + 1, self.Ny[k].item()), is_array=_layFP)
                         else:
-                            d_imInt = cl.Image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Ny[k].item() + 1, self.Nz[k].item() + 1, self.Nx[k].item()))
-                            d_im = cl.Image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Nx[k].item() + 1, self.Nz[k].item() + 1, self.Ny[k].item()))
+                            d_imInt = cl.Image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Ny[k].item() + 1, self.Nz[k].item() + 1, self.Nx[k].item()), is_array=_layFP)
+                            d_im = cl.Image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Nx[k].item() + 1, self.Nz[k].item() + 1, self.Ny[k].item()), is_array=_layFP)
                     if isinstance(f,list):
                         if self.use_psf:
                             f[k] = self.computeConvolution(f[k], k)
@@ -1467,7 +1470,11 @@ def _backwardProjectionFlat(self, y, subset = -1, timestep = -1):
                             else:
                                 if self.useImages:
                                     chl = cp.cuda.texture.ChannelFormatDescriptor(32,0,0,0, cp.cuda.runtime.cudaChannelFormatKindFloat)
-                                    array = cp.cuda.texture.CUDAarray(chl, self.nRowsD + 1, self.nColsD + 1, self.nProjSubset[timestep, subset].item())
+                                    if _layered_bp5(self):
+                                        # 2D layered texture (cudaArrayLayered, 1 if not exported by CuPy): one layer per projection
+                                        array = cp.cuda.texture.CUDAarray(chl, self.nRowsD + 1, self.nColsD + 1, self.nProjSubset[timestep, subset].item(), getattr(cp.cuda.runtime, 'cudaArrayLayered', 1))
+                                    else:
+                                        array = cp.cuda.texture.CUDAarray(chl, self.nRowsD + 1, self.nColsD + 1, self.nProjSubset[timestep, subset].item())
                                     array.copy_from(yy.reshape((self.nProjSubset[timestep, subset].item(), self.nColsD + 1, self.nRowsD + 1)))
                                     res = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=array)
                                     tdes= cp.cuda.texture.TextureDescriptor(addressModes=(cp.cuda.runtime.cudaAddressModeClamp, cp.cuda.runtime.cudaAddressModeClamp,cp.cuda.runtime.cudaAddressModeClamp),
@@ -1542,10 +1549,11 @@ def _backwardProjectionFlat(self, y, subset = -1, timestep = -1):
                     else:
                         cl.enqueue_copy(self.queue, d_im, y.data, offset=(0), origin=(0,0,0), region=(self.nRowsD, self.nColsD, self.nProjSubset[timestep, subset].item()));
                 else:
+                    _lay = _layered_bp5(self)
                     if VERSION[0] > 2024 or (VERSION[0] == 2024 and VERSION[1] > 2):
-                        d_im = cl.create_image(self.clctx, cl.mem_flags.READ_ONLY, imformat, shape=(self.nRowsD + 1, self.nColsD + 1, self.nProjSubset[timestep, subset].item()))
+                        d_im = cl.create_image(self.clctx, cl.mem_flags.READ_ONLY, imformat, shape=(self.nRowsD + 1, self.nColsD + 1, self.nProjSubset[timestep, subset].item()), is_array=_lay)
                     else:
-                        d_im = cl.Image(self.clctx, cl.mem_flags.READ_ONLY, imformat, shape=(self.nRowsD + 1, self.nColsD + 1, self.nProjSubset[timestep, subset].item()))
+                        d_im = cl.Image(self.clctx, cl.mem_flags.READ_ONLY, imformat, shape=(self.nRowsD + 1, self.nColsD + 1, self.nProjSubset[timestep, subset].item()), is_array=_lay)
                     if self.useAF:
                         y = af.moddims(y, self.nRowsD, d1=self.nColsD, d2=self.nProjSubset[timestep, subset].item())
                         if self.meanBP:
@@ -1710,6 +1718,16 @@ def _backwardProjectionFlat(self, y, subset = -1, timestep = -1):
 def _layered_bp(self):
     """True if the CT type-4 backprojection measurements are held in a 2D layered texture / image2d_array (decided in init.py)."""
     return bool(getattr(self, '_layeredBP', False))
+
+
+def _layered_fp5(self):
+    """True if the integral images of the type 5 forward projection are held in 2D layered textures / image2d_array (decided in init.py)."""
+    return bool(getattr(self, '_layeredFP5', False))
+
+
+def _layered_bp5(self):
+    """True if the integral image of the type 5 backprojection is held in a 2D layered texture / image2d_array (decided in init.py)."""
+    return bool(getattr(self, '_layeredBP5', False))
 
 from typing import Any
 

@@ -771,9 +771,13 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		}
 	}
 	inputScalars.useFDKWeights = getScalarBool(getField(options, 0, "useFDKWeights"), -49);
-	// Optional (off when the field is missing): layered 2D texture for the CT projector type 4 backprojection measurements
+	// Optional (off when the field is missing): layered 2D texture for the CT projector type 4 backprojection measurements and for the
+	// integral image of the projector type 5 backprojection
 	if (mxGetFieldNumber(options, "useLayeredBP") >= 0)
 		inputScalars.useLayeredBP = getScalarBool(getField(options, 0, "useLayeredBP"), -49);
+	// Optional (off when the field is missing): layered 2D textures for the integral images of the CT projector type 5 forward projection
+	if (mxGetFieldNumber(options, "useLayeredFP") >= 0)
+		inputScalars.useLayeredFP = getScalarBool(getField(options, 0, "useLayeredFP"), -49);
 	// Optional (default 8 when the field is missing): number of detector columns computed by each thread in the type 5 forward projection
 	if (mxGetFieldNumber(options, "NVOXELSFP") >= 0)
 		inputScalars.NVOXELSFP = getScalarUInt32(options, 0, "NVOXELSFP");

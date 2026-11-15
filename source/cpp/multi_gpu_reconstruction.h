@@ -68,6 +68,8 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 		inputScalars.orthClip = orthClipNeeded(inputScalars, x, z_det, w_vec.listCoord, pituus);
 	// Largest number of projections in any subset/time step (decides whether the layered CT BP texture can be used)
 	inputScalars.maxProjPerCall = length.empty() ? 0 : *std::max_element(length.begin(), length.end());
+	// This implementation creates the integral images of the type 5 forward projection itself as 3D images
+	inputScalars.useLayeredFP = false;
 	ProjectorClass proj;
 	retVal = proj.addProjector(inputScalars, w_vec, MethodList, header_directory, type);
 

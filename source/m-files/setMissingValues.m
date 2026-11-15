@@ -369,8 +369,20 @@ end
 if ~isfield(options,'useFDKWeights')
     options.useFDKWeights = true;
 end
+% If true, the measurements of the backprojection of projector type 4 (CT) are stored as a 2D layered texture (one layer per
+% projection) instead of a 3D texture. The results are identical, but the backprojection is faster. With projector type 5 the
+% integral image of the projections is stored the same way (one layer per projection); not used with the curved detector of
+% helical CT. Switched off automatically if a subset has more projections than the device supports layers (usually 2048),
+% with Metal and when buffers are used instead of textures. Default is true.
 if ~isfield(options,'useLayeredBP')
     options.useLayeredBP = true;
+end
+% If true, the integral images of the forward projection of projector type 5 are stored as 2D layered textures (one layer per
+% image slice) instead of 3D textures. The results are identical, but the forward projection is faster. Switched off
+% automatically if the volume has more slices in the x- or y-direction than the device supports layers (usually 2048), with
+% Metal and when buffers are used instead of textures. Default is true.
+if ~isfield(options,'useLayeredFP')
+    options.useLayeredFP = true;
 end
 % Number of detector columns computed by each thread in the forward projection of projector type 5. The footprint of the first
 % column is reused for the others, which makes the forward projection faster. This is exact only when the detector columns are
