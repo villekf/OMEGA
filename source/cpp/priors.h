@@ -397,6 +397,57 @@ inline int NLM(ProjectorClass& proj, const af::array& im, Weighting& w_vec, cons
 	return status;
 }
 
+// Curvature bound of the prior for the separable-surrogate step used by SPS and the image preconditioner type 6.
+// For priors whose gradient is linear (or, for Huber, piecewise linear with slope at most one) in the image, grad = K * x with
+// a symmetric kernel K, and the Hessian of the prior is bounded by the Gershgorin bound sum(|K|) (the row sum of the absolute values).
+// This is added to the data curvature in the step size. Priors without a known bound return zero and set unbounded, in which
+// case the step uses only the data curvature. Proximal priors have no gradient step and need no bound.
+inline float separablePriorCurvature(const RecMethods& MethodList, const Weighting& w_vec, bool& unbounded)
+{
+	unbounded = false;
+	float kappa = 0.f;
+	// The order follows applySpatialPrior, where only the first selected prior is applied
+	if (MethodList.MRP)
+		unbounded = true;
+	else if (MethodList.Quad || MethodList.Huber) {
+		const af::array& kernel = MethodList.Quad ? w_vec.weights_quad : w_vec.weights_huber;
+		std::vector<float> K(kernel.elements());
+		kernel.as(f32).host(K.data());
+		for (const float v : K)
+			if (std::isfinite(v))
+				kappa += std::abs(v);
+	}
+	else if (MethodList.WeightedMean) {
+		// With med_no_norm and the arithmetic mean the gradient is x - conv(x, w / sum(w)), i.e. K = delta - w / sum(w),
+		// where w is the full weight kernel including the centre element
+		if (w_vec.med_no_norm && w_vec.mean_type == 1U) {
+			std::vector<float> K(w_vec.weighted_weights.elements());
+			w_vec.weighted_weights.as(f32).host(K.data());
+			float wsum = 0.f;
+			for (const float v : K)
+				if (std::isfinite(v))
+					wsum += v;
+			if (wsum != 0.f) {
+				const size_t centre = K.size() / 2;
+				for (size_t i = 0; i < K.size(); i++) {
+					if (!std::isfinite(K[i]))
+						continue;
+					const float val = K[i] / wsum;
+					kappa += std::abs((i == centre ? 1.f : 0.f) - val);
+				}
+			}
+			else
+				unbounded = true;
+		}
+		else
+			unbounded = true;
+	}
+	else if (MethodList.L || MethodList.FMH || MethodList.TV || MethodList.hyperbolic || MethodList.AD || MethodList.APLS
+		|| MethodList.TGV || MethodList.NLM || MethodList.RDP || MethodList.GGMRF)
+		unbounded = true;
+	return kappa;
+}
+
 
 inline int applySpatialPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const scalarStruct& inputScalars, ProjectorClass& proj, const float beta, const uint32_t timestep, const uint32_t osa_iter = 0, const uint8_t compute_norm_matrix = 0, 
 	const bool iter = false, const int kk = 0) {

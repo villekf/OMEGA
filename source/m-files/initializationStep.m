@@ -4,6 +4,8 @@ function [im_vectors, mData, options] = initializationStep(options, mData, im_ve
 if (options.param.FISTA || options.param.FISTAL1)
     if (iter == 1 && subIter == 1)
         im_vectors.uFISTA = im_vectors.recApu;
+        % Previous FISTA iterate x_k (uFISTA holds the extrapolated point y_k)
+        im_vectors.xFISTA = im_vectors.recApu;
     else
         im_vectors.recApu = im_vectors.uFISTA;
     end

@@ -714,6 +714,17 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
         w_vec.epsilon_mramla.resize(inputScalars.Nt);
         w_vec.dP.resize(inputScalars.Nt);
 
+        // Curvature bound of the prior for the SPS / preconditioner type 6 step (main volume only)
+        float priorKappa = 0.f;
+        if ((w_vec.precondTypeIm[6] || MethodList.SPS) && w_vec.beta > 0.f) {
+            bool unboundedPrior = false;
+            priorKappa = separablePriorCurvature(MethodList, w_vec, unboundedPrior);
+            if (unboundedPrior && inputScalars.verbose > 0)
+                mexPrint("Warning: no curvature bound is available for the selected prior; the SPS / preconditioner type 6 step uses the data curvature only and may diverge with large beta");
+            if (inputScalars.verbose >= 3)
+                mexPrintBase("Prior curvature bound kappa = %f\n", priorKappa);
+        }
+
         // Loop through each time-step
         for (uint32_t tt = t0; tt < inputScalars.Nt; tt++) {
             af::array Sino = af::array(inputScalars.kokoTOF, &Sin[inputScalars.kokoTOF * tt], AFTYPE).as(f32);
@@ -818,8 +829,14 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                                 uu += length[indD];
                             alku += lengthFull[indD] * nBins;
                         }
-                        // dP = subsets / (sum over the subsets of the backprojections)
-                        w_vec.dP[tt][ii] = static_cast<float>(inputScalars.subsetsUsed) / w_vec.dP[tt][ii];
+                        // dP = subsets / (sum over the subsets of the backprojections + subsets * beta * kappa)
+                        // Each sub-iteration uses the subset data gradient but the full prior gradient, hence the prior curvature
+                        // is multiplied by the number of subsets. The prior is applied to the main volume only
+                        if (ii == 0 && priorKappa > 0.f)
+                            w_vec.dP[tt][ii] = static_cast<float>(inputScalars.subsetsUsed) / (w_vec.dP[tt][ii]
+                                + static_cast<float>(inputScalars.subsetsUsed) * w_vec.beta * priorKappa);
+                        else
+                            w_vec.dP[tt][ii] = static_cast<float>(inputScalars.subsetsUsed) / w_vec.dP[tt][ii];
                         w_vec.dP[tt][ii](af::isNaN(w_vec.dP[tt][ii])) = 1.f;
                         w_vec.dP[tt][ii](af::isInf(w_vec.dP[tt][ii])) = 1.f;
                         proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]);

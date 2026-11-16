@@ -211,6 +211,9 @@ Changed behaviour:
 - FISTA acceleration (```options.FISTA_acceleration```) together with largeDim now gives an error (MATLAB, Python and implementation 2)
 - 2D images (```options.Nz = 1```): the axial neighborhood size ```options.Ndz``` is now set to 0 automatically before the prior weights are computed (MATLAB and Python). Previously the default ```options.Ndz = 1``` made the quadratic, Huber, FMH and weighted mean priors fail with an error (and read past the end of the weight array)
 - Huber prior (implementation 2): the gradient now clips each neighbor difference separately, i.e. sum_k w_k * clip(x_j - x_k, -delta, delta), which is the gradient of the Huber penalty. Previously the weighted sum of the differences was clipped. Results with Huber prior change when ```options.huber_delta``` is smaller than the neighbor differences; with a large delta the results are unchanged
+- SPS and the separable-paraboloid image-based preconditioner (the seventh element of ```options.precondTypeImage```) now include the curvature of the prior in the step size: the step is subsets / (sum of the subset backprojections + subsets * beta * kappa), where kappa is a bound on the curvature of the prior (2 with the default quadratic prior weights). Previously only the curvature of the data term was used, and SPS (as well as e.g. MBSREM, PKMA and PDHG with this preconditioner) diverged with large beta (in PET tests from beta = 0.1 onward); they are now stable up to at least beta = 100 (MATLAB implementations 1 and 4, Python and implementation 2)
+  - The curvature bound is available for the quadratic prior, the Huber prior and the weighted mean prior with ```options.med_no_norm = true``` and ```options.mean_type = 1```. With other priors the previous data-only step is used and a warning is printed
+  - The results with the above priors and this step change; with beta = 0 they are unchanged
 
 Other changes:
 - Unified SPECT rotation projector logic for all three Python operator backends
@@ -515,6 +518,12 @@ Bug fixes:
 - Implementation 3: reconstructions with PSF (```options.use_psf```) returned an all-zero image (a kernel argument of the convolution was not set). The forward step kernel also read and wrote past the end of the measurement buffers when the number of measurements was not a multiple of 64, and the image-domain kernels could fail to launch when the image size was not a multiple of the local size
 - CUDA/HIP (implementation 2): the ArrayFire stream was queried with the native device number instead of the ArrayFire device number, which could select the stream of another device on multi-GPU systems
 - RDP without a reference image indexed an empty array (undefined behaviour), and host memory of some temporary arrays leaked when a reconstruction failed (implementation 2)
+- MATLAB implementations 1 and 4 (CPU), which had their own copies of several of the above algorithm bugs
+  - MBSREM applied the prior with the wrong sign (the prior roughened the image), and SPS ignored the prior completely
+  - The forward projections used for the SPS step size (and the image-based preconditioner 7) and for the MBSREM/MRAMLA epsilon were all added to the measurement positions of the first subset. Without subsets SPS failed with an error ("Arrays have incompatible sizes"); with subsets the step size and epsilon were computed from wrongly placed values. With implementation 1 the SPS step size also used only the system matrix of the last subset
+  - FISTA had no acceleration (the momentum step used the previous extrapolated image instead of the previous iterate), and ```options.FISTAType = 1``` is now supported. FISTA-L1 failed with an error and its soft thresholding had the wrong sign; the soft thresholding and the positivity constraint (```options.enforcePositivity```) are now applied before the momentum step, as in implementation 2
+  - COSEM, ECOSEM, ACOSEM and OSL-COSEM divided by the sensitivity image divided by the number of subsets, so COSEM and ECOSEM converged to the number of subsets times the ML image. The forward projection of the image now matches the measured counts for any number of subsets (previously 0.95, 3.8 and 7.6 times with 1, 4 and 8 subsets in a PET test)
+  - The full sensitivity image (used by RBI, OSL-RBI, the COSEM family and the image-based preconditioners) was computed as 1 + A^T 1 instead of A^T 1
 
 ## OMEGA v2.2.0
 

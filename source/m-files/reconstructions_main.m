@@ -403,12 +403,16 @@ if ismember(options.param.implementation, [1, 4, 5])
                     recApu{ii} = ones(options.param.N(ii), 1, options.param.cType);
                 end
                 E = ones(numel(Sino), 1, options.param.cType);
+                % Sino is in subset order; splitMeas applied to the element indices gives the positions of subset ll
+                % in the same layout as the subset forward projection (handles TOF, projector type 6 and the subsets == 1 case)
+                measInd = (1 : numel(Sino))';
                 for ll = 1 : options.param.subsets
+                    indE = splitMeas(options.param, measInd, options.nMeas, ll);
                     if options.param.implementation == 1
                         A = formMatrix(options, ll);
-                        E(options.index(options.nMeas(1) + 1 : options.nMeas(2))) = E(options.index(options.nMeas(1) + 1 : options.nMeas(2))) + A' * recApu{1};
+                        E(indE) = E(indE) + A' * recApu{1};
                     else
-                        E(options.index(options.nMeas(1) + 1 : options.nMeas(2))) = E(options.index(options.nMeas(1) + 1 : options.nMeas(2))) + forwardProject(options, recApu, ll, corrVector);
+                        E(indE) = E(indE) + forwardProject(options, recApu, ll, corrVector);
                     end
                 end
                 if (~options.param.CT && ((options.param.randoms_correction && ~all(allTrue)) || options.param.randoms_correction == 0) && (options.param.MBSREM || options.param.MRAMLA || options.param.SPS))
@@ -438,21 +442,48 @@ if ismember(options.param.implementation, [1, 4, 5])
                         E = EE;
                     end
                     if options.param.implementation == 1 && options.param.nMultiVolumes == 0
-                        options.param.dP = A * E;
+                        options.param.dP = zeros(options.param.N(1), 1, options.param.cType);
+                        for ll = 1 : options.param.subsets
+                            A = formMatrix(options, ll);
+                            indE = splitMeas(options.param, measInd, options.nMeas, ll);
+                            options.param.dP = options.param.dP + A * E(indE);
+                        end
                         if options.param.use_psf
                             options.param.dP = computeConvolution(options.param.dP, options.param, options.param.Nx(1), options.param.Ny(1), options.param.Nz(1), options.param.gaussK);
                         end
                     else
                         options.param.dP = backwardProject(options, E, 0, corrVector);
                     end
+                    % Curvature bound of the prior for the step size (main volume only)
+                    kappa = 0;
+                    if options.param.beta > 0
+                        [kappa, unboundedPrior] = separablePriorCurvature(options.param);
+                        if unboundedPrior
+                            warning('No curvature bound is available for the selected prior; the SPS / preconditioner type 6 step uses the data curvature only and may diverge with large beta')
+                        end
+                        if (options.param.verbose >= 3)
+                            disp(['Prior curvature bound kappa = ' num2str(kappa)])
+                        end
+                    end
+                    % dP = subsets / (sum over the subsets of the backprojections + subsets * beta * kappa)
+                    % Each sub-iteration uses the subset data gradient but the full prior gradient, hence the prior curvature
+                    % is multiplied by the number of subsets
                     if iscell(options.param.dP)
                         for ii = 1 : options.param.nMultiVolumes + 1
-                            options.param.dP{ii} = (options.param.subsets) ./ options.param.dP{ii};
+                            if ii == 1 && kappa > 0
+                                options.param.dP{ii} = (options.param.subsets) ./ (options.param.dP{ii} + options.param.subsets * options.param.beta * kappa);
+                            else
+                                options.param.dP{ii} = (options.param.subsets) ./ options.param.dP{ii};
+                            end
                             options.param.dP{ii}(isnan(options.param.dP{ii})) = 1;
                             options.param.dP{ii}(isinf(options.param.dP{ii})) = 1;
                         end
                     else
-                        options.param.dP = (options.param.subsets) ./ options.param.dP;
+                        if kappa > 0
+                            options.param.dP = (options.param.subsets) ./ (options.param.dP + options.param.subsets * options.param.beta * kappa);
+                        else
+                            options.param.dP = (options.param.subsets) ./ options.param.dP;
+                        end
                         options.param.dP(isnan(options.param.dP)) = 1;
                         options.param.dP(isinf(options.param.dP)) = 1;
                     end
@@ -473,7 +504,8 @@ if ismember(options.param.implementation, [1, 4, 5])
                 if (options.param.verbose >= 3)
                     disp("Starting computation of sensitivity image (D)");
                 end
-                options.param.D = ones(options.param.N(1), 1, options.param.cType);
+                % Accumulate the backprojections of ones over the subsets (start from zero, the zero voxels are set to one below)
+                options.param.D = zeros(options.param.N(1), 1, options.param.cType);
                 psf = options.param.use_psf;
                 options.param.use_psf = false;
                 for ll = 1 : options.param.subsets
@@ -894,4 +926,39 @@ elseif nargout > 4
     varargout{4} = [];
 end
 
+end
+
+function [kappa, unbounded] = separablePriorCurvature(param)
+% Curvature bound of the prior for the separable-surrogate step used by SPS and
+% the image preconditioner type 6. For priors with a linear gradient (Huber:
+% piecewise linear with slope at most one) grad = K * x with a symmetric kernel
+% K, and the Hessian is bounded by the Gershgorin bound sum(|K|). Priors with no
+% known bound return zero and set unbounded. Proximal priors need no bound.
+kappa = 0;
+unbounded = false;
+% The order follows applyPrior, where only the first selected prior is applied
+if param.MRP
+    unbounded = true;
+elseif param.quad
+    kappa = sum(abs(param.weights_quad(isfinite(param.weights_quad))));
+elseif param.Huber
+    kappa = sum(abs(param.weights_huber(isfinite(param.weights_huber))));
+elseif param.L || param.FMH
+    unbounded = true;
+elseif param.weighted_mean
+    % With med_no_norm and the arithmetic mean the gradient is x - conv(x, w / sum(w)),
+    % i.e. K = delta - w / sum(w), where w is the full weight kernel including the centre
+    w = param.weighted_weights(:);
+    w(~isfinite(w)) = 0;
+    if param.med_no_norm && param.mean_type == 1 && sum(w) ~= 0
+        K = -w ./ sum(w);
+        K(ceil(numel(K) / 2)) = K(ceil(numel(K) / 2)) + 1;
+        kappa = sum(abs(K));
+    else
+        unbounded = true;
+    end
+elseif param.TV || param.AD || param.APLS || param.TGV || param.NLM || param.RDP || param.GGMRF
+    unbounded = true;
+end
+kappa = double(kappa);
 end
