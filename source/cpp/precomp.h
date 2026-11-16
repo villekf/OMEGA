@@ -41,6 +41,15 @@ struct float2a {
 #include "Metal.hpp"
 #endif
 
+// The backend headers (included above) define these. The CPU implementation does not use projector type 5,
+// so the value only fills the struct
+#ifndef NVOXELSFP_DEFAULT
+#define NVOXELSFP_DEFAULT 8
+#endif
+#ifndef NVOXELS5_DEFAULT
+#define NVOXELS5_DEFAULT 8
+#endif
+
 struct largeDimStruct {
 	uint32_t NzOrig;
 	float bzOrig;
