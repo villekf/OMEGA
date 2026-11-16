@@ -177,6 +177,9 @@ if partitions == 1 && (options.temporal_smoothness || options.temporalTV)
 elseif partitions > 1 && options.temporal_smoothness && options.temporalTV
     error('Both temporal smoothness prior and temporal TV selected! Select only one!')
 end
+if partitions > 1 && options.ASD_POCS && (options.temporal_smoothness || options.temporalTV)
+    error('Temporal priors are not supported with ASD-POCS')
+end
 if options.start > options.end
     error('Start time is later than end time!')
 end
@@ -585,6 +588,10 @@ if options.largeDim
     end
     if isfield(options, 'maskBP') && size(options.maskBP, 3) > 1
         error('A 3D backprojection/prior mask is not supported with largeDim! Use a 2D (transaxial) mask instead.')
+    end
+    % The FISTA acceleration stores the previous iterate, but with largeDim the image is processed in chunks
+    if isfield(options, 'FISTA_acceleration') && options.FISTA_acceleration
+        error('FISTA acceleration (options.FISTA_acceleration) is not supported with largeDim!')
     end
 end
 if options.use_CUDA && options.use_CPU && options.implementation == 2

@@ -219,6 +219,11 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
             options.alpha_PKMA = single(options.alpha_PKMA);
         end
     end
+    % A single-slice image has no axial neighbours; with Ndz > 0 the weights and
+    % the ArrayFire priors assume a 3D neighbourhood
+    if options.Nz(1) == 1 && isfield(options, 'Ndz') && options.Ndz > 0
+        options.Ndz = cast(0, 'like', options.Ndz);
+    end
     % Compute the weights
     if (options.quad || options.L || options.FMH || options.weighted_mean || options.MRP || (options.TV && options.TVtype == 3 && options.TV_use_anatomical) || options.Huber || options.RDP || options.GGMRF ||options.hyperbolic) && options.MAP
         if options.quad || options.L || options.FMH || options.weighted_mean || (options.TV && options.TVtype == 3 && options.TV_use_anatomical) || options.Huber || options.RDP || options.GGMRF ||options.hyperbolic

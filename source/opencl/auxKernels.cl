@@ -91,7 +91,7 @@ void summa(const CLGLOBAL CAST* d_Summ_device, CLGLOBAL CAST* d_Summ_local, cons
 // MLEM/OSEM steps before backprojection
 // Used only by implementation 3
 KERN
-void forward(CLGLOBAL float* d_outputFP, const CLGLOBAL float* CLRESTRICT meas
+void forward(CLGLOBAL float* d_outputFP, const CLGLOBAL float* CLRESTRICT meas, const LONG nMeas
 #ifdef CT
 	, CLGLOBAL float* d_outputCT
 #endif
@@ -100,6 +100,9 @@ void forward(CLGLOBAL float* d_outputFP, const CLGLOBAL float* CLRESTRICT meas
 #endif
 	) {
 	uint gid = GID0;
+	// The global size is rounded up to a multiple of the local size, the buffers have exactly nMeas elements
+	if ((LONG)gid >= nMeas)
+		return;
 #ifdef CT
 	const float apu = EXP(-d_outputFP[gid]);
 	d_outputFP[gid] = apu;

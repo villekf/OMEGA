@@ -3552,19 +3552,24 @@ DEVICE void fastPDHGUpdate(
             rhs += fastBeta * TVGradient(d_imNLM, i.x, i.y, CINT(ind) + fastPriorZOffset, fastTVsigma, fastEpps);
 #endif // FASTNLM / FASTRDP / FASTGGMRF / FASTHYPER / FASTTV dispatch
 #endif // defined(FASTNLM) || defined(FASTRDP) || defined(FASTGGMRF) || defined(FASTHYPER) || defined(FASTTV)
-        // Image-based preconditioning
+        // Image-based preconditioning. The extra (multi-resolution) volumes are not preconditioned, as in the non-fused
+        // path and the power method
 #if FASTPRECOND == 1
         // Diagonal normalization preconditioner (type 0)
-        rhs /= d_precond[idx];
+        if (ii == 0) {
+            rhs /= d_precond[idx];
+        }
 #elif FASTPRECOND == 2
         // EM preconditioner (type 1)
+        if (ii == 0) {
 #if defined(MBSREM) && FASTALG == 1
-        // MBSREM feeds the EM preconditioner the image mirrored about U/2 (alpha == U here)
-        const float precEst = (curEst >= fastAlpha * FLOAT_HALF) ? (fastAlpha - curEst) : curEst;
+            // MBSREM feeds the EM preconditioner the image mirrored about U/2 (alpha == U here)
+            const float precEst = (curEst >= fastAlpha * FLOAT_HALF) ? (fastAlpha - curEst) : curEst;
 #else
-        const float precEst = curEst;
+            const float precEst = curEst;
 #endif
-        rhs *= precEst / d_precond[idx];
+            rhs *= precEst / d_precond[idx];
+        }
 #endif
         // PDHG primal step (shared with auxKernels.cl PDHGUpdate), or the Poisson update (shared with
         // auxKernels.cl PoissonUpdate) for PKMA/MBSREM/BSREM

@@ -1159,8 +1159,10 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     }
 
     // The complete sensitivity image is computed
+    // For list-mode data the Poisson gradient is BP(1/ybar) - D, so these algorithms always need the sensitivity image D
     if (MethodList.RBI || MethodList.RBIOSL || MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0 || (w_vec.precondTypeIm[0]
-        || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2]))
+        || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2])
+        || (inputScalars.listmode > 0 && (MethodList.RAMLA || MethodList.MRAMLA || MethodList.BSREM || MethodList.MBSREM || MethodList.PKMA || MethodList.SPS || MethodList.SAGA || MethodList.DRAMA)))
         w_vec.computeD = true;
 
     if (w_vec.precondTypeMeas[0] || MethodList.SART || MethodList.POCS)

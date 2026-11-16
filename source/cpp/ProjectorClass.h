@@ -3296,7 +3296,7 @@ public:
 		// Create the CUDA/HIP context and stream and assign the device
 		int af_id = af::getDevice();
 		CUDeviceID.push_back(afcu::getNativeId(af_id));
-		CLCommandQueue.push_back(afcu::getStream(CUDeviceID[0]));
+		CLCommandQueue.push_back(afcu::getStream(af_id));
 #else
 		// Implementations 3 and 5 do not use ArrayFire
 		// MATLAB's gpuArray memory lives in the device's primary context, so attach to the 
@@ -4763,9 +4763,18 @@ public:
 #if defined(OPENCL)
 	}
 
+	// Global size of the image-domain kernels launched with localPrior: the image size rounded up to a multiple of the
+	// local size (the kernels have bounds checks against N)
+	cl::NDRange imageGlobalPrior(const scalarStruct & inputScalars, const int ii) const {
+		auto roundUp = [](const size_t n, const size_t l) { return l > 0 ? ((n + l - 1) / l) * l : n; };
+		return cl::NDRange(roundUp(static_cast<size_t>(inputScalars.Nx[ii]), static_cast<size_t>(localPrior[0])),
+			roundUp(static_cast<size_t>(inputScalars.Ny[ii]), static_cast<size_t>(localPrior[1])),
+			roundUp(static_cast<size_t>(inputScalars.Nz[ii]), static_cast<size_t>(localPrior[2])));
+	}
+
 	int computeConvolutionF(const scalarStruct & inputScalars, const int ii = 0) {
 		STATUS_t status = SUCCESS_VALUE;
-		cl::NDRange	globalC = { inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], inputScalars.Nz[ii] };
+		cl::NDRange	globalC = imageGlobalPrior(inputScalars, ii);
 
 		FINISH_QUEUE(status, "\n", -1);
 		UINT32_t kernelInd = 0U;
@@ -4791,7 +4800,7 @@ public:
 	template <typename T>
 	int computeConvolution(const scalarStruct & inputScalars, cl::Buffer & input, const int ii = 0, const T & cType = 0) {
 		STATUS_t status = SUCCESS_VALUE;
-		cl::NDRange	globalC = { inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], inputScalars.Nz[ii] };
+		cl::NDRange	globalC = imageGlobalPrior(inputScalars, ii);
 
 		cl::Buffer d_BPApu = cl::Buffer(CLContext, CL_MEM_READ_WRITE, sizeof(T) * inputScalars.im_dim[ii], NULL, &status);
 		FINISH_QUEUE(status, "\n", -1);
@@ -4802,6 +4811,7 @@ public:
 		KARG(kArgs, kernelPSF, kernelInd, inputScalars.g_dim_x);
 		KARG(kArgs, kernelPSF, kernelInd, inputScalars.g_dim_y);
 		KARG(kArgs, kernelPSF, kernelInd, inputScalars.g_dim_z);
+		KARG(kArgs, kernelPSF, kernelInd, d_N[ii]);
 		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelPSF, cl::NDRange(), globalC, localPrior, NULL);
 		OCL_CHECK(status, "\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
@@ -4829,6 +4839,8 @@ public:
 			else
 				global = { static_cast<cl::size_type>(length[indD]), 1, 1 };
 
+		// The unrounded element count, the kernel skips the padding work-items
+		const int64_t nMeas = static_cast<int64_t>(global[0]);
 		size_t erotusF = global[0] % localF[0];
 		if (erotusF > 0)
 			erotusF = localF[0] - erotusF;
@@ -4847,6 +4859,7 @@ public:
 		UINT32_t kernelInd = 0U;
 		KARG(kArgs, kernelForward, kernelInd, d_output);
 		KARG(kArgs, kernelForward, kernelInd, d_meas[osa_iter]);
+		KARG(kArgs, kernelForward, kernelInd, nMeas);
 		if (inputScalars.CT)
 			KARG(kArgs, kernelForward, kernelInd, d_outputCT);
 		if (inputScalars.randoms_correction)
@@ -4865,7 +4878,7 @@ public:
 
 	int computeEstimate(const scalarStruct & inputScalars, const int ii = 0, const int uu = 0, const int timestep = 0) {
 		STATUS_t status = SUCCESS_VALUE;
-		global = { inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], inputScalars.Nz[ii] };
+		global = imageGlobalPrior(inputScalars, ii);
 
 		UINT32_t kernelInd = 0U;
 		KARG(kArgs, kernelEstimate, kernelInd, d_Summ[uu]);

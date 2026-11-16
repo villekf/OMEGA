@@ -85,12 +85,16 @@ typedef struct AF_im_vectors_ {
     std::vector<std::vector<af::array>> rhsCP;
     std::vector<std::vector<af::array>> f0POCS;
     std::vector<std::vector<af::array>> uFISTA;
+    std::vector<std::vector<af::array>> xFISTA; // previous FISTA iterate x_k (uFISTA holds the extrapolated point y_k)
+    std::vector<std::vector<af::array>> xFISTAAcc; // previous un-extrapolated iterate for FISTAAcceleration
     std::vector<std::vector<af::array>> imBB;
     std::vector<std::vector<af::array>> gradBB;
     // Arrays of size N_timesteps x N_multivolumes x N_subsets
 	std::vector<std::vector<std::vector<af::array>>> Summ; // sensitivity image
     // Other arrays
-    af::array C_co, rCGLS, meanFP, meanBP, apu, adapTypeA;
+    af::array rCGLS, meanFP, meanBP, apu, adapTypeA;
+    // COSEM complete-data array for each volume (im_dim[ii] x subsets)
+    std::vector<af::array> C_co;
 	std::vector<af::array> im_os_blurred, qProxTGV, vProxTGV, qProxTV, SAGASum;
 	std::vector<af::array> fCGLS;
 	std::vector<std::vector<af::array>> stochasticHelper;
@@ -123,6 +127,8 @@ typedef struct Weighting_ {
 	const float* normSens = nullptr;
 	const uint32_t* sensXY = nullptr, * sensZ = nullptr;
 	uint32_t* detectorVector = nullptr;
+	// Sum of the additive randoms/scatter term of the current subset, per timestep (used by the ACOSEM scaling)
+	std::vector<float> ACOSEMrandSum;
 	std::vector<float> epsilon_mramla, betaLSQR, alphaLSQR, thetaLSQR, rhoLSQR, phiLSQR, betaFISTA, tFISTA, tNFista;
     std::vector<std::vector<float>> tauCP, tauCP2, LCP, LCP2, alphaCP, sigmaCP, sigma2CP, thetaCP, lambda, lambdaFiltered, alphaM, alphaBB;
     float U = 1000000.f, h_ACOSEM = 1.f, TimeStepAD, KAD, w_sum = 0.f, h2 = 1.f, huber_delta = 0.f, ACOSEM_rhs = 0.f, h_ACOSEM_2 = 1.f, RDP_gamma = 1.f,

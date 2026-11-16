@@ -2864,6 +2864,10 @@ def prepassPhase(options):
             if np.size(options.alpha_PKMA) > options.Niter * options.subsets:
                 print('Warning: The number of PKMA alpha (momentum) values is higher than the total number of iterations times subsets. The final values will be ignored.')
     
+        # A single-slice image has no axial neighbours; with Ndz > 0 the weights and
+        # the ArrayFire priors assume a 3D neighbourhood
+        if np.ravel(options.Nz)[0] == 1 and options.Ndz > 0:
+            options.Ndz = options.Ndz.dtype.type(0) if isinstance(options.Ndz, np.generic) else 0
         # Compute the weights
         if (options.quad or options.L or options.FMH or options.weighted_mean or options.MRP or (options.TV and options.TVtype == 3 and options.TV_use_anatomical) or options.Huber or options.RDP or options.GGMRF or options.hyperbolic) and options.MAP:
             _checkPriorWeights(options)

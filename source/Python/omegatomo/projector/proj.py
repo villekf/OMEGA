@@ -2050,12 +2050,16 @@ class projectorClass:
                 print("Number of time steps is less than one. Using one time step.")
                 self.partitions = 1
                 self.Nt = 1
-        if self.Nt == 1 and (self.temporal_smoothness or self.temporalTV):
+        # self.Nt is only set later in addProjector, so detect dynamic data from SinM/partitions here
+        nFrames = max(int(self.Nt), self._earlyFrameCount())
+        if nFrames == 1 and (self.temporal_smoothness or self.temporalTV):
             print('Temporal regularization selected, but using static data. No temporal regularization will be done.')
             self.temporal_smoothness = False
             self.temporalTV = False
-        elif self.Nt > 1 and self.temporal_smoothness and self.temporalTV:
+        elif nFrames > 1 and self.temporal_smoothness and self.temporalTV:
             raise ValueError('Both temporal smoothness prior and temporal TV selected! Select only one!')
+        if nFrames > 1 and self.ASD_POCS and (self.temporal_smoothness or self.temporalTV):
+            raise ValueError('Temporal priors are not supported with ASD-POCS')
         if self.start > self.end:
             raise ValueError("Start time is later than end time!")
         
@@ -2220,6 +2224,9 @@ class projectorClass:
                 raise ValueError('Anatomical weighting for NLM (NLM_use_anatomical) is not supported with largeDims!')
             if self.maskBP.ndim == 3 and self.maskBP.shape[2] > 1:
                 raise ValueError('A 3D backprojection/prior mask is not supported with largeDim! Use a 2D (transaxial) mask instead.')
+            # The FISTA acceleration stores the previous iterate, but with largeDim the image is processed in chunks
+            if self.FISTA_acceleration:
+                raise ValueError('FISTA acceleration (FISTA_acceleration) is not supported with largeDim!')
         if self.useCUDA and self.useCPU:
             raise ValueError('Both CUDA and CPU selected! Select only one!')
         if self.deviceNum < 0:

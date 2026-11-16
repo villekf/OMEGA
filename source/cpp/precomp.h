@@ -99,6 +99,9 @@ typedef struct structForScalars {
 	// slots are otherwise unnecessary (normalization and measurement-domain attenuation are single
 	// buffers shared by all timesteps).
 	bool sensPerTimestep = false;
+	// D (the full sensitivity image used by RBI/COSEM/preconditioners) is computed per timestep only when the
+	// corrections differ per frame
+	bool DPerTimestep = false;
 	int64_t Nf = 0;
 	std::vector<CTYPE3> d_Scale;
 	std::vector<CTYPE3> d_Scale4;
