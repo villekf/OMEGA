@@ -89,14 +89,16 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		}
 	}
 	if (MethodList.CPType && inputScalars.subsetsUsed > 1) {
-		vec.p0CP[timestep] = vec.pCP[timestep][subIter].copy();
+		// Shallow copy: pCP[timestep][subIter] is only ever rebound later (never written in place or through a raw device pointer),
+		// so p0CP keeps the old values
+		vec.p0CP[timestep] = vec.pCP[timestep][subIter];
 	}
 	if (MethodList.ACOSEM || MethodList.OSLCOSEM > 0 || MethodList.OSEM || MethodList.COSEM || MethodList.ECOSEM ||
 		MethodList.ROSEM || MethodList.OSLOSEM || MethodList.ROSEMMAP) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing (OSL-)(A)(E)(C)(R)OSEM");
 		if (inputScalars.CT) {
-			input(input < 0.f) = 0.f;
+			input = af::select(input < 0.f, 0.f, input);
 			if (inputScalars.verbose >= 3)
 				mexPrint("CT mode");
 			if (inputScalars.verbose >= 3 && inputScalars.randoms_correction)
@@ -120,7 +122,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing RAMLA/BSREM/RBI/DRAMA");
 		if (inputScalars.CT) {
-			input(input < 0.f) = 0.f;
+			input = af::select(input < 0.f, 0.f, input);
 			if (inputScalars.verbose >= 3)
 				mexPrint("CT mode");
 			if (inputScalars.verbose >= 3 && inputScalars.randoms_correction)
@@ -145,7 +147,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing PKMA");
 		if (inputScalars.CT) {
-			input(input < 0.f) = 0.f;
+			input = af::select(input < 0.f, 0.f, input);
 			if (inputScalars.verbose >= 3)
 				mexPrint("CT mode");
 			if (inputScalars.verbose >= 3 && inputScalars.randoms_correction)
@@ -173,7 +175,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing MBSREM/MRAMLA/SPS");
 		if (inputScalars.CT) {
-			input(input < 0.f) = 0.f;
+			input = af::select(input < 0.f, 0.f, input);
 			if (inputScalars.verbose >= 3)
 				mexPrint("CT mode");
 			if (inputScalars.verbose >= 3 && inputScalars.randoms_correction)
@@ -189,8 +191,9 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			if (inputScalars.verbose >= 3)
 				mexPrint("PET/SPECT mode");
 			if (indS) {
-				input(indeksit) = y(indeksit).as(f32) / w_vec.epsilon_mramla[timestep] - 1.f - (y(indeksit).as(f32) / (w_vec.epsilon_mramla[timestep] * w_vec.epsilon_mramla[timestep])) * (input(indeksit) - w_vec.epsilon_mramla[timestep]);
-				input(!indeksit) = y(!indeksit).as(f32) / (input(!indeksit) + inputScalars.epps) - 1.f;
+				input = af::select(indeksit,
+					y.as(f32) / w_vec.epsilon_mramla[timestep] - 1.f - (y.as(f32) / (w_vec.epsilon_mramla[timestep] * w_vec.epsilon_mramla[timestep])) * (input - w_vec.epsilon_mramla[timestep]),
+					y.as(f32) / (input + inputScalars.epps) - 1.f);
 				// The formulas above include the -1 term. For list-mode data it is replaced by the sensitivity image
 				// (subtracted later), so remove it here
 				if (inputScalars.listmode > 0)
@@ -340,8 +343,8 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				status = applyMeasPreconditioning(w_vec, inputScalars, input, proj, timestep, subIter);
 				if (status != 0)
 					return -1;
-				apu1(apu1 < 0.f) = 0.f;
-				input(input < 0.f) = 0.f;
+				apu1 = af::select(apu1 < 0.f, 0.f, apu1);
+				input = af::select(input < 0.f, 0.f, input);
 				input = .5f * (1.f + vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * input - af::sqrt(af::pow(vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * input - 1.f, 2.) + 4.f * w_vec.sigmaCP[timestep][ii] * apu1));
 			}
 			else {
@@ -369,7 +372,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing SAGA");
 		if (inputScalars.CT) {
-			input(input < 0.f) = 0.f;
+			input = af::select(input < 0.f, 0.f, input);
 			if (inputScalars.verbose >= 3)
 				mexPrint("CT mode");
 			if (inputScalars.verbose >= 3 && inputScalars.randoms_correction)
@@ -411,8 +414,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		if (status != 0)
 			return -1;
 	}
-	input(af::isNaN(input)) = inputScalars.epps;
-	input(af::isInf(input)) = inputScalars.epps;
+	input = af::select(af::isInf(input), inputScalars.epps, input);
 	input.eval();
 	if (DEBUG || inputScalars.verbose >= 3) {
 		af::sync();

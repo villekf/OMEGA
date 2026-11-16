@@ -95,6 +95,8 @@ typedef struct AF_im_vectors_ {
     af::array rCGLS, meanFP, meanBP, apu, adapTypeA;
     // COSEM complete-data array for each volume (im_dim[ii] x subsets)
     std::vector<af::array> C_co;
+    // Running sum of the columns of C_co (sum over the subsets) for each volume
+    std::vector<af::array> C_coSum;
 	std::vector<af::array> im_os_blurred, qProxTGV, vProxTGV, qProxTV, SAGASum;
 	std::vector<af::array> fCGLS;
 	std::vector<std::vector<af::array>> stochasticHelper;
@@ -129,6 +131,8 @@ typedef struct Weighting_ {
 	uint32_t* detectorVector = nullptr;
 	// Sum of the additive randoms/scatter term of the current subset, per timestep (used by the ACOSEM scaling)
 	std::vector<float> ACOSEMrandSum;
+	// Cached max(Summ / D) of the plain RBI update, one entry per (timestep, volume, subset); 0 means not computed yet
+	std::vector<float> RBImaxCache;
 	std::vector<float> epsilon_mramla, betaLSQR, alphaLSQR, thetaLSQR, rhoLSQR, phiLSQR, betaFISTA, tFISTA, tNFista;
     std::vector<std::vector<float>> tauCP, tauCP2, LCP, LCP2, alphaCP, sigmaCP, sigma2CP, thetaCP, lambda, lambdaFiltered, alphaM, alphaBB;
     float U = 1000000.f, h_ACOSEM = 1.f, TimeStepAD, KAD, w_sum = 0.f, h2 = 1.f, huber_delta = 0.f, ACOSEM_rhs = 0.f, h_ACOSEM_2 = 1.f, RDP_gamma = 1.f,

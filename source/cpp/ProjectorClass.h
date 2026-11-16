@@ -7554,34 +7554,51 @@ public:
 	#endif // END CUDA
 		STATUS_t status = SUCCESS_VALUE;
 		UCHAR_t D = static_cast<UCHAR_t>(D2);
+#if !defined(METAL)
+		// 1D launch over all elements, the kernels recover the 3D indices from the grid dimensions
+		int64_t sx = static_cast<int64_t>(size[0]);
+		int64_t sy = static_cast<int64_t>(size[1]);
+		const uint64_t totalU = size[0] * size[1] * size[2];
+		int64_t total = static_cast<int64_t>(totalU);
+#endif
 		//FINISH_QUEUE(status, "Failed to synchronize before element-wise kernel\n", -1);
 		if (mult) {
 			KARG(kArgs, kernelElementMultiply, kernelIndE, d_vector);
 			KARG(kArgs, kernelElementMultiply, kernelIndE, d_input);
 			KARG(kArgs, kernelElementMultiply, kernelIndE, D);
+#if !defined(METAL)
+			KARG(kArgs, kernelElementMultiply, kernelIndE, sx);
+			KARG(kArgs, kernelElementMultiply, kernelIndE, sy);
+			KARG(kArgs, kernelElementMultiply, kernelIndE, total);
+#endif
 			// Compute the kernel
 #if defined(CUDA) || defined(HIP)
-			status = cuLaunchKernel(kernelElementMultiply, gSize[0], gSize[1], gSize[2], 1, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
+			status = cuLaunchKernel(kernelElementMultiply, static_cast<unsigned int>((totalU + 255) / 256), 1, 1, 256, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
 #elif defined(METAL)
-			encoder->dispatchThreads(gSize, MTL::Size::Make(1, 1, 1));
+			encoder->dispatchThreads(gSize, MTL::Size::Make(std::min<NS::UInteger>(256, static_cast<NS::UInteger>(size[0])), 1, 1));
 			encoder->endEncoding();
 			submitMetalCommandBuffer(commandBuffer.get());
 #elif defined(OPENCL)
-			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelElementMultiply, cl::NullRange, gSize, cl::NullRange);
+			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelElementMultiply, cl::NullRange, cl::NDRange(static_cast<cl::size_type>(((totalU + 255) / 256) * 256)), cl::NDRange(256));
 #endif // END CUDA
 		}
 		else {
 			KARG(kArgs, kernelElementDivision, kernelIndE, d_vector);
 			KARG(kArgs, kernelElementDivision, kernelIndE, d_input);
+#if !defined(METAL)
+			KARG(kArgs, kernelElementDivision, kernelIndE, sx);
+			KARG(kArgs, kernelElementDivision, kernelIndE, sy);
+			KARG(kArgs, kernelElementDivision, kernelIndE, total);
+#endif
 			// Compute the kernel
 #if defined(CUDA) || defined(HIP)
-			status = cuLaunchKernel(kernelElementDivision, gSize[0], gSize[1], gSize[2], 1, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
+			status = cuLaunchKernel(kernelElementDivision, static_cast<unsigned int>((totalU + 255) / 256), 1, 1, 256, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
 #elif defined(METAL)
-			encoder->dispatchThreads(gSize, MTL::Size::Make(1, 1, 1));
+			encoder->dispatchThreads(gSize, MTL::Size::Make(std::min<NS::UInteger>(256, static_cast<NS::UInteger>(size[0])), 1, 1));
 			encoder->endEncoding();
 			submitMetalCommandBuffer(commandBuffer.get());
 #elif defined(OPENCL)
-			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelElementDivision, cl::NullRange, gSize, cl::NullRange);
+			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelElementDivision, cl::NullRange, cl::NDRange(static_cast<cl::size_type>(((totalU + 255) / 256) * 256)), cl::NDRange(256));
 #endif // END CUDA
 		}
 		CHECK(status, "Failed to launch the element-wise kernel\n", -1);

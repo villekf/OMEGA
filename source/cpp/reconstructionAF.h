@@ -109,8 +109,11 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 	if (MethodList.COSEM || MethodList.ACOSEM || MethodList.OSLCOSEM > 0 || MethodList.ECOSEM) {
 		// Complete data
 		vec.C_co.resize(inputScalars.nMultiVolumes + 1);
-		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
+		vec.C_coSum.resize(inputScalars.nMultiVolumes + 1);
+		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 			vec.C_co[ii] = af::constant(0.f, inputScalars.im_dim[ii], inputScalars.subsets);
+			vec.C_coSum[ii] = af::constant(0.f, inputScalars.im_dim[ii]);
+		}
 	}
 	std::random_device rd;
 	std::mt19937 rng(rd());
@@ -247,6 +250,18 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
         }
         totLength[tt] = pituus[inputScalars.subsets + inputScalars.subsets * tt];
     }
+    // True when the timesteps (frames) have an identical operator, i.e. the per-timestep precomputations (M, power method)
+    // give the same result for every frame and are computed only once. This is the case for PET sinogram data with
+    // equally sized frames. Measurement-domain normalisation/attenuation are shared by all frames in the reconstruction
+    // library (per-frame ones are rejected), and per-frame image attenuation/corrVector make DPerTimestep true.
+    // largeDim is excluded since it processes the images through host buffers.
+    bool framesShareOperatorTmp = inputScalars.Nt > 1U && !inputScalars.DPerTimestep && inputScalars.listmode == 0 && !inputScalars.CT &&
+        !inputScalars.SPECT && !inputScalars.largeDim;
+    for (uint32_t tt = 1; framesShareOperatorTmp && tt < inputScalars.Nt; tt++)
+        for (uint32_t ll = 0; ll < inputScalars.subsets; ll++)
+            if (lengthFull[ll + tt * inputScalars.subsets] != lengthFull[ll] || length[ll + tt * inputScalars.subsets] != length[ll])
+                framesShareOperatorTmp = false;
+    const bool framesShareOperator = framesShareOperatorTmp;
 	af::array apu_sum, E, indices, rowInd, values, meanBP, meanBPOSEM, meanFP, OSEMapu;
 
 	if ((MethodList.MRAMLA || MethodList.MBSREM) && inputScalars.Nt > 1U)
@@ -1035,7 +1050,16 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
         }
 
         // Compute the measurement sensitivity image for each subset.
-        if (w_vec.computeM) { 
+        if (w_vec.computeM && framesShareOperator && timestep > t0) {
+            // The frames share the operator, so M is the same. The arrays are read-only after this, so a shallow copy
+            // (reference counted by ArrayFire) is enough and no extra memory is used
+            w_vec.M[timestep] = w_vec.M[t0];
+            for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
+                vec.im_os[timestep][ii] = af::constant(1.f, inputScalars.im_dim[ii]);
+            if (inputScalars.verbose >= 3)
+                mexPrint("M shared with the first timestep");
+        }
+        else if (w_vec.computeM) { 
             if (inputScalars.verbose >= 3)
                 mexPrint("Starting computation of measurement sensitivity image (M)");
             int64_t uu = 0;
@@ -1080,6 +1104,16 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
     // Use power method to compute the tau/primal value, if necessary
     if ((MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1) && w_vec.tauCP[0][0] == 0.f) {
         for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
+            if (framesShareOperator && timestep > 0U) {
+                // Identical operator for every frame: copy all per-timestep outputs of the power method from the first one
+                w_vec.tauCP[timestep] = w_vec.tauCP[0];
+                w_vec.tauCP2[timestep] = w_vec.tauCP2[0];
+                w_vec.sigmaCP[timestep] = w_vec.sigmaCP[0];
+                w_vec.sigma2CP[timestep] = w_vec.sigma2CP[0];
+                w_vec.LCP[timestep] = w_vec.LCP[0];
+                w_vec.LCP2[timestep] = w_vec.LCP2[0];
+                continue;
+            }
             status = powerMethod(inputScalars, w_vec, length, proj, vec, MethodList, pituus, timestep, g, apuF, apuD, atten);
             if (status != 0) {
                 return -1;
@@ -1613,13 +1647,11 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 								if (inputScalars.randoms_correction || iter == 0 || (compute_norm_matrix == 1u && proj.no_norm == 0)) {
 									status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, OSEMapu, osa_iter,tt,  length, m_size, meanBPOSEM, g, proj, false, ii, pituus);
 									if (compute_norm_matrix == 1u) {
-										vec.Summ[sIdx][ii][0] = vec.rhs_os[tt][ii];
-										vec.Summ[sIdx][ii][0](vec.Summ[sIdx][ii][0] < inputScalars.epps) = inputScalars.epps;
+										vec.Summ[sIdx][ii][0] = af::select(vec.rhs_os[tt][ii] < inputScalars.epps, inputScalars.epps, vec.rhs_os[tt][ii]);
 										vec.Summ[sIdx][ii][0].eval();
 									}
 									else if (compute_norm_matrix == 2u) {
-										vec.Summ[sIdx][ii][osa_iter] = vec.rhs_os[tt][ii];
-										vec.Summ[sIdx][ii][osa_iter](vec.Summ[sIdx][ii][osa_iter] < inputScalars.epps) = inputScalars.epps;
+										vec.Summ[sIdx][ii][osa_iter] = af::select(vec.rhs_os[tt][ii] < inputScalars.epps, inputScalars.epps, vec.rhs_os[tt][ii]);
 										vec.Summ[sIdx][ii][osa_iter].eval();
 									}
 								}
@@ -1673,7 +1705,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             forwardProjectionType6(fProj, w_vec, vec, inputScalars, length[indD], uu, proj, ii, atten, tt);
                         fProj.eval();
                         fProj = af::flat(fProj);
-                        fProj(fProj < inputScalars.epps) = inputScalars.epps;
+                        fProj = af::select(fProj < inputScalars.epps, inputScalars.epps, fProj);
                         if (inputScalars.storeFP) {
                             fProj.eval();
                             FPEstimates[iter][osa_iter].resize(fProj.elements());
@@ -1795,7 +1827,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                         if (status != 0)
                             return -1;
                         if (inputScalars.enforcePositivity && inputScalars.subsetsUsed > 1 && !MethodList.CPType) {
-                            vec.im_os[tt][0](vec.im_os[tt][0] < inputScalars.epps) = inputScalars.epps;
+                            vec.im_os[tt][0] = af::select(vec.im_os[tt][0] < inputScalars.epps, inputScalars.epps, vec.im_os[tt][0]);
                         }
                         if (DEBUG) {
                             mexPrintBase("inputScalars.lDimStruct.imDim[ii] = %u\n", inputScalars.lDimStruct.cumDim[ii]);
@@ -1843,7 +1875,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             return -1;
                         for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++) {
                             if (inputScalars.enforcePositivity && inputScalars.subsetsUsed > 1 && !MethodList.CPType) {
-                                vec.im_os[tt][ii](vec.im_os[tt][ii] < inputScalars.epps) = inputScalars.epps;
+                                vec.im_os[tt][ii] = af::select(vec.im_os[tt][ii] < inputScalars.epps, inputScalars.epps, vec.im_os[tt][ii]);
                             }
                         }
                     }
@@ -1859,7 +1891,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                 if (inputScalars.enforcePositivity && inputScalars.subsetsUsed > 1 && !MethodList.CPType && !MethodList.POCS) {
                     for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
 						for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
-							vec.im_os[timestep][ii](vec.im_os[timestep][ii] < inputScalars.epps) = inputScalars.epps;
+							vec.im_os[timestep][ii] = af::select(vec.im_os[timestep][ii] < inputScalars.epps, inputScalars.epps, vec.im_os[timestep][ii]);
 					}
                 }
             }
@@ -1927,7 +1959,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                 // Enforce positivity if applicable (all timesteps)
                 if (inputScalars.enforcePositivity && inputScalars.subsetsUsed == 1 && !MethodList.CPType) {
                     for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
-                        vec.im_os[timestep][ii](vec.im_os[timestep][ii] < inputScalars.epps) = inputScalars.epps;
+                        vec.im_os[timestep][ii] = af::select(vec.im_os[timestep][ii] < inputScalars.epps, inputScalars.epps, vec.im_os[timestep][ii]);
                 }
             }
         }

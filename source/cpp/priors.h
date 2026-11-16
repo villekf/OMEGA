@@ -57,7 +57,8 @@ inline af::array Huber_prior(const af::array& im, const uint32_t Ndx, const uint
 	std::vector<float> kernel(weights_huber.elements());
 	weights_huber.as(f32).host(kernel.data());
 	af::array grad = af::constant(0.f, Nx, Ny, Nz);
-	float maxDiff = 0.f;
+	// Largest absolute difference, accumulated on the device and reduced once at the end (verbose output only)
+	af::array maxAbs;
 	// A 2D image uses only the central axial slice of the kernel
 	const dim_t kBegin = is2D ? static_cast<dim_t>(Ndz) : 0;
 	const dim_t kEnd = is2D ? static_cast<dim_t>(Ndz) : kz - 1;
@@ -77,11 +78,12 @@ inline af::array Huber_prior(const af::array& im, const uint32_t Ndx, const uint
 						af::seq(static_cast<double>(k), static_cast<double>(k + Nz - 1)));
 				const af::array diff = im3d - shifted;
 				if (inputScalars.verbose > 0)
-					maxDiff = std::max(maxDiff, af::max<float>(af::abs(diff)));
+					maxAbs = maxAbs.isempty() ? af::abs(diff) : (af::max)(maxAbs, af::abs(diff));
 				grad += w * af::clamp(diff, -static_cast<double>(delta), static_cast<double>(delta));
 			}
 		}
 	}
+	const float maxDiff = (inputScalars.verbose > 0 && !maxAbs.isempty()) ? af::max<float>(maxAbs) : 0.f;
 	if (inputScalars.verbose > 0 && maxDiff > 0.f && delta >= maxDiff)
 		mexPrint("Delta value of Huber prior larger than all the pixel difference values\n");
 	return af::flat(grad);
@@ -136,7 +138,9 @@ inline af::array Weighted_mean(const af::array& im, const uint32_t Ndx, const ui
 	const af::array& weighted_weights, const float w_sum, const uint32_t mean_type = 1, const bool med_no_norm = false)
 {
 	af::array grad = af::constant(0.f, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0]);
-	const float wsum = af::sum<float>(af::flat(weighted_weights));
+	// w_sum is the precomputed sum of weighted_weights (set together with the weights in the prepass);
+	// the sum is recomputed only if it is not available
+	const float wsum = (std::isfinite(w_sum) && w_sum != 0.f) ? w_sum : af::sum<float>(af::flat(weighted_weights));
 	if (mean_type == 1U) {
 		af::array padd = padding(im, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], Ndx, Ndy, Ndz);
 		if (Ndz == 0 || inputScalars.Nz[0] == 1)

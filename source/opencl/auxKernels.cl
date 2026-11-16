@@ -259,13 +259,6 @@ void vectorElementMultiply(const CLGLOBAL float* CLRESTRICT input BUF0, CLGLOBAL
 	const LTYPE3 xyz = MINT3(metalGlobalId.x, metalGlobalId.y, metalGlobalId.z);
 	const LTYPE gridX = metalGridSize.x;
 	const LTYPE gridY = metalGridSize.y;
-#else
-KERN
-void vectorElementMultiply(const CLGLOBAL float* CLRESTRICT input, CLGLOBAL float* output, const uchar D2) {
-	const LTYPE3 xyz = MINT3(GID0, GID1, GID2);
-	const LTYPE gridX = GSIZE0;
-	const LTYPE gridY = GSIZE1;
-#endif
 	const LTYPE n = xyz.x + xyz.y * gridX + xyz.z * gridX * gridY;
 	float mult;
 	if (D2)
@@ -275,6 +268,23 @@ void vectorElementMultiply(const CLGLOBAL float* CLRESTRICT input, CLGLOBAL floa
 	output[2 * n] *= mult;
 	output[2 * n + 1] *= mult;
 }
+#else
+KERN
+void vectorElementMultiply(const CLGLOBAL float* CLRESTRICT input, CLGLOBAL float* output, const uchar D2, const LONG sx, const LONG sy, const LONG total) {
+	// 1D formulation, the work-items beyond the element count do nothing
+	const LONG n = (LONG)GID0;
+	if (n >= total)
+		return;
+	const LONG x = n % sx;
+	float mult;
+	if (D2)
+		mult = input[x + ((n / sx) % sy) * sx];
+	else
+		mult = input[x];
+	output[2 * n] *= mult;
+	output[2 * n + 1] *= mult;
+}
+#endif
 
 // Complex elementwise division
 // Used by the filtering
@@ -287,13 +297,6 @@ void vectorElementDivision(const CLGLOBAL float* CLRESTRICT input BUF0, CLGLOBAL
 	const LTYPE3 xyz = MINT3(metalGlobalId.x, metalGlobalId.y, metalGlobalId.z);
 	const LTYPE gridX = metalGridSize.x;
 	const LTYPE gridY = metalGridSize.y;
-#else
-KERN
-void vectorElementDivision(const CLGLOBAL float* CLRESTRICT input, CLGLOBAL float* output) {
-	const LTYPE3 xyz = MINT3(GID0, GID1, GID2);
-	const LTYPE gridX = GSIZE0;
-	const LTYPE gridY = GSIZE1;
-#endif
 	const LTYPE n = xyz.x + xyz.y * gridX + xyz.z * gridX * gridY;
 	float div = input[xyz.x];
 	// Make sure there is no division by zero
@@ -302,6 +305,22 @@ void vectorElementDivision(const CLGLOBAL float* CLRESTRICT input, CLGLOBAL floa
 	output[2 * n] /= div;
 	output[2 * n + 1] /= div;
 }
+#else
+KERN
+void vectorElementDivision(const CLGLOBAL float* CLRESTRICT input, CLGLOBAL float* output, const LONG sx, const LONG sy, const LONG total) {
+	// 1D formulation, the work-items beyond the element count do nothing
+	const LONG n = (LONG)GID0;
+	if (n >= total)
+		return;
+	const LONG x = n % sx;
+	float div = input[x];
+	// Make sure there is no division by zero
+	if (FABS(div) < 1e-12f)
+		div = (div < FLOAT_ZERO) ? -1e-12f : 1e-12f;
+	output[2 * n] /= div;
+	output[2 * n + 1] /= div;
+}
+#endif
 
 // Non-local means
 #ifdef NLM_ // START NLM

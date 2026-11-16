@@ -44,14 +44,9 @@ inline int MBSREM(af::array& im, af::array& rhs, const float U, const std::vecto
 	int status = 0;
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
 	af::array output;
-	const af::array pp = im >= (U / 2.f);
-	if (af::anyTrue<bool>(pp)) {
-		af::array apuIm = im;
-		apuIm(pp) = U - apuIm(pp);
-		status = applyImagePreconditioning(w_vec, inputScalars, rhs, apuIm, proj, timestep, kk, ii);
-	}
-	else
-		status = applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, timestep, kk, ii);
+	// applyImagePreconditioning only reads the image argument, so the selected image can always be passed
+	const af::array apuIm = af::select(im >= (U / 2.f), U - im, im);
+	status = applyImagePreconditioning(w_vec, inputScalars, rhs, apuIm, proj, timestep, kk, ii);
 	if (status != 0)
 		return -1;
 #ifndef CPU
@@ -60,8 +55,9 @@ inline int MBSREM(af::array& im, af::array& rhs, const float U, const std::vecto
 		return -1;
 #else
 	im = im + lam[iter] * rhs;
-	im(im < inputScalars.epps) = inputScalars.epps;
-	im(im >= U) = U - inputScalars.epps;
+	// Same order as the original: lower clamp first, then the upper clamp on the result (NaN stays NaN)
+	im = af::select(im < inputScalars.epps, inputScalars.epps, im);
+	im = af::select(im >= U, U - inputScalars.epps, im);
 #endif
 	return status;
 }
@@ -95,7 +91,7 @@ inline int SPS(af::array& im, af::array& rhs, const float U, const std::vector<f
 	if (status != 0)
 		return -1;
 	im += lam[iter] * rhs * w_vec.dP[timestep][ii];
-	im(im <= 0) = inputScalars.epps;
+	im = af::select(im <= 0.f, inputScalars.epps, im);
 	return 0;
 }
 
@@ -123,11 +119,20 @@ inline af::array ROSEM(const af::array& im, const af::array& Summ, const af::arr
 }
 
 // RBI update
-inline af::array RBI(const af::array& im, const af::array& Summ, const af::array& rhs, const af::array& D = af::constant(0.f, 1, 1), const float beta = 0.f, const af::array& dU = af::constant(0.f, 1, 1))
+// cachedMax (optional) caches max(Summ / D) of the beta == 0 branch, 0 means not computed yet
+inline af::array RBI(const af::array& im, const af::array& Summ, const af::array& rhs, const af::array& D = af::constant(0.f, 1, 1), const float beta = 0.f, const af::array& dU = af::constant(0.f, 1, 1), float* cachedMax = nullptr)
 {
 	af::array output = im;
 	if (beta == 0.f) {
-		const float Summa = 1.f / af::max<float>(Summ / D);
+		float maxVal;
+		if (cachedMax && *cachedMax > 0.f)
+			maxVal = *cachedMax;
+		else {
+			maxVal = af::max<float>(Summ / D);
+			if (cachedMax)
+				*cachedMax = maxVal;
+		}
+		const float Summa = 1.f / maxVal;
 		output += Summa * (im / D) * (rhs);
 	}
 	else {
@@ -149,18 +154,19 @@ inline af::array DRAMA(const af::array& im, const af::array& Summ, const af::arr
 inline void MAP(af::array& im, const float lam, const af::array& dU, const float epps)
 {
 	im -= lam * im * dU;
-	im(im < epps) = epps;
+	im = af::select(im < epps, epps, im);
 	im.eval();
 }
 
-inline af::array COSEM(const af::array& im, const af::array& C_co, const af::array& D, const float h, const uint32_t COSEM_TYPE)
+// C_coSum is the sum over the subsets of the complete-data matrix (maintained as a running sum by the caller)
+inline af::array COSEM(const af::array& im, const af::array& C_coSum, const af::array& D, const float h, const uint32_t COSEM_TYPE)
 {
 	af::array output;
 	if (COSEM_TYPE == 1) {
-		output = af::pow(af::sum(C_co, 1) / D, h);
+		output = af::pow(C_coSum / D, h);
 	}
 	else {
-		output = (af::sum(C_co, 1) / D);
+		output = (C_coSum / D);
 	}
 	return output;
 }
@@ -229,7 +235,7 @@ inline int PKMA(af::array& im, af::array& rhs, Weighting& w_vec, const scalarStr
 #else
 	af::array im_apu = im - w_vec.lambda[timestep][iter] * rhs;
 	if (inputScalars.enforcePositivity)
-		im_apu(im_apu < inputScalars.epps) = inputScalars.epps;
+		im_apu = af::select(im_apu < inputScalars.epps, inputScalars.epps, im_apu);
 	im = (1.f - w_vec.alphaM[timestep][kk]) * im + w_vec.alphaM[timestep][kk] * im_apu;
 #endif
 	return status;
@@ -271,7 +277,13 @@ inline void CGLS(const scalarStruct& inputScalars, Weighting& w_vec, const uint3
 			for (int ll = 0; ll <= inputScalars.nMultiVolumes; ll++)
 				gamma_ += af::dot<float>(vec.rhs_os[timestep][ll], vec.rhs_os[timestep][ll]);
 			//gamma_ += af::sum<float>(vec.rhs_os[ll] * vec.rhs_os[ll]);
-			const float beta = gamma_ / w_vec.gammaCGLS;
+			// The forward/back projectors of types 4, 5, 6 and mixed pairs are not exact adjoints. CGLS then loses conjugacy
+			// and diverges after a few tens of iterations (CT tests, 2026-11). Restarting the search direction every 20
+			// iterations (beta = 0, i.e. p = s) keeps it stable. With an exact adjoint pair (types 1-3, same type for the
+			// forward and back projection) CGLS is unchanged.
+			const bool exactAdjoint = (inputScalars.FPType == inputScalars.BPType) && inputScalars.FPType >= 1 && inputScalars.FPType <= 3;
+			const bool restart = !exactAdjoint && ((iter + 1) % 20u == 0u);
+			const float beta = restart ? 0.f : gamma_ / w_vec.gammaCGLS;
 			for (int ll = 0; ll <= inputScalars.nMultiVolumes; ll++) {
 				vec.fCGLS[ll] = vec.fCGLS[ll] + w_vec.alphaCGLS * vec.im_os[timestep][ll];
 				vec.fCGLS[ll].eval();
@@ -298,7 +310,7 @@ inline int SART(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 		imOld = vec.im_os[timestep][ii].copy();
 	vec.im_os[timestep][ii] += lam * (rhs / Summ);
 	if (MethodList.prior && !MethodList.POCS) {
-		vec.im_os[timestep][ii](vec.im_os[timestep][ii] < 0.f) = 0.f;
+		vec.im_os[timestep][ii] = af::select(vec.im_os[timestep][ii] < 0.f, 0.f, vec.im_os[timestep][ii]);
 		af::eval(vec.im_os[timestep][ii]);
 		if (ii == 0) {
 			int status = 0;
@@ -373,7 +385,7 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 		im -= w_vec.tauCP[timestep][ii] * rhs;
 		im.eval();
 		if (inputScalars.enforcePositivity)
-			im(im < inputScalars.epps) = inputScalars.epps;
+			im = af::select(im < inputScalars.epps, inputScalars.epps, im);
 #endif
 	}
 	else {
@@ -388,7 +400,7 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 		vec.uCP[timestep][ii] -= w_vec.tauCP[timestep][ii] * rhs;
 		vec.uCP[timestep][ii].eval();
 		if (inputScalars.enforcePositivity)
-			vec.uCP[timestep][ii](vec.uCP[timestep][ii] < inputScalars.epps) = inputScalars.epps;
+			vec.uCP[timestep][ii] = af::select(vec.uCP[timestep][ii] < inputScalars.epps, inputScalars.epps, vec.uCP[timestep][ii]);
 		im = vec.uCP[timestep][ii] + w_vec.thetaCP[timestep][kk] * (vec.uCP[timestep][ii] - uPrev);
 #endif
 	}
@@ -448,9 +460,9 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 
 // Soft thresholding (the proximal operator of the L1 norm) with threshold a
 inline void softThresholdFISTA(af::array& im, const float a) {
-	im(af::abs(im) <= a) = 0.f;
+	im = af::select(af::abs(im) <= a, 0.f, im);
 	af::array apu = -af::sign(im);
-	apu(apu == 0.f) = 1.f;
+	apu = af::select(apu == 0.f, 1.f, apu);
 	im = apu * (af::max)(af::abs(im) - a, 0.f);
 }
 
@@ -544,7 +556,7 @@ inline int FISTAL1(af::array& im, af::array& rhs, const scalarStruct& inputScala
 
 // ASD-POCS
 inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, AF_im_vectors& vec, ProjectorClass& proj, const af::array& mData, const af::array& g, std::vector<int64_t>& length, const int64_t* pituus, const uint32_t timestep, const uint32_t osa_iter, const uint32_t iter, const int ii = 0) {
-	vec.im_os[timestep][ii](vec.im_os[timestep][ii] < 0.f) = 0.f;
+	vec.im_os[timestep][ii] = af::select(vec.im_os[timestep][ii] < 0.f, 0.f, vec.im_os[timestep][ii]);
 	if (DEBUG)
 		mexPrint("Computing ASD-POCS");
 	bool subsets = true;
