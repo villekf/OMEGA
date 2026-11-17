@@ -214,6 +214,7 @@ Changed behaviour:
 - SPS and the separable-paraboloid image-based preconditioner (the seventh element of ```options.precondTypeImage```) now include the curvature of the prior in the step size: the step is subsets / (sum of the subset backprojections + subsets * beta * kappa), where kappa is a bound on the curvature of the prior (2 with the default quadratic prior weights). Previously only the curvature of the data term was used, and SPS (as well as e.g. MBSREM, PKMA and PDHG with this preconditioner) diverged with large beta (in PET tests from beta = 0.1 onward); they are now stable up to at least beta = 100 (MATLAB implementations 1 and 4, Python and implementation 2)
   - The curvature bound is available for the quadratic prior, the Huber prior and the weighted mean prior with ```options.med_no_norm = true``` and ```options.mean_type = 1```. With other priors the previous data-only step is used and a warning is printed
   - The results with the above priors and this step change; with beta = 0 they are unchanged
+- Stored forward projections (```options.storeFP```) of dynamic data (more than one time step) now contain every time step, in time-step-major order (MATLAB and Python, implementation 2). In Python the output without subsets has the shape ```(nRowsD, nColsD, nProjections, TOF_bins, Niter, Nt)``` (unchanged for static data), and with subsets (subset types 8 and above) it is a list ordered by time step, then iteration, then subset. In MATLAB the cell array has ```subsets * Niter * Nt``` elements in the same order
 
 Other changes:
 - Unified SPECT rotation projector logic for all three Python operator backends
@@ -249,6 +250,7 @@ Other changes:
 - COSEM, ECOSEM, ACOSEM and OSL-COSEM keep a running sum of the complete-data images instead of summing over all subsets on every subiteration (implementation 2); the sum is recomputed exactly at the start of each iteration
 - Dynamic PET sinogram reconstructions without time-step-dependent corrections compute the measurement-based preconditioner and the power method (step sizes) only for the first time step and reuse them for the others (implementation 2); the results are unchanged
 - PDHG with subsets no longer copies the dual variable on every subiteration (implementation 2)
+- The GPU memory of ArrayFire is no longer freed after every iteration (implementation 2). ArrayFire frees its cached memory when an allocation needs it, so this only removes the overhead of the call (up to about 0.2 ms per iteration with CUDA and 0.8 ms with OpenCL, which is significant for small or fast reconstructions). The peak memory use can be slightly higher (about 12 % with LSQR in a 256^3 CT test, unchanged in the other tests)
 
 Bug fixes:
 - OSL-OSEM denominator (sensitivity image + prior gradient) is now limited to at least 10 % of the sensitivity image (and at least ```epps```), preventing sign changes, division by zero and blow-up with strong priors (implementation 2 and Python implementation 4)
@@ -406,6 +408,9 @@ Bug fixes:
   - The 3D backprojection mask is now read for every voxel
   - Values outside the detector and the volume are now exact zeros, which fixes the divergence of CT OSEM with CUDA
   - Fixes for BB, the dP preconditioner and SPS, ```options.meanBP``` with CT OSEM, CT OSEM with randoms correction and adaptive PDHG (```PDAdaptiveType``` 2) with projector type 5
+  - The RDP anatomical reference weighting (with corners) now works with projector type 5 as the backprojector (projector types 5 and 45) instead of failing
+  - Python: the forward projection operator with projector type 5 as the forward projector (projector types 54 and 51) now applies the CT normalization instead of failing
+  - MATLAB: implementation 3 now gives an error with projector type 5 in the reconstruction, since it was computed without the integral images (the forward and backward projection operators of implementation 3 are not affected)
 - Projector types 1-3
   - Perpendicular rays were indexed off by one, and TOF did not work, when the source/detector is inside the FOV
   - The multi-ray coordinate division was correct only for perpendicular rays; the ray angle is now taken into account
@@ -530,6 +535,10 @@ Bug fixes:
   - COSEM, ECOSEM, ACOSEM and OSL-COSEM divided by the sensitivity image divided by the number of subsets, so COSEM and ECOSEM converged to the number of subsets times the ML image. The forward projection of the image now matches the measured counts for any number of subsets (previously 0.95, 3.8 and 7.6 times with 1, 4 and 8 subsets in a PET test)
   - The full sensitivity image (used by RBI, OSL-RBI, the COSEM family and the image-based preconditioners) was computed as 1 + A^T 1 instead of A^T 1
 - CGLS diverged after a few tens of iterations with the projector types 4, 5 and 6 and with combined projector types (e.g. 14 or 41) (implementation 2): the forward and backprojections of these projectors are not exact adjoints of each other, so the search directions lost their conjugacy. In a CT test with projector type 4 the image norm grew to 1e5 times the correct value by iteration 300, also with noise-free data. CGLS now restarts the search direction every 20 iterations with these projectors, which keeps it stable (in the same test the data residual after 300 iterations equals that of LSQR). With the projector types 1, 2 and 3 (same type for the forward and backprojection) CGLS is unchanged. LSQR is more tolerant of the mismatch and was not affected in single-volume reconstructions
+- With PSF blurring and PSF kernels of seven or more voxels in any direction, the CT OSEM-type algorithms (OSEM, ROSEM, OSL-OSEM, ROSEM-MAP) could diverge in voxels outside the field of view of the scanner because of round-off in the PSF convolution; such voxels are now treated as voxels without sensitivity (implementation 2)
+- Stored forward projections (```options.storeFP```) of dynamic data contained only the last time step (implementation 2; in MATLAB part of the output cell array was also missing)
+- FDK reconstructed only the first time step of dynamic data; the other time steps were returned as zeros (implementation 2, also with largeDim)
+- When the measurements are loaded one subset at a time (```options.loadTOF = false```, or automatically when the TOF data does not fit in the GPU memory), the data of all time steps of dynamic data were loaded into the slot of the first time step, so ACOSEM and OSL-COSEM (```options.OSL_COSEM = 1```) used the data of the wrong time step. LSQR overwrote its internal vector with the reloaded measurements and returned NaN images also with static data (implementation 2)
 
 ## OMEGA v2.2.0
 
