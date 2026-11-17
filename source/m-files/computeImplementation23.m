@@ -3,6 +3,14 @@ function [pz, fp, res] = computeImplementation23(options, x, z_det, pituus)
 %implementations 2 or 3
 %   Utility function
 
+% The full implementation 3 reconstruction (reconstruction_multigpu) does not compute the integral images that the type 5 forward and
+% backward projectors need. This applies to every projector type with type 5 as the forward (5x) or backward (x5) projector.
+% The standalone forward/backward projection of implementation 3 (forwardProjection.m, backwardProjection.m) builds the integral images in
+% MATLAB and does not call this function
+if options.implementation == 3 && (options.projector_type == 5 || (options.projector_type > 9 && (mod(options.projector_type, 10) == 5 || floor(options.projector_type / 10) == 5)))
+    error(['Projector type ' num2str(options.projector_type) ' is not supported with implementation 3! Use implementation 2 or the forward/backward projection operators instead.'])
+end
+
 if ~isfield(options,'compute_sensitivity_image')
     options.compute_sensitivity_image = false;
 end
