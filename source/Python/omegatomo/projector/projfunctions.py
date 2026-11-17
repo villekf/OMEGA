@@ -422,6 +422,10 @@ def _append_fp5_args(self, args, timestep, subset, k, im_arg, imInt_arg, y_arg, 
         args.img(meanV_arg)
     if self.useMaskFP:
         args.img(_mask_fp_resource(self, subset))
+    # The kernel declares d_norm (under NORM) after the optional maskFP and before d_nProjections; as in the FP type 4 helper,
+    # the buffer is the per-subset slice of the normalization
+    if self.normalization_correction:
+        args.buf(self.d_norm[timestep][subset])
     args.i64(self.nProjSubset[timestep, subset].item())
     return args
 
