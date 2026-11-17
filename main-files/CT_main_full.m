@@ -844,6 +844,13 @@ options.FISTAType = 1;
 % Measurement-based preconditioners
 % precondTypeMeas(1) = Diagonal normalization preconditioner (1 / (A1))
 % precondTypeMeas(2) = Filtering-based preconditioner
+% With PDHG, PDHGL1, PDHGKL and PDDY these are true preconditioners, i.e.
+% they only affect the convergence speed. With PKMA, MBSREM, MRAMLA, SPS,
+% FISTA, FISTAL1 and SAGA the measurement-based preconditioners are
+% experimental and not recommended: the diagonal normalization
+% preconditioner changes the objective function (the algorithm converges
+% to a different, 1/(A1)-weighted solution) and the filtering-based
+% preconditioner does so during the filtering iterations
 options.precondTypeMeas = [false;false];
 
 % Image-based preconditioners

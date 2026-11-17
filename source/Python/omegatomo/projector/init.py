@@ -446,6 +446,121 @@ def _decide_layered_bp5(self):
     return self._layeredBP5
 
 
+def _min_subsets_for_projections(nProj, limit, subsetType):
+    """Smallest number of subsets for which no subset of a time step with nProj projections has more than limit projections. Follows the
+    split of the projections into subsets (see indices.py): subset type 0 (contiguous blocks, the last subset takes the remainder),
+    subset type 12 (pairs of projections half a rotation apart) and the other types (balanced). Returns 0 if no number is enough."""
+    nProj = int(nProj)
+    limit = int(limit)
+    if nProj <= 0 or limit <= 0:
+        return 0
+    for N in range(1, nProj + 1):
+        if N == 1:
+            maxLen = nProj
+        elif subsetType == 0:
+            val = nProj // N
+            maxLen = max(val, nProj - val * (N - 1))
+        elif subsetType == 12:
+            maxLen = 2 * (-(-(nProj // 2) // N))
+        else:
+            maxLen = -(-nProj // N)
+        if maxLen <= limit:
+            return N
+    return 0
+
+
+def _check_texture_limits(self):
+    """CT: raise a clear error if a 3D texture needed by the projectors exceeds the maximum 3D texture size of the device (otherwise the
+    texture creation fails with an obscure error). Checks the texture of the measurements of the type 4 and 5 backprojection (one layer
+    per projection of a subset, when the layered 2D texture is not used) and the textures of the image volume of the forward
+    projections. Has to be called after the layered texture decisions. Not used with Metal."""
+    if self.useMetal or not self.CT or self.listmode != 0 or not self.useImages:
+        return
+    if self.BPType == 4:
+        layeredBP = bool(getattr(self, '_layeredBP', False))
+    else:
+        layeredBP = bool(getattr(self, '_layeredBP5', False))
+    bpTexture = self.BPType in (4, 5) and not layeredBP
+    # The FDK does not forward project
+    fpTexture = (not bool(getattr(self, 'FDK', False))) and self.FPType in (1, 2, 3, 4, 5)
+    if not (bpTexture or fpTexture):
+        return
+    try:
+        if self.useCUDA:
+            import cupy as cp
+            lim = cp.cuda.runtime.getDeviceProperties(cp.cuda.runtime.getDevice())['maxTexture3D']
+            limits = [int(lim[0]), int(lim[1]), int(lim[2])]
+        else:
+            import pyopencl as cl
+            dev = self.clctx.get_info(cl.context_info.DEVICES)[0]
+            limits = [int(dev.image3d_max_width), int(dev.image3d_max_height), int(dev.image3d_max_depth)]
+    except Exception:
+        return
+    if min(limits) <= 0:
+        return
+    limNames = ('width', 'height', 'depth')
+    if bpTexture:
+        extra = 1 if self.BPType == 5 else 0
+        suffix = ' + 1' if extra else ''
+        texW = int(self.nRowsD) + extra
+        texH = int(self.nColsD) + extra
+        if texW > limits[0]:
+            raise ValueError('The width of the projection images (nRowsD' + suffix + ' = ' + str(texW) + ') exceeds the maximum 3D texture width of the device (' + str(limits[0]) + '). The projections are read from a 3D texture.')
+        if texH > limits[1]:
+            raise ValueError('The height of the projection images (nColsD' + suffix + ' = ' + str(texH) + ') exceeds the maximum 3D texture height of the device (' + str(limits[1]) + '). The projections are read from a 3D texture.')
+        maxProj = int(np.max(self.nProjSubset))
+        if maxProj > limits[2]:
+            minSubsets = _min_subsets_for_projections(np.max(np.sum(self.nProjSubset, axis=1)), limits[2], int(self.subsetType))
+            msg = 'The number of projections in a subset (' + str(maxProj) + ') exceeds the maximum 3D texture depth of the device (' + str(limits[2]) + ').'
+            if minSubsets > 0:
+                msg += ' Use at least ' + str(minSubsets) + ' subsets.'
+            raise ValueError(msg)
+    if fpTexture:
+        # largeDim is available only with the projector types 4 and 14 (the forward projection of type 4 or 1 and the backprojection of
+        # type 4) and with the algorithms PDHG, PKMA and FDK
+        largeDimSupported = bool(self.BPType == 4 and self.FPType in (1, 4)
+                                 and (self.PDHG or self.PKMA or self.PDDY or self.PDHGL1 or self.PDHGKL or getattr(self, 'FDK', False)))
+        largeDim = bool(getattr(self, 'largeDim', False))
+        nMulti = int(getattr(self, 'nMultiVolumes', 0))
+
+        def checkTexture(texName, dims, dimNames, zDim, zExtra, NzFull, chunk):
+            for jj in range(3):
+                if dims[jj] <= limits[jj]:
+                    continue
+                msg = ('The ' + texName + ' texture exceeds the maximum 3D texture ' + limNames[jj] + ' of the device in the ' + dimNames[jj] + ': '
+                       + str(dims[jj]) + (' (in one largeDim chunk)' if (jj == zDim and chunk) else '') + ', the limit is ' + str(limits[jj]) + '.')
+                if jj == zDim and not chunk and nMulti == 0 and largeDimSupported:
+                    minChunks = 0
+                    for N in range(2, NzFull + 1):
+                        if NzFull // N + NzFull % N + zExtra <= limits[jj]:
+                            minChunks = N
+                            break
+                    if minChunks > 0:
+                        msg += ' Use largeDim (options.largeDim = true) with at least ' + str(minChunks) + ' subsets.'
+                raise ValueError(msg)
+
+        Nx = np.atleast_1d(self.Nx)
+        Ny = np.atleast_1d(self.Ny)
+        Nz = np.atleast_1d(self.Nz)
+        for kk in range(nMulti + 1):
+            nx = int(Nx[kk])
+            ny = int(Ny[kk])
+            nzFull = int(Nz[kk])
+            nz = nzFull
+            # With largeDim the first subvolume is the largest
+            chunk = largeDim and kk == 0 and int(self.subsets) > 1
+            if chunk:
+                nz = nzFull // int(self.subsets) + nzFull % int(self.subsets)
+            if self.FPType != 5:
+                checkTexture('forward projection image', (nx, ny, nz * int(getattr(self, 'nRekos', 1))),
+                             ('x-direction (Nx)', 'y-direction (Ny)', 'z-direction (Nz)'), 2, 0, nzFull, chunk)
+            elif not bool(getattr(self, '_layeredFP5', False)):
+                checkTexture('integral image of the type 5 forward projection', (ny + 1, nz + 1, nx),
+                             ('y-direction (Ny + 1)', 'z-direction (Nz + 1)', 'x-direction (Nx)'), 1, 1, nzFull, chunk)
+                checkTexture('integral image of the type 5 forward projection', (nx + 1, nz + 1, ny),
+                             ('x-direction (Nx + 1)', 'z-direction (Nz + 1)', 'y-direction (Ny)'), 1, 1, nzFull, chunk)
+
+
 def _backprojectionVoxelsType5(self):
     """Number of axial voxels computed by each thread in the type 5 backprojection: the option NVOXELS5 (at least 1), or 1 with curved helical data (its z-loop is not validated with several voxels) and with Metal."""
     if self.useHelical or self.useMetal:
@@ -1222,6 +1337,8 @@ def initProjector(self):
                 bOptBP += ('-DPROJWINDOW',)
             if self.meanBP:
                 bOptBP += ('-DMEANDISTANCEBP',)
+        # The 3D textures have to fit into the maximum 3D texture size of the device (after the layered texture decisions above)
+        _check_texture_limits(self)
     else:
         headerDir = None
         linesFP = None

@@ -130,6 +130,8 @@ typedef struct structForScalars {
 	int64_t nBins = 1, nProjections = 0, numelY = 0, numelZ = 0, TOFSize = 0, seed = -1;
 	// Largest number of projections in any subset (over all time steps), used to decide whether the layered measurement texture can be used
 	int64_t maxProjPerCall = 0;
+	// Largest number of projections of one time step (sum over its subsets), used to compute the minimum number of subsets that fit into a 3D texture
+	int64_t maxProjPerFrame = 0;
 	std::vector<int64_t> im_dim{ 1 };
 	size_t size_of_x, size_atten = 1, size_norm = 1, size_center_x, size_center_y, size_center_z, size_V = 1, size_scat = 1, kokoTOF = 0, kokoNonTOF = 0, sizeLOR,
 		sizeL, sizeXY, sizeZ, saveIterationsMiddle = 0ULL;

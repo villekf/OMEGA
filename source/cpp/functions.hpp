@@ -3151,6 +3151,9 @@ inline int computeACOSEMWeight(scalarStruct& inputScalars, std::vector<int64_t>&
 }
 
 // The power method
+// Defined in priors.h (which includes this file)
+inline float separablePriorCurvature(const RecMethods& MethodList, const Weighting& w_vec, bool& unbounded);
+
 inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector<int64_t>& length, ProjectorClass& proj,
 	AF_im_vectors& vec, const RecMethods& MethodList, const int64_t* pituus, const uint32_t timestep, const af::array& g = af::constant(0.f, 1, 1),
 	float* F = nullptr, float* apuD = nullptr, const float* atten = nullptr) { // TODO: vectorize LCP, LCP2
@@ -3611,6 +3614,19 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 		proxPriorNorm = 16.f;
 	else if (MethodList.CPType && MethodList.ProxTV)
 		proxPriorNorm = 12.f;
+	// Condat-Vu step condition with an explicit prior gradient for the PDHG family: 1/tau >= sigma*L_A + beta*L_R/2.
+	// FISTA and FISTAL1 take no smooth prior. L_R is bounded by the same Gershgorin bound used for the SPS / preconditioner type 6 step.
+	// Priors without a known bound keep the previous step size. Validated on CT 2026-11: without this, PDHG with the
+	// measurement preconditioner diverged with quadratic beta >= 1e4, and without it at beta >= 1e5.
+	float smoothPriorTerm = 0.f;
+	if (w_vec.beta > 0.f && MethodList.CPType) {
+		bool unboundedPrior = false;
+		const float kappa = separablePriorCurvature(MethodList, w_vec, unboundedPrior);
+		if (!unboundedPrior && kappa > 0.f)
+			smoothPriorTerm = 0.5f * w_vec.beta * kappa;
+	}
+	if (inputScalars.verbose >= 2 && smoothPriorTerm > 0.f)
+		mexPrintBase("Prior curvature term added to the primal step: %f\n", smoothPriorTerm);
 	for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 		proj.memSize -= (sizeof(float) * inputScalars.im_dim[ii]);
 		w_vec.sigmaCP[timestep][ii] = 1.f;
@@ -3636,7 +3652,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			mexEval();
 		}
 		w_vec.LCP[timestep].emplace_back(w_vec.tauCP[timestep][ii]);
-		const float priorTerm = (ii == 0) ? w_vec.sigma2CP[timestep][ii] * proxPriorNorm : 0.f;
+		const float priorTerm = (ii == 0) ? (w_vec.sigma2CP[timestep][ii] * proxPriorNorm + smoothPriorTerm) : 0.f;
 		w_vec.tauCP[timestep][ii] = 1.f / (w_vec.sigmaCP[timestep][ii] * w_vec.tauCP[timestep][ii] + priorTerm);
 		if (w_vec.filterIter > 0 && (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5])) {
 			w_vec.LCP2[timestep].emplace_back(w_vec.tauCP2[timestep][ii]);

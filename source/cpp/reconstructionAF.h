@@ -413,6 +413,13 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		inputScalars.normalization_correction = 0;
 	// Largest number of projections in any subset/time step (decides whether the layered CT BP texture can be used)
 	inputScalars.maxProjPerCall = length.empty() ? 0 : *std::max_element(length.begin(), length.end());
+	inputScalars.maxProjPerFrame = 0;
+	for (size_t tt = 0; tt < static_cast<size_t>(inputScalars.Nt); tt++) {
+		int64_t frameProj = 0;
+		for (size_t ss = 0; ss < static_cast<size_t>(inputScalars.subsets) && tt * static_cast<size_t>(inputScalars.subsets) + ss < length.size(); ss++)
+			frameProj += length[tt * static_cast<size_t>(inputScalars.subsets) + ss];
+		inputScalars.maxProjPerFrame = (std::max)(inputScalars.maxProjPerFrame, frameProj);
+	}
 	ProjectorClass proj;
 	status = proj.addProjector(inputScalars, w_vec, MethodList, header_directory);
 	if (status != 0)

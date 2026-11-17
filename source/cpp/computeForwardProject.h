@@ -310,15 +310,25 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			}
 		}
 		else {
+			// Diagonal preconditioning (Pock and Chambolle 2011) uses Sigma = sigma / M. res has already been divided by M,
+			// so the numerator contains Sigma * (Ax - y). The prox of the conjugate of ||z - y||^2 / 2 is
+			// (v - Sigma y) / (1 + Sigma) elementwise, i.e. the denominator must also use Sigma. Dividing by (1 + sigma)
+			// instead solved the M^-1-weighted least squares problem
 			if (MethodList.ProxTGV) {
 				if (inputScalars.verbose >= 3)
 					mexPrint("Computing Proximal TGV");
-				input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * res) / (1.f + w_vec.sigmaCP[timestep][ii] * w_vec.betaReg);
+				if (w_vec.precondTypeMeas[0])
+					input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * res) / (1.f + w_vec.sigmaCP[timestep][ii] * w_vec.betaReg / w_vec.M[timestep][subIter]);
+				else
+					input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * res) / (1.f + w_vec.sigmaCP[timestep][ii] * w_vec.betaReg);
 			}
 			else {
 				if (inputScalars.verbose >= 3)
 					mexPrint("Computing PDHG");
-				input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * res) / (1.f + w_vec.sigmaCP[timestep][ii]);
+				if (w_vec.precondTypeMeas[0])
+					input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * res) / (1.f + w_vec.sigmaCP[timestep][ii] / w_vec.M[timestep][subIter]);
+				else
+					input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * res) / (1.f + w_vec.sigmaCP[timestep][ii]);
 			}
 		}
 		if (inputScalars.storeResidual) {
