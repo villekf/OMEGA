@@ -2258,11 +2258,9 @@ def computeOffsets(options):
     and explicitly subtracts 1 at the end for implementation 2; both are
     folded together here since implementation 2 is the only path).
 
-    This is a literal translation of the MATLAB ndgrid/sub2ind construction,
-    including its quirk of always building the neighborhood grid from Ndx
-    (not Ndy/Ndz) and only special-casing an Ndz that differs from Ndx -- so
-    it is only exercised/verified here for the common Ndx == Ndy case that
-    the rest of OMEGA assumes for this prior family.
+    The neighborhood is the full box (2*Ndx+1) x (2*Ndy+1) x (2*Ndz+1)
+    (Ndz = 0 gives a single slice), built with ndgrid/sub2ind as in the
+    MATLAB code.
 
     Parameters
     ----------
@@ -2278,37 +2276,14 @@ def computeOffsets(options):
     Ndx = int(options.Ndx); Ndy = int(options.Ndy); Ndz = int(options.Ndz)
     N = Nx * Ny * Nz
     s = (Nx + Ndx * 2, Ny + Ndy * 2, Nz + Ndz * 2)
-    N_pad = min(3, Ndx + Ndy + Ndz)
 
-    # ndgrid(1:(Ndx*2+1)) called with N_pad output arguments: N_pad arrays,
-    # each of shape (a,)*N_pad (1-based values, matching MATLAB exactly,
-    # including that the range is always driven by Ndx even for the
-    # "y"/"z" grids).
-    a = Ndx * 2 + 1
-    vec = np.arange(1, a + 1, dtype=np.int64)
-    if N_pad >= 1:
-        c1 = list(np.meshgrid(*([vec] * N_pad), indexing='ij'))
-    else:
-        c1 = []
-    c2 = [Ndy + 1] * N_pad
-
-    if N_pad == 3:
-        if Ndz > Ndx and Ndz > 1:
-            pad_shape = c1[0].shape[:2] + (Ndz,)
-            for i in range(3):
-                c1[i] = np.concatenate([c1[i], np.zeros(pad_shape, dtype=c1[i].dtype)], axis=2)
-            total_len = c1[0].shape[2]
-            for kk in range(Ndz - 1, -1, -1):
-                idx = total_len - 1 - kk
-                c1[0][:, :, idx] = c1[0][:, :, idx - 1]
-                c1[1][:, :, idx] = c1[1][:, :, idx - 1]
-                c1[2][:, :, idx] = c1[2][:, :, idx - 1] + 1
-            c2[2] = Ndz + 1
-        elif Ndz < Ndx and Ndz > 1:
-            del_pos = a - 1 - 2 * (Ndx - Ndz)
-            for i in range(3):
-                c1[i] = np.delete(c1[i], del_pos, axis=2)
-            c2[2] = Ndz + 1
+    # Full neighborhood box (2*Ndx+1) x (2*Ndy+1) x (2*Ndz+1), x fastest
+    # (column-major), centred at (Ndx+1, Ndy+1, Ndz+1). The number of
+    # offsets is exactly dimmu = (2*Ndx+1)*(2*Ndy+1)*(2*Ndz+1).
+    c1 = list(np.meshgrid(np.arange(1, 2 * Ndx + 2, dtype=np.int64),
+                          np.arange(1, 2 * Ndy + 2, dtype=np.int64),
+                          np.arange(1, 2 * Ndz + 2, dtype=np.int64), indexing='ij'))
+    c2 = [Ndx + 1, Ndy + 1, Ndz + 1]
 
     offsets = _sub2ind_f(s, c1) - _sub2ind_f(s, c2)
     offsets = offsets.flatten(order='F')
@@ -2527,14 +2502,14 @@ def fmhWeights(options):
                         if iii == 0:
                             apu[hhh] = options.fmh_center_weight
                         else:
-                            apu[hhh] = kerroin / abs(distX * iii)
+                            apu[hhh] = kerroin / abs(distY * iii)
                         hhh += 1
                 elif jjj == 4:
                     for iii in range(Ndx, -Ndx - 1, -1):
                         if iii == 0:
                             apu[hhh] = options.fmh_center_weight
                         else:
-                            apu[hhh] = kerroin / abs(distY * iii)
+                            apu[hhh] = kerroin / abs(distX * iii)
                         hhh += 1
                 options.fmh_weights[:, jjj - 1] = apu
         else:
@@ -2560,14 +2535,14 @@ def fmhWeights(options):
                                 if iii == 0:
                                     apu[hhh] = options.fmh_center_weight
                                 else:
-                                    apu[hhh] = kerroin / math.sqrt((distZ * iii) ** 2 + (distX * iii) ** 2)
+                                    apu[hhh] = kerroin / math.sqrt((distZ * iii) ** 2 + (distY * iii) ** 2)
                                 hhh += 1
                         elif jjj in (4, 6):
                             for iii in range(Ndz, -Ndz - 1, -1):
                                 if iii == 0:
                                     apu[hhh] = options.fmh_center_weight
                                 else:
-                                    apu[hhh] = kerroin / math.sqrt((distZ * iii) ** 2 + (distY * iii) ** 2)
+                                    apu[hhh] = kerroin / math.sqrt((distZ * iii) ** 2 + (distX * iii) ** 2)
                                 hhh += 1
                         elif jjj == 5:
                             for iii in range(Ndz, -Ndz - 1, -1):
@@ -2594,14 +2569,14 @@ def fmhWeights(options):
                                 if iii == 0:
                                     apu[hhh] = options.fmh_center_weight
                                 else:
-                                    apu[hhh] = kerroin / abs(distX * iii)
+                                    apu[hhh] = kerroin / abs(distY * iii)
                                 hhh += 1
                         elif jjj == 4:
                             for iii in range(Ndx, -Ndx - 1, -1):
                                 if iii == 0:
                                     apu[hhh] = options.fmh_center_weight
                                 else:
-                                    apu[hhh] = kerroin / abs(distY * iii)
+                                    apu[hhh] = kerroin / abs(distX * iii)
                                 hhh += 1
                         else:
                             break

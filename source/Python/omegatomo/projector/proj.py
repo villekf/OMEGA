@@ -2227,6 +2227,15 @@ class projectorClass:
             # The FISTA acceleration stores the previous iterate, but with largeDim the image is processed in chunks
             if self.FISTA_acceleration:
                 raise ValueError('FISTA acceleration (FISTA_acceleration) is not supported with largeDim!')
+            # The stored prior gradient used between the regEveryIter computations belongs to another image chunk
+            if self.regEveryIter > 1:
+                raise ValueError('regEveryIter > 1 is not supported with largeDim!')
+        # The FMH neighborhood lines (directions and their weights) are defined for a cubic neighborhood. A single-slice
+        # image uses Ndz = 0
+        if self.FMH and self.MAP:
+            NdzFMH = 0 if np.ravel(self.Nz)[0] == 1 else self.Ndz
+            if self.Ndx != self.Ndy or (NdzFMH != 0 and NdzFMH != self.Ndx):
+                raise ValueError('FMH requires Ndx == Ndy and Ndz equal to 0 or Ndx!')
         if self.useCUDA and self.useCPU:
             raise ValueError('Both CUDA and CPU selected! Select only one!')
         if self.deviceNum < 0:

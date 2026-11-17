@@ -593,6 +593,21 @@ if options.largeDim
     if isfield(options, 'FISTA_acceleration') && options.FISTA_acceleration
         error('FISTA acceleration (options.FISTA_acceleration) is not supported with largeDim!')
     end
+    % The stored prior gradient used between the regEveryIter computations belongs to another image chunk
+    if isfield(options, 'regEveryIter') && options.regEveryIter > 1
+        error('regEveryIter > 1 is not supported with largeDim!')
+    end
+end
+% The FMH neighborhood lines (directions and their weights) are defined for a cubic neighborhood. A single-slice
+% image uses Ndz = 0
+if options.FMH && options.MAP
+    NdzFMH = options.Ndz;
+    if options.Nz(1) == 1
+        NdzFMH = 0;
+    end
+    if options.Ndx ~= options.Ndy || (NdzFMH ~= 0 && NdzFMH ~= options.Ndx)
+        error('FMH requires Ndx == Ndy and Ndz equal to 0 or Ndx!')
+    end
 end
 if options.use_CUDA && options.use_CPU && options.implementation == 2
     error('Both CUDA and CPU selected! Select only one!')

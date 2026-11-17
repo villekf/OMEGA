@@ -393,6 +393,19 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		return -1;
 	}
 
+	// The FMH neighborhood lines (directions and their weights) are defined for a cubic neighborhood
+	if (MethodList.FMH && !(w_vec.Ndx == w_vec.Ndy && (w_vec.Ndz == 0U || w_vec.Ndz == w_vec.Ndx))) {
+		mexPrint("FMH requires Ndx == Ndy and Ndz equal to 0 or Ndx\n");
+		return -1;
+	}
+
+	// With regEveryIter > 1 the last computed prior gradient is reused between the computations. With largeDim the stored
+	// gradient belongs to another image chunk
+	if (inputScalars.largeDim && inputScalars.regEveryIter > 1) {
+		mexPrint("regEveryIter > 1 is not supported with largeDim\n");
+		return -1;
+	}
+
 	// With largeDim the image passed to the update is a chunk whose size changes between calls, so the stored previous iterate is invalid
 	if (inputScalars.largeDim && inputScalars.FISTAAcceleration) {
 		mexPrint("FISTA acceleration is not supported with largeDim\n");
@@ -853,12 +866,16 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                                 uu += length[indD];
                             alku += lengthFull[indD] * nBins;
                         }
-                        // dP = subsets / (sum over the subsets of the backprojections + subsets * beta * kappa)
-                        // Each sub-iteration uses the subset data gradient but the full prior gradient, hence the prior curvature
-                        // is multiplied by the number of subsets. The prior is applied to the main volume only
+                        // dP = subsets / (sum over the subsets of the backprojections + curvScale * beta * kappa)
+                        // Each sub-iteration uses the subset data gradient. For the methods with the per-subiteration prior beta / subsets
+                        // (the subsetScale list in computeOSEstimates) the prior curvature scaled by subsets is beta * kappa (curvScale = 1).
+                        // For the other users of dP (PDHG family, FISTA) the prior keeps the full beta, so the curvature term is
+                        // subsets * beta * kappa (curvScale = subsets). The prior is applied to the main volume only
+                        const float curvScale = (MethodList.OSLOSEM || MethodList.RBIOSL || MethodList.PKMA || MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS || MethodList.SAGA)
+                            ? 1.f : static_cast<float>(inputScalars.subsetsUsed);
                         if (ii == 0 && priorKappa > 0.f)
                             w_vec.dP[tt][ii] = static_cast<float>(inputScalars.subsetsUsed) / (w_vec.dP[tt][ii]
-                                + static_cast<float>(inputScalars.subsetsUsed) * w_vec.beta * priorKappa);
+                                + curvScale * w_vec.beta * priorKappa);
                         else
                             w_vec.dP[tt][ii] = static_cast<float>(inputScalars.subsetsUsed) / w_vec.dP[tt][ii];
                         w_vec.dP[tt][ii](af::isNaN(w_vec.dP[tt][ii])) = 1.f;

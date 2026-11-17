@@ -120,7 +120,7 @@ inline af::array ROSEM(const af::array& im, const af::array& Summ, const af::arr
 
 // RBI update
 // cachedMax (optional) caches max(Summ / D) of the beta == 0 branch, 0 means not computed yet
-inline af::array RBI(const af::array& im, const af::array& Summ, const af::array& rhs, const af::array& D = af::constant(0.f, 1, 1), const float beta = 0.f, const af::array& dU = af::constant(0.f, 1, 1), float* cachedMax = nullptr)
+inline af::array RBI(const af::array& im, const af::array& Summ, const af::array& rhs, const af::array& D = af::constant(0.f, 1, 1), const float beta = 0.f, const af::array& dU = af::constant(0.f, 1, 1), float* cachedMax = nullptr, const float epps = 1e-8f)
 {
 	af::array output = im;
 	if (beta == 0.f) {
@@ -136,8 +136,14 @@ inline af::array RBI(const af::array& im, const af::array& Summ, const af::array
 		output += Summa * (im / D) * (rhs);
 	}
 	else {
-		const float Summa = 1.f / af::max<float>((Summ + dU) / (D + dU));
-		output += Summa * (im / (D + dU)) * (rhs - dU);
+		// The denominator (D + prior gradient) is limited like in OSL-OSEM: at least 10 % of D and at least epps where D is ~0
+		// (outside the measured region), so that it cannot change sign or divide by zero with a strong prior.
+		// The floored denominator replaces D + dU in all places, which keeps the OSL form x * BP(y / ybar) / denom (with the RBI
+		// step scaling): rhs = BP(y / ybar) - D, so rhs + D - denom equals rhs - dU when the floor is not active, and
+		// (Summ - D + denom) equals Summ + dU
+		const af::array denom = (af::max)(D + dU, (af::max)(0.1f * D, static_cast<double>(epps)));
+		const float Summa = 1.f / af::max<float>((Summ - D + denom) / denom);
+		output += Summa * (im / denom) * (rhs + D - denom);
 	}
 	return output;
 }
@@ -304,7 +310,7 @@ inline void CGLS(const scalarStruct& inputScalars, Weighting& w_vec, const uint3
 	}
 }
 
-inline int SART(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, AF_im_vectors& vec, ProjectorClass& proj, const af::array& mData, const af::array& g, std::vector<int64_t>& length, const int64_t* pituus, const uint32_t timestep, const uint32_t osa_iter, const uint32_t iter, const af::array& Summ, const af::array& rhs, const float lam, const int ii = 0) {
+inline int SART(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, AF_im_vectors& vec, ProjectorClass& proj, const af::array& mData, const af::array& g, std::vector<int64_t>& length, const int64_t* pituus, const uint32_t timestep, const uint32_t osa_iter, const uint32_t iter, const af::array& Summ, const af::array& rhs, const float lam, const int ii = 0, const std::vector<af::array>* sartFrames = nullptr) {
 	af::array imOld;
 	if (MethodList.prior && !MethodList.POCS)
 		imOld = vec.im_os[timestep][ii].copy();
@@ -324,7 +330,8 @@ inline int SART(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 				vec.im_os[timestep][ii] -= dp * w_vec.beta * vec.dU[timestep];
 
                 if (MethodList.TemporalSmoothness || MethodList.TemporalTV) { // Temporal prior
-                    status = applyTemporalPrior(vec, w_vec, MethodList, inputScalars, proj);
+                    // Only this timestep is computed, with the neighbour frames from the start of the subiteration
+                    status = applyTemporalPrior(vec, w_vec, MethodList, inputScalars, proj, false, sartFrames, static_cast<int>(timestep));
                     if (status != 0) return status;
                     vec.dUt[timestep] /= (af::norm(vec.dUt[timestep]) + inputScalars.epps);
                     af::eval(vec.dUt[timestep]);

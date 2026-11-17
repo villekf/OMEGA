@@ -137,6 +137,9 @@ inline void checkFastPDHG(scalarStruct& inputScalars, const Weighting& w_vec, co
 		reason = "only the image-based preconditioners 0 and 1 are supported";
 	else if (w_vec.precondTypeIm[0] && w_vec.precondTypeIm[1])
 		reason = "only one image-based preconditioner can be used at a time";
+	// The fused step computes the prior inside the kernel and cannot reuse a stored gradient
+	else if (inputScalars.regEveryIter > 1)
+		reason = "regEveryIter > 1 is not supported by the fused step";
 	if (reason != nullptr) {
 		inputScalars.fastPDHG = false;
 		// The fused step is enabled automatically whenever it applies, so a configuration that does not
@@ -189,7 +192,10 @@ static inline void setFastPDHGSubIterParams(ProjectorClass& proj, const scalarSt
 	// If the regularization is not computed, set beta as zero
 	// BSREM doesn't compute regularization as part of the backprojection kernel
 	// The fused Poisson kernel does imOld + lambda * rhs for MBSREM (ascent direction), so the prior term must be subtracted
-	proj.fastBeta = (proj.fastNLMUsed && computeReg && !MethodList.BSREM) ? (MethodList.MBSREM ? -w_vec.beta : w_vec.beta) : 0.f;
+	// The Poisson algorithms (PKMA, MBSREM) combine one subset's data gradient with the prior on every subiteration, so beta is
+	// scaled with 1 / subsets as in computeOSEstimates. PDHG keeps beta
+	const float fastBetaScale = (proj.fastAlg != 0 && (MethodList.PKMA || MethodList.MBSREM)) ? 1.f / static_cast<float>(inputScalars.subsetsUsed) : 1.f;
+	proj.fastBeta = (proj.fastNLMUsed && computeReg && !MethodList.BSREM) ? (MethodList.MBSREM ? -w_vec.beta : w_vec.beta) * fastBetaScale : 0.f;
 }
 #endif
 
