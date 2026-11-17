@@ -3740,3 +3740,40 @@ inline void transferControl(AF_im_vectors& vec, const scalarStruct& inputScalars
 		mexEval();
 	}
 }
+
+// Relative sensitivity threshold of the CT OSEM guard (see guardCTOSEMSensitivity): voxels whose blurred sensitivity is at most this fraction of the
+// maximum of the sensitivity image are treated as voxels without sensitivity when a PSF is used. The round-off of the ArrayFire convolution with
+// large kernels is about 3e-7 of the image maximum, so the value has to be clearly above that. It is also far below the sensitivity of any voxel that
+// is covered by a meaningful part of the rays
+#define CT_OSEM_SENS_REL 1e-6f
+
+// Guard of the CT OSEM-family updates (OSEM, ROSEM, OSL-OSEM, ROSEM-MAP, COSEM variants) against voxels with (near) zero sensitivity when a PSF is used.
+// The numerator and the sensitivity image of these updates are both backprojections and the update divides one by the other. Without a PSF a voxel
+// that no ray covers has exactly zero in both, the sensitivity is then raised to epps, the update gives zero and the positivity constraint sets the
+// voxel to epps. With a PSF the blurred backprojections are not exactly zero in such voxels (the convolution of larger kernels has round-off of
+// about 1e-7 of the maximum, also negative values, different on each backend) and the ratio of two such values is meaningless (it can reach 1e4
+// and grows with the iterations). Voxels with a sensitivity of at most max(epps, CT_OSEM_SENS_REL * max(sensitivity)) are therefore handled exactly
+// like voxels without sensitivity: the sensitivity is set to epps and the numerator (backprojection) to zero. Each volume of a multi-resolution
+// reconstruction uses its own maximum. Without a PSF nothing is changed, so that voxels that have no sensitivity but a nonzero numerator keep
+// behaving as before. Has to be called after transferControl, i.e. when the sensitivity image and the backprojection are final
+inline void guardCTOSEMSensitivity(AF_im_vectors& vec, const scalarStruct& inputScalars, const uint32_t timestep, const uint8_t compute_norm_matrix,
+	const uint32_t osa_iter, const int ii = 0) {
+	if (compute_norm_matrix != 1u && compute_norm_matrix != 2u)
+		return;
+	const uint32_t sIdx = inputScalars.sensPerTimestep ? timestep : 0u;
+	af::array& Sens = compute_norm_matrix == 1u ? vec.Summ[sIdx][ii][0] : vec.Summ[sIdx][ii][osa_iter];
+	// The sensitivity image is a float image only after transferControl has finalized it
+	if (!inputScalars.use_psf || Sens.type() != f32)
+		return;
+	const float thr = std::max(inputScalars.epps, CT_OSEM_SENS_REL * af::max<float>(Sens));
+	const af::array guarded = Sens <= thr;
+	Sens = af::select(guarded, inputScalars.epps, Sens);
+	Sens.eval();
+	af::array& rhs = vec.rhs_os[timestep][ii];
+	const dim_t nRekos = rhs.elements() / guarded.elements();
+	if (nRekos > 1)
+		rhs = af::select(af::tile(guarded, static_cast<unsigned int>(nRekos)), 0.0, rhs);
+	else
+		rhs = af::select(guarded, 0.0, rhs);
+	rhs.eval();
+}

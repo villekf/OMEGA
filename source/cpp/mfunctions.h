@@ -887,19 +887,21 @@ inline void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, mxA
             mexPrintBase("vec.im_os.dims(1) = %d\n", vec.im_os[timestep][0].dims(1));
             mexEval();
         }
-        if (inputScalars.storeFP) {
-            for (uint32_t ii = 0; ii < inputScalars.subsets * inputScalars.Niter; ii++) {
-                const uint32_t jj = ii % inputScalars.subsets;
-                const uint32_t kk = ii / inputScalars.subsets;
-                const mwSize dim[1] = { static_cast<mwSize>(FPEstimates[kk][jj].size()) };
+        if (inputScalars.storeFP && timestep == 0) {
+            // All the frames are stored when handling the first one, the cell index is (timestep * Niter + iteration) * subsets + subset
+            for (uint32_t uu = 0; uu < inputScalars.subsets * inputScalars.Niter * inputScalars.Nt; uu++) {
+                const uint32_t jj = uu % inputScalars.subsets;
+                const uint32_t kk = (uu / inputScalars.subsets) % inputScalars.Niter;
+                const uint32_t tt = uu / (inputScalars.subsets * inputScalars.Niter);
+                const mwSize dim[1] = { static_cast<mwSize>(FPEstimates[kk][jj + tt * inputScalars.subsets].size()) };
                 mxArray* apu = mxCreateNumericArray(1, dim, mxSINGLE_CLASS, mxREAL);
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
                 float* apuF = (float*)mxGetSingles(apu);
 #else
                 float* apuF = (float*)mxGetData(apu);
 #endif
-                std::copy(FPEstimates[kk][jj].begin(), FPEstimates[kk][jj].end(), apuF);
-                mxSetCell(FPcell, static_cast<mwIndex>(ii), mxDuplicateArray(apu));
+                std::copy(FPEstimates[kk][jj + tt * inputScalars.subsets].begin(), FPEstimates[kk][jj + tt * inputScalars.subsets].end(), apuF);
+                mxSetCell(FPcell, static_cast<mwIndex>(uu), mxDuplicateArray(apu));
             }
         }
         // Transfer data back to host

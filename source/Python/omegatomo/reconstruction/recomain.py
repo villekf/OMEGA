@@ -1112,26 +1112,36 @@ def reconstructions_main(options):
                 if nAxial > 0:
                     output = output[:, :, nAxial:-nAxial, ...]
         if options.subsets == 1 and options.storeFP:
-            FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins, options.Niter), order = 'F')
+            if int(options.Nt) > 1:
+                # device_to_host() stores the frames one after another (frame-major, then iteration), nProjections is per frame
+                FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins, options.Niter, options.Nt), order = 'F')
+            else:
+                FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins, options.Niter), order = 'F')
         elif options.storeFP and options.subsets > 1 and options.subsetType >= 8 and not options.FDK:
             # Port of reconstructions_main.m:732-741 for the subsets > 1 (subset
             # type >= 8) case. device_to_host() in reconstructionAF.h fills the
-            # flat FPptr/FPOutput buffer iteration-major, subset-minor (for ii in
-            # 0..subsets*Niter-1: kk = ii // subsets is the iteration, jj = ii %
-            # subsets is the subset), each block being that subset's forward
-            # projection with TOF bins packed into the trailing dimension. Split
-            # it into that same Niter*subsets list of chunks and reshape each to
+            # flat FPptr/FPOutput buffer frame-major, then iteration, then subset
+            # (for each frame tt, for each iteration kk, for each subset jj), each
+            # block being that subset's forward projection with TOF bins packed
+            # into the trailing dimension. Split it into that same
+            # Nt*Niter*subsets list of chunks and reshape each to
             # (nRowsD, nColsD, meas*TOF_bins), mirroring MATLAB's fp{uu} cell.
+            # options.nMeas is cumulative over all the frame-subset blocks
+            # (index tt * subsets + subset), so the per-frame subset sizes are read from it
             fpList = []
             offset = 0
             nMeas = np.asarray(options.nMeas).reshape(-1)
-            for _ in range(int(options.Niter)):
-                for ii in range(int(options.subsets)):
-                    meas = int(nMeas[ii + 1] - nMeas[ii])
-                    block = int(options.nRowsD) * int(options.nColsD) * meas * int(options.TOF_bins)
-                    fpList.append(FPOutput[offset : offset + block].reshape(
-                        (options.nRowsD, options.nColsD, meas * options.TOF_bins), order='F'))
-                    offset += block
+            nSubsets = int(options.subsets)
+            nFrames = int(options.Nt) if nMeas.size >= nSubsets * int(options.Nt) + 1 else 1
+            for tt in range(nFrames):
+                for _ in range(int(options.Niter)):
+                    for ii in range(nSubsets):
+                        idx = tt * nSubsets + ii
+                        meas = int(nMeas[idx + 1] - nMeas[idx])
+                        block = int(options.nRowsD) * int(options.nColsD) * meas * int(options.TOF_bins)
+                        fpList.append(FPOutput[offset : offset + block].reshape(
+                            (options.nRowsD, options.nColsD, meas * options.TOF_bins), order='F'))
+                        offset += block
             FPOutput = fpList
     except Exception as e:
         # Keep the reconstruction even if the output dimensions do not match

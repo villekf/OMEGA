@@ -376,7 +376,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	if (!checkRandomsTOF(inputScalars, mxGetNumberOfElements(sc_ra), mxGetNumberOfElements(Sin)))
 		mexErrMsgTxt("Invalid TOF-resolved randoms/scatter data (options.randomsTOF)!");
 	if (inputScalars.storeFP) {
-		FPptr = mxCreateCellMatrix(static_cast<mwSize>(inputScalars.subsets * inputScalars.Niter), 1);
+		FPptr = mxCreateCellMatrix(static_cast<mwSize>(inputScalars.subsets) * static_cast<mwSize>(inputScalars.Niter) * static_cast<mwSize>(inputScalars.Nt), 1);
 	}
 	else
 		FPptr = mxCreateCellMatrix(1,1);

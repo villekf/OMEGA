@@ -892,12 +892,22 @@ if options.param.useEFOV && ~options.param.useMultiResolutionVolumes
     end
 end
 if options.param.storeFP && (options.param.subsets == 1 || options.param.subset_type >= 8) && options.param.implementation == 2 && ~options.param.FDK
+    % The cell is frame-major: (timestep, iteration, subset), uu = (tt - 1) * Niter * subsets + (kk - 1) * subsets + ii
     uu = 1;
-    for kk = 1 : options.param.Niter
-        for ii = 1 : options.param.subsets
-            meas = options.nMeas(ii + 1) - options.nMeas(ii);
-            fp{uu} = reshape(fp{uu}, options.param.nRowsD, options.param.nColsD, meas * options.param.TOF_bins);
-            uu = uu + 1;
+    for tt = 1 : options.param.Nt
+        for kk = 1 : options.param.Niter
+            for ii = 1 : options.param.subsets
+                % nMeas holds the cumulative subset sizes of all the frames (index (tt - 1) * subsets + ii) if they are
+                % available, otherwise the (identical) sizes of a single frame
+                if numel(options.nMeas) >= options.param.subsets * options.param.Nt + 1
+                    idx = (tt - 1) * options.param.subsets + ii;
+                else
+                    idx = ii;
+                end
+                meas = options.nMeas(idx + 1) - options.nMeas(idx);
+                fp{uu} = reshape(fp{uu}, options.param.nRowsD, options.param.nColsD, meas * options.param.TOF_bins);
+                uu = uu + 1;
+            end
         end
     end
 end

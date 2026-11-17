@@ -1508,20 +1508,24 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
 void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, float* output, float* FPoutput, const scalarStruct& inputScalars,
     std::vector<std::vector<std::vector<float>>>& FPEstimates) {
     int64_t oo = 0;
-    for (int timestep = 0; timestep < inputScalars.Nt; timestep++) {
-        if (inputScalars.storeFP) {
-            size_t dim = 0ULL;
-            for (uint32_t ii = 0; ii < inputScalars.subsets * inputScalars.Niter; ii++) {
-                const uint32_t jj = ii % inputScalars.subsets;
-                const uint32_t kk = ii / inputScalars.subsets;
-                std::copy(FPEstimates[kk][jj].begin(), FPEstimates[kk][jj].end(), FPoutput + dim);
-                dim += FPEstimates[kk][jj].size();
-            }
-            if (DEBUG) {
-                mexPrintBase("dim = %d\n", dim);
-                    mexEval();
+    // The forward projections are copied once, frame-major: timestep, iteration, subset
+    if (inputScalars.storeFP) {
+        size_t dim = 0ULL;
+        for (uint32_t tt = 0; tt < inputScalars.Nt; tt++) {
+            for (uint32_t kk = 0; kk < inputScalars.Niter; kk++) {
+                for (uint32_t jj = 0; jj < inputScalars.subsets; jj++) {
+                    const std::vector<float>& fpEst = FPEstimates[kk][jj + tt * inputScalars.subsets];
+                    std::copy(fpEst.begin(), fpEst.end(), FPoutput + dim);
+                    dim += fpEst.size();
+                }
             }
         }
+        if (DEBUG) {
+            mexPrintBase("dim = %d\n", dim);
+            mexEval();
+        }
+    }
+    for (int timestep = 0; timestep < inputScalars.Nt; timestep++) {
         // Transfer data back to host
         if (CELL && inputScalars.nMultiVolumes > 0) {
             for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
