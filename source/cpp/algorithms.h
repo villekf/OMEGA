@@ -370,8 +370,23 @@ inline void PDHG1(af::array& rhs, const scalarStruct& inputScalars, Weighting& w
 // Final PDHG update step
 // Different methods for subset and non-subset cases
 inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter, const uint32_t timestep, const uint32_t subIter = 0, const int ii = 0, 
-	const int64_t* pituus = nullptr, const af::array& g = af::constant(0.f, 0), const uint64_t m_size = 1, const std::vector<int64_t>& length = std::vector<int64_t>(0)) {
+	const int64_t* pituus = nullptr, const af::array& g = af::constant(0.f, 0), const uint64_t m_size = 1, const std::vector<int64_t>& length = std::vector<int64_t>(0), const bool PDDY = false) {
 	int status = 0;
+	if (PDDY) {
+		// PDDY (Salim, Condat, Mishchenko and Richtarik, JOTA 2022), one subset. On entry im is x = p - gamma * A^T y+ and
+		// rhs = A^T y+ + grad R(x) (the prior gradient was added in computeOSEstimates). The iteration is
+		//   s+ = prox_+(x - gamma * (A^T y+ + grad R(x))),  p+ = p + s+ - x,
+		// and the next forward projection is taken at s+ (= p+ - gamma * A^T y+ of the next iteration). prox_+ is the positivity
+		// clamp if enforcePositivity, otherwise the identity. No image preconditioning or adaptive steps (rejected for PDDY)
+		af::array s = im - w_vec.tauCP[timestep][ii] * rhs;
+		if (inputScalars.enforcePositivity)
+			s = af::select(s < inputScalars.epps, inputScalars.epps, s);
+		vec.uCP[timestep][ii] += s - im;
+		vec.uCP[timestep][ii].eval();
+		im = s;
+		im.eval();
+		return 0;
+	}
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
 	af::array im_old;
 	if (inputScalars.adaptiveType >= 1)

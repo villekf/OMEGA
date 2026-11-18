@@ -2230,6 +2230,14 @@ class projectorClass:
             # The stored prior gradient used between the regEveryIter computations belongs to another image chunk
             if self.regEveryIter > 1:
                 raise ValueError('regEveryIter > 1 is not supported with largeDim!')
+        # The exact PDDY iteration is implemented for one subset only, without image-based preconditioning or adaptive step sizes
+        if self.PDDY:
+            if self.subsets > 1 or self.stochasticSubsetSelection or self.largeDim:
+                raise ValueError('PDDY is only supported without subsets!')
+            if np.any(self.precondTypeImage):
+                raise ValueError('Image-based preconditioners are not supported with PDDY!')
+            if self.PDAdaptiveType > 0:
+                raise ValueError('Adaptive step sizes are not supported with PDDY!')
         # The FMH neighborhood lines (directions and their weights) are defined for a cubic neighborhood. A single-slice
         # image uses Ndz = 0
         if self.FMH and self.MAP:

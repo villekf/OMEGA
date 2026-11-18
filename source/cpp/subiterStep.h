@@ -37,7 +37,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
     if (inputScalars.fastPDHG)
         return 0;
     int status = 0;
-    af::array OSEMApu, COSEMApu, PDDYApu;
+    af::array OSEMApu, COSEMApu;
     if (DEBUG || inputScalars.verbose >= 3) {
         proj.tStartLocal = std::chrono::steady_clock::now();
     }
@@ -54,7 +54,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
     // PDHG without subsets: the forward projection uses the extrapolated image (im_os), but a smooth
     // (gradient-type) prior belongs to the primal step and must be evaluated at the primal iterate u (uCP).
     // The proximal/dual-split TV/TGV priors take their dual step at the extrapolated image and are excluded,
-    // as is PDDY, which has its own evaluation point.
+    // as is PDDY, which evaluates the prior at its own point x.
     const bool priorAtPrimalU = (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV) && !MethodList.PDDY
         && inputScalars.subsetsUsed == 1 && !MethodList.ProxTV && !MethodList.ProxTGV && !MethodList.TGV && kk == 0;
 
@@ -102,15 +102,12 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                 vec.rhs_os[timestep][ii] -= w_vec.D[DIndex(inputScalars, timestep)][ii];
             if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY)
                 PDHG1(vec.rhs_os[timestep][ii], inputScalars, w_vec, vec, timestep, osa_iter + inputScalars.subsets * iter, ii);
-            if (MethodList.PDDY && ii == 0 && MAP) {
-                PDDYApu = vec.im_os[timestep][0].copy();
-                // NOTE: MATLAB computeOSEstimates.m uses x - tau * uCP here; the C++ sign (+) was kept because kalpa tests (2026-11-15) did not show the minus sign converging closer to PDHG with the same prior. Unresolved.
-                vec.im_os[timestep][0] += w_vec.tauCP[timestep][0] * vec.uCP[timestep][0];
-                if (inputScalars.verbose == 3) {
-                    mexPrint("Computing PDDY step\n");
-                    mexEval();
-                }
-            }
+            // PDDY (Salim, Condat, Mishchenko and Richtarik, JOTA 2022), one subset. p = uCP is the auxiliary primal variable and
+            // the image estimate s = im_os was used for the forward projection (dual update). Here rhs_os = A^T y+ (PDHG1 does
+            // nothing without subsets). The point x = p - gamma * A^T y+ is where the prior gradient is evaluated, so it is placed
+            // into im_os. PDHG2 then forms s+ = prox(x - gamma * (A^T y+ + grad R(x))) and p+ = p + s+ - x
+            if (MethodList.PDDY)
+                vec.im_os[timestep][ii] = vec.uCP[timestep][ii] - w_vec.tauCP[timestep][ii] * vec.rhs_os[timestep][ii];
             if (status != 0)
                 return -1;
             vec.im_os[timestep][ii].eval();
@@ -130,8 +127,8 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             || (regCounter % static_cast<int64_t>(inputScalars.regEveryIter)) == 0;
         if (!MethodList.BSREM && !MethodList.ROSEMMAP && !MethodList.POCS && !MethodList.SART && kk == 0 && computeReg) {
             const bool swapped = priorAtPrimalU && swapPDHGPrimal(vec, timestep);
-            // The image-based priors read the forward projection image cache, so give them u as well
-            if (swapped)
+            // The image-based priors read the forward projection image cache, so give them u (or the PDDY point x) as well
+            if (swapped || MethodList.PDDY)
                 status = refreshPriorImageCache(vec.im_os[timestep][0], inputScalars, proj, 0);
             // The prior gradient (positive beta, scaled with the subset scale) is always computed into the separate buffer vec.dU.
             // The gradient-type methods add it into their rhs below, with the sign of their update direction
@@ -188,8 +185,6 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
     // divided by the number of subsets, so it is multiplied back by nSubD in the COSEM calls (Hsiao's COSEM)
     const float nSubD = static_cast<float>(inputScalars.subsetsUsed);
     for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
-        if (MethodList.PDDY && MAP && kk == 0)
-            vec.im_os[timestep][0] = PDDYApu.copy();
         if (largeDim && kk == 0 && vec.im_os[timestep][0].elements() > vec.rhs_os[timestep][0].elements()) {
             if (vv == 0)
                 vec.im_os[timestep][0] = vec.im_os[timestep][0](af::seq(0, vec.rhs_os[timestep][0].elements() - 1));
@@ -465,7 +460,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             else if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) {
                 if (DEBUG || inputScalars.verbose >= 3)
                     mexPrint("Computing PDHG/PDHGKL/PDHGL1/PDDY");
-                status = PDHG2(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], inputScalars, w_vec, vec, proj, iter, timestep, osa_iter, ii, pituus, g, m_size, length);
+                status = PDHG2(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], inputScalars, w_vec, vec, proj, iter, timestep, osa_iter, ii, pituus, g, m_size, length, MethodList.PDDY);
                 if (status != 0)
                     return -1;
             }

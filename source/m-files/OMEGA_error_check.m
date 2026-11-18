@@ -598,6 +598,18 @@ if options.largeDim
         error('regEveryIter > 1 is not supported with largeDim!')
     end
 end
+% The exact PDDY iteration is implemented for one subset only, without image-based preconditioning or adaptive step sizes
+if options.PDDY
+    if options.subsets > 1 || options.stochasticSubsetSelection || options.largeDim
+        error('PDDY is only supported without subsets!')
+    end
+    if any(options.precondTypeImage)
+        error('Image-based preconditioners are not supported with PDDY!')
+    end
+    if options.PDAdaptiveType > 0
+        error('Adaptive step sizes are not supported with PDDY!')
+    end
+end
 % The FMH neighborhood lines (directions and their weights) are defined for a cubic neighborhood. A single-slice
 % image uses Ndz = 0
 if options.FMH && options.MAP
