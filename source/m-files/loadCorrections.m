@@ -1300,9 +1300,6 @@ elseif anyCount
     ctNormMode = 1;
 else
     ctNormMode = 3;
-    if mod(options.projector_type, 10) == 5
-        error('CT normalization with linearized data is not supported with backprojection type 5')
-    end
 end
 
 function options = ctNormalizationPrecorrect(options)

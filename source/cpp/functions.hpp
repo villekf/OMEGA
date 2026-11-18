@@ -2864,7 +2864,7 @@ inline int applyMeasPreconditioning(const Weighting& w_vec, const scalarStruct& 
 	return 0;
 }
 
-inline void computeIntegralImage(const scalarStruct& inputScalars, const Weighting& w_vec, const int64_t length, af::array& outputFP, af::array& meanBP) {
+inline void computeIntegralImage(const scalarStruct& inputScalars, const Weighting& w_vec, const int64_t length, af::array& outputFP, af::array& meanBP, const int64_t subset = 0) {
 	if (inputScalars.BPType == 5) {
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrint("Computing integral image for backprojection");
@@ -2876,6 +2876,12 @@ inline void computeIntegralImage(const scalarStruct& inputScalars, const Weighti
 			mexEval();
 		}
 		outputFP = af::moddims(outputFP, inputScalars.nRowsD, inputScalars.nColsD, length);
+		// The backprojection is A^T(n .* y): the normalization of the current subset is applied to the projections before the
+		// integral image (and the mean subtraction) is formed, since the box sum cannot weight the individual pixels
+		if (inputScalars.CT && inputScalars.normalization_correction && !w_vec.normBP5.empty()) {
+			outputFP *= af::moddims(w_vec.normBP5[static_cast<size_t>(subset) % w_vec.normBP5.size()], inputScalars.nRowsD, inputScalars.nColsD, length);
+			outputFP.eval();
+		}
 		if (inputScalars.meanBP) {
 			meanBP = af::mean(af::mean(outputFP, 0), 1);
 			outputFP -= af::tile(meanBP, inputScalars.nRowsD, inputScalars.nColsD, 1);
@@ -2957,7 +2963,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 			else {
 				if (inputScalars.BPType == 5) {
 					mDataApu = mData;
-					computeIntegralImage(inputScalars, w_vec, length[0], mData, meanBP);
+					computeIntegralImage(inputScalars, w_vec, length[0], mData, meanBP, 0);
 				}
 				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, mData, 0, timestep, length, m_size, meanBP, g, proj, false, ii, pituus);
 				if (status != 0) {
@@ -3005,7 +3011,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 			else {
 				if (inputScalars.BPType == 5) {
 					mDataApu = bbData;
-					computeIntegralImage(inputScalars, w_vec, length[0], bbData, meanBP);
+					computeIntegralImage(inputScalars, w_vec, length[0], bbData, meanBP, 0);
 				}
 				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, bbData, 0, timestep, length, m_size, meanBP, g, proj, false, ii, pituus);
 				if (status != 0) {
@@ -3055,7 +3061,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				backprojectionType6(mDataApu, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, ii);
 			else {
 				if (inputScalars.BPType == 5) {
-					computeIntegralImage(inputScalars, w_vec, length[0], mDataApu, meanBP);
+					computeIntegralImage(inputScalars, w_vec, length[0], mDataApu, meanBP, 0);
 				}
 				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, mDataApu, 0, timestep, length, m_size, meanBP, g, proj, false, ii, pituus);
 				if (status != 0) {
@@ -3216,7 +3222,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj, timestep);
 			if (status != 0)
 				return -1;
-			computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
+			computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP, 0);
 			proj.memSize += (sizeof(float) * inputScalars.im_dim[0]);
 			if (inputScalars.projector_type == 6)
 				backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, 0);
@@ -3269,7 +3275,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj, timestep);
 				if (status != 0)
 					return -1;
-				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
+				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP, 0);
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 					proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]);
 					if (inputScalars.projector_type == 6)
@@ -3398,7 +3404,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj, timestep);
 				if (status != 0)
 					return -1;
-				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
+				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP, 0);
 				for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++) {
 					proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]);
 					if (inputScalars.projector_type == 6)
@@ -3527,7 +3533,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj, timestep);
 				if (status != 0)
 					return -1;
-				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
+				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP, 0);
 				if (inputScalars.projector_type == 6)
 					backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, 0);
 				else
@@ -3577,7 +3583,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj, timestep);
 				if (status != 0)
 					return -1;
-				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
+				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP, 0);
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 					if (inputScalars.projector_type == 6)
 						backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, ii);

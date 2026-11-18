@@ -6209,8 +6209,9 @@ public:
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_meanBP);
 					}
 				}
-				if (inputScalars.normalization_correction) {
-					KARG_METAL_SLOT(kernelIndBPSubIter, inputScalars.BPType == 5 ? 9 : 8);
+				// The type 5 kernel has no normalization argument: the projections are normalized before the integral image is formed
+				if (inputScalars.normalization_correction && inputScalars.BPType != 5) {
+					KARG_METAL_SLOT(kernelIndBPSubIter, 8);
 					// TODO: Listmode normalization
 					//if (inputScalars.listmode > 0 && inputScalars.indexBased)
 					//	status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[0]);

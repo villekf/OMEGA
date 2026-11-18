@@ -475,8 +475,6 @@ def _ctNormalizationSetup(options):
         return 2
     if anyCount:
         return 1
-    if int(options.projector_type) % 10 == 5:
-        raise ValueError('CT normalization with linearized data is not supported with backprojection type 5')
     return 3
 
 

@@ -108,6 +108,8 @@ typedef struct Weighting_ {
 #ifdef AF
 	af::array tr_offsets, weights_quad, weights_TV, weights_huber, fmh_weights, a_L, weighted_weights, UU, Amin, weights_RDP;
 	std::vector<af::array> preRef, gradF, RDPref;
+	// CT normalization coefficients of each subset as device arrays, used only by the integral image of the backprojection type 5
+	std::vector<af::array> normBP5;
     std::vector<std::vector<af::array>> dP, M, D;
 	af::array gaussianNLM, gFilter, filter, filterIm, Ffilter;
 	// The noise-weighted (NW-FBP) ramp filter bank, one filter per noise-weighting level (Nf x nLevelsNW)

@@ -488,7 +488,9 @@ def _append_bp5_ct_args(self, args, timestep, subset, k, f_arg, y_arg):
     `y_arg` is the already-built summed-area-table (af.sat/cumsum) image
     texture -- built by code that must stay byte-identical and cannot be
     exercised by the AF variant of this repo's test harness -- appended
-    here as-is exactly like before."""
+    here as-is exactly like before. The kernel has no normalization argument:
+    with normalization the caller multiplies the projections by it before the
+    summed-area table is formed."""
     args.buf(_geometry_buffer(self.d_x, timestep, subset))
     args.buf(_geometry_buffer(self.d_z, timestep, subset))
     if self.listmode == 0 and not self.useHelical:
@@ -1398,6 +1400,11 @@ def _backwardProjectionFlat(self, y, subset = -1, timestep = -1):
                             yUnpadded = yD.reshape((self.nRowsD,self.nColsD,nProjBP5), order='F')
                         else:
                             yUnpadded = y.reshape((self.nRowsD,self.nColsD,nProjBP5), order='F')
+                        if self.normalization_correction:
+                            # The kernel reads the integral image, which cannot be weighted per pixel, so the
+                            # backprojection of n * y is formed by normalizing the projections first
+                            # (the same as the host side of the C++ computeIntegralImage).
+                            yUnpadded = yUnpadded * self.d_norm[timestep][subset].astype(cp.float32).reshape((self.nRowsD,self.nColsD,nProjBP5), order='F')
                         if self.meanBP:
                             # Mirrors the C++ reference (functions.hpp computeIntegralImage) and the
                             # plain-PyOpenCL NumPy fallback below: per-projection mean over the
@@ -1560,6 +1567,10 @@ def _backwardProjectionFlat(self, y, subset = -1, timestep = -1):
                         d_im = cl.Image(self.clctx, cl.mem_flags.READ_ONLY, imformat, shape=(self.nRowsD + 1, self.nColsD + 1, self.nProjSubset[timestep, subset].item()), is_array=_lay)
                     if self.useAF:
                         y = af.moddims(y, self.nRowsD, d1=self.nColsD, d2=self.nProjSubset[timestep, subset].item())
+                        if self.normalization_correction:
+                            # Normalize the projections before the integral image is formed (see the CuPy path)
+                            normBP = af.interop.np_to_af_array(np.asarray(self.d_norm[timestep][subset].get(), dtype=np.float32))
+                            y = y * af.moddims(normBP, self.nRowsD, d1=self.nColsD, d2=self.nProjSubset[timestep, subset].item())
                         if self.meanBP:
                             d_meanBP = af.mean(af.mean(y, dim=0), dim=1)
                             y -= af.tile(d_meanBP, self.nRowsD, d1=self.nColsD)
@@ -1578,6 +1589,9 @@ def _backwardProjectionFlat(self, y, subset = -1, timestep = -1):
                         # column axes, then zero-pad one leading row and column before uploading.
                         nProj = int(self.nProjSubset[timestep, subset].item())
                         y_host = np.asarray(y.get()).reshape((self.nRowsD, self.nColsD, nProj), order='F').astype(np.float32)
+                        if self.normalization_correction:
+                            # Normalize the projections before the integral image is formed (see the CuPy path)
+                            y_host = y_host * np.asarray(self.d_norm[timestep][subset].get(), dtype=np.float32).reshape((self.nRowsD, self.nColsD, nProj), order='F')
                         if self.meanBP:
                             meanBP_host = np.mean(y_host, axis=(0, 1)).astype(np.float32)
                             y_host = y_host - meanBP_host.reshape((1, 1, nProj))

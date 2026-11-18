@@ -633,9 +633,6 @@ extern "C" __global__
 #ifdef MEANDISTANCEBP
         , CONSTANT float* d_meanV BUF8
 #endif
-#ifdef NORM
-        , const CLGLOBAL float* d_norm BUF9
-#endif
 #ifdef MASKBP
 #ifdef MASKBP3D
         , IMAGE3D maskBP TEX10
@@ -685,9 +682,6 @@ extern "C" __global__
                            CLGLOBAL float *d_forw, CLGLOBAL float *d_Summ,
 #ifdef MEANDISTANCEBP
                            CONSTANT float *d_meanV,
-#endif
-#ifdef NORM
-                           const CLGLOBAL float *CLRESTRICT d_norm,
 #endif
                            const uchar no_norm,
 #ifdef MASKBP
@@ -1136,28 +1130,8 @@ extern "C" __global__
     float C = BP5FETCH(d_IImage, coordC, kk);
     float D = BP5FETCH(d_IImage, coordD, kk);
 #endif
-#ifdef NORM
-    LONG indX = CLONG_rtz(coordA.x * CFLOAT(d_nRows));
-    LONG indY = CLONG_rtz(coordA.y * CFLOAT(d_nCols)) * CLONG_rtz(d_nRows);
-    LONG indZ = CLONG_rtz(coordA.z * CFLOAT(d_nProjections)) *
-                CLONG_rtz(d_nCols) * CLONG_rtz(d_nRows);
-    A *= d_norm[indX + indY + indZ];
-    indX = CLONG_rtz(coordB.x * CFLOAT(d_nRows));
-    indY = CLONG_rtz(coordB.y * CFLOAT(d_nCols)) * CLONG_rtz(d_nRows);
-    indZ = CLONG_rtz(coordB.z * CFLOAT(d_nProjections)) * CLONG_rtz(d_nCols) *
-           CLONG_rtz(d_nRows);
-    B *= d_norm[indX + indY + indZ];
-    indX = CLONG_rtz(coordC.x * CFLOAT(d_nRows));
-    indY = CLONG_rtz(coordC.y * CFLOAT(d_nCols)) * CLONG_rtz(d_nRows);
-    indZ = CLONG_rtz(coordC.z * CFLOAT(d_nProjections)) * CLONG_rtz(d_nCols) *
-           CLONG_rtz(d_nRows);
-    C *= d_norm[indX + indY + indZ];
-    indX = CLONG_rtz(coordD.x * CFLOAT(d_nRows));
-    indY = CLONG_rtz(coordD.y * CFLOAT(d_nCols)) * CLONG_rtz(d_nRows);
-    indZ = CLONG_rtz(coordD.z * CFLOAT(d_nProjections)) * CLONG_rtz(d_nCols) *
-           CLONG_rtz(d_nRows);
-    D *= d_norm[indX + indY + indZ];
-#endif
+    // With normalization the host multiplies the projections by the normalization coefficients before the integral image is
+    // formed, so the box sum is already the backprojection of the normalized projections
     float kerroin;
 #ifdef FDK
     // Avoid the rare zero-case
