@@ -597,6 +597,9 @@ void projectorType123(
 	FLOAT3 s, d;
 #ifdef SPECT
 	FLOAT rayDepthOffset = FLOAT_ZERO;
+#if defined(ORTH)
+	FLOAT spectNormalizationLength = FLOAT_ZERO;
+#endif
 #endif
 	// Load the next detector index
 #if defined(CT) && !defined(LISTMODE) && !defined(PET) // CT data
@@ -615,7 +618,7 @@ void projectorType123(
 #endif
     );
 #if defined(ORTH)
-    const FLOAT spectNormalizationLength = LENGTH(d - s);
+    spectNormalizationLength = LENGTH(d - s);
     if (spectNormalizationLength <= FLOAT_ZERO) {
 #ifdef N_RAYS
         continue;
@@ -632,6 +635,9 @@ void projectorType123(
 #if defined(SPECT)
 	getDetectorCoordinatesListmodeSPECT(d_xy, d_z, d_rayShiftsDetector, d_rayShiftsSource,
 		&s, &d, idx, d_size_x, d_sizey, lor, ellipseCenter, ellipseRadii, ellipsePower, &rayDepthOffset);
+#if defined(ORTH)
+	spectNormalizationLength = LENGTH(d - s);
+#endif
 #elif defined(INDEXBASED)
 	getDetectorCoordinatesListmode(d_xy, d_z, trIndex, axIndex, &s, &d, idx
 #if defined(N_RAYS)

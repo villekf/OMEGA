@@ -829,14 +829,14 @@ def formSubsetIndices(options):
         options.z_index = np.arange(0, options.NSinos, dtype=np.uint16)
         options.z_index = np.repeat(options.z_index, (options.Nang * options.Ndist))
         options.z_index = options.z_index[options.index]
+        options.xy_index = options.xy_index[options.index]
 
     if options.listmode > 0 and not options.useIndexBasedReconstruction and isinstance(options.x, list):
         options.x = np.concatenate([np.asarray(value).ravel(order='F') for value in options.x])
         if options.SPECT and isinstance(options.z, list):
             options.z = np.concatenate([np.asarray(value).ravel(order='F') for value in options.z])
     
-        options.xy_index = options.xy_index[options.index]
-    else:
+    elif not (options.use_raw_data == 0 and options.subsets > 1 and options.subsetType in [3, 6, 7]):
         options.xy_index = np.empty(0, dtype=np.uint32)
         options.z_index = np.empty(0, dtype=np.uint16)
     if options.sampling > 1:

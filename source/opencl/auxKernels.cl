@@ -3593,7 +3593,6 @@ KERNEL void rotate(
     }
 	else if (accumulate == 0) {
         rotim[n] = 0.0f;
-    }
-#endif
-
+	}
 }
+#endif

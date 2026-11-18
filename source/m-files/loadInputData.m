@@ -129,7 +129,6 @@ else
             load_string = [options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) ...
                 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' num2str(options.span)];
         end
-        load_string = char(join(string(load_string), ""));
         if options.use_machine == 0
             sinoFile = [load_string '.mat'];
         elseif options.use_machine == 1
@@ -158,8 +157,6 @@ else
                 num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
                 num2str(options.span)];
         end
-        load_string = char(join(string(load_string), ""));
-        load_string2 = char(join(string(load_string2), ""));
         if options.use_machine == 0
             sinoFile = [load_string '.mat'];
             if exist(sinoFile, 'file') == 0

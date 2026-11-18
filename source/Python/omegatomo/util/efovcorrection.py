@@ -38,16 +38,8 @@ def CTEFOVCorrection(options, extrapLengthTransaxial = None, extrapLengthAxial =
     transaxial/axial extrapolation and extended-FOV lengths from the
     parameters given in ``options`` (falling back to
     ``options.extrapLength`` / ``options.eFOVLength`` and finally to
-    hard-coded defaults). For the axial extended FOV specifically, the
-    length is instead derived automatically from the cone-beam geometry
-    (``options.sourceToDetector``, ``options.sourceToCRot``,
-    ``options.nColsD``, ``options.dPitchY``) whenever
-    ``eFOVLengthAxial`` was not explicitly given and the geometry is
-    available (``sourceToDetector > sourceToCRot``) -- this geometry-based
-    override happens regardless of whether ``eFOVLength`` was set;
-    ``eFOVLength``/``eFOVLengthAxial`` are only used as the *default* value
-    of the axial extension when no usable geometry is present, or when the
-    axial extension is explicitly given.
+    hard-coded defaults). Legacy axial extensions use the configured axial
+    length or shared ``eFOVLength``; geometry fields do not override them.
 
     The keyword arguments below mirror MATLAB's isfield-based field
     precedence: when given explicitly (not None) they take precedence
@@ -62,8 +54,7 @@ def CTEFOVCorrection(options, extrapLengthTransaxial = None, extrapLengthAxial =
         ``options.flat``, ``options.nProjections`` etc. must already be
         set when ``options.useExtrapolation`` is True, and
         ``options.Nx``/``Ny``/``Nz``/``FOVa_x``/``FOVa_y``/``axial_fov``
-        (and the cone-beam geometry, for the automatic axial case) must
-        already be set when ``options.useEFOV`` is True.
+        must already be set when ``options.useEFOV`` is True.
     extrapLengthTransaxial : float, optional
         Transaxial extrapolation length (fraction of the detector size,
         per side). Overrides ``options.extrapLengthTransaxial`` and
@@ -78,10 +69,9 @@ def CTEFOVCorrection(options, extrapLengthTransaxial = None, extrapLengthAxial =
         ``options.eFOVLength``. Default (if nothing else is set) is 0.4.
     eFOVLengthAxial : float, optional
         Axial extended FOV length (fraction of Nz, per side). Overrides
-        ``options.eFOVLengthAxial`` and ``options.eFOVLength`` and disables
-        the automatic geometry-based derivation described above. Default
-        (if nothing else is set and no usable cone-beam geometry is
-        present) is 0.3.
+        ``options.eFOVLengthAxial`` and ``options.eFOVLength``. Default
+        (if nothing else is set) is 0.4, matching the legacy MATLAB
+        behavior.
 
     Returns
     -------
@@ -121,14 +111,6 @@ def CTEFOVCorrection(options, extrapLengthTransaxial = None, extrapLengthAxial =
                 size[1] = options.FOVa_y * (1 + n_transaxial / options.Ny)
             if axial:
                 length = legacy_length(eFOVLengthAxial, 'eFOVLengthAxial')
-                explicit_axial = (eFOVLengthAxial is not None or
-                                  _getOpt(options, 'eFOVLengthAxial') is not None)
-                if (not explicit_axial and _getOpt(options, 'sourceToDetector') is not None and
-                        _getOpt(options, 'sourceToCRot') is not None and
-                        options.sourceToDetector > options.sourceToCRot):
-                    distance = options.sourceToCRot + options.FOVa_x / 2.0
-                    angle = options.sourceToDetector / (options.nColsD * options.dPitchY / 2.0)
-                    length = max(0.0, (distance / angle - options.axial_fov / 2.0) / options.axial_fov)
                 n_axial = np.floor(options.Nz * length) * 2
                 size[2] = options.axial_fov * (1 + n_axial / options.Nz)
         options.eFOVSize = np.array(size, dtype=np.float64, copy=True)
@@ -161,17 +143,10 @@ def CTEFOVCorrection(options, extrapLengthTransaxial = None, extrapLengthAxial =
         if eFOVLengthTransaxial is None:
             eFOVLengthTransaxial = eFOVLengthBase
 
-    # eFOVLengthAxial needs special handling: unlike every other length
-    # above, MATLAB overrides it with a geometry-derived value whenever it
-    # was NOT explicitly given (field missing), regardless of whether
-    # eFOVLength was set. Track whether it was explicitly given so that the
-    # geometry override below can be gated on that alone.
-    eFOVLengthAxialExplicit = (eFOVLengthAxial is not None) or (_getOpt(options, 'eFOVLengthAxial') is not None)
     if eFOVLengthAxial is None:
         eFOVLengthAxial = _getOpt(options, 'eFOVLengthAxial')
         if eFOVLengthAxial is None:
-            # As in MATLAB (CTEFOVCorrection.m): eFOVLength if given, otherwise 0.3 (the transaxial base stays 0.4)
-            eFOVLengthAxial = eFOVLengthBase if _getOpt(options, 'eFOVLength') is not None else .3
+            eFOVLengthAxial = eFOVLengthBase
 
     weighting = options.useExtrapolationWeighting
     offset = options.offsetCorrection

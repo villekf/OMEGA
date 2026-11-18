@@ -18,6 +18,9 @@
 #define OPENCL
 #endif
 #include "structs.h"
+#if defined(OPENCL) && !defined(CL_DEVICE_GFXIP_MAJOR_AMD)
+#define CL_DEVICE_GFXIP_MAJOR_AMD 0x404A
+#endif
 #include <array>
 #include <cctype>
 #include <chrono>
@@ -606,7 +609,7 @@ class ProjectorClass {
 		devices.push_back(devices2[usedDevices[0]]);
 		if (DEBUG) {
 			mexPrintBase("devices.size() = %u\n", devices.size());
-			mexPrintBase("devices[0] = %u\n", devices[0]);
+			mexPrintBase("devices[0] = %p\n", static_cast<void*>(devices[0]()));
 			mexEval();
 		}
 
@@ -4116,6 +4119,35 @@ public:
 				}
 			if (missing)
 				return (STATUS_t)(-1);
+			if (inputScalars.Nt > 1U && inputScalars.scatter == 1U && inputScalars.size_scat > 1ULL) {
+				const size_t firstFrameSize = static_cast<size_t>(pituus[inputScalars.subsets]) * vecSize;
+				const size_t allFramesSize = static_cast<size_t>(pituus[static_cast<size_t>(inputScalars.Nt) * inputScalars.subsets]) * vecSize;
+				const bool sharedScatter = inputScalars.size_scat == firstFrameSize;
+				if (!sharedScatter && inputScalars.size_scat != allFramesSize) {
+					mexPrintBase("Dynamic scatter correction has %llu elements; expected %llu for a shared frame or %llu for all frames\n",
+						static_cast<unsigned long long>(inputScalars.size_scat),
+						static_cast<unsigned long long>(firstFrameSize),
+						static_cast<unsigned long long>(allFramesSize));
+					mexEval();
+					return (STATUS_t)(-1);
+				}
+				if (sharedScatter) {
+					for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
+						for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+							const size_t indD = static_cast<size_t>(kk) + static_cast<size_t>(timestep) * inputScalars.subsets;
+							const size_t end = (static_cast<size_t>(pituus[kk]) + static_cast<size_t>(length[indD])) * vecSize;
+							if (end > firstFrameSize) {
+								mexPrintBase("Shared scatter correction covers %llu elements.\n",
+									static_cast<unsigned long long>(firstFrameSize));
+								mexPrintBase("Subset %u of timestep %u requires data through element %llu\n", kk, timestep,
+									static_cast<unsigned long long>(end));
+								mexEval();
+								return (STATUS_t)(-1);
+							}
+						}
+					}
+				}
+			}
 		}
 		// NLM anatomical reference image
 		if (w_vec.NLM_anatomical && MethodList.NLM) {
@@ -4840,17 +4872,13 @@ public:
 						}
 					}
 					if (inputScalars.size_scat > 1ULL && inputScalars.scatter == 1U) { // Load scatter data
-                        // size_scat is the TOTAL element count of corrVector/extraCorr across all Nt
-						// frames (see mfunctions.h), while kokoNonTOF is exactly one timestep's frame
-						// size. If Nt > 1 but the caller only supplied a single (shared) frame's worth
-						// of data (size_scat == kokoNonTOF), there is no per-timestep block to offset
-						// into -- adding kokoNonTOF * timestep for timestep > 0 would read past the end
-						// of the host array. Mirror the CTAttenuation handling just above in this same
-						// loop and only add the per-timestep offset when more than one frame was
-						// actually supplied.
-                        const uint64_t scatTimestepOffset = (inputScalars.size_scat > static_cast<size_t>(inputScalars.kokoNonTOF)) ?
-                            (static_cast<uint64_t>(inputScalars.kokoNonTOF) * timestep) : 0ULL;
-                        WRITE_BUFFER(d_scat[timestep][kk], sizeof(float) * length[indD] * vecSize, &extraCorr[pituus[kk] * vecSize + scatTimestepOffset]);
+						// createAndWriteBuffers validates whether this is a shared frame or
+						// a full concatenation. Use cumulative boundaries for the latter.
+						const size_t oneFrameScatterSize = static_cast<size_t>(pituus[inputScalars.subsets]) * vecSize;
+						const size_t scatterOffset = inputScalars.Nt > 1U && inputScalars.size_scat != oneFrameScatterSize
+							? static_cast<size_t>(pituus[indD]) * vecSize
+							: static_cast<size_t>(pituus[kk]) * vecSize;
+						WRITE_BUFFER(d_scat[timestep][kk], sizeof(float) * length[indD] * vecSize, &extraCorr[scatterOffset]);
 						CHECK(status, "\n", (STATUS_t)(-1));
 						memSize += sizeof(float) * length[indD] * vecSize;
 					}
@@ -5592,6 +5620,8 @@ public:
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrintVar("Starting forward projection for projector type = ", inputScalars.FPType);
 		STATUS_t status = SUCCESS_VALUE;
+		// CUDA/HIP kernel argument vectors retain pointers until launch.
+		ImageAttenuationGrid attenuationGridArg{};
 #if defined(CUDA) || defined(HIP)
 		std::vector<int64_t> length = length1;
 		std::vector<void*> kTemp = FPArgs;
@@ -6035,16 +6065,16 @@ public:
 			KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, ii);
 			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation && inputScalars.multiResolution &&
 				inputScalars.SPECT && inputScalars.nMultiVolumes > 0) {
-				ImageAttenuationGrid attenuationGrid = imageAttenuationGrid(inputScalars, ii > 0);
-				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGrid.Nx);
-				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGrid.Ny);
-				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGrid.Nz);
-				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGrid.dx);
-				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGrid.dy);
-				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGrid.dz);
-				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGrid.bx);
-				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGrid.by);
-				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGrid.bz);
+				attenuationGridArg = imageAttenuationGrid(inputScalars, ii > 0);
+				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGridArg.Nx);
+				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGridArg.Ny);
+				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGridArg.Nz);
+				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGridArg.dx);
+				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGridArg.dy);
+				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGridArg.dz);
+				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGridArg.bx);
+				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGridArg.by);
+				KARG_SCALAR(kTemp, kernelFP, kernelIndFPSubIter, attenuationGridArg.bz);
 			}
 		}
 		if (DEBUG || inputScalars.verbose >= 3)
@@ -6113,6 +6143,9 @@ public:
 		if (inputScalars.verbose >= 3 || DEBUG)
 		    mexPrintVar("Starting backprojection for projector type = ", inputScalars.BPType);
 		STATUS_t status = SUCCESS_VALUE;
+		// CUDA/HIP kernel argument vectors retain pointers until launch.
+		ImageAttenuationGrid attenuationGridArg{};
+		size_t spectSizeOfXArg = 0;
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kTemp = BPArgs;
 		const int ee = uu; // CUDA/HIP have no separate sensitivity-image index
@@ -6342,8 +6375,8 @@ public:
 			if (compSens) {
 #if !defined(METAL)
 				if (inputScalars.SPECT) {
-					auto spectSizeOfX = inputScalars.size_of_x / 6;
-					KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, spectSizeOfX);
+					spectSizeOfXArg = inputScalars.size_of_x / 6;
+					KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, spectSizeOfXArg);
 				}
 #endif
 				KARG(kTemp, kernelBP, kernelIndBPSubIter, d_xFull[0]);
@@ -6455,16 +6488,16 @@ public:
 			KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, ii);
 			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation && inputScalars.multiResolution &&
 				inputScalars.SPECT && inputScalars.nMultiVolumes > 0) {
-				ImageAttenuationGrid attenuationGrid = imageAttenuationGrid(inputScalars, ii > 0);
-				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGrid.Nx);
-				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGrid.Ny);
-				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGrid.Nz);
-				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGrid.dx);
-				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGrid.dy);
-				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGrid.dz);
-				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGrid.bx);
-				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGrid.by);
-				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGrid.bz);
+				attenuationGridArg = imageAttenuationGrid(inputScalars, ii > 0);
+				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGridArg.Nx);
+				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGridArg.Ny);
+				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGridArg.Nz);
+				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGridArg.dx);
+				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGridArg.dy);
+				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGridArg.dz);
+				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGridArg.bx);
+				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGridArg.by);
+				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, attenuationGridArg.bz);
 			}
 			}
 		else {
@@ -9752,8 +9785,8 @@ public:
 		else {
 			KARG(kArgs, kernelRotate, kernelIndRot, d_im);
 		}
-		const int outSx = win.outSx > 0 ? win.outSx : win.outNxW;
-		const int outSy = win.outSy > 0 ? win.outSy : win.outNy;
+		int outSx = win.outSx > 0 ? win.outSx : win.outNxW;
+		int outSy = win.outSy > 0 ? win.outSy : win.outNy;
 #ifdef METAL
 		kParams.N_rotate = { win.srcNx, win.srcNyFull, win.srcNzFull };
 		kParams.cosa_rotate = cosa;

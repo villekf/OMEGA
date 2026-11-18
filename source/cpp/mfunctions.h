@@ -100,11 +100,8 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 		const mxArray* corrVectorArr = (corrVectorFieldNum >= 0) ? mxGetField(options, 0, "corrVector") : nullptr;
 		if (corrVectorArr == nullptr || mxGetNumberOfElements(corrVectorArr) == 0 || !mxIsSingle(corrVectorArr))
 			mexErrMsgTxt("additionalCorrection is enabled, but corrVector is missing, empty, or not of type single.");
-		// size_scat is only ever used elsewhere (ProjectorClass.h/ProjectorClassCPU.h) as a ">1"
-		// gate on whether to allocate/upload scatter data, never for indexing -- the actual per-
-		// timestep addressing into extraCorr uses kokoNonTOF/pituus, same as for Sin. Match the
-		// Python entry (recomain.py: 'sizeScat': options.corrVector.size) and use the total element
-		// count across all timesteps here as well, rather than a per-timestep count.
+		// Keep the total element count: the projector uses it to distinguish a shared one-frame
+		// correction from frame-concatenated data and validates the matching pituus boundaries.
 		inputScalars.size_scat = mxGetNumberOfElements(corrVectorArr);
 	}
 	inputScalars.PET = getScalarBool(options, 0, "PET");

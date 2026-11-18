@@ -87,6 +87,7 @@ typedef struct AF_im_vectors_ {
     std::vector<std::vector<af::array>> uFISTA;
     std::vector<std::vector<af::array>> imBB;
     std::vector<std::vector<af::array>> gradBB;
+    std::vector<std::vector<af::array>> C_co; // COSEM complete-data estimates
     // Arrays of size N_timesteps x N_multivolumes x N_subsets
 	std::vector<std::vector<std::vector<af::array>>> Summ; // sensitivity image
 	// Never-seen voxel mask (see accumulateSeenMask in functions.hpp): [sensitivity slot][volume] boolean images that are true where at least one subset
@@ -94,7 +95,7 @@ typedef struct AF_im_vectors_ {
 	std::vector<std::vector<af::array>> seenMask;
 	std::vector<std::vector<std::vector<char>>> seenDone;
     // Other arrays
-    af::array C_co, rCGLS, meanFP, meanBP, apu, adapTypeA;
+    af::array rCGLS, meanFP, meanBP, apu, adapTypeA;
 	std::vector<af::array> im_os_blurred, qProxTGV, vProxTGV, qProxTV, SAGASum;
 	std::vector<af::array> fCGLS;
 	std::vector<std::vector<af::array>> stochasticHelper;

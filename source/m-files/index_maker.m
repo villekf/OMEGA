@@ -265,6 +265,7 @@ elseif (subsets > 1 && (options.subset_type == 8 || options.subset_type == 9 || 
         for tt = 1 : options.Nt
             frameOptions = options;
             frameOptions.nProjections = projectionCounts(tt);
+            frameOptions.NSinos = projectionCounts(tt);
             if options.subset_type == 10 && isfield(options, 'angles')
                 frameOptions.angles = options.angles(angleOffset + (1 : projectionCounts(tt)));
             end

@@ -325,7 +325,13 @@ if options.useEFOV
             options.maskBPZ = max(options.Nz);
         end
 
-        options.x0 = multiResReshape(options.x0, options);
+        if numel(options.x0) == double(options.Nx(1)) * double(options.Ny(1)) * double(options.Nz(1))
+            mainX0 = options.x0(:);
+            sideCount = sum(double(options.Nx(2:end)) .* double(options.Ny(2:end)) .* double(options.Nz(2:end)));
+            options.x0 = [mainX0; repmat(min(mainX0), sideCount, 1)];
+        else
+            options.x0 = multiResReshape(options.x0, options);
+        end
 
         options.NxPrior = options.Nx(1);
         options.NyPrior = options.Ny(1);
@@ -355,7 +361,7 @@ if options.useEFOV
         % extended region
         if ~isfield(options, 'eFOVIndices') || numel(options.eFOVIndices) < 1
             options.eFOVIndices = zeros(options.Nz,1);
-            options.eFOVIndices(((options.Nz - options.NzOrig)/2 + 1 + options.eFOVShift_Nz) : (end - (options.Nz - options.NzOrig)/2 + options.eFOVShift_Nz)) = 1;
+            options.eFOVIndices(((options.Nz - options.NzOrig)/2 + 1 - options.eFOVShift_Nz) : (end - (options.Nz - options.NzOrig)/2 - options.eFOVShift_Nz)) = 1;
         end
         options.eFOVIndices = uint8(options.eFOVIndices);
         options.NzPrior = sum(options.eFOVIndices);

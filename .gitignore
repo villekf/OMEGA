@@ -115,3 +115,6 @@ codegen/
 
 toolbox.ignore
 *.prj
+
+# Local temporary files
+/tmp/

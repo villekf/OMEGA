@@ -16,7 +16,7 @@ inline bool swapPDHGPrimal(AF_im_vectors& vec, const uint32_t timestep) {
     return true;
 }
 
-inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const uint32_t iter, uint32_t osa_iter, scalarStruct& inputScalars, std::vector<int64_t>& length, bool& break_iter, const int64_t* pituus, const af::array& g, ProjectorClass& proj, const std::vector<af::array> &mData, uint64_t m_size, const int64_t subSum, const uint8_t compute_norm_matrix, const int kk = 0, const bool largeDim = false, const int vv = 0) {
+inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const uint32_t iter, uint32_t osa_iter, scalarStruct& inputScalars, std::vector<int64_t>& length, bool& break_iter, const int64_t* pituus, const af::array& g, ProjectorClass& proj, const std::vector<af::array> &mData, uint64_t m_size, const uint8_t compute_norm_matrix, const int kk = 0, const bool largeDim = false, const int vv = 0) {
     // Ignore this function if using fastPDHG
     if (inputScalars.fastPDHG)
         return 0;
@@ -139,6 +139,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
         // and always for Nt == 1), or the real timestep when inputScalars.sensPerTimestep requires a
         // separate slot per timestep (see reconstructionAF.h).
         const uint32_t sIdx = inputScalars.sensPerTimestep ? timestep : 0u;
+        const uint32_t dIdx = inputScalars.projector_type == 6 ? sIdx : 0u;
         for (int ii = kk; ii <= inputScalars.nMultiVolumes; ii++) {
             af::array* Sens = nullptr;
             if (compute_norm_matrix == 1u) {
@@ -198,7 +199,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             if (MethodList.RBI) {
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing RBI");
-                vec.im_os[timestep][ii] = RBI(vec.im_os[timestep][ii], *Sens, vec.rhs_os[timestep][ii], w_vec.D[0][ii]);
+                vec.im_os[timestep][ii] = RBI(vec.im_os[timestep][ii], *Sens, vec.rhs_os[timestep][ii], w_vec.D[dIdx][ii]);
             }
 
             // Dynamic RAMLA
@@ -212,18 +213,18 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             if (MethodList.COSEM || MethodList.ECOSEM) {
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing COSEM/ECOSEM");
-                vec.C_co(af::span, osa_iter) = vec.rhs_os[timestep][ii] * vec.im_os[timestep][ii];
+                vec.C_co[timestep][ii](af::span, osa_iter) = vec.rhs_os[timestep][ii] * vec.im_os[timestep][ii];
                 if (MethodList.ECOSEM)
-                    COSEMApu = COSEM(vec.im_os[timestep][ii], vec.C_co, w_vec.D[0][ii], w_vec.h_ACOSEM, 2u);
+                    COSEMApu = COSEM(vec.im_os[timestep][ii], vec.C_co[timestep][ii], w_vec.D[dIdx][ii], w_vec.h_ACOSEM, 2u);
                 else
-                    vec.im_os[timestep][ii] = COSEM(vec.im_os[timestep][ii], vec.C_co, w_vec.D[0][ii], w_vec.h_ACOSEM, 2u);
+                    vec.im_os[timestep][ii] = COSEM(vec.im_os[timestep][ii], vec.C_co[timestep][ii], w_vec.D[dIdx][ii], w_vec.h_ACOSEM, 2u);
             }
 
             // Enhanced COSEM
             if (MethodList.ECOSEM) {
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing ECOSEM");
-                vec.im_os[timestep][ii] = ECOSEM(vec.im_os[timestep][ii], w_vec.D[0][ii], OSEMApu, COSEMApu, inputScalars.epps);
+                vec.im_os[timestep][ii] = ECOSEM(vec.im_os[timestep][ii], w_vec.D[dIdx][ii], OSEMApu, COSEMApu, inputScalars.epps);
             }
 
             // Accelerated COSEM
@@ -233,27 +234,27 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                 if (DEBUG) {
                     mexPrintBase("vec.rhs_os[timestep][ii].dims(0) = %u\n", vec.rhs_os[timestep][ii].dims(0));
                     mexPrintBase("vec.im_os[timestep][ii].dims(0) = %u\n", vec.im_os[timestep][ii].dims(0));
-                    mexPrintBase("vec.C_co.dims(0) = %u\n", vec.C_co.dims(0));
-                    mexPrintBase("vec.C_co.dims(1) = %u\n", vec.C_co.dims(1));
+                    mexPrintBase("vec.C_co[timestep][ii].dims(0) = %u\n", vec.C_co[timestep][ii].dims(0));
+                    mexPrintBase("vec.C_co[timestep][ii].dims(1) = %u\n", vec.C_co[timestep][ii].dims(1));
                     mexPrintBase("osa_iter = %u\n", osa_iter);
                     mexEval();
                 }
-                vec.C_co(af::span, osa_iter) = vec.rhs_os[timestep][ii] * af::pow(vec.im_os[timestep][ii], w_vec.h_ACOSEM_2);
+                vec.C_co[timestep][ii](af::span, osa_iter) = vec.rhs_os[timestep][ii] * af::pow(vec.im_os[timestep][ii], w_vec.h_ACOSEM_2);
                 if (DEBUG) {
                     mexPrintBase("im_os[timestep] = %f\n", af::sum<float>(vec.im_os[timestep][ii]));
                     mexPrintBase("rhs_os[timestep] = %f\n", af::sum<float>(vec.rhs_os[timestep][ii]));
-                    mexPrintBase("D = %f\n", af::sum<float>(w_vec.D[0][ii]));
-                    mexPrintBase("C_co / D = %f\n", af::sum<float>(af::sum(vec.C_co, 1) / w_vec.D[0][ii]));
-                    mexPrintBase("C_co = %f\n", af::sum<float>(vec.C_co, 1));
-                    mexPrintBase("C_co(:,osa_iter) = %f\n", af::sum<float>(vec.C_co(af::span, osa_iter), 1));
-                    mexPrintBase("min(D) = %f\n", af::min<float>(w_vec.D[0][ii]));
+                    mexPrintBase("D = %f\n", af::sum<float>(w_vec.D[dIdx][ii]));
+                    mexPrintBase("C_co / D = %f\n", af::sum<float>(af::sum(vec.C_co[timestep][ii], 1) / w_vec.D[dIdx][ii]));
+                    mexPrintBase("C_co = %f\n", af::sum<float>(vec.C_co[timestep][ii], 1));
+                    mexPrintBase("C_co(:,osa_iter) = %f\n", af::sum<float>(vec.C_co[timestep][ii](af::span, osa_iter), 1));
+                    mexPrintBase("min(D) = %f\n", af::min<float>(w_vec.D[dIdx][ii]));
                     mexPrintBase("h = %f\n", w_vec.h_ACOSEM);
                     mexPrintBase("h2 = %f\n", w_vec.h_ACOSEM_2);
                     mexEval();
                 }
                 float uu;
-                vec.im_os[timestep][ii] = COSEM(vec.im_os[timestep][ii], vec.C_co, w_vec.D[0][ii], w_vec.h_ACOSEM, 1u);
-                status = computeACOSEMWeight(inputScalars, length, uu, osa_iter, timestep, mData[timestep], m_size, w_vec, vec, proj, subSum, pituus, g);
+                vec.im_os[timestep][ii] = COSEM(vec.im_os[timestep][ii], vec.C_co[timestep][ii], w_vec.D[dIdx][ii], w_vec.h_ACOSEM, 1u);
+                status = computeACOSEMWeight(inputScalars, length, uu, osa_iter, timestep, mData[timestep], m_size, w_vec, vec, proj, pituus, g);
                 if (status != 0)
                     return -1;
                 if (inputScalars.CT)
@@ -315,24 +316,24 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing RBIOSL");
                 if (ii == 0)
-                    vec.im_os[timestep][ii] = RBI(vec.im_os[timestep][ii], *Sens, vec.rhs_os[timestep][ii], w_vec.D[0][ii], w_vec.beta, vec.dU[timestep]);
+                    vec.im_os[timestep][ii] = RBI(vec.im_os[timestep][ii], *Sens, vec.rhs_os[timestep][ii], w_vec.D[dIdx][ii], w_vec.beta, vec.dU[timestep]);
                 else
-                    vec.im_os[timestep][ii] = RBI(vec.im_os[timestep][ii], *Sens, vec.rhs_os[timestep][ii], w_vec.D[0][ii], 0.f);
+                    vec.im_os[timestep][ii] = RBI(vec.im_os[timestep][ii], *Sens, vec.rhs_os[timestep][ii], w_vec.D[dIdx][ii], 0.f);
             }
             else if (MethodList.OSLCOSEM > 0u) {
                 if (inputScalars.verbose >= 3)
                     mexPrintVar("Computing OSLCOSEM ", MethodList.OSLCOSEM);
                 if (MethodList.OSLCOSEM == 1u)
-                    vec.C_co(af::span, osa_iter) = vec.rhs_os[timestep][ii] * pow(vec.im_os[timestep][ii], w_vec.h_ACOSEM_2);
+                    vec.C_co[timestep][ii](af::span, osa_iter) = vec.rhs_os[timestep][ii] * pow(vec.im_os[timestep][ii], w_vec.h_ACOSEM_2);
                 else
-                    vec.C_co(af::span, osa_iter) = vec.rhs_os[timestep][ii] * vec.im_os[timestep][ii];
+                    vec.C_co[timestep][ii](af::span, osa_iter) = vec.rhs_os[timestep][ii] * vec.im_os[timestep][ii];
                 if (ii == 0)
-                    vec.im_os[timestep][ii] = COSEM(vec.im_os[timestep][ii], vec.C_co, w_vec.D[0][ii] + vec.dU[timestep], w_vec.h_ACOSEM, MethodList.OSLCOSEM);
+                    vec.im_os[timestep][ii] = COSEM(vec.im_os[timestep][ii], vec.C_co[timestep][ii], w_vec.D[dIdx][ii] + vec.dU[timestep], w_vec.h_ACOSEM, MethodList.OSLCOSEM);
                 else
-                    vec.im_os[timestep][ii] = COSEM(vec.im_os[timestep][ii], vec.C_co, w_vec.D[0][ii], w_vec.h_ACOSEM, MethodList.OSLCOSEM);
+                    vec.im_os[timestep][ii] = COSEM(vec.im_os[timestep][ii], vec.C_co[timestep][ii], w_vec.D[dIdx][ii], w_vec.h_ACOSEM, MethodList.OSLCOSEM);
                 if (MethodList.OSLCOSEM == 1u) {
                     float uu = 0.f;
-                    status = computeACOSEMWeight(inputScalars, length, uu, osa_iter, timestep, mData[timestep], m_size, w_vec, vec, proj, subSum, pituus, g);
+                    status = computeACOSEMWeight(inputScalars, length, uu, osa_iter, timestep, mData[timestep], m_size, w_vec, vec, proj, pituus, g);
                     if (status != 0)
                         return -1;
                     if (DEBUG) {

@@ -111,8 +111,12 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
 
 	if (MethodList.COSEM || MethodList.ACOSEM || MethodList.OSLCOSEM > 0 || MethodList.ECOSEM) {
-		// Complete data
-		vec.C_co = af::constant(0.f, inputScalars.im_dim[0], inputScalars.subsets);
+		vec.C_co.resize(inputScalars.Nt);
+		for (auto& frame : vec.C_co) {
+			frame.reserve(inputScalars.nMultiVolumes + 1);
+			for (int ii = 0; ii <= inputScalars.nMultiVolumes; ++ii)
+				frame.emplace_back(af::constant(0.f, inputScalars.im_dim[ii], inputScalars.subsets));
+		}
 	}
 	std::random_device rd;
 	std::mt19937 rng(rd());
@@ -387,6 +391,14 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 	// Stochastic subset selection rewrites subsets to one, invalidating the per-frame subset indexing.
 	if (inputScalars.stochastic && inputScalars.Nt > 1u && inputScalars.subsets > 1u) {
 		mexPrint("Stochastic subset selection is not supported with dynamic data (more than one time step)");
+		return -1;
+	}
+	// These methods need a sensitivity image for each subset, but stochastic
+	// selection does not necessarily visit every subset in the first iteration.
+	if (inputScalars.stochastic && inputScalars.subsets > 1u && (MethodList.OSEM || MethodList.ECOSEM || MethodList.ROSEM || MethodList.RBI || MethodList.RBIOSL ||
+		MethodList.DRAMA || MethodList.OSLOSEM || MethodList.ROSEMMAP || MethodList.SART || MethodList.POCS) &&
+		!(inputScalars.listmode > 0 && inputScalars.computeSensImag && !w_vec.computeD)) {
+		mexPrint("Stochastic subset selection is not supported with OSEM, ECOSEM, ROSEM, RBI, OSL-RBI, DRAMA, OSL-OSEM, ROSEM-MAP, SART or ASD-POCS, which need a separate sensitivity image for every subset. Use an algorithm with a full-data sensitivity image or preconditioner (e.g. BSREM, MBSREM, PKMA, PDHG)");
 		return -1;
 	}
 
@@ -1014,8 +1026,9 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
     for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
         // Compute sensitivity image for the whole measurement domain.
         const bool frameSpecificSPECTSensitivity = inputScalars.SPECT && inputScalars.listmode > 0 && inputScalars.computeSensImag;
+        const bool frameSpecificType6Sensitivity = inputScalars.projector_type == 6 && inputScalars.sensPerTimestep;
         if ((w_vec.computeD || (inputScalars.listmode > 0 && inputScalars.computeSensImag)) &&
-            (timestep == 0 || frameSpecificSPECTSensitivity)) {
+            (timestep == 0 || frameSpecificSPECTSensitivity || frameSpecificType6Sensitivity)) {
             if (DEBUG || inputScalars.verbose >= 3)
                 mexPrint("Starting computation of sensitivity image (D)");
             w_vec.D[timestep].resize(inputScalars.nMultiVolumes + 1);
@@ -1134,7 +1147,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             computeIntegralImage(inputScalars, w_vec, length[indD], oneInput, meanBP);
                             oneInput.eval();
                             if (inputScalars.projector_type == 6) {
-                                backprojectionType6(oneInput, w_vec, vec, inputScalars, length[indD], uu, proj, 0, subIter, 0, 0, 0, ii, atten);
+                                backprojectionType6(oneInput, w_vec, vec, inputScalars, length[indD], uu, proj, timestep, subIter, 0, 0, 0, ii, atten);
                                 if (type6Status(proj) != 0)
                                     return -1;
                             }
@@ -1498,8 +1511,6 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
             mexEval();
         }
 
-        int64_t uu = 0;
-
         // Loop through the subsets
         for (uint32_t osa_iter = inputScalars.osa_iter0; osa_iter < inputScalars.subsetsUsed; osa_iter++) {
             inputScalars.currentSubset = osa_iter;
@@ -1507,11 +1518,6 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                 osa_iter = distribution(rng);
                 inputScalars.currentSubset = 0;
             }
-            // First view of this subset for the rotation-based projector (frame-local, the offset of the frame is added inside).
-            // Set directly from the cumulative view counts instead of accumulating, so a randomly drawn subset (stochastic) or
-            // osa_iter0 > 0 use the views that belong to the subset
-            if (inputScalars.projector_type == 6)
-                uu = pituus[osa_iter] - pituus[0];
             if (DEBUG || inputScalars.verbose >= 2) {
                 af::sync();
                 proj.tStartGlobal = std::chrono::steady_clock::now();
@@ -1524,6 +1530,10 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
             // Loop through each time-step
             for (uint32_t tt = t0; tt < inputScalars.Nt; tt++) {
                 int indD = osa_iter + tt * inputScalars.subsets;
+                // Type 6 uses the subset's first view relative to the current frame.
+                const int64_t uu = inputScalars.projector_type == 6
+                    ? pituus[indD] - pituus[tt * inputScalars.subsets]
+                    : 0;
                 uint32_t timestepData = tt; // Data is indexed by timestepData. If data is loaded per subset, timestepData is set to 0.
 
                 // Sensitivity image slot for this timestep, and whether this (subset, timestep) pass is
@@ -1919,7 +1929,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                                 vec.im_os[tt][0] = vec.im_os[tt][0](af::seq(inputScalars.lDimStruct.startPr[ii], af::end));
                         }
                         status = computeOSEstimates(vec, w_vec, MethodList, iter, osa_iter, inputScalars, length, break_iter,
-                            pituus, g, proj, mData[0], m_size, uu, compute_norm_matrix, 0, inputScalars.largeDim, ii);
+                            pituus, g, proj, mData[0], m_size, compute_norm_matrix, 0, inputScalars.largeDim, ii);
                         if (status != 0)
                             return -1;
                         if (inputScalars.enforcePositivity && inputScalars.subsetsUsed > 1 && !MethodList.CPType) {
@@ -1969,7 +1979,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             }
                         }
                         status = computeOSEstimates(vec, w_vec, MethodList, iter, osa_iter, inputScalars, length, break_iter,
-                            pituus, g, proj, mData[0], m_size, uu, compute_norm_matrix, 1);
+                            pituus, g, proj, mData[0], m_size, compute_norm_matrix, 1);
                         if (status != 0)
                             return -1;
                         for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++) {
@@ -1983,7 +1993,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
             if (!inputScalars.largeDim) {
                 // Update estimate for subset-based algorithms
-                status = computeOSEstimates(vec, w_vec, MethodList, iter, osa_iter, inputScalars, length, break_iter, pituus, g, proj, mData[subIter], m_size, uu, compute_norm_matrix);
+                status = computeOSEstimates(vec, w_vec, MethodList, iter, osa_iter, inputScalars, length, break_iter, pituus, g, proj, mData[subIter], m_size, compute_norm_matrix);
                 if (status != 0) return -1;
 
                 // Enforce positivity if applicable (all timesteps)
@@ -2119,7 +2129,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
             delete[] apuD;
     }
     for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
-        if (w_vec.computeD && timestep == 0)
+        if (w_vec.computeD)
             w_vec.D[timestep].clear();
         if (w_vec.computeM)
             w_vec.M[timestep].clear();

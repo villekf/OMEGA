@@ -117,6 +117,69 @@ def _load_array_file(path, mat_key_index='auto'):
         raise ValueError('Unsupported datatype!')
 
 
+def _matVariables(var):
+    """Return data variables from a MAT-file result, excluding metadata."""
+    return {key: value for key, value in var.items()
+            if not str(key).startswith('__')}
+
+
+def _normalizationFromMat(var):
+    """Select normalization coefficients, preferring the named variable."""
+    variables = _matVariables(var)
+    if 'normalization' in variables:
+        return variables['normalization']
+    if not variables:
+        raise ValueError('The normalization data file does not contain any variables!')
+    return next(iter(variables.values()))
+
+
+def _scatterIsEmpty(scatter):
+    """Return whether no scatter correction data has been supplied."""
+    if scatter is None:
+        return True
+    if isinstance(scatter, (list, tuple)):
+        return len(scatter) == 0
+    return np.size(scatter) == 0
+
+
+def _loadScatterData(options):
+    """Load scatter correction data selected through the file dialog."""
+    path = _askOpenFile(
+        'Select scatter correction data',
+        (('MAT, NPY and NPZ files', '*.mat *.npy *.npz'), ('All', '*.*')),
+        'options.ScatterC',
+    )
+    ext = os.path.splitext(path)[1].lower()
+    if ext == '.mat':
+        try:
+            from pymatreader import read_mat
+        except ModuleNotFoundError:
+            raise ValueError(
+                'pymatreader package not found! Mat-files cannot be loaded. '
+                'You can install pymatreader package with "pip install pymatreader".'
+            ) from None
+        variables = _matVariables(read_mat(path))
+    elif ext == '.npz':
+        with np.load(path, allow_pickle=True) as data:
+            variables = {key: data[key] for key in data.files}
+    elif ext == '.npy':
+        variables = {'ScatterC': np.load(path, allow_pickle=True)}
+    else:
+        raise ValueError('Unsupported datatype! The scatter data has to be in a .mat, .npy or .npz file.')
+
+    if not variables:
+        raise ValueError('The scatter data file ' + path + ' does not contain any variables!')
+    wanted = 'scattered_coincidences' if options.use_raw_data else 'SinScatter'
+    if wanted in variables:
+        scatter = variables[wanted]
+    else:
+        scatter = next(iter(variables.values()))
+        if len(variables) > 1:
+            print('Warning: The scatter data file contains more than one variable! The first one is used')
+    options.ScatterC = scatter if isinstance(scatter, list) else np.asarray(scatter)
+    print('Scatter data successfully loaded')
+
+
 def _simpleitk_attenuation_array(meta_image, get_array_from_image):
     """Convert SimpleITK's reversed array axes to OMEGA's x/y/z[/time] order."""
     array = np.asarray(get_array_from_image(meta_image))

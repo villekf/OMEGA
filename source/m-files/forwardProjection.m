@@ -517,6 +517,7 @@ cols = {col0, col0, col0 + 1, col0 + 1};
 wr = {(1 - fr) .* (1 - fc), fr .* (1 - fc), (1 - fr) .* fc, fr .* fc};
 output = zeros(outNx, outNy, nPlanes, 'like', input);
 for plane = 1:nPlanes
+    inputPlane = input(:, :, plane);
     values = zeros(outNx, outNy, 'like', input);
     for neighbor = 1:4
         valid = inside & rows{neighbor} >= 1 & rows{neighbor} <= srcNx & ...
@@ -525,7 +526,7 @@ for plane = 1:nPlanes
             destination = find(valid(:));
             source = sub2ind([srcNx, srcNy], rows{neighbor}(valid), cols{neighbor}(valid));
             flat = values(:);
-            flat(destination) = flat(destination) + input(source) .* cast(wr{neighbor}(valid), 'like', input);
+            flat(destination) = flat(destination) + inputPlane(source) .* cast(wr{neighbor}(valid), 'like', input);
             values = reshape(flat, outNx, outNy);
         end
     end

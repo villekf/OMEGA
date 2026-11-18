@@ -795,17 +795,16 @@ elseif ismember(options.param.implementation, [2, 3])
                     options.param.corrVector{kk} = single(full(options.param.corrVector{kk}));
                 end
             end
-            % Flatten each per-timestep frame to a column vector BEFORE cell2mat. When
+            % Flatten each per-timestep frame to a column vector BEFORE concatenation. When
             % subsets == 1 (or largeDim), parseInputData never runs its per-partition
             % reordering loop, so a cell entry can still be a multi-dimensional
             % (Ndist x Nang x NSinos(x TOF_bins)) array here. cell2mat on a 1xNt cell of
             % such arrays concatenates along dimension 2 instead of stacking whole frames,
             % which interleaves frames instead of keeping each one contiguous (the C++ side
-            % offsets into corrVector by kokoNonTOF * timestep, i.e. expects frame 1 fully
-            % before frame 2). Flattening first (a no-op if already a column, as it is once
-            % parseInputData's subsets > 1 path already ran) guarantees frame-contiguous
-            % memory order regardless of which path produced the cell.
-            options.param.corrVector = cell2mat(cellfun(@(x) x(:), options.param.corrVector, 'UniformOutput', false));
+            % offsets frame-concatenated data by cumulative pituus boundaries). Use vertical
+            % concatenation because dynamic frames can have different lengths.
+            corrFrames = cellfun(@(x) x(:), options.param.corrVector, 'UniformOutput', false);
+            options.param.corrVector = vertcat(corrFrames{:});
         elseif ~isa(options.param.corrVector, 'single')
             options.param.corrVector = single(options.param.corrVector);
         end
@@ -821,14 +820,10 @@ elseif ismember(options.param.implementation, [2, 3])
             options.param.SinM = single(full(options.param.SinM));
         end
         if iscell(options.param.SinM)
-            % See the corrVector flattening above: each per-timestep cell must be
-            % columnized before cell2mat so frames are stacked contiguously in memory
-            % (frame 1 fully, then frame 2, ...) rather than concatenated along dimension
-            % 2, which is what a 1xNt cell of multi-dimensional per-frame arrays would
-            % otherwise do (this is the subsets == 1 / largeDim path where
-            % parseInputData's per-partition loop -- which already flattens each frame --
-            % never runs).
-            options.param.SinM = cell2mat(cellfun(@(x) x(:), options.param.SinM, 'UniformOutput', false));
+            % Flatten each frame and concatenate along the measurement dimension.
+            % Frame sizes may differ for dynamic projection data.
+            sinogramFrames = cellfun(@(x) x(:), options.param.SinM, 'UniformOutput', false);
+            options.param.SinM = vertcat(sinogramFrames{:});
         end
         if ~isa(options.param.SinM, 'single') && (options.param.loadTOF || ~(isa(options.param.SinM, 'uint16') || isa(options.param.SinM, 'uint8')))
             options.param.SinM = single(options.param.SinM);
@@ -875,7 +870,7 @@ if options.param.useEFOV && ~options.param.useMultiResolutionVolumes
     end
     if options.param.axialEFOV
         nAxial = (options.param.Nz - options.param.NzOrig)/2;
-        pz = pz(:,:,1 + nAxial+options.param.eFOVShift_Nz:end-nAxial+options.param.eFOVShift_Nz,:,:,:);
+        pz = pz(:,:,1 + nAxial-options.param.eFOVShift_Nz:end-nAxial-options.param.eFOVShift_Nz,:,:,:);
     end
 end
 if options.param.storeFP && (options.param.subsets == 1 || options.param.subset_type >= 8) && options.param.implementation == 2 && ~options.param.FDK

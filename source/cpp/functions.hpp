@@ -4222,9 +4222,38 @@ inline af::array type6Weights(const scalarStruct& inputScalars, const Weighting&
 		}
 	}
 	if (useScat) {
-		// The same per-timestep frame offset as when the d_scat buffers are filled
-		const size_t scatTimestepOffset = (inputScalars.size_scat > static_cast<size_t>(inputScalars.kokoNonTOF)) ?
-			(static_cast<size_t>(inputScalars.kokoNonTOF) * static_cast<size_t>(timestep)) : 0ULL;
+		// Corrections for one frame are shared. For frame-concatenated data,
+		// frameStart6 carries cumulative frame view counts, including variable
+		// dynamic SPECT frame lengths.
+		const size_t firstFrameScatterSize = w_vec.frameStart6.size() > 1U
+			? static_cast<size_t>(w_vec.frameStart6[1]) * nDet
+			: static_cast<size_t>(inputScalars.kokoNonTOF);
+		const size_t allFramesScatterSize = !w_vec.frameStart6.empty() && w_vec.frameStart6.back() >= 0
+			? static_cast<size_t>(w_vec.frameStart6.back()) * nDet
+			: 0ULL;
+		const bool sharedScatter = inputScalars.size_scat == firstFrameScatterSize;
+		if (inputScalars.Nt > 1U && !sharedScatter && inputScalars.size_scat != allFramesScatterSize) {
+			mexPrint("Dynamic type-6 scatter correction size does not match either one shared frame or all frames");
+			proj.type6Error = true;
+			return af::array();
+		}
+		const bool scatterAllFrames = inputScalars.Nt > 1U &&
+			!sharedScatter;
+		const size_t scatTimestepOffset = scatterAllFrames && timestep > 0 &&
+			static_cast<size_t>(timestep) < w_vec.frameStart6.size()
+			? static_cast<size_t>(w_vec.frameStart6[static_cast<size_t>(timestep)]) * nDet
+			: 0ULL;
+		if (uu < 0) {
+			mexPrint("Type-6 scatter correction received a negative subset offset");
+			proj.type6Error = true;
+			return af::array();
+		}
+		const size_t scatterEnd = scatTimestepOffset + (static_cast<size_t>(uu) + static_cast<size_t>(length)) * nDet;
+		if (scatterEnd > inputScalars.size_scat) {
+			mexPrint("Type-6 scatter correction does not cover the requested frame and subset");
+			proj.type6Error = true;
+			return af::array();
+		}
 		const float* src = &w_vec.corrHost[static_cast<size_t>(uu) * nDet + scatTimestepOffset];
 		for (size_t dd = 0; dd < wh.size(); dd++)
 			wh[dd] *= src[dd];
@@ -6423,20 +6452,22 @@ inline int applyImagePreconditioning(Weighting& w_vec, const scalarStruct& input
 		input *= w_vec.alphaPrecond[kk];
 	}
 	if (w_vec.precondTypeIm[0] || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2]) {
+		const bool frameSpecific = inputScalars.projector_type == 6 && inputScalars.sensPerTimestep;
+		const af::array& sensitivity = w_vec.D[frameSpecific ? timestep : 0][ii];
 		if (w_vec.precondTypeIm[0]) {
 			if (inputScalars.verbose >= 3)
 				mexPrint("Applying diagonal normalization preconditioner , type 0");
-			input /= w_vec.D[0][ii];
+			input /= sensitivity;
 		}
 		else if (w_vec.precondTypeIm[1]) {
 			if (inputScalars.verbose >= 3)
 				mexPrint("Applying EM preconditioner, type 1");
-			input *= precondIm2(im, w_vec.D[0][ii]);
+			input *= precondIm2(im, sensitivity);
 		}
 		else if (w_vec.precondTypeIm[2]) {
 			if (inputScalars.verbose >= 3)
 				mexPrint("Applying IEM preconditioner, type 2");
-			input *= precondIm3(im, w_vec.D[0][ii], w_vec.preRef[ii]);
+			input *= precondIm3(im, sensitivity, w_vec.preRef[ii]);
 		}
 	}
 	if (w_vec.precondTypeIm[6]) {
@@ -6756,7 +6787,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 
 // Compute the specific weight needed by ACOSEM
 inline int computeACOSEMWeight(scalarStruct& inputScalars, std::vector<int64_t>& length, float& uu, uint32_t osa_iter, uint32_t timestep, const af::array& mData, uint64_t m_size, Weighting& w_vec, AF_im_vectors& vec,
-	ProjectorClass& proj, const int64_t subSum, const int64_t* pituus, const af::array& g = af::constant(0.f, 1, 1)) { // TODO vectorize ACOSEM_rhs
+	ProjectorClass& proj, const int64_t* pituus, const af::array& g = af::constant(0.f, 1, 1)) { // TODO vectorize ACOSEM_rhs
 	if (inputScalars.verbose >= 3)
 		mexPrint("Computing ACOSEM weight");
 	int status = 0;
@@ -6772,8 +6803,11 @@ inline int computeACOSEMWeight(scalarStruct& inputScalars, std::vector<int64_t>&
 			return -1;
 	}
 	else {
-		outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[osa_iter + inputScalars.subsets * timestep]);
-		forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[osa_iter + inputScalars.subsets * timestep], subSum, proj, 0, nullptr, timestep);
+		const size_t frameStart = static_cast<size_t>(timestep) * inputScalars.subsets;
+		const size_t subsetIndex = frameStart + osa_iter;
+		const int64_t subsetStart = pituus[subsetIndex] - pituus[frameStart];
+		outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[subsetIndex]);
+		forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[subsetIndex], subsetStart, proj, 0, nullptr, timestep);
 		if (type6Status(proj) != 0)
 			return -1;
 	}
@@ -6793,13 +6827,16 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 	int status = 0;
 	std::vector<af::array> Summ;
 	af::array meanBP;
-	uint64_t m_size = length[0];
+	const size_t firstSubsetIndex = inputScalars.projector_type == 6
+		? static_cast<size_t>(timestep) * inputScalars.subsets : 0;
+	const int64_t firstSubsetLength = length[firstSubsetIndex];
+	uint64_t m_size = firstSubsetLength;
 	if (inputScalars.verbose > 0) {
 		mexPrintBase("Starting power method for timestep %u\n", timestep);
         mexEval();
 	}
 	if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
-		m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[0];
+		m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * firstSubsetLength;
 	std::vector<float> tauCP(inputScalars.nMultiVolumes + 1, 0.f);
 	af::randomEngine r(AF_RANDOM_ENGINE_DEFAULT, 1);
 	if (!inputScalars.largeDim) {
@@ -6822,8 +6859,8 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			proj.memSize += (sizeof(float) * m_size);
 			af::array outputFP;
 			if (inputScalars.projector_type == 6) {
-				outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[0]);
-				forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, 0, atten, timestep);
+				outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, firstSubsetLength);
+				forwardProjectionType6(outputFP, w_vec, vec, inputScalars, firstSubsetLength, 0, proj, 0, atten, timestep);
 				if (type6Status(proj) != 0)
 					return -1;
 				outputFP.eval();
@@ -6845,10 +6882,10 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj, timestep);
 			if (status != 0)
 				return -1;
-			computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
+			computeIntegralImage(inputScalars, w_vec, firstSubsetLength, outputFP, meanBP);
 			proj.memSize += (sizeof(float) * inputScalars.im_dim[0]);
 			if (inputScalars.projector_type == 6) {
-				backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, 0, atten);
+				backprojectionType6(outputFP, w_vec, vec, inputScalars, firstSubsetLength, 0, proj, timestep, 0, 0, 0, 0, 0, atten);
 				if (type6Status(proj) != 0)
 					return -1;
 			}
@@ -6876,7 +6913,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				proj.memSize += (sizeof(float) * m_size);
 				af::array outputFP;
 				if (inputScalars.projector_type == 6)
-					outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[0]);
+					outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, firstSubsetLength);
 				else
 					if (inputScalars.listmode && inputScalars.TOF)
 						outputFP = af::constant(0.f, m_size);
@@ -6885,7 +6922,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				if (inputScalars.projector_type == 6) {
 					// Every volume projects into the same measurement, so the result is flattened
 					// only after all of them are done
-					forwardProjectionType6All(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, atten, timestep);
+					forwardProjectionType6All(outputFP, w_vec, vec, inputScalars, firstSubsetLength, 0, proj, atten, timestep);
 					if (type6Status(proj) != 0)
 						return -1;
 				}
@@ -6907,11 +6944,11 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj, timestep);
 				if (status != 0)
 					return -1;
-				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
+				computeIntegralImage(inputScalars, w_vec, firstSubsetLength, outputFP, meanBP);
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 					proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]);
 					if (inputScalars.projector_type == 6) {
-						backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, ii, atten);
+						backprojectionType6(outputFP, w_vec, vec, inputScalars, firstSubsetLength, 0, proj, timestep, 0, 0, 0, 0, ii, atten);
 						if (type6Status(proj) != 0)
 							return -1;
 					}
@@ -7014,7 +7051,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				proj.memSize += (sizeof(float) * m_size);
 				af::array outputFP;
 				if (inputScalars.projector_type == 6)
-					outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[0]);
+					outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, firstSubsetLength);
 				else
 					if (inputScalars.listmode && inputScalars.TOF)
 						outputFP = af::constant(0.f, m_size);
@@ -7024,7 +7061,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					if (inputScalars.projector_type == 6) {
 						// Every volume projects into the same measurement, so the result is flattened
 						// only after all of them are done
-						forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, ii, atten, timestep);
+						forwardProjectionType6(outputFP, w_vec, vec, inputScalars, firstSubsetLength, 0, proj, ii, atten, timestep);
 						if (type6Status(proj) != 0)
 							return -1;
 					}
@@ -7045,11 +7082,11 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj, timestep);
 				if (status != 0)
 					return -1;
-				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
+				computeIntegralImage(inputScalars, w_vec, firstSubsetLength, outputFP, meanBP);
 				for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++) {
 					proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]);
 					if (inputScalars.projector_type == 6) {
-						backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, ii, atten);
+						backprojectionType6(outputFP, w_vec, vec, inputScalars, firstSubsetLength, 0, proj, timestep, 0, 0, 0, 0, ii, atten);
 						if (type6Status(proj) != 0)
 							return -1;
 					}
@@ -7156,8 +7193,8 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			for (int kk = 0; kk < w_vec.powerIterations; kk++) {
 				af::array outputFP;
 				if (inputScalars.projector_type == 6) {
-					outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[0]);
-					forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, 0, atten, timestep);
+					outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, firstSubsetLength);
+					forwardProjectionType6(outputFP, w_vec, vec, inputScalars, firstSubsetLength, 0, proj, 0, atten, timestep);
 					if (type6Status(proj) != 0)
 						return -1;
 					outputFP.eval();
@@ -7179,9 +7216,9 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj, timestep);
 				if (status != 0)
 					return -1;
-				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
+				computeIntegralImage(inputScalars, w_vec, firstSubsetLength, outputFP, meanBP);
 				if (inputScalars.projector_type == 6) {
-					backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, 0, atten);
+					backprojectionType6(outputFP, w_vec, vec, inputScalars, firstSubsetLength, 0, proj, timestep, 0, 0, 0, 0, 0, atten);
 					if (type6Status(proj) != 0)
 						return -1;
 				}
@@ -7207,7 +7244,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			for (int kk = 0; kk < w_vec.powerIterations; kk++) {
 				af::array outputFP;
 				if (inputScalars.projector_type == 6)
-					outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[0]);
+					outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, firstSubsetLength);
 				else
 					if (inputScalars.listmode && inputScalars.TOF)
 						outputFP = af::constant(0.f, m_size);
@@ -7217,7 +7254,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					if (inputScalars.projector_type == 6) {
 						// Every volume projects into the same measurement, so the result is flattened
 						// only after all of them are done
-						forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, ii, atten, timestep);
+						forwardProjectionType6(outputFP, w_vec, vec, inputScalars, firstSubsetLength, 0, proj, ii, atten, timestep);
 						if (type6Status(proj) != 0)
 							return -1;
 					}
@@ -7238,10 +7275,10 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj, timestep);
 				if (status != 0)
 					return -1;
-				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
+				computeIntegralImage(inputScalars, w_vec, firstSubsetLength, outputFP, meanBP);
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 					if (inputScalars.projector_type == 6) {
-						backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, ii, atten);
+						backprojectionType6(outputFP, w_vec, vec, inputScalars, firstSubsetLength, 0, proj, timestep, 0, 0, 0, 0, ii, atten);
 						if (type6Status(proj) != 0)
 							return -1;
 					}

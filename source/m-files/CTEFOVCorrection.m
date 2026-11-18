@@ -346,8 +346,8 @@ if options.useEFOV
     dx = options.FOVa_x / options.Nx;
     dy = options.FOVa_y / options.Ny;
     dz = options.axial_fov / options.Nz;
-    options.eFOVShift_Nx = round(options.eFOVShift(1) / dx, TieBreaker="fromzero"); % Add half this amount to one side and subtract from another
-    options.eFOVShift_Ny = round(options.eFOVShift(2) / dy, TieBreaker="fromzero");
-    options.eFOVShift_Nz = round(options.eFOVShift(3) / dz, TieBreaker="fromzero");
+    options.eFOVShift_Nx = round(options.eFOVShift(1) / dx); % Add half this amount to one side and subtract from another
+    options.eFOVShift_Ny = round(options.eFOVShift(2) / dy);
+    options.eFOVShift_Nz = round(options.eFOVShift(3) / dz);
 end
 end

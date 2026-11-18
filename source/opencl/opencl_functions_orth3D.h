@@ -597,6 +597,8 @@ DEVICE int orthDistance3D(const int tempi,
 		// Compute the maximum ranges
 #if !defined(SPECT) && defined(CRYSTXY)
 		tubeRangeXY(quadA, quadT, l, diff, d2, apuXY, minimiXY, maksimiXY, &loXY, &hiXY);
+		scanLoXY = loXY;
+		scanHiXY = hiXY;
 #endif
 #ifdef CRYSTXY
 #if !defined(SPECT)
@@ -742,6 +744,8 @@ DEVICE int orthDistance3D(const int tempi,
 		l.y = diff.y * z0;
 #if !defined(SPECT) && defined(CRYSTXY)
 		tubeRangeXY(quadA, quadT, l, diff, d2, apuXY, minimiXY, maksimiXY, &loXY, &hiXY);
+		scanLoXY = loXY;
+		scanHiXY = hiXY;
 #endif
 #ifdef CRYSTXY
 #if !defined(SPECT)

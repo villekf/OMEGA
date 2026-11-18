@@ -1064,7 +1064,7 @@ inline __device__ uint3 convert_uint3(const T& a) {
 #endif
 
 #if STYPE == 1 || STYPE == 2 || STYPE == 4 || STYPE == 5
-DEVICE void getIndex(int3* i, const uint d_size_x, const uint d_sizey, const uint currentSubset) {
+DEVICE void getIndex(PTR_THR int3* i, const uint d_size_x, const uint d_sizey, const uint currentSubset) {
 #if STYPE == 1
 	(*i).x *= NSUBSETS;
 	(*i).x += currentSubset;

@@ -422,3 +422,4 @@ else
     additive = additive(index,:);
 end
 additive = additive(:);
+end

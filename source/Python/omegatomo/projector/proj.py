@@ -93,6 +93,8 @@ class projectorClass:
     y = np.empty(0, dtype = np.float32)
     z = np.empty(0, dtype = np.float32)
     zFrames = []
+    # Reconstruction output defaults to the main volume unless explicitly requested.
+    storeMultiResolution = False
     x0 = np.empty(0, dtype = np.float32)
     Nx = 1
     Ny = 1
@@ -639,9 +641,8 @@ class projectorClass:
     axialEFOV = False
     eFOVLength = None
     # Per-direction override of eFOVLength, used by CTEFOVCorrection. None
-    # means "not specified". eFOVLengthAxial is additionally overridden by a
-    # geometry-derived value in CTEFOVCorrection when it is not specified and
-    # a usable cone-beam geometry is available.
+    # means "not specified"; the shared eFOVLength remains the fallback for
+    # either direction.
     eFOVLengthAxial = None
     eFOVLengthTransaxial = None
     NLM_gauss = 2.
@@ -1173,6 +1174,7 @@ class projectorClass:
             # Fully custom coordinates are used as such; only missing or per-projection (source + detector) coordinates are (re)computed
             if self.x.size == 0 or self.x.size == 2 * self.nProjections or hasattr(self, 'coord'):
                 setCTCoordinates(self)
+        spect_event_listmode = False
         if self.SPECT:
             # Listmode SPECT stores one vector of events per timeframe rather
             # than a 3-D detector image stack. Detect that layout before the
@@ -2896,7 +2898,12 @@ class projectorClass:
                           f"{transaxialExtensionY:.2f} % (y) of the original")
 
                     from omegatomo.util.multiresolution import pack_multiresolution
-                    self.x0 = pack_multiresolution(self.x0, self)
+                    x0 = np.asarray(self.x0)
+                    if x0.size == int(self.Nx[0]) * int(self.Ny[0]) * int(self.Nz[0]):
+                        side_count = sum(int(x) * int(y) * int(z) for x, y, z in zip(self.Nx[1:], self.Ny[1:], self.Nz[1:]))
+                        self.x0 = np.concatenate((x0.ravel(order='F'), np.full(side_count, x0.min(), dtype=x0.dtype)))
+                    else:
+                        self.x0 = pack_multiresolution(x0, self)
                     if self.useMaskBP and self.maskBP.size > 1:
                         self.maskBP = pack_multiresolution(self.maskBP, self, mask=True)
                         self.maskBPZ = int(np.max(self.Nz))
@@ -2914,10 +2921,13 @@ class projectorClass:
                 padZ = (NzE - int(self.NzOrig)) // 2
                 if self.eFOVIndices.size < 1:
                     self.eFOVIndices = np.zeros((NzE,1), dtype=np.uint8)
-                    self.eFOVIndices[padZ : NzE - padZ] = 1
+                    startZ = padZ - int(self.eFOVShift_Nz)
+                    self.eFOVIndices[startZ : startZ + int(self.NzOrig)] = 1
                 self.NzPrior = np.sum(self.eFOVIndices, dtype=np.uint32)
                 self.maskPrior = np.zeros((NxE, NyE), dtype=np.uint8)
-                self.maskPrior[padX : NxE - padX, padY : NyE - padY] = 1
+                startX = padX - int(self.eFOVShift_Nx)
+                startY = padY - int(self.eFOVShift_Ny)
+                self.maskPrior[startX : startX + int(self.NxOrig), startY : startY + int(self.NyOrig)] = 1
                 self.NxPrior = np.sum(self.maskPrior[:,int(matlabRound(self.maskPrior.shape[1]/2))], dtype=np.uint32)
                 self.NyPrior = np.sum(self.maskPrior[int(matlabRound(self.maskPrior.shape[0]/2)),:], dtype=np.uint32)
                 if self.useMaskBP:

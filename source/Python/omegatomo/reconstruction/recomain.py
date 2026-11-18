@@ -1315,14 +1315,12 @@ def reconstructions_main(options):
         # MATLAB's crop would be meaningless on an unreshaped array.
         if options.useEFOV and not options.useMultiResolutionVolumes:
             if options.transaxialEFOV:
-                # MATLAB crops both x and y with the same nTrans computed from Nx.
-                nTrans = int((int(options.Nx[0]) - int(options.NxOrig)) // 2)
-                if nTrans > 0:
-                    output = output[nTrans:-nTrans, nTrans:-nTrans, ...]
+                startX = (int(options.Nx[0]) - int(options.NxOrig)) // 2 - int(options.eFOVShift_Nx)
+                startY = (int(options.Ny[0]) - int(options.NyOrig)) // 2 - int(options.eFOVShift_Ny)
+                output = output[startX:startX + int(options.NxOrig), startY:startY + int(options.NyOrig), ...]
             if options.axialEFOV:
-                nAxial = int((int(options.Nz[0]) - int(options.NzOrig)) // 2)
-                if nAxial > 0:
-                    output = output[:, :, nAxial:-nAxial, ...]
+                startZ = (int(options.Nz[0]) - int(options.NzOrig)) // 2 - int(options.eFOVShift_Nz)
+                output = output[:, :, startZ:startZ + int(options.NzOrig), ...]
         if options.subsets == 1 and options.storeFP:
             FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins, options.Niter), order = 'F')
         elif options.storeFP and options.subsets > 1 and options.subsetType >= 8 and not options.FDK:

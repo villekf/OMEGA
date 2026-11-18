@@ -813,6 +813,7 @@ inline std::vector<AttGroupType6> attGroupsType6(const scalarStruct& inputScalar
 		}
 	}
 	return groups;
+}
 
 
 /// <summary>
