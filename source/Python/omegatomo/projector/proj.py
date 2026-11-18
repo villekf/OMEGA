@@ -250,7 +250,9 @@ class projectorClass:
     only_sinos = False
     only_reconstructions = False
     usingLinearizedData = False
-    errorChecking = False
+    # As in MATLAB, False skips the algorithm/prior selection checks of reconstructions_main. OMEGAErrorCheck always runs
+    # because it also derives values that the reconstruction needs.
+    errorChecking = True
     no_data_load = False
     fill_sinogram_gaps = False
     # Gap filling (pseudo detectors) method: 'fillmissing' (interpolation along the radial and angular dimensions, averaged).
@@ -676,7 +678,32 @@ class projectorClass:
     dualLayerSubmodule = False
     storeResidual = False
     useFDKWeights = True
+    # If true, the measurements of the backprojection of projector type 4 (CT) are stored as a 2D layered texture (one layer per
+    # projection) instead of a 3D texture. The results are identical, but the backprojection is faster. With projector type 5 the
+    # integral image of the projections is stored the same way (one layer per projection); not used with the curved detector of
+    # helical CT. Switched off automatically if a subset has more projections than the device supports layers (usually 2048),
+    # with Metal and when buffers are used instead of textures. Default is true.
     useLayeredBP = True
+    # If true, the integral images of the forward projection of projector type 5 are stored as 2D layered textures (one layer per
+    # image slice) instead of 3D textures. The results are identical, but the forward projection is faster. Switched off
+    # automatically if the volume has more slices in the x- or y-direction than the device supports layers (usually 2048), with
+    # Metal and when buffers are used instead of textures. Default is true.
+    useLayeredFP = True
+    # Number of detector columns computed by each thread in the forward projection of projector type 5. The footprint of the first
+    # column is reused for the others, which makes the forward projection faster. This is exact only when the detector columns are
+    # parallel to the z-axis and the detector rows are perpendicular to it, i.e. when the detector panel is not tilted or rotated in
+    # its plane. With such panels (for example a non-zero pitchRoll or custom direction vectors) values larger than 1 are
+    # approximate: the error is about 0.1 % for rotations of a few milliradians and about 2 % at 10 degrees. Use 1 in such cases,
+    # the forward projection is then about 1.6 times slower. A flipped column direction is handled exactly with any value.
+    # Default is 8.
+    NVOXELSFP = 8
+    # Number of voxels in the axial (z) direction computed by each thread in the backprojection of projector type 5. Two of the four
+    # integral image values of the previous voxel are reused, which makes the backprojection about two times faster. This is exact when
+    # the detector panel is not tilted or rotated in its plane. With such panels (for example a non-zero pitchRoll or custom direction
+    # vectors) values larger than 1 are approximate: for rotations of a few milliradians the effect on the reconstruction is below 0.1 %,
+    # but the error grows linearly with the rotation and with this value. Use 1 if the panel is rotated by more than about half a degree.
+    # The curved detector of helical CT always uses 1. Default is 8.
+    NVOXELS5 = 8
     useIndexBasedReconstruction = False
     trIndex = np.empty(0, dtype = np.uint16)
     axIndex = np.empty(0, dtype = np.uint16)
@@ -1357,6 +1384,10 @@ class projectorClass:
         # checks (e.g. span vs. ring_difference, which relies on seeing NSinos still at its
         # pre-list-mode value) observe, so only self.listmode is set early.
         self.listmode = 1 if (self._isListModeCandidate() or self.useIndexBasedReconstruction) else 0
+        # ordinaryPoisson is an internal flag that is always derived here (a value cached by an earlier
+        # addProjector() call must not survive a change of corrections_during_reconstruction).
+        # OMEGAErrorCheck() may set it to False for the algorithms that precorrect the data
+        self.ordinaryPoisson = self.corrections_during_reconstruction
         self.OMEGAErrorCheck()
         # Defaults that depend on other options (setMissingValues.m). Resolved here, after cr_pz, dPitchX/Y and
         # the number of subsets are final and before any of the values is read (coordinates, projector
@@ -1407,8 +1438,6 @@ class projectorClass:
             self._checkTOFCenter()
         else:
             self.sigma_x = 0.
-        if self.ordinaryPoisson is None:
-            self.ordinaryPoisson = self.corrections_during_reconstruction
         compact_mask_size = self.nRowsD * self.nColsD * self.nHeads if self.SPECT else -1
         valid_projection_mask_sizes = (self.nRowsD * self.nColsD, self.nRowsD * self.nColsD * self.nProjections, compact_mask_size)
         if self.maskFP.size > 1 and ((not(self.maskFP.size in valid_projection_mask_sizes)
@@ -1419,8 +1448,18 @@ class projectorClass:
                 raise ValueError('Incorrect size for the forward projection mask! Must be the size of a single sinogram image [' + str(self.Nang) + ' ' + str(self.Ndist) + '] or 3D stack [' + str(self.Nang) + ' ' + str(self.Ndist) + ' ' + str(self.NSinos) + ']')
         elif self.maskFP.size > 1 and ((self.CT or self.SPECT) and self.maskFP.size in valid_projection_mask_sizes or (not self.CT and not self.SPECT) and (self.maskFP.size == self.Nang * self.Ndist or self.maskFP.size == self.Nang * self.Ndist * self.NSinos)):
             self.useMaskFP = True
-            if (self.maskFP.ndim == 3):
-                self.maskFPZ = self.maskFP.shape[2]
+            # Number of mask images from the element count, so flat (1D) masks are handled too
+            if self.CT or self.SPECT:
+                self.maskFPZ = int(self.maskFP.size // (self.nRowsD * self.nColsD))
+            else:
+                self.maskFPZ = int(self.maskFP.size // (self.Nang * self.Ndist))
+            if self.SPECT and self.maskFPZ == self.nHeads and self.maskFP.size != self.nRowsD * self.nColsD * self.nHeads:
+                raise ValueError('Detector-indexed forward mask must contain one image for each detector head.')
+            # The mask half of the CPU check is here (not in OMEGAErrorCheck) because maskFPZ is only known now
+            if self.SPECT and self.implementation == 2 and self.useCPU and self.maskFPZ > 1 and self.maskFPZ == self.nHeads and self.maskFPZ != self.nProjections:
+                raise ValueError('Detector-head indexed normalization/forward projection mask (nRowsD x nColsD x '
+                                  'nHeads) is not supported by the CPU implementation. Use a GPU implementation or '
+                                  'supply one image per projection.')
             self.maskFP = np.asfortranarray(self.maskFP)
         else:
             self.useMaskFP = False
@@ -1432,11 +1471,11 @@ class projectorClass:
         elif self.maskBP.size == self.Nx * self.Ny or self.maskBP.size == self.Nx * self.Ny * self.Nz:
             # With usePriorMask the mask is not applied in the backprojection, as in MATLAB (projectorClass.m)
             self.useMaskBP = not self.usePriorMask
-            if (self.maskBP.ndim == 3):
-                self.maskBPZ = self.maskBP.shape[2]
+            self.maskBPZ = int(self.maskBP.size // (int(np.asarray(self.Nx).flat[0]) * int(np.asarray(self.Ny).flat[0])))
             self.maskBP = np.asfortranarray(self.maskBP)
         else:
             self.useMaskBP = False
+            self.usePriorMask = False  # no valid maskBP: nothing to use as a prior mask
         if self.maskBP.dtype != np.uint8:
             self.maskBP = self.maskBP.astype(np.uint8)
         # list_mode_format = False
@@ -1942,6 +1981,100 @@ class projectorClass:
     def _filterWindowMessage(self, prefix):
         return prefix + self._FILTER_WINDOW_TEXT.get(self.filterWindow, ' (no windowing).')
 
+    def _checkAlgorithmSelection(self):
+        """
+        Port of checkAlgorithmSelection.m: checks that the selected algorithm(s) and prior(s) form an allowed
+        combination (a MAP algorithm without a prior sets beta to zero with a warning, a prior without a MAP
+        algorithm is disabled with a warning). Called only from reconstructions_main; custom algorithms that use
+        the projector as an operator select no algorithm.
+        """
+        if self.compute_normalization or self.only_sinos:
+            return
+        mapAlgorithms = ['OSL_OSEM', 'BSREM', 'MBSREM', 'ROSEM_MAP', 'OSL_RBI', 'OSL_COSEM', 'PKMA', 'SPS', 'PDHG', 'PDHGKL',
+                         'PDHGL1', 'PDDY', 'CV', 'SAGA', 'BB', 'SART', 'ASD_POCS']
+        nonMapAlgorithms = ['OSEM', 'MRAMLA', 'RAMLA', 'ROSEM', 'RBI', 'DRAMA', 'COSEM', 'ECOSEM', 'ACOSEM', 'LSQR', 'CGLS',
+                            'FISTA', 'FISTAL1', 'FDK']
+        varPrior = ['MRP','quad','Huber','L','FMH','weighted_mean','TV','hyperbolic','AD','APLS','TGV','NLM','RDP','GGMRF','ProxTV','custom']
+        selectedMAP = [name for name in mapAlgorithms if (self.OSL_COSEM > 0 if name == 'OSL_COSEM' else getattr(self, name, False))]
+        selectedPriors = [name for name in varPrior if getattr(self, name, False)]
+        MAP = len(selectedMAP) > 0
+        PRIOR = len(selectedPriors) > 0
+        reko = []
+        for name in nonMapAlgorithms:
+            if getattr(self, name, False):
+                reko.append(name)
+                break
+        for name in mapAlgorithms:
+            if name == 'OSL_COSEM':
+                if self.OSL_COSEM > 2 or self.OSL_COSEM < 0:
+                    raise ValueError('Unsupported COSEM-OSL method selected!')
+                if self.OSL_COSEM == 0:
+                    continue
+                if self.OSL_COSEM == 1 and not PRIOR:
+                    raise ValueError('ACOSEM-OSL selected, but no prior has been selected.')
+                if self.OSL_COSEM == 2 and not PRIOR:
+                    raise ValueError('COSEM-OSL selected, but no prior has been selected.')
+                if len(selectedPriors) > 1:
+                    raise ValueError('Only one prior can be used at a time with COSEM-OSL')
+                reko.append(name)
+            elif getattr(self, name, False):
+                ch = name.replace('_', '-')
+                if not PRIOR:
+                    print(f'Warning: {ch} selected, but no prior has been selected.')
+                    self.beta = 0
+                reko.append(ch)
+        if len(reko) == 0:
+            raise ValueError('No reconstruction method selected!')
+        if MAP:
+            if self.TV:
+                if self.TV_use_anatomical:
+                    if self.TVtype not in (1, 2, 3):
+                        raise ValueError('Unsupported TV type selected.')
+                elif self.TVtype not in (1, 2, 3, 4):
+                    raise ValueError('Unsupported TV type selected.')
+            if self.weighted_mean and self.mean_type not in (1, 2, 3, 4, 5, 6):
+                raise ValueError('Unsupported mean type selected.')
+            if self.AD:
+                if self.FluxType not in (1, 2):
+                    raise ValueError('FluxType has to be either 1 or 2.')
+                if self.DiffusionType not in (1, 2) and self.implementation == 2:
+                    raise ValueError('DiffusionType has to be either 1 or 2.')
+        else:
+            for name in selectedPriors:
+                print(f'Warning: {name} selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
+                setattr(self, name, False)
+
+    def _afDeviceInfo(self):
+        """Return (description, platformName) of the selected ArrayFire device.
+
+        description is the device text shown in the verbose printout and platformName is the device string that
+        starts with the OpenCL platform name ('' when the device was not found). The caller handles the
+        ImportError/OSError/RuntimeError of importing arrayfire.
+        """
+        import arrayfire as af
+        description = ''
+        try:
+            if not self.useCUDA and af.get_active_backend() != 'opencl':
+                af.set_backend('opencl')
+            info = af.device.info_str()
+            loc = info.find('[' + str(self.deviceNum) + ']')
+            if loc == -1:
+                loc = info.find('-' + str(self.deviceNum) + '-')
+            loc2 = info[loc:].find('(Compute')
+            description = info[loc + 4 : loc + loc2 - 1]
+        except Exception:
+            af.set_backend(af.BackendType.opencl)
+            info = af.info_string()
+            loc = info.find('[' + str(self.deviceNum) + ']')
+            if loc == -1:
+                loc = info.find('-' + str(self.deviceNum) + '-')
+            loc2 = info[loc:].find('MB')
+            description = info[loc + 4 : loc + loc2 + 2]
+        platformName = ''
+        if not self.useCUDA and loc != -1:
+            platformName = info[loc + 4:]
+        return description, platformName
+
     def OMEGAErrorCheck(self):
         if self.CT and self.normalization_correction:
             # CT normalization: one map of the detector or one value for each measurement (the rest of the CT normalization
@@ -1985,8 +2118,7 @@ class projectorClass:
             # functions.hpp's #elif defined(CPU) branch), a separate plain C++ projector with no
             # DetectorVector/per-head indexing at all.
             if self.implementation == 2 and self.useCPU and (
-                (self.normalization_correction and self.normZ == self.nHeads and self.normZ != self.nProjections) or
-                (self.useMaskFP and self.maskFPZ > 1 and self.maskFPZ == self.nHeads and self.maskFPZ != self.nProjections)
+                (self.normalization_correction and self.normZ == self.nHeads and self.normZ != self.nProjections)
             ):
                 raise ValueError('Detector-head indexed normalization/forward projection mask (nRowsD x nColsD x '
                                   'nHeads) is not supported by the CPU implementation. Use a GPU implementation or '
@@ -2074,9 +2206,19 @@ class projectorClass:
                              'use another subset type, fewer planes (larger span) or a single subset.')
         # Subset type 6 groups n_angles degrees per subset (180 / n_angles subsets for 2D and 360 / n_angles for 3D data)
         if (not self.CT and not self.SPECT and not self.listmode and not self.useIndexBasedReconstruction and not self.use_raw_data
-                and self.subsets > 1 and self.subsetType == 6
-                and (not hasattr(self, 'n_angles') or np.size(self.n_angles) != 1 or self.n_angles < 1 or 180 % self.n_angles != 0)):
-            raise ValueError('Subset type 6 requires options.n_angles to be a positive number that divides 180 evenly!')
+                and self.subsets > 1 and self.subsetType == 6):
+            try:
+                # Numeric scalars only (same as MATLAB): None, strings and lists are rejected
+                if not isinstance(self.n_angles, (int, float, np.number, np.bool_, np.ndarray)):
+                    raise TypeError('n_angles is not numeric')
+                nAng = np.asarray(self.n_angles, dtype=float)
+                nAngOk = nAng.size == 1 and bool(np.isfinite(nAng.item())) and nAng.item() >= 1 and 180 % nAng.item() == 0
+            except (TypeError, ValueError, AttributeError):
+                nAngOk = False
+            if not nAngOk:
+                raise ValueError('Subset type 6 requires options.n_angles to be a positive number that divides 180 evenly!')
+            if not isinstance(self.n_angles, (int, float)):
+                self.n_angles = nAng.item()
         if self.useIndexBasedReconstruction and self.projector_type not in [1, 2, 3, 4, 11, 14, 12, 13, 21, 22, 23, 24, 31, 32, 33, 34, 41, 42, 43, 44]:
             raise ValueError('Index-based reconstruction only supports projector types 1-4!')
         if self.useIndexBasedReconstruction:
@@ -2101,12 +2243,16 @@ class projectorClass:
                 print("Number of time steps is less than one. Using one time step.")
                 self.partitions = 1
                 self.Nt = 1
-        if self.Nt == 1 and (self.temporal_smoothness or self.temporalTV):
+        # self.Nt is only set later in addProjector, so detect dynamic data from SinM/partitions here
+        nFrames = max(int(self.Nt), self._earlyFrameCount())
+        if nFrames == 1 and (self.temporal_smoothness or self.temporalTV):
             print('Temporal regularization selected, but using static data. No temporal regularization will be done.')
             self.temporal_smoothness = False
             self.temporalTV = False
-        elif self.Nt > 1 and self.temporal_smoothness and self.temporalTV:
+        elif nFrames > 1 and self.temporal_smoothness and self.temporalTV:
             raise ValueError('Both temporal smoothness prior and temporal TV selected! Select only one!')
+        if nFrames > 1 and self.ASD_POCS and (self.temporal_smoothness or self.temporalTV):
+            raise ValueError('Temporal priors are not supported with ASD-POCS')
         if self.start > self.end:
             raise ValueError("Start time is later than end time!")
         
@@ -2177,7 +2323,7 @@ class projectorClass:
         if self.hyperbolic and self.implementation != 2:
             raise ValueError('Hyperbolic prior is only available when using implementation 2!')
         elif self.implementation == 2 and self.TV and self.TVtype == 3:
-            # Port of OMEGA_error_check.m:361-370: TV type 3 is really the
+            # Port of the TV type 3 handling in OMEGA_error_check.m: TV type 3 is really the
             # hyperbolic prior when using implementation 2, so switch the
             # active prior over before prepass.py computes any prior weights
             # (TVPrepass/etc., called later from prepassPhase) and before the
@@ -2199,6 +2345,9 @@ class projectorClass:
                 raise ValueError('Multi-resolution image-domain attenuation is not implemented in the native C++ CPU reconstruction path.')
         if self.APLS and self.MAP and not isinstance(self.APLS_ref_image, np.ndarray) and not os.path.exists(self.APLS_ref_image):
             raise FileNotFoundError('APLS selected, but the anatomical reference image was not found on path!')
+        if np.size(self.epps) > 1:
+            print('Epsilon has to be a scalar value! Using the default value (1e-6).')
+            self.epps = 1e-6
         if self.epps <= 0:
             print('Epsilon value is zero or less than zero; must be a positive value. Using the default value (1e-6).')
             self.epps = 1e-6
@@ -2281,9 +2430,17 @@ class projectorClass:
                 raise ValueError('Anatomical weighting for NLM (NLM_use_anatomical) is not supported with largeDims!')
             if self.maskBP.ndim == 3 and self.maskBP.shape[2] > 1:
                 raise ValueError('A 3D backprojection/prior mask is not supported with largeDim! Use a 2D (transaxial) mask instead.')
+            # The FISTA acceleration stores the previous iterate, but with largeDim the image is processed in chunks
+            if self.FISTA_acceleration:
+                raise ValueError('FISTA acceleration (FISTA_acceleration) is not supported with largeDim!')
         if self.useCUDA and self.useCPU:
             raise ValueError('Both CUDA and CPU selected! Select only one!')
-        
+        if self.deviceNum < 0:
+            raise ValueError('Device number (options.use_device) has to be zero or positive!')
+
+        if self.TOF_bins_used > 1 and self.use_raw_data and not self.CT and not self.SPECT:
+            raise ValueError('TOF data is only available with sinogram data. Disable raw data (options.use_raw_data = False).')
+
         if self.TOF_bins_used > 1 and (self.projector_type not in [1, 11, 2, 22, 12, 21, 23, 32, 24, 42, 3, 33, 31, 13, 4, 44, 41, 14, 43, 34]) and not self.CT and not self.SPECT:
             raise ValueError('TOF is currently only supported with improved Siddon (projector_type = 1), orthogonal distance-based ray tracer (projector_type = 2), volume of intersection (projector_type = 3) and interpolation-based projector (projector_type = 4)')
         
@@ -2294,10 +2451,13 @@ class projectorClass:
             raise ValueError('TOF enabled, but the TOF FWHM (self.TOF_FWHM) is zero. FWHM must be nonzero.')
         
         if self.corrections_during_reconstruction and (self.scatter_correction or self.randoms_correction) and (self.PDHG or self.PDHGL1 or self.FISTA or self.LSQR or self.CGLS or self.FISTAL1 or self.PDDY):
-            print('Randoms/scatter correction cannot be applied during the reconstruction with the selected algorithm! Attempting precorrection!')
+            if self.precorrect is not None and not self.precorrect:
+                raise ValueError('Randoms/scatter correction cannot be applied during the reconstruction with the selected algorithm and the measurement data has to be precorrected! '
+                                 'Set precorrect = True (or leave it unset) or disable the randoms/scatter correction.')
+            if self.precorrect is None:
+                self.precorrect = True
             self.ordinaryPoisson = False
-            # self.scatter_correction = False
-            # self.randoms_correction = False     
+            print('Randoms/scatter correction cannot be applied during the reconstruction with the selected algorithm! The measurement data will be precorrected instead.')
         if self.useIndexBasedReconstruction and (self.randoms_correction or (self.scatter_correction and not self.subtract_scatter)) and self.TOF_bins > 1:
             # Subtracted scatter is the per-event additive term, which is allowed with TOF (the value of the TOF bin of the event)
             raise ValueError('Randoms and/or multiplicative scatter correction cannot be used with index-based reconstruction with TOF data!')
@@ -2344,6 +2504,21 @@ class projectorClass:
             raise ValueError('Parallel beam is not supported with curved helical data!')
         if self.CT and self.useParallelBeam and (self.projector_type % 10 == 5 or (self.projector_type >= 10 and self.projector_type // 10 == 5)):
             raise ValueError('Parallel beam is not supported with projector type 5!')
+        if (self.projector_type if self.projector_type < 10 else self.projector_type // 10) == 5:
+            nColsFP = self.NVOXELSFP
+            if isinstance(nColsFP, (float, np.floating)) and np.isfinite(nColsFP) and float(nColsFP).is_integer():
+                nColsFP = int(nColsFP)
+            if isinstance(nColsFP, (bool, np.bool_)) or not isinstance(nColsFP, (int, np.integer)) or nColsFP < 1:
+                raise ValueError('NVOXELSFP must be an integer >= 1 (the number of detector columns computed by each thread in the type 5 forward projection)!')
+            self.NVOXELSFP = int(nColsFP)
+        # The backprojector is the second digit of a two-digit projector type
+        if self.projector_type == 5 or (self.projector_type >= 10 and self.projector_type % 10 == 5):
+            nVoxZ5 = self.NVOXELS5
+            if isinstance(nVoxZ5, (float, np.floating)) and np.isfinite(nVoxZ5) and float(nVoxZ5).is_integer():
+                nVoxZ5 = int(nVoxZ5)
+            if isinstance(nVoxZ5, (bool, np.bool_)) or not isinstance(nVoxZ5, (int, np.integer)) or nVoxZ5 < 1:
+                raise ValueError('NVOXELS5 must be an integer >= 1 (the number of voxels in the axial direction computed by each thread in the type 5 backprojection)!')
+            self.NVOXELS5 = int(nVoxZ5)
         if self.CT and self.useParallelBeam and (self.useCPU or self.implementation == 4):
             raise ValueError('Parallel beam is not supported with the CPU implementation!')
         if self.subsetType == 12 and not self.offsetCorrection:
@@ -2364,6 +2539,26 @@ class projectorClass:
         if len(neg) > 0:
             self.enforcePositivity = False
             
+        # Only one algorithm and one prior can be selected at a time (also checked when the settings are not printed)
+        if not (self.compute_normalization or self.only_sinos):
+            algorithms = [
+                "OSEM", "MRAMLA", "RAMLA", "RBI", "ROSEM", "DRAMA", "COSEM", "ECOSEM", "ACOSEM", "LSQR", "CGLS", "FDK", "FISTA", "FISTAL1",
+                "OSL_OSEM", "MBSREM", "BSREM", "OSL_RBI", "OSL_COSEM", "ROSEM_MAP", "PKMA", "SPS", "SART", "ASD_POCS", "SAGA", "BB",
+                "PDHG", "PDHGL1", "PDDY", "PDHGKL", "CV" ]
+
+            varPrior = ['MRP','quad','Huber','L','FMH','weighted_mean','TV','hyperbolic','AD','APLS','TGV','NLM','RDP','GGMRF','ProxTV','custom']
+            priors = [name for name in varPrior if getattr(self, name, False)]
+
+            enabled_algorithms = [name for name in algorithms if getattr(self, name, False)]
+
+            if len(enabled_algorithms) > 1:
+                raise ValueError(f"Multiple reconstruction algorithms selected: {enabled_algorithms}")
+            if len(enabled_algorithms) == 0:
+                self.builtin = False
+            # Without a MAP algorithm the priors are disabled (with a warning) by _checkAlgorithmSelection, as in MATLAB
+            if len(priors) > 1 and self.MAP:
+                raise ValueError(f"Multiple priors selected: {priors}")
+
         if self.verbose > 0:
             if self.use_ASCII and self.use_machine == 0:
                 dispi = 'Using ASCII data'
@@ -2409,8 +2604,6 @@ class projectorClass:
                 Nz = self.Nz
             
             if not (self.compute_normalization or self.only_sinos):
-                if self.deviceNum < 0:
-                    raise ValueError('Device number has to be positive!')
                 AFinstalled = False
                 if self.useAF:
                     try:
@@ -2421,58 +2614,20 @@ class projectorClass:
                         AFinstalled = False
                 if AFinstalled and not self.useCPU:
                     dispaus = f"Using implementation {self.implementation} with "
-                    try:
-                        if not self.useCUDA and af.get_active_backend() != 'opencl':
-                            af.set_backend('opencl')
-                        info = af.device.info_str()
-                        loc = info.find('[' + str(self.deviceNum) + ']')
-                        if loc == -1:
-                            loc = info.find('-' + str(self.deviceNum) + '-')
-                        loc2 = info[loc:].find('(Compute')
-                        dispaus += info[loc + 4 : loc + loc2 - 1]
-                    except Exception:
-                        af.set_backend(af.BackendType.opencl)
-                        info = af.info_string()
-                        loc = info.find('[' + str(self.deviceNum) + ']')
-                        if loc == -1:
-                            loc = info.find('-' + str(self.deviceNum) + '-')
-                        loc2 = info[loc:].find('MB')
-                        dispaus += info[loc + 4 : loc + loc2 + 2]
-                    # Atomics are not used with NVIDIA, AMD or POCL OpenCL devices
-                    if not self.useCUDA and loc != -1:
-                        platformName = info[loc + 4:]
-                        if platformName.startswith('NVIDIA') or platformName.startswith('AMD') or platformName.startswith('POCL'):
-                            self.use_64bit_atomics = False
-                            self.use_32bit_atomics = False
+                    description, _platformName = self._afDeviceInfo()
+                    dispaus += description
                     print(dispaus)
                 elif self.useCPU:
                     print('Using CPU-based reconstruction')
                 else:
                     print('Selected device number is ' + str(self.deviceNum))
                     
-                algorithms = [
-                    "OSEM", "MRAMLA", "RAMLA", "RBI", "ROSEM", "DRAMA", "COSEM", "ECOSEM", "ACOSEM", "LSQR", "CGLS", "FDK", "FISTA", "FISTAL1",
-                    "OSL_OSEM", "MBSREM", "BSREM", "OSL_RBI", "OSL_COSEM", "ROSEM_MAP", "PKMA", "SPS", "SART", "ASD_POCS", "SAGA", "BB",
-                    "PDHG", "PDHGL1", "PDDY", "PDHGKL", "CV" ]
-                
-                
-                varPrior = ['MRP','quad','Huber','L','FMH','weighted_mean','TV','hyperbolic','AD','APLS','TGV','NLM','RDP','GGMRF','ProxTV','custom']
-                priors = [name for name in varPrior if getattr(self, name, False)]
-                
-                enabled_algorithms = [name for name in algorithms if getattr(self, name, False)]
-                
                 # Check how many are True
                 if len(enabled_algorithms) == 0:
                     print("No reconstruction method selected! If you are using custom reconstruction, ignore this warning")
-                    self.builtin = False
-                elif len(enabled_algorithms) > 1:
-                    raise ValueError(f"Multiple reconstruction algorithms selected: {enabled_algorithms}")
                 else:
                     print(f"{enabled_algorithms[0]} reconstruction method selected.")
                     
-                if len(priors) > 1:
-                    raise ValueError(f"Multiple priors selected: {priors}")
-                
                 if len(priors) > 0:
                     if not self.NLM:
                         print(f"{priors[0]} prior selected.")
@@ -2930,7 +3085,7 @@ class projectorClass:
                 self.maskPrior[startX : startX + int(self.NxOrig), startY : startY + int(self.NyOrig)] = 1
                 self.NxPrior = np.sum(self.maskPrior[:,int(matlabRound(self.maskPrior.shape[1]/2))], dtype=np.uint32)
                 self.NyPrior = np.sum(self.maskPrior[int(matlabRound(self.maskPrior.shape[0]/2)),:], dtype=np.uint32)
-                if self.useMaskBP:
+                if self.useMaskBP or self.usePriorMask:
                     # MATLAB: maskPrior - uint8(~maskBP), saturating at 0. A 3D maskBP expands the 2D maskPrior along z
                     maskBPE = np.asarray(self.maskBP)
                     if maskBPE.ndim < 2:
@@ -3193,6 +3348,7 @@ class projectorClass:
             ('meanBP', ctypes.c_bool),
             ('useMaskFP', ctypes.c_bool),
             ('useMaskBP', ctypes.c_bool),
+            ('usePriorMask', ctypes.c_bool),
             ('orthTransaxial', ctypes.c_bool),
             ('orthAxial', ctypes.c_bool),
             ('enforcePositivity', ctypes.c_bool),
@@ -3232,6 +3388,9 @@ class projectorClass:
             ('compute_sensitivity_image', ctypes.c_bool),
             ('useFDKWeights', ctypes.c_bool),
             ('useLayeredBP', ctypes.c_bool),
+            ('useLayeredFP', ctypes.c_bool),
+            ('NVOXELSFP', ctypes.c_uint32),
+            ('NVOXELS5', ctypes.c_uint32),
             ('useIndexBasedReconstruction', ctypes.c_bool),
             ('stochasticSubsetSelection', ctypes.c_bool),
             ('useTotLength', ctypes.c_bool),

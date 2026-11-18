@@ -28,7 +28,7 @@ int computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethod
 		}
 		// MAP/Prior-algorithms
 		// Special case for BSREM and ROSEM-MAP
-		MAP(vec.im_os[timestep][0], w_vec.lambda[timestep][iter], vec.dU[timestep], inputScalars.epps);
+		MAP(vec.im_os[timestep][0], w_vec.lambda[timestep][iter], totalPriorGradient(vec, MethodList, timestep), inputScalars.epps);
 		if (inputScalars.verbose >= 3)
 			mexPrint("Regularization for BSREM/ROSEMMAP computed");
 	}
@@ -83,14 +83,20 @@ int computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethod
 		if (inputScalars.saveIter && iter == 0)
 			std::memcpy(&jelppi[timestepOffset], &x0[0], inputScalars.im_dim[0] * sizeof(float));
 		const size_t outputOffset = static_cast<size_t>(slot) * slotStride + timestepOffset;
+		// im_os holds the Krylov vector for LSQR/CGLS except after the last iteration, so the solution iterate is saved instead
+		const af::array* saveSrc = &vec.im_os[timestep][0];
+		if (MethodList.LSQR && vec.fLSQR.size() > timestep && !vec.fLSQR[timestep].empty())
+			saveSrc = &vec.fLSQR[timestep][0];
+		else if (MethodList.CGLS && !vec.fCGLS.empty())
+			saveSrc = &vec.fCGLS[0];
 		if (inputScalars.use_psf && inputScalars.deconvolution) {
-			af::array apu = vec.im_os[timestep][0].copy();
+			af::array apu = saveSrc->copy();
 			deblur(apu, g, inputScalars, w_vec);
 			applySeenMask(apu, vec, inputScalars, timestep, 0);
 			apu.host(&jelppi[outputOffset]);
 		} else {
 			// The never-seen voxels are zeroed in the saved estimate only (see seenMaskUsed), the iterate itself stays unchanged
-			af::array apu = vec.im_os[timestep][0];
+			af::array apu = *saveSrc;
 			applySeenMask(apu, vec, inputScalars, timestep, 0);
 			apu.host(&jelppi[outputOffset]);
 		}

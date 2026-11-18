@@ -366,7 +366,7 @@ else
             temp = options.SinDelayed;
             options.SinDelayed = cell(partitions,1);
             if sum(size(temp{1})) > 1
-                if size(temp{1},1) ~= size(options.Nang)
+                if size(temp{1},1) ~= options.Ndist
                     temp{1} = permute(temp{1},[2 1 3]);
                 end
             end
@@ -378,7 +378,7 @@ else
             temp = options.SinDelayed;
             options.SinDelayed = cell(partitions,1);
             if sum(size(temp)) > 1
-                if size(temp,1) ~= size(options.Nang)
+                if size(temp,1) ~= options.Ndist
                     temp = permute(temp,[2 1 3]);
                 end
             end
@@ -389,14 +389,14 @@ else
             if iscell(options.SinDelayed)
                 for kk = 1 : length(options.SinDelayed)
                     if sum(size(options.SinDelayed{kk})) > 1
-                        if size(options.SinDelayed{kk},1) ~= size(options.Nang)
+                        if size(options.SinDelayed{kk},1) ~= options.Ndist
                             options.SinDelayed{kk} = permute(options.SinDelayed{kk},[2 1 3]);
                         end
                     end
                 end
             else
                 if sum(size(options.SinDelayed)) > 1
-                    if size(options.SinDelayed,1) ~= size(options.Nang)
+                    if size(options.SinDelayed,1) ~= options.Ndist
                         options.SinDelayed = permute(options.SinDelayed,[2 1 3]);
                     end
                 end

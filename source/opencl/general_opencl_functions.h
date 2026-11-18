@@ -768,7 +768,9 @@ __constant sampler_t sampler_MASKFP = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_N
 #define ATAN2 atan2f
 #define ACOS acosf
 #define SQRT sqrtf
-#define RSQRT(x) __frsqrt_rn(x)
+// rsqrtf is a single approximate reciprocal square root instruction, the same as native_rsqrt in OpenCL. The correctly rounded
+// __frsqrt_rn adds a range test and several Newton correction steps to every call, which made the hyperbolic prior about two times slower
+#define RSQRT(x) rsqrtf(x)
 #define LOG logf
 #define CROSS cross
 #define DISTANCE distance
@@ -2913,6 +2915,34 @@ DEVICE void normalizeCurvedCoordinates(float3 xyz,
 ///////////////// COMMON PRIOR AND ALGORITHM FUNCTIONS ////////////////
 ///////////////////////////////////////////////////////////////////////
 // These were added to share as much code with fastPDHG as possible
+
+// Derivative of the (q-)GGMRF potential function, used by both GGMRF and the non-local GGMRF
+#if (defined(NLTYPE) && NLTYPE == 6) || (defined(SWPRIORTYPE) && SWPRIORTYPE == 1)
+// Computes |delta|^(p - 1) / (1 + |delta / c|^(p - q)) * (p - pqc * c^(p - q) * |delta / c|^(p - q) / (1 + |delta / c|^(p - q))) * sign(delta)
+// Both powers are computed from a single logarithm, |delta|^a = exp(a * log(|delta|)), instead of two separate power functions
+// delta must not be zero. logC = log(c) and cpq = c^(p - q) are constants that are computed only once per voxel
+// The host defines GGMRFPEQQ when p == q (|delta / c|^(p - q) is then one) and GGMRFP2 when p == 2 (|delta|^(p - 1) is then |delta|)
+// These are compile-time selections on purpose: branches on p and q inside the neighborhood loops were measurably slower
+DEVICE float GGMRFDerivative(const float delta, const float p, const float q, const float logC, const float cpq, const float pqc) {
+    const float absDelta = fabs(delta);
+#if !defined(GGMRFPEQQ) || !defined(GGMRFP2)
+    const float logDelta = LOG(absDelta);
+#endif
+#ifdef GGMRFPEQQ
+    const float dcpq = FLOAT_ONE;
+#else
+    const float dcpq = EXP((p - q) * (logDelta - logC));
+#endif
+    const float deltapqc = FLOAT_ONE + dcpq;
+#ifdef GGMRFP2
+    const float dp = absDelta;
+#else
+    const float dp = EXP((p - FLOAT_ONE) * logDelta);
+#endif
+    return (dp / deltapqc) * (p - pqc * ((dcpq * cpq) / deltapqc)) * sign(delta);
+}
+#endif
+
 #if defined(NLM_) || defined(FASTNLM) // START SHARED NLM
 
 #ifndef NLTYPE
@@ -2961,9 +2991,28 @@ DEVICE float NLMTexRead(IMAGE3D uIn, const int x, const int y, const int z) {
 #define NLMFETCH(BUF, X, Y, Z) NLMTexRead(BUF, X, Y, Z)
 #endif
 
-// Limit loop unrolling to 128 to avoid too large (machine) code and compilation times
-#define NLM_ITER ((SWINDOWX * 2 + 1) * (SWINDOWY * 2 + 1) * (SWINDOWZ * 2 + 1) * (PWINDOWX * 2 + 1) * (PWINDOWY * 2 + 1) * (PWINDOWZ * 2 + 1))
-#define NLM_UNROLL (NLM_ITER <= 128)
+// Unrolling of the search window loops. Each loop is unrolled only when the code it produces stays small enough: the size is
+// measured as the number of patch distance terms in the unrolled body, i.e. the number of search window iterations at that loop
+// level and inside it times the number of voxels in the patch. The limit is from benchmarks at 256^3 with 14-21 different windows:
+// on NVIDIA (CUDA and OpenCL) unrolling was 1.5-2 times faster than the plain loops up to about 2200 terms and 1.1-1.6 times
+// slower from about 3000 terms on, but on AMD (HIP) it was already 1.2-1.3 times slower at 1125 terms and faster only up to
+// about 900 terms. The innermost loop (z) is thus unrolled the most often and the outermost loop (x) the least often
+#define NLM_PATCH ((PWINDOWX * 2 + 1) * (PWINDOWY * 2 + 1) * (PWINDOWZ * 2 + 1))
+#define NLM_ITER ((SWINDOWX * 2 + 1) * (SWINDOWY * 2 + 1) * (SWINDOWZ * 2 + 1) * NLM_PATCH)
+#define NLM_UNROLL_LIMIT 1024
+#define NLM_UNROLL_K ((SWINDOWZ * 2 + 1) * NLM_PATCH <= NLM_UNROLL_LIMIT)
+#define NLM_UNROLL_J ((SWINDOWY * 2 + 1) * (SWINDOWZ * 2 + 1) * NLM_PATCH <= NLM_UNROLL_LIMIT)
+#define NLM_UNROLL_I (NLM_ITER <= NLM_UNROLL_LIMIT)
+
+// The Gaussian weights of the patch. With CUDA, the host can copy them to the constant memory of the module (NLMCONSTWEIGHTS),
+// which is much faster to read in the innermost loop than the global memory of the kernel argument. OpenCL already uses the
+// constant address space for the kernel argument
+#if defined(CUDA) && defined(NLMCONSTWEIGHTS)
+__constant__ float cGaussianNLM[(PWINDOWX * 2 + 1) * (PWINDOWY * 2 + 1) * (PWINDOWZ * 2 + 1)];
+#define NLMGAUSS(IND) cGaussianNLM[IND]
+#else
+#define NLMGAUSS(IND) gaussian[IND]
+#endif
 
 // Gradient of the NLM prior (and its variants) for a single voxel
 DEVICE float NLMGradient(NLM_IN_T uIn,
@@ -2994,6 +3043,7 @@ DEVICE float NLMGradient(NLM_IN_T uIn,
 #if NLTYPE == 6
     // Precompute for NLGGMRF
     const float cpq = POWR(c, p - q);
+    const float logC = LOG(c);
 #endif
 #ifdef NLMADAPTIVE
     const float pSize = CFLOAT((PWINDOWX * 2 + 1) * (PWINDOWY * 2 + 1) * (PWINDOWZ * 2 + 1));
@@ -3019,15 +3069,15 @@ DEVICE float NLMGradient(NLM_IN_T uIn,
             }
         }
     }
-#if NLM_UNROLL
+#if NLM_UNROLL_I
 #pragma unroll
 #endif
     for (int i = -SWINDOWX; i <= SWINDOWX; i++) {
-#if NLM_UNROLL
+#if NLM_UNROLL_J
 #pragma unroll
 #endif
         for (int j = -SWINDOWY; j <= SWINDOWY; j++) {
-#if NLM_UNROLL
+#if NLM_UNROLL_K
 #pragma unroll
 #endif
             for (int k = -SWINDOWZ; k <= SWINDOWZ; k++) {
@@ -3043,7 +3093,7 @@ DEVICE float NLMGradient(NLM_IN_T uIn,
                         int dim_g = (pz + PWINDOWZ) * (PWINDOWX * 2 + 1) * (PWINDOWY * 2 + 1) + (py + PWINDOWY) * (PWINDOWX * 2 + 1);
 #pragma unroll
                         for (int px = -PWINDOWX; px <= PWINDOWX; px++) {
-                            const float gg = gaussian[dim_g++];
+                            const float gg = NLMGAUSS(dim_g++);
 #ifdef NLMREF
                             const float Pk = NLMFETCH(uRefIn, x + i + px, y + j + py, z + k + pz);
 #else
@@ -3096,13 +3146,10 @@ DEVICE float NLMGradient(NLM_IN_T uIn,
                 output += weight * (uabs - uabs / (fabs(u) / gamma + FLOAT_ONE));
 #elif NLTYPE == 6
                 // NLGGMRF
-                // powr(0, 0) is NaN in OpenCL, so skip identical voxels (their contribution is zero)
+                // Identical voxels are skipped: their contribution is zero and the logarithm of zero is not finite
                 const float delta = uj - uk;
-                if (delta != FLOAT_ZERO) {
-                    const float dcpq = POWR(fabs(delta / c), p - q);
-                    const float deltapqc = FLOAT_ONE + dcpq;
-                    output += weight * (POWR(fabs(delta), p - FLOAT_ONE) / deltapqc) * (p - gamma * ((dcpq * cpq) / deltapqc)) * sign(delta);
-                }
+                if (delta != FLOAT_ZERO)
+                    output += weight * GGMRFDerivative(delta, p, q, logC, cpq, gamma);
 #elif NLTYPE == 7
 				// NLGM (Non-local Geman-McClure)
                 const float delta = uj - uk;
@@ -3272,10 +3319,12 @@ DEVICE float priorGradientSW(SW_IN_T uIn, CONSTANT float* weight,
     float output = FLOAT_ZERO;
     const float uj = SWFETCH(uIn, x, y, z);
 #if SWPRIORTYPE == 0 && defined(PRIORREF)
+    // The reference values are stored as square roots by the host, see below
     const float kj = SWFETCH(uRefIn, x, y, z);
 #endif
 #if SWPRIORTYPE == 1
     const float cpq = POWR(c, p - q);
+    const float logC = LOG(c);
 #endif
 #if SWPRIORTYPE == 2
     const float invSigma = FLOAT_ONE / sigma;
@@ -3306,18 +3355,17 @@ DEVICE float priorGradientSW(SW_IN_T uIn, CONSTANT float* weight,
                 const float divPow2 = FMAD(gamma, fabs(delta), uj + uk);
 #ifdef PRIORREF
                 const float kk = SWFETCH(uRefIn, x + i, y + j, z + k);
-                output += weight[uu] * SQRT(kk * kj) * delta * (gamma * fabs(delta) + uj + 3.f * uk + epps * epps) / (divPow2 * divPow2 + epps);
+                // Geometric mean of the reference values: the stored values are already the square roots
+                output += weight[uu] * (kk * kj) * delta * (gamma * fabs(delta) + uj + 3.f * uk + epps * epps) / (divPow2 * divPow2 + epps);
 #else
                 output += weight[uu] * delta * (gamma * fabs(delta) + uj + 3.f * uk + epps * epps) / (divPow2 * divPow2 + epps);
 #endif
 #endif
 #if SWPRIORTYPE == 1 // GGMRF
+                // Identical voxels are skipped: their contribution is zero and the logarithm of zero is not finite
                 const float delta = uj - uk;
-                if (delta != FLOAT_ZERO) {
-                    const float dcpq = POWR(fabs(delta / c), p - q);
-                    const float deltapqc = FLOAT_ONE + dcpq;
-                    output += weight[uu] * (POWR(fabs(delta), p - FLOAT_ONE) / deltapqc) * (p - pqc * ((dcpq * cpq) / deltapqc)) * sign(delta);
-                }
+                if (delta != FLOAT_ZERO)
+                    output += weight[uu] * GGMRFDerivative(delta, p, q, logC, cpq, pqc);
 #endif
                 uu++;
             }
@@ -3783,19 +3831,24 @@ DEVICE void fastPDHGUpdate(
             rhs += fastBeta * TVGradient(d_imNLM, i.x, i.y, CINT(ind) + fastPriorZOffset, fastTVsigma, fastEpps);
 #endif // FASTNLM / FASTRDP / FASTGGMRF / FASTHYPER / FASTTV dispatch
 #endif // defined(FASTNLM) || defined(FASTRDP) || defined(FASTGGMRF) || defined(FASTHYPER) || defined(FASTTV)
-        // Image-based preconditioning
+        // Image-based preconditioning. The extra (multi-resolution) volumes are not preconditioned, as in the non-fused
+        // path and the power method
 #if FASTPRECOND == 1
         // Diagonal normalization preconditioner (type 0)
-        rhs /= d_precond[idx];
+        if (ii == 0) {
+            rhs /= d_precond[idx];
+        }
 #elif FASTPRECOND == 2
         // EM preconditioner (type 1)
+        if (ii == 0) {
 #if defined(MBSREM) && FASTALG == 1
-        // MBSREM feeds the EM preconditioner the image mirrored about U/2 (alpha == U here)
-        const float precEst = (curEst >= fastAlpha * FLOAT_HALF) ? (fastAlpha - curEst) : curEst;
+            // MBSREM feeds the EM preconditioner the image mirrored about U/2 (alpha == U here)
+            const float precEst = (curEst >= fastAlpha * FLOAT_HALF) ? (fastAlpha - curEst) : curEst;
 #else
-        const float precEst = curEst;
+            const float precEst = curEst;
 #endif
-        rhs *= precEst / d_precond[idx];
+            rhs *= precEst / d_precond[idx];
+        }
 #endif
         // PDHG primal step (shared with auxKernels.cl PDHGUpdate), or the Poisson update (shared with
         // auxKernels.cl PoissonUpdate) for PKMA/MBSREM/BSREM

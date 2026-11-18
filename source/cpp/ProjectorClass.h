@@ -517,6 +517,9 @@ class ProjectorClass {
 		bool raw = false;
 		bool subInd = false;
 		bool priorMask = false;
+		// The prior kernels are built from useImages alone, while the ray-based projector kernels are forced to textures
+		// (useBuffers is false there even with useImages = false), so the prior mask has its own flag
+		bool priorMaskBuffer = false;
 		int NLMRef = 0;
 		bool BPIm = false;
 		bool proj5Im = false;
@@ -1153,12 +1156,9 @@ class ProjectorClass {
 			inputScalars.useBuffers = false;
 			memAlloc.useBuffers = false;
 		}
-		// CT backprojection type 4: read the measurements from a 2D layered texture (one layer per projection) instead of a 3D texture.
-		// Only possible when the projections of every subset fit into the layers of the texture (at most 2048 and the device limit)
-		inputScalars.layeredBP = false;
+		// Largest number of layers of a 2D layered texture: 2048 or the device limit, if lower
 #if !defined(METAL)
-		if (inputScalars.useLayeredBP && inputScalars.CT && inputScalars.BPType == 4 && inputScalars.listmode == 0 && !inputScalars.useBuffers &&
-			!inputScalars.useHelical && !inputScalars.largeDim) {
+		auto layeredTextureLimit = [&]() -> int64_t {
 			int64_t layerLimit = 2048;
 #if defined(CUDA)
 			int maxLayers = 0;
@@ -1170,6 +1170,16 @@ class ProjectorClass {
 			if (statusLayer == CL_SUCCESS && maxLayers > 0)
 				layerLimit = (std::min)(layerLimit, static_cast<int64_t>(maxLayers));
 #endif
+			return layerLimit;
+		};
+#endif
+		// CT backprojection type 4: read the measurements from a 2D layered texture (one layer per projection) instead of a 3D texture.
+		// Only possible when the projections of every subset fit into the layers of the texture (at most 2048 and the device limit)
+		inputScalars.layeredBP = false;
+#if !defined(METAL)
+		if (inputScalars.useLayeredBP && inputScalars.CT && inputScalars.BPType == 4 && inputScalars.listmode == 0 && !inputScalars.useBuffers &&
+			!inputScalars.useHelical && !inputScalars.largeDim) {
+			const int64_t layerLimit = layeredTextureLimit();
 			if (inputScalars.maxProjPerCall > 0 && inputScalars.maxProjPerCall <= layerLimit)
 				inputScalars.layeredBP = true;
 			else if (inputScalars.verbose >= 1)
@@ -1179,6 +1189,62 @@ class ProjectorClass {
 		if (inputScalars.verbose >= 2 && inputScalars.CT && inputScalars.BPType == 4)
 			mexPrint(inputScalars.layeredBP ? "Using a layered 2D texture for the CT backprojection measurements\n" :
 				"Using a 3D texture for the CT backprojection measurements\n");
+		// CT projector type 5: the integral images of the forward projection (one layer per x or y slice of the volume) and the integral
+		// image of the projections in the backprojection (one layer per projection) are read from 2D layered textures instead of 3D
+		// textures. The curved helical geometry does not use it in the backprojection
+		inputScalars.layeredFP5 = false;
+		inputScalars.layeredBP5 = false;
+		if (inputScalars.CT && inputScalars.listmode == 0) {
+			if (inputScalars.useLayeredFP && inputScalars.FPType == 5) {
+				const int64_t layerLimit = layeredTextureLimit();
+				int64_t maxSlices = 0;
+				for (int kk = 0; kk <= inputScalars.nMultiVolumes; kk++)
+					maxSlices = (std::max)(maxSlices, static_cast<int64_t>((std::max)(inputScalars.Nx[kk], inputScalars.Ny[kk])));
+				if (inputScalars.useBuffers) {
+					if (inputScalars.verbose >= 1)
+						mexPrint("useLayeredFP was switched off: buffers are used instead of textures\n");
+				}
+				else if (inputScalars.largeDim) {
+					if (inputScalars.verbose >= 1)
+						mexPrint("useLayeredFP was switched off: largeDim is used\n");
+				}
+				else if (maxSlices > layerLimit) {
+					if (inputScalars.verbose >= 1)
+						mexPrintBase("useLayeredFP was switched off: %lld voxels in the x- or y-direction exceeds the layered texture limit of %lld\n",
+							static_cast<long long>(maxSlices), static_cast<long long>(layerLimit));
+				}
+				else
+					inputScalars.layeredFP5 = true;
+				if (inputScalars.verbose >= 2)
+					mexPrint(inputScalars.layeredFP5 ? "Using layered 2D textures for the integral images of the type 5 forward projection\n" :
+						"Using 3D textures for the integral images of the type 5 forward projection\n");
+			}
+			if (inputScalars.useLayeredBP && inputScalars.BPType == 5) {
+				const int64_t layerLimit = layeredTextureLimit();
+				if (inputScalars.useBuffers) {
+					if (inputScalars.verbose >= 1)
+						mexPrint("useLayeredBP was switched off for projector type 5: buffers are used instead of textures\n");
+				}
+				else if (inputScalars.largeDim) {
+					if (inputScalars.verbose >= 1)
+						mexPrint("useLayeredBP was switched off for projector type 5: largeDim is used\n");
+				}
+				else if (inputScalars.useHelical) {
+					if (inputScalars.verbose >= 1)
+						mexPrint("useLayeredBP was switched off for projector type 5: the curved helical geometry does not support it\n");
+				}
+				else if (inputScalars.maxProjPerCall <= 0 || inputScalars.maxProjPerCall > layerLimit) {
+					if (inputScalars.verbose >= 1)
+						mexPrintBase("useLayeredBP was switched off for projector type 5: %lld projections in a subset exceeds the layered texture limit of %lld\n",
+							static_cast<long long>(inputScalars.maxProjPerCall), static_cast<long long>(layerLimit));
+				}
+				else
+					inputScalars.layeredBP5 = true;
+				if (inputScalars.verbose >= 2)
+					mexPrint(inputScalars.layeredBP5 ? "Using a layered 2D texture for the integral image of the type 5 backprojection\n" :
+						"Using a 3D texture for the integral image of the type 5 backprojection\n");
+			}
+		}
 #endif
 		if (inputScalars.useHalf)
 			ADD_OPT(options, "-DHALF");
@@ -1525,6 +1591,11 @@ class ProjectorClass {
 				ADD_OPT(os_options, FP_FLAG);
 			if (inputScalars.BPType == 5)
 				ADD_OPT(os_options, "-DBP");
+			// Integral images read from 2D layered textures instead of 3D textures (never set with Metal)
+			if (inputScalars.FPType == 5 && inputScalars.layeredFP5)
+				ADD_OPT(os_options, "-DLAYEREDFP5");
+			if (inputScalars.BPType == 5 && inputScalars.layeredBP5)
+				ADD_OPT(os_options, "-DLAYEREDBP5");
 			// BDD uses precomputed values, but you can also use it with the original on the fly calculations
 			// If GEOM5 is not defined, the kernel uses the old format, otherwise it assumes precomputed values
 			// The helical geometry has no detector plane, so it is always computed in the kernel
@@ -1536,16 +1607,17 @@ class ProjectorClass {
 				ADD_OPT(os_options, "-DPROJWINDOW");
 			// Same as above, but for BPType 5
 			if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.fastPDHG) {
-				addFastPDHGOptions(os_options, inputScalars, w_vec, MethodList, inputScalars.pitch ? 1ULL : NVOXELS5);
+				addFastPDHGOptions(os_options, inputScalars, w_vec, MethodList, backprojectionVoxelsType5(inputScalars));
 			}
 #endif
-			if (inputScalars.pitch) {
-				ADD_OPT_INT(os_options, "-DNVOXELS5", 1);
+			ADD_OPT_INT(os_options, "-DNVOXELS5", static_cast<int>(backprojectionVoxelsType5(inputScalars)));
+			if (inputScalars.BPType == 5 && (DEBUG || inputScalars.verbose >= 3)) {
+				mexPrintBase("Type 5 backprojection: %u voxels per thread\n", static_cast<uint32_t>(backprojectionVoxelsType5(inputScalars)));
 			}
-			else {
-				ADD_OPT_INT(os_options, "-DNVOXELS5", NVOXELS5);
+			ADD_OPT_INT(os_options, "-DNVOXELSFP", forwardProjectionColumns(inputScalars));
+			if (inputScalars.FPType == 5 && (DEBUG || inputScalars.verbose >= 3)) {
+				mexPrintBase("Type 5 forward projection: %u detector columns per thread\n", forwardProjectionColumns(inputScalars));
 			}
-			ADD_OPT_INT(os_options, "-DNVOXELSFP", NVOXELSFP);
 			if (inputScalars.FPType == 5) {
 				status = buildBackendProgram(contentFP, programFP, os_options);
 				if (status == BUILD_SUCCESS_VALUE && DEBUG) {
@@ -1709,7 +1781,7 @@ class ProjectorClass {
 			}
 			else
 				ADD_OPT(optionsAux, "-DAF");
-			if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution)) {
+			if (inputScalars.priorMask) {
 				ADD_OPT(optionsAux, "-DMASKPRIOR");
 				if (inputScalars.maskBPZ > 1)
 					ADD_OPT(optionsAux, "-DMASKBP3D");
@@ -1724,6 +1796,10 @@ class ProjectorClass {
 			}
 			if (MethodList.NLM) {
 				ADD_OPT(optionsAux, "-DNLM_");
+#if defined(CUDA) && defined(AF)
+				// The Gaussian weights are read from the constant memory of the module, see fillNLMConstWeights
+				ADD_OPT(optionsAux, "-DNLMCONSTWEIGHTS");
+#endif
 				if (w_vec.NLM_MRP) {
 					ADD_OPT_INT(optionsAux, "-DNLTYPE", 2);
 				}
@@ -1741,6 +1817,11 @@ class ProjectorClass {
 				}
 				else if (w_vec.NLGGMRF) {
 					ADD_OPT_INT(optionsAux, "-DNLTYPE", 6);
+					// Compile-time selections of the GGMRF powers, see GGMRFDerivative in general_opencl_functions.h
+					if (w_vec.GGMRF_p == w_vec.GGMRF_q)
+						ADD_OPT(optionsAux, "-DGGMRFPEQQ");
+					if (w_vec.GGMRF_p == 2.f)
+						ADD_OPT(optionsAux, "-DGGMRFP2");
 				}
 				else if (w_vec.NLGM) {
 					ADD_OPT_INT(optionsAux, "-DNLTYPE", 7);
@@ -1764,6 +1845,11 @@ class ProjectorClass {
 			if (MethodList.GGMRF) {
 				ADD_OPT(optionsAux, "-DGGMRF");
 				ADD_OPT_INT(optionsAux, "-DSWPRIORTYPE", 1);
+				// Compile-time selections of the GGMRF powers, see GGMRFDerivative in general_opencl_functions.h
+				if (w_vec.GGMRF_p == w_vec.GGMRF_q)
+					ADD_OPT(optionsAux, "-DGGMRFPEQQ");
+				if (w_vec.GGMRF_p == 2.f)
+					ADD_OPT(optionsAux, "-DGGMRFP2");
 				ADD_OPT_INT(optionsAux, "-DSWINDOWX", w_vec.Ndx);
 				ADD_OPT_INT(optionsAux, "-DSWINDOWY", w_vec.Ndy);
 				ADD_OPT_INT(optionsAux, "-DSWINDOWZ", w_vec.Ndz);
@@ -2536,9 +2622,35 @@ class ProjectorClass {
 		return status;
 	}
 
+	// True if the backprojection input image (measurements of type 4, integral image of the projections of type 5) is a 2D layered texture
+	inline bool backprojectionImageLayered(const scalarStruct& inputScalars) const {
+		return inputScalars.BPType == 5 ? inputScalars.layeredBP5 : inputScalars.layeredBP;
+	}
+
+	// Number of detector columns handled by one thread of the type 5 forward projection, the user option NVOXELSFP (at least 1). The footprint
+	// of the first column is reused for the others, which is exact only when the detector columns are parallel to the z-axis and the detector
+	// rows are perpendicular to it. With a tilted or in-plane rotated detector values larger than 1 are approximate
+	inline uint32_t forwardProjectionColumns(const scalarStruct& inputScalars) const {
+		return inputScalars.NVOXELSFP > 0U ? inputScalars.NVOXELSFP : 1U;
+	}
+
+	// Number of voxels in the axial direction handled by one thread of the type 5 backprojection, the user option NVOXELS5 (at least 1). Two of
+	// the four integral image values of the previous voxel are reused, which is exact only when the detector panel is not tilted or rotated in
+	// its plane. The curved detector of helical CT always uses 1 because its z-loop has not been validated with several voxels. Metal is not
+	// tested with several voxels either and always uses 1
+	inline uint64_t backprojectionVoxelsType5(const scalarStruct& inputScalars) const {
+#if defined(METAL)
+		return 1ULL;
+#else
+		if (inputScalars.useHelical)
+			return 1ULL;
+		return inputScalars.NVOXELS5 > 0U ? static_cast<uint64_t>(inputScalars.NVOXELS5) : 1ULL;
+#endif
+	}
+
 	// Number of voxels in the axial direction handled by one thread of the helical type 4 or 5 backprojection
 	inline int64_t projectionWindowVoxels(const scalarStruct& inputScalars) const {
-		return inputScalars.BPType == 5 ? (inputScalars.pitch ? 1 : static_cast<int64_t>(NVOXELS5)) : static_cast<int64_t>(NVOXELSHELICAL);
+		return inputScalars.BPType == 5 ? static_cast<int64_t>(backprojectionVoxelsType5(inputScalars)) : static_cast<int64_t>(NVOXELSHELICAL);
 	}
 
 	// Number of axial voxel blocks of volume ii
@@ -3077,6 +3189,10 @@ public:
 	std::vector<size_t> imageCacheDims, intImageCacheDimsXY, intImageCacheDimsYZ;
 	// Cached dimensions of the persistent BP input image/texture (third entry 0 = not yet created)
 	size_t BPImageDims[3] = { 0, 0, 0 };
+	// True if the persistent BP input image/texture is a 2D layered one
+	bool BPImageLayered = false;
+	// True (per volume) if the cached integral images of the type 5 forward projection are 2D layered ones
+	std::vector<char> intImageLayeredXY, intImageLayeredYZ;
 	// ==== End Mod additions ====
 	// fastPDHG requirements
 	// Set to 1 only for the backprojections of the actual reconstruction loop
@@ -3274,7 +3390,7 @@ public:
 			}
 		}
 		if (memAlloc.priorMask) {
-			if (memAlloc.useBuffers) {
+			if (memAlloc.priorMaskBuffer) {
 				getErrorString(cuMemFree(d_maskPriorB));
 			}
 			else {
@@ -3508,6 +3624,10 @@ public:
 		if (MethodList.NLM) {
 			fastNLMUsed = true;
 			ADD_OPT(os_options, "-DFASTNLM");
+#if defined(CUDA) && defined(AF)
+			// The Gaussian weights are read from the constant memory of the module, see fillNLMConstWeights
+			ADD_OPT(os_options, "-DNLMCONSTWEIGHTS");
+#endif
 			if (w_vec.NLM_MRP) {
 				ADD_OPT_INT(os_options, "-DNLTYPE", 2);
 			}
@@ -3525,6 +3645,11 @@ public:
 			}
 			else if (w_vec.NLGGMRF) {
 				ADD_OPT_INT(os_options, "-DNLTYPE", 6);
+				// Compile-time selections of the GGMRF powers, see GGMRFDerivative in general_opencl_functions.h
+				if (w_vec.GGMRF_p == w_vec.GGMRF_q)
+					ADD_OPT(os_options, "-DGGMRFPEQQ");
+				if (w_vec.GGMRF_p == 2.f)
+					ADD_OPT(os_options, "-DGGMRFP2");
 			}
 			else if (w_vec.NLGM) {
 				ADD_OPT_INT(os_options, "-DNLTYPE", 7);
@@ -3581,6 +3706,11 @@ public:
 			fastNLMUsed = true;
 			ADD_OPT(os_options, "-DFASTGGMRF");
 			ADD_OPT_INT(os_options, "-DSWPRIORTYPE", 1);
+			// Compile-time selections of the GGMRF powers, see GGMRFDerivative in general_opencl_functions.h
+			if (w_vec.GGMRF_p == w_vec.GGMRF_q)
+				ADD_OPT(os_options, "-DGGMRFPEQQ");
+			if (w_vec.GGMRF_p == 2.f)
+				ADD_OPT(os_options, "-DGGMRFP2");
 			ADD_OPT_INT(os_options, "-DSWINDOWX", w_vec.Ndx);
 			ADD_OPT_INT(os_options, "-DSWINDOWY", w_vec.Ndy);
 			ADD_OPT_INT(os_options, "-DSWINDOWZ", w_vec.Ndz);
@@ -3703,7 +3833,7 @@ public:
 		// Create the CUDA/HIP context and stream and assign the device
 		int af_id = af::getDevice();
 		CUDeviceID.push_back(afcu::getNativeId(af_id));
-		CLCommandQueue.push_back(afcu::getStream(CUDeviceID[0]));
+		CLCommandQueue.push_back(afcu::getStream(af_id));
 #else
 		// Implementations 3 and 5 do not use ArrayFire
 		// MATLAB's gpuArray memory lives in the device's primary context, so attach to the 
@@ -3793,6 +3923,21 @@ public:
 			std::cerr << "Error while creating program" << std::endl;
 			return -1;
 		}
+#if defined(CUDA) && defined(AF)
+		// The NLM kernels read the Gaussian weights of the patch from the constant memory of their module
+		if (MethodList.NLM) {
+			// The auxiliary program contains the NLM kernel whenever NLM is selected
+			if (memAlloc.auxMod) {
+				if (fillNLMConstWeights(programAux, w_vec, true) != 0)
+					return -1;
+			}
+			// The backprojection program contains the NLM gradient only with fastPDHG
+			if (memAlloc.BPMod) {
+				if (fillNLMConstWeights(programBP, w_vec, false) != 0)
+					return -1;
+			}
+		}
+#endif
 #elif defined(METAL)
 		PROGRAMHANDLE_t programFP, programBP, programAux, programSens;
 		status = createProgram(programFP, programBP, programAux, programSens, header_directory, inputScalars, MethodList, w_vec, local_size, type);
@@ -3927,7 +4072,7 @@ public:
 		if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
 			erotus[0] = inputScalars.nRowsD % local_size[0];
 			if (inputScalars.FPType == 5)
-				erotus[1] = ((inputScalars.nColsD + NVOXELSFP - 1) / NVOXELSFP) % local_size[1];
+				erotus[1] = ((inputScalars.nColsD + forwardProjectionColumns(inputScalars) - 1) / forwardProjectionColumns(inputScalars)) % local_size[1];
 			else
 				erotus[1] = inputScalars.nColsD % local_size[1];
 			if (erotus[1] > 0)
@@ -4063,6 +4208,8 @@ public:
 		const size_t maskPriorDepth = inputScalars.multiResolution
 			? static_cast<size_t>(inputScalars.Nz[0])
 			: static_cast<size_t>(inputScalars.maskBPZ);
+		const size_t maskPriorBytes = sizeof(uint8_t) * static_cast<size_t>(inputScalars.Nx[0]) *
+			static_cast<size_t>(inputScalars.Ny[0]) * maskPriorDepth;
 		// Check for the correct size of the inputs
 		{
 			bool missing = false;
@@ -4200,14 +4347,16 @@ public:
 		// Create the necessary buffers
 		// Distance-based weighting for GGMRF, RDP and hyperbolic prior
 		if (MethodList.GGMRF || (MethodList.RDP && w_vec.RDPLargeNeighbor) || MethodList.hyperbolic) {
-			ALLOC_BUFFER(d_weights, CL_MEM_READ_ONLY, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1);
+			ALLOC_BUFFER(d_weights, CL_MEM_READ_ONLY, sizeof(float) * ((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1));
 			CHECK(status, "\n", (STATUS_t)(-1));
 			memAlloc.GGMRF = true;
 		}
 		memAlloc.tSteps = inputScalars.Nt;
-		if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
-			if (inputScalars.useBuffers) {
-				ALLOC_BUFFER(d_maskPriorB, CL_MEM_READ_ONLY, sizeof(uint8_t) * static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) * maskPriorDepth);
+		if (inputScalars.priorMask) {
+			// Prior kernels select their storage from useImages.
+			memAlloc.priorMaskBuffer = !inputScalars.useImages;
+			if (memAlloc.priorMaskBuffer) {
+				ALLOC_BUFFER(d_maskPriorB, CL_MEM_READ_ONLY, maskPriorBytes);
 			}
 			else {
 				if (inputScalars.maskBPZ > 1) {
@@ -4637,8 +4786,15 @@ public:
 		}
 
 		// assign values to the buffers
+		if (inputScalars.priorMask) {
+			if (memAlloc.priorMaskBuffer) {
+				WRITE_BUFFER(d_maskPriorB, maskPriorBytes, w_vec.maskPrior);
+				CHECK(status, "\n", (STATUS_t)(-1));
+			}
+			memSize += maskPriorBytes;
+		}
 		if (MethodList.GGMRF || (MethodList.RDP && w_vec.RDPLargeNeighbor) || MethodList.hyperbolic) {
-			WRITE_BUFFER(d_weights, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1, w_vec.weights);
+			WRITE_BUFFER(d_weights, sizeof(float) * ((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1), w_vec.weights);
 			memSize += (sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1));
 			CHECK(status, "\n", (STATUS_t)(-1));
 		}
@@ -4703,39 +4859,23 @@ public:
 				CHECK(status, "\n", (STATUS_t)(-1));
 				memSize += (sizeof(uint8_t) * inputScalars.Nz[0]);
 			}
-			if (inputScalars.maskFP || inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution)) {
+			if (inputScalars.maskFP) {
 				if (inputScalars.useBuffers) {
-					if (inputScalars.maskFP) {
-						if (inputScalars.maskFPZ > 1 && !(inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads))
-							for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++)
-								for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-									const uint32_t indD = kk + timestep * inputScalars.subsets;
-									WRITE_BUFFER(d_maskFPB[timestep][kk], sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD * length[indD], &w_vec.maskFP[pituus[indD] * vecSize]);
-								}
-						else {
-							for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++)
-								WRITE_BUFFER(d_maskFPB[timestep][0], sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD *
-									((inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads) ? inputScalars.nHeads : 1ULL), w_vec.maskFP);
-						}
-						CHECK(status, "\n", (STATUS_t)(-1));
-						const size_t maskFPDepth = inputScalars.maskFPZ > 1 ? static_cast<size_t>(inputScalars.maskFPZ) : 1ULL;
-						memSize += sizeof(uint8_t) * static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD) * maskFPDepth;
+					if (inputScalars.maskFPZ > 1 && !(inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads))
+						for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++)
+							for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+								const uint32_t indD = kk + timestep * inputScalars.subsets;
+								WRITE_BUFFER(d_maskFPB[timestep][kk], sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD * length[indD], &w_vec.maskFP[pituus[indD] * vecSize]);
+							}
+					else {
+						for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++)
+							WRITE_BUFFER(d_maskFPB[timestep][0], sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD *
+								((inputScalars.SPECT && inputScalars.maskFPZ == inputScalars.nHeads) ? inputScalars.nHeads : 1ULL), w_vec.maskFP);
 					}
-					if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
-						WRITE_BUFFER(d_maskPriorB, sizeof(uint8_t) * static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) * maskPriorDepth, w_vec.maskPrior);
-						CHECK(status, "\n", (STATUS_t)(-1));
-						memSize += sizeof(uint8_t) * static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) * maskPriorDepth;
-					}
+					CHECK(status, "\n", (STATUS_t)(-1));
 				}
-				else {
-					if (inputScalars.maskFP) {
-						const size_t maskFPDepth = inputScalars.maskFPZ > 1 ? static_cast<size_t>(inputScalars.maskFPZ) : 1ULL;
-						memSize += (sizeof(uint8_t) * static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD) * maskFPDepth);
-					}
-					if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
-						memSize += sizeof(uint8_t) * static_cast<size_t>(inputScalars.Nx[0]) * static_cast<size_t>(inputScalars.Ny[0]) * maskPriorDepth;
-					}
-				}
+				const size_t maskFPDepth = inputScalars.maskFPZ > 1 ? static_cast<size_t>(inputScalars.maskFPZ) : 1ULL;
+				memSize += sizeof(uint8_t) * static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD) * maskFPDepth;
 			}
 			if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) {
 				WRITE_BUFFER(d_angle, sizeof(float) * inputScalars.nProjections, w_vec.angles);
@@ -5473,9 +5613,18 @@ public:
 #if defined(OPENCL)
 	}
 
+	// Global size of the image-domain kernels launched with localPrior: the image size rounded up to a multiple of the
+	// local size (the kernels have bounds checks against N)
+	cl::NDRange imageGlobalPrior(const scalarStruct & inputScalars, const int ii) const {
+		auto roundUp = [](const size_t n, const size_t l) { return l > 0 ? ((n + l - 1) / l) * l : n; };
+		return cl::NDRange(roundUp(static_cast<size_t>(inputScalars.Nx[ii]), static_cast<size_t>(localPrior[0])),
+			roundUp(static_cast<size_t>(inputScalars.Ny[ii]), static_cast<size_t>(localPrior[1])),
+			roundUp(static_cast<size_t>(inputScalars.Nz[ii]), static_cast<size_t>(localPrior[2])));
+	}
+
 	int computeConvolutionF(const scalarStruct & inputScalars, const int ii = 0) {
 		STATUS_t status = SUCCESS_VALUE;
-		cl::NDRange	globalC = { inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], inputScalars.Nz[ii] };
+		cl::NDRange	globalC = imageGlobalPrior(inputScalars, ii);
 
 		FINISH_QUEUE(status, "\n", -1);
 		UINT32_t kernelInd = 0U;
@@ -5501,7 +5650,7 @@ public:
 	template <typename T>
 	int computeConvolution(const scalarStruct & inputScalars, cl::Buffer & input, const int ii = 0, const T & cType = 0) {
 		STATUS_t status = SUCCESS_VALUE;
-		cl::NDRange	globalC = { inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], inputScalars.Nz[ii] };
+		cl::NDRange	globalC = imageGlobalPrior(inputScalars, ii);
 
 		cl::Buffer d_BPApu = cl::Buffer(CLContext, CL_MEM_READ_WRITE, sizeof(T) * inputScalars.im_dim[ii], NULL, &status);
 		FINISH_QUEUE(status, "\n", -1);
@@ -5512,6 +5661,7 @@ public:
 		KARG(kArgs, kernelPSF, kernelInd, inputScalars.g_dim_x);
 		KARG(kArgs, kernelPSF, kernelInd, inputScalars.g_dim_y);
 		KARG(kArgs, kernelPSF, kernelInd, inputScalars.g_dim_z);
+		KARG(kArgs, kernelPSF, kernelInd, d_N[ii]);
 		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelPSF, cl::NDRange(), globalC, localPrior, NULL);
 		OCL_CHECK(status, "\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
@@ -5539,6 +5689,8 @@ public:
 			else
 				global = { static_cast<cl::size_type>(length[indD]), 1, 1 };
 
+		// The unrounded element count, the kernel skips the padding work-items
+		const int64_t nMeas = static_cast<int64_t>(global[0]);
 		size_t erotusF = global[0] % localF[0];
 		if (erotusF > 0)
 			erotusF = localF[0] - erotusF;
@@ -5557,6 +5709,7 @@ public:
 		UINT32_t kernelInd = 0U;
 		KARG(kArgs, kernelForward, kernelInd, d_output);
 		KARG(kArgs, kernelForward, kernelInd, d_meas[osa_iter]);
+		KARG(kArgs, kernelForward, kernelInd, nMeas);
 		if (inputScalars.CT)
 			KARG(kArgs, kernelForward, kernelInd, d_outputCT);
 		if (inputScalars.randoms_correction)
@@ -5575,7 +5728,7 @@ public:
 
 	int computeEstimate(const scalarStruct & inputScalars, const int ii = 0, const int uu = 0, const int timestep = 0) {
 		STATUS_t status = SUCCESS_VALUE;
-		global = { inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], inputScalars.Nz[ii] };
+		global = imageGlobalPrior(inputScalars, ii);
 
 		UINT32_t kernelInd = 0U;
 		KARG(kArgs, kernelEstimate, kernelInd, d_Summ[uu]);
@@ -5644,7 +5797,7 @@ public:
 		// member shared with the backprojection and with the other, multidimensional launches here.
 		WORKRANGE_t localFP = local;
 		if (inputScalars.FPType == 5) {
-			SET_LAUNCH_RANGE3(global, inputScalars.nRowsD + erotus[0], (inputScalars.nColsD + NVOXELSFP - 1) / NVOXELSFP + erotus[1],
+			SET_LAUNCH_RANGE3(global, inputScalars.nRowsD + erotus[0], (inputScalars.nColsD + forwardProjectionColumns(inputScalars) - 1) / forwardProjectionColumns(inputScalars) + erotus[1],
 				length[osa_iter + timestep * inputScalars.subsets], localFP);
 		}
 		else if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
@@ -5733,7 +5886,7 @@ public:
 			mexPrintBase("no_norm = %u\n", no_norm);
 			mexPrintBase("ii = %u\n", ii);
 			mexPrintBase("NVOXELS = %u\n", NVOXELS);
-			mexPrintBase("NVOXELS5 = %u\n", NVOXELS5);
+			mexPrintBase("NVOXELS5 = %u\n", static_cast<uint32_t>(backprojectionVoxelsType5(inputScalars)));
 			mexPrintBase("osa_iter = %u\n", osa_iter);
 			mexPrintBase("timestep = %u\n", timestep);
 			mexPrintBase("memSize = %u\n", memSize);
@@ -6505,6 +6658,7 @@ public:
 				// Projector type 7 always reads the projection data from a buffer, no image/texture is needed
 				if (!inputScalars.useBuffers && inputScalars.BPType != 7) {
 #if defined(CUDA) || defined(HIP)
+					const bool layeredInput = backprojectionImageLayered(inputScalars);
 					CUDA_ARRAY3D_DESCRIPTOR_st arr3DDesc;
 					std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
 					arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_FLOAT;
@@ -6513,7 +6667,7 @@ public:
 					arr3DDesc.Width = inputScalars.nRowsD;
 					arr3DDesc.Depth = length[indD];
 					// 2D layered texture, one layer per projection
-					if (inputScalars.layeredBP)
+					if (layeredInput)
 						arr3DDesc.Flags = CUDA_ARRAY3D_LAYERED;
 					if (inputScalars.BPType == 5) {
 						arr3DDesc.Height++;
@@ -6526,7 +6680,7 @@ public:
 						mexEval();
 					}
 					if (newInput) {
-						if (BPImageDims[0] != arr3DDesc.Width || BPImageDims[1] != arr3DDesc.Height || BPImageDims[2] != arr3DDesc.Depth) {
+						if (BPImageDims[0] != arr3DDesc.Width || BPImageDims[1] != arr3DDesc.Height || BPImageDims[2] != arr3DDesc.Depth || BPImageLayered != layeredInput) {
 							if (BPImageDims[2] != 0) {
 								getErrorString(cuTexObjectDestroy(d_inputImage));
 								getErrorString(cuArrayDestroy(BPArray));
@@ -6555,8 +6709,9 @@ public:
 								viewDesc.width++;
 							}
 							// The resource view is not used with the layered texture
-							status = cuTexObjectCreate(&d_inputImage, &resDescIm, &texDesc, inputScalars.layeredBP ? nullptr : &viewDesc);
+							status = cuTexObjectCreate(&d_inputImage, &resDescIm, &texDesc, layeredInput ? nullptr : &viewDesc);
 							CUDA_CHECK(status, "Image creation failed\n", -1);
+							BPImageLayered = layeredInput;
 							BPImageDims[0] = arr3DDesc.Width;
 							BPImageDims[1] = arr3DDesc.Height;
 							BPImageDims[2] = arr3DDesc.Depth;
@@ -6582,6 +6737,7 @@ public:
 						CUDA_CHECK(status, "Array mem copy failed\n", -1);
 					}
 #elif defined(OPENCL)
+					const bool layeredInput = backprojectionImageLayered(inputScalars);
 					cl::size_type imX = inputScalars.nRowsD;
 					cl::size_type imY = inputScalars.nColsD;
 					cl::size_type imZ = length[indD];
@@ -6598,8 +6754,8 @@ public:
 					cl::detail::size_t_array region = { imX, imY, imZ };
 					// Make the inputs persistent such that they are only created when required
 					if (newInput) {
-						if (BPImageDims[0] != imX || BPImageDims[1] != imY || BPImageDims[2] != imZ) {
-							if (inputScalars.layeredBP) {
+						if (BPImageDims[0] != imX || BPImageDims[1] != imY || BPImageDims[2] != imZ || BPImageLayered != layeredInput) {
+							if (layeredInput) {
 								// 2D image array, one layer per projection (held as a generic image handle in d_inputImage)
 								cl::Image2DArray layeredImage(CLContext, CL_MEM_READ_ONLY, format, imZ, imX, imY, 0, 0, NULL, &status);
 								OCL_CHECK(status, "Image creation failed\n", -1);
@@ -6609,6 +6765,7 @@ public:
 								d_inputImage = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
 								OCL_CHECK(status, "Image creation failed\n", -1);
 							}
+							BPImageLayered = layeredInput;
 							BPImageDims[0] = imX;
 							BPImageDims[1] = imY;
 							BPImageDims[2] = imZ;
@@ -6678,25 +6835,16 @@ public:
 						SET_RANGE3(global, inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], inputScalars.Nz[ii]);
 #endif // END CUDA
 				else if (inputScalars.BPType == 5) {
+					const uint64_t nVoxelsZ5 = backprojectionVoxelsType5(inputScalars);
 #if defined(CUDA) || defined(HIP)
-					if (inputScalars.pitch) {
-						global[0] = (inputScalars.Nx[ii] + erotusBP[0][ii]) / localBP[0];
-						global[1] = (inputScalars.Ny[ii] + erotusBP[1][ii]) / localBP[1];
-						global[2] = inputScalars.Nz[ii];
-#elif defined(OPENCL) || defined(METAL)
-					if (inputScalars.pitch)
-						SET_RANGE3(global, inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], inputScalars.Nz[ii]);
-					else
-						SET_RANGE3(global, inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], (inputScalars.Nz[ii] + NVOXELS5 - 1) / NVOXELS5);
-#endif // END CUDA
-					}
-#if defined(CUDA) || defined(HIP)
-				else {
 					global[0] = (inputScalars.Nx[ii] + erotusBP[0][ii]) / localBP[0];
 					global[1] = (inputScalars.Ny[ii] + erotusBP[1][ii]) / localBP[1];
-					global[2] = (inputScalars.Nz[ii] + NVOXELS5 - 1) / NVOXELS5;
+					global[2] = (inputScalars.Nz[ii] + nVoxelsZ5 - 1) / nVoxelsZ5;
+#elif defined(OPENCL) || defined(METAL)
+					SET_RANGE3(global, inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], (inputScalars.Nz[ii] + nVoxelsZ5 - 1) / nVoxelsZ5);
+#endif // END CUDA
 				}
-				}
+#if defined(CUDA) || defined(HIP)
 			else {
 				global[0] = (inputScalars.Nx[ii] + erotusBP[0][ii]) / localBP[0];
 				global[1] = (inputScalars.Ny[ii] + erotusBP[1][ii]) / localBP[1];
@@ -7073,7 +7221,7 @@ public:
 					// Use either the same cached image texture as with FPTypes 1-4
 					if (fastStep == 0) {
 #if defined(OPENCL)
-						if (inputScalars.layeredBP) {
+						if (backprojectionImageLayered(inputScalars)) {
 							// d_inputImage is an image2d_array here, which cannot be passed as image3d_t. The kernel does not read
 							// this argument when fastStep == 0, so a tiny valid 3D image is used as the placeholder
 							if (!d_dummyImage3D()) {
@@ -7260,6 +7408,43 @@ public:
 		d_sensZ.clear();
 	}
 
+#if defined(CUDA) && defined(AF)
+	/// <summary>
+	/// Copies the Gaussian weights of the NLM patch to the constant memory of a CUDA module (the cGaussianNLM array of the kernels,
+	/// built with -DNLMCONSTWEIGHTS). Has to be called once after the module has been loaded
+	/// </summary>
+	/// <param name="module the CUDA module"></param>
+	/// <param name="w_vec specifies some of the special options/parameters used"></param>
+	/// <param name="required if true, a module without the constant array is an error; if false, such a module is skipped"></param>
+	/// <returns>0 on success, -1 on failure</returns>
+	inline int fillNLMConstWeights(CUmodule& module, const Weighting& w_vec, const bool required) {
+		CUdeviceptr dConst = 0;
+		size_t bytes = 0ULL;
+		CUresult status = cuModuleGetGlobal(&dConst, &bytes, module, "cGaussianNLM");
+		if (status == CUDA_ERROR_NOT_FOUND && !required)
+			return 0;
+		if (status != CUDA_SUCCESS) {
+			getErrorString(status);
+			mexPrint("Failed to find the constant memory array of the NLM weights in the CUDA module\n");
+			return -1;
+		}
+		const size_t nWeights = static_cast<size_t>(w_vec.gaussianNLM.elements());
+		if (bytes != nWeights * sizeof(float)) {
+			mexPrint("The size of the constant memory array of the NLM weights does not match the number of weights\n");
+			return -1;
+		}
+		std::vector<float> hostWeights(nWeights);
+		w_vec.gaussianNLM.host(hostWeights.data());
+		status = cuMemcpyHtoD(dConst, hostWeights.data(), bytes);
+		if (status != CUDA_SUCCESS) {
+			getErrorString(status);
+			mexPrint("Failed to copy the NLM weights to the constant memory of the CUDA module\n");
+			return -1;
+		}
+		return 0;
+	}
+#endif
+
 	/// <summary>
 	/// Sets the fastPDHG work-group size to that of the priors and disables fastPDHG if the local memory tile of the fused prior does not
 	/// fit the local/shared memory of the device. Has to be called after the device is known and before the programs are built
@@ -7282,7 +7467,7 @@ public:
 		// Check whether the prior local neighborhood can be cached in local memory
 		// If not, disable fastPDHG
 		if (inputScalars.fastPDHG && FASTNLMLOCALCACHE && inputScalars.CT && inputScalars.listmode == 0 && (inputScalars.BPType == 4 || inputScalars.BPType == 5)) {
-			const size_t nVoxZ = (inputScalars.BPType == 5) ? (inputScalars.pitch ? 1ULL : static_cast<size_t>(NVOXELS5))
+			const size_t nVoxZ = (inputScalars.BPType == 5) ? static_cast<size_t>(backprojectionVoxelsType5(inputScalars))
 				: (inputScalars.useHelical ? static_cast<size_t>(NVOXELSHELICAL) : static_cast<size_t>(NVOXELS));
 			size_t cacheSize = 0ULL;
 			int memLoc = 0;
@@ -7457,8 +7642,8 @@ public:
 		KARG(kArgs, kernelMed, kernelIndMed, d_W);
 		KARG(kArgs, kernelMed, kernelIndMed, d_N[0]);
 		KARG(kArgs, kernelMed, kernelIndMed, d_NOrig);
-		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			if (inputScalars.useBuffers) {
+		if (inputScalars.priorMask)
+			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelMed, kernelIndMed, d_maskPriorB);
 			}
 			else
@@ -7605,8 +7790,8 @@ public:
 			else {
 				KARG(kArgs, kernelNLM, kernelIndNLM, d_uref);
 			}
-		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			if (inputScalars.useBuffers) {
+		if (inputScalars.priorMask)
+			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelNLM, kernelIndNLM, d_maskPriorB);
 			}
 			else
@@ -7739,8 +7924,8 @@ public:
 		KARG(kArgs, kernelRDP, kernelIndRDP, inputScalars.epps);
 #endif // END CUDA
 		KARG(kArgs, kernelRDP, kernelIndRDP, beta);
-		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			if (inputScalars.useBuffers) {
+		if (inputScalars.priorMask)
+			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelRDP, kernelIndRDP, d_maskPriorB);
 			}
 			else
@@ -7896,8 +8081,8 @@ public:
 		KARG(kArgs, kernelGGMRF, kernelIndGGMRF, c);
 		KARG(kArgs, kernelGGMRF, kernelIndGGMRF, pqc);
 		KARG(kArgs, kernelGGMRF, kernelIndGGMRF, beta);
-		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			if (inputScalars.useBuffers) {
+		if (inputScalars.priorMask)
+			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelGGMRF, kernelIndGGMRF, d_maskPriorB);
 			}
 			else
@@ -7987,8 +8172,8 @@ public:
 		KARG(kArgs, kernelProxTVDiv, kernelIndCPTV, d_qY);
 		KARG(kArgs, kernelProxTVDiv, kernelIndCPTV, d_qZ);
 		KARG(kArgs, kernelProxTVDiv, kernelIndCPTV, vec_opencl.d_rhs_os[0]);
-		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			if (inputScalars.useBuffers) {
+		if (inputScalars.priorMask)
+			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelProxTVDiv, kernelIndCPTV, d_maskPriorB);
 			}
 			else
@@ -8070,8 +8255,8 @@ public:
 			if (!inputScalars.TGV2D)
 				KARG(kArgs, kernelProxTVGrad, kernelIndCPTV, d_vZ);
 		}
-		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			if (inputScalars.useBuffers) {
+		if (inputScalars.priorMask)
+			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelProxTVGrad, kernelIndCPTV, d_maskPriorB);
 			}
 			else
@@ -8156,8 +8341,8 @@ public:
 			KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, d_rXY);
 		KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, sigma2);
 		KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, alpha);
-		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			if (inputScalars.useBuffers) {
+		if (inputScalars.priorMask)
+			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, d_maskPriorB);
 			}
 			else
@@ -8246,8 +8431,8 @@ public:
 		KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_qZ);
 		KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, theta);
 		KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, tau);
-		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			if (inputScalars.useBuffers) {
+		if (inputScalars.priorMask)
+			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_maskPriorB);
 			}
 			else
@@ -8309,34 +8494,51 @@ public:
 	#endif // END CUDA
 		STATUS_t status = SUCCESS_VALUE;
 		UCHAR_t D = static_cast<UCHAR_t>(D2);
+#if !defined(METAL)
+		// 1D launch over all elements, the kernels recover the 3D indices from the grid dimensions
+		int64_t sx = static_cast<int64_t>(size[0]);
+		int64_t sy = static_cast<int64_t>(size[1]);
+		const uint64_t totalU = size[0] * size[1] * size[2];
+		int64_t total = static_cast<int64_t>(totalU);
+#endif
 		//FINISH_QUEUE(status, "Failed to synchronize before element-wise kernel\n", -1);
 		if (mult) {
 			KARG(kArgs, kernelElementMultiply, kernelIndE, d_vector);
 			KARG(kArgs, kernelElementMultiply, kernelIndE, d_input);
 			KARG(kArgs, kernelElementMultiply, kernelIndE, D);
+#if !defined(METAL)
+			KARG(kArgs, kernelElementMultiply, kernelIndE, sx);
+			KARG(kArgs, kernelElementMultiply, kernelIndE, sy);
+			KARG(kArgs, kernelElementMultiply, kernelIndE, total);
+#endif
 			// Compute the kernel
 #if defined(CUDA) || defined(HIP)
-			status = cuLaunchKernel(kernelElementMultiply, gSize[0], gSize[1], gSize[2], 1, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
+			status = cuLaunchKernel(kernelElementMultiply, static_cast<unsigned int>((totalU + 255) / 256), 1, 1, 256, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
 #elif defined(METAL)
-			encoder->dispatchThreads(gSize, MTL::Size::Make(1, 1, 1));
+			encoder->dispatchThreads(gSize, MTL::Size::Make(std::min<NS::UInteger>(256, static_cast<NS::UInteger>(size[0])), 1, 1));
 			encoder->endEncoding();
 			submitMetalCommandBuffer(commandBuffer.get());
 #elif defined(OPENCL)
-			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelElementMultiply, cl::NullRange, gSize, cl::NullRange);
+			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelElementMultiply, cl::NullRange, cl::NDRange(static_cast<cl::size_type>(((totalU + 255) / 256) * 256)), cl::NDRange(256));
 #endif // END CUDA
 		}
 		else {
 			KARG(kArgs, kernelElementDivision, kernelIndE, d_vector);
 			KARG(kArgs, kernelElementDivision, kernelIndE, d_input);
+#if !defined(METAL)
+			KARG(kArgs, kernelElementDivision, kernelIndE, sx);
+			KARG(kArgs, kernelElementDivision, kernelIndE, sy);
+			KARG(kArgs, kernelElementDivision, kernelIndE, total);
+#endif
 			// Compute the kernel
 #if defined(CUDA) || defined(HIP)
-			status = cuLaunchKernel(kernelElementDivision, gSize[0], gSize[1], gSize[2], 1, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
+			status = cuLaunchKernel(kernelElementDivision, static_cast<unsigned int>((totalU + 255) / 256), 1, 1, 256, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
 #elif defined(METAL)
-			encoder->dispatchThreads(gSize, MTL::Size::Make(1, 1, 1));
+			encoder->dispatchThreads(gSize, MTL::Size::Make(std::min<NS::UInteger>(256, static_cast<NS::UInteger>(size[0])), 1, 1));
 			encoder->endEncoding();
 			submitMetalCommandBuffer(commandBuffer.get());
 #elif defined(OPENCL)
-			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelElementDivision, cl::NullRange, gSize, cl::NullRange);
+			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelElementDivision, cl::NullRange, cl::NDRange(static_cast<cl::size_type>(((totalU + 255) / 256) * 256)), cl::NDRange(256));
 #endif // END CUDA
 		}
 		CHECK(status, "Failed to launch the element-wise kernel\n", -1);
@@ -8428,8 +8630,8 @@ public:
 #endif // END CUDA
 		KARG(kArgs, kernelHyper, kernelIndHyper, beta);
 		KARG(kArgs, kernelHyper, kernelIndHyper, d_weights);
-		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			if (inputScalars.useBuffers) {
+		if (inputScalars.priorMask)
+			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelHyper, kernelIndHyper, d_maskPriorB);
 			}
 			else
@@ -8555,8 +8757,8 @@ public:
 		KARG(kArgs, kernelTV, kernelIndTV, sigma);
 		KARG(kArgs, kernelTV, kernelIndTV, smooth);
 		KARG(kArgs, kernelTV, kernelIndTV, beta);
-		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			if (inputScalars.useBuffers) {
+		if (inputScalars.priorMask)
+			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelTV, kernelIndTV, d_maskPriorB);
 			}
 			else

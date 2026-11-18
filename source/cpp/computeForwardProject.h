@@ -19,34 +19,47 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		mexPrintBase("input.dims(0) = %d\n", input.dims(0));
 		mexEval();
 	}
-	if (!inputScalars.CT)
+	// LSQR, CGLS and BB are linear least-squares methods and need a linear operator: the epps only guards the
+	// divisions of the Poisson methods
+	if (!inputScalars.CT && !(MethodList.LSQR || MethodList.CGLS || MethodList.BB))
 		input += inputScalars.epps;
 	if (w_vec.precondTypeMeas[1] && w_vec.filterIter > 0 && kk == w_vec.filterIter) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Filter iterations complete. Switching tau/sigma-values");
 		if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1 || MethodList.ProxTGV || MethodList.ProxTV) {
-			for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-				if (w_vec.sigmaCP[timestep][ii] == 1.f)
-					w_vec.tauCP[timestep][ii] = w_vec.tauCP2[timestep][ii];
-				else if (w_vec.sigmaCP[timestep][ii] == w_vec.tauCP[timestep][ii]) {
-					w_vec.tauCP[timestep][ii] = w_vec.tauCP2[timestep][ii];
-					w_vec.sigmaCP[timestep][ii] = w_vec.tauCP2[timestep][ii];
+			// The switch is done for every timestep, since this function is called separately for each of them
+			for (uint32_t t = 0; t < inputScalars.Nt; t++) {
+				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+					if (w_vec.sigmaCP[t][ii] == 1.f)
+						w_vec.tauCP[t][ii] = w_vec.tauCP2[t][ii];
+					else if (w_vec.sigmaCP[t][ii] == w_vec.tauCP[t][ii]) {
+						w_vec.tauCP[t][ii] = w_vec.tauCP2[t][ii];
+						w_vec.sigmaCP[t][ii] = w_vec.tauCP2[t][ii];
+					}
+					else
+						w_vec.sigmaCP[t][ii] = w_vec.tauCP2[t][ii];
+					if (inputScalars.adaptiveType == 1)
+						w_vec.alphaCP[t][ii] = 1.f;
+					else if (inputScalars.adaptiveType == 2)
+						w_vec.alphaCP[t][ii] = .95f;
 				}
-				else
-					w_vec.sigmaCP[timestep][ii] = w_vec.tauCP2[timestep][ii];
-				if (inputScalars.adaptiveType == 1)
-					w_vec.alphaCP[timestep][ii] = 1.f;
-				else if (inputScalars.adaptiveType == 2)
-					w_vec.alphaCP[timestep][ii] = .95f;
 			}
 			w_vec.LCP = w_vec.LCP2;
 		}
-		if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA)
-			w_vec.lambda[timestep] = w_vec.lambdaFiltered[timestep];
+		if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA) {
+			for (uint32_t t = 0; t < inputScalars.Nt; t++)
+				w_vec.lambda[t] = w_vec.lambdaFiltered[t];
+		}
 		w_vec.precondTypeMeas[1] = false;
 	}
-	if (inputScalars.randoms_correction) {
-		if ((MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS) && !inputScalars.CT && !af::allTrue<bool>(randomsData > 0.f)) {
+	// Ahn & Fessler's modified log-likelihood applies to all LORs with zero additive term. The indices must be
+	// computed before the randoms/scatter are added to the forward projection
+	if ((MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS) && !inputScalars.CT) {
+		if (!inputScalars.randoms_correction) {
+			indeksit = y > 0 && input <= w_vec.epsilon_mramla[timestep];
+			indS = af::anyTrue<bool>(indeksit);
+		}
+		else if (!af::allTrue<bool>(randomsData > 0.f)) {
 			if (inputScalars.TOF && inputScalars.listmode == 0) {
 				// A TOF-resolved additive term (randomsTOF) has a value for each TOF bin, otherwise it is repeated for the bins
 				// (list-mode data has one value per event, in the TOF bin of the event, for both the data and the additive term)
@@ -57,6 +70,8 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				indeksit = y > 0 && randomsData == 0.f && input <= w_vec.epsilon_mramla[timestep];
 			indS = af::anyTrue<bool>(indeksit);
 		}
+	}
+	if (inputScalars.randoms_correction) {
 		if (!inputScalars.CT) {
 			if (DEBUG) {
 				mexPrintBase("input.dims(0) = %d\n", input.dims(0));
@@ -74,14 +89,16 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		}
 	}
 	if (MethodList.CPType && inputScalars.subsetsUsed > 1) {
-		vec.p0CP[timestep] = vec.pCP[timestep][subIter].copy();
+		// Shallow copy: pCP[timestep][subIter] is only ever rebound later (never written in place or through a raw device pointer),
+		// so p0CP keeps the old values
+		vec.p0CP[timestep] = vec.pCP[timestep][subIter];
 	}
 	if (MethodList.ACOSEM || MethodList.OSLCOSEM > 0 || MethodList.OSEM || MethodList.COSEM || MethodList.ECOSEM ||
 		MethodList.ROSEM || MethodList.OSLOSEM || MethodList.ROSEMMAP) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing (OSL-)(A)(E)(C)(R)OSEM");
 		if (inputScalars.CT) {
-			input(input < 0.f) = 0.f;
+			input = af::select(input < 0.f, 0.f, input);
 			if (inputScalars.verbose >= 3)
 				mexPrint("CT mode");
 			if (inputScalars.verbose >= 3 && inputScalars.randoms_correction)
@@ -105,7 +122,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing RAMLA/BSREM/RBI/DRAMA");
 		if (inputScalars.CT) {
-			input(input < 0.f) = 0.f;
+			input = af::select(input < 0.f, 0.f, input);
 			if (inputScalars.verbose >= 3)
 				mexPrint("CT mode");
 			if (inputScalars.verbose >= 3 && inputScalars.randoms_correction)
@@ -120,7 +137,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		else {
 			if (inputScalars.verbose >= 3)
 				mexPrint("PET/SPECT mode");
-			if (inputScalars.listmode > 0 && (w_vec.precondTypeIm[0] || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2]))
+			if (inputScalars.listmode > 0)
 				input = y.as(f32) / (input);
 			else
 				input = y.as(f32) / (input) - 1.f;
@@ -130,7 +147,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing PKMA");
 		if (inputScalars.CT) {
-			input(input < 0.f) = 0.f;
+			input = af::select(input < 0.f, 0.f, input);
 			if (inputScalars.verbose >= 3)
 				mexPrint("CT mode");
 			if (inputScalars.verbose >= 3 && inputScalars.randoms_correction)
@@ -145,7 +162,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		else {
 			if (inputScalars.verbose >= 3)
 				mexPrint("PET/SPECT mode");
-			if (inputScalars.listmode > 0 && (w_vec.precondTypeIm[0] || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2]))
+			if (inputScalars.listmode > 0)
 				input = y.as(f32) / (input);
 			else
 				input = 1.f - y.as(f32) / (input);
@@ -158,7 +175,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing MBSREM/MRAMLA/SPS");
 		if (inputScalars.CT) {
-			input(input < 0.f) = 0.f;
+			input = af::select(input < 0.f, 0.f, input);
 			if (inputScalars.verbose >= 3)
 				mexPrint("CT mode");
 			if (inputScalars.verbose >= 3 && inputScalars.randoms_correction)
@@ -173,12 +190,17 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		else {
 			if (inputScalars.verbose >= 3)
 				mexPrint("PET/SPECT mode");
-			if (inputScalars.randoms_correction && indS) {
-				input(indeksit) = y(indeksit).as(f32) / w_vec.epsilon_mramla[timestep] - 1.f - (y(indeksit).as(f32) / (w_vec.epsilon_mramla[timestep] * w_vec.epsilon_mramla[timestep])) * (input(indeksit) - w_vec.epsilon_mramla[timestep]);
-				input(!indeksit) = y(!indeksit).as(f32) / (input(!indeksit) + inputScalars.epps) - 1.f;
+			if (indS) {
+				input = af::select(indeksit,
+					y.as(f32) / w_vec.epsilon_mramla[timestep] - 1.f - (y.as(f32) / (w_vec.epsilon_mramla[timestep] * w_vec.epsilon_mramla[timestep])) * (input - w_vec.epsilon_mramla[timestep]),
+					y.as(f32) / (input + inputScalars.epps) - 1.f);
+				// The formulas above include the -1 term. For list-mode data it is replaced by the sensitivity image
+				// (subtracted later), so remove it here
+				if (inputScalars.listmode > 0)
+					input += 1.f;
 			}
 			else
-				if (inputScalars.listmode > 0 && (w_vec.precondTypeIm[0] || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2]))
+				if (inputScalars.listmode > 0)
 					input = y.as(f32) / (input);
 				else
 					input = y.as(f32) / (input) - 1.f;
@@ -321,8 +343,8 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				status = applyMeasPreconditioning(w_vec, inputScalars, input, proj, timestep, subIter);
 				if (status != 0)
 					return -1;
-				apu1(apu1 < 0.f) = 0.f;
-				input(input < 0.f) = 0.f;
+				apu1 = af::select(apu1 < 0.f, 0.f, apu1);
+				input = af::select(input < 0.f, 0.f, input);
 				input = .5f * (1.f + vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * input - af::sqrt(af::pow(vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * input - 1.f, 2.) + 4.f * w_vec.sigmaCP[timestep][ii] * apu1));
 			}
 			else {
@@ -350,7 +372,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing SAGA");
 		if (inputScalars.CT) {
-			input(input < 0.f) = 0.f;
+			input = af::select(input < 0.f, 0.f, input);
 			if (inputScalars.verbose >= 3)
 				mexPrint("CT mode");
 			if (inputScalars.verbose >= 3 && inputScalars.randoms_correction)
@@ -365,7 +387,11 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		else {
 			if (inputScalars.verbose >= 3)
 				mexPrint("PET/SPECT mode");
-			input = y.as(f32) / (input) - 1.f;
+			// List-mode data: the -1 term is replaced by the sensitivity image D (subtracted in computeOSEstimates)
+			if (inputScalars.listmode > 0)
+				input = y.as(f32) / (input);
+			else
+				input = y.as(f32) / (input) - 1.f;
 		}
 		status = applyMeasPreconditioning(w_vec, inputScalars, input, proj, timestep, subIter);
 		if (status != 0)
@@ -388,8 +414,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		if (status != 0)
 			return -1;
 	}
-	input(af::isNaN(input)) = inputScalars.epps;
-	input(af::isInf(input)) = inputScalars.epps;
+	input = af::select(af::isInf(input), inputScalars.epps, input);
 	input.eval();
 	if (DEBUG || inputScalars.verbose >= 3) {
 		af::sync();

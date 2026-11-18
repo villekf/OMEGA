@@ -10,10 +10,10 @@ function [HU_a, HU_b] = HU_rescale_coeff(fpathCT, patientPositions)
 %   is matched to the slice whose position is closest to the file's
 %   ImagePositionPatient. This is required when the file names are not in
 %   slice order. Files with the extension .dcm or .ima (case-insensitive)
-%   are used. An error is thrown if the number of files differs from the
+%   and other DICOM files (e.g. without an extension) are used. An error is thrown if the number of files differs from the
 %   number of slices or if the files do not map one-to-one to the slices.
     if nargin < 2 || isempty(patientPositions)
-        files = dir(fullfile(fpathCT, '*.dcm'));
+        files = dicomFiles(fpathCT);
         n = numel(files);
         HU_a = zeros(n, 1);
         HU_b = zeros(n, 1);
@@ -27,10 +27,7 @@ function [HU_a, HU_b] = HU_rescale_coeff(fpathCT, patientPositions)
         HU_b = reshape(HU_b, 1, 1, n);
         return
     end
-    files = dir(fpathCT);
-    files = files(~[files.isdir]);
-    [~, ~, ext] = cellfun(@fileparts, {files.name}, 'UniformOutput', false);
-    files = files(ismember(lower(ext), {'.dcm', '.ima'}));
+    files = dicomFiles(fpathCT);
     n = numel(files);
     nSlices = size(patientPositions, 1);
     if n ~= nSlices
@@ -55,4 +52,18 @@ function [HU_a, HU_b] = HU_rescale_coeff(fpathCT, patientPositions)
     HU_b(sliceIdx) = intercept;
     HU_a = reshape(HU_a, 1, 1, n);
     HU_b = reshape(HU_b, 1, 1, n);
+end
+
+function files = dicomFiles(fpathCT)
+% DICOM files of the folder: all files with the extension .dcm or .ima
+% (case-insensitive) and all other files (e.g. without an extension) that
+% isdicom accepts, i.e. the files that dicomreadVolume reads
+    files = dir(fpathCT);
+    files = files(~[files.isdir]);
+    [~, ~, ext] = cellfun(@fileparts, {files.name}, 'UniformOutput', false);
+    known = ismember(lower(ext), {'.dcm', '.ima'});
+    for ii = find(~known(:))'
+        known(ii) = isdicom(fullfile(fpathCT, files(ii).name));
+    end
+    files = files(known);
 end

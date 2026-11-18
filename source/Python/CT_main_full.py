@@ -398,6 +398,10 @@ options.projector_type = 4
 # centerY = options.Ny / 2
 # radius = options.Nx / 2
 # options.maskBP = ((rows_in_image - centerY)**2 + (columns_in_image - centerX)**2 <= radius**2).astype(np.uint8)
+# Use the backprojection mask only as a prior mask, i.e. the mask is not
+# applied in the backprojection but the prior is computed only inside the
+# mask (requires options.maskBP)
+# options.usePriorMask = True
 
 ### Interpolation length (projector type = 4 only)
 # This specifies the length after which the interpolation takes place. This
@@ -416,6 +420,27 @@ options.dL = 0.5
 # integral image reduces these errors, at a small extra cost.
 options.meanFP = False
 options.meanBP = False
+# Number of detector columns computed by each thread in the forward
+# projection of projector type 5. The footprint of the first column is
+# reused for the others, which makes the forward projection faster. This
+# is exact only when the detector panel is not tilted or rotated in its
+# plane. With such panels (for example a non-zero pitchRoll or custom
+# direction vectors) values larger than 1 are approximate: the error is
+# about 0.1 % for rotations of a few milliradians and about 2 % at 10
+# degrees. Use 1 in such cases, the forward projection is then about 1.6
+# times slower. Default is 8.
+options.NVOXELSFP = 8
+# Number of voxels in the axial (z) direction computed by each thread in the
+# backprojection of projector type 5. Part of the integral image values of the
+# previous voxel are reused, which makes the backprojection about two times
+# faster. This is exact when the detector panel is not tilted or rotated in its
+# plane. With such panels (for example a non-zero pitchRoll or custom direction
+# vectors) values larger than 1 are approximate: for rotations of a few
+# milliradians the effect on the reconstruction is below 0.1 %, but the error
+# grows with the rotation and with this value. Use 1 if the panel is rotated by
+# more than about half a degree. The curved detector of helical CT always uses
+# 1. Default is 8.
+options.NVOXELS5 = 8
 
 ### Use point spread function (PSF) blurring
 # Applies PSF blurring through convolution to the image space. This is the

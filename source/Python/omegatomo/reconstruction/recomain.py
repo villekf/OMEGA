@@ -141,13 +141,12 @@ _POINTER_NAME_OVERRIDES = {
     'RDP_ref': 'RDP_referenceImage',
     'trIndices': 'trIndex',
     'axIndices': 'axIndex',
-    'detectorVector': 'DetectorVector',
 }
 
 # Pointer struct fields set through bespoke logic in transferData() (the
-# type-6 and ODRT PSF lookup buffers), rather than through
+# detector indices and type-6 and ODRT PSF lookup buffers), rather than through
 # _POINTER_NAME_OVERRIDES and _as_ptr().
-_POINTER_SPECIAL_FIELDS = {'blurPlanes', 'blurPlanes2', 'gFilter', 'gFSize', 'gFilterODRT',
+_POINTER_SPECIAL_FIELDS = {'detectorVector', 'blurPlanes', 'blurPlanes2', 'gFilter', 'gFSize', 'gFilterODRT',
                            'blurPlanesF', 'blurPlanes2F', 'CDRFCoeffs6', 'CDRFOnTheFly', 'cdrfModel6', 'bpRot6', 'radiusPerProj', 'CORtoDetectorSurface'}
 
 
@@ -382,10 +381,6 @@ def transferData(options):
         raise ValueError('The TOF-resolved randoms/scatter term (randomsTOF) has {} elements, but the TOF measurements have {}'.format(
             options.SinDelayed.size, options.SinM.size))
 
-    detectorFrames = getattr(options, 'DetectorVectorFrames', None)
-    if options.SPECT and isinstance(detectorFrames, list):
-        options.DetectorVector = np.ascontiguousarray(np.concatenate(detectorFrames), dtype=np.uint32)
-
     attenuation_dims = np.zeros((2, 3), dtype=np.uint32)
     attenuation_spacing = np.zeros((2, 3), dtype=np.float32)
     attenuation_origin = np.zeros((2, 3), dtype=np.float32)
@@ -401,6 +396,7 @@ def transferData(options):
     # selection, explicit type coercion, etc.) rather than a plain
     # options.<field name> (or renamed) lookup.
     scalarValueOverrides = {
+        'CTAttenuation': options.CT_attenuation,
         'localSizeX': int(localSize[0]),
         'localSizeY': int(localSize[1]),
         'localSizeZ': int(localSize[2]),
@@ -457,6 +453,15 @@ def transferData(options):
                 value = getattr(options, attr)
             setattr(options.param, name, ctype(value))
         setFields.add(name)
+
+    # Native reconstruction reads the detector-head indices in frame and subset order.
+    # Keep the packed buffer alive separately from the original geometry order.
+    detectorFrames = getattr(options, 'DetectorVectorFrames', None)
+    if options.SPECT and detectorFrames is not None and len(detectorFrames) > 0:
+        options._nativeDetectorVector = np.ascontiguousarray(np.concatenate(detectorFrames), dtype=np.uint32)
+        options.param.detectorVector = _as_ptr(options, '_nativeDetectorVector', ctypes.c_uint32)
+    else:
+        options.param.detectorVector = _as_ptr(options, 'DetectorVector', ctypes.c_uint32)
 
     # The native type-6 (rotation-dependent PSF blurring) branch uses
     # precomputed per-plane blur indices and the volume-0 filter/size.
@@ -950,6 +955,8 @@ def reconstructions_main(options):
         from omegatomo.util.measurementResampling import _resampleType6Measurements
         _resampleType6Measurements(options)
     options.addProjector()
+    if options.errorChecking:
+        options._checkAlgorithmSelection()
     # A7: per-frame lists / one frame of the randoms and scatter data to the layouts of the dynamic reconstruction
     _expandFrameCorrections(options)
     # These projector types are accepted by the projector class (custom operators), but the native library has no
@@ -1183,9 +1190,20 @@ def reconstructions_main(options):
             options.precondTypeMeas[1] = True
         prepassPhase(options)
         options.tau = 2.5
+        # 32/64-bit atomics are not used with NVIDIA, AMD or POCL OpenCL devices (same as MATLAB's computeImplementation23)
+        if (options.use_64bit_atomics or options.use_32bit_atomics) and options.useAF and not options.useCPU and not options.useCUDA and not getattr(options, 'useMetal', False):
+            try:
+                import arrayfire
+            except (ImportError, OSError, RuntimeError):
+                arrayfire = None
+            if arrayfire is not None:
+                _platformName = options._afDeviceInfo()[1]
+                if _platformName.startswith(('NVIDIA', 'AMD', 'POCL')):
+                    options.use_64bit_atomics = False
+                    options.use_32bit_atomics = False
         if options.use_32bit_atomics and options.use_64bit_atomics:
             options.use_64bit_atomics = False
-        if options.use_64bit_atomics and (options.useCPU or options.useCUDA):
+        if options.use_64bit_atomics and (options.useCPU or options.useCUDA or options.projector_type == 6):
             options.use_64bit_atomics = False
         if options.use_32bit_atomics and (options.useCPU or options.useCUDA):
             options.use_32bit_atomics = False
@@ -1322,26 +1340,36 @@ def reconstructions_main(options):
                 startZ = (int(options.Nz[0]) - int(options.NzOrig)) // 2 - int(options.eFOVShift_Nz)
                 output = output[:, :, startZ:startZ + int(options.NzOrig), ...]
         if options.subsets == 1 and options.storeFP:
-            FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins, options.Niter), order = 'F')
+            if int(options.Nt) > 1:
+                # device_to_host() stores the frames one after another (frame-major, then iteration), nProjections is per frame
+                FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins, options.Niter, options.Nt), order = 'F')
+            else:
+                FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins, options.Niter), order = 'F')
         elif options.storeFP and options.subsets > 1 and options.subsetType >= 8 and not options.FDK:
             # Port of reconstructions_main.m:732-741 for the subsets > 1 (subset
             # type >= 8) case. device_to_host() in reconstructionAF.h fills the
-            # flat FPptr/FPOutput buffer iteration-major, subset-minor (for ii in
-            # 0..subsets*Niter-1: kk = ii // subsets is the iteration, jj = ii %
-            # subsets is the subset), each block being that subset's forward
-            # projection with TOF bins packed into the trailing dimension. Split
-            # it into that same Niter*subsets list of chunks and reshape each to
+            # flat FPptr/FPOutput buffer frame-major, then iteration, then subset
+            # (for each frame tt, for each iteration kk, for each subset jj), each
+            # block being that subset's forward projection with TOF bins packed
+            # into the trailing dimension. Split it into that same
+            # Nt*Niter*subsets list of chunks and reshape each to
             # (nRowsD, nColsD, meas*TOF_bins), mirroring MATLAB's fp{uu} cell.
+            # options.nMeas is cumulative over all the frame-subset blocks
+            # (index tt * subsets + subset), so the per-frame subset sizes are read from it
             fpList = []
             offset = 0
             nMeas = np.asarray(options.nMeas).reshape(-1)
-            for _ in range(int(options.Niter)):
-                for ii in range(int(options.subsets)):
-                    meas = int(nMeas[ii + 1] - nMeas[ii])
-                    block = int(options.nRowsD) * int(options.nColsD) * meas * int(options.TOF_bins)
-                    fpList.append(FPOutput[offset : offset + block].reshape(
-                        (options.nRowsD, options.nColsD, meas * options.TOF_bins), order='F'))
-                    offset += block
+            nSubsets = int(options.subsets)
+            nFrames = int(options.Nt) if nMeas.size >= nSubsets * int(options.Nt) + 1 else 1
+            for tt in range(nFrames):
+                for _ in range(int(options.Niter)):
+                    for ii in range(nSubsets):
+                        idx = tt * nSubsets + ii
+                        meas = int(nMeas[idx + 1] - nMeas[idx])
+                        block = int(options.nRowsD) * int(options.nColsD) * meas * int(options.TOF_bins)
+                        fpList.append(FPOutput[offset : offset + block].reshape(
+                            (options.nRowsD, options.nColsD, meas * options.TOF_bins), order='F'))
+                        offset += block
             FPOutput = fpList
     except Exception as e:
         # Keep the reconstruction even if the output dimensions do not match

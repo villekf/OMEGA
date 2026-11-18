@@ -270,7 +270,7 @@ def imageProperties(options):
     ip['nTimeSteps'] = _py(_get(o, 'Nt', 1))
     ip['offsetAngle'] = _py(o.offangle)
     ip['flippedImage'] = _py(o.flip_image)
-    ip['scatterCorrection'] = _py(o.scatter_correction)
+    ip['scatterCorrection'] = _py(o.scatter_correction or getattr(o, '_scatterPrecorrected', False))
     if isCT:
         ip['Binning'] = _py(o.binning)
         ip['detectorPitchX'] = _py(o.dPitchX)
@@ -293,6 +293,7 @@ def imageProperties(options):
         ip['nSinograms'] = _py(o.NSinos)
         ip['rawDataUsed'] = _py(o.use_raw_data)
         ip['startTime'] = _py(o.start)
+        ip['endTime'] = _py(o.end)
         ip['nRings'] = _py(o.rings)
         if _flag(o, 'use_raw_data'):
             ip['ringDifference'] = _py(o.ring_difference_raw)
@@ -313,8 +314,8 @@ def imageProperties(options):
         ip['arcCorrection'] = _py(o.arc_correction)
         ip['totalTime'] = _py(o.tot_time)
         ip['normalizationCorrection'] = _py(o.normalization_correction)
-        ip['randomsCorrection'] = _py(o.randoms_correction)
-        if _flag(o, 'randoms_correction'):
+        ip['randomsCorrection'] = _py(o.randoms_correction or getattr(o, '_randomsPrecorrected', False))
+        if _flag(o, 'randoms_correction') or _flag(o, '_randomsPrecorrected'):
             ip['randomsVarianceReduction'] = _py(o.variance_reduction)
             ip['randomsSmoothing'] = _py(o.randoms_smoothing)
         ip['gapFilling'] = _py(o.fill_sinogram_gaps)

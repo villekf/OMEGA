@@ -43,14 +43,50 @@ inline af::array Quadratic_prior(const af::array& im, const uint32_t Ndx, const 
 	return grad;
 }
 
+// Huber prior gradient: grad_j = sum_k w_k * clip(x_j - x_k, -delta, delta), where k runs over the neighbours of voxel j.
+// The weight kernel has the sum of the weights in the centre and -w_k elsewhere, so w_k = -kernel(k). The clipping has to be
+// applied to each difference separately (clipping the weighted sum of the differences is not the Huber gradient)
 inline af::array Huber_prior(const af::array& im, const uint32_t Ndx, const uint32_t Ndy, const uint32_t Ndz, const scalarStruct& inputScalars, const af::array& weights_huber, const float delta)
 {
-	af::array grad = Quadratic_prior(im, Ndx, Ndy, Ndz, inputScalars, weights_huber);
-	if (af::sum<dim_t>(delta >= af::abs(af::flat(grad))) == grad.elements() && af::sum<int>(af::flat(grad)) != 0 && inputScalars.verbose > 0)
+	const af::array apu_pad = padding(im, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], Ndx, Ndy, Ndz);
+	const dim_t Nx = inputScalars.Nx[0], Ny = inputScalars.Ny[0], Nz = inputScalars.Nz[0];
+	const af::array im3d = af::moddims(im, Nx, Ny, Nz);
+	const bool is2D = (Ndz == 0 || inputScalars.Nz[0] == 1);
+	const dim_t kx = 2 * Ndx + 1, ky = 2 * Ndy + 1, kz = 2 * Ndz + 1;
+	// The kernel is tiny, so it is copied to the host once
+	std::vector<float> kernel(weights_huber.elements());
+	weights_huber.as(f32).host(kernel.data());
+	af::array grad = af::constant(0.f, Nx, Ny, Nz);
+	// Largest absolute difference, accumulated on the device and reduced once at the end (verbose output only)
+	af::array maxAbs;
+	// A 2D image uses only the central axial slice of the kernel
+	const dim_t kBegin = is2D ? static_cast<dim_t>(Ndz) : 0;
+	const dim_t kEnd = is2D ? static_cast<dim_t>(Ndz) : kz - 1;
+	for (dim_t k = kBegin; k <= kEnd; k++) {
+		for (dim_t j = 0; j < ky; j++) {
+			for (dim_t i = 0; i < kx; i++) {
+				if (i == static_cast<dim_t>(Ndx) && j == static_cast<dim_t>(Ndy) && k == static_cast<dim_t>(Ndz))
+					continue;
+				const float w = -kernel[i + j * kx + k * kx * ky];
+				if (w == 0.f)
+					continue;
+				af::array shifted;
+				if (is2D)
+					shifted = apu_pad(af::seq(static_cast<double>(i), static_cast<double>(i + Nx - 1)), af::seq(static_cast<double>(j), static_cast<double>(j + Ny - 1)), af::span);
+				else
+					shifted = apu_pad(af::seq(static_cast<double>(i), static_cast<double>(i + Nx - 1)), af::seq(static_cast<double>(j), static_cast<double>(j + Ny - 1)),
+						af::seq(static_cast<double>(k), static_cast<double>(k + Nz - 1)));
+				const af::array diff = im3d - shifted;
+				if (inputScalars.verbose > 0)
+					maxAbs = maxAbs.isempty() ? af::abs(diff) : (af::max)(maxAbs, af::abs(diff));
+				grad += w * af::clamp(diff, -static_cast<double>(delta), static_cast<double>(delta));
+			}
+		}
+	}
+	const float maxDiff = (inputScalars.verbose > 0 && !maxAbs.isempty()) ? af::max<float>(maxAbs) : 0.f;
+	if (inputScalars.verbose > 0 && maxDiff > 0.f && delta >= maxDiff)
 		mexPrint("Delta value of Huber prior larger than all the pixel difference values\n");
-	grad(grad > delta) = delta;
-	grad(grad < -delta) = -delta;
-	return grad;
+	return af::flat(grad);
 }
 
 inline af::array FMH(const af::array& im, const uint32_t Ndx, const uint32_t Ndy, const uint32_t Ndz, const scalarStruct& inputScalars, const uint32_t inffi,
@@ -102,7 +138,9 @@ inline af::array Weighted_mean(const af::array& im, const uint32_t Ndx, const ui
 	const af::array& weighted_weights, const float w_sum, const uint32_t mean_type = 1, const bool med_no_norm = false)
 {
 	af::array grad = af::constant(0.f, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0]);
-	const float wsum = af::sum<float>(af::flat(weighted_weights));
+	// w_sum is the precomputed sum of weighted_weights (set together with the weights in the prepass);
+	// the sum is recomputed only if it is not available
+	const float wsum = (std::isfinite(w_sum) && w_sum != 0.f) ? w_sum : af::sum<float>(af::flat(weighted_weights));
 	if (mean_type == 1U) {
 		af::array padd = padding(im, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], Ndx, Ndy, Ndz);
 		if (Ndz == 0 || inputScalars.Nz[0] == 1)
@@ -363,6 +401,57 @@ inline int NLM(ProjectorClass& proj, const af::array& im, Weighting& w_vec, cons
 	return status;
 }
 
+// Curvature bound of the prior for the separable-surrogate step used by SPS and the image preconditioner type 6.
+// For priors whose gradient is linear (or, for Huber, piecewise linear with slope at most one) in the image, grad = K * x with
+// a symmetric kernel K, and the Hessian of the prior is bounded by the Gershgorin bound sum(|K|) (the row sum of the absolute values).
+// This is added to the data curvature in the step size. Priors without a known bound return zero and set unbounded, in which
+// case the step uses only the data curvature. Proximal priors have no gradient step and need no bound.
+inline float separablePriorCurvature(const RecMethods& MethodList, const Weighting& w_vec, bool& unbounded)
+{
+	unbounded = false;
+	float kappa = 0.f;
+	// The order follows applySpatialPrior, where only the first selected prior is applied
+	if (MethodList.MRP)
+		unbounded = true;
+	else if (MethodList.Quad || MethodList.Huber) {
+		const af::array& kernel = MethodList.Quad ? w_vec.weights_quad : w_vec.weights_huber;
+		std::vector<float> K(kernel.elements());
+		kernel.as(f32).host(K.data());
+		for (const float v : K)
+			if (std::isfinite(v))
+				kappa += std::abs(v);
+	}
+	else if (MethodList.WeightedMean) {
+		// With med_no_norm and the arithmetic mean the gradient is x - conv(x, w / sum(w)), i.e. K = delta - w / sum(w),
+		// where w is the full weight kernel including the centre element
+		if (w_vec.med_no_norm && w_vec.mean_type == 1U) {
+			std::vector<float> K(w_vec.weighted_weights.elements());
+			w_vec.weighted_weights.as(f32).host(K.data());
+			float wsum = 0.f;
+			for (const float v : K)
+				if (std::isfinite(v))
+					wsum += v;
+			if (wsum != 0.f) {
+				const size_t centre = K.size() / 2;
+				for (size_t i = 0; i < K.size(); i++) {
+					if (!std::isfinite(K[i]))
+						continue;
+					const float val = K[i] / wsum;
+					kappa += std::abs((i == centre ? 1.f : 0.f) - val);
+				}
+			}
+			else
+				unbounded = true;
+		}
+		else
+			unbounded = true;
+	}
+	else if (MethodList.L || MethodList.FMH || MethodList.TV || MethodList.hyperbolic || MethodList.AD || MethodList.APLS
+		|| MethodList.TGV || MethodList.NLM || MethodList.RDP || MethodList.GGMRF)
+		unbounded = true;
+	return kappa;
+}
+
 
 inline int applySpatialPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const scalarStruct& inputScalars, ProjectorClass& proj, const float beta, const uint32_t timestep, const uint32_t osa_iter = 0, const uint8_t compute_norm_matrix = 0, 
 	const bool iter = false, const int kk = 0) {
@@ -464,7 +553,9 @@ inline int applySpatialPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMeth
 	else if (MethodList.RDP) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing RDP prior gradient");
-		status = RDP(vec.im_os[timestep][0], inputScalars, w_vec.RDP_gamma, proj, *dU, beta, w_vec.RDPref[timestep], w_vec, w_vec.RDPLargeNeighbor, w_vec.RDP_anatomical, kk);
+		// RDPref is empty unless the RDP reference precompute ran
+		const af::array emptyRef;
+		status = RDP(vec.im_os[timestep][0], inputScalars, w_vec.RDP_gamma, proj, *dU, beta, (w_vec.RDPref.size() > timestep) ? w_vec.RDPref[timestep] : emptyRef, w_vec, w_vec.RDPLargeNeighbor, w_vec.RDP_anatomical, kk);
 		if (status != 0)
 			return -1;
 	}
@@ -493,6 +584,11 @@ inline int applyTemporalPrior(
 ) {
     af::array* dUt = nullptr;
 	int status = 0;
+    // MBSREM, MRAMLA and SPS use an ascent-direction rhs (update is im + lam * rhs), so when the temporal
+    // prior gradient is added into rhs_os it has to be subtracted instead
+    const bool ascentRhs = !iter && !(MethodList.RBIOSL || MethodList.OSLOSEM || MethodList.OSLCOSEM || MethodList.POCS || MethodList.SAGA || MethodList.SART)
+        && (MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS);
+    const float betaT = ascentRhs ? -w_vec.beta_temporal : w_vec.beta_temporal;
     for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
         if (iter || (MethodList.RBIOSL || MethodList.OSLOSEM || MethodList.OSLCOSEM || MethodList.POCS || MethodList.SAGA || MethodList.SART)) {
             vec.dUt[timestep] = af::constant(0.f, vec.im_os[timestep][0].elements());
@@ -524,7 +620,7 @@ inline int applyTemporalPrior(
             }
         }
 
-        *dUt += w_vec.beta_temporal * grad;
+        *dUt += betaT * grad;
 
         af::eval(*dUt);
     }

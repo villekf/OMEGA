@@ -155,10 +155,11 @@ for ii = 1 : options.param.nMultiVolumes + 1
         if (options.param.verbose >= 3)
             disp("Computing COSEM/ECOSEM");
         end
+        % D is the sensitivity image divided by the number of subsets, the COSEM family needs the full sensitivity
         if (options.param.ECOSEM)
-            [COSEMApu, im_vectors.C_co] = COSEM(im, rhs, im_vectors.C_co, D, options.param.h, 2, osa_iter);
+            [COSEMApu, im_vectors.C_co] = COSEM(im, rhs, im_vectors.C_co, options.param.subsets .* D, options.param.h, 2, osa_iter);
         else
-            [im, im_vectors.C_co] = COSEM(im, rhs, im_vectors.C_co, D, options.param.h, 2, osa_iter);
+            [im, im_vectors.C_co] = COSEM(im, rhs, im_vectors.C_co, options.param.subsets .* D, options.param.h, 2, osa_iter);
         end
     end
 
@@ -175,7 +176,7 @@ for ii = 1 : options.param.nMultiVolumes + 1
         if (options.param.verbose >= 3)
             disp("Computing ACOSEM");
         end
-        [im, im_vectors.C_co] = COSEM(im, rhs, im_vectors.C_co, D, options.param.h, 1, osa_iter);
+        [im, im_vectors.C_co] = COSEM(im, rhs, im_vectors.C_co, options.param.subsets .* D, options.param.h, 1, osa_iter);
         ACOSEM_rhs = computeACOSEMWeight(options, im, uu, osa_iter, corrim, ii);
         im = im .* ACOSEM_rhs;
     end
@@ -197,10 +198,11 @@ for ii = 1 : options.param.nMultiVolumes + 1
         if (options.param.verbose >= 3)
             disp("Computing MBSREM");
         end
+        % MBSREM/SPS use an ascent-direction rhs (update is im + lambda * rhs), so the prior gradient is subtracted
         if isempty(dU)
             im = MBSREM(im, rhs, options.param, options.param.U, options.param.lambda, iter, osa_iter, ii);
         else
-            im = MBSREM(im, rhs + dU, options.param, options.param.U, options.param.lambda, iter, osa_iter, ii);
+            im = MBSREM(im, rhs - dU, options.param, options.param.U, options.param.lambda, iter, osa_iter, ii);
         end
     elseif (options.param.ROSEM_MAP)
         if (options.param.verbose >= 3)
@@ -220,7 +222,12 @@ for ii = 1 : options.param.nMultiVolumes + 1
         if (options.param.verbose >= 3)
             disp(['Computing OSL-COSEM ' num2str(options.param.OSL_COSEM)]);
         end
-        [im, im_vectors.C_co] = COSEM(im, rhs, im_vectors.C_co, D + dU, options.param.h, options.param.OSL_COSEM, osa_iter);
+        % D is the sensitivity image divided by the number of subsets, the COSEM family needs the full sensitivity
+        if isempty(dU)
+            [im, im_vectors.C_co] = COSEM(im, rhs, im_vectors.C_co, options.param.subsets .* D, options.param.h, options.param.OSL_COSEM, osa_iter);
+        else
+            [im, im_vectors.C_co] = COSEM(im, rhs, im_vectors.C_co, options.param.subsets .* D + dU, options.param.h, options.param.OSL_COSEM, osa_iter);
+        end
         if (options.param.OSL_COSEM == 1)
             ACOSEM_rhs = computeACOSEMWeight(options, im, uu, osa_iter, corrim, ii);
             im = im .* ACOSEM_rhs;
@@ -238,7 +245,11 @@ for ii = 1 : options.param.nMultiVolumes + 1
         if (options.param.verbose >= 3)
             disp("Computing SPS");
         end
-        im = SPS(im, rhs, options.param.U, options.param.lambda, iter, osa_iter, ii, options.param);
+        if isempty(dU)
+            im = SPS(im, rhs, options.param.U, options.param.lambda, iter, osa_iter, ii, options.param);
+        else
+            im = SPS(im, rhs - dU, options.param.U, options.param.lambda, iter, osa_iter, ii, options.param);
+        end
     elseif (options.param.LSQR)
         if (options.param.verbose >= 3)
             disp("Computing LSQR");

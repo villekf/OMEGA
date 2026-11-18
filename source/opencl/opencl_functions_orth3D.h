@@ -481,7 +481,7 @@ DEVICE int clipSPECTMREmissionInterval(const int primary, const int axial, const
 // This function simply loops through each X or Y voxel and Z voxels in the current slice
 // Forward or backward projection is computed in the helper function
 DEVICE int orthDistance3D(const int tempi, 
-    const FLOAT3 diff, // detectors.[x/y/z]d - detectors.[x/y/z]s
+    const FLOAT3 diffIn, // detectors.[x/y/z]d - detectors.[x/y/z]s
     FLOAT3 center, // center of the current voxel
     const FLOAT3 s, // detectors.[x/y/z]s
     const FLOAT b2, const FLOAT d2, const FLOAT bz, const FLOAT dz, const FLOAT temp, int temp2, const int tempk, 
@@ -514,6 +514,10 @@ DEVICE int orthDistance3D(const int tempi,
 ) {
 	int uu = 0;
 	bool breikki = false;
+	FLOAT3 diff = diffIn;
+#if !defined(CRYSTZ) && !defined(SPECT)
+	diff.z = FLOAT_ZERO; // 2.5D: the distance is computed in the transaxial plane
+#endif
 #ifdef SPECT
 	const FLOAT c2 = coneOfResponseStdCoeffC * coneOfResponseStdCoeffC;
 #endif
@@ -591,7 +595,11 @@ DEVICE int orthDistance3D(const int tempi,
 			uu += clipSPECTMREmissionInterval(tempi, zz, XY, mrVolumeDims, mrVolumeOffset,
 				&scanLoXY, &scanHiXY);
 #endif
+#if !defined(CRYSTZ) && !defined(SPECT)
+		const FLOAT z0 = FLOAT_ZERO;
+#else
 		const FLOAT z0 = center.z - s.z;
+#endif
 		l.x = diff.x * z0 - apu1;
 		l.y = diff.y * z0;
 		// Compute the maximum ranges
@@ -739,7 +747,11 @@ DEVICE int orthDistance3D(const int tempi,
 			uu += clipSPECTMREmissionInterval(tempi, zz, XY, mrVolumeDims, mrVolumeOffset,
 				&scanLoXY, &scanHiXY);
 #endif
+#if !defined(CRYSTZ) && !defined(SPECT)
+		const FLOAT z0 = FLOAT_ZERO;
+#else
 		const FLOAT z0 = center.z - s.z;
+#endif
 		l.x = diff.x * z0 - apu1;
 		l.y = diff.y * z0;
 #if !defined(SPECT) && defined(CRYSTXY)

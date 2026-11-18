@@ -47,6 +47,9 @@ function [varargout] = load_data_Vision(options)
 if nargout > 7
     error('Too many output arguments')
 end
+% Default values and the sinogram parameter checks (local to this function)
+options = setMissingValues(options);
+options = checkSinogramOptions(options);
 if nargout >= 3
     if ~options.useIndexBasedReconstruction
         store_coordinates = true;

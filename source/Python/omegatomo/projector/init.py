@@ -123,7 +123,7 @@ def _build_kIndF(self):
         a.vec2f(*_kernel_crystal_pitch(self))
         if self.FPType in (2, 3):
             if self.FPType == 2:
-                a.f32(self.tube_width_z)
+                a.f32(_orthTubeWidth(self))
             else:
                 a.f32(self.tube_radius)
             a.f32(self.bmin).f32(self.bmax).f32(self.Vmax)
@@ -186,7 +186,7 @@ def _build_kIndB(self):
         a.vec2f(*_kernel_crystal_pitch(self))
         if self.BPType in (2, 3):
             if self.BPType == 2:
-                a.f32(self.tube_width_z)
+                a.f32(_orthTubeWidth(self))
             else:
                 a.f32(self.tube_radius)
             a.f32(self.bmin).f32(self.bmax).f32(self.Vmax)
@@ -531,6 +531,96 @@ def _decide_layered_bp(self):
     return self._layeredBP
 
 
+def _layered_texture_limit(self):
+    """Largest number of layers used for a 2D layered texture / image2d_array: 2048 or the device limit, if lower."""
+    limit = 2048
+    try:
+        if self.useCUDA:
+            import cupy as cp
+            lay = int(cp.cuda.runtime.getDeviceProperties(cp.cuda.runtime.getDevice())['maxTexture2DLayered'][2])
+        else:
+            import pyopencl as cl
+            lay = int(self.clctx.get_info(cl.context_info.DEVICES)[0].image_max_array_size)
+        if lay > 0:
+            limit = min(limit, lay)
+    except Exception:
+        pass
+    return limit
+
+
+def _decide_layered_fp5(self):
+    """Decide (and store in self._layeredFP5) whether the integral images of the type-5 forward projection are held in 2D layered
+    textures (one layer per y or x slice of the volume) instead of 3D textures. Requires useLayeredFP, CT, a texture (useImages), no
+    Metal, no largeDim and at most 2048 slices (or the device layered texture limit, if lower) in the x- and y-directions of every
+    (multi-resolution) volume."""
+    self._layeredFP5 = False
+    if not (bool(getattr(self, 'useLayeredFP', False)) and self.CT and self.FPType == 5 and self.listmode == 0):
+        return False
+    reason = None
+    if self.useMetal:
+        reason = 'Metal does not support it'
+    elif not self.useImages:
+        reason = 'buffers are used instead of textures'
+    elif bool(getattr(self, 'largeDim', False)):
+        reason = 'largeDim is used'
+    else:
+        limit = _layered_texture_limit(self)
+        need = int(max(np.max(self.Nx), np.max(self.Ny)))
+        if need > limit:
+            reason = str(need) + ' voxels in the x- or y-direction exceeds the layered texture limit of ' + str(limit)
+    if reason is None:
+        self._layeredFP5 = True
+        if self.verbose >= 2:
+            print('Using layered 2D textures for the integral images of the type 5 forward projection')
+    else:
+        if self.verbose >= 1:
+            print('useLayeredFP was switched off: ' + reason)
+        if self.verbose >= 2:
+            print('Using 3D textures for the integral images of the type 5 forward projection')
+    return self._layeredFP5
+
+
+def _decide_layered_bp5(self):
+    """Decide (and store in self._layeredBP5) whether the integral image of the projections in the type-5 backprojection is held in a
+    2D layered texture (one layer per projection) instead of a 3D texture. Requires useLayeredBP, CT, a texture (useImages), no Metal,
+    no largeDim, no curved helical geometry and at most 2048 projections (or the device layered texture limit, if lower) in every
+    subset of every time step."""
+    self._layeredBP5 = False
+    if not (bool(getattr(self, 'useLayeredBP', False)) and self.CT and self.BPType == 5 and self.listmode == 0):
+        return False
+    reason = None
+    if self.useMetal:
+        reason = 'Metal does not support it'
+    elif not self.useImages:
+        reason = 'buffers are used instead of textures'
+    elif bool(getattr(self, 'largeDim', False)):
+        reason = 'largeDim is used'
+    elif self.useHelical:
+        reason = 'the curved helical geometry does not support it'
+    else:
+        limit = _layered_texture_limit(self)
+        maxProj = int(np.max(self.nProjSubset))
+        if maxProj > limit:
+            reason = str(maxProj) + ' projections in a subset exceeds the layered texture limit of ' + str(limit)
+    if reason is None:
+        self._layeredBP5 = True
+        if self.verbose >= 2:
+            print('Using a layered 2D texture for the integral image of the type 5 backprojection')
+    else:
+        if self.verbose >= 1:
+            print('useLayeredBP was switched off for projector type 5: ' + reason)
+        if self.verbose >= 2:
+            print('Using a 3D texture for the integral image of the type 5 backprojection')
+    return self._layeredBP5
+
+
+def _backprojectionVoxelsType5(self):
+    """Number of axial voxels computed by each thread in the type 5 backprojection: the option NVOXELS5 (at least 1), or 1 with curved helical data (its z-loop is not validated with several voxels) and with Metal."""
+    if self.useHelical or self.useMetal:
+        return 1
+    return max(1, int(self.NVOXELS5))
+
+
 def _uses_projection_window(self):
     """True if and only if the curved helical BP of type 4 or 5 only visits the projections in the window of each axial voxel block."""
     return bool(self.CT and self.useHelical and not self.useParallelBeam and not self.useMetal and self.listmode == 0
@@ -540,7 +630,7 @@ def _uses_projection_window(self):
 def _initialize_projection_window_buffers(self, upload):
     """Create the ``[timestep][subset][volume]`` projection window buffers (see computeProjectionWindow)."""
     self.d_projWindow = [[[None] * (self.nMultiVolumes + 1) for _ in range(self.subsets)] for _ in range(self.Nt)]
-    nVoxels = self.NVOXELS5 if self.BPType == 5 else self.NVOXELSHELICAL
+    nVoxels = _backprojectionVoxelsType5(self) if self.BPType == 5 else self.NVOXELSHELICAL
     for timestep in range(self.Nt):
         for subset in range(self.subsets):
             xs = _coordinate_slice(self, 'x', timestep, subset, 6)
@@ -687,6 +777,11 @@ def _deviceMaxWorkGroupSize(self, rocm=False, cp=None):
         return None
 
 
+def _orthTubeWidth(self):
+    """Width of the type 2 tube, chosen as in libHeader.h: tube_width_z in the 3D mode (orthAxial), tube_width_xy in the 2.5D mode."""
+    return float(self.tube_width_z) if self.orthAxial else float(self.tube_width_xy)
+
+
 def _orth_clip_needed(self):
     """Whether the projector type 2/3 kernels are built with the end point check of the tube (-DORTHCLIP, see orthogonalHelper3D in
     opencl_functions_orth3D.h). The tube of a ray ends at its end points, which only matters when a voxel beyond an end point can be
@@ -704,7 +799,7 @@ def _orth_clip_needed(self):
         return True
     reach = 0.0
     if self.FPType == 2 or self.BPType == 2:
-        reach = max(reach, float(self.tube_width_z))
+        reach = max(reach, _orthTubeWidth(self))
     if self.FPType == 3 or self.BPType == 3:
         reach = max(reach, float(self.tube_radius), float(self.bmax))
     nVol = int(self.nMultiVolumes) + 1
@@ -912,8 +1007,6 @@ def initProjector(self):
     self.NVOXELS = 8
     self.TH = 100000000000.
     self.TH32 = 100000.
-    self.NVOXELS5 = 1
-    self.NVOXELSFP = 8
     # Number of z-voxels each thread processes in the curved helical BP (mirrors NVOXELSHELICAL in the C++ headers)
     self.NVOXELSHELICAL = 1
     if np.size(self.weights) > 0:
@@ -1078,10 +1171,8 @@ def initProjector(self):
                             nVoxelsZ = self.NVOXELSHELICAL if self.useHelical else self.NVOXELS
                             globalSize[timestep][subset][ii] = (self.Nx[ii].item() + self.erotusBP[ii * 2], self.Ny[ii].item() + self.erotusBP[ii * 2 + 1], (self.Nz[ii].item()  + nVoxelsZ - 1) // nVoxelsZ)
                         elif self.BPType == 5:
-                            if self.pitch:
-                                globalSize[timestep][subset][ii] = (self.Nx[ii].item() + self.erotusBP[ii * 2], self.Ny[ii].item() + self.erotusBP[ii * 2 + 1], self.Nz[ii].item())
-                            else:
-                                globalSize[timestep][subset][ii] = (self.Nx[ii].item() + self.erotusBP[ii * 2], self.Ny[ii].item() + self.erotusBP[ii * 2 + 1], (self.Nz[ii].item()  + self.NVOXELS5 - 1) // self.NVOXELS5)
+                            nVoxelsZ = _backprojectionVoxelsType5(self)
+                            globalSize[timestep][subset][ii] = (self.Nx[ii].item() + self.erotusBP[ii * 2], self.Ny[ii].item() + self.erotusBP[ii * 2 + 1], (self.Nz[ii].item() + nVoxelsZ - 1) // nVoxelsZ)
                         else:
                             globalSize[timestep][subset][ii] = (self.Nx[ii].item() + self.erotusBP[ii * 2], self.Ny[ii].item() + self.erotusBP[ii * 2 + 1], self.Nz[ii].item())
             self.localSizeBP = localSize + tuple()
@@ -1269,6 +1360,9 @@ def initProjector(self):
                     bOptFP += ('-DCAST=float',)
         elif self.FPType == 5:
             bOptFP += ('-DPROJ5','-DNVOXELSFP=' + str(self.NVOXELSFP),)
+            # Integral images read from 2D layered textures (one layer per slice) instead of 3D textures
+            if _decide_layered_fp5(self):
+                bOptFP += ('-DLAYEREDFP5',)
             if self.meanFP:
                 bOptFP += ('-DMEANDISTANCEFP',)
         
@@ -1317,7 +1411,10 @@ def initProjector(self):
                 else:
                     bOptBP += ('-DCAST=float',)
         elif self.BPType == 5:
-            bOptBP += ('-DPROJ5','-DNVOXELS5=' + str(self.NVOXELS5),)
+            bOptBP += ('-DPROJ5','-DNVOXELS5=' + str(_backprojectionVoxelsType5(self)),)
+            # Integral image of the projections read from a 2D layered texture (one layer per projection) instead of a 3D texture
+            if _decide_layered_bp5(self):
+                bOptBP += ('-DLAYEREDBP5',)
             # Use the per-projection geometry precomputed with computeGeom5 (stored in self.d_geom5)
             if self.CT and self.listmode == 0 and not self.useHelical:
                 bOptBP += ('-DGEOM5',)

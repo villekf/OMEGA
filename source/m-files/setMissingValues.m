@@ -378,8 +378,39 @@ end
 if ~isfield(options,'useFDKWeights')
     options.useFDKWeights = true;
 end
+% If true, the measurements of the backprojection of projector type 4 (CT) are stored as a 2D layered texture (one layer per
+% projection) instead of a 3D texture. The results are identical, but the backprojection is faster. With projector type 5 the
+% integral image of the projections is stored the same way (one layer per projection); not used with the curved detector of
+% helical CT. Switched off automatically if a subset has more projections than the device supports layers (usually 2048),
+% with Metal and when buffers are used instead of textures. Default is true.
 if ~isfield(options,'useLayeredBP')
     options.useLayeredBP = true;
+end
+% If true, the integral images of the forward projection of projector type 5 are stored as 2D layered textures (one layer per
+% image slice) instead of 3D textures. The results are identical, but the forward projection is faster. Switched off
+% automatically if the volume has more slices in the x- or y-direction than the device supports layers (usually 2048), with
+% Metal and when buffers are used instead of textures. Default is true.
+if ~isfield(options,'useLayeredFP')
+    options.useLayeredFP = true;
+end
+% Number of detector columns computed by each thread in the forward projection of projector type 5. The footprint of the first
+% column is reused for the others, which makes the forward projection faster. This is exact only when the detector columns are
+% parallel to the z-axis and the detector rows are perpendicular to it, i.e. when the detector panel is not tilted or rotated in
+% its plane. With such panels (for example a non-zero pitchRoll or custom direction vectors) values larger than 1 are
+% approximate: the error is about 0.1 % for rotations of a few milliradians and about 2 % at 10 degrees. Use 1 in such cases,
+% the forward projection is then about 1.6 times slower. A flipped column direction is handled exactly with any value.
+% Default is 8.
+if ~isfield(options,'NVOXELSFP')
+    options.NVOXELSFP = 8;
+end
+% Number of voxels in the axial (z) direction computed by each thread in the backprojection of projector type 5. Two of the four
+% integral image values of the previous voxel are reused, which makes the backprojection about two times faster. This is exact when
+% the detector panel is not tilted or rotated in its plane. With such panels (for example a non-zero pitchRoll or custom direction
+% vectors) values larger than 1 are approximate: for rotations of a few milliradians the effect on the reconstruction is below 0.1 %,
+% but the error grows linearly with the rotation and with this value. Use 1 if the panel is rotated by more than about half a degree.
+% The curved detector of helical CT always uses 1. Default is 8.
+if ~isfield(options,'NVOXELS5')
+    options.NVOXELS5 = 8;
 end
 if ~isfield(options, 'Niter')
     options.Niter = 4;
@@ -577,7 +608,8 @@ if ~isfield(options, 'med_no_norm')
     options.med_no_norm = false;
 end
 if ~isfield(options, 'errorChecking')
-    options.errorChecking = false;
+    % Set to false to skip the error checking (OMEGA_error_check)
+    options.errorChecking = true;
 end
 if ~isfield(options, 'blocks_per_ring')
     options.blocks_per_ring = 1;

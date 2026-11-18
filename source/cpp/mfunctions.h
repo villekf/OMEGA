@@ -199,6 +199,7 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 		inputScalars.maskBP = false;
 	else if (type == 2 && inputScalars.FPType > 3)
 		inputScalars.maskFP = false;
+	inputScalars.maskPriorOnly = !inputScalars.maskBP && mxGetFieldNumber(options, "usePriorMask") >= 0 && getScalarBool(options, 0, "usePriorMask");
 	inputScalars.offset = getScalarBool(options, 0, "offsetCorrection");
 	// Square root of the offset redundancy weights on both the forward and backward projection (decided on the MATLAB side)
 	inputScalars.offsetSqrt = inputScalars.offset && mxGetFieldNumber(options, "offsetSqrt") >= 0 && getScalarBool(options, 0, "offsetSqrt");
@@ -451,14 +452,19 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 			mexEval();
 		}
 	}
+	else if (inputScalars.maskPriorOnly) {
+		inputScalars.maskBPZ = getScalarUInt32(getField(options, 0, "maskBPZ"));
+		inputScalars.size_maskBP = mxGetNumberOfElements(getField(options, 0, "maskBP"));
+	}
 	//if (inputScalars.offset)
 	//	w_vec.maskOffset = getUint8s(options, "maskOffset");
 	if (inputScalars.eFOV && inputScalars.useExtendedFOV && !inputScalars.multiResolution)
 		w_vec.eFOVIndices = getUint8s(options, "eFOVIndices");
 	if (inputScalars.useExtendedFOV && !inputScalars.multiResolution)
 		w_vec.maskPrior = getUint8s(options, "maskPrior");
-	else if (inputScalars.maskBP)
+	else if (inputScalars.maskBP || inputScalars.maskPriorOnly)
 		w_vec.maskPrior = getUint8s(options, "maskBP");
+	inputScalars.priorMask = inputScalars.maskBP || inputScalars.maskPriorOnly || (inputScalars.useExtendedFOV && !inputScalars.multiResolution);
 	// CT-related variables such as number of projection images
 	if (inputScalars.CT) {
 		w_vec.nProjections = getScalarInt64(getField(options, 0, "nProjections"), -11);
@@ -621,8 +627,10 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 	}
 
 	// The complete sensitivity image is computed
+	// For list-mode data the Poisson gradient is BP(1/ybar) - D, so these algorithms always need the sensitivity image D
 	if (MethodList.RBI || MethodList.RBIOSL || MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0 || (w_vec.precondTypeIm[0]
-		|| w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2])) {
+		|| w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2])
+		|| (inputScalars.listmode > 0 && (MethodList.RAMLA || MethodList.MRAMLA || MethodList.BSREM || MethodList.MBSREM || MethodList.PKMA || MethodList.SPS || MethodList.SAGA || MethodList.DRAMA))) {
 		if (DEBUG) {
 			mexPrintBase("w_vec.precondTypeIm[1] = %u\n", w_vec.precondTypeIm[1]);
 			mexEval();
@@ -946,9 +954,19 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		}
 	}
 	inputScalars.useFDKWeights = getScalarBool(getField(options, 0, "useFDKWeights"), -49);
-	// Optional (off when the field is missing): layered 2D texture for the CT projector type 4 backprojection measurements
+	// Optional (off when the field is missing): layered 2D texture for the CT projector type 4 backprojection measurements and for the
+	// integral image of the projector type 5 backprojection
 	if (mxGetFieldNumber(options, "useLayeredBP") >= 0)
 		inputScalars.useLayeredBP = getScalarBool(getField(options, 0, "useLayeredBP"), -49);
+	// Optional (off when the field is missing): layered 2D textures for the integral images of the CT projector type 5 forward projection
+	if (mxGetFieldNumber(options, "useLayeredFP") >= 0)
+		inputScalars.useLayeredFP = getScalarBool(getField(options, 0, "useLayeredFP"), -49);
+	// Optional (default 8 when the field is missing): number of detector columns computed by each thread in the type 5 forward projection
+	if (mxGetFieldNumber(options, "NVOXELSFP") >= 0)
+		inputScalars.NVOXELSFP = getScalarUInt32(options, 0, "NVOXELSFP");
+	// Optional (default 8 when the field is missing): number of voxels in the axial direction computed by each thread in the type 5 backprojection
+	if (mxGetFieldNumber(options, "NVOXELS5") >= 0)
+		inputScalars.NVOXELS5 = getScalarUInt32(options, 0, "NVOXELS5");
 	if (MethodList.FDK && inputScalars.CT && inputScalars.useFDKWeights) {
 		w_vec.angles = getSingles(options, "angles");
 		inputScalars.DSC = getScalarFloat(getField(options, 0, "sourceToCRot"), -63);
@@ -1050,19 +1068,21 @@ inline void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, mxA
             mexPrintBase("vec.im_os.dims(1) = %d\n", vec.im_os[timestep][0].dims(1));
             mexEval();
         }
-        if (inputScalars.storeFP) {
-            for (uint32_t ii = 0; ii < inputScalars.subsets * inputScalars.Niter; ii++) {
-                const uint32_t jj = ii % inputScalars.subsets;
-                const uint32_t kk = ii / inputScalars.subsets;
-                const mwSize dim[1] = { static_cast<mwSize>(FPEstimates[kk][jj].size()) };
+        if (inputScalars.storeFP && timestep == 0) {
+            // All the frames are stored when handling the first one, the cell index is (timestep * Niter + iteration) * subsets + subset
+            for (uint32_t uu = 0; uu < inputScalars.subsets * inputScalars.Niter * inputScalars.Nt; uu++) {
+                const uint32_t jj = uu % inputScalars.subsets;
+                const uint32_t kk = (uu / inputScalars.subsets) % inputScalars.Niter;
+                const uint32_t tt = uu / (inputScalars.subsets * inputScalars.Niter);
+                const mwSize dim[1] = { static_cast<mwSize>(FPEstimates[kk][jj + tt * inputScalars.subsets].size()) };
                 mxArray* apu = mxCreateNumericArray(1, dim, mxSINGLE_CLASS, mxREAL);
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
                 float* apuF = (float*)mxGetSingles(apu);
 #else
                 float* apuF = (float*)mxGetData(apu);
 #endif
-                std::copy(FPEstimates[kk][jj].begin(), FPEstimates[kk][jj].end(), apuF);
-                mxSetCell(FPcell, static_cast<mwIndex>(ii), mxDuplicateArray(apu));
+                std::copy(FPEstimates[kk][jj + tt * inputScalars.subsets].begin(), FPEstimates[kk][jj + tt * inputScalars.subsets].end(), apuF);
+                mxSetCell(FPcell, static_cast<mwIndex>(uu), mxDuplicateArray(apu));
             }
         }
         // Transfer data back to host

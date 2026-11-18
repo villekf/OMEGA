@@ -55,6 +55,14 @@ function [varargout] = form_sinograms(options, varargin)
 if nargout > 5
     error('Too many output arguments')
 end
+% Default values and the sinogram parameter checks (local to this function)
+options = setMissingValues(options);
+% The scanner created sinograms (options.use_machine = 2) do not exist as raw data. The error check used to switch to list-mode data
+% (options.use_machine = 1) automatically, but form_sinograms cannot do that.
+if options.use_machine == 2 && options.use_raw_data
+    error('Scanner sinograms (options.use_machine = 2) cannot be used with raw data (options.use_raw_data = true). Use options.use_machine = 1 to load list-mode data instead.')
+end
+options = checkSinogramOptions(options);
 if ~isfield(options,'TOF_bins') || options.TOF_bins == 0
     options.TOF_bins = 1;
 end

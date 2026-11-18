@@ -56,6 +56,10 @@
 
 #pragma warning(disable : 4996)
 
+// Index of the full sensitivity image D (w_vec.D) used by timestep: D is computed for every timestep only when the
+// corrections differ per frame (inputScalars.DPerTimestep), otherwise the image of timestep 0 is shared
+inline uint32_t DIndex(const scalarStruct& inputScalars, const uint32_t timestep) { return inputScalars.DPerTimestep ? timestep : 0u; }
+
 /// <summary>
 /// Determines whether the image-domain part of the subset-based PDHG/PKMA/MBSREM/BSREM update can be fused into the
 /// projector type 4/5 backprojection kernel. The fused kernel never allocates the backprojection and skips the
@@ -194,7 +198,8 @@ static inline void setFastPDHGSubIterParams(ProjectorClass& proj, const scalarSt
 	proj.fastPositivity = inputScalars.enforcePositivity ? 1 : 0;
 	// If the regularization is not computed, set beta as zero
 	// BSREM doesn't compute regularization as part of the backprojection kernel
-	proj.fastBeta = (proj.fastNLMUsed && computeReg && !MethodList.BSREM) ? w_vec.beta : 0.f;
+	// The fused Poisson kernel does imOld + lambda * rhs for MBSREM (ascent direction), so the prior term must be subtracted
+	proj.fastBeta = (proj.fastNLMUsed && computeReg && !MethodList.BSREM) ? (MethodList.MBSREM ? -w_vec.beta : w_vec.beta) : 0.f;
 }
 #endif
 
@@ -730,7 +735,12 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			proj.intArrayCacheXY.resize(ii + 1);
 			proj.intImageCacheDimsXY.resize((ii + 1) * 3, 0);
 		}
-		if (proj.intImageCacheDimsXY[ii * 3] != static_cast<size_t>(dim0) || proj.intImageCacheDimsXY[ii * 3 + 1] != static_cast<size_t>(dim1) || proj.intImageCacheDimsXY[ii * 3 + 2] != static_cast<size_t>(dim2)) {
+		if (proj.intImageLayeredXY.size() <= static_cast<size_t>(ii))
+			proj.intImageLayeredXY.resize(ii + 1, 0);
+		// 2D layered textures (one layer per slice) instead of 3D textures
+		const bool layeredImXY = inputScalars.layeredFP5;
+		if (proj.intImageCacheDimsXY[ii * 3] != static_cast<size_t>(dim0) || proj.intImageCacheDimsXY[ii * 3 + 1] != static_cast<size_t>(dim1) || proj.intImageCacheDimsXY[ii * 3 + 2] != static_cast<size_t>(dim2) ||
+			(proj.intImageLayeredXY[ii] != 0) != layeredImXY) {
 			if (proj.intImageCacheDimsXY[ii * 3 + 2] != 0) {
 				getErrorString(cuTexObjectDestroy(proj.intTexCacheXY[ii]));
 				getErrorString(cuArrayDestroy(proj.intArrayCacheXY[ii]));
@@ -748,6 +758,8 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			arr3DDesc.Height = dim1;
 			arr3DDesc.Width = dim0;
 			arr3DDesc.Depth = dim2;
+			if (layeredImXY)
+				arr3DDesc.Flags = CUDA_ARRAY3D_LAYERED;
 			status = cuArray3DCreate(&proj.intArrayCacheXY[ii], &arr3DDesc);
 			if (status != CUDA_SUCCESS) {
 				getErrorString(status);
@@ -767,7 +779,8 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			viewDesc.width = dim0;
 			viewDesc.depth = dim2;
 			viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
-			status = cuTexObjectCreate(&proj.intTexCacheXY[ii], &resDesc, &texDesc, &viewDesc);
+			// The resource view is not used with the layered texture
+			status = cuTexObjectCreate(&proj.intTexCacheXY[ii], &resDesc, &texDesc, layeredImXY ? nullptr : &viewDesc);
 			if (status != CUDA_SUCCESS) {
 				getErrorString(status);
 				mexPrint("Integral image xz copy failed\n");
@@ -775,6 +788,7 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			}
 			else if (DEBUG)
 				mexPrint("Texture creation completed\n");
+			proj.intImageLayeredXY[ii] = layeredImXY ? 1 : 0;
 			proj.intImageCacheDimsXY[ii * 3] = static_cast<size_t>(dim0);
 			proj.intImageCacheDimsXY[ii * 3 + 1] = static_cast<size_t>(dim1);
 			proj.intImageCacheDimsXY[ii * 3 + 2] = static_cast<size_t>(dim2);
@@ -805,13 +819,26 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			proj.d_intImageCacheXY.resize(ii + 1);
 			proj.intImageCacheDimsXY.resize((ii + 1) * 3, 0);
 		}
-		if (proj.intImageCacheDimsXY[ii * 3] != region[0] || proj.intImageCacheDimsXY[ii * 3 + 1] != region[1] || proj.intImageCacheDimsXY[ii * 3 + 2] != region[2]) {
-			proj.d_intImageCacheXY[ii] = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
+		if (proj.intImageLayeredXY.size() <= static_cast<size_t>(ii))
+			proj.intImageLayeredXY.resize(ii + 1, 0);
+		// 2D image arrays (one layer per slice) instead of 3D images
+		const bool layeredImXY = inputScalars.layeredFP5;
+		if (proj.intImageCacheDimsXY[ii * 3] != region[0] || proj.intImageCacheDimsXY[ii * 3 + 1] != region[1] || proj.intImageCacheDimsXY[ii * 3 + 2] != region[2] ||
+			(proj.intImageLayeredXY[ii] != 0) != layeredImXY) {
+			if (layeredImXY) {
+				// The image array is held as a generic image handle (the kernel argument is set from the cl::Image3D object)
+				cl::Image2DArray layeredImage(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[2], region[0], region[1], 0, 0, NULL, &status);
+				if (status == CL_SUCCESS)
+					proj.d_intImageCacheXY[ii] = cl::Image3D(layeredImage(), true);
+			}
+			else
+				proj.d_intImageCacheXY[ii] = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				mexPrint("Failed to create integral image\n");
 				return -1;
 			}
+			proj.intImageLayeredXY[ii] = layeredImXY ? 1 : 0;
 			proj.intImageCacheDimsXY[ii * 3] = region[0];
 			proj.intImageCacheDimsXY[ii * 3 + 1] = region[1];
 			proj.intImageCacheDimsXY[ii * 3 + 2] = region[2];
@@ -857,7 +884,12 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			proj.intArrayCacheYZ.resize(ii + 1);
 			proj.intImageCacheDimsYZ.resize((ii + 1) * 3, 0);
 		}
-		if (proj.intImageCacheDimsYZ[ii * 3] != static_cast<size_t>(dim0) || proj.intImageCacheDimsYZ[ii * 3 + 1] != static_cast<size_t>(dim1) || proj.intImageCacheDimsYZ[ii * 3 + 2] != static_cast<size_t>(dim2)) {
+		if (proj.intImageLayeredYZ.size() <= static_cast<size_t>(ii))
+			proj.intImageLayeredYZ.resize(ii + 1, 0);
+		// 2D layered textures (one layer per slice) instead of 3D textures
+		const bool layeredImYZ = inputScalars.layeredFP5;
+		if (proj.intImageCacheDimsYZ[ii * 3] != static_cast<size_t>(dim0) || proj.intImageCacheDimsYZ[ii * 3 + 1] != static_cast<size_t>(dim1) || proj.intImageCacheDimsYZ[ii * 3 + 2] != static_cast<size_t>(dim2) ||
+			(proj.intImageLayeredYZ[ii] != 0) != layeredImYZ) {
 			if (proj.intImageCacheDimsYZ[ii * 3 + 2] != 0) {
 				getErrorString(cuTexObjectDestroy(proj.intTexCacheYZ[ii]));
 				getErrorString(cuArrayDestroy(proj.intArrayCacheYZ[ii]));
@@ -875,6 +907,8 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			arr3DDesc.Height = dim1;
 			arr3DDesc.Width = dim0;
 			arr3DDesc.Depth = dim2;
+			if (layeredImYZ)
+				arr3DDesc.Flags = CUDA_ARRAY3D_LAYERED;
 			status = cuArray3DCreate(&proj.intArrayCacheYZ[ii], &arr3DDesc);
 			if (status != CUDA_SUCCESS) {
 				getErrorString(status);
@@ -894,7 +928,8 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			viewDesc.width = dim0;
 			viewDesc.depth = dim2;
 			viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
-			status = cuTexObjectCreate(&proj.intTexCacheYZ[ii], &resDesc, &texDesc, &viewDesc);
+			// The resource view is not used with the layered texture
+			status = cuTexObjectCreate(&proj.intTexCacheYZ[ii], &resDesc, &texDesc, layeredImYZ ? nullptr : &viewDesc);
 			if (status != CUDA_SUCCESS) {
 				getErrorString(status);
 				mexPrint("Integral image yz copy failed\n");
@@ -902,6 +937,7 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			}
 			else if (DEBUG)
 				mexPrint("Texture creation completed\n");
+			proj.intImageLayeredYZ[ii] = layeredImYZ ? 1 : 0;
 			proj.intImageCacheDimsYZ[ii * 3] = static_cast<size_t>(dim0);
 			proj.intImageCacheDimsYZ[ii * 3 + 1] = static_cast<size_t>(dim1);
 			proj.intImageCacheDimsYZ[ii * 3 + 2] = static_cast<size_t>(dim2);
@@ -932,13 +968,26 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			proj.d_intImageCacheYZ.resize(ii + 1);
 			proj.intImageCacheDimsYZ.resize((ii + 1) * 3, 0);
 		}
-		if (proj.intImageCacheDimsYZ[ii * 3] != region[0] || proj.intImageCacheDimsYZ[ii * 3 + 1] != region[1] || proj.intImageCacheDimsYZ[ii * 3 + 2] != region[2]) {
-			proj.d_intImageCacheYZ[ii] = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
+		if (proj.intImageLayeredYZ.size() <= static_cast<size_t>(ii))
+			proj.intImageLayeredYZ.resize(ii + 1, 0);
+		// 2D image arrays (one layer per slice) instead of 3D images
+		const bool layeredImYZ = inputScalars.layeredFP5;
+		if (proj.intImageCacheDimsYZ[ii * 3] != region[0] || proj.intImageCacheDimsYZ[ii * 3 + 1] != region[1] || proj.intImageCacheDimsYZ[ii * 3 + 2] != region[2] ||
+			(proj.intImageLayeredYZ[ii] != 0) != layeredImYZ) {
+			if (layeredImYZ) {
+				// The image array is held as a generic image handle (the kernel argument is set from the cl::Image3D object)
+				cl::Image2DArray layeredImage(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[2], region[0], region[1], 0, 0, NULL, &status);
+				if (status == CL_SUCCESS)
+					proj.d_intImageCacheYZ[ii] = cl::Image3D(layeredImage(), true);
+			}
+			else
+				proj.d_intImageCacheYZ[ii] = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				mexPrint("Failed to create integral image\n");
 				return -1;
 			}
+			proj.intImageLayeredYZ[ii] = layeredImYZ ? 1 : 0;
 			proj.intImageCacheDimsYZ[ii * 3] = region[0];
 			proj.intImageCacheDimsYZ[ii * 3 + 1] = region[1];
 			proj.intImageCacheDimsYZ[ii * 3 + 2] = region[2];
@@ -1320,7 +1369,7 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 			proj.fastTau = w_vec.tauCP[timestep][ii];
 		// Preconditioner vector (sensitivity image)
 		if (fastPrecond)
-			proj.d_precond = transferAF(w_vec.D[0][ii]);
+			proj.d_precond = transferAF(w_vec.D[DIndex(inputScalars, timestep)][ii]);
 		// Include the subvolume information of largeDim
 		if (inputScalars.largeDim && lDimChunk >= 0) {
 			proj.fastImOffset = static_cast<int64_t>(inputScalars.lDimStruct.startPr[lDimChunk]);
@@ -1373,7 +1422,7 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 			vec.uCP[timestep][ii].unlock();
 		vec.im_os[timestep][ii].unlock();
 		if (fastPrecond)
-			w_vec.D[0][ii].unlock();
+			w_vec.D[DIndex(inputScalars, timestep)][ii].unlock();
 #if defined(CUDA) || defined(HIP)
 		// Destroy the texture if it's created above (only ever created for ii == 0)
 		// TODO: Persistent image/texture for fastPDHG?
@@ -1435,7 +1484,7 @@ inline int finalizeBackwardProjectionAF(AF_im_vectors& vec, const scalarStruct& 
 			vec.uCP[timestep][ii].unlock();
 		vec.im_os[timestep][ii].unlock();
 		if (w_vec.precondTypeIm[0] || w_vec.precondTypeIm[1])
-			w_vec.D[0][ii].unlock();
+			w_vec.D[DIndex(inputScalars, timestep)][ii].unlock();
 #if defined(CUDA) || defined(HIP)
 		// The estimate texture is only created for the main volume, so destroy it once
 		if (ii == 0 && proj.fastNLMUsed && (inputScalars.FPType == 5 || inputScalars.largeDim)) {
@@ -6303,7 +6352,9 @@ inline int filtering(const af::array& filter, af::array& input, ProjectorClass& 
 // 2D filtering
 inline int filtering2D(const af::array& filter, af::array& input, ProjectorClass& proj, const dim_t dimmi) {
 	int status = 0;
+	// The input is the image reshaped to Nx x Ny x Nz, so the crop after the padded FFT uses Nx and Ny
 	const dim_t inDim0 = input.dims(0);
+	const dim_t inDim1 = input.dims(1);
 	if (DEBUG) {
 		mexPrintBase("filter.dims(0) = %d\n", filter.dims(0));
 		mexPrintBase("filter.dims(1) = %d\n", filter.dims(1));
@@ -6322,7 +6373,7 @@ inline int filtering2D(const af::array& filter, af::array& input, ProjectorClass
 	temp *= filter;
 #endif
 	ifft2InPlace(temp);
-	input = af::flat(af::real(temp(af::seq(0, input.dims(0) - 1), af::seq(0, input.dims(0) - 1), af::span)));
+	input = af::flat(af::real(temp(af::seq(0, inDim0 - 1), af::seq(0, inDim1 - 1), af::span)));
 	input.eval();
 	return 0;
 }
@@ -6452,8 +6503,7 @@ inline int applyImagePreconditioning(Weighting& w_vec, const scalarStruct& input
 		input *= w_vec.alphaPrecond[kk];
 	}
 	if (w_vec.precondTypeIm[0] || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2]) {
-		const bool frameSpecific = inputScalars.projector_type == 6 && inputScalars.sensPerTimestep;
-		const af::array& sensitivity = w_vec.D[frameSpecific ? timestep : 0][ii];
+		const af::array& sensitivity = w_vec.D[DIndex(inputScalars, timestep)][ii];
 		if (w_vec.precondTypeIm[0]) {
 			if (inputScalars.verbose >= 3)
 				mexPrint("Applying diagonal normalization preconditioner , type 0");
@@ -6588,10 +6638,14 @@ inline void deblur(af::array& vec, const af::array& g, const scalarStruct& input
 
 // The initialization steps for LSQR, CGLS, CP and FISTA algorithms
 // Apply PSF blurring if applicable
-inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors& vec, ProjectorClass& proj, scalarStruct& inputScalars, std::vector<int64_t>& length, uint64_t m_size, const RecMethods& MethodList, uint32_t curIter, af::array& meanBP, const int64_t* pituus, const uint32_t timestep, const af::array& g = af::constant(0.f, 1, 1), const uint32_t subIter = 0, const int ii = 0, const float* atten = nullptr) {
+// Krylov / gradient methods (LSQR, CGLS, BB) solve A*dx = b - A*x0 with x = x0 + dx. When the initial image x0 is nonzero,
+// residual0 holds the initial residual b - A*x0 (empty when x0 = 0, in which case the measurements are used as such)
+inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors& vec, ProjectorClass& proj, scalarStruct& inputScalars, std::vector<int64_t>& length, uint64_t m_size, const RecMethods& MethodList, uint32_t curIter, af::array& meanBP, const int64_t* pituus, const uint32_t timestep, const af::array& g = af::constant(0.f, 1, 1), const uint32_t subIter = 0, const int ii = 0, const af::array& residual0 = af::array(), const float* atten = nullptr) {
 	if (MethodList.FISTA || MethodList.FISTAL1) {
 		if (curIter == 0 && subIter == 0) {
 			vec.uFISTA[timestep].emplace_back(vec.im_os[timestep][ii]);
+			proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]);
+			vec.xFISTA[timestep].emplace_back(vec.im_os[timestep][ii].copy());
 			proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]);
 		}
 		else {
@@ -6613,6 +6667,8 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 			vec.fLSQR[timestep].emplace_back(vec.im_os[timestep][ii].copy());
 			proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]);
 			if (ii == 0) {
+				if (!residual0.isempty())
+					mData = residual0.as(f32);
 				w_vec.betaLSQR[timestep] = af::norm(mData);
 				mData = mData / w_vec.betaLSQR[timestep];
 			}
@@ -6646,12 +6702,12 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				af::array temp;
 				temp = vec.rhs_os[timestep][0];
 				for (int ll = 1; ll <= inputScalars.nMultiVolumes; ll++)
-					temp = af::join(0, temp, vec.rhs_os[timestep][ii]);
+					temp = af::join(0, temp, vec.rhs_os[timestep][ll]);
 				w_vec.alphaLSQR[timestep] = af::norm(temp);
 				for (int ll = 0; ll <= inputScalars.nMultiVolumes; ll++) {
 					vec.im_os[timestep][ll] = vec.rhs_os[timestep][ll] / w_vec.alphaLSQR[timestep];
-					vec.wLSQR[timestep].emplace_back(vec.im_os[timestep][ii].copy());
-					proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]);
+					vec.wLSQR[timestep].emplace_back(vec.im_os[timestep][ll].copy());
+					proj.memSize += (sizeof(float) * inputScalars.im_dim[ll]);
 				}
 				if (DEBUG) {
 					mexPrintBase("!!!!!!vec.im_os[timestep] = %f\n", af::sum<float>(vec.im_os[timestep][ii]));
@@ -6668,19 +6724,26 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 			mData = mData.as(f32);
 			if (DEBUG || inputScalars.verbose >= 3)
 				mexPrint("Initializing BB");
+			// With a nonzero x0 the gradient is computed from the initial residual. A temporary is used, since BB needs
+			// the measured data (mData) unchanged in the later iterations
+			af::array bbTemp;
+			af::array& bbData = residual0.isempty() ? mData : (bbTemp = residual0.as(f32));
 			if (inputScalars.projector_type == 6) {
-				backprojectionType6(mData, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, ii, atten);
+				backprojectionType6(bbData, w_vec, vec, inputScalars, length[0], 0, proj, timestep, 0, 0, 0, 0, ii, atten);
 				if (type6Status(proj) != 0)
 					return -1;
 			}
 			else {
 				if (inputScalars.BPType == 5) {
-					computeIntegralImage(inputScalars, w_vec, length[0], mData, meanBP);
+					mDataApu = bbData;
+					computeIntegralImage(inputScalars, w_vec, length[0], bbData, meanBP);
 				}
-				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, mData, 0, timestep, length, m_size, meanBP, g, proj, false, ii, pituus);
+				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, bbData, 0, timestep, length, m_size, meanBP, g, proj, false, ii, pituus);
 				if (status != 0) {
 					return -1;
 				}
+				if (inputScalars.BPType == 5)
+					bbData = mDataApu;
 			}
 			if (vec.gradBB[timestep].size() < ii + 1) {
 				vec.gradBB[timestep].emplace_back(-vec.rhs_os[timestep][ii].copy());
@@ -6706,9 +6769,17 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 			if (DEBUG || inputScalars.verbose >= 3)
 				mexPrint("Initializing CGLS");
 			mData = mData.as(f32);
-			if (ii == 0)
-				vec.rCGLS = mData;
-			mDataApu = mData.copy();
+			// The residual of the initial image (b - A*x0) is used as the CGLS residual and as the backprojected vector
+			if (!residual0.isempty()) {
+				if (ii == 0)
+					vec.rCGLS = residual0.as(f32).copy();
+				mDataApu = residual0.as(f32).copy();
+			}
+			else {
+				if (ii == 0)
+					vec.rCGLS = mData;
+				mDataApu = mData.copy();
+			}
 			vec.fCGLS.emplace_back(vec.im_os[timestep][ii].copy());
 			proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]);
 			if (inputScalars.projector_type == 6) {
@@ -6792,6 +6863,10 @@ inline int computeACOSEMWeight(scalarStruct& inputScalars, std::vector<int64_t>&
 		mexPrint("Computing ACOSEM weight");
 	int status = 0;
 	uu = af::sum<float>(mData.as(f32));
+	// ACOSEM_rhs is the sum of the forward projection A*x without the additive randoms/scatter term, so the same term has to be
+	// removed from the data sum: uu = sum(y) - sum(r) for the subset
+	if (!inputScalars.CT && timestep < w_vec.ACOSEMrandSum.size())
+		uu -= w_vec.ACOSEMrandSum[timestep];
 	af::array outputFP;
 	if (inputScalars.projector_type != 6) {
 		if (inputScalars.listmode == 0)
@@ -7013,7 +7088,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				if (status != 0)
 					return -1;
 				if (w_vec.computeD)
-					w_vec.D[0][0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuD[inputScalars.lDimStruct.cumDim[ii]], afHost);
+					w_vec.D[DIndex(inputScalars, timestep)][0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuD[inputScalars.lDimStruct.cumDim[ii]], afHost);
 				status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][0], vec.im_os[timestep][0], proj, timestep, kk, 0);
 				if (status != 0)
 					return -1;
@@ -7035,7 +7110,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 		}
 		if (inputScalars.nMultiVolumes > 0) {
 			for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++) {
-				if (ii > 0 && ii % 2 == 0)
+				if (ii > 0 && ii % 2 == 0 && inputScalars.im_dim[ii] == inputScalars.im_dim[ii - 1])
 					vec.im_os[timestep][ii] = vec.im_os[timestep][ii - 1];
 				else
 					vec.im_os[timestep][ii] = af::abs(af::randn(inputScalars.im_dim[ii], f32, r));
@@ -7163,7 +7238,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					if (status != 0)
 						return -1;
 					if (w_vec.computeD)
-						w_vec.D[0][0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuD[inputScalars.lDimStruct.cumDim[ii]], afHost);
+						w_vec.D[DIndex(inputScalars, timestep)][0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuD[inputScalars.lDimStruct.cumDim[ii]], afHost);
 					status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[timestep][0], vec.im_os[timestep][0], proj, timestep, kk, 0);
 					if (status != 0)
 						return -1;
@@ -7184,7 +7259,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 		}
 		else {
 			for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-				if (ii > 0 && ii % 2 == 0)
+				if (ii > 0 && ii % 2 == 0 && inputScalars.im_dim[ii] == inputScalars.im_dim[ii - 1])
 					vec.im_os[timestep][ii] = vec.im_os[timestep][ii - 1];
 				else
 					vec.im_os[timestep][ii] = af::abs(af::randn(inputScalars.im_dim[ii], f32, r));
@@ -7508,4 +7583,41 @@ inline void transferControl(AF_im_vectors& vec, const scalarStruct& inputScalars
 		mexPrintBase("inputScalars.atomic_64bit = %d\n", inputScalars.atomic_64bit);
 		mexEval();
 	}
+}
+
+// Relative sensitivity threshold of the CT OSEM guard (see guardCTOSEMSensitivity): voxels whose blurred sensitivity is at most this fraction of the
+// maximum of the sensitivity image are treated as voxels without sensitivity when a PSF is used. The round-off of the ArrayFire convolution with
+// large kernels is about 3e-7 of the image maximum, so the value has to be clearly above that. It is also far below the sensitivity of any voxel that
+// is covered by a meaningful part of the rays
+#define CT_OSEM_SENS_REL 1e-6f
+
+// Guard of the CT OSEM-family updates (OSEM, ROSEM, OSL-OSEM, ROSEM-MAP, COSEM variants) against voxels with (near) zero sensitivity when a PSF is used.
+// The numerator and the sensitivity image of these updates are both backprojections and the update divides one by the other. Without a PSF a voxel
+// that no ray covers has exactly zero in both, the sensitivity is then raised to epps, the update gives zero and the positivity constraint sets the
+// voxel to epps. With a PSF the blurred backprojections are not exactly zero in such voxels (the convolution of larger kernels has round-off of
+// about 1e-7 of the maximum, also negative values, different on each backend) and the ratio of two such values is meaningless (it can reach 1e4
+// and grows with the iterations). Voxels with a sensitivity of at most max(epps, CT_OSEM_SENS_REL * max(sensitivity)) are therefore handled exactly
+// like voxels without sensitivity: the sensitivity is set to epps and the numerator (backprojection) to zero. Each volume of a multi-resolution
+// reconstruction uses its own maximum. Without a PSF nothing is changed, so that voxels that have no sensitivity but a nonzero numerator keep
+// behaving as before. Has to be called after transferControl, i.e. when the sensitivity image and the backprojection are final
+inline void guardCTOSEMSensitivity(AF_im_vectors& vec, const scalarStruct& inputScalars, const uint32_t timestep, const uint8_t compute_norm_matrix,
+	const uint32_t osa_iter, const int ii = 0) {
+	if (compute_norm_matrix != 1u && compute_norm_matrix != 2u)
+		return;
+	const uint32_t sIdx = inputScalars.sensPerTimestep ? timestep : 0u;
+	af::array& Sens = compute_norm_matrix == 1u ? vec.Summ[sIdx][ii][0] : vec.Summ[sIdx][ii][osa_iter];
+	// The sensitivity image is a float image only after transferControl has finalized it
+	if (!inputScalars.use_psf || Sens.type() != f32)
+		return;
+	const float thr = std::max(inputScalars.epps, CT_OSEM_SENS_REL * af::max<float>(Sens));
+	const af::array guarded = Sens <= thr;
+	Sens = af::select(guarded, inputScalars.epps, Sens);
+	Sens.eval();
+	af::array& rhs = vec.rhs_os[timestep][ii];
+	const dim_t nRekos = rhs.elements() / guarded.elements();
+	if (nRekos > 1)
+		rhs = af::select(af::tile(guarded, static_cast<unsigned int>(nRekos)), 0.0, rhs);
+	else
+		rhs = af::select(guarded, 0.0, rhs);
+	rhs.eval();
 }

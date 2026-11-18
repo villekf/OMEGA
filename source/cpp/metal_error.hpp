@@ -42,10 +42,11 @@
 // How many voxels are computed per thread
 #define NVOXELS 1
 #define NVOXELSHELICAL 1
-// How many voxels are computed per thread for BDD backprojection
-#define NVOXELS5 1
+// How many voxels are computed per thread for BDD backprojection by default (the user option NVOXELS5). Metal is not tested with
+// several voxels per thread, the Metal host code always uses 1
+#define NVOXELS5_DEFAULT 1
 // How many slices are computed in the same thread for BDD forward projection
-#define NVOXELSFP 8
+#define NVOXELSFP_DEFAULT 8
 
 #define getErrorString(ans) { metalAssert((ans), __FILE__, __LINE__); }
 

@@ -859,6 +859,13 @@ end
 % Applies only when creating sinograms with OMEGA
 options.only_sinos = false;
 
+%%% Do not perform data load/sinogram creation
+% Setting this to true will always skip both the data load and sinogram
+% creation when running this file. Sinogram corrections are applied if
+% selected. Overwrites the above only_sinos variable. Normalization
+% correction coefficients are computed if selected.
+options.no_data_load = false;
+
 %%% Compute only the reconstructions
 % If this file is run with this set to true, then the data load and
 % sinogram formation steps are always skipped. Normalization coefficients 
@@ -989,6 +996,10 @@ options.projector_type = 1;
 % radius = options.Nx/2;
 % options.maskBP = uint8((rowsInImage - centerY).^2 ...
 %     + (columnsInImage - centerX).^2 <= radius.^2);
+% Use the backprojection mask only as a prior mask, i.e. the mask is not
+% applied in the backprojection but the prior is computed only inside the
+% mask (requires options.maskBP)
+% options.usePriorMask = true;
 
 %%% Interpolation length (projector type = 4 only)
 % This specifies the length after which the interpolation takes place. This
@@ -1962,19 +1973,6 @@ end
  
  
  
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% ERROR CHECK %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Basic error checking is done here
-options = OMEGA_error_check(options);
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

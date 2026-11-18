@@ -266,6 +266,8 @@ struct inputStruct {
     bool useMaskFP = false;
     // Use backward projection mask
     bool useMaskBP = false;
+    // Use maskBP only as the prior mask (not as a backprojection mask)
+    bool usePriorMask = false;
     // Use transaxial orthogonal distance-based ray tracer
     bool orthTransaxial = false;
     // Use axial orthogonal distance-based ray tracer
@@ -344,8 +346,15 @@ struct inputStruct {
     bool compute_sensitivity_image = false;
     // Whether FDK weights are used or not
     bool useFDKWeights = true;
-    // If true, the CT projector type 4 backprojection reads the measurements from a 2D layered texture (when possible)
+    // If true, the CT projector type 4 backprojection reads the measurements from a 2D layered texture (when possible). With projector
+    // type 5 the integral image of the projections is read from a 2D layered texture (one layer per projection) in the same way
     bool useLayeredBP = true;
+    // If true, the integral images of the CT projector type 5 forward projection are read from 2D layered textures (when possible)
+    bool useLayeredFP = true;
+    // Number of detector columns computed by each thread in the type 5 forward projection
+    uint32_t NVOXELSFP = 8;
+    // Number of voxels in the axial direction computed by each thread in the type 5 backprojection
+    uint32_t NVOXELS5 = 8;
     // If true, index-based listmode reconstruction is used
     bool useIndexBasedReconstruction = false;
     // Use stochastic subset selection
@@ -923,6 +932,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         inputScalars.meanBP = options.meanBP;
     }
     inputScalars.maskBP = options.useMaskBP;
+    inputScalars.maskPriorOnly = options.usePriorMask && !inputScalars.maskBP;
     inputScalars.maskFP = options.useMaskFP;
     inputScalars.offset = options.offsetCorrection;
     inputScalars.offsetSqrt = options.offsetCorrection && options.offsetSqrt;
@@ -1113,12 +1123,15 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.maskBP = options.maskBP;
         inputScalars.maskBPZ = options.maskBPZ;
     }
+    else if (inputScalars.maskPriorOnly)
+        inputScalars.maskBPZ = options.maskBPZ;
     if (inputScalars.eFOV && inputScalars.useExtendedFOV && !inputScalars.multiResolution)
         w_vec.eFOVIndices = options.eFOVIndices;
     if (inputScalars.useExtendedFOV && !inputScalars.multiResolution)
         w_vec.maskPrior = options.maskPrior;
-    else if (inputScalars.maskBP)
+    else if (inputScalars.maskBP || inputScalars.maskPriorOnly)
         w_vec.maskPrior = options.maskBP;
+    inputScalars.priorMask = inputScalars.maskBP || inputScalars.maskPriorOnly || (inputScalars.useExtendedFOV && !inputScalars.multiResolution);
     // CT-related variables such as number of projection images
     w_vec.nProjections = options.nProjections;
     if (inputScalars.CT) {
@@ -1279,8 +1292,10 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     }
 
     // The complete sensitivity image is computed
+    // For list-mode data the Poisson gradient is BP(1/ybar) - D, so these algorithms always need the sensitivity image D
     if (MethodList.RBI || MethodList.RBIOSL || MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0 || (w_vec.precondTypeIm[0]
-        || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2]))
+        || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2])
+        || (inputScalars.listmode > 0 && (MethodList.RAMLA || MethodList.MRAMLA || MethodList.BSREM || MethodList.MBSREM || MethodList.PKMA || MethodList.SPS || MethodList.SAGA || MethodList.DRAMA)))
         w_vec.computeD = true;
 
     if (w_vec.precondTypeMeas[0] || MethodList.SART || MethodList.POCS)
@@ -1598,6 +1613,9 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     }
     inputScalars.useFDKWeights = options.useFDKWeights;
     inputScalars.useLayeredBP = options.useLayeredBP;
+    inputScalars.useLayeredFP = options.useLayeredFP;
+    inputScalars.NVOXELSFP = options.NVOXELSFP;
+    inputScalars.NVOXELS5 = options.NVOXELS5;
     if (MethodList.FDK && inputScalars.CT && inputScalars.useFDKWeights) {
         w_vec.angles = options.angles;
         inputScalars.DSC = options.sourceToCRot;
@@ -1622,20 +1640,24 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
 // Transfer the ArrayFire arrays from the device to the host pointers
 void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, float* output, float* FPoutput, const scalarStruct& inputScalars,
     std::vector<std::vector<std::vector<float>>>& FPEstimates) {
-    for (int timestep = 0; timestep < inputScalars.Nt; timestep++) {
-        if (inputScalars.storeFP) {
-            size_t dim = 0ULL;
-            for (uint32_t ii = 0; ii < inputScalars.subsets * inputScalars.Niter; ii++) {
-                const uint32_t jj = ii % inputScalars.subsets;
-                const uint32_t kk = ii / inputScalars.subsets;
-                std::copy(FPEstimates[kk][jj].begin(), FPEstimates[kk][jj].end(), FPoutput + dim);
-                dim += FPEstimates[kk][jj].size();
-            }
-            if (DEBUG) {
-                mexPrintBase("dim = %d\n", dim);
-                    mexEval();
+    // The forward projections are copied once, frame-major: timestep, iteration, subset
+    if (inputScalars.storeFP) {
+        size_t dim = 0ULL;
+        for (uint32_t tt = 0; tt < inputScalars.Nt; tt++) {
+            for (uint32_t kk = 0; kk < inputScalars.Niter; kk++) {
+                for (uint32_t jj = 0; jj < inputScalars.subsets; jj++) {
+                    const std::vector<float>& fpEst = FPEstimates[kk][jj + tt * inputScalars.subsets];
+                    std::copy(fpEst.begin(), fpEst.end(), FPoutput + dim);
+                    dim += fpEst.size();
+                }
             }
         }
+        if (DEBUG) {
+            mexPrintBase("dim = %d\n", dim);
+            mexEval();
+        }
+    }
+    for (int timestep = 0; timestep < inputScalars.Nt; timestep++) {
         // Transfer data back to host
         if (inputScalars.storeMultiResolution && inputScalars.nMultiVolumes > 0) {
             size_t volumeOffset = 0ULL;

@@ -1,8 +1,8 @@
 function [index, pituus, varargout] = subset_angles(options, varargin)
-%SUBSET_ANGLES Form the subset indices for the subset_type 5
+%SUBSET_ANGLES Form the subset indices for the subset_type 6 and angles for subset_type 7
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2019-2026 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -59,7 +59,12 @@ kulma(horizontal) = 90;
 kulma(vertical) = 0;
 kulma(ind) = kulma(ind) + 90;
 if nargout >= 3
+    % Only the LOR angles are requested (e.g. goldenAngleSubsets), the
+    % subset indices and options.n_angles are not needed
     varargout{1} = kulma;
+    index = [];
+    pituus = [];
+    return
 end
 % Combine similar angles together. The angles are first snapped to 0.001
 % degrees, so that LORs with an angle that is an exact half degree (up to

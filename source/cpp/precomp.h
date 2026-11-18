@@ -51,6 +51,15 @@ struct float2a {
 #include "Metal.hpp"
 #endif
 
+// The backend headers (included above) define these. The CPU implementation does not use projector type 5,
+// so the value only fills the struct
+#ifndef NVOXELSFP_DEFAULT
+#define NVOXELSFP_DEFAULT 8
+#endif
+#ifndef NVOXELS5_DEFAULT
+#define NVOXELS5_DEFAULT 8
+#endif
+
 struct largeDimStruct {
 	uint32_t NzOrig;
 	float bzOrig;
@@ -359,11 +368,11 @@ typedef struct structForScalars {
 	std::vector<float> sensitivityViewWeights;
     bool useHalf = false;
 	bool use_psf = false, TOF = false, SPECT = false, pitch = false, PET = false, meanFP = false, meanBP = false,
-		maskFP = false, maskBP = false, orthXY = false, orthZ = false, CT = false, atomic_64bit = false, atomic_32bit = false, loadTOF = true,
+		maskFP = false, maskBP = false, maskPriorOnly = false, priorMask = false, orthXY = false, orthZ = false, CT = false, atomic_64bit = false, atomic_32bit = false, loadTOF = true,
 		saveIter = false, enforcePositivity = false, computeSensImag = false, useMAD = true, useImages = false, eFOV = false,
 		useExtendedFOV = false, use64BitIndices = false, TGV2D = false, multiResolution = false, storeMultiResolution = false, offset = false, offsetSqrt = false, relaxScaling = false,
 		computeRelaxation = false, storeFP = false, deconvolution = false, CTAttenuation = true, largeDim = false, usingLinearizedData = false, storeResidual = false,
-		useBuffers = true, useFDKWeights = false, useLayeredBP = false, layeredBP = false, indexBased = false, FISTAAcceleration = false, stochastic = false, useTotLength = true,
+		useBuffers = true, useFDKWeights = false, useLayeredBP = false, layeredBP = false, useLayeredFP = false, layeredFP5 = false, layeredBP5 = false, indexBased = false, FISTAAcceleration = false, stochastic = false, useTotLength = true,
 		useParallelBeam = false, useHelical = false;
 	// True if the additive term (randoms/scatter, sc_ra) is TOF-resolved, i.e. has the same layout and size as the TOF measurements (bin is the slow index).
 	// If false, the additive term is a non-TOF vector that is repeated for all the TOF bins
@@ -374,6 +383,14 @@ typedef struct structForScalars {
 	// Build the projector type 2/3 kernels with the end point check of the tube (-DORTHCLIP), see orthClipNeeded below.
 	// The default (true) is the conservative one, reconstructionAF()/reconstruction_multigpu() set it from the geometry
 	bool orthClip = true;
+	// Number of detector columns computed by each thread in the type 5 forward projection (the user option NVOXELSFP, at least 1 is used). The
+	// footprint of the first column is reused for the others, which is exact only if the detector columns are parallel to the z-axis and the
+	// detector rows are perpendicular to it, see forwardProjectionColumns. It decides the FP kernel define and the launch size
+	uint32_t NVOXELSFP = NVOXELSFP_DEFAULT;
+	// Number of voxels in the axial direction computed by each thread in the type 5 backprojection (the user option NVOXELS5, at least 1 is
+	// used). Two of the four integral image values of the previous voxel are reused, which is exact only if the detector panel is not tilted
+	// or rotated in its plane, see backprojectionVoxelsType5. It decides the BP kernel define and the launch size
+	uint32_t NVOXELS5 = NVOXELS5_DEFAULT;
 	// True only when Nt > 1 AND some sensitivity-affecting input (image-based attenuation or the
 	// multiplicative corrVector/extraCorr) genuinely differs per timestep. Computed once, early, in
 	// reconstructionAF() and consumed there plus in functions.hpp (transferControl, backprojectionType6)
@@ -383,6 +400,9 @@ typedef struct structForScalars {
 	// slots are otherwise unnecessary (normalization and measurement-domain attenuation are single
 	// buffers shared by all timesteps).
 	bool sensPerTimestep = false;
+	// D (the full sensitivity image used by RBI/COSEM/preconditioners) is computed per timestep only when the
+	// corrections differ per frame
+	bool DPerTimestep = false;
 	int64_t Nf = 0;
 	std::vector<CTYPE3> d_Scale;
 	std::vector<CTYPE3> d_Scale4;

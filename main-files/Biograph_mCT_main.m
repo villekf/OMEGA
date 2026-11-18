@@ -403,6 +403,11 @@ options.scatter_smoothing = false;
 % images into 511 keV (see create_atten_matrix_CT below)
 options.attenuation_correction = true;
 
+%%% CT-image attenuation
+% Use CT-images for the attenuation. If set to false, uses attenuation
+% sinograms instead.
+options.CT_attenuation = true;
+
 %%% Rotate the attenuation image before correction
 % Rotates the attenuation image N * 90 degrees where N is the number
 % specified below. Positive values are clockwise, negative
@@ -674,6 +679,13 @@ options.only_sinos = false;
 % sinogram formation steps are always skipped. Normalization coefficients 
 % are not computed even if selected.
 options.only_reconstructions = false;
+
+%%% Precompute all the data
+% If set to true, all the data needed in the reconstruction (e.g. the
+% measurement data) are also prepared when only the sinograms are formed
+% (options.only_sinos = true). Has no effect if
+% options.only_reconstructions = true.
+options.precompute_all = false;
 
 %%% Show status messages
 % These are e.g. time elapsed on various functions and what steps have been
@@ -1542,19 +1554,6 @@ end
  
  
  
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% ERROR CHECK %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Basic error checking is done here
-options = OMEGA_error_check(options);
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 

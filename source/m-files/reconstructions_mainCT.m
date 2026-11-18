@@ -12,7 +12,6 @@ function [pz,varargout] = reconstructions_mainCT(options)
 %   options = The modified input options-struct (optional)
 
 options.CT = true;
-options.errorChecking = true;
 if nargout > 1
     if nargout == 3
         [pz,varargout{1},varargout{2}] = reconstructions_main(options);

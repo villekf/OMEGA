@@ -2,7 +2,7 @@
 """
 Created on Thu Mar  7 13:57:46 2024
 
-Copyright (C) 2024-2025 Ville-Veikko Wettenhovi
+Copyright (C) 2024-2026 Ville-Veikko Wettenhovi
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -756,6 +756,24 @@ def _divideUnlessZero(options, array, divisor):
     return array
 
 
+def _normalizeScatterData(options, scatter, normalization):
+    """
+    _divideUnlessZero for the scatter data when the normalization has a different shape than the scatter data: the normalization
+    is flattened by addProjector (one value for each LOR of a time frame), but the scatter data can be shaped as a sinogram, with
+    TOF bins and with the time frame as the last dimension. The scatter data is divided in the Fortran order, the normalization
+    repeats for each time frame/TOF bin (the slowest dimensions), the shape of the scatter data is kept.
+    """
+    scatter = np.asarray(scatter)
+    normalization = np.asarray(normalization)
+    if scatter.shape == normalization.shape or normalization.size == 0 or scatter.size % normalization.size != 0:
+        return _divideUnlessZero(options, scatter, normalization)
+    nLOR = normalization.size
+    divisor = np.reshape(normalization, (nLOR, 1), order='F')
+    result = np.array(np.reshape(scatter, (nLOR, scatter.size // nLOR), order='F'), copy=True)
+    np.divide(result, divisor, out=result, where=divisor != 0)
+    return np.reshape(result, scatter.shape, order='F')
+
+
 def _perLORFactor(sinM, factor, tofBins, divide):
     """
     Returns the measurement data sinM multiplied (or, with divide, divided) by a
@@ -878,18 +896,73 @@ def _scatterTOFSize(options, scatter):
                      'precorrection'.format(nScatter, int(options.Ndist) * int(options.Nang) * int(options.NSinos)))
 
 
+def _randomsTOFSize(options, randoms):
+    """
+    Classifies the size of the randoms data (options.SinDelayed) in a TOF reconstruction (PET sinograms; raw data, list-mode,
+    index-based or SPECT data and data with one element or none are 'none'): 'nonTOF' for a non-TOF sinogram (one value for each
+    LOR, it is divided evenly among the TOF bins), 'TOF' for a TOF-resolved sinogram with the size of the TOF measurements (a
+    value for each TOF bin, the TOF bin is the slowest index; it is used as it is). Any other size is 'none' (not touched).
+    """
+    nRandoms = int(np.size(randoms))
+    if (options.TOF_bins <= 1 or options.use_raw_data or options.useIndexBasedReconstruction or options.listmode
+            or options.SPECT or nRandoms <= 1):
+        return 'none'
+    frames = (1, int(options.Nt)) if options.Nt > 1 else (1,)
+    nonTOFSizes = {int(options.Ndist) * int(options.Nang) * int(nSinos) * frame
+                   for nSinos in (options.NSinos, options.TotSinos) for frame in frames}
+    if nRandoms in nonTOFSizes:
+        return 'nonTOF'
+    if nRandoms in {size * int(options.TOF_bins) for size in nonTOFSizes}:
+        return 'TOF'
+    return 'none'
+
+
+def _checkRandomsTOF(options):
+    """
+    Sets options.randomsTOF for the randoms data: it is set if the randoms are TOF-resolved (see _randomsTOFSize) and
+    subtracted during the reconstruction (ordinary Poisson), so that the additive term has a value for each TOF bin
+    (TOF-resolved scatter data sets it as well, see _scatterPerTOFBin). TOF-resolved randoms are supported with a single time
+    frame, without increased sampling, randoms smoothing, randoms variance reduction and largeDim (the smoothing and the variance
+    reduction work on a non-TOF sinogram, also with precorrection).
+    """
+    options.randomsTOF = False
+    if not options.randoms_correction or options.SinDelayed is None or _randomsTOFSize(options, options.SinDelayed) != 'TOF':
+        return
+    if options.variance_reduction or options.randoms_smoothing:
+        raise ValueError('Randoms variance reduction and randoms smoothing are not supported with TOF-resolved randoms data; disable '
+                         'them or use a non-TOF randoms sinogram')
+    if not options.ordinaryPoisson:
+        return
+    if options.Nt > 1 or isinstance(options.SinDelayed, (list, tuple)) or options.sampling > 1 or options.largeDim:
+        raise ValueError('TOF-resolved randoms data with corrections during reconstruction is supported only with static data (one '
+                         'time frame), without increased sampling (options.sampling > 1) and largeDim; use precorrection or a '
+                         'non-TOF randoms sinogram')
+    options.randomsTOF = True
+    print('The randoms data is TOF-resolved and is used as it is in each of the ' + str(int(options.TOF_bins)) + ' TOF bins')
+
+
+def _randomsPerTOFBin(options, randoms):
+    """
+    Returns the randoms data (float32 copy) as it is added to the additive term of each TOF bin: a non-TOF sinogram is divided
+    evenly among the TOF bins, TOF-resolved randoms (see _randomsTOFSize) are used as they are.
+    """
+    randoms = randoms.astype(np.float32)
+    if options.TOF_bins > 1 and _randomsTOFSize(options, randoms) != 'TOF':
+        randoms = randoms / np.float32(options.TOF_bins)
+    return randoms
+
+
 def _scatterPerTOFBin(options, scatter):
     """
     Returns the scatter data (float32 copy) as it is added to the additive term of each TOF bin when the scatter is
     subtracted during the reconstruction: a non-TOF scatter sinogram is divided evenly among the TOF bins (a message is
-    printed), TOF-resolved scatter data is used as it is (options.randomsTOF is set, the TOF bin is the slowest index as
+    printed), TOF-resolved scatter data is used as it is (options.randomsTOF is set, see also _checkRandomsTOF; the TOF bin is the slowest index as
     with the TOF measurements; only the NSinos first sinograms of each bin are kept). TOF-resolved scatter data is
     supported with a single time frame and without increased sampling, scatter smoothing, scatter variance reduction and
     largeDim. The scatter data itself is not modified. List-mode and index-based data ('none' below) has one value for each event,
     in the TOF bin of the event, which is used as it is: no division by the TOF bins.
     """
     kind = _scatterTOFSize(options, scatter)
-    options.randomsTOF = False
     if kind == 'TOF':
         if (options.Nt > 1 or isinstance(options.ScatterC, list) or options.sampling > 1 or options.scatter_smoothing
                 or options.scatter_variance_reduction or options.largeDim):
@@ -902,7 +975,7 @@ def _scatterPerTOFBin(options, scatter):
             scatter = np.reshape(scatter, (nSinograms * int(options.TotSinos), int(options.TOF_bins)), order='F')
             scatter = scatter[:nSinograms * int(options.NSinos), :]
         options.randomsTOF = True
-        print('The scatter data is TOF-resolved and is used as it is in each of the ' + str(int(options.TOF_bins)) + ' TOF bins (the randoms are divided evenly among the TOF bins)')
+        print('The scatter data is TOF-resolved and is used as it is in each of the ' + str(int(options.TOF_bins)) + ' TOF bins (non-TOF randoms are divided evenly among the TOF bins)')
         return np.ravel(scatter, order='F').astype(np.float32)
     scatter = scatter.astype(np.float32)
     if kind == 'nonTOF':
@@ -962,6 +1035,51 @@ def _subtractScatter(options, sinM, scatter):
         scatter = np.reshape(scatter, sinM.shape[:3] + (1, sinM.shape[4]), order='F')
         return sinM - scatter / np.float32(options.TOF_bins)
     return _subtractDelayed(sinM, scatter, options.TOF_bins)
+
+
+def _correctionOfFrame(correction, frame, ff, nFrames):
+    """
+    The randoms/scatter data of time frame ff for the measurement data frame (one entry of a dynamic SinM list). The corrections
+    of the dynamic data have the time frame as the last dimension (see _expandFrameCorrections in recomain.py): SinDelayed
+    (Ndist, Nang, planes, Nt) and ScatterC (Ndist, Nang, planes, TOF bins, Nt). A flat array of all the frames is also
+    split. A list holds the frames. Data without the frame dimension is used as it is for every frame. If the frame has as
+    many elements as the measurement frame, it is given the shape of the measurement frame.
+    """
+    if isinstance(correction, (list, tuple)):
+        piece = np.asarray(correction[ff if len(correction) > 1 else 0])
+    else:
+        correction = np.asarray(correction)
+        if nFrames > 1 and correction.ndim >= 2 and correction.shape[-1] == nFrames:
+            piece = correction[..., ff]
+        elif nFrames > 1 and correction.ndim == 1 and correction.size % nFrames == 0:
+            piece = np.reshape(correction, (correction.size // nFrames, nFrames), order='F')[:, ff]
+        else:
+            piece = correction
+    if piece.size == frame.size and piece.shape != frame.shape:
+        piece = np.reshape(piece, frame.shape, order='F')
+    return piece
+
+
+def _subtractDelayedFrames(sinM, delayed, tofBins):
+    """
+    _subtractDelayed for the measurement data of any number of time frames: a list of frames (dynamic data) is subtracted
+    frame by frame from the corresponding randoms frames, a single array is subtracted as it is.
+    """
+    if isinstance(sinM, list):
+        return [_subtractDelayed(frame, _correctionOfFrame(delayed, np.asarray(frame), ff, len(sinM)), tofBins)
+                for ff, frame in enumerate(sinM)]
+    return _subtractDelayed(sinM, _correctionOfFrame(delayed, np.asarray(sinM), 0, 1), tofBins)
+
+
+def _subtractScatterFrames(options, sinM, scatter):
+    """
+    _subtractScatter for the measurement data of any number of time frames: a list of frames (dynamic data) is subtracted
+    frame by frame from the corresponding scatter frames, a single array is subtracted as it is.
+    """
+    if isinstance(sinM, list):
+        return [_subtractScatter(options, np.asarray(frame), _correctionOfFrame(scatter, np.asarray(frame), ff, len(sinM)))
+                for ff, frame in enumerate(sinM)]
+    return _subtractScatter(options, sinM, _correctionOfFrame(scatter, np.asarray(sinM), 0, 1))
 
 
 def _normalizationDims(options):
@@ -1539,11 +1657,16 @@ def loadCorrections(options):
 
         useSingle = (options.implementation == 2 or options.implementation == 3
                      or options.implementation == 5 or options.useSingles)
+        # The algorithms that do not use the ordinary Poisson model (PDHG, LSQR, etc.) cannot have an additive term in the
+        # projector, so the estimate is subtracted from the measurements also with corrections during reconstruction. The
+        # normalization stays in the projector then (it is not applied to the measurements, unlike with precorrection)
+        subtractScatterNow = (not options.corrections_during_reconstruction) or (not options.ordinaryPoisson)
         if isinstance(options.SinM, list):  # Dynamic data (SinM is a list of size options.Nt)
-            if not options.corrections_during_reconstruction:
-                for timestep in range(options.Nt):
-                    options.SinM[timestep] = options.SinM[timestep] - _combinedScatterEstimate(timestep)
+            if subtractScatterNow:
+                options.SinM = [options.SinM[timestep] - _combinedScatterEstimate(timestep) for timestep in range(options.Nt)]
                 options.scatter_correction = False
+                if options.corrections_during_reconstruction:
+                    options._scatterPrecorrected = True
             else:
                 options.SinDelayed = np.stack(
                     [np.asfortranarray(_combinedScatterEstimate(timestep)) for timestep in range(options.Nt)], axis=-1)
@@ -1556,9 +1679,11 @@ def loadCorrections(options):
                 options.randoms_correction = options.ordinaryPoisson
         else:  # Static data (SinM is not a list)
             scatterEstimate = _combinedScatterEstimate()
-            if not options.corrections_during_reconstruction:
+            if subtractScatterNow:
                 options.SinM = options.SinM - scatterEstimate
                 options.scatter_correction = False
+                if options.corrections_during_reconstruction:
+                    options._scatterPrecorrected = True
             else:
                 options.SinDelayed = np.asfortranarray(scatterEstimate)
                 if useSingle:
@@ -1596,9 +1721,10 @@ def loadCorrections(options):
             else:
                 options.ScatterC = _divideUnlessZero(options, options.ScatterC, expand_detector_stack(options.normalization, options.ScatterC.shape))
         else:
-            options.ScatterC = _divideUnlessZero(options, options.ScatterC, options.normalization)
+            options.ScatterC = _normalizeScatterData(options, options.ScatterC, options.normalization)
         # Another call with the returned options must not normalize the scatter again
         options.scatterNormalized = True
+    _checkRandomsTOF(options)
     if options.randoms_correction and options.ordinaryPoisson and options.variance_reduction:
         from omegatomo.util.Randoms_variance_reduction import Randoms_variance_reduction
         options.SinDelayed = Randoms_variance_reduction(options.SinDelayed, options)
@@ -1628,12 +1754,27 @@ def loadCorrections(options):
             from omegatomo.util.smoothing import randoms_smoothing
             options.ScatterC = randoms_smoothing(options.ScatterC, options)
         if options.precorrect:
+            subtractedRandoms = False
+            subtractedScatter = False
             if options.scatter_correction and options.ScatterC.size > 0 and options.SinDelayed.size > 0 and options.randoms_correction and options.subtract_scatter:
-                options.SinM = _subtractScatter(options, _subtractDelayed(options.SinM, options.SinDelayed, options.TOF_bins), options.ScatterC)
+                options.SinM = _subtractScatterFrames(options, _subtractDelayedFrames(options.SinM, options.SinDelayed, options.TOF_bins), options.ScatterC)
+                subtractedRandoms = True
+                subtractedScatter = True
             elif options.scatter_correction and options.ScatterC.size > 0 and not options.randoms_correction and options.subtract_scatter:
-                options.SinM = _subtractScatter(options, options.SinM, options.ScatterC)
+                options.SinM = _subtractScatterFrames(options, options.SinM, options.ScatterC)
+                subtractedScatter = True
             elif options.SinDelayed.size > 0 and options.randoms_correction:
-                options.SinM = _subtractDelayed(options.SinM, options.SinDelayed, options.TOF_bins)
+                options.SinM = _subtractDelayedFrames(options.SinM, options.SinDelayed, options.TOF_bins)
+                subtractedRandoms = True
+            if options.corrections_during_reconstruction:
+                # The subtracted terms are already in SinM: clear their flags so they are not also added in the forward projection.
+                # The markers let imageProperties still report them as applied.
+                if subtractedRandoms:
+                    options._randomsPrecorrected = True
+                    options.randoms_correction = False
+                if subtractedScatter:
+                    options._scatterPrecorrected = True
+                    options.scatter_correction = False
     if deferredNormalization is not None:
         options.SinM = _perLORFactor(options.SinM, deferredNormalization[0], options.TOF_bins, deferredNormalization[1])
     if options.scatter_correction and options.ScatterC.size > 0 and not options.subtract_scatter:
@@ -1671,13 +1812,16 @@ def loadCorrections(options):
         if options.randoms_correction and options.ordinaryPoisson and options.SinDelayed.size > 1 and options.TOF_bins > 1:
             # The randoms estimate is not combined with the scatter here, so it is
             # divided by TOF_bins on its own, as in the last branch below.
-            options.SinDelayed = options.SinDelayed.astype(np.float32) / options.TOF_bins
+            options.SinDelayed = _randomsPerTOFBin(options, options.SinDelayed)
     elif options.scatter_correction and options.ScatterC.size > 0 and options.SinDelayed.size <= 1 and options.subtract_scatter and options.ordinaryPoisson:
         # No pre-existing randoms estimate (r_exist false in MATLAB terms): the
         # scatter estimate becomes SinDelayed. Matches MATLAB loadCorrections.m's
         # scatter-only branches: with TOF data a non-TOF scatter sinogram is divided
         # evenly among the TOF bins (see _scatterPerTOFBin).
         options.SinDelayed = np.asfortranarray(_scatterPerTOFBin(options, options.ScatterC))
+        if options.Nt > 1 and options.SinDelayed.ndim == 5 and options.SinDelayed.shape[3] == 1:
+            # One scatter sinogram for each frame, (Ndist, Nang, planes, 1, Nt): the layout of the randoms (Ndist, Nang, planes, Nt)
+            options.SinDelayed = np.reshape(options.SinDelayed, options.SinDelayed.shape[:3] + options.SinDelayed.shape[4:], order='F')
         options.scatter_correction = False
         # Matches MATLAB loadCorrections.m's final flag-normalization (~line 1078): during-
         # reconstruction randoms_correction is only enabled when SinDelayed ends up with more
@@ -1690,15 +1834,22 @@ def loadCorrections(options):
         # static branches): the non-TOF randoms estimate and a non-TOF scatter
         # sinogram are both divided by TOF_bins before adding them.
         if options.TOF_bins > 1:
-            options.SinDelayed = options.SinDelayed.astype(np.float32) / options.TOF_bins
+            options.SinDelayed = _randomsPerTOFBin(options, options.SinDelayed)
         scatterTerm = np.asfortranarray(_scatterPerTOFBin(options, options.ScatterC))
         if options.Nt > 1 and scatterTerm.size * options.Nt == options.SinDelayed.size:
             # A single scatter sinogram is shared by all the frames
             scatterTerm = np.reshape(scatterTerm, options.SinDelayed.shape[:-1] + (1,), order='F')
+        elif scatterTerm.size == options.SinDelayed.size and scatterTerm.shape != options.SinDelayed.shape:
+            # One scatter sinogram for each frame, (..., TOF, Nt) with a single TOF bin against the randoms (..., Nt)
+            scatterTerm = np.reshape(scatterTerm, options.SinDelayed.shape, order='F')
         if scatterTerm.size > options.SinDelayed.size and options.SinDelayed.size > 0 and scatterTerm.size % options.SinDelayed.size == 0:
             # TOF-resolved scatter: the randoms (already divided among the TOF bins) are repeated for all the TOF bins, the TOF bin
             # is the slowest index as with the TOF measurements. A new array, the caller's array is not modified
             options.SinDelayed = np.tile(np.ravel(options.SinDelayed, order='F'), scatterTerm.size // options.SinDelayed.size) + np.ravel(scatterTerm, order='F')
+        elif options.randomsTOF and scatterTerm.size < options.SinDelayed.size and scatterTerm.size > 0 and options.SinDelayed.size % scatterTerm.size == 0:
+            # TOF-resolved randoms with a non-TOF scatter sinogram (already divided among the TOF bins): the scatter is repeated for all
+            # the TOF bins. A new array, the caller's array is not modified
+            options.SinDelayed = np.ravel(options.SinDelayed, order='F') + np.tile(np.ravel(scatterTerm, order='F'), options.SinDelayed.size // scatterTerm.size)
         elif _sharesCallerMemory(options, options.SinDelayed):
             # SinDelayed is the caller's array: out-of-place (same dtype as the in-place add)
             options.SinDelayed = np.add(options.SinDelayed, scatterTerm, out=np.empty_like(options.SinDelayed))
@@ -1711,7 +1862,7 @@ def loadCorrections(options):
         # is used. Matches MATLAB loadCorrections.m's `elseif ~scatter_correction
         # && TOF_bins > 1 && r_exist` branches (e.g. lines 397-402/500-505/566-
         # 571/645-650): the randoms estimate is divided by TOF_bins on its own.
-        options.SinDelayed = options.SinDelayed.astype(np.float32) / options.TOF_bins
+        options.SinDelayed = _randomsPerTOFBin(options, options.SinDelayed)
     if options.arc_correction:
         from omegatomo.util.arcCorrection import arc_correction
         x, y, options = arc_correction(options, True)
@@ -2198,10 +2349,14 @@ def parseInputs(options, mDataFound = False):
     if options.scatter_correction and not options.corrections_during_reconstruction:
         if not options.precorrect:
             print('Warning: Scatter correction is disabled. options.corrections_during_reconstruction is False and options.precorrect is False, i.e. the scatter is neither applied during the reconstruction nor subtracted from the measurement data. Set options.corrections_during_reconstruction = True to apply it.')
+        else:
+            options._scatterPrecorrected = True
         options.scatter_correction = False
     if options.randoms_correction and not options.corrections_during_reconstruction:
         if not options.precorrect:
             print('Warning: Randoms correction is disabled. options.corrections_during_reconstruction is False and options.precorrect is False, i.e. the randoms are neither applied during the reconstruction nor subtracted from the measurement data. Set options.corrections_during_reconstruction = True to apply them.')
+        else:
+            options._randomsPrecorrected = True
         options.randoms_correction = False
     
     if options.Nt <= 1 and mDataFound and not options.largeDim and options.loadTOF:
@@ -3117,6 +3272,10 @@ def prepassPhase(options):
             if np.size(options.alpha_PKMA) > options.Niter * options.subsets:
                 print('Warning: The number of PKMA alpha (momentum) values is higher than the total number of iterations times subsets. The final values will be ignored.')
     
+        # A single-slice image has no axial neighbours; with Ndz > 0 the weights and
+        # the ArrayFire priors assume a 3D neighbourhood
+        if np.ravel(options.Nz)[0] == 1 and options.Ndz > 0:
+            options.Ndz = options.Ndz.dtype.type(0) if isinstance(options.Ndz, np.generic) else 0
         # Compute the weights
         if (options.quad or options.L or options.FMH or options.weighted_mean or options.MRP or (options.TV and options.TVtype == 3 and options.TV_use_anatomical) or options.Huber or options.RDP or options.GGMRF or options.hyperbolic) and options.MAP:
             _checkPriorWeights(options)

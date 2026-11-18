@@ -78,6 +78,37 @@ if ~isfield(options,'nLayers')
 end
 options = setMissingValues(options);
 
+% Checks that concern only the data load
+if ~options.CT && ~options.SPECT && options.use_LMF && options.data_bytes < 10
+    error('Too little data bytes in LMF format, minimum allowed is 10 bytes (time + detector indices)!')
+end
+if ~options.CT && ~options.SPECT && options.use_LMF && options.data_bytes > 21
+    warning(['LMF format uses more bytes than the supported 21 bytes (time + detector indices + source coordinates + event indices + Compton scattering in phantom). '...
+        'If these extra bytes are before the bytes that are used, output data will be incorrect.'])
+end
+if ~options.CT && ~options.SPECT && options.use_LMF && options.R_bits + options.C_bits + options.M_bits + options.S_bits + options.L_bits > 16
+    error('Number of bits used in LMF is more than 16 bits. OMEGA supports only 16 bit detector indices!')
+end
+if ~options.CT && ~options.SPECT && options.use_LMF && options.randoms_correction
+    warning('Randoms correction is set to true although LMF input is selected. No randoms correction will be performed.')
+    options.randoms_correction = false;
+end
+if ~options.CT && ~options.SPECT && options.store_scatter && sum(options.scatter_components) <= 0
+    error('Store scatter selected, but no scatter components have been selected!')
+end
+if exist('OCTAVE_VERSION','builtin') == 0 && options.use_root && ((exist('GATE_root_matlab','file') ~= 3 && ~verLessThan('matlab', '9.6')) ...
+        || (exist('GATE_root_matlab_C','file') ~= 3 && verLessThan('matlab', '9.6'))) && options.use_machine == 0 && ~options.CT
+    warning(['ROOT selected, but no MEX-file for ROOT data load found. Run install_mex to build ROOT MEX-file. Ignore this warning if you are ' ...
+        'simply loading a mat-file containing measurement data from ROOT files.'])
+end
+if options.use_root && exist('GATE_root_matlab_oct','file') ~= 3 && options.use_machine == 0 && exist('OCTAVE_VERSION','builtin') == 5 && ~options.CT
+    warning(['ROOT selected, but no OCT-file for ROOT data load found. Run install_mex to build ROOT OCT-file. Ignore this warning if you are ' ...
+        'simply loading a mat-file containing measurement data from ROOT files.'])
+end
+if options.use_LMF && exist('gate_lmf_matlab','file') ~= 3 && options.use_machine == 0 && ~options.CT
+    error('LMF selected, but no MEX-file for LMF data load found. Run install_mex to build LMF MEX-file.')
+end
+
 if numel(options.partitions) > 1
     partitions = numel(options.partitions);
 elseif isempty(options.partitions)

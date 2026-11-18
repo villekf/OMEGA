@@ -3,7 +3,7 @@ function image_properties = save_image_properties(options)
 %in a struct variable
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019-2022 Ville-Veikko Wettenhovi
+% Copyright (C) 2019-2026 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -30,7 +30,13 @@ elseif options.implementation == 3
 elseif options.implementation == 4
     image_properties.Implementation = 'CPU matrix-free (4)';
 elseif options.implementation == 2
-    image_properties.Implementation = 'Matrix-free ArrayFire OpenCL (2)';
+    if isfield(options,'use_CUDA') && options.use_CUDA
+        image_properties.Implementation = 'Matrix-free ArrayFire CUDA (2)';
+    elseif isfield(options,'use_CPU') && options.use_CPU
+        image_properties.Implementation = 'Matrix-free ArrayFire CPU (2)';
+    else
+        image_properties.Implementation = 'Matrix-free ArrayFire OpenCL (2)';
+    end
     image_properties.deviceNumber = options.use_device;
 end
 if options.projector_type == 0
@@ -176,19 +182,19 @@ else
     if isfield(options,'FOVxOrig') && options.FOVxOrig < options.FOVa_x(1)
         image_properties.FOVx = options.FOVxOrig;
     else
-        image_properties.FOVx = options.FOVa_x;
+        image_properties.FOVx = options.FOVa_x(1);
     end
     image_properties.FOVxExtended = options.FOVa_x(2:end);
     if isfield(options,'FOVyOrig') && options.FOVyOrig < options.FOVa_y(1)
         image_properties.FOVy = options.FOVyOrig;
     else
-        image_properties.FOVy = options.FOVa_y;
+        image_properties.FOVy = options.FOVa_y(1);
     end
     image_properties.FOVyExtended = options.FOVa_y(2:end);
     if isfield(options,'axialFOVOrig') && options.axialFOVOrig < options.axial_fov(1)
         image_properties.axialFOV = options.axialFOVOrig;
     else
-        image_properties.axialFOV = options.axial_fov;
+        image_properties.axialFOV = options.axial_fov(1);
     end
     image_properties.axialFOVExtended = options.axial_fov(2:end);
     image_properties.voxelSizeX = image_properties.FOVx / double(image_properties.Nx(1));
@@ -239,6 +245,7 @@ else
     image_properties.nSinograms = options.NSinos;
     image_properties.rawDataUsed = options.use_raw_data;
     image_properties.startTime = options.start;
+    image_properties.endTime = options.end;
     image_properties.nRings = options.rings;
     if options.use_raw_data
         image_properties.ringDifference = options.ring_difference_raw;

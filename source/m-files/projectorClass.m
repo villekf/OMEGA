@@ -618,9 +618,15 @@ classdef projectorClass
                 end
             elseif isfield(obj.param, 'maskFP') && numel(obj.param.maskFP) > 1 && (numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD || numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD * expectedMaskProjections || (obj.param.SPECT && numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD * obj.param.nHeads))
                 obj.param.useMaskFP = true;
-                obj.param.maskFPZ = size(obj.param.maskFP,3);
+                obj.param.maskFPZ = numel(obj.param.maskFP) / (obj.param.nRowsD * obj.param.nColsD); % number of images, also for flat masks
             else
                 obj.param.useMaskFP = false;
+            end
+
+            if obj.param.usePriorMask && (~isfield(obj.param, 'maskBP') || ...
+                    (~iscell(obj.param.maskBP) && numel(obj.param.maskBP) <= 1) || ...
+                    (iscell(obj.param.maskBP) && (isempty(obj.param.maskBP) || all(cellfun(@(mask) numel(mask) <= 1, obj.param.maskBP)))))
+                obj.param.usePriorMask = false;
             end
             if numel(obj.param.partitions) > 1
                 partitions = numel(obj.param.partitions);
@@ -666,6 +672,7 @@ classdef projectorClass
                     obj.param.useMaskBP = true;
                     obj.param.maskBPZ = maskBPZ;
                 end
+
             elseif ~(obj.param.attenuation_correction && obj.param.SPECT)
                 obj.param.useMaskBP = false;
             end
