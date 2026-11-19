@@ -57,6 +57,11 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	param.Nz = getScalarUInt32(prhs[ind], ind);
 	ind++;
 
+	// The CPU projector computes the linear voxel indices in signed 32-bit integers (e.g. the voxel index of the axis-parallel rays in
+	// perpendicular_elements_par), i.e. the image can have at most INT32_MAX voxels
+	if (static_cast<uint64_t>(param.Nx) * static_cast<uint64_t>(param.Ny) * static_cast<uint64_t>(param.Nz) > static_cast<uint64_t>(INT32_MAX))
+		mexErrMsgTxt("The CPU projector supports at most 2147483647 voxels (Nx * Ny * Nz). Use a GPU implementation for larger images.");
+
 	// Distance between adjacent pixels in x-direction
 	param.dx = getScalarDouble(prhs[ind], ind);
 	ind++;
@@ -83,10 +88,12 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 
 	// Coordinates of the detectors in z-direction
 	const double* z = getDoubles(prhs[ind], "solu");
+	const size_t nElemZ = mxGetNumberOfElements(prhs[ind]);
 	ind++;
 
 	// Coordinates of the detectors in x/y-direction
 	double* x = getDoubles(prhs[ind], "solu");
+	const size_t nElemX = mxGetNumberOfElements(prhs[ind]);
 	ind++;
 
 	// Number of detector indices
@@ -99,6 +106,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 
 	// Normalization coefficients
 	param.normCoefs = getDoubles(prhs[ind], "solu");
+	const size_t nElemNorm = mxGetNumberOfElements(prhs[ind]);
 	ind++;
 
 	// Number of measurements/LORs
@@ -119,6 +127,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 
 	// Scatter data
 	param.scatterCoefs = getDoubles(prhs[ind], "solu");
+	const size_t nElemScat = mxGetNumberOfElements(prhs[ind]);
 	ind++;
 
 	// Global correction factor
@@ -185,6 +194,15 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	param.nMeas = getScalarUInt64(prhs[ind], ind);
 	ind++;
 
+	// Raw (non-list-mode) data needs the detector pair list (detIndices), which the CPU projectors do not read. The same raw/list-mode
+	// distinction as the GPU: the detector pairs are used if and only if raw == 1 and listmode != 1 (ProjectorClass.h)
+	// Implementation 4 (type 1) only: implementation 1 and its precomputation phase handle raw data themselves
+	if (type == 1u && param.raw && param.listMode != 1)
+		mexErrMsgTxt("Raw data reconstruction is not supported with the CPU implementation!");
+	// Only the improved Siddon projector is implemented on the CPU (MATLAB maps the projector types 1 and 11 to 1)
+	if (param.projType != 1 && param.projType != 11)
+		mexErrMsgTxt("Only projector type 1 (improved Siddon) is supported with the CPU implementation!");
+
 	//46
 
 	const bool CT = getScalarBool(getField(options, 0, "CT"), ind);
@@ -198,11 +216,37 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	} else if (SPECT) {
 		param.size_y = getScalarUInt32(getField(options, 0, "nColsD"), ind);
 		param.dPitchXY = getScalarDouble(getField(options, 0, "dPitchX"), ind);
-		param.rayShiftsDetector = getDoubles(options, "rayShiftsDetector");
-		param.rayShiftsSource = getDoubles(options, "rayShiftsSource");
+		// Collimator ray shifts (mm), compact layout [2, n_rays, nRowsD, nColsD, nHeads] (see SPECTParameters.m). Empty means no shifts
+		for (const char* shiftName : { "rayShiftsDetector", "rayShiftsSource" }) {
+			if (mxGetFieldNumber(options, shiftName) >= 0 && mxGetNumberOfElements(getField(options, 0, shiftName)) > 0 && !mxIsDouble(getField(options, 0, shiftName)))
+				mexErrMsgTxt("SPECT ray shifts (rayShiftsDetector/rayShiftsSource) must be double with the double precision implementation 4.");
+		}
+		if (mxGetFieldNumber(options, "rayShiftsDetector") >= 0 && mxGetNumberOfElements(getField(options, 0, "rayShiftsDetector")) > 0)
+			param.rayShiftsDetector = getDoubles(options, "rayShiftsDetector");
+		if (mxGetFieldNumber(options, "rayShiftsSource") >= 0 && mxGetNumberOfElements(getField(options, 0, "rayShiftsSource")) > 0)
+			param.rayShiftsSource = getDoubles(options, "rayShiftsSource");
         param.coneOfResponseStdCoeffA = getScalarDouble(getField(options, 0, "coneOfResponseStdCoeffA"), ind);
         param.coneOfResponseStdCoeffB = getScalarDouble(getField(options, 0, "coneOfResponseStdCoeffB"), ind);
         param.coneOfResponseStdCoeffC = getScalarDouble(getField(options, 0, "coneOfResponseStdCoeffC"), ind);
+		// Detector head of each projection, in the same (subset) order as the detector coordinates (see parseInputData.m)
+		if (mxGetFieldNumber(options, "DetectorVector") >= 0 && mxGetNumberOfElements(getField(options, 0, "DetectorVector")) > 0) {
+			if (!mxIsUint32(getField(options, 0, "DetectorVector")))
+				mexErrMsgTxt("DetectorVector must be uint32.");
+			param.detectorVector = getUint32s(options, "DetectorVector");
+		}
+		// Support the rays are clipped to (GPU: extendRayToEllipse), see setMissingValues.m. Without it the image volume is the support
+		if (mxGetFieldNumber(options, "ellipsePower") >= 0) {
+			param.ellipseCenterX = getScalarDouble(options, 0, "ellipseCenterX");
+			param.ellipseCenterY = getScalarDouble(options, 0, "ellipseCenterY");
+			param.ellipseCenterZ = getScalarDouble(options, 0, "ellipseCenterZ");
+			param.ellipseRadiusX = getScalarDouble(options, 0, "ellipseRadiusX");
+			param.ellipseRadiusY = getScalarDouble(options, 0, "ellipseRadiusY");
+			param.ellipseRadiusZ = getScalarDouble(options, 0, "ellipseRadiusZ");
+			param.ellipsePower = getScalarDouble(options, 0, "ellipsePower");
+			// Box support is ellipsePower > 1e20, Inf as well
+			if (!std::isfinite(param.ellipsePower))
+				param.ellipsePower = 1e30;
+		}
 	} else {
 		param.size_y = getScalarUInt32(getField(options, 0, "Nang"), ind);
 		param.dPitchXY = getScalarDouble(getField(options, 0, "cr_p"), ind);
@@ -212,13 +256,30 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	param.useMaskFP = getScalarBool(options, 0, "useMaskFP");
 	if (param.useMaskFP)
 		param.maskFP = getUint8s(options, "maskFP");
+	param.useMaskBP = getScalarBool(options, 0, "useMaskBP");
 	if (param.useMaskBP)
 		param.maskBP = getUint8s(options, "maskBP");
 	const uint32_t nLayers = getScalarUInt32(options, 0, "nLayers");
 	if (nLayers > 1)
 		param.nLayers = true;
+	// Number of detector layers, the list-mode sensitivity image enumerates all nLayers^2 layer pairs (GPU -DNLAYERS)
+	param.nLayerCount = nLayers > 1 ? nLayers : 1U;
 	param.computeSensIm = getScalarBool(getField(options, 0, "compute_sensitivity_image"), ind);
 	param.rings = getScalarInt32(getField(options, 0, "rings"), ind);
+	// Image-based (true) or measurement-based (false, GPU -DATNM) attenuation correction
+	if (mxGetFieldNumber(options, "CT_attenuation") >= 0)
+		param.CTAttenuation = getScalarBool(options, 0, "CT_attenuation");
+	// Total length (true, GPU -DTOTLENGTH) or the in-FOV length (false) of the ray is used in the normalization of the PET rays
+	if (mxGetFieldNumber(options, "useTotLength") >= 0)
+		param.useTotLength = getScalarBool(options, 0, "useTotLength");
+	// The measurement-based attenuation vector contains all the subsets (in subset order), the current subset starts at the same
+	// offset as the normalization data (see splitInput.m)
+	if (param.attenuationCorrection && !param.CTAttenuation && param.subsets > 1) {
+		uint64_t kerroin = 1ULL;
+		if ((param.subsetType >= 8 || param.subsetType == 0) && param.listMode == 0)
+			kerroin = static_cast<uint64_t>(param.size_x) * static_cast<uint64_t>(param.size_y);
+		param.atten = &param.atten[param.nMeas * kerroin];
+	}
 
 	if (param.listMode > 0 && !param.computeSensIm) {
 		const uint64_t* index = getUint64s(options, "summa");
@@ -330,6 +391,51 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 
 		const uint8_t fp = getScalarUInt8(prhs[ind], ind);
 		ind++;
+
+		if (fp == 1)
+			param.useMaskBP = false;
+
+		// The list-mode sensitivity mode (detector pair enumeration with the scanner coordinate table) is used if and only if this is a
+		// backprojection (fp == 2: the sensitivity image, and the list-mode dP of SPS/preconditioner type 6 as in reconstructionAF.h).
+		// A forward projection always uses the event coordinates of the current subset, also
+		// when compute_sensitivity_image is still set (e.g. E = A * 1 of MBSREM/MRAMLA/SPS in reconstructions_main.m, which is computed
+		// before the sensitivity image), as in implementation 2 (ProjectorClassCPU::forwardProjection sets computeSensIm = false). Without
+		// this the empty x/z inputs of the list-mode forward projection were read as the crystal table (segmentation fault)
+		if (fp == 1 && param.computeSensIm) {
+			param.computeSensIm = false;
+			if (param.listMode > 0) {
+				const uint64_t* index = getUint64s(options, "summa");
+				x = getDoubles(options, "x", 0);
+				x = &x[index[param.currentSubset] * 6LL];
+			}
+		}
+
+		// List-mode (PET) sensitivity image, the same enumeration as the GPU (projectorType123.cl, SENS, and m_size in reconstructionAF.h).
+		// Contract with MATLAB (backwardProjection.m): x is the crystal coordinate table, two values (x, y) per detector of one ring, all
+		// layers one after another (det_per_ring detectors per layer, i.e. 2 * det_per_ring * nLayers values), z the axial coordinates of
+		// the rings, all layers one after another (rings * nLayers values). det_per_ring (input argument) and options.rings are the values of
+		// one layer and options.nLayers the number of layers. The MEX enumerates the pair indices 0 .. koko - 1, koko = nLayers^2 *
+		// det_per_ring^2 * rings^2, index = a + b * det_per_ring + (ringA * rings + ringB) * det_per_ring^2 + (layerA * nLayers + layerB) *
+		// det_per_ring^2 * rings^2. The number of measurements input is not used here. The normalization and the multiplicative scatter
+		// (if used) are indexed with the pair index, i.e. they need koko elements
+		if (param.listMode > 0 && param.computeSensIm && fp == 2 && !CT && !SPECT) {
+			// The measurement-based attenuation has one value for each measurement (event), but the sensitivity image enumerates all the
+			// detector pairs, i.e. it would be indexed past its end
+			if (param.attenuationCorrection && !param.CTAttenuation)
+				mexErrMsgTxt("List-mode reconstruction cannot compute the sensitivity image with measurement-based attenuation (CT_attenuation = false). Use an attenuation image (CT_attenuation = true) or disable the computation of the sensitivity image (compute_sensitivity_image = false).");
+			const uint64_t koko = static_cast<uint64_t>(param.det_per_ring) * static_cast<uint64_t>(param.det_per_ring) *
+				static_cast<uint64_t>(param.rings) * static_cast<uint64_t>(param.rings) *
+				static_cast<uint64_t>(param.nLayerCount) * static_cast<uint64_t>(param.nLayerCount);
+			if (nElemX < 2ULL * static_cast<uint64_t>(param.det_per_ring) * static_cast<uint64_t>(param.nLayerCount))
+				mexErrMsgTxt("List-mode sensitivity image: the detector coordinates x need 2 * det_per_ring * nLayers elements!");
+			if (nElemZ < static_cast<uint64_t>(param.rings) * static_cast<uint64_t>(param.nLayerCount))
+				mexErrMsgTxt("List-mode sensitivity image: the axial coordinates z need rings * nLayers elements!");
+			if (param.normalizationCorrection && nElemNorm < koko)
+				mexErrMsgTxt("List-mode sensitivity image: the normalization needs nLayers^2 * det_per_ring^2 * rings^2 elements!");
+			if (param.scatterCorrectionMult && nElemScat < koko)
+				mexErrMsgTxt("List-mode sensitivity image: the multiplicative scatter needs nLayers^2 * det_per_ring^2 * rings^2 elements!");
+			loop_var_par = static_cast<int64_t>(koko);
+		}
 
 		// 53
 

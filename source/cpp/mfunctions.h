@@ -66,6 +66,10 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	inputScalars.computeSensImag = getScalarBool(options, 0, "compute_sensitivity_image");
 	inputScalars.CT = getScalarBool(options, 0, "CT");
 	inputScalars.atomic_32bit = getScalarBool(options, 0, "use_32bit_atomics");
+#ifdef CPU
+	// The CPU backend accumulates in float, integer atomics are GPU-only
+	inputScalars.atomic_32bit = false;
+#endif
 	inputScalars.scatter = static_cast<uint32_t>(getScalarBool(options, 0, "additionalCorrection"));
 	inputScalars.CTAttenuation = getScalarBool(options, 0, "CT_attenuation");
 	inputScalars.largeDim = getScalarBool(options, 0, "largeDim");
@@ -854,7 +858,6 @@ inline void get_rec_methods(const mxArray* options, RecMethods& MethodList) {
 	MethodList.PDHG = getScalarBool(getField(options, 0, "PDHG"), -61);
 	MethodList.PDHGKL = getScalarBool(getField(options, 0, "PDHGKL"), -61);
 	MethodList.PDHGL1 = getScalarBool(getField(options, 0, "PDHGL1"), -61);
-	MethodList.CV = getScalarBool(getField(options, 0, "CV"), -61);
 	MethodList.PDDY = getScalarBool(getField(options, 0, "PDDY"), -61);
 	MethodList.POCS = getScalarBool(getField(options, 0, "ASD_POCS"), -61);
 	MethodList.SAGA = getScalarBool(getField(options, 0, "SAGA"), -61);
@@ -869,7 +872,7 @@ inline void get_rec_methods(const mxArray* options, RecMethods& MethodList) {
 	MethodList.FDK = getScalarBool(getField(options, 0, "FDK"), -61);
 
 	// Primal-dual algorithms
-	if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY)
+	if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.PDDY)
 		MethodList.CPType = true;
 }
 

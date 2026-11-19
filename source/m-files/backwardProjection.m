@@ -50,11 +50,16 @@ projType = options.projector_type;
 if projType == 1 || projType == 11
     projType = 1;
 end
+% The sensitivity image of list-mode data is the backprojection over all detector pairs of the scanner (or of
+% options.xSens/options.zSens), not over the events: the projectors read the detector coordinates (x: x and y of each
+% detector, z: z of each ring, layers concatenated) from x and z. The CPU MEX (implementation 4) enumerates the
+% nLayers^2 * det_per_ring^2 * rings^2 detector pairs itself (det_per_ring and rings per layer) and ignores koko and the
+% input
 if options.listmode > 0 && options.compute_sensitivity_image && isfield(options,'xSens') && isfield(options,'zSens') && ~isempty(options.xSens) && ~isempty(options.zSens) && ~options.SPECT
-    x = options.xSens;
-    z_det = options.zSens;
+    x = cast(options.xSens, options.cType);
+    z = cast(options.zSens, options.cType);
 	options.det_per_ring = numel(x) / 2 / options.nLayers; % x and z contain the coordinates of all layers
-	options.rings = numel(z_det) / options.nLayers;
+	options.rings = numel(z) / options.nLayers;
 elseif options.listmode > 0 && options.compute_sensitivity_image && ~options.useIndexBasedReconstruction
     options.use_raw_data = true;
     [x, ~, z, ~] = get_coordinates(options);
@@ -62,13 +67,15 @@ elseif options.listmode > 0 && options.compute_sensitivity_image && ~options.use
 end
 
 function output = backwardProjectionType6(options, input, koko)
+    % Matches the GPU backProjectionType6Helper (functions.hpp): smear, PSF convolution, attenuation, translation back
+    % (same axis, opposite direction to the forward projection), rotation back and the backprojection mask
     fProj = reshape(input, options.nRowsD, options.nColsD, koko);
     output = zeros(options.Nx(1) * options.Ny(1) * options.Nz(1), 1, options.cType);
-    voxelSize = options.FOVa_x / single(options.Nx(1));
     u1 = options.ub;
     for kk = 1 : koko
-        panelTilt = options.swivelAngles(u1) - options.angles(u1) + 180;
-        panelShift = options.radiusPerProj(u1) * sind(panelTilt) / voxelSize;
+        % Rounded integer shifts, as the int32 distInt/distInt2 of the GPU code
+        blurPlane = round(double(options.blurPlanes(u1)));
+        panelShift = round(double(options.blurPlanes2(u1)));
 
         % 1. Smear the input FP across the image volume
         kuvaRot = fProj(:, :, kk);
@@ -77,46 +84,34 @@ function output = backwardProjectionType6(options, input, koko)
         kuvaRot = permute(kuvaRot, [3, 2, 1]);
         kuvaRot = kuvaRot / double(options.Nx(1));
 
-        % 2. Attenuation correction
+        % 2. Convolve with detector PSF. The forward projection applies the attenuation before the convolution, so
+        % the convolution has to be done first here
+        kuvaRot = convolvePSFType6(kuvaRot, options.gFilter, blurPlane, options.Nx(1), options.Ny(1), options.Nz(1));
+
+        % 3. Attenuation correction. The same attenuation factors as in the forward projection
         if options.attenuation_correction
-            attenuationImage = options.vaimennus;
-            % 2.1. rotate attenuation map
-            attenuationImage = imrotate(attenuationImage, -options.swivelAngles(u1), 'bilinear','crop');
-
-            % 2.2 translate attenuation map
-            % attenuationImage = imtranslate(attenuationImage, [-panelShift, 0,0], FillValues=0);
-
-            % 2.3 accumulate attenuation
-            attenuationImage = cumsum(attenuationImage, 1);
-
-            % 2.4 multiply each accumulated element by voxel size and exponentiate attenuation
-            attenuationImage = exp(-options.dx * attenuationImage);
-            
-            % 2.5 normalize attenuation map
-            %attenuationImageSum = sum(attenuationImage, 1) / double(options.Nx(1));
-            %attenuationImageSum(attenuationImageSum == 0) = 1;
-            %attenuationImage = attenuationImage ./ attenuationImageSum;
-
-            % 2.6 pointwise multiply with image volume
+            attenuationImage = attenuationType6(options.vaimennus, options.Nx(1), options.Ny(1), options.Nz(1), options.dx(1), options.swivelAngles(u1), panelShift);
             kuvaRot = kuvaRot .* attenuationImage;
         end
 
-        % 3. Convolve with detector PSF
-        PSF = imtranslate(options.gFilter, [0, 0, options.blurPlanes(u1)], FillValues=0);
-        PSF = PSF(:, :, 1:options.Nx(1));
-        PSF = permute(PSF, [3 2 1]);
-        for ii = 1 : options.Nx(1)
-            kuvaRot(ii, :, :) = conv2(squeeze(kuvaRot(ii, :, :)), squeeze(PSF(ii,:,:)), 'same');
+        % 4. Translate the image back
+        if panelShift ~= 0
+            kuvaRot = translateType6(kuvaRot, 0, panelShift, 0);
         end
-        
-        % 4. Translate the image
-        kuvaRot = imtranslate(kuvaRot, [0, -panelShift, 0]);
-        
-        % 5. Rotate the image
-        kuvaRot = imrotate(kuvaRot, options.swivelAngles(u1), 'bilinear','crop');
+
+        % 5. Rotate the image back
+        kuvaRot = rotateType6(kuvaRot, options.swivelAngles(u1));
 
         output = output + kuvaRot(:);
         u1 = u1 + 1;
+    end
+    % 6. Backprojection mask
+    if isfield(options, 'useMaskBP') && options.useMaskBP && isfield(options, 'maskBP') && numel(options.maskBP) > 1
+        maskBP = double(reshape(options.maskBP, options.Nx(1), options.Ny(1), []));
+        if size(maskBP, 3) == 1
+            maskBP = repmat(maskBP, 1, 1, options.Nz(1));
+        end
+        output = output .* maskBP(:);
     end
 end
 
@@ -383,5 +378,91 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
     end
 else
     error('Unsupported implementation! This is unintended behavior!')
+end
+end
+
+function out = rotateType6(im, angleDeg)
+% Rotates every axial plane (dimensions 1 and 2) of the 3D array im by angleDeg degrees. This is a port of the
+% GPU rotate kernel (auxKernels.cl, ROTATE) used by the projector type 6: rotation about the image center
+% (floor(N/2) - 0.5 in zero-based pixel coordinates), bilinear interpolation, neighbors clamped to the edge and
+% zero for destination pixels whose source lies outside the image. Note that this is NOT the convention of
+% imrotate: a rotation by angleDeg here equals imrotate with -angleDeg
+[Nx, Ny, Nz] = size(im);
+% The GPU kernel (rotateCustomAF in functions.hpp) rotates by -angle
+angleRad = -angleDeg * pi / 180;
+cosa = cos(angleRad);
+sina = sin(angleRad);
+hx = floor(Nx / 2);
+hy = floor(Ny / 2);
+[ix, iy] = ndgrid(0 : Nx - 1, 0 : Ny - 1);
+xA = ix - hx + 0.5;
+yA = iy - hy + 0.5;
+srcX = xA * cosa - yA * sina + hx - 0.5;
+srcY = xA * sina + yA * cosa + hy - 0.5;
+valid = srcX >= 0 & srcX < Nx & srcY >= 0 & srcY < Ny;
+x0 = floor(srcX);
+y0 = floor(srcY);
+sx = srcX - x0;
+sy = srcY - y0;
+x1 = min(max(x0 + 1, 0), Nx - 1);
+y1 = min(max(y0 + 1, 0), Ny - 1);
+x0 = min(max(x0, 0), Nx - 1);
+y0 = min(max(y0, 0), Ny - 1);
+imFlat = reshape(im, Nx * Ny, Nz);
+out = (1 - sx(:)) .* (1 - sy(:)) .* imFlat(x0(:) + y0(:) * Nx + 1, :) ...
+    + sx(:) .* (1 - sy(:)) .* imFlat(x1(:) + y0(:) * Nx + 1, :) ...
+    + (1 - sx(:)) .* sy(:) .* imFlat(x0(:) + y1(:) * Nx + 1, :) ...
+    + sx(:) .* sy(:) .* imFlat(x1(:) + y1(:) * Nx + 1, :);
+out(~valid(:), :) = 0;
+out = cast(reshape(out, Nx, Ny, Nz), 'like', im);
+end
+
+function out = translateType6(im, shift1, shift2, shift3)
+% Integer translation with zero fill (circular shift followed by zeroing of the wrapped elements), same as the
+% translateHelperType6 of the GPU code. Positive shifts move the data toward higher indices
+shifts = [shift1 shift2 shift3];
+sz = [size(im, 1) size(im, 2) size(im, 3)];
+if any(abs(shifts) >= sz & shifts ~= 0)
+    out = zeros(size(im), 'like', im);
+    return
+end
+out = circshift(im, shifts(1 : ndims(im)));
+if shift1 > 0
+    out(1 : shift1, :, :) = 0;
+elseif shift1 < 0
+    out(end + shift1 + 1 : end, :, :) = 0;
+end
+if shift2 > 0
+    out(:, 1 : shift2, :) = 0;
+elseif shift2 < 0
+    out(:, end + shift2 + 1 : end, :) = 0;
+end
+if shift3 > 0
+    out(:, :, 1 : shift3) = 0;
+elseif shift3 < 0
+    out(:, :, end + shift3 + 1 : end) = 0;
+end
+end
+
+function attenuationImage = attenuationType6(vaimennus, Nx, Ny, Nz, dx, swivelAngle, shift2)
+% Attenuation factors of the projector type 6: the map is rotated and translated with the emission image,
+% accumulated along the projection direction (dimension 1) and exponentiated
+attenuationImage = reshape(vaimennus, Nx, Ny, Nz);
+attenuationImage = rotateType6(attenuationImage, -swivelAngle);
+if shift2 ~= 0
+    attenuationImage = translateType6(attenuationImage, 0, -shift2, 0);
+end
+attenuationImage = cumsum(attenuationImage, 1);
+attenuationImage = exp(-dx * attenuationImage);
+end
+
+function kuvaRot = convolvePSFType6(kuvaRot, gFilter, shift3, Nx, Ny, Nz)
+% Convolves each x-plane of the volume with the detector PSF plane of the same index. The PSF stack is shifted
+% (zero fill) along its third dimension by the rounded blur plane value
+PSF = translateType6(gFilter, 0, 0, shift3);
+PSF = PSF(:, :, 1 : Nx);
+PSF = permute(PSF, [3 2 1]);
+for jj = 1 : Nx
+    kuvaRot(jj, :, :) = reshape(conv2(reshape(kuvaRot(jj, :, :), Ny, Nz), reshape(PSF(jj, :, :), size(PSF, 2), size(PSF, 3)), 'same'), 1, Ny, Nz);
 end
 end

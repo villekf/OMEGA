@@ -54,9 +54,11 @@ inline int MBSREM(af::array& im, af::array& rhs, const float U, const std::vecto
 	if (status != 0)
 		return -1;
 #else
+	// The same computation as the GPU PoissonUpdateVoxel (MBSREM, general_opencl_functions.h): the lower bound fmax(epps, .) only with
+	// enforcePositivity (fmax returns epps for a NaN, hence the select on imApu >= epps), then the upper bound U - epps if imApu >= U
 	im = im + lam[iter] * rhs;
-	// Same order as the original: lower clamp first, then the upper clamp on the result (NaN stays NaN)
-	im = af::select(im < inputScalars.epps, inputScalars.epps, im);
+	if (inputScalars.enforcePositivity)
+		im = af::select(im >= inputScalars.epps, im, inputScalars.epps);
 	im = af::select(im >= U, U - inputScalars.epps, im);
 #endif
 	return status;
@@ -71,7 +73,11 @@ inline int BSREM(af::array& im, const af::array& rhs, const std::vector<float> l
 	if (status != 0)
 		return -1;
 #else
-	 im = (im + lam[iter] * im * rhs);
+	// The same computation as the GPU PoissonUpdateVoxel (BSREM, general_opencl_functions.h): the lower bound fmax(epps, .) only with
+	// enforcePositivity (fmax returns epps for a NaN, hence the select on im >= epps), no upper bound
+	im = (im + lam[iter] * rhs * im);
+	if (inputScalars.enforcePositivity)
+		im = af::select(im >= inputScalars.epps, im, inputScalars.epps);
 #endif
 	return status;
 }

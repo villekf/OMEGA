@@ -295,6 +295,11 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 
 	const mxArray* options = prhs[ind];
 	ind++;
+#ifdef CPU
+	// Multi-resolution (extended FOV) volumes are not supported by the CPU backend (it crashes while preparing the reconstruction)
+	if (getScalarUInt32(options, 0, "nMultiVolumes") > 0u)
+		mexErrMsgTxt("Multi-resolution reconstruction is not supported with the CPU implementation!");
+#endif
 
 	//Cell array containing the measurements
 	const mxArray* Sin = prhs[ind];
@@ -307,6 +312,11 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	// Use 64-bit integer atomic functions if possible
 	inputScalars.atomic_64bit = getScalarBool(prhs[ind], ind);
 	ind++;
+#ifdef CPU
+	// The CPU backend accumulates in float, integer atomics are GPU-only
+	inputScalars.atomic_64bit = false;
+	inputScalars.atomic_32bit = false;
+#endif
 
 	if (DEBUG) {
 		mexPrintBase("ind12 = %u\n", ind);

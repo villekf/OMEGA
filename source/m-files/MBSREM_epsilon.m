@@ -8,7 +8,9 @@ function epsilon_mramla = MBSREM_epsilon(Sino, epps, randoms_correction, rand, D
 %   D = Sum of the system matrix (measurements)
 %   TOF = True if TOF data is used, false otherwise
 %   nBins = Number of TOF bins
-%   CT = Whether the CT likelihood is used
+%   CT = Whether the CT likelihood is used (optional, default false)
+%   randomsTOF = Whether the randoms/scatter data is TOF-resolved, i.e. has
+%   the size of the TOF measurements (optional, default false)
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Copyright (C) 2020-2024 Ville-Veikko Wettenhovi
@@ -31,6 +33,11 @@ if ~isempty(varargin) && ~isempty(varargin{1})
     CT = varargin{1};
 else
     CT = false;
+end
+if numel(varargin) > 1 && ~isempty(varargin{2})
+    randomsTOF = varargin{2};
+else
+    randomsTOF = false;
 end
 if (CT)
     hk_summa = -exp(-Sino) ./ Sino - Sino;
@@ -56,11 +63,25 @@ else
     hk_summa = Sino .* log(Sino) - Sino;
     hk_summa(isnan(hk_summa)) = 0;
     if (TOF && randoms_correction)
+        % With a TOF-resolved additive term (randomsTOF) the randoms/scatter has the size of the TOF data and is not
+        % repeated for the bins
         rInd = rand == 0;
-        P_Sino = Sino(Sino > 0 & repmat(rInd, nBins,1));
-        apu = D + repmat(rand, nBins, 1);
+        if ~randomsTOF
+            rInd = repmat(rInd, nBins, 1);
+        end
+        Iind = Sino > 0 & rInd;
+        if (sum(Iind) == 0)
+            epsilon_mramla = 1e8;
+            return;
+        end
+        P_Sino = Sino(Iind);
+        if randomsTOF
+            apu = D + rand;
+        else
+            apu = D + repmat(rand, nBins, 1);
+        end
         apu = sum(Sino .* log(apu) - apu);
-        hk_summa = bsxfun(@minus, sum(hk_summa), hk_summa(Sino > 0 & repmat(rInd, nBins, 1)));
+        hk_summa = bsxfun(@minus, sum(hk_summa), hk_summa(Iind));
     else
         if randoms_correction == 1
             Iind = (Sino > 0 & rand == 0);

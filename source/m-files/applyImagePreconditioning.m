@@ -1,13 +1,32 @@
-function [input] = applyImagePreconditioning(options, input, im, kk, ii)
-%UNTITLED2 Summary of this function goes here
-%   Detailed explanation goes here
+function [input, options] = applyImagePreconditioning(options, input, im, kk, ii)
+%APPLYIMAGEPRECONDITIONING Applies the selected image-based preconditioners
+%   kk is the 1-based global subiteration number, (iter - 1) * subsets +
+%   osa_iter, i.e. the C++ (0-based) subiteration counter plus one. The
+%   gradient-based preconditioner (type 4) stores its weights into
+%   options.gradF, so the returned options has to be kept by the caller
 VAL = 0.00001;
 if (options.precondTypeImage(5) && kk >= options.gradInitIter + 1)
     if (options.verbose >= 3)
         disp("Applying gradient-based preconditioner, type 4");
     end
     if (kk <= options.gradLastIter + 1)
-        options = gradientPreconditioner(options, reshape(im, options.Nx(ii), options.Ny(ii), options.Nz(ii)), ii, VAL);
+        if ~isfield(options, 'gradF') || ~iscell(options.gradF)
+            options.gradF = cell(options.nMultiVolumes + 1, 1);
+        end
+        if isfield(options, 'derivativeType')
+            derivType = options.derivativeType;
+        else
+            derivType = 0;
+        end
+        % Same as gradientPreconditioner in functions.hpp
+        imR = reshape(im, options.Nx(ii), options.Ny(ii), options.Nz(ii));
+        f = zeros(size(imR), 'like', imR);
+        g = f;
+        h = f;
+        [f, g, h] = computeGradient(imR, options, f, g, h, derivType);
+        f = max(VAL, sqrt(f .* f + g .* g + h .* h) ./ mean(imR(:)));
+        f = mean(f(:)) ./ f;
+        options.gradF{ii} = min(options.gradV2, max(options.gradV1, f(:)));
     end
     if iscell(options.gradF)
         input = input .* options.gradF{ii};
@@ -66,7 +85,9 @@ if (options.precondTypeImage(7))
         input = input .* options.dP;
     end
 end
-if (options.precondTypeImage(6) && kk <= options.filteringIterations)
+% C++: 0-based kk <= filterIter. computeOSEstimates disables the filter (precondTypeImage(6) = false) when kk - 1 == filteringIterations,
+% before the update of that subiteration, so the filter is used for the first filteringIterations subiterations
+if (options.precondTypeImage(6) && kk - 1 <= options.filteringIterations)
     if (options.verbose >= 3)
         disp("Applying filtering-based preconditioner, type 5");
     end
@@ -74,7 +95,7 @@ if (options.precondTypeImage(6) && kk <= options.filteringIterations)
     input = filtering2D(options.filterIm, input, options.Nf);
 end
 if (options.verbose >= 3 && (options.precondTypeImage(1) || options.precondTypeImage(2) || options.precondTypeImage(3) || options.precondTypeImage(4) || ...
-        (options.precondTypeImage(5) && kk >= options.gradInitIter) || options.precondTypeImage(6) || options.precondTypeImage(7)))
+        (options.precondTypeImage(5) && kk >= options.gradInitIter + 1) || options.precondTypeImage(6) || options.precondTypeImage(7)))
     disp("Image-based preconditioning applied");
 end
 end

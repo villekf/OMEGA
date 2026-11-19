@@ -2343,7 +2343,7 @@ class ProjectorClass {
 			// largeDim is available only with the projector types 4 and 14 (the forward projection of type 4 or 1 and the backprojection of
 			// type 4) and with the algorithms PDHG, PKMA and FDK
 			const bool largeDimSupported = inputScalars.BPType == 4 && (inputScalars.FPType == 1 || inputScalars.FPType == 4) &&
-				(MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY || MethodList.PKMA || MethodList.FDK);
+				(MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.PDDY || MethodList.PKMA || MethodList.FDK);
 			// Checks one texture of the image volume. zDim is the index (0 = width, 1 = height, 2 = depth) of the dimension that is the
 			// axial direction of the volume and zExtra the number of added elements in it. largeDim divides only that one
 			auto checkTexture = [&](const char* texName, const int64_t dims[3], const char* const dimNames[3], const int zDim, const int64_t zExtra,

@@ -419,7 +419,7 @@ def _perLORFactor(sinM, factor, tofBins, divide):
 _CT_COUNT_ALGORITHMS = ('OSEM', 'ROSEM', 'OSL_OSEM', 'ROSEM_MAP', 'RAMLA', 'BSREM', 'RBI', 'OSL_RBI', 'DRAMA', 'MBSREM', 'MRAMLA', 'SPS', 'PKMA', 'SAGA')
 _CT_ALGORITHMS = ('OSEM', 'MRAMLA', 'RAMLA', 'RBI', 'ROSEM', 'DRAMA', 'COSEM', 'ECOSEM', 'ACOSEM', 'LSQR', 'CGLS', 'FDK', 'FISTA', 'FISTAL1',
                   'OSL_OSEM', 'MBSREM', 'BSREM', 'OSL_RBI', 'OSL_COSEM', 'ROSEM_MAP', 'PKMA', 'SPS', 'SART', 'ASD_POCS', 'SAGA', 'BB',
-                  'PDHG', 'PDHGL1', 'PDDY', 'PDHGKL', 'CV')
+                  'PDHG', 'PDHGL1', 'PDDY', 'PDHGKL')
 
 
 def _ctNormalizationSetup(options):
@@ -1552,6 +1552,12 @@ def parseInputs(options, mDataFound = False):
         options.CT_attenuation = True
         # The internal mirror used by the library interface (see addProjector())
         options.CTAttenuation = True
+    # The sensitivity image of list-mode PET data is computed over all detector pairs, but the measurement-based attenuation has
+    # one value for each measurement (event), i.e. it would be indexed past its end. Checked after the switch above
+    if (not options.CT and not options.SPECT and (options.listmode or options.useIndexBasedReconstruction)
+            and options.compute_sensitivity_image and options.attenuation_correction and not options.CT_attenuation):
+        raise ValueError('List-mode reconstruction cannot compute the sensitivity image with measurement-based attenuation (CT_attenuation = False). '
+                         'Use an attenuation image (CT_attenuation = True) or disable the computation of the sensitivity image (compute_sensitivity_image = False).')
     single_frame_list = (
         options.Nt <= 1 and isinstance(options.SinM, list)
     )
@@ -2971,7 +2977,7 @@ def prepassPhase(options):
             options.Ffilter = np.fft.ifft(options.filter0) * options.sigmaCP[0].item()
         else:
             options.Ffilter = np.fft.ifft(options.filter0) * options.sigmaCP
-        if (options.PDHG or options.PDHGL1 or options.PDHGKL or options.CV or options.PDDY) and options.TGV:
+        if (options.PDHG or options.PDHGL1 or options.PDHGKL or options.PDDY) and options.TGV:
             options.Ffilter = options.Ffilter * options.beta
         options.Ffilter[0] = options.Ffilter[0] + 1
         options.Ffilter = np.real(np.fft.fft(options.Ffilter)).astype(dtype=np.float32)

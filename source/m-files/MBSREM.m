@@ -1,4 +1,4 @@
-function output = MBSREM(im, rhs, options, U, lam, iter, osa_iter, ii)
+function [output, options] = MBSREM(im, rhs, options, U, lam, iter, osa_iter, ii)
 %MBSREM Computes the modified Block Sequential Regularized Expectation
 % Maximization (MBSREM) estimates
 %
@@ -53,11 +53,14 @@ pp = im >= (U / 2);
 if (any(pp))
     apuIm = im;
     apuIm(pp) = U - apuIm(pp);
-    rhs = applyImagePreconditioning(options, rhs, apuIm, kk, ii);
+    [rhs, options] = applyImagePreconditioning(options, rhs, apuIm, kk, ii);
 else
-    rhs = applyImagePreconditioning(options, rhs, im, kk, ii);
+    [rhs, options] = applyImagePreconditioning(options, rhs, im, kk, ii);
 end
 output = im + lam(iter) .* rhs;
-output(output < options.epps) = options.epps;
+% As in the GPU PoissonUpdate kernel (MBSREM): lower bound epps only with enforcePositivity, then the upper bound
+if options.enforcePositivity
+    output = max(options.epps, output);
+end
 output(output >= U) = U - options.epps;
 end

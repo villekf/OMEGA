@@ -78,9 +78,9 @@ inline void checkFastPDHG(scalarStruct& inputScalars, const Weighting& w_vec, co
 	return;
 #else
 	const char* reason = nullptr;
-	// fastPDHG supports a limited number of algorithms: PDHG (and its KL/L1/CV variants) and some
+	// fastPDHG supports a limited number of algorithms: PDHG (and its KL/L1 variants) and some
 	// Poisson-based algorithms PKMA/MBSREM/BSREM
-	const bool fastPDHGAlgorithm = (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV) && !MethodList.PDDY;
+	const bool fastPDHGAlgorithm = (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1) && !MethodList.PDDY;
 	const bool fastPoissonAlgorithm = MethodList.PKMA || MethodList.MBSREM || MethodList.BSREM;
 	// Only the voxel-driven type 4 and type 5 backprojections compute one voxel per work-item, which is what
 	// makes the image-domain update possible in the first place
@@ -91,7 +91,7 @@ inline void checkFastPDHG(scalarStruct& inputScalars, const Weighting& w_vec, co
 	else if (inputScalars.BPType == 4 && inputScalars.maskBP && inputScalars.maskBPZ > 1)
 		reason = "a 3D backprojection mask with backprojection type 4 is not supported";
 	else if (!fastPDHGAlgorithm && !fastPoissonAlgorithm)
-		reason = "only PDHG, PDHGKL, PDHGL1, CV, PKMA, MBSREM and BSREM are supported (PDDY is not)";
+		reason = "only PDHG, PDHGKL, PDHGL1, PKMA, MBSREM and BSREM are supported (PDDY is not)";
 	// The experimental relaxation parameter computations are not supported
 	else if (MethodList.PKMA && (inputScalars.computeRelaxation || inputScalars.relaxScaling))
 		reason = "PKMA with computeRelaxation or relaxScaling is not supported by the fused step";
@@ -1067,6 +1067,8 @@ inline int forwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputScal
 			vec.im_os[timestep][ii].unlock();
 	}
 #else
+	// The CPU projector reads the image and writes the output through raw host pointers outside the ArrayFire queue
+	af::sync();
 	status = proj.forwardProjection(inputScalars, w_vec, osa_iter, timestep, length, pituus, ii);
 	if (inputScalars.use_psf)
 		vec.im_os_blurred[ii].unlock();
@@ -1208,6 +1210,8 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 	if (ii == 0 && finalize && inputScalars.fastPDHG && proj.fastNLMUsed && MethodList.NLM)
 		w_vec.gaussianNLM.unlock();
 #else
+	// The CPU projector reads the image and writes the output through raw host pointers outside the ArrayFire queue
+	af::sync();
 	 status = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, pituus, compSens, ii);
 #endif
 	if (!finalize)
@@ -1347,8 +1351,15 @@ inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& input
 #ifdef CPU
 	// Accumulate the NLM gradient to the backprojection
 	const af::array dUorig = grad.copy();
-	grad = padding(grad, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], w_vec.Ndx + w_vec.Nlx, w_vec.Ndy + w_vec.Nly, w_vec.Ndz + w_vec.Nlz);
-	const af::array imApu = padding(im, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], w_vec.Ndx + w_vec.Nlx, w_vec.Ndy + w_vec.Nly, w_vec.Ndz + w_vec.Nlz);
+	// GPU NLM clamps the reads to the volume edge, the padding reproduces that. The padding is also applied in z for 2D images, since the
+	// CPU kernel assumes the padded size Nz + 2 * (Ndz + Nlz) in z
+	const dim_t padX = static_cast<dim_t>(w_vec.Ndx + w_vec.Nlx);
+	const dim_t padY = static_cast<dim_t>(w_vec.Ndy + w_vec.Nly);
+	const dim_t padZ = static_cast<dim_t>(w_vec.Ndz + w_vec.Nlz);
+	const af::dim4 padDims(padX, padY, padZ, 0);
+	const af::array imApu = af::pad(af::moddims(im, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0]), padDims, padDims, AF_PAD_CLAMP_TO_EDGE);
+	// The padded gradient buffer is only the output of the kernel (written for the interior voxels)
+	grad = af::constant(0.f, imApu.dims(0), imApu.dims(1), imApu.dims(2));
 #endif
 	proj.d_W = transferAF(grad);
 	proj.d_gaussianNLM = transferAF(w_vec.gaussianNLM);
@@ -2646,7 +2657,8 @@ inline int filtering2D(const af::array& filter, af::array& input, ProjectorClass
 	if (status != 0)
 		return -1;
 #else
-	temp *= filter;
+	// ArrayFire does not broadcast, the 2D filter has to be tiled over the slices
+	temp *= af::tile(filter, 1, 1, temp.dims(2));
 #endif
 	ifft2InPlace(temp);
 	input = af::flat(af::real(temp(af::seq(0, inDim0 - 1), af::seq(0, inDim1 - 1), af::span)));

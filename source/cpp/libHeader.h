@@ -382,7 +382,6 @@ struct inputStruct {
     bool PDHGKL = false;
     bool PDHGL1 = false;
     bool PDDY = false;
-    bool CV = false;
     bool POCS = false;
     bool FDK = false;
     bool SAGA = false;
@@ -630,7 +629,6 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     MethodList.PDHG = options.PDHG;
     MethodList.PDHGKL = options.PDHGKL;
     MethodList.PDHGL1 = options.PDHGL1;
-    MethodList.CV = options.CV;
     MethodList.PDDY = options.PDDY;
     MethodList.POCS = options.POCS;
     MethodList.SAGA = options.SAGA;
@@ -649,7 +647,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     }
 
     // Primal-dual algorithms
-    if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY)
+    if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.PDDY)
         MethodList.CPType = true;
 
     inputScalars.PET = options.PET;
@@ -772,6 +770,10 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
 
     // Use 64-bit integer atomic functions if possible
     inputScalars.atomic_64bit = options.use_64bit_atomics;
+#ifdef CPU
+    // The CPU backend accumulates in float, integer atomics are GPU-only
+    inputScalars.atomic_64bit = false;
+#endif
 
     inputScalars.bmin = options.bmin;
 
@@ -846,6 +848,10 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.computeSensImag = options.compute_sensitivity_image;
     inputScalars.CT = options.CT;
     inputScalars.atomic_32bit = options.use_32bit_atomics;
+#ifdef CPU
+    // The CPU backend accumulates in float, integer atomics are GPU-only
+    inputScalars.atomic_32bit = false;
+#endif
     inputScalars.scatter = options.additionalCorrection;
     inputScalars.CTAttenuation = options.CTAttenuation;
     inputScalars.largeDim = options.largeDim;

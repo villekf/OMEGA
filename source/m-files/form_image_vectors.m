@@ -23,7 +23,8 @@ function im_vectors = form_image_vectors(options, N, varargin)
 if options.save_iter
     Niter = options.Niter + 1;
 else
-    Niter = max(1, numel(options.saveNIter));
+    % The saved iterations and the final image (the last column)
+    Niter = numel(options.saveNIter) + 1;
 end
 if (isfield(options,'useSingles') && options.useSingles) || options.implementation == 5
     type = 'single';

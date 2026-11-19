@@ -63,7 +63,7 @@ if options.SPECT
             ((options.normalization_correction && options.normZ == options.nHeads && options.normZ ~= options.nProjections) || ...
              (options.useMaskFP && options.maskFPZ > 1 && options.maskFPZ == options.nHeads && options.maskFPZ ~= options.nProjections))
         error(['Detector-head indexed normalization/forward projection mask (nRowsD x nColsD x nHeads) is not ' ...
-            'supported by the CPU implementation. Use a GPU implementation or supply one image per projection.'])
+            'supported by the CPU implementation. Use a GPU implementation (for the normalization, one image per projection also works).'])
     end
 
     if ismember(options.projector_type, [1, 11, 12, 2, 21, 22, 3, 13, 23, 31, 32, 33])
@@ -123,6 +123,11 @@ end
 if partitions > 1 && options.implementation ~= 2 % TODO dynamic reconstruction for implementation 5 (macOS)
     error('Dynamic reconstruction is supported only with implementation 2.')
 end
+% The CPU library (CPU_matrixfree) has no per-timestep handling of the measurements, coordinates or corrections. Implementation 4
+% is already rejected above
+if partitions > 1 && options.implementation == 2 && options.use_CPU
+    error('Dynamic (multi-frame) reconstruction is not supported with the CPU implementation!')
+end
 if options.SPECT && mod(sqrt(options.nRays), 1) ~= 0
     error('With SPECT, options.nRays has to be a square')
 end
@@ -143,7 +148,7 @@ if ~preCondImAlg && any(options.precondTypeImage)
     warning('Image-based preconditioning selected, but the selected algorithm(s) do not support preconditioning. No preconditioning will be performed.')
     disp('Supported algorithms are:')
     disp(recNames(7))
-    options.precondTypeImage = [false;false;false;false;false;false];
+    options.precondTypeImage = [false;false;false;false;false;false;false];
 end
 if sum(options.precondTypeImage(1:3)) > 1
     error('Only one of the first 3 image-based preconditioners can be selected at a time!')
@@ -158,6 +163,10 @@ options = checkSinogramOptions(options);
 listModeCandidate = isListModeCandidate(options);
 if options.SPECT && options.implementation == 1
     error('Implementation 1 is not supported with SPECT data.')
+end
+% List-mode and index-based PET data are not supported with implementation 1
+if options.implementation == 1 && ~options.CT && ~options.SPECT && (options.listmode || listModeCandidate || options.useIndexBasedReconstruction)
+    error('List-mode and index-based data are not supported with implementation 1. Use implementation 2 or 4.')
 end
 if options.SPECT && options.implementation == 3 && options.projector_type == 6
     error('Implementation 3 is not supported with projector type 6.')
@@ -195,6 +204,9 @@ if isfield(options, 'maskFP') && numel(options.maskFP) > 1 && (options.subset_ty
 end
 if options.implementation == 1 && options.useMultiResolutionVolumes
     error('Multi-resolution reconstruction is not supported with implementation 1!')
+end
+if options.implementation == 4 && options.useMultiResolutionVolumes
+    error('Multi-resolution reconstruction is not supported with implementation 4!')
 end
 if options.implementation == 2 && options.use_CPU && options.useMultiResolutionVolumes
     error('Multi-resolution reconstruction is not supported with the CPU implementation!')
@@ -264,7 +276,7 @@ end
 if options.use_device < 0
     error('Device number (options.use_device) has to be zero or positive!')
 end
-if options.implementation == 4 && ~ismember(options.projector_type, [1 11 6 16 61 66])
+if options.implementation == 4 && ~ismember(options.projector_type, [1 11 6])
     error('Selected projector type is not supported with CPU implementation!')
 end
 if (isfield(options,'ProxRDP') && options.ProxRDP) || (isfield(options,'ProxNLM') && options.ProxNLM)
@@ -302,6 +314,23 @@ elseif options.implementation == 2 && options.TV && options.TVtype == 3
     if options.TV_use_anatomical
         warning('Hyperbolic prior does not support anatomic weighting at the moment when using implementation 2')
         options.TV_use_anatomical = false;
+    end
+end
+% TV type 3 is the hyperbolic prior, which does not exist in the m-file path (implementations 1, 4 and 5). TGV in
+% implementation 2 is the proximal TGV, whereas the m-file path has only an old gradient-based TGV
+if ismember(options.implementation, [1, 4, 5]) && options.PDAdaptiveType == 2 && (options.PDHG || options.PDHGKL || options.PDHGL1)
+    error('Adaptive step size type 2 (PDAdaptiveType = 2) is not supported with implementations 1, 4 and 5!')
+end
+% The m-file path filters along nRowsD, the C++ code uses nColsD for subset type 5
+if ismember(options.implementation, [1, 4, 5]) && options.precondTypeMeas(2) && options.subsets > 1 && options.subset_type == 5
+    error('Filtering-based measurement preconditioner with subset type 5 is not supported with implementations 1, 4 and 5!')
+end
+if options.implementation ~= 2 && MAP
+    if options.TV && options.TVtype == 3
+        error(['TV type 3 (hyperbolic prior) is not supported with implementation ' num2str(options.implementation) '! Use implementation 2.'])
+    end
+    if options.TGV
+        error(['TGV is not supported with implementation ' num2str(options.implementation) '! Use implementation 2.'])
     end
 end
 if ~options.CT && ~options.SPECT && options.use_machine == 2 && options.use_raw_data
@@ -385,8 +414,56 @@ end
 if options.NLM_use_anatomical && options.use_CPU && options.implementation == 2 && options.NLM
     error('Reference image weighting for NLM is not supported with CPU!')
 end
-if options.useIndexBasedReconstruction && options.implementation == 2 && options.use_CPU
+if options.useIndexBasedReconstruction && (options.implementation == 4 || (options.implementation == 2 && options.use_CPU))
     error('Index-based reconstruction is not supported on CPU!')
+end
+if (options.listmode || listModeCandidate) && options.TOF_bins_used > 1 && ~options.CT && ~options.SPECT && (options.implementation == 4 || (options.implementation == 2 && options.use_CPU))
+    error('List-mode TOF reconstruction is not supported with the CPU implementation!')
+end
+if options.implementation == 2 && options.use_CPU && options.largeDim
+    error('Large dimension support is not supported with the CPU implementation!')
+end
+% Raw data (detector pair data, GPU -DRAW) is not supported by the CPU projector. List-mode data (custom coordinates or
+% index-based) may also have use_raw_data set, it is not raw data in this sense (projectorClass, list_mode_format)
+if options.use_raw_data && ~options.listmode && ~listModeCandidate && ~options.useIndexBasedReconstruction && ~options.CT && ~options.SPECT ...
+        && (options.implementation == 4 || (options.implementation == 2 && options.use_CPU))
+    error('Raw data reconstruction is not supported with the CPU implementation!')
+end
+% The CPU projector never applies the CT normalization (GPU: -DNORM). This check is not gated on an algorithm, so that it also
+% covers the projection operator (projectorClass)
+if options.CT && options.normalization_correction && (options.implementation == 4 || (options.implementation == 2 && options.use_CPU))
+    error('CT normalization is not supported with the CPU implementation!')
+end
+% The CPU projector has no per-subset offset for subset type 0 (list-mode data offsets the event coordinates per subset). The 3D
+% mask checks are in projectorClass, where the number of mask images is known
+if (options.implementation == 4 || (options.implementation == 2 && options.use_CPU)) && options.subset_type == 0 && options.subsets > 1 ...
+        && ~options.listmode && ~listModeCandidate
+    error('Subset type 0 with more than one subset is not supported with the CPU implementation!')
+end
+if options.implementation == 2 && options.use_CPU && (options.ProxTV || options.TGV)
+    error('Proximal TV and TGV are not supported with the CPU implementation!')
+end
+if options.implementation == 2 && options.use_CPU && options.NLM && (options.NLAdaptive || options.NLMaxWeight)
+    error('Adaptive NLM and NLM maximum weight are not supported with the CPU implementation!')
+end
+% Implementations 1, 4 and 5 share the same m-file reconstruction branch (reconstructions_main.m), which has no code path for
+% the following algorithms and options
+if ismember(options.implementation, [1 4 5])
+    if options.largeDim
+        error(['Large dimension support is not supported with implementation ' num2str(options.implementation) '!'])
+    end
+    if options.SART || options.ASD_POCS || options.SAGA || options.BB || options.FDK
+        error(['SART, ASD-POCS, SAGA, BB and FDK are not supported with implementation ' num2str(options.implementation) '!'])
+    end
+    if options.stochasticSubsetSelection
+        error(['Stochastic subset selection is not supported with implementation ' num2str(options.implementation) '!'])
+    end
+    if options.FISTA_acceleration
+        error(['FISTA acceleration is not supported with implementation ' num2str(options.implementation) '!'])
+    end
+    if options.storeResidual
+        error(['Storing the residual is not supported with implementation ' num2str(options.implementation) '!'])
+    end
 end
 % The sensitivity image of list-mode data has to include the same corrections as the measured events. The normalization is
 % applied to all detector pairs either with the normalization sinogram that is looked up for each pair (index-based data without
@@ -612,7 +689,7 @@ if options.PDDY
 end
 % The FMH neighborhood lines (directions and their weights) are defined for a cubic neighborhood. A single-slice
 % image uses Ndz = 0
-if options.FMH && options.MAP
+if options.FMH && MAP
     NdzFMH = options.Ndz;
     if options.Nz(1) == 1
         NdzFMH = 0;

@@ -343,7 +343,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 	}
 	else if (MethodList.PDHGKL) {
 		if (inputScalars.verbose >= 3)
-			mexPrint("Computing PDHG/CV with KL");
+			mexPrint("Computing PDHG with KL");
 		if (w_vec.precondTypeMeas[0] || w_vec.precondTypeMeas[1]) {
 			if (w_vec.precondTypeMeas[1]) {
 				af::array apu1 = y.copy();

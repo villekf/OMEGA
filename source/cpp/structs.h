@@ -160,7 +160,7 @@ typedef struct RecMethods_ {
 	bool MRP = false, Quad = false, Huber = false, L = false, FMH = false, WeightedMean = false, TV = false, AD = false, APLS = false, TGV = false, NLM = false, RDP = false, GGMRF = false, 
 		ProxTV = false, ProxTGV = false, hyperbolic = false;
 	bool OSLOSEM = false, MAPOSEM = false, MBSREM = false, BSREM = false, ROSEMMAP = false, ROSEMOSL = false, RBIMAP = false, RBIOSL = false,
-		PKMA = false, FISTAL1 = false, SPS = false, PDHG = false, PDHGKL = false, FISTA = false, PDHGL1 = false, CV = false, PDDY = false, POCS = false, SAGA = false;
+		PKMA = false, FISTAL1 = false, SPS = false, PDHG = false, PDHGKL = false, FISTA = false, PDHGL1 = false, PDDY = false, POCS = false, SAGA = false;
 	bool MAP = false;
 	bool CUSTOM = false;
 	bool initAlg = false;

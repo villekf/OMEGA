@@ -93,7 +93,7 @@ elseif mean_type == 4
         end
     end
     grad = bsxfun(@rdivide, im, mm);
-    grad(grad < 1e-3) = 1e-3;
+    grad(grad < 1e-6) = 1e-6;
     grad = bsxfun(@times, log(grad), weighted_weights(:)');
     grad = sum(grad,2);
     grad = grad(:);
@@ -121,7 +121,7 @@ elseif mean_type == 5
             end
         end
     end
-    im(im < 1e-1) = 1e-1;
+    im(im < 1e-6) = 1e-6;
     grad = bsxfun(@rdivide, bsxfun(@minus, im, mm), im) - bsxfun(@rdivide, bsxfun(@minus, im, mm).^2, 2*im.^2);
     grad = bsxfun(@times, grad, weighted_weights(:)');
     grad = sum(grad,2);
@@ -150,7 +150,7 @@ elseif mean_type == 6
             end
         end
     end
-    im(im < 1e-1) = 1e-1;
+    im(im < 1e-6) = 1e-6;
     grad = 1 - bsxfun(@rdivide, mm, im);
     grad = bsxfun(@times, grad, weighted_weights(:)');
     grad = sum(grad,2);

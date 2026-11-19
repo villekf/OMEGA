@@ -55,7 +55,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
     // (gradient-type) prior belongs to the primal step and must be evaluated at the primal iterate u (uCP).
     // The proximal/dual-split TV/TGV priors take their dual step at the extrapolated image and are excluded,
     // as is PDDY, which evaluates the prior at its own point x.
-    const bool priorAtPrimalU = (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV) && !MethodList.PDDY
+    const bool priorAtPrimalU = (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1) && !MethodList.PDDY
         && inputScalars.subsetsUsed == 1 && !MethodList.ProxTV && !MethodList.ProxTGV && !MethodList.TGV && kk == 0;
 
     // Subset scaling of the prior strength. These methods combine one subset's data gradient (about 1/S of the full gradient)
@@ -100,7 +100,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             if ((MethodList.RAMLA || MethodList.MRAMLA || MethodList.BSREM || MethodList.MBSREM || MethodList.SPS || MethodList.SAGA || MethodList.DRAMA
                 || MethodList.RBI || MethodList.RBIOSL) && inputScalars.listmode > 0)
                 vec.rhs_os[timestep][ii] -= w_vec.D[DIndex(inputScalars, timestep)][ii];
-            if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY)
+            if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.PDDY)
                 PDHG1(vec.rhs_os[timestep][ii], inputScalars, w_vec, vec, timestep, osa_iter + inputScalars.subsets * iter, ii);
             // PDDY (Salim, Condat, Mishchenko and Richtarik, JOTA 2022), one subset. p = uCP is the auxiliary primal variable and
             // the image estimate s = im_os was used for the forward projection (dual update). Here rhs_os = A^T y+ (PDHG1 does
@@ -160,7 +160,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
     // subtracted for them. The one-step-late methods (OSL-OSEM, RBI-OSL, OSL-COSEM, SAGA) and BSREM/ROSEM-MAP read the stored
     // gradient themselves. The prior is applied to the main volume only
     if (MAP && kk == 0 && (MethodList.PKMA || MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS || MethodList.PDHG || MethodList.PDHGKL
-        || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY || MethodList.FISTA || MethodList.FISTAL1)) {
+        || MethodList.PDHGL1 || MethodList.PDDY || MethodList.FISTA || MethodList.FISTAL1)) {
         const float priorSign = (MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS) ? -1.f : 1.f;
         for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
             const af::array priorGrad = totalPriorGradient(vec, MethodList, timestep);
@@ -457,7 +457,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                         return -1;
                 }
             }
-            else if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) {
+            else if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.PDDY) {
                 if (DEBUG || inputScalars.verbose >= 3)
                     mexPrint("Computing PDHG/PDHGKL/PDHGL1/PDDY");
                 status = PDHG2(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], inputScalars, w_vec, vec, proj, iter, timestep, osa_iter, ii, pituus, g, m_size, length, MethodList.PDDY);

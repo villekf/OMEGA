@@ -62,60 +62,39 @@ outputFP = [];
 A = [];
 
 function outputFP = forwardProjectionType6(options, recApu, loopVar, koko)
+    % Matches the GPU forwardProjectionType6 (functions.hpp): GPU rotate kernel convention, integer (rounded) zero-fill
+    % translations, the attenuation map is rotated and translated with the emission image
     outputFP = zeros(options.nRowsD, options.nColsD, koko, options.cType);
     for ii = loopVar
-        voxelSize = options.FOVa_x / single(options.Nx(ii));
         u1 = options.uu;
         apuArr = reshape(recApu, options.Nx(ii), options.Ny(ii), options.Nz(ii));
 
         for kk = 1:koko % todo add support for non-square fov
-            kuvaRot = apuArr;
-            panelTilt = options.swivelAngles(u1) - options.angles(u1) + 180;
-            panelShift = options.radiusPerProj(u1) * sind(panelTilt) / voxelSize;
+            % Rounded integer shifts, as the int32 distInt/distInt2 of the GPU code
+            blurPlane = round(double(options.blurPlanes(u1)));
+            panelShift = round(double(options.blurPlanes2(u1)));
 
             % 1. Rotate the image
-            kuvaRot = imrotate(kuvaRot, -options.swivelAngles(u1), 'bilinear','crop');
-            
+            kuvaRot = rotateType6(apuArr, -options.swivelAngles(u1));
+
             % 2. Translate the image
-            kuvaRot = imtranslate(kuvaRot, [-panelShift, 0, 0]);
+            if panelShift ~= 0
+                kuvaRot = translateType6(kuvaRot, 0, -panelShift, 0);
+            end
 
-            % 3. Attenuation correction
+            % 3. Attenuation correction (rotation, translation, accumulation and exponentiation of the map)
             if options.attenuation_correction
-                attenuationImage = options.vaimennus;
-
-                % 3.1. rotate attenuation map
-                attenuationImage = imrotate(attenuationImage, -options.swivelAngles(u1), 'bilinear','crop');
-
-                % 3.2 translate attenuation map
-                % attenuationImage = imtranslate(attenuationImage, [-panelShift, 0,0], FillValues=0);
-
-                % 3.3 accumulate attenuation
-                attenuationImage = cumsum(attenuationImage, 1);
-
-                % 3.4 multiply each accumulated element by voxel size and exponentiate attenuation
-                attenuationImage = exp(-options.dx * attenuationImage);
-
-                % 3.5 normalize attenuation map
-                %attenuationImageSum = sum(attenuationImage, 1) / double(options.Nx(1));
-                %attenuationImageSum(attenuationImageSum == 0) = 1;
-                %attenuationImage = attenuationImage ./ attenuationImageSum;
-
-                % 3.6 pointwise multiply with image volume
+                attenuationImage = attenuationType6(options.vaimennus, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.swivelAngles(u1), panelShift);
+                % 3.1 pointwise multiply with image volume
                 kuvaRot = kuvaRot .* attenuationImage;
             end
 
             % 4. Convolve with detector PSF
-            PSF = imtranslate(options.gFilter, [0, 0, options.blurPlanes(u1)], FillValues=0);
-            PSF = PSF(:, :, 1:options.Nx(1));
-            PSF = permute(PSF, [3 2 1]);
-            for jj = 1 : options.Ny(1)
-                kuvaRot(jj, :, :) = conv2(squeeze(kuvaRot(jj, :, :)), squeeze(PSF(jj,:,:)), 'same');
-            end
-            
+            kuvaRot = convolvePSFType6(kuvaRot, options.gFilter, blurPlane, options.Nx(ii), options.Ny(ii), options.Nz(ii));
+
             % 5. Sum
-            kuvaRot = sum(kuvaRot, 1);
-            kuvaRot = squeeze(kuvaRot);
-            kuvaRot = kuvaRot / double(options.Nx(1));
+            kuvaRot = reshape(sum(kuvaRot, 1), options.Ny(ii), options.Nz(ii));
+            kuvaRot = kuvaRot / double(options.Nx(ii));
             outputFP(:, :, kk) = outputFP(:, :, kk) + kuvaRot;
             u1 = u1 + 1;
         end
@@ -136,7 +115,6 @@ if (~ismac && (options.implementation == 4 || options.implementation == 1)) || (
         outputFP = forwardProjectionType6(options, recApu, loopVar, koko);
         A = [];
         outputFP = outputFP(:);
-        outputFP(outputFP < options.epps) = options.epps;
     else
         % The CPU MEX files read the attenuation image without type conversion
         if isfield(options, 'vaimennus') && isnumeric(options.vaimennus)
@@ -424,4 +402,90 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
         options.x_center, options.y_center, options.z_center, single(0), 0, options.projector_type, n_rays, n_rays3D, ... % 42
         options, single(0), options.partitions, options.use_64bit_atomics, options.bmin, options.bmax, options.Vmax, options.V, options.gaussK, 1, 1); % 51
     end
+end
+
+function out = rotateType6(im, angleDeg)
+% Rotates every axial plane (dimensions 1 and 2) of the 3D array im by angleDeg degrees. This is a port of the
+% GPU rotate kernel (auxKernels.cl, ROTATE) used by the projector type 6: rotation about the image center
+% (floor(N/2) - 0.5 in zero-based pixel coordinates), bilinear interpolation, neighbors clamped to the edge and
+% zero for destination pixels whose source lies outside the image. Note that this is NOT the convention of
+% imrotate: a rotation by angleDeg here equals imrotate with -angleDeg
+[Nx, Ny, Nz] = size(im);
+% The GPU kernel (rotateCustomAF in functions.hpp) rotates by -angle
+angleRad = -angleDeg * pi / 180;
+cosa = cos(angleRad);
+sina = sin(angleRad);
+hx = floor(Nx / 2);
+hy = floor(Ny / 2);
+[ix, iy] = ndgrid(0 : Nx - 1, 0 : Ny - 1);
+xA = ix - hx + 0.5;
+yA = iy - hy + 0.5;
+srcX = xA * cosa - yA * sina + hx - 0.5;
+srcY = xA * sina + yA * cosa + hy - 0.5;
+valid = srcX >= 0 & srcX < Nx & srcY >= 0 & srcY < Ny;
+x0 = floor(srcX);
+y0 = floor(srcY);
+sx = srcX - x0;
+sy = srcY - y0;
+x1 = min(max(x0 + 1, 0), Nx - 1);
+y1 = min(max(y0 + 1, 0), Ny - 1);
+x0 = min(max(x0, 0), Nx - 1);
+y0 = min(max(y0, 0), Ny - 1);
+imFlat = reshape(im, Nx * Ny, Nz);
+out = (1 - sx(:)) .* (1 - sy(:)) .* imFlat(x0(:) + y0(:) * Nx + 1, :) ...
+    + sx(:) .* (1 - sy(:)) .* imFlat(x1(:) + y0(:) * Nx + 1, :) ...
+    + (1 - sx(:)) .* sy(:) .* imFlat(x0(:) + y1(:) * Nx + 1, :) ...
+    + sx(:) .* sy(:) .* imFlat(x1(:) + y1(:) * Nx + 1, :);
+out(~valid(:), :) = 0;
+out = cast(reshape(out, Nx, Ny, Nz), 'like', im);
+end
+
+function out = translateType6(im, shift1, shift2, shift3)
+% Integer translation with zero fill (circular shift followed by zeroing of the wrapped elements), same as the
+% translateHelperType6 of the GPU code. Positive shifts move the data toward higher indices
+shifts = [shift1 shift2 shift3];
+sz = [size(im, 1) size(im, 2) size(im, 3)];
+if any(abs(shifts) >= sz & shifts ~= 0)
+    out = zeros(size(im), 'like', im);
+    return
+end
+out = circshift(im, shifts(1 : ndims(im)));
+if shift1 > 0
+    out(1 : shift1, :, :) = 0;
+elseif shift1 < 0
+    out(end + shift1 + 1 : end, :, :) = 0;
+end
+if shift2 > 0
+    out(:, 1 : shift2, :) = 0;
+elseif shift2 < 0
+    out(:, end + shift2 + 1 : end, :) = 0;
+end
+if shift3 > 0
+    out(:, :, 1 : shift3) = 0;
+elseif shift3 < 0
+    out(:, :, end + shift3 + 1 : end) = 0;
+end
+end
+
+function attenuationImage = attenuationType6(vaimennus, Nx, Ny, Nz, dx, swivelAngle, shift2)
+% Attenuation factors of the projector type 6: the map is rotated and translated with the emission image,
+% accumulated along the projection direction (dimension 1) and exponentiated
+attenuationImage = reshape(vaimennus, Nx, Ny, Nz);
+attenuationImage = rotateType6(attenuationImage, -swivelAngle);
+if shift2 ~= 0
+    attenuationImage = translateType6(attenuationImage, 0, -shift2, 0);
+end
+attenuationImage = cumsum(attenuationImage, 1);
+attenuationImage = exp(-dx * attenuationImage);
+end
+
+function kuvaRot = convolvePSFType6(kuvaRot, gFilter, shift3, Nx, Ny, Nz)
+% Convolves each x-plane of the volume with the detector PSF plane of the same index. The PSF stack is shifted
+% (zero fill) along its third dimension by the rounded blur plane value
+PSF = translateType6(gFilter, 0, 0, shift3);
+PSF = PSF(:, :, 1 : Nx);
+PSF = permute(PSF, [3 2 1]);
+for jj = 1 : Nx
+    kuvaRot(jj, :, :) = reshape(conv2(reshape(kuvaRot(jj, :, :), Ny, Nz), reshape(PSF(jj, :, :), size(PSF, 2), size(PSF, 3)), 'same'), 1, Ny, Nz);
+end
 end

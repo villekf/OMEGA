@@ -10,7 +10,7 @@ import numpy as np
 # and recNames(10) (full prior names, display only). The lists are kept in the same order as in MATLAB's recNames.m; the full
 # names are paired with the flags by position (zip), so both lists must have the same order.
 _OS = ['OSEM', 'MRAMLA', 'RAMLA', 'ROSEM', 'RBI', 'DRAMA', 'COSEM', 'ECOSEM', 'ACOSEM', 'LSQR', 'CGLS', 'FISTA', 'FISTAL1', 'FDK']
-_MAP = ['OSL_OSEM', 'BSREM', 'MBSREM', 'ROSEM_MAP', 'OSL_RBI', 'OSL_COSEM', 'PKMA', 'SPS', 'PDHG', 'PDHGKL', 'PDHGL1', 'CV', 'PDDY',
+_MAP = ['OSL_OSEM', 'BSREM', 'MBSREM', 'ROSEM_MAP', 'OSL_RBI', 'OSL_COSEM', 'PKMA', 'SPS', 'PDHG', 'PDHGKL', 'PDHGL1', 'PDDY',
         'SART', 'ASD_POCS', 'SAGA', 'BB']
 _ALGORITHM_FLAGS = _OS + _MAP
 _ALGORITHM_NAMES = [
@@ -27,7 +27,7 @@ _ALGORITHM_NAMES = [
     'Modified block-sequential regularized expectation maximization (MBSREM)', 'ROSEM MAP (ROSEM_MAP)', 'One-step-late RBI (OSL_RBI)',
     'One-step-late COSEM (OSL_COSEM)', 'Preconditioned Krasnoselski-Mann algorithm (PKMA)', 'Separable paraboloidal surrogates (SPS)',
     'Primal-dual hybrid gradient (PDHG)', 'Primal-dual hybrid gradient with Kullback-Leibler divergence (PDHGKL)',
-    'Primal-dual hybrid gradient with L1 error (PDHGL1)', 'Condat-Vu algorithm', 'Primal-dual Davis-Yin algorithm',
+    'Primal-dual hybrid gradient with L1 error (PDHGL1)', 'Primal-dual Davis-Yin algorithm',
     'Simultaneous Algebraic Reconstruction Technique', 'ASD-POCS', 'SAGA',
     'Barzilia-Borwein']
 _PRIOR_FLAGS = ['MRP', 'quad', 'Huber', 'L', 'FMH', 'weighted_mean', 'TV', 'hyperbolic', 'AD', 'APLS', 'TGV', 'NLM', 'RDP', 'GGMRF',

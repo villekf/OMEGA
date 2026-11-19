@@ -36,16 +36,51 @@ function grad = Huber_prior(im, weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, delta)
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-if Nz==1
-    im = padding(reshape(im,Nx,Ny),[Ndx Ndy]);
+% The Huber gradient is grad_j = sum_k w_k * clip(x_j - x_k, -delta, delta), where
+% k runs over the neighbors of voxel j. The weight kernel has the sum of the
+% weights in the center and -w_k elsewhere, so w_k = -kernel(k). Each
+% difference has to be clipped separately (clipping the weighted sum of the
+% differences is not the Huber gradient). Matches the C++ Huber_prior.
+im3 = reshape(im, Nx, Ny, Nz);
+is2D = (Nz == 1 || Ndz == 0);
+if Nz == 1
+    ndzUsed = 0;
 else
-    im = padding(reshape(im,Nx,Ny,Nz),[Ndx Ndy Ndz]);
+    ndzUsed = Ndz;
 end
-grad = convn(im, weights_huber, 'valid');
-% grad = bsxfun(@minus,im(tr_offsets(:,isinf(weights))), im(tr_offsets(:,[1:(find(isinf(weights)) - 1) (find(isinf(weights)) + 1):end]))) * weights_huber;
-if sum(delta >= abs(grad(:))) == numel(grad) && sum(grad(:)) ~= 0
+imPad = padding(im3, [Ndx Ndy ndzUsed]);
+kx = 2 * Ndx + 1;
+ky = 2 * Ndy + 1;
+% A 2D image uses only the central axial slice of the kernel
+if is2D
+    kRange = Ndz;
+else
+    kRange = 0 : 2 * Ndz;
+end
+grad = zeros(Nx, Ny, Nz, 'like', im3);
+maxAbs = 0;
+for k = kRange
+    for j = 0 : ky - 1
+        for i = 0 : kx - 1
+            if i == Ndx && j == Ndy && k == Ndz
+                continue
+            end
+            w = -weights_huber(i + 1, j + 1, k + 1);
+            if w == 0
+                continue
+            end
+            if is2D
+                shifted = imPad(i + 1 : i + Nx, j + 1 : j + Ny, :);
+            else
+                shifted = imPad(i + 1 : i + Nx, j + 1 : j + Ny, k + 1 : k + Nz);
+            end
+            diffIm = im3 - shifted;
+            maxAbs = max(maxAbs, max(abs(diffIm(:))));
+            grad = grad + w * min(max(diffIm, -delta), delta);
+        end
+    end
+end
+if maxAbs > 0 && delta >= maxAbs
     warning('Delta value of Huber prior larger than all the pixel difference values')
 end
 grad = grad(:);
-grad(grad > delta) = delta;
-grad(grad < -delta) = -delta;
