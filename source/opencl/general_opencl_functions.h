@@ -3469,6 +3469,7 @@ DEVICE void fastPDHGUpdate(
     // Anatomical reference image versions are not supported
     IMAGE3D d_imNLM,
     const float fastTVsigma,
+    const float fastTVsmooth, // TV smoothing parameter (options.TVsmoothing), used instead of fastEpps as in the regular TV kernel
 #endif // FASTTV
 #if FASTALG == 0
     const float fastTheta, const float fastTau,
@@ -3476,7 +3477,12 @@ DEVICE void fastPDHGUpdate(
     const float fastLambda, const float fastAlpha,
 #endif
     const float fastBeta,
-    const float fastEpps, const uchar fastPositivity) {
+    const float fastEpps, const uchar fastPositivity
+#ifdef FASTREGREUSE
+    // Stored prior gradient (fastBeta * gradient, indexed like d_U/d_precond) and the flag telling whether it is reused (1) or recomputed (0)
+    , CLGLOBAL float* CLRESTRICT d_priorGradStore, const uchar fastRegReuse
+#endif
+    ) {
     for (int zz = 0; zz < nVoxels; zz++) {
         const uint ind = i.z + zz;
         if (ind >= d_N.z)
@@ -3494,9 +3500,18 @@ DEVICE void fastPDHGUpdate(
 #endif
         // Compute the regularization if applicable
 #if defined(FASTNLM) || defined(FASTRDP) || defined(FASTGGMRF) || defined(FASTHYPER) || defined(FASTTV)
-        if (fastBeta != FLOAT_ZERO && ii == 0)
+        if (fastBeta != FLOAT_ZERO && ii == 0) {
+#ifdef FASTREGREUSE
+        // regEveryIter > 1: the prior gradient (scaled with fastBeta) computed during the last regularization subiteration is reused
+        if (fastRegReuse != 0u) {
+            rhs += d_priorGradStore[idx];
+        }
+        else
+#endif
+        {
+        float pg = FLOAT_ZERO;
 #if defined(FASTNLM)
-            rhs += fastBeta * NLMGradient(
+            pg = fastBeta * NLMGradient(
 #ifdef FASTNLMLOCAL
                 // Coordinates of the voxel within the local memory cache filled at the start
                 lCacheF, d_gaussian, CINT(LID0) + SWINDOWX + PWINDOWX, CINT(LID1) + SWINDOWY + PWINDOWY, zz + SWINDOWZ + PWINDOWZ,
@@ -3524,33 +3539,39 @@ DEVICE void fastPDHGUpdate(
 #elif defined(FASTRDP)
 #ifdef FASTRDPCORNERS
 #ifdef FASTSWLOCAL
-            rhs += fastBeta * priorGradientSW(lCacheSW, d_swWeight, CINT(LID0) + SWINDOWX, CINT(LID1) + SWINDOWY, zz + SWINDOWZ, fastEpps, fastRDPgamma);
+            pg = fastBeta * priorGradientSW(lCacheSW, d_swWeight, CINT(LID0) + SWINDOWX, CINT(LID1) + SWINDOWY, zz + SWINDOWZ, fastEpps, fastRDPgamma);
 #else
-            rhs += fastBeta * priorGradientSW(d_imNLM, d_swWeight, i.x, i.y, CINT(ind) + fastPriorZOffset, fastEpps, fastRDPgamma
+            pg = fastBeta * priorGradientSW(d_imNLM, d_swWeight, i.x, i.y, CINT(ind) + fastPriorZOffset, fastEpps, fastRDPgamma
 #ifdef PRIORREF
                 , d_urefNLM
 #endif
             );
 #endif
 #else
-            rhs += fastBeta * RDPGradientNorm(d_imNLM, i.x, i.y, CINT(ind) + fastPriorZOffset, fastRDPgamma, fastEpps);
+            pg = fastBeta * RDPGradientNorm(d_imNLM, i.x, i.y, CINT(ind) + fastPriorZOffset, fastRDPgamma, fastEpps);
 #endif
 #elif defined(FASTGGMRF)
 #ifdef FASTSWLOCAL
-            rhs += fastBeta * priorGradientSW(lCacheSW, d_swWeight, CINT(LID0) + SWINDOWX, CINT(LID1) + SWINDOWY, zz + SWINDOWZ, fastEpps, fastGGMRFp, fastGGMRFq, fastGGMRFc, fastGGMRFpqc);
+            pg = fastBeta * priorGradientSW(lCacheSW, d_swWeight, CINT(LID0) + SWINDOWX, CINT(LID1) + SWINDOWY, zz + SWINDOWZ, fastEpps, fastGGMRFp, fastGGMRFq, fastGGMRFc, fastGGMRFpqc);
 #else
-            rhs += fastBeta * priorGradientSW(d_imNLM, d_swWeight, i.x, i.y, CINT(ind) + fastPriorZOffset, fastEpps, fastGGMRFp, fastGGMRFq, fastGGMRFc, fastGGMRFpqc);
+            pg = fastBeta * priorGradientSW(d_imNLM, d_swWeight, i.x, i.y, CINT(ind) + fastPriorZOffset, fastEpps, fastGGMRFp, fastGGMRFq, fastGGMRFc, fastGGMRFpqc);
 #endif
 #elif defined(FASTHYPER)
 #ifdef FASTSWLOCAL
-            rhs += fastBeta * priorGradientSW(lCacheSW, d_swWeight, CINT(LID0) + SWINDOWX, CINT(LID1) + SWINDOWY, zz + SWINDOWZ, fastEpps, fastHYPERsigma);
+            pg = fastBeta * priorGradientSW(lCacheSW, d_swWeight, CINT(LID0) + SWINDOWX, CINT(LID1) + SWINDOWY, zz + SWINDOWZ, fastEpps, fastHYPERsigma);
 #else
-            rhs += fastBeta * priorGradientSW(d_imNLM, d_swWeight, i.x, i.y, CINT(ind) + fastPriorZOffset, fastEpps, fastHYPERsigma);
+            pg = fastBeta * priorGradientSW(d_imNLM, d_swWeight, i.x, i.y, CINT(ind) + fastPriorZOffset, fastEpps, fastHYPERsigma);
 #endif
 #elif defined(FASTTV)
             // Standard/SATV/JPTV only
-            rhs += fastBeta * TVGradient(d_imNLM, i.x, i.y, CINT(ind) + fastPriorZOffset, fastTVsigma, fastEpps);
+            pg = fastBeta * TVGradient(d_imNLM, i.x, i.y, CINT(ind) + fastPriorZOffset, fastTVsigma, fastTVsmooth);
 #endif // FASTNLM / FASTRDP / FASTGGMRF / FASTHYPER / FASTTV dispatch
+#ifdef FASTREGREUSE
+        d_priorGradStore[idx] = pg;
+#endif
+        rhs += pg;
+        }
+        }
 #endif // defined(FASTNLM) || defined(FASTRDP) || defined(FASTGGMRF) || defined(FASTHYPER) || defined(FASTTV)
         // Image-based preconditioning. The extra (multi-resolution) volumes are not preconditioned, as in the non-fused
         // path and the power method

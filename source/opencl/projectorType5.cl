@@ -732,6 +732,7 @@ extern "C" __global__
 #ifdef FASTTV
     , IMAGE3D d_imNLM
     , const float fastTVsigma
+    , const float fastTVsmooth
 #endif // FASTTV
 #if FASTALG == 0
     , const float fastTheta
@@ -747,6 +748,10 @@ extern "C" __global__
     , const LONG fastImOffset
     , const int fastPriorZOffset
     , const uchar fastStep
+#ifdef FASTREGREUSE
+    , CLGLOBAL float* CLRESTRICT d_priorGradStore
+    , const uchar fastRegReuse
+#endif
 #endif // END FASTPDHG
 )
 #endif
@@ -766,7 +771,12 @@ extern "C" __global__
 #ifdef NLMREF
     LOCAL float lCacheRefF[NLM_TILEX * NLM_TILEY * NLM_TILEZ];
 #endif
-    if (fastStep != 0u && fastBeta != FLOAT_ZERO && ii == 0)
+    if (fastStep != 0u && fastBeta != FLOAT_ZERO && ii == 0
+#ifdef FASTREGREUSE
+        // The gradient is not computed when the stored one is reused, so the cache is not needed (uniform over the grid, the barrier is still reached by all)
+        && fastRegReuse == 0u
+#endif
+        )
         fastFillNLMCache(lCacheF,
 #ifdef NLMREF
             lCacheRefF,
@@ -781,7 +791,12 @@ extern "C" __global__
 #endif // END FASTNLMLOCAL
 #if defined(FASTPDHG) && defined(FASTSWLOCAL) // START FASTSWLOCAL
     LOCAL float lCacheSW[SW_TILEX * SW_TILEY * SW_TILEZ];
-    if (fastStep != 0u && fastBeta != FLOAT_ZERO && ii == 0)
+    if (fastStep != 0u && fastBeta != FLOAT_ZERO && ii == 0
+#ifdef FASTREGREUSE
+        // The gradient is not computed when the stored one is reused, so the cache is not needed (uniform over the grid, the barrier is still reached by all)
+        && fastRegReuse == 0u
+#endif
+        )
         fastFillSWCache(lCacheSW, d_imNLM, CINT(i.z), fastPriorZOffset);
     BARRIER
 #endif // END FASTSWLOCAL
@@ -1513,13 +1528,18 @@ extern "C" __global__
 #ifdef FASTTV
             d_imNLM,
             fastTVsigma,
+            fastTVsmooth,
 #endif // FASTTV
 #if FASTALG == 0
             fastTheta, fastTau,
 #else
             fastLambda, fastAlpha,
 #endif
-            fastBeta, fastEpps, fastPositivity);
+            fastBeta, fastEpps, fastPositivity
+#ifdef FASTREGREUSE
+            , d_priorGradStore, fastRegReuse
+#endif
+            );
 #if defined(MASKBP) && defined(MASKBP3D) && NVOXELS5 > 1
         {
             size_t idxK = idx;

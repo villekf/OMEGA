@@ -863,6 +863,7 @@ void projectorType4Forward(
 * fastHYPERsigma = the hyperbolic prior's edge parameter (FASTHYPER only),
 * fastTVsigma = the TV prior's sigma parameter, i.e. w_vec.data.SATVPhi (FASTTV only -- standard/SATV/JPTV
 *               only, no local weights or search window; TVGradient reads the estimate texture directly),
+* fastTVsmooth = the TV prior smoothing parameter, i.e. w_vec.data.TVsmoothing (FASTTV only; used by TVGradient in place of epps, as in the regular TV kernel),
 * fastTheta = subsetsUsed * thetaCP of the current sub-iteration (FASTALG == 0 only),
 * fastTau = the primal step size (FASTALG == 0 only),
 * fastLambda = the relaxation parameter of the fused Poisson algorithm (FASTALG == 1 only),
@@ -872,7 +873,10 @@ void projectorType4Forward(
 * fastEpps = the small value used as the lower bound when positivity is enforced,
 * fastPositivity = if 1, positivity is enforced,
 * fastStep = if 0, this kernel behaves exactly as without FASTPDHG. Needed because the same kernel also computes
-*            e.g. the sensitivity image and the power method, where no image update may be done.
+*            e.g. the sensitivity image and the power method, where no image update may be done,
+* d_priorGradStore = the stored prior gradient (fastBeta * gradient) of the main volume, written when the gradient is computed and
+*                    read when it is reused (FASTREGREUSE only, i.e. regEveryIter > 1),
+* fastRegReuse = if 1, the stored prior gradient is reused instead of recomputing it (FASTREGREUSE only).
 *
 * OUTPUTS:
 * d_OSEM = backprojection, or, when the fused PDHG step is used (fastStep = 1), the new image estimate
@@ -1059,6 +1063,7 @@ void projectorType4Backward(
 #ifdef FASTTV
     , IMAGE3D d_imNLM
     , const float fastTVsigma
+    , const float fastTVsmooth
 #endif // FASTTV
 #if FASTALG == 0
     , const float fastTheta
@@ -1074,6 +1079,10 @@ void projectorType4Backward(
     , const LONG fastImOffset
     , const int fastPriorZOffset
     , const uchar fastStep
+#ifdef FASTREGREUSE
+    , CLGLOBAL float* CLRESTRICT d_priorGradStore
+    , const uchar fastRegReuse
+#endif
 #endif // END FASTPDHG
 #else
     , uint3 temp_i [[thread_position_in_grid]] // global id
@@ -1106,7 +1115,12 @@ void projectorType4Backward(
 #ifdef NLMREF
     LOCAL float lCacheRefF[NLM_TILEX * NLM_TILEY * NLM_TILEZ];
 #endif
-    if (fastStep != 0u && fastBeta != FLOAT_ZERO && ii == 0)
+    if (fastStep != 0u && fastBeta != FLOAT_ZERO && ii == 0
+#ifdef FASTREGREUSE
+        // The gradient is not computed when the stored one is reused, so the cache is not needed (uniform over the grid, the barrier is still reached by all)
+        && fastRegReuse == 0u
+#endif
+        )
         fastFillNLMCache(lCacheF,
 #ifdef NLMREF
             lCacheRefF,
@@ -1121,7 +1135,12 @@ void projectorType4Backward(
 #endif // END FASTNLMLOCAL
 #if defined(FASTPDHG) && defined(FASTSWLOCAL) // START FASTSWLOCAL
     LOCAL float lCacheSW[SW_TILEX * SW_TILEY * SW_TILEZ];
-    if (fastStep != 0u && fastBeta != FLOAT_ZERO && ii == 0)
+    if (fastStep != 0u && fastBeta != FLOAT_ZERO && ii == 0
+#ifdef FASTREGREUSE
+        // The gradient is not computed when the stored one is reused, so the cache is not needed (uniform over the grid, the barrier is still reached by all)
+        && fastRegReuse == 0u
+#endif
+        )
         fastFillSWCache(lCacheSW, d_imNLM, CINT(i.z), fastPriorZOffset);
     BARRIER
 #endif // END FASTSWLOCAL
@@ -1597,6 +1616,30 @@ void projectorType4Backward(
 	// Start the fastPDHG computations
 #ifdef FASTPDHG // START FASTPDHG
     if (fastStep != 0u) {
+#if defined(MASKBP3D)
+        // The fused update has no mask, so the values of the masked voxels of this thread are stored here and restored after the update
+        float keepOSEM[nVoxels];
+#if FASTALG == 0
+        float keepU[nVoxels];
+#endif
+        float keepSumm[nVoxels];
+        {
+            size_t idxK = idx;
+            for (int zz = 0; zz < nVoxels; zz++) {
+                if (i.z + zz >= CINT(d_N.z))
+                    break;
+                if (maskZ[zz] == 0) {
+                    keepOSEM[zz] = d_OSEM[idxK + fastImOffset];
+#if FASTALG == 0
+                    keepU[zz] = d_U[idxK];
+#endif
+                    if (no_norm == 0u)
+                        keepSumm[zz] = d_Summ[idxK];
+                }
+                idxK += d_N.y * d_N.x;
+            }
+        }
+#endif
         fastPDHGUpdate(temp, wSum, i, idx, d_N, nVoxels, no_norm, ii,
             fastImOffset, fastPriorZOffset,
 #if FASTALG == 0
@@ -1656,13 +1699,36 @@ void projectorType4Backward(
 #ifdef FASTTV
             d_imNLM,
             fastTVsigma,
+            fastTVsmooth,
 #endif // FASTTV
 #if FASTALG == 0
             fastTheta, fastTau,
 #else
             fastLambda, fastAlpha,
 #endif
-            fastBeta, fastEpps, fastPositivity);
+            fastBeta, fastEpps, fastPositivity
+#ifdef FASTREGREUSE
+            , d_priorGradStore, fastRegReuse
+#endif
+            );
+#if defined(MASKBP3D)
+        {
+            size_t idxK = idx;
+            for (int zz = 0; zz < nVoxels; zz++) {
+                if (i.z + zz >= CINT(d_N.z))
+                    break;
+                if (maskZ[zz] == 0) {
+                    d_OSEM[idxK + fastImOffset] = keepOSEM[zz];
+#if FASTALG == 0
+                    d_U[idxK] = keepU[zz];
+#endif
+                    if (no_norm == 0u)
+                        d_Summ[idxK] = keepSumm[zz];
+                }
+                idxK += d_N.y * d_N.x;
+            }
+        }
+#endif
         return;
     }
 #endif // END FASTPDHG

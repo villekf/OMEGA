@@ -74,6 +74,7 @@ typedef struct AF_im_vectors_ {
     // Arrays of size N_timesteps
     std::vector<af::array> dU; // gradient of spatial prior
     std::vector<af::array> dUt; // gradient of temporal prior
+    std::vector<af::array> priorGradStore; // stored prior gradient (scaled with beta) of the fused fastPDHG step with regEveryIter > 1
     std::vector<af::array> p0CP; 
     // Arrays of size N_timesteps x N_multivolumes
     std::vector<std::vector<af::array>> im_os; // estimate of image volume

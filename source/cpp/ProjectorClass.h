@@ -2757,6 +2757,8 @@ public:
 	AFDEVBUFF_t d_im, d_rhs, d_U, d_refIm, d_RDPref;
 	// Sensitivity image used by fastPDHG
 	AFDEVBUFF_t d_precond;
+	// Stored fused prior gradient of the main volume (fastPDHG with regEveryIter > 1)
+	AFDEVBUFF_t d_priorGradStore;
 	AFDEVBUFF_t d_outputCT;
 	TEX2D_t d_maskFP, d_maskBP, d_maskPrior;
 	TEX3D_t d_maskBP3, d_maskPrior3;
@@ -2879,6 +2881,10 @@ public:
 	bool fastNLMUsed = false;
 	// 0 = PDHG (and its variants, default), 1 = Poisson (PKMA/MBSREM/BSREM)
 	uint8_t fastAlg = 0;
+	// True if the fused prior gradient is stored and reused between the regularization subiterations (regEveryIter > 1)
+	bool fastRegReuseUsed = false;
+	// 1 = reuse the stored prior gradient in this subiteration, 0 = compute (and store) it
+	uint8_t fastRegReuse = 0;
 	// Scalar values required specifically for the fastPDHG
 	float fastTheta = 0.f, fastTau = 0.f, fastBeta = 0.f, fastEpps = 1e-6f;
 	// Poisson-algorithm (PKMA/MBSREM/BSREM) relaxation parameter and alphaM (PKMA) / U (MBSREM) / 1 (BSREM)
@@ -3373,6 +3379,12 @@ public:
 				ADD_OPT(os_options, "-DSATV");
 			else if (w_vec.data.TVtype == 2)
 				ADD_OPT(os_options, "-DJPTV");
+		}
+		// With regEveryIter > 1 the prior gradient is recomputed only every regEveryIter-th subiteration, the
+		// last computed one is stored and reused in between
+		if (fastNLMUsed && inputScalars.regEveryIter > 1) {
+			fastRegReuseUsed = true;
+			ADD_OPT(os_options, "-DFASTREGREUSE");
 		}
 		} // end !MethodList.BSREM
 	}
@@ -6499,6 +6511,7 @@ public:
 					}
 					else if (MethodList.TV) {
 						KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, w_vec.data.SATVPhi);
+						KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, w_vec.data.TVsmoothing);
 					}
 				}
 				if (fastAlg == 0) {
@@ -6516,6 +6529,16 @@ public:
 				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, fastImOffset);
 				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, fastPriorZOffset);
 				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, fastStep);
+				// Stored prior gradient (only the main volume uses it, the placeholder is never accessed otherwise)
+				if (fastRegReuseUsed) {
+					if (fastStep != 0 && ii == 0) {
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_priorGradStore);
+					}
+					else {
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_output);
+					}
+					KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, fastRegReuse);
+				}
 			}
 #endif // END METAL
 			}

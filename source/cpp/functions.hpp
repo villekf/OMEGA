@@ -87,9 +87,6 @@ inline void checkFastPDHG(scalarStruct& inputScalars, const Weighting& w_vec, co
 	// All BPType 4/5 combinations are allowed
 	if ((inputScalars.BPType != 4 && inputScalars.BPType != 5) || !inputScalars.CT)
 		reason = "only backprojection types 4 and 5 (projector_type 4, 5, 14, 15, 24, 34, 44, 45, 54, 55, 74, 75) with CT data are supported";
-	// The fused kernel has no mask handling and the type 4 backprojection skips the masked z-planes of a voxel block only in its regular write
-	else if (inputScalars.BPType == 4 && inputScalars.maskBP && inputScalars.maskBPZ > 1)
-		reason = "a 3D backprojection mask with backprojection type 4 is not supported";
 	else if (!fastPDHGAlgorithm && !fastPoissonAlgorithm)
 		reason = "only PDHG, PDHGKL, PDHGL1, PKMA, MBSREM and BSREM are supported (PDDY is not)";
 	// The experimental relaxation parameter computations are not supported
@@ -137,9 +134,6 @@ inline void checkFastPDHG(scalarStruct& inputScalars, const Weighting& w_vec, co
 		reason = "only the image-based preconditioners 0 and 1 are supported";
 	else if (w_vec.precondTypeIm[0] && w_vec.precondTypeIm[1])
 		reason = "only one image-based preconditioner can be used at a time";
-	// The fused step computes the prior inside the kernel and cannot reuse a stored gradient
-	else if (inputScalars.regEveryIter > 1)
-		reason = "regEveryIter > 1 is not supported by the fused step";
 	if (reason != nullptr) {
 		inputScalars.fastPDHG = false;
 		// The fused step is enabled automatically whenever it applies, so a configuration that does not
@@ -195,7 +189,11 @@ static inline void setFastPDHGSubIterParams(ProjectorClass& proj, const scalarSt
 	// The Poisson algorithms (PKMA, MBSREM) combine one subset's data gradient with the prior on every subiteration, so beta is
 	// scaled with 1 / subsets as in computeOSEstimates. PDHG keeps beta
 	const float fastBetaScale = (proj.fastAlg != 0 && (MethodList.PKMA || MethodList.MBSREM)) ? 1.f / static_cast<float>(inputScalars.subsetsUsed) : 1.f;
-	proj.fastBeta = (proj.fastNLMUsed && computeReg && !MethodList.BSREM) ? (MethodList.MBSREM ? -w_vec.beta : w_vec.beta) * fastBetaScale : 0.f;
+	// With regEveryIter > 1 beta stays at its normal value on every subiteration: the gradient is either computed and stored (computeReg)
+	// or the stored one is reused by the kernel (fastRegReuse), so beta must not be zeroed in the skipped subiterations
+	const bool useReg = proj.fastNLMUsed && !MethodList.BSREM && (computeReg || proj.fastRegReuseUsed);
+	proj.fastBeta = useReg ? (MethodList.MBSREM ? -w_vec.beta : w_vec.beta) * fastBetaScale : 0.f;
+	proj.fastRegReuse = (proj.fastRegReuseUsed && !computeReg) ? 1 : 0;
 }
 #endif
 
@@ -1141,6 +1139,15 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 		// Preconditioner vector (sensitivity image)
 		if (fastPrecond)
 			proj.d_precond = transferAF(w_vec.D[DIndex(inputScalars, timestep)][ii]);
+		// Stored prior gradient (regEveryIter > 1), only for the regularized main volume. It persists over the subiterations
+		// and each timestep has its own one
+		if (ii == 0 && proj.fastRegReuseUsed) {
+			if (vec.priorGradStore.size() <= timestep)
+				vec.priorGradStore.resize(std::max(static_cast<size_t>(inputScalars.Nt), static_cast<size_t>(timestep) + 1));
+			if (vec.priorGradStore[timestep].elements() != static_cast<dim_t>(inputScalars.im_dim[0]))
+				vec.priorGradStore[timestep] = af::constant(0.f, inputScalars.im_dim[0]);
+			proj.d_priorGradStore = transferAF(vec.priorGradStore[timestep]);
+		}
 		// Include the subvolume information of largeDim
 		if (inputScalars.largeDim && lDimChunk >= 0) {
 			proj.fastImOffset = static_cast<int64_t>(inputScalars.lDimStruct.startPr[lDimChunk]);
@@ -1194,6 +1201,8 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 		vec.im_os[timestep][ii].unlock();
 		if (fastPrecond)
 			w_vec.D[DIndex(inputScalars, timestep)][ii].unlock();
+		if (ii == 0 && proj.fastRegReuseUsed)
+			vec.priorGradStore[timestep].unlock();
 #if defined(CUDA) || defined(HIP)
 		// Destroy the texture if it's created above (only ever created for ii == 0)
 		// TODO: Persistent image/texture for fastPDHG?
@@ -1258,6 +1267,8 @@ inline int finalizeBackwardProjectionAF(AF_im_vectors& vec, const scalarStruct& 
 		vec.im_os[timestep][ii].unlock();
 		if (w_vec.precondTypeIm[0] || w_vec.precondTypeIm[1])
 			w_vec.D[DIndex(inputScalars, timestep)][ii].unlock();
+		if (ii == 0 && proj.fastRegReuseUsed)
+			vec.priorGradStore[timestep].unlock();
 #if defined(CUDA) || defined(HIP)
 		// The estimate texture is only created for the main volume, so destroy it once
 		if (ii == 0 && proj.fastNLMUsed && (inputScalars.FPType == 5 || inputScalars.largeDim)) {
