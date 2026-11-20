@@ -155,6 +155,14 @@ else
     [options.param] = loadCorrections(options.param, RandProp, ScatterProp);
 end
 
+% The CT versions of these algorithms use the transmission count-data model, they are not valid with linearized data
+if options.param.CT && options.param.usingLinearizedData && (options.param.OSEM || options.param.ROSEM || options.param.OSL_OSEM || options.param.ROSEM_MAP ...
+        || options.param.COSEM || options.param.ECOSEM || options.param.ACOSEM || options.param.OSL_COSEM > 0 || options.param.RAMLA || options.param.BSREM ...
+        || options.param.RBI || options.param.OSL_RBI || options.param.DRAMA || options.param.PKMA || options.param.MRAMLA || options.param.MBSREM ...
+        || options.param.SPS || options.param.SAGA)
+    error('The CT versions of the statistical algorithms (OSEM, ROSEM, OSL-OSEM, ROSEM-MAP, COSEM, ECOSEM, ACOSEM, OSL-COSEM, RAMLA, BSREM, RBI, OSL-RBI, DRAMA, PKMA, MRAMLA, MBSREM, SPS, SAGA) need intensity (count) data, linearized data (options.usingLinearizedData = true) cannot be used with them. Use a linear algorithm, such as PDHG or CGLS, with linearized data')
+end
+
 % The default flat value is the maximum of the corrected data (after loadCorrections, as in Python): the scatter/randoms
 % subtraction and the CT normalization precorrection are applied to the intensity data above
 if options.param.CT && isfield(options.param,'flat') && numel(options.param.flat) > 1
@@ -457,6 +465,10 @@ if ismember(options.param.implementation, [1, 4, 5])
                         EE(Sino > 0) = E(Sino > 0) ./ Sino(Sino > 0);
                         E = EE;
                     end
+                    % dP backprojects E over the events (not the sensitivity image over all detector pairs), so the list-mode
+                    % sensitivity mode of the backprojection is switched off for the dP computation
+                    computeSensImDP = options.param.compute_sensitivity_image;
+                    options.param.compute_sensitivity_image = false;
                     if options.param.implementation == 1 && options.param.nMultiVolumes == 0
                         options.param.dP = zeros(options.param.N(1), 1, options.param.cType);
                         for ll = 1 : options.param.subsets
@@ -486,6 +498,7 @@ if ismember(options.param.implementation, [1, 4, 5])
                     else
                         options.param.dP = backwardProject(options, E, 0, corrVector);
                     end
+                    options.param.compute_sensitivity_image = computeSensImDP;
                     % Curvature bound of the prior for the step size (main volume only)
                     kappa = 0;
                     if options.param.beta > 0

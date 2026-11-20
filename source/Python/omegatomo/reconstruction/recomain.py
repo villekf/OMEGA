@@ -885,6 +885,11 @@ def reconstructions_main(options):
     #     normdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', '..', '..', 'mat-files')) + "/"
     #     if os.path.exists(normdir):
     #         var = read_mat(options.fpath)
+    # The CT versions of these algorithms use the transmission count-data model, they are not valid with linearized data
+    if options.CT and options.usingLinearizedData and (options.OSEM or options.ROSEM or options.OSL_OSEM or options.ROSEM_MAP or options.COSEM or options.ECOSEM
+            or options.ACOSEM or options.OSL_COSEM > 0 or options.RAMLA or options.BSREM or options.RBI or options.OSL_RBI or options.DRAMA or options.PKMA
+            or options.MRAMLA or options.MBSREM or options.SPS or options.SAGA):
+        raise ValueError('The CT versions of the statistical algorithms (OSEM, ROSEM, OSL-OSEM, ROSEM-MAP, COSEM, ECOSEM, ACOSEM, OSL-COSEM, RAMLA, BSREM, RBI, OSL-RBI, DRAMA, PKMA, MRAMLA, MBSREM, SPS, SAGA) need intensity (count) data, linearized data (options.usingLinearizedData = True) cannot be used with them. Use a linear algorithm, such as PDHG or CGLS, with linearized data')
     if options.CT and options.flat <= 0 and not options.usingLinearizedData:
         if (options.normalization_correction and isinstance(options.SinM, np.ndarray) and options.normalization.size > 1
                 and options.normalization.size == options.SinM.size):
