@@ -3552,6 +3552,11 @@ public:
 				if (fillNLMConstWeights(programBP, w_vec, false) != 0)
 					return -1;
 			}
+			// With FPType 5 and BPType 5 the backprojection kernel is in the forward projection program
+			if (memAlloc.FPMod) {
+				if (fillNLMConstWeights(programFP, w_vec, false) != 0)
+					return -1;
+			}
 		}
 #endif
 #elif defined(METAL)
