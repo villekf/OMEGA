@@ -69,14 +69,28 @@ def _readCTSeries(fpathCT):
         raise ValueError('No .dcm or .ima files found in "%s"!' % fpathCT)
     slices = []
     for f in files:
-        ds = dcmread(os.path.join(fpathCT, f))
+        fname = os.path.join(fpathCT, f)
+        try:
+            ds = dcmread(fname)
+        except Exception as e:
+            raise ValueError('Could not read the DICOM file "%s": %s' % (fname, e)) from None
+        for tag in ('ImagePositionPatient', 'PixelSpacing', 'RescaleSlope', 'RescaleIntercept'):
+            if tag not in ds:
+                raise ValueError('The DICOM file "%s" does not contain %s!' % (fname, tag))
         pos = np.array([float(v) for v in ds.ImagePositionPatient])
-        slope = float(getattr(ds, 'RescaleSlope', 1.))
-        intercept = float(getattr(ds, 'RescaleIntercept', 0.))
-        img = ds.pixel_array.astype(np.float64) * slope + intercept
-        slices.append((pos, img, np.array([float(v) for v in ds.PixelSpacing])))
+        slope = float(ds.RescaleSlope)
+        intercept = float(ds.RescaleIntercept)
+        try:
+            pix = ds.pixel_array
+        except Exception as e:
+            raise ValueError('Could not read the pixel data of the DICOM file "%s": %s' % (fname, e)) from None
+        img = pix.astype(np.float64) * slope + intercept
+        slices.append((pos, img, np.array([float(v) for v in ds.PixelSpacing]), fname))
     slices.sort(key=lambda s: s[0][2])
     shape = slices[0][1].shape
+    for s0, s1 in zip(slices[:-1], slices[1:]):
+        if np.abs(s0[0][2] - s1[0][2]) < 1e-6:
+            raise ValueError('The DICOM files "%s" and "%s" do not map one-to-one to the CT slices (two files have the same position)!' % (s0[3], s1[3]))
     for s in slices:
         if s[1].shape != shape:
             raise ValueError('All CT slices need to have the same size!')
