@@ -2137,7 +2137,10 @@ def computeWeights(options, GGMRF):
                 dist = np.sqrt(Xg**2 + Yg**2)
             else:
                 dist = np.sqrt(Xg**2 + Yg**2 + Zg**2)
-        options.weights = 1.0 / dist.flatten(order='F')
+        # The centre voxel has distance 0; its inf weight marks the centre and
+        # is removed or replaced later (quadWeights, huberWeights, weightedWeights).
+        with np.errstate(divide='ignore'):
+            options.weights = 1.0 / dist.flatten(order='F')
         options.weights = options.weights.astype(dtype=np.float32)
         
 def quadWeights(options, isEmpty):
