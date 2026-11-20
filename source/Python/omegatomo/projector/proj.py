@@ -226,7 +226,7 @@ class projectorClass:
     sampling = 1
     oneD_weights = False
     fmh_center_weight = 4.
-    ring_difference_raw = 1
+    ring_difference_raw = None # Default (None): rings - 1 (as in MATLAB setMissingValues), resolved in addProjector
     ring_difference = 0
     obtain_trues = False
     reconstruct_trues = False
@@ -479,7 +479,9 @@ class projectorClass:
     alpha1TGV = 0.
     useL2Ball = True
     useMAD = True
-    useImages = True
+    # None means 'not set by the user'; resolved to a bool in _resolveUseImages (called from addProjector),
+    # mirroring MATLAB setMissingValues: False for projector_type 6 (and on macOS), True otherwise
+    useImages = None
     useHalf = False # When true, computations are performed with FP16 precision instead of FP32
     useEFOV = False
     useExtrapolation = False
@@ -1057,8 +1059,18 @@ class projectorClass:
                              f'[{self.nRowsD} {self.nColsD}] (used for every projection) or the size of all projections '
                              f'[{self.nRowsD} {self.nColsD} {self.nProjections}], but it has {normalization.size} elements.')
 
+    def _resolveUseImages(self):
+        # MATLAB setMissingValues: useImages defaults to false for projector_type 6 (rotation-based SPECT)
+        # and on macOS, true otherwise. A value set by the user is kept as is.
+        if self.useImages is None:
+            import sys
+            self.useImages = not (self.projector_type == 6 or sys.platform == 'darwin')
+        else:
+            self.useImages = bool(self.useImages)
+
     def addProjector(self):
         self.projectorAdded = True
+        self._resolveUseImages()
         # A scalar per-layer parameter (multi-layer PET) is used for all the layers
         expandLayerParameters(self)
         # MATLAB/Octave-style option name aliases, accepted for convenience so scripts written
@@ -1303,6 +1315,8 @@ class projectorClass:
         # initialization, prepass, ctypes struct). The arrays are rebound, never written in place.
         if self.tube_radius is None:
             self.tube_radius = math.sqrt(2.) * (self.cr_pz / 2.)
+        if self.ring_difference_raw is None:
+            self.ring_difference_raw = self.rings - 1 if self.rings > 0 else 0
         if self.gradInitIter is None:
             self.gradInitIter = self.subsets
         if self.gradLastIter is None:
@@ -2021,10 +2035,16 @@ class projectorClass:
         if (not self.CT and not self.SPECT and not self.listmode and not self.useIndexBasedReconstruction and not self.use_raw_data
                 and self.subsets > 1 and self.subsetType == 6):
             try:
-                # Numeric scalars only (same as MATLAB): None, strings and lists are rejected
-                if not isinstance(self.n_angles, (int, float, np.number, np.bool_, np.ndarray)):
+                # Numeric scalars only (same as MATLAB, where [2] is a scalar): None and strings are rejected,
+                # a list/tuple is accepted only when it holds exactly one numeric element
+                nAngIn = self.n_angles
+                if isinstance(nAngIn, (list, tuple)):
+                    if len(nAngIn) != 1:
+                        raise TypeError('n_angles must have exactly one element')
+                    nAngIn = nAngIn[0]
+                if not isinstance(nAngIn, (int, float, np.number, np.bool_, np.ndarray)):
                     raise TypeError('n_angles is not numeric')
-                nAng = np.asarray(self.n_angles, dtype=float)
+                nAng = np.asarray(nAngIn, dtype=float)
                 nAngOk = nAng.size == 1 and bool(np.isfinite(nAng.item())) and nAng.item() >= 1 and 180 % nAng.item() == 0
             except (TypeError, ValueError, AttributeError):
                 nAngOk = False
