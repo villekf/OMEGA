@@ -1461,6 +1461,8 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
                 w_vec.tauCP2[timestep].assign(options.tauCP, options.tauCP + w_vec.tauCP[timestep].size());
             } else {
                 w_vec.tauCP[timestep].assign(options.tauCP, options.tauCP + w_vec.tauCP[timestep].size());
+                // Step size after the image-based filtering (precondTypeIm[5]); replaced by the power method when tauCP is computed
+                w_vec.tauCP2[timestep].assign(options.tauCP, options.tauCP + w_vec.tauCP[timestep].size());
             }
             w_vec.thetaCP[timestep].assign(options.thetaCP, options.thetaCP + w_vec.thetaCP[timestep].size());
         }

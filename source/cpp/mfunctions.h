@@ -720,6 +720,8 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
         }
         if ((w_vec.precondTypeIm[5] || w_vec.precondTypeMeas[1]) && (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA)) {
             w_vec.lambdaFiltered[timestep] = w_vec.lambda[timestep];
+            if (mxGetNumberOfElements(getField(options, 0, "lambdaFiltered")) < w_vec.lambda[timestep].size())
+                mexErrMsgTxt("The number of filtered relaxation values (options.lambdaFiltered) needs to be at least equal to the number of iterations!");
             const float *lambda = getSingles(options, "lambdaFiltered");
             w_vec.lambda[timestep].assign(lambda, lambda + w_vec.lambda[timestep].size());
         }
@@ -740,6 +742,8 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
             } else {
                 const float *tauCP = getSingles(options, "tauCP");
                 w_vec.tauCP[timestep].assign(tauCP, tauCP + w_vec.tauCP[timestep].size());
+                // Step size after the image-based filtering (precondTypeIm[5]); replaced by the power method when tauCP is computed
+                w_vec.tauCP2[timestep].assign(tauCP, tauCP + w_vec.tauCP[timestep].size());
             }
 
             if (inputScalars.adaptiveType == 1) {

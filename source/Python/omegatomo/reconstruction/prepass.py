@@ -300,6 +300,17 @@ def _load_reference_image(options, value, resize=True, emptyMessage=None,
         value = value.ravel('F').astype(dtype=np.float32)
     return value
 
+def _expandScalarRelaxation(value, options):
+    """Expands a scalar relaxation value to the decaying relaxation schedule (one value per iteration), as in prepass_phase.m."""
+    iterations = np.arange(1, options.Niter + 1, dtype=np.float64)
+    if options.stochasticSubsetSelection:
+        valueT = np.ravel(value)[0] / (0.4 / options.subsets * iterations + 1.)
+    else:
+        valueT = np.ravel(value)[0] / ((iterations - 1.) / 20. + 1.)
+    if options.CT and not options.SART and not options.ASD_POCS:
+        valueT = valueT / 10000.
+    return valueT.astype(np.float32)
+
 def _compute_lambda_vals(niter, subsets, stochastic):
     """
     Vectorized form of the per-iteration relaxation parameter loop used for
@@ -2809,14 +2820,7 @@ def prepassPhase(options):
                 options.lambdaN = options.lambdaN / 10000.
         elif (options.BSREM or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM_MAP or options.ROSEM or options.PKMA or options.SPS or options.SART or options.ASD_POCS or options.SAGA) and np.size(options.lambdaN) == 1 and options.Niter > 1:
             # A scalar relaxation value is the starting value of the decaying relaxation schedule (prepass_phase.m)
-            iterations = np.arange(1, options.Niter + 1, dtype=np.float64)
-            if options.stochasticSubsetSelection:
-                lambdaT = np.ravel(options.lambdaN)[0] / (0.4 / options.subsets * iterations + 1.)
-            else:
-                lambdaT = np.ravel(options.lambdaN)[0] / ((iterations - 1.) / 20. + 1.)
-            if options.CT and not options.SART and not options.ASD_POCS:
-                lambdaT = lambdaT / 10000.
-            options.lambdaN = lambdaT.astype(np.float32)
+            options.lambdaN = _expandScalarRelaxation(options.lambdaN, options)
         elif (options.BSREM or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM_MAP or options.ROSEM or options.PKMA or options.SPS or options.SART or options.ASD_POCS or options.SAGA):
             if np.size(options.lambdaN) < options.Niter:
                 print('Warning: The number of relaxation values must be at least the number of iterations times the number of subsets! Computing custom relaxation values.')
@@ -2999,6 +3003,11 @@ def prepassPhase(options):
     if isinstance(options.TV_referenceImage, str):
         options.TV_referenceImage = np.empty(0, dtype=np.float32)
     if (options.PKMA or options.MBSREM or options.SPS or options.RAMLA or options.BSREM or options.ROSEM or options.ROSEM_MAP or options.MRAMLA or options.SAGA) and (options.precondTypeMeas[1] or options.precondTypeImage[5]):
-        if (options.lambdaFiltered.size != options.lambdaN.size and options.filteringIterations < options.subsets * options.Niter) or options.lambdaFiltered.size == 0:
+        if np.size(options.lambdaFiltered) == 0:
             options.lambdaFiltered = options.lambdaN
-            
+        elif np.size(options.lambdaFiltered) == 1 and options.Niter > 1:
+            # A scalar value is expanded like a scalar lambdaN
+            options.lambdaFiltered = _expandScalarRelaxation(options.lambdaFiltered, options)
+        elif np.size(options.lambdaFiltered) < options.Niter:
+            raise ValueError('The number of filtered relaxation values (options.lambdaFiltered) needs to be at least equal to the number of iterations!')
+        options.lambdaFiltered = np.ascontiguousarray(options.lambdaFiltered, dtype=np.float32)

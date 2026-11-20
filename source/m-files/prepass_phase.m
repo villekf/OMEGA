@@ -475,8 +475,26 @@ if options.sampling > 1 && ~options.use_raw_data && ~options.precompute_lor
     options.Ndist = options.Ndist / options.sampling;
 end
 if (options.PKMA || options.MBSREM || options.SPS || options.RAMLA || options.BSREM || options.ROSEM || options.ROSEM_MAP || options.MRAMLA || options.SAGA) && (options.precondTypeMeas(2) || options.precondTypeImage(6))
-    if ~isfield(options,'lambdaFiltered')
+    if ~isfield(options,'lambdaFiltered') || isempty(options.lambdaFiltered)
         options.lambdaFiltered = options.lambda;
+    elseif isscalar(options.lambdaFiltered) && options.Niter > 1
+        % A scalar value is expanded like a scalar options.lambda
+        lambdaFT = zeros(options.Niter,1);
+        if options.stochasticSubsetSelection
+            for i = 1 : options.Niter
+                lambdaFT(i) = options.lambdaFiltered / (0.4/options.subsets * i + 1);
+            end
+        else
+            for i = 1 : options.Niter
+                lambdaFT(i) = options.lambdaFiltered / ((i - 1)/20 + 1);
+            end
+        end
+        if options.CT && ~options.SART && ~options.ASD_POCS
+            lambdaFT = lambdaFT / 10000;
+        end
+        options.lambdaFiltered = lambdaFT;
+    elseif numel(options.lambdaFiltered) < options.Niter
+        error('The number of filtered relaxation values (options.lambdaFiltered) needs to be at least equal to the number of iterations!')
     end
     % As in the native code, the relaxation parameters options.lambdaFiltered are used during the filtering and
     % options.lambda after it. The m-file implementations use options.lambda in the updates and switch to
