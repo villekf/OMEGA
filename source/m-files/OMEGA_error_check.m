@@ -284,6 +284,9 @@ if (isfield(options,'ProxRDP') && options.ProxRDP) || (isfield(options,'ProxNLM'
 end
 if sum(options.precondTypeImage) == 0 && (options.PKMA || options.MRAMLA || options.MBSREM)
     warning('No image-based preconditioner selected with PKMA/MRAMLA/MBSREM. EM preconditioner is highly recommended!')
+elseif (options.PKMA || options.MRAMLA || options.MBSREM) && ~any(options.precondTypeImage(1:3)) && ~(numel(options.precondTypeImage) >= 7 && options.precondTypeImage(7))
+    % Only the momentum-like, gradient-based and/or filtering-based preconditioners (indices 4-6) are selected
+    warning('Only the momentum-like, gradient-based or filtering-based image preconditioner selected with PKMA/MRAMLA/MBSREM. These do not normalize the step size. Using them together with the EM preconditioner is highly recommended!')
 end
 if options.APLS && MAP && (ischar(options.APLS_reference_image) || isstring(options.APLS_reference_image)) && ...
         ~isempty(char(options.APLS_reference_image)) && exist(char(options.APLS_reference_image),'file') ~= 2

@@ -2173,6 +2173,9 @@ class projectorClass:
             raise ValueError('ProxRDP and ProxNLM have been removed. Use RDP or NLM instead.')
         if np.sum(self.precondTypeImage) == 0 and (self.PKMA or self.MRAMLA or self.MBSREM):
             print('No image-based preconditioner selected with PKMA/MRAMLA/MBSREM. EM preconditioner is highly recommended!')
+        elif (self.PKMA or self.MRAMLA or self.MBSREM) and not np.any(np.ravel(self.precondTypeImage)[[i for i in (0, 1, 2, 6) if i < np.size(self.precondTypeImage)]]):
+            # Only the momentum-like, gradient-based and/or filtering-based preconditioners (indices 3-5) are selected
+            print('Only the momentum-like, gradient-based or filtering-based image preconditioner selected with PKMA/MRAMLA/MBSREM. These do not normalize the step size. Using them together with the EM preconditioner is highly recommended!')
         if not self.CT and not self.SPECT and self.reconstruct_trues and self.reconstruct_scatter:
             print('Both reconstruct trues and scatter selected, reconstructing only trues.')
             self.reconstruct_scatter = False
