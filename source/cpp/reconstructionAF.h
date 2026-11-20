@@ -917,8 +917,9 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             if (inputScalars.projector_type == 6)
                                 backprojectionType6(inputM, w_vec, vec, inputScalars, length[indD], uu, proj, tt, subIter, 0, 0, 0, ii, atten);
                             else {
+                                // dP backprojects E over the events (not the sensitivity image over all detector pairs)
                                 status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, inputM, subIter, tt, length, lengthFull[indD], 
-                                    meanBP, g, proj, (inputScalars.listmode > 0 && inputScalars.computeSensImag), ii, pituus);
+                                    meanBP, g, proj, false, ii, pituus);
                                 if (status != 0) {
                                     return -1;
                                 }
