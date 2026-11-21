@@ -71,7 +71,7 @@ typedef struct structForScalars {
 	uint32_t platform = 0;
 	std::vector<uint32_t> Nx{ 1, 0, 0, 0, 0, 0, 0 }, Ny{ 1, 0, 0, 0, 0, 0, 0 }, Nz{ 1, 0, 0, 0, 0, 0, 0 };
 	float crystal_size_z = 0.f, epps = 1e-6f, sigma_x = 0.f, tube_width = 0.f, bmin = 0.f, bmax = 0.f, Vmax = 0.f, global_factor = 1.f,
-		dL = 0.f, flat = 0.f, cylRadiusProj3 = 0.f, DSC = 0.f, helicalRadius = 0.f;//, T = 0.f
+		dL = 0.f, flat = 0.f, cylRadiusProj3 = 0.f, DSC = 0.f, helicalRadius = 0.f, PWLSElectronicNoise = 0.f;//, T = 0.f
 	std::vector<float> dx{ 0.f, 0.f }, dy{ 0.f, 0.f }, dz{ 0.f, 0.f }, bx{ 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f }, by{ 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f }, 
 		bz{ 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f };
     bool useHalf = false;
@@ -79,7 +79,7 @@ typedef struct structForScalars {
 		maskFP = false, maskBP = false, maskPriorOnly = false, priorMask = false, orthXY = false, orthZ = false, CT = false, atomic_64bit = false, atomic_32bit = false, loadTOF = true,
 		saveIter = false, enforcePositivity = false, computeSensImag = false, useMAD = true, useImages = false, eFOV = false,
 		useExtendedFOV = false, use64BitIndices = false, TGV2D = false, multiResolution = false, offset = false, relaxScaling = false,
-		computeRelaxation = false, storeFP = false, deconvolution = false, CTAttenuation = true, largeDim = false, usingLinearizedData = false, storeResidual = false,
+		computeRelaxation = false, storeFP = false, deconvolution = false, CTAttenuation = true, largeDim = false, usingLinearizedData = false, storeResidual = false, PWLS = false,
 		useBuffers = true, useFDKWeights = false, useLayeredBP = false, layeredBP = false, useLayeredFP = false, layeredFP5 = false, layeredBP5 = false, indexBased = false, FISTAAcceleration = false, stochastic = false, useTotLength = true,
 		useParallelBeam = false, useHelical = false;
 	// True if the additive term (randoms/scatter, sc_ra) is TOF-resolved, i.e. has the same layout and size as the TOF measurements (bin is the slow index).

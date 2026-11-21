@@ -190,6 +190,9 @@ if ~options.param.usingLinearizedData && options.param.CT && (~isfield(options.p
         options.param.flat = double(flatValue);
     end
 end
+if options.param.CT && options.param.PWLS && (~isfield(options.param,'flat') || isempty(options.param.flat) || options.param.flat <= 0)
+    error('PWLS needs the flat-field (I0) value of the raw data in options.flat!')
+end
 
 % CT corrections (e.g. scatter subtraction, normalization) are applied to the intensity data above, i.e. before the
 % logarithm. Linearization and Parker weighting thus come after loadCorrections (same order as in Python).

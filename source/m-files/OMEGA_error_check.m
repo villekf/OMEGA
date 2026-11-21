@@ -690,6 +690,42 @@ if options.PDDY
         error('Adaptive step sizes are not supported with PDDY!')
     end
 end
+% PWLS data term (CT only, PDHG and PDDY)
+if options.PWLS
+    if ~options.CT
+        error('PWLS is only supported with CT data!')
+    end
+    pwlsOther = {'OSEM','MRAMLA','RAMLA','RBI','ROSEM','DRAMA','COSEM','ECOSEM','ACOSEM','LSQR','CGLS','FDK','FISTA','FISTAL1', ...
+        'OSL_OSEM','MBSREM','BSREM','OSL_RBI','ROSEM_MAP','PKMA','SPS','SART','ASD_POCS','SAGA','BB','PDHGL1','PDHGKL'};
+    pwlsOtherSelected = any(cellfun(@(name) isfield(options, name) && any(options.(name)), pwlsOther)) || options.OSL_COSEM > 0;
+    if ~(options.PDHG || options.PDDY) || pwlsOtherSelected || (isfield(options, 'ProxTGV') && options.ProxTGV)
+        error('PWLS is only supported with PDHG and PDDY!')
+    end
+    if numel(options.precondTypeMeas) > 1 && options.precondTypeMeas(2)
+        error('The filtering-based measurement preconditioner (precondTypeMeas(2)) is not supported with PWLS. Use the diagonal one (precondTypeMeas(1)) instead!')
+    end
+    if options.PDAdaptiveType > 0
+        error('Adaptive step sizes (PDAdaptiveType > 0) are not supported with PWLS!')
+    end
+    if options.largeDim
+        error('PWLS is not supported with largeDim!')
+    end
+    if options.implementation == 4 || (options.implementation == 2 && options.use_CPU)
+        error('PWLS is not supported with the CPU implementation!')
+    end
+    if options.normalization_correction
+        error('PWLS is not supported with CT normalization correction (options.normalization_correction) yet!')
+    end
+    if partitions > 1
+        error('PWLS is not supported with dynamic (multi-frame) data!')
+    end
+    if ~options.loadTOF
+        error('PWLS is not supported when the measurements are not stored on the device (options.loadTOF = false)!')
+    end
+    if options.PWLSElectronicNoise < 0
+        error('PWLSElectronicNoise (electronic noise variance) must be zero or positive!')
+    end
+end
 % The FMH neighborhood lines (directions and their weights) are defined for a cubic neighborhood. A single-slice
 % image uses Ndz = 0
 if options.FMH && MAP

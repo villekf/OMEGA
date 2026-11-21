@@ -15,6 +15,7 @@ New examples:
   - Uses the nominal XVI geometry
 
 New features:
+- Added PWLS (penalized weighted least squares) data term for CT PDHG/PDDY (```PWLS```, ```PWLSElectronicNoise```), compatible with multi-resolution/extended FOV and the diagonal measurement preconditioner
 - Initial Metal support for PyTorch projection operators
   - SPECT and CBCT
   - See PyTorch examples
@@ -243,6 +244,7 @@ Changed behaviour:
 - Weighted mean prior with MATLAB implementations 1, 4 and 5: the lower limits of the gradient and image values are now 1e-6 as in implementation 2 (previously 1e-3 and 1e-1)
 
 Other changes:
+- CT PDHG-type algorithms (PDHG, PDHGL1, PDHGKL, PDDY) with projector type 4 and without positivity now print a warning when the diagonal measurement preconditioner or subsets are used: type 4 is not an adjoint projector pair, and the unconstrained iteration can diverge (measurement preconditioner) or drift slowly (subsets). The type 4 backprojection with another forward projector (e.g. projector type 14 or 54) always warns, since it can diverge even without preconditioning
 - Unified SPECT rotation projector logic for all three Python operator backends
 - The voxel bounds check in the Siddon projector (projector types 1-3) is now cheaper, which makes the forward projection about 7 % faster on full ordered sinograms. The results are unchanged
 - Combined OpenCL, CUDA, Metal, and HIP code into one

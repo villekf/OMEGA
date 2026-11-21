@@ -575,6 +575,8 @@ struct inputStruct {
     uint32_t* sensZ;
     uint64_t sizeNormSens;
     uint32_t sensBins;
+    bool PWLS;
+    float PWLSElectronicNoise;
 };
 
 void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting& w_vec, RecMethods& MethodList) {
@@ -859,6 +861,8 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.loadTOF = options.loadTOF;
     inputScalars.randomsTOF = options.randomsTOF;
     inputScalars.storeResidual = options.storeResidual;
+    inputScalars.PWLS = options.PWLS;
+    inputScalars.PWLSElectronicNoise = options.PWLSElectronicNoise;
     inputScalars.FISTAAcceleration = options.FISTA_acceleration;
     inputScalars.stochastic = options.stochasticSubsetSelection;
     if (inputScalars.scatter == 1U) {

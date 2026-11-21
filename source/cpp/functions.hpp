@@ -2838,6 +2838,16 @@ inline int applyImagePreconditioning(Weighting& w_vec, const scalarStruct& input
 	return 0;
 }
 
+// Statistical weights of the CT penalized weighted least squares (PWLS) data term. The variance of the linearized data
+// l = log(I0 / y) is approximately (y + s_e^2) / y^2, so w = y^2 / (y + s_e^2) with y = I0 exp(-l) (w = y without electronic
+// noise). The linearization floors y at I0 * 1e-6, so w > 0 when I0 > 0
+inline af::array PWLSWeights(const af::array& l, const scalarStruct& inputScalars) {
+	af::array yEst = inputScalars.flat * af::exp(-l.as(f32));
+	if (inputScalars.PWLSElectronicNoise > 0.f)
+		yEst = yEst * yEst / (yEst + inputScalars.PWLSElectronicNoise);
+	return yEst;
+}
+
 // Compute measurement-based preconditioning
 inline int applyMeasPreconditioning(const Weighting& w_vec, const scalarStruct& inputScalars, af::array& input, ProjectorClass& proj, const uint32_t timestep, const uint32_t subIter = 0) {
 	int status = 0;
@@ -3191,7 +3201,7 @@ inline float separablePriorCurvature(const RecMethods& MethodList, const Weighti
 
 inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector<int64_t>& length, ProjectorClass& proj,
 	AF_im_vectors& vec, const RecMethods& MethodList, const int64_t* pituus, const uint32_t timestep, const af::array& g = af::constant(0.f, 1, 1),
-	float* F = nullptr, float* apuD = nullptr, const float* atten = nullptr) { // TODO: vectorize LCP, LCP2
+	float* F = nullptr, float* apuD = nullptr, const float* atten = nullptr, const af::array& PWLSData = af::array()) { // TODO: vectorize LCP, LCP2
 	int status = 0;
 	std::vector<af::array> Summ;
 	af::array meanBP;
@@ -3245,6 +3255,20 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj, timestep);
 			if (status != 0)
 				return -1;
+			if (inputScalars.PWLS) {
+				// K = W^{1/2} A. With the diagonal preconditioner Sigma = sigma / (W^{1/2} M) the operator is A^T (W^{1/2} / M) A
+				// (outputFP is already divided by M), otherwise A^T W A
+				if (PWLSData.elements() != outputFP.elements()) {
+					mexPrint("PWLS: the size of the measurement data does not match the forward projection in the power method");
+					return -1;
+				}
+				const af::array wPWLS = PWLSWeights(af::flat(PWLSData), inputScalars);
+				if (w_vec.precondTypeMeas[0])
+					outputFP *= af::sqrt(wPWLS);
+				else
+					outputFP *= wPWLS;
+				outputFP.eval();
+			}
 			computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP, 0);
 			proj.memSize += (sizeof(float) * inputScalars.im_dim[0]);
 			if (inputScalars.projector_type == 6)
@@ -3298,6 +3322,20 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj, timestep);
 				if (status != 0)
 					return -1;
+				if (inputScalars.PWLS) {
+					// K = W^{1/2} A. With the diagonal preconditioner Sigma = sigma / (W^{1/2} M) the operator is A^T (W^{1/2} / M) A
+					// (outputFP is already divided by M), otherwise A^T W A
+					if (PWLSData.elements() != outputFP.elements()) {
+						mexPrint("PWLS: the size of the measurement data does not match the forward projection in the power method");
+						return -1;
+					}
+					const af::array wPWLS = PWLSWeights(af::flat(PWLSData), inputScalars);
+					if (w_vec.precondTypeMeas[0])
+						outputFP *= af::sqrt(wPWLS);
+					else
+						outputFP *= wPWLS;
+					outputFP.eval();
+				}
 				computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP, 0);
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 					proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]);

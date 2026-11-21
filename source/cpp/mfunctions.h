@@ -80,6 +80,11 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	if (mxGetFieldNumber(options, "randomsTOF") >= 0)
 		inputScalars.randomsTOF = getScalarBool(options, 0, "randomsTOF");
 	inputScalars.storeResidual = getScalarBool(options, 0, "storeResidual");
+	// CT PWLS data term (optional fields)
+	if (mxGetFieldNumber(options, "PWLS") >= 0)
+		inputScalars.PWLS = getScalarBool(options, 0, "PWLS");
+	if (mxGetFieldNumber(options, "PWLSElectronicNoise") >= 0)
+		inputScalars.PWLSElectronicNoise = getScalarFloat(options, 0, "PWLSElectronicNoise");
 	inputScalars.FISTAAcceleration = getScalarBool(options, 0, "FISTA_acceleration");
 	inputScalars.stochastic = getScalarBool(options, 0, "stochasticSubsetSelection");
 	if (inputScalars.scatter == 1U) {

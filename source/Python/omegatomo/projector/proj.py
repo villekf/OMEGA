@@ -496,6 +496,12 @@ class projectorClass:
     relaxationScaling = False
     computeRelaxationParameters = False
     PDAdaptiveType = 0
+    # CT only: use the penalized weighted least squares (PWLS) data term 1/2 ||W^(1/2) (A x - l)||^2 with PDHG and PDDY, where
+    # l = log(I0 / y) are the linearized data. The weights are the estimated measured counts, w = y^2 / (y + PWLSElectronicNoise),
+    # y = I0 * exp(-l), with I0 = options.flat. Needs the diagonal measurement preconditioner (precondTypeMeas[0]) or none
+    PWLS = False
+    # Electronic noise variance (in squared counts, same units as the raw data) of the PWLS weights. 0 gives w = y
+    PWLSElectronicNoise = 0.
     storeFP = False
     nRowsD = Ndist
     nColsD = Nang
@@ -2270,6 +2276,30 @@ class projectorClass:
                 raise ValueError('Image-based preconditioners are not supported with PDDY!')
             if self.PDAdaptiveType > 0:
                 raise ValueError('Adaptive step sizes are not supported with PDDY!')
+        if self.PWLS:
+            if not self.CT:
+                raise ValueError('PWLS is only supported with CT data!')
+            pwlsOther = [name for name in ("OSEM", "MRAMLA", "RAMLA", "RBI", "ROSEM", "DRAMA", "COSEM", "ECOSEM", "ACOSEM", "LSQR", "CGLS", "FDK",
+                                           "FISTA", "FISTAL1", "OSL_OSEM", "MBSREM", "BSREM", "OSL_RBI", "ROSEM_MAP", "PKMA", "SPS", "SART",
+                                           "ASD_POCS", "SAGA", "BB", "PDHGL1", "PDHGKL") if getattr(self, name, False)]
+            if not (self.PDHG or self.PDDY) or len(pwlsOther) > 0 or self.OSL_COSEM > 0 or getattr(self, 'ProxTGV', False):
+                raise ValueError('PWLS is only supported with PDHG and PDDY!')
+            if len(self.precondTypeMeas) > 1 and self.precondTypeMeas[1]:
+                raise ValueError('The filtering-based measurement preconditioner (precondTypeMeas[1]) is not supported with PWLS. Use the diagonal one (precondTypeMeas[0]) instead!')
+            if self.PDAdaptiveType > 0:
+                raise ValueError('Adaptive step sizes (PDAdaptiveType > 0) are not supported with PWLS!')
+            if self.largeDim:
+                raise ValueError('PWLS is not supported with largeDim!')
+            if (self.implementation == 2 and self.useCPU) or self.implementation == 4:
+                raise ValueError('PWLS is not supported with the CPU implementation!')
+            if self.normalization_correction:
+                raise ValueError('PWLS is not supported with CT normalization correction (options.normalization_correction) yet!')
+            if nFrames > 1:
+                raise ValueError('PWLS is not supported with dynamic (multi-frame) data!')
+            if not self.loadTOF:
+                raise ValueError('PWLS is not supported when the measurements are not stored on the device (options.loadTOF = False)!')
+            if self.PWLSElectronicNoise < 0:
+                raise ValueError('PWLSElectronicNoise (electronic noise variance) must be zero or positive!')
         # The FMH neighborhood lines (directions and their weights) are defined for a cubic neighborhood. A single-slice
         # image uses Ndz = 0
         if self.FMH and self.MAP:
@@ -3477,4 +3507,6 @@ class projectorClass:
             ('sensZ', ctypes.POINTER(ctypes.c_uint32)),
             ('sizeNormSens', ctypes.c_uint64),
             ('sensBins', ctypes.c_uint32),
+            ('PWLS', ctypes.c_bool),
+            ('PWLSElectronicNoise', ctypes.c_float),
         ]

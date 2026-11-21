@@ -645,6 +645,27 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 	if (!inputScalars.loadTOF || inputScalars.largeDim)
 		inputScalars.TOFsubsets = 1U;
 
+	// PWLS computes the weights from the measurements, which must therefore be on the device for every subset
+	if (inputScalars.PWLS && (!inputScalars.CT || inputScalars.largeDim || !inputScalars.loadTOF || inputScalars.Nt > 1 || !(MethodList.PDHG || MethodList.PDDY))) {
+		mexPrint("PWLS is supported only with CT data and PDHG or PDDY, without largeDim, with loadTOF and a single time step");
+		return -1;
+	}
+
+	// Projector type 4 is not an adjoint pair for CT (Joseph forward projection, voxel-driven backprojection). The mismatch is large on
+	// poorly observed image modes (volume edges and corners), and the primal-dual iteration can amplify it when it is weakly damped:
+	// with the diagonal measurement preconditioner Sigma = 1 / (A1) is small and the iteration diverges within a few hundred iterations;
+	// with many subsets it drifts slowly. The voxel-driven type 4 backprojection with another forward projector (e.g. 14 or 54) is much
+	// further from an adjoint pair and diverges even without preconditioning. Positivity, or an adjoint pair (projector type 1 or 5),
+	// avoids this (diagnosed 2026-11)
+	if (MethodList.CPType && inputScalars.CT && (inputScalars.FPType == 4 || inputScalars.BPType == 4) && !inputScalars.enforcePositivity && inputScalars.verbose > 0) {
+		if (inputScalars.BPType == 4 && inputScalars.FPType != 4)
+			mexPrint("Warning: the type 4 CT backprojection is far from the adjoint of the selected forward projection. Without enforcePositivity, PDHG-type algorithms can diverge even without preconditioning. Enable enforcePositivity or use projector type 1 or 5");
+		else if (w_vec.precondTypeMeas[0])
+			mexPrint("Warning: projector type 4 is not an adjoint forward/backprojection pair for CT. Without enforcePositivity, PDHG-type algorithms with the diagonal measurement preconditioner (precondTypeMeas[0]) can diverge. Enable enforcePositivity or use projector type 1 or 5");
+		else if (inputScalars.subsetsUsed > 1)
+			mexPrint("Warning: projector type 4 is not an adjoint forward/backprojection pair for CT. Without enforcePositivity, PDHG-type algorithms with subsets can drift slowly over many iterations. Enable enforcePositivity or use projector type 1 or 5");
+	}
+
 	if (DEBUG && !inputScalars.CT) {
 		mexPrintBase("TOFsubsets = %d\n", inputScalars.TOFsubsets);
 		mexPrintBase("nBins = %d\n", nBins);
@@ -1101,6 +1122,8 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             af::array oneInput;
                             if (SENSSCALE && inputScalars.CT)
                                 oneInput = af::flat(mData[subIter][timestep]);
+                            else if (inputScalars.PWLS) // K^T 1 = A^T W^{1/2} 1 with K = W^{1/2} A
+                                oneInput = af::sqrt(PWLSWeights(af::flat(mData[subIter][timestep]), inputScalars));
                             else
                                 oneInput = af::constant(1.f, lengthFull[indD] * nBins);
                             computeIntegralImage(inputScalars, w_vec, length[indD], oneInput, meanBP, indD);
@@ -1209,7 +1232,8 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                 w_vec.LCP2[timestep] = w_vec.LCP2[0];
                 continue;
             }
-            status = powerMethod(inputScalars, w_vec, length, proj, vec, MethodList, pituus, timestep, g, apuF, apuD, atten);
+            status = powerMethod(inputScalars, w_vec, length, proj, vec, MethodList, pituus, timestep, g, apuF, apuD, atten,
+                inputScalars.PWLS ? af::array(af::flat(mData[0][timestep])) : af::array());
             if (status != 0) {
                 return -1;
             }
