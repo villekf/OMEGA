@@ -36,7 +36,6 @@ end
 
 inputStruct.empty_weight = false;
 
-inputStruct.listmode = false;
 % tStart = 0;
 % tStart_iter = 0;
 
@@ -146,8 +145,8 @@ if ~options.param.listmode
     % Load correction data
     [options.param] = loadCorrections(options.param, RandProp, ScatterProp);
 else
-    % list-mode does not support separate randoms (they are added into options.ScatterC or input as minus ones) or multiplicative 
-	% corrections. The subtracted scatter (options.scatter_correction) is the additive term of each event, see loadCorrections. 
+    % list-mode does not support separate randoms (they are added into options.ScatterC or input as minus ones) or multiplicative
+	% corrections. The subtracted scatter (options.scatter_correction) is the additive term of each event, see loadCorrections.
 	% The internal randoms_correction flag is set again by loadCorrections once the additive term (options.SinDelayed) has been formed
     % options.param.normalization_correction = false;
     options.param.randoms_correction = false;
@@ -275,6 +274,14 @@ if options.param.scatter
     options.param.scatter_correction = false;
 end
 
+% Offset-detector FDK: the redundancy weights are applied before the ramp filtering and the missing side of the detector is completed with
+% virtual rows (conjugate completion). This changes SinM, the detector centre and nRowsD (and the offset correction is switched off for the
+% library call), so it is done after the geometry is final and before anything that depends on nRowsD. Restored after the reconstruction.
+offsetFDKState = [];
+if options.param.CT && options.param.FDK && options.param.offsetCorrection
+    [options, offsetFDKState] = offsetFDKPreprocess(options);
+end
+
 options.param = parseInputData(options.param, options.index);
 
 % Remove negative values
@@ -326,6 +333,8 @@ if ismember(options.param.implementation, [1, 4, 5])
     else
         computeM = false;
     end
+    requestedSensitivityImage = options.param.compute_sensitivity_image;
+    frameSpecificSPECTSensitivity = requestedSensitivityImage && options.param.listmode > 0 && options.param.SPECT;
 
     if (options.param.PDHG || options.param.PDHGKL || options.param.PDHGL1 || options.param.CV || options.param.PDDY)
         options.param.CPType = true;
@@ -341,6 +350,7 @@ if ismember(options.param.implementation, [1, 4, 5])
 
     % Loop through all time steps
     for llo = 1 : partitions
+        options.timestep = llo;
         if iscell(options.param.SinM)
             Sino = options.param.SinM{llo};
         else
@@ -498,8 +508,11 @@ if ismember(options.param.implementation, [1, 4, 5])
         end
 
 
-        if llo == 1
+        if llo == 1 || frameSpecificSPECTSensitivity
             % Compute sensitivity image for the whole measurement domain
+            if frameSpecificSPECTSensitivity
+                options.param.compute_sensitivity_image = true;
+            end
             if (computeD || options.param.compute_sensitivity_image)
                 if (options.param.verbose >= 3)
                     disp("Starting computation of sensitivity image (D)");
@@ -508,14 +521,21 @@ if ismember(options.param.implementation, [1, 4, 5])
                 options.param.D = zeros(options.param.N(1), 1, options.param.cType);
                 psf = options.param.use_psf;
                 options.param.use_psf = false;
-                for ll = 1 : options.param.subsets
-                    oneInput = ones(options.nMeasSubset(ll), 1, options.param.cType);
-                    if options.param.implementation == 1 && options.param.nMultiVolumes == 0
-                        A = formMatrix(options, ll);
-                        apu = A * oneInput;
-                        options.param.D = options.param.D + apu;
-                    else
-                        options.param.D = options.param.D + backwardProject(options, oneInput, ll, corrVector);
+                if frameSpecificSPECTSensitivity
+                    % Sensitivity is over full detector views and is already
+                    % weighted for this timeframe; do not repeat it per event subset.
+                    options.param.D = options.param.D + backwardProject(options, ...
+                        ones(1, 1, options.param.cType), 0, corrVector);
+                else
+                    for ll = 1 : options.param.subsets
+                        oneInput = ones(options.nMeasSubset(ll), 1, options.param.cType);
+                        if options.param.implementation == 1 && options.param.nMultiVolumes == 0
+                            A = formMatrix(options, ll);
+                            apu = A * oneInput;
+                            options.param.D = options.param.D + apu;
+                        else
+                            options.param.D = options.param.D + backwardProject(options, oneInput, ll, corrVector);
+                        end
                     end
                 end
                 options.param.use_psf = psf;
@@ -548,7 +568,7 @@ if ismember(options.param.implementation, [1, 4, 5])
                 end
             end
             % Compute the measurement sensitivity image for each subset
-            if (computeM)
+            if (computeM && llo == 1)
                 if (options.param.verbose >= 3)
                     disp("Starting computation of measurement sensitivity image (M)");
                 end
@@ -812,17 +832,16 @@ elseif ismember(options.param.implementation, [2, 3])
                     options.param.corrVector{kk} = single(full(options.param.corrVector{kk}));
                 end
             end
-            % Flatten each per-timestep frame to a column vector BEFORE cell2mat. When
+            % Flatten each per-timestep frame to a column vector BEFORE concatenation. When
             % subsets == 1 (or largeDim), parseInputData never runs its per-partition
             % reordering loop, so a cell entry can still be a multi-dimensional
             % (Ndist x Nang x NSinos(x TOF_bins)) array here. cell2mat on a 1xNt cell of
             % such arrays concatenates along dimension 2 instead of stacking whole frames,
             % which interleaves frames instead of keeping each one contiguous (the C++ side
-            % offsets into corrVector by kokoNonTOF * timestep, i.e. expects frame 1 fully
-            % before frame 2). Flattening first (a no-op if already a column, as it is once
-            % parseInputData's subsets > 1 path already ran) guarantees frame-contiguous
-            % memory order regardless of which path produced the cell.
-            options.param.corrVector = cell2mat(cellfun(@(x) x(:), options.param.corrVector, 'UniformOutput', false));
+            % offsets frame-concatenated data by cumulative pituus boundaries). Use vertical
+            % concatenation because dynamic frames can have different lengths.
+            corrFrames = cellfun(@(x) x(:), options.param.corrVector, 'UniformOutput', false);
+            options.param.corrVector = vertcat(corrFrames{:});
         elseif ~isa(options.param.corrVector, 'single')
             options.param.corrVector = single(options.param.corrVector);
         end
@@ -838,16 +857,12 @@ elseif ismember(options.param.implementation, [2, 3])
             options.param.SinM = single(full(options.param.SinM));
         end
         if iscell(options.param.SinM)
-            % See the corrVector flattening above: each per-timestep cell must be
-            % columnized before cell2mat so frames are stacked contiguously in memory
-            % (frame 1 fully, then frame 2, ...) rather than concatenated along dimension
-            % 2, which is what a 1xNt cell of multi-dimensional per-frame arrays would
-            % otherwise do (this is the subsets == 1 / largeDim path where
-            % parseInputData's per-partition loop -- which already flattens each frame --
-            % never runs).
-            options.param.SinM = cell2mat(cellfun(@(x) x(:), options.param.SinM, 'UniformOutput', false));
+            % Flatten each frame and concatenate along the measurement dimension.
+            % Frame sizes may differ for dynamic projection data.
+            sinogramFrames = cellfun(@(x) x(:), options.param.SinM, 'UniformOutput', false);
+            options.param.SinM = vertcat(sinogramFrames{:});
         end
-        if ~isa(options.param.SinM, 'single') && options.param.loadTOF
+        if ~isa(options.param.SinM, 'single') && (options.param.loadTOF || ~(isa(options.param.SinM, 'uint16') || isa(options.param.SinM, 'uint8')))
             options.param.SinM = single(options.param.SinM);
         end
         if (options.param.randoms_correction || options.param.scatter_correction) && options.param.corrections_during_reconstruction
@@ -881,14 +896,18 @@ else
 end
 
 
+% Put back the user-visible options that the offset FDK preprocessing changed
+options = offsetFDKRestore(options, offsetFDKState);
+
 if options.param.useEFOV && ~options.param.useMultiResolutionVolumes
     if options.param.transaxialEFOV
-        nTrans = (options.param.Nx - options.param.NxOrig)/2;
-        pz = pz(1 + nTrans:end-nTrans,1 + nTrans:end-nTrans,:,:,:);
+        nTransX = (options.param.Nx - options.param.NxOrig)/2;
+        nTransY = (options.param.Ny - options.param.NyOrig)/2;
+        pz = pz((1 + nTransX-options.param.eFOVShift_Nx):(end-nTransX-options.param.eFOVShift_Nx), (1 + nTransY-options.param.eFOVShift_Ny):(end-nTransY-options.param.eFOVShift_Ny),:,:,:);
     end
     if options.param.axialEFOV
         nAxial = (options.param.Nz - options.param.NzOrig)/2;
-        pz = pz(:,:,1 + nAxial:end-nAxial,:,:,:);
+        pz = pz(:,:,1 + nAxial-options.param.eFOVShift_Nz:end-nAxial-options.param.eFOVShift_Nz,:,:,:);
     end
 end
 if options.param.storeFP && (options.param.subsets == 1 || options.param.subset_type >= 8) && options.param.implementation == 2 && ~options.param.FDK

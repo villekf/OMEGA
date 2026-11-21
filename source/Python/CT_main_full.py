@@ -288,6 +288,28 @@ CTEFOVCorrection(options)
 # offset weighting by setting this to True.
 options.offsetCorrection = False
 
+# Square root of the offset weights on both the forward and the backward
+# projection. This makes the operator linear (sqrt(W) * A), which is
+# needed for the linearised least-squares algorithms (LSQR, CGLS, FISTA,
+# FISTAL1, PDHG, PDHGL1, PDDY, SART, ASD_POCS and BB). Leave as None for
+# automatic selection (enabled only when such an algorithm is used), set to
+# True to force on (also for custom algorithms, in which case the
+# measurement data should be weighted with applyOffsetSqrtWeights) or False
+# to apply the weights only in the backprojection. Applies only when
+# offsetCorrection is enabled.
+options.offsetSqrtWeights = None
+
+# Offset-detector FDK: with FDK and offsetCorrection the redundancy weights
+# are applied before the ramp filtering and the missing side of the
+# detector is completed with virtual detector rows (the measured conjugate
+# rays), after which the detector is padded with zeros. This is the
+# half-width (in mm, on the detector) of the transition region of the
+# weights. It has to be at least the physical overlap of the conjugate
+# rays (a smaller value is raised to it, with a warning), a wider
+# transition gives a smoother result. Applies only to FDK with
+# offsetCorrection enabled.
+options.offsetFDKDelta = 30.
+
 
 
 ###########################################################################

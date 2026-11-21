@@ -2,7 +2,6 @@
 #define DLL_FUNCTION __declspec(dllexport)
 #endif
 #include "libHeader.h"
-
 #if defined(MTYPE) && !defined(MTYPE2)
 int omegaMain(inputStruct options, const char* header_directory, const uint16_t* Sino, float* outputPtr, float* FPptr, float* residual) {
 #elif !defined(MTYPE) && defined(MTYPE2)
@@ -92,6 +91,13 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 		else {
 			w_vec.listCoord = options.x;
 			x = options.uV;
+			if (inputScalars.SPECT) {
+				w_vec.listCoordZ = options.z;
+			}
+			if (inputScalars.SPECT && inputScalars.computeSensImag) {
+				z_det = options.zSens;
+				inputScalars.size_z = options.sizeZSens;
+			}
 		}
 		// Optional normalization for the list-mode sensitivity image (index-based and custom coordinate data). Either a sinogram that
 		// is read through the two lookup tables sensXY and sensZ (index-based data), or, without the lookup tables, a full pair table
@@ -205,6 +211,7 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 		mexPrint("Reconstruction failed!");
 
 	fflush(stdout);
+
 
 	return status;
 }

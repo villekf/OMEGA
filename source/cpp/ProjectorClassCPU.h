@@ -27,6 +27,7 @@ class ProjectorClass {
 	paramStruct<float> param;
 
 public:
+	bool type6Error = false;
 	uint8_t no_norm = 0;
 	float* d_x, * d_z, * input, * output, * SensIm = nullptr, *d_norm = nullptr, *d_atten = nullptr, * extraCor = nullptr;
 	uint16_t* detIndices = nullptr, *zIndex = nullptr;

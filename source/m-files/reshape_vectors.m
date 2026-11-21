@@ -21,17 +21,24 @@ function im_vectors = reshape_vectors(im_vectors, options)
 if options.save_iter
     Niter = options.Niter + 1;
 else
-    Niter = numel(options.saveNIter);
-    if Niter == 0
-        Niter = 1;
-    end
+    Niter = numel(options.saveNIter) + 1;
 end
 if numel(options.partitions) > 1
     partitions = numel(options.partitions);
 else
     partitions = options.partitions;
 end
-im_vectors.recImage = reshape(im_vectors.recImage,options.Nx(1),options.Ny(1),options.Nz(1),Niter,partitions);
+if iscell(im_vectors.recImage)
+    if options.storeMultiResolution
+        for ii = 1:options.nMultiVolumes + 1
+            im_vectors.recImage{ii} = reshape(im_vectors.recImage{ii},options.Nx(ii),options.Ny(ii),options.Nz(ii),Niter,partitions);
+        end
+    else
+        im_vectors.recImage = reshape(im_vectors.recImage{1},options.Nx(1),options.Ny(1),options.Nz(1),Niter,partitions);
+    end
+else
+    im_vectors.recImage = reshape(im_vectors.recImage,options.Nx(1),options.Ny(1),options.Nz(1),Niter,partitions);
+end
 % fn = fieldnames(im_vectors);
 % fn = fn(cellfun('isempty',strfind(fn,'Apu')));
 % for kk = 1 : numel(fn)

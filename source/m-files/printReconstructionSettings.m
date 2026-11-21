@@ -250,7 +250,7 @@ if options.verbose > 0
                 else
                     if options.NLTV
                         dispi2 = [dispi2, ' prior selected with NLTV.'];
-                    elseif options.NLRD 
+                    elseif options.NLRD
                         dispi2 = [dispi2, ' prior selected with NLRD.'];
                     elseif options.NLLange
                         dispi2 = [dispi2, ' prior selected with NL Lange.'];
@@ -507,7 +507,7 @@ if options.verbose > 0
             disp('Arc correction ON.')
         end
         if options.use_raw_data && ~options.CT
-            if isempty(partitions) || partitions == 1 
+            if isempty(partitions) || partitions == 1
                 dispi = 'Using STATIC raw data';
             else
                 dispi = 'Using DYNAMIC raw data';

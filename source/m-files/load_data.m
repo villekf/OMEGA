@@ -168,15 +168,15 @@ if ispc && options.use_root
 end
 
 [~,~,~,dx,dy,dz,bx,by,bz] = computePixelSize([options.FOVa_x; options.FOVa_y; options.axial_fov], [options.Nx; options.Ny; options.Nz], ...
-    [options.oOffsetX; options.oOffsetY; options.oOffsetZ], 'double');
+    [options.oOffsetX; options.oOffsetY; options.oOffsetZ], options.useMultiResolutionVolumes, options.eFOVShift, 'double');
 
 if numel(dx) > 1
-    dx = dx(0);
-    dy = dy(0);
-    dz = dz(0);
-    bx = bx(0);
-    by = by(0);
-    bz = bz(0);
+    dx = dx(1);
+    dy = dy(1);
+    dz = dz(1);
+    bx = bx(1);
+    by = by(1);
+    bz = bz(1);
 end
 
 % machine_name = options.machine_name;

@@ -1083,7 +1083,7 @@ extern "C" __global__
 #ifdef FDK
     // The box sum is the integral of the filtered projection over the voxel footprint, so it is divided by the
     // full footprint area (in detector pixels) to get the mean value
-    // Parts of the footprint outside the detector count as zero, consistent with the border sampling of 
+    // Parts of the footprint outside the detector count as zero, consistent with the border sampling of
     // projector type 4 and with the offset redundancy weighting
     // The mean is then weighted with the same weight as in projector type 4, i.e.
     // (DSC^2 / U^2) * pi / (nProjections * dPitch.x), where
@@ -1187,15 +1187,23 @@ extern "C" __global__
     posA -= OffTT;
     posD -= OffTT;
     const float invOffTT = 1.f / (2.f * OffTT);
-    // The box sum has two corners at Ax and two at Dx, so the weight is the average of the two
+    // The box sum has two corners at Ax and two at Dx, so average their weights.
     float wA = 1.f, wD = 1.f;
-    if (posA <= OffTT && posA >= -OffTT)
+    if (posA <= OffTT && posA >= -OffTT) {
+#ifdef OFFSETSQRT
+      wA = SINF(M_PI_2_F * ((posA + OffTT) * invOffTT));
+#else
       wA = .5f * (1.f + SINF(M_PI_F * posA * invOffTT));
-    else if (posA < -OffTT)
+#endif
+    } else if (posA < -OffTT)
       wA = 0.f;
-    if (posD <= OffTT && posD >= -OffTT)
+    if (posD <= OffTT && posD >= -OffTT) {
+#ifdef OFFSETSQRT
+      wD = SINF(M_PI_2_F * ((posD + OffTT) * invOffTT));
+#else
       wD = .5f * (1.f + SINF(M_PI_F * posD * invOffTT));
-    else if (posD < -OffTT)
+#endif
+    } else if (posD < -OffTT)
       wD = 0.f;
     const float w = (wA + wD) / 2.f;
     // Differences along the column direction at the same row coordinate are formed
