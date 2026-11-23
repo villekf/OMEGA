@@ -747,6 +747,14 @@ def reconstructions_main(options):
     from .prepass import parseInputs
     from .prepass import loadCorrections
     tic = time.perf_counter()
+    # addProjector() and initProj() change many options in place and not idempotently (Nx/Ny/Nz become arrays, dL is rescaled,
+    # angles are offset, projections are flipped, corrections are loaded, ...), and this function calls addProjector() again.
+    # An already initialized object would therefore be processed twice, silently giving wrong results, so it is refused here,
+    # before anything touches the object.
+    if getattr(options, 'projectorAdded', False):
+        raise ValueError('The options object has already been initialized (addProjector() or initProj() has been called, e.g. by a '
+                         'custom reconstruction or by a previous reconstructions_main call with keepOptionsUnchanged = False), '
+                         'which changes several options in place. Use a new projectorClass object with reconstructions_main.')
     # Work on a private copy (MATLAB value semantics): the pipeline below changes the
     # options in place and not idempotently, so repeated calls with the same object
     # must always start from the user's original values (opt out: keepOptionsUnchanged = False).
