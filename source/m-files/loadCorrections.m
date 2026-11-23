@@ -24,7 +24,7 @@ function [options] = loadCorrections(options, RandProp, ScatterProp)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-folder = fileparts(which('set_up_corrections.m'));
+folder = fileparts(mfilename('fullpath'));
 folder = [folder(1:end-(6 + 8)), 'mat-files/'];
 folder = strrep(folder, '\','/');
 
