@@ -283,6 +283,8 @@ Other changes:
 - The AD (anisotropic diffusion) prior with MATLAB implementations 1, 4 and 5 now ports the ArrayFire anisotropic diffusion filter used by implementation 2 and no longer needs the Image Processing Toolbox (```imdiffusefilt```)
 - The CPU library and the implementation 4 MEX-files now check the unsupported inputs (dynamic data, raw data, projector types other than 1/11, multi-resolution) themselves as well, in addition to the MATLAB and Python checks
 - The CPU priors (RDP, NLM, TV, GGMRF, hyperbolic) use 64-bit voxel indices and can be compiled in double precision (implementation 2 CPU)
+- Reduced the GPU memory used by the curvature preconditioner (```precondTypeImage(7)```, implementation 2): the projection-sized temporaries of the dP computation are released after every subset and the cached memory is freed after the computation (also at the ```curvatureRefresh``` iterations), and the device data of the weighting struct (e.g. dP) is released when the reconstruction returns. At a 1436x1436 detector this lowers the GPU memory during the iterations by about 2.5 GB and the memory left allocated after the reconstruction by about 0.6 GB. The results are unchanged
+- MATLAB/Octave on Windows, implementation 2: repeated runs with ```clear mex``` no longer leak GPU memory (about 18 MB per run); the ArrayFire library is kept loaded after ```clear mex```
 
 Bug fixes:
 - OSL-OSEM denominator (sensitivity image + prior gradient) is now limited to at least 10 % of the sensitivity image (and at least ```epps```), preventing sign changes, division by zero and blow-up with strong priors (implementation 2 and Python implementation 4)
