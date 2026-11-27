@@ -3566,8 +3566,10 @@ public:
 #elif defined(OPENCL)
 		// Create the OpenCL context and command queue and assign the device
 #ifdef AF
+		// getQueue(true) already retains the queue, so the wrapper adopts that reference (retaining again would leak one reference per call).
+		// The context assignment does not retain (cl::Context::operator=(cl_context)), so getContext(true) is already balanced
 		CLContext = afcl::getContext(true);
-		CLCommandQueue.push_back(cl::CommandQueue(afcl::getQueue(true), true));
+		CLCommandQueue.push_back(cl::CommandQueue(afcl::getQueue(true), false));
 		// Use AF command queue to query for the current OpenCL device
 		CLDeviceID.push_back(CLCommandQueue[0].getInfo<CL_QUEUE_DEVICE>(&status));
 		OCL_CHECK(status, "\n", -1);

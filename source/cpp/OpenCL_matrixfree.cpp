@@ -18,6 +18,33 @@
 *************************************************************************************************************************************************/
 #include "reconstructionAF.h"
 
+#if defined(_WIN32) && defined(AF)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+
+/// <summary>
+/// Keeps the ArrayFire library loaded for the lifetime of the MATLAB/Octave process. On Windows "clear mex" unloads ArrayFire
+/// together with this MEX-file. Every later call then loads ArrayFire again, which creates a new OpenCL context and command queue,
+/// and the old ones are never released (about 18 MB of GPU memory per run on AMD GPUs). The library is found by the address of
+/// an ArrayFire function, so this works with any ArrayFire backend library name (afopencl, afcuda, afcpu, af). The MEX-file
+/// itself is still unloaded by "clear mex", i.e. it can be rebuilt and replaced without restarting MATLAB. Linux and macOS
+/// do not unload the ArrayFire library with the MEX-file, so nothing is needed there. If the pinning fails, nothing is done.
+/// </summary>
+static void pinArrayFireLibrary() {
+	static bool done = false;
+	if (done)
+		return;
+	done = true;
+	HMODULE h = nullptr;
+	GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN, reinterpret_cast<LPCWSTR>(&af_get_version), &h);
+}
+#endif
+
 /// <summary>
 /// The input mexFunction that uses the MATLAB/Octave input and gives the output produced by the implementation 2
 /// </summary>
@@ -27,6 +54,9 @@
 /// <param name="prhs mxArray containing all the input variables"></param>
 /// <returns></returns>
 void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
+#if defined(_WIN32) && defined(AF)
+	pinArrayFireLibrary();
+#endif
 	// Check for the number of input and output arguments
 	if (nrhs < 51)
 		mexErrMsgTxt("Too few input arguments. There must be exactly 51.");

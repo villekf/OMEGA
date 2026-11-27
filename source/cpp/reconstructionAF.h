@@ -1001,102 +1001,110 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                 for (uint32_t kk = 0; kk < ll; kk++)
                     uuSub += length[kk];
 
-            // 1. A * 1 of this subset
-            af::array Esub;
-            if (Eones != nullptr)
-                Esub = (*Eones)(af::seq(static_cast<double>(alku), static_cast<double>(alku + len - 1)));
-            else {
-                for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
-                    vec.im_os[tt][ii] = onesIm[ii];
-                statusD = forwardOneSubset(tt, ll, uuSub, Esub);
-                if (statusD != 0)
-                    return finish(-1);
-            }
-            Esub = af::flat(Esub);
-
-            // 2. Curvature of this subset
-            af::array Sino = af::array(len, &Sin[inputScalars.kokoTOF * tt + alku], AFTYPE).as(f32);
+            // The projection-sized temporaries of steps 1 and 2 (A * 1, the measurements, the randoms, the curvature, the reference forward
+            // projection) are scoped to this block, so that only inputM is alive when the backprojection of step 3 allocates its own
+            // projection-sized buffers
             af::array inputM;
-            if (inputScalars.CT) {
-                af::array c;
-                bool useC = true;
-                if (ctCountModel) {
-                    const af::array y = Sino;
-                    af::array rand;
-                    af::array r = af::constant(0.f, y.dims(0), 1);
-                    if (inputScalars.randoms_correction) {
-                        rand = af::array(len, &sc_ra[randSize * tt + alku], AFTYPE);
-                        r = inputScalars.flat * af::flat(rand.as(f32));
-                    }
-                    const af::array pos = y > 0.f;
-                    const af::array yr = (af::max)(y - r, 0.f);
-                    c = af::select(pos, yr * yr / af::select(pos, y, 1.f), 0.f);
-                    // Initial image safeguard
-                    if (useSafeguard) {
-                        // l0 = A * x_ref
-                        for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
-                            vec.im_os[tt][ii] = refIm[ii];
-                        af::array l0;
-                        statusD = forwardOneSubset(tt, ll, uuSub, l0);
-                        if (statusD != 0)
-                            return finish(-1);
-                        if (l0.elements() != c.elements()) {
-                            if (inputScalars.verbose >= 1 && !sizeWarned)
-                                mexPrint("Skipping the curvature initial image safeguard (the forward projection size does not match the data)");
-                            sizeWarned = true;
-                        }
-                        else {
-                            l0 = (af::max)(l0, 0.f);
-                            af::array e0 = af::exp(-l0);
-                            if (ctHostNorm)
-                                e0 = aNorm[ll] * e0;
-                            // Model curvature flat * e0 * max(1 - y * r / ybar^2, 0) of the reference image, ybar = flat * (e0 + rho)
-                            af::array hdd = inputScalars.flat * e0;
-                            if (inputScalars.randoms_correction) {
-                                const af::array rho = af::flat(rand.as(f32));
-                                const af::array ybar = inputScalars.flat * (e0 + rho);
-                                const af::array ratio = af::select(ybar > 0.f, y * inputScalars.flat * rho / (ybar * ybar), 0.f);
-                                hdd = hdd * (af::max)(1.f - ratio, 0.f);
-                            }
-                            if (inputScalars.verbose > 0)
-                                sumBefore += static_cast<double>(af::sum<float>(c));
-                            c = (af::max)(c, hdd);
-                            if (inputScalars.verbose > 0)
-                                sumAfter += static_cast<double>(af::sum<float>(c));
-                        }
-                    }
+            {
+                // 1. A * 1 of this subset
+                af::array Esub;
+                if (Eones != nullptr)
+                    Esub = (*Eones)(af::seq(static_cast<double>(alku), static_cast<double>(alku + len - 1)));
+                else {
+                    for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
+                        vec.im_os[tt][ii] = onesIm[ii];
+                    statusD = forwardOneSubset(tt, ll, uuSub, Esub);
+                    if (statusD != 0)
+                        return finish(-1);
                 }
-                else if (inputScalars.PWLS) {
-                    af::array l;
-                    if (inputScalars.usingLinearizedData)
-                        l = Sino;
-                    else
-                        l = af::log(inputScalars.flat / (af::max)(Sino, inputScalars.flat * 1e-6f));
-                    c = PWLSWeights(l, inputScalars);
-                    // With the diagonal measurement preconditioner the iterated operator is A^T (W^(1/2) / M) A with M = A * 1 = E,
-                    // so the curvature of a ray is sqrt(c) / E and c .* E becomes sqrt(c)
-                    if (w_vec.precondTypeMeas[0]) {
-                        Esub = af::select(Esub > 0.f, af::sqrt(af::flat(c)), 0.f);
-                        useC = false;
+                Esub = af::flat(Esub);
+
+                // 2. Curvature of this subset
+                af::array Sino = af::array(len, &Sin[inputScalars.kokoTOF * tt + alku], AFTYPE).as(f32);
+                if (inputScalars.CT) {
+                    af::array c;
+                    bool useC = true;
+                    if (ctCountModel) {
+                        const af::array y = Sino;
+                        af::array rand;
+                        // Without randoms the subtracted term is zero, so no constant array is created for it
+                        af::array yr;
+                        if (inputScalars.randoms_correction) {
+                            rand = af::array(len, &sc_ra[randSize * tt + alku], AFTYPE);
+                            const af::array r = inputScalars.flat * af::flat(rand.as(f32));
+                            yr = (af::max)(y - r, 0.f);
+                        }
+                        else
+                            yr = (af::max)(y, 0.f);
+                        const af::array pos = y > 0.f;
+                        c = af::select(pos, yr * yr / af::select(pos, y, 1.f), 0.f);
+                        // Initial image safeguard
+                        if (useSafeguard) {
+                            // l0 = A * x_ref
+                            for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
+                                vec.im_os[tt][ii] = refIm[ii];
+                            af::array l0;
+                            statusD = forwardOneSubset(tt, ll, uuSub, l0);
+                            if (statusD != 0)
+                                return finish(-1);
+                            if (l0.elements() != c.elements()) {
+                                if (inputScalars.verbose >= 1 && !sizeWarned)
+                                    mexPrint("Skipping the curvature initial image safeguard (the forward projection size does not match the data)");
+                                sizeWarned = true;
+                            }
+                            else {
+                                l0 = (af::max)(l0, 0.f);
+                                af::array e0 = af::exp(-l0);
+                                if (ctHostNorm)
+                                    e0 = aNorm[ll] * e0;
+                                // Model curvature flat * e0 * max(1 - y * r / ybar^2, 0) of the reference image, ybar = flat * (e0 + rho)
+                                af::array hdd = inputScalars.flat * e0;
+                                if (inputScalars.randoms_correction) {
+                                    const af::array rho = af::flat(rand.as(f32));
+                                    const af::array ybar = inputScalars.flat * (e0 + rho);
+                                    const af::array ratio = af::select(ybar > 0.f, y * inputScalars.flat * rho / (ybar * ybar), 0.f);
+                                    hdd = hdd * (af::max)(1.f - ratio, 0.f);
+                                }
+                                if (inputScalars.verbose > 0)
+                                    sumBefore += static_cast<double>(af::sum<float>(c));
+                                c = (af::max)(c, hdd);
+                                if (inputScalars.verbose > 0)
+                                    sumAfter += static_cast<double>(af::sum<float>(c));
+                            }
+                        }
                     }
+                    else if (inputScalars.PWLS) {
+                        af::array l;
+                        if (inputScalars.usingLinearizedData)
+                            l = Sino;
+                        else
+                            l = af::log(inputScalars.flat / (af::max)(Sino, inputScalars.flat * 1e-6f));
+                        c = PWLSWeights(l, inputScalars);
+                        // With the diagonal measurement preconditioner the iterated operator is A^T (W^(1/2) / M) A with M = A * 1 = E,
+                        // so the curvature of a ray is sqrt(c) / E and c .* E becomes sqrt(c)
+                        if (w_vec.precondTypeMeas[0]) {
+                            Esub = af::select(Esub > 0.f, af::sqrt(af::flat(c)), 0.f);
+                            useC = false;
+                        }
+                    }
+                    else {
+                        useC = false;
+                        // With the diagonal measurement preconditioner the iterated operator is A^T (1 / M) A with M = A * 1 = E,
+                        // so the curvature of a ray is 1 / E and c .* E becomes one (this equals the image preconditioner type 0)
+                        if (w_vec.precondTypeMeas[0])
+                            Esub = af::select(Esub > 0.f, af::constant(1.f, Esub.dims(), f32), af::constant(0.f, Esub.dims(), f32));
+                    }
+                    if (useC)
+                        Esub *= af::flat(c);
+                    inputM = Esub.as(f32);
                 }
                 else {
-                    useC = false;
-                    // With the diagonal measurement preconditioner the iterated operator is A^T (1 / M) A with M = A * 1 = E,
-                    // so the curvature of a ray is 1 / E and c .* E becomes one (this equals the image preconditioner type 0)
-                    if (w_vec.precondTypeMeas[0])
-                        Esub = af::select(Esub > 0.f, af::constant(1.f, Esub.dims(), f32), af::constant(0.f, Esub.dims(), f32));
+                    af::array EE = af::constant(0.f, Sino.elements());
+                    EE(Sino > 0.f) = Esub(Sino > 0.f) / Sino(Sino > 0.f);
+                    inputM = EE.as(f32);
                 }
-                if (useC)
-                    Esub *= af::flat(c);
-                inputM = Esub.as(f32);
+                inputM.eval();
             }
-            else {
-                af::array EE = af::constant(0.f, Sino.elements());
-                EE(Sino > 0.f) = Esub(Sino > 0.f) / Sino(Sino > 0.f);
-                inputM = EE.as(f32);
-            }
-            inputM.eval();
 
             // 3. Backprojection of this subset, dP is accumulated as the sum of the subset backprojections
             for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
@@ -1154,9 +1162,20 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
             if (!useCurrentImage)
                 proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]);
         }
+        // Release the volume-sized temporaries of the computation (savedIm is kept, finish restores it). The cached buffers of the
+        // projection-sized and volume-sized temporaries of the subset loop would otherwise stay allocated during the iterations
+        // (about 2.5 GB at a 1436 x 1436 detector with 25 projections per subset). This runs only in the setup and at the
+        // curvatureRefresh iterations, so the cost of the garbage collection is not paid in every iteration
+        acc.clear();
+        onesIm.clear();
+        refIm.clear();
+        // finish restores vec.im_os (which still refers to the last swapped-in image) before the garbage collection
+        const int statusFinish = finish(0);
+        af::sync();
+        af::deviceGC();
         if (DEBUG || inputScalars.verbose >= 3)
             mexPrint("dP computation finished");
-        return finish(0);
+        return statusFinish;
     };
 
     if ((MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS || w_vec.precondTypeIm[6])) {
@@ -2403,6 +2422,33 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
         if (w_vec.computeM)
             w_vec.M[timestep].clear();
     }
+    // Release all the remaining device data of the weighting struct. w_vec is owned by the caller and it stays alive until the
+    // caller returns (after its own deviceGC), so without this the buffers (e.g. the curvature preconditioner dP, one volume per
+    // time step) would remain locked and could not be freed by the deviceGC below. Nothing reads these after this point
+    w_vec.dP.clear();
+    w_vec.D.clear();
+    w_vec.M.clear();
+    w_vec.normBP5.clear();
+    w_vec.preRef.clear();
+    w_vec.gradF.clear();
+    w_vec.RDPref.clear();
+    w_vec.tr_offsets = af::array();
+    w_vec.weights_quad = af::array();
+    w_vec.weights_TV = af::array();
+    w_vec.weights_huber = af::array();
+    w_vec.fmh_weights = af::array();
+    w_vec.a_L = af::array();
+    w_vec.weighted_weights = af::array();
+    w_vec.UU = af::array();
+    w_vec.Amin = af::array();
+    w_vec.weights_RDP = af::array();
+    w_vec.gaussianNLM = af::array();
+    w_vec.gFilter = af::array();
+    w_vec.filter = af::array();
+    w_vec.filterIm = af::array();
+    w_vec.Ffilter = af::array();
+    w_vec.filterNW = af::array();
+    w_vec.data.refIm = af::array();
 
 	af::sync();
 	af::deviceGC();
