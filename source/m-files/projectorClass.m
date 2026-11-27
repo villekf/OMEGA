@@ -367,14 +367,14 @@ classdef projectorClass
                     
                     if iscell(obj.param.SinM)
                         for partition = 1:obj.param.partitions
-                            obj.param.SinM{partition} = resize(obj.param.SinM{partition}, endSinogramRows, Dimension=1, FillValue=0, Side="both"); % Pad or trim sinogram rows
-                            obj.param.SinM {partition}= resize(obj.param.SinM{partition}, endSinogramCols, Dimension=2, FillValue=0, Side="both"); % Pad or trim sinogram columns
+                            obj.param.SinM{partition} = padTrimCentered(obj.param.SinM{partition}, endSinogramRows, 1); % Pad or trim sinogram rows
+                            obj.param.SinM{partition} = padTrimCentered(obj.param.SinM{partition}, endSinogramCols, 2); % Pad or trim sinogram columns
                             % Now the sinogram and FOV XZ-plane match in physical dimensions but not in resolution.
                             obj.param.SinM{partition} = imresize(obj.param.SinM{partition}, [obj.param.Nx, obj.param.Nz]); % Resample the sinogram
                         end
                     else
-                        obj.param.SinM = resize(obj.param.SinM, endSinogramRows, Dimension=1, FillValue=0, Side="both"); % Pad or trim sinogram rows
-                        obj.param.SinM = resize(obj.param.SinM, endSinogramCols, Dimension=2, FillValue=0, Side="both"); % Pad or trim sinogram columns
+                        obj.param.SinM = padTrimCentered(obj.param.SinM, endSinogramRows, 1); % Pad or trim sinogram rows
+                        obj.param.SinM = padTrimCentered(obj.param.SinM, endSinogramCols, 2); % Pad or trim sinogram columns
                         % Now the sinogram and FOV XZ-plane match in physical dimensions but not in resolution.
                         obj.param.SinM = imresize(obj.param.SinM, [obj.param.Nx, obj.param.Nz]); % Resample the sinogram
                     end
@@ -387,7 +387,7 @@ classdef projectorClass
                     obj.param.angles = obj.param.angles + obj.param.offangle;
                     obj.param.swivelAngles = obj.param.swivelAngles + obj.param.offangle;
                     if isfield(obj.param, 'vaimennus')
-                        obj.param.vaimennus = imrotate(obj.param.vaimennus, obj.param.offangle, 'crop');
+                        obj.param.vaimennus = imrotate(obj.param.vaimennus, obj.param.offangle, 'nearest', 'crop');
                     end
                 end
                 if isfield(obj.param, 'vaimennus')

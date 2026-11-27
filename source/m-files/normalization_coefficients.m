@@ -1030,7 +1030,7 @@ if (options.normalization_scatter_correction || ~isempty(normalization_attenuati
             
             sigm=zeros(1,1000, 'single');
             const=sigm;
-            [~ , mu]=max(nanmax(true_radius));
+            [~ , mu]=max(max(true_radius, [], 'omitnan'));
             xx=[1:cut_off_start-cut_pix cut_off_end+cut_pix:options.Ndist]';
             [const(1), max_ind]=max(Scatters);
             sigm(1)=sqrt((-(xx(max_ind)-mu)^2)/(2*log(1/3)));
@@ -1610,7 +1610,7 @@ if options.normalization_options(1)==1
             end
         end
         axial_geom_coeffs(axial_geom_coeffs == 0) = NaN;
-        axial_mean = nanmean(axial_geom_coeffs(:));
+        axial_mean = mean(axial_geom_coeffs(:), 'omitnan');
         axial_geom_coeffs = axial_mean ./ axial_geom_coeffs;
         
         for u = 1 : rings
@@ -1816,8 +1816,8 @@ if options.normalization_options(4)==1 || options.normalization_options(2)==1 ||
             for j=1:options.Ndist
                 temp_mat=avg_profile(:,:,j);
                 
-                if nansum(nansum(avg_profile(:,:,j)))~=0
-                    block_profile_coeffs(:,:,j)=nanmean(temp_mat(:))./avg_profile(:,:,j);
+                if sum(sum(avg_profile(:,:,j), 'omitnan'), 'omitnan')~=0
+                    block_profile_coeffs(:,:,j)=mean(temp_mat(:), 'omitnan')./avg_profile(:,:,j);
                     
                 end
             end
@@ -3556,16 +3556,16 @@ if options.normalization_options(4)==1
         if r ~= inf
             tr_geom_matrix2 = tr_geom_matrix;
             tr_geom_matrix2(tr_geom_matrix2 < mean(tr_geom_matrix2,1)/2) = NaN;
-            keskiarvo = nanmean(tr_geom_matrix2,1);
+            keskiarvo = mean(tr_geom_matrix2, 1, 'omitnan');
             tr_geom_matrix = bsxfun(@rdivide, keskiarvo, tr_geom_matrix);
             tr_geom_matrix(isinf(tr_geom_matrix(:))) = 1;
         else
-            keskiarvo = nanmean(tr_geom_matrix,1);
+            keskiarvo = mean(tr_geom_matrix, 1, 'omitnan');
             tr_geom_matrix = bsxfun(@rdivide, keskiarvo, tr_geom_matrix);
             tr_geom_matrix(isinf(tr_geom_matrix(:))) = 1;
         end
-        if nanmean(tr_geom_matrix(:)) > 1.1
-            tr_geom_matrix(tr_geom_matrix > nanmean(tr_geom_matrix(:))) = nanmean(tr_geom_matrix(:));
+        if mean(tr_geom_matrix(:), 'omitnan') > 1.1
+            tr_geom_matrix(tr_geom_matrix > mean(tr_geom_matrix(:), 'omitnan')) = mean(tr_geom_matrix(:), 'omitnan');
         end
         if r ~= inf
             tr_geom_matrix(isnan(tr_geom_matrix2(:))) = 1;
@@ -3614,15 +3614,15 @@ if options.normalization_options(4)==1
             KalPa(KalPa == 0) = NaN;
             if r ~= inf
                 KalPa2 = KalPa;
-                KalPa2(KalPa < nanmean(KalPa,1)/1.5) = NaN;
-                keskiarvo = nanmean(KalPa2,1);
+                KalPa2(KalPa < mean(KalPa, 1, 'omitnan')/1.5) = NaN;
+                keskiarvo = mean(KalPa2, 1, 'omitnan');
             else
-                keskiarvo = nanmean(KalPa,1);
+                keskiarvo = mean(KalPa, 1, 'omitnan');
             end
             keskiarvo(isnan(keskiarvo)) = 1;
             apu = keskiarvo ./ KalPa;
-            if nanmean(apu(:)) > 1.1
-                apu(apu > nanmean(apu(:))) = nanmean(apu(:));
+            if mean(apu(:), 'omitnan') > 1.1
+                apu(apu > mean(apu(:), 'omitnan')) = mean(apu(:), 'omitnan');
             end
             apu(isnan(apu)) = 1;
             l = start_ind;

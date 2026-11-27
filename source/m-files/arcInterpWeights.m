@@ -15,6 +15,11 @@ function W = arcInterpWeights(x_o, y_o, x, y, Ndist, Nang, method)
 %   method W is returned empty ([]) so that the caller can fall back to a
 %   slower, generic interpolation (see arcCorrection).
 %
+%   If delaunayTriangulation does not exist (e.g. GNU Octave), delaunay,
+%   tsearch and dsearchn are used instead. The fallback triangulation may
+%   split cocircular point quadruples differently, which changes the linear
+%   weights slightly inside such quadrilaterals.
+%
 % See also arcCorrection
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -75,19 +80,46 @@ S = spdiags(1 ./ rowSums, 0, numUnique, numUnique) * S;
 Q = [u_n, v_n];
 Nq = size(Q, 1);
 
-DT = delaunayTriangulation(uniqueP(:,1), uniqueP(:,2));
+useDT = exist('delaunayTriangulation') ~= 0;
+if useDT
+    DT = delaunayTriangulation(uniqueP(:,1), uniqueP(:,2));
+    tri = DT.ConnectivityList;
+else
+    tri = delaunay(uniqueP(:,1), uniqueP(:,2));
+end
 
 if strcmpi(method, 'nearest')
-    nearestIdx = nearestNeighbor(DT, Q);
+    if useDT
+        nearestIdx = nearestNeighbor(DT, Q);
+    else
+        nearestIdx = dsearchn(uniqueP, Q);
+    end
     T = sparse(1 : Nq, nearestIdx, 1, Nq, numUnique);
 else
-    [ti, bc] = pointLocation(DT, Q);
+    if useDT
+        [ti, bc] = pointLocation(DT, Q);
+    else
+        ti = tsearch(uniqueP(:,1), uniqueP(:,2), tri, Q(:,1), Q(:,2));
+        bc = zeros(Nq, 3);
+        in = ~isnan(ti);
+        if any(in)
+            tv = tri(ti(in), :);
+            Qi = Q(in, :);
+            x1 = uniqueP(tv(:,1), 1); y1 = uniqueP(tv(:,1), 2);
+            x2 = uniqueP(tv(:,2), 1); y2 = uniqueP(tv(:,2), 2);
+            x3 = uniqueP(tv(:,3), 1); y3 = uniqueP(tv(:,3), 2);
+            detT = (y2 - y3) .* (x1 - x3) + (x3 - x2) .* (y1 - y3);
+            l1 = ((y2 - y3) .* (Qi(:,1) - x3) + (x3 - x2) .* (Qi(:,2) - y3)) ./ detT;
+            l2 = ((y3 - y1) .* (Qi(:,1) - x3) + (x1 - x3) .* (Qi(:,2) - y3)) ./ detT;
+            bc(in, :) = [l1, l2, 1 - l1 - l2];
+        end
+    end
     inHull = ~isnan(ti);
     rows = zeros(0, 1);
     cols = zeros(0, 1);
     vals = zeros(0, 1);
     if any(inHull)
-        verts = DT.ConnectivityList(ti(inHull), :);
+        verts = tri(ti(inHull), :);
         w = bc(inHull, :);
         w(w < 0 & w > -1e-12) = 0;
         qIdx = find(inHull);
@@ -97,7 +129,11 @@ else
     end
     if any(~inHull)
         outIdx = find(~inHull);
-        nearestIdx = nearestNeighbor(DT, Q(outIdx, :));
+        if useDT
+            nearestIdx = nearestNeighbor(DT, Q(outIdx, :));
+        else
+            nearestIdx = dsearchn(uniqueP, Q(outIdx, :));
+        end
         rows = [rows; outIdx];
         cols = [cols; nearestIdx];
         vals = [vals; ones(numel(outIdx), 1)];

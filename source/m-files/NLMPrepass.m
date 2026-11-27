@@ -18,7 +18,7 @@ if options.NLM_use_anatomical
     end
     if numel(options.NLM_ref) ~= options.Nx(1) * options.Ny(1) * options.Nz(1)
         warning('NLM reference image is of invalid size. Attempting resize!')
-        options.NLM_ref = imresize3(options.NLM_ref, [options.Nx(1), options.Ny(1), options.Nz(1)]);
+        options.NLM_ref = resizeVolume3D(options.NLM_ref, [options.Nx(1), options.Ny(1), options.Nz(1)]);
     end
     options.NLM_ref = reshape(options.NLM_ref, options.Nx(1), options.Ny(1), options.Nz(1));
     if options.implementation == 2 || options.implementation == 3

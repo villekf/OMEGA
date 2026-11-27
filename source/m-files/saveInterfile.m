@@ -131,8 +131,9 @@ else
     fprintf(fid,['!total number of images := ' num2str(koko(3)) '\r\n']);
 end
 fprintf(fid,['!number of slices := ' num2str(koko(3)) '\r\n']);
-fprintf(fid,['%%study date (yyyy:mm:dd) := ' datestr(datetime('now', 'Format', 'yyyy:M:dd'),'yyyy:mm:dd') '\r\n']);
-fprintf(fid,['%%study time (hh:mm:ss GMT+00:00) := ' datestr(datetime('now', 'Format', 'hh:mm:ss'),'HH:MM:SS') '\r\n']);
+t = now;
+fprintf(fid,['%%study date (yyyy:mm:dd) := ' datestr(t,'yyyy:mm:dd') '\r\n']);
+fprintf(fid,['%%study time (hh:mm:ss GMT+00:00) := ' datestr(t,'HH:MM:SS') '\r\n']);
 fprintf(fid,'isotope name := \r\n');
 fprintf(fid,'isotope gamma halflife (sec) := \r\n');
 fprintf(fid,'isotope branching factor := \r\n');

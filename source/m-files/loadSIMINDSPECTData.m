@@ -70,7 +70,15 @@ function options = loadSIMINDSPECTData(options)
     options.iR = str2double(hdr{ind});
 
     % Load detector radius per projection
-    options.radiusPerProj = readmatrix(strcat(options.fpathCor, '.cor'), FileType="text");
+    corFile = strcat(options.fpathCor, '.cor');
+    if exist('readmatrix', 'file') == 2
+        options.radiusPerProj = readmatrix(corFile, 'FileType', 'text');
+    else
+        options.radiusPerProj = importdata(corFile);
+        if isstruct(options.radiusPerProj)
+            options.radiusPerProj = options.radiusPerProj.data;
+        end
+    end
     options.radiusPerProj = 10 * options.radiusPerProj(:, 1);
 
     % Load data

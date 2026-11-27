@@ -29,7 +29,7 @@ if options.precondTypeImage(3)
     end
     if skip == false && numel(options.referenceImage) ~= options.NxFull * options.NyFull * options.NzFull
         warning('The size of the reference image does not match the reconstructed image! Attempting resize.')
-        options.referenceImage = imresize3(options.referenceImage, [options.NxFull, options.NyFull, options.NzFull]);
+        options.referenceImage = resizeVolume3D(options.referenceImage, [options.NxFull, options.NyFull, options.NzFull]);
     end
     if (options.implementation == 2 || options.implementation == 5 || options.useSingles) && ~isa(options.referenceImage, 'single')
         options.referenceImage = single(options.referenceImage);
@@ -295,7 +295,7 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
             end
             if numel(options.RDP_ref) ~= options.Nx(1) * options.Ny(1) * options.Nz(1)
                 warning('The size of the RDP reference image does not match the reconstructed image! Attempting resize.')
-                options.RDP_ref = imresize3(options.RDP_ref, [options.Nx(1), options.Ny(1), options.Nz(1)]);
+                options.RDP_ref = resizeVolume3D(options.RDP_ref, [options.Nx(1), options.Ny(1), options.Nz(1)]);
             end
             options.RDP_ref = reshape(options.RDP_ref, options.Nx(1), options.Ny(1), options.Nz(1));
             if options.implementation == 2 || options.implementation == 3

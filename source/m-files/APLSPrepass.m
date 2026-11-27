@@ -7,7 +7,7 @@ Ny = options.Ny(1);
 Nz = options.Nz(1);
 % The reference image can be input either as a file (mat-file) or as a variable
 if ischar(options.APLS_reference_image) || isstring(options.APLS_reference_image)
-    if strlength(string(options.APLS_reference_image)) == 0
+    if (ischar(options.APLS_reference_image) && isempty(options.APLS_reference_image)) || (isstring(options.APLS_reference_image) && strlength(options.APLS_reference_image) == 0)
         error('APLS selected, but no reference image provided!')
     end
     apu = load(options.APLS_reference_image);

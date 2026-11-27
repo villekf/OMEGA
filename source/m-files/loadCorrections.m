@@ -145,7 +145,7 @@ if options.attenuation_correction && ~options.SPECT % PET attenuation
             if size(options.vaimennus,1) ~= options.N(1)
                 warning('Error: Attenuation data is of different size than the reconstructed image. Attempting resize.')
                 try
-                    options.vaimennus = imresize3(options.vaimennus, [options.Nx(1), options.Ny(1), options.Nz(1)]);
+                    options.vaimennus = resizeVolume3D(options.vaimennus, [options.Nx(1), options.Ny(1), options.Nz(1)]);
                 catch ME
                     error('Resize failed!')
                 end
@@ -175,7 +175,7 @@ elseif options.attenuation_correction && options.SPECT % SPECT attenuation
         end
 
         % Read volume and remove dimensions with size 1
-        [CTvol, spatial, ~] = dicomreadVolume(options.fpathCT);
+        [CTvol, spatial] = readDICOMVolume(options.fpathCT);
         CTvol = double(CTvol);
         CTvol = squeeze(CTvol);
 
@@ -204,9 +204,8 @@ elseif options.attenuation_correction && options.SPECT % SPECT attenuation
         MUvol = HU_to_mu(CTvol, options.keV);
         muAir = HU_to_mu(-1000, options.keV);
 
-        % Use imwarp to change the CT volume limits
-        tform = affinetform3d(eye(4)); % No scaling or rotation
-        [MUvol, ~] = imwarp(MUvol, refCT, tform, OutputView=options.refSPECT, FillValue=muAir, InterpolationMethod='linear');
+        % Resample the CT volume to the SPECT volume limits (no scaling or rotation)
+        MUvol = warpToReference(MUvol, refCT, options.refSPECT, muAir);
         options.vaimennus = 1*MUvol;
         % The CT-derived attenuation map (HU_to_mu) is already in 1/mm
         attenuationInmm = true;

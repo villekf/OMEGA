@@ -95,9 +95,8 @@ if options.attenuation_correction % Convert to LAC
     attenuation_map(attenuation_map < -1000) = -1000;
     MUvol = HU_to_mu(attenuation_map, 141);
     muAir = HU_to_mu(-1000, 141);
-    tform = affinetform3d(eye(4)); % No scaling or rotation
-
-    [MUvol, ~] = imwarp(MUvol, spatial_referencing_CT, tform, OutputView=refSPECT, FillValue=muAir, InterpolationMethod='linear');
+    % Resample the CT volume to the SPECT volume limits (no scaling or rotation)
+    MUvol = warpToReference(MUvol, spatial_referencing_CT, refSPECT, muAir);
     options.vaimennus = MUvol;
 end
 

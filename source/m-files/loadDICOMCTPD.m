@@ -7,17 +7,18 @@ function [proj, vars] = loadDICOMCTPD(path)
 %   The only input is the path to the folder containing the DICOM images
 %   Output is the projections and a struct containing the
 %   variables/corodinates
-arguments (Input)
-    path (1,:) char {mustBeFolder}
+if isstring(path) && isscalar(path)
+    path = char(path);
 end
-
-arguments (Output)
-    proj single
-    vars struct
+if ~ischar(path) || isempty(path) || ~isrow(path) || ~isfolder(path)
+    error('The input to loadDICOMCTPD has to be an existing folder!')
 end
 
 files = dir(fullfile(path, '*dcm'));
 nFiles = numel(files);
+if nFiles == 0
+    error('No DICOM files (*dcm) were found in %s!', path)
+end
 xs = zeros(nFiles,1,'single');
 xd = zeros(nFiles,1,'single');
 ys = zeros(nFiles,1,'single');
@@ -80,5 +81,6 @@ vars.dPitchX = dPitchX;
 vars.dPitchY = dPitchY;
 vars.r = single(d);
 vars.sourceToCRot = single(r);
+proj = single(proj);
 
 end

@@ -242,7 +242,7 @@ if ~options.largeDim && size(options.x0,1)*size(options.x0,2)*size(options.x0,3)
         num2str(options.Nx*options.Ny*options.Nz) ')! Attempting automatic resize.'])
     apuVar = numel(options.x0) / (options.Nx * options.Ny * options.Nz);
     apuVar = (apuVar^(1/3));
-    options.x0 = imresize3(reshape(options.x0, round(options.Nx * apuVar), round(options.Ny * apuVar), ceil(options.Nz * apuVar)), [options.Nx, options.Ny, options.Nz]);
+    options.x0 = resizeVolume3D(reshape(options.x0, round(options.Nx * apuVar), round(options.Ny * apuVar), ceil(options.Nz * apuVar)), [options.Nx, options.Ny, options.Nz]);
 end
 if options.TV_use_anatomical && options.TV && MAP && (ischar(options.TV_reference_image) || isstring(options.TV_reference_image)) && exist(options.TV_reference_image,'file') ~= 2
     error('Anatomical reference image for TV was not found on the specified path!')
