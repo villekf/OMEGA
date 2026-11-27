@@ -1601,13 +1601,11 @@ def _type6_cdrf_resources(options: proj.projectorClass, manualCDRF: bool, multir
 
 def SPECTParameters(options: proj.projectorClass):
     from omegatomo.util.matlabRound import matlabRound
-    if options.cropProjections:
-        raise NotImplementedError('cropProjections is currently only supported in MATLAB')
     if (options.projector_type == 6 and (options.oOffsetX != 0 or options.oOffsetY != 0 or options.oOffsetZ != 0)
             and not (options.useMultiResolutionVolumes and options.useEFOV)):
         # The rotation axis and the axial center of the detector are at the origin, and the library path assumes
         # that a single volume is centered on them. Multi-resolution volumes carry explicit per-volume origins.
-        raise NotImplementedError('Off-centre FOV with projector type 6 is currently supported only in MATLAB')
+        raise NotImplementedError('Off-centre projector type 6 requires multi-resolution volumes with eFOV in Python')
     if options.projector_type in [1, 11, 12, 16, 2, 21, 22, 26, 61, 62]: # Ray tracing projectors
         # The source point and axial ray shifts use their corresponding directional collimator lengths.
         if (options.colD + 0.5 * options.colLxy <= 0 or

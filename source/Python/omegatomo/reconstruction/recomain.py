@@ -949,11 +949,6 @@ def reconstructions_main(options):
     if options.CT and np.size(options.flat) > 1:
         # An array-valued flat field (e.g. one value for each projection or detector pixel) is reduced to its maximum, as in MATLAB
         options.flat = np.max(np.asarray(options.flat))
-    if options.SPECT and int(options.projector_type) == 6:
-        # As in MATLAB's projectorClass: pad/crop and resample the SPECT measurements to the Nx x Nz grid of the rotation-based projector.
-        # Done before addProjector(), which derives the detector-size dependent values and flips the projections.
-        from omegatomo.util.measurementResampling import _resampleType6Measurements
-        _resampleType6Measurements(options)
     options.addProjector()
     if options.errorChecking:
         options._checkAlgorithmSelection()
@@ -1074,6 +1069,11 @@ def reconstructions_main(options):
             options.SinM = np.sum(options.SinM, axis=3)
         options.TOF = False
     loadCorrections(options)
+    if options.SPECT and int(options.projector_type) == 6:
+        # File-backed SinM and correction arrays are loaded above. Prepare them
+        # together before parseInputs() packs measurements into subset order.
+        from omegatomo.util.measurementResampling import _resampleType6Measurements
+        _resampleType6Measurements(options)
     # if options.normalization_correction and options.corrections_during_reconstruction == True:
     #     normdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', '..', '..', 'mat-files')) + "/"
     #     if os.path.exists(normdir):

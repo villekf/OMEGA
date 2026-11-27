@@ -129,7 +129,7 @@ class projectorClass:
     type6BPRotation: str = 'adjoint' # Projector type 6: how the backprojection rotates a view back into the image, 'adjoint' (default, exact transpose of the forward rotation) or 'fast' (cheaper gather, only an approximate transpose)
     type6AttenuationCache: float = 0.4 # Projector type 6: fraction of the available GPU memory the attenuation cache may use (clamped to [0, 0.9], 0 = keep nothing)
     CDRFModel: str = 'gaussian' # Projector type 6: the model of the collimator response of the on-the-fly CDRF, 'gaussian' (default) or 'square' (square holes: a triangle convolved with the intrinsic Gaussian)
-    cropProjections: bool = False # Not yet supported in Python
+    cropProjections: Optional[bool] = None # Type-6 SPECT detector-window crop; automatic by default, forced on for an off-centre FOV
     radiusPerProj: npt.NDArray[np.float32] = np.empty(0, dtype = np.float32)
     gFilter = np.empty(0, dtype = np.float32)
     # User-supplied ODRT SPECT gFilter sampling pitch in the filter's
@@ -1495,6 +1495,11 @@ class projectorClass:
             #     self.Nt = self.partitions[0].item()
         else:
             self.Nt = self.partitions
+        if (self.SPECT and not self.listmode and self.Nt == 1 and
+                np.asarray(self.nProjectionsPerFrame).size == 0 and int(self.nProjections) > 0):
+            # File-backed SPECT loads SinM after addProjector(). In that case
+            # the usual SinM-shape branch cannot seed the single-frame count.
+            self.nProjectionsPerFrame = np.asarray([self.nProjections], dtype=np.int64)
         if self.Nt > 1 and self.subsetType == 3:
             raise ValueError('Subset type 3 is not supported with dynamic data!')
         if self.Nt > 1 and self.stochasticSubsetSelection and self.subsets > 1:

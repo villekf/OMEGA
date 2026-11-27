@@ -2,14 +2,13 @@
 """
 Automatic measurement resampling for the SPECT rotation-based (type 6) projector.
 
-The type-6 projector works on a projection grid of Nx x Nz pixels (rows x columns), i.e. on the
-transaxial/axial grid of the reconstruction volume. This module ports the sinogram resizing and
-resampling block of MATLAB's projectorClass.m: every projection frame is first padded with zeros or
-cropped (both sides, centered) to the number of detector pixels that cover the image FOV
-(FOVa_x / dPitchX rows and axial_fov / dPitchY columns), then resampled with imresize (bicubic,
-antialiasing) to Nx x Nz pixels. options.nRowsD and options.nColsD are set to Nx and Nz.
+The type-6 projector works on a projection grid derived from the reconstruction volume. This module ports
+the SPECT measurement-window preparation from MATLAB's projectorClass.m, including center-matched
+resampling and the full-detector window needed when the object or extended FOV is off-centre.
 """
 import numpy as np
+
+from .matlabRound import matlabRound
 
 
 def _cubicKernel(x):
@@ -97,15 +96,68 @@ def _resizeCentered(data, length, axis):
     return padded
 
 
-def _resampleArray(data, endRows, endCols, nx, nz):
+def _resampleDetectorAxis(data, axis, nOut, ratio):
+    """Bicubic resampling used by MATLAB's resampleDetectorAxis, with zero outside the detector."""
+    data = np.asarray(data)
+    nIn, nOut, ratio = int(data.shape[axis]), int(nOut), float(ratio)
+    if nIn < 1 or nOut < 1 or ratio <= 0. or not np.isfinite(ratio):
+        raise ValueError('Type-6 detector resampling needs positive finite dimensions and pitch ratios.')
+    if nIn == nOut and ratio == 1.:
+        return data
+    if ratio > 1.:
+        kernel = lambda x: (1. / ratio) * _cubicKernel(x / ratio)
+        kernelWidth = 4. * ratio
+    else:
+        kernel = _cubicKernel
+        kernelWidth = 4.
+    # Match resampleDetectorAxis.m: normalize weights before dropping samples
+    # outside the detector, so those samples contribute zeros rather than a
+    # mirrored edge value.
+    j = np.arange(1, nOut + 1, dtype=np.float64)
+    u = (j - (nOut + 1.) / 2.) * ratio + (nIn + 1.) / 2.
+    left = np.floor(u - kernelWidth / 2.)
+    count = int(np.ceil(kernelWidth)) + 2
+    indices = left[:, None] + np.arange(count, dtype=np.float64)[None, :]
+    weights = kernel(u[:, None] - indices)
+    weights /= np.sum(weights, axis=1, keepdims=True)
+    valid = (indices >= 1.) & (indices <= nIn)
+    matrix = np.zeros((nOut, nIn), dtype=np.float64)
+    rows, cols = np.nonzero(valid)
+    np.add.at(matrix, (rows, indices[valid].astype(np.int64) - 1), weights[valid])
+    result = np.moveaxis(np.tensordot(matrix, data.astype(np.float64, copy=False), axes=([1], [axis])), 0, axis)
+    return result.astype(data.dtype if data.dtype.kind == 'f' else np.float32, copy=False)
+
+
+def _nearestIntegerRatio(ratio):
+    """Return MATLAB's rounded physical size and whether the input ratio was exactly integral."""
+    nearest = float(matlabRound(ratio))
+    exact = float(ratio) == nearest
+    if not exact and abs(float(ratio) - nearest) > 1e-9 * max(1., abs(float(ratio))):
+        nearest = float(ratio)
+    return nearest, exact
+
+
+def _resampleArray(data, endRows, endCols, outRows, outCols):
     """
-    The type-6 measurement resampling of one array (rows x columns x ...): pad/crop to endRows x endCols,
-    then bicubic imresize to nx x nz. Returns a new array (never a view of the input).
+    Resample one type-6 measurement array to an output lattice of outRows x outCols.
+    Integer detector/FOV ratios with symmetric padding/cropping use the historic
+    centered path; other ratios use the centered detector-axis resampler.
     """
-    result = _resizeCentered(data, endRows, 0)
-    result = _resizeCentered(result, endCols, 1)
-    if result.shape[0] != nx or result.shape[1] != nz or result.dtype.kind != 'f':
-        result = _imresizeBicubic(result, nx, nz)
+    result = np.asarray(data)
+    rows, exactRows = _nearestIntegerRatio(endRows)
+    cols, exactCols = _nearestIntegerRatio(endCols)
+    if exactRows and (result.shape[0] - int(rows)) % 2 == 0:
+        result = _resizeCentered(result, int(rows), 0)
+    else:
+        result = _resampleDetectorAxis(result, 0, outRows, rows / float(outRows))
+    if exactCols and (result.shape[1] - int(cols)) % 2 == 0:
+        result = _resizeCentered(result, int(cols), 1)
+    else:
+        result = _resampleDetectorAxis(result, 1, outCols, cols / float(outCols))
+    if result.shape[0] != outRows or result.shape[1] != outCols:
+        result = _imresizeBicubic(result, outRows, outCols)
+    elif result.dtype.kind != 'f':
+        result = result.astype(np.float32)
     if np.may_share_memory(result, data):
         result = result.copy()
     return np.asfortranarray(result)
@@ -126,24 +178,40 @@ def _firstArray(value):
 def _resampleType6Measurements(options):
     """
     Resamples the SPECT measurements to the grid of the type-6 (rotation-based) projector, as the MATLAB
-    projectorClass.m does. Each projection frame (nRowsD x nColsD) is padded with zeros/cropped (centered) to
-    round(FOVa_x / dPitchX) x round(axial_fov / dPitchY) pixels and then resampled (imresize, bicubic with
-    antialiasing) to Nx x Nz pixels. options.nRowsD and options.nColsD are set to Nx and Nz.
+    projectorClass.m does. Centered data are mapped to the fine-volume Nx x Nz grid. For an off-centre
+    object/eFOV shift (or explicit cropProjections), the full detector window is resampled onto a canvas
+    centered on the scanner axis, then cropped to that window. This preserves the detector's absolute
+    location while aligning the data to the type-6 voxel lattice.
 
     The following are resampled when they have the measurement grid (first two dimensions equal to that of
     options.SinM): options.SinM, options.ScatterC (a single array or the DEW/TEW energy window list, also
     per-timestep lists) and options.SinDelayed. Dynamic data (a list of frames or a 4-D array) is supported.
     Integer data is returned as float32 (resampled counts are not integers).
 
-    This must be called before options.addProjector(), since that derives the detector-size dependent values
-    from nRowsD and nColsD, and before options.flipImageZ is applied to the projections, as in MATLAB.
-    The measurement arrays are rebound, never written in place (the arrays can be shared with the caller).
+    This must run before parseInputs(). The built-in reconstruction may call it after addProjector() when it
+    loads measurements from fpath, so the detector-size dependent fields are refreshed here too. The
+    measurement arrays are rebound, never written in place (the arrays can be shared with the caller).
 
     Parameters
     ----------
     options : class object
         The (private copy of the) OMEGA options. Modified: SinM, ScatterC, SinDelayed, nRowsD, nColsD.
     """
+    if getattr(options, '_type6MeasurementsResampled', False):
+        return
+    sinM = options.SinM
+    reference = _firstArray(sinM)
+    if reference is None:
+        # Nothing to resample (e.g. the measurements are loaded later).
+        return
+    if getattr(options, 'listmode', False):
+        return
+    if (isinstance(sinM, np.ndarray) and sinM.ndim == 1 and
+            np.asarray(getattr(options, 'x', np.empty(0))).size == sinM.size * 6):
+        # Listmode SPECT uses SinM as event weights and x as one source/detector
+        # coordinate tuple per event, not as a flattened detector image.
+        return
+
     def scalar(name):
         values = np.asarray(getattr(options, name)).reshape(-1)
         if values.size == 0:
@@ -172,15 +240,59 @@ def _resampleType6Measurements(options):
                          'options.FOVa_x and options.axial_fov!')
     nx = int(scalar('Nx'))
     nz = int(scalar('Nz'))
-    # Desired number of detector pixels (rows, columns) that cover the image FOV
-    endRows = max(1, int(round(FOVx / dPitchX)))
-    endCols = max(1, int(round(axialFOV / dPitchY)))
     if reference.ndim >= 2:
         measRows, measCols = reference.shape[0], reference.shape[1]
     else:
         measRows, measCols = int(options.nRowsD), int(options.nColsD)
     if measRows < 1 or measCols < 1:
         raise ValueError('options.SinM must be at least two-dimensional or options.nRowsD and options.nColsD must be set!')
+
+    offsets = np.asarray([getattr(options, 'oOffsetX', 0.), getattr(options, 'oOffsetY', 0.),
+                          getattr(options, 'oOffsetZ', 0.)], dtype=np.float64)
+    shifts = np.asarray(getattr(options, 'eFOVShift', (0., 0., 0.)), dtype=np.float64).reshape(-1)
+    offCentre = bool(np.any(offsets != 0.) or np.any(shifts != 0.))
+    cropSetting = getattr(options, 'cropProjections', False)
+    if cropSetting is None:
+        tolX = 0.5 * FOVx / nx
+        tolZ = 0.5 * axialFOV / nz
+        crop = (measRows * dPitchX < FOVx - tolX or
+                measCols * dPitchY < axialFOV - tolZ)
+    else:
+        crop = bool(cropSetting)
+    if offCentre:
+        # Padding to the FOV symmetrically would place an offset object on the
+        # detector center. Keep the full measured detector window instead.
+        crop = True
+
+    if crop:
+        targetRows = measRows * dPitchX / (FOVx / nx)
+        targetCols = measCols * dPitchY / (axialFOV / nz)
+        newRows = int(matlabRound(targetRows))
+        newCols = int(matlabRound(targetCols))
+        if (newRows - nx) % 2:
+            newRows += 1 if targetRows >= newRows else -1
+        if (newCols - nz) % 2:
+            newCols += 1 if targetCols >= newCols else -1
+        if not offCentre:
+            newRows = min(newRows, nx)
+            newCols = min(newCols, nz)
+        newRows, newCols = max(1, newRows), max(1, newCols)
+        canvasRows, canvasCols = max(nx, newRows), max(nz, newCols)
+        rowStart, colStart = (canvasRows - newRows) // 2, (canvasCols - newCols) // 2
+        if canvasRows == nx:
+            endRows = FOVx / dPitchX
+        else:
+            endRows = float(matlabRound(canvasRows * (FOVx / nx) / dPitchX))
+        if canvasCols == nz:
+            endCols = axialFOV / dPitchY
+        else:
+            endCols = float(matlabRound(canvasCols * (axialFOV / nz) / dPitchY))
+        outputRows, outputCols = canvasRows, canvasCols
+    else:
+        newRows, newCols = nx, nz
+        rowStart = colStart = 0
+        endRows, endCols = FOVx / dPitchX, axialFOV / dPitchY
+        outputRows, outputCols = nx, nz
 
     def matches(array):
         return isinstance(array, np.ndarray) and array.ndim >= 2 and array.shape[0] == measRows and array.shape[1] == measCols
@@ -196,14 +308,31 @@ def _resampleType6Measurements(options):
                     raise ValueError('The number of elements in options.SinM is not a multiple of nRowsD * nColsD!')
                 value = np.reshape(value, (measRows, measCols, -1), order='F')
             if matches(value):
-                return _resampleArray(value, endRows, endCols, nx, nz)
+                value = _resampleArray(value, endRows, endCols, outputRows, outputCols)
+                if crop:
+                    value = value[rowStart:rowStart + newRows, colStart:colStart + newCols, ...]
+                return np.asfortranarray(value)
         return value
 
     if getattr(options, 'verbose', 1) > 0:
-        print('Type-6 SPECT: resampling the measurements from %d x %d to %d x %d pixels (FOV-matched grid %d x %d)' % (measRows, measCols, nx, nz, endRows, endCols))
+        suffix = ' (off-centre detector window)' if offCentre else ''
+        print('Type-6 SPECT: resampling measurements from %d x %d to %d x %d pixels%s' %
+              (measRows, measCols, newRows, newCols, suffix))
     options.SinM = resample(options.SinM, True)
     options.ScatterC = resample(options.ScatterC, False)
     if hasattr(options, 'SinDelayed'):
         options.SinDelayed = resample(options.SinDelayed, False)
-    options.nRowsD = nx
-    options.nColsD = nz
+    options.cropProjections = crop
+    options.nRowsD = newRows
+    options.nColsD = newCols
+    options._type6MeasurementsResampled = True
+    # Keep any detector dimensions that addProjector() initialized in sync
+    # with the newly resampled arrays before native transfer or parseInputs().
+    nProjections = int(getattr(options, 'nProjections', 0))
+    for name, value in (('measurement_nRowsD', newRows), ('measurement_nColsD', newCols),
+                        ('Ndist', newRows), ('Nang', newCols),
+                        ('det_per_ring', newRows * nProjections),
+                        ('det_w_pseudo', newRows * nProjections),
+                        ('cryst_per_block', newRows * newCols)):
+        if hasattr(options, name):
+            setattr(options, name, value)
