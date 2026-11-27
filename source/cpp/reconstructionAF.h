@@ -801,8 +801,17 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		computeOffsetSqrtWeights(inputScalars, w_vec, length, pituus);
 
 	// Special case for large dimensional reconstructions, i.e. cases where the image volume/measurements don't fit into the device memory
-	if (inputScalars.largeDim)
-		largeDimCreate(inputScalars, MethodList, w_vec);
+	if (inputScalars.largeDim) {
+		// The CPU median filter still writes the full image and has no chunk output range.
+#if defined(CPU)
+		if (MethodList.MRP) {
+			mexPrint("The median root prior with largeDim requires a GPU backend\n");
+			return -1;
+		}
+#endif
+		if (largeDimCreate(inputScalars, MethodList, w_vec) != 0)
+			return -1;
+	}
 
 	// Load measurement data into device memory
     // If loadTOF = false, then only the first subset is loaded
@@ -1443,6 +1452,15 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 				return -1;
 			}
 			proj.RDPRefPersistent = true;
+#elif defined(METAL)
+			AFDEVBUFF_t d_ref = transferAF(w_vec.RDPref[0]);
+			status = proj.transferTex(inputScalars, d_ref, true, inputScalars.Nz[0]);
+			w_vec.RDPref[0].unlock();
+			if (status != 0) {
+				mexPrint("Failed to upload the RDP reference image for fastPDHG\n");
+				return -1;
+			}
+			proj.RDPRefPersistent = true;
 #elif defined(OPENCL)
 			status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*w_vec.RDPref[0].device<cl_mem>(), true), proj.d_RDPrefI, 0, proj.origin, proj.region);
 			w_vec.RDPref[0].unlock();
@@ -2044,7 +2062,8 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     // The prior reference copy is owned by a vector, so that early returns do not leak it
                     std::vector<float> apuPrVec;
                     float* apuPr = nullptr;
-                    if (MethodList.NLM || MethodList.RDP || MethodList.hyperbolic || MethodList.GGMRF || MethodList.TV) {
+                    const bool hasPriorHalo = inputScalars.subsetsUsed > 1 && inputScalars.lDimStruct.startPr[1] > 0;
+                    if (hasPriorHalo) {
                         apuPrVec.assign(apuF, apuF + inputScalars.lDimStruct.imDim[0]);
                         apuPr = apuPrVec.data();
                     }
@@ -2060,7 +2079,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             vec.im_os[tt][0] = af::constant(1e-4f, inputScalars.lDimStruct.imDimPr[ii]);
                         }
                         else
-                            if (ii > 0 && inputScalars.lDimStruct.startPr[ii] > 0 && (MethodList.NLM || MethodList.RDP || MethodList.hyperbolic || MethodList.GGMRF || MethodList.TV)) {
+                            if (inputScalars.lDimStruct.startPr[ii] > 0) {
                                 vec.im_os[tt][0] = af::join(0, af::array(inputScalars.lDimStruct.startPr[ii], &apuPr[inputScalars.lDimStruct.imDim[ii - 1] - inputScalars.lDimStruct.startPr[ii]], afHost), 
                                     af::array(inputScalars.lDimStruct.imDim[ii] + inputScalars.lDimStruct.endPr[ii], &apuF[inputScalars.lDimStruct.cumDim[ii]], afHost));
                             }
@@ -2100,7 +2119,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             mexPrintBase("vec.rhs_os[tt][0].elements() = %u\n", vec.rhs_os[tt][0].elements());
                             mexEval();
                         }
-                        if (ii > 0 && (MethodList.NLM || MethodList.RDP || MethodList.hyperbolic || MethodList.GGMRF || MethodList.TV) && (iter > 0 || osa_iter > 0)) {
+                        if (ii > 0 && ii + 1 < inputScalars.subsetsUsed && inputScalars.lDimStruct.startPr[ii + 1] > 0 && (iter > 0 || osa_iter > 0)) {
                             std::copy(apuF + inputScalars.lDimStruct.cumDim[ii], apuF + inputScalars.lDimStruct.imDim[ii] + inputScalars.lDimStruct.cumDim[ii], apuPr);
                         }
                         vec.im_os[tt][0].host(&apuF[inputScalars.lDimStruct.cumDim[ii]]);

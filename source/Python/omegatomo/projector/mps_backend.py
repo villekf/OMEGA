@@ -14,7 +14,7 @@ from typing import Any, Iterable
 import numpy as np
 
 
-SCALAR_KERNEL_PARAMS_SIZE = 496
+SCALAR_KERNEL_PARAMS_SIZE = 576
 
 _OFFSETS = {
     "nRowsD": 0,
@@ -58,24 +58,38 @@ _OFFSETS = {
     "theta_PDHG": 308,
     "tau_PDHG": 312,
     "enforcePositivity_PDHG": 316,
-    "N_rotate": 320,
-    "cosa_rotate": 336,
-    "sina_rotate": 340,
-    "gFilterNu": 344,
-    "gFilterNv": 348,
-    "gFilterNd": 352,
-    "gFilterDu": 356,
-    "gFilterDv": 360,
-    "gFilterDd": 364,
-    "gFilterCustom": 368,
-    "rotSrcNyFull": 372, "rotSrcNzFull": 376, "rotOutNx": 380, "rotOutNyFull": 384,
-    "rotOutY": 388, "rotOutZ": 392, "rotOutNy": 396, "rotOutNz": 400,
-    "rotSrcY": 404, "rotSrcZ": 408, "rotSrcNy": 412, "rotSrcNz": 416,
-    "rotAccumulate": 420, "rotOutX": 424, "rotOutNxW": 428, "rotSrcX": 432,
-    "rotSrcNxB": 436, "rotOutSx": 440, "rotOutSy": 444, "rotOffX": 448, "rotOffY": 452,
-    "atnNx": 456, "atnNy": 460, "atnNz": 464,
-    "atnDx": 468, "atnDy": 472, "atnDz": 476,
-    "atnBx": 480, "atnBy": 484, "atnBz": 488,
+    "fastStep_PDHG": 317,
+    "fastImOffset_PDHG": 320,
+    "fastPriorZOffset_PDHG": 328,
+    "fastLambda_PDHG": 332,
+    "fastAlpha_PDHG": 336,
+    "fastBeta_PDHG": 340,
+    "fastNLMParams_PDHG": 344,
+    "fastRDPgamma_PDHG": 368,
+    "fastGGMRFp_PDHG": 372,
+    "fastGGMRFq_PDHG": 376,
+    "fastGGMRFc_PDHG": 380,
+    "fastGGMRFpqc_PDHG": 384,
+    "fastHYPERsigma_PDHG": 388,
+    "fastTVsigma_PDHG": 392,
+    "N_rotate": 400,
+    "cosa_rotate": 416,
+    "sina_rotate": 420,
+    "gFilterNu": 424,
+    "gFilterNv": 428,
+    "gFilterNd": 432,
+    "gFilterDu": 436,
+    "gFilterDv": 440,
+    "gFilterDd": 444,
+    "gFilterCustom": 448,
+    "rotSrcNyFull": 452, "rotSrcNzFull": 456, "rotOutNx": 460, "rotOutNyFull": 464,
+    "rotOutY": 468, "rotOutZ": 472, "rotOutNy": 476, "rotOutNz": 480,
+    "rotSrcY": 484, "rotSrcZ": 488, "rotSrcNy": 492, "rotSrcNz": 496,
+    "rotAccumulate": 500, "rotOutX": 504, "rotOutNxW": 508, "rotSrcX": 512,
+    "rotSrcNxB": 516, "rotOutSx": 520, "rotOutSy": 524, "rotOffX": 528, "rotOffY": 532,
+    "atnNx": 536, "atnNy": 540, "atnNz": 544,
+    "atnDx": 548, "atnDy": 552, "atnDz": 556,
+    "atnBx": 560, "atnBy": 564, "atnBz": 568,
 }
 
 
@@ -107,6 +121,9 @@ def _pack_scalar_kernel_params(self: Any, timestep: int, subset: int, volume: in
 
     def f32(name: str, value: float) -> None:
         struct.pack_into('<f', blob, _OFFSETS[name], float(value))
+
+    def f32s(name: str, values: Iterable[float]) -> None:
+        struct.pack_into('<6f', blob, _OFFSETS[name], *(float(value) for value in values))
 
     def f2(name: str, values: Iterable[float]) -> None:
         a, b = values
@@ -200,6 +217,17 @@ def _pack_scalar_kernel_params(self: Any, timestep: int, subset: int, volume: in
     f32('theta_PDHG', 0.0)
     f32('tau_PDHG', 0.0)
     u8('enforcePositivity_PDHG', 0)
+    u8('fastStep_PDHG', 0)
+    i64('fastImOffset_PDHG', 0)
+    i32('fastPriorZOffset_PDHG', 0)
+    f32('fastLambda_PDHG', 0.0)
+    f32('fastAlpha_PDHG', 0.0)
+    f32('fastBeta_PDHG', 0.0)
+    f32s('fastNLMParams_PDHG', (0.0,) * 6)
+    for name in ('fastRDPgamma_PDHG', 'fastGGMRFp_PDHG', 'fastGGMRFq_PDHG',
+                 'fastGGMRFc_PDHG', 'fastGGMRFpqc_PDHG', 'fastHYPERsigma_PDHG',
+                 'fastTVsigma_PDHG'):
+        f32(name, 0.0)
     i3('N_rotate', (0, 0, 0))
     f32('cosa_rotate', 0.0)
     f32('sina_rotate', 0.0)

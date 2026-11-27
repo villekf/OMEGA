@@ -26,6 +26,7 @@ import numpy.typing as npt
 import ctypes
 import math
 import os
+import sys
 import warnings
 from typing import Optional
 from .coordinates import computePixelCenters
@@ -2417,7 +2418,9 @@ class projectorClass:
         if self.largeDim:
             if not self.PDHG and not self.FDK and not self.PKMA and not self.PDDY and not self.PDHGL1 and not self.PDHGKL:
                 raise ValueError('Large dimension support is only available for PDHG, PKMA, and FDK!')
-            if self.MRP or self.quad or self.Huber or self.weighted_mean or self.FMH or self.ProxTV or self.TGV or self.L or self.AD or self.APLS:
+            if self.MRP and self.useCPU:
+                raise ValueError('The median root prior with largeDim requires a GPU backend!')
+            if self.quad or self.Huber or self.weighted_mean or self.FMH or self.ProxTV or self.TGV or self.L or self.AD or self.APLS:
                 raise ValueError('Large dimension support is only available for non-local methods, RDP, GGMRF, hyperbolic prior and TV!')
             if self.projector_type in [45, 15, 5, 55, 54, 51, 2, 3]:
                 raise ValueError('Large dimension support is only for projector types 4 and 14!')

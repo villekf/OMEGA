@@ -52,12 +52,9 @@ CONSTANT sampler_t sampler2 =
     CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_LINEAR | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif
 
-// The integral images can be held in 2D layered textures (CUDA/HIP cudaArrayLayered, OpenCL image2d_array_t) instead of 3D textures.
+// The integral images can be held in 2D layered textures (CUDA/HIP cudaArrayLayered, OpenCL image2d_array_t, Metal texture2d_array) instead of 3D textures.
 // The third coordinate of every fetch is the centre of one slice, so the slice index is used directly as the layer index (no interpolation
 // between slices). LAYEREDFP5: d_IImageY (layer = y slice) and d_IImageX (layer = x slice). LAYEREDBP5: d_IImage (layer = projection).
-#if (defined(LAYEREDFP5) || defined(LAYEREDBP5)) && defined(METAL)
-#error LAYEREDFP5 and LAYEREDBP5 do not support METAL
-#endif
 #if defined(LAYEREDBP5) && defined(HELICAL)
 #error LAYEREDBP5 does not support HELICAL
 #endif
@@ -91,9 +88,21 @@ CONSTANT sampler_t sampler2 =
 #define BP5IMG IMAGE3D
 #define BP5FETCH(img, c, l) read_imagef(img, sampler2, (float4)(c, 0.f)).w
 #endif
+#elif defined(METAL)
+#ifdef LAYEREDFP5
+#define FP5IMG metal::texture2d_array<float, metal::access::sample>
+#define FP5FETCH(img, a, b, dl, l) (img).sample(sampler2, float2(a, b), uint(l)).r
 #else
 #define FP5IMG IMAGE3D
+#define FP5FETCH(img, a, b, dl, l) (img).sample(sampler2, float3(a, b, dl)).r
+#endif
+#ifdef LAYEREDBP5
+#define BP5IMG metal::texture2d_array<float, metal::access::sample>
+#define BP5FETCH(img, c, l) (img).sample(sampler2, (c).xy, uint(l)).r
+#else
 #define BP5IMG IMAGE3D
+#define BP5FETCH(img, c, l) (img).sample(sampler2, (c)).r
+#endif
 #endif
 
 // Forward projection for the branchless distance-driven ray tracer
@@ -175,31 +184,15 @@ void projectorType5Forward(
 
   // Number of valid columns for this thread
   const int maxZZ = MIN(NVOXELSFP, CINT(d_nCols) - i.y);
+#ifdef PYTHON
+  const uint3 d_N = make_uint3(d_Nx, d_Ny, d_Nz);
+#endif
 #ifdef MASKFP
   // The mask is read for every pixel of the column group of this thread. The thread is skipped only if all of them are masked
   bool maskOn[NVOXELSFP];
   bool anyMaskOn = false;
   for (int zz = 0; zz < maxZZ; zz++) {
-#if defined(METAL)
-#ifdef MASKFP3D
-    const int maskVal = static_cast<int>(metal::round(maskFP.read(uint3(i.x, i.y + zz, i.z)).r));
-#else
-    const int maskVal = static_cast<int>(metal::round(maskFP.read(uint2(i.x, i.y + zz)).r));
-#endif
-#elif defined(CUDA) || defined(HIP)
-#ifdef MASKFP3D
-    const int maskVal = tex3D<unsigned char>(maskFP, i.x, i.y + zz, i.z);
-#else
-    const int maskVal = tex2D<unsigned char>(maskFP, i.x, i.y + zz);
-#endif
-#else
-#ifdef MASKFP3D
-    const int maskVal =
-        read_imageui(maskFP, sampler_MASK, (int4)(i.x, i.y + zz, i.z, 0)).w;
-#else
-    const int maskVal = read_imageui(maskFP, sampler_MASK, (int2)(i.x, i.y + zz)).w;
-#endif
-#endif
+    const int maskVal = readMaskFPAt(maskFP, CMINT3(i.x, i.y + zz, i.z), d_nRows, d_nCols);
     maskOn[zz] = maskVal != 0;
     anyMaskOn = anyMaskOn || maskOn[zz];
   }
@@ -207,7 +200,6 @@ void projectorType5Forward(
     return;
 #endif
 #ifdef PYTHON
-  const uint3 d_N = make_uint3(d_Nx, d_Ny, d_Nz);
   const float2 d_dPitch = make_float2(d_dPitchX, d_dPitchY);
   const float3 d_d = make_float3(d_dx, d_dy, d_dz);
   const float3 b = make_float3(bx, by, bz);
@@ -268,26 +260,10 @@ void projectorType5Forward(
       // Scale between 0 and 1
       xLR *= d_scale.x;
       zUD *= d_scale.z;
-#if defined(CUDA) || defined(HIP)
       float A = FP5FETCH(d_IImageY, xLR.y, zUD.x, dy, jj);
       float B = FP5FETCH(d_IImageY, xLR.x, zUD.y, dy, jj);
       float C = FP5FETCH(d_IImageY, xLR.y, zUD.y, dy, jj);
       float D = FP5FETCH(d_IImageY, xLR.x, zUD.x, dy, jj);
-#elif defined(OPENCL)
-      float A =
-          FP5FETCH(d_IImageY, xLR.y, zUD.x, dy, jj);
-      float B =
-          FP5FETCH(d_IImageY, xLR.x, zUD.y, dy, jj);
-      float C =
-          FP5FETCH(d_IImageY, xLR.y, zUD.y, dy, jj);
-      float D =
-          FP5FETCH(d_IImageY, xLR.x, zUD.x, dy, jj);
-#elif defined(METAL)
-      float A = d_IImageY.sample(sampler2, float3(xLR.y, zUD.x, dy)).r;
-      float B = d_IImageY.sample(sampler2, float3(xLR.x, zUD.y, dy)).r;
-      float C = d_IImageY.sample(sampler2, float3(xLR.y, zUD.y, dy)).r;
-      float D = d_IImageY.sample(sampler2, float3(xLR.x, zUD.x, dy)).r;
-#endif
       // Differences along z at the same in-plane coordinate are formed first. When the
       // footprint lies outside the volume the two fetches of each pair are equal, so
       // the result is exactly zero. The pairwise differences also reduce the rounding
@@ -320,16 +296,8 @@ void projectorType5Forward(
           zEdgePrev = zUD.y;
 #endif
           zUD.y += xInterval;
-#if defined(CUDA) || defined(HIP)
           B = FP5FETCH(d_IImageY, xLR.x, zUD.y, dy, jj);
           C = FP5FETCH(d_IImageY, xLR.y, zUD.y, dy, jj);
-#elif defined(OPENCL)
-          B = FP5FETCH(d_IImageY, xLR.x, zUD.y, dy, jj);
-          C = FP5FETCH(d_IImageY, xLR.y, zUD.y, dy, jj);
-#elif defined(METAL)
-          B = d_IImageY.sample(sampler2, float3(xLR.x, zUD.y, dy)).r;
-          C = d_IImageY.sample(sampler2, float3(xLR.y, zUD.y, dy)).r;
-#endif
         }
         else {
           // The footprint moves down, the two fetches at the old lower edge become the upper ones
@@ -339,16 +307,8 @@ void projectorType5Forward(
           zEdgePrev = zUD.x;
 #endif
           zUD.x -= xInterval;
-#if defined(CUDA) || defined(HIP)
           D = FP5FETCH(d_IImageY, xLR.x, zUD.x, dy, jj);
           A = FP5FETCH(d_IImageY, xLR.y, zUD.x, dy, jj);
-#elif defined(OPENCL)
-          D = FP5FETCH(d_IImageY, xLR.x, zUD.x, dy, jj);
-          A = FP5FETCH(d_IImageY, xLR.y, zUD.x, dy, jj);
-#elif defined(METAL)
-          D = d_IImageY.sample(sampler2, float3(xLR.x, zUD.x, dy)).r;
-          A = d_IImageY.sample(sampler2, float3(xLR.y, zUD.x, dy)).r;
-#endif
         }
         // Differences along z at the same in-plane coordinate are formed first. When the
         // footprint lies outside the volume the two fetches of each pair are equal, so
@@ -407,26 +367,10 @@ void projectorType5Forward(
       const float invArea = 1.f / area;
       yLR *= d_scale.y;
       zUD *= d_scale.z;
-#if defined(CUDA) || defined(HIP)
       float A = FP5FETCH(d_IImageX, yLR.y, zUD.x, dx, ii);
       float B = FP5FETCH(d_IImageX, yLR.x, zUD.y, dx, ii);
       float C = FP5FETCH(d_IImageX, yLR.y, zUD.y, dx, ii);
       float D = FP5FETCH(d_IImageX, yLR.x, zUD.x, dx, ii);
-#elif defined(OPENCL)
-      float A =
-          FP5FETCH(d_IImageX, yLR.y, zUD.x, dx, ii);
-      float B =
-          FP5FETCH(d_IImageX, yLR.x, zUD.y, dx, ii);
-      float C =
-          FP5FETCH(d_IImageX, yLR.y, zUD.y, dx, ii);
-      float D =
-          FP5FETCH(d_IImageX, yLR.x, zUD.x, dx, ii);
-#elif defined(METAL)
-      float A = d_IImageX.sample(sampler2, float3(yLR.y, zUD.x, dx)).r;
-      float B = d_IImageX.sample(sampler2, float3(yLR.x, zUD.y, dx)).r;
-      float C = d_IImageX.sample(sampler2, float3(yLR.y, zUD.y, dx)).r;
-      float D = d_IImageX.sample(sampler2, float3(yLR.x, zUD.x, dx)).r;
-#endif
       // Differences along z at the same in-plane coordinate are formed first. When the
       // footprint lies outside the volume the two fetches of each pair are equal, so
       // the result is exactly zero. The pairwise differences also reduce the rounding
@@ -459,16 +403,8 @@ void projectorType5Forward(
           zEdgePrev = zUD.y;
 #endif
           zUD.y += yInterval;
-#if defined(CUDA) || defined(HIP)
           B = FP5FETCH(d_IImageX, yLR.x, zUD.y, dx, ii);
           C = FP5FETCH(d_IImageX, yLR.y, zUD.y, dx, ii);
-#elif defined(OPENCL)
-          B = FP5FETCH(d_IImageX, yLR.x, zUD.y, dx, ii);
-          C = FP5FETCH(d_IImageX, yLR.y, zUD.y, dx, ii);
-#elif defined(METAL)
-          B = d_IImageX.sample(sampler2, float3(yLR.x, zUD.y, dx)).r;
-          C = d_IImageX.sample(sampler2, float3(yLR.y, zUD.y, dx)).r;
-#endif
         }
         else {
           // The footprint moves down, the two fetches at the old lower edge become the upper ones
@@ -478,16 +414,8 @@ void projectorType5Forward(
           zEdgePrev = zUD.x;
 #endif
           zUD.x -= yInterval;
-#if defined(CUDA) || defined(HIP)
           D = FP5FETCH(d_IImageX, yLR.x, zUD.x, dx, ii);
           A = FP5FETCH(d_IImageX, yLR.y, zUD.x, dx, ii);
-#elif defined(OPENCL)
-          D = FP5FETCH(d_IImageX, yLR.x, zUD.x, dx, ii);
-          A = FP5FETCH(d_IImageX, yLR.y, zUD.x, dx, ii);
-#elif defined(METAL)
-          D = d_IImageX.sample(sampler2, float3(yLR.x, zUD.x, dx)).r;
-          A = d_IImageX.sample(sampler2, float3(yLR.y, zUD.x, dx)).r;
-#endif
         }
         // Differences along z at the same in-plane coordinate are formed first. When the
         // footprint lies outside the volume the two fetches of each pair are equal, so
@@ -619,22 +547,60 @@ __kernel
 extern "C" __global__
 #endif
     void
+projectorType5Backward(
 #if defined(METAL)
-    projectorType5Backward(
         SCALAR_PARAMS(scalarParams) BUF0
 #ifdef OFFSET
         , CONSTANT float* T BUF1
 #endif
-        , const CLGLOBAL float* d_xyz BUF5
-        , const CLGLOBAL float* d_uv BUF6
+#else
+        const uint d_nRows, const uint d_nCols,
+#ifdef PYTHON
+        const float d_dPitchX, const float d_dPitchY,
+#else
+        const float2 d_dPitch,
+#endif
+#ifdef HELICAL
+        const float r,
+#endif
+#ifdef OFFSET
+        CONSTANT float *T,
+#endif
+#ifdef PYTHON
+        const uint d_Nx, const uint d_Ny, const uint d_Nz,
+        const float bx, const float by, const float bz,
+        const float d_dx, const float d_dy, const float d_dz,
+        const float d_scalex, const float d_scaley, const float d_scalez,
+        const float d_SizeX, const float d_SizeY,
+#else
+        const uint3 d_N, const float3 b, const float3 d_d,
+        const float3 d_scale, const float2 d_Size,
+#endif
+#endif
+#if defined(METAL) || defined(USEGLOBAL)
+        , const CLGLOBAL float *CLRESTRICT d_xyz BUF5
+        , const CLGLOBAL float *CLRESTRICT d_uv BUF6
+#else
+        , CONSTANT float *d_xyz
+        , CONSTANT float *d_uv
+#endif
+#ifdef GEOM5
+        , const CLGLOBAL float *CLRESTRICT d_geom5 BUF26
+#endif
+#ifdef PROJWINDOW
+        , const CLGLOBAL int *CLRESTRICT d_projWindow BUF27
+#endif
         , BP5IMG d_IImage TEX2
-        , CLGLOBAL float* d_forw BUF4
-        , CLGLOBAL float* d_Summ BUF7
+        , CLGLOBAL float *d_forw BUF4
+        , CLGLOBAL float *d_Summ BUF7
 #ifdef MEANDISTANCEBP
-        , CONSTANT float* d_meanV BUF8
+        , CONSTANT float *d_meanV BUF8
 #endif
 #ifdef NORM
-        , const CLGLOBAL float* d_norm BUF9
+        , const CLGLOBAL float *CLRESTRICT d_norm BUF9
+#endif
+#if !defined(METAL)
+        , const uchar no_norm
 #endif
 #ifdef MASKBP
 #ifdef MASKBP3D
@@ -643,117 +609,76 @@ extern "C" __global__
         , IMAGE2D maskBP TEX10
 #endif
 #endif
-        , uint3 temp_i [[thread_position_in_grid]])
-#else
-    projectorType5Backward(const uint d_nRows, const uint d_nCols,
-#ifdef PYTHON
-                           const float d_dPitchX, const float d_dPitchY,
-#else
-                           const float2 d_dPitch,
+#if !defined(METAL)
+        , const LONG d_nProjections, const int ii
 #endif
-#ifdef HELICAL
-                           const float r,
-#endif
-#ifdef OFFSET
-                           CONSTANT float *T,
-#endif
-#ifdef PYTHON
-                           const uint d_Nx, const uint d_Ny, const uint d_Nz,
-                           const float bx, const float by, const float bz,
-                           const float d_dx, const float d_dy, const float d_dz,
-                           const float d_scalex, const float d_scaley,
-                           const float d_scalez, const float d_SizeX,
-                           const float d_SizeY,
-#else
-                           const uint3 d_N, const float3 b, const float3 d_d,
-                           const float3 d_scale, const float2 d_Size,
-#endif
-#if defined(USEGLOBAL)
-                           const CLGLOBAL float *CLRESTRICT d_xyz,
-                           const CLGLOBAL float *CLRESTRICT d_uv,
-#else
-                           CONSTANT float *d_xyz,
-                           CONSTANT float *d_uv,
-#endif
-#ifdef GEOM5
-                           const CLGLOBAL float *CLRESTRICT d_geom5,
-#endif
-#ifdef PROJWINDOW
-                           const CLGLOBAL int *CLRESTRICT d_projWindow,
-#endif
-                           BP5IMG d_IImage,
-                           CLGLOBAL float *d_forw, CLGLOBAL float *d_Summ,
-#ifdef MEANDISTANCEBP
-                           CONSTANT float *d_meanV,
-#endif
-#ifdef NORM
-                           const CLGLOBAL float *CLRESTRICT d_norm,
-#endif
-                           const uchar no_norm,
-#ifdef MASKBP
-#ifdef MASKBP3D
-                           IMAGE3D maskBP,
-#else
-                           IMAGE2D maskBP,
-#endif
-#endif
-                           const LONG d_nProjections, const int ii
 #ifdef FASTPDHG // START FASTPDHG
 #if FASTALG == 0
-    , CLGLOBAL float* CLRESTRICT d_U
+        , CLGLOBAL float* CLRESTRICT d_U BUF11
 #endif
 #if FASTPRECOND > 0
-    , const CLGLOBAL float* CLRESTRICT d_precond
+        , const CLGLOBAL float* CLRESTRICT d_precond BUF13
 #endif
 #ifdef FASTNLM
-    , IMAGE3D d_imNLM
-    , CONSTANT float* d_gaussian
+        , IMAGE3D d_imNLM TEX11
+        , CONSTANT float* d_gaussian BUF17
 #ifdef NLMREF
-    , IMAGE3D d_urefNLM
+        , IMAGE3D d_urefNLM TEX12
 #endif
-    // The NLM parameters are always passed as a fixed block (h, gamma, p, q, c, adaptive constant) so that the host
-    // side does not have to mirror the NLTYPE conditionals
-    , const float fastNLMh, const float fastNLMgamma, const float fastNLMp, const float fastNLMq, const float fastNLMc, const float fastNLMs
+#if !defined(METAL)
+        // The NLM parameters are passed as a fixed block so the host need not mirror NLTYPE conditions.
+        , const float fastNLMh, const float fastNLMgamma, const float fastNLMp, const float fastNLMq, const float fastNLMc, const float fastNLMs
+#endif
 #endif
 #ifdef FASTRDP
-    , IMAGE3D d_imNLM
+        , IMAGE3D d_imNLM TEX11
 #ifdef FASTRDPCORNERS
-    , CONSTANT float* d_swWeight
+        , CONSTANT float* d_swWeight BUF17
 #endif
-    , const float fastRDPgamma
+#if !defined(METAL)
+        , const float fastRDPgamma
+#endif
 #ifdef PRIORREF
-    , IMAGE3D d_urefNLM
+        , IMAGE3D d_urefNLM TEX12
 #endif
 #endif // FASTRDP
 #ifdef FASTGGMRF
-    , IMAGE3D d_imNLM
-    , CONSTANT float* d_swWeight
-    , const float fastGGMRFp, const float fastGGMRFq, const float fastGGMRFc, const float fastGGMRFpqc
+        , IMAGE3D d_imNLM TEX11
+        , CONSTANT float* d_swWeight BUF17
+#if !defined(METAL)
+        , const float fastGGMRFp, const float fastGGMRFq, const float fastGGMRFc, const float fastGGMRFpqc
+#endif
 #endif // FASTGGMRF
 #ifdef FASTHYPER
-    , IMAGE3D d_imNLM
-    , CONSTANT float* d_swWeight
-    , const float fastHYPERsigma
+        , IMAGE3D d_imNLM TEX11
+        , CONSTANT float* d_swWeight BUF17
+#if !defined(METAL)
+        , const float fastHYPERsigma
+#endif
 #endif // FASTHYPER
 #ifdef FASTTV
-    , IMAGE3D d_imNLM
-    , const float fastTVsigma
-#endif // FASTTV
-#if FASTALG == 0
-    , const float fastTheta
-    , const float fastTau
-#else
-    , const float fastLambda
-    , const float fastAlpha
+        , IMAGE3D d_imNLM TEX11
+#if !defined(METAL)
+        , const float fastTVsigma
 #endif
-    , const float fastBeta
-    , const float fastEpps
-    , const uchar fastPositivity
-    // largeDim offsets
-    , const LONG fastImOffset
-    , const int fastPriorZOffset
-    , const uchar fastStep
+#endif // FASTTV
+#if !defined(METAL)
+#if FASTALG == 0
+        , const float fastTheta, const float fastTau
+#else
+        , const float fastLambda, const float fastAlpha
+#endif
+        , const float fastBeta, const float fastEpps, const uchar fastPositivity
+        , const LONG fastImOffset, const int fastPriorZOffset, const uchar fastStep
+#endif
 #endif // END FASTPDHG
+#if defined(METAL) && defined(FASTPDHG) && (defined(FASTNLMLOCAL) || defined(FASTSWLOCAL))
+        , uint3 fastThreadgroupLane [[thread_position_in_threadgroup]]
+        , uint3 fastThreadgroupPosition [[threadgroup_position_in_grid]]
+#endif
+#if defined(METAL)
+        , uint3 temp_i [[thread_position_in_grid]])
+#else
 )
 #endif
 {
@@ -762,6 +687,9 @@ extern "C" __global__
   int GID0 = temp_i.x;
   int GID1 = temp_i.y;
   int GID2 = temp_i.z;
+#endif
+#if defined(METAL) && defined(FASTPDHG)
+  UNPACK_SCALAR_PARAMS_FASTPDHG(scalarParams);
 #endif
   const int3 i = MINT3(GID0, GID1, GID2 * NVOXELS5);
 #ifdef PYTHON
@@ -781,14 +709,17 @@ extern "C" __global__
 #ifdef NLMREF
             d_urefNLM,
 #endif
-            CINT(i.z), fastPriorZOffset
+            CINT(i.z), fastPriorZOffset,
+            FAST_CACHE_COORDS
         );
     BARRIER
 #endif // END FASTNLMLOCAL
 #if defined(FASTPDHG) && defined(FASTSWLOCAL) // START FASTSWLOCAL
     LOCAL float lCacheSW[SW_TILEX * SW_TILEY * SW_TILEZ];
     if (fastStep != 0u && fastBeta != FLOAT_ZERO && ii == 0)
-        fastFillSWCache(lCacheSW, d_imNLM, CINT(i.z), fastPriorZOffset);
+        fastFillSWCache(lCacheSW, d_imNLM, CINT(i.z), fastPriorZOffset,
+            FAST_CACHE_COORDS
+        );
     BARRIER
 #endif // END FASTSWLOCAL
   if (i.x >= d_N.x || i.y >= d_N.y || i.z >= d_N.z)
@@ -804,14 +735,7 @@ extern "C" __global__
       maskOn5[zz] = true;
       if (ii == 0) {
         if (i.z + zz < CINT(d_N.z)) {
-#if defined(METAL)
-          const int maskVal = static_cast<int>(metal::round(maskBP.read(uint3(i.x, i.y, i.z + zz)).r));
-#elif defined(CUDA) || defined(HIP)
-          const int maskVal = tex3D<unsigned char>(maskBP, i.x, i.y, i.z + zz);
-#else
-          const int maskVal =
-              read_imageui(maskBP, sampler_MASK, (int4)(i.x, i.y, i.z + zz, 0)).w;
-#endif
+          const int maskVal = readMaskBP(maskBP, CMINT3(i.x, i.y, i.z + zz), d_N);
           maskOn5[zz] = maskVal != 0;
         } else {
           maskOn5[zz] = false;
@@ -824,13 +748,7 @@ extern "C" __global__
   }
 #else
   if (ii == 0) {
-#if defined(METAL)
-    const int maskVal = static_cast<int>(metal::round(maskBP.read(uint2(i.x, i.y)).r));
-#elif defined(CUDA) || defined(HIP)
-    const int maskVal = tex2D<unsigned char>(maskBP, i.x, i.y);
-#else
-    const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(i.x, i.y)).w;
-#endif
+    const int maskVal = readMaskBP(maskBP, CMINT3(i.x, i.y, 0), d_N);
     if (maskVal == 0)
       return;
   }
@@ -1120,22 +1038,10 @@ extern "C" __global__
     float3 coordB = MFLOAT3(AxN, DyN, dz);
     float3 coordC = MFLOAT3(DxN, AyN, dz);
     float3 coordD = MFLOAT3(DxN, DyN, dz);
-#if defined(METAL)
-    float A = d_IImage.sample(sampler2, coordA).r;
-    float B = d_IImage.sample(sampler2, coordB).r;
-    float C = d_IImage.sample(sampler2, coordC).r;
-    float D = d_IImage.sample(sampler2, coordD).r;
-#elif defined(CUDA) || defined(HIP)
     float A = BP5FETCH(d_IImage, coordA, kk);
     float B = BP5FETCH(d_IImage, coordB, kk);
     float C = BP5FETCH(d_IImage, coordC, kk);
     float D = BP5FETCH(d_IImage, coordD, kk);
-#else
-    float A = BP5FETCH(d_IImage, coordA, kk);
-    float B = BP5FETCH(d_IImage, coordB, kk);
-    float C = BP5FETCH(d_IImage, coordC, kk);
-    float D = BP5FETCH(d_IImage, coordD, kk);
-#endif
 #ifdef NORM
     LONG indX = CLONG_rtz(coordA.x * CFLOAT(d_nRows));
     LONG indY = CLONG_rtz(coordA.y * CFLOAT(d_nCols)) * CLONG_rtz(d_nRows);
@@ -1311,16 +1217,8 @@ extern "C" __global__
         D = C;
         coordA = CMFLOAT3(AxN, Ay * invKoko.y, dz);
         coordC = CMFLOAT3(DxN, Ay * invKoko.y, dz);
-#if defined(METAL)
-        A = d_IImage.sample(sampler2, coordA).r;
-        C = d_IImage.sample(sampler2, coordC).r;
-#elif defined(CUDA) || defined(HIP)
         A = BP5FETCH(d_IImage, coordA, kk);
         C = BP5FETCH(d_IImage, coordC, kk);
-#else
-        A = BP5FETCH(d_IImage, coordA, kk);
-        C = BP5FETCH(d_IImage, coordC, kk);
-#endif
       } else {
         Ay = Dy;
         Dy = yNew;
@@ -1328,16 +1226,8 @@ extern "C" __global__
         C = D;
         coordB = CMFLOAT3(AxN, Dy * invKoko.y, dz);
         coordD = CMFLOAT3(DxN, Dy * invKoko.y, dz);
-#if defined(METAL)
-        B = d_IImage.sample(sampler2, coordB).r;
-        D = d_IImage.sample(sampler2, coordD).r;
-#elif defined(CUDA) || defined(HIP)
         B = BP5FETCH(d_IImage, coordB, kk);
         D = BP5FETCH(d_IImage, coordD, kk);
-#else
-        B = BP5FETCH(d_IImage, coordB, kk);
-        D = BP5FETCH(d_IImage, coordD, kk);
-#endif
       }
 #else
 #ifdef HELICAL
@@ -1367,31 +1257,15 @@ extern "C" __global__
         D = C;
         coordA = CMFLOAT3(AxN, Ay * invKoko.y, dz);
         coordC = CMFLOAT3(DxN, Ay * invKoko.y, dz);
-#if defined(METAL)
-        A = d_IImage.sample(sampler2, coordA).r;
-        C = d_IImage.sample(sampler2, coordC).r;
-#elif defined(CUDA) || defined(HIP)
         A = BP5FETCH(d_IImage, coordA, kk);
         C = BP5FETCH(d_IImage, coordC, kk);
-#else
-        A = BP5FETCH(d_IImage, coordA, kk);
-        C = BP5FETCH(d_IImage, coordC, kk);
-#endif
       } else {
         A = B;
         C = D;
         coordB = CMFLOAT3(AxN, Dy * invKoko.y, dz);
         coordD = CMFLOAT3(DxN, Dy * invKoko.y, dz);
-#if defined(METAL)
-        B = d_IImage.sample(sampler2, coordB).r;
-        D = d_IImage.sample(sampler2, coordD).r;
-#elif defined(CUDA) || defined(HIP)
         B = BP5FETCH(d_IImage, coordB, kk);
         D = BP5FETCH(d_IImage, coordD, kk);
-#else
-        B = BP5FETCH(d_IImage, coordB, kk);
-        D = BP5FETCH(d_IImage, coordD, kk);
-#endif
       }
 #endif
 #if defined(FDK) && !defined(CENTERFOOTPRINT)
@@ -1466,7 +1340,7 @@ extern "C" __global__
   // Start fastPDHG computations
 #ifdef FASTPDHG // START FASTPDHG
     if (fastStep != 0u) {
-#if defined(MASKBP) && defined(MASKBP3D) && NVOXELS5 > 1
+#if defined(MASKBP) && defined(MASKBP3D) && (NVOXELS5 > 1)
         // The fused update has no mask, so the values of the masked voxels of this thread are stored here and restored after the update
         float keepOSEM[NVOXELS5];
 #if FASTALG == 0
@@ -1489,6 +1363,9 @@ extern "C" __global__
         }
 #endif
         fastPDHGUpdate(temp, wSum, i, idx, d_N, NVOXELS5, no_norm, ii,
+#if defined(FASTNLMLOCAL) || defined(FASTSWLOCAL)
+            FAST_LOCAL_COORDS,
+#endif
             fastImOffset, fastPriorZOffset,
 #if FASTALG == 0
             d_U,
@@ -1554,7 +1431,7 @@ extern "C" __global__
             fastLambda, fastAlpha,
 #endif
             fastBeta, fastEpps, fastPositivity);
-#if defined(MASKBP) && defined(MASKBP3D) && NVOXELS5 > 1
+#if defined(MASKBP) && defined(MASKBP3D) && (NVOXELS5 > 1)
         {
             size_t idxK = idx;
             for (int zz = 0; zz < maxZZ5; zz++) {

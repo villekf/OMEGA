@@ -970,7 +970,7 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
         if implementation == 0 || implementation == 2
             if use_CUDA
                 compflags = 'COMPFLAGS="$COMPFLAGS -std=c++17"';
-                cxxflags = 'CXXFLAGS="$CXXFLAGS -w"';
+                cxxflags = 'CXXFLAGS="$CXXFLAGS -std=c++17 -w"';
 				try
 					disp('Building HIP code for float data type.')
 					mex(compiler, complexFlag, '-outdir', folder, '-output', 'CUDA_matrixfree', ldflags, compflags, cxxflags, '-DMATLAB', '-DHIP', '-DAF', '-D__HIP_PLATFORM_AMD__', ['-I"' folder '"'], ['-I"' hip_path '/include"'], '-lafcuda', '-lamdhip64', ...
@@ -1024,8 +1024,8 @@ if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
             %             end
             cxxflags = 'CXXFLAGS="$CXXFLAGS"';
         else
-            compflags = 'COMPFLAGS="$COMPFLAGS -std=c++11"';
-            cxxflags = 'CXXFLAGS="$CXXFLAGS -Wno-ignored-attributes -Wno-narrowing"';
+            compflags = 'COMPFLAGS="$COMPFLAGS -std=c++17"';
+            cxxflags = 'CXXFLAGS="$CXXFLAGS -std=c++17 -Wno-ignored-attributes -Wno-narrowing"';
         end
         cxxlib = '-lOpenCL';
         if implementation == 0 || implementation == 2

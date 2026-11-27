@@ -500,24 +500,13 @@ def computeProjectionWindow(x, angles, r, nColsD, dPitchY, bx, by, bz, dx, dy, d
 
 def _decide_layered_bp(self):
     """Decide (and store in self._layeredBP) whether the CT type-4 backprojection reads the measurements from a 2D layered texture
-    (one layer per projection) instead of a 3D texture. Requires useLayeredBP, a texture (useImages), no helical CT, no Metal and at most
+    (one layer per projection) instead of a 3D texture. Requires useLayeredBP, a texture (useImages), a non-Metal backend, no helical CT and at most
     2048 projections (or the device layered texture limit, if lower) in every subset of every time step."""
     self._layeredBP = False
     if not (bool(getattr(self, 'useLayeredBP', False)) and self.CT and self.BPType == 4 and self.listmode == 0 and self.useImages
-            and not self.useHelical and not self.useMetal):
+            and not self.useMetal and not self.useHelical):
         return False
-    limit = 2048
-    try:
-        if self.useCUDA:
-            import cupy as cp
-            lay = int(cp.cuda.runtime.getDeviceProperties(cp.cuda.runtime.getDevice())['maxTexture2DLayered'][2])
-        else:
-            import pyopencl as cl
-            lay = int(self.clctx.get_info(cl.context_info.DEVICES)[0].image_max_array_size)
-        if lay > 0:
-            limit = min(limit, lay)
-    except Exception:
-        pass
+    limit = _layered_texture_limit(self)
     maxProj = int(np.max(self.nProjSubset))
     if maxProj <= limit:
         self._layeredBP = True

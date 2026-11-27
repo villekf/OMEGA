@@ -624,7 +624,10 @@ if options.largeDim
     if ~options.PDHG && ~options.FDK && ~options.PKMA && ~options.PDDY && ~options.PDHGL1 && ~options.PDHGKL
         error('Large dimension support is only available for PDHG, PKMA, and FDK!')
     end
-    if options.MRP || options.quad || options.Huber || options.weighted_mean || options.FMH || options.ProxTV || options.TGV || options.L || options.AD || options.APLS
+    if options.MRP && options.use_CPU
+        error('The median root prior with largeDim requires a GPU backend!')
+    end
+    if options.quad || options.Huber || options.weighted_mean || options.FMH || options.ProxTV || options.TGV || options.L || options.AD || options.APLS
         error('Large dimension support is only available for non-local methods, RDP, GGMRF, hyperbolic prior and TV!')
     end
     if ismember(options.projector_type,[15 51 45 5 54 55 2 3])

@@ -56,11 +56,14 @@
 #endif
 #endif
 #if KOKO <= MED_NET_LIMIT
-#define MED_SWAP(a, b) { const float medTmp = fmin(a, b); b = fmax(a, b); a = medTmp; }
+#define MED_SWAP(a, b) { const float medTmp = FMIN(a, b); b = FMAX(a, b); a = medTmp; }
 #else
 #ifdef OPENCL
 #define MED_F2U(x) as_uint(x)
 #define MED_U2F(x) as_float(x)
+#elif defined(METAL)
+#define MED_F2U(x) as_type<uint>(x)
+#define MED_U2F(x) as_type<float>(x)
 #else
 #define MED_F2U(x) __float_as_uint(x)
 #define MED_U2F(x) __uint_as_float(x)
@@ -331,12 +334,80 @@ void vectorElementDivision(const CLGLOBAL float* CLRESTRICT input, CLGLOBAL floa
 }
 #endif
 
+// Native Metal bindings for the cooperative local-neighborhood priors.
+#if defined(METAL) && (defined(NLM_) || defined(RDP) || defined(GGMRF) || defined(HYPER))
+#ifdef USEIMAGES
+#define METAL_PRIOR_VOLUME(name, bufferSlot, textureSlot) IMAGE3D name textureSlot
+#define METAL_PRIOR_MASK , MASKBPTYPE maskBP TEX7
+#else
+#define METAL_PRIOR_VOLUME(name, bufferSlot, textureSlot) const CLGLOBAL float* name bufferSlot
+#define METAL_PRIOR_MASK , MASKBPTYPE maskBP BUF7
+#endif
+#ifndef MASKPRIOR
+#undef METAL_PRIOR_MASK
+#define METAL_PRIOR_MASK
+#endif
+#ifdef EFOVZ
+#define METAL_PRIOR_EFOV , CONSTANT uchar* fovIndices BUF8
+#else
+#define METAL_PRIOR_EFOV
+#endif
+#if defined(EFOVZ) && defined(LARGEDIM)
+#define METAL_PRIOR_EFOV_OFFSET , CONSTANT uint& fovOffset BUF10
+#else
+#define METAL_PRIOR_EFOV_OFFSET
+#endif
+#define METAL_PRIOR_GRID METAL_PRIOR_MASK METAL_PRIOR_EFOV METAL_PRIOR_EFOV_OFFSET \
+    , uint3 priorGrid [[thread_position_in_grid]] \
+    , uint3 priorLocal [[thread_position_in_threadgroup]] \
+    , uint3 priorGroup [[threadgroup_position_in_grid]]
+#define METAL_PRIOR_COMMON CLGLOBAL float* grad BUF0, METAL_PRIOR_VOLUME(u, BUF1, TEX1), CONSTANT int3& N BUF2
+#define PRIOR_GID0 priorGrid.x
+#define PRIOR_GID1 priorGrid.y
+#define PRIOR_GID2 priorGrid.z
+#define PRIOR_LID0 LTYPE(priorLocal.x)
+#define PRIOR_LID1 LTYPE(priorLocal.y)
+#define PRIOR_LID2 LTYPE(priorLocal.z)
+#define PRIOR_GRID0 LTYPE(priorGroup.x)
+#define PRIOR_GRID1 LTYPE(priorGroup.y)
+#define PRIOR_GRID2 LTYPE(priorGroup.z)
+#define PRIOR_LSIZE0 LOCAL_SIZE
+#define PRIOR_LSIZE1 LOCAL_SIZE2
+#define PRIOR_LSIZE2 LOCAL_SIZE3
+#define PRIOR_BARRIER metal::threadgroup_barrier(metal::mem_flags::mem_threadgroup);
+#else
+#define PRIOR_GID0 GID0
+#define PRIOR_GID1 GID1
+#define PRIOR_GID2 GID2
+#define PRIOR_LID0 LID0
+#define PRIOR_LID1 LID1
+#define PRIOR_LID2 LID2
+#define PRIOR_GRID0 GRID0
+#define PRIOR_GRID1 GRID1
+#define PRIOR_GRID2 GRID2
+#define PRIOR_LSIZE0 LSIZE0
+#define PRIOR_LSIZE1 LSIZE1
+#define PRIOR_LSIZE2 LSIZE2
+#define PRIOR_BARRIER BARRIER
+#endif
+
 // Non-local means
 #ifdef NLM_ // START NLM
 #if defined(USEIMAGES) && defined(OPENCL)
 CONSTANT sampler_t samplerNLM = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif
 
+#if defined(METAL)
+kernel void NLM(METAL_PRIOR_COMMON, CONSTANT float4& params BUF3, CONSTANT float4& variant BUF4,
+    CONSTANT float* gaussian BUF5
+#ifdef NLMREF
+    , METAL_PRIOR_VOLUME(u_ref, BUF6, TEX6)
+#endif
+#if defined(LARGEDIM)
+    , CONSTANT uint2& nOffset BUF9
+#endif
+     METAL_PRIOR_GRID
+#else
 KERNEL3
 #ifdef USEIMAGES
 void NLM(CLGLOBAL float* CLRESTRICT grad, IMAGE3D u, CONSTANT float* gaussian, 
@@ -375,32 +446,50 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 #ifdef LARGEDIM
 	, const uint2 nOffset
 #endif
+#if defined(EFOVZ) && defined(LARGEDIM)
+	, const uint fovOffset
+#endif
+#endif
 ) {
+#ifdef METAL
+	const float h = params.x, epps = params.y, beta = params.z;
+#if NLTYPE >= 3
+	const float gamma = params.w;
+#endif
+#if NLTYPE == 6
+	const float p = variant.x, q = variant.y, c = variant.z;
+#endif
+#ifdef NLMADAPTIVE
+	const float s = variant.w;
+#endif
+#endif
 #ifdef PYTHON
 	const int3 N = MINT3(Nx, Ny, Nz);
 #endif
-	LTYPE3 ii = MINT3(GID0, GID1, GID2);
+	LTYPE3 ii = MINT3(PRIOR_GID0, PRIOR_GID1, PRIOR_GID2);
 	const LTYPE n = (ii.x) + (ii.y) * (N.x) + (ii.z) * (N.x * N.y);
-	LTYPE startX = GRID0 * LSIZE0 - SWINDOWX - PWINDOWX + LID0;
-	LTYPE startY = GRID1 * LSIZE1 - SWINDOWY - PWINDOWY + LID1;
-	LTYPE startZ = GRID2 * LSIZE2 - SWINDOWZ - PWINDOWZ + LID2;
-	LTYPE endX = (GRID0 + 1) * LSIZE0 + SWINDOWX + PWINDOWX;
-	LTYPE endY = (GRID1 + 1) * LSIZE1 + SWINDOWY + PWINDOWY;
-	LTYPE endZ = (GRID2 + 1) * LSIZE2 + SWINDOWZ + PWINDOWZ;
+	LTYPE startX = PRIOR_GRID0 * PRIOR_LSIZE0 - SWINDOWX - PWINDOWX + PRIOR_LID0;
+	LTYPE startY = PRIOR_GRID1 * PRIOR_LSIZE1 - SWINDOWY - PWINDOWY + PRIOR_LID1;
+	LTYPE startZ = PRIOR_GRID2 * PRIOR_LSIZE2 - SWINDOWZ - PWINDOWZ + PRIOR_LID2;
+	LTYPE endX = (PRIOR_GRID0 + 1) * PRIOR_LSIZE0 + SWINDOWX + PWINDOWX;
+	LTYPE endY = (PRIOR_GRID1 + 1) * PRIOR_LSIZE1 + SWINDOWY + PWINDOWY;
+	LTYPE endZ = (PRIOR_GRID2 + 1) * PRIOR_LSIZE2 + SWINDOWZ + PWINDOWZ;
 	LOCAL float lCache[NLM_TILEX * NLM_TILEY * NLM_TILEZ];
 #ifdef NLMREF
 	LOCAL float lCacheRef[NLM_TILEX * NLM_TILEY * NLM_TILEZ];
 #endif
-	LTYPE indZ = LID2;
-	for (LTYPE zz = startZ; zz < endZ; zz += LSIZE2) {
-		LTYPE indY = LID1;
-		for (LTYPE yy = startY; yy < endY; yy += LSIZE1) {
-			LTYPE indX = LID0;
-			for (LTYPE xx = startX; xx < endX; xx += LSIZE0) {
+	LTYPE indZ = PRIOR_LID2;
+	for (LTYPE zz = startZ; zz < endZ; zz += PRIOR_LSIZE2) {
+		LTYPE indY = PRIOR_LID1;
+		for (LTYPE yy = startY; yy < endY; yy += PRIOR_LSIZE1) {
+			LTYPE indX = PRIOR_LID0;
+			for (LTYPE xx = startX; xx < endX; xx += PRIOR_LSIZE0) {
 #if defined(NLMREF) // START NLMREF
 #ifdef USEIMAGES
 #if defined(CUDA) || defined(HIP)
 				lCacheRef[indX + indY * NLM_TILEX + indZ * NLM_TILEX * NLM_TILEY] = tex3D<float>(u_ref, xx, yy, zz);
+#elif defined(METAL)
+				lCacheRef[indX + indY * NLM_TILEX + indZ * NLM_TILEX * NLM_TILEY] = NLMTexRead(u_ref, int(xx), int(yy), int(zz));
 #else
 				lCacheRef[indX + indY * NLM_TILEX + indZ * NLM_TILEX * NLM_TILEY] = read_imagef(u_ref, samplerNLM, (int4)(xx, yy, zz, 0)).w;
 #endif
@@ -416,6 +505,8 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 #ifdef USEIMAGES
 #if defined(CUDA) || defined(HIP)
 				lCache[indX + indY * NLM_TILEX + indZ * NLM_TILEX * NLM_TILEY] = tex3D<float>(u, xx, yy, zz);
+#elif defined(METAL)
+				lCache[indX + indY * NLM_TILEX + indZ * NLM_TILEX * NLM_TILEY] = NLMTexRead(u, int(xx), int(yy), int(zz));
 #else
 				lCache[indX + indY * NLM_TILEX + indZ * NLM_TILEX * NLM_TILEY] = read_imagef(u, samplerNLM, (int4)(xx, yy, zz, 0)).w;
 #endif
@@ -427,21 +518,25 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 					lCache[indX + indY * NLM_TILEX + indZ * NLM_TILEX * NLM_TILEY] = u[xc + yc * N.x + zc * N.x * N.y];
 				}
 #endif
-				indX += LSIZE0;
+				indX += PRIOR_LSIZE0;
 			}
-			indY += LSIZE1;
+			indY += PRIOR_LSIZE1;
 		}
-		indZ += LSIZE2;
+		indZ += PRIOR_LSIZE2;
 	}
-	BARRIER
-#if defined(CUDA) || defined(HIP)
+	PRIOR_BARRIER
+#if defined(CUDA) || defined(HIP) || defined(METAL)
 	if (ii.x >= N.x || ii.y >= N.y || ii.z >= N.z)
 #else
 	if (any(ii >= N))
 #endif
 		return;
 #ifdef EFOVZ
+#ifdef LARGEDIM
+	if (fovIndices[ii.z + fovOffset] == 0)
+#else
 	if (fovIndices[ii.z] == 0)
+#endif
         return;
 #endif
 #ifdef MASKPRIOR
@@ -449,7 +544,7 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
     if (maskVal == 0)
         return;
 #endif
-	const int3 xxyyzz = CMINT3(LID0 + SWINDOWX + PWINDOWX,LID1 + SWINDOWY + PWINDOWY, LID2 + SWINDOWZ + PWINDOWZ);
+	const int3 xxyyzz = CMINT3(PRIOR_LID0 + SWINDOWX + PWINDOWX,PRIOR_LID1 + SWINDOWY + PWINDOWY, PRIOR_LID2 + SWINDOWZ + PWINDOWZ);
 	const float output = NLMGradient(lCache, gaussian, xxyyzz.x, xxyyzz.y, xxyyzz.z, h, epps
 #if NLTYPE >= 3
 		, gamma
@@ -479,6 +574,22 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 #ifdef USEIMAGES
 CONSTANT sampler_t samplerRDP = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif
+#endif
+
+#if defined(METAL)
+kernel void RDPKernel(METAL_PRIOR_COMMON, CONSTANT float4& params BUF3
+#ifdef RDPCORNERS
+    , CONSTANT float* weight BUF5
+#endif
+#ifdef RDPREF
+    , METAL_PRIOR_VOLUME(u_ref, BUF6, TEX6)
+#endif
+#if defined(LARGEDIM)
+    , CONSTANT uint2& nOffset BUF9
+#endif
+     METAL_PRIOR_GRID
+#else
+#ifdef OPENCL
 #ifdef RDPCORNERS
 __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE2, LOCAL_SIZE3)))
 #else
@@ -517,33 +628,42 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 #ifdef LARGEDIM
 	, const uint2 nOffset
 #endif
+#if defined(EFOVZ) && defined(LARGEDIM)
+	, const uint fovOffset
+#endif
+#endif
 ) {
+#ifdef METAL
+	const float gamma = params.x, epps = params.y, beta = params.z;
+#endif
 #ifdef PYTHON
 	const int3 N = MINT3(Nx, Ny, Nz);
 #endif
-	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
+	LTYPE3 xyz = MINT3(PRIOR_GID0, PRIOR_GID1, PRIOR_GID2);
 #ifdef RDPCORNERS // START RDPCORNERS
 	float output = FLOAT_ZERO;
-	LTYPE startX = GRID0 * LSIZE0 - SWINDOWX + LID0;
-	LTYPE startY = GRID1 * LSIZE1 - SWINDOWY + LID1;
-	LTYPE startZ = GRID2 * LSIZE2 - SWINDOWZ + LID2;
-	LTYPE endX = (GRID0 + 1) * LSIZE0 + SWINDOWX;
-	LTYPE endY = (GRID1 + 1) * LSIZE1 + SWINDOWY;
-	LTYPE endZ = (GRID2 + 1) * LSIZE2 + SWINDOWZ;
+	LTYPE startX = PRIOR_GRID0 * PRIOR_LSIZE0 - SWINDOWX + PRIOR_LID0;
+	LTYPE startY = PRIOR_GRID1 * PRIOR_LSIZE1 - SWINDOWY + PRIOR_LID1;
+	LTYPE startZ = PRIOR_GRID2 * PRIOR_LSIZE2 - SWINDOWZ + PRIOR_LID2;
+	LTYPE endX = (PRIOR_GRID0 + 1) * PRIOR_LSIZE0 + SWINDOWX;
+	LTYPE endY = (PRIOR_GRID1 + 1) * PRIOR_LSIZE1 + SWINDOWY;
+	LTYPE endZ = (PRIOR_GRID2 + 1) * PRIOR_LSIZE2 + SWINDOWZ;
 	LOCAL float lCache[SW_TILEX * SW_TILEY * SW_TILEZ];
 #ifdef RDPREF
 	LOCAL float lCacheRef[SW_TILEX * SW_TILEY * SW_TILEZ];
 #endif
-	LTYPE indZ = LID2;
-	for (LTYPE zz = startZ; zz < endZ; zz += LSIZE2) {
-		LTYPE indY = LID1;
-		for (LTYPE yy = startY; yy < endY; yy += LSIZE1) {
-			LTYPE indX = LID0;
-			for (LTYPE xx = startX; xx < endX; xx += LSIZE0) {
+	LTYPE indZ = PRIOR_LID2;
+	for (LTYPE zz = startZ; zz < endZ; zz += PRIOR_LSIZE2) {
+		LTYPE indY = PRIOR_LID1;
+		for (LTYPE yy = startY; yy < endY; yy += PRIOR_LSIZE1) {
+			LTYPE indX = PRIOR_LID0;
+			for (LTYPE xx = startX; xx < endX; xx += PRIOR_LSIZE0) {
 #if defined(RDPREF) // START RDPREF
 #ifdef USEIMAGES
 #if defined(CUDA) || defined(HIP)
 				lCacheRef[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = tex3D<float>(u_ref, xx, yy, zz);
+#elif defined(METAL)
+				lCacheRef[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = SWTexRead(u_ref, int(xx), int(yy), int(zz));
 #else
 				lCacheRef[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = read_imagef(u_ref, samplerRDP, (int4)(xx, yy, zz, 0)).w;
 #endif
@@ -554,28 +674,34 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 #ifdef USEIMAGES
 #if defined(CUDA) || defined(HIP)
 				lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = tex3D<float>(u, xx, yy, zz);
+#elif defined(METAL)
+				lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = SWTexRead(u, int(xx), int(yy), int(zz));
 #else
 				lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = read_imagef(u, samplerRDP, (int4)(xx, yy, zz, 0)).w;
 #endif
 #else
 				lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = SWBufRead(u, (int)xx, (int)yy, (int)zz, N);
 #endif
-				indX += LSIZE0;
+				indX += PRIOR_LSIZE0;
 			}
-			indY += LSIZE1;
+			indY += PRIOR_LSIZE1;
 		}
-		indZ += LSIZE2;
+		indZ += PRIOR_LSIZE2;
 	}
-	BARRIER
+	PRIOR_BARRIER
 #endif // END RDPCORNERS
-#if defined(CUDA) || defined(HIP)
+#if defined(CUDA) || defined(HIP) || defined(METAL)
 	if (xyz.x >= N.x || xyz.y >= N.y || xyz.z >= N.z)
 #else
 	if (any(xyz >= N))
 #endif
 		return;
 #ifdef EFOVZ
+#ifdef LARGEDIM
+	if (fovIndices[xyz.z + fovOffset] == 0)
+#else
 	if (fovIndices[xyz.z] == 0)
+#endif
         return;
 #endif
 #ifdef MASKPRIOR
@@ -586,11 +712,20 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 	const LTYPE n = (xyz.x) + (xyz.y) * (N.x) + (xyz.z) * (N.x * N.y);
 // #endif
 #ifdef RDPCORNERS // START RDPCORNERS
-	const int3 xxyyzz = CMINT3(LID0 + SWINDOWX, LID1 + SWINDOWY, LID2 + SWINDOWZ);
+	const int3 xxyyzz = CMINT3(PRIOR_LID0 + SWINDOWX, PRIOR_LID1 + SWINDOWY, PRIOR_LID2 + SWINDOWZ);
 	// Shared search-window gradient (general_opencl_functions.h)
-	output = priorGradientSW(lCache, weight, xxyyzz.x, xxyyzz.y, xxyyzz.z, epps, gamma
+	output = priorGradientSW(lCache, weight, xxyyzz.x, xxyyzz.y, xxyyzz.z, epps,
+#if defined(METAL)
+		0, gamma, FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO
+#else
+		gamma
+#endif
+#ifdef PRIORREF
 #ifdef RDPREF
 		, lCacheRef
+#else
+		, lCache
+#endif
 #endif
 	);
 #ifdef LARGEDIM
@@ -622,6 +757,14 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 CONSTANT sampler_t samplerNLM = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif
 
+#if defined(METAL)
+kernel void GGMRFKernel(METAL_PRIOR_COMMON, CONSTANT float4& params BUF3, CONSTANT float& beta BUF4,
+    CONSTANT float* weight BUF5
+#if defined(LARGEDIM)
+    , CONSTANT uint2& nOffset BUF9
+#endif
+    METAL_PRIOR_GRID
+#else
 KERNEL3
 #ifdef USEIMAGES
 void GGMRFKernel(CLGLOBAL float* CLRESTRICT grad, IMAGE3D u, 
@@ -638,48 +781,61 @@ void GGMRFKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRI
 #ifdef LARGEDIM
 	, const uint2 nOffset
 #endif
+#if defined(EFOVZ) && defined(LARGEDIM)
+	, const uint fovOffset
+#endif
+#endif
 ) {
+#ifdef METAL
+	const float p = params.x, q = params.y, c = params.z, pqc = params.w;
+#endif
 
-	LTYPE3 ii = MINT3(GID0, GID1, GID2);
+	LTYPE3 ii = MINT3(PRIOR_GID0, PRIOR_GID1, PRIOR_GID2);
 	const LTYPE n = (ii.x) + (ii.y) * (N.x) + (ii.z) * (N.x * N.y);
 	float output = FLOAT_ZERO;
-	LTYPE startX = GRID0 * LSIZE0 - SWINDOWX + LID0;
-	LTYPE startY = GRID1 * LSIZE1 - SWINDOWY + LID1;
-	LTYPE startZ = GRID2 * LSIZE2 - SWINDOWZ + LID2;
-	LTYPE endX = (GRID0 + 1) * LSIZE0 + SWINDOWX;
-	LTYPE endY = (GRID1 + 1) * LSIZE1 + SWINDOWY;
-	LTYPE endZ = (GRID2 + 1) * LSIZE2 + SWINDOWZ;
+	LTYPE startX = PRIOR_GRID0 * PRIOR_LSIZE0 - SWINDOWX + PRIOR_LID0;
+	LTYPE startY = PRIOR_GRID1 * PRIOR_LSIZE1 - SWINDOWY + PRIOR_LID1;
+	LTYPE startZ = PRIOR_GRID2 * PRIOR_LSIZE2 - SWINDOWZ + PRIOR_LID2;
+	LTYPE endX = (PRIOR_GRID0 + 1) * PRIOR_LSIZE0 + SWINDOWX;
+	LTYPE endY = (PRIOR_GRID1 + 1) * PRIOR_LSIZE1 + SWINDOWY;
+	LTYPE endZ = (PRIOR_GRID2 + 1) * PRIOR_LSIZE2 + SWINDOWZ;
 	LOCAL float lCache[SW_TILEX * SW_TILEY * SW_TILEZ];
-	LTYPE indZ = LID2;
-	for (LTYPE zz = startZ; zz < endZ; zz += LSIZE2) {
-		LTYPE indY = LID1;
-		for (LTYPE yy = startY; yy < endY; yy += LSIZE1) {
-			LTYPE indX = LID0;
-			for (LTYPE xx = startX; xx < endX; xx += LSIZE0) {
+	LTYPE indZ = PRIOR_LID2;
+	for (LTYPE zz = startZ; zz < endZ; zz += PRIOR_LSIZE2) {
+		LTYPE indY = PRIOR_LID1;
+		for (LTYPE yy = startY; yy < endY; yy += PRIOR_LSIZE1) {
+			LTYPE indX = PRIOR_LID0;
+			for (LTYPE xx = startX; xx < endX; xx += PRIOR_LSIZE0) {
 #ifdef USEIMAGES
 #if defined(CUDA) || defined(HIP)
 				lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = tex3D<float>(u, xx, yy, zz);
+#elif defined(METAL)
+				lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = SWTexRead(u, int(xx), int(yy), int(zz));
 #else
 				lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = read_imagef(u, samplerNLM, (int4)(xx, yy, zz, 0)).w;
 #endif
 #else
 				lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = SWBufRead(u, (int)xx, (int)yy, (int)zz, N);
 #endif
-				indX += LSIZE0;
+				indX += PRIOR_LSIZE0;
 			}
-			indY += LSIZE1;
+			indY += PRIOR_LSIZE1;
 		}
-		indZ += LSIZE2;
+		indZ += PRIOR_LSIZE2;
 	}
-	BARRIER
-#if defined(CUDA) || defined(HIP)
+	PRIOR_BARRIER
+#if defined(CUDA) || defined(HIP) || defined(METAL)
 	if (ii.x >= N.x || ii.y >= N.y || ii.z >= N.z)
 #else
 	if (any(ii >= N))
 #endif
 		return;
 #ifdef EFOVZ
+#ifdef LARGEDIM
+	if (fovIndices[ii.z + fovOffset] == 0)
+#else
 	if (fovIndices[ii.z] == 0)
+#endif
         return;
 #endif
 #ifdef MASKPRIOR
@@ -687,10 +843,19 @@ void GGMRFKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRI
     if (maskVal == 0)
         return;
 #endif
-	const int3 xxyyzz = CMINT3(LID0 + SWINDOWX, LID1 + SWINDOWY, LID2 + SWINDOWZ);
+	const int3 xxyyzz = CMINT3(PRIOR_LID0 + SWINDOWX, PRIOR_LID1 + SWINDOWY, PRIOR_LID2 + SWINDOWZ);
 	// Shared search-window gradient (general_opencl_functions.h)
 	const float epps = FLOAT_ZERO;
-	output = priorGradientSW(lCache, weight, xxyyzz.x, xxyyzz.y, xxyyzz.z, epps, p, q, c, pqc);
+	output = priorGradientSW(lCache, weight, xxyyzz.x, xxyyzz.y, xxyyzz.z, epps,
+#if defined(METAL)
+		1, FLOAT_ZERO, p, q, c, pqc, FLOAT_ZERO
+#else
+		p, q, c, pqc
+#endif
+#if defined(METAL) && defined(PRIORREF)
+		, lCache
+#endif
+	);
 #ifdef LARGEDIM
 	if (ii.z >= nOffset.x && ii.z < nOffset.y)
 		grad[n - N.x * N.y * nOffset.x] += beta * output;
@@ -703,32 +868,73 @@ void GGMRFKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRI
 // Median root prior
 #ifdef MEDIAN // START MEDIAN
 KERNEL3
-void medianFilter3D(const CLGLOBAL float* grad, CLGLOBAL float* output, const int3 N, const int3 NOrig
+void medianFilter3D(const CLGLOBAL float* grad BUF0, CLGLOBAL float* output BUF1,
+#ifdef METAL
+	CONSTANT int3& N BUF2
+#else
+	const int3 N, const int3 NOrig
+#endif
 #ifdef MASKPRIOR
-	, MASKBPTYPE maskBP
+	, MASKBPTYPE maskBP TEX3
 #endif
 #ifdef EFOVZ
-	, CONSTANT uchar* fovIndices
+	, CONSTANT uchar* fovIndices BUF4
+#endif
+#if defined(METAL) && defined(LARGEDIM)
+	, CONSTANT uint2& outputRange BUF5
+#ifdef EFOVZ
+	, CONSTANT uint& fovOffset BUF6
+#endif
+#elif defined(LARGEDIM)
+	, const uint2 outputRange
+#ifdef EFOVZ
+	, const uint fovOffset
+#endif
+#endif
+#ifdef METAL
+	, uint3 globalId [[thread_position_in_grid]]
 #endif
 ) {
-	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
+#ifdef METAL
+	const LTYPE3 xyz = MINT3(globalId.x, globalId.y, globalId.z);
+#else
+	const LTYPE3 xyz = MINT3(GID0, GID1, GID2);
+#endif
 	if (xyz.x >= N.x + SEARCH_WINDOW_X || xyz.y >= N.y + SEARCH_WINDOW_Y || xyz.z >= N.z + SEARCH_WINDOW_Z || xyz.x < SEARCH_WINDOW_X || xyz.y < SEARCH_WINDOW_Y || xyz.z < SEARCH_WINDOW_Z)
 		return;
-	const LTYPE n = (xyz.x - SEARCH_WINDOW_X) + (xyz.y - SEARCH_WINDOW_Y) * (N.x) + (xyz.z - SEARCH_WINDOW_Z) * (N.x * N.y);
+#ifdef LARGEDIM
+	const LTYPE localZ = xyz.z - SEARCH_WINDOW_Z;
+	if (localZ < (LTYPE)(outputRange.x) || localZ >= (LTYPE)(outputRange.y))
+		return;
+	const LTYPE outputZ = localZ - (LTYPE)(outputRange.x);
+#else
+	const LTYPE localZ = xyz.z - SEARCH_WINDOW_Z;
+	const LTYPE outputZ = localZ;
+#endif
+	const LTYPE n = (xyz.x - SEARCH_WINDOW_X) + (xyz.y - SEARCH_WINDOW_Y) * (N.x) + outputZ * (N.x * N.y);
 #if defined(EFOVZ) || defined(MASKPRIOR)
 	// MRP is computed as (im - grad) / (grad + epps), which can cause issues if grad = 0 as in the case of mask use
 	// This guarantees that the voxel value is returned instead (grad == im --> im - grad = 0)
 	const LTYPE nCenter = xyz.x + xyz.y * (N.x + SEARCH_WINDOW_X * 2) + xyz.z * (N.x + SEARCH_WINDOW_X * 2) * (N.y + SEARCH_WINDOW_Y * 2);
 #endif
 #ifdef EFOVZ
-	if (fovIndices[xyz.z - SEARCH_WINDOW_Z] == 0) {
+#ifdef LARGEDIM
+	const LTYPE globalZ = localZ + (LTYPE)(fovOffset);
+#else
+	const LTYPE globalZ = localZ;
+#endif
+	if (fovIndices[globalZ] == 0) {
 		output[n] = grad[nCenter];
 		return;
 	}
 #endif
 #ifdef MASKPRIOR
 	const LTYPE3 xyzOrig = MINT3(xyz.x - SEARCH_WINDOW_X, xyz.y - SEARCH_WINDOW_Y, xyz.z - SEARCH_WINDOW_Z);
+#ifdef METAL
+	const int maskVal = readMaskBP(maskBP, int3(xyzOrig), uint3(N));
+#else
 	const int maskVal = readMaskBP(maskBP, CINT3(xyzOrig), CUINT3(N));
+#endif
 	if (maskVal == 0) {
 		output[n] = grad[nCenter];
 		return;
@@ -788,10 +994,30 @@ void medianFilter3D(const CLGLOBAL float* grad, CLGLOBAL float* output, const in
 }
 #endif // END MEDIAN
 
+#ifdef METAL
+#define PRIOR_SCALAR(type, name, slot) CONSTANT type& name BUF##slot
+#ifdef USEIMAGES
+#define PRIOR_MASK_SLOT(slot) [[texture(slot)]]
+#else
+#define PRIOR_MASK_SLOT(slot) BUF##slot
+#endif
+#define PRIOR_GRID_ARGUMENT , uint3 priorGlobalId [[thread_position_in_grid]]
+#define PRIOR_GRID_POSITION MINT3(priorGlobalId.x, priorGlobalId.y, priorGlobalId.z)
+#define PRIOR_INT3(value) int3(value)
+#define PRIOR_FOV_OFFSET(N, NOrig) MINT3((N).x - (NOrig).x, (N).y - (NOrig).y, (N).z - (NOrig).z) / 2
+#else
+#define PRIOR_SCALAR(type, name, slot) const type name
+#define PRIOR_MASK_SLOT(slot)
+#define PRIOR_GRID_ARGUMENT
+#define PRIOR_GRID_POSITION MINT3(GID0, GID1, GID2)
+#define PRIOR_INT3(value) CINT3(value)
+#define PRIOR_FOV_OFFSET(N, NOrig) ((N) - (NOrig)) / 2
+#endif
+
 // TODO: Add actual support for backward difference
 #if defined(PROXTV) || defined(TVGRAD) // START PROXTV || TVGRAD
 // Backward difference for X-axis
-DEVICE void backwardDiffX(float* apuVal, const LTYPE3 xyz, const int3 N, const LTYPE xx, const CLGLOBAL float* im) {
+DEVICE void backwardDiffX(PTR_THR float* apuVal, const LTYPE3 xyz, const int3 N, const LTYPE xx, const CLGLOBAL float* im) {
 		const LTYPE xh = ((xyz.x - 1) + xyz.y * N.x + xyz.z * N.x * N.y);
 		if (xyz.x == 0)
 			*apuVal += im[xx];
@@ -800,7 +1026,7 @@ DEVICE void backwardDiffX(float* apuVal, const LTYPE3 xyz, const int3 N, const L
 }
 
 // Backward difference for Y-axis
-DEVICE void backwardDiffY(float* apuVal, const LTYPE3 xyz, const int3 N, const LTYPE xx, const CLGLOBAL float* im) {
+DEVICE void backwardDiffY(PTR_THR float* apuVal, const LTYPE3 xyz, const int3 N, const LTYPE xx, const CLGLOBAL float* im) {
 		const LTYPE xh = ((xyz.x) + (xyz.y - 1) * N.x + xyz.z * N.x * N.y);
 		if (xyz.y == 0)
 			*apuVal += im[xx];
@@ -809,7 +1035,7 @@ DEVICE void backwardDiffY(float* apuVal, const LTYPE3 xyz, const int3 N, const L
 }
 
 // Backward difference for Z-axis
-DEVICE void backwardDiffZ(float* apuVal, const LTYPE3 xyz, const int3 N, const LTYPE xx, const CLGLOBAL float* im) {
+DEVICE void backwardDiffZ(PTR_THR float* apuVal, const LTYPE3 xyz, const int3 N, const LTYPE xx, const CLGLOBAL float* im) {
 		const LTYPE xh = ((xyz.x) + (xyz.y) * N.x + (xyz.z - 1) * N.x * N.y);
 		if (xyz.z == 0)
 			*apuVal += im[xx];
@@ -818,7 +1044,7 @@ DEVICE void backwardDiffZ(float* apuVal, const LTYPE3 xyz, const int3 N, const L
 }
 
 // Backward difference for X-axis (not the current voxel)
-DEVICE void backwardDiffX2(float* apuVal, const LTYPE3 xyz, const int3 N, const CLGLOBAL float* im, const float imApu) {
+DEVICE void backwardDiffX2(PTR_THR float* apuVal, const LTYPE3 xyz, const int3 N, const CLGLOBAL float* im, const float imApu) {
 		const LTYPE xh = ((xyz.x - 1) + xyz.y * N.x + xyz.z * N.x * N.y);
 		if (xyz.x == 0)
 			*apuVal += imApu;
@@ -827,7 +1053,7 @@ DEVICE void backwardDiffX2(float* apuVal, const LTYPE3 xyz, const int3 N, const 
 }
 
 // Backward difference for Y-axis (not the current voxel)
-DEVICE void backwardDiffY2(float* apuVal, const LTYPE3 xyz, const int3 N, const CLGLOBAL float* im, const float imApu) {
+DEVICE void backwardDiffY2(PTR_THR float* apuVal, const LTYPE3 xyz, const int3 N, const CLGLOBAL float* im, const float imApu) {
 		const LTYPE xh = ((xyz.x) + (xyz.y - 1) * N.x + (xyz.z) * N.x * N.y);
 		if (xyz.y == 0)
 			*apuVal += imApu;
@@ -836,7 +1062,7 @@ DEVICE void backwardDiffY2(float* apuVal, const LTYPE3 xyz, const int3 N, const 
 }
 
 // Backward difference for Z-axis (not the current voxel)
-DEVICE void backwardDiffZ2(float* apuVal, const LTYPE3 xyz, const int3 N, const CLGLOBAL float* im, const float imApu) {
+DEVICE void backwardDiffZ2(PTR_THR float* apuVal, const LTYPE3 xyz, const int3 N, const CLGLOBAL float* im, const float imApu) {
 		const LTYPE xh = ((xyz.x) + (xyz.y) * N.x + (xyz.z - 1) * N.x * N.y);
 		if (xyz.z == 0)
 			*apuVal += imApu;
@@ -845,7 +1071,7 @@ DEVICE void backwardDiffZ2(float* apuVal, const LTYPE3 xyz, const int3 N, const 
 }
 
 // Forward difference for X-axis
-DEVICE void forwardDiffX(float* apuVal, const LTYPE3 xyz, const int3 N, const LTYPE xx, const CLGLOBAL float* im) {
+DEVICE void forwardDiffX(PTR_THR float* apuVal, const LTYPE3 xyz, const int3 N, const LTYPE xx, const CLGLOBAL float* im) {
 		const LTYPE xh = ((xyz.x + 1) + xyz.y * N.x + xyz.z * N.x * N.y);
 		if (xyz.x == N.x - 1)
 			*apuVal -= im[xx];
@@ -854,7 +1080,7 @@ DEVICE void forwardDiffX(float* apuVal, const LTYPE3 xyz, const int3 N, const LT
 }
 
 // Forward difference for Y-axis
-DEVICE void forwardDiffY(float* apuVal, const LTYPE3 xyz, const int3 N, const LTYPE xx, const CLGLOBAL float* im) {
+DEVICE void forwardDiffY(PTR_THR float* apuVal, const LTYPE3 xyz, const int3 N, const LTYPE xx, const CLGLOBAL float* im) {
 		const LTYPE xh = ((xyz.x) + (xyz.y + 1) * N.x + xyz.z * N.x * N.y);
 		if (xyz.y == N.y - 1)
 			*apuVal -= im[xx];
@@ -863,7 +1089,7 @@ DEVICE void forwardDiffY(float* apuVal, const LTYPE3 xyz, const int3 N, const LT
 }
 
 // Forward difference for Z-axis
-DEVICE void forwardDiffZ(float* apuVal, const LTYPE3 xyz, const int3 N, const LTYPE xx, const CLGLOBAL float* im) {
+DEVICE void forwardDiffZ(PTR_THR float* apuVal, const LTYPE3 xyz, const int3 N, const LTYPE xx, const CLGLOBAL float* im) {
 		const LTYPE xh = ((xyz.x) + (xyz.y) * N.x + (xyz.z + 1) * N.x * N.y);
 		if (xyz.z == N.z - 1)
 			*apuVal -= im[xx];
@@ -872,7 +1098,7 @@ DEVICE void forwardDiffZ(float* apuVal, const LTYPE3 xyz, const int3 N, const LT
 }
 
 // Forward difference for X-axis (not the current voxel)
-DEVICE void forwardDiffX2(float* apuVal, const LTYPE3 xyz, const int3 N, const CLGLOBAL float* im, const float imApu) {
+DEVICE void forwardDiffX2(PTR_THR float* apuVal, const LTYPE3 xyz, const int3 N, const CLGLOBAL float* im, const float imApu) {
 		const LTYPE xh = ((xyz.x + 1) + xyz.y * N.x + xyz.z * N.x * N.y);
 		if (xyz.x == N.x - 1)
 			*apuVal -= imApu;
@@ -881,7 +1107,7 @@ DEVICE void forwardDiffX2(float* apuVal, const LTYPE3 xyz, const int3 N, const C
 }
 
 // Forward difference for Y-axis (not the current voxel)
-DEVICE void forwardDiffY2(float* apuVal, const LTYPE3 xyz, const int3 N, const CLGLOBAL float* im, const float imApu) {
+DEVICE void forwardDiffY2(PTR_THR float* apuVal, const LTYPE3 xyz, const int3 N, const CLGLOBAL float* im, const float imApu) {
 		const LTYPE xh = ((xyz.x) + (xyz.y + 1) * N.x + (xyz.z) * N.x * N.y);
 		if (xyz.y == N.y - 1)
 			*apuVal -= imApu;
@@ -890,7 +1116,7 @@ DEVICE void forwardDiffY2(float* apuVal, const LTYPE3 xyz, const int3 N, const C
 }
 
 // Forward difference for Z-axis (not the current voxel)
-DEVICE void forwardDiffZ2(float* apuVal, const LTYPE3 xyz, const int3 N, const CLGLOBAL float* im, const float imApu) {
+DEVICE void forwardDiffZ2(PTR_THR float* apuVal, const LTYPE3 xyz, const int3 N, const CLGLOBAL float* im, const float imApu) {
 		const LTYPE xh = ((xyz.x) + (xyz.y) * N.x + (xyz.z + 1) * N.x * N.y);
 		if (xyz.z == N.z - 1)
 			*apuVal -= imApu;
@@ -912,20 +1138,102 @@ DEVICE float proxQRead(const CLGLOBAL float* CLRESTRICT q, const LTYPE x, const 
 	return q[x + y * N.x + z * N.x * N.y];
 }
 
+#if defined(METAL)
+// Central differences match computeGradient (derivType >= 2): centred in the interior and one-sided at image edges.
+DEVICE void proxCentralDiffX2(PTR_THR float* apuVal, const LTYPE3 xyz, const int3 N, const LTYPE xx,
+	const CLGLOBAL float* im, const float imApu) {
+	if (N.x <= 1)
+		return;
+	if (xyz.x == 0)
+		*apuVal += im[xx + 1] - imApu;
+	else if (xyz.x == N.x - 1)
+		*apuVal += imApu - im[xx - 1];
+	else
+		*apuVal += FLOAT_HALF * (im[xx + 1] - im[xx - 1]);
+}
+
+DEVICE void proxCentralDiffY2(PTR_THR float* apuVal, const LTYPE3 xyz, const int3 N, const LTYPE xx,
+	const CLGLOBAL float* im, const float imApu) {
+	if (N.y <= 1)
+		return;
+	if (xyz.y == 0)
+		*apuVal += im[xx + N.x] - imApu;
+	else if (xyz.y == N.y - 1)
+		*apuVal += imApu - im[xx - N.x];
+	else
+		*apuVal += FLOAT_HALF * (im[xx + N.x] - im[xx - N.x]);
+}
+
+DEVICE void proxCentralDiffZ2(PTR_THR float* apuVal, const LTYPE3 xyz, const int3 N, const LTYPE xx,
+	const CLGLOBAL float* im, const float imApu) {
+	if (N.z <= 1)
+		return;
+	const LTYPE stride = N.x * N.y;
+	if (xyz.z == 0)
+		*apuVal += im[xx + stride] - imApu;
+	else if (xyz.z == N.z - 1)
+		*apuVal += imApu - im[xx - stride];
+	else
+		*apuVal += FLOAT_HALF * (im[xx + stride] - im[xx - stride]);
+}
+
+// Return -D^T q for the central difference used by computeGradient. q may cover only NOrig
+// (the proximal prior FOV), while xyz and N describe the full image used by the gradient.
+DEVICE float proxCentralNegTranspose1D(const LTYPE coordinate, const LTYPE dimension,
+	const float qCenter, const float qMinus, const float qPlus) {
+	if (dimension <= 1)
+		return FLOAT_ZERO;
+	float transpose = FLOAT_ZERO;
+	if (coordinate == 0)
+		transpose -= qCenter;
+	if (coordinate == dimension - 1)
+		transpose += qCenter;
+	if (coordinate > 0)
+		transpose += (coordinate == 1 ? FLOAT_ONE : FLOAT_HALF) * qMinus;
+	if (coordinate + 1 < dimension)
+		transpose -= (coordinate == dimension - 2 ? FLOAT_ONE : FLOAT_HALF) * qPlus;
+	return -transpose;
+}
+
+DEVICE float proxCentralNegTransposeX(const CLGLOBAL float* CLRESTRICT q, const LTYPE3 xyz, const int3 N,
+	const LTYPE3 xyzQ, const int3 NQ) {
+	const float qCenter = proxQRead(q, xyzQ.x, xyzQ.y, xyzQ.z, NQ);
+	const float qMinus = xyz.x > 0 ? proxQRead(q, xyzQ.x - 1, xyzQ.y, xyzQ.z, NQ) : FLOAT_ZERO;
+	const float qPlus = xyz.x + 1 < N.x ? proxQRead(q, xyzQ.x + 1, xyzQ.y, xyzQ.z, NQ) : FLOAT_ZERO;
+	return proxCentralNegTranspose1D(xyz.x, N.x, qCenter, qMinus, qPlus);
+}
+
+DEVICE float proxCentralNegTransposeY(const CLGLOBAL float* CLRESTRICT q, const LTYPE3 xyz, const int3 N,
+	const LTYPE3 xyzQ, const int3 NQ) {
+	const float qCenter = proxQRead(q, xyzQ.x, xyzQ.y, xyzQ.z, NQ);
+	const float qMinus = xyz.y > 0 ? proxQRead(q, xyzQ.x, xyzQ.y - 1, xyzQ.z, NQ) : FLOAT_ZERO;
+	const float qPlus = xyz.y + 1 < N.y ? proxQRead(q, xyzQ.x, xyzQ.y + 1, xyzQ.z, NQ) : FLOAT_ZERO;
+	return proxCentralNegTranspose1D(xyz.y, N.y, qCenter, qMinus, qPlus);
+}
+
+DEVICE float proxCentralNegTransposeZ(const CLGLOBAL float* CLRESTRICT q, const LTYPE3 xyz, const int3 N,
+	const LTYPE3 xyzQ, const int3 NQ) {
+	const float qCenter = proxQRead(q, xyzQ.x, xyzQ.y, xyzQ.z, NQ);
+	const float qMinus = xyz.z > 0 ? proxQRead(q, xyzQ.x, xyzQ.y, xyzQ.z - 1, NQ) : FLOAT_ZERO;
+	const float qPlus = xyz.z + 1 < N.z ? proxQRead(q, xyzQ.x, xyzQ.y, xyzQ.z + 1, NQ) : FLOAT_ZERO;
+	return proxCentralNegTranspose1D(xyz.z, N.z, qCenter, qMinus, qPlus);
+}
+#endif
+
 // Proximal TV divergence
 KERNEL3
-void ProxTVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRESTRICT gradX, const CLGLOBAL float* CLRESTRICT gradY, const CLGLOBAL float* CLRESTRICT gradZ, CLGLOBAL float* output
-// The (optional) logical mask should be zero in regions where the prior is not needed
+void ProxTVDivergence(PRIOR_SCALAR(int3, N, 0), PRIOR_SCALAR(int3, NOrig, 1),
+	const CLGLOBAL float* CLRESTRICT gradX BUF2, const CLGLOBAL float* CLRESTRICT gradY BUF3, const CLGLOBAL float* CLRESTRICT gradZ BUF4, CLGLOBAL float* output BUF5
 #ifdef MASKPRIOR
-	, MASKBPTYPE maskBP
+	, MASKBPTYPE maskBP PRIOR_MASK_SLOT(6)
 #endif
-// The (optional) logical vector should be zero in axial slices where the extended FOV is
 #ifdef EFOVZ
-	, CONSTANT uchar* fovIndices
+	, CONSTANT uchar* fovIndices BUF7
 #endif
+	PRIOR_GRID_ARGUMENT
 ) {
-	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
-#if defined(CUDA) || defined(HIP)
+	LTYPE3 xyz = PRIOR_GRID_POSITION;
+#if defined(CUDA) || defined(HIP) || defined(METAL)
 	if (xyz.x >= N.x || xyz.y >= N.y || xyz.z >= N.z)
 #else
 	if (any(xyz >= N))
@@ -934,7 +1242,7 @@ void ProxTVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 	const LTYPE x = xyz.x + xyz.y * N.x + xyz.z * N.x * N.y;
 #if defined(EFOVZ)
 	// Coordinates in the original FOV, i.e. in the volume where the prior is computed
-	const LTYPE3 NDiff = (N - NOrig) / 2;
+	const LTYPE3 NDiff = PRIOR_FOV_OFFSET(N, NOrig);
 	const LTYPE3 xyzF = xyz - NDiff;
 #else
 	const LTYPE3 xyzF = xyz;
@@ -950,7 +1258,7 @@ void ProxTVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 		return;
 #endif
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, CINT3(xyz), CUINT3(N));
+	const int maskVal = readMaskBP(maskBP, PRIOR_INT3(xyz), CUINT3(N));
 	if (maskVal == 0)
 		return;
 #endif
@@ -965,6 +1273,10 @@ void ProxTVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 	apuVal += (proxQRead(gradX, xyzF.x + 1, xyzF.y, xyzF.z, NOrig) - proxQRead(gradX, xyzF.x, xyzF.y, xyzF.z, NOrig));
 	apuVal += (proxQRead(gradY, xyzF.x, xyzF.y + 1, xyzF.z, NOrig) - proxQRead(gradY, xyzF.x, xyzF.y, xyzF.z, NOrig));
 	apuVal += (proxQRead(gradZ, xyzF.x, xyzF.y, xyzF.z + 1, NOrig) - proxQRead(gradZ, xyzF.x, xyzF.y, xyzF.z, NOrig));
+#elif defined(METAL) && DIFFTYPE >= 2
+	apuVal += proxCentralNegTransposeX(gradX, xyz, N, xyzF, NOrig);
+	apuVal += proxCentralNegTransposeY(gradY, xyz, N, xyzF, NOrig);
+	apuVal += proxCentralNegTransposeZ(gradZ, xyz, N, xyzF, NOrig);
 #else
 #endif // END DIFFTYPE
 	output[x] -= apuVal;
@@ -972,23 +1284,25 @@ void ProxTVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 
 // Proximal TV or TGV gradient computation, i.e. the dual update with the projection
 KERNEL3
-void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRESTRICT im, CLGLOBAL float* outputX, CLGLOBAL float* outputY, CLGLOBAL float* outputZ, const float sigma2, const float alpha
+void ProxTVGradient(PRIOR_SCALAR(int3, N, 0), PRIOR_SCALAR(int3, NOrig, 1),
+	const CLGLOBAL float* CLRESTRICT im BUF2, CLGLOBAL float* outputX BUF3, CLGLOBAL float* outputY BUF4, CLGLOBAL float* outputZ BUF5,
+	PRIOR_SCALAR(float, sigma2, 6), PRIOR_SCALAR(float, alpha, 7)
 #ifdef PROXTGV
+	, const CLGLOBAL float* CLRESTRICT vX BUF8, const CLGLOBAL float* CLRESTRICT vY BUF9
 #ifdef TGVZ
-	, const CLGLOBAL float* CLRESTRICT vX, const CLGLOBAL float* CLRESTRICT vY, const CLGLOBAL float* CLRESTRICT vZ
-#else
-	, const CLGLOBAL float* CLRESTRICT vX, const CLGLOBAL float* CLRESTRICT vY
+	, const CLGLOBAL float* CLRESTRICT vZ BUF10
 #endif
 #endif
 #ifdef MASKPRIOR
-	, MASKBPTYPE maskBP
+	, MASKBPTYPE maskBP PRIOR_MASK_SLOT(11)
 #endif
 #ifdef EFOVZ
-	, CONSTANT uchar* fovIndices
+	, CONSTANT uchar* fovIndices BUF12
 #endif
+	PRIOR_GRID_ARGUMENT
 ) {
-	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
-#if defined(CUDA) || defined(HIP)
+	LTYPE3 xyz = PRIOR_GRID_POSITION;
+#if defined(CUDA) || defined(HIP) || defined(METAL)
 	if (xyz.x >= N.x || xyz.y >= N.y || xyz.z >= N.z)
 #else
 	if (any(xyz >= N))
@@ -999,7 +1313,7 @@ void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLREST
         return;
 #endif
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, CINT3(xyz), CUINT3(N));
+	const int maskVal = readMaskBP(maskBP, PRIOR_INT3(xyz), CUINT3(N));
     if (maskVal == 0)
         return;
 #endif
@@ -1007,8 +1321,11 @@ void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLREST
 	const LTYPE x = xyz.x + xyz.y * N.x + xyz.z * N.x * N.y;
 	float imApu = im[x];
 #if defined(EFOVZ)
-	const LTYPE3 NDiff = (N - NOrig) / 2;
-	const LTYPE y = (xyz.x - NDiff.x) + (xyz.y - NDiff.y) * NOrig.x + (xyz.z - NDiff.z) * NOrig.x * NOrig.y;
+	const LTYPE3 NDiff = PRIOR_FOV_OFFSET(N, NOrig);
+	const LTYPE3 xyzF = xyz - NDiff;
+	if (xyzF.x < 0 || xyzF.y < 0 || xyzF.z < 0 || xyzF.x >= NOrig.x || xyzF.y >= NOrig.y || xyzF.z >= NOrig.z)
+		return;
+	const LTYPE y = xyzF.x + xyzF.y * NOrig.x + xyzF.z * NOrig.x * NOrig.y;
 #else
 	const LTYPE y = x;
 #endif
@@ -1026,6 +1343,11 @@ void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLREST
 	backwardDiffX2(&dX, xyz, N, im, imApu);
 	backwardDiffY2(&dY, xyz, N, im, imApu);
 	backwardDiffZ2(&dZ, xyz, N, im, imApu);
+#elif defined(METAL) && DIFFTYPE >= 2
+	// Central difference (one-sided at image edges)
+	proxCentralDiffX2(&dX, xyz, N, x, im, imApu);
+	proxCentralDiffY2(&dY, xyz, N, x, im, imApu);
+	proxCentralDiffZ2(&dZ, xyz, N, x, im, imApu);
 #else
 #endif // END DIFFTYPE
 #ifdef PROXTGV
@@ -1041,15 +1363,15 @@ void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLREST
 	// Voxels skipped above keep their previous, already projected, values
 #ifdef L2 // START L2
 // L2 norm
-	const float scale = fmax(FLOAT_ONE, length(apu) / alpha);
+	const float scale = FMAX(FLOAT_ONE, LENGTH(apu) / alpha);
 	outputX[y] = apu.x / scale;
 	outputY[y] = apu.y / scale;
 	outputZ[y] = apu.z / scale;
 #else
 // L1 norm (anisotropic): the projection is a separate clamp of each component to [-alpha, alpha]
-	outputX[y] = apu.x / fmax(FLOAT_ONE, fabs(apu.x) / alpha);
-	outputY[y] = apu.y / fmax(FLOAT_ONE, fabs(apu.y) / alpha);
-	outputZ[y] = apu.z / fmax(FLOAT_ONE, fabs(apu.z) / alpha);
+	outputX[y] = apu.x / FMAX(FLOAT_ONE, FABS(apu.x) / alpha);
+	outputY[y] = apu.y / FMAX(FLOAT_ONE, FABS(apu.y) / alpha);
+	outputZ[y] = apu.z / FMAX(FLOAT_ONE, FABS(apu.z) / alpha);
 #endif // END L2
 }
 #endif // END PROXTV
@@ -1057,27 +1379,35 @@ void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLREST
 #ifdef PROXTGV // START PROXTGV
 KERNEL3
 // Symmetric derivative for TGV, i.e. the dual update with the projection
-void ProxTGVSymmDeriv(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRESTRICT vX, const CLGLOBAL float* CLRESTRICT vY, 
+void ProxTGVSymmDeriv(PRIOR_SCALAR(int3, N, 0), PRIOR_SCALAR(int3, NOrig, 1),
+	const CLGLOBAL float* CLRESTRICT vX BUF2, const CLGLOBAL float* CLRESTRICT vY BUF3
 #ifdef TGVZ
-	const CLGLOBAL float* CLRESTRICT vZ, CLGLOBAL float* qX, CLGLOBAL float* qY, CLGLOBAL float* qZ, CLGLOBAL float* q2XY, CLGLOBAL float* q2XZ, CLGLOBAL float* q2YZ, 
-#else
-	CLGLOBAL float* qX, CLGLOBAL float* qY, CLGLOBAL float* q2XY, 
+	, const CLGLOBAL float* CLRESTRICT vZ BUF4
 #endif
-	const float sigma2, const float alpha
+	, CLGLOBAL float* qX BUF5, CLGLOBAL float* qY BUF6
+#ifdef TGVZ
+	, CLGLOBAL float* qZ BUF7
+#endif
+	, CLGLOBAL float* q2XY BUF8
+#ifdef TGVZ
+	, CLGLOBAL float* q2XZ BUF9, CLGLOBAL float* q2YZ BUF10
+#endif
+	, PRIOR_SCALAR(float, sigma2, 11), PRIOR_SCALAR(float, alpha, 12)
 #ifdef MASKPRIOR
-	, MASKBPTYPE maskBP
+	, MASKBPTYPE maskBP PRIOR_MASK_SLOT(13)
 #endif
+	PRIOR_GRID_ARGUMENT
 ) {
-	const LTYPE3 xyz = MINT3(GID0, GID1, GID2);
-#if defined(CUDA) || defined(HIP)
+	const LTYPE3 xyz = PRIOR_GRID_POSITION;
+#if defined(CUDA) || defined(HIP) || defined(METAL)
 	if (xyz.x >= NOrig.x || xyz.y >= NOrig.y || xyz.z >= NOrig.z)
 #else
 	if (any(xyz >= NOrig))
 #endif
 		return;
 #ifdef MASKPRIOR
-	const LTYPE3 NDiff = (N - NOrig) / 2;
-	const int maskVal = readMaskBP(maskBP, CINT3(xyz + NDiff), CUINT3(N));
+	const LTYPE3 NDiff = PRIOR_FOV_OFFSET(N, NOrig);
+	const int maskVal = readMaskBP(maskBP, PRIOR_INT3(xyz + NDiff), CUINT3(N));
     if (maskVal == 0)
         return;
 #endif
@@ -1126,6 +1456,19 @@ void ProxTGVSymmDeriv(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 	backwardDiffZ2(&dYZ, xyz, NOrig, vY, imApuY);
 	backwardDiffY2(&dYZ, xyz, NOrig, vZ, imApuZ);
 #endif
+#elif defined(METAL) && DIFFTYPE >= 2
+	// Central difference (one-sided at image edges)
+	proxCentralDiffX2(&dXX, xyz, NOrig, x, vX, imApuX);
+	proxCentralDiffY2(&dYY, xyz, NOrig, x, vY, imApuY);
+	proxCentralDiffY2(&dXY, xyz, NOrig, x, vX, imApuX);
+	proxCentralDiffX2(&dXY, xyz, NOrig, x, vY, imApuY);
+#ifdef TGVZ
+	proxCentralDiffZ2(&dZZ, xyz, NOrig, x, vZ, imApuZ);
+	proxCentralDiffZ2(&dXZ, xyz, NOrig, x, vX, imApuX);
+	proxCentralDiffX2(&dXZ, xyz, NOrig, x, vZ, imApuZ);
+	proxCentralDiffZ2(&dYZ, xyz, NOrig, x, vY, imApuY);
+	proxCentralDiffY2(&dYZ, xyz, NOrig, x, vZ, imApuZ);
+#endif
 #else
 #endif // END DIFFTYPE
 	// Dual update
@@ -1140,7 +1483,7 @@ void ProxTGVSymmDeriv(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 	// Projection to the L2 or L1 ball
 	// Voxels skipped above keep their previous, already projected, values
 #ifdef L2 // START L2
-	const float scale = fmax(FLOAT_ONE, SQRT(apu.x * apu.x + apu.y * apu.y + apu.z * apu.z + (apu2.x * apu2.x) * FLOAT_TWO + (apu2.y * apu2.y) * FLOAT_TWO + (apu2.z * apu2.z) * FLOAT_TWO) / alpha);
+	const float scale = FMAX(FLOAT_ONE, SQRT(apu.x * apu.x + apu.y * apu.y + apu.z * apu.z + (apu2.x * apu2.x) * FLOAT_TWO + (apu2.y * apu2.y) * FLOAT_TWO + (apu2.z * apu2.z) * FLOAT_TWO) / alpha);
 	qX[x] = apu.x / scale;
 	qY[x] = apu.y / scale;
 	q2XY[x] = apu2.x / scale;
@@ -1151,41 +1494,48 @@ void ProxTGVSymmDeriv(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 #endif
 #else
 // L1 norm (anisotropic): the projection is a separate clamp of each component to [-alpha, alpha]
-	qX[x] = apu.x / fmax(FLOAT_ONE, fabs(apu.x) / alpha);
-	qY[x] = apu.y / fmax(FLOAT_ONE, fabs(apu.y) / alpha);
-	q2XY[x] = apu2.x / fmax(FLOAT_ONE, fabs(apu2.x) / alpha);
+	qX[x] = apu.x / FMAX(FLOAT_ONE, FABS(apu.x) / alpha);
+	qY[x] = apu.y / FMAX(FLOAT_ONE, FABS(apu.y) / alpha);
+	q2XY[x] = apu2.x / FMAX(FLOAT_ONE, FABS(apu2.x) / alpha);
 #ifdef TGVZ
-	qZ[x] = apu.z / fmax(FLOAT_ONE, fabs(apu.z) / alpha);
-	q2XZ[x] = apu2.y / fmax(FLOAT_ONE, fabs(apu2.y) / alpha);
-	q2YZ[x] = apu2.z / fmax(FLOAT_ONE, fabs(apu2.z) / alpha);
+	qZ[x] = apu.z / FMAX(FLOAT_ONE, FABS(apu.z) / alpha);
+	q2XZ[x] = apu2.y / FMAX(FLOAT_ONE, FABS(apu2.y) / alpha);
+	q2YZ[x] = apu2.z / FMAX(FLOAT_ONE, FABS(apu2.z) / alpha);
 #endif
 #endif // END L2
 }
 
 // TGV divergence
 KERNEL3
-void ProxTGVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRESTRICT qX, const CLGLOBAL float* CLRESTRICT qY, 
+void ProxTGVDivergence(PRIOR_SCALAR(int3, N, 0), PRIOR_SCALAR(int3, NOrig, 1),
+	const CLGLOBAL float* CLRESTRICT qX BUF2, const CLGLOBAL float* CLRESTRICT qY BUF3
 #ifdef TGVZ
-	const CLGLOBAL float* CLRESTRICT qZ, const CLGLOBAL float* CLRESTRICT q2XY, const CLGLOBAL float* CLRESTRICT q2XZ, const CLGLOBAL float* CLRESTRICT q2YZ, 
-	CLGLOBAL float* vX, CLGLOBAL float* vY, CLGLOBAL float* vZ, 
-#else
-	const CLGLOBAL float* CLRESTRICT q2XY, CLGLOBAL float* vX, CLGLOBAL float* vY, 
+	, const CLGLOBAL float* CLRESTRICT qZ BUF4
 #endif
-	const CLGLOBAL float* CLRESTRICT pX, const CLGLOBAL float* CLRESTRICT pY, const CLGLOBAL float* CLRESTRICT pZ, const float theta, const float tau
+	, const CLGLOBAL float* CLRESTRICT q2XY BUF5
+#ifdef TGVZ
+	, const CLGLOBAL float* CLRESTRICT q2XZ BUF6, const CLGLOBAL float* CLRESTRICT q2YZ BUF7
+#endif
+	, CLGLOBAL float* vX BUF8, CLGLOBAL float* vY BUF9
+#ifdef TGVZ
+	, CLGLOBAL float* vZ BUF10
+#endif
+	, const CLGLOBAL float* CLRESTRICT pX BUF11, const CLGLOBAL float* CLRESTRICT pY BUF12, const CLGLOBAL float* CLRESTRICT pZ BUF13, PRIOR_SCALAR(float, theta, 14), PRIOR_SCALAR(float, tau, 15)
 #ifdef MASKPRIOR
-	, MASKBPTYPE maskBP
+	, MASKBPTYPE maskBP PRIOR_MASK_SLOT(16)
 #endif
+	PRIOR_GRID_ARGUMENT
 ) {
-	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
-#if defined(CUDA) || defined(HIP)
+	LTYPE3 xyz = PRIOR_GRID_POSITION;
+#if defined(CUDA) || defined(HIP) || defined(METAL)
 	if (xyz.x >= NOrig.x || xyz.y >= NOrig.y || xyz.z >= NOrig.z)
 #else
 	if (any(xyz >= NOrig))
 #endif
 		return;
 #ifdef MASKPRIOR
-	const LTYPE3 NDiff = (N - NOrig) / 2;
-	const int maskVal = readMaskBP(maskBP, CINT3(xyz + NDiff), CUINT3(N));
+	const LTYPE3 NDiff = PRIOR_FOV_OFFSET(N, NOrig);
+	const int maskVal = readMaskBP(maskBP, PRIOR_INT3(xyz + NDiff), CUINT3(N));
     if (maskVal == 0)
         return;
 #endif
@@ -1283,6 +1633,48 @@ void ProxTGVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLR
 		vZ[x] = v1 + theta * (v1 - vApu);
 #endif
 #endif
+#elif defined(METAL) && DIFFTYPE >= 2
+		apuVal += proxCentralNegTransposeX(qX, xyz, NOrig, xyz, NOrig);
+		apuVal += proxCentralNegTransposeY(q2XY, xyz, NOrig, xyz, NOrig);
+#ifdef TGVZ
+		apuVal += proxCentralNegTransposeZ(q2XZ, xyz, NOrig, xyz, NOrig);
+#endif
+		float vApu = vX[x];
+#ifdef USEMAD
+		float v1 = FMAD(tau, pX[x] + apuVal, vApu);
+		vX[x] = FMAD(theta, v1 - vApu, v1);
+#else
+		float v1 = vApu + tau * (pX[x] + apuVal);
+		vX[x] = v1 + theta * (v1 - vApu);
+#endif
+		apuVal = FLOAT_ZERO;
+		apuVal += proxCentralNegTransposeY(qY, xyz, NOrig, xyz, NOrig);
+		apuVal += proxCentralNegTransposeX(q2XY, xyz, NOrig, xyz, NOrig);
+#ifdef TGVZ
+		apuVal += proxCentralNegTransposeZ(q2YZ, xyz, NOrig, xyz, NOrig);
+#endif
+		vApu = vY[x];
+#ifdef USEMAD
+		v1 = FMAD(tau, pY[x] + apuVal, vApu);
+		vY[x] = FMAD(theta, v1 - vApu, v1);
+#else
+		v1 = vApu + tau * (pY[x] + apuVal);
+		vY[x] = v1 + theta * (v1 - vApu);
+#endif
+#ifdef TGVZ
+		apuVal = FLOAT_ZERO;
+		apuVal += proxCentralNegTransposeZ(qZ, xyz, NOrig, xyz, NOrig);
+		apuVal += proxCentralNegTransposeX(q2XZ, xyz, NOrig, xyz, NOrig);
+		apuVal += proxCentralNegTransposeY(q2YZ, xyz, NOrig, xyz, NOrig);
+		vApu = vZ[x];
+#ifdef USEMAD
+		v1 = FMAD(tau, pZ[x] + apuVal, vApu);
+		vZ[x] = FMAD(theta, v1 - vApu, v1);
+#else
+		v1 = vApu + tau * (pZ[x] + apuVal);
+		vZ[x] = v1 + theta * (v1 - vApu);
+#endif
+#endif
 #else
 #endif // END DIFFTYPE
 }
@@ -1295,6 +1687,13 @@ void ProxTGVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLR
 CONSTANT sampler_t samplerTV = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif
 
+#if defined(METAL)
+kernel void hyperbolicKernel(METAL_PRIOR_COMMON, CONSTANT float4& params BUF3, CONSTANT float* w BUF5
+#if defined(LARGEDIM)
+    , CONSTANT uint2& nOffset BUF9
+#endif
+    METAL_PRIOR_GRID
+#else
 #ifdef OPENCL
 __kernel __attribute__((vec_type_hint(float2))) __attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE2, LOCAL_SIZE3)))
 #else
@@ -1315,59 +1714,81 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
 #ifdef LARGEDIM
 	, const uint2 nOffset
 #endif
+#if defined(EFOVZ) && defined(LARGEDIM)
+	, const uint fovOffset
+#endif
+#endif
 ) {
-	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
+#ifdef METAL
+	const float sigma = params.x, epps = params.y, beta = params.z;
+#endif
+	LTYPE3 xyz = MINT3(PRIOR_GID0, PRIOR_GID1, PRIOR_GID2);
 	float output = FLOAT_ZERO;
-	LTYPE startX = GRID0 * LSIZE0 - SWINDOWX + LID0;
-	LTYPE startY = GRID1 * LSIZE1 - SWINDOWY + LID1;
-	LTYPE startZ = GRID2 * LSIZE2 - SWINDOWZ + LID2;
-	LTYPE endX = (GRID0 + 1) * LSIZE0 + SWINDOWX;
-	LTYPE endY = (GRID1 + 1) * LSIZE1 + SWINDOWY;
-	LTYPE endZ = (GRID2 + 1) * LSIZE2 + SWINDOWZ;
+	LTYPE startX = PRIOR_GRID0 * PRIOR_LSIZE0 - SWINDOWX + PRIOR_LID0;
+	LTYPE startY = PRIOR_GRID1 * PRIOR_LSIZE1 - SWINDOWY + PRIOR_LID1;
+	LTYPE startZ = PRIOR_GRID2 * PRIOR_LSIZE2 - SWINDOWZ + PRIOR_LID2;
+	LTYPE endX = (PRIOR_GRID0 + 1) * PRIOR_LSIZE0 + SWINDOWX;
+	LTYPE endY = (PRIOR_GRID1 + 1) * PRIOR_LSIZE1 + SWINDOWY;
+	LTYPE endZ = (PRIOR_GRID2 + 1) * PRIOR_LSIZE2 + SWINDOWZ;
 	LOCAL float lCache[SW_TILEX * SW_TILEY * SW_TILEZ];
-	LTYPE indZ = LID2;
-	for (LTYPE zz = startZ; zz < endZ; zz += LSIZE2) {
-		LTYPE indY = LID1;
-		for (LTYPE yy = startY; yy < endY; yy += LSIZE1) {
-			LTYPE indX = LID0;
-			for (LTYPE xx = startX; xx < endX; xx += LSIZE0) {
+	LTYPE indZ = PRIOR_LID2;
+	for (LTYPE zz = startZ; zz < endZ; zz += PRIOR_LSIZE2) {
+		LTYPE indY = PRIOR_LID1;
+		for (LTYPE yy = startY; yy < endY; yy += PRIOR_LSIZE1) {
+			LTYPE indX = PRIOR_LID0;
+			for (LTYPE xx = startX; xx < endX; xx += PRIOR_LSIZE0) {
 #ifdef USEIMAGES
 #if defined(CUDA) || defined(HIP)
 				lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = tex3D<float>(u, xx, yy, zz);
+#elif defined(METAL)
+				lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = SWTexRead(u, int(xx), int(yy), int(zz));
 #else
 				lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = read_imagef(u, samplerTV, (int4)(xx, yy, zz, 0)).w;
 #endif
 #else
 				lCache[indX + indY * SW_TILEX + indZ * SW_TILEX * SW_TILEY] = SWBufRead(u, (int)xx, (int)yy, (int)zz, N);
 #endif
-				indX += LSIZE0;
+				indX += PRIOR_LSIZE0;
 			}
-			indY += LSIZE1;
+			indY += PRIOR_LSIZE1;
 		}
-		indZ += LSIZE2;
+		indZ += PRIOR_LSIZE2;
 	}
-	BARRIER
+	PRIOR_BARRIER
 	// The bounds/EFOV/mask early returns must come after the cooperative tile load and barrier,
 	// otherwise edge work-groups leave tile entries uninitialised
-#if defined(CUDA) || defined(HIP)
+#if defined(CUDA) || defined(HIP) || defined(METAL)
 	if (xyz.x >= N.x || xyz.y >= N.y || xyz.z >= N.z)
 #else
 	if (any(xyz >= N))
 #endif
 		return;
 #ifdef EFOVZ
+#ifdef LARGEDIM
+	if (fovIndices[xyz.z + fovOffset] == 0)
+#else
 	if (fovIndices[xyz.z] == 0)
+#endif
         return;
 #endif
 #ifdef MASKPRIOR
-	const int maskVal = readMaskBP(maskBP, CINT3(xyz), CUINT3(N));
+	const int maskVal = readMaskBP(maskBP, PRIOR_INT3(xyz), CUINT3(N));
     if (maskVal == 0)
         return;
 #endif
 	const LTYPE n = (xyz.x) + (xyz.y) * (N.x) + (xyz.z) * (N.x * N.y);
-	const int3 xxyyzz = CMINT3(LID0 + SWINDOWX, LID1 + SWINDOWY, LID2 + SWINDOWZ);
+	const int3 xxyyzz = CMINT3(PRIOR_LID0 + SWINDOWX, PRIOR_LID1 + SWINDOWY, PRIOR_LID2 + SWINDOWZ);
 	// Shared search-window gradient (general_opencl_functions.h)
-	output = priorGradientSW(lCache, w, xxyyzz.x, xxyyzz.y, xxyyzz.z, epps, sigma);
+	output = priorGradientSW(lCache, w, xxyyzz.x, xxyyzz.y, xxyyzz.z, epps,
+#if defined(METAL)
+		2, FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO, sigma
+#else
+		sigma
+#endif
+#if defined(METAL) && defined(PRIORREF)
+		, lCache
+#endif
+	);
 #ifdef LARGEDIM
 	if (xyz.z >= nOffset.x && xyz.z < nOffset.y)
 		grad[n - N.x * N.y * nOffset.x] += beta * output;
@@ -1376,6 +1797,28 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
 #endif
 }
 #endif
+
+#if defined(METAL) && (defined(NLM_) || defined(RDP) || defined(GGMRF) || defined(HYPER))
+#undef METAL_PRIOR_VOLUME
+#undef METAL_PRIOR_MASK
+#undef METAL_PRIOR_EFOV
+#undef METAL_PRIOR_EFOV_OFFSET
+#undef METAL_PRIOR_GRID
+#undef METAL_PRIOR_COMMON
+#endif
+#undef PRIOR_GID0
+#undef PRIOR_GID1
+#undef PRIOR_GID2
+#undef PRIOR_LID0
+#undef PRIOR_LID1
+#undef PRIOR_LID2
+#undef PRIOR_GRID0
+#undef PRIOR_GRID1
+#undef PRIOR_GRID2
+#undef PRIOR_LSIZE0
+#undef PRIOR_LSIZE1
+#undef PRIOR_LSIZE2
+#undef PRIOR_BARRIER
 
 // Gradient of TV prior
 // This is different from the proximal TV!
@@ -1393,47 +1836,60 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
 #ifdef OPENCL
 __kernel __attribute__((vec_type_hint(float3))) __attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE2, LOCAL_SIZE3)))
 #else
-extern "C" __global__
+KERNEL3
 #endif
+void TVKernel(CLGLOBAL float* CLRESTRICT grad BUF0,
 #ifdef USEIMAGES
-void TVKernel(CLGLOBAL float* CLRESTRICT grad, IMAGE3D u, 
+	IMAGE3D u,
 #else
-void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u,
+	const CLGLOBAL float* CLRESTRICT u BUF1,
 #endif
-#ifdef PYTHON
-	const int Nx, const int Ny, const int Nz, const int NOrigx, const int NOrigy, const int NOrigz, 
+#ifdef METAL
+	PRIOR_SCALAR(int3, N, 2),
+#elif defined(PYTHON)
+	const int Nx, const int Ny, const int Nz, const int NOrigx, const int NOrigy, const int NOrigz,
 #else
-	const int3 N, const int3 NOrig, 
+	const int3 N, const int3 NOrig,
 #endif
-	const float sigma, const float epps, const float beta
+	PRIOR_SCALAR(float, sigma, 3), PRIOR_SCALAR(float, epps, 4), PRIOR_SCALAR(float, beta, 5)
 #ifdef MASKPRIOR
-	, MASKBPTYPE maskBP
+	, MASKBPTYPE maskBP PRIOR_MASK_SLOT(6)
 #endif
 #ifdef EFOVZ
-	, CONSTANT uchar* fovIndices
+	, CONSTANT uchar* fovIndices BUF7
+#endif
+#if defined(EFOVZ) && defined(LARGEDIM)
+	, PRIOR_SCALAR(uint, fovOffset, 11)
 #endif
 #if defined(ANATOMICAL2) || defined(ANATOMICAL3)
-	, const float C
+	, PRIOR_SCALAR(float, C, 8)
 #endif
 #if defined(ANATOMICAL1) || defined(ANATOMICAL2) || defined(ANATOMICAL3)
-	, CLGLOBAL float* CLRESTRICT S
+	, CLGLOBAL float* CLRESTRICT S BUF9
 #endif
-#ifdef LARGEDIM
+#if defined(METAL) && defined(LARGEDIM)
+	, CONSTANT uint2& nOffset BUF10
+#elif defined(LARGEDIM)
 	, const uint2 nOffset
 #endif
+	PRIOR_GRID_ARGUMENT
 ) {
 #ifdef PYTHON
 	const int3 N = MINT3(Nx, Ny, Nz);
 #endif
-	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
-#if defined(CUDA) || defined(HIP)
+	LTYPE3 xyz = PRIOR_GRID_POSITION;
+#if defined(CUDA) || defined(HIP) || defined(METAL)
 	if (xyz.x >= N.x || xyz.y >= N.y || xyz.z >= N.z)
 #else
 	if (any(xyz >= N))
 #endif
 		return;
 #ifdef EFOVZ
+    #ifdef LARGEDIM
+	if (fovIndices[xyz.z + fovOffset] == 0)
+#else
 	if (fovIndices[xyz.z] == 0)
+#endif
         return;
 #endif
 #ifdef MASKPRIOR
@@ -1461,10 +1917,22 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 #endif
 }
 #endif // END TVGRAD
+#undef PRIOR_SCALAR
+#undef PRIOR_MASK_SLOT
+#undef PRIOR_GRID_ARGUMENT
+#undef PRIOR_GRID_POSITION
+#undef PRIOR_INT3
+#undef PRIOR_FOV_OFFSET
 
 // This kernel computes the image estimate for PKMA, MBSREM and BSREM
 // I.e. the step after backprojection has been computed
 #if defined(PKMA) || defined(MBSREM) || defined(BSREM)
+#if defined(METAL)
+kernel void PoissonUpdate(CLGLOBAL float* im BUF0, const CLGLOBAL float* rhs BUF1,
+    CONSTANT float4& params BUF2, uint n [[thread_position_in_grid]]) {
+    const float lambda = params.x, epps = params.y, alpha = params.z;
+    const uchar enforcePositivity = uchar(params.w != 0.f);
+#else
 KERNEL3
 void PoissonUpdate(CLGLOBAL float* CLRESTRICT im, const CLGLOBAL float* CLRESTRICT rhs,
 	const int3 N, const float lambda, const float epps, const float alpha, const uchar enforcePositivity) {
@@ -1476,6 +1944,7 @@ void PoissonUpdate(CLGLOBAL float* CLRESTRICT im, const CLGLOBAL float* CLRESTRI
 #endif
 		return;
 	const LTYPE n = (xyz.x) + (xyz.y) * (N.x) + (xyz.z) * (N.x * N.y);
+#endif
 	// Use common function with fastPDHG, see general_opencl_functions.h
 	im[n] = PoissonUpdateVoxel(im[n], rhs[n], lambda, epps, alpha, enforcePositivity);
 }

@@ -1,3 +1,4 @@
+// IMPORTANT: When editing this layout, also check the Python MPS backend scalar offsets in mps_backend.py.
 // Structs to save buffer slots with Metal kernels and scalar inputs. This is a hybrid C++/MSL/OpenCL/CUDA file with preprocessor directives. TODO: use with OpenCL and CUDA
 
 #if defined(__METAL_VERSION__) // MSL
@@ -89,6 +90,21 @@ struct ScalarKernelParams { // Kernel scalar values that do not change with time
     float theta_PDHG;
     float tau_PDHG;
     CL_UINT8 enforcePositivity_PDHG;
+    // Scalar inputs for the fused FASTPDHG backprojection kernels.
+    CL_UINT8 fastStep_PDHG;
+    CL_INT64 fastImOffset_PDHG;
+    CL_INT32 fastPriorZOffset_PDHG;
+    float fastLambda_PDHG;
+    float fastAlpha_PDHG;
+    float fastBeta_PDHG;
+    float fastNLMParams_PDHG[6];
+    float fastRDPgamma_PDHG;
+    float fastGGMRFp_PDHG;
+    float fastGGMRFq_PDHG;
+    float fastGGMRFc_PDHG;
+    float fastGGMRFpqc_PDHG;
+    float fastHYPERsigma_PDHG;
+    float fastTVsigma_PDHG;
     // Below parameters are used in the rotation kernel
     CL_INT3 N_rotate;
     float cosa_rotate;

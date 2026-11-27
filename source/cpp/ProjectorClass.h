@@ -324,7 +324,7 @@ using TimerPoint = std::chrono::steady_clock::time_point;
 // Append one kernel argument VAR. CUDA pushes its address into the argument vector VEC; OpenCL
 // sets it on KERNEL at the running index IDX, reporting any error inline via getErrorString.
 #if defined(CUDA) || defined(HIP)
-#define KARG(VEC, KERNEL, IDX, VAR) VEC.emplace_back(reinterpret_cast<void*>(&(VAR)))
+#define KARG(VEC, KERNEL, IDX, VAR) VEC.emplace_back(const_cast<void*>(static_cast<const void*>(&(VAR))))
 #define KARG_SCALAR(VEC, KERNEL, IDX, VAR) KARG(VEC, KERNEL, IDX, VAR)
 #define KARG_METAL_SLOT(IDX, SLOT) do {} while(0)
 #elif defined(METAL)
@@ -857,14 +857,22 @@ class ProjectorClass {
 		NS::UInteger elementSize = sizeof(float);
 		MTL::PixelFormat pixelFormat = MTL::PixelFormat::PixelFormatR32Float;
 		bool force3D = false;
+		bool layered = false;
+
+		// Keep a 2D array allocation when the shader will sample only layer zero.
+		NS::UInteger arrayLength() const {
+			return (std::max)(depth, NS::UInteger{2});
+		}
 	};
 
-	inline MetalTextureSpec metalTextureSpec(const size_t width, const size_t height, const size_t depth, const bool force3D) const {
+	inline MetalTextureSpec metalTextureSpec(const size_t width, const size_t height, const size_t depth, const bool force3D,
+		const bool layered = false) const {
 		MetalTextureSpec spec;
 		spec.width = static_cast<NS::UInteger>(width);
 		spec.height = static_cast<NS::UInteger>(height);
 		spec.depth = static_cast<NS::UInteger>(depth);
 		spec.force3D = force3D;
+		spec.layered = layered;
 		return spec;
 	}
 
@@ -872,20 +880,26 @@ class ProjectorClass {
 		if (!mtlDevice || spec.width == 0 || spec.height == 0 || spec.depth == 0)
 			return nullptr;
 
-		const bool is3D = spec.force3D || spec.depth > 1;
+		const bool is3D = !spec.layered && (spec.force3D || spec.depth > 1);
 		// Reject unsupported dimensions before calling Metal. Without this check MATLAB would crash instead of returning cleanly.
 		constexpr NS::UInteger max2DDimension = 16384;
 		constexpr NS::UInteger max3DDimension = 2048;
 		const bool invalidDimensions = is3D
 			? (spec.width > max3DDimension || spec.height > max3DDimension || spec.depth > max3DDimension)
-			: (spec.width > max2DDimension || spec.height > max2DDimension);
+			: (spec.width > max2DDimension || spec.height > max2DDimension ||
+				(spec.layered && spec.depth > max3DDimension));
 		if (invalidDimensions) {
-			mexPrintBase("Requested Metal texture dimensions: %llu x %llu x %llu\n", static_cast<unsigned long long>(spec.width), static_cast<unsigned long long>(spec.height), static_cast<unsigned long long>(is3D ? spec.depth : 1));
-			mexWarning("Metal 2D textures have a maximum dimension of 16384 and 3D textures have a maximum dimension of 2048. Reconstruction was stopped. Use buffers or reduce the size of the requested texture.");
+			mexPrintBase("Requested Metal texture dimensions: %llu x %llu x %llu\n", static_cast<unsigned long long>(spec.width), static_cast<unsigned long long>(spec.height), static_cast<unsigned long long>(is3D || spec.layered ? spec.depth : 1));
+			mexWarning("Metal 2D textures have a maximum dimension of 16384, 2D texture arrays have at most 2048 layers, and 3D textures have a maximum dimension of 2048. Reconstruction was stopped. Use buffers or reduce the size of the requested texture.");
 			return nullptr;
 		}
 		NS::SharedPtr<MTL::TextureDescriptor> desc = NS::TransferPtr(MTL::TextureDescriptor::alloc()->init());
-		desc->setTextureType(is3D ? MTL::TextureType::TextureType3D : MTL::TextureType::TextureType2D);
+		if (spec.layered) {
+			desc->setTextureType(MTL::TextureType2DArray);
+			desc->setArrayLength(spec.arrayLength());
+		}
+		else
+			desc->setTextureType(is3D ? MTL::TextureType3D : MTL::TextureType2D);
 		desc->setPixelFormat(spec.pixelFormat);
 		desc->setWidth(spec.width);
 		desc->setHeight(spec.height);
@@ -950,9 +964,19 @@ class ProjectorClass {
 		auto encoder = NS::RetainPtr(commandBuffer->blitCommandEncoder());
 		if (!encoder)
 			return -1;
-		encoder->copyFromBuffer(source.get(), 0, bytesPerRow,
-			texture->textureType() == MTL::TextureType3D ? bytesPerImage : 0,
-			MTL::Size::Make(spec.width, spec.height, spec.depth), texture.get(), 0, 0, MTL::Origin::Make(0, 0, 0));
+		const auto origin = MTL::Origin::Make(0, 0, 0);
+		if (spec.layered) {
+			const auto sliceSize = MTL::Size::Make(spec.width, spec.height, 1);
+			for (NS::UInteger slice = 0; slice < spec.depth; ++slice) {
+				encoder->copyFromBuffer(source.get(), slice * bytesPerImage, bytesPerRow, 0,
+					sliceSize, texture.get(), slice, 0, origin);
+			}
+		}
+		else {
+			encoder->copyFromBuffer(source.get(), 0, bytesPerRow,
+				texture->textureType() == MTL::TextureType3D ? bytesPerImage : 0,
+				MTL::Size::Make(spec.width, spec.height, spec.depth), texture.get(), 0, 0, origin);
+		}
 		encoder->endEncoding();
 		submitMetalCommandBuffer(commandBuffer.get());
 #ifndef AF
@@ -1157,7 +1181,6 @@ class ProjectorClass {
 			memAlloc.useBuffers = false;
 		}
 		// Largest number of layers of a 2D layered texture: 2048 or the device limit, if lower
-#if !defined(METAL)
 		auto layeredTextureLimit = [&]() -> int64_t {
 			int64_t layerLimit = 2048;
 #if defined(CUDA)
@@ -1172,11 +1195,9 @@ class ProjectorClass {
 #endif
 			return layerLimit;
 		};
-#endif
 		// CT backprojection type 4: read the measurements from a 2D layered texture (one layer per projection) instead of a 3D texture.
 		// Only possible when the projections of every subset fit into the layers of the texture (at most 2048 and the device limit)
 		inputScalars.layeredBP = false;
-#if !defined(METAL)
 		if (inputScalars.useLayeredBP && inputScalars.CT && inputScalars.BPType == 4 && inputScalars.listmode == 0 && !inputScalars.useBuffers &&
 			!inputScalars.useHelical && !inputScalars.largeDim) {
 			const int64_t layerLimit = layeredTextureLimit();
@@ -1245,7 +1266,6 @@ class ProjectorClass {
 						"Using a 3D texture for the integral image of the type 5 backprojection\n");
 			}
 		}
-#endif
 		if (inputScalars.useHalf)
 			ADD_OPT(options, "-DHALF");
 		std::ifstream sourceHeader(kernelFile + "general_opencl_functions.h");
@@ -1549,15 +1569,14 @@ class ProjectorClass {
 						ADD_OPT_INT(os_options, "-DNVOXELSHELICAL", NVOXELSHELICAL);
 					if (inputScalars.layeredBP)
 						ADD_OPT(os_options, "-DLAYEREDBP");
-#ifndef METAL
 					// The helical backprojection only visits the projections in the window of its axial block
 					if (useProjWindow)
 						ADD_OPT(os_options, "-DPROJWINDOW");
 					// fastPDHG build options
 					if (inputScalars.fastPDHG) {
-						addFastPDHGOptions(os_options, inputScalars, w_vec, MethodList, inputScalars.useHelical ? NVOXELSHELICAL : NVOXELS);
+						fastPDHGBuilt = addFastPDHGOptions(os_options, inputScalars, w_vec, MethodList,
+							inputScalars.useHelical ? NVOXELSHELICAL : NVOXELS);
 					}
-#endif
 				}
 				else {
 					ADD_OPT(os_options, "-DPTYPE4");
@@ -1591,7 +1610,7 @@ class ProjectorClass {
 				ADD_OPT(os_options, FP_FLAG);
 			if (inputScalars.BPType == 5)
 				ADD_OPT(os_options, "-DBP");
-			// Integral images read from 2D layered textures instead of 3D textures (never set with Metal)
+			// Integral images read from 2D layered textures instead of 3D textures
 			if (inputScalars.FPType == 5 && inputScalars.layeredFP5)
 				ADD_OPT(os_options, "-DLAYEREDFP5");
 			if (inputScalars.BPType == 5 && inputScalars.layeredBP5)
@@ -1599,17 +1618,15 @@ class ProjectorClass {
 			// BDD uses precomputed values, but you can also use it with the original on the fly calculations
 			// If GEOM5 is not defined, the kernel uses the old format, otherwise it assumes precomputed values
 			// The helical geometry has no detector plane, so it is always computed in the kernel
-#if !defined(METAL)
 			if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0 && !inputScalars.useHelical)
 				ADD_OPT(os_options, "-DGEOM5");
 			// The helical backprojection only visits the projections in the window of its axial block
 			if (useProjWindow && inputScalars.BPType == 5)
 				ADD_OPT(os_options, "-DPROJWINDOW");
-			// Same as above, but for BPType 5
-			if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.fastPDHG) {
-				addFastPDHGOptions(os_options, inputScalars, w_vec, MethodList, backprojectionVoxelsType5(inputScalars));
-			}
-#endif
+			// fastPDHG build options
+			if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.fastPDHG)
+				fastPDHGBuilt = addFastPDHGOptions(os_options, inputScalars, w_vec, MethodList,
+					backprojectionVoxelsType5(inputScalars));
 			ADD_OPT_INT(os_options, "-DNVOXELS5", static_cast<int>(backprojectionVoxelsType5(inputScalars)));
 			if (inputScalars.BPType == 5 && (DEBUG || inputScalars.verbose >= 3)) {
 				mexPrintBase("Type 5 backprojection: %u voxels per thread\n", static_cast<uint32_t>(backprojectionVoxelsType5(inputScalars)));
@@ -1701,8 +1718,44 @@ class ProjectorClass {
 				memAlloc.SensMod = true;
 		}
 		// Build prior programs
+		if (inputScalars.largeDim && MethodList.MRP &&
+			(inputScalars.nMultiVolumes != 0 || (inputScalars.priorMask && inputScalars.maskBPZ > 1))) {
+			mexPrint("LargeDim median root prior currently requires a single volume and at most a 2D prior mask\n");
+			return static_cast<decltype(status)>(-1);
+		}
+		#if defined(CUDA) || defined(HIP) || defined(OPENCL) || defined(METAL)
+		// These chunked prior combinations use full-volume anatomical/mask indices in the shared
+		// kernels. Reject them consistently until those inputs are chunked with matching offsets.
+		const bool chunkedLocalPrior = MethodList.NLM || MethodList.RDP || MethodList.GGMRF ||
+			MethodList.hyperbolic || MethodList.TV || MethodList.APLS;
+		const bool chunkedAnatomicalPrior =
+			(MethodList.NLM && w_vec.NLM_anatomical) || (MethodList.RDP && w_vec.RDP_anatomical) ||
+			(MethodList.TV && w_vec.data.TV_use_anatomical) || MethodList.APLS;
+		if (inputScalars.largeDim && chunkedLocalPrior &&
+			(chunkedAnatomicalPrior || (inputScalars.priorMask && inputScalars.maskBPZ > 1))) {
+			mexPrint("LargeDim local priors require non-anatomical data and at most a 2D prior mask\n");
+			return static_cast<decltype(status)>(-1);
+		}
+
+		// CUDA, OpenCL and Metal all index proximal arrays by the original FOV dimensions.
+		const bool proximalPrior = MethodList.ProxTV || MethodList.ProxTGV || MethodList.TGV;
+		if (proximalPrior) {
+			const bool extendedPriorFOV = inputScalars.eFOV && !inputScalars.multiResolution;
+			const bool dimensionsMatch = inputScalars.NxPrior == inputScalars.Nx[0] &&
+				inputScalars.NyPrior == inputScalars.Ny[0] && inputScalars.NzPrior == inputScalars.Nz[0];
+			const bool originalFOVMatches = inputScalars.NxPrior == inputScalars.NxOrig &&
+				inputScalars.NyPrior == inputScalars.NyOrig && inputScalars.NzPrior == inputScalars.NzOrig;
+			if ((!extendedPriorFOV && !dimensionsMatch) || (extendedPriorFOV && !originalFOVMatches) ||
+				inputScalars.NxPrior == 0 || inputScalars.NxPrior > inputScalars.Nx[0] ||
+				inputScalars.NyPrior == 0 || inputScalars.NyPrior > inputScalars.Ny[0] ||
+				inputScalars.NzPrior == 0 || inputScalars.NzPrior > inputScalars.Nz[0]) {
+				mexPrint("Proximal TV and TGV require a valid prior volume within the image FOV\n");
+				return static_cast<decltype(status)>(-1);
+			}
+		}
+		#endif
 		if (MethodList.NLM || MethodList.MRP || MethodList.RDP || w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]
-			|| MethodList.TV || MethodList.APLS || MethodList.hyperbolic || MethodList.ProxTV || MethodList.ProxTGV || MethodList.PKMA || 
+			|| MethodList.TV || MethodList.APLS || MethodList.hyperbolic || MethodList.ProxTV || MethodList.ProxTGV || MethodList.TGV || MethodList.PKMA ||
 			MethodList.BSREM || MethodList.RAMLA || MethodList.MRAMLA || MethodList.MBSREM || MethodList.CPType ||
 			MethodList.GGMRF || inputScalars.projector_type == 6 || type == 0) {
 			if (DEBUG) {
@@ -1957,7 +2010,10 @@ class ProjectorClass {
 			if (status == NVRTC_SUCCESS)
 				memAlloc.auxMod = true;
 #elif defined(METAL)
-			if (MethodList.CPType || inputScalars.projector_type == 6 || w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]) {
+			if (MethodList.MRP || MethodList.NLM || MethodList.RDP || MethodList.GGMRF || MethodList.hyperbolic ||
+				MethodList.TV || MethodList.APLS || MethodList.ProxTV || MethodList.ProxTGV || MethodList.TGV ||
+				MethodList.CPType || MethodList.PKMA || MethodList.BSREM || MethodList.MBSREM || MethodList.MRAMLA ||
+				MethodList.RAMLA || inputScalars.projector_type == 6 || w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]) {
 				status = buildProgram(inputScalars.verbose, contentAux, programAux, optionsAux);
 				if (status != SUCCESS_VALUE)
 					return status;
@@ -2485,17 +2541,16 @@ class ProjectorClass {
 					}
 				}
 			}
-#if !defined(METAL)
-		if (MethodList.NLM) {
-			CREATE_KERNEL(kernelNLM, programAux, "NLM", "Failed to create NLM kernel\n");
-			if (DEBUG || inputScalars.verbose >= 3) {
-				mexPrint("NLM kernel successfully created\n");
-			}
-		}
 		if (MethodList.MRP) {
 			CREATE_KERNEL(kernelMed, programAux, "medianFilter3D", "Failed to create Median kernel\n");
 			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Median kernel successfully created\n");
+			}
+		}
+		if (MethodList.NLM) {
+			CREATE_KERNEL(kernelNLM, programAux, "NLM", "Failed to create NLM kernel\n");
+			if (DEBUG || inputScalars.verbose >= 3) {
+				mexPrint("NLM kernel successfully created\n");
 			}
 		}
 		if (MethodList.RDP) {
@@ -2528,32 +2583,21 @@ class ProjectorClass {
 				mexPrint("Poisson Update kernel successfully created\n");
 			}
 		}
-#endif // END non-Metal auxiliary kernel creation
 		if (MethodList.CPType) {
 			CREATE_KERNEL(kernelPDHG, programAux, "PDHGUpdate", "Failed to create PDHG Update kernel\n");
 			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("PDHG Update kernel successfully created\n");
 			}
 		}
+		if (MethodList.ProxTV || MethodList.ProxTGV || MethodList.TGV) {
+			CREATE_KERNEL(kernelProxTVDiv, programAux, "ProxTVDivergence", "Failed to create proximal TV divergence kernel\n");
+			CREATE_KERNEL(kernelProxTVGrad, programAux, "ProxTVGradient", "Failed to create proximal TV gradient kernel\n");
+		}
+		if (MethodList.ProxTGV || MethodList.TGV) {
+			CREATE_KERNEL(kernelProxTGVDiv, programAux, "ProxTGVDivergence", "Failed to create proximal TGV divergence kernel\n");
+			CREATE_KERNEL(kernelProxTGVSymmDeriv, programAux, "ProxTGVSymmDeriv", "Failed to create proximal TGV symmetric derivative kernel\n");
+		}
 #if !defined(METAL)
-		if (MethodList.ProxTV) {
-			GET_KERNEL(kernelProxTVDiv, programAux, "ProxTVDivergence");
-			GET_KERNEL(kernelProxTVGrad, programAux, "ProxTVGradient");
-			CHECK(status, "Failed to create proximal TV kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 3) {
-				mexPrint("Proximal TV kernel successfully created\n");
-			}
-		}
-		if (MethodList.ProxTGV) {
-			GET_KERNEL(kernelProxTVDiv, programAux, "ProxTVDivergence");
-			GET_KERNEL(kernelProxTVGrad, programAux, "ProxTVGradient");
-			GET_KERNEL(kernelProxTGVDiv, programAux, "ProxTGVDivergence");
-			GET_KERNEL(kernelProxTGVSymmDeriv, programAux, "ProxTGVSymmDeriv");
-			CHECK(status, "Failed to create proximal TGV kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 3) {
-				mexPrint("Proximal TGV kernel successfully created\n");
-			}
-		}
 	#if defined(OPENCL)
 		if (type == 0) {
 			kernelsumma = cl::Kernel(programAux, "summa", &status);
@@ -2636,16 +2680,11 @@ class ProjectorClass {
 
 	// Number of voxels in the axial direction handled by one thread of the type 5 backprojection, the user option NVOXELS5 (at least 1). Two of
 	// the four integral image values of the previous voxel are reused, which is exact only when the detector panel is not tilted or rotated in
-	// its plane. The curved detector of helical CT always uses 1 because its z-loop has not been validated with several voxels. Metal is not
-	// tested with several voxels either and always uses 1
+	// its plane. The curved detector of helical CT always uses one voxel per thread. Metal honors NVOXELS5, whose default remains one.
 	inline uint64_t backprojectionVoxelsType5(const scalarStruct& inputScalars) const {
-#if defined(METAL)
-		return 1ULL;
-#else
 		if (inputScalars.useHelical)
 			return 1ULL;
 		return inputScalars.NVOXELS5 > 0U ? static_cast<uint64_t>(inputScalars.NVOXELS5) : 1ULL;
-#endif
 	}
 
 	// Number of voxels in the axial direction handled by one thread of the helical type 4 or 5 backprojection
@@ -2714,6 +2753,20 @@ class ProjectorClass {
 		}
 	}
 public:
+#if defined(METAL)
+	inline int refreshPriorImageTextureFromBuffer(const DEVBUFF_t& source, const size_t width,
+		const size_t height, const size_t depth, const int volume) {
+		if (volume < 0 || FPTexCache.size() <= static_cast<size_t>(volume) || !FPTexCache[static_cast<size_t>(volume)])
+			return -1;
+		const MetalTextureSpec spec = metalTextureSpec(width, height, depth, true);
+		const int status = copyMetalBufferToTexture(source, FPTexCache[static_cast<size_t>(volume)], spec);
+		if (status != SUCCESS_VALUE)
+			return status;
+		vec_opencl.d_image_os = FPTexCache[static_cast<size_t>(volume)];
+		return SUCCESS_VALUE;
+	}
+#endif
+
 	struct ImageAttenuationGrid {
 		uint32_t Nx = 1U, Ny = 1U, Nz = 1U;
 		float dx = 1.f, dy = 1.f, dz = 1.f;
@@ -2984,6 +3037,18 @@ public:
 #endif
 
 #if defined(METAL)
+	inline STATUS_t updateMetalIntegralTexture(TEX3D_t& texture, const DEVBUFF_t& source,
+		const size_t width, const size_t height, const size_t slices, const bool layered) {
+		const auto spec = metalTextureSpec(width, height, slices, true, layered);
+		const auto textureType = layered ? MTL::TextureType2DArray : MTL::TextureType3D;
+		if (!texture || texture->textureType() != textureType ||
+			texture->width() != spec.width || texture->height() != spec.height ||
+			(layered ? texture->arrayLength() != spec.arrayLength() : texture->depth() != spec.depth)) {
+			texture = createMetalFloatTextureEmpty(spec);
+		}
+		return copyMetalBufferToTexture(source, texture, spec);
+	}
+
 	NS::SharedPtr<MTL::Device> mtlDevice;
 	NS::SharedPtr<MTL::CommandQueue> queueFP, queueBP;
 	METAL_im_vectors vec_opencl;
@@ -3197,7 +3262,8 @@ public:
 	// fastPDHG requirements
 	// Set to 1 only for the backprojections of the actual reconstruction loop
 	// The same kernel is also used for the sensitivity image and the power method, where the image estimate must not be touched
-	uint8_t fastStep = 0;
+		uint8_t fastStep = 0;
+		bool fastPDHGBuilt = false;
 	uint8_t fastPositivity = 0;
 	// Boolean value to determine whether regularization is used (NLM, RDP, GGMRF, hyperbolic prior, gradient-based TV)
 	bool fastNLMUsed = false;
@@ -3213,7 +3279,7 @@ public:
 	// Only for largeDim cases
 	int64_t fastImOffset = 0;
 	int fastPriorZOffset = 0;
-	// The RDP reference texture uploaded once for fastPDHG (CUDA/HIP), freed in the destructor
+	// The RDP reference texture uploaded once for fastPDHG, freed by the owning backend
 	bool RDPRefPersistent = false;
 #if defined(CUDA) || defined(HIP)
 	~ProjectorClass() {
@@ -3566,180 +3632,151 @@ public:
 #endif
 		return 0;
 	}
-
-#ifndef METAL
-#if defined(CUDA) || defined(HIP)
-	// Emits the build options for fastPDHG. nVoxZ is the number of voxels one work-item handles in z
-	inline void addFastPDHGOptions(std::vector<std::string> & os_options, const scalarStruct & inputScalars, const Weighting & w_vec,
-		const RecMethods & MethodList, const size_t nVoxZ) {
-#else
-	inline void addFastPDHGOptions(std::string & os_options, const scalarStruct & inputScalars, const Weighting & w_vec,
-		const RecMethods & MethodList, const size_t nVoxZ) {
-#endif
+	template <typename OptionList>
+	inline bool addFastPDHGOptions(OptionList& os_options, const scalarStruct& inputScalars, const Weighting& w_vec,
+		const RecMethods& MethodList, const size_t nVoxZ) {
+		const bool pdhgAlgorithm = MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV;
+		const bool poissonAlgorithm = MethodList.PKMA || MethodList.MBSREM || MethodList.BSREM;
+		if (!pdhgAlgorithm && !poissonAlgorithm)
+			return false;
 		ADD_OPT(os_options, "-DFASTPDHG");
-		// Determine the algorithm and set the proper definitions
-		const bool poissonAlg = MethodList.PKMA || MethodList.MBSREM || MethodList.BSREM;
-		if (poissonAlg) {
+		if (poissonAlgorithm) {
 			fastAlg = 1;
 			ADD_OPT_INT(os_options, "-DFASTALG", 1);
-			if (MethodList.PKMA) {
+			if (MethodList.PKMA)
 				ADD_OPT(os_options, "-DPKMA");
-			}
-			else if (MethodList.MBSREM) {
+			else if (MethodList.MBSREM)
 				ADD_OPT(os_options, "-DMBSREM");
-			}
-			else if (MethodList.BSREM) {
+			else
 				ADD_OPT(os_options, "-DBSREM");
-			}
 		}
 		else
 			fastAlg = 0;
-		// BSREM does preconditioning only after all subiterations are complete
+
 		if (!MethodList.BSREM) {
-		if (w_vec.precondTypeIm[0]) {
-			ADD_OPT_INT(os_options, "-DFASTPRECOND", 1);
-		}
-		else if (w_vec.precondTypeIm[1]) {
-			ADD_OPT_INT(os_options, "-DFASTPRECOND", 2);
-		}
-		// Whether the NLM exclusive local memory caching with patch window is used or not
-		bool nlmTileZEmitted = false;
-		// TODO: Decrease NVOXELS if the cache is too big?
-		auto addFastSWLocalCache = [&](const bool anatomical) {
-			if (!FASTNLMLOCALCACHE || anatomical)
-				return;
-			const size_t cacheSize = (local_size[0] + 2ULL * w_vec.Ndx) * (local_size[1] + 2ULL * w_vec.Ndy)
-				* (nVoxZ + 2ULL * w_vec.Ndz) * sizeof(float);
-			ADD_OPT(os_options, "-DFASTSWLOCAL");
-			if (!nlmTileZEmitted) {
-				ADD_OPT_INT(os_options, "-DFASTNLMTILEZ", nVoxZ);
-				nlmTileZEmitted = true;
-			}
-			if (DEBUG) {
-				mexPrintBase("Caching the search-window neighborhood of fastPDHG in local memory, %u bytes per work-group\n", static_cast<uint32_t>(cacheSize));
-				mexEval();
-			}
-		};
-		// The NLM prior is only included when it was actually selected
-		if (MethodList.NLM) {
-			fastNLMUsed = true;
-			ADD_OPT(os_options, "-DFASTNLM");
+			if (w_vec.precondTypeIm[0])
+				ADD_OPT_INT(os_options, "-DFASTPRECOND", 1);
+			else if (w_vec.precondTypeIm[1])
+				ADD_OPT_INT(os_options, "-DFASTPRECOND", 2);
+
+			bool nlmTileZEmitted = false;
+			auto addFastSWLocalCache = [&](const bool anatomical) {
+				if (!FASTNLMLOCALCACHE || anatomical)
+					return;
+				const size_t cacheSize = (local_size[0] + 2ULL * w_vec.Ndx) * (local_size[1] + 2ULL * w_vec.Ndy)
+					* (nVoxZ + 2ULL * w_vec.Ndz) * sizeof(float);
+				ADD_OPT(os_options, "-DFASTSWLOCAL");
+				if (!nlmTileZEmitted) {
+					ADD_OPT_INT(os_options, "-DFASTNLMTILEZ", nVoxZ);
+					nlmTileZEmitted = true;
+				}
+				if (DEBUG) {
+					mexPrintBase("Caching the search-window neighborhood of fastPDHG in local memory, %u bytes per work-group\n",
+						static_cast<uint32_t>(cacheSize));
+					mexEval();
+				}
+			};
+			if (MethodList.NLM) {
+				fastNLMUsed = true;
+				ADD_OPT(os_options, "-DFASTNLM");
 #if defined(CUDA) && defined(AF)
-			// The Gaussian weights are read from the constant memory of the module, see fillNLMConstWeights
-			ADD_OPT(os_options, "-DNLMCONSTWEIGHTS");
+				ADD_OPT(os_options, "-DNLMCONSTWEIGHTS");
 #endif
-			if (w_vec.NLM_MRP) {
-				ADD_OPT_INT(os_options, "-DNLTYPE", 2);
+				if (w_vec.NLM_MRP)
+					ADD_OPT_INT(os_options, "-DNLTYPE", 2);
+				else if (w_vec.NLTV)
+					ADD_OPT_INT(os_options, "-DNLTYPE", 1);
+				else if (w_vec.NLRD)
+					ADD_OPT_INT(os_options, "-DNLTYPE", 3);
+				else if (w_vec.NLLange)
+					ADD_OPT_INT(os_options, "-DNLTYPE", 4);
+				else if (w_vec.NLLangeFiltered)
+					ADD_OPT_INT(os_options, "-DNLTYPE", 5);
+				else if (w_vec.NLGGMRF) {
+					ADD_OPT_INT(os_options, "-DNLTYPE", 6);
+					if (w_vec.GGMRF_p == w_vec.GGMRF_q)
+						ADD_OPT(os_options, "-DGGMRFPEQQ");
+					if (w_vec.GGMRF_p == 2.f)
+						ADD_OPT(os_options, "-DGGMRFP2");
+				}
+				else if (w_vec.NLGM)
+					ADD_OPT_INT(os_options, "-DNLTYPE", 7);
+				else
+					ADD_OPT_INT(os_options, "-DNLTYPE", 0);
+				if (w_vec.NLAdaptive)
+					ADD_OPT(os_options, "-DNLMADAPTIVE");
+				if (w_vec.NLMaxWeight)
+					ADD_OPT(os_options, "-DNLMAXWEIGHT");
+				if (w_vec.NLM_anatomical)
+					ADD_OPT(os_options, "-DNLMREF");
+				ADD_OPT_INT(os_options, "-DSWINDOWX", w_vec.Ndx);
+				ADD_OPT_INT(os_options, "-DSWINDOWY", w_vec.Ndy);
+				ADD_OPT_INT(os_options, "-DSWINDOWZ", w_vec.Ndz);
+				ADD_OPT_INT(os_options, "-DPWINDOWX", w_vec.Nlx);
+				ADD_OPT_INT(os_options, "-DPWINDOWY", w_vec.Nly);
+				ADD_OPT_INT(os_options, "-DPWINDOWZ", w_vec.Nlz);
+				if (FASTNLMLOCALCACHE) {
+					const size_t cacheSize = (local_size[0] + 2ULL * (w_vec.Ndx + w_vec.Nlx))
+						* (local_size[1] + 2ULL * (w_vec.Ndy + w_vec.Nly))
+						* (nVoxZ + 2ULL * (w_vec.Ndz + w_vec.Nlz)) * sizeof(float) * (w_vec.NLM_anatomical ? 2ULL : 1ULL);
+					ADD_OPT(os_options, "-DFASTNLMLOCAL");
+					ADD_OPT_INT(os_options, "-DFASTNLMTILEZ", nVoxZ);
+					nlmTileZEmitted = true;
+					if (DEBUG) {
+						mexPrintBase("Caching the NLM neighborhood of fastPDHG in local memory, %u bytes per work-group\n",
+							static_cast<uint32_t>(cacheSize));
+						mexEval();
+					}
+				}
 			}
-			else if (w_vec.NLTV) {
-				ADD_OPT_INT(os_options, "-DNLTYPE", 1);
+			else if (MethodList.RDP) {
+				fastNLMUsed = true;
+				ADD_OPT(os_options, "-DFASTRDP");
+				if (w_vec.RDPLargeNeighbor) {
+					ADD_OPT(os_options, "-DFASTRDPCORNERS");
+					ADD_OPT_INT(os_options, "-DSWPRIORTYPE", 0);
+					ADD_OPT_INT(os_options, "-DSWINDOWX", w_vec.Ndx);
+					ADD_OPT_INT(os_options, "-DSWINDOWY", w_vec.Ndy);
+					ADD_OPT_INT(os_options, "-DSWINDOWZ", w_vec.Ndz);
+					addFastSWLocalCache(w_vec.RDP_anatomical);
+					if (w_vec.RDP_anatomical)
+						ADD_OPT(os_options, "-DPRIORREF");
+				}
 			}
-			else if (w_vec.NLRD) {
-				ADD_OPT_INT(os_options, "-DNLTYPE", 3);
-			}
-			else if (w_vec.NLLange) {
-				ADD_OPT_INT(os_options, "-DNLTYPE", 4);
-			}
-			else if (w_vec.NLLangeFiltered) {
-				ADD_OPT_INT(os_options, "-DNLTYPE", 5);
-			}
-			else if (w_vec.NLGGMRF) {
-				ADD_OPT_INT(os_options, "-DNLTYPE", 6);
-				// Compile-time selections of the GGMRF powers, see GGMRFDerivative in general_opencl_functions.h
+			else if (MethodList.GGMRF) {
+				fastNLMUsed = true;
+				ADD_OPT(os_options, "-DFASTGGMRF");
+				ADD_OPT_INT(os_options, "-DSWPRIORTYPE", 1);
 				if (w_vec.GGMRF_p == w_vec.GGMRF_q)
 					ADD_OPT(os_options, "-DGGMRFPEQQ");
 				if (w_vec.GGMRF_p == 2.f)
 					ADD_OPT(os_options, "-DGGMRFP2");
-			}
-			else if (w_vec.NLGM) {
-				ADD_OPT_INT(os_options, "-DNLTYPE", 7);
-			}
-			else {
-				ADD_OPT_INT(os_options, "-DNLTYPE", 0);
-			}
-			if (w_vec.NLAdaptive)
-				ADD_OPT(os_options, "-DNLMADAPTIVE");
-			if (w_vec.NLMaxWeight)
-				ADD_OPT(os_options, "-DNLMAXWEIGHT");
-			if (w_vec.NLM_anatomical)
-				ADD_OPT(os_options, "-DNLMREF");
-			ADD_OPT_INT(os_options, "-DSWINDOWX", w_vec.Ndx);
-			ADD_OPT_INT(os_options, "-DSWINDOWY", w_vec.Ndy);
-			ADD_OPT_INT(os_options, "-DSWINDOWZ", w_vec.Ndz);
-			ADD_OPT_INT(os_options, "-DPWINDOWX", w_vec.Nlx);
-			ADD_OPT_INT(os_options, "-DPWINDOWY", w_vec.Nly);
-			ADD_OPT_INT(os_options, "-DPWINDOWZ", w_vec.Nlz);
-			// TODO: Decrease NVOXELS if the cache is too big?
-			if (FASTNLMLOCALCACHE) {
-				const size_t cacheSize = (local_size[0] + 2ULL * (w_vec.Ndx + w_vec.Nlx))
-					* (local_size[1] + 2ULL * (w_vec.Ndy + w_vec.Nly))
-					* (nVoxZ + 2ULL * (w_vec.Ndz + w_vec.Nlz)) * sizeof(float) * (w_vec.NLM_anatomical ? 2ULL : 1ULL);
-				ADD_OPT(os_options, "-DFASTNLMLOCAL");
-				ADD_OPT_INT(os_options, "-DFASTNLMTILEZ", nVoxZ);
-				nlmTileZEmitted = true;
-				if (DEBUG) {
-					mexPrintBase("Caching the NLM neighborhood of fastPDHG in local memory, %u bytes per work-group\n", static_cast<uint32_t>(cacheSize));
-					mexEval();
-				}
-			}
-		}
-		// The RDP prior is only included when it was actually selected
-		// RDP reads its neighborhood from the FP cache texture, or, for the "with corners" variant, 
-		// optionally from a local-memory cache.
-		else if (MethodList.RDP) {
-			fastNLMUsed = true;
-			ADD_OPT(os_options, "-DFASTRDP");
-			if (w_vec.RDPLargeNeighbor) {
-				ADD_OPT(os_options, "-DFASTRDPCORNERS");
-				ADD_OPT_INT(os_options, "-DSWPRIORTYPE", 0);
 				ADD_OPT_INT(os_options, "-DSWINDOWX", w_vec.Ndx);
 				ADD_OPT_INT(os_options, "-DSWINDOWY", w_vec.Ndy);
 				ADD_OPT_INT(os_options, "-DSWINDOWZ", w_vec.Ndz);
-				addFastSWLocalCache(w_vec.RDP_anatomical);
-				// The reference is only precomputed and only read with corners
-				if (w_vec.RDP_anatomical)
-					ADD_OPT(os_options, "-DPRIORREF");
+				addFastSWLocalCache(false);
+			}
+			else if (MethodList.hyperbolic) {
+				fastNLMUsed = true;
+				ADD_OPT(os_options, "-DFASTHYPER");
+				ADD_OPT_INT(os_options, "-DSWPRIORTYPE", 2);
+				ADD_OPT_INT(os_options, "-DSWINDOWX", w_vec.Ndx);
+				ADD_OPT_INT(os_options, "-DSWINDOWY", w_vec.Ndy);
+				ADD_OPT_INT(os_options, "-DSWINDOWZ", w_vec.Ndz);
+				addFastSWLocalCache(false);
+			}
+			else if (MethodList.TV) {
+				fastNLMUsed = true;
+				ADD_OPT(os_options, "-DFASTTV");
+				if (w_vec.data.TVtype == 4)
+					ADD_OPT(os_options, "-DSATV");
+				else if (w_vec.data.TVtype == 2)
+					ADD_OPT(os_options, "-DJPTV");
 			}
 		}
-		// Same as above with corners
-		else if (MethodList.GGMRF) {
-			fastNLMUsed = true;
-			ADD_OPT(os_options, "-DFASTGGMRF");
-			ADD_OPT_INT(os_options, "-DSWPRIORTYPE", 1);
-			// Compile-time selections of the GGMRF powers, see GGMRFDerivative in general_opencl_functions.h
-			if (w_vec.GGMRF_p == w_vec.GGMRF_q)
-				ADD_OPT(os_options, "-DGGMRFPEQQ");
-			if (w_vec.GGMRF_p == 2.f)
-				ADD_OPT(os_options, "-DGGMRFP2");
-			ADD_OPT_INT(os_options, "-DSWINDOWX", w_vec.Ndx);
-			ADD_OPT_INT(os_options, "-DSWINDOWY", w_vec.Ndy);
-			ADD_OPT_INT(os_options, "-DSWINDOWZ", w_vec.Ndz);
-			addFastSWLocalCache(false);
-		}
-		// Same as above
-		else if (MethodList.hyperbolic) {
-			fastNLMUsed = true;
-			ADD_OPT(os_options, "-DFASTHYPER");
-			ADD_OPT_INT(os_options, "-DSWPRIORTYPE", 2);
-			ADD_OPT_INT(os_options, "-DSWINDOWX", w_vec.Ndx);
-			ADD_OPT_INT(os_options, "-DSWINDOWY", w_vec.Ndy);
-			ADD_OPT_INT(os_options, "-DSWINDOWZ", w_vec.Ndz);
-			addFastSWLocalCache(false);
-		}
-		// TV includes a lot of different variants, but only the ones without reference images
-		// are supported by fastPDHG
-		// These include "normal" TV type and TV types 2 and 4
-		else if (MethodList.TV) {
-			fastNLMUsed = true;
-			ADD_OPT(os_options, "-DFASTTV");
-			if (w_vec.data.TVtype == 4)
-				ADD_OPT(os_options, "-DSATV");
-			else if (w_vec.data.TVtype == 2)
-				ADD_OPT(os_options, "-DJPTV");
-		}
-		} // end !MethodList.BSREM
+		(void)inputScalars;
+		return true;
 	}
-#endif // END METAL
 
 	// Whether the type-6 (rotation-based SPECT) projector is used
 	static inline bool usesType6(const scalarStruct& inputScalars) {
@@ -3765,10 +3802,8 @@ public:
 	/// <returns></returns>
 	inline int addProjector(scalarStruct & inputScalars, Weighting & w_vec, const RecMethods & MethodList, const char* header_directory, const int type = -1) {
 		// Decided once here, before the kernels are built and the buffers allocated
-#if !defined(METAL)
 		useProjWindow = inputScalars.CT && inputScalars.useHelical && !inputScalars.useParallelBeam && !inputScalars.largeDim &&
 			inputScalars.listmode == 0 && inputScalars.subsetType != 12 && (inputScalars.BPType == 4 || inputScalars.BPType == 5);
-#endif
 		// Set-up the local group size
 #if defined(CUDA)
 		local_size[0] = 32ULL;
@@ -3940,6 +3975,8 @@ public:
 #endif
 #elif defined(METAL)
 		PROGRAMHANDLE_t programFP, programBP, programAux, programSens;
+		if (limitPriorLocalSize(MethodList, w_vec, inputScalars) != 0)
+			return -1;
 		status = createProgram(programFP, programBP, programAux, programSens, header_directory, inputScalars, MethodList, w_vec, local_size, type);
 		CHECK(status, "Error while creating Metal program\n", -1);
 #elif defined(OPENCL)
@@ -4535,11 +4572,6 @@ public:
 				CHECK(status, "\n", (STATUS_t)(-1));
 				memAlloc.rayShifts = true;
 			}
-			if (inputScalars.eFOV && !inputScalars.multiResolution) {
-				ALLOC_BUFFER(d_eFOVIndices, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nz[0]);
-				CHECK(status, "\n", (STATUS_t)(-1));
-				memAlloc.eFOV = true;
-			}
 			if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) {
 				ALLOC_BUFFER(d_angle, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.nProjections);
 				CHECK(status, "\n", (STATUS_t)(-1));
@@ -4740,7 +4772,6 @@ public:
 					memAlloc.offsetT = true;
 					memAlloc.oSteps++;
 				}
-#if !defined(METAL)
 				if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0 && !inputScalars.useHelical) {
 					ALLOC_BUFFER(d_geomProj5[kk], CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 16);
 					CHECK(status, "\n", (STATUS_t)-1);
@@ -4760,7 +4791,6 @@ public:
 #endif // END CUDA
 					}
 				}
-#endif
 				// Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
 				// Note that raw data format is not used at the moment
 				if (inputScalars.raw && inputScalars.listmode != 1) {
@@ -4779,6 +4809,11 @@ public:
 					memAlloc.iSteps++;
 				}
 			}
+		}
+		if (inputScalars.eFOV && !inputScalars.multiResolution) {
+			ALLOC_BUFFER(d_eFOVIndices, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nz[0]);
+			CHECK(status, "\n", (STATUS_t)(-1));
+			memAlloc.eFOV = true;
 		}
 		CHECK(status, "Buffer creation failed\n", (STATUS_t)(-1));
 		if (DEBUG || inputScalars.verbose >= 3) {
@@ -4853,11 +4888,6 @@ public:
 				WRITE_BUFFER(d_normFull[0], sizeof(float) * inputScalars.size_normSens, w_vec.normSens);
 				CHECK(status, "\n", (STATUS_t)(-1));
 				memSize += (sizeof(float) * inputScalars.size_normSens);
-			}
-			if (inputScalars.eFOV && !inputScalars.multiResolution) {
-				WRITE_BUFFER(d_eFOVIndices, sizeof(uint8_t) * inputScalars.Nz[0], w_vec.eFOVIndices);
-				CHECK(status, "\n", (STATUS_t)(-1));
-				memSize += (sizeof(uint8_t) * inputScalars.Nz[0]);
 			}
 			if (inputScalars.maskFP) {
 				if (inputScalars.useBuffers) {
@@ -5078,7 +5108,6 @@ public:
 				}
 				// Per projection: s (3), d3 (3), normX (3), normY (3), crossP (3), upperPart (1), i.e. 16 floats.
 				// Previously computed in the kernel itself
-#if !defined(METAL)
 				if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0 && !inputScalars.useHelical) {
 					const float indX = static_cast<float>(inputScalars.nRowsD) / 2.f;
 					const float indY = static_cast<float>(inputScalars.nColsD) / 2.f;
@@ -5135,7 +5164,6 @@ public:
 						memSize += (sizeof(int32_t) * projWindowHost[kk][ii].size());
 					}
 				}
-#endif
 				if (inputScalars.raw && inputScalars.listmode != 1) {
 					WRITE_BUFFER(d_L[kk], sizeof(uint16_t) * length[kk] * 2, &L[pituus[kk] * 2]);
 					CHECK(status, "\n", (STATUS_t)(-1));
@@ -5151,6 +5179,11 @@ public:
 				}
 			}
 			FINISH_QUEUE(status, "Buffer write failed\n", (STATUS_t)(-1));
+		}
+		if (inputScalars.eFOV && !inputScalars.multiResolution) {
+			WRITE_BUFFER(d_eFOVIndices, sizeof(uint8_t) * inputScalars.Nz[0], w_vec.eFOVIndices);
+			CHECK(status, "\n", (STATUS_t)(-1));
+			memSize += (sizeof(uint8_t) * inputScalars.Nz[0]);
 		}
 		CHECK(status, "Buffer write failed\n", (STATUS_t)(-1));
 		if (DEBUG || inputScalars.verbose >= 3) {
@@ -5284,7 +5317,6 @@ public:
 		}
 		if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5))
 			d_T.resize(inputScalars.subsetsUsed);
-#if !defined(METAL)
 		if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0 && !inputScalars.useHelical) {
 			d_geomProj5.resize(inputScalars.subsetsUsed);
 			geomProj5Host.resize(inputScalars.subsetsUsed);
@@ -5297,7 +5329,6 @@ public:
 				projWindowHost[kk].resize(inputScalars.nMultiVolumes + 1);
 			}
 		}
-#endif
 
 		status = createAndWriteBuffers(length, x, z_det, xy_index, z_index, L, pituus, atten, norm, extraCorr, inputScalars, w_vec, MethodList);
 		if (status != SUCCESS_VALUE) {
@@ -6287,8 +6318,6 @@ public:
 		std::vector<int64_t>&length, uint64_t m_size, const RecMethods & MethodList = RecMethods(), const bool compSens = false, int ii = 0, const int uu = 0,
 		const int queueIdx = 0, const bool newInput = true) {
 #elif defined(METAL) || defined(OPENCL)
-	// MethodList defaults to an empty RecMethods() so the METAL branch below keeps compiling unchanged
-	// TODO: Metal support for fastPDHG?
 	inline int backwardProjection(const scalarStruct & inputScalars, Weighting & w_vec, const uint32_t osa_iter, const uint32_t timestep,
 		const std::vector<int64_t>&length, const uint64_t m_size, const RecMethods & MethodList = RecMethods(), const bool compSens = false, const int32_t ii = 0, const int uu = 0,
 		int ee = -1, const int queueIdx = 0, const bool newInput = true) {
@@ -6394,6 +6423,73 @@ public:
 			kParams.orthWidth = inputScalars.tube_width;
 		if (inputScalars.BPType == 3)
 			kParams.orthWidth = inputScalars.cylRadiusProj3;
+		if (fastPDHGBuilt && inputScalars.CT && (inputScalars.BPType == 4 || inputScalars.BPType == 5)) {
+			kParams.theta_PDHG = fastTheta;
+			kParams.tau_PDHG = fastTau;
+			kParams.epps_PDHG = fastEpps;
+			kParams.enforcePositivity_PDHG = fastPositivity;
+			kParams.fastStep_PDHG = fastStep;
+			kParams.fastImOffset_PDHG = fastImOffset;
+			kParams.fastPriorZOffset_PDHG = fastPriorZOffset;
+			kParams.fastLambda_PDHG = fastLambda;
+			kParams.fastAlpha_PDHG = fastAlpha;
+			kParams.fastBeta_PDHG = fastBeta;
+			for (int nn = 0; nn < 6; nn++)
+				kParams.fastNLMParams_PDHG[nn] = fastNLM[nn];
+			kParams.fastRDPgamma_PDHG = w_vec.RDP_gamma;
+			kParams.fastGGMRFp_PDHG = w_vec.GGMRF_p;
+			kParams.fastGGMRFq_PDHG = w_vec.GGMRF_q;
+			kParams.fastGGMRFc_PDHG = w_vec.GGMRF_c;
+			kParams.fastGGMRFpqc_PDHG = w_vec.GGMRF_pqc;
+			kParams.fastHYPERsigma_PDHG = w_vec.data.SATVPhi;
+			kParams.fastTVsigma_PDHG = w_vec.data.SATVPhi;
+			UINT32_t fastArgumentIndex = 11;
+			if (fastAlg == 0) {
+				KARG_METAL_SLOT(fastArgumentIndex, 11);
+				KARG(kTemp, kernelBP, fastArgumentIndex, d_U);
+			}
+			if (!MethodList.BSREM && (w_vec.precondTypeIm[0] || w_vec.precondTypeIm[1])) {
+				fastArgumentIndex = 13;
+				KARG(kTemp, kernelBP, fastArgumentIndex, d_precond);
+			}
+			if (fastNLMUsed && !MethodList.BSREM) {
+				fastArgumentIndex = 11;
+				KARG_METAL_SLOT(fastArgumentIndex, 11);
+				if (inputScalars.FPType == 5 || inputScalars.largeDim)
+					KARG(kTemp, kernelBP, fastArgumentIndex, d_inputI);
+				else
+					KARG(kTemp, kernelBP, fastArgumentIndex, vec_opencl.d_image_os);
+				fastArgumentIndex = 17;
+				if (MethodList.NLM) {
+					KARG_METAL_SLOT(fastArgumentIndex, 17);
+					KARG(kTemp, kernelBP, fastArgumentIndex, d_gaussianNLM);
+					if (w_vec.NLM_anatomical) {
+						fastArgumentIndex = 12;
+						KARG_METAL_SLOT(fastArgumentIndex, 12);
+						KARG(kTemp, kernelBP, fastArgumentIndex, d_urefIm);
+					}
+				}
+				else if (MethodList.RDP) {
+					if (w_vec.RDPLargeNeighbor) {
+						KARG_METAL_SLOT(fastArgumentIndex, 17);
+						KARG(kTemp, kernelBP, fastArgumentIndex, d_weights);
+					}
+					if (w_vec.RDPLargeNeighbor && w_vec.RDP_anatomical) {
+						fastArgumentIndex = 12;
+						KARG_METAL_SLOT(fastArgumentIndex, 12);
+						KARG(kTemp, kernelBP, fastArgumentIndex, d_RDPrefI);
+					}
+				}
+				else if (MethodList.GGMRF) {
+					KARG_METAL_SLOT(fastArgumentIndex, 17);
+					KARG(kTemp, kernelBP, fastArgumentIndex, d_weights);
+				}
+				else if (MethodList.hyperbolic) {
+					KARG_METAL_SLOT(fastArgumentIndex, 17);
+					KARG(kTemp, kernelBP, fastArgumentIndex, d_weights);
+				}
+			}
+		}
 		SET_KERNEL_ARG_BYTES(encoder, kParams, sizeof(kParams), 0);
 #endif
 		if (!inputScalars.CT && (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.BPType == 4)) {
@@ -6777,6 +6873,7 @@ public:
 					size_t textureHeight = inputScalars.nColsD;
 					size_t textureWidth = inputScalars.nRowsD;
 					const size_t textureDepth = length[indD];
+					const bool layeredInput = backprojectionImageLayered(inputScalars);
 					if (inputScalars.BPType == 5) {
 						textureHeight++;
 						textureWidth++;
@@ -6786,9 +6883,10 @@ public:
 							mexPrint("Metal backprojection input buffer is unavailable\n");
 							return -1;
 						}
-						if (!d_inputImage || BPImageDims[0] != textureWidth || BPImageDims[1] != textureHeight || BPImageDims[2] != textureDepth) {
-							d_inputImage = createMetalFloatTextureEmpty(
-								metalTextureSpec(textureWidth, textureHeight, textureDepth, true));
+						const auto spec = metalTextureSpec(textureWidth, textureHeight, textureDepth, true, layeredInput);
+						if (!d_inputImage || BPImageDims[0] != textureWidth || BPImageDims[1] != textureHeight ||
+							BPImageDims[2] != textureDepth || BPImageLayered != layeredInput) {
+							d_inputImage = createMetalFloatTextureEmpty(spec);
 							if (!d_inputImage) {
 								mexPrint("Metal backprojection input texture creation failed\n");
 								return -1;
@@ -6796,9 +6894,9 @@ public:
 							BPImageDims[0] = textureWidth;
 							BPImageDims[1] = textureHeight;
 							BPImageDims[2] = textureDepth;
+							BPImageLayered = layeredInput;
 						}
-						if (copyMetalBufferToTexture(d_output, d_inputImage,
-							metalTextureSpec(textureWidth, textureHeight, textureDepth, true)) != SUCCESS_VALUE)
+						if (copyMetalBufferToTexture(d_output, d_inputImage, spec) != SUCCESS_VALUE)
 							return -1;
 					}
 					else if (!d_inputImage) {
@@ -6840,7 +6938,12 @@ public:
 					global[0] = (inputScalars.Nx[ii] + erotusBP[0][ii]) / localBP[0];
 					global[1] = (inputScalars.Ny[ii] + erotusBP[1][ii]) / localBP[1];
 					global[2] = (inputScalars.Nz[ii] + nVoxelsZ5 - 1) / nVoxelsZ5;
-#elif defined(OPENCL) || defined(METAL)
+#elif defined(METAL)
+					const uint64_t axialBlocks = (inputScalars.Nz[ii] + nVoxelsZ5 - 1) / nVoxelsZ5;
+					// Metal dispatches whole threadgroups. The shader discards padded axial blocks.
+					const uint64_t axialThreads = ((axialBlocks + localBP[2] - 1) / localBP[2]) * localBP[2];
+					SET_RANGE3(global, inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], axialThreads);
+#elif defined(OPENCL)
 					SET_RANGE3(global, inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], (inputScalars.Nz[ii] + nVoxelsZ5 - 1) / nVoxelsZ5);
 #endif // END CUDA
 				}
@@ -6937,11 +7040,12 @@ public:
 					else
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_z[timestep][osa_iter]);
 					// Only when the kernel was built with -DPROJWINDOW
-#if !defined(METAL)
 					if (useProjWindow) {
+#if defined(METAL)
+						KARG_METAL_SLOT(kernelIndBPSubIter, 10);
+#endif
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_projWindow[osa_iter][ii]);
 					}
-#endif
 					KARG_METAL_SLOT(kernelIndBPSubIter, 7);
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_Summ[ee]);
 				}
@@ -6963,14 +7067,16 @@ public:
 					else
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_z[timestep][osa_iter]);
 					// Only when the kernel was built with -DGEOM5
-#if !defined(METAL)
 					if (inputScalars.BPType == 5 && inputScalars.CT && inputScalars.listmode == 0 && !inputScalars.useHelical)
+					{
+						KARG_METAL_SLOT(kernelIndBPSubIter, 26);
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_geomProj5[osa_iter]);
+					}
 					// Only when the kernel was built with -DPROJWINDOW
 					if (useProjWindow) {
+						KARG_METAL_SLOT(kernelIndBPSubIter, 27);
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_projWindow[osa_iter][ii]);
 					}
-#endif
 					KARG_METAL_SLOT(kernelIndBPSubIter, 2);
 					KARG(kTemp, kernelBP, kernelIndBPSubIter, d_inputImage);
 					KARG_METAL_SLOT(kernelIndBPSubIter, 4);
@@ -7453,7 +7559,6 @@ public:
 	/// <param name="MethodList the reconstruction algorithms and priors selected"></param>
 	/// <param name="w_vec specifies some of the special options/parameters used"></param>
 	inline void setupFastPDHGLocalSize(scalarStruct& inputScalars, const RecMethods& MethodList, const Weighting& w_vec) {
-#ifndef METAL
 #if defined(OPENCL)
 		STATUS_t status = SUCCESS_VALUE;
 #endif
@@ -7475,6 +7580,9 @@ public:
 			cuDeviceGetAttribute(&memLoc, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK, CUDeviceID[0]);
 #elif defined(OPENCL)
 			memLoc = static_cast<int>(CLDeviceID[0].getInfo<CL_DEVICE_LOCAL_MEM_SIZE>(&status));
+#elif defined(METAL)
+			if (mtlDevice)
+				memLoc = static_cast<int>(mtlDevice->maxThreadgroupMemoryLength());
 #endif // END CUDA
 			if (MethodList.NLM)
 				cacheSize = (local_size[0] + 2ULL * (w_vec.Ndx + w_vec.Nlx)) * (local_size[1] + 2ULL * (w_vec.Ndy + w_vec.Nly))
@@ -7482,7 +7590,7 @@ public:
 			else if ((MethodList.RDP && w_vec.RDPLargeNeighbor && !w_vec.RDP_anatomical) || MethodList.GGMRF || MethodList.hyperbolic)
 				cacheSize = (local_size[0] + 2ULL * w_vec.Ndx) * (local_size[1] + 2ULL * w_vec.Ndy)
 					* (nVoxZ + 2ULL * w_vec.Ndz) * sizeof(float);
-			if (cacheSize >= memLoc - 1024ULL) {
+			if (memLoc <= 1024 || cacheSize + 1024ULL >= static_cast<size_t>(memLoc)) {
 				inputScalars.fastPDHG = false;
 				if (DEBUG) {
 					mexPrintBase("fastPDHG disabled: the fused prior's local-memory tile needs %u bytes per work-group, which exceeds the limit. Using the regular (multi-step) path.\n", static_cast<uint32_t>(cacheSize));
@@ -7490,7 +7598,6 @@ public:
 				}
 			}
 		}
-#endif
 	}
 
 	/// <summary>
@@ -7502,9 +7609,6 @@ public:
 	/// <param name="inputScalars various scalar parameters defining the build parameters and what features to use"></param>
 	/// <returns>0 on success, -1 if the tile cannot fit even with a work-group of 1 x 1</returns>
 	inline int limitPriorLocalSize(const RecMethods& MethodList, const Weighting& w_vec, const scalarStruct& inputScalars) {
-#if defined(METAL)
-		return 0;
-#else
 		size_t halo[3] = { 0ULL, 0ULL, 0ULL };
 		size_t nTiles = 0ULL;
 		if (MethodList.NLM) {
@@ -7527,6 +7631,9 @@ public:
 #elif defined(OPENCL)
 		STATUS_t status = SUCCESS_VALUE;
 		memLoc = static_cast<int>(CLDeviceID[0].getInfo<CL_DEVICE_LOCAL_MEM_SIZE>(&status));
+#elif defined(METAL)
+		if (mtlDevice)
+			memLoc = static_cast<int>(mtlDevice->maxThreadgroupMemoryLength());
 #endif // END CUDA
 		// The limit could not be queried
 		if (memLoc <= 0)
@@ -7554,7 +7661,6 @@ public:
 			mexEval();
 		}
 		return 0;
-#endif
 	}
 
 	/// <summary>
@@ -7594,7 +7700,69 @@ public:
 		return static_cast<int64_t>(mem);
 	}
 
-#if !defined(METAL)
+	inline bool largeDimPriorOutputRange(const scalarStruct& inputScalars, const int kk, const UINT32_t halo, UINT2_t& range) const {
+		range = { 0U, 0U };
+		if (!inputScalars.largeDim)
+			return true;
+		if (kk < 0 || static_cast<size_t>(kk) >= inputScalars.subsetsUsed ||
+			static_cast<size_t>(kk) >= inputScalars.lDimStruct.NzPr.size()) {
+			mexPrint("Prior received an invalid largeDim chunk index\n");
+			return false;
+		}
+		const UINT32_t depth = inputScalars.lDimStruct.NzPr[static_cast<size_t>(kk)];
+		if (depth == 0U) {
+			mexPrint("LargeDim prior chunk is empty\n");
+			return false;
+		}
+		// A single largeDim chunk is the full volume and has no halo padding.
+		if (inputScalars.subsetsUsed <= 1U) {
+			range = { 0U, depth };
+			return true;
+		}
+		if (depth < halo) {
+			mexPrint("LargeDim prior chunk is smaller than its neighborhood halo\n");
+			return false;
+		}
+		if (kk == 0)
+			range = { 0U, depth - halo };
+		else if (kk < static_cast<int>(inputScalars.subsetsUsed) - 1)
+			range = { halo, depth - halo };
+		else
+			range = { halo, depth };
+		if (VEC_X(range) >= VEC_Y(range)) {
+			mexPrint("LargeDim prior chunk has an empty interior\n");
+			return false;
+		}
+		return true;
+	}
+
+	inline bool largeDimPriorGlobalZOffset(const scalarStruct& inputScalars, const int kk, UINT32_t& offset) const {
+		offset = 0U;
+		if (!inputScalars.largeDim)
+			return true;
+		if (kk < 0) {
+			mexPrint("Prior received an invalid largeDim eFOV chunk index\n");
+			return false;
+		}
+		const size_t chunk = static_cast<size_t>(kk);
+		if (chunk >= inputScalars.lDimStruct.cumDim.size() || chunk >= inputScalars.lDimStruct.startPr.size()) {
+			mexPrint("Prior received an invalid largeDim eFOV chunk index\n");
+			return false;
+		}
+		const int64_t planeSize = static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]);
+		const int64_t firstVoxel = inputScalars.lDimStruct.cumDim[chunk] - inputScalars.lDimStruct.startPr[chunk];
+		if (planeSize <= 0 || firstVoxel < 0 || firstVoxel % planeSize != 0 ||
+			static_cast<uint64_t>(firstVoxel / planeSize) > std::numeric_limits<UINT32_t>::max()) {
+			mexPrint("Prior received an invalid largeDim eFOV offset\n");
+			return false;
+		}
+		offset = static_cast<UINT32_t>(firstVoxel / planeSize);
+		return true;
+	}
+
+
+
+#if defined(CUDA) || defined(HIP) || defined(OPENCL) || defined(METAL)
 	/// <summary>
 	/// Compute median root prior (MRP)
 	/// </summary>
@@ -7602,14 +7770,26 @@ public:
 	/// <param name="grad the output gradient array"></param>
 	/// <param name="inputScalars various scalar parameters defining the build parameters and what features to use"></param>
 	/// <returns></returns>
+	inline int computeMRP(const scalarStruct & inputScalars, const uint64_t globalSize[], const UINT32_t halo = 0U, const int kk = 0) {
 #if defined(CUDA) || defined(HIP)
-	inline int computeMRP(const scalarStruct & inputScalars, const uint64_t global_size[]) {
 		std::vector<void*> kArgs;
 #elif defined(OPENCL)
-	inline int computeMRP(const scalarStruct & inputScalars, const uint64_t gSize[]) {
 		UINT32_t kernelIndMed = 0U;
-		uint64_t erotus[2] = { (localPrior[0] - gSize[0] % localPrior[0]) % localPrior[0], (localPrior[1] - gSize[1] % localPrior[1]) % localPrior[1] };
-		cl::NDRange global_size(gSize[0] + erotus[0], gSize[1] + erotus[1], gSize[2]);
+		uint64_t erotus[2] = { (localPrior[0] - globalSize[0] % localPrior[0]) % localPrior[0], (localPrior[1] - globalSize[1] % localPrior[1]) % localPrior[1] };
+		cl::NDRange globalRange(globalSize[0] + erotus[0], globalSize[1] + erotus[1], globalSize[2]);
+#elif defined(METAL)
+		UINT32_t kernelIndMed = 0U;
+		if (!queueBP || !kernelMed || (inputScalars.eFOV && !inputScalars.multiResolution && !d_eFOVIndices)) {
+			mexPrint("Metal median filter pipeline, queue, or axial eFOV mask is unavailable\n");
+			return -1;
+		}
+		auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+		auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+		if (!encoder) {
+			mexPrint("Unable to create Metal median filter encoder\n");
+			return -1;
+		}
+		encoder->setComputePipelineState(kernelMed.get());
 #endif // END CUDA
 		TimerPoint tStart, tEnd;
 		STATUS_t status = SUCCESS_VALUE;
@@ -7618,50 +7798,94 @@ public:
 		if (DEBUG || inputScalars.verbose >= 3) {
 			INIT_TIMER(tStart, tEnd);
 		}
+		INT3_t mrpSize = d_N[0];
+		UINT2_t outputRange = { 0U, 0U };
+		UINT32_t fovOffset = 0U;
+		if (inputScalars.largeDim) {
+			if (kk < 0 || static_cast<size_t>(kk) >= inputScalars.lDimStruct.NzPr.size()) {
+				mexPrint("MRP received an invalid largeDim chunk index\n");
+				return -1;
+			}
+			VEC_Z(mrpSize) = static_cast<INT32_t>(inputScalars.lDimStruct.NzPr[static_cast<size_t>(kk)]);
+			if (!largeDimPriorOutputRange(inputScalars, kk, halo, outputRange))
+				return -1;
+			if (inputScalars.eFOV && !inputScalars.multiResolution &&
+				!largeDimPriorGlobalZOffset(inputScalars, kk, fovOffset))
+				return -1;
+		}
 #if defined(CUDA) || defined(HIP)
 		unsigned int gSize[3];
 		unsigned int erotus[2];
-		erotus[0] = (localPrior[0] - (global_size[0] % localPrior[0])) % localPrior[0];
-		erotus[1] = (localPrior[1] - (global_size[1] % localPrior[1])) % localPrior[1];
-		gSize[0] = (global_size[0] + erotus[0]) / localPrior[0];
-		gSize[1] = (global_size[1] + erotus[1]) / localPrior[1];
-		gSize[2] = global_size[2];
+		erotus[0] = (localPrior[0] - (globalSize[0] % localPrior[0])) % localPrior[0];
+		erotus[1] = (localPrior[1] - (globalSize[1] % localPrior[1])) % localPrior[1];
+		gSize[0] = (globalSize[0] + erotus[0]) / localPrior[0];
+		gSize[1] = (globalSize[1] + erotus[1]) / localPrior[1];
+		gSize[2] = globalSize[2];
 #endif // END CUDA
 		//FINISH_QUEUE(status, "\n", -1);
 		if (DEBUG) {
-			mexPrintBase("global_size[0] = %d\n", global_size[0]);
-			mexPrintBase("global_size[1] = %d\n", global_size[1]);
-			mexPrintBase("global_size[2] = %d\n", global_size[2]);
+			mexPrintBase("globalSize[0] = %d\n", globalSize[0]);
+			mexPrintBase("globalSize[1] = %d\n", globalSize[1]);
+			mexPrintBase("globalSize[2] = %d\n", globalSize[2]);
+#if defined(CUDA) || defined(HIP)
 			mexPrintBase("erotus[0] = %d\n", erotus[0]);
 			mexPrintBase("erotus[1] = %d\n", erotus[1]);
 			mexPrintBase("gSize[0] = %d\n", gSize[0]);
 			mexPrintBase("gSize[1] = %d\n", gSize[1]);
+#elif defined(OPENCL)
+			mexPrintBase("erotus[0] = %d\n", erotus[0]);
+			mexPrintBase("erotus[1] = %d\n", erotus[1]);
+#endif
 			mexEval();
 		}
 		KARG(kArgs, kernelMed, kernelIndMed, d_inputB);
 		KARG(kArgs, kernelMed, kernelIndMed, d_W);
-		KARG(kArgs, kernelMed, kernelIndMed, d_N[0]);
+		KARG_METAL_SLOT(kernelIndMed, 2U);
+		KARG(kArgs, kernelMed, kernelIndMed, mrpSize);
+#if !defined(METAL)
 		KARG(kArgs, kernelMed, kernelIndMed, d_NOrig);
-		if (inputScalars.priorMask)
+#endif
+		if (inputScalars.priorMask) {
 			if (!inputScalars.useImages) {
+				KARG_METAL_SLOT(kernelIndMed, 3U);
 				KARG(kArgs, kernelMed, kernelIndMed, d_maskPriorB);
 			}
-			else
+			else {
 #if defined(OPENCL)
 				if (inputScalars.maskBPZ > 1) {
 					KARG(kArgs, kernelMed, kernelIndMed, d_maskPrior3);
 				}
 				else
 #endif // END CUDA
+				{
+					KARG_METAL_SLOT(kernelIndMed, 3U);
 					KARG(kArgs, kernelMed, kernelIndMed, d_maskPrior);
-		if (inputScalars.eFOV && !inputScalars.multiResolution)
+				}
+			}
+		}
+		if (inputScalars.eFOV && !inputScalars.multiResolution) {
+			KARG_METAL_SLOT(kernelIndMed, 4U);
 			KARG(kArgs, kernelMed, kernelIndMed, d_eFOVIndices);
+		}
+		if (inputScalars.largeDim) {
+			KARG_METAL_SLOT(kernelIndMed, 5U);
+			KARG(kArgs, kernelMed, kernelIndMed, outputRange);
+			if (inputScalars.eFOV && !inputScalars.multiResolution) {
+				KARG_METAL_SLOT(kernelIndMed, 6U);
+				KARG(kArgs, kernelMed, kernelIndMed, fovOffset);
+			}
+		}
 		if (DEBUG || inputScalars.verbose >= 3)
 			START_TIMER(tStart);
 #if defined(CUDA) || defined(HIP)
 		status = cuLaunchKernel(kernelMed, gSize[0], gSize[1], gSize[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+#elif defined(METAL)
+		const auto groupWidth = (std::min)(static_cast<NS::UInteger>(globalSize[0]), kernelMed->threadExecutionWidth());
+		encoder->dispatchThreads(MTL::Size::Make(globalSize[0], globalSize[1], globalSize[2]), MTL::Size::Make(groupWidth, 1, 1));
+		encoder->endEncoding();
+		submitMetalCommandBuffer(commandBuffer.get());
 #elif defined(OPENCL)
-		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelMed, cl::NullRange, global_size, localPrior);
+		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelMed, cl::NullRange, globalRange, localPrior);
 #endif // END CUDA
 		CHECK(status, "Failed to launch the Median filter kernel\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
@@ -7683,11 +7907,7 @@ public:
 	/// <param name="inputScalars various scalar parameters defining the build parameters and what features to use"></param>
 	/// <param name="w_vec specifies some of the special options/parameters used"></param>
 	/// <returns></returns>
-#if defined(CUDA) || defined(HIP)
-	inline int computeNLM(const scalarStruct & inputScalars, Weighting & w_vec, float beta, const int kk = 0) {
-#elif defined(OPENCL)
 	inline int computeNLM(const scalarStruct & inputScalars, Weighting & w_vec, const float beta, const int kk = 0) {
-#endif // END CUDA
 		TimerPoint tStart, tEnd;
 		if (DEBUG || inputScalars.verbose >= 3) {
 			INIT_TIMER(tStart, tEnd);
@@ -7702,6 +7922,24 @@ public:
 		const INT3_t searchWindow = { static_cast<INT32_t>(w_vec.Ndx) , static_cast<INT32_t>(w_vec.Ndy) , static_cast<INT32_t>(w_vec.Ndz) };
 		const INT3_t patchWindow = { static_cast<INT32_t>(w_vec.Nlx) , static_cast<INT32_t>(w_vec.Nly) , static_cast<INT32_t>(w_vec.Nlz) };
 		UINT32_t kernelIndNLM = 0U;
+#elif defined(METAL)
+		UINT32_t kernelIndNLM = 0U;
+		if (!queueBP || !kernelNLM || (inputScalars.eFOV && !inputScalars.multiResolution && !d_eFOVIndices)) {
+			mexPrint("Metal NLM pipeline, queue, or axial eFOV mask is unavailable\n");
+			return -1;
+		}
+		const auto group = MTL::Size::Make(localPrior[0], localPrior[1], localPrior[2]);
+		if (group.width * group.height * group.depth > kernelNLM->maxTotalThreadsPerThreadgroup()) {
+			mexPrint("The requested Metal NLM workgroup is too large\n");
+			return -1;
+		}
+		auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+		auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+		if (!encoder) {
+			mexPrint("Unable to create Metal NLM encoder\n");
+			return -1;
+		}
+		encoder->setComputePipelineState(kernelNLM.get());
 #endif // END CUDA
 		uint32_t Nz, NzOrig;
 		UINT2_t nOffset;
@@ -7720,6 +7958,10 @@ public:
 			nOffset = { w_vec.Nlz + w_vec.Ndz, Nz - w_vec.Nlz - w_vec.Ndz };
 		else if (inputScalars.largeDim)
 			nOffset = { w_vec.Nlz + w_vec.Ndz, Nz };
+		UINT32_t fovOffset = 0U;
+		if (inputScalars.largeDim && inputScalars.eFOV && !inputScalars.multiResolution &&
+			!largeDimPriorGlobalZOffset(inputScalars, kk, fovOffset))
+			return -1;
 		if (DEBUG) {
 			mexPrintBase("w_vec.Ndx = %u\n", w_vec.Ndx);
 			mexPrintBase("w_vec.Ndy = %u\n", w_vec.Ndy);
@@ -7756,14 +7998,47 @@ public:
 			else {
 #if defined(CUDA) || defined(HIP)
 				KARG(kArgs, kernelNLM, kernelIndNLM, FPTexCachePrior[0]);
-#else
+#elif defined(OPENCL)
 				KARG(kArgs, kernelNLM, kernelIndNLM, d_imageCache[0]);
+#elif defined(METAL)
+				KARG(kArgs, kernelNLM, kernelIndNLM, d_inputI);
 #endif
 			}
 		}
 		else {
 			KARG(kArgs, kernelNLM, kernelIndNLM, d_inputB);
 		}
+#if defined(METAL)
+		KARG(kArgs, kernelNLM, kernelIndNLM, d_N[0]);
+		const simd::float4 parameters = { w_vec.h2, inputScalars.epps, beta, w_vec.RDP_gamma };
+		const simd::float4 variant = { w_vec.GGMRF_p, w_vec.GGMRF_q, w_vec.GGMRF_c, w_vec.NLAdaptiveConstant };
+		KARG_METAL_SLOT(kernelIndNLM, 3U);
+		KARG(kArgs, kernelNLM, kernelIndNLM, parameters);
+		KARG(kArgs, kernelNLM, kernelIndNLM, variant);
+		KARG(kArgs, kernelNLM, kernelIndNLM, d_gaussianNLM);
+		if (w_vec.NLM_anatomical) {
+			KARG_METAL_SLOT(kernelIndNLM, 6U);
+			if (inputScalars.useImages)
+				KARG(kArgs, kernelNLM, kernelIndNLM, d_urefIm);
+			else
+				KARG(kArgs, kernelNLM, kernelIndNLM, d_uref);
+		}
+		if (inputScalars.priorMask) {
+			KARG_METAL_SLOT(kernelIndNLM, 7U);
+			if (inputScalars.useImages)
+				KARG(kArgs, kernelNLM, kernelIndNLM, d_maskPrior);
+			else
+				KARG(kArgs, kernelNLM, kernelIndNLM, d_maskPriorB);
+		}
+		if (inputScalars.eFOV && !inputScalars.multiResolution) {
+			KARG_METAL_SLOT(kernelIndNLM, 8U);
+			KARG(kArgs, kernelNLM, kernelIndNLM, d_eFOVIndices);
+		}
+		if (inputScalars.largeDim) {
+			KARG_METAL_SLOT(kernelIndNLM, 9U);
+			KARG(kArgs, kernelNLM, kernelIndNLM, nOffset);
+		}
+#else
 		KARG(kArgs, kernelNLM, kernelIndNLM, d_gaussianNLM);
 		KARG(kArgs, kernelNLM, kernelIndNLM, d_N[0]);
 		KARG(kArgs, kernelNLM, kernelIndNLM, d_NOrig);
@@ -7806,6 +8081,11 @@ public:
 			KARG(kArgs, kernelNLM, kernelIndNLM, d_eFOVIndices);
 		if (inputScalars.largeDim)
 			KARG(kArgs, kernelNLM, kernelIndNLM, nOffset);
+		#endif
+		if (inputScalars.largeDim && inputScalars.eFOV && !inputScalars.multiResolution) {
+			KARG_METAL_SLOT(kernelIndNLM, 10U);
+			KARG(kArgs, kernelNLM, kernelIndNLM, fovOffset);
+		}
 		//Compute the kernel
 		if (DEBUG || inputScalars.verbose >= 3)
 			START_TIMER(tStart);
@@ -7826,6 +8106,14 @@ public:
 #elif defined(OPENCL)
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelNLM, cl::NullRange, globalPrior, localPrior);
 		OCL_CHECK(status, "Failed to launch the NLM kernel\n", -1);
+#elif defined(METAL)
+		const auto groups = MTL::Size::Make(
+			(VEC_X(d_N[0]) + localPrior[0] - 1U) / localPrior[0],
+			(VEC_Y(d_N[0]) + localPrior[1] - 1U) / localPrior[1],
+			(VEC_Z(d_N[0]) + localPrior[2] - 1U) / localPrior[2]);
+		encoder->dispatchThreadgroups(groups, group);
+		encoder->endEncoding();
+		submitMetalCommandBuffer(commandBuffer.get());
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3) {
 			FINISH_QUEUE(status, "Queue finish failed after NLM kernel\n", status);
@@ -7846,17 +8134,32 @@ public:
 	/// <param name="gamma controls the shape of the prior"></param>
 	/// <param name="weights_RDP (UNUSED) the voxel weights for RDP"></param>
 	/// <returns></returns>
-#if defined(CUDA) || defined(HIP)
-	inline int computeRDP(const scalarStruct & inputScalars, float gamma, const Weighting & w_vec, float beta, const int kk = 0, const bool RDPLargeNeighbor = false, const bool useRDPRef = false) {
-#elif defined(OPENCL)
-	inline int computeRDP(const scalarStruct & inputScalars, const float gamma, const Weighting & w_vec, const float beta, const int kk = 0, const bool RDPLargeNeighbor = false, const bool useRDPRef = false) {
-#endif // END CUDA
+	inline int computeRDP(const scalarStruct & inputScalars, const float gamma, const Weighting & w_vec, const float beta,
+		const int kk = 0, const bool RDPLargeNeighbor = false, const bool useRDPRef = false) {
 		STATUS_t status = SUCCESS_VALUE;
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrint("Starting " BACKEND_STR " RDP gradient computation");
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
 		float apu = inputScalars.epps;
+#elif defined(METAL)
+		UINT32_t kernelIndRDP = 0U;
+		if (!queueBP || !kernelRDP || (inputScalars.eFOV && !inputScalars.multiResolution && !d_eFOVIndices)) {
+			mexPrint("Metal RDP pipeline, queue, or axial eFOV mask is unavailable\n");
+			return -1;
+		}
+		const auto group = MTL::Size::Make(localPrior[0], localPrior[1], localPrior[2]);
+		if (group.width * group.height * group.depth > kernelRDP->maxTotalThreadsPerThreadgroup()) {
+			mexPrint("The requested Metal RDP workgroup is too large\n");
+			return -1;
+		}
+		auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+		auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+		if (!encoder) {
+			mexPrint("Unable to create Metal RDP encoder\n");
+			return -1;
+		}
+		encoder->setComputePipelineState(kernelRDP.get());
 #endif // END CUDA
 		TimerPoint tStart, tEnd;
 		if (DEBUG || inputScalars.verbose >= 3) {
@@ -7884,6 +8187,10 @@ public:
 			nOffset = { (Nz - NzOrig) / 2, (Nz + NzOrig) / 2 };
 		else if (inputScalars.largeDim)
 			nOffset = { Nz - NzOrig, Nz };
+		UINT32_t fovOffset = 0U;
+		if (inputScalars.largeDim && inputScalars.eFOV && !inputScalars.multiResolution &&
+			!largeDimPriorGlobalZOffset(inputScalars, kk, fovOffset))
+			return -1;
 		//FINISH_QUEUE(status, "Queue finish failed before RDP kernel\n", -1);
 		if (DEBUG) {
 			mexPrintBase("inputScalars.epps = %.9f\n", inputScalars.epps);
@@ -7907,14 +8214,48 @@ public:
 			else {
 #if defined(CUDA) || defined(HIP)
 				KARG(kArgs, kernelRDP, kernelIndRDP, FPTexCachePrior[0]);
-#else
+			#elif defined(OPENCL)
 				KARG(kArgs, kernelRDP, kernelIndRDP, d_imageCache[0]);
+			#elif defined(METAL)
+				KARG(kArgs, kernelRDP, kernelIndRDP, d_inputI);
 #endif
 			}
 		}
 		else {
 			KARG(kArgs, kernelRDP, kernelIndRDP, d_inputB);
 		}
+#if defined(METAL)
+		KARG(kArgs, kernelRDP, kernelIndRDP, d_N[0]);
+		const simd::float4 parameters = { gamma, inputScalars.epps, beta, 0.f };
+		KARG_METAL_SLOT(kernelIndRDP, 3U);
+		KARG(kArgs, kernelRDP, kernelIndRDP, parameters);
+		if (RDPLargeNeighbor) {
+			KARG_METAL_SLOT(kernelIndRDP, 5U);
+			KARG(kArgs, kernelRDP, kernelIndRDP, d_weights);
+			if (useRDPRef) {
+				KARG_METAL_SLOT(kernelIndRDP, 6U);
+				if (inputScalars.useImages)
+					KARG(kArgs, kernelRDP, kernelIndRDP, d_RDPrefI);
+				else
+					KARG(kArgs, kernelRDP, kernelIndRDP, d_RDPref);
+			}
+		}
+		if (inputScalars.priorMask) {
+			KARG_METAL_SLOT(kernelIndRDP, 7U);
+			if (inputScalars.useImages)
+				KARG(kArgs, kernelRDP, kernelIndRDP, d_maskPrior);
+			else
+				KARG(kArgs, kernelRDP, kernelIndRDP, d_maskPriorB);
+		}
+		if (inputScalars.eFOV && !inputScalars.multiResolution) {
+			KARG_METAL_SLOT(kernelIndRDP, 8U);
+			KARG(kArgs, kernelRDP, kernelIndRDP, d_eFOVIndices);
+		}
+		if (inputScalars.largeDim) {
+			KARG_METAL_SLOT(kernelIndRDP, 9U);
+			KARG(kArgs, kernelRDP, kernelIndRDP, nOffset);
+		}
+#else
 		KARG(kArgs, kernelRDP, kernelIndRDP, d_N[0]);
 		KARG(kArgs, kernelRDP, kernelIndRDP, d_NOrig);
 		KARG(kArgs, kernelRDP, kernelIndRDP, gamma);
@@ -7948,8 +8289,14 @@ public:
 					KARG(kArgs, kernelRDP, kernelIndRDP, d_RDPref);
 				}
 		}
-		if (inputScalars.largeDim)
+		if (inputScalars.largeDim) {
 			KARG(kArgs, kernelRDP, kernelIndRDP, nOffset);
+		}
+		#endif
+		if (inputScalars.largeDim && inputScalars.eFOV && !inputScalars.multiResolution) {
+			KARG_METAL_SLOT(kernelIndRDP, 10U);
+			KARG(kArgs, kernelRDP, kernelIndRDP, fovOffset);
+		}
 		// Compute the kernel
 		if (DEBUG || inputScalars.verbose >= 3)
 			START_TIMER(tStart);
@@ -7983,6 +8330,14 @@ public:
 #elif defined(OPENCL)
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelRDP, cl::NullRange, globalPrior, localPrior);
 		OCL_CHECK(status, "Failed to launch the RDP kernel\n", -1);
+#elif defined(METAL)
+		const auto groups = MTL::Size::Make(
+			(VEC_X(d_N[0]) + localPrior[0] - 1U) / localPrior[0],
+			(VEC_Y(d_N[0]) + localPrior[1] - 1U) / localPrior[1],
+			(VEC_Z(d_N[0]) + localPrior[2] - 1U) / localPrior[2]);
+		encoder->dispatchThreadgroups(groups, group);
+		encoder->endEncoding();
+		submitMetalCommandBuffer(commandBuffer.get());
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3) {
 			FINISH_QUEUE(status, "Queue finish failed after RDP kernel\n", -1);
@@ -8005,11 +8360,8 @@ public:
 	/// <param name="c constant controlling the approximate threshold of transition between low and high contrast regions"></param>
 	/// <param name="beta regularization parameter"></param>
 	/// <returns></returns>
-#if defined(CUDA) || defined(HIP)
-	inline int computeGGMRF(const scalarStruct & inputScalars, float p, float q, float c, float pqc, const Weighting & w_vec, float beta, const int kk = 0) {
-#elif defined(OPENCL)
-	inline int computeGGMRF(const scalarStruct & inputScalars, const float p, const float q, const float c, const float pqc, const Weighting & w_vec, const float beta, const int kk = 0) {
-#endif // END CUDA
+	inline int computeGGMRF(const scalarStruct & inputScalars, const float p, const float q, const float c, const float pqc,
+		const Weighting & w_vec, const float beta, const int kk = 0) {
 		STATUS_t status = SUCCESS_VALUE;
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrint("Starting " BACKEND_STR " GGMRF gradient computation");
@@ -8017,7 +8369,7 @@ public:
 		if (DEBUG || inputScalars.verbose >= 3) {
 			INIT_TIMER(tStart, tEnd);
 		}
-#if defined(OPENCL)
+#if defined(OPENCL) || defined(METAL)
 		if (inputScalars.largeDim)
 			SET_RANGE_Z(globalPrior, inputScalars.Nz[0]);
 #endif // END CUDA
@@ -8038,10 +8390,32 @@ public:
 			nOffset = { w_vec.Ndz, Nz - w_vec.Ndz };
 		else if (inputScalars.largeDim)
 			nOffset = { w_vec.Ndz, Nz };
+		UINT32_t fovOffset = 0U;
+		if (inputScalars.largeDim && inputScalars.eFOV && !inputScalars.multiResolution &&
+			!largeDimPriorGlobalZOffset(inputScalars, kk, fovOffset))
+			return -1;
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
 #elif defined(OPENCL)
 		UINT32_t kernelIndGGMRF = 0U;
+#elif defined(METAL)
+		UINT32_t kernelIndGGMRF = 0U;
+		if (!queueBP || !kernelGGMRF || (inputScalars.eFOV && !inputScalars.multiResolution && !d_eFOVIndices)) {
+			mexPrint("Metal GGMRF pipeline, queue, or axial eFOV mask is unavailable\n");
+			return -1;
+		}
+		const auto group = MTL::Size::Make(localPrior[0], localPrior[1], localPrior[2]);
+		if (group.width * group.height * group.depth > kernelGGMRF->maxTotalThreadsPerThreadgroup()) {
+			mexPrint("The requested Metal GGMRF workgroup is too large\n");
+			return -1;
+		}
+		auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+		auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+		if (!encoder) {
+			mexPrint("Unable to create Metal GGMRF encoder\n");
+			return -1;
+		}
+		encoder->setComputePipelineState(kernelGGMRF.get());
 #endif // END CUDA
 		if (DEBUG) {
 			mexPrintBase("p = %f\n", p);
@@ -8066,14 +8440,39 @@ public:
 			else {
 #if defined(CUDA) || defined(HIP)
 				KARG(kArgs, kernelGGMRF, kernelIndGGMRF, FPTexCachePrior[0]);
-#else
+			#elif defined(OPENCL)
 				KARG(kArgs, kernelGGMRF, kernelIndGGMRF, d_imageCache[0]);
+			#elif defined(METAL)
+				KARG(kArgs, kernelGGMRF, kernelIndGGMRF, d_inputI);
 #endif
 			}
 		}
 		else {
 			KARG(kArgs, kernelGGMRF, kernelIndGGMRF, d_inputB);
 		}
+#if defined(METAL)
+		KARG(kArgs, kernelGGMRF, kernelIndGGMRF, d_N[0]);
+		const simd::float4 parameters = { p, q, c, pqc };
+		KARG_METAL_SLOT(kernelIndGGMRF, 3U);
+		KARG(kArgs, kernelGGMRF, kernelIndGGMRF, parameters);
+		KARG(kArgs, kernelGGMRF, kernelIndGGMRF, beta);
+		KARG(kArgs, kernelGGMRF, kernelIndGGMRF, d_weights);
+		if (inputScalars.priorMask) {
+			KARG_METAL_SLOT(kernelIndGGMRF, 7U);
+			if (inputScalars.useImages)
+				KARG(kArgs, kernelGGMRF, kernelIndGGMRF, d_maskPrior);
+			else
+				KARG(kArgs, kernelGGMRF, kernelIndGGMRF, d_maskPriorB);
+		}
+		if (inputScalars.eFOV && !inputScalars.multiResolution) {
+			KARG_METAL_SLOT(kernelIndGGMRF, 8U);
+			KARG(kArgs, kernelGGMRF, kernelIndGGMRF, d_eFOVIndices);
+		}
+		if (inputScalars.largeDim) {
+			KARG_METAL_SLOT(kernelIndGGMRF, 9U);
+			KARG(kArgs, kernelGGMRF, kernelIndGGMRF, nOffset);
+		}
+#else
 		KARG(kArgs, kernelGGMRF, kernelIndGGMRF, d_weights);
 		KARG(kArgs, kernelGGMRF, kernelIndGGMRF, d_N[0]);
 		KARG(kArgs, kernelGGMRF, kernelIndGGMRF, p);
@@ -8095,8 +8494,14 @@ public:
 					KARG(kArgs, kernelGGMRF, kernelIndGGMRF, d_maskPrior);
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			KARG(kArgs, kernelGGMRF, kernelIndGGMRF, d_eFOVIndices);
-		if (inputScalars.largeDim)
+		if (inputScalars.largeDim) {
 			KARG(kArgs, kernelGGMRF, kernelIndGGMRF, nOffset);
+		}
+		#endif
+		if (inputScalars.largeDim && inputScalars.eFOV && !inputScalars.multiResolution) {
+			KARG_METAL_SLOT(kernelIndGGMRF, 10U);
+			KARG(kArgs, kernelGGMRF, kernelIndGGMRF, fovOffset);
+		}
 		// Compute the kernel
 		if (DEBUG || inputScalars.verbose >= 3)
 			START_TIMER(tStart);
@@ -8117,6 +8522,14 @@ public:
 #elif defined(OPENCL)
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelGGMRF, cl::NullRange, globalPrior, localPrior);
 		OCL_CHECK(status, "Failed to launch the GGMRF kernel\n", -1);
+#elif defined(METAL)
+		const auto groups = MTL::Size::Make(
+			(VEC_X(d_N[0]) + localPrior[0] - 1U) / localPrior[0],
+			(VEC_Y(d_N[0]) + localPrior[1] - 1U) / localPrior[1],
+			(VEC_Z(d_N[0]) + localPrior[2] - 1U) / localPrior[2]);
+		encoder->dispatchThreadgroups(groups, group);
+		encoder->endEncoding();
+		submitMetalCommandBuffer(commandBuffer.get());
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3) {
 			FINISH_QUEUE(status, "Queue finish failed after GGMRF kernel\n", -1);
@@ -8137,20 +8550,29 @@ public:
 	/// <param name="inputScalars various scalar parameters defining the build parameters and what features to use"></param>
 	/// <param name="alpha the regularization parameter"></param>
 	/// <returns></returns>
-#if defined(CUDA) || defined(HIP)
 	inline int ProxTVDiv(const scalarStruct & inputScalars) {
-#elif defined(OPENCL)
-	inline int ProxTVDiv(const scalarStruct & inputScalars, uint32_t timestep = 0) { // TODO: remove default argument
-#endif // END CUDA
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrint("Starting Proximal TV divergence");
 		STATUS_t status = SUCCESS_VALUE;
-#if defined(OPENCL)
+#if defined(OPENCL) || defined(METAL)
 		UINT32_t kernelIndCPTV = 0U;
 #endif // END CUDA
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
 #endif // END CUDA
+#if defined(METAL)
+		if (!queueBP || !kernelProxTVDiv || (inputScalars.eFOV && !inputScalars.multiResolution && !d_eFOVIndices)) {
+			mexPrint("Metal proximal TV divergence pipeline, queue, or axial eFOV mask is unavailable\n");
+			return -1;
+		}
+		auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+		auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+		if (!encoder) {
+			mexPrint("Unable to create Metal proximal TV divergence encoder\n");
+			return -1;
+		}
+		encoder->setComputePipelineState(kernelProxTVDiv.get());
+#endif
 		if (inputScalars.largeDim)
 			SET_RANGE_Z(globalPrior, inputScalars.Nz[0]);
 		if (DEBUG) {
@@ -8171,21 +8593,28 @@ public:
 		KARG(kArgs, kernelProxTVDiv, kernelIndCPTV, d_qX);
 		KARG(kArgs, kernelProxTVDiv, kernelIndCPTV, d_qY);
 		KARG(kArgs, kernelProxTVDiv, kernelIndCPTV, d_qZ);
-		KARG(kArgs, kernelProxTVDiv, kernelIndCPTV, vec_opencl.d_rhs_os[0]);
-		if (inputScalars.priorMask)
+		KARG(kArgs, kernelProxTVDiv, kernelIndCPTV, d_W);
+		if (inputScalars.priorMask) {
+			KARG_METAL_SLOT(kernelIndCPTV, 6U);
 			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelProxTVDiv, kernelIndCPTV, d_maskPriorB);
 			}
-			else
+			else {
 #if defined(OPENCL)
 				if (inputScalars.maskBPZ > 1) {
 					KARG(kArgs, kernelProxTVDiv, kernelIndCPTV, d_maskPrior3);
 				}
 				else
 #endif // END CUDA
+				{
 					KARG(kArgs, kernelProxTVDiv, kernelIndCPTV, d_maskPrior);
-		if (inputScalars.eFOV && !inputScalars.multiResolution)
+				}
+			}
+		}
+		if (inputScalars.eFOV && !inputScalars.multiResolution) {
+			KARG_METAL_SLOT(kernelIndCPTV, 7U);
 			KARG(kArgs, kernelProxTVDiv, kernelIndCPTV, d_eFOVIndices);
+		}
 		// Compute the kernel
 		// The kernel uses the coordinates of the full volume and skips the extended FOV itself. The work range
 		// thus has to be that of the full volume, not of the prior (original FOV) volume
@@ -8195,6 +8624,12 @@ public:
 #elif defined(OPENCL)
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTVDiv, cl::NullRange, globalPrior, localPrior);
 		OCL_CHECK(status, "Failed to launch the Proximal TV divergence kernel\n", -1);
+#elif defined(METAL)
+		const auto threads = MTL::Size::Make(VEC_X(d_N[0]), VEC_Y(d_N[0]), VEC_Z(d_N[0]));
+		const auto width = (std::min)(threads.width, kernelProxTVDiv->threadExecutionWidth());
+		encoder->dispatchThreads(threads, MTL::Size::Make(width, 1, 1));
+		encoder->endEncoding();
+		submitMetalCommandBuffer(commandBuffer.get());
 #endif // END CUDA
 		//FINISH_QUEUE(status, "Queue finish failed after divergence kernel\n", -1);
 		if (inputScalars.verbose >= 3 || DEBUG)
@@ -8212,20 +8647,29 @@ public:
 	/// <param name="alpha the radius of the ball of the projection, i.e. the regularization parameter"></param>
 	/// <param name="v divergence of the symmetric derivative for TGV"></param>
 	/// <returns></returns>
-#if defined(CUDA) || defined(HIP)
-	inline int ProxTVGrad(const scalarStruct & inputScalars, float sigma2, float alpha, const size_t vSize) {
-#elif defined(OPENCL)
 	inline int ProxTVGrad(const scalarStruct & inputScalars, const float sigma2, const float alpha, const size_t vSize) {
-#endif // END CUDA
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrint("Starting Proximal TV gradient");
 		STATUS_t status = SUCCESS_VALUE;
-#if defined(OPENCL)
+#if defined(OPENCL) || defined(METAL)
 		UINT32_t kernelIndCPTV = 0U;
 #endif // END CUDA
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
 #endif // END CUDA
+#if defined(METAL)
+		if (!queueBP || !kernelProxTVGrad || (inputScalars.eFOV && !inputScalars.multiResolution && !d_eFOVIndices)) {
+			mexPrint("Metal proximal TV gradient pipeline, queue, or axial eFOV mask is unavailable\n");
+			return -1;
+		}
+		auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+		auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+		if (!encoder) {
+			mexPrint("Unable to create Metal proximal TV gradient encoder\n");
+			return -1;
+		}
+		encoder->setComputePipelineState(kernelProxTVGrad.get());
+#endif
 		if (inputScalars.largeDim)
 			SET_RANGE_Z(globalPrior, inputScalars.Nz[0]);
 		if (DEBUG) {
@@ -8255,20 +8699,27 @@ public:
 			if (!inputScalars.TGV2D)
 				KARG(kArgs, kernelProxTVGrad, kernelIndCPTV, d_vZ);
 		}
-		if (inputScalars.priorMask)
+		if (inputScalars.priorMask) {
+			KARG_METAL_SLOT(kernelIndCPTV, 11U);
 			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelProxTVGrad, kernelIndCPTV, d_maskPriorB);
 			}
-			else
+			else {
 #if defined(OPENCL)
 				if (inputScalars.maskBPZ > 1) {
 					KARG(kArgs, kernelProxTVGrad, kernelIndCPTV, d_maskPrior3);
 				}
 				else
 #endif // END CUDA
+				{
 					KARG(kArgs, kernelProxTVGrad, kernelIndCPTV, d_maskPrior);
-		if (inputScalars.eFOV && !inputScalars.multiResolution)
+				}
+			}
+		}
+		if (inputScalars.eFOV && !inputScalars.multiResolution) {
+			KARG_METAL_SLOT(kernelIndCPTV, 12U);
 			KARG(kArgs, kernelProxTVGrad, kernelIndCPTV, d_eFOVIndices);
+		}
 		// Compute the kernel
 		// The kernel uses the coordinates of the full volume and skips the extended FOV itself. The work range
 		// thus has to be that of the full volume, not of the prior (original FOV) volume
@@ -8276,6 +8727,12 @@ public:
 		status = cuLaunchKernel(kernelProxTVGrad, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
 #elif defined(OPENCL)
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTVGrad, cl::NullRange, globalPrior, localPrior);
+#elif defined(METAL)
+		const auto threads = MTL::Size::Make(VEC_X(d_N[0]), VEC_Y(d_N[0]), VEC_Z(d_N[0]));
+		const auto width = (std::min)(threads.width, kernelProxTVGrad->threadExecutionWidth());
+		encoder->dispatchThreads(threads, MTL::Size::Make(width, 1, 1));
+		encoder->endEncoding();
+		submitMetalCommandBuffer(commandBuffer.get());
 #endif // END CUDA
 		CHECK(status, "Failed to launch the Proximal TV gradient kernel\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
@@ -8297,21 +8754,29 @@ public:
 	/// <param name="sigma2 the sigma value of CP/PDHG (1 for PKMA)"></param>
 	/// <param name="alpha the radius of the ball of the projection, i.e. the regularization parameter"></param>
 	/// <returns></returns>
-#if defined(CUDA) || defined(HIP)
-	inline int ProxTGVSymmDeriv(const scalarStruct & inputScalars, float sigma2, float alpha) {
-#elif defined(OPENCL)
 	inline int ProxTGVSymmDeriv(const scalarStruct & inputScalars, const float sigma2, const float alpha) {
-#endif // END CUDA
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrint("Starting Proximal TGV symmetric derivative");
 		STATUS_t status = SUCCESS_VALUE;
-#if defined(OPENCL)
+#if defined(OPENCL) || defined(METAL)
 		UINT32_t kernelIndCPTGV = 0U;
 #endif // END CUDA
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
-		UINT32_t kernelIndCPTGV = 0U;
 #endif // END CUDA
+#if defined(METAL)
+		if (!queueBP || !kernelProxTGVSymmDeriv || (inputScalars.priorMask && !inputScalars.useImages && !d_maskPriorB)) {
+			mexPrint("Metal proximal TGV symmetric derivative pipeline or queue is unavailable\n");
+			return -1;
+		}
+		auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+		auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+		if (!encoder) {
+			mexPrint("Unable to create Metal proximal TGV symmetric derivative encoder\n");
+			return -1;
+		}
+		encoder->setComputePipelineState(kernelProxTGVSymmDeriv.get());
+#endif
 		if (inputScalars.largeDim)
 			SET_RANGE_Z(globalPriorEFOV, inputScalars.Nz[0]);
 		if (DEBUG) {
@@ -8329,35 +8794,48 @@ public:
 		KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, d_vY);
 		if (!inputScalars.TGV2D)
 			KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, d_vZ);
+		KARG_METAL_SLOT(kernelIndCPTGV, 5U);
 		KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, d_rX);
 		KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, d_rY);
-		if (!inputScalars.TGV2D) {
+		if (!inputScalars.TGV2D)
 			KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, d_rZ);
-			KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, d_rXY);
+		KARG_METAL_SLOT(kernelIndCPTGV, 8U);
+		KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, d_rXY);
+		if (!inputScalars.TGV2D) {
 			KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, d_rXZ);
 			KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, d_rYZ);
 		}
-		else
-			KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, d_rXY);
+		KARG_METAL_SLOT(kernelIndCPTGV, 11U);
 		KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, sigma2);
 		KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, alpha);
-		if (inputScalars.priorMask)
+		if (inputScalars.priorMask) {
+			KARG_METAL_SLOT(kernelIndCPTGV, 13U);
 			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, d_maskPriorB);
 			}
-			else
+			else {
 #if defined(OPENCL)
 				if (inputScalars.maskBPZ > 1) {
 					KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, d_maskPrior3);
 				}
 				else
 #endif // END CUDA
+				{
 					KARG(kArgs, kernelProxTGVSymmDeriv, kernelIndCPTGV, d_maskPrior);
+				}
+			}
+		}
 		// Compute the kernel
 #if defined(CUDA) || defined(HIP)
 		status = cuLaunchKernel(kernelProxTGVSymmDeriv, globalPriorEFOV[0], globalPriorEFOV[1], globalPriorEFOV[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
 #elif defined(OPENCL)
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTGVSymmDeriv, cl::NullRange, globalPriorEFOV, localPrior);
+#elif defined(METAL)
+		const auto threads = MTL::Size::Make(VEC_X(d_NPrior), VEC_Y(d_NPrior), VEC_Z(d_NPrior));
+		const auto width = (std::min)(threads.width, kernelProxTGVSymmDeriv->threadExecutionWidth());
+		encoder->dispatchThreads(threads, MTL::Size::Make(width, 1, 1));
+		encoder->endEncoding();
+		submitMetalCommandBuffer(commandBuffer.get());
 #endif // END CUDA
 		CHECK(status, "Failed to launch the Proximal TGV symmetric derivative kernel\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
@@ -8381,21 +8859,30 @@ public:
 	/// <param name="theta theta value of CP/PDHG or the momentum parameter for PKMA"></param>
 	/// <param name="tau tau value of CP/PDHG (1 for PKMA)"></param>
 	/// <returns></returns>
-#if defined(CUDA) || defined(HIP)
-	inline int ProxTGVDiv(const scalarStruct & inputScalars, float theta, float tau) {
-#elif defined(OPENCL)
 	inline int ProxTGVDiv(const scalarStruct & inputScalars, const float theta, const float tau) {
-#endif // END CUDA
 		if (inputScalars.verbose >= 3 || DEBUG) {
 			mexPrint("Starting Proximal TGV divergence");
 		}
 		STATUS_t status = SUCCESS_VALUE;
-#if defined(OPENCL)
+#if defined(OPENCL) || defined(METAL)
 		UINT32_t kernelIndCPTGV = 0U;
 #endif // END CUDA
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
 #endif // END CUDA
+#if defined(METAL)
+		if (!queueBP || !kernelProxTGVDiv || (inputScalars.priorMask && !inputScalars.useImages && !d_maskPriorB)) {
+			mexPrint("Metal proximal TGV divergence pipeline or queue is unavailable\n");
+			return -1;
+		}
+		auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+		auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+		if (!encoder) {
+			mexPrint("Unable to create Metal proximal TGV divergence encoder\n");
+			return -1;
+		}
+		encoder->setComputePipelineState(kernelProxTGVDiv.get());
+#endif
 		if (inputScalars.largeDim)
 			SET_RANGE_Z(globalPriorEFOV, inputScalars.Nz[0]);
 		if (DEBUG) {
@@ -8414,35 +8901,43 @@ public:
 		KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_NPrior);
 		KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_rX);
 		KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_rY);
-		if (!inputScalars.TGV2D) {
+		if (!inputScalars.TGV2D)
 			KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_rZ);
-			KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_rXY);
+		KARG_METAL_SLOT(kernelIndCPTGV, 5U);
+		KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_rXY);
+		if (!inputScalars.TGV2D) {
 			KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_rXZ);
 			KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_rYZ);
 		}
-		else
-			KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_rXY);
+		KARG_METAL_SLOT(kernelIndCPTGV, 8U);
 		KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_vX);
 		KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_vY);
 		if (!inputScalars.TGV2D)
 			KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_vZ);
+		KARG_METAL_SLOT(kernelIndCPTGV, 11U);
 		KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_qX);
 		KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_qY);
 		KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_qZ);
+		KARG_METAL_SLOT(kernelIndCPTGV, 14U);
 		KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, theta);
 		KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, tau);
-		if (inputScalars.priorMask)
+		if (inputScalars.priorMask) {
+			KARG_METAL_SLOT(kernelIndCPTGV, 16U);
 			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_maskPriorB);
 			}
-			else
+			else {
 #if defined(OPENCL)
 				if (inputScalars.maskBPZ > 1) {
 					KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_maskPrior3);
 				}
 				else
 #endif // END CUDA
+				{
 					KARG(kArgs, kernelProxTGVDiv, kernelIndCPTGV, d_maskPrior);
+				}
+			}
+		}
 		// Compute the kernel
 #if defined(CUDA) || defined(HIP)
 		status = cuLaunchKernel(kernelProxTGVDiv, globalPriorEFOV[0], globalPriorEFOV[1], globalPriorEFOV[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
@@ -8450,6 +8945,12 @@ public:
 #elif defined(OPENCL)
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTGVDiv, cl::NullRange, globalPriorEFOV, localPrior);
 		OCL_CHECK(status, "Failed to launch the Proximal TGV divergence kernel\n", -1);
+#elif defined(METAL)
+		const auto threads = MTL::Size::Make(VEC_X(d_NPrior), VEC_Y(d_NPrior), VEC_Z(d_NPrior));
+		const auto width = (std::min)(threads.width, kernelProxTGVDiv->threadExecutionWidth());
+		encoder->dispatchThreads(threads, MTL::Size::Make(width, 1, 1));
+		encoder->endEncoding();
+		submitMetalCommandBuffer(commandBuffer.get());
 #endif // END CUDA
 		//FINISH_QUEUE(status, "Queue finish failed after divergence kernel\n", -1);
 		if (inputScalars.verbose >= 3 || DEBUG)
@@ -8465,9 +8966,9 @@ public:
 	/// <param name="mult if true, performs multiplication, otherwise division"></param>
 	/// <param name="D2 if true, assumes 2D case, otherwise 1D"></param>
 	/// <returns></returns>
-#endif // END non-Metal auxiliary kernels
-	#if defined(CUDA) || defined(HIP)
-	inline int elementWiseComp(const bool mult, const uint64_t size[], bool D2 = false) {
+#endif // END GPU auxiliary prior kernels
+	inline int elementWiseComp(const bool mult, const uint64_t size[], const bool D2 = false) {
+#if defined(CUDA) || defined(HIP)
 		const unsigned int gSize[3] = { static_cast<unsigned int>(size[0]), static_cast<unsigned int>(size[1]), static_cast<unsigned int>(size[2]) };
 		std::vector<void*> kArgs;
 		if (DEBUG) {
@@ -8476,12 +8977,11 @@ public:
 			mexPrintBase("gSize[2] = %u\n", gSize[2]);
 			mexEval();
 		}
-	#elif defined(OPENCL)
-	inline int elementWiseComp(const bool mult, const uint64_t size[], const bool D2 = false) {
+#elif defined(OPENCL)
 		cl::NDRange gSize = { static_cast<cl::size_type>(size[0]), static_cast<cl::size_type>(size[1]), static_cast<cl::size_type>(size[2]) };
 		UINT32_t kernelIndE = 0U;
-	#elif defined(METAL)
-	inline int elementWiseComp(const bool mult, const uint64_t size[], const bool D2 = false) {
+		cl::Kernel& kernelE = mult ? kernelElementMultiply : kernelElementDivision;
+#elif defined(METAL)
 		MTL::Size gSize = MTL::Size::Make(static_cast<NS::UInteger>(size[0]), static_cast<NS::UInteger>(size[1]), static_cast<NS::UInteger>(size[2]));
 		UINT32_t kernelIndE = 0U;
 		if (!queueBP || !(mult ? kernelElementMultiply : kernelElementDivision))
@@ -8491,7 +8991,7 @@ public:
 		if (!commandBuffer || !encoder)
 			return -1;
 		encoder->setComputePipelineState((mult ? kernelElementMultiply : kernelElementDivision).get());
-	#endif // END CUDA
+#endif // END CUDA
 		STATUS_t status = SUCCESS_VALUE;
 		UCHAR_t D = static_cast<UCHAR_t>(D2);
 #if !defined(METAL)
@@ -8502,51 +9002,32 @@ public:
 		int64_t total = static_cast<int64_t>(totalU);
 #endif
 		//FINISH_QUEUE(status, "Failed to synchronize before element-wise kernel\n", -1);
-		if (mult) {
-			KARG(kArgs, kernelElementMultiply, kernelIndE, d_vector);
-			KARG(kArgs, kernelElementMultiply, kernelIndE, d_input);
-			KARG(kArgs, kernelElementMultiply, kernelIndE, D);
+		KARG(kArgs, kernelE, kernelIndE, d_vector);
+		KARG(kArgs, kernelE, kernelIndE, d_input);
+		if (mult)
+			KARG(kArgs, kernelE, kernelIndE, D);
 #if !defined(METAL)
-			KARG(kArgs, kernelElementMultiply, kernelIndE, sx);
-			KARG(kArgs, kernelElementMultiply, kernelIndE, sy);
-			KARG(kArgs, kernelElementMultiply, kernelIndE, total);
+		KARG(kArgs, kernelE, kernelIndE, sx);
+		KARG(kArgs, kernelE, kernelIndE, sy);
+		KARG(kArgs, kernelE, kernelIndE, total);
 #endif
-			// Compute the kernel
+		// Compute the kernel
 #if defined(CUDA) || defined(HIP)
-			status = cuLaunchKernel(kernelElementMultiply, static_cast<unsigned int>((totalU + 255) / 256), 1, 1, 256, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
+		status = cuLaunchKernel(mult ? kernelElementMultiply : kernelElementDivision,
+			static_cast<unsigned int>((totalU + 255) / 256), 1, 1, 256, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
 #elif defined(METAL)
-			encoder->dispatchThreads(gSize, MTL::Size::Make(std::min<NS::UInteger>(256, static_cast<NS::UInteger>(size[0])), 1, 1));
-			encoder->endEncoding();
-			submitMetalCommandBuffer(commandBuffer.get());
+		encoder->dispatchThreads(gSize, MTL::Size::Make(std::min<NS::UInteger>(256, static_cast<NS::UInteger>(size[0])), 1, 1));
+		encoder->endEncoding();
+		submitMetalCommandBuffer(commandBuffer.get());
 #elif defined(OPENCL)
-			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelElementMultiply, cl::NullRange, cl::NDRange(static_cast<cl::size_type>(((totalU + 255) / 256) * 256)), cl::NDRange(256));
+		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelE, cl::NullRange,
+			cl::NDRange(static_cast<cl::size_type>(((totalU + 255) / 256) * 256)), cl::NDRange(256));
 #endif // END CUDA
-		}
-		else {
-			KARG(kArgs, kernelElementDivision, kernelIndE, d_vector);
-			KARG(kArgs, kernelElementDivision, kernelIndE, d_input);
-#if !defined(METAL)
-			KARG(kArgs, kernelElementDivision, kernelIndE, sx);
-			KARG(kArgs, kernelElementDivision, kernelIndE, sy);
-			KARG(kArgs, kernelElementDivision, kernelIndE, total);
-#endif
-			// Compute the kernel
-#if defined(CUDA) || defined(HIP)
-			status = cuLaunchKernel(kernelElementDivision, static_cast<unsigned int>((totalU + 255) / 256), 1, 1, 256, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
-#elif defined(METAL)
-			encoder->dispatchThreads(gSize, MTL::Size::Make(std::min<NS::UInteger>(256, static_cast<NS::UInteger>(size[0])), 1, 1));
-			encoder->endEncoding();
-			submitMetalCommandBuffer(commandBuffer.get());
-#elif defined(OPENCL)
-			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelElementDivision, cl::NullRange, cl::NDRange(static_cast<cl::size_type>(((totalU + 255) / 256) * 256)), cl::NDRange(256));
-#endif // END CUDA
-		}
 		CHECK(status, "Failed to launch the element-wise kernel\n", -1);
 		//FINISH_QUEUE(status, "Queue finish failed after element-wise kernel\n", -1);
 		return 0;
 	}
 
-#if !defined(METAL)
 
 	/// <summary>
 	/// The gradient of hyperbolic prior
@@ -8555,15 +9036,12 @@ public:
 	/// <param name="sigma adjustable weighting parameter"></param>
 	/// <param name="beta regularization parameter"></param>
 	/// <returns></returns>
-#if defined(CUDA) || defined(HIP)
-	inline int hyperGradient(const scalarStruct & inputScalars, float sigma, const Weighting & w_vec, float beta, const int kk = 0) {
-#elif defined(OPENCL)
-	inline int hyperGradient(const scalarStruct & inputScalars, const float sigma, const Weighting & w_vec, const float beta, const int kk = 0) {
-#endif // END CUDA
+	inline int hyperGradient(const scalarStruct & inputScalars, const float sigma, const Weighting & w_vec,
+		const float beta, const int kk = 0) {
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrint("Starting " BACKEND_STR " hyperbolic prior gradient computation");
 		STATUS_t status = SUCCESS_VALUE;
-#if defined(OPENCL)
+#if defined(OPENCL) || defined(METAL)
 		if (inputScalars.largeDim)
 			SET_RANGE_Z(globalPrior, inputScalars.Nz[0]);
 #endif // END CUDA
@@ -8593,10 +9071,32 @@ public:
 			nOffset = { w_vec.Ndz, Nz - w_vec.Ndz };
 		else if (inputScalars.largeDim)
 			nOffset = { w_vec.Ndz, Nz };
+		UINT32_t fovOffset = 0U;
+		if (inputScalars.largeDim && inputScalars.eFOV && !inputScalars.multiResolution &&
+			!largeDimPriorGlobalZOffset(inputScalars, kk, fovOffset))
+			return -1;
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
 #elif defined(OPENCL)
 		UINT32_t kernelIndHyper = 0U;
+#elif defined(METAL)
+		UINT32_t kernelIndHyper = 0U;
+		if (!queueBP || !kernelHyper || (inputScalars.eFOV && !inputScalars.multiResolution && !d_eFOVIndices)) {
+			mexPrint("Metal hyperbolic prior pipeline, queue, or axial eFOV mask is unavailable\n");
+			return -1;
+		}
+		const auto group = MTL::Size::Make(localPrior[0], localPrior[1], localPrior[2]);
+		if (group.width * group.height * group.depth > kernelHyper->maxTotalThreadsPerThreadgroup()) {
+			mexPrint("The requested Metal hyperbolic workgroup is too large\n");
+			return -1;
+		}
+		auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+		auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+		if (!encoder) {
+			mexPrint("Unable to create Metal hyperbolic encoder\n");
+			return -1;
+		}
+		encoder->setComputePipelineState(kernelHyper.get());
 #endif // END CUDA
 		//FINISH_QUEUE(status, "\n", -1);
 		KARG(kArgs, kernelHyper, kernelIndHyper, d_W);
@@ -8609,43 +9109,61 @@ public:
 			else {
 #if defined(CUDA) || defined(HIP)
 				KARG(kArgs, kernelHyper, kernelIndHyper, FPTexCachePrior[0]);
-#else
+			#elif defined(OPENCL)
 				KARG(kArgs, kernelHyper, kernelIndHyper, d_imageCache[0]);
+			#elif defined(METAL)
+				KARG(kArgs, kernelHyper, kernelIndHyper, d_inputI);
 #endif
 			}
 		}
 		else {
 			KARG(kArgs, kernelHyper, kernelIndHyper, d_inputB);
 		}
-#if defined(CUDA) || defined(HIP)
+#if !defined(METAL)
 		float smooth = inputScalars.epps;
-#endif // END CUDA
+#endif
 		KARG(kArgs, kernelHyper, kernelIndHyper, d_N[0]);
+#if defined(METAL)
+		const simd::float4 parameters = { sigma, inputScalars.epps, beta, 0.f };
+		KARG_METAL_SLOT(kernelIndHyper, 3U);
+		KARG(kArgs, kernelHyper, kernelIndHyper, parameters);
+#else
 		KARG(kArgs, kernelHyper, kernelIndHyper, d_NOrig);
 		KARG(kArgs, kernelHyper, kernelIndHyper, sigma);
-#if defined(CUDA) || defined(HIP)
 		KARG(kArgs, kernelHyper, kernelIndHyper, smooth);
-#elif defined(OPENCL)
-		KARG(kArgs, kernelHyper, kernelIndHyper, inputScalars.epps);
-#endif // END CUDA
 		KARG(kArgs, kernelHyper, kernelIndHyper, beta);
+#endif
+		KARG_METAL_SLOT(kernelIndHyper, 5U);
 		KARG(kArgs, kernelHyper, kernelIndHyper, d_weights);
-		if (inputScalars.priorMask)
+		if (inputScalars.priorMask) {
+			KARG_METAL_SLOT(kernelIndHyper, 7U);
 			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelHyper, kernelIndHyper, d_maskPriorB);
 			}
-			else
+			else {
 #if defined(OPENCL)
 				if (inputScalars.maskBPZ > 1) {
 					KARG(kArgs, kernelHyper, kernelIndHyper, d_maskPrior3);
 				}
 				else
 #endif // END CUDA
+				{
 					KARG(kArgs, kernelHyper, kernelIndHyper, d_maskPrior);
-		if (inputScalars.eFOV && !inputScalars.multiResolution)
+				}
+			}
+		}
+		if (inputScalars.eFOV && !inputScalars.multiResolution) {
+			KARG_METAL_SLOT(kernelIndHyper, 8U);
 			KARG(kArgs, kernelHyper, kernelIndHyper, d_eFOVIndices);
-		if (inputScalars.largeDim)
+		}
+		if (inputScalars.largeDim) {
+			KARG_METAL_SLOT(kernelIndHyper, 9U);
 			KARG(kArgs, kernelHyper, kernelIndHyper, nOffset);
+			if (inputScalars.eFOV && !inputScalars.multiResolution) {
+				KARG_METAL_SLOT(kernelIndHyper, 10U);
+				KARG(kArgs, kernelHyper, kernelIndHyper, fovOffset);
+			}
+		}
 		// Compute the kernel
 		if (DEBUG || inputScalars.verbose >= 3)
 			START_TIMER(tStart);
@@ -8668,6 +9186,14 @@ public:
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelHyper, cl::NullRange, globalPrior, localPrior);
 		OCL_CHECK(status, "Failed to launch the hyperbolic prior gradient kernel\n", -1);
 		//FINISH_QUEUE(status, "Queue finish failed after hyperbolic prior gradient kernel\n", -1);
+#elif defined(METAL)
+		const auto groups = MTL::Size::Make(
+			(VEC_X(d_N[0]) + localPrior[0] - 1U) / localPrior[0],
+			(VEC_Y(d_N[0]) + localPrior[1] - 1U) / localPrior[1],
+			(VEC_Z(d_N[0]) + localPrior[2] - 1U) / localPrior[2]);
+		encoder->dispatchThreadgroups(groups, group);
+		encoder->endEncoding();
+		submitMetalCommandBuffer(commandBuffer.get());
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3) {
 			STOP_TIMER(tEnd);
@@ -8687,15 +9213,12 @@ public:
 	/// <param name="sigma various adjustable parameters for some of the priors"></param>
 	/// <param name="smooth smoothing value that allows differentiation"></param>
 	/// <returns></returns>
-#if defined(CUDA) || defined(HIP)
-	inline int TVGradient(const scalarStruct & inputScalars, float sigma, float smooth, const Weighting & w_vec, float beta, const int kk = 0, float C = 0.f, const int type = 0) {
-#elif defined(OPENCL)
-	inline int TVGradient(const scalarStruct & inputScalars, const float sigma, const float smooth, const Weighting & w_vec, const float beta, const int kk = 0, const float C = 0.f, const int type = 0) {
-#endif // END CUDA
+	inline int TVGradient(const scalarStruct & inputScalars, const float sigma, const float smooth, const Weighting & w_vec,
+		const float beta, const int kk = 0, const float C = 0.f, const int type = 0) {
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrint("Starting " BACKEND_STR " TV gradient computation");
 		STATUS_t status = SUCCESS_VALUE;
-#if defined(OPENCL)
+#if defined(OPENCL) || defined(METAL)
 		if (inputScalars.largeDim)
 			SET_RANGE_Z(globalPrior, inputScalars.Nz[0]);
 #endif // END CUDA
@@ -8729,10 +9252,27 @@ public:
 			nOffset = { 1, Nz - 1 };
 		else if (inputScalars.largeDim)
 			nOffset = { 1, Nz };
+		UINT32_t fovOffset = 0U;
+		if (inputScalars.largeDim && inputScalars.eFOV && !inputScalars.multiResolution &&
+			!largeDimPriorGlobalZOffset(inputScalars, kk, fovOffset))
+			return -1;
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
 #elif defined(OPENCL)
 		UINT32_t kernelIndTV = 0U;
+#elif defined(METAL)
+		UINT32_t kernelIndTV = 0U;
+		if (!queueBP || !kernelTV || (inputScalars.eFOV && !inputScalars.multiResolution && !d_eFOVIndices)) {
+			mexPrint("Metal TV pipeline, queue, or axial eFOV mask is unavailable\n");
+			return -1;
+		}
+		auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+		auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+		if (!encoder) {
+			mexPrint("Unable to create Metal TV encoder\n");
+			return -1;
+		}
+		encoder->setComputePipelineState(kernelTV.get());
 #endif // END CUDA
 		KARG(kArgs, kernelTV, kernelIndTV, d_W);
 		if (inputScalars.useImages) {
@@ -8744,8 +9284,10 @@ public:
 			else {
 #if defined(CUDA) || defined(HIP)
 				KARG(kArgs, kernelTV, kernelIndTV, FPTexCachePrior[0]);
-#else
+#elif defined(OPENCL)
 				KARG(kArgs, kernelTV, kernelIndTV, d_imageCache[0]);
+#elif defined(METAL)
+				KARG(kArgs, kernelTV, kernelIndTV, d_inputI);
 #endif
 			}
 		}
@@ -8753,30 +9295,49 @@ public:
 			KARG(kArgs, kernelTV, kernelIndTV, d_inputB);
 		}
 		KARG(kArgs, kernelTV, kernelIndTV, d_N[0]);
+#if !defined(METAL)
 		KARG(kArgs, kernelTV, kernelIndTV, d_NOrig);
+#endif
 		KARG(kArgs, kernelTV, kernelIndTV, sigma);
 		KARG(kArgs, kernelTV, kernelIndTV, smooth);
 		KARG(kArgs, kernelTV, kernelIndTV, beta);
-		if (inputScalars.priorMask)
+		if (inputScalars.priorMask) {
+			KARG_METAL_SLOT(kernelIndTV, 6U);
 			if (!inputScalars.useImages) {
 				KARG(kArgs, kernelTV, kernelIndTV, d_maskPriorB);
 			}
-			else
+			else {
 #if defined(OPENCL)
 				if (inputScalars.maskBPZ > 1) {
 					KARG(kArgs, kernelTV, kernelIndTV, d_maskPrior3);
 				}
 				else
 #endif // END CUDA
+				{
 					KARG(kArgs, kernelTV, kernelIndTV, d_maskPrior);
-		if (inputScalars.eFOV && !inputScalars.multiResolution)
+				}
+			}
+		}
+		if (inputScalars.eFOV && !inputScalars.multiResolution) {
+			KARG_METAL_SLOT(kernelIndTV, 7U);
 			KARG(kArgs, kernelTV, kernelIndTV, d_eFOVIndices);
-		if (type == 2 || type == 3)
+		}
+		if (inputScalars.largeDim && inputScalars.eFOV && !inputScalars.multiResolution) {
+			KARG_METAL_SLOT(kernelIndTV, 11U);
+			KARG(kArgs, kernelTV, kernelIndTV, fovOffset);
+		}
+		if (type == 2 || type == 3) {
+			KARG_METAL_SLOT(kernelIndTV, 8U);
 			KARG(kArgs, kernelTV, kernelIndTV, C);
-		if (type > 0)
+		}
+		if (type > 0) {
+			KARG_METAL_SLOT(kernelIndTV, 9U);
 			KARG(kArgs, kernelTV, kernelIndTV, d_refIm);
-		if (inputScalars.largeDim)
+		}
+		if (inputScalars.largeDim) {
+			KARG_METAL_SLOT(kernelIndTV, 10U);
 			KARG(kArgs, kernelTV, kernelIndTV, nOffset);
+		}
 		// Compute the kernel
 		if (DEBUG || inputScalars.verbose >= 3)
 			START_TIMER(tStart);
@@ -8798,6 +9359,12 @@ public:
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelTV, cl::NullRange, globalPrior, localPrior);
 		OCL_CHECK(status, "Failed to launch the TV gradient kernel\n", -1);
 		//FINISH_QUEUE(status, "Queue finish failed after TV gradient kernel\n", -1);
+#elif defined(METAL)
+		const auto threads = MTL::Size::Make(VEC_X(d_N[0]), VEC_Y(d_N[0]), VEC_Z(d_N[0]));
+		const auto width = (std::min)(threads.width, kernelTV->threadExecutionWidth());
+		encoder->dispatchThreads(threads, MTL::Size::Make(width, 1, 1));
+		encoder->endEncoding();
+		submitMetalCommandBuffer(commandBuffer.get());
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3) {
 			STOP_TIMER(tEnd);
@@ -8809,11 +9376,7 @@ public:
 	}
 
 
-#if defined(CUDA) || defined(HIP)
-	inline int PoissonUpdate(const scalarStruct & inputScalars, float lambda, float epps, float alpha, const int ii = 0) {
-#elif defined(OPENCL)
 	inline int PoissonUpdate(const scalarStruct & inputScalars, const float lambda, const float epps, const float alpha, const int ii = 0) {
-#endif // END CUDA
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrint("Starting " BACKEND_STR " Poisson update (PKMA/MBSREM/BSREM) computation");
 		STATUS_t status = SUCCESS_VALUE;
@@ -8823,9 +9386,27 @@ public:
 		}
 #if defined(CUDA) || defined(HIP)
 		std::vector<void*> kArgs;
-#elif defined(OPENCL)
+#elif defined(OPENCL) || defined(METAL)
 		UINT32_t kernelIndPoisson = 0U;
 #endif // END CUDA
+#if defined(METAL)
+	if (ii < 0 || static_cast<size_t>(ii) >= inputScalars.im_dim.size()) {
+		mexPrint("Metal Poisson update received an invalid volume index\n");
+		return -1;
+	}
+	const uint64_t voxelCount = inputScalars.im_dim[static_cast<size_t>(ii)];
+	if (!queueBP || !kernelPoisson || !d_im || !d_rhs || voxelCount == 0 || voxelCount > UINT32_MAX) {
+			mexPrint("Metal Poisson update pipeline or queue is unavailable\n");
+			return -1;
+		}
+		auto commandBuffer = NS::RetainPtr(queueBP->commandBuffer());
+		auto encoder = NS::RetainPtr(commandBuffer ? commandBuffer->computeCommandEncoder() : nullptr);
+		if (!encoder) {
+			mexPrint("Unable to create Metal Poisson update encoder\n");
+			return -1;
+		}
+		encoder->setComputePipelineState(kernelPoisson.get());
+#endif
 		//FINISH_QUEUE(status, "\n", -1);
 		SET_LAUNCH_RANGE3(global,
 			inputScalars.Nx[ii] + erotusPDHG[0][ii],
@@ -8852,11 +9433,17 @@ public:
 		}
 		KARG(kArgs, kernelPoisson, kernelIndPoisson, d_im);
 		KARG(kArgs, kernelPoisson, kernelIndPoisson, d_rhs);
+#if defined(METAL)
+		const simd::float4 parameters = { lambda, epps, alpha, enforcePositivity ? 1.f : 0.f };
+		KARG_METAL_SLOT(kernelIndPoisson, 2U);
+		KARG(kArgs, kernelPoisson, kernelIndPoisson, parameters);
+#else
 		KARG(kArgs, kernelPoisson, kernelIndPoisson, d_N[ii]);
 		KARG(kArgs, kernelPoisson, kernelIndPoisson, lambda);
 		KARG(kArgs, kernelPoisson, kernelIndPoisson, epps);
 		KARG(kArgs, kernelPoisson, kernelIndPoisson, alpha);
 		KARG(kArgs, kernelPoisson, kernelIndPoisson, enforcePositivity);
+#endif
 		// Compute the kernel
 		if (DEBUG || inputScalars.verbose >= 3)
 			START_TIMER(tStart);
@@ -8866,6 +9453,12 @@ public:
 #elif defined(OPENCL)
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelPoisson, cl::NullRange, global, localPrior);
 		OCL_CHECK(status, "Failed to launch the Poisson update kernel\n", -1);
+#elif defined(METAL)
+		const auto total = static_cast<NS::UInteger>(voxelCount);
+		const auto groupWidth = (std::min)(total, kernelPoisson->threadExecutionWidth());
+		encoder->dispatchThreads(MTL::Size::Make(total, 1, 1), MTL::Size::Make(groupWidth, 1, 1));
+		encoder->endEncoding();
+		submitMetalCommandBuffer(commandBuffer.get());
 #endif // END CUDA
 		//FINISH_QUEUE(status, "Queue finish failed after Poisson update kernel\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
@@ -8875,12 +9468,7 @@ public:
 		return 0;
 	}
 
-#endif // END non-Metal auxiliary kernels
-#if defined(CUDA) || defined(HIP)
-	inline int PDHGUpdate(const scalarStruct & inputScalars, float epps, float theta, float tau, const int ii = 0) {
-#elif defined(OPENCL) || defined(METAL)
 	inline int PDHGUpdate(const scalarStruct & inputScalars, const float epps, const float theta, const float tau, const int ii = 0) {
-#endif // END CUDA
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrint("Starting " BACKEND_STR " PDHG update computation");
 		STATUS_t status = SUCCESS_VALUE;

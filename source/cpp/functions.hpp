@@ -80,12 +80,6 @@ inline void checkFastPDHG(scalarStruct& inputScalars, const Weighting& w_vec, co
 	}
 #ifdef CPU
 	inputScalars.fastPDHG = false;
-#elif defined(METAL)
-	// The fused step has no Metal implementation
-	inputScalars.fastPDHG = false;
-	if (DEBUG)
-		mexPrint("fastPDHG disabled: not supported by the Metal backend.");
-	return;
 #else
 	const char* reason = nullptr;
 	// fastPDHG supports a limited number of algorithms: PDHG (and its KL/L1/CV variants) and some
@@ -204,7 +198,7 @@ static inline void setFastPDHGSubIterParams(ProjectorClass& proj, const scalarSt
 #endif
 
 // This function sets the variables needed for the special large dimensional reconstruction method
-inline void largeDimCreate(scalarStruct& inputScalars, const RecMethods& MethodList, const Weighting& w_vec) {
+inline int largeDimCreate(scalarStruct& inputScalars, const RecMethods& MethodList, const Weighting& w_vec) {
 	inputScalars.lDimStruct.Nz.resize(inputScalars.subsets);
 	inputScalars.lDimStruct.NzPr.resize(inputScalars.subsets);
 	inputScalars.lDimStruct.startPr.resize(inputScalars.subsets);
@@ -220,6 +214,26 @@ inline void largeDimCreate(scalarStruct& inputScalars, const RecMethods& MethodL
 	inputScalars.lDimStruct.cumDimPr[0] = 0LL;
 	const uint32_t intZ = inputScalars.Nz[0] / inputScalars.subsets;
 	const uint32_t remainder = inputScalars.Nz[0] % inputScalars.subsets;
+	uint64_t halo = 0U;
+	if (inputScalars.subsetsUsed > 1) {
+		if (MethodList.MRP)
+			halo = w_vec.Ndz;
+		else if (MethodList.TV)
+			halo = 1U;
+		else if (MethodList.hyperbolic)
+			halo = w_vec.Ndz;
+		else if (MethodList.NLM)
+			halo = static_cast<uint64_t>(w_vec.Ndz) + w_vec.Nlz;
+		else if (MethodList.RDP)
+			halo = w_vec.RDPLargeNeighbor ? w_vec.Ndz : 1U;
+		else if (MethodList.GGMRF)
+			halo = w_vec.Ndz;
+	}
+	const int64_t planeSize = static_cast<int64_t>(inputScalars.Nx[0]) * inputScalars.Ny[0];
+	if (halo > intZ || (halo > 0 && static_cast<uint64_t>(planeSize) > std::numeric_limits<uint32_t>::max() / halo)) {
+		mexPrint("Large dimension prior halo is larger than its neighboring chunk or exceeds the supported index range\n");
+		return -1;
+	}
 	for (int kk = 0; kk < inputScalars.subsets; kk++) {
 		if (kk == 0) {
 			inputScalars.lDimStruct.Nz[kk] = intZ + remainder;
@@ -230,76 +244,15 @@ inline void largeDimCreate(scalarStruct& inputScalars, const RecMethods& MethodL
 			inputScalars.lDimStruct.bz[kk] = inputScalars.lDimStruct.bmaxZ[kk - 1];
 		}
 		inputScalars.lDimStruct.bmaxZ[kk] = inputScalars.lDimStruct.bz[kk] + inputScalars.lDimStruct.Nz[kk] * inputScalars.dz[0];
-		if (MethodList.NLM || MethodList.RDP || MethodList.hyperbolic || MethodList.GGMRF || MethodList.TV) {
-			inputScalars.lDimStruct.imDim[kk] = static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * static_cast<int64_t>(inputScalars.lDimStruct.Nz[kk]);
-			inputScalars.lDimStruct.cumDim[kk + 1] = inputScalars.lDimStruct.cumDim[kk] + inputScalars.lDimStruct.imDim[kk];
-			if (kk < inputScalars.subsetsUsed - 1 && kk > 0) {
-				if (MethodList.NLM) {
-					inputScalars.lDimStruct.imDimPr[kk] = static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * (static_cast<int64_t>(inputScalars.lDimStruct.Nz[kk] + w_vec.Ndz * 2U + w_vec.Nlz * 2U));
-					inputScalars.lDimStruct.NzPr[kk] = inputScalars.lDimStruct.Nz[kk] + w_vec.Ndz * 2U + w_vec.Nlz * 2U;
-				}
-				else if (MethodList.TV || (MethodList.RDP && !w_vec.RDPLargeNeighbor)) {
-					inputScalars.lDimStruct.imDimPr[kk] = static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * (static_cast<int64_t>(inputScalars.lDimStruct.Nz[kk] + 2U));
-					inputScalars.lDimStruct.NzPr[kk] = inputScalars.lDimStruct.Nz[kk] + 2U;
-				}
-				else {
-					inputScalars.lDimStruct.imDimPr[kk] = static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * (static_cast<int64_t>(inputScalars.lDimStruct.Nz[kk] + w_vec.Ndz * 2U));
-					inputScalars.lDimStruct.NzPr[kk] = inputScalars.lDimStruct.Nz[kk] + w_vec.Ndz * 2U;
-				}
-			}
-			else {
-				if (MethodList.NLM) {
-					inputScalars.lDimStruct.imDimPr[kk] = static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * (static_cast<int64_t>(inputScalars.lDimStruct.Nz[kk] + w_vec.Ndz + w_vec.Nlz));
-					inputScalars.lDimStruct.NzPr[kk] = inputScalars.lDimStruct.Nz[kk] + w_vec.Ndz + w_vec.Nlz;
-				}
-				else if (MethodList.TV || (MethodList.RDP && !w_vec.RDPLargeNeighbor)) {
-					inputScalars.lDimStruct.imDimPr[kk] = static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * (static_cast<int64_t>(inputScalars.lDimStruct.Nz[kk] + 1));
-					inputScalars.lDimStruct.NzPr[kk] = inputScalars.lDimStruct.Nz[kk] + 1;
-				}
-				else {
-					inputScalars.lDimStruct.imDimPr[kk] = static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * (static_cast<int64_t>(inputScalars.lDimStruct.Nz[kk] + w_vec.Ndz));
-					inputScalars.lDimStruct.NzPr[kk] = inputScalars.lDimStruct.Nz[kk] + w_vec.Ndz;
-				}
-			}
-			if (kk == 0) {
-				if (MethodList.NLM)
-					inputScalars.lDimStruct.cumDimPr[kk + 1] = inputScalars.lDimStruct.imDim[kk] - static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * (w_vec.Ndz + w_vec.Nlz);
-				else if (MethodList.TV || (MethodList.RDP && !w_vec.RDPLargeNeighbor))
-					inputScalars.lDimStruct.cumDimPr[kk + 1] = inputScalars.lDimStruct.imDim[kk] - static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]);
-				else
-					inputScalars.lDimStruct.cumDimPr[kk + 1] = inputScalars.lDimStruct.imDim[kk] - static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * w_vec.Ndz;
-				inputScalars.lDimStruct.startPr[kk] = 0;
-			}
-			else
-				if (MethodList.NLM) {
-					inputScalars.lDimStruct.cumDimPr[kk + 1] = inputScalars.lDimStruct.cumDim[kk] + inputScalars.lDimStruct.imDim[kk] - static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * (w_vec.Ndz + w_vec.Nlz);
-					inputScalars.lDimStruct.startPr[kk] = (w_vec.Ndz + w_vec.Nlz) * static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]);
-				}
-				else if (MethodList.TV || (MethodList.RDP && !w_vec.RDPLargeNeighbor)) {
-					inputScalars.lDimStruct.startPr[kk] = static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]);
-					inputScalars.lDimStruct.cumDimPr[kk + 1] = inputScalars.lDimStruct.cumDim[kk] + inputScalars.lDimStruct.imDim[kk] - static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]);
-				}
-				else {
-					inputScalars.lDimStruct.startPr[kk] = w_vec.Ndz * static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]);
-					inputScalars.lDimStruct.cumDimPr[kk + 1] = inputScalars.lDimStruct.cumDim[kk] + inputScalars.lDimStruct.imDim[kk] - static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * w_vec.Ndz;
-				}
-			if (kk == inputScalars.subsetsUsed - 1)
-				inputScalars.lDimStruct.endPr[kk] = 0U;
-			else
-				if (MethodList.NLM)
-					inputScalars.lDimStruct.endPr[kk] = (w_vec.Ndz + w_vec.Nlz) * static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]);
-				else if (MethodList.TV || (MethodList.RDP && !w_vec.RDPLargeNeighbor))
-					inputScalars.lDimStruct.endPr[kk] = static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]);
-				else
-					inputScalars.lDimStruct.endPr[kk] = w_vec.Ndz * static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]);
-		}
-		else {
-			inputScalars.lDimStruct.imDim[kk] = static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * static_cast<int64_t>(inputScalars.lDimStruct.Nz[kk]);
-			inputScalars.lDimStruct.cumDim[kk + 1] = inputScalars.lDimStruct.cumDim[kk] + inputScalars.lDimStruct.imDim[kk];
-			inputScalars.lDimStruct.imDimPr[kk] = inputScalars.lDimStruct.imDim[kk];
-			inputScalars.lDimStruct.cumDimPr[kk + 1] = inputScalars.lDimStruct.cumDim[kk + 1];
-			inputScalars.lDimStruct.NzPr[kk] = inputScalars.lDimStruct.Nz[kk];
-		}
+		const uint32_t leftHalo = kk == 0 ? 0U : static_cast<uint32_t>(halo);
+		const uint32_t rightHalo = kk == inputScalars.subsetsUsed - 1 ? 0U : static_cast<uint32_t>(halo);
+		inputScalars.lDimStruct.imDim[kk] = planeSize * inputScalars.lDimStruct.Nz[kk];
+		inputScalars.lDimStruct.cumDim[kk + 1] = inputScalars.lDimStruct.cumDim[kk] + inputScalars.lDimStruct.imDim[kk];
+		inputScalars.lDimStruct.NzPr[kk] = inputScalars.lDimStruct.Nz[kk] + leftHalo + rightHalo;
+		inputScalars.lDimStruct.imDimPr[kk] = planeSize * inputScalars.lDimStruct.NzPr[kk];
+		inputScalars.lDimStruct.startPr[kk] = static_cast<int64_t>(leftHalo) * planeSize;
+		inputScalars.lDimStruct.endPr[kk] = static_cast<int64_t>(rightHalo) * planeSize;
+		inputScalars.lDimStruct.cumDimPr[kk + 1] = inputScalars.lDimStruct.cumDim[kk + 1] - inputScalars.lDimStruct.endPr[kk];
 		inputScalars.lDimStruct.d_Scale4Z[kk] = 1.f / (static_cast<float>(inputScalars.lDimStruct.Nz[kk]) * inputScalars.dz[0]);
 		if (DEBUG) {
 			mexPrintBase("inputScalars.lDimStruct.NzPr[kk] = %u\n", inputScalars.lDimStruct.NzPr[kk]);
@@ -309,6 +262,7 @@ inline void largeDimCreate(scalarStruct& inputScalars, const RecMethods& MethodL
 			mexEval();
 		}
 	}
+	return 0;
 }
 
 inline void largeDimFirst(scalarStruct& inputScalars, ProjectorClass& proj, const int iter) {
@@ -613,15 +567,17 @@ inline int transferRHS(af::array& rhs_os, ProjectorClass& proj) {
 	return 0;
 }
 
-// Copies the given image into the forward projection image cache of volume ii. With useImages (and FPType != 5) the
-// NLM/RDP/GGMRF/hyperbolic/TV priors read this cache (d_imageCache / FPTexCachePrior) instead of a copy of their input
-// array. updateInputs fills the cache on each forward projection with the image of that timestep (the PSF-blurred one
-// with use_psf), so without this copy the priors would see the last forward projected image: the last timestep of
-// dynamic data, the blurred image with PSF, or the pre-update image (e.g. BSREM/ROSEMMAP, SART/POCS, PDDY).
-// The next forward projection overwrites the cache again. No-op when the priors make their own copy (FPType == 5, no
-// images, buffers) and on CPU/Metal. When no cache of matching size exists, returns -1 if strict, otherwise 0.
-inline int refreshPriorImageCache(const af::array& im, const scalarStruct& inputScalars, ProjectorClass& proj, const int ii = 0, const bool strict = false) {
-#if defined(CUDA) || defined(HIP) || defined(OPENCL)
+// Copies the given image into the forward projection image cache of volume ii. With useImages (and FPType != 5),
+// texture-based priors read this cache (d_imageCache / FPTexCachePrior / FPTexCache) instead of a separate copy. Forward projection
+// setup fills it with that timestep's image (PSF-blurred when use_psf is on), so without this copy priors could see the
+// last timestep, the blurred image, or a pre-update estimate (e.g. BSREM/ROSEMMAP, SART/POCS, PDDY). The next forward
+// projection overwrites the cache. No-op when priors make their own copy (FPType == 5, no images, buffers) and on CPU.
+// When no matching cache exists, returns -1 if strict, otherwise 0.
+inline int refreshPriorImageCache(const af::array& im, const scalarStruct& inputScalars, ProjectorClass& proj,
+	const int ii = 0, const bool strict = false, bool* sourceUnlocked = nullptr) {
+	if (sourceUnlocked)
+		*sourceUnlocked = false;
+#if defined(CUDA) || defined(HIP) || defined(OPENCL) || defined(METAL)
 	if (!inputScalars.useImages || inputScalars.FPType == 5 || inputScalars.useBuffers)
 		return 0;
 	if (proj.imageCacheDims.size() < static_cast<size_t>(ii + 1) * 3 || proj.imageCacheDims[ii * 3 + 2] == 0 ||
@@ -656,12 +612,14 @@ inline int refreshPriorImageCache(const af::array& im, const scalarStruct& input
 	cpy3d.Depth = nz;
 	const CUresult status = cuMemcpy3DAsync(&cpy3d, proj.CLCommandQueue[0]);
 	im.unlock();
+	if (sourceUnlocked)
+		*sourceUnlocked = true;
 	if (status != CUDA_SUCCESS) {
 		getErrorString(status);
 		mexPrint("Failed to copy the prior image into the image cache\n");
 		return -1;
 	}
-#else
+#elif defined(OPENCL)
 	if (proj.d_imageCache.size() <= static_cast<size_t>(ii)) {
 		if (strict) {
 			mexPrint("The forward projection image cache does not exist\n");
@@ -673,9 +631,28 @@ inline int refreshPriorImageCache(const af::array& im, const scalarStruct& input
 	cl_mem* d_im = im.device<cl_mem>();
 	const cl_int status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*d_im, true), proj.d_imageCache[ii], 0, proj.origin, region);
 	im.unlock();
+	if (sourceUnlocked)
+		*sourceUnlocked = true;
 	delete d_im;
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
+		mexPrint("Failed to copy the prior image into the image cache\n");
+		return -1;
+	}
+#elif defined(METAL)
+	if (proj.FPTexCache.size() <= static_cast<size_t>(ii) || !proj.FPTexCache[ii]) {
+		if (strict) {
+			mexPrint("The Metal forward projection image cache does not exist\n");
+			return -1;
+		}
+		return 0;
+	}
+	const auto source = transferAF(im);
+	const int status = proj.refreshPriorImageTextureFromBuffer(source, nx, ny, nz, ii);
+	im.unlock();
+	if (sourceUnlocked)
+		*sourceUnlocked = true;
+	if (status != SUCCESS_VALUE) {
 		mexPrint("Failed to copy the prior image into the image cache\n");
 		return -1;
 	}
@@ -853,10 +830,10 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 #elif defined(METAL)
 		{
 			auto source = transferAF(intIm);
-			status = proj.makeImageTextureFromDevice(proj.vec_opencl.d_image_os_int, proj.imArray, source,
-				static_cast<size_t>(dim0), static_cast<size_t>(dim1), static_cast<size_t>(dim2),
-				BACKEND_TEXTURE_LINEAR, BACKEND_TEXTURE_NORMALIZED);
+			status = proj.updateMetalIntegralTexture(proj.vec_opencl.d_image_os_int, source,
+				static_cast<size_t>(dim0), static_cast<size_t>(dim1), static_cast<size_t>(dim2), inputScalars.layeredFP5);
 			if (status != 0) {
+				intIm.unlock();
 				mexPrint("Integral image xz copy failed\n");
 				return -1;
 			}
@@ -1002,10 +979,10 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 #elif defined(METAL)
 		{
 			auto source = transferAF(intIm);
-			status = proj.makeImageTextureFromDevice(proj.vec_opencl.d_image_os, proj.imArray, source,
-				static_cast<size_t>(dim0), static_cast<size_t>(dim1), static_cast<size_t>(dim2),
-				BACKEND_TEXTURE_LINEAR, BACKEND_TEXTURE_NORMALIZED);
+			status = proj.updateMetalIntegralTexture(proj.vec_opencl.d_image_os, source,
+				static_cast<size_t>(dim0), static_cast<size_t>(dim1), static_cast<size_t>(dim2), inputScalars.layeredFP5);
 			if (status != 0) {
+				intIm.unlock();
 				mexPrint("Integral image yz copy failed\n");
 				return -1;
 			}
@@ -1385,7 +1362,7 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 		// This also applies to largeDim cases where the estimate is computed with subvolumes/chunks
 		// Only the main volume is regularized, so the estimate image is created once, for ii == 0
 		if (ii == 0 && proj.fastNLMUsed && (inputScalars.FPType == 5 || inputScalars.largeDim)) {
-#if defined(CUDA) || defined(HIP)
+#if defined(CUDA) || defined(HIP) || defined(METAL)
 			uint32_t Nz = inputScalars.Nz[0];
 			if (inputScalars.largeDim && lDimChunk >= 0)
 				Nz = inputScalars.lDimStruct.NzPr[lDimChunk];
@@ -1526,28 +1503,8 @@ inline int finalizeBackwardProjectionAF(AF_im_vectors& vec, const scalarStruct& 
 	return 0;
 }
 
-// Metal does not yet expose the auxiliary projector-side prior kernels
-// other than PDHG. Keep their API available so the common reconstruction
-// driver reports an unsupported selection cleanly.
-#ifdef METAL
-inline int MRPAF(af::array&, af::array&, const scalarStruct&, ProjectorClass&, const uint32_t, const uint32_t, const uint32_t) { return -1; }
-inline int NLMAF(af::array&, const af::array&, const scalarStruct&, Weighting&, ProjectorClass&, const float, const int = 0) { return -1; }
-inline int RDPAF(af::array&, const af::array&, const scalarStruct&, const float, ProjectorClass&, const float, const af::array&, const Weighting&,
-	const bool = false, const bool = false, const int = 0) { return -1; }
-inline int GGMRFAF(af::array&, const af::array&, const scalarStruct&, const float, const float, const float, const float, ProjectorClass&,
-	const float, const Weighting&, const int = 0) { return -1; }
-inline int TVAF(af::array&, const af::array&, const scalarStruct&, const float, const TVdata&, ProjectorClass&, const float, const Weighting&, const int = 0) { return -1; }
-inline int hyperAF(af::array&, const af::array&, const scalarStruct&, const float, ProjectorClass&, const float, const Weighting&, const int = 0) { return -1; }
-inline int proxTVDivAF(const std::vector<af::array>&, af::array&, const scalarStruct&, ProjectorClass&, const uint32_t) { return -1; }
-inline int proxTVGradAF(const af::array&, std::vector<af::array>&, const scalarStruct&, const float, const float, const std::vector<af::array>&, ProjectorClass&) { return -1; }
-inline int proxTGVSymmDerivAF(const std::vector<af::array>&, std::vector<af::array>&, const scalarStruct&, const float, const float, ProjectorClass&) { return -1; }
-inline int proxTGVDivAF(const std::vector<af::array>&, std::vector<af::array>&, std::vector<af::array>&, const scalarStruct&,
-	const float, const float, ProjectorClass&) { return -1; }
-inline int poissonUpdateAF(af::array&, const af::array&, const scalarStruct&, const float, const float, const float, ProjectorClass&, const int = 0) { return -1; }
-#else
-
-// Computes custom median root prior, OpenCL, CUDA or CPU
-inline int MRPAF(af::array& padd, af::array& grad, const scalarStruct& inputScalars, ProjectorClass& proj, const uint32_t medx, const uint32_t medy, const uint32_t medz) {
+// Computes the custom median root prior.
+inline int MRPAF(af::array& padd, af::array& grad, const scalarStruct& inputScalars, ProjectorClass& proj, const uint32_t medx, const uint32_t medy, const uint32_t medz, const int kk = 0) {
 
 	int status = 0;
 	if (DEBUG) {
@@ -1557,7 +1514,7 @@ inline int MRPAF(af::array& padd, af::array& grad, const scalarStruct& inputScal
 	proj.d_inputB = transferAF(padd);
 #ifndef CPU
 	uint64_t global_size[3] = { static_cast<uint64_t>(padd.dims(0)), static_cast<uint64_t>(padd.dims(1)), static_cast<uint64_t>(padd.dims(2)) };
-	status = proj.computeMRP(inputScalars, global_size);
+	status = proj.computeMRP(inputScalars, global_size, medz, kk);
 	grad.unlock();
 	padd.unlock();
 	if (status != 0) {
@@ -1571,9 +1528,69 @@ inline int MRPAF(af::array& padd, af::array& grad, const scalarStruct& inputScal
 	return status;
 }
 
+// Bind the input used by priors. Ordinary image mode refreshes the forward-projection cache; FPType 5 stores integral
+// images there, and largeDim priors need a padded chunk, so those cases use a separate prior image.
+inline int bindPriorInput(const af::array& im, const scalarStruct& inputScalars,
+	ProjectorClass& proj, const int kk, bool& imLocked) {
+	if (!inputScalars.useImages) {
+		proj.d_inputB = transferAF(im);
+		return 0;
+	}
+	if (inputScalars.FPType == 5 || inputScalars.largeDim) {
+		const uint32_t priorDepth = inputScalars.largeDim
+			? inputScalars.lDimStruct.NzPr[static_cast<size_t>(kk)] : inputScalars.Nz[0];
+#if defined(CUDA) || defined(HIP) || defined(METAL)
+		const auto input = transferAF(im);
+		proj.d_inputB = input;
+		return proj.transferTex(inputScalars, input, false, priorDepth);
+	#elif defined(OPENCL)
+		const size_t originalRegionZ = proj.region[2];
+		int status = CL_SUCCESS;
+		if (inputScalars.largeDim) {
+			proj.region[2] = priorDepth;
+			proj.d_inputI = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format,
+				proj.region[0], proj.region[1], proj.region[2], 0, 0, NULL, &status);
+			if (status != CL_SUCCESS) {
+				proj.region[2] = originalRegionZ;
+				getErrorString(status);
+				mexPrint("Failed to create prior image\n");
+				return -1;
+			}
+		}
+		cl_mem* deviceImage = im.device<cl_mem>();
+		status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(
+			cl::Buffer(*deviceImage, true), proj.d_inputI, 0, proj.origin, proj.region);
+		delete deviceImage;
+		proj.region[2] = originalRegionZ;
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			mexPrint("Failed to copy the prior image\n");
+			return -1;
+		}
+		return 0;
+#else
+		proj.d_inputB = transferAF(im);
+		return 0;
+	#endif
+	}
+	bool sourceUnlocked = false;
+	const int status = refreshPriorImageCache(im, inputScalars, proj, 0, true, &sourceUnlocked);
+	if (sourceUnlocked)
+		imLocked = false;
+	if (status != 0)
+		return status;
+#if defined(METAL)
+	if (proj.FPTexCache.empty() || !proj.FPTexCache[0]) {
+		mexPrint("The Metal forward projection image cache does not exist\n");
+		return -1;
+	}
+	proj.d_inputI = proj.FPTexCache[0];
+#endif
+	return 0;
+}
+
 // NLM
 inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& inputScalars, Weighting& w_vec, ProjectorClass& proj, const float beta, const int kk = 0) {
-
 	int status = 0;
 #ifdef CPU
 	// Accumulate the NLM gradient to the backprojection
@@ -1584,56 +1601,18 @@ inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& input
 	proj.d_W = transferAF(grad);
 	proj.d_gaussianNLM = transferAF(w_vec.gaussianNLM);
 #ifndef CPU
-	if (!inputScalars.useImages) {
-		proj.d_inputB = transferAF(im);
-	}
-	// FPType == 5 caches integral images, not the estimate, and largeDim caches the unpadded chunk, so the prior needs its
-	// own (padded) copy. Otherwise the prior reads the forward projection image cache, refreshed here with the prior input
-	else if (inputScalars.FPType == 5 || inputScalars.largeDim) {
-#if defined(CUDA) || defined(HIP)
-		uint32_t Nz = inputScalars.Nz[0];
-		if (inputScalars.largeDim)
-			Nz = inputScalars.lDimStruct.NzPr[kk];
-		CUdeviceptr* input = transferAF(im);
-		status = proj.transferTex(inputScalars, input, false, Nz);
-#else
-		if (inputScalars.largeDim) {
-			proj.region[2] = inputScalars.lDimStruct.NzPr[kk];
-			proj.d_inputI = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, proj.region[0], proj.region[1], proj.region[2], 0, 0, NULL, &status);
-			OCL_CHECK(status, "Failed to create prior image\n", -1);
-			if (DEBUG) {
-				mexPrintBase("inputScalars.lDimStruct.NzPr[kk] = %u\n", inputScalars.lDimStruct.NzPr[kk]);
-				mexPrintBase("inputScalars.lDimStruct.Nz[kk] = %u\n", inputScalars.lDimStruct.Nz[kk]);
-				mexPrintBase("proj.region[2] = %u\n", proj.region[2]);
-				mexPrintBase("im.elements() = %u\n", im.elements());
-				mexPrintBase("grad.elements() = %u\n", grad.elements());
-				mexEval();
-			}
-		}
-		status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*im.device<cl_mem>(), true), proj.d_inputI, 0, proj.origin, proj.region);
-		if (status != 0) {
-			getErrorString(status);
+	bool imLocked = true;
+	status = bindPriorInput(im, inputScalars, proj, kk, imLocked);
+	if (status != 0) {
+		if (imLocked)
 			im.unlock();
-			grad.unlock();
-			w_vec.gaussianNLM.unlock();
-			mexPrint("Failed to copy NLM image\n");
-			return -1;
-		}
-		if (inputScalars.largeDim)
-			proj.region[2] = inputScalars.Nz[0];
-#endif
-	}
-	else {
-		status = refreshPriorImageCache(im, inputScalars, proj, 0, true);
-		if (status != 0) {
-			grad.unlock();
-			w_vec.gaussianNLM.unlock();
-			return -1;
-		}
+		grad.unlock();
+		w_vec.gaussianNLM.unlock();
+		return -1;
 	}
 	status = proj.computeNLM(inputScalars, w_vec, beta, kk);
 	grad.unlock();
-	if (!inputScalars.useImages || inputScalars.FPType == 5 || inputScalars.largeDim)
+	if (imLocked)
 		im.unlock();
 	w_vec.gaussianNLM.unlock();
 	if (status != 0) {
@@ -1651,10 +1630,6 @@ inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& input
 	grad += dUorig;
 	grad.eval();
 #endif
-#ifdef OPENCL
-	if (inputScalars.largeDim)
-		proj.region[2] = inputScalars.Nz[0];
-#endif
 	return status;
 }
 
@@ -1666,88 +1641,58 @@ inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& input
 	proj.d_W = transferAF(grad);
 #ifndef CPU
 	// True when RDPref was locked (device pointer requested) and must be unlocked
+	bool imLocked = true;
 	bool refLocked = false;
-	if (inputScalars.useImages) {
-#if defined(CUDA) || defined(HIP)
-		// FPType == 5 caches integral images, not the estimate, and largeDim caches the unpadded chunk, so the prior needs its
-		// own (padded) copy. Otherwise the prior reads the forward projection image cache, refreshed here with the prior input
-		if (inputScalars.FPType == 5 || inputScalars.largeDim) {
-			uint32_t Nz = inputScalars.Nz[0];
-			if (inputScalars.largeDim)
-				Nz = inputScalars.lDimStruct.NzPr[kk];
-			CUdeviceptr* input = transferAF(im);
-			status = proj.transferTex(inputScalars, input, false, Nz);
+	status = bindPriorInput(im, inputScalars, proj, kk, imLocked);
+	if (status != 0) {
+		if (imLocked)
+			im.unlock();
+		grad.unlock();
+		return -1;
+	}
+	if (RDPLargeNeighbor && useRDPRef) {
+		if (RDPref.isempty()) {
+			if (imLocked)
+				im.unlock();
+			grad.unlock();
+			mexPrint("The anatomical RDP reference is unavailable\n");
+			return -1;
+		}
+		if (!inputScalars.useImages) {
+			refLocked = true;
+			proj.d_RDPref = transferAF(RDPref);
 		}
 		else {
-			status = refreshPriorImageCache(im, inputScalars, proj, 0, true);
-			if (status != 0) {
-				grad.unlock();
-				return -1;
+#if defined(CUDA) || defined(HIP)
+			// fastPDHG may keep its reference texture resident across iterations.
+			if (!proj.RDPRefPersistent) {
+				refLocked = true;
+				const auto reference = transferAF(RDPref);
+				status = proj.transferTex(inputScalars, reference, true, inputScalars.Nz[0]);
 			}
-		}
-		// With fastPDHG the reference texture was already uploaded once (RDPRefPersistent)
-		if (RDPLargeNeighbor && useRDPRef && !proj.RDPRefPersistent) {
+#elif defined(METAL)
+			// fastPDHG may keep its reference texture resident across iterations, as CUDA/HIP does.
+			if (!proj.RDPRefPersistent) {
+				refLocked = true;
+				proj.d_RDPref = transferAF(RDPref);
+				status = proj.transferTex(inputScalars, proj.d_RDPref, true, inputScalars.Nz[0]);
+			}
+#elif defined(OPENCL)
 			refLocked = true;
-			CUdeviceptr* inputRef = transferAF(RDPref);
-			// The reference image is a full volume (it was created with depth 1 before, so every slice read the reference's first
-			// slice) and has its own array so it does not overwrite imArray of the FPType 5 copy
-			status = proj.transferTex(inputScalars, inputRef, true, inputScalars.Nz[0]);
+			cl_mem* reference = RDPref.device<cl_mem>();
+			status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(
+				cl::Buffer(*reference, true), proj.d_RDPrefI, 0, proj.origin, proj.region);
+			delete reference;
+#endif
 			if (status != 0) {
-				if (inputScalars.FPType == 5 || inputScalars.largeDim)
+				if (imLocked)
 					im.unlock();
 				grad.unlock();
-				RDPref.unlock();
+				if (refLocked)
+					RDPref.unlock();
 				mexPrint("Failed to copy the RDP reference image\n");
 				return -1;
 			}
-		}
-#else
-		// The largeDim subvolume must match the predetermined (padded) size
-		if (inputScalars.largeDim)
-			proj.region[2] = inputScalars.lDimStruct.NzPr[kk];
-		// FPType == 5 caches integral images, not the estimate, and largeDim caches the unpadded chunk, so the prior needs its
-		// own (padded) copy. Otherwise the prior reads the forward projection image cache, refreshed here with the prior input
-		if (inputScalars.FPType == 5 || inputScalars.largeDim) {
-			if (inputScalars.largeDim) {
-				proj.d_inputI = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, proj.region[0], proj.region[1], proj.region[2], 0, 0, NULL, &status);
-				OCL_CHECK(status, "Failed to create prior image\n", -1);
-			}
-			status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*im.device<cl_mem>(), true), proj.d_inputI, 0, proj.origin, proj.region);
-			if (status != 0) {
-				getErrorString(status);
-				im.unlock();
-				grad.unlock();
-				mexPrint("Failed to copy RDP image\n");
-				return -1;
-			}
-		}
-		else {
-			status = refreshPriorImageCache(im, inputScalars, proj, 0, true);
-			if (status != 0) {
-				grad.unlock();
-				return -1;
-			}
-		}
-		if (RDPLargeNeighbor && useRDPRef) {
-			refLocked = true;
-			status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*RDPref.device<cl_mem>(), true), proj.d_RDPrefI, 0, proj.origin, proj.region);
-			if (status != 0) {
-				getErrorString(status);
-				if (inputScalars.FPType == 5 || inputScalars.largeDim)
-					im.unlock();
-				grad.unlock();
-				RDPref.unlock();
-				mexPrint("Failed to copy RDP image\n");
-				return -1;
-			}
-		}
-#endif
-	}
-	else {
-		proj.d_inputB = transferAF(im);
-		if (RDPLargeNeighbor && useRDPRef) {
-			refLocked = true;
-			proj.d_RDPref = transferAF(RDPref);
 		}
 	}
 	if (DEBUG) {
@@ -1757,7 +1702,7 @@ inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& input
 	}
 	status = proj.computeRDP(inputScalars, gamma, w_vec, beta, kk, RDPLargeNeighbor, useRDPRef);
 	grad.unlock();
-	if (!inputScalars.useImages || inputScalars.FPType == 5 || inputScalars.largeDim)
+	if (imLocked)
 		im.unlock();
 	if (refLocked)
 		RDPref.unlock();
@@ -1770,10 +1715,6 @@ inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& input
 	grad.unlock();
 	im.unlock();
 #endif
-#ifdef OPENCL
-	if (inputScalars.largeDim)
-		proj.region[2] = inputScalars.Nz[0];
-#endif
 	return status;
 }
 
@@ -1784,40 +1725,13 @@ inline int GGMRFAF(af::array& grad, const af::array& im, const scalarStruct& inp
 	int status = 0;
 	proj.d_W = transferAF(grad);
 #ifndef CPU
-	if (!inputScalars.useImages) {
-		proj.d_inputB = transferAF(im);
-	}
-	// FPType == 5 caches integral images, not the estimate, and largeDim caches the unpadded chunk, so the prior needs its
-	// own (padded) copy. Otherwise the prior reads the forward projection image cache, refreshed here with the prior input
-	else if (inputScalars.FPType == 5 || inputScalars.largeDim) {
-#if defined(CUDA) || defined(HIP)
-		uint32_t Nz = inputScalars.Nz[0];
-		if (inputScalars.largeDim)
-			Nz = inputScalars.lDimStruct.NzPr[kk];
-		CUdeviceptr* input = transferAF(im);
-		status = proj.transferTex(inputScalars, input, false, Nz);
-#else
-		if (inputScalars.largeDim) {
-			proj.region[2] = inputScalars.lDimStruct.NzPr[kk];
-			proj.d_inputI = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, proj.region[0], proj.region[1], proj.region[2], 0, 0, NULL, &status);
-			OCL_CHECK(status, "Failed to create prior image\n", -1);
-		}
-		status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*im.device<cl_mem>(), true), proj.d_inputI, 0, proj.origin, proj.region);
-		if (status != 0) {
-			getErrorString(status);
+	bool imLocked = true;
+	status = bindPriorInput(im, inputScalars, proj, kk, imLocked);
+	if (status != 0) {
+		if (imLocked)
 			im.unlock();
-			grad.unlock();
-			mexPrint("Failed to copy GGMRF image\n");
-			return -1;
-		}
-#endif
-	}
-	else {
-		status = refreshPriorImageCache(im, inputScalars, proj, 0, true);
-		if (status != 0) {
-			grad.unlock();
-			return -1;
-		}
+		grad.unlock();
+		return -1;
 	}
 	if (DEBUG) {
 		mexPrintBase("im.elements() = %u\n", im.elements());
@@ -1826,7 +1740,7 @@ inline int GGMRFAF(af::array& grad, const af::array& im, const scalarStruct& inp
 	}
 	status = proj.computeGGMRF(inputScalars, p, q, c, pqc, w_vec, beta, kk);
 	grad.unlock();
-	if (!inputScalars.useImages || inputScalars.FPType == 5 || inputScalars.largeDim)
+	if (imLocked)
 		im.unlock();
 	if (status != 0) {
 		return -1;
@@ -1837,15 +1751,27 @@ inline int GGMRFAF(af::array& grad, const af::array& im, const scalarStruct& inp
 	grad.unlock();
 	im.unlock();
 #endif
-#ifdef OPENCL
-	if (inputScalars.largeDim)
-		proj.region[2] = inputScalars.Nz[0];
-#endif
 	return status;
 }
 
 // TV
 inline int TVAF(af::array& grad, const af::array& im, const scalarStruct& inputScalars, const float sigma, const TVdata& data, ProjectorClass& proj, const float beta, const Weighting& w_vec, const int kk = 0) {
+#ifndef CPU
+	const int tvType = data.TVtype;
+	const uint64_t size = static_cast<uint64_t>(im.elements());
+	const uint64_t referenceSize = size * (tvType == 1 ? 9U : 1U);
+	const uint64_t expectedInputSize = inputScalars.largeDim
+		? inputScalars.lDimStruct.imDimPr[static_cast<size_t>(kk)] : inputScalars.im_dim[0];
+	const uint64_t expectedOutputSize = inputScalars.largeDim
+		? inputScalars.lDimStruct.imDim[static_cast<size_t>(kk)] : inputScalars.im_dim[0];
+	if (size != expectedInputSize || grad.elements() != expectedOutputSize ||
+		size > static_cast<uint64_t>(std::numeric_limits<int>::max()) ||
+		(data.TV_use_anatomical && (referenceSize > static_cast<uint64_t>(std::numeric_limits<int>::max()) ||
+			static_cast<uint64_t>(data.refIm.elements()) != referenceSize))) {
+		mexPrint("TV index dimensions or anatomical reference size are unsupported\n");
+		return -1;
+	}
+#endif
 	im.eval();
 	int status = 0;
 	int type = 0;
@@ -1864,42 +1790,15 @@ inline int TVAF(af::array& grad, const af::array& im, const scalarStruct& inputS
 	else if ((data.TVtype == 1 && data.TV_use_anatomical))
 		type = 1;
 #ifndef CPU
-	if (!inputScalars.useImages) {
-		proj.d_inputB = transferAF(im);
-	}
-	// FPType == 5 caches integral images, not the estimate, and largeDim caches the unpadded chunk, so the prior needs its
-	// own (padded) copy. Otherwise the prior reads the forward projection image cache, refreshed here with the prior input
-	else if (inputScalars.FPType == 5 || inputScalars.largeDim) {
-#if defined(CUDA) || defined(HIP)
-		uint32_t Nz = inputScalars.Nz[0];
-		if (inputScalars.largeDim)
-			Nz = inputScalars.lDimStruct.NzPr[kk];
-		CUdeviceptr* input = transferAF(im);
-		status = proj.transferTex(inputScalars, input, false, Nz);
-#else
-		if (inputScalars.largeDim) {
-			proj.region[2] = inputScalars.lDimStruct.NzPr[kk];
-			proj.d_inputI = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, proj.region[0], proj.region[1], proj.region[2], 0, 0, NULL, &status);
-			OCL_CHECK(status, "Failed to create prior image\n", -1);
-		}
-		status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*im.device<cl_mem>(), true), proj.d_inputI, 0, proj.origin, proj.region);
-		if (status != 0) {
-			getErrorString(status);
+	bool imLocked = true;
+	status = bindPriorInput(im, inputScalars, proj, kk, imLocked);
+	if (status != 0) {
+		if (imLocked)
 			im.unlock();
-			grad.unlock();
-			mexPrint("Failed to copy TV image\n");
-			return -1;
-		}
-#endif
-	}
-	else {
-		status = refreshPriorImageCache(im, inputScalars, proj, 0, true);
-		if (status != 0) {
-			grad.unlock();
-			if (data.TV_use_anatomical)
-				data.refIm.unlock();
-			return -1;
-		}
+		grad.unlock();
+		if (data.TV_use_anatomical)
+			data.refIm.unlock();
+		return -1;
 	}
 	if (DEBUG) {
 		mexPrintBase("im.elements() = %u\n", im.elements());
@@ -1909,7 +1808,7 @@ inline int TVAF(af::array& grad, const af::array& im, const scalarStruct& inputS
 	const float smooth = data.TVsmoothing;
 	status = proj.TVGradient(inputScalars, sigma, smooth, w_vec, beta, kk, C, type);
 	grad.unlock();
-	if (!inputScalars.useImages || inputScalars.FPType == 5 || inputScalars.largeDim)
+	if (imLocked)
 		im.unlock();
 	if (data.TV_use_anatomical)
 		data.refIm.unlock();
@@ -1924,10 +1823,6 @@ inline int TVAF(af::array& grad, const af::array& im, const scalarStruct& inputS
 	if (data.TV_use_anatomical)
 		data.refIm.unlock();
 #endif
-#ifdef OPENCL
-	if (inputScalars.largeDim)
-		proj.region[2] = inputScalars.Nz[0];
-#endif
 	return status;
 }
 
@@ -1938,40 +1833,13 @@ inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inp
 	int type = 0;
 #ifndef CPU
 	proj.d_W = transferAF(grad);
-	if (!inputScalars.useImages) {
-		proj.d_inputB = transferAF(im);
-	}
-	// FPType == 5 caches integral images, not the estimate, and largeDim caches the unpadded chunk, so the prior needs its
-	// own (padded) copy. Otherwise the prior reads the forward projection image cache, refreshed here with the prior input
-	else if (inputScalars.FPType == 5 || inputScalars.largeDim) {
-#if defined(CUDA) || defined(HIP)
-		uint32_t Nz = inputScalars.Nz[0];
-		if (inputScalars.largeDim)
-			Nz = inputScalars.lDimStruct.NzPr[kk];
-		CUdeviceptr* input = transferAF(im);
-		status = proj.transferTex(inputScalars, input, false, Nz);
-#else
-		if (inputScalars.largeDim) {
-			proj.region[2] = inputScalars.lDimStruct.NzPr[kk];
-			proj.d_inputI = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, proj.region[0], proj.region[1], proj.region[2], 0, 0, NULL, &status);
-			OCL_CHECK(status, "Failed to create prior image\n", -1);
-		}
-		status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*im.device<cl_mem>(), true), proj.d_inputI, 0, proj.origin, proj.region);
-		if (status != 0) {
-			getErrorString(status);
+	bool imLocked = true;
+	status = bindPriorInput(im, inputScalars, proj, kk, imLocked);
+	if (status != 0) {
+		if (imLocked)
 			im.unlock();
-			grad.unlock();
-			mexPrint("Failed to copy hyperbolic prior image\n");
-			return -1;
-		}
-#endif
-	}
-	else {
-		status = refreshPriorImageCache(im, inputScalars, proj, 0, true);
-		if (status != 0) {
-			grad.unlock();
-			return -1;
-		}
+		grad.unlock();
+		return -1;
 	}
 	if (DEBUG) {
 		mexPrintBase("im.elements() = %u\n", im.elements());
@@ -1980,7 +1848,7 @@ inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inp
 	}
 	status = proj.hyperGradient(inputScalars, sigma, w_vec, beta, kk);
 	grad.unlock();
-	if (!inputScalars.useImages || inputScalars.FPType == 5 || inputScalars.largeDim)
+	if (imLocked)
 		im.unlock();
 	if (status != 0) {
 		return -1;
@@ -1991,10 +1859,6 @@ inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inp
 	status = proj.hyperGradient(inputScalars, sigma, beta);
 	grad.unlock();
 	im.unlock();
-#endif
-#ifdef OPENCL
-	if (inputScalars.largeDim)
-		proj.region[2] = inputScalars.Nz[0];
 #endif
 	return status;
 }
@@ -2014,7 +1878,8 @@ inline int proxTVDivAF(const std::vector<af::array>& grad, af::array& input, con
 	proj.d_qX = transferAF(grad[0]);
 	proj.d_qY = transferAF(grad[1]);
 	proj.d_qZ = transferAF(grad[2]);
-	proj.vec_opencl.d_rhs_os[0] = transferAF(input);
+	// All GPU backends write the divergence into the same projector buffer.
+	proj.d_W = transferAF(input);
 	status = proj.ProxTVDiv(inputScalars);
 	grad[0].unlock();
 	grad[1].unlock();
@@ -2190,7 +2055,6 @@ inline int poissonUpdateAF(af::array& im, const af::array& rhs, const scalarStru
 	return status;
 }
 
-#endif
 #endif
 
 #ifndef CPU
@@ -7433,10 +7297,11 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 
 // Allocate vectors for proximal TV, TGV and PDHG
 inline void initializeProxPriors(const RecMethods& MethodList, const scalarStruct& inputScalars, AF_im_vectors& vec, const uint32_t timestep) {
+	const dim_t priorElements = static_cast<dim_t>(inputScalars.NxPrior) * inputScalars.NyPrior * inputScalars.NzPrior;
 	if (MethodList.ProxTV || MethodList.ProxTGV) {
 		vec.qProxTV.resize(3);
-		std::fill(vec.qProxTV.begin(), vec.qProxTV.end(), af::constant(0.f, static_cast<dim_t>(inputScalars.NxPrior) * static_cast<dim_t>(inputScalars.NyPrior) * static_cast<dim_t>(inputScalars.NzPrior)));
 		for (int kk = 0; kk < vec.qProxTV.size(); kk++) {
+			vec.qProxTV[kk] = af::constant(0.f, priorElements);
 			vec.qProxTV[kk].eval();
 		}
 	}
@@ -7449,12 +7314,12 @@ inline void initializeProxPriors(const RecMethods& MethodList, const scalarStruc
 			vec.vProxTGV.resize(3);
 			vec.qProxTGV.resize(6);
 		}
-		std::fill(vec.qProxTGV.begin(), vec.qProxTGV.end(), af::constant(0.f, static_cast<dim_t>(inputScalars.NxPrior) * static_cast<dim_t>(inputScalars.NyPrior) * static_cast<dim_t>(inputScalars.NzPrior)));
-		std::fill(vec.vProxTGV.begin(), vec.vProxTGV.end(), af::constant(0.f, static_cast<dim_t>(inputScalars.NxPrior) * static_cast<dim_t>(inputScalars.NyPrior) * static_cast<dim_t>(inputScalars.NzPrior)));
 		for (int kk = 0; kk < vec.qProxTGV.size(); kk++) {
+			vec.qProxTGV[kk] = af::constant(0.f, priorElements);
 			vec.qProxTGV[kk].eval();
 		}
 		for (int kk = 0; kk < vec.vProxTGV.size(); kk++) {
+			vec.vProxTGV[kk] = af::constant(0.f, priorElements);
 			vec.vProxTGV[kk].eval();
 		}
 	}
