@@ -2287,8 +2287,15 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
             // Print elapsed time
             if (inputScalars.verbose > 0 && inputScalars.subsetsUsed > 1 && inputScalars.stochastic == false) {
+                // The device computations are queued asynchronously: evaluate the estimates and wait for the device so that the message
+                // is printed only when the sub-iteration has really finished
+                if (!inputScalars.largeDim) {
+                    for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++)
+                        for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
+                            vec.im_os[timestep][ii].eval();
+                }
+                af::sync();
                 if (DEBUG || inputScalars.verbose >= 2) {
-                    af::sync();
                     proj.tEndGlobal = std::chrono::steady_clock::now();
                     const std::chrono::duration<double> tDiff = proj.tEndGlobal - proj.tStartGlobal;
                     mexPrintBase("Sub-iteration %d complete in %f seconds\n", osa_iter + 1u, tDiff.count());
@@ -2351,8 +2358,14 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
             proj.no_norm = 1u;
 
         if (inputScalars.verbose > 0) {
+            // Evaluate the estimates and wait for the device so that the message is printed only when the iteration has really finished
+            if (!inputScalars.largeDim) {
+                for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++)
+                    for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
+                        vec.im_os[timestep][ii].eval();
+            }
+            af::sync();
             if (DEBUG || inputScalars.verbose >= 2) {
-                af::sync();
                 if (inputScalars.subsetsUsed == 1 && (inputScalars.verbose >= 2 || DEBUG)) {
                     proj.tEndGlobal = std::chrono::steady_clock::now();
                     const std::chrono::duration<double> tDiff = proj.tEndGlobal - proj.tStartGlobal;
