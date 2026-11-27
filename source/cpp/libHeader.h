@@ -577,6 +577,7 @@ struct inputStruct {
     uint32_t sensBins;
     bool PWLS;
     float PWLSElectronicNoise;
+    uint32_t curvatureRefresh;
 };
 
 void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting& w_vec, RecMethods& MethodList) {
@@ -863,6 +864,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.storeResidual = options.storeResidual;
     inputScalars.PWLS = options.PWLS;
     inputScalars.PWLSElectronicNoise = options.PWLSElectronicNoise;
+    inputScalars.curvatureRefresh = options.curvatureRefresh;
     inputScalars.FISTAAcceleration = options.FISTA_acceleration;
     inputScalars.stochastic = options.stochasticSubsetSelection;
     if (inputScalars.scatter == 1U) {

@@ -156,10 +156,13 @@ else
 end
 
 % The CT versions of these algorithms use the transmission count-data model, they are not valid with linearized data
-if options.param.CT && options.param.usingLinearizedData && (options.param.OSEM || options.param.ROSEM || options.param.OSL_OSEM || options.param.ROSEM_MAP ...
+countAlgSelected = options.param.OSEM || options.param.ROSEM || options.param.OSL_OSEM || options.param.ROSEM_MAP ...
         || options.param.COSEM || options.param.ECOSEM || options.param.ACOSEM || options.param.OSL_COSEM > 0 || options.param.RAMLA || options.param.BSREM ...
         || options.param.RBI || options.param.OSL_RBI || options.param.DRAMA || options.param.PKMA || options.param.MRAMLA || options.param.MBSREM ...
-        || options.param.SPS || options.param.SAGA)
+        || options.param.SPS || options.param.SAGA;
+% Transmission count (Poisson) model, the data is the intensity data and not the linearized one
+ctCountModel = options.param.CT && countAlgSelected;
+if options.param.CT && options.param.usingLinearizedData && countAlgSelected
     error('The CT versions of the statistical algorithms (OSEM, ROSEM, OSL-OSEM, ROSEM-MAP, COSEM, ECOSEM, ACOSEM, OSL-COSEM, RAMLA, BSREM, RBI, OSL-RBI, DRAMA, PKMA, MRAMLA, MBSREM, SPS, SAGA) need intensity (count) data, linearized data (options.usingLinearizedData = true) cannot be used with them. Use a linear algorithm, such as PDHG or CGLS, with linearized data')
 end
 
@@ -455,93 +458,9 @@ if ismember(options.param.implementation, [1, 4, 5])
                     if (options.param.verbose >= 3)
                         disp("Starting computation of dP for preconditioner type 6");
                     end
-                    if (options.param.CT)
-                        apu6 = Sino ./ options.param.flat;
-                        if (options.param.randoms_correction)
-                            EE = (options.param.flat .* apu6 - (Sino .* SinD .* apu6) ./ ((apu6 + SinD) .* (apu6 + SinD)));
-                        else
-                            EE = (options.param.flat .* apu6);
-                        end
-                        E = E .* EE;
-                    else
-                        EE = zeros(size(Sino), options.param.cType);
-                        EE(Sino > 0) = E(Sino > 0) ./ Sino(Sino > 0);
-                        E = EE;
-                    end
-                    % dP backprojects E over the events (not the sensitivity image over all detector pairs), so the list-mode
-                    % sensitivity mode of the backprojection is switched off for the dP computation
-                    computeSensImDP = options.param.compute_sensitivity_image;
-                    options.param.compute_sensitivity_image = false;
-                    if options.param.implementation == 1 && options.param.nMultiVolumes == 0
-                        options.param.dP = zeros(options.param.N(1), 1, options.param.cType);
-                        for ll = 1 : options.param.subsets
-                            A = formMatrix(options, ll);
-                            indE = splitMeas(options.param, measInd, options.nMeas, ll);
-                            options.param.dP = options.param.dP + A * E(indE);
-                        end
-                        if options.param.use_psf
-                            options.param.dP = computeConvolution(options.param.dP, options.param, options.param.Nx(1), options.param.Ny(1), options.param.Nz(1), options.param.gaussK);
-                        end
-                    elseif options.param.subsets > 1
-                        % E is in subset order, so backproject each subset separately and sum
-                        options.param.dP = [];
-                        for ll = 1 : options.param.subsets
-                            indE = splitMeas(options.param, measInd, options.nMeas, ll);
-                            apuBP = backwardProject(options, E(indE), ll, corrVector);
-                            if isempty(options.param.dP)
-                                options.param.dP = apuBP;
-                            elseif iscell(apuBP)
-                                for ii = 1 : numel(apuBP)
-                                    options.param.dP{ii} = options.param.dP{ii} + apuBP{ii};
-                                end
-                            else
-                                options.param.dP = options.param.dP + apuBP;
-                            end
-                        end
-                    else
-                        options.param.dP = backwardProject(options, E, 0, corrVector);
-                    end
-                    options.param.compute_sensitivity_image = computeSensImDP;
-                    % Curvature bound of the prior for the step size (main volume only)
-                    kappa = 0;
-                    if options.param.beta > 0
-                        [kappa, unboundedPrior] = separablePriorCurvature(options.param);
-                        if unboundedPrior
-                            warning('No curvature bound is available for the selected prior; the SPS / preconditioner type 6 step uses the data curvature only and may diverge with large beta')
-                        end
-                        if (options.param.verbose >= 3)
-                            disp(['Prior curvature bound kappa = ' num2str(kappa)])
-                        end
-                    end
-                    % dP = subsets / (sum over the subsets of the backprojections + curvScale * beta * kappa)
-                    % Each sub-iteration uses the subset data gradient. For the methods with the per-subiteration prior beta / subsets
-                    % (OSL-OSEM, OSL-RBI, PKMA, MBSREM, MRAMLA, SPS) the prior curvature scaled by subsets is beta * kappa
-                    % (curvScale = 1). For the other users of dP (PDHG family, FISTA) the prior keeps the full beta, so the
-                    % curvature term is subsets * beta * kappa (curvScale = subsets). The prior is applied to the main volume only
-                    if (options.param.OSL_OSEM || options.param.OSL_RBI || options.param.PKMA || options.param.MBSREM || options.param.MRAMLA || options.param.SPS)
-                        curvScale = 1;
-                    else
-                        curvScale = options.param.subsets;
-                    end
-                    if iscell(options.param.dP)
-                        for ii = 1 : options.param.nMultiVolumes + 1
-                            if ii == 1 && kappa > 0
-                                options.param.dP{ii} = (options.param.subsets) ./ (options.param.dP{ii} + curvScale * options.param.beta * kappa);
-                            else
-                                options.param.dP{ii} = (options.param.subsets) ./ options.param.dP{ii};
-                            end
-                            options.param.dP{ii}(isnan(options.param.dP{ii})) = 1;
-                            options.param.dP{ii}(isinf(options.param.dP{ii})) = 1;
-                        end
-                    else
-                        if kappa > 0
-                            options.param.dP = (options.param.subsets) ./ (options.param.dP + curvScale * options.param.beta * kappa);
-                        else
-                            options.param.dP = (options.param.subsets) ./ options.param.dP;
-                        end
-                        options.param.dP(isnan(options.param.dP)) = 1;
-                        options.param.dP(isinf(options.param.dP)) = 1;
-                    end
+                    % E = A * 1 (unscaled) is turned into the curvature-weighted dP in computeCurvatureDP. The reference image of
+                    % the CT count model is the initial image the reconstruction starts from
+                    options.param.dP = computeCurvatureDP(options, E, Sino, SinD, corrVector, im_vectors.recApu, ctCountModel, true);
                     if (options.param.verbose >= 3)
                         disp("dP computation finished");
                     end
@@ -736,6 +655,17 @@ if ismember(options.param.implementation, [1, 4, 5])
         for iter = 1 : options.param.Niter
             % if (options.param.save_iter || numel(options.param.saveNIter) > 0)
             % curIter = iter;
+
+            % Refresh of the curvature preconditioner (type 6 / SPS) of the CT count model with the current estimate as the
+            % reference image, at the start of iterations 2, ..., options.curvatureRefresh + 1. E (= A * 1) of this time step
+            % is still the unscaled one of the setup above
+            if ctCountModel && (options.param.precondTypeImage(7) || options.param.SPS) && ~options.param.largeDim ...
+                    && iter >= 2 && iter - 1 <= options.param.curvatureRefresh
+                if options.param.verbose > 0
+                    disp(['Refreshing the curvature preconditioner (iteration ' num2str(iter) ')'])
+                end
+                options.param.dP = computeCurvatureDP(options, E, Sino, SinD, corrVector, im_vectors.recApu, ctCountModel, false);
+            end
 
             for osa_iter = 1 : options.param.subsets
                 if (~options.param.LSQR && ~options.param.CGLS) || iter == 1
@@ -1162,4 +1092,155 @@ elseif param.TV || param.AD || param.APLS || param.TGV || param.NLM || param.RDP
     unbounded = true;
 end
 kappa = double(kappa);
+end
+
+function dP = computeCurvatureDP(options, E, Sino, SinD, corrVector, xRef, ctCountModel, warnFar)
+% Diagonal curvature preconditioner of the image preconditioner type 6 and SPS,
+% dP = subsets ./ (A' * (c .* (A * 1)) + curvScale * beta * kappa), where c is the curvature of each ray.
+% E = A * 1 (unscaled, in subset order as Sino), xRef = the reference image (vector or cell of volumes), used only by
+% the CT count model, and warnFar is true if the warning of a far-off reference image is allowed.
+param = options.param;
+if iscell(xRef)
+    xRefC = xRef;
+else
+    xRefC = {xRef};
+end
+measInd = (1 : numel(Sino))';
+if param.CT
+    if ctCountModel
+        % CT count model, the mean of a ray is flat * (exp(-FP) + SinD), i.e. the randoms/scatter SinD are in the units of the
+        % blank scan and the additive term is r = flat * SinD. The curvature is the precomputed curvature of Erdogan & Fessler
+        % (1999, eq. 23) at the line integral l* = log(flat / (y - r)), c = (y - r)^2 / y for y > 0 and c = 0 otherwise.
+        % Without randoms this is c = y
+        y = double(Sino(:));
+        if param.randoms_correction
+            r = double(param.flat) .* double(SinD(:));
+        else
+            r = 0;
+        end
+        c = zeros(size(y));
+        yPos = y > 0;
+        if isscalar(r)
+            rPos = r;
+        else
+            rPos = r(yPos);
+        end
+        c(yPos) = max(y(yPos) - rPos, 0).^2 ./ y(yPos);
+        if ~param.largeDim
+            % Safeguard against an initial image that is far from the data: the curvature at l* can be much smaller than the
+            % curvature at the line integrals of the initial image, which would make the step too large. The curvature of the
+            % negative Poisson log-likelihood at l0 = A * xRef is hdd (the forward projection is clamped at zero as in
+            % computeForwardStep), and the larger of the two is used
+            cBefore = sum(c);
+            l0 = zeros(numel(Sino), 1, param.cType);
+            for ll = 1 : param.subsets
+                indE = splitMeas(param, measInd, options.nMeas, ll);
+                if param.implementation == 1
+                    A = formMatrix(options, ll);
+                    l0(indE) = l0(indE) + A' * xRefC{1};
+                else
+                    l0(indE) = l0(indE) + forwardProject(options, xRefC, ll, corrVector);
+                end
+            end
+            l0 = max(double(l0), 0);
+            e0 = exp(-l0);
+            if param.randoms_correction
+                rho = double(SinD(:));
+                ybar = double(param.flat) .* (e0 + rho);
+                hdd = double(param.flat) .* e0 .* max(1 - y .* double(param.flat) .* rho ./ ybar.^2, 0);
+            else
+                hdd = double(param.flat) .* e0;
+            end
+            hdd(isnan(hdd)) = 0;
+            c = max(c, hdd);
+            if warnFar && param.verbose > 0 && sum(c) > 2 * cBefore
+                warning('The initial image is far from the measured data, the curvature preconditioner (type 6 / SPS) is conservative. Use a better initial image (e.g. FDK) or set options.curvatureRefresh > 0')
+            end
+        end
+        E = E .* cast(c, class(E));
+    elseif param.precondTypeMeas(1)
+        % Linearized data with the diagonal measurement preconditioner: the iterated operator is A' * ((1 ./ M) .* A) with
+        % M = A * 1 = E, so the curvature of each ray is 1 ./ E and c .* E is one (this equals the image preconditioner type 0)
+        E = cast(E > 0, class(E));
+    end
+    % Otherwise the data is linearized (l = log(flat ./ y)) and the curvature of each ray is one, E = A * 1 is used as such
+else
+    EE = zeros(size(Sino), param.cType);
+    EE(Sino > 0) = E(Sino > 0) ./ Sino(Sino > 0);
+    E = EE;
+end
+% dP backprojects E over the events (not the sensitivity image over all detector pairs), so the list-mode
+% sensitivity mode of the backprojection is switched off for the dP computation (options is a local copy)
+options.param.compute_sensitivity_image = false;
+if param.implementation == 1 && param.nMultiVolumes == 0
+    dP = zeros(param.N(1), 1, param.cType);
+    for ll = 1 : param.subsets
+        A = formMatrix(options, ll);
+        indE = splitMeas(param, measInd, options.nMeas, ll);
+        dP = dP + A * E(indE);
+    end
+    if param.use_psf
+        dP = computeConvolution(dP, param, param.Nx(1), param.Ny(1), param.Nz(1), param.gaussK);
+    end
+elseif param.subsets > 1
+    % E is in subset order, so backproject each subset separately and sum
+    dP = [];
+    for ll = 1 : param.subsets
+        indE = splitMeas(param, measInd, options.nMeas, ll);
+        apuBP = backwardProject(options, E(indE), ll, corrVector);
+        if isempty(dP)
+            dP = apuBP;
+        elseif iscell(apuBP)
+            for ii = 1 : numel(apuBP)
+                dP{ii} = dP{ii} + apuBP{ii};
+            end
+        else
+            dP = dP + apuBP;
+        end
+    end
+else
+    dP = backwardProject(options, E, 0, corrVector);
+end
+% Curvature bound of the prior for the step size (main volume only)
+kappa = 0;
+if param.beta > 0
+    [kappa, unboundedPrior] = separablePriorCurvature(param);
+    if unboundedPrior
+        warning('No curvature bound is available for the selected prior; the SPS / preconditioner type 6 step uses the data curvature only and may diverge with large beta')
+    end
+    if (param.verbose >= 3)
+        disp(['Prior curvature bound kappa = ' num2str(kappa)])
+    end
+end
+% dP = subsets / (sum over the subsets of the backprojections + curvScale * beta * kappa)
+% Each sub-iteration uses the subset data gradient. For the methods with the per-subiteration prior beta / subsets
+% (OSL-OSEM, OSL-RBI, PKMA, MBSREM, MRAMLA, SPS) the prior curvature scaled by subsets is beta * kappa
+% (curvScale = 1). For the other users of dP (PDHG family, FISTA) the prior keeps the full beta, so the
+% curvature term is subsets * beta * kappa (curvScale = subsets). The prior is applied to the main volume only
+if (param.OSL_OSEM || param.OSL_RBI || param.PKMA || param.MBSREM || param.MRAMLA || param.SPS)
+    curvScale = 1;
+else
+    curvScale = param.subsets;
+end
+% A voxel with zero curvature is not seen by any ray with data, and a step of 1 would be many orders of magnitude too
+% large for it, so the step of such voxels is set to zero
+if iscell(dP)
+    for ii = 1 : param.nMultiVolumes + 1
+        if ii == 1 && kappa > 0
+            dP{ii} = (param.subsets) ./ (dP{ii} + curvScale * param.beta * kappa);
+        else
+            dP{ii} = (param.subsets) ./ dP{ii};
+        end
+        dP{ii}(isnan(dP{ii})) = 0;
+        dP{ii}(isinf(dP{ii})) = 0;
+    end
+else
+    if kappa > 0
+        dP = (param.subsets) ./ (dP + curvScale * param.beta * kappa);
+    else
+        dP = (param.subsets) ./ dP;
+    end
+    dP(isnan(dP)) = 0;
+    dP(isinf(dP)) = 0;
+end
 end

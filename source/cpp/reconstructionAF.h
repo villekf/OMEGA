@@ -829,19 +829,295 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		mexPrint("Constant kernel variables set");
 
 	// Compute values needed for MBSREM, MRAMLA and SPS.
+    // CT count model: the algorithms that always receive intensity (count) data in Sin
+    const bool ctCountModel = inputScalars.CT && (MethodList.OSEM || MethodList.ROSEM || MethodList.OSLOSEM || MethodList.ROSEMMAP || MethodList.COSEM || MethodList.ECOSEM ||
+        MethodList.ACOSEM || MethodList.OSLCOSEM > 0 || MethodList.RAMLA || MethodList.BSREM || MethodList.RBI || MethodList.RBIOSL || MethodList.DRAMA ||
+        MethodList.PKMA || MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.SAGA);
+
+    // Curvature bound of the prior for the SPS / preconditioner type 6 step (main volume only)
+    float priorKappa = 0.f;
+
+    // Sets the images of the time step tt to ones (A * 1)
+    auto setImagesToOnes = [&](const uint32_t tt) {
+        for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+            if (inputScalars.use_psf)
+                vec.im_os_blurred[ii] = af::constant(1.f, inputScalars.im_dim[ii], af_dtype::f32);
+            vec.im_os[tt][ii] = af::constant(1.f, inputScalars.im_dim[ii], af_dtype::f32);
+        }
+    };
+
+    // Forward projects the images that are currently in vec.im_os[tt] (all volumes) over all the subsets into one flat array. The
+    // subsets are stored one after another. uu is the (type 6) projection offset, which is advanced as in the setup of dP
+    auto forwardAllSubsets = [&](const uint32_t tt, int64_t& uu, af::array& Eout) -> int {
+        int statusF = 0;
+        if (inputScalars.projector_type == 6)
+            Eout = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, inputScalars.nProjections);
+        else
+            Eout = af::constant(0.f, inputScalars.kokoTOF);
+        int64_t alku = 0;
+        for (uint32_t ll = 0; ll < inputScalars.subsetsUsed; ll++) {
+            int indD = ll + tt * inputScalars.subsets;
+            for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+                af::array oneInput;
+                if (inputScalars.projector_type == 6) {
+                    oneInput = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[indD], af_dtype::f32); // The projectors accumulate into the output, so it starts from zero
+                    forwardProjectionType6(oneInput, w_vec, vec, inputScalars, length[indD], uu, proj, ii, atten, tt);
+                    uu += length[indD];
+                }
+                else {
+                    oneInput = af::constant(0.f, lengthFull[indD] * nBins, 1, af_dtype::f32); // The projectors accumulate into the output, so it starts from zero
+                    statusF = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput, ll, tt, length, g, lengthFull[indD], proj, ii, pituus);
+                    if (statusF != 0) return -1;
+                }
+                Eout(af::seq(alku, alku + lengthFull[indD] * nBins - 1)) += oneInput;
+                if (DEBUG) {
+                    mexPrintBase("E = %f\n", af::sum<float>(Eout));
+                    mexPrintBase("E.dims(0) = %d\n", Eout.dims(0));
+                    mexEval();
+                }
+            }
+            alku += lengthFull[indD] * nBins;
+            Eout.eval();
+        }
+        Eout = af::flat(Eout);
+        return 0;
+    };
+
+    // Computes the curvature preconditioner dP (preconditioner type 6 / SPS) of the time step tt:
+    // dP = subsets / (backprojection of (A * 1) .* c + prior curvature), with c the ray curvature (see below).
+    // useCurrentImage: the reference image of the curvature (CT count model) is the current estimate vec.im_os[tt], otherwise
+    // the initial image x0 (setup). The images in vec.im_os[tt] and vec.im_os_blurred are restored before returning.
+    // Eones, uuFP: an already computed A * 1 and the projection offset after it (the setup reuses the one needed for MBSREM epsilon),
+    // if Eones is null A * 1 is computed here
+    auto computeCurvatureDP = [&](const uint32_t tt, const bool useCurrentImage, const af::array* Eones, const int64_t uuFP) -> int {
+        int statusD = 0;
+        af::array Sino = af::array(inputScalars.kokoTOF, &Sin[inputScalars.kokoTOF * tt], AFTYPE).as(f32);
+        af::array rand;
+        if (inputScalars.randoms_correction) {
+            // The TOF-resolved additive term has as many elements as the measurements
+            const size_t randSize = inputScalars.randomsTOF ? inputScalars.kokoTOF : inputScalars.kokoNonTOF;
+            rand = af::array(randSize, &sc_ra[randSize * tt], AFTYPE);
+        }
+        // Save the state that is overwritten (af::array copies are reference counted, rebinding the vector element does not modify the saved handle)
+        std::vector<af::array> savedIm(inputScalars.nMultiVolumes + 1), savedBlurred(inputScalars.nMultiVolumes + 1);
+        for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+            savedIm[ii] = vec.im_os[tt][ii];
+            if (inputScalars.use_psf)
+                savedBlurred[ii] = vec.im_os_blurred[ii];
+        }
+        bool noNorm = false;
+        // Leaves everything as found
+        auto finish = [&](const int s) -> int {
+            for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+                vec.im_os[tt][ii] = savedIm[ii];
+                if (inputScalars.use_psf)
+                    vec.im_os_blurred[ii] = savedBlurred[ii];
+            }
+            if (noNorm)
+                proj.no_norm = 0;
+            return s;
+        };
+        int64_t uu = 0;
+        af::array E;
+        if (Eones != nullptr) {
+            E = *Eones;
+            uu = uuFP;
+        }
+        else {
+            setImagesToOnes(tt);
+            statusD = forwardAllSubsets(tt, uu, E);
+            if (statusD != 0)
+                return finish(-1);
+        }
+        w_vec.dP[tt].resize(inputScalars.nMultiVolumes + 1);
+        if (inputScalars.verbose >= 3 || DEBUG)
+            mexPrint("Starting computation of dP for preconditioner type 6");
+        af::array EE;
+        if (inputScalars.CT) {
+            // Ray curvature c_i of the CT data term, dP uses the backprojection of c .* (A * 1):
+            // - count model (Sin holds the intensities y, randoms/scatter rho = r / flat are in the units of the blank scan):
+            //   c = max(y - r, 0)^2 / y with r = flat * rho (and c = 0 where y <= 0), the precomputed curvature at l* = log(flat / (y - r)) of
+            //   Erdogan and Fessler 1999 (eq. 23). Without randoms this is max(y, 0).
+            //   The curvature is computed from the data, so it is not a bound for a ray where the current estimate predicts a larger
+            //   mean than the data. The initial image safeguard below raises c where the model curvature of the reference image is larger
+            // - linear data with PWLS: c is the PWLS weight of the linearized data l, c = PWLSWeights(l)
+            // - linear data without PWLS: c = 1 (the data term is a plain least squares one), E = A * 1 is used as is
+            // - linear data with the diagonal measurement preconditioner (precondTypeMeas[0]): c = sqrt(PWLSWeights(l)) / (A * 1) with PWLS and 1 / (A * 1) without
+            af::array c;
+            bool useC = true;
+            if (ctCountModel) {
+                const af::array y = Sino;
+                af::array r = af::constant(0.f, y.dims(0), 1);
+                if (inputScalars.randoms_correction)
+                    r = inputScalars.flat * af::flat(rand.as(f32));
+                const af::array pos = y > 0.f;
+                const af::array yr = (af::max)(y - r, 0.f);
+                c = af::select(pos, yr * yr / af::select(pos, y, 1.f), 0.f);
+                // Initial image safeguard
+                if (inputScalars.largeDim) {
+                    if (inputScalars.verbose >= 2 && !useCurrentImage)
+                        mexPrint("Skipping the curvature initial image safeguard (largeDim)");
+                }
+                else {
+                    // l0 = A * x_ref, x_ref is the initial image (setup) or the current estimate (refresh)
+                    int64_t dSum = 0LL;
+                    for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+                        if (useCurrentImage)
+                            vec.im_os[tt][ii] = savedIm[ii];
+                        else {
+                            vec.im_os[tt][ii] = af::array(inputScalars.im_dim[ii], &x0[dSum], AFTYPE);
+                            vec.im_os[tt][ii].eval();
+                        }
+                        dSum += inputScalars.im_dim[ii];
+                    }
+                    af::array l0;
+                    int64_t uu0 = 0;
+                    statusD = forwardAllSubsets(tt, uu0, l0);
+                    if (statusD != 0)
+                        return finish(-1);
+                    // Host-side detector gain (same arrays and ordering as in computeForwardStep: one array per subset)
+                    af::array gain;
+                    bool gainOk = true;
+                    if (ctHostNorm) {
+                        for (uint32_t ll = 0; ll < inputScalars.subsetsUsed; ll++) {
+                            const int indD = ll + tt * inputScalars.subsets;
+                            if (ll >= aNorm.size() || static_cast<int64_t>(aNorm[ll].elements()) != lengthFull[indD] * nBins) {
+                                gainOk = false;
+                                break;
+                            }
+                            gain = (ll == 0) ? aNorm[ll] : af::join(0, gain, aNorm[ll]);
+                        }
+                        if (gainOk && gain.elements() != l0.elements())
+                            gainOk = false;
+                    }
+                    if (!gainOk) {
+                        if (inputScalars.verbose >= 1)
+                            mexPrint("Skipping the curvature initial image safeguard (the detector gain does not match the data layout)");
+                    }
+                    else if (l0.elements() != c.elements()) {
+                        if (inputScalars.verbose >= 1)
+                            mexPrint("Skipping the curvature initial image safeguard (the forward projection size does not match the data)");
+                    }
+                    else {
+                        l0 = (af::max)(l0, 0.f);
+                        af::array e0 = af::exp(-l0);
+                        if (ctHostNorm)
+                            e0 = gain * e0;
+                        // Model curvature flat * e0 * max(1 - y * r / ybar^2, 0) of the reference image, ybar = flat * (e0 + rho)
+                        af::array hdd = inputScalars.flat * e0;
+                        if (inputScalars.randoms_correction) {
+                            const af::array rho = af::flat(rand.as(f32));
+                            const af::array ybar = inputScalars.flat * (e0 + rho);
+                            const af::array ratio = af::select(ybar > 0.f, y * inputScalars.flat * rho / (ybar * ybar), 0.f);
+                            hdd = hdd * (af::max)(1.f - ratio, 0.f);
+                        }
+                        float sumBefore = 0.f;
+                        if (inputScalars.verbose > 0)
+                            sumBefore = af::sum<float>(c);
+                        c = (af::max)(c, hdd);
+                        if (inputScalars.verbose > 0) {
+                            const float sumAfter = af::sum<float>(c);
+                            if (sumAfter > 2.f * sumBefore)
+                                mexPrint("Warning: the initial image is far from the measured data, the curvature preconditioner (type 6 / SPS) is conservative. Use a better initial image (e.g. FDK) or set curvatureRefresh > 0");
+                        }
+                    }
+                }
+            }
+            else if (inputScalars.PWLS) {
+                af::array l;
+                if (inputScalars.usingLinearizedData)
+                    l = Sino;
+                else
+                    l = af::log(inputScalars.flat / (af::max)(Sino, inputScalars.flat * 1e-6f));
+                c = PWLSWeights(l, inputScalars);
+                // With the diagonal measurement preconditioner the iterated operator is A^T (W^(1/2) / M) A with M = A * 1 = E,
+                // so the curvature of a ray is sqrt(c) / E and c .* E becomes sqrt(c)
+                if (w_vec.precondTypeMeas[0]) {
+                    E = af::select(E > 0.f, af::sqrt(af::flat(c)), 0.f);
+                    useC = false;
+                }
+            }
+            else {
+                useC = false;
+                // With the diagonal measurement preconditioner the iterated operator is A^T (1 / M) A with M = A * 1 = E,
+                // so the curvature of a ray is 1 / E and c .* E becomes one (this equals the image preconditioner type 0)
+                if (w_vec.precondTypeMeas[0])
+                    E = af::select(E > 0.f, af::constant(1.f, E.dims(), f32), af::constant(0.f, E.dims(), f32));
+            }
+            if (useC)
+                E *= af::flat(c);
+        }
+        else {
+            EE = af::constant(0.f, Sino.elements());
+            EE(Sino > 0.f) = E(Sino > 0.f) / Sino(Sino > 0.f);
+            E = EE;
+        }
+        if (proj.no_norm == 0) {
+            proj.no_norm = 1;
+            noNorm = true;
+        }
+        E.eval();
+        for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+            int64_t alku = 0;
+            for (uint32_t subIter = 0; subIter < inputScalars.subsetsUsed; subIter++) {
+                int indD = subIter + tt * inputScalars.subsets;
+                af::array inputM = E(af::seq(alku, alku + lengthFull[indD] * nBins - 1), af_dtype::f32);
+                computeIntegralImage(inputScalars, w_vec, length[indD], inputM, meanBP, indD);
+                if (inputScalars.projector_type == 6)
+                    backprojectionType6(inputM, w_vec, vec, inputScalars, length[indD], uu, proj, tt, subIter, 0, 0, 0, ii, atten);
+                else {
+                    // dP backprojects E over the events (not the sensitivity image over all detector pairs)
+                    statusD = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, inputM, subIter, tt, length, lengthFull[indD],
+                        meanBP, g, proj, false, ii, pituus);
+                    if (statusD != 0)
+                        return finish(-1);
+                }
+                // dP is accumulated as the sum of the subset backprojections, the reciprocal is taken after the subset loop
+                if (subIter == 0)
+                    w_vec.dP[tt][ii] = vec.rhs_os[tt][ii].copy();
+                else {
+                    w_vec.dP[tt][ii] += vec.rhs_os[tt][ii];
+                }
+                w_vec.dP[tt][ii].eval();
+                if (inputScalars.projector_type == 6)
+                    uu += length[indD];
+                alku += lengthFull[indD] * nBins;
+            }
+            // dP = subsets / (sum over the subsets of the backprojections + curvScale * beta * kappa)
+            // Each sub-iteration uses the subset data gradient. For the methods with the per-subiteration prior beta / subsets
+            // (the subsetScale list in computeOSEstimates) the prior curvature scaled by subsets is beta * kappa (curvScale = 1).
+            // For the other users of dP (PDHG family, FISTA) the prior keeps the full beta, so the curvature term is
+            // subsets * beta * kappa (curvScale = subsets). The prior is applied to the main volume only
+            const float curvScale = (MethodList.OSLOSEM || MethodList.RBIOSL || MethodList.PKMA || MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS || MethodList.SAGA)
+                ? 1.f : static_cast<float>(inputScalars.subsetsUsed);
+            if (ii == 0 && priorKappa > 0.f)
+                w_vec.dP[tt][ii] = static_cast<float>(inputScalars.subsetsUsed) / (w_vec.dP[tt][ii]
+                    + curvScale * w_vec.beta * priorKappa);
+            else
+                w_vec.dP[tt][ii] = static_cast<float>(inputScalars.subsetsUsed) / w_vec.dP[tt][ii];
+            // A voxel with zero curvature is not seen by any ray with data (empty voxel), a step of 1 there would be many orders of
+            // magnitude too large, so the step of such voxels is set to zero
+            w_vec.dP[tt][ii](af::isNaN(w_vec.dP[tt][ii])) = 0.f;
+            w_vec.dP[tt][ii](af::isInf(w_vec.dP[tt][ii])) = 0.f;
+            // The memory is counted only when dP is created (not when it is refreshed)
+            if (!useCurrentImage)
+                proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]);
+        }
+        if (DEBUG || inputScalars.verbose >= 3)
+            mexPrint("dP computation finished");
+        return finish(0);
+    };
+
     if ((MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS || w_vec.precondTypeIm[6])) {
         if (inputScalars.verbose >= 3)
             mexPrint("Starting computation of E for MBSREM/MRAMLA/SPS");
 
         int status = 0;
-        af::array E;
 
         // Resize vectors
         w_vec.epsilon_mramla.resize(inputScalars.Nt);
         w_vec.dP.resize(inputScalars.Nt);
 
-        // Curvature bound of the prior for the SPS / preconditioner type 6 step (main volume only)
-        float priorKappa = 0.f;
         if ((w_vec.precondTypeIm[6] || MethodList.SPS) && w_vec.beta > 0.f) {
             bool unboundedPrior = false;
             priorKappa = separablePriorCurvature(MethodList, w_vec, unboundedPrior);
@@ -860,44 +1136,15 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                 const size_t randSize = inputScalars.randomsTOF ? inputScalars.kokoTOF : inputScalars.kokoNonTOF;
                 rand = af::array(randSize, &sc_ra[randSize * tt], AFTYPE);
             }
-            if ((w_vec.precondTypeIm[6] || MethodList.SPS) || (!inputScalars.CT && ((inputScalars.randoms_correction && 
+            const bool needDP = (w_vec.precondTypeIm[6] || MethodList.SPS);
+            if (needDP || (!inputScalars.CT && ((inputScalars.randoms_correction &&
                 !af::allTrue<bool>(rand > 0)) || inputScalars.randoms_correction == 0))) {
                 int64_t uu = 0;
-                if (inputScalars.projector_type == 6)
-                    E = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, inputScalars.nProjections);
-                else
-                    E = af::constant(0.f, inputScalars.kokoTOF);
-                int64_t alku = 0;
-                for (uint32_t ll = 0; ll < inputScalars.subsetsUsed; ll++) {
-                    int indD = ll + tt * inputScalars.subsets;
-                    for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-                        af::array oneInput;
-                        if (inputScalars.use_psf) {
-                            vec.im_os_blurred[ii] = af::constant(1.f, inputScalars.im_dim[ii], af_dtype::f32);
-                        }
-                        vec.im_os[tt][ii] = af::constant(1.f, inputScalars.im_dim[ii], af_dtype::f32);
-                        if (inputScalars.projector_type == 6) {
-                            oneInput = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[indD], af_dtype::f32); // The projectors accumulate into the output, so it starts from zero (E = A * 1)
-                            forwardProjectionType6(oneInput, w_vec, vec, inputScalars, length[indD], uu, proj, ii, atten, tt);
-                            uu += length[indD];
-                        }
-                        else {
-                            oneInput = af::constant(0.f, lengthFull[indD] * nBins, 1, af_dtype::f32); // The projectors accumulate into the output, so it starts from zero (E = A * 1)
-                            status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput, ll, tt, length, g, lengthFull[indD], proj, ii, pituus);
-                            if (status != 0) return -1;
-                        }
-                        E(af::seq(alku, alku + lengthFull[indD] * nBins - 1)) += oneInput;
-                        if (DEBUG) {
-                            mexPrintBase("E = %f\n", af::sum<float>(E));
-                            mexPrintBase("E.dims(0) = %d\n", E.dims(0));
-                            mexEval();
-                        }
-                    }
-                    alku += lengthFull[indD] * nBins;
-                    E.eval();
-                }
-                E = af::flat(E);
-                if (!inputScalars.CT && ((inputScalars.randoms_correction && !af::allTrue<bool>(rand > 0)) || inputScalars.randoms_correction == 0) && 
+                af::array E;
+                setImagesToOnes(tt);
+                status = forwardAllSubsets(tt, uu, E);
+                if (status != 0) return -1;
+                if (!inputScalars.CT && ((inputScalars.randoms_correction && !af::allTrue<bool>(rand > 0)) || inputScalars.randoms_correction == 0) &&
                     (MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS)) {
                     if (inputScalars.verbose >= 3 || DEBUG)
                         mexPrint("Computing epsilon value for MBSREM/MRAMLA");
@@ -905,77 +1152,9 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     if (inputScalars.verbose >= 3 || DEBUG)
                         mexPrint("Epsilon value for MBSREM/MRAMLA computed");
                 }
-                if (w_vec.precondTypeIm[6] || MethodList.SPS) {
-                    w_vec.dP[tt].resize(inputScalars.nMultiVolumes + 1);
-                    if (inputScalars.verbose >= 3 || DEBUG)
-                        mexPrint("Starting computation of dP for preconditioner type 6");
-                    af::array EE;
-                    if (inputScalars.CT) {
-                        const af::array apu6 = Sino / inputScalars.flat;
-                        if (inputScalars.randoms_correction)
-                            EE = (inputScalars.flat * apu6 - (Sino * rand * apu6) / ((apu6 + rand) * (apu6 + rand)));
-                        else
-                            EE = (inputScalars.flat * apu6);
-                        E *= EE;
-                    }
-                    else {
-                        EE = af::constant(0.f, Sino.elements());
-                        EE(Sino > 0.f) = E(Sino > 0.f) / Sino(Sino > 0.f);
-                        E = EE;
-                    }
-                    bool noNorm = false;
-                    if (proj.no_norm == 0) {
-                        proj.no_norm = 1;
-                        noNorm = true;
-                    }
-                    E.eval();
-                    for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-                        int64_t alku = 0;
-                        for (uint32_t subIter = 0; subIter < inputScalars.subsetsUsed; subIter++) {
-                            int indD = subIter + tt * inputScalars.subsets;
-                            af::array inputM = E(af::seq(alku, alku + lengthFull[indD] * nBins - 1), af_dtype::f32);
-                            computeIntegralImage(inputScalars, w_vec, length[indD], inputM, meanBP, indD);
-                            if (inputScalars.projector_type == 6)
-                                backprojectionType6(inputM, w_vec, vec, inputScalars, length[indD], uu, proj, tt, subIter, 0, 0, 0, ii, atten);
-                            else {
-                                // dP backprojects E over the events (not the sensitivity image over all detector pairs)
-                                status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, inputM, subIter, tt, length, lengthFull[indD], 
-                                    meanBP, g, proj, false, ii, pituus);
-                                if (status != 0) {
-                                    return -1;
-                                }
-                            }
-                            // dP is accumulated as the sum of the subset backprojections, the reciprocal is taken after the subset loop
-                            if (subIter == 0)
-                                w_vec.dP[tt][ii] = vec.rhs_os[tt][ii].copy();
-                            else {
-                                w_vec.dP[tt][ii] += vec.rhs_os[tt][ii];
-                            }
-                            w_vec.dP[tt][ii].eval();
-                            if (inputScalars.projector_type == 6)
-                                uu += length[indD];
-                            alku += lengthFull[indD] * nBins;
-                        }
-                        // dP = subsets / (sum over the subsets of the backprojections + curvScale * beta * kappa)
-                        // Each sub-iteration uses the subset data gradient. For the methods with the per-subiteration prior beta / subsets
-                        // (the subsetScale list in computeOSEstimates) the prior curvature scaled by subsets is beta * kappa (curvScale = 1).
-                        // For the other users of dP (PDHG family, FISTA) the prior keeps the full beta, so the curvature term is
-                        // subsets * beta * kappa (curvScale = subsets). The prior is applied to the main volume only
-                        const float curvScale = (MethodList.OSLOSEM || MethodList.RBIOSL || MethodList.PKMA || MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS || MethodList.SAGA)
-                            ? 1.f : static_cast<float>(inputScalars.subsetsUsed);
-                        if (ii == 0 && priorKappa > 0.f)
-                            w_vec.dP[tt][ii] = static_cast<float>(inputScalars.subsetsUsed) / (w_vec.dP[tt][ii]
-                                + curvScale * w_vec.beta * priorKappa);
-                        else
-                            w_vec.dP[tt][ii] = static_cast<float>(inputScalars.subsetsUsed) / w_vec.dP[tt][ii];
-                        w_vec.dP[tt][ii](af::isNaN(w_vec.dP[tt][ii])) = 1.f;
-                        w_vec.dP[tt][ii](af::isInf(w_vec.dP[tt][ii])) = 1.f;
-                        proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]);
-                    }
-                    if (noNorm)
-                        proj.no_norm = 0;
-                    if (DEBUG || inputScalars.verbose >= 3)
-                        mexPrint("dP computation finished");
+                if (needDP) {
+                    status = computeCurvatureDP(tt, false, &E, uu);
+                    if (status != 0) return -1;
                     if (DEBUG) {
                         const float med = af::median<float>(w_vec.dP[tt][0]);
                         for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
@@ -1503,6 +1682,21 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
         if (DEBUG) {
             mexPrintBase("curIter = %d\n", curIter);
             mexEval();
+        }
+
+        // Refresh the CT curvature preconditioner (type 6 / SPS) with the current estimate at the start of the first curvatureRefresh
+        // iterations after the first one. At this point vec.im_os[tt] holds the current estimate of every algorithm that uses dP
+        // (the updates are done in place on vec.im_os), and vec.rhs_os is overwritten by the next backprojection before it is read.
+        // The stochastic subset selection is excluded, since it changes inputScalars.subsets (the per-subset data indexing of the lambda)
+        if (ctCountModel && (w_vec.precondTypeIm[6] || MethodList.SPS) && !inputScalars.largeDim && !inputScalars.stochastic && iter >= 1U &&
+            iter <= inputScalars.curvatureRefresh) {
+            if (inputScalars.verbose >= 2)
+                mexPrint("Refreshing the curvature preconditioner");
+            for (uint32_t tt = t0; tt < inputScalars.Nt; tt++) {
+                status = computeCurvatureDP(tt, true, nullptr, 0);
+                if (status != 0)
+                    return -1;
+            }
         }
 
         int64_t uu = 0;

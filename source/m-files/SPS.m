@@ -50,11 +50,16 @@ function [output, options] = SPS(im, rhs, ~, lam, iter, osa_iter, ii, options)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 kk = (iter - 1) * options.subsets + osa_iter;
 [rhs, options] = applyImagePreconditioning(options, rhs, im, kk, ii);
-if iscell(options.dP)
-    output = im + lam(iter) .* rhs .* options.dP{ii};
-else
-    output = im + lam(iter) .* rhs .* options.dP;
+% applyImagePreconditioning already multiplies by dP when the curvature preconditioner (precondTypeImage(7)) is selected.
+% dP is applied explicitly here only otherwise, so that it is applied exactly once
+if ~options.precondTypeImage(7)
+    if iscell(options.dP)
+        rhs = rhs .* options.dP{ii};
+    else
+        rhs = rhs .* options.dP;
+    end
 end
+output = im + lam(iter) .* rhs;
 % As in SPS of algorithms.h: non-positive values are set to epps, no upper bound (U is unused)
 output(output <= 0) = options.epps;
 end

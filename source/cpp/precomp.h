@@ -69,6 +69,9 @@ typedef struct structForScalars {
 		nRekos = 1, osa_iter0 = 0, timestep0 = 0, nRekos2 = 0, subsetsUsed = 1, timestepsUsed = 1, TOFsubsets = 1, Nxy = 0U, NxOrig = 0U, NyOrig = 0U, NzOrig = 0U, NxPrior = 0U, NyPrior = 0U, NzPrior = 0U,
 		BPType = 1, FPType = 1, adaptiveType = 0, rings = 0, FISTAType = 0, maskFPZ = 1, normZ = 1, maskBPZ = 1, currentSubset = 0;
 	uint32_t platform = 0;
+	// Number of iterations (after the first) at the start of which the CT curvature preconditioner (type 6 / SPS) is recomputed
+	// with the current image estimate, 0 = never (optional MATLAB option curvatureRefresh)
+	uint32_t curvatureRefresh = 0;
 	std::vector<uint32_t> Nx{ 1, 0, 0, 0, 0, 0, 0 }, Ny{ 1, 0, 0, 0, 0, 0, 0 }, Nz{ 1, 0, 0, 0, 0, 0, 0 };
 	float crystal_size_z = 0.f, epps = 1e-6f, sigma_x = 0.f, tube_width = 0.f, bmin = 0.f, bmax = 0.f, Vmax = 0.f, global_factor = 1.f,
 		dL = 0.f, flat = 0.f, cylRadiusProj3 = 0.f, DSC = 0.f, helicalRadius = 0.f, PWLSElectronicNoise = 0.f;//, T = 0.f

@@ -85,6 +85,9 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 		inputScalars.PWLS = getScalarBool(options, 0, "PWLS");
 	if (mxGetFieldNumber(options, "PWLSElectronicNoise") >= 0)
 		inputScalars.PWLSElectronicNoise = getScalarFloat(options, 0, "PWLSElectronicNoise");
+	// Number of iterations at whose start the CT curvature preconditioner is refreshed (optional field)
+	if (mxGetFieldNumber(options, "curvatureRefresh") >= 0)
+		inputScalars.curvatureRefresh = getScalarUInt32(options, 0, "curvatureRefresh");
 	inputScalars.FISTAAcceleration = getScalarBool(options, 0, "FISTA_acceleration");
 	inputScalars.stochastic = getScalarBool(options, 0, "stochasticSubsetSelection");
 	if (inputScalars.scatter == 1U) {

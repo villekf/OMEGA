@@ -502,6 +502,11 @@ class projectorClass:
     PWLS = False
     # Electronic noise variance (in squared counts, same units as the raw data) of the PWLS weights. 0 gives w = y
     PWLSElectronicNoise = 0.
+    # Number of iterations, after the first one, at whose start the curvature preconditioner (image preconditioner type 6,
+    # precondTypeImage[6], or SPS) is recomputed from the current estimate. Affects only CT with the algorithms that use the
+    # nonlinear (Beer-Lambert) count model (e.g. PKMA, MBSREM, SPS). 0 means that the preconditioner is computed only once
+    # from the initial image. Not used with largeDim or stochastic subsets
+    curvatureRefresh = 0
     storeFP = False
     nRowsD = Ndist
     nColsD = Nang
@@ -2276,6 +2281,11 @@ class projectorClass:
                 raise ValueError('Image-based preconditioners are not supported with PDDY!')
             if self.PDAdaptiveType > 0:
                 raise ValueError('Adaptive step sizes are not supported with PDDY!')
+        if (isinstance(self.curvatureRefresh, (bool, np.bool_)) or not np.isscalar(self.curvatureRefresh)
+                or not np.isreal(self.curvatureRefresh) or self.curvatureRefresh < 0
+                or self.curvatureRefresh != np.floor(self.curvatureRefresh)):
+            raise ValueError('curvatureRefresh must be a non-negative integer!')
+        self.curvatureRefresh = int(self.curvatureRefresh)
         if self.PWLS:
             if not self.CT:
                 raise ValueError('PWLS is only supported with CT data!')
@@ -3509,4 +3519,5 @@ class projectorClass:
             ('sensBins', ctypes.c_uint32),
             ('PWLS', ctypes.c_bool),
             ('PWLSElectronicNoise', ctypes.c_float),
+            ('curvatureRefresh', ctypes.c_uint32),
         ]

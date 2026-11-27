@@ -96,7 +96,12 @@ inline int SPS(af::array& im, af::array& rhs, const float U, const std::vector<f
 	status = applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, timestep, kk, ii);
 	if (status != 0)
 		return -1;
-	im += lam[iter] * rhs * w_vec.dP[timestep][ii];
+	// applyImagePreconditioning has already multiplied rhs with dP if the curvature preconditioner (type 6) is enabled, so dP
+	// is applied here only otherwise. This way dP is applied exactly once
+	if (w_vec.precondTypeIm[6])
+		im += lam[iter] * rhs;
+	else
+		im += lam[iter] * rhs * w_vec.dP[timestep][ii];
 	im = af::select(im <= 0.f, inputScalars.epps, im);
 	return 0;
 }

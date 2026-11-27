@@ -120,6 +120,11 @@ end
 if ~isfield(options, 'usingLinearizedData')
     options.usingLinearizedData = false;
 end
+% Number of iterations (after the first) at the start of which the curvature preconditioner (type 6 / SPS) of the CT count
+% model is recomputed with the current estimate as the reference image. 0 = computed only once from the initial image
+if ~isfield(options, 'curvatureRefresh')
+    options.curvatureRefresh = 0;
+end
 if ~isfield(options, 'no_data_load')
     options.no_data_load = false;
 end
