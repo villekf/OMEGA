@@ -27,6 +27,7 @@ class ProjectorClass {
 	paramStruct<float> param;
 
 public:
+	bool type6Error = false;
 	uint8_t no_norm = 0;
 	// d_xFull is the detector (crystal) coordinate table and is never overwritten (GPU d_x[0][0] / d_xFull). The list-mode event
 	// coordinates of the current subset are a local pointer in forwardProjection/backwardProjection, so that the list-mode sensitivity

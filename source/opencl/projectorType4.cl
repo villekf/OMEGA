@@ -889,12 +889,13 @@ void projectorType4Forward(
 #error LAYEREDBP does not support HELICAL
 #endif
 #if defined(METAL)
-#error LAYEREDBP does not support METAL
+#define BPFORWTYPE metal::texture2d_array<float, metal::access::sample>
+#define LAYFETCH(img, u, v, k) (img).sample(samplerForw, float2(u, v), uint(k)).r
 #endif
 #if defined(CUDA) || defined(HIP)
 #define BPFORWTYPE IMAGE3D
 #define LAYFETCH(img, u, v, k) tex2DLayered<float>(img, u, v, k)
-#else
+#elif defined(OPENCL)
 #define BPFORWTYPE __read_only image2d_array_t
 #define LAYFETCH(img, u, v, k) read_imagef(img, samplerIm, (float4)(u, v, CFLOAT(k), 0.f)).w
 #endif
@@ -998,7 +999,11 @@ void projectorType4Backward(
     , CONSTANT float* d_uv BUF6
 #endif
 #ifdef PROJWINDOW
+#if defined(METAL)
+    , const CLGLOBAL int* d_projWindow BUF10
+#else
     , const CLGLOBAL int* CLRESTRICT d_projWindow
+#endif
 #endif
     , CLGLOBAL float* CLRESTRICT d_Summ BUF7
 #ifdef NORM
@@ -1023,68 +1028,79 @@ void projectorType4Backward(
 #if !defined(METAL) // Scalars
     , const LONG d_nProjections
     , const int ii
+#endif
 #ifdef FASTPDHG // START FASTPDHG
 #if FASTALG == 0
-    , CLGLOBAL float* CLRESTRICT d_U
+    , CLGLOBAL float* CLRESTRICT d_U BUF11
 #endif
 #if FASTPRECOND > 0
-    , const CLGLOBAL float* CLRESTRICT d_precond
+    , const CLGLOBAL float* CLRESTRICT d_precond BUF13
 #endif
 #ifdef FASTNLM
-    , IMAGE3D d_imNLM
-    , CONSTANT float* d_gaussian
+    , IMAGE3D d_imNLM TEX11
+    , CONSTANT float* d_gaussian BUF17
 #ifdef NLMREF
-    , IMAGE3D d_urefNLM
+    , IMAGE3D d_urefNLM TEX12
 #endif
-    // The NLM parameters are always passed as a fixed block (h, gamma, p, q, c, adaptive constant) so that the host
-    // side does not have to mirror the NLTYPE conditionals
+#if !defined(METAL)
+    // The NLM parameters are always passed as a fixed block so the host does not need matching NLTYPE conditionals.
     , const float fastNLMh, const float fastNLMgamma, const float fastNLMp, const float fastNLMq, const float fastNLMc, const float fastNLMs
 #endif
-#ifdef FASTRDP
-    , IMAGE3D d_imNLM
-#ifdef FASTRDPCORNERS
-    , CONSTANT float* d_swWeight
 #endif
+#ifdef FASTRDP
+    , IMAGE3D d_imNLM TEX11
+#ifdef FASTRDPCORNERS
+    , CONSTANT float* d_swWeight BUF17
+#endif
+#if !defined(METAL)
     , const float fastRDPgamma
+#endif
 #ifdef PRIORREF
-    , IMAGE3D d_urefNLM
+    , IMAGE3D d_urefNLM TEX12
 #endif
 #endif // FASTRDP
 #ifdef FASTGGMRF
-    , IMAGE3D d_imNLM
-    , CONSTANT float* d_swWeight
+    , IMAGE3D d_imNLM TEX11
+    , CONSTANT float* d_swWeight BUF17
+#if !defined(METAL)
     , const float fastGGMRFp, const float fastGGMRFq, const float fastGGMRFc, const float fastGGMRFpqc
+#endif
 #endif // FASTGGMRF
 #ifdef FASTHYPER
-    , IMAGE3D d_imNLM
-    , CONSTANT float* d_swWeight
+    , IMAGE3D d_imNLM TEX11
+    , CONSTANT float* d_swWeight BUF17
+#if !defined(METAL)
     , const float fastHYPERsigma
+#endif
 #endif // FASTHYPER
 #ifdef FASTTV
-    , IMAGE3D d_imNLM
+    , IMAGE3D d_imNLM TEX11
+#if !defined(METAL)
     , const float fastTVsigma
     , const float fastTVsmooth
-#endif // FASTTV
-#if FASTALG == 0
-    , const float fastTheta
-    , const float fastTau
-#else
-    , const float fastLambda
-    , const float fastAlpha
 #endif
-    , const float fastBeta
-    , const float fastEpps
-    , const uchar fastPositivity
-    // largeDim offsets
-    , const LONG fastImOffset
-    , const int fastPriorZOffset
-    , const uchar fastStep
+#endif // FASTTV
+#if !defined(METAL)
+#if FASTALG == 0
+    , const float fastTheta, const float fastTau
+#else
+    , const float fastLambda, const float fastAlpha
+#endif
+    , const float fastBeta, const float fastEpps, const uchar fastPositivity
+    , const LONG fastImOffset, const int fastPriorZOffset, const uchar fastStep
+#endif
 #ifdef FASTREGREUSE
-    , CLGLOBAL float* CLRESTRICT d_priorGradStore
+    , CLGLOBAL float* CLRESTRICT d_priorGradStore BUF28
+#if !defined(METAL)
     , const uchar fastRegReuse
 #endif
+#endif
 #endif // END FASTPDHG
-#else
+#if defined(METAL) && defined(FASTPDHG) && (defined(FASTNLMLOCAL) || defined(FASTSWLOCAL))
+    , uint3 fastThreadgroupLane [[thread_position_in_threadgroup]]
+    , uint3 fastThreadgroupPosition [[threadgroup_position_in_grid]]
+#endif
+#if defined(METAL)
     , uint3 temp_i [[thread_position_in_grid]] // global id
 #endif
 ) {
@@ -1097,6 +1113,9 @@ void projectorType4Backward(
 	int GID0 = temp_i.x;
 	int GID1 = temp_i.y;
 	int GID2 = temp_i.z;
+#endif
+#if defined(METAL) && defined(FASTPDHG)
+  UNPACK_SCALAR_PARAMS_FASTPDHG(scalarParams);
 #endif
 #ifdef HELICAL
     const int nVoxels = NVOXELSHELICAL;
@@ -1129,7 +1148,8 @@ void projectorType4Backward(
 #ifdef NLMREF
             d_urefNLM,
 #endif
-            CINT(i.z), fastPriorZOffset
+            CINT(i.z), fastPriorZOffset,
+            FAST_CACHE_COORDS
         );
     BARRIER
 #endif // END FASTNLMLOCAL
@@ -1141,7 +1161,9 @@ void projectorType4Backward(
         && fastRegReuse == 0u
 #endif
         )
-        fastFillSWCache(lCacheSW, d_imNLM, CINT(i.z), fastPriorZOffset);
+        fastFillSWCache(lCacheSW, d_imNLM, CINT(i.z), fastPriorZOffset,
+            FAST_CACHE_COORDS
+        );
     BARRIER
 #endif // END FASTSWLOCAL
     if (i.x >= d_N.x || i.y >= d_N.y || i.z >= d_N.z)
@@ -1270,7 +1292,7 @@ void projectorType4Backward(
             const LONG indZ = CLONG_rtz(pz * CFLOAT(d_nProjections)) * CLONG_rtz(d_sizey) * CLONG_rtz(d_size_x);
             yVar *= d_norm[indX + indY + indZ];
 #endif
-            const float L = distance(intersection, s);
+            const float L = DISTANCE(intersection, s);
             const float l1 = dot(v, v);
             const float weight = (L * L * L) / (l1)*kerroin;
             temp[zz] += yVar * weight;
@@ -1576,7 +1598,12 @@ void projectorType4Backward(
                 }
 #endif
                 if (px <= TT && px >= -TT) {
+#ifdef OFFSETSQRT
+                    // Square root of the redundancy weight: sqrt(.5f * (1 + sin(a))) = sin(a / 2 + pi / 4)
+                    w = SINF(M_PI_F * (px + TT) / (TT * 4.f));
+#else
                     w = .5f * (1.f + SINF(M_PI_F * px / (TT * 2.f)));
+#endif
                     // w = (.5f * (SINF((M_PI_F * atan2(px, R)) / (2.f * atan2(TT, R))) + 1.f));
                 }
                 else if (px < -TT) {
@@ -1613,6 +1640,7 @@ void projectorType4Backward(
         }
 #endif
     }
+
 	// Start the fastPDHG computations
 #ifdef FASTPDHG // START FASTPDHG
     if (fastStep != 0u) {
@@ -1641,6 +1669,9 @@ void projectorType4Backward(
         }
 #endif
         fastPDHGUpdate(temp, wSum, i, idx, d_N, nVoxels, no_norm, ii,
+#if defined(FASTNLMLOCAL) || defined(FASTSWLOCAL)
+            FAST_LOCAL_COORDS,
+#endif
             fastImOffset, fastPriorZOffset,
 #if FASTALG == 0
             d_U,

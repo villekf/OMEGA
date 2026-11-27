@@ -112,6 +112,13 @@
 	FLOAT coneOfResponseStdCoeffA = scalarParams.coneOfResponseStdCoeffA; \
     FLOAT coneOfResponseStdCoeffB = scalarParams.coneOfResponseStdCoeffB; \
     FLOAT coneOfResponseStdCoeffC = scalarParams.coneOfResponseStdCoeffC; \
+	uint gFilterNu = scalarParams.gFilterNu; \
+	uint gFilterNv = scalarParams.gFilterNv; \
+	uint gFilterNd = scalarParams.gFilterNd; \
+	float gFilterDu = scalarParams.gFilterDu; \
+	float gFilterDv = scalarParams.gFilterDv; \
+	float gFilterDd = scalarParams.gFilterDd; \
+	bool gFilterCustom = scalarParams.gFilterCustom != 0; \
 	FLOAT2 crystalSize = scalarParams.dPitch; \
     FLOAT3 ellipseCenter = scalarParams.ellipseCenter; \
     FLOAT3 ellipseRadii = scalarParams.ellipseRadii; \
@@ -130,7 +137,10 @@
 	unsigned long m_size = scalarParams.m_size; \
 	uint currentSubset = scalarParams.currentSubset; \
 	int aa = scalarParams.aa; \
-    float orthWidth = scalarParams.orthWidth;
+    float orthWidth = scalarParams.orthWidth; \
+    const uint atnNx = scalarParams.atnNx, atnNy = scalarParams.atnNy, atnNz = scalarParams.atnNz; \
+    const float atnDx = scalarParams.atnDx, atnDy = scalarParams.atnDy, atnDz = scalarParams.atnDz; \
+    const float atnBx = scalarParams.atnBx, atnBy = scalarParams.atnBy, atnBz = scalarParams.atnBz;
 
 #define UNPACK_SCALAR_PARAMS_4_FP(scalarParams) \
     const uint d_size_x = scalarParams.nRowsD; \
@@ -205,6 +215,33 @@
     const float tau = scalarParams.tau_PDHG; \
     const uchar enforcePositivity = scalarParams.enforcePositivity_PDHG;
 
+#define UNPACK_SCALAR_PARAMS_FASTPDHG(scalarParams) \
+    const uchar fastStep = scalarParams.fastStep_PDHG; \
+    const uchar fastRegReuse = scalarParams.fastRegReuse_PDHG; \
+    const LONG fastImOffset = scalarParams.fastImOffset_PDHG; \
+    const int fastPriorZOffset = scalarParams.fastPriorZOffset_PDHG; \
+    const float fastTheta = scalarParams.theta_PDHG; \
+    const float fastTau = scalarParams.tau_PDHG; \
+    const float fastLambda = scalarParams.fastLambda_PDHG; \
+    const float fastAlpha = scalarParams.fastAlpha_PDHG; \
+    const float fastBeta = scalarParams.fastBeta_PDHG; \
+    const float fastEpps = scalarParams.epps_PDHG; \
+    const uchar fastPositivity = scalarParams.enforcePositivity_PDHG; \
+    const float fastNLMh = scalarParams.fastNLMParams_PDHG[0]; \
+    const float fastNLMgamma = scalarParams.fastNLMParams_PDHG[1]; \
+    const float fastNLMp = scalarParams.fastNLMParams_PDHG[2]; \
+    const float fastNLMq = scalarParams.fastNLMParams_PDHG[3]; \
+    const float fastNLMc = scalarParams.fastNLMParams_PDHG[4]; \
+    const float fastNLMs = scalarParams.fastNLMParams_PDHG[5]; \
+    const float fastRDPgamma = scalarParams.fastRDPgamma_PDHG; \
+    const float fastGGMRFp = scalarParams.fastGGMRFp_PDHG; \
+    const float fastGGMRFq = scalarParams.fastGGMRFq_PDHG; \
+    const float fastGGMRFc = scalarParams.fastGGMRFc_PDHG; \
+    const float fastGGMRFpqc = scalarParams.fastGGMRFpqc_PDHG; \
+    const float fastHYPERsigma = scalarParams.fastHYPERsigma_PDHG; \
+    const float fastTVsigma = scalarParams.fastTVsigma_PDHG; \
+    const float fastTVsmooth = scalarParams.fastTVsmooth_PDHG;
+
 #define UNPACK_SCALAR_PARAMS_ROTATE(scalarParams) \
     const int3 N_rotate = scalarParams.N_rotate; \
     const int Nx = N_rotate.x; \
@@ -212,6 +249,29 @@
     const int Nz = N_rotate.z; \
     const float cosa = scalarParams.cosa_rotate; \
     const float sina = scalarParams.sina_rotate;
+
+#define UNPACK_SCALAR_PARAMS_ROTATE_WINDOW(scalarParams) \
+    const int srcNyFull = scalarParams.rotSrcNyFull; \
+    const int srcNzFull = scalarParams.rotSrcNzFull; \
+    const int outNx = scalarParams.rotOutNx; \
+    const int outNyF = scalarParams.rotOutNyFull; \
+    const int outY = scalarParams.rotOutY; \
+    const int outZ = scalarParams.rotOutZ; \
+    const int outNy = scalarParams.rotOutNy; \
+    const int outNz = scalarParams.rotOutNz; \
+    const int srcY = scalarParams.rotSrcY; \
+    const int srcZ = scalarParams.rotSrcZ; \
+    const int srcNy = scalarParams.rotSrcNy; \
+    const int srcNz = scalarParams.rotSrcNz; \
+    const int accumulate = scalarParams.rotAccumulate; \
+    const int outX = scalarParams.rotOutX; \
+    const int outNxW = scalarParams.rotOutNxW; \
+    const int srcX = scalarParams.rotSrcX; \
+    const int srcNxB = scalarParams.rotSrcNxB; \
+    const int outSx = scalarParams.rotOutSx; \
+    const int outSy = scalarParams.rotOutSy; \
+    const float offX = scalarParams.rotOffX; \
+    const float offY = scalarParams.rotOffY;
 
 
 #ifdef METAL
@@ -241,6 +301,12 @@ constexpr metal::sampler samplerMask(
     metal::coord::normalized,
     metal::filter::nearest,
     metal::address::clamp_to_edge
+);
+
+constexpr metal::sampler samplerSPECTPSF(
+    metal::coord::normalized,
+    metal::filter::linear,
+    metal::address::clamp_to_zero
 );
 
 using metal::dot;
@@ -286,9 +352,25 @@ using metal::dot;
 #define BUF15 [[buffer(15)]]
 #define BUF16 [[buffer(16)]]
 #define BUF17 [[buffer(17)]]
+
+#define BUF18 [[buffer(18)]]
+#define BUF19 [[buffer(19)]]
+#define BUF20 [[buffer(20)]]
+#define BUF21 [[buffer(21)]]
+#define BUF22 [[buffer(22)]]
+#define BUF23 [[buffer(23)]]
+#define BUF24 [[buffer(24)]]
+#define BUF25 [[buffer(25)]]
+#define BUF26 [[buffer(26)]]
+#define BUF27 [[buffer(27)]]
+#define BUF28 [[buffer(28)]]
+#define BUF29 [[buffer(29)]]
+#define BUF30 [[buffer(30)]]
+
 #define CEIL metal::ceil
 #define CINT(a)   static_cast<int>(a)
 #define CINT_rtz(a) static_cast<int>(metal::trunc((a)))
+#define CINT3(a) int3(a)
 #define CINT3_rtz(a) static_cast<int3>(a)
 #define CLAMP3(a,b,c) metal::clamp((a),(b),(c))
 #define CLGLOBAL device
@@ -308,8 +390,10 @@ using metal::dot;
 #define DIVIDE(a,b) ((a) / (b))
 #define DIVIDE3(a,b) ((a) / (b))
 #define EXP(a) metal::exp(a)
+#define EXP3(a) metal::exp(a)
 #define FABS metal::fabs
 #define FMAD(a,b,c) metal::fma(a,b,c)
+#define FMAD2(a,b,c) metal::fma(float2(a),(b),(c))
 #define FMAD3(a,b,c) metal::fma((a),(b),(c))
 #define FMAX metal::fmax
 #define FMIN metal::fmin
@@ -323,6 +407,8 @@ using metal::dot;
 #define KERNEL3 kernel
 #define LENGTH metal::length
 #define LOCAL threadgroup
+#define BARRIER metal::threadgroup_barrier(metal::mem_flags::mem_threadgroup);
+#define THREAD thread
 #define LOG(a) metal::log(a)
 #define LONG long
 #define make_int2(a,b) int2((a),(b))
@@ -345,32 +431,40 @@ using metal::dot;
 #define PTR_THR thread
 #define PTR_CONST constant
 #define PTR_TG threadgroup
+#define FAST_CACHE_COORDS CINT(fastThreadgroupPosition.x), CINT(fastThreadgroupPosition.y), CINT(fastThreadgroupLane.x), CINT(fastThreadgroupLane.y), LOCAL_SIZE, LOCAL_SIZE2
+#define FAST_LOCAL_COORDS CINT(fastThreadgroupLane.x), CINT(fastThreadgroupLane.y)
 #define RCP(x) (1.f / x)
 #define SQRT metal::sqrt
 #define RSQRT(x) metal::rsqrt(x)
+#define SIGN metal::sign
 #define SCALAR_PARAMS(name) constant ScalarKernelParams &name
 #ifdef USEIMAGES
 #define TEX1 [[texture(1)]]
 #define TEX2 [[texture(2)]]
 #define TEX3 [[texture(3)]]
 #define TEX4 [[texture(4)]]
+#define TEX6 [[texture(6)]]
 #define TEX7 [[texture(7)]]
 #define TEX8 [[texture(8)]]
 #define TEX9 [[texture(9)]]
 #define TEX10 [[texture(10)]]
+#define TEX11 [[texture(11)]]
+#define TEX12 [[texture(12)]]
 #define TEX19 [[texture(19)]]
 #else
 #define TEX1 [[buffer(1)]]
 #define TEX2 [[buffer(2)]]
 #define TEX3 [[buffer(3)]]
 #define TEX4 [[buffer(4)]]
+#define TEX6 [[buffer(6)]]
 #define TEX7 [[buffer(7)]]
 #define TEX8 [[buffer(8)]]
 #define TEX9 [[buffer(9)]]
 #define TEX10 [[buffer(10)]]
+#define TEX11 [[buffer(11)]]
+#define TEX12 [[buffer(12)]]
 #define TEX19 [[buffer(19)]]
 #endif
-
 #if defined(ATOMIC32)
 inline void atomicAdd(volatile device metal::atomic_int* addr, int val)
 {
@@ -406,6 +500,16 @@ inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
 #define BUF18
 #define BUF19
 #define BUF20
+#define BUF21
+#define BUF22
+#define BUF23
+#define BUF24
+#define BUF25
+#define BUF26
+#define BUF27
+#define BUF28
+#define BUF29
+#define BUF30
 #define TEX0
 #define TEX1
 #define TEX2
@@ -446,6 +550,7 @@ inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
 #define CLGLOBAL __global
 #define CLRESTRICT restrict
 #define CONSTANT __constant
+#define THREAD
 #define LENGTH length
 #define LOCAL __local
 #define IMAGE3D __read_only image3d_t
@@ -474,6 +579,7 @@ inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
 #define CLONG_rtz(a) convert_long_rtz(a)
 #define EXP(a) native_exp(a)
 #define EXP3(a) native_exp(a)
+#define SIGN sign
 #define SINF(a) native_sin(a)
 #define COSF(a) native_cos(a)
 #define SQRT native_sqrt
@@ -511,6 +617,8 @@ inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
 #define LID0 get_local_id(0)
 #define LID1 get_local_id(1)
 #define LID2 get_local_id(2)
+#define FAST_CACHE_COORDS CINT(GRID0), CINT(GRID1), CINT(LID0), CINT(LID1), CINT(LSIZE0), CINT(LSIZE1)
+#define FAST_LOCAL_COORDS CINT(LID0), CINT(LID1)
 #define CFLOAT4 (float4)
 #define CFLOAT2 (float2)
 #define MUINT2(a, b) {a, b}
@@ -527,6 +635,7 @@ inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
 #define KERNEL3 __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE2, LOCAL_SIZE3)))
 #define KERN __kernel
 __constant sampler_t samplerIm = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_LINEAR | CLK_ADDRESS_CLAMP_TO_EDGE;
+__constant sampler_t samplerSPECTPSF = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_LINEAR | CLK_ADDRESS_CLAMP;
 #ifdef PTYPE4
 __constant sampler_t samplerForw = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_LINEAR | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif
@@ -565,6 +674,16 @@ __constant sampler_t sampler_MASKFP = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_N
 #define BUF18
 #define BUF19
 #define BUF20
+#define BUF21
+#define BUF22
+#define BUF23
+#define BUF24
+#define BUF25
+#define BUF26
+#define BUF27
+#define BUF28
+#define BUF29
+#define BUF30
 #define TEX0
 #define TEX1
 #define TEX2
@@ -635,10 +754,12 @@ __constant sampler_t sampler_MASKFP = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_N
 #define CLGLOBAL
 #define CLRESTRICT
 #define CONSTANT const
+#define THREAD
 #define DEVICE inline __device__
 #define LOCAL __shared__
 #define EXP(a) __expf(a)
 #define EXP3(a) expf3(a)
+#define SIGN sign
 #define FMAD(a, b, c) __fmaf_rn(a, b, c)
 #define FMAD2(a, b, c) __fmaf_rn2(a, b, c)
 #define FMAD3(a, b, c) __fmaf_rn3(a, b, c)
@@ -662,6 +783,8 @@ __constant sampler_t sampler_MASKFP = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_N
 #define LID0 threadIdx.x
 #define LID1 threadIdx.y
 #define LID2 threadIdx.z
+#define FAST_CACHE_COORDS CINT(GRID0), CINT(GRID1), CINT(LID0), CINT(LID1), CINT(LSIZE0), CINT(LSIZE1)
+#define FAST_LOCAL_COORDS CINT(LID0), CINT(LID1)
 #ifdef HIP
 #define IMAGE3D hipTextureObject_t
 #define IMAGE2D hipTextureObject_t
@@ -992,7 +1115,7 @@ inline __device__ uint3 convert_uint3(const T& a) {
 #endif
 
 #if STYPE == 1 || STYPE == 2 || STYPE == 4 || STYPE == 5
-DEVICE void getIndex(int3* i, const uint d_size_x, const uint d_sizey, const uint currentSubset) {
+DEVICE void getIndex(PTR_THR int3* i, const uint d_size_x, const uint d_sizey, const uint currentSubset) {
 #if STYPE == 1
 	(*i).x *= NSUBSETS;
 	(*i).x += currentSubset;
@@ -1125,6 +1248,20 @@ DEVICE int readMaskFP(MASKFPTYPE maskFP, MASKFPT ind) {
 #endif
 #else
         maskFP[ind];
+#endif
+}
+
+// Read a forward mask by voxel coordinates. Images use coordinates directly; buffers use a linear index.
+DEVICE int readMaskFPAt(MASKFPTYPE maskFP, const int3 ind, const uint d_nRows, const uint d_nCols) {
+#ifdef USEIMAGES
+    return readMaskFP(maskFP, CINT3(ind));
+#else
+    MASKFPT index = (MASKFPT)ind.x + (MASKFPT)ind.y * (MASKFPT)d_nRows
+#ifdef MASKFP3D
+        + (MASKFPT)ind.z * (MASKFPT)d_nRows * (MASKFPT)d_nCols
+#endif
+        ;
+    return readMaskFP(maskFP, index);
 #endif
 }
 #endif
@@ -1712,6 +1849,48 @@ DEVICE void rhs(const float local_ele, PTR_THR const float *ax, const LONG local
 
 // Detector coordinates for listmode data
 #ifdef LISTMODE
+#if defined(SPECT)
+DEVICE void extendRayToEllipse(
+	PTR_THR FLOAT3 *s, PTR_THR FLOAT3 *d, const FLOAT3 ellipseCenter,
+	const FLOAT3 ellipseRadii, const float ellipsePower
+);
+DEVICE void getDetectorCoordinatesListmodeSPECT(
+#if defined(USEGLOBAL)
+	const CLGLOBAL float* d_xyz, const CLGLOBAL float* d_z,
+#elif defined(METAL)
+	CONSTANT float* d_xyz, CONSTANT float* d_z,
+#else
+	CONSTANT float* d_xyz,
+	const CLGLOBAL float* d_z,
+#endif
+	const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource,
+	PTR_THR FLOAT3* s, PTR_THR FLOAT3* d, const size_t idx, const uint d_size_x, const uint d_sizey,
+	const int lor, const FLOAT3 ellipseCenter, const FLOAT3 ellipseRadii, const float ellipsePower,
+	PTR_THR FLOAT* rayDepthOffset
+) {
+	const size_t i = idx * 6;
+	const size_t iz = idx * 5;
+	*s = CMFLOAT3(d_xyz[i], d_xyz[i + 1], d_xyz[i + 2]);
+	*d = CMFLOAT3(d_xyz[i + 3], d_xyz[i + 4], d_xyz[i + 5]);
+	const FLOAT ux = (FLOAT)d_z[iz];
+	const FLOAT uy = (FLOAT)d_z[iz + 1];
+	const uint detectorElement = (uint)d_z[iz + 2];
+	const uint detectorHead = (uint)d_z[iz + 3];
+	const uint idShift = 2u * (uint)lor + (2u * N_RAYS) *
+		(detectorElement + detectorHead * d_size_x * d_sizey);
+	const FLOAT shiftDetectorXY = (FLOAT)d_rayShiftsDetector[idShift];
+	const FLOAT shiftSourceXY = (FLOAT)d_rayShiftsSource[idShift];
+	(*d).x += ux * shiftDetectorXY;
+	(*d).y += uy * shiftDetectorXY;
+	(*d).z += (FLOAT)d_rayShiftsDetector[idShift + 1u];
+	(*s).x += ux * shiftSourceXY;
+	(*s).y += uy * shiftSourceXY;
+	(*s).z += (FLOAT)d_rayShiftsSource[idShift + 1u];
+	const FLOAT3 rayOriginBeforeClip = *s;
+	extendRayToEllipse(s, d, ellipseCenter, ellipseRadii, ellipsePower);
+	*rayDepthOffset = LENGTH(*s - rayOriginBeforeClip);
+}
+#endif
 #ifdef INDEXBASED
 DEVICE void getDetectorCoordinatesListmode(
 #if defined(USEGLOBAL)
@@ -1739,7 +1918,7 @@ DEVICE void getDetectorCoordinatesListmode(
 #endif
 }
 #else
-DEVICE void getDetectorCoordinatesListmode(const CLGLOBAL float* d_xyz, float3* s, float3* d, const size_t idx
+DEVICE void getDetectorCoordinatesListmode(const CLGLOBAL float* d_xyz, PTR_THR FLOAT3* s, PTR_THR FLOAT3* d, const size_t idx
 #if defined(N_RAYS)
 	, const int lorXY, const int lorZ, const float2 cr
 #endif
@@ -2023,11 +2202,15 @@ DEVICE void getDetectorCoordinatesSPECT(
     const FLOAT2 d_dPitch, // Detector element size [mm]
     const CLGLOBAL float* d_rayShiftsDetector, // Ray shifts [mm]
     const CLGLOBAL float* d_rayShiftsSource, // Ray shifts [mm]
-    const CLGLOBAL uint* d_detectorVector, // Detector head for each projection
-    int lor,
+	const CLGLOBAL uint* d_detectorVector, // Detector head for each projection
+	int lor,
     const FLOAT3 ellipseCenter,
     const FLOAT3 ellipseRadii,
-    const float ellipsePower
+    const FLOAT ellipsePower,
+	PTR_THR FLOAT* rayDepthOffset
+#if defined(ORTH)
+    , PTR_THR FLOAT3 *collimatorOrigin
+#endif
 ) {
 	uint id = i.z * 6;
 	*s = CMFLOAT3((FLOAT)d_xyz[id], (FLOAT)d_xyz[id + 1], (FLOAT)d_xyz[id + 2]); // TODO remove cast
@@ -2052,7 +2235,12 @@ DEVICE void getDetectorCoordinatesSPECT(
 	(*s).y += apuY * (shift_det_elem.x + d_rayShiftsSource[idShift]);
 	(*s).z += shift_det_elem.y + d_rayShiftsSource[idShift+1];
 
-    extendRayToEllipse(s, d, ellipseCenter, ellipseRadii, ellipsePower);
+	const FLOAT3 rayOriginBeforeClip = *s;
+#if defined(ORTH)
+	*collimatorOrigin = *s;
+#endif
+	extendRayToEllipse(s, d, ellipseCenter, ellipseRadii, ellipsePower);
+	*rayDepthOffset = LENGTH(*s - rayOriginBeforeClip);
 }
 #else
 #if defined(RAW) || defined(SENS)
@@ -2213,6 +2401,160 @@ DEVICE void compute_attenuation(const float val, const typeT ind, IMTYPE d_atten
 #endif
 #endif
 	}
+}
+#endif
+
+#if defined(MRATN)
+DEVICE float read_multiresolution_attenuation(IMTYPE d_atten, const int x, const int y, const int z,
+	const uint nx, const uint ny) {
+#if defined(CUDA) || defined(HIP)
+#ifdef USEIMAGES
+	return tex3D<float>(d_atten, (float)x, (float)y, (float)z);
+#else
+	return d_atten[(LONG)x + (LONG)y * (LONG)nx + (LONG)z * (LONG)nx * (LONG)ny];
+#endif
+#elif defined(METAL)
+#ifdef USEIMAGES
+	return d_atten.read(uint3(x, y, z)).r;
+#else
+	return d_atten[(LONG)x + (LONG)y * (LONG)nx + (LONG)z * (LONG)nx * (LONG)ny];
+#endif
+#else
+#ifdef USEIMAGES
+	return read_imagef(d_atten, samplerSiddon, (int4)(x, y, z, 0)).w;
+#else
+	return d_atten[(LONG)x + (LONG)y * (LONG)nx + (LONG)z * (LONG)nx * (LONG)ny];
+#endif
+#endif
+}
+
+DEVICE void compute_multiresolution_attenuation(const float val, const typeT ind, IMTYPE d_atten,
+	PTR_THR float *jelppi, const uint3 volumeDims, const float3 volumeSpacing, const float3 volumeOrigin,
+	const uint attenuationNx, const uint attenuationNy, const uint attenuationNz,
+	const float attenuationDx, const float attenuationDy, const float attenuationDz,
+	const float attenuationBx, const float attenuationBy, const float attenuationBz) {
+	int x, y, z;
+#ifdef USEIMAGES
+	x = ind.x; y = ind.y; z = ind.z;
+#else
+	const LONG localIndex = (LONG)ind;
+	x = (int)(localIndex % (LONG)volumeDims.x);
+	y = (int)((localIndex / (LONG)volumeDims.x) % (LONG)volumeDims.y);
+	z = (int)(localIndex / ((LONG)volumeDims.x * (LONG)volumeDims.y));
+#endif
+	const int ix = (int)FLOOR((volumeOrigin.x + ((float)x + 0.5f) * volumeSpacing.x - attenuationBx) / attenuationDx);
+	const int iy = (int)FLOOR((volumeOrigin.y + ((float)y + 0.5f) * volumeSpacing.y - attenuationBy) / attenuationDy);
+	const int iz = (int)FLOOR((volumeOrigin.z + ((float)z + 0.5f) * volumeSpacing.z - attenuationBz) / attenuationDz);
+	if (ix >= 0 && ix < (int)attenuationNx && iy >= 0 && iy < (int)attenuationNy && iz >= 0 && iz < (int)attenuationNz)
+		*jelppi += val * -read_multiresolution_attenuation(d_atten, ix, iy, iz, attenuationNx, attenuationNy);
+}
+
+DEVICE float integrate_multiresolution_attenuation_segment(IMTYPE d_atten, const float3 source, const float3 direction,
+	const float startParameter, const float endParameter, const float rayLength,
+	const uint attenuationNx, const uint attenuationNy, const uint attenuationNz,
+	const float attenuationDx, const float attenuationDy, const float attenuationDz,
+	const float attenuationBx, const float attenuationBy, const float attenuationBz) {
+	float t = FMIN(FMAX(startParameter, 0.f), 1.f);
+	float end = FMIN(FMAX(endParameter, 0.f), 1.f);
+	if (end <= t) return 0.f;
+	const float starts[3] = { source.x, source.y, source.z };
+	const float dirs[3] = { direction.x, direction.y, direction.z };
+	const float amin[3] = { attenuationBx, attenuationBy, attenuationBz };
+	const float ad[3] = { attenuationDx, attenuationDy, attenuationDz };
+	const int an[3] = { (int)attenuationNx, (int)attenuationNy, (int)attenuationNz };
+	for (int axis = 0; axis < 3; ++axis) {
+		const float maximum = amin[axis] + (float)an[axis] * ad[axis];
+		if (FABS(dirs[axis]) < 1.0e-12f) {
+			if (starts[axis] < amin[axis] || starts[axis] >= maximum) return 0.f;
+			continue;
+		}
+		const float a = (amin[axis] - starts[axis]) / dirs[axis];
+		const float b = (maximum - starts[axis]) / dirs[axis];
+		t = FMAX(t, FMIN(a, b));
+		end = FMIN(end, FMAX(a, b));
+	}
+	if (end <= t) return 0.f;
+	#if defined(CUDA) || defined(HIP)
+	const float probe = nextafterf(t, end);
+	#elif defined(METAL)
+	const float probe = metal::nextafter(t, end);
+	#else
+	const float probe = nextafter(t, end);
+	#endif
+	int index[3], step[3];
+	float nextBoundary[3], deltaT[3];
+	for (int axis = 0; axis < 3; ++axis) {
+		const float position = starts[axis] + dirs[axis] * probe;
+		step[axis] = dirs[axis] > 0.f ? 1 : (dirs[axis] < 0.f ? -1 : 0);
+		const float coordinate = (position - amin[axis]) / ad[axis];
+		index[axis] = (int)FLOOR(coordinate);
+		if (step[axis] < 0) {
+			const float nearestBoundary = FLOOR(coordinate + 0.5f);
+			const float boundaryTolerance = 4.f * 1.1920928955078125e-7f * FMAX(1.f, FABS(coordinate));
+			if (FABS(coordinate - nearestBoundary) <= boundaryTolerance)
+				index[axis] = (int)nearestBoundary - 1;
+		}
+		index[axis] = MAX(0, MIN(index[axis], an[axis] - 1));
+		if (step[axis] == 0) {
+			nextBoundary[axis] = 3.402823466e+38f;
+			deltaT[axis] = 3.402823466e+38f;
+		}
+		else {
+			const float plane = amin[axis] + (float)(index[axis] + (step[axis] > 0 ? 1 : 0)) * ad[axis];
+			nextBoundary[axis] = (plane - starts[axis]) / dirs[axis];
+			deltaT[axis] = ad[axis] / FABS(dirs[axis]);
+			while (nextBoundary[axis] <= t) nextBoundary[axis] += deltaT[axis];
+		}
+	}
+	float integral = 0.f;
+	const uint maxSteps = attenuationNx + attenuationNy + attenuationNz + 3u;
+	for (uint count = 0u; count < maxSteps && t < end; ++count) {
+		if (index[0] < 0 || index[0] >= an[0] || index[1] < 0 || index[1] >= an[1] || index[2] < 0 || index[2] >= an[2])
+			break;
+		const float next = FMIN(end, FMIN(nextBoundary[0], FMIN(nextBoundary[1], nextBoundary[2])));
+		if (next > t)
+			integral += (next - t) * rayLength * read_multiresolution_attenuation(d_atten, index[0], index[1], index[2], attenuationNx, attenuationNy);
+		if (next >= end) break;
+		bool advanced = false;
+		for (int axis = 0; axis < 3; ++axis) {
+			if (nextBoundary[axis] <= next) {
+				index[axis] += step[axis];
+				nextBoundary[axis] += deltaT[axis];
+				advanced = true;
+			}
+		}
+		if (!advanced) break;
+		t = next;
+	}
+	return -integral;
+}
+
+DEVICE float integrate_multiresolution_attenuation_prefix(IMTYPE d_atten, const float3 source, const float3 direction,
+	const float3 volumeOrigin, const float3 volumeMaximum, const float rayLength,
+	const uint attenuationNx, const uint attenuationNy, const uint attenuationNz,
+	const float attenuationDx, const float attenuationDy, const float attenuationDz,
+	const float attenuationBx, const float attenuationBy, const float attenuationBz) {
+	float entry = 0.f, volumeExit = 1.f;
+	const float starts[3] = { source.x, source.y, source.z };
+	const float dirs[3] = { direction.x, direction.y, direction.z };
+	const float vmin[3] = { volumeOrigin.x, volumeOrigin.y, volumeOrigin.z };
+	const float vmax[3] = { volumeMaximum.x, volumeMaximum.y, volumeMaximum.z };
+	for (int axis = 0; axis < 3; ++axis) {
+		if (FABS(dirs[axis]) < 1.0e-12f) {
+			if (starts[axis] < vmin[axis] || starts[axis] >= vmax[axis]) return 0.f;
+			continue;
+		}
+		const float a = (vmin[axis] - starts[axis]) / dirs[axis];
+		const float b = (vmax[axis] - starts[axis]) / dirs[axis];
+		entry = FMAX(entry, FMIN(a, b));
+		volumeExit = FMIN(volumeExit, FMAX(a, b));
+	}
+	if (volumeExit <= entry || entry <= 0.f) return 0.f;
+	return integrate_multiresolution_attenuation_segment(
+		d_atten, source, direction, 0.f, FMIN(entry, 1.f), rayLength,
+		attenuationNx, attenuationNy, attenuationNz,
+		attenuationDx, attenuationDy, attenuationDz,
+		attenuationBx, attenuationBy, attenuationBz);
 }
 #endif
 
@@ -2638,14 +2980,22 @@ DEVICE void normalizeCurvedCoordinates(float3 xyz,
 // These were added to share as much code with fastPDHG as possible
 
 // Derivative of the (q-)GGMRF potential function, used by both GGMRF and the non-local GGMRF
-#if (defined(NLTYPE) && NLTYPE == 6) || (defined(SWPRIORTYPE) && SWPRIORTYPE == 1)
+#if (defined(NLTYPE) && NLTYPE == 6) || (defined(SWPRIORTYPE) && SWPRIORTYPE == 1) || \
+    (defined(METAL) && (defined(RDPCORNERS) || defined(GGMRF) || defined(HYPER) || \
+    defined(FASTRDPCORNERS) || defined(FASTGGMRF) || defined(FASTHYPER)))
 // Computes |delta|^(p - 1) / (1 + |delta / c|^(p - q)) * (p - pqc * c^(p - q) * |delta / c|^(p - q) / (1 + |delta / c|^(p - q))) * sign(delta)
 // Both powers are computed from a single logarithm, |delta|^a = exp(a * log(|delta|)), instead of two separate power functions
 // delta must not be zero. logC = log(c) and cpq = c^(p - q) are constants that are computed only once per voxel
 // The host defines GGMRFPEQQ when p == q (|delta / c|^(p - q) is then one) and GGMRFP2 when p == 2 (|delta|^(p - 1) is then |delta|)
 // These are compile-time selections on purpose: branches on p and q inside the neighborhood loops were measurably slower
 DEVICE float GGMRFDerivative(const float delta, const float p, const float q, const float logC, const float cpq, const float pqc) {
-    const float absDelta = fabs(delta);
+    const float absDelta = FABS(delta);
+#if defined(METAL)
+    // One Metal library can contain local and non-local GGMRF. Use the parameters of the calling kernel.
+    const float logDelta = LOG(absDelta);
+    const float dcpq = p == q ? FLOAT_ONE : EXP((p - q) * (logDelta - logC));
+    const float dp = p == 2.f ? absDelta : EXP((p - FLOAT_ONE) * logDelta);
+#else
 #if !defined(GGMRFPEQQ) || !defined(GGMRFP2)
     const float logDelta = LOG(absDelta);
 #endif
@@ -2654,13 +3004,14 @@ DEVICE float GGMRFDerivative(const float delta, const float p, const float q, co
 #else
     const float dcpq = EXP((p - q) * (logDelta - logC));
 #endif
-    const float deltapqc = FLOAT_ONE + dcpq;
 #ifdef GGMRFP2
     const float dp = absDelta;
 #else
     const float dp = EXP((p - FLOAT_ONE) * logDelta);
 #endif
-    return (dp / deltapqc) * (p - pqc * ((dcpq * cpq) / deltapqc)) * sign(delta);
+#endif // Metal uses runtime p and q
+    const float deltapqc = FLOAT_ONE + dcpq;
+    return (dp / deltapqc) * (p - pqc * ((dcpq * cpq) / deltapqc)) * SIGN(delta);
 }
 #endif
 
@@ -2677,6 +3028,10 @@ CONSTANT sampler_t samplerNLMShared = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_N
 DEVICE float NLMTexRead(IMAGE3D uIn, const int x, const int y, const int z) {
 #if defined(CUDA) || defined(HIP)
     return tex3D<float>(uIn, x, y, z);
+#elif defined(METAL)
+    const int3 dims = int3(uIn.get_width(), uIn.get_height(), uIn.get_depth());
+    const uint3 index = uint3(metal::clamp(int3(x, y, z), int3(0), dims - 1));
+    return uIn.read(index).r;
 #else
     return read_imagef(uIn, samplerNLMShared, (int4)(x, y, z, 0)).w;
 #endif
@@ -2701,6 +3056,8 @@ DEVICE float NLMTexRead(IMAGE3D uIn, const int x, const int y, const int z) {
 #define NLM_TILEZ (NLM_TILEZ_BASE + SWINDOWZ * 2 + PWINDOWZ * 2)
 #if defined(OPENCL)
 #define NLM_LOCALQ __local
+#elif defined(METAL)
+#define NLM_LOCALQ threadgroup
 #else
 #define NLM_LOCALQ
 #endif
@@ -2854,17 +3211,17 @@ DEVICE float NLMGradient(NLM_IN_T uIn,
                 // NLRD
                 const float u = (uj - uk);
 #ifndef USEMAD // START FMAD
-                const float divPow = (uj + uk + gamma * fabs(u) + epps);
-                output += weight * u * (gamma * fabs(u) + uj + 3.f * uk + epps * epps) / (divPow * divPow);
+                const float divPow = (uj + uk + gamma * FABS(u) + epps);
+                output += weight * u * (gamma * FABS(u) + uj + 3.f * uk + epps * epps) / (divPow * divPow);
 #else
-                const float divPow = FMAD(gamma, fabs(u), uj + uk + epps);
-                output += weight * u * (FMAD(gamma, fabs(u), uj + 3.f * uk + epps * epps)) / (divPow * divPow);
+                const float divPow = FMAD(gamma, FABS(u), uj + uk + epps);
+                output += weight * u * (FMAD(gamma, FABS(u), uj + 3.f * uk + epps * epps)) / (divPow * divPow);
 #endif // END FMAD
 #elif NLTYPE == 4
                 // Lange
                 const float u = (uj - uk);
-                const float uabs = sign(u);
-                output += weight * (uabs - uabs / (fabs(u) / gamma + FLOAT_ONE));
+                const float uabs = SIGN(u);
+                output += weight * (uabs - uabs / (FABS(u) / gamma + FLOAT_ONE));
 #elif NLTYPE == 6
                 // NLGGMRF
                 // Identical voxels are skipped: their contribution is zero and the logarithm of zero is not finite
@@ -2898,8 +3255,8 @@ DEVICE float NLMGradient(NLM_IN_T uIn,
 #elif NLTYPE == 5
     // Lange with NLMRP
     output = uj - output;
-    const float uabs = sign(output);
-    output = (uabs - uabs / (fabs(output) / gamma + FLOAT_ONE));
+    const float uabs = SIGN(output);
+    output = (uabs - uabs / (FABS(output) / gamma + FLOAT_ONE));
 #elif NLTYPE == 1
 #ifndef USEMAD // START FMAD
     output /= SQRT(outputAla * weight_sum + epps);
@@ -2927,6 +3284,10 @@ CONSTANT sampler_t samplerSWPrior = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEA
 DEVICE float SWTexRead(IMAGE3D uIn, const int x, const int y, const int z) {
 #if defined(CUDA) || defined(HIP)
     return tex3D<float>(uIn, x, y, z);
+#elif defined(METAL)
+    const int3 dims = int3(uIn.get_width(), uIn.get_height(), uIn.get_depth());
+    const uint3 index = uint3(metal::clamp(int3(x, y, z), int3(0), dims - 1));
+    return uIn.read(index).r;
 #else
     return read_imagef(uIn, samplerSWPrior, (int4)(x, y, z, 0)).w;
 #endif
@@ -2966,23 +3327,23 @@ DEVICE float RDPGradientNorm(RDP_IN_T u, const int x, const int y, const int z, 
     const float2 uj_uy = uj - uy;
     const float2 uj_uz = uj - uz;
 #ifndef USEMAD
-    const float2 divPow2X = (uj + ux + gamma * fabs(uj_ux));
-    const float2 divPow2Y = (uj + uy + gamma * fabs(uj_uy));
-    const float2 divPow2Z = (uj + uz + gamma * fabs(uj_uz));
-    float2 output = uj_ux * (gamma * fabs(uj_ux) + uj + 3.f * ux + epps * epps) / (divPow2X * divPow2X + epps)
-        + uj_uy * (gamma * fabs(uj_uy) + uj + 3.f * uy + epps * epps) / (divPow2Y * divPow2Y + epps)
-        + uj_uz * (gamma * fabs(uj_uz) + uj + 3.f * uz + epps * epps) / (divPow2Z * divPow2Z + epps);
+    const float2 divPow2X = (uj + ux + gamma * FABS(uj_ux));
+    const float2 divPow2Y = (uj + uy + gamma * FABS(uj_uy));
+    const float2 divPow2Z = (uj + uz + gamma * FABS(uj_uz));
+    float2 output = uj_ux * (gamma * FABS(uj_ux) + uj + 3.f * ux + epps * epps) / (divPow2X * divPow2X + epps)
+        + uj_uy * (gamma * FABS(uj_uy) + uj + 3.f * uy + epps * epps) / (divPow2Y * divPow2Y + epps)
+        + uj_uz * (gamma * FABS(uj_uz) + uj + 3.f * uz + epps * epps) / (divPow2Z * divPow2Z + epps);
 #else
-    const float2 divPow2X = FMAD2(gamma, fabs(uj_ux), uj + ux);
-    const float2 divPow2Y = FMAD2(gamma, fabs(uj_uy), uj + uy);
-    const float2 divPow2Z = FMAD2(gamma, fabs(uj_uz), uj + uz);
-    float2 output = uj_ux * FMAD2(gamma, fabs(uj_ux), uj + 3.f * ux + epps * epps) / (divPow2X * divPow2X + epps)
-        + uj_uy * FMAD2(gamma, fabs(uj_uy), uj + 3.f * uy + epps * epps) / (divPow2Y * divPow2Y + epps)
-        + uj_uz * FMAD2(gamma, fabs(uj_uz), uj + 3.f * uz + epps * epps) / (divPow2Z * divPow2Z + epps);
+    const float2 divPow2X = FMAD2(gamma, FABS(uj_ux), uj + ux);
+    const float2 divPow2Y = FMAD2(gamma, FABS(uj_uy), uj + uy);
+    const float2 divPow2Z = FMAD2(gamma, FABS(uj_uz), uj + uz);
+    float2 output = uj_ux * FMAD2(gamma, FABS(uj_ux), uj + 3.f * ux + epps * epps) / (divPow2X * divPow2X + epps)
+        + uj_uy * FMAD2(gamma, FABS(uj_uy), uj + 3.f * uy + epps * epps) / (divPow2Y * divPow2Y + epps)
+        + uj_uz * FMAD2(gamma, FABS(uj_uz), uj + 3.f * uz + epps * epps) / (divPow2Z * divPow2Z + epps);
 #endif
-    if (isnan(output.x))
+    if (ISNAN(output.x))
 		output.x = FLOAT_ZERO;
-    if (isnan(output.y))
+    if (ISNAN(output.y))
 		output.y = FLOAT_ZERO;
     return output.x + output.y;
 }
@@ -3008,6 +3369,8 @@ DEVICE float RDPGradientNorm(RDP_IN_T u, const int x, const int y, const int z, 
 #define SW_TILEZ (SW_TILEZ_BASE + SWINDOWZ * 2)
 #if defined(OPENCL)
 #define SW_LOCALQ __local
+#elif defined(METAL)
+#define SW_LOCALQ threadgroup
 #else
 #define SW_LOCALQ
 #endif
@@ -3024,6 +3387,9 @@ DEVICE float RDPGradientNorm(RDP_IN_T u, const int x, const int y, const int z, 
 // Hyperbolic uses different ordering with the weights (z --> y --> x) than GGMRF and RDP
 DEVICE float priorGradientSW(SW_IN_T uIn, CONSTANT float* weight,
     const int x, const int y, const int z, const float epps
+#if defined(METAL)
+    , const int priorType, const float gamma, const float p, const float q, const float c, const float pqc, const float sigma
+#else
 #if SWPRIORTYPE == 0
     , const float gamma
 #ifdef PRIORREF
@@ -3036,7 +3402,65 @@ DEVICE float priorGradientSW(SW_IN_T uIn, CONSTANT float* weight,
 #if SWPRIORTYPE == 2   // hyperbolic
     , const float sigma
 #endif
+#endif
+#if defined(METAL) && defined(PRIORREF)
+    , SW_IN_T uRefIn
+#endif
 ) {
+#if defined(METAL)
+    // Metal libraries can include several prior entry points, so select the shared formula per call.
+    float output = FLOAT_ZERO;
+    const float uj = SWFETCH(uIn, x, y, z);
+#ifdef PRIORREF
+    const float kj = priorType == 0 ? SWFETCH(uRefIn, x, y, z) : FLOAT_ZERO;
+#endif
+    const float cpq = priorType == 1 ? POWR(c, p - q) : FLOAT_ZERO;
+    const float logC = priorType == 1 ? LOG(c) : FLOAT_ZERO;
+    const float invSigma = priorType == 2 ? FLOAT_ONE / sigma : FLOAT_ZERO;
+    int uu = 0;
+    if (priorType == 2) {
+        for (int k = -SWINDOWZ; k <= SWINDOWZ; ++k) {
+            for (int j = -SWINDOWY; j <= SWINDOWY; ++j) {
+                for (int i = -SWINDOWX; i <= SWINDOWX; ++i) {
+                    if (i == 0 && j == 0 && k == 0)
+                        continue;
+                    const float uk = SWFETCH(uIn, x + i, y + j, z + k);
+                    const float ux = (uj - uk) * invSigma;
+                    output += ux * invSigma * RSQRT(FMAD(ux, ux, FLOAT_ONE)) * weight[uu++];
+                }
+            }
+        }
+    }
+    else {
+        for (int i = -SWINDOWX; i <= SWINDOWX; ++i) {
+            for (int j = -SWINDOWY; j <= SWINDOWY; ++j) {
+                for (int k = -SWINDOWZ; k <= SWINDOWZ; ++k) {
+                    if (i == 0 && j == 0 && k == 0)
+                        continue;
+                    const float uk = SWFETCH(uIn, x + i, y + j, z + k);
+                    const float delta = uj - uk;
+                    if (priorType == 0) {
+                        const float divPow2 = FMAD(gamma, FABS(delta), uj + uk);
+                        float neighborWeight = weight[uu];
+#ifdef PRIORREF
+                        const float kk = SWFETCH(uRefIn, x + i, y + j, z + k);
+                        neighborWeight *= kk * kj;
+#endif
+                        output += neighborWeight * delta * (gamma * FABS(delta) + uj + 3.f * uk + epps * epps) /
+                            (divPow2 * divPow2 + epps);
+                    }
+                    else if (delta != FLOAT_ZERO) {
+                        output += weight[uu] * GGMRFDerivative(delta, p, q, logC, cpq, pqc);
+                    }
+                    ++uu;
+                }
+            }
+        }
+    }
+    if (priorType == 0 && ISNAN(output))
+        output = FLOAT_ZERO;
+    return output;
+#else
     float output = FLOAT_ZERO;
     const float uj = SWFETCH(uIn, x, y, z);
 #if SWPRIORTYPE == 0 && defined(PRIORREF)
@@ -3073,13 +3497,13 @@ DEVICE float priorGradientSW(SW_IN_T uIn, CONSTANT float* weight,
                 const float uk = SWFETCH(uIn, x + i, y + j, z + k);
 #if SWPRIORTYPE == 0 // RDP
                 const float delta = uj - uk;
-                const float divPow2 = FMAD(gamma, fabs(delta), uj + uk);
+                const float divPow2 = FMAD(gamma, FABS(delta), uj + uk);
 #ifdef PRIORREF
                 const float kk = SWFETCH(uRefIn, x + i, y + j, z + k);
                 // Geometric mean of the reference values: the stored values are already the square roots
-                output += weight[uu] * (kk * kj) * delta * (gamma * fabs(delta) + uj + 3.f * uk + epps * epps) / (divPow2 * divPow2 + epps);
+                output += weight[uu] * (kk * kj) * delta * (gamma * FABS(delta) + uj + 3.f * uk + epps * epps) / (divPow2 * divPow2 + epps);
 #else
-                output += weight[uu] * delta * (gamma * fabs(delta) + uj + 3.f * uk + epps * epps) / (divPow2 * divPow2 + epps);
+                output += weight[uu] * delta * (gamma * FABS(delta) + uj + 3.f * uk + epps * epps) / (divPow2 * divPow2 + epps);
 #endif
 #endif
 #if SWPRIORTYPE == 1 // GGMRF
@@ -3094,11 +3518,13 @@ DEVICE float priorGradientSW(SW_IN_T uIn, CONSTANT float* weight,
     }
 #endif // END HYPER / RDP+GGMRF loop-order dispatch
 #if SWPRIORTYPE == 0
-    if (isnan(output))
+    if (ISNAN(output))
         output = FLOAT_ZERO;
 #endif
     return output;
+#endif
 }
+
 
 #endif // END SW window (RDPCORNERS/GGMRF/HYPER/FASTRDPCORNERS/FASTGGMRF/FASTHYPER)
 
@@ -3206,10 +3632,10 @@ DEVICE float TVGradient(TV_IN_T u, const int x, const int y, const int z, const 
     ux = uijk - ux;
     uy = uijk - uy;
     uz = uijk - uz;
-    const float2 uabsx = ux / (fabs(ux) + epps);
-    const float2 uabsy = uy / (fabs(uy) + epps);
-    const float2 uabsz = uz / (fabs(uz) + epps);
-    float2 output = uabsx - uabsx / (fabs(ux) / sigma + FLOAT_ONE) + uabsy - uabsy / (fabs(uy) / sigma + FLOAT_ONE) + uabsz - uabsz / (fabs(uz) / sigma + FLOAT_ONE);
+    const float2 uabsx = ux / (FABS(ux) + epps);
+    const float2 uabsy = uy / (FABS(uy) + epps);
+    const float2 uabsz = uz / (FABS(uz) + epps);
+    float2 output = uabsx - uabsx / (FABS(ux) / sigma + FLOAT_ONE) + uabsy - uabsy / (FABS(uy) / sigma + FLOAT_ONE) + uabsz - uabsz / (FABS(uz) / sigma + FLOAT_ONE);
     return output.x + output.y;
 #else
     const float3 uijkP = MFLOAT3(TVFETCH(u, x + 1, y, z), TVFETCH(u, x, y + 1, z), TVFETCH(u, x, y, z + 1));
@@ -3325,7 +3751,7 @@ DEVICE float PoissonUpdateVoxel(const float imOld, const float rhs, const float 
 	float imApu = imOld + lambda * rhs * imOld;
 #endif
 	if (enforcePositivity)
-		imApu = fmax(epps, imApu);
+		imApu = FMAX(epps, imApu);
 #ifdef PKMA
 	return (FLOAT_ONE - alpha) * imOld + alpha * imApu;
 #elif defined(MBSREM)
@@ -3339,7 +3765,7 @@ DEVICE float PoissonUpdateVoxel(const float imOld, const float rhs, const float 
 #endif
 
 // Set defaults if not defined
-#ifdef FASTPDHG
+#if defined(FASTPDHG)
 #ifndef FASTPRECOND
 // 0 = no image-based preconditioner, 1 = diagonal normalization (type 0), 2 = EM (type 1)
 #define FASTPRECOND 0
@@ -3361,13 +3787,15 @@ DEVICE void fastFillNLMCache(NLM_LOCALQ float* lCacheF,
 #ifdef NLMREF
     IMAGE3D d_urefNLM,
 #endif
-    const int iz, const int fastPriorZOffset
+    const int iz, const int fastPriorZOffset,
+    const int groupX, const int groupY, const int localX, const int localY,
+    const int groupSizeX, const int groupSizeY
 ) {
-    const int baseX = CINT(GRID0) * CINT(LSIZE0) - (SWINDOWX + PWINDOWX);
-    const int baseY = CINT(GRID1) * CINT(LSIZE1) - (SWINDOWY + PWINDOWY);
+    const int baseX = groupX * groupSizeX - (SWINDOWX + PWINDOWX);
+    const int baseY = groupY * groupSizeY - (SWINDOWY + PWINDOWY);
     const int baseZ = iz + fastPriorZOffset - (SWINDOWZ + PWINDOWZ);
-    const int nWorkItems = CINT(LSIZE0) * CINT(LSIZE1);
-    const int lIndex = CINT(LID0) + CINT(LID1) * CINT(LSIZE0);
+    const int nWorkItems = groupSizeX * groupSizeY;
+    const int lIndex = localX + localY * groupSizeX;
     for (int n = lIndex; n < NLM_TILEX * NLM_TILEY * NLM_TILEZ; n += nWorkItems) {
         const int cx = n % NLM_TILEX;
         const int cy = (n / NLM_TILEX) % NLM_TILEY;
@@ -3383,12 +3811,14 @@ DEVICE void fastFillNLMCache(NLM_LOCALQ float* lCacheF,
 #if defined(FASTSWLOCAL)
 // Fill the flat local-memory neighborhood
 // Affects RDP (with corners), GGMRF and hyperbolic
-DEVICE void fastFillSWCache(SW_LOCALQ float* lCacheSW, IMAGE3D d_imNLM, const int iz, const int fastPriorZOffset) {
-    const int baseX = CINT(GRID0) * CINT(LSIZE0) - SWINDOWX;
-    const int baseY = CINT(GRID1) * CINT(LSIZE1) - SWINDOWY;
+DEVICE void fastFillSWCache(SW_LOCALQ float* lCacheSW, IMAGE3D d_imNLM, const int iz, const int fastPriorZOffset,
+    const int groupX, const int groupY, const int localX, const int localY,
+    const int groupSizeX, const int groupSizeY) {
+    const int baseX = groupX * groupSizeX - SWINDOWX;
+    const int baseY = groupY * groupSizeY - SWINDOWY;
     const int baseZ = iz + fastPriorZOffset - SWINDOWZ;
-    const int nWorkItems = CINT(LSIZE0) * CINT(LSIZE1);
-    const int lIndex = CINT(LID0) + CINT(LID1) * CINT(LSIZE0);
+    const int nWorkItems = groupSizeX * groupSizeY;
+    const int lIndex = localX + localY * groupSizeX;
     for (int n = lIndex; n < SW_TILEX * SW_TILEY * SW_TILEZ; n += nWorkItems) {
         const int cx = n % SW_TILEX;
         const int cy = (n / SW_TILEX) % SW_TILEY;
@@ -3404,11 +3834,14 @@ DEVICE void fastFillSWCache(SW_LOCALQ float* lCacheSW, IMAGE3D d_imNLM, const in
 // As well as the first two image-based preconditioners
 // Used automatically if applicable
 DEVICE void fastPDHGUpdate(
-    const float* temp, const float* wSum,
+    THREAD const float* temp, THREAD const float* wSum,
     const int3 i, size_t idx, const uint3 d_N, const int nVoxels, const uchar no_norm,
     // ii = volume number (0 = main volume)
 	// The spatial prior is only applied to the main volume
     const int ii,
+#if defined(FASTNLMLOCAL) || defined(FASTSWLOCAL)
+    const int localID0, const int localID1,
+#endif
     // largeDim offsets
     const LONG fastImOffset, const int fastPriorZOffset,
 #if FASTALG == 0
@@ -3514,7 +3947,7 @@ DEVICE void fastPDHGUpdate(
             pg = fastBeta * NLMGradient(
 #ifdef FASTNLMLOCAL
                 // Coordinates of the voxel within the local memory cache filled at the start
-                lCacheF, d_gaussian, CINT(LID0) + SWINDOWX + PWINDOWX, CINT(LID1) + SWINDOWY + PWINDOWY, zz + SWINDOWZ + PWINDOWZ,
+                lCacheF, d_gaussian, localID0 + SWINDOWX + PWINDOWX, localID1 + SWINDOWY + PWINDOWY, zz + SWINDOWZ + PWINDOWZ,
 #else
                 d_imNLM, d_gaussian, i.x, i.y, CINT(ind) + fastPriorZOffset,
 #endif
@@ -3539,9 +3972,22 @@ DEVICE void fastPDHGUpdate(
 #elif defined(FASTRDP)
 #ifdef FASTRDPCORNERS
 #ifdef FASTSWLOCAL
-            pg = fastBeta * priorGradientSW(lCacheSW, d_swWeight, CINT(LID0) + SWINDOWX, CINT(LID1) + SWINDOWY, zz + SWINDOWZ, fastEpps, fastRDPgamma);
+            pg = fastBeta * priorGradientSW(lCacheSW, d_swWeight, localID0 + SWINDOWX, localID1 + SWINDOWY, zz + SWINDOWZ,
+                fastEpps
+#if defined(METAL)
+                , 0, fastRDPgamma, FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO
 #else
-            pg = fastBeta * priorGradientSW(d_imNLM, d_swWeight, i.x, i.y, CINT(ind) + fastPriorZOffset, fastEpps, fastRDPgamma
+                , fastRDPgamma
+#endif
+            );
+#else
+            pg = fastBeta * priorGradientSW(d_imNLM, d_swWeight, i.x, i.y, CINT(ind) + fastPriorZOffset,
+                fastEpps
+#if defined(METAL)
+                , 0, fastRDPgamma, FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO
+#else
+                , fastRDPgamma
+#endif
 #ifdef PRIORREF
                 , d_urefNLM
 #endif
@@ -3552,15 +3998,55 @@ DEVICE void fastPDHGUpdate(
 #endif
 #elif defined(FASTGGMRF)
 #ifdef FASTSWLOCAL
-            pg = fastBeta * priorGradientSW(lCacheSW, d_swWeight, CINT(LID0) + SWINDOWX, CINT(LID1) + SWINDOWY, zz + SWINDOWZ, fastEpps, fastGGMRFp, fastGGMRFq, fastGGMRFc, fastGGMRFpqc);
+            pg = fastBeta * priorGradientSW(lCacheSW, d_swWeight, localID0 + SWINDOWX, localID1 + SWINDOWY, zz + SWINDOWZ,
+                fastEpps
+#if defined(METAL)
+                , 1, FLOAT_ZERO, fastGGMRFp, fastGGMRFq, fastGGMRFc, fastGGMRFpqc, FLOAT_ZERO
 #else
-            pg = fastBeta * priorGradientSW(d_imNLM, d_swWeight, i.x, i.y, CINT(ind) + fastPriorZOffset, fastEpps, fastGGMRFp, fastGGMRFq, fastGGMRFc, fastGGMRFpqc);
+                , fastGGMRFp, fastGGMRFq, fastGGMRFc, fastGGMRFpqc
+#endif
+#if defined(METAL) && defined(PRIORREF)
+                , lCacheSW
+#endif
+            );
+#else
+            pg = fastBeta * priorGradientSW(d_imNLM, d_swWeight, i.x, i.y, CINT(ind) + fastPriorZOffset,
+                fastEpps
+#if defined(METAL)
+                , 1, FLOAT_ZERO, fastGGMRFp, fastGGMRFq, fastGGMRFc, fastGGMRFpqc, FLOAT_ZERO
+#else
+                , fastGGMRFp, fastGGMRFq, fastGGMRFc, fastGGMRFpqc
+#endif
+#if defined(METAL) && defined(PRIORREF)
+                , d_imNLM
+#endif
+            );
 #endif
 #elif defined(FASTHYPER)
 #ifdef FASTSWLOCAL
-            pg = fastBeta * priorGradientSW(lCacheSW, d_swWeight, CINT(LID0) + SWINDOWX, CINT(LID1) + SWINDOWY, zz + SWINDOWZ, fastEpps, fastHYPERsigma);
+            pg = fastBeta * priorGradientSW(lCacheSW, d_swWeight, localID0 + SWINDOWX, localID1 + SWINDOWY, zz + SWINDOWZ,
+                fastEpps
+#if defined(METAL)
+                , 2, FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO, fastHYPERsigma
 #else
-            pg = fastBeta * priorGradientSW(d_imNLM, d_swWeight, i.x, i.y, CINT(ind) + fastPriorZOffset, fastEpps, fastHYPERsigma);
+                , fastHYPERsigma
+#endif
+#if defined(METAL) && defined(PRIORREF)
+                , lCacheSW
+#endif
+            );
+#else
+            pg = fastBeta * priorGradientSW(d_imNLM, d_swWeight, i.x, i.y, CINT(ind) + fastPriorZOffset,
+                fastEpps
+#if defined(METAL)
+                , 2, FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO, FLOAT_ZERO, fastHYPERsigma
+#else
+                , fastHYPERsigma
+#endif
+#if defined(METAL) && defined(PRIORREF)
+                , d_imNLM
+#endif
+            );
 #endif
 #elif defined(FASTTV)
             // Standard/SATV/JPTV only

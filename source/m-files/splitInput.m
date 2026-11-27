@@ -2,7 +2,7 @@ function [m_size, xy_index_input, z_index_input, L_input, lor_input, lor2, norm_
 %UNTITLED Summary of this function goes here
 %   Detailed explanation goes here
 
-if (options.subset_type >= 8 || options.subsets == 1 || options.subset_type == 0) && options.listmode == 0 && options.projector_type ~= 6
+if (options.subset_type >= 8 || options.subsets == 1 || options.subset_type == 0) && options.listmode == 0
     kerroin = options.nRowsD * options.nColsD;
 else
     kerroin = 1;
@@ -10,8 +10,8 @@ end
 % if ((options.CT || options.SPECT || options.PET) && options.listmode == 0)
 %     m_size = options.xSize * options.ySize * pituus(ll + 1);
 % else
-if options.subsets == 1 && options.projector_type == 6
-    m_size = options.nProjections;
+if options.projector_type == 6 && ~options.listmode && kerroin > 1
+    m_size = pituus(ll + 1) - pituus(ll);
 else
     m_size = pituus(ll + 1) * kerroin - pituus(ll) * kerroin;
 end
@@ -49,7 +49,17 @@ else
     lor_input = uint16([]);
 end
 if options.normalization_correction
-    norm_input = cast(options.normalization(pituus(ll) * kerroin + 1 : pituus(ll + 1) * kerroin), options.cType);
+    % Type-6 SPECT may store one normalization image per detector head.
+    % The projector maps each selected view to its detector head, so pass
+    % the complete head stack instead of slicing it by subset view indices.
+    headNormalization = options.projector_type == 6 && options.SPECT && ...
+        isfield(options, 'normZ') && isfield(options, 'nHeads') && ...
+        options.normZ == options.nHeads;
+    if headNormalization
+        norm_input = cast(options.normalization, options.cType);
+    else
+        norm_input = cast(options.normalization(pituus(ll) * kerroin + 1 : pituus(ll + 1) * kerroin), options.cType);
+    end
 else
     norm_input = cast(0, options.cType);
 end

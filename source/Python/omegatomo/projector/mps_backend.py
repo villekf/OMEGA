@@ -14,7 +14,7 @@ from typing import Any, Iterable
 import numpy as np
 
 
-SCALAR_KERNEL_PARAMS_SIZE = 352
+SCALAR_KERNEL_PARAMS_SIZE = 576
 
 _OFFSETS = {
     "nRowsD": 0,
@@ -58,9 +58,40 @@ _OFFSETS = {
     "theta_PDHG": 308,
     "tau_PDHG": 312,
     "enforcePositivity_PDHG": 316,
-    "N_rotate": 320,
-    "cosa_rotate": 336,
-    "sina_rotate": 340,
+    "fastStep_PDHG": 317,
+    "fastRegReuse_PDHG": 318,
+    "fastImOffset_PDHG": 320,
+    "fastPriorZOffset_PDHG": 328,
+    "fastLambda_PDHG": 332,
+    "fastAlpha_PDHG": 336,
+    "fastBeta_PDHG": 340,
+    "fastNLMParams_PDHG": 344,
+    "fastRDPgamma_PDHG": 368,
+    "fastGGMRFp_PDHG": 372,
+    "fastGGMRFq_PDHG": 376,
+    "fastGGMRFc_PDHG": 380,
+    "fastGGMRFpqc_PDHG": 384,
+    "fastHYPERsigma_PDHG": 388,
+    "fastTVsigma_PDHG": 392,
+    "fastTVsmooth_PDHG": 396,
+    "N_rotate": 400,
+    "cosa_rotate": 416,
+    "sina_rotate": 420,
+    "gFilterNu": 424,
+    "gFilterNv": 428,
+    "gFilterNd": 432,
+    "gFilterDu": 436,
+    "gFilterDv": 440,
+    "gFilterDd": 444,
+    "gFilterCustom": 448,
+    "rotSrcNyFull": 452, "rotSrcNzFull": 456, "rotOutNx": 460, "rotOutNyFull": 464,
+    "rotOutY": 468, "rotOutZ": 472, "rotOutNy": 476, "rotOutNz": 480,
+    "rotSrcY": 484, "rotSrcZ": 488, "rotSrcNy": 492, "rotSrcNz": 496,
+    "rotAccumulate": 500, "rotOutX": 504, "rotOutNxW": 508, "rotSrcX": 512,
+    "rotSrcNxB": 516, "rotOutSx": 520, "rotOutSy": 524, "rotOffX": 528, "rotOffY": 532,
+    "atnNx": 536, "atnNy": 540, "atnNz": 544,
+    "atnDx": 548, "atnDy": 552, "atnDz": 556,
+    "atnBx": 560, "atnBy": 564, "atnBz": 568,
 }
 
 
@@ -92,6 +123,9 @@ def _pack_scalar_kernel_params(self: Any, timestep: int, subset: int, volume: in
 
     def f32(name: str, value: float) -> None:
         struct.pack_into('<f', blob, _OFFSETS[name], float(value))
+
+    def f32s(name: str, values: Iterable[float]) -> None:
+        struct.pack_into('<6f', blob, _OFFSETS[name], *(float(value) for value in values))
 
     def f2(name: str, values: Iterable[float]) -> None:
         a, b = values
@@ -185,9 +219,45 @@ def _pack_scalar_kernel_params(self: Any, timestep: int, subset: int, volume: in
     f32('theta_PDHG', 0.0)
     f32('tau_PDHG', 0.0)
     u8('enforcePositivity_PDHG', 0)
+    u8('fastStep_PDHG', 0)
+    i64('fastImOffset_PDHG', 0)
+    i32('fastPriorZOffset_PDHG', 0)
+    f32('fastLambda_PDHG', 0.0)
+    f32('fastAlpha_PDHG', 0.0)
+    f32('fastBeta_PDHG', 0.0)
+    f32s('fastNLMParams_PDHG', (0.0,) * 6)
+    for name in ('fastRDPgamma_PDHG', 'fastGGMRFp_PDHG', 'fastGGMRFq_PDHG',
+                 'fastGGMRFc_PDHG', 'fastGGMRFpqc_PDHG', 'fastHYPERsigma_PDHG',
+                 'fastTVsigma_PDHG'):
+        f32(name, 0.0)
     i3('N_rotate', (0, 0, 0))
     f32('cosa_rotate', 0.0)
     f32('sina_rotate', 0.0)
+    u32('gFilterNu', int(getattr(self, 'gFilterNu', 0)))
+    u32('gFilterNv', int(getattr(self, 'gFilterNv', 0)))
+    u32('gFilterNd', int(getattr(self, 'gFilterNd', 0)))
+    spacing = np.asarray(getattr(self, 'gFilterSpacing', np.empty(0)), dtype=np.float32).reshape(-1)
+    if spacing.size != 3:
+        spacing = np.zeros(3, dtype=np.float32)
+    f32('gFilterDu', float(spacing[0]))
+    f32('gFilterDv', float(spacing[1]))
+    f32('gFilterDd', float(spacing[2]))
+    u32('gFilterCustom', int(bool(getattr(self, 'gFilterCustom', False))))
+    for name in ('rotSrcNyFull', 'rotSrcNzFull', 'rotOutNx', 'rotOutNyFull', 'rotOutY', 'rotOutZ',
+                 'rotOutNy', 'rotOutNz', 'rotSrcY', 'rotSrcZ', 'rotSrcNy', 'rotSrcNz', 'rotAccumulate',
+                 'rotOutX', 'rotOutNxW', 'rotSrcX', 'rotSrcNxB', 'rotOutSx', 'rotOutSy'):
+        i32(name, 0)
+    f32('rotOffX', 0.0)
+    f32('rotOffY', 0.0)
+    if getattr(self, 'imageAttenuationIsMultiResolution', False) and self.attenuation_correction and self.CTAttenuation:
+        from .init import _image_attenuation_grid
+        _, dims, spacing, origin = _image_attenuation_grid(self, volume)
+        for name, value in zip(('atnNx', 'atnNy', 'atnNz'), dims):
+            u32(name, value)
+        for name, value in zip(('atnDx', 'atnDy', 'atnDz'), spacing):
+            f32(name, value)
+        for name, value in zip(('atnBx', 'atnBy', 'atnBz'), origin):
+            f32(name, value)
     return bytes(blob)
 
 
@@ -206,8 +276,6 @@ def _validate_configuration(self: Any) -> None:
         errors.append('projector type 6 is only supported with SPECT data')
     if self.use_32bit_atomics or self.use_64bit_atomics:
         errors.append('integer accumulation is unsupported by the Metal/MPS custom-operator path')
-    if self.use_psf:
-        errors.append('PSF convolution is unsupported by the Metal/MPS custom-operator path')
     if getattr(self, 'FDK', False):
         errors.append('FDK filtering and weighting are not implemented by the Metal/MPS custom-operator path')
     if errors:
@@ -477,9 +545,21 @@ def _upload_static_buffers(self: Any, torch: Any) -> None:
             if raw_data_length.size:
                 self.d_L[timestep][subset] = _mps_tensor_from_numpy(torch, raw_data_length[projection_start:projection_stop], np.uint16)
 
+    # Square roots of the offset redundancy weights of each subset for the forward projection (the backprojection kernel applies them itself)
+    if getattr(self, '_offsetSqrtActive', False):
+        from omegatomo.projector.detcoord import offsetSqrtWeights
+        self.d_offsetSqrtW = [None] * self.subsets
+        for subset in range(self.subsets):
+            weights = offsetSqrtWeights(offset_limit[self.nMeas[subset]:self.nMeas[subset + 1]], self.nRowsD, self.dPitchX)
+            self.d_offsetSqrtW[subset] = _mps_tensor_from_numpy(torch, weights.ravel(), np.float32)
+
     self.d_attenuation_image = self.mps_empty_float32
     if self.attenuation_correction and self.CTAttenuation and attenuation.size:
-        self.d_attenuation_image = _mps_tensor_from_numpy(torch, attenuation, np.float32)
+        if getattr(self, 'imageAttenuationIsMultiResolution', False):
+            from .init import _initialize_multiresolution_image_attenuation
+            _initialize_multiresolution_image_attenuation(self, lambda values: _mps_tensor_from_numpy(torch, values, np.float32))
+        else:
+            self.d_attenuation_image = _mps_tensor_from_numpy(torch, attenuation, np.float32)
 
     mask_fp = getattr(self, 'maskFP', np.empty(0))
     self.d_maskFP = [[self.mps_empty_uint8] * self.subsets for _ in range(self.Nt)]
@@ -498,9 +578,30 @@ def _upload_static_buffers(self: Any, torch: Any) -> None:
                 else:
                     values = mask_fp
                 self.d_maskFP[timestep][subset] = _mps_tensor_from_numpy(torch, values, np.uint8)
-    self.d_maskBP = self.mps_empty_uint8
+    self.d_maskBPVolumes = [self.mps_empty_uint8] * (int(self.nMultiVolumes) + 1)
     if self.useMaskBP and self.maskBP.size:
-        self.d_maskBP = _mps_tensor_from_numpy(torch, self.maskBP.ravel(order='F'), np.uint8)
+        mask = self.maskBP.ravel(order='F')
+        offset = 0
+        for volume in range(int(self.nMultiVolumes) + 1):
+            count = int(self.N[volume]) if self.maskBPZ > 1 else int(self.Nx[volume]) * int(self.Ny[volume])
+            self.d_maskBPVolumes[volume] = _mps_tensor_from_numpy(torch, mask[offset:offset + count], np.uint8)
+            offset += count
+
+    self.d_maskBP = self.d_maskBPVolumes[0]
+
+    # ODRT uses a separate buffer so type-6 gFilter keeps its detector-plane
+    # convolution meaning in hybrid projector configurations. Bind a valid
+    # one-float resource when lookup is disabled; the packed flag selects the
+    # original analytic Gaussian path.
+    if getattr(self, 'SPECT', False) and (
+        int(getattr(self, 'FPType', 0)) in (2, 3) or int(getattr(self, 'BPType', 0)) in (2, 3)
+    ):
+        odrt_filter = (
+            np.asarray(self.gFilter, dtype=np.float32).ravel(order='F')
+            if bool(getattr(self, 'gFilterCustom', False))
+            else np.zeros(1, dtype=np.float32)
+        )
+        self.d_gFilterODRT = _mps_tensor_from_numpy(torch, odrt_filter, np.float32)
 
     if int(getattr(self, 'FPType', 0)) == 6 or int(getattr(self, 'BPType', 0)) == 6:
         if isinstance(self.gFilter, (list, tuple)) and len(self.gFilter):
@@ -595,10 +696,16 @@ def _kernel_args(
     subset: int,
     timestep: int,
     direction: str,
+    volume: int = 0,
 ) -> list[Any]:
     """Bind every Metal resource slot, using typed empty buffers when inactive."""
     empty_f = self.mps_empty_float32
-    atten = self.d_attenuation_image if self.CTAttenuation else self.d_attenuation[timestep][subset]
+    if self.CTAttenuation:
+        atten = (self.d_imageAttenuation[timestep][volume]
+                 if getattr(self, 'imageAttenuationIsMultiResolution', False) and self.attenuation_correction
+                 else self.d_attenuation_image)
+    else:
+        atten = self.d_attenuation[timestep][subset]
     if (direction == 'forward' and self.FPType in (1, 2, 3)) or (direction == 'backward' and self.BPType in (1, 2, 3)):
         args = [empty_f] * 22
         args[0] = scalar_params
@@ -608,7 +715,7 @@ def _kernel_args(
         args[4] = self.d_V
         args[5] = atten
         args[6] = self.d_maskFP[timestep][subset]
-        args[7] = self.d_maskBP
+        args[7] = self.d_maskBPVolumes[volume]
         args[8] = _geometry_buffer(self, 'x', timestep, subset)
         args[9] = _geometry_buffer(self, 'z', timestep, subset)
         args[10] = self.d_norm[timestep][subset]
@@ -623,6 +730,9 @@ def _kernel_args(
         args[19] = dynamic_input
         args[20] = output
         args[21] = self.d_detectorVector[timestep][subset]
+        projector_type = self.FPType if direction == 'forward' else self.BPType
+        if self.SPECT and projector_type in (2, 3):
+            args.append(self.d_gFilterODRT)
     elif direction == 'backward' and self.BPType == 4:
         args = [empty_f] * 10
         args[0] = scalar_params
@@ -634,7 +744,7 @@ def _kernel_args(
         args[6] = _geometry_buffer(self, 'z', timestep, subset)
         args[7] = self.d_Sens
         args[8] = self.d_norm[timestep][subset]
-        args[9] = self.d_maskBP
+        args[9] = self.d_maskBPVolumes[volume]
     return args
 
 
@@ -654,7 +764,7 @@ def _projection_size(self: Any, timestep: int, subset: int) -> int:
     # (see projectorType123.cl/projectorType4.cl); listmode TOF writes a single
     # value per event (the TOFid-selected bin only), so no extra factor there.
     tof_bins = int(self.TOF_bins_used) if (self.TOF and self.listmode == 0) else 1
-    if self.subsetType > 7 or self.subsets == 1:
+    if self.listmode == 0 and (self.subsetType > 7 or self.subsets == 1):
         return int(getattr(self, 'measurement_nRowsD', self.nRowsD) * getattr(self, 'measurement_nColsD', self.nColsD) * self.nProjSubset[timestep, subset]) * tof_bins
     return int(self.nMeasSubset[timestep, subset]) * tof_bins
 
@@ -675,6 +785,8 @@ def forward_projection_mps(self: Any, f: Any, subset: int, timestep: int) -> Any
         inputs[volume] = image
     output = torch.zeros(_projection_size(self, timestep, subset), dtype=torch.float32, device='mps')
     for volume, image in enumerate(inputs):
+        if self.use_psf:
+            image = self.computeConvolution(image, volume)
         partial = torch.zeros_like(output)
         if self.FPType == 6:
             from .projfunctions import _type6_torch_ops, type6_forward
@@ -682,7 +794,7 @@ def forward_projection_mps(self: Any, f: Any, subset: int, timestep: int) -> Any
                 type6_forward(self, image, partial, volume, subset, timestep, ops=_type6_torch_ops(self))
             torch.mps.synchronize()
         else:
-            args = _kernel_args(self, self.d_scalar_params[timestep][subset][volume], image, partial, subset, timestep, 'forward')
+            args = _kernel_args(self, self.d_scalar_params[timestep][subset][volume], image, partial, subset, timestep, 'forward', volume)
             self.knlF(
                 *args,
                 threads=tuple(int(value) for value in self.globalSizeFP[timestep][subset]),
@@ -710,11 +822,11 @@ def backward_projection_mps(self: Any, y: Any, subset: int, timestep: int) -> An
                 type6_backward(self, y, output, volume, subset, timestep, ops=_type6_torch_ops(self))
             torch.mps.synchronize()
         else:
-            args = _kernel_args(self, self.d_scalar_params[timestep][subset][volume], y, output, subset, timestep, 'backward')
+            args = _kernel_args(self, self.d_scalar_params[timestep][subset][volume], y, output, subset, timestep, 'backward', volume)
             self.knlB(
                 *args,
                 threads=tuple(int(value) for value in self.globalSizeBP[timestep][subset][volume]),
                 group_size=tuple(int(value) for value in self.localSizeBP),
             )
-        outputs.append(output)
+        outputs.append(self.computeConvolution(output, volume) if self.use_psf else output)
     return outputs[0] if self.nMultiVolumes == 0 else outputs

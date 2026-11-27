@@ -2,19 +2,39 @@
 #include "functions.hpp"
 
 inline int MRP(const af::array& im, const uint32_t medx, const uint32_t medy, const uint32_t medz, const scalarStruct& inputScalars,
-	ProjectorClass& proj, af::array& dU, const float beta, const bool med_no_norm = false) {
+	ProjectorClass& proj, af::array& dU, const float beta, const bool med_no_norm = false, const int kk = 0) {
 	int status = 0;
 	// Prevent out of bounds cases for the (rare) 2D cases
-	const uint32_t medzEff = inputScalars.Nz[0] == 1 ? 0U : medz;
-	af::array padd = padding(im, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], medx, medy, medzEff);
-	af::array grad = af::constant(0.f, im.elements());
-	status = MRPAF(padd, grad, inputScalars, proj, medx, medy, medzEff);
+	uint32_t priorDepth = inputScalars.Nz[0];
+	af::array estimate = im;
+	if (inputScalars.largeDim) {
+		const size_t chunk = static_cast<size_t>(kk);
+		const auto& layout = inputScalars.lDimStruct;
+		if (kk < 0 || chunk >= layout.NzPr.size() || chunk >= layout.startPr.size() ||
+			chunk >= layout.imDimPr.size() || chunk >= layout.imDim.size()) {
+			mexPrint("Median root prior received an invalid largeDim chunk index\n");
+			return -1;
+		}
+		priorDepth = layout.NzPr[chunk];
+		const size_t first = static_cast<size_t>(layout.startPr[chunk]);
+		if (im.elements() != static_cast<size_t>(layout.imDimPr[chunk]) ||
+			dU.elements() != static_cast<size_t>(layout.imDim[chunk]) ||
+			first > im.elements() || dU.elements() > im.elements() - first) {
+			mexPrint("Median root prior chunk does not match its expected shape\n");
+			return -1;
+		}
+		estimate = im(af::seq(first, first + dU.elements() - 1));
+	}
+	const uint32_t medzEff = priorDepth == 1 ? 0U : medz;
+	af::array padd = padding(im, inputScalars.Nx[0], inputScalars.Ny[0], priorDepth, medx, medy, medzEff);
+	af::array grad = af::constant(0.f, estimate.elements());
+	status = MRPAF(padd, grad, inputScalars, proj, medx, medy, medzEff, kk);
 	if (status != 0)
 		return -1;
 	if (med_no_norm)
-		dU += (im - grad) * beta;
+		dU += (estimate - grad) * beta;
 	else
-		dU += (im - (grad)) / (grad + inputScalars.epps) * beta;
+		dU += (estimate - grad) / (grad + inputScalars.epps) * beta;
 	if (DEBUG) {
 		mexPrintBase("min(grad2) = %f\n", af::min<float>(grad));
 		mexPrintBase("grad2 = %f\n", af::sum<float>(grad));
@@ -479,7 +499,7 @@ inline int applySpatialPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMeth
 	if (MethodList.MRP) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing MRP gradient");
-		status = MRP(vec.im_os[timestep][0], w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars, proj, *dU, beta, w_vec.med_no_norm);
+		status = MRP(vec.im_os[timestep][0], w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars, proj, *dU, beta, w_vec.med_no_norm, kk);
 		if (status != 0)
 			return -1;
 	}

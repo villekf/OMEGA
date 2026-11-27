@@ -90,14 +90,17 @@ typedef struct AF_im_vectors_ {
     std::vector<std::vector<af::array>> xFISTAAcc; // previous un-extrapolated iterate for FISTAAcceleration
     std::vector<std::vector<af::array>> imBB;
     std::vector<std::vector<af::array>> gradBB;
+    std::vector<std::vector<af::array>> C_co; // COSEM complete-data estimates
     // Arrays of size N_timesteps x N_multivolumes x N_subsets
 	std::vector<std::vector<std::vector<af::array>>> Summ; // sensitivity image
+	// Never-seen voxel mask (see accumulateSeenMask in functions.hpp): [sensitivity slot][volume] boolean images that are true where at least one subset
+	// has a sensitivity above the epps floor, and [slot][volume][subset] flags of the subsets that have been accumulated into it so far
+	std::vector<std::vector<af::array>> seenMask;
+	std::vector<std::vector<std::vector<char>>> seenDone;
     // Other arrays
     af::array rCGLS, meanFP, meanBP, apu, adapTypeA;
-    // COSEM complete-data array for each volume (im_dim[ii] x subsets)
-    std::vector<af::array> C_co;
-    // Running sum of the columns of C_co (sum over the subsets) for each volume
-    std::vector<af::array> C_coSum;
+    // Running sum of the columns of C_co (sum over the subsets) for each timestep and volume
+    std::vector<std::vector<af::array>> C_coSum;
 	std::vector<af::array> im_os_blurred, qProxTGV, vProxTGV, qProxTV, SAGASum;
 	std::vector<af::array> fCGLS;
 	std::vector<std::vector<af::array>> stochasticHelper;
@@ -113,6 +116,9 @@ typedef struct Weighting_ {
 	std::vector<af::array> normBP5;
     std::vector<std::vector<af::array>> dP, M, D;
 	af::array gaussianNLM, gFilter, filter, filterIm, Ffilter;
+	// Square root of the offset redundancy weights for each subset (nRowsD x 1 x number of projections), used for the forward projection
+	// when inputScalars.offsetSqrt is enabled
+	std::vector<af::array> offsetSqrtW;
 	// The noise-weighted (NW-FBP) ramp filter bank, one filter per noise-weighting level (Nf x nLevelsNW)
 	af::array filterNW;
 	uint32_t nLevelsNW = 10U;
@@ -120,9 +126,14 @@ typedef struct Weighting_ {
 	af_diffusion_eq DiffusionType;
 #endif
 	TVdata data;
-	float *sigma_PKMA = nullptr, * uv = nullptr, * angles = nullptr, * NLM_ref = nullptr, * refImage = nullptr, * alphaPrecond = nullptr, * kerroin4 = nullptr, * weights = nullptr, *listCoord = nullptr, * RDP_ref = nullptr;
+	float *sigma_PKMA = nullptr, * uv = nullptr, * angles = nullptr, * NLM_ref = nullptr, * refImage = nullptr, * alphaPrecond = nullptr, * kerroin4 = nullptr, * weights = nullptr, *listCoord = nullptr, *listCoordZ = nullptr, * RDP_ref = nullptr;
 	uint32_t* rekot = nullptr;
     int32_t *distInt = nullptr, *distInt2 = nullptr;
+	// Sub-voxel accurate versions of the above, used by the rotation-based SPECT projector.
+	// distFloat is the distance from the collimator surface to the first image plane, in voxels,
+	// while distFloat2 is the lateral shift of the detector panel, also in voxels
+	float *distFloat = nullptr, *distFloat2 = nullptr, *radiusPerProj = nullptr;
+	float CORtoDetectorSurface = 0.f;
 	uint8_t* maskFP = nullptr, * maskBP = nullptr, * eFOVIndices = nullptr, *maskPrior = nullptr, *maskOffset = nullptr, *TOFIndices = nullptr;
 	uint16_t* axIndex = nullptr, * trIndex = nullptr;
 	// Sinogram normalization of the list-mode sensitivity image (index-based data) and the two lookup tables mapping a detector pair to it:
@@ -132,6 +143,18 @@ typedef struct Weighting_ {
 	const float* normSens = nullptr;
 	const uint32_t* sensXY = nullptr, * sensZ = nullptr;
 	uint32_t* detectorVector = nullptr;
+	size_t detectorVectorSize = 0;
+	// Host arrays of the normalization and the multiplicative scatter/extra correction (corrVector), used by the SPECT projector type 6 (see type6Weights)
+	const float* normHost = nullptr, * corrHost = nullptr;
+	// The projector type 6 reads its per-view arrays (the geometry swivelAngles and blurPlanes*, the DetectorVector, the per-projection normalization) at the view of the
+	// call plus the offset of the frame. frameStart6[tt] is the first view of the frame tt in an array that holds the views of all the frames one frame after the
+	// other (frameStart6[Nt] = the total number of views), geomAllFrames6 and normAllFrames6 tell whether the geometry and the normalization are such arrays (when
+	// they are for one frame, which every frame reuses, the offset is 0), see setFrameViewsType6. geomViews6 is the number of entries of the geometry arrays (0 = unknown)
+	std::vector<int64_t> frameStart6;
+	bool geomAllFrames6 = false, normAllFrames6 = false;
+	int64_t geomViews6 = 0;
+	// The backprojection masks of the SPECT projector type 6 of the volumes of a multi-resolution reconstruction, [frame][volume] (see prepareMaskBPType6)
+	std::vector<std::vector<std::vector<uint8_t>>> maskBPVol;
 	// Sum of the additive randoms/scatter term of the current subset, per timestep (used by the ACOSEM scaling)
 	std::vector<float> ACOSEMrandSum;
 	// Cached max(Summ / D) of the plain RBI update, one entry per (timestep, volume, subset); 0 means not computed yet

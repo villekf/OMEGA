@@ -62,7 +62,9 @@ elseif options.CGLS && isfield(im_vectors, 'fCGLS') && ~isempty(im_vectors.fCGLS
 end
 if iter_n > 0
     if iscell(saveSrc)
-        im_vectors.recImage(:, iter_n, tt) = saveSrc{1};
+        for ii = 1:numel(saveSrc)
+            im_vectors.recImage{ii}(:, iter_n, tt) = saveSrc{ii};
+        end
     else
         im_vectors.recImage(:, iter_n, tt) = saveSrc;
     end
