@@ -74,6 +74,7 @@ typedef struct AF_im_vectors_ {
     // Arrays of size N_timesteps
     std::vector<af::array> dU; // gradient of spatial prior
     std::vector<af::array> dUt; // gradient of temporal prior
+    std::vector<af::array> priorGradStore; // stored prior gradient (scaled with beta) of the fused fastPDHG step with regEveryIter > 1
     std::vector<af::array> p0CP; 
     // Arrays of size N_timesteps x N_multivolumes
     std::vector<std::vector<af::array>> im_os; // estimate of image volume
@@ -111,6 +112,8 @@ typedef struct Weighting_ {
 #ifdef AF
 	af::array tr_offsets, weights_quad, weights_TV, weights_huber, fmh_weights, a_L, weighted_weights, UU, Amin, weights_RDP;
 	std::vector<af::array> preRef, gradF, RDPref;
+	// CT normalization coefficients of each subset as device arrays, used only by the integral image of the backprojection type 5
+	std::vector<af::array> normBP5;
     std::vector<std::vector<af::array>> dP, M, D;
 	af::array gaussianNLM, gFilter, filter, filterIm, Ffilter;
 	// Square root of the offset redundancy weights for each subset (nRowsD x 1 x number of projections), used for the forward projection
@@ -181,7 +184,7 @@ typedef struct RecMethods_ {
 	bool MRP = false, Quad = false, Huber = false, L = false, FMH = false, WeightedMean = false, TV = false, AD = false, APLS = false, TGV = false, NLM = false, RDP = false, GGMRF = false, 
 		ProxTV = false, ProxTGV = false, hyperbolic = false;
 	bool OSLOSEM = false, MAPOSEM = false, MBSREM = false, BSREM = false, ROSEMMAP = false, ROSEMOSL = false, RBIMAP = false, RBIOSL = false,
-		PKMA = false, FISTAL1 = false, SPS = false, PDHG = false, PDHGKL = false, FISTA = false, PDHGL1 = false, CV = false, PDDY = false, POCS = false, SAGA = false;
+		PKMA = false, FISTAL1 = false, SPS = false, PDHG = false, PDHGKL = false, FISTA = false, PDHGL1 = false, PDDY = false, POCS = false, SAGA = false;
 	bool MAP = false;
 	bool CUSTOM = false;
 	bool initAlg = false;

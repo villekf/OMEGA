@@ -82,20 +82,17 @@ inline void checkFastPDHG(scalarStruct& inputScalars, const Weighting& w_vec, co
 	inputScalars.fastPDHG = false;
 #else
 	const char* reason = nullptr;
-	// fastPDHG supports a limited number of algorithms: PDHG (and its KL/L1/CV variants) and some
+	// fastPDHG supports a limited number of algorithms: PDHG (and its KL/L1 variants) and some
 	// Poisson-based algorithms PKMA/MBSREM/BSREM
-	const bool fastPDHGAlgorithm = (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV) && !MethodList.PDDY;
+	const bool fastPDHGAlgorithm = (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1) && !MethodList.PDDY;
 	const bool fastPoissonAlgorithm = MethodList.PKMA || MethodList.MBSREM || MethodList.BSREM;
 	// Only the voxel-driven type 4 and type 5 backprojections compute one voxel per work-item, which is what
 	// makes the image-domain update possible in the first place
 	// All BPType 4/5 combinations are allowed
 	if ((inputScalars.BPType != 4 && inputScalars.BPType != 5) || !inputScalars.CT)
 		reason = "only backprojection types 4 and 5 (projector_type 4, 5, 14, 15, 24, 34, 44, 45, 54, 55, 74, 75) with CT data are supported";
-	// The fused kernel has no mask handling and the type 4 backprojection skips the masked z-planes of a voxel block only in its regular write
-	else if (inputScalars.BPType == 4 && inputScalars.maskBP && inputScalars.maskBPZ > 1)
-		reason = "a 3D backprojection mask with backprojection type 4 is not supported";
 	else if (!fastPDHGAlgorithm && !fastPoissonAlgorithm)
-		reason = "only PDHG, PDHGKL, PDHGL1, CV, PKMA, MBSREM and BSREM are supported (PDDY is not)";
+		reason = "only PDHG, PDHGKL, PDHGL1, PKMA, MBSREM and BSREM are supported (PDDY is not)";
 	// The experimental relaxation parameter computations are not supported
 	else if (MethodList.PKMA && (inputScalars.computeRelaxation || inputScalars.relaxScaling))
 		reason = "PKMA with computeRelaxation or relaxScaling is not supported by the fused step";
@@ -193,7 +190,14 @@ static inline void setFastPDHGSubIterParams(ProjectorClass& proj, const scalarSt
 	// If the regularization is not computed, set beta as zero
 	// BSREM doesn't compute regularization as part of the backprojection kernel
 	// The fused Poisson kernel does imOld + lambda * rhs for MBSREM (ascent direction), so the prior term must be subtracted
-	proj.fastBeta = (proj.fastNLMUsed && computeReg && !MethodList.BSREM) ? (MethodList.MBSREM ? -w_vec.beta : w_vec.beta) : 0.f;
+	// The Poisson algorithms (PKMA, MBSREM) combine one subset's data gradient with the prior on every subiteration, so beta is
+	// scaled with 1 / subsets as in computeOSEstimates. PDHG keeps beta
+	const float fastBetaScale = (proj.fastAlg != 0 && (MethodList.PKMA || MethodList.MBSREM)) ? 1.f / static_cast<float>(inputScalars.subsetsUsed) : 1.f;
+	// With regEveryIter > 1 beta stays at its normal value on every subiteration: the gradient is either computed and stored (computeReg)
+	// or the stored one is reused by the kernel (fastRegReuse), so beta must not be zeroed in the skipped subiterations
+	const bool useReg = proj.fastNLMUsed && !MethodList.BSREM && (computeReg || proj.fastRegReuseUsed);
+	proj.fastBeta = useReg ? (MethodList.MBSREM ? -w_vec.beta : w_vec.beta) * fastBetaScale : 0.f;
+	proj.fastRegReuse = (proj.fastRegReuseUsed && !computeReg) ? 1 : 0;
 }
 #endif
 
@@ -1268,6 +1272,8 @@ inline int forwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputScal
 			vec.im_os[timestep][ii].unlock();
 	}
 #else
+	// The CPU projector reads the image and writes the output through raw host pointers outside the ArrayFire queue
+	af::sync();
 	status = proj.forwardProjection(inputScalars, w_vec, osa_iter, timestep, length, pituus, ii);
 	if (inputScalars.use_psf)
 		vec.im_os_blurred[ii].unlock();
@@ -1347,6 +1353,15 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 		// Preconditioner vector (sensitivity image)
 		if (fastPrecond)
 			proj.d_precond = transferAF(w_vec.D[DIndex(inputScalars, timestep)][ii]);
+		// Stored prior gradient (regEveryIter > 1), only for the regularized main volume. It persists over the subiterations
+		// and each timestep has its own one
+		if (ii == 0 && proj.fastRegReuseUsed) {
+			if (vec.priorGradStore.size() <= timestep)
+				vec.priorGradStore.resize(std::max(static_cast<size_t>(inputScalars.Nt), static_cast<size_t>(timestep) + 1));
+			if (vec.priorGradStore[timestep].elements() != static_cast<dim_t>(inputScalars.im_dim[0]))
+				vec.priorGradStore[timestep] = af::constant(0.f, inputScalars.im_dim[0]);
+			proj.d_priorGradStore = transferAF(vec.priorGradStore[timestep]);
+		}
 		// Include the subvolume information of largeDim
 		if (inputScalars.largeDim && lDimChunk >= 0) {
 			proj.fastImOffset = static_cast<int64_t>(inputScalars.lDimStruct.startPr[lDimChunk]);
@@ -1400,6 +1415,8 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 		vec.im_os[timestep][ii].unlock();
 		if (fastPrecond)
 			w_vec.D[DIndex(inputScalars, timestep)][ii].unlock();
+		if (ii == 0 && proj.fastRegReuseUsed)
+			vec.priorGradStore[timestep].unlock();
 #if defined(CUDA) || defined(HIP)
 		// Destroy the texture if it's created above (only ever created for ii == 0)
 		// TODO: Persistent image/texture for fastPDHG?
@@ -1416,6 +1433,8 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 	if (ii == 0 && finalize && inputScalars.fastPDHG && proj.fastNLMUsed && MethodList.NLM)
 		w_vec.gaussianNLM.unlock();
 #else
+	// The CPU projector reads the image and writes the output through raw host pointers outside the ArrayFire queue
+	af::sync();
 	 status = proj.backwardProjection(inputScalars, w_vec, osa_iter, timestep, length, pituus, compSens, ii);
 #endif
 	if (!finalize)
@@ -1462,6 +1481,8 @@ inline int finalizeBackwardProjectionAF(AF_im_vectors& vec, const scalarStruct& 
 		vec.im_os[timestep][ii].unlock();
 		if (w_vec.precondTypeIm[0] || w_vec.precondTypeIm[1])
 			w_vec.D[DIndex(inputScalars, timestep)][ii].unlock();
+		if (ii == 0 && proj.fastRegReuseUsed)
+			vec.priorGradStore[timestep].unlock();
 #if defined(CUDA) || defined(HIP)
 		// The estimate texture is only created for the main volume, so destroy it once
 		if (ii == 0 && proj.fastNLMUsed && (inputScalars.FPType == 5 || inputScalars.largeDim)) {
@@ -1595,8 +1616,15 @@ inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& input
 #ifdef CPU
 	// Accumulate the NLM gradient to the backprojection
 	const af::array dUorig = grad.copy();
-	grad = padding(grad, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], w_vec.Ndx + w_vec.Nlx, w_vec.Ndy + w_vec.Nly, w_vec.Ndz + w_vec.Nlz);
-	const af::array imApu = padding(im, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], w_vec.Ndx + w_vec.Nlx, w_vec.Ndy + w_vec.Nly, w_vec.Ndz + w_vec.Nlz);
+	// GPU NLM clamps the reads to the volume edge, the padding reproduces that. The padding is also applied in z for 2D images, since the
+	// CPU kernel assumes the padded size Nz + 2 * (Ndz + Nlz) in z
+	const dim_t padX = static_cast<dim_t>(w_vec.Ndx + w_vec.Nlx);
+	const dim_t padY = static_cast<dim_t>(w_vec.Ndy + w_vec.Nly);
+	const dim_t padZ = static_cast<dim_t>(w_vec.Ndz + w_vec.Nlz);
+	const af::dim4 padDims(padX, padY, padZ, 0);
+	const af::array imApu = af::pad(af::moddims(im, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0]), padDims, padDims, AF_PAD_CLAMP_TO_EDGE);
+	// The padded gradient buffer is only the output of the kernel (written for the interior voxels)
+	grad = af::constant(0.f, imApu.dims(0), imApu.dims(1), imApu.dims(2));
 #endif
 	proj.d_W = transferAF(grad);
 	proj.d_gaussianNLM = transferAF(w_vec.gaussianNLM);
@@ -6234,7 +6262,8 @@ inline int filtering2D(const af::array& filter, af::array& input, ProjectorClass
 	if (status != 0)
 		return -1;
 #else
-	temp *= filter;
+	// ArrayFire does not broadcast, the 2D filter has to be tiled over the slices
+	temp *= af::tile(filter, 1, 1, temp.dims(2));
 #endif
 	ifft2InPlace(temp);
 	input = af::flat(af::real(temp(af::seq(0, inDim0 - 1), af::seq(0, inDim1 - 1), af::span)));
@@ -6404,6 +6433,16 @@ inline int applyImagePreconditioning(Weighting& w_vec, const scalarStruct& input
 	return 0;
 }
 
+// Statistical weights of the CT penalized weighted least squares (PWLS) data term. The variance of the linearized data
+// l = log(I0 / y) is approximately (y + s_e^2) / y^2, so w = y^2 / (y + s_e^2) with y = I0 exp(-l) (w = y without electronic
+// noise). The linearization floors y at I0 * 1e-6, so w > 0 when I0 > 0
+inline af::array PWLSWeights(const af::array& l, const scalarStruct& inputScalars) {
+	af::array yEst = inputScalars.flat * af::exp(-l.as(f32));
+	if (inputScalars.PWLSElectronicNoise > 0.f)
+		yEst = yEst * yEst / (yEst + inputScalars.PWLSElectronicNoise);
+	return yEst;
+}
+
 // Compute measurement-based preconditioning
 inline int applyMeasPreconditioning(const Weighting& w_vec, const scalarStruct& inputScalars, af::array& input, ProjectorClass& proj, const uint32_t timestep, const uint32_t subIter = 0) {
 	int status = 0;
@@ -6453,7 +6492,7 @@ inline int applyMeasPreconditioning(const Weighting& w_vec, const scalarStruct& 
 	return 0;
 }
 
-inline void computeIntegralImage(const scalarStruct& inputScalars, const Weighting& w_vec, const int64_t length, af::array& outputFP, af::array& meanBP) {
+inline void computeIntegralImage(const scalarStruct& inputScalars, const Weighting& w_vec, const int64_t length, af::array& outputFP, af::array& meanBP, const int64_t subset = 0) {
 	if (inputScalars.BPType == 5) {
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrint("Computing integral image for backprojection");
@@ -6465,6 +6504,12 @@ inline void computeIntegralImage(const scalarStruct& inputScalars, const Weighti
 			mexEval();
 		}
 		outputFP = af::moddims(outputFP, inputScalars.nRowsD, inputScalars.nColsD, length);
+		// The backprojection is A^T(n .* y): the normalization of the current subset is applied to the projections before the
+		// integral image (and the mean subtraction) is formed, since the box sum cannot weight the individual pixels
+		if (inputScalars.CT && inputScalars.normalization_correction && !w_vec.normBP5.empty()) {
+			outputFP *= af::moddims(w_vec.normBP5[static_cast<size_t>(subset) % w_vec.normBP5.size()], inputScalars.nRowsD, inputScalars.nColsD, length);
+			outputFP.eval();
+		}
 		if (inputScalars.meanBP) {
 			meanBP = af::mean(af::mean(outputFP, 0), 1);
 			outputFP -= af::tile(meanBP, inputScalars.nRowsD, inputScalars.nColsD, 1);
@@ -6549,7 +6594,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 			else {
 				if (inputScalars.BPType == 5) {
 					mDataApu = mData;
-					computeIntegralImage(inputScalars, w_vec, length[0], mData, meanBP);
+					computeIntegralImage(inputScalars, w_vec, length[0], mData, meanBP, 0);
 				}
 				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, mData, 0, timestep, length, m_size, meanBP, g, proj, false, ii, pituus);
 				if (status != 0) {
@@ -6600,7 +6645,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 			else {
 				if (inputScalars.BPType == 5) {
 					mDataApu = bbData;
-					computeIntegralImage(inputScalars, w_vec, length[0], bbData, meanBP);
+					computeIntegralImage(inputScalars, w_vec, length[0], bbData, meanBP, 0);
 				}
 				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, bbData, 0, timestep, length, m_size, meanBP, g, proj, false, ii, pituus);
 				if (status != 0) {
@@ -6653,7 +6698,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 			}
 			else {
 				if (inputScalars.BPType == 5) {
-					computeIntegralImage(inputScalars, w_vec, length[0], mDataApu, meanBP);
+					computeIntegralImage(inputScalars, w_vec, length[0], mDataApu, meanBP, 0);
 				}
 				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, mDataApu, 0, timestep, length, m_size, meanBP, g, proj, false, ii, pituus);
 				if (status != 0) {
@@ -6760,9 +6805,12 @@ inline int computeACOSEMWeight(scalarStruct& inputScalars, std::vector<int64_t>&
 }
 
 // The power method
+// Defined in priors.h (which includes this file)
+inline float separablePriorCurvature(const RecMethods& MethodList, const Weighting& w_vec, bool& unbounded);
+
 inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector<int64_t>& length, ProjectorClass& proj,
 	AF_im_vectors& vec, const RecMethods& MethodList, const int64_t* pituus, const uint32_t timestep, const af::array& g = af::constant(0.f, 1, 1),
-	float* F = nullptr, float* apuD = nullptr, const float* atten = nullptr) { // TODO: vectorize LCP, LCP2
+	float* F = nullptr, float* apuD = nullptr, const float* atten = nullptr, const af::array& PWLSData = af::array()) { // TODO: vectorize LCP, LCP2
 	int status = 0;
 	std::vector<af::array> Summ;
 	af::array meanBP;
@@ -6821,7 +6869,21 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj, timestep);
 			if (status != 0)
 				return -1;
-			computeIntegralImage(inputScalars, w_vec, firstSubsetLength, outputFP, meanBP);
+			if (inputScalars.PWLS) {
+				// K = W^{1/2} A. With the diagonal preconditioner Sigma = sigma / (W^{1/2} M) the operator is A^T (W^{1/2} / M) A
+				// (outputFP is already divided by M), otherwise A^T W A
+				if (PWLSData.elements() != outputFP.elements()) {
+					mexPrint("PWLS: the size of the measurement data does not match the forward projection in the power method");
+					return -1;
+				}
+				const af::array wPWLS = PWLSWeights(af::flat(PWLSData), inputScalars);
+				if (w_vec.precondTypeMeas[0])
+					outputFP *= af::sqrt(wPWLS);
+				else
+					outputFP *= wPWLS;
+				outputFP.eval();
+			}
+			computeIntegralImage(inputScalars, w_vec, firstSubsetLength, outputFP, meanBP, 0);
 			proj.memSize += (sizeof(float) * inputScalars.im_dim[0]);
 			if (inputScalars.projector_type == 6) {
 				backprojectionType6(outputFP, w_vec, vec, inputScalars, firstSubsetLength, 0, proj, timestep, 0, 0, 0, 0, 0, atten);
@@ -6883,7 +6945,21 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj, timestep);
 				if (status != 0)
 					return -1;
-				computeIntegralImage(inputScalars, w_vec, firstSubsetLength, outputFP, meanBP);
+				if (inputScalars.PWLS) {
+					// K = W^{1/2} A. With the diagonal preconditioner Sigma = sigma / (W^{1/2} M) the operator is A^T (W^{1/2} / M) A
+					// (outputFP is already divided by M), otherwise A^T W A
+					if (PWLSData.elements() != outputFP.elements()) {
+						mexPrint("PWLS: the size of the measurement data does not match the forward projection in the power method");
+						return -1;
+					}
+					const af::array wPWLS = PWLSWeights(af::flat(PWLSData), inputScalars);
+					if (w_vec.precondTypeMeas[0])
+						outputFP *= af::sqrt(wPWLS);
+					else
+						outputFP *= wPWLS;
+					outputFP.eval();
+				}
+				computeIntegralImage(inputScalars, w_vec, firstSubsetLength, outputFP, meanBP, 0);
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 					proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]);
 					if (inputScalars.projector_type == 6) {
@@ -7021,7 +7097,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj, timestep);
 				if (status != 0)
 					return -1;
-				computeIntegralImage(inputScalars, w_vec, firstSubsetLength, outputFP, meanBP);
+				computeIntegralImage(inputScalars, w_vec, firstSubsetLength, outputFP, meanBP, 0);
 				for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++) {
 					proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]);
 					if (inputScalars.projector_type == 6) {
@@ -7155,7 +7231,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj, timestep);
 				if (status != 0)
 					return -1;
-				computeIntegralImage(inputScalars, w_vec, firstSubsetLength, outputFP, meanBP);
+				computeIntegralImage(inputScalars, w_vec, firstSubsetLength, outputFP, meanBP, 0);
 				if (inputScalars.projector_type == 6) {
 					backprojectionType6(outputFP, w_vec, vec, inputScalars, firstSubsetLength, 0, proj, timestep, 0, 0, 0, 0, 0, atten);
 					if (type6Status(proj) != 0)
@@ -7214,7 +7290,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				status = applyMeasPreconditioning(w_vec, inputScalars, outputFP, proj, timestep);
 				if (status != 0)
 					return -1;
-				computeIntegralImage(inputScalars, w_vec, firstSubsetLength, outputFP, meanBP);
+				computeIntegralImage(inputScalars, w_vec, firstSubsetLength, outputFP, meanBP, 0);
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 					if (inputScalars.projector_type == 6) {
 						backprojectionType6(outputFP, w_vec, vec, inputScalars, firstSubsetLength, 0, proj, timestep, 0, 0, 0, 0, ii, atten);
@@ -7260,6 +7336,19 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 		proxPriorNorm = 16.f;
 	else if (MethodList.CPType && MethodList.ProxTV)
 		proxPriorNorm = 12.f;
+	// Condat-Vu step condition with an explicit prior gradient for the PDHG family: 1/tau >= sigma*L_A + beta*L_R/2.
+	// FISTA and FISTAL1 take no smooth prior. L_R is bounded by the same Gershgorin bound used for the SPS / preconditioner type 6 step.
+	// Priors without a known bound keep the previous step size. Validated on CT 2026-11: without this, PDHG with the
+	// measurement preconditioner diverged with quadratic beta >= 1e4, and without it at beta >= 1e5.
+	float smoothPriorTerm = 0.f;
+	if (w_vec.beta > 0.f && MethodList.CPType) {
+		bool unboundedPrior = false;
+		const float kappa = separablePriorCurvature(MethodList, w_vec, unboundedPrior);
+		if (!unboundedPrior && kappa > 0.f)
+			smoothPriorTerm = 0.5f * w_vec.beta * kappa;
+	}
+	if (inputScalars.verbose >= 2 && smoothPriorTerm > 0.f)
+		mexPrintBase("Prior curvature term added to the primal step: %f\n", smoothPriorTerm);
 	for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 		proj.memSize -= (sizeof(float) * inputScalars.im_dim[ii]);
 		w_vec.sigmaCP[timestep][ii] = 1.f;
@@ -7285,7 +7374,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			mexEval();
 		}
 		w_vec.LCP[timestep].emplace_back(w_vec.tauCP[timestep][ii]);
-		const float priorTerm = (ii == 0) ? w_vec.sigma2CP[timestep][ii] * proxPriorNorm : 0.f;
+		const float priorTerm = (ii == 0) ? (w_vec.sigma2CP[timestep][ii] * proxPriorNorm + smoothPriorTerm) : 0.f;
 		w_vec.tauCP[timestep][ii] = 1.f / (w_vec.sigmaCP[timestep][ii] * w_vec.tauCP[timestep][ii] + priorTerm);
 		if (w_vec.filterIter > 0 && (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5])) {
 			w_vec.LCP2[timestep].emplace_back(w_vec.tauCP2[timestep][ii]);

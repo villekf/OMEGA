@@ -1,5 +1,7 @@
 function options = RDPWeights(options)
 %RDPWEIGHTS Compute weights for the relative difference prior
+%   The weights are used only by the RDP with corners (implementation 2). The standard RDP (all
+%   implementations) uses the 6 face neighbors with unit weights and ignores these weights.
 
 if ~isfield(options,'weights_RDP') || isempty(options.weights_RDP)
     if ~isfield(options,'weights') || isempty(options.weights)

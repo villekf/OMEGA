@@ -619,6 +619,10 @@ classdef projectorClass
             elseif isfield(obj.param, 'maskFP') && numel(obj.param.maskFP) > 1 && (numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD || numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD * expectedMaskProjections || (obj.param.SPECT && numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD * obj.param.nHeads))
                 obj.param.useMaskFP = true;
                 obj.param.maskFPZ = numel(obj.param.maskFP) / (obj.param.nRowsD * obj.param.nColsD); % number of images, also for flat masks
+                % The CPU projector indexes the forward projection mask only as one detector-plane image
+                if obj.param.maskFPZ > 1 && (obj.param.implementation == 4 || (obj.param.implementation == 2 && obj.param.use_CPU))
+                    error('3D forward projection masks are not supported with the CPU implementation!')
+                end
             else
                 obj.param.useMaskFP = false;
             end
@@ -673,6 +677,10 @@ classdef projectorClass
                     obj.param.maskBPZ = maskBPZ;
                 end
 
+                % The CPU projector indexes the backprojection mask only as one image slice
+                if obj.param.useMaskBP && obj.param.maskBPZ > 1 && (obj.param.implementation == 4 || (obj.param.implementation == 2 && obj.param.use_CPU))
+                    error('3D backprojection masks are not supported with the CPU implementation!')
+                end
             elseif ~(obj.param.attenuation_correction && obj.param.SPECT)
                 obj.param.useMaskBP = false;
             end
@@ -1425,6 +1433,7 @@ classdef projectorClass
             % Outputs:
             %   y = The result of y = A * input
 
+            checkOperatorBackend(obj.param);
             if nargin >=3 && ~isempty(varargin{1})
                 obj.subset = varargin{1};
                 if obj.subset <= 0
@@ -1617,8 +1626,9 @@ classdef projectorClass
             % Outputs:
             %   f = The result of f = A' * input
             %   sens = Sensitivity image. Can be omitted if sensitivity
-            %   image is not required. 
+            %   image is not required.
 
+            checkOperatorBackend(obj.param);
             if nargin >=3 && ~isempty(varargin{1})
                 obj.subset = varargin{1};
                 if obj.subset <= 0
@@ -1872,6 +1882,16 @@ classdef projectorClass
     end
 end
 
+function checkOperatorBackend(param)
+% The operators of implementation 2 (forwardProjection.m/backwardProjection.m) always call the OpenCL MEX
+% (OpenCL_matrixfree_multi_gpu), which does not read options.use_CPU, so with use_CPU they would silently run on an
+% OpenCL device. The CPU library (CPU_matrixfree) is reached only through reconstructions_main. Implementation 4 uses
+% the CPU MEX (projector_mex) and is not affected
+if param.implementation == 2 && isfield(param, 'use_CPU') && param.use_CPU
+    error(['The projector operators (forwardProject/backwardProject) are not supported with the CPU implementation (use_CPU)! ' ...
+        'Use implementation 4, implementation 2 GPU or reconstructions_main.'])
+end
+end
 
 function data = flipAxialSPECT(data)
 % Flips the axial (2nd) dimension of SPECT projections. Cells are dynamic timeframes or DEW/TEW scatter windows

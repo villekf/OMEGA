@@ -1,4 +1,4 @@
-function output = SPS(im, rhs, U, lam, iter, osa_iter, ii, options)
+function [output, options] = SPS(im, rhs, ~, lam, iter, osa_iter, ii, options)
 %SPS Computes the modified Block Sequential Regularized Expectation
 % Maximization (MBSREM) estimates
 %
@@ -7,7 +7,7 @@ function output = SPS(im, rhs, U, lam, iter, osa_iter, ii, options)
 %   im = MBSREM(im, U, D, A, epps, uu, epsilon_mramla, lambda, iter, SinDelayed, randoms_correction, is_transposed, beta, dU)
 % INPUTS:
 %   im = The current estimate
-%   U = Upper bound of MBSREM (see MBSREM_epsilon)
+%   U = Upper bound (unused, SPS has no upper bound)
 %   D = Sum of the complete data system matrix divided by the number of
 %   subsets (D = sum(B,2)/subsets, where B = [A_1,A_2,...,A_subsets]
 %   A = The transpose of the (sparse) system matrix at current subset
@@ -49,12 +49,12 @@ function output = SPS(im, rhs, U, lam, iter, osa_iter, ii, options)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 kk = (iter - 1) * options.subsets + osa_iter;
-rhs = applyImagePreconditioning(options, rhs, im, kk, ii);
+[rhs, options] = applyImagePreconditioning(options, rhs, im, kk, ii);
 if iscell(options.dP)
     output = im + lam(iter) .* rhs .* options.dP{ii};
 else
     output = im + lam(iter) .* rhs .* options.dP;
 end
-output(output < 0) = 0;
-output(output >= U) = U;
+% As in SPS of algorithms.h: non-positive values are set to epps, no upper bound (U is unused)
+output(output <= 0) = options.epps;
 end

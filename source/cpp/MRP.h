@@ -26,7 +26,6 @@ void medianFilter3D(const T* grad, T* output, const int Nx, const int Ny, const 
 		y += search_window_y;
 		z += search_window_z;
 		// Same mask/extended FOV handling as the GPU kernel
-		// Masking is still work in progress on the CPU backend side
 		const int64_t nCenter = x + y * static_cast<int64_t>(Nx + search_window_x * 2) + z * static_cast<int64_t>(Nx + search_window_x * 2) * static_cast<int64_t>(Ny + search_window_y * 2);
 		if (fovIndices != nullptr && fovIndices[zOrig] == 0) {
 			output[n] = grad[nCenter];

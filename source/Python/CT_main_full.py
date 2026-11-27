@@ -729,6 +729,13 @@ options.U = 0
 # Measurement-based preconditioners
 # precondTypeMeas(0) = Diagonal normalization preconditioner (1 / (A1))
 # precondTypeMeas(1) = Filtering-based preconditioner
+# With PDHG, PDHGL1, PDHGKL and PDDY these are true preconditioners, i.e.
+# they only affect the convergence speed. With PKMA, MBSREM, MRAMLA, SPS,
+# FISTA, FISTAL1 and SAGA the measurement-based preconditioners are
+# experimental and not recommended: the diagonal normalization
+# preconditioner changes the objective function (the algorithm converges
+# to a different, 1/(A1)-weighted solution) and the filtering-based
+# preconditioner does so during the filtering iterations
 options.precondTypeMeas[0] = False
 options.precondTypeMeas[1] = True
 
@@ -846,6 +853,12 @@ options.sigma2CP = 1
 # Can lead to unstable behavior when using with multi-resolution
 # Minimal to none use with filtering-based preconditioner
 options.PDAdaptiveType = 0
+# Use the penalized weighted least squares (PWLS) data term with PDHG/PDDY (CT only). The weights are the
+# estimated measured counts I0 * exp(-l), so options.flat should be the true I0 of the raw data. Recommended with
+# the diagonal measurement preconditioner (precondTypeMeas[0]); the filtering preconditioner is not supported
+options.PWLS = False
+# Electronic noise variance (in squared counts) of the PWLS weights, w = y^2 / (y + variance)
+options.PWLSElectronicNoise = 0.
 
 
 ######################### REGULARIZATION PARAMETER ########################

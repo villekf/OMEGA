@@ -648,6 +648,12 @@ options.sigma2CP = 1;
 % Can lead to unstable behavior when using with multi-resolution
 % Minimal to none use with filtering-based preconditioner
 options.PDAdaptiveType = 0;
+% Use the penalized weighted least squares (PWLS) data term with PDHG/PDDY (CT only). The weights are the
+% estimated measured counts I0 * exp(-l), so options.flat should be the true I0 of the raw data. Recommended with
+% the diagonal measurement preconditioner (precondTypeMeas(1)); the filtering preconditioner is not supported
+options.PWLS = false;
+% Electronic noise variance (in squared counts) of the PWLS weights, w = y^2 / (y + variance)
+options.PWLSElectronicNoise = 0;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% PRECONDITIONERS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Applies to PDHG, PDHGL1, PDHGKL, PKMA, MBSREM, MRAMLA, PDDY, FISTA, 

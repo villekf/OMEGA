@@ -1,4 +1,9 @@
 function dU = applyPrior(recApu, options, beta, osa_iter)
+%APPLYPRIOR Computes the (beta-scaled) gradient of the selected prior (applySpatialPrior in priors.h)
+%   osa_iter is the 1-based global subiteration number, (iter - 1) *
+%   subsets + subset, or the 1-based iteration number for the
+%   iteration-level BSREM/ROSEM-MAP prior. The AD prior is zero on the
+%   first one (C++: 0-based counter == 0)
 
 dU = [];
 if (options.MRP)
@@ -77,7 +82,7 @@ elseif (options.RDP)
     if (options.verbose >= 3)
         disp("Computing RDP prior gradient");
     end
-    dU = beta * RDP(recApu, options.weights_RDP, options.RDP_gamma, options.Nx(1), options.Ny(1), options.Nz(1), options.Ndx, options.Ndy, options.Ndz, options.tr_offsets);
+    dU = beta * RDP(recApu, options.weights_RDP, options.RDP_gamma, options.Nx(1), options.Ny(1), options.Nz(1), options.Ndx, options.Ndy, options.Ndz, options.tr_offsets, options.epps);
 elseif (options.GGMRF)
         error('GGMRF is currently unsupported with implementations 1, 4 and 5. As a workaround, use NLM with NLGGMRF and zero neighborhood and patch size.')
     %     if (options.verbose >= 3)

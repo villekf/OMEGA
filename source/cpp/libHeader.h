@@ -390,7 +390,6 @@ struct inputStruct {
     bool PDHGKL = false;
     bool PDHGL1 = false;
     bool PDDY = false;
-    bool CV = false;
     bool POCS = false;
     bool FDK = false;
     bool SAGA = false;
@@ -620,7 +619,8 @@ struct inputStruct {
     uint32_t* sensZ;
     uint64_t sizeNormSens;
     uint32_t sensBins;
-
+    bool PWLS;
+    float PWLSElectronicNoise;
 };
 
 void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting& w_vec, RecMethods& MethodList) {
@@ -675,7 +675,6 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     MethodList.PDHG = options.PDHG;
     MethodList.PDHGKL = options.PDHGKL;
     MethodList.PDHGL1 = options.PDHGL1;
-    MethodList.CV = options.CV;
     MethodList.PDDY = options.PDDY;
     MethodList.POCS = options.POCS;
     MethodList.SAGA = options.SAGA;
@@ -694,7 +693,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     }
 
     // Primal-dual algorithms
-    if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY)
+    if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.PDDY)
         MethodList.CPType = true;
 
     inputScalars.PET = options.PET;
@@ -841,6 +840,10 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
 
     // Use 64-bit integer atomic functions if possible
     inputScalars.atomic_64bit = options.use_64bit_atomics;
+#ifdef CPU
+    // The CPU backend accumulates in float, integer atomics are GPU-only
+    inputScalars.atomic_64bit = false;
+#endif
 
     inputScalars.bmin = options.bmin;
 
@@ -915,6 +918,10 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.computeSensImag = options.compute_sensitivity_image;
     inputScalars.CT = options.CT;
     inputScalars.atomic_32bit = options.use_32bit_atomics;
+#ifdef CPU
+    // The CPU backend accumulates in float, integer atomics are GPU-only
+    inputScalars.atomic_32bit = false;
+#endif
     inputScalars.scatter = options.additionalCorrection;
     inputScalars.CTAttenuation = options.CTAttenuation;
     inputScalars.largeDim = options.largeDim;
@@ -922,6 +929,8 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.loadTOF = options.loadTOF;
     inputScalars.randomsTOF = options.randomsTOF;
     inputScalars.storeResidual = options.storeResidual;
+    inputScalars.PWLS = options.PWLS;
+    inputScalars.PWLSElectronicNoise = options.PWLSElectronicNoise;
     inputScalars.FISTAAcceleration = options.FISTA_acceleration;
     inputScalars.stochastic = options.stochasticSubsetSelection;
     if (inputScalars.scatter == 1U) {
@@ -1588,6 +1597,8 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
                 w_vec.tauCP2[timestep].assign(options.tauCP, options.tauCP + w_vec.tauCP[timestep].size());
             } else {
                 w_vec.tauCP[timestep].assign(options.tauCP, options.tauCP + w_vec.tauCP[timestep].size());
+                // Step size after the image-based filtering (precondTypeIm[5]); replaced by the power method when tauCP is computed
+                w_vec.tauCP2[timestep].assign(options.tauCP, options.tauCP + w_vec.tauCP[timestep].size());
             }
             w_vec.thetaCP[timestep].assign(options.thetaCP, options.thetaCP + w_vec.thetaCP[timestep].size());
         }

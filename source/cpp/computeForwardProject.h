@@ -257,73 +257,105 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			mexPrintBase("max(res) = %f\n", af::max<float>(res));
 			mexEval();
 		}
-		if (inputScalars.storeResidual) {
-			//af::array ressa = res.copy();
-			//status = applyMeasPreconditioning(w_vec, inputScalars, ressa, proj, timestep, subIter);
-			//residual[kk] = af::sum<float>(af::matmulTN(res, ressa)) * .5;
-			residual[kk] = af::norm(res);
-			residual[kk] = residual[kk] * residual[kk] * .5f;
-		}
-		status = applyMeasPreconditioning(w_vec, inputScalars, res, proj, timestep, subIter);
-		if (status != 0)
-			return -1;
-		if (DEBUG) {
-			mexPrintBase("res = %f\n", af::sum<float>(res));
-			mexPrintBase("max(res) = %f\n", af::max<float>(res));
-			mexEval();
-		}
-		if (w_vec.precondTypeMeas[1] && subIter + iter * inputScalars.subsets < w_vec.filterIter) {
-			if (FINVERSE) {
-				if (inputScalars.verbose >= 3)
-					mexPrint("Computing inverse with circulant matrix");
-				input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * res);
-				if (inputScalars.subsetType == 5 || inputScalars.subsetType == 4) {
-					if (inputScalars.subsetType == 4)
-						input = af::moddims(input, inputScalars.nRowsD, input.elements() / inputScalars.nRowsD);
-					else
-						input = af::moddims(input, inputScalars.nColsD, input.elements() / inputScalars.nColsD);
-				}
-				else
-					input = af::moddims(input, inputScalars.nRowsD, inputScalars.nColsD, input.elements() / (inputScalars.nRowsD * inputScalars.nColsD));
-				if (inputScalars.adaptiveType >= 1 && ii == 0) {
-					w_vec.Ffilter = af::ifft(w_vec.filter) * w_vec.sigmaCP[timestep][ii];
-					w_vec.Ffilter(0) = w_vec.Ffilter(0) + 1.f;
-					w_vec.Ffilter = af::real(af::fft(w_vec.Ffilter));
-				}
-				status = filteringInverse(w_vec.Ffilter, input, proj, inputScalars.Nf);
-				if (status != 0)
-					return -1;
+		if (inputScalars.PWLS) {
+			// PWLS: PDHG with K = W^{1/2} A written for q = W^{1/2} p (A^T q is the usual backprojection). The prox of the conjugate
+			// gives q+ = (q + sigma w r) / (1 + sigma), and with the diagonal preconditioner Sigma = sigma / (W^{1/2} M)
+			// q+ = (W^{1/2} M q + sigma w r) / (W^{1/2} M + sigma), r = Ax - l
+			const af::array wPWLS = PWLSWeights(y, inputScalars);
+			const float sigma = w_vec.sigmaCP[timestep][ii];
+			if (inputScalars.storeResidual) {
+				residual[kk] = .5f * af::sum<float>(wPWLS * res * res);
 			}
-			else {
-				af::array apu = af::tile(w_vec.filter, res.elements() / w_vec.filter.elements());
-				if (DEBUG) {
-					mexPrintBase("dim(0) = %d\n", apu.dims(0));
-					mexPrintBase("dim(1) = %d\n", apu.dims(1));
-					mexPrintBase("vec.pCP[timestep][subIter].dim(0) = %d\n", vec.pCP[timestep][subIter].dims(0));
-					mexPrintBase("res.dim(0) = %d\n", res.dims(0));
-					mexPrintBase("res.elements() = %d\n", res.elements());
-					mexPrintBase("apu.elements() = %d\n", apu.elements());
-					mexPrintBase("res.elements() / w_vec.filter.elements() = %d\n", res.elements() / apu.elements());
-					mexEval();
-				}
-				input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * res);
+			if (w_vec.precondTypeMeas[0]) {
+				const af::array sM = af::sqrt(wPWLS) * w_vec.M[timestep][subIter];
+				input = (sM * vec.pCP[timestep][subIter] + sigma * wPWLS * res) / (sM + sigma);
+			}
+			else
+				input = (vec.pCP[timestep][subIter] + sigma * wPWLS * res) / (1.f + sigma);
+			if (inputScalars.storeResidual) {
+				// Conjugate of the weighted data term: q^T W^-1 q / 2 + q^T l
+				residual[kk] += .5f * af::sum<float>(vec.pCP[timestep][subIter] * vec.pCP[timestep][subIter] / wPWLS) + af::dot<float>(vec.pCP[timestep][subIter], y.as(f32));
 			}
 		}
 		else {
-			if (MethodList.ProxTGV) {
-				if (inputScalars.verbose >= 3)
-					mexPrint("Computing Proximal TGV");
-				input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * res) / (1.f + w_vec.sigmaCP[timestep][ii] * w_vec.betaReg);
+			if (inputScalars.storeResidual) {
+				//af::array ressa = res.copy();
+				//status = applyMeasPreconditioning(w_vec, inputScalars, ressa, proj, timestep, subIter);
+				//residual[kk] = af::sum<float>(af::matmulTN(res, ressa)) * .5;
+				residual[kk] = af::norm(res);
+				residual[kk] = residual[kk] * residual[kk] * .5f;
+			}
+			status = applyMeasPreconditioning(w_vec, inputScalars, res, proj, timestep, subIter);
+			if (status != 0)
+				return -1;
+			if (DEBUG) {
+				mexPrintBase("res = %f\n", af::sum<float>(res));
+				mexPrintBase("max(res) = %f\n", af::max<float>(res));
+				mexEval();
+			}
+			if (w_vec.precondTypeMeas[1] && subIter + iter * inputScalars.subsets < w_vec.filterIter) {
+				if (FINVERSE) {
+					if (inputScalars.verbose >= 3)
+						mexPrint("Computing inverse with circulant matrix");
+					input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * res);
+					if (inputScalars.subsetType == 5 || inputScalars.subsetType == 4) {
+						if (inputScalars.subsetType == 4)
+							input = af::moddims(input, inputScalars.nRowsD, input.elements() / inputScalars.nRowsD);
+						else
+							input = af::moddims(input, inputScalars.nColsD, input.elements() / inputScalars.nColsD);
+					}
+					else
+						input = af::moddims(input, inputScalars.nRowsD, inputScalars.nColsD, input.elements() / (inputScalars.nRowsD * inputScalars.nColsD));
+					if (inputScalars.adaptiveType >= 1 && ii == 0) {
+						w_vec.Ffilter = af::ifft(w_vec.filter) * w_vec.sigmaCP[timestep][ii];
+						w_vec.Ffilter(0) = w_vec.Ffilter(0) + 1.f;
+						w_vec.Ffilter = af::real(af::fft(w_vec.Ffilter));
+					}
+					status = filteringInverse(w_vec.Ffilter, input, proj, inputScalars.Nf);
+					if (status != 0)
+						return -1;
+				}
+				else {
+					af::array apu = af::tile(w_vec.filter, res.elements() / w_vec.filter.elements());
+					if (DEBUG) {
+						mexPrintBase("dim(0) = %d\n", apu.dims(0));
+						mexPrintBase("dim(1) = %d\n", apu.dims(1));
+						mexPrintBase("vec.pCP[timestep][subIter].dim(0) = %d\n", vec.pCP[timestep][subIter].dims(0));
+						mexPrintBase("res.dim(0) = %d\n", res.dims(0));
+						mexPrintBase("res.elements() = %d\n", res.elements());
+						mexPrintBase("apu.elements() = %d\n", apu.elements());
+						mexPrintBase("res.elements() / w_vec.filter.elements() = %d\n", res.elements() / apu.elements());
+						mexEval();
+					}
+					input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * res);
+				}
 			}
 			else {
-				if (inputScalars.verbose >= 3)
-					mexPrint("Computing PDHG");
-				input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * res) / (1.f + w_vec.sigmaCP[timestep][ii]);
+				// Diagonal preconditioning (Pock and Chambolle 2011) uses Sigma = sigma / M. res has already been divided by M,
+				// so the numerator contains Sigma * (Ax - y). The prox of the conjugate of ||z - y||^2 / 2 is
+				// (v - Sigma y) / (1 + Sigma) elementwise, i.e. the denominator must also use Sigma. Dividing by (1 + sigma)
+				// instead solved the M^-1-weighted least squares problem
+				if (MethodList.ProxTGV) {
+					if (inputScalars.verbose >= 3)
+						mexPrint("Computing Proximal TGV");
+					if (w_vec.precondTypeMeas[0])
+						input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * res) / (1.f + w_vec.sigmaCP[timestep][ii] * w_vec.betaReg / w_vec.M[timestep][subIter]);
+					else
+						input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * res) / (1.f + w_vec.sigmaCP[timestep][ii] * w_vec.betaReg);
+				}
+				else {
+					if (inputScalars.verbose >= 3)
+						mexPrint("Computing PDHG");
+					if (w_vec.precondTypeMeas[0])
+						input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * res) / (1.f + w_vec.sigmaCP[timestep][ii] / w_vec.M[timestep][subIter]);
+					else
+						input = (vec.pCP[timestep][subIter] + w_vec.sigmaCP[timestep][ii] * res) / (1.f + w_vec.sigmaCP[timestep][ii]);
+				}
 			}
-		}
-		if (inputScalars.storeResidual) {
-			const float normi = static_cast<float>(af::norm(vec.pCP[timestep][subIter]));
-			residual[kk] += (normi * normi * .5) + af::dot<float>(vec.pCP[timestep][subIter], y.as(f32));
+			if (inputScalars.storeResidual) {
+				const float normi = static_cast<float>(af::norm(vec.pCP[timestep][subIter]));
+				residual[kk] += (normi * normi * .5) + af::dot<float>(vec.pCP[timestep][subIter], y.as(f32));
+			}
 		}
 		vec.pCP[timestep][subIter] = input.copy();
 		if (DEBUG) {
@@ -333,7 +365,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 	}
 	else if (MethodList.PDHGKL) {
 		if (inputScalars.verbose >= 3)
-			mexPrint("Computing PDHG/CV with KL");
+			mexPrint("Computing PDHG with KL");
 		if (w_vec.precondTypeMeas[0] || w_vec.precondTypeMeas[1]) {
 			if (w_vec.precondTypeMeas[1]) {
 				af::array apu1 = y.copy();

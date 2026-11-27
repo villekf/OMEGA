@@ -407,6 +407,15 @@ if options.PDHG || options.PDHGKL || options.PDHGL1 || options.ProxTV || options
             options.tauCP = options.tauCPFilt;
             options.tauCPFilt = apu;
         end
+        % Primal step size after the filtering of the image-based filter preconditioner (precondTypeImage(6)), used by
+        % the switch in computeOSEstimates. If the step sizes are computed with the power method (tauCP == 0), this is
+        % replaced in reconstructions_main. With user-input step sizes the step size without filtering is used (the
+        % input tauCP, which is in tauCPFilt after the swap above when the measurement filter is used)
+        if options.filteringIterations > 0 && options.precondTypeMeas(2)
+            options.tauCP2 = options.tauCPFilt;
+        else
+            options.tauCP2 = options.tauCP;
+        end
     end
 end
 
@@ -439,7 +448,7 @@ if options.precondTypeMeas(2)
         options.filter(1) = 2 * (0.25 - 2 / pi^2 * sum(1 ./ oddN.^2));
     end
     options.Ffilter = ifft(options.filter) .* options.sigmaCP(1);
-    if (options.PDHG || options.PDHGL1 || options.PDHGKL || options.CV || options.PDDY) && options.TGV
+    if (options.PDHG || options.PDHGL1 || options.PDHGKL || options.PDDY) && options.TGV
         options.Ffilter = options.Ffilter * options.beta;
     end
     options.Ffilter(1) = options.Ffilter(1) + 1;
@@ -466,8 +475,35 @@ if options.sampling > 1 && ~options.use_raw_data && ~options.precompute_lor
     options.Ndist = options.Ndist / options.sampling;
 end
 if (options.PKMA || options.MBSREM || options.SPS || options.RAMLA || options.BSREM || options.ROSEM || options.ROSEM_MAP || options.MRAMLA || options.SAGA) && (options.precondTypeMeas(2) || options.precondTypeImage(6))
-    if ~isfield(options,'lambdaFiltered')
+    if ~isfield(options,'lambdaFiltered') || isempty(options.lambdaFiltered)
         options.lambdaFiltered = options.lambda;
+    elseif isscalar(options.lambdaFiltered) && options.Niter > 1
+        % A scalar value is expanded like a scalar options.lambda
+        lambdaFT = zeros(options.Niter,1);
+        if options.stochasticSubsetSelection
+            for i = 1 : options.Niter
+                lambdaFT(i) = options.lambdaFiltered / (0.4/options.subsets * i + 1);
+            end
+        else
+            for i = 1 : options.Niter
+                lambdaFT(i) = options.lambdaFiltered / ((i - 1)/20 + 1);
+            end
+        end
+        if options.CT && ~options.SART && ~options.ASD_POCS
+            lambdaFT = lambdaFT / 10000;
+        end
+        options.lambdaFiltered = lambdaFT;
+    elseif numel(options.lambdaFiltered) < options.Niter
+        error('The number of filtered relaxation values (options.lambdaFiltered) needs to be at least equal to the number of iterations!')
+    end
+    % As in the native code, the relaxation parameters options.lambdaFiltered are used during the filtering and
+    % options.lambda after it. The m-file implementations use options.lambda in the updates and switch to
+    % options.lambdaFiltered when the filtering ends (computeForwardStep/computeOSEstimates), so the two are swapped here
+    % (like tauCP and tauCPFilt above)
+    if options.implementation == 1 || options.implementation == 4 || options.implementation == 5
+        apu = options.lambda;
+        options.lambda = options.lambdaFiltered;
+        options.lambdaFiltered = apu;
     end
     if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
         options.lambdaFiltered = single(options.lambdaFiltered);

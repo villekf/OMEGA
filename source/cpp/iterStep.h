@@ -15,8 +15,9 @@ int computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethod
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing regularization for BSREM/ROSEMMAP");
 		int status = 0;
-		// Compute the spatial prior only every regEveryIter-th iteration. This function runs once per
-		// iteration (iter from 0 to inputScalars.Niter - 1); the first and last are always computed.
+		// The spatial prior gradient is recomputed only every regEveryIter-th iteration and the last computed gradient
+		// (vec.dU) is used in between. This function runs once per iteration (iter from 0 to inputScalars.Niter - 1);
+		// the first and last are always computed.
 		const int64_t regCounter = static_cast<int64_t>(iter);
 		const int64_t regCounterMax = static_cast<int64_t>(inputScalars.Niter) - 1;
 		const bool computeReg = inputScalars.regEveryIter <= 1 || regCounter == 0 || regCounter == regCounterMax
@@ -33,6 +34,11 @@ int computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethod
 			mexPrint("Regularization for BSREM/ROSEMMAP computed");
 	}
 	const bool storeMultiResolution = inputScalars.storeMultiResolution && inputScalars.nMultiVolumes > 0;
+	// Enforce positivity if applicable. This is done before saving so that the saved and the returned image are both clamped
+	if (inputScalars.enforcePositivity && inputScalars.subsetsUsed == 1 && !MethodList.CPType) {
+		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
+			vec.im_os[timestep][ii] = af::select(vec.im_os[timestep][ii] < inputScalars.epps, inputScalars.epps, vec.im_os[timestep][ii]);
+	}
 	if (doSave) {
 		if (inputScalars.verbose >= 3)
 			mexPrintVar("Saving intermediate result at iteration ", iter);

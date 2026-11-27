@@ -21,6 +21,7 @@ function im_vectors = reshape_vectors(im_vectors, options)
 if options.save_iter
     Niter = options.Niter + 1;
 else
+    % The saved iterations and the final image (the last column)
     Niter = numel(options.saveNIter) + 1;
 end
 if numel(options.partitions) > 1

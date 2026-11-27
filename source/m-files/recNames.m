@@ -17,7 +17,7 @@ function varList = recNames(varargin)
 
 % Add Any MAP algorithm here (algorithms that can use gradient-based
 % priors)
-varMAP = {'OSL_OSEM';'BSREM';'MBSREM';'ROSEM_MAP';'OSL_RBI';'OSL_COSEM';'PKMA';'SPS';'PDHG';'PDHGKL';'PDHGL1';'CV';'PDDY';'SART';'ASD_POCS';'SAGA';'BB'};
+varMAP = {'OSL_OSEM';'BSREM';'MBSREM';'ROSEM_MAP';'OSL_RBI';'OSL_COSEM';'PKMA';'SPS';'PDHG';'PDHGKL';'PDHGL1';'PDDY';'SART';'ASD_POCS';'SAGA';'BB'};
 % Add any non-MAP/prior-based algorithm to this list (or algorithms with
 % fixed prior)
 OS = {'OSEM';'MRAMLA';'RAMLA';'ROSEM';'RBI';'DRAMA';'COSEM';'ECOSEM';'ACOSEM';'LSQR';'CGLS';'FISTA'; 'FISTAL1';'FDK'};
@@ -51,7 +51,7 @@ varAlgoFull = {'Ordered Subsets Expectation Maximization (OSEM)'; 'Modified Row-
     'Block-sequential regularized expectation maximization (BSREM)'; 'Modified block-sequential regularized expectation maximization (MBSREM)';...
     'ROSEM MAP (ROSEM_MAP)'; 'One-step-late RBI (OSL_RBI)'; 'One-step-late COSEM (OSL_COSEM)'; 'Preconditioned Krasnoselski-Mann algorithm (PKMA)';...
     'Separable paraboloidal surrogates (SPS)'; 'Primal-dual hybrid gradient (PDHG)'; 'Primal-dual hybrid gradient with Kullback-Leibler divergence (PDHGKL)';...
-    'Primal-dual hybrid gradient with L1 error (PDHGL1)';'Condat-Vu algorithm';'Primal-dual Davis-Yin algorithm';'Simultaneous Algebraic Reconstruction Technique';'ASD-POCS';'SAGA';'Barzilia-Borwein'};
+    'Primal-dual hybrid gradient with L1 error (PDHGL1)';'Primal-dual Davis-Yin algorithm';'Simultaneous Algebraic Reconstruction Technique';'ASD-POCS';'SAGA';'Barzilia-Borwein'};
 if ~isempty(varargin) && varargin{1} == 0
     varList = upper([OS(:);varMAP(:)]);
 elseif ~isempty(varargin) && varargin{1} == 1

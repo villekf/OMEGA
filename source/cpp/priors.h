@@ -116,7 +116,8 @@ inline af::array FMH(const af::array& im, const uint32_t Ndx, const uint32_t Ndy
 	af::array indeksi1;
 	const af::array padd = af::flat(padding(im, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], Ndx, Ndy, Ndz));
 	uint32_t luup;
-	if (inputScalars.Nz[0] == 1 || Ndz == 0) {
+	const bool is2DFMH = (inputScalars.Nz[0] == 1 || Ndz == 0);
+	if (is2DFMH) {
 		grad = af::constant(0.f, inputScalars.im_dim[0], 5);
 		luup = 4;
 	}
@@ -125,7 +126,18 @@ inline af::array FMH(const af::array& im, const uint32_t Ndx, const uint32_t Ndy
 		luup = 13;
 	}
 	for (uint32_t ii = 0; ii < luup; ii++) {
-		indeksi1 = af::flat(offsets(af::span, af::seq(Ndx * ii, offsets.dims(1) - Ndx * (ii)-1, alku_fmh / Ndx - ii)));
+		// Line direction ii in the unit cube (2D: 4 directions, 3D: 13 directions). The neighborhood is the
+		// (2Ndx+1)x(2Ndy+1)x(2Ndz+1) box with x fastest, so the columns of the line are the centre plus k * d, k = N...-N
+		const int dx = static_cast<int>(ii % 3U) - 1;
+		const int dy = is2DFMH ? static_cast<int>(ii / 3U) - 1 : static_cast<int>((ii / 3U) % 3U) - 1;
+		const int dz = is2DFMH ? 0 : static_cast<int>(ii / 9U) - 1;
+		std::vector<uint32_t> colIdx;
+		colIdx.reserve(2U * Ndx + 1U);
+		for (int k = static_cast<int>(Ndx); k >= -static_cast<int>(Ndx); k--)
+			colIdx.push_back(static_cast<uint32_t>((static_cast<int>(Ndx) + k * dx) + (static_cast<int>(Ndy) + k * dy) * static_cast<int>(2U * Ndx + 1U)
+				+ (static_cast<int>(Ndz) + k * dz) * static_cast<int>((2U * Ndx + 1U) * (2U * Ndy + 1U))));
+		const af::array colArr(static_cast<dim_t>(colIdx.size()), colIdx.data());
+		indeksi1 = af::flat(offsets(af::span, colArr));
 		af::array apu_pad = af::moddims(padd(indeksi1 + 0), inputScalars.im_dim[0], fmh_weights.dims(0));
 		grad(af::span, ii) = af::matmul(apu_pad, fmh_weights(af::span, ii));
 	}
@@ -477,12 +489,13 @@ inline int applySpatialPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMeth
 	const bool iter = false, const int kk = 0) {
 	af::array* dU = nullptr;
 	int status = 0;
-	if (iter || (MethodList.RBIOSL || MethodList.OSLOSEM || MethodList.OSLCOSEM || MethodList.POCS || MethodList.SAGA || MethodList.SART)) {
-		vec.dU[timestep] = af::constant(0.f, vec.im_os[timestep][0].elements());
-		dU = &vec.dU[timestep];
-	} else {
-		dU = &vec.rhs_os[timestep][0];
-    }
+	// The prior gradient is always computed into its own zero-initialised buffer vec.dU, which the caller adds into the gradient
+	// (or the one-step-late/BSREM/SART/POCS code reads directly). The buffer is sized like the rhs of the main volume, which equals
+	// the image size except for a largeDim chunk, where the prior kernels write the unpadded chunk into the rhs-sized buffer.
+	// The iteration-level (BSREM/ROSEM-MAP), SART and POCS calls have no rhs of that size and use the image size
+	const bool imageSized = iter || MethodList.POCS || MethodList.SART || vec.rhs_os[timestep].empty() || vec.rhs_os[timestep][0].elements() <= 1;
+	vec.dU[timestep] = af::constant(0.f, imageSized ? vec.im_os[timestep][0].elements() : vec.rhs_os[timestep][0].elements());
+	dU = &vec.dU[timestep];
 	if (MethodList.MRP) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing MRP gradient");
@@ -600,49 +613,50 @@ inline int applyTemporalPrior(
     const RecMethods& MethodList,
     const scalarStruct& inputScalars,
     ProjectorClass& proj,
-    const bool iter = false
+    const bool iter = false,
+    const std::vector<af::array>* neighbours = nullptr,
+    const int onlyTimestep = -1,
+    const float betaScale = 1.f
 ) {
-    af::array* dUt = nullptr;
 	int status = 0;
-    // MBSREM, MRAMLA and SPS use an ascent-direction rhs (update is im + lam * rhs), so when the temporal
-    // prior gradient is added into rhs_os it has to be subtracted instead
-    const bool ascentRhs = !iter && !(MethodList.RBIOSL || MethodList.OSLOSEM || MethodList.OSLCOSEM || MethodList.POCS || MethodList.SAGA || MethodList.SART)
-        && (MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS);
-    const float betaT = ascentRhs ? -w_vec.beta_temporal : w_vec.beta_temporal;
+    // The temporal prior gradient is always written into its own buffer vec.dUt (positive beta, scaled with betaScale), the caller
+    // adds it into the gradient with the sign of the update direction. If onlyTimestep >= 0, only that timestep is computed. If
+    // neighbours is given, the frames t - 1 and t + 1 are taken from it instead of vec.im_os (the own frame always comes from vec.im_os)
+    const float betaT = w_vec.beta_temporal * betaScale;
     for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
-        if (iter || (MethodList.RBIOSL || MethodList.OSLOSEM || MethodList.OSLCOSEM || MethodList.POCS || MethodList.SAGA || MethodList.SART)) {
-            vec.dUt[timestep] = af::constant(0.f, vec.im_os[timestep][0].elements());
-            dUt = &vec.dUt[timestep];
-        } else {
-            dUt = &vec.rhs_os[timestep][0];
-        }
-
+        if (onlyTimestep >= 0 && static_cast<uint32_t>(onlyTimestep) != timestep)
+            continue;
+        // The buffer has the size of the image (the same as the rhs of the main volume)
         af::array grad = af::constant(0.f, vec.im_os[timestep][0].elements());
+        const af::array xCur = vec.im_os[timestep][0];
         if (MethodList.TemporalSmoothness) { // First derivative smoothness prior
             if (inputScalars.verbose >= 3)
-			    mexPrint("Computing temporal smoothness prior gradient");
+                mexPrint("Computing temporal smoothness prior gradient");
             if (timestep > 0) {
-                grad += (vec.im_os[timestep][0] - vec.im_os[timestep-1][0]);
+                const af::array xPrev = neighbours ? (*neighbours)[timestep-1] : vec.im_os[timestep-1][0];
+                grad += (xCur - xPrev);
             }
             if (timestep < inputScalars.Nt - 1) {
-                grad += (vec.im_os[timestep][0] - vec.im_os[timestep+1][0]);
+                const af::array xNext = neighbours ? (*neighbours)[timestep+1] : vec.im_os[timestep+1][0];
+                grad += (xCur - xNext);
             }
         } else if (MethodList.TemporalTV) { // Total variations prior
             if (inputScalars.verbose >= 3)
-				mexPrintBase("Computing temporal total variations prior gradient for timestep %d\n", timestep);
+                mexPrintBase("Computing temporal total variations prior gradient for timestep %d\n", timestep);
             if (timestep > 0) {
-                af::array backward_diff = (vec.im_os[timestep][0] - vec.im_os[timestep-1][0]);
+                const af::array xPrev = neighbours ? (*neighbours)[timestep-1] : vec.im_os[timestep-1][0];
+                af::array backward_diff = (xCur - xPrev);
                 grad += (backward_diff) / (af::abs(backward_diff) + w_vec.TemporalTVsmoothing);
             }
             if (timestep < inputScalars.Nt - 1) {
-                af::array forward_diff = (vec.im_os[timestep][0] - vec.im_os[timestep+1][0]);
+                const af::array xNext = neighbours ? (*neighbours)[timestep+1] : vec.im_os[timestep+1][0];
+                af::array forward_diff = (xCur - xNext);
                 grad += (forward_diff) / (af::abs(forward_diff) + w_vec.TemporalTVsmoothing);
             }
         }
 
-        *dUt += betaT * grad;
-
-        af::eval(*dUt);
+        vec.dUt[timestep] = betaT * grad;
+        af::eval(vec.dUt[timestep]);
     }
 
     if (inputScalars.verbose >= 3 && (MethodList.TemporalSmoothness))

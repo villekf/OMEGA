@@ -179,12 +179,12 @@ def applyImagePreconditioning(options, input, im, kk, ii=0):
             "options.precondTypeImage[4]) is not implemented in the Python "
             "powerMethod/custom-algorithm path. MATLAB computes this via "
             "gradientPreconditioner.m, which needs: (1) a finite-difference "
-            "image gradient (computeGradient.m, controlled by options.derivType) "
+            "image gradient (computeGradient.m, controlled by options.derivativeType) "
             "with no Python equivalent, and (2) options.gradF, cached per "
             "volume and refreshed once between options.gradInitIter+1 and "
             "options.gradLastIter+1, clamped to [options.gradV1, options.gradV2]. "
             "A Python implementation would need a computeGradient-equivalent "
-            "(finite differences matching options.derivType) plus the "
+            "(finite differences matching options.derivativeType) plus the "
             "gradF caching/clamping logic above before this can be enabled."
         )
 

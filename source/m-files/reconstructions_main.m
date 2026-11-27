@@ -154,6 +154,14 @@ else
     [options.param] = loadCorrections(options.param, RandProp, ScatterProp);
 end
 
+% The CT versions of these algorithms use the transmission count-data model, they are not valid with linearized data
+if options.param.CT && options.param.usingLinearizedData && (options.param.OSEM || options.param.ROSEM || options.param.OSL_OSEM || options.param.ROSEM_MAP ...
+        || options.param.COSEM || options.param.ECOSEM || options.param.ACOSEM || options.param.OSL_COSEM > 0 || options.param.RAMLA || options.param.BSREM ...
+        || options.param.RBI || options.param.OSL_RBI || options.param.DRAMA || options.param.PKMA || options.param.MRAMLA || options.param.MBSREM ...
+        || options.param.SPS || options.param.SAGA)
+    error('The CT versions of the statistical algorithms (OSEM, ROSEM, OSL-OSEM, ROSEM-MAP, COSEM, ECOSEM, ACOSEM, OSL-COSEM, RAMLA, BSREM, RBI, OSL-RBI, DRAMA, PKMA, MRAMLA, MBSREM, SPS, SAGA) need intensity (count) data, linearized data (options.usingLinearizedData = true) cannot be used with them. Use a linear algorithm, such as PDHG or CGLS, with linearized data')
+end
+
 % The default flat value is the maximum of the corrected data (after loadCorrections, as in Python): the scatter/randoms
 % subtraction and the CT normalization precorrection are applied to the intensity data above
 if options.param.CT && isfield(options.param,'flat') && numel(options.param.flat) > 1
@@ -180,6 +188,9 @@ if ~options.param.usingLinearizedData && options.param.CT && (~isfield(options.p
     else
         options.param.flat = double(flatValue);
     end
+end
+if options.param.CT && options.param.PWLS && (~isfield(options.param,'flat') || isempty(options.param.flat) || options.param.flat <= 0)
+    error('PWLS needs the flat-field (I0) value of the raw data in options.flat!')
 end
 
 % CT corrections (e.g. scatter subtraction, normalization) are applied to the intensity data above, i.e. before the
@@ -284,6 +295,15 @@ end
 
 options.param = parseInputData(options.param, options.index);
 
+% The sensitivity image of list-mode PET data is computed over all detector pairs, but the measurement-based attenuation has one
+% value for each measurement (event), i.e. it would be indexed past its end. This is checked here and not in OMEGA_error_check,
+% because parseInputData above switches CT_attenuation to true if the attenuation data has the size of the reconstructed image
+if ~options.param.CT && ~options.param.SPECT && (options.param.useIndexBasedReconstruction || options.param.listmode) ...
+        && options.param.compute_sensitivity_image && options.param.attenuation_correction && ~options.param.CT_attenuation
+    error(['List-mode reconstruction cannot compute the sensitivity image with measurement-based attenuation (CT_attenuation = false). ' ...
+        'Use an attenuation image (CT_attenuation = true) or disable the computation of the sensitivity image (compute_sensitivity_image = false).'])
+end
+
 % Remove negative values
 if ~options.param.CT && (~options.param.LSQR && ~options.param.CGLS)
     if iscell(options.param.SinM)
@@ -309,7 +329,7 @@ disp('Starting image reconstruction')
 % Implementations 1, 4 and 5
 if ismember(options.param.implementation, [1, 4, 5])
 
-    if options.param.implementation == 4 && ~ismember(options.param.projector_type, [1 11 6 16 61 66])
+    if options.param.implementation == 4 && ~ismember(options.param.projector_type, [1 11 6])
         error('Selected projector type is not supported with CPU implementation!')
     end
 
@@ -322,7 +342,9 @@ if ismember(options.param.implementation, [1, 4, 5])
 
     im_vectors = form_image_vectors(options.param, options.param.N, noSensIm);
 
-    if (options.param.RBI || options.param.OSL_RBI || options.param.COSEM || options.param.ACOSEM || options.param.OSL_COSEM > 0 || options.param.ECOSEM || (options.param.precondTypeImage(1) || options.param.precondTypeImage(2) || options.param.precondTypeImage(3)))
+    % For list-mode data the Poisson gradient is BP(y / ybar) - D, so these algorithms always need the sensitivity image D
+    if (options.param.RBI || options.param.OSL_RBI || options.param.COSEM || options.param.ACOSEM || options.param.OSL_COSEM > 0 || options.param.ECOSEM || (options.param.precondTypeImage(1) || options.param.precondTypeImage(2) || options.param.precondTypeImage(3))) ...
+            || (options.param.listmode > 0 && (options.param.RAMLA || options.param.MRAMLA || options.param.BSREM || options.param.MBSREM || options.param.PKMA || options.param.SPS || options.param.DRAMA))
         computeD = true;
     else
         computeD = false;
@@ -336,13 +358,16 @@ if ismember(options.param.implementation, [1, 4, 5])
     requestedSensitivityImage = options.param.compute_sensitivity_image;
     frameSpecificSPECTSensitivity = requestedSensitivityImage && options.param.listmode > 0 && options.param.SPECT;
 
-    if (options.param.PDHG || options.param.PDHGKL || options.param.PDHGL1 || options.param.CV || options.param.PDDY)
+    if (options.param.PDHG || options.param.PDHGKL || options.param.PDHGL1 || options.param.PDDY)
         options.param.CPType = true;
     else
         options.param.CPType = false;
     end
     if options.param.storeFP
-        fp = zeros(options.param.nRowsD, options.param.nColsD, options.param.nProjections, options.param.Niter, options.param.cType);
+        % As in implementations 2 and 3, the raw forward projections (before the randoms/scatter and the algorithm-specific
+        % steps) are stored for each (timestep, iteration, subset), frame-major:
+        % fp{(llo - 1) * Niter * subsets + (iter - 1) * subsets + osa_iter}
+        fp = cell(partitions * options.param.Niter * options.param.subsets, 1);
     end
     if options.param.PDAdaptiveType == 1
         options.param.alphaCP = ones(options.param.nMultiVolumes + 1, 1, options.param.cType);
@@ -402,7 +427,7 @@ if ismember(options.param.implementation, [1, 4, 5])
         end
 
         if (options.param.MBSREM || options.param.MRAMLA || options.param.SPS || options.param.precondTypeImage(7))
-            if options.param.randoms_correction && ~options.param.CT && (options.param.MBSREM || options.param.MRAMLA)
+            if options.param.randoms_correction && ~options.param.CT && (options.param.MBSREM || options.param.MRAMLA || options.param.SPS)
                 allTrue = SinD > 0;
             else
                 allTrue = false;
@@ -412,7 +437,8 @@ if ismember(options.param.implementation, [1, 4, 5])
                 for ii = 1 : options.param.nMultiVolumes + 1
                     recApu{ii} = ones(options.param.N(ii), 1, options.param.cType);
                 end
-                E = ones(numel(Sino), 1, options.param.cType);
+                % E = A * 1 (the forward projections of ones are accumulated from zero)
+                E = zeros(numel(Sino), 1, options.param.cType);
                 % Sino is in subset order; splitMeas applied to the element indices gives the positions of subset ll
                 % in the same layout as the subset forward projection (handles TOF, projector type 6 and the subsets == 1 case)
                 measInd = (1 : numel(Sino))';
@@ -429,7 +455,8 @@ if ismember(options.param.implementation, [1, 4, 5])
                     if (options.param.verbose >= 3)
                         disp("Computing epsilon value for MBSREM/MRAMLA");
                     end
-                    options.param.epsilon_mramla = MBSREM_epsilon(Sino, options.param.epps, options.param.randoms_correction, SinD, E, options.param.TOF, options.param.TOF_bins, options.param.CT);
+                    options.param.epsilon_mramla = MBSREM_epsilon(Sino, options.param.epps, options.param.randoms_correction, SinD, E, options.param.TOF, options.param.TOF_bins, options.param.CT, ...
+                        isfield(options.param, 'randomsTOF') && options.param.randomsTOF);
                     if (options.param.verbose >= 3)
                         disp("Epsilon value for MBSREM/MRAMLA computed");
                     end
@@ -441,7 +468,7 @@ if ismember(options.param.implementation, [1, 4, 5])
                     if (options.param.CT)
                         apu6 = Sino ./ options.param.flat;
                         if (options.param.randoms_correction)
-                            EE = (options.param.flat .* apu6 - (Sino .* SinD .* apu6) ./ ((apu6 + SinD) * (apu6 + SinD)));
+                            EE = (options.param.flat .* apu6 - (Sino .* SinD .* apu6) ./ ((apu6 + SinD) .* (apu6 + SinD)));
                         else
                             EE = (options.param.flat .* apu6);
                         end
@@ -451,6 +478,10 @@ if ismember(options.param.implementation, [1, 4, 5])
                         EE(Sino > 0) = E(Sino > 0) ./ Sino(Sino > 0);
                         E = EE;
                     end
+                    % dP backprojects E over the events (not the sensitivity image over all detector pairs), so the list-mode
+                    % sensitivity mode of the backprojection is switched off for the dP computation
+                    computeSensImDP = options.param.compute_sensitivity_image;
+                    options.param.compute_sensitivity_image = false;
                     if options.param.implementation == 1 && options.param.nMultiVolumes == 0
                         options.param.dP = zeros(options.param.N(1), 1, options.param.cType);
                         for ll = 1 : options.param.subsets
@@ -461,9 +492,26 @@ if ismember(options.param.implementation, [1, 4, 5])
                         if options.param.use_psf
                             options.param.dP = computeConvolution(options.param.dP, options.param, options.param.Nx(1), options.param.Ny(1), options.param.Nz(1), options.param.gaussK);
                         end
+                    elseif options.param.subsets > 1
+                        % E is in subset order, so backproject each subset separately and sum
+                        options.param.dP = [];
+                        for ll = 1 : options.param.subsets
+                            indE = splitMeas(options.param, measInd, options.nMeas, ll);
+                            apuBP = backwardProject(options, E(indE), ll, corrVector);
+                            if isempty(options.param.dP)
+                                options.param.dP = apuBP;
+                            elseif iscell(apuBP)
+                                for ii = 1 : numel(apuBP)
+                                    options.param.dP{ii} = options.param.dP{ii} + apuBP{ii};
+                                end
+                            else
+                                options.param.dP = options.param.dP + apuBP;
+                            end
+                        end
                     else
                         options.param.dP = backwardProject(options, E, 0, corrVector);
                     end
+                    options.param.compute_sensitivity_image = computeSensImDP;
                     % Curvature bound of the prior for the step size (main volume only)
                     kappa = 0;
                     if options.param.beta > 0
@@ -475,13 +523,20 @@ if ismember(options.param.implementation, [1, 4, 5])
                             disp(['Prior curvature bound kappa = ' num2str(kappa)])
                         end
                     end
-                    % dP = subsets / (sum over the subsets of the backprojections + subsets * beta * kappa)
-                    % Each sub-iteration uses the subset data gradient but the full prior gradient, hence the prior curvature
-                    % is multiplied by the number of subsets
+                    % dP = subsets / (sum over the subsets of the backprojections + curvScale * beta * kappa)
+                    % Each sub-iteration uses the subset data gradient. For the methods with the per-subiteration prior beta / subsets
+                    % (OSL-OSEM, OSL-RBI, PKMA, MBSREM, MRAMLA, SPS) the prior curvature scaled by subsets is beta * kappa
+                    % (curvScale = 1). For the other users of dP (PDHG family, FISTA) the prior keeps the full beta, so the
+                    % curvature term is subsets * beta * kappa (curvScale = subsets). The prior is applied to the main volume only
+                    if (options.param.OSL_OSEM || options.param.OSL_RBI || options.param.PKMA || options.param.MBSREM || options.param.MRAMLA || options.param.SPS)
+                        curvScale = 1;
+                    else
+                        curvScale = options.param.subsets;
+                    end
                     if iscell(options.param.dP)
                         for ii = 1 : options.param.nMultiVolumes + 1
                             if ii == 1 && kappa > 0
-                                options.param.dP{ii} = (options.param.subsets) ./ (options.param.dP{ii} + options.param.subsets * options.param.beta * kappa);
+                                options.param.dP{ii} = (options.param.subsets) ./ (options.param.dP{ii} + curvScale * options.param.beta * kappa);
                             else
                                 options.param.dP{ii} = (options.param.subsets) ./ options.param.dP{ii};
                             end
@@ -490,7 +545,7 @@ if ismember(options.param.implementation, [1, 4, 5])
                         end
                     else
                         if kappa > 0
-                            options.param.dP = (options.param.subsets) ./ (options.param.dP + options.param.subsets * options.param.beta * kappa);
+                            options.param.dP = (options.param.subsets) ./ (options.param.dP + curvScale * options.param.beta * kappa);
                         else
                             options.param.dP = (options.param.subsets) ./ options.param.dP;
                         end
@@ -513,7 +568,40 @@ if ismember(options.param.implementation, [1, 4, 5])
             if frameSpecificSPECTSensitivity
                 options.param.compute_sensitivity_image = true;
             end
-            if (computeD || options.param.compute_sensitivity_image)
+            % List-mode sensitivity image with implementation 4: the backprojection over all detector pairs is computed ONCE (the
+            % projector enumerates the pairs, see backwardProjection.m) and scaled as in the native implementation 2
+            % (reconstructionAF.h): S = max(BP_pairs(1), epps), D = S / subsets and the per-subset sensitivity image
+            % Summ = S / subsets + epps
+            listModeSens = options.param.implementation == 4 && options.param.listmode > 0 && options.param.compute_sensitivity_image ...
+                && ~options.param.CT && ~options.param.SPECT;
+            if listModeSens
+                if (options.param.verbose >= 3)
+                    disp("Starting computation of the list-mode sensitivity image (D)");
+                end
+                psf = options.param.use_psf;
+                options.param.use_psf = false;
+                % The input is not read, the projector backprojects a one for every detector pair. Subset 0 = all subsets at once
+                sensFull = backwardProject(options, ones(1, 1, options.param.cType), 0, corrVector);
+                options.param.use_psf = psf;
+                [sensD, sensSumm] = listModeSensitivityScale(sensFull, options.param, options.param.subsets);
+                if computeD
+                    options.param.D = sensD;
+                end
+                if ~noSensIm
+                    if iscell(sensSumm)
+                        for ii = 1 : numel(sensSumm)
+                            im_vectors.Sens{ii} = repmat(sensSumm{ii}, 1, options.param.subsets);
+                        end
+                    else
+                        im_vectors.Sens = repmat(sensSumm, 1, options.param.subsets);
+                    end
+                    noSensIm = 1;
+                end
+                options.param.compute_sensitivity_image = false;
+                if (options.param.verbose >= 3)
+                    disp("Sensitivity image D computed");
+                end
+            elseif (computeD || options.param.compute_sensitivity_image)
                 if (options.param.verbose >= 3)
                     disp("Starting computation of sensitivity image (D)");
                 end
@@ -578,7 +666,7 @@ if ismember(options.param.implementation, [1, 4, 5])
                     oneInput{ii} = ones(options.param.N(ii), 1, options.param.cType);
                 end
                 for ll = 1 : options.param.subsets
-                    if options.implementation == 1
+                    if options.param.implementation == 1
                         if options.param.use_psf
                             oneInput{1} = computeConvolution(oneInput{1}, options.param, options.param.Nx(1), options.param.Ny(1), options.param.Nz(1), options.param.gaussK);
                         end
@@ -594,26 +682,69 @@ if ismember(options.param.implementation, [1, 4, 5])
                 end
             end
             % Use power method to compute the tau value, if necessary
+            % Filtering-based preconditioners (measurement filter precondTypeMeas(2) or image filter precondTypeImage(6)) that
+            % are switched off after options.filteringIterations sub-iterations need a second step size without the filter
+            filterStep = options.param.filteringIterations > 0 && (options.param.precondTypeMeas(2) || options.param.precondTypeImage(6)) ...
+                && options.param.filteringIterations < options.param.subsets * options.param.Niter;
             if ((options.param.CPType || options.param.FISTA || options.param.FISTAL1) && (isempty(options.param.tauCP) || options.param.tauCP(1) == 0))
                 s = powerMethod(options);
                 options.param.LCP = s;
-                if options.param.precondTypeMeas(2)
-                    options.param.tauCP = 1 ./ s;
-                    apuVar = options.param.precondTypeMeas(2);
-                    options.param.precondTypeMeas(2) = false;
-                    s = powerMethod(options);
-                    options.param.tauCPFilt = 1 ./ s;
-                    options.param.precondTypeMeas(2) = apuVar;
-                    options.param.LCP2 = s;
-                else
-                    options.param.tauCP = 1 ./ s;
+                if filterStep
+                    % The second power method is computed without the filter. If both filters are used, only the
+                    % measurement filter is switched off (as in the native code)
+                    if options.param.precondTypeMeas(2)
+                        options.param.precondTypeMeas(2) = false;
+                        s2 = powerMethod(options);
+                        options.param.precondTypeMeas(2) = true;
+                    else
+                        options.param.precondTypeImage(6) = false;
+                        s2 = powerMethod(options);
+                        options.param.precondTypeImage(6) = true;
+                    end
+                    options.param.LCP2 = s2;
                 end
-                options.param.sigmaCP = ones(size(options.param.tauCP), options.param.cType);
+                options.param.sigmaCP = ones(size(s), options.param.cType);
+                % The proximal TV and TGV priors are a part of the linear operator of PDHG, with their own dual step size
+                % (sigma2CP). The primal step size thus has to fulfill tau * (sigma * ||A||^2 + sigma2 * ||D||^2) <= 1, where
+                % D is the operator of the prior: ||D||^2 <= 12 for the 3D gradient and <= 16 for the TGV operator. Condat-Vu
+                % step condition with an explicit prior gradient for the PDHG family: 1 / tau >= sigma * L_A + beta * L_R / 2,
+                % where L_R is the curvature bound of the separable priors (priors without a known bound add nothing). FISTA
+                % and FISTAL1 take no prior term. The prior is applied to the main volume only
+                proxPriorNorm = 0;
+                if options.param.CPType && options.param.TGV
+                    proxPriorNorm = 16;
+                elseif options.param.CPType && options.param.ProxTV
+                    proxPriorNorm = 12;
+                end
+                smoothPriorTerm = 0;
+                if options.param.beta > 0 && options.param.CPType
+                    [kappa, unboundedPrior] = separablePriorCurvature(options.param);
+                    if ~unboundedPrior && kappa > 0
+                        smoothPriorTerm = 0.5 * options.param.beta * kappa;
+                    end
+                end
+                if options.param.verbose >= 2 && smoothPriorTerm > 0
+                    disp(['Prior curvature term added to the primal step: ' num2str(smoothPriorTerm)])
+                end
+                priorTerm = zeros(size(s), options.param.cType);
+                priorTerm(1) = options.param.sigma2CP(1) * proxPriorNorm + smoothPriorTerm;
+                options.param.tauCP = 1 ./ (options.param.sigmaCP .* s + priorTerm);
+                if filterStep
+                    % tauCP2 is used by the image filter switch (computeOSEstimates) and tauCPFilt by the measurement
+                    % filter switch (computeForwardStep)
+                    options.param.tauCP2 = 1 ./ (options.param.sigmaCP .* s2 + priorTerm);
+                    if options.param.precondTypeMeas(2)
+                        options.param.tauCPFilt = options.param.tauCP2;
+                    end
+                end
             end
             if (options.param.verbose >= 2 && (options.param.CPType || options.param.FISTA || options.param.FISTAL1))
-                if options.param.precondTypeMeas(2)
+                if filterStep && options.param.precondTypeMeas(2)
                     disp(['Primal step size (tau) is ' num2str(options.param.tauCP(1)) ' with filtering']);
                     disp(['Primal step size (tau) is ' num2str(options.param.tauCPFilt(1)) ' without filtering']);
+                elseif filterStep
+                    disp(['Primal step size (tau) is ' num2str(options.param.tauCP(1)) ' with filtering']);
+                    disp(['Primal step size (tau) is ' num2str(options.param.tauCP2(1)) ' without filtering']);
                 else
                     disp(['Primal step size (tau) is ' num2str(options.param.tauCP(1))]);
                 end
@@ -630,7 +761,7 @@ if ismember(options.param.implementation, [1, 4, 5])
                 if (~options.param.LSQR && ~options.param.CGLS) || iter == 1
                     [uu, rand] = splitMeas(options.param, Sino, options.nMeas, osa_iter, SinD);
                 end
-                [im_vectors, uu, options] = initializationStep(options, uu, im_vectors, options.nMeasSubset(osa_iter), iter, osa_iter);
+                [im_vectors, uu, options] = initializationStep(options, uu, im_vectors, options.nMeasSubset(osa_iter), iter, osa_iter, corrVector);
                 if options.param.verbose > 1
                     disp('Starting forward projection')
                 end
@@ -665,6 +796,11 @@ if ismember(options.param.implementation, [1, 4, 5])
                 if options.param.verbose > 1
                     disp('Forward projection complete')
                 end
+                % The type 6 forward projection is clamped to epps before it is stored and used by any algorithm, as in
+                % reconstructionAF.h
+                if options.param.projector_type == 6
+                    outputFP(outputFP < options.param.epps) = options.param.epps;
+                end
                 % if options.param.listmode
                 %    if iter == 1 && osa_iter == 1
                 %       lor_a = lor_pixel_count_prepass(options.param, false);
@@ -673,28 +809,33 @@ if ismember(options.param.implementation, [1, 4, 5])
                 %       end
                 %    end
                 % end
-                [outputFP, options.param, im_vectors, uu] = computeForwardStep(options.param, uu, outputFP, osa_iter, iter, options.nMeasSubset(osa_iter), 1, im_vectors, rand);
+                % The raw forward projection is stored before the randoms/scatter and the algorithm-specific steps (as in the
+                % native code). With one subset or subset types >= 8 it is stored as nRowsD x nColsD x (projections * TOF bins),
+                % as in implementation 2
                 if options.param.storeFP
-                    if options.param.subset_type < 8 && options.param.subsets > 1
-                        fp(options.index(options.nMeas(osa_iter) + 1 : options.nMeas(osa_iter + 1)) + options.param.totMeas * (iter - 1)) = outputFP;
-                    elseif options.param.subsets == 1
-                        fp(:,:,:,iter) = reshape(outputFP, options.param.nRowsD, options.param.nColsD, []);
+                    fpIdx = (llo - 1) * options.param.Niter * options.param.subsets + (iter - 1) * options.param.subsets + osa_iter;
+                    if (options.param.subsets == 1 || options.param.subset_type >= 8) && options.param.listmode == 0
+                        fp{fpIdx} = reshape(outputFP, options.param.nRowsD, options.param.nColsD, []);
                     else
-                        fp(:, :, options.index(options.nMeas(osa_iter) + 1 : options.nMeas(osa_iter + 1)), iter) = reshape(outputFP, options.param.nRowsD, options.param.nColsD, []);
+                        fp{fpIdx} = outputFP;
                     end
                 end
-                if (options.param.CT && (options.param.ACOSEM || options.param.OSL_COSEM > 0 || options.param.OSEM || options.param.COSEM || options.param.ECOSEM || ...
-                        options.param.ROSEM || options.param.OSL_OSEM || options.param.ROSEM_MAP))
+                [outputFP, options.param, im_vectors, uu] = computeForwardStep(options.param, uu, outputFP, osa_iter, iter, options.nMeasSubset(osa_iter), 1, im_vectors, rand);
+                CTOSEMBranch = options.param.CT && (options.param.ACOSEM || options.param.OSL_COSEM > 0 || options.param.OSEM || options.param.COSEM || options.param.ECOSEM || ...
+                        options.param.ROSEM || options.param.OSL_OSEM || options.param.ROSEM_MAP);
+                if CTOSEMBranch
+                    % The sensitivity image of the CT OSEM-type methods is the backprojection of the subset data (with
+                    % randoms/scatter of y * exp(-FP) / (exp(-FP) + r)) and it is specific to each subset, as in the native code.
+                    % With randoms/scatter it changes every sub-iteration. Without them it is computed on the first iteration and
+                    % stored for each subset (saveSens), or recomputed every sub-iteration when only one sensitivity image is
+                    % kept (~saveSens)
                     noSensIm = 1;
                     if (options.param.randoms_correction)
                         OSEMapu = (uu .* outputFP) ./ (outputFP + rand);
-                    elseif (iter == 1  || (~options.param.saveSens && noSensIm == 0))
+                    elseif (iter == 1  || ~options.param.saveSens)
                         OSEMapu = uu;
                     end
-                end
-                if (options.param.CT && (options.param.ACOSEM || options.param.OSL_COSEM > 0 || options.param.OSEM || options.param.COSEM || options.param.ECOSEM || ...
-                        options.param.ROSEM || options.param.OSL_OSEM || options.param.ROSEM_MAP))
-                    if (options.param.randoms_correction || iter == 1 || (~options.param.saveSens && noSensIm == 0))
+                    if (options.param.randoms_correction || iter == 1 || ~options.param.saveSens)
 
                         if options.param.implementation == 1 && options.param.nMultiVolumes == 0
                             if ~options.param.saveSens
@@ -744,6 +885,12 @@ if ismember(options.param.implementation, [1, 4, 5])
                     else
                         im_vectors.rhs = backwardProject(options, outputFP, osa_iter, corrVector);
                     end
+                    % With a PSF the blurred backprojections are not exactly zero in voxels without sensitivity, and the ratio of
+                    % two such values is meaningless (the native code uses the same guard for the methods that store the
+                    % sensitivity image)
+                    if CTOSEMBranch && options.param.use_psf && (options.param.OSEM || options.param.ROSEM || options.param.OSL_OSEM || options.param.ROSEM_MAP || options.param.ECOSEM)
+                        [im_vectors.Sens, im_vectors.rhs] = guardCTOSEMSensitivity(im_vectors.Sens, im_vectors.rhs, osa_iter, options.param.epps);
+                    end
                 else
                     if options.param.implementation == 1 && options.param.nMultiVolumes == 0
                         im_vectors.rhs = A * outputFP;
@@ -790,7 +937,7 @@ if ismember(options.param.implementation, [1, 4, 5])
                 if options.param.subsets > 1
                     clear A
                 end
-                [im_vectors, options] = computeOSEstimates(im_vectors, options, iter, osa_iter, uu, corrVector);
+                [im_vectors, options] = computeOSEstimates(im_vectors, options, iter, osa_iter, uu, corrVector, rand);
                 if options.param.verbose > 0 && options.param.subsets > 1
                     disp(['Sub-iteration ' num2str(osa_iter) ' completed'])
                 end
@@ -955,6 +1102,50 @@ elseif nargout > 4
     varargout{4} = [];
 end
 
+end
+
+function [Sens, rhs] = guardCTOSEMSensitivity(Sens, rhs, osa_iter, epps)
+% Guard of the CT OSEM-type updates against voxels with (near) zero sensitivity when a PSF is used (as
+% guardCTOSEMSensitivity in functions.hpp). The numerator and the sensitivity image of these updates are both
+% blurred backprojections, which are not exactly zero in voxels that no ray covers. Voxels with a sensitivity of at
+% most max(epps, 1e-6 * max(sensitivity)) are therefore handled exactly like voxels without sensitivity: the
+% sensitivity is set to epps and the numerator (backprojection) to zero. Each volume of a multi-resolution
+% reconstruction uses its own maximum. Sens holds either one sensitivity image or one for each subset
+if iscell(Sens)
+    for ii = 1 : numel(Sens)
+        [Sens{ii}, rhs{ii}] = guardCTOSEMSensitivity(Sens{ii}, rhs{ii}, osa_iter, epps);
+    end
+    return
+end
+if size(Sens, 2) > 1
+    col = osa_iter;
+else
+    col = 1;
+end
+thr = max(epps, 1e-6 * max(Sens(:, col)));
+guarded = Sens(:, col) <= thr;
+Sens(guarded, col) = epps;
+rhs(guarded) = 0;
+end
+
+function [D, Summ] = listModeSensitivityScale(S, param, subsets)
+% Scales the list-mode sensitivity image S (backprojection over all detector pairs) as the native implementation 2
+% (reconstructionAF.h): the PSF is applied to the backprojection, the values below epps are set to epps, D = S / subsets
+% and the per-subset sensitivity image Summ = S / subsets + epps. S is a cell array with multi-resolution volumes
+if iscell(S)
+    D = cell(size(S));
+    Summ = cell(size(S));
+    for ii = 1 : numel(S)
+        [D{ii}, Summ{ii}] = listModeSensitivityScale(S{ii}, param, subsets);
+    end
+    return
+end
+if param.use_psf
+    S = computeConvolution(S, param, param.Nx(1), param.Ny(1), param.Nz(1), param.gaussK);
+end
+S(S < param.epps) = param.epps;
+D = S ./ subsets;
+Summ = D + param.epps;
 end
 
 function [kappa, unbounded] = separablePriorCurvature(param)

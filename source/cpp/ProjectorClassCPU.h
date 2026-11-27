@@ -29,7 +29,10 @@ class ProjectorClass {
 public:
 	bool type6Error = false;
 	uint8_t no_norm = 0;
-	float* d_x, * d_z, * input, * output, * SensIm = nullptr, *d_norm = nullptr, *d_atten = nullptr, * extraCor = nullptr;
+	// d_xFull is the detector (crystal) coordinate table and is never overwritten (GPU d_x[0][0] / d_xFull). The list-mode event
+	// coordinates of the current subset are a local pointer in forwardProjection/backwardProjection, so that the list-mode sensitivity
+	// image (compSens) always uses the detector table, like the GPU (d_xFull)
+	float* d_xFull = nullptr, * d_z, * input, * output, * SensIm = nullptr, *d_norm = nullptr, *d_atten = nullptr, * extraCor = nullptr;
 	uint16_t* detIndices = nullptr, *zIndex = nullptr;
 	uint32_t* xyIndex = nullptr;
 	CPUVectors vec_opencl;
@@ -49,6 +52,10 @@ public:
 		// Number of detector indices
 		param.size_x = inputScalars.nRowsD;
 		param.attenuationCorrection = inputScalars.attenuation_correction;
+		// Image-based (true) or measurement-based (false, GPU -DATNM) attenuation correction
+		param.CTAttenuation = inputScalars.CTAttenuation;
+		// Total length (true, GPU -DTOTLENGTH) or the in-FOV length (false) of the ray is used in the normalization of the PET rays
+		param.useTotLength = inputScalars.useTotLength;
 		param.normalizationCorrection = inputScalars.normalization_correction;
 		param.scatterCorrectionMult = inputScalars.scatter;
 		param.globalFactor = inputScalars.global_factor;
@@ -69,6 +76,8 @@ public:
 		param.nRays3D = inputScalars.n_rays3D;
 		if (inputScalars.nLayers > 1)
 			param.nLayers = true;
+		// Number of detector layers, the list-mode sensitivity image enumerates all nLayers^2 layer pairs (GPU -DNLAYERS)
+		param.nLayerCount = inputScalars.nLayers > 1 ? inputScalars.nLayers : 1U;
 		param.computeSensIm = inputScalars.computeSensImag;
 		param.rings = inputScalars.rings;
 		param.epps = inputScalars.epps;
@@ -93,13 +102,50 @@ public:
         param.coneOfResponseStdCoeffB = inputScalars.coneOfResponseStdCoeffB;
         param.coneOfResponseStdCoeffC = inputScalars.coneOfResponseStdCoeffC;
 		// END SPECT EDIT
+		if (inputScalars.SPECT) {
+			// Support the SPECT rays are clipped to (GPU: extendRayToEllipse), ellipsePower is FLT_MAX for the box support
+			param.ellipseCenterX = inputScalars.ellipseCenterX;
+			param.ellipseCenterY = inputScalars.ellipseCenterY;
+			param.ellipseCenterZ = inputScalars.ellipseCenterZ;
+			param.ellipseRadiusX = inputScalars.ellipseRadiusX;
+			param.ellipseRadiusY = inputScalars.ellipseRadiusY;
+			param.ellipseRadiusZ = inputScalars.ellipseRadiusZ;
+			param.ellipsePower = inputScalars.ellipsePower;
+		}
 		return 0;
+	}
+
+	// SPECT: the detector head vector of the current subset/time step (selects the ray shifts of the head). The detector head vector is
+	// concatenated over the time steps and the current subset of the time step starts at pituus[osa_iter + timestep * subsets] (GPU:
+	// d_detectorVector). The projection index of the projector already includes the subset offset pituus[osa_iter] (the same index as the
+	// detector coordinates)
+	inline void setSPECTData(const scalarStruct& inputScalars, const Weighting& w_vec, const uint32_t osa_iter, const uint32_t timestep, const int64_t* pituus) {
+		if (!inputScalars.SPECT)
+			return;
+		if (w_vec.detectorVector != nullptr)
+			param.detectorVector = w_vec.detectorVector + (pituus[osa_iter + static_cast<size_t>(timestep) * inputScalars.subsets] - pituus[osa_iter]);
+		else
+			param.detectorVector = nullptr;
+	}
+
+	// The attenuation data of the current subset/time step, the same data as the GPU projector class uses:
+	// measurement-based attenuation (CTAttenuation == false) has one value per measurement, the current subset starts at the same
+	// offset as the normalization data. Attenuation images are per time step if more than one image is input
+	inline void setAttenuation(const scalarStruct& inputScalars, const uint32_t osa_iter, const uint32_t timestep, const int64_t* pituus, const size_t vecSize) {
+		if (!inputScalars.attenuation_correction)
+			return;
+		if (!inputScalars.CTAttenuation)
+			param.atten = &d_atten[pituus[osa_iter] * vecSize];
+		else if (inputScalars.size_atten > static_cast<size_t>(inputScalars.im_dim[0]))
+			param.atten = &d_atten[static_cast<size_t>(inputScalars.im_dim[0]) * static_cast<size_t>(timestep)];
+		else
+			param.atten = d_atten;
 	}
 
 	inline int createBuffers(scalarStruct& inputScalars, Weighting& w_vec, const float* x, const float* z_det, const uint32_t* xy_index,
 		const uint16_t* z_index, const uint16_t* L, const int64_t* pituus, const float* atten, const float* norm, const float* extraCorr,
 		const std::vector<int64_t>& length, const RecMethods& MethodList, const int type = 0) {
-		d_x = const_cast<float*>(x);
+		d_xFull = const_cast<float*>(x);
 		d_z = const_cast<float*>(z_det);
 		if (inputScalars.size_norm > 1ULL && inputScalars.normalization_correction)
 			d_norm = const_cast<float*>(norm);
@@ -149,8 +195,7 @@ public:
 		param.bx = inputScalars.bx[ii];
 		param.by = inputScalars.by[ii];
 		param.bz = inputScalars.bz[ii];
-		if (inputScalars.attenuation_correction)
-			param.atten = d_atten;
+		setAttenuation(inputScalars, osa_iter, timestep, pituus, vecSize);
 		if (inputScalars.size_norm > 1ULL && inputScalars.normalization_correction)
 			param.normCoefs = &d_norm[pituus[osa_iter] * vecSize];
 		if (inputScalars.size_scat > 1ULL && inputScalars.scatter == 1U)
@@ -159,15 +204,18 @@ public:
 			param.xy_index = &xyIndex[pituus[osa_iter] * vecSize];
 			param.z_index = &zIndex[pituus[osa_iter] * vecSize];
 		}
+		// List-mode: the event coordinates of the current subset, otherwise the detector coordinate table
+		const float* xCoord = d_xFull;
 		if (param.listMode > 0)
-			d_x = &w_vec.listCoord[pituus[osa_iter] * 6];
+			xCoord = &w_vec.listCoord[pituus[osa_iter] * 6];
 		param.currentSubset = osa_iter;
 		// Offset (in projections/sinograms) to the first measurement of the current subset, required by subset types >= 8
 		param.nMeas = pituus[osa_iter];
 		param.computeSensIm = false;
 		param.projType = inputScalars.FPType;
+		setSPECTData(inputScalars, w_vec, osa_iter, timestep, pituus);
 
-		projectorType123Implementation4<float>(param, length[osa_iter] * vecSize, d_output, d_x, d_z, vec_opencl.d_im_os, inputScalars.CT, inputScalars.SPECT, 1, SensIm, detIndices);
+		projectorType123Implementation4<float>(param, length[osa_iter] * vecSize, d_output, xCoord, d_z, vec_opencl.d_im_os, inputScalars.CT, inputScalars.SPECT, 1, SensIm, detIndices);
 
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrint("Forward projection completed");
@@ -181,8 +229,17 @@ public:
 		if ((inputScalars.PET || inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0)
 			vecSize = static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD);
 		int64_t nMeas = length[osa_iter] * vecSize;
-		if (compSens && param.listMode > 0)
-			nMeas = inputScalars.det_per_ring * inputScalars.det_per_ring * inputScalars.rings * inputScalars.rings;
+		// List-mode sensitivity image: all ordered detector pairs of all ring pairs and layer pairs (64-bit count, the same m_size as the GPU,
+		// reconstructionAF.h), the pair index is enumerated in projectorType123Implementation4 as in projectorType123.cl (SENS)
+		if (compSens && param.listMode > 0) {
+			uint64_t nPairs = static_cast<uint64_t>(inputScalars.det_per_ring) * static_cast<uint64_t>(inputScalars.det_per_ring) *
+				static_cast<uint64_t>(inputScalars.rings) * static_cast<uint64_t>(inputScalars.rings);
+			if (inputScalars.nLayers > 1)
+				nPairs *= static_cast<uint64_t>(inputScalars.nLayers) * static_cast<uint64_t>(inputScalars.nLayers);
+			nMeas = static_cast<int64_t>(nPairs);
+		}
+		// The detector coordinate table, or the list-mode event coordinates of the current subset (set below)
+		const float* xCoord = d_xFull;
 		if (DEBUG) {
 			mexPrintBase("nMeas = %u\n", nMeas);
 			mexPrintBase("no_norm = %u\n", no_norm);
@@ -201,8 +258,7 @@ public:
 		param.bx = inputScalars.bx[ii];
 		param.by = inputScalars.by[ii];
 		param.bz = inputScalars.bz[ii];
-		if (inputScalars.attenuation_correction)
-			param.atten = d_atten;
+		setAttenuation(inputScalars, osa_iter, timestep, pituus, vecSize);
 		if (compSens) {
 			if (inputScalars.size_norm > 1ULL && inputScalars.normalization_correction)
 				param.normCoefs = d_norm;
@@ -221,7 +277,7 @@ public:
 				param.z_index = &zIndex[pituus[osa_iter] * vecSize];
 			}
 			if (param.listMode > 0)
-				d_x = &w_vec.listCoord[pituus[osa_iter] * 6];
+				xCoord = &w_vec.listCoord[pituus[osa_iter] * 6];
 			param.noSensImage = no_norm;
 			param.computeSensIm = false;
 		}
@@ -229,8 +285,10 @@ public:
 		param.currentSubset = osa_iter;
 		// Offset (in projections/sinograms) to the first measurement of the current subset, required by subset types >= 8
 		param.nMeas = pituus[osa_iter];
+		if (!compSens)
+			setSPECTData(inputScalars, w_vec, osa_iter, timestep, pituus);
 
-		projectorType123Implementation4<float>(param, nMeas, vec_opencl.d_rhs_os[ii], d_x, d_z, d_output, inputScalars.CT, inputScalars.SPECT, 2, d_Summ[uu], detIndices);
+		projectorType123Implementation4<float>(param, nMeas, vec_opencl.d_rhs_os[ii], xCoord, d_z, d_output, inputScalars.CT, inputScalars.SPECT, 2, d_Summ[uu], detIndices);
 		return 0;
 	}
 
@@ -270,8 +328,8 @@ public:
 		const uint32_t pNy = inputScalars.Ny[0] + 2u * (w_vec.Ndy + w_vec.Nly);
 		const uint32_t pNz = inputScalars.Nz[0] + 2u * (w_vec.Ndz + w_vec.Nlz);
 		NLMFunc(d_W, w_vec.NLM_ref, d_inputB, d_gaussianNLM, w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, w_vec.Nlx, w_vec.Nly, w_vec.Nlz, pNx,
-			pNy, pNz, static_cast<int32_t>(pNx * pNy), w_vec.h2, type, w_vec.RDP_gamma, inputScalars.epps, w_vec.GGMRF_p, w_vec.GGMRF_q, w_vec.GGMRF_c,
-			w_vec.NLM_anatomical);
+			pNy, pNz, static_cast<int64_t>(pNx) * static_cast<int64_t>(pNy), w_vec.h2, type, w_vec.RDP_gamma, inputScalars.epps, w_vec.GGMRF_p, w_vec.GGMRF_q, w_vec.GGMRF_c,
+			w_vec.NLM_anatomical, d_maskPrior, d_eFOVIndices, maskPriorZ);
 		if (inputScalars.verbose >= 3)
 			mexPrint("OpenMP NLM gradient computed");
 		return 0;
@@ -280,7 +338,7 @@ public:
 	inline int computeRDP(const scalarStruct& inputScalars, const float gamma, const float beta, const bool RDPLargeNeighbor = false, const bool useRDPRef = false) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting OpenMP RDP gradient computation");
-		RDPKernel(d_W, d_inputB, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], inputScalars.NxOrig, inputScalars.NyOrig, inputScalars.NzOrig, gamma, inputScalars.epps, beta);
+		RDPKernel(d_W, d_inputB, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], inputScalars.NxOrig, inputScalars.NyOrig, inputScalars.NzOrig, gamma, inputScalars.epps, beta, d_maskPrior, d_eFOVIndices, maskPriorZ);
 		if (inputScalars.verbose >= 3)
 			mexPrint("OpenMP RDP gradient computed");
 		return 0;
@@ -293,7 +351,13 @@ public:
 			mexPrintBase("data.TV_use_anatomical = %u\n", data.TV_use_anatomical);
 			mexEval();
 		}
-		TVKernel(d_W, d_inputB, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], inputScalars.NxOrig, inputScalars.NyOrig, inputScalars.NzOrig, sigma, smooth, beta, type, data.TV_use_anatomical, C, d_refIm);
+		// With an anatomical reference image, the GPU only defines the reference image variants (TV types 1, 2 and 5). TV types 4 (SATV) and 6 (TVW1)
+		// are therefore computed as the standard TV, same as the GPU
+		int tvType = type;
+		if (data.TV_use_anatomical && (type == 4 || type == 6))
+			tvType = 0;
+		TVKernel(d_W, d_inputB, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], inputScalars.NxOrig, inputScalars.NyOrig, inputScalars.NzOrig, sigma, smooth, beta, tvType, data.TV_use_anatomical, C, d_refIm,
+			d_maskPrior, d_eFOVIndices, maskPriorZ);
 		if (inputScalars.verbose >= 3)
 			mexPrint("OpenMP TV gradient computed");
 		return 0;
@@ -302,7 +366,7 @@ public:
 	inline int computeGGMRF(const scalarStruct& inputScalars, const float p, const float q, const float c, const float pqc, const float beta) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting OpenMP GGMRF gradient computation");
-		GGMRFKernel(d_W, d_inputB, weights, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], p, q, c, pqc, beta, Ndx, Ndy, Ndz);
+		GGMRFKernel(d_W, d_inputB, weights, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], p, q, c, pqc, beta, Ndx, Ndy, Ndz, d_maskPrior, d_eFOVIndices, maskPriorZ);
 		if (inputScalars.verbose >= 3)
 			mexPrint("OpenMP GGMRF gradient computed");
 		return 0;
@@ -311,7 +375,7 @@ public:
 	inline int hyperGradient(const scalarStruct& inputScalars, const float sigma, const float beta) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting OpenMP hyperbolic gradient computation");
-		hyperbolicKernel(d_W, d_inputB, weights, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], sigma, beta, Ndx, Ndy, Ndz);
+		hyperbolicKernel(d_W, d_inputB, weights, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], sigma, beta, Ndx, Ndy, Ndz, d_maskPrior, d_eFOVIndices, maskPriorZ);
 		if (inputScalars.verbose >= 3)
 			mexPrint("OpenMP hyperbolic gradient computed");
 		return 0;

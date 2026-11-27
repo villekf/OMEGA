@@ -21,7 +21,14 @@ else
     end
 end
 if options.randoms_correction && nargout >= 2
-    varargout{1} = varargin{1}(pituus(ll) * kerroin + 1 : pituus(ll + 1) * kerroin);
+    if options.TOF && isfield(options, 'randomsTOF') && options.randomsTOF
+        % TOF-sized randoms are split like the measurements (TOF bins are the slowest dimension)
+        r = reshape(varargin{1}, numel(varargin{1}) / options.TOF_bins, options.TOF_bins);
+        r = r(pituus(ll) * kerroin + 1 : pituus(ll + 1) * kerroin, :);
+        varargout{1} = r(:);
+    else
+        varargout{1} = varargin{1}(pituus(ll) * kerroin + 1 : pituus(ll + 1) * kerroin);
+    end
 elseif nargout >= 2
     varargout{1} = cast([], options.cType);
 end

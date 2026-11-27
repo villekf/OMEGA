@@ -678,6 +678,17 @@ def _load_reference_image(options, value, resize=True, emptyMessage=None,
         value = value.ravel('F').astype(dtype=np.float32)
     return value
 
+def _expandScalarRelaxation(value, options):
+    """Expands a scalar relaxation value to the decaying relaxation schedule (one value per iteration), as in prepass_phase.m."""
+    iterations = np.arange(1, options.Niter + 1, dtype=np.float64)
+    if options.stochasticSubsetSelection:
+        valueT = np.ravel(value)[0] / (0.4 / options.subsets * iterations + 1.)
+    else:
+        valueT = np.ravel(value)[0] / ((iterations - 1.) / 20. + 1.)
+    if options.CT and not options.SART and not options.ASD_POCS:
+        valueT = valueT / 10000.
+    return valueT.astype(np.float32)
+
 def _compute_lambda_vals(niter, subsets, stochastic):
     """
     Vectorized form of the per-iteration relaxation parameter loop used for
@@ -797,7 +808,7 @@ def _perLORFactor(sinM, factor, tofBins, divide):
 _CT_COUNT_ALGORITHMS = ('OSEM', 'ROSEM', 'OSL_OSEM', 'ROSEM_MAP', 'RAMLA', 'BSREM', 'RBI', 'OSL_RBI', 'DRAMA', 'MBSREM', 'MRAMLA', 'SPS', 'PKMA', 'SAGA')
 _CT_ALGORITHMS = ('OSEM', 'MRAMLA', 'RAMLA', 'RBI', 'ROSEM', 'DRAMA', 'COSEM', 'ECOSEM', 'ACOSEM', 'LSQR', 'CGLS', 'FDK', 'FISTA', 'FISTAL1',
                   'OSL_OSEM', 'MBSREM', 'BSREM', 'OSL_RBI', 'OSL_COSEM', 'ROSEM_MAP', 'PKMA', 'SPS', 'SART', 'ASD_POCS', 'SAGA', 'BB',
-                  'PDHG', 'PDHGL1', 'PDDY', 'PDHGKL', 'CV')
+                  'PDHG', 'PDHGL1', 'PDDY', 'PDHGKL')
 
 
 def _ctNormalizationSetup(options):
@@ -853,8 +864,6 @@ def _ctNormalizationSetup(options):
         return 2
     if anyCount:
         return 1
-    if int(options.projector_type) % 10 == 5:
-        raise ValueError('CT normalization with linearized data is not supported with backprojection type 5')
     return 3
 
 
@@ -1962,6 +1971,12 @@ def parseInputs(options, mDataFound = False):
         options.CT_attenuation = True
         # The internal mirror used by the library interface (see addProjector())
         options.CTAttenuation = True
+    # The sensitivity image of list-mode PET data is computed over all detector pairs, but the measurement-based attenuation has
+    # one value for each measurement (event), i.e. it would be indexed past its end. Checked after the switch above
+    if (not options.CT and not options.SPECT and (options.listmode or options.useIndexBasedReconstruction)
+            and options.compute_sensitivity_image and options.attenuation_correction and not options.CT_attenuation):
+        raise ValueError('List-mode reconstruction cannot compute the sensitivity image with measurement-based attenuation (CT_attenuation = False). '
+                         'Use an attenuation image (CT_attenuation = True) or disable the computation of the sensitivity image (compute_sensitivity_image = False).')
     single_frame_list = (
         options.Nt <= 1 and isinstance(options.SinM, list)
     )
@@ -2530,7 +2545,10 @@ def computeWeights(options, GGMRF):
                 dist = np.sqrt(Xg**2 + Yg**2)
             else:
                 dist = np.sqrt(Xg**2 + Yg**2 + Zg**2)
-        options.weights = 1.0 / dist.flatten(order='F')
+        # The centre voxel has distance 0; its inf weight marks the centre and
+        # is removed or replaced later (quadWeights, huberWeights, weightedWeights).
+        with np.errstate(divide='ignore'):
+            options.weights = 1.0 / dist.flatten(order='F')
         options.weights = options.weights.astype(dtype=np.float32)
         
 def quadWeights(options, isEmpty):
@@ -2666,11 +2684,9 @@ def computeOffsets(options):
     and explicitly subtracts 1 at the end for implementation 2; both are
     folded together here since implementation 2 is the only path).
 
-    This is a literal translation of the MATLAB ndgrid/sub2ind construction,
-    including its quirk of always building the neighborhood grid from Ndx
-    (not Ndy/Ndz) and only special-casing an Ndz that differs from Ndx -- so
-    it is only exercised/verified here for the common Ndx == Ndy case that
-    the rest of OMEGA assumes for this prior family.
+    The neighborhood is the full box (2*Ndx+1) x (2*Ndy+1) x (2*Ndz+1)
+    (Ndz = 0 gives a single slice), built with ndgrid/sub2ind as in the
+    MATLAB code.
 
     Parameters
     ----------
@@ -2686,37 +2702,14 @@ def computeOffsets(options):
     Ndx = int(options.Ndx); Ndy = int(options.Ndy); Ndz = int(options.Ndz)
     N = Nx * Ny * Nz
     s = (Nx + Ndx * 2, Ny + Ndy * 2, Nz + Ndz * 2)
-    N_pad = min(3, Ndx + Ndy + Ndz)
 
-    # ndgrid(1:(Ndx*2+1)) called with N_pad output arguments: N_pad arrays,
-    # each of shape (a,)*N_pad (1-based values, matching MATLAB exactly,
-    # including that the range is always driven by Ndx even for the
-    # "y"/"z" grids).
-    a = Ndx * 2 + 1
-    vec = np.arange(1, a + 1, dtype=np.int64)
-    if N_pad >= 1:
-        c1 = list(np.meshgrid(*([vec] * N_pad), indexing='ij'))
-    else:
-        c1 = []
-    c2 = [Ndy + 1] * N_pad
-
-    if N_pad == 3:
-        if Ndz > Ndx and Ndz > 1:
-            pad_shape = c1[0].shape[:2] + (Ndz,)
-            for i in range(3):
-                c1[i] = np.concatenate([c1[i], np.zeros(pad_shape, dtype=c1[i].dtype)], axis=2)
-            total_len = c1[0].shape[2]
-            for kk in range(Ndz - 1, -1, -1):
-                idx = total_len - 1 - kk
-                c1[0][:, :, idx] = c1[0][:, :, idx - 1]
-                c1[1][:, :, idx] = c1[1][:, :, idx - 1]
-                c1[2][:, :, idx] = c1[2][:, :, idx - 1] + 1
-            c2[2] = Ndz + 1
-        elif Ndz < Ndx and Ndz > 1:
-            del_pos = a - 1 - 2 * (Ndx - Ndz)
-            for i in range(3):
-                c1[i] = np.delete(c1[i], del_pos, axis=2)
-            c2[2] = Ndz + 1
+    # Full neighborhood box (2*Ndx+1) x (2*Ndy+1) x (2*Ndz+1), x fastest
+    # (column-major), centred at (Ndx+1, Ndy+1, Ndz+1). The number of
+    # offsets is exactly dimmu = (2*Ndx+1)*(2*Ndy+1)*(2*Ndz+1).
+    c1 = list(np.meshgrid(np.arange(1, 2 * Ndx + 2, dtype=np.int64),
+                          np.arange(1, 2 * Ndy + 2, dtype=np.int64),
+                          np.arange(1, 2 * Ndz + 2, dtype=np.int64), indexing='ij'))
+    c2 = [Ndx + 1, Ndy + 1, Ndz + 1]
 
     offsets = _sub2ind_f(s, c1) - _sub2ind_f(s, c2)
     offsets = offsets.flatten(order='F')
@@ -2935,14 +2928,14 @@ def fmhWeights(options):
                         if iii == 0:
                             apu[hhh] = options.fmh_center_weight
                         else:
-                            apu[hhh] = kerroin / abs(distX * iii)
+                            apu[hhh] = kerroin / abs(distY * iii)
                         hhh += 1
                 elif jjj == 4:
                     for iii in range(Ndx, -Ndx - 1, -1):
                         if iii == 0:
                             apu[hhh] = options.fmh_center_weight
                         else:
-                            apu[hhh] = kerroin / abs(distY * iii)
+                            apu[hhh] = kerroin / abs(distX * iii)
                         hhh += 1
                 options.fmh_weights[:, jjj - 1] = apu
         else:
@@ -2968,14 +2961,14 @@ def fmhWeights(options):
                                 if iii == 0:
                                     apu[hhh] = options.fmh_center_weight
                                 else:
-                                    apu[hhh] = kerroin / math.sqrt((distZ * iii) ** 2 + (distX * iii) ** 2)
+                                    apu[hhh] = kerroin / math.sqrt((distZ * iii) ** 2 + (distY * iii) ** 2)
                                 hhh += 1
                         elif jjj in (4, 6):
                             for iii in range(Ndz, -Ndz - 1, -1):
                                 if iii == 0:
                                     apu[hhh] = options.fmh_center_weight
                                 else:
-                                    apu[hhh] = kerroin / math.sqrt((distZ * iii) ** 2 + (distY * iii) ** 2)
+                                    apu[hhh] = kerroin / math.sqrt((distZ * iii) ** 2 + (distX * iii) ** 2)
                                 hhh += 1
                         elif jjj == 5:
                             for iii in range(Ndz, -Ndz - 1, -1):
@@ -3002,14 +2995,14 @@ def fmhWeights(options):
                                 if iii == 0:
                                     apu[hhh] = options.fmh_center_weight
                                 else:
-                                    apu[hhh] = kerroin / abs(distX * iii)
+                                    apu[hhh] = kerroin / abs(distY * iii)
                                 hhh += 1
                         elif jjj == 4:
                             for iii in range(Ndx, -Ndx - 1, -1):
                                 if iii == 0:
                                     apu[hhh] = options.fmh_center_weight
                                 else:
-                                    apu[hhh] = kerroin / abs(distY * iii)
+                                    apu[hhh] = kerroin / abs(distX * iii)
                                 hhh += 1
                         else:
                             break
@@ -3238,14 +3231,7 @@ def prepassPhase(options):
                 options.lambdaN = options.lambdaN / 10000.
         elif (options.BSREM or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM_MAP or options.ROSEM or options.PKMA or options.SPS or options.SART or options.ASD_POCS or options.SAGA) and np.size(options.lambdaN) == 1 and options.Niter > 1:
             # A scalar relaxation value is the starting value of the decaying relaxation schedule (prepass_phase.m)
-            iterations = np.arange(1, options.Niter + 1, dtype=np.float64)
-            if options.stochasticSubsetSelection:
-                lambdaT = np.ravel(options.lambdaN)[0] / (0.4 / options.subsets * iterations + 1.)
-            else:
-                lambdaT = np.ravel(options.lambdaN)[0] / ((iterations - 1.) / 20. + 1.)
-            if options.CT and not options.SART and not options.ASD_POCS:
-                lambdaT = lambdaT / 10000.
-            options.lambdaN = lambdaT.astype(np.float32)
+            options.lambdaN = _expandScalarRelaxation(options.lambdaN, options)
         elif (options.BSREM or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM_MAP or options.ROSEM or options.PKMA or options.SPS or options.SART or options.ASD_POCS or options.SAGA):
             if np.size(options.lambdaN) < options.Niter:
                 print('Warning: The number of relaxation values must be at least the number of iterations times the number of subsets! Computing custom relaxation values.')
@@ -3406,7 +3392,7 @@ def prepassPhase(options):
             options.Ffilter = np.fft.ifft(options.filter0) * options.sigmaCP[0].item()
         else:
             options.Ffilter = np.fft.ifft(options.filter0) * options.sigmaCP
-        if (options.PDHG or options.PDHGL1 or options.PDHGKL or options.CV or options.PDDY) and options.TGV:
+        if (options.PDHG or options.PDHGL1 or options.PDHGKL or options.PDDY) and options.TGV:
             options.Ffilter = options.Ffilter * options.beta
         options.Ffilter[0] = options.Ffilter[0] + 1
         options.Ffilter = np.real(np.fft.fft(options.Ffilter)).astype(dtype=np.float32)
@@ -3428,5 +3414,11 @@ def prepassPhase(options):
     if isinstance(options.TV_referenceImage, str):
         options.TV_referenceImage = np.empty(0, dtype=np.float32)
     if (options.PKMA or options.MBSREM or options.SPS or options.RAMLA or options.BSREM or options.ROSEM or options.ROSEM_MAP or options.MRAMLA or options.SAGA) and (options.precondTypeMeas[1] or options.precondTypeImage[5]):
-        if (options.lambdaFiltered.size != options.lambdaN.size and options.filteringIterations < options.subsets * options.Niter) or options.lambdaFiltered.size == 0:
+        if np.size(options.lambdaFiltered) == 0:
             options.lambdaFiltered = options.lambdaN
+        elif np.size(options.lambdaFiltered) == 1 and options.Niter > 1:
+            # A scalar value is expanded like a scalar lambdaN
+            options.lambdaFiltered = _expandScalarRelaxation(options.lambdaFiltered, options)
+        elif np.size(options.lambdaFiltered) < options.Niter:
+            raise ValueError('The number of filtered relaxation values (options.lambdaFiltered) needs to be at least equal to the number of iterations!')
+        options.lambdaFiltered = np.ascontiguousarray(options.lambdaFiltered, dtype=np.float32)

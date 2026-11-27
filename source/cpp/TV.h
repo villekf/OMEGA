@@ -56,7 +56,7 @@ inline float3<T> anatTVQ(const T* S, const int64_t x, const int64_t y, const int
 
 template <typename T>
 void TVKernel(T* grad, const T* u, const int Nx, const int Ny, const int Nz, const int NxOrig, const int NyOrig, const int NzOrig, const T sigma, const T epps, const T beta, 
-	const int type, const bool anatomical, const T C = 0.f, const T* S = nullptr, const uint8_t* maskBP = nullptr, const uint8_t* fovIndices = nullptr) {
+	const int type, const bool anatomical, const T C = (T)0., const T* S = nullptr, const uint8_t* maskBP = nullptr, const uint8_t* fovIndices = nullptr, const uint32_t maskBPZ = 1U) {
 
 	setThreads();
 	int64_t start = 0;
@@ -76,6 +76,14 @@ void TVKernel(T* grad, const T* u, const int Nx, const int Ny, const int Nz, con
 		const int64_t z = n / Nxy;
 		const int64_t y = (n - z * Nxy) / static_cast<int64_t>(Nx);
 		const int64_t x = n - z * Nxy - y * static_cast<int64_t>(Nx);
+		// Voxels outside the extended FOV or the prior mask do not contribute, same as the GPU kernel
+		if (fovIndices != nullptr && fovIndices[z] == 0)
+			continue;
+		if (maskBP != nullptr) {
+			const int64_t maskInd = maskBPZ > 1U ? n : x + y * Nx64;
+			if (maskBP[maskInd] == 0)
+				continue;
+		}
 		const T uijk = u[n];
 		if (type == 4) { // START JPTV || SATV
 			float2<T> ux;
@@ -94,7 +102,7 @@ void TVKernel(T* grad, const T* u, const int Nx, const int Ny, const int Nz, con
 			float2<T> uabsx = ux / (fabs2(ux) + epps);
 			float2<T> uabsy = uy / (fabs2(uy) + epps);
 			float2<T> uabsz = uz / (fabs2(uz) + epps);
-			float2<T> output = uabsx - uabsx / (fabs2(ux) / sigma + 1.f) + uabsy - uabsy / (fabs2(uy) / sigma + 1.f) + uabsz - uabsz / (fabs2(uz) / sigma + 1.f);
+			float2<T> output = uabsx - uabsx / (fabs2(ux) / sigma + (T)1.) + uabsy - uabsy / (fabs2(uy) / sigma + (T)1.) + uabsz - uabsz / (fabs2(uz) / sigma + (T)1.);
 			grad[n] += beta * (output.x + output.y);
 		}
 		else {
@@ -135,7 +143,7 @@ void TVKernel(T* grad, const T* u, const int Nx, const int Ny, const int Nz, con
 				w2 = exp3(-w2 * w2);
 				float3<T> w3 = (u3) / sigma;
 				w3 = exp3(-w3 * w3);
-				grad[n] += beta * (-(w4.x * u4.x + w4.y * u4.y + w4.z * u4.z) / pvalijk + (w1.x * (uijk - uijkM.x)) / sqrtVal(u1, epps, type, w1) + (w2.y * (uijk - uijkM.y)) / sqrtVal(u2, epps, type, w2) + (w3.y * (uijk - uijkM.z)) / sqrtVal(u3, epps, type, w3));
+				grad[n] += beta * (-(w4.x * u4.x + w4.y * u4.y + w4.z * u4.z) / pvalijk + (w1.x * (uijk - uijkM.x)) / sqrtVal(u1, epps, type, w1) + (w2.y * (uijk - uijkM.y)) / sqrtVal(u2, epps, type, w2) + (w3.z * (uijk - uijkM.z)) / sqrtVal(u3, epps, type, w3));
 			}
 			else if (type == 1 && anatomical) {
 				// phi_n = sqrt(Q_n(g_n) + epps) with the weights of voxel n, gradient = -(q_m.x + q_m.y + q_m.z) + q_{m-ex}.x + q_{m-ey}.y + q_{m-ez}.z

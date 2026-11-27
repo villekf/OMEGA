@@ -2666,6 +2666,166 @@ class ProjectorClass {
 		return status;
 	}
 
+#if !defined(METAL)
+	// Smallest number of subsets for which no subset of a time step with nProj projections has more than limit projections. Follows the
+	// split of the projections into subsets: subset type 0 (contiguous blocks, the last subset takes the remainder), subset type 12
+	// (pairs of projections half a rotation apart) and the other types (balanced: the first subsets have one extra projection).
+	// Returns 0 if no number of subsets is enough
+	static inline int64_t minSubsetsForProjections(const int64_t nProj, const int64_t limit, const uint32_t subsetType) {
+		if (nProj <= 0 || limit <= 0)
+			return 0;
+		for (int64_t N = 1; N <= nProj; N++) {
+			int64_t maxLen = 0;
+			if (N == 1)
+				maxLen = nProj;
+			else if (subsetType == 0) {
+				const int64_t val = nProj / N;
+				maxLen = (std::max)(val, nProj - val * (N - 1));
+			}
+			else if (subsetType == 12)
+				maxLen = 2 * ((nProj / 2 + N - 1) / N);
+			else
+				maxLen = (nProj + N - 1) / N;
+			if (maxLen <= limit)
+				return N;
+		}
+		return 0;
+	}
+
+	// Maximum width, height and depth of a 3D texture/image of the device. Returns false if the limits could not be queried
+	inline bool getMax3DTextureSize(int64_t& maxW, int64_t& maxH, int64_t& maxD) const {
+#if defined(CUDA) || defined(HIP)
+		int w = 0, h = 0, d = 0;
+		if (cuDeviceGetAttribute(&w, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE3D_WIDTH, CUDeviceID[0]) != CUDA_SUCCESS ||
+			cuDeviceGetAttribute(&h, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE3D_HEIGHT, CUDeviceID[0]) != CUDA_SUCCESS ||
+			cuDeviceGetAttribute(&d, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE3D_DEPTH, CUDeviceID[0]) != CUDA_SUCCESS)
+			return false;
+#elif defined(OPENCL)
+		cl_int s1 = CL_SUCCESS, s2 = CL_SUCCESS, s3 = CL_SUCCESS;
+		const size_t w = CLDeviceID[0].getInfo<CL_DEVICE_IMAGE3D_MAX_WIDTH>(&s1);
+		const size_t h = CLDeviceID[0].getInfo<CL_DEVICE_IMAGE3D_MAX_HEIGHT>(&s2);
+		const size_t d = CLDeviceID[0].getInfo<CL_DEVICE_IMAGE3D_MAX_DEPTH>(&s3);
+		if (s1 != CL_SUCCESS || s2 != CL_SUCCESS || s3 != CL_SUCCESS)
+			return false;
+#endif
+		if (w <= 0 || h <= 0 || d <= 0)
+			return false;
+		maxW = static_cast<int64_t>(w);
+		maxH = static_cast<int64_t>(h);
+		maxD = static_cast<int64_t>(d);
+		return true;
+	}
+
+	// CT: gives a clear error if a 3D texture needed by the projectors exceeds the maximum 3D texture size of the device (otherwise the
+	// texture creation fails with an obscure error). Checks the texture of the measurements of the type 4 and 5 backprojection (one layer
+	// per projection of a subset, when the layered 2D texture is not used) and the textures of the image volume of the forward
+	// projections. Has to be called after the layered texture decisions of createProgram. Returns -1 if a texture does not fit
+	inline int checkTextureLimits(const scalarStruct& inputScalars, const RecMethods& MethodList) const {
+		if (!inputScalars.CT || inputScalars.listmode != 0 || inputScalars.useBuffers)
+			return 0;
+		const bool bpTexture = (inputScalars.BPType == 4 || inputScalars.BPType == 5) && !backprojectionImageLayered(inputScalars);
+		// The FDK does not forward project
+		const bool fpTexture = !MethodList.FDK && inputScalars.FPType >= 1 && inputScalars.FPType <= 5;
+		if (!bpTexture && !fpTexture)
+			return 0;
+		int64_t limW = 0, limH = 0, limD = 0;
+		if (!getMax3DTextureSize(limW, limH, limD))
+			return 0;
+		if (bpTexture) {
+			const int64_t extra = inputScalars.BPType == 5 ? 1 : 0;
+			const int64_t texW = static_cast<int64_t>(inputScalars.nRowsD) + extra;
+			const int64_t texH = static_cast<int64_t>(inputScalars.nColsD) + extra;
+			if (texW > limW) {
+				char msg[512];
+				std::snprintf(msg, sizeof(msg), "The width of the projection images (nRowsD%s = %lld) exceeds the maximum 3D texture width of the device (%lld). "
+					"The projections are read from a 3D texture.\n", extra ? " + 1" : "", static_cast<long long>(texW), static_cast<long long>(limW));
+				mexPrint(msg);
+				return -1;
+			}
+			if (texH > limH) {
+				char msg[512];
+				std::snprintf(msg, sizeof(msg), "The height of the projection images (nColsD%s = %lld) exceeds the maximum 3D texture height of the device (%lld). "
+					"The projections are read from a 3D texture.\n", extra ? " + 1" : "", static_cast<long long>(texH), static_cast<long long>(limH));
+				mexPrint(msg);
+				return -1;
+			}
+			if (inputScalars.maxProjPerCall > limD) {
+				const int64_t minSubsets = minSubsetsForProjections(inputScalars.maxProjPerFrame, limD, inputScalars.subsetType);
+				char msg[512];
+				const int len = std::snprintf(msg, sizeof(msg), "The number of projections in a subset (%lld) exceeds the maximum 3D texture depth of the device (%lld).",
+					static_cast<long long>(inputScalars.maxProjPerCall), static_cast<long long>(limD));
+				if (minSubsets > 0 && len > 0 && len < static_cast<int>(sizeof(msg)))
+					std::snprintf(msg + len, sizeof(msg) - len, " Use at least %lld subsets.", static_cast<long long>(minSubsets));
+				mexPrint(msg);
+				mexPrint("\n");
+				return -1;
+			}
+		}
+		if (fpTexture) {
+			// largeDim is available only with the projector types 4 and 14 (the forward projection of type 4 or 1 and the backprojection of
+			// type 4) and with the algorithms PDHG, PKMA and FDK
+			const bool largeDimSupported = inputScalars.BPType == 4 && (inputScalars.FPType == 1 || inputScalars.FPType == 4) &&
+				(MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.PDDY || MethodList.PKMA || MethodList.FDK);
+			// Checks one texture of the image volume. zDim is the index (0 = width, 1 = height, 2 = depth) of the dimension that is the
+			// axial direction of the volume and zExtra the number of added elements in it. largeDim divides only that one
+			auto checkTexture = [&](const char* texName, const int64_t dims[3], const char* const dimNames[3], const int zDim, const int64_t zExtra,
+				const int64_t Nz, const bool chunk) -> int {
+				const int64_t limits[3] = { limW, limH, limD };
+				const char* const limNames[3] = { "width", "height", "depth" };
+				for (int jj = 0; jj < 3; jj++) {
+					if (dims[jj] <= limits[jj])
+						continue;
+					char msg[768];
+					const int len = std::snprintf(msg, sizeof(msg), "The %s texture exceeds the maximum 3D texture %s of the device in the %s: %lld%s, the limit is %lld.", texName,
+						limNames[jj], dimNames[jj], static_cast<long long>(dims[jj]), (jj == zDim && chunk) ? " (in one largeDim chunk)" : "",
+						static_cast<long long>(limits[jj]));
+					if (jj == zDim && !chunk && inputScalars.nMultiVolumes == 0 && largeDimSupported) {
+						int64_t minChunks = 0;
+						for (int64_t N = 2; N <= Nz; N++) {
+							if (Nz / N + Nz % N + zExtra <= limits[jj]) {
+								minChunks = N;
+								break;
+							}
+						}
+						if (minChunks > 0 && len > 0 && len < static_cast<int>(sizeof(msg)))
+							std::snprintf(msg + len, sizeof(msg) - len, " Use largeDim (options.largeDim = true) with at least %lld subsets.", static_cast<long long>(minChunks));
+					}
+					mexPrint(msg);
+					mexPrint("\n");
+					return -1;
+				}
+				return 0;
+			};
+			for (int kk = 0; kk <= inputScalars.nMultiVolumes; kk++) {
+				const int64_t nx = static_cast<int64_t>(inputScalars.Nx[kk]);
+				const int64_t ny = static_cast<int64_t>(inputScalars.Ny[kk]);
+				int64_t nz = static_cast<int64_t>(inputScalars.Nz[kk]);
+				// With largeDim the first subvolume is the largest
+				const bool chunk = inputScalars.largeDim && kk == 0 && inputScalars.subsets > 1U;
+				if (chunk)
+					nz = nz / static_cast<int64_t>(inputScalars.subsets) + nz % static_cast<int64_t>(inputScalars.subsets);
+				if (inputScalars.FPType != 5) {
+					const int64_t dims[3] = { nx, ny, nz * static_cast<int64_t>(inputScalars.nRekos) };
+					const char* const names[3] = { "x-direction (Nx)", "y-direction (Ny)", "z-direction (Nz)" };
+					if (checkTexture("forward projection image", dims, names, 2, 0, static_cast<int64_t>(inputScalars.Nz[kk]), chunk) != 0)
+						return -1;
+				}
+				else if (!inputScalars.layeredFP5) {
+					const int64_t dimsA[3] = { ny + 1, nz + 1, nx };
+					const char* const namesA[3] = { "y-direction (Ny + 1)", "z-direction (Nz + 1)", "x-direction (Nx)" };
+					if (checkTexture("integral image of the type 5 forward projection", dimsA, namesA, 1, 1, static_cast<int64_t>(inputScalars.Nz[kk]), chunk) != 0)
+						return -1;
+					const int64_t dimsB[3] = { nx + 1, nz + 1, ny };
+					const char* const namesB[3] = { "x-direction (Nx + 1)", "z-direction (Nz + 1)", "y-direction (Ny)" };
+					if (checkTexture("integral image of the type 5 forward projection", dimsB, namesB, 1, 1, static_cast<int64_t>(inputScalars.Nz[kk]), chunk) != 0)
+						return -1;
+				}
+			}
+		}
+		return 0;
+	}
+#endif
+
 	// True if the backprojection input image (measurements of type 4, integral image of the projections of type 5) is a 2D layered texture
 	inline bool backprojectionImageLayered(const scalarStruct& inputScalars) const {
 		return inputScalars.BPType == 5 ? inputScalars.layeredBP5 : inputScalars.layeredBP;
@@ -3112,6 +3272,8 @@ public:
 	AFDEVBUFF_t d_im, d_rhs, d_U, d_refIm, d_RDPref;
 	// Sensitivity image used by fastPDHG
 	AFDEVBUFF_t d_precond;
+	// Stored fused prior gradient of the main volume (fastPDHG with regEveryIter > 1)
+	AFDEVBUFF_t d_priorGradStore;
 	AFDEVBUFF_t d_outputCT;
 	TEX2D_t d_maskFP, d_maskPrior;
 	std::vector<std::vector<TEX2D_t>> d_maskBP;
@@ -3269,6 +3431,10 @@ public:
 	bool fastNLMUsed = false;
 	// 0 = PDHG (and its variants, default), 1 = Poisson (PKMA/MBSREM/BSREM)
 	uint8_t fastAlg = 0;
+	// True if the fused prior gradient is stored and reused between the regularization subiterations (regEveryIter > 1)
+	bool fastRegReuseUsed = false;
+	// 1 = reuse the stored prior gradient in this subiteration, 0 = compute (and store) it
+	uint8_t fastRegReuse = 0;
 	// Scalar values required specifically for the fastPDHG
 	float fastTheta = 0.f, fastTau = 0.f, fastBeta = 0.f, fastEpps = 1e-6f;
 	// Poisson-algorithm (PKMA/MBSREM/BSREM) relaxation parameter and alphaM (PKMA) / U (MBSREM) / 1 (BSREM)
@@ -3635,7 +3801,7 @@ public:
 	template <typename OptionList>
 	inline bool addFastPDHGOptions(OptionList& os_options, const scalarStruct& inputScalars, const Weighting& w_vec,
 		const RecMethods& MethodList, const size_t nVoxZ) {
-		const bool pdhgAlgorithm = MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV;
+		const bool pdhgAlgorithm = MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1;
 		const bool poissonAlgorithm = MethodList.PKMA || MethodList.MBSREM || MethodList.BSREM;
 		if (!pdhgAlgorithm && !poissonAlgorithm)
 			return false;
@@ -3774,7 +3940,10 @@ public:
 					ADD_OPT(os_options, "-DJPTV");
 			}
 		}
-		(void)inputScalars;
+		if (fastNLMUsed && inputScalars.regEveryIter > 1) {
+			fastRegReuseUsed = true;
+			ADD_OPT(os_options, "-DFASTREGREUSE");
+		}
 		return true;
 	}
 
@@ -3958,6 +4127,8 @@ public:
 			std::cerr << "Error while creating program" << std::endl;
 			return -1;
 		}
+		if (checkTextureLimits(inputScalars, MethodList) != 0)
+			return -1;
 #if defined(CUDA) && defined(AF)
 		// The NLM kernels read the Gaussian weights of the patch from the constant memory of their module
 		if (MethodList.NLM) {
@@ -3969,6 +4140,11 @@ public:
 			// The backprojection program contains the NLM gradient only with fastPDHG
 			if (memAlloc.BPMod) {
 				if (fillNLMConstWeights(programBP, w_vec, false) != 0)
+					return -1;
+			}
+			// With FPType 5 and BPType 5 the backprojection kernel is in the forward projection program
+			if (memAlloc.FPMod) {
+				if (fillNLMConstWeights(programFP, w_vec, false) != 0)
 					return -1;
 			}
 		}
@@ -4090,6 +4266,8 @@ public:
 		status = createProgram(CLContext, CLDeviceID[0], programFP, programBP, programAux, programSens, header_directory, inputScalars, 
 			MethodList, w_vec, local_size, type);
 		OCL_CHECK(status, "Error while creating program\n", -1);
+		if (checkTextureLimits(inputScalars, MethodList) != 0)
+			return -1;
 #endif // END CUDA
 		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint(BACKEND_STR " kernels successfully created\n");
@@ -6443,7 +6621,16 @@ public:
 			kParams.fastGGMRFpqc_PDHG = w_vec.GGMRF_pqc;
 			kParams.fastHYPERsigma_PDHG = w_vec.data.SATVPhi;
 			kParams.fastTVsigma_PDHG = w_vec.data.SATVPhi;
+			kParams.fastTVsmooth_PDHG = w_vec.data.TVsmoothing;
 			UINT32_t fastArgumentIndex = 11;
+			if (fastRegReuseUsed) {
+				kParams.fastRegReuse_PDHG = fastRegReuse;
+				KARG_METAL_SLOT(fastArgumentIndex, 28);
+				if (fastStep && ii == 0)
+					KARG(kTemp, kernelBP, fastArgumentIndex, d_priorGradStore);
+				else
+					KARG(kTemp, kernelBP, fastArgumentIndex, d_output);
+			}
 			if (fastAlg == 0) {
 				KARG_METAL_SLOT(fastArgumentIndex, 11);
 				KARG(kTemp, kernelBP, fastArgumentIndex, d_U);
@@ -7089,8 +7276,9 @@ public:
 						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_meanBP);
 					}
 				}
-				if (inputScalars.normalization_correction) {
-					KARG_METAL_SLOT(kernelIndBPSubIter, inputScalars.BPType == 5 ? 9 : 8);
+				// The type 5 kernel has no normalization argument: the projections are normalized before the integral image is formed
+				if (inputScalars.normalization_correction && inputScalars.BPType != 5) {
+					KARG_METAL_SLOT(kernelIndBPSubIter, 8);
 					// TODO: Listmode normalization
 					//if (inputScalars.listmode > 0 && inputScalars.indexBased)
 					//	status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[0]);
@@ -7380,6 +7568,7 @@ public:
 					}
 					else if (MethodList.TV) {
 						KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, w_vec.data.SATVPhi);
+						KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, w_vec.data.TVsmoothing);
 					}
 				}
 				if (fastAlg == 0) {
@@ -7397,6 +7586,16 @@ public:
 				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, fastImOffset);
 				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, fastPriorZOffset);
 				KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, fastStep);
+				// Stored prior gradient (only the main volume uses it, the placeholder is never accessed otherwise)
+				if (fastRegReuseUsed) {
+					if (fastStep != 0 && ii == 0) {
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_priorGradStore);
+					}
+					else {
+						KARG(kTemp, kernelBP, kernelIndBPSubIter, d_output);
+					}
+					KARG_SCALAR(kTemp, kernelBP, kernelIndBPSubIter, fastRegReuse);
+				}
 			}
 #endif // END METAL
 			}

@@ -54,9 +54,11 @@ inline int MBSREM(af::array& im, af::array& rhs, const float U, const std::vecto
 	if (status != 0)
 		return -1;
 #else
+	// The same computation as the GPU PoissonUpdateVoxel (MBSREM, general_opencl_functions.h): the lower bound fmax(epps, .) only with
+	// enforcePositivity (fmax returns epps for a NaN, hence the select on imApu >= epps), then the upper bound U - epps if imApu >= U
 	im = im + lam[iter] * rhs;
-	// Same order as the original: lower clamp first, then the upper clamp on the result (NaN stays NaN)
-	im = af::select(im < inputScalars.epps, inputScalars.epps, im);
+	if (inputScalars.enforcePositivity)
+		im = af::select(im >= inputScalars.epps, im, inputScalars.epps);
 	im = af::select(im >= U, U - inputScalars.epps, im);
 #endif
 	return status;
@@ -71,7 +73,11 @@ inline int BSREM(af::array& im, const af::array& rhs, const std::vector<float> l
 	if (status != 0)
 		return -1;
 #else
-	 im = (im + lam[iter] * im * rhs);
+	// The same computation as the GPU PoissonUpdateVoxel (BSREM, general_opencl_functions.h): the lower bound fmax(epps, .) only with
+	// enforcePositivity (fmax returns epps for a NaN, hence the select on im >= epps), no upper bound
+	im = (im + lam[iter] * rhs * im);
+	if (inputScalars.enforcePositivity)
+		im = af::select(im >= inputScalars.epps, im, inputScalars.epps);
 #endif
 	return status;
 }
@@ -120,7 +126,7 @@ inline af::array ROSEM(const af::array& im, const af::array& Summ, const af::arr
 
 // RBI update
 // cachedMax (optional) caches max(Summ / D) of the beta == 0 branch, 0 means not computed yet
-inline af::array RBI(const af::array& im, const af::array& Summ, const af::array& rhs, const af::array& D = af::constant(0.f, 1, 1), const float beta = 0.f, const af::array& dU = af::constant(0.f, 1, 1), float* cachedMax = nullptr)
+inline af::array RBI(const af::array& im, const af::array& Summ, const af::array& rhs, const af::array& D = af::constant(0.f, 1, 1), const float beta = 0.f, const af::array& dU = af::constant(0.f, 1, 1), float* cachedMax = nullptr, const float epps = 1e-8f)
 {
 	af::array output = im;
 	if (beta == 0.f) {
@@ -136,8 +142,14 @@ inline af::array RBI(const af::array& im, const af::array& Summ, const af::array
 		output += Summa * (im / D) * (rhs);
 	}
 	else {
-		const float Summa = 1.f / af::max<float>((Summ + dU) / (D + dU));
-		output += Summa * (im / (D + dU)) * (rhs - dU);
+		// The denominator (D + prior gradient) is limited like in OSL-OSEM: at least 10 % of D and at least epps where D is ~0
+		// (outside the measured region), so that it cannot change sign or divide by zero with a strong prior.
+		// The floored denominator replaces D + dU in all places, which keeps the OSL form x * BP(y / ybar) / denom (with the RBI
+		// step scaling): rhs = BP(y / ybar) - D, so rhs + D - denom equals rhs - dU when the floor is not active, and
+		// (Summ - D + denom) equals Summ + dU
+		const af::array denom = (af::max)(D + dU, (af::max)(0.1f * D, static_cast<double>(epps)));
+		const float Summa = 1.f / af::max<float>((Summ - D + denom) / denom);
+		output += Summa * (im / denom) * (rhs + D - denom);
 	}
 	return output;
 }
@@ -304,7 +316,7 @@ inline void CGLS(const scalarStruct& inputScalars, Weighting& w_vec, const uint3
 	}
 }
 
-inline int SART(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, AF_im_vectors& vec, ProjectorClass& proj, const af::array& mData, const af::array& g, std::vector<int64_t>& length, const int64_t* pituus, const uint32_t timestep, const uint32_t osa_iter, const uint32_t iter, const af::array& Summ, const af::array& rhs, const float lam, const int ii = 0) {
+inline int SART(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, AF_im_vectors& vec, ProjectorClass& proj, const af::array& mData, const af::array& g, std::vector<int64_t>& length, const int64_t* pituus, const uint32_t timestep, const uint32_t osa_iter, const uint32_t iter, const af::array& Summ, const af::array& rhs, const float lam, const int ii = 0, const std::vector<af::array>* sartFrames = nullptr) {
 	af::array imOld;
 	if (MethodList.prior && !MethodList.POCS)
 		imOld = vec.im_os[timestep][ii].copy();
@@ -324,7 +336,8 @@ inline int SART(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 				vec.im_os[timestep][ii] -= dp * w_vec.beta * vec.dU[timestep];
 
                 if (MethodList.TemporalSmoothness || MethodList.TemporalTV) { // Temporal prior
-                    status = applyTemporalPrior(vec, w_vec, MethodList, inputScalars, proj);
+                    // Only this timestep is computed, with the neighbour frames from the start of the subiteration
+                    status = applyTemporalPrior(vec, w_vec, MethodList, inputScalars, proj, false, sartFrames, static_cast<int>(timestep));
                     if (status != 0) return status;
                     vec.dUt[timestep] /= (af::norm(vec.dUt[timestep]) + inputScalars.epps);
                     af::eval(vec.dUt[timestep]);
@@ -363,8 +376,23 @@ inline void PDHG1(af::array& rhs, const scalarStruct& inputScalars, Weighting& w
 // Final PDHG update step
 // Different methods for subset and non-subset cases
 inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter, const uint32_t timestep, const uint32_t subIter = 0, const int ii = 0, 
-	const int64_t* pituus = nullptr, const af::array& g = af::constant(0.f, 0), const uint64_t m_size = 1, const std::vector<int64_t>& length = std::vector<int64_t>(0)) {
+	const int64_t* pituus = nullptr, const af::array& g = af::constant(0.f, 0), const uint64_t m_size = 1, const std::vector<int64_t>& length = std::vector<int64_t>(0), const bool PDDY = false) {
 	int status = 0;
+	if (PDDY) {
+		// PDDY (Salim, Condat, Mishchenko and Richtarik, JOTA 2022), one subset. On entry im is x = p - gamma * A^T y+ and
+		// rhs = A^T y+ + grad R(x) (the prior gradient was added in computeOSEstimates). The iteration is
+		//   s+ = prox_+(x - gamma * (A^T y+ + grad R(x))),  p+ = p + s+ - x,
+		// and the next forward projection is taken at s+ (= p+ - gamma * A^T y+ of the next iteration). prox_+ is the positivity
+		// clamp if enforcePositivity, otherwise the identity. No image preconditioning or adaptive steps (rejected for PDDY)
+		af::array s = im - w_vec.tauCP[timestep][ii] * rhs;
+		if (inputScalars.enforcePositivity)
+			s = af::select(s < inputScalars.epps, inputScalars.epps, s);
+		vec.uCP[timestep][ii] += s - im;
+		vec.uCP[timestep][ii].eval();
+		im = s;
+		im.eval();
+		return 0;
+	}
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
 	af::array im_old;
 	if (inputScalars.adaptiveType >= 1)

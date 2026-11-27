@@ -1,6 +1,10 @@
-function [grad, varargout] = RDP(im, weights_RDP, gamma, Nx, Ny, Nz, Ndx, Ndy, Ndz, tr_offsets)
+function grad = RDP(im, ~, gamma, Nx, Ny, Nz, ~, ~, ~, ~, varargin)
 %RDP Relative Difference Prior (RDP)
 %   This function computes the gradient of the relative difference prior.
+%   The standard RDP uses only the 6 face neighbors with unit weights and
+%   clamp-to-edge (Neumann) boundary conditions, exactly as the C++/GPU
+%   implementation (non-corner RDP). The weights, Ndx, Ndy, Ndz and
+%   tr_offsets inputs are not used, they are kept for compatibility.
 %
 % Example:
 %   grad = RDP(im, weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz)
@@ -14,7 +18,8 @@ function [grad, varargout] = RDP(im, weights_RDP, gamma, Nx, Ny, Nz, Ndx, Ndy, N
 %   Ndx = How many pixels included in X-direction neighborhood
 %   Ndy = How many pixels included in Y-direction neighborhood
 %   Ndz = How many pixels included in Z-direction neighborhood
-%   tr_offsets = Needed for vectorized indexing
+%   tr_offsets = Not used
+%   epps = Small value used in the denominator (optional, default 1e-6)
 %
 % OUTPUTS:
 % grad = The relative difference prior
@@ -38,65 +43,33 @@ function [grad, varargout] = RDP(im, weights_RDP, gamma, Nx, Ny, Nz, Ndx, Ndy, N
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-im_orig = im(:);
-if Nz==1
-    im = padding(reshape(im,Nx,Ny),[Ndx Ndy]);
+if nargin >= 11 && ~isempty(varargin{1})
+    epps = varargin{1};
 else
-    im = padding(reshape(im,Nx,Ny,Nz),[Ndx Ndy Ndz]);
+    epps = 1e-6;
 end
-if nargout >= 2
-    im = im(:);
-    %     options = varargin{1};
-    weights = [weights_RDP(1:ceil(numel(weights_RDP(:))/2) - 1),weights_RDP(ceil(numel(weights_RDP(:))/2) + 1 : end)]';
-    apu = bsxfun(@minus,im(tr_offsets(:,ceil(numel(weights_RDP(:))/2))),im(tr_offsets(:,[1:(ceil(numel(weights_RDP(:))/2)-1) (ceil(numel(weights_RDP(:))/2)+1):end])))*weights;
-    apu3 = bsxfun(@plus,im(tr_offsets(:,ceil(numel(weights_RDP(:))/2))),im(tr_offsets(:,[1:(ceil(numel(weights_RDP(:))/2)-1) (ceil(numel(weights_RDP(:))/2)+1):end])))*weights;
-    mrf = -apu.^2 ./ (apu3 + gamma * abs(apu));
-    varargout{1} = mrf;
+im = reshape(im, Nx, Ny, Nz);
+epps = cast(epps, 'like', im);
+gamma = cast(gamma, 'like', im);
+% Neighbor indices clamped to the volume (clamp-to-edge)
+xp = min((1:Nx) + 1, Nx);
+xm = max((1:Nx) - 1, 1);
+yp = min((1:Ny) + 1, Ny);
+ym = max((1:Ny) - 1, 1);
+zp = min((1:Nz) + 1, Nz);
+zm = max((1:Nz) - 1, 1);
+% Positive (x + 1, y + 1, z + 1) and negative (x - 1, y - 1, z - 1) side neighbors. NaN is checked separately
+% for the sums of the positive and negative sides, as in the C++ code
+outPos = rdpTerm(im, im(xp, :, :), gamma, epps) + rdpTerm(im, im(:, yp, :), gamma, epps) + rdpTerm(im, im(:, :, zp), gamma, epps);
+outNeg = rdpTerm(im, im(xm, :, :), gamma, epps) + rdpTerm(im, im(:, ym, :), gamma, epps) + rdpTerm(im, im(:, :, zm), gamma, epps);
+outPos(isnan(outPos)) = 0;
+outNeg(isnan(outNeg)) = 0;
+grad = outPos(:) + outNeg(:);
 end
-try
-    weights = [weights_RDP(1:ceil(numel(weights_RDP(:))/2) - 1);weights_RDP(ceil(numel(weights_RDP(:))/2) + 1 : end)];
-    rjk = bsxfun(@rdivide,im(tr_offsets(:,ceil(numel(weights_RDP(:))/2))),im(tr_offsets(:,[1:(ceil(numel(weights_RDP(:))/2)-1) (ceil(numel(weights_RDP(:))/2)+1):end])));
-%     apu = bsxfun(@minus,im(tr_offsets(:,ceil(numel(weights_RDP(:))/2))),im(tr_offsets(:,[1:(ceil(numel(weights_RDP(:))/2)-1) (ceil(numel(weights_RDP(:))/2)+1):end])));
-%     apu2 = bsxfun(@plus,im(tr_offsets(:,ceil(numel(weights_RDP(:))/2))), 3 * im(tr_offsets(:,[1:(ceil(numel(weights_RDP(:))/2)-1) (ceil(numel(weights_RDP(:))/2)+1):end])));
-%     apu3 = bsxfun(@plus,im(tr_offsets(:,ceil(numel(weights_RDP(:))/2))),im(tr_offsets(:,[1:(ceil(numel(weights_RDP(:))/2)-1) (ceil(numel(weights_RDP(:))/2)+1):end])));
-%     grad = -((apu .* (gamma .* abs(apu) + apu2)) ./ (apu3 + gamma .* abs(apu)).^2) * weights;
-    grad = (((rjk - 1) .* (gamma .* abs(rjk - 1) + rjk + 3)) ./ (rjk + 1 + gamma .* abs(rjk - 1)).^2) * weights;
-%     grad = zeros(size(im_orig));
-catch ME
-    warning('Out of memory, switching to slower fallback code')
-    weights_RDP(isinf(weights_RDP)) = 0;
-    weights_RDP = reshape(weights_RDP, Ndx * 2 + 1, Ndy * 2 + 1, Ndz * 2 + 1);
-    im_orig = reshape(im_orig,Nx,Ny,Nz);
-    grad = zeros(size(im_orig));
-    for kk = 1 : numel(grad)
-        x = mod(kk - 1, Nx) + 1;
-        y = mod(floor((kk - 1) / Nx), Ny) + 1;
-        z = floor((kk - 1) / (Nx * Ny)) + 1;
-        for zz = -Ndz : Ndz
-            for yy = -Ndy : Ndy
-                for xx = -Ndx : Ndx
-					if zz == 0 && yy == 0 && xx == 0
-						continue;
-					if x + xx <= 0
-						indx = x + abs(xx);
-					else
-						indx = x + xx;
-					if y + yy <= 0
-						indy = y + abs(yy);
-					else
-						indy = y + yy;
-					if z + zz <= 0
-						indz = z + abs(zz);
-					else
-						indz = z + zz;
-                    apu = im_orig(x, y, z) / im(indx, indy, indz);
-                    grad(x, y, z) = grad(x, y, z) + weights_RDP(xx + Ndx + 1,yy + Ndy + 1,zz + Ndz + 1) * ((apu - 1)*(gamma * abs(apu - 1) + apu + 3)) / (apu + 1 + gamma * abs(apu - 1)).^2;
-                    %                     apu = im_orig(y, x, z) - im(y + yy + 1, x + xx + 1, z + zz + 1);
-                    %                     grad(y, x, z) = -weights_RDP(yy + Ndy + 1,xx + Ndx + 1,zz + Ndz + 1) * (apu * (gamma * abs(apu) + im_orig(y, x, z) + 3 * im(y + yy + 1, x + xx + 1, z + zz + 1))) ...
-                    %                         ./ (im_orig(y, x, z) + im(y + yy + 1, x + xx + 1, z + zz + 1) + gamma * abs(apu)).^2;
-                end
-            end
-        end
-    end
+
+function out = rdpTerm(uj, uk, gamma, epps)
+% One neighbor term of the RDP gradient
+d = uj - uk;
+divPow2 = uj + uk + gamma .* abs(d);
+out = d .* (gamma .* abs(d) + uj + 3 .* uk + epps .* epps) ./ (divPow2 .* divPow2 + epps);
 end
-grad = grad(:);

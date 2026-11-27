@@ -97,6 +97,45 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 	if (DEBUG) {
 		mexPrint("start\n");
 	}
+#ifdef CPU
+	// The CPU projector has no per-event TOF bin, it would write all the TOF bins into a one-bin buffer
+	if (inputScalars.listmode && inputScalars.TOF) {
+		mexPrint("List-mode TOF reconstruction is not supported with the CPU implementation!");
+		return -1;
+	}
+	// The CPU projector never offsets the measurements, coordinates or corrections by the time step
+	if (inputScalars.Nt > 1) {
+		mexPrint("Dynamic (multi-frame) reconstruction is not supported with the CPU implementation!");
+		return -1;
+	}
+	// Raw (non-list-mode) data needs the detector pair list L, which the CPU projector does not read (the same raw/list-mode distinction
+	// as the GPU, where the detector pairs are used if and only if raw == 1 and listmode != 1, see ProjectorClass.h)
+	if (inputScalars.raw && inputScalars.listmode != 1) {
+		mexPrint("Raw data reconstruction is not supported with the CPU implementation!");
+		return -1;
+	}
+	// Only the improved Siddon projector (projector type 1/11) is implemented on the CPU
+	if (inputScalars.FPType != 1 || inputScalars.BPType != 1) {
+		mexPrint("Only projector type 1 (improved Siddon) is supported with the CPU implementation!");
+		return -1;
+	}
+	// The CPU projector computes the linear voxel indices in signed 32-bit integers (e.g. the voxel index of the axis-parallel rays in
+	// perpendicular_elements_par), i.e. the image can have at most INT32_MAX voxels
+	{
+		const uint64_t nVoxelsCPU = static_cast<uint64_t>(inputScalars.Nx[0]) * static_cast<uint64_t>(inputScalars.Ny[0]) * static_cast<uint64_t>(inputScalars.Nz[0]);
+		if (nVoxelsCPU > static_cast<uint64_t>(INT32_MAX)) {
+			mexPrintBase("The CPU projector supports at most %u voxels (Nx * Ny * Nz). Use a GPU implementation for larger images.\n", static_cast<uint32_t>(INT32_MAX));
+			return -1;
+		}
+	}
+#endif
+	// The sensitivity image of list-mode PET data is computed over all detector pairs, but the measurement-based attenuation has one value
+	// for each measurement (event), i.e. it would be indexed past its end. SPECT attenuation is always an image and CT has no list-mode
+	if (!inputScalars.CT && !inputScalars.SPECT && inputScalars.listmode > 0 && inputScalars.computeSensImag && inputScalars.attenuation_correction &&
+		!inputScalars.CTAttenuation) {
+		mexPrint("List-mode reconstruction cannot compute the sensitivity image with measurement-based attenuation (CT_attenuation = false). Use an attenuation image (CT_attenuation = true) or disable the computation of the sensitivity image (compute_sensitivity_image = false).");
+		return -1;
+	}
 	int curDev = af::getDevice();
 	if (curDev != device)
 		af::setDevice(device);
@@ -506,6 +545,37 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		return -1;
 	}
 
+	// The exact PDDY iteration (Salim, Condat, Mishchenko and Richtarik, JOTA 2022) is implemented for one subset only, without
+	// image-based preconditioning or adaptive step sizes
+	if (MethodList.PDDY) {
+		if (inputScalars.subsets > 1 || inputScalars.subsetsUsed > 1 || inputScalars.stochastic || inputScalars.largeDim) {
+			mexPrint("PDDY is only supported without subsets\n");
+			return -1;
+		}
+		if (w_vec.precondTypeIm[0] || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2] || w_vec.precondTypeIm[3] || w_vec.precondTypeIm[4]
+			|| w_vec.precondTypeIm[5] || w_vec.precondTypeIm[6]) {
+			mexPrint("Image-based preconditioners are not supported with PDDY\n");
+			return -1;
+		}
+		if (inputScalars.adaptiveType > 0) {
+			mexPrint("Adaptive step sizes are not supported with PDDY\n");
+			return -1;
+		}
+	}
+
+	// The FMH neighborhood lines (directions and their weights) are defined for a cubic neighborhood
+	if (MethodList.FMH && !(w_vec.Ndx == w_vec.Ndy && (w_vec.Ndz == 0U || w_vec.Ndz == w_vec.Ndx))) {
+		mexPrint("FMH requires Ndx == Ndy and Ndz equal to 0 or Ndx\n");
+		return -1;
+	}
+
+	// With regEveryIter > 1 the last computed prior gradient is reused between the computations. With largeDim the stored
+	// gradient belongs to another image chunk
+	if (inputScalars.largeDim && inputScalars.regEveryIter > 1) {
+		mexPrint("regEveryIter > 1 is not supported with largeDim\n");
+		return -1;
+	}
+
 	// With largeDim the image passed to the update is a chunk whose size changes between calls, so the stored previous iterate is invalid
 	if (inputScalars.largeDim && inputScalars.FISTAAcceleration) {
 		mexPrint("FISTA acceleration is not supported with largeDim\n");
@@ -526,6 +596,13 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		inputScalars.normalization_correction = 0;
 	// Largest number of projections in any subset/time step (decides whether the layered CT BP texture can be used)
 	inputScalars.maxProjPerCall = length.empty() ? 0 : *std::max_element(length.begin(), length.end());
+	inputScalars.maxProjPerFrame = 0;
+	for (size_t tt = 0; tt < static_cast<size_t>(inputScalars.Nt); tt++) {
+		int64_t frameProj = 0;
+		for (size_t ss = 0; ss < static_cast<size_t>(inputScalars.subsets) && tt * static_cast<size_t>(inputScalars.subsets) + ss < length.size(); ss++)
+			frameProj += length[tt * static_cast<size_t>(inputScalars.subsets) + ss];
+		inputScalars.maxProjPerFrame = (std::max)(inputScalars.maxProjPerFrame, frameProj);
+	}
 	ProjectorClass proj;
 	status = proj.addProjector(inputScalars, w_vec, MethodList, header_directory);
 	if (status != 0)
@@ -681,6 +758,27 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 	if (!inputScalars.loadTOF || inputScalars.largeDim)
 		inputScalars.TOFsubsets = 1U;
 
+	// PWLS computes the weights from the measurements, which must therefore be on the device for every subset
+	if (inputScalars.PWLS && (!inputScalars.CT || inputScalars.largeDim || !inputScalars.loadTOF || inputScalars.Nt > 1 || !(MethodList.PDHG || MethodList.PDDY))) {
+		mexPrint("PWLS is supported only with CT data and PDHG or PDDY, without largeDim, with loadTOF and a single time step");
+		return -1;
+	}
+
+	// Projector type 4 is not an adjoint pair for CT (Joseph forward projection, voxel-driven backprojection). The mismatch is large on
+	// poorly observed image modes (volume edges and corners), and the primal-dual iteration can amplify it when it is weakly damped:
+	// with the diagonal measurement preconditioner Sigma = 1 / (A1) is small and the iteration diverges within a few hundred iterations;
+	// with many subsets it drifts slowly. The voxel-driven type 4 backprojection with another forward projector (e.g. 14 or 54) is much
+	// further from an adjoint pair and diverges even without preconditioning. Positivity, or an adjoint pair (projector type 1 or 5),
+	// avoids this (diagnosed 2026-11)
+	if (MethodList.CPType && inputScalars.CT && (inputScalars.FPType == 4 || inputScalars.BPType == 4) && !inputScalars.enforcePositivity && inputScalars.verbose > 0) {
+		if (inputScalars.BPType == 4 && inputScalars.FPType != 4)
+			mexPrint("Warning: the type 4 CT backprojection is far from the adjoint of the selected forward projection. Without enforcePositivity, PDHG-type algorithms can diverge even without preconditioning. Enable enforcePositivity or use projector type 1 or 5");
+		else if (w_vec.precondTypeMeas[0])
+			mexPrint("Warning: projector type 4 is not an adjoint forward/backprojection pair for CT. Without enforcePositivity, PDHG-type algorithms with the diagonal measurement preconditioner (precondTypeMeas[0]) can diverge. Enable enforcePositivity or use projector type 1 or 5");
+		else if (inputScalars.subsetsUsed > 1)
+			mexPrint("Warning: projector type 4 is not an adjoint forward/backprojection pair for CT. Without enforcePositivity, PDHG-type algorithms with subsets can drift slowly over many iterations. Enable enforcePositivity or use projector type 1 or 5");
+	}
+
 	if (DEBUG && !inputScalars.CT) {
 		mexPrintBase("TOFsubsets = %d\n", inputScalars.TOFsubsets);
 		mexPrintBase("nBins = %d\n", nBins);
@@ -754,6 +852,17 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		aNorm.resize(inputScalars.subsets);
 		for (uint32_t kk = 0; kk < inputScalars.subsets; kk++) {
 			aNorm[kk] = af::array(static_cast<dim_t>(length[kk] * normVec), &norm[pituus[kk] * normVec]);
+			proj.memSize += (sizeof(float) * length[kk] * normVec);
+		}
+	}
+	// CT normalization with linearized data (the flag was cleared above for the count-based algorithms): the backprojection type 5 applies
+	// the normalization of each subset to the projections before the integral image is formed, same layout as above
+	w_vec.normBP5.clear();
+	if (inputScalars.CT && inputScalars.normalization_correction && inputScalars.size_norm > 1ULL && inputScalars.listmode == 0 && inputScalars.BPType == 5) {
+		const size_t normVec = static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD);
+		w_vec.normBP5.resize(inputScalars.subsets);
+		for (uint32_t kk = 0; kk < inputScalars.subsets; kk++) {
+			w_vec.normBP5[kk] = af::array(static_cast<dim_t>(length[kk] * normVec), &norm[pituus[kk] * normVec]);
 			proj.memSize += (sizeof(float) * length[kk] * normVec);
 		}
 	}
@@ -947,13 +1056,13 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                         }
                         vec.im_os[tt][ii] = af::constant(1.f, inputScalars.im_dim[ii], af_dtype::f32);
                         if (inputScalars.projector_type == 6) {
-                            oneInput = af::constant(1.f, inputScalars.nRowsD, inputScalars.nColsD, length[indD], af_dtype::f32);
+                            oneInput = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[indD], af_dtype::f32); // The projectors accumulate into the output, so it starts from zero (E = A * 1)
                             forwardProjectionType6(oneInput, w_vec, vec, inputScalars, length[indD], uu, proj, ii, atten, tt);
                             if (type6Status(proj) != 0)
                                 return -1;
                         }
                         else {
-                            oneInput = af::constant(1.f, lengthFull[indD] * nBins, 1, af_dtype::f32);
+                            oneInput = af::constant(0.f, lengthFull[indD] * nBins, 1, af_dtype::f32); // The projectors accumulate into the output, so it starts from zero (E = A * 1)
                             status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput, ll, tt, length, g, lengthFull[indD], proj, ii, pituus);
                             if (status != 0) return -1;
                         }
@@ -1012,15 +1121,16 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                         for (uint32_t subIter = 0; subIter < inputScalars.subsetsUsed; subIter++) {
                             int indD = subIter + tt * inputScalars.subsets;
                             af::array inputM = E(af::seq(alku, alku + lengthFull[indD] * nBins - 1), af_dtype::f32);
-                            computeIntegralImage(inputScalars, w_vec, length[indD], inputM, meanBP);
+                            computeIntegralImage(inputScalars, w_vec, length[indD], inputM, meanBP, indD);
                             if (inputScalars.projector_type == 6) {
                                 backprojectionType6(inputM, w_vec, vec, inputScalars, length[indD], uu, proj, tt, subIter, 0, 0, 0, ii, atten);
                                 if (type6Status(proj) != 0)
                                     return -1;
                             }
                             else {
+                                // dP backprojects E over the events (not the sensitivity image over all detector pairs)
                                 status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, inputM, subIter, tt, length, lengthFull[indD], 
-                                    meanBP, g, proj, (inputScalars.listmode > 0 && inputScalars.computeSensImag), ii, pituus);
+                                    meanBP, g, proj, false, ii, pituus);
                                 if (status != 0) {
                                     return -1;
                                 }
@@ -1036,12 +1146,16 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                                 uu += length[indD];
                             alku += lengthFull[indD] * nBins;
                         }
-                        // dP = subsets / (sum over the subsets of the backprojections + subsets * beta * kappa)
-                        // Each sub-iteration uses the subset data gradient but the full prior gradient, hence the prior curvature
-                        // is multiplied by the number of subsets. The prior is applied to the main volume only
+                        // dP = subsets / (sum over the subsets of the backprojections + curvScale * beta * kappa)
+                        // Each sub-iteration uses the subset data gradient. For the methods with the per-subiteration prior beta / subsets
+                        // (the subsetScale list in computeOSEstimates) the prior curvature scaled by subsets is beta * kappa (curvScale = 1).
+                        // For the other users of dP (PDHG family, FISTA) the prior keeps the full beta, so the curvature term is
+                        // subsets * beta * kappa (curvScale = subsets). The prior is applied to the main volume only
+                        const float curvScale = (MethodList.OSLOSEM || MethodList.RBIOSL || MethodList.PKMA || MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS || MethodList.SAGA)
+                            ? 1.f : static_cast<float>(inputScalars.subsetsUsed);
                         if (ii == 0 && priorKappa > 0.f)
                             w_vec.dP[tt][ii] = static_cast<float>(inputScalars.subsetsUsed) / (w_vec.dP[tt][ii]
-                                + static_cast<float>(inputScalars.subsetsUsed) * w_vec.beta * priorKappa);
+                                + curvScale * w_vec.beta * priorKappa);
                         else
                             w_vec.dP[tt][ii] = static_cast<float>(inputScalars.subsetsUsed) / w_vec.dP[tt][ii];
                         w_vec.dP[tt][ii](af::isNaN(w_vec.dP[tt][ii])) = 1.f;
@@ -1077,7 +1191,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 #else
         apuF = cell;
 #endif
-        if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) {
+        if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.PDDY) {
             apuMVec.assign(inputScalars.kokoTOF, 0.f);
             apuUVec.assign(inputScalars.im_dim[0], 0.f);
             apuM = apuMVec.data();
@@ -1213,9 +1327,11 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             af::array oneInput;
                             if (SENSSCALE && inputScalars.CT)
                                 oneInput = af::flat(mData[subIter][timestep]);
+                            else if (inputScalars.PWLS) // K^T 1 = A^T W^{1/2} 1 with K = W^{1/2} A
+                                oneInput = af::sqrt(PWLSWeights(af::flat(mData[subIter][timestep]), inputScalars));
                             else
                                 oneInput = af::constant(1.f, lengthFull[indD] * nBins);
-                            computeIntegralImage(inputScalars, w_vec, length[indD], oneInput, meanBP);
+                            computeIntegralImage(inputScalars, w_vec, length[indD], oneInput, meanBP, indD);
                             oneInput.eval();
                             if (inputScalars.projector_type == 6) {
                                 backprojectionType6(oneInput, w_vec, vec, inputScalars, length[indD], uu, proj, timestep, subIter, 0, 0, 0, ii, atten);
@@ -1329,7 +1445,8 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                 w_vec.LCP2[timestep] = w_vec.LCP2[0];
                 continue;
             }
-            status = powerMethod(inputScalars, w_vec, length, proj, vec, MethodList, pituus, timestep, g, apuF, apuD, atten);
+            status = powerMethod(inputScalars, w_vec, length, proj, vec, MethodList, pituus, timestep, g, apuF, apuD, atten,
+                inputScalars.PWLS ? af::array(af::flat(mData[0][timestep])) : af::array());
             if (status != 0) {
                 return -1;
             }
@@ -1408,7 +1525,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 				}
 				else {
 					// The type 5 backprojection takes the integral image of the projections; oneInput1 is not used after this
-					computeIntegralImage(inputScalars, w_vec, length[indD], oneInput1, meanBP);
+					computeIntegralImage(inputScalars, w_vec, length[indD], oneInput1, meanBP, indD);
 					status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, oneInput1, ll, timestep, length, lengthFull[indD], meanBP, 
                         g, proj, false, 0, pituus);
 					if (status != 0) {
@@ -1538,7 +1655,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 				status = applyMeasPreconditioning(w_vec, inputScalars, mData[0][timestep], proj, timestep, 0);
 				if (status != 0)
 					return -1;
-				computeIntegralImage(inputScalars, w_vec, length[indD0], mData[0][timestep], meanBP);
+				computeIntegralImage(inputScalars, w_vec, length[indD0], mData[0][timestep], meanBP, indD0);
 				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, MethodList, mData[0][timestep], 0, timestep, length, fullMSize, meanBP, g, 
                     proj, false, 0, pituus);
 				if (status != 0)
@@ -1574,7 +1691,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 					status = applyMeasPreconditioning(w_vec, inputScalars, mData[0][timestep], proj, timestep, 0);
 					if (status != 0)
 						return -1;
-					computeIntegralImage(inputScalars, w_vec, length[indD], mData[0][timestep], meanBP);
+					computeIntegralImage(inputScalars, w_vec, length[indD], mData[0][timestep], meanBP, indD);
 					// Loop through the image volume for the current measurement "subset"
 					for (int ii = 0; ii < inputScalars.subsets; ii++) {
 						largeDimFirst(inputScalars, proj, ii);
@@ -1891,14 +2008,14 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 						// adapTypeA must hold the projection-domain data, so copy it before outputFP is replaced with its integral image
 						if (inputScalars.adaptiveType == 2 && MethodList.CPType)
 							vec.adapTypeA = outputFP.copy();
-						computeIntegralImage(inputScalars, w_vec, length[indD], outputFP, meanBP);
+						computeIntegralImage(inputScalars, w_vec, length[indD], outputFP, meanBP, indD);
 						if (CTOSEMBranch) {
 							if (inputScalars.randoms_correction) {
-								computeIntegralImage(inputScalars, w_vec, length[indD], OSEMapu, meanBPOSEM);
+								computeIntegralImage(inputScalars, w_vec, length[indD], OSEMapu, meanBPOSEM, indD);
 							}
 							else if (iter == 0) {
 								OSEMapu = mData[subIter][timestepData].as(f32);
-								computeIntegralImage(inputScalars, w_vec, length[indD], OSEMapu, meanBPOSEM);
+								computeIntegralImage(inputScalars, w_vec, length[indD], OSEMapu, meanBPOSEM, indD);
 							}
 						}
 						// Setup the fastPDHG to account for also everything after backprojection itself
@@ -2034,7 +2151,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                         }
                     }
                     largeDimLast(inputScalars, proj);
-                    if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) {
+                    if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.PDDY) {
                         if (iter > 0) {
                             if (inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8 && inputScalars.subsetType > 0)
                                 vec.pCP[tt][0] = af::array(m_size * nBins, &apuM[pituus[indD] * nBins], afHost);
@@ -2050,7 +2167,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     status = computeForwardStep(MethodList, mData[0][tt], outputFP, m_size, inputScalars, w_vec, aRand[tt][0], vec, proj, tt, iter, 0);
                     if (status != 0)
                         return -1;
-                    if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) {
+                    if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.PDDY) {
                         if (inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8 && inputScalars.subsetType > 0)
                             vec.pCP[tt][0].host(&apuM[pituus[osa_iter] * nBins]);
                         else
@@ -2085,7 +2202,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             }
                             else
                                 vec.im_os[tt][0] = af::array(inputScalars.lDimStruct.imDimPr[ii], &apuF[inputScalars.lDimStruct.cumDimPr[ii]], afHost);
-                        if (iter == 0 && osa_iter == 0 && (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY)) {
+                        if (iter == 0 && osa_iter == 0 && (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.PDDY)) {
                             // With subsets uCP is the dual accumulator A^T p and starts at zero (largeDim chunks reuse the
                             // subset count, so subsetsUsed > 1 is the subset PDHG path); without subsets it is the primal iterate.
                             if (inputScalars.subsetsUsed > 1)
@@ -2093,7 +2210,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             else
                                 vec.uCP[tt][0] = vec.im_os[tt][0](af::seq(0, inputScalars.lDimStruct.imDim[ii] - 1)).copy();
                         }
-                        else if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY)
+                        else if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.PDDY)
                             vec.uCP[tt][0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuU[inputScalars.lDimStruct.cumDim[ii]], afHost);
                         if (w_vec.computeD)
                             w_vec.D[DIndex(inputScalars, tt)][0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuD[inputScalars.lDimStruct.cumDim[ii]], afHost);
@@ -2123,7 +2240,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                             std::copy(apuF + inputScalars.lDimStruct.cumDim[ii], apuF + inputScalars.lDimStruct.imDim[ii] + inputScalars.lDimStruct.cumDim[ii], apuPr);
                         }
                         vec.im_os[tt][0].host(&apuF[inputScalars.lDimStruct.cumDim[ii]]);
-                        if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY)
+                        if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.PDDY)
                             vec.uCP[tt][0].host(&apuU[inputScalars.lDimStruct.cumDim[ii]]);
                         if (DEBUG) {
                             mexPrintBase("subset = %d\n", ii);
@@ -2139,7 +2256,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                     inputScalars.nMultiVolumes = multiVol;
                     if (inputScalars.nMultiVolumes > 0) {
                         for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++) {
-                            if (iter == 0 && osa_iter == 0 && (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY)) {
+                            if (iter == 0 && osa_iter == 0 && (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.PDDY)) {
                                 // Zero start for the dual accumulator A^T p with subsets, initial image otherwise
                                 if (inputScalars.subsetsUsed > 1)
                                     vec.uCP[tt].emplace_back(af::constant(0.f, vec.im_os[tt][ii].elements()));
@@ -2237,12 +2354,6 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
                 // Compute some subset-based algorithms that require special operations after each iteration such as BSREM or ROSEM. Also copy the current iteration if needed.
                 status = computeOSEstimatesIter(vec, w_vec, MethodList, inputScalars, iter, proj, g, cell, doSaveIter, saveSlot, x0, timestep);
                 if (status != 0) return -1;
-
-                // Enforce positivity if applicable (all timesteps)
-                if (inputScalars.enforcePositivity && inputScalars.subsetsUsed == 1 && !MethodList.CPType) {
-                    for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
-                        vec.im_os[timestep][ii] = af::select(vec.im_os[timestep][ii] < inputScalars.epps, inputScalars.epps, vec.im_os[timestep][ii]);
-                }
             }
         }
 

@@ -19,9 +19,9 @@ function [HU_a, HU_b] = HU_rescale_coeff(fpathCT, patientPositions)
         HU_b = zeros(n, 1);
         for ii = 1:n
             f = fullfile(fpathCT, files(ii).name);
-            info = dicominfo(f);
-            HU_a(ii) = double(info.RescaleSlope);
-            HU_b(ii) = double(info.RescaleIntercept);
+            info = readInfo(f);
+            HU_a(ii) = requiredField(info, 'RescaleSlope', f);
+            HU_b(ii) = requiredField(info, 'RescaleIntercept', f);
         end
         HU_a = reshape(HU_a, 1, 1, n);
         HU_b = reshape(HU_b, 1, 1, n);
@@ -37,10 +37,11 @@ function [HU_a, HU_b] = HU_rescale_coeff(fpathCT, patientPositions)
     intercept = zeros(n, 1);
     sliceIdx = zeros(n, 1);
     for ii = 1:n
-        info = dicominfo(fullfile(fpathCT, files(ii).name));
-        slope(ii) = double(info.RescaleSlope);
-        intercept(ii) = double(info.RescaleIntercept);
-        pos = double(info.ImagePositionPatient(:))';
+        f = fullfile(fpathCT, files(ii).name);
+        info = readInfo(f);
+        slope(ii) = requiredField(info, 'RescaleSlope', f);
+        intercept(ii) = requiredField(info, 'RescaleIntercept', f);
+        pos = requiredField(info, 'ImagePositionPatient', f)';
         [~, sliceIdx(ii)] = min(sum((patientPositions - pos).^2, 2));
     end
     if numel(unique(sliceIdx)) ~= n
@@ -66,4 +67,21 @@ function files = dicomFiles(fpathCT)
         known(ii) = isdicom(fullfile(fpathCT, files(ii).name));
     end
     files = files(known);
+end
+
+function info = readInfo(f)
+% dicominfo with the file name in the error message
+    try
+        info = dicominfo(f);
+    catch ME
+        error('Could not read the DICOM file %s: %s', f, ME.message);
+    end
+end
+
+function v = requiredField(info, name, f)
+% Numeric value of a DICOM field that must exist
+    if ~isfield(info, name) || isempty(info.(name))
+        error('The DICOM file %s does not contain %s!', f, name);
+    end
+    v = double(info.(name)(:));
 end

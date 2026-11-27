@@ -1115,6 +1115,12 @@ end
 if ~isfield(options, 'PDAdaptiveType')
     options.PDAdaptiveType = 0;
 end
+if ~isfield(options, 'PWLS')
+    options.PWLS = false;
+end
+if ~isfield(options, 'PWLSElectronicNoise')
+    options.PWLSElectronicNoise = 0;
+end
 if ~isfield(options, 'storeFP')
     options.storeFP = false;
 end

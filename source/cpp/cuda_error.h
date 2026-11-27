@@ -91,6 +91,9 @@
 #define CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR  hipDeviceAttributeComputeCapabilityMinor
 #define CUDA_ARRAY3D_LAYERED                          hipArrayLayered
 #define CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK hipDeviceAttributeMaxSharedMemoryPerBlock
+#define CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE3D_WIDTH   hipDeviceAttributeMaxTexture3DWidth
+#define CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE3D_HEIGHT  hipDeviceAttributeMaxTexture3DHeight
+#define CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE3D_DEPTH   hipDeviceAttributeMaxTexture3DDepth
 #define CU_MEMORYTYPE_ARRAY                           hipMemoryTypeArray
 #define CU_MEMORYTYPE_DEVICE                          hipMemoryTypeDevice
 #define CU_MEMORYTYPE_HOST                            hipMemoryTypeHost

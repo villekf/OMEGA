@@ -92,7 +92,7 @@ if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelli
                 (options.rayShiftsSource(2:2:end,:,:,:) - detectorShiftZ) * (referenceLength / lengthZ);
         end
     end
-    if ismember(options.implementation, [2, 3, 5])
+    if ismember(options.implementation, [2, 3, 5]) || (options.implementation == 4 && options.useSingles)
         options.rayShiftsDetector = single(options.rayShiftsDetector(:));
         options.rayShiftsSource = single(options.rayShiftsSource(:));
     end

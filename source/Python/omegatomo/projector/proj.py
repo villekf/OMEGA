@@ -269,7 +269,7 @@ class projectorClass:
     sampling = 1
     oneD_weights = False
     fmh_center_weight = 4.
-    ring_difference_raw = 1
+    ring_difference_raw = None # Default (None): rings - 1 (as in MATLAB setMissingValues), resolved in addProjector
     ring_difference = 0
     obtain_trues = False
     reconstruct_trues = False
@@ -537,7 +537,9 @@ class projectorClass:
     alpha1TGV = 0.
     useL2Ball = True
     useMAD = True
-    useImages = True
+    # None means 'not set by the user'; resolved to a bool in _resolveUseImages (called from addProjector),
+    # mirroring MATLAB setMissingValues: False for projector_type 6 (and on macOS), True otherwise
+    useImages = None
     useHalf = False # When true, computations are performed with FP16 precision instead of FP32
     useEFOV = False
     useExtrapolation = False
@@ -552,6 +554,12 @@ class projectorClass:
     relaxationScaling = False
     computeRelaxationParameters = False
     PDAdaptiveType = 0
+    # CT only: use the penalized weighted least squares (PWLS) data term 1/2 ||W^(1/2) (A x - l)||^2 with PDHG and PDDY, where
+    # l = log(I0 / y) are the linearized data. The weights are the estimated measured counts, w = y^2 / (y + PWLSElectronicNoise),
+    # y = I0 * exp(-l), with I0 = options.flat. Needs the diagonal measurement preconditioner (precondTypeMeas[0]) or none
+    PWLS = False
+    # Electronic noise variance (in squared counts, same units as the raw data) of the PWLS weights. 0 gives w = y
+    PWLSElectronicNoise = 0.
     storeFP = False
     nRowsD = Ndist
     nColsD = Nang
@@ -583,7 +591,6 @@ class projectorClass:
     PDHGKL = False
     PDHGL1 = False
     PDDY = False
-    CV = False
     ASD_POCS = False
     FDK = False
     SAGA = False
@@ -1116,8 +1123,18 @@ class projectorClass:
                              f'[{self.nRowsD} {self.nColsD}] (used for every projection) or the size of all projections '
                              f'[{self.nRowsD} {self.nColsD} {self.nProjections}], but it has {normalization.size} elements.')
 
+    def _resolveUseImages(self):
+        # MATLAB setMissingValues: useImages defaults to false for projector_type 6 (rotation-based SPECT)
+        # and on macOS, true otherwise. A value set by the user is kept as is.
+        if self.useImages is None:
+            import sys
+            self.useImages = not (self.projector_type == 6 or sys.platform == 'darwin')
+        else:
+            self.useImages = bool(self.useImages)
+
     def addProjector(self):
         self.projectorAdded = True
+        self._resolveUseImages()
         # A scalar per-layer parameter (multi-layer PET) is used for all the layers
         expandLayerParameters(self)
         # MATLAB/Octave-style option name aliases, accepted for convenience so scripts written
@@ -1145,7 +1162,7 @@ class projectorClass:
         # projector's forward/backward helpers) that call addProjector() directly without going
         # through initProj()/initProjector() -- and so the two names can never disagree.
         self.CTAttenuation = self.CT_attenuation
-        if self.OSL_OSEM or self.BSREM or self.MBSREM or self.ROSEM_MAP or self.OSL_RBI or self.OSL_COSEM > 0 or self.PKMA or self.SPS or self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.CV or self.SAGA or self.BB or self.SART or self.ASD_POCS:
+        if self.OSL_OSEM or self.BSREM or self.MBSREM or self.ROSEM_MAP or self.OSL_RBI or self.OSL_COSEM > 0 or self.PKMA or self.SPS or self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.SAGA or self.BB or self.SART or self.ASD_POCS:
             self.MAP = True
         if hasattr(self, 'dPitch') and self.dPitch > 0 and self.dPitchX == 0.:
             self.dPitchX = self.dPitch
@@ -1395,6 +1412,8 @@ class projectorClass:
         # initialization, prepass, ctypes struct). The arrays are rebound, never written in place.
         if self.tube_radius is None:
             self.tube_radius = math.sqrt(2.) * (self.cr_pz / 2.)
+        if self.ring_difference_raw is None:
+            self.ring_difference_raw = self.rings - 1 if self.rings > 0 else 0
         if self.gradInitIter is None:
             self.gradInitIter = self.subsets
         if self.gradLastIter is None:
@@ -1459,8 +1478,8 @@ class projectorClass:
             # The mask half of the CPU check is here (not in OMEGAErrorCheck) because maskFPZ is only known now
             if self.SPECT and self.implementation == 2 and self.useCPU and self.maskFPZ > 1 and self.maskFPZ == self.nHeads and self.maskFPZ != self.nProjections:
                 raise ValueError('Detector-head indexed normalization/forward projection mask (nRowsD x nColsD x '
-                                  'nHeads) is not supported by the CPU implementation. Use a GPU implementation or '
-                                  'supply one image per projection.')
+                                  'nHeads) is not supported by the CPU implementation. Use a GPU implementation (for the '
+                                  'normalization, one image per projection also works).')
             self.maskFP = np.asfortranarray(self.maskFP)
         else:
             self.useMaskFP = False
@@ -1479,6 +1498,13 @@ class projectorClass:
             self.usePriorMask = False  # no valid maskBP: nothing to use as a prior mask
         if self.maskBP.dtype != np.uint8:
             self.maskBP = self.maskBP.astype(np.uint8)
+        # The CPU projector indexes the forward projection mask only as one detector-plane image and the backprojection mask
+        # only as one image slice. The checks are here because maskFPZ/maskBPZ are only known now
+        if (self.implementation == 2 and self.useCPU) or self.implementation == 4:
+            if self.useMaskFP and self.maskFPZ > 1:
+                raise ValueError('3D forward projection masks are not supported with the CPU implementation!')
+            if self.useMaskBP and self.maskBPZ > 1:
+                raise ValueError('3D backprojection masks are not supported with the CPU implementation!')
         # list_mode_format = False
         
         if self.use_raw_data:
@@ -1997,7 +2023,7 @@ class projectorClass:
         if self.compute_normalization or self.only_sinos:
             return
         mapAlgorithms = ['OSL_OSEM', 'BSREM', 'MBSREM', 'ROSEM_MAP', 'OSL_RBI', 'OSL_COSEM', 'PKMA', 'SPS', 'PDHG', 'PDHGKL',
-                         'PDHGL1', 'PDDY', 'CV', 'SAGA', 'BB', 'SART', 'ASD_POCS']
+                         'PDHGL1', 'PDDY', 'SAGA', 'BB', 'SART', 'ASD_POCS']
         nonMapAlgorithms = ['OSEM', 'MRAMLA', 'RAMLA', 'ROSEM', 'RBI', 'DRAMA', 'COSEM', 'ECOSEM', 'ACOSEM', 'LSQR', 'CGLS',
                             'FISTA', 'FISTAL1', 'FDK']
         varPrior = ['MRP','quad','Huber','L','FMH','weighted_mean','TV','hyperbolic','AD','APLS','TGV','NLM','RDP','GGMRF','ProxTV','custom']
@@ -2127,8 +2153,8 @@ class projectorClass:
                 (self.normalization_correction and self.normZ == self.nHeads and self.normZ != self.nProjections)
             ):
                 raise ValueError('Detector-head indexed normalization/forward projection mask (nRowsD x nColsD x '
-                                  'nHeads) is not supported by the CPU implementation. Use a GPU implementation or '
-                                  'supply one image per projection.')
+                                  'nHeads) is not supported by the CPU implementation. Use a GPU implementation (for the '
+                                  'normalization, one image per projection also works).')
 
             if self.projector_type in [1, 11, 12, 2, 21, 22, 3, 13, 23, 33, 31, 32, 16, 26, 61, 62]:
                 compact_ray_shift_size = 2 * int(self.n_rays_transaxial) * int(self.n_rays_axial) * int(self.nRowsD) * int(self.nColsD) * int(self.nHeads)
@@ -2214,10 +2240,16 @@ class projectorClass:
         if (not self.CT and not self.SPECT and not self.listmode and not self.useIndexBasedReconstruction and not self.use_raw_data
                 and self.subsets > 1 and self.subsetType == 6):
             try:
-                # Numeric scalars only (same as MATLAB): None, strings and lists are rejected
-                if not isinstance(self.n_angles, (int, float, np.number, np.bool_, np.ndarray)):
+                # Numeric scalars only (same as MATLAB, where [2] is a scalar): None and strings are rejected,
+                # a list/tuple is accepted only when it holds exactly one numeric element
+                nAngIn = self.n_angles
+                if isinstance(nAngIn, (list, tuple)):
+                    if len(nAngIn) != 1:
+                        raise TypeError('n_angles must have exactly one element')
+                    nAngIn = nAngIn[0]
+                if not isinstance(nAngIn, (int, float, np.number, np.bool_, np.ndarray)):
                     raise TypeError('n_angles is not numeric')
-                nAng = np.asarray(self.n_angles, dtype=float)
+                nAng = np.asarray(nAngIn, dtype=float)
                 nAngOk = nAng.size == 1 and bool(np.isfinite(nAng.item())) and nAng.item() >= 1 and 180 % nAng.item() == 0
             except (TypeError, ValueError, AttributeError):
                 nAngOk = False
@@ -2259,6 +2291,9 @@ class projectorClass:
             raise ValueError('Both temporal smoothness prior and temporal TV selected! Select only one!')
         if nFrames > 1 and self.ASD_POCS and (self.temporal_smoothness or self.temporalTV):
             raise ValueError('Temporal priors are not supported with ASD-POCS')
+        # The CPU library (CPU_matrixfree_lib) has no per-timestep handling of the measurements, coordinates or corrections
+        if nFrames > 1 and self.useCPU:
+            raise ValueError('Dynamic (multi-frame) reconstruction is not supported with the CPU implementation!')
         if self.start > self.end:
             raise ValueError("Start time is later than end time!")
         
@@ -2368,6 +2403,9 @@ class projectorClass:
             raise ValueError('ProxRDP and ProxNLM have been removed. Use RDP or NLM instead.')
         if np.sum(self.precondTypeImage) == 0 and (self.PKMA or self.MRAMLA or self.MBSREM):
             print('No image-based preconditioner selected with PKMA/MRAMLA/MBSREM. EM preconditioner is highly recommended!')
+        elif (self.PKMA or self.MRAMLA or self.MBSREM) and not np.any(np.ravel(self.precondTypeImage)[[i for i in (0, 1, 2, 6) if i < np.size(self.precondTypeImage)]]):
+            # Only the momentum-like, gradient-based and/or filtering-based preconditioners (indices 3-5) are selected
+            print('Only the momentum-like, gradient-based or filtering-based image preconditioner selected with PKMA/MRAMLA/MBSREM. These do not normalize the step size. Using them together with the EM preconditioner is highly recommended!')
         if not self.CT and not self.SPECT and self.reconstruct_trues and self.reconstruct_scatter:
             print('Both reconstruct trues and scatter selected, reconstructing only trues.')
             self.reconstruct_scatter = False
@@ -2441,6 +2479,47 @@ class projectorClass:
             # The FISTA acceleration stores the previous iterate, but with largeDim the image is processed in chunks
             if self.FISTA_acceleration:
                 raise ValueError('FISTA acceleration (FISTA_acceleration) is not supported with largeDim!')
+            # The stored prior gradient used between the regEveryIter computations belongs to another image chunk
+            if self.regEveryIter > 1:
+                raise ValueError('regEveryIter > 1 is not supported with largeDim!')
+        # The exact PDDY iteration is implemented for one subset only, without image-based preconditioning or adaptive step sizes
+        if self.PDDY:
+            if self.subsets > 1 or self.stochasticSubsetSelection or self.largeDim:
+                raise ValueError('PDDY is only supported without subsets!')
+            if np.any(self.precondTypeImage):
+                raise ValueError('Image-based preconditioners are not supported with PDDY!')
+            if self.PDAdaptiveType > 0:
+                raise ValueError('Adaptive step sizes are not supported with PDDY!')
+        if self.PWLS:
+            if not self.CT:
+                raise ValueError('PWLS is only supported with CT data!')
+            pwlsOther = [name for name in ("OSEM", "MRAMLA", "RAMLA", "RBI", "ROSEM", "DRAMA", "COSEM", "ECOSEM", "ACOSEM", "LSQR", "CGLS", "FDK",
+                                           "FISTA", "FISTAL1", "OSL_OSEM", "MBSREM", "BSREM", "OSL_RBI", "ROSEM_MAP", "PKMA", "SPS", "SART",
+                                           "ASD_POCS", "SAGA", "BB", "PDHGL1", "PDHGKL") if getattr(self, name, False)]
+            if not (self.PDHG or self.PDDY) or len(pwlsOther) > 0 or self.OSL_COSEM > 0 or getattr(self, 'ProxTGV', False):
+                raise ValueError('PWLS is only supported with PDHG and PDDY!')
+            if len(self.precondTypeMeas) > 1 and self.precondTypeMeas[1]:
+                raise ValueError('The filtering-based measurement preconditioner (precondTypeMeas[1]) is not supported with PWLS. Use the diagonal one (precondTypeMeas[0]) instead!')
+            if self.PDAdaptiveType > 0:
+                raise ValueError('Adaptive step sizes (PDAdaptiveType > 0) are not supported with PWLS!')
+            if self.largeDim:
+                raise ValueError('PWLS is not supported with largeDim!')
+            if (self.implementation == 2 and self.useCPU) or self.implementation == 4:
+                raise ValueError('PWLS is not supported with the CPU implementation!')
+            if self.normalization_correction:
+                raise ValueError('PWLS is not supported with CT normalization correction (options.normalization_correction) yet!')
+            if nFrames > 1:
+                raise ValueError('PWLS is not supported with dynamic (multi-frame) data!')
+            if not self.loadTOF:
+                raise ValueError('PWLS is not supported when the measurements are not stored on the device (options.loadTOF = False)!')
+            if self.PWLSElectronicNoise < 0:
+                raise ValueError('PWLSElectronicNoise (electronic noise variance) must be zero or positive!')
+        # The FMH neighborhood lines (directions and their weights) are defined for a cubic neighborhood. A single-slice
+        # image uses Ndz = 0
+        if self.FMH and self.MAP:
+            NdzFMH = 0 if np.ravel(self.Nz)[0] == 1 else self.Ndz
+            if self.Ndx != self.Ndy or (NdzFMH != 0 and NdzFMH != self.Ndx):
+                raise ValueError('FMH requires Ndx == Ndy and Ndz equal to 0 or Ndx!')
         if self.useCUDA and self.useCPU:
             raise ValueError('Both CUDA and CPU selected! Select only one!')
         if self.deviceNum < 0:
@@ -2488,6 +2567,25 @@ class projectorClass:
             raise ValueError('Reference image weighting for NLM is not supported with CPU!')
         if self.useIndexBasedReconstruction and self.useCPU:
             raise ValueError('Index-based reconstruction is not supported on CPU!')
+        if self.useCPU and self.listmode and self.TOF_bins_used > 1 and not self.CT and not self.SPECT:
+            raise ValueError('List-mode TOF reconstruction is not supported with the CPU implementation!')
+        if self.useCPU and self.largeDim:
+            raise ValueError('Large dimension support is not supported with the CPU implementation!')
+        # Raw data (detector pair data, GPU -DRAW) is not supported by the CPU projector. List-mode data (custom coordinates or
+        # index-based, self.listmode is already set by addProjector) may also have use_raw_data set, it is not raw data in this sense
+        if self.useCPU and self.use_raw_data and not self.listmode and not self.CT and not self.SPECT:
+            raise ValueError('Raw data reconstruction is not supported with the CPU implementation!')
+        # The CPU projector never applies the CT normalization (GPU: -DNORM). This check is not gated on an algorithm, so that
+        # it also covers the projection operator (forwardProject/backwardProject)
+        if self.CT and self.normalization_correction and ((self.implementation == 2 and self.useCPU) or self.implementation == 4):
+            raise ValueError('CT normalization is not supported with the CPU implementation!')
+        # The CPU projector has no per-subset offset for subset type 0
+        if ((self.implementation == 2 and self.useCPU) or self.implementation == 4) and self.subsetType == 0 and self.subsets > 1 and not self.listmode:
+            raise ValueError('Subset type 0 with more than one subset is not supported with the CPU implementation!')
+        if self.useCPU and (self.ProxTV or self.TGV):
+            raise ValueError('Proximal TV and TGV are not supported with the CPU implementation!')
+        if self.useCPU and self.NLM and (self.NLAdaptive or self.NLMaxWeight):
+            raise ValueError('Adaptive NLM and NLM maximum weight are not supported with the CPU implementation!')
         # The sensitivity image of list-mode data has to include the same corrections as the measured events. The normalization
         # is applied to all detector pairs either with the normalization sinogram that is looked up for each pair (index-based
         # data without options.xSens and options.zSens, see loadCorrections) or with a pair table (options.normSens, any list-mode
@@ -2552,7 +2650,7 @@ class projectorClass:
             algorithms = [
                 "OSEM", "MRAMLA", "RAMLA", "RBI", "ROSEM", "DRAMA", "COSEM", "ECOSEM", "ACOSEM", "LSQR", "CGLS", "FDK", "FISTA", "FISTAL1",
                 "OSL_OSEM", "MBSREM", "BSREM", "OSL_RBI", "OSL_COSEM", "ROSEM_MAP", "PKMA", "SPS", "SART", "ASD_POCS", "SAGA", "BB",
-                "PDHG", "PDHGL1", "PDDY", "PDHGKL", "CV" ]
+                "PDHG", "PDHGL1", "PDDY", "PDHGKL" ]
 
             varPrior = ['MRP','quad','Huber','L','FMH','weighted_mean','TV','hyperbolic','AD','APLS','TGV','NLM','RDP','GGMRF','ProxTV','custom']
             priors = [name for name in varPrior if getattr(self, name, False)]
@@ -3156,7 +3254,16 @@ class projectorClass:
             self.g_dim_y = g_pituus_y
             self.g_dim_z = g_pituus_z
 
+    def _checkOperatorBackend(self):
+        """The operator interface (initProj, forwardProject, backwardProject, A * x) only has PyOpenCL, CuPy, PyTorch, ArrayFire
+        and Metal paths; it never calls the CPU library (CPU_matrixfree_lib), which is reached only through reconstructions_main.
+        With useCPU it would silently run on an OpenCL device instead."""
+        if self.useCPU:
+            raise ValueError('The projector operators (forwardProject/backwardProject) are not supported with the CPU implementation (useCPU)! '
+                             'Use implementation 2 GPU or reconstructions_main.')
+
     def initProj(self):
+        self._checkOperatorBackend()
         if not(self.projectorAdded):
             self.addProjector()
         from omegatomo.projector.init import initProjector
@@ -3167,6 +3274,7 @@ class projectorClass:
         return conv3D(self, f, ii)
         
     def forwardProject(self, f, subset: int = -1, timestep: int = -1):
+        self._checkOperatorBackend()
         if not(self.projectorInitialized):
             self.initProj()
         from omegatomo.projector.projfunctions import forwardProjection
@@ -3185,6 +3293,7 @@ class projectorClass:
         return _applyOffsetSqrtFP(self, y, int(subset))
         
     def backwardProject(self, y, subset: int = -1, timestep: int = -1):
+        self._checkOperatorBackend()
         if not(self.projectorInitialized):
             self.initProj()
         from omegatomo.projector.projfunctions import backwardProjection
@@ -3207,6 +3316,7 @@ class projectorClass:
             return self.__mul__(B)
     
     def __mul__(self, B):
+        self._checkOperatorBackend()
         if self.trans:
             from omegatomo.projector.projfunctions import backwardProjection
             self.trans = False
@@ -3430,7 +3540,6 @@ class projectorClass:
             ('PDHGKL', ctypes.c_bool),
             ('PDHGL1', ctypes.c_bool),
             ('PDDY', ctypes.c_bool),
-            ('CV', ctypes.c_bool),
             ('POCS', ctypes.c_bool),
             ('FDK', ctypes.c_bool),
             ('SAGA', ctypes.c_bool),
@@ -3595,4 +3704,6 @@ class projectorClass:
             ('sensZ', ctypes.POINTER(ctypes.c_uint32)),
             ('sizeNormSens', ctypes.c_uint64),
             ('sensBins', ctypes.c_uint32),
+            ('PWLS', ctypes.c_bool),
+            ('PWLSElectronicNoise', ctypes.c_float),
         ]

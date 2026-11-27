@@ -596,9 +596,6 @@ projectorType5Backward(
 #ifdef MEANDISTANCEBP
         , CONSTANT float *d_meanV BUF8
 #endif
-#ifdef NORM
-        , const CLGLOBAL float *CLRESTRICT d_norm BUF9
-#endif
 #if !defined(METAL)
         , const uchar no_norm
 #endif
@@ -659,7 +656,7 @@ projectorType5Backward(
 #ifdef FASTTV
         , IMAGE3D d_imNLM TEX11
 #if !defined(METAL)
-        , const float fastTVsigma
+        , const float fastTVsigma, const float fastTVsmooth
 #endif
 #endif // FASTTV
 #if !defined(METAL)
@@ -670,6 +667,12 @@ projectorType5Backward(
 #endif
         , const float fastBeta, const float fastEpps, const uchar fastPositivity
         , const LONG fastImOffset, const int fastPriorZOffset, const uchar fastStep
+#endif
+#ifdef FASTREGREUSE
+    , CLGLOBAL float* CLRESTRICT d_priorGradStore BUF28
+#if !defined(METAL)
+    , const uchar fastRegReuse
+#endif
 #endif
 #endif // END FASTPDHG
 #if defined(METAL) && defined(FASTPDHG) && (defined(FASTNLMLOCAL) || defined(FASTSWLOCAL))
@@ -700,7 +703,12 @@ projectorType5Backward(
 #ifdef NLMREF
     LOCAL float lCacheRefF[NLM_TILEX * NLM_TILEY * NLM_TILEZ];
 #endif
-    if (fastStep != 0u && fastBeta != FLOAT_ZERO && ii == 0)
+    if (fastStep != 0u && fastBeta != FLOAT_ZERO && ii == 0
+#ifdef FASTREGREUSE
+        // The gradient is not computed when the stored one is reused, so the cache is not needed (uniform over the grid, the barrier is still reached by all)
+        && fastRegReuse == 0u
+#endif
+        )
         fastFillNLMCache(lCacheF,
 #ifdef NLMREF
             lCacheRefF,
@@ -716,7 +724,12 @@ projectorType5Backward(
 #endif // END FASTNLMLOCAL
 #if defined(FASTPDHG) && defined(FASTSWLOCAL) // START FASTSWLOCAL
     LOCAL float lCacheSW[SW_TILEX * SW_TILEY * SW_TILEZ];
-    if (fastStep != 0u && fastBeta != FLOAT_ZERO && ii == 0)
+    if (fastStep != 0u && fastBeta != FLOAT_ZERO && ii == 0
+#ifdef FASTREGREUSE
+        // The gradient is not computed when the stored one is reused, so the cache is not needed (uniform over the grid, the barrier is still reached by all)
+        && fastRegReuse == 0u
+#endif
+        )
         fastFillSWCache(lCacheSW, d_imNLM, CINT(i.z), fastPriorZOffset,
             FAST_CACHE_COORDS
         );
@@ -1042,28 +1055,6 @@ projectorType5Backward(
     float B = BP5FETCH(d_IImage, coordB, kk);
     float C = BP5FETCH(d_IImage, coordC, kk);
     float D = BP5FETCH(d_IImage, coordD, kk);
-#ifdef NORM
-    LONG indX = CLONG_rtz(coordA.x * CFLOAT(d_nRows));
-    LONG indY = CLONG_rtz(coordA.y * CFLOAT(d_nCols)) * CLONG_rtz(d_nRows);
-    LONG indZ = CLONG_rtz(coordA.z * CFLOAT(d_nProjections)) *
-                CLONG_rtz(d_nCols) * CLONG_rtz(d_nRows);
-    A *= d_norm[indX + indY + indZ];
-    indX = CLONG_rtz(coordB.x * CFLOAT(d_nRows));
-    indY = CLONG_rtz(coordB.y * CFLOAT(d_nCols)) * CLONG_rtz(d_nRows);
-    indZ = CLONG_rtz(coordB.z * CFLOAT(d_nProjections)) * CLONG_rtz(d_nCols) *
-           CLONG_rtz(d_nRows);
-    B *= d_norm[indX + indY + indZ];
-    indX = CLONG_rtz(coordC.x * CFLOAT(d_nRows));
-    indY = CLONG_rtz(coordC.y * CFLOAT(d_nCols)) * CLONG_rtz(d_nRows);
-    indZ = CLONG_rtz(coordC.z * CFLOAT(d_nProjections)) * CLONG_rtz(d_nCols) *
-           CLONG_rtz(d_nRows);
-    C *= d_norm[indX + indY + indZ];
-    indX = CLONG_rtz(coordD.x * CFLOAT(d_nRows));
-    indY = CLONG_rtz(coordD.y * CFLOAT(d_nCols)) * CLONG_rtz(d_nRows);
-    indZ = CLONG_rtz(coordD.z * CFLOAT(d_nProjections)) * CLONG_rtz(d_nCols) *
-           CLONG_rtz(d_nRows);
-    D *= d_norm[indX + indY + indZ];
-#endif
     float kerroin;
 #ifdef FDK
     // Avoid the rare zero-case
@@ -1424,14 +1415,19 @@ projectorType5Backward(
 #ifdef FASTTV
             d_imNLM,
             fastTVsigma,
+            fastTVsmooth,
 #endif // FASTTV
 #if FASTALG == 0
             fastTheta, fastTau,
 #else
             fastLambda, fastAlpha,
 #endif
-            fastBeta, fastEpps, fastPositivity);
-#if defined(MASKBP) && defined(MASKBP3D) && (NVOXELS5 > 1)
+            fastBeta, fastEpps, fastPositivity
+#ifdef FASTREGREUSE
+            , d_priorGradStore, fastRegReuse
+#endif
+            );
+#if defined(MASKBP) && defined(MASKBP3D) && NVOXELS5 > 1
         {
             size_t idxK = idx;
             for (int zz = 0; zz < maxZZ5; zz++) {

@@ -648,14 +648,34 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	if (sensGPU)
 		devIO.sensIm = mxGPUGetData(sensGPU);
 #endif
+	// Non-zero when the native projection failed; the cause has already been printed
+	int recStatus = 0;
+	// Releases everything that is created before the reconstruction and would otherwise leak when
+	// the MEX file exits with an error (mxArrays are freed by MATLAB itself)
+	auto failCleanup = [&]() {
+#if defined(MATLABGPU)
+		if (outGPU)
+			mxGPUDestroyGPUArray(outGPU);
+		if (sensGPU)
+			mxGPUDestroyGPUArray(sensGPU);
+		if (gIm)
+			mxGPUDestroyGPUArray(gIm);
+		if (gMeas)
+			mxGPUDestroyGPUArray(gMeas);
+#endif
+	};
 	if (inputScalars.atomic_32bit && (type == 2)) {
 		int32_t* output = array_ptr ? getInt32s(array_ptr, "solu") : nullptr;
 		int32_t* sensIm = sens_ptr ? getInt32s(sens_ptr, "solu") : nullptr;
-		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L, meanFP, meanBP
+		recStatus = reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L, meanFP, meanBP
 #if defined(MATLABGPU)
 			, devIO
 #endif
 		);
+		if (recStatus != 0) {
+			failCleanup();
+			mexErrMsgTxt("Reconstruction failed! See the messages above for the cause.");
+		}
 #if defined(MATLABGPU)
 		if (outGPU) {
 			plhs[0] = mxGPUCreateMxArrayOnGPU(outGPU);
@@ -677,11 +697,15 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	else if (inputScalars.atomic_64bit && (type == 2)) {
 		int64_t* output = array_ptr ? getInt64s(array_ptr, "solu") : nullptr;
 		int64_t* sensIm = sens_ptr ? getInt64s(sens_ptr, "solu") : nullptr;
-		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L, meanFP, meanBP
+		recStatus = reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L, meanFP, meanBP
 #if defined(MATLABGPU)
 			, devIO
 #endif
 		);
+		if (recStatus != 0) {
+			failCleanup();
+			mexErrMsgTxt("Reconstruction failed! See the messages above for the cause.");
+		}
 #if defined(MATLABGPU)
 		if (outGPU) {
 			plhs[0] = mxGPUCreateMxArrayOnGPU(outGPU);
@@ -703,11 +727,15 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	else if (inputScalars.atomic_64bit && (type == 0)) {
 		float* output = array_ptr ? getSingles(array_ptr, "solu") : nullptr;
 		int64_t* sensIm = sens_ptr ? getInt64s(sens_ptr, "solu") : nullptr;
-		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L, meanFP, meanBP
+		recStatus = reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L, meanFP, meanBP
 #if defined(MATLABGPU)
 			, devIO
 #endif
 		);
+		if (recStatus != 0) {
+			failCleanup();
+			mexErrMsgTxt("Reconstruction failed! See the messages above for the cause.");
+		}
 		plhs[0] = array_ptr;
 		if (nlhs > 1)
 			plhs[1] = sens_ptr;
@@ -717,11 +745,15 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	else if (inputScalars.atomic_32bit && (type == 0)) {
 		float* output = array_ptr ? getSingles(array_ptr, "solu") : nullptr;
 		int32_t* sensIm = sens_ptr ? getInt32s(sens_ptr, "solu") : nullptr;
-		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L, meanFP, meanBP
+		recStatus = reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L, meanFP, meanBP
 #if defined(MATLABGPU)
 			, devIO
 #endif
 		);
+		if (recStatus != 0) {
+			failCleanup();
+			mexErrMsgTxt("Reconstruction failed! See the messages above for the cause.");
+		}
 		plhs[0] = array_ptr;
 		if (nlhs > 1)
 			plhs[1] = sens_ptr;
@@ -731,11 +763,15 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	else {
 		float* output = array_ptr ? getSingles(array_ptr, "solu") : nullptr;
 		float* sensIm = sens_ptr ? getSingles(sens_ptr, "solu") : nullptr;
-		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L, meanFP, meanBP
+		recStatus = reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L, meanFP, meanBP
 #if defined(MATLABGPU)
 			, devIO
 #endif
 		);
+		if (recStatus != 0) {
+			failCleanup();
+			mexErrMsgTxt("Reconstruction failed! See the messages above for the cause.");
+		}
 #if defined(MATLABGPU)
 		if (outGPU) {
 			plhs[0] = mxGPUCreateMxArrayOnGPU(outGPU);

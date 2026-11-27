@@ -37,7 +37,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
     if (inputScalars.fastPDHG)
         return 0;
     int status = 0;
-    af::array OSEMApu, COSEMApu, PDDYApu;
+    af::array OSEMApu, COSEMApu;
     if (DEBUG || inputScalars.verbose >= 3) {
         proj.tStartLocal = std::chrono::steady_clock::now();
     }
@@ -54,9 +54,16 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
     // PDHG without subsets: the forward projection uses the extrapolated image (im_os), but a smooth
     // (gradient-type) prior belongs to the primal step and must be evaluated at the primal iterate u (uCP).
     // The proximal/dual-split TV/TGV priors take their dual step at the extrapolated image and are excluded,
-    // as is PDDY, which has its own evaluation point.
-    const bool priorAtPrimalU = (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV) && !MethodList.PDDY
+    // as is PDDY, which evaluates the prior at its own point x.
+    const bool priorAtPrimalU = (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1) && !MethodList.PDDY
         && inputScalars.subsetsUsed == 1 && !MethodList.ProxTV && !MethodList.ProxTGV && !MethodList.TGV && kk == 0;
+
+    // Subset scaling of the prior strength. These methods combine one subset's data gradient (about 1/S of the full gradient)
+    // with the prior on every subiteration, so beta/S per subiteration gives the objective L + beta*R independently of the
+    // number of subsets. PDHG (the dual sums over the subsets), OSL-COSEM (full sensitivity), BSREM/ROSEM-MAP (prior once per
+    // iteration), SART and ASD-POCS (normalised prior steps) are not scaled
+    const float subsetScale = (MethodList.OSLOSEM || MethodList.RBIOSL || MethodList.PKMA || MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS || MethodList.SAGA)
+        ? 1.f / static_cast<float>(inputScalars.subsetsUsed) : 1.f;
 
     // The filter-phase switch is done once, for every timestep and volume, before the loops
     if (w_vec.precondTypeIm[5] && w_vec.filterIter > 0 && osa_iter + inputScalars.subsets * iter  == w_vec.filterIter) {
@@ -93,17 +100,14 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             if ((MethodList.RAMLA || MethodList.MRAMLA || MethodList.BSREM || MethodList.MBSREM || MethodList.SPS || MethodList.SAGA || MethodList.DRAMA
                 || MethodList.RBI || MethodList.RBIOSL) && inputScalars.listmode > 0)
                 vec.rhs_os[timestep][ii] -= w_vec.D[DIndex(inputScalars, timestep)][ii];
-            if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY)
+            if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.PDDY)
                 PDHG1(vec.rhs_os[timestep][ii], inputScalars, w_vec, vec, timestep, osa_iter + inputScalars.subsets * iter, ii);
-            if (MethodList.PDDY && ii == 0 && MAP) {
-                PDDYApu = vec.im_os[timestep][0].copy();
-                // NOTE: MATLAB computeOSEstimates.m uses x - tau * uCP here; the C++ sign (+) was kept because kalpa tests (2026-11-15) did not show the minus sign converging closer to PDHG with the same prior. Unresolved.
-                vec.im_os[timestep][0] += w_vec.tauCP[timestep][0] * vec.uCP[timestep][0];
-                if (inputScalars.verbose == 3) {
-                    mexPrint("Computing PDDY step\n");
-                    mexEval();
-                }
-            }
+            // PDDY (Salim, Condat, Mishchenko and Richtarik, JOTA 2022), one subset. p = uCP is the auxiliary primal variable and
+            // the image estimate s = im_os was used for the forward projection (dual update). Here rhs_os = A^T y+ (PDHG1 does
+            // nothing without subsets). The point x = p - gamma * A^T y+ is where the prior gradient is evaluated, so it is placed
+            // into im_os. PDHG2 then forms s+ = prox(x - gamma * (A^T y+ + grad R(x))) and p+ = p + s+ - x
+            if (MethodList.PDDY)
+                vec.im_os[timestep][ii] = vec.uCP[timestep][ii] - w_vec.tauCP[timestep][ii] * vec.rhs_os[timestep][ii];
             if (status != 0)
                 return -1;
             vec.im_os[timestep][ii].eval();
@@ -114,22 +118,22 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             mexPrint("Priori\n");
             mexEval();
         }
-        // Compute the spatial prior only every regEveryIter-th (sub)iteration. The counter below runs
-        // from 0 to inputScalars.subsets * inputScalars.Niter - 1; the first and last are always computed.
+        // The spatial prior gradient is recomputed only every regEveryIter-th (sub)iteration and the last computed gradient
+        // (vec.dU) is used in between, for all algorithms. The counter below runs from 0 to
+        // inputScalars.subsets * inputScalars.Niter - 1; the first and last are always computed.
         const int64_t regCounter = static_cast<int64_t>(osa_iter) + static_cast<int64_t>(inputScalars.subsets) * static_cast<int64_t>(iter);
         const int64_t regCounterMax = static_cast<int64_t>(inputScalars.subsets) * static_cast<int64_t>(inputScalars.Niter) - 1;
         const bool computeReg = inputScalars.regEveryIter <= 1 || regCounter == 0 || regCounter == regCounterMax
             || (regCounter % static_cast<int64_t>(inputScalars.regEveryIter)) == 0;
         if (!MethodList.BSREM && !MethodList.ROSEMMAP && !MethodList.POCS && !MethodList.SART && kk == 0 && computeReg) {
             const bool swapped = priorAtPrimalU && swapPDHGPrimal(vec, timestep);
-            // The image-based priors read the forward projection image cache, so give them u as well
-            if (swapped)
+            // The image-based priors read the forward projection image cache, so give them u (or the PDDY point x) as well
+            if (swapped || MethodList.PDDY)
                 status = refreshPriorImageCache(vec.im_os[timestep][0], inputScalars, proj, 0);
-            // MBSREM, MRAMLA and SPS add the prior gradient into an ascent-direction rhs (update is im + lam * rhs),
-            // so the penalty gradient has to be subtracted, i.e. beta is negated
-            const float priorBeta = (MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS) ? -w_vec.beta : w_vec.beta;
+            // The prior gradient (positive beta, scaled with the subset scale) is always computed into the separate buffer vec.dU.
+            // The gradient-type methods add it into their rhs below, with the sign of their update direction
             if (status == 0)
-                status = applySpatialPrior(vec, w_vec, MethodList, inputScalars, proj, priorBeta, timestep, osa_iter + inputScalars.subsets * iter, compute_norm_matrix, false, vv);
+                status = applySpatialPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta * subsetScale, timestep, osa_iter + inputScalars.subsets * iter, compute_norm_matrix, false, vv);
             if (swapped)
                 std::swap(vec.im_os[timestep][0], vec.uCP[timestep][0]);
             if (status != 0) return -1;
@@ -142,20 +146,45 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
             if (priorAtPrimalU)
                 for (uint32_t t = 0; t < inputScalars.Nt; t++)
                     swappedT[t] = swapPDHGPrimal(vec, t) ? 1 : 0;
-            status = applyTemporalPrior(vec, w_vec, MethodList, inputScalars, proj);
+            status = applyTemporalPrior(vec, w_vec, MethodList, inputScalars, proj, false, nullptr, -1, subsetScale);
             for (uint32_t t = 0; t < inputScalars.Nt; t++)
                 if (swappedT[t] != 0)
                     std::swap(vec.im_os[t][0], vec.uCP[t][0]);
             if (status != 0) return -1;
         }
     }
+
+    // Add the prior gradient (spatial plus temporal) into the gradient of the methods that take the prior in their rhs. The
+    // gradient is the one computed in this subiteration or, if the spatial prior was skipped because of regEveryIter, the last
+    // computed one. MBSREM, MRAMLA and SPS use an ascent-direction rhs (update is im + lam * rhs), so the penalty gradient is
+    // subtracted for them. The one-step-late methods (OSL-OSEM, RBI-OSL, OSL-COSEM, SAGA) and BSREM/ROSEM-MAP read the stored
+    // gradient themselves. The prior is applied to the main volume only
+    if (MAP && kk == 0 && (MethodList.PKMA || MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS || MethodList.PDHG || MethodList.PDHGKL
+        || MethodList.PDHGL1 || MethodList.PDDY || MethodList.FISTA || MethodList.FISTAL1)) {
+        const float priorSign = (MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS) ? -1.f : 1.f;
+        for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
+            const af::array priorGrad = totalPriorGradient(vec, MethodList, timestep);
+            if (priorGrad.elements() > 1) {
+                vec.rhs_os[timestep][0] += priorSign * priorGrad;
+                vec.rhs_os[timestep][0].eval();
+            }
+        }
+    }
+
+    // Snapshot of the frames for the SART temporal prior: the neighbour frames must be the ones from the start of this
+    // subiteration, not frames that were already updated in the timestep loop below. ArrayFire arrays are copy-on-write and
+    // the SART updates assign new arrays, so a shallow copy keeps the old values
+    std::vector<af::array> sartFrames;
+    if (MethodList.SART && (MethodList.TemporalSmoothness || MethodList.TemporalTV) && inputScalars.Nt > 1) {
+        sartFrames.resize(inputScalars.Nt);
+        for (uint32_t t = 0; t < inputScalars.Nt; t++)
+            sartFrames[t] = vec.im_os[t][0];
+    }
     
     // The COSEM family divides the sum of the complete data images by the full sensitivity. w_vec.D is the sensitivity
     // divided by the number of subsets, so it is multiplied back by nSubD in the COSEM calls (Hsiao's COSEM)
     const float nSubD = static_cast<float>(inputScalars.subsetsUsed);
     for (uint32_t timestep = 0; timestep < inputScalars.Nt; timestep++) {
-        if (MethodList.PDDY && MAP && kk == 0)
-            vec.im_os[timestep][0] = PDDYApu.copy();
         if (largeDim && kk == 0 && vec.im_os[timestep][0].elements() > vec.rhs_os[timestep][0].elements()) {
             if (vv == 0)
                 vec.im_os[timestep][0] = vec.im_os[timestep][0](af::seq(0, vec.rhs_os[timestep][0].elements() - 1));
@@ -358,7 +387,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                 if (inputScalars.verbose >= 3)
                     mexPrint("Computing RBIOSL");
                 if (ii == 0)
-                    vec.im_os[timestep][ii] = RBI(vec.im_os[timestep][ii], *Sens, vec.rhs_os[timestep][ii], w_vec.D[DIndex(inputScalars, timestep)][ii], (w_vec.beta != 0.f || (MethodList.TemporalSmoothness || MethodList.TemporalTV)) ? 1.f : 0.f, dUtotal, rbiMaxCache);
+                    vec.im_os[timestep][ii] = RBI(vec.im_os[timestep][ii], *Sens, vec.rhs_os[timestep][ii], w_vec.D[DIndex(inputScalars, timestep)][ii], (w_vec.beta != 0.f || (MethodList.TemporalSmoothness || MethodList.TemporalTV)) ? 1.f : 0.f, dUtotal, rbiMaxCache, inputScalars.epps);
                 else
                     vec.im_os[timestep][ii] = RBI(vec.im_os[timestep][ii], *Sens, vec.rhs_os[timestep][ii], w_vec.D[DIndex(inputScalars, timestep)][ii], 0.f, af::constant(0.f, 1, 1), rbiMaxCache);
             }
@@ -370,7 +399,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                 else
                     updateCOSEMCompleteData(vec, timestep, ii, osa_iter, vec.rhs_os[timestep][ii] * vec.im_os[timestep][ii]);
                 if (ii == 0)
-                    vec.im_os[timestep][ii] = COSEM(vec.im_os[timestep][ii], vec.C_coSum[timestep][ii], nSubD * w_vec.D[DIndex(inputScalars, timestep)][ii] + dUtotal, w_vec.h_ACOSEM, MethodList.OSLCOSEM);
+                    vec.im_os[timestep][ii] = COSEM(vec.im_os[timestep][ii], vec.C_coSum[timestep][ii], (af::max)(nSubD * w_vec.D[DIndex(inputScalars, timestep)][ii] + dUtotal, (af::max)(0.1f * nSubD * w_vec.D[DIndex(inputScalars, timestep)][ii], static_cast<double>(inputScalars.epps))), w_vec.h_ACOSEM, MethodList.OSLCOSEM);
                 else
                     vec.im_os[timestep][ii] = COSEM(vec.im_os[timestep][ii], vec.C_coSum[timestep][ii], nSubD * w_vec.D[DIndex(inputScalars, timestep)][ii], w_vec.h_ACOSEM, MethodList.OSLCOSEM);
                 if (MethodList.OSLCOSEM == 1u) {
@@ -424,7 +453,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                     mexPrintBase("w_vec.lambda[timestep][iter] = %f\n", w_vec.lambda[timestep][iter]);
                     mexEval();
                 }
-                status = SART(inputScalars, w_vec, MethodList, vec, proj, mData[timestep], g, length, pituus, timestep, osa_iter, iter , *Sens, vec.rhs_os[timestep][ii], w_vec.lambda[timestep][iter], ii);
+                status = SART(inputScalars, w_vec, MethodList, vec, proj, mData[timestep], g, length, pituus, timestep, osa_iter, iter , *Sens, vec.rhs_os[timestep][ii], w_vec.lambda[timestep][iter], ii, sartFrames.empty() ? nullptr : &sartFrames);
                 if (status != 0)
                     return -1;
                 if (MethodList.POCS) {
@@ -433,10 +462,10 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
                         return -1;
                 }
             }
-            else if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) {
+            else if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.PDDY) {
                 if (DEBUG || inputScalars.verbose >= 3)
                     mexPrint("Computing PDHG/PDHGKL/PDHGL1/PDDY");
-                status = PDHG2(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], inputScalars, w_vec, vec, proj, iter, timestep, osa_iter, ii, pituus, g, m_size, length);
+                status = PDHG2(vec.im_os[timestep][ii], vec.rhs_os[timestep][ii], inputScalars, w_vec, vec, proj, iter, timestep, osa_iter, ii, pituus, g, m_size, length, MethodList.PDDY);
                 if (status != 0)
                     return -1;
             }

@@ -64,8 +64,8 @@ if listmodeSPECTSensitivity
 		[x, z, options.sensitivityViewWeights] = prepareSPECTListmodeSensitivity(options);
 	end
 elseif options.listmode > 0 && options.compute_sensitivity_image && isfield(options,'xSens') && isfield(options,'zSens') && ~isempty(options.xSens) && ~isempty(options.zSens)
-    x = options.xSens;
-    z_det = options.zSens;
+    x = cast(options.xSens, options.cType);
+    z_det = cast(options.zSens, options.cType);
 	z = z_det;
 	if ~options.SPECT
 		options.det_per_ring = numel(x) / 2 / options.nLayers; % x and z contain the coordinates of all layers
@@ -466,6 +466,20 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
     end
     if options.projector_type == 5 || options.projector_type == 55 || options.projector_type == 15 || options.projector_type == 45
         input = reshape(input, options.nRowsD, options.nColsD, nMeas(subIter + 2) - nMeas(subIter + 1));
+        % The backprojection is the transpose of the forward projection, which multiplies its output by the normalization, so the
+        % projections of the current subset are multiplied by the normalization before the integral image is formed, since the
+        % box sum cannot weight the individual detector pixels
+        if options.CT && options.normalization_correction && numel(options.normalization) > 1
+            nDetPix = double(options.nRowsD) * double(options.nColsD);
+            normBP5 = options.normalization(double(nMeas(subIter + 1)) * nDetPix + 1 : double(nMeas(subIter + 2)) * nDetPix);
+            normBP5 = reshape(normBP5, options.nRowsD, options.nColsD, size(input, 3));
+            if isa(input, 'gpuArray')
+                normBP5 = gpuArray(cast(normBP5, classUnderlying(input)));
+            else
+                normBP5 = cast(normBP5, class(input));
+            end
+            input = input .* normBP5;
+        end
         [input, meanBP] = computeIntegralImage(input, options.meanBP);
         if options.meanBP
             % One mean per projection in this subset's measurement block

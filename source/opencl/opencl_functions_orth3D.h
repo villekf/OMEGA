@@ -423,7 +423,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	local_ind = compute_ind_orth_3D(CUINT(tempi), uu * d_N3, (zz), d_N2, d_Nxy);
 #endif
 #if (defined(FP) && !defined(USEIMAGES))
-	const LONG ind = CLONG_rtz(local_ind);
+	const LONG ind = local_ind; // local_ind is already an exact 64-bit index; on CUDA/HIP CLONG_rtz converts through float32, which is not exact above 2^24
 #endif ///////////////////// END 2D/3D indices /////////////////////
 #endif
 #if defined(BP) && defined(MASKBP) ///////////////////// APPLY BP MASK /////////////////////////

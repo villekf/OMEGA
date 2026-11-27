@@ -92,6 +92,7 @@ struct ScalarKernelParams { // Kernel scalar values that do not change with time
     CL_UINT8 enforcePositivity_PDHG;
     // Scalar inputs for the fused FASTPDHG backprojection kernels.
     CL_UINT8 fastStep_PDHG;
+    CL_UINT8 fastRegReuse_PDHG;
     CL_INT64 fastImOffset_PDHG;
     CL_INT32 fastPriorZOffset_PDHG;
     float fastLambda_PDHG;
@@ -105,6 +106,7 @@ struct ScalarKernelParams { // Kernel scalar values that do not change with time
     float fastGGMRFpqc_PDHG;
     float fastHYPERsigma_PDHG;
     float fastTVsigma_PDHG;
+    float fastTVsmooth_PDHG;
     // Below parameters are used in the rotation kernel
     CL_INT3 N_rotate;
     float cosa_rotate;

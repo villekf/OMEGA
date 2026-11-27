@@ -66,8 +66,24 @@ else
     grad = zeros(N, 14);
     luup = 13;
 end
+is2DFMH = (Nz == 1 || Ndz == 0);
 for ii = 1 : luup
-    grad(:,ii) = padd(tr_offsets(:,1+Ndx*(ii-1):alku/Ndx-(ii-1):end - Ndx*(ii-1)))*fmh_weights(:,ii);
+    % Line direction ii in the unit cube (2D: 4 directions, 3D: 13 directions). The neighborhood is the
+    % (2Ndx+1)x(2Ndy+1)x(2Ndz+1) box with x fastest, so the columns of the line are the center plus k * d, k = N...-N.
+    % Requires Ndx == Ndy and Ndz equal to 0 or Ndx. Matches the C++ FMH.
+    id0 = ii - 1;
+    dx = mod(id0, 3) - 1;
+    if is2DFMH
+        dy = floor(id0 / 3) - 1;
+        dz = 0;
+    else
+        dy = mod(floor(id0 / 3), 3) - 1;
+        dz = floor(id0 / 9) - 1;
+    end
+    kk = double(Ndx) : -1 : -double(Ndx);
+    colIdx = 1 + (double(Ndx) + kk * dx) + (double(Ndy) + kk * dy) * (2 * double(Ndx) + 1) ...
+        + (double(Ndz) + kk * dz) * ((2 * double(Ndx) + 1) * (2 * double(Ndy) + 1));
+    grad(:,ii) = padd(tr_offsets(:,colIdx))*fmh_weights(:,ii);
 end
 grad(:,end) = padd(tr_offsets(:,alku + 1));
 grad = median(grad,2);

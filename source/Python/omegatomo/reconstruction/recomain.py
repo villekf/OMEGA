@@ -940,6 +940,14 @@ def reconstructions_main(options):
     from .prepass import loadCorrections
     from .prepass import _prepare_image_domain_attenuation
     tic = time.perf_counter()
+    # addProjector() and initProj() change many options in place and not idempotently (Nx/Ny/Nz become arrays, dL is rescaled,
+    # angles are offset, projections are flipped, corrections are loaded, ...), and this function calls addProjector() again.
+    # An already initialized object would therefore be processed twice, silently giving wrong results, so it is refused here,
+    # before anything touches the object.
+    if getattr(options, 'projectorAdded', False):
+        raise ValueError('The options object has already been initialized (addProjector() or initProj() has been called, e.g. by a '
+                         'custom reconstruction or by a previous reconstructions_main call with keepOptionsUnchanged = False), '
+                         'which changes several options in place. Use a new projectorClass object with reconstructions_main.')
     # Work on a private copy (MATLAB value semantics): the pipeline below changes the
     # options in place and not idempotently, so repeated calls with the same object
     # must always start from the user's original values (opt out: keepOptionsUnchanged = False).
@@ -1078,6 +1086,11 @@ def reconstructions_main(options):
     #     normdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', '..', '..', 'mat-files')) + "/"
     #     if os.path.exists(normdir):
     #         var = read_mat(options.fpath)
+    # The CT versions of these algorithms use the transmission count-data model, they are not valid with linearized data
+    if options.CT and options.usingLinearizedData and (options.OSEM or options.ROSEM or options.OSL_OSEM or options.ROSEM_MAP or options.COSEM or options.ECOSEM
+            or options.ACOSEM or options.OSL_COSEM > 0 or options.RAMLA or options.BSREM or options.RBI or options.OSL_RBI or options.DRAMA or options.PKMA
+            or options.MRAMLA or options.MBSREM or options.SPS or options.SAGA):
+        raise ValueError('The CT versions of the statistical algorithms (OSEM, ROSEM, OSL-OSEM, ROSEM-MAP, COSEM, ECOSEM, ACOSEM, OSL-COSEM, RAMLA, BSREM, RBI, OSL-RBI, DRAMA, PKMA, MRAMLA, MBSREM, SPS, SAGA) need intensity (count) data, linearized data (options.usingLinearizedData = True) cannot be used with them. Use a linear algorithm, such as PDHG or CGLS, with linearized data')
     if options.CT and options.flat <= 0 and not options.usingLinearizedData:
         if (options.normalization_correction and isinstance(options.SinM, np.ndarray) and options.normalization.size > 1
                 and options.normalization.size == options.SinM.size):
@@ -1092,6 +1105,8 @@ def reconstructions_main(options):
         else:
             print('No flat value input! Using the maximum value as the flat value. Alternatively, input the flat value into options.flat')
             options.flat = np.max(options.SinM).astype(dtype=np.float32)
+    if options.CT and options.PWLS and options.flat <= 0:
+        raise ValueError('PWLS needs the flat-field (I0) value of the raw data in options.flat!')
     if options.Nt <= 1 and not options.CT and not options.SPECT and not options.SinM.size == options.Ndist * options.Nang * options.TotSinos * options.Nt * options.TOF_bins_used and options.listmode == 0:
         raise ValueError('The number of elements in the input data does not match the input number of angles, radial distances and total number of sinograms multiplied together!')
     if not options.usingLinearizedData and (options.LSQR or options.CGLS or options.FISTA or options.FISTAL1 or options.PDHG or options.PDHGL1 or options.PDDY or options.FDK or options.SART or options.ASD_POCS or options.BB) and not options.largeDim and options.CT:

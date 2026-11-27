@@ -87,12 +87,22 @@ elseif options.NLGGMRF
 else
     gamma = options.RDP_gamma;
 end
+% GGMRF parameters are only defined (and used by the native code) for the NLGGMRF variant
+if options.NLGGMRF
+    GGMRF_p = options.GGMRF_p;
+    GGMRF_q = options.GGMRF_q;
+    GGMRF_c = options.GGMRF_c;
+else
+    GGMRF_p = 0;
+    GGMRF_q = 0;
+    GGMRF_c = 0;
+end
 if options.useSingles
     output = NLM_funcSingle(padInput, input, single(options.gaussianNLM), Ndx, Ndy, Ndz, Nlx, Nly, Nlz,...
-        N, M, K, (h2*h2), type, gamma, epps, options.GGMRF_p, options.GGMRF_q, options.GGMRF_c);
+        N, M, K, (h2*h2), type, gamma, epps, GGMRF_p, GGMRF_q, GGMRF_c);
 else
     output = NLM_func(padInput, input, options.gaussianNLM, Ndx, Ndy, Ndz, Nlx, Nly, Nlz,...
-        N, M, K, (h2*h2), type, gamma, epps, options.GGMRF_p, options.GGMRF_q, options.GGMRF_c);
+        N, M, K, (h2*h2), type, gamma, epps, GGMRF_p, GGMRF_q, GGMRF_c);
 end
 output = reshape(output, N, M, K);
 % Convert back to original image size

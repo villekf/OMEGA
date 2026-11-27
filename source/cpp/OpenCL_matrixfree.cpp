@@ -296,6 +296,11 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 
 	const mxArray* options = prhs[ind];
 	ind++;
+#ifdef CPU
+	// Multi-resolution (extended FOV) volumes are not supported by the CPU backend (it crashes while preparing the reconstruction)
+	if (getScalarUInt32(options, 0, "nMultiVolumes") > 0u)
+		mexErrMsgTxt("Multi-resolution reconstruction is not supported with the CPU implementation!");
+#endif
 
 	//Cell array containing the measurements
 	const mxArray* Sin = prhs[ind];
@@ -308,6 +313,11 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	// Use 64-bit integer atomic functions if possible
 	inputScalars.atomic_64bit = getScalarBool(prhs[ind], ind);
 	ind++;
+#ifdef CPU
+	// The CPU backend accumulates in float, integer atomics are GPU-only
+	inputScalars.atomic_64bit = false;
+	inputScalars.atomic_32bit = false;
+#endif
 
 	if (DEBUG) {
 		mexPrintBase("ind12 = %u\n", ind);
@@ -535,9 +545,10 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	if (inputScalars.verbose >= 3) {
 		mexPrint("Loaded struct values. Starting reconstruction itself...");
 	}
+	int status = 0;
 	try {
 
-		int status = reconstructionAF(z_det, x, Sino, randoms, inputScalars, device, pituus, w_vec, MethodList, header_directory, x0,
+		status = reconstructionAF(z_det, x, Sino, randoms, inputScalars, device, pituus, w_vec, MethodList, header_directory, x0,
 			cell_array_ptr, FPptr, atten, norm, extraCorr, size_gauss, xy_index, z_index, residual, L);
 
 
@@ -550,12 +561,14 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		af::deviceGC();
 		if ((inputScalars.verbose >= 3 || DEBUG) && status == 0)
 			mexPrint("Reconstruction completed successfully!");
-		else if (status != 0)
-			mexPrint("Reconstruction failed!");
 	}
 	catch (const std::exception& e) {
 		af::deviceGC();
 		mexErrMsgTxt(e.what());
 	}
+	// Raised outside the try block so that the error is not swallowed by the exception handler. The cause of
+	// the failure has already been printed. The outputs assigned to plhs above are freed by MATLAB.
+	if (status != 0)
+		mexErrMsgTxt("Reconstruction failed! See the messages above for the cause.");
 	return;
 }

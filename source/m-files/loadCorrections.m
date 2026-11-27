@@ -24,7 +24,7 @@ function [options] = loadCorrections(options, RandProp, ScatterProp)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-folder = fileparts(which('set_up_corrections.m'));
+folder = fileparts(mfilename('fullpath'));
 folder = [folder(1:end-(6 + 8)), 'mat-files/'];
 folder = strrep(folder, '\','/');
 
@@ -1355,9 +1355,6 @@ elseif anyCount
     ctNormMode = 1;
 else
     ctNormMode = 3;
-    if mod(options.projector_type, 10) == 5
-        error('CT normalization with linearized data is not supported with backprojection type 5')
-    end
 end
 
 function options = ctNormalizationPrecorrect(options)

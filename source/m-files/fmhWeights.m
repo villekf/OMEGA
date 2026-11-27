@@ -35,7 +35,7 @@ if isempty(options.fmh_weights)
                     if iii == 0
                         apu(hhh) = options.fmh_center_weight;
                     else
-                        apu(hhh) = kerroin/abs(distX*double(iii));
+                        apu(hhh) = kerroin/abs(distY*double(iii));
                     end
                 end
             elseif jjj == 4
@@ -44,7 +44,7 @@ if isempty(options.fmh_weights)
                     if iii == 0
                         apu(hhh) = options.fmh_center_weight;
                     else
-                        apu(hhh) = kerroin/abs(distY*double(iii));
+                        apu(hhh) = kerroin/abs(distX*double(iii));
                     end
                 end
             end
@@ -76,7 +76,7 @@ if isempty(options.fmh_weights)
                             if iii == 0
                                 apu(hhh) = options.fmh_center_weight;
                             else
-                                apu(hhh) = kerroin/sqrt((distZ*double(iii))^2+(distX*double(iii))^2);
+                                apu(hhh) = kerroin/sqrt((distZ*double(iii))^2+(distY*double(iii))^2);
                             end
                         end
                     elseif jjj == 4 || jjj == 6
@@ -85,7 +85,7 @@ if isempty(options.fmh_weights)
                             if iii == 0
                                 apu(hhh) = options.fmh_center_weight;
                             else
-                                apu(hhh) = kerroin/sqrt((distZ*double(iii))^2+(distY*double(iii))^2);
+                                apu(hhh) = kerroin/sqrt((distZ*double(iii))^2+(distX*double(iii))^2);
                             end
                         end
                     elseif jjj == 5
@@ -118,7 +118,7 @@ if isempty(options.fmh_weights)
                             if iii == 0
                                 apu(hhh) = options.fmh_center_weight;
                             else
-                                apu(hhh) = kerroin/abs(distX*double(iii));
+                                apu(hhh) = kerroin/abs(distY*double(iii));
                             end
                         end
                     elseif jjj == 4
@@ -127,7 +127,7 @@ if isempty(options.fmh_weights)
                             if iii == 0
                                 apu(hhh) = options.fmh_center_weight;
                             else
-                                apu(hhh) = kerroin/abs(distY*double(iii));
+                                apu(hhh) = kerroin/abs(distX*double(iii));
                             end
                         end
                     else
