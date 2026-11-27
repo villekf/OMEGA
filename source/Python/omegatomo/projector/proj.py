@@ -2487,23 +2487,83 @@ class projectorClass:
             
             # if self.only_sinos:
             #     print('Loading only data.')
+            nxPrint = np.asarray(self.Nx).reshape(-1)
+            nyPrint = np.asarray(self.Ny).reshape(-1)
+            nzPrint = np.asarray(self.Nz).reshape(-1)
             if self.useMultiResolutionVolumes:
-                from omegatomo.util.matlabRound import matlabRound
-                if self.transaxialEFOV:
-                    Nx = self.NxOrig + int(matlabRound((self.Nx - self.NxOrig) * self.multiResolutionScale))
-                    Ny = self.NyOrig + int(matlabRound((self.Ny - self.NyOrig) * self.multiResolutionScale))
+                # The printed size is the total size along each axis: the main
+                # volume plus the adjoining low-resolution multi-resolution
+                # volumes (low-resolution voxels counted as they are).
+                if nxPrint.size > 1:
+                    if nxPrint.size == 7:
+                        Nx = int(nxPrint[0]) + int(nxPrint[3]) + int(nxPrint[4])
+                        Ny = int(nyPrint[0]) + int(nyPrint[5]) + int(nyPrint[6])
+                        Nz = int(nzPrint[0]) + int(nzPrint[1]) + int(nzPrint[2])
+                    elif nxPrint.size == 5:
+                        Nx = int(nxPrint[0]) + int(nxPrint[1]) + int(nxPrint[2])
+                        Ny = int(nyPrint[0]) + int(nyPrint[3]) + int(nyPrint[4])
+                        Nz = int(nzPrint[0])
+                    elif nxPrint.size == 3:
+                        Nx = int(nxPrint[0])
+                        Ny = int(nyPrint[0])
+                        Nz = int(nzPrint[0]) + int(nzPrint[1]) + int(nzPrint[2])
+                    else:
+                        Nx = int(nxPrint[0])
+                        Ny = int(nyPrint[0])
+                        Nz = int(nzPrint[0])
                 else:
-                    Nx = self.Nx
-                    Ny = self.Ny
+                    # Scalar fallback (before setUpCorrections): reproduces the
+                    # rounding of setUpCorrections, i.e. the original size plus
+                    # the two side volumes (NxM2 = round(extension / dxM) * 2,
+                    # with dxM the low-resolution voxel size).
+                    from omegatomo.util.matlabRound import matlabRound
 
-                if self.axialEFOV:
-                    Nz = self.NzOrig + int(matlabRound((self.Nz - self.NzOrig) * self.multiResolutionScale))
-                else:
-                    Nz = self.Nz
+                    def _exactTotal(nOrig, fovOrig, fovExt, scale):
+                        # Returns (total, extensionIsTooSmall); total is None
+                        # if the FOV values are unusable.
+                        try:
+                            fo = np.asarray(fovOrig, dtype=np.float64).reshape(-1)
+                            fe = np.asarray(fovExt, dtype=np.float64).reshape(-1)
+                            if fo.size != 1 or fe.size != 1:
+                                return None, False
+                            nM = int(matlabRound(float(nOrig) * scale))
+                            if fo[0] <= 0 or nM <= 0:
+                                return None, False
+                            dM = fo[0] / nM
+                            nM2 = int(matlabRound((fe[0] - fo[0]) / 2 / dM)) * 2
+                            if nM2 <= 0:
+                                return int(nOrig), True
+                            return int(nOrig) + nM2, False
+                        except (TypeError, ValueError):
+                            return None, False
+
+                    mrScale = float(self.multiResolutionScale)
+                    NxApprox = int(self.NxOrig) + int(matlabRound((int(nxPrint[0]) - int(self.NxOrig)) * mrScale))
+                    NyApprox = int(self.NyOrig) + int(matlabRound((int(nyPrint[0]) - int(self.NyOrig)) * mrScale))
+                    NzApprox = int(self.NzOrig) + int(matlabRound((int(nzPrint[0]) - int(self.NzOrig)) * mrScale))
+                    Nx = int(nxPrint[0])
+                    Ny = int(nyPrint[0])
+                    Nz = int(nzPrint[0])
+                    if self.transaxialEFOV:
+                        NxE, smallX = _exactTotal(self.NxOrig, self.FOVxOrig, self.FOVa_x, mrScale)
+                        NyE, smallY = _exactTotal(self.NyOrig, self.FOVyOrig, self.FOVa_y, mrScale)
+                        if smallX or smallY:
+                            # Too small an extension disables transaxial EFOV
+                            Nx = int(self.NxOrig)
+                            Ny = int(self.NyOrig)
+                        else:
+                            Nx = NxE if NxE is not None else NxApprox
+                            Ny = NyE if NyE is not None else NyApprox
+                    if self.axialEFOV:
+                        NzE, smallZ = _exactTotal(self.NzOrig, self.axialFOVOrig, self.axial_fov, mrScale)
+                        if smallZ:
+                            Nz = int(self.NzOrig)
+                        else:
+                            Nz = NzE if NzE is not None else NzApprox
             else:
-                Nx = self.Nx
-                Ny = self.Ny
-                Nz = self.Nz
+                Nx = int(nxPrint[0])
+                Ny = int(nyPrint[0])
+                Nz = int(nzPrint[0])
             
             if not (self.compute_normalization or self.only_sinos):
                 AFinstalled = False

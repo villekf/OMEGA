@@ -480,17 +480,74 @@ if options.verbose > 0
         disp('Computing normalization coefficients.')
     end
     if options.useMultiResolutionVolumes
-        if options.transaxialEFOV
-            Nx = options.NxOrig + round((options.Nx - options.NxOrig) * options.multiResolutionScale);
-            Ny = options.NyOrig + round((options.Ny - options.NyOrig) * options.multiResolutionScale);
+        % The printed size is the total size along each axis: the main
+        % volume plus the adjoining low-resolution multi-resolution
+        % volumes (low-resolution voxels counted as they are).
+        if numel(options.Nx) > 1
+            switch numel(options.Nx)
+                case 7
+                    Nx = double(options.Nx(1)) + double(options.Nx(4)) + double(options.Nx(5));
+                    Ny = double(options.Ny(1)) + double(options.Ny(6)) + double(options.Ny(7));
+                    Nz = double(options.Nz(1)) + double(options.Nz(2)) + double(options.Nz(3));
+                case 5
+                    Nx = double(options.Nx(1)) + double(options.Nx(2)) + double(options.Nx(3));
+                    Ny = double(options.Ny(1)) + double(options.Ny(4)) + double(options.Ny(5));
+                    Nz = double(options.Nz(1));
+                case 3
+                    Nx = double(options.Nx(1));
+                    Ny = double(options.Ny(1));
+                    Nz = double(options.Nz(1)) + double(options.Nz(2)) + double(options.Nz(3));
+                otherwise
+                    Nx = double(options.Nx(1));
+                    Ny = double(options.Ny(1));
+                    Nz = double(options.Nz(1));
+            end
         else
-            Nx = options.Nx;
-            Ny = options.Ny;
-        end
-        if options.axialEFOV
-            Nz = options.NzOrig + round((options.Nz - options.NzOrig) * options.multiResolutionScale);
-        else
-            Nz = options.Nz;
+            % Scalar fallback (before setUpCorrections): reproduces the
+            % rounding of setUpCorrections, i.e. the original size plus the
+            % two side volumes (NxM2 = round(extension / dxM) * 2, with dxM
+            % the low-resolution voxel size).
+            if isfield(options, 'multiResolutionScale') && ~isempty(options.multiResolutionScale)
+                mrScale = double(options.multiResolutionScale);
+            else
+                mrScale = .25;
+            end
+            NxApprox = double(options.NxOrig) + round((double(options.Nx) - double(options.NxOrig)) * mrScale);
+            NyApprox = double(options.NyOrig) + round((double(options.Ny) - double(options.NyOrig)) * mrScale);
+            NzApprox = double(options.NzOrig) + round((double(options.Nz) - double(options.NzOrig)) * mrScale);
+            Nx = double(options.Nx);
+            Ny = double(options.Ny);
+            Nz = double(options.Nz);
+            if options.transaxialEFOV
+                [NxE, smallX] = exactEFOVTotal(options, 'NxOrig', 'FOVxOrig', 'FOVa_x', mrScale);
+                [NyE, smallY] = exactEFOVTotal(options, 'NyOrig', 'FOVyOrig', 'FOVa_y', mrScale);
+                if smallX || smallY
+                    % Too small an extension disables transaxial EFOV
+                    Nx = double(options.NxOrig);
+                    Ny = double(options.NyOrig);
+                else
+                    if isnan(NxE)
+                        Nx = NxApprox;
+                    else
+                        Nx = NxE;
+                    end
+                    if isnan(NyE)
+                        Ny = NyApprox;
+                    else
+                        Ny = NyE;
+                    end
+                end
+            end
+            if options.axialEFOV
+                [NzE, smallZ] = exactEFOVTotal(options, 'NzOrig', 'axialFOVOrig', 'axial_fov', mrScale);
+                if smallZ
+                    Nz = double(options.NzOrig);
+                elseif isnan(NzE)
+                    Nz = NzApprox;
+                else
+                    Nz = NzE;
+                end
+            end
         end
     else
         Nx = options.Nx;
@@ -619,4 +676,32 @@ if options.verbose > 0
         disp(['Using an image (matrix) size of ' num2str(Nx) 'x' num2str(Ny) 'x' num2str(Nz) ' with ' num2str(options.Niter) ...
             ' iterations and ' num2str(options.subsets) ' subsets.'])
     end
+end
+
+function [nTotal, tooSmall] = exactEFOVTotal(options, nField, fovField, extField, scale)
+% Total size along one axis for the scalar fallback: NOrig + NM2, with
+% NM2 as computed in setUpCorrections. nTotal is NaN if the fields are
+% missing or unusable.
+nTotal = NaN;
+tooSmall = false;
+if ~isfield(options, nField) || ~isfield(options, fovField) || ~isfield(options, extField)
+    return
+end
+nOrig = double(options.(nField));
+fovOrig = double(options.(fovField));
+fovExt = double(options.(extField));
+if ~isscalar(nOrig) || ~isscalar(fovOrig) || ~isscalar(fovExt)
+    return
+end
+nM = round(nOrig * scale);
+if ~(fovOrig > 0) || ~(nM > 0)
+    return
+end
+dM = fovOrig / nM;
+nM2 = round((fovExt - fovOrig) / 2 / dM) * 2;
+if nM2 <= 0
+    nTotal = nOrig;
+    tooSmall = true;
+else
+    nTotal = nOrig + nM2;
 end
