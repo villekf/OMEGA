@@ -1378,6 +1378,14 @@ def loadCorrections(options):
                     options.scatter_correction = False
     if deferredNormalization is not None:
         options.SinM = _perLORFactor(options.SinM, deferredNormalization[0], options.TOF_bins, deferredNormalization[1])
+    if (not options.randoms_correction and options.scatter_correction and options.ordinaryPoisson
+            and options.ScatterC.size > 0 and (isinstance(options.SinDelayed, (list, tuple)) or options.SinDelayed.size > 1)):
+        # Randoms data without randoms correction: the randoms are not used, only the scatter (the scatter-only branch below, or
+        # corrVector if the scatter is not subtracted). Otherwise a subtracted scatter would be combined with the randoms below while
+        # randoms_correction stays False, and neither would be applied. Same as MATLAB's loadCorrections.m
+        print('Warning: Randoms data (options.SinDelayed) was input, but options.randoms_correction is False. The randoms are not '
+              'used, only the scatter (options.ScatterC). Set options.randoms_correction = True to use the randoms as well.')
+        options.SinDelayed = np.empty(0, dtype=np.float32)
     if options.scatter_correction and options.ScatterC.size > 0 and not options.subtract_scatter:
         # options.corrVector is a general multiplicative correction vector (see
         # its per-frame handling in parseInputs below): if the user has already
@@ -1434,7 +1442,10 @@ def loadCorrections(options):
         # / TOF_bins + scatterPerTOFBin(ScatterC)` pattern (both the dynamic-cell and
         # static branches): the non-TOF randoms estimate and a non-TOF scatter
         # sinogram are both divided by TOF_bins before adding them.
-        if options.TOF_bins > 1:
+        if options.TOF_bins > 1 or not np.issubdtype(options.SinDelayed.dtype, np.floating):
+            # Integer randoms (e.g. uint16 delayed coincidences) are converted to float32 first, as MATLAB's
+            # randomsPerTOFBin(single(SinDelayed)): the in-place addition of the scatter below cannot store the float sum in an
+            # integer array. Floating point randoms without TOF are added as they are
             options.SinDelayed = _randomsPerTOFBin(options, options.SinDelayed)
         scatterTerm = np.asfortranarray(_scatterPerTOFBin(options, options.ScatterC))
         if options.Nt > 1 and scatterTerm.size * options.Nt == options.SinDelayed.size:
@@ -1966,6 +1977,14 @@ def parseInputs(options, mDataFound = False):
             options._randomsPrecorrected = True
         options.randoms_correction = False
     
+    # The native library reads the additive term (randoms and scatter) and the multiplicative correction vector in column-major
+    # (Fortran) order, as the measurements. The subset selection above ravels them in that order, but with one subset (or largeDim)
+    # a C-ordered multi-dimensional array would otherwise be handed over in its C memory order. A 1-D or Fortran-ordered array is
+    # not copied (ravel returns a view)
+    for name in ('SinDelayed', 'corrVector'):
+        value = getattr(options, name, None)
+        if isinstance(value, np.ndarray) and value.ndim > 1:
+            setattr(options, name, value.ravel(order='F'))
     if options.Nt <= 1 and mDataFound and not options.largeDim and options.loadTOF:
         if single_frame_list:
             options.SinM = [np.asfortranarray(options.SinM).astype(dtype=np.float32)]
