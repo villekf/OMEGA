@@ -477,6 +477,14 @@ if ~options.SPECT
             options = loadScatterData(options);
             s_exist = true;
         end
+        % Randoms data without randoms correction: the randoms are not used, only the scatter (the scatter-only branches below, or
+        % the multiplicative scatter correction if the scatter is not subtracted). Otherwise the randoms would be used and the randoms
+        % correction enabled at the end. Same as Python's loadCorrections
+        if r_exist && ~options.randoms_correction && options.scatter_correction && s_exist
+            warning('Randoms data (options.SinDelayed) was input, but options.randoms_correction is false. The randoms are not used, only the scatter (options.ScatterC). Set options.randoms_correction = true to use the randoms as well.')
+            r_exist = false;
+            options.SinDelayed = [];
+        end
         % Check the size of the randoms and the scatter data with TOF data (also prints the message that non-TOF data is divided among the TOF bins)
         options = checkTOFScatter(options, r_exist, RandProp);
         if r_exist || s_exist
